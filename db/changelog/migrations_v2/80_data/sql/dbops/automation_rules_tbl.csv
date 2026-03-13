@@ -7,3 +7,5 @@ id,enabled,rule_type,target_schema,target_table,exec_mode,name_template,existenc
 8,t,LOCK_COLUMNS,*all,*all,AUTO,trg_{table}_a10_lock_columns_upd,BOTH,{},100,lock columns: trigger UPDATE OF (codice_interno + extra)
 11,t,CLEANUP_AT,*all,*all,AUTO,,BY_NAME,"{""ttl_days"": 30, ""cleanup_column"": ""cleanup_at"", ""apply_on_update"": false}",200,cleanup_at: calcolo TTL fisso (30 giorni)
 12,t,CLEANUP_PURGE,*all,*all,AUTO,,BY_NAME,"{""batch_limit"": 5000, ""cleanup_column"": ""cleanup_at""}",210,cleanup_at: purge record scaduti (batch 5000)
+13,t,CLEANUP_AT,dbops,sessioni_utente,AUTO,,BY_NAME,"{""ttl_days"": 180, ""cleanup_column"": ""cleanup_at"", ""apply_on_update"": false}",190,cleanup_at: sessioni_utente TTL 180 giorni (override default 30gg)
+14,t,CLEANUP_AT,dbops,request_log,AUTO,,BY_NAME,"{""ttl_days"": 90, ""cleanup_column"": ""cleanup_at"", ""apply_on_update"": false}",190,cleanup_at: request_log TTL 90 giorni (override default 30gg)

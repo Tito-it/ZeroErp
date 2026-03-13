@@ -53,7 +53,7 @@ Questa semantica "fail-open se vuoto" è coerente con il pattern già adottato i
 | Livello | Meccanismo | Dove |
 |---------|-----------|------|
 | **Django** | `EmittenteFiscaleScopeMixin` filtra il queryset | View DRF |
-| **DB** | `config.fn_check_user_emittente_scope()` + trigger guard | Tabelle operative (fatture, ordini, pagamenti) |
+| **DB** | `script.fn_check_user_emittente_scope()` + trigger guard | Tabelle operative (fatture, ordini, pagamenti) |
 
 Il trigger DB è un **defense-in-depth**: garantisce che nessun bypass applicativo possa inserire dati su emittenti non autorizzati.
 

@@ -1,10 +1,17 @@
 from django.urls import path
 
+from apps.core.api.me_view import UserProfileView
+from apps.core.api.sessioni_view import SessioneRevocaView, SessioniAttiveListView
 from apps.core.api.views import (
     ApiDiagnosticsErrorEnvelopeV1,
     ApiLookupCodiciV1,
     ApiPermessiAuditV1,
     ApiPermessiEffettiviV1,
+)
+from apps.core.api.search_view import (
+    LookupTipiRuoliView,
+    SearchDetailView,
+    SearchUniversaleView,
 )
 from apps.core.api.views_tracciamento import (
     ApiAuditLogV1,
@@ -17,6 +24,21 @@ from apps.core.api.views_tracciamento import (
 
 urlpatterns = [
     path(
+        "me/",
+        UserProfileView.as_view(),
+        name="core-v1-user-profile",
+    ),
+    path(
+        "me/sessioni/",
+        SessioniAttiveListView.as_view(),
+        name="core-v1-sessioni-attive",
+    ),
+    path(
+        "me/sessioni/<str:jti>/revoca/",
+        SessioneRevocaView.as_view(),
+        name="core-v1-sessione-revoca",
+    ),
+    path(
         "diagnostics/error-envelope/",
         ApiDiagnosticsErrorEnvelopeV1.as_view(),
         name="core-v1-diagnostics-error-envelope",
@@ -27,6 +49,11 @@ urlpatterns = [
         name="core-v1-lookup-codici",
     ),
     path(
+        "lookup/tipi-ruoli/",
+        LookupTipiRuoliView.as_view(),
+        name="core-v1-lookup-tipi-ruoli",
+    ),
+    path(
         "users/<int:user_id>/permessi-effettivi/",
         ApiPermessiEffettiviV1.as_view(),
         name="core-v1-permessi-effettivi",
@@ -35,6 +62,17 @@ urlpatterns = [
         "users/<int:user_id>/permessi-audit/",
         ApiPermessiAuditV1.as_view(),
         name="core-v1-permessi-audit",
+    ),
+    # Ricerca universale soggetti
+    path(
+        "search/",
+        SearchUniversaleView.as_view(),
+        name="core-v1-search-universale",
+    ),
+    path(
+        "search/<uuid:soggetto_id>/detail/",
+        SearchDetailView.as_view(),
+        name="core-v1-search-detail",
     ),
     # Tracciamento processi e job
     path(

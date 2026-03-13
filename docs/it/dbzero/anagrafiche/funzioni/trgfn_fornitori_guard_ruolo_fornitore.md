@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/anagrafiche/manual/trgfn_fornitori_guard_ruolo_fornitore.md" %}
 # ⚙️ Funzione `trgfn_fornitori_guard_ruolo_fornitore`
 
 ```sql

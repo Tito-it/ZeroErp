@@ -20,7 +20,7 @@
 
 ---
 
-### Scopo
+### 🎯 Scopo Principale
 
 (latest review 01-03-26)
 
@@ -37,12 +37,12 @@ Caratteristiche principali:
 
 ### Collegamenti con altre tabelle
 
-| Campo | Tabella di riferimento | Azione |
-| --- | --- | --- |
+| Campo                | Tabella di riferimento              | Azione                                |
+| -------------------- | ----------------------------------- | ------------------------------------- |
 | `istanza_utility_id` | `anagrafiche.istanze_utilities(id)` | ON UPDATE CASCADE, ON DELETE SET NULL |
-| `soggetto_ruolo_id` | `anagrafiche.soggetti_ruoli(id)` | ON UPDATE CASCADE, ON DELETE RESTRICT |
-| `utility_id` | `config.utilities(id)` | ON UPDATE CASCADE, ON DELETE RESTRICT |
-| `parent_account_id` | `anagrafiche.billing_account(id)` | ON UPDATE CASCADE, ON DELETE SET NULL |
+| `soggetto_ruolo_id`  | `anagrafiche.soggetti_ruoli(id)`    | ON UPDATE CASCADE, ON DELETE RESTRICT |
+| `utility_id`         | `config.utilities(id)`              | ON UPDATE CASCADE, ON DELETE RESTRICT |
+| `parent_account_id`  | `anagrafiche.billing_account(id)`   | ON UPDATE CASCADE, ON DELETE SET NULL |
 
 Nota naming: sia `anagrafiche.billing_account` sia `anagrafiche.pdp` usano `utility_id`, entrambi puntano a `config.utilities.id`. Il naming e uniforme anche nelle query/join.
 
@@ -84,11 +84,11 @@ Non e possibile rimuovere `parent_account_id` da un BA figlio quando esistono at
 
 Quando un BA ha un parent (gerarchia), nella catena di fatturazione il BA figlio viene **risolto al padre** per la testata fattura, ma **preservato per ogni riga**. Questo consente di sapere sempre da quale utenza originale proviene ogni importo.
 
-| Tabella | Colonna | Contiene | Sempre valorizzata? |
-| --- | --- | --- | --- |
-| `vendite.attivita_fatturabili` | `billing_account_id` | BA figlio (originale, mai risolto al padre) | Si |
-| `vendite.fatture` | `billing_account_id` | BA padre (risolto da `fn_build_fattura_key`) | Si |
-| `vendite.fatture_righe` | `dest_billing_account_id` | BA figlio (preservato per tracciabilita) | Si |
+| Tabella                        | Colonna                   | Contiene                                     | Sempre valorizzata? |
+| ------------------------------ | ------------------------- | -------------------------------------------- | ------------------- |
+| `vendite.attivita_fatturabili` | `billing_account_id`      | BA figlio (originale, mai risolto al padre)  | Si                  |
+| `vendite.fatture`              | `billing_account_id`      | BA padre (risolto da `fn_build_fattura_key`) | Si                  |
+| `vendite.fatture_righe`        | `dest_billing_account_id` | BA figlio (preservato per tracciabilita)     | Si                  |
 
 Flusso in dettaglio:
 
@@ -105,11 +105,11 @@ La risoluzione al padre e **incondizionata**: se `parent_account_id` e valorizza
 
 Il campo `fatturazione_ordini` (default `CONFERMATO`) definisce il default per `ordini.fatturazione_trigger` al momento dell'inserimento ordine:
 
-| Valore | Significato |
-| --- | --- |
+| Valore       | Significato                                                |
+| ------------ | ---------------------------------------------------------- |
 | `CONFERMATO` | Fatturazione alla conferma ordine (push ordine a commessa) |
-| `SPEDITO` | Fatturazione alla spedizione DDT (push DDT a commessa) |
-| `CONSEGNATO` | Fatturazione alla consegna DDT (push DDT a commessa) |
+| `SPEDITO`    | Fatturazione alla spedizione DDT (push DDT a commessa)     |
+| `CONSEGNATO` | Fatturazione alla consegna DDT (push DDT a commessa)       |
 
 Il valore e ereditato automaticamente sugli ordini tramite `vendite.trgfn_ordini_normalize` e puo essere sovrascritto per singolo ordine.
 
@@ -117,13 +117,13 @@ Il valore e ereditato automaticamente sugli ordini tramite `vendite.trgfn_ordini
 
 ### Trigger e funzioni coinvolte
 
-| Trigger | Scopo |
-| --- | --- |
-| `trgfn_billing_account_gen_codice` | Genera `codice` automaticamente se mancante |
+| Trigger                                 | Scopo                                                               |
+| --------------------------------------- | ------------------------------------------------------------------- |
+| `trgfn_billing_account_gen_codice`      | Genera `codice` automaticamente se mancante                         |
 | `trgfn_billing_account_guard_normalize` | Guard di coerenza (validazioni, normalizzazione, protezione parent) |
-| `dbops.trgfn_tx_id_managed` | Genera `tx_id` per tracciabilita transazionale |
-| `script.trgfn_audit_data_user_generic` | Aggiorna campi audit |
-| `script.trgfn_storico_generic` | Snapshot storico su update/delete |
+| `dbops.trgfn_tx_id_managed`             | Genera `tx_id` per tracciabilita transazionale                      |
+| `script.trgfn_audit_data_user_generic`  | Aggiorna campi audit                                                |
+| `script.trgfn_storico_generic`          | Snapshot storico su update/delete                                   |
 
 ---
 

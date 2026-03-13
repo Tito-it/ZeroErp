@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/anagrafiche/manual/trgfn_emittenti_fiscali_normalize.md" %}
 # ⚙️ Funzione `trgfn_emittenti_fiscali_normalize`
 
 ```sql

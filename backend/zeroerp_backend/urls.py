@@ -21,6 +21,7 @@ from django.views.generic import RedirectView
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 from rest_framework.permissions import AllowAny
 from apps.core.api.auth_views import AuditTokenObtainPairView, AuditTokenRefreshView
+from apps.core.api.logout_view import LogoutView
 
 
 # Scopo: Gestisce `health_view` nel flusso applicativo del modulo.
@@ -52,8 +53,14 @@ urlpatterns = [
         AuditTokenRefreshView.as_view(permission_classes=[AllowAny]),
         name="token-refresh",
     ),
+    path(
+        "api/v1/auth/logout/",
+        LogoutView.as_view(),
+        name="auth-logout",
+    ),
     path("api/v1/core/", include("apps.core.api.urls_v1")),
     path("api/v1/vendite/", include("apps.vendite.api.urls_v1")),
     path("api/v1/pratiche/", include("apps.pratiche.api.urls_v1")),
+    path("api/v1/amm-software/", include("apps.amm_software.api.urls_v1")),
     path("", RedirectView.as_view(url="/admin/", permanent=False)),
 ]

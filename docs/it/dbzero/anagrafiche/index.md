@@ -2,7 +2,7 @@
 
 ## 📚 Tabelle
 - [bank_branches](tabelle/bank_branches.md) — (latest review 02-12-25) La tabella **`anagrafiche.bank_branches`** rappresenta le **filiali di istituti di credito** (branch bancarie) collegate a un determinato **ruolo di soggetto** di tipo *ISTITUTO_CREDITO* (`anagrafiche.soggetti_ruoli`).
-- [billing_account](tabelle/billing_account.md)
+- [billing_account](tabelle/billing_account.md) — (latest review 01-03-26)
 - [catasto_unita_immobiliari](tabelle/catasto_unita_immobiliari.md) — (latest review 10-12-25) La tabella `anagrafiche.catasto_unita_immobiliari` archivia i **dati catastali** associati a un `indirizzo_dettaglio` e a una specifica `istanza_utility`. Questo approccio:
 - [catasto_unita_immobiliari_indirizzi](tabelle/catasto_unita_immobiliari_indirizzi.md) — (latest review 16-12-25) La tabella `anagrafiche.catasto_unita_immobiliari_indirizzi` è una **tabella ponte** che esplicita la relazione tra:
 - [clienti](tabelle/clienti.md) — (latest review 15-02-26) La tabella `anagrafiche.clienti` memorizza le informazioni contrattuali e di fatturazione di un soggetto per una specifica *istanza* di servizio. Rappresenta la fase in cui un'attivazione (istanza) diventa un cliente ufficiale, includendo dettagli di scadenze, pagamento e classificazioni speciali (PA, split payment).
@@ -33,11 +33,15 @@
 - [vettori](tabelle/vettori.md)
 
 ## ⚙️ Funzioni
+- [fn_crea_auth_user](funzioni/fn_crea_auth_user.md)
+- [fn_crea_operatore](funzioni/fn_crea_operatore.md)
+- [fn_crea_risorsa_umana](funzioni/fn_crea_risorsa_umana.md)
+- [fn_crea_soggetto_pf](funzioni/fn_crea_soggetto_pf.md)
 - [fn_get_emittente_fiscale_id](funzioni/fn_get_emittente_fiscale_id.md) — (last review 23-01-2026) La funzione `anagrafiche.fn_get_emittente_fiscale_id()` risolve l’emittente fiscale associato a un `billing_account`. Se non esiste un mapping specifico, usa l’emittente **di default globale**.
-- [fn_notify_cambio_reparto](funzioni/fn_notify_cambio_reparto.md)
+- [fn_notify_cambio_reparto](funzioni/fn_notify_cambio_reparto.md) — (latest review 10-03-2026) La funzione **`anagrafiche.fn_notify_cambio_reparto()`** emette una notifica PostgreSQL sul canale `cambio_reparto` quando una risorsa umana viene spostata da un'unita' organizzativa a un'altra.
 - [fn_search_indirizzi_dettaglio](funzioni/fn_search_indirizzi_dettaglio.md) — (latest review 28-11-25) La funzione **`anagrafiche.fn_search_indirizzi_dettaglio`** fornisce un **punto unico di ingresso** per la ricerca degli indirizzi di dettaglio normalizzati, appoggiandosi alla vista:
-- [fn_sync_auth_user_expired](funzioni/fn_sync_auth_user_expired.md)
-- [fn_sync_auth_user_is_active](funzioni/fn_sync_auth_user_is_active.md)
+- [fn_sync_auth_user_expired](funzioni/fn_sync_auth_user_expired.md) — (latest review 10-03-2026) La funzione **`anagrafiche.fn_sync_auth_user_expired()`** esegue una sincronizzazione batch degli utenti Django collegati a risorse umane con finestra di validita' scaduta.
+- [fn_sync_auth_user_is_active](funzioni/fn_sync_auth_user_is_active.md) — (latest review 10-03-2026) La funzione **`anagrafiche.fn_sync_auth_user_is_active()`** allinea il campo `django.auth_user.is_active` allo stato effettivo della risorsa umana collegata.
 - [trgfn_bank_guard_ruolo_bank_branches](funzioni/trgfn_bank_guard_ruolo_bank_branches.md) — (latest review 05-12-25) - **Centralizzare l’assegnazione del ruolo “bank_branches”**     Delegare a `script.fn_guard_soggetto_ruolo ` la logica di inserimento o verifica del linking table, evitando duplicazioni di codice.
 - [trgfn_billing_account_gen_codice](funzioni/trgfn_billing_account_gen_codice.md)
 - [trgfn_billing_account_guard_normalize](funzioni/trgfn_billing_account_guard_normalize.md) — (latest review 28-12-25) Il trigger `anagrafiche.trgfn_billing_account_guard_normalize` applica le **validazioni di business** e normalizza i campi, mentre la generazione del `codice` e' demandata al sistema automatico basato su `config.sistema_codici`.
@@ -54,10 +58,10 @@
 - [trgfn_emittenti_fiscali_default_bootstrap](funzioni/trgfn_emittenti_fiscali_default_bootstrap.md) — (latest review 23-01-2026) La funzione `anagrafiche.trgfn_emittenti_fiscali_default_bootstrap()` crea in modo automatico la **riga di default** nel mapping emittenti fiscali quando viene inserito il **primo emittente**.
 - [trgfn_emittenti_fiscali_default_guard](funzioni/trgfn_emittenti_fiscali_default_guard.md) — La funzione `anagrafiche.trgfn_emittenti_fiscali_default_guard()` garantisce che esista **esattamente un** emittente fiscale di default.
 - [trgfn_emittenti_fiscali_guard_attivo](funzioni/trgfn_emittenti_fiscali_guard_attivo.md) — (latest review 23-01-26) La funzione **`anagrafiche.trgfn_emittenti_fiscali_guard_attivo()`** impedisce la disattivazione (`attivo = false`) di un emittente fiscale quando esistono righe di mapping in `emittenti_fiscali_billing_account` collegate al suo `emittente_soggetto_ruolo_id`.
-- [trgfn_emittenti_fiscali_guard_ruolo_emi_fis](funzioni/trgfn_emittenti_fiscali_guard_ruolo_emi_fis.md)
-- [trgfn_emittenti_fiscali_normalize](funzioni/trgfn_emittenti_fiscali_normalize.md)
-- [trgfn_fornitori_guard_normalize](funzioni/trgfn_fornitori_guard_normalize.md)
-- [trgfn_fornitori_guard_ruolo_fornitore](funzioni/trgfn_fornitori_guard_ruolo_fornitore.md)
+- [trgfn_emittenti_fiscali_guard_ruolo_emi_fis](funzioni/trgfn_emittenti_fiscali_guard_ruolo_emi_fis.md) — (latest review 12-03-2026) La trigger function **`anagrafiche.trgfn_emittenti_fiscali_guard_ruolo_emi_fis()`** garantisce che ogni record in `anagrafiche.emittenti_fiscali` sia collegato a un `soggetto_ruolo_id` valido e coerente con il ruolo di **emittente fiscale** (`codice_interno = 'EF'`).
+- [trgfn_emittenti_fiscali_normalize](funzioni/trgfn_emittenti_fiscali_normalize.md) — (latest review 12-03-2026) La trigger function **`anagrafiche.trgfn_emittenti_fiscali_normalize()`** e' attualmente una **no-op controllata**: non modifica `NEW`, ma mantiene esplicitato nel flusso trigger che la normalizzazione locale non e' necessaria e che l'eventuale generazione del `codice` resta demandata al sistema automatico basato su `config.sistema_codici`.
+- [trgfn_fornitori_guard_normalize](funzioni/trgfn_fornitori_guard_normalize.md) — (latest review 12-03-2026) La trigger function **`anagrafiche.trgfn_fornitori_guard_normalize()`** normalizza i dati minimi del fornitore prima del salvataggio, con focus sul campo `canale_fe`.
+- [trgfn_fornitori_guard_ruolo_fornitore](funzioni/trgfn_fornitori_guard_ruolo_fornitore.md) — (latest review 12-03-2026) La trigger function **`anagrafiche.trgfn_fornitori_guard_ruolo_fornitore()`** assicura che ogni record di `anagrafiche.fornitori` punti a un `soggetto_ruolo_id` coerente con il ruolo **fornitore** (`codice_interno = 'FO'`).
 - [trgfn_gestori_guard](funzioni/trgfn_gestori_guard.md) — (latest review 03-12-25) La funzione **`anagrafiche.trgfn_gestori_guard()`** è una **funzione trigger di guardia di dominio** per la tabella `anagrafiche.gestori`.
 - [trgfn_gestori_guard_ruolo_gestore](funzioni/trgfn_gestori_guard_ruolo_gestore.md) — (latest review 05-12-25) - **Centralizzare l’assegnazione del ruolo “Gestore”**     Delegare a `script.fn_guard_soggetto_ruolo ` la logica di inserimento o verifica del linking table, evitando duplicazioni di codice.
 - [trgfn_indirizzi_base_normalize](funzioni/trgfn_indirizzi_base_normalize.md) — (latest review 28-12-25) Normalizzare i campi base di `anagrafiche.indirizzi` in base alla presenza del collegamento a `indirizzi_dettaglio`.
@@ -75,13 +79,13 @@
 - [trgfn_pdp_set_default_stato](funzioni/trgfn_pdp_set_default_stato.md) — (latest review 16-12-25) La trigger function **`anagrafiche.trgfn_pdp_set_default_stato()`** imposta automaticamente lo **stato tecnico** di un PDP a **DISP** (*Disponibile*) quando il campo `stato_pdp_id` non è stato valorizzato.
 - [trgfn_psp_guard_ruolo_psp](funzioni/trgfn_psp_guard_ruolo_psp.md) — (latest review 13-02-2026)   La funzione **`anagrafiche.trgfn_psp_guard_ruolo_psp()`** valida che `NEW.soggetto_ruolo_id` punti a un ruolo con `codice_interno = 'PSP'`.
 - [trgfn_resellers_guard_attivo](funzioni/trgfn_resellers_guard_attivo.md) — (latest review 26-01-2026) La funzione **`anagrafiche.trgfn_resellers_guard_attivo()`** impedisce la **disattivazione** di un reseller quando esistono mapping verso `resellers_billing_account`.
-- [trgfn_resellers_guard_ruolo_reseller](funzioni/trgfn_resellers_guard_ruolo_reseller.md)
-- [trgfn_resellers_normalize](funzioni/trgfn_resellers_normalize.md)
-- [trgfn_risorse_umane_auth_user_guard_gestore](funzioni/trgfn_risorse_umane_auth_user_guard_gestore.md)
-- [trgfn_risorse_umane_auth_user_sync_active](funzioni/trgfn_risorse_umane_auth_user_sync_active.md)
-- [trgfn_risorse_umane_guard_ruolo](funzioni/trgfn_risorse_umane_guard_ruolo.md)
-- [trgfn_risorse_umane_notify_cambio_reparto](funzioni/trgfn_risorse_umane_notify_cambio_reparto.md)
-- [trgfn_risorse_umane_sync_auth_user_active](funzioni/trgfn_risorse_umane_sync_auth_user_active.md)
+- [trgfn_resellers_guard_ruolo_reseller](funzioni/trgfn_resellers_guard_ruolo_reseller.md) — (latest review 10-03-2026) La trigger function **`anagrafiche.trgfn_resellers_guard_ruolo_reseller()`** garantisce che il record in `anagrafiche.resellers` sia sempre collegato a un `soggetto_ruolo_id` coerente con il ruolo **RESELLER** (`codice_interno = 'RE'`).
+- [trgfn_resellers_normalize](funzioni/trgfn_resellers_normalize.md) — (latest review 10-03-2026) La trigger function **`anagrafiche.trgfn_resellers_normalize()`** e' oggi una **no-op**: non modifica il record `NEW` e ritorna semplicemente il contenuto ricevuto dal trigger.
+- [trgfn_risorse_umane_auth_user_guard_persona_fisica](funzioni/trgfn_risorse_umane_auth_user_guard_persona_fisica.md) — (latest review 10-03-2026) La trigger function **`anagrafiche.trgfn_risorse_umane_auth_user_guard_persona_fisica()`** impedisce di collegare un account Django (`auth_user`) a una risorsa umana che non corrisponde a una **persona fisica pura**.
+- [trgfn_risorse_umane_auth_user_sync_active](funzioni/trgfn_risorse_umane_auth_user_sync_active.md) — (latest review 10-03-2026) La trigger function **`anagrafiche.trgfn_risorse_umane_auth_user_sync_active()`** sincronizza lo stato `django.auth_user.is_active` quando cambia il **bridge** `anagrafiche.risorse_umane_auth_user`.
+- [trgfn_risorse_umane_guard_ruolo](funzioni/trgfn_risorse_umane_guard_ruolo.md) — (latest review 10-03-2026) La trigger function **`anagrafiche.trgfn_risorse_umane_guard_ruolo()`** garantisce che ogni riga di `anagrafiche.risorse_umane` sia collegata a un `soggetto_ruolo_id` di tipo **RIS_UMANA** e che tale ruolo punti allo stesso `soggetto_id` presente nel record della risorsa umana.
+- [trgfn_risorse_umane_notify_cambio_reparto](funzioni/trgfn_risorse_umane_notify_cambio_reparto.md) — (latest review 10-03-2026) La trigger function **`anagrafiche.trgfn_risorse_umane_notify_cambio_reparto()`** emette una notifica PostgreSQL quando una risorsa umana cambia `unita_organizzativa_id`.
+- [trgfn_risorse_umane_sync_auth_user_active](funzioni/trgfn_risorse_umane_sync_auth_user_active.md) — (latest review 10-03-2026) La trigger function **`anagrafiche.trgfn_risorse_umane_sync_auth_user_active()`** sincronizza `django.auth_user.is_active` quando cambiano gli attributi di stato della tabella `anagrafiche.risorse_umane`.
 - [trgfn_sepa_mandati_guard](funzioni/trgfn_sepa_mandati_guard.md) — (latest review 29-12-25) Garantire che un mandato SEPA sia coerente quando e' in stato **ATTIVO** e normalizzare i campi di input sensibili (`umr`, `iban_snapshot`).
 - [trgfn_soggetti_conti_bancari_guard](funzioni/trgfn_soggetti_conti_bancari_guard.md) — (latest review 16-12-25) La trigger function **`anagrafiche.trgfn_soggetti_conti_bancari_guard()`** applica controlli di guardia (coerenza e ammissibilità) sui legami tra soggetti e conti bancari, con due obiettivi principali:
 - [trgfn_soggetti_gen_codice](funzioni/trgfn_soggetti_gen_codice.md)
@@ -98,6 +102,7 @@
 - [trgfn_vettori_normalize](funzioni/trgfn_vettori_normalize.md)
 
 ## 🔍 Views
+- [vw_clienti_codice_ba](views/vw_clienti_codice_ba.md)
 - [vw_conti_bancari_per_ruolo](views/vw_conti_bancari_per_ruolo.md) — (latest review 28-11-25) * **Selezione unificata del conto per ruolo**   Fornisce una vista già pre-filtrata e normalizzata con **una sola riga per coppia `(soggetto_ruolo_id, uso)`**, scegliendo il miglior candidato tra:
 - [vw_dati_societari](views/vw_dati_societari.md) — (latest review 23-12-25) La vista **`anagrafiche.vw_dati_societari`** offre una lettura unificata dei dati societari con:
 - [vw_indirizzi_dettaglio](views/vw_indirizzi_dettaglio.md) — (latest review 28-11-25) La vista **`anagrafiche.vw_indirizzi_dettaglio`** fornisce una rappresentazione "comoda" e già arricchita degli indirizzi di dettaglio, a partire dalla tabella sorgente [`anagrafiche.indirizzi_dettaglio`](/dbzero/anagrafiche/tabelle/indirizzi_dettaglio) collegata allo stradario [`config.stradario`](/dbzero/config/tabelle/stradario).

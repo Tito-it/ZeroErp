@@ -2,11 +2,14 @@
 
 ## Scopo
 
-Registrare eventi di sessione JWT (login, refresh) nella tabella `dbops.sessioni_utente`.
+Registrare eventi di sessione JWT (login, refresh, logout, revoca) nella tabella `dbops.sessioni_utente`.
 
 ## Contesto
 
-Service in `apps/core/services/session_audit_service.py`. Chiamato dalle auth views override (`AuditTokenObtainPairView`, `AuditTokenRefreshView`) dopo emissione/refresh token con successo. Utilizza il repository `SessionAuditRepository` per INSERT diretto.
+Service in `apps/core/services/session_audit_service.py`. Chiamato dalle auth views override
+(`AuditTokenObtainPairView`, `AuditTokenRefreshView`) per login/refresh, da `LogoutView` per il
+logout, e da `SessioneRevocaView` per la revoca di sessioni. Utilizza il repository
+`SessionAuditRepository` per INSERT diretto.
 
 ## Input
 
@@ -19,7 +22,20 @@ Service in `apps/core/services/session_audit_service.py`. Chiamato dalle auth vi
 
 ### `record_refresh(user_id, request, *, jti=None, dettaglio=None)`
 
-Stessa firma di `record_login`.
+Stessa firma di `record_login`. Registra evento REFRESH.
+
+### `record_logout(user_id, request, *, jti=None, dettaglio=None)`
+
+Stessa firma di `record_login`. Registra evento LOGOUT.
+Chiamato da `LogoutView` dopo il blacklist del refresh token.
+L'evento LOGOUT chiude logicamente la sessione: la CTE `list_sessioni_attive`
+esclude sessioni il cui ultimo evento non e' LOGIN o REFRESH.
+
+### `record_revoca(user_id, request, *, jti=None, dettaglio=None)`
+
+Stessa firma di `record_login`. Registra evento REVOCA.
+Chiamato da `SessioneRevocaView` dopo il blacklist del token outstanding.
+Permette all'utente di chiudere sessioni remote sospette.
 
 ## Output
 
@@ -27,14 +43,23 @@ Nessun valore restituito. Effetto: INSERT in `dbops.sessioni_utente`.
 
 ## Regole
 
-- Gestione errori **silent**: se l'INSERT fallisce (DB down, schema mancante), l'errore viene loggato ma non propagato. Il flusso di login/refresh non viene interrotto.
+- Gestione errori **silent**: se l'INSERT fallisce (DB down, schema mancante), l'errore viene loggato ma non propagato. Il flusso di login/refresh/logout non viene interrotto.
 - IP client estratto da `X-Forwarded-For` (primo IP) con fallback su `REMOTE_ADDR`.
 - User-Agent troncato a 500 caratteri per evitare inserimenti anomali.
 - `request_id` recuperato dal `RequestContextMiddleware` via `get_request_id()`.
+- Tutti e 4 i metodi delegano a `_log_event()` interno, che compone i parametri e chiama `SessionAuditRepository.log_session_event()`.
 
 ## Dipendenze DB
 
 - `dbops.sessioni_utente` (INSERT)
+
+## File backend
+
+| File | Ruolo |
+|---|---|
+| `apps/core/services/session_audit_service.py` | Funzioni `record_login`, `record_refresh`, `record_logout`, `record_revoca` |
+| `apps/core/db/session_audit_repository.py` | `log_session_event()` — INSERT + `list_sessioni_attive()` — CTE query |
+| `apps/core/tests/services/test_session_audit_service.py` | 9 test unitari (mock repository) |
 
 ## Note di migrazione
 

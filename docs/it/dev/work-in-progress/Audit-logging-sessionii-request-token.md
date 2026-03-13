@@ -369,3 +369,134 @@ Dopo l'implementazione, i seguenti documenti e file devono essere aggiornati per
 5. **Test suite completa**: `./manage-test.sh -v 2` — tutti i test devono passare
 6. **Coerenza concentrica**: verificare che nessun file in anelli 1/2/3 importi direttamente da session_audit o request_log (le dipendenze devono andare solo dall'interno verso l'esterno)
 7. **Documenti aggiornati**: tutti i file nella sezione "Aggiornamenti" devono riflettere le nuove capacita'
+
+---
+
+## Analisi post-implementazione — Incongruenze guida vs codice
+
+> **Data analisi:** 2026-03-07
+> **Documenti confrontati:** questa specifica WIP, `docs/it/guide/audit-e-tracciabilita.md`,
+> `docs/it/dev/work-in-progress/brief-db-audit-jwt-user.md`,
+> `docs/it/dev/work-in-progress/proposta-8.2-audit-trail-permessi.md`,
+> codice backend implementato.
+
+### Riepilogo incongruenze trovate
+
+| #   | Sezione guida | Tipo               | Gravità      | Descrizione                                                                                                                                                                                                                                                                                                          |
+| --- | ------------- | ------------------ | ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | 5.2 passo 3   | Doc fuorviante     | Media        | Spiegazione confusa su `tx_id` nel `request_log` — il `tx_id` presente è quello della propria INSERT (trigger `trgfn_tx_id_managed`), non quello della transazione operativa. La correlazione diretta non esiste ancora; il problema reale è la mancata propagazione di `request_id` come GUC nelle tabelle operative |
+| 2   | 5.2 passo 4   | Errore SQL         | Alta         | La query usa `user_insert` per filtrare `sessioni_utente`, ma `user_insert` contiene il ruolo DB (`zeroerp_app`), non lo username JWT. La colonna corretta è `auth_user_id` (con join su `auth_user`)                                                                                                               |
+| 3   | 6             | Doc incompleta     | Bassa        | Manca il nome esplicito `JwtAuditMiddleware` nella tabella copertura automatica — la guida dice solo "GUC middleware"                                                                                                                                                                                                |
+| 4   | 6 + codice    | Campo non popolato | Bassa        | La colonna `idempotency_key` in `request_log` è definita nella migrazione DB ma il middleware non la popola mai e la guida non la menziona                                                                                                                                                                           |
+| 5   | 7             | **Risolto**        | ~~Critica~~ | ~~BUG CRITICO~~ Pattern corretto (INSERT NULL + batch `fn_apply_cleanup_at`). Override TTL aggiunti in `automation_rules_tbl`: id=13 sessioni_utente 180gg, id=14 request_log 90gg. Guida sez. 7 da allineare (dichiarava 365gg sessioni) |
+| 6   | 7             | Doc disallineata   | Media        | La guida descrive un job pgAgent dedicato con `DELETE ... WHERE cleanup_at < NOW()`. L'implementazione reale usa il framework generico `fn_run_automations_cleanup` (job `automations_cleanup_weekly`)                                                                                                                |
+| 7   | 8             | Doc non aggiornata | Media        | La guida lista "Audit trail permessi" come idea futura generica, ma esiste già la specifica completa `proposta-8.2-audit-trail-permessi.md` con implementazione via storicizzazione su 7 tabelle permessi                                                                                                            |
+| 8   | 5 + 8         | Incoerenza interna | Media        | In sez. 5 la formulazione "Se il sistema ha loggato il tx_id nel request log (fase futura)" confonde, perché il tx_id c'è già (è quello dell'INSERT del log stesso). In sez. 8 la formulazione è corretta: "il request_id verrà propagato come GUC". Le due sezioni non sono coerenti tra loro                       |
+
+### Dettaglio per punto
+
+#### Punto 1 — Sez. 5.2 passo 3: correlazione `tx_id` fuorviante
+
+**Stato attuale:** Il `tx_id` nella tabella `request_log` è quello generato dal trigger `trgfn_tx_id_managed` al momento dell'INSERT del record di log stesso. Non ha alcuna relazione con il `tx_id` delle tabelle operative modificate dalla request.
+
+**Cosa serve:** Propagare `request_id` come GUC PostgreSQL (`SET LOCAL app.request_id = ...`), così che le tabelle operative possano registrarlo. Questo renderebbe la correlazione diretta: dato un `request_id` nel `request_log`, si troverebbe lo stesso `request_id` nei record operativi modificati da quella request.
+
+**Correzione guida:** Riscrivere il passo 3 per chiarire che oggi la correlazione è solo temporale (finestra ±5s su `data_update`/`data_insert` + username) e che la correlazione diretta via `request_id` come GUC è l'evoluzione pianificata.
+
+#### Punto 2 — Sez. 5.2 passo 4: query SQL errata
+
+**Codice errato nella guida:**
+```sql
+SELECT *
+FROM dbops.sessioni_utente
+WHERE user_insert = :user_update    -- SBAGLIATO: user_insert = 'zeroerp_app'
+  AND data_insert <= :data_update
+ORDER BY data_insert DESC
+LIMIT 1;
+```
+
+**Correzione:** La tabella `sessioni_utente` è insert-only e non ha le colonne `data_update`/`user_update` — il trigger `trgfn_audit_data_user_generic` non è applicabile perché su INSERT scrive anche su `data_update`/`user_update` che qui non esistono. Di conseguenza `user_insert` mantiene il DEFAULT `CURRENT_USER` (ruolo DB, es. `zeroerp_app`), non l'utente JWT. L'utente reale è nella colonna dedicata `auth_user_id`. Per filtrare per utente serve usare `auth_user_id`:
+
+```sql
+SELECT *
+FROM dbops.sessioni_utente su
+JOIN auth_user au ON au.id = su.auth_user_id
+WHERE au.username = :user_update
+  AND su.data_insert <= :data_update
+ORDER BY su.data_insert DESC
+LIMIT 1;
+```
+
+#### Punto 3 — Sez. 6: nome middleware mancante
+
+La tabella di copertura automatica dice "GUC middleware" senza specificare che si tratta di `JwtAuditMiddleware` (`apps/core/middleware/jwt_audit_middleware.py`). Il nome esplicito aiuta la navigazione.
+
+#### Punto 4 — `idempotency_key` non popolata
+
+**Risolto (7 marzo 2026).**
+
+La colonna `idempotency_key` è ora popolata dal middleware `request_log_middleware.py`:
+
+- Aggiunto import `get_idempotency_key` da `request_context`
+- Il valore viene letto dalla ContextVar (popolata da `RequestContextMiddleware` dall'header `Idempotency-Key` / `X-Idempotency-Key`) e scritto nell'INSERT
+- La guida `audit-e-tracciabilita.md` sez. 4.2 aggiornata con la riga `Idempotenza`
+
+#### Punto 5 — `cleanup_at`: non è un bug, ma la retention dichiarata non corrisponde
+
+**~~BUG CRITICO~~ Riclassificato a "Doc disallineata" (Media).**
+
+Il `cleanup_at` viene lasciato NULL all'INSERT da tutti i repository del progetto — è il pattern standard. La valorizzazione avviene in batch tramite il framework di automazione:
+
+1. `dbops.fn_apply_cleanup_at()` (regola `CLEANUP_AT`, id=11 in `automation_rules_tbl`) scansiona tutte le tabelle con colonna `cleanup_at` e per ogni riga con `cleanup_at IS NULL` calcola: `base_timestamp + TTL_DAYS days`
+2. `dbops.fn_purge_cleanup_expired()` (regola `CLEANUP_PURGE`, id=12) elimina in batch le righe con `cleanup_at <= now()`
+3. Orchestrate da `fn_run_automations_cleanup()`, eseguita dal job pgAgent `automations_cleanup_weekly` (domenica 23:00 UTC)
+
+Lo stesso pattern è usato da `error_log`, `audit_log` e `idempotency_keys`.
+
+**Risolto:** Aggiunte righe di override in `automation_rules_tbl` (id=13 e id=14, priorità 190 < default 200):
+
+- `sessioni_utente`: TTL **180 giorni** (id=13)
+- `request_log`: TTL **90 giorni** (id=14)
+
+Le regole specifiche hanno priorità 190, eseguite prima della regola generica `*all` (priorità 200). Poiché `apply_on_update=false`, la regola generica trova `cleanup_at` già valorizzato e non sovrascrive.
+
+**Guida da allineare:** La sez. 7 dichiarava 365 giorni per sessioni — il valore reale è ora 180 giorni.
+
+#### Punto 6 — Job pgAgent: dedicato vs generico
+
+**Guida (sez. 7):** descrive un job specifico con SQL esplicito `DELETE FROM dbops.sessioni_utente WHERE cleanup_at < NOW()`.
+
+**Implementazione reale:** Il cleanup è gestito dal job generico `automations_cleanup_weekly` che invoca `maintenance.proc_automations_cleanup_job()` → `dbops.fn_run_automations_cleanup()`. Questo framework gestisce tutte le tabelle con colonna `cleanup_at` in modo centralizzato.
+
+**Correzione guida:** Allineare la descrizione al meccanismo reale (framework generico), mantenendo la tabella retention come riferimento.
+
+#### Punto 7 — Audit trail permessi: stato reale
+
+**Guida (sez. 8):** *"Audit trail permessi: log delle modifiche ai profili reparto e override individuali, per tracciare chi ha concesso o revocato accessi e quando."*
+
+**Realtà:** Esiste la specifica completa `proposta-8.2-audit-trail-permessi.md` che definisce:
+- 7 tabelle target (6 config + `risorse_umane_auth_user`)
+- Approccio: riutilizzo framework storicizzazione generica (`storicizza = true` + `tx_id`)
+- Migrazioni Liquibase specificate
+- Query di consultazione di esempio
+
+**Stato implementazione:** Migrazioni applicate e operative. Le 7 tabelle hanno `storicizza = true`, `tx_id` e trigger `trgfn_tx_id_managed` attivi (verificato sulla doc auto-generata 2026-03-07). L'audit trail permessi è quindi **completato a livello DB** — manca solo l'allineamento della guida (sez. 8) che lo elenca ancora come "evoluzione futura".
+
+#### Punto 8 — Incoerenza tra sez. 5 e sez. 8
+
+**Sez. 5.2 passo 3:** *"Se il sistema ha loggato il tx_id nel request log (fase futura), la correlazione è diretta."* — Fuorviante: il `tx_id` nel request_log c'è già, ma non serve a correlare con le tabelle operative.
+
+**Sez. 8:** *"il request_id verrà propagato come GUC PostgreSQL e scritto nelle tabelle operative"* — Formulazione corretta.
+
+**Correzione:** Allineare sez. 5 alla formulazione di sez. 8: il problema non è "loggare tx_id nel request_log" ma "propagare request_id nelle tabelle operative via GUC".
+
+### Azioni necessarie
+
+| # | Azione | Tipo | Priorità |
+|---|--------|------|----------|
+| A | ~~Decidere TTL retention~~ **FATTO**: override aggiunti in `automation_rules_tbl` (id=13: sessioni 180gg, id=14: request_log 90gg). Resta da allineare guida sez. 7 (dichiarava 365gg sessioni) | ~~Config~~ Doc fix | ~~Alta~~ Bassa |
+| B | Correggere sez. 5.2 della guida (query SQL + spiegazione correlazione) | Doc fix | Alta |
+| C | Aggiornare sez. 7 della guida (cleanup generico, nota su cleanup_at) | Doc fix | Media |
+| D | Aggiornare sez. 8 della guida (stato audit trail permessi) | Doc fix | Media |
+| E | ~~Aggiornare sez. 6 della guida (nome middleware, nota idempotency_key)~~ **FATTO**: sez. 4.2 aggiornata con riga Idempotenza | ~~Doc fix~~ Completato | ~~Bassa~~ |
+| F | ~~Decidere se popolare `idempotency_key` nel middleware~~ **FATTO**: implementato in `request_log_middleware.py` (7 marzo 2026) | ~~Decisione~~ Completato | ~~Bassa~~ |

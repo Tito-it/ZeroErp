@@ -12,6 +12,9 @@
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
 | user_update | text | NO | CURRENT_USER |
+| ricerca_visibile | boolean | NO | false |
+| entita_tabella | text | YES |  |
+| entita_colonna_codice | text | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -30,6 +33,8 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
+| trg_tipi_ruoli_a10_guard_entita_ref_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION config.trgfn_tipi_ruoli_guard_entita_ref()` |
+| trg_tipi_ruoli_a10_guard_entita_ref_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION config.trgfn_tipi_ruoli_guard_entita_ref()` |
 | trg_tipi_ruoli_a10_lock_columns_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('codice_interno', 'CODICE_NON_MODIFICABILE')` |
 | trg_tipi_ruoli_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_tipi_ruoli_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |

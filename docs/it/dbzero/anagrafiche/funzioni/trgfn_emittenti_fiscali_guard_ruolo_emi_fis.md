@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/anagrafiche/manual/trgfn_emittenti_fiscali_guard_ruolo_emi_fis.md" %}
 # ⚙️ Funzione `trgfn_emittenti_fiscali_guard_ruolo_emi_fis`
 
 ```sql

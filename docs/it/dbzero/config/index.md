@@ -84,18 +84,9 @@
 - [valute](tabelle/valute.md) — * **Definizione delle valute**   Elenco centralizzato di tutte le valute supportate, con codici interni e standard ISO 4217. * **Supporto ai moduli finanziari**   Garantisce alle aree di fatturazione, contabilità e reporting uniformità nella rappresentazione e conversione delle valute. * **Tracciabilità e auditing**   Memorizza informazioni di inserimento e aggiornamento per mantenere la storicità delle modifiche.
 
 ## ⚙️ Funzioni
-- [fn_check_azione_processo](funzioni/fn_check_azione_processo.md)
-- [fn_check_user_emittente_scope](funzioni/fn_check_user_emittente_scope.md)
 - [fn_get_aliquota_iva](funzioni/fn_get_aliquota_iva.md) — (latest review 10-02-2026)   La funzione **`config.fn_get_aliquota_iva()`** restituisce l’aliquota IVA applicando l’eventuale override definito in `config.iva_stati` per lo Stato specificato.
-- [fn_get_emittenti_scope](funzioni/fn_get_emittenti_scope.md)
-- [fn_get_emittenti_scope_sr_ids](funzioni/fn_get_emittenti_scope_sr_ids.md)
-- [fn_get_override_scaduti](funzioni/fn_get_override_scaduti.md)
-- [fn_get_ruolo_sistema](funzioni/fn_get_ruolo_sistema.md)
 - [fn_get_stati_doc_fiscale](funzioni/fn_get_stati_doc_fiscale.md) — (latest review 24-01-2026) La funzione **`config.fn_get_stati_doc_fiscale`** restituisce gli stati validi per **LOTTO** o **FATTURA**, con eventuale filtro sulle **transizioni ammesse**.
-- [fn_resolve_livello_area](funzioni/fn_resolve_livello_area.md)
-- [fn_resolve_livello_oggetto](funzioni/fn_resolve_livello_oggetto.md)
 - [trgfn_comuni_protect_update](funzioni/trgfn_comuni_protect_update.md) — (latest review 29-12-25) Impedire la modifica dei campi chiave di `config.comuni` quando il comune e' gia' utilizzato nello stradario.
-- [trgfn_guard_emittente_scope](funzioni/trgfn_guard_emittente_scope.md)
 - [trgfn_iva_guard_conti_iva](funzioni/trgfn_iva_guard_conti_iva.md) — * **Validazione contestuale**: eseguire controlli sui campi contabili prima di inserire o aggiornare un record in `config.iva`. * **Coerenza dei dati**: evitare associazioni errate tra codici IVA e conti di tipo sbagliato.
 - [trgfn_iva_stati_normalize](funzioni/trgfn_iva_stati_normalize.md) — (latest review 15-01-26) * **Impostare valori di default** per campi mancanti in `config.iva_stati` (ad esempio, assegnare `stato_id` da `config.stati` se `NEW.stato_id` è `NULL`). * **Pulire e normalizzare** ulteriori campi (es. trimming, uppercasing) seguendo le regole di business.
 - [trgfn_regioni_normalize](funzioni/trgfn_regioni_normalize.md) — (latest review 15-01-26) * **Impostare valori di default** per campi mancanti in `config.regioni` (ad esempio, assegnare `stato_id` da `config.stati` se `NEW.stato_id` è `NULL`). * **Pulire e normalizzare** ulteriori campi (es. trimming, uppercasing) seguendo le regole di business.
@@ -103,6 +94,7 @@
 - [trgfn_stati_doc_fiscale_chiude_lotto_guard](funzioni/trgfn_stati_doc_fiscale_chiude_lotto_guard.md)
 - [trgfn_stradario_generale_normalize](funzioni/trgfn_stradario_generale_normalize.md) — (latest review 30-12-25) Normalizzare automaticamente l'indirizzo dello stradario generale, combinando il prefisso toponomastico con la descrizione della via.
 - [trgfn_stradario_generale_protect_update](funzioni/trgfn_stradario_generale_protect_update.md) — * **Blocco modifiche non consentite**: evitare update di descrizione, descrizione_breve o toponomastica_id in `config.stradario_generale` se il record è già in uso in `config.stradario`. * **Identificazione precisa**: indicare tramite JSON il nome della colonna modificata e l’ID del record per diagnosticare efficacemente l’errore. * **Centralizzazione logica**: mantenere il controllo integrità nel database, riducendo complessità lato applicazione.
+- [trgfn_tipi_ruoli_guard_entita_ref](funzioni/trgfn_tipi_ruoli_guard_entita_ref.md)
 - [trgfn_toponomastica_bump_normalize](funzioni/trgfn_toponomastica_bump_normalize.md) — (latest review 30-12-25) Forzare la **rinormalizzazione** dei record di `config.stradario_generale` collegati a un toponimo aggiornato, senza modificare l'ID dei record.
 - [trgfn_toponomastica_normalize](funzioni/trgfn_toponomastica_normalize.md) — (latest review 02-01-26)
 - [trgfn_toponomastica_protect_update](funzioni/trgfn_toponomastica_protect_update.md) — (latest review 02-01-26) * **Protezione semantica**: garantire coerenza tra topografia e stradario evitando rinominazioni dirette di toponomastiche già in uso. * **Manutenzione controllata**: consentire correzioni solo tramite GUC di manutenzione e procedura dedicata. * **Centralizzazione**: concentrare la logica di blocco in una sola funzione trigger per ridurre complessità applicativa.

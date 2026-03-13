@@ -42,6 +42,7 @@
 | ix_anagrafiche_billing_account_parent_account_id | `CREATE INDEX ix_anagrafiche_billing_account_parent_account_id ON anagrafiche.billing_account USING btree (parent_account_id)` |
 | ix_anagrafiche_billing_account_soggetto_ruolo_id | `CREATE INDEX ix_anagrafiche_billing_account_soggetto_ruolo_id ON anagrafiche.billing_account USING btree (soggetto_ruolo_id)` |
 | ix_anagrafiche_billing_account_utility_id | `CREATE INDEX ix_anagrafiche_billing_account_utility_id ON anagrafiche.billing_account USING btree (utility_id)` |
+| ix_billing_account_codice_trgm | `CREATE INDEX ix_billing_account_codice_trgm ON anagrafiche.billing_account USING gin (codice gin_trgm_ops)` |
 | pk_billing_account | `CREATE UNIQUE INDEX pk_billing_account ON anagrafiche.billing_account USING btree (id)` |
 | uq_billing_account_codice | `CREATE UNIQUE INDEX uq_billing_account_codice ON anagrafiche.billing_account USING btree (codice)` |
 | uq_billing_account_id_istanza_utility | `CREATE UNIQUE INDEX uq_billing_account_id_istanza_utility ON anagrafiche.billing_account USING btree (id, istanza_utility_id)` |

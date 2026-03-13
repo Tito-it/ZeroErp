@@ -1,0 +1,169 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260309-01-create-fn-get-soggetto-dati-by-ruolo-mctit.yaml
+
+  - changeSet:
+      id: 20260309-01-create-fn-get-soggetto-dati-by-ruolo
+      author: mctit
+      comment: "Funzione generica: dato un soggetto_ruolo_id restituisce dati anagrafici soggetto + dati societari (se presenti). Modello basato su vw_soggetti_ruoli_dettaglio + vw_dati_societari."
+      runOnChange: true
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+
+              DROP  FUNCTION if exists script.fn_get_soggetto_dati_by_ruolo(bigint);  
+
+              CREATE OR REPLACE FUNCTION script.fn_get_soggetto_dati_by_ruolo(
+                p_soggetto_ruolo_id anagrafiche.soggetti_ruoli.id%TYPE
+              )
+              RETURNS TABLE (
+                -- Identita' ruolo
+                soggetto_ruolo_id            anagrafiche.soggetti_ruoli.id%TYPE,
+                soggetto_id                  anagrafiche.soggetti.id%TYPE,
+                tipo_ruolo_id                config.tipi_ruoli.id%TYPE,
+                tipo_ruolo_codice            config.tipi_ruoli.codice%TYPE,
+                tipo_ruolo_codice_interno    config.tipi_ruoli.codice_interno%TYPE,
+                tipo_ruolo_descrizione       config.tipi_ruoli.descrizione%TYPE,
+                -- Dati anagrafici soggetto
+                soggetto_codice              anagrafiche.soggetti.codice%TYPE,
+                ragione_sociale              anagrafiche.soggetti.ragione_sociale%TYPE,
+                ragione_sociale_completa     anagrafiche.soggetti.ragione_sociale_completa%TYPE,
+                cognome                      anagrafiche.soggetti.cognome%TYPE,
+                nome                         anagrafiche.soggetti.nome%TYPE,
+                codice_fiscale               anagrafiche.soggetti.codice_fiscale%TYPE,
+                partita_iva                  anagrafiche.soggetti.partita_iva%TYPE,
+                id_fiscale_univoco_cf_piva   anagrafiche.soggetti.id_fiscale_univoco_cf_piva%TYPE,
+                sesso                        anagrafiche.soggetti.sesso%TYPE,
+                data_nascita                 anagrafiche.soggetti.data_nascita%TYPE,
+                soggetto_attivo              anagrafiche.soggetti.attivo%TYPE,
+                -- FK e ID collegati al soggetto
+                stato_id                     anagrafiche.soggetti.stato_id%TYPE,
+                comune_id                    anagrafiche.soggetti.comune_id%TYPE,
+                titolo_cortesia_id           anagrafiche.soggetti.titolo_cortesia_id%TYPE,
+                tipo_soggetto_dettaglio_id   anagrafiche.soggetti.tipo_soggetto_dettaglio_id%TYPE,
+                default_contatto_id          anagrafiche.soggetti.default_contatto_id%TYPE,
+                -- Tipo soggetto (risolto)
+                tipo_soggetto_id             config.tipi_soggetto_dettaglio.tipo_soggetto_id%TYPE,
+                tipo_soggetto_descrizione    config.tipi_soggetto.descrizione%TYPE,
+                tipo_soggetto_codice_interno config.tipi_soggetto_dettaglio.codice_interno%TYPE,
+                -- Titolo cortesia (risolto)
+                titolo_cortesia_descrizione       config.titoli_cortesia.descrizione%TYPE,
+                titolo_cortesia_descrizione_breve config.titoli_cortesia.descrizione_breve%TYPE,
+                -- Dati societari (nullable)
+                has_dati_societari           boolean,
+                dati_societari_id            anagrafiche.dati_societari.id%TYPE,
+                forma_giuridica_id           anagrafiche.dati_societari.forma_giuridica_id%TYPE,
+                forma_giuridica_codice       config.forme_giuridiche.codice%TYPE,
+                forma_giuridica_descrizione  config.forme_giuridiche.descrizione%TYPE,
+                id_prov_iscri_rea            anagrafiche.dati_societari.id_prov_iscri_rea%TYPE,
+                provincia_iscri_rea_sigla    config.province.sigla%TYPE,
+                iscrizione_rea               anagrafiche.dati_societari.iscrizione_rea%TYPE,
+                capitale_sociale             anagrafiche.dati_societari.capitale_sociale%TYPE,
+                socio_unico                  text,
+                liquidazione                 text,
+                destinatario_fe              anagrafiche.dati_societari.destinatario_fe%TYPE,
+                pec_fatturazione             anagrafiche.dati_societari.pec_fatturazione%TYPE,
+                codice_sdi                   anagrafiche.dati_societari.codice_sdi%TYPE,
+                data_costituzione            anagrafiche.dati_societari.data_costituzione%TYPE
+              )
+              LANGUAGE plpgsql
+              STABLE
+              AS $$
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Dato un soggetto_ruolo_id, restituisce un record con i
+                --   dati anagrafici fondamentali del soggetto, il tipo ruolo
+                --   risolto, il tipo soggetto, il titolo cortesia e, se
+                --   presenti, i dati societari completi.
+                --
+                --   Tutti gli ID delle tabelle collegate sono inclusi per
+                --   consentire navigazione e lookup dal frontend.
+                --
+                --   Modello: vw_soggetti_ruoli_dettaglio + vw_dati_societari.
+                --
+                -- Parametri:
+                --   p_soggetto_ruolo_id: ID del record soggetti_ruoli
+                --
+                -- Restituisce:
+                --   Un singolo record (o nessun record se ID inesistente).
+                -- =========================================================
+
+                -- Guard: parametro obbligatorio e valido
+                IF p_soggetto_ruolo_id IS NULL OR p_soggetto_ruolo_id <= 0 THEN
+                  RAISE EXCEPTION 'p_soggetto_ruolo_id obbligatorio e > 0 (ricevuto: %)',
+                    COALESCE(p_soggetto_ruolo_id::text, 'NULL')
+                    USING ERRCODE = 'invalid_parameter_value';
+                END IF;
+
+                RETURN QUERY
+                SELECT
+                  -- Identita' ruolo
+                  sr.id                        AS soggetto_ruolo_id,
+                  s.id                         AS soggetto_id,
+                  tr.id                        AS tipo_ruolo_id,
+                  tr.codice                    AS tipo_ruolo_codice,
+                  tr.codice_interno            AS tipo_ruolo_codice_interno,
+                  tr.descrizione               AS tipo_ruolo_descrizione,
+                  -- Dati anagrafici soggetto
+                  s.codice                     AS soggetto_codice,
+                  s.ragione_sociale,
+                  s.ragione_sociale_completa,
+                  s.cognome,
+                  s.nome,
+                  s.codice_fiscale,
+                  s.partita_iva,
+                  s.id_fiscale_univoco_cf_piva,
+                  s.sesso,
+                  s.data_nascita,
+                  s.attivo                     AS soggetto_attivo,
+                  -- FK e ID collegati
+                  s.stato_id,
+                  s.comune_id,
+                  s.titolo_cortesia_id,
+                  s.tipo_soggetto_dettaglio_id,
+                  s.default_contatto_id,
+                  -- Tipo soggetto (risolto)
+                  td.tipo_soggetto_id,
+                  ts.descrizione               AS tipo_soggetto_descrizione,
+                  td.codice_interno            AS tipo_soggetto_codice_interno,
+                  -- Titolo cortesia (risolto)
+                  tc.descrizione               AS titolo_cortesia_descrizione,
+                  tc.descrizione_breve         AS titolo_cortesia_descrizione_breve,
+                  -- Dati societari
+                  (ds.id IS NOT NULL)          AS has_dati_societari,
+                  ds.id                        AS dati_societari_id,
+                  ds.forma_giuridica_id,
+                  fg.codice                    AS forma_giuridica_codice,
+                  fg.descrizione               AS forma_giuridica_descrizione,
+                  ds.id_prov_iscri_rea,
+                  pr.sigla                     AS provincia_iscri_rea_sigla,
+                  ds.iscrizione_rea,
+                  ds.capitale_sociale,
+                  ds.socio_unico::text,
+                  ds.liquidazione::text,
+                  ds.destinatario_fe,
+                  ds.pec_fatturazione,
+                  ds.codice_sdi,
+                  ds.data_costituzione
+                FROM anagrafiche.soggetti_ruoli sr
+                  INNER JOIN anagrafiche.soggetti s              ON s.id  = sr.soggetto_id
+                  INNER JOIN config.tipi_ruoli tr                ON tr.id = sr.tipo_ruolo_id
+                  LEFT  JOIN config.tipi_soggetto_dettaglio td   ON td.id = s.tipo_soggetto_dettaglio_id
+                  LEFT  JOIN config.tipi_soggetto ts             ON ts.id = td.tipo_soggetto_id
+                  LEFT  JOIN config.titoli_cortesia tc           ON tc.id = s.titolo_cortesia_id
+                  LEFT  JOIN anagrafiche.dati_societari ds       ON ds.soggetto_id = s.id
+                  LEFT  JOIN config.forme_giuridiche fg          ON fg.id = ds.forma_giuridica_id
+                  LEFT  JOIN config.province pr                  ON pr.id = ds.id_prov_iscri_rea
+                WHERE sr.id = p_soggetto_ruolo_id;
+              END
+              $$;
+
+              COMMENT ON FUNCTION script.fn_get_soggetto_dati_by_ruolo(bigint)
+                IS 'Dato un soggetto_ruolo_id, restituisce dati anagrafici soggetto + tipo ruolo + tipo soggetto + titolo cortesia + dati societari (se presenti). Tutti gli ID delle FK collegate sono inclusi.';

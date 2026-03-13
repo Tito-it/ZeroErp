@@ -21,6 +21,7 @@ DECLARE
   v_rows_found integer;
   v_visited_tipo_ids config.tipi_indirizzi.id%TYPE[] := '{}'::integer[];
 BEGIN
+  -- Recupera tipo_soggetto_dettaglio per risolvere la matrice fallback
   SELECT s.tipo_soggetto_dettaglio_id
   INTO v_tipo_soggetto_dettaglio_id
   FROM anagrafiche.soggetti s
@@ -30,6 +31,9 @@ BEGIN
     RETURN;
   END IF;
 
+  -- Loop con fallback: cerca indirizzo per tipo richiesto,
+  -- se non trovato segue la catena fallback su
+  -- config.tipi_soggetto_dettaglio_tipi_indirizzo
   LOOP
     RETURN QUERY
     SELECT *
@@ -42,6 +46,7 @@ BEGIN
       RETURN;
     END IF;
 
+    -- Risolvi ID tipo indirizzo corrente
     SELECT ti.id
     INTO v_current_tipo_id
     FROM config.tipi_indirizzi ti
@@ -51,12 +56,14 @@ BEGIN
       RETURN;
     END IF;
 
+    -- Protezione anti-loop circolare
     IF v_current_tipo_id = ANY (v_visited_tipo_ids) THEN
       RETURN;
     END IF;
 
     v_visited_tipo_ids := array_append(v_visited_tipo_ids, v_current_tipo_id);
 
+    -- Cerca fallback nella matrice tipo_soggetto_dettaglio/tipo_indirizzo
     SELECT m.fallback_tipo_indirizzo_id
     INTO v_fallback_tipo_id
     FROM config.tipi_soggetto_dettaglio_tipi_indirizzo m
@@ -71,6 +78,7 @@ BEGIN
       RETURN;
     END IF;
 
+    -- Passa al codice del tipo fallback per il prossimo ciclo
     SELECT ti.codice_interno
     INTO v_current_codice
     FROM config.tipi_indirizzi ti

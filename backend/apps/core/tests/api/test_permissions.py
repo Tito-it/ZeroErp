@@ -17,14 +17,16 @@ Indice test eseguiti:
  8) test_operativo_area_bloccato_denied
  9) test_action_permission_checked
 10) test_post_permission_on_apiview
-11) test_no_area_allows_by_default
-12) test_disabilitato_message
-13) test_bloccato_senza_profilo_message
-14) test_bloccato_con_profilo_message
-15) test_azione_negata_message
-16) test_log_warning_disabilitato
-17) test_log_warning_azione_negata
-18) test_log_warning_livello_insufficiente
+11) test_no_area_without_skip_denied (fail-closed)
+12) test_no_area_with_skip_allowed (skip_area_check=True)
+13) test_no_area_denied_logs_warning
+14) test_disabilitato_message
+15) test_bloccato_senza_profilo_message
+16) test_bloccato_con_profilo_message
+17) test_azione_negata_message
+18) test_log_warning_disabilitato
+19) test_log_warning_azione_negata
+20) test_log_warning_livello_insufficiente
 """
 
 from unittest import TestCase
@@ -165,15 +167,44 @@ class ZeroERPPermissionTests(TestCase):
         view.post_permission = "genera_fatture_lotti"
         self.assertFalse(self.perm.has_permission(request, view))
 
-    # Scopo: View senza area_funzionale e senza queryset permette di default.
+    # Scopo: View senza area_funzionale e senza skip_area_check viene negata (fail-closed).
     @patch("apps.core.api.permissions.PermissionResolver")
-    def test_no_area_allows_by_default(self, mock_resolver):
+    def test_no_area_without_skip_denied(self, mock_resolver):
+        mock_resolver.get_ruolo_sistema.return_value = "OPERATIVO"
+
+        request = _mock_request(method="GET")
+        request.path = "/api/v1/test/"
+        view = _mock_view()
+        view.area_funzionale = None
+        del view.skip_area_check
+        self.assertFalse(self.perm.has_permission(request, view))
+
+    # Scopo: View senza area_funzionale ma con skip_area_check=True e' ammessa.
+    @patch("apps.core.api.permissions.PermissionResolver")
+    def test_no_area_with_skip_allowed(self, mock_resolver):
         mock_resolver.get_ruolo_sistema.return_value = "OPERATIVO"
 
         request = _mock_request(method="GET")
         view = _mock_view()
         view.area_funzionale = None
+        view.skip_area_check = True
         self.assertTrue(self.perm.has_permission(request, view))
+
+    # Scopo: Fail-closed senza skip logga warning di sicurezza.
+    @patch("apps.core.api.permissions.logger")
+    @patch("apps.core.api.permissions.PermissionResolver")
+    def test_no_area_denied_logs_warning(self, mock_resolver, mock_logger):
+        mock_resolver.get_ruolo_sistema.return_value = "OPERATIVO"
+
+        request = _mock_request(method="GET")
+        request.path = "/api/v1/test/"
+        view = _mock_view()
+        view.area_funzionale = None
+        del view.skip_area_check
+        self.perm.has_permission(request, view)
+        mock_logger.warning.assert_called_once()
+        log_msg = mock_logger.warning.call_args[0][0]
+        self.assertIn("area_non_definita", log_msg)
 
     # Scopo: DISABILITATO produce messaggio specifico.
     @patch("apps.core.api.permissions.PermissionResolver")

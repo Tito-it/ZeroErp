@@ -11,7 +11,7 @@
 - [x] `anagrafiche.risorse_umane` — tabella operativa con `attivo`, `valido_dal`, `valido_al`
 - [x] `anagrafiche.risorse_umane_auth_user` — ponte 1:1 con `ruolo_sistema` (ADMIN/OPERATIVO/DISABILITATO)
 - [x] `config.ruolo_sistema` — ENUM gia' in uso nella catena permessi
-- [x] `config.fn_get_ruolo_sistema(p_auth_user_id)` — funzione SQL di lookup
+- [x] `script.fn_get_ruolo_sistema(p_auth_user_id)` — funzione SQL di lookup (spostata da config a script 08-03-2026)
 - [x] `PermissionResolver` — enforcement backend che blocca DISABILITATO a livello API
 - [x] `permissions_cache.py` — cache L1/L2 con `invalidate_user()`, `invalidate_department()`, `invalidate_all()`
 - [x] `jwt_audit_middleware.py` — propaga `app.current_user_id` in sessione PG

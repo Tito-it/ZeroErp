@@ -1,0 +1,254 @@
+{
+  "common": {
+    "save": "Salva",
+    "cancel": "Annulla",
+    "new": "Nuovo",
+    "edit": "Modifica",
+    "delete": "Elimina",
+    "view": "Visualizza",
+    "search": "Cerca",
+    "confirm": "Conferma",
+    "yes": "Sì",
+    "no": "No",
+    "loading": "Caricamento...",
+    "no_results": "Nessun risultato trovato",
+    "required_field": "Campo obbligatorio"
+  },
+  "nav": {
+    "home": "Home",
+    "config": "Configurazione",
+    "anagrafiche": "Anagrafiche",
+    "catalogo": "Catalogo",
+    "pratiche": "Pratiche",
+    "vendite": "Vendite",
+    "acquisti": "Acquisti",
+    "magazzino": "Magazzino",
+    "pagamenti": "Pagamenti",
+    "contabilita": "Contabilità",
+    "amm-software": "Amm. Software",
+    "collapse": "Comprimi",
+    "back_home": "Home",
+    "set_favorite": "Imposta come default",
+    "remove_favorite": "Rimuovi preferito"
+  },
+  "nav_menu": {
+    "amm-software": {
+      "operatori": "Operatori",
+      "profili-reparto": "Profili Reparto",
+      "permessi": "Permessi",
+      "audit-log": "Audit Log"
+    }
+  },
+  "tabs": {
+    "close": "Chiudi tab",
+    "close_confirm_title": "Modifiche non salvate",
+    "close_confirm_message": "Ci sono modifiche non salvate. Chiudere comunque?",
+    "close_confirm_accept": "Chiudi senza salvare",
+    "close_confirm_reject": "Annulla"
+  },
+  "errors": {
+    "not_found_title": "Pagina non trovata",
+    "not_found_message": "La pagina richiesta non esiste.",
+    "forbidden_title": "Accesso negato",
+    "forbidden_message": "Non hai i permessi per accedere a questa area.",
+    "back_home": "Torna alla Home"
+  },
+  "placeholder": {
+    "wip_title": "Area in costruzione",
+    "wip_message": "Le funzionalità sono in fase di sviluppo.",
+    "coming_soon": "Prossimamente",
+    "amm_software_operatori": {
+      "title": "Gestione Operatori",
+      "features": [
+        "Elenco operatori di sistema",
+        "Creazione e modifica operatori",
+        "Assegnazione profili reparto",
+        "Gestione stato attivo/inattivo"
+      ]
+    },
+    "amm_software_profili_reparto": {
+      "title": "Profili Reparto",
+      "features": [
+        "Definizione profili reparto",
+        "Configurazione permessi per profilo",
+        "Assegnazione aree operative"
+      ]
+    },
+    "amm_software_permessi": {
+      "title": "Configurazione Permessi",
+      "features": [
+        "Matrice permessi per profilo",
+        "Override permessi singolo operatore",
+        "Visualizzazione permessi effettivi"
+      ]
+    },
+    "amm_software_audit_log": {
+      "title": "Audit e Sessioni",
+      "features": [
+        "Log accessi operatori",
+        "Storico sessioni attive",
+        "Tracciamento modifiche critiche"
+      ]
+    }
+  },
+  "auth": {
+    "username": "Username",
+    "password": "Password",
+    "login": "Accedi",
+    "logout": "Esci",
+    "login_error": "Credenziali non valide"
+  },
+  "notifications": {
+    "save_success": "Salvataggio completato",
+    "save_error": "Errore durante il salvataggio",
+    "delete_success": "Eliminazione completata",
+    "delete_error": "Errore durante l'eliminazione",
+    "generic_error": "Si è verificato un errore",
+    "network_error": "Impossibile contattare il server. Verificare la connessione.",
+    "timeout_error": "Il server non ha risposto in tempo. Riprovare."
+  },
+  "pagination": {
+    "page_of": "Pagina {page} di {total}",
+    "go_to_page": "Vai alla pagina",
+    "rows_per_page": "Righe per pagina"
+  },
+  "actions": {
+    "new": "Nuovo"
+  },
+  "home": {
+    "welcome_user": "Benvenuto, {name}",
+    "welcome_fallback": "utente",
+    "dash_1": "Dashboard 1",
+    "dash_2": "Dashboard 2",
+    "dash_3": "Dashboard 3",
+    "dash_4": "Dashboard 4"
+  },
+  "profile": {
+    "role_admin": "Amministratore",
+    "role_operativo": "Operativo",
+    "no_company": "Nessuna emittente associata"
+  },
+  "sessions": {
+    "other_active": "Altre sessioni attive ({count})",
+    "device": "Dispositivo",
+    "ip_address": "Indirizzo IP",
+    "last_access": "Ultimo accesso",
+    "action": "Azione",
+    "revoke": "Revoca",
+    "revoke_confirm_title": "Conferma revoca sessione",
+    "revoke_confirm_message": "Vuoi revocare la sessione da {device} ({ip})?",
+    "revoke_success": "Sessione revocata",
+    "now": "Adesso",
+    "minutes_ago": "{n} min fa",
+    "hours_ago": "{n} ore fa",
+    "yesterday": "Ieri",
+    "days_ago": "{n} giorni fa"
+  },
+  "confirm": {
+    "delete_title": "Conferma eliminazione",
+    "delete_message": "Sei sicuro di voler eliminare {name}? L'operazione non può essere annullata."
+  },
+  "search": {
+    "title": "Ricerca universale",
+    "select_type": "Tipo ruolo",
+    "placeholder": "Cerca per nome, CF/P.IVA, codice...",
+    "filter_comune": "Filtra per comune",
+    "min_chars": "Digitare almeno 3 caratteri",
+    "col_code": "Codice",
+    "col_name": "Ragione Sociale",
+    "col_fiscal_id": "CF / P.IVA",
+    "col_comune": "Comune",
+    "col_utility": "Utility",
+    "set_context": "Imposta contesto",
+    "set_context_short": "Imposta",
+    "set_context_hint": "Imposta contesto ricerca",
+    "open_detail": "Apri scheda completa",
+    "open_detail_short": "Apri",
+    "col_actions": "Azioni",
+    "detail_code": "Codice",
+    "detail_instance": "Istanza",
+    "detail_utility": "Utility",
+    "detail_address": "Indirizzo",
+    "detail_status": "Stato",
+    "detail_description": "Descrizione",
+    "status_active": "Attivo",
+    "status_inactive": "Inattivo",
+    "tipo_ruolo": {
+      "CLIENTE": "Clienti",
+      "FORNITORE": "Fornitori",
+      "VENDITORE": "Venditori",
+      "DISTRIB": "Distributori",
+      "RESELLER": "Reseller",
+      "VETTORE": "Vettori",
+      "BANK": "Istituti di credito"
+    }
+  },
+  "context": {
+    "tooltip_search": "Ricerca universale",
+    "tooltip_clear": "Rimuovi contesto",
+    "filtered_by": "Risultati filtrati per: {name}"
+  },
+  "amm": {
+    "search_placeholder": "Cerca operatore...",
+    "filter_ruolo": "Ruolo",
+    "filter_reparto": "Reparto",
+    "filter_stato": "Stato",
+    "ruolo_all": "Tutti i ruoli",
+    "ruolo_admin": "Amministratore",
+    "ruolo_operativo": "Operativo",
+    "ruolo_disabilitato": "Disabilitato",
+    "stato_all": "Tutti",
+    "stato_attivo": "Attivo",
+    "stato_inattivo": "Inattivo",
+    "reparto_all": "Tutti i reparti",
+    "nuovo_operatore": "Nuovo operatore",
+    "modifica_operatore": "Modifica operatore",
+    "col_nome": "Nome",
+    "col_username": "Username",
+    "col_reparto": "Reparto",
+    "col_ruolo": "Ruolo",
+    "col_stato": "Stato",
+    "col_data_insert": "Data creazione",
+    "col_profilo": "Profilo",
+    "col_operatori": "Operatori",
+    "col_area": "Area",
+    "col_livello": "Livello",
+    "col_azione": "Azione",
+    "col_abilitata": "Abilitata",
+    "profilo_configurato": "Configurato",
+    "profilo_mancante": "Da configurare",
+    "tab_dati": "Dati",
+    "tab_permessi": "Permessi",
+    "section_persona": "Dati persona",
+    "section_accesso": "Accesso",
+    "section_collocazione": "Collocazione",
+    "field_cognome": "Cognome",
+    "field_nome": "Nome",
+    "field_cf": "Codice fiscale",
+    "field_sesso": "Sesso",
+    "field_username": "Username",
+    "field_email": "Email",
+    "field_password": "Password",
+    "field_ruolo": "Ruolo sistema",
+    "field_reparto": "Unità organizzativa",
+    "field_valido_al": "Valido fino al",
+    "select_reparto": "Seleziona reparto",
+    "select_emittenti": "Seleziona emittenti",
+    "disabilita_operatore": "Disabilita operatore",
+    "disabilita_title": "Conferma disabilitazione",
+    "disabilita_confirm": "Sei sicuro di voler disabilitare questo operatore? L'accesso verrà revocato immediatamente.",
+    "utente_creato": "Operatore creato con successo",
+    "utente_disabilitato": "Operatore disabilitato",
+    "admin_full_access": "Gli amministratori hanno accesso totale a tutte le aree e azioni.",
+    "override_aree_title": "Override aree funzionali",
+    "override_azioni_title": "Override azioni processo",
+    "emittenti_scope_title": "Scope emittenti fiscali",
+    "emittenti_scope_hint": "Seleziona gli emittenti su cui l'operatore può operare. Se vuoto, può operare su tutti.",
+    "add_override": "Aggiungi override",
+    "profilo_reparto_title": "Profilo reparto: {nome}",
+    "aree_funzionali": "Aree funzionali",
+    "azioni_processo": "Azioni di processo",
+    "profilo_save_title": "Conferma salvataggio profilo",
+    "profilo_save_confirm": "Le modifiche al profilo impattano tutti gli operatori del reparto. Procedere?"
+  }
+}

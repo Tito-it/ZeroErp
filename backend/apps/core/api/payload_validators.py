@@ -30,6 +30,16 @@ def qp_int(raw: str | None, default: int) -> int:
         return default
 
 
+# Scopo: Converte parametro intero da query string; solleva ValueError se non numerico.
+def qp_int_strict(raw: str | None, name: str, default: int) -> int:
+    if raw is None:
+        return default
+    try:
+        return int(raw.strip())
+    except (ValueError, AttributeError):
+        raise ValueError(f"{name}_invalid")
+
+
 # Scopo: Normalizza parametro stringa da query string (strip + None se vuoto).
 def qp_str(raw: str | None) -> str | None:
     if raw is None:

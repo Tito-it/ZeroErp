@@ -2,9 +2,9 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2026 Tid (Michele Carlo Titini)
 # Doc: Python
-# Scopo: Permission class DRF centrale per ZeroErp.
-# Risolve automaticamente l'area funzionale dallo schema del model
-# e verifica il livello di accesso tramite PermissionResolver.
+# Scopo: Permission classes DRF per ZeroErp.
+# IsAdminZeroERP: check diretto ruolo_sistema = ADMIN (endpoint amministrazione).
+# ZeroERPPermission: risoluzione completa area funzionale + livello accesso.
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -19,6 +19,38 @@ from apps.core.services.permissions_cache import load_user_cache, save_user_cach
 from apps.core.services.permissions_resolver import LIVELLO_MAP, PermissionResolver
 
 logger = logging.getLogger(__name__)
+
+
+class IsAdminZeroERP(BasePermission):
+    """Permission class per endpoint riservati agli amministratori.
+
+    Verifica che l'utente abbia ruolo_sistema = ADMIN.
+    Non passa dal sistema profili/override (check diretto).
+    """
+
+    # Scopo: Verifica che l'utente sia ADMIN. Bypass per superuser (coerenza con ZeroERPPermission).
+    def has_permission(self, request: Request, view: Any) -> bool:
+        user = request.user
+        if not user or not user.is_authenticated:
+            return False
+
+        if user.is_superuser:
+            return True
+
+        cache = ZeroERPPermission._get_cache(request)
+        try:
+            ruolo = PermissionResolver.get_ruolo_sistema(user, cache=cache)
+            if ruolo == "ADMIN":
+                return True
+
+            logger.warning(
+                "security.admin_denied user_id=%s ruolo=%s path=%s",
+                user.id, ruolo, request.path,
+            )
+            self.message = "Accesso riservato agli amministratori."
+            return False
+        finally:
+            ZeroERPPermission._save_cache_to_redis(request)
 
 
 class ZeroERPPermission(BasePermission):
@@ -143,8 +175,18 @@ class ZeroERPPermission(BasePermission):
             # Determina area funzionale dal model o dall'attributo della view
             area_schema_db = self._resolve_area(view, cache)
             if area_schema_db is None:
-                # Nessun model collegato e nessun area_funzionale dichiarata
-                return True
+                # Fail-closed: nessun model collegato e nessun area_funzionale.
+                # Le view che intenzionalmente non richiedono area devono
+                # dichiarare skip_area_check = True.
+                if getattr(view, "skip_area_check", False):
+                    return True
+                logger.warning(
+                    "security.permission_denied user_id=%s reason=area_non_definita "
+                    "view=%s path=%s",
+                    user.id, type(view).__name__, request.path,
+                )
+                self.message = "Non hai i permessi per questa operazione."
+                return False
 
             # Risolvi livello (oggetto o area)
             app_label, model_name = self._get_model_meta(view)

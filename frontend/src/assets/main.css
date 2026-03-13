@@ -1,0 +1,51 @@
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body {
+  height: 100%;
+  font-family: var(--p-font-family);
+  background: var(--app-content-bg);
+  color: var(--p-text-color);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+#app {
+  height: 100%;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+/* ===== Classe utility DataTable compatta =====
+ * Applicare class="app-datatable" su un wrapper o direttamente sulla DataTable.
+ * Usa le variabili --app-table-* definite in theme.css per personalizzazione centralizzata.
+ */
+.app-datatable {
+  font-size: var(--app-table-font-size);
+}
+
+.app-datatable .p-datatable-thead > tr > th {
+  padding: var(--app-table-header-padding);
+  font-size: var(--app-table-header-font-size);
+}
+
+.app-datatable .p-datatable-tbody > tr > td {
+  padding: var(--app-table-cell-padding);
+}
+
+.app-datatable .p-datatable-tbody > tr.p-datatable-row-odd {
+  background: var(--app-table-stripe-bg);
+}
+
+.app-datatable .p-datatable-tbody > tr:hover {
+  background: var(--app-table-hover-bg);
+}

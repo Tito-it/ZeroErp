@@ -78,6 +78,7 @@ INSTALLED_APPS = [
     'apps.storico',
     'apps.vendite',
     'apps.pratiche',
+    'apps.amm_software',
     'rest_framework_simplejwt.token_blacklist',
 ]
 
@@ -134,6 +135,9 @@ SIMPLE_JWT = {
     # Token rotation: ad ogni refresh il vecchio refresh token viene blacklistato.
     "ROTATE_REFRESH_TOKENS": True,
     "BLACKLIST_AFTER_ROTATION": True,
+    # Serializer custom: aggiunge claim `sid` (session ID) stabile
+    # che persiste su access token e refresh rotation.
+    "TOKEN_OBTAIN_SERIALIZER": "apps.core.api.token_serializers.SidTokenObtainPairSerializer",
 }
 
 MIDDLEWARE = [

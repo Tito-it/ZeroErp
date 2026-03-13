@@ -1,0 +1,159 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+#
+# Seed: associa auth_user id=1 (tid) a:
+#   - risorsa_umana (catena soggetto → soggetto_ruolo → risorse_umane → risorse_umane_auth_user)
+#   - emittente_fiscale id=32 (via config.user_emittenti_fiscali)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260309-01-seed-auth-user-tid-risorsa-umana-emittente-mctit.yaml
+
+  - changeSet:
+      id: 20260309-01-seed-auth-user-tid-risorsa-umana-emittente
+      author: mctit
+      comment: "Crea la catena risorsa umana per auth_user.id=1 (tid) e lo associa a emittente_fiscale id=32"
+      runOnChange: false
+      failOnError: false
+      preConditions:
+        - onFail: MARK_RAN
+        - and:
+            - sqlCheck:
+                expectedResult: 0
+                sql: "SELECT COUNT(*) FROM anagrafiche.risorse_umane_auth_user WHERE auth_user_id = 1"
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+
+              DO $$
+              DECLARE
+                v_auth_user_id    CONSTANT integer := 1;
+                v_emittente_id    CONSTANT bigint  := 32;
+                v_tipo_ruolo_id   CONSTANT integer := 14;  -- RIS_UMANA
+                v_qualifica_id    CONSTANT integer := 1;    -- AMMINISTRATORE
+                v_stato_id        CONSTANT integer := 1;  -- Italia
+
+                v_username        text;
+                v_first_name      text;
+                v_last_name       text;
+                v_soggetto_id     uuid;
+                v_sr_id           bigint;
+                v_ru_id           bigint;
+              BEGIN
+                -- -------------------------------------------------------
+                -- 0. Verificare che auth_user esista
+                -- -------------------------------------------------------
+                SELECT au.username, au.first_name, au.last_name
+                  INTO v_username, v_first_name, v_last_name
+                  FROM django.auth_user au
+                 WHERE au.id = v_auth_user_id;
+
+                IF v_username IS NULL THEN
+                  RAISE EXCEPTION 'auth_user con id=% non trovato', v_auth_user_id;
+                END IF;
+
+                -- Verificare che emittente_fiscale esista e sia attivo
+                IF NOT EXISTS (
+                  SELECT 1 FROM anagrafiche.emittenti_fiscali
+                   WHERE id = v_emittente_id AND attivo = true
+                ) THEN
+                  RAISE EXCEPTION 'emittente_fiscale con id=% non trovato o non attivo', v_emittente_id;
+                END IF;
+
+                -- -------------------------------------------------------
+                -- 1. Creare soggetto (PF per l'utente)
+                -- -------------------------------------------------------
+                INSERT INTO anagrafiche.soggetti (
+                  cognome,
+                  nome,
+                  ragione_sociale_completa,
+                  stato_id,
+                  attivo
+                )
+                VALUES (
+                  COALESCE(NULLIF(v_last_name, ''), v_username),
+                  COALESCE(NULLIF(v_first_name, ''), v_username),
+                  TRIM(
+                    COALESCE(NULLIF(v_last_name, ''), v_username) || ' ' ||
+                    COALESCE(NULLIF(v_first_name, ''), v_username)
+                  ),
+                  v_stato_id,
+                  true
+                )
+                RETURNING id INTO v_soggetto_id;
+
+                RAISE NOTICE 'Creato soggetto id=% per utente %', v_soggetto_id, v_username;
+
+                -- -------------------------------------------------------
+                -- 2. Creare soggetto_ruolo (tipo RIS_UMANA)
+                -- -------------------------------------------------------
+                INSERT INTO anagrafiche.soggetti_ruoli (
+                  soggetto_id,
+                  tipo_ruolo_id
+                )
+                VALUES (
+                  v_soggetto_id,
+                  v_tipo_ruolo_id
+                )
+                RETURNING id INTO v_sr_id;
+
+                RAISE NOTICE 'Creato soggetto_ruolo id=% (RIS_UMANA)', v_sr_id;
+
+                -- -------------------------------------------------------
+                -- 3. Creare risorse_umane
+                -- -------------------------------------------------------
+                INSERT INTO anagrafiche.risorse_umane (
+                  soggetto_ruolo_id,
+                  soggetto_id,
+                  qualifica_id,
+                  valido_dal,
+                  attivo
+                )
+                VALUES (
+                  v_sr_id,
+                  v_soggetto_id,
+                  v_qualifica_id,
+                  CURRENT_DATE,
+                  true
+                )
+                RETURNING id INTO v_ru_id;
+
+                RAISE NOTICE 'Creato risorse_umane id=% (qualifica AMMINISTRATORE)', v_ru_id;
+
+                -- -------------------------------------------------------
+                -- 4. Creare risorse_umane_auth_user (ponte)
+                -- -------------------------------------------------------
+                INSERT INTO anagrafiche.risorse_umane_auth_user (
+                  risorsa_umana_id,
+                  auth_user_id,
+                  ruolo_sistema,
+                  attivo
+                )
+                VALUES (
+                  v_ru_id,
+                  v_auth_user_id,
+                  'ADMIN'::config.ruolo_sistema,
+                  true
+                );
+
+                RAISE NOTICE 'Creato risorse_umane_auth_user per auth_user_id=% con ruolo ADMIN', v_auth_user_id;
+
+                -- -------------------------------------------------------
+                -- 5. Associare a emittente_fiscale
+                -- -------------------------------------------------------
+                INSERT INTO config.user_emittenti_fiscali (
+                  auth_user_id,
+                  emittente_fiscale_id
+                )
+                VALUES (
+                  v_auth_user_id,
+                  v_emittente_id
+                )
+                ON CONFLICT (auth_user_id, emittente_fiscale_id) DO NOTHING;
+
+                RAISE NOTICE 'Associato auth_user_id=% a emittente_fiscale_id=%', v_auth_user_id, v_emittente_id;
+              END
+              $$;

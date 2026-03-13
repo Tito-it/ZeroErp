@@ -1,0 +1,254 @@
+{
+  "common": {
+    "save": "Save",
+    "cancel": "Cancel",
+    "new": "New",
+    "edit": "Edit",
+    "delete": "Delete",
+    "view": "View",
+    "search": "Search",
+    "confirm": "Confirm",
+    "yes": "Yes",
+    "no": "No",
+    "loading": "Loading...",
+    "no_results": "No results found",
+    "required_field": "Required field"
+  },
+  "nav": {
+    "home": "Home",
+    "config": "Configuration",
+    "anagrafiche": "Master Data",
+    "catalogo": "Catalogue",
+    "pratiche": "Cases",
+    "vendite": "Sales",
+    "acquisti": "Purchases",
+    "magazzino": "Warehouse",
+    "pagamenti": "Payments",
+    "contabilita": "Accounting",
+    "amm-software": "Admin Software",
+    "collapse": "Collapse",
+    "back_home": "Home",
+    "set_favorite": "Set as default",
+    "remove_favorite": "Remove favorite"
+  },
+  "nav_menu": {
+    "amm-software": {
+      "operatori": "Operators",
+      "profili-reparto": "Department Profiles",
+      "permessi": "Permissions",
+      "audit-log": "Audit Log"
+    }
+  },
+  "tabs": {
+    "close": "Close tab",
+    "close_confirm_title": "Unsaved changes",
+    "close_confirm_message": "There are unsaved changes. Close anyway?",
+    "close_confirm_accept": "Close without saving",
+    "close_confirm_reject": "Cancel"
+  },
+  "errors": {
+    "not_found_title": "Page not found",
+    "not_found_message": "The requested page does not exist.",
+    "forbidden_title": "Access denied",
+    "forbidden_message": "You do not have permission to access this area.",
+    "back_home": "Back to Home"
+  },
+  "placeholder": {
+    "wip_title": "Under construction",
+    "wip_message": "Features are currently being developed.",
+    "coming_soon": "Coming soon",
+    "amm_software_operatori": {
+      "title": "Operator Management",
+      "features": [
+        "System operator listing",
+        "Create and edit operators",
+        "Department profile assignment",
+        "Active/inactive status management"
+      ]
+    },
+    "amm_software_profili_reparto": {
+      "title": "Department Profiles",
+      "features": [
+        "Define department profiles",
+        "Configure permissions per profile",
+        "Assign operational areas"
+      ]
+    },
+    "amm_software_permessi": {
+      "title": "Permissions Configuration",
+      "features": [
+        "Permissions matrix per profile",
+        "Single operator permission override",
+        "Effective permissions overview"
+      ]
+    },
+    "amm_software_audit_log": {
+      "title": "Audit & Sessions",
+      "features": [
+        "Operator access logs",
+        "Active sessions history",
+        "Critical changes tracking"
+      ]
+    }
+  },
+  "auth": {
+    "username": "Username",
+    "password": "Password",
+    "login": "Login",
+    "logout": "Logout",
+    "login_error": "Invalid credentials"
+  },
+  "notifications": {
+    "save_success": "Saved successfully",
+    "save_error": "Error while saving",
+    "delete_success": "Deleted successfully",
+    "delete_error": "Error while deleting",
+    "generic_error": "An error occurred",
+    "network_error": "Unable to reach the server. Please check your connection.",
+    "timeout_error": "The server did not respond in time. Please try again."
+  },
+  "pagination": {
+    "page_of": "Page {page} of {total}",
+    "go_to_page": "Go to page",
+    "rows_per_page": "Rows per page"
+  },
+  "actions": {
+    "new": "New"
+  },
+  "home": {
+    "welcome_user": "Welcome, {name}",
+    "welcome_fallback": "user",
+    "dash_1": "Dashboard 1",
+    "dash_2": "Dashboard 2",
+    "dash_3": "Dashboard 3",
+    "dash_4": "Dashboard 4"
+  },
+  "profile": {
+    "role_admin": "Administrator",
+    "role_operativo": "Operative",
+    "no_company": "No issuer associated"
+  },
+  "sessions": {
+    "other_active": "Other active sessions ({count})",
+    "device": "Device",
+    "ip_address": "IP Address",
+    "last_access": "Last access",
+    "action": "Action",
+    "revoke": "Revoke",
+    "revoke_confirm_title": "Confirm session revocation",
+    "revoke_confirm_message": "Do you want to revoke the session from {device} ({ip})?",
+    "revoke_success": "Session revoked",
+    "now": "Now",
+    "minutes_ago": "{n} min ago",
+    "hours_ago": "{n} hours ago",
+    "yesterday": "Yesterday",
+    "days_ago": "{n} days ago"
+  },
+  "confirm": {
+    "delete_title": "Confirm deletion",
+    "delete_message": "Are you sure you want to delete {name}? This action cannot be undone."
+  },
+  "search": {
+    "title": "Universal search",
+    "select_type": "Role type",
+    "placeholder": "Search by name, tax ID, code...",
+    "filter_comune": "Filter by municipality",
+    "min_chars": "Type at least 3 characters",
+    "col_code": "Code",
+    "col_name": "Business Name",
+    "col_fiscal_id": "Tax ID / VAT",
+    "col_comune": "Municipality",
+    "col_utility": "Utility",
+    "set_context": "Set context",
+    "set_context_short": "Set",
+    "set_context_hint": "Set search context",
+    "open_detail": "Open full record",
+    "open_detail_short": "Open",
+    "col_actions": "Actions",
+    "detail_code": "Code",
+    "detail_instance": "Instance",
+    "detail_utility": "Utility",
+    "detail_address": "Address",
+    "detail_status": "Status",
+    "detail_description": "Description",
+    "status_active": "Active",
+    "status_inactive": "Inactive",
+    "tipo_ruolo": {
+      "CLIENTE": "Customers",
+      "FORNITORE": "Suppliers",
+      "VENDITORE": "Salespeople",
+      "DISTRIB": "Distributors",
+      "RESELLER": "Resellers",
+      "VETTORE": "Carriers",
+      "BANK": "Banks"
+    }
+  },
+  "context": {
+    "tooltip_search": "Universal search",
+    "tooltip_clear": "Clear context",
+    "filtered_by": "Results filtered by: {name}"
+  },
+  "amm": {
+    "search_placeholder": "Search operator...",
+    "filter_ruolo": "Role",
+    "filter_reparto": "Department",
+    "filter_stato": "Status",
+    "ruolo_all": "All roles",
+    "ruolo_admin": "Administrator",
+    "ruolo_operativo": "Operative",
+    "ruolo_disabilitato": "Disabled",
+    "stato_all": "All",
+    "stato_attivo": "Active",
+    "stato_inattivo": "Inactive",
+    "reparto_all": "All departments",
+    "nuovo_operatore": "New operator",
+    "modifica_operatore": "Edit operator",
+    "col_nome": "Name",
+    "col_username": "Username",
+    "col_reparto": "Department",
+    "col_ruolo": "Role",
+    "col_stato": "Status",
+    "col_data_insert": "Created",
+    "col_profilo": "Profile",
+    "col_operatori": "Operators",
+    "col_area": "Area",
+    "col_livello": "Level",
+    "col_azione": "Action",
+    "col_abilitata": "Enabled",
+    "profilo_configurato": "Configured",
+    "profilo_mancante": "Not configured",
+    "tab_dati": "Data",
+    "tab_permessi": "Permissions",
+    "section_persona": "Personal data",
+    "section_accesso": "Access",
+    "section_collocazione": "Placement",
+    "field_cognome": "Surname",
+    "field_nome": "Name",
+    "field_cf": "Tax code",
+    "field_sesso": "Gender",
+    "field_username": "Username",
+    "field_email": "Email",
+    "field_password": "Password",
+    "field_ruolo": "System role",
+    "field_reparto": "Organizational unit",
+    "field_valido_al": "Valid until",
+    "select_reparto": "Select department",
+    "select_emittenti": "Select issuers",
+    "disabilita_operatore": "Disable operator",
+    "disabilita_title": "Confirm disable",
+    "disabilita_confirm": "Are you sure you want to disable this operator? Access will be revoked immediately.",
+    "utente_creato": "Operator created successfully",
+    "utente_disabilitato": "Operator disabled",
+    "admin_full_access": "Administrators have full access to all areas and actions.",
+    "override_aree_title": "Area overrides",
+    "override_azioni_title": "Action overrides",
+    "emittenti_scope_title": "Fiscal issuer scope",
+    "emittenti_scope_hint": "Select the issuers the operator can work on. If empty, they can work on all.",
+    "add_override": "Add override",
+    "profilo_reparto_title": "Department profile: {nome}",
+    "aree_funzionali": "Functional areas",
+    "azioni_processo": "Process actions",
+    "profilo_save_title": "Confirm profile save",
+    "profilo_save_confirm": "Profile changes affect all operators in this department. Proceed?"
+  }
+}

@@ -1,0 +1,142 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025-2026 Tid (Michele Carlo Titini)
+#
+# Building block 1: fn_crea_auth_user
+# Crea un record auth_user (Django) con guard unicita'.
+# Riusabile da: fn_crea_operatore, fn_crea_admin, qualsiasi
+# flusso che necessiti di un utente Django.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20260313-01-create-fn-crea-auth-user-mctit.yaml
+
+  - changeSet:
+      id: 20260313-01-create-fn-crea-auth-user
+      author: mctit
+      comment: "Building block: crea auth_user con guard unicita' username/email. Riusabile da orchestratori (operatore, admin, ecc.)."
+      runOnChange: true
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+
+              CREATE OR REPLACE FUNCTION anagrafiche.fn_crea_auth_user(
+                  -- Obbligatori (DEFAULT NULL per flessibilita' firma,
+                  -- validati nel body con guard espliciti)
+                  p_username       text                     DEFAULT NULL,
+                  p_email          text                     DEFAULT NULL,
+                  p_password_hash  text                     DEFAULT NULL,
+                  -- Opzionali
+                  p_first_name     text                     DEFAULT NULL,
+                  p_last_name      text                     DEFAULT NULL
+              )
+              RETURNS integer
+              LANGUAGE plpgsql
+              VOLATILE
+              AS $function$
+              DECLARE
+                  v_auth_user_id  integer;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Crea un record auth_user (Django) con validazione
+                  --   parametri e guard unicita'. Non crea soggetto ne'
+                  --   bridge: e' un building block atomico.
+                  --
+                  -- Parametri obbligatori:
+                  --   p_username:      username univoco
+                  --   p_email:         email univoca
+                  --   p_password_hash: hash password Django
+                  --
+                  -- Parametri opzionali:
+                  --   p_first_name:    nome (default NULL)
+                  --   p_last_name:     cognome (default NULL)
+                  --
+                  -- Restituisce:
+                  --   auth_user.id dell'utente creato
+                  --
+                  -- Riusabile da:
+                  --   fn_crea_operatore, fn_crea_admin, qualsiasi flusso
+                  --   che necessiti di un utente Django.
+                  -- =========================================================
+
+                  -- =============================================================
+                  -- Validazione parametri obbligatori
+                  -- =============================================================
+
+                  IF p_username IS NULL OR TRIM(p_username) = '' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'anagrafiche.fn_crea_auth_user',
+                          'E_ADMIN_VALIDAZIONE',
+                          jsonb_build_object('parametro', 'p_username'),
+                          NULL::uuid, 'Username obbligatorio.'
+                      );
+                  END IF;
+
+                  IF p_email IS NULL OR TRIM(p_email) = '' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'anagrafiche.fn_crea_auth_user',
+                          'E_ADMIN_VALIDAZIONE',
+                          jsonb_build_object('parametro', 'p_email'),
+                          NULL::uuid, 'Email obbligatoria.'
+                      );
+                  END IF;
+
+                  IF p_password_hash IS NULL OR LENGTH(p_password_hash) = 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'anagrafiche.fn_crea_auth_user',
+                          'E_ADMIN_VALIDAZIONE',
+                          jsonb_build_object('parametro', 'p_password_hash'),
+                          NULL::uuid, 'Password hash obbligatorio.'
+                      );
+                  END IF;
+
+                  -- =============================================================
+                  -- Guard unicita'
+                  -- =============================================================
+
+                  IF EXISTS (SELECT 1 FROM django.auth_user WHERE username = TRIM(p_username)) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'anagrafiche.fn_crea_auth_user',
+                          'E_ADMIN_USERNAME_DUPLICATO',
+                          jsonb_build_object('username', p_username),
+                          NULL::uuid, 'Username gia'' esistente.'
+                      );
+                  END IF;
+
+                  IF EXISTS (SELECT 1 FROM django.auth_user WHERE email = TRIM(p_email)) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'anagrafiche.fn_crea_auth_user',
+                          'E_ADMIN_EMAIL_DUPLICATA',
+                          jsonb_build_object('email', p_email),
+                          NULL::uuid, 'Email gia'' esistente.'
+                      );
+                  END IF;
+
+                  -- =============================================================
+                  -- INSERT auth_user
+                  -- =============================================================
+
+                  INSERT INTO django.auth_user (
+                      username, email, first_name, last_name,
+                      password, is_active, is_staff, is_superuser, date_joined
+                  )
+                  VALUES (
+                      TRIM(p_username),
+                      TRIM(p_email),
+                      COALESCE(TRIM(p_first_name), ''),
+                      COALESCE(TRIM(p_last_name), ''),
+                      p_password_hash,
+                      true, false, false, NOW()
+                  )
+                  RETURNING id INTO v_auth_user_id;
+
+                  RETURN v_auth_user_id;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.fn_crea_auth_user(text, text, text, text, text)
+                IS 'Building block: crea auth_user (Django) con guard unicita'' username/email. Obbligatori: p_username, p_email, p_password_hash (DEFAULT NULL, guard nel body). Ritorna auth_user.id. Riusabile da orchestratori (operatore, admin, ecc.).';
