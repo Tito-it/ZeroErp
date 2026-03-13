@@ -78,6 +78,7 @@ INSTALLED_APPS = [
     'apps.storico',
     'apps.vendite',
     'apps.pratiche',
+    'apps.amm_software',
     'rest_framework_simplejwt.token_blacklist',
 ]
 

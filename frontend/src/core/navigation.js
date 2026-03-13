@@ -36,10 +36,10 @@ export const DOMAINS = [
 // La label viene da i18n `nav_menu.<domainKey>.<itemKey>`
 export const DOMAIN_MENUS = {
   'amm-software': [
-    { key: 'operatori', icon: 'pi pi-wrench', to: '/amm-software/operatori' },
-    { key: 'profili-reparto', icon: 'pi pi-wrench', to: '/amm-software/profili-reparto' },
-    { key: 'permessi', icon: 'pi pi-wrench', to: '/amm-software/permessi' },
-    { key: 'audit-log', icon: 'pi pi-wrench', to: '/amm-software/audit-log' }
+    { key: 'operatori', icon: 'pi pi-users', to: '/amm-software/operatori' },
+    { key: 'profili-reparto', icon: 'pi pi-sitemap', to: '/amm-software/profili-reparto' },
+    { key: 'permessi', icon: 'pi pi-shield', to: '/amm-software/permessi' },
+    { key: 'audit-log', icon: 'pi pi-history', to: '/amm-software/audit-log' }
   ],
   'anagrafiche': [],
   'catalogo': [],

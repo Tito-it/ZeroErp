@@ -49,13 +49,13 @@ const router = createRouter({
         {
           path: 'amm-software/operatori',
           name: 'amm-software-operatori',
-          component: () => import('../core/views/PlaceholderView.vue'),
+          component: () => import('../amministrazione/views/UtentiListView.vue'),
           meta: { domain: 'amm-software', menuKey: 'operatori' }
         },
         {
           path: 'amm-software/profili-reparto',
           name: 'amm-software-profili-reparto',
-          component: () => import('../core/views/PlaceholderView.vue'),
+          component: () => import('../amministrazione/views/RepartiProfiloView.vue'),
           meta: { domain: 'amm-software', menuKey: 'profili-reparto' }
         },
         {
