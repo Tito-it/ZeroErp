@@ -6,6 +6,8 @@ import { ref, onMounted, onUnmounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useUtentiStore } from '../stores/utenti'
 import { useTabEvents } from '../../core/composables/useTabEvents'
+import { useLookup } from '../../core/composables/useLookup'
+import { listUnitaOrganizzative } from '../api/amministrazione'
 import { PAGINATION } from '../../core/constants'
 import UtenteDrawer from '../components/UtenteDrawer.vue'
 import DataTable from 'primevue/datatable'
@@ -19,6 +21,7 @@ import Toolbar from 'primevue/toolbar'
 const { t } = useI18n()
 const store = useUtentiStore()
 const { onDataChanged } = useTabEvents()
+const unitaOrg = useLookup(listUnitaOrganizzative, { immediate: true })
 
 // Drawer state
 const drawerVisible = ref(false)
@@ -51,7 +54,6 @@ const cleanup = onDataChanged(e => {
 onUnmounted(cleanup)
 
 onMounted(async () => {
-  await store.fetchUnitaOrganizzative()
   await store.fetchList()
 })
 
@@ -133,8 +135,8 @@ function activeBadgeSeverity(active) {
         />
         <Select
           v-model="uoFilter"
-          :options="[{ nome: t('amm.reparto_all'), id: null }, ...store.unitaOrganizzative]"
-          option-label="nome"
+          :options="[{ descrizione: t('amm.reparto_all'), id: null }, ...unitaOrg.items.value]"
+          option-label="descrizione"
           option-value="id"
           :placeholder="t('amm.filter_reparto')"
           class="mr-2"
@@ -168,7 +170,7 @@ function activeBadgeSeverity(active) {
       :first="store.filters.offset"
       :rows-per-page-options="PAGINATION.ROWS_OPTIONS"
       lazy
-      paginator
+      :paginator="store.totalRecords > store.filters.limit"
       removable-sort
       striped-rows
       @page="onPage"

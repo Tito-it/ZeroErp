@@ -13,7 +13,7 @@ const emit = defineEmits(['set-context', 'open-detail'])
 
 // Scopo: costruisce il payload unendo riga padre (soggetto) e riga dettaglio (entita' specifica)
 function buildPayload() {
-  return { ...props.row, ...(props.detailRow || {}) }
+  return { ...props.row, ...props.detailRow }
 }
 </script>
 

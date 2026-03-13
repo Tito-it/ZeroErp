@@ -13,6 +13,12 @@ from apps.core.api.search_view import (
     SearchDetailView,
     SearchUniversaleView,
 )
+from apps.core.api.views_lookup import (
+    LookupComuniView,
+    LookupMatriceIndirizziView,
+    LookupTipiSoggettoDettaglioView,
+    SearchStradarioView,
+)
 from apps.core.api.views_tracciamento import (
     ApiAuditLogV1,
     ApiDominiTaskV1,
@@ -52,6 +58,27 @@ urlpatterns = [
         "lookup/tipi-ruoli/",
         LookupTipiRuoliView.as_view(),
         name="core-v1-lookup-tipi-ruoli",
+    ),
+    # Lookup anagrafiche cross-dominio (Sprint 3)
+    path(
+        "lookup/tipi-soggetto-dettaglio/",
+        LookupTipiSoggettoDettaglioView.as_view(),
+        name="core-v1-lookup-tipi-soggetto-dettaglio",
+    ),
+    path(
+        "lookup/tipi-soggetto-dettaglio/<int:tipo_soggetto_dettaglio_id>/indirizzi/",
+        LookupMatriceIndirizziView.as_view(),
+        name="core-v1-lookup-matrice-indirizzi",
+    ),
+    path(
+        "lookup/comuni/",
+        LookupComuniView.as_view(),
+        name="core-v1-lookup-comuni",
+    ),
+    path(
+        "search/stradario/",
+        SearchStradarioView.as_view(),
+        name="core-v1-search-stradario",
     ),
     path(
         "users/<int:user_id>/permessi-effettivi/",
