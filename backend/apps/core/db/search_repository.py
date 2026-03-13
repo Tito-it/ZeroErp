@@ -91,17 +91,21 @@ class SearchRepository:
         soggetto_id: str,
         tipo_ruolo_id: int,
         utility_id: int | None = None,
+        emittente_ids: list[int] | None = None,
     ) -> dict[str, Any] | None:
+        pg_emittente_ids = emittente_ids if emittente_ids else None
+
         with connection.cursor() as cursor:
             cursor.execute(
                 """
                 SELECT script.fn_get_search_detail(
                            p_soggetto_id   := %s::uuid,
                            p_tipo_ruolo_id := %s,
-                           p_utility_id    := %s
+                           p_utility_id    := %s,
+                           p_emittente_ids := %s
                        )
                 """,
-                [soggetto_id, tipo_ruolo_id, utility_id],
+                [soggetto_id, tipo_ruolo_id, utility_id, pg_emittente_ids],
             )
             row = cursor.fetchone()
 

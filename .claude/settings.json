@@ -50,7 +50,6 @@
       "Bash(source ../env.sh)",
       "Bash(.venv/bin/python -m django test apps.core.tests.api.test_search_view --verbosity=2)",
       "Bash(DJANGO_SETTINGS_MODULE=zeroerp_backend.settings .venv/bin/python -m django test apps.core.tests.api.test_search_view --verbosity=2)",
-
       "Read(//usr/local/bin/**)",
       "Read(//tmp/**)",
       "Bash(DB_HOST=localhost DB_PORT=5432 DB_NAME=zeroerp DB_USER=zeroerp DB_PASSWORD=secret DJANGO_SECRET_KEY=ci-placeholder DJANGO_ALLOWED_HOSTS=\"localhost\" DJANGO_DEBUG=0 python manage.py test apps.core.tests.api.test_search_view -v 2)",
@@ -61,7 +60,6 @@
       "Bash(mv usePagination.js composables/usePagination.js)",
       "Bash(mv useConfirmAction.js composables/useConfirmAction.js)",
       "Bash(mv useApiHandler.js composables/useApiHandler.js)",
-
       "Bash(git checkout:*)",
       "Bash(scripts/testpgtap.sh script/test-fn-get-entita-ruolo-detail.sql)",
       "Bash(scripts/testpgtap.sh script/test-search-soggetti-universale.sql)",
@@ -74,7 +72,12 @@
       "Bash(/opt/liquibase update:*)",
       "Bash(bash scripts/testpgtap.sh db/pgtap/script/test-search-soggetti-universale.sql)",
       "Bash(bash scripts/testpgtap.sh db/pgtap/script/test-fn-get-entita-ruolo-detail.sql)",
-      "Bash(bash scripts/testpgtap.sh db/pgtap/config/test-tipi-ruoli-guard-entita-ref.sql)"
+      "Bash(bash scripts/testpgtap.sh db/pgtap/config/test-tipi-ruoli-guard-entita-ref.sql)",
+      "Bash(grep -r \"def.*me\\\\|path.*me\" /home/tid/apps/ZeroErp/backend/apps/core/api/*.py)",
+      "Bash(find /home/tid/apps/ZeroErp/docs/it -name *amministr* -o -name *utenti* -o -name *sprint*)",
+      "Bash(source ../.venv/bin/activate)",
+      "Bash(grep -h RIS_UMANA /home/tid/apps/ZeroErp/db/changelog/migrations_v2/80_data/anagrafiche/*.yaml)",
+      "Bash(. ~/.nvm/nvm.sh)"
     ],
     "additionalDirectories": [
       "/home/tid/apps/ZeroErp/docs/it/dev/work-in-progress"
