@@ -58,7 +58,7 @@ SELECT lives_ok(
         p_codice_fiscale := %L,
         p_email := %L
       ) $$,
-      'TSTRUSENZA' || lpad(floor(random() * 1000000)::text, 6, '0'),
+      'PNZFDN78A01L219Y',
       'test_ru_senza_' || floor(random() * 1000000)::text || '@test.local'
     ),
     '2. Soggetto PF 1 creato per test senza bridge'
@@ -67,7 +67,7 @@ SELECT lives_ok(
 UPDATE tmp_ru_ctx
 SET soggetto_id_1 = (
     SELECT id FROM anagrafiche.soggetti
-    WHERE cognome = 'TESTRU' AND nome = 'SENZABRIDGE'
+    WHERE cognome = 'TestRU' AND nome = 'SenzaBridge'
     ORDER BY data_insert DESC LIMIT 1
   );
 
@@ -80,7 +80,7 @@ SELECT lives_ok(
         p_codice_fiscale := %L,
         p_email := %L
       ) $$,
-      'TSTRUCONBR' || lpad(floor(random() * 1000000)::text, 6, '0'),
+      'PRAFNC80A01F205N',
       'test_ru_con_' || floor(random() * 1000000)::text || '@test.local'
     ),
     '3. Soggetto PF 2 creato per test con bridge'
@@ -89,7 +89,7 @@ SELECT lives_ok(
 UPDATE tmp_ru_ctx
 SET soggetto_id_2 = (
     SELECT id FROM anagrafiche.soggetti
-    WHERE cognome = 'TESTRU' AND nome = 'CONBRIDGE'
+    WHERE cognome = 'TestRU' AND nome = 'ConBridge'
     ORDER BY data_insert DESC LIMIT 1
   );
 
@@ -200,7 +200,7 @@ SELECT throws_matching(
       (SELECT soggetto_id_1 FROM tmp_ru_ctx),
       (SELECT qualifica_id FROM tmp_ru_ctx)
     ),
-    'E_ADMIN_UO_NON_TROVATA',
+    'non trovata o non attiva',
     '9. Errore UO inesistente'
   );
 

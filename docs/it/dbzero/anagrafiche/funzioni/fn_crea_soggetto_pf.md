@@ -2,13 +2,13 @@
 # ⚙️ Funzione `fn_crea_soggetto_pf`
 
 ```sql
-CREATE FUNCTION fn_crea_soggetto_pf(p_cognome text, p_nome text, p_codice_fiscale text, p_email text, p_data_nascita date, p_sesso character, p_stato_iso2 character varying)
+CREATE FUNCTION fn_crea_soggetto_pf(p_cognome text, p_nome text, p_codice_fiscale text, p_email text, p_data_nascita date, p_sesso character, p_stato_iso2 character varying, p_comune_nascita_id integer)
 ```
 
 **Definizione completa:**
 
 ```sql
-CREATE OR REPLACE FUNCTION anagrafiche.fn_crea_soggetto_pf(p_cognome text DEFAULT NULL::text, p_nome text DEFAULT NULL::text, p_codice_fiscale text DEFAULT NULL::text, p_email text DEFAULT NULL::text, p_data_nascita date DEFAULT NULL::date, p_sesso character DEFAULT 'M'::bpchar, p_stato_iso2 character varying DEFAULT 'IT'::character varying)
+CREATE OR REPLACE FUNCTION anagrafiche.fn_crea_soggetto_pf(p_cognome text DEFAULT NULL::text, p_nome text DEFAULT NULL::text, p_codice_fiscale text DEFAULT NULL::text, p_email text DEFAULT NULL::text, p_data_nascita date DEFAULT NULL::date, p_sesso character DEFAULT 'M'::bpchar, p_stato_iso2 character varying DEFAULT 'IT'::character varying, p_comune_nascita_id integer DEFAULT NULL::integer)
  RETURNS uuid
  LANGUAGE plpgsql
 AS $function$
@@ -33,9 +33,10 @@ BEGIN
     --   p_email:          email (usata per contatto default)
     --
     -- Parametri opzionali:
-    --   p_data_nascita:   data nascita (default NULL)
-    --   p_sesso:          sesso (default 'M')
-    --   p_stato_iso2:     ISO2 nazionalita' (default 'IT')
+    --   p_data_nascita:      data nascita (default NULL)
+    --   p_sesso:             sesso (default 'M')
+    --   p_stato_iso2:        ISO2 nazionalita' (default 'IT')
+    --   p_comune_nascita_id: comune di nascita (default NULL)
     --
     -- Restituisce:
     --   soggetti.id (UUID) del soggetto creato
@@ -152,17 +153,19 @@ BEGIN
     -- =============================================================
     -- Step 1: Creazione soggetto (Persona Fisica)
     -- Trigger: gen_codice, normalize, guard_cf_piva_obbligatori
+    -- Aggiunto comune_id per comune di nascita (FK fk_comuni_config)
     -- =============================================================
 
     INSERT INTO anagrafiche.soggetti (
         cognome, nome, codice_fiscale, data_nascita, sesso,
-        stato_id, tipo_soggetto_dettaglio_id, attivo
+        stato_id, tipo_soggetto_dettaglio_id, comune_id, attivo
     )
     VALUES (
         TRIM(p_cognome), TRIM(p_nome),
         UPPER(TRIM(p_codice_fiscale)),
         p_data_nascita, COALESCE(p_sesso, 'M'),
-        v_stato_id, v_tipo_soggetto_dettaglio_id, true
+        v_stato_id, v_tipo_soggetto_dettaglio_id,
+        p_comune_nascita_id, true
     )
     RETURNING id INTO v_soggetto_id;
 
@@ -187,8 +190,8 @@ BEGIN
 END;
 $function$
 
-COMMENT ON FUNCTION anagrafiche.fn_crea_soggetto_pf(p_cognome text, p_nome text, p_codice_fiscale text, p_email text, p_data_nascita date, p_sesso character, p_stato_iso2 character varying)
-IS 'Building block: crea soggetto Persona Fisica (natura PR) + contatto default. Lookup tipo_soggetto_dettaglio e stato da codice. Guard CF univoco. NON crea indirizzo (responsabilita'' del chiamante se matrice config richiede RES). Riusabile da orchestratori.';
+COMMENT ON FUNCTION anagrafiche.fn_crea_soggetto_pf(p_cognome text, p_nome text, p_codice_fiscale text, p_email text, p_data_nascita date, p_sesso character, p_stato_iso2 character varying, p_comune_nascita_id integer)
+IS 'Building block: crea soggetto Persona Fisica (natura PR) + contatto default. Lookup tipo_soggetto_dettaglio e stato da codice. Guard CF univoco. Accetta p_comune_nascita_id per comune di nascita. NON crea indirizzo (responsabilita'' del chiamante se matrice config richiede RES). Riusabile da orchestratori.';
 ```
 
 ---
