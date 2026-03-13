@@ -11,9 +11,12 @@ Indice test eseguiti:
  1) test_crea_utente_success — POST crea utente con successo
  2) test_crea_utente_missing_cognome — POST senza cognome -> errore
  3) test_crea_utente_missing_password — POST senza password -> errore
- 4) test_crea_utente_missing_uo — POST senza unita_organizzativa_id -> errore
- 5) test_crea_utente_password_hashed — POST verifica che password venga hashata
- 6) test_crea_utente_permission_denied — OPERATIVO non puo' creare
+ 4) test_crea_utente_missing_cf — POST senza codice_fiscale -> errore
+ 5) test_crea_utente_missing_qualifica — POST senza qualifica_id -> errore
+ 6) test_crea_utente_password_hashed — POST verifica che password venga hashata
+ 7) test_crea_utente_permission_denied — OPERATIVO non puo' creare
+ 8) test_crea_utente_with_sprint3_params — POST con comune_nascita e indirizzi
+ 9) test_crea_utente_sprint3_params_optional — POST senza params Sprint 3 (retrocompatibile)
 """
 
 import json
@@ -45,9 +48,11 @@ SAMPLE_DETAIL = {
 VALID_PAYLOAD = {
     "cognome": "Bianchi",
     "nome": "Luca",
+    "codice_fiscale": "BNCLCU90A01H501X",
     "username": "nuovo_op",
     "email": "nuovo@test.it",
     "password": "SecurePass123!",
+    "qualifica_id": 1,
     "unita_organizzativa_id": 10,
 }
 
@@ -148,10 +153,9 @@ class TestCreaUtenteValidation(TestCase):
     @patch("apps.core.api.endpoint_helpers.get_request_id", return_value=None)
     @patch("apps.core.api.endpoint_helpers.get_idempotency_key", return_value=None)
     @patch("apps.core.api.endpoint_helpers.parse_json_body")
-    def test_crea_utente_missing_uo(self, mock_parse, mock_idemp, mock_reqid):
-        """POST senza unita_organizzativa_id -> errore validazione."""
-        payload = {**VALID_PAYLOAD}
-        payload.pop("unita_organizzativa_id")
+    def test_crea_utente_missing_cf(self, mock_parse, mock_idemp, mock_reqid):
+        """POST senza codice_fiscale -> errore validazione."""
+        payload = {**VALID_PAYLOAD, "codice_fiscale": ""}
         mock_parse.return_value = payload
 
         view = UtentiListView()
@@ -160,6 +164,84 @@ class TestCreaUtenteValidation(TestCase):
 
         data = json.loads(response.content)
         self.assertIn("error", data)
+
+    @patch("apps.core.api.endpoint_helpers.get_request_id", return_value=None)
+    @patch("apps.core.api.endpoint_helpers.get_idempotency_key", return_value=None)
+    @patch("apps.core.api.endpoint_helpers.parse_json_body")
+    def test_crea_utente_missing_qualifica(self, mock_parse, mock_idemp, mock_reqid):
+        """POST senza qualifica_id -> errore validazione."""
+        payload = {**VALID_PAYLOAD}
+        payload.pop("qualifica_id")
+        mock_parse.return_value = payload
+
+        view = UtentiListView()
+        request = _make_admin_request(payload)
+        response = view.post(request)
+
+        data = json.loads(response.content)
+        self.assertIn("error", data)
+
+
+VALID_PAYLOAD_SPRINT3 = {
+    **VALID_PAYLOAD,
+    "comune_nascita_id": 4517,
+    "indirizzo_resid_dettaglio_id": 101,
+    "indirizzo_domfisc_dettaglio_id": 102,
+}
+
+
+class TestCreaUtenteSprint3(TestCase):
+    """POST /api/v1/amm-software/utenti/ — parametri Sprint 3."""
+
+    @patch("apps.amm_software.api.views.AmmSoftwareRepository")
+    @patch("apps.amm_software.api.views.make_password", return_value="hashed_pw")
+    @patch("apps.core.api.endpoint_helpers.get_request_id", return_value=None)
+    @patch("apps.core.api.endpoint_helpers.get_idempotency_key", return_value=None)
+    @patch("apps.core.api.endpoint_helpers.parse_json_body")
+    def test_crea_utente_with_sprint3_params(
+        self, mock_parse, mock_idemp, mock_reqid, mock_make_pw, mock_repo_cls
+    ):
+        """POST con comune_nascita_id e indirizzi — passati al repository."""
+        mock_parse.return_value = VALID_PAYLOAD_SPRINT3
+        mock_repo = MagicMock()
+        mock_repo.crea_operatore.return_value = 42
+        mock_repo.get_utente_detail.return_value = SAMPLE_DETAIL
+        mock_repo_cls.return_value = mock_repo
+
+        view = UtentiListView()
+        request = _make_admin_request(VALID_PAYLOAD_SPRINT3)
+        response = view.post(request)
+
+        self.assertEqual(response.status_code, 200)
+        call_kwargs = mock_repo.crea_operatore.call_args.kwargs
+        self.assertEqual(call_kwargs["comune_nascita_id"], 4517)
+        self.assertEqual(call_kwargs["indirizzo_resid_dettaglio_id"], 101)
+        self.assertEqual(call_kwargs["indirizzo_domfisc_dettaglio_id"], 102)
+
+    @patch("apps.amm_software.api.views.AmmSoftwareRepository")
+    @patch("apps.amm_software.api.views.make_password", return_value="hashed_pw")
+    @patch("apps.core.api.endpoint_helpers.get_request_id", return_value=None)
+    @patch("apps.core.api.endpoint_helpers.get_idempotency_key", return_value=None)
+    @patch("apps.core.api.endpoint_helpers.parse_json_body")
+    def test_crea_utente_sprint3_params_optional(
+        self, mock_parse, mock_idemp, mock_reqid, mock_make_pw, mock_repo_cls
+    ):
+        """POST senza parametri Sprint 3 — retrocompatibile, valori None."""
+        mock_parse.return_value = VALID_PAYLOAD
+        mock_repo = MagicMock()
+        mock_repo.crea_operatore.return_value = 42
+        mock_repo.get_utente_detail.return_value = SAMPLE_DETAIL
+        mock_repo_cls.return_value = mock_repo
+
+        view = UtentiListView()
+        request = _make_admin_request(VALID_PAYLOAD)
+        response = view.post(request)
+
+        self.assertEqual(response.status_code, 200)
+        call_kwargs = mock_repo.crea_operatore.call_args.kwargs
+        self.assertIsNone(call_kwargs["comune_nascita_id"])
+        self.assertIsNone(call_kwargs["indirizzo_resid_dettaglio_id"])
+        self.assertIsNone(call_kwargs["indirizzo_domfisc_dettaglio_id"])
 
 
 class TestCreaUtentePermission(TestCase):

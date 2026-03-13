@@ -1,4 +1,6 @@
-// Pinia store per la gestione utenti (lista, dettaglio, CRUD).
+// Pinia store per la gestione utenti (lista, dettaglio, CRUD, override).
+// I lookup (UO, qualifiche, aree, azioni, emittenti) sono stati spostati
+// nei componenti via useLookup — lo store gestisce solo dati utenti.
 
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
@@ -13,11 +15,7 @@ import {
   getOverrideAzioni,
   putOverrideAzioni,
   getEmittentiScope,
-  putEmittentiScope,
-  listUnitaOrganizzative,
-  listAreeFunzionali,
-  listAzioniProcesso,
-  listEmittentiFiscali
+  putEmittentiScope
 } from '../api/amministrazione'
 import { useTabEvents } from '../../core/composables/useTabEvents'
 
@@ -44,12 +42,6 @@ export const useUtentiStore = defineStore('amm-utenti', () => {
     order_by: null,
     order_dir: null
   })
-
-  // Lookup cache
-  const unitaOrganizzative = ref([])
-  const areeFunzionali = ref([])
-  const azioniProcesso = ref([])
-  const emittentiFiscali = ref([])
 
   // Override corrente
   const overrideAree = ref([])
@@ -147,31 +139,6 @@ export const useUtentiStore = defineStore('amm-utenti', () => {
     emitDataChanged('utente', authUserId)
   }
 
-  // --- Lookup ---
-  async function fetchUnitaOrganizzative() {
-    if (unitaOrganizzative.value.length) return
-    const res = await listUnitaOrganizzative()
-    unitaOrganizzative.value = res.data.data.results
-  }
-
-  async function fetchAreeFunzionali() {
-    if (areeFunzionali.value.length) return
-    const res = await listAreeFunzionali()
-    areeFunzionali.value = res.data.data.results
-  }
-
-  async function fetchAzioniProcesso() {
-    if (azioniProcesso.value.length) return
-    const res = await listAzioniProcesso()
-    azioniProcesso.value = res.data.data.results
-  }
-
-  async function fetchEmittentiFiscali() {
-    if (emittentiFiscali.value.length) return
-    const res = await listEmittentiFiscali()
-    emittentiFiscali.value = res.data.data.results
-  }
-
   return {
     // Lista
     items,
@@ -199,16 +166,6 @@ export const useUtentiStore = defineStore('amm-utenti', () => {
     fetchOverrideAzioni,
     saveOverrideAzioni,
     fetchEmittentiScope,
-    saveEmittentiScope,
-
-    // Lookup
-    unitaOrganizzative,
-    areeFunzionali,
-    azioniProcesso,
-    emittentiFiscali,
-    fetchUnitaOrganizzative,
-    fetchAreeFunzionali,
-    fetchAzioniProcesso,
-    fetchEmittentiFiscali
+    saveEmittentiScope
   }
 })

@@ -5,7 +5,7 @@ import Button from 'primevue/button'
 
 const { t } = useI18n()
 
-const props = defineProps({
+defineProps({
   visible: { type: Boolean, required: true },
   title: { type: String, required: true },
   width: { type: String, default: '640px' },

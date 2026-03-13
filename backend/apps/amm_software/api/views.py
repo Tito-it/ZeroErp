@@ -94,16 +94,20 @@ class UtentiListView(APIView):
             fields={
                 "cognome": serializers.CharField(),
                 "nome": serializers.CharField(),
-                "codice_fiscale": serializers.CharField(required=False),
+                "codice_fiscale": serializers.CharField(),
                 "data_nascita": serializers.CharField(required=False),
-                "sesso": serializers.CharField(required=False),
+                "sesso": serializers.CharField(required=False, help_text="M|F, default M"),
                 "username": serializers.CharField(),
                 "email": serializers.CharField(),
                 "password": serializers.CharField(),
-                "ruolo_sistema": serializers.CharField(required=False),
-                "unita_organizzativa_id": serializers.IntegerField(),
+                "qualifica_id": serializers.IntegerField(),
+                "ruolo_sistema": serializers.CharField(required=False, help_text="ADMIN|OPERATIVO, default OPERATIVO"),
+                "unita_organizzativa_id": serializers.IntegerField(required=False),
                 "valido_dal": serializers.CharField(required=False),
                 "valido_al": serializers.CharField(required=False),
+                "comune_nascita_id": serializers.IntegerField(required=False),
+                "indirizzo_resid_dettaglio_id": serializers.IntegerField(required=False),
+                "indirizzo_domfisc_dettaglio_id": serializers.IntegerField(required=False),
             },
         ),
         responses={200: inline_serializer(
@@ -112,37 +116,49 @@ class UtentiListView(APIView):
         )},
     )
     # Scopo: Crea un nuovo operatore con hash password e ritorna il dettaglio completo.
+    # Valida i parametri obbligatori, hasha la password e delega al repository
+    # che chiama l'orchestratore DB fn_crea_operatore (building block).
     def post(self, request: Request) -> JsonResponse:
         def _handler(payload: dict) -> dict:
             # Validazione campi obbligatori
             cognome = (payload.get("cognome") or "").strip()
             nome = (payload.get("nome") or "").strip()
+            codice_fiscale = (payload.get("codice_fiscale") or "").strip()
             username = (payload.get("username") or "").strip()
             email = (payload.get("email") or "").strip()
             password = payload.get("password") or ""
+            qualifica_id = payload.get("qualifica_id")
             uo_id = payload.get("unita_organizzativa_id")
+            comune_nascita_id = optional_int(payload, "comune_nascita_id")
+            indirizzo_resid_id = optional_int(payload, "indirizzo_resid_dettaglio_id")
+            indirizzo_domfisc_id = optional_int(payload, "indirizzo_domfisc_dettaglio_id")
 
             ErrorManager.require(bool(cognome), code="E_AMM_VALIDAZIONE", message="Cognome obbligatorio.")
             ErrorManager.require(bool(nome), code="E_AMM_VALIDAZIONE", message="Nome obbligatorio.")
+            ErrorManager.require(bool(codice_fiscale), code="E_AMM_VALIDAZIONE", message="Codice fiscale obbligatorio.")
             ErrorManager.require(bool(username), code="E_AMM_VALIDAZIONE", message="Username obbligatorio.")
             ErrorManager.require(bool(email), code="E_AMM_VALIDAZIONE", message="Email obbligatoria.")
             ErrorManager.require(bool(password), code="E_AMM_VALIDAZIONE", message="Password obbligatoria.")
-            ErrorManager.require(uo_id is not None and int(uo_id) > 0, code="E_AMM_VALIDAZIONE", message="Unita' organizzativa obbligatoria.")
+            ErrorManager.require(qualifica_id is not None and int(qualifica_id) > 0, code="E_AMM_VALIDAZIONE", message="Qualifica obbligatoria.")
 
             repo = AmmSoftwareRepository()
             auth_user_id = repo.crea_operatore(
                 cognome=cognome,
                 nome=nome,
-                codice_fiscale=payload.get("codice_fiscale"),
-                data_nascita=payload.get("data_nascita"),
-                sesso=payload.get("sesso", "M"),
+                codice_fiscale=codice_fiscale,
                 username=username,
                 email=email,
                 password_hash=make_password(password),
+                qualifica_id=int(qualifica_id),  # type: ignore[arg-type]
+                unita_organizzativa_id=int(uo_id) if uo_id else None,
+                data_nascita=payload.get("data_nascita"),
+                sesso=payload.get("sesso", "M"),
                 ruolo_sistema=payload.get("ruolo_sistema", "OPERATIVO"),
-                unita_organizzativa_id=int(uo_id),  # type: ignore[arg-type]
                 valido_dal=payload.get("valido_dal"),
                 valido_al=payload.get("valido_al"),
+                comune_nascita_id=comune_nascita_id,
+                indirizzo_resid_dettaglio_id=indirizzo_resid_id,
+                indirizzo_domfisc_dettaglio_id=indirizzo_domfisc_id,
             )
 
             utente = repo.get_utente_detail(auth_user_id)

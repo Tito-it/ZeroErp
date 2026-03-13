@@ -5,6 +5,8 @@ import { ref, onMounted, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useUtentiStore } from '../stores/utenti'
 import { useApiHandler } from '../../core/composables/useApiHandler'
+import { useLookup } from '../../core/composables/useLookup'
+import { listAreeFunzionali, listAzioniProcesso, listEmittentiFiscali } from '../api/amministrazione'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Select from 'primevue/select'
@@ -16,6 +18,11 @@ import Message from 'primevue/message'
 const { t } = useI18n()
 const store = useUtentiStore()
 const { execute } = useApiHandler()
+
+// Lookup via useLookup (non piu' dallo store)
+const areeFunzionali = useLookup(listAreeFunzionali, { immediate: true })
+const azioniProcesso = useLookup(listAzioniProcesso, { immediate: true })
+const emittentiFiscali = useLookup(listEmittentiFiscali, { immediate: true })
 
 const props = defineProps({
   authUserId: { type: Number, required: true }
@@ -36,9 +43,6 @@ const localEmittentiIds = ref([])
 
 onMounted(async () => {
   await Promise.all([
-    store.fetchAreeFunzionali(),
-    store.fetchAzioniProcesso(),
-    store.fetchEmittentiFiscali(),
     store.fetchOverrideAree(props.authUserId),
     store.fetchOverrideAzioni(props.authUserId),
     store.fetchEmittentiScope(props.authUserId)
@@ -119,7 +123,7 @@ function removeAzioneOverride(index) {
     <DataTable :value="localAree" class="mb-2" size="small">
       <Column :header="t('amm.col_area')">
         <template #body="{ data }">
-          <Select v-model="data.area_id" :options="store.areeFunzionali"
+          <Select v-model="data.area_id" :options="areeFunzionali.items.value"
             option-label="descrizione" option-value="id" class="w-full" />
         </template>
       </Column>
@@ -145,7 +149,7 @@ function removeAzioneOverride(index) {
     <DataTable :value="localAzioni" class="mb-2" size="small">
       <Column :header="t('amm.col_azione')">
         <template #body="{ data }">
-          <Select v-model="data.azione_id" :options="store.azioniProcesso"
+          <Select v-model="data.azione_id" :options="azioniProcesso.items.value"
             option-label="descrizione" option-value="id" class="w-full" />
         </template>
       </Column>
@@ -170,7 +174,7 @@ function removeAzioneOverride(index) {
     <p class="text-sm text-color-secondary mb-2">{{ t('amm.emittenti_scope_hint') }}</p>
     <MultiSelect
       v-model="localEmittentiIds"
-      :options="store.emittentiFiscali"
+      :options="emittentiFiscali.items.value"
       option-label="denominazione"
       option-value="id"
       :placeholder="t('amm.select_emittenti')"

@@ -1,16 +1,20 @@
-# Componenti Riutilizzabili — Architettura Building Block Frontend
+# Architettura Building Block — DB, Backend, Frontend
 
-> Documento di lavoro per la scomposizione in componenti atomici riusabili.
-> Data: 2026-03-12
-> Stato: **PIANIFICAZIONE**
+> Documento master per la scomposizione in building block riutilizzabili su tutti i livelli.
+> Data: 2026-03-12 | Aggiornato: 2026-03-13
+> Stato: **Backend COMPLETATO — Frontend PIANIFICAZIONE**
 >
-> Dipende da:
+> Documenti correlati:
+>
+> * [Building Block Repository (backend)](../backend/building-block-repository.md) — piano backend **completato**
+> * [Amministrazione Utenti](amministrazione-utenti.md) — Sprint 2 originale **completato**
+>
+> Guide di riferimento:
 >
 > * [Guida Soggetti e Ruoli Anagrafici](/guide/soggetti-e-ruoli-anagrafici)
 > * [Guida Gestione dei Contatti](/guide/gestione-dei-contatti)
 > * [Guida Generazione di un Cliente](/guide/generazione-cliente)
 > * [Guida Sviluppo Frontend](guida-sviluppo-frontend.md)
-> * [Amministrazione Utenti](amministrazione-utenti.md)
 
 ---
 
@@ -31,6 +35,47 @@ Senza scomposizione, ogni dominio riduplica gli stessi form con varianti minime.
 
 ---
 
+## Stato attuale per livello
+
+L'architettura building block si sviluppa su 3 livelli. Ogni livello ha il proprio
+documento di dettaglio; questa sezione riassume lo stato complessivo.
+
+### DB — Building block SQL (completato)
+
+Il DB ha scomposto la funzione monolitica `fn_crea_operatore` in building block atomici:
+
+| Funzione                               | Scopo                                       | Riusabile da                        |
+| -------------------------------------- | ------------------------------------------- | ----------------------------------- |
+| `fn_crea_auth_user(...)`               | Crea solo `auth_user`                       | operatore, admin, qualsiasi utente  |
+| `fn_crea_soggetto_pf(...)`             | Crea soggetto PF + contatto default         | operatore, cliente PF, fornitore PF |
+| `fn_get_or_create_soggetto_ruolo(...)` | Crea/recupera ruolo soggetto                | tutti                               |
+| `fn_crea_risorsa_umana(...)`           | Crea risorsa_umana + bridge auth_user       | operatore, admin, dipendenti        |
+| `fn_crea_operatore(...)`               | **Orchestratore** — chiama i building block | solo operatore                      |
+
+Gestito sul server DB. Dettagli nelle guide di schema.
+
+### Backend — Repository core (completato)
+
+I repository Python mappano 1:1 i building block SQL.
+Dettaglio completo: [Building Block Repository](../backend/building-block-repository.md)
+
+| Repository                   | Metodo                 | In `apps/core/db/`                 |
+| ---------------------------- | ---------------------- | ---------------------------------- |
+| `AuthRepository`             | `crea_auth_user()`     | `auth_repository.py`               |
+| `AnagraficheCoreRepository`  | `crea_soggetto_pf()`   | `anagrafiche_core_repository.py`   |
+| `RisorseUmaneCoreRepository` | `crea_risorsa_umana()` | `risorse_umane_core_repository.py` |
+
+L'orchestratore resta in `apps/amm_software/db/amm_software_repository.py` → `crea_operatore()`.
+
+52 test backend OK + smoke test.
+
+### Frontend — Componenti atomici (da implementare)
+
+I componenti Vue mappano i building block come descritto nelle sezioni seguenti.
+Primo consumer: refactor di `UtenteDrawer.vue` (attualmente monolitico).
+
+---
+
 ## Vincoli dal modello dati
 
 Prima di definire i componenti, e' fondamentale capire cosa il DB richiede
@@ -38,11 +83,11 @@ al COMMIT di una transazione che crea un soggetto.
 
 ### Vincoli DEFERRED (scattano al COMMIT)
 
-| Trigger | Tabella | Errore | Cosa richiede |
-|---|---|---|---|
-| `trgfn_soggetti_guard_soggetto_contatti` | `soggetti` | `E_SOGGETTO_NO_CONTATTI` | Almeno un contatto default per ogni soggetto |
-| `trgfn_soggetti_guard_indirizzi_required` | `soggetti` | `E_SOGGETTO_NO_INDIRIZZI` | Indirizzi obbligatori in base a `tipi_soggetto_dettaglio_tipi_indirizzo` |
-| `trgfn_soggetti_guard_dati_societari_required` | `soggetti` | `E_DATI_SOCIETARI_REQUIRED` | Dati societari per SC/ENC (non per PF) |
+| Trigger                                        | Tabella    | Errore                      | Cosa richiede                                                            |
+| ---------------------------------------------- | ---------- | --------------------------- | ------------------------------------------------------------------------ |
+| `trgfn_soggetti_guard_soggetto_contatti`       | `soggetti` | `E_SOGGETTO_NO_CONTATTI`    | Almeno un contatto default per ogni soggetto                             |
+| `trgfn_soggetti_guard_indirizzi_required`      | `soggetti` | `E_SOGGETTO_NO_INDIRIZZI`   | Indirizzi obbligatori in base a `tipi_soggetto_dettaglio_tipi_indirizzo` |
+| `trgfn_soggetti_guard_dati_societari_required` | `soggetti` | `E_DATI_SOCIETARI_REQUIRED` | Dati societari per SC/ENC (non per PF)                                   |
 
 ### Implicazioni per i form
 
@@ -58,19 +103,22 @@ ogni view che crea un soggetto DEVE includere anche il form contatto.
 ## Catena completa — dal DB al frontend
 
 ```
-DB (building block SQL)                    Frontend (componenti Vue)
-──────────────────────                     ─────────────────────────
-fn_crea_auth_user          ←────────────→  AuthUserForm.vue
-fn_crea_soggetto_pf        ←────────────→  SoggettoPFForm.vue + ContattoForm.vue
-fn_get_or_create_soggetto_ruolo  (auto)    (nessun form — gestito dal backend)
-fn_crea_risorsa_umana      ←────────────→  CollocazioneForm.vue (UO + qualifica)
+DB (building block SQL)        Backend (repository core)          Frontend (componenti Vue)
+──────────────────────         ────────────────────────           ─────────────────────────
+fn_crea_auth_user         →    AuthRepository                →    AuthUserForm.vue
+fn_crea_soggetto_pf       →    AnagraficheCoreRepository     →    SoggettoPFForm.vue + ContattoForm.vue
+fn_get_or_create_soggetto_ruolo  (auto — chiamato dai building block, nessun form)
+fn_crea_risorsa_umana     →    RisorseUmaneCoreRepository    →    CollocazioneForm.vue (UO + qualifica)
 
-fn_crea_operatore          ←────────────→  UtenteDrawer.vue (compone i form sopra)
-(futuro) fn_crea_cliente   ←────────────→  ClienteDrawer.vue (compone form diversi)
+fn_crea_operatore         →    AmmSoftwareRepository         →    UtenteDrawer.vue (compone i form)
+(futuro) fn_crea_cliente  →    (futuro) ClienteRepository    →    ClienteDrawer.vue (compone diversi)
 ```
 
-Il backend (repository + service) fa da ponte: il frontend manda un payload unificato,
-il service Python chiama i building block SQL nella giusta sequenza.
+**Flusso dati**: il frontend manda un payload unificato → il backend (service/view)
+scompone e chiama i building block SQL nella sequenza corretta → tutto in una transazione.
+
+**I repository core** (`apps/core/db/`) sono gia' implementati e testati.
+I domini futuri (clienti, fornitori) li riuseranno senza modificarli.
 
 ---
 
@@ -87,14 +135,14 @@ I componenti specifici di un dominio (es. `ClienteDatiForm.vue`) stanno in `src/
 
 **Campi**:
 
-| Campo | Tipo | Obbligatorio | Note |
-|---|---|---|---|
-| cognome | InputText | si | Trim + uppercase dal trigger DB |
-| nome | InputText | si | Trim + uppercase dal trigger DB |
-| codice_fiscale | InputText | dipende dalla natura | 16 char alfanum, validazione formato |
-| data_nascita | DatePicker | no | |
-| sesso | Select | si | Default 'M', valori: M/F/S/X |
-| tipo_soggetto_dettaglio_id | Select | si | Default: PR (Privato) |
+| Campo                      | Tipo       | Obbligatorio         | Note                                 |
+| -------------------------- | ---------- | -------------------- | ------------------------------------ |
+| cognome                    | InputText  | si                   | Trim + uppercase dal trigger DB      |
+| nome                       | InputText  | si                   | Trim + uppercase dal trigger DB      |
+| codice_fiscale             | InputText  | dipende dalla natura | 16 char alfanum, validazione formato |
+| data_nascita               | DatePicker | no                   |                                      |
+| sesso                      | Select     | si                   | Default 'M', valori: M/F/S/X         |
+| tipo_soggetto_dettaglio_id | Select     | si                   | Default: PR (Privato)                |
 
 **Props**:
 
@@ -125,12 +173,12 @@ defineEmits(['update:modelValue'])
 
 **Campi**:
 
-| Campo | Tipo | Obbligatorio | Note |
-|---|---|---|---|
-| ragione_sociale | InputText | si | |
-| codice_fiscale | InputText | si | Per PG sempre obbligatorio |
-| partita_iva | InputText | si | 11 cifre numeriche |
-| tipo_soggetto_dettaglio_id | Select | si | SP/SC/ENC |
+| Campo                      | Tipo      | Obbligatorio | Note                       |
+| -------------------------- | --------- | ------------ | -------------------------- |
+| ragione_sociale            | InputText | si           |                            |
+| codice_fiscale             | InputText | si           | Per PG sempre obbligatorio |
+| partita_iva                | InputText | si           | 11 cifre numeriche         |
+| tipo_soggetto_dettaglio_id | Select    | si           | SP/SC/ENC                  |
 
 **Riusato da**: Crea cliente PG, Crea fornitore PG, Crea gestore, Scheda emittente fiscale.
 
@@ -144,16 +192,16 @@ defineEmits(['update:modelValue'])
 
 **Campi**:
 
-| Campo | Tipo | Obbligatorio | Note |
-|---|---|---|---|
-| nominativo | InputText | si | Nome del referente |
-| email | InputText | no* | Almeno un canale consigliato |
-| telefono | InputText | no | |
-| cellulare | InputText | no | |
-| pec | InputText | no | |
-| unita_organizzativa_id | Select (UOSelect) | no | Reparto/ufficio |
-| tipo_contatto_id | Select | no | Categoria |
-| note | Textarea | no | |
+| Campo                  | Tipo              | Obbligatorio | Note                         |
+| ---------------------- | ----------------- | ------------ | ---------------------------- |
+| nominativo             | InputText         | si           | Nome del referente           |
+| email                  | InputText         | no*          | Almeno un canale consigliato |
+| telefono               | InputText         | no           |                              |
+| cellulare              | InputText         | no           |                              |
+| pec                    | InputText         | no           |                              |
+| unita_organizzativa_id | Select (UOSelect) | no           | Reparto/ufficio              |
+| tipo_contatto_id       | Select            | no           | Categoria                    |
+| note                   | Textarea          | no           |                              |
 
 **Props**:
 
@@ -182,19 +230,19 @@ Quelli sono responsabilita' della view/drawer che compone il form e li passa al 
 
 **Campi modalita' normalizzata**:
 
-| Campo | Tipo | Obbligatorio | Note |
-|---|---|---|---|
-| tipo_indirizzo_id | Select | si | Filtrato dalla matrice config |
-| indirizzo_dettaglio_id | Autocomplete | si | Ricerca su `anagrafiche.indirizzi_dettaglio` |
+| Campo                  | Tipo         | Obbligatorio | Note                                         |
+| ---------------------- | ------------ | ------------ | -------------------------------------------- |
+| tipo_indirizzo_id      | Select       | si           | Filtrato dalla matrice config                |
+| indirizzo_dettaglio_id | Autocomplete | si           | Ricerca su `anagrafiche.indirizzi_dettaglio` |
 
 **Campi modalita' libera** (fallback per esteri/non normalizzabili):
 
-| Campo | Tipo | Obbligatorio | Note |
-|---|---|---|---|
-| indirizzo_libero | InputText | si | |
-| stato_id | Select | si | |
-| comune_id / locality | InputText | si | |
-| codice_postale_id / postal_box | InputText | si | |
+| Campo                          | Tipo      | Obbligatorio | Note |
+| ------------------------------ | --------- | ------------ | ---- |
+| indirizzo_libero               | InputText | si           |      |
+| stato_id                       | Select    | si           |      |
+| comune_id / locality           | InputText | si           |      |
+| codice_postale_id / postal_box | InputText | si           |      |
 
 **Props**:
 
@@ -217,12 +265,12 @@ defineProps({
 
 **Campi**:
 
-| Campo | Tipo | Obbligatorio | Note |
-|---|---|---|---|
-| username | InputText | si | |
-| email | InputText | si | Formato email |
-| password | Password | si (in creazione) | Con toggle visibilita' e conferma |
-| password_confirm | Password | si (in creazione) | Match con password |
+| Campo            | Tipo      | Obbligatorio      | Note                              |
+| ---------------- | --------- | ----------------- | --------------------------------- |
+| username         | InputText | si                |                                   |
+| email            | InputText | si                | Formato email                     |
+| password         | Password  | si (in creazione) | Con toggle visibilita' e conferma |
+| password_confirm | Password  | si (in creazione) | Match con password                |
 
 **Props**:
 
@@ -246,11 +294,11 @@ defineProps({
 
 **Campi**:
 
-| Campo | Tipo | Obbligatorio | Note |
-|---|---|---|---|
-| forma_giuridica_id | Select | si per SC/ENC | Filtrato da `config.forme_giuridiche_tipi_soggetto_dettaglio` |
-| rea | InputText | no | |
-| capitale_sociale | InputNumber | no | |
+| Campo              | Tipo        | Obbligatorio  | Note                                                          |
+| ------------------ | ----------- | ------------- | ------------------------------------------------------------- |
+| forma_giuridica_id | Select      | si per SC/ENC | Filtrato da `config.forme_giuridiche_tipi_soggetto_dettaglio` |
+| rea                | InputText   | no            |                                                               |
+| capitale_sociale   | InputNumber | no            |                                                               |
 
 **Riusato da**: Crea cliente PG, Crea fornitore PG, Scheda emittente fiscale, Scheda gestore.
 
@@ -463,17 +511,17 @@ async function handleCreate() {
 
 Mappa di quali componenti servono per ogni caso d'uso:
 
-| Caso d'uso | SoggettoPF | SoggettoPG | Contatto | Indirizzo | AuthUser | DatiSocietari | UOSelect |
-|---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-| Crea operatore | x | | x | | x | | x |
-| Crea admin | x | | x | | x | | x |
-| Crea cliente PF | x | | x | x | | | |
-| Crea cliente PG | | x | x | x | | x | |
-| Crea fornitore PF | x | | x | x | | | |
-| Crea fornitore PG | | x | x | x | | x | |
-| Profilo utente (readonly) | x | | x | | | | |
-| Scheda soggetto (edit) | x/PG | x/PG | x | x | | x? | |
-| Gestione contatti | | | x | | | | |
+| Caso d'uso                | SoggettoPF | SoggettoPG | Contatto | Indirizzo | AuthUser | DatiSocietari | UOSelect |
+| ------------------------- | :--------: | :--------: | :------: | :-------: | :------: | :-----------: | :------: |
+| Crea operatore            |     x      |            |    x     |           |    x     |               |    x     |
+| Crea admin                |     x      |            |    x     |           |    x     |               |    x     |
+| Crea cliente PF           |     x      |            |    x     |     x     |          |               |          |
+| Crea cliente PG           |            |     x      |    x     |     x     |          |       x       |          |
+| Crea fornitore PF         |     x      |            |    x     |     x     |          |               |          |
+| Crea fornitore PG         |            |     x      |    x     |     x     |          |       x       |          |
+| Profilo utente (readonly) |     x      |            |    x     |           |          |               |          |
+| Scheda soggetto (edit)    |    x/PG    |    x/PG    |    x     |     x     |          |      x?       |          |
+| Gestione contatti         |            |            |    x     |           |          |               |          |
 
 ---
 
@@ -562,14 +610,14 @@ Le chiavi per i componenti core vanno nel namespace `common` dei file locale:
 
 ## Priorita' di implementazione
 
-| Fase | Cosa | Perche' |
-|---|---|---|
-| 1 | `useLookup`, `UOSelect` | Base per tutti i select, dipendenza trasversale |
-| 2 | `useSoggettoPF` + `SoggettoPFForm` | Nucleo identita' PF, riusato ovunque |
-| 3 | `useContatto` + `ContattoForm` | Obbligatorio per ogni creazione soggetto (guard DEFERRED) |
-| 4 | `useAuthUser` + `AuthUserForm` | Necessario per operatori e admin |
-| 5 | Refactor `UtenteDrawer.vue` | Primo consumer reale dei building block |
-| 6 | `SoggettoPGForm`, `DatiSocietariForm`, `IndirizzoForm` | Per i domini successivi (clienti, fornitori) |
+| Fase | Cosa                                                   | Perche'                                                   |
+| ---- | ------------------------------------------------------ | --------------------------------------------------------- |
+| 1    | `useLookup`, `UOSelect`                                | Base per tutti i select, dipendenza trasversale           |
+| 2    | `useSoggettoPF` + `SoggettoPFForm`                     | Nucleo identita' PF, riusato ovunque                      |
+| 3    | `useContatto` + `ContattoForm`                         | Obbligatorio per ogni creazione soggetto (guard DEFERRED) |
+| 4    | `useAuthUser` + `AuthUserForm`                         | Necessario per operatori e admin                          |
+| 5    | Refactor `UtenteDrawer.vue`                            | Primo consumer reale dei building block                   |
+| 6    | `SoggettoPGForm`, `DatiSocietariForm`, `IndirizzoForm` | Per i domini successivi (clienti, fornitori)              |
 
 ---
 
@@ -581,3 +629,665 @@ Le chiavi per i componenti core vanno nel namespace `common` dei file locale:
   e assemblare il payload per il backend.
 * I componenti esistenti in `amministrazione/components/` verranno refactored gradualmente:
   prima si creano i building block core, poi si sostituiscono le sezioni monolitiche.
+
+---
+
+
+## Sprint 3 — Piano di implementazione dettagliato
+
+> Data: 2026-03-13
+> Stato: **DA IMPLEMENTARE**
+> Prerequisiti globali: Sprint 2 completato (52 test OK, building block backend/DB)
+> Guida di riferimento: [Gestione degli indirizzi](/guide/gestione-degli-indirizzi)
+
+### Obiettivi Sprint 3
+
+1. **SoggettoForm universale** — un unico componente Vue che si adatta a PF/PG/ENTE guidato dalla matrice `tipi_soggetto_dettaglio`
+2. **Refactoring lookup** — eliminare i lookup duplicati da `amm-software`, usare `core/lookup-codici` per tabelle config standard
+3. **Gestione indirizzi completa** — risolvere il trigger DEFERRED `E_INDIRIZZO_OBBLIGATORIO_MANCANTE` con supporto a tutta la catena indirizzi normalizzati
+4. **Autocomplete comuni e stradario** — ricerca server-side su comuni (8098 record) e stradario
+
+---
+
+### Matrice dati dal DB (riferimento per lo sviluppo)
+
+**Tipi soggetto dettaglio:**
+
+| id  | codice | natura | CF obbl. | PIVA obbl. | Dati societari | Campi visibili                                                    |
+| --- | ------ | ------ | :------: | :--------: | -------------- | ----------------------------------------------------------------- |
+| 1   | PR     | PF     |    si    |     no     | NONE           | cognome, nome, sesso, data_nascita, comune_nascita, CF            |
+| 2   | DI     | PF     |    si    |     si     | OPTIONAL       | cognome, nome, sesso, data_nascita, comune_nascita, CF, **P.IVA** |
+| 3   | SC     | PG     |    si    |     si     | REQUIRED       | ragione_sociale, CF, P.IVA, **dati societari obbl.**              |
+| 4   | SP     | PG     |    si    |     si     | OPTIONAL       | ragione_sociale, CF, P.IVA, dati societari opz.                   |
+| 5   | ENC    | ENTE   |    si    |     si     | OPTIONAL       | ragione_sociale, CF, P.IVA, dati societari opz.                   |
+
+**Indirizzi obbligatori per tipo:**
+
+| Tipo               | Obbligatori                               | Opzionali ammessi                                                                                                                        |
+| ------------------ | ----------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| PR (Privato)       | RESID, DOM-FISC, FATT (fallback→DOM-FISC) | CONS (fallback→RESID), POSTALE (fallback→RESID), SPED                                                                                    |
+| DI (Ditta Ind.)    | DOM-FISC                                  | RESID, SEDE-LEG (fallback→DOM-FISC), SEDE-OP, CONS, FATT (fallback→DOM-FISC), POSTALE (fallback→SEDE-LEG), FORN (fallback→SEDE-OP), SPED |
+| SC (Soc. Capitali) | SEDE-LEG                                  | DOM-FISC (fallback→SEDE-LEG), SEDE-OP, CONS, FATT (fallback→SEDE-LEG), POSTALE (fallback→SEDE-LEG), FORN (fallback→SEDE-OP), SPED        |
+| SP (Soc. Persone)  | SEDE-LEG                                  | DOM-FISC (fallback→SEDE-LEG), SEDE-OP, CONS, FATT (fallback→SEDE-LEG), POSTALE (fallback→SEDE-LEG), FORN (fallback→SEDE-OP), SPED        |
+| ENC (Ente)         | SEDE-LEG                                  | DOM-FISC (fallback→SEDE-LEG), SEDE-OP, CONS, FATT (fallback→SEDE-LEG), POSTALE (fallback→SEDE-LEG), FORN (fallback→SEDE-OP), SPED        |
+
+**Tabella comuni**: `config.comuni` — 8098 record (id, descrizione, provincia_id).
+
+**Tabella indirizzi**: `anagrafiche.indirizzi_soggetti` — soggetto_id, tipo_indirizzo_id, indirizzo_dettaglio_id (normalizzato) o indirizzo_libero (eccezione), stato_id, ecc.
+
+---
+
+### Architettura indirizzi — catena completa
+
+> Riferimento: [Guida Gestione degli Indirizzi](/guide/gestione-degli-indirizzi)
+
+L'indirizzo in ZeroERP **non e' un campo di testo**: e' un dato strutturato normalizzato.
+La modalita' **normalizzata** (via `indirizzo_dettaglio_id`) e' **sempre preferita**.
+L'`indirizzo_libero` e' riservato a eccezioni (migrazioni, indirizzi esteri non normalizzabili).
+
+**Catena di normalizzazione (dal basso verso l'alto):**
+
+```
+config.toponomastica          (Via, Piazza, Corso, Largo...)
+       ↓
+config.stradario_generale     (toponimo + denominazione via)
+       ↓
+config.stradario              (via locale = stradario_generale + comune + CAP)
+       ↓
+anagrafiche.indirizzi_dettaglio  (civico normalizzato: stradario + civico + estensione + palazzina + scala + piano + interno)
+       ↓
+anagrafiche.indirizzi_soggetti   (soggetto_id + tipo_indirizzo_id + indirizzo_dettaglio_id)
+```
+
+**Gerarchia geografica:**
+```
+config.stati → config.regioni → config.province → config.comuni → config.codici_postali
+                                                        ↓
+                                                  config.stradario
+```
+
+**Regole chiave (dalla guida):**
+- **R1 — XOR**: o normalizzato (`indirizzo_dettaglio_id`) o libero (`indirizzo_libero`), mai entrambi
+- **R2 — Unicita'**: un solo indirizzo per tipo per soggetto (`UNIQUE soggetto_id, tipo_indirizzo_id`)
+- **R3 — Completezza libero**: se libero, obbligatori `indirizzo_libero` + `stato_id` + (`comune_id` + `codice_postale_id`) oppure (`locality` + `postal_box`)
+- **R6 — Guard tipo**: trigger verifica tipo_indirizzo contro matrice `config.tipi_soggetto_dettaglio_tipi_indirizzo`
+- **R7 — Unicita' civico**: vincolo `uq_indirizzi_dettaglio_norm` su (stradario_id, civico, estensione, palazzina, scala, piano, interno)
+
+**Funzioni di ricerca gia' esistenti:**
+- `anagrafiche.fn_search_indirizzi_dettaglio(...)` — ricerca per stradario+civico o fuzzy su indirizzo_normalizzato
+- `script.fn_get_indirizzo(p_soggetto_ruolo_id, p_tipo_codice)` — risoluzione master/fallback
+- `script.fn_get_indirizzo_by_soggetto(p_soggetto_id, p_tipo_codice)` — layer soggetto con fallback
+
+---
+
+### TRACK DB (competenza server DB)
+
+> **Nota**: DB-1 e' stato riscritto completamente rispetto alla versione iniziale.
+> La gestione indirizzi richiede building block dedicati per tutta la catena di normalizzazione,
+> non un semplice parametro JSONB con `indirizzo_libero`.
+
+#### DB-1 — Building block `fn_get_or_create_indirizzo_dettaglio`
+
+**Prerequisiti**: nessuno
+**Schema**: `anagrafiche`
+**Tipo**: building block riusabile
+
+Funzione upsert: cerca un civico esistente per chiave naturale, se non esiste lo crea.
+Il vincolo `uq_indirizzi_dettaglio_norm` garantisce la deduplicazione.
+
+**Firma proposta:**
+```sql
+CREATE OR REPLACE FUNCTION anagrafiche.fn_get_or_create_indirizzo_dettaglio(
+    p_stradario_id        config.stradario.id%TYPE,
+    p_civico              anagrafiche.indirizzi_dettaglio.civico%TYPE         DEFAULT NULL,
+    p_estensione_civico   anagrafiche.indirizzi_dettaglio.estensione_civico%TYPE DEFAULT NULL,
+    p_palazzina           anagrafiche.indirizzi_dettaglio.palazzina%TYPE      DEFAULT NULL,
+    p_scala               anagrafiche.indirizzi_dettaglio.scala%TYPE          DEFAULT NULL,
+    p_piano               anagrafiche.indirizzi_dettaglio.piano%TYPE          DEFAULT NULL,
+    p_interno             anagrafiche.indirizzi_dettaglio.interno%TYPE        DEFAULT NULL
+)
+RETURNS anagrafiche.indirizzi_dettaglio.id%TYPE
+```
+
+**Logica:**
+1. Guard: `p_stradario_id` obbligatorio, verificare che esista e sia attivo in `config.stradario`
+2. Cercare per chiave naturale (stradario_id, civico, estensione, palazzina, scala, piano, interno) con COALESCE su nullable
+3. Se trovato → RETURN id esistente
+4. Se non trovato → INSERT + RETURNING id (il trigger `trgfn_indirizzi_dettaglio_normalize` calcola `indirizzo_normalizzato`, `via_norm`, `civico_norm`)
+5. Gestire `unique_violation` (race condition) con retry
+
+**Nota**: questa funzione NON gestisce la creazione dello stradario. Se lo stradario non esiste, il chiamante (o il frontend) deve prima crearlo o selezionarlo. Vedi DB-1b.
+
+#### DB-1b — `fn_get_or_create_stradario`: NON SERVE (stradario chiuso)
+
+**Stato**: CHIUSO — nessun changeset necessario.
+
+Lo stradario e' **chiuso**: la gestione di `config.toponomastica`, `config.stradario_generale`
+e `config.stradario` e' riservata all'admin. L'utente operativo seleziona da stradari esistenti
+tramite autocomplete (vedi DB-7). Non serve nessuna funzione di creazione on-the-fly.
+
+#### DB-2 — Building block `fn_crea_indirizzo_soggetto`
+
+**Prerequisiti**: DB-1 (se normalizzato) oppure nessuno (se libero)
+**Schema**: `anagrafiche`
+**Tipo**: building block riusabile
+
+Crea un record in `anagrafiche.indirizzi_soggetti`. Supporta entrambe le modalita':
+- **Normalizzata** (standard): riceve `p_indirizzo_dettaglio_id`
+- **Libera** (eccezione): riceve `p_indirizzo_libero` + campi geografici
+
+**Firma proposta:**
+```sql
+CREATE OR REPLACE FUNCTION anagrafiche.fn_crea_indirizzo_soggetto(
+    -- Obbligatori
+    p_soggetto_id             anagrafiche.soggetti.id%TYPE,
+    p_tipo_indirizzo_codice   config.tipi_indirizzi.codice_interno%TYPE,
+    -- Modalita' normalizzata (preferita)
+    p_indirizzo_dettaglio_id  anagrafiche.indirizzi_dettaglio.id%TYPE   DEFAULT NULL,
+    -- Modalita' libera (eccezione)
+    p_indirizzo_libero        text                                     DEFAULT NULL,
+    p_stato_id                config.stati.id%TYPE                     DEFAULT NULL,
+    p_comune_id               config.comuni.id%TYPE                    DEFAULT NULL,
+    p_codice_postale_id       config.codici_postali.id%TYPE            DEFAULT NULL
+)
+RETURNS anagrafiche.indirizzi_soggetti.id%TYPE
+```
+
+**Logica:**
+1. Guard XOR: o `p_indirizzo_dettaglio_id` o `p_indirizzo_libero`, mai entrambi (R1)
+2. Lookup `tipo_indirizzo_id` da `p_tipo_indirizzo_codice` in `config.tipi_indirizzi`
+3. Se modalita' libera: guard completezza (R3) — `stato_id` + (`comune_id` + `codice_postale_id`)
+4. INSERT in `anagrafiche.indirizzi_soggetti`
+5. I trigger si occupano di: guard tipo (R6), normalizzazione (R8), sync geoloc, audit, tx_id
+
+**Nota**: il trigger `trgfn_indirizzi_soggetti_guard_tipo_indirizzo` verifica automaticamente
+che il tipo indirizzo sia ammesso per il tipo_soggetto_dettaglio del soggetto (matrice config).
+
+#### DB-3 — Aggiornare `fn_crea_soggetto_pf`: aggiungere `p_comune_nascita_id`
+
+**Prerequisiti**: nessuno
+**File**: nuovo changeset per `anagrafiche.fn_crea_soggetto_pf` (runOnChange)
+
+* Nuovo parametro `p_comune_nascita_id anagrafiche.soggetti.comune_id%TYPE DEFAULT NULL`
+* Aggiungere `comune_id` nell'INSERT di `anagrafiche.soggetti` (colonna gia' esistente, FK `fk_comuni_config`)
+* La FK verifica automaticamente l'esistenza del comune — nessun guard aggiuntivo necessario
+* Propagare il parametro anche in `fn_crea_operatore`
+
+#### DB-4 — `risorse_umane.valido_dal`: nessun intervento (opzione B)
+
+**Stato**: CHIUSO — nessun changeset necessario.
+
+La funzione `fn_crea_risorsa_umana` gestisce gia' `p_valido_dal DEFAULT CURRENT_DATE` nel parametro.
+Non si aggiunge DEFAULT sulla colonna: tutti gli INSERT passano dalla funzione building block.
+
+#### DB-5 — Aggiornare `fn_crea_operatore`: indirizzi tramite building block
+
+**Prerequisiti**: DB-1, DB-2, DB-3
+**File**: nuovo changeset per `anagrafiche.fn_crea_operatore` (runOnChange)
+
+Aggiungere alla firma dell'orchestratore i parametri per gli indirizzi obbligatori PR:
+
+**Nuovi parametri (modalita' normalizzata):**
+```sql
+-- Indirizzo residenza (RESID) — normalizzato
+p_indirizzo_resid_dettaglio_id   anagrafiche.indirizzi_dettaglio.id%TYPE DEFAULT NULL,
+-- Indirizzo domicilio fiscale (DOM-FISC) — se NULL, usa stesso di RESID
+p_indirizzo_domfisc_dettaglio_id anagrafiche.indirizzi_dettaglio.id%TYPE DEFAULT NULL,
+-- Comune nascita
+p_comune_nascita_id              anagrafiche.soggetti.comune_id%TYPE     DEFAULT NULL
+```
+
+**Logica aggiuntiva nel body:**
+1. Dopo `fn_crea_soggetto_pf` (che ora accetta `p_comune_nascita_id`)
+2. Se `p_indirizzo_resid_dettaglio_id` IS NOT NULL:
+   - `PERFORM anagrafiche.fn_crea_indirizzo_soggetto(v_soggetto_id, 'RESID', p_indirizzo_resid_dettaglio_id)`
+   - Se `p_indirizzo_domfisc_dettaglio_id` IS NULL → usa lo stesso di RESID per DOM-FISC
+   - `PERFORM anagrafiche.fn_crea_indirizzo_soggetto(v_soggetto_id, 'DOMFISC', COALESCE(p_indirizzo_domfisc_dettaglio_id, p_indirizzo_resid_dettaglio_id))`
+3. Se `p_indirizzo_resid_dettaglio_id` IS NULL → nessun indirizzo creato (il trigger DEFERRED potrebbe
+   bloccare al COMMIT se la matrice richiede RESID per PR — questo e' voluto: il chiamante deve fornire
+   gli indirizzi obbligatori)
+
+**Nota sul trigger DEFERRED**: `trgfn_soggetti_guard_indirizzi_required` scatta al COMMIT.
+Se gli indirizzi obbligatori non sono presenti, il COMMIT fallisce con errore chiaro.
+L'orchestratore non deve duplicare questo check — il trigger fa da rete di sicurezza.
+
+#### DB-6 — Aggiornare test pgTAP
+
+**Prerequisiti**: DB-1..DB-5
+**File**: aggiornare `db/pgtap/anagrafiche/test-fn-crea-operatore.sql`
+
+Nuovi test:
+* Creazione operatore con indirizzo normalizzato (RESID + DOM-FISC) — successo
+* Creazione operatore con solo RESID (DOM-FISC copiato da RESID) — successo
+* Creazione operatore senza indirizzo — errore trigger DEFERRED (se matrice lo richiede)
+* Verifica che `indirizzi_soggetti` contenga i record corretti dopo creazione
+* Verifica `comune_nascita_id` passato correttamente a `soggetti.comune_id`
+* Test building block `fn_get_or_create_indirizzo_dettaglio`: get esistente, create nuovo, race condition
+* Test building block `fn_crea_indirizzo_soggetto`: normalizzato OK, libero OK, XOR violation
+
+#### DB-7 — Funzione `fn_search_stradario` (ricerca vie per autocomplete)
+
+**Prerequisiti**: nessuno
+**Schema**: `script` (funzione di lettura cross-dominio, come le altre `fn_search_*`)
+**Tipo**: funzione STABLE di lettura ottimizzata
+
+Il frontend cerca VIE (stradario) per comune, non civici. L'utente:
+1. Seleziona un comune (autocomplete comuni, BE-3)
+2. Cerca una via nel comune selezionato (autocomplete stradario, questa funzione)
+3. Inserisce il civico manualmente (campo numerico + dettagli)
+4. Il backend chiama `fn_get_or_create_indirizzo_dettaglio` (DB-1) per ottenere/creare il civico
+
+**Firma proposta:**
+```sql
+CREATE OR REPLACE FUNCTION script.fn_search_stradario(
+    p_comune_id    config.comuni.id%TYPE        DEFAULT NULL,
+    p_search       text                         DEFAULT NULL,
+    p_limit        integer                      DEFAULT 30
+)
+RETURNS TABLE (
+    stradario_id           config.stradario.id%TYPE,
+    toponimo               config.toponomastica.descrizione%TYPE,
+    denominazione          config.stradario_generale.denominazione_norm%TYPE,
+    via_completa           text,    -- es. "Via Roma"
+    comune_id              config.comuni.id%TYPE,
+    comune_descrizione     config.comuni.denominazione%TYPE,
+    provincia_sigla        config.province.sigla%TYPE,
+    codice_postale_id      config.codici_postali.id%TYPE,
+    cap                    config.codici_postali.cap%TYPE
+)
+LANGUAGE plpgsql
+STABLE
+PARALLEL SAFE
+```
+
+**Logica:**
+1. Guard: almeno `p_comune_id` o `p_search` deve essere valorizzato
+2. Se `p_comune_id` fornito: filtra per comune (caso principale — autocomplete dopo selezione comune)
+3. Se `p_search` fornito: ricerca ILIKE su `toponimo || ' ' || denominazione_norm`
+4. JOIN: `stradario` → `stradario_generale` → `toponomastica` + `comuni` → `province` + `codici_postali`
+5. Filtro `stradario.attivo = true` (se presente), ORDER BY `via_completa`, LIMIT `p_limit`
+6. Campo calcolato `via_completa` = `toponimo || ' ' || denominazione_norm` (es. "Via Roma", "Piazza Garibaldi")
+
+**Nota sulle performance**: con `p_comune_id` + `p_search` il numero di righe e' contenuto
+(un comune ha mediamente poche centinaia di vie). Se necessario, aggiungere indice trigram
+su `stradario_generale.denominazione_norm`.
+
+**Pattern coerente con il progetto**: stessa struttura di `fn_search_soggetti_universale`
+e `fn_search_indirizzi_dettaglio` — funzione STABLE in `script`, usata dal backend come entry point.
+
+---
+
+### TRACK BACKEND
+
+#### BE-1 — Refactoring lookup: eliminare duplicati da `amm-software`
+
+**Stato**: PARZIALMENTE COMPLETATO (2026-03-13)
+
+**Risultato verifica compatibilita'**:
+
+| Tabella | Whitelist | Struttura compatibile | Migrata | Note |
+|---------|:---------:|:--------------------:|:-------:|------|
+| `config.qualifiche` | si | si (id/codice/descrizione) | **SI** | Rimossa LookupQualificheView + list_qualifiche() |
+| `config.unita_organizzative` | si | **NO** — `nome` ≠ `descrizione`, serve `parent_id` | NO | Serve per gerarchia UI permessi |
+| `config.aree_funzionali` | no | **NO** — serve `ordinamento` | NO | Usata da override aree/profili reparto |
+| `config.azioni_processo` | no | **NO** — JOIN complessa, serve `pericolosa/area_id/area_codice` | NO | Usata da override azioni |
+| `anagrafiche.emittenti_fiscali` | no | **NO** — `denominazione` ≠ `descrizione`, serve `partita_iva` | NO | Usata da scope emittenti |
+
+Le 4 lookup non migrate restano in `amm-software` perche' servono campi extra per la UI permessi.
+Saranno rivisitate quando i permessi avranno una propria app.
+
+#### BE-2 — Endpoint matrice indirizzi per tipo soggetto
+
+**Stato**: COMPLETATO (2026-03-13)
+**File**: `apps/core/api/views_lookup.py` → `LookupMatriceIndirizziView`
+**File**: `apps/core/db/lookup_repository.py` → `list_matrice_indirizzi()`
+
+```
+GET /api/v1/core/lookup/tipi-soggetto-dettaglio/<id>/indirizzi/
+→ { "data": { "results": [{ "tipo_indirizzo_id": 1, "codice": "RESID", "descrizione": "Residenza",
+     "obbligatorio": true, "fallback_tipo_indirizzo_id": null, "fallback_codice": null }, ...] } }
+```
+
+#### BE-3 — Endpoint autocomplete comuni
+
+**Stato**: COMPLETATO (2026-03-13)
+**File**: `apps/core/api/views_lookup.py` → `LookupComuniView`
+**File**: `apps/core/db/lookup_repository.py` → `search_comuni()`
+
+```
+GET /api/v1/core/lookup/comuni/?search=ROM&limit=20
+→ { "data": { "count": 5, "results": [{ "id": 4517, "descrizione": "ROMA", "provincia_sigla": "RM" }, ...] } }
+```
+
+* `is_search_endpoint = True` per throttling DRF
+* Permission: `ZeroERPPermission` (qualsiasi utente autenticato)
+
+#### BE-4 — Endpoint lookup tipi soggetto dettaglio
+
+**Stato**: COMPLETATO (2026-03-13)
+**File**: `apps/core/api/views_lookup.py` → `LookupTipiSoggettoDettaglioView`
+**File**: `apps/core/db/lookup_repository.py` → `list_tipi_soggetto_dettaglio()`
+
+```
+GET /api/v1/core/lookup/tipi-soggetto-dettaglio/
+→ { "data": { "results": [{ "id": 1, "codice_interno": "PR", "descrizione": "...", "natura_soggetto": "PF",
+     "cf_obbligatorio": true, "piva_obbligatoria": false, "dati_societari_policy": "NONE" }, ...] } }
+```
+
+#### BE-5 — Aggiornare POST creazione operatore
+
+**Stato**: COMPLETATO (2026-03-13)
+**File**: `apps/amm_software/api/views.py`, `apps/amm_software/db/amm_software_repository.py`
+
+Nuovi parametri nel payload POST (tutti opzionali, retrocompatibili):
+* `comune_nascita_id` (int) — FK verso `config.comuni`
+* `indirizzo_resid_dettaglio_id` (int) — FK verso `anagrafiche.indirizzi_dettaglio` (residenza)
+* `indirizzo_domfisc_dettaglio_id` (int) — FK verso `anagrafiche.indirizzi_dettaglio` (domicilio fiscale)
+
+Passati a `fn_crea_operatore` come `p_comune_nascita_id`, `p_indirizzo_resid_dettaglio_id`, `p_indirizzo_domfisc_dettaglio_id`.
+Test aggiornati: 9 test OK (2 nuovi per Sprint 3 params + retrocompatibilita').
+
+#### BE-6 — Test
+
+**Stato**: COMPLETATO per BE-2/BE-3/BE-4/BE-5/BE-7 (2026-03-13)
+**File**: `apps/core/tests/db/test_lookup_repository.py` — 11 test OK (mock cursor, +3 stradario)
+**File**: `apps/amm_software/tests/api/test_crea_utente.py` — 9 test OK (+2 Sprint 3)
+**Risultato**: 275 test OK (core + amm_software), 0 failures
+**Smoke test**: aggiornato con 4 nuovi endpoint (test 13/14/15/16 — incluso stradario)
+
+#### BE-7 — Endpoint search stradario
+
+**Stato**: COMPLETATO (2026-03-13)
+**File**: `apps/core/api/views_lookup.py` → `SearchStradarioView`
+**File**: `apps/core/db/lookup_repository.py` → `search_stradario()`
+
+```
+GET /api/v1/core/search/stradario/?comune_id=4517&search=via&limit=30
+→ { "data": { "results": [{ "stradario_id": 101, "toponimo": "Via", "denominazione": "Roma",
+     "via_completa": "Via Roma", "comune_id": 4517, "comune_descrizione": "ROMA",
+     "provincia_sigla": "RM", "codice_postale_id": 50, "cap": "00100" }, ...] } }
+```
+
+* `is_search_endpoint = True` per throttling DRF
+* Chiama `script.fn_search_stradario(p_comune_id, p_search, p_limit)`
+* Test: 3 test unitari in `test_lookup_repository.py` (with_results, empty, params)
+
+---
+
+### TRACK FRONTEND
+
+#### FE-1 — API client core per lookup
+
+**Prerequisiti**: BE-2, BE-3, BE-4
+**File**: `src/core/api/core.js` (esistente o nuovo)
+
+Aggiungere funzioni:
+* `lookupCodici(rel, params)` → chiama `GET /api/v1/core/lookup-codici/?rel=...`
+* `lookupTipiSoggettoDettaglio()` → chiama BE-4
+* `lookupMatriceIndirizzi(tipoSoggettoDettaglioId)` → chiama BE-2
+* `searchComuni(search, limit)` → chiama BE-3
+
+#### FE-2 — Composable `useLookup`
+
+**Prerequisiti**: FE-1
+**File**: `src/core/composables/useLookup.js`
+
+```js
+export function useLookup(fetchFn, options = {}) {
+  // Cache, loading, load(), reload()
+  // immediate: true per caricare subito
+}
+```
+
+#### FE-3 — Refactoring store `utenti.js` e API `amministrazione.js`
+
+**Prerequisiti**: BE-1, FE-1
+**File**: `src/amministrazione/stores/utenti.js`, `src/amministrazione/api/amministrazione.js`
+
+* Rimuovere da `amministrazione.js`: `listQualifiche()`, `listUnitaOrganizzative()`, `listAreeFunzionali()`, `listAzioniProcesso()`, `listEmittentiFiscali()`
+* Rimuovere da `utenti.js`: i ref e le action corrispondenti (qualifiche, unitaOrganizzative, areeFunzionali, ecc.)
+* Sostituire con `useLookup(() => lookupCodici('config.qualifiche'))` nei componenti che li usano
+* Aggiornare tutti i componenti che importano queste funzioni
+
+#### FE-4 — Composable `useSoggettoForm`
+
+**Prerequisiti**: FE-1, FE-2
+**File**: `src/core/composables/useSoggettoForm.js`
+
+Un **unico composable** che gestisce PF + PG + ENTE (non separare PF e PG):
+
+```js
+export function useSoggettoForm(options = {}) {
+  const { tipoForzato = null } = options
+  // tipoForzato: se impostato (es. 1 per PR), il select tipo non appare
+
+  const form = reactive({
+    tipo_soggetto_dettaglio_id: tipoForzato || null,
+    // PF
+    cognome: '', nome: '', sesso: 'M', data_nascita: null, comune_nascita_id: null,
+    // PG
+    ragione_sociale: '',
+    // Comuni
+    codice_fiscale: '', partita_iva: '',
+    // Contatto default
+    email: '',
+    // Indirizzo obbligatorio (il primo della matrice)
+    indirizzo: { indirizzo_libero: '', comune_id: null, codice_postale_id: null }
+  })
+
+  // Computed guidati dalla matrice DB
+  const tipiSoggetto = useLookup(lookupTipiSoggettoDettaglio)
+  const tipoCorrente = computed(() => tipiSoggetto.find(t => t.id === form.tipo_soggetto_dettaglio_id))
+  const isPF = computed(() => ['PF'].includes(tipoCorrente.natura_soggetto))
+  const showPartitaIva = computed(() => tipoCorrente.piva_obbligatoria)
+  const showDatiSocietari = computed(() => tipoCorrente.dati_societari_policy !== 'NONE')
+  const requireDatiSocietari = computed(() => tipoCorrente.dati_societari_policy === 'REQUIRED')
+
+  // Matrice indirizzi: ricaricata quando cambia tipo
+  const matriceIndirizzi = ref([])
+  const indirizziObbligatori = computed(() => matriceIndirizzi.filter(m => m.obbligatorio))
+
+  watch(() => form.tipo_soggetto_dettaglio_id, async (id) => {
+    if (id) matriceIndirizzi.value = await lookupMatriceIndirizzi(id)
+  })
+
+  function validate() { /* validazione campi in base al tipo corrente */ }
+  function reset() { /* reset form */ }
+
+  return { form, isPF, showPartitaIva, showDatiSocietari, requireDatiSocietari,
+           indirizziObbligatori, matriceIndirizzi, tipiSoggetto, validate, reset }
+}
+```
+
+#### FE-5 — Componente `SoggettoForm.vue`
+
+**Prerequisiti**: FE-4
+**File**: `src/core/components/SoggettoForm.vue`
+
+Un **unico componente** che si adatta al tipo selezionato:
+
+```vue
+<template>
+  <!-- Select tipo soggetto (nascosto se tipoForzato) -->
+  <Select v-if="!tipoForzato" v-model="model.tipo_soggetto_dettaglio_id"
+    :options="tipiSoggetto" option-label="descrizione" option-value="id" />
+
+  <!-- Sezione PF (PR, DI) -->
+  <template v-if="isPF">
+    cognome*, nome*, sesso, data_nascita, ComuneAutocomplete(comune_nascita)
+  </template>
+
+  <!-- Sezione PG (SC, SP, ENC) -->
+  <template v-else>
+    ragione_sociale*
+  </template>
+
+  <!-- Sempre visibili -->
+  codice_fiscale*
+  partita_iva* (v-if="showPartitaIva")
+  email* (contatto default)
+
+  <!-- Indirizzi obbligatori dalla matrice -->
+  <div v-for="ind in indirizziObbligatori" :key="ind.tipo_indirizzo_id">
+    <h4>{{ ind.descrizione }} *</h4>
+    <IndirizzoSubForm v-model="indirizzi[ind.codice]" />
+  </div>
+
+  <!-- Dati societari (se richiesti) -->
+  <DatiSocietariSection v-if="showDatiSocietari" :required="requireDatiSocietari" />
+</template>
+```
+
+**Props**:
+```js
+defineProps({
+  modelValue: Object,       // binding bidirezionale
+  tipoForzato: Number,      // null = mostra select, 1 = forza PR
+  readonly: Boolean,
+  showIndirizzi: { type: Boolean, default: true }  // per operatori: true (serve RESID)
+})
+```
+
+#### FE-6 — Componente `ComuneAutocomplete.vue`
+
+**Prerequisiti**: FE-1 (endpoint BE-3)
+**File**: `src/core/components/ComuneAutocomplete.vue`
+
+* PrimeVue `AutoComplete` con `completeMethod` che chiama `searchComuni(query)`
+* Mostra `descrizione` + provincia
+* Emette `id` via v-model
+
+#### FE-7 — Composable `useAuthUser` + componente `AuthUserForm.vue`
+
+**Prerequisiti**: FE-2
+**File**: `src/core/composables/useAuthUser.js`, `src/core/components/AuthUserForm.vue`
+
+Come da catalogo componenti gia' documentato sopra. Campi: username, email, password, password_confirm.
+
+#### FE-8 — Refactor `UtenteDrawer.vue`
+
+**Prerequisiti**: FE-5, FE-7, BE-5
+**File**: `src/amministrazione/components/UtenteDrawer.vue`
+
+Sostituire il form monolitico con building block:
+
+```vue
+<template>
+  <Drawer ...>
+    <template v-if="!isEdit">
+      <!-- Building block soggetto: tipo forzato PR, include indirizzi -->
+      <SoggettoForm v-model="soggetto.form" :tipo-forzato="1" />
+
+      <!-- Building block auth -->
+      <AuthUserForm v-model="auth.form" />
+
+      <!-- Specifico operatore (non building block) -->
+      <h4>{{ t('amm.section_collocazione') }}</h4>
+      <Select v-model="collocazione.ruolo_sistema" ... />
+      <Select v-model="collocazione.qualifica_id" ... />  <!-- via useLookup -->
+      <Select v-model="collocazione.unita_organizzativa_id" ... />  <!-- via useLookup -->
+
+      <Button @click="onSave" />
+    </template>
+  </Drawer>
+</template>
+```
+
+Il payload POST assembla: `{ ...soggetto.form, ...auth.form, ...collocazione }`.
+
+#### FE-9 — Aggiornare `UtentiListView.vue` e `UtentePermessiTab.vue`
+
+**Prerequisiti**: FE-3 (refactoring store)
+**File**: `src/amministrazione/views/UtentiListView.vue`, `src/amministrazione/components/UtentePermessiTab.vue`
+
+* Sostituire i riferimenti a `store.unitaOrganizzative` e altri lookup rimossi
+* Usare `useLookup` direttamente nei componenti che ne hanno bisogno
+
+#### FE-10 — i18n
+
+**Prerequisiti**: nessuno (puo' procedere in parallelo)
+**File**: `src/locales/it.json`, `src/locales/en.json`
+
+Aggiungere chiavi nel namespace `common` per i campi dei building block:
+* `common.cognome`, `common.nome`, `common.codice_fiscale`, `common.partita_iva`
+* `common.ragione_sociale`, `common.sesso`, `common.data_nascita`, `common.comune_nascita`
+* `common.indirizzo`, `common.comune`, `common.cap`, `common.provincia`
+* `common.email`, `common.telefono`, `common.pec`
+* `common.username`, `common.password`, `common.password_confirm`
+* `common.tipo_soggetto`, `common.select_tipo_soggetto`
+
+#### FE-11 — Build e verifica
+
+**Prerequisiti**: FE-8, FE-9
+**File**: nessuno
+
+* `vite build` — zero errori
+* Test manuale: creare operatore con tutti i campi (CF valido, indirizzo, comune nascita)
+* Verificare che il trigger DEFERRED non blocchi piu' la creazione
+
+---
+
+### Diagramma dipendenze
+
+```text
+DB TRACK                              BACKEND TRACK                    FRONTEND TRACK
+────────                              ─────────────                    ──────────────
+
+DB-4 (valido_dal) ─ CHIUSO            BE-1 (refactor lookup)  ─────→  FE-3 (refactor store)
+                                           │                               │
+DB-3 (comune_nascita fn_crea_soggetto_pf)  BE-2 (matrice indirizzi)     FE-1 (API client)
+     │                                     BE-3 (autocomplete comuni)      │
+DB-1 (fn_get_or_create_indirizzo_dettaglio)BE-4 (tipi soggetto dett.)  FE-2 (useLookup)
+     │                                          │                          │
+DB-2 (fn_crea_indirizzo_soggetto) ←── DB-1 BE-7 (search stradario)    FE-4 (useSoggettoForm)
+     │                                          │                          │
+DB-7 (search stradario) — parallelo        BE-5 (POST operatore)      FE-5 (SoggettoForm.vue)
+     │                                       ←── DB-5                  FE-6 (ComuneAutocomplete)
+DB-5 (fn_crea_operatore + indirizzi)            │                      FE-6b (StradarioAutocomplete)
+   ←── DB-1, DB-2, DB-3                   BE-6 (test)                  FE-7 (AuthUserForm)
+     │                                                                      │
+DB-6 (test pgTAP) ←── DB-1..DB-5                                      FE-8 (refactor drawer)
+                                                                       FE-9 (aggiorna views)
+                                                                       FE-10 (i18n) — parallelo
+                                                                       FE-11 (build + verifica)
+```
+
+### Decisioni prese
+
+1. **DB-1b — Stradario chiuso**: toponomastica / stradario_generale / stradario sono gestiti solo da admin.
+   L'utente operativo seleziona da vie esistenti via autocomplete. Nessuna funzione di creazione on-the-fly.
+
+2. **DB-7 — Funzione DB**: `script.fn_search_stradario(p_comune_id, p_search, p_limit)` — coerente
+   col pattern del progetto (lettura ottimizzata in DB, Django orchestra e espone API).
+
+3. **DB-4 — `valido_dal` opzione B**: nessun ALTER TABLE, il COALESCE nella funzione basta.
+
+### Ordine di esecuzione consigliato
+
+**Parallelo 1** (indipendenti, nessuna dipendenza):
+
+* DB-1 (`fn_get_or_create_indirizzo_dettaglio`)
+* DB-3 (`fn_crea_soggetto_pf` + `p_comune_nascita_id`)
+* DB-7 (search stradario — dopo decisione aperta #2)
+* BE-1 (refactoring lookup — nessuna dipendenza DB)
+* FE-10 (i18n — nessuna dipendenza)
+
+**Parallelo 2** (dopo Parallelo 1):
+
+* DB-2 (`fn_crea_indirizzo_soggetto` — dipende da DB-1)
+* BE-2, BE-3, BE-4, BE-7 (endpoint lookup/search — nessuna dipendenza DB)
+* FE-1, FE-2, FE-3 (API client, useLookup, refactoring store — dipende da BE-1..BE-4)
+
+**Sequenziale 3** (dopo Parallelo 2):
+
+* DB-5 (aggiornare `fn_crea_operatore` — dipende da DB-1, DB-2, DB-3)
+* BE-5 (POST operatore — dipende da DB-5)
+* FE-4, FE-5, FE-6, FE-6b, FE-7 (composable + componenti — dipende da FE-1..FE-3)
+
+**Sequenziale 4** (dopo tutto):
+
+* DB-6 (test pgTAP — dipende da DB-1..DB-5)
+* FE-8 (refactor drawer — dipende da FE-5, FE-7, BE-5)
+* FE-9 (aggiorna views)
+* BE-6 (test completi)
+* FE-11 (build + verifica finale)

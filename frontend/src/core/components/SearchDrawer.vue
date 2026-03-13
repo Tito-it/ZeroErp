@@ -147,7 +147,7 @@ function handleSetContext(row) {
 }
 
 // Scopo: naviga alla scheda anagrafica completa del soggetto
-function handleOpenDetail(row) {
+function handleOpenDetail(/* row */) {
   // Navigazione alla scheda — da implementare quando le rotte anagrafiche saranno pronte
   emit('update:visible', false)
 }
