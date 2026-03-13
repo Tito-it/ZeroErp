@@ -1,0 +1,168 @@
+{% include-markdown "it/dbzero/anagrafiche/manual/fn_crea_risorsa_umana.md" %}
+# ⚙️ Funzione `fn_crea_risorsa_umana`
+
+```sql
+CREATE FUNCTION fn_crea_risorsa_umana(p_soggetto_id uuid, p_qualifica_id integer, p_unita_organizzativa_id integer, p_valido_dal date, p_valido_al date, p_auth_user_id integer, p_ruolo_sistema config.ruolo_sistema)
+```
+
+**Definizione completa:**
+
+```sql
+CREATE OR REPLACE FUNCTION anagrafiche.fn_crea_risorsa_umana(p_soggetto_id uuid DEFAULT NULL::uuid, p_qualifica_id integer DEFAULT NULL::integer, p_unita_organizzativa_id integer DEFAULT NULL::integer, p_valido_dal date DEFAULT CURRENT_DATE, p_valido_al date DEFAULT NULL::date, p_auth_user_id integer DEFAULT NULL::integer, p_ruolo_sistema config.ruolo_sistema DEFAULT 'OPERATIVO'::config.ruolo_sistema)
+ RETURNS bigint
+ LANGUAGE plpgsql
+AS $function$
+DECLARE
+    v_sr_id  anagrafiche.soggetti_ruoli.id%TYPE;
+    v_ru_id  anagrafiche.risorse_umane.id%TYPE;
+BEGIN
+    -- =========================================================
+    -- Scopo:
+    --   Crea una risorsa umana con bridge auth_user opzionale.
+    --   Crea/recupera automaticamente il ruolo RIS_UMANA
+    --   via fn_get_or_create_soggetto_ruolo.
+    --
+    -- Parametri obbligatori:
+    --   p_soggetto_id:  UUID del soggetto (deve esistere)
+    --   p_qualifica_id: qualifica (deve essere attiva)
+    --
+    -- Parametri opzionali:
+    --   p_unita_organizzativa_id: UO (se fornita, deve
+    --     essere attiva)
+    --   p_valido_dal:    inizio validita' (default oggi)
+    --   p_valido_al:     fine validita' (default NULL)
+    --   p_auth_user_id:  se fornito, crea bridge
+    --     risorse_umane_auth_user (trigger guard PF)
+    --   p_ruolo_sistema: ruolo (default OPERATIVO)
+    --
+    -- Restituisce:
+    --   risorse_umane.id della risorsa creata
+    --
+    -- Trigger coinvolti:
+    --   trgfn_risorse_umane_guard_ruolo (verifica RIS_UMANA)
+    --   trgfn_risorse_umane_auth_user_guard_persona_fisica
+    --     (CF NOT NULL, PIVA IS NULL)
+    --   trgfn_risorse_umane_auth_user_sync_active
+    --     (sincronizza auth_user.is_active)
+    -- =========================================================
+
+    -- =============================================================
+    -- Validazione parametri obbligatori
+    -- =============================================================
+
+    IF p_soggetto_id IS NULL THEN
+        PERFORM script.fn_log_and_raise_error(
+            'database', 'anagrafiche.fn_crea_risorsa_umana',
+            'E_ADMIN_VALIDAZIONE',
+            jsonb_build_object('parametro', 'p_soggetto_id'),
+            NULL::uuid, 'Soggetto obbligatorio.'
+        );
+    END IF;
+
+    IF p_qualifica_id IS NULL OR p_qualifica_id <= 0 THEN
+        PERFORM script.fn_log_and_raise_error(
+            'database', 'anagrafiche.fn_crea_risorsa_umana',
+            'E_ADMIN_VALIDAZIONE',
+            jsonb_build_object('parametro', 'p_qualifica_id'),
+            NULL::uuid, 'Qualifica obbligatoria.'
+        );
+    END IF;
+
+    -- =============================================================
+    -- Guard prerequisiti
+    -- =============================================================
+
+    -- Qualifica attiva
+    IF NOT EXISTS (
+        SELECT 1 FROM config.qualifiche
+         WHERE id = p_qualifica_id AND attivo = true
+    ) THEN
+        PERFORM script.fn_log_and_raise_error(
+            'database', 'anagrafiche.fn_crea_risorsa_umana',
+            'E_ADMIN_VALIDAZIONE',
+            jsonb_build_object('qualifica_id', p_qualifica_id),
+            NULL::uuid, 'Qualifica non trovata o non attiva.'
+        );
+    END IF;
+
+    -- UO attiva (se fornita)
+    IF p_unita_organizzativa_id IS NOT NULL THEN
+        IF NOT EXISTS (
+            SELECT 1 FROM config.unita_organizzative
+             WHERE id = p_unita_organizzativa_id AND attivo = true
+        ) THEN
+            PERFORM script.fn_log_and_raise_error(
+                'database', 'anagrafiche.fn_crea_risorsa_umana',
+                'E_ADMIN_UO_NON_TROVATA',
+                jsonb_build_object('unita_organizzativa_id', p_unita_organizzativa_id),
+                NULL::uuid,
+                'Unita'' organizzativa non trovata o non attiva.'
+            );
+        END IF;
+    END IF;
+
+    -- Auth user valido (se fornito)
+    IF p_auth_user_id IS NOT NULL THEN
+        IF NOT EXISTS (
+            SELECT 1 FROM django.auth_user WHERE id = p_auth_user_id
+        ) THEN
+            PERFORM script.fn_log_and_raise_error(
+                'database', 'anagrafiche.fn_crea_risorsa_umana',
+                'E_ADMIN_VALIDAZIONE',
+                jsonb_build_object('auth_user_id', p_auth_user_id),
+                NULL::uuid, 'auth_user non trovato.'
+            );
+        END IF;
+    END IF;
+
+    -- =============================================================
+    -- Step 1: Crea/recupera soggetto_ruolo RIS_UMANA
+    -- fn_get_or_create_soggetto_ruolo gestisce concorrenza
+    -- e validazione del soggetto.
+    -- =============================================================
+
+    SELECT script.fn_get_or_create_soggetto_ruolo(
+        p_soggetto_id, 'RIS_UMANA'
+    ) INTO v_sr_id;
+
+    -- =============================================================
+    -- Step 2: Creazione risorsa umana
+    -- Trigger trgfn_risorse_umane_guard_ruolo verifica
+    -- coerenza soggetto_ruolo / tipo ruolo.
+    -- =============================================================
+
+    INSERT INTO anagrafiche.risorse_umane (
+        soggetto_ruolo_id, soggetto_id, qualifica_id,
+        unita_organizzativa_id, valido_dal, valido_al, attivo
+    )
+    VALUES (
+        v_sr_id, p_soggetto_id, p_qualifica_id,
+        p_unita_organizzativa_id, p_valido_dal, p_valido_al, true
+    )
+    RETURNING id INTO v_ru_id;
+
+    -- =============================================================
+    -- Step 3: Bridge auth_user (opzionale)
+    -- Solo se p_auth_user_id fornito.
+    -- Trigger trgfn_risorse_umane_auth_user_guard_persona_fisica
+    -- verifica: CF NOT NULL e PIVA IS NULL.
+    -- Trigger sync_active imposta auth_user.is_active.
+    -- =============================================================
+
+    IF p_auth_user_id IS NOT NULL THEN
+        INSERT INTO anagrafiche.risorse_umane_auth_user (
+            risorsa_umana_id, auth_user_id, ruolo_sistema, attivo
+        )
+        VALUES (v_ru_id, p_auth_user_id, p_ruolo_sistema, true);
+    END IF;
+
+    RETURN v_ru_id;
+END;
+$function$
+
+COMMENT ON FUNCTION anagrafiche.fn_crea_risorsa_umana(p_soggetto_id uuid, p_qualifica_id integer, p_unita_organizzativa_id integer, p_valido_dal date, p_valido_al date, p_auth_user_id integer, p_ruolo_sistema config.ruolo_sistema)
+IS 'Building block: crea risorsa_umana + bridge auth_user (opzionale). Usa fn_get_or_create_soggetto_ruolo(RIS_UMANA). Obbligatori: p_soggetto_id, p_qualifica_id (DEFAULT NULL, guard nel body). Se p_auth_user_id fornito, crea bridge con trigger guard PF e sync is_active. Riusabile da orchestratori.';
+```
+
+---
+{% include-markdown "signature-core.md" %}

@@ -50,7 +50,6 @@
       "Bash(source ../env.sh)",
       "Bash(.venv/bin/python -m django test apps.core.tests.api.test_search_view --verbosity=2)",
       "Bash(DJANGO_SETTINGS_MODULE=zeroerp_backend.settings .venv/bin/python -m django test apps.core.tests.api.test_search_view --verbosity=2)",
-
       "Read(//usr/local/bin/**)",
       "Read(//tmp/**)",
       "Bash(DB_HOST=localhost DB_PORT=5432 DB_NAME=zeroerp DB_USER=zeroerp DB_PASSWORD=secret DJANGO_SECRET_KEY=ci-placeholder DJANGO_ALLOWED_HOSTS=\"localhost\" DJANGO_DEBUG=0 python manage.py test apps.core.tests.api.test_search_view -v 2)",
@@ -61,7 +60,6 @@
       "Bash(mv usePagination.js composables/usePagination.js)",
       "Bash(mv useConfirmAction.js composables/useConfirmAction.js)",
       "Bash(mv useApiHandler.js composables/useApiHandler.js)",
-
       "Bash(git checkout:*)",
       "Bash(scripts/testpgtap.sh script/test-fn-get-entita-ruolo-detail.sql)",
       "Bash(scripts/testpgtap.sh script/test-search-soggetti-universale.sql)",
@@ -74,7 +72,14 @@
       "Bash(/opt/liquibase update:*)",
       "Bash(bash scripts/testpgtap.sh db/pgtap/script/test-search-soggetti-universale.sql)",
       "Bash(bash scripts/testpgtap.sh db/pgtap/script/test-fn-get-entita-ruolo-detail.sql)",
-      "Bash(bash scripts/testpgtap.sh db/pgtap/config/test-tipi-ruoli-guard-entita-ref.sql)"
+      "Bash(bash scripts/testpgtap.sh db/pgtap/config/test-tipi-ruoli-guard-entita-ref.sql)",
+      "Bash(find /home/tid/software/ZeroErp/docs/it/dbzero/anagrafiche -name risorse_umane_auth_user.md -o -name *auth_user*)",
+      "Bash(find /home/tid/software/ZeroErp/db/changelog/migrations_v2 -name *fn-log-and-raise*.yaml)",
+      "Bash(find /home/tid/software/ZeroErp/db/changelog/migrations_v2/20_code/script -name *log-and-raise* -type f)",
+      "Bash(find /home/tid/software/ZeroErp/db/changelog/migrations_v2/20_code -name *log*error* -type f)",
+      "Bash(find /home/tid/software/ZeroErp/db/changelog/migrations_v2/20_code -name *fn-log*raise* -o -name *fn_log*raise* -type f)",
+      "Bash(find /home/tid/software/ZeroErp/docs/it/dbzero -name *.md -type f)",
+      "Bash(grep -r \"crea_auth_user\\\\|crea_soggetto_pf\\\\|crea_risorsa_umana\" /home/tid/software/ZeroErp --include=*.yaml --include=*.md)"
     ],
     "additionalDirectories": [
       "/home/tid/apps/ZeroErp/docs/it/dev/work-in-progress"
