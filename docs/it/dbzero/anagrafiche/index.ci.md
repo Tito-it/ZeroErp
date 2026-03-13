@@ -32,6 +32,10 @@
 - [soggetti_ruoli_conti_bancari](manual/soggetti_ruoli_conti_bancari.md) — (latest review 10-01-26) `anagrafiche.soggetti_ruoli_conti_bancari` gestisce l’**associazione tra un Ruolo** di un soggetto (CLIENTE, FORNITORE, GESTORE, …) e uno o più **conti bancari (IBAN)**, distinguendo l’**uso** del conto: `INCASSO`, `PAGAMENTO`, `RIMBORSO`, `GENERICO`.
 
 ## ⚙️ Funzioni (manuale)
+- [fn_crea_auth_user](manual/fn_crea_auth_user.md)
+- [fn_crea_operatore](manual/fn_crea_operatore.md)
+- [fn_crea_risorsa_umana](manual/fn_crea_risorsa_umana.md)
+- [fn_crea_soggetto_pf](manual/fn_crea_soggetto_pf.md)
 - [fn_get_emittente_fiscale_id](manual/fn_get_emittente_fiscale_id.md) — (last review 23-01-2026) La funzione `anagrafiche.fn_get_emittente_fiscale_id()` risolve l’emittente fiscale associato a un `billing_account`. Se non esiste un mapping specifico, usa l’emittente **di default globale**.
 - [fn_notify_cambio_reparto](manual/fn_notify_cambio_reparto.md) — (latest review 10-03-2026) La funzione **`anagrafiche.fn_notify_cambio_reparto()`** emette una notifica PostgreSQL sul canale `cambio_reparto` quando una risorsa umana viene spostata da un'unita' organizzativa a un'altra.
 - [fn_search_indirizzi_dettaglio](manual/fn_search_indirizzi_dettaglio.md) — (latest review 28-11-25) La funzione **`anagrafiche.fn_search_indirizzi_dettaglio`** fornisce un **punto unico di ingresso** per la ricerca degli indirizzi di dettaglio normalizzati, appoggiandosi alla vista:

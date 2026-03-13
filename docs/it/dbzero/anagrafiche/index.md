@@ -33,6 +33,10 @@
 - [vettori](tabelle/vettori.md)
 
 ## ⚙️ Funzioni
+- [fn_crea_auth_user](funzioni/fn_crea_auth_user.md)
+- [fn_crea_operatore](funzioni/fn_crea_operatore.md)
+- [fn_crea_risorsa_umana](funzioni/fn_crea_risorsa_umana.md)
+- [fn_crea_soggetto_pf](funzioni/fn_crea_soggetto_pf.md)
 - [fn_get_emittente_fiscale_id](funzioni/fn_get_emittente_fiscale_id.md) — (last review 23-01-2026) La funzione `anagrafiche.fn_get_emittente_fiscale_id()` risolve l’emittente fiscale associato a un `billing_account`. Se non esiste un mapping specifico, usa l’emittente **di default globale**.
 - [fn_notify_cambio_reparto](funzioni/fn_notify_cambio_reparto.md) — (latest review 10-03-2026) La funzione **`anagrafiche.fn_notify_cambio_reparto()`** emette una notifica PostgreSQL sul canale `cambio_reparto` quando una risorsa umana viene spostata da un'unita' organizzativa a un'altra.
 - [fn_search_indirizzi_dettaglio](funzioni/fn_search_indirizzi_dettaglio.md) — (latest review 28-11-25) La funzione **`anagrafiche.fn_search_indirizzi_dettaglio`** fornisce un **punto unico di ingresso** per la ricerca degli indirizzi di dettaglio normalizzati, appoggiandosi alla vista:

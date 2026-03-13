@@ -73,6 +73,13 @@
       "Bash(bash scripts/testpgtap.sh db/pgtap/script/test-search-soggetti-universale.sql)",
       "Bash(bash scripts/testpgtap.sh db/pgtap/script/test-fn-get-entita-ruolo-detail.sql)",
       "Bash(bash scripts/testpgtap.sh db/pgtap/config/test-tipi-ruoli-guard-entita-ref.sql)",
+      "Bash(find /home/tid/software/ZeroErp/docs/it/dbzero/anagrafiche -name risorse_umane_auth_user.md -o -name *auth_user*)",
+      "Bash(find /home/tid/software/ZeroErp/db/changelog/migrations_v2 -name *fn-log-and-raise*.yaml)",
+      "Bash(find /home/tid/software/ZeroErp/db/changelog/migrations_v2/20_code/script -name *log-and-raise* -type f)",
+      "Bash(find /home/tid/software/ZeroErp/db/changelog/migrations_v2/20_code -name *log*error* -type f)",
+      "Bash(find /home/tid/software/ZeroErp/db/changelog/migrations_v2/20_code -name *fn-log*raise* -o -name *fn_log*raise* -type f)",
+      "Bash(find /home/tid/software/ZeroErp/docs/it/dbzero -name *.md -type f)",
+      "Bash(grep -r \"crea_auth_user\\\\|crea_soggetto_pf\\\\|crea_risorsa_umana\" /home/tid/software/ZeroErp --include=*.yaml --include=*.md)"
       "Bash(grep -r \"def.*me\\\\|path.*me\" /home/tid/apps/ZeroErp/backend/apps/core/api/*.py)",
       "Bash(find /home/tid/apps/ZeroErp/docs/it -name *amministr* -o -name *utenti* -o -name *sprint*)",
       "Bash(source ../.venv/bin/activate)",
