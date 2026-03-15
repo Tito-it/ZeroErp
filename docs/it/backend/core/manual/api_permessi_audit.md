@@ -7,7 +7,7 @@ Interroga le 7 tabelle storico del sistema permessi con filtri opzionali e pagin
 
 ## Contesto
 
-Classi in `apps/core/api/views.py` (`ApiPermessiAudit`, `ApiPermessiAuditV1`).
+Classi in `apps/core/api/views.py` (`ApiPermessiAudit`, `ApiPermessiAudit`).
 Repository SQL in `apps/core/db/permissions_audit_repository.py`.
 URL: `GET /api/v1/core/users/{user_id}/permessi-audit/`
 

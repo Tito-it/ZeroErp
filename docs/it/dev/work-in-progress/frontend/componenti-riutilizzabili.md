@@ -1,8 +1,8 @@
 # Architettura Building Block — DB, Backend, Frontend
 
 > Documento master per la scomposizione in building block riutilizzabili su tutti i livelli.
-> Data: 2026-03-12 | Aggiornato: 2026-03-13
-> Stato: **Backend COMPLETATO — Frontend PIANIFICAZIONE**
+> Data: 2026-03-12 | Aggiornato: 2026-03-14
+> Stato: **Backend COMPLETATO — Frontend PARZIALMENTE COMPLETATO (FE-1..FE-9, FE-11)**
 >
 > Documenti correlati:
 >
@@ -69,10 +69,28 @@ L'orchestratore resta in `apps/amm_software/db/amm_software_repository.py` → `
 
 52 test backend OK + smoke test.
 
-### Frontend — Componenti atomici (da implementare)
+### Frontend — Componenti atomici (parzialmente completato)
 
 I componenti Vue mappano i building block come descritto nelle sezioni seguenti.
-Primo consumer: refactor di `UtenteDrawer.vue` (attualmente monolitico).
+Primo consumer: refactor di `UtenteDrawer.vue` — **completato** (Sprint 3, 2026-03-14).
+
+**Implementati:**
+
+* `SoggettoForm.vue` — form universale PF/PG/ENTE (unificato, non separato PF+PG)
+* `AuthUserForm.vue` — form credenziali di accesso
+* `ComuneAutocomplete.vue` — autocomplete comuni con ricerca server-side
+* `StradarioAutocomplete.vue` — autocomplete stradario per comune
+* `useSoggettoForm.js` — composable universale con matrice tipi soggetto
+* `useAuthUser.js` — composable credenziali con password match
+* `useLookup.js` — cache generica per lookup API
+* `useServerAutocomplete.js` — composable ricerca server-side con debounce
+
+**Da implementare (domini futuri: clienti, fornitori):**
+
+* `ContattoForm.vue` — form contatto (obbligatorio per guard DEFERRED)
+* `IndirizzoForm.vue` — form indirizzo normalizzato/libero
+* `DatiSocietariForm.vue` — form dati camerali SC/ENC
+* `UOSelect.vue` — select unita' organizzativa con gerarchia
 
 ---
 
@@ -129,64 +147,61 @@ I domini futuri (clienti, fornitori) li riuseranno senza modificarli.
 Tutti i componenti riutilizzabili cross-dominio stanno in `core/components/`.
 I componenti specifici di un dominio (es. `ClienteDatiForm.vue`) stanno in `src/<dominio>/components/`.
 
-### 1. SoggettoPFForm.vue — Form persona fisica
+### 1. SoggettoForm.vue — Form universale PF/PG/ENTE (COMPLETATO)
 
-**Scopo**: raccogliere i dati identificativi di una persona fisica.
+> **Nota**: il catalogo originale prevedeva componenti separati `SoggettoPFForm.vue` e `SoggettoPGForm.vue`.
+> L'implementazione reale (Sprint 3) li ha unificati in un unico `SoggettoForm.vue` guidato dalla matrice
+> `tipi_soggetto_dettaglio`, come da piano FE-4/FE-5.
 
-**Campi**:
+**Scopo**: raccogliere i dati identificativi di qualsiasi soggetto (PF, PG, ENTE).
+Il form si adatta automaticamente al tipo selezionato mostrando/nascondendo i campi appropriati.
 
-| Campo                      | Tipo       | Obbligatorio         | Note                                 |
-| -------------------------- | ---------- | -------------------- | ------------------------------------ |
-| cognome                    | InputText  | si                   | Trim + uppercase dal trigger DB      |
-| nome                       | InputText  | si                   | Trim + uppercase dal trigger DB      |
-| codice_fiscale             | InputText  | dipende dalla natura | 16 char alfanum, validazione formato |
-| data_nascita               | DatePicker | no                   |                                      |
-| sesso                      | Select     | si                   | Default 'M', valori: M/F/S/X         |
-| tipo_soggetto_dettaglio_id | Select     | si                   | Default: PR (Privato)                |
+**Campi sezione PF** (PR, DI):
 
-**Props**:
+| Campo             | Tipo               | Obbligatorio | Note                                    |
+| ----------------- | ------------------ | ------------ | --------------------------------------- |
+| cognome           | InputText          | si           | Trim + uppercase dal trigger DB         |
+| nome              | InputText          | si           | Trim + uppercase dal trigger DB         |
+| sesso             | Select             | si           | Default 'M', valori: M/F                |
+| data_nascita      | DatePicker         | no           |                                         |
+| comune_nascita_id | ComuneAutocomplete | no           | Autocomplete server-side (8098 comuni)  |
 
-```js
-defineProps({
-  modelValue: { type: Object, required: true },
-  // { cognome, nome, codice_fiscale, data_nascita, sesso, tipo_soggetto_dettaglio_id }
-  readonly: { type: Boolean, default: false },
-  showTipoSoggetto: { type: Boolean, default: false }
-  // PR e' il default per PF; mostrare il select solo se servono anche DI (Ditta Ind.)
-})
-defineEmits(['update:modelValue'])
-```
-
-**Riusato da**: Crea operatore, Crea cliente PF, Crea fornitore PF, Profilo utente (readonly).
-
-**Validazione locale (UX)**:
-
-* cognome e nome non vuoti
-* codice_fiscale: formato 16 char se compilato
-* Nessuna validazione di unicita' lato frontend (il DB la gestisce)
-
----
-
-### 2. SoggettoPGForm.vue — Form persona giuridica
-
-**Scopo**: raccogliere i dati identificativi di un'azienda o ente.
-
-**Campi**:
+**Campi sezione PG** (SC, SP, ENC):
 
 | Campo                      | Tipo      | Obbligatorio | Note                       |
 | -------------------------- | --------- | ------------ | -------------------------- |
 | ragione_sociale            | InputText | si           |                            |
-| codice_fiscale             | InputText | si           | Per PG sempre obbligatorio |
-| partita_iva                | InputText | si           | 11 cifre numeriche         |
-| tipo_soggetto_dettaglio_id | Select    | si           | SP/SC/ENC                  |
 
-**Riusato da**: Crea cliente PG, Crea fornitore PG, Crea gestore, Scheda emittente fiscale.
+**Campi sempre visibili:**
 
-**Nota**: per SC e ENC il form deve attivare anche `DatiSocietariForm.vue` (vincolo DEFERRED).
+| Campo                      | Tipo      | Obbligatorio         | Note                                 |
+| -------------------------- | --------- | -------------------- | ------------------------------------ |
+| tipo_soggetto_dettaglio_id | Select    | si                   | Nascosto se `tipoForzato` attivo     |
+| codice_fiscale             | InputText | dipende dalla natura | 16 char alfanum                      |
+| partita_iva                | InputText | se PG/DI             | Visibile tramite `showPartitaIva`    |
+
+**Props** (implementazione reale):
+
+```js
+defineProps({
+  form: { type: Object, required: true },
+  tipiSoggetto: { type: Object, required: true },
+  isPF: { type: Boolean, default: true },
+  showPartitaIva: { type: Boolean, default: false },
+  tipoForzato: { type: Number, default: null },
+  disabled: { type: Boolean, default: false }
+})
+```
+
+**Composable associato**: `useSoggettoForm(options)` — gestisce state, computed guidati dalla matrice DB, reset.
+
+**Riusato da**: Crea operatore (tipoForzato=1), Crea cliente PF/PG (futuro), Crea fornitore (futuro).
+
+**File**: `src/core/components/SoggettoForm.vue`, `src/core/composables/useSoggettoForm.js`
 
 ---
 
-### 3. ContattoForm.vue — Form contatto
+### 3. ContattoForm.vue — Form contatto (DA IMPLEMENTARE)
 
 **Scopo**: raccogliere i dati di un contatto associabile a soggetto, ruolo o utility.
 
@@ -224,7 +239,7 @@ Quelli sono responsabilita' della view/drawer che compone il form e li passa al 
 
 ---
 
-### 4. IndirizzoForm.vue — Form indirizzo
+### 4. IndirizzoForm.vue — Form indirizzo (DA IMPLEMENTARE)
 
 **Scopo**: raccogliere un indirizzo in modalita' normalizzata o libera.
 
@@ -259,7 +274,7 @@ defineProps({
 
 ---
 
-### 5. AuthUserForm.vue — Form credenziali di accesso
+### 5. AuthUserForm.vue — Form credenziali di accesso (COMPLETATO)
 
 **Scopo**: raccogliere username, email e password per un utente Django.
 
@@ -272,23 +287,25 @@ defineProps({
 | password         | Password  | si (in creazione) | Con toggle visibilita' e conferma |
 | password_confirm | Password  | si (in creazione) | Match con password                |
 
-**Props**:
+**Props** (implementazione reale):
 
 ```js
 defineProps({
-  modelValue: { type: Object, required: true },
+  form: { type: Object, required: true },
   // { username, email, password, password_confirm }
-  readonly: { type: Boolean, default: false },
-  isEdit: { type: Boolean, default: false }
-  // In edit mode: password opzionale (cambia solo se compilata)
+  passwordMatch: { type: Boolean, default: true }
 })
 ```
 
+**Composable associato**: `useAuthUser()` — gestisce state, `passwordMatch` computed, reset.
+
 **Riusato da**: Crea operatore, Crea admin, Reset password (solo campo password).
+
+**File**: `src/core/components/AuthUserForm.vue`, `src/core/composables/useAuthUser.js`
 
 ---
 
-### 6. DatiSocietariForm.vue — Form dati camerali
+### 6. DatiSocietariForm.vue — Form dati camerali (DA IMPLEMENTARE)
 
 **Scopo**: raccogliere forma giuridica, REA, capitale sociale per PG/ENC.
 
@@ -304,7 +321,7 @@ defineProps({
 
 ---
 
-### 7. UOSelect.vue — Select unita' organizzativa
+### 7. UOSelect.vue — Select unita' organizzativa (DA IMPLEMENTARE)
 
 **Scopo**: Select filtrato sulle UO attive, con supporto gerarchia.
 
@@ -327,33 +344,39 @@ defineProps({
 
 ### Collocazione: `src/core/composables/`
 
-### 1. useSoggettoPF()
+### 1. useSoggettoForm(options) — COMPLETATO
+
+> **Nota**: il catalogo originale prevedeva composable separati `useSoggettoPF` e `useSoggettoPG`.
+> L'implementazione reale li ha unificati in `useSoggettoForm` guidato dalla matrice DB.
 
 ```js
-// State + validazione per dati persona fisica
-export function useSoggettoPF(initialData = {}) {
+// State universale PF/PG/ENTE guidato dalla matrice tipi_soggetto_dettaglio
+export function useSoggettoForm(options = {}) {
+  const { tipoForzato = null } = options
+
   const form = reactive({
-    cognome: '',
-    nome: '',
-    codice_fiscale: '',
-    data_nascita: null,
-    sesso: 'M',
-    tipo_soggetto_dettaglio_id: 1, // PR
-    ...initialData
+    tipo_soggetto_dettaglio_id: tipoForzato || null,
+    cognome: '', nome: '', sesso: 'M', data_nascita: null, comune_nascita_id: null,
+    ragione_sociale: '',
+    codice_fiscale: '', partita_iva: ''
   })
 
-  const errors = reactive({})
+  // Computed guidati dalla matrice DB
+  const tipiSoggetto = useLookup(lookupTipiSoggettoDettaglio)
+  const isPF = computed(...)           // natura_soggetto === 'PF'
+  const showPartitaIva = computed(...) // piva_obbligatoria dal tipo corrente
+  // ... matriceIndirizzi, indirizziObbligatori (watch su tipo)
 
-  function validate() { /* cognome, nome non vuoti; CF formato */ }
-  function reset() { /* ripristina valori iniziali */ }
-
-  return { form, errors, validate, reset }
+  return { form, tipiSoggetto, tipoCorrente, isPF, showPartitaIva,
+           showDatiSocietari, requireDatiSocietari, matriceIndirizzi,
+           indirizziObbligatori, validate, reset }
 }
 ```
 
-**Riusato da**: ogni view che usa `SoggettoPFForm.vue`.
+**File**: `src/core/composables/useSoggettoForm.js`
+**Riusato da**: ogni view che usa `SoggettoForm.vue`.
 
-### 2. useContatto()
+### 2. useContatto() — DA IMPLEMENTARE
 
 ```js
 // State + validazione per contatto
@@ -378,13 +401,11 @@ export function useContatto(options = {}) {
 }
 ```
 
-### 3. useAuthUser()
+### 3. useAuthUser() — COMPLETATO
 
 ```js
 // State + validazione per credenziali
-export function useAuthUser(options = {}) {
-  const { isEdit = false } = options
-
+export function useAuthUser() {
   const form = reactive({
     username: '',
     email: '',
@@ -392,22 +413,21 @@ export function useAuthUser(options = {}) {
     password_confirm: ''
   })
 
-  function validate() {
-    // username, email non vuoti
-    // password match con confirm
-    // in edit: password opzionale
-  }
+  const passwordMatch = computed(() => form.password === form.password_confirm)
+  function reset() { /* ripristina */ }
 
-  return { form, errors, validate, reset }
+  return { form, passwordMatch, reset }
 }
 ```
 
-### 4. useLookup(fetchFn, options)
+**File**: `src/core/composables/useAuthUser.js`
+
+### 4. useLookup(fetchFn, options) — COMPLETATO
 
 ```js
 // Cache generica per lookup (UO, qualifiche, tipi contatto, ecc.)
 export function useLookup(fetchFn, options = {}) {
-  const { immediate = true, cacheKey = null } = options
+  const { immediate = false } = options
   const items = ref([])
   const loading = ref(false)
 
@@ -423,6 +443,26 @@ export function useLookup(fetchFn, options = {}) {
   return { items, loading, load, reload: () => { items.value = []; load() } }
 }
 ```
+
+**File**: `src/core/composables/useLookup.js`
+
+### 5. useServerAutocomplete(searchFn, options) — COMPLETATO
+
+```js
+// Composable per autocomplete con ricerca server-side e debounce
+export function useServerAutocomplete(searchFn, options = {}) {
+  const { minLength = 2, debounceMs = 300 } = options
+  const suggestions = ref([])
+  const loading = ref(false)
+
+  async function search(event) { /* debounce + chiamata API */ }
+
+  return { suggestions, loading, search }
+}
+```
+
+**File**: `src/core/composables/useServerAutocomplete.js`
+**Riusato da**: `ComuneAutocomplete.vue`, `StradarioAutocomplete.vue`
 
 **Riusato da**: `UOSelect`, `SoggettoPFForm` (tipi soggetto), `ContattoForm` (tipi contatto),
 qualsiasi select che carica opzioni da API.
@@ -532,29 +572,33 @@ frontend/src/
 ├── core/
 │   ├── components/
 │   │   ├── (esistenti: AppLayout, Sidebar, ecc.)
-│   │   ├── SoggettoPFForm.vue          # NUOVO — form persona fisica
-│   │   ├── SoggettoPGForm.vue          # NUOVO — form persona giuridica
-│   │   ├── ContattoForm.vue            # NUOVO — form contatto
-│   │   ├── IndirizzoForm.vue           # NUOVO — form indirizzo
-│   │   ├── AuthUserForm.vue            # NUOVO — form credenziali
-│   │   ├── DatiSocietariForm.vue       # NUOVO — form dati camerali
-│   │   └── UOSelect.vue               # NUOVO — select unita' organizzativa
+│   │   ├── SoggettoForm.vue            # COMPLETATO — form universale PF/PG/ENTE
+│   │   ├── AuthUserForm.vue            # COMPLETATO — form credenziali
+│   │   ├── ComuneAutocomplete.vue      # COMPLETATO — autocomplete comuni
+│   │   ├── StradarioAutocomplete.vue   # COMPLETATO — autocomplete stradario
+│   │   ├── ContattoForm.vue            # FUTURO — form contatto
+│   │   ├── IndirizzoForm.vue           # FUTURO — form indirizzo
+│   │   ├── DatiSocietariForm.vue       # FUTURO — form dati camerali
+│   │   └── UOSelect.vue               # FUTURO — select unita' organizzativa
 │   ├── composables/
 │   │   ├── (esistenti: useNotify, useApiHandler, ecc.)
-│   │   ├── useSoggettoPF.js            # NUOVO — state + validazione PF
-│   │   ├── useSoggettoPG.js            # NUOVO — state + validazione PG
-│   │   ├── useContatto.js              # NUOVO — state + validazione contatto
-│   │   ├── useAuthUser.js              # NUOVO — state + validazione credenziali
-│   │   └── useLookup.js               # NUOVO — cache generica per select
+│   │   ├── useSoggettoForm.js          # COMPLETATO — state universale PF/PG/ENTE
+│   │   ├── useAuthUser.js              # COMPLETATO — state credenziali
+│   │   ├── useLookup.js                # COMPLETATO — cache generica per select
+│   │   ├── useServerAutocomplete.js    # COMPLETATO — ricerca server-side con debounce
+│   │   └── useContatto.js              # FUTURO — state contatto
+│   ├── apiCore.js                      # COMPLETATO — API lookup/search core
 │   └── api/
-│       └── anagrafiche.js              # NUOVO — API soggetti, contatti, indirizzi
+│       └── anagrafiche.js              # FUTURO — API soggetti, contatti, indirizzi
 ├── amministrazione/
 │   ├── components/
-│   │   ├── UtenteDrawer.vue            # REFACTOR — compone building block core
-│   │   ├── UtentePermessiTab.vue       # Invariato (specifico dominio)
+│   │   ├── UtenteDrawer.vue            # COMPLETATO — refactored con building block
+│   │   ├── UtentePermessiTab.vue       # COMPLETATO — usa useLookup locale
 │   │   └── RepartoProfiloEditor.vue    # Invariato
 │   └── views/
 │       └── ...
+├── assets/
+│   └── main.css                        # COMPLETATO — CSS utility classes globali
 ```
 
 ---
@@ -623,20 +667,43 @@ Le chiavi per i componenti core vanno nel namespace `common` dei file locale:
 
 ## Note
 
-* I componenti atomici NON hanno dipendenze tra loro: `SoggettoPFForm` non importa `ContattoForm`.
+* I componenti atomici NON hanno dipendenze tra loro: `SoggettoForm` non importa `ContattoForm`.
   La composizione avviene solo nella view/drawer di dominio.
-* Il pattern v-model bidirezionale permette alla view di leggere lo state del form
-  e assemblare il payload per il backend.
+* Il composable gestisce lo state (`reactive`), il componente lo rende via props.
+  La view compone i building block e gestisce il submit.
 * I componenti esistenti in `amministrazione/components/` verranno refactored gradualmente:
   prima si creano i building block core, poi si sostituiscono le sezioni monolitiche.
 
 ---
 
+## CSS utility classes — Standard globale (COMPLETATO)
+
+> Aggiunto Sprint 3 (2026-03-14).
+> File: `src/assets/main.css`
+
+Classi CSS globali usate da tutte le pagine e drawer per garantire uniformita'.
+Singola source of truth — non duplicare stili in scoped dei componenti.
+
+| Classe                | Scopo                                                          |
+| --------------------- | -------------------------------------------------------------- |
+| `.app-page`           | Wrapper root di ogni view (flex column, overflow hidden)       |
+| `.app-page-toolbar`   | Barra filtri + azioni sopra la DataTable                       |
+| `.app-page-filters`   | Gruppo filtri con flex-wrap dentro la toolbar                  |
+| `.app-page-action`    | Pulsanti azione (su mobile nasconde label, mostra solo icona)  |
+| `.app-datatable`      | DataTable compatta con font-size/padding da variabili CSS      |
+| `.form-grid`          | Layout verticale per form (flex column, gap 0.75rem)           |
+| `.form-field`         | Singolo campo form (flex column label+input, gap 0.25rem)      |
+| `.app-drawer-content` | Layout standard contenuto drawer (flex column, gap, font-size) |
+
+**Responsive**: `@media (max-width: 1023px)` nasconde `.app-page-action .p-button-label`
+e riduce padding — il pulsante diventa solo icona + tooltip via `v-tooltip`.
+
+---
 
 ## Sprint 3 — Piano di implementazione dettagliato
 
-> Data: 2026-03-13
-> Stato: **DA IMPLEMENTARE**
+> Data: 2026-03-13 | Aggiornato: 2026-03-14
+> Stato: **PARZIALMENTE COMPLETATO** (FE-1..FE-9, FE-11 completati; FE-10 da verificare)
 > Prerequisiti globali: Sprint 2 completato (52 test OK, building block backend/DB)
 > Guida di riferimento: [Gestione degli indirizzi](/guide/gestione-degli-indirizzi)
 
@@ -1018,197 +1085,117 @@ GET /api/v1/core/search/stradario/?comune_id=4517&search=via&limit=30
 
 #### FE-1 — API client core per lookup
 
-**Prerequisiti**: BE-2, BE-3, BE-4
-**File**: `src/core/api/core.js` (esistente o nuovo)
+**Stato**: COMPLETATO (2026-03-14)
+**File**: `src/core/apiCore.js`
 
-Aggiungere funzioni:
+Funzioni implementate:
 * `lookupCodici(rel, params)` → chiama `GET /api/v1/core/lookup-codici/?rel=...`
 * `lookupTipiSoggettoDettaglio()` → chiama BE-4
 * `lookupMatriceIndirizzi(tipoSoggettoDettaglioId)` → chiama BE-2
 * `searchComuni(search, limit)` → chiama BE-3
+* `searchStradario(comuneId, search, limit)` → chiama BE-7
 
 #### FE-2 — Composable `useLookup`
 
-**Prerequisiti**: FE-1
+**Stato**: COMPLETATO (2026-03-14)
 **File**: `src/core/composables/useLookup.js`
 
-```js
-export function useLookup(fetchFn, options = {}) {
-  // Cache, loading, load(), reload()
-  // immediate: true per caricare subito
-}
-```
+Cache generica per lookup API con `items`, `loading`, `load()`, `reload()`.
+Opzione `immediate: true` per caricare al mount.
 
 #### FE-3 — Refactoring store `utenti.js` e API `amministrazione.js`
 
-**Prerequisiti**: BE-1, FE-1
+**Stato**: PARZIALMENTE COMPLETATO (2026-03-14)
 **File**: `src/amministrazione/stores/utenti.js`, `src/amministrazione/api/amministrazione.js`
 
-* Rimuovere da `amministrazione.js`: `listQualifiche()`, `listUnitaOrganizzative()`, `listAreeFunzionali()`, `listAzioniProcesso()`, `listEmittentiFiscali()`
-* Rimuovere da `utenti.js`: i ref e le action corrispondenti (qualifiche, unitaOrganizzative, areeFunzionali, ecc.)
-* Sostituire con `useLookup(() => lookupCodici('config.qualifiche'))` nei componenti che li usano
-* Aggiornare tutti i componenti che importano queste funzioni
+Completato:
+
+* Rimossa `listQualifiche()` da `amministrazione.js` (migrata a `lookupCodici('config.qualifiche')`)
+* Rimossi 5 lookup ref e fetch methods da `utenti.js` (qualifiche, UO, aree, azioni, emittenti)
+* Componenti usano `useLookup` direttamente
+
+Non migrato (restano in `amm-software`):
+
+* `listUnitaOrganizzative` — serve campo `nome` (non `descrizione`) + `parent_id` per gerarchia
+* `listAreeFunzionali` — serve campo `ordinamento`
+* `listAzioniProcesso` — JOIN complessa con `pericolosa`, `area_id`, `area_codice`
+* `listEmittentiFiscali` — serve `denominazione` + `partita_iva`
 
 #### FE-4 — Composable `useSoggettoForm`
 
-**Prerequisiti**: FE-1, FE-2
+**Stato**: COMPLETATO (2026-03-14)
 **File**: `src/core/composables/useSoggettoForm.js`
 
-Un **unico composable** che gestisce PF + PG + ENTE (non separare PF e PG):
+Composable universale PF/PG/ENTE guidato dalla matrice DB `tipi_soggetto_dettaglio`.
 
-```js
-export function useSoggettoForm(options = {}) {
-  const { tipoForzato = null } = options
-  // tipoForzato: se impostato (es. 1 per PR), il select tipo non appare
+Differenze dall'implementazione rispetto al piano originale:
 
-  const form = reactive({
-    tipo_soggetto_dettaglio_id: tipoForzato || null,
-    // PF
-    cognome: '', nome: '', sesso: 'M', data_nascita: null, comune_nascita_id: null,
-    // PG
-    ragione_sociale: '',
-    // Comuni
-    codice_fiscale: '', partita_iva: '',
-    // Contatto default
-    email: '',
-    // Indirizzo obbligatorio (il primo della matrice)
-    indirizzo: { indirizzo_libero: '', comune_id: null, codice_postale_id: null }
-  })
-
-  // Computed guidati dalla matrice DB
-  const tipiSoggetto = useLookup(lookupTipiSoggettoDettaglio)
-  const tipoCorrente = computed(() => tipiSoggetto.find(t => t.id === form.tipo_soggetto_dettaglio_id))
-  const isPF = computed(() => ['PF'].includes(tipoCorrente.natura_soggetto))
-  const showPartitaIva = computed(() => tipoCorrente.piva_obbligatoria)
-  const showDatiSocietari = computed(() => tipoCorrente.dati_societari_policy !== 'NONE')
-  const requireDatiSocietari = computed(() => tipoCorrente.dati_societari_policy === 'REQUIRED')
-
-  // Matrice indirizzi: ricaricata quando cambia tipo
-  const matriceIndirizzi = ref([])
-  const indirizziObbligatori = computed(() => matriceIndirizzi.filter(m => m.obbligatorio))
-
-  watch(() => form.tipo_soggetto_dettaglio_id, async (id) => {
-    if (id) matriceIndirizzi.value = await lookupMatriceIndirizzi(id)
-  })
-
-  function validate() { /* validazione campi in base al tipo corrente */ }
-  function reset() { /* reset form */ }
-
-  return { form, isPF, showPartitaIva, showDatiSocietari, requireDatiSocietari,
-           indirizziObbligatori, matriceIndirizzi, tipiSoggetto, validate, reset }
-}
-```
+* `email` **rimossa** dal form — vive in `useAuthUser` (separazione building block)
+* `indirizzo` **non incluso** nel form — sara' gestito da `IndirizzoForm` futuro
+* Props passate al componente (non v-model bidirezionale): `form`, `tipiSoggetto`, `isPF`, `showPartitaIva`
 
 #### FE-5 — Componente `SoggettoForm.vue`
 
-**Prerequisiti**: FE-4
+**Stato**: COMPLETATO (2026-03-14)
 **File**: `src/core/components/SoggettoForm.vue`
 
-Un **unico componente** che si adatta al tipo selezionato:
-
-```vue
-<template>
-  <!-- Select tipo soggetto (nascosto se tipoForzato) -->
-  <Select v-if="!tipoForzato" v-model="model.tipo_soggetto_dettaglio_id"
-    :options="tipiSoggetto" option-label="descrizione" option-value="id" />
-
-  <!-- Sezione PF (PR, DI) -->
-  <template v-if="isPF">
-    cognome*, nome*, sesso, data_nascita, ComuneAutocomplete(comune_nascita)
-  </template>
-
-  <!-- Sezione PG (SC, SP, ENC) -->
-  <template v-else>
-    ragione_sociale*
-  </template>
-
-  <!-- Sempre visibili -->
-  codice_fiscale*
-  partita_iva* (v-if="showPartitaIva")
-  email* (contatto default)
-
-  <!-- Indirizzi obbligatori dalla matrice -->
-  <div v-for="ind in indirizziObbligatori" :key="ind.tipo_indirizzo_id">
-    <h4>{{ ind.descrizione }} *</h4>
-    <IndirizzoSubForm v-model="indirizzi[ind.codice]" />
-  </div>
-
-  <!-- Dati societari (se richiesti) -->
-  <DatiSocietariSection v-if="showDatiSocietari" :required="requireDatiSocietari" />
-</template>
-```
-
-**Props**:
-```js
-defineProps({
-  modelValue: Object,       // binding bidirezionale
-  tipoForzato: Number,      // null = mostra select, 1 = forza PR
-  readonly: Boolean,
-  showIndirizzi: { type: Boolean, default: true }  // per operatori: true (serve RESID)
-})
-```
+Form universale che si adatta al tipo selezionato. Usa classi CSS globali `form-grid` e `form-field`
+da `main.css`. Include `ComuneAutocomplete` per comune di nascita.
 
 #### FE-6 — Componente `ComuneAutocomplete.vue`
 
-**Prerequisiti**: FE-1 (endpoint BE-3)
+**Stato**: COMPLETATO (2026-03-14)
 **File**: `src/core/components/ComuneAutocomplete.vue`
 
-* PrimeVue `AutoComplete` con `completeMethod` che chiama `searchComuni(query)`
-* Mostra `descrizione` + provincia
+* PrimeVue `AutoComplete` con `useServerAutocomplete` + `searchComuni(query)`
+* Mostra `descrizione` + provincia sigla
 * Emette `id` via v-model
+
+#### FE-6b — Componente `StradarioAutocomplete.vue`
+
+**Stato**: COMPLETATO (2026-03-14)
+**File**: `src/core/components/StradarioAutocomplete.vue`
+
+* PrimeVue `AutoComplete` con `useServerAutocomplete` + `searchStradario(comuneId, query)`
+* Mostra `via_completa` + CAP
+* Richiede `comuneId` prop per filtrare per comune
 
 #### FE-7 — Composable `useAuthUser` + componente `AuthUserForm.vue`
 
-**Prerequisiti**: FE-2
+**Stato**: COMPLETATO (2026-03-14)
 **File**: `src/core/composables/useAuthUser.js`, `src/core/components/AuthUserForm.vue`
 
-Come da catalogo componenti gia' documentato sopra. Campi: username, email, password, password_confirm.
+Composable con `form` reactive (username, email, password, password_confirm),
+`passwordMatch` computed, `reset()`. Componente con props `form` e `passwordMatch`.
 
 #### FE-8 — Refactor `UtenteDrawer.vue`
 
-**Prerequisiti**: FE-5, FE-7, BE-5
+**Stato**: COMPLETATO (2026-03-14)
 **File**: `src/amministrazione/components/UtenteDrawer.vue`
 
-Sostituire il form monolitico con building block:
+Refactored con building block:
 
-```vue
-<template>
-  <Drawer ...>
-    <template v-if="!isEdit">
-      <!-- Building block soggetto: tipo forzato PR, include indirizzi -->
-      <SoggettoForm v-model="soggetto.form" :tipo-forzato="1" />
-
-      <!-- Building block auth -->
-      <AuthUserForm v-model="auth.form" />
-
-      <!-- Specifico operatore (non building block) -->
-      <h4>{{ t('amm.section_collocazione') }}</h4>
-      <Select v-model="collocazione.ruolo_sistema" ... />
-      <Select v-model="collocazione.qualifica_id" ... />  <!-- via useLookup -->
-      <Select v-model="collocazione.unita_organizzativa_id" ... />  <!-- via useLookup -->
-
-      <Button @click="onSave" />
-    </template>
-  </Drawer>
-</template>
-```
-
-Il payload POST assembla: `{ ...soggetto.form, ...auth.form, ...collocazione }`.
+* Crea mode: `SoggettoForm` (tipoForzato=1) + `AuthUserForm` + sezione collocazione (inline)
+* Edit mode: `TabView` con tab Dati (form-grid/form-field) + tab Permessi
+* Lookup via `useLookup`: qualifiche da `lookupCodici('config.qualifiche')`, UO da `listUnitaOrganizzative`
+* Wrapper `app-drawer-content` per stile uniforme
 
 #### FE-9 — Aggiornare `UtentiListView.vue` e `UtentePermessiTab.vue`
 
-**Prerequisiti**: FE-3 (refactoring store)
+**Stato**: COMPLETATO (2026-03-14)
 **File**: `src/amministrazione/views/UtentiListView.vue`, `src/amministrazione/components/UtentePermessiTab.vue`
 
-* Sostituire i riferimenti a `store.unitaOrganizzative` e altri lookup rimossi
-* Usare `useLookup` direttamente nei componenti che ne hanno bisogno
+* `UtentiListView`: usa `useLookup(listUnitaOrganizzative)` per filtro UO, classi CSS `app-page`,
+  `app-datatable`, `app-page-action` con `v-tooltip` per responsive
+* `UtentePermessiTab`: 3 lookup locali con `useLookup` (aree, azioni, emittenti)
+* Rimossi tutti i riferimenti a `store.unitaOrganizzative` e altri lookup centralizzati
 
 #### FE-10 — i18n
 
-**Prerequisiti**: nessuno (puo' procedere in parallelo)
+**Stato**: DA VERIFICARE
 **File**: `src/locales/it.json`, `src/locales/en.json`
 
-Aggiungere chiavi nel namespace `common` per i campi dei building block:
+Chiavi nel namespace `common` per i campi dei building block:
 * `common.cognome`, `common.nome`, `common.codice_fiscale`, `common.partita_iva`
 * `common.ragione_sociale`, `common.sesso`, `common.data_nascita`, `common.comune_nascita`
 * `common.indirizzo`, `common.comune`, `common.cap`, `common.provincia`
@@ -1218,12 +1205,11 @@ Aggiungere chiavi nel namespace `common` per i campi dei building block:
 
 #### FE-11 — Build e verifica
 
-**Prerequisiti**: FE-8, FE-9
-**File**: nessuno
+**Stato**: COMPLETATO (2026-03-14)
 
 * `vite build` — zero errori
-* Test manuale: creare operatore con tutti i campi (CF valido, indirizzo, comune nascita)
-* Verificare che il trigger DEFERRED non blocchi piu' la creazione
+* 275 test backend OK (44 amm_software + 231 core)
+* Test manuale pendente: creare operatore con tutti i campi da UI
 
 ---
 

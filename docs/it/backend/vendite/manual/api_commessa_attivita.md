@@ -12,7 +12,7 @@ Endpoint applicativo che invoca il servizio Python `fn_list_commessa_attivita`
 `CommesseRepository.list_commessa_attivita()` che chiama la funzione DB
 `vendite.fn_list_commessa_attivita`.
 
-View: `ApiCommessaAttivita` / `ApiCommessaAttivitaV1` (`apps.vendite.api.views`).
+View: `ApiCommessaAttivita` `ApiCommessaAttivita` (`apps.vendite.api.views`).
 
 ## Input
 

@@ -11,7 +11,7 @@ Endpoint applicativo che invoca il servizio Python `fn_get_commessa_stato`
 (`apps.vendite.services.commesse_service`), il quale legge i contatori da
 `CommesseRepository.get_commessa_stato()`.
 
-View: `ApiCommessaStato` / `ApiCommessaStatoV1` (`apps.vendite.api.views`).
+View: `ApiCommessaStato` `ApiCommessaStato` (`apps.vendite.api.views`).
 
 ## Input
 

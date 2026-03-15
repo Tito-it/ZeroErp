@@ -13,19 +13,15 @@ from django.http import JsonResponse
 from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
 from rest_framework import serializers
 from rest_framework.request import Request
-from rest_framework.views import APIView
-from rest_framework_simplejwt.authentication import JWTAuthentication
+from apps.core.api.base_views import DomainAPIView
 
 from apps.core.api.payload_validators import optional_int, qp_int
-from apps.core.api.permissions import ZeroERPPermission
 from apps.core.api.success_responses import success_response
 from apps.core.db.lookup_repository import LookupRepository
 
 
-class LookupTipiSoggettoDettaglioView(APIView):
+class LookupTipiSoggettoDettaglioView(DomainAPIView):
     """Lista tipi soggetto dettaglio con natura e policy."""
-    authentication_classes = [JWTAuthentication]
-    permission_classes = [ZeroERPPermission]
     skip_area_check = True
 
     @extend_schema(
@@ -42,10 +38,8 @@ class LookupTipiSoggettoDettaglioView(APIView):
         return success_response({"results": results})
 
 
-class LookupMatriceIndirizziView(APIView):
+class LookupMatriceIndirizziView(DomainAPIView):
     """Matrice indirizzi ammessi per un tipo soggetto dettaglio."""
-    authentication_classes = [JWTAuthentication]
-    permission_classes = [ZeroERPPermission]
     skip_area_check = True
 
     @extend_schema(
@@ -63,10 +57,8 @@ class LookupMatriceIndirizziView(APIView):
         return success_response({"results": results})
 
 
-class LookupComuniView(APIView):
+class LookupComuniView(DomainAPIView):
     """Autocomplete comuni con ricerca ILIKE."""
-    authentication_classes = [JWTAuthentication]
-    permission_classes = [ZeroERPPermission]
     skip_area_check = True
     is_search_endpoint = True
 
@@ -104,10 +96,8 @@ class LookupComuniView(APIView):
         return success_response({"count": total_count, "results": results})
 
 
-class SearchStradarioView(APIView):
+class SearchStradarioView(DomainAPIView):
     """Autocomplete vie (stradario) per comune."""
-    authentication_classes = [JWTAuthentication]
-    permission_classes = [ZeroERPPermission]
     skip_area_check = True
     is_search_endpoint = True
 

@@ -11,7 +11,7 @@ Endpoint applicativo che invoca il servizio Python `fn_reset_lotto_fattura_draft
 View in `apps/vendite/api/views.py`:
 
 - `ApiResetLottoFatturaDraft`
-- `ApiResetLottoFatturaDraftV1`
+- `ApiResetLottoFatturaDraft`
 
 ## Input
 

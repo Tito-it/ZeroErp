@@ -441,12 +441,12 @@ class AmmSoftwareRepository:
     def get_emittenti_scope(self, auth_user_id: int) -> list[dict[str, Any]]:
         sql = """
             SELECT uef.id, uef.emittente_fiscale_id,
-                   ef.denominazione AS emittente_denominazione,
-                   ef.partita_iva AS emittente_piva
+                   ef.codice AS emittente_codice,
+                   ef.descrizione AS emittente_descrizione
               FROM config.user_emittenti_fiscali uef
               JOIN anagrafiche.emittenti_fiscali ef ON ef.id = uef.emittente_fiscale_id
              WHERE uef.auth_user_id = %s
-             ORDER BY ef.denominazione
+             ORDER BY ef.descrizione
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [auth_user_id])
@@ -594,10 +594,10 @@ class AmmSoftwareRepository:
     def list_emittenti_fiscali(self) -> list[dict[str, Any]]:
         with connection.cursor() as cursor:
             cursor.execute(
-                """SELECT id, denominazione, partita_iva
+                """SELECT id, codice, descrizione
                      FROM anagrafiche.emittenti_fiscali
                     WHERE attivo = true
-                    ORDER BY denominazione"""
+                    ORDER BY descrizione"""
             )
             cols = [c.name for c in cursor.description]
             return [dict(zip(cols, row)) for row in cursor.fetchall()]

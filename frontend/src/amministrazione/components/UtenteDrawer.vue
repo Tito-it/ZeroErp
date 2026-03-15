@@ -217,7 +217,7 @@ function onClose() {
       </TabView>
     </template>
 
-    <template v-else>
+    <div v-else class="app-drawer-content">
       <!-- Building block: soggetto PF -->
       <h4>{{ t('amm.section_persona') }}</h4>
       <SoggettoForm
@@ -229,14 +229,14 @@ function onClose() {
       />
 
       <!-- Building block: auth user -->
-      <h4 class="mt-4">{{ t('amm.section_accesso') }}</h4>
+      <h4>{{ t('amm.section_accesso') }}</h4>
       <AuthUserForm
         :form="auth.form"
         :password-match="auth.passwordMatch.value"
       />
 
       <!-- Collocazione operatore (specifico dominio) -->
-      <h4 class="mt-4">{{ t('amm.section_collocazione') }}</h4>
+      <h4>{{ t('amm.section_collocazione') }}</h4>
       <div class="form-grid">
         <div class="form-field">
           <label>{{ t('amm.field_ruolo') }}</label>
@@ -266,7 +266,7 @@ function onClose() {
         <Button :label="t('common.save')" icon="pi pi-check"
           :loading="loading" @click="onSave" />
       </div>
-    </template>
+    </div>
   </Drawer>
 </template>
 

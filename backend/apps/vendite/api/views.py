@@ -1,10 +1,8 @@
 from django.http import JsonResponse
 from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
 from rest_framework import serializers
-from apps.core.api.permissions import ZeroERPPermission
 from rest_framework.request import Request
-from rest_framework.views import APIView
-from rest_framework_simplejwt.authentication import JWTAuthentication
+from apps.core.api.base_views import DomainAPIView
 
 from apps.core.api.endpoint_helpers import get_scope_user_id, handle_post_json
 from apps.core.services.error_manager import ErrorManager
@@ -28,7 +26,9 @@ from apps.vendite.services.vendite_service import fn_list_lotti, fn_list_lotto_f
 # View API vendite: espone endpoint HTTP per avviare pipeline lotto.
 
 
-class ApiRunLottoPipeline(APIView):
+class ApiRunLottoPipeline(DomainAPIView):
+    area_funzionale = "vendite"
+    post_permission = "genera_fatture_lotti"
     @extend_schema(
         parameters=[
             OpenApiParameter(
@@ -94,15 +94,10 @@ class ApiRunLottoPipeline(APIView):
         return handle_post_json(request, handler=_handler, require_idempotency_key=True)
 
 
-class ApiRunLottoPipelineV1(ApiRunLottoPipeline):
-    # Versione canonica protetta: richiede JWT su /api/v1/*
-    authentication_classes = [JWTAuthentication]
-    permission_classes = [ZeroERPPermission]
+
+
+class ApiLottoSegnalazioniSummary(DomainAPIView):
     area_funzionale = "vendite"
-    post_permission = "genera_fatture_lotti"
-
-
-class ApiLottoSegnalazioniSummary(APIView):
     @extend_schema(
         responses={
             200: inline_serializer(
@@ -131,13 +126,10 @@ class ApiLottoSegnalazioniSummary(APIView):
         return success_response(data)
 
 
-class ApiLottoSegnalazioniSummaryV1(ApiLottoSegnalazioniSummary):
-    authentication_classes = [JWTAuthentication]
-    permission_classes = [ZeroERPPermission]
+
+
+class ApiLottoTaskRuns(DomainAPIView):
     area_funzionale = "vendite"
-
-
-class ApiLottoTaskRuns(APIView):
     @extend_schema(
         parameters=[
             OpenApiParameter(
@@ -172,13 +164,11 @@ class ApiLottoTaskRuns(APIView):
         return success_response(data)
 
 
-class ApiLottoTaskRunsV1(ApiLottoTaskRuns):
-    authentication_classes = [JWTAuthentication]
-    permission_classes = [ZeroERPPermission]
+
+
+class ApiResetLottoDraft(DomainAPIView):
     area_funzionale = "vendite"
-
-
-class ApiResetLottoDraft(APIView):
+    post_permission = "reset_lotto_draft"
     @extend_schema(
         parameters=[
             OpenApiParameter(
@@ -221,14 +211,11 @@ class ApiResetLottoDraft(APIView):
         return handle_post_json(request, handler=_handler, require_idempotency_key=True)
 
 
-class ApiResetLottoDraftV1(ApiResetLottoDraft):
-    authentication_classes = [JWTAuthentication]
-    permission_classes = [ZeroERPPermission]
+
+
+class ApiResetLottoFatturaDraft(DomainAPIView):
     area_funzionale = "vendite"
-    post_permission = "reset_lotto_draft"
-
-
-class ApiResetLottoFatturaDraft(APIView):
+    post_permission = "reset_lotto_fattura_draft"
     @extend_schema(
         parameters=[
             OpenApiParameter(
@@ -270,14 +257,10 @@ class ApiResetLottoFatturaDraft(APIView):
         return handle_post_json(request, handler=_handler, require_idempotency_key=True)
 
 
-class ApiResetLottoFatturaDraftV1(ApiResetLottoFatturaDraft):
-    authentication_classes = [JWTAuthentication]
-    permission_classes = [ZeroERPPermission]
+
+
+class ApiLottiList(DomainAPIView):
     area_funzionale = "vendite"
-    post_permission = "reset_lotto_fattura_draft"
-
-
-class ApiLottiList(APIView):
     is_search_endpoint = True
 
     @extend_schema(
@@ -349,13 +332,10 @@ class ApiLottiList(APIView):
         return success_response(data)
 
 
-class ApiLottiListV1(ApiLottiList):
-    authentication_classes = [JWTAuthentication]
-    permission_classes = [ZeroERPPermission]
+
+
+class ApiLottoFattureList(DomainAPIView):
     area_funzionale = "vendite"
-
-
-class ApiLottoFattureList(APIView):
     is_search_endpoint = True
 
     @extend_schema(
@@ -414,10 +394,6 @@ class ApiLottoFattureList(APIView):
         return success_response(data)
 
 
-class ApiLottoFattureListV1(ApiLottoFattureList):
-    authentication_classes = [JWTAuthentication]
-    permission_classes = [ZeroERPPermission]
-    area_funzionale = "vendite"
 
 
 # ================================================================== #
@@ -425,7 +401,9 @@ class ApiLottoFattureListV1(ApiLottoFattureList):
 # ================================================================== #
 
 
-class ApiRunCommessePush(APIView):
+class ApiRunCommessePush(DomainAPIView):
+    area_funzionale = "vendite"
+    post_permission = "run_commesse_push"
     @extend_schema(
         parameters=[
             OpenApiParameter(
@@ -491,14 +469,10 @@ class ApiRunCommessePush(APIView):
         return handle_post_json(request, handler=_handler, require_idempotency_key=True)
 
 
-class ApiRunCommessePushV1(ApiRunCommessePush):
-    authentication_classes = [JWTAuthentication]
-    permission_classes = [ZeroERPPermission]
+
+
+class ApiCommessePushLog(DomainAPIView):
     area_funzionale = "vendite"
-    post_permission = "run_commesse_push"
-
-
-class ApiCommessePushLog(APIView):
     @extend_schema(
         responses={
             200: inline_serializer(
@@ -516,13 +490,10 @@ class ApiCommessePushLog(APIView):
         return success_response(data)
 
 
-class ApiCommessePushLogV1(ApiCommessePushLog):
-    authentication_classes = [JWTAuthentication]
-    permission_classes = [ZeroERPPermission]
+
+
+class ApiCommessaStato(DomainAPIView):
     area_funzionale = "vendite"
-
-
-class ApiCommessaStato(APIView):
     @extend_schema(
         responses={
             200: inline_serializer(
@@ -548,13 +519,10 @@ class ApiCommessaStato(APIView):
         return success_response(data)
 
 
-class ApiCommessaStatoV1(ApiCommessaStato):
-    authentication_classes = [JWTAuthentication]
-    permission_classes = [ZeroERPPermission]
+
+
+class ApiCommessaAttivita(DomainAPIView):
     area_funzionale = "vendite"
-
-
-class ApiCommessaAttivita(APIView):
     is_search_endpoint = True
 
     @extend_schema(
@@ -600,7 +568,3 @@ class ApiCommessaAttivita(APIView):
         return success_response(data)
 
 
-class ApiCommessaAttivitaV1(ApiCommessaAttivita):
-    authentication_classes = [JWTAuthentication]
-    permission_classes = [ZeroERPPermission]
-    area_funzionale = "vendite"

@@ -10,11 +10,9 @@ from django.http import JsonResponse
 from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
 from rest_framework import serializers
 from rest_framework.request import Request
-from rest_framework.views import APIView
-from rest_framework_simplejwt.authentication import JWTAuthentication
+from apps.core.api.base_views import DomainAPIView
 
 from apps.core.api.payload_validators import qp_bool, qp_int, qp_str
-from apps.core.api.permissions import ZeroERPPermission
 from apps.core.api.success_responses import success_response
 from apps.core.api.throttling import SearchBurstRateThrottle
 from apps.core.services.tracciamento_service import (
@@ -51,7 +49,7 @@ _SEARCH_PARAM = OpenApiParameter(
 # Audit Log
 # ==================================================================
 
-class ApiAuditLog(APIView):
+class ApiAuditLog(DomainAPIView):
     is_search_endpoint = True
     throttle_classes = [SearchBurstRateThrottle]
 
@@ -112,17 +110,13 @@ class ApiAuditLog(APIView):
         return success_response(data)
 
 
-class ApiAuditLogV1(ApiAuditLog):
-    authentication_classes = [JWTAuthentication]
-    permission_classes = [ZeroERPPermission]
-    skip_area_check = True
 
 
 # ==================================================================
 # Task Registry — Domini
 # ==================================================================
 
-class ApiDominiTask(APIView):
+class ApiDominiTask(DomainAPIView):
     is_search_endpoint = True
     throttle_classes = [SearchBurstRateThrottle]
 
@@ -157,17 +151,13 @@ class ApiDominiTask(APIView):
         return success_response(data)
 
 
-class ApiDominiTaskV1(ApiDominiTask):
-    authentication_classes = [JWTAuthentication]
-    permission_classes = [ZeroERPPermission]
-    skip_area_check = True
 
 
 # ==================================================================
 # Task Registry — Task
 # ==================================================================
 
-class ApiTaskRegistry(APIView):
+class ApiTaskRegistry(DomainAPIView):
     is_search_endpoint = True
     throttle_classes = [SearchBurstRateThrottle]
 
@@ -211,17 +201,13 @@ class ApiTaskRegistry(APIView):
         return success_response(data)
 
 
-class ApiTaskRegistryV1(ApiTaskRegistry):
-    authentication_classes = [JWTAuthentication]
-    permission_classes = [ZeroERPPermission]
-    skip_area_check = True
 
 
 # ==================================================================
 # Task Registry — Implementazioni
 # ==================================================================
 
-class ApiTaskImplementations(APIView):
+class ApiTaskImplementations(DomainAPIView):
     is_search_endpoint = True
     throttle_classes = [SearchBurstRateThrottle]
 
@@ -269,17 +255,13 @@ class ApiTaskImplementations(APIView):
         return success_response(data)
 
 
-class ApiTaskImplementationsV1(ApiTaskImplementations):
-    authentication_classes = [JWTAuthentication]
-    permission_classes = [ZeroERPPermission]
-    skip_area_check = True
 
 
 # ==================================================================
 # Job Run Log
 # ==================================================================
 
-class ApiJobRuns(APIView):
+class ApiJobRuns(DomainAPIView):
     is_search_endpoint = True
     throttle_classes = [SearchBurstRateThrottle]
 
@@ -341,17 +323,13 @@ class ApiJobRuns(APIView):
         return success_response(data)
 
 
-class ApiJobRunsV1(ApiJobRuns):
-    authentication_classes = [JWTAuthentication]
-    permission_classes = [ZeroERPPermission]
-    skip_area_check = True
 
 
 # ==================================================================
 # Job Summary
 # ==================================================================
 
-class ApiJobSummary(APIView):
+class ApiJobSummary(DomainAPIView):
 
     @extend_schema(
         parameters=[_PAGE_PARAM, _PAGE_SIZE_PARAM],
@@ -383,7 +361,3 @@ class ApiJobSummary(APIView):
         return success_response(data)
 
 
-class ApiJobSummaryV1(ApiJobSummary):
-    authentication_classes = [JWTAuthentication]
-    permission_classes = [ZeroERPPermission]
-    skip_area_check = True

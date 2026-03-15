@@ -12,7 +12,7 @@ il quale legge dalla tabella `vendite.fatturazione_lotti_task_runs` tramite `Ven
 View in `apps/vendite/api/views.py`:
 
 - `ApiLottoTaskRuns`
-- `ApiLottoTaskRunsV1`
+- `ApiLottoTaskRuns`
 
 ## Input
 

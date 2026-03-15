@@ -130,15 +130,7 @@ onMounted(fetchSessioni)
   margin-bottom: 1.5rem;
 }
 
-.sessioni-panel :deep(.p-datatable .p-datatable-tbody > tr > td) {
-  padding: 0.35rem 0.75rem;
-  font-size: var(--app-font-size-sm);
-}
-
-.sessioni-panel :deep(.p-datatable .p-datatable-thead > tr > th) {
-  padding: 0.35rem 0.75rem;
-  font-size: var(--app-font-size-sm);
-}
+/* Font e padding DataTable ereditati da .app-datatable (main.css) */
 
 .sessioni-title {
   display: flex;

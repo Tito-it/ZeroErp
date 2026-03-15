@@ -4,7 +4,7 @@
 >
 > Riferimento metodologico: [sviluppo-concentrico.md](sviluppo-concentrico.md)
 
-*Ultimo aggiornamento: 6 marzo 2026*
+*Ultimo aggiornamento: 15 marzo 2026*
 
 ---
 
@@ -93,11 +93,23 @@ Stabile. Modifiche solo per correzioni o estensioni non-breaking (nuove policy, 
 
 > Entita' di riferimento condivise da tutti i processi. Vocabolario comune del sistema.
 
-| Componente    | Tipo       | DB        | Backend   | Descrizione                                                                            |
-| ------------- | ---------- | --------- | --------- | -------------------------------------------------------------------------------------- |
-| `config`      | App Django | Operativo | Operativo | Stati, nazioni, UO, termini pagamento, priorita', canali; policy operative trasversali |
-| `anagrafiche` | App Django | Operativo | Operativo | Soggetti, indirizzi, contatti, risorse umane, emittenti fiscali                        |
-| `catalogo`    | App Django | Operativo | Operativo | Articoli, UoM, listini, distinte base                                                  |
+| Componente       | Tipo       | DB        | Backend   | Frontend  | Descrizione                                                                            |
+| ---------------- | ---------- | --------- | --------- | --------- | -------------------------------------------------------------------------------------- |
+| `config`         | App Django | Operativo | Operativo | —         | Stati, nazioni, UO, termini pagamento, priorita', canali; policy operative trasversali |
+| `anagrafiche`    | App Django | Operativo | Operativo | Operativo | Soggetti, indirizzi, contatti, risorse umane, emittenti fiscali                        |
+| `catalogo`       | App Django | Operativo | Operativo | —         | Articoli, UoM, listini, distinte base                                                  |
+| `amm-software`   | App Django | Operativo | Operativo | Parziale  | Gestione operatori, permessi, profili reparto (solo ADMIN)                              |
+
+### Frontend Anello 1 — Stato dettagliato
+
+| Area                       | Stato     | Note                                                                          |
+| -------------------------- | --------- | ----------------------------------------------------------------------------- |
+| Gestione Geografica        | Operativo | 6 tab: indirizzi, toponomastica, comuni, province, regioni, stati — CRUD completo |
+| Building block soggetto    | Operativo | SoggettoForm, AuthUserForm, ComuneAutocomplete, StradarioAutocomplete         |
+| Amm. Software — Operatori  | Parziale  | Lista con filtri, creazione operatore, drawer modifica — mancano test UI reali |
+| Amm. Software — Profili    | Parziale  | Gestione profili reparto — mancano test UI reali                               |
+| Amm. Software — Permessi   | Placeholder | Solo pagina placeholder, da implementare                                     |
+| Amm. Software — Audit Log  | Placeholder | Solo pagina placeholder, da implementare                                     |
 
 ### Cosa fornisce agli anelli esterni
 
@@ -105,6 +117,8 @@ Stabile. Modifiche solo per correzioni o estensioni non-breaking (nuove policy, 
 - Tabelle config condivise: stati (doc fiscale, pratiche, flussi), priorita', canali
 - Lookup e decodifiche centralizzate
 - **Policy operative trasversali**: configurazioni che governano il comportamento del sistema su piu' domini e non appartengono a nessun dominio specifico (es. `user_emittenti_fiscali` — ambito operativo per emittente)
+- **Gestione geografica completa**: indirizzi, toponomastica, comuni, province, regioni, stati — API + UI con autorizzazione per area `anagrafiche`
+- **Building block frontend riutilizzabili**: composable centralizzati (useSearchTable, useDrawerState, useTabFreshness), componenti atomici (SoggettoForm, AuthUserForm, autocomplete), CSS utility classes
 
 ### Regola di posizionamento in `config`
 
@@ -245,13 +259,38 @@ Gli anelli esterni possono dipendere direttamente da anelli non adiacenti — ve
 
 ## Evoluzione prevista
 
-### Breve termine (marzo 2026)
+### Completato (marzo 2026)
 
 - ~~Completamento BE-1..BE-5 per `pratiche`~~ — **FATTO** (4 marzo 2026)
 - ~~Sospensioni, calcoli tempo, macchina a stati (BE-6..BE-7)~~ — **FATTO** (6 marzo 2026)
 - `pratiche` e' consumabile dagli anelli esterni (19 endpoint REST, 90 test unitari, 18 smoke test)
 - ~~Audit sessioni, request logging, token blacklist~~ — **FATTO** (6 marzo 2026)
 - Anello 0 traccia sessioni JWT, request API e supporta revoca token (19 test unitari)
+- ~~Frontend Sprint 1: layout applicativo~~ — **FATTO** (marzo 2026)
+  - AppLayout responsive (sidebar morfica, content tabs, breadcrumb, shortcut tastiera)
+  - Ricerca universale soggetti con dettaglio parametrico per ruolo
+- ~~Frontend Sprint 2: Amm. Software~~ — **FATTO** (marzo 2026)
+  - Lista operatori con filtri, creazione/modifica operatore, profili reparto
+  - Building block repository core (52 test)
+- ~~Frontend Sprint 3: Building block riutilizzabili~~ — **FATTO** (marzo 2026)
+  - SoggettoForm universale PF/PG/ENTE, AuthUserForm, ComuneAutocomplete, StradarioAutocomplete
+  - Composable core: useLookup, useServerAutocomplete, useSoggettoForm, useAuthUser
+  - CSS utility classes: app-page, app-datatable, form-grid, app-drawer-content
+- ~~Frontend Sprint 4: Gestione Geografica~~ — **FATTO** (15 marzo 2026)
+  - 6 tab CRUD: indirizzi, toponomastica, comuni, province, regioni, stati
+  - 21 endpoint API con autorizzazione area `anagrafiche`, 621 test backend
+  - Composable centralizzati: useSearchTable, useDrawerState, useTabFreshness, DrawerFooter, NewButton
+
+### In corso
+
+- **Amm. Software**: backend operativo, frontend parziale — mancano test UI reali e pagine Permessi/Audit Log
+- **Gestione Geografica**: backend + frontend operativi — da validare con test UI reali
+
+### Breve termine
+
+- Test UI reali su Amm. Software e Gestione Geografica
+- Completamento Amm. Software: pagina Permessi e Audit Log
+- Gestione Soggetti: area anagrafiche con form soggetto + contatto + indirizzo
 
 ### Medio termine
 

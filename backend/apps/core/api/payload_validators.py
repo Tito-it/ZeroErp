@@ -49,6 +49,36 @@ def qp_str(raw: str | None) -> str | None:
 
 
 # ------------------------------------------------------------------
+# Helper query-params per endpoint lista paginata
+# ------------------------------------------------------------------
+
+
+# Scopo: Parsing standard parametri lista paginata da query string.
+# Restituisce dict con search, limit, offset, order_by, order_dir, page.
+def parse_list_params(
+    qp,
+    *,
+    default_order: str = "descrizione",
+    default_limit: int = 25,
+    max_limit: int = 200,
+) -> dict:
+    search = qp_str(qp.get("search"))
+    limit = min(qp_int(qp.get("limit"), default_limit), max_limit)
+    offset = qp_int(qp.get("offset"), 0)
+    order_by = qp.get("order_by") or default_order
+    order_dir = qp.get("order_dir") or "asc"
+    page = (offset // limit) + 1 if limit > 0 else 1
+    return {
+        "search": search,
+        "limit": limit,
+        "offset": offset,
+        "order_by": order_by,
+        "order_dir": order_dir,
+        "page": page,
+    }
+
+
+# ------------------------------------------------------------------
 # Envelope paginato standard (riusabile da qualsiasi service)
 # ------------------------------------------------------------------
 

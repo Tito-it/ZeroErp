@@ -3,10 +3,10 @@ from django.urls import path
 from apps.core.api.me_view import UserProfileView
 from apps.core.api.sessioni_view import SessioneRevocaView, SessioniAttiveListView
 from apps.core.api.views import (
-    ApiDiagnosticsErrorEnvelopeV1,
-    ApiLookupCodiciV1,
-    ApiPermessiAuditV1,
-    ApiPermessiEffettiviV1,
+    ApiDiagnosticsErrorEnvelope,
+    ApiLookupCodici,
+    ApiPermessiAudit,
+    ApiPermessiEffettivi,
 )
 from apps.core.api.search_view import (
     LookupTipiRuoliView,
@@ -20,116 +20,116 @@ from apps.core.api.views_lookup import (
     SearchStradarioView,
 )
 from apps.core.api.views_tracciamento import (
-    ApiAuditLogV1,
-    ApiDominiTaskV1,
-    ApiJobRunsV1,
-    ApiJobSummaryV1,
-    ApiTaskImplementationsV1,
-    ApiTaskRegistryV1,
+    ApiAuditLog,
+    ApiDominiTask,
+    ApiJobRuns,
+    ApiJobSummary,
+    ApiTaskImplementations,
+    ApiTaskRegistry,
 )
 
 urlpatterns = [
     path(
         "me/",
         UserProfileView.as_view(),
-        name="core-v1-user-profile",
+        name="core-user-profile",
     ),
     path(
         "me/sessioni/",
         SessioniAttiveListView.as_view(),
-        name="core-v1-sessioni-attive",
+        name="core-sessioni-attive",
     ),
     path(
         "me/sessioni/<str:jti>/revoca/",
         SessioneRevocaView.as_view(),
-        name="core-v1-sessione-revoca",
+        name="core-sessione-revoca",
     ),
     path(
         "diagnostics/error-envelope/",
-        ApiDiagnosticsErrorEnvelopeV1.as_view(),
-        name="core-v1-diagnostics-error-envelope",
+        ApiDiagnosticsErrorEnvelope.as_view(),
+        name="core-diagnostics-error-envelope",
     ),
     path(
         "lookup/codici/",
-        ApiLookupCodiciV1.as_view(),
-        name="core-v1-lookup-codici",
+        ApiLookupCodici.as_view(),
+        name="core-lookup-codici",
     ),
     path(
         "lookup/tipi-ruoli/",
         LookupTipiRuoliView.as_view(),
-        name="core-v1-lookup-tipi-ruoli",
+        name="core-lookup-tipi-ruoli",
     ),
     # Lookup anagrafiche cross-dominio (Sprint 3)
     path(
         "lookup/tipi-soggetto-dettaglio/",
         LookupTipiSoggettoDettaglioView.as_view(),
-        name="core-v1-lookup-tipi-soggetto-dettaglio",
+        name="core-lookup-tipi-soggetto-dettaglio",
     ),
     path(
         "lookup/tipi-soggetto-dettaglio/<int:tipo_soggetto_dettaglio_id>/indirizzi/",
         LookupMatriceIndirizziView.as_view(),
-        name="core-v1-lookup-matrice-indirizzi",
+        name="core-lookup-matrice-indirizzi",
     ),
     path(
         "lookup/comuni/",
         LookupComuniView.as_view(),
-        name="core-v1-lookup-comuni",
+        name="core-lookup-comuni",
     ),
     path(
         "search/stradario/",
         SearchStradarioView.as_view(),
-        name="core-v1-search-stradario",
+        name="core-search-stradario",
     ),
     path(
         "users/<int:user_id>/permessi-effettivi/",
-        ApiPermessiEffettiviV1.as_view(),
-        name="core-v1-permessi-effettivi",
+        ApiPermessiEffettivi.as_view(),
+        name="core-permessi-effettivi",
     ),
     path(
         "users/<int:user_id>/permessi-audit/",
-        ApiPermessiAuditV1.as_view(),
-        name="core-v1-permessi-audit",
+        ApiPermessiAudit.as_view(),
+        name="core-permessi-audit",
     ),
     # Ricerca universale soggetti
     path(
         "search/",
         SearchUniversaleView.as_view(),
-        name="core-v1-search-universale",
+        name="core-search-universale",
     ),
     path(
         "search/<uuid:soggetto_id>/detail/",
         SearchDetailView.as_view(),
-        name="core-v1-search-detail",
+        name="core-search-detail",
     ),
     # Tracciamento processi e job
     path(
         "tracciamento/audit-log/",
-        ApiAuditLogV1.as_view(),
-        name="core-v1-audit-log",
+        ApiAuditLog.as_view(),
+        name="core-audit-log",
     ),
     path(
         "tracciamento/domini-task/",
-        ApiDominiTaskV1.as_view(),
-        name="core-v1-domini-task",
+        ApiDominiTask.as_view(),
+        name="core-domini-task",
     ),
     path(
         "tracciamento/task-registry/",
-        ApiTaskRegistryV1.as_view(),
-        name="core-v1-task-registry",
+        ApiTaskRegistry.as_view(),
+        name="core-task-registry",
     ),
     path(
         "tracciamento/task-implementations/",
-        ApiTaskImplementationsV1.as_view(),
-        name="core-v1-task-implementations",
+        ApiTaskImplementations.as_view(),
+        name="core-task-implementations",
     ),
     path(
         "tracciamento/job-runs/",
-        ApiJobRunsV1.as_view(),
-        name="core-v1-job-runs",
+        ApiJobRuns.as_view(),
+        name="core-job-runs",
     ),
     path(
         "tracciamento/job-summary/",
-        ApiJobSummaryV1.as_view(),
-        name="core-v1-job-summary",
+        ApiJobSummary.as_view(),
+        name="core-job-summary",
     ),
 ]
