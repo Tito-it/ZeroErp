@@ -205,24 +205,25 @@ BEGIN
 
   -- 4b. Fallback: emittente unico attivo (se whitelist vuota)
   IF v_ef_id IS NULL THEN
-    SELECT ef.id,
-           ef.uid,
-           ef.codice,
-           ef.descrizione,
-           ef.soggetto_ruolo_id,
-           ef.regime_fiscale_rf,
-           ef.valuta_id
-      INTO v_ef_id,
-           v_ef_uid,
-           v_ef_codice,
-           v_ef_descrizione,
-           v_ef_sr_id,
-           v_ef_regime,
-           v_ef_valuta_id
-      FROM anagrafiche.emittenti_fiscali ef
-     WHERE ef.attivo = true
-    HAVING COUNT(*) = 1;
-    -- Se count > 1, nessun record viene restituito (corretto: ambiguo)
+    IF (SELECT COUNT(*) FROM anagrafiche.emittenti_fiscali WHERE attivo = true) = 1 THEN
+      SELECT ef.id,
+             ef.uid,
+             ef.codice,
+             ef.descrizione,
+             ef.soggetto_ruolo_id,
+             ef.regime_fiscale_rf,
+             ef.valuta_id
+        INTO v_ef_id,
+             v_ef_uid,
+             v_ef_codice,
+             v_ef_descrizione,
+             v_ef_sr_id,
+             v_ef_regime,
+             v_ef_valuta_id
+        FROM anagrafiche.emittenti_fiscali ef
+       WHERE ef.attivo = true;
+    END IF;
+    -- Se count > 1, nessun emittente selezionato (corretto: ambiguo)
 
     v_uef_id := NULL;  -- nessun record whitelist in questo caso
   END IF;
