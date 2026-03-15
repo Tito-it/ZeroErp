@@ -11,7 +11,7 @@ Endpoint applicativo che invoca il servizio Python `pr_run_commesse_push`
 (`apps.vendite.services.commesse_service`), il quale istanzia `CommessaPushOrchestrator`
 con gli handler sorgente attivi (letti dinamicamente da `config.sorgenti`) e ne esegue il metodo `run()`.
 
-View: `ApiRunCommessePush` / `ApiRunCommessePushV1` (`apps.vendite.api.views`).
+View: `ApiRunCommessePush` `ApiRunCommessePush` (`apps.vendite.api.views`).
 
 ## Input
 

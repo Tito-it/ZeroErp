@@ -141,16 +141,18 @@ nav:
                   - Generatore Documentazione: it/dbzero/tools/gen_db_docs.md
         - Sviluppatori:
                   - API: it/dev/api.md
-                  - Backend:
-                            - Guida backend-dev: it/dev/backend/backend-dev.md
-                            - Checklist post upgrade: it/dev/backend/checklist-post-upgrade.md
-                            - Configurazione Django: it/dev/backend/configurazione-django.md
-                  - Database:
-                            - VM dbdev (PostgreSQL): it/dev/db/dbdev.md
-                  - Infrastruttura:
-                            - Proxmox: it/dev/infra/proxmox.md
-                  - Workstation:
-                            - Vm wrk1-dev (ubuntu): it/dev/workstation-dev/configurazione.md
+                  - UI: it/dev/frontend-standards.md
+                  - Server:
+                            - Backend:
+                                      - Guida backend-dev: it/dev/backend/backend-dev.md
+                                      - Checklist post upgrade: it/dev/backend/checklist-post-upgrade.md
+                                      - Configurazione Django: it/dev/backend/configurazione-django.md
+                            - Database:
+                                      - VM dbdev (PostgreSQL): it/dev/db/dbdev.md
+                            - Infrastruttura:
+                                      - Proxmox: it/dev/infra/proxmox.md
+                            - Workstation:
+                                      - Vm wrk1-dev (ubuntu): it/dev/workstation-dev/configurazione.md
                   - GitHub:
                             - Documentazione: it/dev/github/configurazione.md
         - Glossario:

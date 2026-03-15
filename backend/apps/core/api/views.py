@@ -2,10 +2,8 @@ from django.contrib.auth import get_user_model
 from django.http import JsonResponse
 from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
 from rest_framework import serializers
-from apps.core.api.permissions import ZeroERPPermission
 from rest_framework.request import Request
-from rest_framework.views import APIView
-from rest_framework_simplejwt.authentication import JWTAuthentication
+from apps.core.api.base_views import DomainAPIView
 
 from apps.core.api.error_responses import exception_to_error_response
 from apps.core.api.payload_validators import qp_int_strict
@@ -18,7 +16,8 @@ from apps.core.services.service_errors import ServiceError
 # Endpoint diagnostici core: utili per verificare contratto error envelope API.
 
 
-class ApiDiagnosticsErrorEnvelope(APIView):
+class ApiDiagnosticsErrorEnvelope(DomainAPIView):
+    skip_area_check = True
     @extend_schema(
         parameters=[
             OpenApiParameter(
@@ -66,14 +65,10 @@ class ApiDiagnosticsErrorEnvelope(APIView):
         return exception_to_error_response(exc)
 
 
-class ApiDiagnosticsErrorEnvelopeV1(ApiDiagnosticsErrorEnvelope):
-    # Versione canonica protetta: richiede JWT su /api/v1/*
-    authentication_classes = [JWTAuthentication]
-    permission_classes = [ZeroERPPermission]
+
+
+class ApiLookupCodici(DomainAPIView):
     skip_area_check = True
-
-
-class ApiLookupCodici(APIView):
     is_search_endpoint = True
     throttle_classes = [SearchBurstRateThrottle]
 
@@ -135,13 +130,10 @@ class ApiLookupCodici(APIView):
         return success_response(data)
 
 
-class ApiLookupCodiciV1(ApiLookupCodici):
-    authentication_classes = [JWTAuthentication]
-    permission_classes = [ZeroERPPermission]
+
+
+class ApiPermessiEffettivi(DomainAPIView):
     skip_area_check = True
-
-
-class ApiPermessiEffettivi(APIView):
     @extend_schema(
         responses={
             200: inline_serializer(
@@ -233,13 +225,10 @@ class ApiPermessiEffettivi(APIView):
         return success_response(data)
 
 
-class ApiPermessiEffettiviV1(ApiPermessiEffettivi):
-    authentication_classes = [JWTAuthentication]
-    permission_classes = [ZeroERPPermission]
+
+
+class ApiPermessiAudit(DomainAPIView):
     skip_area_check = True
-
-
-class ApiPermessiAudit(APIView):
     @extend_schema(
         parameters=[
             OpenApiParameter(name="data_da", type=str, location=OpenApiParameter.QUERY, required=False, description="Filtro data inizio (YYYY-MM-DD)."),
@@ -343,7 +332,3 @@ class ApiPermessiAudit(APIView):
         return success_response(result)
 
 
-class ApiPermessiAuditV1(ApiPermessiAudit):
-    authentication_classes = [JWTAuthentication]
-    permission_classes = [ZeroERPPermission]
-    skip_area_check = True

@@ -14,14 +14,12 @@ from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers
 from rest_framework.request import Request
 from rest_framework.response import Response
-from rest_framework.views import APIView
-from rest_framework_simplejwt.authentication import JWTAuthentication
+from apps.core.api.base_views import DomainAPIView
 from rest_framework_simplejwt.token_blacklist.models import (
     BlacklistedToken,
     OutstandingToken,
 )
 
-from apps.core.api.permissions import ZeroERPPermission
 from apps.core.api.success_responses import success_response
 from apps.core.db.session_audit_repository import SessionAuditRepository
 from apps.core.services import session_audit_service
@@ -34,11 +32,9 @@ def _get_current_sid(request: Request) -> str | None:
     return str(auth.get("sid", "")) if auth else None
 
 
-class SessioniAttiveListView(APIView):
+class SessioniAttiveListView(DomainAPIView):
     """Lista sessioni attive dell'utente corrente, escludendo quella corrente."""
 
-    authentication_classes = [JWTAuthentication]
-    permission_classes = [ZeroERPPermission]
     skip_area_check = True
 
     @extend_schema(
@@ -72,11 +68,9 @@ class SessioniAttiveListView(APIView):
         return success_response({"sessioni": altre, "count": len(altre)})
 
 
-class SessioneRevocaView(APIView):
+class SessioneRevocaView(DomainAPIView):
     """Revoca una sessione specifica (non la corrente) — blacklist + evento REVOCA."""
 
-    authentication_classes = [JWTAuthentication]
-    permission_classes = [ZeroERPPermission]
     skip_area_check = True
 
     @extend_schema(summary="Revoca sessione specifica", responses={204: None})

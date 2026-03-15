@@ -1,0 +1,6 @@
+# Costanti codici errore per il modulo anagrafiche.
+# Registrati in apps/core/services/error_policies.py.
+
+E_ANAG_VALIDAZIONE = "E_ANAG_VALIDAZIONE"
+E_ANAG_DUPLICATO = "E_ANAG_DUPLICATO"
+E_ANAG_NOT_FOUND = "E_ANAG_NOT_FOUND"

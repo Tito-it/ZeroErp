@@ -44,11 +44,14 @@ function profiloSeverity(count) {
 </script>
 
 <template>
-  <div class="reparti-profilo-view">
+  <div class="app-page">
     <DataTable
       :value="store.items"
       :loading="store.loading"
       striped-rows
+      scrollable
+      scrollHeight="flex"
+      class="app-datatable"
       @row-click="onRowClick"
       selection-mode="single"
       data-key="id"
@@ -75,8 +78,4 @@ function profiloSeverity(count) {
   </div>
 </template>
 
-<style scoped>
-.reparti-profilo-view {
-  padding: 1rem;
-}
-</style>
+<!-- Stile .app-page definito in main.css -->

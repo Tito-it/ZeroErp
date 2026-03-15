@@ -1,0 +1,231 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+# Doc: Python
+# Scopo: Repository per indirizzi dettaglio, stradario e codici postali.
+#        Accesso DB-first via cursor — delega logica a funzioni e view PostgreSQL.
+# ------------------------------------------------------------
+
+from __future__ import annotations
+
+from typing import Any
+
+from django.db import connection
+
+from apps.anagrafiche.db._helpers import extract_paginated
+
+_ORDER_COLS = {
+    "indirizzo_normalizzato", "civico", "descrizione_comune", "cap",
+    "provincia", "attivo", "data_insert",
+}
+
+
+class IndirizziRepository:
+    """Accesso DB per indirizzi dettaglio, stradario e codici postali."""
+
+    # =================================================================
+    # Indirizzi Dettaglio
+    # =================================================================
+
+    # Scopo: Lista paginata indirizzi_dettaglio con info stradario/comune.
+    def list_indirizzi_dettaglio(
+        self,
+        *,
+        search: str | None = None,
+        comune_id: int | None = None,
+        limit: int = 25,
+        offset: int = 0,
+        order_by: str = "indirizzo_normalizzato",
+        order_dir: str = "asc",
+    ) -> tuple[list[dict[str, Any]], int]:
+        order_col = order_by if order_by in _ORDER_COLS else "indirizzo_normalizzato"
+        direction = "DESC" if order_dir and order_dir.upper() == "DESC" else "ASC"
+        search_pattern = f"%{search.strip()}%" if search and search.strip() else None
+
+        sql = f"""
+            SELECT vid.indirizzo_dettaglio_id,
+                   vid.stradario_id,
+                   vid.indirizzo_normalizzato,
+                   vid.civico,
+                   vid.estensione_civico,
+                   vid.descrizione_comune,
+                   vid.cap,
+                   vid.provincia,
+                   vid.attivo,
+                   vid.data_insert,
+                   COUNT(*) OVER () AS total_count
+              FROM anagrafiche.vw_indirizzi_dettaglio vid
+             WHERE (%s::text IS NULL OR vid.indirizzo_normalizzato ILIKE %s
+                    OR vid.descrizione_comune ILIKE %s)
+               AND (%s::integer IS NULL OR vid.comune_id = %s)
+             ORDER BY {order_col} {direction}
+             LIMIT %s OFFSET %s
+        """  # noqa: S608
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [
+                search_pattern, search_pattern, search_pattern,
+                comune_id, comune_id,
+                limit, offset,
+            ])
+            return extract_paginated(cursor)
+
+    # Scopo: Dettaglio singolo indirizzo per form edit.
+    def get_indirizzo_dettaglio(self, indirizzo_dettaglio_id: int) -> dict[str, Any] | None:
+        sql = """
+            SELECT vid.indirizzo_dettaglio_id,
+                   vid.stradario_id,
+                   vid.indirizzo_normalizzato,
+                   vid.civico,
+                   vid.estensione_civico,
+                   vid.descrizione_comune,
+                   vid.cap,
+                   vid.provincia,
+                   vid.attivo,
+                   idd.palazzina,
+                   idd.scala,
+                   idd.piano,
+                   idd.interno
+              FROM anagrafiche.vw_indirizzi_dettaglio vid
+              JOIN anagrafiche.indirizzi_dettaglio idd
+                ON idd.id = vid.indirizzo_dettaglio_id
+             WHERE vid.indirizzo_dettaglio_id = %s
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [indirizzo_dettaglio_id])
+            row = cursor.fetchone()
+            if not row:
+                return None
+            cols = [c.name for c in cursor.description]
+            return dict(zip(cols, row))
+
+    # Scopo: Crea indirizzo dettaglio tramite building block DB.
+    def create_indirizzo_dettaglio(
+        self,
+        *,
+        stradario_id: int,
+        civico: int | None = None,
+        estensione_civico: str | None = None,
+        palazzina: str | None = None,
+        scala: str | None = None,
+        piano: str | None = None,
+        interno: str | None = None,
+    ) -> int:
+        sql = """
+            SELECT anagrafiche.fn_get_or_create_indirizzo_dettaglio(
+                %s, %s, %s, %s, %s, %s, %s
+            )
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [
+                stradario_id, civico, estensione_civico,
+                palazzina, scala, piano, interno,
+            ])
+            row = cursor.fetchone()
+            assert row is not None
+        return int(row[0])
+
+    # Scopo: Aggiorna dettagli civico (stradario_id non modificabile).
+    def update_indirizzo_dettaglio(
+        self,
+        indirizzo_dettaglio_id: int,
+        *,
+        civico: int | None = None,
+        estensione_civico: str | None = None,
+        palazzina: str | None = None,
+        scala: str | None = None,
+        piano: str | None = None,
+        interno: str | None = None,
+        attivo: bool | None = None,
+    ) -> bool:
+        fields: list[str] = []
+        params: list[Any] = []
+
+        if civico is not None:
+            fields.append("civico = %s")
+            params.append(civico)
+        if estensione_civico is not None:
+            fields.append("estensione_civico = %s")
+            params.append(estensione_civico)
+        if palazzina is not None:
+            fields.append("palazzina = %s")
+            params.append(palazzina)
+        if scala is not None:
+            fields.append("scala = %s")
+            params.append(scala)
+        if piano is not None:
+            fields.append("piano = %s")
+            params.append(piano)
+        if interno is not None:
+            fields.append("interno = %s")
+            params.append(interno)
+        if attivo is not None:
+            fields.append("attivo = %s")
+            params.append(attivo)
+
+        if not fields:
+            return False
+
+        params.append(indirizzo_dettaglio_id)
+        sql = f"""
+            UPDATE anagrafiche.indirizzi_dettaglio
+               SET {', '.join(fields)}
+             WHERE id = %s
+        """  # noqa: S608
+        with connection.cursor() as cursor:
+            cursor.execute(sql, params)
+            return cursor.rowcount > 0
+
+    # =================================================================
+    # Stradario — supporto creazione via nuova
+    # =================================================================
+
+    # Scopo: Cerca o crea stradario locale (toponomastica + via + comune + CAP).
+    def get_or_create_stradario(
+        self,
+        *,
+        toponomastica_id: int,
+        descrizione_via: str,
+        comune_id: int,
+        codice_postale_id: int,
+    ) -> int:
+        descrizione_via = descrizione_via.strip()
+
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                INSERT INTO config.stradario_generale (toponomastica_id, descrizione)
+                VALUES (%s, %s)
+                ON CONFLICT (toponomastica_id, descrizione) DO UPDATE
+                   SET descrizione = EXCLUDED.descrizione
+                RETURNING id
+            """, [toponomastica_id, descrizione_via])
+            row = cursor.fetchone()
+            assert row is not None
+            stradario_generale_id = row[0]
+
+            cursor.execute("""
+                INSERT INTO config.stradario (stradario_generale_id, comune_id, codice_postale_id)
+                VALUES (%s, %s, %s)
+                ON CONFLICT (comune_id, stradario_generale_id, codice_postale_id) DO UPDATE
+                   SET comune_id = EXCLUDED.comune_id
+                RETURNING id
+            """, [stradario_generale_id, comune_id, codice_postale_id])
+            row = cursor.fetchone()
+            assert row is not None
+            return int(row[0])
+
+    # =================================================================
+    # Codici postali
+    # =================================================================
+
+    # Scopo: Lista CAP per un comune.
+    def list_codici_postali_by_comune(self, comune_id: int) -> list[dict[str, Any]]:
+        sql = """
+            SELECT id, codice
+              FROM config.codici_postali
+             WHERE comune_id = %s
+             ORDER BY codice
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [comune_id])
+            cols = [c.name for c in cursor.description]
+            return [dict(zip(cols, row)) for row in cursor.fetchall()]

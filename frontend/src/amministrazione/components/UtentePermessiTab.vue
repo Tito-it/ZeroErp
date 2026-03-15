@@ -175,7 +175,7 @@ function removeAzioneOverride(index) {
     <MultiSelect
       v-model="localEmittentiIds"
       :options="emittentiFiscali.items.value"
-      option-label="denominazione"
+      option-label="descrizione"
       option-value="id"
       :placeholder="t('amm.select_emittenti')"
       class="w-full mb-2"

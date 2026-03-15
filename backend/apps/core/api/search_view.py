@@ -14,11 +14,9 @@ from django.http import JsonResponse
 from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
 from rest_framework import serializers
 from rest_framework.request import Request
-from rest_framework.views import APIView
-from rest_framework_simplejwt.authentication import JWTAuthentication
+from apps.core.api.base_views import DomainAPIView
 
 from apps.core.api.payload_validators import paginated_envelope, qp_int_strict, qp_str
-from apps.core.api.permissions import ZeroERPPermission
 from apps.core.api.search_validators import require_min_search_length, validate_order_params
 from apps.core.api.success_responses import success_response
 from apps.core.api.throttling import SearchBurstRateThrottle
@@ -56,11 +54,9 @@ def _require_tipo_ruolo_id(query_params, repo: SearchRepository) -> int:
     return tipo_ruolo_id
 
 
-class LookupTipiRuoliView(APIView):
+class LookupTipiRuoliView(DomainAPIView):
     """GET /api/v1/core/lookup/tipi-ruoli/ — tipi ruolo visibili per ricerca universale."""
 
-    authentication_classes = [JWTAuthentication]
-    permission_classes = [ZeroERPPermission]
     skip_area_check = True
 
     @extend_schema(
@@ -97,11 +93,9 @@ class LookupTipiRuoliView(APIView):
         return success_response({"results": results})
 
 
-class SearchUniversaleView(APIView):
+class SearchUniversaleView(DomainAPIView):
     """GET /api/v1/core/search/ — ricerca soggetti livello 1 (una riga per soggetto)."""
 
-    authentication_classes = [JWTAuthentication]
-    permission_classes = [ZeroERPPermission]
     skip_area_check = True
     is_search_endpoint = True
     throttle_classes = [SearchBurstRateThrottle]
@@ -235,11 +229,9 @@ class SearchUniversaleView(APIView):
         return success_response(data)
 
 
-class SearchDetailView(APIView):
+class SearchDetailView(DomainAPIView):
     """GET /api/v1/core/search/<uuid>/detail/ — dettaglio soggetto per tipo ruolo (livello 2)."""
 
-    authentication_classes = [JWTAuthentication]
-    permission_classes = [ZeroERPPermission]
     skip_area_check = True
 
     @extend_schema(

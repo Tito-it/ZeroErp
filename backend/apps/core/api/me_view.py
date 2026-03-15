@@ -12,19 +12,15 @@ from __future__ import annotations
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers
 from rest_framework.request import Request
-from rest_framework.views import APIView
-from rest_framework_simplejwt.authentication import JWTAuthentication
+from apps.core.api.base_views import DomainAPIView
 
-from apps.core.api.permissions import ZeroERPPermission
 from apps.core.api.success_responses import success_response
 from apps.core.db.core_repository import CoreRepository
 
 
-class UserProfileView(APIView):
+class UserProfileView(DomainAPIView):
     """Profilo utente corrente — dati soggetto, risorse umane, emittente."""
 
-    authentication_classes = [JWTAuthentication]
-    permission_classes = [ZeroERPPermission]
     skip_area_check = True
 
     @extend_schema(

@@ -12,7 +12,7 @@ il quale delega a `LottoSegnalazioniService.evaluate_lotto_status`.
 View in `apps/vendite/api/views.py`:
 
 - `ApiLottoSegnalazioniSummary`
-- `ApiLottoSegnalazioniSummaryV1`
+- `ApiLottoSegnalazioniSummary`
 
 ## Input
 

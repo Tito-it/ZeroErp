@@ -41,7 +41,9 @@ export const DOMAIN_MENUS = {
     { key: 'permessi', icon: 'pi pi-shield', to: '/amm-software/permessi' },
     { key: 'audit-log', icon: 'pi pi-history', to: '/amm-software/audit-log' }
   ],
-  'anagrafiche': [],
+  'anagrafiche': [
+    { key: 'indirizzi', icon: 'pi pi-map-marker', to: '/anagrafiche/indirizzi' }
+  ],
   'catalogo': [],
   'vendite': [],
   'acquisti': [],

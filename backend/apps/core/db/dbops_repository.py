@@ -25,9 +25,12 @@ from apps.core.types import (
 # La funzione DB fn_get_lookup_codici valida ulteriormente la struttura delle colonne.
 _REL_CONSENTITE: frozenset[str] = frozenset(
     {
+        # --- config ---
         "config.ambiti",
+        "config.aree_funzionali",
         "config.aspetti_beni",
         "config.assets_ownership",
+        "config.canali_pratiche",
         "config.categoria_accisa",
         "config.causali_trasporto",
         "config.classi_utenze",
@@ -40,6 +43,7 @@ _REL_CONSENTITE: frozenset[str] = frozenset(
         "config.modalita_addebito_trasporto",
         "config.modalita_pagamento",
         "config.note_stili",
+        "config.priorita_pratiche",
         "config.qualifiche",
         "config.sistema_codici",
         "config.sorgenti",
@@ -51,26 +55,49 @@ _REL_CONSENTITE: frozenset[str] = frozenset(
         "config.stati_doc_fiscale",
         "config.stati_doc_ordini",
         "config.stati_doc_preventivi",
-        "config.stati_pdp",
         "config.stati_flussi_pratiche",
+        "config.stati_pdp",
         "config.stati_pratiche",
         "config.stati_sdi",
         "config.termini_pagamento",
+        "config.tipi_allegato",
         "config.tipi_attivita",
         "config.tipi_contatti",
         "config.tipi_doc_fiscale",
         "config.tipi_documenti",
         "config.tipi_evento_assets",
         "config.tipi_indirizzi",
+        "config.tipi_nota",
         "config.tipi_ruoli",
         "config.tipi_soggetto_dettaglio",
         "config.tipi_ubicazione",
         "config.tipi_utenze",
-        "config.canali_pratiche",
-        "config.priorita_pratiche",
         "config.unita_organizzative",
         "config.utilities",
         "config.valute",
+        # --- catalogo ---
+        "catalogo.unita_misura",
+        # --- magazzino ---
+        "magazzino.ambito_causale",
+        "magazzino.causali",
+        "magazzino.magazzini",
+        "magazzino.ubicazioni",
+        # --- pagamenti ---
+        "pagamenti.centri_riscossione",
+        "pagamenti.enti_incasso",
+        "pagamenti.vendite_contabili_righe_stati",
+        "pagamenti.vendite_contabili_stati",
+        # --- pratiche ---
+        "pratiche.handler_flussi",
+        "pratiche.template_flussi",
+        "pratiche.tipi_prestazione",
+        # --- vendite ---
+        "vendite.area_geografica_fatturazione",
+        "vendite.articoli_gruppi",
+        "vendite.articoli_spesa",
+        "vendite.articoli_tipologie",
+        "vendite.stati_commessa",
+        "vendite.tipi_fondi_fattura",
     }
 )
 
@@ -117,7 +144,7 @@ class DbopsRepository:
             cursor.execute(
                 """
                 WITH base AS (
-                    SELECT id, codice, descrizione
+                    SELECT id, codice, codice_interno, descrizione
                       FROM dbops.fn_get_lookup_codici(
                                %s::regclass,
                                %s,
@@ -130,6 +157,7 @@ class DbopsRepository:
                 SELECT
                     id,
                     codice,
+                    codice_interno,
                     descrizione,
                     COUNT(*) OVER () AS total_count
                   FROM base
@@ -158,12 +186,13 @@ class DbopsRepository:
         if not rows:
             return [], 0
 
-        total_count = rows[0][3]
+        total_count = rows[0][4]
         results = [
             {
                 "id": row[0],
                 "codice": row[1],
-                "descrizione": row[2],
+                "codice_interno": row[2],
+                "descrizione": row[3],
             }
             for row in rows
         ]

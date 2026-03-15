@@ -92,8 +92,8 @@ class TestCreaUtenteSuccess(TestCase):
         _, kwargs = mock_handle.call_args
         self.assertIn("handler", kwargs)
 
-    @patch("apps.amm_software.api.views.AmmSoftwareRepository")
-    @patch("apps.amm_software.api.views.make_password", return_value="hashed_pw")
+    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
+    @patch("apps.amm_software.services.amm_software_service.make_password", return_value="hashed_pw")
     @patch("apps.core.api.endpoint_helpers.get_request_id", return_value=None)
     @patch("apps.core.api.endpoint_helpers.get_idempotency_key", return_value=None)
     @patch("apps.core.api.endpoint_helpers.parse_json_body")
@@ -193,8 +193,8 @@ VALID_PAYLOAD_SPRINT3 = {
 class TestCreaUtenteSprint3(TestCase):
     """POST /api/v1/amm-software/utenti/ — parametri Sprint 3."""
 
-    @patch("apps.amm_software.api.views.AmmSoftwareRepository")
-    @patch("apps.amm_software.api.views.make_password", return_value="hashed_pw")
+    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
+    @patch("apps.amm_software.services.amm_software_service.make_password", return_value="hashed_pw")
     @patch("apps.core.api.endpoint_helpers.get_request_id", return_value=None)
     @patch("apps.core.api.endpoint_helpers.get_idempotency_key", return_value=None)
     @patch("apps.core.api.endpoint_helpers.parse_json_body")
@@ -218,8 +218,8 @@ class TestCreaUtenteSprint3(TestCase):
         self.assertEqual(call_kwargs["indirizzo_resid_dettaglio_id"], 101)
         self.assertEqual(call_kwargs["indirizzo_domfisc_dettaglio_id"], 102)
 
-    @patch("apps.amm_software.api.views.AmmSoftwareRepository")
-    @patch("apps.amm_software.api.views.make_password", return_value="hashed_pw")
+    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
+    @patch("apps.amm_software.services.amm_software_service.make_password", return_value="hashed_pw")
     @patch("apps.core.api.endpoint_helpers.get_request_id", return_value=None)
     @patch("apps.core.api.endpoint_helpers.get_idempotency_key", return_value=None)
     @patch("apps.core.api.endpoint_helpers.parse_json_body")

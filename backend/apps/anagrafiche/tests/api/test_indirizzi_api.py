@@ -1,0 +1,269 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+# Doc: Python
+# Scopo: Test unitari per IndirizziRepository (lista, dettaglio,
+#        creazione, modifica indirizzi dettaglio, comuni, CAP).
+# Tutti i test usano mock — nessuna dipendenza da DB reale (CI-compatible).
+# ------------------------------------------------------------
+
+"""
+Indice test eseguiti:
+ 1) test_list_indirizzi_dettaglio — lista con risultati e total_count
+ 2) test_list_indirizzi_dettaglio_empty — nessun risultato
+ 3) test_list_indirizzi_with_search — filtro ILIKE attivo
+ 4) test_get_indirizzo_dettaglio — dettaglio singolo
+ 5) test_get_indirizzo_dettaglio_not_found — id non esistente
+ 6) test_create_indirizzo_dettaglio — chiamata fn_get_or_create
+ 7) test_update_indirizzo_dettaglio — UPDATE dinamico
+ 8) test_update_indirizzo_no_fields — nessun campo → nessun update
+ 9) test_list_comuni — lista con provincia e regione
+10) test_list_comuni_empty — nessun risultato
+11) test_list_codici_postali — CAP per comune
+12) test_get_or_create_stradario — creazione via nuova
+"""
+
+from unittest import TestCase
+from unittest.mock import MagicMock, patch
+
+
+def _mock_cursor(rows=None, cols=None, rowcount=0, fetchone_value=None):
+    """Helper: crea mock cursor configurabile."""
+    mock_cur = MagicMock()
+    if cols:
+        mock_cur.description = [MagicMock(name=c) for c in cols]
+        for i, c in enumerate(cols):
+            mock_cur.description[i].name = c
+    mock_cur.fetchall.return_value = rows or []
+    mock_cur.fetchone.return_value = fetchone_value
+    mock_cur.rowcount = rowcount
+    return mock_cur
+
+
+def _setup_conn(mock_conn, mock_cur):
+    """Helper: configura mock connection."""
+    mock_conn.cursor.return_value.__enter__ = MagicMock(return_value=mock_cur)
+    mock_conn.cursor.return_value.__exit__ = MagicMock(return_value=False)
+
+
+class TestListIndirizziDettaglio(TestCase):
+    """Test IndirizziRepository.list_indirizzi_dettaglio()."""
+
+    @patch("apps.anagrafiche.db.indirizzi_repository.connection")
+    def test_list_indirizzi_dettaglio(self, mock_conn):
+        """Lista con risultati e total_count dalla window function."""
+        cols = [
+            "indirizzo_dettaglio_id", "stradario_id", "indirizzo_normalizzato",
+            "civico", "estensione_civico", "descrizione_comune", "cap",
+            "provincia", "attivo", "data_insert", "total_count",
+        ]
+        rows = [
+            (1, 10, "Via Roma 1", 1, None, "Milano", "20121", "MI", True, "2026-01-01", 2),
+            (2, 10, "Via Roma 3/A", 3, "A", "Milano", "20121", "MI", True, "2026-01-02", 2),
+        ]
+        mc = _mock_cursor(rows=rows, cols=cols)
+        _setup_conn(mock_conn, mc)
+
+        from apps.anagrafiche.db.indirizzi_repository import IndirizziRepository
+
+        repo = IndirizziRepository()
+        results, total = repo.list_indirizzi_dettaglio(limit=25, offset=0)
+
+        self.assertEqual(total, 2)
+        self.assertEqual(len(results), 2)
+        self.assertEqual(results[0]["indirizzo_normalizzato"], "Via Roma 1")
+        self.assertNotIn("total_count", results[0])
+
+    @patch("apps.anagrafiche.db.indirizzi_repository.connection")
+    def test_list_indirizzi_dettaglio_empty(self, mock_conn):
+        """Nessun risultato."""
+        mc = _mock_cursor()
+        _setup_conn(mock_conn, mc)
+
+        from apps.anagrafiche.db.indirizzi_repository import IndirizziRepository
+
+        results, total = IndirizziRepository().list_indirizzi_dettaglio()
+        self.assertEqual(results, [])
+        self.assertEqual(total, 0)
+
+    @patch("apps.anagrafiche.db.indirizzi_repository.connection")
+    def test_list_indirizzi_with_search(self, mock_conn):
+        """Verifica che il parametro search sia passato come ILIKE pattern."""
+        cols = [
+            "indirizzo_dettaglio_id", "stradario_id", "indirizzo_normalizzato",
+            "civico", "estensione_civico", "descrizione_comune", "cap",
+            "provincia", "attivo", "data_insert", "total_count",
+        ]
+        rows = [(1, 10, "Via Roma 1", 1, None, "Milano", "20121", "MI", True, "2026-01-01", 1)]
+        mc = _mock_cursor(rows=rows, cols=cols)
+        _setup_conn(mock_conn, mc)
+
+        from apps.anagrafiche.db.indirizzi_repository import IndirizziRepository
+
+        IndirizziRepository().list_indirizzi_dettaglio(search="Roma")
+        params = mc.execute.call_args[0][1]
+        self.assertEqual(params[0], "%Roma%")
+
+
+class TestGetIndirizzoDettaglio(TestCase):
+    """Test IndirizziRepository.get_indirizzo_dettaglio()."""
+
+    @patch("apps.anagrafiche.db.indirizzi_repository.connection")
+    def test_get_indirizzo_dettaglio(self, mock_conn):
+        """Dettaglio singolo trovato."""
+        cols = [
+            "indirizzo_dettaglio_id", "stradario_id", "indirizzo_normalizzato",
+            "civico", "estensione_civico", "descrizione_comune", "cap",
+            "provincia", "attivo", "palazzina", "scala", "piano", "interno",
+        ]
+        row = (1, 10, "Via Roma 1", 1, None, "Milano", "20121", "MI", True, None, "B", "2", "3")
+        mc = _mock_cursor(cols=cols, fetchone_value=row)
+        _setup_conn(mock_conn, mc)
+
+        from apps.anagrafiche.db.indirizzi_repository import IndirizziRepository
+
+        result = IndirizziRepository().get_indirizzo_dettaglio(1)
+        self.assertIsNotNone(result)
+        self.assertEqual(result["scala"], "B")
+        self.assertEqual(result["piano"], "2")
+
+    @patch("apps.anagrafiche.db.indirizzi_repository.connection")
+    def test_get_indirizzo_dettaglio_not_found(self, mock_conn):
+        """ID non esistente — None."""
+        mc = _mock_cursor(fetchone_value=None)
+        _setup_conn(mock_conn, mc)
+
+        from apps.anagrafiche.db.indirizzi_repository import IndirizziRepository
+
+        result = IndirizziRepository().get_indirizzo_dettaglio(999)
+        self.assertIsNone(result)
+
+
+class TestCreateIndirizzoDettaglio(TestCase):
+    """Test IndirizziRepository.create_indirizzo_dettaglio()."""
+
+    @patch("apps.anagrafiche.db.indirizzi_repository.connection")
+    def test_create_indirizzo_dettaglio(self, mock_conn):
+        """Chiama fn_get_or_create e ritorna id."""
+        mc = _mock_cursor(fetchone_value=(42,))
+        _setup_conn(mock_conn, mc)
+
+        from apps.anagrafiche.db.indirizzi_repository import IndirizziRepository
+
+        result_id = IndirizziRepository().create_indirizzo_dettaglio(
+            stradario_id=10, civico=15, estensione_civico="A",
+        )
+        self.assertEqual(result_id, 42)
+        sql = mc.execute.call_args[0][0]
+        self.assertIn("fn_get_or_create_indirizzo_dettaglio", sql)
+
+
+class TestUpdateIndirizzoDettaglio(TestCase):
+    """Test IndirizziRepository.update_indirizzo_dettaglio()."""
+
+    @patch("apps.anagrafiche.db.indirizzi_repository.connection")
+    def test_update_indirizzo_dettaglio(self, mock_conn):
+        """UPDATE dinamico con campi forniti."""
+        mc = _mock_cursor(rowcount=1)
+        _setup_conn(mock_conn, mc)
+
+        from apps.anagrafiche.db.indirizzi_repository import IndirizziRepository
+
+        updated = IndirizziRepository().update_indirizzo_dettaglio(
+            1, civico=20, scala="C",
+        )
+        self.assertTrue(updated)
+        sql = mc.execute.call_args[0][0]
+        self.assertIn("civico = %s", sql)
+        self.assertIn("scala = %s", sql)
+
+    def test_update_indirizzo_no_fields(self):
+        """Nessun campo fornito — nessun UPDATE, ritorna False."""
+        from apps.anagrafiche.db.indirizzi_repository import IndirizziRepository
+
+        updated = IndirizziRepository().update_indirizzo_dettaglio(1)
+        self.assertFalse(updated)
+
+
+class TestListComuni(TestCase):
+    """Test GeoRepository.list_comuni()."""
+
+    @patch("apps.anagrafiche.db.geo_repository.connection")
+    def test_list_comuni(self, mock_conn):
+        """Lista comuni con provincia e regione."""
+        cols = ["id", "descrizione", "provincia_sigla", "provincia_descrizione",
+                "regione_descrizione", "total_count"]
+        rows = [
+            (1, "Milano", "MI", "Milano", "Lombardia", 2),
+            (2, "Roma", "RM", "Roma", "Lazio", 2),
+        ]
+        mc = _mock_cursor(rows=rows, cols=cols)
+        _setup_conn(mock_conn, mc)
+
+        from apps.anagrafiche.db.geo_repository import GeoRepository
+
+        results, total = GeoRepository().list_comuni(limit=25, offset=0)
+        self.assertEqual(total, 2)
+        self.assertEqual(len(results), 2)
+        self.assertEqual(results[0]["provincia_sigla"], "MI")
+        self.assertNotIn("total_count", results[0])
+
+    @patch("apps.anagrafiche.db.geo_repository.connection")
+    def test_list_comuni_empty(self, mock_conn):
+        """Nessun comune trovato."""
+        mc = _mock_cursor()
+        _setup_conn(mock_conn, mc)
+
+        from apps.anagrafiche.db.geo_repository import GeoRepository
+
+        results, total = GeoRepository().list_comuni(search="ZZZZZ")
+        self.assertEqual(results, [])
+        self.assertEqual(total, 0)
+
+
+class TestCodiciPostali(TestCase):
+    """Test IndirizziRepository.list_codici_postali_by_comune()."""
+
+    @patch("apps.anagrafiche.db.indirizzi_repository.connection")
+    def test_list_codici_postali(self, mock_conn):
+        """CAP per comune."""
+        cols = ["id", "codice"]
+        rows = [(1, "20121"), (2, "20122")]
+        mc = _mock_cursor(rows=rows, cols=cols)
+        _setup_conn(mock_conn, mc)
+
+        from apps.anagrafiche.db.indirizzi_repository import IndirizziRepository
+
+        results = IndirizziRepository().list_codici_postali_by_comune(1)
+        self.assertEqual(len(results), 2)
+        self.assertEqual(results[0]["codice"], "20121")
+
+
+class TestGetOrCreateStradario(TestCase):
+    """Test IndirizziRepository.get_or_create_stradario()."""
+
+    @patch("apps.anagrafiche.db.indirizzi_repository.connection")
+    def test_get_or_create_stradario(self, mock_conn):
+        """Creazione via nuova — due INSERT ON CONFLICT."""
+        # Singolo cursor con due execute — stradario_generale poi stradario
+        mc = MagicMock()
+        # fetchone restituisce prima (100,) per stradario_generale, poi (200,) per stradario
+        mc.fetchone.side_effect = [(100,), (200,)]
+        mock_conn.cursor.return_value.__enter__ = MagicMock(return_value=mc)
+        mock_conn.cursor.return_value.__exit__ = MagicMock(return_value=False)
+
+        from apps.anagrafiche.db.indirizzi_repository import IndirizziRepository
+
+        stradario_id = IndirizziRepository().get_or_create_stradario(
+            toponomastica_id=1,
+            descrizione_via="Roma",
+            comune_id=10,
+            codice_postale_id=20,
+        )
+        self.assertEqual(stradario_id, 200)
+        # Verifica che entrambi gli INSERT sono stati chiamati (2 execute)
+        self.assertEqual(mc.execute.call_count, 2)
+        sql1 = mc.execute.call_args_list[0][0][0]
+        self.assertIn("stradario_generale", sql1)
+        sql2 = mc.execute.call_args_list[1][0][0]
+        self.assertIn("config.stradario", sql2)
