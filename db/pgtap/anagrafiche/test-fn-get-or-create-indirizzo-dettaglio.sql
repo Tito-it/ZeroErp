@@ -1,0 +1,161 @@
+-- ------------------------------------------------------------
+-- SPDX-License-Identifier: GPL-3.0-or-later
+-- pgTAP test per Zero ERP
+--
+-- Test fn_get_or_create_indirizzo_dettaglio (building block):
+--   1. Precondizioni: stradario di test esiste
+--   2. Creazione nuovo civico con successo
+--   3. Get civico esistente (stessa chiave → stesso id)
+--   4. Creazione civico con dettagli completi (estensione, palazzina, scala, piano, interno)
+--   5. Civico diverso nella stessa via → id diverso
+--   6. Verifica indirizzo_normalizzato calcolato dal trigger
+--   7. Errore: p_stradario_id NULL
+--   8. Errore: p_stradario_id <= 0
+--   9. Errore: stradario inesistente
+-- ------------------------------------------------------------
+BEGIN;
+SELECT plan(9);
+
+-- =========================================================
+-- Setup: trovare uno stradario attivo di test
+-- =========================================================
+CREATE TEMP TABLE tmp_ind_det_ctx (
+    stradario_id   integer,
+    civico_id_1    bigint,
+    civico_id_2    bigint,
+    civico_id_3    bigint
+);
+
+INSERT INTO tmp_ind_det_ctx (stradario_id)
+SELECT id FROM config.stradario ORDER BY id LIMIT 1;
+
+-- =========================================================
+-- 1) Precondizioni: stradario di test esiste
+-- =========================================================
+SELECT ok(
+    (SELECT stradario_id FROM tmp_ind_det_ctx) IS NOT NULL,
+    '1. Stradario di test esiste in config.stradario'
+  );
+
+-- =========================================================
+-- 2) Creazione nuovo civico con successo
+-- =========================================================
+SELECT lives_ok(
+    format(
+      $$SELECT anagrafiche.fn_get_or_create_indirizzo_dettaglio(
+        p_stradario_id := %s,
+        p_civico := 99990
+      ) $$,
+      (SELECT stradario_id FROM tmp_ind_det_ctx)
+    ),
+    '2. Creazione civico 99990 eseguita senza errori'
+  );
+
+-- Salva id creato
+UPDATE tmp_ind_det_ctx
+SET civico_id_1 = (
+    SELECT id FROM anagrafiche.indirizzi_dettaglio
+    WHERE stradario_id = (SELECT stradario_id FROM tmp_ind_det_ctx)
+      AND civico = 99990
+      AND COALESCE(estensione_civico, '') = ''
+      AND COALESCE(palazzina, '') = ''
+      AND COALESCE(scala, '') = ''
+      AND COALESCE(piano, '') = ''
+      AND COALESCE(interno, '') = ''
+  );
+
+-- =========================================================
+-- 3) Get civico esistente (stessa chiave → stesso id)
+-- =========================================================
+SELECT is(
+    anagrafiche.fn_get_or_create_indirizzo_dettaglio(
+        p_stradario_id := (SELECT stradario_id FROM tmp_ind_det_ctx),
+        p_civico := 99990
+    ),
+    (SELECT civico_id_1 FROM tmp_ind_det_ctx),
+    '3. Get civico esistente restituisce lo stesso id'
+  );
+
+-- =========================================================
+-- 4) Creazione civico con dettagli completi
+-- =========================================================
+SELECT lives_ok(
+    format(
+      $$SELECT anagrafiche.fn_get_or_create_indirizzo_dettaglio(
+        p_stradario_id := %s,
+        p_civico := 99990,
+        p_estensione_civico := 'A',
+        p_palazzina := 'B',
+        p_scala := '1',
+        p_piano := '2',
+        p_interno := '3'
+      ) $$,
+      (SELECT stradario_id FROM tmp_ind_det_ctx)
+    ),
+    '4. Creazione civico con dettagli completi senza errori'
+  );
+
+-- Salva secondo id
+UPDATE tmp_ind_det_ctx
+SET civico_id_2 = (
+    SELECT id FROM anagrafiche.indirizzi_dettaglio
+    WHERE stradario_id = (SELECT stradario_id FROM tmp_ind_det_ctx)
+      AND civico = 99990
+      AND COALESCE(estensione_civico, '') = 'A'
+      AND COALESCE(palazzina, '') = 'B'
+  );
+
+-- =========================================================
+-- 5) Civico diverso nella stessa via → id diverso
+-- =========================================================
+SELECT isnt(
+    (SELECT civico_id_1 FROM tmp_ind_det_ctx),
+    (SELECT civico_id_2 FROM tmp_ind_det_ctx),
+    '5. Civico con dettagli diversi produce id diverso'
+  );
+
+-- =========================================================
+-- 6) Verifica indirizzo_normalizzato calcolato dal trigger
+-- =========================================================
+SELECT ok(
+    (SELECT indirizzo_normalizzato FROM anagrafiche.indirizzi_dettaglio
+     WHERE id = (SELECT civico_id_1 FROM tmp_ind_det_ctx)
+    ) IS NOT NULL,
+    '6. indirizzo_normalizzato calcolato dal trigger (non NULL)'
+  );
+
+-- =========================================================
+-- 7) Errore: p_stradario_id NULL
+-- =========================================================
+SELECT throws_matching(
+    $$SELECT anagrafiche.fn_get_or_create_indirizzo_dettaglio(
+      p_stradario_id := NULL
+    ) $$,
+    'p_stradario_id obbligatorio',
+    '7. Errore p_stradario_id NULL'
+  );
+
+-- =========================================================
+-- 8) Errore: p_stradario_id <= 0
+-- =========================================================
+SELECT throws_matching(
+    $$SELECT anagrafiche.fn_get_or_create_indirizzo_dettaglio(
+      p_stradario_id := 0
+    ) $$,
+    'p_stradario_id obbligatorio',
+    '8. Errore p_stradario_id = 0'
+  );
+
+-- =========================================================
+-- 9) Errore: stradario inesistente
+-- =========================================================
+SELECT throws_matching(
+    $$SELECT anagrafiche.fn_get_or_create_indirizzo_dettaglio(
+      p_stradario_id := 999999999
+    ) $$,
+    'non trovato',
+    '9. Errore stradario inesistente'
+  );
+
+SELECT * FROM finish();
+ROLLBACK;

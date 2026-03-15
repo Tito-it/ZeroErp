@@ -10,12 +10,10 @@ from django.http import JsonResponse
 from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
 from rest_framework import serializers
 from rest_framework.request import Request
-from rest_framework.views import APIView
-from rest_framework_simplejwt.authentication import JWTAuthentication
+from apps.core.api.base_views import DomainAPIView
 
 from apps.core.api.endpoint_helpers import handle_post_json
 from apps.core.api.payload_validators import optional_int
-from apps.core.api.permissions import ZeroERPPermission
 from apps.core.api.success_responses import success_response
 from apps.core.services.error_manager import ErrorManager
 from apps.pratiche.db.pratiche_repository import PraticheRepository
@@ -48,7 +46,8 @@ def _get_flusso_verificato(
 # ================================================================== #
 
 
-class ApiPraticheList(APIView):
+class ApiPraticheList(DomainAPIView):
+    area_funzionale = "pratiche"
     is_search_endpoint = True
 
     @extend_schema(
@@ -141,13 +140,10 @@ class ApiPraticheList(APIView):
         return handle_post_json(request, handler=_handler)
 
 
-class ApiPraticheListV1(ApiPraticheList):
-    authentication_classes = [JWTAuthentication]
-    permission_classes = [ZeroERPPermission]
+
+
+class ApiPraticaDetail(DomainAPIView):
     area_funzionale = "pratiche"
-
-
-class ApiPraticaDetail(APIView):
     @extend_schema(
         responses={200: inline_serializer(
             name="PraticaDetailResponse",
@@ -194,10 +190,6 @@ class ApiPraticaDetail(APIView):
         return handle_post_json(request, handler=_handler)
 
 
-class ApiPraticaDetailV1(ApiPraticaDetail):
-    authentication_classes = [JWTAuthentication]
-    permission_classes = [ZeroERPPermission]
-    area_funzionale = "pratiche"
 
 
 # ================================================================== #
@@ -205,7 +197,9 @@ class ApiPraticaDetailV1(ApiPraticaDetail):
 # ================================================================== #
 
 
-class ApiPraticaStato(APIView):
+class ApiPraticaStato(DomainAPIView):
+    area_funzionale = "pratiche"
+    post_permission = "cambia_stato_pratica"
     @extend_schema(
         request=inline_serializer(
             name="PraticaStatoRequest",
@@ -227,14 +221,11 @@ class ApiPraticaStato(APIView):
         return handle_post_json(request, handler=_handler)
 
 
-class ApiPraticaStatoV1(ApiPraticaStato):
-    authentication_classes = [JWTAuthentication]
-    permission_classes = [ZeroERPPermission]
+
+
+class ApiPraticaAssegnazione(DomainAPIView):
     area_funzionale = "pratiche"
-    post_permission = "cambia_stato_pratica"
-
-
-class ApiPraticaAssegnazione(APIView):
+    post_permission = "assegna_pratica"
     @extend_schema(
         request=inline_serializer(
             name="PraticaAssegnazioneRequest",
@@ -263,11 +254,6 @@ class ApiPraticaAssegnazione(APIView):
         return handle_post_json(request, handler=_handler)
 
 
-class ApiPraticaAssegnazioneV1(ApiPraticaAssegnazione):
-    authentication_classes = [JWTAuthentication]
-    permission_classes = [ZeroERPPermission]
-    area_funzionale = "pratiche"
-    post_permission = "assegna_pratica"
 
 
 # ================================================================== #
@@ -275,7 +261,8 @@ class ApiPraticaAssegnazioneV1(ApiPraticaAssegnazione):
 # ================================================================== #
 
 
-class ApiPraticaGiornale(APIView):
+class ApiPraticaGiornale(DomainAPIView):
+    area_funzionale = "pratiche"
     @extend_schema(
         parameters=[
             OpenApiParameter(name="limit", type=int, required=False, description="Righe per pagina (default 100, max 200)."),
@@ -301,10 +288,6 @@ class ApiPraticaGiornale(APIView):
         return success_response({"count": total, "results": items})
 
 
-class ApiPraticaGiornaleV1(ApiPraticaGiornale):
-    authentication_classes = [JWTAuthentication]
-    permission_classes = [ZeroERPPermission]
-    area_funzionale = "pratiche"
 
 
 # ================================================================== #
@@ -312,7 +295,8 @@ class ApiPraticaGiornaleV1(ApiPraticaGiornale):
 # ================================================================== #
 
 
-class ApiPraticaFlussiList(APIView):
+class ApiPraticaFlussiList(DomainAPIView):
+    area_funzionale = "pratiche"
     @extend_schema(
         responses={200: inline_serializer(
             name="PraticaFlussiListResponse",
@@ -366,13 +350,10 @@ class ApiPraticaFlussiList(APIView):
         return handle_post_json(request, handler=_handler)
 
 
-class ApiPraticaFlussiListV1(ApiPraticaFlussiList):
-    authentication_classes = [JWTAuthentication]
-    permission_classes = [ZeroERPPermission]
+
+
+class ApiPraticaFlussoDetail(DomainAPIView):
     area_funzionale = "pratiche"
-
-
-class ApiPraticaFlussoDetail(APIView):
     @extend_schema(
         responses={200: inline_serializer(
             name="FlussoDetailResponse",
@@ -386,13 +367,11 @@ class ApiPraticaFlussoDetail(APIView):
         return success_response(flusso)
 
 
-class ApiPraticaFlussoDetailV1(ApiPraticaFlussoDetail):
-    authentication_classes = [JWTAuthentication]
-    permission_classes = [ZeroERPPermission]
+
+
+class ApiPraticaFlussoStato(DomainAPIView):
     area_funzionale = "pratiche"
-
-
-class ApiPraticaFlussoStato(APIView):
+    post_permission = "cambia_stato_flusso"
     @extend_schema(
         request=inline_serializer(
             name="FlussoStatoRequest",
@@ -439,11 +418,6 @@ class ApiPraticaFlussoStato(APIView):
         return handle_post_json(request, handler=_handler)
 
 
-class ApiPraticaFlussoStatoV1(ApiPraticaFlussoStato):
-    authentication_classes = [JWTAuthentication]
-    permission_classes = [ZeroERPPermission]
-    area_funzionale = "pratiche"
-    post_permission = "cambia_stato_flusso"
 
 
 # ================================================================== #
@@ -451,12 +425,13 @@ class ApiPraticaFlussoStatoV1(ApiPraticaFlussoStato):
 # ================================================================== #
 
 
-class ApiPraticaFlussoPrerequisiti(APIView):
+class ApiPraticaFlussoPrerequisiti(DomainAPIView):
+    area_funzionale = "pratiche"
     @extend_schema(
         responses={200: inline_serializer(
-            name="FlussoPrerequistiResponse",
+            name="FlussoPrerequisitiResponse",
             fields={
-                "data": inline_serializer(name="FlussoPrerequistiData", fields={
+                "data": inline_serializer(name="FlussoPrerequisitiData", fields={
                     "results": serializers.ListField(child=serializers.DictField()),
                 }),
             },
@@ -473,13 +448,10 @@ class ApiPraticaFlussoPrerequisiti(APIView):
         return success_response({"results": risultati})
 
 
-class ApiPraticaFlussoPrerequistiV1(ApiPraticaFlussoPrerequisiti):
-    authentication_classes = [JWTAuthentication]
-    permission_classes = [ZeroERPPermission]
+
+
+class ApiPraticaFlussoCanali(DomainAPIView):
     area_funzionale = "pratiche"
-
-
-class ApiPraticaFlussoCanali(APIView):
     @extend_schema(
         responses={200: inline_serializer(
             name="FlussoCanaliResponse",
@@ -501,10 +473,6 @@ class ApiPraticaFlussoCanali(APIView):
         return success_response({"results": canali})
 
 
-class ApiPraticaFlussoCanaliV1(ApiPraticaFlussoCanali):
-    authentication_classes = [JWTAuthentication]
-    permission_classes = [ZeroERPPermission]
-    area_funzionale = "pratiche"
 
 
 # ================================================================== #
@@ -512,7 +480,8 @@ class ApiPraticaFlussoCanaliV1(ApiPraticaFlussoCanali):
 # ================================================================== #
 
 
-class ApiPraticaFlussoRegoleGenerazione(APIView):
+class ApiPraticaFlussoRegoleGenerazione(DomainAPIView):
+    area_funzionale = "pratiche"
     @extend_schema(
         responses={200: inline_serializer(
             name="FlussoRegoleGenerazioneResponse",
@@ -531,13 +500,11 @@ class ApiPraticaFlussoRegoleGenerazione(APIView):
         return success_response({"results": regole})
 
 
-class ApiPraticaFlussoRegoleGenerazioneV1(ApiPraticaFlussoRegoleGenerazione):
-    authentication_classes = [JWTAuthentication]
-    permission_classes = [ZeroERPPermission]
+
+
+class ApiPraticaFlussoGenera(DomainAPIView):
     area_funzionale = "pratiche"
-
-
-class ApiPraticaFlussoGenera(APIView):
+    post_permission = "genera_pratica_manuale"
     @extend_schema(
         request=inline_serializer(
             name="FlussoGeneraRequest",
@@ -566,14 +533,10 @@ class ApiPraticaFlussoGenera(APIView):
         return handle_post_json(request, handler=_handler)
 
 
-class ApiPraticaFlussoGeneraV1(ApiPraticaFlussoGenera):
-    authentication_classes = [JWTAuthentication]
-    permission_classes = [ZeroERPPermission]
+
+
+class ApiPraticaFlussoPraticheGenerate(DomainAPIView):
     area_funzionale = "pratiche"
-    post_permission = "genera_pratica_manuale"
-
-
-class ApiPraticaFlussoPraticheGenerate(APIView):
     @extend_schema(
         responses={200: inline_serializer(
             name="FlussoPraticheGenerateResponse",
@@ -592,10 +555,6 @@ class ApiPraticaFlussoPraticheGenerate(APIView):
         return success_response({"results": pratiche})
 
 
-class ApiPraticaFlussoPraticheGenerateV1(ApiPraticaFlussoPraticheGenerate):
-    authentication_classes = [JWTAuthentication]
-    permission_classes = [ZeroERPPermission]
-    area_funzionale = "pratiche"
 
 
 # ================================================================== #
@@ -603,7 +562,9 @@ class ApiPraticaFlussoPraticheGenerateV1(ApiPraticaFlussoPraticheGenerate):
 # ================================================================== #
 
 
-class ApiPraticaSospendi(APIView):
+class ApiPraticaSospendi(DomainAPIView):
+    area_funzionale = "pratiche"
+    post_permission = "sospendi_pratica"
     @extend_schema(
         request=inline_serializer(
             name="PraticaSospendiRequest",
@@ -633,14 +594,11 @@ class ApiPraticaSospendi(APIView):
         return handle_post_json(request, handler=_handler)
 
 
-class ApiPraticaSospendiV1(ApiPraticaSospendi):
-    authentication_classes = [JWTAuthentication]
-    permission_classes = [ZeroERPPermission]
+
+
+class ApiPraticaRiattiva(DomainAPIView):
     area_funzionale = "pratiche"
-    post_permission = "sospendi_pratica"
-
-
-class ApiPraticaRiattiva(APIView):
+    post_permission = "riattiva_pratica"
     @extend_schema(
         request=inline_serializer(
             name="PraticaRiattivaRequest",
@@ -662,11 +620,6 @@ class ApiPraticaRiattiva(APIView):
         return handle_post_json(request, handler=_handler)
 
 
-class ApiPraticaRiattivaV1(ApiPraticaRiattiva):
-    authentication_classes = [JWTAuthentication]
-    permission_classes = [ZeroERPPermission]
-    area_funzionale = "pratiche"
-    post_permission = "riattiva_pratica"
 
 
 # ================================================================== #
@@ -674,7 +627,9 @@ class ApiPraticaRiattivaV1(ApiPraticaRiattiva):
 # ================================================================== #
 
 
-class ApiPraticaFlussoSospendi(APIView):
+class ApiPraticaFlussoSospendi(DomainAPIView):
+    area_funzionale = "pratiche"
+    post_permission = "sospendi_flusso"
     @extend_schema(
         request=inline_serializer(
             name="FlussoSospendiRequest",
@@ -705,14 +660,11 @@ class ApiPraticaFlussoSospendi(APIView):
         return handle_post_json(request, handler=_handler)
 
 
-class ApiPraticaFlussoSospendiV1(ApiPraticaFlussoSospendi):
-    authentication_classes = [JWTAuthentication]
-    permission_classes = [ZeroERPPermission]
+
+
+class ApiPraticaFlussoRiattiva(DomainAPIView):
     area_funzionale = "pratiche"
-    post_permission = "sospendi_flusso"
-
-
-class ApiPraticaFlussoRiattiva(APIView):
+    post_permission = "riattiva_flusso"
     @extend_schema(
         request=inline_serializer(
             name="FlussoRiattivaRequest",
@@ -734,11 +686,6 @@ class ApiPraticaFlussoRiattiva(APIView):
         return handle_post_json(request, handler=_handler)
 
 
-class ApiPraticaFlussoRiattivaV1(ApiPraticaFlussoRiattiva):
-    authentication_classes = [JWTAuthentication]
-    permission_classes = [ZeroERPPermission]
-    area_funzionale = "pratiche"
-    post_permission = "riattiva_flusso"
 
 
 # ================================================================== #
@@ -746,7 +693,8 @@ class ApiPraticaFlussoRiattivaV1(ApiPraticaFlussoRiattiva):
 # ================================================================== #
 
 
-class ApiPraticaSospensioni(APIView):
+class ApiPraticaSospensioni(DomainAPIView):
+    area_funzionale = "pratiche"
     @extend_schema(
         responses={200: inline_serializer(
             name="PraticaSospensioniResponse",
@@ -763,13 +711,10 @@ class ApiPraticaSospensioni(APIView):
         return success_response({"results": items})
 
 
-class ApiPraticaSospensioniV1(ApiPraticaSospensioni):
-    authentication_classes = [JWTAuthentication]
-    permission_classes = [ZeroERPPermission]
+
+
+class ApiPraticaCalcoliTempo(DomainAPIView):
     area_funzionale = "pratiche"
-
-
-class ApiPraticaCalcoliTempo(APIView):
     @extend_schema(
         responses={200: inline_serializer(
             name="PraticaCalcoliTempoResponse",
@@ -786,10 +731,6 @@ class ApiPraticaCalcoliTempo(APIView):
         return success_response({"results": items})
 
 
-class ApiPraticaCalcoliTempoV1(ApiPraticaCalcoliTempo):
-    authentication_classes = [JWTAuthentication]
-    permission_classes = [ZeroERPPermission]
-    area_funzionale = "pratiche"
 
 
 # ================================================================== #
@@ -797,7 +738,8 @@ class ApiPraticaCalcoliTempoV1(ApiPraticaCalcoliTempo):
 # ================================================================== #
 
 
-class ApiFormuleTempo(APIView):
+class ApiFormuleTempo(DomainAPIView):
+    area_funzionale = "pratiche"
     is_search_endpoint = True
 
     @extend_schema(
@@ -828,7 +770,3 @@ class ApiFormuleTempo(APIView):
         return success_response({"results": items})
 
 
-class ApiFormuleTempoV1(ApiFormuleTempo):
-    authentication_classes = [JWTAuthentication]
-    permission_classes = [ZeroERPPermission]
-    area_funzionale = "pratiche"

@@ -25,6 +25,64 @@ a {
   text-decoration: none;
 }
 
+/* ===== Classe utility pagina (list view) =====
+ * Wrapper standard per tutte le pagine con DataTable/Toolbar.
+ * Applicare class="app-page" al div root della view.
+ * Il padding viene dal contenitore .app-content (AppLayout) — qui NON duplicarlo.
+ * Flex column per far riempire la DataTable tutta l'altezza disponibile.
+ */
+.app-page {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  font-size: var(--app-font-size-base);
+  line-height: 1.5;
+}
+
+/* ===== Toolbar pagina (filtri + azioni) =====
+ * Barra filtri sopra la DataTable, flex-wrap per adattarsi allo schermo.
+ * .app-page-toolbar: contenitore (filtri a sx, azioni a dx)
+ * .app-page-filters: gruppo filtri con flex-wrap
+ */
+.app-page-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.app-page-filters {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  flex: 1;
+  min-width: 0;
+}
+
+/* ===== Classe utility contenuto drawer =====
+ * Layout standard per il contenuto di qualsiasi drawer laterale.
+ * Gap tra sezioni, tipografia titoli (h4), font-size uniforme.
+ * Applicare class="app-drawer-content" al wrapper dentro il Drawer.
+ */
+.app-drawer-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  font-size: var(--app-font-size-base);
+  line-height: 1.5;
+}
+
+.app-drawer-content h4 {
+  font-size: var(--app-font-size-base);
+  font-weight: 600;
+  margin: 0;
+}
+
 /* ===== Classe utility DataTable compatta =====
  * Applicare class="app-datatable" su un wrapper o direttamente sulla DataTable.
  * Usa le variabili --app-table-* definite in theme.css per personalizzazione centralizzata.
@@ -46,6 +104,139 @@ a {
   background: var(--app-table-stripe-bg);
 }
 
+/* ===== Paginator compatto =====
+ * Font ridotto, padding ridotto, dropdown piccoli per righe/pagina e salto pagina.
+ * Applicato globalmente su .app-datatable — tutte le liste lo ereditano. */
+.app-datatable .p-paginator {
+  font-size: 0.8rem;
+  padding: 0.25rem 0.5rem;
+  gap: 0.25rem;
+}
+
+.app-datatable .p-paginator .p-paginator-element {
+  min-width: 1.75rem;
+  height: 1.75rem;
+  font-size: 0.8rem;
+}
+
+.app-datatable .p-paginator .p-select {
+  font-size: 0.8rem;
+  height: 1.75rem;
+}
+
+.app-datatable .p-paginator .p-select .p-select-label {
+  font-size: 0.8rem;
+  padding: 0.15rem 0.4rem;
+}
+
+.app-datatable .p-paginator .p-paginator-current {
+  font-size: 0.8rem;
+  padding: 0 0.25rem;
+}
+
 .app-datatable .p-datatable-tbody > tr:hover {
   background: var(--app-table-hover-bg);
+}
+
+/* ===== Classe utility form field =====
+ * Layout verticale label + input usato da tutti i form building block.
+ * Singola source of truth — non duplicare in stili scoped dei componenti.
+ */
+.form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.form-field label {
+  font-weight: 600;
+  font-size: var(--app-font-size-base);
+}
+
+.form-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+/* Variante 2 colonne per form compatti (civico, dettagli indirizzo).
+ * Collassa a 1 colonna su schermi stretti (< 480px). */
+.form-grid-2col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+}
+
+@media (max-width: 479px) {
+  .form-grid-2col {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ===== TabView full-height dentro app-page =====
+ * Quando un TabView e' figlio di .app-page, deve riempire tutta l'altezza
+ * disponibile per far funzionare scrollHeight="flex" nella DataTable.
+ * Catena: .app-page > .p-tabview > .p-tabview-panels > .p-tabview-panel > .app-tab-content > DataTable
+ *
+ * PrimeVue 4.5 applica padding su .p-tabview-panels (0.875rem 1.125rem) —
+ * lo azzeriamo perche' il contenuto gestisce il proprio spacing.
+ * Ogni livello deve essere flex column con min-height: 0 e overflow: hidden.
+ */
+.app-page > .p-tabview {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.app-page > .p-tabview > .p-tabview-panels {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  padding: 0.5rem 0 0 0;
+}
+
+.app-page > .p-tabview > .p-tabview-panels > .p-tabview-panel {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+/* Wrapper generico per contenuto tab con DataTable flex.
+ * Applicare class="app-tab-content" al div root del componente dentro un TabPanel.
+ * overflow:hidden vincola l'altezza — la DataTable con scrollHeight="flex" gestisce
+ * il suo scroll interno e il paginator resta visibile in fondo (dentro il flex del DataTable). */
+.app-tab-content {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Footer drawer (pulsanti Annulla/Salva) */
+.app-drawer-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: auto;
+  padding-top: 1rem;
+}
+
+/* ===== Responsive: schermi piccoli =====
+ * Tablet: < 1024px — filtri wrappano, pulsanti azione solo icona + tooltip
+ * Mobile: < 768px — padding ridotto (gestito da AppLayout)
+ */
+@media (max-width: 1023px) {
+  .app-page-action .p-button-label {
+    display: none;
+  }
+
+  .app-page-action {
+    padding: 0.5rem;
+  }
 }

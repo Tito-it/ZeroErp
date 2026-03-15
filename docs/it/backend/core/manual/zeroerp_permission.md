@@ -73,7 +73,7 @@ Le view che necessitano accesso pubblico (schema, docs, auth) dichiarano esplici
 Esempio:
 
 ```python
-class ApiRunLottoPipelineV1(ApiRunLottoPipeline):
+class ApiRunLottoPipeline(ApiRunLottoPipeline):
     authentication_classes = [JWTAuthentication]
     permission_classes = [ZeroERPPermission]
     area_funzionale = "vendite"

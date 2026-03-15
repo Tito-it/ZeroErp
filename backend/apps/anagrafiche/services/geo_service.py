@@ -1,0 +1,326 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+# Doc: Python
+# Scopo: Service layer per gestione geografica (toponomastica, comuni,
+#        province, regioni, stati, indirizzi).
+#        Validazione, orchestrazione, IntegrityError — le view restano sottili.
+#        Ref: docs/it/dev/api.md (sezione 6 Layering)
+# ------------------------------------------------------------
+
+from __future__ import annotations
+
+from typing import Any
+
+from django.db import IntegrityError
+
+from apps.core.api.payload_validators import optional_bool, optional_int
+from apps.core.services.error_manager import ErrorManager
+from apps.core.services.service_errors import ServiceError
+from apps.anagrafiche.db.geo_repository import GeoRepository
+from apps.anagrafiche.db.indirizzi_repository import IndirizziRepository
+from apps.anagrafiche.error_codes import E_ANAG_DUPLICATO, E_ANAG_NOT_FOUND, E_ANAG_VALIDAZIONE
+
+
+def _require_str(payload: dict, key: str, message: str) -> str:
+    """Estrae, strippa e valida campo stringa obbligatorio."""
+    value = (payload.get(key) or "").strip()
+    ErrorManager.require(bool(value), code=E_ANAG_VALIDAZIONE, message=message)
+    return value
+
+
+def _optional_str(payload: dict, key: str, message: str | None = None) -> str | None:
+    """Estrae e strippa campo stringa opzionale. Se fornito e vuoto dopo strip, errore."""
+    value = payload.get(key)
+    if value is None:
+        return None
+    value = value.strip()
+    if message:
+        ErrorManager.require(bool(value), code=E_ANAG_VALIDAZIONE, message=message)
+    return value or None
+
+
+def _create_with_dedup(fn, duplicate_message: str) -> dict:
+    """Esegue fn (create) gestendo IntegrityError come duplicato."""
+    try:
+        return fn()
+    except IntegrityError as exc:
+        raise ServiceError(code=E_ANAG_DUPLICATO, message=duplicate_message, detail=str(exc)) from exc
+
+
+def _update_with_dedup(fn, duplicate_message: str, not_found_message: str) -> dict:
+    """Esegue fn (update) gestendo IntegrityError e not found."""
+    try:
+        updated = fn()
+    except IntegrityError as exc:
+        raise ServiceError(code=E_ANAG_DUPLICATO, message=duplicate_message, detail=str(exc)) from exc
+    ErrorManager.require(updated, code=E_ANAG_NOT_FOUND, message=not_found_message)
+    return {"updated": True}
+
+
+class GeoService:
+    """Service per gestione entita' geografiche."""
+
+    def __init__(self) -> None:
+        self._geo = GeoRepository()
+        self._ind = IndirizziRepository()
+
+    # =================================================================
+    # Toponomastica
+    # =================================================================
+
+    # Scopo: Lista paginata toponomastica.
+    def list_toponomastica(self, **params) -> tuple[list, int]:
+        return self._geo.list_toponomastica(**params)
+
+    # Scopo: Dettaglio toponomastica.
+    def get_toponomastica(self, pk: int) -> dict:
+        result = self._geo.get_toponomastica(pk)
+        ErrorManager.require(result is not None, code=E_ANAG_NOT_FOUND, message="Tipo strada non trovato.")
+        assert result is not None
+        return result
+
+    # Scopo: Crea tipo strada con validazione e dedup.
+    def create_toponomastica(self, payload: dict) -> dict:
+        descrizione = _require_str(payload, "descrizione", "Descrizione obbligatoria.")
+        return _create_with_dedup(
+            lambda: self._geo.create_toponomastica(descrizione=descrizione),
+            "Tipo strada gia' esistente.",
+        )
+
+    # Scopo: Aggiorna tipo strada con validazione e dedup.
+    def update_toponomastica(self, pk: int, payload: dict) -> dict:
+        descrizione = _optional_str(payload, "descrizione", "Descrizione non puo' essere vuota.")
+        attivo = optional_bool(payload, "attivo", default=True) if "attivo" in payload else None
+        return _update_with_dedup(
+            lambda: self._geo.update_toponomastica(pk, descrizione=descrizione, attivo=attivo),
+            "Tipo strada gia' esistente.",
+            "Tipo strada non trovato.",
+        )
+
+    # =================================================================
+    # Comuni
+    # =================================================================
+
+    # Scopo: Lista paginata comuni.
+    def list_comuni(self, **params) -> tuple[list, int]:
+        return self._geo.list_comuni(**params)
+
+    # Scopo: Crea comune con validazione e dedup.
+    def create_comune(self, payload: dict) -> dict:
+        descrizione = _require_str(payload, "descrizione", "Descrizione comune obbligatoria.")
+        return _create_with_dedup(
+            lambda: self._geo.create_comune(descrizione=descrizione, provincia_id=optional_int(payload, "provincia_id")),
+            "Comune gia' esistente.",
+        )
+
+    # =================================================================
+    # Province
+    # =================================================================
+
+    # Scopo: Lista paginata province.
+    def list_province(self, **params) -> tuple[list, int]:
+        return self._geo.list_province_paginated(**params)
+
+    # Scopo: Lista province per dropdown.
+    def lookup_province(self) -> list:
+        return self._geo.list_province()
+
+    # Scopo: Dettaglio provincia.
+    def get_provincia(self, pk: int) -> dict:
+        result = self._geo.get_provincia(pk)
+        ErrorManager.require(result is not None, code=E_ANAG_NOT_FOUND, message="Provincia non trovata.")
+        assert result is not None
+        return result
+
+    # Scopo: Crea provincia con validazione e dedup.
+    def create_provincia(self, payload: dict) -> dict:
+        descrizione = _require_str(payload, "descrizione", "Descrizione obbligatoria.")
+        sigla = _require_str(payload, "sigla", "Sigla obbligatoria.")
+        return _create_with_dedup(
+            lambda: self._geo.create_provincia(descrizione=descrizione, sigla=sigla, regione_id=optional_int(payload, "regione_id")),
+            "Sigla provincia gia' esistente.",
+        )
+
+    # Scopo: Aggiorna provincia con validazione e dedup.
+    def update_provincia(self, pk: int, payload: dict) -> dict:
+        descrizione = _optional_str(payload, "descrizione", "Descrizione non puo' essere vuota.")
+        sigla = _optional_str(payload, "sigla", "Sigla non puo' essere vuota.")
+        return _update_with_dedup(
+            lambda: self._geo.update_provincia(pk, descrizione=descrizione, sigla=sigla, regione_id=optional_int(payload, "regione_id")),
+            "Sigla provincia gia' esistente.",
+            "Provincia non trovata.",
+        )
+
+    # =================================================================
+    # Regioni
+    # =================================================================
+
+    # Scopo: Lista paginata regioni.
+    def list_regioni(self, **params) -> tuple[list, int]:
+        return self._geo.list_regioni(**params)
+
+    # Scopo: Lista regioni per dropdown.
+    def lookup_regioni(self, stato_id: int | None = None) -> list:
+        return self._geo.list_regioni_lookup(stato_id=stato_id)
+
+    # Scopo: Dettaglio regione.
+    def get_regione(self, pk: int) -> dict:
+        result = self._geo.get_regione(pk)
+        ErrorManager.require(result is not None, code=E_ANAG_NOT_FOUND, message="Regione non trovata.")
+        assert result is not None
+        return result
+
+    # Scopo: Crea regione con validazione e dedup.
+    def create_regione(self, payload: dict) -> dict:
+        descrizione = _require_str(payload, "descrizione", "Descrizione obbligatoria.")
+        return _create_with_dedup(
+            lambda: self._geo.create_regione(descrizione=descrizione, stato_id=optional_int(payload, "stato_id")),
+            "Regione gia' esistente.",
+        )
+
+    # Scopo: Aggiorna regione con validazione e dedup.
+    def update_regione(self, pk: int, payload: dict) -> dict:
+        descrizione = _optional_str(payload, "descrizione", "Descrizione non puo' essere vuota.")
+        return _update_with_dedup(
+            lambda: self._geo.update_regione(pk, descrizione=descrizione, stato_id=optional_int(payload, "stato_id")),
+            "Regione gia' esistente.",
+            "Regione non trovata.",
+        )
+
+    # =================================================================
+    # Stati
+    # =================================================================
+
+    # Scopo: Lista paginata stati.
+    def list_stati(self, **params) -> tuple[list, int]:
+        return self._geo.list_stati(**params)
+
+    # Scopo: Lista stati per dropdown.
+    def lookup_stati(self) -> list:
+        return self._geo.list_stati_lookup()
+
+    # Scopo: Dettaglio stato.
+    def get_stato(self, pk: int) -> dict:
+        result = self._geo.get_stato(pk)
+        ErrorManager.require(result is not None, code=E_ANAG_NOT_FOUND, message="Stato non trovato.")
+        assert result is not None
+        return result
+
+    # Scopo: Crea stato con validazione e dedup.
+    def create_stato(self, payload: dict) -> dict:
+        descrizione = _require_str(payload, "descrizione", "Descrizione obbligatoria.")
+        return _create_with_dedup(
+            lambda: self._geo.create_stato(
+                descrizione=descrizione,
+                codice_iso2=payload.get("codice_iso2"),
+                codice_iso3=payload.get("codice_iso3"),
+                sigla_stato=payload.get("sigla_stato"),
+                codice_telefonico=payload.get("codice_telefonico"),
+                continente=payload.get("continente"),
+            ),
+            "Stato gia' esistente.",
+        )
+
+    # Scopo: Aggiorna stato con validazione e dedup.
+    def update_stato(self, pk: int, payload: dict) -> dict:
+        descrizione = _optional_str(payload, "descrizione", "Descrizione non puo' essere vuota.")
+        return _update_with_dedup(
+            lambda: self._geo.update_stato(
+                pk, descrizione=descrizione,
+                codice_iso2=payload.get("codice_iso2"),
+                codice_iso3=payload.get("codice_iso3"),
+                sigla_stato=payload.get("sigla_stato"),
+                codice_telefonico=payload.get("codice_telefonico"),
+                continente=payload.get("continente"),
+            ),
+            "Stato gia' esistente.",
+            "Stato non trovato.",
+        )
+
+    # =================================================================
+    # Indirizzi dettaglio
+    # =================================================================
+
+    # Scopo: Lista paginata indirizzi.
+    def list_indirizzi(self, **params) -> tuple[list, int]:
+        return self._ind.list_indirizzi_dettaglio(**params)
+
+    # Scopo: Dettaglio indirizzo.
+    def get_indirizzo(self, pk: int) -> dict[str, Any]:
+        result = self._ind.get_indirizzo_dettaglio(pk)
+        ErrorManager.require(result is not None, code=E_ANAG_NOT_FOUND, message="Indirizzo non trovato.")
+        assert result is not None
+        return result
+
+    # Scopo: Crea indirizzo. Orchestrazione: risolve stradario (esistente o nuovo),
+    # poi chiama fn_get_or_create_indirizzo_dettaglio, poi ritorna dettaglio completo.
+    def create_indirizzo(self, payload: dict) -> dict[str, Any]:
+        stradario_id = optional_int(payload, "stradario_id")
+
+        if stradario_id is None:
+            # Via nuova: creare stradario_generale + stradario
+            toponomastica_id = optional_int(payload, "toponomastica_id")
+            descrizione_via = (payload.get("descrizione_via") or "").strip()
+            comune_id = optional_int(payload, "comune_id")
+            codice_postale_id = optional_int(payload, "codice_postale_id")
+
+            ErrorManager.require(toponomastica_id is not None and toponomastica_id > 0,
+                                 code=E_ANAG_VALIDAZIONE, message="Tipo strada obbligatorio per via nuova.")
+            assert toponomastica_id is not None
+            ErrorManager.require(bool(descrizione_via),
+                                 code=E_ANAG_VALIDAZIONE, message="Nome via obbligatorio.")
+            ErrorManager.require(comune_id is not None and comune_id > 0,
+                                 code=E_ANAG_VALIDAZIONE, message="Comune obbligatorio per via nuova.")
+            assert comune_id is not None
+            ErrorManager.require(codice_postale_id is not None and codice_postale_id > 0,
+                                 code=E_ANAG_VALIDAZIONE, message="CAP obbligatorio per via nuova.")
+            assert codice_postale_id is not None
+
+            stradario_id = self._ind.get_or_create_stradario(
+                toponomastica_id=toponomastica_id, descrizione_via=descrizione_via,
+                comune_id=comune_id, codice_postale_id=codice_postale_id,
+            )
+        else:
+            ErrorManager.require(stradario_id > 0, code=E_ANAG_VALIDAZIONE, message="stradario_id non valido.")
+        assert stradario_id is not None
+
+        indirizzo_id = self._ind.create_indirizzo_dettaglio(
+            stradario_id=stradario_id,
+            civico=optional_int(payload, "civico"),
+            estensione_civico=(payload.get("estensione_civico") or "").strip() or None,
+            palazzina=(payload.get("palazzina") or "").strip() or None,
+            scala=(payload.get("scala") or "").strip() or None,
+            piano=(payload.get("piano") or "").strip() or None,
+            interno=(payload.get("interno") or "").strip() or None,
+        )
+        detail = self._ind.get_indirizzo_dettaglio(indirizzo_id)
+        return detail or {"id": indirizzo_id}
+
+    # Scopo: Aggiorna dettagli civico indirizzo.
+    def update_indirizzo(self, pk: int, payload: dict) -> dict:
+        def _strip_or_none(key: str):
+            v = payload.get(key)
+            return v.strip() if isinstance(v, str) else v
+
+        updated = self._ind.update_indirizzo_dettaglio(
+            pk,
+            civico=optional_int(payload, "civico"),
+            estensione_civico=_strip_or_none("estensione_civico"),
+            palazzina=_strip_or_none("palazzina"),
+            scala=_strip_or_none("scala"),
+            piano=_strip_or_none("piano"),
+            interno=_strip_or_none("interno"),
+            attivo=optional_bool(payload, "attivo") if "attivo" in payload else None,
+        )
+        ErrorManager.require(updated, code=E_ANAG_NOT_FOUND, message="Indirizzo non trovato.")
+        return {"updated": True}
+
+    # =================================================================
+    # Codici postali
+    # =================================================================
+
+    # Scopo: Lista CAP per comune.
+    def list_codici_postali(self, comune_id: int) -> list:
+        ErrorManager.require(comune_id > 0, code=E_ANAG_VALIDAZIONE, message="comune_id obbligatorio.")
+        return self._ind.list_codici_postali_by_comune(comune_id)

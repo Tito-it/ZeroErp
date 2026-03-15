@@ -1,12 +1,19 @@
 <script setup>
-// Scopo: drawer laterale per creazione e modifica operatore.
-// Modalita' CREA: form Persona + Accesso + Collocazione.
-// Modalita' MODIFICA: stessi campi (no password) + TabView Dati | Permessi.
+// Scopo: Drawer laterale per creazione e modifica operatore.
+// Modalita' CREA: SoggettoForm (tipo PR forzato) + AuthUserForm + collocazione.
+// Modalita' MODIFICA: form dati + TabView Dati | Permessi.
 import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useUtentiStore } from '../stores/utenti'
 import { useApiHandler } from '../../core/composables/useApiHandler'
+import { useSoggettoForm } from '../../core/composables/useSoggettoForm'
+import { useAuthUser } from '../../core/composables/useAuthUser'
+import { useLookup } from '../../core/composables/useLookup'
+import { lookupCodici } from '../../core/apiCore'
+import { listUnitaOrganizzative } from '../api/amministrazione'
 import { DRAWER_WIDTH } from '../../core/constants'
+import SoggettoForm from '../../core/components/SoggettoForm.vue'
+import AuthUserForm from '../../core/components/AuthUserForm.vue'
 import UtentePermessiTab from './UtentePermessiTab.vue'
 import Drawer from 'primevue/drawer'
 import InputText from 'primevue/inputtext'
@@ -23,6 +30,14 @@ const store = useUtentiStore()
 const { execute, loading } = useApiHandler()
 const confirm = useConfirm()
 
+// Building block: soggetto PF (tipo forzato = 1 = PR persona fisica)
+const soggetto = useSoggettoForm({ tipoForzato: 1 })
+const auth = useAuthUser()
+
+// Lookup via useLookup (non piu' dallo store)
+const qualifiche = useLookup(() => lookupCodici('config.qualifiche'), { immediate: true })
+const unitaOrg = useLookup(listUnitaOrganizzative, { immediate: true })
+
 const props = defineProps({
   visible: Boolean,
   mode: { type: String, default: 'create' },
@@ -33,78 +48,64 @@ const emit = defineEmits(['update:visible', 'saved', 'cancelled'])
 
 const isEdit = computed(() => props.mode === 'edit')
 
-// Form fields
-const form = ref({
-  cognome: '',
-  nome: '',
-  username: '',
-  email: '',
-  password: '',
-  codice_fiscale: '',
-  data_nascita: null,
-  sesso: 'M',
+// Collocazione (specifico operatore, non building block)
+const collocazione = ref({
   ruolo_sistema: 'OPERATIVO',
+  qualifica_id: null,
   unita_organizzativa_id: null,
-  valido_dal: null,
   valido_al: null
 })
-
-const sessoOptions = [
-  { label: 'M', value: 'M' },
-  { label: 'F', value: 'F' }
-]
 
 const ruoloOptions = [
   { label: t('amm.ruolo_admin'), value: 'ADMIN' },
   { label: t('amm.ruolo_operativo'), value: 'OPERATIVO' }
 ]
 
-// Carica dati quando il drawer si apre in modifica
+// Form modifica (solo per edit mode)
+const editForm = ref({
+  cognome: '', nome: '', email: '',
+  ruolo_sistema: 'OPERATIVO',
+  unita_organizzativa_id: null,
+  valido_al: null
+})
+
+// Carica dati quando il drawer si apre
 watch(() => props.visible, async (val) => {
   if (!val) return
-  await store.fetchUnitaOrganizzative()
   if (isEdit.value && props.authUserId) {
     await store.fetchDetail(props.authUserId)
     const u = store.currentUtente
     if (u) {
-      form.value = {
+      editForm.value = {
         cognome: u.last_name || '',
         nome: u.first_name || '',
-        username: u.username || '',
         email: u.email || '',
-        password: '',
-        codice_fiscale: '',
-        data_nascita: null,
-        sesso: 'M',
         ruolo_sistema: u.ruolo_sistema || 'OPERATIVO',
         unita_organizzativa_id: u.unita_organizzativa_id,
-        valido_dal: null,
         valido_al: u.valido_al || null
       }
     }
   } else {
-    resetForm()
+    soggetto.reset()
+    auth.reset()
+    collocazione.value = {
+      ruolo_sistema: 'OPERATIVO',
+      qualifica_id: null,
+      unita_organizzativa_id: null,
+      valido_al: null
+    }
   }
 })
-
-function resetForm() {
-  form.value = {
-    cognome: '', nome: '', username: '', email: '', password: '',
-    codice_fiscale: '', data_nascita: null, sesso: 'M',
-    ruolo_sistema: 'OPERATIVO', unita_organizzativa_id: null,
-    valido_dal: null, valido_al: null
-  }
-}
 
 async function onSave() {
   if (isEdit.value) {
     const payload = {
-      email: form.value.email,
-      first_name: form.value.nome,
-      last_name: form.value.cognome,
-      ruolo_sistema: form.value.ruolo_sistema,
-      unita_organizzativa_id: form.value.unita_organizzativa_id,
-      valido_al: form.value.valido_al
+      email: editForm.value.email,
+      first_name: editForm.value.nome,
+      last_name: editForm.value.cognome,
+      ruolo_sistema: editForm.value.ruolo_sistema,
+      unita_organizzativa_id: editForm.value.unita_organizzativa_id,
+      valido_al: editForm.value.valido_al
     }
     const result = await execute(
       () => store.update(props.authUserId, payload),
@@ -112,8 +113,21 @@ async function onSave() {
     )
     if (result) emit('saved')
   } else {
+    // Assembla payload da building block
+    const payload = {
+      cognome: soggetto.form.cognome,
+      nome: soggetto.form.nome,
+      codice_fiscale: soggetto.form.codice_fiscale,
+      data_nascita: soggetto.form.data_nascita,
+      sesso: soggetto.form.sesso,
+      comune_nascita_id: soggetto.form.comune_nascita_id,
+      email: auth.form.email,
+      username: auth.form.username,
+      password: auth.form.password,
+      ...collocazione.value
+    }
     const result = await execute(
-      () => store.create(form.value),
+      () => store.create(payload),
       { successMessage: t('amm.utente_creato') }
     )
     if (result) emit('saved')
@@ -155,35 +169,34 @@ function onClose() {
     <template v-if="isEdit">
       <TabView>
         <TabPanel :header="t('amm.tab_dati')">
-          <!-- Form campi modifica -->
           <div class="form-grid">
-            <div class="field">
-              <label>{{ t('amm.field_cognome') }}</label>
-              <InputText v-model="form.cognome" class="w-full" />
+            <div class="form-field">
+              <label>{{ t('common.cognome') }}</label>
+              <InputText v-model="editForm.cognome" class="w-full" />
             </div>
-            <div class="field">
-              <label>{{ t('amm.field_nome') }}</label>
-              <InputText v-model="form.nome" class="w-full" />
+            <div class="form-field">
+              <label>{{ t('common.nome') }}</label>
+              <InputText v-model="editForm.nome" class="w-full" />
             </div>
-            <div class="field">
-              <label>{{ t('amm.field_email') }}</label>
-              <InputText v-model="form.email" class="w-full" />
+            <div class="form-field">
+              <label>{{ t('common.email') }}</label>
+              <InputText v-model="editForm.email" class="w-full" />
             </div>
-            <div class="field">
+            <div class="form-field">
               <label>{{ t('amm.field_ruolo') }}</label>
-              <Select v-model="form.ruolo_sistema" :options="ruoloOptions"
+              <Select v-model="editForm.ruolo_sistema" :options="ruoloOptions"
                 option-label="label" option-value="value" class="w-full" />
             </div>
-            <div class="field">
+            <div class="form-field">
               <label>{{ t('amm.field_reparto') }}</label>
-              <Select v-model="form.unita_organizzativa_id"
-                :options="store.unitaOrganizzative"
-                option-label="nome" option-value="id"
+              <Select v-model="editForm.unita_organizzativa_id"
+                :options="unitaOrg.items.value"
+                option-label="descrizione" option-value="id"
                 class="w-full" :placeholder="t('amm.select_reparto')" />
             </div>
-            <div class="field">
+            <div class="form-field">
               <label>{{ t('amm.field_valido_al') }}</label>
-              <DatePicker v-model="form.valido_al" date-format="yy-mm-dd" class="w-full" />
+              <DatePicker v-model="editForm.valido_al" date-format="yy-mm-dd" class="w-full" />
             </div>
           </div>
 
@@ -204,53 +217,46 @@ function onClose() {
       </TabView>
     </template>
 
-    <template v-else>
-      <!-- Form creazione -->
+    <div v-else class="app-drawer-content">
+      <!-- Building block: soggetto PF -->
+      <h4>{{ t('amm.section_persona') }}</h4>
+      <SoggettoForm
+        :form="soggetto.form"
+        :tipi-soggetto="soggetto.tipiSoggetto"
+        :is-p-f="soggetto.isPF.value"
+        :show-partita-iva="soggetto.showPartitaIva.value"
+        :tipo-forzato="1"
+      />
+
+      <!-- Building block: auth user -->
+      <h4>{{ t('amm.section_accesso') }}</h4>
+      <AuthUserForm
+        :form="auth.form"
+        :password-match="auth.passwordMatch.value"
+      />
+
+      <!-- Collocazione operatore (specifico dominio) -->
+      <h4>{{ t('amm.section_collocazione') }}</h4>
       <div class="form-grid">
-        <h4>{{ t('amm.section_persona') }}</h4>
-        <div class="field">
-          <label>{{ t('amm.field_cognome') }} *</label>
-          <InputText v-model="form.cognome" class="w-full" />
-        </div>
-        <div class="field">
-          <label>{{ t('amm.field_nome') }} *</label>
-          <InputText v-model="form.nome" class="w-full" />
-        </div>
-        <div class="field">
-          <label>{{ t('amm.field_cf') }}</label>
-          <InputText v-model="form.codice_fiscale" class="w-full" />
-        </div>
-        <div class="field">
-          <label>{{ t('amm.field_sesso') }}</label>
-          <Select v-model="form.sesso" :options="sessoOptions"
-            option-label="label" option-value="value" class="w-full" />
-        </div>
-
-        <h4>{{ t('amm.section_accesso') }}</h4>
-        <div class="field">
-          <label>{{ t('amm.field_username') }} *</label>
-          <InputText v-model="form.username" class="w-full" />
-        </div>
-        <div class="field">
-          <label>{{ t('amm.field_email') }} *</label>
-          <InputText v-model="form.email" class="w-full" />
-        </div>
-        <div class="field">
-          <label>{{ t('amm.field_password') }} *</label>
-          <InputText v-model="form.password" type="password" class="w-full" />
-        </div>
-
-        <h4>{{ t('amm.section_collocazione') }}</h4>
-        <div class="field">
+        <div class="form-field">
           <label>{{ t('amm.field_ruolo') }}</label>
-          <Select v-model="form.ruolo_sistema" :options="ruoloOptions"
+          <Select v-model="collocazione.ruolo_sistema" :options="ruoloOptions"
             option-label="label" option-value="value" class="w-full" />
         </div>
-        <div class="field">
-          <label>{{ t('amm.field_reparto') }} *</label>
-          <Select v-model="form.unita_organizzativa_id"
-            :options="store.unitaOrganizzative"
-            option-label="nome" option-value="id"
+        <div class="form-field">
+          <label>{{ t('amm.field_qualifica') }} *</label>
+          <Select v-model="collocazione.qualifica_id"
+            :options="qualifiche.items.value"
+            :loading="qualifiche.loading.value"
+            option-label="descrizione" option-value="id"
+            class="w-full" :placeholder="t('amm.select_qualifica')" />
+        </div>
+        <div class="form-field">
+          <label>{{ t('amm.field_reparto') }}</label>
+          <Select v-model="collocazione.unita_organizzativa_id"
+            :options="unitaOrg.items.value"
+            :loading="unitaOrg.loading.value"
+            option-label="descrizione" option-value="id"
             class="w-full" :placeholder="t('amm.select_reparto')" />
         </div>
       </div>
@@ -260,23 +266,8 @@ function onClose() {
         <Button :label="t('common.save')" icon="pi pi-check"
           :loading="loading" @click="onSave" />
       </div>
-    </template>
+    </div>
   </Drawer>
 </template>
 
-<style scoped>
-.form-grid {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-}
-.field {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-}
-.field label {
-  font-weight: 600;
-  font-size: 0.875rem;
-}
-</style>
+<!-- Stili .form-grid e .form-field definiti in main.css -->

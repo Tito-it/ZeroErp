@@ -10,7 +10,7 @@ consentite e lo stato del profilo reparto.
 
 View in `apps/core/api/views.py`:
 - `ApiPermessiEffettivi` — logica base
-- `ApiPermessiEffettiviV1` — versione protetta JWT
+- `ApiPermessiEffettivi` — versione protetta JWT
 
 L'endpoint utilizza `PermissionResolver` per risolvere la catena completa
 (ruolo_sistema → override utente → profilo reparto → BLOCCATO) su ogni area funzionale

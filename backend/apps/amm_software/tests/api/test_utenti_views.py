@@ -93,7 +93,7 @@ def _operativo_request() -> MagicMock:
 
 class TestUtentiListView(TestCase):
 
-    @patch("apps.amm_software.api.views.AmmSoftwareRepository")
+    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
     def test_list_utenti_success(self, MockRepo: MagicMock) -> None:
         """Scopo: GET lista con risultati ritorna count e results."""
         repo_instance = MockRepo.return_value
@@ -109,7 +109,7 @@ class TestUtentiListView(TestCase):
         self.assertEqual(body["data"]["count"], 1)
         self.assertEqual(len(body["data"]["results"]), 1)
 
-    @patch("apps.amm_software.api.views.AmmSoftwareRepository")
+    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
     def test_list_utenti_empty(self, MockRepo: MagicMock) -> None:
         """Scopo: GET lista vuota ritorna count=0 e results=[]."""
         repo_instance = MockRepo.return_value
@@ -124,7 +124,7 @@ class TestUtentiListView(TestCase):
         body = json.loads(response.content)
         self.assertEqual(body["data"]["count"], 0)
 
-    @patch("apps.amm_software.api.views.AmmSoftwareRepository")
+    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
     def test_list_utenti_with_filters(self, MockRepo: MagicMock) -> None:
         """Scopo: I filtri query string vengono passati al repository."""
         repo_instance = MockRepo.return_value
@@ -158,7 +158,7 @@ class TestUtentiListView(TestCase):
 
 class TestUtentiDetailView(TestCase):
 
-    @patch("apps.amm_software.api.views.AmmSoftwareRepository")
+    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
     def test_detail_utente_success(self, MockRepo: MagicMock) -> None:
         """Scopo: GET dettaglio ritorna i dati completi dell'utente."""
         repo_instance = MockRepo.return_value
@@ -174,7 +174,7 @@ class TestUtentiDetailView(TestCase):
         self.assertEqual(body["data"]["username"], "operatore1")
         self.assertEqual(body["data"]["override_aree_count"], 2)
 
-    @patch("apps.amm_software.api.views.AmmSoftwareRepository")
+    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
     def test_detail_utente_not_found(self, MockRepo: MagicMock) -> None:
         """Scopo: GET dettaglio per utente inesistente solleva errore."""
         repo_instance = MockRepo.return_value
@@ -199,8 +199,8 @@ class TestUtentiDetailView(TestCase):
 
 class TestUtentiPatchView(TestCase):
 
-    @patch("apps.amm_software.api.views.invalidate_user")
-    @patch("apps.amm_software.api.views.AmmSoftwareRepository")
+    @patch("apps.amm_software.services.amm_software_service.invalidate_user")
+    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
     def test_patch_utente_success(self, MockRepo: MagicMock, mock_invalidate: MagicMock) -> None:
         """Scopo: PATCH modifica i campi e ritorna il dettaglio aggiornato."""
         repo_instance = MockRepo.return_value
@@ -214,8 +214,8 @@ class TestUtentiPatchView(TestCase):
         self.assertEqual(response.status_code, 200)
         repo_instance.update_utente.assert_called_once()
 
-    @patch("apps.amm_software.api.views.invalidate_user")
-    @patch("apps.amm_software.api.views.AmmSoftwareRepository")
+    @patch("apps.amm_software.services.amm_software_service.invalidate_user")
+    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
     def test_patch_utente_invalidates_cache(self, MockRepo: MagicMock, mock_invalidate: MagicMock) -> None:
         """Scopo: PATCH invalida la cache permessi dell'utente modificato."""
         repo_instance = MockRepo.return_value
@@ -227,7 +227,7 @@ class TestUtentiPatchView(TestCase):
 
         mock_invalidate.assert_called_once_with(1)
 
-    @patch("apps.amm_software.api.views.AmmSoftwareRepository")
+    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
     def test_patch_utente_not_found(self, MockRepo: MagicMock) -> None:
         """Scopo: PATCH su utente inesistente solleva errore."""
         repo_instance = MockRepo.return_value
@@ -240,8 +240,8 @@ class TestUtentiPatchView(TestCase):
         with self.assertRaises(ServiceError):
             view.patch(_admin_request(method="PATCH", data={"email": "x@y.it"}), auth_user_id=999)
 
-    @patch("apps.amm_software.api.views.invalidate_user")
-    @patch("apps.amm_software.api.views.AmmSoftwareRepository")
+    @patch("apps.amm_software.services.amm_software_service.invalidate_user")
+    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
     def test_patch_ruolo_sistema(self, MockRepo: MagicMock, mock_invalidate: MagicMock) -> None:
         """Scopo: PATCH cambio ruolo_sistema passa il valore corretto al repository."""
         repo_instance = MockRepo.return_value
@@ -254,8 +254,8 @@ class TestUtentiPatchView(TestCase):
         call_kwargs = repo_instance.update_utente.call_args.kwargs
         self.assertEqual(call_kwargs["ruolo_sistema"], "ADMIN")
 
-    @patch("apps.amm_software.api.views.invalidate_user")
-    @patch("apps.amm_software.api.views.AmmSoftwareRepository")
+    @patch("apps.amm_software.services.amm_software_service.invalidate_user")
+    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
     def test_patch_attivo(self, MockRepo: MagicMock, mock_invalidate: MagicMock) -> None:
         """Scopo: PATCH cambio attivo passa il valore corretto al repository."""
         repo_instance = MockRepo.return_value
@@ -271,9 +271,9 @@ class TestUtentiPatchView(TestCase):
 
 class TestUtentiDisabilitaView(TestCase):
 
-    @patch("apps.amm_software.api.views._blacklist_user_tokens")
-    @patch("apps.amm_software.api.views.invalidate_user")
-    @patch("apps.amm_software.api.views.AmmSoftwareRepository")
+    @patch("apps.amm_software.services.amm_software_service._blacklist_user_tokens")
+    @patch("apps.amm_software.services.amm_software_service.invalidate_user")
+    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
     def test_disabilita_success(self, MockRepo: MagicMock, mock_invalidate: MagicMock, mock_blacklist: MagicMock) -> None:
         """Scopo: POST disabilita imposta stato e ritorna dettaglio aggiornato."""
         repo_instance = MockRepo.return_value
@@ -287,9 +287,9 @@ class TestUtentiDisabilitaView(TestCase):
         self.assertEqual(response.status_code, 200)
         repo_instance.disabilita_utente.assert_called_once_with(1)
 
-    @patch("apps.amm_software.api.views._blacklist_user_tokens")
-    @patch("apps.amm_software.api.views.invalidate_user")
-    @patch("apps.amm_software.api.views.AmmSoftwareRepository")
+    @patch("apps.amm_software.services.amm_software_service._blacklist_user_tokens")
+    @patch("apps.amm_software.services.amm_software_service.invalidate_user")
+    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
     def test_disabilita_invalidates_cache(self, MockRepo: MagicMock, mock_invalidate: MagicMock, mock_blacklist: MagicMock) -> None:
         """Scopo: POST disabilita invalida cache permessi."""
         repo_instance = MockRepo.return_value
@@ -302,7 +302,7 @@ class TestUtentiDisabilitaView(TestCase):
         mock_invalidate.assert_called_once_with(1)
         mock_blacklist.assert_called_once_with(1)
 
-    @patch("apps.amm_software.api.views.AmmSoftwareRepository")
+    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
     def test_disabilita_not_found(self, MockRepo: MagicMock) -> None:
         """Scopo: POST disabilita su utente inesistente solleva errore."""
         repo_instance = MockRepo.return_value

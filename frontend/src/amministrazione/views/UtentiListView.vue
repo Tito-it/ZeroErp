@@ -2,31 +2,31 @@
 // Scopo: pagina lista operatori con DataTable lazy, filtri e paginazione.
 // Click riga -> apre UtenteDrawer in modalita' modifica.
 // Button Nuovo -> apre UtenteDrawer in modalita' crea.
-import { ref, onMounted, onUnmounted, watch } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useUtentiStore } from '../stores/utenti'
-import { useTabEvents } from '../../core/composables/useTabEvents'
-import { PAGINATION } from '../../core/constants'
+import { useSearchTable } from '../../core/composables/useSearchTable'
+import { useTabFreshness } from '../../core/composables/useTabFreshness'
+import { useDrawerState } from '../../core/composables/useDrawerState'
+import { useLookup } from '../../core/composables/useLookup'
+import { listUnitaOrganizzative } from '../api/amministrazione'
 import UtenteDrawer from '../components/UtenteDrawer.vue'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
-import Button from 'primevue/button'
+import NewButton from '../../core/components/NewButton.vue'
 import Badge from 'primevue/badge'
-import Toolbar from 'primevue/toolbar'
 
 const { t } = useI18n()
 const store = useUtentiStore()
-const { onDataChanged } = useTabEvents()
+const unitaOrg = useLookup(listUnitaOrganizzative, { immediate: true })
+const { searchText, onPage, onSort, applyFilters, paginatorProps } = useSearchTable(store)
+const drawer = useDrawerState()
 
-// Drawer state
-const drawerVisible = ref(false)
-const drawerMode = ref('create') // 'create' | 'edit'
-const drawerUserId = ref(null)
+useTabFreshness(store, 'utente')
 
-// Filtri locali
-const searchText = ref('')
+// Filtri locali (extra rispetto a search)
 const ruoloFilter = ref(null)
 const uoFilter = ref(null)
 const activeFilter = ref(null)
@@ -44,59 +44,17 @@ const activeOptions = [
   { label: t('amm.stato_inattivo'), value: false }
 ]
 
-// Inter-tab freshness
-const cleanup = onDataChanged(e => {
-  if (e.entityType === 'utente') store.fetchList()
-})
-onUnmounted(cleanup)
+onMounted(() => { store.fetchList() })
 
-onMounted(async () => {
-  await store.fetchUnitaOrganizzative()
-  await store.fetchList()
-})
-
-function onPage(event) {
-  store.filters.offset = event.first
-  store.filters.limit = event.rows
-  store.fetchList()
-}
-
-function onSort(event) {
-  store.filters.order_by = event.sortField
-  store.filters.order_dir = event.sortOrder === 1 ? 'ASC' : 'DESC'
-  store.fetchList()
-}
-
-function applyFilters() {
-  store.filters.search = searchText.value || ''
+function applyExtraFilters() {
   store.filters.ruolo_sistema = ruoloFilter.value
   store.filters.unita_organizzativa_id = uoFilter.value
   store.filters.is_active = activeFilter.value
-  store.filters.offset = 0
-  store.fetchList()
-}
-
-// Debounce search
-let searchTimeout = null
-watch(searchText, () => {
-  clearTimeout(searchTimeout)
-  searchTimeout = setTimeout(applyFilters, 400)
-})
-
-function onRowClick(event) {
-  drawerMode.value = 'edit'
-  drawerUserId.value = event.data.auth_user_id
-  drawerVisible.value = true
-}
-
-function openCreateDrawer() {
-  drawerMode.value = 'create'
-  drawerUserId.value = null
-  drawerVisible.value = true
+  applyFilters()
 }
 
 function onDrawerSaved() {
-  drawerVisible.value = false
+  drawer.close()
   store.fetchList()
 }
 
@@ -112,14 +70,12 @@ function activeBadgeSeverity(active) {
 </script>
 
 <template>
-  <div class="utenti-list-view">
-    <Toolbar class="mb-3">
-      <template #start>
+  <div class="app-page">
+    <div class="app-page-toolbar">
+      <div class="app-page-filters">
         <InputText
           v-model="searchText"
           :placeholder="t('amm.search_placeholder')"
-          class="mr-2"
-          style="width: 260px"
         />
         <Select
           v-model="ruoloFilter"
@@ -127,19 +83,15 @@ function activeBadgeSeverity(active) {
           option-label="label"
           option-value="value"
           :placeholder="t('amm.filter_ruolo')"
-          class="mr-2"
-          style="width: 180px"
-          @change="applyFilters"
+          @change="applyExtraFilters"
         />
         <Select
           v-model="uoFilter"
-          :options="[{ nome: t('amm.reparto_all'), id: null }, ...store.unitaOrganizzative]"
-          option-label="nome"
+          :options="[{ descrizione: t('amm.reparto_all'), id: null }, ...unitaOrg.items.value]"
+          option-label="descrizione"
           option-value="id"
           :placeholder="t('amm.filter_reparto')"
-          class="mr-2"
-          style="width: 200px"
-          @change="applyFilters"
+          @change="applyExtraFilters"
         />
         <Select
           v-model="activeFilter"
@@ -147,33 +99,25 @@ function activeBadgeSeverity(active) {
           option-label="label"
           option-value="value"
           :placeholder="t('amm.filter_stato')"
-          style="width: 160px"
-          @change="applyFilters"
+          @change="applyExtraFilters"
         />
-      </template>
-      <template #end>
-        <Button
-          :label="t('amm.nuovo_operatore')"
-          icon="pi pi-plus"
-          @click="openCreateDrawer"
-        />
-      </template>
-    </Toolbar>
+      </div>
+      <NewButton :tooltip="t('amm.nuovo_operatore')" @click="drawer.openCreate" />
+    </div>
 
     <DataTable
       :value="store.items"
       :loading="store.loading"
-      :total-records="store.totalRecords"
-      :rows="store.filters.limit"
-      :first="store.filters.offset"
-      :rows-per-page-options="PAGINATION.ROWS_OPTIONS"
+      v-bind="paginatorProps"
       lazy
-      paginator
       removable-sort
       striped-rows
+      scrollable
+      scrollHeight="flex"
+      class="app-datatable"
       @page="onPage"
       @sort="onSort"
-      @row-click="onRowClick"
+      @row-click="(e) => drawer.editRow(e.data, 'auth_user_id')"
       selection-mode="single"
       data-key="auth_user_id"
     >
@@ -201,17 +145,12 @@ function activeBadgeSeverity(active) {
     </DataTable>
 
     <UtenteDrawer
-      v-model:visible="drawerVisible"
-      :mode="drawerMode"
-      :auth-user-id="drawerUserId"
+      :visible="drawer.state.visible"
+      @update:visible="v => drawer.state.visible = v"
+      :mode="drawer.state.mode"
+      :auth-user-id="drawer.state.itemId"
       @saved="onDrawerSaved"
-      @cancelled="drawerVisible = false"
+      @cancelled="drawer.close"
     />
   </div>
 </template>
-
-<style scoped>
-.utenti-list-view {
-  padding: 1rem;
-}
-</style>

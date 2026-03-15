@@ -59,7 +59,7 @@ def _make_request(method: str = "GET", data: dict | None = None) -> MagicMock:
 
 class TestOverrideAreeView(TestCase):
 
-    @patch("apps.amm_software.api.views.AmmSoftwareRepository")
+    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
     def test_get_override_aree(self, mock_repo_cls):
         """GET override aree ritorna lista."""
         mock_repo = MagicMock()
@@ -73,8 +73,8 @@ class TestOverrideAreeView(TestCase):
         self.assertEqual(len(data["data"]["results"]), 1)
         self.assertEqual(data["data"]["results"][0]["area_codice"], "vendite")
 
-    @patch("apps.amm_software.api.views.AmmSoftwareRepository")
-    @patch("apps.amm_software.api.views.invalidate_user")
+    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
+    @patch("apps.amm_software.services.amm_software_service.invalidate_user")
     def test_put_override_aree(self, mock_invalidate, mock_repo_cls):
         """PUT override aree sostituisce e ritorna lista aggiornata."""
         mock_repo = MagicMock()
@@ -90,8 +90,8 @@ class TestOverrideAreeView(TestCase):
         data = json.loads(response.content)
         self.assertEqual(len(data["data"]["results"]), 1)
 
-    @patch("apps.amm_software.api.views.AmmSoftwareRepository")
-    @patch("apps.amm_software.api.views.invalidate_user")
+    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
+    @patch("apps.amm_software.services.amm_software_service.invalidate_user")
     def test_put_override_aree_invalidates_cache(self, mock_invalidate, mock_repo_cls):
         """PUT invalida cache utente dopo modifica."""
         mock_repo = MagicMock()
@@ -106,7 +106,7 @@ class TestOverrideAreeView(TestCase):
 
 class TestOverrideAzioniView(TestCase):
 
-    @patch("apps.amm_software.api.views.AmmSoftwareRepository")
+    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
     def test_get_override_azioni(self, mock_repo_cls):
         """GET override azioni ritorna lista."""
         mock_repo = MagicMock()
@@ -119,8 +119,8 @@ class TestOverrideAzioniView(TestCase):
         data = json.loads(response.content)
         self.assertEqual(len(data["data"]["results"]), 1)
 
-    @patch("apps.amm_software.api.views.AmmSoftwareRepository")
-    @patch("apps.amm_software.api.views.invalidate_user")
+    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
+    @patch("apps.amm_software.services.amm_software_service.invalidate_user")
     def test_put_override_azioni(self, mock_invalidate, mock_repo_cls):
         """PUT override azioni sostituisce e ritorna lista aggiornata."""
         mock_repo = MagicMock()
@@ -136,8 +136,8 @@ class TestOverrideAzioniView(TestCase):
         data = json.loads(response.content)
         self.assertEqual(len(data["data"]["results"]), 1)
 
-    @patch("apps.amm_software.api.views.AmmSoftwareRepository")
-    @patch("apps.amm_software.api.views.invalidate_user")
+    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
+    @patch("apps.amm_software.services.amm_software_service.invalidate_user")
     def test_put_override_azioni_invalidates_cache(self, mock_invalidate, mock_repo_cls):
         """PUT invalida cache utente dopo modifica."""
         mock_repo = MagicMock()
@@ -152,7 +152,7 @@ class TestOverrideAzioniView(TestCase):
 
 class TestEmittentiScopeView(TestCase):
 
-    @patch("apps.amm_software.api.views.AmmSoftwareRepository")
+    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
     def test_get_emittenti_scope(self, mock_repo_cls):
         """GET emittenti scope ritorna lista."""
         mock_repo = MagicMock()
@@ -166,8 +166,8 @@ class TestEmittentiScopeView(TestCase):
         self.assertEqual(len(data["data"]["results"]), 1)
         self.assertEqual(data["data"]["results"][0]["emittente_denominazione"], "Azienda Test")
 
-    @patch("apps.amm_software.api.views.AmmSoftwareRepository")
-    @patch("apps.amm_software.api.views.invalidate_user")
+    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
+    @patch("apps.amm_software.services.amm_software_service.invalidate_user")
     def test_put_emittenti_scope(self, mock_invalidate, mock_repo_cls):
         """PUT emittenti scope sostituisce e ritorna lista aggiornata."""
         mock_repo = MagicMock()
@@ -180,8 +180,8 @@ class TestEmittentiScopeView(TestCase):
 
         mock_repo.put_emittenti_scope.assert_called_once_with(1, [10])
 
-    @patch("apps.amm_software.api.views.AmmSoftwareRepository")
-    @patch("apps.amm_software.api.views.invalidate_user")
+    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
+    @patch("apps.amm_software.services.amm_software_service.invalidate_user")
     def test_put_emittenti_scope_invalidates_cache(self, mock_invalidate, mock_repo_cls):
         """PUT invalida cache utente dopo modifica."""
         mock_repo = MagicMock()

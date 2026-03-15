@@ -137,8 +137,11 @@ function onMobileNavigate() {
 
 .app-content {
   flex: 1;
+  display: flex;
+  flex-direction: column;
   overflow-y: auto;
   padding: var(--app-content-padding);
+  min-height: 0;
 }
 
 @media (max-width: 767px) {

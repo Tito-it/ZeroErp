@@ -88,7 +88,7 @@ class AmmSoftwareRepository:
                    rua.ruolo_sistema::text,
                    au.is_active,
                    ru.unita_organizzativa_id,
-                   uo.nome AS unita_organizzativa_nome,
+                   uo.descrizione AS unita_organizzativa_nome,
                    ru.id AS risorsa_umana_id,
                    ru.attivo,
                    ru.valido_al::text,
@@ -137,7 +137,7 @@ class AmmSoftwareRepository:
                    rua.ruolo_sistema::text,
                    au.is_active,
                    ru.unita_organizzativa_id,
-                   uo.nome AS unita_organizzativa_nome,
+                   uo.descrizione AS unita_organizzativa_nome,
                    ru.id AS risorsa_umana_id,
                    ru.attivo,
                    ru.valido_al::text,
@@ -272,45 +272,60 @@ class AmmSoftwareRepository:
                 [auth_user_id],
             )
 
-    # Scopo: Crea un operatore completo invocando la funzione DB fn_crea_operatore.
-    # Orchestra: auth_user + soggetto PF + ruolo RIS_UMANA + risorsa_umana + bridge.
+    # Scopo: Crea un operatore completo invocando l'orchestratore DB fn_crea_operatore.
+    # Chiama i building block: fn_crea_auth_user, fn_crea_soggetto_pf, fn_crea_risorsa_umana.
+    # Parametri Sprint 3: comune_nascita_id, indirizzo_resid_dettaglio_id,
+    # indirizzo_domfisc_dettaglio_id (normalizzati via stradario).
     # Ritorna l'auth_user_id del nuovo operatore.
     def crea_operatore(
         self,
         *,
         cognome: str,
         nome: str,
-        codice_fiscale: str | None = None,
-        data_nascita: str | None = None,
-        sesso: str = "M",
+        codice_fiscale: str,
         username: str,
         email: str,
         password_hash: str,
+        qualifica_id: int,
+        unita_organizzativa_id: int | None = None,
+        data_nascita: str | None = None,
+        sesso: str = "M",
         ruolo_sistema: str = "OPERATIVO",
-        unita_organizzativa_id: int,
         valido_dal: str | None = None,
         valido_al: str | None = None,
+        comune_nascita_id: int | None = None,
+        indirizzo_resid_dettaglio_id: int | None = None,
+        indirizzo_domfisc_dettaglio_id: int | None = None,
     ) -> int:
         sql = """
             SELECT anagrafiche.fn_crea_operatore(
-                p_cognome                := %s,
-                p_nome                   := %s,
-                p_codice_fiscale         := %s,
-                p_data_nascita           := %s::date,
-                p_sesso                  := %s,
-                p_username               := %s,
-                p_email                  := %s,
-                p_password_hash          := %s,
-                p_ruolo_sistema          := %s::config.ruolo_sistema,
-                p_unita_organizzativa_id := %s,
-                p_valido_dal             := %s::date,
-                p_valido_al              := %s::date
+                p_cognome                        := %s,
+                p_nome                           := %s,
+                p_codice_fiscale                 := %s,
+                p_username                       := %s,
+                p_email                          := %s,
+                p_password_hash                  := %s,
+                p_qualifica_id                   := %s,
+                p_unita_organizzativa_id         := %s,
+                p_data_nascita                   := %s::date,
+                p_sesso                          := %s,
+                p_ruolo_sistema                  := %s::config.ruolo_sistema,
+                p_valido_dal                     := COALESCE(%s::date, CURRENT_DATE),
+                p_valido_al                      := %s::date,
+                p_comune_nascita_id              := %s,
+                p_indirizzo_resid_dettaglio_id   := %s,
+                p_indirizzo_domfisc_dettaglio_id := %s
             )
         """
         params = [
-            cognome, nome, codice_fiscale, data_nascita, sesso,
-            username, email, password_hash, ruolo_sistema,
-            unita_organizzativa_id, valido_dal, valido_al,
+            cognome, nome, codice_fiscale,
+            username, email, password_hash,
+            qualifica_id, unita_organizzativa_id,
+            data_nascita, sesso, ruolo_sistema,
+            valido_dal, valido_al,
+            comune_nascita_id,
+            indirizzo_resid_dettaglio_id,
+            indirizzo_domfisc_dettaglio_id,
         ]
         with connection.cursor() as cursor:
             cursor.execute(sql, params)
@@ -322,9 +337,9 @@ class AmmSoftwareRepository:
     def list_unita_organizzative(self) -> list[dict[str, Any]]:
         with connection.cursor() as cursor:
             cursor.execute(
-                """SELECT id, nome, parent_id
+                """SELECT id, descrizione, parent_id
                      FROM config.unita_organizzative
-                    ORDER BY nome"""
+                    ORDER BY descrizione"""
             )
             cols = [c.name for c in cursor.description]
             return [dict(zip(cols, row)) for row in cursor.fetchall()]
@@ -426,12 +441,12 @@ class AmmSoftwareRepository:
     def get_emittenti_scope(self, auth_user_id: int) -> list[dict[str, Any]]:
         sql = """
             SELECT uef.id, uef.emittente_fiscale_id,
-                   ef.denominazione AS emittente_denominazione,
-                   ef.partita_iva AS emittente_piva
+                   ef.codice AS emittente_codice,
+                   ef.descrizione AS emittente_descrizione
               FROM config.user_emittenti_fiscali uef
               JOIN anagrafiche.emittenti_fiscali ef ON ef.id = uef.emittente_fiscale_id
              WHERE uef.auth_user_id = %s
-             ORDER BY ef.denominazione
+             ORDER BY ef.descrizione
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [auth_user_id])
@@ -460,7 +475,7 @@ class AmmSoftwareRepository:
     # Scopo: Lista reparti con flag profilo configurato e conteggio operatori.
     def list_reparti(self) -> list[dict[str, Any]]:
         sql = """
-            SELECT uo.id, uo.codice, uo.nome, uo.attivo,
+            SELECT uo.id, uo.codice, uo.descrizione, uo.attivo,
                    (SELECT COUNT(*) FROM config.profili_reparto_aree pra
                      WHERE pra.unita_organizzativa_id = uo.id) AS profilo_aree_count,
                    (SELECT COUNT(*) FROM config.profili_reparto_azioni prz
@@ -470,7 +485,7 @@ class AmmSoftwareRepository:
                        AND ru.attivo = true) AS operatori_count
               FROM config.unita_organizzative uo
              WHERE uo.attivo = true
-             ORDER BY uo.nome
+             ORDER BY uo.descrizione
         """
         with connection.cursor() as cursor:
             cursor.execute(sql)
@@ -579,10 +594,10 @@ class AmmSoftwareRepository:
     def list_emittenti_fiscali(self) -> list[dict[str, Any]]:
         with connection.cursor() as cursor:
             cursor.execute(
-                """SELECT id, denominazione, partita_iva
+                """SELECT id, codice, descrizione
                      FROM anagrafiche.emittenti_fiscali
                     WHERE attivo = true
-                    ORDER BY denominazione"""
+                    ORDER BY descrizione"""
             )
             cols = [c.name for c in cursor.description]
             return [dict(zip(cols, row)) for row in cursor.fetchall()]

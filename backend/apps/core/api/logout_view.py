@@ -12,21 +12,17 @@ import jwt
 from drf_spectacular.utils import extend_schema
 from rest_framework.request import Request
 from rest_framework.response import Response
-from rest_framework.views import APIView
-from rest_framework_simplejwt.authentication import JWTAuthentication
+from apps.core.api.base_views import DomainAPIView
 from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from apps.core.api.permissions import ZeroERPPermission
 from apps.core.services import session_audit_service
 from apps.core.services.service_errors import ServiceError
 
 
-class LogoutView(APIView):
+class LogoutView(DomainAPIView):
     """Logout utente: blacklist refresh token + evento LOGOUT."""
 
-    authentication_classes = [JWTAuthentication]
-    permission_classes = [ZeroERPPermission]
     skip_area_check = True
 
     @extend_schema(summary="Logout utente", responses={204: None})

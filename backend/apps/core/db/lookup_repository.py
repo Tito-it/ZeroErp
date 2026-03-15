@@ -1,0 +1,133 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+# Doc: Python
+# Scopo: Repository core per lookup anagrafiche e config.
+#        Endpoint: matrice indirizzi, autocomplete comuni,
+#        tipi soggetto dettaglio con natura e policy,
+#        search stradario per autocomplete vie.
+# ------------------------------------------------------------
+
+from __future__ import annotations
+
+from typing import Any
+
+from django.db import connection
+
+
+class LookupRepository:
+    """Lookup lettura per tabelle config/anagrafiche cross-dominio."""
+
+    # Scopo: Restituisce i tipi soggetto dettaglio con natura, policy CF/PIVA/dati societari.
+    # JOIN config.tipi_soggetto_dettaglio + config.tipi_soggetto per natura_soggetto.
+    # Filtro: solo record con stato attivo (stato_id via JOIN config.stati).
+    def list_tipi_soggetto_dettaglio(self) -> list[dict[str, Any]]:
+        sql = """
+            SELECT tsd.id,
+                   tsd.codice_interno,
+                   tsd.descrizione,
+                   ts.id AS natura_soggetto,
+                   tsd.cf_obbligatorio,
+                   tsd.piva_obbligatoria,
+                   tsd.dati_societari_policy
+              FROM config.tipi_soggetto_dettaglio tsd
+              JOIN config.tipi_soggetto ts ON ts.id = tsd.tipo_soggetto_id
+             ORDER BY tsd.id
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql)
+            cols = [c.name for c in cursor.description]
+            return [dict(zip(cols, row)) for row in cursor.fetchall()]
+
+    # Scopo: Restituisce la matrice indirizzi ammessi per un tipo soggetto dettaglio.
+    # JOIN config.tipi_soggetto_dettaglio_tipi_indirizzo + config.tipi_indirizzi.
+    # Indica per ogni tipo indirizzo se obbligatorio e il fallback.
+    def list_matrice_indirizzi(
+        self, tipo_soggetto_dettaglio_id: int
+    ) -> list[dict[str, Any]]:
+        sql = """
+            SELECT tsdti.tipo_indirizzo_id,
+                   ti.codice_interno AS codice,
+                   ti.descrizione,
+                   tsdti.obbligatorio,
+                   tsdti.fallback_tipo_indirizzo_id,
+                   ti_fb.codice_interno AS fallback_codice
+              FROM config.tipi_soggetto_dettaglio_tipi_indirizzo tsdti
+              JOIN config.tipi_indirizzi ti
+                ON ti.id = tsdti.tipo_indirizzo_id
+              LEFT JOIN config.tipi_indirizzi ti_fb
+                ON ti_fb.id = tsdti.fallback_tipo_indirizzo_id
+             WHERE tsdti.tipo_soggetto_dettaglio_id = %s
+               AND tsdti.attivo = true
+             ORDER BY tsdti.obbligatorio DESC, ti.descrizione
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [tipo_soggetto_dettaglio_id])
+            cols = [c.name for c in cursor.description]
+            return [dict(zip(cols, row)) for row in cursor.fetchall()]
+
+    # Scopo: Ricerca comuni per autocomplete (ILIKE su descrizione).
+    # Restituisce id, descrizione, provincia sigla.
+    # Risultato: (lista record, conteggio totale).
+    def search_comuni(
+        self,
+        *,
+        search: str | None = None,
+        limit: int = 20,
+        offset: int = 0,
+    ) -> tuple[list[dict[str, Any]], int]:
+        search_pattern = f"%{search.strip()}%" if search and search.strip() else None
+
+        sql = """
+            SELECT c.id,
+                   c.descrizione,
+                   p.sigla AS provincia_sigla,
+                   COUNT(*) OVER () AS total_count
+              FROM config.comuni c
+              LEFT JOIN config.province p ON p.id = c.provincia_id
+             WHERE (%s::text IS NULL OR c.descrizione ILIKE %s)
+             ORDER BY c.descrizione
+             LIMIT %s OFFSET %s
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [search_pattern, search_pattern, limit, offset])
+            rows = cursor.fetchall()
+            if not rows:
+                return [], 0
+            cols = [c.name for c in cursor.description]
+
+        # Scopo: estrae total_count dalla window function e mappa i risultati.
+        tc_idx = cols.index("total_count")
+        total_count = rows[0][tc_idx]
+        id_idx = cols.index("id")
+        desc_idx = cols.index("descrizione")
+        prov_idx = cols.index("provincia_sigla")
+        results = [
+            {"id": r[id_idx], "descrizione": r[desc_idx], "provincia_sigla": r[prov_idx]}
+            for r in rows
+        ]
+        return results, total_count
+
+    # Scopo: Ricerca vie (stradario) per autocomplete, filtrate per comune.
+    # Chiama script.fn_search_stradario(p_comune_id, p_search, p_limit).
+    # Restituisce stradario_id, indirizzo_normalizzato, comune, provincia, CAP.
+    # Risultato: lista record (la funzione DB gestisce gia' il limit).
+    def search_stradario(
+        self,
+        *,
+        comune_id: int | None = None,
+        search: str | None = None,
+        limit: int = 30,
+    ) -> list[dict[str, Any]]:
+        sql = """
+            SELECT *
+              FROM script.fn_search_stradario(
+                       p_comune_id := %s,
+                       p_search    := %s,
+                       p_limit     := %s
+                   )
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [comune_id, search, limit])
+            cols = [c.name for c in cursor.description]
+            return [dict(zip(cols, row)) for row in cursor.fetchall()]

@@ -9,10 +9,11 @@ L'obiettivo e` ridurre la complessita` superflua mantenendo rigore su dati, rego
 
 ## Stato progetto
 
-> **Sviluppo attivo (fase nucleo).**
+> **Sviluppo attivo — frontend in costruzione.**
 >
-> Il progetto e` in costruzione: il layer database e` l'area piu` avanzata,
-> le API Django sono in evoluzione, il frontend non e` ancora rilasciato.
+> DB e API backend operativi. Frontend Vue in sviluppo: layout applicativo,
+> gestione operatori, gestione geografica (indirizzi, comuni, province, regioni, stati).
+> Non ancora rilasciato per produzione.
 
 ---
 
@@ -97,7 +98,7 @@ Scelte architetturali:
 | Versioning DB      | Liquibase 5                     |
 | Backend            | Django 6.01 + DRF               |
 | Linguaggio backend | Python 3.14                     |
-| Frontend           | Vue.js (target), in definizione |
+| Frontend           | Vue 3.5, Vite 7, PrimeVue 4.5, Pinia 3 |
 | Tooling docs/dev   | MkDocs, pre-commit, Docker      |
 
 ---
@@ -135,12 +136,16 @@ Il modello e` pensato per supportare processi non lineari e gestione multi-repar
 
 ## Stato dello Sviluppo
 
-Fotografia sintetica (marzo 2026):
+Fotografia sintetica (15 marzo 2026):
 
-- Database core: avanzato
-- API backend: in sviluppo
-- Motore pratiche: in consolidamento
-- Frontend: non avviato per release pubblica
+- Database core: operativo (13 schemi, 200+ tabelle, trigger, funzioni, viste)
+- API backend: operativo (621 test, 21+ endpoint anagrafiche, 19 pratiche, vendite, core)
+- Motore pratiche: operativo (workflow, giornale, sospensioni, macchina a stati)
+- Frontend Vue: in sviluppo attivo
+  - Layout applicativo (sidebar, tabs, breadcrumb, ricerca universale)
+  - Gestione operatori e profili reparto (Amm. Software — parziale, test UI pendenti)
+  - Gestione geografica completa (indirizzi, toponomastica, comuni, province, regioni, stati)
+  - Building block riutilizzabili (SoggettoForm, AuthUserForm, composable centralizzati)
 - Documentazione: in aggiornamento continuo
 
  [Mappa](./mappa-concentrica.md)
@@ -173,10 +178,12 @@ Struttura essenziale:
 
 ## Roadmap
 
-1. Consolidamento nucleo DB e motore pratiche
-2. Espansione API dominio (anagrafiche, vendite, pratiche)
-3. Primo frontend operativo per uso interno
-4. Evoluzione integrazioni e moduli verticali
+1. ~~Consolidamento nucleo DB e motore pratiche~~ — fatto
+2. ~~Espansione API dominio (anagrafiche, vendite, pratiche)~~ — fatto
+3. Frontend operativo per uso interno — in corso
+4. Test UI reali su aree completate (Amm. Software, Gestione Geografica)
+5. Gestione Soggetti (anagrafica completa: soggetto + contatto + indirizzo)
+6. Evoluzione integrazioni e moduli verticali
 
 ---
 

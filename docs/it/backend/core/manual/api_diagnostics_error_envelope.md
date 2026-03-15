@@ -6,7 +6,7 @@ Fornire un endpoint tecnico per validare contratto error envelope e policy retry
 ## Contesto
 View in `apps/core/api/views.py`:
 - `ApiDiagnosticsErrorEnvelope`
-- `ApiDiagnosticsErrorEnvelopeV1`
+- `ApiDiagnosticsErrorEnvelope`
 
 ## Input
 - `GET /api/v1/core/diagnostics/error-envelope/`

@@ -2,13 +2,13 @@
 # ⚙️ Funzione `fn_crea_operatore`
 
 ```sql
-CREATE FUNCTION fn_crea_operatore(p_cognome text, p_nome text, p_codice_fiscale text, p_username text, p_email text, p_password_hash text, p_qualifica_id integer, p_unita_organizzativa_id integer, p_data_nascita date, p_sesso character, p_ruolo_sistema config.ruolo_sistema, p_valido_dal date, p_valido_al date)
+CREATE FUNCTION fn_crea_operatore(p_cognome text, p_nome text, p_codice_fiscale text, p_username text, p_email text, p_password_hash text, p_qualifica_id integer, p_unita_organizzativa_id integer, p_data_nascita date, p_sesso character, p_ruolo_sistema config.ruolo_sistema, p_valido_dal date, p_valido_al date, p_comune_nascita_id integer, p_indirizzo_resid_dettaglio_id bigint, p_indirizzo_domfisc_dettaglio_id bigint)
 ```
 
 **Definizione completa:**
 
 ```sql
-CREATE OR REPLACE FUNCTION anagrafiche.fn_crea_operatore(p_cognome text DEFAULT NULL::text, p_nome text DEFAULT NULL::text, p_codice_fiscale text DEFAULT NULL::text, p_username text DEFAULT NULL::text, p_email text DEFAULT NULL::text, p_password_hash text DEFAULT NULL::text, p_qualifica_id integer DEFAULT NULL::integer, p_unita_organizzativa_id integer DEFAULT NULL::integer, p_data_nascita date DEFAULT NULL::date, p_sesso character DEFAULT 'M'::bpchar, p_ruolo_sistema config.ruolo_sistema DEFAULT 'OPERATIVO'::config.ruolo_sistema, p_valido_dal date DEFAULT CURRENT_DATE, p_valido_al date DEFAULT NULL::date)
+CREATE OR REPLACE FUNCTION anagrafiche.fn_crea_operatore(p_cognome text DEFAULT NULL::text, p_nome text DEFAULT NULL::text, p_codice_fiscale text DEFAULT NULL::text, p_username text DEFAULT NULL::text, p_email text DEFAULT NULL::text, p_password_hash text DEFAULT NULL::text, p_qualifica_id integer DEFAULT NULL::integer, p_unita_organizzativa_id integer DEFAULT NULL::integer, p_data_nascita date DEFAULT NULL::date, p_sesso character DEFAULT 'M'::bpchar, p_ruolo_sistema config.ruolo_sistema DEFAULT 'OPERATIVO'::config.ruolo_sistema, p_valido_dal date DEFAULT CURRENT_DATE, p_valido_al date DEFAULT NULL::date, p_comune_nascita_id integer DEFAULT NULL::integer, p_indirizzo_resid_dettaglio_id bigint DEFAULT NULL::bigint, p_indirizzo_domfisc_dettaglio_id bigint DEFAULT NULL::bigint)
  RETURNS integer
  LANGUAGE plpgsql
 AS $function$
@@ -21,48 +21,30 @@ BEGIN
     -- Scopo:
     --   Orchestratore transazionale per creazione operatore.
     --   Delega ai building block atomici:
-    --     1. fn_crea_auth_user   → crea utente Django
-    --     2. fn_crea_soggetto_pf → crea soggetto PF + contatto
-    --     3. fn_crea_risorsa_umana → crea RU + bridge auth_user
+    --     1. fn_crea_auth_user   -> crea utente Django
+    --     2. fn_crea_soggetto_pf -> crea soggetto PF + contatto
+    --     3. fn_crea_risorsa_umana -> crea RU + bridge auth_user
+    --     4. fn_crea_indirizzo_soggetto -> RESID + DOMFISC
+    --        (se p_indirizzo_resid_dettaglio_id fornito)
     --   Singola transazione, rollback automatico.
     --
     -- Parametri obbligatori:
-    --   p_cognome, p_nome, p_codice_fiscale:
-    --     dati soggetto PF
-    --   p_username, p_email, p_password_hash:
-    --     credenziali auth_user
-    --   p_qualifica_id:
-    --     qualifica risorsa umana
+    --   p_cognome, p_nome, p_codice_fiscale, p_username,
+    --   p_email, p_password_hash, p_qualifica_id
     --
-    -- Parametri opzionali:
-    --   p_unita_organizzativa_id: UO (default NULL)
-    --   p_data_nascita:  data nascita (default NULL)
-    --   p_sesso:         sesso (default 'M')
-    --   p_ruolo_sistema: ruolo sistema (default OPERATIVO)
-    --   p_valido_dal:    inizio validita' (default oggi)
-    --   p_valido_al:     fine validita' (default NULL)
+    -- Nuovi parametri opzionali (Sprint 3):
+    --   p_comune_nascita_id: comune di nascita (FK comuni)
+    --   p_indirizzo_resid_dettaglio_id: indirizzo residenza
+    --     normalizzato (da fn_get_or_create_indirizzo_dettaglio)
+    --   p_indirizzo_domfisc_dettaglio_id: domicilio fiscale
+    --     (se NULL e RESID fornito, usa stesso di RESID)
     --
     -- Restituisce:
     --   auth_user.id dell'utente creato
-    --
-    -- Nota indirizzo:
-    --   Questo orchestratore NON crea indirizzo. Se la
-    --   matrice config.tipi_soggetto_dettaglio_tipi_indirizzo
-    --   richiede RES per PR, il chiamante deve creare
-    --   l'indirizzo prima del COMMIT (trigger DEFERRED).
-    --
-    -- Building block chiamati:
-    --   anagrafiche.fn_crea_auth_user
-    --   anagrafiche.fn_crea_soggetto_pf
-    --   anagrafiche.fn_crea_risorsa_umana
-    --     (che chiama script.fn_get_or_create_soggetto_ruolo)
     -- =========================================================
 
     -- =============================================================
     -- Validazione coerenza parametri orchestratore
-    -- I guard di dettaglio sono nei building block.
-    -- Qui validiamo solo che i parametri obbligatori
-    -- dell'orchestratore siano presenti.
     -- =============================================================
 
     IF p_cognome IS NULL OR TRIM(p_cognome) = '' THEN
@@ -145,23 +127,21 @@ BEGIN
     -- =============================================================
     -- Step 2: Creazione soggetto PF + contatto default
     -- Guard CF univoco e lookup config nel building block.
+    -- Aggiunto p_comune_nascita_id (Sprint 3 DB-3).
     -- =============================================================
 
     SELECT anagrafiche.fn_crea_soggetto_pf(
-        p_cognome        := p_cognome,
-        p_nome           := p_nome,
-        p_codice_fiscale := p_codice_fiscale,
-        p_email          := p_email,
-        p_data_nascita   := p_data_nascita,
-        p_sesso          := p_sesso
+        p_cognome           := p_cognome,
+        p_nome              := p_nome,
+        p_codice_fiscale    := p_codice_fiscale,
+        p_email             := p_email,
+        p_data_nascita      := p_data_nascita,
+        p_sesso             := p_sesso,
+        p_comune_nascita_id := p_comune_nascita_id
     ) INTO v_soggetto_id;
 
     -- =============================================================
     -- Step 3: Creazione risorsa umana + bridge auth_user
-    -- fn_crea_risorsa_umana chiama internamente
-    -- fn_get_or_create_soggetto_ruolo('RIS_UMANA').
-    -- Se p_auth_user_id fornito, crea bridge con trigger
-    -- guard PF e sync is_active.
     -- =============================================================
 
     SELECT anagrafiche.fn_crea_risorsa_umana(
@@ -174,12 +154,39 @@ BEGIN
         p_ruolo_sistema          := p_ruolo_sistema
     ) INTO v_ru_id;
 
+    -- =============================================================
+    -- Step 4: Creazione indirizzi soggetto (Sprint 3 DB-5)
+    -- Se p_indirizzo_resid_dettaglio_id fornito:
+    --   a) Crea indirizzo RESID
+    --   b) Crea indirizzo DOMFISC (se NULL, usa stesso di RESID)
+    -- Se NULL: nessun indirizzo creato. Il trigger DEFERRED
+    -- trgfn_soggetti_guard_indirizzi_required puo' bloccare
+    -- al COMMIT se la matrice richiede RESID per PR.
+    -- =============================================================
+
+    IF p_indirizzo_resid_dettaglio_id IS NOT NULL THEN
+        -- Indirizzo residenza (RESID)
+        PERFORM anagrafiche.fn_crea_indirizzo_soggetto(
+            p_soggetto_id            := v_soggetto_id,
+            p_tipo_indirizzo_codice  := 'RES',
+            p_indirizzo_dettaglio_id := p_indirizzo_resid_dettaglio_id
+        );
+
+        -- Domicilio fiscale (DOMFISC)
+        -- Se non specificato, usa lo stesso di RESID
+        PERFORM anagrafiche.fn_crea_indirizzo_soggetto(
+            p_soggetto_id            := v_soggetto_id,
+            p_tipo_indirizzo_codice  := 'DOMFISC',
+            p_indirizzo_dettaglio_id := COALESCE(p_indirizzo_domfisc_dettaglio_id, p_indirizzo_resid_dettaglio_id)
+        );
+    END IF;
+
     RETURN v_auth_user_id;
 END;
 $function$
 
-COMMENT ON FUNCTION anagrafiche.fn_crea_operatore(p_cognome text, p_nome text, p_codice_fiscale text, p_username text, p_email text, p_password_hash text, p_qualifica_id integer, p_unita_organizzativa_id integer, p_data_nascita date, p_sesso character, p_ruolo_sistema config.ruolo_sistema, p_valido_dal date, p_valido_al date)
-IS 'Orchestratore transazionale creazione operatore. Chiama: fn_crea_auth_user, fn_crea_soggetto_pf, fn_crea_risorsa_umana (con bridge). Obbligatori: p_cognome, p_nome, p_codice_fiscale, p_username, p_email, p_password_hash, p_qualifica_id (DEFAULT NULL, guard nel body). NON crea indirizzo (DEFERRED). Rollback automatico.';
+COMMENT ON FUNCTION anagrafiche.fn_crea_operatore(p_cognome text, p_nome text, p_codice_fiscale text, p_username text, p_email text, p_password_hash text, p_qualifica_id integer, p_unita_organizzativa_id integer, p_data_nascita date, p_sesso character, p_ruolo_sistema config.ruolo_sistema, p_valido_dal date, p_valido_al date, p_comune_nascita_id integer, p_indirizzo_resid_dettaglio_id bigint, p_indirizzo_domfisc_dettaglio_id bigint)
+IS 'Orchestratore transazionale creazione operatore. Chiama: fn_crea_auth_user, fn_crea_soggetto_pf (con p_comune_nascita_id), fn_crea_risorsa_umana (con bridge), fn_crea_indirizzo_soggetto (RESID + DOMFISC se forniti). Obbligatori: p_cognome, p_nome, p_codice_fiscale, p_username, p_email, p_password_hash, p_qualifica_id. Nuovi opzionali Sprint 3: p_comune_nascita_id, p_indirizzo_resid_dettaglio_id, p_indirizzo_domfisc_dettaglio_id.';
 ```
 
 ---

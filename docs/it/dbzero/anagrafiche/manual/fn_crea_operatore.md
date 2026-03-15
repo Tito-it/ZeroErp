@@ -7,6 +7,8 @@
 > * [anagrafiche.fn_crea_auth_user](/dbzero/anagrafiche/manual/fn_crea_auth_user)
 > * [anagrafiche.fn_crea_soggetto_pf](/dbzero/anagrafiche/manual/fn_crea_soggetto_pf)
 > * [anagrafiche.fn_crea_risorsa_umana](/dbzero/anagrafiche/manual/fn_crea_risorsa_umana)
+> * [anagrafiche.fn_crea_indirizzo_soggetto](/dbzero/anagrafiche/manual/fn_crea_indirizzo_soggetto)
+> * [anagrafiche.fn_get_or_create_indirizzo_dettaglio](/dbzero/anagrafiche/manual/fn_get_or_create_indirizzo_dettaglio)
 > * [script.fn_get_or_create_soggetto_ruolo](/dbzero/script/funzioni/fn_get_or_create_soggetto_ruolo)
 >
 > **Guide:**
@@ -23,9 +25,10 @@ Orchestratore transazionale per la creazione completa di un operatore.
 Chiama i building block in sequenza all'interno di una singola transazione:
 
 ```text
-fn_crea_auth_user       --> auth_user (Django)
-fn_crea_soggetto_pf     --> soggetto PF (PR) + contatto default
-fn_crea_risorsa_umana   --> ruolo RIS_UMANA + risorsa_umana + bridge auth_user
+fn_crea_auth_user              --> auth_user (Django)
+fn_crea_soggetto_pf            --> soggetto PF (PR) + contatto default (con comune_nascita_id)
+fn_crea_risorsa_umana          --> ruolo RIS_UMANA + risorsa_umana + bridge auth_user
+fn_crea_indirizzo_soggetto x2  --> RESID + DOMFISC (se p_indirizzo_resid_dettaglio_id fornito)
 ```
 
 L'orchestratore **non contiene logica duplicata**: validazione unicita',
@@ -54,6 +57,9 @@ In caso di errore in qualsiasi step, il rollback e' automatico
 | `p_ruolo_sistema`          | `config.ruolo_sistema`          |      No      | `'OPERATIVO'`  |                                         |
 | `p_valido_dal`             | `risorse_umane.valido_dal%TYPE` |      No      | `CURRENT_DATE` |                                         |
 | `p_valido_al`              | `risorse_umane.valido_al%TYPE`  |      No      | `NULL`         |                                         |
+| `p_comune_nascita_id`      | `soggetti.comune_id%TYPE`       |      No      | `NULL`         | Comune di nascita (FK comuni). Sprint 3.|
+| `p_indirizzo_resid_dettaglio_id` | `indirizzi_dettaglio.id%TYPE` | No      | `NULL`         | Indirizzo residenza normalizzato. Sprint 3.|
+| `p_indirizzo_domfisc_dettaglio_id` | `indirizzi_dettaglio.id%TYPE` | No    | `NULL`         | Domicilio fiscale. Se NULL e RESID fornito, usa RESID. Sprint 3.|
 
 **Firma flessibile:** tutti i parametri hanno `DEFAULT NULL` per consentire
 chiamate con parametri named. La validazione avviene nel body.
@@ -72,23 +78,32 @@ chiamate con parametri named. La validazione avviene nel body.
 1. Validazione coerenza parametri orchestratore
 2. fn_crea_auth_user(username, email, password_hash, nome, cognome)
    --> v_auth_user_id
-3. fn_crea_soggetto_pf(cognome, nome, cf, email, data_nascita, sesso)
+3. fn_crea_soggetto_pf(cognome, nome, cf, email, data_nascita, sesso, comune_nascita_id)
    --> v_soggetto_id
 4. fn_crea_risorsa_umana(soggetto_id, qualifica_id, uo_id,
      valido_dal, valido_al, auth_user_id, ruolo_sistema)
    --> v_ru_id  (internamente chiama fn_get_or_create_soggetto_ruolo)
-5. RETURN v_auth_user_id
+5. Se p_indirizzo_resid_dettaglio_id IS NOT NULL:
+     fn_crea_indirizzo_soggetto(soggetto_id, 'RESID', dettaglio_id)
+     fn_crea_indirizzo_soggetto(soggetto_id, 'DOMFISC', COALESCE(domfisc, resid))
+6. RETURN v_auth_user_id
 ```
 
 ---
 
-### Nota indirizzo
+### Nota indirizzo (aggiornata Sprint 3)
 
-L'orchestratore **non crea indirizzo**. Se la matrice
-`config.tipi_soggetto_dettaglio_tipi_indirizzo` richiede l'indirizzo RES
-per la natura PR, il chiamante deve creare l'indirizzo nella stessa
-transazione prima del COMMIT (trigger DEFERRED
-`trgfn_soggetti_guard_indirizzi_required`).
+L'orchestratore ora supporta la creazione di indirizzi RESID e DOMFISC
+tramite `p_indirizzo_resid_dettaglio_id` e `p_indirizzo_domfisc_dettaglio_id`.
+
+Se `p_indirizzo_resid_dettaglio_id` e' fornito:
+
+* Crea RESID con `fn_crea_indirizzo_soggetto`
+* Crea DOMFISC (se `p_indirizzo_domfisc_dettaglio_id` IS NULL, usa stesso di RESID)
+
+Se **non** fornito: nessun indirizzo creato. Il trigger DEFERRED
+`trgfn_soggetti_guard_indirizzi_required` puo' bloccare al COMMIT se la
+matrice richiede indirizzi obbligatori per PR.
 
 ---
 

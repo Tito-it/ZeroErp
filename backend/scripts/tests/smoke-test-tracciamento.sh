@@ -190,6 +190,7 @@ except Exception as e:
 # TASK REGISTRY
 # ================================================================
 echo ""
+sleep 1
 echo "-- 6. Task registry (tutti) --"
 
 do_curl GET "/api/v1/core/tracciamento/task-registry/"
@@ -208,6 +209,7 @@ log_info "task FATTURAZIONE: $EXTRACTED"
 # TASK IMPLEMENTATIONS
 # ================================================================
 echo ""
+sleep 1
 echo "-- 8. Task implementations --"
 
 do_curl GET "/api/v1/core/tracciamento/task-implementations/"
@@ -248,13 +250,15 @@ do_curl GET "/api/v1/core/tracciamento/job-runs/?ok=true"
 check "GET job-runs ok=true" 200 ".data.count"
 log_info "job runs OK: $EXTRACTED"
 
-# Con filtro ok=false
+# Con filtro ok=false (pausa per evitare throttle burst)
+sleep 2
 do_curl GET "/api/v1/core/tracciamento/job-runs/?ok=false"
 check "GET job-runs ok=false" 200 ".data.count"
 log_info "job runs FAIL: $EXTRACTED"
 
 # Con search
 echo ""
+sleep 1
 echo "-- 11. Job runs search --"
 
 do_curl GET "/api/v1/core/tracciamento/job-runs/?search=maintenance"
@@ -292,6 +296,7 @@ except Exception as e:
 # TEST ERRORI
 # ================================================================
 echo ""
+sleep 1
 echo "-- 13. Test errori validazione --"
 
 # Audit log con status invalido → errore di validazione atteso (400)

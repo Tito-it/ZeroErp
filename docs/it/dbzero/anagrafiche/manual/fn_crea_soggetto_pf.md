@@ -47,6 +47,7 @@ RES se richiesto dalla matrice `config.tipi_soggetto_dettaglio_tipi_indirizzo`
 | `p_data_nascita`   | `soggetti.data_nascita%TYPE`   |      No      | `NULL`  |                                                  |
 | `p_sesso`          | `soggetti.sesso%TYPE`          |      No      | `'M'`   |                                                  |
 | `p_stato_iso2`     | `character varying`            |      No      | `'IT'`  | ISO2 per nazionalita'.                           |
+| `p_comune_nascita_id` | `soggetti.comune_id%TYPE`  |      No      | `NULL`  | Comune di nascita (FK `fk_comuni_config`).       |
 
 ---
 
@@ -65,7 +66,8 @@ RES se richiesto dalla matrice `config.tipi_soggetto_dettaglio_tipi_indirizzo`
   Errore se non trovato: `E_GENERICO`.
 * **Guard CF univoco:** verifica su `(stato_id, id_fiscale_univoco_cf_piva)`.
   Errore: `E_ADMIN_CF_DUPLICATO`.
-* **INSERT soggetto:** con `tipo_soggetto_dettaglio_id`, `attivo = true`.
+* **INSERT soggetto:** con `tipo_soggetto_dettaglio_id`, `comune_id = p_comune_nascita_id`, `attivo = true`.
+  La FK `fk_comuni_config` verifica automaticamente l'esistenza del comune.
 * **INSERT contatto default:** con `nominativo = cognome + nome`,
   `email = p_email`, `is_default = true`.
   Il trigger `trgfn_contatti_set_default_contatto` gestisce automaticamente

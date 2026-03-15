@@ -11,7 +11,7 @@ Endpoint applicativo che invoca il servizio Python `fn_get_commesse_push_log`
 (`apps.vendite.services.commesse_service`), il quale legge il record da
 `CommesseRepository.get_push_log()`.
 
-View: `ApiCommessePushLog` / `ApiCommessePushLogV1` (`apps.vendite.api.views`).
+View: `ApiCommessePushLog` `ApiCommessePushLog` (`apps.vendite.api.views`).
 
 ## Input
 

@@ -147,7 +147,7 @@ function handleSetContext(row) {
 }
 
 // Scopo: naviga alla scheda anagrafica completa del soggetto
-function handleOpenDetail(row) {
+function handleOpenDetail(/* row */) {
   // Navigazione alla scheda — da implementare quando le rotte anagrafiche saranno pronte
   emit('update:visible', false)
 }
@@ -176,7 +176,7 @@ watch(() => props.visible, (newVal) => {
       <span class="search-drawer-title">{{ t('search.title') }}</span>
     </template>
 
-    <div class="search-drawer-content">
+    <div class="app-drawer-content search-drawer-content">
       <!-- Filtri ricerca -->
       <div class="search-filters">
         <div class="search-row-primary">
@@ -273,11 +273,9 @@ watch(() => props.visible, (newVal) => {
   color: var(--p-text-color);
 }
 
+/* Layout base ereditato da .app-drawer-content (main.css) */
 .search-drawer-content {
-  display: flex;
-  flex-direction: column;
   height: 100%;
-  gap: 0.75rem;
 }
 
 .search-filters {

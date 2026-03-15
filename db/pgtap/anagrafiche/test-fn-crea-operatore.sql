@@ -41,7 +41,7 @@ SELECT
   q.id,
   'test_op_' || floor(random() * 1000000)::text,
   'test_op_' || floor(random() * 1000000)::text || '@test.local',
-  'TSTCRAOPR' || lpad(floor(random() * 1000000)::text, 7, '0')
+  'LCCRLD80A01L736X'
 FROM config.unita_organizzative uo
   CROSS JOIN config.qualifiche q
 WHERE uo.attivo = true
@@ -113,8 +113,8 @@ SELECT ok(
         JOIN anagrafiche.soggetti_ruoli sr ON sr.id = ru.soggetto_ruolo_id
         JOIN anagrafiche.soggetti s ON s.id = sr.soggetto_id
       WHERE rua.auth_user_id = (SELECT auth_user_id FROM tmp_crea_op_ctx)
-        AND s.cognome = 'ROSSI'
-        AND s.nome = 'MARIO'
+        AND s.cognome = 'Rossi'
+        AND s.nome = 'Mario'
         AND rua.ruolo_sistema = 'OPERATIVO'::config.ruolo_sistema
     ),
     '5. Catena soggetto -> ruolo -> risorsa_umana -> bridge verificata'
@@ -221,7 +221,7 @@ SELECT throws_matching(
       (SELECT qualifica_id FROM tmp_crea_op_ctx),
       (SELECT uo_id FROM tmp_crea_op_ctx)
     ),
-    'E_ADMIN_CF_DUPLICATO',
+    'Codice fiscale gia',
     '10. Errore codice fiscale duplicato'
   );
 
@@ -233,7 +233,7 @@ SELECT throws_matching(
       $$SELECT anagrafiche.fn_crea_operatore(
         p_cognome := 'Test',
         p_nome := 'UO',
-        p_codice_fiscale := 'TSTUOINES' || lpad(floor(random() * 10000000)::text, 7, '0'),
+        p_codice_fiscale := 'PNZFDN78A01L219Y',
         p_username := 'user_uo_ines_' || floor(random() * 1000000)::text,
         p_email := 'uo_ines_' || floor(random() * 1000000)::text || '@test.local',
         p_password_hash := 'pbkdf2_sha256$600000$test$hash==',
@@ -242,7 +242,7 @@ SELECT throws_matching(
       ) $$,
       (SELECT qualifica_id FROM tmp_crea_op_ctx)
     ),
-    'E_ADMIN_UO_NON_TROVATA',
+    'non trovata o non attiva',
     '11. Errore UO inesistente'
   );
 
