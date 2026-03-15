@@ -9,7 +9,7 @@ CREATE FUNCTION fn_get_lookup_codici(p_rel regclass, p_order_col text, p_order_d
 
 ```sql
 CREATE OR REPLACE FUNCTION dbops.fn_get_lookup_codici(p_rel regclass, p_order_col text DEFAULT 'descrizione'::text, p_order_dir text DEFAULT 'ASC'::text, p_attivo_only boolean DEFAULT true, p_limit integer DEFAULT 500, p_offset integer DEFAULT 0)
- RETURNS TABLE(id bigint, codice text, descrizione text)
+ RETURNS TABLE(id bigint, codice text, codice_interno text, descrizione text)
  LANGUAGE plpgsql
 AS $function$
 DECLARE
@@ -18,6 +18,7 @@ DECLARE
   v_offset integer := COALESCE(p_offset, 0);
   v_id_type text;
   v_has_codice boolean;
+  v_has_codice_interno boolean;
   v_has_descrizione boolean;
   v_has_attivo boolean;
   v_attivo_is_boolean boolean;
@@ -26,13 +27,15 @@ BEGIN
   -- =========================================================
   -- Scopo:
   --   Estrazione lookup veloce per tabelle con colonne
-  --   id/codice/descrizione.
+  --   id/codice/codice_interno/descrizione.
   --
   -- Regole:
   --   - id deve essere integer/bigint (uuid non ammesso)
   --   - ordinamento ammesso solo su codice|descrizione e ASC|DESC
   --   - se la tabella ha colonna attivo e p_attivo_only=true,
   --     applica WHERE attivo IS TRUE
+  --   - codice_interno: se la colonna esiste la restituisce,
+  --     altrimenti NULL::text
   -- =========================================================
 
   IF p_rel IS NULL THEN
@@ -121,6 +124,7 @@ BEGIN
     );
   END IF;
 
+  -- Check colonna codice (obbligatoria)
   SELECT EXISTS (
     SELECT 1
       FROM pg_attribute a
@@ -140,6 +144,18 @@ BEGIN
     );
   END IF;
 
+  -- Check colonna codice_interno (opzionale)
+  SELECT EXISTS (
+    SELECT 1
+      FROM pg_attribute a
+     WHERE a.attrelid = p_rel
+       AND a.attname = 'codice_interno'
+       AND a.attnum > 0
+       AND NOT a.attisdropped
+  )
+    INTO v_has_codice_interno;
+
+  -- Check colonna descrizione (obbligatoria)
   SELECT EXISTS (
     SELECT 1
       FROM pg_attribute a
@@ -159,6 +175,7 @@ BEGIN
     );
   END IF;
 
+  -- Check colonna attivo (opzionale)
   SELECT EXISTS (
     SELECT 1
       FROM pg_attribute a
@@ -193,8 +210,13 @@ BEGIN
     END IF;
   END IF;
 
+  -- Costruzione SQL dinamico
   v_sql := format(
-    'SELECT t.id::bigint, t.codice::text, t.descrizione::text FROM %s t',
+    'SELECT t.id::bigint, t.codice::text, %s, t.descrizione::text FROM %s t',
+    CASE WHEN v_has_codice_interno
+         THEN 't.codice_interno::text'
+         ELSE 'NULL::text AS codice_interno'
+    END,
     p_rel::text
   );
 
@@ -217,7 +239,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION dbops.fn_get_lookup_codici(p_rel regclass, p_order_col text, p_order_dir text, p_attivo_only boolean, p_limit integer, p_offset integer)
-IS 'Lookup generico id/codice/descrizione con ordinamento validato e filtro attivo opzionale.';
+IS 'Lookup generico id/codice/codice_interno/descrizione con ordinamento validato e filtro attivo opzionale. codice_interno restituito se la colonna esiste, altrimenti NULL.';
 ```
 
 ---

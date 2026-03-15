@@ -33,6 +33,7 @@
 
 ## ⚙️ Funzioni (manuale)
 - [fn_crea_auth_user](manual/fn_crea_auth_user.md) — (latest review 13-03-2026) Building block atomico per la creazione di un record `auth_user` (Django). Gestisce la validazione dei parametri e i guard di unicita' su username e email.
+- [fn_crea_indirizzo_soggetto](manual/fn_crea_indirizzo_soggetto.md)
 - [fn_crea_operatore](manual/fn_crea_operatore.md) — (latest review 13-03-2026) Orchestratore transazionale per la creazione completa di un operatore. Chiama i building block in sequenza all'interno di una singola transazione:
 - [fn_crea_risorsa_umana](manual/fn_crea_risorsa_umana.md) — (latest review 13-03-2026) Building block atomico per la creazione di una risorsa umana con bridge `auth_user` opzionale.
 - [fn_crea_soggetto_pf](manual/fn_crea_soggetto_pf.md) — (latest review 13-03-2026) Building block atomico per la creazione di un soggetto Persona Fisica (natura PR = Privato) con contatto default obbligatorio.
