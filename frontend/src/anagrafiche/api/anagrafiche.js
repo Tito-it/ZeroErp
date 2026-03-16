@@ -146,6 +146,10 @@ export function updateSoggettoContatto(soggettoId, contattoId, payload) {
   return api.patch(`${BASE}/soggetti/${soggettoId}/contatti/${contattoId}/`, payload)
 }
 
+export function deleteSoggettoContatto(soggettoId, contattoId) {
+  return api.delete(`${BASE}/soggetti/${soggettoId}/contatti/${contattoId}/`)
+}
+
 export function listSoggettoIndirizzi(soggettoId) {
   return api.get(`${BASE}/soggetti/${soggettoId}/indirizzi/`)
 }
@@ -154,12 +158,32 @@ export function createSoggettoIndirizzo(soggettoId, payload) {
   return api.post(`${BASE}/soggetti/${soggettoId}/indirizzi/`, payload)
 }
 
+export function replaceSoggettoIndirizzo(soggettoId, indirizzoSoggettoId, payload) {
+  return api.put(`${BASE}/soggetti/${soggettoId}/indirizzi/${indirizzoSoggettoId}/`, payload)
+}
+
+export function deleteSoggettoIndirizzo(soggettoId, indirizzoSoggettoId) {
+  return api.delete(`${BASE}/soggetti/${soggettoId}/indirizzi/${indirizzoSoggettoId}/`)
+}
+
 export function listSoggettoRuoli(soggettoId) {
   return api.get(`${BASE}/soggetti/${soggettoId}/ruoli/`)
 }
 
 export function assignSoggettoRuolo(soggettoId, payload) {
   return api.post(`${BASE}/soggetti/${soggettoId}/ruoli/`, payload)
+}
+
+export function generaCF(payload) {
+  return api.post(`${BASE}/soggetti/genera-cf/`, payload)
+}
+
+export function validaCFPIVA(payload) {
+  return api.post(`${BASE}/soggetti/valida-cf-piva/`, payload)
+}
+
+export function checkIndirizzoDuplicato(payload) {
+  return api.post(`${BASE}/indirizzi/check-duplicato/`, payload)
 }
 
 // --- Stati ---

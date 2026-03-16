@@ -174,6 +174,7 @@ const formattedDate = computed(() => {
 .context-chip-icon {
   margin-right: 0.35rem;
   font-size: 0.8rem;
+  color: var(--p-primary-color);
 }
 
 .context-chip-label {
@@ -181,6 +182,8 @@ const formattedDate = computed(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-weight: 600;
+  color: var(--p-primary-color);
 }
 
 /* Mobile — nasconde data e azienda, semplifica */

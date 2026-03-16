@@ -16,7 +16,7 @@ from django.db import connection
 from apps.anagrafiche.db._helpers import extract_paginated
 
 _SOGGETTI_ORDER_COLS = {
-    "ragione_sociale_completa", "codice_fiscale", "partita_iva",
+    "codice", "ragione_sociale_completa", "codice_fiscale", "partita_iva",
     "tipo_descrizione", "date_insert",
 }
 
@@ -40,11 +40,18 @@ class SoggettiRepository:
         direction = "DESC" if order_dir and order_dir.upper() == "DESC" else "ASC"
         search_pattern = f"%{search.strip()}%" if search and search.strip() else None
         sql = f"""
-            SELECT s.id, s.ragione_sociale_completa, s.codice_fiscale,
+            SELECT s.id, s.codice, s.ragione_sociale_completa, s.codice_fiscale,
                    s.partita_iva, s.cognome, s.nome, s.ragione_sociale,
                    tsd.descrizione AS tipo_descrizione,
                    tsd.id AS tipo_soggetto_dettaglio_id,
                    ts.id AS natura_soggetto,
+                   (SELECT COALESCE(jsonb_agg(jsonb_build_object(
+                       'codice', tr.codice, 'descrizione', tr.descrizione
+                   ) ORDER BY tr.descrizione), '[]'::jsonb)
+                    FROM anagrafiche.soggetti_ruoli sr
+                    JOIN config.tipi_ruoli tr ON tr.id = sr.tipo_ruolo_id
+                   WHERE sr.soggetto_id = s.id
+                   ) AS ruoli,
                    COUNT(*) OVER () AS total_count
               FROM anagrafiche.soggetti s
               JOIN config.tipi_soggetto_dettaglio tsd ON tsd.id = s.tipo_soggetto_dettaglio_id
@@ -55,7 +62,7 @@ class SoggettiRepository:
                     OR s.partita_iva ILIKE %s
                    ))
                AND (%s::bigint IS NULL OR s.tipo_soggetto_dettaglio_id = %s)
-             ORDER BY {order_col} {direction}
+             ORDER BY {order_col} {direction}, s.id
              LIMIT %s OFFSET %s
         """  # noqa: S608
         params = [
@@ -291,6 +298,16 @@ class SoggettiRepository:
             cursor.execute(sql, values)
             return cursor.rowcount > 0
 
+    # Scopo: Elimina contatto con ownership check.
+    def delete_contatto(self, contatto_id: int, soggetto_id: str) -> bool:
+        sql = """
+            DELETE FROM anagrafiche.contatti
+             WHERE id = %s AND soggetto_id = %s::uuid
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [contatto_id, soggetto_id])
+            return cursor.rowcount > 0
+
     # =================================================================
     # Indirizzi soggetto
     # =================================================================
@@ -351,6 +368,16 @@ class SoggettiRepository:
             assert row is not None
             return int(row[0])
 
+    # Scopo: Elimina un'associazione indirizzo-soggetto per id.
+    def delete_indirizzo_soggetto(self, indirizzo_soggetto_id: int, soggetto_id: str) -> bool:
+        sql = """
+            DELETE FROM anagrafiche.indirizzi_soggetti
+             WHERE id = %s AND soggetto_id = %s::uuid
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [indirizzo_soggetto_id, soggetto_id])
+            return cursor.rowcount > 0
+
     # =================================================================
     # Ruoli
     # =================================================================
@@ -370,6 +397,38 @@ class SoggettiRepository:
             cursor.execute(sql, [soggetto_id])
             cols = [c.name for c in cursor.description]
             return [dict(zip(cols, row)) for row in cursor.fetchall()]
+
+    # Scopo: Verifica se un CF esiste gia' in anagrafica. Ritorna soggetto trovato o None.
+    def find_by_codice_fiscale(self, codice_fiscale: str) -> dict[str, Any] | None:
+        sql = """
+            SELECT s.id, s.codice, s.ragione_sociale_completa, s.codice_fiscale
+              FROM anagrafiche.soggetti s
+             WHERE UPPER(TRIM(s.codice_fiscale)) = UPPER(TRIM(%s))
+             LIMIT 1
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [codice_fiscale])
+            row = cursor.fetchone()
+            if not row:
+                return None
+            cols = [c.name for c in cursor.description]
+            return dict(zip(cols, row))
+
+    # Scopo: Verifica se una P.IVA esiste gia' in anagrafica. Ritorna soggetto trovato o None.
+    def find_by_partita_iva(self, partita_iva: str) -> dict[str, Any] | None:
+        sql = """
+            SELECT s.id, s.codice, s.ragione_sociale_completa, s.partita_iva
+              FROM anagrafiche.soggetti s
+             WHERE UPPER(TRIM(s.partita_iva)) = UPPER(TRIM(%s))
+             LIMIT 1
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [partita_iva])
+            row = cursor.fetchone()
+            if not row:
+                return None
+            cols = [c.name for c in cursor.description]
+            return dict(zip(cols, row))
 
     # Scopo: Assegna ruolo a soggetto (get or create, idempotente).
     def assign_ruolo(self, soggetto_id: str, codice_ruolo: str) -> int:

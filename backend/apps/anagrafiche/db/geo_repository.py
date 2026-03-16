@@ -42,7 +42,7 @@ class GeoRepository:
             SELECT id, descrizione, attivo, COUNT(*) OVER () AS total_count
               FROM config.toponomastica
              WHERE (%s::text IS NULL OR descrizione ILIKE %s)
-             ORDER BY {order_col} {direction}
+             ORDER BY {order_col} {direction}, id
              LIMIT %s OFFSET %s
         """  # noqa: S608
         with connection.cursor() as cursor:
@@ -94,7 +94,7 @@ class GeoRepository:
               LEFT JOIN config.province p ON p.id = c.provincia_id
               LEFT JOIN config.regioni r ON r.id = p.regione_id
              WHERE (%s::text IS NULL OR c.descrizione ILIKE %s)
-             ORDER BY {order_col} {direction}
+             ORDER BY {order_col} {direction}, c.id
              LIMIT %s OFFSET %s
         """  # noqa: S608
         with connection.cursor() as cursor:
@@ -173,7 +173,7 @@ class GeoRepository:
               JOIN config.comuni c ON c.id = cp.comune_id
              WHERE (%s::text IS NULL OR cp.codice ILIKE %s OR c.descrizione ILIKE %s)
                AND (%s::integer IS NULL OR cp.comune_id = %s)
-             ORDER BY {order_col} {direction}
+             ORDER BY {order_col} {direction}, cp.id
              LIMIT %s OFFSET %s
         """  # noqa: S608
         with connection.cursor() as cursor:
@@ -239,7 +239,7 @@ class GeoRepository:
               LEFT JOIN config.regioni r ON r.id = p.regione_id
              WHERE (%s::text IS NULL OR p.descrizione ILIKE %s OR p.sigla ILIKE %s)
                AND (%s::integer IS NULL OR p.regione_id = %s)
-             ORDER BY {order_col} {direction}
+             ORDER BY {order_col} {direction}, p.id
              LIMIT %s OFFSET %s
         """  # noqa: S608
         with connection.cursor() as cursor:
@@ -312,7 +312,7 @@ class GeoRepository:
               LEFT JOIN config.stati s ON s.id = r.stato_id
              WHERE (%s::text IS NULL OR r.descrizione ILIKE %s)
                AND (%s::integer IS NULL OR r.stato_id = %s)
-             ORDER BY {order_col} {direction}
+             ORDER BY {order_col} {direction}, r.id
              LIMIT %s OFFSET %s
         """  # noqa: S608
         with connection.cursor() as cursor:
@@ -372,7 +372,7 @@ class GeoRepository:
               FROM config.stati
              WHERE (%s::text IS NULL OR descrizione ILIKE %s
                     OR codice_iso2 ILIKE %s OR codice_iso3 ILIKE %s)
-             ORDER BY {order_col} {direction}
+             ORDER BY {order_col} {direction}, id
              LIMIT %s OFFSET %s
         """  # noqa: S608
         with connection.cursor() as cursor:

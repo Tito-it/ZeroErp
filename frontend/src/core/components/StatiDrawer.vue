@@ -6,6 +6,7 @@ import { useStatiStore } from '../../anagrafiche/stores/stati'
 import { useApiHandler } from '../composables/useApiHandler'
 import { DRAWER_WIDTH } from '../constants'
 import DrawerFooter from './DrawerFooter.vue'
+import DrawerTitle from './DrawerTitle.vue'
 import Drawer from 'primevue/drawer'
 import InputText from 'primevue/inputtext'
 
@@ -62,8 +63,10 @@ async function handleSave() {
 
 <template>
   <Drawer :visible="visible" @update:visible="emit('update:visible', $event)" position="right"
-    :style="{ width: DRAWER_WIDTH.STANDARD }"
-    :header="mode === 'create' ? t('geo.nuovo_stato') : t('geo.modifica_stato')">
+    :style="{ width: DRAWER_WIDTH.STANDARD }">
+    <template #header>
+      <DrawerTitle :action="mode === 'create' ? t('common.new') : t('common.edit')" :title="t('geo.stato')" icon="pi pi-globe" />
+    </template>
     <div class="app-drawer-content">
       <div class="form-grid">
         <div class="form-field">

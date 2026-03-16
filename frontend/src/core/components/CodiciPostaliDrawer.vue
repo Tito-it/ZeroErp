@@ -6,6 +6,7 @@ import { useCodiciPostaliStore } from '../../anagrafiche/stores/codiciPostali'
 import { useApiHandler } from '../composables/useApiHandler'
 import ComuneAutocomplete from './ComuneAutocomplete.vue'
 import DrawerFooter from './DrawerFooter.vue'
+import DrawerTitle from './DrawerTitle.vue'
 import { DRAWER_WIDTH } from '../constants'
 import Drawer from 'primevue/drawer'
 import InputText from 'primevue/inputtext'
@@ -47,8 +48,10 @@ async function handleSave() {
 
 <template>
   <Drawer :visible="visible" @update:visible="emit('update:visible', $event)" position="right"
-    :style="{ width: DRAWER_WIDTH.SIMPLE }"
-    :header="mode === 'create' ? t('indirizzi.nuovo_cap') : t('indirizzi.modifica_cap')">
+    :style="{ width: DRAWER_WIDTH.SIMPLE }">
+    <template #header>
+      <DrawerTitle :action="mode === 'create' ? t('common.new') : t('common.edit')" :title="t('indirizzi.cap')" icon="pi pi-inbox" />
+    </template>
     <div class="app-drawer-content">
       <div class="form-grid">
         <div class="form-field">

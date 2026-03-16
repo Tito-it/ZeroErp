@@ -9,6 +9,7 @@ import { useUtentiStore } from '../stores/utenti'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { DRAWER_WIDTH } from '../../core/constants'
 import { useConfirm } from 'primevue/useconfirm'
+import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import Drawer from 'primevue/drawer'
 import Accordion from 'primevue/accordion'
 import AccordionPanel from 'primevue/accordionpanel'
@@ -109,9 +110,11 @@ function onClose() {
     :visible="props.visible"
     position="right"
     :style="{ width: DRAWER_WIDTH.COMPLEX }"
-    :header="t('amm.profilo_reparto_title', { nome: uoNome })"
     @update:visible="val => emit('update:visible', val)"
   >
+    <template #header>
+      <DrawerTitle action="" :title="t('amm.profilo_reparto', { nome: uoNome })" icon="pi pi-sitemap" />
+    </template>
     <ConfirmDialog />
 
     <Accordion :multiple="true" :active-index="[0, 1]">

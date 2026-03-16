@@ -11,10 +11,11 @@ import { useAuthUser } from '../../core/composables/useAuthUser'
 import { useLookup } from '../../core/composables/useLookup'
 import { lookupCodici } from '../../core/apiCore'
 import { listUnitaOrganizzative } from '../api/amministrazione'
-import { DRAWER_WIDTH } from '../../core/constants'
+import { DRAWER_WIDTH, DATE_FORMAT } from '../../core/constants'
 import SoggettoForm from '../../core/components/SoggettoForm.vue'
 import AuthUserForm from '../../core/components/AuthUserForm.vue'
 import UtentePermessiTab from './UtentePermessiTab.vue'
+import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import Drawer from 'primevue/drawer'
 import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
@@ -161,9 +162,11 @@ function onClose() {
     :visible="props.visible"
     position="right"
     :style="{ width: DRAWER_WIDTH.COMPLEX }"
-    :header="isEdit ? t('amm.modifica_operatore') : t('amm.nuovo_operatore')"
     @update:visible="val => emit('update:visible', val)"
   >
+    <template #header>
+      <DrawerTitle :action="isEdit ? t('common.edit') : t('common.new')" :title="t('amm.operatore')" icon="pi pi-user" />
+    </template>
     <ConfirmDialog />
 
     <template v-if="isEdit">
@@ -196,7 +199,7 @@ function onClose() {
             </div>
             <div class="form-field">
               <label>{{ t('amm.field_valido_al') }}</label>
-              <DatePicker v-model="editForm.valido_al" date-format="yy-mm-dd" class="w-full" />
+              <DatePicker v-model="editForm.valido_al" :date-format="DATE_FORMAT" class="w-full" />
             </div>
           </div>
 

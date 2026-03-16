@@ -35,8 +35,12 @@ export function useSearchTable(store, options = {}) {
   // Cleanup timeout on unmount
   onUnmounted(() => { clearTimeout(searchTimeout) })
 
-  // Handler @page DataTable
+  // Handler @page DataTable — guard contro loop infinito e click rapidi.
+  // PrimeVue DataTable ri-emette @page quando items cambia; senza guard si crea un ciclo.
+  // Se una richiesta è in volo, ignora il click per evitare accavallamento risposte.
   function onPage(event) {
+    if (event.first === store.filters.offset && event.rows === store.filters.limit) return
+    if (store.loading) return
     store.filters.offset = event.first
     store.filters.limit = event.rows
     store.fetchList()

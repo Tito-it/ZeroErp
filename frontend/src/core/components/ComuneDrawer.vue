@@ -9,6 +9,7 @@ import { useLookup } from '../composables/useLookup'
 import { lookupProvince } from '../../anagrafiche/api/anagrafiche'
 import { DRAWER_WIDTH } from '../constants'
 import DrawerFooter from './DrawerFooter.vue'
+import DrawerTitle from './DrawerTitle.vue'
 import Drawer from 'primevue/drawer'
 import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
@@ -60,8 +61,10 @@ async function handleSave() {
     @update:visible="emit('update:visible', $event)"
     position="right"
     :style="{ width: DRAWER_WIDTH.SIMPLE }"
-    :header="t('indirizzi.nuovo_comune')"
   >
+    <template #header>
+      <DrawerTitle :action="t('common.new')" :title="t('indirizzi.comune')" icon="pi pi-building" />
+    </template>
     <div class="app-drawer-content">
       <div class="form-grid">
         <div class="form-field">

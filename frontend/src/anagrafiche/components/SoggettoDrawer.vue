@@ -4,7 +4,7 @@
 // Il payload unificato va al backend che scompone e crea in transazione.
 // I trigger DEFERRED verificano al COMMIT (contatti, indirizzi, dati societari).
 
-import { ref, watch, computed, onUnmounted } from 'vue'
+import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useSoggettiStore } from '../stores/soggetti'
 import { useApiHandler } from '../../core/composables/useApiHandler'
@@ -13,16 +13,19 @@ import { useContattoForm } from '../../core/composables/useContattoForm'
 import { useIndirizzoSoggettoForm } from '../../core/composables/useIndirizzoSoggettoForm'
 import { useDatiSocietariForm } from '../../core/composables/useDatiSocietariForm'
 import { useLookup } from '../../core/composables/useLookup'
-import { lookupFormeGiuridiche, lookupTipiRuoliPerNatura } from '../../core/apiCore'
-import { lookupProvince, assignSoggettoRuolo } from '../api/anagrafiche'
+import { lookupFormeGiuridiche } from '../../core/apiCore'
+import { lookupProvince } from '../api/anagrafiche'
 import { DRAWER_WIDTH } from '../../core/constants'
+import { toDateString } from '../../core/utils/date'
 import SoggettoForm from '../../core/components/SoggettoForm.vue'
 import ContattoForm from '../../core/components/ContattoForm.vue'
 import IndirizzoSoggettoForm from '../../core/components/IndirizzoSoggettoForm.vue'
 import DatiSocietariForm from '../../core/components/DatiSocietariForm.vue'
 import DrawerFooter from '../../core/components/DrawerFooter.vue'
+import DrawerTitle from '../../core/components/DrawerTitle.vue'
+import IndirizziSoggettoDrawer from '../../core/components/IndirizziSoggettoDrawer.vue'
+import ContattiSoggettoDrawer from '../../core/components/ContattiSoggettoDrawer.vue'
 import Drawer from 'primevue/drawer'
-import Select from 'primevue/select'
 import Button from 'primevue/button'
 import Tag from 'primevue/tag'
 
@@ -40,11 +43,14 @@ const formeGiuridicheLookup = ref([])
 const datiSocietari = useDatiSocietariForm({ formeGiuridiche: formeGiuridicheLookup })
 const provinceLookup = useLookup(() => lookupProvince())
 
-// Ruoli (edit mode)
+// Ruoli (edit mode, readonly)
 const ruoliAssegnati = ref([])
-const ruoliDisponibili = ref([])
-const nuovoRuoloId = ref(null)
-const ruoloLoading = ref(false)
+
+// Drawer indirizzi e contatti (edit mode)
+const indirizziDrawerVisible = ref(false)
+const indirizziRiepilogo = ref([])
+const contattiDrawerVisible = ref(false)
+const contattiRiepilogo = ref([])
 
 const props = defineProps({
   visible: Boolean,
@@ -55,9 +61,6 @@ const props = defineProps({
 const emit = defineEmits(['update:visible', 'saved'])
 
 const isEdit = computed(() => props.mode === 'edit')
-const title = computed(() =>
-  isEdit.value ? t('soggetti.modifica_soggetto') : t('soggetti.nuovo_soggetto')
-)
 
 // Carica forme giuridiche filtrate al cambio tipo soggetto.
 // Versione per evitare race condition: se il tipo cambia durante il fetch,
@@ -75,6 +78,48 @@ watch(() => soggetto.form.tipo_soggetto_dettaglio_id, async (tipoId) => {
   } catch {
     if (v === fgVersion) formeGiuridicheLookup.value = []
   }
+})
+
+// === Smart defaults (solo in create mode) ===
+
+// Auto-fill nominativo contatto da cognome+nome (PF) o ragione_sociale (PG).
+// Sovrascrive solo se l'utente non ha modificato manualmente il nominativo.
+let nominativoManuale = false
+watch(() => contatto.form.nominativo, (val, old) => {
+  // Se il cambio non viene dal watcher sotto, l'utente sta digitando manualmente
+  if (isEdit.value) return
+  const autoNome = _buildNominativo()
+  if (val !== autoNome && old === autoNome) nominativoManuale = true
+})
+
+function _buildNominativo() {
+  if (soggetto.isPF.value) {
+    const parts = [soggetto.form.cognome.trim(), soggetto.form.nome.trim()].filter(Boolean)
+    return parts.join(' ')
+  }
+  return soggetto.form.ragione_sociale.trim()
+}
+
+watch(
+  () => soggetto.isPF.value
+    ? `${soggetto.form.cognome}|${soggetto.form.nome}`
+    : soggetto.form.ragione_sociale,
+  () => {
+    if (isEdit.value || nominativoManuale) return
+    contatto.form.nominativo = _buildNominativo()
+  }
+)
+
+// Auto-select tipo contatto default (primo della lista, tipicamente "Principale")
+watch(() => contatto.tipiContatto.items.value, (items) => {
+  if (isEdit.value || contatto.form.tipo_contatto_id) return
+  if (items.length > 0) contatto.form.tipo_contatto_id = items[0].id
+})
+
+// Imposta matrice indirizzi nel composable quando cambia tipo soggetto
+watch(() => soggetto.matriceIndirizzi.value, (matrice) => {
+  if (isEdit.value) return
+  indirizzo.setMatrice(matrice)
 })
 
 // Carica province quando servono dati societari
@@ -103,35 +148,27 @@ function populateFromDetail(data) {
   }
   // Ruoli
   ruoliAssegnati.value = data.ruoli || []
+  // Indirizzi e contatti riepilogo
+  indirizziRiepilogo.value = data.indirizzi || []
+  contattiRiepilogo.value = data.contatti || []
 }
 
-// Scopo: Carica i ruoli disponibili filtrati per natura e aggiorna la lista.
-async function loadRuoliDisponibili(natura) {
+
+// Callback quando i drawer indirizzi/contatti salvano — ricarica il riepilogo.
+async function onContattiSaved() {
+  if (!props.itemId) return
   try {
-    const res = await lookupTipiRuoliPerNatura(natura)
-    ruoliDisponibili.value = res.data.data.results
-  } catch {
-    ruoliDisponibili.value = []
-  }
+    const data = await store.fetchDetail(props.itemId)
+    contattiRiepilogo.value = data.contatti || []
+  } catch { /* silent */ }
 }
 
-// Scopo: Assegna ruolo al soggetto corrente.
-async function onAssignRuolo() {
-  if (!nuovoRuoloId.value || !props.itemId) return
-  const selected = ruoliDisponibili.value.find(r => r.id === nuovoRuoloId.value)
-  if (!selected) return
-  ruoloLoading.value = true
+async function onIndirizziSaved() {
+  if (!props.itemId) return
   try {
-    await assignSoggettoRuolo(props.itemId, { codice_ruolo: selected.codice })
-    ruoliAssegnati.value.push({
-      tipo_ruolo_id: selected.id,
-      ruolo_codice: selected.codice,
-      ruolo_descrizione: selected.descrizione,
-    })
-    nuovoRuoloId.value = null
-  } finally {
-    ruoloLoading.value = false
-  }
+    const data = await store.fetchDetail(props.itemId)
+    indirizziRiepilogo.value = data.indirizzi || []
+  } catch { /* silent */ }
 }
 
 // Carica dati quando il drawer si apre.
@@ -143,8 +180,6 @@ watch(() => props.visible, async (val) => {
     try {
       const data = await store.fetchDetail(props.itemId)
       populateFromDetail(data)
-      // Carica ruoli disponibili per la natura del soggetto
-      await loadRuoliDisponibili(data.natura_soggetto)
     } catch {
       emit('update:visible', false)
       return
@@ -157,6 +192,7 @@ watch(() => props.visible, async (val) => {
     ruoliAssegnati.value = []
     ruoliDisponibili.value = []
     nuovoRuoloId.value = null
+    nominativoManuale = false
   }
 
   // Carica lookup contatto (lazy, non blocca)
@@ -180,7 +216,7 @@ async function handleSave() {
       payload.cognome = f.cognome
       payload.nome = f.nome
       payload.sesso = f.sesso
-      payload.data_nascita = f.data_nascita
+      payload.data_nascita = toDateString(f.data_nascita)
       payload.comune_nascita_id = f.comune_nascita_id
     } else {
       payload.ragione_sociale = f.ragione_sociale
@@ -205,13 +241,13 @@ async function handleSave() {
       codice_fiscale: soggetto.form.codice_fiscale,
       partita_iva: soggetto.form.partita_iva,
       sesso: soggetto.form.sesso,
-      data_nascita: soggetto.form.data_nascita,
+      data_nascita: toDateString(soggetto.form.data_nascita),
       contatto: { ...contatto.form },
     }
 
-    // Indirizzi (array con tutti quelli compilati)
-    if (indirizzo.canSave.value) {
-      payload.indirizzi = [indirizzo.toPayload()]
+    // Indirizzi (array multi-tipo con auto-clone obbligatori)
+    if (indirizzo.hasIndirizzi.value) {
+      payload.indirizzi = indirizzo.toPayloadArray()
     }
 
     // Dati societari (solo se visibili)
@@ -226,6 +262,7 @@ async function handleSave() {
     if (result !== null) {
       emit('saved')
       emit('update:visible', false)
+      store.fetchList()
     }
   }
 }
@@ -237,8 +274,10 @@ async function handleSave() {
     @update:visible="emit('update:visible', $event)"
     position="right"
     :style="{ width: DRAWER_WIDTH.COMPLEX }"
-    :header="title"
   >
+    <template #header>
+      <DrawerTitle :action="isEdit ? t('common.edit') : t('common.new')" :title="t('soggetti.soggetto')" icon="pi pi-users" />
+    </template>
     <div class="app-drawer-content">
       <!-- Sezione: Dati soggetto -->
       <SoggettoForm
@@ -246,20 +285,49 @@ async function handleSave() {
         :tipi-soggetto="soggetto.tipiSoggetto"
         :is-p-f="soggetto.isPF.value"
         :show-partita-iva="soggetto.showPartitaIva.value"
+        :is-edit="isEdit"
         :disabled="false"
       />
 
-      <!-- Separatore: Contatto -->
-      <div class="app-drawer-section">
-        <h4>{{ t('soggetti.section_contatto') }}</h4>
-      </div>
-      <ContattoForm
-        :form="contatto.form"
-        :tipi-contatto="contatto.tipiContatto"
-        :unita-organizzative="contatto.unitaOrganizzative"
-        :show-u-o="false"
-        :disabled="false"
-      />
+      <!-- Sezione: Contatto inline (create) o riepilogo (edit) -->
+      <template v-if="!isEdit">
+        <div class="app-drawer-section">
+          <h4>{{ t('soggetti.section_contatto') }}</h4>
+        </div>
+        <ContattoForm
+          :form="contatto.form"
+          :tipi-contatto="contatto.tipiContatto"
+          :unita-organizzative="contatto.unitaOrganizzative"
+          :show-u-o="false"
+          :disabled="false"
+        />
+      </template>
+      <template v-else>
+        <div class="app-drawer-section">
+          <h4>{{ t('soggetti.section_contatto') }}</h4>
+        </div>
+        <div class="riepilogo-section">
+          <div v-if="contattiRiepilogo.length > 0" class="riepilogo-list">
+            <div v-for="c in contattiRiepilogo" :key="c.id" class="riepilogo-item">
+              <strong>{{ c.nominativo }}</strong>
+              <span v-if="c.email" class="riepilogo-detail">{{ c.email }}</span>
+              <span v-if="c.telefono" class="riepilogo-detail">{{ c.telefono }}</span>
+            </div>
+          </div>
+          <div v-else style="color: var(--p-text-muted-color); font-size: 0.85rem;">
+            {{ t('contatto.nessun_contatto') }}
+          </div>
+          <Button
+            :label="t('contatto.gestisci_contatti')"
+            icon="pi pi-users"
+            text
+            size="small"
+            class="app-action-btn"
+            @click="contattiDrawerVisible = true"
+            style="margin-top: 0.25rem;"
+          />
+        </div>
+      </template>
 
       <!-- Separatore: Indirizzo (solo in create mode) -->
       <template v-if="!isEdit">
@@ -270,13 +338,44 @@ async function handleSave() {
           :form="indirizzo.form"
           :is-libera="indirizzo.isLibera.value"
           @update:is-libera="v => indirizzo.isLibera.value = v"
-          :tipi-indirizzo="soggetto.matriceIndirizzi.value"
+          :tipi-stato="indirizzo.tipiStato.value"
           :toponomastica-lookup="indirizzo.toponomasticaLookup"
           :stati-lookup="indirizzo.statiLookup"
           :cap-options="indirizzo.capOptions.value"
           :loading-cap="indirizzo.loadingCap.value"
+          :auto-clone="indirizzo.autoClone.value"
+          @update:auto-clone="v => indirizzo.autoClone.value = v"
+          @switch-tipo="indirizzo.switchTipo"
+          :indirizzo-warnings="indirizzo.indirizzoWarnings.value"
           :disabled="false"
         />
+      </template>
+
+      <!-- Sezione: Indirizzi riepilogo (edit mode) + pulsante Gestisci -->
+      <template v-if="isEdit">
+        <div class="app-drawer-section">
+          <h4>{{ t('soggetti.section_indirizzo') }}</h4>
+        </div>
+        <div class="indirizzi-riepilogo">
+          <div v-if="indirizziRiepilogo.length > 0" class="indirizzi-riepilogo-list">
+            <div v-for="ind in indirizziRiepilogo" :key="ind.id" class="indirizzi-riepilogo-item">
+              <Tag :value="ind.tipo_indirizzo_descrizione" severity="info" />
+              <span class="indirizzi-riepilogo-text">{{ ind.indirizzo_display }}</span>
+            </div>
+          </div>
+          <div v-else style="color: var(--p-text-muted-color); font-size: 0.85rem;">
+            {{ t('indirizzo_soggetto.nessun_indirizzo') }}
+          </div>
+          <Button
+            :label="t('indirizzo_soggetto.gestisci_indirizzi')"
+            icon="pi pi-map-marker"
+            text
+            size="small"
+            class="app-action-btn"
+            @click="indirizziDrawerVisible = true"
+            style="margin-top: 0.25rem;"
+          />
+        </div>
       </template>
 
       <!-- Sezione: Dati societari (condizionale) -->
@@ -297,43 +396,17 @@ async function handleSave() {
         />
       </template>
 
-      <!-- Sezione: Ruoli (solo edit mode) -->
+      <!-- Sezione: Ruoli (solo edit mode, readonly) -->
       <template v-if="isEdit">
         <div class="app-drawer-section">
           <h4>{{ t('soggetti.section_ruoli') }}</h4>
         </div>
-        <div class="form-grid">
-          <!-- Ruoli assegnati -->
-          <div v-if="ruoliAssegnati.length > 0" class="ruoli-tags">
-            <Tag v-for="r in ruoliAssegnati" :key="r.tipo_ruolo_id"
-                 :value="r.ruolo_descrizione" severity="info" />
-          </div>
-          <div v-else style="color: var(--app-text-secondary, #888); font-size: 0.85rem;">
-            {{ t('soggetti.nessun_ruolo') }}
-          </div>
-
-          <!-- Aggiungi ruolo -->
-          <div class="form-grid-2col" style="align-items: flex-end;">
-            <div class="form-field">
-              <label>{{ t('soggetti.aggiungi_ruolo') }}</label>
-              <Select
-                v-model="nuovoRuoloId"
-                :options="ruoliDisponibili"
-                option-label="descrizione"
-                option-value="id"
-                :placeholder="t('soggetti.select_ruolo')"
-                class="w-full"
-              />
-            </div>
-            <Button
-              :label="t('common.save')"
-              icon="pi pi-plus"
-              :loading="ruoloLoading"
-              :disabled="!nuovoRuoloId"
-              @click="onAssignRuolo"
-              size="small"
-            />
-          </div>
+        <div v-if="ruoliAssegnati.length > 0" class="ruoli-tags">
+          <Tag v-for="r in ruoliAssegnati" :key="r.tipo_ruolo_id"
+               :value="r.ruolo_descrizione" severity="info" />
+        </div>
+        <div v-else style="color: var(--p-text-muted-color); font-size: 0.85rem;">
+          {{ t('soggetti.nessun_ruolo') }}
         </div>
       </template>
 
@@ -345,6 +418,23 @@ async function handleSave() {
       />
     </div>
   </Drawer>
+
+  <!-- Drawer indirizzi soggetto (edit mode) -->
+  <IndirizziSoggettoDrawer
+    :visible="indirizziDrawerVisible"
+    @update:visible="v => indirizziDrawerVisible = v"
+    :soggetto-id="props.itemId"
+    :tipo-soggetto-dettaglio-id="soggetto.form.tipo_soggetto_dettaglio_id"
+    @saved="onIndirizziSaved"
+  />
+
+  <!-- Drawer contatti soggetto (edit mode) -->
+  <ContattiSoggettoDrawer
+    :visible="contattiDrawerVisible"
+    @update:visible="v => contattiDrawerVisible = v"
+    :soggetto-id="props.itemId"
+    @saved="onContattiSaved"
+  />
 </template>
 
 <style scoped>
@@ -363,5 +453,34 @@ async function handleSave() {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
+}
+.indirizzi-riepilogo-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+.indirizzi-riepilogo-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+}
+.indirizzi-riepilogo-text {
+  color: var(--p-text-color);
+}
+.riepilogo-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+.riepilogo-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+}
+.riepilogo-detail {
+  color: var(--p-text-muted-color);
+  font-size: 0.8rem;
 }
 </style>

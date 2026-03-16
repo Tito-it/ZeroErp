@@ -64,6 +64,15 @@ a {
   min-width: 0;
 }
 
+/* ===== Drawer header globale =====
+ * Titolo centrato con colore primario — vale per TUTTI i drawer. */
+.p-drawer-title {
+  flex: 1;
+  text-align: center;
+  font-weight: 600;
+  color: var(--p-primary-color);
+}
+
 /* ===== Classe utility contenuto drawer =====
  * Layout standard per il contenuto di qualsiasi drawer laterale.
  * Gap tra sezioni, tipografia titoli (h4), font-size uniforme.
@@ -170,6 +179,30 @@ a {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 0.75rem;
+}
+
+/* Input con bottone azione affiancato (es. genera CF) */
+.app-input-with-action {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+.app-input-with-action > :first-child {
+  flex: 1;
+}
+
+/* Pulsanti azione interni al form (gestisci, modifica, aggiungi).
+ * Icona + label verde, senza sfondo. Grigio se disabilitato.
+ * Applicare class="app-action-btn" ai Button interni. */
+.app-action-btn.p-button {
+  color: var(--p-primary-color);
+}
+.app-action-btn.p-button:hover:not(:disabled) {
+  color: var(--p-primary-700);
+  background: var(--p-primary-50);
+}
+.app-action-btn.p-button:disabled {
+  color: var(--p-text-muted-color);
 }
 
 @media (max-width: 479px) {

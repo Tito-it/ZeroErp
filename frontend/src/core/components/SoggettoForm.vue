@@ -1,12 +1,18 @@
 <script setup>
 // Scopo: Building block form universale per soggetto PF/PG/ENTE.
 // Si adatta al tipo selezionato mostrando/nascondendo campi.
-// Usa useSoggettoForm per stato e logica.
+// Include: generazione CF, validazione congruenza CF, check duplicati CF/PIVA.
 
+import { ref, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { generaCF, validaCFPIVA } from '../../anagrafiche/api/anagrafiche'
+import { toDateString } from '../utils/date'
 import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
 import DatePicker from 'primevue/datepicker'
+import Button from 'primevue/button'
+import Message from 'primevue/message'
+import { DATE_FORMAT } from '../constants'
 import ComuneAutocomplete from './ComuneAutocomplete.vue'
 
 const { t } = useI18n()
@@ -17,6 +23,7 @@ const props = defineProps({
   isPF: { type: Boolean, default: true },
   showPartitaIva: { type: Boolean, default: false },
   tipoForzato: { type: Number, default: null },
+  isEdit: { type: Boolean, default: false },
   disabled: { type: Boolean, default: false }
 })
 
@@ -24,6 +31,92 @@ const sessoOptions = [
   { label: t('common.sesso_m'), value: 'M' },
   { label: t('common.sesso_f'), value: 'F' }
 ]
+
+// In edit: CF/PIVA bloccati se gia' valorizzati
+const cfDisabled = computed(() => props.isEdit && !!props.form.codice_fiscale?.trim())
+const pivaDisabled = computed(() => props.isEdit && !!props.form.partita_iva?.trim())
+
+// In edit: tipo soggetto filtrato per natura compatibile (PF↔PF, PG↔PG)
+const tipiSoggettoFiltrati = computed(() => {
+  if (!props.isEdit || !props.tipiSoggetto.items?.value) return props.tipiSoggetto
+  const current = props.tipiSoggetto.items.value.find(t => t.id === props.form.tipo_soggetto_dettaglio_id)
+  if (!current) return props.tipiSoggetto
+  const naturaCorrente = current.natura_soggetto
+  return {
+    ...props.tipiSoggetto,
+    items: { value: props.tipiSoggetto.items.value.filter(t => t.natura_soggetto === naturaCorrente) },
+  }
+})
+
+// === Genera CF ===
+const cfLoading = ref(false)
+const canGeneraCF = computed(() =>
+  props.isPF
+  && props.form.cognome?.trim()
+  && props.form.nome?.trim()
+  && props.form.sesso
+  && props.form.data_nascita
+  && props.form.comune_nascita_id
+  && !props.disabled
+)
+
+async function onGeneraCF() {
+  if (!canGeneraCF.value) return
+  cfLoading.value = true
+  try {
+    const res = await generaCF({
+      cognome: props.form.cognome.trim(),
+      nome: props.form.nome.trim(),
+      sesso: props.form.sesso,
+      data_nascita: toDateString(props.form.data_nascita),
+      comune_nascita_id: props.form.comune_nascita_id,
+    })
+    props.form.codice_fiscale = res.data.data.codice_fiscale
+    onValidaCF()
+  } catch {
+    cfMessages.value = [{ severity: 'error', text: 'Errore generazione codice fiscale.' }]
+  } finally {
+    cfLoading.value = false
+  }
+}
+
+// === Validazione CF/PIVA ===
+const cfMessages = ref([])
+const pivaMessages = ref([])
+
+async function onValidaCF() {
+  const cf = (props.form.codice_fiscale || '').trim()
+  if (cf.length < 16) { cfMessages.value = []; return }
+  try {
+    const res = await validaCFPIVA({
+      codice_fiscale: cf,
+      sesso: props.form.sesso || null,
+      data_nascita: toDateString(props.form.data_nascita),
+      comune_nascita_id: props.form.comune_nascita_id || null,
+    })
+    const data = res.data.data
+    cfMessages.value = [
+      ...data.errors.filter(e => e.field === 'codice_fiscale').map(e => ({ severity: 'error', text: e.message })),
+      ...data.warnings.filter(w => w.field === 'codice_fiscale').map(w => ({ severity: 'warn', text: w.message })),
+    ]
+  } catch {
+    cfMessages.value = []
+  }
+}
+
+async function onValidaPIVA() {
+  const piva = (props.form.partita_iva || '').trim()
+  if (piva.length < 11) { pivaMessages.value = []; return }
+  try {
+    const res = await validaCFPIVA({ partita_iva: piva })
+    const data = res.data.data
+    pivaMessages.value = data.warnings
+      .filter(w => w.field === 'partita_iva')
+      .map(w => ({ severity: 'warn', text: w.message }))
+  } catch {
+    pivaMessages.value = []
+  }
+}
 </script>
 
 <template>
@@ -33,7 +126,7 @@ const sessoOptions = [
       <label>{{ t('common.tipo_soggetto') }} *</label>
       <Select
         v-model="form.tipo_soggetto_dettaglio_id"
-        :options="tipiSoggetto.items.value"
+        :options="tipiSoggettoFiltrati.items.value"
         :loading="tipiSoggetto.loading.value"
         option-label="descrizione"
         option-value="id"
@@ -60,7 +153,7 @@ const sessoOptions = [
       </div>
       <div class="form-field">
         <label>{{ t('common.data_nascita') }}</label>
-        <DatePicker v-model="form.data_nascita" dateFormat="yy-mm-dd"
+        <DatePicker v-model="form.data_nascita" :dateFormat="DATE_FORMAT"
           :disabled="disabled" class="w-full" />
       </div>
       <div class="form-field">
@@ -77,14 +170,39 @@ const sessoOptions = [
       </div>
     </template>
 
-    <!-- Sempre visibili -->
-    <div class="form-field">
-      <label>{{ t('common.codice_fiscale') }} *</label>
-      <InputText v-model="form.codice_fiscale" :disabled="disabled" class="w-full" />
-    </div>
-    <div v-if="showPartitaIva" class="form-field">
-      <label>{{ t('common.partita_iva') }} *</label>
-      <InputText v-model="form.partita_iva" :disabled="disabled" class="w-full" />
+    <!-- CF + PIVA sulla stessa riga -->
+    <div class="form-grid-2col">
+      <div class="form-field">
+        <label>{{ t('common.codice_fiscale') }} *</label>
+        <div class="app-input-with-action">
+          <InputText v-model="form.codice_fiscale" :disabled="disabled || cfDisabled" class="w-full"
+            @blur="onValidaCF" />
+          <Button
+            v-if="isPF && !cfDisabled"
+            icon="pi pi-bolt"
+            :loading="cfLoading"
+            :disabled="!canGeneraCF"
+            @click="onGeneraCF"
+            :title="t('soggetti.genera_cf')"
+            text
+            rounded
+            size="small"
+            class="app-action-btn"
+          />
+        </div>
+        <Message v-for="(msg, i) in cfMessages" :key="i" :severity="msg.severity" size="small" class="mt-1">
+          {{ msg.text }}
+        </Message>
+      </div>
+
+      <div v-if="showPartitaIva" class="form-field">
+        <label>{{ t('common.partita_iva') }} *</label>
+        <InputText v-model="form.partita_iva" :disabled="disabled || pivaDisabled" class="w-full"
+          @blur="onValidaPIVA" />
+        <Message v-for="(msg, i) in pivaMessages" :key="i" :severity="msg.severity" size="small" class="mt-1">
+          {{ msg.text }}
+        </Message>
+      </div>
     </div>
   </div>
 </template>

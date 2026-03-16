@@ -12,6 +12,7 @@ import { useApiHandler } from '../composables/useApiHandler'
 import { usePagination } from '../composables/usePagination'
 import { useContextStore } from '../../stores/context'
 import { DRAWER_WIDTH } from '../constants'
+import DrawerTitle from './DrawerTitle.vue'
 import SearchDetailTable from './details/SearchDetailTable.vue'
 
 const { t } = useI18n()
@@ -173,9 +174,8 @@ watch(() => props.visible, (newVal) => {
     @update:visible="emit('update:visible', $event)"
   >
     <template #header>
-      <span class="search-drawer-title">{{ t('search.title') }}</span>
+      <DrawerTitle :title="t('search.title')" icon="pi pi-search" />
     </template>
-
     <div class="app-drawer-content search-drawer-content">
       <!-- Filtri ricerca -->
       <div class="search-filters">
@@ -267,11 +267,6 @@ watch(() => props.visible, (newVal) => {
 </template>
 
 <style scoped>
-.search-drawer-title {
-  font-weight: 600;
-  font-size: var(--app-font-size-lg);
-  color: var(--p-text-color);
-}
 
 /* Layout base ereditato da .app-drawer-content (main.css) */
 .search-drawer-content {

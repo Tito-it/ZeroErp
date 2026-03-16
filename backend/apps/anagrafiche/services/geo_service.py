@@ -12,50 +12,17 @@ from __future__ import annotations
 
 from typing import Any
 
-from django.db import IntegrityError
-
 from apps.core.api.payload_validators import optional_bool, optional_int
 from apps.core.services.error_manager import ErrorManager
-from apps.core.services.service_errors import ServiceError
 from apps.anagrafiche.db.geo_repository import GeoRepository
 from apps.anagrafiche.db.indirizzi_repository import IndirizziRepository
-from apps.anagrafiche.error_codes import E_ANAG_DUPLICATO, E_ANAG_NOT_FOUND, E_ANAG_VALIDAZIONE
-
-
-def _require_str(payload: dict, key: str, message: str) -> str:
-    """Estrae, strippa e valida campo stringa obbligatorio."""
-    value = (payload.get(key) or "").strip()
-    ErrorManager.require(bool(value), code=E_ANAG_VALIDAZIONE, message=message)
-    return value
-
-
-def _optional_str(payload: dict, key: str, message: str | None = None) -> str | None:
-    """Estrae e strippa campo stringa opzionale. Se fornito e vuoto dopo strip, errore."""
-    value = payload.get(key)
-    if value is None:
-        return None
-    value = value.strip()
-    if message:
-        ErrorManager.require(bool(value), code=E_ANAG_VALIDAZIONE, message=message)
-    return value or None
-
-
-def _create_with_dedup(fn, duplicate_message: str) -> dict:
-    """Esegue fn (create) gestendo IntegrityError come duplicato."""
-    try:
-        return fn()
-    except IntegrityError as exc:
-        raise ServiceError(code=E_ANAG_DUPLICATO, message=duplicate_message, detail=str(exc)) from exc
-
-
-def _update_with_dedup(fn, duplicate_message: str, not_found_message: str) -> dict:
-    """Esegue fn (update) gestendo IntegrityError e not found."""
-    try:
-        updated = fn()
-    except IntegrityError as exc:
-        raise ServiceError(code=E_ANAG_DUPLICATO, message=duplicate_message, detail=str(exc)) from exc
-    ErrorManager.require(updated, code=E_ANAG_NOT_FOUND, message=not_found_message)
-    return {"updated": True}
+from apps.anagrafiche.error_codes import E_ANAG_NOT_FOUND, E_ANAG_VALIDAZIONE
+from apps.anagrafiche.services._validators import (
+    create_with_dedup as _create_with_dedup,
+    optional_str as _optional_str,
+    require_str as _require_str,
+    update_with_dedup as _update_with_dedup,
+)
 
 
 class GeoService:
@@ -277,6 +244,24 @@ class GeoService:
     # =================================================================
     # Indirizzi dettaglio
     # =================================================================
+
+    # Scopo: Check duplicato indirizzo (stradario_id + civico).
+    #        Generico: usato da IndirizzoDrawer e IndirizzoSoggettoForm.
+    def check_indirizzo_duplicato(self, payload: dict) -> dict[str, Any]:
+        stradario_id = optional_int(payload, "stradario_id")
+        civico = optional_int(payload, "civico")
+        warnings: list[dict[str, str]] = []
+        if stradario_id:
+            existing = self._ind.find_duplicato(stradario_id=stradario_id, civico=civico)
+            if existing:
+                desc = existing.get("via_completa", "")
+                comune = existing.get("descrizione_comune", "")
+                label = f"{desc} {civico or ''}, {comune}".strip().rstrip(",").strip()
+                warnings.append({
+                    "field": "indirizzo",
+                    "message": f"Indirizzo gia' presente: {label}",
+                })
+        return {"warnings": warnings}
 
     # Scopo: Lista paginata indirizzi.
     def list_indirizzi(self, **params) -> tuple[list, int]:

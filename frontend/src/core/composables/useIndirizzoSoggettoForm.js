@@ -1,13 +1,15 @@
 // Scopo: Composable per form indirizzo layer soggetto (identita').
-// Supporta modalita' normalizzata (comune + stradario + civico)
-// e modalita' libera (indirizzo_libero + stato + locality) per indirizzi esteri.
-// Il tipo indirizzo e' filtrato dalla matrice DB.
+// Supporta multi-tipo: la matrice DB definisce quali tipi sono ammessi/obbligatori.
+// L'utente compila un indirizzo alla volta, con auto-clone per gli obbligatori mancanti.
+// Modalita' normalizzata (comune + stradario + civico) e libera (estero).
 
 import { reactive, ref, computed, watch } from 'vue'
 import { useLookup } from './useLookup'
+import { useIndirizzoDuplicato } from './useIndirizzoDuplicato'
 import { lookupCodiciPostaliByComune, listToponomastica, lookupStati } from '../../anagrafiche/api/anagrafiche'
 
 export function useIndirizzoSoggettoForm() {
+  // Form corrente (un solo indirizzo alla volta)
   const form = reactive({
     tipo_indirizzo_codice: null,
     // Modalita' normalizzata
@@ -32,6 +34,111 @@ export function useIndirizzoSoggettoForm() {
   // Modalita' libera (true = indirizzo estero/libero)
   const isLibera = ref(false)
 
+  // === Multi-tipo ===
+  // Indirizzi salvati per tipo (codice → snapshot form)
+  const indirizziSalvati = ref({})
+  // Tipo attivo corrente
+  const tipoAttivo = ref(null)
+  // Auto-clone: copia indirizzo per tutti gli obbligatori mancanti
+  const autoClone = ref(true)
+
+  // Tipi dalla matrice (impostati dal parent via setMatrice)
+  const tipiMatrice = ref([])
+
+  // Stato compilazione per ogni tipo (per la barra tag)
+  const tipiStato = computed(() =>
+    tipiMatrice.value.map(m => ({
+      codice: m.codice,
+      descrizione: m.descrizione,
+      obbligatorio: m.obbligatorio,
+      compilato: !!indirizziSalvati.value[m.codice],
+      attivo: tipoAttivo.value === m.codice,
+    }))
+  )
+
+  // Imposta la matrice dal parent e seleziona il primo obbligatorio
+  function setMatrice(matrice) {
+    tipiMatrice.value = matrice
+    indirizziSalvati.value = {}
+    const primo = matrice.find(m => m.obbligatorio) || matrice[0]
+    if (primo) {
+      tipoAttivo.value = primo.codice
+      form.tipo_indirizzo_codice = primo.codice
+    }
+  }
+
+  // Salva snapshot del form corrente per il tipo attivo
+  function _salvaSnapshot() {
+    if (!tipoAttivo.value) return
+    // Salva solo se il form ha dati minimi (comune o indirizzo libero)
+    if (!form.comune_id && !form.indirizzo_libero?.trim()) return
+    indirizziSalvati.value[tipoAttivo.value] = {
+      ..._extractFormData(),
+      tipo_indirizzo_codice: tipoAttivo.value,
+      isLibera: isLibera.value,
+    }
+  }
+
+  // Estrae i dati dal form corrente (senza tipo_indirizzo_codice)
+  function _extractFormData() {
+    return {
+      comune_id: form.comune_id,
+      stradario_obj: form.stradario_obj,
+      via_nuova: form.via_nuova,
+      toponomastica_id: form.toponomastica_id,
+      nome_via: form.nome_via,
+      codice_postale_id: form.codice_postale_id,
+      civico: form.civico,
+      estensione_civico: form.estensione_civico,
+      palazzina: form.palazzina,
+      scala: form.scala,
+      piano: form.piano,
+      interno: form.interno,
+      indirizzo_libero: form.indirizzo_libero,
+      stato_id: form.stato_id,
+      locality: form.locality,
+    }
+  }
+
+  // Carica snapshot salvato nel form (switch tipo)
+  function _caricaSnapshot(codice) {
+    const snap = indirizziSalvati.value[codice]
+    if (snap) {
+      Object.assign(form, {
+        tipo_indirizzo_codice: codice,
+        comune_id: snap.comune_id,
+        stradario_obj: snap.stradario_obj,
+        via_nuova: snap.via_nuova,
+        toponomastica_id: snap.toponomastica_id,
+        nome_via: snap.nome_via,
+        codice_postale_id: snap.codice_postale_id,
+        civico: snap.civico,
+        estensione_civico: snap.estensione_civico,
+        palazzina: snap.palazzina,
+        scala: snap.scala,
+        piano: snap.piano,
+        interno: snap.interno,
+        indirizzo_libero: snap.indirizzo_libero,
+        stato_id: snap.stato_id,
+        locality: snap.locality,
+      })
+      isLibera.value = snap.isLibera || false
+    } else {
+      // Tipo non ancora compilato: resetta form ma mantieni tipo
+      _resetFormFields()
+      form.tipo_indirizzo_codice = codice
+    }
+  }
+
+  // Switch al tipo cliccato nella barra tag
+  function switchTipo(codice) {
+    if (codice === tipoAttivo.value) return
+    // Salva form corrente prima di switchare
+    _salvaSnapshot()
+    tipoAttivo.value = codice
+    _caricaSnapshot(codice)
+  }
+
   // Lookup stati per modalita' libera
   const statiLookup = useLookup(() => lookupStati())
 
@@ -43,6 +150,9 @@ export function useIndirizzoSoggettoForm() {
   // CAP per comune selezionato
   const capOptions = ref([])
   const loadingCap = ref(false)
+
+  // Check duplicato indirizzo (generico)
+  const { indirizzoWarnings, checkDuplicato, resetWarnings } = useIndirizzoDuplicato()
 
   // Carica toponomastica quando serve
   watch(() => form.via_nuova, (val) => {
@@ -58,8 +168,13 @@ export function useIndirizzoSoggettoForm() {
     }
   })
 
+  // Check duplicato quando cambia stradario o civico
+  watch([() => form.stradario_obj, () => form.civico], () => {
+    if (!form.stradario_obj?.id) { resetWarnings(); return }
+    checkDuplicato(form.stradario_obj.id, form.civico)
+  })
+
   // Carica CAP quando cambia il comune.
-  // Versione per evitare race condition su cambio rapido comune.
   let capVersion = 0
   watch(() => form.comune_id, async (id) => {
     capOptions.value = []
@@ -71,7 +186,6 @@ export function useIndirizzoSoggettoForm() {
         const res = await lookupCodiciPostaliByComune(id)
         if (v !== capVersion) return
         capOptions.value = res.data.data.results
-        // Auto-seleziona se unico CAP
         if (capOptions.value.length === 1) {
           form.codice_postale_id = capOptions.value[0].id
         }
@@ -81,7 +195,7 @@ export function useIndirizzoSoggettoForm() {
     }
   })
 
-  // Scopo: Validazione in base alla modalita'.
+  // Scopo: Validazione del form corrente.
   function validate() {
     const errors = []
     if (!form.tipo_indirizzo_codice) errors.push('tipo_indirizzo_codice')
@@ -102,51 +216,84 @@ export function useIndirizzoSoggettoForm() {
     return errors
   }
 
-  // Scopo: Costruisce il payload per il backend.
-  function toPayload() {
-    const base = { tipo_indirizzo_codice: form.tipo_indirizzo_codice }
+  // Scopo: Costruisce payload per un singolo indirizzo.
+  function _buildPayload(data, codice) {
+    const base = { tipo_indirizzo_codice: codice }
 
-    if (isLibera.value) {
+    if (data.isLibera) {
       return {
         ...base,
-        indirizzo_libero: form.indirizzo_libero.trim(),
-        stato_id: form.stato_id,
-        locality: form.locality.trim() || null
+        indirizzo_libero: (data.indirizzo_libero || '').trim(),
+        stato_id: data.stato_id,
+        locality: (data.locality || '').trim() || null
       }
     }
 
     const civicoPart = {
-      civico: form.civico,
-      estensione_civico: form.estensione_civico.trim() || null,
-      palazzina: form.palazzina.trim() || null,
-      scala: form.scala.trim() || null,
-      piano: form.piano.trim() || null,
-      interno: form.interno.trim() || null
+      civico: data.civico,
+      estensione_civico: (data.estensione_civico || '').trim() || null,
+      palazzina: (data.palazzina || '').trim() || null,
+      scala: (data.scala || '').trim() || null,
+      piano: (data.piano || '').trim() || null,
+      interno: (data.interno || '').trim() || null
     }
 
-    if (form.via_nuova) {
+    if (data.via_nuova) {
       return {
         ...base,
-        toponomastica_id: form.toponomastica_id,
-        descrizione_via: form.nome_via.trim(),
-        comune_id: form.comune_id,
-        codice_postale_id: form.codice_postale_id,
+        toponomastica_id: data.toponomastica_id,
+        descrizione_via: (data.nome_via || '').trim(),
+        comune_id: data.comune_id,
+        codice_postale_id: data.codice_postale_id,
         ...civicoPart
       }
     }
 
     return {
       ...base,
-      stradario_id: form.stradario_obj?.id,
+      stradario_id: data.stradario_obj?.id,
       ...civicoPart
     }
   }
 
-  // Scopo: Indica se il form ha dati sufficienti per il salvataggio.
+  // Scopo: Genera array payload per tutti gli indirizzi (salvati + auto-clone).
+  function toPayloadArray() {
+    // Salva il form corrente
+    _salvaSnapshot()
+
+    const result = []
+    const salvati = { ...indirizziSalvati.value }
+
+    // Indirizzi esplicitamente compilati
+    for (const [codice, data] of Object.entries(salvati)) {
+      result.push(_buildPayload(data, codice))
+    }
+
+    // Auto-clone: per ogni obbligatorio mancante, clona il primo compilato
+    if (autoClone.value && result.length > 0) {
+      const primoSalvato = Object.values(salvati)[0]
+      for (const m of tipiMatrice.value) {
+        if (m.obbligatorio && !salvati[m.codice]) {
+          result.push(_buildPayload(primoSalvato, m.codice))
+        }
+      }
+    }
+
+    return result
+  }
+
+  // Scopo: Indica se almeno un indirizzo e' compilato.
   const canSave = computed(() => validate().length === 0)
 
-  // Scopo: Reset form ai valori iniziali.
-  function reset() {
+  // Scopo: Ha almeno un indirizzo compilato (per il payload).
+  const hasIndirizzi = computed(() => {
+    // Check form corrente
+    if (form.comune_id || (form.indirizzo_libero && form.indirizzo_libero.trim())) return true
+    // Check salvati
+    return Object.keys(indirizziSalvati.value).length > 0
+  })
+
+  function _resetFormFields() {
     form.tipo_indirizzo_codice = null
     form.comune_id = null
     form.stradario_obj = null
@@ -164,7 +311,17 @@ export function useIndirizzoSoggettoForm() {
     form.stato_id = null
     form.locality = ''
     isLibera.value = false
+  }
+
+  // Scopo: Reset completo.
+  function reset() {
+    _resetFormFields()
     capOptions.value = []
+    indirizziSalvati.value = {}
+    tipoAttivo.value = null
+    autoClone.value = true
+    tipiMatrice.value = []
+    resetWarnings()
   }
 
   // Scopo: Popola il form con dati esistenti (per edit mode).
@@ -191,13 +348,23 @@ export function useIndirizzoSoggettoForm() {
   return {
     form,
     isLibera,
+    // Multi-tipo
+    tipiStato,
+    tipoAttivo,
+    autoClone,
+    hasIndirizzi,
+    switchTipo,
+    setMatrice,
+    toPayloadArray,
+    // Lookup
     statiLookup,
     toponomasticaLookup,
     capOptions,
     loadingCap,
+    indirizzoWarnings,
+    // Singolo
     canSave,
     validate,
-    toPayload,
     reset,
     populate
   }

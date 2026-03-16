@@ -2,13 +2,16 @@ from django.urls import path
 
 from apps.anagrafiche.api.views_codici_postali import CodiciPostaliDetailView, CodiciPostaliView
 from apps.anagrafiche.api.views_comuni import ComuniView
-from apps.anagrafiche.api.views_indirizzi import IndirizziDetailView, IndirizziView
+from apps.anagrafiche.api.views_indirizzi import IndirizziCheckDuplicatoView, IndirizziDetailView, IndirizziView
 from apps.anagrafiche.api.views_province import ProvinceDetailView, ProvinceLookupView, ProvinceView
 from apps.anagrafiche.api.views_regioni import RegioniDetailView, RegioniLookupView, RegioniView
 from apps.anagrafiche.api.views_soggetti import (
+    GeneraCFView,
+    ValidaCFPIVAView,
     SoggettiContattiDetailView,
     SoggettiContattiView,
     SoggettiDetailView,
+    SoggettiIndirizziDetailView,
     SoggettiIndirizziView,
     SoggettiRuoliView,
     SoggettiView,
@@ -17,14 +20,19 @@ from apps.anagrafiche.api.views_stati import StatiDetailView, StatiLookupView, S
 from apps.anagrafiche.api.views_toponomastica import ToponomasticaDetailView, ToponomasticaView
 
 urlpatterns = [
-    # Soggetti
+    # Soggetti — utility (prima delle rotte con <str:soggetto_id>)
+    path("soggetti/valida-cf-piva/", ValidaCFPIVAView.as_view(), name="anagrafiche-valida-cf-piva"),
+    path("soggetti/genera-cf/", GeneraCFView.as_view(), name="anagrafiche-genera-cf"),
+    # Soggetti — CRUD
     path("soggetti/", SoggettiView.as_view(), name="anagrafiche-soggetti-list"),
     path("soggetti/<str:soggetto_id>/", SoggettiDetailView.as_view(), name="anagrafiche-soggetti-detail"),
     path("soggetti/<str:soggetto_id>/contatti/", SoggettiContattiView.as_view(), name="anagrafiche-soggetti-contatti"),
     path("soggetti/<str:soggetto_id>/contatti/<int:contatto_id>/", SoggettiContattiDetailView.as_view(), name="anagrafiche-soggetti-contatti-detail"),
     path("soggetti/<str:soggetto_id>/indirizzi/", SoggettiIndirizziView.as_view(), name="anagrafiche-soggetti-indirizzi"),
+    path("soggetti/<str:soggetto_id>/indirizzi/<int:indirizzo_soggetto_id>/", SoggettiIndirizziDetailView.as_view(), name="anagrafiche-soggetti-indirizzi-detail"),
     path("soggetti/<str:soggetto_id>/ruoli/", SoggettiRuoliView.as_view(), name="anagrafiche-soggetti-ruoli"),
     # Indirizzi dettaglio
+    path("indirizzi/check-duplicato/", IndirizziCheckDuplicatoView.as_view(), name="anagrafiche-indirizzi-check-duplicato"),
     path("indirizzi/", IndirizziView.as_view(), name="anagrafiche-indirizzi-list"),
     path("indirizzi/<int:pk>/", IndirizziDetailView.as_view(), name="anagrafiche-indirizzi-detail"),
     # Codici postali
