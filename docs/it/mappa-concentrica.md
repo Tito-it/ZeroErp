@@ -104,8 +104,10 @@ Stabile. Modifiche solo per correzioni o estensioni non-breaking (nuove policy, 
 
 | Area                       | Stato     | Note                                                                          |
 | -------------------------- | --------- | ----------------------------------------------------------------------------- |
-| Gestione Geografica        | Operativo | 6 tab: indirizzi, toponomastica, comuni, province, regioni, stati — CRUD completo |
-| Building block soggetto    | Operativo | SoggettoForm, AuthUserForm, ComuneAutocomplete, StradarioAutocomplete         |
+| Gestione Geografica        | Operativo | 7 tab: indirizzi, toponomastica, comuni, CAP, province, regioni, stati — CRUD completo. UI da migliorare |
+| Gestione Soggetti          | In test UI | PF/PG/ENTE end-to-end, 3 building block, ruoli, CF validator IT con omocodia  |
+| Pannello Config            | Operativo | 67 tabelle CRUD generiche con drawer dinamico, metadata-driven               |
+| Building block soggetto    | Operativo | SoggettoForm, ContattoForm, IndirizzoSoggettoForm, DatiSocietariForm, ComuneAutocomplete, StradarioAutocomplete |
 | Amm. Software — Operatori  | Parziale  | Lista con filtri, creazione operatore, drawer modifica — mancano test UI reali |
 | Amm. Software — Profili    | Parziale  | Gestione profili reparto — mancano test UI reali                               |
 | Amm. Software — Permessi   | Placeholder | Solo pagina placeholder, da implementare                                     |
@@ -277,25 +279,33 @@ Gli anelli esterni possono dipendere direttamente da anelli non adiacenti — ve
   - Composable core: useLookup, useServerAutocomplete, useSoggettoForm, useAuthUser
   - CSS utility classes: app-page, app-datatable, form-grid, app-drawer-content
 - ~~Frontend Sprint 4: Gestione Geografica~~ — **FATTO** (15 marzo 2026)
-  - 6 tab CRUD: indirizzi, toponomastica, comuni, province, regioni, stati
-  - 21 endpoint API con autorizzazione area `anagrafiche`, 621 test backend
+  - 7 tab CRUD: indirizzi, toponomastica, comuni, CAP, province, regioni, stati
+  - 21 endpoint API con autorizzazione area `anagrafiche`, 657 test backend
   - Composable centralizzati: useSearchTable, useDrawerState, useTabFreshness, DrawerFooter, NewButton
+- ~~Frontend Sprint 5: Gestione Soggetti~~ — **FATTO** (15 marzo 2026)
+  - Soggetti PF/PG/ENTE end-to-end: 4 fasi, 3 building block, 11 endpoint, CF validator IT con omocodia
+  - Building block riutilizzabili: ContattoForm, IndirizzoSoggettoForm, DatiSocietariForm + composable
+  - Ruoli: assegnazione da drawer, lookup filtrato per natura, preparazione domini futuri
+  - Pannello config generico: 67 tabelle CRUD con drawer dinamico metadata-driven
+  - Code review: fix race condition watcher, cleanup timeout, eliminato doppio fetchList
+  - 686 test backend, 471 moduli frontend
 
 ### In corso
 
 - **Amm. Software**: backend operativo, frontend parziale — mancano test UI reali e pagine Permessi/Audit Log
-- **Gestione Geografica**: backend + frontend operativi — da validare con test UI reali
+- **Gestione Geografica**: backend + frontend operativi — UI da migliorare, da validare con test UI reali
+- **Gestione Soggetti**: backend + frontend completati — in fase di test UI
 
 ### Breve termine
 
-- Test UI reali su Amm. Software e Gestione Geografica
+- Test UI reali su Amm. Software, Gestione Geografica e Gestione Soggetti
+- Miglioramento UI Gestione Geografica (usabilita', layout)
 - Completamento Amm. Software: pagina Permessi e Audit Log
-- Gestione Soggetti: area anagrafiche con form soggetto + contatto + indirizzo
 
 ### Medio termine
 
 - Integrazione `vendite` → `pratiche`: eventi di vendita generano pratiche con giornale
-- Integrazione `anagrafiche` → `pratiche`: onboarding cliente/fornitore tracciato
+- Integrazione `anagrafiche` → `pratiche`: onboarding cliente/fornitore tracciato (attualmente CRUD anagrafiche NON scrive nel giornale di bordo — solo audit DB tecnico)
 - Attivazione handler flusso per automazioni specifiche
 
 ### Lungo termine

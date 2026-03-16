@@ -20,6 +20,7 @@ _COMUNI_ORDER_COLS = {"descrizione", "provincia_sigla", "regione_descrizione"}
 _PROVINCE_ORDER_COLS = {"descrizione", "sigla", "regione_descrizione"}
 _REGIONI_ORDER_COLS = {"descrizione", "stato_descrizione"}
 _STATI_ORDER_COLS = {"descrizione", "codice_iso2", "continente"}
+_CODICI_POSTALI_ORDER_COLS = {"codice", "comune_descrizione"}
 
 
 class GeoRepository:
@@ -150,6 +151,72 @@ class GeoRepository:
             assert row is not None
             cols = [c.name for c in cursor.description]
             return dict(zip(cols, row))
+
+    # =================================================================
+    # Codici Postali (CAP)
+    # =================================================================
+
+    # Scopo: Lista paginata codici postali con comune.
+    def list_codici_postali(
+        self, *, search: str | None = None, comune_id: int | None = None,
+        limit: int = 25, offset: int = 0,
+        order_by: str = "codice", order_dir: str = "asc",
+    ) -> tuple[list[dict[str, Any]], int]:
+        order_col = order_by if order_by in _CODICI_POSTALI_ORDER_COLS else "codice"
+        direction = "DESC" if order_dir and order_dir.upper() == "DESC" else "ASC"
+        search_pattern = f"%{search.strip()}%" if search and search.strip() else None
+        sql = f"""
+            SELECT cp.id, cp.codice, cp.comune_id,
+                   c.descrizione AS comune_descrizione,
+                   COUNT(*) OVER () AS total_count
+              FROM config.codici_postali cp
+              JOIN config.comuni c ON c.id = cp.comune_id
+             WHERE (%s::text IS NULL OR cp.codice ILIKE %s OR c.descrizione ILIKE %s)
+               AND (%s::integer IS NULL OR cp.comune_id = %s)
+             ORDER BY {order_col} {direction}
+             LIMIT %s OFFSET %s
+        """  # noqa: S608
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [
+                search_pattern, search_pattern, search_pattern,
+                comune_id, comune_id, limit, offset,
+            ])
+            return extract_paginated(cursor)
+
+    # Scopo: Dettaglio singolo codice postale.
+    def get_codice_postale(self, pk: int) -> dict[str, Any] | None:
+        sql = """
+            SELECT cp.id, cp.codice, cp.comune_id, c.descrizione AS comune_descrizione
+              FROM config.codici_postali cp
+              JOIN config.comuni c ON c.id = cp.comune_id
+             WHERE cp.id = %s
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [pk])
+            row = cursor.fetchone()
+            if not row:
+                return None
+            cols = [c.name for c in cursor.description]
+            return dict(zip(cols, row))
+
+    # Scopo: Crea codice postale.
+    def create_codice_postale(self, *, codice: str, comune_id: int) -> dict[str, Any]:
+        sql = """
+            INSERT INTO config.codici_postali (codice, comune_id) VALUES (%s, %s)
+            RETURNING id, codice, comune_id
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [codice.strip(), comune_id])
+            row = cursor.fetchone()
+            assert row is not None
+            cols = [c.name for c in cursor.description]
+            return dict(zip(cols, row))
+
+    # Scopo: Aggiorna codice postale.
+    def update_codice_postale(self, pk: int, *, codice: str | None = None,
+                              comune_id: int | None = None) -> bool:
+        return self._dynamic_update("config.codici_postali", pk,
+                                    codice=codice, comune_id=comune_id)
 
     # =================================================================
     # Province

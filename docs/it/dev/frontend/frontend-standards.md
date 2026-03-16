@@ -288,6 +288,21 @@ Footer standard Annulla/Salva — mai duplicare i pulsanti inline:
 
 Ogni sotto-area che potrebbe essere usata in piu' di un contesto deve essere un **componente autonomo** in `core/components/`. I componenti specifici di un solo dominio stanno in `<dominio>/components/`.
 
+### Dove collocare un componente
+
+| Criterio | Collocazione | Esempio |
+| --- | --- | --- |
+| Entita' config condivisa (tabelle `config.*`) usata o potenzialmente usabile da 2+ domini | `core/components/` | ToponomasticaSearchTable, ComuniSearchTable, ProvinceDrawer |
+| Componente di layout, form o UI generico | `core/components/` | NewButton, DrawerFooter, SoggettoForm |
+| Logica specifica di un solo dominio | `<dominio>/components/` | IndirizzoDrawer (via nuova + stradario), UtentePermessiTab |
+
+**Eccezione documentata**: i componenti geografici (toponomastica, comuni, province, regioni, stati)
+stanno in `core/components/` anche se importano stores da `anagrafiche/stores/`.
+Questo perche' sono entita' config condivise che il backend serve da `anagrafiche` per
+organizzazione, ma concettualmente sono cross-dominio (qualsiasi modulo potrebbe aver bisogno
+di un filtro per comune o provincia). L'alternativa — duplicarli per dominio — violerebbe
+il principio di riuso.
+
 ### Checklist prima di creare un componente
 
 1. **Esiste gia'?** — controllare `core/components/` e `core/composables/`

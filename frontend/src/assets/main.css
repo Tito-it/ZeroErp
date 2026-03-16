@@ -104,6 +104,11 @@ a {
   background: var(--app-table-stripe-bg);
 }
 
+/* Fix: ultima riga parzialmente nascosta dal bordo inferiore */
+.app-datatable .p-datatable-tbody > tr:last-child > td {
+  padding-bottom: calc(var(--app-table-cell-padding) + 2px);
+}
+
 /* ===== Paginator compatto =====
  * Font ridotto, padding ridotto, dropdown piccoli per righe/pagina e salto pagina.
  * Applicato globalmente su .app-datatable — tutte le liste lo ereditano. */

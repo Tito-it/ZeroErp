@@ -1,0 +1,270 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20260314-03-update-fn-get-lookup-codici-codice-interno-attivo-mctit.yaml
+
+  - changeSet:
+      id: 20260314-03-update-fn-get-lookup-codici-codice-interno-attivo
+      author: mctit
+      comment: >
+        Aggiunge codice_interno e attivo al RETURNS TABLE di fn_get_lookup_codici.
+        Entrambe le colonne sono opzionali: se la tabella le ha le restituisce,
+        altrimenti NULL::text / NULL::boolean. Stesso pattern dinamico gia' in uso.
+      runOnChange: true
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+
+              DROP FUNCTION IF EXISTS dbops.fn_get_lookup_codici(regclass, text, text, boolean, integer, integer);
+
+              CREATE OR REPLACE FUNCTION dbops.fn_get_lookup_codici(
+                p_rel         regclass,
+                p_order_col   text    DEFAULT 'descrizione',
+                p_order_dir   text    DEFAULT 'ASC',
+                p_attivo_only boolean DEFAULT true,
+                p_limit       integer DEFAULT 500,
+                p_offset      integer DEFAULT 0
+              )
+              RETURNS TABLE(id bigint, codice text, codice_interno text, descrizione text, attivo boolean)
+              LANGUAGE plpgsql
+              AS $$
+              DECLARE
+                v_order_col text := lower(btrim(COALESCE(p_order_col, 'descrizione')));
+                v_order_dir text := upper(btrim(COALESCE(p_order_dir, 'ASC')));
+                v_offset integer := COALESCE(p_offset, 0);
+                v_id_type text;
+                v_has_codice boolean;
+                v_has_codice_interno boolean;
+                v_has_descrizione boolean;
+                v_has_attivo boolean;
+                v_attivo_is_boolean boolean;
+                v_sql text;
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Estrazione lookup veloce per tabelle con colonne
+                --   id/codice/codice_interno/descrizione/attivo.
+                --
+                -- Regole:
+                --   - id deve essere integer/bigint (uuid non ammesso)
+                --   - ordinamento ammesso solo su codice|descrizione e ASC|DESC
+                --   - se la tabella ha colonna attivo e p_attivo_only=true,
+                --     applica WHERE attivo IS TRUE
+                --   - codice_interno: se la colonna esiste la restituisce,
+                --     altrimenti NULL::text
+                --   - attivo: se la colonna esiste (boolean) la restituisce,
+                --     altrimenti NULL::boolean
+                -- =========================================================
+
+                IF p_rel IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'dbops', 'fn_get_lookup_codici', 'E_GENERICO',
+                    jsonb_build_object('detail','p_rel obbligatorio'),
+                    NULL::uuid,
+                    'p_rel non puo'' essere NULL'
+                  );
+                END IF;
+
+                IF v_order_col NOT IN ('descrizione', 'codice') THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'dbops', 'fn_get_lookup_codici', 'E_GENERICO',
+                    jsonb_build_object('detail','p_order_col non valido', 'p_order_col', p_order_col),
+                    NULL::uuid,
+                    'p_order_col ammesso solo: descrizione, codice'
+                  );
+                END IF;
+
+                IF v_order_dir NOT IN ('ASC', 'DESC') THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'dbops', 'fn_get_lookup_codici', 'E_GENERICO',
+                    jsonb_build_object('detail','p_order_dir non valido', 'p_order_dir', p_order_dir),
+                    NULL::uuid,
+                    'p_order_dir ammesso solo: ASC, DESC'
+                  );
+                END IF;
+
+                IF p_limit IS NOT NULL AND p_limit <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'dbops', 'fn_get_lookup_codici', 'E_GENERICO',
+                    jsonb_build_object('detail','p_limit non valido', 'p_limit', p_limit),
+                    NULL::uuid,
+                    'p_limit deve essere > 0 quando valorizzato'
+                  );
+                END IF;
+
+                IF v_offset < 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'dbops', 'fn_get_lookup_codici', 'E_GENERICO',
+                    jsonb_build_object('detail','p_offset non valido', 'p_offset', p_offset),
+                    NULL::uuid,
+                    'p_offset deve essere >= 0'
+                  );
+                END IF;
+
+                -- Check colonna id (obbligatoria, integer/bigint)
+                SELECT t.typname
+                  INTO v_id_type
+                  FROM pg_attribute a
+                  JOIN pg_type t
+                    ON t.oid = a.atttypid
+                 WHERE a.attrelid = p_rel
+                   AND a.attname = 'id'
+                   AND a.attnum > 0
+                   AND NOT a.attisdropped;
+
+                IF v_id_type IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'dbops', 'fn_get_lookup_codici', 'E_GENERICO',
+                    jsonb_build_object('detail','colonna id mancante', 'tabella', p_rel::text),
+                    NULL::uuid,
+                    concat('Colonna id mancante in ', p_rel::text)
+                  );
+                END IF;
+
+                IF v_id_type = 'uuid' THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'dbops', 'fn_get_lookup_codici', 'E_GENERICO',
+                    jsonb_build_object('detail','id uuid non ammesso', 'tabella', p_rel::text),
+                    NULL::uuid,
+                    concat('Tabella ', p_rel::text, ': id uuid non ammesso')
+                  );
+                END IF;
+
+                IF v_id_type NOT IN ('int2', 'int4', 'int8') THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'dbops', 'fn_get_lookup_codici', 'E_GENERICO',
+                    jsonb_build_object(
+                      'detail','tipo colonna id non supportato',
+                      'tabella', p_rel::text,
+                      'id_type', v_id_type
+                    ),
+                    NULL::uuid,
+                    concat('Tabella ', p_rel::text, ': id deve essere integer/bigint')
+                  );
+                END IF;
+
+                -- Check colonna codice (obbligatoria)
+                SELECT EXISTS (
+                  SELECT 1
+                    FROM pg_attribute a
+                   WHERE a.attrelid = p_rel
+                     AND a.attname = 'codice'
+                     AND a.attnum > 0
+                     AND NOT a.attisdropped
+                )
+                  INTO v_has_codice;
+
+                IF NOT v_has_codice THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'dbops', 'fn_get_lookup_codici', 'E_GENERICO',
+                    jsonb_build_object('detail','colonna codice mancante', 'tabella', p_rel::text),
+                    NULL::uuid,
+                    concat('Colonna codice mancante in ', p_rel::text)
+                  );
+                END IF;
+
+                -- Check colonna codice_interno (opzionale)
+                SELECT EXISTS (
+                  SELECT 1
+                    FROM pg_attribute a
+                   WHERE a.attrelid = p_rel
+                     AND a.attname = 'codice_interno'
+                     AND a.attnum > 0
+                     AND NOT a.attisdropped
+                )
+                  INTO v_has_codice_interno;
+
+                -- Check colonna descrizione (obbligatoria)
+                SELECT EXISTS (
+                  SELECT 1
+                    FROM pg_attribute a
+                   WHERE a.attrelid = p_rel
+                     AND a.attname = 'descrizione'
+                     AND a.attnum > 0
+                     AND NOT a.attisdropped
+                )
+                  INTO v_has_descrizione;
+
+                IF NOT v_has_descrizione THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'dbops', 'fn_get_lookup_codici', 'E_GENERICO',
+                    jsonb_build_object('detail','colonna descrizione mancante', 'tabella', p_rel::text),
+                    NULL::uuid,
+                    concat('Colonna descrizione mancante in ', p_rel::text)
+                  );
+                END IF;
+
+                -- Check colonna attivo (opzionale, deve essere boolean)
+                SELECT EXISTS (
+                  SELECT 1
+                    FROM pg_attribute a
+                   WHERE a.attrelid = p_rel
+                     AND a.attname = 'attivo'
+                     AND a.attnum > 0
+                     AND NOT a.attisdropped
+                )
+                  INTO v_has_attivo;
+
+                IF v_has_attivo THEN
+                  SELECT EXISTS (
+                    SELECT 1
+                      FROM pg_attribute a
+                      JOIN pg_type t
+                        ON t.oid = a.atttypid
+                     WHERE a.attrelid = p_rel
+                       AND a.attname = 'attivo'
+                       AND a.attnum > 0
+                       AND NOT a.attisdropped
+                       AND t.typname = 'bool'
+                  )
+                    INTO v_attivo_is_boolean;
+
+                  IF NOT v_attivo_is_boolean THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'dbops', 'fn_get_lookup_codici', 'E_GENERICO',
+                      jsonb_build_object('detail','colonna attivo non booleana', 'tabella', p_rel::text),
+                      NULL::uuid,
+                      concat('Colonna attivo deve essere boolean in ', p_rel::text)
+                    );
+                  END IF;
+                END IF;
+
+                -- Costruzione SQL dinamico
+                v_sql := format(
+                  'SELECT t.id::bigint, t.codice::text, %s, t.descrizione::text, %s FROM %s t',
+                  CASE WHEN v_has_codice_interno
+                       THEN 't.codice_interno::text'
+                       ELSE 'NULL::text AS codice_interno'
+                  END,
+                  CASE WHEN v_has_attivo
+                       THEN 't.attivo::boolean'
+                       ELSE 'NULL::boolean AS attivo'
+                  END,
+                  p_rel::text
+                );
+
+                IF p_attivo_only AND v_has_attivo THEN
+                  v_sql := v_sql || ' WHERE t.attivo IS TRUE';
+                END IF;
+
+                v_sql := v_sql || format(' ORDER BY t.%I %s NULLS LAST', v_order_col, v_order_dir);
+
+                IF p_limit IS NOT NULL THEN
+                  v_sql := v_sql || format(' LIMIT %s', p_limit);
+                END IF;
+
+                IF v_offset > 0 THEN
+                  v_sql := v_sql || format(' OFFSET %s', v_offset);
+                END IF;
+
+                RETURN QUERY EXECUTE v_sql;
+              END;
+              $$;
+
+              COMMENT ON FUNCTION dbops.fn_get_lookup_codici(regclass, text, text, boolean, integer, integer)
+                IS 'Lookup generico id/codice/codice_interno/descrizione/attivo con ordinamento validato e filtro attivo opzionale. codice_interno e attivo restituiti se le colonne esistono, altrimenti NULL.';

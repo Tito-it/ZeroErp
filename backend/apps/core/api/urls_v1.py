@@ -15,9 +15,17 @@ from apps.core.api.search_view import (
 )
 from apps.core.api.views_lookup import (
     LookupComuniView,
+    LookupFormeGiuridicheView,
     LookupMatriceIndirizziView,
+    LookupTipiRuoliPerNaturaView,
     LookupTipiSoggettoDettaglioView,
     SearchStradarioView,
+)
+from apps.core.api.views_config_crud import (
+    ConfigTableMetadataView,
+    ConfigTableRecordDetailView,
+    ConfigTableRecordsView,
+    ConfigTablesListView,
 )
 from apps.core.api.views_tracciamento import (
     ApiAuditLog,
@@ -69,6 +77,16 @@ urlpatterns = [
         "lookup/tipi-soggetto-dettaglio/<int:tipo_soggetto_dettaglio_id>/indirizzi/",
         LookupMatriceIndirizziView.as_view(),
         name="core-lookup-matrice-indirizzi",
+    ),
+    path(
+        "lookup/tipi-ruoli-natura/",
+        LookupTipiRuoliPerNaturaView.as_view(),
+        name="core-lookup-tipi-ruoli-natura",
+    ),
+    path(
+        "lookup/forme-giuridiche/",
+        LookupFormeGiuridicheView.as_view(),
+        name="core-lookup-forme-giuridiche",
     ),
     path(
         "lookup/comuni/",
@@ -132,4 +150,9 @@ urlpatterns = [
         ApiJobSummary.as_view(),
         name="core-job-summary",
     ),
+    # --- Config CRUD generico ---
+    path("config/tables/", ConfigTablesListView.as_view(), name="core-config-tables"),
+    path("config/tables/<str:rel>/metadata/", ConfigTableMetadataView.as_view(), name="core-config-metadata"),
+    path("config/tables/<str:rel>/", ConfigTableRecordsView.as_view(), name="core-config-records"),
+    path("config/tables/<str:rel>/<int:pk>/", ConfigTableRecordDetailView.as_view(), name="core-config-record-detail"),
 ]

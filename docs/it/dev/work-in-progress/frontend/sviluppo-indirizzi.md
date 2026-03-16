@@ -1,7 +1,8 @@
 # Gestione Indirizzi — WIP
 
 > Documento di lavoro per pianificazione e avanzamento dell'area Gestione Indirizzi.
-> Data: 2026-03-14 | Stato: **DA INIZIARE**
+> Data: 2026-03-14 | Completato: 2026-03-15 | Stato: **COMPLETATO**
+> Testato UI: 2026-03-15
 >
 > Documenti correlati:
 >

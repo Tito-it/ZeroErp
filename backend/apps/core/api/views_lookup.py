@@ -38,6 +38,48 @@ class LookupTipiSoggettoDettaglioView(DomainAPIView):
         return success_response({"results": results})
 
 
+class LookupTipiRuoliPerNaturaView(DomainAPIView):
+    """Tipi ruolo ammessi filtrati per natura soggetto."""
+    skip_area_check = True
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(name="natura_soggetto", type=str, required=False),
+        ],
+        responses={200: inline_serializer(
+            name="TipiRuoliPerNaturaResponse",
+            fields={"data": serializers.ListField(child=serializers.DictField())},
+        )},
+    )
+    # Scopo: Restituisce tipi ruolo ammessi per la natura, filtrati dalla matrice.
+    def get(self, request: Request) -> JsonResponse:
+        natura = request.query_params.get("natura_soggetto") or None
+        repo = LookupRepository()
+        results = repo.list_tipi_ruoli_per_natura(natura_soggetto=natura)
+        return success_response({"results": results})
+
+
+class LookupFormeGiuridicheView(DomainAPIView):
+    """Forme giuridiche con policy REA e capitale sociale."""
+    skip_area_check = True
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(name="tipo_soggetto_dettaglio_id", type=int, required=False),
+        ],
+        responses={200: inline_serializer(
+            name="FormeGiuridicheResponse",
+            fields={"data": serializers.ListField(child=serializers.DictField())},
+        )},
+    )
+    # Scopo: Restituisce forme giuridiche con policy, opzionalmente filtrate per tipo soggetto.
+    def get(self, request: Request) -> JsonResponse:
+        tipo_id = optional_int({"v": request.query_params.get("tipo_soggetto_dettaglio_id")}, "v")
+        repo = LookupRepository()
+        results = repo.list_forme_giuridiche(tipo_soggetto_dettaglio_id=tipo_id)
+        return success_response({"results": results})
+
+
 class LookupMatriceIndirizziView(DomainAPIView):
     """Matrice indirizzi ammessi per un tipo soggetto dettaglio."""
     skip_area_check = True

@@ -64,8 +64,25 @@
       "audit-log": "Audit Log"
     },
     "anagrafiche": {
+      "soggetti": "Subjects",
       "indirizzi": "Addresses"
+    },
+    "config": {
+      "tabelle": "Tables"
     }
+  },
+  "config_panel": {
+    "search_tabella": "Search table...",
+    "search_record": "Search...",
+    "select_tabella": "Select a table from the list",
+    "col_codice": "Code",
+    "col_codice_interno": "Internal Code",
+    "col_descrizione": "Description",
+    "record_creato": "Record created",
+    "record_salvato": "Record saved",
+    "col_attivo": "Status",
+    "attivo": "Active",
+    "non_attivo": "Inactive"
   },
   "tabs": {
     "close": "Close tab",
@@ -312,6 +329,12 @@
     "campo_scala": "Staircase",
     "campo_piano": "Floor",
     "campo_interno": "Unit",
+    "tab_cap": "Postal Codes",
+    "search_cap": "Search postal code or municipality...",
+    "nuovo_cap": "New Postal Code",
+    "modifica_cap": "Edit Postal Code",
+    "cap_creato": "Postal code created",
+    "cap_salvato": "Postal code saved",
     "via_non_presente": "Street not listed, create new",
     "indirizzo_creato": "Address created",
     "indirizzo_salvato": "Address saved",
@@ -327,6 +350,59 @@
     "comune_creato": "Municipality created",
     "campo_provincia": "Province",
     "select_provincia": "Select province..."
+  },
+  "soggetti": {
+    "search_placeholder": "Search by name, tax ID, VAT...",
+    "filtro_tipo": "Subject type",
+    "nuovo_soggetto": "New Subject",
+    "modifica_soggetto": "Edit Subject",
+    "col_ragione_sociale": "Business Name",
+    "col_tipo": "Type",
+    "section_contatto": "Contact",
+    "section_indirizzo": "Address",
+    "section_dati_societari": "Corporate Data",
+    "soggetto_creato": "Subject created",
+    "soggetto_salvato": "Subject saved",
+    "section_ruoli": "Roles",
+    "nessun_ruolo": "No roles assigned",
+    "aggiungi_ruolo": "Add role",
+    "select_ruolo": "Select role..."
+  },
+  "dati_societari": {
+    "forma_giuridica": "Legal form",
+    "select_forma_giuridica": "Select legal form...",
+    "prov_rea": "REA province",
+    "iscrizione_rea": "REA registration no.",
+    "capitale_sociale": "Share capital",
+    "socio_unico": "Sole shareholder",
+    "su_unico": "Sole shareholder",
+    "su_piu_soci": "Multiple shareholders",
+    "liquidazione": "Liquidation status",
+    "liq_no": "Not in liquidation",
+    "liq_si": "In liquidation",
+    "destinatario_fe": "E-invoicing channel",
+    "select_destinatario_fe": "Select e-invoicing channel...",
+    "fe_pec": "PEC",
+    "fe_sdi": "SDI code",
+    "pec_fatturazione": "Invoicing PEC",
+    "codice_sdi": "SDI recipient code"
+  },
+  "indirizzo_soggetto": {
+    "tipo_indirizzo": "Address type",
+    "select_tipo_indirizzo": "Select address type...",
+    "modalita_libera": "Foreign / free-form address",
+    "indirizzo_libero": "Address",
+    "stato": "Country",
+    "locality": "City / Locality"
+  },
+  "contatto": {
+    "nominativo": "Contact name",
+    "cellulare": "Mobile",
+    "tipo_contatto": "Contact type",
+    "select_tipo_contatto": "Select contact type...",
+    "unita_organizzativa": "Organizational unit",
+    "select_unita_organizzativa": "Select organizational unit...",
+    "note": "Notes"
   },
   "geo": {
     "tab_province": "Provinces",
