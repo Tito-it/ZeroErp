@@ -115,6 +115,42 @@ class GeoService:
         )
 
     # =================================================================
+    # Codici Postali (CAP)
+    # =================================================================
+
+    # Scopo: Lista paginata codici postali.
+    def list_codici_postali_paginated(self, **params) -> tuple[list, int]:
+        return self._geo.list_codici_postali(**params)
+
+    # Scopo: Dettaglio codice postale.
+    def get_codice_postale(self, pk: int) -> dict:
+        result = self._geo.get_codice_postale(pk)
+        ErrorManager.require(result is not None, code=E_ANAG_NOT_FOUND, message="Codice postale non trovato.")
+        assert result is not None
+        return result
+
+    # Scopo: Crea codice postale con validazione.
+    def create_codice_postale(self, payload: dict) -> dict:
+        codice = _require_str(payload, "codice", "Codice CAP obbligatorio.")
+        comune_id = optional_int(payload, "comune_id")
+        ErrorManager.require(comune_id is not None and comune_id > 0, code=E_ANAG_VALIDAZIONE, message="Comune obbligatorio.")
+        assert comune_id is not None
+        return _create_with_dedup(
+            lambda: self._geo.create_codice_postale(codice=codice, comune_id=comune_id),
+            "Codice postale gia' esistente.",
+        )
+
+    # Scopo: Aggiorna codice postale.
+    def update_codice_postale(self, pk: int, payload: dict) -> dict:
+        codice = _optional_str(payload, "codice", "Codice CAP non puo' essere vuoto.")
+        comune_id = optional_int(payload, "comune_id")
+        return _update_with_dedup(
+            lambda: self._geo.update_codice_postale(pk, codice=codice, comune_id=comune_id),
+            "Codice postale gia' esistente.",
+            "Codice postale non trovato.",
+        )
+
+    # =================================================================
     # Province
     # =================================================================
 

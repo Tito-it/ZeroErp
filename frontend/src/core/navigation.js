@@ -42,6 +42,7 @@ export const DOMAIN_MENUS = {
     { key: 'audit-log', icon: 'pi pi-history', to: '/amm-software/audit-log' }
   ],
   'anagrafiche': [
+    { key: 'soggetti', icon: 'pi pi-users', to: '/anagrafiche/soggetti' },
     { key: 'indirizzi', icon: 'pi pi-map-marker', to: '/anagrafiche/indirizzi' }
   ],
   'catalogo': [],
@@ -51,7 +52,9 @@ export const DOMAIN_MENUS = {
   'pagamenti': [],
   'contabilita': [],
   'pratiche': [],
-  'config': []
+  'config': [
+    { key: 'tabelle', icon: 'pi pi-table', to: '/config/tabelle' }
+  ]
 }
 
 // Voce sidebar home (usata dal SidebarDomain per il pulsante indietro)

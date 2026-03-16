@@ -26,8 +26,20 @@ export function updateIndirizzo(id, payload) {
 
 // --- Codici postali ---
 
-export function listCodiciPostali(comuneId) {
-  return api.get(`${BASE}/codici-postali/`, { params: { comune_id: comuneId } })
+export function listCodiciPostali(params = {}) {
+  return api.get(`${BASE}/codici-postali/`, { params })
+}
+
+export function createCodicePostale(payload) {
+  return api.post(`${BASE}/codici-postali/`, payload)
+}
+
+export function updateCodicePostale(id, payload) {
+  return api.patch(`${BASE}/codici-postali/${id}/`, payload)
+}
+
+export function lookupCodiciPostaliByComune(comuneId) {
+  return api.get(`${BASE}/codici-postali/`, { params: { comune_id: comuneId, limit: 200 } })
 }
 
 // --- Toponomastica ---
@@ -103,6 +115,54 @@ export function createStato(payload) {
 export function updateStato(id, payload) {
   return api.patch(`${BASE}/stati/${id}/`, payload)
 }
+
+// --- Soggetti ---
+
+export function listSoggetti(params = {}) {
+  return api.get(`${BASE}/soggetti/`, { params })
+}
+
+export function getSoggetto(id) {
+  return api.get(`${BASE}/soggetti/${id}/`)
+}
+
+export function createSoggetto(payload) {
+  return api.post(`${BASE}/soggetti/`, payload)
+}
+
+export function updateSoggetto(id, payload) {
+  return api.patch(`${BASE}/soggetti/${id}/`, payload)
+}
+
+export function listSoggettoContatti(soggettoId) {
+  return api.get(`${BASE}/soggetti/${soggettoId}/contatti/`)
+}
+
+export function createSoggettoContatto(soggettoId, payload) {
+  return api.post(`${BASE}/soggetti/${soggettoId}/contatti/`, payload)
+}
+
+export function updateSoggettoContatto(soggettoId, contattoId, payload) {
+  return api.patch(`${BASE}/soggetti/${soggettoId}/contatti/${contattoId}/`, payload)
+}
+
+export function listSoggettoIndirizzi(soggettoId) {
+  return api.get(`${BASE}/soggetti/${soggettoId}/indirizzi/`)
+}
+
+export function createSoggettoIndirizzo(soggettoId, payload) {
+  return api.post(`${BASE}/soggetti/${soggettoId}/indirizzi/`, payload)
+}
+
+export function listSoggettoRuoli(soggettoId) {
+  return api.get(`${BASE}/soggetti/${soggettoId}/ruoli/`)
+}
+
+export function assignSoggettoRuolo(soggettoId, payload) {
+  return api.post(`${BASE}/soggetti/${soggettoId}/ruoli/`, payload)
+}
+
+// --- Stati ---
 
 export function lookupStati() {
   return api.get(`${BASE}/stati/lookup/`)

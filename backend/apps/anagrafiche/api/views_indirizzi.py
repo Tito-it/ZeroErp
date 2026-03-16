@@ -90,14 +90,3 @@ class IndirizziDetailView(DomainAPIView):
         return handle_post_json(request, handler=lambda p: GeoService().update_indirizzo(pk, p))
 
 
-class CodiciPostaliView(DomainAPIView):
-    """GET codici postali per comune."""
-    area_funzionale = "anagrafiche"
-
-    @extend_schema(
-        parameters=[OpenApiParameter(name="comune_id", type=int, required=True)],
-        responses={200: inline_serializer(name="CodiciPostaliResp", fields={"data": serializers.DictField()})},
-    )
-    def get(self, request: Request) -> JsonResponse:
-        comune_id = optional_int({"v": request.query_params.get("comune_id")}, "v") or 0
-        return success_response({"results": GeoService().list_codici_postali(comune_id)})

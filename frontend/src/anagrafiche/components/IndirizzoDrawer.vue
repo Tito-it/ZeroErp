@@ -7,7 +7,7 @@ import { useI18n } from 'vue-i18n'
 import { useIndirizziStore } from '../stores/indirizzi'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useLookup } from '../../core/composables/useLookup'
-import { listToponomastica, listCodiciPostali, getIndirizzo } from '../api/anagrafiche'
+import { listToponomastica, lookupCodiciPostaliByComune, getIndirizzo } from '../api/anagrafiche'
 import { DRAWER_WIDTH } from '../../core/constants'
 import DrawerFooter from '../../core/components/DrawerFooter.vue'
 import ComuneAutocomplete from '../../core/components/ComuneAutocomplete.vue'
@@ -102,7 +102,7 @@ watch(comuneId, async (id) => {
   if (id) {
     loadingCap.value = true
     try {
-      const res = await listCodiciPostali(id)
+      const res = await lookupCodiciPostaliByComune(id)
       capOptions.value = res.data.data.results
       if (capOptions.value.length === 1) {
         codicePostaleId.value = capOptions.value[0].id
