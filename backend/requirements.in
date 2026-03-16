@@ -1,25 +1,27 @@
 # Core Django
-Django~=6.0
-asgiref~=3.11
-sqlparse~=0.5
+Django>=6.0,<7.0
+asgiref>=3.11
+sqlparse>=0.5
 
 # Django REST
-djangorestframework~=3.16
-djangorestframework-simplejwt~=5.5
+djangorestframework>=3.16
+djangorestframework-simplejwt>=5.5
 
 # API schema
-drf-spectacular~=0.29
+drf-spectacular>=0.29
 
 # Database
-psycopg~=3.3
-psycopg-binary~=3.3
+psycopg>=3.3
+psycopg-binary>=3.3
 
 # Cache
-redis~=7.1
-django-redis~=6.0
+redis>=7.1
+django-redis>=6.0
 
 # WSGI
-gunicorn~=25.0
+gunicorn>=25.0
 
 # Utilities
-packaging~=26.0
+packaging>=26.0
+# Security constraints
+PyJWT>=2.12.0
