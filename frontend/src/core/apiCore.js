@@ -17,6 +17,18 @@ export function lookupTipiSoggettoDettaglio() {
   return api.get(`${BASE}/lookup/tipi-soggetto-dettaglio/`)
 }
 
+export function lookupTipiRuoliPerNatura(naturaSoggetto = null) {
+  const params = {}
+  if (naturaSoggetto) params.natura_soggetto = naturaSoggetto
+  return api.get(`${BASE}/lookup/tipi-ruoli-natura/`, { params })
+}
+
+export function lookupFormeGiuridiche(tipoSoggettoDettaglioId = null) {
+  const params = {}
+  if (tipoSoggettoDettaglioId) params.tipo_soggetto_dettaglio_id = tipoSoggettoDettaglioId
+  return api.get(`${BASE}/lookup/forme-giuridiche/`, { params })
+}
+
 export function lookupMatriceIndirizzi(tipoSoggettoDettaglioId) {
   return api.get(
     `${BASE}/lookup/tipi-soggetto-dettaglio/${tipoSoggettoDettaglioId}/indirizzi/`

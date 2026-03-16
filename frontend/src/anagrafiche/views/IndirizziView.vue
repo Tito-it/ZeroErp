@@ -1,5 +1,5 @@
 <script setup>
-// Scopo: vista principale Gestione Geografica con 6 tab.
+// Scopo: vista principale Gestione Geografica con 7 tab.
 import { useI18n } from 'vue-i18n'
 import { useDrawerState } from '../../core/composables/useDrawerState'
 import IndirizziSearchTable from '../components/IndirizziSearchTable.vue'
@@ -8,6 +8,8 @@ import ToponomasticaSearchTable from '../../core/components/ToponomasticaSearchT
 import ToponomasticaDrawer from '../../core/components/ToponomasticaDrawer.vue'
 import ComuniSearchTable from '../../core/components/ComuniSearchTable.vue'
 import ComuneDrawer from '../../core/components/ComuneDrawer.vue'
+import CodiciPostaliSearchTable from '../../core/components/CodiciPostaliSearchTable.vue'
+import CodiciPostaliDrawer from '../../core/components/CodiciPostaliDrawer.vue'
 import ProvinceSearchTable from '../../core/components/ProvinceSearchTable.vue'
 import ProvinceDrawer from '../../core/components/ProvinceDrawer.vue'
 import RegioniSearchTable from '../../core/components/RegioniSearchTable.vue'
@@ -21,6 +23,7 @@ const { t } = useI18n()
 const indDrawer = useDrawerState()
 const topoDrawer = useDrawerState()
 const comuneDrawer = useDrawerState()
+const capDrawer = useDrawerState()
 const provDrawer = useDrawerState()
 const regDrawer = useDrawerState()
 const statoDrawer = useDrawerState()
@@ -45,6 +48,13 @@ const statoDrawer = useDrawerState()
 
       <TabPanel :header="t('indirizzi.tab_comuni')">
         <ComuniSearchTable @new="comuneDrawer.openCreate" />
+      </TabPanel>
+
+      <TabPanel :header="t('indirizzi.tab_cap')">
+        <CodiciPostaliSearchTable
+          @new="capDrawer.openCreate"
+          @row-click="(data) => capDrawer.editRow(data)"
+        />
       </TabPanel>
 
       <TabPanel :header="t('geo.tab_province')">
@@ -84,6 +94,12 @@ const statoDrawer = useDrawerState()
     <ComuneDrawer
       :visible="comuneDrawer.state.visible"
       @update:visible="v => comuneDrawer.state.visible = v"
+    />
+    <CodiciPostaliDrawer
+      :visible="capDrawer.state.visible"
+      @update:visible="v => capDrawer.state.visible = v"
+      :mode="capDrawer.state.mode"
+      :item="capDrawer.state.itemData"
     />
     <ProvinceDrawer
       :visible="provDrawer.state.visible"

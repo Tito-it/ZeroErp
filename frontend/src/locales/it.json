@@ -64,8 +64,25 @@
       "audit-log": "Audit Log"
     },
     "anagrafiche": {
+      "soggetti": "Soggetti",
       "indirizzi": "Indirizzi"
+    },
+    "config": {
+      "tabelle": "Tabelle"
     }
+  },
+  "config_panel": {
+    "search_tabella": "Cerca tabella...",
+    "search_record": "Cerca...",
+    "select_tabella": "Seleziona una tabella dalla lista",
+    "col_codice": "Codice",
+    "col_codice_interno": "Codice Interno",
+    "col_descrizione": "Descrizione",
+    "record_creato": "Record creato",
+    "record_salvato": "Record salvato",
+    "col_attivo": "Stato",
+    "attivo": "Attivo",
+    "non_attivo": "Non attivo"
   },
   "tabs": {
     "close": "Chiudi tab",
@@ -312,6 +329,12 @@
     "campo_scala": "Scala",
     "campo_piano": "Piano",
     "campo_interno": "Interno",
+    "tab_cap": "CAP",
+    "search_cap": "Cerca CAP o comune...",
+    "nuovo_cap": "Nuovo CAP",
+    "modifica_cap": "Modifica CAP",
+    "cap_creato": "CAP creato",
+    "cap_salvato": "CAP salvato",
     "via_non_presente": "Via non presente, crea nuova",
     "indirizzo_creato": "Indirizzo creato",
     "indirizzo_salvato": "Indirizzo salvato",
@@ -327,6 +350,59 @@
     "comune_creato": "Comune creato",
     "campo_provincia": "Provincia",
     "select_provincia": "Seleziona provincia..."
+  },
+  "soggetti": {
+    "search_placeholder": "Cerca per nome, CF, P.IVA...",
+    "filtro_tipo": "Tipo soggetto",
+    "nuovo_soggetto": "Nuovo Soggetto",
+    "modifica_soggetto": "Modifica Soggetto",
+    "col_ragione_sociale": "Ragione Sociale",
+    "col_tipo": "Tipo",
+    "section_contatto": "Contatto",
+    "section_indirizzo": "Indirizzo",
+    "section_dati_societari": "Dati Societari",
+    "soggetto_creato": "Soggetto creato",
+    "soggetto_salvato": "Soggetto salvato",
+    "section_ruoli": "Ruoli",
+    "nessun_ruolo": "Nessun ruolo assegnato",
+    "aggiungi_ruolo": "Aggiungi ruolo",
+    "select_ruolo": "Seleziona ruolo..."
+  },
+  "dati_societari": {
+    "forma_giuridica": "Forma giuridica",
+    "select_forma_giuridica": "Seleziona forma giuridica...",
+    "prov_rea": "Provincia REA",
+    "iscrizione_rea": "N. iscrizione REA",
+    "capitale_sociale": "Capitale sociale",
+    "socio_unico": "Socio unico",
+    "su_unico": "Socio unico",
+    "su_piu_soci": "Più soci",
+    "liquidazione": "Stato liquidazione",
+    "liq_no": "Non in liquidazione",
+    "liq_si": "In liquidazione",
+    "destinatario_fe": "Canale fatturazione elettronica",
+    "select_destinatario_fe": "Seleziona canale FE...",
+    "fe_pec": "PEC",
+    "fe_sdi": "Codice SDI",
+    "pec_fatturazione": "PEC fatturazione",
+    "codice_sdi": "Codice destinatario SDI"
+  },
+  "indirizzo_soggetto": {
+    "tipo_indirizzo": "Tipo indirizzo",
+    "select_tipo_indirizzo": "Seleziona tipo indirizzo...",
+    "modalita_libera": "Indirizzo estero / formato libero",
+    "indirizzo_libero": "Indirizzo",
+    "stato": "Stato",
+    "locality": "Città / Località"
+  },
+  "contatto": {
+    "nominativo": "Nominativo",
+    "cellulare": "Cellulare",
+    "tipo_contatto": "Tipo contatto",
+    "select_tipo_contatto": "Seleziona tipo contatto...",
+    "unita_organizzativa": "Unità organizzativa",
+    "select_unita_organizzativa": "Seleziona unità organizzativa...",
+    "note": "Note"
   },
   "geo": {
     "tab_province": "Province",

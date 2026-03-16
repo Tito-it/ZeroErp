@@ -11,7 +11,7 @@ const t = i18n.global.t
 
 // Genera rotte placeholder per domini senza pagine dedicate
 function domainPlaceholderRoutes() {
-  const domainsWithRoutes = new Set(['amm-software', 'anagrafiche'])
+  const domainsWithRoutes = new Set(['amm-software', 'anagrafiche', 'config'])
   return DOMAINS
     .filter(d => !domainsWithRoutes.has(d.key))
     .map(d => ({
@@ -73,10 +73,24 @@ const router = createRouter({
 
         // --- Anagrafiche ---
         {
+          path: 'anagrafiche/soggetti',
+          name: 'anagrafiche-soggetti',
+          component: () => import('../anagrafiche/views/SoggettiView.vue'),
+          meta: { domain: 'anagrafiche', menuKey: 'soggetti' }
+        },
+        {
           path: 'anagrafiche/indirizzi',
           name: 'anagrafiche-indirizzi',
           component: () => import('../anagrafiche/views/IndirizziView.vue'),
           meta: { domain: 'anagrafiche', menuKey: 'indirizzi' }
+        },
+
+        // --- Config ---
+        {
+          path: 'config/tabelle',
+          name: 'config-tabelle',
+          component: () => import('../config/views/ConfigView.vue'),
+          meta: { domain: 'config', menuKey: 'tabelle' }
         },
 
         // --- Rotte placeholder per domini senza pagine dedicate ---

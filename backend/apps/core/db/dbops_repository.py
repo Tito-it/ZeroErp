@@ -69,6 +69,7 @@ _REL_CONSENTITE: frozenset[str] = frozenset(
         "config.tipi_indirizzi",
         "config.tipi_nota",
         "config.tipi_ruoli",
+        "config.titoli_cortesia",
         "config.tipi_soggetto_dettaglio",
         "config.tipi_ubicazione",
         "config.tipi_utenze",
@@ -144,7 +145,7 @@ class DbopsRepository:
             cursor.execute(
                 """
                 WITH base AS (
-                    SELECT id, codice, codice_interno, descrizione
+                    SELECT id, codice, codice_interno, descrizione, attivo
                       FROM dbops.fn_get_lookup_codici(
                                %s::regclass,
                                %s,
@@ -159,6 +160,7 @@ class DbopsRepository:
                     codice,
                     codice_interno,
                     descrizione,
+                    attivo,
                     COUNT(*) OVER () AS total_count
                   FROM base
                  WHERE (
@@ -186,13 +188,14 @@ class DbopsRepository:
         if not rows:
             return [], 0
 
-        total_count = rows[0][4]
+        total_count = rows[0][5]
         results = [
             {
                 "id": row[0],
                 "codice": row[1],
                 "codice_interno": row[2],
                 "descrizione": row[3],
+                "attivo": row[4],
             }
             for row in rows
         ]

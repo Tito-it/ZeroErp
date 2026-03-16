@@ -39,6 +39,56 @@ class LookupRepository:
             cols = [c.name for c in cursor.description]
             return [dict(zip(cols, row)) for row in cursor.fetchall()]
 
+    # Scopo: Restituisce i tipi ruolo ammessi per una data natura soggetto.
+    # Se natura_soggetto e' fornita, filtra via matrice tipi_ruoli_nature_ammesse.
+    # Se non fornita, restituisce tutti i ruoli attivi.
+    def list_tipi_ruoli_per_natura(
+        self, natura_soggetto: str | None = None
+    ) -> list[dict[str, Any]]:
+        sql = """
+            SELECT tr.id, tr.codice, tr.descrizione
+              FROM config.tipi_ruoli tr
+             WHERE (%s::varchar IS NULL OR NOT EXISTS (
+                       SELECT 1 FROM config.tipi_ruoli_nature_ammesse m
+                        WHERE m.tipo_ruolo_id = tr.id
+                   ) OR EXISTS (
+                       SELECT 1 FROM config.tipi_ruoli_nature_ammesse m
+                        WHERE m.tipo_ruolo_id = tr.id
+                          AND m.tipo_soggetto_id = %s
+                          AND m.attivo = true
+                          AND (m.valido_dal IS NULL OR m.valido_dal <= CURRENT_DATE)
+                          AND (m.valido_al IS NULL OR m.valido_al >= CURRENT_DATE)
+                   ))
+             ORDER BY tr.descrizione
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [natura_soggetto, natura_soggetto])
+            cols = [c.name for c in cursor.description]
+            return [dict(zip(cols, row)) for row in cursor.fetchall()]
+
+    # Scopo: Restituisce le forme giuridiche con policy REA e capitale sociale.
+    # Opzionalmente filtrate per tipo_soggetto_dettaglio_id (via matrice).
+    def list_forme_giuridiche(
+        self, tipo_soggetto_dettaglio_id: int | None = None
+    ) -> list[dict[str, Any]]:
+        sql = """
+            SELECT fg.id, fg.codice, fg.descrizione,
+                   fg.rea_policy, fg.capitale_sociale_policy, fg.attivo
+              FROM config.forme_giuridiche fg
+             WHERE fg.attivo = true
+               AND (%s::bigint IS NULL OR EXISTS (
+                   SELECT 1 FROM config.forme_giuridiche_tipi_soggetto_dettaglio fgtsd
+                    WHERE fgtsd.forma_giuridica_id = fg.id
+                      AND fgtsd.tipo_soggetto_dettaglio_id = %s
+                      AND fgtsd.attivo = true
+               ))
+             ORDER BY fg.descrizione
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [tipo_soggetto_dettaglio_id, tipo_soggetto_dettaglio_id])
+            cols = [c.name for c in cursor.description]
+            return [dict(zip(cols, row)) for row in cursor.fetchall()]
+
     # Scopo: Restituisce la matrice indirizzi ammessi per un tipo soggetto dettaglio.
     # JOIN config.tipi_soggetto_dettaglio_tipi_indirizzo + config.tipi_indirizzi.
     # Indica per ogni tipo indirizzo se obbligatorio e il fallback.

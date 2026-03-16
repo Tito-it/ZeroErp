@@ -280,6 +280,185 @@ incongruenze rimaste rispetto al nuovo contratto API attivo.
 8. documentazione secondaria
 9. pulizia finale lessicale
 
+## Delta 3
+
+Questa sezione chiude le incongruenze residue tra:
+
+- `docs/it/dev/api.md`
+- `docs/it/frontend/frontend-standards.md`
+- implementazione reale di backend e frontend
+
+L'ordine e' ottimizzato per **sviluppo/refactor veloce**.
+
+Dato che non esiste produzione da preservare:
+
+- non servono layer di compatibilita' temporanei;
+- non servono adapter di transizione;
+- conviene convergere direttamente sul modello finale.
+
+### Checklist backend
+
+1. **Rendere reale la policy idempotenza**
+
+   Applicare la regola documentata: tutti i write che modificano stato devono usare
+   `handle_post_json(..., require_idempotency_key=True)` oppure una policy unica
+   e dichiarata esplicitamente.
+
+   Priorita' massima per:
+
+   - `pratiche`
+   - `anagrafiche`
+   - `amm_software`
+
+2. **Chiudere `amm_software`**
+
+   Portare tutti i write sul percorso unico:
+
+   - niente `request.data` diretto nelle view mutanti;
+   - usare `handle_post_json` per `POST`, `PATCH`, `PUT`;
+   - mantenere la view sottile e lasciare logica al service.
+
+   Questo e' il refactor backend piu' corto e con il miglior rapporto beneficio/tempo.
+
+3. **Completare il CRUD reale di `anagrafiche`**
+
+   Per tutte le risorse che hanno route `/<id>/`:
+
+   - o aggiungere `GET detail`;
+   - o eliminare la route detail se non ha senso esporla.
+
+   Non lasciare route nominalmente "detail" che in pratica fanno solo `PATCH`.
+
+4. **Uniformare definitivamente la grammatica lookup**
+
+   Applicare una sola regola:
+
+   - lookup generico via `core/lookup/codici`
+   - lookup dedicato con suffisso `/lookup/`
+
+   Adeguare subito gli endpoint rimasti fuori convenzione.
+
+5. **Chiudere naming e shape route backend**
+
+   Uniformare:
+
+   - nomi route Django
+   - nomi classi view
+   - eventuali residui del vecchio naming
+
+   L'obiettivo e' evitare un backend con due lessici contemporanei.
+
+6. **Fare una passata finale backend sui moduli gia' quasi allineati**
+
+   Ultimo giro su:
+
+   - `vendite`
+   - `pratiche`
+
+   Non per rifarli da zero, ma per togliere le ultime differenze rispetto al contratto definitivo.
+
+### Checklist frontend
+
+7. **Rimettere i componenti di dominio dentro i domini**
+
+   Spostare fuori da `src/core/components/` tutti i componenti che dipendono da uno
+   store o da un dominio specifico `anagrafiche`.
+
+   Esempi tipici:
+
+   - search table geografiche
+   - drawer geografici
+   - componenti CRUD specializzati
+
+   `core/` deve contenere solo componenti realmente shared.
+
+8. **Introdurre coordinamento globale drawer**
+
+   Lo standard dice che non si possono aprire due drawer contemporaneamente.
+
+   Serve una sola delle due strade, scelta e applicata ovunque:
+
+   - store/composable globale che chiude gli altri drawer;
+   - un solo drawer controller per vista complessa.
+
+   La via piu' veloce e' centralizzare il controllo, non aggiungere guard locali sparsi.
+
+9. **Ripulire `IndirizziView` come vista orchestratrice**
+
+   La vista oggi e' utile ma e' anche il punto dove si vede di piu' la stratificazione.
+
+   Obiettivi:
+
+   - mantenere i tab;
+   - mantenere i SearchTable;
+   - ridurre il numero di stati locali scollegati;
+   - usare un pattern unico per apertura/chiusura drawer.
+
+10. **Verificare tutti i pattern lista contro lo standard**
+
+    Controllare i componenti lista e renderli omogenei rispetto a:
+
+    - toolbar
+    - filtri
+    - `NewButton`
+    - `useSearchTable`
+    - click riga
+    - paginazione sopra
+    - classi CSS standard
+
+    Non fare miglioramenti creativi per singolo componente: convergere tutti allo stesso pattern.
+
+11. **Verificare separazione `core` vs domini**
+
+    Oltre ai componenti, controllare anche:
+
+    - composable
+    - client API
+    - store
+    - helper UI
+
+    Se un modulo conosce troppo `anagrafiche`, `amm-software` o altro dominio,
+    non deve stare in `core`.
+
+12. **Allineare navigazione e routing al reale stato del frontend**
+
+    Verificare che:
+
+    - `core/navigation.js` resti davvero unica fonte di verita';
+    - le route reali e i placeholder raccontino lo stato reale;
+    - non ci siano voci di menu che promettono strutture non ancora coerenti col pattern finale.
+
+    Questo va fatto dopo la pulizia dei componenti e dei drawer.
+
+### Pulizia finale
+
+13. **Fare la passata lessicale e documentale finale**
+
+    Solo dopo i refactor strutturali:
+
+    - correggere typo e naming residui;
+    - riallineare esempi nei documenti;
+    - togliere descrizioni ormai vecchie;
+    - verificare che `api.md` e `frontend-standards.md` descrivano davvero il codice esistente.
+
+    Non fare questa fase troppo presto, altrimenti verra' rifatta due volte.
+
+### Ordine sintetico Delta 3
+
+1. policy idempotenza reale
+2. `amm_software`
+3. CRUD reale `anagrafiche`
+4. lookup backend uniformi
+5. naming/shape backend
+6. rifinitura `vendite` e `pratiche`
+7. componenti dominio fuori da `core`
+8. coordinamento globale drawer
+9. pulizia `IndirizziView`
+10. pattern lista uniformi
+11. separazione `core` vs domini
+12. navigazione e routing
+13. pulizia finale documentale
+
 ---
 
 ## Audit API — Stato reale (15 marzo 2026)
