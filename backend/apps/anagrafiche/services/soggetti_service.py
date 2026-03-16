@@ -14,6 +14,7 @@ from typing import Any
 
 from apps.core.api.payload_validators import optional_int
 from apps.core.services.error_manager import ErrorManager
+from apps.anagrafiche.db.indirizzi_repository import IndirizziRepository
 from apps.anagrafiche.db.soggetti_repository import SoggettiRepository
 from apps.anagrafiche.error_codes import E_ANAG_NOT_FOUND, E_ANAG_VALIDAZIONE
 from apps.anagrafiche.services._validators import (
@@ -22,7 +23,7 @@ from apps.anagrafiche.services._validators import (
     require_str,
     update_with_dedup,
 )
-from apps.anagrafiche.services.cf_validator_it import valida_cf_congruenza_it
+from apps.anagrafiche.services.cf_validator_it import genera_cf_it, valida_cf_congruenza_it
 
 
 class SoggettiService:
@@ -30,6 +31,7 @@ class SoggettiService:
 
     def __init__(self) -> None:
         self._repo = SoggettiRepository()
+        self._ind = IndirizziRepository()
 
     # =================================================================
     # Lista e dettaglio
@@ -62,6 +64,8 @@ class SoggettiService:
     #        Perimetro: soggetto + contatto default + indirizzo (se fornito).
     #        Risultato: UUID del soggetto creato.
     def create_soggetto(self, payload: dict[str, Any]) -> dict[str, Any]:
+        from django.db import transaction
+
         tipo_id = optional_int(payload, "tipo_soggetto_dettaglio_id")
         ErrorManager.require(tipo_id is not None, code=E_ANAG_VALIDAZIONE,
                              message="Tipo soggetto obbligatorio.")
@@ -73,21 +77,31 @@ class SoggettiService:
                              message="Tipo soggetto non valido.")
         assert natura is not None
 
-        if natura == "PF":
-            soggetto_id = self._create_pf(payload)
-        else:
-            soggetto_id = self._create_pg(payload, tipo_id)
-
-        # Indirizzi (opzionali nel payload, obbligatori se matrice lo richiede
-        # — il trigger DEFERRED verifichera' al COMMIT).
-        # Supporta sia array "indirizzi" che singolo "indirizzo" per comodita'.
-        indirizzi = payload.get("indirizzi") or []
-        indirizzo_singolo = payload.get("indirizzo")
-        if indirizzo_singolo and isinstance(indirizzo_singolo, dict):
-            indirizzi.append(indirizzo_singolo)
-        for ind in indirizzi:
-            if isinstance(ind, dict):
-                self._create_indirizzo(soggetto_id, ind)
+        # Tutto in una transazione: soggetto + contatto + indirizzi + dati societari.
+        # I trigger DEFERRED (guard contatti, indirizzi, dati societari)
+        # verificano al COMMIT — devono vedere tutti i record nella stessa transazione.
+        with transaction.atomic():
+            if natura == "PF":
+                soggetto_id = self._create_pf(payload)
+            else:
+                soggetto_id = self._create_pg(payload, tipo_id)
+            # Indirizzi (obbligatori se matrice lo richiede — trigger DEFERRED verifica al COMMIT).
+            # Gli indirizzi auto-clonati condividono stradario+civico: risolvo il dettaglio
+            # una sola volta e lo riuso per tutti i tipi.
+            indirizzi = payload.get("indirizzi") or []
+            indirizzo_singolo = payload.get("indirizzo")
+            if indirizzo_singolo and isinstance(indirizzo_singolo, dict):
+                indirizzi.append(indirizzo_singolo)
+            resolved_det_id: int | None = None
+            for ind in indirizzi:
+                if not isinstance(ind, dict):
+                    continue
+                # Riusa dettaglio gia' risolto per indirizzi clonati
+                if resolved_det_id and not ind.get("indirizzo_libero") and not ind.get("indirizzo_dettaglio_id"):
+                    ind = dict(ind, indirizzo_dettaglio_id=resolved_det_id)
+                _, det_id = self._create_indirizzo(soggetto_id, ind)
+                if resolved_det_id is None and det_id is not None:
+                    resolved_det_id = det_id
 
         return {"id": soggetto_id}
 
@@ -136,6 +150,14 @@ class SoggettiService:
                              message="Contatto non trovato.")
         return {"updated": True}
 
+    # Scopo: Elimina contatto con ownership check.
+    def delete_contatto(self, soggetto_id: str, contatto_id: int) -> dict[str, Any]:
+        self._require_soggetto_exists(soggetto_id)
+        deleted = self._repo.delete_contatto(contatto_id, soggetto_id)
+        ErrorManager.require(deleted, code=E_ANAG_NOT_FOUND,
+                             message="Contatto non trovato.")
+        return {"deleted": True}
+
     # =================================================================
     # Indirizzi soggetto
     # =================================================================
@@ -147,9 +169,32 @@ class SoggettiService:
 
     # Scopo: Crea indirizzo soggetto con validazione tipo.
     def create_indirizzo_soggetto(self, soggetto_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        from django.db import transaction
         self._require_soggetto_exists(soggetto_id)
-        indirizzo_id = self._create_indirizzo(soggetto_id, payload)
-        return {"id": indirizzo_id}
+        with transaction.atomic():
+            sog_id, _ = self._create_indirizzo(soggetto_id, payload)
+        return {"id": sog_id}
+
+    # Scopo: Sostituisce un indirizzo soggetto: elimina il vecchio, crea il nuovo.
+    #        Per l'utente e' una "modifica", ma dietro e' delete + create
+    #        perche' indirizzi_dettaglio e' condiviso.
+    def replace_indirizzo_soggetto(
+        self, soggetto_id: str, indirizzo_soggetto_id: int, payload: dict[str, Any]
+    ) -> dict[str, Any]:
+        from django.db import transaction
+        self._require_soggetto_exists(soggetto_id)
+        with transaction.atomic():
+            deleted = self._repo.delete_indirizzo_soggetto(indirizzo_soggetto_id, soggetto_id)
+            ErrorManager.require(deleted, code=E_ANAG_NOT_FOUND, message="Indirizzo soggetto non trovato.")
+            sog_id, _ = self._create_indirizzo(soggetto_id, payload)
+        return {"id": sog_id}
+
+    # Scopo: Elimina un indirizzo soggetto.
+    def delete_indirizzo_soggetto(self, soggetto_id: str, indirizzo_soggetto_id: int) -> dict[str, Any]:
+        self._require_soggetto_exists(soggetto_id)
+        deleted = self._repo.delete_indirizzo_soggetto(indirizzo_soggetto_id, soggetto_id)
+        ErrorManager.require(deleted, code=E_ANAG_NOT_FOUND, message="Indirizzo soggetto non trovato.")
+        return {"deleted": True}
 
     # =================================================================
     # Ruoli
@@ -169,6 +214,105 @@ class SoggettiService:
             "Ruolo gia' assegnato.",
         )
         return {"id": ruolo_id}
+
+    # =================================================================
+    # Utility
+    # =================================================================
+
+    # Scopo: Validazione CF (congruenza + duplicato) e P.IVA (duplicato).
+    #        Ritorna warnings e errors per feedback immediato nel frontend.
+    def valida_cf_piva(self, payload: dict[str, Any]) -> dict[str, Any]:
+        from datetime import date as _date
+
+        warnings: list[dict[str, str]] = []
+        errors: list[dict[str, str]] = []
+
+        cf = (payload.get("codice_fiscale") or "").strip().upper()
+        piva = (payload.get("partita_iva") or "").strip().upper()
+        sesso = (payload.get("sesso") or "").strip().upper() or None
+        data_nascita_raw = payload.get("data_nascita")
+        comune_nascita_id = optional_int(payload, "comune_nascita_id")
+
+        # --- Validazione congruenza CF ---
+        if cf and len(cf) == 16:
+            data_nascita = None
+            if data_nascita_raw:
+                if isinstance(data_nascita_raw, str):
+                    try:
+                        data_nascita = _date.fromisoformat(data_nascita_raw)
+                    except ValueError:
+                        pass
+                else:
+                    data_nascita = data_nascita_raw
+
+            codice_catastale = None
+            if comune_nascita_id:
+                codice_catastale = self._repo.get_codice_catastale(comune_nascita_id)
+
+            cf_errors = valida_cf_congruenza_it(
+                cf,
+                data_nascita=data_nascita,
+                sesso=sesso,
+                codice_catastale_comune=codice_catastale,
+            )
+            for e in cf_errors:
+                errors.append({"field": "codice_fiscale", "message": e})
+
+            # Duplicato CF
+            existing = self._repo.find_by_codice_fiscale(cf)
+            if existing:
+                warnings.append({
+                    "field": "codice_fiscale",
+                    "message": f"CF gia' presente: {existing['ragione_sociale_completa']} ({existing['codice']})",
+                })
+
+        # --- Duplicato P.IVA ---
+        if piva and len(piva) >= 11:
+            existing = self._repo.find_by_partita_iva(piva)
+            if existing:
+                warnings.append({
+                    "field": "partita_iva",
+                    "message": f"P.IVA gia' presente: {existing['ragione_sociale_completa']} ({existing['codice']})",
+                })
+
+        return {"errors": errors, "warnings": warnings}
+
+    # Scopo: Genera codice fiscale italiano da dati anagrafici.
+    def genera_cf(self, payload: dict[str, Any]) -> dict[str, Any]:
+        from datetime import date as _date
+
+        cognome = require_str(payload, "cognome", "Cognome obbligatorio.")
+        nome = require_str(payload, "nome", "Nome obbligatorio.")
+        sesso = require_str(payload, "sesso", "Sesso obbligatorio.")
+        comune_id = optional_int(payload, "comune_nascita_id")
+        ErrorManager.require(
+            comune_id is not None and comune_id > 0,
+            code=E_ANAG_VALIDAZIONE,
+            message="Comune di nascita obbligatorio.",
+        )
+        assert comune_id is not None
+
+        data_nascita_raw = payload.get("data_nascita")
+        ErrorManager.require(
+            data_nascita_raw is not None,
+            code=E_ANAG_VALIDAZIONE,
+            message="Data di nascita obbligatoria.",
+        )
+        if isinstance(data_nascita_raw, str):
+            data_nascita = _date.fromisoformat(data_nascita_raw)
+        else:
+            data_nascita = data_nascita_raw
+
+        codice_catastale = self._repo.get_codice_catastale(comune_id)
+        ErrorManager.require(
+            codice_catastale is not None,
+            code=E_ANAG_VALIDAZIONE,
+            message="Codice catastale non trovato per il comune selezionato.",
+        )
+        assert codice_catastale is not None
+
+        cf = genera_cf_it(cognome, nome, data_nascita, sesso, codice_catastale)
+        return {"codice_fiscale": cf}
 
     # =================================================================
     # Metodi interni
@@ -257,21 +401,79 @@ class SoggettiService:
             })
 
     # Scopo: Crea indirizzo soggetto dal payload (normalizzato o libero).
-    def _create_indirizzo(self, soggetto_id: str, payload: dict[str, Any]) -> int:
+    #        Se il payload contiene stradario_id o toponomastica_id + descrizione_via,
+    #        crea prima l'indirizzo dettaglio, poi lo associa al soggetto.
+    def _create_indirizzo(self, soggetto_id: str, payload: dict[str, Any]) -> tuple[int, int | None]:
         tipo_codice = require_str(payload, "tipo_indirizzo_codice",
                                   "Codice tipo indirizzo obbligatorio.")
-        return create_with_dedup(
+
+        # Indirizzo libero (estero): passa direttamente
+        indirizzo_libero = optional_str(payload, "indirizzo_libero")
+        if indirizzo_libero:
+            sog_id = create_with_dedup(
+                lambda: self._repo.crea_indirizzo_soggetto(
+                    soggetto_id,
+                    tipo_indirizzo_codice=tipo_codice,
+                    indirizzo_libero=indirizzo_libero,
+                    stato_id=optional_int(payload, "stato_id"),
+                ),
+                "Indirizzo duplicato per questo soggetto.",
+            )
+            return sog_id, None
+
+        # Indirizzo normalizzato: risolvi indirizzo_dettaglio_id
+        det_id = optional_int(payload, "indirizzo_dettaglio_id")
+
+        if det_id is None:
+            # Risolvi stradario (esistente o nuovo)
+            stradario_id = optional_int(payload, "stradario_id")
+
+            if stradario_id is None:
+                # Via nuova: crea stradario
+                toponomastica_id = optional_int(payload, "toponomastica_id")
+                descrizione_via = (payload.get("descrizione_via") or "").strip()
+                comune_id = optional_int(payload, "comune_id")
+                codice_postale_id = optional_int(payload, "codice_postale_id")
+
+                ErrorManager.require(toponomastica_id is not None and toponomastica_id > 0,
+                                     code=E_ANAG_VALIDAZIONE, message="Tipo strada obbligatorio.")
+                assert toponomastica_id is not None
+                ErrorManager.require(bool(descrizione_via),
+                                     code=E_ANAG_VALIDAZIONE, message="Nome via obbligatorio.")
+                ErrorManager.require(comune_id is not None and comune_id > 0,
+                                     code=E_ANAG_VALIDAZIONE, message="Comune obbligatorio.")
+                assert comune_id is not None
+                ErrorManager.require(codice_postale_id is not None and codice_postale_id > 0,
+                                     code=E_ANAG_VALIDAZIONE, message="CAP obbligatorio.")
+                assert codice_postale_id is not None
+
+                stradario_id = self._ind.get_or_create_stradario(
+                    toponomastica_id=toponomastica_id, descrizione_via=descrizione_via,
+                    comune_id=comune_id, codice_postale_id=codice_postale_id,
+                )
+
+            assert stradario_id is not None
+            # Crea indirizzo dettaglio (get-or-create)
+            det_id = self._ind.create_indirizzo_dettaglio(
+                stradario_id=stradario_id,
+                civico=optional_int(payload, "civico"),
+                estensione_civico=(payload.get("estensione_civico") or "").strip() or None,
+                palazzina=(payload.get("palazzina") or "").strip() or None,
+                scala=(payload.get("scala") or "").strip() or None,
+                piano=(payload.get("piano") or "").strip() or None,
+                interno=(payload.get("interno") or "").strip() or None,
+            )
+
+        assert det_id is not None
+        sog_id = create_with_dedup(
             lambda: self._repo.crea_indirizzo_soggetto(
                 soggetto_id,
                 tipo_indirizzo_codice=tipo_codice,
-                indirizzo_dettaglio_id=optional_int(payload, "indirizzo_dettaglio_id"),
-                indirizzo_libero=optional_str(payload, "indirizzo_libero"),
-                stato_id=optional_int(payload, "stato_id"),
-                comune_id=optional_int(payload, "comune_id"),
-                codice_postale_id=optional_int(payload, "codice_postale_id"),
+                indirizzo_dettaglio_id=det_id,
             ),
             "Indirizzo duplicato per questo soggetto.",
         )
+        return sog_id, det_id
 
     # Scopo: Validazione congruenza CF italiano con dati anagrafici (data, sesso, comune).
     #        Non blocca se i dati opzionali non sono forniti — valida solo quelli presenti.

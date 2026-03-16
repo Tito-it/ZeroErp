@@ -296,7 +296,9 @@
     "aree_funzionali": "Aree funzionali",
     "azioni_processo": "Azioni di processo",
     "profilo_save_title": "Conferma salvataggio profilo",
-    "profilo_save_confirm": "Le modifiche al profilo impattano tutti gli operatori del reparto. Procedere?"
+    "profilo_save_confirm": "Le modifiche al profilo impattano tutti gli operatori del reparto. Procedere?",
+    "operatore": "Operatore",
+    "profilo_reparto": "Profilo reparto: {nome}"
   },
   "indirizzi": {
     "tab_indirizzi": "Indirizzi",
@@ -349,7 +351,11 @@
     "nuovo_comune": "Nuovo Comune",
     "comune_creato": "Comune creato",
     "campo_provincia": "Provincia",
-    "select_provincia": "Seleziona provincia..."
+    "select_provincia": "Seleziona provincia...",
+    "toponomastica": "Toponomastica",
+    "comune": "Comune",
+    "cap": "CAP",
+    "indirizzo": "Indirizzo"
   },
   "soggetti": {
     "search_placeholder": "Cerca per nome, CF, P.IVA...",
@@ -358,6 +364,8 @@
     "modifica_soggetto": "Modifica Soggetto",
     "col_ragione_sociale": "Ragione Sociale",
     "col_tipo": "Tipo",
+    "col_ruoli": "Ruoli",
+    "col_azioni": "",
     "section_contatto": "Contatto",
     "section_indirizzo": "Indirizzo",
     "section_dati_societari": "Dati Societari",
@@ -366,7 +374,9 @@
     "section_ruoli": "Ruoli",
     "nessun_ruolo": "Nessun ruolo assegnato",
     "aggiungi_ruolo": "Aggiungi ruolo",
-    "select_ruolo": "Seleziona ruolo..."
+    "select_ruolo": "Seleziona ruolo...",
+    "genera_cf": "Genera codice fiscale dai dati anagrafici",
+    "soggetto": "Soggetto"
   },
   "dati_societari": {
     "forma_giuridica": "Forma giuridica",
@@ -393,7 +403,15 @@
     "modalita_libera": "Indirizzo estero / formato libero",
     "indirizzo_libero": "Indirizzo",
     "stato": "Stato",
-    "locality": "Città / Località"
+    "locality": "Città / Località",
+    "auto_clone": "Usa stesso indirizzo per tutti gli obbligatori",
+    "obbligatorio": "Obbligatorio",
+    "nessun_indirizzo": "Nessun indirizzo presente",
+    "aggiungi_indirizzo": "Aggiungi indirizzo",
+    "nuovo_indirizzo": "Nuovo indirizzo",
+    "gestisci_indirizzi": "Gestisci indirizzi",
+    "tipi_mancanti": "Indirizzi obbligatori mancanti: {tipi}",
+    "cambia_indirizzo": "Cambia indirizzo"
   },
   "contatto": {
     "nominativo": "Nominativo",
@@ -402,7 +420,15 @@
     "select_tipo_contatto": "Seleziona tipo contatto...",
     "unita_organizzativa": "Unità organizzativa",
     "select_unita_organizzativa": "Seleziona unità organizzativa...",
-    "note": "Note"
+    "note": "Note",
+    "nessun_contatto": "Nessun contatto presente",
+    "aggiungi_contatto": "Aggiungi contatto",
+    "nuovo_contatto": "Nuovo contatto",
+    "modifica_contatto": "Modifica contatto",
+    "contatto_creato": "Contatto creato",
+    "contatto_salvato": "Contatto salvato",
+    "contatto_eliminato": "Contatto eliminato",
+    "gestisci_contatti": "Gestisci contatti"
   },
   "geo": {
     "tab_province": "Province",
@@ -432,6 +458,9 @@
     "nuovo_stato": "Nuovo Stato",
     "modifica_stato": "Modifica Stato",
     "stato_creato": "Stato creato",
-    "stato_salvato": "Stato salvato"
+    "stato_salvato": "Stato salvato",
+    "stato": "Stato",
+    "regione": "Regione",
+    "provincia": "Provincia"
   }
 }

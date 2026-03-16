@@ -19,6 +19,11 @@ export const PAGINATION = {
   ROWS_OPTIONS: [10, 25, 50, 100]
 }
 
+// Formato data (PrimeVue DatePicker dateFormat)
+// dd/mm/yy = GG/MM/YYYY in PrimeVue ('yy' = anno a 4 cifre)
+// Centralizzato: cambiare qui per aggiornare tutte le date del sistema.
+export const DATE_FORMAT = 'dd/mm/yy'
+
 // Content tabs
 export const TABS = {
   MAX_OPEN: 10

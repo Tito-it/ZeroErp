@@ -142,3 +142,92 @@ def valida_cf_congruenza_it(
             )
 
     return errors
+
+
+# ============================================================
+# Generazione codice fiscale italiano
+# ============================================================
+
+# Tabella mese inversa (numero → lettera)
+_MESE_MAP_INV = {v: k for k, v in _MESE_MAP.items()}
+
+# Tabella check digit (algoritmo Ministero delle Finanze)
+_DISPARI = {
+    '0': 1, '1': 0, '2': 5, '3': 7, '4': 9, '5': 13, '6': 15, '7': 17, '8': 19, '9': 21,
+    'A': 1, 'B': 0, 'C': 5, 'D': 7, 'E': 9, 'F': 13, 'G': 15, 'H': 17, 'I': 19, 'J': 21,
+    'K': 2, 'L': 4, 'M': 18, 'N': 20, 'O': 11, 'P': 3, 'Q': 6, 'R': 8, 'S': 12, 'T': 14,
+    'U': 16, 'V': 10, 'W': 22, 'X': 25, 'Y': 24, 'Z': 23,
+}
+_PARI = {
+    '0': 0, '1': 1, '2': 2, '3': 3, '4': 4, '5': 5, '6': 6, '7': 7, '8': 8, '9': 9,
+    'A': 0, 'B': 1, 'C': 2, 'D': 3, 'E': 4, 'F': 5, 'G': 6, 'H': 7, 'I': 8, 'J': 9,
+    'K': 10, 'L': 11, 'M': 12, 'N': 13, 'O': 14, 'P': 15, 'Q': 16, 'R': 17, 'S': 18, 'T': 19,
+    'U': 20, 'V': 21, 'W': 22, 'X': 23, 'Y': 24, 'Z': 25,
+}
+_CHECK_ALPHA = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+
+_VOCALI = set('AEIOU')
+
+
+def _estrai_consonanti_vocali(s: str) -> tuple[str, str]:
+    """Scopo: Separa consonanti e vocali da una stringa (solo lettere)."""
+    s = ''.join(c for c in s.upper() if c.isalpha())
+    consonanti = ''.join(c for c in s if c not in _VOCALI)
+    vocali = ''.join(c for c in s if c in _VOCALI)
+    return consonanti, vocali
+
+
+def _codice_cognome(cognome: str) -> str:
+    """Scopo: Genera i 3 caratteri del cognome per il CF.
+    Regola: prime 3 consonanti, poi vocali, poi X se insufficiente."""
+    cons, voc = _estrai_consonanti_vocali(cognome)
+    pool = cons + voc
+    return (pool + 'XXX')[:3]
+
+
+def _codice_nome(nome: str) -> str:
+    """Scopo: Genera i 3 caratteri del nome per il CF.
+    Regola speciale: se >= 4 consonanti, prende 1a, 3a, 4a."""
+    cons, voc = _estrai_consonanti_vocali(nome)
+    if len(cons) >= 4:
+        return cons[0] + cons[2] + cons[3]
+    pool = cons + voc
+    return (pool + 'XXX')[:3]
+
+
+def _check_digit(cf15: str) -> str:
+    """Scopo: Calcola il carattere di controllo (16° carattere) del CF."""
+    total = 0
+    for i, c in enumerate(cf15.upper()):
+        total += _DISPARI[c] if (i % 2 == 0) else _PARI[c]
+    return _CHECK_ALPHA[total % 26]
+
+
+def genera_cf_it(
+    cognome: str,
+    nome: str,
+    data_nascita: date,
+    sesso: str,
+    codice_catastale: str,
+) -> str:
+    """Scopo: Genera codice fiscale italiano da dati anagrafici.
+
+    Parametri:
+        cognome: cognome del soggetto
+        nome: nome del soggetto
+        data_nascita: data di nascita
+        sesso: 'M' o 'F'
+        codice_catastale: codice Belfiore del comune di nascita (es. 'L736')
+
+    Risultato: codice fiscale di 16 caratteri (maiuscolo).
+    """
+    parte_cognome = _codice_cognome(cognome)
+    parte_nome = _codice_nome(nome)
+
+    anno = f"{data_nascita.year % 100:02d}"
+    mese = _MESE_MAP_INV[data_nascita.month]
+    giorno = data_nascita.day + (40 if sesso.upper() == 'F' else 0)
+    giorno_str = f"{giorno:02d}"
+
+    cf15 = f"{parte_cognome}{parte_nome}{anno}{mese}{giorno_str}{codice_catastale.upper()}"
+    return cf15 + _check_digit(cf15)

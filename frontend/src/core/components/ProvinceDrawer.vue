@@ -8,6 +8,7 @@ import { useLookup } from '../composables/useLookup'
 import { lookupRegioni } from '../../anagrafiche/api/anagrafiche'
 import { DRAWER_WIDTH } from '../constants'
 import DrawerFooter from './DrawerFooter.vue'
+import DrawerTitle from './DrawerTitle.vue'
 import Drawer from 'primevue/drawer'
 import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
@@ -55,8 +56,10 @@ async function handleSave() {
 
 <template>
   <Drawer :visible="visible" @update:visible="emit('update:visible', $event)" position="right"
-    :style="{ width: DRAWER_WIDTH.SIMPLE }"
-    :header="mode === 'create' ? t('geo.nuova_provincia') : t('geo.modifica_provincia')">
+    :style="{ width: DRAWER_WIDTH.SIMPLE }">
+    <template #header>
+      <DrawerTitle :action="mode === 'create' ? t('common.new') : t('common.edit')" :title="t('geo.provincia')" icon="pi pi-globe" />
+    </template>
     <div class="app-drawer-content">
       <div class="form-grid">
         <div class="form-field">

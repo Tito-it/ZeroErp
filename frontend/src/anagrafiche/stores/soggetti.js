@@ -40,7 +40,13 @@ export const useSoggettiStore = defineStore('anagrafiche-soggetti', () => {
       }
 
       const res = await listSoggetti(params)
-      items.value = res.data.data.results
+      // Normalizza ruoli: il DB ritorna JSONB che può arrivare come stringa
+      const results = res.data.data.results.map(r => ({
+        ...r,
+        ruoli: Array.isArray(r.ruoli) ? r.ruoli
+          : (typeof r.ruoli === 'string' ? JSON.parse(r.ruoli) : [])
+      }))
+      items.value = results
       totalRecords.value = res.data.data.count
     } finally {
       loading.value = false

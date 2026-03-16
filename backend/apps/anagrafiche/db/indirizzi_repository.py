@@ -58,7 +58,7 @@ class IndirizziRepository:
              WHERE (%s::text IS NULL OR vid.indirizzo_normalizzato ILIKE %s
                     OR vid.descrizione_comune ILIKE %s)
                AND (%s::integer IS NULL OR vid.comune_id = %s)
-             ORDER BY {order_col} {direction}
+             ORDER BY {order_col} {direction}, vid.id
              LIMIT %s OFFSET %s
         """  # noqa: S608
         with connection.cursor() as cursor:
@@ -92,6 +92,26 @@ class IndirizziRepository:
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [indirizzo_dettaglio_id])
+            row = cursor.fetchone()
+            if not row:
+                return None
+            cols = [c.name for c in cursor.description]
+            return dict(zip(cols, row))
+
+    # Scopo: Cerca indirizzi_dettaglio esistenti via fn_search_indirizzi_dettaglio DB.
+    #        Generico: usato da IndirizzoDrawer e IndirizzoSoggettoForm per warning duplicato.
+    def find_duplicato(
+        self, *, stradario_id: int, civico: int | None = None
+    ) -> dict[str, Any] | None:
+        sql = """
+            SELECT * FROM anagrafiche.fn_search_indirizzi_dettaglio(
+                p_stradario_id := %s,
+                p_civico := %s,
+                p_limit := 1
+            )
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [stradario_id, civico])
             row = cursor.fetchone()
             if not row:
                 return None
@@ -192,12 +212,12 @@ class IndirizziRepository:
 
         with connection.cursor() as cursor:
             cursor.execute("""
-                INSERT INTO config.stradario_generale (toponomastica_id, descrizione)
-                VALUES (%s, %s)
+                INSERT INTO config.stradario_generale (toponomastica_id, descrizione, descrizione_breve)
+                VALUES (%s, %s, %s)
                 ON CONFLICT (toponomastica_id, descrizione) DO UPDATE
                    SET descrizione = EXCLUDED.descrizione
                 RETURNING id
-            """, [toponomastica_id, descrizione_via])
+            """, [toponomastica_id, descrizione_via, descrizione_via])
             row = cursor.fetchone()
             assert row is not None
             stradario_generale_id = row[0]

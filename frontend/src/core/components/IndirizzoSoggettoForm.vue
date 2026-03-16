@@ -1,14 +1,14 @@
 <script setup>
 // Scopo: Building block form indirizzo per layer soggetto (identita').
-// Supporta modalita' normalizzata (comune + via + civico)
-// e modalita' libera (indirizzo testuale + stato) per indirizzi esteri.
-// Il tipo indirizzo e' filtrato dalla matrice del tipo soggetto.
+// Supporta multi-tipo con barra tag, auto-clone per obbligatori.
+// Modalita' normalizzata (comune + via + civico) e libera (estero).
 
 import { useI18n } from 'vue-i18n'
 import InputText from 'primevue/inputtext'
 import InputNumber from 'primevue/inputnumber'
 import Select from 'primevue/select'
 import Checkbox from 'primevue/checkbox'
+import Message from 'primevue/message'
 import ComuneAutocomplete from './ComuneAutocomplete.vue'
 import StradarioAutocomplete from './StradarioAutocomplete.vue'
 
@@ -17,31 +17,39 @@ const { t } = useI18n()
 defineProps({
   form: { type: Object, required: true },
   isLibera: { type: Boolean, default: false },
-  tipiIndirizzo: { type: Array, default: () => [] },
+  tipiStato: { type: Array, default: () => [] },
   toponomasticaLookup: { type: Object, required: true },
   statiLookup: { type: Object, default: null },
   capOptions: { type: Array, default: () => [] },
   loadingCap: { type: Boolean, default: false },
+  autoClone: { type: Boolean, default: true },
+  indirizzoWarnings: { type: Array, default: () => [] },
   disabled: { type: Boolean, default: false }
 })
 
-defineEmits(['update:isLibera'])
+defineEmits(['update:isLibera', 'update:autoClone', 'switchTipo'])
 </script>
 
 <template>
   <div class="form-grid">
-    <!-- Tipo indirizzo (filtrato dalla matrice) -->
-    <div class="form-field">
-      <label>{{ t('indirizzo_soggetto.tipo_indirizzo') }} *</label>
-      <Select
-        v-model="form.tipo_indirizzo_codice"
-        :options="tipiIndirizzo"
-        option-label="descrizione"
-        option-value="codice"
-        :placeholder="t('indirizzo_soggetto.select_tipo_indirizzo')"
-        :disabled="disabled"
-        class="w-full"
-      />
+    <!-- Barra tag tipi indirizzo -->
+    <div v-if="tipiStato.length > 0" class="indirizzo-tipi-bar">
+      <div
+        v-for="tipo in tipiStato"
+        :key="tipo.codice"
+        class="indirizzo-tipo-tag"
+        :class="{
+          'indirizzo-tipo-tag--attivo': tipo.attivo,
+          'indirizzo-tipo-tag--compilato': tipo.compilato,
+          'indirizzo-tipo-tag--obbligatorio': tipo.obbligatorio,
+        }"
+        @click="$emit('switchTipo', tipo.codice)"
+        :title="tipo.obbligatorio ? t('indirizzo_soggetto.obbligatorio') : ''"
+      >
+        <i v-if="tipo.compilato" class="pi pi-check" style="font-size: 0.7rem;" />
+        <span>{{ tipo.descrizione }}</span>
+        <span v-if="tipo.obbligatorio" class="indirizzo-tipo-req">*</span>
+      </div>
     </div>
 
     <!-- Switch modalita' libera -->
@@ -146,6 +154,10 @@ defineEmits(['update:isLibera'])
           <InputText v-model="form.interno" :disabled="disabled" class="w-full" />
         </div>
       </div>
+
+      <Message v-for="(msg, i) in indirizzoWarnings" :key="i" severity="warn" size="small" class="mt-1">
+        {{ msg }}
+      </Message>
     </template>
 
     <!-- === MODALITA' LIBERA === -->
@@ -173,7 +185,76 @@ defineEmits(['update:isLibera'])
         <InputText v-model="form.locality" :disabled="disabled" class="w-full" />
       </div>
     </template>
+
+    <!-- Auto-clone checkbox -->
+    <div v-if="tipiStato.filter(t => t.obbligatorio).length > 1" class="form-field">
+      <div style="display: flex; align-items: center; gap: 0.5rem;">
+        <Checkbox
+          :modelValue="autoClone"
+          @update:modelValue="$emit('update:autoClone', $event)"
+          :binary="true"
+          input-id="auto-clone"
+          :disabled="disabled"
+        />
+        <label for="auto-clone" class="app-text-secondary">
+          {{ t('indirizzo_soggetto.auto_clone') }}
+        </label>
+      </div>
+    </div>
   </div>
 </template>
 
-<!-- Stili .form-grid, .form-field, .form-grid-2col definiti in main.css -->
+<style scoped>
+.indirizzo-tipi-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-bottom: 0.25rem;
+}
+
+.indirizzo-tipo-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem 0.6rem;
+  border-radius: var(--p-border-radius-sm, 4px);
+  font-size: 0.8rem;
+  cursor: pointer;
+  border: 1px solid var(--p-surface-300);
+  background: var(--p-surface-50);
+  color: var(--p-text-muted-color);
+  transition: all 0.15s;
+}
+
+.indirizzo-tipo-tag:hover {
+  border-color: var(--p-primary-300);
+  background: var(--p-primary-50);
+}
+
+.indirizzo-tipo-tag--attivo {
+  border-color: var(--p-primary-500);
+  background: var(--p-primary-50);
+  color: var(--p-primary-700);
+  font-weight: 600;
+}
+
+.indirizzo-tipo-tag--compilato {
+  border-color: var(--p-green-300);
+  color: var(--p-green-700);
+}
+
+.indirizzo-tipo-tag--compilato.indirizzo-tipo-tag--attivo {
+  border-color: var(--p-primary-500);
+  color: var(--p-primary-700);
+}
+
+.indirizzo-tipo-req {
+  color: var(--p-red-500);
+  font-weight: 700;
+}
+
+.app-text-secondary {
+  color: var(--p-text-muted-color);
+  font-size: 0.85rem;
+}
+</style>

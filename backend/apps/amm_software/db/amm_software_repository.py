@@ -75,9 +75,9 @@ class AmmSoftwareRepository:
         # Ordinamento sicuro (whitelist)
         if order_by and order_by in ALLOWED_ORDER_COLUMNS:
             direction = "DESC" if order_dir and order_dir.upper() == "DESC" else "ASC"
-            order_clause = f"ORDER BY {order_by} {direction}"
+            order_clause = f"ORDER BY {order_by} {direction}, au.id"
         else:
-            order_clause = "ORDER BY au.last_name ASC, au.username ASC"
+            order_clause = "ORDER BY au.last_name ASC, au.username ASC, au.id"
 
         sql = f"""
             SELECT au.id AS auth_user_id,

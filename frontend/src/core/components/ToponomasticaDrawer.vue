@@ -7,6 +7,7 @@ import { useToponomasticaStore } from '../../anagrafiche/stores/toponomastica'
 import { useApiHandler } from '../composables/useApiHandler'
 import { DRAWER_WIDTH } from '../constants'
 import DrawerFooter from './DrawerFooter.vue'
+import DrawerTitle from './DrawerTitle.vue'
 import Drawer from 'primevue/drawer'
 import InputText from 'primevue/inputtext'
 import ToggleSwitch from 'primevue/toggleswitch'
@@ -66,8 +67,10 @@ async function handleSave() {
     @update:visible="emit('update:visible', $event)"
     position="right"
     :style="{ width: DRAWER_WIDTH.SIMPLE }"
-    :header="mode === 'create' ? t('indirizzi.nuova_toponomastica') : t('indirizzi.modifica_toponomastica')"
   >
+    <template #header>
+      <DrawerTitle :action="mode === 'create' ? t('common.new') : t('common.edit')" :title="t('indirizzi.toponomastica')" icon="pi pi-directions" />
+    </template>
     <div class="app-drawer-content">
       <div class="form-grid">
         <div class="form-field">

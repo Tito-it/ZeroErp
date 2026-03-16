@@ -181,6 +181,28 @@ const { searchText, onPage, onSort, paginatorProps } = useSearchTable(store)
 
 Nessun componente lista deve implementare onPage/onSort/debounce manualmente.
 
+### ⚠️ REGOLA CRITICA: Paginazione deterministica (backend)
+
+**Ogni query SQL paginata (LIMIT/OFFSET) DEVE avere `id` come tiebreaker nell'ORDER BY.**
+
+```sql
+-- ❌ SBAGLIATO — ordine non deterministico, pagine duplicate a offset alti
+ORDER BY descrizione ASC
+LIMIT 25 OFFSET 700
+
+-- ✅ CORRETTO — id garantisce ordine unico per ogni riga
+ORDER BY descrizione ASC, c.id
+LIMIT 25 OFFSET 700
+```
+
+**Perche':** senza tiebreaker, PostgreSQL non garantisce l'ordine tra righe con lo stesso
+valore nella colonna di sort. Con OFFSET alto il planner puo' restituire righe gia' viste
+nelle pagine precedenti, causando dati duplicati e pagine "bloccate".
+
+Stesso principio dei subfile AS/400 dove il RRN nascosto garantiva la posizione del cursore.
+
+**Dove applicare:** TUTTE le query repository che usano `LIMIT %s OFFSET %s` — nessuna eccezione.
+
 ---
 
 ## Pattern Tab-View (viste multi-sezione)
@@ -589,5 +611,100 @@ const status = await execute(() => api.get('/status/'), { silent: true })
 
 ---
 
-*ZeroERP Frontend Standards — rev. 5 (15 marzo 2026)*
+## Catalogo componenti e composable riutilizzabili
+
+> Prima di creare un nuovo componente o composable, verificare se esiste gia' in questo catalogo.
+> I componenti in `core/` sono cross-dominio e non devono importare da domini specifici.
+
+### Componenti UI (`core/components/`)
+
+| Componente | Scopo | Props chiave | Usato da |
+| --- | --- | --- | --- |
+| `DrawerTitle` | Titolo standard drawer: azione sx + entita' centrata | `action`, `title` | Tutti i drawer |
+| `DrawerFooter` | Footer drawer con Annulla/Salva | `loading`, `disabled` | Tutti i drawer |
+| `NewButton` | Pulsante "Nuovo" nella toolbar | `tooltip` | Tutte le SearchTable |
+| `TagList` | Lista tag con overflow +N e tooltip | `items`, `labelField`, `maxVisible`, `severity` | Ruoli in lista soggetti |
+| `SoggettoForm` | Form universale PF/PG/ENTE con genera CF e validazione | `form`, `tipiSoggetto`, `isPF`, `showPartitaIva` | SoggettoDrawer, UtenteDrawer |
+| `ContattoForm` | Form contatto (nominativo, email, tel, pec, tipo, UO) | `form`, `tipiContatto`, `unitaOrganizzative` | SoggettoDrawer |
+| `IndirizzoSoggettoForm` | Form indirizzo multi-tipo con barra tag e auto-clone | `form`, `tipiStato`, `autoClone`, `toponomasticaLookup` | SoggettoDrawer |
+| `DatiSocietariForm` | Form dati societari (FG, REA, capitale, FE) | `form`, `formeGiuridiche`, `provinceLookup` | SoggettoDrawer |
+| `ComuneAutocomplete` | Autocomplete comune con ricerca server | `modelValue` | IndirizzoDrawer, SoggettoForm |
+| `StradarioAutocomplete` | Autocomplete stradario filtrato per comune | `modelValue`, `comuneId` | IndirizzoDrawer, IndirizzoSoggettoForm |
+| `AuthUserForm` | Form credenziali operatore | `form`, `isEdit` | UtenteDrawer |
+| `ConfigTablePanel` | Pannello CRUD generico per tabelle config | — | ConfigView |
+| `GenericConfigDrawer` | Drawer dinamico per record config | `rel`, `label`, `recordId` | ConfigTablePanel |
+| `SearchDrawer` | Ricerca universale soggetti per ruolo | — | AppLayout (Ctrl+K) |
+| `AppDrawer` | Drawer generico con header + footer + slot body | `title`, `width` | Utility wrapper |
+
+### Composable (`core/composables/`)
+
+| Composable | Scopo | Usato da |
+| --- | --- | --- |
+| `useSearchTable` | Paginazione, sort, search debounce per DataTable lazy | Tutte le SearchTable |
+| `useDrawerState` | Stato drawer (visible, mode, itemId, itemData) | Tutte le View con drawer |
+| `useTabFreshness` | Refresh automatico lista su evento `dataChanged` | Tutte le SearchTable |
+| `useTabEvents` | Event bus inter-tab per invalidazione dati | Store (emit), SearchTable (listen) |
+| `useApiHandler` | Execute con loading, toast successo, gestione errori | Tutti i drawer |
+| `useLookup` | Caricamento lazy/eager di dati lookup con cache | Form con select |
+| `useServerAutocomplete` | Autocomplete con ricerca server debounce | ComuneAutocomplete, StradarioAutocomplete |
+| `useSoggettoForm` | Stato form soggetto, matrice indirizzi, validazione | SoggettoDrawer, UtenteDrawer |
+| `useContattoForm` | Stato form contatto con lookup tipi | SoggettoDrawer |
+| `useIndirizzoSoggettoForm` | Stato form indirizzo multi-tipo con auto-clone | SoggettoDrawer |
+| `useDatiSocietariForm` | Stato form dati societari con policy FG | SoggettoDrawer |
+| `useIndirizzoDuplicato` | Check duplicato indirizzo via API | IndirizzoDrawer, IndirizzoSoggettoForm |
+| `useAuthUser` | Stato form credenziali + permessi operatore | UtenteDrawer |
+| `useNotify` | Toast PrimeVue centralizzato | useApiHandler |
+| `useConfirmAction` | Dialogo conferma azione | UtenteDrawer |
+| `useDirtyState` | Traccia modifiche non salvate | Futuro |
+| `useConfirmCloseTab` | Conferma chiusura tab con modifiche | ContentTabs |
+
+### Utility (`core/utils/`)
+
+| Utility | Scopo | Usato da |
+| --- | --- | --- |
+| `date.js` → `toDateString(d)` | Converte Date/string in 'YYYY-MM-DD' (ora locale, no bug UTC) | SoggettoForm, SoggettoDrawer |
+
+### Costanti (`core/constants.js`)
+
+| Costante | Scopo |
+| --- | --- |
+| `DRAWER_WIDTH` | Larghezze drawer: SIMPLE, STANDARD, COMPLEX, WIDE |
+| `DATE_FORMAT` | Formato data PrimeVue DatePicker (`dd/mm/yy`) |
+| `TOAST_DURATION` | Durata toast: SUCCESS, ERROR, SYSTEM_ERROR |
+| `PAGINATION` | Default righe e opzioni righe/pagina |
+| `TABS` | Max tab aperti |
+| `BREAKPOINTS` | Breakpoint responsive (MOBILE, TABLET) |
+| `SHORTCUTS` | Shortcut tastiera (Ctrl+K, Ctrl+Tab, ecc.) |
+
+### CSS globale (`assets/main.css`)
+
+| Classe | Scopo |
+| --- | --- |
+| `.app-page` | Layout pagina full-height |
+| `.app-tab-content` | Contenuto tab full-height |
+| `.app-page-toolbar` | Toolbar con filtri + bottone nuovo |
+| `.app-page-filters` | Container filtri nella toolbar |
+| `.app-datatable` | Stile DataTable (stripe, padding, paginator compatto) |
+| `.app-drawer-content` | Layout contenuto drawer (flex column, gap) |
+| `.app-drawer-section` | Separatore sezione nel drawer (h4 + border) |
+| `.app-input-with-action` | Input con bottone azione affiancato (es. genera CF) |
+| `.form-grid` | Griglia form a colonna singola |
+| `.form-grid-2col` | Griglia form a 2 colonne (responsive) |
+| `.form-field` | Campo form con label + input |
+| `.p-drawer-title` | Stile globale titolo drawer (centrato, verde) |
+
+### Backend — Utility riutilizzabili
+
+| Modulo | Scopo | Usato da |
+| --- | --- | --- |
+| `anagrafiche/services/_validators.py` | `require_str`, `optional_str`, `create_with_dedup`, `update_with_dedup` | Tutti i service anagrafiche |
+| `anagrafiche/services/cf_validator_it.py` | Validazione congruenza CF + generazione CF (con omocodia) | SoggettiService |
+| `core/utils/date.js` | `toDateString()` — conversione date frontend→backend | SoggettoForm, SoggettoDrawer |
+| `core/api/endpoint_helpers.py` | `handle_post_json` — wrapper POST con parsing + error handling | Tutte le view |
+| `core/api/payload_validators.py` | `optional_int`, `optional_bool`, `paginated_envelope`, `parse_list_params` | Tutte le view |
+| `core/services/error_manager.py` | `ErrorManager.require`, `ServiceError` | Tutti i service |
+
+---
+
+*ZeroERP Frontend Standards — rev. 6 (16 marzo 2026)*
 *Sviluppo Concentrico — anello esterno, radici nell'infrastruttura*

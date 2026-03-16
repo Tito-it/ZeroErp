@@ -18,6 +18,7 @@ from apps.core.api.endpoint_helpers import handle_post_json
 from apps.core.api.payload_validators import optional_int, paginated_envelope, parse_list_params
 from apps.core.api.success_responses import success_response
 from apps.anagrafiche.services.soggetti_service import SoggettiService
+from apps.anagrafiche.services.cf_validator_it import genera_cf_it
 
 
 # =================================================================
@@ -148,6 +149,15 @@ class SoggettiContattiDetailView(DomainAPIView):
         result = SoggettiService().update_contatto(contatto_id, request.data, soggetto_id=soggetto_id)
         return success_response(result)
 
+    @extend_schema(
+        responses={200: inline_serializer(name="ContattoDeleteResp", fields={"data": serializers.DictField()})},
+    )
+    # Scopo: Elimina contatto con verifica ownership soggetto.
+    def delete(self, request: Request, soggetto_id: str, contatto_id: int) -> JsonResponse:
+        return success_response(
+            SoggettiService().delete_contatto(soggetto_id, contatto_id)
+        )
+
 
 # =================================================================
 # Indirizzi soggetto
@@ -179,6 +189,35 @@ class SoggettiIndirizziView(DomainAPIView):
         )
 
 
+class SoggettiIndirizziDetailView(DomainAPIView):
+    """PUT sostituisce indirizzo (replace), DELETE elimina."""
+    area_funzionale = "anagrafiche"
+
+    @extend_schema(
+        request=inline_serializer(name="ReplaceIndirizzoReq", fields={
+            "tipo_indirizzo_codice": serializers.CharField(),
+        }),
+        responses={200: inline_serializer(name="ReplaceIndirizzoResp", fields={"data": serializers.DictField()})},
+    )
+    # Scopo: Sostituisce indirizzo soggetto (delete vecchio + create nuovo).
+    def put(self, request: Request, soggetto_id: str, indirizzo_soggetto_id: int) -> JsonResponse:
+        return handle_post_json(
+            request,
+            handler=lambda p: SoggettiService().replace_indirizzo_soggetto(
+                soggetto_id, indirizzo_soggetto_id, p
+            ),
+        )
+
+    @extend_schema(
+        responses={200: inline_serializer(name="DeleteIndirizzoResp", fields={"data": serializers.DictField()})},
+    )
+    # Scopo: Elimina associazione indirizzo soggetto.
+    def delete(self, request: Request, soggetto_id: str, indirizzo_soggetto_id: int) -> JsonResponse:
+        return success_response(
+            SoggettiService().delete_indirizzo_soggetto(soggetto_id, indirizzo_soggetto_id)
+        )
+
+
 # =================================================================
 # Ruoli soggetto
 # =================================================================
@@ -205,4 +244,48 @@ class SoggettiRuoliView(DomainAPIView):
         return handle_post_json(
             request,
             handler=lambda p: SoggettiService().assign_ruolo(soggetto_id, p),
+        )
+
+
+class ValidaCFPIVAView(DomainAPIView):
+    """POST validazione CF (congruenza + duplicato) e P.IVA (duplicato)."""
+    area_funzionale = "anagrafiche"
+
+    @extend_schema(
+        request=inline_serializer(name="ValidaCFPIVAReq", fields={
+            "codice_fiscale": serializers.CharField(required=False),
+            "partita_iva": serializers.CharField(required=False),
+            "sesso": serializers.CharField(required=False),
+            "data_nascita": serializers.DateField(required=False),
+            "comune_nascita_id": serializers.IntegerField(required=False),
+        }),
+        responses={200: inline_serializer(name="ValidaCFPIVAResp", fields={"data": serializers.DictField()})},
+    )
+    # Scopo: Validazione CF/PIVA con feedback immediato (errori + warning duplicati).
+    def post(self, request: Request) -> JsonResponse:
+        return handle_post_json(
+            request,
+            handler=lambda p: SoggettiService().valida_cf_piva(p),
+        )
+
+
+class GeneraCFView(DomainAPIView):
+    """POST genera codice fiscale italiano da dati anagrafici."""
+    area_funzionale = "anagrafiche"
+
+    @extend_schema(
+        request=inline_serializer(name="GeneraCFReq", fields={
+            "cognome": serializers.CharField(),
+            "nome": serializers.CharField(),
+            "data_nascita": serializers.DateField(),
+            "sesso": serializers.CharField(),
+            "comune_nascita_id": serializers.IntegerField(),
+        }),
+        responses={200: inline_serializer(name="GeneraCFResp", fields={"data": serializers.DictField()})},
+    )
+    # Scopo: Genera CF italiano da cognome, nome, data nascita, sesso, comune.
+    def post(self, request: Request) -> JsonResponse:
+        return handle_post_json(
+            request,
+            handler=lambda p: SoggettiService().genera_cf(p),
         )
