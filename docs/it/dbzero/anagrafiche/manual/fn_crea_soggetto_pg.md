@@ -1,0 +1,148 @@
+## Documentazione Concettuale -- Funzione `anagrafiche.fn_crea_soggetto_pg()`
+
+> **Vedi anche**
+>
+> **Approfondimento tabelle:**
+>
+> * [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)
+> * [anagrafiche.contatti](/dbzero/anagrafiche/tabelle/contatti)
+> * [anagrafiche.dati_societari](/dbzero/anagrafiche/tabelle/dati_societari)
+> * [config.tipi_soggetto_dettaglio](/dbzero/config/tabelle/tipi_soggetto_dettaglio)
+>
+> **Approfondimento funzioni:**
+>
+> * [anagrafiche.fn_crea_soggetto_pf](/dbzero/anagrafiche/manual/fn_crea_soggetto_pf) -- controparte PF
+> * [script.fn_get_or_create_soggetto_ruolo](/dbzero/script/manual/fn_get_or_create_soggetto_ruolo)
+>
+> **Guide:**
+>
+> * [Soggetti e ruoli anagrafici](/guide/soggetti-e-ruoli-anagrafici)
+> * [Gestione degli indirizzi](/guide/gestione-degli-indirizzi)
+
+---
+
+### 🎯 Scopo Principale
+
+(latest review 14-03-2026)
+Building block atomico per la creazione di un soggetto Persona Giuridica
+con contatto default obbligatorio e dati societari (condizionali alla
+`dati_societari_policy` del tipo soggetto).
+
+A differenza di `fn_crea_soggetto_pf`, riceve direttamente
+`p_tipo_soggetto_dettaglio_id` perche' le PG hanno nature diverse
+(SC, ENC, DI, PA, ecc.) — il chiamante deve risolvere il tipo.
+
+**Non crea indirizzo:** il chiamante e' responsabile di creare gli indirizzi
+obbligatori dalla matrice `config.tipi_soggetto_dettaglio_tipi_indirizzo`
+(trigger DEFERRED verifica al COMMIT).
+
+**Non assegna ruoli:** il chiamante usa
+`script.fn_get_or_create_soggetto_ruolo` separatamente.
+
+---
+
+### Parametri
+
+| Parametro                      | Tipo                                        | Obbligatorio | Default | Note                                             |
+| ------------------------------ | ------------------------------------------- | :----------: | ------- | ------------------------------------------------ |
+| `p_ragione_sociale`            | `soggetti.ragione_sociale%TYPE`             |      Si      | —       | Guard nel body.                                  |
+| `p_tipo_soggetto_dettaglio_id` | `soggetti.tipo_soggetto_dettaglio_id%TYPE`  |      Si      | —       | ID del tipo (SC, ENC, DI, PA...). Guard > 0.     |
+| `p_email`                      | `text`                                      |      Si      | —       | Usata per il contatto default.                   |
+| `p_codice_fiscale`             | `soggetti.codice_fiscale%TYPE`              |      No      | `NULL`  | Guard PG decide se obbligatorio. UPPER(TRIM).    |
+| `p_partita_iva`                | `soggetti.partita_iva%TYPE`                 |      No      | `NULL`  | Guard PG decide se obbligatoria. UPPER(TRIM).    |
+| `p_stato_iso2`                 | `config.stati.codice_iso2%TYPE`             |      No      | `'IT'`  | ISO2 per nazionalita'.                           |
+| `p_forma_giuridica_id`         | `dati_societari.forma_giuridica_id%TYPE`    |      No      | `NULL`  | FK forme_giuridiche.                             |
+| `p_id_prov_iscri_rea`          | `dati_societari.id_prov_iscri_rea%TYPE`     |   DS req.    | `NULL`  | Provincia iscrizione REA (FK province).          |
+| `p_iscrizione_rea`             | `dati_societari.iscrizione_rea%TYPE`        |   DS req.    | `NULL`  | Numero iscrizione REA.                           |
+| `p_capitale_sociale`           | `dati_societari.capitale_sociale%TYPE`      |   DS req.    | `NULL`  | Capitale sociale.                                |
+| `p_socio_unico`                | `dati_societari.socio_unico%TYPE`           |      No      | `'SU'`  | Enum: SU (socio unico), SM (plurimo).            |
+| `p_liquidazione`               | `dati_societari.liquidazione%TYPE`          |      No      | `'LN'`  | Enum: LN (non in liquid.), LS (in liquid.).      |
+| `p_destinatario_fe`            | `dati_societari.destinatario_fe%TYPE`       |   DS req.    | `NULL`  | Canale FE: 'P' = PEC, 'C' = Codice SDI.         |
+| `p_pec_fatturazione`           | `dati_societari.pec_fatturazione%TYPE`      |      No      | `NULL`  | PEC fatturazione (unique).                       |
+| `p_codice_sdi`                 | `dati_societari.codice_sdi%TYPE`            |      No      | `NULL`  | Codice destinatario SDI (unique).                |
+
+**Legenda obbligatorieta':**
+
+- **Si** = guard esplicito nella funzione, errore `E_ADMIN_VALIDAZIONE`
+- **No** = sempre opzionale
+- **DS req.** = obbligatorio solo quando i dati societari vengono creati
+  (policy REQUIRED, oppure OPTIONAL con almeno un campo DS valorizzato)
+
+---
+
+### Valore di ritorno
+
+`anagrafiche.soggetti.id%TYPE` (UUID) -- ID del soggetto creato.
+
+---
+
+### Regole applicate
+
+* **Lookup stato:** risolve `stato_id` da `config.stati` con `codice_iso2`.
+  Errore se non trovato: `E_GENERICO`.
+* **Verifica tipo soggetto:** verifica esistenza e legge `dati_societari_policy`
+  da `config.tipi_soggetto_dettaglio`. Errore se non trovato: `E_ADMIN_VALIDAZIONE`.
+* **Guard CF univoco:** se CF fornito, verifica su `(stato_id, id_fiscale_univoco_cf_piva)`.
+  Errore: `E_ADMIN_CF_DUPLICATO`.
+* **Guard PIVA univoca:** se PIVA fornita, stessa verifica.
+  Errore: `E_ADMIN_PIVA_DUPLICATA`.
+* **INSERT soggetto:** con `ragione_sociale`, `codice_fiscale`, `partita_iva`,
+  `stato_id`, `tipo_soggetto_dettaglio_id`, `attivo = true`.
+* **INSERT contatto default:** con `nominativo = ragione_sociale`,
+  `email = p_email`, `is_default = true`.
+* **INSERT dati_societari (condizionale):**
+    - Se `dati_societari_policy = 'REQUIRED'` → sempre creato
+    - Se `dati_societari_policy = 'OPTIONAL'` → creato solo se almeno un
+      campo DS e' valorizzato
+    - Se `dati_societari_policy = 'NONE'` → mai creato
+    - Quando si crea, guard espliciti su campi NOT NULL di `dati_societari`:
+      `p_id_prov_iscri_rea`, `p_iscrizione_rea`, `p_capitale_sociale`,
+      `p_destinatario_fe`
+
+---
+
+### Trigger coinvolti
+
+| Trigger                                          | Fase          | Effetto                                       |
+| ------------------------------------------------ | ------------- | --------------------------------------------- |
+| `trgfn_soggetti_gen_codice`                      | BEFORE INSERT | Genera codice univoco soggetto                |
+| `trgfn_soggetti_normalize`                       | BEFORE INSERT | Calcola `ragione_sociale_completa`            |
+| `trgfn_soggetti_guard_cf_piva_obbligatori`       | BEFORE INSERT | Valida CF/PIVA in base a natura               |
+| `trgfn_soggetti_valida_cf_piva_dispatch`         | BEFORE INSERT | Valida formato CF/PIVA                        |
+| `trgfn_soggetti_guard_soggetto_contatti`         | DEFERRED      | Verifica almeno 1 contatto al COMMIT          |
+| `trgfn_soggetti_guard_indirizzi_required`        | DEFERRED      | Verifica indirizzi obbligatori al COMMIT      |
+| `trgfn_soggetti_guard_dati_societari_required`   | DEFERRED      | Verifica dati societari se REQUIRED al COMMIT |
+| `trgfn_contatti_set_default_contatto`            | BEFORE INSERT | Auto-imposta `is_default`                     |
+| `trgfn_dati_societari_guard_tipo_soggetto`       | BEFORE INSERT | Verifica tipo soggetto ammesso per DS         |
+| `trgfn_dati_societari_guard_forma_giuridica`     | BEFORE INSERT | Verifica forma giuridica valida               |
+
+---
+
+### Vincoli DEFERRED (responsabilita' del chiamante)
+
+Il trigger `trgfn_soggetti_guard_indirizzi_required` verifica al COMMIT
+che il soggetto abbia gli indirizzi obbligatori definiti dalla matrice
+`config.tipi_soggetto_dettaglio_tipi_indirizzo`.
+
+Il trigger `trgfn_soggetti_guard_dati_societari_required` verifica al COMMIT
+che i dati societari esistano se la policy e' REQUIRED.
+
+Il **chiamante deve**:
+
+1. Creare gli indirizzi obbligatori prima del COMMIT
+2. Non preoccuparsi dei dati societari se usa questa funzione
+   (li crea automaticamente quando la policy lo richiede)
+
+---
+
+### Riusabilita'
+
+| Orchestratore                    | Uso                                           |
+| -------------------------------- | --------------------------------------------- |
+| (futuro) `fn_crea_cliente_pg`    | Crea soggetto PG per cliente societa'          |
+| (futuro) `fn_crea_fornitore_pg`  | Crea soggetto PG per fornitore societa'        |
+| (futuro) `fn_crea_emittente`     | Crea soggetto PG per emittente fiscale         |
+
+---
+
+{% include-markdown "signature-core.md" %}

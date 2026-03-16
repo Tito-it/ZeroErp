@@ -9,7 +9,7 @@ CREATE FUNCTION fn_get_lookup_codici(p_rel regclass, p_order_col text, p_order_d
 
 ```sql
 CREATE OR REPLACE FUNCTION dbops.fn_get_lookup_codici(p_rel regclass, p_order_col text DEFAULT 'descrizione'::text, p_order_dir text DEFAULT 'ASC'::text, p_attivo_only boolean DEFAULT true, p_limit integer DEFAULT 500, p_offset integer DEFAULT 0)
- RETURNS TABLE(id bigint, codice text, codice_interno text, descrizione text)
+ RETURNS TABLE(id bigint, codice text, codice_interno text, descrizione text, attivo boolean)
  LANGUAGE plpgsql
 AS $function$
 DECLARE
@@ -27,7 +27,7 @@ BEGIN
   -- =========================================================
   -- Scopo:
   --   Estrazione lookup veloce per tabelle con colonne
-  --   id/codice/codice_interno/descrizione.
+  --   id/codice/codice_interno/descrizione/attivo.
   --
   -- Regole:
   --   - id deve essere integer/bigint (uuid non ammesso)
@@ -36,6 +36,8 @@ BEGIN
   --     applica WHERE attivo IS TRUE
   --   - codice_interno: se la colonna esiste la restituisce,
   --     altrimenti NULL::text
+  --   - attivo: se la colonna esiste (boolean) la restituisce,
+  --     altrimenti NULL::boolean
   -- =========================================================
 
   IF p_rel IS NULL THEN
@@ -83,6 +85,7 @@ BEGIN
     );
   END IF;
 
+  -- Check colonna id (obbligatoria, integer/bigint)
   SELECT t.typname
     INTO v_id_type
     FROM pg_attribute a
@@ -175,7 +178,7 @@ BEGIN
     );
   END IF;
 
-  -- Check colonna attivo (opzionale)
+  -- Check colonna attivo (opzionale, deve essere boolean)
   SELECT EXISTS (
     SELECT 1
       FROM pg_attribute a
@@ -212,10 +215,14 @@ BEGIN
 
   -- Costruzione SQL dinamico
   v_sql := format(
-    'SELECT t.id::bigint, t.codice::text, %s, t.descrizione::text FROM %s t',
+    'SELECT t.id::bigint, t.codice::text, %s, t.descrizione::text, %s FROM %s t',
     CASE WHEN v_has_codice_interno
          THEN 't.codice_interno::text'
          ELSE 'NULL::text AS codice_interno'
+    END,
+    CASE WHEN v_has_attivo
+         THEN 't.attivo::boolean'
+         ELSE 'NULL::boolean AS attivo'
     END,
     p_rel::text
   );
@@ -239,7 +246,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION dbops.fn_get_lookup_codici(p_rel regclass, p_order_col text, p_order_dir text, p_attivo_only boolean, p_limit integer, p_offset integer)
-IS 'Lookup generico id/codice/codice_interno/descrizione con ordinamento validato e filtro attivo opzionale. codice_interno restituito se la colonna esiste, altrimenti NULL.';
+IS 'Lookup generico id/codice/codice_interno/descrizione/attivo con ordinamento validato e filtro attivo opzionale. codice_interno e attivo restituiti se le colonne esistono, altrimenti NULL.';
 ```
 
 ---
