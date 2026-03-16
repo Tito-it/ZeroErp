@@ -1,12 +1,12 @@
-# 📘 Manuale Aggiornamento PostgreSQL 
+# Manuale Aggiornamento PostgreSQL
 
 > **ZeroERP — Linee guida tecniche**
 > Aggiornamento del cluster PostgreSQL in ambiente di sviluppo o produzione.
-> Questo è un esempio eseguito per passare dalla 17 a 18.
-> 
+> Questo e' un esempio eseguito per passare dalla 17 a 18.
+
 ---
 
-## 🎯 Scopo del Documento
+## Scopo del Documento
 
 Questo manuale descrive la procedura **ufficiale, sicura e ripetibile** per aggiornare PostgreSQL da una versione maggiore alla successiva, utilizzando l'approccio Debian/Ubuntu basato su:
 
@@ -14,37 +14,37 @@ Questo manuale descrive la procedura **ufficiale, sicura e ripetibile** per aggi
 * strumenti nativi *pg_upgradecluster*
 * separazione totale tra cluster vecchio e nuovo
 
-L’esempio riportato si riferisce all’upgrade **da PostgreSQL 17 → PostgreSQL 18**, ma la procedura è valida per qualsiasi upgrade maggiore (es. 16 → 17, 18 → 19, ...).
+L'esempio riportato si riferisce all'upgrade **da PostgreSQL 17 → PostgreSQL 18**, ma la procedura e' valida per qualsiasi upgrade maggiore (es. 16 → 17, 18 → 19, ...).
 
 ---
 
-## 🧩 Concetti Chiave
+## Concetti Chiave
 
-### 🔹 Installazione multi-versione
+### Installazione multi-versione
 
-Su Debian/Ubuntu è possibile installare **più versioni di PostgreSQL in parallelo**, senza conflitti. Ogni versione crea un proprio *cluster*:
+Su Debian/Ubuntu e' possibile installare **piu' versioni di PostgreSQL in parallelo**, senza conflitti. Ogni versione crea un proprio *cluster*:
 
 ```
 /var/lib/postgresql/17/main
 /var/lib/postgresql/18/main
 ```
 
-### 🔹 Non si aggiorna "in-place"
+### Non si aggiorna "in-place"
 
-PostgreSQL **non aggiorna** i dati all’interno dello stesso cluster. L’upgrade crea un cluster nuovo e migra:
+PostgreSQL **non aggiorna** i dati all'interno dello stesso cluster. L'upgrade crea un cluster nuovo e migra:
 
 * dati
 * configurazioni
 * estensioni (incluse PostGIS)
 * utenti e privilegi
 
-### 🔹 Strumento ufficiale: `pg_upgradecluster`
+### Strumento ufficiale: `pg_upgradecluster`
 
-È il tool raccomandato da Debian/Ubuntu per aggiornamenti maggiori.
+E' il tool raccomandato da Debian/Ubuntu per aggiornamenti maggiori.
 
 ---
 
-## 🧭 Prerequisiti
+## Prerequisiti
 
 * Backup completo della VM o snapshot Proxmox
 * Nessun servizio in esecuzione che utilizzi il database (fermare applicazioni backend)
@@ -52,7 +52,7 @@ PostgreSQL **non aggiorna** i dati all’interno dello stesso cluster. L’upgra
 
 ---
 
-## 🛠️ Step 1 — Aggiornare il Sistema Operativo
+## Step 1 — Aggiornare il Sistema Operativo
 
 Assicurati che il sistema sia aggiornato:
 
@@ -61,7 +61,7 @@ sudo apt update
 sudo apt full-upgrade -y
 ```
 
-Questo passaggio installerà automaticamente:
+Questo passaggio installera' automaticamente:
 
 * PostgreSQL 18
 * PostGIS compatibile (se presente)
@@ -69,9 +69,9 @@ Questo passaggio installerà automaticamente:
 
 ---
 
-## 🧪 Step 2 — Verificare i Cluster Installati
+## Step 2 — Verificare i Cluster Installati
 
-Dopo l’aggiornamento:
+Dopo l'aggiornamento:
 
 ```bash
 pg_lsclusters
@@ -91,7 +91,7 @@ sudo pg_createcluster 18 main
 
 ---
 
-## 🧱 Step 3 — Allineamento Estensioni (PostGIS, pgtap, ecc.)
+## Step 3 — Allineamento Estensioni (PostGIS, pgtap, ecc.)
 
 Se il cluster 17 utilizza estensioni aggiuntive, assicurati che siano presenti anche per la versione 18.
 
@@ -109,7 +109,7 @@ sudo apt remove postgresql-17-pgtap
 
 ---
 
-## 🚚 Step 4 — Eseguire l’Upgrade del Cluster
+## Step 4 — Eseguire l'Upgrade del Cluster
 
 Comando principale:
 
@@ -127,7 +127,7 @@ Cosa fa:
 
 ---
 
-## 🔍 Step 5 — Verifica Post-Upgrade
+## Step 5 — Verifica Post-Upgrade
 
 Controllo dei cluster:
 
@@ -156,7 +156,7 @@ SELECT postgis_full_version();
 
 ---
 
-## 🧹 Step 6 — Pulizia del Cluster Precedente (Opzionale)
+## Step 6 — Pulizia del Cluster Precedente (Opzionale)
 
 Solo dopo aver verificato tutto:
 
@@ -168,9 +168,9 @@ Rimuove definitivamente il cluster vecchio.
 
 ---
 
-## 🔧 Step 7 — Riavvio dei Servizi Applicativi
+## Step 7 — Riavvio dei Servizi Applicativi
 
-Se il DB è usato da un’applicazione (es. backend Django):
+Se il DB e' usato da un'applicazione (es. backend Django):
 
 ```bash
 sudo systemctl restart nginx
@@ -179,7 +179,7 @@ sudo systemctl restart zeroerp-gunicorn.service
 
 ---
 
-## 🧭 Step 8 — Verifica Applicazioni Esterne (Django, API, ecc.)
+## Step 8 — Verifica Applicazioni Esterne (Django, API, ecc.)
 
 ### Test tramite Django:
 
@@ -194,31 +194,31 @@ SHOW server_version;
 python manage.py shell -c "from django.db import connection; cur = connection.cursor(); cur.execute('SHOW server_version;'); print(cur.fetchone())"
 ```
 
-Se il risultato è `18.x`, la migrazione è conclusa.
+Se il risultato e' `18.x`, la migrazione e' conclusa.
 
 ---
 
-## 📌 Note Aggiuntive
+## Note Aggiuntive
 
 * Gli upgrade maggiori **non cancellano mai** automaticamente un cluster vecchio.
-* L’uso di `pg_dump` non è necessario: `pg_upgradecluster` gestisce tutto.
-* PostgreSQL 18 è pienamente compatibile con PostGIS 3.6.
-* L’upgrade può essere ripetuto in ambienti staging/produzione con le stesse procedure.
+* L'uso di `pg_dump` non e' necessario: `pg_upgradecluster` gestisce tutto.
+* PostgreSQL 18 e' pienamente compatibile con PostGIS 3.6.
+* L'upgrade puo' essere ripetuto in ambienti staging/produzione con le stesse procedure.
 
 ---
 
-## ✅ Conclusione
+## Conclusione
 
-L’aggiornamento del cluster PostgreSQL da 17 a 18 è un’operazione sicura, ripetibile e completamente supportata sugli ambienti Debian/Ubuntu. Seguendo questa procedura, l’ambiente ZeroERP può essere aggiornato senza downtime significativo e senza necessità di dump/restore manuali.
+L'aggiornamento del cluster PostgreSQL da 17 a 18 e' un'operazione sicura, ripetibile e completamente supportata sugli ambienti Debian/Ubuntu. Seguendo questa procedura, l'ambiente ZeroERP puo' essere aggiornato senza downtime significativo e senza necessita' di dump/restore manuali.
 
-Se utilizzi più ambienti (dev, test, staging, produzione), il consiglio è:
+Se utilizzi piu' ambienti (dev, test, staging, produzione), il consiglio e':
 
-* eseguire l’upgrade in ordine crescente di criticità
+* eseguire l'upgrade in ordine crescente di criticita'
 * verificare sempre la presenza delle estensioni
 * lasciare il cluster precedente per qualche giorno prima della rimozione definitiva
 
 ---
 
-## 🏁 Fine Documento
+## Fine Documento
 
 Manuale pronto per essere inserito nella documentazione ufficiale ZeroERP.

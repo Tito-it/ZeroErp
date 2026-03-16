@@ -4,28 +4,28 @@
 </p>
 
 
-# 📦 Zero ERP - Open Source ERP Framework  
+# Zero ERP - Open Source ERP Framework
 **Licenza: GPL v3**
 
 ---
 
-## 💡 Concetti Generali e Motivazioni
+## Concetti Generali e Motivazioni
 
 - **Nome del Progetto**: "Zero" rappresenta una ripartenza personale e professionale.
-- **Finalità**: ERP multiservizi, modulare e flessibile, orientato alla precisione, all’evoluzione e alla centralizzazione dei dati.
+- **Finalita'**: ERP multiservizi, modulare e flessibile, orientato alla precisione, all'evoluzione e alla centralizzazione dei dati.
 
 ---
 
-## ✅ Cos'è Zero ERP
+## Cos'e' Zero ERP
 
-**Zero ERP** è un sistema ERP modulare, scalabile e open source, pensato per:
+**Zero ERP** e' un sistema ERP modulare, scalabile e open source, pensato per:
 
 - Multi-servizi
 - Fatturazione, contratti e anagrafiche, Magazzino, Ordini
 - Piccole, medie e grandi imprese
 - Utility (Gas, Energia, Acqua, Fonia)
 
-### 🎯 Obiettivi principali
+### Obiettivi principali
 
 - Creare una **base ERP solida e configurabile**
 - Fornire un **framework moderno** per progetti verticali
@@ -34,64 +34,59 @@
 
 ---
 
-## 🛠️ Tecnologie utilizzate
+## Tecnologie utilizzate
 
-- 🐍 Python (Django)
-- 🐘 PostgreSQL (con supporto JSONB, GIS)
-- ⚡ Vue.js (SPA, build con Vite)
-- 🐳 Docker + CI/CD
-- 🔐 Autenticazione JWT e crittografia avanzata
-
----
-
-## ✨ Funzionalità previste
-
-- 📇 Anagrafiche generali centralizzate
-- 📍 Gestione multi-indirizzo con classificazione
-- 🔌 Integrazione multi-servizio (Base, Gas, Energia, Acqua, ecc.) 
-- 📄 Moduli: Fatturazione, Contratti, Forniture, Magazzino, Ordini
-- 🔐 Sistema permessi e menu dinamico per ruolo
-- ⚙️ Configurazione multilivello: Globale, Cliente, Utente
+- **Python** (Django)
+- **PostgreSQL** (con supporto JSONB, GIS)
+- **Vue.js** (SPA, build con Vite)
+- **Docker** + CI/CD
+- Autenticazione **JWT** e crittografia avanzata
 
 ---
 
-## 🤝 Come contribuire
+## Funzionalita' previste
 
-### 🔧 Requisiti
+- Anagrafiche generali centralizzate
+- Gestione multi-indirizzo con classificazione
+- Integrazione multi-servizio (Base, Gas, Energia, Acqua, ecc.)
+- Moduli: Fatturazione, Contratti, Forniture, Magazzino, Ordini
+- Sistema permessi e menu dinamico per ruolo
+- Configurazione multilivello: Globale, Cliente, Utente
+
+---
+
+## Come contribuire
+
+### Requisiti
 
 - Conoscenza base di **Python/Django**
-- Familiarità con **PostgreSQL**
-- Esperienza (o curiosità) su **Vue.js**
+- Familiarita' con **PostgreSQL**
+- Esperienza (o curiosita') su **Vue.js**
 
-### 📌 Modalità
-
+### Modalita'
 
 1. Lavora su un tuo **branch personale**
 2. Crea una **pull request**
 3. Discussione e revisione da parte del team
 
-✉️ Per dubbi o suggerimenti, apri una **Issue**.
+Per dubbi o suggerimenti, apri una **Issue**.
 
 ---
 
-## 📚 Documentazione
+## Documentazione
 
 - Documentazione tecnica: **in corso di pubblicazione su GitBook**
 - Roadmap e changelog disponibili nel repository
 
 ---
 
-
-
----
-
-## ✅ Codice di Condotta
+## Codice di Condotta
 
 Tutti i contributori sono tenuti a rispettare principi di **collaborazione**, **rispetto** e **condivisione open-source**.
 
 ---
 
-## ✉️ Contatti
+## Contatti
 
 - Referente tecnico: [Michele Carlo Titini]
 - Email: [mc.titini@gmail.com]
