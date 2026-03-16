@@ -7,6 +7,7 @@ import { useI18n } from 'vue-i18n'
 import { useApiHandler } from '../composables/useApiHandler'
 import { DRAWER_WIDTH } from '../constants'
 import DrawerFooter from './DrawerFooter.vue'
+import DrawerTitle from './DrawerTitle.vue'
 import Drawer from 'primevue/drawer'
 import InputText from 'primevue/inputtext'
 import InputNumber from 'primevue/inputnumber'
@@ -33,12 +34,6 @@ const originalForm = ref({}) // Per calcolare delta in edit mode
 
 // Colonne editabili (esclude id)
 const editableColumns = computed(() => columns.value.filter(c => !c.is_pk))
-
-// Header del drawer
-const headerLabel = computed(() => {
-  const action = props.mode === 'create' ? t('common.new') : t('common.edit')
-  return `${action} — ${props.label}`
-})
 
 // Carica metadata + dati al primo open
 watch(() => props.visible, async (val) => {
@@ -140,8 +135,10 @@ async function handleSave() {
     @update:visible="emit('update:visible', $event)"
     position="right"
     :style="{ width: DRAWER_WIDTH.SIMPLE }"
-    :header="headerLabel"
   >
+    <template #header>
+      <DrawerTitle :action="mode === 'create' ? t('common.new') : t('common.edit')" :title="label" icon="pi pi-table" />
+    </template>
     <div class="app-drawer-content">
       <div class="form-grid">
         <template v-for="col in editableColumns" :key="col.name">

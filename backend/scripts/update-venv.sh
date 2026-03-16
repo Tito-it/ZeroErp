@@ -39,10 +39,8 @@ OUT="../requirements.txt"
 [[ -f "$IN" ]] || { echo "Missing $IN"; exit 1; }
 [[ -n "${VIRTUAL_ENV:-}" ]] || { echo "Activate venv first (source .venv/bin/activate)"; exit 1; }
 
-# 1) Aggiorna pip (e tool di base)
-# pip-tools al momento (Feb 2026) non è compatibile con pip >= 25.3 (cambia API interne).
-# Quindi qui fissiamo pip a una versione compatibile.
-python -m pip install -U "pip<25.3"
+
+python -m pip install -U pip
 
 # 2) Assicura pip-tools
 python -m pip install -U pip-tools

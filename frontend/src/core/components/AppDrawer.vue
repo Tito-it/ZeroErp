@@ -1,5 +1,6 @@
 <script setup>
 import { useI18n } from 'vue-i18n'
+import DrawerTitle from './DrawerTitle.vue'
 import Drawer from 'primevue/drawer'
 import Button from 'primevue/button'
 
@@ -37,7 +38,7 @@ function handleSave() {
     @update:visible="emit('update:visible', $event)"
   >
     <template #header>
-      <span class="drawer-title">{{ title }}</span>
+      <DrawerTitle :title="title" />
     </template>
 
     <div class="drawer-body">
@@ -65,12 +66,6 @@ function handleSave() {
 </template>
 
 <style scoped>
-.drawer-title {
-  font-weight: 600;
-  font-size: var(--app-font-size-lg);
-  color: var(--p-text-color);
-}
-
 .drawer-body {
   flex: 1;
   overflow-y: auto;

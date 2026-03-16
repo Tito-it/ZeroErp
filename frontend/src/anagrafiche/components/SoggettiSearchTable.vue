@@ -12,9 +12,11 @@ import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
+import TagList from '../../core/components/TagList.vue'
 import NewButton from '../../core/components/NewButton.vue'
+import Button from 'primevue/button'
 
-const emit = defineEmits(['new', 'row-click'])
+const emit = defineEmits(['new', 'row-click', 'contatti', 'indirizzi'])
 const { t } = useI18n()
 const store = useSoggettiStore()
 const { searchText, onPage, onSort, applyFilters, paginatorProps } = useSearchTable(store)
@@ -71,10 +73,27 @@ onMounted(() => { store.fetchList() })
       selection-mode="single"
       data-key="id"
     >
-      <Column field="ragione_sociale_completa" :header="t('soggetti.col_ragione_sociale')" sortable />
-      <Column field="codice_fiscale" :header="t('common.codice_fiscale')" sortable />
-      <Column field="partita_iva" :header="t('common.partita_iva')" sortable />
-      <Column field="tipo_descrizione" :header="t('soggetti.col_tipo')" sortable />
+      <Column field="codice" :header="t('config_panel.col_codice')" sortable style="width: 130px;" />
+      <Column field="ragione_sociale_completa" :header="t('soggetti.col_ragione_sociale')" sortable style="width: 180px;" />
+      <Column field="codice_fiscale" :header="t('common.codice_fiscale')" sortable style="width: 170px;" />
+      <Column field="tipo_descrizione" :header="t('soggetti.col_tipo')" sortable style="width: 100px;" />
+      <Column field="ruoli" :header="t('soggetti.col_ruoli')" style="width: 240px;">
+        <template #body="{ data }">
+          <TagList :items="data.ruoli || []" />
+        </template>
+      </Column>
+      <Column :header="t('soggetti.col_azioni')" style="width: 80px;" :exportable="false">
+        <template #body="{ data }">
+          <div style="display: flex; gap: 0.25rem;">
+            <Button icon="pi pi-id-card" text rounded size="small" class="app-action-btn"
+              v-tooltip.top="t('contatto.gestisci_contatti')"
+              @click.stop="emit('contatti', data)" />
+            <Button icon="pi pi-map-marker" text rounded size="small" class="app-action-btn"
+              v-tooltip.top="t('indirizzo_soggetto.gestisci_indirizzi')"
+              @click.stop="emit('indirizzi', data)" />
+          </div>
+        </template>
+      </Column>
     </DataTable>
   </div>
 </template>

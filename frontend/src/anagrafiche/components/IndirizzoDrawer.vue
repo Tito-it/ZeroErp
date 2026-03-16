@@ -9,7 +9,9 @@ import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useLookup } from '../../core/composables/useLookup'
 import { listToponomastica, lookupCodiciPostaliByComune, getIndirizzo } from '../api/anagrafiche'
 import { DRAWER_WIDTH } from '../../core/constants'
+import { useIndirizzoDuplicato } from '../../core/composables/useIndirizzoDuplicato'
 import DrawerFooter from '../../core/components/DrawerFooter.vue'
+import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import ComuneAutocomplete from '../../core/components/ComuneAutocomplete.vue'
 import StradarioAutocomplete from '../../core/components/StradarioAutocomplete.vue'
 import Drawer from 'primevue/drawer'
@@ -18,6 +20,7 @@ import InputNumber from 'primevue/inputnumber'
 import Select from 'primevue/select'
 import Checkbox from 'primevue/checkbox'
 import ToggleSwitch from 'primevue/toggleswitch'
+import Message from 'primevue/message'
 
 const props = defineProps({
   visible: { type: Boolean, default: false },
@@ -58,6 +61,9 @@ const attivo = ref(true)
 // Dettaglio edit (read-only)
 const editDetail = ref(null)
 
+// Check duplicato indirizzo (generico)
+const { indirizzoWarnings, checkDuplicato, resetWarnings } = useIndirizzoDuplicato()
+
 const isCreate = computed(() => props.mode === 'create')
 const canSave = computed(() => {
   if (isCreate.value) {
@@ -86,7 +92,14 @@ function resetForm() {
   attivo.value = true
   editDetail.value = null
   capOptions.value = []
+  resetWarnings()
 }
+
+// Check duplicato quando cambia stradario o civico (solo in create)
+watch([stradarioObj, civico], () => {
+  if (!isCreate.value || !stradarioObj.value?.id) { resetWarnings(); return }
+  checkDuplicato(stradarioObj.value.id, civico.value)
+})
 
 // Carica toponomastica solo quando serve (via nuova attivata)
 watch(viaNuova, (val) => {
@@ -202,8 +215,10 @@ async function handleSave() {
     @update:visible="emit('update:visible', $event)"
     position="right"
     :style="{ width: DRAWER_WIDTH.STANDARD }"
-    :header="isCreate ? t('indirizzi.nuovo_indirizzo') : t('indirizzi.modifica_indirizzo')"
   >
+    <template #header>
+      <DrawerTitle :action="isCreate ? t('common.new') : t('common.edit')" :title="t('indirizzi.indirizzo')" icon="pi pi-map-marker" />
+    </template>
     <div class="app-drawer-content">
       <!-- Localizzazione -->
       <div class="form-grid">
@@ -309,6 +324,10 @@ async function handleSave() {
           <ToggleSwitch v-model="attivo" />
         </div>
       </div>
+
+      <Message v-for="(msg, i) in indirizzoWarnings" :key="i" severity="warn" size="small" class="mt-1">
+        {{ msg }}
+      </Message>
 
       <DrawerFooter
         :loading="loading"

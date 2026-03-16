@@ -16,6 +16,7 @@ defineProps({
   unitaOrganizzative: { type: Object, default: null },
   requireEmail: { type: Boolean, default: false },
   showUO: { type: Boolean, default: true },
+  tipoDisabled: { type: Boolean, default: false },
   disabled: { type: Boolean, default: false }
 })
 </script>
@@ -58,7 +59,7 @@ defineProps({
         option-label="descrizione"
         option-value="id"
         :placeholder="t('contatto.select_tipo_contatto')"
-        :disabled="disabled"
+        :disabled="disabled || tipoDisabled"
         show-clear
         class="w-full"
       />

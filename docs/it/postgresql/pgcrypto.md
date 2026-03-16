@@ -1,8 +1,8 @@
-# 📘 Estensione PostgreSQL: **pgcrypto**
+# Estensione PostgreSQL: pgcrypto
 
-> 👀 **Vedi anche**
+> **Vedi anche**
 >
-> * Schema utilità: **maintenance**
+> * Schema utilita': **maintenance**
 > * Estensioni correlate: [`dblink`](/postgresql/dblink)
 > * Funzioni di servizio: `maintenance.run_and_log(...)`
 
@@ -10,16 +10,16 @@
 
 ---
 
-## 🎯 Scopi principali
+## Scopi principali
 
 * Generare **UUID** e **byte casuali** crittograficamente sicuri.
-* Calcolare **digest** (SHA‑256, SHA‑512, …) e **HMAC**.
+* Calcolare **digest** (SHA-256, SHA-512, ...) e **HMAC**.
 * Cifrare/decifrare dati con **PGP simmetrica/asimmetrica**.
 * Gestire **password** con `crypt()`/`gen_salt()` (bcrypt).
 
 ---
 
-## ⚙️ Installazione
+## Installazione
 
 > Da eseguire **per ogni database** dove serve usare le funzioni (es.: `zeroerp`).
 
@@ -29,7 +29,7 @@ CREATE EXTENSION IF NOT EXISTS pgcrypto;  -- crea in schema "public" (default)
 -- CREATE EXTENSION IF NOT EXISTS pgcrypto SCHEMA public;
 ```
 
-> In CI/Liquibase crea l’estensione **prima** di tabelle/funzioni che la usano.
+> In CI/Liquibase crea l'estensione **prima** di tabelle/funzioni che la usano.
 
 ### Changeset Liquibase (esempio)
 
@@ -48,12 +48,11 @@ databaseChangeLog:
 
 ---
 
-## 🧰 Funzioni più usate
+## Funzioni piu' usate
 
-###  Random
+### Random
 
 ```sql
-
 SELECT gen_random_bytes(32);             -- bytea
 ```
 
@@ -110,7 +109,7 @@ SELECT pgp_pub_decrypt(payload_enc, dearmor(privkey_text), 'passphrase') FROM in
 
 ---
 
-## 🧱 Pattern utili
+## Pattern utili
 
 ### Colonna UUID di default
 
@@ -140,7 +139,7 @@ CALL maintenance.run_and_log(
 
 ---
 
-## 🔒 Buone pratiche di sicurezza
+## Buone pratiche di sicurezza
 
 * **Password**: usa `crypt()` + `gen_salt('bf')` (bcrypt). Evita `md5()`/`sha1()` per password.
 * **Chiavi/Passphrase**: non hardcodare. Leggile da **GUC** applicativi:
@@ -158,15 +157,15 @@ CALL maintenance.run_and_log(
 
 ---
 
-## 🏎️ Performance & tipi
+## Performance e tipi
 
-* `digest()`/`hmac()` sono CPU‑bound: valuta **index su colonne hash** e batch update.
-* Per archiviazione hash **testuale**, usa `encode(...,'hex')` → `text`/`varchar(64)` (SHA‑256) se serve leggibilità; altrimenti lascia `bytea`.
+* `digest()`/`hmac()` sono CPU-bound: valuta **index su colonne hash** e batch update.
+* Per archiviazione hash **testuale**, usa `encode(...,'hex')` → `text`/`varchar(64)` (SHA-256) se serve leggibilita'; altrimenti lascia `bytea`.
 * PGP aggiunge overhead (header, salt, compressione opzionale): pianifica dimensioni e I/O.
 
 ---
 
-## 🐞 Troubleshooting
+## Troubleshooting
 
 * `function ... does not exist` → estensione non creata nel **database corrente**.
 * `ERROR: Wrong key or corrupt data` → passphrase/chiave errata o dato danneggiato.
@@ -175,7 +174,7 @@ CALL maintenance.run_and_log(
 
 ---
 
-## 🧪 CI (Ubuntu/GitHub Actions)
+## CI (Ubuntu/GitHub Actions)
 
 Esegui il changeset **prima** delle migrazioni che richiedono `pgcrypto`:
 
@@ -188,7 +187,7 @@ Esegui il changeset **prima** delle migrazioni che richiedono `pgcrypto`:
 
 ---
 
-## ✅ Checklist rapida
+## Checklist rapida
 
 * [ ] `CREATE EXTENSION pgcrypto;` nel DB target
 * [ ] Password -> `crypt()` + `gen_salt('bf')`
@@ -199,7 +198,7 @@ Esegui il changeset **prima** delle migrazioni che richiedono `pgcrypto`:
 
 ---
 
-> 🧠 **Regola d’oro**: usa `pgcrypto` per *primitive* (hash/HMAC/UUID/random) e **PGP** per cifratura applicativa; gestisci segreti fuori dal codice SQL e versiona solo la struttura (non le chiavi).
+> **Regola d'oro**: usa `pgcrypto` per *primitive* (hash/HMAC/UUID/random) e **PGP** per cifratura applicativa; gestisci segreti fuori dal codice SQL e versiona solo la struttura (non le chiavi).
 
 ---
 {% include-markdown "signature-core.md" %}

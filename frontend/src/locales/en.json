@@ -296,7 +296,9 @@
     "aree_funzionali": "Functional areas",
     "azioni_processo": "Process actions",
     "profilo_save_title": "Confirm profile save",
-    "profilo_save_confirm": "Profile changes affect all operators in this department. Proceed?"
+    "profilo_save_confirm": "Profile changes affect all operators in this department. Proceed?",
+    "operatore": "Operator",
+    "profilo_reparto": "Department profile: {nome}"
   },
   "indirizzi": {
     "tab_indirizzi": "Addresses",
@@ -349,7 +351,11 @@
     "nuovo_comune": "New Municipality",
     "comune_creato": "Municipality created",
     "campo_provincia": "Province",
-    "select_provincia": "Select province..."
+    "select_provincia": "Select province...",
+    "toponomastica": "Street Type",
+    "comune": "Municipality",
+    "cap": "Postal Code",
+    "indirizzo": "Address"
   },
   "soggetti": {
     "search_placeholder": "Search by name, tax ID, VAT...",
@@ -358,6 +364,8 @@
     "modifica_soggetto": "Edit Subject",
     "col_ragione_sociale": "Business Name",
     "col_tipo": "Type",
+    "col_ruoli": "Roles",
+    "col_azioni": "",
     "section_contatto": "Contact",
     "section_indirizzo": "Address",
     "section_dati_societari": "Corporate Data",
@@ -366,7 +374,9 @@
     "section_ruoli": "Roles",
     "nessun_ruolo": "No roles assigned",
     "aggiungi_ruolo": "Add role",
-    "select_ruolo": "Select role..."
+    "select_ruolo": "Select role...",
+    "genera_cf": "Generate tax code from personal data",
+    "soggetto": "Subject"
   },
   "dati_societari": {
     "forma_giuridica": "Legal form",
@@ -393,7 +403,15 @@
     "modalita_libera": "Foreign / free-form address",
     "indirizzo_libero": "Address",
     "stato": "Country",
-    "locality": "City / Locality"
+    "locality": "City / Locality",
+    "auto_clone": "Use same address for all required types",
+    "obbligatorio": "Required",
+    "nessun_indirizzo": "No addresses present",
+    "aggiungi_indirizzo": "Add address",
+    "nuovo_indirizzo": "New address",
+    "gestisci_indirizzi": "Manage addresses",
+    "tipi_mancanti": "Required addresses missing: {tipi}",
+    "cambia_indirizzo": "Change address"
   },
   "contatto": {
     "nominativo": "Contact name",
@@ -402,7 +420,15 @@
     "select_tipo_contatto": "Select contact type...",
     "unita_organizzativa": "Organizational unit",
     "select_unita_organizzativa": "Select organizational unit...",
-    "note": "Notes"
+    "note": "Notes",
+    "nessun_contatto": "No contacts present",
+    "aggiungi_contatto": "Add contact",
+    "nuovo_contatto": "New contact",
+    "modifica_contatto": "Edit contact",
+    "contatto_creato": "Contact created",
+    "contatto_salvato": "Contact saved",
+    "contatto_eliminato": "Contact deleted",
+    "gestisci_contatti": "Manage contacts"
   },
   "geo": {
     "tab_province": "Provinces",
@@ -432,6 +458,9 @@
     "nuovo_stato": "New Country",
     "modifica_stato": "Edit Country",
     "stato_creato": "Country created",
-    "stato_salvato": "Country saved"
+    "stato_salvato": "Country saved",
+    "stato": "Country",
+    "regione": "Region",
+    "provincia": "Province"
   }
 }

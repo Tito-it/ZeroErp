@@ -1,15 +1,15 @@
-## 📘 Elenco GUC definite in Zero ERP
+## Elenco GUC definite in Zero ERP
 
 >
 > (latest review 02-01-26)
 >
-> 👀 **Vedi anche**
+> **Vedi anche**
 >
 > * [Parametri personalizzati (GUC)](/postgresql/parametri-personalizzati-(GUC))
 
 ---
 
-### 📋 Tabella di riferimento
+### Tabella di riferimento
 
 | GUC                                       | Default | Ambito   | Descrizione                                                                          | Usata da                                    |
 | ----------------------------------------- | ------- | -------- | ------------------------------------------------------------------------------------ | ------------------------------------------- |
@@ -22,7 +22,7 @@
 
 ---
 
-### 📝 Note
+### Note
 
 * I default indicati come `n/d` dipendono dalla configurazione dell'istanza.
 * Le GUC di manutenzione sono **locali di sessione** e si usano solo in procedure controllate.

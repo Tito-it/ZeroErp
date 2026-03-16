@@ -90,3 +90,22 @@ class IndirizziDetailView(DomainAPIView):
         return handle_post_json(request, handler=lambda p: GeoService().update_indirizzo(pk, p))
 
 
+class IndirizziCheckDuplicatoView(DomainAPIView):
+    """POST check duplicato indirizzo (stradario_id + civico)."""
+    area_funzionale = "anagrafiche"
+
+    @extend_schema(
+        request=inline_serializer(name="IndirizzoCheckDupReq", fields={
+            "stradario_id": serializers.IntegerField(required=False),
+            "civico": serializers.IntegerField(required=False),
+        }),
+        responses={200: inline_serializer(name="IndirizzoCheckDupResp", fields={"data": serializers.DictField()})},
+    )
+    # Scopo: Check duplicato indirizzo per warning immediato nel frontend.
+    def post(self, request: Request) -> JsonResponse:
+        return handle_post_json(
+            request,
+            handler=lambda p: GeoService().check_indirizzo_duplicato(p),
+        )
+
+

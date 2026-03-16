@@ -1,12 +1,12 @@
-## 📘 Estensione PostgreSQL: `dblink`
+## Estensione PostgreSQL: `dblink`
 
-> 👀 **Vedi anche**
+> **Vedi anche**
 >
-> Approfondimenti correlati:   
-> • [script.fn_ensure_logconn](/dbzero/script/funzioni/fn_ensure_logconn)   
-> • [dbops.fn_get_or_create_session_tx_id](/dbzero/dbops/funzioni/fn_get_or_create_session_tx_id)   
+> Approfondimenti correlati:
+> - [script.fn_ensure_logconn](/dbzero/script/funzioni/fn_ensure_logconn)
+> - [dbops.fn_get_or_create_session_tx_id](/dbzero/dbops/funzioni/fn_get_or_create_session_tx_id)
 
-L’estensione **`dblink`** consente l’esecuzione di query tra database PostgreSQL diversi o sullo stesso server ma su database separati. In Zero ERP è utilizzata principalmente per:
+L'estensione **`dblink`** consente l'esecuzione di query tra database PostgreSQL diversi o sullo stesso server ma su database separati. In Zero ERP e' utilizzata principalmente per:
 
 * Logging remoto indipendente dalla transazione corrente
 * Operazioni tecniche asincrone
@@ -14,17 +14,17 @@ L’estensione **`dblink`** consente l’esecuzione di query tra database Postgr
 
 ---
 
-## 🚨 Sezione critica – *Configurazione necessaria prima dell’utilizzo*
+## Sezione critica — Configurazione necessaria prima dell'utilizzo
 
-> 🔴 **FONDAMENTALE**
-> Prima di utilizzare `dblink`, è necessario configurare correttamente i parametri di connessione.
-> Questa operazione **deve essere eseguita come `postgres`** (utente superuser) e può essere necessaria *dopo ogni clonazione o restore del database*.
+> **FONDAMENTALE**
+> Prima di utilizzare `dblink`, e' necessario configurare correttamente i parametri di connessione.
+> Questa operazione **deve essere eseguita come `postgres`** (utente superuser) e puo' essere necessaria *dopo ogni clonazione o restore del database*.
 
-### 🔒 1. Evitare password in chiaro
+### 1. Evitare password in chiaro
 
-Utilizzare **pg_service.conf** anziché inserire direttamente `password=` nei parametri.
+Utilizzare **pg_service.conf** anziche' inserire direttamente `password=` nei parametri.
 
-📁 Percorso consigliato (utente `postgres`):
+Percorso consigliato (utente `postgres`):
 
 ```
 /var/lib/postgresql/.pg_service.conf
@@ -37,10 +37,10 @@ Esempio contenuto:
 dbname=zeroerp
 host=localhost
 user=titodb
-password=••••••
+password=******
 ```
 
-🔹 Permessi suggeriti:
+Permessi suggeriti:
 
 ```bash
 sudo chown postgres:postgres /var/lib/postgresql/.pg_service.conf
@@ -49,7 +49,7 @@ sudo chmod 600 /var/lib/postgresql/.pg_service.conf
 
 ---
 
-### 🛠️ 2. Impostare il parametro di connessione (GUC)
+### 2. Impostare il parametro di connessione (GUC)
 
 Eseguire come utente `postgres`:
 
@@ -58,7 +58,7 @@ ALTER DATABASE zeroerp
   SET myapp.dblink_log_connection = 'service=zeroerp_log';
 ```
 
-📌 Verifica caricamento parametro:
+Verifica caricamento parametro:
 
 ```sql
 SHOW myapp.dblink_log_connection;
@@ -67,7 +67,7 @@ SHOW myapp.dblink_log_connection;
 
 ---
 
-### 🧪 3. Test funzionale tramite funzione
+### 3. Test funzionale tramite funzione
 
 Dopo aver impostato la configurazione, verificare:
 
@@ -75,25 +75,26 @@ Dopo aver impostato la configurazione, verificare:
 SELECT script.fn_ensure_logconn();
 
 SELECT dbops.fn_get_or_create_session_tx_id();
-
 ```
+
 **Nota:**
-  Per funzione fn_get_or_create_sessio_tx_id risultato atteso la generazione di un UUID , verificare su messaggi che non ci siano segnalazioni. Eseguire la function su una nuova sessione Sql(su Pgadmin) in modo da essere certi che non ci siano precedenti attività. 
+Per funzione fn_get_or_create_session_tx_id risultato atteso la generazione di un UUID, verificare su messaggi che non ci siano segnalazioni. Eseguire la function su una nuova sessione SQL (su pgAdmin) in modo da essere certi che non ci siano precedenti attivita'.
+
 ---
 
-## 🛠️ Procedura completa (nuovo ambiente / restore DB)
+## Procedura completa (nuovo ambiente / restore DB)
 
 | Step | Azione                                      | Eseguito come      |
 | ---- | ------------------------------------------- | ------------------ |
-| 1️⃣  | Abilitare estensione dblink                 | postgres           |
-| 2️⃣  | Creare utente tecnico (es. `titodb`)        | postgres           |
-| 3️⃣  | Configurare `.pg_service.conf`              | root/postgres      |
-| 4️⃣  | Impostare GUC `myapp.dblink_log_connection` | postgres           |
-| 5️⃣  | Verifica con `fn_ensure_logconn()`          | utente tecnico/app |
+| 1    | Abilitare estensione dblink                 | postgres           |
+| 2    | Creare utente tecnico (es. `titodb`)        | postgres           |
+| 3    | Configurare `.pg_service.conf`              | root/postgres      |
+| 4    | Impostare GUC `myapp.dblink_log_connection` | postgres           |
+| 5    | Verifica con `fn_ensure_logconn()`          | utente tecnico/app |
 
 ---
 
-## 🧱 Installazione estensione
+## Installazione estensione
 
 ```sql
 CREATE EXTENSION IF NOT EXISTS dblink;
@@ -101,7 +102,7 @@ CREATE EXTENSION IF NOT EXISTS dblink;
 
 ---
 
-## 🔗 Funzioni principali
+## Funzioni principali
 
 | Funzione                                      | Descrizione              |
 | --------------------------------------------- | ------------------------ |
@@ -111,7 +112,7 @@ CREATE EXTENSION IF NOT EXISTS dblink;
 
 ---
 
-## 📋 Esempio d’uso in Zero ERP
+## Esempio d'uso in Zero ERP
 
 ```plpgsql
 PERFORM script.fn_ensure_logconn(); -- Assicura connessione log
@@ -129,19 +130,18 @@ Questo approccio garantisce che il log venga salvato **indipendentemente dalla t
 
 ---
 
-## 🔒 Buone pratiche Zero ERP
+## Buone pratiche Zero ERP
 
-✔️ Utilizzare **utente tecnico dedicato** (es. `titodb`)
-✔️ Evitare password in chiaro nei parametri GUC
-✔️ Usare connessioni preconfigurate (`service=...`)
-✔️ Utilizzare `script.fn_ensure_logconn()` come controllo iniziale
-✔️ Dopo restore/clonazione → ricreare `.pg_service.conf` e reimpostare parametro
+* Utilizzare **utente tecnico dedicato** (es. `titodb`)
+* Evitare password in chiaro nei parametri GUC
+* Usare connessioni preconfigurate (`service=...`)
+* Utilizzare `script.fn_ensure_logconn()` come controllo iniziale
+* Dopo restore/clonazione → ricreare `.pg_service.conf` e reimpostare parametro
 
 ---
 
-> 🧠 *“L’utilizzo corretto di `dblink` garantisce logging distribuito affidabile e integrazione tecnica sicura, mantenendo l’operatività isolata dalla transazione principale.”*
+> *"L'utilizzo corretto di `dblink` garantisce logging distribuito affidabile e integrazione tecnica sicura, mantenendo l'operativita' isolata dalla transazione principale."*
 
 ---
 
 {% include-markdown "signature-core.md" %}
-
