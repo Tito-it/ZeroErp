@@ -1,25 +1,25 @@
-# 📘 Estensione PostgreSQL: **pgAgent**
+# Estensione PostgreSQL: pgAgent
 
-> 👀 **Vedi anche**
+> **Vedi anche**
 >
-> * Schema e utilità: **[`maintenance`](/dbzero/maintenance)**
+> * Schema e utilita': **[`maintenance`](/dbzero/maintenance)**
 > * Estensioni utili: [`pgcrypto`](/postgresql/pgcrypto), [`dblink`](/postgresql/dblink)
 
-L’**agent di schedulazione** per PostgreSQL. In Zero ERP lo adotteremo come **best practice** per **tutte le attività periodiche** legate al database (manutenzione, allineamenti, pulizie, compattazioni, verifiche, rebuild/refresh, storicizzazioni, ecc.).
- q
+L'**agent di schedulazione** per PostgreSQL. In Zero ERP lo adotteremo come **best practice** per **tutte le attivita' periodiche** legate al database (manutenzione, allineamenti, pulizie, compattazioni, verifiche, rebuild/refresh, storicizzazioni, ecc.).
+
 ---
 
-## 🎯 Obiettivi
+## Obiettivi
 
-* Eseguire **job programmati** interamente lato DB (affidabilità, atomicità, tracciabilità).
+* Eseguire **job programmati** interamente lato DB (affidabilita', atomicita', tracciabilita').
 * Tenere **tutta la logica di manutenzione** in un unico posto: schema `maintenance` + job pgAgent.
-* Rendere riproducibile in **CI/CD** l’installazione/configurazione dei job.
+* Rendere riproducibile in **CI/CD** l'installazione/configurazione dei job.
 
 ---
 
-## 🧩 Concetti chiave
+## Concetti chiave
 
-* **Job**: entità principale (nome, descrizione, abilitato). Tabella: `pgagent.pga_job`.
+* **Job**: entita' principale (nome, descrizione, abilitato). Tabella: `pgagent.pga_job`.
 * **Schedule**: quando eseguire (minuti, ore, weekday, monthday, mesi). Tabella: `pgagent.pga_schedule`.
 * **Step**: cosa eseguire (SQL o shell). Tabella: `pgagent.pga_jobstep`.
 
@@ -27,33 +27,33 @@ L’**agent di schedulazione** per PostgreSQL. In Zero ERP lo adotteremo come **
 * **Log**: `pgagent.pga_joblog` e `pgagent.pga_jobsteplog`.
 * **Classi**: categorie (es. *Routine Maintenance*). Tabella: `pgagent.pga_jobclass`.
 
-> ℹ️ **Dove sono salvati i job?** Nelle tabelle dello **schema `pgagent`** del **database scelto** (es.: `zeroerp` in CI o `Zero` in locale). Non ci sono file esterni.
+> **Dove sono salvati i job?** Nelle tabelle dello **schema `pgagent`** del **database scelto** (es.: `zeroerp` in CI o `Zero` in locale). Non ci sono file esterni.
 
 ---
 
-## 🏗️ Struttura di progetto (linee guida)
+## Struttura di progetto (linee guida)
 
 * Tutte le procedure/funzioni usate dai job vivono nello **schema `maintenance`**.
 
   * Esempi: `maintenance.run_and_log(...)`, `maintenance.apply_storicizza_defaults_job()`.
-* Le procedure “di business” possono restare in `dbops` e venire **wrappate** in `maintenance` per logging/lock.
+* Le procedure "di business" possono restare in `dbops` e venire **wrappate** in `maintenance` per logging/lock.
 * I job pgAgent **richiamano sempre** wrapper di `maintenance` (log + advisory lock).
 
 ---
 
-## ⚙️ Prerequisiti
+## Prerequisiti
 
-* PostgreSQL ≥ 17.5 .
-* Estensioni utili già create dove servono: `CREATE EXTENSION IF NOT EXISTS pgcrypto;` (UUID), `dblink` (se si logga fuori transazione).
-* Schema `pgagent` installato nel **database target** (quello che userà pgAgent).
+* PostgreSQL >= 17.5.
+* Estensioni utili gia' create dove servono: `CREATE EXTENSION IF NOT EXISTS pgcrypto;` (UUID), `dblink` (se si logga fuori transazione).
+* Schema `pgagent` installato nel **database target** (quello che usera' pgAgent).
 
-  * In molte installazioni è disponibile **come estensione**: `CREATE EXTENSION IF NOT EXISTS pgagent;`
+  * In molte installazioni e' disponibile **come estensione**: `CREATE EXTENSION IF NOT EXISTS pgagent;`
     In alternativa caricare lo script SQL fornito dal pacchetto pgAgent.
 * **pgAdmin**: il nodo *pgAgent Jobs* mostra i job del **Maintenance DB** configurato nel server. Assicurarsi che punti al DB giusto (es. `zeroerp`).
 
 ---
 
-## 🪪 Permessi consigliati
+## Permessi consigliati
 
 * Utente/servizio del pgAgent con ruolo dedicato (es. `maintenance_executor`):
 
@@ -73,7 +73,7 @@ GRANT maintenance_executor TO postgres;
 
 ---
 
-## 🧰 Schema `maintenance` (setup minimo)
+## Schema `maintenance` (setup minimo)
 
 ```sql
 -- 0) Schema
@@ -170,7 +170,7 @@ $$;
 
 ---
 
-## 🛠️ Creare un job (esempio: **sabato ore 07:00**)
+## Creare un job (esempio: sabato ore 07:00)
 
 ```sql
 DO $$
@@ -248,7 +248,7 @@ SELECT s.jstname, s.jstkind, s.jstdbname, s.jstcode
 
 ---
 
-## 🪟 Installazione su Windows (servizio)
+## Installazione su Windows (servizio)
 
 ```powershell
 # Apri PowerShell/cmd come Amministratore
@@ -263,11 +263,11 @@ sc query pgagent-pg17
 "C:\Program Files\PostgreSQL\17\bin\pgagent.exe" REMOVE pgagent-pg17
 ```
 
-> 🔎 In pgAdmin il nodo **pgAgent Jobs** è a **livello server** e legge dal **Maintenance DB** configurato nelle *Properties* del server (impostalo al DB che contiene `pgagent.*`).
+> In pgAdmin il nodo **pgAgent Jobs** e' a **livello server** e legge dal **Maintenance DB** configurato nelle *Properties* del server (impostalo al DB che contiene `pgagent.*`).
 
 ---
 
-## 🐧 Integrazione CI (Ubuntu/GitHub Actions)
+## Integrazione CI (Ubuntu/GitHub Actions)
 
 Aggiungi un **servizio pgAgent** accanto a PostgreSQL e verifica che il job giri.
 
@@ -306,21 +306,21 @@ services:
       "SELECT * FROM maintenance.job_run_log ORDER BY id DESC LIMIT 1;"
 ```
 
-> 🔐 Gestisci le password via `secrets` del provider CI. Evita di committare credenziali.
+> Gestisci le password via `secrets` del provider CI. Evita di committare credenziali.
 
 ---
 
-## 🧯 Troubleshooting
+## Troubleshooting
 
 * **Job non visibile in pgAdmin** → imposta *Maintenance database* del server al DB che contiene `pgagent.*` e fai *Refresh*.
-* **Errore “database non esiste”** → la connect string del servizio punta al DB sbagliato; correggi `dbname=...`.
+* **Errore "database non esiste"** → la connect string del servizio punta al DB sbagliato; correggi `dbname=...`.
 * **Step SQL non parte** → verifica `jstkind = 's'`, `jstdbname` coincide col DB vero, e permessi su oggetti target.
 * **Overlap esecuzioni** → usa `maintenance.run_and_log(..., p_lock_key := ...)`.
 * **Liquibase blocca su funzioni** → usa `splitStatements: false` e niente apici tipografici.
 
 ---
 
-## 🧰 Backup & migrazione dei job
+## Backup e migrazione dei job
 
 ```bash
 pg_dump -h <host> -U <user> -d <db> \
@@ -333,25 +333,25 @@ pg_dump -h <host> -U <user> -d <db> \
 
 ---
 
-## ✅ Checklist rapida
+## Checklist rapida
 
 * [ ] `CREATE EXTENSION pgagent;` (o install script) nel DB target
 * [ ] pgAdmin → *Maintenance DB* = DB con `pgagent.*`
 * [ ] Schema `maintenance` con `run_and_log` + tabelle log
 * [ ] Job/step creano solo wrapper `maintenance.*`
-* [ ] CI: servizio `pgagent` e verifica post‐migrazione
+* [ ] CI: servizio `pgagent` e verifica post-migrazione
 * [ ] Permessi minimi e password in `secrets`
 
 ---
 
-> 📌 Nota sul recupero dei job non eseguiti
-> pgAgent non recupera automaticamente le esecuzioni perse se il database/server era spento all’orario pianificato.
-> In ambiente Linux è possibile affiancare o sostituire pgAgent con un systemd timer configurato con OnCalendar= e    Persistent=true, che riesegue il job alla prima occasione utile dopo un’interruzione.
->In ambiente Windows l’Utilità di pianificazione (Task Scheduler) offre l’opzione “Esegui il più presto possibile dopo un avvio pianificato mancato”, che permette di avviare un’attività pianificata al riavvio se l’orario previsto è stato perso.
+> **Nota sul recupero dei job non eseguiti:**
+> pgAgent non recupera automaticamente le esecuzioni perse se il database/server era spento all'orario pianificato.
+> In ambiente Linux e' possibile affiancare o sostituire pgAgent con un systemd timer configurato con OnCalendar= e Persistent=true, che riesegue il job alla prima occasione utile dopo un'interruzione.
+> In ambiente Windows l'Utilita' di pianificazione (Task Scheduler) offre l'opzione "Esegui il piu' presto possibile dopo un avvio pianificato mancato", che permette di avviare un'attivita' pianificata al riavvio se l'orario previsto e' stato perso.
 
 ---
 
-> 🧠 **Regola d’oro**: tutto ciò che è manutenzione periodica del DB vive in `maintenance` ed è schedulato da pgAgent. Log, lock ed error handling sono standardizzati nel wrapper `run_and_log`.
+> **Regola d'oro**: tutto cio' che e' manutenzione periodica del DB vive in `maintenance` ed e' schedulato da pgAgent. Log, lock ed error handling sono standardizzati nel wrapper `run_and_log`.
 
 ---
 {% include-markdown "signature-core.md" %}
