@@ -136,7 +136,7 @@ class LookupRepository:
               FROM config.comuni c
               LEFT JOIN config.province p ON p.id = c.provincia_id
              WHERE (%s::text IS NULL OR c.descrizione ILIKE %s)
-             ORDER BY c.descrizione
+             ORDER BY c.descrizione, c.id
              LIMIT %s OFFSET %s
         """
         with connection.cursor() as cursor:
@@ -179,5 +179,28 @@ class LookupRepository:
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [comune_id, search, limit])
+            cols = [c.name for c in cursor.description]
+            return [dict(zip(cols, row)) for row in cursor.fetchall()]
+
+    # Scopo: Ricerca vie su stradario_generale (senza comune/CAP) per autocomplete via nuova.
+    # Chiama script.fn_search_stradario_generale(p_search, p_toponomastica_id, p_limit).
+    # Restituisce stradario_generale_id, toponomastica_id, toponimo, denominazione, indirizzo_normalizzato.
+    def search_stradario_generale(
+        self,
+        *,
+        search: str | None = None,
+        toponomastica_id: int | None = None,
+        limit: int = 30,
+    ) -> list[dict[str, Any]]:
+        sql = """
+            SELECT *
+              FROM script.fn_search_stradario_generale(
+                       p_search           := %s,
+                       p_toponomastica_id := %s,
+                       p_limit            := %s
+                   )
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [search, toponomastica_id, limit])
             cols = [c.name for c in cursor.description]
             return [dict(zip(cols, row)) for row in cursor.fetchall()]

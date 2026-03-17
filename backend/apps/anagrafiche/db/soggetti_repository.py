@@ -312,7 +312,7 @@ class SoggettiRepository:
     # Indirizzi soggetto
     # =================================================================
 
-    # Scopo: Lista indirizzi layer soggetto.
+    # Scopo: Lista indirizzi layer soggetto con dettaglio geografico per UI.
     def get_soggetto_indirizzi(self, soggetto_id: str) -> list[dict[str, Any]]:
         sql = """
             SELECT isog.id, isog.tipo_indirizzo_id,
@@ -322,11 +322,21 @@ class SoggettiRepository:
                    isog.indirizzo_libero,
                    isog.stato_id, isog.comune_id,
                    COALESCE(isog.indirizzo_libero,
-                            idet.indirizzo_normalizzato) AS indirizzo_display
+                            idet.indirizzo_normalizzato) AS indirizzo_display,
+                   idet.stradario_id,
+                   idet.civico,
+                   idet.estensione_civico,
+                   idet.via_norm AS stradario_display,
+                   s.comune_id AS det_comune_id,
+                   c.descrizione AS descrizione_comune
               FROM anagrafiche.indirizzi_soggetti isog
               JOIN config.tipi_indirizzi ti ON ti.id = isog.tipo_indirizzo_id
               LEFT JOIN anagrafiche.indirizzi_dettaglio idet
                 ON idet.id = isog.indirizzo_dettaglio_id
+              LEFT JOIN config.stradario s
+                ON s.id = idet.stradario_id
+              LEFT JOIN config.comuni c
+                ON c.id = s.comune_id
              WHERE isog.soggetto_id = %s::uuid
              ORDER BY ti.id
         """

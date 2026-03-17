@@ -44,3 +44,9 @@ export function searchStradario(comuneId, search, limit = 20) {
     params: { comune_id: comuneId, search, limit }
   })
 }
+
+export function searchStradarioGenerale(search, limit = 30) {
+  return api.get(`${BASE}/search/stradario-generale/`, {
+    params: { search, limit }
+  })
+}

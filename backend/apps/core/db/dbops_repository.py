@@ -168,6 +168,7 @@ class DbopsRepository:
                      OR codice ILIKE %s
                      OR descrizione ILIKE %s
                  )
+                 ORDER BY descrizione, id
                  LIMIT %s OFFSET %s
                 """,
                 [
@@ -243,7 +244,7 @@ class DbopsRepository:
                    AND (%s::text IS NULL
                         OR codice ILIKE %s
                         OR descrizione ILIKE %s)
-                 ORDER BY codice
+                 ORDER BY codice, id
                  LIMIT %s OFFSET %s
                 """,
                 [attivo_only, search_pattern, search_pattern, search_pattern,
@@ -288,7 +289,7 @@ class DbopsRepository:
                    AND (%s::text IS NULL
                         OR r.task_code ILIKE %s
                         OR r.descrizione ILIKE %s)
-                 ORDER BY d.codice, r.task_code
+                 ORDER BY d.codice, r.task_code, r.id
                  LIMIT %s OFFSET %s
                 """,
                 [attivo_only, dominio_codice, dominio_codice,
@@ -334,7 +335,7 @@ class DbopsRepository:
                  WHERE (%s IS FALSE OR i.attivo = true)
                    AND (%s::text IS NULL OR r.task_code = %s)
                    AND (%s::text IS NULL OR d.codice = %s)
-                 ORDER BY r.task_code, i.implementation_key
+                 ORDER BY r.task_code, i.implementation_key, i.id
                  LIMIT %s OFFSET %s
                 """,
                 [attivo_only, task_code, task_code,
@@ -392,7 +393,7 @@ class DbopsRepository:
                    AND (%s::text IS NULL
                         OR function_name ILIKE %s
                         OR message ILIKE %s)
-                 ORDER BY executed_at DESC
+                 ORDER BY executed_at DESC, id DESC
                  LIMIT %s OFFSET %s
                 """,
                 [

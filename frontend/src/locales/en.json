@@ -321,7 +321,7 @@
     "col_attivo": "Status",
     "col_descrizione": "Description",
     "campo_comune": "Municipality",
-    "campo_via": "Street",
+    "campo_via": "Address",
     "campo_toponomastica": "Street type",
     "campo_nome_via": "Street name",
     "campo_cap": "Postal Code",
@@ -337,7 +337,7 @@
     "modifica_cap": "Edit Postal Code",
     "cap_creato": "Postal code created",
     "cap_salvato": "Postal code saved",
-    "via_non_presente": "Street not listed, create new",
+    "via_non_presente": "Address not listed, create new",
     "indirizzo_creato": "Address created",
     "indirizzo_salvato": "Address saved",
     "indirizzo_esistente": "Existing address, linked",
@@ -411,7 +411,11 @@
     "nuovo_indirizzo": "New address",
     "gestisci_indirizzi": "Manage addresses",
     "tipi_mancanti": "Required addresses missing: {tipi}",
-    "cambia_indirizzo": "Change address"
+    "cambia_indirizzo": "Change address",
+    "context_soggetto": "Subject",
+    "context_cliente": "Customer",
+    "context_fornitore": "Supplier",
+    "replace_non_trovato": "Address not found. To create a new one use \"Address not listed, create new\"."
   },
   "contatto": {
     "nominativo": "Contact name",
@@ -462,5 +466,8 @@
     "stato": "Country",
     "regione": "Region",
     "provincia": "Province"
+  },
+  "validation": {
+    "email_format": "Invalid email format"
   }
 }

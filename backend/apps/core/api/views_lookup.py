@@ -171,3 +171,37 @@ class SearchStradarioView(DomainAPIView):
             comune_id=comune_id, search=search, limit=limit,
         )
         return success_response({"results": results})
+
+
+class SearchStradarioGeneraleView(DomainAPIView):
+    """Autocomplete vie su stradario_generale (senza comune/CAP) per via nuova."""
+    skip_area_check = True
+    is_search_endpoint = True
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(name="search", type=str, required=True,
+                             description="Ricerca su indirizzo_normalizzato (min 2 caratteri)."),
+            OpenApiParameter(name="toponomastica_id", type=int, required=False,
+                             description="Filtro opzionale per tipo strada."),
+            OpenApiParameter(name="limit", type=int, required=False,
+                             description="Righe massime (default 30, max 100)."),
+        ],
+        responses={200: inline_serializer(
+            name="StradarioGeneraleSearchResponse",
+            fields={"data": serializers.ListField(child=serializers.DictField())},
+        )},
+    )
+    # Scopo: Ricerca vie su stradario_generale per autocomplete via nuova.
+    # L'utente cerca una via in tutta Italia, poi sceglie comune e CAP separatamente.
+    def get(self, request: Request) -> JsonResponse:
+        qp = request.query_params
+        search = (qp.get("search") or "").strip() or None
+        toponomastica_id = optional_int(qp, "toponomastica_id")
+        limit = min(qp_int(qp.get("limit"), 30), 100)
+
+        repo = LookupRepository()
+        results = repo.search_stradario_generale(
+            search=search, toponomastica_id=toponomastica_id, limit=limit,
+        )
+        return success_response({"results": results})

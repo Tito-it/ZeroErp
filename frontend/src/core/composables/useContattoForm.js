@@ -5,6 +5,7 @@
 import { reactive } from 'vue'
 import { useLookup } from './useLookup'
 import { lookupCodici } from '../apiCore'
+import { isEmailValid } from '../utils/validators'
 
 export function useContattoForm(options = {}) {
   const { requireEmail = false } = options
@@ -30,11 +31,15 @@ export function useContattoForm(options = {}) {
     () => lookupCodici('config.unita_organizzative')
   )
 
-  // Scopo: Validazione campi contatto.
+  // Scopo: Validazione campi contatto (presenza + formato email/pec).
   function validate() {
     const errors = []
     if (!form.nominativo.trim()) errors.push('nominativo')
     if (requireEmail && !form.email.trim()) errors.push('email')
+    // Validazione formato email (solo se compilato)
+    if (form.email.trim() && !isEmailValid(form.email)) errors.push('email_format')
+    // Validazione formato PEC (stesso formato email, solo se compilato)
+    if (form.pec.trim() && !isEmailValid(form.pec)) errors.push('pec_format')
     return errors
   }
 

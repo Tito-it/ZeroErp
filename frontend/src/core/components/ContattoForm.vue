@@ -10,14 +10,15 @@ import Select from 'primevue/select'
 
 const { t } = useI18n()
 
-defineProps({
+const props = defineProps({
   form: { type: Object, required: true },
   tipiContatto: { type: Object, required: true },
   unitaOrganizzative: { type: Object, default: null },
   requireEmail: { type: Boolean, default: false },
   showUO: { type: Boolean, default: true },
   tipoDisabled: { type: Boolean, default: false },
-  disabled: { type: Boolean, default: false }
+  disabled: { type: Boolean, default: false },
+  errors: { type: Array, default: () => [] }
 })
 </script>
 
@@ -31,11 +32,19 @@ defineProps({
     <div class="form-grid-2col">
       <div class="form-field">
         <label>{{ t('common.email') }}{{ requireEmail ? ' *' : '' }}</label>
-        <InputText v-model="form.email" :disabled="disabled" class="w-full" />
+        <InputText v-model="form.email" :disabled="disabled" class="w-full"
+          :invalid="errors.includes('email') || errors.includes('email_format')" />
+        <small v-if="errors.includes('email_format')" class="app-field-error">
+          {{ t('validation.email_format') }}
+        </small>
       </div>
       <div class="form-field">
         <label>{{ t('common.pec') }}</label>
-        <InputText v-model="form.pec" :disabled="disabled" class="w-full" />
+        <InputText v-model="form.pec" :disabled="disabled" class="w-full"
+          :invalid="errors.includes('pec_format')" />
+        <small v-if="errors.includes('pec_format')" class="app-field-error">
+          {{ t('validation.email_format') }}
+        </small>
       </div>
     </div>
 

@@ -205,6 +205,12 @@ a {
   color: var(--p-text-muted-color);
 }
 
+/* Messaggio errore sotto campo form */
+.app-field-error {
+  color: var(--p-red-500);
+  font-size: 0.75rem;
+}
+
 @media (max-width: 479px) {
   .form-grid-2col {
     grid-template-columns: 1fr;
