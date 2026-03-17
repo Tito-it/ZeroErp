@@ -2,20 +2,19 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimento tabelle:  
+Approfondimento tabelle:  
 >
-> * [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)   
-> * [anagrafiche.conti_bancari](/dbzero/anagrafiche/tabelle/conti_bancari)   
-> * [anagrafiche.soggetti_ruoli_conti_bancari](/dbzero/anagrafiche/tabelle/soggetti_ruoli_conti_bancari)   
+[anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)   
+> [anagrafiche.conti_bancari](/dbzero/anagrafiche/tabelle/conti_bancari)   
+> [anagrafiche.soggetti_ruoli_conti_bancari](/dbzero/anagrafiche/tabelle/soggetti_ruoli_conti_bancari)   
 >
-> Approfondimento funzioni/trigger:   
+Approfondimento funzioni/trigger:   
 >
-> * [anagrafiche.trgfn_bank_check_ruolo_bank_branches](/dbzero/anagrafiche/funzioni/trgfn_bank_check_ruolo_bank_branches)   
+[anagrafiche.trgfn_bank_check_ruolo_bank_branches](/dbzero/anagrafiche/funzioni/trgfn_bank_check_ruolo_bank_branches)   
 > 
+Altre guide correlate:
 >
-> Altre guide correlate:
->
-> * [Gestione conti bancari](/guide/gestione-conti-bancari)
+[Gestione conti bancari](/guide/gestione-conti-bancari)
 
 ---
 
@@ -34,7 +33,7 @@ In sintesi: è il **catalogo delle filiali** per ogni banca censita come ruolo i
 
 ---
 
-### 🔗 Collegamenti con Altre Tabelle
+### Collegamenti con Altre Tabelle
 
 | Campo               | Tabella di riferimento                      | Descrizione                                                                     |
 | ------------------- | ------------------------------------------- | ------------------------------------------------------------------------------- |
@@ -77,7 +76,7 @@ Note:
 
 ---
 
-### 🔍 Indicizzazione
+### Indicizzazione
 
 * **`ix_bank_branches_attivo`**
 
@@ -94,7 +93,7 @@ Queste index supportano bene:
 
 ---
 
-### 🧩 Ruolo nel Modello Conti Bancari
+### Ruolo nel Modello Conti Bancari
 
 La tabella `anagrafiche.bank_branches` è pensata per integrarsi con:
 
@@ -109,17 +108,17 @@ Vantaggi:
 
 ---
 
-### ⚙️ Trigger e Funzioni Coinvolte
+### Trigger e Funzioni Coinvolte
 
 | Trigger                                      | Evento                  | Funzione chiamata                                    | Scopo principale                          |
 | -------------------------------------------- | ----------------------- | ---------------------------------------------------- | ----------------------------------------- |
 | `trg_bank_check_ruolo_bank_branches_ins_upd` | BEFORE INSERT OR UPDATE | `anagrafiche.trgfn_bank_check_ruolo_bank_branches()` | Verifica coerenza del ruolo banca/filiale |
 
-> 📌 Altri trigger di audit/tx-id potrebbero essere aggiunti in futuro per allineare la tabella al framework comune (`dbops.trgfn_tx_id_managed`, `script.trgfn_audit_data_user_generic`, `script.trgfn_storico_generic`, ecc.).
+> Altri trigger di audit/tx-id potrebbero essere aggiunti in futuro per allineare la tabella al framework comune (`dbops.trgfn_tx_id_managed`, `script.trgfn_audit_data_user_generic`, `script.trgfn_storico_generic`, ecc.).
 
 ---
 
-### 💡 Vantaggi Operativi
+### Vantaggi Operativi
 
 * **Chiarezza anagrafica**: separa il concetto di **istituto bancario** (ruolo del soggetto) dalla **singola filiale**.
 * **Riutilizzo**: la stessa filiale può essere referenziata da più conti (`conti_bancari`) evitando duplicazioni incoerenti di ABI/CAB/BIC.
@@ -136,7 +135,7 @@ Vantaggi:
 
 ---
 
-### 🧭 Diagramma ER relazioni (semplificato)
+### Diagramma ER relazioni (semplificato)
 
 ```mermaid
 %%{init: {'er': {'layoutDirection': 'TB'}}}%%
@@ -170,7 +169,7 @@ erDiagram
 
 ---
 
-### ✅ Riepilogo
+### Riepilogo
 
 La tabella **`anagrafiche.bank_branches`** è il **punto di raccordo** tra:
 

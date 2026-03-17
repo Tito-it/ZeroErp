@@ -2,11 +2,11 @@
 
 > 👀 **Vedi anche**
 >
-> Tabelle:
+Tabelle:
 >
-> * [config.transizioni_stati_flussi_pratiche](/dbzero/config/manual/transizioni_stati_flussi_pratiche)
-> * [config.stati_flussi_pratiche](/dbzero/config/tabelle/stati_flussi_pratiche)
-> * [pratiche.flussi](/dbzero/pratiche/tabelle/flussi)
+[config.transizioni_stati_flussi_pratiche](/dbzero/config/manual/transizioni_stati_flussi_pratiche)
+> [config.stati_flussi_pratiche](/dbzero/config/tabelle/stati_flussi_pratiche)
+> [pratiche.flussi](/dbzero/pratiche/tabelle/flussi)
 
 ---
 
@@ -16,7 +16,7 @@ Trigger function guard che **blocca transizioni di stato non ammesse** per i flu
 
 ---
 
-### 🔧 Firma
+### Firma
 
 ```sql
 CREATE OR REPLACE FUNCTION pratiche.trgfn_flussi_guard_transizione()
@@ -26,7 +26,7 @@ LANGUAGE plpgsql
 
 ---
 
-### ⚙️ Logica
+### Logica
 
 1. Se `OLD.stato_id = NEW.stato_id` → nessuna transizione, RETURN NEW senza controllo.
 2. Cerca la coppia `(OLD.stato_id, NEW.stato_id)` in `config.transizioni_stati_flussi_pratiche` con `attivo = true`.
@@ -37,7 +37,7 @@ LANGUAGE plpgsql
 
 ---
 
-### 🔗 Trigger associato
+### Trigger associato
 
 | Nome | Fase | Evento | Tabella |
 |------|------|--------|---------|
@@ -49,7 +49,7 @@ Condizione WHEN: `OLD.stato_id IS DISTINCT FROM NEW.stato_id`.
 
 ---
 
-### 📋 Messaggi errore
+### Messaggi errore
 
 | Codice | Messaggio |
 |--------|-----------|

@@ -2,24 +2,24 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimenti viste:
+Approfondimenti viste:
 >
-> * [anagrafiche.vw_indirizzi_resolved_ruolo](/dbzero/anagrafiche/viste/vw_indirizzi_resolved_ruolo)  
-> * [anagrafiche.vw_indirizzi_resolved_soggetto](/dbzero/anagrafiche/viste/vw_indirizzi_resolved_soggetto)  
-> * [anagrafiche.vw_indirizzi_resolved_all](/dbzero/anagrafiche/viste/vw_indirizzi_resolved_all)  
-> * [anagrafiche.vw_indirizzi_dettaglio](/dbzero/anagrafiche/viste/vw_indirizzi_dettaglio)  
+[anagrafiche.vw_indirizzi_resolved_ruolo](/dbzero/anagrafiche/viste/vw_indirizzi_resolved_ruolo)  
+> [anagrafiche.vw_indirizzi_resolved_soggetto](/dbzero/anagrafiche/viste/vw_indirizzi_resolved_soggetto)  
+> [anagrafiche.vw_indirizzi_resolved_all](/dbzero/anagrafiche/viste/vw_indirizzi_resolved_all)  
+> [anagrafiche.vw_indirizzi_dettaglio](/dbzero/anagrafiche/viste/vw_indirizzi_dettaglio)  
 >
-> Approfondimenti tabelle:
+Approfondimenti tabelle:
 >
-> * [anagrafiche.indirizzi](/dbzero/anagrafiche/tabelle/indirizzi)  
-> * [anagrafiche.indirizzi_soggetti](/dbzero/anagrafiche/tabelle/indirizzi_soggetti)  
-> * [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)  
-> * [config.tipi_indirizzi](/dbzero/config/tabelle/tipi_indirizzi)  
-> * [config.comuni](/dbzero/config/tabelle/comuni)  
-> * [config.codici_postali](/dbzero/config/tabelle/codici_postali)  
-> * [config.province](/dbzero/config/tabelle/province)  
-> * [config.regioni](/dbzero/config/tabelle/regioni)  
-> * [config.stati](/dbzero/config/tabelle/stati)  
+[anagrafiche.indirizzi](/dbzero/anagrafiche/tabelle/indirizzi)  
+> [anagrafiche.indirizzi_soggetti](/dbzero/anagrafiche/tabelle/indirizzi_soggetti)  
+> [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)  
+> [config.tipi_indirizzi](/dbzero/config/tabelle/tipi_indirizzi)  
+> [config.comuni](/dbzero/config/tabelle/comuni)  
+> [config.codici_postali](/dbzero/config/tabelle/codici_postali)  
+> [config.province](/dbzero/config/tabelle/province)  
+> [config.regioni](/dbzero/config/tabelle/regioni)  
+> [config.stati](/dbzero/config/tabelle/stati)  
 
 ---
 
@@ -45,7 +45,7 @@ La vista:
 
 ---
 
-### 🧱 Struttura logica della vista
+### Struttura logica della vista
 
 La vista è costruita come:
 
@@ -56,7 +56,7 @@ La vista è costruita come:
 
 ---
 
-### 🧭 Semantica di `scope`
+### Semantica di `scope`
 
 | scope      | Origine                          | Significato                              |
 | ---------- | -------------------------------- | ---------------------------------------- |
@@ -103,7 +103,7 @@ La vista è costruita come:
 
 ---
 
-### 🔍 Modalità d’uso tipiche
+### Modalità d’uso tipiche
 
 ```sql
 -- Lista completa di indirizzi, con scope e formattazione standard
@@ -121,7 +121,7 @@ WHERE is_normalizzato = TRUE;
 
 ---
 
-### ✅ Best practice e raccomandazioni
+### Best practice e raccomandazioni
 
 * Non utilizzare questa vista per DML: usare sempre le tabelle base.
 * Usarla come sorgente unica per funzioni di lettura/risoluzione.

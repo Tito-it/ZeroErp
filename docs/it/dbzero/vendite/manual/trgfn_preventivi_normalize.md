@@ -2,7 +2,7 @@
 
 > 👀 **Vedi anche**
 >
-> • [vendite.preventivi](/dbzero/vendite/tabelle/preventivi)  
+• [vendite.preventivi](/dbzero/vendite/tabelle/preventivi)  
 
 ---
 
@@ -13,7 +13,7 @@ minimi di data documento in insert quando il numero preventivo e` gia` presente.
 
 ---
 
-### ✅ Regole principali
+### Regole principali
 
 * su `INSERT`, se `numero` e` valorizzato e `data` e` nulla:
   * imposta `data = CURRENT_DATE`;
@@ -21,7 +21,7 @@ minimi di data documento in insert quando il numero preventivo e` gia` presente.
 
 ---
 
-### 🧩 Utilizzo
+### Utilizzo
 
 Usata come trigger `BEFORE INSERT` su `vendite.preventivi` per ridurre casi di
 record parziali in creazione tecnica/automatica.

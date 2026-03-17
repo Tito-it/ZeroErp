@@ -22,7 +22,7 @@ La funzione **`dbops.fn_apply_cleanup_at`** calcola il valore di **`cleanup_at`*
 
 ---
 
-### 🧩 Parametri
+### Parametri
 
 | Parametro           | Tipo      | Descrizione |
 | ------------------- | --------- | ----------- |
@@ -36,7 +36,7 @@ La funzione **`dbops.fn_apply_cleanup_at`** calcola il valore di **`cleanup_at`*
 
 ---
 
-### ✅ Regole Principali
+### Regole Principali
 
 * `p_ttl_days` deve essere **>= 0**.
 * Se la colonna `cleanup_at` o la colonna base non esistono, la funzione **non agisce**.
@@ -44,6 +44,6 @@ La funzione **`dbops.fn_apply_cleanup_at`** calcola il valore di **`cleanup_at`*
 
 ---
 
-### 🔁 Output
+### Output
 
 Ritorna il **numero di righe aggiornate** (o potenziali in dry‑run).

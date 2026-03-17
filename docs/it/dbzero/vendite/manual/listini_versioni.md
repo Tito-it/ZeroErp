@@ -2,21 +2,19 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> • [vendite.listini](/dbzero/vendite/tabelle/listini)  
+• [vendite.listini](/dbzero/vendite/tabelle/listini)  
 > • [vendite.listini_righe](/dbzero/vendite/tabelle/listini_righe)  
 >
----
-
-### 🎯 Scopo Principale
+🎯 Scopo Principale
 
 La tabella `vendite.listini_versioni` gestisce il versionamento temporale dei listini.
 Ogni versione definisce una finestra di validita` e una priorita` operativa.
 
 ---
 
-### ✅ Regole principali
+### Regole principali
 
 * univocita` per `listino_id + codice_versione`;
 * `stato` ammessi:
@@ -30,7 +28,7 @@ Ogni versione definisce una finestra di validita` e una priorita` operativa.
 
 ---
 
-### 🧩 Utilizzo previsto
+### Utilizzo previsto
 
 * garantire coerenza storica prezzi per data di riferimento;
 * supportare publish controllata di nuove versioni;

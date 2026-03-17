@@ -7,7 +7,7 @@ dopo INSERT su `vendite.fatture_log` (trigger statement-level).
 
 ---
 
-### ✅ Regole principali
+### Regole principali
 
 * raccoglie gli `fattura_id` distinti dalla transition table `new_table`;
 * invoca `vendite.fn_sync_fatture_log_critical_lotto(v_ids)`;
@@ -15,7 +15,7 @@ dopo INSERT su `vendite.fatture_log` (trigger statement-level).
 
 ---
 
-### 🔄 Effetto trigger
+### Effetto trigger
 
 * trigger `AFTER INSERT ... FOR EACH STATEMENT`;
 * ritorna `NULL` (comportamento standard statement trigger).

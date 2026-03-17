@@ -2,19 +2,17 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> • [vendite.attivita_fatturabili](/dbzero/vendite/tabelle/attivita_fatturabili)   
+• [vendite.attivita_fatturabili](/dbzero/vendite/tabelle/attivita_fatturabili)   
 > • [anagrafiche.istanze_utilities](/dbzero/anagrafiche/tabelle/istanze_utilities)   
 > • [config.tipi_doc_fiscale](/dbzero/config/tabelle/tipi_doc_fiscale)  
 >
-> **Approfondimento funzioni:**
+**Approfondimento funzioni:**
 >
-> • [backend.fn_execute_pipeline_step](/backend/vendite/funzioni/fn_execute_pipeline_step)   
+• [backend.fn_execute_pipeline_step](/backend/vendite/funzioni/fn_execute_pipeline_step)   
 >
----
-
-### 🎯 Scopo Principale
+🎯 Scopo Principale
 
 (latest review 27-01-2026)
 La funzione **`vendite.fn_select_attivita_fatturabili()`** seleziona le righe
@@ -22,7 +20,7 @@ La funzione **`vendite.fn_select_attivita_fatturabili()`** seleziona le righe
 
 ---
 
-### ✅ Regole principali
+### Regole principali
 
 * `competenza_mese` e` obbligatoria e viene normalizzata al primo del mese.
 * `tipo_doc_fiscale_id` e` obbligatorio.
@@ -39,7 +37,7 @@ La funzione **`vendite.fn_select_attivita_fatturabili()`** seleziona le righe
 
 ---
 
-### 🔍 Filtri opzionali
+### Filtri opzionali
 
 * `billing_account_id`
 * `utility_id` (da billing_account)
@@ -50,13 +48,13 @@ La funzione **`vendite.fn_select_attivita_fatturabili()`** seleziona le righe
 
 ---
 
-### ✅ Output
+### Output
 
 Ritorna le righe selezionate (o lockate) ordinate per `data_attivita`, `id`.
 
 ---
 
-### 🧪 Esempi d’uso
+### Esempi d’uso
 
 **Dry-run (solo selezione)**
 

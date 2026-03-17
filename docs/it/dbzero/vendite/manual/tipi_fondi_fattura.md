@@ -2,14 +2,12 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> • [vendite.fatture_fondi_fattura](/dbzero/vendite/tabelle/fatture_fondi_fattura)  
+• [vendite.fatture_fondi_fattura](/dbzero/vendite/tabelle/fatture_fondi_fattura)  
 > • [vendite.fatture](/dbzero/vendite/tabelle/fatture)  
 >
----
-
-### 🎯 Scopo Principale
+🎯 Scopo Principale
 
 (latest review 10-02-2026)  
 `vendite.tipi_fondi_fattura` definisce il **catalogo delle tipologie di fondo fattura**
@@ -18,7 +16,7 @@ i motivi di addebito/accredito extra rispetto alle righe standard.
 
 ---
 
-### 🧱 Campi chiave (semantica)
+### Campi chiave (semantica)
 
 * **Identita`**: `codice`, `codice_interno`.
 * **Descrizione**: testo leggibile in UI/report.
@@ -26,7 +24,7 @@ i motivi di addebito/accredito extra rispetto alle righe standard.
 
 ---
 
-### ✅ Note operative
+### Note operative
 
 * Le tipologie sono riusate da `vendite.fatture_fondi_fattura`.
 * Non rappresentano articoli: i fondi fattura sono **separati** dalle righe.

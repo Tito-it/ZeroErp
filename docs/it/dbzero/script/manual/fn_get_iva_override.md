@@ -2,10 +2,10 @@
 
 > 👀 **Vedi anche**      
 >   
-> Approfondimento Tabelle:  
+Approfondimento Tabelle:  
 > 
-> * [config.iva](/dbzero/config/tabelle/iva)      
-> * [config.iva_stati](/dbzero/config/tabelle/iva_stati)      
+[config.iva](/dbzero/config/tabelle/iva)      
+> [config.iva_stati](/dbzero/config/tabelle/iva_stati)      
 
 La funzione **`config.fn_get_iva_override(p_codice_iva TEXT, p_stato_id INTEGER)`** restituisce i dati completi della aliquota IVA (codice, descrizioni, natura, conti) per un determinato codice IVA e Stato, applicando eventuali override specifici per Stato definiti in `config.iva_stati`.
 
@@ -22,7 +22,7 @@ La funzione **`config.fn_get_iva_override(p_codice_iva TEXT, p_stato_id INTEGER)
 
 ---
 
-### 🔍 Parametri di Input
+### Parametri di Input
 
 | Nome           | Tipo   | Descrizione                                            |
 | -------------- | ------ | ------------------------------------------------------ |
@@ -31,7 +31,7 @@ La funzione **`config.fn_get_iva_override(p_codice_iva TEXT, p_stato_id INTEGER)
 
 ---
 
-### ⚙️ Flusso Logico
+### Flusso Logico
 
 1. **Join su tabella base**
    Seleziona i campi da `config.iva` per il record con `codice_iva = p_codice_iva`, e unisce a `config.stati` per validare `p_stato_id`.
@@ -82,7 +82,7 @@ $body$;
 
 ---
 
-### 📋 Esempio di Utilizzo
+### Esempio di Utilizzo
 
 ```sql
 SELECT *
@@ -92,7 +92,7 @@ SELECT *
 
 ---
 
-### 💡 Vantaggi Operativi
+### Vantaggi Operativi
 
 * **Semplicità**: un’unica funzione per gestire base e override.
 * **Manutenibilità**: cambiamenti agli override si propagano automaticamente al risultato.
@@ -101,4 +101,4 @@ SELECT *
 
 ---
 
-> 🧠 **“Centralizzare la logica di override IVA in una funzione SQL migliora chiarezza, riuso e governabilità delle regole fiscali.”**
+> **“Centralizzare la logica di override IVA in una funzione SQL migliora chiarezza, riuso e governabilità delle regole fiscali.”**

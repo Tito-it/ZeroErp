@@ -2,15 +2,15 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**  
+**Approfondimento tabelle:**  
 >
-> • [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)   
+• [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)   
 > • [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)  
 > • [config.tipi_ruoli](/dbzero/config/tabelle/tipi_ruoli)   
 >
-> **Approfondimento funzioni / log & sicurezza:**
+**Approfondimento funzioni / log & sicurezza:**
 >
-> • [`script.fn_log_and_raise_error`](/dbzero/script/funzioni/fn_log_and_raise_error)    
+• [`script.fn_log_and_raise_error`](/dbzero/script/funzioni/fn_log_and_raise_error)    
 > • [`script.fn_guard_soggetto_ruolo`](/dbzero/script/funzioni/fn_guard_soggetto_ruolo)    
 
 ---
@@ -36,7 +36,7 @@ In questo modo, qualunque processo (es. creazione cliente, fornitore, gestore, e
 
 ---
 
-### 🧩 Firma
+### Firma
 
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_get_or_create_soggetto_ruolo(
@@ -47,11 +47,11 @@ RETURNS integer
 LANGUAGE plpgsql;
 ```
 
-> 🔎 Ritorna sempre l’**`id` del record in `anagrafiche.soggetti_ruoli`** che rappresenta la coppia `(soggetto, ruolo)`.
+> Ritorna sempre l’**`id` del record in `anagrafiche.soggetti_ruoli`** che rappresenta la coppia `(soggetto, ruolo)`.
 
 ---
 
-### 🧠 Parametri di input
+### Parametri di input
 
 | Nome             | Tipo      | Obbl. | Descrizione                                                                                                    |
 | ---------------- | --------- | :---: | -------------------------------------------------------------------------------------------------------------- |
@@ -60,7 +60,7 @@ LANGUAGE plpgsql;
 
 ---
 
-### 📤 Valore restituito
+### Valore restituito
 
 La funzione restituisce:
 
@@ -94,7 +94,7 @@ Questi codici possono essere mappati su messaggi utente più leggibili tramite i
 
 ---
 
-### 🧱 Dipendenze
+### Dipendenze
 
 **Tabelle:**
 
@@ -117,7 +117,7 @@ Eventuali altre funzioni di dominio (es. check sui ruoli) possono essere costrui
 
 ---
 
-### 🧪 Esempi d’uso
+### Esempi d’uso
 
 #### 1) Assicurare che un soggetto diventi Cliente (`CL`)
 
@@ -169,7 +169,7 @@ END;
 
 ---
 
-### ✅ Best practice e note
+### Best practice e note
 
 * **Single source of truth per i legami soggetto ↔ ruolo**:
   usare sempre questa funzione nei flussi di creazione ruoli (Cliente, Fornitore, Gestore, ecc.) per evitare duplicazioni di logica e problemi di concorrenza.

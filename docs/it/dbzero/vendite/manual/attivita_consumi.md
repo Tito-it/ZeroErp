@@ -2,20 +2,18 @@
 
 > ⚠️ **Work in progress**
 >
-> Questa tabella e` in evoluzione: i dettagli varieranno per utility (gas, energia, acqua).
+Questa tabella e` in evoluzione: i dettagli varieranno per utility (gas, energia, acqua).
 >
-> 👀 **Vedi anche**
+👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> • [vendite.attivita_fatturabili](/dbzero/vendite/tabelle/attivita_fatturabili)  
+• [vendite.attivita_fatturabili](/dbzero/vendite/tabelle/attivita_fatturabili)  
 > • [vendite.attivita_fatturabili_lotti](/dbzero/vendite/tabelle/attivita_fatturabili_lotti)  
 > • [vendite.fatture](/dbzero/vendite/tabelle/fatture)  
 > • [catalogo.unita_misura](/dbzero/catalogo/tabelle/unita_misura)  
 >
----
-
-### 🎯 Scopo Principale
+🎯 Scopo Principale
 
 (latest review 24-01-2026)
 `vendite.attivita_consumi` rappresenta la **testata consumi** per utilities,
@@ -25,7 +23,7 @@ collegata alla fattura in emissione.
 
 ---
 
-### 🧱 Campi chiave (semantica)
+### Campi chiave (semantica)
 
 * **Identita`**: `id`, `uid` (per idempotenza/sorgente).
 * **Legami**: `lotto_attivita_id`, `fattura_id`, `billing_account_id`.
@@ -36,7 +34,7 @@ collegata alla fattura in emissione.
 
 ---
 
-### ✅ Note operative
+### Note operative
 
 * Le righe `attivita_fatturabili` possono collegarsi a questa testata tramite `attivita_consumi_id`.
 * In futuro verranno aggiunte tabelle di dettaglio per utility specifiche.

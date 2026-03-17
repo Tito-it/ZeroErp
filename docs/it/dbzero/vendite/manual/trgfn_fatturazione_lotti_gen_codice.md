@@ -7,7 +7,7 @@ quando non valorizzato in INSERT/UPDATE.
 
 ---
 
-### ✅ Regole principali
+### Regole principali
 
 * se `NEW.codice` e` `NULL` o vuoto (`btrim=''`) viene assegnato:
   * `script.fn_generate_codice('lotti_fatturazione')`
@@ -15,7 +15,7 @@ quando non valorizzato in INSERT/UPDATE.
 
 ---
 
-### 🔄 Effetto trigger
+### Effetto trigger
 
 * trigger `BEFORE` su tabella lotti fatturazione;
 * ritorna `NEW` con eventuale codice generato.

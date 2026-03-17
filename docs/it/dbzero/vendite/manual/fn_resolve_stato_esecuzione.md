@@ -9,7 +9,7 @@ Helper condiviso per risolvere in modo uniforme il valore di `stato_esecuzione` 
 
 ---
 
-### 🔧 Regole applicate
+### Regole applicate
 
 * Priorita` applicata:
   * `esclusa=true` -> mantiene lo stato corrente.
@@ -23,7 +23,7 @@ Helper condiviso per risolvere in modo uniforme il valore di `stato_esecuzione` 
 
 ---
 
-### ✅ Output
+### Output
 
 Ritorna il valore `stato_esecuzione` risolto (`varchar`) tra:
 

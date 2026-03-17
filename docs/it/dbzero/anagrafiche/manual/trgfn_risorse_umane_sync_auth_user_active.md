@@ -2,14 +2,14 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> * [anagrafiche.risorse_umane](/dbzero/anagrafiche/tabelle/risorse_umane)
-> * [anagrafiche.risorse_umane_auth_user](/dbzero/anagrafiche/tabelle/risorse_umane_auth_user)
+[anagrafiche.risorse_umane](/dbzero/anagrafiche/tabelle/risorse_umane)
+> [anagrafiche.risorse_umane_auth_user](/dbzero/anagrafiche/tabelle/risorse_umane_auth_user)
 >
-> **Approfondimento funzioni:**
+**Approfondimento funzioni:**
 >
-> * [anagrafiche.fn_sync_auth_user_is_active](/dbzero/anagrafiche/funzioni/fn_sync_auth_user_is_active)
+[anagrafiche.fn_sync_auth_user_is_active](/dbzero/anagrafiche/funzioni/fn_sync_auth_user_is_active)
 
 ---
 
@@ -29,7 +29,7 @@ La sincronizzazione dipende da:
 
 ---
 
-### 🔍 Regola applicata
+### Regola applicata
 
 * Trigger **AFTER UPDATE OF attivo, valido_dal, valido_al** su
   `anagrafiche.risorse_umane`.
@@ -41,7 +41,7 @@ La sincronizzazione dipende da:
 
 ---
 
-### ✅ Ruolo nel processo
+### Ruolo nel processo
 
 La funzione fa si' che la validita' temporale e lo stato operativo della
 risorsa umana si riflettano automaticamente sull'accesso applicativo

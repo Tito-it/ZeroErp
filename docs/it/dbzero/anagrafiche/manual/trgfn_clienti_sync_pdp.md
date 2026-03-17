@@ -1,17 +1,17 @@
 ## 📘 Documentazione Concettuale – Funzione `anagrafiche.trgfn_clienti_sync_pdp()`
 
 >
-> 👀 **Vedi anche**
+👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 > • [anagrafiche.clienti](/dbzero/anagrafiche/tabelle/clienti)  
 > • [anagrafiche.istanze_utilities](/dbzero/anagrafiche/tabelle/istanze_utilities)  
 > 
-> **Approfondimento funzioni:**
+**Approfondimento funzioni:**
 >
-> • [`anagrafiche.trgfn_clienti_sync_utility_from_ba()`](/dbzero/anagrafiche/funzioni/trgfn_clienti_sync_utility_from_ba)  
+• [`anagrafiche.trgfn_clienti_sync_utility_from_ba()`](/dbzero/anagrafiche/funzioni/trgfn_clienti_sync_utility_from_ba)  
 >
-> • [Guida – Gestione delle Istanze Utility e Collegamento con PDP & Clienti](/guide/gestione-delle-istanze-utility)  
+• [Guida – Gestione delle Istanze Utility e Collegamento con PDP & Clienti](/guide/gestione-delle-istanze-utility)  
 
 ---
 
@@ -26,7 +26,7 @@ In altre parole:
 
 ---
 
-### 🧱 Contesto e tabelle coinvolte
+### Contesto e tabelle coinvolte
 
 **Tabella: `anagrafiche.clienti`**
 
@@ -46,7 +46,7 @@ L’istanza è l’**unica sorgente autorevole** del legame con il PDP; il clien
 
 ---
 
-### 🔍 Logica di funzionamento
+### Logica di funzionamento
 
 Passi principali:
 
@@ -76,7 +76,7 @@ Passi principali:
 
 ---
 
-### 🔧 Trigger associato (schema suggerito)
+### Trigger associato (schema suggerito)
 
 Tipicamente la funzione è collegata a un trigger del tipo:
 
@@ -93,7 +93,7 @@ CREATE OR REPLACE TRIGGER trg_clienti_sync_pdp_ins_upd
 
 ---
 
-### ✅ Regole di coerenza garantite
+### Regole di coerenza garantite
 
 * **Single source of truth**: il PDP associato a un cliente è sempre quello definito sull’istanza (`istanze_utilities.pdp_id`).
 * **Nessun valore "sporco"**: se per qualsiasi motivo l’istanza non esiste (errore di chiamata, incoerenza dati), il `pdp_id` del cliente viene forzato a `NULL`.
@@ -101,7 +101,7 @@ CREATE OR REPLACE TRIGGER trg_clienti_sync_pdp_ins_upd
 
 ---
 
-### 🧪 Esempi di comportamento
+### Esempi di comportamento
 
  Caso 1 – Creazione cliente con istanza valida
 
@@ -129,7 +129,7 @@ CREATE OR REPLACE TRIGGER trg_clienti_sync_pdp_ins_upd
 
 ---
 
-### 🚀 Benefici del disegno
+### Benefici del disegno
 
 * Riduce il rischio di **disallineamento** tra cliente e istanza.
 * Centralizza la logica di sincronizzazione in una singola funzione lato DB.

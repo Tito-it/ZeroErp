@@ -2,10 +2,10 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimento tabelle:
+Approfondimento tabelle:
 >
-> * [pratiche.template_flussi_canali](/dbzero/pratiche/tabelle/template_flussi_canali)
-> * [pratiche.pratiche](/dbzero/pratiche/tabelle/pratiche) (campo `canale_origine_id`)
+[pratiche.template_flussi_canali](/dbzero/pratiche/tabelle/template_flussi_canali)
+> [pratiche.pratiche](/dbzero/pratiche/tabelle/pratiche) (campo `canale_origine_id`)
 
 ---
 
@@ -15,7 +15,7 @@ La tabella `config.canali_pratiche` definisce i **canali di visibilita'** attrav
 
 ---
 
-### 🧱 Ruolo nel processo
+### Ruolo nel processo
 
 * La tabella M:N `pratiche.template_flussi_canali` collega ogni template flusso ai canali su cui e' visibile.
 * Il campo `canale_origine_id` su `pratiche.pratiche` indica da quale canale esterno e' arrivata la richiesta che ha originato la pratica (`NULL` = creata internamente).
@@ -23,7 +23,7 @@ La tabella `config.canali_pratiche` definisce i **canali di visibilita'** attrav
 
 ---
 
-### 📋 Valori previsti (seed DB-6)
+### Valori previsti (seed DB-6)
 
 | codice_interno | Descrizione |
 |----------------|-------------|
@@ -33,13 +33,13 @@ La tabella `config.canali_pratiche` definisce i **canali di visibilita'** attrav
 
 ---
 
-### 💡 Estensibilita'
+### Estensibilita'
 
 Nuovi canali possono essere aggiunti senza modifiche al codice. Basta inserire un record in questa tabella e collegarlo ai template flussi desiderati tramite `template_flussi_canali`.
 
 ---
 
-### ✅ Convenzioni
+### Convenzioni
 
 * Pattern config standard: `codice`, `codice_interno` locked, `attivo`, `meta`, audit.
 * Trigger standard applicati automaticamente da `dbops.fn_run_automations()`.

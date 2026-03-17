@@ -2,14 +2,14 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> * [anagrafiche.risorse_umane](/dbzero/anagrafiche/tabelle/risorse_umane)
-> * [config.unita_organizzative](/dbzero/config/tabelle/unita_organizzative)
+[anagrafiche.risorse_umane](/dbzero/anagrafiche/tabelle/risorse_umane)
+> [config.unita_organizzative](/dbzero/config/tabelle/unita_organizzative)
 >
-> **Approfondimento funzioni:**
+**Approfondimento funzioni:**
 >
-> * [anagrafiche.fn_notify_cambio_reparto](/dbzero/anagrafiche/funzioni/fn_notify_cambio_reparto)
+[anagrafiche.fn_notify_cambio_reparto](/dbzero/anagrafiche/funzioni/fn_notify_cambio_reparto)
 
 ---
 
@@ -26,7 +26,7 @@ La notifica e' pensata per il backend applicativo, che puo' intercettarla via
 
 ---
 
-### 🔍 Regola applicata
+### Regola applicata
 
 * Trigger **AFTER UPDATE OF unita_organizzativa_id** su
   `anagrafiche.risorse_umane`.
@@ -38,7 +38,7 @@ La notifica e' pensata per il backend applicativo, che puo' intercettarla via
 
 ---
 
-### ✅ Ruolo nel processo
+### Ruolo nel processo
 
 La funzione collega una modifica dati lato DB a una reazione applicativa
 asincrona, senza introdurre dipendenze dirette del database dal backend.

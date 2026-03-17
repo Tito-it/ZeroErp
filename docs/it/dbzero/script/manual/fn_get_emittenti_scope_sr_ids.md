@@ -2,16 +2,16 @@
 
 > **Vedi anche**
 >
-> **Tabelle correlate:**
+**Tabelle correlate:**
 >
-> * [config.user_emittenti_fiscali](/dbzero/config/tabelle/user_emittenti_fiscali)
-> * [anagrafiche.emittenti_fiscali](/dbzero/anagrafiche/tabelle/emittenti_fiscali)
-> * [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)
+[config.user_emittenti_fiscali](/dbzero/config/tabelle/user_emittenti_fiscali)
+> [anagrafiche.emittenti_fiscali](/dbzero/anagrafiche/tabelle/emittenti_fiscali)
+> [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)
 >
-> **Funzioni correlate:**
+**Funzioni correlate:**
 >
-> * [script.fn_get_ruolo_sistema](/dbzero/script/funzioni/fn_get_ruolo_sistema)
-> * [script.fn_get_emittenti_scope](/dbzero/script/funzioni/fn_get_emittenti_scope)
+[script.fn_get_ruolo_sistema](/dbzero/script/funzioni/fn_get_ruolo_sistema)
+> [script.fn_get_emittenti_scope](/dbzero/script/funzioni/fn_get_emittenti_scope)
 
 ---
 

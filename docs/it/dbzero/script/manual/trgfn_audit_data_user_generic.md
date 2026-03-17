@@ -21,7 +21,7 @@
 
 ---
 
-### 🔍 Parametri e Contesto
+### Parametri e Contesto
 
 * **Nessun parametro**: la funzione opera su `NEW`, modificando in-place i campi di audit.
 * **Trigger associati**: va utilizzata con `BEFORE INSERT OR UPDATE` su qualsiasi tabella che possieda i campi:
@@ -41,7 +41,7 @@ CREATE TRIGGER trg_<nome_tabella>_audit_data_user_upd
 
 ---
 
-### ⚙️ Comportamento
+### Comportamento
 
 #### Su INSERT
 
@@ -69,7 +69,7 @@ COALESCE(
 
 ---
 
-### 🔧 GUC `app.jwt_user`
+### GUC `app.jwt_user`
 
 La GUC viene impostata dal middleware Django sulla connessione PostgreSQL:
 
@@ -82,14 +82,14 @@ cursor.execute("SELECT set_config('app.jwt_user', %s, true)", [str(request.user)
 
 ---
 
-### 🔒 Valore di Ritorno
+### Valore di Ritorno
 
 * **`trigger`**
   Restituisce il record `NEW` con i campi di audit aggiornati.
 
 ---
 
-### 💡 Vantaggi Operativi
+### Vantaggi Operativi
 
 * **Uniformita`**
   Un'unica trigger function per tutte le tabelle, comportamento omogeneo.
@@ -104,7 +104,7 @@ cursor.execute("SELECT set_config('app.jwt_user', %s, true)", [str(request.user)
 
 ---
 
-### 📋 Cronologia
+### Cronologia
 
 | Data | Modifica |
 |------|----------|

@@ -2,17 +2,17 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimenti viste:
+Approfondimenti viste:
 >
-> * [anagrafiche.vw_indirizzi_resolved_ruolo](/dbzero/anagrafiche/viste/vw_indirizzi_resolved_ruolo)    
-> * [anagrafiche.vw_indirizzi_resolved_soggetto](/dbzero/anagrafiche/viste/vw_indirizzi_resolved_soggetto)   
-> * [anagrafiche.vw_indirizzi_dettaglio](/dbzero/anagrafiche/viste/vw_indirizzi_dettaglio)   
+[anagrafiche.vw_indirizzi_resolved_ruolo](/dbzero/anagrafiche/viste/vw_indirizzi_resolved_ruolo)    
+> [anagrafiche.vw_indirizzi_resolved_soggetto](/dbzero/anagrafiche/viste/vw_indirizzi_resolved_soggetto)   
+> [anagrafiche.vw_indirizzi_dettaglio](/dbzero/anagrafiche/viste/vw_indirizzi_dettaglio)   
 >
-> Approfondimenti tabelle:
+Approfondimenti tabelle:
 >
-> * [anagrafiche.indirizzi](/dbzero/anagrafiche/tabelle/indirizzi)   
-> * [anagrafiche.indirizzi_soggetti](/dbzero/anagrafiche/tabelle/indirizzi_soggetti)   
-> * [config.tipi_indirizzi](/dbzero/config/tabelle/tipi_indirizzi)   
+[anagrafiche.indirizzi](/dbzero/anagrafiche/tabelle/indirizzi)   
+> [anagrafiche.indirizzi_soggetti](/dbzero/anagrafiche/tabelle/indirizzi_soggetti)   
+> [config.tipi_indirizzi](/dbzero/config/tabelle/tipi_indirizzi)   
 
 ---
 
@@ -40,7 +40,7 @@ La vista è **read-only** dal punto di vista logico: tutte le modifiche avvengon
 
 ---
 
-### 🧠 Scelte progettuali e motivazioni
+### Scelte progettuali e motivazioni
 
 **Perché una vista unificata?**
 
@@ -70,7 +70,7 @@ La vista è **read-only** dal punto di vista logico: tutte le modifiche avvengon
 
 ---
 
-### 🧱 Struttura logica della vista
+### Struttura logica della vista
 
 La vista è definita come:
 
@@ -89,7 +89,7 @@ L’uso di **UNION ALL** è intenzionale:
 
 ---
 
-### 🧭 Semantica di `scope`
+### Semantica di `scope`
 
 La colonna `scope` permette di distinguere chiaramente:
 
@@ -132,7 +132,7 @@ Sono esposti anche i campi tecnici/audit (tx_id, data/user insert/update) e i co
 
 ---
 
-### 🔍 Modalità d’uso tipiche
+### Modalità d’uso tipiche
 
 **1) Elenco completo indirizzi di un soggetto**
 
@@ -170,7 +170,7 @@ Questa vista è progettata per diventare la sorgente primaria di:
 
 ---
 
-### ⚙️ Performance e indicizzazioni consigliate
+### Performance e indicizzazioni consigliate
 
 Le prestazioni dipendono dalle tabelle sottostanti; si raccomandano:
 
@@ -182,7 +182,7 @@ Per la vista “all” non si creano indici (a meno di materializzazione).
 
 ---
 
-### ✅ Best practice e raccomandazioni
+### Best practice e raccomandazioni
 
 * Usare questa vista come **entry point unico** per qualunque lettura indirizzi in applicazione.
 * Non “bypassare” direttamente le tabelle nelle query applicative: si perde uniformità e si duplicano logiche.

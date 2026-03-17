@@ -2,18 +2,18 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimento tabelle:  
+Approfondimento tabelle:  
 > 
-> * [dbops.automation_rules_tbl](/dbzero/dbops/tabelle/automation_rules_tbl)    
-> * [dbops.automation_scope](/dbzero/dbops/tabelle/automation_scope)   
+[dbops.automation_rules_tbl](/dbzero/dbops/tabelle/automation_rules_tbl)    
+> [dbops.automation_scope](/dbzero/dbops/tabelle/automation_scope)   
 >
-> Approfondimento funzioni:
+Approfondimento funzioni:
 > 
-> * [dbops.fn_run_automations_lock_columns](/dbzero/dbops/funzioni/fn_run_automations_lock_columns)   
+[dbops.fn_run_automations_lock_columns](/dbzero/dbops/funzioni/fn_run_automations_lock_columns)   
 >
-> Approfondimento trigger:
+Approfondimento trigger:
 > 
-> * [script.trgfn_lock_columns](/dbzero/script/funzioni/trgfn_lock_columns)   
+[script.trgfn_lock_columns](/dbzero/script/funzioni/trgfn_lock_columns)   
 
 ### 🎯 Scopo Principale
 
@@ -25,7 +25,7 @@ il runner la include automaticamente nel trigger.
 
 ---
 
-### 🔑 Campi chiave e semantica
+### Campi chiave e semantica
 
 * **`target_schema`** *(text)* – schema di destinazione.
 * **`target_table`** *(text)* – tabella di destinazione.
@@ -39,7 +39,7 @@ il runner la include automaticamente nel trigger.
 
 ---
 
-### ⚙️ Comportamento del runner
+### Comportamento del runner
 
 `dbops.fn_run_automations_lock_columns`:
 
@@ -50,7 +50,7 @@ il runner la include automaticamente nel trigger.
 
 ---
 
-### ✍️ Esempi
+### Esempi
 
 **Bloccare una colonna extra con codice errore custom:**
 
@@ -67,7 +67,7 @@ VALUES
 
 ---
 
-### 🧠 Best practice
+### Best practice
 
 * Inserisci qui solo le colonne **extra** non standard.
 * Mantieni `exec_mode='AUTO'` salvo esigenze di rilascio controllato.

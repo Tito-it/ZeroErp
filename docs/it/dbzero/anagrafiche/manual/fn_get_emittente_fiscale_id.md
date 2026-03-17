@@ -2,15 +2,13 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**    
+**Approfondimento tabelle:**    
 >
-> • [anagrafiche.emittenti_fiscali_billing_account](/dbzero/anagrafiche/manual/emittenti_fiscali_billing_account)    
+• [anagrafiche.emittenti_fiscali_billing_account](/dbzero/anagrafiche/manual/emittenti_fiscali_billing_account)    
 > • [anagrafiche.emittenti_fiscali](/dbzero/anagrafiche/manual/emittenti_fiscali)    
 >
 
----
-
-### 🎯 Scopo Principale
+🎯 Scopo Principale
 
 (last review 23-01-2026)
 La funzione `anagrafiche.fn_get_emittente_fiscale_id()` risolve l’emittente fiscale
@@ -19,7 +17,7 @@ usa l’emittente **di default globale**.
 
 ---
 
-### ✅ Regole applicate
+### Regole applicate
 
 1. Cerca un mapping specifico per `billing_account_id`.
 2. Se assente, usa la riga con `is_default = true`.

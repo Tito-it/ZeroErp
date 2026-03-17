@@ -2,13 +2,13 @@
 
 > 👀 **Vedi anche**  
 >
-> Approfondimento Tabelle:   
+Approfondimento Tabelle:   
 >
-> * [anagrafiche.indirizzi](/dbzero/anagrafiche/tabelle/indirizzi)  
+[anagrafiche.indirizzi](/dbzero/anagrafiche/tabelle/indirizzi)  
 >
-> Approfondimento funzioni e trigger:   
-> * [script.trgfn_upd_dlt_storico_generic](/dbzero/script/funzioni/trgfn_upd_dlt_storico_generic)  
-> * [dbops.trgfn_tx_id_managed](/dbzero/dbops/funzioni/trgfn_tx_id_managed)   
+Approfondimento funzioni e trigger:   
+> [script.trgfn_upd_dlt_storico_generic](/dbzero/script/funzioni/trgfn_upd_dlt_storico_generic)  
+> [dbops.trgfn_tx_id_managed](/dbzero/dbops/funzioni/trgfn_tx_id_managed)   
 
 ---
 
@@ -35,7 +35,7 @@ Il suo utilizzo è cruciale per:
 
 ---
 
-### 🔗 Collegamenti con Altre Tabelle
+### Collegamenti con Altre Tabelle
 
 * **`anagrafiche.indirizzi`**  
   - Il campo `indirizzo_id` riferisce direttamente alla chiave primaria di `anagrafiche.indirizzi`.  
@@ -45,7 +45,7 @@ Il suo utilizzo è cruciale per:
 
 ---
 
-### 🏷️ Campi Rilevanti
+### Campi Rilevanti
 
 * **`valid_from`** – Data e ora di inizio validità (inclusiva).  
 * **`valid_to`** – Data e ora di fine validità (esclusiva), può essere `NULL` se il record è attualmente valido.  
@@ -63,7 +63,7 @@ Il suo utilizzo è cruciale per:
 
 ---
 
-### 💡 Vantaggi Operativi
+### Vantaggi Operativi
 
 * **Ricostruzione temporale**  
   Permette di risalire allo stato di un indirizzo in una qualsiasi data passata, utile per audit, fatturazioni retroattive o analisi storiche.
@@ -79,4 +79,4 @@ Il suo utilizzo è cruciale per:
 
 ---
 
-> 🧠 **“`storico.indirizzi` è la scatola nera degli indirizzi: cattura ogni cambiamento per garantire memoria storica, auditabilità e coerenza temporale nel tempo.”**
+> **“`storico.indirizzi` è la scatola nera degli indirizzi: cattura ogni cambiamento per garantire memoria storica, auditabilità e coerenza temporale nel tempo.”**

@@ -2,11 +2,11 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimento Tabelle:   
+Approfondimento Tabelle:   
 >
-> * [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)   
-> * [anagrafiche.contatti](/dbzero/anagrafiche/tabelle/contatti)   
-> * [config.tipi_contatti](/dbzero/config/tabelle/tipi_contatti)    
+[anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)   
+> [anagrafiche.contatti](/dbzero/anagrafiche/tabelle/contatti)   
+> [config.tipi_contatti](/dbzero/config/tabelle/tipi_contatti)    
 
 
 La tabella **`config.titoli_cortesia`** raccoglie i titoli di cortesia (es. “Signore”, “Dottore”, “Ingegnere”) utilizzabili nei contatti e nelle anagrafiche, separando la forma estesa dalla sua abbreviazione.
@@ -24,7 +24,7 @@ La tabella **`config.titoli_cortesia`** raccoglie i titoli di cortesia (es. “S
 
 ---
 
-### 🔍 Esempi di valori
+### Esempi di valori
 
 | descrizione    | descrizione_breve |
 | -------------- | ----------------- |
@@ -38,7 +38,7 @@ La tabella **`config.titoli_cortesia`** raccoglie i titoli di cortesia (es. “S
 
 ---
 
-### 🔒 Vincoli e trigger
+### Vincoli e trigger
 
 - **`PK (id)`**: identificatore univoco del titolo.  
 - **`UNIQUE(descrizione)`**: garantisce che non esistano duplicati di titolo esteso.  
@@ -48,7 +48,7 @@ La tabella **`config.titoli_cortesia`** raccoglie i titoli di cortesia (es. “S
 
 ---
 
-### 💡 Vantaggi Operativi
+### Vantaggi Operativi
 
 * **Coerenza terminologica**  
   Un unico elenco di titoli di cortesia evita errori di battitura e differenze tra le varie parti dell’applicazione.  
@@ -57,4 +57,4 @@ La tabella **`config.titoli_cortesia`** raccoglie i titoli di cortesia (es. “S
 * **Flessibilità di presentazione**  
   La doppia descrizione consente di scegliere la forma più adatta in base al contesto (spazi ridotti vs. documentazione dettagliata).
 
-> 🧠 **“Centralizzare i titoli di cortesia migliora uniformità, leggibilità e facilità di gestione dei dati anagrafici.”**  
+> **“Centralizzare i titoli di cortesia migliora uniformità, leggibilità e facilità di gestione dei dati anagrafici.”**  

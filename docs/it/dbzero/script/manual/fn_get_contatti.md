@@ -2,20 +2,20 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimento tabelle:
+Approfondimento tabelle:
 >
-> * [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)
-> * [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)
-> * [anagrafiche.contatti](/dbzero/anagrafiche/tabelle/contatti)
-> * [config.tipi_contatti](/dbzero/config/tabelle/tipi_contatti)
-> * [config.unita_organizzative](/dbzero/config/tabelle/unita_organizzative)
-> * [config.utilities](/dbzero/config/tabelle/utilities)
+[anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)
+> [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)
+> [anagrafiche.contatti](/dbzero/anagrafiche/tabelle/contatti)
+> [config.tipi_contatti](/dbzero/config/tabelle/tipi_contatti)
+> [config.unita_organizzative](/dbzero/config/tabelle/unita_organizzative)
+> [config.utilities](/dbzero/config/tabelle/utilities)
 >
-> Approfondimento funzioni:
+Approfondimento funzioni:
 >
-> * [anagrafiche.trgfn_contatti_set_default_contatto](/dbzero/anagrafiche/funzioni/trgfn_contatti_set_default_contatto)
+[anagrafiche.trgfn_contatti_set_default_contatto](/dbzero/anagrafiche/funzioni/trgfn_contatti_set_default_contatto)
 >
-> * [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)
+[script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)
 
 La funzione **`script.fn_get_contatti(p_soggetto_id UUID, p_soggetto_ruolo_id BIGINT DEFAULT NULL, p_utility_id INTEGER DEFAULT NULL, p_tipo_contatto_id INTEGER DEFAULT NULL, p_unita_organizzativa_id INTEGER DEFAULT NULL)`** restituisce **al più un contatto per ciascun `tipo_contatto_id`**, applicando una logica di priorità basata sul **contesto** (soggetto / ruolo / utility) e privilegiando, a parità di priorità, i contatti marcati come **`is_default = TRUE`**.
 
@@ -49,7 +49,7 @@ La funzione **`script.fn_get_contatti(p_soggetto_id UUID, p_soggetto_ruolo_id BI
 
 ---
 
-### 🧩 Parametri di Input
+### Parametri di Input
 
 | Nome                  | Tipo     | Default | Obbligatorio | Descrizione                                                                                                                        |
 | --------------------- | -------- | ------- | ------------ | ---------------------------------------------------------------------------------------------------------------------------------- |
@@ -61,7 +61,7 @@ La funzione **`script.fn_get_contatti(p_soggetto_id UUID, p_soggetto_ruolo_id BI
 
 ---
 
-### 📤 Valore di Ritorno
+### Valore di Ritorno
 
 La funzione restituisce una **tabella** con le seguenti colonne:
 
@@ -85,7 +85,7 @@ Per ogni `tipo_contatto_id`, è restituita **al più una riga** (la “migliore�
 
 ---
 
-### ⚙️ Flusso Logico Interno
+### Flusso Logico Interno
 
 1. **Validazione di `p_soggetto_id`**
    Se `p_soggetto_id` è `NULL`, il CTE `validate` invoca `script.fn_log_and_raise_error` con:
@@ -152,7 +152,7 @@ Per ogni `tipo_contatto_id`, è restituita **al più una riga** (la “migliore�
 
 ---
 
-### 📌 Esempi di Utilizzo
+### Esempi di Utilizzo
 
 ```sql
 -- 1) Tutti i contatti "migliori" per un soggetto
@@ -185,7 +185,7 @@ FROM script.fn_get_contatti(
 
 ---
 
-### 💡 Vantaggi Operativi
+### Vantaggi Operativi
 
 * **Centralizzazione della logica**: la selezione dei contatti segue regole chiare e riutilizzabili, evitando duplicazioni di `CASE WHEN` e join complesse nelle query applicative.
 * **Chiarezza del contesto**: la colonna `default_context` permette di capire rapidamente se un contatto è default per soggetto, ruolo o utility.

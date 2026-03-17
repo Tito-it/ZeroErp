@@ -2,9 +2,9 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> • [vendite.ordini_righe](/dbzero/vendite/tabelle/ordini_righe)  
+• [vendite.ordini_righe](/dbzero/vendite/tabelle/ordini_righe)  
 > • [config.stati_doc_ordini](/dbzero/config/tabelle/stati_doc_ordini)  
 > • [config.modalita_pagamento](/dbzero/config/tabelle/modalita_pagamento)   
 > • [config.valute](/dbzero/config/tabelle/valute)  
@@ -32,7 +32,7 @@ Obiettivi principali:
 
 ---
 
-### 🧭 Collocazione nel flusso documentale
+### Collocazione nel flusso documentale
 
 1. **Creazione ordine** – avvio processo commerciale; definizione di cliente, condizioni economiche e pagamento.  
 2. **Popolamento righe** – associazione articoli/servizi su `vendite.ordini_righe`.  
@@ -51,11 +51,11 @@ Obiettivi principali:
   `trg_ordini_a10_upd_v_protect_num` → impedisce modifiche a campi di numerazione dopo conferma.  
 * **UID** (`uuid`) – identificatore universale per import/export o sincronizzazione API.
 
-> 🔎 *Gli ordini possono essere generati anche da sistemi esterni (CRM, portali clienti, configuratori) e successivamente importati nel gestionale tramite `sorgente_tipo_id` + `sorgente_uid`.*
+> *Gli ordini possono essere generati anche da sistemi esterni (CRM, portali clienti, configuratori) e successivamente importati nel gestionale tramite `sorgente_tipo_id` + `sorgente_uid`.*
 
 ---
 
-### 📄 Stato, logistica e pagamenti
+### Stato, logistica e pagamenti
 
 * **Stato documento**: `stato_doc_ordine_id` → `config.stati_doc_ordini`, determina le regole operative (bozza, confermato, spedito, fatturato, annullato).  
 * **Trasporto e consegna**: collegamenti a `causale_trasporto_id`, `aspetto_bene_id`, `modalita_addebito_trasporto_id`, `vettore_soggetto_ruolo_id`.  
@@ -75,7 +75,7 @@ I campi di sintesi (`imponibile_tot`, `sconto_tot`, `iva_tot`, `totale_doc`) rap
 
 ---
 
-### 🧷 Meta, audit e storicizzazione
+### Meta, audit e storicizzazione
 
 * **`meta jsonb`** – estensioni dinamiche (es. note interne, parametri specifici del cliente o canale).  
 * **Audit standard** – colonne `data_insert`, `user_insert`, `data_update`, `user_update`.  
@@ -84,7 +84,7 @@ I campi di sintesi (`imponibile_tot`, `sconto_tot`, `iva_tot`, `totale_doc`) rap
 
 ---
 
-### 🔒 Vincoli, indici e integrità
+### Vincoli, indici e integrità
 
 * **FK principali**:
   * Cliente → `anagrafiche.soggetti_ruoli`
@@ -131,7 +131,7 @@ manualmente per singolo ordine.
 ---
 
 
-### 👓 Ruolo nel sistema
+### Ruolo nel sistema
 
 `vendite.ordini` è la **base operativa** del ciclo vendite: raccoglie tutte le informazioni contrattuali e logistiche preliminari alla spedizione e alla fatturazione.  
 Assicura la **tracciabilità completa** del flusso commerciale e costituisce un **ponte naturale** tra la fase commerciale, logistica e amministrativa del gestionale.

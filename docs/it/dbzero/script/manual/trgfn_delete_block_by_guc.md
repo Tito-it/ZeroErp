@@ -2,14 +2,12 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**    
+**Approfondimento tabelle:**    
 >
-> • [dbops.automation_delete_block](/dbzero/dbops/manual/automation_delete_block)    
+• [dbops.automation_delete_block](/dbzero/dbops/manual/automation_delete_block)    
 >
 
----
-
-### 🎯 Scopo Principale
+🎯 Scopo Principale
 
 (latest review 23-01-2026)
 La funzione `script.trgfn_delete_block_by_guc()` e` una **trigger function generica**
@@ -17,7 +15,7 @@ che blocca le DELETE, consentendo il bypass tramite una **GUC** di manutenzione.
 
 ---
 
-### ✅ Regole applicate
+### Regole applicate
 
 * Il trigger riceve un argomento: `guc_key`.
 * Se `current_setting(guc_key) = 'on'`, la DELETE e` permessa.

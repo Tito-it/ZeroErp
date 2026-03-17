@@ -2,19 +2,19 @@
 
 > 👀 **Vedi anche**
 >
-> Funzioni collegate:
+Funzioni collegate:
 >
-> * [pratiche.fn_genera_pratica_da_flusso](fn_genera_pratica_da_flusso.md)
+[pratiche.fn_genera_pratica_da_flusso](fn_genera_pratica_da_flusso.md)
 >
-> Tabelle:
+Tabelle:
 >
-> * [pratiche.regole_generazione](regole_generazione.md)
-> * [pratiche.flussi](flussi.md)
-> * [config.stati_flussi_pratiche](/dbzero/config/tabelle/stati_flussi_pratiche)
+[pratiche.regole_generazione](regole_generazione.md)
+> [pratiche.flussi](flussi.md)
+> [config.stati_flussi_pratiche](/dbzero/config/tabelle/stati_flussi_pratiche)
 >
-> Overview:
+Overview:
 >
-> * [Trigger business overview](trigger_business_overview.md)
+[Trigger business overview](trigger_business_overview.md)
 
 ---
 
@@ -24,7 +24,7 @@ Trigger function per la **generazione automatica cross-pratica**. Si attiva **AF
 
 ---
 
-### 🔧 Firma
+### Firma
 
 ```sql
 CREATE OR REPLACE FUNCTION pratiche.trgfn_flussi_generazione()
@@ -34,7 +34,7 @@ LANGUAGE plpgsql
 
 ---
 
-### 📋 DECLARE
+### DECLARE
 
 | Variabile | Tipo | Descrizione |
 |-----------|------|-------------|
@@ -43,7 +43,7 @@ LANGUAGE plpgsql
 
 ---
 
-### ⚙️ Logica
+### Logica
 
 1. Recupera `codice_interno` del nuovo stato da `config.stati_flussi_pratiche`.
 2. Se non e' `'COMPLETATO'` → RETURN NEW (nessuna azione).
@@ -56,7 +56,7 @@ LANGUAGE plpgsql
 
 ---
 
-### 🔗 Trigger associato
+### Trigger associato
 
 | Nome | Fase | Evento | WHEN |
 |------|------|--------|------|
@@ -64,7 +64,7 @@ LANGUAGE plpgsql
 
 ---
 
-### ✅ Note operative
+### Note operative
 
 * Il trigger scatta per qualsiasi cambio di `stato_id`, ma la function esce immediatamente se il nuovo stato non e' COMPLETATO — costo minimo per gli altri cambi stato.
 * Le regole con `auto = false` non vengono elaborate dal trigger: richiedono invocazione esplicita dal backend Django.

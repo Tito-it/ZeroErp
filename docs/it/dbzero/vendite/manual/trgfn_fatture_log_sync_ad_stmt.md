@@ -7,7 +7,7 @@ dopo DELETE su `vendite.fatture_log` (trigger statement-level).
 
 ---
 
-### ✅ Regole principali
+### Regole principali
 
 * raccoglie gli `fattura_id` distinti dalla transition table `old_table`;
 * invoca `vendite.fn_sync_fatture_log_critical_lotto(v_ids)`;
@@ -15,7 +15,7 @@ dopo DELETE su `vendite.fatture_log` (trigger statement-level).
 
 ---
 
-### 🔄 Effetto trigger
+### Effetto trigger
 
 * trigger `AFTER DELETE ... FOR EACH STATEMENT`;
 * ritorna `NULL` (comportamento standard statement trigger).

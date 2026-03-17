@@ -2,13 +2,11 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> • [vendite.fatture](/dbzero/vendite/tabelle/fatture)  
+• [vendite.fatture](/dbzero/vendite/tabelle/fatture)  
 >
----
-
-### 🎯 Scopo Principale
+🎯 Scopo Principale
 
 (latest review 29-01-2026)  
 `vendite.fatture_log` registra **warning** e **errori critici** associati ai
@@ -16,7 +14,7 @@ documenti di fattura. I log critici bloccano numerazione e invio finche` attivi.
 
 ---
 
-### 🧱 Campi chiave (semantica)
+### Campi chiave (semantica)
 
 * **Contesto**: `fattura_id`.
 * **Evento**: `data_ora`, `messaggio`.
@@ -26,7 +24,7 @@ documenti di fattura. I log critici bloccano numerazione e invio finche` attivi.
 
 ---
 
-### ✅ Note operative
+### Note operative
 
 * Più log possono essere associati alla stessa fattura.
 * Se esiste almeno un log **critical** attivo, `fatture.critical = true`.

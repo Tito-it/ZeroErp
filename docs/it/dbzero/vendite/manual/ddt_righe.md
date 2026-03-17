@@ -2,9 +2,9 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> • [vendite.ddt](/dbzero/vendite/tabelle/ddt)     
+• [vendite.ddt](/dbzero/vendite/tabelle/ddt)     
 > • [vendite.ordini_righe](/dbzero/vendite/tabelle/ordini_righe)    
 > • [catalogo.articoli](/dbzero/catalogo/tabelle/articoli)    
 > • [catalogo.unita_misura](/dbzero/catalogo/tabelle/unita_misura)    
@@ -12,7 +12,7 @@
 
 > **Approfondimento funzioni:**
 > 
-> • [script.trgfn_qta_from_operativa](/dbzero/script/funzioni/trgfn_qta_from_operativa)
+• [script.trgfn_qta_from_operativa](/dbzero/script/funzioni/trgfn_qta_from_operativa)
 
 ---
 
@@ -30,7 +30,7 @@ La tabella è concepita per:
 
 ---
 
-### 🧭 Collocazione nel flusso documentale
+### Collocazione nel flusso documentale
 
 1. **Evasione Ordine** → Le righe DDT derivano da ordini cliente o attività di fulfillment.
 2. **Spedizione** → Le quantità sono validate contro la disponibilità di magazzino e le policy articolo.
@@ -39,7 +39,7 @@ La tabella è concepita per:
 
 ---
 
-### 🧩 Struttura logica e relazioni
+### Struttura logica e relazioni
 
 * **FK principali:**
 
@@ -55,7 +55,7 @@ La tabella è concepita per:
 
 ---
 
-### 💡 Descrizione d’uso
+### Descrizione d’uso
 
 Le righe DDT sono utilizzate in molteplici processi del ciclo vendite:
 
@@ -66,7 +66,7 @@ Le righe DDT sono utilizzate in molteplici processi del ciclo vendite:
 
 ---
 
-### ⚙️ Trigger e automazioni
+### Trigger e automazioni
 
 * `trg_a10_dlt_block_ddt` → impedisce la cancellazione di righe DDT se collegate a processi successivi (fatture, storici, fulfillment).
 
@@ -88,7 +88,7 @@ Garantisce coerenza decimali (step, max_dec) rispetto alla policy UoM dell’art
 
 ---
 
-### 🔒 Vincoli, indici e coerenze
+### Vincoli, indici e coerenze
 
 * **Unique Index**: `(ddt_id, riga_nr)` → progressivo univoco per testata.
 * **Check suggeriti:**
@@ -123,7 +123,7 @@ Le righe DDT diventano sorgente per vendite.attivita_fatturabili; si trasferisco
 ---
 
 
-### 📊 Esempi di utilizzo applicativo
+### Esempi di utilizzo applicativo
 
 ```sql
 -- Elenco righe di un DDT
@@ -142,7 +142,7 @@ WHERE dr.lotto = :lotto OR dr.seriale = :seriale;
 
 ---
 
-### 🧪 Testing e validazioni
+### Testing e validazioni
 
 Esempi di test pgTAP suggeriti:
 
@@ -162,7 +162,7 @@ SELECT ok((SELECT count(*) FROM vendite.ddt_righe dr JOIN catalogo.articoli a ON
 
 ---
 
-### 👓 Importanza nel sistema
+### Importanza nel sistema
 
 `vendite.ddt_righe` è una tabella **centrale nel ciclo logistico** di ZeroERP.
 Funge da ponte tra la movimentazione fisica (spedizioni) e la documentazione fiscale (fatture).

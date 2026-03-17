@@ -2,18 +2,18 @@
 
 > 👀 **Vedi anche**
 >
-> **Appronfondimento Tabelle correlate**   
+**Appronfondimento Tabelle correlate**   
 > • [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)    
 > • [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)    
 > • [anagrafiche.conti_bancari](/dbzero/anagrafiche/tabelle/conti_bancari)    
 > • [anagrafiche.soggetti_conti_bancari](/dbzero/anagrafiche/tabelle/soggetti_conti_bancari)    
 > • [pagamenti.sepa_mandati](/dbzero/pagamenti/tabelle/sepa_mandati)    
 >
-> **Artefatti di selezione**   
+**Artefatti di selezione**   
 > • [anagrafiche.vw_conti_bancari_per_ruolo](/dbzero/anagrafiche/view/vw_conti_bancari_per_ruolo)    
 > • [script.fn_get_conto_bancario_predefinito](/dbzero/script/funzioni/fn_get_conto_bancario_predefinito)   
 >
-> **Approfondimento Trigger/Funzioni generiche**   
+**Approfondimento Trigger/Funzioni generiche**   
 > • [dbops.trgfn_tx_id_managed](/dbzero/dbops/funzioni/trgfn_tx_id_managed)    
 > • [script.trgfn_audit_data_user_generic](/dbzero/script/funzioni/trgfn_audit_data_user_generic)    
 > • [script.trgfn_storico_generic](/dbzero/script/funzioni/trgfn_storico_generic)   
@@ -29,7 +29,7 @@ Questa tabella abilita l’**override a livello ruolo**: se esiste un legame ido
 
 ---
 
-### 🔗 Relazioni
+### Relazioni
 
 | Tipo       | Tabella ↔ Campo                                        | Descrizione                                          |
 | ---------- | ------------------------------------------------------ | ---------------------------------------------------- |
@@ -42,7 +42,7 @@ Questa tabella abilita l’**override a livello ruolo**: se esiste un legame ido
 
 ---
 
-### 🧱 Struttura logica (campi chiave)
+### Struttura logica (campi chiave)
 
 * `soggetto_ruolo_id` (**FK** obbligatoria)
 * `conto_bancario_id` (**FK** obbligatoria)
@@ -67,7 +67,7 @@ Questa tabella abilita l’**override a livello ruolo**: se esiste un legame ido
 
 ---
 
-### 🔎 Query tipiche
+### Query tipiche
 
 **1) Predefinito d’incasso per un ruolo (oggi valido)**
 
@@ -98,7 +98,7 @@ ORDER BY srcb.uso, srcb.predefinito DESC, srcb.data_update DESC;
 
 ---
 
-### 💡 Ruolo nella strategia **override/fallback**
+### Ruolo nella strategia **override/fallback**
 
 * Se esiste un legame idoneo su `soggetti_ruoli_conti_bancari`, viene **preferito** (override).
 * In assenza, la **VIEW** `vw_conti_bancari_per_ruolo` recupera il **predefinito di soggetto** (fallback).
@@ -106,7 +106,7 @@ ORDER BY srcb.uso, srcb.predefinito DESC, srcb.data_update DESC;
 
 ---
 
-### 🧭 Best practice
+### Best practice
 
 * Definisci **un solo predefinito per uso** per ciascun ruolo (vincolo unico parziale).
 * Usa `valido_dal/valido_al` per cambi programmati; **non cancellare**, storicizza.

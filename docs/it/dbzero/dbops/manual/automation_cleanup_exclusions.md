@@ -2,14 +2,14 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimento tabelle:
+Approfondimento tabelle:
 >
-> * [dbops.automation_rules_tbl](/dbzero/dbops/tabelle/automation_rules_tbl)   
-> * [dbops.automation_scope](/dbzero/dbops/tabelle/automation_scope)    
+[dbops.automation_rules_tbl](/dbzero/dbops/tabelle/automation_rules_tbl)   
+> [dbops.automation_scope](/dbzero/dbops/tabelle/automation_scope)    
 >
-> Approfondimento funzioni:
+Approfondimento funzioni:
 >
-> * [dbops.fn_run_automations_cleanup](/dbzero/dbops/funzioni/fn_run_automations_cleanup)    
+[dbops.fn_run_automations_cleanup](/dbzero/dbops/funzioni/fn_run_automations_cleanup)    
 
 La tabella **`dbops.automation_cleanup_exclusions`** contiene l’elenco delle **tabelle escluse** dal framework di cleanup basato su `cleanup_at`.
 
@@ -23,7 +23,7 @@ La tabella **`dbops.automation_cleanup_exclusions`** contiene l’elenco delle *
 
 ---
 
-### 🔑 Campi chiave
+### Campi chiave
 
 * **`schema_name`**: schema della tabella esclusa.
 * **`table_name`**: tabella esclusa.
@@ -33,7 +33,7 @@ La tabella **`dbops.automation_cleanup_exclusions`** contiene l’elenco delle *
 
 ---
 
-### ⚙️ Effetto sul runner
+### Effetto sul runner
 
 `dbops.fn_run_automations_cleanup`:
 
@@ -43,7 +43,7 @@ La tabella **`dbops.automation_cleanup_exclusions`** contiene l’elenco delle *
 
 ---
 
-### ✍️ Esempio
+### Esempio
 
 ```sql
 INSERT INTO dbops.automation_cleanup_exclusions

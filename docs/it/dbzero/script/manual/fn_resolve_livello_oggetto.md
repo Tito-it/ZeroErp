@@ -2,15 +2,15 @@
 
 > **Vedi anche**
 >
-> **Tabelle correlate:**
+**Tabelle correlate:**
 >
-> * [config.user_override_oggetti](/dbzero/config/tabelle/user_override_oggetti)
-> * [config.area_model_overrides](/dbzero/config/tabelle/area_model_overrides)
+[config.user_override_oggetti](/dbzero/config/tabelle/user_override_oggetti)
+> [config.area_model_overrides](/dbzero/config/tabelle/area_model_overrides)
 >
-> **Funzioni correlate:**
+**Funzioni correlate:**
 >
-> * [script.fn_resolve_livello_area](/dbzero/script/funzioni/fn_resolve_livello_area)
-> * [script.fn_get_ruolo_sistema](/dbzero/script/funzioni/fn_get_ruolo_sistema)
+[script.fn_resolve_livello_area](/dbzero/script/funzioni/fn_resolve_livello_area)
+> [script.fn_get_ruolo_sistema](/dbzero/script/funzioni/fn_get_ruolo_sistema)
 
 ---
 

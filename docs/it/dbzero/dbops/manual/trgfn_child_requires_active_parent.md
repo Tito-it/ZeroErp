@@ -4,13 +4,13 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimento funzioni:
+Approfondimento funzioni:
 >
-> * [`dbops.trgfn_prevent_deactivate_if_children`](/dbzero/dbops/funzioni/trgfn_prevent_deactivate_if_children)
+[`dbops.trgfn_prevent_deactivate_if_children`](/dbzero/dbops/funzioni/trgfn_prevent_deactivate_if_children)
 >
-> Approfondimento tabelle:
+Approfondimento tabelle:
 >
-> * [`dbops.automation_rules_tbl`](/dbzero/dbops/tabelle/automation_rules_tbl)
+[`dbops.automation_rules_tbl`](/dbzero/dbops/tabelle/automation_rules_tbl)
 
 ---
 
@@ -21,7 +21,7 @@ La funzione **`trgfn_child_requires_active_parent`** è una **trigger function**
 
 ---
 
-### 📝 Dettagli
+### Dettagli
 
 * **Firma**
 
@@ -51,7 +51,7 @@ La funzione **`trgfn_child_requires_active_parent`** è una **trigger function**
 
 ---
 
-### 🔧 Utilizzo tipico
+### Utilizzo tipico
 
 Impedire che un record figlio punti a un padre disattivo:
 
@@ -71,11 +71,11 @@ EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent(
 
 ---
 
-### 📊 Collegamento con automazione
+### Collegamento con automazione
 
 * Viene generata da `dbops.fn_run_automations_attivo` come **trigger REQUIRE** sul figlio.
 * Naming standard: `trg_{child}_a10_{parent}_require_attivo_ins_upd`.
 
 ---
 
-> 🧠 **In sintesi**: `trgfn_child_requires_active_parent` garantisce che un figlio **attivo** possa puntare **solo** a un padre attivo, rafforzando la coerenza tra relazioni padre‑figlio.
+> **In sintesi**: `trgfn_child_requires_active_parent` garantisce che un figlio **attivo** possa puntare **solo** a un padre attivo, rafforzando la coerenza tra relazioni padre‑figlio.

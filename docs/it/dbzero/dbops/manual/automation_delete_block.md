@@ -2,15 +2,13 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento funzioni:**    
+**Approfondimento funzioni:**    
 >
-> • [script.trgfn_delete_block_by_guc](/dbzero/script/manual/trgfn_delete_block_by_guc)    
+• [script.trgfn_delete_block_by_guc](/dbzero/script/manual/trgfn_delete_block_by_guc)    
 > • [dbops.fn_apply_delete_block_trigger](/dbzero/dbops/manual/fn_apply_delete_block_trigger)    
 >
 
----
-
-### 🎯 Scopo Principale
+🎯 Scopo Principale
 
 (latest review 23-01-2026)
 `dbops.automation_delete_block` centralizza la configurazione dei trigger che **bloccano**
@@ -18,7 +16,7 @@ le DELETE sulle tabelle sensibili (es. ruoli), con possibilità di bypass tramit
 
 ---
 
-### 🔑 Campi chiave
+### Campi chiave
 
 * `schema_name`, `table_name`: tabella target.
 * `guc_key`: chiave GUC che abilita il bypass (es. `zeroerp.maintenance_ruoli_delete`).
@@ -28,7 +26,7 @@ le DELETE sulle tabelle sensibili (es. ruoli), con possibilità di bypass tramit
 
 ---
 
-### ✅ Ruolo operativo
+### Ruolo operativo
 
 1. Si inserisce una riga per ogni tabella da proteggere.
 2. Un processo di automazione applica i trigger (vedi funzione dedicata).

@@ -2,21 +2,21 @@
 
 > Vedi anche
 >
-> Guide generali:
+Guide generali:
 >
-> * [Generazione di un cliente](/guide/generazione-cliente)
-> * [Glossario termini utility](/guide/glossario/glossario-utility)
+[Generazione di un cliente](/guide/generazione-cliente)
+> [Glossario termini utility](/guide/glossario/glossario-utility)
 >
-> Approfondimento tabelle:
+Approfondimento tabelle:
 >
-> * [anagrafiche.istanze_utilities](/dbzero/anagrafiche/tabelle/istanze_utilities)
-> * [anagrafiche.clienti](/dbzero/anagrafiche/tabelle/clienti)
-> * [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)
-> * [config.utilities](/dbzero/config/tabelle/utilities)
+[anagrafiche.istanze_utilities](/dbzero/anagrafiche/tabelle/istanze_utilities)
+> [anagrafiche.clienti](/dbzero/anagrafiche/tabelle/clienti)
+> [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)
+> [config.utilities](/dbzero/config/tabelle/utilities)
 >
-> Approfondimento funzioni:
+Approfondimento funzioni:
 >
-> * [anagrafiche.trgfn_billing_account_guard_normalize](/dbzero/anagrafiche/funzioni/trgfn_billing_account_guard_normalize)
+[anagrafiche.trgfn_billing_account_guard_normalize](/dbzero/anagrafiche/funzioni/trgfn_billing_account_guard_normalize)
 
 ---
 

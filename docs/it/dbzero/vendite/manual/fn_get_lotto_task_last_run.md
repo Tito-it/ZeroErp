@@ -6,7 +6,7 @@ Restituisce l'ultimo task run disponibile per lotto/step/task.
 
 ---
 
-### ✅ Regole principali
+### Regole principali
 
 * `p_lotto_id` obbligatorio (`> 0`)
 * `p_task_code` obbligatorio
@@ -15,7 +15,7 @@ Restituisce l'ultimo task run disponibile per lotto/step/task.
 
 ---
 
-### ✅ Output
+### Output
 
 Ultima riga runtime con:
 * stato task

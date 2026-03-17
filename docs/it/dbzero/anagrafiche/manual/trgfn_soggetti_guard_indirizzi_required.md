@@ -2,16 +2,16 @@
 
 > 👀 **Vedi anche**   
 >
-> **Approfondimento tabelle:**    
+**Approfondimento tabelle:**    
 >
-> * [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)   
-> * [anagrafiche.indirizzi_soggetti](/dbzero/anagrafiche/tabelle/indirizzi_soggetti)   
-> * [config.tipi_soggetto_dettaglio_tipi_indirizzo](/dbzero/config/tabelle/tipi_soggetto_dettaglio_tipi_indirizzo)   
+[anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)   
+> [anagrafiche.indirizzi_soggetti](/dbzero/anagrafiche/tabelle/indirizzi_soggetti)   
+> [config.tipi_soggetto_dettaglio_tipi_indirizzo](/dbzero/config/tabelle/tipi_soggetto_dettaglio_tipi_indirizzo)   
 >
-> **Approfondimento Funzioni:**   
+**Approfondimento Funzioni:**   
 >
-> * [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)   
-> * [dbops.trgfn_tx_id_managed](/dbzero/dbops/funzioni/trgfn_tx_id_managed)   
+[script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)   
+> [dbops.trgfn_tx_id_managed](/dbzero/dbops/funzioni/trgfn_tx_id_managed)   
 
 ---
 
@@ -24,7 +24,7 @@ Se per il tipo soggetto dettaglio sono presenti righe di matrice con `obbligator
 
 ---
 
-### 🧩 Come Funziona
+### Come Funziona
 
 1. Ignora le `DELETE`.
 2. Se `NEW.tipo_soggetto_dettaglio_id` e' NULL, la funzione non applica vincoli.
@@ -52,7 +52,7 @@ Gli errori sono prodotti tramite:
 
 ---
 
-## 🔗 Trigger Associato
+## Trigger Associato
 
 Questa funzione e' usata come **constraint trigger DEFERRABLE INITIALLY DEFERRED** su `anagrafiche.soggetti`:
 
@@ -67,7 +67,7 @@ CREATE CONSTRAINT TRIGGER trg_soggetti_def_guard_indirizzi_required_aft_ins_upd
 
 ---
 
-### 💡 Note Operative
+### Note Operative
 
 * La matrice e' opzionale: se non esiste per il tipo soggetto dettaglio, il controllo non scatta.
 * Il fallback consente di soddisfare l'obbligo con un tipo indirizzo alternativo configurato.
@@ -75,4 +75,4 @@ CREATE CONSTRAINT TRIGGER trg_soggetti_def_guard_indirizzi_required_aft_ins_upd
 
 ---
 
-> 🧠 **"Gli indirizzi obbligatori dipendono dal tipo soggetto: il trigger assicura la conformita'."**
+> **"Gli indirizzi obbligatori dipendono dal tipo soggetto: il trigger assicura la conformita'."**

@@ -2,16 +2,15 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimento Tabelle:
+Approfondimento Tabelle:
 >
-> * [anagrafiche.dati_societari](/dbzero/anagrafiche/tabelle/dati_societari)
+[anagrafiche.dati_societari](/dbzero/anagrafiche/tabelle/dati_societari)
 >
-> Approfondimento funzioni e trigger:
+Approfondimento funzioni e trigger:
 >
->   
-> * [anagrafiche.trgfn_dati_societari_ins_upd_check_tipo_soggetto](/dbzero/anagrafiche/funzioni/trgfn_dati_societari_ins_upd_check_tipo_soggetto)
-> * [script.trgfn_upd_dlt_storico_generic](/dbzero/script/funzioni/trgfn_upd_dlt_storico_generic)
-> * [dbops.trgfn_tx_id_managed](/dbzero/dbops/funzioni/trgfn_tx_id_managed)
+[anagrafiche.trgfn_dati_societari_ins_upd_check_tipo_soggetto](/dbzero/anagrafiche/funzioni/trgfn_dati_societari_ins_upd_check_tipo_soggetto)
+> [script.trgfn_upd_dlt_storico_generic](/dbzero/script/funzioni/trgfn_upd_dlt_storico_generic)
+> [dbops.trgfn_tx_id_managed](/dbzero/dbops/funzioni/trgfn_tx_id_managed)
 
 ---
 
@@ -30,7 +29,7 @@ La tabella **`storico.dati_societari`** mantiene lo **storico** delle modifiche 
 
 ---
 
-### 🔗 Collegamenti con Altre Tabelle
+### Collegamenti con Altre Tabelle
 
 * **`anagrafiche.dati_societari`**
 
@@ -44,7 +43,7 @@ La tabella **`storico.dati_societari`** mantiene lo **storico** delle modifiche 
 
 ---
 
-### 💡 Vantaggi Operativi
+### Vantaggi Operativi
 
 * **Recupero storico**
   Possibilità di ripristinare lo stato di un record societario a qualsiasi data antecedente.
@@ -57,4 +56,4 @@ La tabella **`storico.dati_societari`** mantiene lo **storico** delle modifiche 
 
 ---
 
-> 🧠 **“`storico.dati_societari` è il registro cronologico delle variazioni dei dati societari: snapshot JSON, audit completo e interrogazioni temporali in un’unica tabella.”**
+> **“`storico.dati_societari` è il registro cronologico delle variazioni dei dati societari: snapshot JSON, audit completo e interrogazioni temporali in un’unica tabella.”**

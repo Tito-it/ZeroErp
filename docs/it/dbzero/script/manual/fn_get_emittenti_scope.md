@@ -2,14 +2,14 @@
 
 > **Vedi anche**
 >
-> **Tabelle correlate:**
+**Tabelle correlate:**
 >
-> * [config.user_emittenti_fiscali](/dbzero/config/tabelle/user_emittenti_fiscali)
-> * [anagrafiche.emittenti_fiscali](/dbzero/anagrafiche/tabelle/emittenti_fiscali)
+[config.user_emittenti_fiscali](/dbzero/config/tabelle/user_emittenti_fiscali)
+> [anagrafiche.emittenti_fiscali](/dbzero/anagrafiche/tabelle/emittenti_fiscali)
 >
-> **Funzioni correlate:**
+**Funzioni correlate:**
 >
-> * [script.fn_check_user_emittente_scope](/dbzero/script/funzioni/fn_check_user_emittente_scope)
+[script.fn_check_user_emittente_scope](/dbzero/script/funzioni/fn_check_user_emittente_scope)
 
 ---
 

@@ -2,7 +2,7 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimenti tabelle:**   
+**Approfondimenti tabelle:**   
 > • [catalogo.articoli](/dbzero/catalogo/tabelle/articoli)   
 > • [catalogo.unita_misura](/dbzero/catalogo/tabelle/unita_misura)   
 > • [vendite.ordini_righe](/dbzero/vendite/tabelle/ordini_righe)   
@@ -18,7 +18,7 @@ Mappa, per ciascun **articolo**, le **unità di misura operative** ammesse e il 
 
 ---
 
-### 🧠 Regole di conversione (di dominio)
+### Regole di conversione (di dominio)
 
 * **Direzione**: `qta_base = qta_operativa * factor_to_base`.
 * **Snapshot nei documenti**: le righe documento copiano il `factor_to_base` **valido alla data** per garantire riproducibilità (es. campo omonimo nelle righe d’ordine/DDT).
@@ -27,7 +27,7 @@ Mappa, per ciascun **articolo**, le **unità di misura operative** ammesse e il 
 
 ---
 
-### 🔗 Utilizzo nei documenti
+### Utilizzo nei documenti
 
 * **Ordini / DDT / Preventivi**: l’utente seleziona `uom_operativa_id` + inserisce `qta_operativa`; il trigger calcola `qta` (base) usando `factor_to_base` e valida gli input secondo `qty_step`/`max_decimals`/`forbid_fraction`.
 * **Fatturazione**: si può esporre e totalizzare in UoM operativa, salvando sempre anche `qta` in base.
@@ -35,7 +35,7 @@ Mappa, per ciascun **articolo**, le **unità di misura operative** ammesse e il 
 
 ---
 
-### ✅ Checklist operativa
+### Checklist operativa
 
 * [ ] Per **ogni articolo** esiste **esattamente una** riga con `is_ba
 se=TRUE` e `factor_to_base=1`.
@@ -46,7 +46,7 @@ se=TRUE` e `factor_to_base=1`.
 
 ---
 
-### 🔍 Migliorie / Anomalie (sul DDL fornito)
+### Migliorie / Anomalie (sul DDL fornito)
 
 1. **Vincolo "base" più stringente (consigliato)**
    Aggiungere un **CHECK** che imponga `factor_to_base = 1` quando `is_base = TRUE` e **vieti** flags commerciali/logistici sulla riga base, es.:
@@ -91,14 +91,14 @@ se=TRUE` e `factor_to_base=1`.
 
 ---
 
-### 🧪 Esempi d’uso
+### Esempi d’uso
 
 * **Scatola viti 50 pz**: base = **pz** (`is_base=TRUE`, `factor=1`), operativa = **scatola** (`factor_to_base=50`). Inserendo `qta_operativa=3` ⇒ `qta_base=150`.
 * **Cartone acqua 6x1.5L**: base = **bottiglia**; operativa = **cartone** (`factor_to_base=6`).
 
 ---
 
-### 🔗 Query utili
+### Query utili
 
 **UoM operative di un articolo (base in cima)**
 
@@ -124,7 +124,7 @@ LIMIT 1;
 
 ---
 
-### 📌 Decisioni di design (Zero ERP)
+### Decisioni di design (Zero ERP)
 
 * **UoM base** come unità di coerenza per stock/valorizzazioni/reportistica.
 * **UoM operativa** come interfaccia utente (vendita/logistica/acquisto) con regole di input e arrotondamento.

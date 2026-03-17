@@ -2,14 +2,14 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimenti tabelle:   
+Approfondimenti tabelle:   
 >
-> * [anagrafiche.indirizzi_dettaglio](/dbzero/anagrafiche/tabelle/indirizzi_dettaglio)   
-> * [anagrafiche.indirizzi](/dbzero/anagrafiche/tabelle/indirizzi)   
+[anagrafiche.indirizzi_dettaglio](/dbzero/anagrafiche/tabelle/indirizzi_dettaglio)   
+> [anagrafiche.indirizzi](/dbzero/anagrafiche/tabelle/indirizzi)   
 >
-> Approfondimenti funzioni:   
+Approfondimenti funzioni:   
 >
-> * [anagrafiche.fn_search_indirizzi_dettaglio](/dbzero/anagrafiche/funzioni/fn_search_indirizzi_dettaglio)   
+[anagrafiche.fn_search_indirizzi_dettaglio](/dbzero/anagrafiche/funzioni/fn_search_indirizzi_dettaglio)   
 
 ---
 
@@ -133,7 +133,7 @@ Questo approccio permette di centralizzare la logica di ricerca mantenendo la vi
 
 ---
 
-### ✅ Best practice e raccomandazioni
+### Best practice e raccomandazioni
 
 * Utilizzare la vista **solo per SELECT**; qualsiasi operazione di aggiornamento o inserimento va effettuata sulle tabelle base.
 * Per ricerche in contesti applicativi, preferire l’uso di **`fn_search_indirizzi_dettaglio`**, che:

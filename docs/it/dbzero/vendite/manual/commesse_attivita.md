@@ -2,15 +2,13 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> • [vendite.commesse](/dbzero/vendite/tabelle/commesse)  
+• [vendite.commesse](/dbzero/vendite/tabelle/commesse)  
 > • [vendite.attivita_fatturabili](/dbzero/vendite/tabelle/attivita_fatturabili)  
 > • [vendite.listini_versioni](/dbzero/vendite/tabelle/listini_versioni)  
 >
----
-
-### 🎯 Scopo Principale
+🎯 Scopo Principale
 
 La tabella `vendite.commesse_attivita` e` la sorgente di verita` operativa delle righe
 da emettere verso `attivita_fatturabili`.
@@ -20,7 +18,7 @@ segmentazione idempotente (`segment_key`) e stato approvazione/emissione.
 
 ---
 
-### ✅ Regole principali
+### Regole principali
 
 * `segment_key` univoca nel perimetro commessa (`commessa_id + segment_key`);
 * `istanza_utility_id` sempre valorizzata (anche tramite istanza fittizia);
@@ -41,7 +39,7 @@ segmentazione idempotente (`segment_key`) e stato approvazione/emissione.
 
 ---
 
-### 🧩 Utilizzo previsto
+### Utilizzo previsto
 
 * input del pull `fn_emit_attivita_fatturabili_da_commessa`;
 * supporto idempotenza e replay controllato;

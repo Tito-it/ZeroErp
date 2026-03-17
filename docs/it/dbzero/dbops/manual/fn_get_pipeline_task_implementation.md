@@ -2,19 +2,17 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> • [dbops.domini_task](/dbzero/dbops/manual/domini_task)  
+• [dbops.domini_task](/dbzero/dbops/manual/domini_task)  
 > • [dbops.pipeline_task_registry](/dbzero/dbops/manual/pipeline_task_registry)  
 > • [dbops.pipeline_task_registry_impl](/dbzero/dbops/manual/pipeline_task_registry_impl)  
 >
-> **Approfondimento funzioni:**
+**Approfondimento funzioni:**
 >
-> • [dbops.fn_check_pipeline_task_registered](/dbzero/dbops/manual/fn_check_pipeline_task_registered)  
+• [dbops.fn_check_pipeline_task_registered](/dbzero/dbops/manual/fn_check_pipeline_task_registered)  
 >
----
-
-### 🎯 Scopo Principale
+🎯 Scopo Principale
 
 (latest review 08-02-2026)
 Risoluzione controllata dell'implementazione di un task:
@@ -22,7 +20,7 @@ usa la variante richiesta se valida, altrimenti il **default**.
 
 ---
 
-### ✅ Regole principali
+### Regole principali
 
 * `p_dominio_id` obbligatorio e > 0.
 * `p_task_code` obbligatorio e non vuoto.
@@ -32,7 +30,7 @@ usa la variante richiesta se valida, altrimenti il **default**.
 
 ---
 
-### ✅ Output
+### Output
 
 Ritorna:
 
@@ -42,7 +40,7 @@ Ritorna:
 
 ---
 
-### 🧪 Esempio
+### Esempio
 
 ```sql
 SELECT *

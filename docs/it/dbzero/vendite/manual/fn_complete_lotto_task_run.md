@@ -6,7 +6,7 @@ Chiude un task run impostando `task_stato = COMPLETATO` e `ended_at`.
 
 ---
 
-### ✅ Regole principali
+### Regole principali
 
 * `p_task_run_id` obbligatorio (`> 0`)
 * merge di `p_meta` sui metadati esistenti
@@ -14,7 +14,7 @@ Chiude un task run impostando `task_stato = COMPLETATO` e `ended_at`.
 
 ---
 
-### ✅ Output
+### Output
 
 `void`
 

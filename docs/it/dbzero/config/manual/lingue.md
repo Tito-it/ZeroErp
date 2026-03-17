@@ -2,13 +2,13 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimenti tabelle:
+Approfondimenti tabelle:
 >
-> * [config.messaggi_errore](/dbzero/config/tabelle/messaggi_errore)
+[config.messaggi_errore](/dbzero/config/tabelle/messaggi_errore)
 >
-> Approfondimenti funzioni/trigger generici:
+Approfondimenti funzioni/trigger generici:
 >
-> * [script.trgfn_upd_audit_data_user_generic](/dbzero/script/funzioni/trgfn_upd_audit_data_user_generic)
+[script.trgfn_upd_audit_data_user_generic](/dbzero/script/funzioni/trgfn_upd_audit_data_user_generic)
 
 ---
 
@@ -31,7 +31,7 @@ Questa tabella è utilizzata come riferimento per tutte le funzionalità di **lo
 
 ---
 
-### 🔒 Vincoli e Regole Aziendali
+### Vincoli e Regole Aziendali
 
 * **Codice ISO** (`codice_iso`):
 
@@ -60,7 +60,7 @@ Questa tabella è utilizzata come riferimento per tutte le funzionalità di **lo
 
 ---
 
-### 🔗 Relazioni
+### Relazioni
 
 `config.lingue` viene tipicamente referenziata da tutte le entità che prevedono **contenuti multilingua**. Alcuni esempi:
 
@@ -76,11 +76,11 @@ Questa tabella è utilizzata come riferimento per tutte le funzionalità di **lo
 
   * impostazioni di lingua predefinita per utente, tenant, gestore, ecc.
 
-> 🔁 La tabella `config.lingue` è un **building block** fondamentale per qualsiasi estensione futura di localizzazione (interfacce, stampe, reportistica, documentazione automatica).
+> La tabella `config.lingue` è un **building block** fondamentale per qualsiasi estensione futura di localizzazione (interfacce, stampe, reportistica, documentazione automatica).
 
 ---
 
-### ⚙️ Trigger Associati
+### Trigger Associati
 
 1. **Trigger di audit generico** (naming tipico: `trg_upd_lingue_audit_data_user`)
 
@@ -92,11 +92,11 @@ Questa tabella è utilizzata come riferimento per tutte le funzionalità di **lo
 
      * invoca la funzione generica `script.trgfn_upd_audit_data_user_generic()` per uniformare la gestione dell’audit su tutte le tabelle di configurazione.
 
-> ✅ In questo modo, ogni variazione alle lingue configurate è tracciabile, aspetto importante soprattutto in contesti multi-tenant o con requisiti di audit.
+> In questo modo, ogni variazione alle lingue configurate è tracciabile, aspetto importante soprattutto in contesti multi-tenant o con requisiti di audit.
 
 ---
 
-### 💡 Vantaggi Operativi
+### Vantaggi Operativi
 
 * **Centralizzazione**: un unico dominio per tutte le lingue usate in Zero ERP.
 * **Coerenza**: utilizzo di codici ISO standard, riducendo gli errori di mapping verso sistemi esterni o librerie di internazionalizzazione.
@@ -109,4 +109,4 @@ Questa tabella è utilizzata come riferimento per tutte le funzionalità di **lo
 
 ---
 
-> 🧠 **“Un dominio lingue ben strutturato è il primo mattone per costruire un ERP realmente internazionale, senza dover stravolgere il modello dati in futuro.”**
+> **“Un dominio lingue ben strutturato è il primo mattone per costruire un ERP realmente internazionale, senza dover stravolgere il modello dati in futuro.”**

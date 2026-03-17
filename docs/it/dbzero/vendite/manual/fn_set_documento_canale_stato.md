@@ -7,7 +7,7 @@ Gestisce in modo uniforme la transizione stato dei canali fatturabili per docume
 
 ---
 
-### 🔧 Regole applicate
+### Regole applicate
 
 * chiave sorgente obbligatoria: `sorgente_tipo_id` + `sorgente_uid`;
 * `canale_codice` deve essere:
@@ -20,7 +20,7 @@ Gestisce in modo uniforme la transizione stato dei canali fatturabili per docume
 
 ---
 
-### ✅ Output
+### Output
 
 Ritorna `id` della riga canale inserita/aggiornata.
 

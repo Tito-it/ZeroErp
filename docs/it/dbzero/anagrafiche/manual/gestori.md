@@ -2,16 +2,16 @@
 
 > 👀 **Vedi anche**  
 >
-> Approfondimento Tabelle:   
+Approfondimento Tabelle:   
 >
-> * [anagrafiche.soggetti](/dbzero/anagrafiche/soggetti)   
-> * [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/soggetti_ruoli)    
-> * [config.valute](/dbzero/config/tabelle/valute)   
+[anagrafiche.soggetti](/dbzero/anagrafiche/soggetti)   
+> [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/soggetti_ruoli)    
+> [config.valute](/dbzero/config/tabelle/valute)   
 >
-> Approfondimenti funzioni:   
+Approfondimenti funzioni:   
 >
-> * [anagrafiche.trgfn_gestori_guard_ruolo_gestore](/dbzero/anagrafiche/funzioni/trgfn_gestori_guard_check_ruolo_gestore)   
-> * [script.fn_guard_soggetto_ruolo](/dbzero/script/funzioni/fn_guard_soggetto_ruolo)  
+[anagrafiche.trgfn_gestori_guard_ruolo_gestore](/dbzero/anagrafiche/funzioni/trgfn_gestori_guard_check_ruolo_gestore)   
+> [script.fn_guard_soggetto_ruolo](/dbzero/script/funzioni/fn_guard_soggetto_ruolo)  
 
 La tabella **`anagrafiche.gestori`** rappresenta l’azienda stessa che utilizza e amministra il sistema Zero ERP (“gestore”). Attualmente raccoglie le informazioni di base necessarie a identificare il gestore, ma è ancora in fase di definizione: in futuro potrà essere estesa per includere ulteriori parametri funzionali e di configurazione del software.
 
@@ -30,7 +30,7 @@ La tabella **`anagrafiche.gestori`** rappresenta l’azienda stessa che utilizza
 
 ---
 
-### 🔗 Collegamenti con Altre Tabelle
+### Collegamenti con Altre Tabelle
 
 - **`anagrafiche.soggetti`**  
   - Il campo `soggetto_id` (UUID) è una chiave esterna che punta a `anagrafiche.soggetti(id)`.  
@@ -75,7 +75,7 @@ La tabella **`anagrafiche.gestori`** rappresenta l’azienda stessa che utilizza
 ---
 
 
-### 🔍 Descrizione dei Campi Principali
+### Descrizione dei Campi Principali
 
 - **`id`**  
   Identificativo univoco (seriale intero) per la riga “gestore”.
@@ -105,7 +105,7 @@ La tabella **`anagrafiche.gestori`** rappresenta l’azienda stessa che utilizza
 
 ---
 
-### 💡 Vantaggi Operativi
+### Vantaggi Operativi
 
 - **Singleton azienda gestore**  
   Grazie al vincolo di esclusione su `(1)`, si garantisce che esista al massimo una sola riga che rappresenta l’azienda “gestore”. Ciò semplifica la logica applicativa, perché non è necessario gestire più istanze di gestore.
@@ -121,7 +121,7 @@ La tabella **`anagrafiche.gestori`** rappresenta l’azienda stessa che utilizza
 
 ---
 
-### 🚀 Sviluppi Futuri
+### Sviluppi Futuri
 
 - **Estensione dei parametri funzionali**  
   In futuro, `anagrafiche.gestori` potrà contenere campi aggiuntivi di configurazione software, quali:
@@ -141,7 +141,7 @@ La tabella **`anagrafiche.gestori`** rappresenta l’azienda stessa che utilizza
 
 ---
 
-> 🧠 **“Una singola entità per identificare l’azienda gestore e gettare le basi per la futura configurazione avanzata del sistema Zero ERP.”**  
+> **“Una singola entità per identificare l’azienda gestore e gettare le basi per la futura configurazione avanzata del sistema Zero ERP.”**  
 
 ---
 

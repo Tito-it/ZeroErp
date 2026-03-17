@@ -2,14 +2,14 @@
 
 > 👀 **Vedi anche:**
 >
-> Approfondimento tabelle:
+Approfondimento tabelle:
 >
-> * [config.storico_set_storicizza](/dbzero/config/tabelle/storico_set_storicizza)
+[config.storico_set_storicizza](/dbzero/config/tabelle/storico_set_storicizza)
 >
-> Approfondimento funzioni:
+Approfondimento funzioni:
 >
-> * [maintenance.fn_run_and_log](/dbzero/maintenance/funzioni/fn_run_and_log)
-> * [maintenance.proc_sync_storico_set_storicizza](/dbzero/maintenance/funzioni/proc_sync_storico_set_storicizza)
+[maintenance.fn_run_and_log](/dbzero/maintenance/funzioni/fn_run_and_log)
+> [maintenance.proc_sync_storico_set_storicizza](/dbzero/maintenance/funzioni/proc_sync_storico_set_storicizza)
 
 ---
 
@@ -20,7 +20,7 @@ Wrapper di job che **esegue e traccia** la sincronizzazione della tabella `confi
 
 ---
 
-### 🧩 Firma
+### Firma
 
 ```sql
 PROCEDURE maintenance.proc_sync_storico_set_storicizza_job()
@@ -28,7 +28,7 @@ PROCEDURE maintenance.proc_sync_storico_set_storicizza_job()
 
 ---
 
-### 🔧 Comportamento
+### Comportamento
 
 1. Invoca `maintenance.fn_run_and_log(...)` con:
 
@@ -46,7 +46,7 @@ PROCEDURE maintenance.proc_sync_storico_set_storicizza_job()
 
 ---
 
-### 🛠️ Utilizzo tipico (pgAgent)
+### Utilizzo tipico (pgAgent)
 
 Nel job/step di pgAgent usa **SQL** con:
 
@@ -58,7 +58,7 @@ CALL maintenance.proc_sync_storico_set_storicizza_job();
 
 ---
 
-### 🔎 Esecuzione manuale
+### Esecuzione manuale
 
 ```sql
 CALL maintenance.proc_sync_storico_set_storicizza_job();

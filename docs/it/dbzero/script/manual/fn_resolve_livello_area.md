@@ -2,15 +2,15 @@
 
 > **Vedi anche**
 >
-> **Tabelle correlate:**
+**Tabelle correlate:**
 >
-> * [config.aree_funzionali](/dbzero/config/tabelle/aree_funzionali)
-> * [config.user_override_aree](/dbzero/config/tabelle/user_override_aree)
-> * [config.profili_reparto_aree](/dbzero/config/tabelle/profili_reparto_aree)
+[config.aree_funzionali](/dbzero/config/tabelle/aree_funzionali)
+> [config.user_override_aree](/dbzero/config/tabelle/user_override_aree)
+> [config.profili_reparto_aree](/dbzero/config/tabelle/profili_reparto_aree)
 >
-> **Funzioni correlate:**
+**Funzioni correlate:**
 >
-> * [script.fn_get_ruolo_sistema](/dbzero/script/funzioni/fn_get_ruolo_sistema)
+[script.fn_get_ruolo_sistema](/dbzero/script/funzioni/fn_get_ruolo_sistema)
 
 ---
 

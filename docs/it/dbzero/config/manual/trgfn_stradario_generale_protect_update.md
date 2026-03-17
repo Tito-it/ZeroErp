@@ -2,14 +2,14 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimento tabelle:    
+Approfondimento tabelle:    
 >
-> * [config.stradario_generale](/dbzero/config/tabelle/stradario_generale)   
-> * [config.stradario](/dbzero/config/tabelle/stradario)     
+[config.stradario_generale](/dbzero/config/tabelle/stradario_generale)   
+> [config.stradario](/dbzero/config/tabelle/stradario)     
 >
-> Approfondimento funzioni:    
+Approfondimento funzioni:    
 >
-> * [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)   
+[script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)   
 
 La trigger function **`config.trgfn_stradario_generale_upd_non_permesso()`** impedisce modifiche non consentite sulle colonne critiche di **`config.stradario_generale`** (`descrizione`, `descrizione_breve`, `toponomastica_id`) quando esistono vie correlate in **`config.stradario`**, segnalando in modo chiaro quale attributo è stato alterato.
 
@@ -23,7 +23,7 @@ La trigger function **`config.trgfn_stradario_generale_upd_non_permesso()`** imp
 
 ---
 
-### 🔍 Parametri e Contesto
+### Parametri e Contesto
 
 * **INPUT**: utilizza il record `OLD` (pre-update) e `NEW` (in aggiornamento).
 * **Condizione di attivazione**: `BEFORE UPDATE OF descrizione, descrizione_breve, toponomastica_id` su `config.stradario_generale`.
@@ -34,7 +34,7 @@ La trigger function **`config.trgfn_stradario_generale_upd_non_permesso()`** imp
 
 ---
 
-### ⚙️ Logica di Esecuzione
+### Logica di Esecuzione
 
 1. **Verifica di utilizzo**
 
@@ -72,7 +72,7 @@ La trigger function **`config.trgfn_stradario_generale_upd_non_permesso()`** imp
 
 
 
-### 💡 Vantaggi Operativi
+### Vantaggi Operativi
 
 * **Integrità referenziale**: impedisce modifiche che comprometterebbero la coerenza dei dati stradario.
 * **Diagnosi immediata**: il payload JSON indica esattamente quale colonna è stata alterata e l’ID del record.
@@ -80,4 +80,4 @@ La trigger function **`config.trgfn_stradario_generale_upd_non_permesso()`** imp
 
 ---
 
-> 🧠 **“`trgfn_stradario_generale_upd_non_permesso` garantisce che le definizioni generali non vengano modificate in modo incongruo, proteggendo la consistenza tra stradario_generale e stradario.”**
+> **“`trgfn_stradario_generale_upd_non_permesso` garantisce che le definizioni generali non vengano modificate in modo incongruo, proteggendo la consistenza tra stradario_generale e stradario.”**

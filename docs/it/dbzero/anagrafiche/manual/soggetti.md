@@ -2,27 +2,27 @@
 
 >  👀 **Vedi anche** 
 >
-> Guide generali: 
+Guide generali: 
 >
->  * [Generazione di un cliente](/guide/generazione-cliente)
+[Generazione di un cliente](/guide/generazione-cliente)
 >
-> Approfondimento Tabelle:   
+Approfondimento Tabelle:   
 >
->  * [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)   
->  * [anagrafiche.dati_societari](/dbzero/anagrafiche/tabelle/dati_societari)   
->  * [config.tipi_ruoli](/dbzero/config/tabelle/tipi_ruoli)    
->  * [config.titoli_cortesia](/dbzero/config/tabelle/titoli_cortesia)    
->  * [config.tipi_soggetto_dettaglio](/dbzero/config/tipi_soggetto_dettaglio)    
->  * [storico.soggetti](/dbzero/storico/tabelle/soggetti)   
+[anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)   
+>  [anagrafiche.dati_societari](/dbzero/anagrafiche/tabelle/dati_societari)   
+>  [config.tipi_ruoli](/dbzero/config/tabelle/tipi_ruoli)    
+>  [config.titoli_cortesia](/dbzero/config/tabelle/titoli_cortesia)    
+>  [config.tipi_soggetto_dettaglio](/dbzero/config/tipi_soggetto_dettaglio)    
+>  [storico.soggetti](/dbzero/storico/tabelle/soggetti)   
 >
-> Approfondimento Funzioni:   
+Approfondimento Funzioni:   
 > 
->  * [anagrafiche.trgfn_soggetti_guard_soggetto_contatti](/dbzero/anagrafiche/funzioni/trgfn_soggetti_guard_soggetto_contatti)   
->  * [anagrafiche.trgfn_soggetti_valida_cf_piva_dispatch](/dbzero/anagrafiche/funzioni/trgfn_soggetti_valida_cf_piva_dispatch)   
->  * [anagrafiche.trgfn_dati_societari_guard_tipo_soggetto](/dbzero/anagrafiche/funzioni/trgfn_dati_societari_guard_tipo_soggetto) 
->  * [anagrafiche.trgfn_soggetti_normalize](/dbzero/anagrafiche/funzioni/trgfn_soggetti_normalize) 
->  * [script.trgfn_audit_data_user_generic](/dbzero/script/funzioni/trgfn_audit_data_user_generic)   
->  * [script.trgfn_storico_generic](/dbzero/script/funzioni/trgfn_storico_generic)
+[anagrafiche.trgfn_soggetti_guard_soggetto_contatti](/dbzero/anagrafiche/funzioni/trgfn_soggetti_guard_soggetto_contatti)   
+>  [anagrafiche.trgfn_soggetti_valida_cf_piva_dispatch](/dbzero/anagrafiche/funzioni/trgfn_soggetti_valida_cf_piva_dispatch)   
+>  [anagrafiche.trgfn_dati_societari_guard_tipo_soggetto](/dbzero/anagrafiche/funzioni/trgfn_dati_societari_guard_tipo_soggetto) 
+>  [anagrafiche.trgfn_soggetti_normalize](/dbzero/anagrafiche/funzioni/trgfn_soggetti_normalize) 
+>  [script.trgfn_audit_data_user_generic](/dbzero/script/funzioni/trgfn_audit_data_user_generic)   
+>  [script.trgfn_storico_generic](/dbzero/script/funzioni/trgfn_storico_generic)
 
 
 Questa documentazione descrive le regole di progettazione e implementazione della tabella anagrafica **`anagrafiche.soggetti`** in Zero ERP, senza ripetere la struttura SQL automatica. Contiene informazioni su vincoli, campi generati e relazioni con altre tabelle.
@@ -46,7 +46,7 @@ Questa documentazione descrive le regole di progettazione e implementazione dell
 
 ---
 
-### 🔗 Collegamenti con Altre Tabelle
+### Collegamenti con Altre Tabelle
 
 - **`config.comuni`**  
   - Il campo `comune_id` fa riferimento a `config.comuni(id)`.  
@@ -93,7 +93,7 @@ Questa documentazione descrive le regole di progettazione e implementazione dell
 
 ---
 
-### 🔍 Campi Generati e Indicizzazione
+### Campi Generati e Indicizzazione
 
 - **`id_fiscale_univoco_cf_piva`** (colonna generata)  
   - Definito come `COALESCE(codice_fiscale, partita_iva)`.  
@@ -105,7 +105,7 @@ Questa documentazione descrive le regole di progettazione e implementazione dell
 
 ---
 
-### 💡 Vantaggi Operativi
+### Vantaggi Operativi
 
 - **Univocità e integrità dei dati**  
   Grazie al campo generato `id_fiscale_univoco_cf_piva` abbinato a `stato_id`, si evita la duplicazione di soggetti con lo stesso CF o P.IVA per uno stesso stato.
@@ -121,7 +121,7 @@ Questa documentazione descrive le regole di progettazione e implementazione dell
 
 ---
 
-### ⚙️ Implementazioni Aggiuntive
+### Implementazioni Aggiuntive
 
 In questa sezione sono descritte le modifiche chiave apportate per allinearsi al nuovo modello dati, con dettaglio delle motivazioni e degli esempi di configurazione internazionale:
 
@@ -164,7 +164,7 @@ In questa sezione sono descritte le modifiche chiave apportate per allinearsi al
    ```
 
 
-> 🧠 **“Un’Anagrafica Soggetti solida e coerente: controlli condizionali e campi generati assicurano dati puliti, ricercabili e univoci, senza dover ripetere informazioni in fase applicativa.”**
+> **“Un’Anagrafica Soggetti solida e coerente: controlli condizionali e campi generati assicurano dati puliti, ricercabili e univoci, senza dover ripetere informazioni in fase applicativa.”**
 
 ---
 

@@ -2,16 +2,14 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> • [vendite.listini](/dbzero/vendite/tabelle/listini)  
+• [vendite.listini](/dbzero/vendite/tabelle/listini)  
 > • [vendite.listini_versioni](/dbzero/vendite/tabelle/listini_versioni)  
 > • [vendite.listini_associazioni](/dbzero/vendite/tabelle/listini_associazioni)  
 > • [vendite.listini_righe](/dbzero/vendite/tabelle/listini_righe)  
 >
----
-
-### 🎯 Scopo Principale
+🎯 Scopo Principale
 
 La funzione `vendite.fn_resolve_prezzo_listino` risolve in modo deterministico il
 prezzo da applicare per `articolo + uom + data_riferimento`, considerando contesto
@@ -19,7 +17,7 @@ BA/utility/emittente e priorita` multi-listino.
 
 ---
 
-### ✅ Regole principali
+### Regole principali
 
 * `p_data_riferimento` e` obbligatoria.
 * Input ID numerici validi solo se `> 0`.
@@ -41,7 +39,7 @@ BA/utility/emittente e priorita` multi-listino.
 
 ---
 
-### 🧩 Output
+### Output
 
 Ritorna una riga con:
 

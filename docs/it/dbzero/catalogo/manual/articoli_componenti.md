@@ -2,12 +2,12 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento Tabelle**  
+**Approfondimento Tabelle**  
 > • [`catalogo.articoli`](/dbzero/catalogo/tabelle/articoli)   
 > • [`catalogo.note`](/dbzero/catalogo/tabelle/note)   
 > • *(opz.)* [`catalogo.unita_misura`](/dbzero/catalogo/tabelle/unita_misura)   
 >
-> **Approfondimento Trigger/Funzioni**   
+**Approfondimento Trigger/Funzioni**   
 > • [`dbops.trgfn_tx_id_managed`](/dbzero/dbops/funzioni/trgfn_tx_id_managed)   
 > • [`dbops.trgfn_child_requires_active_parent`](/dbzero/dbops/funzioni/trgfn_child_requires_active_parent)   
 > • [`script.trgfn_audit_data_user_generic`](/dbzero/script/funzioni/trgfn_audit_data_user_generic)   
@@ -30,7 +30,7 @@ Supporta:
 
 ---
 
-### 🔗 Relazioni
+### Relazioni
 
 | Tipo      | Tabella ↔ Campo                           | Descrizione                                                                           |
 | --------- | ----------------------------------------- | ------------------------------------------------------------------------------------- |
@@ -42,7 +42,7 @@ Supporta:
 
 ---
 
-### 🧱 Struttura logica (campi chiave)
+### Struttura logica (campi chiave)
 
 * **Identità**: `id UUID` (PK)
 * **Legame**: `prodotto_id UUID` (FK), `componente_id UUID` (FK)
@@ -68,19 +68,19 @@ Supporta:
 
 > **Nota tecnica (trigger manuali)**
 >
-> Questi vincoli sono **applicati tramite trigger dedicati** su `articoli_componenti`:
+Questi vincoli sono **applicati tramite trigger dedicati** su `articoli_componenti`:
 >
-> * REQUIRE su `prodotto_id` (padre attivo)
-> * REQUIRE su `componente_id` (figlio attivo)
-> * GUARD su `is_composito`
+REQUIRE su `prodotto_id` (padre attivo)
+> REQUIRE su `componente_id` (figlio attivo)
+> GUARD su `is_composito`
 >
-> Non rientrano nella generazione automatica `automations` perché la tabella
+Non rientrano nella generazione automatica `automations` perché la tabella
 > usa **due FK verso la stessa entità** (`catalogo.articoli`) con ruoli diversi
 > (prodotto vs componente), e la logica richiede controlli **distinti e specifici**.
 
 ---
 
-### 🔍 Indicizzazione
+### Indicizzazione
 
 * `ix_articoli_componenti_prodotto_from_to (prodotto_id, valido_dal, valido_al)` → espansione distinta per prodotto e per data.
 * `ix_articoli_componenti_componente_from_to (componente_id, valido_dal, valido_al)` → “dove è usato” il componente.
@@ -89,7 +89,7 @@ Supporta:
 ---
 
 
-### 🔎 Query tipiche
+### Query tipiche
 
 **1) Distinta valida per una data**
 
@@ -132,7 +132,7 @@ JOIN catalogo.articoli_componenti ac2
 
 ---
 
-### 🧭 Best practice
+### Best practice
 
 * **Versioning esplicito**: apri una **nuova riga** con nuovo `valido_dal` per variare `coeff_qta` o altri attributi; **non** aggiornare in‑place se vuoi tracciare la storia.
 * **Controlli applicativi**: impedisci componenti su articoli che **non sono** `is_composito=true` (vincolo applicativo opzionale).
@@ -142,7 +142,7 @@ JOIN catalogo.articoli_componenti ac2
 
 ---
 
-### 🧩 Esempio realistico (distinta base)
+### Esempio realistico (distinta base)
 
 Esempio: prodotto **SEDIA** con componenti **piedi**, **schienale**, **sedile**, **viti**.
 
@@ -166,7 +166,7 @@ In `catalogo.articoli_componenti` avrai una riga per ciascun componente:
 
 ---
 
-### 🧩 Esempio realistico (utility gas)
+### Esempio realistico (utility gas)
 
 Esempio: prodotto **GAS_FACILE** composto da **MATERIA_PRIMA**, **QVD** e **SPREAD**.
 

@@ -8,7 +8,7 @@ configurate in `dbops.automazione_guard_utility_tipo_ruolo`.
 
 ---
 
-### ✅ Regole principali
+### Regole principali
 
 * Applica solo righe `enabled=true`.
 * Rispetta `exec_mode` (`AUTO` sempre ammesso).
@@ -20,7 +20,7 @@ configurate in `dbops.automazione_guard_utility_tipo_ruolo`.
 
 ---
 
-### 🧪 Esempio d’uso
+### Esempio d’uso
 
 ```sql
 SELECT dbops.fn_apply_automazione_guard_utility_tipo_ruolo('CI', false);

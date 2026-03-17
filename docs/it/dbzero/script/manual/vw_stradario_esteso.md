@@ -2,15 +2,15 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimento tabelle:   
+Approfondimento tabelle:   
 >
-> * [config.stradario_generale](/dbzero/config/tabelle/stradario_generale)   
-> * [config.toponomastica](/dbzero/config/tabelle/toponomastica)   
-> * [config.stati](/dbzero/config/tabelle/stati)   
+[config.stradario_generale](/dbzero/config/tabelle/stradario_generale)   
+> [config.toponomastica](/dbzero/config/tabelle/toponomastica)   
+> [config.stati](/dbzero/config/tabelle/stati)   
 >
-> Approfondimento view:   
+Approfondimento view:   
 >
-> * [script.vw_indirizzo_completo](/dbzero/script/views/vw_indirizzo_completo)    
+[script.vw_indirizzo_completo](/dbzero/script/views/vw_indirizzo_completo)    
 
 
 La view **`script.vw_stradario_esteso`** offre una rappresentazione denormalizzata delle vie, combinando i dati base di **`stradario_generale`** con le relative informazioni di tipologia toponomastica e stato, per semplificare le query di indirizzo.
@@ -26,7 +26,7 @@ La view **`script.vw_stradario_esteso`** offre una rappresentazione denormalizza
 ---
 
 
-### 💡 Vantaggi Operativi
+### Vantaggi Operativi
 
 * **Sviluppo semplificato**: i client possono accedere a tutti i dettagli di via con una singola query.
 * **Flessibilità**: la view può essere indicizzata o materializzata per scenari ad alto carico di lettura.
@@ -43,4 +43,4 @@ COMMENT ON VIEW script.vw_stradario_esteso
 
 ---
 
-> 🧠 **“`vw_stradario_esteso` è lo strumento ideale per ottenere in un colpo solo tutte le informazioni essenziali di una via, facilitando integrazioni e reportistica.”**
+> **“`vw_stradario_esteso` è lo strumento ideale per ottenere in un colpo solo tutte le informazioni essenziali di una via, facilitando integrazioni e reportistica.”**

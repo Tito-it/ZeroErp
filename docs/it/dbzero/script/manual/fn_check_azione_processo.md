@@ -2,15 +2,15 @@
 
 > **Vedi anche**
 >
-> **Tabelle correlate:**
+**Tabelle correlate:**
 >
-> * [config.azioni_processo](/dbzero/config/tabelle/azioni_processo)
-> * [config.user_override_azioni](/dbzero/config/tabelle/user_override_azioni)
-> * [config.profili_reparto_azioni](/dbzero/config/tabelle/profili_reparto_azioni)
+[config.azioni_processo](/dbzero/config/tabelle/azioni_processo)
+> [config.user_override_azioni](/dbzero/config/tabelle/user_override_azioni)
+> [config.profili_reparto_azioni](/dbzero/config/tabelle/profili_reparto_azioni)
 >
-> **Funzioni correlate:**
+**Funzioni correlate:**
 >
-> * [script.fn_get_ruolo_sistema](/dbzero/script/funzioni/fn_get_ruolo_sistema)
+[script.fn_get_ruolo_sistema](/dbzero/script/funzioni/fn_get_ruolo_sistema)
 
 ---
 

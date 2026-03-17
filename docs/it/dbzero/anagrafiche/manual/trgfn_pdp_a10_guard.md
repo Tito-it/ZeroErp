@@ -2,13 +2,13 @@
 
 > 👀 **Vedi anche**
 >
->  **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> • [`anagrafiche.pdp`](/dbzero/anagrafiche/tabelle/anagrafiche_pdp)  
+• [`anagrafiche.pdp`](/dbzero/anagrafiche/tabelle/anagrafiche_pdp)  
 >
->  **Approfondimento funzioni:**
+**Approfondimento funzioni:**
 >
-> • [`script.fn_log_and_raise_error`](/dbzero/script/funzioni/fn_log_and_raise_error)  
+• [`script.fn_log_and_raise_error`](/dbzero/script/funzioni/fn_log_and_raise_error)  
 
 ---
 
@@ -26,7 +26,7 @@ La regola è **immutabilità dopo prima valorizzazione**: è consentito impostar
 
 ---
 
-### 🧩 Firma
+### Firma
 
 ```sql
 CREATE OR REPLACE FUNCTION anagrafiche.trgfn_pdp_a10_guard()
@@ -42,22 +42,22 @@ VOLATILE
 
 **Effetti pratici**
 
-* ✅ Consentito: `pdp: NULL → 'IT001...'` (prima valorizzazione).
-* 🚫 Vietato: `pdp: 'IT001...' → 'IT002...'` (cambio codice).
-* ✅ Consentito: `indirizzo_dettaglio_id: NULL → 123` (prima valorizzazione).
-* 🚫 Vietato: `indirizzo_dettaglio_id: 123 → 456` (spostamento di luogo).
+* Consentito: `pdp: NULL → 'IT001...'` (prima valorizzazione).
+* Vietato: `pdp: 'IT001...' → 'IT002...'` (cambio codice).
+* Consentito: `indirizzo_dettaglio_id: NULL → 123` (prima valorizzazione).
+* Vietato: `indirizzo_dettaglio_id: 123 → 456` (spostamento di luogo).
 
-> 💡 **Variante più restrittiva**: per **vietare anche** `NULL → valore`, rimuovi le condizioni `OLD.<col> IS NOT NULL`.
+> **Variante più restrittiva**: per **vietare anche** `NULL → valore`, rimuovi le condizioni `OLD.<col> IS NOT NULL`.
 
 ---
 
-### 🧷 Dipendenze
+### Dipendenze
 
 * `script.fn_log_and_raise_error` – registra l’evento e genera l’eccezione applicativa con **codice** `E_COLONNA_NON_MODIFICABILE` e payload JSON (colonna/id).
 
 ---
 
-### 🧪 Esempi d’uso
+### Esempi d’uso
 
 **DDL trigger su tabella `anagrafiche.pdp`**
 
@@ -86,7 +86,7 @@ UPDATE anagrafiche.pdp SET indirizzo_dettaglio_id = 999 WHERE id = 100; -- raise
 
 ---
 
-### ✅ Motivazioni progettuali
+### Motivazioni progettuali
 
 1. **Stabilità dei riferimenti**: `pdp` è chiave esterna per sistemi esterni (POD/PDR). Cambiarlo romperebbe l’allineamento.
 2. **Coerenza fisica**: un PDP rappresenta un **punto reale**; spostarlo di indirizzo equivale a creare **un nuovo PDP**, non a modificare quello esistente.

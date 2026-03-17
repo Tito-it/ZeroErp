@@ -2,14 +2,12 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> • [vendite.registri_fatturazione](/dbzero/vendite/tabelle/registri_fatturazione)  
+• [vendite.registri_fatturazione](/dbzero/vendite/tabelle/registri_fatturazione)  
 > • [vendite.fatture](/dbzero/vendite/tabelle/fatture)  
 >
----
-
-### 🎯 Scopo Principale
+🎯 Scopo Principale
 
 (latest review 26-01-2026)
 `vendite.registri_fatturazione_progressivi` memorizza i **progressivi di numerazione**
@@ -18,7 +16,7 @@ numero documento in fase di emissione.
 
 ---
 
-### 🧱 Campi chiave (semantica)
+### Campi chiave (semantica)
 
 * **Registro**: `registro_id`.
 * **Periodo**: `anno`, `mese` (0 = annuale se non usato).
@@ -28,7 +26,7 @@ numero documento in fase di emissione.
 
 ---
 
-### ✅ Note operative
+### Note operative
 
 * Il vincolo univoco `(registro_id, anno, mese, serie)` impedisce duplicazioni.
 * La tabella e` aggiornata dal processo di numerazione (fase emissione).

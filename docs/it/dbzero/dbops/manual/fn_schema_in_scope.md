@@ -2,27 +2,25 @@
 
 > 👀 **Vedi anche**
 >
-> Guide:
+Guide:
 >
-> * [Automazioni – Overview del Modulo](/guide/automazione-db)  
+[Automazioni – Overview del Modulo](/guide/automazione-db)  
 >
-> Approfondimento funzioni:
+Approfondimento funzioni:
 >
-> * [dbops.fn_resolve_scope](/dbzero/dbops/funzioni/fn_resolve_scope)   
-> * [dbops.fn_schema_match](/dbzero/dbops/funzioni/fn_schema_match)   
-> * [dbops.fn_table_in_scope](/dbzero/dbops/funzioni/fn_table_in_scope)   
+[dbops.fn_resolve_scope](/dbzero/dbops/funzioni/fn_resolve_scope)   
+> [dbops.fn_schema_match](/dbzero/dbops/funzioni/fn_schema_match)   
+> [dbops.fn_table_in_scope](/dbzero/dbops/funzioni/fn_table_in_scope)   
 >
 
----
-
-### 🎯 Scopo Principale
+🎯 Scopo Principale
 
 (latest review 10-01-26)
 La funzione **`dbops.fn_schema_in_scope(p_rule_target, p_schemas)`** è un **helper booleano** utilizzato dalle automazioni per verificare se uno schema specificato da una regola (`p_rule_target`) appartiene all’insieme di schemi effettivamente nell’ambito (`p_schemas`).
 
 ---
 
-### 🔍 Parametri di input
+### Parametri di input
 
 | Parametro       | Tipo   | Obbligatorio | Descrizione                                                         |
 | --------------- | ------ | :----------: | ------------------------------------------------------------------- |
@@ -31,13 +29,13 @@ La funzione **`dbops.fn_schema_in_scope(p_rule_target, p_schemas)`** è un **hel
 
 ---
 
-### 📤 Valore di ritorno
+### Valore di ritorno
 
 `boolean` – `true` se lo schema target è incluso nell'ambito o se `p_rule_target='*all'`; altrimenti `false`.
 
 ---
 
-### ⚙️ Flusso logico
+### Flusso logico
 
 1. Se `p_rule_target` è `NULL` → ritorna `false`.
 2. Se `p_rule_target='*all'` (case insensitive) → ritorna `true`.
@@ -47,7 +45,7 @@ La funzione **`dbops.fn_schema_in_scope(p_rule_target, p_schemas)`** è un **hel
 
 ---
 
-### 🧩 Casi d’uso tipici
+### Casi d’uso tipici
 
 * **Filtro regole automazioni**: applicare una regola solo se lo schema target della regola è incluso nell'ambito.
 * **Wildcard `*all`**: consentire di definire regole valide per tutti gli schemi senza doverli elencare.
@@ -55,14 +53,14 @@ La funzione **`dbops.fn_schema_in_scope(p_rule_target, p_schemas)`** è un **hel
 
 ---
 
-### 🛡️ Permessi e sicurezza
+### Permessi e sicurezza
 
 * È una funzione **IMMUTABLE** e non accede a cataloghi o dati esterni.
 * Sicura e senza effetti collaterali.
 
 ---
 
-### 🚀 Esempi di utilizzo
+### Esempi di utilizzo
 
 * `SELECT dbops.fn_schema_in_scope('anagrafiche', ARRAY['anagrafiche','config']);` → `true`.
 * `SELECT dbops.fn_schema_in_scope('vendite', ARRAY['anagrafiche','config']);` → `false`.
@@ -70,14 +68,14 @@ La funzione **`dbops.fn_schema_in_scope(p_rule_target, p_schemas)`** è un **hel
 
 ---
 
-### 📌 Considerazioni
+### Considerazioni
 
 * Pensata come building‑block: viene usata in condizioni `WHERE` di `fn_run_automations_*`.
 * Gestisce esplicitamente i casi limite (`NULL`, array vuoti).
 
 ---
 
-### ✅ Benefici
+### Benefici
 
 * **Semplicità**: incapsula la logica di confronto schema/ambito.
 * **Riutilizzabilità**: usata trasversalmente in più moduli di automazione.
@@ -85,4 +83,4 @@ La funzione **`dbops.fn_schema_in_scope(p_rule_target, p_schemas)`** è un **hel
 
 ---
 
-> 🧠 **In sintesi**: `fn_schema_in_scope` è un **helper fondamentale** che permette di verificare in modo uniforme se uno schema rientra nell'ambito delle automazioni, gestendo anche il caso speciale `*all`.
+> **In sintesi**: `fn_schema_in_scope` è un **helper fondamentale** che permette di verificare in modo uniforme se uno schema rientra nell'ambito delle automazioni, gestendo anche il caso speciale `*all`.

@@ -2,14 +2,14 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimenti tabelle:  
+Approfondimenti tabelle:  
 >
-> * [catalogo.articoli](/dbzero/catalogo/tabelle/articoli)      
-> * [catalogo.unita_misura](/dbzero/catalogo/tabelle/unita_misura)     
-> * [vendite.articoli_tipologie](/dbzero/vendite/tabelle/articoli_tipologie)    
-> * [vendite.articoli_gruppi](/dbzero/vendite/tabelle/articoli_gruppi)    
-> * [vendite.articoli_spesa](/dbzero/vendite/tabelle/articoli_spesa)    
-> * [config.iva](/dbzero/config/tabelle/iva)    
+[catalogo.articoli](/dbzero/catalogo/tabelle/articoli)      
+> [catalogo.unita_misura](/dbzero/catalogo/tabelle/unita_misura)     
+> [vendite.articoli_tipologie](/dbzero/vendite/tabelle/articoli_tipologie)    
+> [vendite.articoli_gruppi](/dbzero/vendite/tabelle/articoli_gruppi)    
+> [vendite.articoli_spesa](/dbzero/vendite/tabelle/articoli_spesa)    
+> [config.iva](/dbzero/config/tabelle/iva)    
 
 ---
 
@@ -24,7 +24,7 @@ Restituisce **una riga per articolo**.
 
 ---
 
-### 🧱 Struttura logica della vista
+### Struttura logica della vista
 
 La vista parte da `catalogo.articoli` e aggiunge:
 
@@ -53,7 +53,7 @@ La vista parte da `catalogo.articoli` e aggiunge:
 
 ---
 
-### 🔍 Modalita' d'uso tipiche
+### Modalita' d'uso tipiche
 
 ```sql
 SELECT *
@@ -70,7 +70,7 @@ WHERE codice ILIKE 'ART%';
 
 ---
 
-### ✅ Best practice e raccomandazioni
+### Best practice e raccomandazioni
 
 * Usare la vista per letture, reporting e API di consultazione.
 * Per modifiche, aggiornare sempre le tabelle base (`catalogo.articoli` e relazioni).

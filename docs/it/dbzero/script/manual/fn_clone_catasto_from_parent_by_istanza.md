@@ -2,20 +2,19 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimenti tabelle:**
+**Approfondimenti tabelle:**
 >
-> * [anagrafiche.istanze_utilities](/dbzero/anagrafiche/tabelle/istanze_utilities)    
-> * [anagrafiche.catasto_unita_immobiliari](/dbzero/anagrafiche/tabelle/catasto_unita_immobiliari)    
+[anagrafiche.istanze_utilities](/dbzero/anagrafiche/tabelle/istanze_utilities)    
+> [anagrafiche.catasto_unita_immobiliari](/dbzero/anagrafiche/tabelle/catasto_unita_immobiliari)    
 >
-> **Approfondimenti funzioni:**
+**Approfondimenti funzioni:**
 >
-> * [script.fn_get_catasto_source_by_istanza](/dbzero/script/funzioni/fn_get_catasto_source_by_istanza)    
+[script.fn_get_catasto_source_by_istanza](/dbzero/script/funzioni/fn_get_catasto_source_by_istanza)    
 >
+**Automazioni collegate:**
 >
-> **Automazioni collegate:**
->
-> * Trigger: `anagrafiche.trg_iu_z50_clone_catasto_from_parent_aft_upd` (subentro: clonazione catasto)     
-> * Trigger: `anagrafiche.trg_iu_z40_sync_catasto_unita_indirizzo_aft_ins_upd` (sync tabella ponte catasto↔indirizzi)    
+Trigger: `anagrafiche.trg_iu_z50_clone_catasto_from_parent_aft_upd` (subentro: clonazione catasto)     
+> Trigger: `anagrafiche.trg_iu_z40_sync_catasto_unita_indirizzo_aft_ins_upd` (sync tabella ponte catasto↔indirizzi)    
 
 ---
 
@@ -33,7 +32,7 @@ La funzione **`script.fn_clone_catasto_from_parent_by_istanza(p_istanza_utilitie
 
 ---
 
-### 🧭 Contesto di Modellazione
+### Contesto di Modellazione
 
 Dopo il refactor del modello:
 
@@ -49,7 +48,7 @@ La gestione del legame **catasto ↔ indirizzo** è **fuori** da questa funzione
 
 ---
 
-### 🛠️ Firma
+### Firma
 
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_clone_catasto_from_parent_by_istanza(
@@ -61,7 +60,7 @@ LANGUAGE plpgsql;
 
 ---
 
-### 📥 Parametri
+### Parametri
 
 | Parametro                |     Tipo | Obbligatorio | Descrizione                                                                          |
 | ------------------------ | -------: | :----------: | ------------------------------------------------------------------------------------ |
@@ -69,15 +68,15 @@ LANGUAGE plpgsql;
 
 ---
 
-### 📤 Valore di Ritorno
+### Valore di Ritorno
 
-* ✅ `bigint` = **id** del record appena creato in `anagrafiche.catasto_unita_immobiliari`.
-* ✅ `bigint` = **id già presente** se l’istanza ha già `catasto_unita_immobiliare_id` valorizzato (idempotenza).
+* `bigint` = **id** del record appena creato in `anagrafiche.catasto_unita_immobiliari`.
+* `bigint` = **id già presente** se l’istanza ha già `catasto_unita_immobiliare_id` valorizzato (idempotenza).
 * ⚠️ `NULL` se l’istanza non ha `parent_istanza_id` (nessuna sorgente disponibile).
 
 ---
 
-### 🔐 Comportamento su Parametri Non Validi
+### Comportamento su Parametri Non Validi
 
 Se `p_istanza_utilities_id` è `NULL`, la funzione genera un errore applicativo tramite logging centralizzato:
 
@@ -87,7 +86,7 @@ Se `p_istanza_utilities_id` è `NULL`, la funzione genera un errore applicativo 
 
 ---
 
-### 🧱 Dipendenze e Assunzioni
+### Dipendenze e Assunzioni
 
 Per la clonazione completa servono:
 
@@ -99,7 +98,7 @@ Se (3) non è vero, la funzione considera la sorgente assente e attiva un errore
 
 ---
 
-### 🔄 Logica Operativa
+### Logica Operativa
 
  **1) Validazione parametro**
 
@@ -176,7 +175,7 @@ Infine:
 
 ---
 
-### 🧩 Side Effects
+### Side Effects
 
 ✅ La funzione **modifica dati**:
 
@@ -190,7 +189,7 @@ Infine:
 
 ---
 
-### 🔗 Integrazione con i Trigger
+### Integrazione con i Trigger
 
 Nel flusso previsto:
 
@@ -202,7 +201,7 @@ Questa funzione copre il cuore del punto 2: **crea e aggancia** il catasto clona
 
 ---
 
-### ⚙️ Considerazioni di Concorrenza
+### Considerazioni di Concorrenza
 
 * L’uso di `FOR UPDATE` è intenzionale per evitare che due transazioni concorrenti clonino due catasti distinti per la stessa istanza.
 * L’UPDATE finale con condizione `... IS NULL` aggiunge una seconda barriera idempotente.
@@ -219,7 +218,7 @@ Questa funzione copre il cuore del punto 2: **crea e aggancia** il catasto clona
 
 ---
 
-### 🔍 Esempi d’Uso
+### Esempi d’Uso
 
 **Clonazione esplicita (manuale)**
 
@@ -241,7 +240,7 @@ WHERE iu.id = 12345;
 
 ---
 
-### 🧪 Note per Test (pgTAP / SQL)
+### Note per Test (pgTAP / SQL)
 
 Casi minimi consigliati:
 
@@ -254,18 +253,18 @@ Casi minimi consigliati:
 
 ---
 
-### 📌 Best Practice
+### Best Practice
 
-* ✅ Usare questa funzione nel solo contesto di **subentro** (parent come sorgente).
-* ✅ Lasciare al trigger di sync la gestione della tabella ponte catasto↔indirizzi.
-* ✅ Mantenere separati:
+* Usare questa funzione nel solo contesto di **subentro** (parent come sorgente).
+* Lasciare al trigger di sync la gestione della tabella ponte catasto↔indirizzi.
+* Mantenere separati:
 
   * lookup sorgente (`fn_get_catasto_source_by_istanza`)
   * clonazione + aggancio (`fn_clone_catasto_from_parent_by_istanza`)
 
 ---
 
-### 🗂️ Metadati
+### Metadati
 
 * **Schema:** `script`
 * **Ritorno:** `bigint` (id catasto creato o già esistente)

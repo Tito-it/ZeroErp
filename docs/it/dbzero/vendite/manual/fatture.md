@@ -2,9 +2,9 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> • [vendite.registri_fatturazione](/dbzero/vendite/tabelle/registri_fatturazione)   
+• [vendite.registri_fatturazione](/dbzero/vendite/tabelle/registri_fatturazione)   
 > • [vendite.fatture_righe](/dbzero/vendite/tabelle/fatture_righe)  
 > • [vendite.fatture_riepiloghi_iva](/dbzero/vendite/tabelle/fatture_riepiloghi_iva)    
 > • [config.stati_doc_fiscale](/dbzero/config/tabelle/stati_doc_fiscale)    
@@ -32,7 +32,7 @@ Obiettivi principali:
 
 ---
 
-### 🧭 Collocazione nel flusso documentale
+### Collocazione nel flusso documentale
 
 1. **Pre‑emissione**: creazione testata (bozza), valorizzazione di BA, emittente, valuta, termini pagamento.
 2. **Popolamento righe**: da attività fatturabili / ordini / altre fonti → `vendite.fatture_righe`.
@@ -42,7 +42,7 @@ Obiettivi principali:
 
 ---
 
-### 🧩 Identità fiscale & numerazione
+### Identità fiscale & numerazione
 
 * **Registro**: `registro_id` → `vendite.registri_fatturazione`. Definisce criteri di numerazione (per esercizio e serie).
 * **Anno/Serie/Numero**: riempiti secondo il flusso; **indice univoco parziale** `uq_fatture_numero` assicura esclusività **solo** quando `numero IS NOT NULL`.
@@ -81,7 +81,7 @@ Obiettivi principali:
 
 ---
 
-### 🧷 Meta, storicizzazione & idempotenza
+### Meta, storicizzazione & idempotenza
 
 * `meta jsonb NOT NULL` → spazio per snapshot parametri di calcolo, riferimenti esterni, flags di integrazione.
 * `storicizza boolean` → abilita storicizzazione su update/delete all’interno del tuo framework (audit/rollback).
@@ -93,7 +93,7 @@ Obiettivi principali:
 ---
 
 
-### 🧪 Esempi d’uso (query applicative)
+### Esempi d’uso (query applicative)
 
 ```sql
 -- 1) Ricerca fatture per BA in un periodo
@@ -121,7 +121,7 @@ WHERE f.sorgente_tipo_id = :src_tipo
 
 ---
 
-### ✅ Best practice operative
+### Best practice operative
 
 * **Numerazione** solo in transizione di stato (es. da BOZZA → EMESSA/REGISTRATA) con transazione atomica e lock del registro.
 * **Protezione campi** di numerazione via trigger (già presenti) e policy di ruolo.
@@ -143,6 +143,6 @@ WHERE f.sorgente_tipo_id = :src_tipo
 
 ---
 
-### 👓 Importanza nel sistema
+### Importanza nel sistema
 
 `vendite.fatture` è il **fulcro fiscale** del ciclo vendite: custodisce l’identità legale del documento, aggrega il contenuto economico e determina interfacce con **IVA, pagamenti, contabilità e integrazioni esterne**. Una corretta gestione di numerazione, stato e idempotenza garantisce **consistenza, rintracciabilità e compliance**.

@@ -2,15 +2,13 @@
 
 >  👀 **Vedi anche** 
 >
-> Approfondimento Tabelle:  
+Approfondimento Tabelle:  
 >
-> * [config.comuni](/dbzero/config/tabelle/comuni)      
-> * [config.stradario_generale](/dbzero/config/tabelle/stradario_generale)   
-> * [config.codici_postali](/dbzero/config/tabelle/codici_postali)  
-> * [storico.stradario](/dbzero/storico/tabelle/stradario)
+[config.comuni](/dbzero/config/tabelle/comuni)      
+> [config.stradario_generale](/dbzero/config/tabelle/stradario_generale)   
+> [config.codici_postali](/dbzero/config/tabelle/codici_postali)  
+> [storico.stradario](/dbzero/storico/tabelle/stradario)
 > 
-
-
 La tabella **`config.stradario`** definisce la mappa delle vie e strade di ciascun comune, completando il processo di indirizzamento con informazioni di localizzazione e dettagli aggiuntivi.
 
 ---
@@ -31,7 +29,7 @@ La tabella **`config.stradario`** definisce la mappa delle vie e strade di ciasc
   
 ---
 
-### 🔗 Collegamenti con Altre Tabelle
+### Collegamenti con Altre Tabelle
 
 * **`config.comuni`**
   Il campo `comune_id` identifica il comune di appartenenza, instaurando la relazione tra strade e territorio.
@@ -43,7 +41,7 @@ La tabella **`config.stradario`** definisce la mappa delle vie e strade di ciasc
   `storico` True attiva il trigger per il salvataggio delle informazioni.
 ---
 
-### 💡 Vantaggi Operativi
+### Vantaggi Operativi
 
 * **Copertura completa del territorio**
   Permette di mappare ogni strada all’interno del comune, gestendo situazioni di vie duplicate con CAP diversi.
@@ -56,7 +54,7 @@ La tabella **`config.stradario`** definisce la mappa delle vie e strade di ciasc
 
 ---
 
-> 🧠 **"Una vista dettagliata e georeferenziata delle strade comunali, con CAP obbligatorio e informazioni flessibili per ogni via."**
+> **"Una vista dettagliata e georeferenziata delle strade comunali, con CAP obbligatorio e informazioni flessibili per ogni via."**
 
 ---
 

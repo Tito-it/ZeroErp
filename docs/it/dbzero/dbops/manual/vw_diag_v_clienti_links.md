@@ -2,16 +2,16 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> * [anagrafiche.clienti](/dbzero/anagrafiche/tabelle/clienti)
-> * [anagrafiche.billing_account](/dbzero/anagrafiche/tabelle/billing_account)
-> * [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)
-> * [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)
-> * [anagrafiche.istanze_utilities](/dbzero/anagrafiche/tabelle/istanze_utilities)
-> * [config.utilities](/dbzero/config/tabelle/utilities)
-> * [config.tipi_ruoli](/dbzero/config/tabelle/tipi_ruoli)
-> * [config.iva](/dbzero/config/tabelle/iva)
+[anagrafiche.clienti](/dbzero/anagrafiche/tabelle/clienti)
+> [anagrafiche.billing_account](/dbzero/anagrafiche/tabelle/billing_account)
+> [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)
+> [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)
+> [anagrafiche.istanze_utilities](/dbzero/anagrafiche/tabelle/istanze_utilities)
+> [config.utilities](/dbzero/config/tabelle/utilities)
+> [config.tipi_ruoli](/dbzero/config/tabelle/tipi_ruoli)
+> [config.iva](/dbzero/config/tabelle/iva)
 
 ---
 
@@ -34,11 +34,11 @@ e fornisce, in coda, una serie di **flag di coerenza** per verificare che il `bi
 * `soggetto_ruolo_id`
 * `utility_id`
 
-> 🧠 In pratica: *“vedo in una riga sola tutte le chiavi e posso capire subito se il legame Cliente → BillingAccount è coerente oppure no.”*
+> In pratica: *“vedo in una riga sola tutte le chiavi e posso capire subito se il legame Cliente → BillingAccount è coerente oppure no.”*
 
 ---
 
-### 🧩 Ruolo nel Modello Dati
+### Ruolo nel Modello Dati
 
 Nel modello Zero ERP, un **cliente** è legato a una specifica **istanza_utility** e a una specifica **utility**. Il **billing_account** (quando presente) deve tipicamente essere coerente con questi stessi riferimenti.
 
@@ -51,7 +51,7 @@ Questa vista supporta:
 
 ---
 
-### 🔗 Join e Origine Dati
+### Join e Origine Dati
 
 La vista parte sempre da:
 
@@ -125,7 +125,7 @@ con join **LEFT** (tolleranti a NULL) verso:
 
 ---
 
-### ✅ Flag di coerenza Cliente ↔ Billing Account
+### Flag di coerenza Cliente ↔ Billing Account
 
 Questi tre campi sono booleani e rappresentano un confronto diretto:
 
@@ -142,7 +142,7 @@ Questi tre campi sono booleani e rappresentano un confronto diretto:
 
 ---
 
-### 🔍 Esempi d’uso
+### Esempi d’uso
 
 #### 1) Clienti con billing account presente ma non coerente
 
@@ -187,7 +187,7 @@ FROM dbops.vw_diag_v_clienti_links;
 
 ---
 
-### 💡 Vantaggi Operativi
+### Vantaggi Operativi
 
 * **Diagnostica immediata**: tutte le FK rilevanti in un’unica riga.
 * **Evidenza delle incoerenze**: i tre flag permettono una lettura “a semaforo”.
@@ -196,6 +196,6 @@ FROM dbops.vw_diag_v_clienti_links;
 
 ---
 
-> 🧠 **“`vw_diag_v_clienti_links` è una lente diagnostica: mostra in modo esplicito come sono collegati Cliente, Billing Account, Soggetto e Istanza e rende visibili a colpo d’occhio le incoerenze.”**
+> **“`vw_diag_v_clienti_links` è una lente diagnostica: mostra in modo esplicito come sono collegati Cliente, Billing Account, Soggetto e Istanza e rende visibili a colpo d’occhio le incoerenze.”**
 
 {% include-markdown "signature-core.md" %}

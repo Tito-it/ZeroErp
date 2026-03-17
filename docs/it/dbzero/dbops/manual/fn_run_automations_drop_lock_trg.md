@@ -2,16 +2,16 @@
 
 > 👀 **Vedi anche**
 >
-> Guide:
-> * [Automazione DB](/guide/automazione-db)
+Guide:
+> [Automazione DB](/guide/automazione-db)
 >
-> Approfondimento tabelle:  
-> * [dbops.automation_rules_tbl](/dbzero/dbops/tabelle/automation_rules_tbl)
-> * [dbops.automation_lock_columns](/dbzero/dbops/tabelle/automation_lock_columns)
+Approfondimento tabelle:  
+> [dbops.automation_rules_tbl](/dbzero/dbops/tabelle/automation_rules_tbl)
+> [dbops.automation_lock_columns](/dbzero/dbops/tabelle/automation_lock_columns)
 >
-> Approfondimento funzioni:  
-> * [dbops.fn_run_automations_lock_columns](/dbzero/dbops/funzioni/fn_run_automations_lock_columns)
-> * [script.trgfn_lock_columns](/dbzero/script/funzioni/trgfn_lock_columns)
+Approfondimento funzioni:  
+> [dbops.fn_run_automations_lock_columns](/dbzero/dbops/funzioni/fn_run_automations_lock_columns)
+> [script.trgfn_lock_columns](/dbzero/script/funzioni/trgfn_lock_columns)
 
 ---
 
@@ -23,7 +23,7 @@ elimina i trigger **LOCK_COLUMNS** obsoleti, quando **non esistono colonne da bl
 
 ---
 
-### 🔍 Parametri di input
+### Parametri di input
 
 | Parametro     | Tipo    | Descrizione                                  |
 | ------------- | ------- | -------------------------------------------- |
@@ -33,7 +33,7 @@ elimina i trigger **LOCK_COLUMNS** obsoleti, quando **non esistono colonne da bl
 
 ---
 
-### ⚙️ Logica operativa
+### Logica operativa
 
 1. Risolve l'ambito con `dbops.fn_resolve_scope(p_schemas)`.
 2. Per ogni tabella nell'ambito:
@@ -46,7 +46,7 @@ elimina i trigger **LOCK_COLUMNS** obsoleti, quando **non esistono colonne da bl
 
 ---
 
-### ✅ Esempi di utilizzo
+### Esempi di utilizzo
 
 * **Simulazione**:
   `SELECT dbops.fn_run_automations_drop_lock_trg('AUTO', ARRAY['vendite'], true);`
@@ -56,7 +56,7 @@ elimina i trigger **LOCK_COLUMNS** obsoleti, quando **non esistono colonne da bl
 
 ---
 
-### 🧠 Note
+### Note
 
 * La funzione **non** sostituisce `fn_run_automations_lock_columns`:
   serve solo a rimuovere trigger non piu' necessari.

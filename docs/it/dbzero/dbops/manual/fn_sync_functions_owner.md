@@ -2,18 +2,18 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimenti collegati:   
+Approfondimenti collegati:   
 >
-> * Documento["Estensione PostgreSQL: dblink"](/postgresql/dblink) – Configurazione connessione tecnica    
+Documento["Estensione PostgreSQL: dblink"](/postgresql/dblink) – Configurazione connessione tecnica    
 >
-> Approfondimenti tabelle:   
+Approfondimenti tabelle:   
 >
-> * [dbops.sec_functions_owner](/dbzero/dbops/tabelle/sec_functions_owner) – Policy owner funzioni sensibili    
+[dbops.sec_functions_owner](/dbzero/dbops/tabelle/sec_functions_owner) – Policy owner funzioni sensibili    
 >
-> Approfondimenti funzioni:    
+Approfondimenti funzioni:    
 >
-> * [`dbops.fn_get_or_create_session_tx_id`](/dbzero/dbops/funzioni/fn_get_or_create_session_tx_id) – Gestione session_tx_id   
-> * [`script.fn_ensure_logconn`](/dbzero/script/funzioni/fn_ensure_logconn) – Verifica connessione `dblink` di logging    
+[`dbops.fn_get_or_create_session_tx_id`](/dbzero/dbops/funzioni/fn_get_or_create_session_tx_id) – Gestione session_tx_id   
+> [`script.fn_ensure_logconn`](/dbzero/script/funzioni/fn_ensure_logconn) – Verifica connessione `dblink` di logging    
 
 ---
 
@@ -36,11 +36,11 @@ Questa funzione nasce in risposta alle problematiche emerse durante la **riconfi
   * refactor o modifiche manuali non controllate.
 * Separare chiaramente la **definizione della policy** (tabella) dalla **sua applicazione** (funzione).
 
-> 🔐 *"`dbops.fn_sync_functions_owner()` è il motore che traduce le regole di sicurezza dichiarate nella tabella in permessi effettivi sulle funzioni."*
+> *"`dbops.fn_sync_functions_owner()` è il motore che traduce le regole di sicurezza dichiarate nella tabella in permessi effettivi sulle funzioni."*
 
 ---
 
-### 🔧 Firma e Comportamento
+### Firma e Comportamento
 
 **Firma:**
 
@@ -57,7 +57,7 @@ Idealmente la funzione deve essere **possessa da `postgres`** (o comunque da un 
 
 ---
 
-### ⚙️ Flusso Logico Operativo
+### Flusso Logico Operativo
 
 A livello concettuale, la funzione esegue il seguente flusso per ogni riga di `dbops.sec_functions_owner`:
 
@@ -102,7 +102,7 @@ A livello concettuale, la funzione esegue il seguente flusso per ogni riga di `d
 
 ---
 
-### 🔁 Integrazione con Liquibase (Hardening)
+### Integrazione con Liquibase (Hardening)
 
 La funzione è pensata per essere richiamata **automaticamente** a fine pipeline Liquibase, tramite un changeSet dedicato, spesso con `runAlways: true`.
 
@@ -120,7 +120,7 @@ Questo consente di:
 
 ---
 
-### 🔒 Considerazioni di Sicurezza
+### Considerazioni di Sicurezza
 
 * La funzione deve essere:
 
@@ -134,7 +134,7 @@ Questo consente di:
 
 ---
 
-### 🔗 Relazione con `dbops.sec_functions_owner`
+### Relazione con `dbops.sec_functions_owner`
 
 La tabella `dbops.sec_functions_owner` rappresenta la **sorgente di verità** per la policy owner funzioni.
 `dbops.fn_sync_functions_owner()` è l’**esecutore** di quella policy.
@@ -146,7 +146,7 @@ Relazione logica:
 
 ---
 
-### 💡 Vantaggi Operativi
+### Vantaggi Operativi
 
 * **Riduzione errori manuali**: non è necessario ricordarsi ogni volta quali funzioni devono essere owner `postgres`.
 * **Recupero post-restore/clone**: eventuali cambiamenti di owner introdotti da procedure di dump/restore vengono corretti automaticamente.
@@ -155,7 +155,7 @@ Relazione logica:
 
 ---
 
-> 🧠 *"Standardizzare la gestione degli owner delle funzioni sensibili permette di mantenere nel tempo un ambiente robusto, ripetibile e coerente con le politiche di sicurezza di Zero ERP."*
+> *"Standardizzare la gestione degli owner delle funzioni sensibili permette di mantenere nel tempo un ambiente robusto, ripetibile e coerente con le politiche di sicurezza di Zero ERP."*
 
 ---
 

@@ -2,20 +2,18 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> • [pagamenti.vendite_movimenti](/dbzero/pagamenti/tabelle/vendite_movimenti)  
+• [pagamenti.vendite_movimenti](/dbzero/pagamenti/tabelle/vendite_movimenti)  
 >
----
-
-### 🎯 Scopo Principale
+🎯 Scopo Principale
 
 La tabella **`pagamenti.compensazioni`** rappresenta la testata del processo
 che genera movimenti di compensazione tra documenti del cliente.
 
 ---
 
-### 🧱 Campi chiave (semantica)
+### Campi chiave (semantica)
 
 * `id`: identificativo compensazione.
 * `data_esecuzione`: timestamp esecuzione processo.
@@ -23,7 +21,7 @@ che genera movimenti di compensazione tra documenti del cliente.
 
 ---
 
-### ✅ Regole principali
+### Regole principali
 
 * Una compensazione puo` generare piu` movimenti.
 * La compensazione e` collegata alla testata contabile tramite
@@ -32,7 +30,7 @@ che genera movimenti di compensazione tra documenti del cliente.
 
 ---
 
-### 🧪 Esempio d’uso
+### Esempio d’uso
 
 ```sql
 SELECT *

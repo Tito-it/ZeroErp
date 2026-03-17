@@ -2,14 +2,14 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> • [vendite.fatture_righe](/dbzero/vendite/tabelle/fatture_righe)    
+• [vendite.fatture_righe](/dbzero/vendite/tabelle/fatture_righe)    
 > • [vendite.fatture_riepiloghi_iva](/dbzero/vendite/tabelle/fatture_riepiloghi_iva)    
 >
-> **Approfondimento funzioni:**
+**Approfondimento funzioni:**
 >
-> • [vendite.fn_ricalcola_riepiloghi_iva_lotto](/dbzero/vendite/funzioni/fn_ricalcola_riepiloghi_iva_lotto)    
+• [vendite.fn_ricalcola_riepiloghi_iva_lotto](/dbzero/vendite/funzioni/fn_ricalcola_riepiloghi_iva_lotto)    
 
 ---
 
@@ -22,7 +22,7 @@ righe (`fatture_righe`).
 
 ---
 
-### ✅ Regole principali
+### Regole principali
 
 * `p_fattura_id` obbligatorio e `> 0`.
 * Ricalcolo ammesso solo se lo stato documento è `DRAFT` o `EMESSA` (via `codice_interno`).
@@ -34,7 +34,7 @@ righe (`fatture_righe`).
 
 ---
 
-### ✅ Output
+### Output
 
 Ritorna una riga con:
 
@@ -43,7 +43,7 @@ Ritorna una riga con:
 
 ---
 
-### 🧪 Esempio d’uso
+### Esempio d’uso
 
 ```sql
 SELECT *

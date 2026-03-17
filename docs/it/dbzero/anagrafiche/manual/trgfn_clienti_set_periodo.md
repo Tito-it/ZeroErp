@@ -2,14 +2,14 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 > 
-> • [anagrafiche.clienti](/dbzero/anagrafiche/tabelle/clienti)    
+• [anagrafiche.clienti](/dbzero/anagrafiche/tabelle/clienti)    
 > • [config.stati_cliente](/dbzero/config/tabelle/stati_cliente)   
 >
-> **Approfondimento funzioni:**
+**Approfondimento funzioni:**
 >
-> • [`anagrafiche.trgfn_clienti_set_parent_istanza()`](/dbzero/anagrafiche/funzioni/trgfn_clienti_set_parent_istanza)   
+• [`anagrafiche.trgfn_clienti_set_parent_istanza()`](/dbzero/anagrafiche/funzioni/trgfn_clienti_set_parent_istanza)   
 > • [`anagrafiche.trgfn_clienti_sync_pdp()`](/dbzero/anagrafiche/funzioni/trgfn_clienti_sync_pdp)   
 > • [`script.fn_log_and_raise_error`](/dbzero/script/funzioni/fn_log_and_raise_error)   
 
@@ -31,7 +31,7 @@ La funzione viene eseguita da un trigger `BEFORE INSERT OR UPDATE` su `anagrafic
 
 ---
 
-### 🧱 Contesto e campi interessati
+### Contesto e campi interessati
 
 **Tabella: `anagrafiche.clienti`**
 
@@ -55,7 +55,7 @@ La funzione utilizza `codice_interno` per differenziare il comportamento in base
 
 ---
 
-### 🔍 Regole di business implementate
+### Regole di business implementate
 
   1️⃣ Stato `AN` – Cliente annullato
 
@@ -69,7 +69,7 @@ Quando `codice_interno = 'AN'`:
   * `NEW.periodo          := NULL;`
 * Il record viene così escluso dalla catena temporale e dai vincoli sul `daterange`.
 
-> 💡 Scelta progettuale
+> Scelta progettuale
 > Per i clienti annullati **non si vuole alcuna semantica temporale**: sono considerati
 > tentativi/bozze non andati a buon fine, e quindi fuori dai controlli di periodo.
 
@@ -105,7 +105,7 @@ PERFORM script.fn_log_and_raise_error(
 
 * L’errore blocca l’operazione, impedendo periodi temporalmente invertiti.
 
-> ✅ In questo modo i periodi restano sempre coerenti, evitando intersezioni
+> In questo modo i periodi restano sempre coerenti, evitando intersezioni
 > "all’indietro" che andrebbero in conflitto con altri vincoli (es. esclusioni su PDP).
 
 ---
@@ -134,7 +134,7 @@ PERFORM script.fn_log_and_raise_error(
 
 ---
 
-### 🧮 Normalizzazione del campo `periodo`
+### Normalizzazione del campo `periodo`
 
 Al netto delle regole di stato, la funzione calcola il campo `periodo` secondo la seguente logica:
 
@@ -164,13 +164,13 @@ In questo modo otteniamo:
 * Se `data_chiusura` è NULL → `periodo = [data_attivazione, infinity)`;
 * Se lo stato è `AN` → `periodo = NULL` (già gestito prima).
 
-> 🔎 Nota: la scelta di usare `[)` consente di concatenare periodi adiacenti senza
+> Nota: la scelta di usare `[)` consente di concatenare periodi adiacenti senza
 > sovrapposizioni logiche (es. `[2025-01-01, 2025-06-01)` seguito da
 > `[2025-06-01, infinity)`).
 
 ---
 
-### 🔁 Flusso logico riassunto
+### Flusso logico riassunto
 
 1. Recupera `codice_interno` dallo stato cliente (`config.stati_cliente`).
 2. Se stato = `AN` → azzera date e periodo, **RETURN NEW**.
@@ -182,7 +182,7 @@ In questo modo otteniamo:
 
 ---
 
-### 🧪 Esempi di comportamento
+### Esempi di comportamento
 
   ✅ Cliente attivo senza chiusura
 
@@ -234,7 +234,7 @@ In questo modo otteniamo:
 
 ---
 
-### 🚀 Benefici del disegno
+### Benefici del disegno
 
 * Centralizza in un unico punto la logica di **validazione temporale** dei clienti.
 * Mantiene coerente il campo `periodo`, usato dai vincoli di esclusione sul PDP.

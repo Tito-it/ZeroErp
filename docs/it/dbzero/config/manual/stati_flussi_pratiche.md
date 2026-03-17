@@ -2,9 +2,9 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimento tabelle:
+Approfondimento tabelle:
 >
-> * [pratiche.flussi](/dbzero/pratiche/tabelle/flussi)
+[pratiche.flussi](/dbzero/pratiche/tabelle/flussi)
 
 ---
 
@@ -14,7 +14,7 @@ La tabella `config.stati_flussi_pratiche` definisce i possibili **stati di un fl
 
 ---
 
-### 🧱 Ruolo nel processo
+### Ruolo nel processo
 
 * Governa il ciclo di vita dei flussi: dalla creazione al completamento.
 * Il cambio stato viene registrato nel **giornale** con azione `FLUSSO_STATO_CAMBIATO`.
@@ -22,7 +22,7 @@ La tabella `config.stati_flussi_pratiche` definisce i possibili **stati di un fl
 
 ---
 
-### 📋 Valori previsti (seed DB-6)
+### Valori previsti (seed DB-6)
 
 | codice_interno | Descrizione |
 |----------------|-------------|
@@ -35,7 +35,7 @@ La tabella `config.stati_flussi_pratiche` definisce i possibili **stati di un fl
 
 ---
 
-### ✅ Convenzioni
+### Convenzioni
 
 * Pattern config standard: `codice`, `codice_interno` locked, `attivo`, `meta`, audit.
 * Trigger standard applicati automaticamente da `dbops.fn_run_automations()`.

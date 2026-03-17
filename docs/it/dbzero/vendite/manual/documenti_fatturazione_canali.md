@@ -2,12 +2,10 @@
 
 > 👀 **Vedi anche**
 >
-> • [config.sorgenti](/dbzero/config/tabelle/sorgenti)  
+• [config.sorgenti](/dbzero/config/tabelle/sorgenti)  
 > • [vendite.commesse_sorgenti](/dbzero/vendite/tabelle/commesse_sorgenti)  
 >
----
-
-### 🎯 Scopo Principale
+🎯 Scopo Principale
 
 (latest review 24-02-2026)
 `vendite.documenti_fatturazione_canali` e` il registro tecnico unico dei canali
@@ -16,7 +14,7 @@ uniformare le regole su contratti, preventivi, ordini e DDT.
 
 ---
 
-### ✅ Regole principali
+### Regole principali
 
 * chiave documento sorgente uniforme:
   `sorgente_tipo_id` + `sorgente_uid` (`text`);
@@ -33,7 +31,7 @@ uniformare le regole su contratti, preventivi, ordini e DDT.
 
 ---
 
-### 🧩 Utilizzo previsto
+### Utilizzo previsto
 
 * prevenire doppia fatturabilita` cross-canale;
 * tracciare quale canale ha consumato il documento;

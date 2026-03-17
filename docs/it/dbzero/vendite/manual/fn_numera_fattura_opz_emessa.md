@@ -2,20 +2,18 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> • [vendite.fatture](/dbzero/vendite/tabelle/fatture)  
+• [vendite.fatture](/dbzero/vendite/tabelle/fatture)  
 > • [vendite.registri_fatturazione](/dbzero/vendite/tabelle/registri_fatturazione)  
 > • [vendite.registri_fatturazione_progressivi](/dbzero/vendite/tabelle/registri_fatturazione_progressivi)  
 >
-> **Approfondimento funzioni:**
+**Approfondimento funzioni:**
 >
-> • [vendite.fn_get_next_progressivo](/dbzero/vendite/funzioni/fn_get_next_progressivo)  
+• [vendite.fn_get_next_progressivo](/dbzero/vendite/funzioni/fn_get_next_progressivo)  
 > • [vendite.fn_get_anno_registro](/dbzero/vendite/funzioni/fn_get_anno_registro)  
 >
----
-
-### 🎯 Scopo Principale
+🎯 Scopo Principale
 
 (latest review 09-02-2026)
 La funzione **`vendite.fn_numera_fattura_opz_emessa()`** assegna il numero
@@ -24,7 +22,7 @@ fattura in modo **idempotente** e, opzionalmente, imposta lo stato documento
 
 ---
 
-### ✅ Regole principali
+### Regole principali
 
 * `p_fattura_id` obbligatorio e `> 0`.
 * Lock solo sulla riga fattura (minima concorrenza).
@@ -34,7 +32,7 @@ fattura in modo **idempotente** e, opzionalmente, imposta lo stato documento
 
 ---
 
-### ✅ Output
+### Output
 
 Ritorna una riga con:
 
@@ -46,7 +44,7 @@ Ritorna una riga con:
 
 ---
 
-### 🧪 Esempi d’uso
+### Esempi d’uso
 
 ```sql
 SELECT *

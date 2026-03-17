@@ -4,10 +4,10 @@
 
 > Approfondimento Tabelle:  
 >
-> * [config.comuni](/dbzero/config/tabelle/comuni)  
-> * [config.stradario](/dbzero/config/tabelle/stradario)       
-> * [config.stradario_generale](/dbzero/config/tabelle/stradario_generale)  
-> * [config.toponomastica](/dbzero/config/tabelle/toponomastica)  
+[config.comuni](/dbzero/config/tabelle/comuni)  
+> [config.stradario](/dbzero/config/tabelle/stradario)       
+> [config.stradario_generale](/dbzero/config/tabelle/stradario_generale)  
+> [config.toponomastica](/dbzero/config/tabelle/toponomastica)  
 
 
 La tabella **`config.stati`** censisce gli stati (o paesi), fornendo codici ufficiali e metadata utili per la gestione geografica e fiscale all’interno di Zero ERP.
@@ -35,7 +35,7 @@ La tabella **`config.stati`** censisce gli stati (o paesi), fornendo codici uffi
 
 ---
 
-### 💡 Vantaggi Operativi
+### Vantaggi Operativi
 
 * **Unicità e interoperabilità**
   L’uso di codici ISO2 e ISO3 standard assicura che tutti i riferimenti geografici siano consistenti e compatibili con sistemi esterni (es. servizi di geolocalizzazione, normative fiscali).
@@ -57,4 +57,4 @@ La tabella **`config.stati`** censisce gli stati (o paesi), fornendo codici uffi
 
 ---
 
-> 🧠 **"Un catalogo centralizzato degli stati con codici ISO, metadata fiscali e attributi personalizzati, essenziale per la gestione geografica e fiscale globale in Zero ERP."**
+> **"Un catalogo centralizzato degli stati con codici ISO, metadata fiscali e attributi personalizzati, essenziale per la gestione geografica e fiscale globale in Zero ERP."**

@@ -2,20 +2,20 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> • [anagrafiche.indirizzi_soggetti](/dbzero/anagrafiche/tabelle/indirizzi_soggetti)  
+• [anagrafiche.indirizzi_soggetti](/dbzero/anagrafiche/tabelle/indirizzi_soggetti)  
 > • [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)  
 > • [config.tipi_indirizzi](/dbzero/config/tabelle/tipi_indirizzi)  
 > • [config.tipi_soggetto_dettaglio_tipi_indirizzo](/dbzero/config/tabelle/tipi_soggetto_dettaglio_tipi_indirizzo)  
 >
-> **Approfondimento funzioni:**
+**Approfondimento funzioni:**
 >
-> • [`script.fn_get_indirizzi_by_soggetto`](/dbzero/script/funzioni/fn_get_indirizzi_by_soggetto.md)  
+• [`script.fn_get_indirizzi_by_soggetto`](/dbzero/script/funzioni/fn_get_indirizzi_by_soggetto.md)  
 >
-> **Approfondimento viste:**
+**Approfondimento viste:**
 >
-> • [anagrafiche.vw_indirizzi_resolved_soggetto](/dbzero/anagrafiche/views/vw_indirizzi_resolved_soggetto)  
+• [anagrafiche.vw_indirizzi_resolved_soggetto](/dbzero/anagrafiche/views/vw_indirizzi_resolved_soggetto)  
 
 ---
 
@@ -33,7 +33,7 @@ La funzione:
 
 ---
 
-### 🧩 Firma
+### Firma
 
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_get_indirizzo_by_soggetto(
@@ -48,7 +48,7 @@ PARALLEL UNSAFE;
 
 ---
 
-### 🔢 Parametri di input
+### Parametri di input
 
 | Nome            | Tipo      | Descrizione                                                                 |
 | --------------- | --------- | --------------------------------------------------------------------------- |
@@ -57,7 +57,7 @@ PARALLEL UNSAFE;
 
 ---
 
-### 📤 Valori restituiti
+### Valori restituiti
 
 La funzione restituisce le stesse colonne della vista:
 
@@ -67,7 +67,7 @@ Il campo `indirizzo_display` contiene l’indirizzo **human-readable**.
 
 ---
 
-### 🧠 Logica di funzionamento (concettuale)
+### Logica di funzionamento (concettuale)
 
 1. Recupera il `tipo_soggetto_dettaglio_id` del soggetto.
 2. Prova il tipo richiesto (`p_tipo_codice`).
@@ -83,7 +83,7 @@ Il campo `indirizzo_display` contiene l’indirizzo **human-readable**.
 
 ---
 
-### 🧪 Esempi d’uso
+### Esempi d’uso
 
 ```sql
 SELECT *
@@ -98,7 +98,7 @@ FROM script.fn_get_indirizzo_by_soggetto(:soggetto_id, 'DOMFISC');
 
 ---
 
-### ✅ Note e Best Practice
+### Note e Best Practice
 
 * La funzione non solleva errori: se non trova nulla, restituisce zero righe.
 * La catena di fallback e la validita temporale sono determinate dalla matrice di configurazione.

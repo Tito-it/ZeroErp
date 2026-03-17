@@ -1,21 +1,21 @@
-## ⚙️ Documentazione Funzione – `anagrafiche.trgfn_gestori_guard()`
+## Documentazione Funzione – `anagrafiche.trgfn_gestori_guard()`
 
 > 👀 **Vedi anche**
 >
-> **Tabelle correlate:**
+**Tabelle correlate:**
 >
-> * [anagrafiche.gestori](/dbzero/anagrafiche/tabelle/gestori)
-> * [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)
-> * [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)
+[anagrafiche.gestori](/dbzero/anagrafiche/tabelle/gestori)
+> [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)
+> [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)
 >
-> **Trigger collegati:**
+**Trigger collegati:**
 >
-> * `trg_gestori_a10_guard_ins_upd` su `anagrafiche.gestori`
+`trg_gestori_a10_guard_ins_upd` su `anagrafiche.gestori`
 >
-> **Funzioni di supporto:**
+**Funzioni di supporto:**
 >
-> * [dbops.fn_log_and_raise_error](/dbzero/dbops/funzioni/fn_log_and_raise_error)
-> * [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)
+[dbops.fn_log_and_raise_error](/dbzero/dbops/funzioni/fn_log_and_raise_error)
+> [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)
 
 ---
 
@@ -33,7 +33,7 @@ In caso di violazione di una di queste regole, la funzione **non blocca manualme
 
 ---
 
-### 🧱 Contesto e attivazione
+### Contesto e attivazione
 
 La funzione è pensata per essere utilizzata tramite il trigger:
 
@@ -49,7 +49,7 @@ Pertanto viene invocata automaticamente su **ogni inserimento o modifica** di un
 
 ---
 
-### 🔎 Regole di dominio applicate
+### Regole di dominio applicate
 
 La funzione implementa **tre regole principali**:
 
@@ -127,7 +127,7 @@ La funzione implementa **tre regole principali**:
 
 ---
 
-### 🧩 Parametri e variabili principali
+### Parametri e variabili principali
 
 Essendo una funzione trigger, non espone parametri “classici”, ma utilizza i record **`NEW`** e i metadati del trigger (`TG_NAME`, `TG_TABLE_NAME`).
 
@@ -167,7 +167,7 @@ Questi codici devono essere mappati nella tabella di messaggistica centralizzata
 
 ---
 
-### 📌 Dipendenze
+### Dipendenze
 
 La funzione dipende da:
 
@@ -186,7 +186,7 @@ La corretta configurazione di queste funzioni e della tabella dei messaggi è fo
 
 ---
 
-### 💡 Considerazioni implementative
+### Considerazioni implementative
 
 * La regola di **singleton** è implementata tramite query e non solo tramite vincolo `EXCLUDE` o `UNIQUE`, perché si vuole avere:
 
@@ -200,7 +200,7 @@ La corretta configurazione di queste funzioni e della tabella dei messaggi è fo
 
 ---
 
-### ✅ Riepilogo
+### Riepilogo
 
 La funzione **`anagrafiche.trgfn_gestori_guard()`**:
 

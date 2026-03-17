@@ -2,10 +2,10 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimento funzioni:
+Approfondimento funzioni:
 >
-> * [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error) *(log + abort)*  
-> * [script.fn_ensure_logconn](/dbzero/script/funzioni/fn_ensure_logconn)  
+[script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error) *(log + abort)*  
+> [script.fn_ensure_logconn](/dbzero/script/funzioni/fn_ensure_logconn)  
 
 Ultimo aggiornamento: **26/08/2025**
 
@@ -115,7 +115,7 @@ END;
 ---
 
 
-### 💡 Vantaggi Operativi
+### Vantaggi Operativi
 
 * **Non blocca**: permette di tracciare eventi non critici senza interrompere transazioni o logica applicativa.
 * **Contesto ricco**: i campi `messaggio_errore_id`, `context` e `tx_id` garantiscono alta tracciabilità.
@@ -124,4 +124,4 @@ END;
 
 ---
 
-> 🧠 **“Usa `fn_log_error_only` per il logging passivo—per casi in cui vuoi solo registrare, mai bloccare.”**
+> **“Usa `fn_log_error_only` per il logging passivo—per casi in cui vuoi solo registrare, mai bloccare.”**

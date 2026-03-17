@@ -2,10 +2,10 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimenti tabelle:   
+Approfondimenti tabelle:   
 >
-> * [catalogo.articoli_componenti](/dbzero/catalogo/tabelle/articoli_componenti)      
-> * [catalogo.articoli](/dbzero/catalogo/tabelle/articoli)     
+[catalogo.articoli_componenti](/dbzero/catalogo/tabelle/articoli_componenti)      
+> [catalogo.articoli](/dbzero/catalogo/tabelle/articoli)     
 
 ---
 
@@ -20,7 +20,7 @@ Restituisce **una riga per legame componente**.
 
 ---
 
-### 🧱 Struttura logica della vista
+### Struttura logica della vista
 
 La vista parte da `catalogo.articoli_componenti` e aggiunge:
 
@@ -44,7 +44,7 @@ La vista parte da `catalogo.articoli_componenti` e aggiunge:
 
 ---
 
-### 🔍 Modalita' d'uso tipiche
+### Modalita' d'uso tipiche
 
 ```sql
 SELECT *
@@ -55,7 +55,7 @@ ORDER BY valid_from;
 
 ---
 
-### ✅ Best practice e raccomandazioni
+### Best practice e raccomandazioni
 
 * Usare la vista per consultazione e composizione distinta base.
 * Per modifiche, aggiornare sempre `catalogo.articoli_componenti`.

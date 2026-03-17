@@ -2,20 +2,18 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> • [vendite.fatture](/dbzero/vendite/tabelle/fatture)    
+• [vendite.fatture](/dbzero/vendite/tabelle/fatture)    
 > • [config.tipi_indirizzi](/dbzero/config/tabelle/tipi_indirizzi)    
 >
-> **Approfondimento funzioni:**
+**Approfondimento funzioni:**
 >
-> • [`vendite.trgfn_tipi_indirizzi_only_allowed`](/dbzero/vendite/funzioni/trgfn_tipi_indirizzi_only_allowed)
+• [`vendite.trgfn_tipi_indirizzi_only_allowed`](/dbzero/vendite/funzioni/trgfn_tipi_indirizzi_only_allowed)
 >
 
 
----
-
-### 🎯 Scopo Principale
+🎯 Scopo Principale
 
 `vendite.fatture_indirizzi` **semplifica la gestione degli indirizzi di fattura** e garantisce la **ristampa conforme** nel tempo tramite **snapshot** JSON dell’indirizzo al momento dell’emissione.
 
@@ -23,7 +21,7 @@ Per ogni fattura puoi memorizzare **al massimo un indirizzo per tipo** (es. fatt
 
 ---
 
-### 🧭 Collocazione nel flusso
+### Collocazione nel flusso
 
 1. **Emissione/chiusura fattura** → il motore raccoglie gli indirizzi dai soggetti coinvolti e salva in `snapshot` i campi necessari (via, CAP, città, provincia, nazione, eventuale **email** di invio documento, ecc.).
 2. **Stampe / invii** → le stampe e i canali di delivery leggono **solo** dallo snapshot, assicurando coerenza anche a distanza di tempo.
@@ -31,7 +29,7 @@ Per ogni fattura puoi memorizzare **al massimo un indirizzo per tipo** (es. fatt
 
 ---
 
-### 🔑 Campi chiave (semantica)
+### Campi chiave (semantica)
 
 * `fattura_id` → FK alla testata (`vendite.fatture`).
 * `tipo_indirizzo_id` → FK al dominio dei tipi (`config.tipi_indirizzi`). Governa la funzione dell’indirizzo (fatturazione, spedizione, …).
@@ -43,7 +41,7 @@ Per ogni fattura puoi memorizzare **al massimo un indirizzo per tipo** (es. fatt
 
 ---
 
-### 🧪 Esempi d’uso (query applicative)
+### Esempi d’uso (query applicative)
 
 ```sql
 -- Recupera tutti gli indirizzi (per stampa/invio) di una fattura
@@ -63,7 +61,7 @@ DO UPDATE SET snapshot = EXCLUDED.snapshot,
 
 ---
 
-### ✅ Best practice operative
+### Best practice operative
 
 * **Snapshot completo**: includi anche canali di recapito (PEC/email) nello snapshot per garantire **prova di invio** coerente.
 * **Normalizzazione in input**: valida e normalizza i campi prima di salvare (CAP, ISO-country, formati email/PEC).
@@ -80,6 +78,6 @@ DO UPDATE SET snapshot = EXCLUDED.snapshot,
 
 ---
 
-### 👓 Ruolo nel sistema
+### Ruolo nel sistema
 
 `vendite.fatture_indirizzi` è il tassello che rende **deterministiche** le stampe e gli invii delle fatture: un solo indirizzo per tipo, formato flessibile, e **ristampe sempre conformi** indipendentemente dalle variazioni anagrafiche successive.

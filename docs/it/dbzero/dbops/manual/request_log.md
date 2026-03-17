@@ -2,19 +2,17 @@
 
 > **Vedi anche**
 >
-> **Piano di riferimento:**
+**Piano di riferimento:**
 >
-> * [Audit Sessioni, Request Logging e Sicurezza Token](/dev/work-in-progress/Audit-logging-sessionii-request-token)
+[Audit Sessioni, Request Logging e Sicurezza Token](/dev/work-in-progress/Audit-logging-sessionii-request-token)
 >
-> **Tabelle correlate:**
+**Tabelle correlate:**
 >
-> * [dbops.sessioni_utente](/dbzero/dbops/manual/sessioni_utente) -- correlazione via `request_id`
-> * [dbops.idempotency_keys](/dbzero/dbops/manual/idempotency_keys) -- correlazione via `idempotency_key`
-> * [dbops.audit_log](/dbzero/dbops/manual/audit_log) -- pattern retention `cleanup_at`
+[dbops.sessioni_utente](/dbzero/dbops/manual/sessioni_utente) -- correlazione via `request_id`
+> [dbops.idempotency_keys](/dbzero/dbops/manual/idempotency_keys) -- correlazione via `idempotency_key`
+> [dbops.audit_log](/dbzero/dbops/manual/audit_log) -- pattern retention `cleanup_at`
 >
-> ---
-
-### Scopo Principale
+Scopo Principale
 
 (latest review 05-03-2026)
 

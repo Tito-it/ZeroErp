@@ -2,19 +2,19 @@
 
 > 👀 **Vedi anche**
 >
-> Guide:
+Guide:
 >
-> * [Automazioni – Overview del Modulo](/dbzero/dbops/manual/automazioni_overview)
+[Automazioni – Overview del Modulo](/dbzero/dbops/manual/automazioni_overview)
 >
-> Approfondimento tabelle:
+Approfondimento tabelle:
 >
-> * [dbops.automation_scope](/dbzero/dbops/tabelle/automation_scope)   
+[dbops.automation_scope](/dbzero/dbops/tabelle/automation_scope)   
 >
-> Approfondimento funzioni:
+Approfondimento funzioni:
 >
-> * [dbops.fn_resolve_scope](/dbzero/dbops/funzioni/fn_resolve_scope)   
-> * [dbops.fn_schema_in_scope](/dbzero/dbops/funzioni/fn_schema_in_scope)   
-> * [dbops.fn_schema_match](/dbzero/dbops/funzioni/fn_schema_match)   
+[dbops.fn_resolve_scope](/dbzero/dbops/funzioni/fn_resolve_scope)   
+> [dbops.fn_schema_in_scope](/dbzero/dbops/funzioni/fn_schema_in_scope)   
+> [dbops.fn_schema_match](/dbzero/dbops/funzioni/fn_schema_match)   
 
 ---
 
@@ -25,7 +25,7 @@ La funzione **`dbops.fn_table_in_scope(p_schema, p_table)`** è un **helper di f
 
 ---
 
-### 🔍 Parametri di input
+### Parametri di input
 
 | Parametro  | Tipo | Obbligatorio | Descrizione                                    |
 | ---------- | ---- | :----------: | ---------------------------------------------- |
@@ -34,13 +34,13 @@ La funzione **`dbops.fn_table_in_scope(p_schema, p_table)`** è un **helper di f
 
 ---
 
-## 📤 Valore di ritorno
+## Valore di ritorno
 
 `boolean` – `true` se la tabella rientra nell'ambito secondo le regole in `automation_scope`, `false` altrimenti.
 
 ---
 
-### ⚙️ Flusso logico
+### Flusso logico
 
 1. **Assenza tabella `automation_scope`** → ritorna `true` (nessun filtro attivo).
 2. **Tabella `automation_scope` vuota** → ritorna `true` (nessun filtro attivo).
@@ -53,7 +53,7 @@ La funzione **`dbops.fn_table_in_scope(p_schema, p_table)`** è un **helper di f
 
 ---
 
-## 🧩 Casi d’uso tipici
+## Casi d’uso tipici
 
 * **Filtrare automazioni**: applicare trigger e policy solo su tabelle ammesse.
 * **Gestione granularità**: permettere di definire ambiti per schema intero (`*all`) o singole tabelle/pattern.
@@ -68,7 +68,7 @@ La funzione **`dbops.fn_table_in_scope(p_schema, p_table)`** è un **helper di f
 
 ---
 
-### 🚀 Esempi di utilizzo
+### Esempi di utilizzo
 
 * `SELECT dbops.fn_table_in_scope('anagrafiche','clienti');` → `true` se la regola lo consente.
 * `SELECT dbops.fn_table_in_scope('config','valute');` → `true/false` secondo le regole impostate.
@@ -76,7 +76,7 @@ La funzione **`dbops.fn_table_in_scope(p_schema, p_table)`** è un **helper di f
 
 ---
 
-### 📌 Considerazioni
+### Considerazioni
 
 * La funzione centralizza la logica di inclusione/esclusione a livello tabellare.
 * L’uso di `LIKE` permette di definire pattern (`pref%`, `%log`).
@@ -84,7 +84,7 @@ La funzione **`dbops.fn_table_in_scope(p_schema, p_table)`** è un **helper di f
 
 ---
 
-### ✅ Benefici
+### Benefici
 
 * **Controllo granulare**: consente regole precise fino al livello di singola tabella.
 * **Coerenza**: unica fonte autorevole per la logica di inclusione.
@@ -92,4 +92,4 @@ La funzione **`dbops.fn_table_in_scope(p_schema, p_table)`** è un **helper di f
 
 ---
 
-> 🧠 **In sintesi**: `fn_table_in_scope` è l’helper che assicura che ogni automazione venga applicata **solo alle tabelle autorizzate**, rispettando le regole di `automation_scope` e permettendo configurazioni granulari o globali.
+> **In sintesi**: `fn_table_in_scope` è l’helper che assicura che ogni automazione venga applicata **solo alle tabelle autorizzate**, rispettando le regole di `automation_scope` e permettendo configurazioni granulari o globali.

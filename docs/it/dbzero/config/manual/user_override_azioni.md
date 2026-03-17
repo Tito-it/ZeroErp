@@ -2,14 +2,14 @@
 
 > 👀 **Vedi anche**
 >
-> Architettura di riferimento:
+Architettura di riferimento:
 >
-> * [Architettura Permessi e Autorizzazioni](/guide/architettura-permessi-e-autorizzazioni)
+[Architettura Permessi e Autorizzazioni](/guide/architettura-permessi-e-autorizzazioni)
 >
-> Tabelle correlate:
+Tabelle correlate:
 >
-> * [config.azioni_processo](/dbzero/config/tabelle/azioni_processo)
-> * [config.profili_reparto_azioni](/dbzero/config/tabelle/profili_reparto_azioni)
+[config.azioni_processo](/dbzero/config/tabelle/azioni_processo)
+> [config.profili_reparto_azioni](/dbzero/config/tabelle/profili_reparto_azioni)
 
 ---
 
@@ -25,7 +25,7 @@ La tabella **`config.user_override_azioni`** consente di **sovrascrivere l'abili
 
 ---
 
-### 🔑 Colonne chiave
+### Colonne chiave
 
 | Colonna | Scopo |
 |---------|-------|
@@ -37,7 +37,7 @@ La tabella **`config.user_override_azioni`** consente di **sovrascrivere l'abili
 
 ---
 
-### 💡 Casi d'uso tipici
+### Casi d'uso tipici
 
 * **GRANT individuale**: il reparto Tecnico non ha `approva_fattura`, ma il responsabile sì → override `abilitata = true`.
 * **DENY individuale**: il reparto Amministrazione ha `genera_fatture_lotti`, ma un operatore junior no → override `abilitata = false`.
@@ -59,4 +59,4 @@ La tabella **`config.user_override_azioni`** consente di **sovrascrivere l'abili
 
 ---
 
-> 🧠 **"`config.user_override_azioni` gestisce le eccezioni individuali sulle azioni di processo, con tracciabilità e scadenza automatica."**
+> **"`config.user_override_azioni` gestisce le eccezioni individuali sulle azioni di processo, con tracciabilità e scadenza automatica."**

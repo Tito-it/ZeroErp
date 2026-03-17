@@ -6,7 +6,7 @@ Apre un nuovo record runtime task su lotto in stato `IN_ESECUZIONE`.
 
 ---
 
-### ✅ Regole principali
+### Regole principali
 
 * `p_lotto_id` obbligatorio (`> 0`)
 * `p_task_code` obbligatorio
@@ -15,7 +15,7 @@ Apre un nuovo record runtime task su lotto in stato `IN_ESECUZIONE`.
 
 ---
 
-### ✅ Output
+### Output
 
 Una riga con:
 * `task_run_id`

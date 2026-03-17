@@ -2,18 +2,18 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> • [`anagrafiche.indirizzi_dettaglio`](/dbzero/anagrafiche/tabelle/indirizzi_dettaglio)  
+• [`anagrafiche.indirizzi_dettaglio`](/dbzero/anagrafiche/tabelle/indirizzi_dettaglio)  
 > • [`anagrafiche.clienti`](/dbzero/anagrafiche/tabelle/clienti)   
 > • [`anagrafiche.istanze_utilities`](/dbzero/anagrafiche/tabelle/istanze_utilities)   
 > • [`config.utilities`](/dbzero/config/tabelle/utilities)   
 > • [`config.stati_pdp`](/dbzero/config/tabelle/stati_pdp)   
 > • [`storico.pdp`](/dbzero/storico/tabelle/pdp)   
 >
-> **Approfondimento funzioni:**
+**Approfondimento funzioni:**
 >
-> • [`script.trgfn_storico_generic`](/dbzero/script/funzioni/trgfn_storico_generic)  
+• [`script.trgfn_storico_generic`](/dbzero/script/funzioni/trgfn_storico_generic)  
 > • [`dbops.trgfn_tx_id_managed`](/dbzero/dbops/funzioni/trgfn_tx_id_managed)  
 > • [`anagrafiche.trgfn_pdp_a10_guard`](/dbzero/anagrafiche/manual/trgfn_pdp_a10_guard)  
 
@@ -63,7 +63,7 @@ Il riferimento funzionale resta unico: FK verso `config.utilities.id`.
 
 ---
 
-### 🔄 Stato tecnico del PDP
+### Stato tecnico del PDP
 
 Con le modifiche concordate, il PDP ora include il campo:
 
@@ -90,7 +90,7 @@ Questo modello consente coerenza e accuratezza anche in domini complessi (gas/en
 
 ---
 
-### ⚙️ Vincoli e Relazioni
+### Vincoli e Relazioni
 
 * **UNIQUE (pdp)** → codice univoco globale
 * **UNIQUE (indirizzo_dettaglio_id, utility_id)** → massimo un PDP per utility per indirizzo
@@ -102,7 +102,7 @@ Questo modello consente coerenza e accuratezza anche in domini complessi (gas/en
 ---
 
 
-### 🔍 Considerazioni architetturali aggiornate
+### Considerazioni architetturali aggiornate
 
  **1. Stato tecnico distinto da cliente**
 

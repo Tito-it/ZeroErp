@@ -2,7 +2,7 @@
 
 > 👀 **Vedi anche**
 >
-> • [vendite.attivita_fatturabili](/dbzero/vendite/tabelle/attivita_fatturabili)  
+• [vendite.attivita_fatturabili](/dbzero/vendite/tabelle/attivita_fatturabili)  
 > • [vendite.commesse](/dbzero/vendite/tabelle/commesse)  
 > • [vendite.commesse_attivita](/dbzero/vendite/tabelle/commesse_attivita)  
 
@@ -17,7 +17,7 @@ senza collegamento commessa quando il flag è attivo.
 
 ---
 
-### ✅ Regole applicate
+### Regole applicate
 
 * flag funzionale su `config.parameters`:
   * `code='attivita_fatturabili_require_commessa'`
@@ -32,7 +32,7 @@ senza collegamento commessa quando il flag è attivo.
 
 ---
 
-### 🧩 Obiettivo operativo
+### Obiettivo operativo
 
 Rendere obbligatorio il passaggio `commessa -> attivita_fatturabili`
 ed evitare inserimenti/aggiornamenti diretti che aggirano il modello v2.

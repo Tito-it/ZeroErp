@@ -2,9 +2,9 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> • [vendite.fatturazione_lotti](/dbzero/vendite/tabelle/fatturazione_lotti)  
+• [vendite.fatturazione_lotti](/dbzero/vendite/tabelle/fatturazione_lotti)  
 > • [vendite.fatturazione_lotti_fatture](/dbzero/vendite/tabelle/fatturazione_lotti_fatture)  
 > • [vendite.fatture](/dbzero/vendite/tabelle/fatture)  
 > • [vendite.fatture_righe](/dbzero/vendite/tabelle/fatture_righe)  
@@ -13,9 +13,9 @@
 > • [vendite.note_fatture](/dbzero/vendite/tabelle/note_fatture)  
 > • [vendite.attivita_fatturabili](/dbzero/vendite/tabelle/attivita_fatturabili)  
 >
-> **Approfondimento funzioni:**
+**Approfondimento funzioni:**
 >
-> • [vendite.fn_select_attivita_fatturabili](/dbzero/vendite/funzioni/fn_select_attivita_fatturabili)  
+• [vendite.fn_select_attivita_fatturabili](/dbzero/vendite/funzioni/fn_select_attivita_fatturabili)  
 
 ---
 
@@ -28,7 +28,7 @@ dal draft e ripristinando le righe di `attivita_fatturabili`.
 
 ---
 
-### ✅ Regole principali
+### Regole principali
 
 * Ammesso **solo** per `tipo_lotto = MASSIVO`.
 * Ammesso **solo** se `stato_doc_fiscale = DRAFT`.
@@ -51,7 +51,7 @@ dal draft e ripristinando le righe di `attivita_fatturabili`.
 
 ---
 
-### ✅ Output
+### Output
 
 Ritorna una riga con:
 
@@ -62,7 +62,7 @@ Ritorna una riga con:
 
 ---
 
-### 🧪 Esempio d’uso
+### Esempio d’uso
 
 ```sql
 SELECT *

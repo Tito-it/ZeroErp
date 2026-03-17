@@ -2,12 +2,12 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimenti tabelle:
+Approfondimenti tabelle:
 >
-> * [anagrafiche.risorse_umane](/dbzero/anagrafiche/tabelle/risorse_umane)  
-> * [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)  
-> * [config.qualifiche](/dbzero/config/tabelle/qualifiche)  
-> * [config.unita_organizzative](/dbzero/config/tabelle/unita_organizzative)  
+[anagrafiche.risorse_umane](/dbzero/anagrafiche/tabelle/risorse_umane)  
+> [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)  
+> [config.qualifiche](/dbzero/config/tabelle/qualifiche)  
+> [config.unita_organizzative](/dbzero/config/tabelle/unita_organizzative)  
 
 ---
 
@@ -26,7 +26,7 @@ unificata delle risorse umane con:
 
 ---
 
-### 🧱 Struttura logica della vista
+### Struttura logica della vista
 
 La vista parte da `anagrafiche.risorse_umane` e aggiunge:
 
@@ -62,7 +62,7 @@ La vista parte da `anagrafiche.risorse_umane` e aggiunge:
 
 ---
 
-### 🔍 Modalità d’uso tipiche
+### Modalità d’uso tipiche
 
 ```sql
 SELECT *
@@ -72,7 +72,7 @@ WHERE soggetto_id = :soggetto_id;
 
 ---
 
-### ✅ Best practice e raccomandazioni
+### Best practice e raccomandazioni
 
 * Usare questa vista per letture applicative e reportistica.
 * Per modifiche, operare sempre sulle tabelle base.

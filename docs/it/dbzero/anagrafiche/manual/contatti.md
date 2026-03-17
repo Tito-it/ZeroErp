@@ -3,15 +3,15 @@
 > 👀 **Vedi anche**
 > Approfondimento tabelle:
 >    
-> * [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)    
-> * [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)    
-> * [config.tipi_contatti](/dbzero/config/tabelle/tipi_contatti)    
-> * [config.unita_organizzative](/dbzero/config/tabelle/unita_organizzative)
-> * [config.utilities](/dbzero/config/tabelle/utilities)    
+[anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)    
+> [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)    
+> [config.tipi_contatti](/dbzero/config/tabelle/tipi_contatti)    
+> [config.unita_organizzative](/dbzero/config/tabelle/unita_organizzative)
+> [config.utilities](/dbzero/config/tabelle/utilities)    
 >
-> Approfondimenti funzioni:   
+Approfondimenti funzioni:   
 >
-> * [anagrafiche.trgfn_contatti_set_default_contatto](/dbzero/anagrafiche/funzioni/trgfn_contatti_set_default_contatto)     
+[anagrafiche.trgfn_contatti_set_default_contatto](/dbzero/anagrafiche/funzioni/trgfn_contatti_set_default_contatto)     
 
 
 La tabella **`anagrafiche.contatti`** è il **punto di raccolta centralizzato** per tutte le informazioni di contatto nell’applicazione, a diversi livelli di granularità:
@@ -52,7 +52,7 @@ In questo modo è possibile definire:
 
 ---
 
-### 🔍 Vincoli e Relazioni
+### Vincoli e Relazioni
 
 - **`PK (id)`**: identificatore univoco del contact record.  
 - **`UNIQUE (soggetto_id, soggetto_ruolo_id, utility_id, tipo_contatto_id)`**  
@@ -66,7 +66,7 @@ In questo modo è possibile definire:
 
 ---
 
-### ⚙️ Relazioni e Trigger
+### Relazioni e Trigger
 
 - **Trigger `trg_contatti_set_default_contatto_ins_upd`**  
   Assicura che esista al più un contatto `is_default = TRUE` per ogni `soggetto_id`:  
@@ -79,7 +79,7 @@ In questo modo è possibile definire:
 
 ---
 
-### 🔗 Indici
+### Indici
 
 * `ix_contatti_soggetto` su `soggetto_id` per ricerche rapide per soggetto.
 * `ix_contatti_tipo` su `tipo_contatto_id` per filtrare contatti per tipologia.
@@ -91,7 +91,7 @@ Migliorano le performance nelle query di recupero contatti per soggetto, tipo o 
 
 ---
 
-### ⚙️ Esempi di Utilizzo 
+### Esempi di Utilizzo 
 
 ```sql
 -- 1) Contatto globale per il soggetto UUID '123e4567-e89b-12d3-a456-426614174000'
@@ -135,7 +135,7 @@ SELECT *
 ```
 ---
 
-### 💡 Vantaggi Operativi
+### Vantaggi Operativi
 
  - Flessibilità: un singolo modello per ogni combinazione soggetto/ruolo/servizio e tipo di contatto.
 
@@ -147,7 +147,7 @@ SELECT *
 
 ---
 
-> 🧠 **Centralizzare i contatti in un’unica tabella con supporto multi-contesto e contact default migliora coerenza, performance e usabilità del sistema.”**
+> **Centralizzare i contatti in un’unica tabella con supporto multi-contesto e contact default migliora coerenza, performance e usabilità del sistema.”**
 
 
 ---

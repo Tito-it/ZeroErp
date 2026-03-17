@@ -2,13 +2,13 @@
 
 > 👀 **Vedi anche** 
 >
-> Approfondimento Tabelle:    
+Approfondimento Tabelle:    
 >
-> * [config.parameters](/dbzero/config/tabelle/parameters)      
+[config.parameters](/dbzero/config/tabelle/parameters)      
 >
-> Approfondimento funzioni :    
+Approfondimento funzioni :    
 >
-> * [script.fn_get_parameter_full](/dbzero/script/funzioni/fn_get_parameter_full)    
+[script.fn_get_parameter_full](/dbzero/script/funzioni/fn_get_parameter_full)    
 
 ---
 ### 🎯 Scopo Principale
@@ -17,7 +17,7 @@ La tabella **`config.parameter_overrides`** permette di creare **override dinami
 
 ---
 
-### 🗂️ Campi principali
+### Campi principali
 
 | Colonna            | Tipo                        | Nullable | Default        | Descrizione                                                              |
 | ------------------ | --------------------------- | -------- | -------------- | ------------------------------------------------------------------------ |
@@ -33,7 +33,7 @@ La tabella **`config.parameter_overrides`** permette di creare **override dinami
 
 ---
 
-### 🔒 Vincoli
+### Vincoli
 
 | Tipo        | Nome                       | Colonne                              | Descrizione                                                                           |
 | ----------- | -------------------------- | ------------------------------------ | ------------------------------------------------------------------------------------- |
@@ -51,7 +51,7 @@ La tabella **`config.parameter_overrides`** permette di creare **override dinami
 
 ---
 
-### 📝 Esempi di Override
+### Esempi di Override
 
 #### 1. Override Parametro “Valuta”
 
@@ -87,4 +87,4 @@ VALUES
 
 ---
 
-> 🧠 **Questa tabella è il cuore della personalizzazione runtime dei parametri: ogni override è unico per contesto e tracciato per audit, senza duplicare logica nell’applicazione.**
+> **Questa tabella è il cuore della personalizzazione runtime dei parametri: ogni override è unico per contesto e tracciato per audit, senza duplicare logica nell’applicazione.**

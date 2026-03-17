@@ -2,7 +2,7 @@
 
 > 👀 **Vedi anche**
 >
-> • [vendite.ordini](/dbzero/vendite/tabelle/ordini)  
+• [vendite.ordini](/dbzero/vendite/tabelle/ordini)  
 > • [script.fn_generate_codice](/dbzero/script/funzioni/fn_generate_codice)  
 
 ---
@@ -14,14 +14,14 @@ La trigger function `vendite.trgfn_ordini_gen_codice()` genera automaticamente
 
 ---
 
-### ✅ Regole principali
+### Regole principali
 
 * se `NEW.numero` e` nullo/vuoto, valorizza con `script.fn_generate_codice('ordine')`;
 * se `NEW.numero` e` gia` presente, non modifica il valore.
 
 ---
 
-### 🧩 Utilizzo
+### Utilizzo
 
 Usata come trigger `BEFORE INSERT` su `vendite.ordini` per garantire numerazione
 tecnica consistente anche in inserimenti automatici.

@@ -4,12 +4,12 @@
 
 > Approfondimento Tabelle:  
 >
-> * [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)  
-> * [config.tipi_ruoli](/dbzero/config/tabelle/tipi_ruoli)    
+[anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)  
+> [config.tipi_ruoli](/dbzero/config/tabelle/tipi_ruoli)    
 
 > Approfondimento trigger e funzioni:   
 >
-> * [anagrafiche.trgfn_soggetti_ruoli_guard_indirizzi_required](/dbzero/anagrafiche/funzioni/trgfn_soggetti_ruoli_guard_indirizzi_required)
+[anagrafiche.trgfn_soggetti_ruoli_guard_indirizzi_required](/dbzero/anagrafiche/funzioni/trgfn_soggetti_ruoli_guard_indirizzi_required)
 
 La tabella **`anagrafiche.soggetti_ruoli`** funge da collegamento (linking table) tra i soggetti registrati nel sistema e i ruoli definiti in `config.tipi_ruoli`, permettendo di assegnare a ciascun soggetto - individuo o azienda - uno o più ruoli specifici all’interno del software Zero ERP.
 
@@ -24,7 +24,7 @@ La tabella **`anagrafiche.soggetti_ruoli`** funge da collegamento (linking table
 
 ---
 
-### 🔗 Collegamenti con Altre Tabelle
+### Collegamenti con Altre Tabelle
 
 * **`anagrafiche.soggetti`**
 
@@ -42,7 +42,7 @@ La tabella **`anagrafiche.soggetti_ruoli`** funge da collegamento (linking table
 
 ---
 
-### 💡 Vantaggi Operativi
+### Vantaggi Operativi
 
 * **Modularità e pulizia dei dati**
   Separando i dati anagrafici base (in `anagrafiche.soggetti`) dall’assegnazione dei ruoli, si evita di dover ripetere attributi del soggetto ogni qualvolta cambia un ruolo. Questo design semplifica le query e migliora le performance.
@@ -58,7 +58,7 @@ La tabella **`anagrafiche.soggetti_ruoli`** funge da collegamento (linking table
 
 ---
 
-> 🧠 **"Una tabella ponte che unisce flessibilità e integrità referenziale, consentendo di assegnare e tracciare ruoli multipli a ciascun soggetto senza duplicare dati anagrafici."**
+> **"Una tabella ponte che unisce flessibilità e integrità referenziale, consentendo di assegnare e tracciare ruoli multipli a ciascun soggetto senza duplicare dati anagrafici."**
 
 ---
 

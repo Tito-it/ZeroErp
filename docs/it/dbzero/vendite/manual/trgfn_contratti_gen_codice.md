@@ -2,7 +2,7 @@
 
 > 👀 **Vedi anche**
 >
-> • [vendite.contratti](/dbzero/vendite/tabelle/contratti)  
+• [vendite.contratti](/dbzero/vendite/tabelle/contratti)  
 > • [script.fn_generate_codice](/dbzero/script/funzioni/fn_generate_codice)  
 
 ---
@@ -14,14 +14,14 @@ La trigger function `vendite.trgfn_contratti_gen_codice()` genera automaticament
 
 ---
 
-### ✅ Regole principali
+### Regole principali
 
 * se `NEW.numero` e` nullo/vuoto, valorizza con `script.fn_generate_codice('contratto')`;
 * se `NEW.numero` e` gia` presente, non modifica il valore.
 
 ---
 
-### 🧩 Utilizzo
+### Utilizzo
 
 Usata come trigger `BEFORE INSERT` su `vendite.contratti` per garantire
 numerazione tecnica consistente anche in inserimenti automatici.

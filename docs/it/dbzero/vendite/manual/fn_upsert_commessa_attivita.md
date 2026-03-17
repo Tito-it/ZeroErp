@@ -2,26 +2,24 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> • [vendite.commesse_attivita](/dbzero/vendite/tabelle/commesse_attivita)  
+• [vendite.commesse_attivita](/dbzero/vendite/tabelle/commesse_attivita)  
 > • [vendite.commesse](/dbzero/vendite/tabelle/commesse)  
 > • [vendite.stati_commessa](/dbzero/vendite/tabelle/stati_commessa)  
 >
-> **Approfondimento funzioni:**
+**Approfondimento funzioni:**
 >
-> • [vendite.fn_get_commessa_stato](/dbzero/vendite/funzioni/fn_get_commessa_stato)  
+• [vendite.fn_get_commessa_stato](/dbzero/vendite/funzioni/fn_get_commessa_stato)  
 >
----
-
-### 🎯 Scopo Principale
+🎯 Scopo Principale
 
 (latest review 26-02-2026)  
 Effettua upsert idempotente di una riga `commesse_attivita` su chiave `(commessa_id, segment_key)`, con controlli di validita` e blocchi coerenti con lo stato della commessa.
 
 ---
 
-### ✅ Regole principali
+### Regole principali
 
 * Parametri obbligatori: `p_commessa_id`, `p_segment_key`, `p_uom_id`, `p_istanza_utility_id`, `p_quantita`, `p_prezzo_snapshot`.
 * `p_quantita` deve essere diversa da `0` (valori negativi ammessi).
@@ -38,13 +36,13 @@ Effettua upsert idempotente di una riga `commesse_attivita` su chiave `(commessa
 
 ---
 
-### ✅ Output
+### Output
 
 Ritorna l'`id` della riga `vendite.commesse_attivita` inserita o aggiornata.
 
 ---
 
-### 🧪 Esempio d'uso
+### Esempio d'uso
 
 ```sql
 SELECT vendite.fn_upsert_commessa_attivita(

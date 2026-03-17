@@ -2,15 +2,13 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> * [anagrafiche.pdp](/dbzero/anagrafiche/tabelle/pdp)    
-> * [config.stati_pdp](/dbzero/config/tabelle/stati_pdp)    
+[anagrafiche.pdp](/dbzero/anagrafiche/tabelle/pdp)    
+> [config.stati_pdp](/dbzero/config/tabelle/stati_pdp)    
 >
 
----
-
-### 🎯 Scopo Principale
+🎯 Scopo Principale
 (latest review 16-12-25)
 La trigger function **`anagrafiche.trgfn_pdp_set_default_stato()`** imposta automaticamente lo **stato tecnico** di un PDP a **DISP** (*Disponibile*) quando il campo `stato_pdp_id` non è stato valorizzato.
 
@@ -21,7 +19,7 @@ Regola:
 
 ---
 
-### 🧭 Contesto
+### Contesto
 
 Il PDP deve avere sempre uno stato tecnico coerente:
 
@@ -32,7 +30,7 @@ Questa trigger function garantisce che l’inserimento non lasci PDP “senza st
 
 ---
 
-### 🛠️ Firma
+### Firma
 
 ```sql
 CREATE OR REPLACE FUNCTION anagrafiche.trgfn_pdp_set_default_stato()
@@ -42,7 +40,7 @@ LANGUAGE plpgsql;
 
 ---
 
-### 📥 Input (Record Trigger)
+### Input (Record Trigger)
 
 Utilizza:
 
@@ -55,7 +53,7 @@ E legge da:
 
 ---
 
-### 📤 Output
+### Output
 
 * Ritorna `NEW`.
 * Può modificare `NEW.stato_pdp_id` quando è `NULL`.
@@ -64,7 +62,7 @@ E legge da:
 
 ---
 
-### 🔄 Logica Operativa
+### Logica Operativa
 
  **1) Guardia: stato già impostato**
 
@@ -116,14 +114,14 @@ Errore gestito:
 
 ---
 
-### 🧩 Side Effects
+### Side Effects
 
 * Nessun DML diretto.
 * Modifica del record `NEW` (assegnazione default), quindi la funzione è **BEFORE-oriented**.
 
 ---
 
-### ⚙️ Considerazioni di Performance
+### Considerazioni di Performance
 
 * 1 lookup su tabella di configurazione (`config.stati_pdp`) per ogni evento.
 
@@ -133,7 +131,7 @@ Consigliato:
 
 ---
 
-### 🔍 Esempi di Comportamento
+### Esempi di Comportamento
 
  **Caso A – Stato già presente**
 
@@ -157,7 +155,7 @@ Consigliato:
 
 ---
 
-### 🧪 Note per Test (pgTAP / SQL)
+### Note per Test (pgTAP / SQL)
 
 Casi minimi consigliati:
 
@@ -167,8 +165,8 @@ Casi minimi consigliati:
 
 ---
 
-### 📌 Best Practice
+### Best Practice
 
-* ✅ Assicurare un record di configurazione con `codice_interno='DISP'` (meglio con vincolo UNIQUE su `codice_interno`).
-* ✅ Collegare questa function a un trigger `BEFORE INSERT` sulla tabella `anagrafiche.pdp`.
-* ✅ Limit
+* Assicurare un record di configurazione con `codice_interno='DISP'` (meglio con vincolo UNIQUE su `codice_interno`).
+* Collegare questa function a un trigger `BEFORE INSERT` sulla tabella `anagrafiche.pdp`.
+* Limit

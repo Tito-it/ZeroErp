@@ -4,12 +4,12 @@
 
 > Approfondimenti tabelle:  
 >
->  * [anagrafiche.bank_branches](/dbzero/anagrafiche/tabelle/bank_branches)   
->  * [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli) 
+[anagrafiche.bank_branches](/dbzero/anagrafiche/tabelle/bank_branches)   
+>  [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli) 
 
 > Approfondimenti funzioni:   
 >
->  * [script.fn_guard_soggetto_ruolo ](/dbzero/script/funzioni/fn_guard_soggetto_ruolo ) 
+[script.fn_guard_soggetto_ruolo ](/dbzero/script/funzioni/fn_guard_soggetto_ruolo ) 
 
 La trigger function **`anagrafiche.trgfn_bank_guard_ruolo_bank_branches()`** si attiva **BEFORE INSERT** e **BEFORE UPDATE** sulla tabella `anagrafiche.bank_branches`. Il suo scopo è garantire che, ogni volta che si crea o modifica il record del bank_branches, venga automaticamente gestita (verificata o creata) la corrispondente riga di relazione in `anagrafiche.soggetti_ruoli` con ruolo “bank_branches” (`codice_interno = 'BANK_B'`).
 
@@ -28,7 +28,7 @@ La trigger function **`anagrafiche.trgfn_bank_guard_ruolo_bank_branches()`** si 
 
 ---
 
-### 🔍 Flusso Logico
+### Flusso Logico
 
 1. **Chiamata automatica**  
    Attivata **BEFORE INSERT OR UPDATE** su `anagrafiche.bank_branches`.  
@@ -37,7 +37,7 @@ La trigger function **`anagrafiche.trgfn_bank_guard_ruolo_bank_branches()`** si 
 
      La funzione verifica o crea il record in anagrafiche.soggetti_ruoli e restituisce l’ID.
 
-### 🛠️ Utilizzo in DDL
+### Utilizzo in DDL
 
 Nel DDL di anagrafiche.bank il trigger viene definito così:
 
@@ -47,7 +47,7 @@ CREATE OR REPLACE TRIGGER trg_bank_guard_ruolo_bank_branches_ins_upd
   EXECUTE FUNCTION anagrafiche.trgfn_bank_guard_ruolo_bank_branches();
 
 ---
-### 💡 Vantaggi Operativi
+### Vantaggi Operativi
 
     Unica fonte di verità per l’assegnazione del ruolo
     Ogni modifica al bank_branches delega a una sola funzione centralizzata il compito di controllare/eseguire 

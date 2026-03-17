@@ -2,27 +2,27 @@
 
 > 👀 **Vedi anche**    
 >
-> Guide:   
+Guide:   
 >
-> * [Gestione degli indirizzi](/guide/gestione-degli-indirizzi)       
+[Gestione degli indirizzi](/guide/gestione-degli-indirizzi)       
 >
-> Approfondimento Tabelle:   
+Approfondimento Tabelle:   
 >
-> * [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)       
-> * [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)  
-> * [anagrafiche.indirizzi_dettaglio](/dbzero/anagrafiche/tabelle/indirizzi_dettaglio)  
-> * [storico.indirizzi](/dbzero/storico/tabelle/indirizzi)     
-> * [config.comuni](/dbzero/config/tabelle/comuni)    
-> * [config.codici_postali](/dbzero/config/tabelle/codici_postali)    
-> * [config.stati](/dbzero/config/tabelle/stati)   
-> * [config.tipi_indirizzi](/dbzero/config/tabelle/tipi_indirizzi)   
+[anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)       
+> [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)  
+> [anagrafiche.indirizzi_dettaglio](/dbzero/anagrafiche/tabelle/indirizzi_dettaglio)  
+> [storico.indirizzi](/dbzero/storico/tabelle/indirizzi)     
+> [config.comuni](/dbzero/config/tabelle/comuni)    
+> [config.codici_postali](/dbzero/config/tabelle/codici_postali)    
+> [config.stati](/dbzero/config/tabelle/stati)   
+> [config.tipi_indirizzi](/dbzero/config/tabelle/tipi_indirizzi)   
 >
-> Approfondimento funzioni e trigger:  
+Approfondimento funzioni e trigger:  
 >
-> * [anagrafiche.trgfn_indirizzi_base_normalize](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_base_normalize)  
-> * [script.trgfn_storico_generic](/dbzero/script/funzioni/trgfn_storico_generic)  
-> * [script.fn_get_default_by_param](/dbzero/script/funzioni/fn_get_default_by_param)   
-> * [dbops.trgfn_tx_id_managed](/dbzero/dbops/funzioni/trgfn_tx_id_managed)   
+[anagrafiche.trgfn_indirizzi_base_normalize](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_base_normalize)  
+> [script.trgfn_storico_generic](/dbzero/script/funzioni/trgfn_storico_generic)  
+> [script.fn_get_default_by_param](/dbzero/script/funzioni/fn_get_default_by_param)   
+> [dbops.trgfn_tx_id_managed](/dbzero/dbops/funzioni/trgfn_tx_id_managed)   
 
 ---
 
@@ -64,7 +64,7 @@ Supporta:
 
 ---
 
-### 🔗 Collegamenti con Altre Tabelle
+### Collegamenti con Altre Tabelle
 
 * **`anagrafiche.soggetti_ruoli`**  
   - Ogni indirizzo è riferito a una specifica combinazione soggetto/ruolo.  
@@ -83,7 +83,7 @@ Supporta:
 
 ---
 
-### 💡 Vantaggi Operativi
+### Vantaggi Operativi
 
 * **Gestione flessibile degli indirizzi**  
   Si adatta a tutti i contesti: locali (normalizzati) o esteri/non strutturati (liberi), senza perdere integrità dei dati.
@@ -102,7 +102,7 @@ Supporta:
 
 ---
 
-> 🧠 **“Una tabella ponte tra struttura e flessibilità: `anagrafiche.indirizzi` consente di mappare ogni possibile indirizzo di un soggetto, conservando coerenza, precisione geografica e tracciabilità delle modifiche.”**
+> **“Una tabella ponte tra struttura e flessibilità: `anagrafiche.indirizzi` consente di mappare ogni possibile indirizzo di un soggetto, conservando coerenza, precisione geografica e tracciabilità delle modifiche.”**
 
 
 ---

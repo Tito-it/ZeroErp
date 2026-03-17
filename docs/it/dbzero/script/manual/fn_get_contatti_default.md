@@ -2,17 +2,17 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimento tabelle:
+Approfondimento tabelle:
 >
-> * [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)   
-> * [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)   
-> * [anagrafiche.contatti](/dbzero/anagrafiche/tabelle/contatti)   
+[anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)   
+> [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)   
+> [anagrafiche.contatti](/dbzero/anagrafiche/tabelle/contatti)   
 >
-> Approfondimento funzioni:
+Approfondimento funzioni:
 >
-> * [script.fn_get_contatti](/dbzero/script/funzioni/fn_get_contatti)   
-> * [anagrafiche.trgfn_contatti_set_default_contatto](/dbzero/anagrafiche/funzioni/trgfn_contatti_set_default_contatto)   
-> * [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)   
+[script.fn_get_contatti](/dbzero/script/funzioni/fn_get_contatti)   
+> [anagrafiche.trgfn_contatti_set_default_contatto](/dbzero/anagrafiche/funzioni/trgfn_contatti_set_default_contatto)   
+> [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)   
 
 La funzione **`script.fn_get_contatto_default(p_soggetto_id UUID, p_soggetto_ruolo_id BIGINT DEFAULT NULL, p_utility_id INTEGER DEFAULT NULL, p_tipo_contatto_id INTEGER DEFAULT NULL, p_unita_organizzativa_id INTEGER DEFAULT NULL)`** restituisce **il contatto di default** relativo al contesto richiesto (soggetto / ruolo / utility), riutilizzando la logica di selezione di `script.fn_get_contatti` e limitandosi ai soli record marcati come `is_default = TRUE`.
 
@@ -38,7 +38,7 @@ A differenza di `fn_get_contatti`, che può restituire **più righe (una per tip
 
 ---
 
-### 🧩 Parametri di Input
+### Parametri di Input
 
 | Nome                  | Tipo     | Default | Obbligatorio | Descrizione                                                                                                                      |
 | --------------------- | -------- | ------- | ------------ | -------------------------------------------------------------------------------------------------------------------------------- |
@@ -48,11 +48,11 @@ A differenza di `fn_get_contatti`, che può restituire **più righe (una per tip
 | `p_tipo_contatto_id`  | `INT`    | `NULL`  | ❌ No         | Se valorizzato, restringe il default ad uno specifico `tipo_contatto` (categoria).               |
 | `p_unita_organizzativa_id` | `INT` | `NULL` | ❌ No | Se valorizzato, restringe il default al reparto/ufficio (`config.unita_organizzative`). |
 
-> 💡 Se `p_tipo_contatto_id` è `NULL`, la funzione restituisce il **contatto di default principale** per il contesto indicato (soggetto / ruolo / utility). Se è valorizzato, il default è riferito a quella categoria.
+> Se `p_tipo_contatto_id` è `NULL`, la funzione restituisce il **contatto di default principale** per il contesto indicato (soggetto / ruolo / utility). Se è valorizzato, il default è riferito a quella categoria.
 
 ---
 
-### 📤 Valore di Ritorno
+### Valore di Ritorno
 
 La funzione restituisce **0 o 1 riga** con la stessa struttura di `fn_get_contatti`:
 
@@ -72,11 +72,11 @@ La funzione restituisce **0 o 1 riga** con la stessa struttura di `fn_get_contat
 | `is_default`        | `BOOLEAN` | Sempre `TRUE` per i record restituiti (per definizione della funzione).        |
 | `default_context`   | `VARCHAR` | Contesto in cui il contatto è default (`'soggetto'`, `'ruolo'`, `'utility'`).  |
 
-> 🔎 Se non esiste alcun contatto di default coerente con i parametri, la funzione **restituisce zero righe**: è responsabilità del chiamante decidere se applicare ulteriori fallback (es. usare `fn_get_contatti`) o gestire l’assenza di default.
+> Se non esiste alcun contatto di default coerente con i parametri, la funzione **restituisce zero righe**: è responsabilità del chiamante decidere se applicare ulteriori fallback (es. usare `fn_get_contatti`) o gestire l’assenza di default.
 
 ---
 
-### ⚙️ Flusso Logico Interno
+### Flusso Logico Interno
 
 1. **Recupero dei candidati tramite `fn_get_contatti`**
    La funzione, internamente, esegue:
@@ -118,7 +118,7 @@ La funzione restituisce **0 o 1 riga** con la stessa struttura di `fn_get_contat
 
 ---
 
-### 📌 Esempi di Utilizzo
+### Esempi di Utilizzo
 
 ```sql
 -- 1) Contatto di default del soggetto (contesto "soggetto")
@@ -160,7 +160,7 @@ FROM script.fn_get_contatto_default(
 
 ---
 
-### 💡 Vantaggi Operativi
+### Vantaggi Operativi
 
 * **API semplice per il “contatto principale”**: semplifica notevolmente la vita a chi implementa servizi o UI che hanno bisogno di “un” contatto di riferimento senza gestire manualmente i fallback.
 * **Coerenza con il modello di default**: utilizza il flag `is_default` e il `default_context` impostati dai trigger applicativi, mantenendo allineata la logica DB con le regole di dominio.

@@ -2,8 +2,8 @@
 
 > 👀 **Vedi anche**
 >
-> * [pratiche.sospensioni](/dbzero/pratiche/manual/sospensioni)
-> * [pratiche.giornale](/dbzero/pratiche/manual/giornale)
+[pratiche.sospensioni](/dbzero/pratiche/manual/sospensioni)
+> [pratiche.giornale](/dbzero/pratiche/manual/giornale)
 
 ---
 
@@ -13,7 +13,7 @@ Ripristina gli stati precedenti alla riattivazione. AFTER UPDATE OF `data_fine` 
 
 ---
 
-### 🔧 Firma
+### Firma
 
 ```sql
 CREATE OR REPLACE FUNCTION pratiche.trgfn_sospensioni_riattiva()
@@ -22,7 +22,7 @@ RETURNS trigger LANGUAGE plpgsql
 
 ---
 
-### ⚙️ Logica
+### Logica
 
 1. Si attiva solo quando `OLD.data_fine IS NULL AND NEW.data_fine IS NOT NULL`.
 2. Solo per sospensioni a livello pratica (`flusso_id IS NULL`).
@@ -31,7 +31,7 @@ RETURNS trigger LANGUAGE plpgsql
 
 ---
 
-### 🔗 Trigger associato
+### Trigger associato
 
 | Nome                                               | Fase  | Evento              | Tabella                |
 | -------------------------------------------------- | ----- | ------------------- | ---------------------- |

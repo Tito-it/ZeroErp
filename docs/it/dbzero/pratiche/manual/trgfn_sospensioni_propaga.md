@@ -2,9 +2,9 @@
 
 > 👀 **Vedi anche**
 >
-> * [pratiche.sospensioni](/dbzero/pratiche/manual/sospensioni)
-> * [pratiche.flussi](/dbzero/pratiche/tabelle/flussi)
-> * [config.transizioni_stati_flussi_pratiche](/dbzero/config/manual/transizioni_stati_flussi_pratiche)
+[pratiche.sospensioni](/dbzero/pratiche/manual/sospensioni)
+> [pratiche.flussi](/dbzero/pratiche/tabelle/flussi)
+> [config.transizioni_stati_flussi_pratiche](/dbzero/config/manual/transizioni_stati_flussi_pratiche)
 
 ---
 
@@ -14,7 +14,7 @@ Propaga la sospensione a livello pratica ai flussi attivi. AFTER INSERT su `prat
 
 ---
 
-### 🔧 Firma
+### Firma
 
 ```sql
 CREATE OR REPLACE FUNCTION pratiche.trgfn_sospensioni_propaga()
@@ -23,7 +23,7 @@ RETURNS trigger LANGUAGE plpgsql
 
 ---
 
-### ⚙️ Logica
+### Logica
 
 1. Se `NEW.flusso_id IS NOT NULL` → nessuna propagazione (sospensione singolo flusso).
 2. Recupera gli ID degli stati DA_ESEGUIRE, IN_CORSO, SOSPESO da `config.stati_flussi_pratiche`.
@@ -31,7 +31,7 @@ RETURNS trigger LANGUAGE plpgsql
 
 ---
 
-### 🔗 Trigger associato
+### Trigger associato
 
 | Nome                                          | Fase  | Evento | Tabella                |
 | --------------------------------------------- | ----- | ------ | ---------------------- |

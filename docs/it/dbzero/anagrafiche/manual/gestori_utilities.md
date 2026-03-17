@@ -2,16 +2,16 @@
 
 > 👀 **Vedi anche:**
 >
-> Approfondimento tabelle:
+Approfondimento tabelle:
 >
-> * [anagrafiche.gestori](/dbzero/anagrafiche/gestori)
-> * [config.utilities](/dbzero/config/utilities)
-> * [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/soggetti_ruoli)
-> * [config.tipi_ruoli](/dbzero/config/tipi_ruoli)
+[anagrafiche.gestori](/dbzero/anagrafiche/gestori)
+> [config.utilities](/dbzero/config/utilities)
+> [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/soggetti_ruoli)
+> [config.tipi_ruoli](/dbzero/config/tipi_ruoli)
 >
-> Approfondimento funzioni:
+Approfondimento funzioni:
 >
-> * [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)
+[script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)
 
 ---
 
@@ -25,7 +25,7 @@ La tabella `anagrafiche.gestori_utilities` gestisce l'associazione tra i gestori
 
 ---
 
-### ⚙️ Vincoli e Relazioni
+### Vincoli e Relazioni
 
 * **`gestore_id`**: Foreign key verso la tabella `anagrafiche.gestori` (cancellazione a cascata).
 * **`utility_id`**: Foreign key verso la tabella `config.utilities` (cancellazione ristretta).
@@ -33,7 +33,7 @@ La tabella `anagrafiche.gestori_utilities` gestisce l'associazione tra i gestori
 
 ---
 
-### 🔍 Considerazioni di Progettazione
+### Considerazioni di Progettazione
 
 * Ogni gestore può essere associato a molteplici utilities.
 * L'associazione non contempla ulteriori ruoli interni, in quanto il gestore stesso è già un ruolo specifico.
@@ -48,7 +48,7 @@ La tabella `anagrafiche.gestori_utilities` gestisce l'associazione tra i gestori
 
 ---
 
-> 🧠 **“Questa struttura garantisce una gestione semplice e chiara delle associazioni tra gestori e utilities, facilitando la manutenibilità e la flessibilità del sistema.”**
+> **“Questa struttura garantisce una gestione semplice e chiara delle associazioni tra gestori e utilities, facilitando la manutenibilità e la flessibilità del sistema.”**
 
 ---
 

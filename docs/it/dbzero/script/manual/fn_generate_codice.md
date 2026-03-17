@@ -2,13 +2,13 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimento Tabelle:   
+Approfondimento Tabelle:   
 >
-> * [config.sistema_codici](/dbzero/config/tabelle/sistema_codici)      
+[config.sistema_codici](/dbzero/config/tabelle/sistema_codici)      
 >
-> Approfondimento funzioni :    
+Approfondimento funzioni :    
 >
-> * [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)    
+[script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)    
 
 
 La funzione **`script.fn_generate_codice(tipo TEXT)`** genera in modo parametrico un nuovo codice alfanumerico per uno specifico “tipo” (es. `ORDINE`, `CLIENTE`, `FATTURA`), basandosi sui parametri definiti nella tabella **`config.sistema_codici`**. Se la configurazione per quel tipo non esiste, viene sollevata un’eccezione.
@@ -29,7 +29,7 @@ La funzione **`script.fn_generate_codice(tipo TEXT)`** genera in modo parametric
 
 ---
 
-### 📥 Parametri di input
+### Parametri di input
 
 | Nome   | Tipo   | Descrizione                                                                                                 |
 | ------ | ------ | ----------------------------------------------------------------------------------------------------------- |
@@ -37,7 +37,7 @@ La funzione **`script.fn_generate_codice(tipo TEXT)`** genera in modo parametric
 
 ---
 
-### 📤 Valore di ritorno
+### Valore di ritorno
 
 | Tipo restituito | Descrizione                                                                            |
 | --------------- | -------------------------------------------------------------------------------------- |
@@ -49,7 +49,7 @@ La funzione **`script.fn_generate_codice(tipo TEXT)`** genera in modo parametric
 
 ---
 
-### 🔍 Logica interna
+### Logica interna
 
 1. **Lettura dei parametri**
 
@@ -128,7 +128,7 @@ La funzione **`script.fn_generate_codice(tipo TEXT)`** genera in modo parametric
 
 ---
 
-### 🔗 Dipendenze
+### Dipendenze
 
 * **Tabella di configurazione**
 
@@ -150,7 +150,7 @@ La funzione **`script.fn_generate_codice(tipo TEXT)`** genera in modo parametric
 
 ---
 
-### 💡 Vantaggi operativi
+### Vantaggi operativi
 
 * **Parametricità**
   Consente di modificare prefisso, separatore e lunghezza numerica senza toccare il codice della funzione.
@@ -163,4 +163,4 @@ La funzione **`script.fn_generate_codice(tipo TEXT)`** genera in modo parametric
 
 ---
 
-> 🧠 **“Questa funzione restituisce un codice conforme alle specifiche di `config.sistema_codici`. Se la configurazione non è presente o non è possibile determinare la sequenza, solleva un’eccezione descrittiva.”**
+> **“Questa funzione restituisce un codice conforme alle specifiche di `config.sistema_codici`. Se la configurazione non è presente o non è possibile determinare la sequenza, solleva un’eccezione descrittiva.”**

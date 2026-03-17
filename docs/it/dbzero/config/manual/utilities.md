@@ -14,7 +14,7 @@ La tabella **`utilities`** costituisce il cuore modulare di Zero ERP: da qui si 
 
 ---
 
-### 🛠 Flessibilità e Configurabilità
+### Flessibilità e Configurabilità
 
 * **Architettura modulare**
   Le funzionalità core (anagrafiche, preventivi, magazzino, fatturazione, reportistica, notifiche) costituiscono la base su cui si innestano i moduli verticali.
@@ -28,7 +28,7 @@ La tabella **`utilities`** costituisce il cuore modulare di Zero ERP: da qui si 
 
 ---
 
-### 🚀 Modalità “Base” e Settori Verticali
+### Modalità “Base” e Settori Verticali
 
 1. **Utility "Base"**
 
@@ -52,7 +52,7 @@ La tabella **`utilities`** costituisce il cuore modulare di Zero ERP: da qui si 
 
 ---
 
-### 💡 Vantaggi Operativi
+### Vantaggi Operativi
 
 * **Deployment Light**
   Nessun deploy di codice richiesto per attivare o disattivare moduli: basta un update in tabella.
@@ -66,7 +66,7 @@ La tabella **`utilities`** costituisce il cuore modulare di Zero ERP: da qui si 
 
 ---
 
-### 🔒 Regola `richiede_pdp`
+### Regola `richiede_pdp`
 
 `config.utilities.richiede_pdp`:
 
@@ -80,10 +80,10 @@ Setup atteso:
 
 ---
 
-> 🧠 **"Una tabella per orchestrare l’intera suite funzionale di Zero ERP, dalla base comune alle specializzazioni verticali."**
+> **"Una tabella per orchestrare l’intera suite funzionale di Zero ERP, dalla base comune alle specializzazioni verticali."**
 
 ---
 
-### 🔗 Registro di fatturazione (fallback)
+### Registro di fatturazione (fallback)
 
 * Il tipo documento fiscale è di sistema e non è definito a livello di utility.

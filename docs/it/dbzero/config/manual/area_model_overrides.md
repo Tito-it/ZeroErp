@@ -2,13 +2,13 @@
 
 > 👀 **Vedi anche**
 >
-> Architettura di riferimento:
+Architettura di riferimento:
 >
-> * [Architettura Permessi e Autorizzazioni](/guide/architettura-permessi-e-autorizzazioni)
+[Architettura Permessi e Autorizzazioni](/guide/architettura-permessi-e-autorizzazioni)
 >
-> Tabelle correlate:
+Tabelle correlate:
 >
-> * [config.aree_funzionali](/dbzero/config/tabelle/aree_funzionali)
+[config.aree_funzionali](/dbzero/config/tabelle/aree_funzionali)
 
 ---
 
@@ -23,7 +23,7 @@ La tabella **`config.area_model_overrides`** è una **tabella tecnica di mapping
 
 ---
 
-### 🔑 Colonne chiave
+### Colonne chiave
 
 | Colonna | Scopo |
 |---------|-------|
@@ -35,10 +35,10 @@ Il vincolo UNIQUE su `(app_label, model_name)` garantisce un solo override per m
 
 ---
 
-### 💡 Quando usarla
+### Quando usarla
 
 Questa tabella è pensata per **eccezioni rare**. Il caso standard è area = schema (risoluzione automatica). Esempio d'uso: un model in schema `config` che per logica di business appartiene all'area `vendite`.
 
 ---
 
-> 🧠 **"Tabella di eccezione: il 99% dei model non ne ha bisogno. Usare solo quando il mapping automatico schema→area non è sufficiente."**
+> **"Tabella di eccezione: il 99% dei model non ne ha bisogno. Usare solo quando il mapping automatico schema→area non è sufficiente."**

@@ -2,14 +2,12 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**    
+**Approfondimento tabelle:**    
 >
-> • [vendite.fatture](/dbzero/vendite/tabelle/fatture)     
+• [vendite.fatture](/dbzero/vendite/tabelle/fatture)     
 > • [vendite.fatturazione_lotti](/dbzero/vendite/tabelle/fatturazione_lotti)     
 >
----
-
-### 🎯 Scopo Principale
+🎯 Scopo Principale
 
 (latest review 23-01-2026)
 `config.stati_doc_fiscale` definisce gli **stati documento** utilizzati dal ciclo
@@ -18,7 +16,7 @@ ai **lotti**, tramite flag di applicabilita`.
 
 ---
 
-### 🧱 Campi chiave (semantica)
+### Campi chiave (semantica)
 
 * **Identita` stato**: `id`, `codice`, `codice_interno`.
 * **Ordine**: `ordine` (progressione di stato).
@@ -30,7 +28,7 @@ ai **lotti**, tramite flag di applicabilita`.
 
 ---
 
-### ✅ Regole operative
+### Regole operative
 
 * Gli stati **possono essere condivisi** tra lotto e fattura, ma vanno marcati con i flag.
 * Le **transizioni ammesse** sono definite in `config.stati_doc_fiscale_transizioni`.

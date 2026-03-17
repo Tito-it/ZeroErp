@@ -2,18 +2,16 @@
 
 > 👀 **Vedi anche**
 >
-> Guide:
-> * [Automazione DB](/guide/automazione-db)
+Guide:
+> [Automazione DB](/guide/automazione-db)
 >
-> Approfondimento tabelle:    
-> * [dbops.automazione_overlap](/dbzero/dbops/tabelle/automazione_overlap)    
+Approfondimento tabelle:    
+> [dbops.automazione_overlap](/dbzero/dbops/tabelle/automazione_overlap)    
 >
-> Approfondimento funzioni:
-> * [dbops.fn_seed_automazione_overlap](/dbzero/dbops/funzioni/fn_seed_automazione_overlap)    
+Approfondimento funzioni:
+> [dbops.fn_seed_automazione_overlap](/dbzero/dbops/funzioni/fn_seed_automazione_overlap)    
 >
----
-
-### 🎯 Scopo Principale
+🎯 Scopo Principale
 
 (latest review 19-01-26)
 La funzione **`dbops.fn_apply_automazione_overlap(p_exec_mode, p_dry_run)`** applica
@@ -22,7 +20,7 @@ i vincoli `EXCLUDE USING gist` alle tabelle marcate `active=true` in
 
 ---
 
-### 🔍 Parametri di input
+### Parametri di input
 
 | Parametro     | Tipo    | Descrizione                                  |
 | ------------- | ------- | -------------------------------------------- |
@@ -31,7 +29,7 @@ i vincoli `EXCLUDE USING gist` alle tabelle marcate `active=true` in
 
 ---
 
-### ⚙️ Logica operativa (sintesi)
+### Logica operativa (sintesi)
 
 1. Legge le righe `active=true` compatibili con `exec_mode`.
 2. Verifica esistenza colonne chiave e colonne periodo.
@@ -42,7 +40,7 @@ i vincoli `EXCLUDE USING gist` alle tabelle marcate `active=true` in
 
 ---
 
-### ✅ Esempi
+### Esempi
 
 **Applicazione reale:**
 
@@ -58,7 +56,7 @@ SELECT dbops.fn_apply_automazione_overlap('AUTO', true);
 
 ---
 
-### 🧠 Note
+### Note
 
 * Se `key_columns` e' vuoto/non valido, il vincolo non viene creato.
 * `range_bounds` default `[]` (inclusivo).

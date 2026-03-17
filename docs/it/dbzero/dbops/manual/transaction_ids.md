@@ -2,14 +2,14 @@
 
 > 👀 **Vedi anche**  
 >
-> Approfondimento Tabelle:   
+Approfondimento Tabelle:   
 >
-> * [config.parameter_overrides](/dbzero/config/tabelle/parameter_overrides)      
+[config.parameter_overrides](/dbzero/config/tabelle/parameter_overrides)      
 >
-> Approfondimento funzioni :    
+Approfondimento funzioni :    
 >
-> * [script.fn_get_parameter_full](/dbzero/script/funzioni/fn_get_parameter_full)    
-> * [script.trgfn_prevent_modification_generic](/dbzero/script/funzioni/trgfn_prevent_modification_generic)    
+[script.fn_get_parameter_full](/dbzero/script/funzioni/fn_get_parameter_full)    
+> [script.trgfn_prevent_modification_generic](/dbzero/script/funzioni/trgfn_prevent_modification_generic)    
 
 ### 🎯 Scopo Principale
 
@@ -18,7 +18,7 @@ La tabella **`dbops.transaction_ids`** funge da **registro centrale** di tutti g
 
 ---
 
-### 🔒 Vincoli
+### Vincoli
 
 * **PRIMARY KEY**: `transaction_ids_pkey` sulla colonna `id` (UUID).
 
@@ -31,7 +31,7 @@ La tabella **`dbops.transaction_ids`** funge da **registro centrale** di tutti g
 
 ---
 
-### ⚙️ Meccanismo di Utilizzo
+### Meccanismo di Utilizzo
 
 1. **Generazione del `tx_id`**
 
@@ -50,7 +50,7 @@ La tabella **`dbops.transaction_ids`** funge da **registro centrale** di tutti g
 
 ---
 
-### 💡 Vantaggi Operativi
+### Vantaggi Operativi
 
 * **Coerenza transazionale**: un singolo `tx_id` per raggruppare operazioni correlate su più tabelle.
 * **Inalterabilità**: la cronologia rimane immutata grazie al trigger di prevenzione.
@@ -59,4 +59,4 @@ La tabella **`dbops.transaction_ids`** funge da **registro centrale** di tutti g
 
 ---
 
-> 🧠 **“Centralizzare gli UUID di transazione in `dbops.transaction_ids` semplifica la gestione e l’analisi delle operazioni distribuite, garantendo un’unica chiave di correlazione per l’intera applicazione.”**
+> **“Centralizzare gli UUID di transazione in `dbops.transaction_ids` semplifica la gestione e l’analisi delle operazioni distribuite, garantendo un’unica chiave di correlazione per l’intera applicazione.”**

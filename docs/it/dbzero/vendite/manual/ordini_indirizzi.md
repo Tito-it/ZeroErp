@@ -2,9 +2,9 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimenti tabelle:** 
+**Approfondimenti tabelle:** 
 >
-> •[vendite.ordini](/dbzero/vendite/tabelle/ordini)  
+•[vendite.ordini](/dbzero/vendite/tabelle/ordini)  
 > •[config.tipi_indirizzi](/dbzero/config/tabelle/tipi_indirizzi)     
 > •[anagrafiche.indirizzi](/dbzero/anagrafiche/tabelle/indirizzi)      
 > •[anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)      
@@ -44,7 +44,7 @@ Formato minimo suggerito (estensibile):
 
 ---
 
-### 🔍 Verifiche / Migliorie
+### Verifiche / Migliorie
 
 1. **Refuso descrizione tabella**: *"alla ordine"* e *"ordinezione"* → correggere in *"all'ordine"* e *"spedizione/fornitura/residenza"*.
 2. **Indice opzionale su tipo**: aggiungere `ix_ordini_indirizzi_tipo (tipo_indirizzo_id)` se i filtri per tipo sono frequenti.
@@ -53,7 +53,7 @@ Formato minimo suggerito (estensibile):
 
 ---
 
-### 🧰 Esempi
+### Esempi
 
 **Inserimento indirizzo di spedizione**
 
@@ -83,6 +83,6 @@ UPDATE vendite.ordini_indirizzi
 
 ---
 
-### 👓 Ruolo nel sistema
+### Ruolo nel sistema
 
 La tabella è **cruciale** per stampa conferme d’ordine, documenti di trasporto derivati e audit: garantisce che l’indirizzo riportato sui documenti provenga da uno **snapshot affidabile**, indipendente da cambiamenti anagrafici successivi.

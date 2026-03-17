@@ -2,17 +2,15 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> • [vendite.fatturazione_lotti_fatture](/dbzero/vendite/tabelle/fatturazione_lotti_fatture)  
+• [vendite.fatturazione_lotti_fatture](/dbzero/vendite/tabelle/fatturazione_lotti_fatture)  
 > • [config.tipi_doc_fiscale](/dbzero/config/tabelle/tipi_doc_fiscale)  
 > • [vendite.tipi_doc_fiscale_registri](/dbzero/vendite/manual/tipi_doc_fiscale_registri)  
 > • [config.utilities](/dbzero/config/tabelle/utilities)  
 > • [anagrafiche.billing_account](/dbzero/anagrafiche/tabelle/billing_account)  
 >
----
-
-### 🎯 Scopo Principale
+🎯 Scopo Principale
 
 (latest review 23-01-2026)
 `vendite.fatturazione_lotti` rappresenta il **lotto di fatturazione**, ovvero il contenitore operativo
@@ -21,7 +19,7 @@ coerente di **ricalcoli**, **job** e **processi successivi** (emissione, invio, 
 
 ---
 
-### 🧱 Campi chiave (semantica)
+### Campi chiave (semantica)
 
 * **Identita` lotto**: `id`, `lock_batch_id` (uuid), `codice`.
 * **Parametri di calcolo**: `competenza_mese`, `utility_id`, `tipo_doc_fiscale_id`, `billing_account_id`, `emittente_soggetto_ruolo_id`, `area_geografica_id` (opz.).
@@ -34,14 +32,14 @@ coerente di **ricalcoli**, **job** e **processi successivi** (emissione, invio, 
 
 ---
 
-### 🔗 Relazioni principali
+### Relazioni principali
 
 * **1 lotto → N fatture** tramite `vendite.fatturazione_lotti_fatture`.
 * Collegamento a **utility** e **tipo documento** per raggruppamento e policy documento.
 
 ---
 
-### ✅ Best practice operative
+### Best practice operative
 
 * Usare `lock_batch_id` come chiave di lock per processi concorrenti.
 * Conservare il lotto come riferimento **stabile** per ricalcoli e audit.

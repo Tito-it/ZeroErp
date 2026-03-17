@@ -2,18 +2,16 @@
 
 > **Vedi anche**
 >
-> **Piano di riferimento:**
+**Piano di riferimento:**
 >
-> * [Audit Sessioni, Request Logging e Sicurezza Token](/dev/work-in-progress/Audit-logging-sessionii-request-token)
+[Audit Sessioni, Request Logging e Sicurezza Token](/dev/work-in-progress/Audit-logging-sessionii-request-token)
 >
-> **Tabelle correlate:**
+**Tabelle correlate:**
 >
-> * [dbops.request_log](/dbzero/dbops/manual/request_log) -- correlazione via `request_id`
-> * [dbops.audit_log](/dbzero/dbops/manual/audit_log) -- pattern retention `cleanup_at`
+[dbops.request_log](/dbzero/dbops/manual/request_log) -- correlazione via `request_id`
+> [dbops.audit_log](/dbzero/dbops/manual/audit_log) -- pattern retention `cleanup_at`
 >
-> ---
-
-### Scopo Principale
+Scopo Principale
 
 (latest review 05-03-2026)
 

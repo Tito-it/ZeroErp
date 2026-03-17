@@ -2,21 +2,21 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> * [anagrafiche.istanze_utilities](/dbzero/anagrafiche/tabelle/istanze_utilities)   
+[anagrafiche.istanze_utilities](/dbzero/anagrafiche/tabelle/istanze_utilities)   
 >
-> **Approfondimento funzioni:**
+**Approfondimento funzioni:**
 >
-> * [script.fn_clone_catasto_from_parent_by_istanza](/dbzero/script/funzioni/fn_clone_catasto_from_parent_by_istanza)   
+[script.fn_clone_catasto_from_parent_by_istanza](/dbzero/script/funzioni/fn_clone_catasto_from_parent_by_istanza)   
 >
-> **Lookup sorgente:**
+**Lookup sorgente:**
 >
-> * [script.fn_get_catasto_source_by_istanza](/dbzero/script/funzioni/fn_get_catasto_source_by_istanza)   
+[script.fn_get_catasto_source_by_istanza](/dbzero/script/funzioni/fn_get_catasto_source_by_istanza)   
 >
-> **Trigger che la invoca (subentro):**
+**Trigger che la invoca (subentro):**
 >
-> * `anagrafiche.trg_iu_z50_clone_catasto_from_parent_aft_upd`   
+`anagrafiche.trg_iu_z50_clone_catasto_from_parent_aft_upd`   
 
 ---
 
@@ -35,7 +35,7 @@ Questa trigger function ha quindi il solo compito di:
 
 ---
 
-### 🛠️ Firma
+### Firma
 
 ```sql
 CREATE OR REPLACE FUNCTION anagrafiche.trgfn_iu_clone_catasto_from_parent()
@@ -45,7 +45,7 @@ LANGUAGE plpgsql;
 
 ---
 
-### 📥 Input (Record Trigger)
+### Input (Record Trigger)
 
 Utilizza esclusivamente:
 
@@ -55,7 +55,7 @@ Il resto delle condizioni (es. presenza parent, catasto già presente, ecc.) vie
 
 ---
 
-### 📤 Output
+### Output
 
 * Ritorna sempre `NEW`.
 
@@ -63,7 +63,7 @@ Il resto delle condizioni (es. presenza parent, catasto già presente, ecc.) vie
 
 ---
 
-### 🔄 Logica Operativa
+### Logica Operativa
 
 Pseudo-flusso:
 
@@ -76,7 +76,7 @@ Non esegue controlli aggiuntivi: evita duplicazioni di logica e garantisce coere
 
 ---
 
-### 🧩 Side Effects
+### Side Effects
 
 Direttamente: **nessuno** (non fa DML).
 
@@ -87,7 +87,7 @@ Indirettamente: tramite la funzione core invocata può avvenire:
 
 ---
 
-### 🔗 Integrazione nel Trigger di Subentro
+### Integrazione nel Trigger di Subentro
 
 Questa funzione è progettata per essere collegata a un trigger `AFTER UPDATE OF parent_istanza_id` su `anagrafiche.istanze_utilities`.
 
@@ -120,7 +120,7 @@ Questo garantisce logging e tracciabilità coerenti nel layer `script/dbops`.
 
 ---
 
-### 🧪 Note per Test
+### Note per Test
 
 Test consigliati (a livello trigger):
 
@@ -130,15 +130,15 @@ Test consigliati (a livello trigger):
 
 ---
 
-### 📌 Best Practice
+### Best Practice
 
-* ✅ Mantenere questa trigger function **minimal** (solo orchestrazione).
-* ✅ Centralizzare qualunque variazione di regole nella funzione core (`fn_clone_*`).
-* ✅ Gestire le condizioni di attivazione nel trigger (DDL) usando `WHEN` e `AFTER UPDATE OF ...`.
+* Mantenere questa trigger function **minimal** (solo orchestrazione).
+* Centralizzare qualunque variazione di regole nella funzione core (`fn_clone_*`).
+* Gestire le condizioni di attivazione nel trigger (DDL) usando `WHEN` e `AFTER UPDATE OF ...`.
 
 ---
 
-### 🗂️ Metadati
+### Metadati
 
 * **Schema:** `anagrafiche`
 * **Tipo:** trigger function wrapper

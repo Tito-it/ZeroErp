@@ -2,11 +2,11 @@
 
 > **Vedi anche**
 >
-> **Tabelle correlate:**
+**Tabelle correlate:**
 >
-> * [config.user_override_aree](/dbzero/config/tabelle/user_override_aree)
-> * [config.user_override_oggetti](/dbzero/config/tabelle/user_override_oggetti)
-> * [config.user_override_azioni](/dbzero/config/tabelle/user_override_azioni)
+[config.user_override_aree](/dbzero/config/tabelle/user_override_aree)
+> [config.user_override_oggetti](/dbzero/config/tabelle/user_override_oggetti)
+> [config.user_override_azioni](/dbzero/config/tabelle/user_override_azioni)
 
 ---
 

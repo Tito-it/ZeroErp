@@ -2,15 +2,13 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> • [vendite.fatture](/dbzero/vendite/tabelle/fatture)  
+• [vendite.fatture](/dbzero/vendite/tabelle/fatture)  
 > • [vendite.tipi_fondi_fattura](/dbzero/vendite/tabelle/tipi_fondi_fattura)  
 > • [vendite.fatture_fondi_fattura](/dbzero/vendite/tabelle/fatture_fondi_fattura)  
 >
----
-
-### 🎯 Scopo Principale
+🎯 Scopo Principale
 
 (latest review 11-02-2026)  
 `vendite.fatture_fondi_fattura_source` registra la **sorgente** dei fondi
@@ -19,7 +17,7 @@ selezione deterministica dei fondi disponibili per l’addebito/accredito.
 
 ---
 
-### 🧱 Campi chiave (semantica)
+### Campi chiave (semantica)
 
 * `fattura_sorgente_id`: fattura che genera il fondo.
 * `tipo_fondo_fattura_id`: tipologia fondo.
@@ -32,7 +30,7 @@ selezione deterministica dei fondi disponibili per l’addebito/accredito.
 
 ---
 
-### ✅ Note operative
+### Note operative
 
 * La generazione e` vincolata alla **fattura sorgente**.
 * L’applicazione avviene solo per record `DISPONIBILE`.
@@ -42,14 +40,14 @@ selezione deterministica dei fondi disponibili per l’addebito/accredito.
 * Stato `ANNULLATO`: usato quando la source non e` piu` eseguibile
   (es. documento sorgente gia` saldato/compensato o reset bloccato da movimenti contabilizzati).
 
-### 🔄 Reset e riapertura
+### Reset e riapertura
 
 * In caso di reset tecnico della fattura figlia, i fondi applicati vengono
   **ripristinati** a stato `DISPONIBILE` e la relazione con la fattura figlia
   viene rimossa.
 * La logica di reset e` centralizzata in `vendite.fn_reset_fondi_fattura()`.
 
-### 🔁 Reset per tipologie non standard (WIP)
+### Reset per tipologie non standard (WIP)
 
 * Alcune tipologie di fondo (es. canone RAI o altri addebiti esterni)
   possono richiedere reset su **tabelle dedicate**.

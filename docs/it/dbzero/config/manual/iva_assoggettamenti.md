@@ -2,9 +2,9 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> • [config.iva](/dbzero/config/tabelle/iva)    
+• [config.iva](/dbzero/config/tabelle/iva)    
 > • [config.iva_stati](/dbzero/config/tabelle/iva_stati)   
 > • [config.iva_natura](/dbzero/config/tabelle/iva_natura)    
 
@@ -23,7 +23,7 @@ Obiettivi:
 
 ---
 
-### 🧭 Collocazione nel flusso
+### Collocazione nel flusso
 
 1. **Configurazione**: si censiscono i codici di assoggettamento (campo `codice`) con descrizione e stato `attivo`.
 2. **Associazione**: `config.iva` collega un assoggettamento **di default**; `config.iva_stati` può definire un **override** per Paese.
@@ -31,7 +31,7 @@ Obiettivi:
 
 ---
 
-### 🔑 Campi chiave (semantica)
+### Campi chiave (semantica)
 
 * `codice` (UNIQUE) → identificatore breve e stabile (es. `ES_ART10`, `NI_ART8`, `RC_ART17`, `FC`).
 * `descrizione` → descrizione estesa del regime.
@@ -41,7 +41,7 @@ Obiettivi:
 
 ---
 
-### 🔒 Vincoli e indici
+### Vincoli e indici
 
 * **PK**: `id` (identity).
 * **UNIQUE**: `uq_cfg_iva_assoggettamenti_codice` su `codice`.
@@ -51,7 +51,7 @@ Obiettivi:
 
 ---
 
-### 🧪 Esempi d’uso (query applicative)
+### Esempi d’uso (query applicative)
 
 ```sql
 SELECT id, codice, descrizione
@@ -62,7 +62,7 @@ ORDER BY codice;
 
 ---
 
-### ✅ Best practice operative
+### Best practice operative
 
 * **Codice breve e stabile**: usare sigle significative e non dipendenti dal linguaggio di stampa (che vive in `descrizione`).
 * **Immutabilità logica**: se cambia la semantica di un assoggettamento, **inserire un nuovo codice** e disattivare il precedente (evita effetti retroattivi).
@@ -80,6 +80,6 @@ ORDER BY codice;
 
 ---
 
-### 👓 Ruolo nel sistema
+### Ruolo nel sistema
 
 `config.iva_assoggettamenti` fornisce una base solida per governare gli assoggettamenti IVA, riducendo la ridondanza e aumentando la **consistenza fiscale** tra configurazione, calcolo e documenti.

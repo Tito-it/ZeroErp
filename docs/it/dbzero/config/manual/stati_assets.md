@@ -2,18 +2,16 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimenti tabelle:
+Approfondimenti tabelle:
 >
-> * [magazzino.assets](/dbzero/magazzino/tabelle/assets)      
-> * [magazzino.movimenti](/dbzero/magazzino/tabelle/movimenti) *(per stati legati al ciclo fisico)*     
+[magazzino.assets](/dbzero/magazzino/tabelle/assets)      
+> [magazzino.movimenti](/dbzero/magazzino/tabelle/movimenti) *(per stati legati al ciclo fisico)*     
 >
-> Approfondimenti domini collegati:
+Approfondimenti domini collegati:
 >
-> * [config.lingue](/dbzero/config/tabelle/lingue)     
-> * [config.sorgenti](/dbzero/config/tabelle/sorgenti)    
+[config.lingue](/dbzero/config/tabelle/lingue)     
+> [config.sorgenti](/dbzero/config/tabelle/sorgenti)    
 >
-
----
 
 La tabella **`config.stati_assets`** definisce il **dominio degli stati degli asset** (es. contatori, apparati di rete, componenti d’impianto, dispositivi in campo).
 
@@ -47,7 +45,7 @@ Gli stati descrivono la **posizione funzionale e logistica** dell’asset lungo 
 
 ---
 
-### 🔒 Vincoli e Regole Aziendali
+### Vincoli e Regole Aziendali
 
 * **Identificatore tecnico** (`id`):
 
@@ -96,7 +94,7 @@ Gli stati descrivono la **posizione funzionale e logistica** dell’asset lungo 
 
 ---
 
-### 🔗 Relazioni
+### Relazioni
 
 `config.stati_assets` è una tabella di dominio referenziata da:
 
@@ -118,12 +116,12 @@ Gli stati descrivono la **posizione funzionale e logistica** dell’asset lungo 
     * gestione rientri,
     * sostituzioni di contatori o apparati.
 
-> 🔁 In combinazione con i movimenti di magazzino e i dati impianto/cliente, `config.stati_assets` consente una visione coerente del ciclo di vita dell’asset.
+> In combinazione con i movimenti di magazzino e i dati impianto/cliente, `config.stati_assets` consente una visione coerente del ciclo di vita dell’asset.
 
 ---
 
 
-### 💡 Vantaggi Operativi
+### Vantaggi Operativi
 
 * **Governance del ciclo di vita**: gli stati descrivono in modo chiaro dove si trova l’asset e in quale fase del suo ciclo si trova (magazzino, installato, guasto, dismesso, ecc.).
 * **Coerenza cross-modulo**: tutti i moduli (magazzino, impianti, manutenzione, fatturazione basata su asset/contatori) condividono lo stesso dominio di stati.
@@ -132,4 +130,4 @@ Gli stati descrivono la **posizione funzionale e logistica** dell’asset lungo 
 
 ---
 
-> 🧠 **“Un dominio chiaro degli stati degli asset è essenziale per governare disponibilità, manutenzione e patrimonio installato, specialmente in contesti come utilities e asset distribuiti sul territorio.”**
+> **“Un dominio chiaro degli stati degli asset è essenziale per governare disponibilità, manutenzione e patrimonio installato, specialmente in contesti come utilities e asset distribuiti sul territorio.”**

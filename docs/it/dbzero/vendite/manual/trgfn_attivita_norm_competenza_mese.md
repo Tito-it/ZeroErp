@@ -2,17 +2,15 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> • [vendite.attivita_fatturabili](/dbzero/vendite/tabelle/attivita_fatturabili)  
+• [vendite.attivita_fatturabili](/dbzero/vendite/tabelle/attivita_fatturabili)  
 >
-> **Approfondimento funzioni:**
+**Approfondimento funzioni:**
 >
-> • [vendite.trgfn_attivita_fatturabili_normalize](/dbzero/vendite/funzioni/trgfn_attivita_fatturabili_normalize)  
+• [vendite.trgfn_attivita_fatturabili_normalize](/dbzero/vendite/funzioni/trgfn_attivita_fatturabili_normalize)  
 >
----
-
-### 🎯 Scopo Principale
+🎯 Scopo Principale
 
 (latest review 29-01-2026)  
 La funzione **`vendite.trgfn_attivita_norm_competenza_mese()`** normalizza
@@ -20,20 +18,20 @@ La funzione **`vendite.trgfn_attivita_norm_competenza_mese()`** normalizza
 
 ---
 
-### ✅ Regole principali
+### Regole principali
 
 * Se `competenza_mese` e` valorizzata, viene troncata al primo giorno del mese.
 * Se `competenza_mese` e` NULL` e `posticipa_al` e` valorizzata, usa il mese di `posticipa_al`.
 
 ---
 
-### ✅ Output
+### Output
 
 Nessun output (trigger BEFORE). Aggiorna il valore di `competenza_mese`.
 
 ---
 
-### 🧪 Esempio
+### Esempio
 
 ```sql
 INSERT INTO vendite.attivita_fatturabili (

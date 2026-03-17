@@ -2,15 +2,15 @@
 
 > 👀 **Vedi anche**
 >
-> Tabelle:
+Tabelle:
 >
-> * [pratiche.giornale](giornale.md)
-> * [pratiche.allegati_flussi](allegati_flussi.md)
-> * [pratiche.flussi](flussi.md)
+[pratiche.giornale](giornale.md)
+> [pratiche.allegati_flussi](allegati_flussi.md)
+> [pratiche.flussi](flussi.md)
 >
-> Overview:
+Overview:
 >
-> * [Trigger business overview](trigger_business_overview.md)
+[Trigger business overview](trigger_business_overview.md)
 
 ---
 
@@ -20,7 +20,7 @@ Registra l'azione **ALLEGATO_AGGIUNTO** nel giornale a livello flusso. Si attiva
 
 ---
 
-### 🔧 Firma
+### Firma
 
 ```sql
 CREATE OR REPLACE FUNCTION pratiche.trgfn_allegati_flussi_giornale()
@@ -30,7 +30,7 @@ LANGUAGE plpgsql
 
 ---
 
-### ⚙️ Logica
+### Logica
 
 1. Recupera `pratica_id` dal flusso tramite `SELECT f.pratica_id FROM pratiche.flussi f WHERE f.id = NEW.flusso_id`.
 2. Inserisce una riga in `pratiche.giornale` con:
@@ -45,7 +45,7 @@ LANGUAGE plpgsql
 
 **Nota**: `tx_id` non e' incluso perche' la tabella `allegati_flussi` e' immutabile e non ha il campo `tx_id`.
 
-### 📋 DECLARE
+### DECLARE
 
 | Variabile | Tipo | Descrizione |
 |-----------|------|-------------|
@@ -53,7 +53,7 @@ LANGUAGE plpgsql
 
 ---
 
-### 🔗 Trigger associato
+### Trigger associato
 
 | Nome | Fase | Evento | Tabella |
 |------|------|--------|---------|

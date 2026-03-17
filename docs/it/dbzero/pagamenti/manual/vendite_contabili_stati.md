@@ -2,14 +2,12 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> • [pagamenti.vendite_contabili](/dbzero/pagamenti/tabelle/vendite_contabili)  
+• [pagamenti.vendite_contabili](/dbzero/pagamenti/tabelle/vendite_contabili)  
 > • [pagamenti.vendite_contabili_righe_stati](/dbzero/pagamenti/tabelle/vendite_contabili_righe_stati)  
 >
----
-
-### 🎯 Scopo Principale
+🎯 Scopo Principale
 
 (latest review 13-02-2026)  
 La tabella **`pagamenti.vendite_contabili_stati`** definisce il lookup
@@ -17,7 +15,7 @@ degli stati della **testata contabile vendite**.
 
 ---
 
-### 🧱 Campi chiave (semantica)
+### Campi chiave (semantica)
 
 * `codice`: codice stato funzionale (es. DRAFT, CHIUSA, ANNULLATA).
 * `descrizione`: testo descrittivo dello stato.
@@ -28,7 +26,7 @@ degli stati della **testata contabile vendite**.
 
 ---
 
-### ✅ Regole principali
+### Regole principali
 
 * `codice` univoco.
 * Stati finali marcati con `is_final = true`.
@@ -36,7 +34,7 @@ degli stati della **testata contabile vendite**.
 
 ---
 
-### 🧪 Esempio d’uso
+### Esempio d’uso
 
 ```sql
 SELECT id, codice, descrizione, is_final

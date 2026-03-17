@@ -2,21 +2,21 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimento tabelle:  
+Approfondimento tabelle:  
 >
-> * [dbops.automation_rules_tbl](/dbzero/dbops/tabelle/automation_rules_tbl)      
-> * [dbops.automation_overrides_cols](/dbzero/dbops/tabelle/automation_overrides_cols)      
+[dbops.automation_rules_tbl](/dbzero/dbops/tabelle/automation_rules_tbl)      
+> [dbops.automation_overrides_cols](/dbzero/dbops/tabelle/automation_overrides_cols)      
 > Approfondimento funzioni:  
-> * [dbops.fn_run_automations](/dbzero/dbops/funzioni/fn_run_automations)      
-> * [dbops.fn_run_automations_attivo](/dbzero/dbops/funzioni/fn_run_automations_attivo)      
+> [dbops.fn_run_automations](/dbzero/dbops/funzioni/fn_run_automations)      
+> [dbops.fn_run_automations_attivo](/dbzero/dbops/funzioni/fn_run_automations_attivo)      
 >
-> * Orchestratori: 
+Orchestratori: 
 > 
-> * [dbops.fn_run_automations](/dbzero/dbops/funzioni/fn_run_automations), 
-> * [dbops.fn_run_automations_tx_id](/dbzero/dbops/funzioni/fn_run_automations_tx_id),   
-> * [dbops.run_automations_audit_update](/dbzero/dbops/funzioni/fn_run_automations_audit_update),   
-> * [dbops.run_automations_storico](/dbzero/dbops/funzioni/fn_run_automations_storico),   
->  * [dbops.fn_run_automations_attivo](/dbzero/dbops/funzioni/fn_run_automations_attivo)
+[dbops.fn_run_automations](/dbzero/dbops/funzioni/fn_run_automations), 
+> [dbops.fn_run_automations_tx_id](/dbzero/dbops/funzioni/fn_run_automations_tx_id),   
+> [dbops.run_automations_audit_update](/dbzero/dbops/funzioni/fn_run_automations_audit_update),   
+> [dbops.run_automations_storico](/dbzero/dbops/funzioni/fn_run_automations_storico),   
+>  [dbops.fn_run_automations_attivo](/dbzero/dbops/funzioni/fn_run_automations_attivo)
 
 
 ### 🎯 Scopo Principale
@@ -28,7 +28,7 @@ Definire **l’elenco degli schemi** su cui gli orchestratori di automazione dev
 
 ---
 
-### 🔎 Precedenza dell'*ambito*
+### Precedenza dell'*ambito*
 
 1. **Parametro** `p_schemas` passato alla funzione → *ha priorità massima* (ignora la tabella).
 2. **Tabella** `dbops.automation_scope` (se esiste e contiene righe).
@@ -38,7 +38,7 @@ Definire **l’elenco degli schemi** su cui gli orchestratori di automazione dev
 
 ---
 
-### 🧩 Casi d’uso
+### Casi d’uso
 
 * **Ambienti multi‑schema**: limita l’automazione a 3‑4 schemi principali.
 * **Testing controllato**: in test popola con uno schema “lab” e verifica i risultati.
@@ -46,7 +46,7 @@ Definire **l’elenco degli schemi** su cui gli orchestratori di automazione dev
 
 ---
 
-### ✍️ Esempi
+### Esempi
 
 **Impostare l'ambito a 4 schemi core**
 
@@ -66,7 +66,7 @@ SELECT dbops.fn_run_automations('CI', ARRAY['lab'], true, ARRAY['TX_ID']);
 
 ---
 
-### 🔍 Troubleshooting
+### Troubleshooting
 
 * Nessun effetto? Controlla se `automation_scope` è popolata e i nomi schema sono corretti (minuscoli se non quotati).
 * Ricorda che `p_schemas` **sovrascrive** l'ambito tabellare.
@@ -75,19 +75,19 @@ SELECT dbops.fn_run_automations('CI', ARRAY['lab'], true, ARRAY['TX_ID']);
 ---
 
 
-### 🔒 Vincoli (logici)
+### Vincoli (logici)
 
 * Unicità consigliata: `PRIMARY KEY (schema_name)`.
 * Se esiste `enabled`, gli orchestratori possono considerare **solo** le righe `enabled=true`.
 
-### 🚀 Interazione con gli orchestratori
+### Interazione con gli orchestratori
 
 * In assenza del parametro `p_schemas`, gli orchestratori leggono `SELECT array_agg(DISTINCT schema_name) FROM dbops.automation_scope` (eventualmente filtrando `enabled=true`).
 * Se la tabella non esiste o non ha righe, si usa il fallback su catalogo (`pg_namespace`).
 
 ---
 
-### 🧠 Best practice
+### Best practice
 
 * Mantieni la lista **minima** necessaria all’ambiente.
 * Evita di inserire `storico` nell'ambito a meno di motivazioni specifiche.

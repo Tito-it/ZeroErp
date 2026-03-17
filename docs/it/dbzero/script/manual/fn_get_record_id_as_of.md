@@ -2,9 +2,9 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento funzioni:**
+**Approfondimento funzioni:**
 >
-> * [script.fn_get_snapshot_as_of](/dbzero/script/funzioni/fn_get_snapshot_as_of) *(snapshot completo)*
+[script.fn_get_snapshot_as_of](/dbzero/script/funzioni/fn_get_snapshot_as_of) *(snapshot completo)*
 
 La funzione **`script.fn_get_record_id_as_of(p_schema TEXT, p_table TEXT, p_id TEXT, p_fk_col TEXT, p_as_of TIMESTAMP)`** restituisce il **testo dell’ID** (`TEXT`) del record valido in un dato istante, **cercando esclusivamente nella tabella di storico**. In assenza di uno snapshot valido, restituisce `NULL` senza eseguire alcun fallback sulla tabella operativa.
 
@@ -17,14 +17,14 @@ La funzione **`script.fn_get_record_id_as_of(p_schema TEXT, p_table TEXT, p_id T
 
 ---
 
-### 🔗 Collegamenti e Dipendenze
+### Collegamenti e Dipendenze
 
 * **Tabella di storico**: `storico.<p_table>` deve esistere e seguire lo schema di storicizzazione unificato.
 * **Log errori**: utilizza `script.fn_log_and_raise_error` per trattare ogni errore SQL imprevisto con un log dettagliato e abort.
 
 ---
 
-### 📥 Parametri di Input
+### Parametri di Input
 
 | Nome       | Tipo        | Descrizione                                                                                  |
 | ---------- | ----------- | -------------------------------------------------------------------------------------------- |
@@ -36,7 +36,7 @@ La funzione **`script.fn_get_record_id_as_of(p_schema TEXT, p_table TEXT, p_id T
 
 ---
 
-### ⚙️ Flusso Logico
+### Flusso Logico
 
 1. **Verifica metadati**
 
@@ -72,7 +72,7 @@ La funzione **`script.fn_get_record_id_as_of(p_schema TEXT, p_table TEXT, p_id T
 
 ---
 
-### 💡 Vantaggi Operativi
+### Vantaggi Operativi
 
 * **Performance**: evita la deserializzazione JSONB quando serve solo l’ID.
 * **Semplicità**: non crea dipendenze da dati operativi attuali, è self‑contained nello storico.
@@ -80,6 +80,6 @@ La funzione **`script.fn_get_record_id_as_of(p_schema TEXT, p_table TEXT, p_id T
 
 ---
 
-> 🧠 **“`fn_get_record_id_as_of` è la scorciatoia ideale per recuperare solo l’ID di uno snapshot, mantenendo alta performance e tracciabilità.”**
+> **“`fn_get_record_id_as_of` è la scorciatoia ideale per recuperare solo l’ID di uno snapshot, mantenendo alta performance e tracciabilità.”**
 
 ---

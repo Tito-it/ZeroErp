@@ -2,16 +2,16 @@
 
 > 👀 **Vedi anche**  
 > 
-> Approfondimento Tabelle:   
+Approfondimento Tabelle:   
 >
-> * [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)  
-> * [config.province](/dbzero/config/tabelle/province)
+[anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)  
+> [config.province](/dbzero/config/tabelle/province)
 >
-> Approfondimento funzioni e trigger:   
+Approfondimento funzioni e trigger:   
 >   
-> * [anagrafiche.trgfn_dati_societari_check_tipo_soggetto](/dbzero/anagrafiche/funzioni/trgfn_dati_societari_gauard_tipo_soggetto)
-> * [script.trgfn_storico_generic](/dbzero/script/funzioni/trgfn_storico_generic)
-> * [dbops.trgfn_tx_id_managed](/dbzero/dbops/funzioni/trgfn_tx_id_managed)
+[anagrafiche.trgfn_dati_societari_check_tipo_soggetto](/dbzero/anagrafiche/funzioni/trgfn_dati_societari_gauard_tipo_soggetto)
+> [script.trgfn_storico_generic](/dbzero/script/funzioni/trgfn_storico_generic)
+> [dbops.trgfn_tx_id_managed](/dbzero/dbops/funzioni/trgfn_tx_id_managed)
 
 
 La tabella **`anagrafiche.dati_societari`** contiene i dati societari estesi per ciascun soggetto di tipo aziendale presente in **`anagrafiche.soggetti`**. Ogni riga rappresenta un insieme di informazioni obbligatorie e opzionali relative alla forma giuridica, capitale sociale, iscrizione REA, stato di liquidazione e modalità di fatturazione elettronica.
@@ -34,7 +34,7 @@ La tabella **`anagrafiche.dati_societari`** contiene i dati societari estesi per
 
 ---
 
-### 🔗 Collegamenti con Altre Tabelle
+### Collegamenti con Altre Tabelle
 
 - **`anagrafiche.soggetti`**  
   - Il campo `soggetto_id` (UUID) fa riferimento alla chiave primaria di `anagrafiche.soggetti(id)`.  
@@ -69,7 +69,7 @@ La tabella **`anagrafiche.dati_societari`** contiene i dati societari estesi per
 
 ---
 
-### 🔍 Descrizione dei Campi Principali
+### Descrizione dei Campi Principali
 
 - **`soggetto_id`**  
   Riferimento al soggetto (UUID) in `anagrafiche.soggetti`. Identifica in modo univoco l’azienda cui appartengono questi dati societari.
@@ -111,7 +111,7 @@ La tabella **`anagrafiche.dati_societari`** contiene i dati societari estesi per
 
 ---
 
-### 💡 Vantaggi Operativi
+### Vantaggi Operativi
 
 - **Separazione dei dati societari dal resto**  
   Consolidando le informazioni strettamente legate alla natura giuridica e fiscale di un’azienda in una tabella dedicata, si migliora la coerenza e la manutenzione. La tabella `anagrafiche.soggetti` resta focalizzata su campi di base comuni a tutte le tipologie di soggetti.
@@ -127,7 +127,7 @@ La tabella **`anagrafiche.dati_societari`** contiene i dati societari estesi per
 
 ---
 
-> 🧠 **“Un’estensione dedicata ai dati societari, che valorizza la tabella anagrafica base separando informazioni fiscali, legali e di fatturazione in un unico punto, con regole di integrità che evitano inconsistenze.”**  
+> **“Un’estensione dedicata ai dati societari, che valorizza la tabella anagrafica base separando informazioni fiscali, legali e di fatturazione in un unico punto, con regole di integrità che evitano inconsistenze.”**  
 
 ---
 
@@ -163,7 +163,7 @@ La documentazione estende quella già presente e rappresenta la logica aggiornat
 
 ---
 
-### 🧩 1. Ruolo delle Tabelle Coinvolte
+### 1. Ruolo delle Tabelle Coinvolte
 
  **`config.tipi_soggetto`** → Macro natura del soggetto
 
@@ -219,7 +219,7 @@ Contiene la scheda societaria, soggetta alle policy definite nel dettaglio sogge
 
 ---
 
-### 🧭 2. Regole di Coerenza
+### 2. Regole di Coerenza
 
 ✔ **Regola 1 — Dati societari NON ammessi**
 
@@ -281,7 +281,7 @@ Tipico per:
 
 ---
 
-### 🛠 3. Applicazione tramite Trigger
+### 3. Applicazione tramite Trigger
 
  🔧 `anagrafiche.trgfn_dati_societari_guard_tipo_soggetto`
 
@@ -327,16 +327,16 @@ Gestisce:
 
 ---
 
-### 💡 Beneficio Architetturale
+### Beneficio Architetturale
 
 > **La gestione della scheda societaria diventa completamente configurabile e allineata al dominio.**
 >
-> La combinazione di macro‑tipo, dettaglio fiscale e policy permette a Zero ERP di:
+La combinazione di macro‑tipo, dettaglio fiscale e policy permette a Zero ERP di:
 >
-> * integrare nuovi paesi,
-> * distinguere correttamente PF/PG/Enti,
-> * fornire validazioni dinamiche senza logica hardcoded,
-> * evitare incoerenze nella gestione delle informazioni societarie.
+integrare nuovi paesi,
+> distinguere correttamente PF/PG/Enti,
+> fornire validazioni dinamiche senza logica hardcoded,
+> evitare incoerenze nella gestione delle informazioni societarie.
 
 ---
 

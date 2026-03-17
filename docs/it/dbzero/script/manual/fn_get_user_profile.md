@@ -2,23 +2,23 @@
 
 > Vedi anche
 >
-> Funzione base:
+Funzione base:
 >
-> * [script.fn_get_soggetto_dati_by_ruolo](/dbzero/script/funzioni/fn_get_soggetto_dati_by_ruolo)
+[script.fn_get_soggetto_dati_by_ruolo](/dbzero/script/funzioni/fn_get_soggetto_dati_by_ruolo)
 >
-> Approfondimento tabelle:
+Approfondimento tabelle:
 >
-> * [anagrafiche.risorse_umane_auth_user](/dbzero/anagrafiche/tabelle/risorse_umane_auth_user)
-> * [anagrafiche.risorse_umane](/dbzero/anagrafiche/tabelle/risorse_umane)
-> * [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)
-> * [anagrafiche.emittenti_fiscali](/dbzero/anagrafiche/tabelle/emittenti_fiscali)
-> * [config.user_emittenti_fiscali](/dbzero/config/tabelle/user_emittenti_fiscali)
-> * [config.qualifiche](/dbzero/config/tabelle/qualifiche)
-> * [config.unita_organizzative](/dbzero/config/tabelle/unita_organizzative)
+[anagrafiche.risorse_umane_auth_user](/dbzero/anagrafiche/tabelle/risorse_umane_auth_user)
+> [anagrafiche.risorse_umane](/dbzero/anagrafiche/tabelle/risorse_umane)
+> [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)
+> [anagrafiche.emittenti_fiscali](/dbzero/anagrafiche/tabelle/emittenti_fiscali)
+> [config.user_emittenti_fiscali](/dbzero/config/tabelle/user_emittenti_fiscali)
+> [config.qualifiche](/dbzero/config/tabelle/qualifiche)
+> [config.unita_organizzative](/dbzero/config/tabelle/unita_organizzative)
 >
-> Approfondimento viste modello:
+Approfondimento viste modello:
 >
-> * [anagrafiche.vw_risorse_umane_dettaglio](/dbzero/anagrafiche/views/vw_risorse_umane_dettaglio)
+[anagrafiche.vw_risorse_umane_dettaglio](/dbzero/anagrafiche/views/vw_risorse_umane_dettaglio)
 
 La funzione **`script.fn_get_user_profile(p_auth_user_id INTEGER)`** restituisce un **JSONB** con il profilo completo dell'utente loggato: dati auth_user, ruolo sistema, risorse umane (con qualifica e unita' organizzativa risolte), soggetto anagrafico (con dati societari se presenti), e emittente fiscale associato.
 

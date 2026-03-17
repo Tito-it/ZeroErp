@@ -4,14 +4,14 @@
 
 > 👀 **Vedi anche**     
 >
-> Approdondimento tabelle:   
+Approdondimento tabelle:   
 >
-> * [`dbops.audit_log`](/dbzero/dbops/tabelle/audit_log)   
+[`dbops.audit_log`](/dbzero/dbops/tabelle/audit_log)   
 >
-> Approdondimento funzioni:   
+Approdondimento funzioni:   
 >
-> * [`dbops.fn_audit_begin`](/dbzero/dbops/funzioni/fn_audit_begin)   
-> * [dbops.fn_audit_log_once`](/dbzero/dbops/funzioni/fn_audit_log_once)   
+[`dbops.fn_audit_begin`](/dbzero/dbops/funzioni/fn_audit_begin)   
+> [dbops.fn_audit_log_once`](/dbzero/dbops/funzioni/fn_audit_log_once)   
 
 ---
 
@@ -22,7 +22,7 @@ La funzione **`fn_audit_end`** chiude una sessione di auditing avviata da `fn_au
 
 ---
 
-### 📝 Dettagli
+### Dettagli
 
 * Aggiorna il record con `audit_id` associato.
 * Registra il **timestamp di fine** e l’esito dell’operazione (**END**, **SUCCESS**, **ERROR**).
@@ -30,7 +30,7 @@ La funzione **`fn_audit_end`** chiude una sessione di auditing avviata da `fn_au
 
 ---
 
-### 🔧 Utilizzo tipico
+### Utilizzo tipico
 
 1. Una procedura complessa apre la sessione con `fn_audit_begin`.
 2. Durante l’esecuzione, step ed errori vengono loggati.
@@ -38,7 +38,7 @@ La funzione **`fn_audit_end`** chiude una sessione di auditing avviata da `fn_au
 
 ---
 
-### 📊 Collegamento con `audit_log`
+### Collegamento con `audit_log`
 
 La tabella `audit_log` conterrà:
 
@@ -48,7 +48,7 @@ La tabella `audit_log` conterrà:
 
 ---
 
-### 💡 Esempio pratico
+### Esempio pratico
 
 In un processo di migrazione dati:
 

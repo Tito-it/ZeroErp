@@ -2,18 +2,16 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> • [vendite.attivita_fatturabili](/dbzero/vendite/tabelle/attivita_fatturabili)  
+• [vendite.attivita_fatturabili](/dbzero/vendite/tabelle/attivita_fatturabili)  
 >
-> **Approfondimento funzioni:**
+**Approfondimento funzioni:**
 >
-> • [vendite.trgfn_attivita_fatturabili_normalize](/dbzero/vendite/funzioni/trgfn_attivita_fatturabili_normalize)  
+• [vendite.trgfn_attivita_fatturabili_normalize](/dbzero/vendite/funzioni/trgfn_attivita_fatturabili_normalize)  
 > • [vendite.trgfn_attivita_fatturabili_guard_fonte](/dbzero/vendite/funzioni/trgfn_attivita_fatturabili_guard_fonte)  
 >
----
-
-### 🎯 Scopo Principale
+🎯 Scopo Principale
 
 (latest review 26-01-2026)
 La funzione **`vendite.trgfn_attivita_fatturabili_guard_fatturato()`** blocca
@@ -25,7 +23,7 @@ risultano gia` agganciate a una riga di fattura.
 
 ---
 
-### 🔍 Regola applicata
+### Regola applicata
 
 * Trigger **BEFORE UPDATE/DELETE** su `vendite.attivita_fatturabili`.
 * Se `fattura_riga_id` e` valorizzato, l’operazione e` bloccata con
@@ -34,7 +32,7 @@ risultano gia` agganciate a una riga di fattura.
 
 ---
 
-### ✅ Ruolo nel processo
+### Ruolo nel processo
 
 Questa guard tutela l’integrita` del processo di fatturazione:
 

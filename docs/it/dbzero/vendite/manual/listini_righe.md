@@ -2,15 +2,13 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> • [vendite.listini_versioni](/dbzero/vendite/tabelle/listini_versioni)  
+• [vendite.listini_versioni](/dbzero/vendite/tabelle/listini_versioni)  
 > • [catalogo.articoli](/dbzero/catalogo/tabelle/articoli)  
 > • [catalogo.unita_misura](/dbzero/catalogo/tabelle/unita_misura)  
 >
----
-
-### 🎯 Scopo Principale
+🎯 Scopo Principale
 
 La tabella `vendite.listini_righe` contiene i prezzi elementari per articolo/UOM,
 eventualmente specializzati per contesto (BA, utility, emittente fiscale).
@@ -20,7 +18,7 @@ specifico rispetto al contesto operativo.
 
 ---
 
-### ✅ Regole principali
+### Regole principali
 
 * FK obbligatorie su `listino_versione_id`, `articolo_id`, `uom_id`;
 * dimensioni opzionali:
@@ -34,7 +32,7 @@ specifico rispetto al contesto operativo.
 
 ---
 
-### 🧩 Utilizzo previsto
+### Utilizzo previsto
 
 * pricing puntuale per contesto utility/commercio;
 * supporto fallback da combinazioni specifiche a combinazioni generiche;

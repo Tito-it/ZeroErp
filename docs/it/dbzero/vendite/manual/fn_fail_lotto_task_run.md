@@ -6,7 +6,7 @@ Chiude un task run in errore impostando `task_stato = ERRORE`, codice e messaggi
 
 ---
 
-### ✅ Regole principali
+### Regole principali
 
 * `p_task_run_id` obbligatorio (`> 0`)
 * `error_code`/`error_message` normalizzati con fallback (`E_GENERICO`, `Errore task`)
@@ -15,7 +15,7 @@ Chiude un task run in errore impostando `task_stato = ERRORE`, codice e messaggi
 
 ---
 
-### ✅ Output
+### Output
 
 `void`
 

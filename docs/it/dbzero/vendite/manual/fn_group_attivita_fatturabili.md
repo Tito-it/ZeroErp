@@ -2,19 +2,17 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> • [vendite.attivita_fatturabili](/dbzero/vendite/tabelle/attivita_fatturabili)   
+• [vendite.attivita_fatturabili](/dbzero/vendite/tabelle/attivita_fatturabili)   
 > • [catalogo.articoli](/dbzero/catalogo/tabelle/articoli)   
 > • [vendite.articolo_regole_fatturazione](/dbzero/vendite/tabelle/articolo_regole_fatturazione)   
 >
-> **Approfondimento funzioni:**
+**Approfondimento funzioni:**
 >
-> • [vendite.fn_generate_fatture_righe](/dbzero/vendite/funzioni/fn_generate_fatture_righe)   
+• [vendite.fn_generate_fatture_righe](/dbzero/vendite/funzioni/fn_generate_fatture_righe)   
 >
----
-
-### 🎯 Scopo Principale
+🎯 Scopo Principale
 
 (latest review 07-02-2026)  
 (Deprecate-trasferite in django)  
@@ -23,7 +21,7 @@ La funzione **`vendite.fn_group_attivita_fatturabili()`** costruisce la
 
 ---
 
-### ✅ Regole principali
+### Regole principali
 
 * `dest_billing_account_id` usa il BA reale (mai il parent).
 * `uom_id` deriva da attivita (fallback su articolo).
@@ -35,7 +33,7 @@ La funzione **`vendite.fn_group_attivita_fatturabili()`** costruisce la
 
 ---
 
-### ✅ Output
+### Output
 
 Ritorna un **jsonb** con:
 
@@ -45,7 +43,7 @@ Ritorna un **jsonb** con:
 
 ---
 
-### 🧪 Esempio
+### Esempio
 
 ```sql
 SELECT vendite.fn_group_attivita_fatturabili(12345);

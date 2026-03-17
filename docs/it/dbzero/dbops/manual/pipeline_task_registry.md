@@ -2,14 +2,12 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> • [dbops.domini_task](/dbzero/dbops/manual/domini_task)  
+• [dbops.domini_task](/dbzero/dbops/manual/domini_task)  
 > • [dbops.pipeline_task_registry_impl](/dbzero/dbops/manual/pipeline_task_registry_impl)  
 >
----
-
-### 🎯 Scopo Principale
+🎯 Scopo Principale
 
 (latest review 08-02-2026)
 `dbops.pipeline_task_registry` e` il catalogo dei **task ammessi** per ciascun
@@ -18,7 +16,7 @@ la governance delle azioni eseguibili dal motore applicativo.
 
 ---
 
-### 🔑 Campi chiave
+### Campi chiave
 
 * `dominio_id`: riferimento a `dbops.domini_task`.
 * `task_code`: codice task (es. `select_attivita`, `generate_fatture_righe`).
@@ -27,7 +25,7 @@ la governance delle azioni eseguibili dal motore applicativo.
 
 ---
 
-### ✅ Ruolo operativo
+### Ruolo operativo
 
 1. Si registra ogni task ammesso per dominio.
 2. Il motore applicativo verifica che il task sia attivo prima di eseguirlo.

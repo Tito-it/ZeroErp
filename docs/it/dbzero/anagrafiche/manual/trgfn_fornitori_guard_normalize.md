@@ -2,13 +2,13 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> * [anagrafiche.fornitori](/dbzero/anagrafiche/tabelle/fornitori)
+[anagrafiche.fornitori](/dbzero/anagrafiche/tabelle/fornitori)
 >
-> **Approfondimento funzioni:**
+**Approfondimento funzioni:**
 >
-> * [config.sistema_codici](/dbzero/config/manual/sistema_codici)
+[config.sistema_codici](/dbzero/config/manual/sistema_codici)
 
 ---
 
@@ -24,7 +24,7 @@ senza introdurre generazione automatica del `codice`.
 
 ---
 
-### 🔍 Regole applicate
+### Regole applicate
 
 * Trigger **BEFORE INSERT OR UPDATE** su `anagrafiche.fornitori`.
 * Se `NEW.canale_fe` e' valorizzato:
@@ -35,7 +35,7 @@ senza introdurre generazione automatica del `codice`.
 
 ---
 
-### ✅ Effetto operativo
+### Effetto operativo
 
 Dati in ingresso come `ab c 123` vengono salvati come `ABC123`, riducendo le
 variazioni formali sul canale FE e semplificando confronti, controlli e

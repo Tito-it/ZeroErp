@@ -2,7 +2,7 @@
 
 > 👀 **Vedi anche**
 >
-> • [vendite.documenti_fatturazione_canali](/dbzero/vendite/tabelle/documenti_fatturazione_canali)  
+• [vendite.documenti_fatturazione_canali](/dbzero/vendite/tabelle/documenti_fatturazione_canali)  
 > • [vendite.fn_set_documento_canale_stato](/dbzero/vendite/funzioni/fn_set_documento_canale_stato)  
 > • [config.sorgenti](/dbzero/config/tabelle/sorgenti)  
 
@@ -17,7 +17,7 @@ principali dei documenti commerciali.
 
 ---
 
-### ✅ Regole applicate
+### Regole applicate
 
 * su `vendite.ordini`:
   * apre canale `ORDINE_VENDITA` per l'ordine creato/aggiornato;
@@ -34,7 +34,7 @@ principali dei documenti commerciali.
 
 ---
 
-### 🧩 Obiettivo operativo
+### Obiettivo operativo
 
 Rendere uniforme il tracciamento dei passaggi documento (`preventivo->ordine`,
 `ordine->ddt`) e includere anche i contratti, evitando divergenze applicative

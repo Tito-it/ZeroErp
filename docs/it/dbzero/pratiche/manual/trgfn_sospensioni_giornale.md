@@ -2,8 +2,8 @@
 
 > 👀 **Vedi anche**
 >
-> * [pratiche.sospensioni](/dbzero/pratiche/manual/sospensioni)
-> * [pratiche.giornale](/dbzero/pratiche/manual/giornale)
+[pratiche.sospensioni](/dbzero/pratiche/manual/sospensioni)
+> [pratiche.giornale](/dbzero/pratiche/manual/giornale)
 
 ---
 
@@ -13,7 +13,7 @@ Due trigger functions per registrare nel giornale gli eventi di sospensione e ri
 
 ---
 
-### 🔧 Funzioni
+### Funzioni
 
 #### `pratiche.trgfn_sospensioni_giornale_ins()`
 
@@ -25,7 +25,7 @@ Registra `SOSPENSIONE_CHIUSA` nel giornale su UPDATE OF data_fine (riattivazione
 
 ---
 
-### 🔗 Trigger associati
+### Trigger associati
 
 | Nome                                              | Fase  | Evento              | Funzione                                    |
 | ------------------------------------------------- | ----- | ------------------- | ------------------------------------------- |

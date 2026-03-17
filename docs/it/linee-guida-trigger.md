@@ -1,6 +1,6 @@
-# 🔧 Linee guida Trigger (PostgreSQL + Liquibase)
+# Linee guida Trigger (PostgreSQL + Liquibase)
 
-## 🎯 Scopo
+## Scopo
 
 Definire **convenzioni univoche** per:
 
@@ -11,7 +11,7 @@ Definire **convenzioni univoche** per:
 
 ---
 
-## 🏷️ Convenzioni di naming
+## Convenzioni di naming
 
 ### Prefisso
 
@@ -53,7 +53,7 @@ trg_<schema_opzionale>_<tabella>_<fase>_<descrizione_breve>_<eventi>
 
 ---
 
-## ⚙️ Scelta tra `UPDATE` vs `UPDATE OF colonna`
+## Scelta tra `UPDATE` vs `UPDATE OF colonna`
 
 * Se la logica riguarda **solo una o poche colonne specifiche**, usa **`UPDATE OF colonna1[, colonna2]`** → **più efficiente** (il trigger non scatta se non cambiano quelle colonne).
 * Se la logica dipende dal **record intero** o da **più colonne** in combinazione, usa `UPDATE` **senza `OF`**.
@@ -65,7 +65,7 @@ trg_<schema_opzionale>_<tabella>_<fase>_<descrizione_breve>_<eventi>
 
 ---
 
-## ✅ Best practice riassunte
+## Best practice riassunte
 
 * **`_a10`**: prima linea di difesa (check & block).
 * **`_z90`**: azioni finali “a valle” (es. storico).
@@ -75,7 +75,7 @@ trg_<schema_opzionale>_<tabella>_<fase>_<descrizione_breve>_<eventi>
 
 ---
 
-## 📋 Checklist rapida (da usare nei PR)
+## Checklist rapida (da usare nei PR)
 
 * [ ] Nome con prefisso `trg_`, `_schema(opzionale)_tabella_` e fase corretta (`_a10_` / `_z90_`).
 * [ ] Eventi coerenti (`_ins/_upd/_dlt`); usare `UPDATE OF colonna` quando possibile.

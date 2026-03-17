@@ -2,13 +2,13 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimento funzioni:    
+Approfondimento funzioni:    
 >
-> * [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)   
+[script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)   
 >
-> Guide:   
+Guide:   
 >
-> * [Linee Guida SQL](/linee-guida-sql) per convenzioni di changeSet e commenti SQL  
+[Linee Guida SQL](/linee-guida-sql) per convenzioni di changeSet e commenti SQL  
 
 La trigger function **`script.trgfn_storico_generic()`** centralizza la logica di storicizzazione in qualunque tabella del layer `storico`, gestendo:
 
@@ -29,7 +29,7 @@ La trigger function **`script.trgfn_storico_generic()`** centralizza la logica d
 
 ---
 
-### 🔍 Parametri e Contesto
+### Parametri e Contesto
 
 * **Parametri (`TG_ARGV`)**:
 
@@ -50,7 +50,7 @@ La trigger function **`script.trgfn_storico_generic()`** centralizza la logica d
 
 ---
 
-### ⚙️ Flusso di Esecuzione Dettagliato
+### Flusso di Esecuzione Dettagliato
 
 1. **Recupero ID record**
 
@@ -84,7 +84,7 @@ La trigger function **`script.trgfn_storico_generic()`** centralizza la logica d
 
 ---
 
-### 💡 Vantaggi Operativi
+### Vantaggi Operativi
 
 * **Standardizzazione**: una sola funzione per tutte le tabelle storiche, semplifica manutenzione e aggiornamenti.
 * **Configurabilità**: basta specificare la colonna di riferimento nel trigger, senza ulteriori modifiche al PL/pgSQL.
@@ -93,4 +93,4 @@ La trigger function **`script.trgfn_storico_generic()`** centralizza la logica d
 
 ---
 
-> 🧠 **“Con `trgfn_storico_generic`, Zero ERP ha una soluzione unica e versatile per versionare ogni entità storica, riducendo complessità e aumentando l’affidabilità.”**
+> **“Con `trgfn_storico_generic`, Zero ERP ha una soluzione unica e versatile per versionare ogni entità storica, riducendo complessità e aumentando l’affidabilità.”**

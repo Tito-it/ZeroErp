@@ -2,14 +2,14 @@
 
 > 👀 **Vedi anche**
 >
-> Tabelle:
+Tabelle:
 >
-> * [pratiche.giornale](giornale.md)
-> * [pratiche.flussi](flussi.md)
+[pratiche.giornale](giornale.md)
+> [pratiche.flussi](flussi.md)
 >
-> Overview:
+Overview:
 >
-> * [Trigger business overview](trigger_business_overview.md)
+[Trigger business overview](trigger_business_overview.md)
 
 ---
 
@@ -19,7 +19,7 @@ Registra l'azione **FLUSSO_CREATO** nel giornale. Si attiva **AFTER INSERT** su 
 
 ---
 
-### 🔧 Firma
+### Firma
 
 ```sql
 CREATE OR REPLACE FUNCTION pratiche.trgfn_flussi_giornale_ins()
@@ -29,7 +29,7 @@ LANGUAGE plpgsql
 
 ---
 
-### ⚙️ Logica
+### Logica
 
 Inserisce una riga in `pratiche.giornale` con:
 
@@ -44,7 +44,7 @@ Inserisce una riga in `pratiche.giornale` con:
 
 ---
 
-### 🔗 Trigger associato
+### Trigger associato
 
 | Nome | Fase | Evento | Tabella |
 |------|------|--------|---------|
