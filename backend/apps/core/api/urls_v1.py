@@ -19,6 +19,7 @@ from apps.core.api.views_lookup import (
     LookupMatriceIndirizziView,
     LookupTipiRuoliPerNaturaView,
     LookupTipiSoggettoDettaglioView,
+    SearchStradarioGeneraleView,
     SearchStradarioView,
 )
 from apps.core.api.views_config_crud import (
@@ -97,6 +98,11 @@ urlpatterns = [
         "search/stradario/",
         SearchStradarioView.as_view(),
         name="core-search-stradario",
+    ),
+    path(
+        "search/stradario-generale/",
+        SearchStradarioGeneraleView.as_view(),
+        name="core-search-stradario-generale",
     ),
     path(
         "users/<int:user_id>/permessi-effettivi/",

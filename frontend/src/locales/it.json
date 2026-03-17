@@ -321,7 +321,7 @@
     "col_attivo": "Stato",
     "col_descrizione": "Descrizione",
     "campo_comune": "Comune",
-    "campo_via": "Via",
+    "campo_via": "Indirizzo",
     "campo_toponomastica": "Tipo strada",
     "campo_nome_via": "Nome via",
     "campo_cap": "CAP",
@@ -337,7 +337,7 @@
     "modifica_cap": "Modifica CAP",
     "cap_creato": "CAP creato",
     "cap_salvato": "CAP salvato",
-    "via_non_presente": "Via non presente, crea nuova",
+    "via_non_presente": "Indirizzo non presente, crea nuovo",
     "indirizzo_creato": "Indirizzo creato",
     "indirizzo_salvato": "Indirizzo salvato",
     "indirizzo_esistente": "Indirizzo esistente, associato",
@@ -411,7 +411,11 @@
     "nuovo_indirizzo": "Nuovo indirizzo",
     "gestisci_indirizzi": "Gestisci indirizzi",
     "tipi_mancanti": "Indirizzi obbligatori mancanti: {tipi}",
-    "cambia_indirizzo": "Cambia indirizzo"
+    "cambia_indirizzo": "Cambia indirizzo",
+    "context_soggetto": "Soggetto",
+    "context_cliente": "Cliente",
+    "context_fornitore": "Fornitore",
+    "replace_non_trovato": "Indirizzo non presente. Per crearne uno nuovo usa \"Indirizzo non presente, crea nuovo\"."
   },
   "contatto": {
     "nominativo": "Nominativo",
@@ -462,5 +466,8 @@
     "stato": "Stato",
     "regione": "Regione",
     "provincia": "Provincia"
+  },
+  "validation": {
+    "email_format": "Formato email non valido"
   }
 }

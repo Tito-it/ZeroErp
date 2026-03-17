@@ -48,6 +48,7 @@ function onClear() {
     :disabled="disabled || !comuneId"
     :loading="loading"
     forceSelection
+    fluid
     @complete="onSearch"
     @item-select="onSelect"
     @clear="onClear"

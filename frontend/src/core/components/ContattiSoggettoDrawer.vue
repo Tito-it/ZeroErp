@@ -37,6 +37,7 @@ const listLoading = ref(false)
 // Modalita' form: null = lista, 'new' = aggiungi, 'edit' = modifica
 const formMode = ref(null)
 const editId = ref(null)
+const formErrors = ref([])
 
 async function loadContatti() {
   if (!props.soggettoId) return
@@ -65,24 +66,32 @@ watch(() => props.visible, async (val) => {
 function onStartNew() {
   formMode.value = 'new'
   editId.value = null
+  formErrors.value = []
   contatto.reset()
   contatto.tipiContatto.load()
+  contatto.unitaOrganizzative.load()
 }
 
 function onStartEdit(c) {
   formMode.value = 'edit'
   editId.value = c.id
+  formErrors.value = []
   contatto.populate(c)
   contatto.tipiContatto.load()
+  contatto.unitaOrganizzative.load()
 }
 
 function onCancelForm() {
   formMode.value = null
   editId.value = null
+  formErrors.value = []
   contatto.reset()
 }
 
 async function onSaveForm() {
+  formErrors.value = contatto.validate()
+  if (formErrors.value.length > 0) return
+
   if (formMode.value === 'edit' && editId.value) {
     const result = await execute(
       () => updateSoggettoContatto(props.soggettoId, editId.value, { ...contatto.form }),
@@ -99,6 +108,7 @@ async function onSaveForm() {
 
   formMode.value = null
   editId.value = null
+  formErrors.value = []
   contatto.reset()
   await loadContatti()
   emit('saved')
@@ -185,6 +195,7 @@ async function onDelete(c) {
           :form="contatto.form"
           :tipi-contatto="contatto.tipiContatto"
           :unita-organizzative="contatto.unitaOrganizzative"
+          :errors="formErrors"
           :show-u-o="true"
           :tipo-disabled="formMode === 'edit'"
           :disabled="false"

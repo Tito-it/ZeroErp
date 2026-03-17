@@ -36,6 +36,7 @@ const { execute, loading } = useApiHandler()
 // Building block composables
 const soggetto = useSoggettoForm()
 const contatto = useContattoForm()
+const contattoErrors = ref([])
 const indirizzo = useIndirizzoSoggettoForm()
 
 // Lookup forme giuridiche (ricaricato al cambio tipo) — passato a useDatiSocietariForm
@@ -187,6 +188,7 @@ watch(() => props.visible, async (val) => {
   } else {
     soggetto.reset()
     contatto.reset()
+    contattoErrors.value = []
     indirizzo.reset()
     datiSocietari.reset()
     ruoliAssegnati.value = []
@@ -209,6 +211,12 @@ const canSave = computed(() => {
 
 // Scopo: Salvataggio — costruisce payload unificato per il backend.
 async function handleSave() {
+  // Validazione contatto (solo in create, dove il form e' inline)
+  if (!isEdit.value) {
+    contattoErrors.value = contatto.validate()
+    if (contattoErrors.value.length > 0) return
+  }
+
   if (isEdit.value) {
     const payload = {}
     const f = soggetto.form
@@ -298,6 +306,7 @@ async function handleSave() {
           :form="contatto.form"
           :tipi-contatto="contatto.tipiContatto"
           :unita-organizzative="contatto.unitaOrganizzative"
+          :errors="contattoErrors"
           :show-u-o="false"
           :disabled="false"
         />
@@ -339,7 +348,6 @@ async function handleSave() {
           :is-libera="indirizzo.isLibera.value"
           @update:is-libera="v => indirizzo.isLibera.value = v"
           :tipi-stato="indirizzo.tipiStato.value"
-          :toponomastica-lookup="indirizzo.toponomasticaLookup"
           :stati-lookup="indirizzo.statiLookup"
           :cap-options="indirizzo.capOptions.value"
           :loading-cap="indirizzo.loadingCap.value"

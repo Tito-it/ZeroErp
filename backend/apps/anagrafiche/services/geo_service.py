@@ -245,21 +245,34 @@ class GeoService:
     # Indirizzi dettaglio
     # =================================================================
 
-    # Scopo: Check duplicato indirizzo (stradario_id + civico).
-    #        Generico: usato da IndirizzoDrawer e IndirizzoSoggettoForm.
+    # Scopo: Check duplicato indirizzo via fn_build_indirizzo_normalizzato.
+    #        Nessuna normalizzazione Python — la fa la funzione DB (unica source of truth).
     def check_indirizzo_duplicato(self, payload: dict) -> dict[str, Any]:
         stradario_id = optional_int(payload, "stradario_id")
         civico = optional_int(payload, "civico")
+        estensione = (payload.get("estensione_civico") or "").strip() or None
+        palazzina = (payload.get("palazzina") or "").strip() or None
+        scala_val = (payload.get("scala") or "").strip() or None
+        piano_val = (payload.get("piano") or "").strip() or None
+        interno_val = (payload.get("interno") or "").strip() or None
         warnings: list[dict[str, str]] = []
         if stradario_id:
-            existing = self._ind.find_duplicato(stradario_id=stradario_id, civico=civico)
+            existing = self._ind.find_duplicato(
+                stradario_id=stradario_id, civico=civico,
+                estensione_civico=estensione, palazzina=palazzina,
+                scala=scala_val, piano=piano_val, interno=interno_val,
+            )
             if existing:
-                desc = existing.get("via_completa", "")
-                comune = existing.get("descrizione_comune", "")
-                label = f"{desc} {civico or ''}, {comune}".strip().rstrip(",").strip()
+                label = existing.get("indirizzo_normalizzato", "")
+                comune = (existing.get("descrizione_comune") or "").strip()
+                if comune:
+                    label = f"{label}, {comune}"
+                exact = bool(existing.get("exact_match"))
                 warnings.append({
                     "field": "indirizzo",
                     "message": f"Indirizzo gia' presente: {label}",
+                    "indirizzo_dettaglio_id": existing.get("indirizzo_dettaglio_id") if exact else None,
+                    "exact_match": exact,
                 })
         return {"warnings": warnings}
 

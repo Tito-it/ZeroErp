@@ -1,0 +1,192 @@
+// Scopo: Composable base per form indirizzo (parte geografica + civico).
+// Condiviso da: IndirizzoDrawer (standalone) e useIndirizzoSoggettoForm (soggetto).
+// Gestisce: comune, via (unico oggetto da stradario o stradario_generale),
+//           CAP, civico, check duplicato, validazione, payload.
+// NON gestisce: multi-tipo, libera, matrice, auto-clone (delegati ai consumer).
+
+import { reactive, ref, watch } from 'vue'
+import { useIndirizzoDuplicato } from './useIndirizzoDuplicato'
+import { lookupCodiciPostaliByComune } from '../../anagrafiche/api/anagrafiche'
+
+export function useIndirizzoBase() {
+  const form = reactive({
+    comune_id: null,
+    // Oggetto via unificato: contiene dati da stradario O da stradario_generale.
+    // Da stradario: { stradario_id, indirizzo_normalizzato, toponimo, denominazione, codice_postale_id }
+    // Da stradario_generale: { stradario_generale_id, toponomastica_id, toponimo, denominazione, indirizzo_normalizzato }
+    via_obj: null,
+    via_nuova: false,
+    codice_postale_id: null,
+    civico: null,
+    estensione_civico: '',
+    palazzina: '',
+    scala: '',
+    piano: '',
+    interno: '',
+  })
+
+  // CAP per comune selezionato (con race condition guard)
+  const capOptions = ref([])
+  const loadingCap = ref(false)
+  let capVersion = 0
+
+  // Check duplicato indirizzo
+  const { indirizzoWarnings, existingDettaglioId, checkDuplicato, resetWarnings } = useIndirizzoDuplicato()
+
+  // --- Watch: CAP ---
+  watch(() => form.comune_id, async (id) => {
+    capOptions.value = []
+    form.codice_postale_id = null
+    if (id) {
+      const v = ++capVersion
+      loadingCap.value = true
+      try {
+        const res = await lookupCodiciPostaliByComune(id)
+        if (v !== capVersion) return
+        capOptions.value = res.data.data.results
+        if (capOptions.value.length === 1) {
+          form.codice_postale_id = capOptions.value[0].id
+        }
+      } finally {
+        if (v === capVersion) loadingCap.value = false
+      }
+    }
+  })
+
+  // --- Watch: via_obj / capOptions → auto-set CAP da stradario ---
+  function _autoSetCap() {
+    const capFromVia = form.via_obj?.codice_postale_id
+    if (capFromVia && capOptions.value.some(c => c.id === capFromVia)) {
+      form.codice_postale_id = capFromVia
+    }
+  }
+  watch(() => form.via_obj, _autoSetCap)
+  watch(capOptions, _autoSetCap)
+
+  // --- Watch: check duplicato ---
+  // Scatta solo se via da stradario (ha stradario_id) e non in via_nuova
+  watch([
+    () => form.via_obj, () => form.civico, () => form.estensione_civico,
+    () => form.palazzina, () => form.scala, () => form.piano, () => form.interno,
+  ], () => {
+    if (form.via_nuova || !form.via_obj?.stradario_id) { resetWarnings(); return }
+    checkDuplicato({
+      stradario_id: form.via_obj.stradario_id,
+      civico: form.civico || null,
+      estensione_civico: (form.estensione_civico || '').trim() || null,
+      palazzina: (form.palazzina || '').trim() || null,
+      scala: (form.scala || '').trim() || null,
+      piano: (form.piano || '').trim() || null,
+      interno: (form.interno || '').trim() || null,
+    })
+  })
+
+  // --- Watch: via_nuova → resetta warning (la via_obj resta) ---
+  watch(() => form.via_nuova, (val) => {
+    if (val) resetWarnings()
+  })
+
+  // Scopo: Validazione parte indirizzo.
+  // CAP obbligatorio sempre (auto-set da stradario, fallback da comune).
+  function validate() {
+    const errors = []
+    if (!form.comune_id) errors.push('comune_id')
+    if (!form.via_obj) errors.push('via_obj')
+    if (!form.codice_postale_id) errors.push('codice_postale_id')
+    return errors
+  }
+
+  // Scopo: Estrae i campi civico come oggetto per payload.
+  function _civicoPart() {
+    return {
+      civico: form.civico,
+      estensione_civico: (form.estensione_civico || '').trim() || null,
+      palazzina: (form.palazzina || '').trim() || null,
+      scala: (form.scala || '').trim() || null,
+      piano: (form.piano || '').trim() || null,
+      interno: (form.interno || '').trim() || null,
+    }
+  }
+
+  // Scopo: Costruisce payload indirizzo normalizzato.
+  // Se via_obj ha stradario_id → via gia' nel DB locale (manda stradario_id).
+  // Se via_obj ha toponomastica_id (da stradario_generale) → crea stradario locale.
+  // Il flag via_nuova controlla solo quale autocomplete mostrare, non il payload.
+  function buildPayload() {
+    const obj = form.via_obj
+    if (obj?.stradario_id) {
+      // Via esistente nel DB locale — usa direttamente lo stradario_id
+      return {
+        stradario_id: obj.stradario_id,
+        ..._civicoPart(),
+      }
+    }
+    // Via da stradario_generale — crea stradario locale (toponomastica + denominazione + comune + CAP)
+    return {
+      toponomastica_id: obj?.toponomastica_id,
+      descrizione_via: obj?.denominazione || '',
+      comune_id: form.comune_id,
+      codice_postale_id: form.codice_postale_id,
+      ..._civicoPart(),
+    }
+  }
+
+  // Scopo: Snapshot dei campi form per salvataggio/restore.
+  function snapshot() {
+    return {
+      comune_id: form.comune_id,
+      via_obj: form.via_obj,
+      via_nuova: form.via_nuova,
+      codice_postale_id: form.codice_postale_id,
+      civico: form.civico,
+      estensione_civico: form.estensione_civico,
+      palazzina: form.palazzina,
+      scala: form.scala,
+      piano: form.piano,
+      interno: form.interno,
+    }
+  }
+
+  // Scopo: Ripristina form da snapshot.
+  function restore(snap) {
+    form.comune_id = snap.comune_id ?? null
+    form.via_obj = snap.via_obj ?? null
+    form.via_nuova = snap.via_nuova ?? false
+    form.codice_postale_id = snap.codice_postale_id ?? null
+    form.civico = snap.civico ?? null
+    form.estensione_civico = (snap.estensione_civico || '').replace(/^\//, '')
+    form.palazzina = snap.palazzina || ''
+    form.scala = snap.scala || ''
+    form.piano = snap.piano || ''
+    form.interno = snap.interno || ''
+  }
+
+  function reset() {
+    form.comune_id = null
+    form.via_obj = null
+    form.via_nuova = false
+    form.codice_postale_id = null
+    form.civico = null
+    form.estensione_civico = ''
+    form.palazzina = ''
+    form.scala = ''
+    form.piano = ''
+    form.interno = ''
+    capOptions.value = []
+    resetWarnings()
+  }
+
+  return {
+    form,
+    capOptions,
+    loadingCap,
+    indirizzoWarnings,
+    existingDettaglioId,
+    resetWarnings,
+    validate,
+    buildPayload,
+    snapshot,
+    restore,
+    reset,
+  }
+}

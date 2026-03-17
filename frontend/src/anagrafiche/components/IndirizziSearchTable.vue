@@ -68,7 +68,7 @@ function onRowClick(event) {
       <Column field="indirizzo_normalizzato" :header="t('indirizzi.col_indirizzo')" sortable />
       <Column field="civico" :header="t('indirizzi.col_civico')" sortable>
         <template #body="{ data }">
-          {{ data.civico }}{{ data.estensione_civico ? `/${data.estensione_civico}` : '' }}
+          {{ data.civico }}{{ data.estensione_civico || '' }}
         </template>
       </Column>
       <Column field="descrizione_comune" :header="t('indirizzi.col_comune')" sortable />

@@ -47,7 +47,7 @@ class MaintenanceRepository:
                         OR jobname ILIKE %s
                         OR stepname ILIKE %s
                         OR message ILIKE %s)
-                 ORDER BY started_at DESC
+                 ORDER BY started_at DESC, id DESC
                  LIMIT %s OFFSET %s
                 """,
                 [
@@ -102,7 +102,7 @@ class MaintenanceRepository:
                        last_run_at::text, last_ok,
                        COUNT(*) OVER () AS total_count
                   FROM summary
-                 ORDER BY last_run_at DESC NULLS LAST
+                 ORDER BY last_run_at DESC NULLS LAST, jobname
                  LIMIT %s OFFSET %s
                 """,
                 [limit, offset],

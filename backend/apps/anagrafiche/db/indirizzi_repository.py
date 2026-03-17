@@ -58,7 +58,7 @@ class IndirizziRepository:
              WHERE (%s::text IS NULL OR vid.indirizzo_normalizzato ILIKE %s
                     OR vid.descrizione_comune ILIKE %s)
                AND (%s::integer IS NULL OR vid.comune_id = %s)
-             ORDER BY {order_col} {direction}, vid.id
+             ORDER BY {order_col} {direction}, vid.indirizzo_dettaglio_id
              LIMIT %s OFFSET %s
         """  # noqa: S608
         with connection.cursor() as cursor:
@@ -98,20 +98,44 @@ class IndirizziRepository:
             cols = [c.name for c in cursor.description]
             return dict(zip(cols, row))
 
-    # Scopo: Cerca indirizzi_dettaglio esistenti via fn_search_indirizzi_dettaglio DB.
-    #        Generico: usato da IndirizzoDrawer e IndirizzoSoggettoForm per warning duplicato.
+    # Scopo: Cerca indirizzo_dettaglio duplicato via fn_build_indirizzo_normalizzato.
+    #        Usa la stessa funzione di normalizzazione del trigger DB (unica source of truth).
+    #        Se civico fornito: match LIKE prefix su indirizzo_normalizzato.
+    #        Se civico null: match LIKE prefix su sola via_norm (qualsiasi civico su quella via).
+    #        Ritorna anche exact_match: True se l'indirizzo trovato coincide esattamente
+    #        con quello costruito (usato per abilitare il riuso diretto in replace mode).
     def find_duplicato(
-        self, *, stradario_id: int, civico: int | None = None
+        self, *, stradario_id: int, civico: int | None = None,
+        estensione_civico: str | None = None,
+        palazzina: str | None = None,
+        scala: str | None = None,
+        piano: str | None = None,
+        interno: str | None = None,
     ) -> dict[str, Any] | None:
         sql = """
-            SELECT * FROM anagrafiche.fn_search_indirizzi_dettaglio(
-                p_stradario_id := %s,
-                p_civico := %s,
-                p_limit := 1
+            WITH built AS (
+                SELECT (r).o_via_norm AS via_norm,
+                       (r).o_indirizzo_normalizzato AS norm
+                  FROM (SELECT anagrafiche.fn_build_indirizzo_normalizzato(
+                            %s, %s, %s, %s, %s, %s, %s) AS r) x
             )
+            SELECT vid.*,
+                   (vid.indirizzo_normalizzato = built.norm) AS exact_match
+              FROM anagrafiche.vw_indirizzi_dettaglio vid, built
+             WHERE vid.stradario_id = %s
+               AND vid.indirizzo_normalizzato LIKE
+                   CASE WHEN %s IS NOT NULL THEN built.norm ELSE built.via_norm END || '%%'
+             ORDER BY (vid.indirizzo_normalizzato = built.norm) DESC,
+                      vid.indirizzo_dettaglio_id
+             LIMIT 1
         """
         with connection.cursor() as cursor:
-            cursor.execute(sql, [stradario_id, civico])
+            cursor.execute(sql, [
+                stradario_id, civico, estensione_civico,
+                palazzina, scala, piano, interno,
+                stradario_id,
+                civico,
+            ])
             row = cursor.fetchone()
             if not row:
                 return None
