@@ -6,22 +6,20 @@
 
 >**Guide**
 >
->* [Automazione DB](/guide/automazione-db)
+[Automazione DB](/guide/automazione-db)
 >
 >**Approfondimento tabelle**
 >
->* [dbops.automation_rules_tbl](/dbzero/dbops/tabelle/automation_rules_tbl)   
+[dbops.automation_rules_tbl](/dbzero/dbops/tabelle/automation_rules_tbl)   
 >* [dbops.automation_cleanup_exclusions](/dbzero/dbops/tabelle/automation_cleanup_exclusions)   
 >* [dbops.automation_scope](/dbzero/dbops/tabelle/automation_scope)   
 >
 >**Approfondimento funzioni**
 >
->* [dbops.fn_apply_cleanup_at](/dbzero/dbops/funzioni/fn_apply_cleanup_at)   
+[dbops.fn_apply_cleanup_at](/dbzero/dbops/funzioni/fn_apply_cleanup_at)   
 >* [dbops.fn_purge_cleanup_expired](/dbzero/dbops/funzioni/fn_purge_cleanup_expired)   
 >
----
-
-### 🎯 Scopo Principale
+🎯 Scopo Principale
 
 (latest review 07-02-26)
 La funzione **`dbops.fn_run_automations_cleanup(p_exec_mode, p_schemas, p_dry_run)`** è l’orchestratore del framework di cleanup basato su `cleanup_at`.
@@ -33,7 +31,7 @@ Applica in modo coerente due regole dichiarative:
 
 ---
 
-### 🧩 Parametri di input
+### Parametri di input
 
 | Parametro     | Tipo      | Descrizione                                              |
 | ------------- | --------- | -------------------------------------------------------- |
@@ -43,7 +41,7 @@ Applica in modo coerente due regole dichiarative:
 
 ---
 
-### ⚙️ Flusso logico
+### Flusso logico
 
 1. Risolve l'**ambito** (`dbops.fn_resolve_scope`).
 2. Scorre le tabelle nell'ambito (`dbops.fn_table_in_scope`).
@@ -77,7 +75,7 @@ Applica in modo coerente due regole dichiarative:
 
 ---
 
-### 🧠 Note operative
+### Note operative
 
 * Se `cleanup_at` non esiste nella tabella target, la regola viene **ignorata**.
 * `base_ts_column` è opzionale: se non indicata il runner tenta fallback su

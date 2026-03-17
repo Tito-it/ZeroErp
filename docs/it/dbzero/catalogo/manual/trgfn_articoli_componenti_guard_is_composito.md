@@ -2,14 +2,12 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento Tabelle**     
-> * [catalogo.articoli](/dbzero/catalogo/tabelle/articoli)    
-> * [catalogo.articoli_componenti](/dbzero/catalogo/tabelle/articoli_componenti)    
+**Approfondimento Tabelle**     
+> [catalogo.articoli](/dbzero/catalogo/tabelle/articoli)    
+> [catalogo.articoli_componenti](/dbzero/catalogo/tabelle/articoli_componenti)    
 >
 
----
-
-### 🎯 Scopo Principale
+🎯 Scopo Principale
 
 (latest review 15-01-26)
 La funzione **`catalogo.trgfn_articoli_componenti_guard_is_composito`** impedisce
@@ -18,7 +16,7 @@ Serve a garantire che la distinta base sia definita solo per articoli realmente 
 
 ---
 
-### 🧱 Logica applicata
+### Logica applicata
 
 * Il trigger scatta **BEFORE INSERT OR UPDATE OF prodotto_id** su `catalogo.articoli_componenti`.
 * Legge `catalogo.articoli.is_composito` dell’articolo referenziato da `prodotto_id`.
@@ -26,7 +24,7 @@ Serve a garantire che la distinta base sia definita solo per articoli realmente 
 
 ---
 
-### ✅ Comportamento atteso
+### Comportamento atteso
 
 * **Consentito**: usare come prodotto un articolo con `is_composito = true`.
 * **Bloccato**: usare come prodotto un articolo con `is_composito = false`.
@@ -34,7 +32,7 @@ Serve a garantire che la distinta base sia definita solo per articoli realmente 
 
 ---
 
-### 🔍 Esempio
+### Esempio
 
 ```sql
 -- Articolo non composito
@@ -49,7 +47,7 @@ VALUES (:id_sedia, :id_vite_m6, 4, CURRENT_DATE);
 
 ---
 
-### ✅ Best practice e raccomandazioni
+### Best practice e raccomandazioni
 
 * Definire `is_composito = true` per gli articoli che devono avere una distinta base.
 * Tenere allineati i dati anagrafici e la distinta base per evitare incoerenze.

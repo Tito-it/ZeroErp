@@ -2,13 +2,13 @@
 
 > 👀 **Vedi anche**
 >
->  Approfondimento tabelle: 
+Approfondimento tabelle: 
 >
-> * [vendite.ordini](/dbzero/vendite/tabelle/ordini)  
-> * [vendite.ordini_righe_fulfillment](/dbzero/vendite/tabelle/ordini_righe_fulfillment)    
-> * [vendite.ddt_righe](/dbzero/vendite/tabelle/ddt_righe)     
-> * [vendite.mv_ddt_ordini](/dbzero/vendite/tabelle/mv_ddt_ordini)      
-> * [config.stati_doc_ordini](/dbzero/config/tabelle/stati_doc_ordini)    
+[vendite.ordini](/dbzero/vendite/tabelle/ordini)  
+> [vendite.ordini_righe_fulfillment](/dbzero/vendite/tabelle/ordini_righe_fulfillment)    
+> [vendite.ddt_righe](/dbzero/vendite/tabelle/ddt_righe)     
+> [vendite.mv_ddt_ordini](/dbzero/vendite/tabelle/mv_ddt_ordini)      
+> [config.stati_doc_ordini](/dbzero/config/tabelle/stati_doc_ordini)    
 
 ---
 
@@ -23,7 +23,7 @@ Righe dell’**ordine cliente** con snapshot di descrizione/UoM/IVA e idempotenz
 
 ---
 
-### 🧠 Regole di dominio (quantità/UoM)
+### Regole di dominio (quantità/UoM)
 
 * **Sorgente**: `qta_operativa` + `uom_operativa_id`.
 * **Derivazione**: `quantita = qta_operativa * factor_to_base` (scala 6). `factor_to_base` è lo **snapshot** della regola valida al momento dell’inserimento (o update coerente).
@@ -32,7 +32,7 @@ Righe dell’**ordine cliente** con snapshot di descrizione/UoM/IVA e idempotenz
 
 ---
 
-### 🛡️ Vincoli
+### Vincoli
 
 * `chk_ordini_v_r_qta_pos` → (da correggere nel DDL: oggi ripete prezzo) **deve validare `quantita > 0`**.
 * `check_ordini_righe_qta_operativa_pos` → `qta_operativa > 0` (consente `NULL`).
@@ -40,11 +40,11 @@ Righe dell’**ordine cliente** con snapshot di descrizione/UoM/IVA e idempotenz
 * `chk_ordini_v_r_sconto_perc` → tra 0 e 100.
 * **UQ**: `(ordine_id, riga_nr)`; **UQ idempotenza**: `(sorgente_tipo_id, sorgente_uid)` filtro `WHERE sorgente_tipo_id IS NOT NULL`.
 
-> 💡 *Suggerimento schema*: aggiungere un `CHECK` di co‑presenza operativa: `(uom_operativa_id IS NULL) = (qta_operativa IS NULL)`.
+> *Suggerimento schema*: aggiungere un `CHECK` di co‑presenza operativa: `(uom_operativa_id IS NULL) = (qta_operativa IS NULL)`.
 
 ---
 
-### ⚙️ Trigger & funzioni collegate
+### Trigger & funzioni collegate
 
 * **Delete‑block**: `trg_a10_dlt_block` → vieta hard delete (policy).
 * **Quantità da operativa**: `trg_a10_ins_upd_ordini_righe_qta_from_operativa` → invoca `script.trgfn_qta_from_operativa('true','false')` per calcolare `quantita` e aggiornare `factor_to_base` a ogni INSERT/UPDATE.
@@ -52,7 +52,7 @@ Righe dell’**ordine cliente** con snapshot di descrizione/UoM/IVA e idempotenz
 
 ---
 
-### 🔄 Interazione con fulfillment / DDT / Fatture
+### Interazione con fulfillment / DDT / Fatture
 
 * Il **residuo** ordine si calcola su `quantita` (base) per coerenza con stock e confronti multipli.
 * In **fulfillment**, la guardia riga↔riga confronta **articolo** e, se presente, la **UoM** coerente; la quantità evasa non può superare il residuo dell’ordine.
@@ -60,7 +60,7 @@ Righe dell’**ordine cliente** con snapshot di descrizione/UoM/IVA e idempotenz
 
 ---
 
-### 🔍 Tabella note migliorie (dal DDL ricevuto)
+### Tabella note migliorie (dal DDL ricevuto)
 
 1. **BUG vincolo quantità**: `chk_ordini_v_r_qta_pos` oggi replica `prezzo_unitario >= 0` → **correggere** a `quantita > 0`.
 2. **Co‑presenza operativa**: aggiungere `CHECK ((uom_operativa_id IS NULL) = (qta_operativa IS NULL))` per impedire stati ibridi.
@@ -69,7 +69,7 @@ Righe dell’**ordine cliente** con snapshot di descrizione/UoM/IVA e idempotenz
 
 ---
 
-### 🔄 Query tipiche
+### Query tipiche
 
 * Righe di un ordine, con totale base:
 
@@ -93,7 +93,7 @@ GROUP BY r.id;
 
 ---
 
-### ✅ Checklist di conformità
+### Checklist di conformità
 
 * [ ] Trigger **delete‑block** attiva.
 * [ ] Trigger **qta_from_operativa** attiva e copre INSERT/UPDATE.
@@ -105,7 +105,7 @@ GROUP BY r.id;
 
 ---
 
-### 📌 Note
+### Note
 
 * **Niente hard delete**: i flussi applicativi usano annulli/storni.
 * Le **API** dovrebbero accettare entrambe le rappresentazioni ma applicare la **priorità all’operativa**; le GET restituiscono entrambe per trasparenza.

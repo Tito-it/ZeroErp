@@ -2,9 +2,9 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> • [vendite.fatturazione_lotti_fatture](/dbzero/vendite/tabelle/fatturazione_lotti_fatture)  
+• [vendite.fatturazione_lotti_fatture](/dbzero/vendite/tabelle/fatturazione_lotti_fatture)  
 > • [vendite.fatture](/dbzero/vendite/tabelle/fatture)  
 > • [vendite.fatture_righe](/dbzero/vendite/tabelle/fatture_righe)  
 > • [vendite.fatture_riepiloghi_iva](/dbzero/vendite/tabelle/fatture_riepiloghi_iva)  
@@ -12,9 +12,9 @@
 > • [vendite.note_fatture](/dbzero/vendite/tabelle/note_fatture)  
 > • [vendite.attivita_fatturabili](/dbzero/vendite/tabelle/attivita_fatturabili)  
 >
-> **Approfondimento funzioni:**
+**Approfondimento funzioni:**
 >
-> • [vendite.fn_reset_lotto_draft](/dbzero/vendite/funzioni/fn_reset_lotto_draft)  
+• [vendite.fn_reset_lotto_draft](/dbzero/vendite/funzioni/fn_reset_lotto_draft)  
 > • [vendite.fn_reset_lotto_fattura_draft](/dbzero/vendite/funzioni/fn_reset_lotto_fattura_draft)  
 
 ---
@@ -27,7 +27,7 @@ di fatture e righe correlate, ripristinando le righe di `attivita_fatturabili`.
 
 ---
 
-### ✅ Regole principali
+### Regole principali
 
 * Input principale: array `p_fatture_ids`.
 * Se l'array e` vuoto -> nessuna modifica.
@@ -41,7 +41,7 @@ di fatture e righe correlate, ripristinando le righe di `attivita_fatturabili`.
 
 ---
 
-### ✅ Output
+### Output
 
 Ritorna una riga con:
 
@@ -51,7 +51,7 @@ Ritorna una riga con:
 
 ---
 
-### 🧪 Esempio d’uso
+### Esempio d’uso
 
 ```sql
 SELECT *

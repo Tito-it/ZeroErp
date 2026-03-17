@@ -2,11 +2,11 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimenti tabelle:
+Approfondimenti tabelle:
 >
-> * [vendite.articoli](/dbzero/vendite/tabelle/articoli)
-> * [vendite.articoli_spesa](/dbzero/vendite/tabelle/articoli_spesa)
-> * [vendite.articoli_tipologie](/dbzero/vendite/tabelle/articoli_tipologie)
+[vendite.articoli](/dbzero/vendite/tabelle/articoli)
+> [vendite.articoli_spesa](/dbzero/vendite/tabelle/articoli_spesa)
+> [vendite.articoli_tipologie](/dbzero/vendite/tabelle/articoli_tipologie)
 
 La tabella **`vendite.articoli_gruppi`** gestisce la classificazione di **livello superiore** degli articoli.
 Ogni gruppo rappresenta un insieme logico di articoli con finalità di catalogazione, controllo gestionale, reporting e totalizzazione nei documenti di vendita e fatturazione.
@@ -23,7 +23,7 @@ Ogni gruppo rappresenta un insieme logico di articoli con finalità di catalogaz
 
 ---
 
-### 🔒 Vincoli e Logiche Aziendali
+### Vincoli e Logiche Aziendali
 
 * **Unicità**: ogni gruppo ha un `codice` univoco.
 * **Obbligatorietà**: `descrizione` deve sempre essere valorizzata.
@@ -32,14 +32,14 @@ Ogni gruppo rappresenta un insieme logico di articoli con finalità di catalogaz
 
 ---
 
-### 🔗 Relazioni e Indici
+### Relazioni e Indici
 
 * **Indice univoco**: `uq_articoli_gruppi_codice` garantisce l’unicità del codice.
 * **Relazioni**: utilizzata come riferimento in `vendite.articoli` per la classificazione.
 
 ---
 
-### ⚙️ Trigger Associati
+### Trigger Associati
 
 * **`trg_upd_articoli_gruppi_audit_data_user`**
 
@@ -48,7 +48,7 @@ Ogni gruppo rappresenta un insieme logico di articoli con finalità di catalogaz
 
 ---
 
-### 💡 Vantaggi Operativi
+### Vantaggi Operativi
 
 * **Gestione flessibile**: possibilità di attivare/disattivare gruppi senza perdita dati.
 * **Supporto analitico**: agevola la produzione di report per categorie merceologiche.
@@ -57,4 +57,4 @@ Ogni gruppo rappresenta un insieme logico di articoli con finalità di catalogaz
 
 ---
 
-> 🧠 **“I gruppi articoli costituiscono il primo livello di classificazione, abilitando una visione aggregata e coerente delle vendite.”**
+> **“I gruppi articoli costituiscono il primo livello di classificazione, abilitando una visione aggregata e coerente delle vendite.”**

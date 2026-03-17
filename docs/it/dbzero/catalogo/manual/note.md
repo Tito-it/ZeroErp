@@ -2,7 +2,7 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento Tabelle**
+**Approfondimento Tabelle**
 > • [`catalogo.articoli`](/dbzero/catalogo/tabelle/articoli)  
 > • [`catalogo.articoli_componenti`](/dbzero/catalogo/tabelle/articoli_componenti)  
 > • [`config.note_stili`](/dbzero/config/tabelle/note_stili)  
@@ -20,7 +20,7 @@
 
 ---
 
-### 🔗 Relazioni
+### Relazioni
 
 | Tipo | Tabella ↔ Campo                                  | Descrizione                                  |
 | ---- | ------------------------------------------------ | -------------------------------------------- |
@@ -31,7 +31,7 @@
 
 ---
 
-### 🧱 Struttura logica (campi chiave)
+### Struttura logica (campi chiave)
 
 * **Identità**: `id BIGINT` + `target_tipo` (**PK composita**)
 * **Target**: `target_tipo`, `target_id`, `target_riga_id` (opzionale per ancoraggio “RIGA”)
@@ -53,14 +53,14 @@
 
 ---
 
-### 🧩 Partizioni
+### Partizioni
 
 * `catalogo.note_articoli` → `target_tipo = 'ARTICOLI'`
 * `catalogo.note_articoli_componenti` → `target_tipo = 'ARTICOLI_COMPONENTI'`
 
 ---
 
-### 🔎 Query tipiche
+### Query tipiche
 
 **1) Note per articolo**
 

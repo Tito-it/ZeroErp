@@ -2,18 +2,18 @@
 
 > 👀 **Vedi anche**
 >
-> **Tabelle anagrafiche / config:**
+**Tabelle anagrafiche / config:**
 >
-> * [`anagrafiche.soggetti_ruoli`](/dbzero/anagrafiche/tabelle/soggetti_ruoli)
-> * [`anagrafiche.soggetti`](/dbzero/anagrafiche/tabelle/soggetti)
-> * [`config.tipi_ruoli`](/dbzero/config/tabelle/tipi_ruoli)
-> * [`config.tipi_soggetto`](/dbzero/config/tabelle/tipi_soggetto)
-> * [`config.tipi_soggetto_dettaglio`](/dbzero/config/tabelle/tipi_soggetto_dettaglio)
-> * [`config.tipi_ruoli_nature_ammesse`](/dbzero/config/tabelle/tipi_ruoli_nature_ammesse)
+[`anagrafiche.soggetti_ruoli`](/dbzero/anagrafiche/tabelle/soggetti_ruoli)
+> [`anagrafiche.soggetti`](/dbzero/anagrafiche/tabelle/soggetti)
+> [`config.tipi_ruoli`](/dbzero/config/tabelle/tipi_ruoli)
+> [`config.tipi_soggetto`](/dbzero/config/tabelle/tipi_soggetto)
+> [`config.tipi_soggetto_dettaglio`](/dbzero/config/tabelle/tipi_soggetto_dettaglio)
+> [`config.tipi_ruoli_nature_ammesse`](/dbzero/config/tabelle/tipi_ruoli_nature_ammesse)
 >
-> **Funzioni / trigger di supporto:**
+**Funzioni / trigger di supporto:**
 >
-> * [`script.fn_log_and_raise_error`](/dbzero/script/funzioni/fn_log_and_raise_error)
+[`script.fn_log_and_raise_error`](/dbzero/script/funzioni/fn_log_and_raise_error)
 
 ---
 
@@ -43,7 +43,7 @@ In caso di violazione, la funzione richiama **`script.fn_log_and_raise_error`** 
 
 ---
 
-### 🧱 Collegamenti principali
+### Collegamenti principali
 
 * **Tabelle coinvolte direttamente:**
 
@@ -87,7 +87,7 @@ CREATE OR REPLACE TRIGGER trg_soggetti_ruoli_a10_guard_natura_ammessa_ins_upd
 
 ---
 
-### 🧩 Contesto e parametri logici
+### Contesto e parametri logici
 
 Essendo una trigger function, non ha parametri espliciti. Utilizza:
 
@@ -100,7 +100,7 @@ Essendo una trigger function, non ha parametri espliciti. Utilizza:
 
 ---
 
-### 🔍 Logica di funzionamento (semplificata)
+### Logica di funzionamento (semplificata)
 
 1️⃣ **DELETE** → nessun controllo → `RETURN OLD`.
 
@@ -127,7 +127,7 @@ Essendo una trigger function, non ha parametri espliciti. Utilizza:
 
 ---
 
-### 🧪 Esempi specifici
+### Esempi specifici
 
 #### ✔ Esempio valido (natura ammessa)
 

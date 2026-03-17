@@ -2,10 +2,10 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimento tabelle:
+Approfondimento tabelle:
 >
-> * [anagrafiche.clienti](/dbzero/anagrafiche/tabelle/clienti)  
-> * [config.stati_cliente](/dbzero/config/tabelle/stati_cliente)   
+[anagrafiche.clienti](/dbzero/anagrafiche/tabelle/clienti)  
+> [config.stati_cliente](/dbzero/config/tabelle/stati_cliente)   
 
 ---
 
@@ -19,7 +19,7 @@ Fornire lo **stato cliente** associato a una specifica **istanza di servizio**, 
 ---
 
 
-### 📥 Parametri
+### Parametri
 
 | Parametro      | Tipo    | Descrizione                                                                 |
 | -------------- | ------- | --------------------------------------------------------------------------- |
@@ -27,13 +27,13 @@ Fornire lo **stato cliente** associato a una specifica **istanza di servizio**, 
 
 ---
 
-### 📤 Valore di Ritorno
+### Valore di Ritorno
 
 * **INTEGER**: `stato_cliente_id` del record cliente relativo all’istanza, o valore di default per lo stato "Istanza" se il cliente non esiste.
 
 ---
 
-### 🔄 Logica Operativa
+### Logica Operativa
 
 1. **Recupero stato del cliente**
 
@@ -61,7 +61,7 @@ Fornire lo **stato cliente** associato a una specifica **istanza di servizio**, 
 
 ---
 
-### 🔍 Esempi di Utilizzo
+### Esempi di Utilizzo
 
 * **Richiamare lo stato di un’istanza specifica**:
 
@@ -80,7 +80,7 @@ Fornire lo **stato cliente** associato a una specifica **istanza di servizio**, 
 
 ---
 
-### 📌 Best Practice
+### Best Practice
 
 * Assicurarsi che esista un indice su `clienti.istanza_utility_id` per ottimizzare la prima subquery.
 * Evitare di modificare `codice_interno = 'IS'` senza aggiornare le eventuali query/funzioni che ne fanno riferimento.

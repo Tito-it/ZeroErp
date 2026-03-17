@@ -2,16 +2,16 @@
 
 >  👀 **Vedi anche**   
 >
-> Approfondimento tabelle:   
+Approfondimento tabelle:   
 >
->  * [config.province](/dbzero/config/tabelle/province)        
->  * [config.stradario](/dbzero/config/tabelle/stradario)        
->  * [config.stradario_generale](/dbzero/config/tabelle/stradario_generale)        
->  * [storico.comuni](/dbzero/storico/tabelle/comuni)  
+[config.province](/dbzero/config/tabelle/province)        
+>  [config.stradario](/dbzero/config/tabelle/stradario)        
+>  [config.stradario_generale](/dbzero/config/tabelle/stradario_generale)        
+>  [storico.comuni](/dbzero/storico/tabelle/comuni)  
 >
-> Approfondimento funzione:   
-> * [config.trgfn_comuni_protect_update](/dbzero/config/funzioni/trgfn_comuni_protect_update)   
-> * [script.trgfn_storico_generic](/dbzero/script/funzioni/trgfn_storico_generic)   
+Approfondimento funzione:   
+> [config.trgfn_comuni_protect_update](/dbzero/config/funzioni/trgfn_comuni_protect_update)   
+> [script.trgfn_storico_generic](/dbzero/script/funzioni/trgfn_storico_generic)   
 
 La tabella **`config.comuni`** censisce i comuni (italiani ed esteri) all’interno di uno stato, fornendo la base per la geolocalizzazione degli indirizzi e per l’associazione con lo stradario.
 
@@ -35,7 +35,7 @@ La tabella **`config.comuni`** censisce i comuni (italiani ed esteri) all’inte
 
 ---
 
-### 🔗 Collegamenti con Altre Tabelle
+### Collegamenti con Altre Tabelle
 
 * **`config.province`**
   Il campo `provincia_id` identifica al provincia di appartenenza..
@@ -43,7 +43,7 @@ La tabella **`config.comuni`** censisce i comuni (italiani ed esteri) all’inte
   `storico` True attiva il trigger per il salvataggio delle informazioni.
 ---
 
-### 💡 Vantaggi Operativi
+### Vantaggi Operativi
 
 * **Flessibilità**
   L’uso di un campo JSONB per attributi extra consente di adattare la struttura dei dati alle diverse normative nazionali senza modifiche allo schema.
@@ -54,4 +54,4 @@ La tabella **`config.comuni`** censisce i comuni (italiani ed esteri) all’inte
 
 ---
 
-> 🧠 **"Un catalogo flessibile e gerarchico dei comuni, arricchito da attributi nazionali personalizzabili per supportare indirizzamento e reporting geografico."**
+> **"Un catalogo flessibile e gerarchico dei comuni, arricchito da attributi nazionali personalizzabili per supportare indirizzamento e reporting geografico."**

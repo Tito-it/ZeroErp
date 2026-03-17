@@ -4,7 +4,7 @@
 
 > Approfondimenti tabelle:   
 >
-> * [config.messaggi_errore](/dbzero/config/tabelle/messaggi_errore)  
+[config.messaggi_errore](/dbzero/config/tabelle/messaggi_errore)  
 
 
 La funzione **`script.fn_get_messaggio(p_codice text, p_valore text DEFAULT NULL, p_lingua text DEFAULT NULL) RETURNS text`** recupera e formatta un messaggio dall’archivio centralizzato, con supporto per placeholder e internazionalizzazione.
@@ -26,7 +26,7 @@ La funzione **`script.fn_get_messaggio(p_codice text, p_valore text DEFAULT NULL
 
 ---
 
-### 🔍 Parametri di Input
+### Parametri di Input
 
 | Nome       | Tipo   | Default |Descrizione                                           |
 | ---------- | ------ | ------- |----------------------------------------------------- |
@@ -36,7 +36,7 @@ La funzione **`script.fn_get_messaggio(p_codice text, p_valore text DEFAULT NULL
 
 ---
 
-### ⚙️ Comportamento Interno
+### Comportamento Interno
 
 1. **Determinazione lingua effettiva**
 
@@ -74,14 +74,14 @@ La funzione **`script.fn_get_messaggio(p_codice text, p_valore text DEFAULT NULL
 
 ---
 
-### 🔒 Valore di Ritorno
+### Valore di Ritorno
 
 * **`text`**
   Messaggio finale, con eventuale sostituzione di `%s` applicata.
 
 ---
 
-### 💡 Vantaggi Operativi
+### Vantaggi Operativi
 
 * **Manutenzione semplificata**
   Modifiche ai messaggi avvengono unicamente in tabella, senza interventi su sorgenti PL/pgSQL.
@@ -96,4 +96,4 @@ La funzione **`script.fn_get_messaggio(p_codice text, p_valore text DEFAULT NULL
 
 ---
 
-> 🧠 **“Centralizzare e parametrizzare i messaggi in tabella con supporto multilingua e placeholder `%s` è una best practice per mantenere il codice pulito, manutenibile e traducibile.”**
+> **“Centralizzare e parametrizzare i messaggi in tabella con supporto multilingua e placeholder `%s` è una best practice per mantenere il codice pulito, manutenibile e traducibile.”**

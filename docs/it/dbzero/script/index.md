@@ -48,6 +48,7 @@
 - [fn_resolve_livello_oggetto](funzioni/fn_resolve_livello_oggetto.md) — (latest review 08-03-2026) La funzione **`script.fn_resolve_livello_oggetto`** risolve il livello di accesso per un singolo model Django (`app_label` + `model_name`).
 - [fn_search_soggetti_universale](funzioni/fn_search_soggetti_universale.md)
 - [fn_search_stradario](funzioni/fn_search_stradario.md)
+- [fn_search_stradario_generale](funzioni/fn_search_stradario_generale.md)
 - [fn_subentro_cliente](funzioni/fn_subentro_cliente.md) — (latest review 01-03-26)
 - [fn_valida_codice_fiscale](funzioni/fn_valida_codice_fiscale.md) — * **Validazione formale** del Codice Fiscale (CF) calcolando e confrontando il carattere di controllo. * **Supporto omocodici**, garantendo validità anche per CF derivati con omolettere. * **Delegare al backend** i controlli di congruenza con data di nascita, sesso e luogo di nascita per mantenere flessibilità applicativa.
 - [fn_valida_partita_iva](funzioni/fn_valida_partita_iva.md) — Verificare **formalmente** la correttezza di una Partita IVA italiana (11 cifre) calcolando il **check digit** con l’algoritmo di Luhn modificato, restituendo:
@@ -55,7 +56,7 @@
 - [log](funzioni/log.md)
 - [trgfn_audit_data_user_generic](funzioni/trgfn_audit_data_user_generic.md) — * **Audit automatico su INSERT e UPDATE**   Assicura che ogni inserimento e modifica sia registrato con timestamp (`data_update`) e utente reale (`user_update` / `user_insert`). * **Centralizzare la logica di audit**   Un'unica trigger function per tutte le tabelle, evitando duplicazione di logica. * **Tracciare l'utente reale (JWT)**   Utilizza la GUC `app.jwt_user` impostata dal middleware Django per registrare   l'utente che ha effettuato la chiamata API, non il ruolo DB della connessione.
 - [trgfn_config_sistema_codici_sync_gen_codice](funzioni/trgfn_config_sistema_codici_sync_gen_codice.md) — La funzione `script.trgfn_config_sistema_codici_sync_gen_codice()` mantiene **sincronizzati** trigger e trigger function per la **generazione automatica dei codici/numero** in base a `config.sistema_codici`.
-- [trgfn_delete_block_by_guc](funzioni/trgfn_delete_block_by_guc.md) — (latest review 23-01-2026) La funzione `script.trgfn_delete_block_by_guc()` e` una **trigger function generica** che blocca le DELETE, consentendo il bypass tramite una **GUC** di manutenzione.
+- [trgfn_delete_block_by_guc](funzioni/trgfn_delete_block_by_guc.md)
 - [trgfn_guard_emittente_scope](funzioni/trgfn_guard_emittente_scope.md)
 - [trgfn_guard_sorgente_polimorfa](funzioni/trgfn_guard_sorgente_polimorfa.md) — `script.trgfn_guard_sorgente_polimorfa()` fornisce un **controllo unificato e riusabile** sulla **coerenza dei riferimenti di sorgente** (origine dati) per tabelle applicative che adottano il pattern:
 - [trgfn_guard_utility_tipo_ruolo_by_cols](funzioni/trgfn_guard_utility_tipo_ruolo_by_cols.md) — La funzione **`script.trgfn_guard_utility_tipo_ruolo_by_cols()`** e` una trigger function generica che applica il controllo utility/ruolo su tabelle con colonne configurabili.

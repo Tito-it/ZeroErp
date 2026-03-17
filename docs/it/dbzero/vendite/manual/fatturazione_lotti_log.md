@@ -2,13 +2,11 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> • [vendite.fatturazione_lotti](/dbzero/vendite/tabelle/fatturazione_lotti)  
+• [vendite.fatturazione_lotti](/dbzero/vendite/tabelle/fatturazione_lotti)  
 >
----
-
-### 🎯 Scopo Principale
+🎯 Scopo Principale
 
 (latest review 28-01-2026)
 `vendite.fatturazione_lotti_log` registra **warning** e **errori critici**
@@ -16,7 +14,7 @@ relativi ai processi del lotto di fatturazione.
 
 ---
 
-### 🧱 Campi chiave (semantica)
+### Campi chiave (semantica)
 
 * **Contesto**: `lotto_id`.
 * **Evento**: `data_ora`, `messaggio`.
@@ -28,7 +26,7 @@ relativi ai processi del lotto di fatturazione.
 
 ---
 
-### ✅ Note operative
+### Note operative
 
 * Tabella dedicata al **lotto fatturazione**, distinta da `fatture_log`.
 * I record con `status = I` possono essere usati per mostrare l’avanzamento

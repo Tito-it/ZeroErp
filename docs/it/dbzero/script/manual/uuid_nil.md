@@ -11,7 +11,7 @@ La funzione **`script.uuid_nil()`** restituisce l’**UUID nil**, ovvero il valo
 
 ---
 
-### ⚙️ Esempio di Utilizzo
+### Esempio di Utilizzo
 
 ```sql
 -- Assegna l’UUID nil a una variabile
@@ -23,4 +23,4 @@ NEW.tx_id := COALESCE(current_tx_id, script.uuid_nil());
 
 ---
 
-> 🧠 **“`script.uuid_nil()` è il modo più semplice e leggibile per ottenere un UUID ‘tutti zeri’ nel database.”**
+> **“`script.uuid_nil()` è il modo più semplice e leggibile per ottenere un UUID ‘tutti zeri’ nel database.”**

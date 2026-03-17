@@ -2,18 +2,18 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**  
+**Approfondimento tabelle:**  
 >
-> • [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)   
+• [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)   
 > • [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)   
 > • [anagrafiche.contatti](/dbzero/anagrafiche/tabelle/contatti)   
 > • [config.tipi_contatti](/dbzero/config/tabelle/tipi_contatti)   
 > • [config.unita_organizzative](/dbzero/config/tabelle/unita_organizzative)
 > • [config.utilities](/dbzero/config/tabelle/utilities)   
 >
-> **Approfondimento funzioni:**
+**Approfondimento funzioni:**
 >
-> • [`script.fn_get_contatti`](/dbzero/script/funzioni/fn_get_contatti.md)  
+• [`script.fn_get_contatti`](/dbzero/script/funzioni/fn_get_contatti.md)  
 
 ---
 
@@ -32,7 +32,7 @@ La funzione **riutilizza la logica di `script.fn_get_contatti`** per costruire l
 
 ---
 
-### 🧩 Firma
+### Firma
 
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_get_contatto_default(
@@ -62,7 +62,7 @@ LANGUAGE sql;
 
 ---
 
-### 🧠 Parametri di input
+### Parametri di input
 
 | Nome                  | Tipo      | Obbl. | Descrizione                                                                                                          |
 | --------------------- | --------- | :---: | -------------------------------------------------------------------------------------------------------------------- |
@@ -76,7 +76,7 @@ LANGUAGE sql;
 
 ---
 
-### 📤 Valori restituiti
+### Valori restituiti
 
 La funzione restituisce **0 o 1 record** con la stessa struttura di `fn_get_contatti`, ma solo per il contatto considerato *default* nel contesto richiesto.
 
@@ -100,7 +100,7 @@ Se non esistono contatti che rispettano i criteri impostati **o nessuno è marca
 
 ---
 
-### ⚙️ Logica interna
+### Logica interna
 
 La funzione è implementata come **wrapper SQL** su `script.fn_get_contatti`.
 
@@ -151,11 +151,11 @@ WHERE rn = 1;
 
    * Restituisce **solo il record con `rn = 1`**, garantendo al massimo **un contatto default**.
 
-> 🔎 La scelta di usare `ROW_NUMBER()` consente di gestire eventuali **dati sporchi** (più contatti marcati default) senza generare errore, ma scegliendo comunque in modo deterministico.
+> La scelta di usare `ROW_NUMBER()` consente di gestire eventuali **dati sporchi** (più contatti marcati default) senza generare errore, ma scegliendo comunque in modo deterministico.
 
 ---
 
-### 🧱 Dipendenze
+### Dipendenze
 
 **Funzioni:**
 
@@ -176,7 +176,7 @@ WHERE rn = 1;
 
 ---
 
-### 🧪 Esempi d’uso
+### Esempi d’uso
 
 #### 1) Contatto default generico per soggetto
 
@@ -221,7 +221,7 @@ Permette di recuperare, ad esempio, il **referente amministrativo predefinito** 
 
 ---
 
-### ✅ Best practice e note d’uso
+### Best practice e note d’uso
 
 * **Coerenza con `fn_get_contatti`:**
 

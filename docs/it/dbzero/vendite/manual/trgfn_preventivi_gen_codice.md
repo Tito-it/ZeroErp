@@ -2,7 +2,7 @@
 
 > 👀 **Vedi anche**
 >
-> • [vendite.preventivi](/dbzero/vendite/tabelle/preventivi)  
+• [vendite.preventivi](/dbzero/vendite/tabelle/preventivi)  
 > • [script.fn_generate_codice](/dbzero/script/funzioni/fn_generate_codice)  
 
 ---
@@ -14,14 +14,14 @@ automaticamente `numero` preventivo quando il campo non viene valorizzato.
 
 ---
 
-### ✅ Regole principali
+### Regole principali
 
 * se `NEW.numero` e` nullo/vuoto, valorizza con `script.fn_generate_codice('preventivo')`;
 * se `NEW.numero` e` gia` presente, non interviene.
 
 ---
 
-### 🧩 Utilizzo
+### Utilizzo
 
 Usata come trigger `BEFORE INSERT` su `vendite.preventivi` per garantire una
 numerazione coerente anche in inserimenti batch/automatici.

@@ -2,15 +2,13 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> • [pagamenti.vendite_contabili_righe](/dbzero/pagamenti/tabelle/vendite_contabili_righe)  
+• [pagamenti.vendite_contabili_righe](/dbzero/pagamenti/tabelle/vendite_contabili_righe)  
 > • [pagamenti.vendite_contabili_righe_stati](/dbzero/pagamenti/tabelle/vendite_contabili_righe_stati)  
 > • [pagamenti.vendite_contabili](/dbzero/pagamenti/tabelle/vendite_contabili)  
 >
----
-
-### 🎯 Scopo Principale
+🎯 Scopo Principale
 
 (latest review 13-02-2026)  
 La funzione **`pagamenti.fn_get_saldo_fattura_contabili()`** restituisce il
@@ -19,7 +17,7 @@ saldo contabile di una fattura calcolato sulle sole righe in stato
 
 ---
 
-### ✅ Regole principali
+### Regole principali
 
 * `p_fattura_id` obbligatorio (`> 0`).
 * Considera solo:
@@ -30,7 +28,7 @@ saldo contabile di una fattura calcolato sulle sole righe in stato
 
 ---
 
-### ✅ Output
+### Output
 
 Ritorna una riga con:
 
@@ -39,7 +37,7 @@ Ritorna una riga con:
 
 ---
 
-### 🧪 Esempio d’uso
+### Esempio d’uso
 
 ```sql
 SELECT *

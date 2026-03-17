@@ -2,10 +2,10 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimenti tabelle:    
+Approfondimenti tabelle:    
 >
-> * [config.iva](/dbzero/config/tabelle/iva)    
-> * [config.conti_contabili](/dbzero/config/tabelle/conti_contabili)    
+[config.iva](/dbzero/config/tabelle/iva)    
+> [config.conti_contabili](/dbzero/config/tabelle/conti_contabili)    
 
 La trigger function `trgfn_iva_ins_upd_check_conti_iva` assicura che i conti contabili associati ai codici IVA rispettino le regole aziendali: il conto di acquisto (`conto_iva_acquisti_id`) deve essere di tipo acquisto, mentre il conto di vendita (`conto_iva_vendita_id`) deve essere di tipo vendita.
 
@@ -18,7 +18,7 @@ La trigger function `trgfn_iva_ins_upd_check_conti_iva` assicura che i conti con
 
 ---
 
-### 🔍 Parametri e Contesto
+### Parametri e Contesto
 
 * **Nessun parametro esterno**: opera sui record `NEW` del trigger.
 * **Trigger associato**:
@@ -37,7 +37,7 @@ La trigger function `trgfn_iva_ins_upd_check_conti_iva` assicura che i conti con
 
 ---
 
-### ⚙️ Logica di Controllo
+### Logica di Controllo
 
 1. **Caricamento del tipo conto**
 
@@ -78,14 +78,14 @@ Se uno dei controlli fallisce, la funzione interrompe l’operazione con un erro
 
 ---
 
-### 🔒 Valore di Ritorno
+### Valore di Ritorno
 
 * \`\`
   Restituisce `NEW` immutato se tutti i controlli superano, altrimenti solleva un’eccezione.
 
 ---
 
-### 💡 Vantaggi Operativi
+### Vantaggi Operativi
 
 * **Prevenzione di errori**: blocca subito associazioni contabili non valide.
 * **Feedback immediato**: messaggi di errore chiari aiutano lo sviluppatore o l’operatore.
@@ -93,4 +93,4 @@ Se uno dei controlli fallisce, la funzione interrompe l’operazione con un erro
 
 ---
 
-> 🧠 **“Con una trigger function dedicata alla validazione dei conti IVA si garantisce che ogni codice IVA sia sempre accoppiato al conto corretto, riducendo i rischi di anomalie contabili.”**
+> **“Con una trigger function dedicata alla validazione dei conti IVA si garantisce che ogni codice IVA sia sempre accoppiato al conto corretto, riducendo i rischi di anomalie contabili.”**

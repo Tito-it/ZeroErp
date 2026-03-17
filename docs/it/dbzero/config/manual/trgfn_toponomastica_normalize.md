@@ -2,15 +2,15 @@
 
 > 👀 **Vedi anche**   
 >
-> **Approfondimento tabelle:**    
+**Approfondimento tabelle:**    
 >
-> * [config.toponomastica](/dbzero/config/tabelle/toponomastica)   
-> * [config.stati](/dbzero/config/tabelle/stati)   
+[config.toponomastica](/dbzero/config/tabelle/toponomastica)   
+> [config.stati](/dbzero/config/tabelle/stati)   
 >
-> **Approfondimento funzioni:**   
+**Approfondimento funzioni:**   
 >
-> * [script.fn_get_default_by_param](/dbzero/script/funzioni/fn_get_default_by_param)   
-> * [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)   
+[script.fn_get_default_by_param](/dbzero/script/funzioni/fn_get_default_by_param)   
+> [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)   
 
 ---
 
@@ -22,7 +22,7 @@ Impostare lo `stato_id` di default per la toponomastica e garantire che il valor
 
 ---
 
-### 🧩 Come Funziona
+### Come Funziona
 
 1. Se `NEW.stato_id` e' NULL, recupera il default da `script.fn_get_default_by_param` (parametro `state_code_iso3`).
 2. Se dopo il default il valore e' ancora NULL, blocca l'operazione con errore applicativo.
@@ -37,7 +37,7 @@ Impostare lo `stato_id` di default per la toponomastica e garantire che il valor
 
 ---
 
-## 🔗 Trigger Associato
+## Trigger Associato
 
 ```sql
 CREATE TRIGGER trg_toponomastica_normalize_ins_upd
@@ -49,12 +49,12 @@ CREATE TRIGGER trg_toponomastica_normalize_ins_upd
 
 ---
 
-### 💡 Note Operative
+### Note Operative
 
 * Il default e' guidato dal parametro `state_code_iso3` in `config.parameters`.
 * La validazione finale impedisce di creare toponimi senza stato.
 
 ---
 
-> 🧠 **"Toponomastica sempre coerente: default da parametro e blocco se mancante."**
+> **"Toponomastica sempre coerente: default da parametro e blocco se mancante."**
 

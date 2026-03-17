@@ -12,48 +12,32 @@ CREATE OR REPLACE FUNCTION anagrafiche.trgfn_indirizzi_dettaglio_normalize()
  RETURNS trigger
  LANGUAGE plpgsql
 AS $function$
+DECLARE
+  v_result record;
 BEGIN
-  -- Normalizza la descrizione della via da vw_indirizzo_completo
-  SELECT UPPER(TRIM(iv.tipo_toponimo || ' ' || iv.nome_strada))
-    INTO STRICT NEW.via_norm
-    FROM script.vw_indirizzo_completo iv
-   WHERE iv.id_stradario = NEW.stradario_id
-   LIMIT 1;
+  -- Delega TUTTA la logica a fn_build_indirizzo_normalizzato
+  SELECT * INTO v_result
+    FROM anagrafiche.fn_build_indirizzo_normalizzato(
+      NEW.stradario_id, NEW.civico, NEW.estensione_civico,
+      NEW.palazzina, NEW.scala, NEW.piano, NEW.interno
+    );
 
-  -- Normalizzazione del numero civico con eventuale estensione
-  IF NEW.civico IS NOT NULL AND NEW.civico <> 0 THEN
-    IF NEW.estensione_civico IS NOT NULL AND NEW.estensione_civico <> '' THEN
-      IF LEFT(NEW.estensione_civico,1) <> '/' THEN
-        NEW.estensione_civico := '/' || NEW.estensione_civico;
-      END IF;
-      NEW.civico_norm := UPPER(NEW.civico::text || NEW.estensione_civico);
-    ELSE
-      NEW.civico_norm := UPPER(NEW.civico::text);
-    END IF;
-  ELSE
-    NEW.civico_norm := 'SNC';
-  END IF;
-
-  -- Costruzione dell'indirizzo completo normalizzato
-  NEW.indirizzo_normalizzato := TRIM(BOTH ' ' FROM (
-      NEW.via_norm
-    || CASE WHEN NEW.civico_norm <> '' THEN ', ' || NEW.civico_norm ELSE '' END
-    || CASE WHEN NEW.palazzina IS NOT NULL AND NEW.palazzina <> ''
-            THEN ', Pal.' || NEW.palazzina ELSE '' END
-    || CASE WHEN NEW.scala IS NOT NULL AND NEW.scala <> ''
-            THEN ', Scala ' || NEW.scala ELSE '' END
-    || CASE WHEN NEW.piano IS NOT NULL AND NEW.piano <> ''
-            THEN ', Piano ' || NEW.piano ELSE '' END
-    || CASE WHEN NEW.interno IS NOT NULL AND NEW.interno <> ''
-            THEN ', Int.' || NEW.interno ELSE '' END
-  ));
+  -- Assegna i risultati alle colonne della riga
+  NEW.estensione_civico      := v_result.o_estensione_civico;
+  NEW.palazzina              := v_result.o_palazzina;
+  NEW.scala                  := v_result.o_scala;
+  NEW.piano                  := v_result.o_piano;
+  NEW.interno                := v_result.o_interno;
+  NEW.via_norm               := v_result.o_via_norm;
+  NEW.civico_norm            := v_result.o_civico_norm;
+  NEW.indirizzo_normalizzato := v_result.o_indirizzo_normalizzato;
 
   RETURN NEW;
 END;
 $function$
 
 COMMENT ON FUNCTION anagrafiche.trgfn_indirizzi_dettaglio_normalize()
-IS 'Normalizza via/civico/indirizzo_normalizzato su anagrafiche.indirizzi_dettaglio usando script.vw_indirizzo_completo.';
+IS 'Trigger wrapper: chiama fn_build_indirizzo_normalizzato e assegna tutti i campi calcolati. Zero logica — tutta centralizzata nella funzione.';
 ```
 
 ---

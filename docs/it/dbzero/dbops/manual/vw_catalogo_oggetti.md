@@ -2,8 +2,8 @@
 
 > 👀 **Vedi anche**
 >
-> * Sistema di catalogazione cataloghi di sistema (`pg_class`, `pg_namespace`)
-> * Schema `dbops` e schema `script`
+Sistema di catalogazione cataloghi di sistema (`pg_class`, `pg_namespace`)
+> Schema `dbops` e schema `script`
 
 La view **`dbops.vw_catalogo_oggetti`** fornisce un elenco centralizzato degli oggetti presenti negli schemi **`dbops`** e **`script`**, includendo tabelle, viste, indici, sequenze, materialized views e funzioni, con informazioni sul tipo, sul proprietario e sulla descrizione.
 
@@ -16,7 +16,7 @@ La view **`dbops.vw_catalogo_oggetti`** fornisce un elenco centralizzato degli o
 
 ---
 
-### 🔍 Definizione (DDL)
+### Definizione (DDL)
 
 ```sql
 CREATE OR REPLACE VIEW dbops.vw_catalogo_oggetti AS
@@ -47,7 +47,7 @@ WHERE n.nspname = ANY (ARRAY['dbops', 'script']);
 
 ---
 
-### 🔍 Colonne e Significato
+### Colonne e Significato
 
 | Colonna            | Descrizione                                                                  |
 | ------------------ | ---------------------------------------------------------------------------- |
@@ -60,7 +60,7 @@ WHERE n.nspname = ANY (ARRAY['dbops', 'script']);
 
 ---
 
-### ⚙️ Esempi di Utilizzo
+### Esempi di Utilizzo
 
 1. **Elencare tutte le tabelle** dei due schemi:
 
@@ -89,7 +89,7 @@ WHERE n.nspname = ANY (ARRAY['dbops', 'script']);
 
 ---
 
-### 💡 Vantaggi Operativi
+### Vantaggi Operativi
 
 * **Rapidità di analisi**: evita join viewsi su `pg_class`, `pg_namespace` e `pg_roles`.
 * **Auditing e documentazione**: consente di scoprire oggetti orfani o privi di commento.
@@ -97,4 +97,4 @@ WHERE n.nspname = ANY (ARRAY['dbops', 'script']);
 
 ---
 
-> 🧠 **“Una view di catalogo centralizzato semplifica il discovery e il governo degli oggetti di database, favorendo manutenzione e compliance.”**
+> **“Una view di catalogo centralizzato semplifica il discovery e il governo degli oggetti di database, favorendo manutenzione e compliance.”**

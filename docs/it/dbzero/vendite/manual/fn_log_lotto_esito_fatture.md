@@ -2,19 +2,17 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> • [vendite.fatturazione_lotti](/dbzero/vendite/tabelle/fatturazione_lotti)   
+• [vendite.fatturazione_lotti](/dbzero/vendite/tabelle/fatturazione_lotti)   
 > • [vendite.fatturazione_lotti_log](/dbzero/vendite/tabelle/fatturazione_lotti_log)   
 > • [vendite.fatture_log](/dbzero/vendite/manual/fatture_log)   
 >
-> **Approfondimento funzioni:**
+**Approfondimento funzioni:**
 >
-> • [vendite.fn_log_pipeline_fase](/dbzero/vendite/funzioni/fn_log_pipeline_fase)   
+• [vendite.fn_log_pipeline_fase](/dbzero/vendite/funzioni/fn_log_pipeline_fase)   
 >
----
-
-### 🎯 Scopo Principale
+🎯 Scopo Principale
 
 (latest review 29-01-2026)  
 La funzione **`vendite.fn_log_lotto_esito_fatture()`** registra un log di
@@ -22,7 +20,7 @@ esito lotto dedotto dai log fatture associate al lotto.
 
 ---
 
-### ✅ Regole principali
+### Regole principali
 
 * Se esiste almeno un log **critical** attivo, lo status lotto è `C`.
 * Se non ci sono critical ma esistono warning, lo status lotto è `W`.
@@ -34,7 +32,7 @@ esito lotto dedotto dai log fatture associate al lotto.
 
 ---
 
-### ✅ Output
+### Output
 
 Nessun output (RETURN void).
 

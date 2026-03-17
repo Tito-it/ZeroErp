@@ -2,14 +2,14 @@
 
 > 👀 **Vedi anche**
 >
-> **Guide generali:**    
+**Guide generali:**    
 >
-> • [Generazione di un cliente](/guide/generazione-cliente)    
+• [Generazione di un cliente](/guide/generazione-cliente)    
 > • [Gestione delle istanze utility](/guide/gestione-delle-istanze-utility)    
 >
-> **Approfondimento tabelle:**    
+**Approfondimento tabelle:**    
 >
-> • [vendite.contratti_righe](/dbzero/vendite/tabelle/contratti_righe)    
+• [vendite.contratti_righe](/dbzero/vendite/tabelle/contratti_righe)    
 > • [vendite.note_contratto](/dbzero/vendite/tabelle/note_contratto)    
 > • [anagrafiche.istanze_utilities](/dbzero/anagrafiche/tabelle/istanze_utilities)    
 > • [anagrafiche.istanze_dati_precontrattuali](/dbzero/anagrafiche/tabelle/istanze_dati_precontrattuali)     
@@ -18,14 +18,11 @@
 > • [config.utilities](/dbzero/config/tabelle/utilities)    
 > • [config.stati_doc_contratti](/dbzero/config/tabelle/stati_doc_contratti)   
 >
+**Approfondimento funzioni:**
 >
->  **Approfondimento funzioni:**
+• [`vendite.trgfn_contratti_gen_codice`](/dbzero/vendite/funzioni/trgfn_contratti_gen_codice)
 >
-> • [`vendite.trgfn_contratti_gen_codice`](/dbzero/vendite/funzioni/trgfn_contratti_gen_codice)
->
----
-
-### 🎯 Scopo Principale     
+🎯 Scopo Principale     
 
 (Initial version - 19-01-26)
 `vendite.contratti` rappresenta la **testata del contratto commerciale**: l’accordo che lega un **billing account** a una **istanza/utility** e ne definisce **ambito**, **periodo di validita** e **stato**. E` la base di aggregazione delle righe (`vendite.contratti_righe`) e il punto di riferimento per la generazione di **attivita fatturabili**.
@@ -39,7 +36,7 @@ Obiettivi principali:
 
 ---
 
-### 🧭 Collocazione nel flusso operativo
+### Collocazione nel flusso operativo
 
 1. **Fase pre‑cliente**: raccolta dati tecnici/commerciali su `anagrafiche.istanze_dati_precontrattuali`.
 2. **Creazione contratto**: assegnazione `billing_account_id`, `istanza_utility_id`, `utility_id` e periodo di validita.
@@ -49,7 +46,7 @@ Obiettivi principali:
 
 ---
 
-### 📄 Identita contratto & numerazione
+### Identita contratto & numerazione
 
 * **Numero** (`numero`) generato da `vendite.trgfn_contratti_gen_codice()` se non fornito.
 * **UID** (`uid`) per integrazioni esterne e idempotenza applicativa.
@@ -59,7 +56,7 @@ Obiettivi principali:
 
 ---
 
-### 📆 Validita, ambito e anti‑overlap
+### Validita, ambito e anti‑overlap
 
 * **Periodo**: `valido_dal` e `valido_al` (NULL = aperto).
 * **Ambito** (`ambito`) separa domini diversi (es. COMMODITY vs servizi extra).
@@ -69,7 +66,7 @@ Obiettivi principali:
 
 ---
 
-### 🔗 Collegamenti anagrafici
+### Collegamenti anagrafici
 
 * **Billing Account** (`billing_account_id`) = intestatario economico del contratto.
 * **Istanza utility** (`istanza_utility_id`) = punto tecnico/fornitura del servizio.
@@ -78,7 +75,7 @@ Obiettivi principali:
 
 ---
 
-### 🧩 Integrazione con `anagrafiche.istanze_dati_precontrattuali`
+### Integrazione con `anagrafiche.istanze_dati_precontrattuali`
 
 I dati precontrattuali sono **tipici del dominio utilities** e sono riferiti a `istanza_utility_id` e `utility_id`. Il contratto li integra in modo **non invasivo**:
 
@@ -90,7 +87,7 @@ Per attivita **non‑utilities** o servizi eterogenei, i dati precontrattuali po
 
 ---
 
-### 🧷 Meta, rinnovi e storicizzazione
+### Meta, rinnovi e storicizzazione
 
 * **`meta jsonb`**: contenitore estendibile per condizioni specifiche (SLA, clausole, parametri di calcolo).
 * **Rinnovi/collegamenti**: `parent_contratto_id` collega contratti successivi (rinnovi, subentri, varianti).
@@ -100,7 +97,7 @@ Per attivita **non‑utilities** o servizi eterogenei, i dati precontrattuali po
 
 ---
 
-### ✅ Best practice
+### Best practice
 
 * Valorizzare sempre `billing_account_id`, `istanza_utility_id` e `utility_id` in modo coerente.
 * Gestire `valido_dal`/`valido_al` per evitare sovrapposizioni contrattuali.
@@ -109,7 +106,7 @@ Per attivita **non‑utilities** o servizi eterogenei, i dati precontrattuali po
 
 ---
 
-### 👓 Ruolo nel sistema
+### Ruolo nel sistema
 
 `vendite.contratti` e` il **centro di gravita commerciale** tra istanza tecnica e fatturazione. In ambito utilities consolida i dati precontrattuali e li trasforma in **condizioni operative**, mentre in ambiti eterogenei diventa un contenitore flessibile di servizi e canoni da erogare nel tempo.
 

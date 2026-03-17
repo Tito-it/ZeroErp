@@ -2,18 +2,16 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> • [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)  
+• [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)  
 > • [pagamenti.enti_incasso](/dbzero/pagamenti/tabelle/enti_incasso)  
 >
-> **Approfondimento funzioni:**
+**Approfondimento funzioni:**
 >
-> • [anagrafiche.trgfn_psp_guard_ruolo_psp](/dbzero/anagrafiche/funzioni/trgfn_psp_guard_ruolo_psp)  
+• [anagrafiche.trgfn_psp_guard_ruolo_psp](/dbzero/anagrafiche/funzioni/trgfn_psp_guard_ruolo_psp)  
 >
----
-
-### 🎯 Scopo Principale
+🎯 Scopo Principale
 
 (latest review 13-02-2026)  
 `anagrafiche.psp` rappresenta l’anagrafica dei **Payment Service Provider**
@@ -25,7 +23,7 @@ reseller, emittenti e banche.
 
 ---
 
-### 🧱 Ruolo nel processo
+### Ruolo nel processo
 
 * identifica gli operatori di pagamento esterni (gateway/processor);
 * abilita il mapping dei canali in `pagamenti.enti_incasso`;
@@ -33,7 +31,7 @@ reseller, emittenti e banche.
 
 ---
 
-### ✅ Regole principali
+### Regole principali
 
 * `codice` univoco e non vuoto.
 * `soggetto_ruolo_id` univoco (relazione 1:1 con il ruolo PSP).
@@ -42,7 +40,7 @@ reseller, emittenti e banche.
 
 ---
 
-### 🧪 Esempio d’uso
+### Esempio d’uso
 
 ```sql
 SELECT p.id, p.codice, p.descrizione, p.attivo

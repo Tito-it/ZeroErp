@@ -2,9 +2,9 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> • [vendite.fatture](/dbzero/vendite/tabelle/fatture)
+• [vendite.fatture](/dbzero/vendite/tabelle/fatture)
 > • [vendite.fatture_righe](/dbzero/vendite/tabelle/fatture_righe)
 > • [vendite.fatture_riepiloghi_iva](/dbzero/vendite/tabelle/fatture_riepiloghi_iva)
 > • [vendite.fatture_scadenze](/dbzero/vendite/tabelle/fatture_scadenze)
@@ -22,7 +22,7 @@ Obiettivi:
 
 ---
 
-### 🧭 Collocazione nel flusso documentale
+### Collocazione nel flusso documentale
 
 1. **Generazione rettifica** (es. nota credito): il motore crea la testata su `vendite.fatture` e le eventuali righe (`vendite.fatture_righe`).
 2. **Associazione**: per ogni documento originario da rettificare, viene creato un **link** su `vendite.fatture_rettifiche`.
@@ -30,7 +30,7 @@ Obiettivi:
 
 ---
 
-### 🔑 Campi chiave (semantica)
+### Campi chiave (semantica)
 
 * `fattura_id` → **documento rettificante** (tipicamente NC/ND). FK `vendite.fatture(id)`.
 * `rettificata_id` → **documento rettificato** (fattura originaria). FK `vendite.fatture(id)`.
@@ -40,7 +40,7 @@ Obiettivi:
 
 ---
 
-### 🔒 Vincoli, indici e coerenze
+### Vincoli, indici e coerenze
 
 * **Univocità coppia**: `UNIQUE (fattura_id, rettificata_id)` evita duplicati.
 * **FK con CASCADE**: se un documento viene rimosso, i link collegati sono eliminati automaticamente.
@@ -53,7 +53,7 @@ Obiettivi:
 
 ---
 
-### 🧪 Esempi d’uso (query applicative)
+### Esempi d’uso (query applicative)
 
 ```sql
 -- 1) Documenti che rettificano una fattura (entrate)
@@ -86,7 +86,7 @@ ON CONFLICT ON CONSTRAINT uq_fatture_rettifiche_pair DO NOTHING;
 
 ---
 
-### ✅ Best practice operative
+### Best practice operative
 
 * **Coerenza economica**: la somma delle rettifiche non deve superare l’importo rettificato (per NC parziali). Applicare controlli a livello DB o servizio.
 * **Coerenza di stato**: vietare rettifiche su documenti **annullati/bozze** (se lo stato è gestito in `vendite.fatture`).
@@ -95,7 +95,7 @@ ON CONFLICT ON CONSTRAINT uq_fatture_rettifiche_pair DO NOTHING;
 
 ---
 
-### 🔗 Relazioni (Mermaid)
+### Relazioni (Mermaid)
 
 ```mermaid
 erDiagram
@@ -113,7 +113,7 @@ erDiagram
 
 ---
 
-### 🧰 Integrazione backend/API (DRF – suggerimenti)
+### Integrazione backend/API (DRF – suggerimenti)
 
 * **Endpoint di lettura** per:
 
@@ -132,7 +132,7 @@ erDiagram
 
 ---
 
-### 👓 Ruolo nel sistema
+### Ruolo nel sistema
 
 `vendite.fatture_rettifiche` è il **punto unico** per capire “**chi rettifica chi**”, mantenendo il modello pulito:
 

@@ -2,10 +2,10 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimento tabelle:
+Approfondimento tabelle:
 >
-> * [anagrafiche.risorse_umane](/dbzero/anagrafiche/tabelle/risorse_umane)
-> * [django.auth_user](/dbzero/django/auth_user)
+[anagrafiche.risorse_umane](/dbzero/anagrafiche/tabelle/risorse_umane)
+> [django.auth_user](/dbzero/django/auth_user)
 
 ---
 
@@ -17,14 +17,14 @@ tra una risorsa umana e l'utente software Django.
 
 ---
 
-### 🔗 Collegamenti principali
+### Collegamenti principali
 
 * `risorsa_umana_id` → `anagrafiche.risorse_umane(id)`
 * `auth_user_id` → `django.auth_user(id)`
 
 ---
 
-### ✅ Regole
+### Regole
 
 * Un solo utente per risorsa (`UNIQUE risorsa_umana_id`).
 * Una risorsa per utente (`UNIQUE auth_user_id`).
@@ -32,7 +32,7 @@ tra una risorsa umana e l'utente software Django.
 
 ---
 
-### 💡 Note operative
+### Note operative
 
 * La presenza del collegamento e' opzionale: non tutte le risorse
   devono avere un account software.

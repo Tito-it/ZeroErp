@@ -2,21 +2,21 @@
 
 > 👀 **Vedi anche**
 >
-> Guide:
+Guide:
 >
-> * [Automazione DB](/guide/automazione-db)
+[Automazione DB](/guide/automazione-db)
 >
-> Approfondimento tabelle:
+Approfondimento tabelle:
 >
-> * [dbops.automation_rules_tbl](/dbzero/dbops/tabelle/automation_rules_tbl)   
+[dbops.automation_rules_tbl](/dbzero/dbops/tabelle/automation_rules_tbl)   
 >
-> Approfondimento funzioni:
+Approfondimento funzioni:
 >
-> * [dbops.fn_run_automations](/dbzero/dbops/funzioni/fn_run_automations)   
-> * [dbops.fn_resolve_scope](/dbzero/dbops/funzioni/fn_resolve_scope)    
-> * [dbops.fn_get_override_col](/dbzero/dbops/funzioni/fn_get_override_col)   
-> * [dbops.fn_ensure_storico_table](/dbzero/dbops/funzioni/fn_ensure_storico_table)   
-> * [dbops.fn_run_automations_storico](/dbzero/dbops/funzioni/fn_run_automations_storico)   
+[dbops.fn_run_automations](/dbzero/dbops/funzioni/fn_run_automations)   
+> [dbops.fn_resolve_scope](/dbzero/dbops/funzioni/fn_resolve_scope)    
+> [dbops.fn_get_override_col](/dbzero/dbops/funzioni/fn_get_override_col)   
+> [dbops.fn_ensure_storico_table](/dbzero/dbops/funzioni/fn_ensure_storico_table)   
+> [dbops.fn_run_automations_storico](/dbzero/dbops/funzioni/fn_run_automations_storico)   
 
 ---
 
@@ -27,7 +27,7 @@ La funzione **`dbops.fn_run_automations_storico_provision(p_exec_mode, p_schemas
 
 ---
 
-### 🔍 Parametri di input
+### Parametri di input
 
 | Parametro     | Tipo    | Obbligatorio | Descrizione                                                                                                                |
 | ------------- | ------- | :----------: | -------------------------------------------------------------------------------------------------------------------------- |
@@ -37,13 +37,13 @@ La funzione **`dbops.fn_run_automations_storico_provision(p_exec_mode, p_schemas
 
 ---
 
-### 📤 Valore di ritorno
+### Valore di ritorno
 
 `void` – orchestration pura: cicla le tabelle nell'ambito e delega le operazioni all’helper `fn_ensure_storico_table`.
 
 ---
 
-### ⚙️ Flusso logico
+### Flusso logico
 
 1. **Ambito**: determina gli schemi target tramite `fn_resolve_scope(p_schemas)`; esclude sempre lo schema `storico`.
 2. **Enumerazione tabelle**: scorre tutte le tabelle "user" nell'ambito filtrate da `fn_table_in_scope`.
@@ -55,7 +55,7 @@ La funzione **`dbops.fn_run_automations_storico_provision(p_exec_mode, p_schemas
 
 ---
 
-### 🧩 Casi d’uso tipici
+### Casi d’uso tipici
 
 * **Bootstrap storicizzazione**: preparare automaticamente tutto il necessario nello schema `storico` per nuove tabelle applicative.
 * **Migrazione**: adeguare l’ecosistema storico dopo refactoring di colonne chiave o convenzioni (`STORICIZZA_COL`, `STORICO_FK`).
@@ -63,21 +63,21 @@ La funzione **`dbops.fn_run_automations_storico_provision(p_exec_mode, p_schemas
 
 ---
 
-### 🛡️ Permessi e sicurezza
+### Permessi e sicurezza
 
 * Richiede privilegi DDL sullo schema `storico` e sui metadati delle tabelle applicative.
 * La gestione degli errori operativi è effettuata all’interno dell’helper (`fn_ensure_storico_table`); in modalità `dry_run` non vengono applicate modifiche.
 
 ---
 
-### 🚀 Esempi di utilizzo
+### Esempi di utilizzo
 
 * **Simulazione**: `SELECT dbops.fn_run_automations_storico_provision('AUTO', ARRAY['anagrafiche','config'], true);`
 * **Esecuzione reale**: `SELECT dbops.fn_run_automations_storico_provision('FORCE', NULL, false);`
 
 ---
 
-### 📌 Considerazioni
+### Considerazioni
 
 * La presenza del flag di storicizzazione sulla tabella applicativa è requisito minimo; in caso contrario la tabella viene **saltata**.
 * Gli override permettono di supportare naming legacy o specifico di dominio.
@@ -85,7 +85,7 @@ La funzione **`dbops.fn_run_automations_storico_provision(p_exec_mode, p_schemas
 
 ---
 
-### ✅ Benefici
+### Benefici
 
 * **Automazione ripetibile**: provisioning standard e idempotente dello schema `storico`.
 * **Coerenza**: riduce divergenze tra tabelle applicative e relative controparti storico.
@@ -93,4 +93,4 @@ La funzione **`dbops.fn_run_automations_storico_provision(p_exec_mode, p_schemas
 
 ---
 
-> 🧠 **In sintesi**: `fn_run_automations_storico_provision` prepara in modo sistematico l’infrastruttura di storicizzazione, assicurando che ogni tabella con `storicizza` abbia la propria omologa nello schema `storico`, con FK e (opzionalmente) indice GIN dove previsto.
+> **In sintesi**: `fn_run_automations_storico_provision` prepara in modo sistematico l’infrastruttura di storicizzazione, assicurando che ogni tabella con `storicizza` abbia la propria omologa nello schema `storico`, con FK e (opzionalmente) indice GIN dove previsto.

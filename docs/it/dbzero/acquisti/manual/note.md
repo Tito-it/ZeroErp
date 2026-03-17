@@ -2,9 +2,9 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> • [acquisti.ordini](/dbzero/acquisti/tabelle/ordini)   
+• [acquisti.ordini](/dbzero/acquisti/tabelle/ordini)   
 > • [acquisti.ddt](/dbzero/acquisti/tabelle/ddt)    
 
 ---
@@ -15,7 +15,7 @@
 
 ---
 
-### 🧱 Struttura (padre)
+### Struttura (padre)
 
 * **Partizionamento**: `PARTITION BY LIST (target_tipo)`.
 * **PK composita**: `(target_tipo, id)` → necessaria per le partizioni (l’`id` non è univoco globalmente).
@@ -34,7 +34,7 @@ Indici globali utili:
 
 ---
 
-### 🧩 Partizioni e regole
+### Partizioni e regole
 
 Ogni partizione applica **FK** coerenti con il dominio e un **CHECK combinato** che allinea `anchor_tipo`/`posizione`/`target_riga_id`:
 
@@ -53,15 +53,15 @@ Ogni partizione applica **FK** coerenti con il dominio e un **CHECK combinato** 
    * Indice dedicato `ix_ordini_note_render`.
 
 
-> 💡 **Perché partizionare?**
+> **Perché partizionare?**
 >
-> * query/cleanup **target-specifiche** (es. rebuild di tutte le note fatture) sono più veloci;
-> * si possono impostare policy di **retention** e **permessi** differenti per dominio;
-> * manutenzione più semplice (vacuum, reindex, backup parziali).
+query/cleanup **target-specifiche** (es. rebuild di tutte le note fatture) sono più veloci;
+> si possono impostare policy di **retention** e **permessi** differenti per dominio;
+> manutenzione più semplice (vacuum, reindex, backup parziali).
 
 ---
 
-### 🧪 Esempi d’uso
+### Esempi d’uso
 
 * **Nota di piede FATTURA** (documento): `anchor_tipo='DOCUMENTO'`, `posizione='FOOTER'`, `target_riga_id=NULL`, `seq=10`.
 * **Nota “prima della riga” ORDINE**: `anchor_tipo='RIGA'`, `posizione='BEFORE'`, `target_riga_id=<id_riga>`, `seq=5`.
@@ -70,6 +70,6 @@ Ogni partizione applica **FK** coerenti con il dominio e un **CHECK combinato** 
 
 ---
 
-### 👓 Ruolo nel sistema
+### Ruolo nel sistema
 
 `acquisti.note` fornisce un **layer di annotazioni** uniforme e riusabile per tutto il dominio acquisti. Il partizionamento per `target_tipo` consente crescita ordinata, performance prevedibili e governance per dominio, mantenendo al contempo un’unica API di scrittura/lettura.

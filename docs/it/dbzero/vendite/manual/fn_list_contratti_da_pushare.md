@@ -2,10 +2,10 @@
 
 > **Vedi anche**
 >
-> * [vendite.contratti](/dbzero/vendite/tabelle/contratti)
-> * [vendite.contratti_righe](/dbzero/vendite/tabelle/contratti_righe)
-> * [vendite.fn_get_or_create_commessa](/dbzero/vendite/funzioni/fn_get_or_create_commessa)
-> * [vendite.fn_upsert_commessa_attivita](/dbzero/vendite/funzioni/fn_upsert_commessa_attivita)
+[vendite.contratti](/dbzero/vendite/tabelle/contratti)
+> [vendite.contratti_righe](/dbzero/vendite/tabelle/contratti_righe)
+> [vendite.fn_get_or_create_commessa](/dbzero/vendite/funzioni/fn_get_or_create_commessa)
+> [vendite.fn_upsert_commessa_attivita](/dbzero/vendite/funzioni/fn_upsert_commessa_attivita)
 
 ---
 

@@ -2,12 +2,12 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimento tabelle:
+Approfondimento tabelle:
 >
-> * [pratiche.template_flussi](/dbzero/pratiche/tabelle/template_flussi)
-> * [pratiche.tipi_prestazione](/dbzero/pratiche/tabelle/tipi_prestazione)
-> * [pratiche.pratiche](/dbzero/pratiche/tabelle/pratiche) (campo `flusso_origine_id`)
-> * [pratiche.flussi](/dbzero/pratiche/tabelle/flussi)
+[pratiche.template_flussi](/dbzero/pratiche/tabelle/template_flussi)
+> [pratiche.tipi_prestazione](/dbzero/pratiche/tabelle/tipi_prestazione)
+> [pratiche.pratiche](/dbzero/pratiche/tabelle/pratiche) (campo `flusso_origine_id`)
+> [pratiche.flussi](/dbzero/pratiche/tabelle/flussi)
 
 ---
 
@@ -17,7 +17,7 @@ La tabella `pratiche.regole_generazione` configura le **regole di generazione cr
 
 ---
 
-### 🧱 Ruolo nel processo
+### Ruolo nel processo
 
 * Al completamento di un flusso (stato → COMPLETATO), il trigger `trgfn_flussi_generazione` (DB-5) cerca regole matching con `auto = true` e genera le pratiche target.
 * Per regole con `auto = false`, l'operatore puo' attivare la generazione manualmente via API.
@@ -25,7 +25,7 @@ La tabella `pratiche.regole_generazione` configura le **regole di generazione cr
 
 ---
 
-### ⚙️ Colonne specifiche
+### Colonne specifiche
 
 | Colonna | Note |
 |---------|------|
@@ -37,7 +37,7 @@ La tabella `pratiche.regole_generazione` configura le **regole di generazione cr
 
 ---
 
-### 🔒 Vincoli
+### Vincoli
 
 * **UQ composito**: `(template_flusso_origine_id, tipo_prestazione_dest_id, esito_richiesto)` — una sola regola per combinazione.
 * **Indice parziale**: `uq_pratiche_regole_gen_origine_dest_null_esito` — evita duplicati quando `esito_richiesto IS NULL` (i NULL non sono considerati uguali dal UNIQUE standard).
@@ -45,7 +45,7 @@ La tabella `pratiche.regole_generazione` configura le **regole di generazione cr
 
 ---
 
-### 💡 Esempio
+### Esempio
 
 | Regola | Significato |
 |--------|-------------|

@@ -2,16 +2,16 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> * [anagrafiche.istanze_utilities](/dbzero/anagrafiche/tabelle/istanze_utilities)    
-> * [anagrafiche.catasto_unita_immobiliari](/dbzero/anagrafiche/tabelle/catasto_unita_immobiliari)     
-> * [anagrafiche.indirizzi_dettaglio](/dbzero/anagrafiche/tabelle/indirizzi_dettaglio)    
-> * [anagrafiche.catasto_unita_immobiliari_indirizzi](/dbzero/anagrafiche/tabelle/catasto_unita_immobiliari_indirizzi)    
+[anagrafiche.istanze_utilities](/dbzero/anagrafiche/tabelle/istanze_utilities)    
+> [anagrafiche.catasto_unita_immobiliari](/dbzero/anagrafiche/tabelle/catasto_unita_immobiliari)     
+> [anagrafiche.indirizzi_dettaglio](/dbzero/anagrafiche/tabelle/indirizzi_dettaglio)    
+> [anagrafiche.catasto_unita_immobiliari_indirizzi](/dbzero/anagrafiche/tabelle/catasto_unita_immobiliari_indirizzi)    
 >
-> **Trigger che la invoca (sync):**
+**Trigger che la invoca (sync):**
 >
-> * `anagrafiche.trg_iu_z40_sync_catasto_unita_indirizzo_aft_ins_upd`   
+`anagrafiche.trg_iu_z40_sync_catasto_unita_indirizzo_aft_ins_upd`   
 
 ---
 
@@ -34,7 +34,7 @@ In pratica, assicura la **coerenza** tra:
 
 ---
 
-### 🛠️ Firma
+### Firma
 
 ```sql
 CREATE OR REPLACE FUNCTION anagrafiche.trgfn_iu_sync_catasto_unita_indirizzo()
@@ -44,7 +44,7 @@ LANGUAGE plpgsql;
 
 ---
 
-### 📥 Input (Record Trigger)
+### Input (Record Trigger)
 
 Utilizza questi campi del record `NEW`:
 
@@ -53,13 +53,13 @@ Utilizza questi campi del record `NEW`:
 
 ---
 
-### 📤 Output
+### Output
 
 * Ritorna sempre `NEW`.
 
 ---
 
-### 🔄 Logica Operativa
+### Logica Operativa
 
  **1) Guardia sui dati minimi**
 
@@ -87,7 +87,7 @@ Questo implica che la tabella ponte ha un vincolo unico (atteso) sulle due colon
 
 ---
 
-### 🧩 Side Effects
+### Side Effects
 
 ✅ DML eseguito:
 
@@ -97,7 +97,7 @@ Questo implica che la tabella ponte ha un vincolo unico (atteso) sulle due colon
 
 ---
 
-### 🔗 Integrazione con Trigger su `istanze_utilities`
+### Integrazione con Trigger su `istanze_utilities`
 
 Questa funzione è pensata per essere richiamata da un trigger `AFTER INSERT OR UPDATE OF ...` su `anagrafiche.istanze_utilities`, tipicamente:
 
@@ -110,7 +110,7 @@ Perché proprio questi campi?
 
 ---
 
-### ⚙️ Concorrenza e Robustezza
+### Concorrenza e Robustezza
 
 * L’operazione è safe in concorrenza: l’unicità è garantita dal vincolo `uq_catunitaindir` + `ON CONFLICT ... DO NOTHING`.
 * L’assenza di lock espliciti è coerente: si tratta di un inserimento “best effort” idempotente.
@@ -125,7 +125,7 @@ La funzione non logga e non solleva eccezioni.
 
 ---
 
-### 🔍 Esempi (uso indiretto)
+### Esempi (uso indiretto)
 
  **Caso tipico**
 
@@ -144,7 +144,7 @@ WHERE catasto_unita_id = <catasto_id>
 
 ---
 
-### 🧪 Note per Test (pgTAP / SQL)
+### Note per Test (pgTAP / SQL)
 
 Casi minimi consigliati:
 
@@ -156,15 +156,15 @@ Casi minimi consigliati:
 
 ---
 
-### 📌 Best Practice
+### Best Practice
 
-* ✅ Mantenere la funzione **semplice e idempotente**.
-* ✅ Usare un vincolo unico (es. `(catasto_unita_id, indirizzo_dettaglio_id)`) come base di consistenza.
-* ✅ Delegare eventuali regole di cleanup/ri-allineamento a funzioni dedicate (questa non cancella né aggiorna legami esistenti).
+* Mantenere la funzione **semplice e idempotente**.
+* Usare un vincolo unico (es. `(catasto_unita_id, indirizzo_dettaglio_id)`) come base di consistenza.
+* Delegare eventuali regole di cleanup/ri-allineamento a funzioni dedicate (questa non cancella né aggiorna legami esistenti).
 
 ---
 
-### 🗂️ Metadati
+### Metadati
 
 * **Schema:** `anagrafiche`
 * **Tipo:** trigger function (sync tabella ponte)

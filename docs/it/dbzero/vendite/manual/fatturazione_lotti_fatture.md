@@ -2,14 +2,12 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> • [vendite.fatturazione_lotti](/dbzero/vendite/tabelle/fatturazione_lotti)  
+• [vendite.fatturazione_lotti](/dbzero/vendite/tabelle/fatturazione_lotti)  
 > • [vendite.fatture](/dbzero/vendite/tabelle/fatture)  
 >
----
-
-### 🎯 Scopo Principale
+🎯 Scopo Principale
 
 (latest review 23-01-2026)
 `vendite.fatturazione_lotti_fatture` rappresenta la **relazione esplicita** tra lotto e fattura,
@@ -23,7 +21,7 @@ consentendo di:
 
 ---
 
-### 🧱 Campi chiave (semantica)
+### Campi chiave (semantica)
 
 * **Relazione**: `lotto_id`, `fattura_id`.
 * **Snapshot stato documento**: `stato_doc_fiscale_id` (FK -> `config.stati_doc_fiscale`).
@@ -34,7 +32,7 @@ consentendo di:
 
 ---
 
-### 🔒 Regole operative (policy)
+### Regole operative (policy)
 
 * `esclusa = true` ammesso **solo** se la fattura e` in stato **DRAFT**.
 * `stato_esecuzione` e` coerente con `fatture.critical` durante la sync lotto-fatture.

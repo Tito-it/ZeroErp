@@ -2,11 +2,11 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento Tabelle**
+**Approfondimento Tabelle**
 > • [`catalogo.unita_misura`](/dbzero/catalogo/tabelle/unita_misura)  
 > • [`catalogo.articoli_uom_operativa`](/dbzero/catalogo/tabelle/articoli_uom_operativa)  
 >
-> **Approfondimento Funzioni**
+**Approfondimento Funzioni**
 > • [`catalogo.fn_get_uom_factor`](/dbzero/catalogo/funzioni/fn_get_uom_factor)  
 
 ---
@@ -22,7 +22,7 @@ Esempi tipici:
 
 ---
 
-### 🔗 Relazioni
+### Relazioni
 
 | Tipo | Tabella ↔ Campo                             | Descrizione                  |
 | ---- | ------------------------------------------- | ---------------------------- |
@@ -31,7 +31,7 @@ Esempi tipici:
 
 ---
 
-### 🧱 Struttura logica (campi chiave)
+### Struttura logica (campi chiave)
 
 * **Identita**: `id BIGINT` (PK)
 * **Direzione conversione**: `uom_from_id`, `uom_to_id`
@@ -51,7 +51,7 @@ Esempi tipici:
 
 ---
 
-### 🔁 Workflow di conversione (fallback)
+### Workflow di conversione (fallback)
 
 1. **Articolo-specifico**: se esiste una riga attiva e valida in `catalogo.articoli_uom_operativa`, usa `factor_to_base`.
 2. **Globale diretto**: se manca la riga articolo, cerca conversione globale `uom_from -> uom_to`.
@@ -60,7 +60,7 @@ Esempi tipici:
 
 ---
 
-### 🔎 Esempi d’uso
+### Esempi d’uso
 
 **1) Conversione globale SMC -> MJ**
 

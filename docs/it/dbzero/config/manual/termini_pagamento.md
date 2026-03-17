@@ -2,9 +2,9 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> • [vendite.fatture](/dbzero/vendite/tabelle/fatture)   
+• [vendite.fatture](/dbzero/vendite/tabelle/fatture)   
 > • [vendite.fatture_scadenze](/dbzero/vendite/tabelle/fatture_scadenze)   
 
 ---
@@ -18,7 +18,7 @@
 
 ---
 
-### 🧭 Flusso di utilizzo
+### Flusso di utilizzo
 
 1. **Selezione termini**: a livello Cliente/Documento si indica un `termini_pagamento` (o si usa un default).
 2. **Snapshot (opz.)**: in fattura si fotografa la configurazione utilizzata.
@@ -26,7 +26,7 @@
 
 ---
 
-### 🔑 Semantica campi principali
+### Semantica campi principali
 
 * `codice` / `codice_interno` → identificativi esterno e interno (quest’ultimo da trattare come **immutabile**).
 * `descrizione` → testo descrittivo del termine.
@@ -47,7 +47,7 @@
 
 ---
 
-### 🔒 Vincoli e indici
+### Vincoli e indici
 
 * **PK**: `id` (identity).
 * **UNIQUE**: `codice` e `codice_interno`.
@@ -83,7 +83,7 @@
 
 ---
 
-### 🧪 Esempi d’uso (logica applicativa)
+### Esempi d’uso (logica applicativa)
 
 * **30/60/90 giorni** → `numero_rate=3`, `tipo_offset='G'`, `intervallo=30`.
 * **45/30/30** → `numero_rate=3`, `tipo_offset='G'`, `intervallo=30`, `primo_offset_giorni=45`.
@@ -94,7 +94,7 @@
 
 ---
 
-### ✅ Best practice
+### Best practice
 
 * **Idempotenza**: la funzione di generazione scadenze (per fattura) fa `DELETE` + `INSERT` atomici.
 * **Ultima rata = ribilanciamento**: applica arrotondamento per rata e ribilancia i centesimi sull’ultima.
@@ -104,6 +104,6 @@
 ---
 
 
-### 👓 Ruolo nel sistema
+### Ruolo nel sistema
 
 `config.termini_pagamento` è il **motore parametrico** per generare piani di scadenza coerenti, riutilizzabili e governati. Allineato a `vendite.fatture_scadenze`, consente di standardizzare politiche di incasso e mantenerne la **storicità** tramite snapshot in documento.

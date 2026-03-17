@@ -2,14 +2,14 @@
 
 > 👀 **Vedi anche**
 >
-> Guide:    
-> * [Automazione DB](/guide/automazione-db)    
+Guide:    
+> [Automazione DB](/guide/automazione-db)    
 >
-> Approfondimento tabelle:    
-> * [dbops.automazione_overlap](/dbzero/dbops/tabelle/automazione_overlap)    
+Approfondimento tabelle:    
+> [dbops.automazione_overlap](/dbzero/dbops/tabelle/automazione_overlap)    
 >
-> Approfondimento funzioni:
-> * [dbops.fn_apply_automazione_overlap](/dbzero/dbops/funzioni/fn_apply_automazione_overlap)    
+Approfondimento funzioni:
+> [dbops.fn_apply_automazione_overlap](/dbzero/dbops/funzioni/fn_apply_automazione_overlap)    
 ---
 
 ### 🎯 Scopo Principale
@@ -21,7 +21,7 @@ La funzione **`dbops.fn_seed_automazione_overlap(p_schemas)`** popola (o aggiorn
 
 ---
 
-### 🔍 Parametri di input
+### Parametri di input
 
 | Parametro   | Tipo   | Descrizione                           |
 | ----------- | ------ | ------------------------------------- |
@@ -29,7 +29,7 @@ La funzione **`dbops.fn_seed_automazione_overlap(p_schemas)`** popola (o aggiorn
 
 ---
 
-### ⚙️ Logica operativa (sintesi)
+### Logica operativa (sintesi)
 
 1. Risolve l'ambito tramite `dbops.fn_resolve_scope(p_schemas)`.
 2. Esclude lo schema `storico`.
@@ -46,7 +46,7 @@ La funzione **`dbops.fn_seed_automazione_overlap(p_schemas)`** popola (o aggiorn
 
 ---
 
-### ✅ Esempi
+### Esempi
 
 **Seed su ambito risolto:**
 
@@ -62,7 +62,7 @@ SELECT dbops.fn_seed_automazione_overlap(ARRAY['vendite','catalogo']);
 
 ---
 
-### 🧠 Note
+### Note
 
 * Se la tabella ha colonne periodo ma non risulta versionata, `active` rimane `false`.
 * Se le chiavi non sono rilevabili, `key_columns` rimane NULL e va completato manualmente.

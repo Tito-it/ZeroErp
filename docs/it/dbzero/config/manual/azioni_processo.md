@@ -2,15 +2,15 @@
 
 > 👀 **Vedi anche**
 >
-> Architettura di riferimento:
+Architettura di riferimento:
 >
-> * [Architettura Permessi e Autorizzazioni](/guide/architettura-permessi-e-autorizzazioni)
+[Architettura Permessi e Autorizzazioni](/guide/architettura-permessi-e-autorizzazioni)
 >
-> Tabelle correlate:
+Tabelle correlate:
 >
-> * [config.aree_funzionali](/dbzero/config/tabelle/aree_funzionali)
-> * [config.profili_reparto_azioni](/dbzero/config/tabelle/profili_reparto_azioni)
-> * [config.user_override_azioni](/dbzero/config/tabelle/user_override_azioni)
+[config.aree_funzionali](/dbzero/config/tabelle/aree_funzionali)
+> [config.profili_reparto_azioni](/dbzero/config/tabelle/profili_reparto_azioni)
+> [config.user_override_azioni](/dbzero/config/tabelle/user_override_azioni)
 
 ---
 
@@ -28,7 +28,7 @@ Le azioni rappresentano **operazioni puntuali** che richiedono abilitazione espl
 
 ---
 
-### 🔑 Colonne chiave
+### Colonne chiave
 
 | Colonna | Scopo |
 |---------|-------|
@@ -40,7 +40,7 @@ Le azioni rappresentano **operazioni puntuali** che richiedono abilitazione espl
 
 ---
 
-### 🔗 Relazioni
+### Relazioni
 
 `config.azioni_processo` è referenziata da:
 
@@ -51,7 +51,7 @@ Le azioni rappresentano **operazioni puntuali** che richiedono abilitazione espl
 
 ---
 
-### 📋 Seed iniziale
+### Seed iniziale
 
 | permission_codename | descrizione | pericolosa | area |
 |---------------------|-------------|------------|------|
@@ -79,4 +79,4 @@ La risoluzione è separata dal CRUD e binaria:
 
 ---
 
-> 🧠 **"`config.azioni_processo` consente di controllare operazioni critiche con granularità puntuale, separatamente dal livello CRUD sull'area."**
+> **"`config.azioni_processo` consente di controllare operazioni critiche con granularità puntuale, separatamente dal livello CRUD sull'area."**

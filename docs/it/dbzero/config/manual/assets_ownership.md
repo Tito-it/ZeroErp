@@ -2,11 +2,11 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimento tabelle:
+Approfondimento tabelle:
 >
-> * [magazzino.assets](/dbzero/magazzino/tabelle/assets)
-> * [config.stati_assets](/dbzero/config/tabelle/stati_assets)
-> * [config.lingue](/dbzero/config/tabelle/lingue)
+[magazzino.assets](/dbzero/magazzino/tabelle/assets)
+> [config.stati_assets](/dbzero/config/tabelle/stati_assets)
+> [config.lingue](/dbzero/config/tabelle/lingue)
 
 ---
 
@@ -37,7 +37,7 @@ Esempi tipici di proprietà:
 
 ---
 
-### 🔒 Vincoli e Regole Aziendali
+### Vincoli e Regole Aziendali
 
 * **Chiave primaria** (`id`): identificatore tecnico della modalità di proprietà.
 
@@ -83,7 +83,7 @@ Esempi tipici di proprietà:
 
 ---
 
-### 🔗 Relazioni
+### Relazioni
 
 `config.assets_ownership` è referenziata da:
 
@@ -108,7 +108,7 @@ Usato per definire la proprietà effettiva dell’asset.
 
 ---
 
-### 💡 Vantaggi Operativi
+### Vantaggi Operativi
 
 * **Governance forte e centralizzata** su codici di proprietà asset.
 * **Coerenza cross-modulo**: tutti i processi condividono lo stesso dominio.
@@ -118,4 +118,4 @@ Usato per definire la proprietà effettiva dell’asset.
 
 ---
 
-> 🧠 **“`config.assets_ownership` garantisce che ogni asset abbia una proprietà corretta, tracciabile e governata, abilitando processi solidi lungo tutta la vita del bene.”**
+> **“`config.assets_ownership` garantisce che ogni asset abbia una proprietà corretta, tracciabile e governata, abilitando processi solidi lungo tutta la vita del bene.”**

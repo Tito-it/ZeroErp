@@ -4,15 +4,15 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimento tabelle:
+Approfondimento tabelle:
 >
-> * [`dbops.automation_rules_tbl`](/dbzero/dbops/tabelle/automation_rules_tbl)
+[`dbops.automation_rules_tbl`](/dbzero/dbops/tabelle/automation_rules_tbl)
 >
-> Approfondimento funzioni:
+Approfondimento funzioni:
 >
-> * [`dbops.fn_trigger_exists_by_function`](/dbzero/dbops/funzioni/fn_trigger_exists_by_function)
-> * [`dbops.fn_trigger_exists_by_name`](/dbzero/dbops/funzioni/fn_trigger_exists_by_name)
-> * [`dbops.fn_trigger_exists_cascade_by_args`](/dbzero/dbops/funzioni/fn_trigger_exists_cascade_by_args)
+[`dbops.fn_trigger_exists_by_function`](/dbzero/dbops/funzioni/fn_trigger_exists_by_function)
+> [`dbops.fn_trigger_exists_by_name`](/dbzero/dbops/funzioni/fn_trigger_exists_by_name)
+> [`dbops.fn_trigger_exists_cascade_by_args`](/dbzero/dbops/funzioni/fn_trigger_exists_cascade_by_args)
 
 ---
 
@@ -23,7 +23,7 @@ La funzione **`fn_drop_triggers_by_function_args`** elimina tutti i **trigger as
 
 ---
 
-### 📝 Dettagli
+### Dettagli
 
 * Riceve come parametri:
 
@@ -43,7 +43,7 @@ La funzione **`fn_drop_triggers_by_function_args`** elimina tutti i **trigger as
 
 ---
 
-### 🔧 Utilizzo tipico
+### Utilizzo tipico
 
 1. Durante un **refactor** di funzioni di trigger: elimina i trigger che richiamano la vecchia versione della funzione.
 2. In fase di **provisioning automazioni**: pulisce trigger duplicati o obsoleti prima di ricrearli.
@@ -51,13 +51,13 @@ La funzione **`fn_drop_triggers_by_function_args`** elimina tutti i **trigger as
 
 ---
 
-### 📊 Collegamento con automazione
+### Collegamento con automazione
 
 La funzione è spesso richiamata come **step preliminare** all’applicazione di nuove regole di automazione (`automation_rules_tbl`). Permette di assicurare che non rimangano trigger incoerenti con le regole correnti.
 
 ---
 
-### 💡 Esempio pratico
+### Esempio pratico
 
 Supponiamo di dover aggiornare un trigger che richiama `script.trgfn_tx_id_managed` con specifici argomenti:
 
@@ -74,4 +74,4 @@ SELECT dbops.fn_drop_triggers_by_function_args(
 
 ---
 
-> 🧠 **In sintesi**: `fn_drop_triggers_by_function_args` è un componente fondamentale per mantenere **pulito e coerente** l’insieme dei trigger di automazione, specialmente quando le funzioni sottostanti cambiano nel tempo.
+> **In sintesi**: `fn_drop_triggers_by_function_args` è un componente fondamentale per mantenere **pulito e coerente** l’insieme dei trigger di automazione, specialmente quando le funzioni sottostanti cambiano nel tempo.

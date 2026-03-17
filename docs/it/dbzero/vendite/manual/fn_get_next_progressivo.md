@@ -2,19 +2,17 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> • [vendite.registri_fatturazione](/dbzero/vendite/tabelle/registri_fatturazione)  
+• [vendite.registri_fatturazione](/dbzero/vendite/tabelle/registri_fatturazione)  
 > • [vendite.registri_fatturazione_progressivi](/dbzero/vendite/tabelle/registri_fatturazione_progressivi)  
 > • [vendite.fn_get_anno_registro](/dbzero/vendite/manual/fn_get_anno_registro)  
 >
-> **Approfondimento funzioni:**
+**Approfondimento funzioni:**
 >
-> • [vendite.fn_get_anno_registro](/dbzero/vendite/funzioni/fn_get_anno_registro)   
+• [vendite.fn_get_anno_registro](/dbzero/vendite/funzioni/fn_get_anno_registro)   
 >
----
-
-### 🎯 Scopo Principale
+🎯 Scopo Principale
 
 (latest review 26-01-2026)
 La funzione **`vendite.fn_get_next_progressivo`** restituisce il prossimo numero
@@ -22,7 +20,7 @@ di registro, con **lock della riga** progressivi per evitare doppioni.
 
 ---
 
-### 🔍 Parametri di input
+### Parametri di input
 
 | Parametro       | Tipo                                    | Descrizione        |
 | --------------- | --------------------------------------- | ------------------ |
@@ -32,7 +30,7 @@ di registro, con **lock della riga** progressivi per evitare doppioni.
 
 ---
 
-### ✅ Regola applicata
+### Regola applicata
 
 * Anno ricavato da `vendite.fn_get_anno_registro(p_data)`.
 * Mese fisso `0` (reset annuale).
@@ -42,7 +40,7 @@ di registro, con **lock della riga** progressivi per evitare doppioni.
 
 ---
 
-### ✅ Note operative
+### Note operative
 
 * La funzione deve essere chiamata **solo in emissione** (non in bozza).
 * Evita **doppioni**, ma i buchi possono comparire in caso di rollback.

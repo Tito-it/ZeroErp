@@ -2,14 +2,14 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimento Tabelle:   
+Approfondimento Tabelle:   
 >
-> * [dbops.fk_index_policy](/dbzero/dbops/tabelle/fk_index_policy)      
+[dbops.fk_index_policy](/dbzero/dbops/tabelle/fk_index_policy)      
 >
-> Approfondimento funzioni:   
+Approfondimento funzioni:   
 >
-> * [dbops.vw_fk_senza_indice](/dbzero/dbops/views/vw_fk_senza_indice)    
-> * [dbops.vw_duplicate_indexes](/dbzero/dbops/views/vw_duplicate_indexes)    
+[dbops.vw_fk_senza_indice](/dbzero/dbops/views/vw_fk_senza_indice)    
+> [dbops.vw_duplicate_indexes](/dbzero/dbops/views/vw_duplicate_indexes)    
 
 La view **`dbops.vw_fk_con_indice_missing_policy`** elenca tutte le **foreign key** che **hanno un indice** (prefisso `ix_`) ma **non** sono ancora gestite dalla tabella di policy `dbops.fk_index_policy`, limitandosi **agli schemi presenti in `dbops.automation_scope`**. Per ciascuna FK, viene suggerito il comando SQL di creazione dell’indice.
 
@@ -27,7 +27,7 @@ La view **`dbops.vw_fk_con_indice_missing_policy`** elenca tutte le **foreign ke
 
 ---
 
-### ⚙️ Flusso di Costruzione
+### Flusso di Costruzione
 
 1. **CTE `fk_columns` e `fk_fields`**
    Estrae schema, tabella, nome del vincolo FK e lista delle colonne coinvolte.
@@ -53,7 +53,7 @@ La view **`dbops.vw_fk_con_indice_missing_policy`** elenca tutte le **foreign ke
 
 ---
 
-### 💡 Vantaggi Operativi
+### Vantaggi Operativi
 
 * **Individuazione rapida**: mostra subito le FK con indice esistente ma senza policy.
 * **Governance**: aiuta a mantenere `fk_index_policy` completa e aggiornata.
@@ -62,4 +62,4 @@ La view **`dbops.vw_fk_con_indice_missing_policy`** elenca tutte le **foreign ke
 
 ---
 
-> 🧠 **“Questa view facilita la scoperta di indici FK non ancora tracciati, supportando una gestione centralizzata e coerente delle policy di indicizzazione.”**
+> **“Questa view facilita la scoperta di indici FK non ancora tracciati, supportando una gestione centralizzata e coerente delle policy di indicizzazione.”**

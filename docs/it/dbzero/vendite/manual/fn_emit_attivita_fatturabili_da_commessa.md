@@ -7,7 +7,7 @@ Esegue il pull da `commesse_attivita` verso `attivita_fatturabili` (step 0 pipel
 
 ---
 
-### 🔧 Regole applicate
+### Regole applicate
 
 * La ROOT source della commessa e` obbligatoria (`commesse_sorgenti`).
 * La sorgente delle righe AF e` sempre `COMMESSA`.
@@ -21,7 +21,7 @@ Esegue il pull da `commesse_attivita` verso `attivita_fatturabili` (step 0 pipel
 
 ---
 
-### ✅ Output
+### Output
 
 Ritorna contatori:
 

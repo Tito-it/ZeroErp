@@ -8,7 +8,7 @@ automatico le tabelle candidate.
 
 ---
 
-### ✅ Criteri di rilevazione
+### Criteri di rilevazione
 
 * Tabella nell'ambito risolto (`dbops.fn_resolve_scope`).
 * Presenza di colonna `utility_id`.
@@ -18,14 +18,14 @@ automatico le tabelle candidate.
 
 ---
 
-### 🔁 Comportamento
+### Comportamento
 
 * Inserisce righe in `dbops.automazione_guard_utility_tipo_ruolo`.
 * Non sovrascrive righe gia presenti (`ON CONFLICT DO NOTHING`).
 
 ---
 
-### 🧪 Esempio d’uso
+### Esempio d’uso
 
 ```sql
 SELECT dbops.fn_seed_automazione_guard_utility_tipo_ruolo(ARRAY['anagrafiche', 'vendite']);

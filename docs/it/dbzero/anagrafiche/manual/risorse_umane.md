@@ -2,17 +2,17 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimento tabelle:
+Approfondimento tabelle:
 >
-> * [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)
-> * [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)
-> * [config.qualifiche](/dbzero/config/tabelle/qualifiche)
-> * [config.unita_organizzative](/dbzero/config/tabelle/unita_organizzative)
-> * [anagrafiche.risorse_umane_auth_user](/dbzero/anagrafiche/tabelle/risorse_umane_auth_user)
+[anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)
+> [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)
+> [config.qualifiche](/dbzero/config/tabelle/qualifiche)
+> [config.unita_organizzative](/dbzero/config/tabelle/unita_organizzative)
+> [anagrafiche.risorse_umane_auth_user](/dbzero/anagrafiche/tabelle/risorse_umane_auth_user)
 >
-> Approfondimento funzioni:
+Approfondimento funzioni:
 >
-> * [anagrafiche.trgfn_risorse_umane_guard_ruolo](/dbzero/anagrafiche/funzioni/trgfn_risorse_umane_guard_ruolo)
+[anagrafiche.trgfn_risorse_umane_guard_ruolo](/dbzero/anagrafiche/funzioni/trgfn_risorse_umane_guard_ruolo)
 
 ---
 
@@ -27,7 +27,7 @@ Consente di collegare ogni risorsa a una **qualifica** e, opzionalmente, a una
 
 ---
 
-### 🔗 Collegamenti principali
+### Collegamenti principali
 
 * `soggetto_ruolo_id` → `anagrafiche.soggetti_ruoli(id)`
 * `qualifica_id` → `config.qualifiche(id)`
@@ -35,7 +35,7 @@ Consente di collegare ogni risorsa a una **qualifica** e, opzionalmente, a una
 
 ---
 
-### ✅ Regole
+### Regole
 
 * Il `soggetto_ruolo_id` deve avere `tipo_ruolo` = **RISORSA_UMANA**.
 * `soggetto_id` deve corrispondere al soggetto del ruolo indicato.
@@ -46,7 +46,7 @@ Consente di collegare ogni risorsa a una **qualifica** e, opzionalmente, a una
 
 ---
 
-### 💡 Note operative
+### Note operative
 
 * Il campo `meta` consente estensioni future senza alterare lo schema.
 * I campi audit sono standardizzati come nel resto dell'anagrafica.

@@ -2,14 +2,12 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> • [anagrafiche.emittenti_fiscali](/dbzero/anagrafiche/tabelle/emittenti_fiscali)
+• [anagrafiche.emittenti_fiscali](/dbzero/anagrafiche/tabelle/emittenti_fiscali)
 > • [anagrafiche.emittenti_fiscali_billing_account](/dbzero/anagrafiche/tabelle/emittenti_fiscali_billing_account)
 >
----
-
-### 🎯 Scopo Principale
+🎯 Scopo Principale
 
 (latest review 23-01-26)
 La funzione **`anagrafiche.trgfn_emittenti_fiscali_guard_attivo()`** impedisce
@@ -19,7 +17,7 @@ righe di mapping in `emittenti_fiscali_billing_account` collegate al suo
 
 ---
 
-### 🔍 Regola applicata
+### Regola applicata
 
 * **Evento**: `BEFORE UPDATE OF attivo` su `anagrafiche.emittenti_fiscali`.
 * Se `attivo` passa da **true** a **false** e sono presenti mapping associati:
@@ -27,7 +25,7 @@ righe di mapping in `emittenti_fiscali_billing_account` collegate al suo
 
 ---
 
-### ✅ Motivazione
+### Motivazione
 
 Garantisce coerenza tra configurazione emittenti e mapping billing account:
 non si disattiva un emittente ancora in uso.

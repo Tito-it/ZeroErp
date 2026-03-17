@@ -2,14 +2,12 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> • [vendite.fatture](/dbzero/vendite/tabelle/fatture)  
+• [vendite.fatture](/dbzero/vendite/tabelle/fatture)  
 > • [vendite.tipi_fondi_fattura](/dbzero/vendite/tabelle/tipi_fondi_fattura)  
 >
----
-
-### 🎯 Scopo Principale
+🎯 Scopo Principale
 
 (latest review 10-02-2026)  
 `vendite.fatture_fondi_fattura` registra i **fondi fattura** collegati a una
@@ -19,7 +17,7 @@ I fondi sono **separati** dalle righe standard e contribuiscono al
 
 ---
 
-### 🧱 Campi chiave (semantica)
+### Campi chiave (semantica)
 
 * `fattura_id`: testata collegata.
 * `riferimento_fattura_id`: fattura origine (opzionale).
@@ -29,7 +27,7 @@ I fondi sono **separati** dalle righe standard e contribuiscono al
 
 ---
 
-### ✅ Note operative
+### Note operative
 
 * I fondi non partecipano al calcolo IVA.
 * La somma dei fondi va inclusa in `totale_a_pagare`.

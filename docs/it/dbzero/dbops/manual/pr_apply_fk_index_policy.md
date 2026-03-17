@@ -3,9 +3,9 @@
 
 > 👀 **Vedi anche**  
 >
-> Approfondimento Tabelle:   
+Approfondimento Tabelle:   
 >
-> * [dbops.fk_index_policy](/dbzero/dbops/tabelle/fk_index_policy)      
+[dbops.fk_index_policy](/dbzero/dbops/tabelle/fk_index_policy)      
 
 La procedura **`dbops.apply_fk_index_policy()`** incapsula la logica di creazione o rimozione dinamica degli indici sulle foreign key, in base alle policy definite in `dbops.fk_index_policy`.
 
@@ -22,13 +22,13 @@ La procedura **`dbops.apply_fk_index_policy()`** incapsula la logica di creazion
 
 ---
 
-### 🔍 Parametri di Input
+### Parametri di Input
 
 Questa procedura non richiede parametri: agisce su tutte le righe di `dbops.fk_index_policy`.
 
 ---
 
-### ⚙️ Flusso Logico
+### Flusso Logico
 
 1. **Iterazione su ogni policy**
    Scorre tutte le righe di `dbops.fk_index_policy`.
@@ -73,7 +73,7 @@ COMMENT ON PROCEDURE dbops.apply_fk_index_policy() IS
 
 ---
 
-### 🚀 Utilizzo
+### Utilizzo
 
 * **Manuale**:
 
@@ -95,7 +95,7 @@ COMMENT ON PROCEDURE dbops.apply_fk_index_policy() IS
 
 ---
 
-### 💡 Vantaggi Operativi
+### Vantaggi Operativi
 
 * **Flessibilità**: policy modificabili in tabella, senza toccare DDL statici.
 * **Automazione**: supporto a deploy automatizzati con Liquibase.
@@ -104,4 +104,4 @@ COMMENT ON PROCEDURE dbops.apply_fk_index_policy() IS
 
 ---
 
-> 🧠 **“Encapsulando il DO-block in una procedura, rendiamo il processo di applicazione delle policy più leggibile, riutilizzabile e integrabile nei flussi CI/CD.”**
+> **“Encapsulando il DO-block in una procedura, rendiamo il processo di applicazione delle policy più leggibile, riutilizzabile e integrabile nei flussi CI/CD.”**

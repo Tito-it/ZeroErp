@@ -6,18 +6,18 @@
 >
 >**Guide**
 >
-> * [Automazione DB](/guide/automazione-db)
+[Automazione DB](/guide/automazione-db)
 >
-> **Approfondimento tabelle**
+**Approfondimento tabelle**
 >
-> * [dbops.automation_rules_tbl](/dbzero/dbops/tabelle/automation_rules_tbl)  
+[dbops.automation_rules_tbl](/dbzero/dbops/tabelle/automation_rules_tbl)  
 >
-> **Approfondimento funzioni e trigger**
+**Approfondimento funzioni e trigger**
 
-> * [dbops.fn_run_automations](/dbzero/dbops/funzioni/fn_run_automations)   
-> * [dbops.fn_get_override_col](/dbzero/dbops/funzioni/fn_get_override_col)   
-> * [dbops.fn_get_child_fk_col](/dbzero/dbops/funzioni/fn_get_child_fk_col)   
-> * [dbops.trgfn_prevent_deactivate_if_children](/dbzero/dbops/funzioni/trgfn_prevent_deactivate_if_children)   
+> [dbops.fn_run_automations](/dbzero/dbops/funzioni/fn_run_automations)   
+> [dbops.fn_get_override_col](/dbzero/dbops/funzioni/fn_get_override_col)   
+> [dbops.fn_get_child_fk_col](/dbzero/dbops/funzioni/fn_get_child_fk_col)   
+> [dbops.trgfn_prevent_deactivate_if_children](/dbzero/dbops/funzioni/trgfn_prevent_deactivate_if_children)   
 
 ---
 
@@ -28,14 +28,14 @@ La funzione **`dbops.fn_run_automations_attivo(p_exec_mode, p_schemas, p_dry_run
 
 L’automazione opera **a livello di relazione FK**, non sulla singola tabella isolata, ed è progettata secondo un principio **conservativo e sicuro**:
 
-> 🔒 **Un record padre può essere disattivato (`attivo = false`) solo se NON esistono record figli attivi collegati tramite FK (o figli in generale se il figlio non ha `attivo`).**
+> **Un record padre può essere disattivato (`attivo = false`) solo se NON esistono record figli attivi collegati tramite FK (o figli in generale se il figlio non ha `attivo`).**
 > Inoltre, un record figlio puo' essere inserito/aggiornato **solo se il padre e' attivo**.
 
 Non viene applicata alcuna cascata automatica.
 
 ---
 
-### 🔍 Ambito di applicazione
+### Ambito di applicazione
 
 La funzione considera:
 
@@ -48,7 +48,7 @@ La funzione considera:
 
 ---
 
-### 🧩 Parametri di input
+### Parametri di input
 
 | Parametro     | Tipo      | Obbl. | Descrizione                                                                                                   |
 | ------------- | --------- | :---: | ------------------------------------------------------------------------------------------------------------- |
@@ -58,7 +58,7 @@ La funzione considera:
 
 ---
 
-### ⚙️ Flusso logico
+### Flusso logico
 
 1. Risolve l'**ambito degli schemi** (`dbops.fn_resolve_scope`).
 2. Recupera le **regole ATTIVO abilitate** da `automation_rules_tbl`.
@@ -72,9 +72,9 @@ La funzione considera:
 
 ---
 
-### 🧠 Condizione fondamentale
+### Condizione fondamentale
 
-> ✅ **La colonna `attivo` deve essere presente sul PADRE**.
+> **La colonna `attivo` deve essere presente sul PADRE**.
 
 Se il padre non ha la colonna `attivo`, la relazione FK viene **ignorata**.
 
@@ -82,7 +82,7 @@ Il caso **“solo il figlio ha `attivo`”** non è gestito ed è considerato **
 
 ---
 
-### 🧩 Regole applicate
+### Regole applicate
 
 #### 🅱️ BLOCCO della disattivazione del padre
 
@@ -114,7 +114,7 @@ Nessuna modifica automatica viene applicata ai figli.
 
 ---
 
-### 🏷️ Naming dei trigger
+### Naming dei trigger
 
 I nomi dei trigger sono generati tramite template JSON (`automation_rules_tbl.name_template`), utilizzando le chiavi `block` e `require`:
 
@@ -129,7 +129,7 @@ Il nome finale è risolto tramite `dbops.fn_name_from_template`.
 
 ---
 
-### 🔁 Riconciliazione automatica
+### Riconciliazione automatica
 
 Se `params.reconcile_on_change = true` (default):
 
@@ -140,7 +140,7 @@ La riconciliazione **non** introduce cascade né altri comportamenti.
 
 ---
 
-### 🧪 Modalità DRY‑RUN
+### Modalità DRY‑RUN
 
 Con `p_dry_run = true`:
 
@@ -159,7 +159,7 @@ Questo garantisce **osservabilità completa** del comportamento dell’automazio
 
 ---
 
-### 🔐 Permessi e sicurezza
+### Permessi e sicurezza
 
 * Richiede privilegi DDL sugli schemi target.
 * In modalità `dry_run` è sufficiente il permesso di scrittura sull’audit.
@@ -167,7 +167,7 @@ Questo garantisce **osservabilità completa** del comportamento dell’automazio
 
 ---
 
-### ✅ Benefici
+### Benefici
 
 * **Sicurezza massima**: nessun soft‑delete distruttivo o implicito.
 * **Semplicità**: una sola regola chiara e prevedibile.
@@ -176,5 +176,5 @@ Questo garantisce **osservabilità completa** del comportamento dell’automazio
 
 ---
 
-> 🧠 **In sintesi**: `fn_run_automations_attivo` implementa una politica ATTIVO conservativa:
+> **In sintesi**: `fn_run_automations_attivo` implementa una politica ATTIVO conservativa:
 > il padre si disattiva **solo quando è libero da dipendenze FK attive**, e il figlio può puntare al padre **solo se attivo**.

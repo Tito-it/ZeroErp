@@ -2,20 +2,18 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> • [vendite.event_log](/dbzero/vendite/tabelle/event_log)  
+• [vendite.event_log](/dbzero/vendite/tabelle/event_log)  
 >
----
-
-### 🎯 Scopo Principale
+🎯 Scopo Principale
 
 `vendite.fn_log_event` fornisce un entrypoint unico (DB) per registrare eventi
 append-only in `vendite.event_log`, sia da servizi Python sia da funzioni SQL.
 
 ---
 
-### ✅ Regole principali
+### Regole principali
 
 * esegue solo `INSERT` su `vendite.event_log`;
 * restituisce l'`id` dell'evento inserito;
@@ -26,7 +24,7 @@ La validazione formale di `severity` resta sul vincolo `CHECK` della tabella.
 
 ---
 
-### 🧪 Esempio d'uso
+### Esempio d'uso
 
 ```sql
 SELECT vendite.fn_log_event(

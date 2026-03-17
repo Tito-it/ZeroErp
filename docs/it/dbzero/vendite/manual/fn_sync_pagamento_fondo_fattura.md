@@ -2,21 +2,19 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> • [vendite.fatture_fondi_fattura_source](/dbzero/vendite/tabelle/fatture_fondi_fattura_source)  
+• [vendite.fatture_fondi_fattura_source](/dbzero/vendite/tabelle/fatture_fondi_fattura_source)  
 > • [pagamenti.centri_riscossione](/dbzero/pagamenti/tabelle/centri_riscossione)  
 > • [pagamenti.vendite_contabili](/dbzero/pagamenti/tabelle/vendite_contabili)  
 > • [pagamenti.vendite_contabili_righe](/dbzero/pagamenti/tabelle/vendite_contabili_righe)  
 >
-> **Approfondimento funzioni:**
+**Approfondimento funzioni:**
 >
-> • [vendite.fn_sync_contabili_fondo_fattura](/dbzero/vendite/funzioni/fn_sync_contabili_fondo_fattura)  
+• [vendite.fn_sync_contabili_fondo_fattura](/dbzero/vendite/funzioni/fn_sync_contabili_fondo_fattura)  
 > • [vendite.fn_reset_fondi_fattura](/dbzero/vendite/funzioni/fn_reset_fondi_fattura)  
 >
----
-
-### 🎯 Scopo Principale
+🎯 Scopo Principale
 
 (latest review 13-02-2026)  
 La funzione **`vendite.fn_sync_pagamento_fondo_fattura()`** e` mantenuta solo
@@ -27,7 +25,7 @@ La logica effettiva ora e` demandata a
 
 ---
 
-### ✅ Regole principali
+### Regole principali
 
 * `p_fattura_figlia_id` obbligatorio.
 * La funzione invoca internamente `vendite.fn_sync_contabili_fondo_fattura()`.
@@ -36,7 +34,7 @@ La logica effettiva ora e` demandata a
 
 ---
 
-### ✅ Output
+### Output
 
 Ritorna:
 
@@ -46,7 +44,7 @@ Ritorna:
 
 ---
 
-### 🧪 Esempio d’uso
+### Esempio d’uso
 
 ```sql
 SELECT *

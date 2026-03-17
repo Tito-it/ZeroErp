@@ -2,20 +2,18 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> • [vendite.attivita_fatturabili](/dbzero/vendite/tabelle/attivita_fatturabili)  
+• [vendite.attivita_fatturabili](/dbzero/vendite/tabelle/attivita_fatturabili)  
 > • [vendite.fatture](/dbzero/vendite/tabelle/fatture)  
 > • [vendite.fatture_righe](/dbzero/vendite/tabelle/fatture_righe)  
 >
-> **Approfondimento funzioni:**
+**Approfondimento funzioni:**
 >
-> • [vendite.fn_get_or_create_fattura_header](/dbzero/vendite/funzioni/fn_get_or_create_fattura_header)   
+• [vendite.fn_get_or_create_fattura_header](/dbzero/vendite/funzioni/fn_get_or_create_fattura_header)   
 > • [vendite.fn_group_attivita_fatturabili](/dbzero/vendite/funzioni/fn_group_attivita_fatturabili)   
 >
----
-
-### 🎯 Scopo Principale
+🎯 Scopo Principale
 
 (latest review 07-02-2026)  
 (Deprecate-trasferite in django)  
@@ -24,7 +22,7 @@ partendo dalle `attivita_fatturabili` lockate sul lotto.
 
 ---
 
-### ✅ Regole principali
+### Regole principali
 
 * Usa `fn_get_or_create_fattura_header` per la testata.
 * Usa `fn_group_attivita_fatturabili` per la chiave riga.
@@ -33,13 +31,13 @@ partendo dalle `attivita_fatturabili` lockate sul lotto.
 
 ---
 
-### ✅ Output
+### Output
 
 Ritorna il numero di righe generate (o conteggiate in dry-run).
 
 ---
 
-### 🧪 Esempio
+### Esempio
 
 ```sql
 SELECT vendite.fn_generate_fatture_righe(

@@ -2,16 +2,16 @@
 
 > 👀 **Vedi anche**
 >
-> **Tabelle anagrafiche / config:**
+**Tabelle anagrafiche / config:**
 >
-> * [`anagrafiche.soggetti`](/dbzero/anagrafiche/tabelle/soggetti)
-> * [`config.tipi_soggetto_dettaglio`](/dbzero/config/tabelle/tipi_soggetto_dettaglio)
+[`anagrafiche.soggetti`](/dbzero/anagrafiche/tabelle/soggetti)
+> [`config.tipi_soggetto_dettaglio`](/dbzero/config/tabelle/tipi_soggetto_dettaglio)
 >
-> **Funzioni / trigger correlati:**
+**Funzioni / trigger correlati:**
 >
-> * [`anagrafiche.trgfn_soggetti_valida_cf_piva_dispatch`](/dbzero/anagrafiche/funzioni/trgfn_soggetti_valida_cf_piva_dispatch) — valida il **formato** di CF/P.IVA
-> * [`script.fn_validate_cf_piva_it`](/dbzero/script/funzioni/fn_validate_cf_piva_it) — validazione formato italiano
-> * [`script.fn_log_and_raise_error`](/dbzero/script/funzioni/fn_log_and_raise_error)
+[`anagrafiche.trgfn_soggetti_valida_cf_piva_dispatch`](/dbzero/anagrafiche/funzioni/trgfn_soggetti_valida_cf_piva_dispatch) — valida il **formato** di CF/P.IVA
+> [`script.fn_validate_cf_piva_it`](/dbzero/script/funzioni/fn_validate_cf_piva_it) — validazione formato italiano
+> [`script.fn_log_and_raise_error`](/dbzero/script/funzioni/fn_log_and_raise_error)
 
 ---
 
@@ -36,7 +36,7 @@ I due concern sono separati → trigger separati.
 
 ---
 
-### 🧱 Collegamenti principali
+### Collegamenti principali
 
 * **Tabelle coinvolte direttamente:**
 
@@ -76,7 +76,7 @@ CREATE OR REPLACE TRIGGER trg_soggetti_a10_guard_cf_piva_obbligatori_ins_upd
 
 ---
 
-### 🧩 Contesto e parametri logici
+### Contesto e parametri logici
 
 Essendo una trigger function, non ha parametri espliciti. Utilizza:
 
@@ -88,7 +88,7 @@ Essendo una trigger function, non ha parametri espliciti. Utilizza:
 
 ---
 
-### 🔍 Logica di funzionamento (semplificata)
+### Logica di funzionamento (semplificata)
 
 1️⃣ Se `NEW.tipo_soggetto_dettaglio_id IS NULL` → **skip** → `RETURN NEW`.
 Non e possibile validare senza un tipo dettaglio configurato.
@@ -106,7 +106,7 @@ recupera `piva_obbligatoria` e `cf_obbligatorio` per il tipo dettaglio del sogge
 
 ---
 
-### 🧪 Esempi specifici
+### Esempi specifici
 
 #### ✔ Privato (PR) con CF, senza P.IVA
 
@@ -167,7 +167,7 @@ recupera `piva_obbligatoria` e `cf_obbligatorio` per il tipo dettaglio del sogge
 
 ---
 
-### 📊 Configurazione attuale
+### Configurazione attuale
 
 | Tipo Soggetto      | codice_interno | piva_obbligatoria | cf_obbligatorio |
 | ------------------- | -------------- | ----------------- | --------------- |

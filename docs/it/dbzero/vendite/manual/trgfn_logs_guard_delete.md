@@ -2,14 +2,12 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> • [vendite.fatture_log](/dbzero/vendite/tabelle/fatture_log)  
+• [vendite.fatture_log](/dbzero/vendite/tabelle/fatture_log)  
 > • [vendite.fatturazione_lotti_log](/dbzero/vendite/tabelle/fatturazione_lotti_log)  
 >
----
-
-### 🎯 Scopo Principale
+🎯 Scopo Principale
 
 (latest review 20-02-2026)  
 La funzione trigger **`vendite.trgfn_logs_guard_delete()`** blocca la cancellazione
@@ -18,7 +16,7 @@ abilitazione esplicita di manutenzione.
 
 ---
 
-### ✅ Regole principali
+### Regole principali
 
 * Trigger `BEFORE DELETE` su:
   * `vendite.fatture_log`
@@ -30,13 +28,13 @@ abilitazione esplicita di manutenzione.
 
 ---
 
-### ✅ Output
+### Output
 
 Nessun output funzionale (trigger guard: ritorna `OLD` in caso consentito).
 
 ---
 
-### 🧪 Utilizzo previsto
+### Utilizzo previsto
 
 Usata come guardrail per evitare cancellazioni accidentali dei log;
 la pulizia è ammessa solo in processi tecnici controllati.

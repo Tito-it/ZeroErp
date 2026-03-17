@@ -2,25 +2,24 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimento tabelle
+Approfondimento tabelle
 > 
-> * [dbops.automation_rules_tbl](/dbzero/dbops/tabelle/automation_rules_tbl)      
-> * [dbops.automation_overrides_cols](/dbzero/dbops/tabelle/automation_overrides_cols)
+[dbops.automation_rules_tbl](/dbzero/dbops/tabelle/automation_rules_tbl)      
+> [dbops.automation_overrides_cols](/dbzero/dbops/tabelle/automation_overrides_cols)
 >       
->
-> Approfondimento funzioni:  
+Approfondimento funzioni:  
 > 
-> * [dbops.trgfn_child_requires_active_parent](/dbzero/dbops/funzioni/trgfn_child_requires_active_parent)      
-> * [dbops.trgfn_prevent_deactivate_if_children](/dbzero/dbops/funzioni/trgfn_prevent_deactivate_if_children)      
+[dbops.trgfn_child_requires_active_parent](/dbzero/dbops/funzioni/trgfn_child_requires_active_parent)      
+> [dbops.trgfn_prevent_deactivate_if_children](/dbzero/dbops/funzioni/trgfn_prevent_deactivate_if_children)      
 > 
-> * Orchestratori: 
+Orchestratori: 
 > 
-> * [dbops.fn_run_automations](/dbzero/dbops/funzioni/fn_run_automations), 
-> * [dbops.fn_run_automations_tx_id](/dbzero/dbops/funzioni/fn_run_automations_tx_id),   
-> * [dbops.run_automations_audit_update](/dbzero/dbops/funzioni/fn_run_automations_audit_update),   
-> * [dbops.run_automations_storico](/dbzero/dbops/funzioni/fn_run_automations_storico),   
->  * [dbops.fn_run_automations_attivo](/dbzero/dbops/funzioni/fn_run_automations_attivo)
->  * [dbops.fn_run_automations_cleanup](/dbzero/dbops/funzioni/fn_run_automations_cleanup)
+[dbops.fn_run_automations](/dbzero/dbops/funzioni/fn_run_automations), 
+> [dbops.fn_run_automations_tx_id](/dbzero/dbops/funzioni/fn_run_automations_tx_id),   
+> [dbops.run_automations_audit_update](/dbzero/dbops/funzioni/fn_run_automations_audit_update),   
+> [dbops.run_automations_storico](/dbzero/dbops/funzioni/fn_run_automations_storico),   
+>  [dbops.fn_run_automations_attivo](/dbzero/dbops/funzioni/fn_run_automations_attivo)
+>  [dbops.fn_run_automations_cleanup](/dbzero/dbops/funzioni/fn_run_automations_cleanup)
 
 ### 🎯 Scopo Principale
 
@@ -31,7 +30,7 @@ Gli orchestratori leggono questa tabella e applicano le regole nell'ordine di **
 
 ---
 
-### 🔑 Campi chiave e semantica
+### Campi chiave e semantica
 
 * **enabled** *(boolean)* – abilita la regola.
 * **rule_type** *(text)* – tipo di automatismo:
@@ -71,7 +70,7 @@ Gli orchestratori leggono questa tabella e applicano le regole nell'ordine di **
 
 ---
 
-### 🧩 Parametri `params` per *rule_type*
+### Parametri `params` per *rule_type*
 
 * **TX_ID**: *(tipicamente vuoto)*
 * **AUDIT_UPDATE**: `{ "audit_ts": "data_update", "audit_user": "user_update" }`
@@ -98,7 +97,7 @@ Gli orchestratori leggono questa tabella e applicano le regole nell'ordine di **
 
 ---
 
-### 🔗 Interazione con le altre tabelle
+### Interazione con le altre tabelle
 
 * **`automation_overrides_cols`** → risolve nomi di colonne non standard: `ATTIVO_COL`, `AUDIT_TS`, `AUDIT_USER`, `STORICO_FK`.
 * **`automation_fk_exclusions`** → esclude specifiche coppie *parent/child* dalla regola `ATTIVO`.
@@ -106,7 +105,7 @@ Gli orchestratori leggono questa tabella e applicano le regole nell'ordine di **
 
 ---
 
-### 🛠️ Comportamento degli orchestratori (riassunto)
+### Comportamento degli orchestratori (riassunto)
 
 * Scopo schemi: da `p_schemas` o tabella `dbops.automation_scope` (se presente), altrimenti tutti gli schemi *user* escluso `storico`.
 * Per **TX_ID / AUDIT_UPDATE / STORICO**: loop per tabelle che matchano la regola (schema + table/pattern), valutano pre‑requisiti (colonne, storico presente), costruiscono nome via template, verificano esistenza secondo `existence_strategy`, **creano il trigger** se mancante (o **DRYRUN** se `p_dry_run=true`).
@@ -121,7 +120,7 @@ Tutti i passaggi loggati in `dbops.audit_log` (`DRYRUN`/`OK`/`ERROR`).
 
 ---
 
-### ✅ Esempi d'uso (seed minimal)
+### Esempi d'uso (seed minimal)
 
 * Regola **TX_ID** per tutte le tabelle di `anagrafiche`:
 
@@ -144,7 +143,7 @@ VALUES (
 
 ---
 
-### 🔍 Troubleshooting
+### Troubleshooting
 
 * Nessun trigger creato? Controlla: `enabled=true`, *ambito* schemi corretto, `exec_mode` compatibile, `existence_strategy`, e pre‑requisiti (colonne/ storico/ FK).
 * Conflitti di naming? Verifica la lunghezza (63 char) e l’univocità del template in combinazione con schema/tabella/FK.
@@ -153,14 +152,14 @@ VALUES (
 ---
 
 
-### 🔒 Vincoli & comportamento
+### Vincoli & comportamento
 
 * Ordinamento applicazione: `ORDER BY priority, id`.
 * *exec_mode* filtro: la regola è valida se `exec_mode = p_exec_mode` **o** `exec_mode='AUTO'`.
 * *target_table* può essere `NULL` → tutte le tabelle dello schema per quel *rule_type*.
 * Per `ATTIVO`, `name_template` è JSON con i modelli `block` e `require`.
 
-### 🧠 Best practice
+### Best practice
 
 * Mantieni template corti (<63 char finali) e coerenti con lo standard di progetto.
 * Usa `params` per comportamenti opzionali specifici dei rule_type.

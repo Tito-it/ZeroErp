@@ -2,11 +2,11 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimento Tabelle:   
+Approfondimento Tabelle:   
 >
-> * [config.tipi_soggetto](/dbzero/config/tabelle/tipi_soggetto)      
-> * [config.stati](/dbzero/config/tabelle/stati)      
-> * [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)  
+[config.tipi_soggetto](/dbzero/config/tabelle/tipi_soggetto)      
+> [config.stati](/dbzero/config/tabelle/stati)      
+> [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)  
 ---
 
 La tabella **`config.tipi_soggetto_dettaglio`** definisce le **tipologie dettagliate** di soggetto (persone fisiche, giuridiche, enti, ecc.) in base al **paese** di appartenenza, specificando i **formati** validi per Codice Fiscale e Partita IVA.
@@ -24,7 +24,7 @@ La tabella **`config.tipi_soggetto_dettaglio`** definisce le **tipologie dettagl
 
 ---
 
-### 🔍 Collegamenti
+### Collegamenti
 
 * **FK →** `config.tipi_soggetto(tipo_soggetto_id)`
   Definisce la macro-tipologia.
@@ -36,7 +36,7 @@ La tabella **`config.tipi_soggetto_dettaglio`** definisce le **tipologie dettagl
 
 ---
 
-### 💡 Vantaggi Operativi
+### Vantaggi Operativi
 
 * Evita hard‑coding dei formati di CF/P.IVA nel codice applicativo.
 * Facilita l’aggiunta di nuovi paesi o categorie nominative.
@@ -59,7 +59,7 @@ Questa integrazione documenta le modifiche introdotte oggi sulla tabella **`conf
 
 ## 🆕 Nuovi Vincoli Introdotti
 
-### 1️⃣ Formati ammessi per CF e P.IVA
+### Formati ammessi per CF e P.IVA
 
 Le colonne:
 
@@ -86,7 +86,7 @@ Tali vincoli garantiscono che i pattern siano omogenei e validabili in modo gene
 
 ---
 
-## 2️⃣ Coerenza con `dati_societari_policy`
+## Coerenza con `dati_societari_policy`
 
 È stato introdotto il vincolo:
 
@@ -100,7 +100,7 @@ Tali vincoli garantiscono che i pattern siano omogenei e validabili in modo gene
 
 ---
 
-## 3️⃣ Implicazioni funzionali
+## Implicazioni funzionali
 
 ### ✔ Validazione CF/P.IVA
 
@@ -125,7 +125,7 @@ che applica la validazione solo se `stato_iso2 = 'IT'`.
 
 ---
 
-## 4️⃣ Benefici Architetturali
+## Benefici Architetturali
 
 * Eliminazione di valori improvvisati nei campi CF/P.IVA.
 * Base solida per l'internazionalizzazione futura.
@@ -155,7 +155,7 @@ CHECK (
 
 ---
 
-## 📌 Nota finale
+## Nota finale
 
 Queste modifiche rappresentano un consolidamento fondamentale per la gestione internazionale dei tipi di soggetto, rendendo il modello più controllato e predittivo.
 
@@ -190,7 +190,7 @@ CHECK (cf_obbligatorio = false OR formato_cf <> 'NON_APPLICABILE')
 
 ---
 
-## 📊 Configurazione attuale
+## Configurazione attuale
 
 | Tipo Soggetto       | codice_interno | piva_obbligatoria | cf_obbligatorio |
 | ------------------- | -------------- | ----------------- | --------------- |
@@ -207,7 +207,7 @@ CHECK (cf_obbligatorio = false OR formato_cf <> 'NON_APPLICABILE')
 
 ---
 
-## ⚙️ Trigger di enforcement
+## Trigger di enforcement
 
 La validazione e applicata dal trigger guard:
 
@@ -223,7 +223,7 @@ Messaggi di errore:
 
 ---
 
-## 💡 Relazione con la validazione di formato
+## Relazione con la validazione di formato
 
 Questa feature e **complementare** alla validazione di formato esistente:
 

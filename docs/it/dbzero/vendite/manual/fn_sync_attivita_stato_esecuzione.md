@@ -9,7 +9,7 @@ Sincronizza `stato_esecuzione` delle righe `attivita_fatturabili` collegate a un
 
 ---
 
-### 🔧 Regole applicate
+### Regole applicate
 
 * Supporta target esplicito opzionale (`p_target_stato_esecuzione`).
 * Se target non passato, deduce da `stato_lotto`:
@@ -21,7 +21,7 @@ Sincronizza `stato_esecuzione` delle righe `attivita_fatturabili` collegate a un
 
 ---
 
-### ✅ Output
+### Output
 
 Non ritorna record (`RETURNS void`).
 

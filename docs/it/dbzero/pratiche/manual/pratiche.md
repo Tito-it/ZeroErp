@@ -2,14 +2,14 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimento tabelle:
+Approfondimento tabelle:
 >
-> * [pratiche.tipi_prestazione](/dbzero/pratiche/tabelle/tipi_prestazione)
-> * [pratiche.flussi](/dbzero/pratiche/tabelle/flussi)
-> * [pratiche.giornale](/dbzero/pratiche/tabelle/giornale)
-> * [config.stati_pratiche](/dbzero/config/tabelle/stati_pratiche)
-> * [config.priorita_pratiche](/dbzero/config/tabelle/priorita_pratiche)
-> * [config.canali_pratiche](/dbzero/config/tabelle/canali_pratiche)
+[pratiche.tipi_prestazione](/dbzero/pratiche/tabelle/tipi_prestazione)
+> [pratiche.flussi](/dbzero/pratiche/tabelle/flussi)
+> [pratiche.giornale](/dbzero/pratiche/tabelle/giornale)
+> [config.stati_pratiche](/dbzero/config/tabelle/stati_pratiche)
+> [config.priorita_pratiche](/dbzero/config/tabelle/priorita_pratiche)
+> [config.canali_pratiche](/dbzero/config/tabelle/canali_pratiche)
 
 ---
 
@@ -19,7 +19,7 @@ La tabella `pratiche.pratiche` e' l'**entita' principale** del modulo gestione p
 
 ---
 
-### 🧱 Ruolo nel processo
+### Ruolo nel processo
 
 * Ogni pratica ha un **tipo_prestazione** che ne determina i template flussi disponibili.
 * Lo **stato** governa le transizioni del ciclo di vita (BOZZA → APERTA → CHIUSA).
@@ -30,7 +30,7 @@ La tabella `pratiche.pratiche` e' l'**entita' principale** del modulo gestione p
 
 ---
 
-### ⚙️ Colonne specifiche
+### Colonne specifiche
 
 | Colonna | Note |
 |---------|------|
@@ -45,7 +45,7 @@ La tabella `pratiche.pratiche` e' l'**entita' principale** del modulo gestione p
 
 ---
 
-### 🔗 FK principali
+### FK principali
 
 | FK | Target | onDelete |
 |----|--------|----------|
@@ -62,7 +62,7 @@ La tabella `pratiche.pratiche` e' l'**entita' principale** del modulo gestione p
 
 ---
 
-### ✅ Convenzioni
+### Convenzioni
 
 * PK BIGINT IDENTITY (tabella operativa ad alto volume).
 * `storicizza = true` per tracciamento modifiche.

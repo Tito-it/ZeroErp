@@ -2,7 +2,7 @@
 
 > 👀 **Vedi anche**
 >
-> • [vendite.preventivi](/dbzero/vendite/tabelle/preventivi)  
+• [vendite.preventivi](/dbzero/vendite/tabelle/preventivi)  
 > • [vendite.preventivi_righe](/dbzero/vendite/tabelle/preventivi_righe)  
 > • [vendite.fn_get_or_create_commessa](/dbzero/vendite/funzioni/fn_get_or_create_commessa)  
 > • [vendite.fn_upsert_commessa_attivita](/dbzero/vendite/funzioni/fn_upsert_commessa_attivita)  
@@ -17,7 +17,7 @@ per l’handler di acquisizione.
 
 ---
 
-### ✅ Regole principali
+### Regole principali
 
 * considera preventivi in stato documento `ACCETTATO`;
 * considera solo preventivi con `stato_commessa = LIBERO`;
@@ -42,7 +42,7 @@ Restituisce per ogni riga candidata:
 
 ---
 
-### 🧪 Esempio d’uso
+### Esempio d’uso
 
 ```sql
 SELECT *

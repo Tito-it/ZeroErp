@@ -2,11 +2,11 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimento tabelle:
+Approfondimento tabelle:
 >
-> * [pratiche.flussi](/dbzero/pratiche/tabelle/flussi)
-> * [pratiche.note_pratiche](/dbzero/pratiche/tabelle/note_pratiche)
-> * [config.tipi_nota](/dbzero/config/tabelle/tipi_nota)
+[pratiche.flussi](/dbzero/pratiche/tabelle/flussi)
+> [pratiche.note_pratiche](/dbzero/pratiche/tabelle/note_pratiche)
+> [config.tipi_nota](/dbzero/config/tabelle/tipi_nota)
 
 ---
 
@@ -16,7 +16,7 @@ La tabella `pratiche.note_flussi` contiene le **note testuali** associate a un f
 
 ---
 
-### 🧱 Ruolo nel processo
+### Ruolo nel processo
 
 * Consente annotazioni granulari a livello di singolo step del workflow.
 * Il `tipo_nota_id` determina la visibilita' della nota.
@@ -25,7 +25,7 @@ La tabella `pratiche.note_flussi` contiene le **note testuali** associate a un f
 
 ---
 
-### ✅ Convenzioni
+### Convenzioni
 
 * PK BIGINT IDENTITY.
 * `storicizza = true`, `tx_id` per correlazione.

@@ -2,24 +2,22 @@
 
 > 👀 **Vedi anche**   
 >
-> **Approfondimento tabelle:**    
+**Approfondimento tabelle:**    
 >
-> * [anagrafiche.indirizzi_dettaglio](/dbzero/anagrafiche/tabelle/indirizzi_dettaglio)   
+[anagrafiche.indirizzi_dettaglio](/dbzero/anagrafiche/tabelle/indirizzi_dettaglio)   
 >
-> **Approfondimento view:**    
+**Approfondimento view:**    
 >
-> * [script.vw_indirizzo_completo](/dbzero/script/views/vw_indirizzo_completo)    
+[script.vw_indirizzo_completo](/dbzero/script/views/vw_indirizzo_completo)    
 >
----
-
-### 🎯 Scopo Principale
+🎯 Scopo Principale
 
 (latest review 28-12-25)
 Normalizzare i campi dell'indirizzo dettaglio per garantire coerenza su via, civico e indirizzo completo prima di INSERT/UPDATE.
 
 ---
 
-### 🧩 Come Funziona
+### Come Funziona
 
 1. **Normalizzazione via**
    * Ricava `tipo_toponimo` e `nome_strada` da `script.vw_indirizzo_completo` e valorizza `NEW.via_norm` in maiuscolo con `TRIM`.
@@ -45,7 +43,7 @@ Normalizzare i campi dell'indirizzo dettaglio per garantire coerenza su via, civ
 
 ---
 
-## 🔗 Trigger Associato
+## Trigger Associato
 
 ```sql
 CREATE TRIGGER trg_indirizzi_dettaglio_normalize
@@ -57,7 +55,7 @@ CREATE TRIGGER trg_indirizzi_dettaglio_normalize
 
 ---
 
-### 💡 Note Operative
+### Note Operative
 
 * La query su `script.vw_indirizzo_completo` e' eseguita in `INTO STRICT`: la riga deve esistere.
 * `SNC` viene usato come fallback per civico mancante.
@@ -65,5 +63,5 @@ CREATE TRIGGER trg_indirizzi_dettaglio_normalize
 
 ---
 
-> 🧠 **"Indirizzi coerenti e confrontabili: normalizzazione centralizzata a livello DB."**
+> **"Indirizzi coerenti e confrontabili: normalizzazione centralizzata a livello DB."**
 

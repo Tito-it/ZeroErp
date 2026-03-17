@@ -2,14 +2,14 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimento tabelle:   
+Approfondimento tabelle:   
 >
-> * [config.toponomastica](/dbzero/config/tabelle/toponomastica)    
-> * [config.stradario_generale](/dbzero/config/tabelle/stradario_generale)    
+[config.toponomastica](/dbzero/config/tabelle/toponomastica)    
+> [config.stradario_generale](/dbzero/config/tabelle/stradario_generale)    
 >
-> Approfondimento funzioni:   
+Approfondimento funzioni:   
 >
-> * [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)   
+[script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)   
 
 La trigger function **`config.trgfn_toponomastica_protect_update()`** impedisce modifiche non consentite sul catalogo delle toponomastiche, bloccando l’**UPDATE** di `descrizione` quando la voce è già in uso in **`config.stradario_generale`**.
 
@@ -24,7 +24,7 @@ La trigger function **`config.trgfn_toponomastica_protect_update()`** impedisce 
 
 ---
 
-### 🔍 Parametri e Contesto
+### Parametri e Contesto
 
 * **Ambito**: `BEFORE UPDATE OF descrizione` sulla tabella **`config.toponomastica`**.
 * **Condition**: attivazione solo se il record è referenziato in `config.stradario_generale` tramite il campo `toponomastica_id`.
@@ -35,7 +35,7 @@ La trigger function **`config.trgfn_toponomastica_protect_update()`** impedisce 
 
 ---
 
-### ⚙️ Flusso di Esecuzione Dettagliato
+### Flusso di Esecuzione Dettagliato
 
 1. **Bypass in manutenzione**
 
@@ -80,7 +80,7 @@ La trigger function **`config.trgfn_toponomastica_protect_update()`** impedisce 
 
 ---
 
-### 🔒 Motivazione e Benefici
+### Motivazione e Benefici
 
 * **Integrità referenziale logica**: impedendo modifiche di descrizioni in uso, si evita la discrepanza tra entità generali e record associati.
 * **Chiarezza operativa**: chiara segnalazione dell’errore con payload JSON specifico, facilita debug e supporto.
@@ -89,4 +89,4 @@ La trigger function **`config.trgfn_toponomastica_protect_update()`** impedisce 
 
 ---
 
-> 🧠 **“Con `trgfn_toponomastica_protect_update`, Zero ERP tutela la coerenza dello stradario imponendo la creazione di nuove toponomastiche per ogni cambiamento, piuttosto che modifiche in-place.”**
+> **“Con `trgfn_toponomastica_protect_update`, Zero ERP tutela la coerenza dello stradario imponendo la creazione di nuove toponomastiche per ogni cambiamento, piuttosto che modifiche in-place.”**

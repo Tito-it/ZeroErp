@@ -2,16 +2,16 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> • [vendite.preventivi](/dbzero/vendite/tabelle/preventivi)  
+• [vendite.preventivi](/dbzero/vendite/tabelle/preventivi)  
 > • [vendite.attivita_fatturabili](/dbzero/vendite/tabelle/attivita_fatturabili)  
 > • [catalogo.articoli](/dbzero/catalogo/tabelle/articoli)  
 > • [config.iva](/dbzero/config/tabelle/iva)  
 >
-> **Approfondimento funzioni/trigger:**
+**Approfondimento funzioni/trigger:**
 >
-> • [script.trgfn_qta_from_operativa](/dbzero/script/funzioni/trgfn_qta_from_operativa)  
+• [script.trgfn_qta_from_operativa](/dbzero/script/funzioni/trgfn_qta_from_operativa)  
 
 ---
 
@@ -25,7 +25,7 @@ Le righe sono la base informativa per la successiva generazione di
 
 ---
 
-### 🧮 Quantita` e UoM operativa
+### Quantita` e UoM operativa
 
 La tabella supporta doppia rappresentazione quantita`:
 
@@ -37,7 +37,7 @@ Il trigger `script.trgfn_qta_from_operativa` mantiene l’allineamento dei valor
 
 ---
 
-### ✅ Regole principali
+### Regole principali
 
 1. Ogni riga appartiene a un preventivo (`preventivo_id` obbligatorio).
 2. `articolo_id` obbligatorio e referenziato a catalogo.
@@ -46,7 +46,7 @@ Il trigger `script.trgfn_qta_from_operativa` mantiene l’allineamento dei valor
 
 ---
 
-### 🔗 Ruolo nel flusso fatturazione
+### Ruolo nel flusso fatturazione
 
 1. Le righe alimentano la valutazione di eleggibilita` del preventivo.
 2. In stato testata idoneo (es. `ACCETTATO`) diventano fonte per creare
@@ -55,7 +55,7 @@ Il trigger `script.trgfn_qta_from_operativa` mantiene l’allineamento dei valor
 
 ---
 
-### 📄 Campi chiave funzionali
+### Campi chiave funzionali
 
 * `preventivo_id`, `articolo_id`
 * `descrizione`
@@ -66,7 +66,7 @@ Il trigger `script.trgfn_qta_from_operativa` mantiene l’allineamento dei valor
 
 ---
 
-### 🧷 Audit e qualità dati
+### Audit e qualità dati
 
 * audit standard (`data_insert`, `user_insert`, `data_update`, `user_update`);
 * trigger di validazione referenziale su articoli/IVA/UoM attivi;
@@ -74,7 +74,7 @@ Il trigger `script.trgfn_qta_from_operativa` mantiene l’allineamento dei valor
 
 ---
 
-### 👓 Ruolo nel sistema
+### Ruolo nel sistema
 
 `vendite.preventivi_righe` rappresenta il livello di granularita` commerciale
 necessario per trasformare il preventivo in elementi fatturabili in modo tracciabile,

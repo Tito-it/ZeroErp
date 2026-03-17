@@ -2,20 +2,18 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> • [pagamenti.vendite_movimenti](/dbzero/pagamenti/tabelle/vendite_movimenti)  
+• [pagamenti.vendite_movimenti](/dbzero/pagamenti/tabelle/vendite_movimenti)  
 >
----
-
-### 🎯 Scopo Principale
+🎯 Scopo Principale
 
 La tabella **`pagamenti.centri_riscossione`** definisce le **origini di incasso**
 per i movimenti vendite (banca, posta, cassa, compensazioni, fondo fattura, ecc.).
 
 ---
 
-### 🧱 Campi chiave (semantica)
+### Campi chiave (semantica)
 
 * `codice`: identificativo leggibile.
 * `codice_interno`: codice tecnico/integrazione.
@@ -25,7 +23,7 @@ per i movimenti vendite (banca, posta, cassa, compensazioni, fondo fattura, ecc.
 
 ---
 
-### ✅ Regole principali
+### Regole principali
 
 * `codice` univoco.
 * Solo **un centro** puo` avere `is_compensazione = true`.
@@ -33,7 +31,7 @@ per i movimenti vendite (banca, posta, cassa, compensazioni, fondo fattura, ecc.
 
 ---
 
-### 🧪 Esempio d’uso
+### Esempio d’uso
 
 ```sql
 SELECT *

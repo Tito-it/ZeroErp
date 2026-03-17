@@ -2,14 +2,14 @@
 
 > 👀 **Vedi anche**
 >
-> Guida:
+Guida:
 >
-> * [Automazioni – Overview del Modulo](/guide/automazione-db)   
+[Automazioni – Overview del Modulo](/guide/automazione-db)   
 >
-> Approfondimento funzioni:
+Approfondimento funzioni:
 >
-> * [dbops.fn_schema_in_scope](/dbzero/dbops/funzioni/fn_schema_in_scope)   
-> * [dbops.fn_resolve_scope](/dbzero/dbops/funzioni/fn_resolve_scope)   
+[dbops.fn_schema_in_scope](/dbzero/dbops/funzioni/fn_schema_in_scope)   
+> [dbops.fn_resolve_scope](/dbzero/dbops/funzioni/fn_resolve_scope)   
 
 ---
 
@@ -20,7 +20,7 @@ La funzione **`dbops.fn_schema_match(p_rule_target, p_schema)`** è un **helper 
 
 ---
 
-### 🔍 Parametri di input
+### Parametri di input
 
 | Parametro       | Tipo | Obbligatorio | Descrizione                                        |
 | --------------- | ---- | :----------: | -------------------------------------------------- |
@@ -29,13 +29,13 @@ La funzione **`dbops.fn_schema_match(p_rule_target, p_schema)`** è un **helper 
 
 ---
 
-### 📤 Valore di ritorno
+### Valore di ritorno
 
 `boolean` – `true` se `p_schema` corrisponde al target o se `p_rule_target='*all'`; altrimenti `false`.
 
 ---
 
-### ⚙️ Flusso logico
+### Flusso logico
 
 1. Se `p_rule_target` è `NULL` → ritorna `false` (gestione difensiva).
 2. Se `p_rule_target='*all'` (case insensitive) → ritorna `true`.
@@ -43,7 +43,7 @@ La funzione **`dbops.fn_schema_match(p_rule_target, p_schema)`** è un **helper 
 
 ---
 
-### 🧩 Casi d’uso tipici
+### Casi d’uso tipici
 
 * **Applicazione regole automazioni**: decidere se applicare una regola ad un determinato schema.
 * **Wildcard globale**: usare `*all` per indicare che la regola è valida su qualsiasi schema.
@@ -51,14 +51,14 @@ La funzione **`dbops.fn_schema_match(p_rule_target, p_schema)`** è un **helper 
 
 ---
 
-### 🛡️ Permessi e sicurezza
+### Permessi e sicurezza
 
 * Funzione **IMMUTABLE**, non dipende da cataloghi esterni.
 * Sicura, priva di side‑effect.
 
 ---
 
-### 🚀 Esempi di utilizzo
+### Esempi di utilizzo
 
 * `SELECT dbops.fn_schema_match('anagrafiche', 'anagrafiche');` → `true`.
 * `SELECT dbops.fn_schema_match('config', 'anagrafiche');` → `false`.
@@ -66,14 +66,14 @@ La funzione **`dbops.fn_schema_match(p_rule_target, p_schema)`** è un **helper 
 
 ---
 
-### 📌 Considerazioni
+### Considerazioni
 
 * È la versione più semplice e atomica rispetto a `fn_schema_in_scope` (che lavora su array).
 * Spesso usata nelle `WHERE` dei cicli di automazione per decidere se includere parent/child schema di una FK.
 
 ---
 
-### ✅ Benefici
+### Benefici
 
 * **Semplicità**: logica minimale e leggibile.
 * **Affidabilità**: comportamento prevedibile con gestione difensiva di `NULL`.
@@ -81,4 +81,4 @@ La funzione **`dbops.fn_schema_match(p_rule_target, p_schema)`** è un **helper 
 
 ---
 
-> 🧠 **In sintesi**: `fn_schema_match` è un **helper elementare ma cruciale** per verificare in modo uniforme se uno schema soddisfa una regola di automazione, con supporto al caso speciale `*all`.
+> **In sintesi**: `fn_schema_match` è un **helper elementare ma cruciale** per verificare in modo uniforme se uno schema soddisfa una regola di automazione, con supporto al caso speciale `*all`.

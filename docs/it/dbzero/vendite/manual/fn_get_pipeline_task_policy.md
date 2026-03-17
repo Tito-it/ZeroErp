@@ -6,7 +6,7 @@ Restituisce la policy runtime attiva di un task pipeline (`annullabile`, `resume
 
 ---
 
-### ✅ Regole principali
+### Regole principali
 
 * `p_pipeline_id` obbligatorio (`> 0`)
 * `p_task_code` obbligatorio
@@ -15,7 +15,7 @@ Restituisce la policy runtime attiva di un task pipeline (`annullabile`, `resume
 
 ---
 
-### ✅ Output
+### Output
 
 Una riga con:
 * `annullabile`

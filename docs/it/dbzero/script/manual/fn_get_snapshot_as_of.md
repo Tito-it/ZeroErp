@@ -2,10 +2,9 @@
 
 > 👀 **Vedi anche**
 > 
+**Approfondimento funzioni:**
 >
-> **Approfondimento funzioni:**
->
-> * [script.fn_get_record_id_as_of](/dbzero/script/funzioni/fn_get_record_id_as_of
+[script.fn_get_record_id_as_of](/dbzero/script/funzioni/fn_get_record_id_as_of
 
 
 La funzione **`script.fn_get_snapshot_as_of(p_schema TEXT, p_table TEXT, p_id TEXT, p_fk_col TEXT, p_as_of TIMESTAMP)`** restituisce uno **snapshot JSONB** di un record al momento specificato (`p_as_of`), applicando il modello di storicizzazione unificato di Zero ERP:
@@ -26,7 +25,7 @@ La funzione **`script.fn_get_snapshot_as_of(p_schema TEXT, p_table TEXT, p_id TE
 * **Recupero storico/flessibile**: ottenere lo stato di un record in un preciso istante, combinando storicizzazione e serializzazione diretta.
 * **Robustezza**: ogni errore di query viene tracciato con contesto completo, e l'esecuzione viene interrotta per evitare inconsistenze.
 
-### ⚙️ Flusso Logico
+### Flusso Logico
 
 ```plpgsql
 -- 0) Conversione in timestamptz
@@ -62,7 +61,7 @@ RETURN v_snapshot;
 ```
 
 
-### 💡 Vantaggi Operativi
+### Vantaggi Operativi
 
 * **Coerenza**: centralizza la logica di storicizzazione e fallback in un unico punto.
 * **Tracciabilità avanzata**: ogni errore è corredato di contesto (`table`, `fk_column`, `id`, `as_of`, `SQLSTATE`).

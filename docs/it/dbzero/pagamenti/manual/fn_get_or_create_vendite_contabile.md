@@ -4,7 +4,7 @@
 Recuperare una testata contabile vendite esistente oppure crearne una nuova,
 con possibilita` di collegarla al lotto fatturazione tramite tabella ponte.
 
-### ✅ Regole principali
+### Regole principali
 * Valida parametri obbligatori (`centro_riscossione_id`, `data_contabile`, stato).
 * Supporta `p_compensazione_id` opzionale:
   * se valorizzato, identifica in modo univoco la testata contabile
@@ -14,7 +14,7 @@ con possibilita` di collegarla al lotto fatturazione tramite tabella ponte.
 * Se non la trova, crea una nuova testata.
 * Se `p_lotto_id` e` valorizzato, inserisce il link in `pagamenti.vendite_contabili_lotti`.
 
-### 🧪 Esempio d’uso
+### Esempio d’uso
 ```sql
 SELECT pagamenti.fn_get_or_create_vendite_contabile(
   p_centro_riscossione_id => 1,

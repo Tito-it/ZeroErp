@@ -2,16 +2,16 @@
 
 > 👀 **Vedi anche**   
 >
-> **Approfondimento tabelle:**    
+**Approfondimento tabelle:**    
 >
-> * [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)   
-> * [anagrafiche.indirizzi](/dbzero/anagrafiche/tabelle/indirizzi)   
-> * [config.tipi_ruolo_tipi_indirizzo](/dbzero/config/tabelle/tipi_ruolo_tipi_indirizzo)   
+[anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)   
+> [anagrafiche.indirizzi](/dbzero/anagrafiche/tabelle/indirizzi)   
+> [config.tipi_ruolo_tipi_indirizzo](/dbzero/config/tabelle/tipi_ruolo_tipi_indirizzo)   
 >
-> **Approfondimento Funzioni:**   
+**Approfondimento Funzioni:**   
 >
-> * [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)   
-> * [dbops.trgfn_tx_id_managed](/dbzero/dbops/funzioni/trgfn_tx_id_managed)   
+[script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)   
+> [dbops.trgfn_tx_id_managed](/dbzero/dbops/funzioni/trgfn_tx_id_managed)   
 
 ---
 
@@ -24,7 +24,7 @@ Se per il tipo ruolo sono presenti righe di matrice con `obbligatorio = true`, l
 
 ---
 
-### 🧩 Come Funziona
+### Come Funziona
 
 1. Ignora le `DELETE`.
 2. Se `NEW.tipo_ruolo_id` e' NULL, la funzione non applica vincoli.
@@ -52,7 +52,7 @@ Gli errori sono prodotti tramite:
 
 ---
 
-## 🔗 Trigger Associato
+## Trigger Associato
 
 Questa funzione e' usata come **constraint trigger DEFERRABLE INITIALLY DEFERRED** su `anagrafiche.soggetti_ruoli`:
 
@@ -67,7 +67,7 @@ CREATE CONSTRAINT TRIGGER trg_soggetti_ruoli_def_guard_indirizzi_required_aft_in
 
 ---
 
-### 💡 Note Operative
+### Note Operative
 
 * La matrice e' opzionale: se non esiste per il tipo ruolo, il controllo non scatta.
 * Il fallback consente di soddisfare l'obbligo con un tipo indirizzo alternativo configurato.
@@ -75,4 +75,4 @@ CREATE CONSTRAINT TRIGGER trg_soggetti_ruoli_def_guard_indirizzi_required_aft_in
 
 ---
 
-> 🧠 **"Gli indirizzi obbligatori dipendono dal ruolo: il trigger assicura la conformita'."**
+> **"Gli indirizzi obbligatori dipendono dal ruolo: il trigger assicura la conformita'."**

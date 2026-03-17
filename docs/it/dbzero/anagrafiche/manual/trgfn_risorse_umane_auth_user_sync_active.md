@@ -2,14 +2,14 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> * [anagrafiche.risorse_umane_auth_user](/dbzero/anagrafiche/tabelle/risorse_umane_auth_user)
-> * [anagrafiche.risorse_umane](/dbzero/anagrafiche/tabelle/risorse_umane)
+[anagrafiche.risorse_umane_auth_user](/dbzero/anagrafiche/tabelle/risorse_umane_auth_user)
+> [anagrafiche.risorse_umane](/dbzero/anagrafiche/tabelle/risorse_umane)
 >
-> **Approfondimento funzioni:**
+**Approfondimento funzioni:**
 >
-> * [anagrafiche.fn_sync_auth_user_is_active](/dbzero/anagrafiche/funzioni/fn_sync_auth_user_is_active)
+[anagrafiche.fn_sync_auth_user_is_active](/dbzero/anagrafiche/funzioni/fn_sync_auth_user_is_active)
 
 ---
 
@@ -26,7 +26,7 @@ flag `attivo` del bridge.
 
 ---
 
-### 🔍 Regola applicata
+### Regola applicata
 
 * Trigger **AFTER INSERT** e **AFTER UPDATE OF attivo** su
   `anagrafiche.risorse_umane_auth_user`.
@@ -35,7 +35,7 @@ flag `attivo` del bridge.
 
 ---
 
-### ✅ Ruolo nel processo
+### Ruolo nel processo
 
 La funzione mantiene allineato l'utente Django con lo stato operativo del
 bridge risorsa→auth_user, evitando che la gestione dell'attivazione resti

@@ -2,7 +2,7 @@
 
 > 👀 **Vedi anche**
 >
-> • [vendite.note](/dbzero/vendite/tabelle/note)  
+• [vendite.note](/dbzero/vendite/tabelle/note)  
 > • [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)  
 
 ---
@@ -15,7 +15,7 @@ che `target_riga_id` appartenga davvero alla testata indicata da `target_id`.
 
 ---
 
-### ✅ Regole principali
+### Regole principali
 
 * se `anchor_tipo <> 'RIGA'` non applica controlli di appartenenza;
 * per note a riga:
@@ -26,7 +26,7 @@ che `target_riga_id` appartenga davvero alla testata indicata da `target_id`.
 
 ---
 
-### 🧩 Utilizzo
+### Utilizzo
 
 Viene usata come validatore generico su trigger `BEFORE INSERT/UPDATE` delle
 tabelle note dominio vendite, evitando note agganciate a righe non coerenti.

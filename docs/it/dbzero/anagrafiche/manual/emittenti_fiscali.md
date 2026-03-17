@@ -2,16 +2,14 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**    
+**Approfondimento tabelle:**    
 >
-> • [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)    
+• [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)    
 > • [anagrafiche.emittenti_fiscali_billing_account](/dbzero/anagrafiche/manual/emittenti_fiscali_billing_account)    
 > • [vendite.fatture](/dbzero/vendite/tabelle/fatture)    
 >
 
----
-
-### 🎯 Scopo Principale
+🎯 Scopo Principale
 
 (last review)
 `anagrafiche.emittenti_fiscali` rappresenta l’anagrafica **degli emittenti fiscali** disponibili
@@ -23,7 +21,7 @@ avviene tramite la tabella di mapping `anagrafiche.emittenti_fiscali_billing_acc
 
 ---
 
-### 🧱 Ruolo nel processo
+### Ruolo nel processo
 
 * Fornisce l’**identita` fiscale** che compare nei documenti.
 * Consente la gestione **multi‑emittente** (piu` soggetti emittenti nello stesso gestionale).
@@ -31,7 +29,7 @@ avviene tramite la tabella di mapping `anagrafiche.emittenti_fiscali_billing_acc
 
 ---
 
-### 🔗 Regola di selezione (richiamo)
+### Regola di selezione (richiamo)
 
 * L’emittente **effettivo** per una fattura e` risolto dal mapping
   `billing_account → emittente fiscale`.
@@ -40,7 +38,7 @@ avviene tramite la tabella di mapping `anagrafiche.emittenti_fiscali_billing_acc
 
 ---
 
-### ✅ Best practice operative
+### Best practice operative
 
 * Popolare questa tabella con **tutti gli emittenti fiscali** gestiti dal sistema.
 * Mantenere il mapping separato per garantire flessibilita` e fallback.
@@ -49,7 +47,7 @@ avviene tramite la tabella di mapping `anagrafiche.emittenti_fiscali_billing_acc
 
 ---
 
-### 🔒 Vincoli applicativi (attivo)
+### Vincoli applicativi (attivo)
 
 * Un emittente fiscale **non puo` essere disattivato** se esistono mapping
   in `emittenti_fiscali_billing_account` collegati al suo `soggetto_ruolo_id`.

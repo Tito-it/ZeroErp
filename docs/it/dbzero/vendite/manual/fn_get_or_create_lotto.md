@@ -2,18 +2,16 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> • [vendite.fatturazione_lotti](/dbzero/vendite/tabelle/fatturazione_lotti)  
+• [vendite.fatturazione_lotti](/dbzero/vendite/tabelle/fatturazione_lotti)  
 >
-> **Approfondimento funzioni:**
+**Approfondimento funzioni:**
 >
-> • [vendite.fn_create_fatturazione_lotto](/dbzero/vendite/funzioni/fn_create_fatturazione_lotto)     
+• [vendite.fn_create_fatturazione_lotto](/dbzero/vendite/funzioni/fn_create_fatturazione_lotto)     
 > • [vendite.fn_resolve_lotto_utility_emittente](/dbzero/vendite/funzioni/fn_resolve_lotto_utility_emittente)
 >
----
-
-### 🎯 Scopo Principale
+🎯 Scopo Principale
 
 (latest review 22-02-2026)
 La funzione **`vendite.fn_get_or_create_lotto()`** recupera un lotto esistente
@@ -21,7 +19,7 @@ La funzione **`vendite.fn_get_or_create_lotto()`** recupera un lotto esistente
 
 ---
 
-### 🔧 Regole applicate
+### Regole applicate
 
 * `tipo_lotto` obbligatorio (MASSIVO | GIORNALIERO).
 * Se `p_lotto_id` e` valorizzato:
@@ -34,7 +32,7 @@ La funzione **`vendite.fn_get_or_create_lotto()`** recupera un lotto esistente
 
 ---
 
-### ✅ Output
+### Output
 
 Ritorna l’`id` del lotto esistente o creato.
 

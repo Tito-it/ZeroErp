@@ -2,13 +2,13 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimento Tabelle:
+Approfondimento Tabelle:
 >
-> * [config.stati](/dbzero/config/tabelle/stati)
+[config.stati](/dbzero/config/tabelle/stati)
 >
-> Approfondimento Funzioni:
+Approfondimento Funzioni:
 >
-> * [script.fn_get_default_by_param](/dbzero/script/funzioni/fn_get_default_by_param)
+[script.fn_get_default_by_param](/dbzero/script/funzioni/fn_get_default_by_param)
 
 ---
 
@@ -19,7 +19,7 @@
 
 ---
 
-### 🔗 Collegamenti
+### Collegamenti
 
 * **`config.stati`** – tabella sorgente contenente la relazione tra `id` (PK) e `codice_iso2`.
 * La funzione può essere collegata a qualunque tabella che:
@@ -28,7 +28,7 @@
 
 ---
 
-### ⚙️ Dettagli Tecnici
+### Dettagli Tecnici
 
 ```sql
 CREATE OR REPLACE FUNCTION script.trgfn_sync_stato_iso2()

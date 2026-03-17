@@ -2,14 +2,14 @@
 
 > 👀 **Vedi anche**
 >
-> Tabelle:
+Tabelle:
 >
-> * [pratiche.giornale](giornale.md)
-> * [pratiche.note_pratiche](note_pratiche.md)
+[pratiche.giornale](giornale.md)
+> [pratiche.note_pratiche](note_pratiche.md)
 >
-> Overview:
+Overview:
 >
-> * [Trigger business overview](trigger_business_overview.md)
+[Trigger business overview](trigger_business_overview.md)
 
 ---
 
@@ -19,7 +19,7 @@ Registra l'azione **NOTA_AGGIUNTA** nel giornale a livello pratica. Si attiva **
 
 ---
 
-### 🔧 Firma
+### Firma
 
 ```sql
 CREATE OR REPLACE FUNCTION pratiche.trgfn_note_pratiche_giornale()
@@ -29,7 +29,7 @@ LANGUAGE plpgsql
 
 ---
 
-### ⚙️ Logica
+### Logica
 
 Inserisce una riga in `pratiche.giornale` con:
 
@@ -44,7 +44,7 @@ Inserisce una riga in `pratiche.giornale` con:
 
 ---
 
-### 🔗 Trigger associato
+### Trigger associato
 
 | Nome | Fase | Evento | Tabella |
 |------|------|--------|---------|

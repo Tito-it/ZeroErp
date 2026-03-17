@@ -2,7 +2,7 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento Tabelle**   
+**Approfondimento Tabelle**   
 > • [`catalogo.unita_misura`](/dbzero/catalogo/tabelle/unita_misura)     
 > • [`vendite.articoli_tipologie`](/dbzero/vendite/tabelle/articoli_tipologie)    
 > • [`vendite.articoli_gruppi`](/dbzero/vendite/tabelle/articoli_gruppi)    
@@ -11,7 +11,7 @@
 > • [`config.conti_contabili`](/dbzero/config/tabelle/conti_contabili)   
 > • *(opz.)* [`catalogo.articoli_componenti`](/dbzero/catalogo/tabelle/articoli_componenti) – per gli articoli compositi   
 >
-> **Approfondimento Trigger/Funzioni**   
+**Approfondimento Trigger/Funzioni**   
 > • [`dbops.trgfn_tx_id_managed`](/dbzero/dbops/funzioni/trgfn_tx_id_managed)    
 > • [`script.trgfn_audit_data_user_generic`](/dbzero/script/funzioni/trgfn_audit_data_user_generic)   
 > • [`script.trgfn_storico_generic`](/dbzero/script/funzioni/trgfn_storico_generic)   
@@ -31,7 +31,7 @@
 
 ---
 
-### 🔗 Relazioni
+### Relazioni
 
 | Tipo | Tabella ↔ Campo                                                  | Descrizione                  |
 | ---- | ---------------------------------------------------------------- | ---------------------------- |
@@ -46,7 +46,7 @@
 
 ---
 
-### 🧱 Struttura logica (campi chiave)
+### Struttura logica (campi chiave)
 
 * **Identità**: `id UUID` (PK), `codice VARCHAR(50)` (**UNIQUE**), `descrizione VARCHAR(150)`, `descrizione_breve VARCHAR(80)`
 * **Classificazione**: `uom_id`, `tipo_voce_id`, `gruppo_voce_id`, `spesa_id`
@@ -65,11 +65,11 @@
 * **Note**: `note_target_tipo` è vincolato a `ARTICOLI` quando valorizzato.
 * **Solo componente**: se `is_solo_componente=true` l’articolo non può essere usato come prodotto in `articoli_componenti`.
 
-> 🔒 Consigliato: proteggere l’**immutabilità** del `codice` con un trigger `BEFORE UPDATE` dedicato (se è business‑key) e con GRANT mirati.
+> Consigliato: proteggere l’**immutabilità** del `codice` con un trigger `BEFORE UPDATE` dedicato (se è business‑key) e con GRANT mirati.
 
 ---
 
-### 🔍 Indicizzazione
+### Indicizzazione
 
 * *(Valuta se necessario)* indici su FK usate spesso in filtro: `tipo_voce_id`, `gruppo_voce_id`, `spesa_id`, `iva_id`, `attivo`.
 
@@ -78,7 +78,7 @@
 
 ---
 
-### 🔎 Query tipiche
+### Query tipiche
 
 **1) Articoli attivi per tipologia e gruppo**
 
@@ -116,7 +116,7 @@ WHERE a.uom_id IS NOT NULL
 
 ---
 
-### 🧭 Best practice
+### Best practice
 
 * **Normalizzazione codice**: valuta un trigger di normalizzazione (trim/uppercase opzionale) e **protezione update** del campo `codice`.
 * **Serializzazione**: se `requires_serial=true`, prevedi controlli lato movimento (carico/scarico) e vincoli di coerenza.

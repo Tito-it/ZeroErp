@@ -2,14 +2,14 @@
 
 > 👀 **Vedi anche**
 >
-> Tabelle:
+Tabelle:
 >
-> * [pratiche.giornale](giornale.md)
-> * [pratiche.flussi](flussi.md)
+[pratiche.giornale](giornale.md)
+> [pratiche.flussi](flussi.md)
 >
-> Overview:
+Overview:
 >
-> * [Trigger business overview](trigger_business_overview.md)
+[Trigger business overview](trigger_business_overview.md)
 
 ---
 
@@ -19,7 +19,7 @@ Registra l'azione **FLUSSO_STATO_CAMBIATO** nel giornale. Si attiva **AFTER UPDA
 
 ---
 
-### 🔧 Firma
+### Firma
 
 ```sql
 CREATE OR REPLACE FUNCTION pratiche.trgfn_flussi_giornale_stato()
@@ -29,7 +29,7 @@ LANGUAGE plpgsql
 
 ---
 
-### ⚙️ Logica
+### Logica
 
 Inserisce una riga in `pratiche.giornale` con:
 
@@ -46,7 +46,7 @@ Il campo `esito` viene sempre incluso nel dettaglio per tracciare l'esito del fl
 
 ---
 
-### 🔗 Trigger associato
+### Trigger associato
 
 | Nome | Fase | Evento | WHEN |
 |------|------|--------|------|

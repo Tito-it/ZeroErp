@@ -2,10 +2,10 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> * [config.iva](/dbzero/config/tabelle/iva)  
-> * [config.iva_stati](/dbzero/config/tabelle/iva_stati)  
+[config.iva](/dbzero/config/tabelle/iva)  
+> [config.iva_stati](/dbzero/config/tabelle/iva_stati)  
 
 ---
 
@@ -18,7 +18,7 @@ specificato.
 
 ---
 
-### ✅ Regole principali
+### Regole principali
 
 * `p_iva_id` obbligatorio e `> 0`.
 * `p_stato_id` opzionale. Se `NULL`, usa sempre `config.iva.aliquota_iva`.
@@ -26,13 +26,13 @@ specificato.
 
 ---
 
-### ✅ Output
+### Output
 
 Ritorna la percentuale IVA (numeric).
 
 ---
 
-### 🧪 Esempio d’uso
+### Esempio d’uso
 
 ```sql
 SELECT config.fn_get_aliquota_iva(1, 100);

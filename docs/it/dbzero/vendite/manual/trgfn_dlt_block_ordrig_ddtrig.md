@@ -2,7 +2,7 @@
 
 > 👀 **Vedi anche**
 >
-> • [vendite.ordini_righe](/dbzero/vendite/tabelle/ordini_righe)  
+• [vendite.ordini_righe](/dbzero/vendite/tabelle/ordini_righe)  
 > • [vendite.ddt_righe](/dbzero/vendite/tabelle/ddt_righe)  
 > • [vendite.ordini_righe_fulfillment](/dbzero/vendite/tabelle/ordini_righe_fulfillment)  
 
@@ -16,7 +16,7 @@ fulfillment e la tracciabilità operativa.
 
 ---
 
-### ✅ Regole principali
+### Regole principali
 
 * su `vendite.ordini_righe`:
   * se esistono righe in `ordini_righe_fulfillment` collegate, errore `E_DELETE_BLOCKED_FUL`;
@@ -28,7 +28,7 @@ fulfillment e la tracciabilità operativa.
 
 ---
 
-### 🧩 Utilizzo
+### Utilizzo
 
 Usata come trigger `BEFORE DELETE` per impedire delete distruttivi su righe
 documento con o senza fulfillment, forzando processi di annullamento gestiti.

@@ -2,17 +2,17 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> * [`config.tipi_soggetto_dettaglio`](/dbzero/config/tabelle/tipi_soggetto_dettaglio)   
-> * [`config.tipi_indirizzi`](/dbzero/config/tabelle/tipi_indirizzi)   
-> * [`anagrafiche.soggetti`](/dbzero/anagrafiche/tabelle/soggetti)
-> * [`anagrafiche.indirizzi`](/dbzero/anagrafiche/tabelle/indirizzi)
+[`config.tipi_soggetto_dettaglio`](/dbzero/config/tabelle/tipi_soggetto_dettaglio)   
+> [`config.tipi_indirizzi`](/dbzero/config/tabelle/tipi_indirizzi)   
+> [`anagrafiche.soggetti`](/dbzero/anagrafiche/tabelle/soggetti)
+> [`anagrafiche.indirizzi`](/dbzero/anagrafiche/tabelle/indirizzi)
 >
-> **Funzioni / trigger collegati:**
+**Funzioni / trigger collegati:**
 >
-> * [`anagrafiche.trgfn_indirizzi_guard_tipo_soggetto_dettaglio_tipi_indirizzo`](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_guard_tipo_soggetto_dettaglio_tipi_indirizzo) 
-> * [`script.fn_get_indirizzo`](/dbzero/script/funzioni/fn_get_indirizzo)
+[`anagrafiche.trgfn_indirizzi_guard_tipo_soggetto_dettaglio_tipi_indirizzo`](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_guard_tipo_soggetto_dettaglio_tipi_indirizzo) 
+> [`script.fn_get_indirizzo`](/dbzero/script/funzioni/fn_get_indirizzo)
 
 ---
 
@@ -36,7 +36,7 @@ Questa tabella governa quindi:
 
 ---
 
-### 🧩 Ruolo nel Modello Dati
+### Ruolo nel Modello Dati
 
 Il modello dati che ruota intorno a questa matrice è il seguente:
 
@@ -81,7 +81,7 @@ Questa tabella consente di:
 
 ---
 
-### ⚙️ Regole di Funzionamento
+### Regole di Funzionamento
 
  **1️⃣ Presenza o assenza della matrice**
 
@@ -130,11 +130,11 @@ In questo caso:
 * se viene richiesto un indirizzo **SEDEOP** ma non esiste,
 * la funzione di lookup può usare **SEDELEG** come alternativa.
 
-> 📌 La logica di fallback **non è nel trigger**, ma nelle funzioni di servizio (es. `script.fn_get_indirizzo`).
+> La logica di fallback **non è nel trigger**, ma nelle funzioni di servizio (es. `script.fn_get_indirizzo`).
 
 ---
 
-### 🔍 Esempi d’Uso (concettuali)
+### Esempi d’Uso (concettuali)
 
  **✔ Persona Fisica**
 
@@ -159,7 +159,7 @@ In questo caso:
 
 ---
 
-### 💡 Vantaggi Operativi
+### Vantaggi Operativi
 
 * **Regole configurabili e versionabili**
 * **Separazione netta tra dominio e dati operativi**
@@ -167,6 +167,6 @@ In questo caso:
 * **Backward compatibility** con dati storici
 * **Riutilizzabile** da trigger, API e servizi applicativi
 
-> 🧠 **"`config.tipi_soggetto_dettaglio_tipi_indirizzo` governa la coerenza degli indirizzi in base alla natura del soggetto, trasformando le regole da codice rigido a configurazione esplicita."**
+> **"`config.tipi_soggetto_dettaglio_tipi_indirizzo` governa la coerenza degli indirizzi in base alla natura del soggetto, trasformando le regole da codice rigido a configurazione esplicita."**
 
 {% include-markdown "signature-core.md" %}

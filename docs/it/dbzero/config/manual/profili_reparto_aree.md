@@ -2,16 +2,16 @@
 
 > 👀 **Vedi anche**
 >
-> Architettura di riferimento:
+Architettura di riferimento:
 >
-> * [Architettura Permessi e Autorizzazioni](/guide/architettura-permessi-e-autorizzazioni)
+[Architettura Permessi e Autorizzazioni](/guide/architettura-permessi-e-autorizzazioni)
 >
-> Tabelle correlate:
+Tabelle correlate:
 >
-> * [config.unita_organizzative](/dbzero/config/tabelle/unita_organizzative)
-> * [config.aree_funzionali](/dbzero/config/tabelle/aree_funzionali)
-> * [config.profili_reparto_azioni](/dbzero/config/tabelle/profili_reparto_azioni)
-> * [config.user_override_aree](/dbzero/config/tabelle/user_override_aree)
+[config.unita_organizzative](/dbzero/config/tabelle/unita_organizzative)
+> [config.aree_funzionali](/dbzero/config/tabelle/aree_funzionali)
+> [config.profili_reparto_azioni](/dbzero/config/tabelle/profili_reparto_azioni)
+> [config.user_override_aree](/dbzero/config/tabelle/user_override_aree)
 
 ---
 
@@ -29,7 +29,7 @@ Definisce il livello di accesso di default che ogni reparto ha su ogni area funz
 
 ---
 
-### 🔑 Colonne chiave
+### Colonne chiave
 
 | Colonna | Scopo |
 |---------|-------|
@@ -45,7 +45,7 @@ Modificare il profilo di un reparto ha **impatto immediato** su tutti gli operat
 
 ---
 
-### 🔗 Catena di risoluzione (livello area)
+### Catena di risoluzione (livello area)
 
 ```
 1. Override utente su SINGOLO OGGETTO? → SI: applica → NO: continua ↓
@@ -57,4 +57,4 @@ Questa tabella interviene al **punto 3** della catena.
 
 ---
 
-> 🧠 **"`config.profili_reparto_aree` è il motore dell'ereditarietà: configura una volta il reparto, tutti gli operatori sono allineati."**
+> **"`config.profili_reparto_aree` è il motore dell'ereditarietà: configura una volta il reparto, tutti gli operatori sono allineati."**

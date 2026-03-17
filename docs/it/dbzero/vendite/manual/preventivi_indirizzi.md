@@ -2,9 +2,9 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> • [vendite.preventivi](/dbzero/vendite/tabelle/preventivi)  
+• [vendite.preventivi](/dbzero/vendite/tabelle/preventivi)  
 > • [config.tipi_indirizzi](/dbzero/config/tabelle/tipi_indirizzi)  
 > • [config.tipi_indirizzi_allowed](/dbzero/config/tabelle/tipi_indirizzi_allowed)  
 > • [anagrafiche.indirizzi](/dbzero/anagrafiche/tabelle/indirizzi)  
@@ -19,7 +19,7 @@ storico coerente anche se l’anagrafica origine cambia nel tempo.
 
 ---
 
-### ✅ Regole principali
+### Regole principali
 
 1. relazione 1:N con preventivo, ma **un solo record per tipo indirizzo**
    (`uq_preventivi_indirizzi_uno_per_tipo_` su `preventivo_id, tipo_indirizzo_id`);
@@ -29,7 +29,7 @@ storico coerente anche se l’anagrafica origine cambia nel tempo.
 
 ---
 
-### 📌 Tracciabilita` origine
+### Tracciabilita` origine
 
 Campi opzionali:
 * `origine_indirizzo_id`
@@ -39,7 +39,7 @@ Permettono di risalire al record anagrafico sorgente usato per lo snapshot.
 
 ---
 
-### 🔗 Ruolo nel flusso
+### Ruolo nel flusso
 
 Gli indirizzi snapshot:
 
@@ -49,7 +49,7 @@ Gli indirizzi snapshot:
 
 ---
 
-### 🧷 Audit
+### Audit
 
 Audit standard su insert/update:
 * `data_insert`, `user_insert`
@@ -57,8 +57,7 @@ Audit standard su insert/update:
 
 ---
 
-### 👓 Ruolo nel sistema
+### Ruolo nel sistema
 
 `vendite.preventivi_indirizzi` separa la componente anagrafica variabile dalla
 vista documento “congelata”, garantendo riproducibilita` del preventivo lungo il ciclo.
-

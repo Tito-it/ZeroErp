@@ -2,21 +2,19 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**    
+**Approfondimento tabelle:**    
 >
-> • [vendite.contratti](/dbzero/vendite/tabelle/contratti)    
+• [vendite.contratti](/dbzero/vendite/tabelle/contratti)    
 > • [vendite.contratti_utilities](/dbzero/vendite/manual/contratti_utilities)    
 > • [anagrafiche.istanze_dati_precontrattuali](/dbzero/anagrafiche/tabelle/istanze_dati_precontrattuali)    
 >
-> **Approfondimento funzioni:**    
+**Approfondimento funzioni:**    
 >
-> • [vendite.trgfn_contratti_normalize](/dbzero/vendite/funzioni/trgfn_contratti_normalize)    
+• [vendite.trgfn_contratti_normalize](/dbzero/vendite/funzioni/trgfn_contratti_normalize)    
 > • [vendite.trgfn_contratti_gen_codice](/dbzero/vendite/funzioni/trgfn_contratti_gen_codice)    
 >
 
----
-
-### 🎯 Scopo Principale
+🎯 Scopo Principale
 
 (latest review 20/01/26)
 La funzione `vendite.trgfn_contratti_snapshot_precontrattuali()` crea lo **snapshot** dei dati
@@ -28,7 +26,7 @@ La funzione e` eseguita da un trigger **AFTER INSERT** su `vendite.contratti`.
 
 ---
 
-### 🔗 Regola di snapshot
+### Regola di snapshot
 
 1. Alla creazione del contratto, la funzione cerca il record piu` recente in
    `anagrafiche.istanze_dati_precontrattuali` per `(istanza_utility_id, utility_id)`.
@@ -41,7 +39,7 @@ Non sono previsti aggiornamenti successivi dello snapshot.
 
 ---
 
-### 🧱 Contesto operativo
+### Contesto operativo
 
 **Tabella di origine:** `anagrafiche.istanze_dati_precontrattuali`  
 **Tabella di destinazione:** `vendite.contratti_utilities`  
@@ -49,7 +47,7 @@ Non sono previsti aggiornamenti successivi dello snapshot.
 
 ---
 
-### ✅ Ruolo nel processo
+### Ruolo nel processo
 
 Questa funzione consolida la transizione **pre‑contrattuale → contrattuale**:
 

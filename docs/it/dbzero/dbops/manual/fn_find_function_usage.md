@@ -2,10 +2,10 @@
 
 > 👀 **Vedi anche**
 >
-> Altre view di catalogazione:  
+Altre view di catalogazione:  
 >
-> * [dbops.vw_function_list](/dbzero/dbops/manual/vw_function_list)  
-> * [dbops.vw_trigger_functions](/dbzero/dbops/manual/vw_trigger_functions)  
+[dbops.vw_function_list](/dbzero/dbops/manual/vw_function_list)  
+> [dbops.vw_trigger_functions](/dbzero/dbops/manual/vw_trigger_functions)  
 
 
 La funzione **`dbops.fn_find_function_usage`** restituisce l’elenco delle entità del database (funzioni, trigger, event trigger) che fanno riferimento a una specifica funzione indicata dal nome, facilitando l’analisi delle dipendenze e degli impatti di modifiche o refactoring.
@@ -19,7 +19,7 @@ La funzione **`dbops.fn_find_function_usage`** restituisce l’elenco delle enti
 
 ---
 
-### 🔍 Firma e Restituzione
+### Firma e Restituzione
 
 ```sql
 fn_find_function_usage(
@@ -38,7 +38,7 @@ fn_find_function_usage(
 
 ---
 
-### ⚙️ Logica di Esecuzione
+### Logica di Esecuzione
 
 1. **Funzioni**: cerca all’interno di `pg_proc.prosrc` le dichiarazioni che contengono il nome `p_function_name`, escludendo la funzione stessa.
 2. **Trigger**: individua i trigger definiti in `pg_trigger` che richiamano la funzione `p_function_name`.
@@ -48,7 +48,7 @@ I risultati di ciascuna ricerca vengono uniti con `UNION ALL` e restituiti in un
 
 ---
 
-### ⚙️ Esempi di Utilizzo
+### Esempi di Utilizzo
 
 1. **Ricerca generale di dipendenze**
 
@@ -75,7 +75,7 @@ I risultati di ciascuna ricerca vengono uniti con `UNION ALL` e restituiti in un
 
 ---
 
-### 💡 Vantaggi Operativi
+### Vantaggi Operativi
 
 * **Chiarezza delle dipendenze**: evita ricerche manuali tra cataloghi multipli.
 * **Riduzione degli errori**: garantisce che nessun utilizzo venga trascurato in fase di modifica.
@@ -83,4 +83,4 @@ I risultati di ciascuna ricerca vengono uniti con `UNION ALL` e restituiti in un
 
 ---
 
-> 🧠 **“Con `fn_find_function_usage`, refactoring e manutenzione del codice PL/pgSQL diventano operazioni sicure e documentate, grazie all’individuazione automatica delle dipendenze.”**
+> **“Con `fn_find_function_usage`, refactoring e manutenzione del codice PL/pgSQL diventano operazioni sicure e documentate, grazie all’individuazione automatica delle dipendenze.”**

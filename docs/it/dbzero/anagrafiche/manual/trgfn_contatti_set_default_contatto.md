@@ -2,14 +2,14 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimento tabelle:    
+Approfondimento tabelle:    
 >
-> * [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)    
-> * [anagrafiche.contatti](/dbzero/anagrafiche/tabelle/contatti)    
+[anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)    
+> [anagrafiche.contatti](/dbzero/anagrafiche/tabelle/contatti)    
 >
-> Approfondimento funzioni :    
+Approfondimento funzioni :    
 >
-> * [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)     
+[script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)     
 
 
 La trigger function **`anagrafiche.trgfn_contatti_set_default_contatto()`** gestisce automaticamente il contatto predefinito per un soggetto, tenendo conto di un **contesto** dinamico (`soggetto`, `ruolo` o `utility`). Assicura che esista al massimo un contatto default per soggetto e contesto, ed aggiorna il riferimento `default_contatto_id` in `anagrafiche.soggetti` quando richiesto.
@@ -29,7 +29,7 @@ La trigger function **`anagrafiche.trgfn_contatti_set_default_contatto()`** gest
 
 ---
 
-### 🔍 Parametri e Contesto
+### Parametri e Contesto
 
 * **Trigger associato**: `BEFORE INSERT OR UPDATE` su `anagrafiche.contatti`.
 * **Colonne coinvolte**:
@@ -42,7 +42,7 @@ La trigger function **`anagrafiche.trgfn_contatti_set_default_contatto()`** gest
 
 ---
 
-### ⚙️ Flusso Logico
+### Flusso Logico
 
 1. **Azzeramento contesto**
 
@@ -79,7 +79,7 @@ La trigger function **`anagrafiche.trgfn_contatti_set_default_contatto()`** gest
 
 ---
 
-### 🔒 Vincoli e Assunzioni
+### Vincoli e Assunzioni
 
 * **Contesto obbligatorio**: `default_context` viene sempre valorizzato a uno dei tre valori.
 * **Unico default per contesto**: la funzione garantisce un solo contatto `is_default = TRUE` per coppia (`soggetto_id`, `default_context`).
@@ -87,7 +87,7 @@ La trigger function **`anagrafiche.trgfn_contatti_set_default_contatto()`** gest
 
 ---
 
-### 💡 Vantaggi Operativi
+### Vantaggi Operativi
 
 * **Gestione semplificata dei default**
   Automatizza l’impostazione del contatto principale per soggetti e ruoli.
@@ -100,4 +100,4 @@ La trigger function **`anagrafiche.trgfn_contatti_set_default_contatto()`** gest
 
 ---
 
-> 🧠 **“Una trigger function flessibile che assegna e mantiene automaticamente il contatto predefinito in base a contesti distinti, semplificando la gestione dei dati di contatto.”**
+> **“Una trigger function flessibile che assegna e mantiene automaticamente il contatto predefinito in base a contesti distinti, semplificando la gestione dei dati di contatto.”**

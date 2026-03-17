@@ -2,10 +2,10 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimenti funzioni:   
+Approfondimenti funzioni:   
 >
-> * [dbops.fn_search_column_usage](/dbzero/dbops/funzioni/fn_search_column_usage)     
-> * [dbops.fn_find_function_usage](/dbzero/dbops/funzioni/fn_find_function_usage)     
+[dbops.fn_search_column_usage](/dbzero/dbops/funzioni/fn_search_column_usage)     
+> [dbops.fn_find_function_usage](/dbzero/dbops/funzioni/fn_find_function_usage)     
 
 
 La funzione **`dbops.fn_find_file_usage(p_target_table regclass)`** individua tutte le constraint di tipo foreign key che puntano alla tabella specificata in input, restituendo per ciascuna:
@@ -26,7 +26,7 @@ La funzione **`dbops.fn_find_file_usage(p_target_table regclass)`** individua tu
 
 ---
 
-### 🔍 Parametri
+### Parametri
 
 | Nome                | Tipo      | Descrizione                                                                 |
 | ------------------- | --------- | --------------------------------------------------------------------------- |
@@ -34,7 +34,7 @@ La funzione **`dbops.fn_find_file_usage(p_target_table regclass)`** individua tu
 
 ---
 
-### 🔍 Struttura del risultato
+### Struttura del risultato
 
 | Colonna            | Tipo      | Descrizione                                                                 |
 | ------------------ | --------- | --------------------------------------------------------------------------- |
@@ -45,7 +45,7 @@ La funzione **`dbops.fn_find_file_usage(p_target_table regclass)`** individua tu
 
 ---
 
-### ⚙️ Dettaglio del flusso
+### Dettaglio del flusso
 
 1. La funzione interroga cataloghi di sistema (`pg_constraint`, `pg_class`, `pg_attribute`) filtrando `contype = 'f'` (foreign key).  
 2. Converte gli OID in `regclass` per ottenere il nome schema.tabella.  
@@ -53,7 +53,7 @@ La funzione **`dbops.fn_find_file_usage(p_target_table regclass)`** individua tu
 
 ---
 
-### 💡 Esempi di utilizzo
+### Esempi di utilizzo
 
 ```sql
 -- Trova tutte le FK che puntano alla tabella config.iva
@@ -79,4 +79,4 @@ SELECT *
 
     Automazione: integrabile in script di migrazione o tool di analisi schema.
 
-> 🧠 “Con fn_find_file_usage puoi eseguire in pochi secondi un’analisi completa delle dipendenze tra tabelle, fondamentale per il refactoring e la gestione sicura delle migrazioni.”
+> “Con fn_find_file_usage puoi eseguire in pochi secondi un’analisi completa delle dipendenze tra tabelle, fondamentale per il refactoring e la gestione sicura delle migrazioni.”

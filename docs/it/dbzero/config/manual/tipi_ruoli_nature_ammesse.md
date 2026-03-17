@@ -2,20 +2,20 @@
 
 > 👀 **Vedi anche**
 >
-> **Tabelle di dominio:**
+**Tabelle di dominio:**
 >
-> * [`config.tipi_ruoli`](/dbzero/config/tabelle/tipi_ruoli)
-> * [`config.tipi_soggetto`](/dbzero/config/tabelle/tipi_soggetto)
-> * [`config.tipi_soggetto_dettaglio`](/dbzero/config/tabelle/tipi_soggetto_dettaglio)
+[`config.tipi_ruoli`](/dbzero/config/tabelle/tipi_ruoli)
+> [`config.tipi_soggetto`](/dbzero/config/tabelle/tipi_soggetto)
+> [`config.tipi_soggetto_dettaglio`](/dbzero/config/tabelle/tipi_soggetto_dettaglio)
 >
-> **Tabelle anagrafiche collegate:**
+**Tabelle anagrafiche collegate:**
 >
-> * [`anagrafiche.soggetti`](/dbzero/anagrafiche/tabelle/soggetti)
-> * [`anagrafiche.soggetti_ruoli`](/dbzero/anagrafiche/tabelle/soggetti_ruoli)
+[`anagrafiche.soggetti`](/dbzero/anagrafiche/tabelle/soggetti)
+> [`anagrafiche.soggetti_ruoli`](/dbzero/anagrafiche/tabelle/soggetti_ruoli)
 >
-> **Funzioni / trigger collegati:**
+**Funzioni / trigger collegati:**
 >
-> * [`anagrafiche.trgfn_soggetti_ruoli_guard_natura_ammessa`](/dbzero/anagrafiche/funzioni/trgfn_soggetti_ruoli_guard_natura_ammessa)
+[`anagrafiche.trgfn_soggetti_ruoli_guard_natura_ammessa`](/dbzero/anagrafiche/funzioni/trgfn_soggetti_ruoli_guard_natura_ammessa)
 
 ---
 
@@ -37,7 +37,7 @@ Questa tabella governa la **validazione** degli inserimenti in `anagrafiche.sogg
 
 ---
 
-### 🧩 Ruolo nel Modello Dati
+### Ruolo nel Modello Dati
 
 Il modello completo ruota intorno a questa catena:
 
@@ -85,7 +85,7 @@ Con `config.tipi_ruoli_nature_ammesse`:
 
 ---
 
-### ⚙️ Regole di Funzionamento
+### Regole di Funzionamento
 
  **1️⃣ Matrice presente vs assente**
 
@@ -111,7 +111,7 @@ Il soggetto deve avere un tipo dettaglio configurato prima di poter ricevere un 
 
 ---
 
-### 🔍 Esempi d'Uso (concettuali)
+### Esempi d'Uso (concettuali)
 
  **✔ Ruolo Gestore (GE)**
 
@@ -137,7 +137,7 @@ Il soggetto deve avere un tipo dettaglio configurato prima di poter ricevere un 
 
 ---
 
-### 📊 Seed Data Attuale (19 righe)
+### Seed Data Attuale (19 righe)
 
 | Ruolo          | Nature Ammesse | Note                              |
 | -------------- | -------------- | --------------------------------- |
@@ -155,7 +155,7 @@ Il soggetto deve avere un tipo dettaglio configurato prima di poter ricevere un 
 
 ---
 
-### 💡 Vantaggi Operativi
+### Vantaggi Operativi
 
 * **Configurazione centrale delle regole**
   Le regole ruolo ↔ natura soggetto sono dati, non codice. Si possono modificare e versionare facilmente.
@@ -178,6 +178,6 @@ Il soggetto deve avere un tipo dettaglio configurato prima di poter ricevere un 
 
 ---
 
-> 🧠 **"`config.tipi_ruoli_nature_ammesse` e la regia delle combinazioni ruolo–natura soggetto: decide quale tipo di soggetto puo ricoprire un ruolo, lasciando al trigger guard solo il compito di eseguire le regole."**
+> **"`config.tipi_ruoli_nature_ammesse` e la regia delle combinazioni ruolo–natura soggetto: decide quale tipo di soggetto puo ricoprire un ruolo, lasciando al trigger guard solo il compito di eseguire le regole."**
 
 {% include-markdown "signature-core.md" %}

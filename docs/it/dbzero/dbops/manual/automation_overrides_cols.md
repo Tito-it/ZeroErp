@@ -2,11 +2,11 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimento funzioni: 
-> * [dbops.fn_run_automations](/dbzero/dbops/funzioni/fn_run_automations)
-> * [dbops.fn_get_override_col](/dbzero/dbops/funzioni/fn_get_override_col)
+Approfondimento funzioni: 
+> [dbops.fn_run_automations](/dbzero/dbops/funzioni/fn_run_automations)
+> [dbops.fn_get_override_col](/dbzero/dbops/funzioni/fn_get_override_col)
 
-> * Esempio Helper: [dbops.fn_get_override_col(schema, table, key, default)]
+> Esempio Helper: [dbops.fn_get_override_col(schema, table, key, default)]
 
 
 ### 🎯 Scopo Principale
@@ -17,7 +17,7 @@ Quando il tuo schema usa nomi diversi dagli standard (es. `attivo` → `is_enabl
 
 ---
 
-### 🔧 Come funziona (lookup & precedenze)
+### Come funziona (lookup & precedenze)
 
 Gli automatismi risolvono il nome della colonna così:
 
@@ -27,11 +27,11 @@ Gli automatismi risolvono il nome della colonna così:
 
 L’helper `fn_get_override_col(schema, table, key, default)` incapsula questa logica e restituisce il valore finale.
 
-> 🔎 *Match*: `target_table` è normalmente un nome esatto; opzionalmente puoi usare pattern (LIKE), ma in tal caso gestisci **priorità** per evitare sorprese.
+> *Match*: `target_table` è normalmente un nome esatto; opzionalmente puoi usare pattern (LIKE), ma in tal caso gestisci **priorità** per evitare sorprese.
 
 ---
 
-### 🔑 Chiavi supportate (key)
+### Chiavi supportate (key)
 
 * **`ATTIVO_COL`** → nome della colonna boolean che indica lo stato attivo/disattivo.
   *Default*: `attivo`.
@@ -46,7 +46,7 @@ L’helper `fn_get_override_col(schema, table, key, default)` incapsula questa l
 
 ---
 
-### ⚖️ Precedenza e conflitti
+### Precedenza e conflitti
 
 * Se esistono più righe che matchano (es. pattern di schema/tabla):
 
@@ -56,7 +56,7 @@ L’helper `fn_get_override_col(schema, table, key, default)` incapsula questa l
 
 ---
 
-### ✍️ Esempi
+### Esempi
 
 **Override `ATTIVO_COL`** per una tabella che usa `is_enabled`:
 
@@ -84,7 +84,7 @@ VALUES ('catalogo','articoli','STORICO_FK','articolo_id','storico con fk esplici
 
 ---
 
-### 🧩 Buone pratiche
+### Buone pratiche
 
 * Standardizza dove possibile; usa gli override solo per i casi necessari.
 * Documenta gli override nel **modulo applicativo** che mantiene la tabella, per ridurre la “conoscenza tribale”.
@@ -93,12 +93,12 @@ VALUES ('catalogo','articoli','STORICO_FK','articolo_id','storico con fk esplici
 ---
 
 
-### 🔒 Vincoli (logici)
+### Vincoli (logici)
 
 * Unicità consigliata: `(target_schema, target_table, key)`.
 * Attenzione ai pattern: se usati, governa con `priority` per evitare collisioni.
 
-### 🚀 Interazione con gli automatismi
+### Interazione con gli automatismi
 
 * **AUDIT_UPDATE**: legge `AUDIT_TS` e `AUDIT_USER` per scegliere la funzione `script.trgfn_upd_audit_data_user_generic()`.
 * **ATTIVO**: legge `ATTIVO_COL` su **padre** e **figlio** per i tre trigger (cascade/require/block).
@@ -106,7 +106,7 @@ VALUES ('catalogo','articoli','STORICO_FK','articolo_id','storico con fk esplici
 
 ---
 
-### 🔍 Troubleshooting
+### Troubleshooting
 
 * Se un override non sembra applicarsi, verifica con:
 

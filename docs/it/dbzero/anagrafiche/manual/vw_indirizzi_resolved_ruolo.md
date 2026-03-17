@@ -2,15 +2,15 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimenti tabelle:
+Approfondimenti tabelle:
 >
-> * [anagrafiche.indirizzi](/dbzero/anagrafiche/tabelle/indirizzi)   
-> * [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)   
-> * [anagrafiche.indirizzi_dettaglio](/dbzero/anagrafiche/tabelle/indirizzi_dettaglio)   
+[anagrafiche.indirizzi](/dbzero/anagrafiche/tabelle/indirizzi)   
+> [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)   
+> [anagrafiche.indirizzi_dettaglio](/dbzero/anagrafiche/tabelle/indirizzi_dettaglio)   
 >
-> Approfondimenti viste:
+Approfondimenti viste:
 >
-> * [anagrafiche.vw_indirizzi_dettaglio](/dbzero/anagrafiche/viste/vw_indirizzi_dettaglio)  
+[anagrafiche.vw_indirizzi_dettaglio](/dbzero/anagrafiche/viste/vw_indirizzi_dettaglio)  
 
 ---
 
@@ -37,7 +37,7 @@ La vista è **read‑only** e costituisce il **layer canonico di lettura** per g
 
 ---
 
-### 🔗 Collegamenti principali
+### Collegamenti principali
 
 * **Tabelle sorgenti**:
 
@@ -56,7 +56,7 @@ La vista è **read‑only** e costituisce il **layer canonico di lettura** per g
 
 ---
 
-### 🧱 Struttura logica della vista
+### Struttura logica della vista
 
 La vista parte dalla tabella `anagrafiche.indirizzi` (indirizzi per ruolo) e applica:
 
@@ -91,7 +91,7 @@ Il risultato è un record **"resolved"**, pronto per il consumo applicativo.
 
 ---
 
-### 🔍 Modalità d’uso tipiche
+### Modalità d’uso tipiche
 
 **1. Recupero indirizzi di un ruolo**
 
@@ -116,7 +116,7 @@ La colonna `indirizzo_display` è pensata per essere utilizzata direttamente nei
 
 ---
 
-### ✅ Best practice e raccomandazioni
+### Best practice e raccomandazioni
 
 * Utilizzare questa vista come **unica fonte** per leggere indirizzi di ruolo.
 * Non eseguire DML sulla vista: usare sempre `anagrafiche.indirizzi`.

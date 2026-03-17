@@ -2,21 +2,19 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> • [vendite.fatturazione_lotti](/dbzero/vendite/tabelle/fatturazione_lotti)  
+• [vendite.fatturazione_lotti](/dbzero/vendite/tabelle/fatturazione_lotti)  
 > • [vendite.fatturazione_pipeline](/dbzero/vendite/tabelle/fatturazione_pipeline)  
 >
----
-
-### 🎯 Scopo Principale
+🎯 Scopo Principale
 
 `vendite.fatturazione_lotti_task_runs` traccia il runtime dei task di pipeline
 per ogni lotto, con tentativi, esito, tempi e contesto errore.
 
 ---
 
-### 🧱 Campi chiave (semantica)
+### Campi chiave (semantica)
 
 * **Contesto**: `lotto_id`, `pipeline_id`, `stato_doc_fiscale_id`.
 * **Task**: `task_code`, `fase`, `tentativo`, `task_stato`.
@@ -26,7 +24,7 @@ per ogni lotto, con tentativi, esito, tempi e contesto errore.
 
 ---
 
-### ✅ Regole principali
+### Regole principali
 
 * Unicita` tecnica: `(lotto_id, stato_doc_fiscale_id, task_code, tentativo)`.
 * Stati task ammessi:
@@ -38,7 +36,7 @@ per ogni lotto, con tentativi, esito, tempi e contesto errore.
 
 ---
 
-### 🧩 Utilizzo previsto
+### Utilizzo previsto
 
 * osservabilita` puntuale dello step (non solo log testuale),
 * supporto a resume/reset deterministico,

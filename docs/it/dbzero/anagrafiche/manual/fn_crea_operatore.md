@@ -2,19 +2,19 @@
 
 > **Vedi anche**
 >
-> **Building block chiamati:**
+**Building block chiamati:**
 >
-> * [anagrafiche.fn_crea_auth_user](/dbzero/anagrafiche/manual/fn_crea_auth_user)
-> * [anagrafiche.fn_crea_soggetto_pf](/dbzero/anagrafiche/manual/fn_crea_soggetto_pf)
-> * [anagrafiche.fn_crea_risorsa_umana](/dbzero/anagrafiche/manual/fn_crea_risorsa_umana)
-> * [anagrafiche.fn_crea_indirizzo_soggetto](/dbzero/anagrafiche/manual/fn_crea_indirizzo_soggetto)
-> * [anagrafiche.fn_get_or_create_indirizzo_dettaglio](/dbzero/anagrafiche/manual/fn_get_or_create_indirizzo_dettaglio)
-> * [script.fn_get_or_create_soggetto_ruolo](/dbzero/script/funzioni/fn_get_or_create_soggetto_ruolo)
+[anagrafiche.fn_crea_auth_user](/dbzero/anagrafiche/manual/fn_crea_auth_user)
+> [anagrafiche.fn_crea_soggetto_pf](/dbzero/anagrafiche/manual/fn_crea_soggetto_pf)
+> [anagrafiche.fn_crea_risorsa_umana](/dbzero/anagrafiche/manual/fn_crea_risorsa_umana)
+> [anagrafiche.fn_crea_indirizzo_soggetto](/dbzero/anagrafiche/manual/fn_crea_indirizzo_soggetto)
+> [anagrafiche.fn_get_or_create_indirizzo_dettaglio](/dbzero/anagrafiche/manual/fn_get_or_create_indirizzo_dettaglio)
+> [script.fn_get_or_create_soggetto_ruolo](/dbzero/script/funzioni/fn_get_or_create_soggetto_ruolo)
 >
-> **Guide:**
+**Guide:**
 >
-> * [Risorse umane e accessi](/guide/risorse-umane-e-accessi)
-> * [Soggetti e ruoli anagrafici](/guide/soggetti-e-ruoli-anagrafici)
+[Risorse umane e accessi](/guide/risorse-umane-e-accessi)
+> [Soggetti e ruoli anagrafici](/guide/soggetti-e-ruoli-anagrafici)
 
 ---
 

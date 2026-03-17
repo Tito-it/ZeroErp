@@ -2,14 +2,14 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimeto Tabelle:   
+Approfondimeto Tabelle:   
 >
-> * [config.stradario](/dbzero/config/tabelle/stradario)    
+[config.stradario](/dbzero/config/tabelle/stradario)    
 >
-> Approfondimeto Funzioni:   
+Approfondimeto Funzioni:   
 >
-> * [config.trgfn_stradario_upd_dlt_storico_stradario](/dbzero/config/funzioni/trgfn_stradario_upd_dlt_storico_stradario)   
-> * [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)    
+[config.trgfn_stradario_upd_dlt_storico_stradario](/dbzero/config/funzioni/trgfn_stradario_upd_dlt_storico_stradario)   
+> [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)    
 
 La tabella **`storico.stradario`** archivia la cronologia delle modifiche alle vie registrate in `config.stradario`, garantendo la tracciabilità di tutte le operazioni di update e delete.
 
@@ -24,7 +24,7 @@ La tabella **`storico.stradario`** archivia la cronologia delle modifiche alle v
 
 ---
 
-### 🔄 Meccanismo di Popolamento
+### Meccanismo di Popolamento
 
 1. **Trigger di storicizzazione**
    La trigger function `config.trgfn_stradario_upd_dlt_storico_stradario()` si attiva **BEFORE UPDATE OR DELETE** su `config.stradario` quando il flag `storicizza = TRUE`.
@@ -59,7 +59,7 @@ CREATE TRIGGER trg_stradario_upd_dlt_storico_stradario
 
 ---
 
-### 💡 Vantaggi Operativi
+### Vantaggi Operativi
 
 * **Storico granulare**: ogni modifica è catturata integralmente grazie al JSONB `snapshot`, senza richiedere sincronizzazione manuale dello schema.
 * **Filtro temporale**: i campi `valid_from`/`valid_to` consentono interrogazioni su periodi e versioni specifiche.
@@ -68,6 +68,6 @@ CREATE TRIGGER trg_stradario_upd_dlt_storico_stradario
 
 ---
 
-> 🧠 **“Con `storico.stradario`, Zero ERP offre un audit trail completo per le vie comunali, con flessibilità JSONB e controllo granulare tramite flag di storicizzazione.”**
+> **“Con `storico.stradario`, Zero ERP offre un audit trail completo per le vie comunali, con flessibilità JSONB e controllo granulare tramite flag di storicizzazione.”**
 
 

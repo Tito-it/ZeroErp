@@ -2,10 +2,10 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimento tabelle:
+Approfondimento tabelle:
 >
-> * [pratiche.note_pratiche](/dbzero/pratiche/tabelle/note_pratiche)
-> * [pratiche.note_flussi](/dbzero/pratiche/tabelle/note_flussi)
+[pratiche.note_pratiche](/dbzero/pratiche/tabelle/note_pratiche)
+> [pratiche.note_flussi](/dbzero/pratiche/tabelle/note_flussi)
 
 ---
 
@@ -15,14 +15,14 @@ La tabella `config.tipi_nota` definisce la **tipologia** delle note associabili 
 
 ---
 
-### 🧱 Ruolo nel processo
+### Ruolo nel processo
 
 * Ogni nota (su pratica o flusso) ha un `tipo_nota_id` obbligatorio che la classifica.
 * La classificazione consente il **filtraggio** nelle interfacce e la **visibilita' differenziata** (es. note interne non visibili al cliente).
 
 ---
 
-### 📋 Valori previsti (seed DB-6)
+### Valori previsti (seed DB-6)
 
 | codice_interno | Descrizione |
 |----------------|-------------|
@@ -34,7 +34,7 @@ La tabella `config.tipi_nota` definisce la **tipologia** delle note associabili 
 
 ---
 
-### ✅ Convenzioni
+### Convenzioni
 
 * Pattern config standard: `codice`, `codice_interno` locked, `attivo`, `meta`, audit.
 * Trigger standard applicati automaticamente da `dbops.fn_run_automations()`.

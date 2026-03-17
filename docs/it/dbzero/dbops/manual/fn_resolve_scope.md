@@ -2,18 +2,18 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimeto tabelle:
+Approfondimeto tabelle:
 >
-> * [dbops.automation_scope](/dbzero/dbops/tabelle/automation_scope)
+[dbops.automation_scope](/dbzero/dbops/tabelle/automation_scope)
 >
-> Approfondimento funzioni :
+Approfondimento funzioni :
 >
-> * [dbops.fn_schema_in_scope](/dbzero/dbops/funzioni/fn_schema_in_scope)
-> * [dbops.fn_schema_match](/dbzero/dbops/funzioni/fn_schema_match)
+[dbops.fn_schema_in_scope](/dbzero/dbops/funzioni/fn_schema_in_scope)
+> [dbops.fn_schema_match](/dbzero/dbops/funzioni/fn_schema_match)
 >
-> Guide:
+Guide:
 >
-> * [Automatione DB](/guide/automazione-db)
+[Automatione DB](/guide/automazione-db)
 
 ---
 
@@ -23,7 +23,7 @@ La funzione **`dbops.fn_resolve_scope(p_schemas text[])`** restituisce la lista 
 
 ---
 
-### 🔍 Parametri di input
+### Parametri di input
 
 | Parametro   | Tipo    | Obbligatorio | Descrizione                                                                                               |
 | ----------- | ------- | :----------: | --------------------------------------------------------------------------------------------------------- |
@@ -31,13 +31,13 @@ La funzione **`dbops.fn_resolve_scope(p_schemas text[])`** restituisce la lista 
 
 ---
 
-### 📤 Valore di ritorno
+### Valore di ritorno
 
 `text[]` – Array di schemi effettivamente nell'ambito, già puliti e normalizzati.
 
 ---
 
-### ⚙️ Flusso logico
+### Flusso logico
 
 1. **Input esplicito**: se `p_schemas` è valorizzato, la funzione rimuove spazi, valori nulli o vuoti, ed esclude la keyword `*all`. Se rimane una lista valida, la ritorna direttamente.
 2. **Configurazione persistente**: se non c’è input valido, prova a leggere dalla tabella `dbops.automation_scope` (se presente).
@@ -45,7 +45,7 @@ La funzione **`dbops.fn_resolve_scope(p_schemas text[])`** restituisce la lista 
 
 ---
 
-### 🧩 Casi d’uso tipici
+### Casi d’uso tipici
 
 * **Automazioni batch**: risolvere quali schemi analizzare in base a input espliciti o configurazioni centrali.
 * **Test/Dev vs Prod**: gestire ambiti diversi (es. su ambienti di test si può limitare l'ambito a schemi specifici).
@@ -53,14 +53,14 @@ La funzione **`dbops.fn_resolve_scope(p_schemas text[])`** restituisce la lista 
 
 ---
 
-### 🛡️ Permessi e sicurezza
+### Permessi e sicurezza
 
 * Necessita di accesso in lettura ai cataloghi di sistema (`pg_namespace`) e, se presente, alla tabella `dbops.automation_scope`.
 * È **read-only**: non modifica né metadati né dati applicativi.
 
 ---
 
-### 🚀 Esempi di utilizzo
+### Esempi di utilizzo
 
 * Chiamata diretta con parametro: `fn_resolve_scope(ARRAY['anagrafiche','config'])` → restituisce solo i due schemi indicati.
 * Chiamata senza parametro: `fn_resolve_scope(NULL)` → legge da `automation_scope` oppure restituisce tutti gli schemi utente.
@@ -68,7 +68,7 @@ La funzione **`dbops.fn_resolve_scope(p_schemas text[])`** restituisce la lista 
 
 ---
 
-### 📌 Considerazioni
+### Considerazioni
 
 * L’uso della keyword `*all` come placeholder viene filtrato: chiama esplicitamente la logica di fallback.
 * La funzione garantisce un comportamento consistente anche se `automation_scope` non è popolata o non esiste.
@@ -76,7 +76,7 @@ La funzione **`dbops.fn_resolve_scope(p_schemas text[])`** restituisce la lista 
 
 ---
 
-### ✅ Benefici
+### Benefici
 
 * **Centralizzazione**: logica di determinazione ambito in un solo punto.
 * **Robustezza**: fallback garantiti in assenza di configurazioni.
@@ -84,4 +84,4 @@ La funzione **`dbops.fn_resolve_scope(p_schemas text[])`** restituisce la lista 
 
 ---
 
-> 🧠 **In sintesi**: `fn_resolve_scope` è la funzione che permette a tutte le automazioni di capire **quali schemi considerare**, adattandosi in modo dinamico al contesto e riducendo rischi di configurazioni incoerenti.
+> **In sintesi**: `fn_resolve_scope` è la funzione che permette a tutte le automazioni di capire **quali schemi considerare**, adattandosi in modo dinamico al contesto e riducendo rischi di configurazioni incoerenti.

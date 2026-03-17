@@ -2,9 +2,9 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> • [vendite.fatture](/dbzero/vendite/tabelle/fatture)  
+• [vendite.fatture](/dbzero/vendite/tabelle/fatture)  
 > • [config.stati_sdi](/dbzero/config/tabelle/stati_sdi)  
 > • [vendite.fatture_sdi_eventi](/dbzero/vendite/tabelle/fatture_sdi_eventi)  
 
@@ -25,7 +25,7 @@ Serve a tracciare:
 
 ---
 
-### ✅ Regole principali
+### Regole principali
 
 * Una fattura puo` avere piu` tentativi (`tentativo_num` incrementale).
 * Vincolo univoco su (`fattura_id`, `tentativo_num`).
@@ -34,7 +34,7 @@ Serve a tracciare:
 
 ---
 
-### 🧩 Note operative
+### Note operative
 
 * Usare `identificativo_sdi` per il protocollo restituito dal sistema SDI.
 * `meta` conserva dettaglio tecnico (XML ricevute, codici adapter, payload raw).

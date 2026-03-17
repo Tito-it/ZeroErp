@@ -2,14 +2,12 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> • [vendite.fatture_arrotondamenti_scope](/dbzero/vendite/tabelle/fatture_arrotondamenti_scope)  
+• [vendite.fatture_arrotondamenti_scope](/dbzero/vendite/tabelle/fatture_arrotondamenti_scope)  
 > • [vendite.fatture](/dbzero/vendite/tabelle/fatture)  
 >
----
-
-### 🎯 Scopo Principale
+🎯 Scopo Principale
 
 (latest review 10-02-2026)  
 La funzione **`vendite.fn_get_arrotondamento_scope()`** restituisce il
@@ -19,14 +17,14 @@ ritorna `0`.
 
 ---
 
-### ✅ Regole principali
+### Regole principali
 
 * Parametri obbligatori (ID > 0).
 * Se l'ambito non esiste, il saldo e` `0`.
 
 ---
 
-### 🧪 Esempio d’uso
+### Esempio d’uso
 
 ```sql
 SELECT vendite.fn_get_arrotondamento_scope(

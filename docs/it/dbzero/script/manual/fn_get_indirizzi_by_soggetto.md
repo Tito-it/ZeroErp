@@ -2,16 +2,16 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> • [anagrafiche.indirizzi_soggetti](/dbzero/anagrafiche/tabelle/indirizzi_soggetti)  
+• [anagrafiche.indirizzi_soggetti](/dbzero/anagrafiche/tabelle/indirizzi_soggetti)  
 > • [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)  
 > • [anagrafiche.indirizzi_dettaglio](/dbzero/anagrafiche/tabelle/indirizzi_dettaglio)  
 > • [config.tipi_indirizzi](/dbzero/config/tabelle/tipi_indirizzi)  
 >
-> **Approfondimento viste:**
+**Approfondimento viste:**
 >
-> • [anagrafiche.vw_indirizzi_resolved_soggetto](/dbzero/anagrafiche/views/vw_indirizzi_resolved_soggetto)  
+• [anagrafiche.vw_indirizzi_resolved_soggetto](/dbzero/anagrafiche/views/vw_indirizzi_resolved_soggetto)  
 > • [anagrafiche.vw_indirizzi_resolved_all](/dbzero/anagrafiche/views/vw_indirizzi_resolved_all)  
 
 ---
@@ -29,7 +29,7 @@ Questa funzione:
 
 ---
 
-### 🧩 Firma
+### Firma
 
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_get_indirizzi_by_soggetto(
@@ -43,7 +43,7 @@ PARALLEL UNSAFE;
 
 ---
 
-### 🔢 Parametri di input
+### Parametri di input
 
 | Nome            | Tipo   | Descrizione                                |
 | --------------- | ------ | ------------------------------------------ |
@@ -51,7 +51,7 @@ PARALLEL UNSAFE;
 
 ---
 
-### 📤 Valori restituiti
+### Valori restituiti
 
 La funzione restituisce le stesse colonne della vista:
 
@@ -67,7 +67,7 @@ con i campi principali:
 
 ---
 
-### 🧪 Esempi d’uso
+### Esempi d’uso
 
 ```sql
 SELECT *
@@ -83,7 +83,7 @@ WHERE is_normalizzato = TRUE;
 
 ---
 
-### ✅ Note e Best Practice
+### Note e Best Practice
 
 * Usare questa funzione come **entry point** per gli indirizzi soggetto.
 * La provenienza e tracciabile nelle viste resolved tramite campo derivato `source`.

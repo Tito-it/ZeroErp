@@ -2,20 +2,20 @@
 
 > Vedi anche
 >
-> Approfondimento tabelle:
+Approfondimento tabelle:
 >
-> * [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)
-> * [config.tipi_ruoli](/dbzero/config/tabelle/tipi_ruoli)
-> * [config.utilities](/dbzero/config/tabelle/utilities)
-> * [anagrafiche.vw_clienti_codice_ba](/dbzero/anagrafiche/views/vw_clienti_codice_ba)
+[anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)
+> [config.tipi_ruoli](/dbzero/config/tabelle/tipi_ruoli)
+> [config.utilities](/dbzero/config/tabelle/utilities)
+> [anagrafiche.vw_clienti_codice_ba](/dbzero/anagrafiche/views/vw_clienti_codice_ba)
 >
-> Funzione chiamante:
+Funzione chiamante:
 >
-> * [script.fn_get_search_detail](/dbzero/script/funzioni/fn_get_search_detail)
+[script.fn_get_search_detail](/dbzero/script/funzioni/fn_get_search_detail)
 >
-> Ricerca universale:
+Ricerca universale:
 >
-> * [script.fn_search_soggetti_universale](/dbzero/script/manual/fn_search_soggetti_universale)
+[script.fn_search_soggetti_universale](/dbzero/script/manual/fn_search_soggetti_universale)
 
 La funzione **`script.fn_get_entita_ruolo_detail`** restituisce in JSONB i dati specifici dell'entita' legata a un ruolo. La versione dinamica usa `config.tipi_ruoli.entita_tabella` per risolvere la tabella/vista a runtime, eliminando il CASE hardcoded.
 

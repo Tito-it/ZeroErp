@@ -2,21 +2,21 @@
 
 > **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> * [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)
-> * [anagrafiche.contatti](/dbzero/anagrafiche/tabelle/contatti)
-> * [config.tipi_soggetto_dettaglio](/dbzero/config/tabelle/tipi_soggetto_dettaglio)
+[anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)
+> [anagrafiche.contatti](/dbzero/anagrafiche/tabelle/contatti)
+> [config.tipi_soggetto_dettaglio](/dbzero/config/tabelle/tipi_soggetto_dettaglio)
 >
-> **Approfondimento funzioni:**
+**Approfondimento funzioni:**
 >
-> * [anagrafiche.fn_crea_operatore](/dbzero/anagrafiche/manual/fn_crea_operatore)
-> * [anagrafiche.fn_crea_risorsa_umana](/dbzero/anagrafiche/manual/fn_crea_risorsa_umana)
+[anagrafiche.fn_crea_operatore](/dbzero/anagrafiche/manual/fn_crea_operatore)
+> [anagrafiche.fn_crea_risorsa_umana](/dbzero/anagrafiche/manual/fn_crea_risorsa_umana)
 >
-> **Guide:**
+**Guide:**
 >
-> * [Soggetti e ruoli anagrafici](/guide/soggetti-e-ruoli-anagrafici)
-> * [Gestione degli indirizzi](/guide/gestione-degli-indirizzi)
+[Soggetti e ruoli anagrafici](/guide/soggetti-e-ruoli-anagrafici)
+> [Gestione degli indirizzi](/guide/gestione-degli-indirizzi)
 
 ---
 

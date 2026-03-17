@@ -2,9 +2,9 @@
 
 > 👀 **Vedi anche**
 >
-> * Catalogo delle view (`pg_catalog.pg_views`, `pg_catalog.pg_matviews`)
-> * Catalogo delle funzioni e regole (`pg_catalog.pg_proc`, `pg_catalog.pg_rules`)
-> * Constraint system (`pg_catalog.pg_constraint`)
+Catalogo delle view (`pg_catalog.pg_views`, `pg_catalog.pg_matviews`)
+> Catalogo delle funzioni e regole (`pg_catalog.pg_proc`, `pg_catalog.pg_rules`)
+> Constraint system (`pg_catalog.pg_constraint`)
 
 La funzione **`dbops.fn_search_column_usage`** consente di ricercare riferimenti a un determinato nome di colonna all’interno di viste, materialized view, regole, funzioni e vincoli, restituendo il tipo di oggetto, lo schema e il nome dell’oggetto che la contiene.
 
@@ -17,7 +17,7 @@ La funzione **`dbops.fn_search_column_usage`** consente di ricercare riferimenti
 
 ---
 
-### 🔍 Parametri e Firma
+### Parametri e Firma
 
 ```sql
 fn_search_column_usage(
@@ -41,7 +41,7 @@ ROWS 1000;
 
 ---
 
-### ⚙️ Logica e Flusso di Esecuzione
+### Logica e Flusso di Esecuzione
 
 1. **Viste Standard** (`pg_views`): cerca la stringa in `definition` per individuare colonne referenziate.
 2. **Materialized Views** (`pg_matviews`): analogamente alle view.
@@ -53,7 +53,7 @@ Tutti i risultati vengono uniti (`UNION ALL`) e restituiti come un unico set.
 
 ---
 
-### 🔍 Esempi di Utilizzo
+### Esempi di Utilizzo
 
 1. **Ricerca generica**
 
@@ -94,7 +94,7 @@ Tutti i risultati vengono uniti (`UNION ALL`) e restituiti come un unico set.
 
 ---
 
-### 💡 Vantaggi Operativi
+### Vantaggi Operativi
 
 * **Refactoring sicuro**: individua tutte le dipendenze di un campo prima di rinominarlo o rimuoverlo.
 * **Documentazione**: mappa le dipendenze tra oggetti di database per audit e analisi.
@@ -102,4 +102,4 @@ Tutti i risultati vengono uniti (`UNION ALL`) e restituiti come un unico set.
 
 ---
 
-> 🧠 **“Con `fn_search_column_usage` è possibile gestire in modo centralizzato l’analisi degli utilizzi di un campo, semplificando manutenzione e refactoring a livello di schema.”**
+> **“Con `fn_search_column_usage` è possibile gestire in modo centralizzato l’analisi degli utilizzi di un campo, semplificando manutenzione e refactoring a livello di schema.”**

@@ -2,20 +2,18 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**    
+**Approfondimento tabelle:**    
 >
-> • [vendite.attivita_fatturabili](/dbzero/vendite/tabelle/attivita_fatturabili)    
+• [vendite.attivita_fatturabili](/dbzero/vendite/tabelle/attivita_fatturabili)    
 > • [config.sorgenti](/dbzero/config/tabelle/sorgenti)    
 >
-> **Approfondimento funzioni:**
+**Approfondimento funzioni:**
 >
-> • [vendite.fn_get_tipo_doc_fiscale_id](/dbzero/vendite/funzioni/fn_get_tipo_doc_fiscale_id)   
+• [vendite.fn_get_tipo_doc_fiscale_id](/dbzero/vendite/funzioni/fn_get_tipo_doc_fiscale_id)   
 > • [vendite.fn_get_valuta_id](/dbzero/vendite/funzioni/fn_get_valuta_id)   
 >
 
----
-
-### 🎯 Scopo Principale
+🎯 Scopo Principale
 
 (latest review 21/01/2026)
 La funzione `vendite.trgfn_attivita_fatturabili_normalize()` applica una **normalizzazione minima**
@@ -29,7 +27,7 @@ Le operazioni **DELETE** non attivano la normalizzazione.
 
 ---
 
-### 🔧 Regole applicate
+### Regole applicate
 
 1. **Competenza mensile**  
    Se `competenza_mese` e` valorizzato, viene normalizzato al **primo giorno del mese** (YYYY-MM-01).
@@ -52,7 +50,7 @@ La funzione non esegue validazioni di dominio (delegate ai trigger guard dedicat
 
 ---
 
-### ✅ Ruolo nel processo
+### Ruolo nel processo
 
 Questa funzione:
 

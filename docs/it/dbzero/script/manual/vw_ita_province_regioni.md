@@ -2,11 +2,11 @@
 
 > 👀 **Vedi anche:**
 >
-> Approfondimento tabelle:      
+Approfondimento tabelle:      
 >
-> * [config.province](/dbzero/config/tabelle/province)
-> * [config.regioni](/dbzero/config/tabelle/regioni)
-> * [config.stati](/dbzero/config/tabelle/stati)
+[config.province](/dbzero/config/tabelle/province)
+> [config.regioni](/dbzero/config/tabelle/regioni)
+> [config.stati](/dbzero/config/tabelle/stati)
 
 ---
 
@@ -16,7 +16,7 @@ La vista `script.vw_ita_province_regioni` fornisce una **mappatura completa** tr
 
 ---
 
-### 🧩 Struttura
+### Struttura
 
 | Colonna                      | Fonte / Calcolo                                      | Descrizione                      |
 | ---------------------------- | ---------------------------------------------------- | -------------------------------- |
@@ -39,7 +39,7 @@ La vista `script.vw_ita_province_regioni` fornisce una **mappatura completa** tr
 
 ---
 
-### 🔧 Dettagli tecnici
+### Dettagli tecnici
 
 * La vista unisce quattro entità:
 
@@ -52,7 +52,7 @@ La vista `script.vw_ita_province_regioni` fornisce una **mappatura completa** tr
 
 ---
 
-### 🔍 Esempio di utilizzo
+### Esempio di utilizzo
 
 ```sql
 -- Elenco di province e relative regioni e stato
@@ -74,7 +74,7 @@ ORDER BY ita_nome_regione, ita_nome_provincia;
 
 ---
 
-### 📌 Note operative
+### Note operative
 
 * Utile per **reportistica nazionale** e analisi territoriali.
 * La presenza della provincia accisa permette di gestire casi fiscali/doganali particolari.

@@ -2,11 +2,11 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimento tabelle:
+Approfondimento tabelle:
 >
-> * [pratiche.pratiche](/dbzero/pratiche/tabelle/pratiche)
-> * [pratiche.allegati_flussi](/dbzero/pratiche/tabelle/allegati_flussi)
-> * [config.tipi_allegato](/dbzero/config/tabelle/tipi_allegato)
+[pratiche.pratiche](/dbzero/pratiche/tabelle/pratiche)
+> [pratiche.allegati_flussi](/dbzero/pratiche/tabelle/allegati_flussi)
+> [config.tipi_allegato](/dbzero/config/tabelle/tipi_allegato)
 
 ---
 
@@ -16,7 +16,7 @@ La tabella `pratiche.allegati_pratiche` gestisce i **file allegati** a una prati
 
 ---
 
-### 🧱 Ruolo nel processo
+### Ruolo nel processo
 
 * Ogni allegato e' classificato per tipo (DOCUMENTO, IMMAGINE, CONTRATTO, ecc.).
 * Il **versionamento** funziona tramite `allegato_padre_id`: una nuova versione punta alla precedente.
@@ -25,7 +25,7 @@ La tabella `pratiche.allegati_pratiche` gestisce i **file allegati** a una prati
 
 ---
 
-### ⚙️ Colonne specifiche
+### Colonne specifiche
 
 | Colonna | Note |
 |---------|------|
@@ -37,7 +37,7 @@ La tabella `pratiche.allegati_pratiche` gestisce i **file allegati** a una prati
 
 ---
 
-### ⚙️ Caratteristiche
+### Caratteristiche
 
 | Aspetto | Dettaglio |
 |---------|-----------|

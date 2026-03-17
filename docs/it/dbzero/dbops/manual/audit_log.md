@@ -2,17 +2,17 @@
 
 > 👀 **Vedi anche**
 >
-> Guide:
+Guide:
 >     
-> [Audit Logging](/guide/messaggi-audit)
+[Audit Logging](/guide/messaggi-audit)
 >
-> Approfondimento tabelle:   
+Approfondimento tabelle:   
 > 
-> * [dbops.error_log](/dbzero/dbops/tabelle/error_log)    
+[dbops.error_log](/dbzero/dbops/tabelle/error_log)    
 >
-> Approfondimento funzioni:    
+Approfondimento funzioni:    
 >
-> * [dbops.trgfn_tx_id_managed](/dbzero/dbops/funzioni/trgfn_tx_id_managed)    
+[dbops.trgfn_tx_id_managed](/dbzero/dbops/funzioni/trgfn_tx_id_managed)    
 
 La tabella **`dbops.audit_log`** registra le esecuzioni di processi, funzioni e job, consentendo di tracciare chi ha eseguito cosa, quando e con quali parametri, nonché l’esito e la durata. Il campo **`tx_id`** non possiede più un valore di default: viene assegnato **automaticamente** dal **trigger**  utilizzando la trigger function `dbops.trgfn_tx_id_managed()`, garantendo coerenza con il modello di `error_log`.
 
@@ -27,7 +27,7 @@ La tabella **`dbops.audit_log`** registra le esecuzioni di processi, funzioni e 
 
 ---
 
-### 🔍 Significato dei Campi
+### Significato dei Campi
 
 | Campo           | Tipo                | Descrizione                                                                              |
 | --------------- | ------------------- | ---------------------------------------------------------------------------------------- |
@@ -44,7 +44,7 @@ La tabella **`dbops.audit_log`** registra le esecuzioni di processi, funzioni e 
 
 ---
 
-### 🔒 Vincoli e Comportamenti di Default
+### Vincoli e Comportamenti di Default
 
 * **PK**: `pk_audit_log` su `id`.
 * **Default** (solo se non assegnati da applicazione o trigger):
@@ -55,7 +55,7 @@ La tabella **`dbops.audit_log`** registra le esecuzioni di processi, funzioni e 
 
 ---
 
-### ⚙️ Esempi di Utilizzo
+### Esempi di Utilizzo
 
 1. **Inserimento manuale** (il trigger assegna `tx_id`):
 
@@ -89,7 +89,7 @@ La tabella **`dbops.audit_log`** registra le esecuzioni di processi, funzioni e 
 
 ---
 
-### 💡 Vantaggi Operativi
+### Vantaggi Operativi
 
 * **Coerenza transazionale**: `tx_id` è sempre allineato al registro centrale e a `error_log`.
 * **Centralizzazione**: nessuna logica di generazione/assegnazione duplicata in tabelle diverse.
@@ -98,7 +98,7 @@ La tabella **`dbops.audit_log`** registra le esecuzioni di processi, funzioni e 
 
 ---
 
-> 🧠 **“Con la colonna `tx_id`, ogni record di audit è automaticamente correlato al contesto transazionale, semplificando debug, monitoraggio e analisi dei processi.”**
+> **“Con la colonna `tx_id`, ogni record di audit è automaticamente correlato al contesto transazionale, semplificando debug, monitoraggio e analisi dei processi.”**
 
 ---
 

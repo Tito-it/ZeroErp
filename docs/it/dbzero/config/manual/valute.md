@@ -17,7 +17,7 @@ La tabella **`config.valute`** definisce le valute monetarie utilizzate in Zero 
 
 
 
-### 💡 Vantaggi Operativi
+### Vantaggi Operativi
 
 * **Standardizzazione**
   Consente a tutti i moduli di usare codici e simboli unificati, evitando errori di conversione.
@@ -28,4 +28,4 @@ La tabella **`config.valute`** definisce le valute monetarie utilizzate in Zero 
 
 ---
 
-> 🧠 **"Una tabella snella e vincolata per garantire coerenza, performance e audit nella gestione delle valute di Zero ERP."**
+> **"Una tabella snella e vincolata per garantire coerenza, performance e audit nella gestione delle valute di Zero ERP."**

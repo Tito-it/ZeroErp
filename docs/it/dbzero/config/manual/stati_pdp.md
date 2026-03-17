@@ -2,15 +2,15 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimento Tabelle:
+Approfondimento Tabelle:
 >
-> * [config.stati_cliente](/dbzero/config/tabelle/stati_cliente)
-> * [anagrafiche.pdp](/dbzero/anagrafiche/tabelle/pdp)
+[config.stati_cliente](/dbzero/config/tabelle/stati_cliente)
+> [anagrafiche.pdp](/dbzero/anagrafiche/tabelle/pdp)
 >
-> Approfondimento funzioni/trigger:
+Approfondimento funzioni/trigger:
 >
-> * [dbops.trgfn_tx_id_managed](/dbzero/dbops/funzioni/trgfn_tx_id_managed)
-> * [script.trgfn_storico_generic](/dbzero/script/funzioni/trgfn_storico_generic)
+[dbops.trgfn_tx_id_managed](/dbzero/dbops/funzioni/trgfn_tx_id_managed)
+> [script.trgfn_storico_generic](/dbzero/script/funzioni/trgfn_storico_generic)
 
 La tabella **`config.stati_pdp`** definisce il **dominio degli stati tecnici** applicabili ai **punti di prelievo (PDP)**, separando in modo chiaro lo **stato fisico/tecnico del punto** dallo **stato commerciale del cliente** (`config.stati_cliente`).
 
@@ -39,7 +39,7 @@ La tabella **`config.stati_pdp`** definisce il **dominio degli stati tecnici** a
 
 ---
 
-### 🔄 Stati Tecnici Attualmente Definiti
+### Stati Tecnici Attualmente Definiti
 
 Gli stati iniziali inseriti in `config.stati_pdp` recepiscono le decisioni architetturali su **come modellare il ciclo di vita tecnico di un PDP**, distinguendolo chiaramente dagli aspetti commerciali.
 
@@ -116,7 +116,7 @@ Uso tipico:
 
 ---
 
-### 🔗 Collegamenti con Altre Tabelle
+### Collegamenti con Altre Tabelle
 
 * **`anagrafiche.pdp`**
   Il campo `stato_pdp_id` è una FK verso `config.stati_pdp.id` e rappresenta lo **stato tecnico corrente** del punto di prelievo. A livello di dominio:
@@ -132,7 +132,7 @@ Uso tipico:
 
 ---
 
-### 💡 Vantaggi Operativi
+### Vantaggi Operativi
 
 * **Chiarezza architetturale**
   Uno stato tecnico unico e centralizzato per i PDP evita conflitti e duplicazioni con gli stati cliente.

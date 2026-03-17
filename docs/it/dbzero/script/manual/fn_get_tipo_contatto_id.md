@@ -2,14 +2,14 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimenti tabelle:   
+Approfondimenti tabelle:   
 >
->  * [config.tipi_contatti](/dbzero/config/tabelle/tipi_contatti)   
+[config.tipi_contatti](/dbzero/config/tabelle/tipi_contatti)   
 >
-> Approfondimenti funzioni:   
+Approfondimenti funzioni:   
 >
->  * [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)   
->  * [dbops.fn_get_or_create_session_tx_id](/dbzero/dbops/funzioni/fn_get_or_create_session_tx_id)   
+[script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)   
+>  [dbops.fn_get_or_create_session_tx_id](/dbzero/dbops/funzioni/fn_get_or_create_session_tx_id)   
 
 ---
 
@@ -19,7 +19,7 @@ Recuperare l’ID del tipo di contatto corrispondente a un **codice interno** (`
 
 ---
 
-### 🔍 Parametri di Input
+### Parametri di Input
 
 | Nome                      | Tipo      | Descrizione                                                |
 | ------------------------- | --------- | ---------------------------------------------------------- |
@@ -27,7 +27,7 @@ Recuperare l’ID del tipo di contatto corrispondente a un **codice interno** (`
 
 ---
 
-### ⚙️ Flusso Logico
+### Flusso Logico
 
 1. **Generazione `tx_id`**
    Invoca `dbops.fn_get_or_create_session_tx_id()` per ottenere o creare un identificativo di transazione di sessione, usato per il log centralizzato.
@@ -62,7 +62,7 @@ Recuperare l’ID del tipo di contatto corrispondente a un **codice interno** (`
 
 ---
 
-### 💡 Vantaggi Operativi
+### Vantaggi Operativi
 
 * **Centralizzazione**: evita duplicazione di query e gestione degli errori in più punti.
 * **Tracciabilità**: ogni chiamata è correlata a un `tx_id`, facilitando debug e audit.
@@ -70,4 +70,4 @@ Recuperare l’ID del tipo di contatto corrispondente a un **codice interno** (`
 
 ---
 
-> 🧠 **“Utilizzare una funzione dedicata con logging centralizzato garantisce coerenza nel recupero dei dati di metadato e semplifica la manutenzione del codice.”**
+> **“Utilizzare una funzione dedicata con logging centralizzato garantisce coerenza nel recupero dei dati di metadato e semplifica la manutenzione del codice.”**

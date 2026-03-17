@@ -2,20 +2,18 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> • [vendite.fatture](/dbzero/vendite/tabelle/fatture)  
+• [vendite.fatture](/dbzero/vendite/tabelle/fatture)  
 > • [vendite.registri_fatturazione](/dbzero/vendite/tabelle/registri_fatturazione)  
 > • [vendite.registri_fatturazione_progressivi](/dbzero/vendite/tabelle/registri_fatturazione_progressivi)  
 >
-> **Approfondimento funzioni:**
+**Approfondimento funzioni:**
 >
-> • [vendite.fn_get_next_progressivo](/dbzero/vendite/funzioni/fn_get_next_progressivo)  
+• [vendite.fn_get_next_progressivo](/dbzero/vendite/funzioni/fn_get_next_progressivo)  
 > • [vendite.fn_get_anno_registro](/dbzero/vendite/funzioni/fn_get_anno_registro)  
 >
----
-
-### 🎯 Scopo Principale
+🎯 Scopo Principale
 
 (latest review 09-02-2026)
 La funzione **`vendite.fn_assign_numero_fattura()`** assegna il progressivo
@@ -23,7 +21,7 @@ in base al registro e aggiorna `anno`, `serie` e `numero` sulla testata fattura.
 
 ---
 
-### ✅ Regole principali
+### Regole principali
 
 * `p_fattura_id` obbligatorio e `> 0`.
 * Lock sulla riga fattura per coerenza.
@@ -33,7 +31,7 @@ in base al registro e aggiorna `anno`, `serie` e `numero` sulla testata fattura.
 
 ---
 
-### ✅ Output
+### Output
 
 Ritorna una riga con:
 
@@ -45,7 +43,7 @@ Ritorna una riga con:
 
 ---
 
-### 🧪 Esempio d’uso
+### Esempio d’uso
 
 ```sql
 SELECT *

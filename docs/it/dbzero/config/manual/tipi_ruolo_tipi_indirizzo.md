@@ -2,20 +2,20 @@
 
 > 👀 **Vedi anche**
 >
-> **Tabelle di dominio:**   
+**Tabelle di dominio:**   
 >
-> * [`config.tipi_ruoli`](/dbzero/config/tabelle/tipi_ruoli)   
-> * [`config.tipi_indirizzi`](/dbzero/config/tabelle/tipi_indirizzi)   
+[`config.tipi_ruoli`](/dbzero/config/tabelle/tipi_ruoli)   
+> [`config.tipi_indirizzi`](/dbzero/config/tabelle/tipi_indirizzi)   
 >
-> **Tabelle anagrafiche collegate:**   
+**Tabelle anagrafiche collegate:**   
 >
-> * [`anagrafiche.soggetti_ruoli`](/dbzero/anagrafiche/tabelle/soggetti_ruoli)   
-> * [`anagrafiche.indirizzi`](/dbzero/anagrafiche/tabelle/indirizzi)   
+[`anagrafiche.soggetti_ruoli`](/dbzero/anagrafiche/tabelle/soggetti_ruoli)   
+> [`anagrafiche.indirizzi`](/dbzero/anagrafiche/tabelle/indirizzi)   
 >
-> **Funzioni / trigger collegati:**
+**Funzioni / trigger collegati:**
 >
-> * [`anagrafiche.trgfn_indirizzi_guard_tipo_ruolo_tipi_indirizzo`](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_guard_tipo_ruolo_tipi_indirizzo)   
-> * [`script.fn_get_indirizzo`](/dbzero/script/funzioni/fn_get_indirizzo)    
+[`anagrafiche.trgfn_indirizzi_guard_tipo_ruolo_tipi_indirizzo`](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_guard_tipo_ruolo_tipi_indirizzo)   
+> [`script.fn_get_indirizzo`](/dbzero/script/funzioni/fn_get_indirizzo)    
 
 ---
 
@@ -39,7 +39,7 @@ Questa tabella governa quindi:
 
 ---
 
-### 🧩 Ruolo nel Modello Dati
+### Ruolo nel Modello Dati
 
 Il modello completo ruota intorno a questa catena:
 
@@ -88,7 +88,7 @@ Con `config.tipi_ruolo_tipi_indirizzo`:
 
 ---
 
-### ⚙️ Regole di Funzionamento
+### Regole di Funzionamento
 
  **1️⃣ Matrice presente vs assente**
 
@@ -135,12 +135,12 @@ Con questa configurazione:
 
   * può provare prima **FORNITURA**, poi **SEDEOP**, che a sua volta può cadere su **SEDELEG**, in base alla logica implementata.
 
-> 📌 La logica di fallback **non** è nel trigger, ma nelle funzioni di lookup/servizio
+> La logica di fallback **non** è nel trigger, ma nelle funzioni di lookup/servizio
 > (es. `script.fn_get_indirizzo`), che leggono la configurazione dalla matrice.
 
 ---
 
-### 🔍 Esempi d’Uso (concettuali)
+### Esempi d’Uso (concettuali)
 
  **✔ Ruolo Cliente**
 
@@ -175,7 +175,7 @@ Con questa configurazione:
 
 ---
 
-### 💡 Vantaggi Operativi
+### Vantaggi Operativi
 
 * **Configurazione centrale delle regole**
   Le regole ruolo ↔ tipi indirizzo sono dati, non codice. Si possono modificare e versionare facilmente.
@@ -197,6 +197,6 @@ Con questa configurazione:
 
 ---
 
-> 🧠 **"`config.tipi_ruolo_tipi_indirizzo` è la regia delle combinazioni ruolo–indirizzo: decide cosa è ammesso, cosa è obbligatorio e come comportarsi quando un indirizzo manca, lasciando alle funzioni solo il compito di eseguire le regole."**
+> **"`config.tipi_ruolo_tipi_indirizzo` è la regia delle combinazioni ruolo–indirizzo: decide cosa è ammesso, cosa è obbligatorio e come comportarsi quando un indirizzo manca, lasciando alle funzioni solo il compito di eseguire le regole."**
 
 {% include-markdown "signature-core.md" %}

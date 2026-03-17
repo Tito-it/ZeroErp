@@ -2,10 +2,10 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimento tabelle:
+Approfondimento tabelle:
 >
-> * [dbops.audit_log](/dbzero/dbops/tabelle/audit_log)
-> * [dbops.error_log](/dbzero/dbops/tabelle/error_log)
+[dbops.audit_log](/dbzero/dbops/tabelle/audit_log)
+> [dbops.error_log](/dbzero/dbops/tabelle/error_log)
 
 La tabella **`dbops.idempotency_keys`** è una **tabella tecnica** che associa l’**Idempotency-Key** inviata dal client alla **transazione DB (`tx_id`)** e alla **risposta serializzata**, garantendo **idempotenza forte** lato write.
 
@@ -20,7 +20,7 @@ La tabella **`dbops.idempotency_keys`** è una **tabella tecnica** che associa l
 
 ---
 
-### 🔍 Significato dei Campi Chiave
+### Significato dei Campi Chiave
 
 * **`idempotency_key`**: chiave univoca inviata dal client (PK).
 * **`request_id`**: correlation id applicativo (se disponibile).
@@ -31,7 +31,7 @@ La tabella **`dbops.idempotency_keys`** è una **tabella tecnica** che associa l
 
 ---
 
-### ✅ Regole Principali
+### Regole Principali
 
 * **Univocità**: una `idempotency_key` identifica una sola operazione.
 * **Stato**: `status` ammesso solo tra `in_progress|completed|failed`.
@@ -39,7 +39,7 @@ La tabella **`dbops.idempotency_keys`** è una **tabella tecnica** che associa l
 
 ---
 
-### 🔄 Flusso Operativo
+### Flusso Operativo
 
 1. **Nuova richiesta** → inserisci record `in_progress`.
 2. **Esecuzione completata** → aggiorni `completed` + `tx_id` + `response_payload`.

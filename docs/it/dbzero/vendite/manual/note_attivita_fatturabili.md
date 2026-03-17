@@ -2,9 +2,9 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> • [vendite.note](/dbzero/vendite/tabelle/note)   
+• [vendite.note](/dbzero/vendite/tabelle/note)   
 
 ---
 

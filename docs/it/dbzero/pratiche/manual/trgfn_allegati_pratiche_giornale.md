@@ -2,14 +2,14 @@
 
 > 👀 **Vedi anche**
 >
-> Tabelle:
+Tabelle:
 >
-> * [pratiche.giornale](giornale.md)
-> * [pratiche.allegati_pratiche](allegati_pratiche.md)
+[pratiche.giornale](giornale.md)
+> [pratiche.allegati_pratiche](allegati_pratiche.md)
 >
-> Overview:
+Overview:
 >
-> * [Trigger business overview](trigger_business_overview.md)
+[Trigger business overview](trigger_business_overview.md)
 
 ---
 
@@ -19,7 +19,7 @@ Registra l'azione **ALLEGATO_AGGIUNTO** nel giornale a livello pratica. Si attiv
 
 ---
 
-### 🔧 Firma
+### Firma
 
 ```sql
 CREATE OR REPLACE FUNCTION pratiche.trgfn_allegati_pratiche_giornale()
@@ -29,7 +29,7 @@ LANGUAGE plpgsql
 
 ---
 
-### ⚙️ Logica
+### Logica
 
 Inserisce una riga in `pratiche.giornale` con:
 
@@ -45,7 +45,7 @@ Inserisce una riga in `pratiche.giornale` con:
 
 ---
 
-### 🔗 Trigger associato
+### Trigger associato
 
 | Nome | Fase | Evento | Tabella |
 |------|------|--------|---------|

@@ -2,19 +2,17 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento funzioni:**
+**Approfondimento funzioni:**
 >
-> • [vendite.fn_resolve_prezzo_listino](/dbzero/vendite/funzioni/fn_resolve_prezzo_listino)  
+• [vendite.fn_resolve_prezzo_listino](/dbzero/vendite/funzioni/fn_resolve_prezzo_listino)  
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> • [vendite.attivita_fatturabili](/dbzero/vendite/tabelle/attivita_fatturabili)  
+• [vendite.attivita_fatturabili](/dbzero/vendite/tabelle/attivita_fatturabili)  
 > • [vendite.attivita_fatturabili_lotti](/dbzero/vendite/tabelle/attivita_fatturabili_lotti)  
 > • [vendite.listini_righe](/dbzero/vendite/tabelle/listini_righe)  
 >
----
-
-### 🎯 Scopo Principale
+🎯 Scopo Principale
 
 La funzione `vendite.fn_resolve_commessa_prezzi` analizza le righe di
 `attivita_fatturabili` appartenenti a un lotto e confronta `prezzo_unitario`
@@ -25,7 +23,7 @@ attivita e restituisce esito diagnostico per ogni riga.
 
 ---
 
-### ✅ Regole principali
+### Regole principali
 
 * `p_lotto_id` obbligatorio e `> 0`.
 * Il lotto deve esistere.
@@ -38,7 +36,7 @@ attivita e restituisce esito diagnostico per ogni riga.
 
 ---
 
-### 🧩 Output
+### Output
 
 Ritorna, per ogni riga attività del lotto:
 

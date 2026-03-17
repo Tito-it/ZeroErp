@@ -65,7 +65,7 @@ nav:
                   - Perchè Zero ERP: it/perche-zeroerp.md
         - Installazione:
                   - Prerequisiti: it/installazione.md
-                  - Licenza: it/LICENSE.md
+                  - Licenza: it/LICENSE-GPL3.md
         - Architettura:
                   - it/architettura.md
                   - Database:

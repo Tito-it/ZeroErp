@@ -2,15 +2,15 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimenti funzioni:   
+Approfondimenti funzioni:   
 >
-> * [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)     
-> * [script.fn_log_error_only](/dbzero/script/funzioni/fn_log_error_only)     
+[script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)     
+> [script.fn_log_error_only](/dbzero/script/funzioni/fn_log_error_only)     
 
 > Estensioni PostgreSQL:   
 >
-> * GUC `dblink.log_connection`
-> * Extension PostgreSQL `dblink`
+GUC `dblink.log_connection`
+> Extension PostgreSQL `dblink`
 
 La funzione **`script.fn_ensure_logconn()`** garantisce l’apertura di una connessione **dblink** permanente denominata **`logconn`**, utilizzando la stringa di connessione definita nella GUC `dblink.log_connection`. Se la connessione esiste già, l’eccezione `duplicate_object` viene catturata e ignorata.
 
@@ -29,7 +29,7 @@ La funzione **`script.fn_ensure_logconn()`** garantisce l’apertura di una conn
 
 ---
 
-### 🔒 Comportamenti e Side Effects
+### Comportamenti e Side Effects
 
 * **Persistenza della connessione**: rimane attiva fino alla fine della sessione o fino a `dblink_disconnect('logconn')`.
 * **Idempotenza**: chiamate multiple non ricreano la connessione e non causano errori.
@@ -37,7 +37,7 @@ La funzione **`script.fn_ensure_logconn()`** garantisce l’apertura di una conn
 
 ---
 
-### ⚙️ Esempi di Utilizzo
+### Esempi di Utilizzo
 
 1. **Nel flusso di error handling**
 
@@ -64,7 +64,7 @@ La funzione **`script.fn_ensure_logconn()`** garantisce l’apertura di una conn
 
 ---
 
-### 💡 Vantaggi Operativi
+### Vantaggi Operativi
 
 * **Efficienza**: riduce la latenza di apertura connessioni ripetute.
 * **Semplicità d’uso**: un’unica funzione per garantire la connessione.
@@ -72,4 +72,4 @@ La funzione **`script.fn_ensure_logconn()`** garantisce l’apertura di una conn
 
 ---
 
-> 🧠 **“Un’utility leggera per gestire connessioni dblink persistenti, essenziale per pattern di logging remoto e task di integrazione tra database.”**
+> **“Un’utility leggera per gestire connessioni dblink persistenti, essenziale per pattern di logging remoto e task di integrazione tra database.”**

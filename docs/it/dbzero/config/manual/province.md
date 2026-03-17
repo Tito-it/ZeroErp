@@ -4,8 +4,8 @@
 
 > Approfondimento Tabelle:  
 >
-> * [config.stati](/dbzero/config/tabelle/stati)      
-> * [config.regioni](/dbzero/config/tabelle/regioni) 
+[config.stati](/dbzero/config/tabelle/stati)      
+> [config.regioni](/dbzero/config/tabelle/regioni) 
 
 
 La tabella **`config.province`** censisce le province all’interno di uno stato, fornendo informazioni amministrative, codici ISTAT e dati specifici per il calcolo di accise.
@@ -28,7 +28,7 @@ La tabella **`config.province`** censisce le province all’interno di uno stato
 
 ---
 
-### 💡 Vantaggi Operativi
+### Vantaggi Operativi
 
 * **Gerarchia geografica coerente**
   Integrando `config.province` con `config.regioni` e `config.stati`, si ottiene una struttura top-down di stati→regioni→province, fondamentale per reportistica territoriale e logistica.
@@ -46,4 +46,4 @@ La tabella **`config.province`** censisce le province all’interno di uno stato
 
 ---
 
-> 🧠 **"Un elenco strutturato di province, con metadati ISTAT e informazioni fiscali, alla base della gerarchia geografica e dei calcoli di accise in Zero ERP."**
+> **"Un elenco strutturato di province, con metadati ISTAT e informazioni fiscali, alla base della gerarchia geografica e dei calcoli di accise in Zero ERP."**

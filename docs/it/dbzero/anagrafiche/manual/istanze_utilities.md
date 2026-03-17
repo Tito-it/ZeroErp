@@ -2,24 +2,24 @@
 
 > 👀 **Vedi anche**
 > 
-> Guide generali:
+Guide generali:
 >
-> * [Generazione di un cliente](/guide/generazione-cliente)   
+[Generazione di un cliente](/guide/generazione-cliente)   
 >
-> Approfondimeto tabelle:
+Approfondimeto tabelle:
 >
-> * [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)   
-> * [anagrafiche.indirizzi_dettaglio](/dbzero/anagrafiche/tabelle/indirizzi_dettaglio)   
-> * [anagrafiche.clienti](/dbzero/anagrafiche/tabelle/clienti)   
-> * [anagrafiche.pdp](/dbzero/anagrafiche/tabelle/pdp)   
+[anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)   
+> [anagrafiche.indirizzi_dettaglio](/dbzero/anagrafiche/tabelle/indirizzi_dettaglio)   
+> [anagrafiche.clienti](/dbzero/anagrafiche/tabelle/clienti)   
+> [anagrafiche.pdp](/dbzero/anagrafiche/tabelle/pdp)   
 >
-> Approfondimeto funzioni:
+Approfondimeto funzioni:
 >
-> * [anagrafiche.trgfn_istanze_utilities_normalize](/dbzero/anagrafiche/funzioni/trgfn_istanze_utilities_normalize)   
-> * [anagrafiche.trgfn_istanze_utilities_gen_codice](/dbzero/anagrafiche/funzioni/trgfn_istanze_utilities_gen_codice)   
-> * [script.trgfn_audit_data_user_generic](/dbzero/script/funzioni/trgfn_audit_data_user_generic)   
-> * [config.sistema_codici](/dbzero/config/manual/sistema_codici)   
-> * [dbops.trgfn_tx_id_managed](/dbzero/dbops/funzioni/trgfn_tx_id_managed)   
+[anagrafiche.trgfn_istanze_utilities_normalize](/dbzero/anagrafiche/funzioni/trgfn_istanze_utilities_normalize)   
+> [anagrafiche.trgfn_istanze_utilities_gen_codice](/dbzero/anagrafiche/funzioni/trgfn_istanze_utilities_gen_codice)   
+> [script.trgfn_audit_data_user_generic](/dbzero/script/funzioni/trgfn_audit_data_user_generic)   
+> [config.sistema_codici](/dbzero/config/manual/sistema_codici)   
+> [dbops.trgfn_tx_id_managed](/dbzero/dbops/funzioni/trgfn_tx_id_managed)   
 
 ---
 
@@ -32,7 +32,7 @@
 
 ---
 
-### 🔗 Collegamenti con Altre Tabelle
+### Collegamenti con Altre Tabelle
 
 | Colonna                  | Riferimento                           | Azione                                |
 | ------------------------ | ------------------------------------- | ------------------------------------- |
@@ -50,7 +50,7 @@
 
 ---
 
-### 🔍 Indicizzazione
+### Indicizzazione
 
 * **`ix_istanze_utilities_soggetto_id`**: ricerca rapida per soggetto.
 * **`ix_istanze_utilities_indirizzo_dettaglio_id`**: filtri per indirizzo di dettaglio.
@@ -58,7 +58,7 @@
 
 ---
 
-### 💡 Vantaggi Operativi
+### Vantaggi Operativi
 
 * **Tracciabilità subentri**: `parent_istanza_id` consente di ricostruire facilmente la sequenza di attivazioni.
 * **Flessibilità**: supporto per istanze senza indirizzo tramite flag `fittizia`.
@@ -66,7 +66,7 @@
 
 ---
 
-### ⚙️ Trigger e Funzioni Coinvolte
+### Trigger e Funzioni Coinvolte
 
 | Trigger                                     | Evento                  | Funzione                                              |
 | ------------------------------------------- | ----------------------- | ----------------------------------------------------- |
@@ -77,7 +77,7 @@
 
 ---
 
-### ✅ Controlli di Coerenza
+### Controlli di Coerenza
 
 * `parent_istanza_id`, `soggetto_id` e `indirizzo_dettaglio_id` garantiscono integrità referenziale.
 * Vincolo `CHECK (fittizia = true OR indirizzo_dettaglio_id IS NOT NULL)` assicura coerenza tra flag e indirizzo.
@@ -159,7 +159,7 @@ L’istanza è quindi la *contenitore unico* del ciclo contrattuale associato a 
 
 ---
 
-### 🔗 7.2 Relazione con il Billing Account
+### 7.2 Relazione con il Billing Account
 
 Il `billing_account` è sempre collegato alla medesima istanza tramite una **FK composita**:
 
@@ -174,7 +174,7 @@ Questa regola assicura che:
 2. un billing account è definitivamente associato al contesto tecnico dell’istanza;
 3. anche in fase **pre‑contrattuale** è possibile emettere fatture referenziando correttamente l’istanza.
 
-> 💡 Nota operativa
+> Nota operativa
 > Per attività non-utility, istanza + billing account + cliente possono nascere simultaneamente, senza impatto sul modello.
 
 ---
@@ -228,7 +228,7 @@ Regole:
 2. il parent deve essere scelto come l’**istanza con cliente attivo più recente** per quel PDP;
 3. la catena consente di ricostruire l’intero ciclo tecnico del punto di prelievo.
 
-> 🔎 Questa struttura sarà fondamentale per la gestione storica, analisi tecniche, subentri e migrazioni.
+> Questa struttura sarà fondamentale per la gestione storica, analisi tecniche, subentri e migrazioni.
 
 ---
 
@@ -257,7 +257,7 @@ Specialmente in presenza di PDP, ogni nuovo intestatario genera una nuova istanz
 
 ---
 
-### 🧭 7.7 Obiettivi del Nuovo Modello
+### 7.7 Obiettivi del Nuovo Modello
 
 Le nuove regole permettono di:
 
@@ -269,7 +269,7 @@ Le nuove regole permettono di:
 
 ---
 
-### 📌 Nota Finale
+### Nota Finale
 
 Questo insieme di regole costituisce la base del **nuovo modello operativo delle istanze**.
 L’integrazione con clienti, PDP e billing account viene ora gestita **in modo deterministico e verificabile a livello DB**, riducendo ambiguità e casi limite.

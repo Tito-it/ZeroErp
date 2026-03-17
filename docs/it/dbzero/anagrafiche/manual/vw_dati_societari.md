@@ -2,12 +2,12 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimenti tabelle:
+Approfondimenti tabelle:
 >
-> * [anagrafiche.dati_societari](/dbzero/anagrafiche/tabelle/dati_societari)  
-> * [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)  
-> * [config.forme_giuridiche](/dbzero/config/tabelle/forme_giuridiche)  
-> * [config.province](/dbzero/config/tabelle/province)  
+[anagrafiche.dati_societari](/dbzero/anagrafiche/tabelle/dati_societari)  
+> [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)  
+> [config.forme_giuridiche](/dbzero/config/tabelle/forme_giuridiche)  
+> [config.province](/dbzero/config/tabelle/province)  
 
 ---
 
@@ -23,7 +23,7 @@ La vista **`anagrafiche.vw_dati_societari`** offre una lettura unificata dei dat
 
 ---
 
-### 🧱 Struttura logica della vista
+### Struttura logica della vista
 
 La vista parte da `anagrafiche.dati_societari` e aggiunge:
 
@@ -52,7 +52,7 @@ La vista parte da `anagrafiche.dati_societari` e aggiunge:
 
 ---
 
-### 🔍 Modalità d’uso tipiche
+### Modalità d’uso tipiche
 
 ```sql
 SELECT *
@@ -62,7 +62,7 @@ WHERE soggetto_id = :soggetto_id;
 
 ---
 
-### ✅ Best practice e raccomandazioni
+### Best practice e raccomandazioni
 
 * Usare questa vista per letture applicative e reportistica.
 * Per modifiche, operare sempre sulle tabelle base.

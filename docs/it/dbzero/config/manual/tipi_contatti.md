@@ -2,14 +2,14 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimento tabelle:    
+Approfondimento tabelle:    
 >
-> * [anagrafiche.contatti](/dbzero/anagrafiche/tabelle/contatti)    
+[anagrafiche.contatti](/dbzero/anagrafiche/tabelle/contatti)    
 >
-> Approfondimenti funzioni:   
+Approfondimenti funzioni:   
 >
-> * [script.trgfn_lock_columns](/dbzero/script/funzioni/trgfn_lock_columns)     
-> * [script.trgfn_upd_audit_data_user_generic](/dbzero/script/funzioni/trgfn_upd_audit_data_user_generic)     
+[script.trgfn_lock_columns](/dbzero/script/funzioni/trgfn_lock_columns)     
+> [script.trgfn_upd_audit_data_user_generic](/dbzero/script/funzioni/trgfn_upd_audit_data_user_generic)     
 
 ---
 ### 🎯 Scopo Principale
@@ -21,7 +21,7 @@ nell’anagrafica dei soggetti. Il reparto/ufficio di riferimento e' invece gest
 
 ---
 
-### 🔍 Vincoli e Caratteristiche Chiave
+### Vincoli e Caratteristiche Chiave
 
 * **Codice interno (`cod_int_tipo_contatto`)**: non modificabile, garantisce stabilita dei riferimenti.
 * **Descrizione obbligatoria**: la `descrizione` non può essere vuota.
@@ -29,7 +29,7 @@ nell’anagrafica dei soggetti. Il reparto/ufficio di riferimento e' invece gest
 
 ---
 
-### 📋 Esempi di Tipologie
+### Esempi di Tipologie
 
 Alcuni esempi di categorie di contatto:
 
@@ -40,7 +40,7 @@ Alcuni esempi di categorie di contatto:
 
 ---
 
-### 🔗 Relazioni e Indici
+### Relazioni e Indici
 
 * **FK in ingresso**:
 
@@ -52,7 +52,7 @@ Alcuni esempi di categorie di contatto:
 
 ---
 
-### ⚙️ Trigger Associati
+### Trigger Associati
 
 1. **`trg_tipi_contatti_upd_lock_cod_interno`**
 
@@ -66,7 +66,7 @@ Alcuni esempi di categorie di contatto:
 
 ---
 
-### 💡 Vantaggi Operativi
+### Vantaggi Operativi
 
 * **Stabilità dei riferimenti**: codice interno immutabile garantisce coerenza in interfacce e logica.
 * **Integrità dei dati**: constraint e trigger impediscono codici duplicati o vuoti.
@@ -75,7 +75,7 @@ Alcuni esempi di categorie di contatto:
 
 ---
 
-### 🧭 Nota di refactor
+### Nota di refactor
 
 In passato `config.tipi_contatti` veniva spesso usata come elenco dei reparti.
 Con l'introduzione di `config.unita_organizzative`, il significato dei reparti
@@ -83,4 +83,4 @@ viene spostato su quella tabella, riducendo ambiguita semantiche.
 
 ---
 
-> 🧠 **“Una tabella di configurazione per i tipi di contatto assicura coerenza e stabilità nei riferimenti applicativi e semplifica la manutenzione delle logiche di contatto.”**
+> **“Una tabella di configurazione per i tipi di contatto assicura coerenza e stabilità nei riferimenti applicativi e semplifica la manutenzione delle logiche di contatto.”**

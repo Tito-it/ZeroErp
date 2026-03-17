@@ -2,22 +2,22 @@
 
 > 👀 **Vedi anche**
 >
-> Guide:
+Guide:
 >
-> * [Soggetti & Tipologie](/guide/soggetti-e-ruoli-anagrafici)    
+[Soggetti & Tipologie](/guide/soggetti-e-ruoli-anagrafici)    
 >
-> Approfondimento Tabelle:
+Approfondimento Tabelle:
 >
-> * [config.stati](/dbzero/config/tabelle/stati)   
-> * [config.tipi_soggetto_dettaglio](/dbzero/config/tabelle/tipi_soggetto_dettaglio)   
-> * [config.forme_giuridiche_tipi_soggetto_dettaglio](/dbzero/config/tabelle/forme_giuridiche_tipi_soggetto_dettaglio)   
-> * [anagrafiche.dati_societari](/dbzero/anagrafiche/tabelle/dati_societari)   
+[config.stati](/dbzero/config/tabelle/stati)   
+> [config.tipi_soggetto_dettaglio](/dbzero/config/tabelle/tipi_soggetto_dettaglio)   
+> [config.forme_giuridiche_tipi_soggetto_dettaglio](/dbzero/config/tabelle/forme_giuridiche_tipi_soggetto_dettaglio)   
+> [anagrafiche.dati_societari](/dbzero/anagrafiche/tabelle/dati_societari)   
 >
-> Approfondimento funzioni/trigger:
+Approfondimento funzioni/trigger:
 >
-> * [script.trgfn_sync_stato_iso2](/dbzero/script/funzioni/trgfn_sync_stato_iso2)   
-> * [script.trgfn_audit_data_user_generic](/dbzero/script/funzioni/trgfn_audit_data_user_generic)   
-> * [dbops.trgfn_tx_id_managed](/dbzero/dbops/funzioni/trgfn_tx_id_managed)   
+[script.trgfn_sync_stato_iso2](/dbzero/script/funzioni/trgfn_sync_stato_iso2)   
+> [script.trgfn_audit_data_user_generic](/dbzero/script/funzioni/trgfn_audit_data_user_generic)   
+> [dbops.trgfn_tx_id_managed](/dbzero/dbops/funzioni/trgfn_tx_id_managed)   
 
 ---
 
@@ -36,7 +36,7 @@ Questa tabella consente di evitare incoerenze tipiche dei campi testo (SRL / S.R
 
 ---
 
-### 🧩 Ruolo nel Modello Dati
+### Ruolo nel Modello Dati
 
 `config.forme_giuridiche` si colloca nel blocco **config/lookup**, e viene usata per:
 
@@ -46,7 +46,7 @@ Questa tabella consente di evitare incoerenze tipiche dei campi testo (SRL / S.R
 
 ---
 
-### 🧱 Struttura – Attributi principali
+### Struttura – Attributi principali
 
 | Colonna                   | Tipo         | Obblig. | Descrizione sintetica                                     |          |            |
 | ------------------------- | ------------ | ------- | --------------------------------------------------------- | -------- | ---------- |
@@ -67,7 +67,7 @@ Questa tabella consente di evitare incoerenze tipiche dei campi testo (SRL / S.R
 
 ---
 
-### ✅ Vincoli principali
+### Vincoli principali
 
 * **Unicità per-paese**
 
@@ -85,7 +85,7 @@ Questa tabella consente di evitare incoerenze tipiche dei campi testo (SRL / S.R
 
 ---
 
-### ⚙️ Regole operative (concettuali)
+### Regole operative (concettuali)
 
  **1️⃣ Internazionalizzazione: `stato_id` + `stato_iso2`**
 
@@ -96,7 +96,7 @@ Il modello prevede sia:
 
 Con un trigger di sync (come già avviene su `config.tipi_soggetto_dettaglio`), `stato_iso2` può essere mantenuto coerente rispetto a `stato_id`.
 
-> 📌 Scopo: evitare dati incoerenti e supportare import/migrazioni per-paese.
+> Scopo: evitare dati incoerenti e supportare import/migrazioni per-paese.
 
 ---
 
@@ -109,11 +109,11 @@ Esempi concettuali:
 * `rea_policy = REQUIRED` → per quella forma giuridica, i dati REA sono attesi/obbligatori (validazione a livello servizi/trigger in tabelle operative).
 * `capitale_sociale_policy = OPTIONAL/REQUIRED` → abilita/impone l’uso del capitale sociale nei dati societari.
 
-> 📌 Nota: la tabella non contiene SDI/PEC per scelta progettuale (evita sovrapposizioni e mantiene il dominio pulito).
+> Nota: la tabella non contiene SDI/PEC per scelta progettuale (evita sovrapposizioni e mantiene il dominio pulito).
 
 ---
 
-### 🔗 Collegamenti con altre tabelle
+### Collegamenti con altre tabelle
 
 * **`config.forme_giuridiche_tipi_soggetto_dettaglio`**
   Matrice che dice **quali forme giuridiche sono compatibili** con un certo tipo soggetto dettaglio (SC/SP/DI/ENC…).
@@ -126,7 +126,7 @@ Esempi concettuali:
 
 ---
 
-### 💡 Vantaggi Operativi
+### Vantaggi Operativi
 
 * **Qualità dati**: elimina varianti testuali e ambiguità.
 * **Validazioni deterministiche**: policy di dominio consultabili dal DB/app.
@@ -135,7 +135,7 @@ Esempi concettuali:
 
 ---
 
-### 📌 Diagramma ER relazioni (concettuale)
+### Diagramma ER relazioni (concettuale)
 
 ```mermaid
 %%{init: {'er': {'layoutDirection': 'TB'}}}%%
@@ -148,6 +148,6 @@ erDiagram
 
 ---
 
-> 🧠 **“`config.forme_giuridiche` è il dizionario canonico e per‑paese delle forme giuridiche: abilita qualità dati e regole di dominio (REA/capitale) senza hardcoding.”**
+> **“`config.forme_giuridiche` è il dizionario canonico e per‑paese delle forme giuridiche: abilita qualità dati e regole di dominio (REA/capitale) senza hardcoding.”**
 
 {% include-markdown "signature-core.md" %}

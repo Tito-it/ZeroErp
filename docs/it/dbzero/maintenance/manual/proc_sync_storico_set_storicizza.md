@@ -2,13 +2,13 @@
 
 > 👀 **Vedi anche:**
 >
-> Approfondimento tabelle:
+Approfondimento tabelle:
 >
-> * [config.storico_set_storicizza](/dbzero/config/tabelle/storico_set_storicizza)
+[config.storico_set_storicizza](/dbzero/config/tabelle/storico_set_storicizza)
 >
-> Approfondimento funzioni:
+Approfondimento funzioni:
 >
-> * [maintenance.proc_apply_storicizza_defaults](/dbzero/maintenance/funzioni/proc_apply_storicizza_defaults)
+[maintenance.proc_apply_storicizza_defaults](/dbzero/maintenance/funzioni/proc_apply_storicizza_defaults)
 
 ---
 
@@ -21,7 +21,7 @@ Questa operazione consente di mantenere allineata la configurazione del sistema 
 
 ---
 
-### 🔧 Comportamento
+### Comportamento
 
 1. **Scansione metadati**
 
@@ -38,7 +38,7 @@ Questa operazione consente di mantenere allineata la configurazione del sistema 
 
 ---
 
-### 🛠️ Dettagli Tecnici
+### Dettagli Tecnici
 
 * **Rilevamento default**: si basa sulla stringa restituita da `pg_get_expr(ad.adbin, ad.adrelid)`.
 * **Formato nome tabella**: il campo `table_name` è valorizzato come testo `schema.tabella` tramite cast da `regclass`.
@@ -46,14 +46,14 @@ Questa operazione consente di mantenere allineata la configurazione del sistema 
 
 ---
 
-### 📅 Frequenza di utilizzo
+### Frequenza di utilizzo
 
 * Può essere eseguita manualmente dopo modifiche allo schema.
 * Può essere integrata in **job di manutenzione periodici** per mantenere aggiornata la configurazione.
 
 ---
 
-### 🔎 Esempio di utilizzo
+### Esempio di utilizzo
 
 ```sql
 CALL maintenance.proc_sync_storico_set_storicizza();
@@ -61,7 +61,7 @@ CALL maintenance.proc_sync_storico_set_storicizza();
 
 ---
 
-> 🧠 **Nota**: questa procedura non modifica lo schema delle tabelle, ma aggiorna unicamente la configurazione interna per la storicizzazione.
+> **Nota**: questa procedura non modifica lo schema delle tabelle, ma aggiorna unicamente la configurazione interna per la storicizzazione.
 
 ---
 

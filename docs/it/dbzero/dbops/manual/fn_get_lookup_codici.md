@@ -2,11 +2,11 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> * [config.valute](/dbzero/config/tabelle/valute)  
-> * [config.utilities](/dbzero/config/tabelle/utilities)  
-> * [config.stati_cliente](/dbzero/config/tabelle/stati_cliente)  
+[config.valute](/dbzero/config/tabelle/valute)  
+> [config.utilities](/dbzero/config/tabelle/utilities)  
+> [config.stati_cliente](/dbzero/config/tabelle/stati_cliente)  
 
 ---
 
@@ -20,7 +20,7 @@ su `attivo` quando presente.
 
 ---
 
-### 🔍 Parametri di input
+### Parametri di input
 
 | Parametro | Tipo | Default | Descrizione |
 | --------- | ---- | ------- | ----------- |
@@ -33,7 +33,7 @@ su `attivo` quando presente.
 
 ---
 
-### ✅ Regole principali
+### Regole principali
 
 * La tabella deve avere colonne `id`, `codice`, `descrizione`.
 * `id` deve essere numerico (`smallint`, `integer`, `bigint`).
@@ -43,7 +43,7 @@ su `attivo` quando presente.
 
 ---
 
-### ✅ Output
+### Output
 
 Ritorna una tabella con:
 
@@ -53,7 +53,7 @@ Ritorna una tabella con:
 
 ---
 
-### 🧪 Esempi d’uso
+### Esempi d’uso
 
 ```sql
 -- default: ordine per descrizione ASC, solo attivi se disponibile

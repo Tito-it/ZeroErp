@@ -9,7 +9,7 @@ Helper condiviso per risolvere e validare `utility_id` ed `emittente_soggetto_ru
 
 ---
 
-### 🔧 Regole applicate
+### Regole applicate
 
 * Se `billing_account_id` presente:
   * risolve `utility_id` dal BA e ne valida la coerenza con input.
@@ -19,7 +19,7 @@ Helper condiviso per risolvere e validare `utility_id` ed `emittente_soggetto_ru
 
 ---
 
-### ✅ Output
+### Output
 
 Ritorna una riga con:
 

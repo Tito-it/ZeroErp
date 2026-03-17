@@ -2,9 +2,9 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> • [vendite.fatture](/dbzero/vendite/tabelle/fatture)   
+• [vendite.fatture](/dbzero/vendite/tabelle/fatture)   
 > • [config.iva](/dbzero/config/tabelle/iva)   
 > • [catalogo.articoli](/dbzero/catalogo/tabelle/articoli)   
 > • [catalogo.unita_misura](/dbzero/catalogo/tabelle/unita_misura)   
@@ -26,7 +26,7 @@ Obiettivi principali:
 
 ---
 
-### 🧭 Collocazione nel flusso
+### Collocazione nel flusso
 
 1. **Popolamento**: generazione da attività fatturabili, ordini, contratti o input manuale; calcolo `imponibile_riga`, `imposta_riga`, `totale_riga` con snapshot delle regole (incluse `iva_perc`, `iva_natura`).
 2. **Ordinamento**: assegnazione `riga_nr` progressivo per fattura; vincolo unico `(fattura_id, riga_nr)`.
@@ -35,7 +35,7 @@ Obiettivi principali:
 
 ---
 
-### 🔑 Campi chiave (semantica)
+### Campi chiave (semantica)
 
 * **Identità e collegamenti**: `fattura_id` (testata), `riga_nr` (ordine), `articolo_id` (opzionale), `uom_id` (unità misura), `dest_billing_account_id` (attribuzione economica a BA figlio).
 * **Dati merce/servizio**: `descrizione`, `qta` , `prezzo_unitario` , `sconto_perc` (0–100). Per q.ta e prezzo leggere le note contenute nel documento
@@ -46,7 +46,7 @@ Obiettivi principali:
 
 ---
 
-### 🔒 Vincoli, indici e coerenze
+### Vincoli, indici e coerenze
 
 * **FK**: fattura, articolo (opz.), UoM, IVA, BA destinatario (opz.), sorgente tipo.
 * **CHECK**:
@@ -61,7 +61,7 @@ Obiettivi principali:
 
 ---
 
-### 🧮 Logiche di calcolo (indicative)
+### Logiche di calcolo (indicative)
 
 * **Base**:
   `imponibile_riga = round(qta * prezzo_unitario * (1 - sconto_perc/100), dec_importi)`
@@ -72,7 +72,7 @@ Obiettivi principali:
 
 ---
 
-### 🧪 Esempi d’uso (query applicative)
+### Esempi d’uso (query applicative)
 
 ```sql
 -- 1) Righe con imponibile > 0 per una fattura
@@ -99,7 +99,7 @@ WHERE r.sorgente_tipo_id = :src_tipo
 
 ---
 
-### ✅ Best practice operative
+### Best practice operative
 
 * **Snapshot completo**: valorizzare sempre  `iva_natura`, `imponibile_riga`, `imposta_riga`, `totale_riga` al termine del calcolo riga.
 * **Progressivo riga**: assegnare `riga_nr` in modo **contiguo** e consolidato prima della numerazione della fattura.
@@ -121,14 +121,14 @@ WHERE r.sorgente_tipo_id = :src_tipo
 > In `vendite.fatture_righe` **non** sono imposti vincoli `qta >= 0` o `prezzo_unitario >= 0`.
 > Questa è una **scelta intenzionale**: nei contesti *utilities* o *servizi a consumo* possono esistere righe con valori negativi, ad esempio per:
 >
-> * Conguagli su stime precedenti.
-> * Restituzioni o accrediti al cliente.
-> * Rettifiche di acconti o storni tecnici.
-> * Bilanciamenti tra letture reali e stimate.
->   Il segno negativo è quindi parte integrante del modello economico e **non invalida la correttezza fiscale** della riga.
+Conguagli su stime precedenti.
+> Restituzioni o accrediti al cliente.
+> Rettifiche di acconti o storni tecnici.
+> Bilanciamenti tra letture reali e stimate.
+> Il segno negativo è quindi parte integrante del modello economico e **non invalida la correttezza fiscale** della riga.
 
 ---
 
-### 👓 Ruolo nel sistema
+### Ruolo nel sistema
 
 Le righe sono il **cuore economico** della fattura: fotografano quantità, prezzi, sconti e IVA **come effettivamente emessi**, garantendo **stabilità fiscale** e ricostruibilità del documento a distanza di tempo. La qualità dei loro snapshot abilita reporting affidabile, controlli IVA corretti e riconciliazioni con le sorgenti.

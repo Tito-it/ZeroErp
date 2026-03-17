@@ -2,15 +2,15 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimento tabelle:   
+Approfondimento tabelle:   
 >
-> * [anagrafiche.istanze_utilities](/dbzero/anagrafiche/tabelle/istanze_utilities)
-> * [anagrafiche.indirizzi_dettaglio](/dbzero/anagrafiche/tabelle/indirizzi_dettaglio)
+[anagrafiche.istanze_utilities](/dbzero/anagrafiche/tabelle/istanze_utilities)
+> [anagrafiche.indirizzi_dettaglio](/dbzero/anagrafiche/tabelle/indirizzi_dettaglio)
 >
-> Approfondimento funzioni:   
+Approfondimento funzioni:   
 >
-> * [dbops.trgfn_tx_id_managed](/dbzero/dbops/funzioni/trgfn_tx_id_managed)
-> * [script.trgfn_storico_generic](/dbzero/script/funzioni/trgfn_storico_generic)
+[dbops.trgfn_tx_id_managed](/dbzero/dbops/funzioni/trgfn_tx_id_managed)
+> [script.trgfn_storico_generic](/dbzero/script/funzioni/trgfn_storico_generic)
 
 ---
 
@@ -24,7 +24,7 @@ La tabella `anagrafiche.catasto_unita_immobiliari` archivia i **dati catastali**
 
 ---
 
-### 🔗 Collegamenti con Altre Tabelle
+### Collegamenti con Altre Tabelle
 
 | Campo                    | Tabella di riferimento                | Azione                                |
 | ------------------------ | ------------------------------------- | ------------------------------------- |
@@ -49,13 +49,13 @@ La tabella `anagrafiche.catasto_unita_immobiliari` archivia i **dati catastali**
 
 ---
 
-### 🔍 Indicizzazione
+### Indicizzazione
 
 * **Nessun indice addizionale** oltre al PK e al vincolo univoco. Le FK su indirizzo e istanza possono essere usate nelle query.
 
 ---
 
-### 💡 Vantaggi Operativi
+### Vantaggi Operativi
 
 * **Normalizzazione**: un solo set di dati catastali per combinazione indirizzo+istanza.
 * **Storico**: ogni modifica viene snapshot con `trg_z90_catasto_unita_immobiliari_storico_upd_dlt`.
@@ -63,7 +63,7 @@ La tabella `anagrafiche.catasto_unita_immobiliari` archivia i **dati catastali**
 
 ---
 
-### ⚙️ Trigger e Funzioni Coinvolte
+### Trigger e Funzioni Coinvolte
 
 | Trigger                                             | Tabella                     | Scopo                                                                             |
 | --------------------------------------------------- | --------------------------- | --------------------------------------------------------------------------------- |
@@ -73,7 +73,7 @@ La tabella `anagrafiche.catasto_unita_immobiliari` archivia i **dati catastali**
 
 ---
 
-### ✅ Controlli di Coerenza
+### Controlli di Coerenza
 
 * **Unicità** su indirizzo + istanza impedisce righe duplicate.
 * **FK** assicurano che non esistano dati orfani.

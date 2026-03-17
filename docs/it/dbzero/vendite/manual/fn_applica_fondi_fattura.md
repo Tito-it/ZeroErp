@@ -2,20 +2,18 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> • [vendite.fatture](/dbzero/vendite/tabelle/fatture)  
+• [vendite.fatture](/dbzero/vendite/tabelle/fatture)  
 > • [vendite.fatture_fondi_fattura_source](/dbzero/vendite/tabelle/fatture_fondi_fattura_source)  
 > • [vendite.fatture_fondi_fattura](/dbzero/vendite/tabelle/fatture_fondi_fattura)  
 > • [vendite.tipi_fondi_fattura](/dbzero/vendite/tabelle/tipi_fondi_fattura)  
 >
-> **Approfondimento funzioni:**
+**Approfondimento funzioni:**
 >
-> • [vendite.fn_genera_fondi_fattura_source](/dbzero/vendite/funzioni/fn_genera_fondi_fattura_source)  
+• [vendite.fn_genera_fondi_fattura_source](/dbzero/vendite/funzioni/fn_genera_fondi_fattura_source)  
 >
----
-
-### 🎯 Scopo Principale
+🎯 Scopo Principale
 
 La funzione **`vendite.fn_applica_fondi_fattura()`** applica i fondi fattura
 in stato `DISPONIBILE` ad una **fattura figlia**, creando le righe in
@@ -23,7 +21,7 @@ in stato `DISPONIBILE` ad una **fattura figlia**, creando le righe in
 
 ---
 
-### ✅ Regole principali
+### Regole principali
 
 * `billing_account_id`, `utility_id`, `tipo_doc_fiscale_id`, `emittente_soggetto_ruolo_id`, `valuta_id` obbligatori.
 * `fattura_figlia_id` obbligatorio.
@@ -35,13 +33,13 @@ in stato `DISPONIBILE` ad una **fattura figlia**, creando le righe in
 
 ---
 
-### ✅ Output
+### Output
 
 Ritorna il numero di righe applicate.
 
 ---
 
-### 🧪 Esempio d’uso
+### Esempio d’uso
 
 ```sql
 SELECT vendite.fn_applica_fondi_fattura(

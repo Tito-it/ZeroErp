@@ -2,22 +2,22 @@
 
 > Vedi anche
 >
-> **Guide correlate:**
+**Guide correlate:**
 >
-> * [Guida – Generazione di un Cliente](/guide/generazione-cliente)
-> * [Guida – Gestione delle Istanze Utility](/guide/gestione-delle-istanze-utility)
-> * [Glossario termini utility](/guide/glossario/glossario-utility)
+[Guida – Generazione di un Cliente](/guide/generazione-cliente)
+> [Guida – Gestione delle Istanze Utility](/guide/gestione-delle-istanze-utility)
+> [Glossario termini utility](/guide/glossario/glossario-utility)
 >
-> **Tabelle e funzioni collegate:**
+**Tabelle e funzioni collegate:**
 >
-> * [anagrafiche.clienti](/dbzero/anagrafiche/tabelle/clienti)
-> * [anagrafiche.istanze_utilities](/dbzero/anagrafiche/tabelle/istanze_utilities)
-> * [anagrafiche.pdp](/dbzero/anagrafiche/tabelle/pdp)
-> * [config.stati_cliente](/dbzero/config/tabelle/stati_cliente)
-> * [`anagrafiche.trgfn_clienti_set_parent_istanza`](/dbzero/anagrafiche/funzioni/trgfn_clienti_set_parent_istanza)
-> * [`anagrafiche.trgfn_clienti_sync_pdp`](/dbzero/anagrafiche/funzioni/trgfn_clienti_sync_pdp)
-> * [`anagrafiche.trgfn_clienti_sync_stato_pdp`](/dbzero/anagrafiche/funzioni/trgfn_clienti_sync_stato_pdp)
-> * [`script.fn_disdetta_cliente`](/dbzero/script/funzioni/fn_disdetta_cliente) — cessazione senza subentro
+[anagrafiche.clienti](/dbzero/anagrafiche/tabelle/clienti)
+> [anagrafiche.istanze_utilities](/dbzero/anagrafiche/tabelle/istanze_utilities)
+> [anagrafiche.pdp](/dbzero/anagrafiche/tabelle/pdp)
+> [config.stati_cliente](/dbzero/config/tabelle/stati_cliente)
+> [`anagrafiche.trgfn_clienti_set_parent_istanza`](/dbzero/anagrafiche/funzioni/trgfn_clienti_set_parent_istanza)
+> [`anagrafiche.trgfn_clienti_sync_pdp`](/dbzero/anagrafiche/funzioni/trgfn_clienti_sync_pdp)
+> [`anagrafiche.trgfn_clienti_sync_stato_pdp`](/dbzero/anagrafiche/funzioni/trgfn_clienti_sync_stato_pdp)
+> [`script.fn_disdetta_cliente`](/dbzero/script/funzioni/fn_disdetta_cliente) — cessazione senza subentro
 
 ---
 

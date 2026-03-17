@@ -2,13 +2,13 @@
 
 > 👀 **Vedi anche**
 >
-> Architettura di riferimento:
+Architettura di riferimento:
 >
-> * [Architettura Permessi e Autorizzazioni](/guide/architettura-permessi-e-autorizzazioni)
+[Architettura Permessi e Autorizzazioni](/guide/architettura-permessi-e-autorizzazioni)
 >
-> Tabelle correlate:
+Tabelle correlate:
 >
-> * [anagrafiche.emittenti_fiscali](/dbzero/anagrafiche/tabelle/emittenti_fiscali)
+[anagrafiche.emittenti_fiscali](/dbzero/anagrafiche/tabelle/emittenti_fiscali)
 
 ---
 
@@ -26,7 +26,7 @@ Implementa una **whitelist opzionale**: se l'utente non ha righe in questa tabel
 
 ---
 
-### 🔑 Colonne chiave
+### Colonne chiave
 
 | Colonna | Scopo |
 |---------|-------|
@@ -37,7 +37,7 @@ Il vincolo UNIQUE su `(auth_user_id, emittente_fiscale_id)` impedisce duplicati.
 
 ---
 
-### 💡 Semantica della whitelist
+### Semantica della whitelist
 
 | Righe per l'utente | Comportamento |
 |---------------------|--------------|
@@ -48,7 +48,7 @@ Questa semantica "fail-open se vuoto" è coerente con il pattern già adottato i
 
 ---
 
-### 🔗 Enforcement a due livelli
+### Enforcement a due livelli
 
 | Livello | Meccanismo | Dove |
 |---------|-----------|------|
@@ -59,4 +59,4 @@ Il trigger DB è un **defense-in-depth**: garantisce che nessun bypass applicati
 
 ---
 
-> 🧠 **"`config.user_emittenti_fiscali` è il pilastro dell'ambito multi-azienda: whitelist opzionale con enforcement sia Django che DB."**
+> **"`config.user_emittenti_fiscali` è il pilastro dell'ambito multi-azienda: whitelist opzionale con enforcement sia Django che DB."**

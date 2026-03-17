@@ -2,9 +2,9 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> • [vendite.fatturazione_lotti](/dbzero/vendite/tabelle/fatturazione_lotti)  
+• [vendite.fatturazione_lotti](/dbzero/vendite/tabelle/fatturazione_lotti)  
 > • [vendite.fatture_sdi](/dbzero/vendite/tabelle/fatture_sdi)  
 > • [vendite.fatture_sdi_eventi](/dbzero/vendite/tabelle/fatture_sdi_eventi)  
 > • [config.stati_sdi](/dbzero/config/tabelle/stati_sdi)  
@@ -22,7 +22,7 @@ Preparare il payload SDI di un lotto:
 
 ---
 
-### ✅ Regole principali
+### Regole principali
 
 * `p_lotto_id` obbligatorio e > 0.
 * Stato SDI risolto da `config.stati_sdi.codice_interno` (default `DA_INVIARE`).
@@ -33,7 +33,7 @@ Preparare il payload SDI di un lotto:
 
 ---
 
-### 📝 Nota su `p_force_new_tentativo`
+### Nota su `p_force_new_tentativo`
 
 * `false` (default): comportamento consigliato. Se il tentativo aperto esiste, la funzione lo riusa.  
   Utile per rilanciare un processo interrotto senza creare duplicati.
@@ -42,7 +42,7 @@ Preparare il payload SDI di un lotto:
 
 ---
 
-### 🧪 Esempio
+### Esempio
 
 ```sql
 SELECT *

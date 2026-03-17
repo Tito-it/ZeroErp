@@ -2,7 +2,7 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento Tabelle**   
+**Approfondimento Tabelle**   
 > • [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)   
 > • [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)   
 > • [config.valute](/dbzero/config/tabelle/valute)    
@@ -11,9 +11,7 @@
 > • [anagrafiche.conti_bancari](/dbzero/anagrafiche/tabelle/conti_bancari)    
 >
 
----
-
-### 🎯 Scopo Principale
+🎯 Scopo Principale
 
 `anagrafiche.fornitori` è la **tabella master del ruolo FORNITORE** (relazione **1:1** con `anagrafiche.soggetti_ruoli`). Contiene le **impostazioni fiscali/operative** necessarie per la gestione dei fornitori, le **preferenze di pagamento** (valuta, modalità e termini), parametri di **qualifica/valutazione** e l’**audit**.
 
@@ -21,7 +19,7 @@ Questo disaccoppiamento consente di mantenere separati i **dati di identità** d
 
 ---
 
-### 🔗 Relazioni
+### Relazioni
 
 | Tipo        | Tabella ↔ Campo                                           | Descrizione                                             |
 | ----------- | --------------------------------------------------------- | ------------------------------------------------------- |
@@ -34,7 +32,7 @@ Questo disaccoppiamento consente di mantenere separati i **dati di identità** d
 
 ---
 
-### 🧱 Struttura logica (campi chiave)
+### Struttura logica (campi chiave)
 
 * **Identità/Stato**
   `id BIGINT` (PK), `soggetto_ruolo_id BIGINT` (FK, **UNIQUE** 1:1), `codice VARCHAR(32)` (**UNIQUE**),
@@ -75,7 +73,7 @@ Questo disaccoppiamento consente di mantenere separati i **dati di identità** d
 
 ---
 
-### 🔎 Query tipiche
+### Query tipiche
 
 **1) Fornitori attivi e qualificati**
 
@@ -112,7 +110,7 @@ LEFT JOIN config.modalita_pagamento mp  ON mp.id = f.modalita_pagamento_id;
 
 ---
 
-### 🧭 Best practice
+### Best practice
 
 * Mantieni **coerenti** i parametri di pagamento con i **conti bancari di ruolo** nella tabella `soggetti_ruoli_conti_bancari` (es. conto specifico per fornitori pagamenti).
 * Usa `qualifica_scadenza` per **alert** su rinnovi documentali; integra con una tabella documentale se necessario.

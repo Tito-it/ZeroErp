@@ -1,4 +1,4 @@
-## ⚙️ Documentazione – `script.trgfn_guard_sorgente_polimorfa()` (Trigger Polimorfo di Sorgente)
+## Documentazione – `script.trgfn_guard_sorgente_polimorfa()` (Trigger Polimorfo di Sorgente)
  
 > **Versione**: 2025-10-26
 > **Stato**: Da testare
@@ -7,14 +7,14 @@
 
 ### 👀 Vedi anche
 >
-> **Approfondimento tabelle:**:
+**Approfondimento tabelle:**:
 > 
->  `config.sorgenti`(/dbzero/config/tabelle/sorgenti)   
+`config.sorgenti`(/dbzero/config/tabelle/sorgenti)   
 >  `vendite.attivita_fatturabili`(/dbzero/vendite/tabelle/attivita_fatturabili)     
 > 
-> **Approfondimento funzioni**:
+**Approfondimento funzioni**:
 > 
->  `script.fn_log_and_raise_error`(/dbzero/script/funzioni/>fn_log_and_raise_error)
+`script.fn_log_and_raise_error`(/dbzero/script/funzioni/>fn_log_and_raise_error)
   
 ---
 
@@ -29,7 +29,7 @@
 
 ---
 
-### 🧭 Quando si attiva
+### Quando si attiva
 
 * **BEFORE INSERT OR UPDATE** sulla tabella che la aggancia (es.: `vendite.attivita_fatturabili`).
 * Si attiva **solo** se `NEW.sorgente_tipo_id IS NOT NULL`.
@@ -37,7 +37,7 @@
 
 ---
 
-### 🧩 Dipendenze & Configurazione
+### Dipendenze & Configurazione
 
 ### 1) `config.sorgenti` (routing polimorfo)
 
@@ -62,7 +62,7 @@ La tabella chiamante deve esporre i seguenti campi:
 
 ---
 
-### 🔎 Comportamento dettaglio (flow)
+### Comportamento dettaglio (flow)
 
 1. **Short‑circuit**: se `NEW.sorgente_tipo_id IS NULL` → `RETURN NEW` (nessuna verifica).
 2. **Caricamento configurazione**: legge da `config.sorgenti` (solo record `attivo=TRUE`) i campi `target_table` e `key_selector` per `NEW.sorgente_tipo_id`.
@@ -97,7 +97,7 @@ Tutti gli errori sono generati via `script.fn_log_and_raise_error(<area>, <tabel
 
 ---
 
-### 🛠️ Attivazione (esempio)
+### Attivazione (esempio)
 
 ```sql
 -- Rimuove l’eventuale trigger precedente
@@ -117,7 +117,7 @@ COMMENT ON TRIGGER trg_attivita_fatturabili_a10_ins_upd_guard_fonte ON vendite.a
 
 ---
 
-### 📈 Performance & Sicurezza
+### Performance & Sicurezza
 
 * **SQL dinamico sicuro**: usa `regclass` e bind parameter (`USING`) → nessuna injection.
 * **Indice**: assicurarsi che la tabella target abbia indice sulla colonna chiave (`id` o `uid`).
@@ -125,7 +125,7 @@ COMMENT ON TRIGGER trg_attivita_fatturabili_a10_ins_upd_guard_fonte ON vendite.a
 
 ---
 
-### 🧪 Edge cases & comportamento
+### Edge cases & comportamento
 
 * **Sorgente disattiva** (`attivo=FALSE`): trattata come configurazione errata → `E_SORG_CONF`.
 * **Chiave non valorizzata**: `E_SORG_KEY_MISSING` in base al selector.

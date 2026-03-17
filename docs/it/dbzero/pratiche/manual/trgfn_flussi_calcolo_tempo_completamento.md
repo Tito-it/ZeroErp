@@ -2,9 +2,9 @@
 
 > 👀 **Vedi anche**
 >
-> * [pratiche.calcoli_tempo](/dbzero/pratiche/manual/calcoli_tempo)
-> * [pratiche.formule_tempo](/dbzero/pratiche/manual/formule_tempo)
-> * [fn_calcola_tempo_netto_da_a](/dbzero/pratiche/manual/fn_calcola_tempo_netto_da_a)
+[pratiche.calcoli_tempo](/dbzero/pratiche/manual/calcoli_tempo)
+> [pratiche.formule_tempo](/dbzero/pratiche/manual/formule_tempo)
+> [fn_calcola_tempo_netto_da_a](/dbzero/pratiche/manual/fn_calcola_tempo_netto_da_a)
 
 ---
 
@@ -14,7 +14,7 @@ Trigger function unica che gestisce il ciclo di vita dei calcoli tempo nel model
 
 ---
 
-### 🔧 Firma
+### Firma
 
 ```sql
 CREATE OR REPLACE FUNCTION pratiche.trgfn_flussi_calcolo_tempo_completamento()
@@ -23,7 +23,7 @@ RETURNS trigger LANGUAGE plpgsql
 
 ---
 
-### ⚙️ Logica (due fasi)
+### Logica (due fasi)
 
 **Fase 1 — Il flusso completato e' un flusso_da (avvio conteggio):**
 
@@ -39,7 +39,7 @@ RETURNS trigger LANGUAGE plpgsql
 
 ---
 
-### 🔗 Trigger associato
+### Trigger associato
 
 | Nome                                                  | Fase  | Evento              | Tabella           |
 | ----------------------------------------------------- | ----- | ------------------- | ----------------- |

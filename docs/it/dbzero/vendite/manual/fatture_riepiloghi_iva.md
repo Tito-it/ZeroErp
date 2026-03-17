@@ -2,9 +2,9 @@
 
 > 👀 **Vedi anche**  
 >
-> **Approfondimento tabelle:**  
+**Approfondimento tabelle:**  
 >
-> • [vendite.fatture](/dbzero/vendite/tabelle/fatture)   
+• [vendite.fatture](/dbzero/vendite/tabelle/fatture)   
 > • [vendite.fatture_righe](/dbzero/vendite/tabelle/fatture_righe)   
 > • [config.iva](/dbzero/config/tabelle/iva)    
 > • [config.iva_natura](/dbzero/config/tabelle/iva_natura)   
@@ -29,7 +29,7 @@ Ogni riga rappresenta una combinazione di:
 
 ---
 
-### 🧭 Collocazione nel flusso
+### Collocazione nel flusso
 
 1. **Calcolo righe** → ogni riga di fattura determina `imponibile_riga` e `imposta_riga`, oltre alla natura snapshot (nel campo `iva_natura` della riga).
 2. **Raggruppamento** → il motore di emissione **collassa** le righe per chiavi fiscali e produce le righe di `fatture_riepiloghi_iva`.
@@ -42,7 +42,7 @@ Ogni riga rappresenta una combinazione di:
 
 ---
 
-### 🔑 Chiavi di raggruppamento (combinazione fiscale)
+### Chiavi di raggruppamento (combinazione fiscale)
 
 La **combinazione unica** per fattura è imposta dall’indice:
 `(fattura_id, natura_id?, esigibilita, split_payment, iva_id?)`
@@ -56,7 +56,7 @@ La **combinazione unica** per fattura è imposta dall’indice:
 
 ---
 
-### 🧮 Logiche di calcolo (indicative)
+### Logiche di calcolo (indicative)
 
 * **Aggregazione**:
   `imponibile = Σ imponibile_riga`
@@ -94,7 +94,7 @@ GROUP BY r.fattura_id, r.iva_id, n.id, r.esigibilita, r.split_payment;
 
 ---
 
-### 🔒 Vincoli e indici
+### Vincoli e indici
 
 * **PK**: `id` (identity).
 * **FK**:
@@ -107,7 +107,7 @@ GROUP BY r.fattura_id, r.iva_id, n.id, r.esigibilita, r.split_payment;
 
 ---
 
-### 🧪 Esempi d’uso (query applicative)
+### Esempi d’uso (query applicative)
 
 ```sql
 -- 1) Riepilogo fattura pronto per stampa/trasmissione
@@ -128,7 +128,7 @@ WHERE fattura_id = :fattura_id;
 
 ---
 
-### ✅ Best practice operative
+### Best practice operative
 
 * **Origine dati**: i riepiloghi devono essere **rigenerati** ogni volta che cambiano righe/aliquote/nature, prima della numerazione.
 * **Arrotondamenti**: applicare regole coerenti con le **policy di arrotondamento** del sistema (metodo/decimali) e con quanto riportato in testata.
@@ -145,6 +145,6 @@ WHERE fattura_id = :fattura_id;
 
 ---
 
-### 👓 Ruolo nel sistema
+### Ruolo nel sistema
 
 `vendite.fatture_riepiloghi_iva` è il ponte tra **dettaglio** e **fiscalità**: rende esplicite le combinazioni IVA applicate, supporta **stampe, e-billing e contabilità**, e assicura che i totali fiscali siano **ricostruibili e verificabili** rispetto alle righe documento.

@@ -2,9 +2,9 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimenti tabelle:**  
+**Approfondimenti tabelle:**  
 >
-> • [vendite.fatture](/dbzero/vendite/tabelle/fatture)   
+• [vendite.fatture](/dbzero/vendite/tabelle/fatture)   
 > • [config.termini_pagamento](/dbzero/config/tabelle/termini_pagamento)   
 
 ---
@@ -19,7 +19,7 @@
 
 ---
 
-### 🧭 Collocazione nel flusso
+### Collocazione nel flusso
 
 1. **Selezione termini**: dalla testata (`vendite.fatture`) si risolve il termine da `config.termini_pagamento` (con eventuali override a livello cliente/ordine/preventivo) e si snapshotta in fattura.
 2. **Generazione rate**: il motore calcola date + importi secondo i parametri e inserisce le righe in `vendite.fatture_scadenze`, numerando `numero_rata` da 1.
@@ -27,7 +27,7 @@
 
 ---
 
-### 🔑 Campi chiave (semantica)
+### Campi chiave (semantica)
 
 * `fattura_id` → FK alla testata (`vendite.fatture`).
 * `numero_rata` → progressivo **univoco per fattura** (vincolo `UNIQUE (fattura_id, numero_rata)`).
@@ -37,7 +37,7 @@
 
 ---
 
-### 🔒 Vincoli e indici
+### Vincoli e indici
 
 * **PK**: `id` (identity).
 * **FK**: `fattura_id` → `vendite.fatture(id)` (ON DELETE CASCADE).
@@ -50,7 +50,7 @@
 
 ---
 
-### 🧮 Linee guida di calcolo
+### Linee guida di calcolo
 
 * **Numero rate**: da `config.termini_pagamento.numero_rate`.
 * **Date**: derivate da `tipo_offset` (G/M/F/N), `intervallo`, `primo_offset_giorni` e regole di fine mese.
@@ -59,7 +59,7 @@
 
 ---
 
-### 🧪 Query utili
+### Query utili
 
 ```sql
 -- Piano rate di una fattura
@@ -78,7 +78,7 @@ ORDER BY s.data_scadenza, f.id, s.numero_rata;
 
 ---
 
-### ✅ Best practice operative
+### Best practice operative
 
 * **Idempotenza**: rigenera le scadenze con una procedura `DELETE + INSERT` per `fattura_id`.
 * **Lock post‑numerazione**: opzionale trigger/policy per impedire modifiche dopo numerazione/contabilizzazione (salvo ruolo di audit).
@@ -87,6 +87,6 @@ ORDER BY s.data_scadenza, f.id, s.numero_rata;
 
 ---
 
-### 👓 Ruolo nel sistema
+### Ruolo nel sistema
 
 `vendite.fatture_scadenze` è la **fonte unica** per la pianificazione dei pagamenti della fattura: minimale, storicizzata e collegata ai termini configurati. Abilita scadenziari, reminder, riconciliazione e export contabile in modo coerente e ripetibile.

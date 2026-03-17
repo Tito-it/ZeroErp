@@ -2,10 +2,10 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimento funzioni:
+Approfondimento funzioni:
 >
-> * [`dbops.fn_run_automations_lock_columns`](/dbzero/dbops/funzioni/fn_run_automations_lock_columns)
-> * [`maintenance.fn_run_and_log`](/dbzero/maintenance/funzioni/fn_run_and_log)
+[`dbops.fn_run_automations_lock_columns`](/dbzero/dbops/funzioni/fn_run_automations_lock_columns)
+> [`maintenance.fn_run_and_log`](/dbzero/maintenance/funzioni/fn_run_and_log)
 
 ---
 
@@ -16,7 +16,7 @@
 
 ---
 
-### 🧩 Firma
+### Firma
 
 ```sql
 PROCEDURE maintenance.proc_automations_lock_columns_job()
@@ -24,7 +24,7 @@ PROCEDURE maintenance.proc_automations_lock_columns_job()
 
 ---
 
-### 🧩 Descrizione
+### Descrizione
 
 La procedura:
 
@@ -42,7 +42,7 @@ La procedura:
 
 ---
 
-### 🔄 Flusso di esecuzione (alto livello)
+### Flusso di esecuzione (alto livello)
 
 1. **Acquire lock** tramite `p_lock_key`.
 2. **Log start** (`p_jobname`, `p_stepname`).
@@ -61,7 +61,7 @@ SELECT dbops.fn_run_automations_drop_lock_trg('AUTO', ARRAY['vendite'], false);
 
 ---
 
-### 🧪 Idempotenza & sicurezza
+### Idempotenza & sicurezza
 
 * La procedura è pensata per essere **idempotente** *a livello di orchestrazione*: può essere richiamata più volte senza creare duplicazioni, **se** `dbops.fn_run_automations_lock_columns` applica la policy con controlli di pre‑esistenza (verifica trigger già presenti, strategie di existence, ecc.).
 * Il **lock advisory** previene esecuzioni parallele indesiderate e riduce il rischio di:
@@ -91,7 +91,7 @@ Puoi schedulare con **pgAgent** (Windows/Linux) o con **cron** (Linux).
 
 ---
 
-### 🧰 Osservabilità & diagnostica
+### Osservabilità & diagnostica
 
 * Controlla la tabella/log usata da `fn_run_and_log` (es. `maintenance.job_log` o equivalente) per:
 
@@ -107,7 +107,7 @@ Puoi schedulare con **pgAgent** (Windows/Linux) o con **cron** (Linux).
 
 ---
 
-### 🔗 Dipendenze
+### Dipendenze
 
 * `dbops.fn_run_automations_lock_columns` — orchestratore che applica/regola la policy **LOCK_COLUMNS** sulle tabelle nell'ambito.
 * `dbops.fn_run_automations_drop_lock_trg` — cleanup dei trigger **LOCK_COLUMNS** non piu' necessari.
@@ -115,7 +115,7 @@ Puoi schedulare con **pgAgent** (Windows/Linux) o con **cron** (Linux).
 
 ---
 
-> 🧠 **In breve**: questa procedura e' il wrapper schedulabile e sicuro per lanciare le automazioni **LOCK_COLUMNS** e il cleanup dei trigger obsoleti, con logging strutturato e prevenzione di esecuzioni concorrenti.
+> **In breve**: questa procedura e' il wrapper schedulabile e sicuro per lanciare le automazioni **LOCK_COLUMNS** e il cleanup dei trigger obsoleti, con logging strutturato e prevenzione di esecuzioni concorrenti.
 
 ---
 

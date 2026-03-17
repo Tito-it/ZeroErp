@@ -2,19 +2,19 @@
 
 > **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> * [anagrafiche.indirizzi_dettaglio](/dbzero/anagrafiche/tabelle/indirizzi_dettaglio)
-> * [config.stradario](/dbzero/config/tabelle/stradario)
+[anagrafiche.indirizzi_dettaglio](/dbzero/anagrafiche/tabelle/indirizzi_dettaglio)
+> [config.stradario](/dbzero/config/tabelle/stradario)
 >
-> **Approfondimento funzioni:**
+**Approfondimento funzioni:**
 >
-> * [anagrafiche.fn_search_indirizzi_dettaglio](/dbzero/anagrafiche/manual/fn_search_indirizzi_dettaglio)
-> * [anagrafiche.fn_crea_indirizzo_soggetto](/dbzero/anagrafiche/manual/fn_crea_indirizzo_soggetto) (futuro)
+[anagrafiche.fn_search_indirizzi_dettaglio](/dbzero/anagrafiche/manual/fn_search_indirizzi_dettaglio)
+> [anagrafiche.fn_crea_indirizzo_soggetto](/dbzero/anagrafiche/manual/fn_crea_indirizzo_soggetto) (futuro)
 >
-> **Guide:**
+**Guide:**
 >
-> * [Gestione degli indirizzi](/guide/gestione-degli-indirizzi)
+[Gestione degli indirizzi](/guide/gestione-degli-indirizzi)
 
 ---
 

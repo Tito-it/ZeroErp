@@ -2,7 +2,7 @@
 
 > 👀 **Vedi anche**
 >
-> • [vendite.ddt](/dbzero/vendite/tabelle/ddt)  
+• [vendite.ddt](/dbzero/vendite/tabelle/ddt)  
 > • [script.fn_generate_codice](/dbzero/script/funzioni/fn_generate_codice)  
 
 ---
@@ -14,14 +14,14 @@ La trigger function `vendite.trgfn_ddt_gen_codice()` genera automaticamente
 
 ---
 
-### ✅ Regole principali
+### Regole principali
 
 * se `NEW.numero` e` nullo/vuoto, valorizza con `script.fn_generate_codice('ddt')`;
 * se `NEW.numero` e` gia` presente, non interviene.
 
 ---
 
-### 🧩 Utilizzo
+### Utilizzo
 
 Usata come trigger `BEFORE INSERT` su `vendite.ddt` per garantire numerazione
 tecnica coerente anche in creazioni automatiche.

@@ -2,15 +2,15 @@
 
 > 👀 **Vedi anche**   
 >
-> **Approfondimento tabelle:**    
+**Approfondimento tabelle:**    
 >
-> * [anagrafiche.indirizzi_dettaglio](/dbzero/anagrafiche/tabelle/indirizzi_dettaglio)   
-> * [config.stradario](/dbzero/config/tabelle/stradario)   
+[anagrafiche.indirizzi_dettaglio](/dbzero/anagrafiche/tabelle/indirizzi_dettaglio)   
+> [config.stradario](/dbzero/config/tabelle/stradario)   
 >
-> **Approfondimento funzioni/procedure:**   
+**Approfondimento funzioni/procedure:**   
 >
-> * [maintenance.proc_bump_indirizzi_dettaglio](/dbzero/maintenance/manual/proc_bump_indirizzi_dettaglio)   
-> * [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)   
+[maintenance.proc_bump_indirizzi_dettaglio](/dbzero/maintenance/manual/proc_bump_indirizzi_dettaglio)   
+> [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)   
 
 ---
 
@@ -21,7 +21,7 @@ Impedire la modifica manuale di `stradario_id` su `anagrafiche.indirizzi_dettagl
 
 ---
 
-### 🧩 Come Funziona
+### Come Funziona
 
 1. Se e' attiva la manutenzione (`zeroerp.maintenance_indirizzi_dettaglio = 'on'`), consente l'UPDATE.
 2. Se non in manutenzione, blocca qualsiasi variazione di `stradario_id` con errore applicativo.
@@ -36,7 +36,7 @@ Impedire la modifica manuale di `stradario_id` su `anagrafiche.indirizzi_dettagl
 
 ---
 
-## 🔗 Trigger Associato
+## Trigger Associato
 
 ```sql
 CREATE TRIGGER trg_indirizzi_dettaglio_a10_protect_update_upd
@@ -48,11 +48,11 @@ CREATE TRIGGER trg_indirizzi_dettaglio_a10_protect_update_upd
 
 ---
 
-### 💡 Note Operative
+### Note Operative
 
 * La riclassificazione deve essere effettuata tramite `maintenance.proc_bump_indirizzi_dettaglio(...)`.
 * Il guard non blocca aggiornamenti a civico, palazzina, ecc.; agisce solo sul cambio di via.
 
 ---
 
-> 🧠 **"Cambio via solo tramite procedura: coerenza garantita e storico completo."**
+> **"Cambio via solo tramite procedura: coerenza garantita e storico completo."**

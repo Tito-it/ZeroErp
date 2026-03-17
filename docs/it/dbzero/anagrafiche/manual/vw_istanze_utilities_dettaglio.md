@@ -2,18 +2,18 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimenti tabelle:
+Approfondimenti tabelle:
 >
-> * [anagrafiche.istanze_utilities](/dbzero/anagrafiche/tabelle/istanze_utilities)  
-> * [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)  
-> * [anagrafiche.pdp](/dbzero/anagrafiche/tabelle/pdp)  
-> * [config.stati_pdp](/dbzero/config/tabelle/stati_pdp)  
-> * [config.utilities](/dbzero/config/tabelle/utilities)  
+[anagrafiche.istanze_utilities](/dbzero/anagrafiche/tabelle/istanze_utilities)  
+> [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)  
+> [anagrafiche.pdp](/dbzero/anagrafiche/tabelle/pdp)  
+> [config.stati_pdp](/dbzero/config/tabelle/stati_pdp)  
+> [config.utilities](/dbzero/config/tabelle/utilities)  
 >
-> Approfondimenti viste:
+Approfondimenti viste:
 >
-> * [anagrafiche.vw_indirizzi_dettaglio](/dbzero/anagrafiche/views/vw_indirizzi_dettaglio)  
-> * [script.vw_indirizzo_completo](/dbzero/script/views/vw_indirizzo_completo)  
+[anagrafiche.vw_indirizzi_dettaglio](/dbzero/anagrafiche/views/vw_indirizzi_dettaglio)  
+> [script.vw_indirizzo_completo](/dbzero/script/views/vw_indirizzo_completo)  
 
 ---
 
@@ -36,7 +36,7 @@ Nota naming utility:
 
 ---
 
-### 🧱 Struttura logica della vista
+### Struttura logica della vista
 
 La vista parte da `anagrafiche.istanze_utilities` e aggiunge:
 
@@ -87,7 +87,7 @@ La vista parte da `anagrafiche.istanze_utilities` e aggiunge:
 
 ---
 
-### 🔍 Modalita' d'uso tipiche
+### Modalita' d'uso tipiche
 
 ```sql
 SELECT *
@@ -97,7 +97,7 @@ WHERE istanza_id = :istanza_id;
 
 ---
 
-### ✅ Best practice e raccomandazioni
+### Best practice e raccomandazioni
 
 * Usare questa vista per letture applicative e reportistica.
 * Per modifiche, operare sempre sulle tabelle base.

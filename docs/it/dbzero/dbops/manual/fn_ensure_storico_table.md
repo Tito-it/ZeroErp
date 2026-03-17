@@ -4,16 +4,16 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimento tabelle:
+Approfondimento tabelle:
 >
-> * [`dbops.audit_log`](/dbzero/dbops/tabelle/audit_log)
-> * [`dbops.error_log`](/dbzero/dbops/tabelle/error_log)
+[`dbops.audit_log`](/dbzero/dbops/tabelle/audit_log)
+> [`dbops.error_log`](/dbzero/dbops/tabelle/error_log)
 >
-> Approfondimento funzioni:
+Approfondimento funzioni:
 >
-> * [`dbops.fn_run_automations_storico_provision`](/dbzero/dbops/funzioni/fn_run_automations_storico_provision)
-> * [`dbops.fn_audit_log_once`](/dbzero/dbops/funzioni/fn_audit_log_once)
-> * [`script.fn_log_and_raise_error`](/dbzero/dbops/funzioni/fn_log_and_raise_error)
+[`dbops.fn_run_automations_storico_provision`](/dbzero/dbops/funzioni/fn_run_automations_storico_provision)
+> [`dbops.fn_audit_log_once`](/dbzero/dbops/funzioni/fn_audit_log_once)
+> [`script.fn_log_and_raise_error`](/dbzero/dbops/funzioni/fn_log_and_raise_error)
 
 ---
 
@@ -24,7 +24,7 @@ La funzione **`fn_ensure_storico_table`** si occupa di **creare** (se non esiste
 
 ---
 
-### 📝 Dettagli
+### Dettagli
 
 * **Firma**
 
@@ -57,7 +57,7 @@ La funzione **`fn_ensure_storico_table`** si occupa di **creare** (se non esiste
 
 ---
 
-### 🔧 Utilizzo tipico
+### Utilizzo tipico
 
 1. **Provisioning dello storico** per una tabella nuova: chiamata con `p_create_gin_index=true`, `p_dry_run=false`.
 2. **Automazione** in `fn_run_automations_storico_provision`: creazione on‑demand della tabella storico durante un ciclo di regole.
@@ -65,13 +65,13 @@ La funzione **`fn_ensure_storico_table`** si occupa di **creare** (se non esiste
 
 ---
 
-### 📊 Collegamento con automazione
+### Collegamento con automazione
 
 La funzione è progettata per integrarsi nei flussi `STORICO_PROVISION` di `fn_run_automations_storico_provision`, emettendo log **OK/DRYRUN** tramite `fn_audit_log_once` e instradando errori coerenti su `error_log` con `fn_log_and_raise_error`.
 
 ---
 
-### 💡 Esempio pratico
+### Esempio pratico
 
 Creare (se manca) la tabella storico per `anagrafiche.soggetti`, con FK `soggetto_id`, indice GIN su `snapshot`, **senza** dry‑run:
 
@@ -99,4 +99,4 @@ SELECT dbops.fn_ensure_storico_table(
 
 ---
 
-> 🧠 **In sintesi**: `fn_ensure_storico_table` standardizza la creazione delle tabelle di storico, garantendo coerenza di tipi, indici utili alla consultazione e integrazione con il framework di **audit**/**error handling** dell’automazione.
+> **In sintesi**: `fn_ensure_storico_table` standardizza la creazione delle tabelle di storico, garantendo coerenza di tipi, indici utili alla consultazione e integrazione con il framework di **audit**/**error handling** dell’automazione.

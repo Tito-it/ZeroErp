@@ -2,14 +2,14 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimento Tabelle:   
+Approfondimento Tabelle:   
 >
-> * [dbops.fk_index_policy](/dbzero/dbops/tabelle/fk_index_policy)      
+[dbops.fk_index_policy](/dbzero/dbops/tabelle/fk_index_policy)      
 >
-> Approfondimento funzioni :    
+Approfondimento funzioni :    
 >
-> * [dbops.fn_populate_fk_index_policy](/dbzero/dbops/funzioni/fn_populate_fk_index_policy)    
-> * [dbops.vw_fk_senza_indice](/dbzero/dbops/views/vw_fk_senza_indice)    
+[dbops.fn_populate_fk_index_policy](/dbzero/dbops/funzioni/fn_populate_fk_index_policy)    
+> [dbops.vw_fk_senza_indice](/dbzero/dbops/views/vw_fk_senza_indice)    
 
 ---
 
@@ -23,7 +23,7 @@ Applicare in modo automatico le regole di indicizzazione definite nella tabella 
 
 ---
 
-### 🔍 Descrizione del Flusso
+### Descrizione del Flusso
 
 1. **Scansione**
    Itera su ogni riga di `dbops.fk_index_policy` (schema, tabella, constraint, comando).
@@ -40,7 +40,7 @@ Applicare in modo automatico le regole di indicizzazione definite nella tabella 
 
 ---
 
-### ⚙️ Invocazione
+### Invocazione
 
 ```sql
 CALL dbops.apply_fk_index_policy();
@@ -48,7 +48,7 @@ CALL dbops.apply_fk_index_policy();
 
 ---
 
-### 💡 Vantaggi Operativi
+### Vantaggi Operativi
 
 * **Centralizzazione**: tutte le regole di indicizzazione FK risiedono in un’unica tabella.
 * **Automazione**: evita script manuali di `CREATE/DROP INDEX`, riducendo errori e incongruenze.

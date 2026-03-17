@@ -2,21 +2,19 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle**    
+**Approfondimento tabelle**    
 > • [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)  
 > • [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)   
 > • [anagrafiche.soggetti_conti_bancari](/dbzero/anagrafiche/tabelle/soggetti_conti_bancari)   
 > • [anagrafiche.soggetti_ruoli_conti_bancari](/dbzero/anagrafiche/tabelle/soggetti_ruoli_conti_bancari)   
 > • [pagamenti.sepa_mandati](/dbzero/pagamenti/tabelle/sepa_mandati)  
 >
-> **Artefatti di selezione**   
+**Artefatti di selezione**   
 > • [anagrafiche.vw_conti_bancari_per_ruolo](/dbzero/anagrafiche/view/vw_conti_bancari_per_ruolo)   
 > • [script.fn_get_conto_bancario_predefinito](/dbzero/script/funzioni/fn_get_conto_bancario_predefinito)   
 >
 
----
-
-### 🎯 Scopo Principale
+🎯 Scopo Principale
 
 (latest review 02-12-25)
 `anagrafiche.conti_bancari` è l’**anagrafe unica degli IBAN**. Centralizza e **deduplica** i conti correnti, li **normalizza** (uppercase, senza spazi) e li rende riusabili da **qualsiasi soggetto** e **ruolo**. Questo disaccoppiamento:
@@ -27,7 +25,7 @@
 
 ---
 
-### 🔗 Collegamenti con Altre Tabelle
+### Collegamenti con Altre Tabelle
 
 > La tabella non contiene FK verso altre entità; è invece **referenziata** da:
 
@@ -61,14 +59,14 @@
 
 ---
 
-### 🔍 Indicizzazione
+### Indicizzazione
 
 * **Univoco**: `uq_conti_bancari_iban (iban)`.
 * **Operativo**: `ix_conti_bancari_attivo (attivo)` per filtri amministrativi.
 
 ---
 
-### 💡 Vantaggi Operativi
+### Vantaggi Operativi
 
 * **Registro unico** → nessuna ridondanza di IBAN su client/fornitori/gestori.
 * **Riuso trasversale** → lo stesso IBAN può servire più ruoli/soggetti.
@@ -82,7 +80,7 @@
 
 ---
 
-### ✅ Controlli di Coerenza
+### Controlli di Coerenza
 
 * `iban` normalizzato e **univoco** a livello globale.
 * Pattern formali su `iban` / `bic_swift` / `paese`.

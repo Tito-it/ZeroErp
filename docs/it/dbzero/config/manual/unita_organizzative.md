@@ -2,15 +2,15 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimento tabelle:
+Approfondimento tabelle:
 >
-> * [anagrafiche.contatti](/dbzero/anagrafiche/tabelle/contatti)
-> * [config.tipi_contatti](/dbzero/config/tabelle/tipi_contatti)
+[anagrafiche.contatti](/dbzero/anagrafiche/tabelle/contatti)
+> [config.tipi_contatti](/dbzero/config/tabelle/tipi_contatti)
 >
-> Approfondimenti funzioni:
+Approfondimenti funzioni:
 >
-> * [script.trgfn_lock_columns](/dbzero/script/funzioni/trgfn_lock_columns)
-> * [script.trgfn_audit_data_user_generic](/dbzero/script/funzioni/trgfn_audit_data_user_generic)
+[script.trgfn_lock_columns](/dbzero/script/funzioni/trgfn_lock_columns)
+> [script.trgfn_audit_data_user_generic](/dbzero/script/funzioni/trgfn_audit_data_user_generic)
 
 ---
 
@@ -24,7 +24,7 @@ Nasce per separare in modo netto il concetto di **unita organizzativa** dai
 
 ---
 
-### 🔍 Campi principali
+### Campi principali
 
 * `codice` e `codice_interno`: identificativi stabili e univoci.
 * `descrizione`: etichetta leggibile del reparto/ufficio.
@@ -34,7 +34,7 @@ Nasce per separare in modo netto il concetto di **unita organizzativa** dai
 
 ---
 
-### ✅ Regole
+### Regole
 
 * `codice_interno` e' immutabile (trigger di lock).
 * `parent_id` non puo puntare a se stesso.
@@ -42,7 +42,7 @@ Nasce per separare in modo netto il concetto di **unita organizzativa** dai
 
 ---
 
-### 🧭 Nota di refactor
+### Nota di refactor
 
 In molte installazioni, **`config.tipi_contatti`** e' stato usato di fatto
 come elenco dei reparti. Il refactor introduce `config.unita_organizzative`

@@ -2,12 +2,12 @@
 
 > 👀 **Vedi anche**
 >
-> Guide:
-> * [Automazione DB](/guide/automazione-db)
+Guide:
+> [Automazione DB](/guide/automazione-db)
 >
-> Approfondimento funzioni:
-> * [dbops.fn_run_automations_cleanup](/dbzero/dbops/funzioni/fn_run_automations_cleanup)
-> * [maintenance.fn_run_and_log](/dbzero/maintenance/funzioni/fn_run_and_log)
+Approfondimento funzioni:
+> [dbops.fn_run_automations_cleanup](/dbzero/dbops/funzioni/fn_run_automations_cleanup)
+> [maintenance.fn_run_and_log](/dbzero/maintenance/funzioni/fn_run_and_log)
 
 ---
 
@@ -20,7 +20,7 @@ con logging centralizzato e lock applicativo anti-overlap.
 
 ---
 
-### ⚙️ Logica operativa
+### Logica operativa
 
 1. Chiama `maintenance.fn_run_and_log` con:
    * `p_jobname = 'automations_cleanup'`
@@ -30,7 +30,7 @@ con logging centralizzato e lock applicativo anti-overlap.
 
 ---
 
-### ✅ Esempio di esecuzione
+### Esempio di esecuzione
 
 `CALL maintenance.proc_automations_cleanup_job();`
 

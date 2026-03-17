@@ -2,15 +2,15 @@
 
 > 👀 **Vedi anche**
 >
-> Tabelle:
+Tabelle:
 >
-> * [pratiche.giornale](giornale.md)
-> * [pratiche.note_flussi](note_flussi.md)
-> * [pratiche.flussi](flussi.md)
+[pratiche.giornale](giornale.md)
+> [pratiche.note_flussi](note_flussi.md)
+> [pratiche.flussi](flussi.md)
 >
-> Overview:
+Overview:
 >
-> * [Trigger business overview](trigger_business_overview.md)
+[Trigger business overview](trigger_business_overview.md)
 
 ---
 
@@ -20,7 +20,7 @@ Registra l'azione **NOTA_AGGIUNTA** nel giornale a livello flusso. Si attiva **A
 
 ---
 
-### 🔧 Firma
+### Firma
 
 ```sql
 CREATE OR REPLACE FUNCTION pratiche.trgfn_note_flussi_giornale()
@@ -30,7 +30,7 @@ LANGUAGE plpgsql
 
 ---
 
-### ⚙️ Logica
+### Logica
 
 1. Recupera `pratica_id` dal flusso tramite `SELECT f.pratica_id FROM pratiche.flussi f WHERE f.id = NEW.flusso_id`.
 2. Inserisce una riga in `pratiche.giornale` con:
@@ -44,7 +44,7 @@ LANGUAGE plpgsql
 | `dettaglio` | `jsonb_build_object('nota_id', NEW.id, 'tipo_nota_id', NEW.tipo_nota_id)` |
 | `tx_id` | `NEW.tx_id` |
 
-### 📋 DECLARE
+### DECLARE
 
 | Variabile | Tipo | Descrizione |
 |-----------|------|-------------|
@@ -52,7 +52,7 @@ LANGUAGE plpgsql
 
 ---
 
-### 🔗 Trigger associato
+### Trigger associato
 
 | Nome | Fase | Evento | Tabella |
 |------|------|--------|---------|

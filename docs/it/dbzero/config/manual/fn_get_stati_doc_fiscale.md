@@ -2,14 +2,12 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> • [config.stati_doc_fiscale](/dbzero/config/tabelle/stati_doc_fiscale)  
+• [config.stati_doc_fiscale](/dbzero/config/tabelle/stati_doc_fiscale)  
 > • [config.stati_doc_fiscale_transizioni](/dbzero/config/tabelle/stati_doc_fiscale_transizioni)  
 >
----
-
-### 🎯 Scopo Principale
+🎯 Scopo Principale
 
 (latest review 24-01-2026)
 La funzione **`config.fn_get_stati_doc_fiscale`** restituisce gli stati validi
@@ -17,7 +15,7 @@ per **LOTTO** o **FATTURA**, con eventuale filtro sulle **transizioni ammesse**.
 
 ---
 
-### 🔍 Parametri di input
+### Parametri di input
 
 | Parametro   | Tipo   | Descrizione |
 | ----------- | ------ | ----------- |
@@ -26,7 +24,7 @@ per **LOTTO** o **FATTURA**, con eventuale filtro sulle **transizioni ammesse**.
 
 ---
 
-### ✅ Note operative
+### Note operative
 
 * Usata per UI/servizi che devono mostrare gli stati selezionabili.
 * Rispetta `applica_lotto` / `applica_fattura` e le transizioni definite.
