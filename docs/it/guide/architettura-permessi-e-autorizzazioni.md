@@ -1026,7 +1026,7 @@ coerente con la filosofia di Zero ERP.
 - **Row-Level Security (RLS):** le tabelle di ambito sono gia' pronte per alimentare policy RLS.
 - **Ambito per unita' organizzativa su dati:** limitare la visibilita' dati per reparto.
 - **Workflow permissions:** stati avanzati (es. transizione BOZZA -> EMESSA) come azioni di processo.
-- **Audit trail permessi:** log storico delle modifiche ai profili e override — vedi [proposta-8.2-audit-trail-permessi](/dev/work-in-progress/proposta-8.2-audit-trail-permessi).
+- **Audit trail permessi:** log storico delle modifiche ai profili e override — vedi [proposta-8.2-audit-trail-permessi](/dev/work-done/proposta-8.2-audit-trail-permessi) (completato).
 - **Dashboard permessi:** vista riepilogativa "cosa puo' fare questo utente" con risoluzione completa.
 
 ---

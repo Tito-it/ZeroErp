@@ -4,11 +4,11 @@
 > Stato: **COMPLETATO** (Sprint 2, 2026-03-12)
 >
 > Evoluzione: l'architettura building block e' documentata in
-> [Architettura Building Block](componenti-riutilizzabili.md) (documento master)
-> e [Building Block Repository](../backend/building-block-repository.md) (backend).
+> [Architettura Building Block](../../work-done/frontend/componenti-riutilizzabili.md) (documento master, completato)
+> e [Building Block Repository](../../work-done/backend/building-block-repository.md) (backend, completato).
 >
 > Dipende da: `docs/it/dev/work-in-progress/permessi-e-autorizzazioni.md` (completato)
-> Dipende da: `docs/it/dev/work-in-progress/sviluppi-risorse-umane.md` (completato)
+> Dipende da: `docs/it/dev/work-done/sviluppi-risorse-umane.md` (completato)
 > Guida di riferimento permessi: `docs/it/guide/architettura-permessi-e-autorizzazioni.md`
 
 ---

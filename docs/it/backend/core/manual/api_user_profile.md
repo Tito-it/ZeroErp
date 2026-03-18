@@ -34,6 +34,7 @@ Il blocco `data` contiene il JSONB dalla funzione DB con le sezioni:
 | `risorse_umane` | object | risorsa_umana_id, qualifica, UO, validita', attivo |
 | `soggetto` | object | Dati soggetto completi da `fn_get_soggetto_dati_by_ruolo` (identita', dati_societari) |
 | `emittente` | object/null | Dati emittente fiscale + soggetto ditta (null se non associato) |
+| `permessi_area` | object | Mappa livello accesso per area funzionale: `{schema_db: "TUTTO"\|"LETTURA"\|"BLOCCATO"}`. Prodotta da `fn_get_user_permissions_map` |
 
 ### Esempio risposta
 
@@ -44,7 +45,16 @@ Il blocco `data` contiene il JSONB dalla funzione DB con le sezioni:
     "ruolo_sistema": "ADMIN",
     "risorse_umane": { "risorsa_umana_id": 5, "qualifica_codice": "DEV", ... },
     "soggetto": { "soggetto_id": "019...", "nome": "Michele", "cognome": "Titini", ... },
-    "emittente": { "emittente_fiscale_id": 1, "ragione_sociale_completa": "Azienda SRL", ... }
+    "emittente": { "emittente_fiscale_id": 1, "ragione_sociale_completa": "Azienda SRL", ... },
+    "permessi_area": {
+      "anagrafiche": "TUTTO",
+      "vendite": "LETTURA",
+      "contabilita": "BLOCCATO",
+      "catalogo": "TUTTO",
+      "acquisti": "LETTURA",
+      "magazzino": "TUTTO",
+      "pagamenti": "BLOCCATO"
+    }
   },
   "meta": { "request_id": "..." }
 }
@@ -72,6 +82,7 @@ Il blocco `data` contiene il JSONB dalla funzione DB con le sezioni:
 | `dati_societari` | `anagrafiche` | Dati societari (opzionale) |
 | `emittenti_fiscali` | `anagrafiche` | Emittente fiscale |
 | `user_emittenti_fiscali` | `config` | Whitelist emittenti per utente |
+| `fn_get_user_permissions_map(INTEGER)` | `script` | Mappa permessi per area funzionale — JSONB `{area: livello}` |
 
 ## File backend
 

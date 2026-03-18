@@ -974,6 +974,6 @@ Totale: **37 step** (5 + 8 + 6 + 6 + 12). Completati: **37/37** — tutte le fas
 - Permission resolver: `backend/apps/core/services/permissions_resolver.py`
 - Store auth frontend: `frontend/src/stores/auth.js`
 - Frontend standards: `docs/it/frontend/frontend-standards.md`
-- Audit sessioni e request logging: `docs/it/dev/work-in-progress/Audit-logging-sessionii-request-token.md`
+- Audit sessioni e request logging: `docs/it/dev/work-done/Audit-logging-sessionii-request-token.md`
 - Schema tabella sessioni: `docs/it/dbzero/dbops/tabelle/sessioni_utente.md`
 - Doc manuale sessioni: `docs/it/dbzero/dbops/manual/sessioni_utente.md`

@@ -64,7 +64,7 @@ esecuzione nel ciclo attivo:
 Stato implementativo:
 * la semantica funzionale e` definita;
 * l’orchestrazione completa del ramo `PREVENTIVI` con comportamento immediato
-  è tracciata nel WIP `ripresa-lavori-attivita-fatturabili`.
+  è tracciata nel documento `ripresa-lavori-attivita-fatturabili` (superato, vedi `gestione-commesse-v2.md`).
 
 ---
 

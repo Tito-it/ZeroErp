@@ -21,7 +21,7 @@ Funzione dati entita':
 >
 Documento di design:
 >
-[Contesto Globale Ricerca Universale](/dev/work-in-progress/frontend/contesto-globale-ricerca-universale)
+[Contesto Globale Ricerca Universale](/dev/work-done/frontend/contesto-globale-ricerca-universale)
 
 La funzione **`script.fn_search_soggetti_universale`** implementa il **livello 1** della ricerca universale soggetti. Dato un termine di ricerca e un tipo ruolo, restituisce una lista paginata di soggetti con i dati essenziali per la visualizzazione in tabella.
 

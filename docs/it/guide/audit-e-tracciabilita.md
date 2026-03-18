@@ -67,7 +67,7 @@ disponibile tramite il GUC `app.jwt_user` impostato dal middleware Django
 ad ogni request autenticata.
 
 Per i dettagli sull'implementazione del GUC e della catena middleware si rimanda
-a `docs/it/dev/work-in-progress/brief-db-audit-jwt-user.md`.
+a `docs/it/dev/work-done/brief-db-audit-jwt-user.md`.
 
 ### 2.3 Transaction ID
 

@@ -385,7 +385,15 @@ Casi d'uso futuri gia' supportati:
 - Frontend: infrastruttura + 11 drawer + 3 view + 2 componenti core
 - Build: OK
 
-**Prossimo step**: test end-to-end con utente livello `LETTURA` su area `anagrafiche`.
+**Da verificare**: test end-to-end da UI con utente livello `LETTURA` su area `anagrafiche`.
+
+Controllare che:
+- DrawerFooter si nasconda su tutti i drawer (soggetti, indirizzi, config)
+- NewButton non sia visibile nelle SearchTable
+- I form siano in overlay readonly (pointer-events bloccati)
+- I pulsanti "Gestisci" (app-escape) restino cliccabili in SoggettoDrawer
+- Il click su riga apra il drawer in consultazione (senza footer salva)
+- Un tentativo di POST/PATCH diretto riceva 403 dal backend
 
 ---
 
