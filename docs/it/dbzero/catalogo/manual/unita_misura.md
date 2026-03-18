@@ -10,9 +10,7 @@ Approfondimenti tabelle:
 La tabella **`catalogo.unita_misura`** contiene il catalogo delle unità di misura utilizzabili nel sistema. Ogni unità definisce la modalità di contabilizzazione, movimentazione e fatturazione degli articoli (es. pezzo, chilogrammo, standard metro cubo, kilowattora).
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 13-01-26)
 * Centralizzare le **unità di misura** in un unico repository.
 * Fornire sia una **descrizione tecnica interna** sia una **descrizione breve** per la stampa in documenti fiscali e commerciali.

@@ -12,9 +12,7 @@ Approfondimento tabelle:
 > [config.canali_pratiche](/dbzero/config/tabelle/canali_pratiche)
 
 ---
-
 ### 🎯 Scopo Principale
-
 La tabella `pratiche.pratiche` e' l'**entita' principale** del modulo gestione pratiche. Rappresenta una pratica operativa con il suo ciclo di vita completo: tipo, stato, priorita', assegnazione, tracciabilita' e gerarchia.
 
 ---

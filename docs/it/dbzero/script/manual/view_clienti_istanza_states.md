@@ -9,9 +9,7 @@ Approfondimento tabelle:
 > [script.fn_get_stato_cliente_by_istanza](/dbzero/script/funzioni/fn_get_stato_cliente_by_istanza)
 
 ---
-
 ### 🎯 Scopo Principale
-
 La view `script.view_clienti_istanza_states` fornisce una **unificazione** delle informazioni di stato di un’istanza di servizio, arricchita con tutti i campi descrittivi della tabella `config.stati_cliente`. Permette di ottenere rapidamente, per ogni record di `istanze_utilities`, lo stato cliente attuale (o predefinito "Istanza") e i relativi dettagli, senza dover eseguire join o fallback manuali.
 
 ---

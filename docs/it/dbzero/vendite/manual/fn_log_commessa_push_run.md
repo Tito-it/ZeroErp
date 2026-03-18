@@ -6,8 +6,7 @@
 >
 • [vendite.commesse_push_log](/dbzero/vendite/tabelle/commesse_push_log)  
 >
-🎯 Scopo Principale
-
+### 🎯 Scopo Principale
 `vendite.fn_log_commessa_push_run` registra in modo uniforme il risultato di un
 run dell'orchestratore push commesse scrivendo una riga in `commesse_push_log`.
 

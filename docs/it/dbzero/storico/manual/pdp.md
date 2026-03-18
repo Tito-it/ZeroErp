@@ -13,9 +13,7 @@
 
 
 ---
-
 ### 🎯 Scopo Principale
-
 `storico.pdp` conserva la **timeline** dei Punti di Prelievo: per ogni modifica allo stato corrente (`anagrafiche.pdp`) registra uno **snapshot JSONB**, la **tipologia di operazione** (`I`,`U`,`D`), il **tx_id** e la **finestra di validità** (`valid_from`, `valid_to`).
 È di fatto una **SCD Type 2** (Slowly Changing Dimension) specializzata per i PDP.
 

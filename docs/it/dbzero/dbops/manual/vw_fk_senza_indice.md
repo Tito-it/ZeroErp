@@ -17,9 +17,7 @@ Catalogo dei vincoli FK in PostgreSQL (`pg_constraint`, `pg_class`, `pg_namespac
 La view **`dbops.vw_fk_senza_indice`** elenca tutte le foreign key definite **solo negli schemi presenti in `dbops.automation_scope`** che **non hanno un indice associato** sulle colonne di riferimento, suggerendo lo statement `CREATE INDEX` corrispondente e rispettando eventuali eccezioni definite in `dbops.fk_index_policy`. La view considera anche i **vincoli UNIQUE** esistenti: se una FK e` gia` coperta da un `UNIQUE` con le stesse colonne, non viene proposta.
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 16-01-26)
 * Individuare automaticamente vincoli di integrità referenziale (FK) privi di indice, potenziali colli di bottiglia nelle operazioni di JOIN e DELETE.
 * Fornire suggerimenti di creazione indice coerenti, facilitando l’ottimizzazione delle performance.

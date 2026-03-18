@@ -13,8 +13,7 @@
 > • [vendite.trgfn_attivita_fatturabili_guard_ba_coerenza](/dbzero/vendite/funzioni/trgfn_attivita_fatturabili_guard_ba_coerenza)  
 > • [vendite.trgfn_attivita_fatturabili_guard_fatturato](/dbzero/vendite/funzioni/trgfn_attivita_fatturabili_guard_fatturato)  
 >
-🎯 Scopo Principale
-
+### 🎯 Scopo Principale
 (latest review 29-01-2026)  
 La funzione **`vendite.trgfn_attivita_fatturabili_guard_fonte()`** verifica
 la coerenza della **fonte quantita** e delle **competenze** per le righe di

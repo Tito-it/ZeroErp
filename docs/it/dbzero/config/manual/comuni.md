@@ -16,9 +16,7 @@ Approfondimento funzione:
 La tabella **`config.comuni`** censisce i comuni (italiani ed esteri) all’interno di uno stato, fornendo la base per la geolocalizzazione degli indirizzi e per l’associazione con lo stradario.
 
 ---
-
 ### 🎯 Scopo Principale
-
 (last review 30-12-25)
 * **Censimento dei comuni**
   Elenco dei comuni presenti in ciascuno stato, identificati da nome e collegamento gerarchico a provincia e stato.

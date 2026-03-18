@@ -12,9 +12,7 @@
 [anagrafiche.fn_notify_cambio_reparto](/dbzero/anagrafiche/funzioni/fn_notify_cambio_reparto)
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 10-03-2026)
 La trigger function
 **`anagrafiche.trgfn_risorse_umane_notify_cambio_reparto()`** emette una

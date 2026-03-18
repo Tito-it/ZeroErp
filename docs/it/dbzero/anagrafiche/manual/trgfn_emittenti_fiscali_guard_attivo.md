@@ -7,8 +7,7 @@
 • [anagrafiche.emittenti_fiscali](/dbzero/anagrafiche/tabelle/emittenti_fiscali)
 > • [anagrafiche.emittenti_fiscali_billing_account](/dbzero/anagrafiche/tabelle/emittenti_fiscali_billing_account)
 >
-🎯 Scopo Principale
-
+### 🎯 Scopo Principale
 (latest review 23-01-26)
 La funzione **`anagrafiche.trgfn_emittenti_fiscali_guard_attivo()`** impedisce
 la disattivazione (`attivo = false`) di un emittente fiscale quando esistono

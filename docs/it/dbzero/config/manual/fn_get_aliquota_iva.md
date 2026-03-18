@@ -8,9 +8,7 @@
 > [config.iva_stati](/dbzero/config/tabelle/iva_stati)  
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 10-02-2026)  
 La funzione **`config.fn_get_aliquota_iva()`** restituisce l’aliquota IVA
 applicando l’eventuale override definito in `config.iva_stati` per lo Stato

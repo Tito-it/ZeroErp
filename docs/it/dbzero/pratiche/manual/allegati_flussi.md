@@ -9,9 +9,7 @@ Approfondimento tabelle:
 > [config.tipi_allegato](/dbzero/config/tabelle/tipi_allegato)
 
 ---
-
 ### 🎯 Scopo Principale
-
 La tabella `pratiche.allegati_flussi` gestisce i **file allegati** a un flusso specifico. Struttura identica a `allegati_pratiche` ma collegata al singolo step di workflow anziche' alla pratica.
 
 ---

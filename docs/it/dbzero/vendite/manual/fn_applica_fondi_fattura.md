@@ -13,8 +13,7 @@
 >
 • [vendite.fn_genera_fondi_fattura_source](/dbzero/vendite/funzioni/fn_genera_fondi_fattura_source)  
 >
-🎯 Scopo Principale
-
+### 🎯 Scopo Principale
 La funzione **`vendite.fn_applica_fondi_fattura()`** applica i fondi fattura
 in stato `DISPONIBILE` ad una **fattura figlia**, creando le righe in
 `vendite.fatture_fondi_fattura` e aggiornando la `source` a stato `ASSEGNATO`.

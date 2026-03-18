@@ -12,9 +12,7 @@ Altre view di catalogazione:
 La view **`dbops.vw_trigger_functions`** elenca tutti i trigger definiti negli schemi del database, indicando la tabella di appartenenza, il nome del trigger, la funzione associata e la definizione completa della funzione. Filtra i trigger interni di sistema lasciando solo quelli utente.
 
 ---
-
 ### 🎯 Scopo Principale
-
 * Fornire una panoramica centralizzata dei trigger utente presenti in ogni tabella del database.
 * Rendere immediatamente accessibili:
 

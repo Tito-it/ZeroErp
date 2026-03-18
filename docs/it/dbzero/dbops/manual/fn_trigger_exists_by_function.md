@@ -12,9 +12,7 @@ Approfondimento funzioni:
 > [dbops.fn_trigger_exists_block_by_args](/dbzero/dbops/funzioni/fn_trigger_exists_block_by_args)
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 10-01-26)
 La funzione **`dbops.fn_trigger_exists_by_function(p_rel, p_fn_schema, p_fn_name)`** verifica l’esistenza di un trigger su una tabella specifica, identificandolo in base alla **funzione associata**. È pensata come utility per le automazioni, per evitare la duplicazione di trigger già creati.
 

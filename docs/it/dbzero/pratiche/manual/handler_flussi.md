@@ -7,9 +7,7 @@ Approfondimento tabelle:
 [pratiche.template_flussi](/dbzero/pratiche/tabelle/template_flussi)
 
 ---
-
 ### 🎯 Scopo Principale
-
 La tabella `pratiche.handler_flussi` e' il **registry degli handler flusso**. Ogni record mappa una `handler_key` univoca a un handler Python nel `handler_registry.py` di Django. Il DB contiene solo la chiave; il mapping effettivo e' nel codice applicativo.
 
 ---

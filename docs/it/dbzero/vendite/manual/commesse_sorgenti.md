@@ -7,8 +7,7 @@
 • [vendite.commesse](/dbzero/vendite/tabelle/commesse)  
 > • [config.sorgenti](/dbzero/config/tabelle/sorgenti)  
 >
-🎯 Scopo Principale
-
+### 🎯 Scopo Principale
 La tabella `vendite.commesse_sorgenti` traccia la sorgente ROOT della commessa e
 garantisce idempotenza sorgente a livello commessa.
 

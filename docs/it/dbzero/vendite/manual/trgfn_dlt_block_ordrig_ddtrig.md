@@ -7,9 +7,7 @@
 > • [vendite.ordini_righe_fulfillment](/dbzero/vendite/tabelle/ordini_righe_fulfillment)  
 
 ---
-
 ### 🎯 Scopo Principale
-
 La trigger function `vendite.trgfn_dlt_block_ordrig_ddtrig()` blocca la
 cancellazione fisica di righe ordine/DDT per preservare la coerenza del
 fulfillment e la tracciabilità operativa.

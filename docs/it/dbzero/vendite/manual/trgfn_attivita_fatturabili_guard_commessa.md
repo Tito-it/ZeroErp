@@ -7,9 +7,7 @@
 > • [vendite.commesse_attivita](/dbzero/vendite/tabelle/commesse_attivita)  
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 24-02-2026)  
 La funzione trigger `vendite.trgfn_attivita_fatturabili_guard_commessa()` applica
 il guardrail anti-bypass sul dominio `attivita_fatturabili`, impedendo scritture

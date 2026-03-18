@@ -1,5 +1,4 @@
 ## 📘 Documentazione Concettuale – Funzione `pagamenti.fn_get_or_create_vendite_contabile`
-
 ### 🎯 Scopo Principale
 Recuperare una testata contabile vendite esistente oppure crearne una nuova,
 con possibilita` di collegarla al lotto fatturazione tramite tabella ponte.

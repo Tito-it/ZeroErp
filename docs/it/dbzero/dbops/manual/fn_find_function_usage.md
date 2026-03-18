@@ -11,9 +11,7 @@ Altre view di catalogazione:
 La funzione **`dbops.fn_find_function_usage`** restituisce l’elenco delle entità del database (funzioni, trigger, event trigger) che fanno riferimento a una specifica funzione indicata dal nome, facilitando l’analisi delle dipendenze e degli impatti di modifiche o refactoring.
 
 ---
-
 ### 🎯 Scopo Principale
-
 * **Discovery delle dipendenze**: individuare tutte le occorrenze di una funzione all’interno del codice PL/pgSQL, dei trigger e degli event trigger.
 * **Supporto al refactoring**: identificare facilmente i punti di utilizzo prima di rinominare o modificare una funzione.
 

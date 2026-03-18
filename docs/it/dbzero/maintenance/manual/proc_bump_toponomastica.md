@@ -12,8 +12,7 @@
 [config.trgfn_toponomastica_bump_normalize](/dbzero/config/funzioni/trgfn_toponomastica_bump_normalize)   
 > [config.trgfn_toponomastica_protect_update](/dbzero/config/funzioni/trgfn_toponomastica_protect_update)   
 >
-🎯 Scopo Principale
-
+### 🎯 Scopo Principale
 (latest review 02-01-26)
 Consentire la correzione controllata di un toponimo **in uso**, forzando la rinormalizzazione di `config.stradario_generale` tramite i trigger esistenti.
 

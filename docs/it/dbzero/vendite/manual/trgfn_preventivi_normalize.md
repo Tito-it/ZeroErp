@@ -5,9 +5,7 @@
 • [vendite.preventivi](/dbzero/vendite/tabelle/preventivi)  
 
 ---
-
 ### 🎯 Scopo Principale
-
 La trigger function `vendite.trgfn_preventivi_normalize()` completa i dati
 minimi di data documento in insert quando il numero preventivo e` gia` presente.
 

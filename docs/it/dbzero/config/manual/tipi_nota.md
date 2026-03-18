@@ -8,9 +8,7 @@ Approfondimento tabelle:
 > [pratiche.note_flussi](/dbzero/pratiche/tabelle/note_flussi)
 
 ---
-
 ### 🎯 Scopo Principale
-
 La tabella `config.tipi_nota` definisce la **tipologia** delle note associabili a pratiche e flussi. Consente di classificare le note per finalita' (interna, per il cliente, tecnica, ecc.).
 
 ---

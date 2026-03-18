@@ -17,7 +17,6 @@ Trigger: `anagrafiche.trg_iu_z50_clone_catasto_from_parent_aft_upd` (subentro: c
 > Trigger: `anagrafiche.trg_iu_z40_sync_catasto_unita_indirizzo_aft_ins_upd` (sync tabella ponte catasto↔indirizzi)    
 
 ---
-
 ### 🎯 Scopo Principale
 (latest review 15-12-25)
 La funzione **`script.fn_clone_catasto_from_parent_by_istanza(p_istanza_utilities_id)`** gestisce la **clonazione** di un record catastale (`anagrafiche.catasto_unita_immobiliari`) dalla **parent_istanza** verso l’istanza corrente, tipicamente nel flusso di **subentro**.

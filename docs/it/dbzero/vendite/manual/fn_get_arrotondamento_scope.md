@@ -7,8 +7,7 @@
 • [vendite.fatture_arrotondamenti_scope](/dbzero/vendite/tabelle/fatture_arrotondamenti_scope)  
 > • [vendite.fatture](/dbzero/vendite/tabelle/fatture)  
 >
-🎯 Scopo Principale
-
+### 🎯 Scopo Principale
 (latest review 10-02-2026)  
 La funzione **`vendite.fn_get_arrotondamento_scope()`** restituisce il
 **saldo tecnico** degli arrotondamenti per l'ambito di fatturazione

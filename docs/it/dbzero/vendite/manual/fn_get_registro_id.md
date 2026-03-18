@@ -13,8 +13,7 @@
 • [vendite.fn_get_anno_registro](/dbzero/vendite/funzioni/fn_get_anno_registro)  
 > • [vendite.fn_get_next_progressivo](/dbzero/vendite/funzioni/fn_get_next_progressivo)  
 >
-🎯 Scopo Principale
-
+### 🎯 Scopo Principale
 (latest review 27-01-2026)
 La funzione **`vendite.fn_get_registro_id`** risolve il registro di fatturazione
 in base al mapping **tipo documento → registro**, considerando utility/emittente se presenti.

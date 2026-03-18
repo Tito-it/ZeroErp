@@ -12,8 +12,7 @@
 >
 • [vendite.fn_get_commessa_stato](/dbzero/vendite/funzioni/fn_get_commessa_stato)  
 >
-🎯 Scopo Principale
-
+### 🎯 Scopo Principale
 (latest review 26-02-2026)  
 Effettua upsert idempotente di una riga `commesse_attivita` su chiave `(commessa_id, segment_key)`, con controlli di validita` e blocchi coerenti con lo stato della commessa.
 

@@ -12,8 +12,7 @@
 >
 • [vendite.fn_applica_fondi_fattura](/dbzero/vendite/funzioni/fn_applica_fondi_fattura)  
 >
-🎯 Scopo Principale
-
+### 🎯 Scopo Principale
 La funzione **`vendite.fn_reset_fondi_fattura()`** ripristina i fondi fattura
 applicati ad una **fattura figlia**:
 

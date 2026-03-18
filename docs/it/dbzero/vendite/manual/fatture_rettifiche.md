@@ -10,9 +10,7 @@
 > • [vendite.fatture_scadenze](/dbzero/vendite/tabelle/fatture_scadenze)
 
 ---
-
 ### 🎯 Scopo Principale
-
 `vendite.fatture_rettifiche` modella il **legame N:N** fra **documenti rettificanti** (es. note di credito/debito) e **documenti rettificati** (fatture originarie).
 
 Obiettivi:

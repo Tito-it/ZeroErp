@@ -9,9 +9,7 @@ Approfondimento funzioni:
 > [`maintenance.proc_automations_storico_job`](/dbzero/maintenance/manual/proc_automations_storico_job)
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 07-01-26)
 * **Eseguire in modo schedulato** il **provisioning delle automazioni STORICO** (setup/adeguamento dei trigger di storicizzazione) incapsulando la chiamata a `dbops.fn_run_automations_storico_provision(...)` in un wrapper **robusto** con **lock anti-overlap** e **logging strutturato**.
 

@@ -16,9 +16,7 @@
 > • [vendite.fn_reset_lotto_draft](/dbzero/vendite/funzioni/fn_reset_lotto_draft)  
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 10-02-2026)  
 La funzione **`vendite.fn_reset_lotto_fattura_draft()`** effettua il reset tecnico
 di **una singola fattura** appartenente a un lotto **MASSIVO** in stato **DRAFT**,

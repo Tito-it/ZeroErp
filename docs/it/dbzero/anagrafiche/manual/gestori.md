@@ -16,7 +16,6 @@ Approfondimenti funzioni:
 La tabella **`anagrafiche.gestori`** rappresenta l’azienda stessa che utilizza e amministra il sistema Zero ERP (“gestore”). Attualmente raccoglie le informazioni di base necessarie a identificare il gestore, ma è ancora in fase di definizione: in futuro potrà essere estesa per includere ulteriori parametri funzionali e di configurazione del software.
 
 ---
-
 ### 🎯 Scopo Principale
 (latest update 05-12-25)
 - **Identificare il gestore del sistema**  

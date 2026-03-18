@@ -8,9 +8,7 @@ Approfondimento Tabelle:
 > [config.tipi_soggetto_dettaglio](/dbzero/config/tabelle/tipi_soggetto_dettaglio)   
 > [anagrafiche.dati_societari](/dbzero/anagrafiche/tabelle/dati_societari)   
 >
-
-🎯 Scopo Principale
-
+### 🎯 Scopo Principale
 (latest review 21-12-25)
 La tabella **`config.forme_giuridiche_tipi_soggetto_dettaglio`** è una **matrice di configurazione** (Strada **B**) che definisce:
 

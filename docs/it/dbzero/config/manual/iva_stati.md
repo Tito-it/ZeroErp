@@ -15,9 +15,7 @@ Approfondimenti funzioni:
 La tabella **`config.iva_stati`** permette di definire **override locali** di aliquota e assoggettamento IVA per specifici Stati o Paesi, personalizzando il comportamento dei codici IVA principali in base al contesto geografico.
 
 ---
-
 ### 🎯 Scopo Principale
-
 * Sovrascrivere, per ogni coppia `(iva_id, stato_id)`, i valori di aliquota e assoggettamento di default definiti in `config.iva`.
 * Gestire scenari in cui normative locali richiedono aliquote differenti o modalità di assoggettamento speciali.
 

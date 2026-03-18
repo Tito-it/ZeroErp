@@ -10,9 +10,7 @@
 > • [anagrafiche.indirizzi](/dbzero/anagrafiche/tabelle/indirizzi)  
 
 ---
-
 ### 🎯 Scopo Principale
-
 `vendite.preventivi_indirizzi` memorizza lo **snapshot indirizzi** associato
 al preventivo (fatturazione/spedizione/altri tipi ammessi), mantenendo
 storico coerente anche se l’anagrafica origine cambia nel tempo.

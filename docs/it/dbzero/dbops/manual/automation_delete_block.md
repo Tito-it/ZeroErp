@@ -7,9 +7,7 @@
 • [script.trgfn_delete_block_by_guc](/dbzero/script/manual/trgfn_delete_block_by_guc)    
 > • [dbops.fn_apply_delete_block_trigger](/dbzero/dbops/manual/fn_apply_delete_block_trigger)    
 >
-
-🎯 Scopo Principale
-
+### 🎯 Scopo Principale
 (latest review 23-01-2026)
 `dbops.automation_delete_block` centralizza la configurazione dei trigger che **bloccano**
 le DELETE sulle tabelle sensibili (es. ruoli), con possibilità di bypass tramite **GUC**.

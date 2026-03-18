@@ -17,9 +17,7 @@ Approfondimento funzioni e trigger:
 La tabella **`storico.parameter_overrides`** memorizza gli snapshot delle modifiche operazioni (INSERT, UPDATE, DELETE) sulla tabella operativa `config.parameter_overrides`. Ogni riga rappresenta lo stato completo di un record di override in un preciso istante, sfruttando il campo JSONB per catturare dinamicamente l’intero contenuto.
 
 ---
-
 ### 🎯 Scopo Principale
-
 * **Versionamento degli override**
   Catturare ogni modifica ai record di `config.parameter_overrides`, consentendo di risalire allo stato precedente o iniziale di un override.
 * **Audit e compliance**

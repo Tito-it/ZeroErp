@@ -9,9 +9,7 @@
 La funzione **`script.fn_get_record_id_as_of(p_schema TEXT, p_table TEXT, p_id TEXT, p_fk_col TEXT, p_as_of TIMESTAMP)`** restituisce il **testo dell’ID** (`TEXT`) del record valido in un dato istante, **cercando esclusivamente nella tabella di storico**. In assenza di uno snapshot valido, restituisce `NULL` senza eseguire alcun fallback sulla tabella operativa.
 
 ---
-
 ### 🎯 Scopo Principale
-
 * **Recupero rapido dell’ID in uno snapshot**: ottenere solo l’identificativo del record (`id`) valido alla data/ora specificata, senza dover deserializzare tutto il JSON.
 * **Ottimizzazione delle query**: operazione leggera nel caso serva solo l’ID, utile per controlli o join condizionali su storico.
 

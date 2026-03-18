@@ -14,9 +14,7 @@ Approfondimento funzioni:
 Approfondimento trigger:
 > 
 [script.trgfn_lock_columns](/dbzero/script/funzioni/trgfn_lock_columns)   
-
 ### 🎯 Scopo Principale
-
 (latest review 10-01-26)
 Centralizzare la configurazione delle **colonne extra** da bloccare con `script.trgfn_lock_columns`.
 

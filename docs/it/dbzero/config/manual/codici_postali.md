@@ -11,9 +11,7 @@ Approfondimento Tabelle:
 La tabella **`config.codici_postali`** censisce i codici di avviamento postale (postal codes o ZIP codes) associati ai comuni, fornendo l’elenco completo di CAP per ogni città.
 
 ---
-
 ### 🎯 Scopo Principale
-
 * **Elenco dei codici postali**
   Per ogni comune (city/municipality), memorizza tutti i codici postali (Postal Code o ZIP Code) validi per quell’area geografica.
 

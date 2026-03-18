@@ -13,9 +13,7 @@ Approfondimento Tabelle:
 > con la geolocalizzazione memorizzata in `anagrafiche.indirizzi_dettaglio`.
 
 ---
-
 ### 🎯 Scopo Principale
-
 Ogni volta che viene inserito o aggiornato un record in `anagrafiche.indirizzi` o
 `anagrafiche.indirizzi_soggetti`, se è impostato `indirizzo_dettaglio_id`, la funzione recupera
 dal dettaglio civico la coordinata geografica (`civic_geoloc`) e la copia in `NEW.geoloc`.

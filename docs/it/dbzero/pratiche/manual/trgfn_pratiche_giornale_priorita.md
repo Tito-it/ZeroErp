@@ -12,9 +12,7 @@ Overview:
 [Trigger business overview](trigger_business_overview.md)
 
 ---
-
 ### 🎯 Scopo Principale
-
 Registra l'azione **PRIORITA_CAMBIATA** nel giornale. Si attiva **AFTER UPDATE OF priorita_id** su `pratiche.pratiche`, solo quando il valore cambia realmente.
 
 ---

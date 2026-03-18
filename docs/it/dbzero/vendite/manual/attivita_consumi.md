@@ -13,8 +13,7 @@ Questa tabella e` in evoluzione: i dettagli varieranno per utility (gas, energia
 > • [vendite.fatture](/dbzero/vendite/tabelle/fatture)  
 > • [catalogo.unita_misura](/dbzero/catalogo/tabelle/unita_misura)  
 >
-🎯 Scopo Principale
-
+### 🎯 Scopo Principale
 (latest review 24-01-2026)
 `vendite.attivita_consumi` rappresenta la **testata consumi** per utilities,
 con totalizzatori e periodi di riferimento. E` il punto di aggregazione

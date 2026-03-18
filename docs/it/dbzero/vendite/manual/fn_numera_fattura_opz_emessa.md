@@ -13,8 +13,7 @@
 • [vendite.fn_get_next_progressivo](/dbzero/vendite/funzioni/fn_get_next_progressivo)  
 > • [vendite.fn_get_anno_registro](/dbzero/vendite/funzioni/fn_get_anno_registro)  
 >
-🎯 Scopo Principale
-
+### 🎯 Scopo Principale
 (latest review 09-02-2026)
 La funzione **`vendite.fn_numera_fattura_opz_emessa()`** assegna il numero
 fattura in modo **idempotente** e, opzionalmente, imposta lo stato documento

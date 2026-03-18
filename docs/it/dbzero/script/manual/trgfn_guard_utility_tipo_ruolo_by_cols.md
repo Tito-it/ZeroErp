@@ -1,7 +1,5 @@
 ## 📘 Documentazione Concettuale – Funzione `script.trgfn_guard_utility_tipo_ruolo_by_cols`
-
 ### 🎯 Scopo Principale
-
 La funzione **`script.trgfn_guard_utility_tipo_ruolo_by_cols()`** e` una
 trigger function generica che applica il controllo utility/ruolo su tabelle
 con colonne configurabili.

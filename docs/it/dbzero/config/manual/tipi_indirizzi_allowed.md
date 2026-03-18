@@ -19,7 +19,6 @@
 > [`config.tipi_ruolo_tipi_indirizzo`](/dbzero/config/tabelle/tipi_ruolo_tipi_indirizzo)
 
 ---
-
 ### 🎯 Scopo Principale
 (Ultima review 19-12-25)
 

@@ -8,8 +8,7 @@
 > • [vendite.fatture_fondi_fattura_source](/dbzero/vendite/tabelle/fatture_fondi_fattura_source)  
 > • [pagamenti.vendite_movimenti](/dbzero/pagamenti/tabelle/vendite_movimenti)  
 >
-🎯 Scopo Principale
-
+### 🎯 Scopo Principale
 (latest review 12-02-2026)  
 La funzione **`vendite.fn_genera_fondi_fattura_source()`** genera record
 in `fatture_fondi_fattura_source` per fatture con `minimo = true`,

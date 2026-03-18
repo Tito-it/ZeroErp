@@ -1,5 +1,4 @@
 ## 📘 Documentazione Concettuale – Tabella `pagamenti.vendite_contabili_lotti`
-
 ### 🎯 Scopo Principale
 Tabella ponte che collega i lotti di fatturazione (`vendite.fatturazione_lotti`)
 alle testate contabili vendite (`pagamenti.vendite_contabili`).

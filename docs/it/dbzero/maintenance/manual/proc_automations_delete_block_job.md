@@ -9,9 +9,7 @@ Approfondimento funzioni:
 > [dbops.fn_run_automations_delete_block](/dbzero/dbops/funzioni/fn_run_automations_delete_block)
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 23-01-26)
 La procedura **`maintenance.proc_automations_delete_block_job()`** e' un wrapper
 per eseguire `dbops.fn_run_automations_delete_block` in modalita' job con logging

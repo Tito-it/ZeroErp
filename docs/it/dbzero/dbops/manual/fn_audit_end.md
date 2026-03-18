@@ -14,10 +14,7 @@ Approdondimento funzioni:
 > [dbops.fn_audit_log_once`](/dbzero/dbops/funzioni/fn_audit_log_once)   
 
 ---
-
-
 ### 🎯 Scopo Principale
-
 La funzione **`fn_audit_end`** chiude una sessione di auditing avviata da `fn_audit_begin`, registrando lo stato finale nel record corrispondente in `dbops.audit_log`.
 
 ---

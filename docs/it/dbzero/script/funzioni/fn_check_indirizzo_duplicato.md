@@ -1,0 +1,95 @@
+{% include-markdown "it/dbzero/script/manual/fn_check_indirizzo_duplicato.md" %}
+# ⚙️ Funzione `fn_check_indirizzo_duplicato`
+
+```sql
+CREATE FUNCTION fn_check_indirizzo_duplicato(p_stradario_id integer, p_civico integer, p_estensione_civico character varying, p_palazzina character varying, p_scala character varying, p_piano character varying, p_interno character varying)
+```
+
+**Definizione completa:**
+
+```sql
+CREATE OR REPLACE FUNCTION script.fn_check_indirizzo_duplicato(p_stradario_id integer, p_civico integer DEFAULT NULL::integer, p_estensione_civico character varying DEFAULT NULL::character varying, p_palazzina character varying DEFAULT NULL::character varying, p_scala character varying DEFAULT NULL::character varying, p_piano character varying DEFAULT NULL::character varying, p_interno character varying DEFAULT NULL::character varying)
+ RETURNS TABLE(indirizzo_dettaglio_id bigint, indirizzo_normalizzato text, descrizione_comune character varying, exact_match boolean)
+ LANGUAGE plpgsql
+ STABLE PARALLEL SAFE
+AS $function$
+DECLARE
+    v_via_norm  anagrafiche.indirizzi_dettaglio.via_norm%TYPE;
+    v_norm      anagrafiche.indirizzi_dettaglio.indirizzo_normalizzato%TYPE;
+BEGIN
+    -- =========================================================
+    -- Scopo:
+    --   Verifica esistenza indirizzo duplicato o simile.
+    --   Costruisce la stringa normalizzata di ricerca tramite
+    --   fn_build_indirizzo_normalizzato (unica source of truth),
+    --   poi cerca match prefix su indirizzi_dettaglio.
+    --
+    -- Parametri:
+    --   p_stradario_id:      stradario di riferimento (obbligatorio)
+    --   p_civico:            numero civico (opzionale)
+    --   p_estensione_civico: estensione civico (opzionale, es. /A)
+    --   p_palazzina:         palazzina (opzionale)
+    --   p_scala:             scala (opzionale)
+    --   p_piano:             piano (opzionale)
+    --   p_interno:           interno (opzionale)
+    --
+    -- Ritorna:
+    --   - indirizzo_dettaglio_id: ID del match trovato
+    --   - indirizzo_normalizzato: stringa normalizzata del match
+    --   - descrizione_comune: comune del match
+    --   - exact_match: true se match esatto, false se solo prefix
+    --
+    -- Logica:
+    --   1. Costruisce stringa normalizzata via fn_build_...
+    --   2. Se civico fornito: cerca LIKE norm% (match civico)
+    --   3. Se civico null: cerca LIKE via_norm% (qualsiasi civico)
+    --   4. Ordina: exact_match DESC (esatti prima), max 5 righe
+    --
+    -- Performance:
+    --   Indice btree su stradario_id + filtro LIKE prefisso.
+    -- =========================================================
+
+    -- Guard: stradario_id obbligatorio
+    IF p_stradario_id IS NULL OR p_stradario_id <= 0 THEN
+        RETURN;
+    END IF;
+
+    -- Costruisci stringa normalizzata di ricerca
+    SELECT (r).o_via_norm, (r).o_indirizzo_normalizzato
+      INTO v_via_norm, v_norm
+      FROM (SELECT anagrafiche.fn_build_indirizzo_normalizzato(
+                p_stradario_id, p_civico, p_estensione_civico,
+                p_palazzina, p_scala, p_piano, p_interno) AS r) x;
+
+    -- Guard: stradario non trovato in vw_indirizzo_completo
+    IF v_via_norm IS NULL THEN
+        RETURN;
+    END IF;
+
+    -- Cerca match prefix su vw_indirizzi_dettaglio
+    RETURN QUERY
+    SELECT
+        vid.indirizzo_dettaglio_id,
+        vid.indirizzo_normalizzato,
+        vid.descrizione_comune,
+        (vid.indirizzo_normalizzato = v_norm) AS exact_match
+    FROM anagrafiche.vw_indirizzi_dettaglio vid
+    WHERE vid.stradario_id = p_stradario_id
+      AND vid.indirizzo_normalizzato LIKE
+          CASE WHEN p_civico IS NOT NULL
+               THEN v_norm
+               ELSE v_via_norm
+          END || '%'
+    ORDER BY (vid.indirizzo_normalizzato = v_norm) DESC,
+             vid.indirizzo_dettaglio_id
+    LIMIT 5;
+
+END;
+$function$
+
+COMMENT ON FUNCTION script.fn_check_indirizzo_duplicato(p_stradario_id integer, p_civico integer, p_estensione_civico character varying, p_palazzina character varying, p_scala character varying, p_piano character varying, p_interno character varying)
+IS 'Check duplicato indirizzo via fn_build_indirizzo_normalizzato. Cerca match prefix su vw_indirizzi_dettaglio con exact_match boolean. STABLE, PARALLEL SAFE.';
+```
+
+---
+{% include-markdown "signature-core.md" %}

@@ -6,8 +6,7 @@
 >
 • [vendite.commesse_attivita](/dbzero/vendite/tabelle/commesse_attivita)  
 >
-🎯 Scopo Principale
-
+### 🎯 Scopo Principale
 La tabella `vendite.commesse_attivita_log` registra eventi tecnici e dominio sulle righe
 `commesse_attivita` per audit e troubleshooting.
 

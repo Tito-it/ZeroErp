@@ -10,9 +10,7 @@
 > • [`catalogo.fn_get_uom_factor`](/dbzero/catalogo/funzioni/fn_get_uom_factor)     
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest updates 13-01-26)
 La funzione **`catalogo.fn_get_uom_base(p_articolo_id)`** ritorna la **UoM base** dell’articolo, leggendo il campo `catalogo.articoli.uom_id`.
 

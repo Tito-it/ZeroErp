@@ -10,9 +10,7 @@ Approfondimenti tabelle:
 La trigger function `trgfn_iva_ins_upd_check_conti_iva` assicura che i conti contabili associati ai codici IVA rispettino le regole aziendali: il conto di acquisto (`conto_iva_acquisti_id`) deve essere di tipo acquisto, mentre il conto di vendita (`conto_iva_vendita_id`) deve essere di tipo vendita.
 
 ---
-
 ### 🎯 Scopo Principale
-
 * **Validazione contestuale**: eseguire controlli sui campi contabili prima di inserire o aggiornare un record in `config.iva`.
 * **Coerenza dei dati**: evitare associazioni errate tra codici IVA e conti di tipo sbagliato.
 

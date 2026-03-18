@@ -11,9 +11,7 @@
 >
 • [`vendite.fn_get_registro_id`](/dbzero/vendite/funzioni/fn_get_registro_id)
 >
-
-🎯 Scopo Principale
-
+### 🎯 Scopo Principale
 (latest review 27-01-2026)
 La tabella **`vendite.tipi_doc_fiscale_registri`** definisce il mapping
 **tipo documento fiscale → registro di fatturazione**, necessario per la

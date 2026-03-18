@@ -14,9 +14,7 @@ Approfondimeto Funzioni:
 La tabella **`storico.stradario`** archivia la cronologia delle modifiche alle vie registrate in `config.stradario`, garantendo la tracciabilità di tutte le operazioni di update e delete.
 
 ---
-
 ### 🎯 Scopo Principale
-
 * **Audit Trail**: Conservare una traccia completa di ogni modifica o cancellazione effettuata su `config.stradario`.
 * **Versioning dei record**: Permettere la ricostruzione dello stato di una via in un dato momento, grazie ai campi `valid_from` e `valid_to`.
 * **Riproduzione dello schema**: Utilizzare il campo **`snapshot`** (JSONB) per salvare tutti i dettagli di `config.stradario` al momento dell’operazione, anche a fronte di evoluzioni dello schema.

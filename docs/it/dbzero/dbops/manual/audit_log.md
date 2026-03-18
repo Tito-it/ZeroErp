@@ -17,9 +17,7 @@ Approfondimento funzioni:
 La tabella **`dbops.audit_log`** registra le esecuzioni di processi, funzioni e job, consentendo di tracciare chi ha eseguito cosa, quando e con quali parametri, nonché l’esito e la durata. Il campo **`tx_id`** non possiede più un valore di default: viene assegnato **automaticamente** dal **trigger**  utilizzando la trigger function `dbops.trgfn_tx_id_managed()`, garantendo coerenza con il modello di `error_log`.
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 10-01-26)
 * Monitorare e storicizzare ogni chiamata a funzioni, job e API interne.
 * Fornire dettagli su utente, parametri e performance di esecuzione.

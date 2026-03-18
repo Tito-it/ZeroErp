@@ -11,8 +11,7 @@
 • [vendite.trgfn_attivita_fatturabili_normalize](/dbzero/vendite/funzioni/trgfn_attivita_fatturabili_normalize)  
 > • [vendite.trgfn_attivita_fatturabili_guard_fonte](/dbzero/vendite/funzioni/trgfn_attivita_fatturabili_guard_fonte)  
 >
-🎯 Scopo Principale
-
+### 🎯 Scopo Principale
 (latest review 26-01-2026)
 La funzione **`vendite.trgfn_attivita_fatturabili_guard_fatturato()`** blocca
 modifiche o cancellazioni di righe di `vendite.attivita_fatturabili` che

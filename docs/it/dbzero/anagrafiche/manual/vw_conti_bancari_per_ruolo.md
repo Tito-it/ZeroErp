@@ -19,7 +19,6 @@ La vista **`anagrafiche.vw_conti_bancari_per_ruolo`** espone, per ogni **ruolo d
 È l’artefatto centrale per tutte le logiche applicative che devono recuperare “il conto corrente da usare ora” per un determinato ruolo.
 
 ---
-
 ### 🎯 Scopo Principale
 (latest review 28-11-25)
 * **Selezione unificata del conto per ruolo**

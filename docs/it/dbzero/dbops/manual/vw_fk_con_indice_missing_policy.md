@@ -14,9 +14,7 @@ Approfondimento funzioni:
 La view **`dbops.vw_fk_con_indice_missing_policy`** elenca tutte le **foreign key** che **hanno un indice** (prefisso `ix_`) ma **non** sono ancora gestite dalla tabella di policy `dbops.fk_index_policy`, limitandosi **agli schemi presenti in `dbops.automation_scope`**. Per ciascuna FK, viene suggerito il comando SQL di creazione dell’indice.
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 16-01-26)
 * **Identificare gli indici esistenti**
   Trova le FK già indicizzate che non dispongono di una policy dedicata.

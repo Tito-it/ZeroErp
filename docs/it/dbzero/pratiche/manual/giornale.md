@@ -8,9 +8,7 @@ Approfondimento tabelle:
 > [pratiche.flussi](/dbzero/pratiche/tabelle/flussi)
 
 ---
-
 ### 🎯 Scopo Principale
-
 La tabella `pratiche.giornale` e' il **giornale di bordo (audit trail)** del modulo pratiche. Registra ogni evento significativo nel ciclo di vita di pratiche e flussi in modo append-only e immutabile.
 
 ---

@@ -13,9 +13,7 @@ Overview:
 [Trigger business overview](trigger_business_overview.md)
 
 ---
-
 ### 🎯 Scopo Principale
-
 Registra l'azione **ALLEGATO_AGGIUNTO** nel giornale a livello flusso. Si attiva **AFTER INSERT** su `pratiche.allegati_flussi`.
 
 ---

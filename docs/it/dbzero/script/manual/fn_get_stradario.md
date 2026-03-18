@@ -18,9 +18,7 @@
 La funzione **`script.fn_get_stradario(p_comune_id integer DEFAULT NULL, p_indirizzo text DEFAULT '') RETURNS TABLE(...)`** fornisce un metodo centralizzato per la ricerca e il recupero di voci dello stradario, sia a livello di comune specifico che su tutto lo stradario generale.
 
 ---
-
 ### 🎯 Scopo Principale
-
 * **Ricerca locale per comune**
   Se viene specificato `p_comune_id`, esegue una query filtrata sul comune indicato, restituendo tutte le vie e toponomastiche che contengono la stringa `p_indirizzo` nel loro nome.
 

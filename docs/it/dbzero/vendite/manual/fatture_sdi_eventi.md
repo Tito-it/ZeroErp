@@ -8,9 +8,7 @@
 > • [config.stati_sdi](/dbzero/config/tabelle/stati_sdi)  
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 16-02-2026)  
 `vendite.fatture_sdi_eventi` mantiene lo **storico cronologico eventi SDI**
 per ciascun tentativo (`fattura_sdi_id`).

@@ -13,8 +13,7 @@
 >
 • [vendite.trgfn_attivita_fatturabili_normalize](/dbzero/vendite/funzioni/trgfn_attivita_fatturabili_normalize)  
 >
-🎯 Scopo Principale
-
+### 🎯 Scopo Principale
 (latest review 26-01-2026)
 La funzione **`vendite.fn_get_valuta_id`** risolve la valuta con fallback
 al **gestore** quando non esistono valori specifici su BA/utility.

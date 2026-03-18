@@ -14,9 +14,7 @@
 • [script.trgfn_qta_from_operativa](/dbzero/script/funzioni/trgfn_qta_from_operativa)  
 
 ---
-
 ### 🎯 Scopo Principale
-
 `vendite.preventivi_righe` contiene il dettaglio economico-tecnico del preventivo:
 articolo, quantita`, prezzo, sconto, IVA e snapshot UoM operativa.
 

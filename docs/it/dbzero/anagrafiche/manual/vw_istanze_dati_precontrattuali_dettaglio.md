@@ -13,9 +13,7 @@ Approfondimenti viste:
 [anagrafiche.vw_istanze_utilities_dettaglio](/dbzero/anagrafiche/views/vw_istanze_utilities_dettaglio)  
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 09-01-26) 
 La vista **`anagrafiche.vw_istanze_dati_precontrattuali_dettaglio`** unisce i dati pre‑contrattuali
 con i dettagli dell’istanza utility e le decodifiche di **classe** e **tipo utenza**.

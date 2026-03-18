@@ -8,8 +8,7 @@
 > • [pagamenti.vendite_contabili_righe_stati](/dbzero/pagamenti/tabelle/vendite_contabili_righe_stati)  
 > • [pagamenti.enti_incasso](/dbzero/pagamenti/tabelle/enti_incasso)  
 >
-🎯 Scopo Principale
-
+### 🎯 Scopo Principale
 La tabella **`pagamenti.vendite_contabili_righe`** contiene il dettaglio delle
 righe importate/gestite nella testata contabile vendite, con stato di lavorazione
 e riferimenti di abbinamento (fattura, billing account).

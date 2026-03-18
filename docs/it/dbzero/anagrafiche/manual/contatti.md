@@ -32,10 +32,7 @@ In questo modo è possibile definire:
    (ad es. referente tecnico per un determinato servizio)
 
 ---
-
-
 ### 🎯 Scopo Principale
-
 (latest review 06-01-26)
 * **Centralizzare i contatti**  
   Un’unica tabella per tutti i numeri di telefono, email, PEC e nominativi, evitando duplicazioni e frammentazione.

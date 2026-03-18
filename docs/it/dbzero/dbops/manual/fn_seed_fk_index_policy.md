@@ -14,9 +14,7 @@ Approfondimento funzioni:
 La funzione **`dbops.fn_seed_fk_index_policy()`** popola automaticamente la tabella `dbops.fk_index_policy` con le foreign key **già indicizzate** ma **non ancora presenti** in policy, **limitandosi agli schemi presenti in `dbops.automation_scope`**, marcandole come `consentito = true` e `generated_by_script = true`.
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 16-01-26)
 * **Sincronizzazione iniziale**
   Aggiunge in `fk_index_policy` tutte le FK con indice esistente rilevate in `vw_fk_con_indice_missing_policy`.

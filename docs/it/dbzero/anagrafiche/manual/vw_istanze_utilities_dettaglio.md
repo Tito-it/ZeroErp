@@ -16,9 +16,7 @@ Approfondimenti viste:
 > [script.vw_indirizzo_completo](/dbzero/script/views/vw_indirizzo_completo)  
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 15-02-26)
 La vista **`anagrafiche.vw_istanze_utilities_dettaglio`** aggrega le informazioni di un'istanza utility con:
 

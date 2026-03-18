@@ -13,9 +13,7 @@ Overview:
 [Trigger business overview](trigger_business_overview.md)
 
 ---
-
 ### 🎯 Scopo Principale
-
 Registra l'azione **NOTA_AGGIUNTA** nel giornale a livello flusso. Si attiva **AFTER INSERT** su `pratiche.note_flussi`.
 
 ---

@@ -18,9 +18,7 @@ Approfondimento funzioni e trigger:
 > [script.trgfn_storico_generic](/dbzero/script/funzioni/trgfn_storico_generic)   
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 26-12-25)
 La funzione **`dbops.fn_run_automations_storico(p_exec_mode, p_schemas, p_dry_run)`** automatizza la creazione (o la simulazione) del **trigger unico di storicizzazione** `BEFORE UPDATE OR DELETE` per le tabelle applicative, delegando la logica alla funzione `script.trgfn_storico_generic`. È uno dei moduli orchestrati da `fn_run_automations`.
 

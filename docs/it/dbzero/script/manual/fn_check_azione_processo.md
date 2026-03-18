@@ -13,9 +13,7 @@
 [script.fn_get_ruolo_sistema](/dbzero/script/funzioni/fn_get_ruolo_sistema)
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 08-03-2026)
 La funzione **`script.fn_check_azione_processo`** verifica se un'azione di processo
 (identificata da `permission_codename`) e abilitata per un utente.

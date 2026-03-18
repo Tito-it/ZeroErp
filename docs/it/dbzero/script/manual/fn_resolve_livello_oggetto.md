@@ -13,9 +13,7 @@
 > [script.fn_get_ruolo_sistema](/dbzero/script/funzioni/fn_get_ruolo_sistema)
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 08-03-2026)
 La funzione **`script.fn_resolve_livello_oggetto`** risolve il livello di accesso
 per un singolo model Django (`app_label` + `model_name`).

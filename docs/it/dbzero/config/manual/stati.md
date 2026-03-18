@@ -13,9 +13,7 @@
 La tabella **`config.stati`** censisce gli stati (o paesi), fornendo codici ufficiali e metadata utili per la gestione geografica e fiscale all’interno di Zero ERP.
 
 ---
-
 ### 🎯 Scopo Principale
-
 * **Elenco degli stati/paesi**
   Contiene tutte le nazioni riconosciute, con sigle e codici ISO standard (ISO 3166-1 alpha-2 e alpha-3) e prefisso telefonico internazionale.
 

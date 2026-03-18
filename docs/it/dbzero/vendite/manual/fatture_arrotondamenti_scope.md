@@ -11,8 +11,7 @@
 > • [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)  
 > • [config.valute](/dbzero/config/tabelle/valute)  
 >
-🎯 Scopo Principale
-
+### 🎯 Scopo Principale
 (latest review 10-02-2026)  
 `vendite.fatture_arrotondamenti_scope` memorizza il **saldo tecnico** degli
 arrotondamenti per **ambito di fatturazione**. Serve a produrre arrotondamenti

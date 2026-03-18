@@ -8,9 +8,7 @@
 > • [vendite.fatture_scadenze](/dbzero/vendite/tabelle/fatture_scadenze)   
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 15-01-26)
 `config.termini_pagamento` definisce i **termini (piani) di pagamento** riutilizzabili nel sistema. Ogni record rappresenta una regola parametrica per generare **rate/scadenze** a partire dalla data documento (o da altra data base), con controllo su intervalli, fine mese e ripartizione degli importi.
 

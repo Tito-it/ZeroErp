@@ -11,8 +11,7 @@
 >
 [script.fn_norm_via](/dbzero/script/funzioni/fn_norm_via)   
 >
-🎯 Scopo Principale
-
+### 🎯 Scopo Principale
 (latest review 30-12-25)
 Normalizzare automaticamente l'indirizzo dello stradario generale, combinando il prefisso toponomastico con la descrizione della via.
 

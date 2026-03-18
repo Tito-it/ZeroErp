@@ -14,9 +14,7 @@ Approfondimenti funzioni:
 La tabella **`config.conti_contabili`** definisce il piano dei conti utilizzabile per la contabilizzazione delle operazioni, distinguendo tra conti di **acquisto** e **vendita**, e supportando l’audit delle modifiche.
 
 ---
-
 ### 🎯 Scopo Principale
-
 * Mantenere il catalogo centralizzato dei **codici conto** con descrizioni e tipologia.
 * Supportare la validazione dei riferimenti contabili in altre tabelle (ad esempio `config.iva`).
 

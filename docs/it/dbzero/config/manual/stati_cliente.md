@@ -12,9 +12,7 @@ Approfondimento funzioni e view:
 > [script.view_clienti_istanza_states](/dbzero/script/view/view_clienti_istanza_states)
 
 ---
-
 ### 🎯 Scopo Principale
-
 La tabella `config.stati_cliente` definisce i possibili **stati funzionali** di un cliente all’interno di Zero ERP, utilizzati sia per il controllo dei processi (letture, fatturazione) sia per la logica di avanzamento (precontrattuale, attivo, sospeso, chiuso, ecc.).
 
 ---

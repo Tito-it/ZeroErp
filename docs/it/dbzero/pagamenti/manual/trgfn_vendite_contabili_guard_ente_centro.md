@@ -1,5 +1,4 @@
 ## 📘 Documentazione Concettuale – Funzione `pagamenti.trgfn_vendite_contabili_guard_ente_centro`
-
 ### 🎯 Scopo Principale
 Validare la coerenza tra `centro_riscossione_id` della testata e
 `ente_incasso_id` quando presente, e applicare i vincoli della compensazione.

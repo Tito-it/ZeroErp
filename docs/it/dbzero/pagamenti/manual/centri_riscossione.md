@@ -6,8 +6,7 @@
 >
 • [pagamenti.vendite_movimenti](/dbzero/pagamenti/tabelle/vendite_movimenti)  
 >
-🎯 Scopo Principale
-
+### 🎯 Scopo Principale
 La tabella **`pagamenti.centri_riscossione`** definisce le **origini di incasso**
 per i movimenti vendite (banca, posta, cassa, compensazioni, fondo fattura, ecc.).
 

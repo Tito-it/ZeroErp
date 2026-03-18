@@ -5,9 +5,7 @@
 • [vendite.ddt](/dbzero/vendite/tabelle/ddt)  
 
 ---
-
 ### 🎯 Scopo Principale
-
 La trigger function `vendite.trgfn_ddt_normalize()` completa i campi
 temporali minimi del DDT quando il numero documento e` presente.
 

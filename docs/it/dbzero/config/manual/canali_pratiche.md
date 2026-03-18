@@ -8,9 +8,7 @@ Approfondimento tabelle:
 > [pratiche.pratiche](/dbzero/pratiche/tabelle/pratiche) (campo `canale_origine_id`)
 
 ---
-
 ### 🎯 Scopo Principale
-
 La tabella `config.canali_pratiche` definisce i **canali di visibilita'** attraverso cui i flussi di una pratica possono essere esposti verso l'esterno. Non e' un flag booleano sulla pratica ma un **registry di interfacce** configurabile.
 
 ---

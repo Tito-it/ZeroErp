@@ -1,7 +1,5 @@
 ## 📘 Documentazione Concettuale – Funzione `vendite.fn_cancel_lotto_task_run`
-
 ### 🎯 Scopo Principale
-
 Chiude un task run impostando `task_stato = ANNULLATO`.
 
 ---

@@ -12,9 +12,7 @@ Approfondimento funzioni:
 > [dbops.fn_schema_match](/dbzero/dbops/funzioni/fn_schema_match)   
 > [dbops.fn_table_in_scope](/dbzero/dbops/funzioni/fn_table_in_scope)   
 >
-
-🎯 Scopo Principale
-
+### 🎯 Scopo Principale
 (latest review 10-01-26)
 La funzione **`dbops.fn_schema_in_scope(p_rule_target, p_schemas)`** è un **helper booleano** utilizzato dalle automazioni per verificare se uno schema specificato da una regola (`p_rule_target`) appartiene all’insieme di schemi effettivamente nell’ambito (`p_schemas`).
 

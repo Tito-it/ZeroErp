@@ -8,9 +8,7 @@
 > • [config.termini_pagamento](/dbzero/config/tabelle/termini_pagamento)   
 
 ---
-
 ### 🎯 Scopo Principale
-
 `vendite.fatture_scadenze` memorizza lo **schedule di pagamento** (rate/scadenze) della fattura come **snapshot** al momento dell’emissione, così da:
 
 * rendere **deterministiche** stampe e flussi verso il gestionale contabile;

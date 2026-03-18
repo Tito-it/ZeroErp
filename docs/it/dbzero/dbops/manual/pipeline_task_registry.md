@@ -7,8 +7,7 @@
 • [dbops.domini_task](/dbzero/dbops/manual/domini_task)  
 > • [dbops.pipeline_task_registry_impl](/dbzero/dbops/manual/pipeline_task_registry_impl)  
 >
-🎯 Scopo Principale
-
+### 🎯 Scopo Principale
 (latest review 08-02-2026)
 `dbops.pipeline_task_registry` e` il catalogo dei **task ammessi** per ciascun
 dominio pipeline. Impedisce l'esecuzione di task non registrati e centralizza

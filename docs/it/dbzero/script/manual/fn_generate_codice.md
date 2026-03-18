@@ -14,9 +14,7 @@ Approfondimento funzioni :
 La funzione **`script.fn_generate_codice(tipo TEXT)`** genera in modo parametrico un nuovo codice alfanumerico per uno specifico “tipo” (es. `ORDINE`, `CLIENTE`, `FATTURA`), basandosi sui parametri definiti nella tabella **`config.sistema_codici`**. Se la configurazione per quel tipo non esiste, viene sollevata un’eccezione.
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 04-02-26)
 * **Generazione di codici configurabili**
   Costruisce un codice concatenando un **prefisso**, un **separatore** e una **parte numerica** formattata, letti da **`config.sistema_codici`** in base al `codice_interno` passato in input.

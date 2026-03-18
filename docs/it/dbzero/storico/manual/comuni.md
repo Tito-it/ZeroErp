@@ -15,7 +15,6 @@ La tabella **`storico.comuni`** mantiene la cronologia completa dei record di **
 
 ---
 ### 🎯 Scopo Principale
-
 * **Audit Trail**: Conservare una traccia immutabile di ogni modifica e cancellazione applicata a `config.comuni`.
 * **Versioning dei record**: Permettere la ricostruzione dello stato storico di ogni comune in un dato momento.
 * **Query storiche**: Supportare interrogazioni basate su intervalli temporali grazie ai campi `valid_from` e `valid_to`.

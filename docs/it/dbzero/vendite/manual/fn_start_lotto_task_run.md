@@ -1,7 +1,5 @@
 ## 📘 Documentazione Concettuale – Funzione `vendite.fn_start_lotto_task_run`
-
 ### 🎯 Scopo Principale
-
 Apre un nuovo record runtime task su lotto in stato `IN_ESECUZIONE`.
 
 ---

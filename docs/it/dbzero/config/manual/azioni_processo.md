@@ -19,9 +19,7 @@ La tabella **`config.azioni_processo`** è il **registro delle azioni di process
 Le azioni rappresentano **operazioni puntuali** che richiedono abilitazione esplicita, indipendentemente dal livello di accesso sull'area. Anche un utente con TUTTO su vendite potrebbe non poter eseguire azioni critiche come la generazione massiva di fatture.
 
 ---
-
 ### 🎯 Scopo Principale
-
 * Catalogare le **azioni di processo** che richiedono abilitazione esplicita.
 * Raccordare il **codename Django** (`Meta.permissions` → `auth_permission`) con la gestione profili.
 * Segnalare le azioni **pericolose** che richiedono conferma aggiuntiva nella UI.

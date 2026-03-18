@@ -1,7 +1,5 @@
 ## 📘 Documentazione Concettuale – Trigger Function `vendite.trgfn_fatture_numerata_non_annulabile`
-
 ### 🎯 Scopo Principale
-
 Blocca il passaggio a stato `ANNULLATA` per una fattura gia` numerata.
 
 ---

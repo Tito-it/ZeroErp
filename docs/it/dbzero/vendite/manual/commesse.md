@@ -13,8 +13,7 @@
 • [vendite.fn_get_or_create_commessa](/dbzero/vendite/funzioni/fn_get_or_create_commessa)  
 > • [vendite.fn_get_commessa_stato](/dbzero/vendite/funzioni/fn_get_commessa_stato)  
 >
-🎯 Scopo Principale
-
+### 🎯 Scopo Principale
 (latest review 26-02-2026)  
 `vendite.commesse` e` la testata di governo del ciclo operativo
 `sorgente -> commessa -> commesse_attivita -> attivita_fatturabili`.

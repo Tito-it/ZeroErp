@@ -12,9 +12,7 @@ Approfondimenti funzioni:
 >  [dbops.fn_get_or_create_session_tx_id](/dbzero/dbops/funzioni/fn_get_or_create_session_tx_id)   
 
 ---
-
 ### 🎯 Scopo Principale
-
 Recuperare l’ID del tipo di contatto corrispondente a un **codice interno** (`cod_int_tipo_contatto`), garantendo al contempo il logging e la tracciabilità tramite un `tx_id` di sessione.
 
 ---

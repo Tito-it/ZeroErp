@@ -10,9 +10,7 @@ Approfondimento Tabelle:
 La funzione **`config.fn_get_iva_override(p_codice_iva TEXT, p_stato_id INTEGER)`** restituisce i dati completi della aliquota IVA (codice, descrizioni, natura, conti) per un determinato codice IVA e Stato, applicando eventuali override specifici per Stato definiti in `config.iva_stati`.
 
 ---
-
 ### 🎯 Scopo Principale
-
 * **Recupero unificato**
   Ottenere in un’unica chiamata sia i valori base da `config.iva` sia gli override da `config.iva_stati` se presenti.
 * **Override per Stato**

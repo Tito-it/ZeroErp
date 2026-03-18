@@ -12,9 +12,7 @@
 [`script.fn_guard_utility_tipo_ruolo`](/dbzero/script/manual/fn_guard_utility_tipo_ruolo)
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 16-02-2026)
 La tabella `config.utilities_tipi_ruolo` definisce una **whitelist opzionale** dei `tipo_ruolo` ammessi per ciascuna `utility`.
 

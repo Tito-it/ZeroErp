@@ -16,9 +16,7 @@ Approfondimento view:
 La view **`script.vw_stradario_esteso`** offre una rappresentazione denormalizzata delle vie, combinando i dati base di **`stradario_generale`** con le relative informazioni di tipologia toponomastica e stato, per semplificare le query di indirizzo.
 
 ---
-
 ### 🎯 Scopo Principale
-
 * **Aggregazione logica**: unire in un’unica sorgente i dati di via, toponomastica e stato, evitando join ripetuti nei client e nelle applicazioni.
 * **Pulizia dati**: fornire alias chiari (`id_via`, `id_toponomastica`, `tipo_toponimo`, `sigla_stato`, `nome_strada`) per facilitare l’interpretazione dei risultati.
 * **Performance**: ridurre il carico di join runtime raggruppando più tabelle in un’unica view materializzata (se necessario).

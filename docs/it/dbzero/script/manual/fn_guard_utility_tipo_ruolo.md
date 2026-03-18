@@ -9,9 +9,7 @@
 > [`config.tipi_ruoli`](/dbzero/config/tabelle/tipi_ruoli)
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 16-02-2026)
 `script.fn_guard_utility_tipo_ruolo` valida la coerenza tra `utility_id` e `tipo_ruolo_id` con semantica:
 

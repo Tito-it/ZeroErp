@@ -3,9 +3,7 @@
 La tabella **`config.sistema_codici`** definisce le regole per la generazione automatica di codici alfanumerici, utilizzati in vari ambiti (ordini, clienti, fatture, ecc.).
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 18-01-26)
 * **Definizione del formato codice**
   Consente di specificare per ogni tipo di codice (`codice_interno`) un **prefisso**, un **separatore** e la **lunghezza numerica** totale, rendendo parametrica la struttura dei codici generati.

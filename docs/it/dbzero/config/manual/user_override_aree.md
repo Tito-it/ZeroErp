@@ -17,9 +17,7 @@ Tabelle correlate:
 La tabella **`config.user_override_aree`** consente di **sovrascrivere il profilo del reparto** per un singolo utente su un'area funzionale.
 
 ---
-
 ### 🎯 Scopo Principale
-
 * Gestire **eccezioni individuali** al profilo ereditato dal reparto.
 * Supportare **deleghe temporanee** tramite validità temporale (`valido_dal` / `valido_al`).
 * Documentare la **motivazione** dell'override per audit e governance.

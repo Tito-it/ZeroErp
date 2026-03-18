@@ -11,10 +11,7 @@
 >
 • [`vendite.trgfn_tipi_indirizzi_only_allowed`](/dbzero/vendite/funzioni/trgfn_tipi_indirizzi_only_allowed)
 >
-
-
-🎯 Scopo Principale
-
+### 🎯 Scopo Principale
 `vendite.fatture_indirizzi` **semplifica la gestione degli indirizzi di fattura** e garantisce la **ristampa conforme** nel tempo tramite **snapshot** JSON dell’indirizzo al momento dell’emissione.
 
 Per ogni fattura puoi memorizzare **al massimo un indirizzo per tipo** (es. fatturazione, spedizione, fornitura, residenza), evitando duplicazioni e mantenendo la storicità indipendente da successive modifiche anagrafiche.

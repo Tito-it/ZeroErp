@@ -15,9 +15,7 @@ Tabelle correlate:
 La tabella **`config.area_model_overrides`** è una **tabella tecnica di mapping** che consente di riassegnare un model Django a un'area funzionale diversa dal suo schema DB.
 
 ---
-
 ### 🎯 Scopo Principale
-
 * Gestire le **eccezioni** al mapping automatico area = schema.
 * Consentire che un model appartenga a un'area diversa senza spostarlo fisicamente di schema.
 

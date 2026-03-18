@@ -22,9 +22,7 @@ Questa tabella è stata introdotta a seguito di problemi riscontrati durante la 
 La soluzione è stata quindi la creazione di un meccanismo automatico di *hardening* (irrobustimento) per mantenere la coerenza dei permessi delle funzioni critiche nel tempo, anche dopo aggiornamenti, restore o clonazioni del database.
 
 ---
-
 ### 🎯 Scopo Principale
-
 * **Centralizzare l'elenco delle funzioni "sensibili"** che richiedono owner dedicato.
 * **Garantire automaticamente la corretta assegnazione dei permessi**, tramite `dbops.fn_sync_functions_owner()`.
 * **Prevenire errori operativi o di sicurezza** derivanti da modifiche accidentali o ripristini non controllati.

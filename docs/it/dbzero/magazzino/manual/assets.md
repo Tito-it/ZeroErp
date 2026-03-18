@@ -19,9 +19,7 @@ La tabella **`magazzino.assets`** rappresenta l’**istanza fisica di un bene du
 Ogni riga descrive **un singolo asset fisico**, collegato ad un articolo di catalogo, ad uno stato del ciclo di vita e, opzionalmente, a un cliente/contratto/magazzino/ubicazione.
 
 ---
-
 ### 🎯 Scopo Principale
-
 * Tracciare a livello puntuale **tutti gli asset fisici** gestiti da Zero ERP.
 * Collegare l’asset a:
 

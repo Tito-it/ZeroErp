@@ -15,9 +15,7 @@ La funzione **`dbops.fn_find_file_usage(p_target_table regclass)`** individua tu
 - La colonna PK referenziata
 
 ---
-
 ### 🎯 Scopo Principale
-
 * **Analisi d’impatto**  
   Identificare rapidamente tutte le relazioni di FK verso una tabella, utile per valutare dipendenze e conseguenze di modifiche, cancellazioni o refactoring di schema.
 

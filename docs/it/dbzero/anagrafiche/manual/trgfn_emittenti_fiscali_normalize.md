@@ -11,9 +11,7 @@
 [config.sistema_codici](/dbzero/config/manual/sistema_codici)
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 12-03-2026)
 La trigger function **`anagrafiche.trgfn_emittenti_fiscali_normalize()`** e'
 attualmente una **no-op controllata**: non modifica `NEW`, ma mantiene

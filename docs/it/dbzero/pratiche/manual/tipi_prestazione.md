@@ -9,9 +9,7 @@ Approfondimento tabelle:
 > [pratiche.regole_generazione](/dbzero/pratiche/tabelle/regole_generazione)
 
 ---
-
 ### 🎯 Scopo Principale
-
 La tabella `pratiche.tipi_prestazione` definisce il **catalogo dei tipi di pratica** gestibili dal sistema. Ogni pratica ha un `tipo_prestazione_id` che ne determina la natura e il workflow applicabile.
 
 ---

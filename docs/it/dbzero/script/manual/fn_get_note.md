@@ -15,9 +15,7 @@
 > • [`acquisti.fn_get_acquisti_note`](/dbzero/acquisti/funzioni/fn_get_acquisti_note)    
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 14-01-26)
 `script.fn_get_note` e' una funzione generica che **normalizza la lettura delle note** da una tabella `*.note` partizionata.  
 Restituisce sempre lo stesso set di colonne con **stile** e **lingua** risolti da `config.note_stili` e `config.lingue`.

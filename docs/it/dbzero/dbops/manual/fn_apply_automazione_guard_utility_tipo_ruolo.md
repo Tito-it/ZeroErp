@@ -1,7 +1,5 @@
 ## 📘 Documentazione Concettuale – Funzione `dbops.fn_apply_automazione_guard_utility_tipo_ruolo`
-
 ### 🎯 Scopo Principale
-
 La funzione **`dbops.fn_apply_automazione_guard_utility_tipo_ruolo(p_exec_mode, p_dry_run)`**
 crea in modo idempotente i trigger di guardia utility/ruolo sulle tabelle
 configurate in `dbops.automazione_guard_utility_tipo_ruolo`.

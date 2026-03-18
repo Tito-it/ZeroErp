@@ -6,9 +6,7 @@
 > [fn_calcola_tempo_netto_da_a](/dbzero/pratiche/manual/fn_calcola_tempo_netto_da_a)
 
 ---
-
 ### 🎯 Scopo Principale
-
 Funzione **check** (pura, STABLE): confronta il tempo netto trascorso tra due flussi con la formula tempo configurata. Restituisce lo stato temporale corrente.
 
 ---

@@ -10,9 +10,7 @@ Approfondimento tabelle:
 > [config.stati_doc_ddt](/dbzero/config/tabelle/stati_doc_ddt)   
 
 ---
-
 ### 🎯 Scopo Principale
-
 La tabella **`vendite.ddt`** rappresenta la **testata** dei Documenti di Trasporto. È il fulcro del ciclo logistico tra **Ordini** (evasione/spedizione) e **Fatture** (conto vendita / accompagnatoria).
 
 * Traccia i **metadati di spedizione** (data, mittente/destinatario, causale, vettore).

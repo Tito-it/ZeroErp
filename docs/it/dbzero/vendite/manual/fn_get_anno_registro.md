@@ -11,8 +11,7 @@
 >
 • [vendite.fn_get_next_progressivo](/dbzero/vendite/funzioni/fn_get_next_progressivo)   
 >
-🎯 Scopo Principale
-
+### 🎯 Scopo Principale
 (latest review 26-01-2026)
 La funzione **`vendite.fn_get_anno_registro`** calcola l’anno di riferimento
 per la numerazione dei registri con `reset_policy = ANNUALE`.

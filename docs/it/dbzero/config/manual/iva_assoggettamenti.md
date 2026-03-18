@@ -9,9 +9,7 @@
 > • [config.iva_natura](/dbzero/config/tabelle/iva_natura)    
 
 ---
-
 ### 🎯 Scopo Principale
-
 `config.iva_assoggettamenti` è il **dominio** degli assoggettamenti IVA (causali/fattispecie: esente, non imponibile, reverse charge, fuori campo, ecc.).
 Viene referenziato da `config.iva.assoggettamento_id` e, opzionalmente, da `config.iva_stati.assoggettamento_id_override`, consentendo di separare la **motivazione fiscale** dall’aliquota e dalla natura.
 

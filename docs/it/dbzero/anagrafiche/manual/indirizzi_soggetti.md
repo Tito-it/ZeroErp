@@ -33,9 +33,7 @@ La tabella **`anagrafiche.indirizzi_soggetti`** gestisce gli **indirizzi associa
 * è pensata per indirizzi **strutturali e identitari** del soggetto (es. residenza, domicilio fiscale, sede legale primaria).
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 16-12-25)
 * **Associazione soggetto → indirizzo**
   Ogni soggetto può avere uno o più indirizzi, distinti per **tipo indirizzo** (RES, DOMFISC, SEDELEG, …), indipendentemente dai ruoli operativi che assumerà nel sistema.

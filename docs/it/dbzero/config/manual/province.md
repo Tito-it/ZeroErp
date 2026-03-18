@@ -11,9 +11,7 @@
 La tabella **`config.province`** censisce le province all’interno di uno stato, fornendo informazioni amministrative, codici ISTAT e dati specifici per il calcolo di accise.
 
 ---
-
 ### 🎯 Scopo Principale
-
 * **Elenco delle province**
   Contiene tutte le province di uno stato (es. in Italia: RM, MI, FI), con sigla e nome descrittivo.
 

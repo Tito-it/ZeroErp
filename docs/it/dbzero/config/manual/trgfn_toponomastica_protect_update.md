@@ -14,9 +14,7 @@ Approfondimento funzioni:
 La trigger function **`config.trgfn_toponomastica_protect_update()`** impedisce modifiche non consentite sul catalogo delle toponomastiche, bloccando l’**UPDATE** di `descrizione` quando la voce è già in uso in **`config.stradario_generale`**.
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 02-01-26)
 * **Protezione semantica**: garantire coerenza tra topografia e stradario evitando rinominazioni dirette di toponomastiche già in uso.
 * **Manutenzione controllata**: consentire correzioni solo tramite GUC di manutenzione e procedura dedicata.

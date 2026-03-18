@@ -31,9 +31,7 @@ AS $$
 ...implementazione completa con dblink_exec...
 $$;
 ```
-
 ### 🎯 Scopo Principale
-
 (last review 28-12-25)
 * **Entrypoint unificato** per error handling: evita duplicazioni di log e raise in trigger, procedure e funzioni.
 * **Logging remoto sicuro**: usa `dblink_exec` su connessione permanente fornita da `script.fn_ensure_logconn()`, per isolare il log dall’eventuale rollback della sessione principale.

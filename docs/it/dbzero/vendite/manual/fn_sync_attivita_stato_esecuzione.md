@@ -1,9 +1,7 @@
 ## 📘 Documentazione Concettuale – Funzione `vendite.fn_sync_attivita_stato_esecuzione`
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 22-02-2026)
 Sincronizza `stato_esecuzione` delle righe `attivita_fatturabili` collegate a un lotto attività.
 

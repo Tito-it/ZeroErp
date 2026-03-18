@@ -16,8 +16,7 @@
 > • [vendite.fn_set_arrotondamento_scope](/dbzero/vendite/funzioni/fn_set_arrotondamento_scope)  
 > • [vendite.fn_sync_contabili_fondo_fattura](/dbzero/vendite/funzioni/fn_sync_contabili_fondo_fattura)  
 >
-🎯 Scopo Principale
-
+### 🎯 Scopo Principale
 La funzione **`vendite.fn_ricalcola_totali_fattura()`** ricalcola i totali
 sulla testata fattura a partire dai **riepiloghi IVA** e dai **fondi fattura**,
 applicando le regole di arrotondamento definite per **emittente/utility**.

@@ -1,5 +1,4 @@
 ## 📘 Documentazione Concettuale – Funzione `pagamenti.trgfn_enti_incasso_guard_psp`
-
 ### 🎯 Scopo Principale
 Garantire la coerenza applicativa dei record `pagamenti.enti_incasso` quando il canale e` di tipo `PSP`.
 

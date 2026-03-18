@@ -13,9 +13,7 @@
 • [vendite.trgfn_contratti_normalize](/dbzero/vendite/funzioni/trgfn_contratti_normalize)    
 > • [vendite.trgfn_contratti_gen_codice](/dbzero/vendite/funzioni/trgfn_contratti_gen_codice)    
 >
-
-🎯 Scopo Principale
-
+### 🎯 Scopo Principale
 (latest review 20/01/26)
 La funzione `vendite.trgfn_contratti_snapshot_precontrattuali()` crea lo **snapshot** dei dati
 precontrattuali **solo alla creazione del contratto**.  

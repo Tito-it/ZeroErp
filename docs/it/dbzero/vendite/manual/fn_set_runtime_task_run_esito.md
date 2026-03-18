@@ -1,7 +1,5 @@
 ## 📘 Documentazione Concettuale – Funzione `vendite.fn_set_runtime_task_run_esito`
-
 ### 🎯 Scopo Principale
-
 Helper condiviso per applicare l'esito runtime di un task-run
 nei domini `LOTTO` e `ATTIVITA_FATTURABILI`.
 

@@ -13,9 +13,7 @@ Approfondimento guide:
 
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 07-01-26)
 * **Eseguire in modo schedulato** l’orchestrazione delle **automazioni ATTIVO** (soft-delete / vincoli di coerenza “attivo”) incapsulando la chiamata a `dbops.fn_run_automations_attivo(...)` in un wrapper **robusto** con **lock anti-overlap** e **logging strutturato**.
 

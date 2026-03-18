@@ -14,9 +14,7 @@ Approfondimento funzioni:
 > [script.trgfn_lock_columns](/dbzero/script/funzioni/trgfn_lock_columns)
 
 ---
-
 ### 🎯 Scopo Principale
-
 La funzione **`dbops.fn_run_automations_drop_lock_trg(p_exec_mode, p_schemas, p_dry_run)`**
 elimina i trigger **LOCK_COLUMNS** obsoleti, quando **non esistono colonne da bloccare**
 (`codice_interno` assente e nessuna colonna extra attiva in `automation_lock_columns`).

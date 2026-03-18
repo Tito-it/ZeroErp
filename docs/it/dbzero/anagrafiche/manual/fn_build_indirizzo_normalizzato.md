@@ -1,7 +1,5 @@
 # fn_build_indirizzo_normalizzato
-
-## Scopo
-
+### 🎯 Scopo Principale
 Centralizza **tutta** la logica di normalizzazione degli indirizzi fisici.
 E' la **unica source of truth**: il trigger `trgfn_indirizzi_dettaglio_normalize`
 la chiama e assegna i risultati (zero logica nel trigger). Il backend Python

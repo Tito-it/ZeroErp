@@ -14,9 +14,7 @@ Approfondimento funzioni:
 > [script.trgfn_lock_columns](/dbzero/script/funzioni/trgfn_lock_columns)    
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 10-01-26)
 La funzione **`dbops.fn_run_automations_lock_columns(p_exec_mode, p_schemas, p_dry_run)`**
 automatizza la creazione (o la simulazione) dei trigger **LOCK_COLUMNS** sulle tabelle nell'ambito,

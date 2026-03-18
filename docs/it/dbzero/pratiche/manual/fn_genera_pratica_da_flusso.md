@@ -14,9 +14,7 @@ Trigger:
 `trg_flussi_z90_generazione_upd` (AFTER UPDATE OF stato_id su flussi)
 
 ---
-
 ### 🎯 Scopo Principale
-
 La funzione **`pratiche.fn_genera_pratica_da_flusso`** e' il motore della **generazione cross-pratica**: crea una nuova pratica a partire da un flusso completato, secondo una regola configurata in `pratiche.regole_generazione`.
 
 La pratica generata eredita emittente, soggetto e priorita' dalla pratica sorgente, ma con il tipo_prestazione definito dalla regola di destinazione.

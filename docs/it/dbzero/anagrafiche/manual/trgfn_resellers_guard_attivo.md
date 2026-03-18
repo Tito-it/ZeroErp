@@ -7,8 +7,7 @@
 • [anagrafiche.resellers](/dbzero/anagrafiche/tabelle/resellers)  
 > • [anagrafiche.resellers_billing_account](/dbzero/anagrafiche/tabelle/resellers_billing_account)  
 >
-🎯 Scopo Principale
-
+### 🎯 Scopo Principale
 (latest review 26-01-2026)
 La funzione **`anagrafiche.trgfn_resellers_guard_attivo()`** impedisce la
 **disattivazione** di un reseller quando esistono mapping verso

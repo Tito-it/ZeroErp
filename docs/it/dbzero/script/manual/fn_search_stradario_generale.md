@@ -1,7 +1,5 @@
 # fn_search_stradario_generale
-
-## Scopo
-
+### 🎯 Scopo Principale
 Ricerca vie su `config.stradario_generale` (senza comune/CAP).
 Serve per autocomplete "via nuova": l'utente cerca una via in tutta Italia,
 poi sceglie comune e CAP separatamente.

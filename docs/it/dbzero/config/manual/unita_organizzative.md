@@ -13,9 +13,7 @@ Approfondimenti funzioni:
 > [script.trgfn_audit_data_user_generic](/dbzero/script/funzioni/trgfn_audit_data_user_generic)
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 07-01-26)
 La tabella **`config.unita_organizzative`** definisce il catalogo dei reparti/uffici
 utilizzabili nell'anagrafica (es. Amministrazione, Tecnico, Commerciale).

@@ -19,9 +19,7 @@
 > • [script.trgfn_storico_generic](/dbzero/script/funzioni/trgfn_storico_generic)   
  
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 10-01-26)
 `anagrafiche.soggetti_ruoli_conti_bancari` gestisce l’**associazione tra un Ruolo** di un soggetto (CLIENTE, FORNITORE, GESTORE, …) e uno o più **conti bancari (IBAN)**, distinguendo l’**uso** del conto: `INCASSO`, `PAGAMENTO`, `RIMBORSO`, `GENERICO`.
 

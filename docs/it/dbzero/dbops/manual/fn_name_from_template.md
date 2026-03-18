@@ -16,9 +16,7 @@ Approfondimento tabelle:
 > [`dbops.automation_overrides_cols`](/dbzero/dbops/tabelle/automation_overrides_cols)   
 
 ---
-
 ### 🎯 Scopo Principale
-
 La funzione **`fn_name_from_template`** genera in modo consistente un **nome normalizzato** (per trigger, constraint, indici, ecc.) a partire da un **template testuale** con *placeholder* e da un set di parametri (schema, tabella, parent/child, nome FK, operazione).
 
 ---

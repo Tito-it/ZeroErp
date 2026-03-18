@@ -11,8 +11,7 @@
 >
 [config.trgfn_stradario_generale_normalize](/dbzero/config/funzioni/trgfn_stradario_generale_normalize)   
 >
-🎯 Scopo Principale
-
+### 🎯 Scopo Principale
 (latest review 30-12-25)
 Forzare la **rinormalizzazione** dei record di `config.stradario_generale` collegati a un toponimo aggiornato, senza modificare l'ID dei record.
 

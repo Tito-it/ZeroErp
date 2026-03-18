@@ -15,7 +15,6 @@
 > • [anagrafiche.vw_indirizzi_resolved_all](/dbzero/anagrafiche/views/vw_indirizzi_resolved_all)  
 
 ---
-
 ### 🎯 Scopo Principale
 (latest review 15-02-26)
 Restituisce tutti gli **indirizzi** associati direttamente a un **soggetto** (`anagrafiche.indirizzi_soggetti`), utilizzando come sorgente la vista

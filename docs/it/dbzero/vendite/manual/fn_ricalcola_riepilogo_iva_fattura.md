@@ -12,9 +12,7 @@
 • [vendite.fn_ricalcola_riepiloghi_iva_lotto](/dbzero/vendite/funzioni/fn_ricalcola_riepiloghi_iva_lotto)    
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 10-02-2026)  
 La funzione **`vendite.fn_ricalcola_riepilogo_iva_fattura()`** ricalcola i riepiloghi
 IVA per una singola fattura, eliminando i valori esistenti e rigenerandoli dalle

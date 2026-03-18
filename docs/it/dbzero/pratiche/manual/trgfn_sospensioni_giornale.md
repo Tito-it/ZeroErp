@@ -6,9 +6,7 @@
 > [pratiche.giornale](/dbzero/pratiche/manual/giornale)
 
 ---
-
 ### 🎯 Scopo Principale
-
 Due trigger functions per registrare nel giornale gli eventi di sospensione e riattivazione.
 
 ---

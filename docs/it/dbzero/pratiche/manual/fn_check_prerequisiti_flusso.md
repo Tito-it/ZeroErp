@@ -14,9 +14,7 @@ Funzioni collegate:
 [pratiche.fn_guard_prerequisiti_flusso](fn_guard_prerequisiti_flusso.md)
 
 ---
-
 ### 🎯 Scopo Principale
-
 La funzione **`pratiche.fn_check_prerequisiti_flusso`** e' una **pure check** (`fn_check_*`): verifica se tutti i prerequisiti di un template flusso sono soddisfatti per una data pratica.
 
 Ritorna una **riga per ogni prerequisito** con un flag `soddisfatto` (boolean). Non solleva eccezioni — il chiamante decide come gestire i prerequisiti mancanti.

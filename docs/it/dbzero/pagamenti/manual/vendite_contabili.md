@@ -10,8 +10,7 @@
 > • [pagamenti.vendite_contabili_righe](/dbzero/pagamenti/tabelle/vendite_contabili_righe)  
 > • [pagamenti.vendite_movimenti](/dbzero/pagamenti/tabelle/vendite_movimenti)  
 >
-🎯 Scopo Principale
-
+### 🎯 Scopo Principale
 La tabella **`pagamenti.vendite_contabili`** rappresenta la **testata contabile**
 per l’aggregazione di movimenti vendite. Serve a raggruppare movimenti per
 centro riscossione e data contabile, con eventuale dettaglio del canale

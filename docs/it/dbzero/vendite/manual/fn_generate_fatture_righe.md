@@ -13,8 +13,7 @@
 • [vendite.fn_get_or_create_fattura_header](/dbzero/vendite/funzioni/fn_get_or_create_fattura_header)   
 > • [vendite.fn_group_attivita_fatturabili](/dbzero/vendite/funzioni/fn_group_attivita_fatturabili)   
 >
-🎯 Scopo Principale
-
+### 🎯 Scopo Principale
 (latest review 07-02-2026)  
 (Deprecate-trasferite in django)  
 La funzione **`vendite.fn_generate_fatture_righe()`** genera le righe fattura

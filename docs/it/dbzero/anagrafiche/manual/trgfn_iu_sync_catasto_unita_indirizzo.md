@@ -14,7 +14,6 @@
 `anagrafiche.trg_iu_z40_sync_catasto_unita_indirizzo_aft_ins_upd`   
 
 ---
-
 ### 🎯 Scopo Principale
 (latest review 15-12-25)
 La trigger function **`anagrafiche.trgfn_iu_sync_catasto_unita_indirizzo()`** garantisce che, quando una istanza (`anagrafiche.istanze_utilities`) dispone di:

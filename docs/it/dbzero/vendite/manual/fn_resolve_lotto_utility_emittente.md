@@ -1,9 +1,7 @@
 ## 📘 Documentazione Concettuale – Funzione `vendite.fn_resolve_lotto_utility_emittente`
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 22-02-2026)
 Helper condiviso per risolvere e validare `utility_id` ed `emittente_soggetto_ruolo_id` nei flussi lotto (`fatturazione_lotti` e `attivita_fatturabili_lotti`).
 

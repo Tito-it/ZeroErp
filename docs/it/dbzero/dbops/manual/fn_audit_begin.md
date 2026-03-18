@@ -14,9 +14,7 @@ Approdondimento funzioni:
 > [`dbops.fn_audit_log_once`](/dbzero/dbops/funzioni/fn_audit_log_once)   
 
 ---
-
 ### 🎯 Scopo Principale
-
 La funzione **`fn_audit_begin`** avvia una nuova sessione di auditing registrando un evento iniziale nella tabella `dbops.audit_log`. È utilizzata come punto di partenza per tracciare processi o automazioni che richiedono visibilità sull’intero ciclo di esecuzione.
 
 ---

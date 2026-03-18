@@ -1,7 +1,5 @@
 ## 📚 Documentazione concettuale - Tabella `dbops.fk_index_policy`
-
 ### 🎯 Scopo Principale
-
 (latest review 16-01-26)
 La tabella **`dbops.fk_index_policy`** definisce una **policy centralizzata** per la gestione degli index sulle foreign key, consentendo di abilitare o disabilitare la creazione/uso di indici per specifici vincoli referenziali.
 

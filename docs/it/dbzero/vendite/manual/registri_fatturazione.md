@@ -10,8 +10,7 @@
 > • [vendite.tipi_doc_fiscale_registri](/dbzero/vendite/manual/tipi_doc_fiscale_registri)  
 > • [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)  
 >
-🎯 Scopo Principale
-
+### 🎯 Scopo Principale
 (latest review 26-01-2026)
 `vendite.registri_fatturazione` definisce i **registri fiscali di emissione**:
 serie, regole di reset e collegamento all’emittente fiscale. Ogni fattura

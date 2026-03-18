@@ -11,8 +11,7 @@ Approfondimento tabelle:
 Approfondimento funzioni:
 > [dbops.fn_seed_automazione_overlap](/dbzero/dbops/funzioni/fn_seed_automazione_overlap)    
 >
-🎯 Scopo Principale
-
+### 🎯 Scopo Principale
 (latest review 19-01-26)
 La funzione **`dbops.fn_apply_automazione_overlap(p_exec_mode, p_dry_run)`** applica
 i vincoli `EXCLUDE USING gist` alle tabelle marcate `active=true` in

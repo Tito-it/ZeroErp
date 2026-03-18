@@ -13,9 +13,7 @@
 [anagrafiche.trgfn_risorse_umane_notify_cambio_reparto](/dbzero/anagrafiche/funzioni/trgfn_risorse_umane_notify_cambio_reparto)
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 10-03-2026)
 La funzione **`anagrafiche.fn_notify_cambio_reparto()`** emette una notifica
 PostgreSQL sul canale `cambio_reparto` quando una risorsa umana viene spostata

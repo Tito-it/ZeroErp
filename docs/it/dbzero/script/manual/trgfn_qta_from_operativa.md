@@ -6,9 +6,7 @@ CREATE OR REPLACE FUNCTION script.trgfn_qta_from_operativa()
 RETURNS trigger
 LANGUAGE plpgsql
 ```
-
 ### 🎯 Scopo Principale
- 
 Calcolare e garantire la **coerenza della quantità in UoM base (`NEW.qta`)** a partire dalla **sorgente operativa** (`NEW.uom_operativa_id`, `NEW.qta_operativa`) sulle righe documentali (es. `vendite.ddt_righe`). La funzione:
 
 * usa la **UoM operativa** e la **quantità operativa** come fonte verità;

@@ -13,9 +13,7 @@ Approfondimenti viste:
 [anagrafiche.vw_indirizzi_dettaglio](/dbzero/anagrafiche/viste/vw_indirizzi_dettaglio)    
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 20-12-25)
 La vista **`anagrafiche.vw_indirizzi_resolved_soggetto`** fornisce una rappresentazione **normalizzata e pronta all’uso** degli indirizzi **associati direttamente a un soggetto**, indipendentemente dai suoi ruoli.
 

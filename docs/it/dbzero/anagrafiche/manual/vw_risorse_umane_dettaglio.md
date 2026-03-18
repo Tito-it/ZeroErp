@@ -10,9 +10,7 @@ Approfondimenti tabelle:
 > [config.unita_organizzative](/dbzero/config/tabelle/unita_organizzative)  
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 07-01-26)
 La vista **`anagrafiche.vw_risorse_umane_dettaglio`** fornisce una lettura
 unificata delle risorse umane con:

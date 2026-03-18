@@ -11,9 +11,7 @@ Approfondimento tabelle:
 Approfondimento funzioni:
 > [dbops.fn_apply_automazione_overlap](/dbzero/dbops/funzioni/fn_apply_automazione_overlap)    
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 19-01-26)
 La funzione **`dbops.fn_seed_automazione_overlap(p_schemas)`** popola (o aggiorna)
 `dbops.automazione_overlap` rilevando automaticamente le tabelle con periodo di validita

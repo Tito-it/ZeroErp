@@ -10,9 +10,7 @@ Approfondimenti tabelle:
 > [config.titoli_cortesia](/dbzero/config/tabelle/titoli_cortesia)  
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 20-02-26)
 La vista **`anagrafiche.vw_soggetti_ruoli_dettaglio`** fornisce una lettura
 generale dei ruoli soggetto, partendo da `soggetto_ruolo_id` e includendo:

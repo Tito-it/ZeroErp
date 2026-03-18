@@ -12,9 +12,7 @@
 • [vendite.fn_get_tipo_doc_fiscale_id](/dbzero/vendite/funzioni/fn_get_tipo_doc_fiscale_id)   
 > • [vendite.fn_get_valuta_id](/dbzero/vendite/funzioni/fn_get_valuta_id)   
 >
-
-🎯 Scopo Principale
-
+### 🎯 Scopo Principale
 (latest review 21/01/2026)
 La funzione `vendite.trgfn_attivita_fatturabili_normalize()` applica una **normalizzazione minima**
 su `vendite.attivita_fatturabili` per garantire coerenza **temporale** e **tecnica** dei dati

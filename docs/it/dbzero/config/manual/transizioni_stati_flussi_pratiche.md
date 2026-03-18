@@ -12,9 +12,7 @@
 [pratiche.trgfn_flussi_guard_transizione](/dbzero/pratiche/manual/trgfn_flussi_guard_transizione)
 
 ---
-
 ### 🎯 Scopo Principale
-
 `config.transizioni_stati_flussi_pratiche` definisce la **matrice delle transizioni ammesse** tra stati dei flussi pratica. Il trigger guard `trgfn_flussi_guard_transizione` consulta questa tabella per bloccare qualsiasi transizione non configurata.
 
 ---

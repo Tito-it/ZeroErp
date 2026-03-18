@@ -19,7 +19,6 @@ La funzione **`script.fn_get_conto_bancario_predefinito(soggetto_ruolo_id, uso)`
 Se non esiste alcun conto compatibile per l’uso richiesto, la funzione tenta un **fallback automatico** su `uso = 'GENERICO'`. Se nemmeno in questo caso trova un candidato, restituisce `NULL` (nessun conto disponibile).
 
 ---
-
 ### 🎯 Scopo Principale
 (latest review 01-12-25)
 * **Incapsulare la logica di selezione del conto**

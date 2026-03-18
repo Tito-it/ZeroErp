@@ -19,8 +19,7 @@
 [dbops.fn_apply_cleanup_at](/dbzero/dbops/funzioni/fn_apply_cleanup_at)   
 >* [dbops.fn_purge_cleanup_expired](/dbzero/dbops/funzioni/fn_purge_cleanup_expired)   
 >
-🎯 Scopo Principale
-
+### 🎯 Scopo Principale
 (latest review 07-02-26)
 La funzione **`dbops.fn_run_automations_cleanup(p_exec_mode, p_schemas, p_dry_run)`** è l’orchestratore del framework di cleanup basato su `cleanup_at`.
 

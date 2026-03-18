@@ -1,5 +1,4 @@
 ## 📘 Documentazione Concettuale – Funzione `pagamenti.trgfn_vendite_contabili_lotti_guard_compensazione`
-
 ### 🎯 Scopo Principale
 Impedire l'associazione di testate contabili di compensazione alla tabella
 ponte dei lotti (`pagamenti.vendite_contabili_lotti`).

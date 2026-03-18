@@ -12,9 +12,7 @@
 [script.fn_check_user_emittente_scope](/dbzero/script/funzioni/fn_check_user_emittente_scope)
 
 ---
-
-### Scopo Principale
-
+### 🎯 Scopo Principale
 (latest review 08-03-2026)
 La trigger function **`script.trgfn_guard_emittente_scope`** implementa il
 defense-in-depth: blocca INSERT/UPDATE se l'utente corrente non ha visibilità

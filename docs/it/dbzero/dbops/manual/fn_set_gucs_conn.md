@@ -1,7 +1,5 @@
 ## Funzione `dbops.fn_set_gucs_conn`
-
 ### 🎯 Scopo Principale
-
 (latest review 29-12-25)
 La funzione `dbops.fn_set_gucs_conn` serve a impostare in modo centralizzato le **GUC (Grand Unified Configuration)** custom di PostgreSQL per la **connessione corrente**.
 Queste variabili sono usate da trigger, funzioni e policy RLS per conoscere l’utente applicativo e il contesto di esecuzione (es. sessione Django, gruppi, tenant).

@@ -7,9 +7,7 @@
 > [fn_valuta_tempo_esecuzione_da_a](/dbzero/pratiche/manual/fn_valuta_tempo_esecuzione_da_a)
 
 ---
-
 ### 🎯 Scopo Principale
-
 Funzione **check** (pura, STABLE): calcola i giorni netti trascorsi tra il completamento di `flusso_da` e il completamento di `flusso_a`, sottraendo i periodi di sospensione della pratica.
 
 ---

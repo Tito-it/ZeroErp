@@ -6,9 +6,7 @@
 > [pratiche.giornale](/dbzero/pratiche/manual/giornale)
 
 ---
-
 ### 🎯 Scopo Principale
-
 Ripristina gli stati precedenti alla riattivazione. AFTER UPDATE OF `data_fine` su `pratiche.sospensioni`: quando la sospensione viene chiusa (data_fine passa da NULL a valorizzata), ripristina lo stato precedente dei flussi (dal giornale) e riporta la pratica ad APERTA.
 
 ---

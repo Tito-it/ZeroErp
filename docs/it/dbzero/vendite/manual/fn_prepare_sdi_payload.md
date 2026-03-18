@@ -10,9 +10,7 @@
 > • [config.stati_sdi](/dbzero/config/tabelle/stati_sdi)  
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 16-02-2026)  
 Preparare il payload SDI di un lotto:
 

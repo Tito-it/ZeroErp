@@ -18,7 +18,6 @@
 > [`script.fn_get_indirizzo`](/dbzero/script/funzioni/fn_get_indirizzo)    
 
 ---
-
 ### 🎯 Scopo Principale
 (latest review 19-12-25)
 La tabella **`config.tipi_ruolo_tipi_indirizzo`** rappresenta la **matrice di configurazione** che definisce:

@@ -7,9 +7,7 @@
 > [fn_calcola_tempo_netto_da_a](/dbzero/pratiche/manual/fn_calcola_tempo_netto_da_a)
 
 ---
-
 ### 🎯 Scopo Principale
-
 Trigger function unica che gestisce il ciclo di vita dei calcoli tempo nel modello da/a. AFTER UPDATE OF `stato_id` su `pratiche.flussi`, scatta quando un flusso va COMPLETATO. Il flusso completato puo' essere referenziato come partenza (`flusso_da`) e/o come arrivo (`flusso_a`) in formule diverse.
 
 ---

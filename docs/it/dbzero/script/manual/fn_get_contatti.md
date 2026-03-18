@@ -22,7 +22,6 @@ La funzione **`script.fn_get_contatti(p_soggetto_id UUID, p_soggetto_ruolo_id BI
 È pensata come **punto di accesso generico** per il recupero dei contatti e come base per funzioni più specializzate (ad esempio `script.fn_get_contatto_default`).
 
 ---
-
 ### 🎯 Scopo Principale
 (latest review 03-12-25)
 * **Selezione univoca per tipo**

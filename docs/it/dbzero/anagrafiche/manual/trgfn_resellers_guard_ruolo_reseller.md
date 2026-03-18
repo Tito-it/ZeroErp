@@ -12,9 +12,7 @@
 [script.fn_guard_soggetto_ruolo](/dbzero/script/funzioni/fn_guard_soggetto_ruolo)
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 10-03-2026)
 La trigger function **`anagrafiche.trgfn_resellers_guard_ruolo_reseller()`**
 garantisce che il record in `anagrafiche.resellers` sia sempre collegato a un

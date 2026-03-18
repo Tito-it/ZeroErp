@@ -1,7 +1,5 @@
 ## 📘 Documentazione Concettuale – Funzione `vendite.fn_list_lotto_task_runs`
-
 ### 🎯 Scopo Principale
-
 Elenca i task run di un lotto, con filtri opzionali per step e task.
 
 ---

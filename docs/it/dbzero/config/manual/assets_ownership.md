@@ -23,9 +23,7 @@ Esempi tipici di proprietà:
 | `ASSET_CUSTOMER`    | `customer`    | Asset di proprietà del cliente     |
 
 ---
-
 ### 🎯 Scopo Principale
-
 * Definire un **catalogo univoco e governato** delle modalità di proprietà degli asset.
 * Assicurare coerenza tra domini diversi (magazzino, installazioni, contratti, fatturazione, manutenzione).
 * Abilitare logiche avanzate, tra cui:

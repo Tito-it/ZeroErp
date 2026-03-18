@@ -12,8 +12,7 @@
 >
 • [vendite.fn_set_fatturazione_lotto_stato](/dbzero/vendite/funzioni/fn_set_fatturazione_lotto_stato)   
 >
-🎯 Scopo Principale
-
+### 🎯 Scopo Principale
 (latest review 30-01-2026)  
 La funzione **`vendite.fn_sync_lotto_fatture_stato()`** allinea lo stato
 documentale delle fatture collegate a un lotto.

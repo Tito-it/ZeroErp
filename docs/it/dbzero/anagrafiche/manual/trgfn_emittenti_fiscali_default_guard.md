@@ -6,9 +6,7 @@
 >
 • [anagrafiche.emittenti_fiscali_billing_account](/dbzero/anagrafiche/manual/emittenti_fiscali_billing_account)    
 >
-
-🎯 Scopo Principale
-
+### 🎯 Scopo Principale
 La funzione `anagrafiche.trgfn_emittenti_fiscali_default_guard()` garantisce che
 esista **esattamente un** emittente fiscale di default.
 

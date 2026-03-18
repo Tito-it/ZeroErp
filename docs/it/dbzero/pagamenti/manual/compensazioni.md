@@ -6,8 +6,7 @@
 >
 • [pagamenti.vendite_movimenti](/dbzero/pagamenti/tabelle/vendite_movimenti)  
 >
-🎯 Scopo Principale
-
+### 🎯 Scopo Principale
 La tabella **`pagamenti.compensazioni`** rappresenta la testata del processo
 che genera movimenti di compensazione tra documenti del cliente.
 

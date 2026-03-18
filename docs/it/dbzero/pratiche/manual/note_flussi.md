@@ -9,9 +9,7 @@ Approfondimento tabelle:
 > [config.tipi_nota](/dbzero/config/tabelle/tipi_nota)
 
 ---
-
 ### 🎯 Scopo Principale
-
 La tabella `pratiche.note_flussi` contiene le **note testuali** associate a un flusso specifico. Struttura identica a `note_pratiche` ma collegata al singolo step di workflow anziche' alla pratica.
 
 ---

@@ -8,9 +8,7 @@ Approfondimento funzioni:
 > [`maintenance.fn_run_and_log`](/dbzero/maintenance/funzioni/fn_run_and_log)
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 07-01-26)
 * **Eseguire in modo schedulato** l’orchestrazione delle **automazioni AUDIT_UPDATE** (trigger di audit su UPDATE) incapsulando la chiamata a `dbops.fn_run_automations_audit_update(...)` in un wrapper **robusto** con **lock anti-overlap** e **logging strutturato**.
 

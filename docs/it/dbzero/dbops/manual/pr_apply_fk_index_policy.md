@@ -10,9 +10,7 @@ Approfondimento Tabelle:
 La procedura **`dbops.apply_fk_index_policy()`** incapsula la logica di creazione o rimozione dinamica degli indici sulle foreign key, in base alle policy definite in `dbops.fk_index_policy`.
 
 ---
-
 ### 🎯 Scopo Principale
-
 * **Centralizzare la gestione degli indici FK**
   Evitare di duplicare script DDL e consentire modifiche runtime delle policy.
 * **Allineare schema e policy**

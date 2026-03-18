@@ -10,9 +10,7 @@ Approfondimento tabelle:
 La tabella **`dbops.idempotency_keys`** è una **tabella tecnica** che associa l’**Idempotency-Key** inviata dal client alla **transazione DB (`tx_id`)** e alla **risposta serializzata**, garantendo **idempotenza forte** lato write.
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 06-02-26)
 * Prevenire doppie esecuzioni in caso di retry o chiamate duplicate.
 * Restituire **la stessa risposta** quando arriva la stessa `idempotency_key`.

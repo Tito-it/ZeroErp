@@ -14,9 +14,7 @@
 > [dbops.fn_apply_cleanup_at](/dbzero/dbops/funzioni/fn_apply_cleanup_at)  
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 07-02-26)
 La funzione **`dbops.fn_purge_cleanup_expired`** elimina i record con **`cleanup_at` scaduto** usando una strategia a **batch**, per ridurre lock e impatti sulle tabelle più grandi.
 

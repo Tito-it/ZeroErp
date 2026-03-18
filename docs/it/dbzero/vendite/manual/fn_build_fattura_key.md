@@ -14,8 +14,7 @@
 >
 • [vendite.fn_get_or_create_fattura_header](/dbzero/vendite/funzioni/fn_get_or_create_fattura_header)  
 >
-🎯 Scopo Principale
-
+### 🎯 Scopo Principale
 (latest review 29-01-2026)  
 La funzione **`vendite.fn_build_fattura_key()`** costruisce la **chiave logica**
 di aggregazione documento a partire da una riga di `attivita_fatturabili`.

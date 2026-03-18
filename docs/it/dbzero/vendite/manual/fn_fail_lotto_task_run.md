@@ -1,7 +1,5 @@
 ## 📘 Documentazione Concettuale – Funzione `vendite.fn_fail_lotto_task_run`
-
 ### 🎯 Scopo Principale
-
 Chiude un task run in errore impostando `task_stato = ERRORE`, codice e messaggio.
 
 ---

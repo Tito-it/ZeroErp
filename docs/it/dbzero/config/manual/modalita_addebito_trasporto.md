@@ -19,9 +19,7 @@ La tabella **`config.modalita_addebito_trasporto`** definisce il **dominio delle
 Esempi tipici: **FRANCO**, **ASSEGNATO**, **TERZI**, con comportamenti diversi rispetto a chi sostiene il costo e a come viene eventualmente fatturato.
 
 ---
-
 ### 🎯 Scopo Principale
-
 * Centralizzare le **modalità di addebito del trasporto** utilizzabili nei DDT e nelle fatture.
 * Permettere una gestione coerente delle regole di **chi paga il trasporto** (mittente, destinatario, terzi) e di come questo impatta:
 

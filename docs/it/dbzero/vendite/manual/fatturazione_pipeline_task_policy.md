@@ -7,8 +7,7 @@
 • [vendite.fatturazione_pipeline](/dbzero/vendite/tabelle/fatturazione_pipeline)  
 > • [vendite.fatturazione_lotti_task_runs](/dbzero/vendite/tabelle/fatturazione_lotti_task_runs)  
 >
-🎯 Scopo Principale
-
+### 🎯 Scopo Principale
 La tabella `vendite.fatturazione_pipeline_task_policy` definisce le regole operative
 per ciascun task della pipeline fatturazione.
 

@@ -7,8 +7,7 @@
 • [vendite.fatture](/dbzero/vendite/tabelle/fatture)     
 > • [vendite.fatturazione_lotti](/dbzero/vendite/tabelle/fatturazione_lotti)     
 >
-🎯 Scopo Principale
-
+### 🎯 Scopo Principale
 (latest review 23-01-2026)
 `config.stati_doc_fiscale` definisce gli **stati documento** utilizzati dal ciclo
 fatturazione. Gli stessi stati possono essere applicati sia alle **fatture** sia

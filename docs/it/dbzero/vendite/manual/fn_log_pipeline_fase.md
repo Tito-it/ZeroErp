@@ -11,8 +11,7 @@
 >
 • [vendite.fn_log_lotto_esito_fatture](/dbzero/vendite/funzioni/fn_log_lotto_esito_fatture)  
 >
-🎯 Scopo Principale
-
+### 🎯 Scopo Principale
 (latest review 28-01-2026)  
 La funzione **`vendite.fn_log_pipeline_fase()`** inserisce un record nel log
 del lotto per registrare l’avanzamento (fase) della pipeline.

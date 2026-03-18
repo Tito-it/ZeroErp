@@ -8,9 +8,7 @@ Approfondimenti tabelle:
 > [catalogo.articoli](/dbzero/catalogo/tabelle/articoli)     
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 14-01-26)
 La vista **`catalogo.vw_articoli_componenti_dettaglio`** espone i legami
 prodotto–componente e arricchisce la riga con codice/descrizione di prodotto

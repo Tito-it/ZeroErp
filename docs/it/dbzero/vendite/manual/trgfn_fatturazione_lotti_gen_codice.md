@@ -1,7 +1,5 @@
 ## 📘 Documentazione Concettuale – Trigger Function `vendite.trgfn_fatturazione_lotti_gen_codice`
-
 ### 🎯 Scopo Principale
-
 Genera automaticamente `codice` su `vendite.fatturazione_lotti`
 quando non valorizzato in INSERT/UPDATE.
 

@@ -20,9 +20,7 @@ Approfondimento funzioni/trigger:
 > [dbops.trgfn_tx_id_managed](/dbzero/dbops/funzioni/trgfn_tx_id_managed)   
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 21-12-25)
 
 La tabella **`config.forme_giuridiche`** è una **tabella di dominio** che definisce l’elenco delle **forme giuridiche** (es. SRL, SPA, SNC, SAS, …) in modo:

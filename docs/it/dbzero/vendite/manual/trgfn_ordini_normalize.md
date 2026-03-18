@@ -5,9 +5,7 @@
 • [vendite.ordini](/dbzero/vendite/tabelle/ordini)  
 
 ---
-
 ### 🎯 Scopo Principale
-
 La trigger function `vendite.trgfn_ordini_normalize()` completa i campi
 temporali minimi dell’ordine quando il `numero` e` presente in insert.
 

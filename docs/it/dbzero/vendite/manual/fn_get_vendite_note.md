@@ -12,9 +12,7 @@
 • [script.fn_get_note](/dbzero/script/funzioni/fn_get_note)  
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 10-02-2026)  
 La funzione **`vendite.fn_get_vendite_note()`** e` un wrapper su
 `script.fn_get_note('vendite.note')` per recuperare le note vendite

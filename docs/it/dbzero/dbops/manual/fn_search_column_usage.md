@@ -9,9 +9,7 @@ Catalogo delle view (`pg_catalog.pg_views`, `pg_catalog.pg_matviews`)
 La funzione **`dbops.fn_search_column_usage`** consente di ricercare riferimenti a un determinato nome di colonna all’interno di viste, materialized view, regole, funzioni e vincoli, restituendo il tipo di oggetto, lo schema e il nome dell’oggetto che la contiene.
 
 ---
-
 ### 🎯 Scopo Principale
-
 * Individuare rapidamente tutte le occorrenze di un campo in definizioni SQL presenti nel database.
 * Facilitare attività di refactoring, pulizia del codice, e verifica di dipendenze tra oggetti del database.
 

@@ -15,9 +15,7 @@ GUC `dblink.log_connection`
 La funzione **`script.fn_ensure_logconn()`** garantisce l’apertura di una connessione **dblink** permanente denominata **`logconn`**, utilizzando la stringa di connessione definita nella GUC `dblink.log_connection`. Se la connessione esiste già, l’eccezione `duplicate_object` viene catturata e ignorata.
 
 ---
-
 ### 🎯 Scopo Principale
-
 * **Stabilire una connessione persistente** a un database remoto o a se stesso attraverso l’estensione `dblink`, evitando overhead di creazione/removal di connessioni multiple.
 * **Supporto al logging remoto**: utilizzata da funzioni come `script.fn_log_error_only` per eseguire INSERT in un contesto transazionale separato.
 

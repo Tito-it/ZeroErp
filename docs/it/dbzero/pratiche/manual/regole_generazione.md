@@ -10,9 +10,7 @@ Approfondimento tabelle:
 > [pratiche.flussi](/dbzero/pratiche/tabelle/flussi)
 
 ---
-
 ### 🎯 Scopo Principale
-
 La tabella `pratiche.regole_generazione` configura le **regole di generazione cross-pratica**. Quando un flusso viene completato con un determinato esito, il sistema puo' generare automaticamente (o proporre la generazione manuale di) una nuova pratica di un dato tipo.
 
 ---

@@ -14,9 +14,7 @@
 > • [dbops.trgfn_tx_id_managed](/dbzero/dbops/funzioni/trgfn_tx_id_managed)   
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 28-12-25)
 Garantire la **coerenza paese** tra il soggetto e la forma giuridica associata nei dati societari.
 

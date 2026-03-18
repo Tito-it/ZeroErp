@@ -22,9 +22,7 @@ Approfondimenti tabelle:
 > [config.stati](/dbzero/config/tabelle/stati)  
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 23-12-25)
 La vista **`anagrafiche.vw_indirizzi_resolved_base`** è il **layer comune** per la risoluzione degli indirizzi, e unifica in un solo output:
 

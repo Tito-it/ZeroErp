@@ -17,9 +17,7 @@
 > • [`script.trgfn_storico_generic`](/dbzero/script/funzioni/trgfn_storico_generic)   
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 13-01-26)
 `catalogo.articoli` è l’anagrafica **centrale** di articoli/voci, utilizzabile sia per il **catalogo prodotti** tradizionale sia per **voci utility** (canoni, oneri, misurazioni, ecc.). Supporta:
 

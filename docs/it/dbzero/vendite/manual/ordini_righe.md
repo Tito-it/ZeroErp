@@ -11,9 +11,7 @@ Approfondimento tabelle:
 > [config.stati_doc_ordini](/dbzero/config/tabelle/stati_doc_ordini)    
 
 ---
-
 ### 🎯 Scopo Principale
-
 Righe dell’**ordine cliente** con snapshot di descrizione/UoM/IVA e idempotenza della sorgente. Supporta **doppia rappresentazione delle quantità**:
 
 * **Operativa**: `qta_operativa` + `uom_operativa_id` → *sorgente principale* di inserimento.

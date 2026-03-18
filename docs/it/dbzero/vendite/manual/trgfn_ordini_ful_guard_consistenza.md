@@ -7,9 +7,7 @@
 > • [vendite.ddt_righe](/dbzero/vendite/tabelle/ddt_righe)  
 
 ---
-
 ### 🎯 Scopo Principale
-
 La trigger function `vendite.trgfn_ordini_ful_guard_consistenza()` protegge la
 coerenza delle righe fulfillment ordine↔DDT e impedisce over-fulfillment.
 

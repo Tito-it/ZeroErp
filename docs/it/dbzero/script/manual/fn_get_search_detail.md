@@ -33,9 +33,7 @@ Documento di design:
 La funzione **`script.fn_get_search_detail`** implementa il **livello 2** della ricerca universale soggetti. Dato un soggetto e un tipo ruolo, restituisce un JSONB con tutte le righe specifiche di quel soggetto per il ruolo richiesto, pensato per la row expansion nella tabella di ricerca.
 
 ---
-
 ### 🎯 Scopo Principale
-
 * **Dettaglio per tipo ruolo**: la funzione usa un `CASE` sul `codice_interno` del tipo ruolo (immutabile, protetto da `trgfn_lock_columns`) per costruire sezioni specifiche. Gestisce CL (cliente), FO (fornitore) con logica diretta, e delega tutti gli altri ruoli a `fn_get_entita_ruolo_detail`.
 
 * **Lazy loading**: il livello 2 viene invocato solo quando l'utente espande una riga nella tabella del livello 1. Questo evita join pesanti nella query principale di ricerca.

@@ -1,7 +1,5 @@
 ## 📘 Documentazione Concettuale – Funzione `vendite.fn_link_commessa_sorgente`
-
 ### 🎯 Scopo Principale
-
 (latest review 24-02-2026)
 Collega la ROOT source a una commessa in modo idempotente e coerente.
 

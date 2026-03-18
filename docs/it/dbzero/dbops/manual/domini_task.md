@@ -7,8 +7,7 @@
 • [dbops.pipeline_task_registry](/dbzero/dbops/manual/pipeline_task_registry)  
 > • [dbops.pipeline_task_registry_impl](/dbzero/dbops/manual/pipeline_task_registry_impl)  
 >
-🎯 Scopo Principale
-
+### 🎯 Scopo Principale
 (latest review 08-02-2026)
 `dbops.domini_task` definisce i **domini logici** per i task pipeline
 (es. `FATTURAZIONE`, `ATTIVITA_FATTURABILI`, `PRATICHE`).

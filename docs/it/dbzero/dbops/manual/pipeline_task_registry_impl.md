@@ -7,8 +7,7 @@
 • [dbops.pipeline_task_registry](/dbzero/dbops/manual/pipeline_task_registry)  
 > • [dbops.domini_task](/dbzero/dbops/manual/domini_task)  
 >
-🎯 Scopo Principale
-
+### 🎯 Scopo Principale
 (latest review 08-02-2026)
 `dbops.pipeline_task_registry_impl` definisce le **implementazioni consentite**
 per ciascun task. Serve a gestire in modo controllato le varianti

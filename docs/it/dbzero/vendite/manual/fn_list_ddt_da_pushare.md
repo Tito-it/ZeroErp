@@ -10,9 +10,7 @@
 > [vendite.fn_upsert_commessa_attivita](/dbzero/vendite/funzioni/fn_upsert_commessa_attivita)
 
 ---
-
-### Scopo Principale
-
+### 🎯 Scopo Principale
 `vendite.fn_list_ddt_da_pushare(...)` seleziona le righe DDT pronte per
 il push verso `commesse_attivita`, restituendo un payload completo per
 l'handler di acquisizione.

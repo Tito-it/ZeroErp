@@ -7,8 +7,7 @@
 • [vendite.fn_ricalcola_riepilogo_iva_fattura](/dbzero/vendite/funzioni/fn_ricalcola_riepilogo_iva_fattura)  
 > • [vendite.fn_ricalcola_totali_fattura](/dbzero/vendite/funzioni/fn_ricalcola_totali_fattura)  
 >
-🎯 Scopo Principale
-
+### 🎯 Scopo Principale
 La funzione **`vendite.fn_ricalcola_fattura()`** e` un wrapper che esegue,
 **in sequenza**:
 

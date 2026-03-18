@@ -12,9 +12,7 @@ Approfondimento funzioni :
 > [dbops.vw_fk_senza_indice](/dbzero/dbops/views/vw_fk_senza_indice)    
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest update 16-01-26)
 Applicare in modo automatico le regole di indicizzazione definite nella tabella `dbops.fk_index_policy`:   
 

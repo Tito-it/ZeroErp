@@ -10,8 +10,7 @@
 > • [pagamenti.vendite_contabili](/dbzero/pagamenti/tabelle/vendite_contabili)  
 > • [pagamenti.vendite_contabili_righe](/dbzero/pagamenti/tabelle/vendite_contabili_righe)  
 >
-🎯 Scopo Principale
-
+### 🎯 Scopo Principale
 La tabella **`pagamenti.vendite_movimenti`** registra i movimenti di incasso/rimborso
 collegati alle fatture, con indicazione della **provenienza** (centro riscossione)
  e dei parametri utili al calcolo interessi e alla contabilizzazione.

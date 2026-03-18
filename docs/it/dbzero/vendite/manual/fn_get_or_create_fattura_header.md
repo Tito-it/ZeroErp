@@ -12,8 +12,7 @@
 >
 • [vendite.fn_build_fattura_key](/dbzero/vendite/funzioni/fn_build_fattura_key)   
 >
-🎯 Scopo Principale
-
+### 🎯 Scopo Principale
 (latest review 29-01-2026)  
 La funzione **`vendite.fn_get_or_create_fattura_header()`** recupera o crea una
 **testata fattura in bozza** a partire da una riga di `attivita_fatturabili`,

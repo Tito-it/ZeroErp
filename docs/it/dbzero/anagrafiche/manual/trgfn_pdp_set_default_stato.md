@@ -7,8 +7,7 @@
 [anagrafiche.pdp](/dbzero/anagrafiche/tabelle/pdp)    
 > [config.stati_pdp](/dbzero/config/tabelle/stati_pdp)    
 >
-
-🎯 Scopo Principale
+### 🎯 Scopo Principale
 (latest review 16-12-25)
 La trigger function **`anagrafiche.trgfn_pdp_set_default_stato()`** imposta automaticamente lo **stato tecnico** di un PDP a **DISP** (*Disponibile*) quando il campo `stato_pdp_id` non è stato valorizzato.
 

@@ -25,17 +25,16 @@ La funzione **`script.fn_get_user_profile(p_auth_user_id INTEGER)`** restituisce
 E' progettata come **unico punto di accesso** per l'endpoint `GET /api/v1/core/me/` del frontend, aggregando in una singola chiamata DB tutti i dati necessari per il profilo utente.
 
 ---
-
 ### 🎯 Scopo Principale
-
 * **Profilo utente completo in una chiamata**: evita al backend di orchestrare query multiple per comporre il profilo.
 
-* **5 blocchi JSONB** strutturati:
+* **6 blocchi JSONB** strutturati:
   1. `utente` — dati da `auth_user`
   2. `ruolo_sistema` — enum dalla tabella ponte
   3. `risorse_umane` — dettaglio risorsa umana con qualifica e UO risolti
   4. `soggetto` — dati anagrafici completi (delegati a `fn_get_soggetto_dati_by_ruolo`)
   5. `emittente` — dati emittente fiscale + soggetto della ditta (`null` se non associato)
+  6. `permessi_area` — mappa `{schema_db: livello_accesso}` per tutte le aree attive (delegata a `fn_get_user_permissions_map`)
 
 * **Riuso di fn_get_soggetto_dati_by_ruolo**: i blocchi `soggetto` e `emittente` sono generati dalla stessa funzione, garantendo output uniforme con tutti gli ID e le descrizioni risolte.
 
@@ -84,7 +83,13 @@ La funzione restituisce un **JSONB** con la seguente struttura:
     "attivo": true
   },
   "soggetto": { "...output di fn_get_soggetto_dati_by_ruolo..." },
-  "emittente": { "...campi emittente + output di fn_get_soggetto_dati_by_ruolo..." }
+  "emittente": { "...campi emittente + output di fn_get_soggetto_dati_by_ruolo..." },
+  "permessi_area": {
+    "anagrafiche": "TUTTO",
+    "vendite": "LETTURA",
+    "acquisti": "BLOCCATO",
+    "config": "TUTTO"
+  }
 }
 ```
 
@@ -141,6 +146,22 @@ Se un emittente fiscale e' associato all'utente, il blocco contiene:
 
 Se nessun emittente e' associato, `emittente` e' `null`.
 
+#### Dettaglio blocco `permessi_area`
+
+Mappa JSONB con una chiave per ogni area funzionale attiva (`config.aree_funzionali.schema_db`).
+Generata da `fn_get_user_permissions_map(p_auth_user_id)`.
+
+| Chiave          | Tipo   | Descrizione                                                  |
+| --------------- | ------ | ------------------------------------------------------------ |
+| `<schema_db>`   | `TEXT` | Livello accesso: `TUTTO`, `SCRITTURA`, `LETTURA`, `BLOCCATO` |
+
+Catena di risoluzione per area (delegata a `fn_resolve_livello_area`):
+
+1. ruolo_sistema → ADMIN = TUTTO, DISABILITATO = BLOCCATO
+2. Override utente area (`config.user_override_aree`) se presente e valido
+3. Profilo reparto (`config.profili_reparto_aree`) ereditato dalla UO
+4. Default → BLOCCATO
+
 ---
 
 ### Flusso Logico Interno
@@ -159,7 +180,9 @@ Se nessun emittente e' associato, `emittente` e' `null`.
    - Se trovato: lettura campi emittente + `fn_get_soggetto_dati_by_ruolo(ef.soggetto_ruolo_id)`, merge in unico oggetto JSONB.
    - Se non trovato: `emittente = null`.
 
-6. **Composizione finale**: `jsonb_build_object` con le 5 chiavi.
+6. **Mappa permessi area**: chiamata a `fn_get_user_permissions_map(p_auth_user_id)` che risolve il livello per ogni area funzionale attiva.
+
+7. **Composizione finale**: `jsonb_build_object` con le 6 chiavi.
 
 ---
 
@@ -190,7 +213,7 @@ SELECT
 * **Volatilita'**: `STABLE` — non modifica dati.
 * **Linguaggio**: PL/pgSQL
 * **Output**: JSONB (flessibile, estendibile senza modifiche alla signature).
-* **Dipendenza**: `script.fn_get_soggetto_dati_by_ruolo` (deve esistere).
+* **Dipendenze**: `script.fn_get_soggetto_dati_by_ruolo`, `script.fn_get_user_permissions_map` (devono esistere).
 * **Errori**: `invalid_parameter_value` per input invalido, `no_data_found` per utente/risorsa umana inesistente.
 
 ---

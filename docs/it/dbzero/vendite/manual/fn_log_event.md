@@ -6,8 +6,7 @@
 >
 • [vendite.event_log](/dbzero/vendite/tabelle/event_log)  
 >
-🎯 Scopo Principale
-
+### 🎯 Scopo Principale
 `vendite.fn_log_event` fornisce un entrypoint unico (DB) per registrare eventi
 append-only in `vendite.event_log`, sia da servizi Python sia da funzioni SQL.
 

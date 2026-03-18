@@ -9,8 +9,7 @@ Approfondimento funzioni:
 > [dbops.fn_seed_automazione_overlap](/dbzero/dbops/funzioni/fn_seed_automazione_overlap)
 > [dbops.fn_apply_automazione_overlap](/dbzero/dbops/funzioni/fn_apply_automazione_overlap)
 >
-🎯 Scopo Principale
-
+### 🎯 Scopo Principale
 (latest review 19-01-26)
 La tabella **`dbops.automazione_overlap`** centralizza la configurazione del controllo
 **anti-overlap temporale** tramite vincoli `EXCLUDE USING gist` sulle tabelle versionate.

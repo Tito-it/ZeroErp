@@ -19,9 +19,7 @@ Approfondimento funzioni:
 [anagrafiche.trgfn_billing_account_guard_normalize](/dbzero/anagrafiche/funzioni/trgfn_billing_account_guard_normalize)
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 01-03-26)
 
 Il **billing account** (BA) e l'account di fatturazione associato a un'istanza utility. In termini semplici: e il "contenitore" che identifica **a chi fatturare** e **con quale codice** per un determinato servizio (gas, energia, ecc.).

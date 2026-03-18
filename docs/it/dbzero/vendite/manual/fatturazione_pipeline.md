@@ -12,8 +12,7 @@
 • [`backend.fn_execute_pipeline_step`](/backend/vendite/funzioni/fn_execute_pipeline_step)   
 > • [`vendite.fn_select_attivita_fatturabili`](/dbzero/vendite/funzioni/fn_select_attivita_fatturabili)  
 >
-🎯 Scopo Principale
-
+### 🎯 Scopo Principale
 (latest review 28-01-2026)  
 La tabella **`vendite.fatturazione_pipeline`** descrive la **pipeline configurabile**
 dei processi di fatturazione.  

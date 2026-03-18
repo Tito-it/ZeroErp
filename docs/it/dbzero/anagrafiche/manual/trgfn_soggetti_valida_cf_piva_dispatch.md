@@ -9,10 +9,7 @@ Approfondimenti tabelle:
 Approfondimenti funzioni:   
 >
 [script.validate_cf_piva_it](/dbzero/script/funzioni/fn_validate_cf_piva_it)   
-
-
 ### 🎯 Scopo Principale
-
 (latest review 29-12-25)
 La trigger function **`anagrafiche.trgfn_soggetti_valida_cf_piva_dispatch()`** viene eseguita **`BEFORE INSERT OR UPDATE`** sulla tabella **`anagrafiche.soggetti`** e instrada la validazione di codice fiscale e partita IVA in base allo Stato e al dettaglio di soggetto.
 

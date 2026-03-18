@@ -10,10 +10,7 @@ Approfondimento funzioni :
 >
 [dbops.fn_get_or_create_session_tx_id](/dbzero/dbops/funzioni/fn_get_or_create_session_tx_id)    
 > [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)    
-
-
 ### 🎯 Scopo Principale
-
 (latest review 01-01-26)
 La trigger function **`dbops.trgfn_tx_id_managed()`** viene eseguita **`BEFORE INSERT OR UPDATE`** su ogni tabella che contiene la colonna `tx_id` e centralizza la **logica di validazione**, **generazione** e **assegnazione** dell’**UUID di transazione** per la riga in corso di inserimento/aggiornamento.
 

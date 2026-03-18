@@ -1,7 +1,5 @@
 ## 📘 Documentazione Concettuale – Trigger Function `vendite.trgfn_fatture_log_sync_ai_stmt`
-
 ### 🎯 Scopo Principale
-
 Sincronizza stato `critical` e `stato_esecuzione` delle fatture coinvolte
 dopo INSERT su `vendite.fatture_log` (trigger statement-level).
 

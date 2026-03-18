@@ -10,9 +10,7 @@
 > • [`catalogo.fn_get_uom_base`](/dbzero/catalogo/funzioni/fn_get_uom_base)  
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 13-01-26)
 La funzione **`catalogo.fn_get_uom_factor(p_articolo_id, p_uom_id)`** ritorna il **fattore di conversione** dalla UoM richiesta alla **UoM base** dell’articolo.
 

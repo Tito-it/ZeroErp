@@ -12,9 +12,7 @@
 [`anagrafiche.trgfn_soggetti_valida_cf_piva_dispatch`](/dbzero/anagrafiche/funzioni/trgfn_soggetti_valida_cf_piva_dispatch)   
 
 ---
-
 ### 🎯 Scopo Principale
-
 La tabella **`config.tipi_soggetto`** definisce le **macro-tipologie** dei soggetti presenti nel sistema ERP:
 
 * **PF** → Persona Fisica

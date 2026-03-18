@@ -15,9 +15,7 @@ Funzioni:
 > [trgfn_sospensioni_riattiva](/dbzero/pratiche/manual/trgfn_sospensioni_riattiva)
 
 ---
-
 ### 🎯 Scopo Principale
-
 Registra i periodi di fermo di una pratica o di un singolo flusso. Ogni riga e' un intervallo aperto (`data_fine NULL` = sospensione ancora attiva).
 
 ---

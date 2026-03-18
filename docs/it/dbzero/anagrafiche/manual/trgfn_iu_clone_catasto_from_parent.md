@@ -19,7 +19,6 @@
 `anagrafiche.trg_iu_z50_clone_catasto_from_parent_aft_upd`   
 
 ---
-
 ### 🎯 Scopo Principale
 (latest review 15-12-25)
 La trigger function **`anagrafiche.trgfn_iu_clone_catasto_from_parent()`** è un wrapper minimale che, in risposta a un evento di modifica dell’istanza (tipicamente valorizzazione di `parent_istanza_id`), attiva la clonazione del catasto dalla parent verso l’istanza corrente.
