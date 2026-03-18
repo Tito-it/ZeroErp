@@ -4,7 +4,7 @@
 >
 > Riferimento metodologico: [sviluppo-concentrico.md](sviluppo-concentrico.md)
 
-*Ultimo aggiornamento: 15 marzo 2026*
+*Ultimo aggiornamento: 18 marzo 2026*
 
 ---
 
@@ -73,7 +73,7 @@
 
 ### Audit sessioni, request logging e token blacklist
 
-Implementato il 6 marzo 2026 (vedi [Audit-logging-sessionii-request-token.md](dev/work-in-progress/Audit-logging-sessionii-request-token.md)):
+Implementato il 6 marzo 2026 (vedi [Audit-logging-sessionii-request-token.md](dev/work-done/Audit-logging-sessionii-request-token.md)):
 
 | Capacita'                         | Componente DB               | Componente Backend                                                             | Stato     |
 | --------------------------------- | --------------------------- | ------------------------------------------------------------------------------ | --------- |
@@ -107,7 +107,8 @@ Stabile. Modifiche solo per correzioni o estensioni non-breaking (nuove policy, 
 | Gestione Geografica        | Operativo | 7 tab: indirizzi, toponomastica, comuni, CAP, province, regioni, stati — CRUD completo. UI da migliorare |
 | Gestione Soggetti          | In test UI | PF/PG/ENTE end-to-end, 3 building block, ruoli, CF validator IT con omocodia  |
 | Pannello Config            | Operativo | 67 tabelle CRUD generiche con drawer dinamico, metadata-driven               |
-| Building block soggetto    | Operativo | SoggettoForm, ContattoForm, IndirizzoSoggettoForm, DatiSocietariForm, ComuneAutocomplete, StradarioAutocomplete |
+| Building block soggetto    | Operativo | SoggettoForm, ContattoForm, IndirizzoSoggettoForm, DatiSocietariForm, ComuneAutocomplete, StradarioAutocomplete, StradarioGeneraleAutocomplete |
+| Modalita' sola lettura     | Operativo | Pattern protect CSS + provide/inject: 11 drawer, 3 view, 2 componenti core auto-hide (NewButton, DrawerFooter) |
 | Amm. Software — Operatori  | Parziale  | Lista con filtri, creazione operatore, drawer modifica — mancano test UI reali |
 | Amm. Software — Profili    | Parziale  | Gestione profili reparto — mancano test UI reali                               |
 | Amm. Software — Permessi   | Placeholder | Solo pagina placeholder, da implementare                                     |
@@ -289,18 +290,40 @@ Gli anelli esterni possono dipendere direttamente da anelli non adiacenti — ve
   - Pannello config generico: 67 tabelle CRUD con drawer dinamico metadata-driven
   - Code review: fix race condition watcher, cleanup timeout, eliminato doppio fetchList
   - 686 test backend, 471 moduli frontend
+- ~~Frontend Sprint 6: Fix indirizzi + contatti soggetto~~ — **FATTO** (16 marzo 2026)
+  - Fix gestione contatti (combo unita' organizzative, validazione email/PEC)
+  - Fix gestione indirizzi soggetto (pre-populate replace, civico/estensione)
+- ~~Refactor v3: Riallineamento modello concentrico~~ — **FATTO** (18 marzo 2026)
+  - Logica duplicato centralizzata in `fn_check_indirizzo_duplicato` (DB)
+  - CAP risolto via `fn_resolve_codice_postale` (DB)
+  - `useIndirizzoBase.js` composable condiviso (elimina duplicazione IndirizzoDrawer/IndirizzoSoggettoForm)
+  - `via_obj` unificato (elimina stradario_obj + stradario_generale_obj)
+  - Default soggetti spostati da hardcode Python a `config.parameters` (DB source of truth)
+  - Ordinamento tabelle config funzionante (order_by/order_dir)
+  - 689 test backend
+- ~~Refactor v4: Completamento modello concentrico~~ — **FATTO** (18 marzo 2026)
+  - Auto-clone indirizzi spostato da frontend a backend (`_apply_auto_clone`)
+  - `_buildNominativo` spostato nel service Python
+  - `addressNotFound` centralizzato in `useIndirizzoBase`
+  - Payload replace semplificato (usa `indirizzo_dettaglio_id` diretto)
+- ~~Modalita' sola lettura~~ — **FATTO** (18 marzo 2026)
+  - Pattern protect provide/inject: 11 drawer, 3 view, 2 componenti core auto-hide
+  - DB: `fn_get_user_permissions_map`, `/me/` arricchito con `permessi_area`
+- ~~Documentazione API~~ — **FATTO** (18 marzo 2026)
+  - 57 endpoint documentati: soggetti, indirizzi, geo config, amm. software
+  - 3 doc esistenti aggiornate: lookup codici, user profile, api overview
 
 ### In corso
 
-- **Amm. Software**: backend operativo, frontend parziale — mancano test UI reali e pagine Permessi/Audit Log
-- **Gestione Geografica**: backend + frontend operativi — UI da migliorare, da validare con test UI reali
 - **Gestione Soggetti**: backend + frontend completati — in fase di test UI
+- **Modalita' sola lettura**: implementata — da verificare con test UI utente LETTURA
+- **Gestione Geografica**: operativo — UI da migliorare
 
 ### Breve termine
 
-- Test UI reali su Amm. Software, Gestione Geografica e Gestione Soggetti
-- Miglioramento UI Gestione Geografica (usabilita', layout)
-- Completamento Amm. Software: pagina Permessi e Audit Log
+- Test UI reali su Gestione Soggetti, modalita' sola lettura, Gestione Geografica
+- Completamento Amm. Software: pagine Permessi e Audit Log
+- ClienteService Django (orchestrator creazione/subentro/disdetta cliente)
 
 ### Medio termine
 

@@ -10,6 +10,8 @@
 from __future__ import annotations
 
 import json
+
+from apps.core.db._helpers import rows_to_list
 from typing import Any
 
 from django.db import connection
@@ -127,8 +129,7 @@ class SearchRepository:
                  ORDER BY descrizione
                 """
             )
-            cols = [c.name for c in cursor.description]
-            return [dict(zip(cols, row)) for row in cursor.fetchall()]
+            return rows_to_list(cursor)
 
     # Scopo: Verifica che un tipo_ruolo_id abbia ricerca_visibile = true.
     # Usato dalle view per validare il parametro tipo_ruolo_id.

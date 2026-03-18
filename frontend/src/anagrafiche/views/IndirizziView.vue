@@ -2,6 +2,7 @@
 // Scopo: vista principale Gestione Geografica con 7 tab.
 import { useI18n } from 'vue-i18n'
 import { useDrawerState } from '../../core/composables/useDrawerState'
+import { useReadonlyMode } from '../../core/composables/useReadonlyMode'
 import IndirizziSearchTable from '../components/IndirizziSearchTable.vue'
 import IndirizzoDrawer from '../components/IndirizzoDrawer.vue'
 import ToponomasticaSearchTable from '../../core/components/ToponomasticaSearchTable.vue'
@@ -20,6 +21,7 @@ import TabView from 'primevue/tabview'
 import TabPanel from 'primevue/tabpanel'
 
 const { t } = useI18n()
+const { isReadonly } = useReadonlyMode('anagrafiche')
 const indDrawer = useDrawerState()
 const topoDrawer = useDrawerState()
 const comuneDrawer = useDrawerState()

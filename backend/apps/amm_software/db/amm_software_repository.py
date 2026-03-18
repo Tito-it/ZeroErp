@@ -13,6 +13,8 @@ from typing import Any
 
 from django.db import connection
 
+from apps.core.db._helpers import row_to_dict, rows_to_list
+
 from apps.core.services.error_manager import ErrorManager
 from apps.amm_software.types import UtenteDetailRow, UtenteRow
 
@@ -341,8 +343,7 @@ class AmmSoftwareRepository:
                      FROM config.unita_organizzative
                     ORDER BY descrizione"""
             )
-            cols = [c.name for c in cursor.description]
-            return [dict(zip(cols, row)) for row in cursor.fetchall()]
+            return rows_to_list(cursor)
 
     # ================================================================== #
     # Override aree per utente                                             #
@@ -362,8 +363,7 @@ class AmmSoftwareRepository:
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [auth_user_id])
-            cols = [c.name for c in cursor.description]
-            return [dict(zip(cols, row)) for row in cursor.fetchall()]
+            return rows_to_list(cursor)
 
     # Scopo: Sostituisce gli override aree di un utente (replace semantics).
     # Cancella tutti gli override esistenti e inserisce i nuovi.
@@ -408,8 +408,7 @@ class AmmSoftwareRepository:
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [auth_user_id])
-            cols = [c.name for c in cursor.description]
-            return [dict(zip(cols, row)) for row in cursor.fetchall()]
+            return rows_to_list(cursor)
 
     # Scopo: Sostituisce gli override azioni di un utente (replace semantics).
     def put_override_azioni(self, auth_user_id: int, items: list[dict[str, Any]]) -> None:
@@ -450,8 +449,7 @@ class AmmSoftwareRepository:
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [auth_user_id])
-            cols = [c.name for c in cursor.description]
-            return [dict(zip(cols, row)) for row in cursor.fetchall()]
+            return rows_to_list(cursor)
 
     # Scopo: Sostituisce gli emittenti scope di un utente (replace semantics).
     def put_emittenti_scope(self, auth_user_id: int, emittente_ids: list[int]) -> None:
@@ -489,8 +487,7 @@ class AmmSoftwareRepository:
         """
         with connection.cursor() as cursor:
             cursor.execute(sql)
-            cols = [c.name for c in cursor.description]
-            return [dict(zip(cols, row)) for row in cursor.fetchall()]
+            return rows_to_list(cursor)
 
     # Scopo: Restituisce il profilo completo di un reparto (aree + azioni).
     def get_profilo_reparto(self, uo_id: int) -> dict[str, Any]:
@@ -572,8 +569,7 @@ class AmmSoftwareRepository:
                     WHERE attivo = true
                     ORDER BY ordinamento, codice"""
             )
-            cols = [c.name for c in cursor.description]
-            return [dict(zip(cols, row)) for row in cursor.fetchall()]
+            return rows_to_list(cursor)
 
     # Scopo: Lista azioni processo attive per dropdown/selezione.
     def list_azioni_processo(self) -> list[dict[str, Any]]:
@@ -587,8 +583,7 @@ class AmmSoftwareRepository:
                     WHERE ap.attivo = true
                     ORDER BY af.ordinamento, ap.permission_codename"""
             )
-            cols = [c.name for c in cursor.description]
-            return [dict(zip(cols, row)) for row in cursor.fetchall()]
+            return rows_to_list(cursor)
 
     # Scopo: Lista emittenti fiscali per dropdown scope utente.
     def list_emittenti_fiscali(self) -> list[dict[str, Any]]:
@@ -599,5 +594,4 @@ class AmmSoftwareRepository:
                     WHERE attivo = true
                     ORDER BY descrizione"""
             )
-            cols = [c.name for c in cursor.description]
-            return [dict(zip(cols, row)) for row in cursor.fetchall()]
+            return rows_to_list(cursor)

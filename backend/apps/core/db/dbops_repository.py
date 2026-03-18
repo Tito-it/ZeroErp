@@ -142,8 +142,10 @@ class DbopsRepository:
         with connection.cursor() as cursor:
             # Wrappa fn_get_lookup_codici in una CTE con filtro ILIKE e paginazione esterna.
             # Il limit interno (LOOKUP_MAX_SOURCE_ROWS) è una guardia; il filtro è applicato sul risultato.
-            cursor.execute(
-                """
+            # order_col e order_dir sono gia' validati dal service contro whitelist
+            # (frozenset {"codice","descrizione"} e {"asc","desc"}).
+            # Non possono essere parametri SQL (%s), servono nel testo della query.
+            sql = """
                 WITH base AS (
                     SELECT id, codice, codice_interno, descrizione, attivo
                       FROM dbops.fn_get_lookup_codici(
@@ -168,9 +170,11 @@ class DbopsRepository:
                      OR codice ILIKE %s
                      OR descrizione ILIKE %s
                  )
-                 ORDER BY descrizione, id
+                 ORDER BY {} {}, id
                  LIMIT %s OFFSET %s
-                """,
+                """.format(order_col, order_dir)
+            cursor.execute(
+                sql,
                 [
                     rel,
                     order_col,

@@ -5,9 +5,10 @@
 // Usa useIndirizzoBase per logica condivisa (CAP, duplicato, via nuova).
 import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useIndirizziStore } from '../stores/indirizzi'
 import { useApiHandler } from '../../core/composables/useApiHandler'
-import { useIndirizzoBase } from '../../core/composables/useIndirizzoBase'
+import { useIndirizzoBase, buildCivicoPart } from '../../core/composables/useIndirizzoBase'
 import { getIndirizzo } from '../api/anagrafiche'
 import { DRAWER_WIDTH } from '../../core/constants'
 import DrawerFooter from '../../core/components/DrawerFooter.vue'
@@ -32,6 +33,7 @@ const props = defineProps({
 const emit = defineEmits(['update:visible', 'saved'])
 
 const { t } = useI18n()
+const isReadonly = useInjectReadonly()
 const store = useIndirizziStore()
 const { execute, loading } = useApiHandler()
 const addr = useIndirizzoBase()
@@ -46,14 +48,10 @@ const canSave = computed(() => {
   return true
 })
 
-// Blocca save se: via da stradario (non via_nuova), civico inserito,
-// ma l'indirizzo esatto non esiste in DB. Stessa logica di IndirizziSoggettoDrawer.
+// Blocca save se indirizzo da stradario non trovato (centralizzato in useIndirizzoBase).
+// Aggiunge condizione locale: solo in modalita' create.
 const addressNotFound = computed(() =>
-  isCreate.value
-  && !addr.form.via_nuova
-  && addr.form.via_obj?.stradario_id
-  && addr.form.civico
-  && !addr.existingDettaglioId.value
+  isCreate.value && addr.addressNotFound.value
 )
 
 function resetForm() {
@@ -102,15 +100,7 @@ async function handleSave() {
     }
   } else {
     successMsg = t('indirizzi.indirizzo_salvato')
-    payload = {
-      civico: addr.form.civico,
-      estensione_civico: (addr.form.estensione_civico || '').trim() || null,
-      palazzina: (addr.form.palazzina || '').trim() || null,
-      scala: (addr.form.scala || '').trim() || null,
-      piano: (addr.form.piano || '').trim() || null,
-      interno: (addr.form.interno || '').trim() || null,
-      attivo: attivo.value,
-    }
+    payload = { ...buildCivicoPart(addr.form), attivo: attivo.value }
     const result = await execute(
       () => store.update(props.itemId, payload),
       { successMessage: successMsg }
@@ -134,7 +124,7 @@ async function handleSave() {
     <template #header>
       <DrawerTitle :action="isCreate ? t('common.new') : t('common.edit')" :title="t('indirizzi.indirizzo')" icon="pi pi-map-marker" />
     </template>
-    <div class="app-drawer-content">
+    <div class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
       <!-- Localizzazione -->
       <div class="form-grid">
         <template v-if="isCreate">
@@ -197,7 +187,7 @@ async function handleSave() {
       </div>
 
       <!-- Civico -->
-      <div class="form-grid" style="margin-top: 1rem;">
+      <div class="form-grid mt-1">
         <div class="form-grid-2col">
           <div class="form-field">
             <label>{{ t('indirizzi.campo_civico') }}</label>

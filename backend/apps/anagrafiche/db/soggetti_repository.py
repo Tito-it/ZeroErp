@@ -11,6 +11,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from apps.core.db._helpers import row_to_dict, rows_to_list
+
 from django.db import connection
 
 from apps.anagrafiche.db._helpers import extract_paginated
@@ -104,7 +106,7 @@ class SoggettiRepository:
         with connection.cursor() as cursor:
             cursor.execute(sql, [tipo_id])
             row = cursor.fetchone()
-            return str(row[0]) if row else None
+            return str(row[0]) if row and row[0] else None
 
     # Scopo: Dettaglio completo soggetto con tipo e natura.
     def get_soggetto(self, soggetto_id: str) -> dict[str, Any] | None:
@@ -122,11 +124,7 @@ class SoggettiRepository:
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [soggetto_id])
-            row = cursor.fetchone()
-            if not row:
-                return None
-            cols = [c.name for c in cursor.description]
-            return dict(zip(cols, row))
+            return row_to_dict(cursor)
 
     # =================================================================
     # Creazione soggetti
@@ -248,8 +246,7 @@ class SoggettiRepository:
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [soggetto_id])
-            cols = [c.name for c in cursor.description]
-            return [dict(zip(cols, row)) for row in cursor.fetchall()]
+            return rows_to_list(cursor)
 
     # Scopo: Crea contatto per un soggetto.
     def crea_contatto(
@@ -271,10 +268,9 @@ class SoggettiRepository:
                 soggetto_id, nominativo, email, telefono, cellulare, pec,
                 tipo_contatto_id, unita_organizzativa_id, note,
             ])
-            row = cursor.fetchone()
-            assert row is not None
-            cols = [c.name for c in cursor.description]
-            return dict(zip(cols, row))
+            result = row_to_dict(cursor)
+            assert result is not None
+            return result
 
     # Scopo: Aggiorna un contatto esistente con verifica ownership soggetto.
     def update_contatto(self, contatto_id: int, data: dict[str, Any],
@@ -326,6 +322,10 @@ class SoggettiRepository:
                    idet.stradario_id,
                    idet.civico,
                    idet.estensione_civico,
+                   idet.palazzina,
+                   idet.scala,
+                   idet.piano,
+                   idet.interno,
                    idet.via_norm AS stradario_display,
                    s.comune_id AS det_comune_id,
                    c.descrizione AS descrizione_comune
@@ -342,8 +342,7 @@ class SoggettiRepository:
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [soggetto_id])
-            cols = [c.name for c in cursor.description]
-            return [dict(zip(cols, row)) for row in cursor.fetchall()]
+            return rows_to_list(cursor)
 
     # Scopo: Crea indirizzo soggetto chiamando la funzione DB.
     #        Supporta modalita' normalizzata (indirizzo_dettaglio_id)
@@ -405,8 +404,7 @@ class SoggettiRepository:
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [soggetto_id])
-            cols = [c.name for c in cursor.description]
-            return [dict(zip(cols, row)) for row in cursor.fetchall()]
+            return rows_to_list(cursor)
 
     # Scopo: Verifica se un CF esiste gia' in anagrafica. Ritorna soggetto trovato o None.
     def find_by_codice_fiscale(self, codice_fiscale: str) -> dict[str, Any] | None:
@@ -418,11 +416,7 @@ class SoggettiRepository:
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [codice_fiscale])
-            row = cursor.fetchone()
-            if not row:
-                return None
-            cols = [c.name for c in cursor.description]
-            return dict(zip(cols, row))
+            return row_to_dict(cursor)
 
     # Scopo: Verifica se una P.IVA esiste gia' in anagrafica. Ritorna soggetto trovato o None.
     def find_by_partita_iva(self, partita_iva: str) -> dict[str, Any] | None:
@@ -434,11 +428,7 @@ class SoggettiRepository:
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [partita_iva])
-            row = cursor.fetchone()
-            if not row:
-                return None
-            cols = [c.name for c in cursor.description]
-            return dict(zip(cols, row))
+            return row_to_dict(cursor)
 
     # Scopo: Assegna ruolo a soggetto (get or create, idempotente).
     def assign_ruolo(self, soggetto_id: str, codice_ruolo: str) -> int:
@@ -472,8 +462,4 @@ class SoggettiRepository:
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [soggetto_id])
-            row = cursor.fetchone()
-            if not row:
-                return None
-            cols = [c.name for c in cursor.description]
-            return dict(zip(cols, row))
+            return row_to_dict(cursor)

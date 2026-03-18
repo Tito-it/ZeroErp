@@ -5,6 +5,7 @@
 import { ref, computed, watch, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useApiHandler } from '../composables/useApiHandler'
+import { useReadonlyMode } from '../composables/useReadonlyMode'
 import { PAGINATION } from '../constants'
 import { getTablesBySchema, getTableConfig } from '../config-tables'
 import { useDrawerState } from '../composables/useDrawerState'
@@ -18,6 +19,7 @@ import api from '../api'
 
 const { t } = useI18n()
 const { execute } = useApiHandler()
+const { isReadonly } = useReadonlyMode('config')
 const drawer = useDrawerState()
 
 // Stato
@@ -29,6 +31,8 @@ const totalRecords = ref(0)
 const loading = ref(false)
 const page = ref(1)
 const pageSize = ref(PAGINATION.DEFAULT_ROWS)
+const sortField = ref('descrizione')
+const sortOrder = ref(1)
 
 // Tabelle raggruppate e filtrate
 const tablesBySchema = getTablesBySchema()
@@ -59,6 +63,8 @@ const selectedLabel = computed(() => {
 watch(selectedRel, async (rel) => {
   page.value = 1
   searchRecords.value = ''
+  sortField.value = null
+  sortOrder.value = null
   tableColumns.value = []
   if (rel) {
     try {
@@ -86,6 +92,10 @@ async function loadRecords() {
       attivo_only: false,
     }
     if (searchRecords.value) params.search = searchRecords.value
+    if (sortField.value) {
+      params.order_col = sortField.value
+      params.order_dir = sortOrder.value === -1 ? 'desc' : 'asc'
+    }
 
     const res = await api.get(`/core/config/tables/${selectedRel.value}/`, { params })
     const data = res.data.data
@@ -102,6 +112,13 @@ async function loadRecords() {
 function onPage(event) {
   page.value = Math.floor(event.first / event.rows) + 1
   pageSize.value = event.rows
+  loadRecords()
+}
+
+function onSort(event) {
+  sortField.value = event.sortField
+  sortOrder.value = event.sortOrder
+  page.value = 1
   loadRecords()
 }
 
@@ -178,15 +195,18 @@ function selectTable(rel) {
           scrollable
           scrollHeight="flex"
           class="app-datatable"
+          :sortField="sortField"
+          :sortOrder="sortOrder"
           @page="onPage"
+          @sort="onSort"
           @row-click="onRowClick"
           selection-mode="single"
           data-key="id"
         >
           <Column field="codice" :header="t('config_panel.col_codice')" sortable />
-          <Column v-if="hasCodiceInterno" field="codice_interno" :header="t('config_panel.col_codice_interno')" sortable />
+          <Column v-if="hasCodiceInterno" field="codice_interno" :header="t('config_panel.col_codice_interno')" />
           <Column field="descrizione" :header="t('config_panel.col_descrizione')" sortable />
-          <Column v-if="hasAttivo" field="attivo" :header="t('config_panel.col_attivo')" sortable>
+          <Column v-if="hasAttivo" field="attivo" :header="t('config_panel.col_attivo')">
             <template #body="{ data }">
               <Tag
                 :value="data.attivo ? t('config_panel.attivo') : t('config_panel.non_attivo')"

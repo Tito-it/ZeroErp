@@ -11,7 +11,7 @@ export const useAuthStore = defineStore('auth', () => {
   const refreshToken = ref(local.get(STORAGE_KEYS.REFRESH_TOKEN))
 
   // Profilo utente caricato dall'endpoint /me/
-  // Struttura JSONB: { utente, ruolo_sistema, risorse_umane, soggetto, emittente }
+  // Struttura JSONB: { utente, ruolo_sistema, risorse_umane, soggetto, emittente, permessi_area }
   const user = ref(null)
 
   const isAuthenticated = computed(() => !!accessToken.value)
@@ -99,6 +99,20 @@ export const useAuthStore = defineStore('auth', () => {
     return DOMAINS.filter(d => !d.adminOnly || isAdmin.value)
   })
 
+  // Mappa permessi area: { anagrafiche: 'TUTTO', vendite: 'LETTURA', ... }
+  // Popolata da /me/ campo permessi_area (fn_get_user_permissions_map)
+  const permessiArea = computed(() => user.value?.permessi_area || {})
+
+  // Livello accesso per area funzionale (TUTTO | LETTURA | BLOCCATO)
+  function getLivelloArea(schemaDb) {
+    return permessiArea.value[schemaDb] || 'BLOCCATO'
+  }
+
+  // Area in sola lettura? (livello LETTURA)
+  function isAreaReadonly(schemaDb) {
+    return getLivelloArea(schemaDb) === 'LETTURA'
+  }
+
   return {
     accessToken,
     refreshToken,
@@ -107,6 +121,9 @@ export const useAuthStore = defineStore('auth', () => {
     isAdmin,
     displayName,
     visibleDomains,
+    permessiArea,
+    getLivelloArea,
+    isAreaReadonly,
     login,
     logout,
     tryRefreshToken,

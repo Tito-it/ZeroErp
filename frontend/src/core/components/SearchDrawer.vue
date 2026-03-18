@@ -300,7 +300,7 @@ watch(() => props.visible, (newVal) => {
 .search-input-icon {
   position: absolute;
   left: 0.75rem;
-  color: var(--p-text-muted-color);
+  color: var(--app-icon-color);
   font-size: 0.85rem;
   pointer-events: none;
 }

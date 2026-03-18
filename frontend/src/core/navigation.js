@@ -68,3 +68,18 @@ export function resolveTabLabel(meta, t) {
   if (domain && domain !== 'home') return t(`nav.${domain}`)
   return null
 }
+
+// Risolve l'icona tab dalla route meta.
+// Cerca prima nelle voci L2 (DOMAIN_MENUS), poi nel dominio (DOMAINS).
+export function resolveTabIcon(meta) {
+  const { domain, menuKey } = meta
+  if (menuKey && DOMAIN_MENUS[domain]) {
+    const item = DOMAIN_MENUS[domain].find(m => m.key === menuKey)
+    if (item) return item.icon
+  }
+  if (domain) {
+    const d = DOMAINS.find(d => d.key === domain)
+    if (d) return d.icon
+  }
+  return null
+}

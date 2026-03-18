@@ -485,30 +485,34 @@ I nomi usano kebab-case: `reset-draft`, `calcoli-tempo`, `regole-generazione`.
 
 **Core** (`/api/v1/core/`)
 
-| Metodo | Path                                              | Scopo                              |
-| ------ | ------------------------------------------------- | ---------------------------------- |
-| GET    | `me/`                                             | Profilo utente corrente            |
-| GET    | `me/sessioni/`                                    | Sessioni attive                    |
-| POST   | `me/sessioni/{jti}/revoca/`                       | Revoca sessione                    |
-| GET    | `lookup/codici/`                                  | Ricerca codici configurazione      |
-| GET    | `lookup/tipi-ruoli/`                              | Tipi ruolo con visibilita'         |
-| GET    | `lookup/tipi-soggetto-dettaglio/`                 | Tipi soggetto con nature e policy  |
-| GET    | `lookup/tipi-soggetto-dettaglio/{id}/indirizzi/`  | Matrice indirizzi per tipo         |
-| GET    | `lookup/comuni/`                                  | Autocomplete comuni                |
-| GET    | `search/stradario/`                               | Autocomplete stradario per comune  |
-| GET    | `search/`                                         | Ricerca universale soggetti        |
-| GET    | `search/{uuid}/detail/`                           | Dettaglio soggetto per ruolo       |
-| GET    | `users/{id}/permessi-effettivi/`                  | Permessi effettivi utente          |
-| GET    | `users/{id}/permessi-audit/`                      | Audit permessi utente              |
-| GET    | `tracciamento/audit-log/`                         | Audit log sistema                  |
-| GET    | `tracciamento/domini-task/`                       | Domini task registrati             |
-| GET    | `tracciamento/task-registry/`                     | Registry task                      |
-| GET    | `tracciamento/task-implementations/`              | Implementazioni task               |
-| GET    | `tracciamento/job-runs/`                          | Esecuzioni job                     |
-| GET    | `tracciamento/job-summary/`                       | Riepilogo job                      |
-| GET    | `diagnostics/error-envelope/`                     | Simulazione envelope errore (test) |
+| Metodo | Path                                              | Scopo                                                        |
+| ------ | ------------------------------------------------- | ------------------------------------------------------------ |
+| GET    | `me/`                                             | Profilo utente corrente                                      |
+| GET    | `me/sessioni/`                                    | Sessioni attive                                              |
+| POST   | `me/sessioni/{jti}/revoca/`                       | Revoca sessione                                              |
+| GET    | `lookup/codici/`                                  | Ricerca codici configurazione                                |
+| GET    | `lookup/tipi-ruoli/`                              | Tipi ruolo con visibilita'                                   |
+| GET    | `lookup/tipi-ruoli-per-natura/`                   | Tipi ruolo filtrati per natura soggetto                      |
+| GET    | `lookup/forme-giuridiche/`                        | Forme giuridiche con policy                                  |
+| GET    | `lookup/tipi-soggetto-dettaglio/`                 | Tipi soggetto con nature e policy                            |
+| GET    | `lookup/tipi-soggetto-dettaglio/{id}/indirizzi/`  | Matrice indirizzi per tipo                                   |
+| GET    | `lookup/comuni/`                                  | Autocomplete comuni                                          |
+| GET    | `search/stradario/`                               | Autocomplete stradario per comune                            |
+| GET    | `search/stradario-generale/`                      | Autocomplete vie su stradario generale (indice GIN trigram)  |
+| GET    | `search/`                                         | Ricerca universale soggetti                                  |
+| GET    | `search/{uuid}/detail/`                           | Dettaglio soggetto per ruolo                                 |
+| GET    | `users/{id}/permessi-effettivi/`                  | Permessi effettivi utente                                    |
+| GET    | `users/{id}/permessi-audit/`                      | Audit permessi utente                                        |
+| GET    | `tracciamento/audit-log/`                         | Audit log sistema                                            |
+| GET    | `tracciamento/domini-task/`                       | Domini task registrati                                       |
+| GET    | `tracciamento/task-registry/`                     | Registry task                                                |
+| GET    | `tracciamento/task-implementations/`              | Implementazioni task                                         |
+| GET    | `tracciamento/job-runs/`                          | Esecuzioni job                                               |
+| GET    | `tracciamento/job-summary/`                       | Riepilogo job                                                |
+| GET    | `diagnostics/error-envelope/`                     | Simulazione envelope errore (test)                           |
 
 **Amm. Software** (`/api/v1/amm-software/`) — solo ADMIN
+Dettaglio: [api_amm_software.md](api_amm_software.md)
 
 | Metodo | Path                                    | Scopo                          |
 | ------ | --------------------------------------- | ------------------------------ |
@@ -531,7 +535,8 @@ I nomi usano kebab-case: `reset-draft`, `calcoli-tempo`, `regole-generazione`.
 | GET    | `lookup/azioni-processo/`              | Azioni processo per dropdown   |
 | GET    | `lookup/emittenti-fiscali/`            | Emittenti per dropdown         |
 
-**Anagrafiche** (`/api/v1/anagrafiche/`) — gestione geografica
+**Anagrafiche** (`/api/v1/anagrafiche/`) — gestione geografica e soggetti
+Dettaglio: [api_soggetti.md](api_soggetti.md) | [api_indirizzi.md](api_indirizzi.md) | [api_geo_config.md](api_geo_config.md)
 
 | Metodo | Path                    | Scopo                                  |
 | ------ | ----------------------- | -------------------------------------- |

@@ -113,7 +113,7 @@ class TestToponomasticaRepository(TestCase):
         # Il repository riceve sempre una stringa pulita.
         pass
 
-    @patch("apps.anagrafiche.db.geo_repository.connection")
+    @patch("apps.core.db._helpers.connection")
     def test_update_toponomastica(self, mock_conn):
         """Modifica tipo strada OK."""
         mock_cursor = MagicMock()

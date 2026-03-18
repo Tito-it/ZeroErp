@@ -4,9 +4,40 @@
 //           CAP, civico, check duplicato, validazione, payload.
 // NON gestisce: multi-tipo, libera, matrice, auto-clone (delegati ai consumer).
 
-import { reactive, ref, watch } from 'vue'
+import { reactive, ref, computed, watch } from 'vue'
 import { useIndirizzoDuplicato } from './useIndirizzoDuplicato'
 import { lookupCodiciPostaliByComune } from '../../anagrafiche/api/anagrafiche'
+
+// Scopo: Estrae i campi civico normalizzati da un oggetto (form reattivo o snapshot).
+// Condiviso da: buildIndirizzoPayload, IndirizzoDrawer (edit), useIndirizzoSoggettoForm.
+export function buildCivicoPart(data) {
+  return {
+    civico: data.civico,
+    estensione_civico: (data.estensione_civico || '').trim() || null,
+    palazzina: (data.palazzina || '').trim() || null,
+    scala: (data.scala || '').trim() || null,
+    piano: (data.piano || '').trim() || null,
+    interno: (data.interno || '').trim() || null,
+  }
+}
+
+// Scopo: Costruisce payload indirizzo completo da un oggetto plain (form reattivo o snapshot).
+// Condiviso da: useIndirizzoBase.buildPayload() e useIndirizzoSoggettoForm._buildPayload().
+export function buildIndirizzoPayload(data) {
+  const civicoPart = buildCivicoPart(data)
+
+  const obj = data.via_obj
+  if (obj?.stradario_id) {
+    return { stradario_id: obj.stradario_id, ...civicoPart }
+  }
+  return {
+    toponomastica_id: obj?.toponomastica_id,
+    descrizione_via: obj?.denominazione || '',
+    comune_id: data.comune_id,
+    codice_postale_id: data.codice_postale_id,
+    ...civicoPart,
+  }
+}
 
 export function useIndirizzoBase() {
   const form = reactive({
@@ -96,39 +127,20 @@ export function useIndirizzoBase() {
     return errors
   }
 
-  // Scopo: Estrae i campi civico come oggetto per payload.
-  function _civicoPart() {
-    return {
-      civico: form.civico,
-      estensione_civico: (form.estensione_civico || '').trim() || null,
-      palazzina: (form.palazzina || '').trim() || null,
-      scala: (form.scala || '').trim() || null,
-      piano: (form.piano || '').trim() || null,
-      interno: (form.interno || '').trim() || null,
-    }
-  }
+  // Scopo: Indirizzo da stradario + civico inserito ma non trovato nel DB.
+  // Condiviso da IndirizzoDrawer e IndirizziSoggettoDrawer (no duplicazione).
+  // I consumer aggiungono condizioni locali (isCreate, isLibera).
+  const addressNotFound = computed(() =>
+    !form.via_nuova
+    && !!form.via_obj?.stradario_id
+    && !!form.civico
+    && !existingDettaglioId.value
+  )
 
-  // Scopo: Costruisce payload indirizzo normalizzato.
-  // Se via_obj ha stradario_id → via gia' nel DB locale (manda stradario_id).
-  // Se via_obj ha toponomastica_id (da stradario_generale) → crea stradario locale.
-  // Il flag via_nuova controlla solo quale autocomplete mostrare, non il payload.
+  // Scopo: Costruisce payload indirizzo dal form reattivo corrente.
+  // Delega a buildIndirizzoPayload (helper statico condiviso).
   function buildPayload() {
-    const obj = form.via_obj
-    if (obj?.stradario_id) {
-      // Via esistente nel DB locale — usa direttamente lo stradario_id
-      return {
-        stradario_id: obj.stradario_id,
-        ..._civicoPart(),
-      }
-    }
-    // Via da stradario_generale — crea stradario locale (toponomastica + denominazione + comune + CAP)
-    return {
-      toponomastica_id: obj?.toponomastica_id,
-      descrizione_via: obj?.denominazione || '',
-      comune_id: form.comune_id,
-      codice_postale_id: form.codice_postale_id,
-      ..._civicoPart(),
-    }
+    return buildIndirizzoPayload(form)
   }
 
   // Scopo: Snapshot dei campi form per salvataggio/restore.
@@ -182,6 +194,7 @@ export function useIndirizzoBase() {
     loadingCap,
     indirizzoWarnings,
     existingDettaglioId,
+    addressNotFound,
     resetWarnings,
     validate,
     buildPayload,

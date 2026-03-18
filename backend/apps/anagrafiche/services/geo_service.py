@@ -245,35 +245,36 @@ class GeoService:
     # Indirizzi dettaglio
     # =================================================================
 
-    # Scopo: Check duplicato indirizzo via fn_build_indirizzo_normalizzato.
-    #        Nessuna normalizzazione Python — la fa la funzione DB (unica source of truth).
+    # Scopo: Check duplicato indirizzo via fn_check_indirizzo_duplicato (DB).
+    #        La funzione DB gestisce normalizzazione, LIKE prefix e exact_match.
+    #        Python e' passante: chiama la funzione, formatta il risultato.
     def check_indirizzo_duplicato(self, payload: dict) -> dict[str, Any]:
         stradario_id = optional_int(payload, "stradario_id")
-        civico = optional_int(payload, "civico")
-        estensione = (payload.get("estensione_civico") or "").strip() or None
-        palazzina = (payload.get("palazzina") or "").strip() or None
-        scala_val = (payload.get("scala") or "").strip() or None
-        piano_val = (payload.get("piano") or "").strip() or None
-        interno_val = (payload.get("interno") or "").strip() or None
-        warnings: list[dict[str, str]] = []
-        if stradario_id:
-            existing = self._ind.find_duplicato(
-                stradario_id=stradario_id, civico=civico,
-                estensione_civico=estensione, palazzina=palazzina,
-                scala=scala_val, piano=piano_val, interno=interno_val,
-            )
-            if existing:
-                label = existing.get("indirizzo_normalizzato", "")
-                comune = (existing.get("descrizione_comune") or "").strip()
-                if comune:
-                    label = f"{label}, {comune}"
-                exact = bool(existing.get("exact_match"))
-                warnings.append({
-                    "field": "indirizzo",
-                    "message": f"Indirizzo gia' presente: {label}",
-                    "indirizzo_dettaglio_id": existing.get("indirizzo_dettaglio_id") if exact else None,
-                    "exact_match": exact,
-                })
+        warnings: list[dict[str, Any]] = []
+        if not stradario_id:
+            return {"warnings": warnings}
+
+        existing = self._ind.find_duplicato(
+            stradario_id=stradario_id,
+            civico=optional_int(payload, "civico"),
+            estensione_civico=(payload.get("estensione_civico") or "").strip() or None,
+            palazzina=(payload.get("palazzina") or "").strip() or None,
+            scala=(payload.get("scala") or "").strip() or None,
+            piano=(payload.get("piano") or "").strip() or None,
+            interno=(payload.get("interno") or "").strip() or None,
+        )
+        if existing:
+            label = existing["indirizzo_normalizzato"]
+            comune = (existing.get("descrizione_comune") or "").strip()
+            if comune:
+                label = f"{label}, {comune}"
+            exact = existing["exact_match"]
+            warnings.append({
+                "field": "indirizzo",
+                "message": f"Indirizzo gia' presente: {label}",
+                "indirizzo_dettaglio_id": existing["indirizzo_dettaglio_id"] if exact else None,
+                "exact_match": exact,
+            })
         return {"warnings": warnings}
 
     # Scopo: Lista paginata indirizzi.

@@ -592,6 +592,68 @@ const status = await execute(() => api.get('/status/'), { silent: true })
 
 ---
 
+## Modalita' sola lettura (pattern "protect")
+
+### Principio
+
+Le autorizzazioni utente prevedono la **sola lettura** come livello di accesso. Tutti i form e le view devono essere progettati per supportare nativamente la modalita' read-only, senza duplicare componenti o creare varianti separate.
+
+### Tecnica CSS "pannello protect"
+
+Ispirata al formato protect AS/400: un unico overlay CSS blocca ogni interazione sulla view, senza toccare i componenti interni. Non si creano componenti `*ReadOnly.vue` separati.
+
+```css
+.app-readonly {
+  pointer-events: none;     /* blocca ogni click, hover, focus */
+  user-select: text;        /* permetti copia testo */
+  opacity: 0.85;            /* feedback visivo: stai consultando */
+}
+```
+
+### Come applicare
+
+Ogni view/drawer che supporta la sola lettura wrappa il contenuto con la classe condizionale:
+
+```vue
+<div :class="{ 'app-readonly': isReadonly }">
+  <!-- form, DataTable, drawer content — tutto normale -->
+</div>
+```
+
+Il flag `isReadonly` viene derivato dalle autorizzazioni utente (permesso di scrittura assente sul dominio/entita').
+
+### Tasti di uscita
+
+Come F12/F3 sui formati protect AS/400, i **pulsanti di chiusura** restano attivi anche in modalita' protect:
+
+```css
+.app-readonly :deep(.p-drawer-close),    /* X chiudi drawer */
+.app-readonly :deep(.p-dialog-close),    /* X chiudi dialog */
+.app-readonly :deep(.app-escape) {       /* classe generica uscita */
+  pointer-events: auto;
+  cursor: pointer;
+}
+```
+
+Regola: in sola lettura **si puo' solo chiudere/uscire**, mai aprire/creare/modificare.
+
+### Impatto sui componenti
+
+- **Non creare varianti read-only** di componenti esistenti — usare la classe `.app-readonly` sul container
+- **DrawerFooter**: in sola lettura il footer (Annulla/Salva) non viene renderizzato (`v-if="!isReadonly"`)
+- **NewButton**: in sola lettura non viene renderizzato (`v-if="!isReadonly"`)
+- **DataTable row-click**: in sola lettura apre il drawer in modalita' consultazione (protect attivo)
+- **Copia testo**: `user-select: text` garantisce che l'operatore possa sempre copiare dati con Ctrl+C
+
+### Dove si usa
+
+| Contesto | Trigger |
+| --- | --- |
+| Autorizzazioni utente | Permesso di scrittura assente sul dominio |
+| Split view (futuro) | Pannello secondario affiancato sempre in sola lettura |
+
+---
+
 ## Regole per il developer
 
 1. Ogni componente e' autonomo — logica nei composables di `core/`
@@ -608,6 +670,7 @@ const status = await execute(() => api.get('/status/'), { silent: true })
 12. Inter-tab freshness da `useTabFreshness` — mai `useTabEvents` direttamente
 13. Stato drawer da `useDrawerState` — mai `ref(false)` + `ref('create')` separati
 14. CSS layout da `main.css` — mai `<style scoped>` per layout form/pagina
+15. Sola lettura da classe `.app-readonly` sul container — mai componenti duplicati
 
 ---
 
@@ -657,6 +720,8 @@ const status = await execute(() => api.get('/status/'), { silent: true })
 | `useConfirmAction` | Dialogo conferma azione | UtenteDrawer |
 | `useDirtyState` | Traccia modifiche non salvate | Futuro |
 | `useConfirmCloseTab` | Conferma chiusura tab con modifiche | ContentTabs |
+| `useReadonlyMode` | Provider: derive isReadonly da permessi area + provide | View (SoggettiView, IndirizziView, ConfigTablePanel) |
+| `useInjectReadonly` | Consumer: inject isReadonly dal provider padre | NewButton, DrawerFooter, tutti i Drawer |
 
 ### Utility (`core/utils/`)
 
@@ -706,5 +771,5 @@ const status = await execute(() => api.get('/status/'), { silent: true })
 
 ---
 
-*ZeroERP Frontend Standards — rev. 6 (16 marzo 2026)*
+*ZeroERP Frontend Standards — rev. 7 (17 marzo 2026)*
 *Sviluppo Concentrico — anello esterno, radici nell'infrastruttura*

@@ -4,7 +4,7 @@
 >
 **Piano di riferimento:**
 >
-[Audit Sessioni, Request Logging e Sicurezza Token](/dev/work-in-progress/Audit-logging-sessionii-request-token)
+[Audit Sessioni, Request Logging e Sicurezza Token](/dev/work-done/Audit-logging-sessionii-request-token)
 >
 **Tabelle correlate:**
 >

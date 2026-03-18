@@ -119,6 +119,16 @@ function onChildNavigate() {
   transition: background var(--app-transition-fast);
 }
 
+.sidebar-user i,
+.sidebar-toggle i {
+  color: var(--app-icon-color);
+}
+
+.sidebar-user:hover i,
+.sidebar-toggle:hover i {
+  color: inherit;
+}
+
 .collapsed .sidebar-user,
 .collapsed .sidebar-toggle {
   justify-content: center;

@@ -62,5 +62,12 @@ defineEmits(['click'])
   font-size: 1rem;
   width: 1.25rem;
   text-align: center;
+  color: var(--app-icon-color);
+}
+
+/* In hover e active l'icona segue il colore del parent */
+.sidebar-item:hover i,
+.sidebar-item.active i {
+  color: inherit;
 }
 </style>
