@@ -57,7 +57,7 @@ BEGIN
     FOR v_area IN
         SELECT af.schema_db
           FROM config.aree_funzionali af
-         WHERE af.attiva = TRUE
+         WHERE af.attivo = TRUE
          ORDER BY af.ordinamento, af.schema_db
     LOOP
         v_result := v_result || jsonb_build_object(
