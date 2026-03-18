@@ -5,6 +5,7 @@
 
 import { ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useInjectReadonly } from '../composables/useReadonlyMode'
 import { useApiHandler } from '../composables/useApiHandler'
 import { useContattoForm } from '../composables/useContattoForm'
 import {
@@ -20,6 +21,7 @@ import Button from 'primevue/button'
 import Tag from 'primevue/tag'
 
 const { t } = useI18n()
+const isReadonly = useInjectReadonly()
 const { execute, loading } = useApiHandler()
 const contatto = useContattoForm()
 
@@ -44,7 +46,8 @@ async function loadContatti() {
   listLoading.value = true
   try {
     const res = await listSoggettoContatti(props.soggettoId)
-    contattiList.value = res.data.data.results || res.data.data
+    const payload = res.data?.data
+    contattiList.value = payload?.results || payload || []
   } catch {
     contattiList.value = []
   } finally {
@@ -137,16 +140,16 @@ async function onDelete(c) {
       <DrawerTitle :action="t('common.edit')" :title="t('soggetti.section_contatto')" icon="pi pi-id-card" />
     </template>
 
-    <div class="app-drawer-content">
+    <div class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
       <!-- Loading -->
-      <div v-if="listLoading" style="text-align: center; padding: 1rem;">
+      <div v-if="listLoading" class="app-loading">
         <i class="pi pi-spin pi-spinner" />
       </div>
 
       <!-- Lista contatti esistenti -->
       <template v-if="!listLoading">
-        <div v-if="contattiList.length === 0 && !formMode" class="contatti-empty">
-          <i class="pi pi-users" style="font-size: 1.5rem; opacity: 0.3;" />
+        <div v-if="contattiList.length === 0 && !formMode" class="app-empty-state">
+          <i class="pi pi-users" />
           <p>{{ t('contatto.nessun_contatto') }}</p>
         </div>
 
@@ -174,7 +177,7 @@ async function onDelete(c) {
         </div>
 
         <!-- Pulsante aggiungi -->
-        <div v-if="!formMode" style="margin-top: 0.5rem;">
+        <div v-if="!formMode" class="mt-05">
           <Button
             :label="t('contatto.aggiungi_contatto')"
             icon="pi pi-plus"
@@ -259,12 +262,6 @@ async function onDelete(c) {
   flex-shrink: 0;
 }
 
-.contatti-empty {
-  text-align: center;
-  padding: 1.5rem;
-  color: var(--p-text-muted-color);
-}
-
 .app-drawer-section {
   margin-top: 1rem;
   padding-bottom: 0.25rem;
@@ -274,6 +271,5 @@ async function onDelete(c) {
   margin: 0;
   font-size: 0.9rem;
   font-weight: 600;
-  color: var(--app-text-secondary, #666);
 }
 </style>

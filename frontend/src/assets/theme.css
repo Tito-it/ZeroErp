@@ -64,6 +64,12 @@
   --app-toolbar-tab-active-bg: var(--p-primary-color);
   --app-toolbar-tab-active-color: var(--p-primary-contrast-color);
 
+  /* ===== Icone informative ===== */
+  /* Colore standard per icone non-pulsante (sidebar, drawer, dettagli, topbar).
+   * I pulsanti (Button) gestiscono il colore icona autonomamente.
+   * Le empty state usano opacity ridotta, non questo colore. */
+  --app-icon-color: var(--p-primary-color);
+
   /* ===== Drawer ===== */
   --app-drawer-footer-border: var(--p-surface-700);
 

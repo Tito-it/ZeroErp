@@ -1,14 +1,16 @@
 // Scopo: Composable per form indirizzo layer soggetto (identita').
-// Estende useIndirizzoBase con: multi-tipo, matrice, auto-clone, modalita' libera.
+// Compone: useIndirizzoBase (form geografico) + useIndirizzoMultiTipo (snapshot/barra tag)
+//          + modalita' libera (indirizzo estero) + payload.
 // L'utente compila un indirizzo alla volta, con auto-clone per gli obbligatori mancanti.
 
 import { ref, computed, watch } from 'vue'
 import { useLookup } from './useLookup'
-import { useIndirizzoBase } from './useIndirizzoBase'
+import { useIndirizzoBase, buildIndirizzoPayload } from './useIndirizzoBase'
+import { useIndirizzoMultiTipo } from './useIndirizzoMultiTipo'
 import { lookupStati } from '../../anagrafiche/api/anagrafiche'
 
 export function useIndirizzoSoggettoForm() {
-  // Composable base: comune, stradario, civico, CAP, check duplicato
+  // Composable base: comune, via, civico, CAP, check duplicato
   const base = useIndirizzoBase()
 
   // Estendi il form reattivo di base con campi soggetto.
@@ -18,25 +20,21 @@ export function useIndirizzoSoggettoForm() {
   form.indirizzo_libero = ''
   form.stato_id = null
   form.locality = ''
+  form._isLibera = false
 
-  // Modalita' libera (true = indirizzo estero/libero)
-  const isLibera = ref(false)
+  // Modalita' libera (ref che sincronizza con form._isLibera per snapshot)
+  const isLibera = computed({
+    get: () => form._isLibera,
+    set: (val) => { form._isLibera = val },
+  })
 
-  // === Multi-tipo ===
-  const indirizziSalvati = ref({})
-  const tipoAttivo = ref(null)
-  const autoClone = ref(true)
-  const tipiMatrice = ref([])
-
-  const tipiStato = computed(() =>
-    tipiMatrice.value.map(m => ({
-      codice: m.codice,
-      descrizione: m.descrizione,
-      obbligatorio: m.obbligatorio,
-      compilato: !!indirizziSalvati.value[m.codice],
-      attivo: tipoAttivo.value === m.codice,
-    }))
-  )
+  // Multi-tipo: snapshot/restore, barra tag, auto-clone
+  const multiTipo = useIndirizzoMultiTipo({
+    baseSnapshot: base.snapshot,
+    baseRestore: base.restore,
+    baseReset: base.reset,
+    form,
+  })
 
   // Lookup stati per modalita' libera (lazy)
   const statiLookup = useLookup(() => lookupStati())
@@ -44,70 +42,6 @@ export function useIndirizzoSoggettoForm() {
   watch(isLibera, (val) => {
     if (val && !statiLookup.loaded.value) statiLookup.load()
   })
-
-  // --- Matrice ---
-  function setMatrice(matrice) {
-    tipiMatrice.value = matrice
-    indirizziSalvati.value = {}
-    const primo = matrice.find(m => m.obbligatorio) || matrice[0]
-    if (primo) {
-      tipoAttivo.value = primo.codice
-      form.tipo_indirizzo_codice = primo.codice
-    }
-  }
-
-  // --- Snapshot (base + campi soggetto) ---
-  function _snapshot() {
-    return {
-      ...base.snapshot(),
-      tipo_indirizzo_codice: form.tipo_indirizzo_codice,
-      isLibera: isLibera.value,
-      indirizzo_libero: form.indirizzo_libero,
-      stato_id: form.stato_id,
-      locality: form.locality,
-    }
-  }
-
-  function _restore(snap) {
-    base.restore(snap)
-    form.tipo_indirizzo_codice = snap.tipo_indirizzo_codice ?? null
-    isLibera.value = snap.isLibera ?? false
-    form.indirizzo_libero = snap.indirizzo_libero || ''
-    form.stato_id = snap.stato_id ?? null
-    form.locality = snap.locality || ''
-  }
-
-  function _resetSoggettoFields() {
-    form.tipo_indirizzo_codice = null
-    isLibera.value = false
-    form.indirizzo_libero = ''
-    form.stato_id = null
-    form.locality = ''
-  }
-
-  function _salvaSnapshot() {
-    if (!tipoAttivo.value) return
-    if (!form.comune_id && !(form.indirizzo_libero || '').trim()) return
-    indirizziSalvati.value[tipoAttivo.value] = _snapshot()
-  }
-
-  function _caricaSnapshot(codice) {
-    const snap = indirizziSalvati.value[codice]
-    if (snap) {
-      _restore(snap)
-    } else {
-      base.reset()
-      _resetSoggettoFields()
-      form.tipo_indirizzo_codice = codice
-    }
-  }
-
-  function switchTipo(codice) {
-    if (codice === tipoAttivo.value) return
-    _salvaSnapshot()
-    tipoAttivo.value = codice
-    _caricaSnapshot(codice)
-  }
 
   // --- Validazione ---
   function validate() {
@@ -127,82 +61,51 @@ export function useIndirizzoSoggettoForm() {
 
   const hasIndirizzi = computed(() => {
     if (form.comune_id || (form.indirizzo_libero || '').trim()) return true
-    return Object.keys(indirizziSalvati.value).length > 0
+    return Object.keys(multiTipo.indirizziSalvati.value).length > 0
   })
 
   // --- Payload ---
+  // Scopo: Costruisce payload da snapshot. Libera ha path dedicato,
+  // normalizzato delega a buildIndirizzoPayload (unica source of truth).
   function _buildPayload(snap, codice) {
-    const payload = { tipo_indirizzo_codice: codice }
-
     if (snap.isLibera) {
       return {
-        ...payload,
+        tipo_indirizzo_codice: codice,
         indirizzo_libero: (snap.indirizzo_libero || '').trim(),
         stato_id: snap.stato_id,
         locality: (snap.locality || '').trim() || null,
       }
     }
-
-    const civicoPart = {
-      civico: snap.civico,
-      estensione_civico: (snap.estensione_civico || '').trim() || null,
-      palazzina: (snap.palazzina || '').trim() || null,
-      scala: (snap.scala || '').trim() || null,
-      piano: (snap.piano || '').trim() || null,
-      interno: (snap.interno || '').trim() || null,
-    }
-
-    const obj = snap.via_obj
-    if (obj?.stradario_id) {
-      // Via esistente — usa stradario_id direttamente
-      return { ...payload, stradario_id: obj.stradario_id, ...civicoPart }
-    }
-    // Via da stradario_generale — crea stradario locale
     return {
-      ...payload,
-      toponomastica_id: obj?.toponomastica_id,
-      descrizione_via: obj?.denominazione || '',
-      comune_id: snap.comune_id,
-      codice_postale_id: snap.codice_postale_id,
-      ...civicoPart,
+      tipo_indirizzo_codice: codice,
+      ...buildIndirizzoPayload(snap),
     }
   }
 
+  // Scopo: Converte snapshot salvati in array payload.
+  // Auto-clone NON avviene qui — e' gestito dal backend (_apply_auto_clone).
   function toPayloadArray() {
-    _salvaSnapshot()
-    const result = []
-    const salvati = { ...indirizziSalvati.value }
-
-    for (const [codice, data] of Object.entries(salvati)) {
-      result.push(_buildPayload(data, codice))
-    }
-
-    if (autoClone.value && result.length > 0) {
-      const primoSalvato = Object.values(salvati)[0]
-      for (const m of tipiMatrice.value) {
-        if (m.obbligatorio && !salvati[m.codice]) {
-          result.push(_buildPayload(primoSalvato, m.codice))
-        }
-      }
-    }
-    return result
+    multiTipo.salvaSnapshot()
+    const salvati = { ...multiTipo.indirizziSalvati.value }
+    return Object.entries(salvati).map(([codice, data]) => _buildPayload(data, codice))
   }
 
   // --- Reset completo ---
   function reset() {
     base.reset()
-    _resetSoggettoFields()
-    indirizziSalvati.value = {}
-    tipoAttivo.value = null
-    autoClone.value = true
-    tipiMatrice.value = []
+    form.tipo_indirizzo_codice = null
+    form._isLibera = false
+    form.indirizzo_libero = ''
+    form.stato_id = null
+    form.locality = ''
+    multiTipo.reset()
   }
 
   // --- Popola da dati esistenti ---
   function populate(data) {
     base.restore(data)
     form.tipo_indirizzo_codice = data.tipo_indirizzo_codice ?? null
-    isLibera.value = !!data.indirizzo_libero
+    form._isLibera = !!data.indirizzo_libero
     form.indirizzo_libero = data.indirizzo_libero || ''
     form.stato_id = data.stato_id ?? null
     form.locality = data.locality || ''
@@ -211,13 +114,13 @@ export function useIndirizzoSoggettoForm() {
   return {
     form,
     isLibera,
-    // Multi-tipo
-    tipiStato,
-    tipoAttivo,
-    autoClone,
+    // Multi-tipo (da composable dedicato)
+    tipiStato: multiTipo.tipiStato,
+    tipoAttivo: multiTipo.tipoAttivo,
+    autoClone: multiTipo.autoClone,
     hasIndirizzi,
-    switchTipo,
-    setMatrice,
+    switchTipo: multiTipo.switchTipo,
+    setMatrice: multiTipo.setMatrice,
     toPayloadArray,
     // Lookup
     statiLookup,
@@ -225,6 +128,7 @@ export function useIndirizzoSoggettoForm() {
     loadingCap: base.loadingCap,
     indirizzoWarnings: base.indirizzoWarnings,
     existingDettaglioId: base.existingDettaglioId,
+    addressNotFound: base.addressNotFound,
     // Singolo
     canSave,
     validate,

@@ -10,6 +10,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from apps.core.db._helpers import dynamic_update, row_to_dict, rows_to_list
+
 from django.db import connection
 
 from apps.anagrafiche.db._helpers import extract_paginated
@@ -92,18 +94,11 @@ class IndirizziRepository:
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [indirizzo_dettaglio_id])
-            row = cursor.fetchone()
-            if not row:
-                return None
-            cols = [c.name for c in cursor.description]
-            return dict(zip(cols, row))
+            return row_to_dict(cursor)
 
-    # Scopo: Cerca indirizzo_dettaglio duplicato via fn_build_indirizzo_normalizzato.
-    #        Usa la stessa funzione di normalizzazione del trigger DB (unica source of truth).
-    #        Se civico fornito: match LIKE prefix su indirizzo_normalizzato.
-    #        Se civico null: match LIKE prefix su sola via_norm (qualsiasi civico su quella via).
-    #        Ritorna anche exact_match: True se l'indirizzo trovato coincide esattamente
-    #        con quello costruito (usato per abilitare il riuso diretto in replace mode).
+    # Scopo: Cerca indirizzo duplicato via fn_check_indirizzo_duplicato (DB).
+    #        La funzione DB costruisce la stringa normalizzata, cerca match prefix
+    #        e ritorna exact_match boolean. Python e' passante.
     def find_duplicato(
         self, *, stradario_id: int, civico: int | None = None,
         estensione_civico: str | None = None,
@@ -113,34 +108,19 @@ class IndirizziRepository:
         interno: str | None = None,
     ) -> dict[str, Any] | None:
         sql = """
-            WITH built AS (
-                SELECT (r).o_via_norm AS via_norm,
-                       (r).o_indirizzo_normalizzato AS norm
-                  FROM (SELECT anagrafiche.fn_build_indirizzo_normalizzato(
-                            %s, %s, %s, %s, %s, %s, %s) AS r) x
-            )
-            SELECT vid.*,
-                   (vid.indirizzo_normalizzato = built.norm) AS exact_match
-              FROM anagrafiche.vw_indirizzi_dettaglio vid, built
-             WHERE vid.stradario_id = %s
-               AND vid.indirizzo_normalizzato LIKE
-                   CASE WHEN %s IS NOT NULL THEN built.norm ELSE built.via_norm END || '%%'
-             ORDER BY (vid.indirizzo_normalizzato = built.norm) DESC,
-                      vid.indirizzo_dettaglio_id
+            SELECT indirizzo_dettaglio_id,
+                   indirizzo_normalizzato,
+                   descrizione_comune,
+                   exact_match
+              FROM script.fn_check_indirizzo_duplicato(%s, %s, %s, %s, %s, %s, %s)
              LIMIT 1
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [
                 stradario_id, civico, estensione_civico,
                 palazzina, scala, piano, interno,
-                stradario_id,
-                civico,
             ])
-            row = cursor.fetchone()
-            if not row:
-                return None
-            cols = [c.name for c in cursor.description]
-            return dict(zip(cols, row))
+            return row_to_dict(cursor)
 
     # Scopo: Crea indirizzo dettaglio tramite building block DB.
     def create_indirizzo_dettaglio(
@@ -165,6 +145,8 @@ class IndirizziRepository:
                 palazzina, scala, piano, interno,
             ])
             row = cursor.fetchone()
+            if not row:
+                raise RuntimeError("fn_get_or_create_indirizzo_dettaglio returned NULL")
             assert row is not None
         return int(row[0])
 
@@ -181,43 +163,10 @@ class IndirizziRepository:
         interno: str | None = None,
         attivo: bool | None = None,
     ) -> bool:
-        fields: list[str] = []
-        params: list[Any] = []
-
-        if civico is not None:
-            fields.append("civico = %s")
-            params.append(civico)
-        if estensione_civico is not None:
-            fields.append("estensione_civico = %s")
-            params.append(estensione_civico)
-        if palazzina is not None:
-            fields.append("palazzina = %s")
-            params.append(palazzina)
-        if scala is not None:
-            fields.append("scala = %s")
-            params.append(scala)
-        if piano is not None:
-            fields.append("piano = %s")
-            params.append(piano)
-        if interno is not None:
-            fields.append("interno = %s")
-            params.append(interno)
-        if attivo is not None:
-            fields.append("attivo = %s")
-            params.append(attivo)
-
-        if not fields:
-            return False
-
-        params.append(indirizzo_dettaglio_id)
-        sql = f"""
-            UPDATE anagrafiche.indirizzi_dettaglio
-               SET {', '.join(fields)}
-             WHERE id = %s
-        """  # noqa: S608
-        with connection.cursor() as cursor:
-            cursor.execute(sql, params)
-            return cursor.rowcount > 0
+        return dynamic_update("anagrafiche.indirizzi_dettaglio", indirizzo_dettaglio_id,
+                              civico=civico, estensione_civico=estensione_civico,
+                              palazzina=palazzina, scala=scala, piano=piano,
+                              interno=interno, attivo=attivo)
 
     # =================================================================
     # Stradario — supporto creazione via nuova
@@ -271,5 +220,4 @@ class IndirizziRepository:
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [comune_id])
-            cols = [c.name for c in cursor.description]
-            return [dict(zip(cols, row)) for row in cursor.fetchall()]
+            return rows_to_list(cursor)

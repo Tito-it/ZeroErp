@@ -6,6 +6,7 @@
 
 import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useSoggettiStore } from '../stores/soggetti'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useSoggettoForm } from '../../core/composables/useSoggettoForm'
@@ -30,6 +31,7 @@ import Button from 'primevue/button'
 import Tag from 'primevue/tag'
 
 const { t } = useI18n()
+const isReadonly = useInjectReadonly()
 const store = useSoggettiStore()
 const { execute, loading } = useApiHandler()
 
@@ -253,9 +255,10 @@ async function handleSave() {
       contatto: { ...contatto.form },
     }
 
-    // Indirizzi (array multi-tipo con auto-clone obbligatori)
+    // Indirizzi — auto-clone gestito dal backend
     if (indirizzo.hasIndirizzi.value) {
       payload.indirizzi = indirizzo.toPayloadArray()
+      payload.auto_clone = indirizzo.autoClone.value
     }
 
     // Dati societari (solo se visibili)
@@ -286,7 +289,7 @@ async function handleSave() {
     <template #header>
       <DrawerTitle :action="isEdit ? t('common.edit') : t('common.new')" :title="t('soggetti.soggetto')" icon="pi pi-users" />
     </template>
-    <div class="app-drawer-content">
+    <div class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
       <!-- Sezione: Dati soggetto -->
       <SoggettoForm
         :form="soggetto.form"
@@ -331,9 +334,8 @@ async function handleSave() {
             icon="pi pi-users"
             text
             size="small"
-            class="app-action-btn"
+            class="app-action-btn app-escape mt-025"
             @click="contattiDrawerVisible = true"
-            style="margin-top: 0.25rem;"
           />
         </div>
       </template>
@@ -379,9 +381,8 @@ async function handleSave() {
             icon="pi pi-map-marker"
             text
             size="small"
-            class="app-action-btn"
+            class="app-action-btn app-escape mt-025"
             @click="indirizziDrawerVisible = true"
-            style="margin-top: 0.25rem;"
           />
         </div>
       </template>
@@ -455,7 +456,6 @@ async function handleSave() {
   margin: 0;
   font-size: 0.9rem;
   font-weight: 600;
-  color: var(--app-text-secondary, #666);
 }
 .ruoli-tags {
   display: flex;

@@ -25,6 +25,9 @@ Indice test eseguiti:
 15) test_create_indirizzo_missing_tipo — tipo mancante → E_ANAG_VALIDAZIONE
 16) test_assign_ruolo_ok — assegna ruolo
 17) test_assign_ruolo_missing_codice — codice vuoto → E_ANAG_VALIDAZIONE
+18) test_auto_clone_tipi_obbligatori — clona primo indirizzo per obbligatori mancanti
+19) test_no_auto_clone_if_flag_false — auto_clone=False, nessuna clonazione
+20) test_auto_clone_riusa_dettaglio — clone riusa indirizzo_dettaglio_id del primo
 """
 
 from unittest import TestCase
@@ -36,6 +39,8 @@ from apps.core.services.service_errors import ServiceError
 
 
 SOGG_REPO = "apps.anagrafiche.services.soggetti_service.SoggettiRepository"
+IND_REPO = "apps.anagrafiche.services.soggetti_service.IndirizziRepository"
+LOOKUP_REPO = "apps.anagrafiche.services.soggetti_service.LookupRepository"
 
 FAKE_UUID = "019bac81-3f96-7ce8-a086-7e0bd0a2fec1"
 
@@ -267,3 +272,116 @@ class TestSoggettiRuoli(TestCase):
         with self.assertRaises(ServiceError) as ctx:
             SoggettiService().assign_ruolo(FAKE_UUID, {"codice_ruolo": ""})
         self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
+
+
+class TestAutoCloneIndirizzi(TestCase):
+    """Test auto-clone indirizzi obbligatori nel backend."""
+
+    @patch(LOOKUP_REPO)
+    @patch(IND_REPO)
+    @patch(SOGG_REPO)
+    def test_auto_clone_tipi_obbligatori(self, mock_sogg, mock_ind, mock_lookup):
+        """Verifica che i tipi obbligatori mancanti vengano clonati dal primo."""
+        repo = mock_sogg.return_value
+        repo.get_natura_by_tipo_id.return_value = "PF"
+        repo.crea_soggetto_pf.return_value = FAKE_UUID
+        repo.get_soggetto_contatti.return_value = [{"id": 1}]
+        repo.update_contatto.return_value = True
+        repo.crea_indirizzo_soggetto.return_value = 10
+
+        mock_ind.return_value.create_indirizzo_dettaglio.return_value = 50
+
+        # Matrice: RESID obbligatorio, DOMFISC obbligatorio, FATT facoltativo
+        mock_lookup.return_value.list_matrice_indirizzi.return_value = [
+            {"codice": "RESID", "obbligatorio": True},
+            {"codice": "DOMFISC", "obbligatorio": True},
+            {"codice": "FATT", "obbligatorio": False},
+        ]
+
+        from apps.anagrafiche.services.soggetti_service import SoggettiService
+        SoggettiService().create_soggetto({
+            "tipo_soggetto_dettaglio_id": 1,
+            "cognome": "Rossi", "nome": "Mario",
+            "codice_fiscale": "RSSMRA80A01H501Z",
+            "contatto": {"nominativo": "Mario Rossi"},
+            # Solo 1 indirizzo RESID — DOMFISC deve essere auto-clonato
+            "indirizzi": [
+                {"tipo_indirizzo_codice": "RESID", "stradario_id": 100, "civico": 1},
+            ],
+            "auto_clone": True,
+        })
+
+        # crea_indirizzo_soggetto deve essere chiamato 2 volte (RESID + DOMFISC clone)
+        self.assertEqual(repo.crea_indirizzo_soggetto.call_count, 2)
+        calls = repo.crea_indirizzo_soggetto.call_args_list
+        self.assertEqual(calls[0].kwargs["tipo_indirizzo_codice"], "RESID")
+        self.assertEqual(calls[1].kwargs["tipo_indirizzo_codice"], "DOMFISC")
+
+    @patch(LOOKUP_REPO)
+    @patch(IND_REPO)
+    @patch(SOGG_REPO)
+    def test_no_auto_clone_if_flag_false(self, mock_sogg, mock_ind, mock_lookup):
+        """Se auto_clone=False, nessuna clonazione — solo indirizzi forniti."""
+        repo = mock_sogg.return_value
+        repo.get_natura_by_tipo_id.return_value = "PF"
+        repo.crea_soggetto_pf.return_value = FAKE_UUID
+        repo.get_soggetto_contatti.return_value = [{"id": 1}]
+        repo.update_contatto.return_value = True
+        repo.crea_indirizzo_soggetto.return_value = 10
+
+        mock_ind.return_value.create_indirizzo_dettaglio.return_value = 50
+
+        from apps.anagrafiche.services.soggetti_service import SoggettiService
+        SoggettiService().create_soggetto({
+            "tipo_soggetto_dettaglio_id": 1,
+            "cognome": "Rossi", "nome": "Mario",
+            "codice_fiscale": "RSSMRA80A01H501Z",
+            "contatto": {"nominativo": "Mario Rossi"},
+            "indirizzi": [
+                {"tipo_indirizzo_codice": "RESID", "stradario_id": 100, "civico": 1},
+            ],
+            "auto_clone": False,
+        })
+
+        # Solo 1 indirizzo creato (nessun clone)
+        self.assertEqual(repo.crea_indirizzo_soggetto.call_count, 1)
+        mock_lookup.return_value.list_matrice_indirizzi.assert_not_called()
+
+    @patch(LOOKUP_REPO)
+    @patch(IND_REPO)
+    @patch(SOGG_REPO)
+    def test_auto_clone_riusa_dettaglio(self, mock_sogg, mock_ind, mock_lookup):
+        """Auto-clone: il secondo indirizzo riusa indirizzo_dettaglio_id del primo."""
+        repo = mock_sogg.return_value
+        repo.get_natura_by_tipo_id.return_value = "PF"
+        repo.crea_soggetto_pf.return_value = FAKE_UUID
+        repo.get_soggetto_contatti.return_value = [{"id": 1}]
+        repo.update_contatto.return_value = True
+        repo.crea_indirizzo_soggetto.return_value = 10
+
+        mock_ind.return_value.create_indirizzo_dettaglio.return_value = 50
+
+        mock_lookup.return_value.list_matrice_indirizzi.return_value = [
+            {"codice": "RESID", "obbligatorio": True},
+            {"codice": "DOMFISC", "obbligatorio": True},
+        ]
+
+        from apps.anagrafiche.services.soggetti_service import SoggettiService
+        SoggettiService().create_soggetto({
+            "tipo_soggetto_dettaglio_id": 1,
+            "cognome": "Rossi", "nome": "Mario",
+            "codice_fiscale": "RSSMRA80A01H501Z",
+            "contatto": {"nominativo": "Mario Rossi"},
+            "indirizzi": [
+                {"tipo_indirizzo_codice": "RESID", "stradario_id": 100, "civico": 1},
+            ],
+            "auto_clone": True,
+        })
+
+        # create_indirizzo_dettaglio chiamato UNA sola volta (il clone riusa l'ID)
+        self.assertEqual(mock_ind.return_value.create_indirizzo_dettaglio.call_count, 1)
+        # Ma crea_indirizzo_soggetto chiamato 2 volte
+        self.assertEqual(repo.crea_indirizzo_soggetto.call_count, 2)
+        # Il secondo chiama con indirizzo_dettaglio_id=50 (riuso)
+        second_call = repo.crea_indirizzo_soggetto.call_args_list[1]
+        self.assertEqual(second_call.kwargs["indirizzo_dettaglio_id"], 50)

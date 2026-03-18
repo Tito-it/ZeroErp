@@ -119,6 +119,7 @@ const formattedDate = computed(() => {
 
 .topbar-left i {
   font-size: 0.9rem;
+  color: var(--app-icon-color);
 }
 
 .topbar-hamburger {

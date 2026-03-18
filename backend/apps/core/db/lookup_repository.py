@@ -10,6 +10,8 @@
 
 from __future__ import annotations
 
+from apps.core.db._helpers import rows_to_list
+
 from typing import Any
 
 from django.db import connection
@@ -36,8 +38,7 @@ class LookupRepository:
         """
         with connection.cursor() as cursor:
             cursor.execute(sql)
-            cols = [c.name for c in cursor.description]
-            return [dict(zip(cols, row)) for row in cursor.fetchall()]
+            return rows_to_list(cursor)
 
     # Scopo: Restituisce i tipi ruolo ammessi per una data natura soggetto.
     # Se natura_soggetto e' fornita, filtra via matrice tipi_ruoli_nature_ammesse.
@@ -63,8 +64,7 @@ class LookupRepository:
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [natura_soggetto, natura_soggetto])
-            cols = [c.name for c in cursor.description]
-            return [dict(zip(cols, row)) for row in cursor.fetchall()]
+            return rows_to_list(cursor)
 
     # Scopo: Restituisce le forme giuridiche con policy REA e capitale sociale.
     # Opzionalmente filtrate per tipo_soggetto_dettaglio_id (via matrice).
@@ -86,8 +86,7 @@ class LookupRepository:
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [tipo_soggetto_dettaglio_id, tipo_soggetto_dettaglio_id])
-            cols = [c.name for c in cursor.description]
-            return [dict(zip(cols, row)) for row in cursor.fetchall()]
+            return rows_to_list(cursor)
 
     # Scopo: Restituisce la matrice indirizzi ammessi per un tipo soggetto dettaglio.
     # JOIN config.tipi_soggetto_dettaglio_tipi_indirizzo + config.tipi_indirizzi.
@@ -113,8 +112,7 @@ class LookupRepository:
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [tipo_soggetto_dettaglio_id])
-            cols = [c.name for c in cursor.description]
-            return [dict(zip(cols, row)) for row in cursor.fetchall()]
+            return rows_to_list(cursor)
 
     # Scopo: Ricerca comuni per autocomplete (ILIKE su descrizione).
     # Restituisce id, descrizione, provincia sigla.
@@ -179,8 +177,7 @@ class LookupRepository:
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [comune_id, search, limit])
-            cols = [c.name for c in cursor.description]
-            return [dict(zip(cols, row)) for row in cursor.fetchall()]
+            return rows_to_list(cursor)
 
     # Scopo: Ricerca vie su stradario_generale (senza comune/CAP) per autocomplete via nuova.
     # Chiama script.fn_search_stradario_generale(p_search, p_toponomastica_id, p_limit).
@@ -202,5 +199,4 @@ class LookupRepository:
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [search, toponomastica_id, limit])
-            cols = [c.name for c in cursor.description]
-            return [dict(zip(cols, row)) for row in cursor.fetchall()]
+            return rows_to_list(cursor)

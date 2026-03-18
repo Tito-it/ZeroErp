@@ -27,8 +27,9 @@ class UserProfileView(DomainAPIView):
         summary="Profilo utente corrente",
         description=(
             "Restituisce il profilo completo dell'utente autenticato: "
-            "dati anagrafici (soggetto), risorse umane, ruolo_sistema "
-            "e dati emittente fiscale associato (se presente). "
+            "dati anagrafici (soggetto), risorse umane, ruolo_sistema, "
+            "dati emittente fiscale associato (se presente) e mappa "
+            "permessi per area funzionale. "
             "Il payload e' prodotto dalla funzione DB script.fn_get_user_profile."
         ),
         responses={
@@ -54,6 +55,13 @@ class UserProfileView(DomainAPIView):
                             "emittente": serializers.DictField(
                                 allow_null=True,
                                 help_text="Dati emittente fiscale + soggetto ditta (null se non associato).",
+                            ),
+                            "permessi_area": serializers.DictField(
+                                help_text=(
+                                    "Mappa livello accesso per area funzionale: "
+                                    "{schema_db: 'TUTTO'|'LETTURA'|'BLOCCATO'}. "
+                                    "Prodotta da script.fn_get_user_permissions_map."
+                                ),
                             ),
                         },
                     ),

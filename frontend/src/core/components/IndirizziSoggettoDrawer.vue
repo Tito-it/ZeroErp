@@ -5,6 +5,7 @@
 
 import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useInjectReadonly } from '../composables/useReadonlyMode'
 import { useApiHandler } from '../composables/useApiHandler'
 import { useIndirizzoSoggettoForm } from '../composables/useIndirizzoSoggettoForm'
 import {
@@ -21,6 +22,7 @@ import Tag from 'primevue/tag'
 import Message from 'primevue/message'
 
 const { t } = useI18n()
+const isReadonly = useInjectReadonly()
 const { execute, loading } = useApiHandler()
 const indirizzo = useIndirizzoSoggettoForm()
 
@@ -50,7 +52,8 @@ async function loadIndirizzi() {
   listLoading.value = true
   try {
     const res = await listSoggettoIndirizzi(props.soggettoId)
-    indirizziList.value = res.data.data.results || res.data.data
+    const payload = res.data?.data
+    indirizziList.value = payload?.results || payload || []
   } catch {
     indirizziList.value = []
   } finally {
@@ -92,16 +95,10 @@ watch(() => props.visible, async (val) => {
   await Promise.all([loadIndirizzi(), loadMatrice()])
 })
 
-// Blocca save se: via da stradario (non via_nuova), civico inserito,
-// ma l'indirizzo esatto non esiste in DB. Richiede "crea nuovo" per confermare.
-// Attivo in TUTTE le modalita' (new e replace).
-// Il payload e' safe: se via_obj ha stradario_id, lo usa direttamente.
+// Blocca save se indirizzo da stradario non trovato (centralizzato in useIndirizzoBase).
+// Aggiunge condizione locale: non in modalita' libera.
 const addressNotFound = computed(() =>
-  !indirizzo.isLibera.value
-  && !indirizzo.form.via_nuova
-  && indirizzo.form.via_obj?.stradario_id
-  && indirizzo.form.civico
-  && !indirizzo.existingDettaglioId.value
+  !indirizzo.isLibera.value && indirizzo.addressNotFound.value
 )
 
 // === Azioni ===
@@ -124,7 +121,7 @@ function onStartReplace(ind) {
     descrizione: ind.tipo_indirizzo_descrizione,
     obbligatorio: true,
   }])
-  // Pre-popola comune e via dall'indirizzo esistente (se normalizzato)
+  // Pre-popola tutti i campi dall'indirizzo esistente (se normalizzato)
   if (ind.det_comune_id && ind.stradario_id) {
     comuneInitialItem.value = { id: ind.det_comune_id, descrizione: ind.descrizione_comune }
     indirizzo.form.comune_id = ind.det_comune_id
@@ -132,6 +129,12 @@ function onStartReplace(ind) {
       stradario_id: ind.stradario_id,
       indirizzo_normalizzato: ind.stradario_display || ind.indirizzo_display,
     }
+    indirizzo.form.civico = ind.civico ?? null
+    indirizzo.form.estensione_civico = (ind.estensione_civico || '').replace(/^\//, '')
+    indirizzo.form.palazzina = ind.palazzina || ''
+    indirizzo.form.scala = ind.scala || ''
+    indirizzo.form.piano = ind.piano || ''
+    indirizzo.form.interno = ind.interno || ''
   } else {
     comuneInitialItem.value = null
   }
@@ -151,18 +154,11 @@ async function onSaveForm() {
   let success = true
 
   if (formMode.value === 'replace') {
-    // In replace, se normalizzato, l'indirizzo deve gia' esistere
     const payload = payloads[0]
-    if (!payload.indirizzo_libero && indirizzo.existingDettaglioId.value) {
-      // Passa direttamente l'id esistente (evita create inutile)
+    // Se match esatto trovato, passa indirizzo_dettaglio_id al backend.
+    // Il backend ignora stradario_id/civico se indirizzo_dettaglio_id e' presente.
+    if (indirizzo.existingDettaglioId.value) {
       payload.indirizzo_dettaglio_id = indirizzo.existingDettaglioId.value
-      delete payload.stradario_id
-      delete payload.civico
-      delete payload.estensione_civico
-      delete payload.palazzina
-      delete payload.scala
-      delete payload.piano
-      delete payload.interno
     }
     const result = await execute(
       () => replaceSoggettoIndirizzo(props.soggettoId, replaceId.value, payload),
@@ -170,7 +166,6 @@ async function onSaveForm() {
     )
     if (result === null) success = false
   } else {
-    // Aggiungi: uno o piu' payload (auto-clone)
     for (const p of payloads) {
       const result = await execute(
         () => createSoggettoIndirizzo(props.soggettoId, p),
@@ -201,16 +196,16 @@ async function onSaveForm() {
       <DrawerTitle :action="t('common.edit')" :title="t('indirizzi.indirizzo') + ' - ' + t(`indirizzo_soggetto.context_${context}`)" icon="pi pi-map-marker" />
     </template>
 
-    <div class="app-drawer-content">
+    <div class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
       <!-- Loading -->
-      <div v-if="listLoading" style="text-align: center; padding: 1rem;">
+      <div v-if="listLoading" class="app-loading">
         <i class="pi pi-spin pi-spinner" />
       </div>
 
       <!-- Lista indirizzi esistenti (sempre visibile) -->
       <template v-if="!listLoading">
-        <div v-if="indirizziList.length === 0 && !formMode" class="indirizzi-empty">
-          <i class="pi pi-map-marker" style="font-size: 1.5rem; opacity: 0.3;" />
+        <div v-if="indirizziList.length === 0 && !formMode" class="app-empty-state">
+          <i class="pi pi-map-marker" />
           <p>{{ t('indirizzo_soggetto.nessun_indirizzo') }}</p>
         </div>
 
@@ -243,7 +238,7 @@ async function onSaveForm() {
         </div>
 
         <!-- Pulsante aggiungi (solo se ci sono tipi disponibili) -->
-        <div v-if="!formMode && matriceDisponibile.length > 0" style="margin-top: 0.5rem;">
+        <div v-if="!formMode && matriceDisponibile.length > 0" class="mt-05">
           <Button
             :label="t('indirizzo_soggetto.aggiungi_indirizzo')"
             icon="pi pi-plus"
@@ -337,12 +332,6 @@ async function onSaveForm() {
   color: var(--p-text-muted-color);
 }
 
-.indirizzi-empty {
-  text-align: center;
-  padding: 1.5rem;
-  color: var(--p-text-muted-color);
-}
-
 .indirizzi-warning {
   display: flex;
   align-items: center;
@@ -365,6 +354,5 @@ async function onSaveForm() {
   margin: 0;
   font-size: 0.9rem;
   font-weight: 600;
-  color: var(--app-text-secondary, #666);
 }
 </style>

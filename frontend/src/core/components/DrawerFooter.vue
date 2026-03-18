@@ -1,7 +1,9 @@
 <script setup>
 // Scopo: footer standard per drawer con pulsanti Annulla/Salva.
 // Riusabile in tutti i drawer del progetto.
+// In modalita' sola lettura (provide/inject) si nasconde automaticamente.
 import { useI18n } from 'vue-i18n'
+import { useInjectReadonly } from '../composables/useReadonlyMode'
 import Button from 'primevue/button'
 
 defineProps({
@@ -13,10 +15,11 @@ defineProps({
 
 const emit = defineEmits(['save', 'cancel'])
 const { t } = useI18n()
+const isReadonly = useInjectReadonly()
 </script>
 
 <template>
-  <div class="app-drawer-footer">
+  <div v-if="!isReadonly" class="app-drawer-footer">
     <Button
       :label="cancelLabel || t('common.cancel')"
       severity="secondary"
