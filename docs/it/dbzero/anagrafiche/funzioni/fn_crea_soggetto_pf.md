@@ -2,13 +2,13 @@
 # ⚙️ Funzione `fn_crea_soggetto_pf`
 
 ```sql
-CREATE FUNCTION fn_crea_soggetto_pf(p_cognome text, p_nome text, p_codice_fiscale text, p_email text, p_data_nascita date, p_sesso character, p_stato_iso2 character varying, p_comune_nascita_id integer)
+CREATE FUNCTION fn_crea_soggetto_pf(p_cognome text, p_nome text, p_codice_fiscale text, p_email text, p_data_nascita date, p_sesso character, p_stato_iso2 character, p_comune_nascita_id integer)
 ```
 
 **Definizione completa:**
 
 ```sql
-CREATE OR REPLACE FUNCTION anagrafiche.fn_crea_soggetto_pf(p_cognome text DEFAULT NULL::text, p_nome text DEFAULT NULL::text, p_codice_fiscale text DEFAULT NULL::text, p_email text DEFAULT NULL::text, p_data_nascita date DEFAULT NULL::date, p_sesso character DEFAULT 'M'::bpchar, p_stato_iso2 character varying DEFAULT 'IT'::character varying, p_comune_nascita_id integer DEFAULT NULL::integer)
+CREATE OR REPLACE FUNCTION anagrafiche.fn_crea_soggetto_pf(p_cognome text DEFAULT NULL::text, p_nome text DEFAULT NULL::text, p_codice_fiscale text DEFAULT NULL::text, p_email text DEFAULT NULL::text, p_data_nascita date DEFAULT NULL::date, p_sesso character DEFAULT NULL::bpchar, p_stato_iso2 character DEFAULT NULL::bpchar, p_comune_nascita_id integer DEFAULT NULL::integer)
  RETURNS uuid
  LANGUAGE plpgsql
 AS $function$
@@ -16,6 +16,7 @@ DECLARE
     -- Lookup config
     v_tipo_soggetto_dettaglio_id  config.tipi_soggetto_dettaglio.id%TYPE;
     v_stato_id                    config.stati.id%TYPE;
+    v_stato_iso2_resolved         config.stati.codice_iso2%TYPE;
     -- Risultato
     v_soggetto_id                 anagrafiche.soggetti.id%TYPE;
 BEGIN
@@ -34,28 +35,14 @@ BEGIN
     --
     -- Parametri opzionali:
     --   p_data_nascita:      data nascita (default NULL)
-    --   p_sesso:             sesso (default 'M')
-    --   p_stato_iso2:        ISO2 nazionalita' (default 'IT')
+    --   p_sesso:             sesso (default da parametro o 'M')
+    --   p_stato_iso2:        ISO2 nazionalita' (default da
+    --                        config.parameters soggetto_default_stato_iso2)
     --   p_comune_nascita_id: comune di nascita (default NULL)
     --
-    -- Restituisce:
-    --   soggetti.id (UUID) del soggetto creato
-    --
-    -- Trigger coinvolti:
-    --   trgfn_soggetti_gen_codice (genera codice)
-    --   trgfn_soggetti_normalize (ragione_sociale_completa)
-    --   trgfn_soggetti_guard_cf_piva_obbligatori (valida CF)
-    --   trgfn_soggetti_valida_cf_piva_dispatch (formato CF)
-    --   trgfn_soggetti_guard_soggetto_contatti (DEFERRED)
-    --   trgfn_soggetti_guard_indirizzi_required (DEFERRED)
-    --   trgfn_contatti_set_default_contatto (auto-default)
-    --
-    -- Nota DEFERRED:
-    --   Il trigger contatti verifica al COMMIT che esista
-    --   almeno un contatto. Qui lo creiamo subito.
-    --   Il trigger indirizzi verifica al COMMIT se la
-    --   matrice config richiede RES per PR: il chiamante
-    --   deve creare l'indirizzo se necessario.
+    -- Defaults risolti internamente:
+    --   p_stato_iso2 -> config.parameters.soggetto_default_stato_iso2
+    --   p_sesso      -> 'M' (hardcode accettabile, non e' config)
     -- =========================================================
 
     -- =============================================================
@@ -118,18 +105,25 @@ BEGIN
         );
     END IF;
 
-    -- Stato (nazionalita')
+    -- Stato (nazionalita') — default da config.parameters
+    v_stato_iso2_resolved := COALESCE(
+        p_stato_iso2,
+        (SELECT default_value FROM config.parameters
+          WHERE code = 'soggetto_default_stato_iso2'),
+        'IT'  -- fallback ultimo livello se parametro mancante
+    );
+
     SELECT id INTO v_stato_id
     FROM config.stati
-    WHERE codice_iso2 = COALESCE(p_stato_iso2, 'IT');
+    WHERE codice_iso2 = v_stato_iso2_resolved;
 
     IF v_stato_id IS NULL THEN
         PERFORM script.fn_log_and_raise_error(
             'database', 'anagrafiche.fn_crea_soggetto_pf',
             'E_GENERICO',
-            jsonb_build_object('codice_iso2', p_stato_iso2),
+            jsonb_build_object('codice_iso2', v_stato_iso2_resolved),
             NULL::uuid,
-            concat('Stato ', COALESCE(p_stato_iso2, 'IT'), ' non trovato in config.stati.')
+            concat('Stato ', v_stato_iso2_resolved, ' non trovato in config.stati.')
         );
     END IF;
 
@@ -152,8 +146,6 @@ BEGIN
 
     -- =============================================================
     -- Step 1: Creazione soggetto (Persona Fisica)
-    -- Trigger: gen_codice, normalize, guard_cf_piva_obbligatori
-    -- Aggiunto comune_id per comune di nascita (FK fk_comuni_config)
     -- =============================================================
 
     INSERT INTO anagrafiche.soggetti (
@@ -171,9 +163,6 @@ BEGIN
 
     -- =============================================================
     -- Step 2: Creazione contatto default
-    -- Richiesto dal trigger DEFERRED soggetto_contatti.
-    -- Il trigger contatti_set_default_contatto imposta
-    -- is_default automaticamente (primo contatto = default).
     -- =============================================================
 
     INSERT INTO anagrafiche.contatti (
@@ -190,8 +179,8 @@ BEGIN
 END;
 $function$
 
-COMMENT ON FUNCTION anagrafiche.fn_crea_soggetto_pf(p_cognome text, p_nome text, p_codice_fiscale text, p_email text, p_data_nascita date, p_sesso character, p_stato_iso2 character varying, p_comune_nascita_id integer)
-IS 'Building block: crea soggetto Persona Fisica (natura PR) + contatto default. Lookup tipo_soggetto_dettaglio e stato da codice. Guard CF univoco. Accetta p_comune_nascita_id per comune di nascita. NON crea indirizzo (responsabilita'' del chiamante se matrice config richiede RES). Riusabile da orchestratori.';
+COMMENT ON FUNCTION anagrafiche.fn_crea_soggetto_pf(p_cognome text, p_nome text, p_codice_fiscale text, p_email text, p_data_nascita date, p_sesso character, p_stato_iso2 character, p_comune_nascita_id integer)
+IS 'Building block: crea soggetto Persona Fisica (natura PR) + contatto default. Default stato_iso2 da config.parameters (soggetto_default_stato_iso2). Guard CF univoco. NON crea indirizzo (responsabilita'' del chiamante). Riusabile da orchestratori.';
 ```
 
 ---
