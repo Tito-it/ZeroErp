@@ -9,8 +9,7 @@
 > • [vendite.fatturazione_lotti_fatture](/dbzero/vendite/tabelle/fatturazione_lotti_fatture)  
 > • [vendite.fatturazione_lotti](/dbzero/vendite/tabelle/fatturazione_lotti)  
 >
-🎯 Scopo Principale
-
+### 🎯 Scopo Principale
 (latest review 20-02-2026)  
 La funzione **`vendite.fn_sync_fatture_log_critical_lotto()`** sincronizza in modo
 set-based:

@@ -1,7 +1,5 @@
 ## 📘 Documentazione Concettuale – Funzione `vendite.fn_resolve_lotto_task_execution_mode`
-
 ### 🎯 Scopo Principale
-
 Determina in modo deterministico la modalita` di esecuzione del task:
 `RUN`, `SKIP`, `RESUME`, `RESET_REQUIRED`.
 

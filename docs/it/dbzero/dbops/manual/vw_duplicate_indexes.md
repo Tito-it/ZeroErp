@@ -10,9 +10,7 @@ Approfondimento funzioni:
 La view **`dbops.vw_duplicate_indexes`** identifica gli **indici duplicati** all’interno dello stesso schema e tabella, cioè quegli indici che coprono esattamente lo stesso insieme di colonne (`cols`). La view è **limitata agli schemi presenti in `dbops.automation_scope`**; per ciascun gruppo di colonne con più indici restituisce i nomi degli indici coinvolti e il numero totale di occorrenze.
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 10-01-26)
 * **Individuare indici ridondanti**
   Scoprire indici che hanno lo stesso set di colonne e possono quindi essere unificati o rimossi.

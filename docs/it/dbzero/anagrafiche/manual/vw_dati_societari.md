@@ -10,7 +10,6 @@ Approfondimenti tabelle:
 > [config.province](/dbzero/config/tabelle/province)  
 
 ---
-
 ### 🎯 Scopo Principale
 (latest review 23-12-25)
 La vista **`anagrafiche.vw_dati_societari`** offre una lettura unificata dei dati societari con:

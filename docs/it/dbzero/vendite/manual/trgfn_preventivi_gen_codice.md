@@ -6,9 +6,7 @@
 > • [script.fn_generate_codice](/dbzero/script/funzioni/fn_generate_codice)  
 
 ---
-
 ### 🎯 Scopo Principale
-
 La trigger function `vendite.trgfn_preventivi_gen_codice()` genera
 automaticamente `numero` preventivo quando il campo non viene valorizzato.
 

@@ -14,9 +14,7 @@ Approfondimento funzioni:
 > [dbops.fn_get_or_create_session_tx_id](/dbzero/dbops/funzioni/fn_get_or_create_session_tx_id)  
 
 ---
-
 ### 🎯 Scopo Principale
-
 La funzione **`dbops.fn_get_child_fk_col(p_conoid oid)`** restituisce **il nome della colonna figlia** coinvolta in un **vincolo di chiave esterna** identificato dal suo **OID** (`pg_constraint.oid`). È pensata come **building-block** per automazioni di analisi/normalizzazione delle FK (naming, indici consigliati, audit), evitando join ripetitivi sui cataloghi `pg_constraint` e `pg_attribute`.
 
 ---

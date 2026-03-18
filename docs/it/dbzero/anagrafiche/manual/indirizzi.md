@@ -36,9 +36,7 @@ Supporta:
 - Vincoli di integrità per garantire coerenza tra i dati
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 10-01-26)
 * **Associazione soggetto/ruolo → indirizzo**  
   Ogni soggetto può avere più indirizzi distinti in base al ruolo (es. cliente, fornitore) e al tipo di indirizzo (es. sede legale, spedizione, residenza).

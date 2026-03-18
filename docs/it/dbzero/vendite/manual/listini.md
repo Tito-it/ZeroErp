@@ -8,8 +8,7 @@
 > • [vendite.listini_associazioni](/dbzero/vendite/tabelle/listini_associazioni)  
 > • [vendite.listini_righe](/dbzero/vendite/tabelle/listini_righe)  
 >
-🎯 Scopo Principale
-
+### 🎯 Scopo Principale
 La tabella `vendite.listini` rappresenta la testata anagrafica dei listini prezzo
 del dominio vendite.
 

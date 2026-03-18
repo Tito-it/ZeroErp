@@ -1,7 +1,5 @@
 ## 📘 Documentazione Concettuale – Tabella `vendite.event_log`
-
 ### 🎯 Scopo Principale
-
 `vendite.event_log` centralizza in un unico stream temporale gli eventi tecnici/funzionali
 dei domini vendite (pipeline, commesse, SDI, fatture), con modello **append-only**.
 

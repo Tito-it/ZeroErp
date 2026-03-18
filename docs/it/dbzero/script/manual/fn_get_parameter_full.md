@@ -21,9 +21,7 @@ La funzione **`script.fn_get_parameter_full(...) RETURNS TEXT`** restituisce il 
 con una **precedenza deterministica**.
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest update 21-12-25)
 * **Ricerca safe del parametro**
   Verifica l’esistenza del parametro in `config.parameters` e recupera `id` + `default_value`.

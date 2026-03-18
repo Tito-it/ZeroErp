@@ -1,7 +1,5 @@
 ## 📘 Documentazione Concettuale – Funzione `vendite.fn_get_lotto_task_last_run`
-
 ### 🎯 Scopo Principale
-
 Restituisce l'ultimo task run disponibile per lotto/step/task.
 
 ---

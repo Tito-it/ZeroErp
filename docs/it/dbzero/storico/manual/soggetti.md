@@ -22,9 +22,7 @@ Questo permette di:
 * ripristinare o analizzare lo storico di un soggetto in qualsiasi momento
 
 ---
-
 ### 🎯 Scopo Principale
-
 * **Versionamento dei soggetti**
   Ogni modifica (INSERT, UPDATE, DELETE) su `anagrafiche.soggetti` genera un record in storico con lo stato precedente, il tipo di operazione e i metadati di audit.
 

@@ -14,7 +14,6 @@
 > • [config.stati](/dbzero/config/tabelle/stati)    
 
 ---
-
 ### 🎯 Scopo Principale
 (latest review 15-02-26)
 Restituisce tutti gli **indirizzi** associati a uno specifico `soggetto_ruolo`, producendo per ciascuno:

@@ -6,9 +6,7 @@
 > [catalogo.articoli](/dbzero/catalogo/tabelle/articoli)    
 > [catalogo.articoli_componenti](/dbzero/catalogo/tabelle/articoli_componenti)    
 >
-
-🎯 Scopo Principale
-
+### 🎯 Scopo Principale
 (latest review 15-01-26)
 La funzione **`catalogo.trgfn_articoli_componenti_guard_is_composito`** impedisce
 di usare come **prodotto** un articolo con `is_composito = false`.

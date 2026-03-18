@@ -14,9 +14,7 @@ Approfondimenti funzioni:
 La tabella **`config.messaggi_errore`** è il **catalogo centralizzato** dei testi applicativi (errori, avvisi, messaggi informativi) con supporto per internazionalizzazione (i18n). Ogni record definisce un messaggio univoco, differenziato per codice e lingua, corredato di causa e suggerimenti di soluzione.
 
 ---
-
 ### 🎯 Scopo Principale
-
 * **Centralizzare i messaggi**: evitare hard‑coding nei sorgenti SQL, trigger o procedure.
 * **Supporto multilingua**: gestire versioni localizzate tramite il campo `lingua` (es. `it`, `en`).
 * **Placeholder dinamici**: usare `%s` nel campo `messaggio`, sostituiti a runtime dalla funzione `script.fn_get_messaggio` con valori contestuali.

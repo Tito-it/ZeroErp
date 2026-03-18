@@ -6,9 +6,7 @@ Approfondimenti funzioni:
 > [internal.trgfn_audit_version_info](/dbzero/internal/funzioni/trgfn_audit_version_info)     
 
 ---
- 
 ### 🎯 Scopo Principale
-
 Mantenere un registro delle versioni dell’applicazione **ZeroErp**, conservando informazioni su:
 
 * **version**: etichetta di release/deploy (es. `1.2.0`, `2025.07.11`).

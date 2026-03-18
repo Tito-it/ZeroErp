@@ -8,8 +8,7 @@
 > • [anagrafiche.resellers_billing_account](/dbzero/anagrafiche/manual/resellers_billing_account)  
 > • [vendite.fatture](/dbzero/vendite/tabelle/fatture)  
 >
-🎯 Scopo Principale
-
+### 🎯 Scopo Principale
 (latest review 26-01-2026)
 `anagrafiche.resellers` rappresenta l’anagrafica dei **reseller** disponibili nel sistema.
 Ogni reseller e` un ruolo (`soggetti_ruoli`) che puo` essere collegato a uno o piu`

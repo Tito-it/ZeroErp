@@ -19,9 +19,7 @@
 > [Gestione degli indirizzi](/guide/gestione-degli-indirizzi)
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 13-03-2026)
 Building block atomico per la creazione di un soggetto Persona Fisica
 (natura PR = Privato) con contatto default obbligatorio.

@@ -8,9 +8,7 @@
 > • [anagrafiche.emittenti_fiscali_billing_account](/dbzero/anagrafiche/manual/emittenti_fiscali_billing_account)    
 > • [vendite.fatture](/dbzero/vendite/tabelle/fatture)    
 >
-
-🎯 Scopo Principale
-
+### 🎯 Scopo Principale
 (last review)
 `anagrafiche.emittenti_fiscali` rappresenta l’anagrafica **degli emittenti fiscali** disponibili
 nel sistema. Ogni emittente e` un ruolo (`soggetti_ruoli`) con dati fiscali e configurazioni

@@ -6,8 +6,7 @@
 >
 • [vendite.fatturazione_lotti](/dbzero/vendite/tabelle/fatturazione_lotti)  
 >
-🎯 Scopo Principale
-
+### 🎯 Scopo Principale
 (latest review 28-01-2026)
 `vendite.fatturazione_lotti_log` registra **warning** e **errori critici**
 relativi ai processi del lotto di fatturazione.

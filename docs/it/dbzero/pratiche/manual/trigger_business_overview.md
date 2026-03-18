@@ -15,9 +15,7 @@ Tabelle:
 > [pratiche.flussi](flussi.md)
 
 ---
-
 ### 🎯 Scopo Principale
-
 Questo documento descrive i **trigger business-specific** del modulo pratiche. Sono trigger che implementano logica di dominio (giornale di bordo, guard prerequisiti, generazione cross-pratica).
 
 > **Nota**: i trigger standard (audit, tx_id, storico, lock_columns, attivo) **NON** sono inclusi qui. Sono applicati automaticamente da `dbops.fn_run_automations()`.

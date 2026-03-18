@@ -13,9 +13,7 @@
 > [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)   
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 02-01-26)
 
 Impostare lo `stato_id` di default per la toponomastica e garantire che il valore sia sempre presente.

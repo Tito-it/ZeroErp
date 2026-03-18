@@ -17,9 +17,7 @@
 > [Soggetti e ruoli anagrafici](/guide/soggetti-e-ruoli-anagrafici)
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 13-03-2026)
 Orchestratore transazionale per la creazione completa di un operatore.
 Chiama i building block in sequenza all'interno di una singola transazione:

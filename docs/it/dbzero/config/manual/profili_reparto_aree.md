@@ -20,9 +20,7 @@ La tabella **`config.profili_reparto_aree`** è il **cuore dell'ereditarietà** 
 Definisce il livello di accesso di default che ogni reparto ha su ogni area funzionale. Tutti gli operatori del reparto ereditano automaticamente questi livelli.
 
 ---
-
 ### 🎯 Scopo Principale
-
 * Definire il **profilo di accesso ereditato**: una matrice (reparto × area) → livello.
 * Consentire la configurazione centralizzata: un cambio di policy si applica a tutti gli operatori del reparto.
 * Garantire il **default sicuro**: se un reparto non ha profilo per un'area, l'accesso è BLOCCATO.

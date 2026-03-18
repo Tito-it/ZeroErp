@@ -12,9 +12,7 @@ Overview:
 [Trigger business overview](trigger_business_overview.md)
 
 ---
-
 ### 🎯 Scopo Principale
-
 Registra l'azione **STATO_CAMBIATO** nel giornale. Si attiva **AFTER UPDATE OF stato_id** su `pratiche.pratiche`, solo quando il valore cambia realmente (`WHEN OLD.stato_id IS DISTINCT FROM NEW.stato_id`).
 
 ---

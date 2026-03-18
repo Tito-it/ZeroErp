@@ -1,7 +1,5 @@
 ## 📘 Documentazione Concettuale – Tabella `dbops.automazione_guard_utility_tipo_ruolo`
-
 ### 🎯 Scopo Principale
-
 La tabella **`dbops.automazione_guard_utility_tipo_ruolo`** configura le tabelle
 su cui applicare automaticamente il trigger di guardia
 **utility -> tipo_ruolo**.

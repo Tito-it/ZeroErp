@@ -7,9 +7,7 @@ Approfondimento tabelle:
 [pratiche.pratiche](/dbzero/pratiche/tabelle/pratiche)
 
 ---
-
 ### 🎯 Scopo Principale
-
 La tabella `config.stati_pratiche` definisce i possibili **stati del ciclo di vita** di una pratica. Ogni pratica ha esattamente uno stato, che ne governa le transizioni e le operazioni consentite.
 
 ---

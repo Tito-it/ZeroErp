@@ -12,8 +12,7 @@
 >
 • [dbops.fn_check_pipeline_task_registered](/dbzero/dbops/manual/fn_check_pipeline_task_registered)  
 >
-🎯 Scopo Principale
-
+### 🎯 Scopo Principale
 (latest review 08-02-2026)
 Risoluzione controllata dell'implementazione di un task:
 usa la variante richiesta se valida, altrimenti il **default**.

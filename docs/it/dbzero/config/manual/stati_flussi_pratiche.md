@@ -7,9 +7,7 @@ Approfondimento tabelle:
 [pratiche.flussi](/dbzero/pratiche/tabelle/flussi)
 
 ---
-
 ### 🎯 Scopo Principale
-
 La tabella `config.stati_flussi_pratiche` definisce i possibili **stati di un flusso operativo** all'interno di una pratica. Ogni flusso ha esattamente uno stato che ne indica l'avanzamento nel workflow.
 
 ---

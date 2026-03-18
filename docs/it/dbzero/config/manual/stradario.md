@@ -12,9 +12,7 @@ Approfondimento Tabelle:
 La tabella **`config.stradario`** definisce la mappa delle vie e strade di ciascun comune, completando il processo di indirizzamento con informazioni di localizzazione e dettagli aggiuntivi.
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 21-01-2026)
 * **Mappa comunale delle vie**
   Contiene l’elenco delle strade e vie di ogni comune, con riferimento al prefisso e al nome forniti da `config.stradario_generale`.

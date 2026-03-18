@@ -22,9 +22,7 @@ Approfondimeto funzioni:
 > [dbops.trgfn_tx_id_managed](/dbzero/dbops/funzioni/trgfn_tx_id_managed)   
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 15-02-26)
 * Registrare ogni **attivazione** di servizio (volta) per un soggetto su un punto di erogazione.
 * Gestire la **gerarchia** delle attivazioni successive (subentri/volture) tramite `parent_istanza_id`.

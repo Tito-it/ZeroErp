@@ -12,8 +12,7 @@
 >
 • [vendite.trgfn_attivita_fatturabili_normalize](/dbzero/vendite/funzioni/trgfn_attivita_fatturabili_normalize)  
 >
-🎯 Scopo Principale
-
+### 🎯 Scopo Principale
 (latest review 27-01-2026)
 La funzione **`vendite.fn_get_tipo_doc_fiscale_id`** risolve il tipo documento
 fiscale a partire dalla sorgente o dalla utility.

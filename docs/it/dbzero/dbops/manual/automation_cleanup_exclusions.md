@@ -14,9 +14,7 @@ Approfondimento funzioni:
 La tabella **`dbops.automation_cleanup_exclusions`** contiene l’elenco delle **tabelle escluse** dal framework di cleanup basato su `cleanup_at`.
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 07-02-26)
 * Consentire esclusioni esplicite dal **calcolo `cleanup_at`** e dalla **purge**.
 * Fornire tracciabilità e motivazione (`reason`) delle eccezioni.

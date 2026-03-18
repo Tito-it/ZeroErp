@@ -13,9 +13,7 @@ Approfondimento tabelle:
 [`dbops.automation_rules_tbl`](/dbzero/dbops/tabelle/automation_rules_tbl)
 
 ---
-
 ### 🎯 Scopo Principale
-
 *(last review 13-11-26)*
 La funzione **`trgfn_prevent_deactivate_if_children`** è un **trigger function** che impedisce la disattivazione (`attivo = FALSE`) di un record padre se esistono record figli **attivi** associati tramite una FK. Se la tabella figlia **non** ha la colonna `attivo`, il blocco scatta alla semplice presenza di figli collegati. Garantisce integrità logica tra entità padre e figlio, preservando la coerenza dei dati.
 

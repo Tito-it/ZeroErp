@@ -14,9 +14,7 @@ Approfondimento funzioni:
 [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)
 
 ---
-
 ### 🎯 Scopo Principale
-
 La tabella `anagrafiche.gestori_utilities` gestisce l'associazione tra i gestori e le utilities disponibili nel sistema Zero ERP. Ogni gestore, identificato dal suo ruolo, può gestire una o più utilities specifiche.
 
 ---

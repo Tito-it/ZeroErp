@@ -13,9 +13,7 @@ Approfondimenti funzioni:
 > [script.trgfn_audit_data_user_generic](/dbzero/script/funzioni/trgfn_audit_data_user_generic)
 
 ---
-
 ### 🎯 Scopo Principale
-
 La tabella **`config.qualifiche`** definisce il catalogo delle mansioni/posizioni
 assegnabili alle risorse (es. Amministratore, Dipendente, Consulente).
 Serve per distinguere la funzione operativa della persona all'interno

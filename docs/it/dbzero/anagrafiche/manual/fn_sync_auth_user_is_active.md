@@ -12,9 +12,7 @@
 [anagrafiche.fn_sync_auth_user_expired](/dbzero/anagrafiche/funzioni/fn_sync_auth_user_expired)
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 10-03-2026)
 La funzione **`anagrafiche.fn_sync_auth_user_is_active()`** allinea il campo
 `django.auth_user.is_active` allo stato effettivo della risorsa umana

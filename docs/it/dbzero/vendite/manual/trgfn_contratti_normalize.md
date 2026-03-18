@@ -5,9 +5,7 @@
 • [vendite.contratti](/dbzero/vendite/tabelle/contratti)  
 
 ---
-
 ### 🎯 Scopo Principale
-
 La trigger function `vendite.trgfn_contratti_normalize()` completa i dati
 minimi del contratto in insert quando il numero documento e` presente.
 

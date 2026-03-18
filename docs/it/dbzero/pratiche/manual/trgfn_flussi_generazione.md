@@ -17,9 +17,7 @@ Overview:
 [Trigger business overview](trigger_business_overview.md)
 
 ---
-
 ### 🎯 Scopo Principale
-
 Trigger function per la **generazione automatica cross-pratica**. Si attiva **AFTER UPDATE OF stato_id** su `pratiche.flussi`. Quando un flusso passa allo stato COMPLETATO, cerca le regole di generazione automatica e invoca `fn_genera_pratica_da_flusso` per ciascuna regola matching.
 
 ---

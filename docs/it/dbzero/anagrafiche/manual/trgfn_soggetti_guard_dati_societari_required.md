@@ -14,7 +14,6 @@
 > • [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)   
 
 ---
-
 ### 🎯 Scopo Principale
 (latest review 03-12-25)
 Garantire che, per tutti i **soggetti** la cui tipologia dettagliata prevede una policy **dati societari obbligatoria**, esista **almeno una riga** associata in `anagrafiche.dati_societari`.

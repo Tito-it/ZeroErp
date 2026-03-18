@@ -14,9 +14,7 @@
 > [script.fn_get_emittenti_scope](/dbzero/script/funzioni/fn_get_emittenti_scope)
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 08-03-2026)
 La funzione **`script.fn_get_emittenti_scope_sr_ids`** restituisce i `soggetto_ruolo_id`
 degli emittenti fiscali autorizzati per un utente.

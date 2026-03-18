@@ -19,9 +19,7 @@
 [Gestione degli indirizzi](/guide/gestione-degli-indirizzi)
 
 ---
-
-### Scopo Principale
-
+### 🎯 Scopo Principale
 (latest review 13-03-2026)
 
 Building block per la creazione di un indirizzo soggetto (`anagrafiche.indirizzi_soggetti`).

@@ -1,5 +1,4 @@
 ## 📘 Documentazione Concettuale – Funzione `pagamenti.trgfn_vendite_movimenti_sync_contabile_from_riga`
-
 ### 🎯 Scopo Principale
 Mantenere coerenti `contabile_id`, `fattura_id` e `billing_account_id`
 su `pagamenti.vendite_movimenti` quando viene usato il riferimento a riga

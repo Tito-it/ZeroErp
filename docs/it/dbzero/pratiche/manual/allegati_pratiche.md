@@ -9,9 +9,7 @@ Approfondimento tabelle:
 > [config.tipi_allegato](/dbzero/config/tabelle/tipi_allegato)
 
 ---
-
 ### 🎯 Scopo Principale
-
 La tabella `pratiche.allegati_pratiche` gestisce i **file allegati** a una pratica. Gli allegati sono **immutabili**: non vengono modificati ma versionati tramite `allegato_padre_id`.
 
 ---

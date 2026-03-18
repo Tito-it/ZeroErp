@@ -7,9 +7,7 @@
 > • [catalogo.unita_misura](/dbzero/catalogo/tabelle/unita_misura)   
 > • [vendite.ordini_righe](/dbzero/vendite/tabelle/ordini_righe)   
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 13-01-26)
 Mappa, per ciascun **articolo**, le **unità di misura operative** ammesse e il **fattore di conversione** verso la **UoM base**. Permette di lavorare con confezioni (es. *cartone 6 bottiglie*, *scatola 50 pz*) mantenendo **coerenza contabile e di stock** in **UoM base**.
 

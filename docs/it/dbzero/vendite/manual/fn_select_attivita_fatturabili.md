@@ -12,8 +12,7 @@
 >
 • [backend.fn_execute_pipeline_step](/backend/vendite/funzioni/fn_execute_pipeline_step)   
 >
-🎯 Scopo Principale
-
+### 🎯 Scopo Principale
 (latest review 27-01-2026)
 La funzione **`vendite.fn_select_attivita_fatturabili()`** seleziona le righe
 **eleggibili** per la fatturazione e, se richiesto, le **locka** in modo atomico.

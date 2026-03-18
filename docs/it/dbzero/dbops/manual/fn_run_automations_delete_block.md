@@ -13,9 +13,7 @@ Approfondimento funzioni:
 > [script.trgfn_delete_block_by_guc](/dbzero/script/funzioni/trgfn_delete_block_by_guc)  
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 23-01-26)
 La funzione **`dbops.fn_run_automations_delete_block(p_exec_mode, p_schemas, p_dry_run)`**
 applica (o simula) i trigger **DELETE_BLOCK** sulle tabelle configurate in

@@ -10,8 +10,7 @@
 >
 • [vendite.fn_ricalcola_totali_fattura](/dbzero/vendite/funzioni/fn_ricalcola_totali_fattura)  
 >
-🎯 Scopo Principale
-
+### 🎯 Scopo Principale
 La funzione **`vendite.fn_get_totale_fondi_fattura()`** restituisce il totale
 dei fondi fattura **attivi** associati alla testata.
 

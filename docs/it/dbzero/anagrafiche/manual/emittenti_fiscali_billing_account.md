@@ -8,9 +8,7 @@
 > • [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)    
 > • [vendite.fatture](/dbzero/vendite/tabelle/fatture)    
 >
-
-🎯 Scopo Principale
-
+### 🎯 Scopo Principale
 (latest review 23-01-2026)
 La tabella `anagrafiche.emittenti_fiscali_billing_account` definisce l’associazione tra **billing account**
 e **emittente fiscale** (ruolo), garantendo che ogni documento abbia un emittente coerente e deterministico.

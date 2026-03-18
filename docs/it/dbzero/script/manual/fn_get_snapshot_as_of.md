@@ -18,9 +18,7 @@ La funzione **`script.fn_get_snapshot_as_of(p_schema TEXT, p_table TEXT, p_id TE
 
    * Se non esiste record storico per la data richiesta, serializza la riga corrente di `<p_schema>.<p_table>` in JSONB.
    * Anche in questo passaggio, eventuali errori vengono **loggati e abortiscono** tramite `fn_log_and_raise_error`.
-
 ### 🎯 Scopo Principale
-
 (latest review 02-02-26)
 * **Recupero storico/flessibile**: ottenere lo stato di un record in un preciso istante, combinando storicizzazione e serializzazione diretta.
 * **Robustezza**: ogni errore di query viene tracciato con contesto completo, e l'esecuzione viene interrotta per evitare inconsistenze.

@@ -14,9 +14,7 @@ Approfondimeti funzioni e trigger:
 > [dbops.fn_trigger_exists_by_function](/dbzero/dbops/funzioni/fn_trigger_exists_by_function)
 
 ---
-
 ### 🎯 Scopo Principale
-
 La funzione **`dbops.fn_trigger_exists_cascade_by_args(p_parent_rel, p_child_schema, p_child_table, p_fk_col)`** verifica l’esistenza di un **trigger di cascata** basato sulla funzione `trgfn_soft_delete_cascade`, definito sulla tabella padre e parametrizzato con *schema*, *tabella figlia* e *colonna FK* specifici.
 
 ---

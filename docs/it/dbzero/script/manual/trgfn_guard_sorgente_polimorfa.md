@@ -17,9 +17,7 @@
 `script.fn_log_and_raise_error`(/dbzero/script/funzioni/>fn_log_and_raise_error)
   
 ---
-
 ### 🎯 Scopo Principale
-
 `script.trgfn_guard_sorgente_polimorfa()` fornisce un **controllo unificato e riusabile** sulla **coerenza dei riferimenti di sorgente** (origine dati) per tabelle applicative che adottano il pattern:
 
 * `sorgente_tipo_id` → **`config.sorgenti`** (mappa *schema.tabella* di destinazione e la chiave da usare);

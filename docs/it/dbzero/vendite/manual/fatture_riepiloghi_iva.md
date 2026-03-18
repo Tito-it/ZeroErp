@@ -10,9 +10,7 @@
 > • [config.iva_natura](/dbzero/config/tabelle/iva_natura)   
 
 ---
-
 ### 🎯 Scopo Principale
-
 `vendite.fatture_riepiloghi_iva` è lo **specchietto fiscale** della fattura: aggrega le righe per **combinazione fiscale** e ne memorizza i totali. Serve per:
 
 * compilare correttamente il **riepilogo IVA** nei layout/stampe e nei flussi elettronici;

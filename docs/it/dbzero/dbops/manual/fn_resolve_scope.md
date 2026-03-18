@@ -16,7 +16,6 @@ Guide:
 [Automatione DB](/guide/automazione-db)
 
 ---
-
 ### 🎯 Scopo Principale
 (latest review 10-01-26)
 La funzione **`dbops.fn_resolve_scope(p_schemas text[])`** restituisce la lista effettiva di schemi da considerare come *ambito* per l’esecuzione delle automazioni. Serve a normalizzare e centralizzare la logica di determinazione dell’ambito operativo, evitando duplicazioni e incoerenze.

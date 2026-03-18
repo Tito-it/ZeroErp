@@ -9,9 +9,7 @@
 > • [vendite.fatture_sdi_eventi](/dbzero/vendite/tabelle/fatture_sdi_eventi)  
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 16-02-2026)  
 `vendite.fatture_sdi` rappresenta la **testata dei tentativi di invio SDI** per fattura.
 

@@ -1,7 +1,5 @@
 ## 📘 Documentazione Concettuale – Trigger Function `vendite.trgfn_fatture_gen_codice`
-
 ### 🎯 Scopo Principale
-
 Assegna automaticamente il numero fattura quando il campo `numero`
 non e` valorizzato.
 

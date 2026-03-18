@@ -11,8 +11,7 @@
 >
 [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)   
 >
-🎯 Scopo Principale
-
+### 🎯 Scopo Principale
 (latest review 29-12-25)
 Impedire la modifica dei campi chiave di `config.comuni` quando il comune e' gia' utilizzato nello stradario.
 

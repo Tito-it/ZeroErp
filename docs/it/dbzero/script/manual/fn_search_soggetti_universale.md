@@ -26,9 +26,7 @@ Documento di design:
 La funzione **`script.fn_search_soggetti_universale`** implementa il **livello 1** della ricerca universale soggetti. Dato un termine di ricerca e un tipo ruolo, restituisce una lista paginata di soggetti con i dati essenziali per la visualizzazione in tabella.
 
 ---
-
-### Scopo Principale
-
+### 🎯 Scopo Principale
 * **Ricerca per tipo ruolo**: il parametro `p_tipo_ruolo_id` e' obbligatorio. Il dropdown frontend mostra solo i ruoli accessibili all'utente corrente.
 
 * **Ricerca multi-campo**: la ricerca opera su 4 campi con pattern `%termine%` (ILIKE + GIN trgm):

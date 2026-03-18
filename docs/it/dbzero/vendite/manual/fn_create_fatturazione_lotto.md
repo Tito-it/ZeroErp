@@ -14,8 +14,7 @@
 >
 • [vendite.fn_get_or_create_lotto](/dbzero/vendite/funzioni/fn_get_or_create_lotto)   
 >
-🎯 Scopo Principale
-
+### 🎯 Scopo Principale
 (latest review 27-01-2026)
 La funzione **`vendite.fn_create_fatturazione_lotto()`** crea un lotto di
 fatturazione con parametri coerenti (competenza, utility, tipo documento, BA) e

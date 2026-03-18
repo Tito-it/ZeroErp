@@ -1,7 +1,5 @@
 ## 📘 Documentazione Concettuale – Funzione `vendite.fn_get_pipeline_task_policy`
-
 ### 🎯 Scopo Principale
-
 Restituisce la policy runtime attiva di un task pipeline (`annullabile`, `resume_mode`, `meta`).
 
 ---

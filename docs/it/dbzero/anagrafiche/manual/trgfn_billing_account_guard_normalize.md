@@ -11,9 +11,7 @@ Approfondimenti funzioni:
 [config.sistema_codici](/dbzero/config/manual/sistema_codici)
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 28-12-25)
 Il trigger `anagrafiche.trgfn_billing_account_guard_normalize` applica le **validazioni di business** e normalizza i campi, mentre la generazione del `codice` e' demandata al sistema automatico basato su `config.sistema_codici`.
 

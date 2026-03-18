@@ -7,8 +7,7 @@
 • [anagrafiche.emittenti_fiscali](/dbzero/anagrafiche/tabelle/emittenti_fiscali)  
 > • [config.utilities](/dbzero/config/tabelle/utilities)  
 >
-🎯 Scopo Principale
-
+### 🎯 Scopo Principale
 La tabella **`anagrafiche.emittenti_fiscali_utilities`** definisce i parametri
 specifici di fatturazione per **emittente fiscale** e **utility**:
 

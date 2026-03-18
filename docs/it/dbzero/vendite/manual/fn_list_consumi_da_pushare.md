@@ -9,9 +9,7 @@
 > [WIP: Modello fatturazione utilities](../../../dev/work-in-progress/fatturazione-modello-utilities-gas-ee-idrico.md)
 
 ---
-
 ### 🎯 Scopo Principale
-
 `vendite.fn_list_consumi_da_pushare(...)` seleziona i consumi utility
 pronti per il push verso `commesse_attivita`, restituendo un payload di base
 per l'handler di calcolo componenti.

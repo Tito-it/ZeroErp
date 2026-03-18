@@ -16,9 +16,7 @@
 > • [anagrafiche.billing_account](/dbzero/anagrafiche/tabelle/billing_account)    
 
 ---
-
 ### 🎯 Scopo Principale
-
 La tabella **`vendite.ordini`** rappresenta la **testata dell’ordine di vendita**, documento commerciale preliminare che raccoglie le condizioni di vendita, spedizione e pagamento concordate con il cliente.  
 È il punto di partenza del ciclo attivo, destinato a generare documenti successivi (DDT, fatture, contratti di fornitura).
 

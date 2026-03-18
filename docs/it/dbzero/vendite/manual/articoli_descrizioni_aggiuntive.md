@@ -10,9 +10,7 @@ Approfondimenti tabelle:
 La tabella **`vendite.articoli_descrizioni_aggiuntive`** consente di associare agli articoli una o più **descrizioni opzionali** da utilizzare in cataloghi, documenti di vendita o comunicazioni commerciali. Ogni descrizione è **ordinabile** e **attivabile/disattivabile** senza perdita di storico.
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 19-01-26)
 * Estendere le informazioni dell’articolo con **testi aggiuntivi** riutilizzabili.
 * Governare la **sequenza di presentazione** tramite un campo di ordinamento.

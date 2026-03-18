@@ -17,9 +17,7 @@ Approfondimento funzioni e trigger:
 La tabella **`storico.parameters`** conserva gli **snapshot** delle modifiche sulla tabella operativa `config.parameters`. Ogni record storico è un JSONB che cattura lo stato completo del parametro, con informazioni di validità e metadati di audit.
 
 ---
-
 ### 🎯 Scopo Principale
-
 * **Versionamento dei parametri**
   Registrare ogni modifica (INSERT, UPDATE, DELETE) sui parametri definiti in `config.parameters`, abilitando rollback e analisi storica.
 * **Audit e compliance**

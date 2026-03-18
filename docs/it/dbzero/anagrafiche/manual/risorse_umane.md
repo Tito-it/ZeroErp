@@ -15,10 +15,7 @@ Approfondimento funzioni:
 [anagrafiche.trgfn_risorse_umane_guard_ruolo](/dbzero/anagrafiche/funzioni/trgfn_risorse_umane_guard_ruolo)
 
 ---
-
 ### 🎯 Scopo Principale
-
-
 (latest review 06-01-26)
 La tabella **`anagrafiche.risorse_umane`** rappresenta le persone (dipendenti, consulenti,
 collaboratori) associate a un soggetto tramite un ruolo di tipo **`RISORSA_UMANA`**.

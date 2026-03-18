@@ -11,7 +11,6 @@
 La funzione **`script.fn_guard_soggetto_ruolo(p_soggetto_id, p_soggetto_ruolo_id, p_cd_int_ruolo)`** centralizza e semplifica la gestione della relazione tra un **soggetto** e il suo **ruolo**. Garantisce che, ogni volta che si assegna un ruolo a un soggetto, la tabella `anagrafiche.soggetti_ruoli` sia mantenuta correttamente e senza duplicati.
 
 ---
-
 ### 🎯 Scopo Principale
 (latest review 05-12-25)
 - **Verifica esistenza**  

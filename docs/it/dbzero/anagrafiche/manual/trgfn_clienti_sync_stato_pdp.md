@@ -15,7 +15,6 @@
 > • [`script.fn_log_and_raise_error`](/dbzero/script/funzioni/fn_log_and_raise_error)  
 
 ---
-
 ### 🎯 Scopo Principale
 (latest review 09-12-25)
 La funzione `anagrafiche.trgfn_clienti_sync_stato_pdp()` è una **trigger function di dominio** che sincronizza lo **stato tecnico del PDP** (`anagrafiche.pdp.stato_pdp_id`) in base al cambio di **stato commerciale** del cliente (`anagrafiche.clienti.stato_cliente_id`).

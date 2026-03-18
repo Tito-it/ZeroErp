@@ -7,8 +7,7 @@
 • [vendite.fatture](/dbzero/vendite/tabelle/fatture)  
 > • [vendite.tipi_fondi_fattura](/dbzero/vendite/tabelle/tipi_fondi_fattura)  
 >
-🎯 Scopo Principale
-
+### 🎯 Scopo Principale
 (latest review 10-02-2026)  
 `vendite.fatture_fondi_fattura` registra i **fondi fattura** collegati a una
 fattura (addebiti/accrediti, canone RAI, ecc.).

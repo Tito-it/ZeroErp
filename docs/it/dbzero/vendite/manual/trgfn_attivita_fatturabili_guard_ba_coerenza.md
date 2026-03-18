@@ -12,8 +12,7 @@
 • [vendite.trgfn_attivita_fatturabili_normalize](/dbzero/vendite/funzioni/trgfn_attivita_fatturabili_normalize)  
 > • [vendite.trgfn_attivita_fatturabili_guard_fonte](/dbzero/vendite/funzioni/trgfn_attivita_fatturabili_guard_fonte)  
 >
-🎯 Scopo Principale
-
+### 🎯 Scopo Principale
 (latest review 29-01-2026)  
 La funzione **`vendite.trgfn_attivita_fatturabili_guard_ba_coerenza()`** valida
 la coerenza tra `billing_account_id` e `istanza_utility_id` sulle righe di

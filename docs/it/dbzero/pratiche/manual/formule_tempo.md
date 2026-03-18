@@ -13,9 +13,7 @@ Funzioni:
 [fn_valuta_tempo_esecuzione_da_a](/dbzero/pratiche/manual/fn_valuta_tempo_esecuzione_da_a)
 
 ---
-
 ### 🎯 Scopo Principale
-
 Soglie temporali e tempo massimo di esecuzione, configurabili per tipo prestazione con coppia di template flusso **da/a**. Misura il tempo impiegato per passare dal completamento di flusso_da al completamento di flusso_a.
 
 ---

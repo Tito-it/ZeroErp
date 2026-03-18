@@ -1,7 +1,5 @@
 ## 📘 Documentazione Concettuale – Trigger Function `vendite.trgfn_fatture_righe_guard_normalize`
-
 ### 🎯 Scopo Principale
-
 Normalizza i dati di riga fattura su inserimento/aggiornamento:
 * eredita `dest_billing_account_id` dalla testata se assente;
 * allinea lo snapshot `iva_natura` in base a `config.iva`.

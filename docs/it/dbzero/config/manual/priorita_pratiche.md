@@ -7,9 +7,7 @@ Approfondimento tabelle:
 [pratiche.pratiche](/dbzero/pratiche/tabelle/pratiche)
 
 ---
-
 ### 🎯 Scopo Principale
-
 La tabella `config.priorita_pratiche` definisce i **livelli di priorita'** assegnabili alle pratiche. Ogni pratica ha una priorita' obbligatoria che ne influenza l'ordine di lavorazione.
 
 ---

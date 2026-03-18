@@ -8,9 +8,7 @@ Approfondimento tabelle:
 > [pratiche.allegati_flussi](/dbzero/pratiche/tabelle/allegati_flussi)
 
 ---
-
 ### 🎯 Scopo Principale
-
 La tabella `config.tipi_allegato` definisce la **tipologia** degli allegati associabili a pratiche e flussi. Consente di classificare i file allegati per natura (documento, immagine, contratto, ecc.).
 
 ---

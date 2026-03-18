@@ -10,8 +10,7 @@
 >
 [script.vw_indirizzo_completo](/dbzero/script/views/vw_indirizzo_completo)    
 >
-🎯 Scopo Principale
-
+### 🎯 Scopo Principale
 (latest review 28-12-25)
 Normalizzare i campi dell'indirizzo dettaglio per garantire coerenza su via, civico e indirizzo completo prima di INSERT/UPDATE.
 

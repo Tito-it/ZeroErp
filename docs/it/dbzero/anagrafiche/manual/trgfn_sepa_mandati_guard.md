@@ -12,9 +12,7 @@
 > [dbops.trgfn_tx_id_managed](/dbzero/dbops/funzioni/trgfn_tx_id_managed)   
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 29-12-25)
 Garantire che un mandato SEPA sia coerente quando e' in stato **ATTIVO** e normalizzare i campi di input sensibili (`umr`, `iban_snapshot`).
 

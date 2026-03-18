@@ -10,8 +10,7 @@
 >
 • [vendite.fn_resolve_fatturazione_pipeline_step](/dbzero/vendite/funzioni/fn_resolve_fatturazione_pipeline_step)  
 >
-🎯 Scopo Principale
-
+### 🎯 Scopo Principale
 (latest review 08-02-2026)  
 La funzione restituisce la lista step pipeline risolti per `tipo_lotto`,
 `utility_id` e `tipo_doc_fiscale_id`, delegando la precedenza a

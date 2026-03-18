@@ -8,8 +8,7 @@
 > • [vendite.fatture](/dbzero/vendite/tabelle/fatture)  
 > • [config.stati_doc_fiscale](/dbzero/config/tabelle/stati_doc_fiscale)  
 >
-🎯 Scopo Principale
-
+### 🎯 Scopo Principale
 (latest review 27-01-2026)
 La tabella **`config.tipi_doc_fiscale`** rappresenta il catalogo dei **tipi di
 documento fiscale** gestiti dal sistema (es. fattura utility, allaccio, rata,

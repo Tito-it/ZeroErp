@@ -12,9 +12,7 @@ Approfondimento funzioni:
 > [maintenance.proc_sync_storico_set_storicizza](/dbzero/maintenance/funzioni/proc_sync_storico_set_storicizza)
 
 ---
-
 ### 🎯 Scopo Principale
-
 (last review 07-01-26)
 Wrapper di job che **esegue e traccia** la sincronizzazione della tabella `config.storico_set_storicizza`, delegando l’esecuzione alla procedura core `maintenance.proc_sync_storico_set_storicizza()` e centralizzando **logging** e **advisory lock** tramite `maintenance.fn_run_and_log`.
 

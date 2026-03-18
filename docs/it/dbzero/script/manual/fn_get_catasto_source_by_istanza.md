@@ -13,9 +13,7 @@ Trigger: `anagrafiche.trg_iu_z50_clone_catasto_from_parent_aft_upd` (clonazione 
 > Trigger: `anagrafiche.trg_iu_z40_sync_catasto_unita_indirizzo_aft_ins_upd` (sync tabella ponte catasto↔indirizzi)    
 
 ---
-
 ### 🎯 Scopo Principale
-
 La funzione **`script.fn_get_catasto_source_by_istanza(p_istanza_utilities_id)`** recupera il record catastale **"sorgente"** da utilizzare come base per una **clonazione** in caso di **subentro**.
 
 ✅ La sorgente è determinata **esclusivamente** dalla relazione:

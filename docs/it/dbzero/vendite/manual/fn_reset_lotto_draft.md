@@ -18,9 +18,7 @@
 • [vendite.fn_select_attivita_fatturabili](/dbzero/vendite/funzioni/fn_select_attivita_fatturabili)  
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 09-02-2026)  
 La funzione **`vendite.fn_reset_lotto_draft()`** effettua il **rollback tecnico**
 di un lotto **MASSIVO** in stato **DRAFT**, eliminando i documenti generati

@@ -19,9 +19,7 @@ La tabella **`config.modalita_pagamento`** contiene il **catalogo delle modalit�
 Rappresenta un dominio centrale, da combinare con le condizioni di pagamento per definire come e con quali strumenti il cliente effettua il saldo dei documenti.
 
 ---
-
 ### 🎯 Scopo Principale
-
 * Definire un elenco **normalizzato e univoco** delle modalità di pagamento disponibili nel sistema.
 * Fornire un **codice interno stabile** (`codice`) utilizzabile in configurazioni, mapping e integrazioni.
 * Supportare la definizione di **regole di incasso** e gestionali (es. tracciabilità, obbligo di IBAN, circuiti bancari).

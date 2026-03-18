@@ -11,9 +11,7 @@
 • [`script.fn_log_and_raise_error`](/dbzero/script/funzioni/fn_log_and_raise_error)  
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 28-01-2026)
 Impedire la **modifica** dei campi **identitari** del PDP:
 

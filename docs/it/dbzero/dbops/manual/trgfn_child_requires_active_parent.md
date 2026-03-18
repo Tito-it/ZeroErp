@@ -13,9 +13,7 @@ Approfondimento tabelle:
 [`dbops.automation_rules_tbl`](/dbzero/dbops/tabelle/automation_rules_tbl)
 
 ---
-
 ### 🎯 Scopo Principale
-
 *(last review 13-11-26)*
 La funzione **`trgfn_child_requires_active_parent`** è una **trigger function** che impedisce l’inserimento o l’aggiornamento di un record figlio quando il **padre collegato non è attivo**. Se la tabella figlia ha una colonna `attivo`, il controllo si applica **solo quando il figlio è attivo**.
 

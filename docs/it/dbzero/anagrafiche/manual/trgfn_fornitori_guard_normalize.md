@@ -11,9 +11,7 @@
 [config.sistema_codici](/dbzero/config/manual/sistema_codici)
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 12-03-2026)
 La trigger function **`anagrafiche.trgfn_fornitori_guard_normalize()`**
 normalizza i dati minimi del fornitore prima del salvataggio, con focus sul

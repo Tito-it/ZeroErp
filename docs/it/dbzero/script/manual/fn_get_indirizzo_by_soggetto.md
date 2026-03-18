@@ -18,7 +18,6 @@
 • [anagrafiche.vw_indirizzi_resolved_soggetto](/dbzero/anagrafiche/views/vw_indirizzi_resolved_soggetto)  
 
 ---
-
 ### 🎯 Scopo Principale
 (latest review 23-12-25)
 Restituisce **il miglior indirizzo disponibile** per un soggetto, filtrato per

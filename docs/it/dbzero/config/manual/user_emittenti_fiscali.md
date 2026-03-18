@@ -17,9 +17,7 @@ La tabella **`config.user_emittenti_fiscali`** definisce l'**ambito operativo** 
 Implementa una **whitelist opzionale**: se l'utente non ha righe in questa tabella, può operare su tutti gli emittenti; se ha almeno una riga, è limitato a quelli elencati.
 
 ---
-
 ### 🎯 Scopo Principale
-
 * Limitare la **visibilità e operatività** di un utente a specifici emittenti fiscali.
 * Supportare scenari **multi-azienda**: un operatore lavora solo per ACME S.r.l. e Beta S.r.l.
 * Fornire il dato per il **filtering queryset** (`EmittenteFiscaleScopeMixin`) e per il **defense-in-depth** DB (`fn_check_user_emittente_scope`).

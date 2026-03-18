@@ -8,9 +8,7 @@ Approfondimento tabelle:
 > [django.auth_user](/dbzero/django/auth_user)
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest revision 06-01-26)
 La tabella **`anagrafiche.risorse_umane_auth_user`** gestisce il collegamento **1:1**
 tra una risorsa umana e l'utente software Django.

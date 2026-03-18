@@ -12,9 +12,7 @@ Overview:
 [Trigger business overview](trigger_business_overview.md)
 
 ---
-
 ### 🎯 Scopo Principale
-
 Registra l'azione **PRATICA_CREATA** nel giornale. Si attiva **AFTER INSERT** su `pratiche.pratiche`.
 
 ---

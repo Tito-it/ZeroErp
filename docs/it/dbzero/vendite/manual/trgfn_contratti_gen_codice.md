@@ -6,9 +6,7 @@
 > • [script.fn_generate_codice](/dbzero/script/funzioni/fn_generate_codice)  
 
 ---
-
 ### 🎯 Scopo Principale
-
 La trigger function `vendite.trgfn_contratti_gen_codice()` genera automaticamente
 `numero` contratto quando il valore non viene fornito.
 

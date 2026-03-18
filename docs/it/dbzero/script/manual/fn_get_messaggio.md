@@ -10,9 +10,7 @@
 La funzione **`script.fn_get_messaggio(p_codice text, p_valore text DEFAULT NULL, p_lingua text DEFAULT NULL) RETURNS text`** recupera e formatta un messaggio dall’archivio centralizzato, con supporto per placeholder e internazionalizzazione.
 
 ---
-
 ### 🎯 Scopo Principale
-
 * **Centralizzare i testi**
   Conservare tutti i messaggi (errori, avvisi, info) in tabella, evitando hard‑coding in trigger, procedure o sorgenti SQL.
 * **Internazionalizzazione avanzata**

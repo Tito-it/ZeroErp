@@ -13,9 +13,7 @@ Approfondimento guide:
 > [Transaction ID](/guide/tx_id_implementation_guide)
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 07-01-26)
 * **Eseguire in modo schedulato** l’applicazione delle **impostazioni di storicizzazione di default** sull’intero database, incapsulando la chiamata a `maintenance.proc_apply_storicizza_defaults()` in un wrapper **robusto** con **lock anti-overlap** e **logging strutturato**.
 

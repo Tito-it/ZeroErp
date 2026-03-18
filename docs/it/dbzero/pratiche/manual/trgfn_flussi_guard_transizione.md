@@ -9,9 +9,7 @@ Tabelle:
 > [pratiche.flussi](/dbzero/pratiche/tabelle/flussi)
 
 ---
-
 ### 🎯 Scopo Principale
-
 Trigger function guard che **blocca transizioni di stato non ammesse** per i flussi pratica. Consulta la matrice `config.transizioni_stati_flussi_pratiche` (solo righe con `attivo = true`) e solleva eccezione se la transizione non e' configurata.
 
 ---

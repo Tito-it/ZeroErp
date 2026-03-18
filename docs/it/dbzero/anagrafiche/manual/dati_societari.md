@@ -17,7 +17,6 @@ Approfondimento funzioni e trigger:
 La tabella **`anagrafiche.dati_societari`** contiene i dati societari estesi per ciascun soggetto di tipo aziendale presente in **`anagrafiche.soggetti`**. Ogni riga rappresenta un insieme di informazioni obbligatorie e opzionali relative alla forma giuridica, capitale sociale, iscrizione REA, stato di liquidazione e modalità di fatturazione elettronica.
 
 ---
-
 ### 🎯 Scopo Principale
 (latest update 05-12-25)
 - **Estendere l’anagrafica generale**  

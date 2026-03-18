@@ -11,9 +11,7 @@ Approfondimento funzioni:
 [config.sistema_codici](/dbzero/config/manual/sistema_codici)
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 28-12-25)
 Il trigger `anagrafiche.trgfn_istanze_utilities_normalize` è invocato **prima di ogni INSERT o UPDATE** su `anagrafiche.istanze_utilities` e ha i seguenti obiettivi:
 

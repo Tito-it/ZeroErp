@@ -28,9 +28,7 @@ La funzione **`script.fn_get_soggetto_dati_by_ruolo(p_soggetto_ruolo_id BIGINT)`
 E' progettata come **punto di accesso generico** per ottenere una fotografia completa di un soggetto in un determinato ruolo, con tutti gli ID delle tabelle collegate inclusi per consentire navigazione e lookup dal frontend.
 
 ---
-
 ### 🎯 Scopo Principale
-
 * **Aggregazione trasversale**: combina in un unico record le informazioni che altrimenti richiederebbero join multipli su 8 tabelle (soggetti_ruoli, soggetti, tipi_ruoli, tipi_soggetto_dettaglio, tipi_soggetto, titoli_cortesia, dati_societari, forme_giuridiche, province).
 
 * **Tutti gli ID inclusi**: ogni FK del soggetto e' esposta (`stato_id`, `comune_id`, `titolo_cortesia_id`, `tipo_soggetto_dettaglio_id`, `default_contatto_id`, `dati_societari_id`, `forma_giuridica_id`, `id_prov_iscri_rea`) per consentire lookup e navigazione dal frontend senza query aggiuntive.

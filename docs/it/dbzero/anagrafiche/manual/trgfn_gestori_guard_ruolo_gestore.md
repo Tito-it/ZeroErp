@@ -14,7 +14,6 @@
 La trigger function **`anagrafiche.trgfn_gestori_guard_ruolo_gestore()`** si attiva **BEFORE INSERT** e **BEFORE UPDATE** sulla tabella `anagrafiche.gestori`. Il suo scopo è garantire che, ogni volta che si crea o modifica il record del gestore, venga automaticamente gestita (verificata o creata) la corrispondente riga di relazione in `anagrafiche.soggetti_ruoli` con ruolo “Gestore” (`codice_interno = 'GE'`).
 
 ---
-
 ### 🎯 Scopo Principale
 (latest review 05-12-25)
 - **Centralizzare l’assegnazione del ruolo “Gestore”**  

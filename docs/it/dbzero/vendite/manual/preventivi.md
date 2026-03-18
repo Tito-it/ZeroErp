@@ -13,9 +13,7 @@
 > • [config.valute](/dbzero/config/tabelle/valute)  
 
 ---
-
 ### 🎯 Scopo Principale
-
 La tabella **`vendite.preventivi`** rappresenta la **testata del preventivo commerciale**:
 raccoglie cliente/BA/utility, condizioni economiche, validita` e stato documento.
 

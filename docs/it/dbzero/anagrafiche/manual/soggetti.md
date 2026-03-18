@@ -28,9 +28,7 @@ Approfondimento Funzioni:
 Questa documentazione descrive le regole di progettazione e implementazione della tabella anagrafica **`anagrafiche.soggetti`** in Zero ERP, senza ripetere la struttura SQL automatica. Contiene informazioni su vincoli, campi generati e relazioni con altre tabelle.
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 10-01-26)
 - **Coerenza dei dati**  
   Garantire che ogni soggetto—persona fisica, giuridica o fisica forzata—sia identificato in modo univoco e validato secondo le regole aziendali.

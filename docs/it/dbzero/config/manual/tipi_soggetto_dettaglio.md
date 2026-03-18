@@ -12,9 +12,7 @@ Approfondimento Tabelle:
 La tabella **`config.tipi_soggetto_dettaglio`** definisce le **tipologie dettagliate** di soggetto (persone fisiche, giuridiche, enti, ecc.) in base al **paese** di appartenenza, specificando i **formati** validi per Codice Fiscale e Partita IVA.
 
 ---
-
 ### 🎯 Scopo Principale
-
 * **Gestione Internazionale**
   Permette di adattare la validazione di CF/P.IVA alle regole di ciascuno Stato (`stato_iso2`).
 * **Estendibilità**

@@ -16,9 +16,7 @@ La funzione **`script.fn_validate_cf_piva_it(p_tipo_det_id bigint, p_partita_iva
 Il suffisso **`_it`** indica che i controlli sono specifici per l'Italia: in futuro si potranno implementare varianti analoghe con suffissi come **`_FR`**, **`_DE`**, **`_UK`** per altri Stati.
 
 ---
-
 ### 🎯 Scopo Principale
-
 * **Centralizzazione Validazioni**: Unico punto per verificare CF e P.IVA in accordo ai formati configurati.
 * **Dinamicità**: I formati (alfanumerico, numerico, lunghezza) sono letti da `config.tipi_soggetto_dettaglio` e possono variare per Stato.
 * **Estendibilità**: Aggiunta futura di funzioni con suffissi di Stato, es. `_FR`, `_DE`, `_UK`.

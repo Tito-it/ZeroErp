@@ -3,9 +3,7 @@
 La tabella **`config.valute`** definisce le valute monetarie utilizzate in Zero ERP, fornendo i codici, i simboli e le informazioni necessarie per la gestione coerente di tutte le transazioni finanziarie.
 
 ---
-
 ### 🎯 Scopo Principale
-
 * **Definizione delle valute**
   Elenco centralizzato di tutte le valute supportate, con codici interni e standard ISO 4217.
 * **Supporto ai moduli finanziari**

@@ -1,9 +1,7 @@
 ## 📘 Documentazione Concettuale – Funzione `vendite.fn_resolve_stato_esecuzione`
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 22-02-2026)
 Helper condiviso per risolvere in modo uniforme il valore di `stato_esecuzione` nei flussi `fatturazione_lotti` e `attivita_fatturabili`.
 

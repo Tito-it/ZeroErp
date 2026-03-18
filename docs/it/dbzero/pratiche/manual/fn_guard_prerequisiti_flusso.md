@@ -12,9 +12,7 @@ Trigger:
 `trg_flussi_a10_guard_prerequisiti_ins` (BEFORE INSERT su flussi)
 
 ---
-
 ### 🎯 Scopo Principale
-
 La funzione **`pratiche.fn_guard_prerequisiti_flusso`** e' una **guard fail-fast** (`fn_guard_*`): verifica i prerequisiti e **solleva eccezione** se non sono tutti soddisfatti.
 
 ---

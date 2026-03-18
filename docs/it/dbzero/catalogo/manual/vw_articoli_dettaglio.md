@@ -12,9 +12,7 @@ Approfondimenti tabelle:
 > [config.iva](/dbzero/config/tabelle/iva)    
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 14-01-26)
 La vista **`catalogo.vw_articoli_dettaglio`** espone i dati dell’articolo con le
 anagrafiche di supporto (unita misura, tipologie, gruppi, spese e iva), evitando

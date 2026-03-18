@@ -11,9 +11,7 @@
 > • [vendite.fatture_righe](/dbzero/vendite/tabelle/fatture_righe)   
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 21-01-2026)
 Questa tabella definisce, **per ciascun articolo**, le regole di business che governano:
 

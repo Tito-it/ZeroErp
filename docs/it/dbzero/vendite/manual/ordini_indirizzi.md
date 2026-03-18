@@ -13,9 +13,7 @@
 > •[vendite.ddt_indirizzi](/dbzero/vendite/tabelle/ddt_indirizzi)   
 
 ---
-
 ### 🎯 Scopo Principale
-
 `vendite.ordini_indirizzi` memorizza gli **indirizzi associati alla testata ordine** come **snapshot JSON** al momento dell’inserimento/conferma. Per ciascun ordine è ammesso **al massimo un indirizzo per tipo** (es. *spedizione*, *fornitura*, *residenza*), garantito da `UNIQUE(ordine_id, tipo_indirizzo_id)`.
 
 Lo snapshot consente di **cristallizzare** i dati (via/numero, CAP, comune, provincia, stato ISO, contatti, e‑mail, note) senza dipendere da modifiche successive in anagrafica.

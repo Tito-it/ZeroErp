@@ -8,8 +8,7 @@
 > • [pagamenti.vendite_contabili_righe_stati](/dbzero/pagamenti/tabelle/vendite_contabili_righe_stati)  
 > • [pagamenti.vendite_contabili](/dbzero/pagamenti/tabelle/vendite_contabili)  
 >
-🎯 Scopo Principale
-
+### 🎯 Scopo Principale
 (latest review 13-02-2026)  
 La funzione **`pagamenti.fn_get_saldo_fattura_contabili()`** restituisce il
 saldo contabile di una fattura calcolato sulle sole righe in stato

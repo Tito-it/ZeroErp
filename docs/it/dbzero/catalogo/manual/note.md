@@ -9,9 +9,7 @@
 > • [`config.lingue`](/dbzero/config/tabelle/lingue)  
 
 ---
-
 ### 🎯 Scopo Principale
-
 (last review 13-01-26)
 `catalogo.note` centralizza le **note testuali** associate agli oggetti del catalogo, con **tabella partizionata** per tipo di target. Supporta note su:
 

@@ -11,8 +11,7 @@
 >
 • [vendite.fn_list_fatturazione_pipeline_steps](/dbzero/vendite/funzioni/fn_list_fatturazione_pipeline_steps)  
 >
-🎯 Scopo Principale
-
+### 🎯 Scopo Principale
 (latest review 08-02-2026)  
 La funzione risolve la configurazione pipeline per un singolo step
 (`stato_doc_fiscale_id`) applicando fallback su `utility_id` e

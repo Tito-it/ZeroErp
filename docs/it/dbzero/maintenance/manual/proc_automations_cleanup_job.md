@@ -10,9 +10,7 @@ Approfondimento funzioni:
 > [maintenance.fn_run_and_log](/dbzero/maintenance/funzioni/fn_run_and_log)
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 07-02-26)
 La procedura **`maintenance.proc_automations_cleanup_job()`** e' un wrapper
 per eseguire `dbops.fn_run_automations_cleanup` in modalita' schedulata,

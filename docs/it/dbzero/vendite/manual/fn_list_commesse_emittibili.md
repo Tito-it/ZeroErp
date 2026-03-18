@@ -13,8 +13,7 @@
 • [vendite.fn_get_commessa_stato](/dbzero/vendite/funzioni/fn_get_commessa_stato)  
 > • [vendite.fn_emit_attivita_fatturabili_da_commessa](/dbzero/vendite/funzioni/fn_emit_attivita_fatturabili_da_commessa)  
 >
-🎯 Scopo Principale
-
+### 🎯 Scopo Principale
 (latest review 26-02-2026)  
 Elenca le commesse candidate all'emissione verso `attivita_fatturabili`, applicando i criteri minimi di prontezza operativa.
 

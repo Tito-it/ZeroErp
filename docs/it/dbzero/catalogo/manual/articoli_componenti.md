@@ -14,9 +14,7 @@
 > • [`script.trgfn_storico_generic`](/dbzero/script/funzioni/trgfn_storico_generic)  
 
 ---
-
-### 🎯 Scopo Principale   
-
+### 🎯 Scopo Principale
 (latest review 13-01-26)
 `catalogo.articoli_componenti` rappresenta la **distinta base (BoM)** lato **vendita**, con **versionamento temporale**: ogni riga lega un **prodotto** a un **componente** con una finestra di validità (`valido_dal`..`valido_al`).
 

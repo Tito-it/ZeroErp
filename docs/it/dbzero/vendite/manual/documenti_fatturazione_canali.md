@@ -5,8 +5,7 @@
 • [config.sorgenti](/dbzero/config/tabelle/sorgenti)  
 > • [vendite.commesse_sorgenti](/dbzero/vendite/tabelle/commesse_sorgenti)  
 >
-🎯 Scopo Principale
-
+### 🎯 Scopo Principale
 (latest review 24-02-2026)
 `vendite.documenti_fatturazione_canali` e` il registro tecnico unico dei canali
 fatturabili per documento sorgente (`sorgente_tipo_id + sorgente_uid`), usato per

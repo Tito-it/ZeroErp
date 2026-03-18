@@ -9,9 +9,7 @@ Approfondimento tabelle:
 > [config.stati](/dbzero/config/tabelle/stati)
 
 ---
-
 ### 🎯 Scopo Principale
-
 La vista `script.vw_ita_province_regioni` fornisce una **mappatura completa** tra province italiane, eventuali province accisa associate, regioni e stato di appartenenza, includendo i codici ISTAT e altre informazioni estratte dal campo JSON `extra_country`.
 
 ---

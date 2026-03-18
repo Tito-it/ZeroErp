@@ -18,7 +18,6 @@
 [`anagrafiche.trgfn_soggetti_ruoli_guard_natura_ammessa`](/dbzero/anagrafiche/funzioni/trgfn_soggetti_ruoli_guard_natura_ammessa)
 
 ---
-
 ### 🎯 Scopo Principale
 (latest review 28-02-26)
 La tabella **`config.tipi_ruoli_nature_ammesse`** rappresenta la **matrice di configurazione** che definisce:

@@ -13,9 +13,7 @@ Approfondimento funzioni:
 >
 •[`vendite.trgfn_tipi_indirizzi_only_allowed`](/dbzero/vendite/funzioni/trgfn_tipi_indirizzi_only_allowed)
 >
-
-🎯 Scopo Principale
-
+### 🎯 Scopo Principale
 vendite.ddt_indirizzi gestisce gli indirizzi associati alla testata DDT tramite snapshot JSON al momento dell’emissione (o conferma logistica). Per ogni DDT è ammesso al più un indirizzo per tipo (es. spedizione, fornitura, residenza), garantito dall’univocità (ddt_id, tipo_indirizzo_id).
 
 Lo snapshot consente di cristallizzare dati variabili (via/numero, CAP, città, provincia, nazione, contatti, e-mail, note di resa, etc.) senza dipendere dalle future modifiche anagrafiche.

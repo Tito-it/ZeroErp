@@ -7,9 +7,7 @@
 > [information_schema.constraint_column\_usage](https://www.postgresql.org/docs/current/infoschema-constraint-column-usage.html)
 
 ---
-
 ### 🎯 Scopo Principale
-
 `dbops.fn_foreign_keys_info(tabella)` restituisce una vista unificata di **tutte le relazioni tramite chiavi esterne** (
 foreign key) che coinvolgono la tabella specificata, distinguendo tra:
 

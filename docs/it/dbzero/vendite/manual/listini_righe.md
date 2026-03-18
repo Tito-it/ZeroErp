@@ -8,8 +8,7 @@
 > • [catalogo.articoli](/dbzero/catalogo/tabelle/articoli)  
 > • [catalogo.unita_misura](/dbzero/catalogo/tabelle/unita_misura)  
 >
-🎯 Scopo Principale
-
+### 🎯 Scopo Principale
 La tabella `vendite.listini_righe` contiene i prezzi elementari per articolo/UOM,
 eventualmente specializzati per contesto (BA, utility, emittente fiscale).
 

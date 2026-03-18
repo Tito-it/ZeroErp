@@ -1,7 +1,5 @@
 ## 📘 Documentazione Concettuale – Funzione `dbops.fn_seed_automazione_guard_utility_tipo_ruolo`
-
 ### 🎯 Scopo Principale
-
 La funzione **`dbops.fn_seed_automazione_guard_utility_tipo_ruolo(p_schemas)`**
 popola la tabella di configurazione automazione individuando in modo
 automatico le tabelle candidate.

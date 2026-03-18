@@ -7,9 +7,7 @@
 • [anagrafiche.emittenti_fiscali](/dbzero/anagrafiche/manual/emittenti_fiscali)    
 > • [anagrafiche.emittenti_fiscali_billing_account](/dbzero/anagrafiche/manual/emittenti_fiscali_billing_account)    
 >
-
-🎯 Scopo Principale
-
+### 🎯 Scopo Principale
 (latest review 23-01-2026)
 La funzione `anagrafiche.trgfn_emittenti_fiscali_default_bootstrap()` crea in modo automatico
 la **riga di default** nel mapping emittenti fiscali quando viene inserito il **primo emittente**.

@@ -13,7 +13,6 @@ Approfondimento funzioni:
 > [script.trgfn_storico_generic](/dbzero/script/funzioni/trgfn_storico_generic)
 
 ---
-
 ### 🎯 Scopo Principale
 (latest review 10-12-25)
 La tabella `anagrafiche.catasto_unita_immobiliari` archivia i **dati catastali** associati a un `indirizzo_dettaglio` e a una specifica `istanza_utility`. Questo approccio:

@@ -7,8 +7,7 @@
 • [vendite.fatture_fondi_fattura](/dbzero/vendite/tabelle/fatture_fondi_fattura)  
 > • [vendite.fatture](/dbzero/vendite/tabelle/fatture)  
 >
-🎯 Scopo Principale
-
+### 🎯 Scopo Principale
 (latest review 10-02-2026)  
 `vendite.tipi_fondi_fattura` definisce il **catalogo delle tipologie di fondo fattura**
 (addebiti/accrediti fatture precedenti, canone RAI, ecc.). Serve a normalizzare

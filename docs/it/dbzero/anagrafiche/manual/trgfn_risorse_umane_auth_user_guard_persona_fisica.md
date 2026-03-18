@@ -13,9 +13,7 @@
 [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 10-03-2026)
 La trigger function
 **`anagrafiche.trgfn_risorse_umane_auth_user_guard_persona_fisica()`**

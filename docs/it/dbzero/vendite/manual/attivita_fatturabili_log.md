@@ -7,8 +7,7 @@
 • [vendite.attivita_fatturabili_lotti](/dbzero/vendite/tabelle/attivita_fatturabili_lotti)  
 > • [vendite.attivita_consumi](/dbzero/vendite/tabelle/attivita_consumi)  
 >
-🎯 Scopo Principale
-
+### 🎯 Scopo Principale
 (latest review 24-01-2026)
 `vendite.attivita_fatturabili_log` registra **warning** e **errori critici**
 relativi ai processi di alimentazione di `attivita_fatturabili`.

@@ -12,8 +12,7 @@
 > [dbops.idempotency_keys](/dbzero/dbops/manual/idempotency_keys) -- correlazione via `idempotency_key`
 > [dbops.audit_log](/dbzero/dbops/manual/audit_log) -- pattern retention `cleanup_at`
 >
-Scopo Principale
-
+### 🎯 Scopo Principale
 (latest review 05-03-2026)
 
 `dbops.request_log` registra **ogni request API** (`/api/*`) in transito nel sistema:

@@ -9,9 +9,7 @@ Tabelle:
 > [pratiche.pratiche](/dbzero/pratiche/tabelle/pratiche)
 
 ---
-
 ### 🎯 Scopo Principale
-
 Trigger function guard che **blocca transizioni di stato non ammesse** per le pratiche. Consulta la matrice `config.transizioni_stati_pratiche` (solo righe con `attivo = true`) e solleva eccezione se la transizione non e' configurata.
 
 ---

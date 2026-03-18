@@ -12,9 +12,7 @@
 [script.fn_guard_soggetto_ruolo](/dbzero/script/funzioni/fn_guard_soggetto_ruolo)
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 12-03-2026)
 La trigger function **`anagrafiche.trgfn_emittenti_fiscali_guard_ruolo_emi_fis()`**
 garantisce che ogni record in `anagrafiche.emittenti_fiscali` sia collegato a un

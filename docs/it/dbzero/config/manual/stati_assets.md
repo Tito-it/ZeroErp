@@ -27,9 +27,7 @@ Gli stati descrivono la **posizione funzionale e logistica** dell’asset lungo 
 | `ASSET_ST_DISMISSED`  | `DISMISSED`  | “Dismesso / rottamato”                        |
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 16-01-26)
 * Fornire un **catalogo centralizzato e stabile** degli stati in cui può trovarsi un asset.
 * Supportare la gestione del **ciclo di vita degli asset**, inclusi:

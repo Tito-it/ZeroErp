@@ -10,9 +10,7 @@ Scheduler:
 > [Processi pgAgent](/postgresql/pgAgent)
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 07/01/26)
 La procedura `maintenzance.proc_apply_storicizza_defaults()` ha il compito di **impostare il valore di default `true` per la colonna `storicizza`** in tutte le tabelle elencate nella tabella di configurazione `config.storico_set_storicizza`. È utilizzata per **garantire che le nuove righe inserite siano automaticamente storicizzate**, ove previsto.
 

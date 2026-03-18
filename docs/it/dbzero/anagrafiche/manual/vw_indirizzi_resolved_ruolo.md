@@ -13,9 +13,7 @@ Approfondimenti viste:
 [anagrafiche.vw_indirizzi_dettaglio](/dbzero/anagrafiche/viste/vw_indirizzi_dettaglio)  
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 20‑12‑25)
 La vista **`anagrafiche.vw_indirizzi_resolved_ruolo`** fornisce una rappresentazione **unificata, pronta all’uso e semanticamente ricca** degli indirizzi associati a uno **specifico ruolo di un soggetto** (es. cliente, fornitore, punto di fornitura).
 

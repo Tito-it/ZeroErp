@@ -13,9 +13,7 @@
 > [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)    
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest update 21-12-25)
 Recuperare in modo dinamico un valore (tipicamente una **PK**) da una tabella qualsiasi, basandosi su un **codice parametro**.
 

@@ -13,9 +13,7 @@ Approfondimento view:
 La funzione **`dbops.fn_populate_fk_index_policy()`** esegue il popolamento automatico di `dbops.fk_index_policy` aggiungendo tutte le foreign key presenti in `dbops.vw_fk_senza_indice` che non hanno ancora un record in policy, impostando per ciascuna `consentito = false`.
 
 ---
-
 ### 🎯 Scopo Principale
-
 * **Coerenza iniziale**
   Garantire che ogni FK rilevata nella view senza indice abbia la propria entry di policy, evitando omissioni.
 * **Popolamento “a freddo”**

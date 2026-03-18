@@ -11,9 +11,7 @@ Approfondimento funzioni :
 [script.fn_valida_partita_iva](/dbzero/script/funzioni/fn_valida_partita_iva)    
 > [anagrafiche.trgfn_soggetti_valida_cf_piva_dispatch](/dbzero/anagrafiche/funzioni/trgfn_soggetti_valida_cf_piva_dispatch)    
 ---
-
 ### 🎯 Scopo Principale
-
 * **Validazione formale** del Codice Fiscale (CF) calcolando e confrontando il carattere di controllo.
 * **Supporto omocodici**, garantendo validità anche per CF derivati con omolettere.
 * **Delegare al backend** i controlli di congruenza con data di nascita, sesso e luogo di nascita per mantenere flessibilità applicativa.

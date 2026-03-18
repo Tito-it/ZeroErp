@@ -17,7 +17,6 @@ Approfondimento parametri tabellari Vs GUC
 
 ---
 ### 🎯 Scopo Principale
-
 La tabella **`config.parameters`** implementa un’**architettura a due livelli** per la configurazione dinamica dell’applicazione:
 
 1. **Parametri di sistema (global defaults)**

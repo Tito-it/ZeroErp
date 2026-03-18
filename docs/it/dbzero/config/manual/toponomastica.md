@@ -20,9 +20,7 @@ Approfondimento Funzione:
 La tabella **`config.toponomastica`** raccoglie i tipi di toponimi utilizzati per la composizione degli indirizzi: è la base per lo **`stradario_generale`**, dove ogni record di toponimo si combina con un nome specifico per generare l’indirizzo completo.
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 02-01-26)
 * **Censimento dei toponimi**
   Elenco delle tipologie di vie, strade, piazze, viali, ecc., utilizzate come prefisso negli indirizzi.

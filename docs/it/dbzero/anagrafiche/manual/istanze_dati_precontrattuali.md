@@ -17,9 +17,7 @@ Approfondimento tabelle:
 > [vendite.contratti_righe](/dbzero/vendite/tabelle/contratti_righe)
 > [vendite.regole_fatturazione_articolo](/dbzero/vendite/tabelle/regole_fatturazione_articolo)
 >
-
-🎯 Scopo Principale
-
+### 🎯 Scopo Principale
 (latest review 09-01-26)
 La tabella `anagrafiche.istanze_dati_precontrattuali` raccoglie **tutte le informazioni pre‑contrattuali** relative ad una specifica **istanza utility** (fornitura/utenza). Il campo **`meta` (JSONB)** consente di archiviare attributi **specifici per tipo di utility** (es. potenza impegnata, pressione, soglie tecniche, parametri di profilazione).
 

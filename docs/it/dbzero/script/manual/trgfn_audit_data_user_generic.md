@@ -8,9 +8,7 @@
 > anche il campo `user_insert`.
 
 ---
-
 ### 🎯 Scopo Principale
-
 * **Audit automatico su INSERT e UPDATE**
   Assicura che ogni inserimento e modifica sia registrato con timestamp (`data_update`) e utente reale (`user_update` / `user_insert`).
 * **Centralizzare la logica di audit**

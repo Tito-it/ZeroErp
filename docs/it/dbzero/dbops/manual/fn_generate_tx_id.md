@@ -14,9 +14,7 @@ Approfondimento funzioni :
 La funzione **`dbops.fn_generate_tx_id(p_generating_function TEXT, p_session_info JSONB DEFAULT '{}'::jsonb)`** centralizza la **generazione** e la **memorizzazione** di un nuovo identificativo di transazione (UUID) in `dbops.transaction_ids`, associando il contesto di chiamata e le informazioni di sessione.
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 10-01-26)
 * **Unico punto di generazione**
   Evitare duplicazioni di logica ed errori creando sempre il `tx_id` tramite una function dedicata.

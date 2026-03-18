@@ -8,9 +8,7 @@ Sistema di catalogazione cataloghi di sistema (`pg_class`, `pg_namespace`)
 La view **`dbops.vw_catalogo_oggetti`** fornisce un elenco centralizzato degli oggetti presenti negli schemi **`dbops`** e **`script`**, includendo tabelle, viste, indici, sequenze, materialized views e funzioni, con informazioni sul tipo, sul proprietario e sulla descrizione.
 
 ---
-
 ### 🎯 Scopo Principale
-
 * Offrire una vista unificata degli oggetti PostgreSQL definiti nei due schemi principali di amministrazione.
 * Agevolare operazioni di discovery e auditing, bypassando query dirette sulle catalog tables.
 

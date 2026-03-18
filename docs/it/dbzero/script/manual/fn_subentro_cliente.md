@@ -20,9 +20,7 @@
 > [`script.fn_disdetta_cliente`](/dbzero/script/funzioni/fn_disdetta_cliente) — cessazione senza subentro
 
 ---
-
-### 🎯 Scopo
-
+### 🎯 Scopo Principale
 (latest review 01-03-26)
 
 La funzione `script.fn_subentro_cliente()` **chiude il cliente attualmente attivo su un PDP** prima che venga creato un nuovo cliente sullo stesso punto di prelievo.

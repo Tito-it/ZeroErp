@@ -1,51 +1,51 @@
 # Schema `vendite`
 
 ## 📚 Tabelle (manuale)
-- [area_geografica_fatturazione](manual/area_geografica_fatturazione.md)
-- [area_geografica_fatturazione_comuni](manual/area_geografica_fatturazione_comuni.md)
+- [area_geografica_fatturazione](manual/area_geografica_fatturazione.md) — (latest review 30-01-2026)   La tabella **`vendite.area_geografica_fatturazione`** definisce aree geografiche per raggruppare i comuni e supportare filtri di fatturazione (es. per area).
+- [area_geografica_fatturazione_comuni](manual/area_geografica_fatturazione_comuni.md) — (latest review 30-01-2026)   La tabella **`vendite.area_geografica_fatturazione_comuni`** mappa i comuni alle aree geografiche di fatturazione.
 - [articoli_descrizioni_aggiuntive](manual/articoli_descrizioni_aggiuntive.md) — (latest review 19-01-26) * Estendere le informazioni dell’articolo con **testi aggiuntivi** riutilizzabili. * Governare la **sequenza di presentazione** tramite un campo di ordinamento. * Abilitare **varianti di testo** per contesti differenti (catalogo vs. documento fiscale).
 - [articoli_gruppi](manual/articoli_gruppi.md) — (latest review 13-01-26) * Consentire la **classificazione gerarchica** degli articoli in gruppi omogenei. * Facilitare **statistiche e analisi di vendita** per categoria. * Supportare **criteri di stampa e raggruppamento** nei documenti fiscali e gestionali. * In modo pratico il gruppo può rappresentare un totalizzatore simile a quello di conto contabile. 
 - [articoli_spesa](manual/articoli_spesa.md) — (latest review 14-01-26) * Definire un **catalogo centralizzato** delle voci di spesa utilizzabili in fatturazione. * Abilitare **riepiloghi e totalizzazioni** per voce di spesa nei documenti (es. bolletta, fattura). * Offrire un **testo di stampa** specifico per la voce di spesa, distinto dalla descrizione interna    **L'utilizzo della descrizione come testo di stampa può essere più utile nel mondo Utilities.Resta sempre la possibilità di utilizzo come totalizzatore aggiuntivo/alternativo al gruppo.**
 - [articoli_tipologie](manual/articoli_tipologie.md) — (latest review 14-01-26) * Classificare gli articoli secondo **tipologie funzionali** (es. materia prima, servizi, accessori). * Distinguere tra **descrizione estesa** e **descrizione breve**, per gestire contesti documentali differenti. * Fornire uno strumento di aggregazione per reportistica e controlli gestionali.
 - [articolo_regole_fatturazione](manual/articolo_regole_fatturazione.md) — (latest review 21-01-2026) Questa tabella definisce, **per ciascun articolo**, le regole di business che governano:
-- [attivita_consumi](manual/attivita_consumi.md)
+- [attivita_consumi](manual/attivita_consumi.md) — (latest review 24-01-2026) `vendite.attivita_consumi` rappresenta la **testata consumi** per utilities, con totalizzatori e periodi di riferimento. E` il punto di aggregazione per dettagli futuri (fasce, minimi, tipologie energia, ecc.) e puo` essere collegata alla fattura in emissione.
 - [attivita_fatturabili](manual/attivita_fatturabili.md) — (latest review 21-01-2026) `vendite.attivita_fatturabili` è il **registro centrale delle prestazioni/attività da fatturare** (time & material, canoni, una‑tantum, letture/consumi valorizzati, import batch, ecc.). Ogni riga rappresenta **una voce fatturabile** riferita a un *articolo/servizio*, a una *istanza tecnica/utility* e, opzionalmente, a un *billing account*. Queste righe sono **pre‑documentali**: quando il ciclo di fatturazione le preleva, diventano **righe di fattura** (`vendite.fatture_righe`).
-- [attivita_fatturabili_log](manual/attivita_fatturabili_log.md)
-- [commesse](manual/commesse.md)
-- [commesse_attivita](manual/commesse_attivita.md)
-- [commesse_attivita_log](manual/commesse_attivita_log.md)
-- [commesse_push_log](manual/commesse_push_log.md)
-- [commesse_sorgenti](manual/commesse_sorgenti.md)
-- [contratti](manual/contratti.md)
+- [attivita_fatturabili_log](manual/attivita_fatturabili_log.md) — (latest review 24-01-2026) `vendite.attivita_fatturabili_log` registra **warning** e **errori critici** relativi ai processi di alimentazione di `attivita_fatturabili`.
+- [commesse](manual/commesse.md) — (latest review 26-02-2026)   `vendite.commesse` e` la testata di governo del ciclo operativo `sorgente -> commessa -> commesse_attivita -> attivita_fatturabili`.
+- [commesse_attivita](manual/commesse_attivita.md) — La tabella `vendite.commesse_attivita` e` la sorgente di verita` operativa delle righe da emettere verso `attivita_fatturabili`.
+- [commesse_attivita_log](manual/commesse_attivita_log.md) — La tabella `vendite.commesse_attivita_log` registra eventi tecnici e dominio sulle righe `commesse_attivita` per audit e troubleshooting.
+- [commesse_push_log](manual/commesse_push_log.md) — `vendite.commesse_push_log` traccia ogni esecuzione dell'orchestratore di push sorgenti verso commesse/attivita` con un audit minimale ma operativo.
+- [commesse_sorgenti](manual/commesse_sorgenti.md) — La tabella `vendite.commesse_sorgenti` traccia la sorgente ROOT della commessa e garantisce idempotenza sorgente a livello commessa.
+- [contratti](manual/contratti.md) — (Initial version - 19-01-26) `vendite.contratti` rappresenta la **testata del contratto commerciale**: l’accordo che lega un **billing account** a una **istanza/utility** e ne definisce **ambito**, **periodo di validita** e **stato**. E` la base di aggregazione delle righe (`vendite.contratti_righe`) e il punto di riferimento per la generazione di **attivita fatturabili**.
 - [contratti_righe](manual/contratti_righe.md) — (Initial version - 19-01-26) `vendite.contratti_righe` contiene il **dettaglio economico e operativo** del contratto: ogni riga rappresenta un **articolo/servizio** con le proprie regole di erogazione (canone, consumo, una‑tantum), periodicita e parametri di quantita/prezzo.
 - [contratti_utilities](manual/contratti_utilities.md) — (latest review 20/01/26) `vendite.contratti_utilities` conserva lo **snapshot** dei dati pre‑contrattuali al **momento della creazione del contratto**.   L’obiettivo e` rendere il contratto **autonomo e stabile**: i dati tecnici/commerciali che lo qualificano non vengono piu` aggiornati dopo la creazione.
 - [ddt](manual/ddt.md) — La tabella **`vendite.ddt`** rappresenta la **testata** dei Documenti di Trasporto. È il fulcro del ciclo logistico tra **Ordini** (evasione/spedizione) e **Fatture** (conto vendita / accompagnatoria).
-- [ddt_indirizzi](manual/ddt_indirizzi.md)
+- [ddt_indirizzi](manual/ddt_indirizzi.md) — vendite.ddt_indirizzi gestisce gli indirizzi associati alla testata DDT tramite snapshot JSON al momento dell’emissione (o conferma logistica). Per ogni DDT è ammesso al più un indirizzo per tipo (es. spedizione, fornitura, residenza), garantito dall’univocità (ddt_id, tipo_indirizzo_id).
 - [ddt_righe](manual/ddt_righe.md) — `vendite.ddt_righe` rappresenta le **righe dei Documenti di Trasporto di vendita**. Ogni record corrisponde a una **voce di spedizione** associata a una testata DDT (`vendite.ddt`), identificando articolo, quantità, unità di misura e dettagli di tracciabilità (lotto, seriale).
-- [documenti_fatturazione_canali](manual/documenti_fatturazione_canali.md)
+- [documenti_fatturazione_canali](manual/documenti_fatturazione_canali.md) — (latest review 24-02-2026) `vendite.documenti_fatturazione_canali` e` il registro tecnico unico dei canali fatturabili per documento sorgente (`sorgente_tipo_id + sorgente_uid`), usato per uniformare le regole su contratti, preventivi, ordini e DDT.
 - [event_log](manual/event_log.md) — `vendite.event_log` centralizza in un unico stream temporale gli eventi tecnici/funzionali dei domini vendite (pipeline, commesse, SDI, fatture), con modello **append-only**.
-- [fatturazione_lotti](manual/fatturazione_lotti.md)
-- [fatturazione_lotti_fatture](manual/fatturazione_lotti_fatture.md)
-- [fatturazione_lotti_log](manual/fatturazione_lotti_log.md)
-- [fatturazione_lotti_task_runs](manual/fatturazione_lotti_task_runs.md)
-- [fatturazione_pipeline](manual/fatturazione_pipeline.md)
-- [fatturazione_pipeline_task_policy](manual/fatturazione_pipeline_task_policy.md)
+- [fatturazione_lotti](manual/fatturazione_lotti.md) — (latest review 23-01-2026) `vendite.fatturazione_lotti` rappresenta il **lotto di fatturazione**, ovvero il contenitore operativo che fissa i **parametri di calcolo** (competenza, utility, tipo documento, BA, emittente fiscale) e consente la gestione coerente di **ricalcoli**, **job** e **processi successivi** (emissione, invio, statistiche).
+- [fatturazione_lotti_fatture](manual/fatturazione_lotti_fatture.md) — (latest review 23-01-2026) `vendite.fatturazione_lotti_fatture` rappresenta la **relazione esplicita** tra lotto e fattura, consentendo di:
+- [fatturazione_lotti_log](manual/fatturazione_lotti_log.md) — (latest review 28-01-2026) `vendite.fatturazione_lotti_log` registra **warning** e **errori critici** relativi ai processi del lotto di fatturazione.
+- [fatturazione_lotti_task_runs](manual/fatturazione_lotti_task_runs.md) — `vendite.fatturazione_lotti_task_runs` traccia il runtime dei task di pipeline per ogni lotto, con tentativi, esito, tempi e contesto errore.
+- [fatturazione_pipeline](manual/fatturazione_pipeline.md) — (latest review 28-01-2026)   La tabella **`vendite.fatturazione_pipeline`** descrive la **pipeline configurabile** dei processi di fatturazione.   Ogni riga rappresenta uno **step** logico (coerente con gli stati lotto definiti in `config.stati_doc_fiscale`, limitati alla parte *lotti*), e definisce:
+- [fatturazione_pipeline_task_policy](manual/fatturazione_pipeline_task_policy.md) — La tabella `vendite.fatturazione_pipeline_task_policy` definisce le regole operative per ciascun task della pipeline fatturazione.
 - [fatture](manual/fatture.md) — (latest review 24-01-2026) `vendite.fatture` rappresenta la **testata del documento fiscale di vendita**. Gestisce **identità fiscale (registro/anno/serie/numero)**, **stato e tipo documento**, **intestatari economici** (BA, emittente, reseller), **valuta e pagamento**, **totali** e **metadati**. È il **punto di aggregazione** delle righe (`vendite.fatture_righe`) e dei riepiloghi IVA.
-- [fatture_arrotondamenti_scope](manual/fatture_arrotondamenti_scope.md)
-- [fatture_fondi_fattura](manual/fatture_fondi_fattura.md)
-- [fatture_fondi_fattura_source](manual/fatture_fondi_fattura_source.md)
-- [fatture_indirizzi](manual/fatture_indirizzi.md)
-- [fatture_log](manual/fatture_log.md)
+- [fatture_arrotondamenti_scope](manual/fatture_arrotondamenti_scope.md) — (latest review 10-02-2026)   `vendite.fatture_arrotondamenti_scope` memorizza il **saldo tecnico** degli arrotondamenti per **ambito di fatturazione**. Serve a produrre arrotondamenti deterministici e riproducibili tra fatture e note/storni, evitando scostamenti cumulativi nel tempo.
+- [fatture_fondi_fattura](manual/fatture_fondi_fattura.md) — (latest review 10-02-2026)   `vendite.fatture_fondi_fattura` registra i **fondi fattura** collegati a una fattura (addebiti/accrediti, canone RAI, ecc.). I fondi sono **separati** dalle righe standard e contribuiscono al `totale_a_pagare`.
+- [fatture_fondi_fattura_source](manual/fatture_fondi_fattura_source.md) — (latest review 11-02-2026)   `vendite.fatture_fondi_fattura_source` registra la **sorgente** dei fondi fattura derivati da documenti precedenti. Serve a garantire idempotenza e selezione deterministica dei fondi disponibili per l’addebito/accredito.
+- [fatture_indirizzi](manual/fatture_indirizzi.md) — `vendite.fatture_indirizzi` **semplifica la gestione degli indirizzi di fattura** e garantisce la **ristampa conforme** nel tempo tramite **snapshot** JSON dell’indirizzo al momento dell’emissione.
+- [fatture_log](manual/fatture_log.md) — (latest review 29-01-2026)   `vendite.fatture_log` registra **warning** e **errori critici** associati ai documenti di fattura. I log critici bloccano numerazione e invio finche` attivi.
 - [fatture_rettifiche](manual/fatture_rettifiche.md) — `vendite.fatture_rettifiche` modella il **legame N:N** fra **documenti rettificanti** (es. note di credito/debito) e **documenti rettificati** (fatture originarie).
 - [fatture_riepiloghi_iva](manual/fatture_riepiloghi_iva.md) — `vendite.fatture_riepiloghi_iva` è lo **specchietto fiscale** della fattura: aggrega le righe per **combinazione fiscale** e ne memorizza i totali. Serve per:
 - [fatture_righe](manual/fatture_righe.md) — (latest review 22-01-2026) `vendite.fatture_righe` contiene le **righe economiche** di una fattura: descrizione, articolo (opzionale), UoM, quantità, prezzo, sconti, IVA e **importi congelati** (*snapshot*) al momento della generazione. Ogni riga è ordinata tramite `riga_nr` ed è collegata a una testata `vendite.fatture` (FK `fattura_id`). Supporta la **destinazione a BA diverso** dalla testata e l’idempotenza di import riga‑per‑riga.
 - [fatture_scadenze](manual/fatture_scadenze.md) — `vendite.fatture_scadenze` memorizza lo **schedule di pagamento** (rate/scadenze) della fattura come **snapshot** al momento dell’emissione, così da:
 - [fatture_sdi](manual/fatture_sdi.md) — (latest review 16-02-2026)   `vendite.fatture_sdi` rappresenta la **testata dei tentativi di invio SDI** per fattura.
 - [fatture_sdi_eventi](manual/fatture_sdi_eventi.md) — (latest review 16-02-2026)   `vendite.fatture_sdi_eventi` mantiene lo **storico cronologico eventi SDI** per ciascun tentativo (`fattura_sdi_id`).
-- [listini](manual/listini.md)
-- [listini_associazioni](manual/listini_associazioni.md)
-- [listini_righe](manual/listini_righe.md)
-- [listini_versioni](manual/listini_versioni.md)
+- [listini](manual/listini.md) — La tabella `vendite.listini` rappresenta la testata anagrafica dei listini prezzo del dominio vendite.
+- [listini_associazioni](manual/listini_associazioni.md) — La tabella `vendite.listini_associazioni` definisce quali listini sono candidati per un dato contesto operativo (BA, utility, emittente fiscale), con priorita` di tie-break tra listini concorrenti.
+- [listini_righe](manual/listini_righe.md) — La tabella `vendite.listini_righe` contiene i prezzi elementari per articolo/UOM, eventualmente specializzati per contesto (BA, utility, emittente fiscale).
+- [listini_versioni](manual/listini_versioni.md) — La tabella `vendite.listini_versioni` gestisce il versionamento temporale dei listini. Ogni versione definisce una finestra di validita` e una priorita` operativa.
 - [note](manual/note.md) — `vendite.note` gestisce **note testuali** ancorabili sia alla **testata** del documento sia alla **riga**, con controllo di posizionamento e ordinamento di rendering. È una tabella **partizionata per `target_tipo`** per garantire prestazioni e manutenzione più semplici, con **FK forti** verso le rispettive testate/righe nelle singole partizioni.
 - [note_attivita_fatturabili](manual/note_attivita_fatturabili.md) — `vendite.note_attivita_fatturabili` gestisce **note testuali**.  Vedi documento principale [vendite.note](/dbzero/vendite/tabelle/note)
 - [note_contratto](manual/note_contratto.md) — `vendite.note_contratto` gestisce **note testuali**.  Vedi documento principale [vendite.note](/dbzero/vendite/tabelle/note)
@@ -60,107 +60,107 @@
 - [preventivi](manual/preventivi.md) — La tabella **`vendite.preventivi`** rappresenta la **testata del preventivo commerciale**: raccoglie cliente/BA/utility, condizioni economiche, validita` e stato documento.
 - [preventivi_indirizzi](manual/preventivi_indirizzi.md) — `vendite.preventivi_indirizzi` memorizza lo **snapshot indirizzi** associato al preventivo (fatturazione/spedizione/altri tipi ammessi), mantenendo storico coerente anche se l’anagrafica origine cambia nel tempo.
 - [preventivi_righe](manual/preventivi_righe.md) — `vendite.preventivi_righe` contiene il dettaglio economico-tecnico del preventivo: articolo, quantita`, prezzo, sconto, IVA e snapshot UoM operativa.
-- [registri_fatturazione](manual/registri_fatturazione.md)
-- [registri_fatturazione_progressivi](manual/registri_fatturazione_progressivi.md)
-- [stati_commessa](manual/stati_commessa.md)
-- [tipi_doc_fiscale_registri](manual/tipi_doc_fiscale_registri.md)
-- [tipi_fondi_fattura](manual/tipi_fondi_fattura.md)
+- [registri_fatturazione](manual/registri_fatturazione.md) — (latest review 26-01-2026) `vendite.registri_fatturazione` definisce i **registri fiscali di emissione**: serie, regole di reset e collegamento all’emittente fiscale. Ogni fattura si aggancia a un registro, che governa numerazione e perimetro fiscale.
+- [registri_fatturazione_progressivi](manual/registri_fatturazione_progressivi.md) — (latest review 26-01-2026) `vendite.registri_fatturazione_progressivi` memorizza i **progressivi di numerazione** per ciascun registro, anno, mese e serie. E` la base per l’assegnazione del numero documento in fase di emissione.
+- [stati_commessa](manual/stati_commessa.md) — (latest review 26-02-2026)   `vendite.stati_commessa` e` la lookup centrale degli stati lifecycle della commessa.
+- [tipi_doc_fiscale_registri](manual/tipi_doc_fiscale_registri.md) — (latest review 27-01-2026) La tabella **`vendite.tipi_doc_fiscale_registri`** definisce il mapping **tipo documento fiscale → registro di fatturazione**, necessario per la numerazione e la contabilizzazione dei documenti.
+- [tipi_fondi_fattura](manual/tipi_fondi_fattura.md) — (latest review 10-02-2026)   `vendite.tipi_fondi_fattura` definisce il **catalogo delle tipologie di fondo fattura** (addebiti/accrediti fatture precedenti, canone RAI, ecc.). Serve a normalizzare i motivi di addebito/accredito extra rispetto alle righe standard.
 
 ## ⚙️ Funzioni (manuale)
-- [fn_applica_fondi_fattura](manual/fn_applica_fondi_fattura.md)
-- [fn_assign_numero_fattura](manual/fn_assign_numero_fattura.md)
-- [fn_build_fattura_key](manual/fn_build_fattura_key.md)
+- [fn_applica_fondi_fattura](manual/fn_applica_fondi_fattura.md) — La funzione **`vendite.fn_applica_fondi_fattura()`** applica i fondi fattura in stato `DISPONIBILE` ad una **fattura figlia**, creando le righe in `vendite.fatture_fondi_fattura` e aggiornando la `source` a stato `ASSEGNATO`.
+- [fn_assign_numero_fattura](manual/fn_assign_numero_fattura.md) — (latest review 09-02-2026) La funzione **`vendite.fn_assign_numero_fattura()`** assegna il progressivo in base al registro e aggiorna `anno`, `serie` e `numero` sulla testata fattura.
+- [fn_build_fattura_key](manual/fn_build_fattura_key.md) — (latest review 29-01-2026)   La funzione **`vendite.fn_build_fattura_key()`** costruisce la **chiave logica** di aggregazione documento a partire da una riga di `attivita_fatturabili`.
 - [fn_cancel_lotto_task_run](manual/fn_cancel_lotto_task_run.md) — Chiude un task run impostando `task_stato = ANNULLATO`.
 - [fn_cleanup_fatture_by_ids](manual/fn_cleanup_fatture_by_ids.md) — (latest review 10-02-2026)   La funzione **`vendite.fn_cleanup_fatture_by_ids()`** centralizza il cleanup di fatture e righe correlate, ripristinando le righe di `attivita_fatturabili`.
-- [fn_close_giornaliero_lotto](manual/fn_close_giornaliero_lotto.md)
+- [fn_close_giornaliero_lotto](manual/fn_close_giornaliero_lotto.md) — (latest review 03-02-2026) La funzione **`vendite.fn_close_giornaliero_lotto()`** chiude operativamente un lotto di tipo **GIORNALIERO** e allinea lo stato documentale delle fatture collegate al valore passato (tipicamente stato `INVIATA`).
 - [fn_complete_lotto_task_run](manual/fn_complete_lotto_task_run.md) — Chiude un task run impostando `task_stato = COMPLETATO` e `ended_at`.
-- [fn_create_fatturazione_lotto](manual/fn_create_fatturazione_lotto.md)
+- [fn_create_fatturazione_lotto](manual/fn_create_fatturazione_lotto.md) — (latest review 27-01-2026) La funzione **`vendite.fn_create_fatturazione_lotto()`** crea un lotto di fatturazione con parametri coerenti (competenza, utility, tipo documento, BA) e inizializza lo stato documento a **DRAFT**.
 - [fn_emit_attivita_fatturabili_da_commessa](manual/fn_emit_attivita_fatturabili_da_commessa.md) — (latest review 24-02-2026) Esegue il pull da `commesse_attivita` verso `attivita_fatturabili` (step 0 pipeline attività fatturabili).
 - [fn_fail_lotto_task_run](manual/fn_fail_lotto_task_run.md) — Chiude un task run in errore impostando `task_stato = ERRORE`, codice e messaggio.
-- [fn_genera_fondi_fattura_source](manual/fn_genera_fondi_fattura_source.md)
-- [fn_generate_fatture_righe](manual/fn_generate_fatture_righe.md)
-- [fn_get_anno_registro](manual/fn_get_anno_registro.md)
-- [fn_get_arrotondamento_scope](manual/fn_get_arrotondamento_scope.md)
-- [fn_get_commessa_stato](manual/fn_get_commessa_stato.md)
-- [fn_get_lotto_segnalazioni_summary](manual/fn_get_lotto_segnalazioni_summary.md)
+- [fn_genera_fondi_fattura_source](manual/fn_genera_fondi_fattura_source.md) — (latest review 12-02-2026)   La funzione **`vendite.fn_genera_fondi_fattura_source()`** genera record in `fatture_fondi_fattura_source` per fatture con `minimo = true`, e mantiene allineata la source in base al saldo documento.
+- [fn_generate_fatture_righe](manual/fn_generate_fatture_righe.md) — (latest review 07-02-2026)   (Deprecate-trasferite in django)   La funzione **`vendite.fn_generate_fatture_righe()`** genera le righe fattura partendo dalle `attivita_fatturabili` lockate sul lotto.
+- [fn_get_anno_registro](manual/fn_get_anno_registro.md) — (latest review 26-01-2026) La funzione **`vendite.fn_get_anno_registro`** calcola l’anno di riferimento per la numerazione dei registri con `reset_policy = ANNUALE`.
+- [fn_get_arrotondamento_scope](manual/fn_get_arrotondamento_scope.md) — (latest review 10-02-2026)   La funzione **`vendite.fn_get_arrotondamento_scope()`** restituisce il **saldo tecnico** degli arrotondamenti per l'ambito di fatturazione (BA, utility, tipo documento, emittente, valuta). Se l'ambito non esiste, ritorna `0`.
+- [fn_get_commessa_stato](manual/fn_get_commessa_stato.md) — (latest review 26-02-2026)   Restituisce in una singola query lo stato operativo di una commessa:
+- [fn_get_lotto_segnalazioni_summary](manual/fn_get_lotto_segnalazioni_summary.md) — (latest review 23-02-2026)   La funzione **`vendite.fn_get_lotto_segnalazioni_summary()`** restituisce un riepilogo aggregato delle segnalazioni attive (`C`/`W`/`I`) di un lotto, unificando:
 - [fn_get_lotto_task_last_run](manual/fn_get_lotto_task_last_run.md) — Restituisce l'ultimo task run disponibile per lotto/step/task.
-- [fn_get_next_progressivo](manual/fn_get_next_progressivo.md)
-- [fn_get_or_create_commessa](manual/fn_get_or_create_commessa.md)
-- [fn_get_or_create_fattura_header](manual/fn_get_or_create_fattura_header.md)
-- [fn_get_or_create_lotto](manual/fn_get_or_create_lotto.md)
+- [fn_get_next_progressivo](manual/fn_get_next_progressivo.md) — (latest review 26-01-2026) La funzione **`vendite.fn_get_next_progressivo`** restituisce il prossimo numero di registro, con **lock della riga** progressivi per evitare doppioni.
+- [fn_get_or_create_commessa](manual/fn_get_or_create_commessa.md) — (latest review 26-02-2026)   Recupera una commessa riusabile, coerente con il contesto BA/utility e parametri funzionali, oppure ne crea una nuova in modo sicuro anche con chiamate concorrenti.
+- [fn_get_or_create_fattura_header](manual/fn_get_or_create_fattura_header.md) — (latest review 29-01-2026)   La funzione **`vendite.fn_get_or_create_fattura_header()`** recupera o crea una **testata fattura in bozza** a partire da una riga di `attivita_fatturabili`, usando la chiave documento (`vendite.fn_build_fattura_key`) e collegandola al lotto.
+- [fn_get_or_create_lotto](manual/fn_get_or_create_lotto.md) — (latest review 22-02-2026) La funzione **`vendite.fn_get_or_create_lotto()`** recupera un lotto esistente (o lo crea se assente) garantendo la coerenza dei parametri di richiesta.
 - [fn_get_pipeline_task_policy](manual/fn_get_pipeline_task_policy.md) — Restituisce la policy runtime attiva di un task pipeline (`annullabile`, `resume_mode`, `meta`).
-- [fn_get_registro_id](manual/fn_get_registro_id.md)
-- [fn_get_tipo_doc_fiscale_id](manual/fn_get_tipo_doc_fiscale_id.md)
-- [fn_get_totale_fondi_fattura](manual/fn_get_totale_fondi_fattura.md)
-- [fn_get_valuta_id](manual/fn_get_valuta_id.md)
+- [fn_get_registro_id](manual/fn_get_registro_id.md) — (latest review 27-01-2026) La funzione **`vendite.fn_get_registro_id`** risolve il registro di fatturazione in base al mapping **tipo documento → registro**, considerando utility/emittente se presenti.
+- [fn_get_tipo_doc_fiscale_id](manual/fn_get_tipo_doc_fiscale_id.md) — (latest review 27-01-2026) La funzione **`vendite.fn_get_tipo_doc_fiscale_id`** risolve il tipo documento fiscale a partire dalla sorgente o dalla utility.
+- [fn_get_totale_fondi_fattura](manual/fn_get_totale_fondi_fattura.md) — La funzione **`vendite.fn_get_totale_fondi_fattura()`** restituisce il totale dei fondi fattura **attivi** associati alla testata.
+- [fn_get_valuta_id](manual/fn_get_valuta_id.md) — (latest review 26-01-2026) La funzione **`vendite.fn_get_valuta_id`** risolve la valuta con fallback al **gestore** quando non esistono valori specifici su BA/utility.
 - [fn_get_vendite_note](manual/fn_get_vendite_note.md) — (latest review 10-02-2026)   La funzione **`vendite.fn_get_vendite_note()`** e` un wrapper su `script.fn_get_note('vendite.note')` per recuperare le note vendite da tabella partizionata in modo uniforme.
-- [fn_group_attivita_fatturabili](manual/fn_group_attivita_fatturabili.md)
+- [fn_group_attivita_fatturabili](manual/fn_group_attivita_fatturabili.md) — (latest review 07-02-2026)   (Deprecate-trasferite in django)   La funzione **`vendite.fn_group_attivita_fatturabili()`** costruisce la **chiave di aggregazione riga** a partire da una riga di `attivita_fatturabili`.
 - [fn_link_commessa_sorgente](manual/fn_link_commessa_sorgente.md) — (latest review 24-02-2026) Collega la ROOT source a una commessa in modo idempotente e coerente.
-- [fn_list_commessa_attivita](manual/fn_list_commessa_attivita.md)
-- [fn_list_commesse_emittibili](manual/fn_list_commesse_emittibili.md)
+- [fn_list_commessa_attivita](manual/fn_list_commessa_attivita.md) — (latest review 26-02-2026)   Restituisce il dettaglio righe di una commessa (`commesse_attivita`) con filtri opzionali e paginazione, per uso backend in consultazione e pre-validazione dei flussi di emissione.
+- [fn_list_commesse_emittibili](manual/fn_list_commesse_emittibili.md) — (latest review 26-02-2026)   Elenca le commesse candidate all'emissione verso `attivita_fatturabili`, applicando i criteri minimi di prontezza operativa.
 - [fn_list_consumi_da_pushare](manual/fn_list_consumi_da_pushare.md) — `vendite.fn_list_consumi_da_pushare(...)` seleziona i consumi utility pronti per il push verso `commesse_attivita`, restituendo un payload di base per l'handler di calcolo componenti.
-- [fn_list_contratti_da_pushare](manual/fn_list_contratti_da_pushare.md)
-- [fn_list_ddt_da_pushare](manual/fn_list_ddt_da_pushare.md)
-- [fn_list_fatturazione_pipeline_steps](manual/fn_list_fatturazione_pipeline_steps.md)
+- [fn_list_contratti_da_pushare](manual/fn_list_contratti_da_pushare.md) — `vendite.fn_list_contratti_da_pushare(...)` seleziona le righe contratto pronte per il push verso `commesse_attivita`, restituendo un payload completo per l'handler di acquisizione.
+- [fn_list_ddt_da_pushare](manual/fn_list_ddt_da_pushare.md) — `vendite.fn_list_ddt_da_pushare(...)` seleziona le righe DDT pronte per il push verso `commesse_attivita`, restituendo un payload completo per l'handler di acquisizione.
+- [fn_list_fatturazione_pipeline_steps](manual/fn_list_fatturazione_pipeline_steps.md) — (latest review 08-02-2026)   La funzione restituisce la lista step pipeline risolti per `tipo_lotto`, `utility_id` e `tipo_doc_fiscale_id`, delegando la precedenza a `fn_resolve_fatturazione_pipeline_step`.
 - [fn_list_lotto_task_runs](manual/fn_list_lotto_task_runs.md) — Elenca i task run di un lotto, con filtri opzionali per step e task.
-- [fn_list_ordini_da_pushare](manual/fn_list_ordini_da_pushare.md)
+- [fn_list_ordini_da_pushare](manual/fn_list_ordini_da_pushare.md) — `vendite.fn_list_ordini_da_pushare(...)` seleziona le righe ordine pronte per il push verso `commesse_attivita`, restituendo un payload completo per l’handler di acquisizione.
 - [fn_list_preventivi_da_pushare](manual/fn_list_preventivi_da_pushare.md) — `vendite.fn_list_preventivi_da_pushare(...)` seleziona le righe preventivo pronte per il push verso `commesse_attivita`, restituendo un payload completo per l’handler di acquisizione.
-- [fn_log_commessa_push_run](manual/fn_log_commessa_push_run.md)
-- [fn_log_event](manual/fn_log_event.md)
-- [fn_log_lotto_esito_fatture](manual/fn_log_lotto_esito_fatture.md)
-- [fn_log_pipeline_fase](manual/fn_log_pipeline_fase.md)
-- [fn_numera_fattura_opz_emessa](manual/fn_numera_fattura_opz_emessa.md)
+- [fn_log_commessa_push_run](manual/fn_log_commessa_push_run.md) — `vendite.fn_log_commessa_push_run` registra in modo uniforme il risultato di un run dell'orchestratore push commesse scrivendo una riga in `commesse_push_log`.
+- [fn_log_event](manual/fn_log_event.md) — `vendite.fn_log_event` fornisce un entrypoint unico (DB) per registrare eventi append-only in `vendite.event_log`, sia da servizi Python sia da funzioni SQL.
+- [fn_log_lotto_esito_fatture](manual/fn_log_lotto_esito_fatture.md) — (latest review 29-01-2026)   La funzione **`vendite.fn_log_lotto_esito_fatture()`** registra un log di esito lotto dedotto dai log fatture associate al lotto.
+- [fn_log_pipeline_fase](manual/fn_log_pipeline_fase.md) — (latest review 28-01-2026)   La funzione **`vendite.fn_log_pipeline_fase()`** inserisce un record nel log del lotto per registrare l’avanzamento (fase) della pipeline.
+- [fn_numera_fattura_opz_emessa](manual/fn_numera_fattura_opz_emessa.md) — (latest review 09-02-2026) La funzione **`vendite.fn_numera_fattura_opz_emessa()`** assegna il numero fattura in modo **idempotente** e, opzionalmente, imposta lo stato documento **EMESSA** usando `codice_interno`.
 - [fn_prepare_sdi_payload](manual/fn_prepare_sdi_payload.md) — (latest review 16-02-2026)   Preparare il payload SDI di un lotto:
-- [fn_reset_fondi_fattura](manual/fn_reset_fondi_fattura.md)
+- [fn_reset_fondi_fattura](manual/fn_reset_fondi_fattura.md) — La funzione **`vendite.fn_reset_fondi_fattura()`** ripristina i fondi fattura applicati ad una **fattura figlia**:
 - [fn_reset_lotto_draft](manual/fn_reset_lotto_draft.md) — (latest review 09-02-2026)   La funzione **`vendite.fn_reset_lotto_draft()`** effettua il **rollback tecnico** di un lotto **MASSIVO** in stato **DRAFT**, eliminando i documenti generati dal draft e ripristinando le righe di `attivita_fatturabili`.
 - [fn_reset_lotto_fattura_draft](manual/fn_reset_lotto_fattura_draft.md) — (latest review 10-02-2026)   La funzione **`vendite.fn_reset_lotto_fattura_draft()`** effettua il reset tecnico di **una singola fattura** appartenente a un lotto **MASSIVO** in stato **DRAFT**, senza annullare il lotto.
-- [fn_resolve_commessa_prezzi](manual/fn_resolve_commessa_prezzi.md)
-- [fn_resolve_fatturazione_pipeline_step](manual/fn_resolve_fatturazione_pipeline_step.md)
+- [fn_resolve_commessa_prezzi](manual/fn_resolve_commessa_prezzi.md) — La funzione `vendite.fn_resolve_commessa_prezzi` analizza le righe di `attivita_fatturabili` appartenenti a un lotto e confronta `prezzo_unitario` con il prezzo risolto via listino.
+- [fn_resolve_fatturazione_pipeline_step](manual/fn_resolve_fatturazione_pipeline_step.md) — (latest review 08-02-2026)   La funzione risolve la configurazione pipeline per un singolo step (`stato_doc_fiscale_id`) applicando fallback su `utility_id` e `tipo_doc_fiscale_id`.
 - [fn_resolve_lotto_task_execution_mode](manual/fn_resolve_lotto_task_execution_mode.md) — Determina in modo deterministico la modalita` di esecuzione del task: `RUN`, `SKIP`, `RESUME`, `RESET_REQUIRED`.
 - [fn_resolve_lotto_utility_emittente](manual/fn_resolve_lotto_utility_emittente.md) — (latest review 22-02-2026) Helper condiviso per risolvere e validare `utility_id` ed `emittente_soggetto_ruolo_id` nei flussi lotto (`fatturazione_lotti` e `attivita_fatturabili_lotti`).
-- [fn_resolve_prezzo_listino](manual/fn_resolve_prezzo_listino.md)
+- [fn_resolve_prezzo_listino](manual/fn_resolve_prezzo_listino.md) — La funzione `vendite.fn_resolve_prezzo_listino` risolve in modo deterministico il prezzo da applicare per `articolo + uom + data_riferimento`, considerando contesto BA/utility/emittente e priorita` multi-listino.
 - [fn_resolve_stato_esecuzione](manual/fn_resolve_stato_esecuzione.md) — (latest review 22-02-2026) Helper condiviso per risolvere in modo uniforme il valore di `stato_esecuzione` nei flussi `fatturazione_lotti` e `attivita_fatturabili`.
-- [fn_ricalcola_fattura](manual/fn_ricalcola_fattura.md)
+- [fn_ricalcola_fattura](manual/fn_ricalcola_fattura.md) — La funzione **`vendite.fn_ricalcola_fattura()`** e` un wrapper che esegue, **in sequenza**:
 - [fn_ricalcola_riepiloghi_iva_lotto](manual/fn_ricalcola_riepiloghi_iva_lotto.md) — (latest review 10-02-2026)   La funzione **`vendite.fn_ricalcola_riepiloghi_iva_lotto()`** ricalcola i riepiloghi IVA per tutte le fatture collegate a un lotto, usando un’elaborazione a batch e delegando il ricalcolo alla funzione per singola fattura.   Al termine di ciascun ricalcolo aggiorna anche i **totali testata**.
 - [fn_ricalcola_riepilogo_iva_fattura](manual/fn_ricalcola_riepilogo_iva_fattura.md) — (latest review 10-02-2026)   La funzione **`vendite.fn_ricalcola_riepilogo_iva_fattura()`** ricalcola i riepiloghi IVA per una singola fattura, eliminando i valori esistenti e rigenerandoli dalle righe (`fatture_righe`).
-- [fn_ricalcola_totali_fattura](manual/fn_ricalcola_totali_fattura.md)
-- [fn_select_attivita_fatturabili](manual/fn_select_attivita_fatturabili.md)
-- [fn_set_arrotondamento_scope](manual/fn_set_arrotondamento_scope.md)
+- [fn_ricalcola_totali_fattura](manual/fn_ricalcola_totali_fattura.md) — La funzione **`vendite.fn_ricalcola_totali_fattura()`** ricalcola i totali sulla testata fattura a partire dai **riepiloghi IVA** e dai **fondi fattura**, applicando le regole di arrotondamento definite per **emittente/utility**.
+- [fn_select_attivita_fatturabili](manual/fn_select_attivita_fatturabili.md) — (latest review 27-01-2026) La funzione **`vendite.fn_select_attivita_fatturabili()`** seleziona le righe **eleggibili** per la fatturazione e, se richiesto, le **locka** in modo atomico.
+- [fn_set_arrotondamento_scope](manual/fn_set_arrotondamento_scope.md) — (latest review 10-02-2026)   La funzione **`vendite.fn_set_arrotondamento_scope()`** imposta (upsert) il **saldo tecnico** degli arrotondamenti per l'ambito di fatturazione.
 - [fn_set_documento_canale_stato](manual/fn_set_documento_canale_stato.md) — (latest review 24-02-2026) Gestisce in modo uniforme la transizione stato dei canali fatturabili per documento sorgente.
-- [fn_set_fatturazione_lotto_stato](manual/fn_set_fatturazione_lotto_stato.md)
+- [fn_set_fatturazione_lotto_stato](manual/fn_set_fatturazione_lotto_stato.md) — (latest review 27-01-2026)   La funzione **`vendite.fn_set_fatturazione_lotto_stato()`** aggiorna lo **stato job** del lotto di fatturazione e allinea lo **stato operativo**.
 - [fn_set_runtime_task_run_esito](manual/fn_set_runtime_task_run_esito.md) — Helper condiviso per applicare l'esito runtime di un task-run nei domini `LOTTO` e `ATTIVITA_FATTURABILI`.
 - [fn_start_lotto_task_run](manual/fn_start_lotto_task_run.md) — Apre un nuovo record runtime task su lotto in stato `IN_ESECUZIONE`.
 - [fn_sync_attivita_stato_esecuzione](manual/fn_sync_attivita_stato_esecuzione.md) — (latest review 22-02-2026) Sincronizza `stato_esecuzione` delle righe `attivita_fatturabili` collegate a un lotto attività.
-- [fn_sync_contabili_fondo_fattura](manual/fn_sync_contabili_fondo_fattura.md)
-- [fn_sync_fattura_critical](manual/fn_sync_fattura_critical.md)
-- [fn_sync_fatture_log_critical_lotto](manual/fn_sync_fatture_log_critical_lotto.md)
-- [fn_sync_lotto_fatture_stato](manual/fn_sync_lotto_fatture_stato.md)
-- [fn_sync_pagamento_fondo_fattura](manual/fn_sync_pagamento_fondo_fattura.md)
-- [fn_upsert_commessa_attivita](manual/fn_upsert_commessa_attivita.md)
-- [trgfn_attivita_fatturabili_guard_ba_coerenza](manual/trgfn_attivita_fatturabili_guard_ba_coerenza.md)
+- [fn_sync_contabili_fondo_fattura](manual/fn_sync_contabili_fondo_fattura.md) — Sincronizzare i fondi fattura assegnati a una fattura figlia nel layer **contabile pre-posting** (`pagamenti.vendite_contabili` / `pagamenti.vendite_contabili_righe`), senza scrivere movimenti pagamenti diretti.
+- [fn_sync_fattura_critical](manual/fn_sync_fattura_critical.md) — (latest review 29-01-2026)   La funzione **`vendite.fn_sync_fattura_critical()`** aggiorna il flag `fatture.critical` in base ai log attivi della fattura.
+- [fn_sync_fatture_log_critical_lotto](manual/fn_sync_fatture_log_critical_lotto.md) — (latest review 20-02-2026)   La funzione **`vendite.fn_sync_fatture_log_critical_lotto()`** sincronizza in modo set-based:
+- [fn_sync_lotto_fatture_stato](manual/fn_sync_lotto_fatture_stato.md) — (latest review 30-01-2026)   La funzione **`vendite.fn_sync_lotto_fatture_stato()`** allinea lo stato documentale delle fatture collegate a un lotto.
+- [fn_sync_pagamento_fondo_fattura](manual/fn_sync_pagamento_fondo_fattura.md) — (latest review 13-02-2026)   La funzione **`vendite.fn_sync_pagamento_fondo_fattura()`** e` mantenuta solo per retrocompatibilita` ed e` **deprecata**. La logica effettiva ora e` demandata a **`vendite.fn_sync_contabili_fondo_fattura()`**, che scrive su `pagamenti.vendite_contabili` / `pagamenti.vendite_contabili_righe`.
+- [fn_upsert_commessa_attivita](manual/fn_upsert_commessa_attivita.md) — (latest review 26-02-2026)   Effettua upsert idempotente di una riga `commesse_attivita` su chiave `(commessa_id, segment_key)`, con controlli di validita` e blocchi coerenti con lo stato della commessa.
+- [trgfn_attivita_fatturabili_guard_ba_coerenza](manual/trgfn_attivita_fatturabili_guard_ba_coerenza.md) — (latest review 29-01-2026)   La funzione **`vendite.trgfn_attivita_fatturabili_guard_ba_coerenza()`** valida la coerenza tra `billing_account_id` e `istanza_utility_id` sulle righe di `attivita_fatturabili`.
 - [trgfn_attivita_fatturabili_guard_commessa](manual/trgfn_attivita_fatturabili_guard_commessa.md) — (latest review 24-02-2026)   La funzione trigger `vendite.trgfn_attivita_fatturabili_guard_commessa()` applica il guardrail anti-bypass sul dominio `attivita_fatturabili`, impedendo scritture senza collegamento commessa quando il flag è attivo.
-- [trgfn_attivita_fatturabili_guard_fatturato](manual/trgfn_attivita_fatturabili_guard_fatturato.md)
-- [trgfn_attivita_fatturabili_guard_fonte](manual/trgfn_attivita_fatturabili_guard_fonte.md)
-- [trgfn_attivita_fatturabili_normalize](manual/trgfn_attivita_fatturabili_normalize.md)
-- [trgfn_attivita_norm_competenza_mese](manual/trgfn_attivita_norm_competenza_mese.md)
+- [trgfn_attivita_fatturabili_guard_fatturato](manual/trgfn_attivita_fatturabili_guard_fatturato.md) — (latest review 26-01-2026) La funzione **`vendite.trgfn_attivita_fatturabili_guard_fatturato()`** blocca modifiche o cancellazioni di righe di `vendite.attivita_fatturabili` che risultano gia` agganciate a una riga di fattura.
+- [trgfn_attivita_fatturabili_guard_fonte](manual/trgfn_attivita_fatturabili_guard_fonte.md) — (latest review 29-01-2026)   La funzione **`vendite.trgfn_attivita_fatturabili_guard_fonte()`** verifica la coerenza della **fonte quantita** e delle **competenze** per le righe di `attivita_fatturabili`.
+- [trgfn_attivita_fatturabili_normalize](manual/trgfn_attivita_fatturabili_normalize.md) — (latest review 21/01/2026) La funzione `vendite.trgfn_attivita_fatturabili_normalize()` applica una **normalizzazione minima** su `vendite.attivita_fatturabili` per garantire coerenza **temporale** e **tecnica** dei dati prima della scrittura.
+- [trgfn_attivita_norm_competenza_mese](manual/trgfn_attivita_norm_competenza_mese.md) — (latest review 29-01-2026)   La funzione **`vendite.trgfn_attivita_norm_competenza_mese()`** normalizza `competenza_mese` al **primo giorno del mese**.
 - [trgfn_contratti_gen_codice](manual/trgfn_contratti_gen_codice.md) — La trigger function `vendite.trgfn_contratti_gen_codice()` genera automaticamente `numero` contratto quando il valore non viene fornito.
 - [trgfn_contratti_normalize](manual/trgfn_contratti_normalize.md) — La trigger function `vendite.trgfn_contratti_normalize()` completa i dati minimi del contratto in insert quando il numero documento e` presente.
-- [trgfn_contratti_snapshot_precontrattuali](manual/trgfn_contratti_snapshot_precontrattuali.md)
+- [trgfn_contratti_snapshot_precontrattuali](manual/trgfn_contratti_snapshot_precontrattuali.md) — (latest review 20/01/26) La funzione `vendite.trgfn_contratti_snapshot_precontrattuali()` crea lo **snapshot** dei dati precontrattuali **solo alla creazione del contratto**.   La scelta progettuale e` deliberata: il contratto diventa la **fonte stabile** per i dati tecnici/commerciali e le eventuali correzioni richiedono **un nuovo contratto**.
 - [trgfn_ddt_gen_codice](manual/trgfn_ddt_gen_codice.md) — La trigger function `vendite.trgfn_ddt_gen_codice()` genera automaticamente `numero` DDT quando il valore non viene fornito in inserimento.
 - [trgfn_ddt_normalize](manual/trgfn_ddt_normalize.md) — La trigger function `vendite.trgfn_ddt_normalize()` completa i campi temporali minimi del DDT quando il numero documento e` presente.
 - [trgfn_dlt_block_ordrig_ddtrig](manual/trgfn_dlt_block_ordrig_ddtrig.md) — La trigger function `vendite.trgfn_dlt_block_ordrig_ddtrig()` blocca la cancellazione fisica di righe ordine/DDT per preservare la coerenza del fulfillment e la tracciabilità operativa.
 - [trgfn_documenti_sync_canali](manual/trgfn_documenti_sync_canali.md) — (latest review 24-02-2026)   La funzione trigger `vendite.trgfn_documenti_sync_canali()` mantiene allineato il registro `documenti_fatturazione_canali` sugli eventi principali dei documenti commerciali.
 - [trgfn_fatturazione_lotti_attivita_gen_codice](manual/trgfn_fatturazione_lotti_attivita_gen_codice.md) — Genera automaticamente `codice` su `vendite.attivita_fatturabili_lotti` quando non valorizzato in INSERT/UPDATE.
 - [trgfn_fatturazione_lotti_gen_codice](manual/trgfn_fatturazione_lotti_gen_codice.md) — Genera automaticamente `codice` su `vendite.fatturazione_lotti` quando non valorizzato in INSERT/UPDATE.
-- [trgfn_fatturazione_lotti_guard_stato](manual/trgfn_fatturazione_lotti_guard_stato.md)
+- [trgfn_fatturazione_lotti_guard_stato](manual/trgfn_fatturazione_lotti_guard_stato.md) — (latest review 24-01-2026) La funzione **`vendite.trgfn_fatturazione_lotti_guard_stato()`** controlla le transizioni tra stati documento sui lotti di fatturazione.
 - [trgfn_fatture_gen_codice](manual/trgfn_fatture_gen_codice.md) — Assegna automaticamente il numero fattura quando il campo `numero` non e` valorizzato.
-- [trgfn_fatture_guard_stato](manual/trgfn_fatture_guard_stato.md)
+- [trgfn_fatture_guard_stato](manual/trgfn_fatture_guard_stato.md) — (latest review 24-01-2026) La funzione **`vendite.trgfn_fatture_guard_stato()`** controlla le transizioni tra stati documento sulle fatture, bloccando quelle non ammesse.
 - [trgfn_fatture_log_sync_ad_stmt](manual/trgfn_fatture_log_sync_ad_stmt.md) — Sincronizza stato `critical` e `stato_esecuzione` delle fatture coinvolte dopo DELETE su `vendite.fatture_log` (trigger statement-level).
 - [trgfn_fatture_log_sync_ai_stmt](manual/trgfn_fatture_log_sync_ai_stmt.md) — Sincronizza stato `critical` e `stato_esecuzione` delle fatture coinvolte dopo INSERT su `vendite.fatture_log` (trigger statement-level).
 - [trgfn_fatture_log_sync_au_stmt](manual/trgfn_fatture_log_sync_au_stmt.md) — Sincronizza stato `critical` e `stato_esecuzione` delle fatture coinvolte dopo UPDATE su `vendite.fatture_log` (trigger statement-level).
 - [trgfn_fatture_numerata_non_annulabile](manual/trgfn_fatture_numerata_non_annulabile.md) — Blocca il passaggio a stato `ANNULLATA` per una fattura gia` numerata.
 - [trgfn_fatture_righe_guard_normalize](manual/trgfn_fatture_righe_guard_normalize.md) — Normalizza i dati di riga fattura su inserimento/aggiornamento: * eredita `dest_billing_account_id` dalla testata se assente; * allinea lo snapshot `iva_natura` in base a `config.iva`.
-- [trgfn_logs_guard_delete](manual/trgfn_logs_guard_delete.md)
+- [trgfn_logs_guard_delete](manual/trgfn_logs_guard_delete.md) — (latest review 20-02-2026)   La funzione trigger **`vendite.trgfn_logs_guard_delete()`** blocca la cancellazione diretta dei log funzionali (`fatture_log`, `fatturazione_lotti_log`) salvo abilitazione esplicita di manutenzione.
 - [trgfn_note_validate_generic](manual/trgfn_note_validate_generic.md) — La trigger function `vendite.trgfn_note_validate_generic()` valida la coerenza delle note ancorate a una riga documento (`anchor_tipo = 'RIGA'`), verificando che `target_riga_id` appartenga davvero alla testata indicata da `target_id`.
 - [trgfn_ordini_ful_guard_consistenza](manual/trgfn_ordini_ful_guard_consistenza.md) — La trigger function `vendite.trgfn_ordini_ful_guard_consistenza()` protegge la coerenza delle righe fulfillment ordine↔DDT e impedisce over-fulfillment.
 - [trgfn_ordini_gen_codice](manual/trgfn_ordini_gen_codice.md) — La trigger function `vendite.trgfn_ordini_gen_codice()` genera automaticamente `numero` ordine quando il campo non viene fornito.

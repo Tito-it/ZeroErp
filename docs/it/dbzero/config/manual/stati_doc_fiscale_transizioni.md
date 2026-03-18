@@ -8,8 +8,7 @@
 > • [vendite.fatturazione_lotti](/dbzero/vendite/tabelle/fatturazione_lotti)  
 > • [vendite.fatture](/dbzero/vendite/tabelle/fatture)  
 >
-🎯 Scopo Principale
-
+### 🎯 Scopo Principale
 (latest review 24-01-2026)
 `config.stati_doc_fiscale_transizioni` definisce le **transizioni ammesse** tra stati
 documento, con validita` separata per **lotti** e **fatture**.

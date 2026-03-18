@@ -20,9 +20,7 @@
 > [dbops.trgfn_prevent_deactivate_if_children](/dbzero/dbops/funzioni/trgfn_prevent_deactivate_if_children)   
 
 ---
-
 ### 🎯 Scopo Principale
-
 *(latest review 13‑11‑2026)*
 La funzione **`dbops.fn_run_automations_attivo(p_exec_mode, p_schemas, p_dry_run)`** applica in modo automatico e coerente le **regole di gestione del campo `attivo`** (soft‑delete / stato di validità) **sulle relazioni di chiave esterna**, creando e riconciliando **trigger di BLOCCO sul padre** e **trigger REQUIRE sul figlio**.
 

@@ -24,9 +24,7 @@ Legge la configurazione definita nella tabella `dbops.sec_functions_owner` e, pe
 Questa funzione nasce in risposta alle problematiche emerse durante la **riconfigurazione di `dblink`** e di altre funzioni tecniche (logging, gestione TX ID) che fallivano perché eseguite con owner/permessi non adeguati.
 
 ---
-
 ### 🎯 Scopo Principale
-
 * **Applicare automaticamente la policy di sicurezza** definita in `dbops.sec_functions_owner`.
 * **Rilevare e correggere** owner incoerenti di funzioni critiche.
 * Rendere ripetibile e idempotente il processo di *hardening* dopo:

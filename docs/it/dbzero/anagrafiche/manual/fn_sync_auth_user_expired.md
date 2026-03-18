@@ -12,9 +12,7 @@
 [anagrafiche.fn_sync_auth_user_is_active](/dbzero/anagrafiche/funzioni/fn_sync_auth_user_is_active)
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 10-03-2026)
 La funzione **`anagrafiche.fn_sync_auth_user_expired()`** esegue una
 sincronizzazione batch degli utenti Django collegati a risorse umane con

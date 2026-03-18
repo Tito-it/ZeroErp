@@ -27,9 +27,7 @@ Esempi di stili tipici:
 * `EVIDENZIATO`
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 15-01-26)
 * Fornire un **catalogo centralizzato** degli stili che possono essere applicati alle note (formattazione e/o semantica).
 * Separare la **semantica dello stile** (es. AVVISO, AVVERTENZA, INFO) dalla renderizzazione effettiva lato UI/templating.

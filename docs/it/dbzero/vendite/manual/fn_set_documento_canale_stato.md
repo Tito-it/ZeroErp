@@ -1,7 +1,5 @@
 ## 📘 Documentazione Concettuale – Funzione `vendite.fn_set_documento_canale_stato`
-
 ### 🎯 Scopo Principale
-
 (latest review 24-02-2026)
 Gestisce in modo uniforme la transizione stato dei canali fatturabili per documento sorgente.
 

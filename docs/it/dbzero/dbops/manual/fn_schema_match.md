@@ -12,9 +12,7 @@ Approfondimento funzioni:
 > [dbops.fn_resolve_scope](/dbzero/dbops/funzioni/fn_resolve_scope)   
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 10-01-26)
 La funzione **`dbops.fn_schema_match(p_rule_target, p_schema)`** è un **helper booleano** che verifica se uno schema specifico (`p_schema`) corrisponde al target di una regola (`p_rule_target`). Gestisce anche la keyword speciale `*all` per indicare corrispondenza universale.
 

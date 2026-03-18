@@ -14,9 +14,7 @@ Approfondimento funzioni:
 > [maintenance.fn_run_and_log](/dbzero/maintenance/funzioni/fn_run_and_log)
 
 ---
-
 ### 🎯 Scopo Principale
-
 `config.storico_set_storicizza` è la **tabella di configurazione** che elenca le tabelle per le quali lo **storico dei dati** deve essere abilitato **in modo predefinito**.
 Le tabelle presenti qui hanno la colonna `storicizza` con **default TRUE**: ciò garantisce che **ogni nuova riga** venga automaticamente marcata per la storicizzazione (snapshot su UPDATE/DELETE e protezione dal reset a FALSE a cura dei trigger).
 

@@ -11,9 +11,7 @@ Approfondimento tabelle:
 > [pratiche.flussi](/dbzero/pratiche/tabelle/flussi)
 
 ---
-
 ### 🎯 Scopo Principale
-
 La tabella `pratiche.template_flussi` definisce i **template degli step di workflow** per ciascun tipo_prestazione. Ogni template descrive un flusso tipo: sequenza di esecuzione, obbligatorieta', direzione, handler automatico opzionale e parametri di configurazione.
 
 ---

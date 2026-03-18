@@ -17,9 +17,7 @@
 [Gestione degli indirizzi](/guide/gestione-degli-indirizzi)
 
 ---
-
-### Scopo Principale
-
+### 🎯 Scopo Principale
 (latest review 13-03-2026)
 Building block atomico per l'upsert di un civico normalizzato in
 `anagrafiche.indirizzi_dettaglio`.

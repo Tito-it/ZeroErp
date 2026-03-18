@@ -11,8 +11,7 @@
 >
 `anagrafiche.trgfn_soggetti_conti_bancari_guard`   
 >
-
-🎯 Scopo Principale
+### 🎯 Scopo Principale
 (last review 16-12-25)
 La trigger function **`anagrafiche.trgfn_soggetti_ruoli_conti_bancari_guard()`** applica controlli di guardia sui legami tra **ruoli del soggetto** e **conti bancari**, impedendo:
 

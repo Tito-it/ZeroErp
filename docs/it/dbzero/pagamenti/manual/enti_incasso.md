@@ -1,5 +1,4 @@
 ## 📘 Documentazione Concettuale – Tabella `pagamenti.enti_incasso`
-
 ### 🎯 Scopo Principale
 La tabella `pagamenti.enti_incasso` rappresenta i canali di provenienza dei flussi di incasso (banca, poste, PSP, altro), collegando il canale ai riferimenti anagrafici e operativi necessari all'import e riconciliazione.
 

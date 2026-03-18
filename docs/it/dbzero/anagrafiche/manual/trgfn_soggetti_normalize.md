@@ -12,9 +12,7 @@ Approfondimento funzioni:
 [script.fn_get_default_by_param](/dbzero/script/funzioni/fn_get_default_by_param)
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 28-12-25)
 * **Impostare valori di default** per campi mancanti in `anagrafiche.soggetti` (ad esempio, assegnare `stato_id` da `config.stati` se `NEW.stato_id` è `NULL`).
 * **Pulire e normalizzare** ulteriori campi (es. trimming, uppercasing) seguendo le regole di business.

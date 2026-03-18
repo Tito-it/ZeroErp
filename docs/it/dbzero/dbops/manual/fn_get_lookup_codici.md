@@ -9,9 +9,7 @@
 > [config.stati_cliente](/dbzero/config/tabelle/stati_cliente)  
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 21-02-2026)  
 La funzione **`dbops.fn_get_lookup_codici()`** fornisce una lista lookup
 uniforme (`id`, `codice`, `descrizione`) su tabelle di configurazione con

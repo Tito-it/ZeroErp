@@ -13,8 +13,7 @@
 • [vendite.fn_get_or_create_commessa](/dbzero/vendite/funzioni/fn_get_or_create_commessa)  
 > • [vendite.fn_list_commesse_emittibili](/dbzero/vendite/funzioni/fn_list_commesse_emittibili)  
 >
-🎯 Scopo Principale
-
+### 🎯 Scopo Principale
 (latest review 26-02-2026)  
 Restituisce in una singola query lo stato operativo di una commessa:
 

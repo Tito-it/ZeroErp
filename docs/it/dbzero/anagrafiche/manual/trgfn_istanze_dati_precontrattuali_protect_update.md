@@ -12,9 +12,7 @@
 • [`script.fn_log_and_raise_error`](/dbzero/script/funzioni/fn_log_and_raise_error)   
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 20-01-26)
 La funzione `anagrafiche.trgfn_istanze_dati_precontrattuali_protect_update()` impedisce la modifica
 o cancellazione dei dati precontrattuali quando sono gia` stati **congelati** in

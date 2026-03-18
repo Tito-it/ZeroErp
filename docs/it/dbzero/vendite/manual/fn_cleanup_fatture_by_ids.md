@@ -18,9 +18,7 @@
 > • [vendite.fn_reset_lotto_fattura_draft](/dbzero/vendite/funzioni/fn_reset_lotto_fattura_draft)  
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 10-02-2026)  
 La funzione **`vendite.fn_cleanup_fatture_by_ids()`** centralizza il cleanup
 di fatture e righe correlate, ripristinando le righe di `attivita_fatturabili`.

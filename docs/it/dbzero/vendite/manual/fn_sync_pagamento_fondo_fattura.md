@@ -14,8 +14,7 @@
 • [vendite.fn_sync_contabili_fondo_fattura](/dbzero/vendite/funzioni/fn_sync_contabili_fondo_fattura)  
 > • [vendite.fn_reset_fondi_fattura](/dbzero/vendite/funzioni/fn_reset_fondi_fattura)  
 >
-🎯 Scopo Principale
-
+### 🎯 Scopo Principale
 (latest review 13-02-2026)  
 La funzione **`vendite.fn_sync_pagamento_fondo_fattura()`** e` mantenuta solo
 per retrocompatibilita` ed e` **deprecata**.

@@ -12,8 +12,7 @@
 • [vendite.fn_set_fatturazione_lotto_stato](/dbzero/vendite/funzioni/fn_set_fatturazione_lotto_stato)  
 > • [vendite.trgfn_fatture_numerata_non_annulabile](/dbzero/vendite/funzioni/trgfn_fatture_numerata_non_annulabile)  
 >
-🎯 Scopo Principale
-
+### 🎯 Scopo Principale
 (latest review 24-01-2026)
 La funzione **`vendite.trgfn_fatture_guard_stato()`** controlla le transizioni
 tra stati documento sulle fatture, bloccando quelle non ammesse.

@@ -20,9 +20,7 @@
 [Gestione degli indirizzi](/guide/gestione-degli-indirizzi)
 
 ---
-
-### Scopo Principale
-
+### 🎯 Scopo Principale
 (latest review 13-03-2026)
 Ricerca vie (stradario) per autocomplete frontend. L'utente seleziona
 un comune e cerca una via nel comune selezionato.

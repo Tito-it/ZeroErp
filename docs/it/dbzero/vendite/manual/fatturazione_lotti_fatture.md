@@ -7,8 +7,7 @@
 • [vendite.fatturazione_lotti](/dbzero/vendite/tabelle/fatturazione_lotti)  
 > • [vendite.fatture](/dbzero/vendite/tabelle/fatture)  
 >
-🎯 Scopo Principale
-
+### 🎯 Scopo Principale
 (latest review 23-01-2026)
 `vendite.fatturazione_lotti_fatture` rappresenta la **relazione esplicita** tra lotto e fattura,
 consentendo di:

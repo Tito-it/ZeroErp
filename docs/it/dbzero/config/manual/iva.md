@@ -17,9 +17,7 @@ Approfondimenti funzioni:
 La tabella **`config.iva`** fornisce il catalogo dei codici IVA, includendo descrizioni, regole di assoggettamento, split payment e mapping necessari per l’invio delle fatture al Sistema di Interscambio (SDI).
 
 ---
-
 ### 🎯 Scopo Principale
-
 * Centralizzare i **codici IVA** disponibili in un unico repository configurabile.
 * Gestire:
 

@@ -14,9 +14,7 @@ Approfondimento funzioni:
 La trigger function **`config.trgfn_stradario_generale_upd_non_permesso()`** impedisce modifiche non consentite sulle colonne critiche di **`config.stradario_generale`** (`descrizione`, `descrizione_breve`, `toponomastica_id`) quando esistono vie correlate in **`config.stradario`**, segnalando in modo chiaro quale attributo è stato alterato.
 
 ---
-
 ### 🎯 Scopo Principale
-
 * **Blocco modifiche non consentite**: evitare update di descrizione, descrizione_breve o toponomastica_id in `config.stradario_generale` se il record è già in uso in `config.stradario`.
 * **Identificazione precisa**: indicare tramite JSON il nome della colonna modificata e l’ID del record per diagnosticare efficacemente l’errore.
 * **Centralizzazione logica**: mantenere il controllo integrità nel database, riducendo complessità lato applicazione.

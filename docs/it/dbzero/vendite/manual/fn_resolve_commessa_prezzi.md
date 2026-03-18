@@ -12,8 +12,7 @@
 > • [vendite.attivita_fatturabili_lotti](/dbzero/vendite/tabelle/attivita_fatturabili_lotti)  
 > • [vendite.listini_righe](/dbzero/vendite/tabelle/listini_righe)  
 >
-🎯 Scopo Principale
-
+### 🎯 Scopo Principale
 La funzione `vendite.fn_resolve_commessa_prezzi` analizza le righe di
 `attivita_fatturabili` appartenenti a un lotto e confronta `prezzo_unitario`
 con il prezzo risolto via listino.

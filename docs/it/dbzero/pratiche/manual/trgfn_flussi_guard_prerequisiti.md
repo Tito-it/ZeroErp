@@ -13,9 +13,7 @@ Tabelle:
 > [pratiche.template_flussi_prerequisiti](template_flussi_prerequisiti.md)
 
 ---
-
 ### 🎯 Scopo Principale
-
 Trigger function wrapper per la guard prerequisiti. Si attiva **BEFORE INSERT** su `pratiche.flussi`: se il flusso ha un `template_flusso_id` valorizzato, delega la verifica a `fn_guard_prerequisiti_flusso`.
 
 I flussi manuali (senza template, `template_flusso_id IS NULL`) bypassano il controllo.

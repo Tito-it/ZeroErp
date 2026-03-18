@@ -12,9 +12,7 @@ Approfondimenti tabelle:
 La tabella **`vendite.articoli_tipologie`** definisce le categorie di appartenenza degli articoli, utili per raggruppamenti omogenei, analisi statistiche e applicazione di regole di fatturazione.
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 14-01-26)
 * Classificare gli articoli secondo **tipologie funzionali** (es. materia prima, servizi, accessori).
 * Distinguere tra **descrizione estesa** e **descrizione breve**, per gestire contesti documentali differenti.

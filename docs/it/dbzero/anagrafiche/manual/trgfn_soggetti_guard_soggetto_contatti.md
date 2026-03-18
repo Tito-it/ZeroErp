@@ -15,9 +15,7 @@ Approfondimento funzioni :
 La trigger function **`anagrafiche.trgfn_soggetti_guard_soggetto_contatti()`** verifica, al termine dell’inserimento o aggiornamento di un record in `anagrafiche.soggetti`, che il soggetto associato abbia almeno un contatto valido. Se non trova contatti con `is_default = TRUE` o almeno un canale valorizzato (email, telefono, cellulare, PEC), registra l’evento e solleva un’eccezione centralizzata.
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 28-12-25)
 * **Validazione di integrità**
   Garantire che ogni soggetto disponga di almeno un contatto predefinito o dotato di un canale attivo.

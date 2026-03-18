@@ -14,9 +14,7 @@
 > [config.iva](/dbzero/config/tabelle/iva)
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 25-12-25)
 La vista **`dbops.vw_diag_v_clienti_links`** è una **vista diagnostica** che espone in modo “leggibile” i **legami strutturali** tra:
 

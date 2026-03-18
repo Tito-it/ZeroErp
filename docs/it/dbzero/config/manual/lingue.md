@@ -21,9 +21,7 @@ Questa tabella è utilizzata come riferimento per tutte le funzionalità di **lo
 * interfacce utente e documentazione generata.
 
 ---
-
 ### 🎯 Scopo Principale
-
 * Definire l’elenco delle **lingue supportate** a livello di piattaforma Zero ERP.
 * Fornire un **codice ISO univoco** per ogni lingua/variante (es. `it`, `en`, `de`, `it-IT`, `en-US`).
 * Permettere la gestione di **descrizioni multilingua** in modo coerente e normalizzato (note, messaggi, label, ecc.).

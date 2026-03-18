@@ -12,9 +12,7 @@
 • [vendite.trgfn_a10_ins_upd_ordini_ful_guard_consistenza](/dbzero/vendite/funzioni/trgfn_a10_ins_upd_ordini_ful_guard_consistenza)   
 
 ---
-
 ### 🎯 Scopo Principale
-
 Rappresenta l’**evasione (parziale o totale)** delle **righe d’ordine** verso le **righe di DDT**. Ogni record è una **mappatura puntuale riga↔riga** con la **quantità evasa** in **UoM base** (`qta_evasa`).
 
 Obiettivi principali:

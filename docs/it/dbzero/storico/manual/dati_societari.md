@@ -17,9 +17,7 @@ Approfondimento funzioni e trigger:
 La tabella **`storico.dati_societari`** mantiene lo **storico** delle modifiche ai record di `anagrafiche.dati_societari`. Ogni riga rappresenta uno **snapshot JSONB** dello stato dei dati societari al momento di un’operazione (inserimento, aggiornamento o cancellazione), arricchito con metadati di validità e audit.
 
 ---
-
 ### 🎯 Scopo Principale
-
 * **Versionamento completo**
   Acquisire snapshot di ogni record di `anagrafiche.dati_societari` per garantire la tracciabilità delle evoluzioni nel tempo.
 * **Audit e compliance**

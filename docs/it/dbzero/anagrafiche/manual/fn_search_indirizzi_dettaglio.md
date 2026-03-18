@@ -13,7 +13,6 @@ Approfondimenti funzioni:
 
 > Leggere in fondo la nota tecnica.
 ---
-
 ### 🎯 Scopo Principale
 (latest review 28-11-25)
 La funzione **`anagrafiche.fn_search_indirizzi_dettaglio`** fornisce un **punto unico di ingresso** per la ricerca degli indirizzi di dettaglio normalizzati, appoggiandosi alla vista:

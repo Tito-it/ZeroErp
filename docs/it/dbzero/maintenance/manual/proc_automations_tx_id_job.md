@@ -8,9 +8,7 @@ Approfondimento funzioni:
 > [`maintenance.fn_run_and_log`](/dbzero/maintenance/funzioni/fn_run_and_log)
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 07-01-26)
 * **Eseguire in modo schedulato** l’orchestrazione delle **automazioni TX_ID** (policy di transazione su tabelle nell'ambito) incapsulando la chiamata a `dbops.fn_run_automations_tx_id(...)` in un wrapper **robusto** con **lock anti-overlap** e **logging strutturato**.
 

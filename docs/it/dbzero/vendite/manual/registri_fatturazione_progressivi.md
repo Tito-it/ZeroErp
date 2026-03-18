@@ -7,8 +7,7 @@
 • [vendite.registri_fatturazione](/dbzero/vendite/tabelle/registri_fatturazione)  
 > • [vendite.fatture](/dbzero/vendite/tabelle/fatture)  
 >
-🎯 Scopo Principale
-
+### 🎯 Scopo Principale
 (latest review 26-01-2026)
 `vendite.registri_fatturazione_progressivi` memorizza i **progressivi di numerazione**
 per ciascun registro, anno, mese e serie. E` la base per l’assegnazione del

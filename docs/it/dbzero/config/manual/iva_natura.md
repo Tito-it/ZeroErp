@@ -16,9 +16,7 @@ Approfondimenti funzioni:
 La tabella **`config.iva_natura`** contiene i codici natura IVA utilizzati per l’inoltro delle fatture elettroniche al Sistema di Interscambio (SDI), abbinando ogni codice a una descrizione estesa.
 
 ---
-
 ### 🎯 Scopo Principale
-
 * Fornire il **catalogo ufficiale** dei codici natura IVA previsti dalla normativa per le fatture elettroniche.
 * Consentire il **mapping automatico** tra i record di `config.iva` e il codice natura da inviare al SDI.
 

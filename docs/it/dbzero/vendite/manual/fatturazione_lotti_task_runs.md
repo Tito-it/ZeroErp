@@ -7,8 +7,7 @@
 • [vendite.fatturazione_lotti](/dbzero/vendite/tabelle/fatturazione_lotti)  
 > • [vendite.fatturazione_pipeline](/dbzero/vendite/tabelle/fatturazione_pipeline)  
 >
-🎯 Scopo Principale
-
+### 🎯 Scopo Principale
 `vendite.fatturazione_lotti_task_runs` traccia il runtime dei task di pipeline
 per ogni lotto, con tentativi, esito, tempi e contesto errore.
 

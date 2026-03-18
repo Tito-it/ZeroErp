@@ -9,9 +9,7 @@ Approfondimento tabelle:
 > [pratiche.pratiche](/dbzero/pratiche/tabelle/pratiche) (campo `solo_interna`)
 
 ---
-
 ### 🎯 Scopo Principale
-
 La tabella `pratiche.template_flussi_canali` e' la **relazione M:N** tra template flussi e canali di visibilita'. Definisce su quali interfacce esterne un flusso e' esposto (es. portale clienti, app tecnica).
 
 ---

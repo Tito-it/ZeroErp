@@ -9,9 +9,7 @@
 **Nota**: questa funzione è pensata per essere agganciata a un trigger `BEFORE INSERT OR UPDATE` sulla tabella conti bancari (o equivalente).
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 15-12-26)
 La trigger function **`anagrafiche.trgfn_conti_bancari_normalize()`** normalizza i campi bancari principali prima della persistenza, applicando regole semplici e deterministicamente ripetibili:
 

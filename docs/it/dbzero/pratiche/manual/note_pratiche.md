@@ -9,9 +9,7 @@ Approfondimento tabelle:
 > [config.tipi_nota](/dbzero/config/tabelle/tipi_nota)
 
 ---
-
 ### 🎯 Scopo Principale
-
 La tabella `pratiche.note_pratiche` contiene le **note testuali** associate a una pratica. Ogni nota e' classificata per tipo (GENERALE, INTERNA, CLIENTE, TECNICA, LEGALE) e puo' essere modificata.
 
 ---

@@ -19,9 +19,7 @@ Approfondimento funzioni:
 > [dbops.fn_run_automations_storico](/dbzero/dbops/funzioni/fn_run_automations_storico)   
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 26-12-25)
 La funzione **`dbops.fn_run_automations_storico_provision(p_exec_mode, p_schemas, p_dry_run)`** automatizza il **provisioning delle tabelle nello schema `storico`** per tutte le tabelle applicative che adottano la colonna di storicizzazione (es. `storicizza`). Per ogni tabella nell'ambito, verifica prerequisiti e demanda la creazione/adeguamento dell’omologa tabella storico a `fn_ensure_storico_table` (con eventuale indice GIN opzionale).
 

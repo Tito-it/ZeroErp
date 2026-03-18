@@ -11,9 +11,7 @@
 > • [anagrafiche.billing_account](/dbzero/anagrafiche/tabelle/billing_account)  
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 22-01-2026)
 `vendite.fatture_righe` contiene le **righe economiche** di una fattura: descrizione, articolo (opzionale), UoM, quantità, prezzo, sconti, IVA e **importi congelati** (*snapshot*) al momento della generazione. Ogni riga è ordinata tramite `riga_nr` ed è collegata a una testata `vendite.fatture` (FK `fattura_id`). Supporta la **destinazione a BA diverso** dalla testata e l’idempotenza di import riga‑per‑riga.
 

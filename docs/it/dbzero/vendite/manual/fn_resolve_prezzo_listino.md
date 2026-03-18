@@ -9,8 +9,7 @@
 > • [vendite.listini_associazioni](/dbzero/vendite/tabelle/listini_associazioni)  
 > • [vendite.listini_righe](/dbzero/vendite/tabelle/listini_righe)  
 >
-🎯 Scopo Principale
-
+### 🎯 Scopo Principale
 La funzione `vendite.fn_resolve_prezzo_listino` risolve in modo deterministico il
 prezzo da applicare per `articolo + uom + data_riferimento`, considerando contesto
 BA/utility/emittente e priorita` multi-listino.

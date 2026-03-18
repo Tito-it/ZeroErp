@@ -11,8 +11,7 @@
 >
 [anagrafiche.trgfn_indirizzi_dettaglio_protect_update](/dbzero/anagrafiche/manual/trgfn_indirizzi_dettaglio_protect_update)   
 >
-🎯 Scopo Principale
-
+### 🎯 Scopo Principale
 (latest review 02-01-26)
 Riallineare la normalizzazione degli indirizzi di dettaglio quando cambia la via (stradario) in modo controllato e tracciato.
 

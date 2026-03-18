@@ -15,9 +15,7 @@
 > • [config.utilities](/dbzero/config/tabelle/utilities)    
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 20/01/26)
 `vendite.contratti_utilities` conserva lo **snapshot** dei dati pre‑contrattuali al **momento della creazione del contratto**.  
 L’obiettivo e` rendere il contratto **autonomo e stabile**: i dati tecnici/commerciali che lo qualificano non vengono piu` aggiornati dopo la creazione.

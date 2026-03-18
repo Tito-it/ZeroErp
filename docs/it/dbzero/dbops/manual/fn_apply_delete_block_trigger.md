@@ -7,9 +7,7 @@
 • [script.trgfn_delete_block_by_guc](/dbzero/script/manual/trgfn_delete_block_by_guc)    
 > • [dbops.automation_delete_block](/dbzero/dbops/manual/automation_delete_block)    
 >
-
-🎯 Scopo Principale
-
+### 🎯 Scopo Principale
 (latest review 23-01-2026)
 `dbops.fn_apply_delete_block_trigger()` crea in modo programmato un **trigger di blocco DELETE**
 su una tabella target, utilizzando un nome standard e una GUC di bypass.

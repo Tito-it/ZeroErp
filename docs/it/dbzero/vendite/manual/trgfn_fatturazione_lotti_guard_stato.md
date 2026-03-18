@@ -11,8 +11,7 @@
 >
 • [vendite.fn_set_fatturazione_lotto_stato](/dbzero/vendite/funzioni/fn_set_fatturazione_lotto_stato)  
 >
-🎯 Scopo Principale
-
+### 🎯 Scopo Principale
 (latest review 24-01-2026)
 La funzione **`vendite.trgfn_fatturazione_lotti_guard_stato()`** controlla le
 transizioni tra stati documento sui lotti di fatturazione.

@@ -14,9 +14,7 @@
 > [script.trgfn_guard_emittente_scope](/dbzero/script/funzioni/trgfn_guard_emittente_scope)
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 08-03-2026)
 La funzione **`script.fn_check_user_emittente_scope`** verifica se un utente ha
 accesso a uno specifico emittente fiscale. Pensata per i trigger defense-in-depth

@@ -3,9 +3,7 @@
 La tabella **`utilities`** costituisce il cuore modulare di Zero ERP: da qui si definiscono i settori funzionali dell’applicazione, sia quelli comuni a tutte le aziende sia le estensioni specifiche per ogni ramo di attività.
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 15-02-2026)
 * **Definizione del settore**
   Tabella dove si definiscono i tipi di "utilities" a cui l’azienda è rivolta. Ogni record identifica un settore di business specifico: per esempio manifatturiero, gas o telecom.

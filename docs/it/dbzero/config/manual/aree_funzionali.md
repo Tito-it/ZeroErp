@@ -20,9 +20,7 @@ La tabella **`config.aree_funzionali`** è il **catalogo delle aree funzionali**
 Ogni area corrisponde a uno **schema PostgreSQL** (es. `vendite`, `anagrafiche`, `catalogo`). Il mapping è automatico: Django risolve l'area dal `db_table` del model, senza configurazione manuale.
 
 ---
-
 ### 🎯 Scopo Principale
-
 * Definire il **perimetro funzionale** su cui si applicano i livelli di accesso (TUTTO / LETTURA / BLOCCATO).
 * Fornire il **mapping area → schema DB** per la risoluzione automatica dei permessi in Django.
 * Gestire l'**ordine di visualizzazione** nell'interfaccia di configurazione profili reparto.

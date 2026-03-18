@@ -19,9 +19,7 @@ La trigger function **`script.trgfn_storico_generic()`** centralizza la logica d
 * Importante tutte le tabelle devono avere una colonna `storicizza` che è utilizzatta all'interno della funzion.
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 02-02-26)
 * **Unificazion- logica**: evitare duplicazioni del codice di storicizzazione in diverse funzioni trigger.
 * **Flessibilità**: applicabile a qualsiasi tabella storica semplicemente specificando il parametro `TG_ARGV[0]` con il nome della colonna di riferimento.

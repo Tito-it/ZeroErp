@@ -13,8 +13,7 @@
 >
 • [vendite.fn_log_lotto_esito_fatture](/dbzero/vendite/funzioni/fn_log_lotto_esito_fatture)   
 >
-🎯 Scopo Principale
-
+### 🎯 Scopo Principale
 (latest review 23-02-2026)  
 La funzione **`vendite.fn_get_lotto_segnalazioni_summary()`** restituisce
 un riepilogo aggregato delle segnalazioni attive (`C`/`W`/`I`) di un lotto,

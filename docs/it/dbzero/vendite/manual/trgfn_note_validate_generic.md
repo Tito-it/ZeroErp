@@ -6,9 +6,7 @@
 > • [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)  
 
 ---
-
 ### 🎯 Scopo Principale
-
 La trigger function `vendite.trgfn_note_validate_generic()` valida la coerenza
 delle note ancorate a una riga documento (`anchor_tipo = 'RIGA'`), verificando
 che `target_riga_id` appartenga davvero alla testata indicata da `target_id`.

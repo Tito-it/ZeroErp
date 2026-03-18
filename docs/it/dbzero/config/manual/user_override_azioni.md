@@ -16,9 +16,7 @@ Tabelle correlate:
 La tabella **`config.user_override_azioni`** consente di **sovrascrivere l'abilitazione di un'azione di processo** ereditata dal reparto, per un singolo utente.
 
 ---
-
 ### 🎯 Scopo Principale
-
 * Concedere un'azione negata a livello reparto (**GRANT** individuale).
 * Revocare un'azione concessa a livello reparto (**DENY** individuale).
 * Supportare **validità temporale** e **motivazione** per governance.

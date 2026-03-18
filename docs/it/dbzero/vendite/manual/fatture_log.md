@@ -6,8 +6,7 @@
 >
 • [vendite.fatture](/dbzero/vendite/tabelle/fatture)  
 >
-🎯 Scopo Principale
-
+### 🎯 Scopo Principale
 (latest review 29-01-2026)  
 `vendite.fatture_log` registra **warning** e **errori critici** associati ai
 documenti di fattura. I log critici bloccano numerazione e invio finche` attivi.

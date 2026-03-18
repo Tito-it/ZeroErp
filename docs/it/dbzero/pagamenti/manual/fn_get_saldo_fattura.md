@@ -7,8 +7,7 @@
 • [pagamenti.vendite_movimenti](/dbzero/pagamenti/tabelle/vendite_movimenti)  
 > • [vendite.fatture](/dbzero/vendite/tabelle/fatture)  
 >
-🎯 Scopo Principale
-
+### 🎯 Scopo Principale
 (latest review 13-02-2026)  
 La funzione **`pagamenti.fn_get_saldo_fattura()`** restituisce il **residuo**
 della fattura:

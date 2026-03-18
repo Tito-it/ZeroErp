@@ -7,8 +7,7 @@
 • [vendite.listini](/dbzero/vendite/tabelle/listini)  
 > • [vendite.listini_versioni](/dbzero/vendite/tabelle/listini_versioni)  
 >
-🎯 Scopo Principale
-
+### 🎯 Scopo Principale
 La tabella `vendite.listini_associazioni` definisce quali listini sono candidati per
 un dato contesto operativo (BA, utility, emittente fiscale), con priorita` di tie-break
 tra listini concorrenti.

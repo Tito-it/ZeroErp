@@ -11,8 +11,7 @@
 >
 • [script.fn_guard_soggetto_ruolo](/dbzero/script/funzioni/fn_guard_soggetto_ruolo)  
 >
-🎯 Scopo Principale
-
+### 🎯 Scopo Principale
 (latest review 13-02-2026)  
 La funzione **`anagrafiche.trgfn_psp_guard_ruolo_psp()`** valida che
 `NEW.soggetto_ruolo_id` punti a un ruolo con `codice_interno = 'PSP'`.

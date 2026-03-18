@@ -12,7 +12,6 @@ Approfondimento funzioni :
 > [anagrafiche.trgfn_soggetti_valida_cf_piva_dispatch](/dbzero/anagrafiche/funzioni/trgfn_soggetti_valida_cf_piva_dispatch)    
 ---
 ### 🎯 Scopo Principale
-
 Verificare **formalmente** la correttezza di una Partita IVA italiana (11 cifre) calcolando il **check digit** con l’algoritmo di Luhn modificato, restituendo:
 
 * `TRUE` se il carattere di controllo (ultima cifra) è corretto;

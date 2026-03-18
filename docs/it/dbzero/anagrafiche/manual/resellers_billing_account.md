@@ -7,8 +7,7 @@
 • [anagrafiche.resellers](/dbzero/anagrafiche/tabelle/resellers)  
 > • [anagrafiche.billing_account](/dbzero/anagrafiche/tabelle/billing_account)  
 >
-🎯 Scopo Principale
-
+### 🎯 Scopo Principale
 (latest review 26-01-2026)
 La tabella **`anagrafiche.resellers_billing_account`** gestisce l’associazione tra
 **billing_account** e **reseller** (ruolo), con validita` temporale. Non prevede

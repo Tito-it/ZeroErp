@@ -10,8 +10,7 @@
 >
 • [vendite.fn_log_pipeline_fase](/dbzero/vendite/funzioni/fn_log_pipeline_fase)  
 >
-🎯 Scopo Principale
-
+### 🎯 Scopo Principale
 (latest review 27-01-2026)  
 La funzione **`vendite.fn_set_fatturazione_lotto_stato()`** aggiorna lo **stato
 job** del lotto di fatturazione e allinea lo **stato operativo**.

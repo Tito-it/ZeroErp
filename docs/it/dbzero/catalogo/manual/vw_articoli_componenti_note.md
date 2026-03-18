@@ -11,9 +11,7 @@ Approfondimenti tabelle:
 > [config.lingue](/dbzero/config/tabelle/lingue)    
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 14-01-26)
 La vista **`catalogo.vw_articoli_componenti_note`** fornisce una lettura delle
 note legate ai componenti articolo, includendo i riferimenti a prodotto,

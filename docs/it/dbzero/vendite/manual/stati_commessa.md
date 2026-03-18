@@ -13,8 +13,7 @@
 > • [vendite.fn_upsert_commessa_attivita](/dbzero/vendite/funzioni/fn_upsert_commessa_attivita)  
 > • [vendite.fn_list_commesse_emittibili](/dbzero/vendite/funzioni/fn_list_commesse_emittibili)  
 >
-🎯 Scopo Principale
-
+### 🎯 Scopo Principale
 (latest review 26-02-2026)  
 `vendite.stati_commessa` e` la lookup centrale degli stati lifecycle della commessa.
 

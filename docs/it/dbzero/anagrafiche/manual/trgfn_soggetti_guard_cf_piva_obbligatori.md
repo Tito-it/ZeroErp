@@ -14,7 +14,6 @@
 > [`script.fn_log_and_raise_error`](/dbzero/script/funzioni/fn_log_and_raise_error)
 
 ---
-
 ### 🎯 Scopo Principale
 (latest review 28-02-26)
 La funzione **`anagrafiche.trgfn_soggetti_guard_cf_piva_obbligatori`** e una **trigger function di tipo "guard"** che:

@@ -8,8 +8,7 @@
 > • [vendite.attivita_fatturabili](/dbzero/vendite/tabelle/attivita_fatturabili)  
 > • [vendite.listini_versioni](/dbzero/vendite/tabelle/listini_versioni)  
 >
-🎯 Scopo Principale
-
+### 🎯 Scopo Principale
 La tabella `vendite.commesse_attivita` e` la sorgente di verita` operativa delle righe
 da emettere verso `attivita_fatturabili`.
 

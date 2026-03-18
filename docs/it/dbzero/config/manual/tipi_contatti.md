@@ -13,7 +13,6 @@ Approfondimenti funzioni:
 
 ---
 ### 🎯 Scopo Principale
-
 (latest review 07-01-26)
 La tabella **`config.tipi_contatti`** definisce le **categorie di contatto** utilizzabili
 nell’anagrafica dei soggetti. Il reparto/ufficio di riferimento e' invece gestito da

@@ -11,8 +11,7 @@
 >
 • [anagrafiche.trgfn_psp_guard_ruolo_psp](/dbzero/anagrafiche/funzioni/trgfn_psp_guard_ruolo_psp)  
 >
-🎯 Scopo Principale
-
+### 🎯 Scopo Principale
 (latest review 13-02-2026)  
 `anagrafiche.psp` rappresenta l’anagrafica dei **Payment Service Provider**
 presenti nel sistema.

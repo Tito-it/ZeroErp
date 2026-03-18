@@ -12,8 +12,7 @@
 >
 • [vendite.fn_get_anno_registro](/dbzero/vendite/funzioni/fn_get_anno_registro)   
 >
-🎯 Scopo Principale
-
+### 🎯 Scopo Principale
 (latest review 26-01-2026)
 La funzione **`vendite.fn_get_next_progressivo`** restituisce il prossimo numero
 di registro, con **lock della riga** progressivi per evitare doppioni.

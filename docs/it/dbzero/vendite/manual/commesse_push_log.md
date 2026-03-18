@@ -7,8 +7,7 @@
 • [vendite.commesse](/dbzero/vendite/tabelle/commesse)  
 > • [vendite.commesse_attivita](/dbzero/vendite/tabelle/commesse_attivita)  
 >
-🎯 Scopo Principale
-
+### 🎯 Scopo Principale
 `vendite.commesse_push_log` traccia ogni esecuzione dell'orchestratore di push
 sorgenti verso commesse/attivita` con un audit minimale ma operativo.
 

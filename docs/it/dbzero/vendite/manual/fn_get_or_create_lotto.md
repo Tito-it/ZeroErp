@@ -11,8 +11,7 @@
 • [vendite.fn_create_fatturazione_lotto](/dbzero/vendite/funzioni/fn_create_fatturazione_lotto)     
 > • [vendite.fn_resolve_lotto_utility_emittente](/dbzero/vendite/funzioni/fn_resolve_lotto_utility_emittente)
 >
-🎯 Scopo Principale
-
+### 🎯 Scopo Principale
 (latest review 22-02-2026)
 La funzione **`vendite.fn_get_or_create_lotto()`** recupera un lotto esistente
 (o lo crea se assente) garantendo la coerenza dei parametri di richiesta.

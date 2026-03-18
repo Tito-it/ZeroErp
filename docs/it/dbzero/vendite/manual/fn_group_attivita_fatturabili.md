@@ -12,8 +12,7 @@
 >
 • [vendite.fn_generate_fatture_righe](/dbzero/vendite/funzioni/fn_generate_fatture_righe)   
 >
-🎯 Scopo Principale
-
+### 🎯 Scopo Principale
 (latest review 07-02-2026)  
 (Deprecate-trasferite in django)  
 La funzione **`vendite.fn_group_attivita_fatturabili()`** costruisce la

@@ -10,9 +10,7 @@ Approfondimenti tabelle:
 Approfondimenti funzioni:   
 >
 [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)   
-
 ### 🎯 Scopo Principale
-
 -  Trigger function generica per **bloccare modifiche non autorizzate** su colonne specificate, integrando:
 
 * **Controllo dinamico** delle colonne PASSATE come argomenti al trigger

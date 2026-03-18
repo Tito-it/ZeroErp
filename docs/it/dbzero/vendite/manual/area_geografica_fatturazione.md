@@ -6,8 +6,7 @@
 >
 • [vendite.area_geografica_fatturazione_comuni](/dbzero/vendite/tabelle/area_geografica_fatturazione_comuni)  
 >
-🎯 Scopo Principale
-
+### 🎯 Scopo Principale
 (latest review 30-01-2026)  
 La tabella **`vendite.area_geografica_fatturazione`** definisce aree geografiche
 per raggruppare i comuni e supportare filtri di fatturazione (es. per area).

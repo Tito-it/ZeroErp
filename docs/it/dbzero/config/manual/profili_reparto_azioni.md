@@ -19,9 +19,7 @@ La tabella **`config.profili_reparto_azioni`** definisce le **azioni di processo
 Come per le aree, l'ereditarietà è automatica: tutti gli operatori del reparto ereditano le abilitazioni configurate.
 
 ---
-
 ### 🎯 Scopo Principale
-
 * Definire quali **azioni di processo** sono abilitate per ogni reparto.
 * Consentire la gestione centralizzata delle abilitazioni critiche.
 * Le eccezioni individuali sono gestite in `config.user_override_azioni`.

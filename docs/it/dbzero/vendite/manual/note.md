@@ -9,9 +9,7 @@
 > • [vendite.ddt](/dbzero/vendite/tabelle/ddt)    
 
 ---
-
 ### 🎯 Scopo Principale
-
 `vendite.note` gestisce **note testuali** ancorabili sia alla **testata** del documento sia alla **riga**, con controllo di posizionamento e ordinamento di rendering. È una tabella **partizionata per `target_tipo`** per garantire prestazioni e manutenzione più semplici, con **FK forti** verso le rispettive testate/righe nelle singole partizioni.
 
 ---

@@ -17,10 +17,7 @@ Orchestratori:
 > [dbops.run_automations_audit_update](/dbzero/dbops/funzioni/fn_run_automations_audit_update),   
 > [dbops.run_automations_storico](/dbzero/dbops/funzioni/fn_run_automations_storico),   
 >  [dbops.fn_run_automations_attivo](/dbzero/dbops/funzioni/fn_run_automations_attivo)
-
-
 ### 🎯 Scopo Principale
-
 (latest review 10-01-26)
 Definire **l’elenco degli schemi** su cui gli orchestratori di automazione devono operare. Funziona come una **allow‑list**: se presente e popolata, limita l’esecuzione alle sole voci elencate.
 

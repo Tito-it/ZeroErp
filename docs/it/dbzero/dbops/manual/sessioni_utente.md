@@ -11,8 +11,7 @@
 [dbops.request_log](/dbzero/dbops/manual/request_log) -- correlazione via `request_id`
 > [dbops.audit_log](/dbzero/dbops/manual/audit_log) -- pattern retention `cleanup_at`
 >
-Scopo Principale
-
+### 🎯 Scopo Principale
 (latest review 05-03-2026)
 
 `dbops.sessioni_utente` e` la tabella di **audit sessioni JWT**. Traccia il ciclo

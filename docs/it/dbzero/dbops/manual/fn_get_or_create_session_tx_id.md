@@ -15,9 +15,7 @@ Approfondimento funzioni :
 La funzione **`dbops.fn_get_or_create_session_tx_id()`** fornisce un **UUID di transazione** persistente per l’intera sessione database, generandone uno nuovo solo se non già impostato. Questo meccanismo garantisce che tutte le operazioni eseguite nella medesima connessione possano condividere lo stesso **`tx_id`**, semplificando log, tracciabilità e rollback in scenari complessi.
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 10-01-26)
 * **Unicità per sessione**: restituisce un `tx_id` costante per la durata della connessione, evitando chiamate ripetute a generatori esterni.
 * **Fallback sicuro**: in caso di errori di connessione o in contesti di migrazione/test, restituisce un UUID “nil” per non bloccare i processi.

@@ -14,7 +14,6 @@
 > • [`script.fn_guard_soggetto_ruolo`](/dbzero/script/funzioni/fn_guard_soggetto_ruolo)    
 
 ---
-
 ### 🎯 Scopo Principale
 (latest review 09-12-25)
 La funzione **`script.fn_get_or_create_soggetto_ruolo`** è una **factory di dominio** per garantire l’esistenza di un legame tra:

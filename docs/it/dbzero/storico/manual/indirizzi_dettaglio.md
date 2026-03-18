@@ -9,9 +9,7 @@ Approfondimento tabelle:
 Approfondimento funzioni:   
 >
 [script.trgfn_upd_dlt_storico_generic](/dbzero/script/funzioni/trgfn_upd_dlt_storico_generic)    
-
 ### 🎯 Scopo Principale
-
 * **Audit Trail**: tracciare ogni modifica ai dettagli degli indirizzi consentendo la ricostruzione dello stato storico.
 * **Versioning temporale**: supportare query basate su periodi di validità tramite `valid_from` e `valid_to`.
 * **Schema futuro‑proof**: salvare l’intero stato del record in JSONB senza richiedere aggiornamenti di schema a ogni nuova colonna.

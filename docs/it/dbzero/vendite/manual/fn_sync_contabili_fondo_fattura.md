@@ -14,8 +14,7 @@
 > • [pagamenti.fn_get_or_create_vendite_contabile](/dbzero/pagamenti/funzioni/fn_get_or_create_vendite_contabile)  
 > • [vendite.fn_reset_fondi_fattura](/dbzero/vendite/funzioni/fn_reset_fondi_fattura)  
 >
-🎯 Scopo Principale
-
+### 🎯 Scopo Principale
 Sincronizzare i fondi fattura assegnati a una fattura figlia nel layer
 **contabile pre-posting** (`pagamenti.vendite_contabili` / `pagamenti.vendite_contabili_righe`),
 senza scrivere movimenti pagamenti diretti.

@@ -14,7 +14,6 @@
 > • [`script.fn_log_and_raise_error`](/dbzero/script/funzioni/fn_log_and_raise_error)   
 
 ---
-
 ### 🎯 Scopo Principale
 (latest review 09-12-25)
 La funzione `anagrafiche.trgfn_clienti_set_periodo()` è una **trigger function di dominio** che ha il compito di:

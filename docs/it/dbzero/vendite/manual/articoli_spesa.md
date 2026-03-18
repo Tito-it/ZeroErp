@@ -12,9 +12,7 @@ Approfondimenti tabelle:
 La tabella **`vendite.articoli_spesa`** mappa gli **articoli** su specifiche **voci di spesa** (es. energia, gas, oneri, servizi), consentendo di categorizzare le righe di documento per finalità **gestionali, fiscali e di stampa**. Include una **descrizione per fattura** dedicata, utile a migliorare la leggibilità del documento verso il cliente.
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 14-01-26)
 * Definire un **catalogo centralizzato** delle voci di spesa utilizzabili in fatturazione.
 * Abilitare **riepiloghi e totalizzazioni** per voce di spesa nei documenti (es. bolletta, fattura).

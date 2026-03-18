@@ -21,9 +21,7 @@ Approfondimento funzioni:
 > [dbops.fn_run_automations_cleanup](/dbzero/dbops/funzioni/fn_run_automations_cleanup)   
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 07-02-26)
 La funzione **`dbops.fn_run_automations`** è l’**orchestratore principale** del framework di automazioni. Coordina l’applicazione delle regole di sistema (Tx ID, aggiornamento audit, storico, lock colonne, gestione flag attivo, cleanup) sugli schemi e tabelle nell'ambito.
 

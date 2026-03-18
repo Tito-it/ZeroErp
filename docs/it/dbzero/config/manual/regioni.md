@@ -15,9 +15,7 @@ Approfondimento Funzioni:
 La tabella **`config.regioni`** censisce le regioni (italiane e di altri stati), fornendo informazioni amministrative e metadati utili per la gerarchia territoriale e la gestione delle accise.
 
 ---
-
 ### 🎯 Scopo Principale
-
 * **Elenco delle regioni**
   Comprende tutte le regioni appartenenti a uno stato (es. in Italia: `Lazio`, `Campania`, `Sicilia`), con collegamento al rispettivo `stato_id` in **`config.stati`**.
 

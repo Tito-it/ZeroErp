@@ -10,8 +10,7 @@
 > • [config.utilities](/dbzero/config/tabelle/utilities)  
 > • [anagrafiche.billing_account](/dbzero/anagrafiche/tabelle/billing_account)  
 >
-🎯 Scopo Principale
-
+### 🎯 Scopo Principale
 (latest review 23-01-2026)
 `vendite.fatturazione_lotti` rappresenta il **lotto di fatturazione**, ovvero il contenitore operativo
 che fissa i **parametri di calcolo** (competenza, utility, tipo documento, BA, emittente fiscale) e consente la gestione

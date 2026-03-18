@@ -12,9 +12,7 @@ Approfondimento tabelle:
 > [config.stati_flussi_pratiche](/dbzero/config/tabelle/stati_flussi_pratiche)
 
 ---
-
 ### 🎯 Scopo Principale
-
 La tabella `pratiche.flussi` contiene le **istanze operative dei flussi** di una pratica. Ogni flusso e' uno step del workflow, creato da un template (opzionale) o manualmente, con stato, esito e assegnazione propri.
 
 ---

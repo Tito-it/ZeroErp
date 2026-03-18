@@ -7,8 +7,7 @@
 • [vendite.fatture_log](/dbzero/vendite/tabelle/fatture_log)  
 > • [vendite.fatturazione_lotti_log](/dbzero/vendite/tabelle/fatturazione_lotti_log)  
 >
-🎯 Scopo Principale
-
+### 🎯 Scopo Principale
 (latest review 20-02-2026)  
 La funzione trigger **`vendite.trgfn_logs_guard_delete()`** blocca la cancellazione
 diretta dei log funzionali (`fatture_log`, `fatturazione_lotti_log`) salvo

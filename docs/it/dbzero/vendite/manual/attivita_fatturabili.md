@@ -13,9 +13,7 @@
 > • [vendite.note](/dbzero/vendite/tabelle/note)   
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 21-01-2026)
 `vendite.attivita_fatturabili` è il **registro centrale delle prestazioni/attività da fatturare** (time & material, canoni, una‑tantum, letture/consumi valorizzati, import batch, ecc.).
 Ogni riga rappresenta **una voce fatturabile** riferita a un *articolo/servizio*, a una *istanza tecnica/utility* e, opzionalmente, a un *billing account*.

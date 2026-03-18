@@ -22,9 +22,7 @@ La tabella **`config.sorgenti`** definisce il **dizionario centralizzato delle s
 * fungere da perno per collegare record di tabelle eterogenee a **note**, **log**, **attività**, **job**, ecc.
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest update 24-01-2026)
 * Fornire un **catalogo univoco** delle sorgenti applicative utilizzate in:
 

@@ -10,9 +10,7 @@
 La tabella **`config.tipi_ruoli`** serve a definire i ruoli che un soggetto (individuo o società) può assumere all'interno del software Zero ERP. In questo modo la tabella `soggetti` rimane generica e memorizza solo i dati anagrafici di base, mentre `tipi_ruoli` specifica in quali ruoli (cliente, fornitore, gestore, ecc.) ciascun soggetto si trova, a seconda delle esigenze aziendali.
 
 ---
-
 ### 🎯 Scopo Principale
-
 * **Distinzione dei ruoli**: consente di assegnare a ogni record della tabella `soggetti` uno o più ruoli funzionali (es. cliente, fornitore, gestore).
 * **Flessibilità operativa**: un soggetto può assumere ruoli differenti in contesti diversi (ad esempio un fornitore che può diventare cliente in altre transazioni).
 * **Ruolo "gestore"**: l’azienda stessa che utilizza il software viene registrata in `soggetti` e associata al ruolo interno “gestore” per identificare i dati dell’utente principale o amministratore del sistema.

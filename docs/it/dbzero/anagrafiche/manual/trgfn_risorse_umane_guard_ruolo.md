@@ -13,9 +13,7 @@
 > [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 10-03-2026)
 La trigger function **`anagrafiche.trgfn_risorse_umane_guard_ruolo()`**
 garantisce che ogni riga di `anagrafiche.risorse_umane` sia collegata a un

@@ -19,9 +19,7 @@ La tabella **`config.causali_trasporto`** contiene il catalogo delle **causali d
 Le causali di trasporto descrivono il *motivo* del movimento (es. vendita, conto visione, reso da cliente, reso a fornitore, trasferimento interno, conto lavorazione, ecc.) e possono essere utilizzate sia a fini logistici che amministrativi.
 
 ---
-
 ### 🎯 Scopo Principale
-
 * Fornire un **catalogo centralizzato** delle causali di trasporto utilizzabili nei DDT.
 * Supportare la **classificazione omogenea** dei flussi di movimentazione in base alla motivazione dell’invio/ritiro dei beni.
 * Costituire la base per **regole di processo** (es. fatturazione automatica, valorizzazione, contabilizzazione, statistiche) dipendenti dalla causale utilizzata.

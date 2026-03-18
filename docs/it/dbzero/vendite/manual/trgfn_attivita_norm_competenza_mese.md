@@ -10,8 +10,7 @@
 >
 • [vendite.trgfn_attivita_fatturabili_normalize](/dbzero/vendite/funzioni/trgfn_attivita_fatturabili_normalize)  
 >
-🎯 Scopo Principale
-
+### 🎯 Scopo Principale
 (latest review 29-01-2026)  
 La funzione **`vendite.trgfn_attivita_norm_competenza_mese()`** normalizza
 `competenza_mese` al **primo giorno del mese**.

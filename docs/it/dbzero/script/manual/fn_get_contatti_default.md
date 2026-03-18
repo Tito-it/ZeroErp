@@ -21,9 +21,7 @@ A differenza di `fn_get_contatti`, che può restituire **più righe (una per tip
 * il contatto considerato di riferimento (default) per il soggetto / ruolo / utility (ed eventualmente tipo_contatto) indicati.
 
 ---
-
 ### 🎯 Scopo Principale
-
 * **Ottenere il contatto “di riferimento”**
   Fornire un modo semplice e univoco per ottenere il **contatto principale** da utilizzare in un certo contesto (es. contatto predefinito del cliente, contatto principale del ruolo Gestore, ecc.).
 

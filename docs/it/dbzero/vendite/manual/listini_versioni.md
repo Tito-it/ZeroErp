@@ -7,8 +7,7 @@
 • [vendite.listini](/dbzero/vendite/tabelle/listini)  
 > • [vendite.listini_righe](/dbzero/vendite/tabelle/listini_righe)  
 >
-🎯 Scopo Principale
-
+### 🎯 Scopo Principale
 La tabella `vendite.listini_versioni` gestisce il versionamento temporale dei listini.
 Ogni versione definisce una finestra di validita` e una priorita` operativa.
 

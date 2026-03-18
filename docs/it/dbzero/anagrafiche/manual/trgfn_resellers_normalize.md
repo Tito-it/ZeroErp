@@ -8,9 +8,7 @@
 > [config.sistema_codici](/dbzero/config/tabelle/sistema_codici)
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 10-03-2026)
 La trigger function **`anagrafiche.trgfn_resellers_normalize()`** e' oggi una
 **no-op**: non modifica il record `NEW` e ritorna semplicemente il contenuto

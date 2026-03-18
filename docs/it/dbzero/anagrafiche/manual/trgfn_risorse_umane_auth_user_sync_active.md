@@ -12,9 +12,7 @@
 [anagrafiche.fn_sync_auth_user_is_active](/dbzero/anagrafiche/funzioni/fn_sync_auth_user_is_active)
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 10-03-2026)
 La trigger function
 **`anagrafiche.trgfn_risorse_umane_auth_user_sync_active()`** sincronizza lo

@@ -10,9 +10,7 @@
 > • [`catalogo.fn_get_uom_factor`](/dbzero/catalogo/funzioni/fn_get_uom_factor)  
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 13-01-26)
 `catalogo.unita_misura_conversioni` definisce **conversioni globali** tra unita di misura, indipendenti dall’articolo. Serve come **fallback** quando una conversione non e' stata specificata per articolo in `catalogo.articoli_uom_operativa`.
 

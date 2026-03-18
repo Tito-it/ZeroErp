@@ -17,9 +17,7 @@ Approfondimento funzioni:
 > [dbops.fn_schema_match](/dbzero/dbops/funzioni/fn_schema_match)   
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 10-01-26)
 La funzione **`dbops.fn_table_in_scope(p_schema, p_table)`** è un **helper di filtro tabellare** che determina se una specifica tabella appartiene all'ambito di automazione, basandosi sulle regole definite in `dbops.automation_scope`. In questo modo, le automazioni possono applicarsi solo alle tabelle consentite.
 

@@ -13,7 +13,6 @@
 `script.fn_log_and_raise_error` (standard Zero ERP per errore applicativo DB)    
 
 ---
-
 ### 🎯 Scopo Principale
 (latest review 15-02-26)
 La trigger function **`anagrafiche.trgfn_clienti_sync_utility_from_ba()`** garantisce la **coerenza** tra:

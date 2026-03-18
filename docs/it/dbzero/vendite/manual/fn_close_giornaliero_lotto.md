@@ -13,8 +13,7 @@
 • [vendite.fn_sync_lotto_fatture_stato](/dbzero/vendite/funzioni/fn_sync_lotto_fatture_stato)  
 > • [vendite.fn_set_fatturazione_lotto_stato](/dbzero/vendite/funzioni/fn_set_fatturazione_lotto_stato)  
 >
-🎯 Scopo Principale
-
+### 🎯 Scopo Principale
 (latest review 03-02-2026)
 La funzione **`vendite.fn_close_giornaliero_lotto()`** chiude operativamente
 un lotto di tipo **GIORNALIERO** e allinea lo stato documentale delle fatture

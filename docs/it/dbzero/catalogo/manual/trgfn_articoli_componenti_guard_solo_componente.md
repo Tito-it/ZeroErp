@@ -10,9 +10,7 @@
 > [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)  
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 14-01-26)
 La funzione **`catalogo.trgfn_articoli_componenti_guard_solo_componente`** impedisce
 di usare come **prodotto** un articolo marcato `is_solo_componente = true`.

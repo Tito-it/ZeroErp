@@ -11,9 +11,7 @@ Altre view di catalogazione:
 La view **`dbops.vw_function_list`** fornisce un inventario completo delle funzioni definite negli schemi **`dbops`** e **`script`**, mostrando firma, tipo di ritorno, numero di parametri e commenti associati.
 
 ---
-
 ### 🎯 Scopo Principale
-
 * Agevolare il **discovery** delle funzioni personalizzate per manutenzione e documentazione.
 * Rendere immediatamente disponibili:
 

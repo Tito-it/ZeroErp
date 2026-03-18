@@ -15,9 +15,7 @@ Approfondimento funzioni:
 > [`dbops.fn_trigger_exists_cascade_by_args`](/dbzero/dbops/funzioni/fn_trigger_exists_cascade_by_args)
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 13-01-26)
 La funzione **`fn_drop_triggers_by_function_args`** elimina tutti i **trigger associati a una tabella** che invocano una determinata funzione di trigger, filtrando in base a **schema**, **nome funzione** e **lista di argomenti**.
 

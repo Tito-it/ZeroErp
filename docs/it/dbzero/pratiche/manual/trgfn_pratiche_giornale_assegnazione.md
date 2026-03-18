@@ -12,9 +12,7 @@ Overview:
 [Trigger business overview](trigger_business_overview.md)
 
 ---
-
 ### 🎯 Scopo Principale
-
 Registra l'azione **ASSEGNAZIONE_CAMBIATA** nel giornale. Si attiva **AFTER UPDATE OF risorsa_umana_id, unita_organizzativa_id** su `pratiche.pratiche`, solo quando almeno uno dei due valori cambia realmente.
 
 ---

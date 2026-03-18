@@ -13,9 +13,7 @@
 > [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)   
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 02-02-26)
 Impedire la modifica manuale di `stradario_id` su `anagrafiche.indirizzi_dettaglio` per garantire una riclassificazione coerente e tracciata.
 

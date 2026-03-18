@@ -7,9 +7,7 @@
 [anagrafiche.risorse_umane_auth_user](/dbzero/anagrafiche/tabelle/risorse_umane_auth_user)
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 08-03-2026)
 La funzione **`script.fn_get_ruolo_sistema`** restituisce il `ruolo_sistema`
 (`ADMIN`, `OPERATIVO`, `DISABILITATO`) di un utente dalla tabella ponte

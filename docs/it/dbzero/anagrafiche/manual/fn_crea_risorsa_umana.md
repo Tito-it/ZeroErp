@@ -19,9 +19,7 @@
 [Risorse umane e accessi](/guide/risorse-umane-e-accessi)
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 13-03-2026)
 Building block atomico per la creazione di una risorsa umana con bridge
 `auth_user` opzionale.

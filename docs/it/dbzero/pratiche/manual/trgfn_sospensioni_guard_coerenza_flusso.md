@@ -6,9 +6,7 @@
 > [pratiche.flussi](/dbzero/pratiche/tabelle/flussi)
 
 ---
-
 ### 🎯 Scopo Principale
-
 Guard: verifica che `flusso_id` appartenga alla stessa `pratica_id` della sospensione. Se `flusso_id IS NULL` (sospensione pratica intera), nessun controllo.
 
 ---

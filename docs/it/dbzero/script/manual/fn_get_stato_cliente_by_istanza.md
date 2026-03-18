@@ -8,9 +8,7 @@ Approfondimento tabelle:
 > [config.stati_cliente](/dbzero/config/tabelle/stati_cliente)   
 
 ---
-
 ### 🎯 Scopo Principale
-
 Fornire lo **stato cliente** associato a una specifica **istanza di servizio**, restituendo:
 
 1. Il valore `stato_cliente_id` del record `clienti` collegato all’istanza, se presente.

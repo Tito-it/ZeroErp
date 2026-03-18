@@ -12,9 +12,7 @@
 [script.fn_check_user_emittente_scope](/dbzero/script/funzioni/fn_check_user_emittente_scope)
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 08-03-2026)
 La funzione **`script.fn_get_emittenti_scope`** restituisce l'array di ID emittenti
 fiscali autorizzati per un utente, letti dalla whitelist `config.user_emittenti_fiscali`.

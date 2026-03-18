@@ -22,9 +22,7 @@ La tabella **`config.stati_pdp`** definisce il **dominio degli stati tecnici** a
 * definitivamente dismesso.
 
 ---
-
 ### 🎯 Scopo Principale
-
 * **Dominio degli stati tecnici del PDP**
   Fornisce il catalogo centralizzato degli stati tecnici ammessi per i punti di prelievo, utilizzato da `anagrafiche.pdp.stato_pdp_id`.
 

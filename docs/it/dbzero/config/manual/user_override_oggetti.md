@@ -18,9 +18,7 @@ La tabella **`config.user_override_oggetti`** consente di sovrascrivere il livel
 È il livello più granulare della catena di risoluzione: sovrascrive sia il profilo reparto che l'override area.
 
 ---
-
 ### 🎯 Scopo Principale
-
 * Consentire **granularità a livello di singola entità** (model Django).
 * Esempio: un utente ha TUTTO su Anagrafiche ma solo LETTURA su `anagrafiche.clienti`.
 

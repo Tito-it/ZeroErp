@@ -16,9 +16,7 @@
 > • [script.fn_log_and_raise_error](/dbzero/script/manual/fn_log_and_raise_error)    
 
 ---
-
 ### 🎯 Scopo Principale
-
 La funzione `script.trgfn_config_sistema_codici_sync_gen_codice()` mantiene **sincronizzati**
 trigger e trigger function per la **generazione automatica dei codici/numero** in base a
 `config.sistema_codici`.

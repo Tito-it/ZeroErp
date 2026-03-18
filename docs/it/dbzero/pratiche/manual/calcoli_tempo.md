@@ -16,9 +16,7 @@ Funzioni:
 > [trgfn_flussi_calcolo_tempo_completamento](/dbzero/pratiche/manual/trgfn_flussi_calcolo_tempo_completamento)
 
 ---
-
 ### 🎯 Scopo Principale
-
 Tabella di calcolo persistente: misura il tempo impiegato per transitare dal completamento di `flusso_da` al completamento di `flusso_a`. Alimentata automaticamente dal trigger `trgfn_flussi_calcolo_tempo_completamento` a due fasi (avvio + chiusura).
 
 ---

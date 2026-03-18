@@ -12,8 +12,7 @@
 • [vendite.fn_log_lotto_esito_fatture](/dbzero/vendite/funzioni/fn_log_lotto_esito_fatture)  
 > • [vendite.fn_sync_lotto_fatture_stato](/dbzero/vendite/funzioni/fn_sync_lotto_fatture_stato)  
 >
-🎯 Scopo Principale
-
+### 🎯 Scopo Principale
 (latest review 29-01-2026)  
 La funzione **`vendite.fn_sync_fattura_critical()`** aggiorna il flag
 `fatture.critical` in base ai log attivi della fattura.

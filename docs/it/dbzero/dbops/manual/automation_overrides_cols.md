@@ -7,10 +7,7 @@ Approfondimento funzioni:
 > [dbops.fn_get_override_col](/dbzero/dbops/funzioni/fn_get_override_col)
 
 > Esempio Helper: [dbops.fn_get_override_col(schema, table, key, default)]
-
-
 ### 🎯 Scopo Principale
-
 (latest review 10-01-26)
 Centralizzare le **eccezioni di naming delle colonne** usate dagli automatismi (audit, soft‑delete, storico, ecc.).
 Quando il tuo schema usa nomi diversi dagli standard (es. `attivo` → `is_enabled`, `data_update` → `modified_at`), qui definisci l’override **per tabella**.

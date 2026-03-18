@@ -8,8 +8,7 @@
 > • [vendite.tipi_fondi_fattura](/dbzero/vendite/tabelle/tipi_fondi_fattura)  
 > • [vendite.fatture_fondi_fattura](/dbzero/vendite/tabelle/fatture_fondi_fattura)  
 >
-🎯 Scopo Principale
-
+### 🎯 Scopo Principale
 (latest review 11-02-2026)  
 `vendite.fatture_fondi_fattura_source` registra la **sorgente** dei fondi
 fattura derivati da documenti precedenti. Serve a garantire idempotenza e

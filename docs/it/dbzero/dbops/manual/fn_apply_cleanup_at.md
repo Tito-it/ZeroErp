@@ -14,9 +14,7 @@
 * [dbops.fn_purge_cleanup_expired](/dbzero/dbops/funzioni/fn_purge_cleanup_expired)
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 07-02-26)
 La funzione **`dbops.fn_apply_cleanup_at`** calcola il valore di **`cleanup_at`** per una tabella target, applicando un **TTL fisso** a partire da una colonna timestamp di base (es. `data_insert`, `executed_at`, `occurred_at`).
 

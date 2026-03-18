@@ -11,8 +11,7 @@
 >
 • [dbops.fn_get_pipeline_task_implementation](/dbzero/dbops/manual/fn_get_pipeline_task_implementation)  
 >
-🎯 Scopo Principale
-
+### 🎯 Scopo Principale
 (latest review 08-02-2026)
 Verifica che un task sia registrato e **attivo** per un dominio.
 La funzione fallisce con errore applicativo se il task non e` ammesso.

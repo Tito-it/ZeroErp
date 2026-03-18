@@ -21,9 +21,7 @@ Il suo utilizzo è cruciale per:
 - garantire la tracciabilità ai fini di audit e ricostruzione storica.
 
 ---
-
 ### 🎯 Scopo Principale
-
 * **Versionamento degli indirizzi**  
   Ogni operazione su `anagrafiche.indirizzi` (INSERT, UPDATE, DELETE) genera un record nello storico che ne conserva lo stato precedente o iniziale.
 

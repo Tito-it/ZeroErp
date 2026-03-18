@@ -15,7 +15,6 @@ Approfondimento funzioni :
 La trigger function **`anagrafiche.trgfn_contatti_set_default_contatto()`** gestisce automaticamente il contatto predefinito per un soggetto, tenendo conto di un **contesto** dinamico (`soggetto`, `ruolo` o `utility`). Assicura che esista al massimo un contatto default per soggetto e contesto, ed aggiorna il riferimento `default_contatto_id` in `anagrafiche.soggetti` quando richiesto.
 
 ---
-
 ### 🎯 Scopo Principale
 (latest review 03-12-25)
 * **Impostare il contatto default**

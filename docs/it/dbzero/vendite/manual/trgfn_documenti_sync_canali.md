@@ -7,9 +7,7 @@
 > • [config.sorgenti](/dbzero/config/tabelle/sorgenti)  
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 24-02-2026)  
 La funzione trigger `vendite.trgfn_documenti_sync_canali()` mantiene
 allineato il registro `documenti_fatturazione_canali` sugli eventi

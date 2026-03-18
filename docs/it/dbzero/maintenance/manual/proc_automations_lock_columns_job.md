@@ -8,9 +8,7 @@ Approfondimento funzioni:
 > [`maintenance.fn_run_and_log`](/dbzero/maintenance/funzioni/fn_run_and_log)
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 11-01-26)
 * **Eseguire in modo schedulato** l’orchestrazione delle **automazioni LOCK_COLUMNS** (trigger di blocco colonne) incapsulando la chiamata a `dbops.fn_run_automations_lock_columns(...)` e il cleanup dei trigger obsoleti in un wrapper **robusto** con **lock anti-overlap** e **logging strutturato**.
 

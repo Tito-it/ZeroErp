@@ -12,9 +12,7 @@ La tabella **`vendite.articoli_gruppi`** gestisce la classificazione di **livell
 Ogni gruppo rappresenta un insieme logico di articoli con finalità di catalogazione, controllo gestionale, reporting e totalizzazione nei documenti di vendita e fatturazione.
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 13-01-26)
 * Consentire la **classificazione gerarchica** degli articoli in gruppi omogenei.
 * Facilitare **statistiche e analisi di vendita** per categoria.
