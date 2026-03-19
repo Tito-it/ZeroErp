@@ -8,15 +8,19 @@
 
 """
 Indice test eseguiti:
- 1) test_crea_utente_success — POST crea utente con successo
- 2) test_crea_utente_missing_cognome — POST senza cognome -> errore
+ 1) test_crea_utente_success — POST crea utente con successo (flusso A)
+ 2) test_crea_utente_missing_cognome — POST senza cognome -> errore (flusso A)
  3) test_crea_utente_missing_password — POST senza password -> errore
- 4) test_crea_utente_missing_cf — POST senza codice_fiscale -> errore
+ 4) test_crea_utente_missing_cf — POST senza codice_fiscale -> errore (flusso A)
  5) test_crea_utente_missing_qualifica — POST senza qualifica_id -> errore
  6) test_crea_utente_password_hashed — POST verifica che password venga hashata
  7) test_crea_utente_permission_denied — OPERATIVO non puo' creare
  8) test_crea_utente_with_sprint3_params — POST con comune_nascita e indirizzi
  9) test_crea_utente_sprint3_params_optional — POST senza params Sprint 3 (retrocompatibile)
+10) test_crea_utente_flow_b_soggetto_esistente — POST con soggetto_id (flusso B)
+11) test_crea_utente_flow_b_cognome_non_richiesto — flusso B: cognome assente OK
+12) test_crea_utente_flow_b_uuid_invalido — soggetto_id malformato -> errore 400
+13) test_crea_utente_qualifica_non_numerica — qualifica_id non numerico -> errore 400
 """
 
 import json
@@ -242,6 +246,99 @@ class TestCreaUtenteSprint3(TestCase):
         self.assertIsNone(call_kwargs["comune_nascita_id"])
         self.assertIsNone(call_kwargs["indirizzo_resid_dettaglio_id"])
         self.assertIsNone(call_kwargs["indirizzo_domfisc_dettaglio_id"])
+
+
+VALID_PAYLOAD_FLOW_B = {
+    "soggetto_id": "550e8400-e29b-41d4-a716-446655440000",
+    "username": "op_existing",
+    "email": "op@test.it",
+    "password": "SecurePass123!",
+    "qualifica_id": 1,
+    "unita_organizzativa_id": 10,
+}
+
+
+class TestCreaUtenteFlowB(TestCase):
+    """POST /api/v1/amm-software/utenti/ — flusso B (soggetto esistente)."""
+
+    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
+    @patch("apps.amm_software.services.amm_software_service.make_password", return_value="hashed_pw")
+    @patch("apps.core.api.endpoint_helpers.get_request_id", return_value=None)
+    @patch("apps.core.api.endpoint_helpers.get_idempotency_key", return_value=None)
+    @patch("apps.core.api.endpoint_helpers.parse_json_body")
+    def test_crea_utente_flow_b_soggetto_esistente(
+        self, mock_parse, mock_idemp, mock_reqid, mock_make_pw, mock_repo_cls
+    ):
+        """POST con soggetto_id — flusso B: soggetto_id passato al repository."""
+        mock_parse.return_value = VALID_PAYLOAD_FLOW_B
+        mock_repo = MagicMock()
+        mock_repo.crea_operatore.return_value = 42
+        mock_repo.get_utente_detail.return_value = SAMPLE_DETAIL
+        mock_repo_cls.return_value = mock_repo
+
+        view = UtentiListView()
+        request = _make_admin_request(VALID_PAYLOAD_FLOW_B)
+        response = view.post(request)
+
+        self.assertEqual(response.status_code, 200)
+        call_kwargs = mock_repo.crea_operatore.call_args.kwargs
+        self.assertEqual(call_kwargs["soggetto_id"], "550e8400-e29b-41d4-a716-446655440000")
+        self.assertIsNone(call_kwargs["cognome"])
+        self.assertIsNone(call_kwargs["nome"])
+        self.assertIsNone(call_kwargs["codice_fiscale"])
+
+    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
+    @patch("apps.amm_software.services.amm_software_service.make_password", return_value="hashed_pw")
+    @patch("apps.core.api.endpoint_helpers.get_request_id", return_value=None)
+    @patch("apps.core.api.endpoint_helpers.get_idempotency_key", return_value=None)
+    @patch("apps.core.api.endpoint_helpers.parse_json_body")
+    def test_crea_utente_flow_b_cognome_non_richiesto(
+        self, mock_parse, mock_idemp, mock_reqid, mock_make_pw, mock_repo_cls
+    ):
+        """Flusso B: cognome vuoto e' accettato (soggetto gia' esiste)."""
+        payload = {**VALID_PAYLOAD_FLOW_B, "cognome": ""}
+        mock_parse.return_value = payload
+        mock_repo = MagicMock()
+        mock_repo.crea_operatore.return_value = 42
+        mock_repo.get_utente_detail.return_value = SAMPLE_DETAIL
+        mock_repo_cls.return_value = mock_repo
+
+        view = UtentiListView()
+        request = _make_admin_request(payload)
+        response = view.post(request)
+
+        # Nessun errore di validazione — cognome non richiesto in flusso B
+        self.assertEqual(response.status_code, 200)
+
+    @patch("apps.core.api.endpoint_helpers.get_request_id", return_value=None)
+    @patch("apps.core.api.endpoint_helpers.get_idempotency_key", return_value=None)
+    @patch("apps.core.api.endpoint_helpers.parse_json_body")
+    def test_crea_utente_flow_b_uuid_invalido(self, mock_parse, mock_idemp, mock_reqid):
+        """Flusso B: soggetto_id non UUID valido -> errore 400."""
+        payload = {**VALID_PAYLOAD_FLOW_B, "soggetto_id": "non-un-uuid"}
+        mock_parse.return_value = payload
+
+        view = UtentiListView()
+        request = _make_admin_request(payload)
+        response = view.post(request)
+
+        data = json.loads(response.content)
+        self.assertIn("error", data)
+
+    @patch("apps.core.api.endpoint_helpers.get_request_id", return_value=None)
+    @patch("apps.core.api.endpoint_helpers.get_idempotency_key", return_value=None)
+    @patch("apps.core.api.endpoint_helpers.parse_json_body")
+    def test_crea_utente_qualifica_non_numerica(self, mock_parse, mock_idemp, mock_reqid):
+        """qualifica_id non numerico -> errore 400."""
+        payload = {**VALID_PAYLOAD, "qualifica_id": "abc"}
+        mock_parse.return_value = payload
+
+        view = UtentiListView()
+        request = _make_admin_request(payload)
+        response = view.post(request)
+
+        data = json.loads(response.content)
+        self.assertIn("error", data)
 
 
 class TestCreaUtentePermission(TestCase):

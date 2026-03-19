@@ -5,8 +5,10 @@
 import { ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRepartiStore } from '../stores/reparti'
-import { useUtentiStore } from '../stores/utenti'
 import { useApiHandler } from '../../core/composables/useApiHandler'
+import { useLookup } from '../../core/composables/useLookup'
+import { listAreeFunzionali, listAzioniProcesso } from '../api/amministrazione'
+import { LIVELLO_ACCESSO, buildLivelloOptions } from '../constants'
 import { DRAWER_WIDTH } from '../../core/constants'
 import { useConfirm } from 'primevue/useconfirm'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
@@ -24,9 +26,10 @@ import ConfirmDialog from 'primevue/confirmdialog'
 
 const { t } = useI18n()
 const repartiStore = useRepartiStore()
-const utentiStore = useUtentiStore()
 const { execute, loading } = useApiHandler()
 const confirm = useConfirm()
+const areeFunzionali = useLookup(listAreeFunzionali, { immediate: true })
+const azioniProcesso = useLookup(listAzioniProcesso, { immediate: true })
 
 const props = defineProps({
   visible: Boolean,
@@ -36,36 +39,28 @@ const props = defineProps({
 
 const emit = defineEmits(['update:visible', 'saved', 'cancelled'])
 
-const livelloOptions = [
-  { label: 'TUTTO', value: 'TUTTO' },
-  { label: 'LETTURA', value: 'LETTURA' },
-  { label: 'BLOCCATO', value: 'BLOCCATO' }
-]
+const livelloOptions = buildLivelloOptions(t)
 
 const localAree = ref([])
 const localAzioni = ref([])
 
 watch(() => props.visible, async (val) => {
   if (!val || !props.uoId) return
-  await Promise.all([
-    utentiStore.fetchAreeFunzionali(),
-    utentiStore.fetchAzioniProcesso(),
-    repartiStore.fetchProfilo(props.uoId)
-  ])
+  await repartiStore.fetchProfilo(props.uoId)
 
   const profilo = repartiStore.currentProfilo
   if (profilo) {
     // Inizializza con tutte le aree, precompilando quelle gia' configurate
     const existingMap = new Map(profilo.aree.map(a => [a.area_id, a.livello]))
-    localAree.value = utentiStore.areeFunzionali.map(af => ({
+    localAree.value = (areeFunzionali.items.value || []).map(af => ({
       area_id: af.id,
       area_codice: af.codice,
       area_descrizione: af.descrizione,
-      livello: existingMap.get(af.id) || 'BLOCCATO'
+      livello: existingMap.get(af.id) || LIVELLO_ACCESSO.BLOCCATO
     }))
 
     const existingAzioni = new Map(profilo.azioni.map(a => [a.azione_id, a.abilitata]))
-    localAzioni.value = utentiStore.azioniProcesso.map(ap => ({
+    localAzioni.value = (azioniProcesso.items.value || []).map(ap => ({
       azione_id: ap.id,
       permission_codename: ap.permission_codename,
       azione_descrizione: ap.descrizione,

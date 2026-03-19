@@ -2,6 +2,7 @@
 // di un nuovo utente. Validazione password match inclusa.
 
 import { reactive, computed } from 'vue'
+import { isEmailValid } from '../utils/validators'
 
 export function useAuthUser() {
   const form = reactive({
@@ -19,6 +20,7 @@ export function useAuthUser() {
     const errors = []
     if (!form.username.trim()) errors.push('username')
     if (!form.email.trim()) errors.push('email')
+    else if (!isEmailValid(form.email)) errors.push('email_format')
     if (!form.password) errors.push('password')
     if (!passwordMatch.value) errors.push('password_confirm')
     return errors

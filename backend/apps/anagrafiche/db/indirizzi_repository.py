@@ -99,26 +99,34 @@ class IndirizziRepository:
     # Scopo: Cerca indirizzo duplicato via fn_check_indirizzo_duplicato (DB).
     #        La funzione DB costruisce la stringa normalizzata, cerca match prefix
     #        e ritorna exact_match boolean. Python e' passante.
+    #        Supporta due flussi: stradario_id diretto, oppure
+    #        stradario_generale_id + comune_id per risoluzione indiretta.
     def find_duplicato(
-        self, *, stradario_id: int, civico: int | None = None,
+        self, *, stradario_id: int | None = None, civico: int | None = None,
         estensione_civico: str | None = None,
         palazzina: str | None = None,
         scala: str | None = None,
         piano: str | None = None,
         interno: str | None = None,
+        stradario_generale_id: int | None = None,
+        comune_id: int | None = None,
+        codice_postale_id: int | None = None,
     ) -> dict[str, Any] | None:
         sql = """
             SELECT indirizzo_dettaglio_id,
                    indirizzo_normalizzato,
                    descrizione_comune,
                    exact_match
-              FROM script.fn_check_indirizzo_duplicato(%s, %s, %s, %s, %s, %s, %s)
+              FROM script.fn_check_indirizzo_duplicato(
+                  %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+              )
              LIMIT 1
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [
                 stradario_id, civico, estensione_civico,
                 palazzina, scala, piano, interno,
+                stradario_generale_id, comune_id, codice_postale_id,
             ])
             return row_to_dict(cursor)
 

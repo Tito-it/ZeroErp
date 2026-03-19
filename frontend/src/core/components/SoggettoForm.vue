@@ -6,7 +6,8 @@
 import { ref, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { generaCF, validaCFPIVA } from '../../anagrafiche/api/anagrafiche'
-import { toDateString } from '../utils/date'
+import { toDateString, displayDate } from '../utils/date'
+import { capitalizeWords, capitalizeFirst } from '../utils/string'
 import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
 import DatePicker from 'primevue/datepicker'
@@ -23,8 +24,10 @@ const props = defineProps({
   isPF: { type: Boolean, default: true },
   showPartitaIva: { type: Boolean, default: false },
   tipoForzato: { type: Number, default: null },
+  tipiAmmessiIds: { type: Array, default: null },
   isEdit: { type: Boolean, default: false },
-  disabled: { type: Boolean, default: false }
+  disabled: { type: Boolean, default: false },
+  comuneNascitaItem: { type: Object, default: null }
 })
 
 const sessoOptions = [
@@ -36,9 +39,18 @@ const sessoOptions = [
 const cfDisabled = computed(() => props.isEdit && !!props.form.codice_fiscale?.trim())
 const pivaDisabled = computed(() => props.isEdit && !!props.form.partita_iva?.trim())
 
-// In edit: tipo soggetto filtrato per natura compatibile (PF↔PF, PG↔PG)
+// Tipo soggetto filtrato: per ids ammessi (resolver) o per natura (edit)
 const tipiSoggettoFiltrati = computed(() => {
-  if (!props.isEdit || !props.tipiSoggetto.items?.value) return props.tipiSoggetto
+  if (!props.tipiSoggetto.items?.value) return props.tipiSoggetto
+  // Filtro per ids ammessi dal config-resolver (creazione da resolver)
+  if (props.tipiAmmessiIds && props.tipiAmmessiIds.length) {
+    return {
+      ...props.tipiSoggetto,
+      items: { value: props.tipiSoggetto.items.value.filter(t => props.tipiAmmessiIds.includes(t.id)) },
+    }
+  }
+  // Filtro per natura compatibile (edit mode)
+  if (!props.isEdit) return props.tipiSoggetto
   const current = props.tipiSoggetto.items.value.find(t => t.id === props.form.tipo_soggetto_dettaglio_id)
   if (!current) return props.tipiSoggetto
   const naturaCorrente = current.natura_soggetto
@@ -140,25 +152,31 @@ async function onValidaPIVA() {
     <template v-if="isPF">
       <div class="form-field">
         <label>{{ t('common.cognome') }} *</label>
-        <InputText v-model="form.cognome" :disabled="disabled" class="w-full" />
+        <InputText v-model="form.cognome" :disabled="disabled" class="w-full"
+          @blur="form.cognome = capitalizeWords(form.cognome)" />
       </div>
       <div class="form-field">
         <label>{{ t('common.nome') }} *</label>
-        <InputText v-model="form.nome" :disabled="disabled" class="w-full" />
+        <InputText v-model="form.nome" :disabled="disabled" class="w-full"
+          @blur="form.nome = capitalizeWords(form.nome)" />
       </div>
-      <div class="form-field">
-        <label>{{ t('common.sesso') }}</label>
-        <Select v-model="form.sesso" :options="sessoOptions"
-          option-label="label" option-value="value" :disabled="disabled" class="w-full" />
-      </div>
-      <div class="form-field">
-        <label>{{ t('common.data_nascita') }}</label>
-        <DatePicker v-model="form.data_nascita" :dateFormat="DATE_FORMAT"
-          :disabled="disabled" class="w-full" />
+      <div class="form-row-inline">
+        <div class="form-field" style="flex: 0 0 8rem;">
+          <label>{{ t('common.sesso') }}</label>
+          <Select v-model="form.sesso" :options="sessoOptions"
+            option-label="label" option-value="value" :disabled="disabled" class="w-full" />
+        </div>
+        <div class="form-field" style="flex: 1;">
+          <label>{{ t('common.data_nascita') }}</label>
+          <InputText v-if="disabled" :model-value="displayDate(form.data_nascita)" disabled class="w-full" />
+          <DatePicker v-else v-model="form.data_nascita" :dateFormat="DATE_FORMAT"
+            show-icon show-button-bar :manual-input="true" class="w-full" />
+        </div>
       </div>
       <div class="form-field">
         <label>{{ t('common.comune_nascita') }}</label>
-        <ComuneAutocomplete v-model="form.comune_nascita_id" :disabled="disabled" />
+        <ComuneAutocomplete v-model="form.comune_nascita_id" :disabled="disabled"
+          :initial-item="comuneNascitaItem" />
       </div>
     </template>
 
@@ -166,7 +184,8 @@ async function onValidaPIVA() {
     <template v-else>
       <div class="form-field">
         <label>{{ t('common.ragione_sociale') }} *</label>
-        <InputText v-model="form.ragione_sociale" :disabled="disabled" class="w-full" />
+        <InputText v-model="form.ragione_sociale" :disabled="disabled" class="w-full"
+          @blur="form.ragione_sociale = capitalizeFirst(form.ragione_sociale)" />
       </div>
     </template>
 

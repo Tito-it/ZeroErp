@@ -274,7 +274,105 @@ class ErrorPolicyRegistry:
             ui_action="show_empty_state",
             user_message="Record non trovato.",
         ),
+        # ── Anagrafiche / Soggetti e trigger ──
+        "E_INDIRIZZO_OBBLIGATORIO_MANCANTE": ErrorPolicy(
+            code="E_INDIRIZZO_OBBLIGATORIO_MANCANTE",
+            http_status=400,
+            ui_action="show_error_banner",
+            user_message="Indirizzo obbligatorio mancante per questo tipo soggetto.",
+        ),
+        "E_SOGGETTO_NO_CONTATTI": ErrorPolicy(
+            code="E_SOGGETTO_NO_CONTATTI",
+            http_status=400,
+            ui_action="show_error_banner",
+            user_message="Il soggetto deve avere almeno un contatto.",
+        ),
+        "E_DATI_SOCIETARI_REQUIRED_MANCANTI": ErrorPolicy(
+            code="E_DATI_SOCIETARI_REQUIRED_MANCANTI",
+            http_status=400,
+            ui_action="show_error_banner",
+            user_message="Dati societari obbligatori mancanti per questo tipo soggetto.",
+        ),
+        "E_RUOLO_NATURA_NON_AMMESSA": ErrorPolicy(
+            code="E_RUOLO_NATURA_NON_AMMESSA",
+            http_status=400,
+            ui_action="show_error_banner",
+            user_message="Tipo soggetto non ammesso per questo ruolo.",
+        ),
+        "E_CF_OBBLIGATORIO": ErrorPolicy(
+            code="E_CF_OBBLIGATORIO",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message="Codice fiscale obbligatorio.",
+        ),
+        "E_PIVA_OBBLIGATORIA": ErrorPolicy(
+            code="E_PIVA_OBBLIGATORIA",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message="Partita IVA obbligatoria.",
+        ),
+        "E_ADMIN_CF_DUPLICATO": ErrorPolicy(
+            code="E_ADMIN_CF_DUPLICATO",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Codice fiscale gia' presente in anagrafica.",
+        ),
+        "E_ADMIN_PIVA_DUPLICATA": ErrorPolicy(
+            code="E_ADMIN_PIVA_DUPLICATA",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Partita IVA gia' presente in anagrafica.",
+        ),
+        "E_ADMIN_USERNAME_DUPLICATO": ErrorPolicy(
+            code="E_ADMIN_USERNAME_DUPLICATO",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Username gia' in uso.",
+        ),
+        "E_ADMIN_EMAIL_DUPLICATA": ErrorPolicy(
+            code="E_ADMIN_EMAIL_DUPLICATA",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Email gia' in uso.",
+        ),
+        "E_ATTIVO_BLOCK_CHILDREN_EXIST": ErrorPolicy(
+            code="E_ATTIVO_BLOCK_CHILDREN_EXIST",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Impossibile disattivare: esistono record collegati ancora attivi.",
+        ),
+        "E_DEFAULT_CONTATTO_MISSING": ErrorPolicy(
+            code="E_DEFAULT_CONTATTO_MISSING",
+            http_status=400,
+            ui_action="show_error_banner",
+            user_message="Contatto principale obbligatorio.",
+        ),
+        # ── Profilo utente / login guard ──
+        "E_UTENTE_DISABILITATO": ErrorPolicy(
+            code="E_UTENTE_DISABILITATO",
+            http_status=403,
+            ui_action="show_error_banner",
+            user_message="Account disabilitato. Contattare l'amministratore.",
+        ),
+        "E_UTENTE_NON_ATTIVO": ErrorPolicy(
+            code="E_UTENTE_NON_ATTIVO",
+            http_status=403,
+            ui_action="show_error_banner",
+            user_message="Account non ancora attivo.",
+        ),
+        "E_UTENTE_SCADUTO": ErrorPolicy(
+            code="E_UTENTE_SCADUTO",
+            http_status=403,
+            ui_action="show_error_banner",
+            user_message="Account scaduto. Contattare l'amministratore.",
+        ),
         # ── Amministrazione software ──
+        "E_ADMIN_VALIDAZIONE": ErrorPolicy(
+            code="E_ADMIN_VALIDAZIONE",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message="Parametri non validi.",
+        ),
         "E_AMM_VALIDAZIONE": ErrorPolicy(
             code="E_AMM_VALIDAZIONE",
             http_status=400,
@@ -286,6 +384,18 @@ class ErrorPolicyRegistry:
             http_status=404,
             ui_action="show_empty_state",
             user_message="Utente non trovato.",
+        ),
+        "E_ADMIN_ULTIMO": ErrorPolicy(
+            code="E_ADMIN_ULTIMO",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Impossibile disabilitare l'ultimo amministratore.",
+        ),
+        "E_UTENTE_BLOCCATO": ErrorPolicy(
+            code="E_UTENTE_BLOCCATO",
+            http_status=423,
+            ui_action="show_error_banner",
+            user_message="Account temporaneamente bloccato per troppi tentativi.",
         ),
         # ── Vendite / Pipeline ──
         "E_PIPELINE_DOMINIO": ErrorPolicy(code="E_PIPELINE_DOMINIO", http_status=400, ui_action="show_error_banner", user_message="Errore dominio pipeline."),
@@ -331,7 +441,24 @@ class ErrorPolicyRegistry:
         ),
     }
 
-    # Scopo: Gestisce `resolve` nel flusso applicativo del modulo.
+    # Scopo: Risolve la policy per un codice errore. Per codici applicativi
+    # (E_*) non registrati usa fallback 400 con messaggio dal DB, non 500 generico.
     @classmethod
     def resolve(cls, code: str) -> ErrorPolicy:
-        return cls._POLICIES.get(code, cls._POLICIES["E_GENERICO"])
+        policy = cls._POLICIES.get(code)
+        if policy:
+            return policy
+        # Codici applicativi E_* non registrati: errore business (400), non tecnico (500)
+        if code.startswith("E_") and code != "E_GENERICO":
+            return ErrorPolicy(
+                code=code,
+                http_status=400,
+                ui_action="show_error_banner",
+                user_message="Errore di validazione.",
+            )
+        return cls._POLICIES["E_GENERICO"]
+
+    # Scopo: Verifica se un codice errore ha una policy registrata.
+    @classmethod
+    def has(cls, code: str) -> bool:
+        return code in cls._POLICIES

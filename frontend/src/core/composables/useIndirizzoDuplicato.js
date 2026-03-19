@@ -13,22 +13,22 @@ export function useIndirizzoDuplicato() {
   const existingDettaglioId = ref(null)
 
   // Scopo: Check duplicato con tutti i campi civico.
+  // Accetta stradario_id (flusso A) oppure stradario_generale_id + comune_id (flusso B).
   async function checkDuplicato(params) {
     indirizzoWarnings.value = []
     existingDettaglioId.value = null
-    if (!params.stradario_id) return
+    if (!params.stradario_id && !(params.stradario_generale_id && params.comune_id)) return
     try {
       const res = await checkIndirizzoDuplicato(params)
       const warnings = res.data.data.warnings || []
       if (warnings.length > 0) {
         const w = warnings[0]
+        indirizzoWarnings.value = [w.message]
         if (w.exact_match) {
-          // Match esatto: mostra info + imposta id per riuso
-          indirizzoWarnings.value = [w.message]
+          // Match esatto: imposta id per riuso diretto
           existingDettaglioId.value = w.indirizzo_dettaglio_id
         }
-        // Match prefix (non esatto): nessun warning info, nessun id.
-        // Il parent (addressNotFound) gestisce il messaggio warn.
+        // Match prefix: warning visibile ma senza id (non riusabile direttamente)
       }
     } catch {
       indirizzoWarnings.value = []

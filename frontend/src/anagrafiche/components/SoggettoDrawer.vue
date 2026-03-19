@@ -46,6 +46,9 @@ const formeGiuridicheLookup = ref([])
 const datiSocietari = useDatiSocietariForm({ formeGiuridiche: formeGiuridicheLookup })
 const provinceLookup = useLookup(() => lookupProvince())
 
+// Restore ComuneAutocomplete in edit mode
+const comuneNascitaItem = ref(null)
+
 // Ruoli (edit mode, readonly)
 const ruoliAssegnati = ref([])
 
@@ -58,10 +61,13 @@ const contattiRiepilogo = ref([])
 const props = defineProps({
   visible: Boolean,
   mode: { type: String, default: 'create' },
-  itemId: { type: String, default: null }
+  itemId: { type: String, default: null },
+  // Props opzionali per uso da SoggettoResolver
+  tipoDefaultId: { type: Number, default: null },
+  tipiAmmessiIds: { type: Array, default: null }
 })
 
-const emit = defineEmits(['update:visible', 'saved'])
+const emit = defineEmits(['update:visible', 'saved', 'saved-with-data'])
 
 const isEdit = computed(() => props.mode === 'edit')
 
@@ -132,6 +138,14 @@ watch(() => soggetto.showDatiSocietari.value, (show) => {
   }
 })
 
+// Scopo: Converte stringa ISO date (YYYY-MM-DD) in Date object per DatePicker.
+function parseDate(val) {
+  if (!val) return null
+  if (val instanceof Date) return val
+  const d = new Date(val)
+  return isNaN(d.getTime()) ? null : d
+}
+
 // Popola il drawer con i dati del soggetto in edit mode.
 function populateFromDetail(data) {
   soggetto.form.tipo_soggetto_dettaglio_id = data.tipo_soggetto_dettaglio_id
@@ -141,8 +155,12 @@ function populateFromDetail(data) {
   soggetto.form.codice_fiscale = data.codice_fiscale || ''
   soggetto.form.partita_iva = data.partita_iva || ''
   soggetto.form.sesso = data.sesso || 'M'
-  soggetto.form.data_nascita = data.data_nascita || null
+  soggetto.form.data_nascita = parseDate(data.data_nascita)
   soggetto.form.comune_nascita_id = data.comune_nascita_id || null
+  // Oggetto completo per restore ComuneAutocomplete
+  comuneNascitaItem.value = data.comune_nascita_id
+    ? { id: data.comune_nascita_id, descrizione: data.comune_nascita_descrizione || '', provincia_sigla: data.comune_nascita_provincia_sigla || '' }
+    : null
   if (data.contatti?.length > 0) {
     contatto.populate(data.contatti[0])
   }
@@ -193,10 +211,15 @@ watch(() => props.visible, async (val) => {
     contattoErrors.value = []
     indirizzo.reset()
     datiSocietari.reset()
+    comuneNascitaItem.value = null
     ruoliAssegnati.value = []
     ruoliDisponibili.value = []
     nuovoRuoloId.value = null
     nominativoManuale = false
+    // Pre-imposta tipo soggetto se indicato dal chiamante (es. SoggettoResolver)
+    if (props.tipoDefaultId) {
+      soggetto.form.tipo_soggetto_dettaglio_id = props.tipoDefaultId
+    }
   }
 
   // Carica lookup contatto (lazy, non blocca)
@@ -208,7 +231,10 @@ const canSave = computed(() => {
   if (isEdit.value) return true
   const sogValid = soggetto.validate().length === 0
   const conValid = contatto.validate().length === 0
-  return sogValid && conValid
+  // Blocca se indirizzo duplicato (warning attivo) o non trovato (senza "crea nuovo")
+  const hasIndirizzoBlock = indirizzo.indirizzoWarnings.value.length > 0
+    || indirizzo.addressNotFound.value
+  return sogValid && conValid && !hasIndirizzoBlock
 })
 
 // Scopo: Salvataggio — costruisce payload unificato per il backend.
@@ -231,8 +257,8 @@ async function handleSave() {
     } else {
       payload.ragione_sociale = f.ragione_sociale
     }
-    payload.codice_fiscale = f.codice_fiscale
-    payload.partita_iva = f.partita_iva
+    payload.codice_fiscale = f.codice_fiscale?.trim() || null
+    payload.partita_iva = f.partita_iva?.trim() || null
 
     const result = await execute(
       () => store.update(props.itemId, payload),
@@ -271,7 +297,19 @@ async function handleSave() {
       { successMessage: t('soggetti.soggetto_creato') }
     )
     if (result !== null) {
+      // result e' gia' unwrapped da useApiHandler (body.data)
+      const id = result?.id ?? result?.soggetto_id ?? null
+      const data = {
+        id,
+        ragione_sociale: soggetto.form.cognome
+          ? `${soggetto.form.cognome} ${soggetto.form.nome}`.trim()
+          : soggetto.form.ragione_sociale,
+        cf: soggetto.form.codice_fiscale,
+        piva: soggetto.form.partita_iva,
+        email: contatto.form.email || null
+      }
       emit('saved')
+      emit('saved-with-data', data)
       emit('update:visible', false)
       store.fetchList()
     }
@@ -298,6 +336,8 @@ async function handleSave() {
         :show-partita-iva="soggetto.showPartitaIva.value"
         :is-edit="isEdit"
         :disabled="false"
+        :tipi-ammessi-ids="tipiAmmessiIds"
+        :comune-nascita-item="comuneNascitaItem"
       />
 
       <!-- Sezione: Contatto inline (create) o riepilogo (edit) -->
@@ -357,6 +397,7 @@ async function handleSave() {
           @update:auto-clone="v => indirizzo.autoClone.value = v"
           @switch-tipo="indirizzo.switchTipo"
           :indirizzo-warnings="indirizzo.indirizzoWarnings.value"
+          :address-not-found="indirizzo.addressNotFound.value"
           :disabled="false"
         />
       </template>

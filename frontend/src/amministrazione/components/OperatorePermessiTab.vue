@@ -1,12 +1,13 @@
 <script setup>
-// Scopo: tab permessi dentro il drawer modifica utente.
+// Scopo: tab permessi dentro il drawer modifica operatore.
 // Sezioni: override aree, override azioni, emittenti scope.
 import { ref, onMounted, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useUtentiStore } from '../stores/utenti'
+import { useOperatoriStore } from '../stores/operatori'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useLookup } from '../../core/composables/useLookup'
 import { listAreeFunzionali, listAzioniProcesso, listEmittentiFiscali } from '../api/amministrazione'
+import { RUOLO_SISTEMA, LIVELLO_ACCESSO, buildLivelloOptions } from '../constants'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Select from 'primevue/select'
@@ -16,7 +17,7 @@ import Button from 'primevue/button'
 import Message from 'primevue/message'
 
 const { t } = useI18n()
-const store = useUtentiStore()
+const store = useOperatoriStore()
 const { execute } = useApiHandler()
 
 // Lookup via useLookup (non piu' dallo store)
@@ -28,13 +29,9 @@ const props = defineProps({
   authUserId: { type: Number, required: true }
 })
 
-const livelloOptions = [
-  { label: 'TUTTO', value: 'TUTTO' },
-  { label: 'LETTURA', value: 'LETTURA' },
-  { label: 'BLOCCATO', value: 'BLOCCATO' }
-]
+const livelloOptions = buildLivelloOptions(t)
 
-const isAdmin = computed(() => store.currentUtente?.ruolo_sistema === 'ADMIN')
+const isAdmin = computed(() => store.currentOperatore?.ruolo_sistema === RUOLO_SISTEMA.ADMIN)
 
 // Aree override locali (editabili)
 const localAree = ref([])
@@ -93,7 +90,7 @@ async function saveEmittenti() {
 
 function addAreaOverride() {
   localAree.value.push({
-    area_id: null, livello: 'BLOCCATO', motivo: '', valido_dal: null, valido_al: null
+    area_id: null, livello: LIVELLO_ACCESSO.BLOCCATO, motivo: '', valido_dal: null, valido_al: null
   })
 }
 

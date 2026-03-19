@@ -1,6 +1,8 @@
 <script setup>
 // Scopo: Autocomplete comuni con ricerca server-side.
 // Mostra descrizione + sigla provincia, emette l'id via v-model.
+// Emette @item-selected con l'oggetto completo per restore da snapshot
+// (pattern riusabile: salvare _obj nel form reactive per sopravvivere a toggle/hide).
 
 import { ref, computed, watch } from 'vue'
 import AutoComplete from 'primevue/autocomplete'
@@ -16,7 +18,7 @@ const props = defineProps({
   initialItem: { type: Object, default: null },
 })
 
-const emit = defineEmits(['update:modelValue'])
+const emit = defineEmits(['update:modelValue', 'item-selected'])
 
 const { suggestions, loading, onSearch } = useServerAutocomplete(
   (query) => searchComuni(query),
@@ -47,6 +49,7 @@ function formatLabel(item) {
 function onSelect(event) {
   selected.value = event.value
   emit('update:modelValue', event.value?.id ?? null)
+  emit('item-selected', event.value ?? null)
 }
 
 function onClear() {

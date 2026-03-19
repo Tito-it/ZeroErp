@@ -108,18 +108,22 @@ class SoggettiRepository:
             row = cursor.fetchone()
             return str(row[0]) if row and row[0] else None
 
-    # Scopo: Dettaglio completo soggetto con tipo e natura.
+    # Scopo: Dettaglio completo soggetto con tipo, natura e comune nascita.
     def get_soggetto(self, soggetto_id: str) -> dict[str, Any] | None:
         sql = """
             SELECT s.id, s.ragione_sociale_completa, s.codice_fiscale,
                    s.partita_iva, s.cognome, s.nome, s.ragione_sociale,
-                   s.sesso, s.data_nascita, s.comune_id AS comune_nascita_id,
+                   s.sesso, s.data_nascita::text, s.comune_id AS comune_nascita_id,
+                   c.descrizione AS comune_nascita_descrizione,
+                   p.sigla AS comune_nascita_provincia_sigla,
                    tsd.id AS tipo_soggetto_dettaglio_id,
                    tsd.descrizione AS tipo_descrizione,
                    ts.id AS natura_soggetto
               FROM anagrafiche.soggetti s
               JOIN config.tipi_soggetto_dettaglio tsd ON tsd.id = s.tipo_soggetto_dettaglio_id
               JOIN config.tipi_soggetto ts ON ts.id = tsd.tipo_soggetto_id
+              LEFT JOIN config.comuni c ON c.id = s.comune_id
+              LEFT JOIN config.province p ON p.id = c.provincia_id
              WHERE s.id = %s::uuid
         """
         with connection.cursor() as cursor:
@@ -209,14 +213,24 @@ class SoggettiRepository:
     # =================================================================
 
     # Scopo: Aggiorna campi modificabili di un soggetto.
+    # Normalizza stringhe vuote a NULL per evitare conflitti con trigger
+    # che controllano IS NOT NULL (es. partita_iva, codice_fiscale).
     def update_soggetto(self, soggetto_id: str, data: dict[str, Any]) -> bool:
         _ALLOWED = {
             "cognome", "nome", "ragione_sociale", "codice_fiscale",
             "partita_iva", "sesso", "data_nascita", "comune_id",
         }
+        # Campi dove stringa vuota deve diventare NULL
+        _NULLABLE = {"codice_fiscale", "partita_iva", "data_nascita", "comune_id"}
         # Mapping alias frontend → colonna DB
         _ALIAS = {"comune_nascita_id": "comune_id"}
         mapped = {_ALIAS.get(k, k): v for k, v in data.items()}
+        # Normalizza stringhe vuote a None per campi nullable
+        for k in _NULLABLE:
+            if k in mapped and mapped[k] is not None:
+                val = mapped[k]
+                if isinstance(val, str) and not val.strip():
+                    mapped[k] = None
         fields = [(k, v) for k, v in mapped.items() if k in _ALLOWED]
         if not fields:
             return False
@@ -431,12 +445,21 @@ class SoggettiRepository:
             return row_to_dict(cursor)
 
     # Scopo: Assegna ruolo a soggetto (get or create, idempotente).
+    # codice_ruolo puo' essere il campo `codice` o `codice_interno` di config.tipi_ruoli.
+    # La funzione DB accetta codice_interno: risolviamo con un sub-select.
     def assign_ruolo(self, soggetto_id: str, codice_ruolo: str) -> int:
         sql = """
-            SELECT script.fn_get_or_create_soggetto_ruolo(%s::uuid, %s)
+            SELECT script.fn_get_or_create_soggetto_ruolo(
+                %s::uuid,
+                COALESCE(
+                    (SELECT codice_interno FROM config.tipi_ruoli
+                     WHERE codice = %s OR codice_interno = %s LIMIT 1),
+                    %s
+                )
+            )
         """
         with connection.cursor() as cursor:
-            cursor.execute(sql, [soggetto_id, codice_ruolo])
+            cursor.execute(sql, [soggetto_id, codice_ruolo, codice_ruolo, codice_ruolo])
             row = cursor.fetchone()
             assert row is not None
             return int(row[0])
@@ -444,6 +467,70 @@ class SoggettiRepository:
     # =================================================================
     # Dati societari
     # =================================================================
+
+    # =================================================================
+    # Config resolver per tipo ruolo
+    # =================================================================
+
+    # Scopo: Dato un codice tipo_ruolo, restituisce le nature ammesse
+    # e i tipi_soggetto_dettaglio con i requisiti CF/PIVA.
+    # Usato dal SoggettoResolver frontend per adattare form e ricerca.
+    def get_config_resolver(self, tipo_ruolo_codice: str) -> dict[str, Any] | None:
+        # 1. Recupera tipo_ruolo
+        sql_ruolo = """
+            SELECT tr.id, tr.codice, tr.descrizione
+              FROM config.tipi_ruoli tr
+             WHERE tr.codice = %s
+        """
+        # 2. Nature ammesse per il ruolo (dalla matrice config)
+        sql_nature = """
+            SELECT ts.id AS tipo_soggetto_id,
+                   ts.descrizione AS tipo_soggetto_descrizione,
+                   ts.natura_soggetto
+              FROM config.tipi_ruoli_nature_ammesse trna
+              JOIN config.tipi_soggetto ts ON ts.id = trna.tipo_soggetto_id
+             WHERE trna.tipo_ruolo_id = %s
+               AND trna.attivo = true
+               AND (trna.valido_dal IS NULL OR trna.valido_dal <= CURRENT_DATE)
+               AND (trna.valido_al IS NULL OR trna.valido_al >= CURRENT_DATE)
+        """
+        # 3. Tipi soggetto dettaglio filtrati per nature ammesse
+        sql_dettaglio = """
+            SELECT tsd.id, tsd.codice_interno, tsd.descrizione,
+                   ts.id AS tipo_soggetto_id,
+                   ts.natura_soggetto,
+                   tsd.cf_obbligatorio, tsd.piva_obbligatoria,
+                   tsd.formato_cf, tsd.formato_piva,
+                   tsd.dati_societari_policy
+              FROM config.tipi_soggetto_dettaglio tsd
+              JOIN config.tipi_soggetto ts ON ts.id = tsd.tipo_soggetto_id
+             WHERE ts.id = ANY(%s)
+             ORDER BY tsd.codice_interno
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql_ruolo, [tipo_ruolo_codice])
+            ruolo = row_to_dict(cursor)
+            if not ruolo:
+                return None
+
+            cursor.execute(sql_nature, [ruolo["id"]])
+            nature = rows_to_list(cursor)
+
+            # Se nessuna natura configurata, il ruolo accetta tutte le nature
+            if nature:
+                nature_ids = [n["tipo_soggetto_id"] for n in nature]
+            else:
+                nature_ids = ["PF", "PG", "ENTE"]
+
+            cursor.execute(sql_dettaglio, [nature_ids])
+            dettagli = rows_to_list(cursor)
+
+        return {
+            "tipo_ruolo": ruolo["codice"],
+            "tipo_ruolo_descrizione": ruolo["descrizione"],
+            "nature_ammesse": [n["natura_soggetto"] for n in nature] if nature else ["PF", "PG", "ENTE"],
+            "tipi_soggetto_dettaglio": dettagli,
+        }
 
     # Scopo: Recupera dati societari del soggetto (se esistono).
     def get_dati_societari(self, soggetto_id: str) -> dict[str, Any] | None:

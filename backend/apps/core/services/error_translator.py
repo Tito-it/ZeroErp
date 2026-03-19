@@ -6,6 +6,7 @@
 # ------------------------------------------------------------
 
 
+import re
 from dataclasses import asdict, dataclass
 from typing import Any
 
@@ -15,6 +16,10 @@ from django.db import DatabaseError
 from apps.core.services.error_policies import ErrorPolicyRegistry
 from apps.core.services.request_context import get_request_id
 from apps.core.services.service_errors import ServiceError
+
+# Pattern per estrarre codici errore applicativi dal messaggio DB.
+# Formato: E_<DOMINIO>_<DETTAGLIO> (es. E_UTENTE_DISABILITATO, E_ANAG_VALIDAZIONE)
+_APP_ERROR_CODE_RE = re.compile(r"\bE_[A-Z][A-Z0-9_]+\b")
 
 # Translator centralizzato: converte errori Python/DB in payload API uniforme.
 
@@ -126,7 +131,9 @@ class ErrorTranslator:
     def _is_technical_code(code: str) -> bool:
         return code in {"E_PIPELINE", "E_DATABASE", "E_GENERICO"}
 
-    # Scopo: Converte eccezioni DB in ServiceError coerente con il contratto errori core.
+    # Scopo: Converte eccezioni DB in ApiError coerente con il contratto errori core.
+    # Cerca codici errore applicativi (E_*) nel messaggio DB per preservare
+    # i codici lanciati da fn_log_and_raise_error e applicare le policy corrette.
     @staticmethod
     def _from_database_error(exc: DatabaseError) -> ApiError:
         cause = getattr(exc, "__cause__", None)
@@ -134,12 +141,24 @@ class ErrorTranslator:
 
         detail = getattr(diag, "message_detail", None)
         hint = getattr(diag, "message_hint", None)
-        message = str(exc) or "Errore durante l'operazione database."
+        # message_primary contiene solo il messaggio RAISE, senza stack PL/pgSQL
+        raw_message = str(exc) or "Errore durante l'operazione database."
+        primary_message = getattr(diag, "message_primary", None)
         sqlstate = getattr(cause, "sqlstate", None) or getattr(cause, "pgcode", None)
 
         # Heuristica retryable: serializzazione/deadlock possono essere ritentati.
         retryable = sqlstate in {"40001", "40P01"}
-        code = "E_DATABASE_RETRYABLE" if retryable else "E_DATABASE"
+
+        # Cerca codice errore applicativo nel messaggio DB (es. E_UTENTE_DISABILITATO).
+        # fn_log_and_raise_error include il codice nel RAISE EXCEPTION via fn_get_messaggio.
+        app_code = ErrorTranslator._extract_app_error_code(raw_message)
+        if app_code:
+            code = app_code
+            # Per errori applicativi usa il messaggio pulito (senza stack)
+            message = primary_message or raw_message
+        else:
+            code = "E_DATABASE_RETRYABLE" if retryable else "E_DATABASE"
+            message = raw_message
 
         return ApiError(
             code=code,
@@ -148,3 +167,9 @@ class ErrorTranslator:
             hint=hint,
             retryable=retryable,
         )
+
+    # Scopo: Estrae un codice errore applicativo E_* dal messaggio di eccezione DB.
+    @staticmethod
+    def _extract_app_error_code(message: str) -> str | None:
+        match = _APP_ERROR_CODE_RE.search(message)
+        return match.group(0) if match else None

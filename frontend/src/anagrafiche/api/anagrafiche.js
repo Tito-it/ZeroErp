@@ -191,3 +191,9 @@ export function checkIndirizzoDuplicato(payload) {
 export function lookupStati() {
   return api.get(`${BASE}/stati/lookup/`)
 }
+
+// --- Ruoli config resolver ---
+
+export function getConfigResolver(tipoRuoloCodice) {
+  return api.get(`${BASE}/ruoli/${tipoRuoloCodice}/config-resolver/`)
+}

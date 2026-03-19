@@ -666,3 +666,43 @@ Quando si crea o tocca un service, si scrivono/aggiornano i test corrispondenti.
 9. Scrivere test service in `tests/services/` (validazione, dedup, not found)
 10. Se endpoint di ricerca: `is_search_endpoint = True`
 11. Registrare i codici errore in `error_policies.py` prima dell'uso
+
+---
+
+## Disattivazione record — ordine UPDATE e trigger
+
+Il database usa trigger `trgfn_prevent_deactivate_if_children` sulle tabelle con
+campo `attivo`. Il trigger **impedisce di disattivare un padre se ha figli attivi**.
+
+Questo vale per tutte le relazioni padre-figlio dove entrambi hanno `attivo`:
+`risorse_umane` → `risorse_umane_auth_user`, e future relazioni analoghe.
+
+### Regola: disattivare dal basso verso l'alto, riattivare dall'alto verso il basso
+
+**Disattivazione** — prima i figli, poi il padre:
+
+```python
+# 1. Disattiva figlio
+UPDATE risorse_umane_auth_user SET attivo = false WHERE ...
+# 2. Disattiva padre (trigger OK: figlio gia' inattivo)
+UPDATE risorse_umane SET attivo = false WHERE ...
+```
+
+**Riattivazione** — prima il padre, poi i figli:
+
+```python
+# 1. Riattiva padre
+UPDATE risorse_umane SET attivo = true WHERE ...
+# 2. Riattiva figlio (padre gia' attivo)
+UPDATE risorse_umane_auth_user SET attivo = true WHERE ...
+```
+
+### Perche'
+
+Il trigger e' una guardia di integrita': un figlio attivo senza padre attivo
+non ha senso nel dominio. Se il codice Python non rispetta l'ordine, il trigger
+blocca l'operazione con errore `E_ATTIVO_BLOCK_CHILDREN_EXIST`.
+
+Questa regola si applica a **qualsiasi** operazione di disattivazione/riattivazione
+nel sistema, non solo agli operatori. Quando si implementa un nuovo endpoint
+`disabilita`/`riattiva`, verificare le relazioni padre-figlio e rispettare l'ordine.

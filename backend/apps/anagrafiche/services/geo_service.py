@@ -248,10 +248,14 @@ class GeoService:
     # Scopo: Check duplicato indirizzo via fn_check_indirizzo_duplicato (DB).
     #        La funzione DB gestisce normalizzazione, LIKE prefix e exact_match.
     #        Python e' passante: chiama la funzione, formatta il risultato.
+    #        Due flussi: stradario_id diretto, oppure stradario_generale_id + comune_id.
     def check_indirizzo_duplicato(self, payload: dict) -> dict[str, Any]:
         stradario_id = optional_int(payload, "stradario_id")
+        stradario_generale_id = optional_int(payload, "stradario_generale_id")
+        comune_id = optional_int(payload, "comune_id")
         warnings: list[dict[str, Any]] = []
-        if not stradario_id:
+        # Serve almeno stradario_id oppure stradario_generale_id + comune_id
+        if not stradario_id and not (stradario_generale_id and comune_id):
             return {"warnings": warnings}
 
         existing = self._ind.find_duplicato(
@@ -262,6 +266,9 @@ class GeoService:
             scala=(payload.get("scala") or "").strip() or None,
             piano=(payload.get("piano") or "").strip() or None,
             interno=(payload.get("interno") or "").strip() or None,
+            stradario_generale_id=stradario_generale_id,
+            comune_id=comune_id,
+            codice_postale_id=optional_int(payload, "codice_postale_id"),
         )
         if existing:
             label = existing["indirizzo_normalizzato"]
@@ -269,9 +276,10 @@ class GeoService:
             if comune:
                 label = f"{label}, {comune}"
             exact = existing["exact_match"]
+            msg = f"Indirizzo gia' presente: {label}" if exact else f"Indirizzo simile trovato: {label}"
             warnings.append({
                 "field": "indirizzo",
-                "message": f"Indirizzo gia' presente: {label}",
+                "message": msg,
                 "indirizzo_dettaglio_id": existing["indirizzo_dettaglio_id"] if exact else None,
                 "exact_match": exact,
             })

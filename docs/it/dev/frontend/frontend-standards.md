@@ -681,47 +681,129 @@ Regola: in sola lettura **si puo' solo chiudere/uscire**, mai aprire/creare/modi
 
 ### Componenti UI (`core/components/`)
 
+#### Layout e navigazione
+
+| Componente | Scopo | Usato da |
+| --- | --- | --- |
+| `AppLayout` | Layout principale: sidebar + topbar + content area | root |
+| `AppTopbar` | Topbar: azienda, titolo area, ricerca, sessioni, data | AppLayout |
+| `AppSidebar` | Contenitore sidebar (logo + stato morfic) | AppLayout |
+| `AppToolbar` | Toolbar meta-driven con tab e azioni | View con tab |
+| `AppBreadcrumb` | Breadcrumb derivato da route meta | AppLayout |
+| `ContentTabs` | Barra tab multi-entita con KeepAlive | AppLayout |
+| `SidebarHome` | Sidebar stato HOME (lista domini L1) | AppSidebar |
+| `SidebarDomain` | Sidebar stato DOMINIO (voci L2 + preferiti) | AppSidebar |
+| `SidebarItem` | Voce sidebar riutilizzabile (icona + label) | SidebarHome, SidebarDomain |
+| `LogoBrand` | Logo ZeroERP riutilizzabile | AppSidebar, LoginView |
+| `StatusPage` | Template pagina stato (errore, placeholder) | ErrorView, PlaceholderView |
+| `SearchDrawer` | Ricerca universale soggetti per ruolo con row expansion | AppLayout (Ctrl+K) |
+| `SessioniAttivePanel` | Pannello sessioni attive in topbar | AppTopbar |
+
+#### Infrastruttura drawer e liste
+
 | Componente | Scopo | Props chiave | Usato da |
 | --- | --- | --- | --- |
 | `DrawerTitle` | Titolo standard drawer: azione sx + entita' centrata | `action`, `title` | Tutti i drawer |
-| `DrawerFooter` | Footer drawer con Annulla/Salva | `loading`, `disabled` | Tutti i drawer |
-| `NewButton` | Pulsante "Nuovo" nella toolbar | `tooltip` | Tutte le SearchTable |
+| `DrawerFooter` | Footer drawer con Annulla/Salva, auto-hide in readonly | `loading`, `disabled` | Tutti i drawer |
+| `NewButton` | Pulsante "Nuovo" nella toolbar, auto-hide in readonly | `tooltip` | Tutte le SearchTable |
+| `PaginationInfo` | Info paginazione (es. "1-50 di 1234") | `pagination` | SearchTable |
 | `TagList` | Lista tag con overflow +N e tooltip | `items`, `labelField`, `maxVisible`, `severity` | Ruoli in lista soggetti |
-| `SoggettoForm` | Form universale PF/PG/ENTE con genera CF e validazione | `form`, `tipiSoggetto`, `isPF`, `showPartitaIva` | SoggettoDrawer, UtenteDrawer |
-| `ContattoForm` | Form contatto (nominativo, email, tel, pec, tipo, UO) | `form`, `tipiContatto`, `unitaOrganizzative` | SoggettoDrawer |
-| `IndirizzoSoggettoForm` | Form indirizzo multi-tipo con barra tag e auto-clone | `form`, `tipiStato`, `autoClone`, `toponomasticaLookup` | SoggettoDrawer |
-| `DatiSocietariForm` | Form dati societari (FG, REA, capitale, FE) | `form`, `formeGiuridiche`, `provinceLookup` | SoggettoDrawer |
-| `ComuneAutocomplete` | Autocomplete comune con ricerca server | `modelValue` | IndirizzoDrawer, SoggettoForm |
-| `StradarioAutocomplete` | Autocomplete stradario filtrato per comune | `modelValue`, `comuneId` | IndirizzoDrawer, IndirizzoSoggettoForm |
-| `AuthUserForm` | Form credenziali operatore | `form`, `isEdit` | UtenteDrawer |
-| `ConfigTablePanel` | Pannello CRUD generico per tabelle config | — | ConfigView |
-| `GenericConfigDrawer` | Drawer dinamico per record config | `rel`, `label`, `recordId` | ConfigTablePanel |
-| `SearchDrawer` | Ricerca universale soggetti per ruolo | — | AppLayout (Ctrl+K) |
 | `AppDrawer` | Drawer generico con header + footer + slot body | `title`, `width` | Utility wrapper |
+
+#### Building block form
+
+| Componente | Scopo | Props chiave | Usato da |
+| --- | --- | --- | --- |
+| `SoggettoForm` | Form universale PF/PG/ENTE con genera CF e validazione | `form`, `tipiSoggetto`, `isPF`, `showPartitaIva` | SoggettoDrawer, UtenteDrawer |
+| `ContattoForm` | Form contatto (nominativo, email, tel, pec, tipo, UO) | `form`, `tipiContatto`, `unitaOrganizzative` | ContattiSoggettoDrawer |
+| `IndirizzoSoggettoForm` | Form indirizzo con barra multi-tipo, via_obj, check duplicato | composable props | IndirizziSoggettoDrawer |
+| `DatiSocietariForm` | Form dati societari (FG, REA, capitale, FE) | `form`, `formeGiuridiche`, `provinceLookup` | SoggettoDrawer |
+| `AuthUserForm` | Form credenziali operatore | `form`, `isEdit` | UtenteDrawer |
+
+#### Autocomplete
+
+| Componente | Scopo | Props chiave | Usato da |
+| --- | --- | --- | --- |
+| `ComuneAutocomplete` | Autocomplete comune con ricerca server + initialItem | `modelValue`, `initialItem` | IndirizzoDrawer, IndirizzoSoggettoForm |
+| `StradarioAutocomplete` | Autocomplete stradario filtrato per comune | `modelValue`, `comuneId` | IndirizzoDrawer, IndirizzoSoggettoForm |
+| `StradarioGeneraleAutocomplete` | Autocomplete vie su stradario_generale (tutta Italia) | `modelValue` | IndirizzoDrawer (via nuova) |
+
+#### Drawer dominio (gestione soggetto)
+
+| Componente | Scopo | Usato da |
+| --- | --- | --- |
+| `IndirizziSoggettoDrawer` | Gestione indirizzi soggetto: multi-tipo, replace, auto-clone, addressNotFound | SoggettoDrawer |
+| `ContattiSoggettoDrawer` | Gestione contatti soggetto: lista, CRUD, validazione email/PEC | SoggettoDrawer |
+
+#### Drawer e SearchTable geografici
+
+| Componente | Scopo | Usato da |
+| --- | --- | --- |
+| `ComuneDrawer` + `ComuniSearchTable` | CRUD comuni | IndirizziView |
+| `ProvinceDrawer` + `ProvinceSearchTable` | CRUD province | IndirizziView |
+| `RegioniDrawer` + `RegioniSearchTable` | CRUD regioni | IndirizziView |
+| `StatiDrawer` + `StatiSearchTable` | CRUD stati | IndirizziView |
+| `ToponomasticaDrawer` + `ToponomasticaSearchTable` | CRUD toponomastica | IndirizziView |
+| `CodiciPostaliDrawer` + `CodiciPostaliSearchTable` | CRUD codici postali | IndirizziView |
+| `ConfigTablePanel` + `GenericConfigDrawer` | CRUD generico 67 tabelle config | ConfigView |
 
 ### Composable (`core/composables/`)
 
+#### Infrastruttura liste e drawer
+
 | Composable | Scopo | Usato da |
 | --- | --- | --- |
-| `useSearchTable` | Paginazione, sort, search debounce per DataTable lazy | Tutte le SearchTable |
-| `useDrawerState` | Stato drawer (visible, mode, itemId, itemData) | Tutte le View con drawer |
+| `useSearchTable` | Paginazione, sort, search debounce, applyFilters per DataTable lazy | Tutte le SearchTable |
+| `useDrawerState` | Stato drawer: visible, mode, itemId, itemData, openCreate(), editRow(), close() | Tutte le View con drawer |
 | `useTabFreshness` | Refresh automatico lista su evento `dataChanged` | Tutte le SearchTable |
 | `useTabEvents` | Event bus inter-tab per invalidazione dati | Store (emit), SearchTable (listen) |
+| `useTabLabel` | Risoluzione label tab da route meta | ContentTabs |
 | `useApiHandler` | Execute con loading, toast successo, gestione errori | Tutti i drawer |
-| `useLookup` | Caricamento lazy/eager di dati lookup con cache | Form con select |
-| `useServerAutocomplete` | Autocomplete con ricerca server debounce | ComuneAutocomplete, StradarioAutocomplete |
-| `useSoggettoForm` | Stato form soggetto, matrice indirizzi, validazione | SoggettoDrawer, UtenteDrawer |
-| `useContattoForm` | Stato form contatto con lookup tipi | SoggettoDrawer |
-| `useIndirizzoSoggettoForm` | Stato form indirizzo multi-tipo con auto-clone | SoggettoDrawer |
-| `useDatiSocietariForm` | Stato form dati societari con policy FG | SoggettoDrawer |
-| `useIndirizzoDuplicato` | Check duplicato indirizzo via API | IndirizzoDrawer, IndirizzoSoggettoForm |
+| `useNotify` | Toast PrimeVue centralizzato — MAI importare useToast direttamente | useApiHandler |
+| `useConfirmAction` | Dialogo conferma azione distruttiva | UtenteDrawer, delete |
+| `useConfirmCloseTab` | Conferma chiusura tab con modifiche non salvate | ContentTabs |
+| `useDirtyState` | Traccia modifiche non salvate (form dirty) | ContentTabs |
+| `useLoading` | Stato loading generico (ref + toggle) | Componenti vari |
+| `useKeyboardShortcuts` | Shortcut globali: Ctrl+K ricerca, Ctrl+W chiudi tab, Ctrl+Tab naviga | AppLayout |
+| `usePagination` | Paginazione server-side (usato internamente da useSearchTable) | useSearchTable |
+
+#### Lookup e autocomplete
+
+| Composable | Scopo | Usato da |
+| --- | --- | --- |
+| `useLookup` | Caricamento lazy/eager di dati lookup con cache | Form con select/dropdown |
+| `useServerAutocomplete` | Autocomplete con ricerca server debounce 300ms | ComuneAutocomplete, StradarioAutocomplete, StradarioGeneraleAutocomplete |
+
+#### Building block dominio — soggetti e contatti
+
+| Composable | Scopo | Usato da |
+| --- | --- | --- |
+| `useSoggettoForm` | Stato form soggetto PF/PG/ENTE, matrice indirizzi, validazione | SoggettoDrawer, UtenteDrawer |
+| `useContattoForm` | Stato form contatto con validazione email/PEC | ContattiSoggettoDrawer |
+| `useDatiSocietariForm` | Stato form dati societari con policy forma giuridica | SoggettoDrawer |
 | `useAuthUser` | Stato form credenziali + permessi operatore | UtenteDrawer |
-| `useNotify` | Toast PrimeVue centralizzato | useApiHandler |
-| `useConfirmAction` | Dialogo conferma azione | UtenteDrawer |
-| `useDirtyState` | Traccia modifiche non salvate | Futuro |
-| `useConfirmCloseTab` | Conferma chiusura tab con modifiche | ContentTabs |
+
+#### Building block dominio — indirizzi (gerarchia)
+
+| Composable | Scopo | Usato da |
+| --- | --- | --- |
+| `useIndirizzoBase` | Composable condiviso: comune, via (via_obj unificato), CAP auto-set, civico, check duplicato, addressNotFound | IndirizzoDrawer, useIndirizzoSoggettoForm |
+| `useIndirizzoSoggettoForm` | Estende useIndirizzoBase: multi-tipo, libera, auto-clone, toPayloadArray | IndirizziSoggettoDrawer |
+| `useIndirizzoMultiTipo` | Barra tag tipo indirizzo con snapshot/restore per cambio tipo | useIndirizzoSoggettoForm |
+| `useIndirizzoDuplicato` | Check duplicato indirizzo via API con exact_match + indirizzoWarnings | useIndirizzoBase |
+
+#### Modalita sola lettura
+
+| Composable | Scopo | Usato da |
+| --- | --- | --- |
 | `useReadonlyMode` | Provider: derive isReadonly da permessi area + provide | View (SoggettiView, IndirizziView, ConfigTablePanel) |
 | `useInjectReadonly` | Consumer: inject isReadonly dal provider padre | NewButton, DrawerFooter, tutti i Drawer |
+
+#### Ricerca universale
+
+| Composable | Scopo | Usato da |
+| --- | --- | --- |
+| `useSearchDetail` | Fetch dettaglio soggetto per row expansion (livello 2) | SearchDrawer |
 
 ### Utility (`core/utils/`)
 
@@ -756,6 +838,12 @@ Regola: in sola lettura **si puo' solo chiudere/uscire**, mai aprire/creare/modi
 | `.form-grid` | Griglia form a colonna singola |
 | `.form-grid-2col` | Griglia form a 2 colonne (responsive) |
 | `.form-field` | Campo form con label + input |
+| `.app-readonly` | Overlay sola lettura: pointer-events none, opacity 0.85 |
+| `.app-escape` | Escludi da readonly (pulsanti consultazione restano cliccabili) |
+| `.app-empty-state` | Layout centrato per stati vuoti |
+| `.app-loading` | Spinner loading centrato |
+| `.app-action-btn` | Pulsante azione interno al form |
+| `.app-field-error` | Messaggio errore campo |
 | `.p-drawer-title` | Stile globale titolo drawer (centrato, verde) |
 
 ### Backend — Utility riutilizzabili
@@ -771,5 +859,5 @@ Regola: in sola lettura **si puo' solo chiudere/uscire**, mai aprire/creare/modi
 
 ---
 
-*ZeroERP Frontend Standards — rev. 7 (17 marzo 2026)*
+*ZeroERP Frontend Standards — rev. 8 (18 marzo 2026)*
 *Sviluppo Concentrico — anello esterno, radici nell'infrastruttura*

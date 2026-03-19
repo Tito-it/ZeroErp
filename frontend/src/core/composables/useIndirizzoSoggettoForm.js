@@ -22,10 +22,34 @@ export function useIndirizzoSoggettoForm() {
   form.locality = ''
   form._isLibera = false
 
-  // Modalita' libera (ref che sincronizza con form._isLibera per snapshot)
+  // Modalita' libera con due slot di memoria: i dati nazionali vengono
+  // salvati al toggle verso estero e ripristinati al toggle verso nazionale.
+  const _savedNazionale = ref(null)
+  const _savedEstero = ref({ indirizzo_libero: '', stato_id: null, locality: '' })
+
   const isLibera = computed({
     get: () => form._isLibera,
-    set: (val) => { form._isLibera = val },
+    set: (val) => {
+      if (val === form._isLibera) return
+      if (val) {
+        // Nazionale → Estero: salva dati nazionali, ripristina estero
+        _savedNazionale.value = base.snapshot()
+        form.indirizzo_libero = _savedEstero.value.indirizzo_libero || ''
+        form.stato_id = _savedEstero.value.stato_id || null
+        form.locality = _savedEstero.value.locality || ''
+      } else {
+        // Estero → Nazionale: salva dati estero, ripristina nazionali
+        _savedEstero.value = {
+          indirizzo_libero: form.indirizzo_libero,
+          stato_id: form.stato_id,
+          locality: form.locality,
+        }
+        if (_savedNazionale.value) {
+          base.restore(_savedNazionale.value)
+        }
+      }
+      form._isLibera = val
+    },
   })
 
   // Multi-tipo: snapshot/restore, barra tag, auto-clone
@@ -98,6 +122,8 @@ export function useIndirizzoSoggettoForm() {
     form.indirizzo_libero = ''
     form.stato_id = null
     form.locality = ''
+    _savedNazionale.value = null
+    _savedEstero.value = { indirizzo_libero: '', stato_id: null, locality: '' }
     multiTipo.reset()
   }
 

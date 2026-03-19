@@ -18,6 +18,31 @@ const password = ref('')
 const errorMessage = ref('')
 const loading = ref(false)
 
+// Mappa codici errore DB → chiavi i18n per messaggi login specifici
+const ERROR_CODE_MAP = {
+  E_UTENTE_DISABILITATO: 'auth.account_disabled',
+  E_UTENTE_NON_ATTIVO: 'auth.account_not_active',
+  E_UTENTE_SCADUTO: 'auth.account_expired'
+}
+
+function resolveLoginError(err) {
+  const status = err?.response?.status
+  // Throttle IP: troppi tentativi
+  if (status === 429) return t('auth.too_many_attempts')
+  const data = err?.response?.data
+  const code = data?.error?.code
+  // Blocco per utente: mostra minuti rimanenti dal messaggio DB
+  if (code === 'E_UTENTE_BLOCCATO') {
+    const msg = data?.error?.detail || data?.error?.message || ''
+    return msg || t('auth.account_locked')
+  }
+  const i18nKey = code && ERROR_CODE_MAP[code]
+  if (i18nKey) return t(i18nKey)
+  // Token request fallito (401) → credenziali errate; altrimenti generico
+  if (!status || status === 401) return t('auth.login_error')
+  return t('auth.access_denied')
+}
+
 async function handleLogin() {
   errorMessage.value = ''
   loading.value = true
@@ -25,8 +50,8 @@ async function handleLogin() {
     await auth.login(username.value, password.value)
     const redirect = route.query.redirect || '/'
     router.push(redirect)
-  } catch {
-    errorMessage.value = t('auth.login_error')
+  } catch (err) {
+    errorMessage.value = resolveLoginError(err)
   } finally {
     loading.value = false
   }

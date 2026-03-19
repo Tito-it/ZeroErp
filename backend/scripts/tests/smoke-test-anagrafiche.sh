@@ -140,7 +140,7 @@ log_info "Totale toponomastica: $TOPO_COUNT"
 echo ""
 echo "-- 2. Crea toponomastica --"
 TOPO_NAME="SmokeTest_$(date +%s)"
-do_curl POST "/api/v1/anagrafiche/toponomastica/crea/" \
+do_curl POST "/api/v1/anagrafiche/toponomastica/" \
     "{\"descrizione\":\"$TOPO_NAME\"}"
 check "Crea toponomastica '$TOPO_NAME'" "200" ".data.id"
 TOPO_ID="$EXTRACTED"
@@ -149,7 +149,7 @@ log_info "Creato id=$TOPO_ID"
 # --- 3. Modifica toponomastica ---
 echo ""
 echo "-- 3. Modifica toponomastica --"
-do_curl PATCH "/api/v1/anagrafiche/toponomastica/${TOPO_ID}/aggiorna/" \
+do_curl PATCH "/api/v1/anagrafiche/toponomastica/${TOPO_ID}/" \
     "{\"attivo\":false}"
 check "Disattiva toponomastica id=$TOPO_ID" "200"
 
@@ -220,7 +220,7 @@ fi
 
 if [[ -n "$STRADARIO_ID" && "$STRADARIO_ID" != "" ]]; then
     CIVICO_SMOKE=$((RANDOM % 9000 + 1000))
-    do_curl POST "/api/v1/anagrafiche/indirizzi/crea/" \
+    do_curl POST "/api/v1/anagrafiche/indirizzi/" \
         "{\"stradario_id\":${STRADARIO_ID},\"civico\":${CIVICO_SMOKE},\"interno\":\"SMOKE\"}"
     check "Crea indirizzo civico=$CIVICO_SMOKE" "200" ".data.indirizzo_dettaglio_id"
     CREATED_IND_ID="$EXTRACTED"
@@ -237,7 +237,7 @@ if [[ -n "$STRADARIO_ID" && "$STRADARIO_ID" != "" ]]; then
     # --- 10. Modifica indirizzo ---
     echo ""
     echo "-- 10. Modifica indirizzo --"
-    do_curl PATCH "/api/v1/anagrafiche/indirizzi/${CREATED_IND_ID}/aggiorna/" \
+    do_curl PATCH "/api/v1/anagrafiche/indirizzi/${CREATED_IND_ID}/" \
         "{\"interno\":\"SMOKE_UPD\"}"
     check "Modifica indirizzo id=$CREATED_IND_ID" "200"
 else
