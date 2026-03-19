@@ -36,7 +36,7 @@
 - [fn_build_indirizzo_normalizzato](funzioni/fn_build_indirizzo_normalizzato.md) — Centralizza **tutta** la logica di normalizzazione degli indirizzi fisici. E' la **unica source of truth**: il trigger `trgfn_indirizzi_dettaglio_normalize` la chiama e assegna i risultati (zero logica nel trigger). Il backend Python la usa per check duplicato via GIN index.
 - [fn_crea_auth_user](funzioni/fn_crea_auth_user.md) — (latest review 13-03-2026) Building block atomico per la creazione di un record `auth_user` (Django). Gestisce la validazione dei parametri e i guard di unicita' su username e email.
 - [fn_crea_indirizzo_soggetto](funzioni/fn_crea_indirizzo_soggetto.md) — (latest review 13-03-2026)
-- [fn_crea_operatore](funzioni/fn_crea_operatore.md) — (latest review 13-03-2026) Orchestratore transazionale per la creazione completa di un operatore. Chiama i building block in sequenza all'interno di una singola transazione:
+- [fn_crea_operatore](funzioni/fn_crea_operatore.md)
 - [fn_crea_risorsa_umana](funzioni/fn_crea_risorsa_umana.md) — (latest review 13-03-2026) Building block atomico per la creazione di una risorsa umana con bridge `auth_user` opzionale.
 - [fn_crea_soggetto_pf](funzioni/fn_crea_soggetto_pf.md) — (latest review 13-03-2026) Building block atomico per la creazione di un soggetto Persona Fisica (natura PR = Privato) con contatto default obbligatorio.
 - [fn_crea_soggetto_pg](funzioni/fn_crea_soggetto_pg.md) — (latest review 14-03-2026) Building block atomico per la creazione di un soggetto Persona Giuridica con contatto default obbligatorio e dati societari (condizionali alla `dati_societari_policy` del tipo soggetto).

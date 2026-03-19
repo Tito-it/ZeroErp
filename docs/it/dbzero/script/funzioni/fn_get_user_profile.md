@@ -125,6 +125,18 @@ BEGIN
         );
     END IF;
 
+    -- Guard: ruolo sistema DISABILITATO blocca il login
+    IF v_ruolo_sistema = 'DISABILITATO' THEN
+        PERFORM script.fn_log_and_raise_error(
+            'database', 'script.fn_get_user_profile',
+            'E_UTENTE_DISABILITATO',
+            jsonb_build_object('auth_user_id', p_auth_user_id,
+                              'ruolo_sistema', v_ruolo_sistema::text),
+            NULL::uuid,
+            'Utente disabilitato: ruolo_sistema=DISABILITATO.'
+        );
+    END IF;
+
     -- Dati risorsa umana + qualifica + UO
     SELECT ru.soggetto_ruolo_id,
            ru.qualifica_id,
@@ -162,6 +174,42 @@ BEGIN
             jsonb_build_object('risorsa_umana_id', v_risorsa_umana_id),
             NULL::uuid,
             'Nessun record risorse_umane per id=' || v_risorsa_umana_id || '.'
+        );
+    END IF;
+
+    -- Guard: risorsa umana disattivata
+    IF v_ru_attivo = false THEN
+        PERFORM script.fn_log_and_raise_error(
+            'database', 'script.fn_get_user_profile',
+            'E_UTENTE_DISABILITATO',
+            jsonb_build_object('auth_user_id', p_auth_user_id,
+                              'risorsa_umana_id', v_risorsa_umana_id),
+            NULL::uuid,
+            'Utente disabilitato: risorsa umana non attiva.'
+        );
+    END IF;
+
+    -- Guard: risorsa umana non ancora valida
+    IF v_valido_dal IS NOT NULL AND CURRENT_DATE < v_valido_dal THEN
+        PERFORM script.fn_log_and_raise_error(
+            'database', 'script.fn_get_user_profile',
+            'E_UTENTE_NON_ATTIVO',
+            jsonb_build_object('auth_user_id', p_auth_user_id,
+                              'valido_dal', v_valido_dal),
+            NULL::uuid,
+            'Utente non ancora attivo: valido_dal=' || v_valido_dal || '.'
+        );
+    END IF;
+
+    -- Guard: risorsa umana scaduta
+    IF v_valido_al IS NOT NULL AND CURRENT_DATE > v_valido_al THEN
+        PERFORM script.fn_log_and_raise_error(
+            'database', 'script.fn_get_user_profile',
+            'E_UTENTE_SCADUTO',
+            jsonb_build_object('auth_user_id', p_auth_user_id,
+                              'valido_al', v_valido_al),
+            NULL::uuid,
+            'Utente scaduto: valido_al=' || v_valido_al || '.'
         );
     END IF;
 

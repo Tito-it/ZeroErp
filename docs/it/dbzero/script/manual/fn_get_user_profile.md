@@ -48,7 +48,20 @@ E' progettata come **unico punto di accesso** per l'endpoint `GET /api/v1/core/m
 | ---------------- | --------- | ------------ | -------------------------------------------------------- |
 | `p_auth_user_id` | `INTEGER` | Si           | ID dell'utente Django (`auth_user.id`). Deve essere > 0. |
 
-**Guard**: se `NULL` o `<= 0`, lancia `invalid_parameter_value`. Se l'utente non esiste o non ha record ponte `risorse_umane_auth_user`, lancia `no_data_found`.
+**Guard di validazione**:
+
+| Condizione                              | Codice errore          | Messaggio                                       |
+| --------------------------------------- | ---------------------- | ----------------------------------------------- |
+| `p_auth_user_id` NULL o <= 0            | `E_ADMIN_VALIDAZIONE`  | p_auth_user_id obbligatorio e > 0               |
+| auth_user non trovato                   | `E_ADMIN_VALIDAZIONE`  | auth_user con id=X non trovato                  |
+| Nessun record `risorse_umane_auth_user` | `E_ADMIN_VALIDAZIONE`  | Nessun record risorse_umane_auth_user            |
+| `ruolo_sistema = DISABILITATO`          | `E_UTENTE_DISABILITATO` | Utente disabilitato: ruolo_sistema=DISABILITATO |
+| Nessun record `risorse_umane`           | `E_ADMIN_VALIDAZIONE`  | Nessun record risorse_umane                     |
+| `risorse_umane.attivo = false`          | `E_UTENTE_DISABILITATO` | Utente disabilitato: risorsa umana non attiva   |
+| `CURRENT_DATE < valido_dal`             | `E_UTENTE_NON_ATTIVO`  | Utente non ancora attivo                        |
+| `CURRENT_DATE > valido_al`              | `E_UTENTE_SCADUTO`     | Utente scaduto                                  |
+
+Tutti i guard usano `script.fn_log_and_raise_error` (errori loggati in `dbops.error_log`).
 
 ---
 

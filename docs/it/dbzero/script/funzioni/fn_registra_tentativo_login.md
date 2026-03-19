@@ -1,0 +1,122 @@
+{% include-markdown "it/dbzero/script/manual/fn_registra_tentativo_login.md" %}
+# ⚙️ Funzione `fn_registra_tentativo_login`
+
+```sql
+CREATE FUNCTION fn_registra_tentativo_login(p_auth_user_id integer, p_successo boolean)
+```
+
+**Definizione completa:**
+
+```sql
+CREATE OR REPLACE FUNCTION script.fn_registra_tentativo_login(p_auth_user_id integer, p_successo boolean)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+AS $function$
+DECLARE
+    v_max_tentativi    integer;
+    v_blocco_minuti    integer;
+    v_tentativi        anagrafiche.risorse_umane_auth_user.tentativi_falliti%TYPE;
+    v_bloccato         boolean := false;
+    v_bloccato_fino_a  anagrafiche.risorse_umane_auth_user.bloccato_fino_a%TYPE;
+BEGIN
+    -- =========================================================
+    -- Scopo:
+    --   Registra l'esito di un tentativo di login.
+    --   Se p_successo = true: reset tentativi a 0.
+    --   Se p_successo = false: incrementa contatore.
+    --     Se contatore >= max (da config.parameters):
+    --     imposta blocco temporaneo (durata da config.parameters).
+    --   Da chiamare DOPO la verifica credenziali.
+    --
+    -- Parametri:
+    --   p_auth_user_id: ID utente Django
+    --   p_successo: true = login riuscito, false = fallito
+    --
+    -- Ritorna:
+    --   JSONB { bloccato, minuti_rimanenti, tentativi }
+    --
+    -- Config.parameters usati:
+    --   login_max_tentativi_falliti (default 5)
+    --   login_blocco_minuti (default 15)
+    -- =========================================================
+
+    -- Guard
+    IF p_auth_user_id IS NULL OR p_auth_user_id <= 0 THEN
+        RETURN jsonb_build_object(
+            'bloccato', false,
+            'minuti_rimanenti', 0,
+            'tentativi', 0
+        );
+    END IF;
+
+    -- Verifica che il record ponte esista
+    IF NOT EXISTS (
+        SELECT 1 FROM anagrafiche.risorse_umane_auth_user
+         WHERE auth_user_id = p_auth_user_id
+    ) THEN
+        RETURN jsonb_build_object(
+            'bloccato', false,
+            'minuti_rimanenti', 0,
+            'tentativi', 0
+        );
+    END IF;
+
+    IF p_successo THEN
+        -- Login riuscito: reset contatore
+        UPDATE anagrafiche.risorse_umane_auth_user
+           SET tentativi_falliti = 0,
+               bloccato_fino_a  = NULL
+         WHERE auth_user_id = p_auth_user_id;
+
+        RETURN jsonb_build_object(
+            'bloccato', false,
+            'minuti_rimanenti', 0,
+            'tentativi', 0
+        );
+    END IF;
+
+    -- Login fallito: leggi configurazione
+    v_max_tentativi := COALESCE(
+        (SELECT p.default_value::integer
+           FROM config.parameters p
+          WHERE p.code = 'login_max_tentativi_falliti'),
+        5
+    );
+
+    v_blocco_minuti := COALESCE(
+        (SELECT p.default_value::integer
+           FROM config.parameters p
+          WHERE p.code = 'login_blocco_minuti'),
+        15
+    );
+
+    -- Incrementa contatore
+    UPDATE anagrafiche.risorse_umane_auth_user
+       SET tentativi_falliti = tentativi_falliti + 1
+     WHERE auth_user_id = p_auth_user_id
+    RETURNING tentativi_falliti INTO v_tentativi;
+
+    -- Verifica soglia
+    IF v_tentativi >= v_max_tentativi THEN
+        v_bloccato_fino_a := NOW() + (v_blocco_minuti || ' minutes')::interval;
+        v_bloccato := true;
+
+        UPDATE anagrafiche.risorse_umane_auth_user
+           SET bloccato_fino_a = v_bloccato_fino_a
+         WHERE auth_user_id = p_auth_user_id;
+    END IF;
+
+    RETURN jsonb_build_object(
+        'bloccato', v_bloccato,
+        'minuti_rimanenti', CASE WHEN v_bloccato THEN v_blocco_minuti ELSE 0 END,
+        'tentativi', v_tentativi
+    );
+END;
+$function$
+
+COMMENT ON FUNCTION script.fn_registra_tentativo_login(p_auth_user_id integer, p_successo boolean)
+IS 'Registra esito tentativo login. Successo: reset contatore. Fallimento: incrementa, se >= max blocca per N minuti. Max e durata da config.parameters (login_max_tentativi_falliti, login_blocco_minuti). Ritorna JSONB {bloccato, minuti_rimanenti, tentativi}.';
+```
+
+---
+{% include-markdown "signature-core.md" %}
