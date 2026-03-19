@@ -2,37 +2,34 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> • [vendite.fatture_fondi_fattura](/dbzero/vendite/tabelle/fatture_fondi_fattura)  
+• [vendite.fatture_fondi_fattura](/dbzero/vendite/tabelle/fatture_fondi_fattura)  
 >
-> **Approfondimento funzioni:**
+**Approfondimento funzioni:**
 >
-> • [vendite.fn_ricalcola_totali_fattura](/dbzero/vendite/funzioni/fn_ricalcola_totali_fattura)  
+• [vendite.fn_ricalcola_totali_fattura](/dbzero/vendite/funzioni/fn_ricalcola_totali_fattura)  
 >
----
-
 ### 🎯 Scopo Principale
-
 La funzione **`vendite.fn_get_totale_fondi_fattura()`** restituisce il totale
 dei fondi fattura **attivi** associati alla testata.
 
 ---
 
-### ✅ Regole principali
+### Regole principali
 
 * `p_fattura_id` obbligatorio.
 * Somma solo righe `fatture_fondi_fattura` con `attivo = true`.
 
 ---
 
-### ✅ Output
+### Output
 
 Ritorna un valore numerico con il totale fondi fattura.
 
 ---
 
-### 🧪 Esempio d’uso
+### Esempio d’uso
 
 ```sql
 SELECT vendite.fn_get_totale_fondi_fattura(

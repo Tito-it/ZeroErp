@@ -2,19 +2,16 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento Tabelle:**  
+**Approfondimento Tabelle:**  
 > 
-> * [anagrafiche.indirizzi](/dbzero/anagrafiche/tabelle/indirizzi)      
-> * [anagrafiche.indirizzi_dettaglio](/dbzero/anagrafiche/tabelle/indirizzi_dettaglio)      
+[anagrafiche.indirizzi](/dbzero/anagrafiche/tabelle/indirizzi)      
+> [anagrafiche.indirizzi_dettaglio](/dbzero/anagrafiche/tabelle/indirizzi_dettaglio)      
 >
-> **Approfondimento Funzioni:**   
+**Approfondimento Funzioni:**   
 > 
-> * [script.fn_get_default_by_param](/dbzero/script/funzioni/fn_get_default_by_param)   
+[script.fn_get_default_by_param](/dbzero/script/funzioni/fn_get_default_by_param)   
 >
----
-
 ### 🎯 Scopo Principale
-
 (latest review 28-12-25)
 Normalizzare i campi base di `anagrafiche.indirizzi` in base alla presenza del collegamento a `indirizzi_dettaglio`.
 
@@ -22,7 +19,7 @@ Quando `indirizzo_dettaglio_id` e' valorizzato, la funzione ripulisce tutti i ca
 
 ---
 
-### 🧩 Come Funziona
+### Come Funziona
 
 1. **Caso normalizzato** (`NEW.indirizzo_dettaglio_id IS NOT NULL`):
    * Azzeramento dei campi di fallback (`stato_id`, `indirizzo_libero`, `comune_id`, `codice_postale_id`, `administrative_area`, `locality`, `sublocality`, `postal_box`).
@@ -45,7 +42,7 @@ Quando `indirizzo_dettaglio_id` e' valorizzato, la funzione ripulisce tutti i ca
 
 ---
 
-## 🔗 Trigger Associato
+## Trigger Associato
 
 ```sql
 CREATE TRIGGER trg_indirizzi_base_normalize
@@ -57,7 +54,7 @@ CREATE TRIGGER trg_indirizzi_base_normalize
 
 ---
 
-### 💡 Note Operative
+### Note Operative
 
 * Evita la coesistenza di dati normalizzati e liberi nello stesso record.
 * Il ricalcolo di `geoloc` dal dettaglio civico richiede un trigger dedicato
@@ -68,4 +65,4 @@ CREATE TRIGGER trg_indirizzi_base_normalize
 
 ---
 
-> 🧠 **"Coerenza indirizzi: o normalizzato con dettaglio civico, o libero con default minimo."**
+> **"Coerenza indirizzi: o normalizzato con dettaglio civico, o libero con default minimo."**

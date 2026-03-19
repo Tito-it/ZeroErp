@@ -1,7 +1,7 @@
 bracex==2.6
 certifi==2026.2.25
 cfgv==3.5.0
-charset-normalizer==3.4.5
+charset-normalizer==3.4.6
 click==8.3.1
 colorama==0.4.6
 deepmerge==2.0
@@ -9,7 +9,7 @@ distlib==0.4.0
 EditorConfig==0.17.1
 filelock==3.25.2
 hjson==3.1.0
-identify==2.6.17
+identify==2.6.18
 idna==3.11
 Jinja2==3.1.6
 jsbeautifier==1.15.4
@@ -37,4 +37,4 @@ typing_extensions==4.15.0
 urllib3==2.6.3
 virtualenv==21.2.0
 wcmatch==10.1
-zensical==0.0.26
+zensical==0.0.27

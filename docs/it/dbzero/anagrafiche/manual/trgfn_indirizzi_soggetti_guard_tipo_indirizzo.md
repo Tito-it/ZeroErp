@@ -2,22 +2,20 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento Tabelle:**
+**Approfondimento Tabelle:**
 > 
-> • [anagrafiche.indirizzi_soggetti](/dbzero/anagrafiche/tabelle/indirizzi_soggetti)  
+• [anagrafiche.indirizzi_soggetti](/dbzero/anagrafiche/tabelle/indirizzi_soggetti)  
 > • [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)  
 > • [config.tipi_soggetto_dettaglio](/dbzero/config/tabelle/tipi_soggetto_dettaglio)  
 > • [config.tipi_soggetto_dettaglio_tipi_indirizzo](/dbzero/config/tabelle/tipi_soggetto_dettaglio_tipi_indirizzo)  
 >
-> **Approfondimento Funzioni:**   
+**Approfondimento Funzioni:**   
 > 
-> • [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)   
+• [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)   
 > • [dbops.trgfn_tx_id_managed](/dbzero/dbops/funzioni/trgfn_tx_id_managed)   
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 28-12-25)
 Garantire che il **tipo indirizzo** associato a un soggetto sia coerente con la **matrice di abilitazione** definita per il suo tipo soggetto dettaglio.
 
@@ -25,7 +23,7 @@ Se e' presente una matrice attiva in `config.tipi_soggetto_dettaglio_tipi_indiri
 
 ---
 
-### 🧩 Come Funziona
+### Come Funziona
 
 1. Ignora le `DELETE` (non applica controlli).
 2. Se mancano `soggetto_id` o `tipo_indirizzo_id`, non applica controlli.
@@ -49,7 +47,7 @@ Gli errori sono prodotti tramite:
 
 ---
 
-### 🔗 Relazioni con altri trigger
+### Relazioni con altri trigger
 
 Questa funzione e' usata come guard su `anagrafiche.indirizzi_soggetti`, tipicamente in un trigger `BEFORE INSERT OR UPDATE`, ad esempio:
 
@@ -61,7 +59,7 @@ CREATE TRIGGER trg_indirizzi_soggetti_guard_tipo_indirizzo
 
 ---
 
-### 💡 Note Implementative
+### Note Implementative
 
 * La matrice e' **opzionale**: se non definita per il tipo soggetto dettaglio, la funzione non blocca.
 * La validita' temporale usa `current_date` e rispetta `valido_dal`/`valido_al`.
@@ -69,5 +67,5 @@ CREATE TRIGGER trg_indirizzi_soggetti_guard_tipo_indirizzo
 
 ---
 
-> 🧠 **"La matrice tipi indirizzo decide cosa e' permesso: il trigger impedisce associazioni non configurate."**
+> **"La matrice tipi indirizzo decide cosa e' permesso: il trigger impedisce associazioni non configurate."**
 

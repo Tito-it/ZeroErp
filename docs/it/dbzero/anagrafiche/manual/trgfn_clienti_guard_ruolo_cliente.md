@@ -4,17 +4,16 @@
 
 > Approfondimenti tabelle:  
 >
->  * [anagrafiche.clienti](/dbzero/anagrafiche/tabelle/clienti)   
->  * [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli) 
+[anagrafiche.clienti](/dbzero/anagrafiche/tabelle/clienti)   
+>  [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli) 
 
 > Approfondimenti funzioni:   
 >
->  * [script.fn_guard_soggetto_ruolo ](/dbzero/script/funzioni/fn_guard_soggetto_ruolo ) 
+[script.fn_guard_soggetto_ruolo ](/dbzero/script/funzioni/fn_guard_soggetto_ruolo ) 
 
 La trigger function **`anagrafiche.trgfn_clienti_guard_ruolo_cliente()`** si attiva **BEFORE INSERT** e **BEFORE UPDATE** sulla tabella `anagrafiche.clienti`. Il suo scopo è garantire che, ogni volta che si crea o modifica il record del cliente, venga automaticamente gestita (verificata o creata) la corrispondente riga di relazione in `anagrafiche.soggetti_ruoli` con ruolo “cliente” (`codice_interno = 'GE'`).
 
 ---
-
 ### 🎯 Scopo Principale
 (latest review 05-12-25)
 - **Centralizzare l’assegnazione del ruolo “cliente”**  
@@ -28,7 +27,7 @@ La trigger function **`anagrafiche.trgfn_clienti_guard_ruolo_cliente()`** si att
 
 ---
 
-### 🔍 Flusso Logico
+### Flusso Logico
 
 1. **Chiamata automatica**  
    Attivata **BEFORE INSERT OR UPDATE** su `anagrafiche.clienti`.  
@@ -37,7 +36,7 @@ La trigger function **`anagrafiche.trgfn_clienti_guard_ruolo_cliente()`** si att
 
      La funzione verifica o crea il record in anagrafiche.soggetti_ruoli e restituisce l’ID.
 
-### 🛠️ Utilizzo in DDL
+### Utilizzo in DDL
 
 Nel DDL di anagrafiche.clienti il trigger viene definito così:
 
@@ -47,7 +46,7 @@ CREATE OR REPLACE TRIGGER trg_clienti_guard_ruolo_cliente_ins_upd
   EXECUTE FUNCTION anagrafiche.trgfn_clienti_guard_ruolo_cliente();
 
 ---
-### 💡 Vantaggi Operativi
+### Vantaggi Operativi
 
     Unica fonte di verità per l’assegnazione del ruolo
     Ogni modifica al cliente delega a una sola funzione centralizzata il compito di controllare/eseguire 

@@ -2,29 +2,26 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> • [vendite.fatture_fondi_fattura_source](/dbzero/vendite/tabelle/fatture_fondi_fattura_source)  
+• [vendite.fatture_fondi_fattura_source](/dbzero/vendite/tabelle/fatture_fondi_fattura_source)  
 > • [pagamenti.vendite_contabili](/dbzero/pagamenti/tabelle/vendite_contabili)  
 > • [pagamenti.vendite_contabili_righe](/dbzero/pagamenti/tabelle/vendite_contabili_righe)  
 >
-> **Approfondimento funzioni:**
+**Approfondimento funzioni:**
 >
-> • [pagamenti.fn_get_saldo_fattura](/dbzero/pagamenti/funzioni/fn_get_saldo_fattura)  
+• [pagamenti.fn_get_saldo_fattura](/dbzero/pagamenti/funzioni/fn_get_saldo_fattura)  
 > • [pagamenti.fn_get_or_create_vendite_contabile](/dbzero/pagamenti/funzioni/fn_get_or_create_vendite_contabile)  
 > • [vendite.fn_reset_fondi_fattura](/dbzero/vendite/funzioni/fn_reset_fondi_fattura)  
 >
----
-
 ### 🎯 Scopo Principale
-
 Sincronizzare i fondi fattura assegnati a una fattura figlia nel layer
 **contabile pre-posting** (`pagamenti.vendite_contabili` / `pagamenti.vendite_contabili_righe`),
 senza scrivere movimenti pagamenti diretti.
 
 ---
 
-### ✅ Regole principali
+### Regole principali
 
 * `p_fattura_figlia_id` obbligatorio.
 * Lavora su source `ASSEGNATO` con tipo `F_F_ADD_ACC`.
@@ -42,7 +39,7 @@ senza scrivere movimenti pagamenti diretti.
 
 ---
 
-### ✅ Output
+### Output
 
 Ritorna:
 
@@ -52,7 +49,7 @@ Ritorna:
 
 ---
 
-### 🧪 Esempio d’uso
+### Esempio d’uso
 
 ```sql
 SELECT *

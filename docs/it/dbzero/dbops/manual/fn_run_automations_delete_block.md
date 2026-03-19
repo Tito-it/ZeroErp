@@ -2,20 +2,18 @@
 
 > 👀 **Vedi anche**
 >
-> Guide:
-> * [Automazione DB](/guide/automazione-db)
+Guide:
+> [Automazione DB](/guide/automazione-db)
 >
-> Approfondimento tabelle:
-> * [dbops.automation_delete_block](/dbzero/dbops/tabelle/automation_delete_block)   
+Approfondimento tabelle:
+> [dbops.automation_delete_block](/dbzero/dbops/tabelle/automation_delete_block)   
 >
-> Approfondimento funzioni:
-> * [dbops.fn_apply_delete_block_trigger](/dbzero/dbops/funzioni/fn_apply_delete_block_trigger)  
-> * [script.trgfn_delete_block_by_guc](/dbzero/script/funzioni/trgfn_delete_block_by_guc)  
+Approfondimento funzioni:
+> [dbops.fn_apply_delete_block_trigger](/dbzero/dbops/funzioni/fn_apply_delete_block_trigger)  
+> [script.trgfn_delete_block_by_guc](/dbzero/script/funzioni/trgfn_delete_block_by_guc)  
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 23-01-26)
 La funzione **`dbops.fn_run_automations_delete_block(p_exec_mode, p_schemas, p_dry_run)`**
 applica (o simula) i trigger **DELETE_BLOCK** sulle tabelle configurate in
@@ -23,7 +21,7 @@ applica (o simula) i trigger **DELETE_BLOCK** sulle tabelle configurate in
 
 ---
 
-### 🔍 Parametri di input
+### Parametri di input
 
 | Parametro     | Tipo    | Descrizione                                  |
 | ------------- | ------- | -------------------------------------------- |
@@ -33,7 +31,7 @@ applica (o simula) i trigger **DELETE_BLOCK** sulle tabelle configurate in
 
 ---
 
-### ⚙️ Logica operativa
+### Logica operativa
 
 1. Risolve l'ambito con `dbops.fn_resolve_scope(p_schemas)`.
 2. Legge le righe **enabled** in `dbops.automation_delete_block` nell'ambito.
@@ -44,7 +42,7 @@ applica (o simula) i trigger **DELETE_BLOCK** sulle tabelle configurate in
 
 ---
 
-### 🧩 Trigger generato
+### Trigger generato
 
 * **Evento**: `DELETE` sulla tabella target.
 * **Funzione**: `script.trgfn_delete_block_by_guc(guc_key)`.
@@ -52,7 +50,7 @@ applica (o simula) i trigger **DELETE_BLOCK** sulle tabelle configurate in
 
 ---
 
-### ✅ Esempi di utilizzo
+### Esempi di utilizzo
 
 * **Simulazione**:
   `SELECT dbops.fn_run_automations_delete_block('AUTO', ARRAY['anagrafiche'], true);`
@@ -62,7 +60,7 @@ applica (o simula) i trigger **DELETE_BLOCK** sulle tabelle configurate in
 
 ---
 
-### 🧠 Note
+### Note
 
 * In caso di errori DDL, la funzione usa `script.fn_log_and_raise_error`.
 * Il bypass e' gestito dalla GUC configurata in `automation_delete_block`.

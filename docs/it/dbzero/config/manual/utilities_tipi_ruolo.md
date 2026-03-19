@@ -2,19 +2,17 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> * [`config.utilities`](/dbzero/config/tabelle/utilities)
-> * [`config.tipi_ruoli`](/dbzero/config/tabelle/tipi_ruoli)
+[`config.utilities`](/dbzero/config/tabelle/utilities)
+> [`config.tipi_ruoli`](/dbzero/config/tabelle/tipi_ruoli)
 >
-> **Approfondimento funzioni:**
+**Approfondimento funzioni:**
 >
-> * [`script.fn_guard_utility_tipo_ruolo`](/dbzero/script/manual/fn_guard_utility_tipo_ruolo)
+[`script.fn_guard_utility_tipo_ruolo`](/dbzero/script/manual/fn_guard_utility_tipo_ruolo)
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 16-02-2026)
 La tabella `config.utilities_tipi_ruolo` definisce una **whitelist opzionale** dei `tipo_ruolo` ammessi per ciascuna `utility`.
 
@@ -25,7 +23,7 @@ Regola di dominio:
 
 ---
 
-### 🧱 Struttura logica
+### Struttura logica
 
 Campi principali:
 
@@ -42,7 +40,7 @@ Vincoli principali:
 
 ---
 
-### ⚙️ Semantica operativa
+### Semantica operativa
 
 La tabella **non** impone da sola i blocchi: e` la funzione guard a leggerla.
 
@@ -55,7 +53,7 @@ Questo consente rollout graduale senza rompere utilities non ancora configurate.
 
 ---
 
-### 🧪 Esempio concettuale
+### Esempio concettuale
 
 Utility `GAS`:
 
@@ -69,7 +67,7 @@ Utility `MANIFATTURIERO` senza righe:
 
 ---
 
-### ✅ Nota architetturale
+### Nota architetturale
 
 Per scelta progettuale corrente:
 

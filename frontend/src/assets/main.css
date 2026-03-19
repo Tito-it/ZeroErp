@@ -90,6 +90,7 @@ a {
   font-size: var(--app-font-size-base);
   font-weight: 600;
   margin: 0;
+  color: var(--app-icon-color);
 }
 
 /* ===== Classe utility DataTable compatta =====
@@ -103,6 +104,7 @@ a {
 .app-datatable .p-datatable-thead > tr > th {
   padding: var(--app-table-header-padding);
   font-size: var(--app-table-header-font-size);
+  color: var(--app-icon-color);
 }
 
 .app-datatable .p-datatable-tbody > tr > td {
@@ -205,9 +207,29 @@ a {
   color: var(--p-text-muted-color);
 }
 
+/* Messaggio errore sotto campo form */
+.app-field-error {
+  color: var(--p-red-500);
+  font-size: 0.75rem;
+}
+
 @media (max-width: 479px) {
   .form-grid-2col {
     grid-template-columns: 1fr;
+  }
+}
+
+/* Riga inline per affiancare campi form (es. sesso + data nascita).
+ * flex: i figli controllano la propria larghezza. */
+.form-row-inline {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-start;
+}
+
+@media (max-width: 479px) {
+  .form-row-inline {
+    flex-direction: column;
   }
 }
 
@@ -256,6 +278,64 @@ a {
   overflow: hidden;
 }
 
+/* ===== Modalita' sola lettura (pattern protect) =====
+ * Overlay CSS ispirato ai formati protect AS/400.
+ * Blocca ogni interazione, permette copia testo, feedback visivo.
+ * I pulsanti di chiusura restano attivi (escape dal protect).
+ * Applicare :class="{ 'app-readonly': isReadonly }" sul container. */
+.app-readonly {
+  pointer-events: none;
+  user-select: text;
+  opacity: 0.85;
+}
+
+/* Tasti di uscita — sempre attivi in modalita' protect */
+.app-readonly :deep(.p-drawer-close),
+.app-readonly :deep(.p-dialog-close),
+.app-readonly :deep(.app-escape) {
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+/* ===== Livello BLOCCATO (safety net) =====
+ * In teoria il route guard impedisce l'accesso. Questa classe e'
+ * una rete di sicurezza per componenti raggiunti in modi imprevisti. */
+.app-blocked {
+  display: none;
+}
+
+/* ===== Icone informative (colore primario) =====
+ * Le icone <i class="pi"> nei contesti informativi usano il colore primario.
+ * Applicato ai contenuti drawer e dettagli card — NON ai pulsanti.
+ * Le empty state (opacity: 0.3) restano neutre per design.
+ * Spinner (pi-spin) resta neutro. */
+.app-drawer-content i.pi:not(.pi-spin) {
+  color: var(--app-icon-color);
+}
+
+/* DatePicker: icona calendario colore primario standard.
+ * PrimeVue 4 usa SVG inline nel tema — override con !important per vincere la specificita'. */
+.p-datepicker-input-icon-container,
+.p-datepicker-input-icon-container svg,
+.p-datepicker-input-icon-container .p-icon {
+  color: var(--app-icon-color) !important;
+  fill: var(--app-icon-color) !important;
+}
+
+/* Password field: wrapper + input al 100% + icona toggle colore primario */
+.p-password {
+  display: flex;
+  width: 100%;
+}
+.p-password .p-inputtext {
+  flex: 1;
+  width: 100%;
+}
+.p-password .p-password-toggle-mask-icon,
+.p-password .p-icon {
+  color: var(--app-icon-color);
+}
+
 /* Footer drawer (pulsanti Annulla/Salva) */
 .app-drawer-footer {
   display: flex;
@@ -264,6 +344,39 @@ a {
   margin-top: auto;
   padding-top: 1rem;
 }
+
+/* ===== Loading spinner centrato =====
+ * Applicare class="app-loading" su un div wrapper.
+ * Contenuto: <i class="pi pi-spin pi-spinner" /> */
+.app-loading {
+  text-align: center;
+  padding: 1rem;
+}
+
+/* ===== Empty state centrato =====
+ * Icona grande + messaggio. Applicare class="app-empty-state" su un div.
+ * L'icona interna usa opacity ridotta, il testo colore muted. */
+.app-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 1.5rem 1rem;
+  color: var(--p-text-muted-color);
+  font-size: 0.85rem;
+}
+
+.app-empty-state > i.pi {
+  font-size: 1.5rem;
+  opacity: 0.3;
+  color: var(--p-text-muted-color);
+}
+
+/* ===== Spacing utility =====
+ * Classi margin-top per evitare stili inline. */
+.mt-025 { margin-top: 0.25rem; }
+.mt-05  { margin-top: 0.5rem; }
+.mt-1   { margin-top: 1rem; }
 
 /* ===== Responsive: schermi piccoli =====
  * Tablet: < 1024px — filtri wrappano, pulsanti azione solo icona + tooltip

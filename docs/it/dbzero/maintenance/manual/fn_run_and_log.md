@@ -2,24 +2,22 @@
 
 > 👀 **Vedi anche:**
 >
-> Approfondimento tabelle:
+Approfondimento tabelle:
 >
-> * [maintenance.job_run_log](/dbzero/maintenance/tabelle/job_run_log)
+[maintenance.job_run_log](/dbzero/maintenance/tabelle/job_run_log)
 >
-> Approfondimento funzioni:
+Approfondimento funzioni:
 >
-> * [maintenance.proc_apply_storicizza_defaults_job](/dbzero/maintenance/funzioni/proc_apply_storicizza_defaults_job)
+[maintenance.proc_apply_storicizza_defaults_job](/dbzero/maintenance/funzioni/proc_apply_storicizza_defaults_job)
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 07-01-26)
 `maintenance.fn_run_and_log` esegue in modo sicuro uno *statement* SQL arbitrario e ne registra l’esecuzione su `maintenance.job_run_log`, gestendo in modo opzionale un **lock consulente** (advisory lock) per prevenire esecuzioni sovrapposte dello stesso job/step.
 
 ---
 
-### 🧩 Firma
+### Firma
 
 ```sql
 FUNCTION maintenance.fn_run_and_log(
@@ -32,7 +30,7 @@ FUNCTION maintenance.fn_run_and_log(
 
 ---
 
-### 🔧 Comportamento
+### Comportamento
 
 1. **Lock opzionale**
 
@@ -63,7 +61,7 @@ FUNCTION maintenance.fn_run_and_log(
 
 ---
 
-### 🔐 Concorrenza & Idempotenza
+### Concorrenza & Idempotenza
 
 * L’uso di `p_lock_key` consente di evitare sovrapposizioni del medesimo job/step.
 * Chiavi di lock consigliate:
@@ -73,7 +71,7 @@ FUNCTION maintenance.fn_run_and_log(
 
 ---
 
-### 📝 Linee Guida d’Uso
+### Linee Guida d’Uso
 
 * **SQL idempotente**: quando possibile, rendere `p_sql` idempotente per facilitare retry e recovery.
 * **Transazioni**: la funzione non apre/chiude transazioni esplicite; si appoggia al contesto del chiamante.
@@ -81,7 +79,7 @@ FUNCTION maintenance.fn_run_and_log(
 
 ---
 
-### 🔎 Esempi
+### Esempi
 
 **Esecuzione protetta da lock**
 
@@ -106,7 +104,7 @@ SELECT maintenance.fn_run_and_log(
 
 ---
 
-> 🧠 **Nota**: se si desidera “ingoiare” l’errore nel log senza propagazione, rimuovere il `RAISE` nella sezione `EXCEPTION`. Valutare attentamente l’impatto sugli orchestratori esterni.
+> **Nota**: se si desidera “ingoiare” l’errore nel log senza propagazione, rimuovere il `RAISE` nella sezione `EXCEPTION`. Valutare attentamente l’impatto sugli orchestratori esterni.
 
 ---
 

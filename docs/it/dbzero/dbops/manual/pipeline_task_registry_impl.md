@@ -2,15 +2,12 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> • [dbops.pipeline_task_registry](/dbzero/dbops/manual/pipeline_task_registry)  
+• [dbops.pipeline_task_registry](/dbzero/dbops/manual/pipeline_task_registry)  
 > • [dbops.domini_task](/dbzero/dbops/manual/domini_task)  
 >
----
-
 ### 🎯 Scopo Principale
-
 (latest review 08-02-2026)
 `dbops.pipeline_task_registry_impl` definisce le **implementazioni consentite**
 per ciascun task. Serve a gestire in modo controllato le varianti
@@ -18,7 +15,7 @@ per ciascun task. Serve a gestire in modo controllato le varianti
 
 ---
 
-### 🔑 Campi chiave
+### Campi chiave
 
 * `task_registry_id`: riferimento al task.
 * `implementation_key`: identificativo variante.
@@ -28,7 +25,7 @@ per ciascun task. Serve a gestire in modo controllato le varianti
 
 ---
 
-### ✅ Ruolo operativo
+### Ruolo operativo
 
 1. Per ogni task si registra almeno una implementazione `default`.
 2. Il motore applicativo risolve la variante richiesta o usa la default.

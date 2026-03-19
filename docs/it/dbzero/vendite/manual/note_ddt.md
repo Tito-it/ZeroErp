@@ -2,13 +2,11 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> • [vendite.note](/dbzero/vendite/tabelle/note)   
+• [vendite.note](/dbzero/vendite/tabelle/note)   
 
 ---
-
 ### 🎯 Scopo Principale
-
 `vendite.note_ddt` gestisce **note testuali**. 
 Vedi documento principale [vendite.note](/dbzero/vendite/tabelle/note)

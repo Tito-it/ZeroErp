@@ -2,26 +2,24 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle**   
+**Approfondimento tabelle**   
 > • [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)  
 > • [anagrafiche.conti_bancari](/dbzero/anagrafiche/tabelle/conti_bancari)  
 > • [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)  
 > • [anagrafiche.soggetti_ruoli_conti_bancari](/dbzero/anagrafiche/tabelle/soggetti_ruoli_conti_bancari)  
 > • [pagamenti.sepa_mandati](/dbzero/pagamenti/tabelle/sepa_mandati)  
 >
-> **Artefatti di selezione**  
+**Artefatti di selezione**  
 > • [anagrafiche.vw_conti_bancari_per_ruolo](/dbzero/anagrafiche/views/vw_conti_bancari_per_ruolo)   
 > • [script.fn_get_conto_bancario_predefinito](/dbzero/script/funzioni/fn_get_conto_bancario_predefinito)   
 >
-> **Approfondimento Trigger/Funzioni generiche**   
+**Approfondimento Trigger/Funzioni generiche**   
 > • [dbops.trgfn_tx_id_managed](/dbzero/dbops/funzioni/trgfn_tx_id_managed)   
 > • [script.trgfn_audit_data_user_generic](/dbzero/script/funzioni/trgfn_audit_data_user_generic)   
 > • [script.trgfn_storico_generic](/dbzero/script/funzioni/trgfn_storico_generic)   
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 10-01-26)
 `anagrafiche.soggetti_conti_bancari` gestisce l’**associazione tra un Soggetto** (persona/azienda) e uno o più **conti bancari (IBAN)**, distinguendo l’**uso** del conto: `INCASSO`, `PAGAMENTO`, `RIMBORSO`, `GENERICO`.
 
@@ -29,7 +27,7 @@ Questa tabella rappresenta il **fallback di default** per il soggetto: se per un
 
 ---
 
-### 🔗 Relazioni
+### Relazioni
 
 | Tipo       | Tabella ↔ Campo                                       | Descrizione                                   |
 | ---------- | ----------------------------------------------------- | --------------------------------------------- |
@@ -41,7 +39,7 @@ Questa tabella rappresenta il **fallback di default** per il soggetto: se per un
 
 ---
 
-### 🧱 Struttura logica (campi chiave)
+### Struttura logica (campi chiave)
 
 * `soggetto_id` (**FK** obbligatoria)
 * `conto_bancario_id` (**FK** obbligatoria)
@@ -65,7 +63,7 @@ Questa tabella rappresenta il **fallback di default** per il soggetto: se per un
 
 ---
 
-### 🔍 Indicizzazione
+### Indicizzazione
 
 * `ix_soggetti_conti_bancari_soggetto_id (soggetto_id)`
 * `ix_soggetti_conti_bancari_conto_bancario_id (conto_bancario_id)`
@@ -74,7 +72,7 @@ Questa tabella rappresenta il **fallback di default** per il soggetto: se per un
 ---
 
 
-### 🔎 Query tipiche
+### Query tipiche
 
 **1) Predefinito d’incasso per un soggetto (oggi valido)**
 
@@ -105,14 +103,14 @@ ORDER BY scb.uso, scb.predefinito DESC, scb.data_update DESC;
 
 ---
 
-### 💡 Ruolo nella strategia di **fallback**
+### Ruolo nella strategia di **fallback**
 
 * In assenza di un conto specifico su `soggetti_ruoli_conti_bancari`, la **VIEW** `vw_conti_bancari_per_ruolo` seleziona il **predefinito del soggetto** (per l’uso richiesto).
 * La **FUNCTION** `fn_get_conto_bancario_predefinito` restituisce **al massimo una riga**, prioritizzando RUOLO e poi SOGGETTO, con fallback finale a `GENERICO`.
 
 ---
 
-### 🧭 Best practice
+### Best practice
 
 * Mantieni **un solo predefinito per uso** per soggetto (vincolo unico parziale).
 * Usa `valido_dal/valido_al` per cambi programmati; **non cancellare**, storicizza.

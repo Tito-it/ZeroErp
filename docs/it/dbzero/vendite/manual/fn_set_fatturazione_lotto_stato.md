@@ -2,25 +2,22 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> • [vendite.fatturazione_lotti](/dbzero/vendite/tabelle/fatturazione_lotti)  
+• [vendite.fatturazione_lotti](/dbzero/vendite/tabelle/fatturazione_lotti)  
 >
-> **Approfondimento funzioni:**
+**Approfondimento funzioni:**
 >
-> • [vendite.fn_log_pipeline_fase](/dbzero/vendite/funzioni/fn_log_pipeline_fase)  
+• [vendite.fn_log_pipeline_fase](/dbzero/vendite/funzioni/fn_log_pipeline_fase)  
 >
----
-
 ### 🎯 Scopo Principale
-
 (latest review 27-01-2026)  
 La funzione **`vendite.fn_set_fatturazione_lotto_stato()`** aggiorna lo **stato
 job** del lotto di fatturazione e allinea lo **stato operativo**.
 
 ---
 
-### ✅ Regole principali
+### Regole principali
 
 * Stati ammessi: `IN_ESECUZIONE`, `COMPLETATO`, `ERRORE`.
 * Transizioni consentite:
@@ -34,14 +31,14 @@ job** del lotto di fatturazione e allinea lo **stato operativo**.
 
 ---
 
-### ✅ Output
+### Output
 
 Nessun output (RETURN void). In caso di transizione non ammessa viene sollevato
 errore con log applicativo.
 
 ---
 
-### 🧪 Esempi d’uso
+### Esempi d’uso
 
 ```sql
 SELECT vendite.fn_set_fatturazione_lotto_stato(123, 'IN_ESECUZIONE', 'Avvio job');

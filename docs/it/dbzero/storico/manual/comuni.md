@@ -2,27 +2,26 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimento tabelle:      
+Approfondimento tabelle:      
 >
-> * [config.comuni](/dbzero/config/tabelle/comuni)     
+[config.comuni](/dbzero/config/tabelle/comuni)     
 >
-> Approfondimento funzioni:    
+Approfondimento funzioni:    
 >
-> * [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)    
-> * [config.trgfn_comuni_upd_dlt_storico_comuni](/dbzero/config/funzioni/trgfn_comuni_upd_dlt_storico_comuni)    
+[script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)    
+> [config.trgfn_comuni_upd_dlt_storico_comuni](/dbzero/config/funzioni/trgfn_comuni_upd_dlt_storico_comuni)    
 
 La tabella **`storico.comuni`** mantiene la cronologia completa dei record di **`config.comuni`**, archiviando snapshot JSON dei dati ad ogni operazione di modifica o cancellazione (quando il flag `storicizza` è impostato a `TRUE`).
 
 ---
 ### 🎯 Scopo Principale
-
 * **Audit Trail**: Conservare una traccia immutabile di ogni modifica e cancellazione applicata a `config.comuni`.
 * **Versioning dei record**: Permettere la ricostruzione dello stato storico di ogni comune in un dato momento.
 * **Query storiche**: Supportare interrogazioni basate su intervalli temporali grazie ai campi `valid_from` e `valid_to`.
 * **Classificazione operazioni**: Utilizzare `tipo_operazione_id` e `change_type` per distinguere INSERT iniziale, UPDATE e DELETE.
 ---
 
-### 📝 Descrizione del Meccanismo di Storico
+### Descrizione del Meccanismo di Storico
 
 1. **Trigger di storicizzazione**
    La trigger function `config.trgfn_comuni_upd_dlt_storico_comuni()` si attiva **BEFORE UPDATE OR DELETE** su `config.comuni` quando `storicizza = TRUE`.
@@ -52,7 +51,7 @@ La tabella **`storico.comuni`** mantiene la cronologia completa dei record di **
 
 ---
 
-### 🔧 Vantaggi Operativi
+### Vantaggi Operativi
 
 * **Storico dettagliato**: grazie a `snapshot` JSONB, ogni modifica può essere ricostruita integralmente, indipendentemente dall’aggiunta di nuovi campi in `config.comuni`.
 
@@ -64,5 +63,5 @@ La tabella **`storico.comuni`** mantiene la cronologia completa dei record di **
 
 ---
 
-> 🧠 **“Con `storico.comuni`, Zero ERP unisce flessibilità e completezza: un audit trail granulare dei comuni, a costo di uno storage aggiuntivo, ma con performance e semplicità di gestione future-proof.”**
+> **“Con `storico.comuni`, Zero ERP unisce flessibilità e completezza: un audit trail granulare dei comuni, a costo di uno storage aggiuntivo, ma con performance e semplicità di gestione future-proof.”**
 

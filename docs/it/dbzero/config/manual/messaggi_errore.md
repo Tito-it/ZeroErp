@@ -2,21 +2,19 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimento tabelle:    
+Approfondimento tabelle:    
 >
-> * [dbops.error_log](/dbzero/dbops/tabelle/error_log)    
-> * [dbops.audit_log](/dbzero/dbops/tabelle/audit_log)    
+[dbops.error_log](/dbzero/dbops/tabelle/error_log)    
+> [dbops.audit_log](/dbzero/dbops/tabelle/audit_log)    
 >
-> Approfondimenti funzioni:   
+Approfondimenti funzioni:   
 >
-> * [script.fn_get_messaggio](/dbzero/script/funzioni/fn_get_messaggio)  
+[script.fn_get_messaggio](/dbzero/script/funzioni/fn_get_messaggio)  
 
 La tabella **`config.messaggi_errore`** è il **catalogo centralizzato** dei testi applicativi (errori, avvisi, messaggi informativi) con supporto per internazionalizzazione (i18n). Ogni record definisce un messaggio univoco, differenziato per codice e lingua, corredato di causa e suggerimenti di soluzione.
 
 ---
-
 ### 🎯 Scopo Principale
-
 * **Centralizzare i messaggi**: evitare hard‑coding nei sorgenti SQL, trigger o procedure.
 * **Supporto multilingua**: gestire versioni localizzate tramite il campo `lingua` (es. `it`, `en`).
 * **Placeholder dinamici**: usare `%s` nel campo `messaggio`, sostituiti a runtime dalla funzione `script.fn_get_messaggio` con valori contestuali.
@@ -24,7 +22,7 @@ La tabella **`config.messaggi_errore`** è il **catalogo centralizzato** dei tes
 
 ---
 
-### 🔍 Struttura dei Campi
+### Struttura dei Campi
 
 | Nome        | Tipo   | Dettagli                                                                             |
 | ----------- | ------ | ------------------------------------------------------------------------------------ |
@@ -37,14 +35,14 @@ La tabella **`config.messaggi_errore`** è il **catalogo centralizzato** dei tes
 
 ---
 
-### 🔒 Vincoli di Integrità
+### Vincoli di Integrità
 
 * **Primary Key**: `pk_messaggi_errore (id)` garantisce l’identificativo univoco.
 * **Unique Constraint**: `uq_messaggi_errore_codice_lingua (codice, lingua)` per evitare duplicati della medesima traduzione.
 
 ---
 
-### ⚙️ Relazioni Operative ed Esempi
+### Relazioni Operative ed Esempi
 
 1. **Collegamento con error\_log**
 
@@ -80,7 +78,7 @@ La tabella **`config.messaggi_errore`** è il **catalogo centralizzato** dei tes
 
 ---
 
-### 💡 Vantaggi Operativi
+### Vantaggi Operativi
 
 * **Manutenzione semplificata**: testi gestiti in un’unica tabella.
 * **Consistenza e coerenza**: unico punto di verità per i messaggi.
@@ -90,4 +88,4 @@ La tabella **`config.messaggi_errore`** è il **catalogo centralizzato** dei tes
 
 ---
 
-> 🧠 **“Un catalogo centralizzato, multilingua e parametrizzato dei messaggi applicativi favorisce coerenza, facilità di manutenzione e miglior supporto agli utenti.”**
+> **“Un catalogo centralizzato, multilingua e parametrizzato dei messaggi applicativi favorisce coerenza, facilità di manutenzione e miglior supporto agli utenti.”**

@@ -2,16 +2,16 @@
 
 > 👀 **Vedi anche**
 >
-> Architettura di riferimento:
+Architettura di riferimento:
 >
-> * [Architettura Permessi e Autorizzazioni](/guide/architettura-permessi-e-autorizzazioni)
+[Architettura Permessi e Autorizzazioni](/guide/architettura-permessi-e-autorizzazioni)
 >
-> Tabelle correlate:
+Tabelle correlate:
 >
-> * [config.azioni_processo](/dbzero/config/tabelle/azioni_processo)
-> * [config.profili_reparto_aree](/dbzero/config/tabelle/profili_reparto_aree)
-> * [config.user_override_aree](/dbzero/config/tabelle/user_override_aree)
-> * [config.area_model_overrides](/dbzero/config/tabelle/area_model_overrides)
+[config.azioni_processo](/dbzero/config/tabelle/azioni_processo)
+> [config.profili_reparto_aree](/dbzero/config/tabelle/profili_reparto_aree)
+> [config.user_override_aree](/dbzero/config/tabelle/user_override_aree)
+> [config.area_model_overrides](/dbzero/config/tabelle/area_model_overrides)
 
 ---
 
@@ -20,16 +20,14 @@ La tabella **`config.aree_funzionali`** è il **catalogo delle aree funzionali**
 Ogni area corrisponde a uno **schema PostgreSQL** (es. `vendite`, `anagrafiche`, `catalogo`). Il mapping è automatico: Django risolve l'area dal `db_table` del model, senza configurazione manuale.
 
 ---
-
 ### 🎯 Scopo Principale
-
 * Definire il **perimetro funzionale** su cui si applicano i livelli di accesso (TUTTO / LETTURA / BLOCCATO).
 * Fornire il **mapping area → schema DB** per la risoluzione automatica dei permessi in Django.
 * Gestire l'**ordine di visualizzazione** nell'interfaccia di configurazione profili reparto.
 
 ---
 
-### 🔑 Colonne chiave
+### Colonne chiave
 
 | Colonna | Scopo |
 |---------|-------|
@@ -42,7 +40,7 @@ Ogni area corrisponde a uno **schema PostgreSQL** (es. `vendite`, `anagrafiche`,
 
 ---
 
-### 🔗 Relazioni
+### Relazioni
 
 `config.aree_funzionali` è referenziata da:
 
@@ -55,7 +53,7 @@ Ogni area corrisponde a uno **schema PostgreSQL** (es. `vendite`, `anagrafiche`,
 
 ---
 
-### 📋 Seed iniziale (10 aree)
+### Seed iniziale (10 aree)
 
 | codice | schema_db | ordinamento |
 |--------|-----------|-------------|
@@ -72,4 +70,4 @@ Ogni area corrisponde a uno **schema PostgreSQL** (es. `vendite`, `anagrafiche`,
 
 ---
 
-> 🧠 **"`config.aree_funzionali` è il pilastro del sistema permessi: collega ogni schema DB a un'area funzionale, consentendo la risoluzione automatica dei permessi senza configurazione manuale."**
+> **"`config.aree_funzionali` è il pilastro del sistema permessi: collega ogni schema DB a un'area funzionale, consentendo la risoluzione automatica dei permessi senza configurazione manuale."**

@@ -2,13 +2,13 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimento Tabelle:   
-> - [config.tipi_soggetto_dettaglio](/dbzero/config/tabelle/tipi_soggetto_dettaglio)      
-> - [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)    
+Approfondimento Tabelle:   
+> [config.tipi_soggetto_dettaglio](/dbzero/config/tabelle/tipi_soggetto_dettaglio)      
+> [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)    
 >
-> Approfondimento funzioni:   
-> - [script.fn_valida_partita_iva](/dbzero/script/funzioni/fn_valida_partita_iva)   
-> - [script.fn_valida_codice_fiscale](/dbzero/script/funzioni/fn_valida_codice_fiscale)   
+Approfondimento funzioni:   
+> [script.fn_valida_partita_iva](/dbzero/script/funzioni/fn_valida_partita_iva)   
+> [script.fn_valida_codice_fiscale](/dbzero/script/funzioni/fn_valida_codice_fiscale)   
 
 
 La funzione **`script.fn_validate_cf_piva_it(p_tipo_det_id bigint, p_partita_iva text, p_piva_gruppo text, p_codice_fiscale text)`** centralizza i controlli di validità di Partita IVA e Codice Fiscale per soggetti italiani, utilizzando i formati definiti in `config.tipi_soggetto_dettaglio`.
@@ -16,16 +16,14 @@ La funzione **`script.fn_validate_cf_piva_it(p_tipo_det_id bigint, p_partita_iva
 Il suffisso **`_it`** indica che i controlli sono specifici per l'Italia: in futuro si potranno implementare varianti analoghe con suffissi come **`_FR`**, **`_DE`**, **`_UK`** per altri Stati.
 
 ---
-
 ### 🎯 Scopo Principale
-
 * **Centralizzazione Validazioni**: Unico punto per verificare CF e P.IVA in accordo ai formati configurati.
 * **Dinamicità**: I formati (alfanumerico, numerico, lunghezza) sono letti da `config.tipi_soggetto_dettaglio` e possono variare per Stato.
 * **Estendibilità**: Aggiunta futura di funzioni con suffissi di Stato, es. `_FR`, `_DE`, `_UK`.
 
 ---
 
-### 🔍 Parametri di Input
+### Parametri di Input
 
 | Nome               | Tipo     | Descrizione                                                                                |
 | ------------------ | -------- | ------------------------------------------------------------------------------------------ |
@@ -36,7 +34,7 @@ Il suffisso **`_it`** indica che i controlli sono specifici per l'Italia: in fut
 
 ---
 
-### ⚙️ Flusso Logico
+### Flusso Logico
 
 1. **Recupero formato**
 
@@ -76,7 +74,7 @@ La funzione **non restituisce** un valore, ma utilizza **`script.fn_log_and_rais
 
 ---
 
-### 🔧 Estensioni Future
+### Estensioni Future
 
 * Implementare funzioni con suffissi per altri Stati: `script.fn_validate_cf_piva_fr`, `script.fn_validate_cf_piva_de`, etc.
 * Eventuale aggiunta di controlli avanzati basati su data di nascita o sesso, delegabili al backend.

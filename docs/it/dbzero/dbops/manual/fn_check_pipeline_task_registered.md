@@ -2,26 +2,23 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> • [dbops.domini_task](/dbzero/dbops/manual/domini_task)  
+• [dbops.domini_task](/dbzero/dbops/manual/domini_task)  
 > • [dbops.pipeline_task_registry](/dbzero/dbops/manual/pipeline_task_registry)  
 >
-> **Approfondimento funzioni:**
+**Approfondimento funzioni:**
 >
-> • [dbops.fn_get_pipeline_task_implementation](/dbzero/dbops/manual/fn_get_pipeline_task_implementation)  
+• [dbops.fn_get_pipeline_task_implementation](/dbzero/dbops/manual/fn_get_pipeline_task_implementation)  
 >
----
-
 ### 🎯 Scopo Principale
-
 (latest review 08-02-2026)
 Verifica che un task sia registrato e **attivo** per un dominio.
 La funzione fallisce con errore applicativo se il task non e` ammesso.
 
 ---
 
-### ✅ Regole principali
+### Regole principali
 
 * `p_dominio_id` obbligatorio e > 0.
 * `p_task_code` obbligatorio e non vuoto.
@@ -30,7 +27,7 @@ La funzione fallisce con errore applicativo se il task non e` ammesso.
 
 ---
 
-### 🧪 Esempio
+### Esempio
 
 ```sql
 SELECT dbops.fn_check_pipeline_task_registered(1, 'select_attivita');

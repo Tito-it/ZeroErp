@@ -2,21 +2,19 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimento funzioni:
+Approfondimento funzioni:
 >
-> * [`dbops.fn_run_automations_audit_update`](/dbzero/dbops/funzioni/fn_run_automations_audit_update)
-> * [`maintenance.fn_run_and_log`](/dbzero/maintenance/funzioni/fn_run_and_log)
+[`dbops.fn_run_automations_audit_update`](/dbzero/dbops/funzioni/fn_run_automations_audit_update)
+> [`maintenance.fn_run_and_log`](/dbzero/maintenance/funzioni/fn_run_and_log)
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 07-01-26)
 * **Eseguire in modo schedulato** l’orchestrazione delle **automazioni AUDIT_UPDATE** (trigger di audit su UPDATE) incapsulando la chiamata a `dbops.fn_run_automations_audit_update(...)` in un wrapper **robusto** con **lock anti-overlap** e **logging strutturato**.
 
 ---
 
-### 🧩 Firma
+### Firma
 
 ```sql
 PROCEDURE maintenance.proc_automations_audit_update_job()
@@ -24,7 +22,7 @@ PROCEDURE maintenance.proc_automations_audit_update_job()
 
 ---
 
-### 🧩 Descrizione
+### Descrizione
 
 La procedura:
 
@@ -40,7 +38,7 @@ La procedura:
 
 ---
 
-### 🔄 Flusso di esecuzione (alto livello)
+### Flusso di esecuzione (alto livello)
 
 1. **Acquire lock** tramite `p_lock_key`.
 2. **Log start** (`p_jobname`, `p_stepname`).
@@ -50,7 +48,7 @@ La procedura:
 
 ---
 
-### 🧪 Idempotenza & sicurezza
+### Idempotenza & sicurezza
 
 * La procedura è pensata per essere **idempotente** *a livello di orchestrazione*: può essere richiamata più volte senza creare duplicazioni, **se** `dbops.fn_run_automations_audit_update` applica la policy con controlli di pre‑esistenza (verifica trigger già presenti, strategie di existence, ecc.).
 * Il **lock advisory** previene esecuzioni parallele indesiderate e riduce il rischio di:
@@ -80,7 +78,7 @@ Puoi schedulare con **pgAgent** (Windows/Linux) o con **cron** (Linux).
 
 ---
 
-### 🧰 Osservabilità & diagnostica
+### Osservabilità & diagnostica
 
 * Controlla la tabella/log usata da `fn_run_and_log` (es. `maintenance.job_log` o equivalente) per:
 
@@ -96,7 +94,7 @@ Puoi schedulare con **pgAgent** (Windows/Linux) o con **cron** (Linux).
 
 ---
 
-### 🔗 Dipendenze
+### Dipendenze
 
 * `dbops.fn_run_automations_audit_update` — orchestratore che applica/regola la policy **AUDIT_UPDATE** sulle tabelle nell'ambito.
 * `maintenance.fn_run_and_log` — esecuzione protetta con logging e advisory lock.
@@ -107,7 +105,7 @@ Puoi schedulare con **pgAgent** (Windows/Linux) o con **cron** (Linux).
 
 ---
 
-### ✅ Checklist di produzione
+### Checklist di produzione
 
 * [ ] La procedura è **deployata** e testata in `dev`/`stage`.
 * [ ] Esiste almeno **un job** (pgAgent/cron) attivo.
@@ -117,7 +115,7 @@ Puoi schedulare con **pgAgent** (Windows/Linux) o con **cron** (Linux).
 
 ---
 
-> 🧠 **In breve**: questa procedura è il wrapper schedulabile e sicuro per lanciare le automazioni **AUDIT_UPDATE** tramite `dbops.fn_run_automations_audit_update`, con logging strutturato e prevenzione di esecuzioni concorrenti.
+> **In breve**: questa procedura è il wrapper schedulabile e sicuro per lanciare le automazioni **AUDIT_UPDATE** tramite `dbops.fn_run_automations_audit_update`, con logging strutturato e prevenzione di esecuzioni concorrenti.
 
 ---
 

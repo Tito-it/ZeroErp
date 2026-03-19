@@ -2,24 +2,22 @@
 
 > 👀 **Vedi anche**
 >
-> Tabelle:
+Tabelle:
 >
-> * [pratiche.giornale](giornale.md)
-> * [pratiche.pratiche](pratiche.md)
+[pratiche.giornale](giornale.md)
+> [pratiche.pratiche](pratiche.md)
 >
-> Overview:
+Overview:
 >
-> * [Trigger business overview](trigger_business_overview.md)
+[Trigger business overview](trigger_business_overview.md)
 
 ---
-
 ### 🎯 Scopo Principale
-
 Registra l'azione **STATO_CAMBIATO** nel giornale. Si attiva **AFTER UPDATE OF stato_id** su `pratiche.pratiche`, solo quando il valore cambia realmente (`WHEN OLD.stato_id IS DISTINCT FROM NEW.stato_id`).
 
 ---
 
-### 🔧 Firma
+### Firma
 
 ```sql
 CREATE OR REPLACE FUNCTION pratiche.trgfn_pratiche_giornale_stato()
@@ -29,7 +27,7 @@ LANGUAGE plpgsql
 
 ---
 
-### ⚙️ Logica
+### Logica
 
 Inserisce una riga in `pratiche.giornale` con:
 
@@ -44,7 +42,7 @@ Inserisce una riga in `pratiche.giornale` con:
 
 ---
 
-### 🔗 Trigger associato
+### Trigger associato
 
 | Nome | Fase | Evento | WHEN |
 |------|------|--------|------|

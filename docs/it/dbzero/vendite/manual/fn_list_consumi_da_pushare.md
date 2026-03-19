@@ -2,16 +2,14 @@
 
 > 👀 **Vedi anche**
 >
-> * [vendite.attivita_consumi](/dbzero/vendite/tabelle/attivita_consumi)
-> * [anagrafiche.billing_account](/dbzero/anagrafiche/tabelle/billing_account)
-> * [vendite.fn_get_or_create_commessa](/dbzero/vendite/funzioni/fn_get_or_create_commessa)
-> * [vendite.fn_upsert_commessa_attivita](/dbzero/vendite/funzioni/fn_upsert_commessa_attivita)
-> * [WIP: Modello fatturazione utilities](../../../dev/work-in-progress/fatturazione-modello-utilities-gas-ee-idrico.md)
+[vendite.attivita_consumi](/dbzero/vendite/tabelle/attivita_consumi)
+> [anagrafiche.billing_account](/dbzero/anagrafiche/tabelle/billing_account)
+> [vendite.fn_get_or_create_commessa](/dbzero/vendite/funzioni/fn_get_or_create_commessa)
+> [vendite.fn_upsert_commessa_attivita](/dbzero/vendite/funzioni/fn_upsert_commessa_attivita)
+> [WIP: Modello fatturazione utilities](../../../dev/work-in-progress/fatturazione-modello-utilities-gas-ee-idrico.md)
 
 ---
-
 ### 🎯 Scopo Principale
-
 `vendite.fn_list_consumi_da_pushare(...)` seleziona i consumi utility
 pronti per il push verso `commesse_attivita`, restituendo un payload di base
 per l'handler di calcolo componenti.
@@ -23,7 +21,7 @@ Il fan-out 1→N e responsabilita dell'handler, non di questa funzione.
 
 ---
 
-### ✅ Regole principali
+### Regole principali
 
 * considera consumi con `stato_calcolo = 'OK'` (esclusi WARNING/ERRORE);
 * esclude consumi gia fatturati sul percorso legacy (`fattura_id IS NULL`);
@@ -53,7 +51,7 @@ Restituisce per ogni consumo candidato:
 
 ---
 
-### 🔄 Flusso nel contesto pipeline
+### Flusso nel contesto pipeline
 
 ```
 attivita_consumi (stato_calcolo = OK)
@@ -74,7 +72,7 @@ fn_emit_attivita_fatturabili_da_commessa → attivita_fatturabili x N
 
 ---
 
-### 🧪 Esempio d'uso
+### Esempio d'uso
 
 ```sql
 SELECT *

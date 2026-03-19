@@ -120,6 +120,16 @@ function handleDropdownChange(tabId) {
 
 .tab-icon {
   font-size: 0.8rem;
+  color: var(--app-icon-color);
+}
+
+.content-tab.active .tab-icon {
+  color: inherit;
+}
+
+/* Separatore verticale verde tra tab */
+.content-tab + .content-tab {
+  border-left: 1px solid color-mix(in srgb, var(--p-primary-color) 35%, transparent);
 }
 
 .tab-label {

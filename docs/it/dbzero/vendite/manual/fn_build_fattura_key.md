@@ -2,29 +2,26 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> • [vendite.attivita_fatturabili](/dbzero/vendite/tabelle/attivita_fatturabili)  
+• [vendite.attivita_fatturabili](/dbzero/vendite/tabelle/attivita_fatturabili)  
 > • [vendite.fatture](/dbzero/vendite/tabelle/fatture)  
 > • [anagrafiche.billing_account](/dbzero/anagrafiche/tabelle/billing_account)  
 > • [anagrafiche.resellers_billing_account](/dbzero/anagrafiche/tabelle/resellers_billing_account)  
 > • [config.tipi_doc_fiscale](/dbzero/config/tabelle/tipi_doc_fiscale)  
 >
-> **Approfondimento funzioni:**
+**Approfondimento funzioni:**
 >
-> • [vendite.fn_get_or_create_fattura_header](/dbzero/vendite/funzioni/fn_get_or_create_fattura_header)  
+• [vendite.fn_get_or_create_fattura_header](/dbzero/vendite/funzioni/fn_get_or_create_fattura_header)  
 >
----
-
 ### 🎯 Scopo Principale
-
 (latest review 29-01-2026)  
 La funzione **`vendite.fn_build_fattura_key()`** costruisce la **chiave logica**
 di aggregazione documento a partire da una riga di `attivita_fatturabili`.
 
 ---
 
-### ✅ Regole principali
+### Regole principali
 
 * La fattura viene emessa sul **BA padre** se presente, altrimenti sul BA stesso.
 * L’utility e` risolta dal **billing_account**.
@@ -35,13 +32,13 @@ di aggregazione documento a partire da una riga di `attivita_fatturabili`.
 
 ---
 
-### ✅ Output
+### Output
 
 Ritorna un **jsonb** con i campi chiave per l’aggregazione documento.
 
 ---
 
-### 🧪 Esempio
+### Esempio
 
 ```sql
 SELECT vendite.fn_build_fattura_key(12345);

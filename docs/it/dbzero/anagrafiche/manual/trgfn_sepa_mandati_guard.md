@@ -2,25 +2,23 @@
 
 > 👀 **Vedi anche**   
 >
-> **Approfondimento tabelle:**    
+**Approfondimento tabelle:**    
 >
-> * [pagamenti.sepa_mandati](/dbzero/pagamenti/tabelle/sepa_mandati)   
+[pagamenti.sepa_mandati](/dbzero/pagamenti/tabelle/sepa_mandati)   
 >
-> **Approfondimento Funzioni:**   
+**Approfondimento Funzioni:**   
 >
-> * [anagrafiche.fn_log_and_raise_error](/dbzero/anagrafiche/funzioni/fn_log_and_raise_error)   
-> * [dbops.trgfn_tx_id_managed](/dbzero/dbops/funzioni/trgfn_tx_id_managed)   
+[anagrafiche.fn_log_and_raise_error](/dbzero/anagrafiche/funzioni/fn_log_and_raise_error)   
+> [dbops.trgfn_tx_id_managed](/dbzero/dbops/funzioni/trgfn_tx_id_managed)   
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 29-12-25)
 Garantire che un mandato SEPA sia coerente quando e' in stato **ATTIVO** e normalizzare i campi di input sensibili (`umr`, `iban_snapshot`).
 
 ---
 
-### 🧩 Come Funziona
+### Come Funziona
 
 1. **Validazione stato**
    * Se `NEW.stato = 'ATTIVO'` allora `NEW.data_attivazione` deve essere valorizzata.
@@ -45,7 +43,7 @@ Garantire che un mandato SEPA sia coerente quando e' in stato **ATTIVO** e norma
 
 ---
 
-## 🔗 Trigger Associato
+## Trigger Associato
 
 ```sql
 CREATE TRIGGER trg_sepa_mandati_guard
@@ -68,12 +66,12 @@ Gli errori sono prodotti tramite:
 
 ---
 
-### 💡 Note Operative
+### Note Operative
 
 * La normalizzazione di `umr` e `iban_snapshot` riduce duplicazioni dovute a spazi e formattazioni diverse.
 * La validazione su `data_attivazione` e' un vincolo di business: un mandato attivo deve avere data di attivazione.
 
 ---
 
-> 🧠 **"Un mandato SEPA attivo deve avere data valida; UMR e IBAN vengono sempre normalizzati."**
+> **"Un mandato SEPA attivo deve avere data valida; UMR e IBAN vengono sempre normalizzati."**
 

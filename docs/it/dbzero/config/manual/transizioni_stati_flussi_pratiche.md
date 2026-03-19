@@ -2,24 +2,22 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> * [config.stati_flussi_pratiche](/dbzero/config/tabelle/stati_flussi_pratiche)
-> * [pratiche.flussi](/dbzero/pratiche/tabelle/flussi)
+[config.stati_flussi_pratiche](/dbzero/config/tabelle/stati_flussi_pratiche)
+> [pratiche.flussi](/dbzero/pratiche/tabelle/flussi)
 >
-> **Funzioni collegate:**
+**Funzioni collegate:**
 >
-> * [pratiche.trgfn_flussi_guard_transizione](/dbzero/pratiche/manual/trgfn_flussi_guard_transizione)
+[pratiche.trgfn_flussi_guard_transizione](/dbzero/pratiche/manual/trgfn_flussi_guard_transizione)
 
 ---
-
 ### 🎯 Scopo Principale
-
 `config.transizioni_stati_flussi_pratiche` definisce la **matrice delle transizioni ammesse** tra stati dei flussi pratica. Il trigger guard `trgfn_flussi_guard_transizione` consulta questa tabella per bloccare qualsiasi transizione non configurata.
 
 ---
 
-### 🧱 Campi chiave (semantica)
+### Campi chiave (semantica)
 
 | Colonna | Note |
 |---------|------|
@@ -30,14 +28,14 @@
 
 ---
 
-### 🔒 Vincoli
+### Vincoli
 
 * **UNIQUE** su `(stato_da_id, stato_a_id)` — una sola riga per coppia.
 * **CHECK** `stato_da_id <> stato_a_id` — transizione identitaria non ammessa.
 
 ---
 
-### ✅ Transizioni configurate (seed)
+### Transizioni configurate (seed)
 
 | Da | A |
 |----|---|
@@ -56,7 +54,7 @@ Gli stati COMPLETATO, ANNULLATO e ERRORE sono **terminali**: nessuna transizione
 
 ---
 
-### ✅ Note operative
+### Note operative
 
 * **Configurabile senza deploy**: aggiungere/disattivare transizioni e' un UPDATE/INSERT su config.
 * **Impossibile bypassare**: il trigger guard vale per API, service, query dirette, migration.

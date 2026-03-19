@@ -2,25 +2,22 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> • [vendite.fatture](/dbzero/vendite/tabelle/fatture)  
+• [vendite.fatture](/dbzero/vendite/tabelle/fatture)  
 > • [anagrafiche.billing_account](/dbzero/anagrafiche/tabelle/billing_account)  
 > • [pagamenti.centri_riscossione](/dbzero/pagamenti/tabelle/centri_riscossione)  
 > • [pagamenti.vendite_contabili](/dbzero/pagamenti/tabelle/vendite_contabili)  
 > • [pagamenti.vendite_contabili_righe](/dbzero/pagamenti/tabelle/vendite_contabili_righe)  
 >
----
-
 ### 🎯 Scopo Principale
-
 La tabella **`pagamenti.vendite_movimenti`** registra i movimenti di incasso/rimborso
 collegati alle fatture, con indicazione della **provenienza** (centro riscossione)
  e dei parametri utili al calcolo interessi e alla contabilizzazione.
 
 ---
 
-### 🧱 Campi chiave (semantica)
+### Campi chiave (semantica)
 
 * `fattura_id`: fattura collegata (obbligatoria; derivata da riga contabile se presente).
 * `billing_account_id`: intestatario (obbligatorio; derivato da riga contabile se presente).
@@ -35,7 +32,7 @@ collegati alle fatture, con indicazione della **provenienza** (centro riscossion
 
 ---
 
-### ✅ Regole principali
+### Regole principali
 
 * I movimenti rappresentano il risultato di posting contabile.
 * Le compensazioni sono tracciate sulla testata contabile (`vendite_contabili.compensazione_id`),
@@ -47,7 +44,7 @@ collegati alle fatture, con indicazione della **provenienza** (centro riscossion
 
 ---
 
-### 🧪 Esempio d’uso
+### Esempio d’uso
 
 ```sql
 SELECT *

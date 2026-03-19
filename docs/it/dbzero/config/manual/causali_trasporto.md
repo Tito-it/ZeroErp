@@ -2,15 +2,15 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimenti tabelle:   
+Approfondimenti tabelle:   
 >
-> * [config.aspetti_beni](/dbzero/config/tabelle/aspetti_beni)    
-> * [vendite.ddt_testata](/dbzero/vendite/tabelle/ddt_testata)     
-> * [vendite.ddt_righe](/dbzero/vendite/tabelle/ddt_righe)    
+[config.aspetti_beni](/dbzero/config/tabelle/aspetti_beni)    
+> [vendite.ddt_testata](/dbzero/vendite/tabelle/ddt_testata)     
+> [vendite.ddt_righe](/dbzero/vendite/tabelle/ddt_righe)    
 >
-> Approfondimenti funzioni/trigger generici:   
+Approfondimenti funzioni/trigger generici:   
 >
-> * [script.trgfn_upd_audit_data_user_generic](/dbzero/script/funzioni/trgfn_upd_audit_data_user_generic)  
+[script.trgfn_upd_audit_data_user_generic](/dbzero/script/funzioni/trgfn_upd_audit_data_user_generic)  
 
 ---
 
@@ -19,16 +19,14 @@ La tabella **`config.causali_trasporto`** contiene il catalogo delle **causali d
 Le causali di trasporto descrivono il *motivo* del movimento (es. vendita, conto visione, reso da cliente, reso a fornitore, trasferimento interno, conto lavorazione, ecc.) e possono essere utilizzate sia a fini logistici che amministrativi.
 
 ---
-
 ### 🎯 Scopo Principale
-
 * Fornire un **catalogo centralizzato** delle causali di trasporto utilizzabili nei DDT.
 * Supportare la **classificazione omogenea** dei flussi di movimentazione in base alla motivazione dell’invio/ritiro dei beni.
 * Costituire la base per **regole di processo** (es. fatturazione automatica, valorizzazione, contabilizzazione, statistiche) dipendenti dalla causale utilizzata.
 
 ---
 
-### 🔒 Vincoli e Regole Aziendali
+### Vincoli e Regole Aziendali
 
 * **Unicità logica**:
 
@@ -62,7 +60,7 @@ Le causali di trasporto descrivono il *motivo* del movimento (es. vendita, conto
 
 ---
 
-### 🔗 Relazioni
+### Relazioni
 
 `config.causali_trasporto` è una **tabella di configurazione sorgente** referenziata tipicamente da:
 
@@ -75,11 +73,11 @@ Le causali di trasporto descrivono il *motivo* del movimento (es. vendita, conto
 
   * Potenzialmente ordini, resi, movimenti interni o trasferimenti tra magazzini che necessitano di una motivazione codificata.
 
-> 🔁 In molti flussi, la **causale di trasporto** lavora in combinazione con l’**aspetto beni** per definire in dettaglio sia il *motivo* sia la *natura* della movimentazione.
+> In molti flussi, la **causale di trasporto** lavora in combinazione con l’**aspetto beni** per definire in dettaglio sia il *motivo* sia la *natura* della movimentazione.
 
 ---
 
-### ⚙️ Trigger Associati
+### Trigger Associati
 
 1. **Trigger di audit generico** (naming tipico: `trg_upd_causali_trasporto_audit_data_user`)
 
@@ -91,11 +89,11 @@ Le causali di trasporto descrivono il *motivo* del movimento (es. vendita, conto
 
      * invoca la funzione generica `script.trgfn_upd_audit_data_user_generic()` che centralizza la gestione dei campi di audit.
 
-> ✅ Questo garantisce che tutte le modifiche al catalogo causali di trasporto siano sempre tracciate in modo uniforme rispetto alle altre tabelle di configurazione.
+> Questo garantisce che tutte le modifiche al catalogo causali di trasporto siano sempre tracciate in modo uniforme rispetto alle altre tabelle di configurazione.
 
 ---
 
-### 💡 Vantaggi Operativi
+### Vantaggi Operativi
 
 * **Uniformità nei DDT**: tutte le causali utilizzate dagli operatori provengono da un catalogo unico e controllato.
 * **Governance dei processi**: la combinazione di `codice`, `attivo` e `meta` permette di modellare facilmente:
@@ -108,4 +106,4 @@ Le causali di trasporto descrivono il *motivo* del movimento (es. vendita, conto
 
 ---
 
-> 🧠 **“Un catalogo ben governato delle causali di trasporto rende più chiaro il ciclo logistico e facilita la definizione di regole automatiche su DDT, ordini e fatture.”**
+> **“Un catalogo ben governato delle causali di trasporto rende più chiaro il ciclo logistico e facilita la definizione di regole automatiche su DDT, ordini e fatture.”**

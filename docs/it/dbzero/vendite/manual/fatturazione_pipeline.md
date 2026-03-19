@@ -2,21 +2,17 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> • [vendite.fatturazione_lotti](/dbzero/vendite/tabelle/fatturazione_lotti)  
+• [vendite.fatturazione_lotti](/dbzero/vendite/tabelle/fatturazione_lotti)  
 > • [config.stati_doc_fiscale](/dbzero/config/tabelle/stati_doc_fiscale)  
 >
+**Approfondimento funzioni:**
 >
-> **Approfondimento funzioni:**
->
-> • [`backend.fn_execute_pipeline_step`](/backend/vendite/funzioni/fn_execute_pipeline_step)   
+• [`backend.fn_execute_pipeline_step`](/backend/vendite/funzioni/fn_execute_pipeline_step)   
 > • [`vendite.fn_select_attivita_fatturabili`](/dbzero/vendite/funzioni/fn_select_attivita_fatturabili)  
 >
----
-
 ### 🎯 Scopo Principale
-
 (latest review 28-01-2026)  
 La tabella **`vendite.fatturazione_pipeline`** descrive la **pipeline configurabile**
 dei processi di fatturazione.  
@@ -32,7 +28,7 @@ evoluzioni (nuovi step o processi senza refactor massivo).
 
 ---
 
-### ✅ Regole principali
+### Regole principali
 
 * `stato_doc_fiscale_id` collega lo step agli **stati lotto** (non agli stati fattura).
 * `tipo_lotto` distingue pipeline MASSIVO vs GIORNALIERO.
@@ -43,7 +39,7 @@ evoluzioni (nuovi step o processi senza refactor massivo).
 
 ---
 
-### 🧩 Struttura di `processi` e `rollback`
+### Struttura di `processi` e `rollback`
 
 Le colonne `processi` e `rollback` sono **jsonb** e contengono una lista di step
 tecnici. Esempio (schema indicativo):
@@ -57,7 +53,7 @@ tecnici. Esempio (schema indicativo):
 
 ---
 
-### 🧪 Esempi
+### Esempi
 
 **Pipeline per stato CALCOLO (esempio base)**
 
@@ -99,7 +95,7 @@ tecnici. Esempio (schema indicativo):
 
 ---
 
-### ✅ Note operative
+### Note operative
 
 * La pipeline governa il **workflow dei lotti**; nel modello corrente la
   numerazione e` prevista nello step `DEFINITIVA`.

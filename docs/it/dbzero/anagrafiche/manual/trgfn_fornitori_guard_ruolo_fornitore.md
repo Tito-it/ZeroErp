@@ -2,19 +2,17 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> * [anagrafiche.fornitori](/dbzero/anagrafiche/tabelle/fornitori)
-> * [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)
+[anagrafiche.fornitori](/dbzero/anagrafiche/tabelle/fornitori)
+> [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)
 >
-> **Approfondimento funzioni:**
+**Approfondimento funzioni:**
 >
-> * [script.fn_guard_soggetto_ruolo](/dbzero/script/funzioni/fn_guard_soggetto_ruolo)
+[script.fn_guard_soggetto_ruolo](/dbzero/script/funzioni/fn_guard_soggetto_ruolo)
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 12-03-2026)
 La trigger function **`anagrafiche.trgfn_fornitori_guard_ruolo_fornitore()`**
 assicura che ogni record di `anagrafiche.fornitori` punti a un
@@ -26,7 +24,7 @@ La verifica e l'eventuale riallineamento dell'identificativo vengono delegati a
 
 ---
 
-### 🔍 Regola applicata
+### Regola applicata
 
 * Trigger **BEFORE INSERT OR UPDATE** su `anagrafiche.fornitori`.
 * La funzione richiama `script.fn_guard_soggetto_ruolo(...)` con:
@@ -37,7 +35,7 @@ La verifica e l'eventuale riallineamento dell'identificativo vengono delegati a
 
 ---
 
-### ✅ Ruolo nel processo
+### Ruolo nel processo
 
 La guard evita il salvataggio di fornitori agganciati a ruoli non coerenti e
 centralizza la logica di validazione del bridge anagrafico nello strato comune.

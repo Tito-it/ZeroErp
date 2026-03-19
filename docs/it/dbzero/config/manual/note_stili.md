@@ -2,15 +2,15 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimenti tabelle note e messaggi:
+Approfondimenti tabelle note e messaggi:
 >
-> * [config.note_tipologie](/dbzero/config/tabelle/note_tipologie)
-> * [config.lingue](/dbzero/config/tabelle/lingue)
-> * [config.messaggi_errore](/dbzero/config/tabelle/messaggi_errore)
+[config.note_tipologie](/dbzero/config/tabelle/note_tipologie)
+> [config.lingue](/dbzero/config/tabelle/lingue)
+> [config.messaggi_errore](/dbzero/config/tabelle/messaggi_errore)
 >
-> Approfondimenti funzioni/trigger generici:
+Approfondimenti funzioni/trigger generici:
 >
-> * [script.trgfn_upd_audit_data_user_generic](/dbzero/script/funzioni/trgfn_upd_audit_data_user_generic)
+[script.trgfn_upd_audit_data_user_generic](/dbzero/script/funzioni/trgfn_upd_audit_data_user_generic)
 
 ---
 
@@ -27,9 +27,7 @@ Esempi di stili tipici:
 * `EVIDENZIATO`
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 15-01-26)
 * Fornire un **catalogo centralizzato** degli stili che possono essere applicati alle note (formattazione e/o semantica).
 * Separare la **semantica dello stile** (es. AVVISO, AVVERTENZA, INFO) dalla renderizzazione effettiva lato UI/templating.
@@ -37,7 +35,7 @@ Esempi di stili tipici:
 
 ---
 
-### 🔒 Vincoli e Regole Aziendali
+### Vincoli e Regole Aziendali
 
 * **Codice esposto** (`codice`):
 
@@ -79,7 +77,7 @@ Esempi di stili tipici:
 
 ---
 
-### 🔗 Relazioni
+### Relazioni
 
 `config.note_stili` è una tabella **di dominio** che viene referenziata da:
 
@@ -96,11 +94,11 @@ Esempi di stili tipici:
 
   * per limitare la lista di stili selezionabili in determinate sezioni dell’applicazione.
 
-> 🔁 In combinazione con `config.note_tipologie` e `config.lingue`, `config.note_stili` permette di definire **note tipizzate, stilizzate e localizzate**.
+> In combinazione con `config.note_tipologie` e `config.lingue`, `config.note_stili` permette di definire **note tipizzate, stilizzate e localizzate**.
 
 ---
 
-### ⚙️ Trigger Associati (attesi / suggeriti)
+### Trigger Associati (attesi / suggeriti)
 
 Sebbene non siano definiti nel DDL riportato, è consigliabile introdurre i seguenti trigger:
 
@@ -116,11 +114,11 @@ Sebbene non siano definiti nel DDL riportato, è consigliabile introdurre i segu
    * **Cosa fa**: impedisce la modifica del campo `codice_interno` se già valorizzato, sollevando un errore applicativo.
    * **Obiettivo**: garantire che il **codice funzionale interno resti immutabile**, come previsto dal commento di colonna.
 
-> ✅ Questo approccio rende il dominio robusto: gli stili possono essere arricchiti o disattivati, ma i codici interni rimangono stabili nel tempo.
+> Questo approccio rende il dominio robusto: gli stili possono essere arricchiti o disattivati, ma i codici interni rimangono stabili nel tempo.
 
 ---
 
-### 💡 Vantaggi Operativi
+### Vantaggi Operativi
 
 * **Uniformità di presentazione**: tutte le componenti che usano note e messaggi condividono lo stesso catalogo stili.
 * **Separa logica da presentazione**: la semantica (NORMALE, AVVISO, ECC.) viene configurata a livello di dominio; la resa grafica viene gestita da frontend/templates.
@@ -129,4 +127,4 @@ Sebbene non siano definiti nel DDL riportato, è consigliabile introdurre i segu
 
 ---
 
-> 🧠 **“Definire chiaramente il dominio degli stili delle note rende l’interfaccia più coerente e permette di governare in modo centralizzato la semantica visuale di messaggi e annotazioni.”**
+> **“Definire chiaramente il dominio degli stili delle note rende l’interfaccia più coerente e permette di governare in modo centralizzato la semantica visuale di messaggi e annotazioni.”**

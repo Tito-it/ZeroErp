@@ -2,23 +2,21 @@
 
 > 👀 **Vedi anche**
 >
-> **Guide generali:**    
+**Guide generali:**    
 >
-> • [Automazione DB](/guide/automazione-db)    
+• [Automazione DB](/guide/automazione-db)    
 >
-> **Approfondimento tabelle:**    
+**Approfondimento tabelle:**    
 >
-> • [config.sistema_codici](/dbzero/config/manual/sistema_codici)    
+• [config.sistema_codici](/dbzero/config/manual/sistema_codici)    
 >
-> **Approfondimento funzioni:**    
+**Approfondimento funzioni:**    
 >
-> • [script.fn_generate_codice](/dbzero/script/manual/fn_generate_codice)    
+• [script.fn_generate_codice](/dbzero/script/manual/fn_generate_codice)    
 > • [script.fn_log_and_raise_error](/dbzero/script/manual/fn_log_and_raise_error)    
 
 ---
-
 ### 🎯 Scopo Principale
-
 La funzione `script.trgfn_config_sistema_codici_sync_gen_codice()` mantiene **sincronizzati**
 trigger e trigger function per la **generazione automatica dei codici/numero** in base a
 `config.sistema_codici`.
@@ -31,7 +29,7 @@ Viene eseguita **AFTER INSERT/UPDATE/DELETE** su `config.sistema_codici` e:
 
 ---
 
-### 🔄 Logica principale
+### Logica principale
 
 1. **DELETE** su `config.sistema_codici`  
    Rimuove trigger e trigger function associate alla tabella target.
@@ -50,7 +48,7 @@ Viene eseguita **AFTER INSERT/UPDATE/DELETE** su `config.sistema_codici` e:
 
 ---
 
-### ✅ Effetto sul runtime
+### Effetto sul runtime
 
 Quando la colonna target e` NULL/vuota, il trigger invoca:
 
@@ -63,7 +61,7 @@ Questo genera il valore secondo la configurazione e crea la sequenza automatica
 
 ---
 
-### 🧩 Naming generato
+### Naming generato
 
 * **Trigger function**: `trgfn_<tabella>_gen_codice`
 * **Trigger**: `trg_<tabella>_a10_gen_codice_ins_upd`

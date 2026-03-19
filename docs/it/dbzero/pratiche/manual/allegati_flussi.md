@@ -2,21 +2,19 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimento tabelle:
+Approfondimento tabelle:
 >
-> * [pratiche.flussi](/dbzero/pratiche/tabelle/flussi)
-> * [pratiche.allegati_pratiche](/dbzero/pratiche/tabelle/allegati_pratiche)
-> * [config.tipi_allegato](/dbzero/config/tabelle/tipi_allegato)
+[pratiche.flussi](/dbzero/pratiche/tabelle/flussi)
+> [pratiche.allegati_pratiche](/dbzero/pratiche/tabelle/allegati_pratiche)
+> [config.tipi_allegato](/dbzero/config/tabelle/tipi_allegato)
 
 ---
-
 ### 🎯 Scopo Principale
-
 La tabella `pratiche.allegati_flussi` gestisce i **file allegati** a un flusso specifico. Struttura identica a `allegati_pratiche` ma collegata al singolo step di workflow anziche' alla pratica.
 
 ---
 
-### 🧱 Ruolo nel processo
+### Ruolo nel processo
 
 * Consente di allegare documenti a livello di singolo step (es. foto sopralluogo, verbale intervento).
 * **Immutabile**: versionamento tramite `allegato_padre_id`.
@@ -24,7 +22,7 @@ La tabella `pratiche.allegati_flussi` gestisce i **file allegati** a un flusso s
 
 ---
 
-### ⚙️ Caratteristiche
+### Caratteristiche
 
 | Aspetto | Dettaglio |
 |---------|-----------|

@@ -2,24 +2,23 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> * [`config.tipi_indirizzi`](/dbzero/config/tabelle/tipi_indirizzi)
+[`config.tipi_indirizzi`](/dbzero/config/tabelle/tipi_indirizzi)
 >
-> **Tabelle / ambiti operativi (documenti):**
+**Tabelle / ambiti operativi (documenti):**
 >
-> * `vendite.fatture` / righe documento (ambito **FATTURE**)
-> * `vendite.ordini` (ambito **ORDINI**)
-> * `vendite.ddt` (ambito **DDT**)
-> * `vendite.preventivi` (ambito **PREVENTIVI**)
+`vendite.fatture` / righe documento (ambito **FATTURE**)
+> `vendite.ordini` (ambito **ORDINI**)
+> `vendite.ddt` (ambito **DDT**)
+> `vendite.preventivi` (ambito **PREVENTIVI**)
 >
-> **Da non confondere con:**
+**Da non confondere con:**
 >
-> * [`config.tipi_soggetto_dettaglio_tipi_indirizzo`](/dbzero/config/tabelle/tipi_soggetto_dettaglio_tipi_indirizzo)
-> * [`config.tipi_ruolo_tipi_indirizzo`](/dbzero/config/tabelle/tipi_ruolo_tipi_indirizzo)
+[`config.tipi_soggetto_dettaglio_tipi_indirizzo`](/dbzero/config/tabelle/tipi_soggetto_dettaglio_tipi_indirizzo)
+> [`config.tipi_ruolo_tipi_indirizzo`](/dbzero/config/tabelle/tipi_ruolo_tipi_indirizzo)
 
 ---
-
 ### 🎯 Scopo Principale
 (Ultima review 19-12-25)
 
@@ -39,7 +38,7 @@ Questa tabella serve soprattutto per:
 
 ---
 
-### 🧩 Ruolo nel Modello Dati
+### Ruolo nel Modello Dati
 
 Nel modello Zero ERP esistono **almeno due famiglie di regole** sugli indirizzi:
 
@@ -60,7 +59,7 @@ Queste stabiliscono **quali tipi indirizzo sono ammessi nei documenti**, indipen
 
 ➡️ Sono regole **sui documenti**.
 
-> 📌 In pratica: un soggetto potrebbe avere molti indirizzi (RES, DOMFISC, SPED…), ma un certo documento potrebbe accettare solo alcuni tipi (es. FATT + SPED) per evitare errori di processo.
+> In pratica: un soggetto potrebbe avere molti indirizzi (RES, DOMFISC, SPED…), ma un certo documento potrebbe accettare solo alcuni tipi (es. FATT + SPED) per evitare errori di processo.
 
 ---
 
@@ -91,7 +90,7 @@ Queste stabiliscono **quali tipi indirizzo sono ammessi nei documenti**, indipen
 
 ---
 
-### ⚙️ Regole di Funzionamento
+### Regole di Funzionamento
 
  **1️⃣ Ammissibilità per ambito**
 
@@ -117,7 +116,7 @@ Quando `obbligatorio = TRUE`, significa che:
 
 ---
 
-### 🔍 Esempi d’Uso (concettuali)
+### Esempi d’Uso (concettuali)
 
  **✔ Ambito FATTURE**
 
@@ -135,13 +134,13 @@ Quando `obbligatorio = TRUE`, significa che:
 
 ---
 
-### 💡 Vantaggi Operativi
+### Vantaggi Operativi
 
 * **Chiarezza**: regole indirizzi sui documenti separate dalle regole sugli indirizzi del soggetto.
 * **Riduzione errori**: impedisce compilazioni incoerenti e “scelte libere” non controllate.
 * **Configurazione centrale**: cambi le regole senza toccare codice.
 * **Supporto multi-documento**: ogni ambito può avere set di tipi indirizzo differenti.
 
-> 🧠 **"`config.tipi_indirizzi_allowed` è la regia dei tipi indirizzo utilizzabili nei documenti: non decide quali indirizzi può avere un soggetto, ma quali indirizzi sono accettati e richiesti nei flussi documentali (fatture, ordini, DDT, preventivi)."**
+> **"`config.tipi_indirizzi_allowed` è la regia dei tipi indirizzo utilizzabili nei documenti: non decide quali indirizzi può avere un soggetto, ma quali indirizzi sono accettati e richiesti nei flussi documentali (fatture, ordini, DDT, preventivi)."**
 
 {% include-markdown "signature-core.md" %}

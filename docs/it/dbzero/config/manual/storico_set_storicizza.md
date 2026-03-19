@@ -2,28 +2,26 @@
 
 > 👀 **Vedi anche:**
 >
-> Guide :
+Guide :
 >
-> * [Storicizzazione Tabelle](/guide/storicizzazione-tabelle)
+[Storicizzazione Tabelle](/guide/storicizzazione-tabelle)
 >
-> Approfondimento funzioni:
+Approfondimento funzioni:
 >
-> * [dbops.proc_sync_storico_set_storicizza](/dbzero/dbops/funzioni/proc_sync_storico_set_storicizza)
-> * [dbops.proc_apply_storicizza_defaults](/dbzero/dbops/funzioni/proc_apply_storicizza_defaults)
-> * [maintenance.proc_apply_storicizza_defaults_job](/dbzero/maintenance/funzioni/proc_apply_storicizza_defaults_job) *(job pgAgent che richiama la procedura)*
-> * [maintenance.fn_run_and_log](/dbzero/maintenance/funzioni/fn_run_and_log)
+[dbops.proc_sync_storico_set_storicizza](/dbzero/dbops/funzioni/proc_sync_storico_set_storicizza)
+> [dbops.proc_apply_storicizza_defaults](/dbzero/dbops/funzioni/proc_apply_storicizza_defaults)
+> [maintenance.proc_apply_storicizza_defaults_job](/dbzero/maintenance/funzioni/proc_apply_storicizza_defaults_job) *(job pgAgent che richiama la procedura)*
+> [maintenance.fn_run_and_log](/dbzero/maintenance/funzioni/fn_run_and_log)
 
 ---
-
 ### 🎯 Scopo Principale
-
 `config.storico_set_storicizza` è la **tabella di configurazione** che elenca le tabelle per le quali lo **storico dei dati** deve essere abilitato **in modo predefinito**.
 Le tabelle presenti qui hanno la colonna `storicizza` con **default TRUE**: ciò garantisce che **ogni nuova riga** venga automaticamente marcata per la storicizzazione (snapshot su UPDATE/DELETE e protezione dal reset a FALSE a cura dei trigger).
 
 
 ---
 
-### 🔁 Flusso Operativo (con le procedure collegate)
+### Flusso Operativo (con le procedure collegate)
 
 1. **Sincronizzazione automatica** — `dbops.proc_sync_storico_set_storicizza()`
 
@@ -41,7 +39,7 @@ Le tabelle presenti qui hanno la colonna `storicizza` con **default TRUE**: ciò
 
 ---
 
-### ⚙️ Vincoli e Regole
+### Vincoli e Regole
 
 * **PK**: `storico_set_storicizza_pkey` sulla colonna `table_name` assicura **unicità** per tabella.
 * **`insert_manuale`**:
@@ -52,7 +50,7 @@ Le tabelle presenti qui hanno la colonna `storicizza` con **default TRUE**: ciò
 
 ---
 
-### 🔍 Considerazioni di Progettazione
+### Considerazioni di Progettazione
 
 * La configurazione qui presente è **declarativa**: evita la dispersione di logiche per tabella, centralizzando la scelta su *quali tabelle storicizzare*.
 * La coppia di procedure consente sia la **rilevazione** (sync) sia la **forzatura** (apply) del default `TRUE` sulla colonna `storicizza` per tutte le tabelle interessate.
@@ -60,7 +58,7 @@ Le tabelle presenti qui hanno la colonna `storicizza` con **default TRUE**: ciò
 
 ---
 
-### 🧪 Esempi d’Uso
+### Esempi d’Uso
 
 **Aggiungere manualmente una tabella alla lista**
 
@@ -84,7 +82,7 @@ CALL dbops.proc_sync_storico_set_storicizza();
 
 ---
 
-### 🛠️ Manutenzione & Best Practice
+### Manutenzione & Best Practice
 
 * Eseguire periodicamente `proc_sync_storico_set_storicizza` per **intercettare** nuove tabelle con `storicizza DEFAULT TRUE` create da migrazioni recenti.
 * Dopo cambiamenti strutturali o decisioni architetturali, usare `apply_storicizza_defaults` per **forzare l’allineamento** dello schema.
@@ -92,7 +90,7 @@ CALL dbops.proc_sync_storico_set_storicizza();
 
 ---
 
-> 🧠 **Nota**: questa tabella **non abilita da sola** i trigger di storicizzazione; definisce *solo* l’impostazione predefinita della colonna `storicizza`. I trigger devono essere presenti e configurati nelle singole tabelle per registrare gli snapshot.
+> **Nota**: questa tabella **non abilita da sola** i trigger di storicizzazione; definisce *solo* l’impostazione predefinita della colonna `storicizza`. I trigger devono essere presenti e configurati nelle singole tabelle per registrare gli snapshot.
 
 ---
 

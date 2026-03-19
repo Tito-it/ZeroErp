@@ -2,20 +2,18 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimeto tabelle:**
+**Approfondimeto tabelle:**
 >
-> * [anagrafiche.istanze_utilities](/dbzero/anagrafiche/tabelle/istanze_utilities)   
-> * [anagrafiche.catasto_unita_immobiliari](/dbzero/anagrafiche/tabelle/catasto_unita_immobiliari)    
+[anagrafiche.istanze_utilities](/dbzero/anagrafiche/tabelle/istanze_utilities)   
+> [anagrafiche.catasto_unita_immobiliari](/dbzero/anagrafiche/tabelle/catasto_unita_immobiliari)    
 >
-> **Automazioni collegate (subentro/catasto):**
+**Automazioni collegate (subentro/catasto):**
 >
-> * Trigger: `anagrafiche.trg_iu_z50_clone_catasto_from_parent_aft_upd` (clonazione catasto da parent)     
-> * Trigger: `anagrafiche.trg_iu_z40_sync_catasto_unita_indirizzo_aft_ins_upd` (sync tabella ponte catasto↔indirizzi)    
+Trigger: `anagrafiche.trg_iu_z50_clone_catasto_from_parent_aft_upd` (clonazione catasto da parent)     
+> Trigger: `anagrafiche.trg_iu_z40_sync_catasto_unita_indirizzo_aft_ins_upd` (sync tabella ponte catasto↔indirizzi)    
 
 ---
-
 ### 🎯 Scopo Principale
-
 La funzione **`script.fn_get_catasto_source_by_istanza(p_istanza_utilities_id)`** recupera il record catastale **"sorgente"** da utilizzare come base per una **clonazione** in caso di **subentro**.
 
 ✅ La sorgente è determinata **esclusivamente** dalla relazione:
@@ -26,7 +24,7 @@ In altre parole: **solo la parent_istanza può fornire il catasto sorgente**.
 
 ---
 
-### 🧭 Contesto di Modellazione
+### Contesto di Modellazione
 
 A valle del refactor del dominio catasto:
 
@@ -39,7 +37,7 @@ Questa funzione implementa quindi un **lookup puro** basato sul modello corrente
 
 ---
 
-### 🛠️ Firma
+### Firma
 
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_get_catasto_source_by_istanza(
@@ -51,7 +49,7 @@ LANGUAGE plpgsql;
 
 ---
 
-### 📥 Parametri
+### Parametri
 
 | Parametro                |     Tipo | Obbligatorio | Descrizione                                                                                   |
 | ------------------------ | -------: | :----------: | --------------------------------------------------------------------------------------------- |
@@ -59,9 +57,9 @@ LANGUAGE plpgsql;
 
 ---
 
-### 📤 Valore di Ritorno
+### Valore di Ritorno
 
-* ✅ **Record** di tipo `anagrafiche.catasto_unita_immobiliari` (catasto sorgente della parent).
+* **Record** di tipo `anagrafiche.catasto_unita_immobiliari` (catasto sorgente della parent).
 * ⚠️ **`NULL`** se:
 
   * l’istanza non ha una `parent_istanza_id`, oppure
@@ -69,7 +67,7 @@ LANGUAGE plpgsql;
 
 ---
 
-### 🔐 Comportamento su Parametri Non Validi
+### Comportamento su Parametri Non Validi
 
 Se `p_istanza_utilities_id` è `NULL`, la funzione **non** ritorna `NULL`: viene generato un errore applicativo tramite logging centralizzato:
 
@@ -84,7 +82,7 @@ Questo garantisce:
 
 ---
 
-### 🔄 Logica Operativa
+### Logica Operativa
 
 La funzione è volutamente **minimale** e **deterministica**.
 
@@ -114,7 +112,7 @@ Ritorna il record `anagrafiche.catasto_unita_immobiliari` individuato.
 
 ---
 
-### 🧩 Dipendenze Dati
+### Dipendenze Dati
 
 **Input minimi necessari per ottenere una sorgente:**
 
@@ -124,7 +122,7 @@ Ritorna il record `anagrafiche.catasto_unita_immobiliari` individuato.
 
 ---
 
-### 🔍 Esempi d’Uso
+### Esempi d’Uso
 
 #### Caso standard: recupero sorgente per subentro
 
@@ -148,7 +146,7 @@ LEFT JOIN LATERAL script.fn_get_catasto_source_by_istanza(iu.id) AS src
 
 ---
 
-### ⚙️ Considerazioni di Performance
+### Considerazioni di Performance
 
 * La funzione esegue **2 lookup** puntuali su PK/FK:
 
@@ -160,7 +158,7 @@ LEFT JOIN LATERAL script.fn_get_catasto_source_by_istanza(iu.id) AS src
 
 ---
 
-### ✅ Integrazione nel Flusso “Subentro”
+### Integrazione nel Flusso “Subentro”
 
 Questa funzione è pensata per essere usata come **building-block** dalla logica di clonazione, tipicamente:
 
@@ -174,13 +172,13 @@ La funzione qui documentata copre **solo** il punto 2.a: *determinare il record 
 
 ### ⚠️ Best Practice e Vincoli di Utilizzo
 
-* ✅ Usare la funzione **solo** in contesti dove la parent è la sorgente ufficiale (subentro).
-* ❌ Non usare come fallback “generico” su indirizzo o PDP: questa funzione **non** implementa altre strategie.
-* ✅ In caso si voglia introdurre un fallback alternativo, farlo con **funzioni distinte** (per non rompere la semantica di questa).
+* Usare la funzione **solo** in contesti dove la parent è la sorgente ufficiale (subentro).
+* Non usare come fallback “generico” su indirizzo o PDP: questa funzione **non** implementa altre strategie.
+* In caso si voglia introdurre un fallback alternativo, farlo con **funzioni distinte** (per non rompere la semantica di questa).
 
 ---
 
-### 🧪 Note per Test (pgTAP / SQL)
+### Note per Test (pgTAP / SQL)
 
 Casi minimi consigliati:
 
@@ -191,7 +189,7 @@ Casi minimi consigliati:
 
 ---
 
-### 🗂️ Metadati
+### Metadati
 
 * **Schema:** `script`
 * **Tipo:** lookup puro (nessun side-effect)

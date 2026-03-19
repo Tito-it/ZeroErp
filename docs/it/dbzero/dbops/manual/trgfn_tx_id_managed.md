@@ -2,18 +2,15 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimento Tabelle:   
+Approfondimento Tabelle:   
 >
-> * [dbops.transaction_ids](/dbzero/dbops/tabelle/transaction_ids)      
+[dbops.transaction_ids](/dbzero/dbops/tabelle/transaction_ids)      
 >
-> Approfondimento funzioni :    
+Approfondimento funzioni :    
 >
-> * [dbops.fn_get_or_create_session_tx_id](/dbzero/dbops/funzioni/fn_get_or_create_session_tx_id)    
-> * [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)    
-
-
+[dbops.fn_get_or_create_session_tx_id](/dbzero/dbops/funzioni/fn_get_or_create_session_tx_id)    
+> [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)    
 ### 🎯 Scopo Principale
-
 (latest review 01-01-26)
 La trigger function **`dbops.trgfn_tx_id_managed()`** viene eseguita **`BEFORE INSERT OR UPDATE`** su ogni tabella che contiene la colonna `tx_id` e centralizza la **logica di validazione**, **generazione** e **assegnazione** dell’**UUID di transazione** per la riga in corso di inserimento/aggiornamento.
 
@@ -28,7 +25,7 @@ La trigger function **`dbops.trgfn_tx_id_managed()`** viene eseguita **`BEFORE I
 
 ---
 
-### 🔍 Variabili di Contesto e Configurazione
+### Variabili di Contesto e Configurazione
 
 | Variabile                              | Scopo                                                                                                                         |
 | -------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
@@ -39,7 +36,7 @@ La trigger function **`dbops.trgfn_tx_id_managed()`** viene eseguita **`BEFORE I
 
 ---
 
-### ⚙️ Flusso di Esecuzione Dettagliato
+### Flusso di Esecuzione Dettagliato
 
 1. **Verifica bypass globale**
 
@@ -92,7 +89,7 @@ CREATE TRIGGER trg_managed_tx_id
 
 ---
 
-### 💡 Vantaggi Operativi
+### Vantaggi Operativi
 
 * **Centralizzazione logica**: nessuna duplicazione di codice di generazione/validazione del `tx_id` across tabelle.
 * **Flessibilità**: gestisce bypass globali e di sessione per scenari di test, migrazione o debug.
@@ -101,4 +98,4 @@ CREATE TRIGGER trg_managed_tx_id
 
 ---
 
-> 🧠 **“`trgfn_tx_id_managed` è il cuore della gestione transazionale in Zero ERP: garantisce consistenza, controlli configurabili e fallback sicuri, mantenendo la logica di correlazione centralizzata.”**
+> **“`trgfn_tx_id_managed` è il cuore della gestione transazionale in Zero ERP: garantisce consistenza, controlli configurabili e fallback sicuri, mantenendo la logica di correlazione centralizzata.”**

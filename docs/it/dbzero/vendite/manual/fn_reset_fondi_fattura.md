@@ -2,20 +2,17 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> • [vendite.fatture](/dbzero/vendite/tabelle/fatture)  
+• [vendite.fatture](/dbzero/vendite/tabelle/fatture)  
 > • [vendite.fatture_fondi_fattura_source](/dbzero/vendite/tabelle/fatture_fondi_fattura_source)  
 > • [vendite.fatture_fondi_fattura](/dbzero/vendite/tabelle/fatture_fondi_fattura)  
 >
-> **Approfondimento funzioni:**
+**Approfondimento funzioni:**
 >
-> • [vendite.fn_applica_fondi_fattura](/dbzero/vendite/funzioni/fn_applica_fondi_fattura)  
+• [vendite.fn_applica_fondi_fattura](/dbzero/vendite/funzioni/fn_applica_fondi_fattura)  
 >
----
-
 ### 🎯 Scopo Principale
-
 La funzione **`vendite.fn_reset_fondi_fattura()`** ripristina i fondi fattura
 applicati ad una **fattura figlia**:
 
@@ -25,7 +22,7 @@ applicati ad una **fattura figlia**:
 
 ---
 
-### ✅ Regole principali
+### Regole principali
 
 * `p_fattura_id` obbligatorio.
 * Opera solo su `source` con `stato = 'ASSEGNATO'`.
@@ -38,7 +35,7 @@ applicati ad una **fattura figlia**:
 
 ---
 
-### ✅ Output
+### Output
 
 Ritorna:
 
@@ -47,7 +44,7 @@ Ritorna:
 
 ---
 
-### 🧪 Esempio d’uso
+### Esempio d’uso
 
 ```sql
 SELECT *

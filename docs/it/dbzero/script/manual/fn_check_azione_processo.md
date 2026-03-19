@@ -2,20 +2,18 @@
 
 > **Vedi anche**
 >
-> **Tabelle correlate:**
+**Tabelle correlate:**
 >
-> * [config.azioni_processo](/dbzero/config/tabelle/azioni_processo)
-> * [config.user_override_azioni](/dbzero/config/tabelle/user_override_azioni)
-> * [config.profili_reparto_azioni](/dbzero/config/tabelle/profili_reparto_azioni)
+[config.azioni_processo](/dbzero/config/tabelle/azioni_processo)
+> [config.user_override_azioni](/dbzero/config/tabelle/user_override_azioni)
+> [config.profili_reparto_azioni](/dbzero/config/tabelle/profili_reparto_azioni)
 >
-> **Funzioni correlate:**
+**Funzioni correlate:**
 >
-> * [script.fn_get_ruolo_sistema](/dbzero/script/funzioni/fn_get_ruolo_sistema)
+[script.fn_get_ruolo_sistema](/dbzero/script/funzioni/fn_get_ruolo_sistema)
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 08-03-2026)
 La funzione **`script.fn_check_azione_processo`** verifica se un'azione di processo
 (identificata da `permission_codename`) e abilitata per un utente.

@@ -2,16 +2,14 @@
 
 > **Vedi anche**
 >
-> * [vendite.ordini](/dbzero/vendite/tabelle/ordini)
-> * [vendite.ordini_righe](/dbzero/vendite/tabelle/ordini_righe)
-> * [vendite.fn_list_ddt_da_pushare](/dbzero/vendite/funzioni/fn_list_ddt_da_pushare) — funzione complementare per DDT
-> * [vendite.fn_get_or_create_commessa](/dbzero/vendite/funzioni/fn_get_or_create_commessa)
-> * [vendite.fn_upsert_commessa_attivita](/dbzero/vendite/funzioni/fn_upsert_commessa_attivita)
+[vendite.ordini](/dbzero/vendite/tabelle/ordini)
+> [vendite.ordini_righe](/dbzero/vendite/tabelle/ordini_righe)
+> [vendite.fn_list_ddt_da_pushare](/dbzero/vendite/funzioni/fn_list_ddt_da_pushare) — funzione complementare per DDT
+> [vendite.fn_get_or_create_commessa](/dbzero/vendite/funzioni/fn_get_or_create_commessa)
+> [vendite.fn_upsert_commessa_attivita](/dbzero/vendite/funzioni/fn_upsert_commessa_attivita)
 
 ---
-
-### Scopo Principale
-
+### 🎯 Scopo Principale
 `vendite.fn_list_ordini_da_pushare(...)` seleziona le righe ordine
 pronte per il push verso `commesse_attivita`, restituendo un payload completo
 per l’handler di acquisizione.
@@ -62,7 +60,7 @@ Restituisce per ogni riga candidata:
 
 ---
 
-### 🧪 Esempio d’uso
+### Esempio d’uso
 
 ```sql
 SELECT *

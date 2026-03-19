@@ -2,27 +2,25 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimento tabelle:    
+Approfondimento tabelle:    
 >
-> * [config.iva](/dbzero/config/tabelle/iva)    
+[config.iva](/dbzero/config/tabelle/iva)    
 >
-> Approfondimenti funzioni:   
+Approfondimenti funzioni:   
 >
-> * [script.trgfn_upd_audit_data_user_generic](/dbzero/script/funzioni/trgfn_upd_audit_data_user_generic)     
+[script.trgfn_upd_audit_data_user_generic](/dbzero/script/funzioni/trgfn_upd_audit_data_user_generic)     
 
 
 La tabella **`config.conti_contabili`** definisce il piano dei conti utilizzabile per la contabilizzazione delle operazioni, distinguendo tra conti di **acquisto** e **vendita**, e supportando l’audit delle modifiche.
 
 ---
-
 ### 🎯 Scopo Principale
-
 * Mantenere il catalogo centralizzato dei **codici conto** con descrizioni e tipologia.
 * Supportare la validazione dei riferimenti contabili in altre tabelle (ad esempio `config.iva`).
 
 ---
 
-### 🔒 Vincoli e Regole Aziendali
+### Vincoli e Regole Aziendali
 
 * **Unicità**: `codice` deve essere univoco.
 * **Tipologia**: `tipo_conto` può essere:
@@ -33,7 +31,7 @@ La tabella **`config.conti_contabili`** definisce il piano dei conti utilizzabil
 
 ---
 
-### 🔗 Relazioni e Indici
+### Relazioni e Indici
 
 * **FK in ingresso**:
 
@@ -46,7 +44,7 @@ La tabella **`config.conti_contabili`** definisce il piano dei conti utilizzabil
 
 ---
 
-### ⚙️ Trigger Associati
+### Trigger Associati
 
 1. **`trg_upd_conti_contabili_audit_data_user`**
 
@@ -55,7 +53,7 @@ La tabella **`config.conti_contabili`** definisce il piano dei conti utilizzabil
 
 ---
 
-### 💡 Vantaggi Operativi
+### Vantaggi Operativi
 
 * **Governance contabile**: definizione centralizzata del piano dei conti.
 * **Integrità referenziale**: associazioni corrette ai conti di acquisto e vendita.
@@ -64,4 +62,4 @@ La tabella **`config.conti_contabili`** definisce il piano dei conti utilizzabil
 
 ---
 
-> 🧠 **“Un piano dei conti ben strutturato è alla base di una contabilità affidabile e facilmente mantenibile.”**
+> **“Un piano dei conti ben strutturato è alla base di una contabilità affidabile e facilmente mantenibile.”**

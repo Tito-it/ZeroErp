@@ -2,21 +2,18 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> • [vendite.commesse](/dbzero/vendite/tabelle/commesse)  
+• [vendite.commesse](/dbzero/vendite/tabelle/commesse)  
 > • [vendite.stati_commessa](/dbzero/vendite/tabelle/stati_commessa)  
 > • [vendite.commesse_attivita](/dbzero/vendite/tabelle/commesse_attivita)  
 >
-> **Approfondimento funzioni:**
+**Approfondimento funzioni:**
 >
-> • [vendite.fn_get_or_create_commessa](/dbzero/vendite/funzioni/fn_get_or_create_commessa)  
+• [vendite.fn_get_or_create_commessa](/dbzero/vendite/funzioni/fn_get_or_create_commessa)  
 > • [vendite.fn_list_commesse_emittibili](/dbzero/vendite/funzioni/fn_list_commesse_emittibili)  
 >
----
-
 ### 🎯 Scopo Principale
-
 (latest review 26-02-2026)  
 Restituisce in una singola query lo stato operativo di una commessa:
 
@@ -27,7 +24,7 @@ Restituisce in una singola query lo stato operativo di una commessa:
 
 ---
 
-### ✅ Regole principali
+### Regole principali
 
 * `p_commessa_id` obbligatorio e `> 0`.
 * Errore esplicito se la commessa non esiste.
@@ -41,13 +38,13 @@ Restituisce in una singola query lo stato operativo di una commessa:
 
 ---
 
-### ✅ Output
+### Output
 
 Una sola riga con metadati testata + metriche aggregate, utile a dashboard, orchestratori backend e controlli pre-emissione.
 
 ---
 
-### 🧪 Esempio d'uso
+### Esempio d'uso
 
 ```sql
 SELECT *

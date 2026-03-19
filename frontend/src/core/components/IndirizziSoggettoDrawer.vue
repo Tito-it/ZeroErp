@@ -5,6 +5,7 @@
 
 import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useInjectReadonly } from '../composables/useReadonlyMode'
 import { useApiHandler } from '../composables/useApiHandler'
 import { useIndirizzoSoggettoForm } from '../composables/useIndirizzoSoggettoForm'
 import {
@@ -18,8 +19,10 @@ import DrawerFooter from './DrawerFooter.vue'
 import Drawer from 'primevue/drawer'
 import Button from 'primevue/button'
 import Tag from 'primevue/tag'
+import Message from 'primevue/message'
 
 const { t } = useI18n()
+const isReadonly = useInjectReadonly()
 const { execute, loading } = useApiHandler()
 const indirizzo = useIndirizzoSoggettoForm()
 
@@ -27,6 +30,7 @@ const props = defineProps({
   visible: { type: Boolean, default: false },
   soggettoId: { type: String, default: null },
   tipoSoggettoDettaglioId: { type: Number, default: null },
+  context: { type: String, default: 'soggetto' },
 })
 
 const emit = defineEmits(['update:visible', 'saved'])
@@ -41,13 +45,15 @@ const formMode = ref(null)
 // ID dell'indirizzo soggetto da sostituire (in mode 'replace')
 const replaceId = ref(null)
 const replaceLabel = ref('')
+const comuneInitialItem = ref(null)
 
 async function loadIndirizzi() {
   if (!props.soggettoId) return
   listLoading.value = true
   try {
     const res = await listSoggettoIndirizzi(props.soggettoId)
-    indirizziList.value = res.data.data.results || res.data.data
+    const payload = res.data?.data
+    indirizziList.value = payload?.results || payload || []
   } catch {
     indirizziList.value = []
   } finally {
@@ -89,10 +95,17 @@ watch(() => props.visible, async (val) => {
   await Promise.all([loadIndirizzi(), loadMatrice()])
 })
 
+// Blocca save se indirizzo da stradario non trovato (centralizzato in useIndirizzoBase).
+// Aggiunge condizione locale: non in modalita' libera.
+const addressNotFound = computed(() =>
+  !indirizzo.isLibera.value && indirizzo.addressNotFound.value
+)
+
 // === Azioni ===
 
 function onStartNew() {
   formMode.value = 'new'
+  comuneInitialItem.value = null
   indirizzo.reset()
   indirizzo.setMatrice(matriceDisponibile.value)
 }
@@ -108,11 +121,29 @@ function onStartReplace(ind) {
     descrizione: ind.tipo_indirizzo_descrizione,
     obbligatorio: true,
   }])
+  // Pre-popola tutti i campi dall'indirizzo esistente (se normalizzato)
+  if (ind.det_comune_id && ind.stradario_id) {
+    comuneInitialItem.value = { id: ind.det_comune_id, descrizione: ind.descrizione_comune }
+    indirizzo.form.comune_id = ind.det_comune_id
+    indirizzo.form.via_obj = {
+      stradario_id: ind.stradario_id,
+      indirizzo_normalizzato: ind.stradario_display || ind.indirizzo_display,
+    }
+    indirizzo.form.civico = ind.civico ?? null
+    indirizzo.form.estensione_civico = (ind.estensione_civico || '').replace(/^\//, '')
+    indirizzo.form.palazzina = ind.palazzina || ''
+    indirizzo.form.scala = ind.scala || ''
+    indirizzo.form.piano = ind.piano || ''
+    indirizzo.form.interno = ind.interno || ''
+  } else {
+    comuneInitialItem.value = null
+  }
 }
 
 function onCancelForm() {
   formMode.value = null
   replaceId.value = null
+  comuneInitialItem.value = null
   indirizzo.reset()
 }
 
@@ -123,14 +154,18 @@ async function onSaveForm() {
   let success = true
 
   if (formMode.value === 'replace') {
-    // Sostituisci: un solo payload, usa PUT
+    const payload = payloads[0]
+    // Se match esatto trovato, passa indirizzo_dettaglio_id al backend.
+    // Il backend ignora stradario_id/civico se indirizzo_dettaglio_id e' presente.
+    if (indirizzo.existingDettaglioId.value) {
+      payload.indirizzo_dettaglio_id = indirizzo.existingDettaglioId.value
+    }
     const result = await execute(
-      () => replaceSoggettoIndirizzo(props.soggettoId, replaceId.value, payloads[0]),
+      () => replaceSoggettoIndirizzo(props.soggettoId, replaceId.value, payload),
       { successMessage: t('indirizzi.indirizzo_salvato') }
     )
     if (result === null) success = false
   } else {
-    // Aggiungi: uno o piu' payload (auto-clone)
     for (const p of payloads) {
       const result = await execute(
         () => createSoggettoIndirizzo(props.soggettoId, p),
@@ -158,19 +193,19 @@ async function onSaveForm() {
     :style="{ width: DRAWER_WIDTH.STANDARD }"
   >
     <template #header>
-      <DrawerTitle :action="t('common.edit')" :title="t('soggetti.section_indirizzo')" icon="pi pi-map-marker" />
+      <DrawerTitle :action="t('common.edit')" :title="t('indirizzi.indirizzo') + ' - ' + t(`indirizzo_soggetto.context_${context}`)" icon="pi pi-map-marker" />
     </template>
 
-    <div class="app-drawer-content">
+    <div class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
       <!-- Loading -->
-      <div v-if="listLoading" style="text-align: center; padding: 1rem;">
+      <div v-if="listLoading" class="app-loading">
         <i class="pi pi-spin pi-spinner" />
       </div>
 
       <!-- Lista indirizzi esistenti (sempre visibile) -->
       <template v-if="!listLoading">
-        <div v-if="indirizziList.length === 0 && !formMode" class="indirizzi-empty">
-          <i class="pi pi-map-marker" style="font-size: 1.5rem; opacity: 0.3;" />
+        <div v-if="indirizziList.length === 0 && !formMode" class="app-empty-state">
+          <i class="pi pi-map-marker" />
           <p>{{ t('indirizzo_soggetto.nessun_indirizzo') }}</p>
         </div>
 
@@ -178,7 +213,10 @@ async function onSaveForm() {
           <div v-for="ind in indirizziList" :key="ind.id" class="indirizzo-card">
             <div class="indirizzo-card-content">
               <Tag :value="ind.tipo_indirizzo_descrizione" severity="info" />
-              <span class="indirizzo-card-text">{{ ind.indirizzo_display }}</span>
+              <div class="indirizzo-card-detail">
+                <span class="indirizzo-card-text">{{ ind.indirizzo_display }}</span>
+                <span v-if="ind.descrizione_comune" class="indirizzo-card-comune">{{ ind.descrizione_comune }}</span>
+              </div>
             </div>
             <Button
               v-if="!formMode"
@@ -200,7 +238,7 @@ async function onSaveForm() {
         </div>
 
         <!-- Pulsante aggiungi (solo se ci sono tipi disponibili) -->
-        <div v-if="!formMode && matriceDisponibile.length > 0" style="margin-top: 0.5rem;">
+        <div v-if="!formMode && matriceDisponibile.length > 0" class="mt-05">
           <Button
             :label="t('indirizzo_soggetto.aggiungi_indirizzo')"
             icon="pi pi-plus"
@@ -225,7 +263,6 @@ async function onSaveForm() {
           :is-libera="indirizzo.isLibera.value"
           @update:is-libera="v => indirizzo.isLibera.value = v"
           :tipi-stato="indirizzo.tipiStato.value"
-          :toponomastica-lookup="indirizzo.toponomasticaLookup"
           :stati-lookup="indirizzo.statiLookup"
           :cap-options="indirizzo.capOptions.value"
           :loading-cap="indirizzo.loadingCap.value"
@@ -233,12 +270,17 @@ async function onSaveForm() {
           @update:auto-clone="v => indirizzo.autoClone.value = v"
           @switch-tipo="indirizzo.switchTipo"
           :indirizzo-warnings="indirizzo.indirizzoWarnings.value"
+          :comune-initial-item="comuneInitialItem"
           :disabled="false"
         />
 
+        <Message v-if="addressNotFound" severity="warn" size="small" class="mt-1">
+          {{ t('indirizzo_soggetto.replace_non_trovato') }}
+        </Message>
+
         <DrawerFooter
           :loading="loading"
-          :disabled="!indirizzo.canSave.value"
+          :disabled="!indirizzo.canSave.value || addressNotFound"
           @save="onSaveForm"
           @cancel="onCancelForm"
         />
@@ -265,9 +307,15 @@ async function onSaveForm() {
 
 .indirizzo-card-content {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 0.5rem;
   flex: 1;
+  min-width: 0;
+}
+
+.indirizzo-card-detail {
+  display: flex;
+  flex-direction: column;
   min-width: 0;
 }
 
@@ -279,9 +327,8 @@ async function onSaveForm() {
   white-space: nowrap;
 }
 
-.indirizzi-empty {
-  text-align: center;
-  padding: 1.5rem;
+.indirizzo-card-comune {
+  font-size: 0.75rem;
   color: var(--p-text-muted-color);
 }
 
@@ -307,6 +354,5 @@ async function onSaveForm() {
   margin: 0;
   font-size: 0.9rem;
   font-weight: 600;
-  color: var(--app-text-secondary, #666);
 }
 </style>

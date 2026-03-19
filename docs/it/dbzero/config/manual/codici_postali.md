@@ -2,18 +2,16 @@
 
 > 👀 **Vedi anche** 
 >
-> Approfondimento Tabelle:  
+Approfondimento Tabelle:  
 >
-> * [config.comuni](/dbzero/config/tabelle/comuni)      
-> * [config.stradario](/dbzero/config/tabelle/stradario)      
-> * [config.stradario_generale](/dbzero/config/tabelle/stradario_generale)  
+[config.comuni](/dbzero/config/tabelle/comuni)      
+> [config.stradario](/dbzero/config/tabelle/stradario)      
+> [config.stradario_generale](/dbzero/config/tabelle/stradario_generale)  
 
 La tabella **`config.codici_postali`** censisce i codici di avviamento postale (postal codes o ZIP codes) associati ai comuni, fornendo l’elenco completo di CAP per ogni città.
 
 ---
-
 ### 🎯 Scopo Principale
-
 * **Elenco dei codici postali**
   Per ogni comune (city/municipality), memorizza tutti i codici postali (Postal Code o ZIP Code) validi per quell’area geografica.
 
@@ -28,7 +26,7 @@ La tabella **`config.codici_postali`** censisce i codici di avviamento postale (
 
 ---
 
-### 💡 Vantaggi Operativi
+### Vantaggi Operativi
 
 * **Copertura capillare del territorio**
   Gestisce più CAP per un solo comune, utile per suddividere zone interne come frazioni, quartieri o uffici postali specifici.
@@ -44,4 +42,4 @@ La tabella **`config.codici_postali`** censisce i codici di avviamento postale (
 
 ---
 
-> 🧠 **"Una tabella essenziale per associare vie e comuni ai rispettivi codici postali, garantendo indirizzamento preciso e compatibilità internazionale."**
+> **"Una tabella essenziale per associare vie e comuni ai rispettivi codici postali, garantendo indirizzamento preciso e compatibilità internazionale."**

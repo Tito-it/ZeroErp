@@ -5,7 +5,7 @@
 >
 > ⚠️ **Nota operativa (22-02-2026):** per la ripresa implementativa del dominio
 > `attivita_fatturabili`, il documento WIP di riferimento unico e`:
-> `docs/it/dev/work-in-progress/ripresa-lavori-attivita-fatturabili.md`.
+> `docs/it/dev/work-done/ripresa-lavori-attivita-fatturabili.md` (superato, vedi `gestione-commesse-v2.md`).
 > Questo file resta storico/contestuale.
 
 ---

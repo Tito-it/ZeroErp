@@ -1,13 +1,11 @@
 ## 📘 Documentazione Concettuale – Funzione `vendite.fn_set_documento_canale_stato`
-
 ### 🎯 Scopo Principale
-
 (latest review 24-02-2026)
 Gestisce in modo uniforme la transizione stato dei canali fatturabili per documento sorgente.
 
 ---
 
-### 🔧 Regole applicate
+### Regole applicate
 
 * chiave sorgente obbligatoria: `sorgente_tipo_id` + `sorgente_uid`;
 * `canale_codice` deve essere:
@@ -20,7 +18,7 @@ Gestisce in modo uniforme la transizione stato dei canali fatturabili per docume
 
 ---
 
-### ✅ Output
+### Output
 
 Ritorna `id` della riga canale inserita/aggiornata.
 

@@ -2,29 +2,27 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento Tabelle**
+**Approfondimento Tabelle**
 > 
-> • [`config.note_stili`](/dbzero/config/tabelle/note_stili)   
+• [`config.note_stili`](/dbzero/config/tabelle/note_stili)   
 > • [`config.lingue`](/dbzero/config/tabelle/lingue)    
 >
-> **Approfondimento Funzioni**
+**Approfondimento Funzioni**
 > • [`script.fn_get_note`](/dbzero/script/funzioni/fn_get_note)   
 >
-> **Esempi di uso**
+**Esempi di uso**
 > • [`vendite.fn_get_vendite_note`](/dbzero/vendite/funzioni/fn_get_vendite_note)    
 > • [`acquisti.fn_get_acquisti_note`](/dbzero/acquisti/funzioni/fn_get_acquisti_note)    
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 14-01-26)
 `script.fn_get_note` e' una funzione generica che **normalizza la lettura delle note** da una tabella `*.note` partizionata.  
 Restituisce sempre lo stesso set di colonne con **stile** e **lingua** risolti da `config.note_stili` e `config.lingue`.
 
 ---
 
-### 🧩 Parametri
+### Parametri
 
 | Parametro         | Tipo       | Descrizione                                            |
 | ----------------- | ---------- | ------------------------------------------------------ |
@@ -38,7 +36,7 @@ Restituisce sempre lo stesso set di colonne con **stile** e **lingua** risolti d
 
 ---
 
-### 🔁 Logica di estrazione
+### Logica di estrazione
 
 1. Seleziona le note dalla tabella passata in `p_note_table`.
 2. Join su `config.note_stili` per ottenere il codice stile.
@@ -49,7 +47,7 @@ Restituisce sempre lo stesso set di colonne con **stile** e **lingua** risolti d
 
 ---
 
-### 🧱 Output (campi principali)
+### Output (campi principali)
 
 * `target_tipo`, `target_id`, `target_riga_id`
 * `anchor_tipo`, `posizione`, `seq`
@@ -60,7 +58,7 @@ Restituisce sempre lo stesso set di colonne con **stile** e **lingua** risolti d
 
 ---
 
-### 🔎 Esempi d’uso
+### Esempi d’uso
 
 **1) Note documento (solo visibili)**
 
@@ -109,7 +107,7 @@ FROM script.fn_get_note(
 
 ---
 
-### 🧭 Best practice
+### Best practice
 
 * Passa sempre `p_note_table` come `regclass` per evitare SQL injection e garantire la risoluzione corretta della tabella.
 * Usa `_include_doc` / `_include_righe` per controllare con precisione l’ambito delle note.

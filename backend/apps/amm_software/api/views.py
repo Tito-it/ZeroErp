@@ -13,6 +13,8 @@ from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serial
 from rest_framework import serializers
 from rest_framework.request import Request
 
+from apps.amm_software.constants import DEFAULT_LIMIT, MAX_LIMIT
+
 from apps.core.api.base_views import AdminAPIView
 from apps.core.api.endpoint_helpers import handle_post_json
 from apps.core.api.payload_validators import optional_int
@@ -56,7 +58,7 @@ class UtentiListView(AdminAPIView):
             ruolo_sistema=qp.get("ruolo_sistema") or None,
             unita_organizzativa_id=optional_int({"v": qp.get("unita_organizzativa_id")}, "v"),
             is_active=is_active,
-            limit=min(optional_int({"v": qp.get("limit")}, "v") or 50, 200),
+            limit=min(optional_int({"v": qp.get("limit")}, "v") or DEFAULT_LIMIT, MAX_LIMIT),
             offset=optional_int({"v": qp.get("offset")}, "v") or 0,
             order_by=qp.get("order_by") or None,
             order_dir=qp.get("order_dir") or None,
@@ -64,17 +66,27 @@ class UtentiListView(AdminAPIView):
         return success_response({"count": total_count, "results": results})
 
     @extend_schema(
+        summary="Crea operatore (soggetto nuovo o esistente)",
+        description=(
+            "Due flussi: se soggetto_id presente, associa soggetto esistente "
+            "(cognome/nome/CF non richiesti). Se assente, crea soggetto PF nuovo "
+            "(cognome/nome/CF obbligatori)."
+        ),
         request=inline_serializer(name="UtentiCreateReq", fields={
-            "cognome": serializers.CharField(), "nome": serializers.CharField(),
-            "codice_fiscale": serializers.CharField(), "username": serializers.CharField(),
-            "email": serializers.CharField(), "password": serializers.CharField(),
+            "soggetto_id": serializers.CharField(required=False, help_text="UUID soggetto esistente (flusso B). Se assente, crea nuovo (flusso A)."),
+            "cognome": serializers.CharField(required=False, help_text="Obbligatorio solo flusso A."),
+            "nome": serializers.CharField(required=False, help_text="Obbligatorio solo flusso A."),
+            "codice_fiscale": serializers.CharField(required=False, help_text="Obbligatorio solo flusso A."),
+            "username": serializers.CharField(),
+            "email": serializers.CharField(),
+            "password": serializers.CharField(),
             "qualifica_id": serializers.IntegerField(),
             "ruolo_sistema": serializers.CharField(required=False),
             "unita_organizzativa_id": serializers.IntegerField(required=False),
         }),
         responses={200: inline_serializer(name="UtentiCreateResp", fields={"data": serializers.DictField()})},
     )
-    # Scopo: Crea operatore.
+    # Scopo: Crea operatore. Flusso A (soggetto nuovo) o B (soggetto esistente).
     def post(self, request: Request) -> JsonResponse:
         return handle_post_json(request, handler=AmmSoftwareService().create_operatore)
 
@@ -108,6 +120,14 @@ class UtentiDisabilitaView(AdminAPIView):
     @extend_schema(responses={200: inline_serializer(name="UtenteDisabilitaResp", fields={"data": serializers.DictField()})})
     def post(self, request: Request, auth_user_id: int) -> JsonResponse:
         return success_response(AmmSoftwareService().disabilita_utente(auth_user_id))
+
+
+class UtentiRiattivaView(AdminAPIView):
+    """POST riattiva utente disabilitato."""
+
+    @extend_schema(responses={200: inline_serializer(name="UtenteRiattivaResp", fields={"data": serializers.DictField()})})
+    def post(self, request: Request, auth_user_id: int) -> JsonResponse:
+        return success_response(AmmSoftwareService().riattiva_utente(auth_user_id))
 
 
 # ================================================================== #

@@ -2,22 +2,20 @@
 
 >  👀 **Vedi anche** 
 >
-> Approfondimento Tabelle:  
+Approfondimento Tabelle:  
 >
-> * [config.stradario](/dbzero/config/tabelle/stradario)      
-> * [config.toponomastica](/dbzero/config/tabelle/toponomastica) 
+[config.stradario](/dbzero/config/tabelle/stradario)      
+> [config.toponomastica](/dbzero/config/tabelle/toponomastica) 
 >
-> Approfondimento funzione:   
+Approfondimento funzione:   
 >
-> * [config.trgfn_stradario_generale_protect_update](/dbzero/config/funzioni/trgfn_stradario_generale_protect_update)   
-> * [config.trgfn_stradario_generale_normalize](/dbzero/config/funzioni/trgfn_stradario_generale_normalize)   
+[config.trgfn_stradario_generale_protect_update](/dbzero/config/funzioni/trgfn_stradario_generale_protect_update)   
+> [config.trgfn_stradario_generale_normalize](/dbzero/config/funzioni/trgfn_stradario_generale_normalize)   
 
 La tabella **`config.stradario_generale`** elenca i nomi delle vie, strade e piazze, associandoli ai tipi di toponimo definiti in **`config.toponomastica`**. Agisce come base indipendente dalla localizzazione geografica: per ottenere l’indirizzo completo e posizionarlo su un comune specifico, si collega alla tabella **`config.stradario`**.
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 30-12-25) 
 * **Composizione del toponimo**
   Unisce il prefisso toponomastico (es. `VIA`, `PIAZZA`) al nome specifico (es. `Garibaldi`, `Roma`) per formare la descrizione completa.
@@ -28,7 +26,7 @@ La tabella **`config.stradario_generale`** elenca i nomi delle vie, strade e pia
 
 ---
 
-### 💡 Vantaggi Operativi
+### Vantaggi Operativi
 
 * **Standardizzazione dei nomi**
   Assicura che tutte le vie e piazze abbiano una descrizione uniforme, evitando varianti e duplicazioni.
@@ -39,14 +37,14 @@ La tabella **`config.stradario_generale`** elenca i nomi delle vie, strade e pia
 
 ---
 
-### 🧩 Nota su manutenzione toponomastica
+### Nota su manutenzione toponomastica
 
 Se un toponimo viene corretto, la policy prevede **nuova riga** in `config.toponomastica` e riallineamento dei record di `config.stradario_generale` interessati.  
 Il riallineamento forza la rigenerazione di `indirizzo_normalizzato`, mantenendo coerente il prefisso (es. VIA/PIAZZA).
 
 ---
 
-> 🧠 **"Un catalogo neutro di nomi di vie e piazze, pronta base per costruire indirizzi completi e localizzati attraverso l’associazione con i comuni."**
+> **"Un catalogo neutro di nomi di vie e piazze, pronta base per costruire indirizzi completi e localizzati attraverso l’associazione con i comuni."**
 
 ---
 

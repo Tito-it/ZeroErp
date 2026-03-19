@@ -89,6 +89,14 @@ const formattedDate = computed(() => {
         @click="ui.openSearchDrawer()"
       />
 
+      <!-- Badge admin -->
+      <Chip v-if="auth.isAdmin" class="admin-chip">
+        <template #default>
+          <i class="pi pi-shield admin-chip-icon" />
+          <span class="admin-chip-label">Admin</span>
+        </template>
+      </Chip>
+
       <span class="topbar-date">{{ formattedDate }}</span>
     </div>
   </header>
@@ -119,6 +127,7 @@ const formattedDate = computed(() => {
 
 .topbar-left i {
   font-size: 0.9rem;
+  color: var(--app-icon-color);
 }
 
 .topbar-hamburger {
@@ -186,6 +195,26 @@ const formattedDate = computed(() => {
   color: var(--p-primary-color);
 }
 
+/* Badge admin */
+.admin-chip {
+  cursor: default;
+  font-size: var(--app-font-size-sm);
+  background: color-mix(in srgb, var(--p-orange-500) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--p-orange-500) 30%, transparent);
+  padding: 0.15rem 0.5rem;
+}
+
+.admin-chip-icon {
+  font-size: 0.8rem;
+  color: var(--p-orange-500);
+}
+
+.admin-chip-label {
+  margin-left: 0.3rem;
+  font-weight: 600;
+  color: var(--p-orange-500);
+}
+
 /* Mobile — nasconde data e azienda, semplifica */
 @media (max-width: 767px) {
   .topbar-company,
@@ -199,6 +228,14 @@ const formattedDate = computed(() => {
 
   .context-chip-label {
     max-width: 120px;
+  }
+
+  .admin-chip-label {
+    display: none;
+  }
+
+  .admin-chip {
+    padding: 0.15rem 0.35rem;
   }
 }
 

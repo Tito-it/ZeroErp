@@ -2,24 +2,22 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimento tabelle:
+Approfondimento tabelle:
 >
-> * [pratiche.pratiche](/dbzero/pratiche/tabelle/pratiche)
-> * [pratiche.template_flussi](/dbzero/pratiche/tabelle/template_flussi)
-> * [pratiche.template_flussi_prerequisiti](/dbzero/pratiche/tabelle/template_flussi_prerequisiti)
-> * [pratiche.regole_generazione](/dbzero/pratiche/tabelle/regole_generazione)
-> * [pratiche.giornale](/dbzero/pratiche/tabelle/giornale)
-> * [config.stati_flussi_pratiche](/dbzero/config/tabelle/stati_flussi_pratiche)
+[pratiche.pratiche](/dbzero/pratiche/tabelle/pratiche)
+> [pratiche.template_flussi](/dbzero/pratiche/tabelle/template_flussi)
+> [pratiche.template_flussi_prerequisiti](/dbzero/pratiche/tabelle/template_flussi_prerequisiti)
+> [pratiche.regole_generazione](/dbzero/pratiche/tabelle/regole_generazione)
+> [pratiche.giornale](/dbzero/pratiche/tabelle/giornale)
+> [config.stati_flussi_pratiche](/dbzero/config/tabelle/stati_flussi_pratiche)
 
 ---
-
 ### 🎯 Scopo Principale
-
 La tabella `pratiche.flussi` contiene le **istanze operative dei flussi** di una pratica. Ogni flusso e' uno step del workflow, creato da un template (opzionale) o manualmente, con stato, esito e assegnazione propri.
 
 ---
 
-### 🧱 Ruolo nel processo
+### Ruolo nel processo
 
 * Ogni pratica ha uno o piu' flussi che ne compongono il workflow.
 * I flussi con `template_flusso_id NOT NULL` sono istanze di template configurati; quelli con `NULL` sono step manuali.
@@ -28,7 +26,7 @@ La tabella `pratiche.flussi` contiene le **istanze operative dei flussi** di una
 
 ---
 
-### ⚙️ Colonne specifiche
+### Colonne specifiche
 
 | Colonna | Note |
 |---------|------|
@@ -41,7 +39,7 @@ La tabella `pratiche.flussi` contiene le **istanze operative dei flussi** di una
 
 ---
 
-### 🔒 Vincoli e regole
+### Vincoli e regole
 
 * **CHECK esito**: solo POSITIVO, NEGATIVO, PARZIALE, NON_APPLICABILE.
 * **Guard prerequisiti** (DB-5): BEFORE INSERT verifica che tutti i prerequisiti del template siano completati.
@@ -50,7 +48,7 @@ La tabella `pratiche.flussi` contiene le **istanze operative dei flussi** di una
 
 ---
 
-### ✅ Convenzioni
+### Convenzioni
 
 * PK BIGINT IDENTITY (tabella operativa ad alto volume).
 * `storicizza = true` per tracciamento modifiche.

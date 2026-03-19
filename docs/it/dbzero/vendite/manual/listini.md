@@ -2,16 +2,13 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> • [vendite.listini_versioni](/dbzero/vendite/tabelle/listini_versioni)  
+• [vendite.listini_versioni](/dbzero/vendite/tabelle/listini_versioni)  
 > • [vendite.listini_associazioni](/dbzero/vendite/tabelle/listini_associazioni)  
 > • [vendite.listini_righe](/dbzero/vendite/tabelle/listini_righe)  
 >
----
-
 ### 🎯 Scopo Principale
-
 La tabella `vendite.listini` rappresenta la testata anagrafica dei listini prezzo
 del dominio vendite.
 
@@ -21,7 +18,7 @@ temporale e prezzi sono demandati rispettivamente a `listini_versioni` e
 
 ---
 
-### ✅ Regole principali
+### Regole principali
 
 * `codice` univoco (`uq_listini_codice`).
 * `dominio` ammesso solo tra:
@@ -31,7 +28,7 @@ temporale e prezzi sono demandati rispettivamente a `listini_versioni` e
 
 ---
 
-### 🧩 Utilizzo previsto
+### Utilizzo previsto
 
 * contenitore principale per listini multi-dominio;
 * separazione tra identita` listino e versionamento temporale;

@@ -2,16 +2,14 @@
 
 > **Vedi anche**
 >
-> **Tabelle correlate:**
+**Tabelle correlate:**
 >
-> * [config.user_override_aree](/dbzero/config/tabelle/user_override_aree)
-> * [config.user_override_oggetti](/dbzero/config/tabelle/user_override_oggetti)
-> * [config.user_override_azioni](/dbzero/config/tabelle/user_override_azioni)
+[config.user_override_aree](/dbzero/config/tabelle/user_override_aree)
+> [config.user_override_oggetti](/dbzero/config/tabelle/user_override_oggetti)
+> [config.user_override_azioni](/dbzero/config/tabelle/user_override_azioni)
 
 ---
-
-### Scopo Principale
-
+### 🎯 Scopo Principale
 (latest review 08-03-2026)
 La funzione **`script.fn_get_override_scaduti`** restituisce tutti gli override
 utente la cui data `valido_al` e scaduta. Unisce le 3 tabelle override

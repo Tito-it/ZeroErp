@@ -2,21 +2,19 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimento funzioni:
+Approfondimento funzioni:
 >
-> * [`dbops.apply_fk_index_policy`](/dbzero/dbops/funzioni/apply_fk_index_policy)
-> * [`maintenance.fn_run_and_log`](/dbzero/maintenance/funzioni/fn_run_and_log)
+[`dbops.apply_fk_index_policy`](/dbzero/dbops/funzioni/apply_fk_index_policy)
+> [`maintenance.fn_run_and_log`](/dbzero/maintenance/funzioni/fn_run_and_log)
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 16-01-26)
 * **Eseguire in modo schedulato** l’applicazione della **policy indici FK** incapsulando la chiamata a `dbops.apply_fk_index_policy()` in un wrapper **robusto** con **lock anti-overlap** e **logging strutturato**.
 
 ---
 
-### 🧩 Firma
+### Firma
 
 ```sql
 PROCEDURE maintenance.proc_apply_fk_index_policy_job(p_populate boolean DEFAULT false)
@@ -24,7 +22,7 @@ PROCEDURE maintenance.proc_apply_fk_index_policy_job(p_populate boolean DEFAULT 
 
 ---
 
-### 🧩 Descrizione
+### Descrizione
 
 La procedura:
 
@@ -49,7 +47,7 @@ Esempio :
 
 ---
 
-### 🔄 Flusso di esecuzione (alto livello)
+### Flusso di esecuzione (alto livello)
 
 1. **Acquire lock** tramite `p_lock_key`.
 2. **Log start** (`p_jobname`, `p_stepname`).
@@ -59,7 +57,7 @@ Esempio :
 
 ---
 
-### 🧪 Idempotenza & sicurezza
+### Idempotenza & sicurezza
 
 * La procedura e' **idempotente** a livello di orchestrazione: l’effetto dipende dallo stato di `dbops.fk_index_policy`.
 * Il **lock advisory** previene run simultanei che potrebbero generare DDL concorrente.
@@ -82,7 +80,7 @@ Esempio :
 
 ---
 
-### 🔗 Dipendenze
+### Dipendenze
 
 * `dbops.apply_fk_index_policy` — applica la policy di indicizzazione FK definita in `dbops.fk_index_policy`.
 * `maintenance.fn_run_and_log` — logging + lock per run schedulati.

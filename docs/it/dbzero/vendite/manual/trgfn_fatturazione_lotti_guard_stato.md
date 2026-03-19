@@ -2,26 +2,23 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> • [vendite.fatturazione_lotti](/dbzero/vendite/tabelle/fatturazione_lotti)  
+• [vendite.fatturazione_lotti](/dbzero/vendite/tabelle/fatturazione_lotti)  
 > • [config.stati_doc_fiscale_transizioni](/dbzero/config/tabelle/stati_doc_fiscale_transizioni)  
 >
-> **Approfondimento funzioni:**
+**Approfondimento funzioni:**
 >
-> • [vendite.fn_set_fatturazione_lotto_stato](/dbzero/vendite/funzioni/fn_set_fatturazione_lotto_stato)  
+• [vendite.fn_set_fatturazione_lotto_stato](/dbzero/vendite/funzioni/fn_set_fatturazione_lotto_stato)  
 >
----
-
 ### 🎯 Scopo Principale
-
 (latest review 24-01-2026)
 La funzione **`vendite.trgfn_fatturazione_lotti_guard_stato()`** controlla le
 transizioni tra stati documento sui lotti di fatturazione.
 
 ---
 
-### 🔍 Regola applicata
+### Regola applicata
 
 * Trigger `BEFORE UPDATE OF stato_doc_fiscale_id` su `vendite.fatturazione_lotti`.
 * Verifica la transizione in `config.stati_doc_fiscale_transizioni`.

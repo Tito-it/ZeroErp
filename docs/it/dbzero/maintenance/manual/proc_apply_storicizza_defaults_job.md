@@ -2,26 +2,24 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimento funzioni:
+Approfondimento funzioni:
 >
-> * [`maintenance.proc_apply_storicizza_defaults`](/dbzero/maintenance/funzioni/proc_apply_storicizza_defaults)
-> * [`maintenance.fn_run_and_log`](/dbzero/maintenance/funzioni/fn_run_and_log)
+[`maintenance.proc_apply_storicizza_defaults`](/dbzero/maintenance/funzioni/proc_apply_storicizza_defaults)
+> [`maintenance.fn_run_and_log`](/dbzero/maintenance/funzioni/fn_run_and_log)
 >
-> Approfondimento guide:
+Approfondimento guide:
 >
-> * [Storicizzazione Tabelle](/guide/storicizzazione-tabelle)
-> * [Transaction ID](/guide/tx_id_implementation_guide)
+[Storicizzazione Tabelle](/guide/storicizzazione-tabelle)
+> [Transaction ID](/guide/tx_id_implementation_guide)
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 07-01-26)
 * **Eseguire in modo schedulato** l’applicazione delle **impostazioni di storicizzazione di default** sull’intero database, incapsulando la chiamata a `maintenance.proc_apply_storicizza_defaults()` in un wrapper **robusto** con **lock anti-overlap** e **logging strutturato**.
 
 ---
 
-### 🧩 Descrizione
+### Descrizione
 
 La procedura:
 
@@ -33,7 +31,7 @@ La procedura:
 
 ---
 
-### 🔄 Flusso di esecuzione (alto livello)
+### Flusso di esecuzione (alto livello)
 
 1. **Acquire lock** tramite `p_lock_key`.
 2. **Log start** (`p_jobname`, `p_stepname`).
@@ -43,14 +41,14 @@ La procedura:
 
 ---
 
-### 🧪 Idempotenza & sicurezza
+### Idempotenza & sicurezza
 
 * La logica è **idempotente**: più invocazioni non dovrebbero creare effetti duplicati se la procedura applicata rispetta le policy (per es. `CREATE ... IF NOT EXISTS`, controlli di pre‑esistenza ecc.).
 * Il **lock** previene esecuzioni parallele indesiderate.
 
 ---
 
-### 📝 Esempio DDL (versione corretta)
+### Esempio DDL (versione corretta)
 
 ```sql
 CREATE OR REPLACE PROCEDURE maintenance.proc_apply_storicizza_defaults_job()
@@ -89,7 +87,7 @@ Puoi schedulare con **pgAgent** (Windows/Linux) o con **cron** (Linux):
 
 ---
 
-### 🧰 Osservabilità & diagnostica
+### Osservabilità & diagnostica
 
 * Controlla la tabella/log usata da `fn_run_and_log` (es. `maintenance.job_log` o equivalente) per:
 
@@ -101,7 +99,7 @@ Puoi schedulare con **pgAgent** (Windows/Linux) o con **cron** (Linux):
 
 ---
 
-### 🔗 Dipendenze
+### Dipendenze
 
 * `maintenance.proc_apply_storicizza_defaults` — applica le policy/trigger di storicizzazione di default.
 * `maintenance.fn_run_and_log` — esecuzione protetta con logging e advisory lock.
@@ -109,7 +107,7 @@ Puoi schedulare con **pgAgent** (Windows/Linux) o con **cron** (Linux):
 
 ---
 
-### ✅ Checklist di produzione
+### Checklist di produzione
 
 * [ ] La procedura è **deployata** e testata in `dev`/`stage`.
 * [ ] Esiste almeno **un job** (pgAgent/cron) attivo.
@@ -118,4 +116,4 @@ Puoi schedulare con **pgAgent** (Windows/Linux) o con **cron** (Linux):
 
 ---
 
-> 🧠 **In breve**: questa procedura offre un punto di ingresso unico, schedulabile e sicuro per applicare le impostazioni di storicizzazione, con tracciamento e prevenzione di run concorrenti. Mantiene pulita l’orchestrazione e delega il lavoro vero alla logica di `maintenance.proc_apply_storicizza_defaults()`.
+> **In breve**: questa procedura offre un punto di ingresso unico, schedulabile e sicuro per applicare le impostazioni di storicizzazione, con tracciamento e prevenzione di run concorrenti. Mantiene pulita l’orchestrazione e delega il lavoro vero alla logica di `maintenance.proc_apply_storicizza_defaults()`.

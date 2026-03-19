@@ -2,19 +2,17 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> * [anagrafiche.resellers](/dbzero/anagrafiche/tabelle/resellers)
-> * [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)
+[anagrafiche.resellers](/dbzero/anagrafiche/tabelle/resellers)
+> [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)
 >
-> **Approfondimento funzioni:**
+**Approfondimento funzioni:**
 >
-> * [script.fn_guard_soggetto_ruolo](/dbzero/script/funzioni/fn_guard_soggetto_ruolo)
+[script.fn_guard_soggetto_ruolo](/dbzero/script/funzioni/fn_guard_soggetto_ruolo)
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 10-03-2026)
 La trigger function **`anagrafiche.trgfn_resellers_guard_ruolo_reseller()`**
 garantisce che il record in `anagrafiche.resellers` sia sempre collegato a un
@@ -26,7 +24,7 @@ generica.
 
 ---
 
-### 🔍 Regola applicata
+### Regola applicata
 
 * Trigger **BEFORE INSERT OR UPDATE** su `anagrafiche.resellers`.
 * La funzione chiama `script.fn_guard_soggetto_ruolo(...)` con:
@@ -37,7 +35,7 @@ generica.
 
 ---
 
-### ✅ Ruolo nel processo
+### Ruolo nel processo
 
 La guard evita che un reseller venga salvato con un ruolo errato o non
 allineato al dominio reseller, centralizzando la logica di verifica/creazione

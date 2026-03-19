@@ -2,31 +2,29 @@
 
 > 👀 **Vedi anche**
 >
-> Guide:
+Guide:
 >
-> * [Automazione DB](/guide/automazione-db)
+[Automazione DB](/guide/automazione-db)
 >
-> Approfondimento tabelle:
+Approfondimento tabelle:
 >
-> * [dbops.automation_rules_tbl](/dbzero/dbops/tabelle/automation_rules_tbl)   
+[dbops.automation_rules_tbl](/dbzero/dbops/tabelle/automation_rules_tbl)   
 >
-> Approfondimento funzioni:
+Approfondimento funzioni:
 >
-> * [dbops.fn_run_automations](/dbzero/dbops/funzioni/fn_run_automations)   
-> * [dbops.fn_resolve_scope](/dbzero/dbops/funzioni/fn_resolve_scope)  
-> * [dbops.fn_get_override_col](/dbzero/dbops/funzioni/fn_get_override_col)   
-> * [script.trgfn_audit_data_user_generic](/dbzero/script/funzioni/trgfn_audit_data_user_generic)  
+[dbops.fn_run_automations](/dbzero/dbops/funzioni/fn_run_automations)   
+> [dbops.fn_resolve_scope](/dbzero/dbops/funzioni/fn_resolve_scope)  
+> [dbops.fn_get_override_col](/dbzero/dbops/funzioni/fn_get_override_col)   
+> [script.trgfn_audit_data_user_generic](/dbzero/script/funzioni/trgfn_audit_data_user_generic)  
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 25-12-25)
 La funzione **`dbops.fn_run_automations_audit_update(p_exec_mode, p_schemas, p_dry_run)`** applica in modo automatico (o simula) la **regola di aggiornamento audit** sulle tabelle nell'ambito, creando – dove mancante secondo le policy – un **trigger BEFORE UPDATE** che aggiorna `data_update` e `user_update` tramite la funzione `script.trgfn_audit_data_user_generic()`.
 
 ---
 
-### 🔍 Parametri di input
+### Parametri di input
 
 | Parametro     | Tipo    | Obbligatorio | Descrizione                                                                    |
 | ------------- | ------- | :----------: | ------------------------------------------------------------------------------ |
@@ -36,13 +34,13 @@ La funzione **`dbops.fn_run_automations_audit_update(p_exec_mode, p_schemas, p_d
 
 ---
 
-### 📤 Valore di ritorno
+### Valore di ritorno
 
 `void` – non ritorna valori; crea i trigger richiesti o produce log di simulazione.
 
 ---
 
-### ⚙️ Flusso logico
+### Flusso logico
 
 1. **Ambito**: calcola gli schemi effettivi con `fn_resolve_scope` (se `p_schemas` è `NULL`).
 2. **Scansione tabelle**: cicla tutte le tabelle nell'ambito (escluse quelle fuori `fn_table_in_scope`).
@@ -61,7 +59,7 @@ La funzione **`dbops.fn_run_automations_audit_update(p_exec_mode, p_schemas, p_d
 
 ---
 
-### 🧩 Casi d’uso tipici
+### Casi d’uso tipici
 
 * **Allineamento post-deploy**: assicurarsi che tutte le tabelle operative abbiano il trigger di aggiornamento audit.
 * **Refactoring**: dopo rinomini colonne audit (`AUDIT_TS`, `AUDIT_USER`) tramite override, ricreare i trigger coerenti.
@@ -69,21 +67,21 @@ La funzione **`dbops.fn_run_automations_audit_update(p_exec_mode, p_schemas, p_d
 
 ---
 
-### 🛡️ Permessi e sicurezza
+### Permessi e sicurezza
 
 * Necessari privilegi DDL per creare trigger sulle tabelle target.
 * In `dry_run` non sono richiesti privilegi di modifica dello schema.
 
 ---
 
-### 🚀 Esempi di utilizzo
+### Esempi di utilizzo
 
 * **Simulazione**: `SELECT dbops.fn_run_automations_audit_update('AUTO', ARRAY['anagrafiche'], true);`
 * **Applicazione reale**: `SELECT dbops.fn_run_automations_audit_update('FORCE', NULL, false);`
 
 ---
 
-### 📌 Considerazioni
+### Considerazioni
 
 * Il nome del trigger è derivato da `name_template` (es. `trg_{table}_audit_data_user_upd`), risolto con `fn_name_from_template`.
 * Gli override consentono di supportare schemi legacy dove le colonne non si chiamano `data_update`/`user_update`.
@@ -91,7 +89,7 @@ La funzione **`dbops.fn_run_automations_audit_update(p_exec_mode, p_schemas, p_d
 
 ---
 
-### ✅ Benefici
+### Benefici
 
 * **Coerenza**: applica in modo uniforme la politica di aggiornamento audit.
 * **Automazione**: evita definizioni manuali e riduce errori umani.
@@ -99,4 +97,4 @@ La funzione **`dbops.fn_run_automations_audit_update(p_exec_mode, p_schemas, p_d
 
 ---
 
-> 🧠 **In sintesi**: `fn_run_automations_audit_update` è il modulo che garantisce l’aggiornamento affidabile dei metadati di audit (`data_update`, `user_update`) su tutte le tabelle nell'ambito, con possibilità di simulazione e gestione degli override.
+> **In sintesi**: `fn_run_automations_audit_update` è il modulo che garantisce l’aggiornamento affidabile dei metadati di audit (`data_update`, `user_update`) su tutte le tabelle nell'ambito, con possibilità di simulazione e gestione degli override.

@@ -2,19 +2,16 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> • [vendite.fatture](/dbzero/vendite/tabelle/fatture)  
+• [vendite.fatture](/dbzero/vendite/tabelle/fatture)  
 > • [anagrafiche.billing_account](/dbzero/anagrafiche/tabelle/billing_account)  
 > • [anagrafiche.utilities](/dbzero/anagrafiche/tabelle/utilities)  
 > • [config.tipi_doc_fiscale](/dbzero/config/tabelle/tipi_doc_fiscale)  
 > • [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)  
 > • [config.valute](/dbzero/config/tabelle/valute)  
 >
----
-
 ### 🎯 Scopo Principale
-
 (latest review 10-02-2026)  
 `vendite.fatture_arrotondamenti_scope` memorizza il **saldo tecnico** degli
 arrotondamenti per **ambito di fatturazione**. Serve a produrre arrotondamenti
@@ -23,7 +20,7 @@ scostamenti cumulativi nel tempo.
 
 ---
 
-### 🧱 Chiave di ambito (univoca)
+### Chiave di ambito (univoca)
 
 L'ambito e` definito dalla combinazione:
 
@@ -45,7 +42,7 @@ cliente/utility/tipo documento/emittente/valuta.
 
 ---
 
-### ✅ Note operative
+### Note operative
 
 * Il saldo non e` un totale fiscale, ma un valore **tecnico** usato per
   determinare `arrotondamento_precedente` e `arrotondamento_attuale` in testata.

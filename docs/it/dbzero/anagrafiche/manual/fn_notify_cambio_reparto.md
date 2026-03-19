@@ -2,20 +2,18 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> * [anagrafiche.risorse_umane](/dbzero/anagrafiche/tabelle/risorse_umane)
-> * [anagrafiche.risorse_umane_auth_user](/dbzero/anagrafiche/tabelle/risorse_umane_auth_user)
-> * [config.unita_organizzative](/dbzero/config/tabelle/unita_organizzative)
+[anagrafiche.risorse_umane](/dbzero/anagrafiche/tabelle/risorse_umane)
+> [anagrafiche.risorse_umane_auth_user](/dbzero/anagrafiche/tabelle/risorse_umane_auth_user)
+> [config.unita_organizzative](/dbzero/config/tabelle/unita_organizzative)
 >
-> **Approfondimento funzioni:**
+**Approfondimento funzioni:**
 >
-> * [anagrafiche.trgfn_risorse_umane_notify_cambio_reparto](/dbzero/anagrafiche/funzioni/trgfn_risorse_umane_notify_cambio_reparto)
+[anagrafiche.trgfn_risorse_umane_notify_cambio_reparto](/dbzero/anagrafiche/funzioni/trgfn_risorse_umane_notify_cambio_reparto)
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 10-03-2026)
 La funzione **`anagrafiche.fn_notify_cambio_reparto()`** emette una notifica
 PostgreSQL sul canale `cambio_reparto` quando una risorsa umana viene spostata
@@ -27,7 +25,7 @@ reparto.
 
 ---
 
-### 🔍 Regole applicate
+### Regole applicate
 
 * Il parametro `p_risorsa_umana_id` deve essere valorizzato e maggiore di zero.
 * Recupera l'eventuale `auth_user_id` collegato alla risorsa umana.
@@ -40,7 +38,7 @@ reparto.
 
 ---
 
-### ✅ Ruolo nel processo
+### Ruolo nel processo
 
 La funzione rende osservabile a livello infrastrutturale il cambio reparto di
 una risorsa umana. Viene richiamata dal trigger su `anagrafiche.risorse_umane`

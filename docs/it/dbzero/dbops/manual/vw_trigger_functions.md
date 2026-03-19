@@ -2,19 +2,17 @@
 
 > 👀 **Vedi anche**
 >
-> * Catalogo trigger PostgreSQL (`pg_trigger`, `pg_class`, `pg_proc`, `pg_namespace`)
+Catalogo trigger PostgreSQL (`pg_trigger`, `pg_class`, `pg_proc`, `pg_namespace`)
 >
-> Altre view di catalogazione:  
+Altre view di catalogazione:  
 >
-> * [dbops.vw_catalogo_oggetti](/dbzero/dbops/views/vw_catalogo_oggetti)  
-> * [dbops.vw_function_list](/dbzero/dbops/views/vw_function_list)  
+[dbops.vw_catalogo_oggetti](/dbzero/dbops/views/vw_catalogo_oggetti)  
+> [dbops.vw_function_list](/dbzero/dbops/views/vw_function_list)  
 
 La view **`dbops.vw_trigger_functions`** elenca tutti i trigger definiti negli schemi del database, indicando la tabella di appartenenza, il nome del trigger, la funzione associata e la definizione completa della funzione. Filtra i trigger interni di sistema lasciando solo quelli utente.
 
 ---
-
 ### 🎯 Scopo Principale
-
 * Fornire una panoramica centralizzata dei trigger utente presenti in ogni tabella del database.
 * Rendere immediatamente accessibili:
 
@@ -25,7 +23,7 @@ La view **`dbops.vw_trigger_functions`** elenca tutti i trigger definiti negli s
 
 ---
 
-### 🔍 Definizione (DDL)
+### Definizione (DDL)
 
 ```sql
 CREATE OR REPLACE VIEW dbops.vw_trigger_functions AS
@@ -49,7 +47,7 @@ ORDER BY n.nspname, cls.relname, trg.tgname;
 
 ---
 
-### 🔍 Colonne e Significato
+### Colonne e Significato
 
 | Colonna                | Descrizione                                                                       |
 | ---------------------- | --------------------------------------------------------------------------------- |
@@ -61,7 +59,7 @@ ORDER BY n.nspname, cls.relname, trg.tgname;
 
 ---
 
-### ⚙️ Esempi di Utilizzo
+### Esempi di Utilizzo
 
 1. **Elencare tutti i trigger di una specifica tabella**:
 
@@ -89,7 +87,7 @@ ORDER BY n.nspname, cls.relname, trg.tgname;
 
 ---
 
-### 💡 Vantaggi Operativi
+### Vantaggi Operativi
 
 * **Code review**: facilita l’ispezione del codice PL/pgSQL associato ai trigger.
 * **Manutenzione**: consente di individuare rapidamente trigger obsoleti o duplicati.
@@ -97,4 +95,4 @@ ORDER BY n.nspname, cls.relname, trg.tgname;
 
 ---
 
-> 🧠 **“Una view centralizzata dei trigger migliora la governabilità e semplifica il controllo della logica di business implementata a livello di database.”**
+> **“Una view centralizzata dei trigger migliora la governabilità e semplifica il controllo della logica di business implementata a livello di database.”**

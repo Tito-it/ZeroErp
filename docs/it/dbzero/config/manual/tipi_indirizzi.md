@@ -2,12 +2,11 @@
 
 ---
 ### 🎯 Scopo Principale
-
 La tabella **`config.tipi_indirizzi`** centralizza i **tipi di indirizzo** utilizzabili in Zero ERP, come ad esempio Residenza, Domicilio Fiscale, Sede Legale, Sede Operativa, Corrispondenza Postale, Indirizzo di Fornitura, ecc. 
 
 ---
 
-### 🔒 Vincoli
+### Vincoli
 
 * **PRIMARY KEY**: `pk_tipi_indirizzi` su `id`
 * **UNIQUE**: `uq_tipi_indirizzi_codice_interno` su `codice_interno`
@@ -22,7 +21,7 @@ La tabella **`config.tipi_indirizzi`** centralizza i **tipi di indirizzo** utili
 
 ---
 
-### 💡 Esempi di Tipi Indirizzo
+### Esempi di Tipi Indirizzo
 
 I codici interni attualmente definiti in `config.tipi_indirizzi` sono:
 
@@ -39,7 +38,7 @@ I codici interni attualmente definiti in `config.tipi_indirizzi` sono:
 
 ---
 
-### ⚙️ Uso e Casi d’Oro
+### Uso e Casi d’Oro
 
 * **Assegnazione tipo indirizzo**: viene referenziato in tutte le tabelle che gestiscono indirizzi (es. `anagrafiche.indirizzi`) per identificare il contesto d’uso.
 * **Filtri e reportistica**: consente di raggruppare gli indirizzi per tipo nelle interfacce utente e nei report.
@@ -48,4 +47,4 @@ I codici interni attualmente definiti in `config.tipi_indirizzi` sono:
 
 ---
 
-> 🧠 **“Centralizzare i tipi di indirizzo in `config.tipi_indirizzi` garantisce coerenza, facilità di estensione e chiarezza nell’assegnazione e gestione degli indirizzi in Zero ERP.”**
+> **“Centralizzare i tipi di indirizzo in `config.tipi_indirizzi` garantisce coerenza, facilità di estensione e chiarezza nell’assegnazione e gestione degli indirizzi in Zero ERP.”**

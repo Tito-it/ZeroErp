@@ -2,21 +2,20 @@
 
 > 👀 **Vedi anche**
 >
-> **Tabelle anagrafiche / config:**
+**Tabelle anagrafiche / config:**
 >
-> * [`anagrafiche.indirizzi`](/dbzero/anagrafiche/tabelle/indirizzi)
-> * [`anagrafiche.soggetti_ruoli`](/dbzero/anagrafiche/tabelle/soggetti_ruoli)
-> * [`config.tipi_ruoli`](/dbzero/config/tabelle/tipi_ruoli)
-> * [`config.tipi_indirizzi`](/dbzero/config/tabelle/tipi_indirizzi)
-> * [`config.tipi_ruolo_tipi_indirizzo`](/dbzero/config/tabelle/tipi_ruolo_tipi_indirizzo)
+[`anagrafiche.indirizzi`](/dbzero/anagrafiche/tabelle/indirizzi)
+> [`anagrafiche.soggetti_ruoli`](/dbzero/anagrafiche/tabelle/soggetti_ruoli)
+> [`config.tipi_ruoli`](/dbzero/config/tabelle/tipi_ruoli)
+> [`config.tipi_indirizzi`](/dbzero/config/tabelle/tipi_indirizzi)
+> [`config.tipi_ruolo_tipi_indirizzo`](/dbzero/config/tabelle/tipi_ruolo_tipi_indirizzo)
 >
-> **Funzioni / trigger di supporto:**
+**Funzioni / trigger di supporto:**
 >
-> * [`dbops.fn_log_and_raise_error`](/dbzero/dbops/funzioni/fn_log_and_raise_error)
-> * (eventuale) [`anagrafiche.fn_get_indirizzo_preferito_*`](/dbzero/anagrafiche/funzioni/)
+[`dbops.fn_log_and_raise_error`](/dbzero/dbops/funzioni/fn_log_and_raise_error)
+> (eventuale) [`anagrafiche.fn_get_indirizzo_preferito_*`](/dbzero/anagrafiche/funzioni/)
 
 ---
-
 ### 🎯 Scopo Principale
 (latest review 30-11-25)
 La funzione **`anagrafiche.trgfn_indirizzi_guard_tipo_ruolo_tipi_indirizzo`** è una **trigger function di tipo “guard”** che:
@@ -43,7 +42,7 @@ In caso di violazione, la funzione richiama **`dbops.fn_log_and_raise_error`** e
 
 ---
 
-### 🧱 Collegamenti principali
+### Collegamenti principali
 
 * **Tabelle coinvolte direttamente:**
 
@@ -86,7 +85,7 @@ CREATE OR REPLACE TRIGGER trg_indirizzi_guard_tipo_ruolo_tipi_indirizzo_ins_upd
 
 ---
 
-### 🧩 Contesto e parametri logici
+### Contesto e parametri logici
 
 Essendo una trigger function, non ha parametri espliciti. Utilizza:
 
@@ -103,7 +102,7 @@ Essendo una trigger function, non ha parametri espliciti. Utilizza:
 
 ---
 
-### 🔍 Logica di funzionamento (semplificata)
+### Logica di funzionamento (semplificata)
 
 1️⃣ **DELETE** → nessun controllo.
 2️⃣ Se `NEW.soggetto_ruolo_id` *oppure* `NEW.tipo_indirizzo_id` è NULL → `RETURN NEW`.
@@ -117,7 +116,7 @@ Essendo una trigger function, non ha parametri espliciti. Utilizza:
 
 ---
 
-### 🧪 Esempi specifici
+### Esempi specifici
 
 #### ✔ Esempio valido (matrice esistente)
 

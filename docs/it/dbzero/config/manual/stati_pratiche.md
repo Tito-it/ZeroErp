@@ -2,19 +2,17 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimento tabelle:
+Approfondimento tabelle:
 >
-> * [pratiche.pratiche](/dbzero/pratiche/tabelle/pratiche)
+[pratiche.pratiche](/dbzero/pratiche/tabelle/pratiche)
 
 ---
-
 ### 🎯 Scopo Principale
-
 La tabella `config.stati_pratiche` definisce i possibili **stati del ciclo di vita** di una pratica. Ogni pratica ha esattamente uno stato, che ne governa le transizioni e le operazioni consentite.
 
 ---
 
-### 🧱 Ruolo nel processo
+### Ruolo nel processo
 
 * Governa le **transizioni di stato** delle pratiche (es. BOZZA → APERTA → CHIUSA).
 * Il cambio stato viene registrato nel **giornale** (`pratiche.giornale`) con azione `STATO_CAMBIATO`.
@@ -22,7 +20,7 @@ La tabella `config.stati_pratiche` definisce i possibili **stati del ciclo di vi
 
 ---
 
-### 📋 Valori previsti (seed DB-6)
+### Valori previsti (seed DB-6)
 
 | codice_interno | Descrizione |
 |----------------|-------------|
@@ -34,7 +32,7 @@ La tabella `config.stati_pratiche` definisce i possibili **stati del ciclo di vi
 
 ---
 
-### ✅ Convenzioni
+### Convenzioni
 
 * Segue il pattern config standard: `codice` UNIQUE, `codice_interno` UNIQUE + locked, `attivo`, `meta`.
 * I trigger standard (audit, lock `codice_interno`, protezione `attivo`) sono applicati automaticamente da `dbops.fn_run_automations()`.

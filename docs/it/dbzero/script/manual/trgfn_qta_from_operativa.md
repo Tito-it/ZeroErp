@@ -1,14 +1,12 @@
 
-## ⚙️  Funzione `script.trgfn_qta_from_operativa()`
+## Funzione `script.trgfn_qta_from_operativa()`
 
 ```sql
 CREATE OR REPLACE FUNCTION script.trgfn_qta_from_operativa()
 RETURNS trigger
 LANGUAGE plpgsql
 ```
-
 ### 🎯 Scopo Principale
- 
 Calcolare e garantire la **coerenza della quantità in UoM base (`NEW.qta`)** a partire dalla **sorgente operativa** (`NEW.uom_operativa_id`, `NEW.qta_operativa`) sulle righe documentali (es. `vendite.ddt_righe`). La funzione:
 
 * usa la **UoM operativa** e la **quantità operativa** come fonte verità;
@@ -18,7 +16,7 @@ Calcolare e garantire la **coerenza della quantità in UoM base (`NEW.qta`)** a 
 
 > Nei DDT di vendita si raccomanda di mantenere `qta` **positiva**; il segno del movimento è demandato alla **causale** di testata.
 
-### 🔗 Contesto di utilizzo
+### Contesto di utilizzo
 
 * **Trigger**: `trg_a10_ins_upd_ddt_righe_qta_from_operativa` (BEFORE INSERT/UPDATE su `vendite.ddt_righe`).
 * **Tabelle/oggetti letti**:
@@ -27,7 +25,7 @@ Calcolare e garantire la **coerenza della quantità in UoM base (`NEW.qta`)** a 
   * `catalogo.articoli_uom_operativa` (campi: `factor_to_base`, `qty_step`, `max_decimals`, `forbid_fraction`, `valido_dal`, `valido_al`, `attivo`).
 * **Funzioni di supporto**: `script.fn_log_and_raise_error(...)` per logging + eccezioni applicative.
 
-### 🧩 Parametri (`TG_ARGV`)
+### Parametri (`TG_ARGV`)
 
 | Pos | Nome                  | Tipo    | Default | Significato                                                                                                 |
 | --: | --------------------- | ------- | ------- | ----------------------------------------------------------------------------------------------------------- |
@@ -48,7 +46,7 @@ Calcolare e garantire la **coerenza della quantità in UoM base (`NEW.qta`)** a 
 * Se `TG_ARGV[0]=TRUE` e `NEW.factor_to_base` è `NULL` → popolata con il fattore usato.
 * Se `TG_ARGV[1]=TRUE` → `NEW.uom_id := NEW.uom_operativa_id` (tipicamente coincide con la UoM base quando l’operativa = base).
 
-### 🔢 Algoritmo (passi rilevanti)
+### Algoritmo (passi rilevanti)
 
 1. **Short‑circuit**: se **entrambi** `NEW.qta_operativa` **e** `NEW.uom_operativa_id` sono già presenti ⇒ **NON ricalcola** (ritorna `NEW` così com’è).
 2. **Lettura parametri** da `TG_ARGV` (`fill_factor_to_base`, `fill_uom_id_base`).
@@ -75,7 +73,7 @@ Calcolare e garantire la **coerenza della quantità in UoM base (`NEW.qta`)** a 
 | `E_QTA_OPERATIVA_NON_INTERA` | Qtà operativa deve essere intera      | Correggere la quantità o aggiornare la policy `forbid_fraction` nelle UoM operative ammesse. |
 | `E_QTA_OPER_STEP_INVALIDO`   | Qtà operativa non rispetta `qty_step` | Adeguare la quantità al passo consentito o aggiornare `qty_step`.                            |
 
-### 🧪 Esempi d’uso
+### Esempi d’uso
 
 **A) Inserimento con operativa completa (no ricalcolo)**
 
@@ -131,7 +129,7 @@ UPDATE vendite.ddt_righe
 -- Verifica forbid_fraction/qty_step, ricalcola qta = ROUND(1.5 * factor(21→base), 6)
 ```
 
-### ⚙️ Binding del trigger (esempio YAML Liquibase)
+### Binding del trigger (esempio YAML Liquibase)
 
 > Se vuoi applicarlo a `vendite.ddt_righe` con gli argomenti `(true, false)`:
 
@@ -157,7 +155,7 @@ databaseChangeLog:
             procedure: "script.trgfn_qta_from_operativa('true','false')"
 ```
 
-### ✅ Migliorìe proposte (aderenza linee guida ZeroERP)
+### Migliorìe proposte (aderenza linee guida ZeroERP)
 
 1. **Arrotondamento parametrico**: usare `v_max_dec` al posto del fisso `6`, es.: `ROUND(..., v_max_dec)`.
 2. **Guard su `qta`**: se `uom_operativa_id` e `qta_operativa` sono presenti, **impedire** l’override manuale di `NEW.qta` (o ricalcolarla sempre) per evitare incoerenze.
@@ -166,7 +164,7 @@ databaseChangeLog:
 5. **Gestione fattori time‑bounded**: se più mapping validi nel periodo, scegliere quello con `valido_dal` più recente ≤ `CURRENT_DATE`.
 6. **Test pgTAP**: coprire casi positivi/negativi (mancanze, step non rispettato, frazioni vietate, snapshot factor, fallback UoM, max_dec).
 
-### 📋 Note di implementazione
+### Note di implementazione
 
 * La funzione è **idempotente** sul caso “operativa completa” (non ricalcola).
 * L’errore viene sempre **loggato** in `dbops.error_log` tramite `fn_log_and_raise_error`, con `context` e chiavi (`table`, `column`, ecc.).

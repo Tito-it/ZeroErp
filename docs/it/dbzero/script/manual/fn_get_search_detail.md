@@ -2,40 +2,38 @@
 
 > Vedi anche
 >
-> Approfondimento tabelle:
+Approfondimento tabelle:
 >
-> * [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)
-> * [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)
-> * [anagrafiche.clienti](/dbzero/anagrafiche/tabelle/clienti)
-> * [anagrafiche.fornitori](/dbzero/anagrafiche/tabelle/fornitori)
-> * [anagrafiche.istanze_utilities](/dbzero/anagrafiche/tabelle/istanze_utilities)
-> * [anagrafiche.billing_account](/dbzero/anagrafiche/tabelle/billing_account)
-> * [config.tipi_ruoli](/dbzero/config/tabelle/tipi_ruoli)
-> * [config.stati_cliente](/dbzero/config/tabelle/stati_cliente)
-> * [config.utilities](/dbzero/config/tabelle/utilities)
+[anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)
+> [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)
+> [anagrafiche.clienti](/dbzero/anagrafiche/tabelle/clienti)
+> [anagrafiche.fornitori](/dbzero/anagrafiche/tabelle/fornitori)
+> [anagrafiche.istanze_utilities](/dbzero/anagrafiche/tabelle/istanze_utilities)
+> [anagrafiche.billing_account](/dbzero/anagrafiche/tabelle/billing_account)
+> [config.tipi_ruoli](/dbzero/config/tabelle/tipi_ruoli)
+> [config.stati_cliente](/dbzero/config/tabelle/stati_cliente)
+> [config.utilities](/dbzero/config/tabelle/utilities)
 >
-> Approfondimento viste:
+Approfondimento viste:
 >
-> * [anagrafiche.vw_indirizzi_dettaglio](/dbzero/anagrafiche/views/vw_indirizzi_dettaglio)
+[anagrafiche.vw_indirizzi_dettaglio](/dbzero/anagrafiche/views/vw_indirizzi_dettaglio)
 >
-> Funzione complementare (livello 1):
+Funzione complementare (livello 1):
 >
-> * [script.fn_search_soggetti_universale](/dbzero/script/funzioni/fn_search_soggetti_universale)
+[script.fn_search_soggetti_universale](/dbzero/script/funzioni/fn_search_soggetti_universale)
 >
-> Funzione dati entita':
+Funzione dati entita':
 >
-> * [script.fn_get_entita_ruolo_detail](/dbzero/script/funzioni/fn_get_entita_ruolo_detail)
+[script.fn_get_entita_ruolo_detail](/dbzero/script/funzioni/fn_get_entita_ruolo_detail)
 >
-> Documento di design:
+Documento di design:
 >
-> * [Contesto Globale Ricerca Universale](/dev/work-in-progress/frontend/contesto-globale-ricerca-universale)
+[Contesto Globale Ricerca Universale](/dev/work-done/frontend/contesto-globale-ricerca-universale)
 
 La funzione **`script.fn_get_search_detail`** implementa il **livello 2** della ricerca universale soggetti. Dato un soggetto e un tipo ruolo, restituisce un JSONB con tutte le righe specifiche di quel soggetto per il ruolo richiesto, pensato per la row expansion nella tabella di ricerca.
 
 ---
-
 ### 🎯 Scopo Principale
-
 * **Dettaglio per tipo ruolo**: la funzione usa un `CASE` sul `codice_interno` del tipo ruolo (immutabile, protetto da `trgfn_lock_columns`) per costruire sezioni specifiche. Gestisce CL (cliente), FO (fornitore) con logica diretta, e delega tutti gli altri ruoli a `fn_get_entita_ruolo_detail`.
 
 * **Lazy loading**: il livello 2 viene invocato solo quando l'utente espande una riga nella tabella del livello 1. Questo evita join pesanti nella query principale di ricerca.

@@ -2,18 +2,16 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimenti tabelle:  
+Approfondimenti tabelle:  
 >
-> * [catalogo.note_articoli_componenti](/dbzero/catalogo/tabelle/note_articoli_componenti)    
-> * [catalogo.articoli_componenti](/dbzero/catalogo/tabelle/articoli_componenti)     
-> * [catalogo.articoli](/dbzero/catalogo/tabelle/articoli)    
-> * [config.note_stili](/dbzero/config/tabelle/note_stili)    
-> * [config.lingue](/dbzero/config/tabelle/lingue)    
+[catalogo.note_articoli_componenti](/dbzero/catalogo/tabelle/note_articoli_componenti)    
+> [catalogo.articoli_componenti](/dbzero/catalogo/tabelle/articoli_componenti)     
+> [catalogo.articoli](/dbzero/catalogo/tabelle/articoli)    
+> [config.note_stili](/dbzero/config/tabelle/note_stili)    
+> [config.lingue](/dbzero/config/tabelle/lingue)    
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 14-01-26)
 La vista **`catalogo.vw_articoli_componenti_note`** fornisce una lettura delle
 note legate ai componenti articolo, includendo i riferimenti a prodotto,
@@ -23,7 +21,7 @@ Restituisce **una riga per nota**.
 
 ---
 
-### 🧱 Struttura logica della vista
+### Struttura logica della vista
 
 La vista parte da `catalogo.note_articoli_componenti` e aggiunge:
 
@@ -50,7 +48,7 @@ La vista parte da `catalogo.note_articoli_componenti` e aggiunge:
 
 ---
 
-### 🔍 Modalita' d'uso tipiche
+### Modalita' d'uso tipiche
 
 ```sql
 SELECT *
@@ -61,7 +59,7 @@ ORDER BY nota_posizione, nota_seq;
 
 ---
 
-### ✅ Best practice e raccomandazioni
+### Best practice e raccomandazioni
 
 * Usare la vista per consultazione e rendering note componenti.
 * Per modifiche, operare su `catalogo.note_articoli_componenti`.

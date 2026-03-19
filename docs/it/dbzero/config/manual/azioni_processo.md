@@ -2,15 +2,15 @@
 
 > 👀 **Vedi anche**
 >
-> Architettura di riferimento:
+Architettura di riferimento:
 >
-> * [Architettura Permessi e Autorizzazioni](/guide/architettura-permessi-e-autorizzazioni)
+[Architettura Permessi e Autorizzazioni](/guide/architettura-permessi-e-autorizzazioni)
 >
-> Tabelle correlate:
+Tabelle correlate:
 >
-> * [config.aree_funzionali](/dbzero/config/tabelle/aree_funzionali)
-> * [config.profili_reparto_azioni](/dbzero/config/tabelle/profili_reparto_azioni)
-> * [config.user_override_azioni](/dbzero/config/tabelle/user_override_azioni)
+[config.aree_funzionali](/dbzero/config/tabelle/aree_funzionali)
+> [config.profili_reparto_azioni](/dbzero/config/tabelle/profili_reparto_azioni)
+> [config.user_override_azioni](/dbzero/config/tabelle/user_override_azioni)
 
 ---
 
@@ -19,16 +19,14 @@ La tabella **`config.azioni_processo`** è il **registro delle azioni di process
 Le azioni rappresentano **operazioni puntuali** che richiedono abilitazione esplicita, indipendentemente dal livello di accesso sull'area. Anche un utente con TUTTO su vendite potrebbe non poter eseguire azioni critiche come la generazione massiva di fatture.
 
 ---
-
 ### 🎯 Scopo Principale
-
 * Catalogare le **azioni di processo** che richiedono abilitazione esplicita.
 * Raccordare il **codename Django** (`Meta.permissions` → `auth_permission`) con la gestione profili.
 * Segnalare le azioni **pericolose** che richiedono conferma aggiuntiva nella UI.
 
 ---
 
-### 🔑 Colonne chiave
+### Colonne chiave
 
 | Colonna | Scopo |
 |---------|-------|
@@ -40,7 +38,7 @@ Le azioni rappresentano **operazioni puntuali** che richiedono abilitazione espl
 
 ---
 
-### 🔗 Relazioni
+### Relazioni
 
 `config.azioni_processo` è referenziata da:
 
@@ -51,7 +49,7 @@ Le azioni rappresentano **operazioni puntuali** che richiedono abilitazione espl
 
 ---
 
-### 📋 Seed iniziale
+### Seed iniziale
 
 | permission_codename | descrizione | pericolosa | area |
 |---------------------|-------------|------------|------|
@@ -79,4 +77,4 @@ La risoluzione è separata dal CRUD e binaria:
 
 ---
 
-> 🧠 **"`config.azioni_processo` consente di controllare operazioni critiche con granularità puntuale, separatamente dal livello CRUD sull'area."**
+> **"`config.azioni_processo` consente di controllare operazioni critiche con granularità puntuale, separatamente dal livello CRUD sull'area."**

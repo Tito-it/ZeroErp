@@ -2,21 +2,18 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> • [vendite.fatturazione_lotti](/dbzero/vendite/tabelle/fatturazione_lotti)  
+• [vendite.fatturazione_lotti](/dbzero/vendite/tabelle/fatturazione_lotti)  
 > • [vendite.fatturazione_lotti_fatture](/dbzero/vendite/tabelle/fatturazione_lotti_fatture)  
 > • [vendite.fatture](/dbzero/vendite/tabelle/fatture)  
 >
-> **Approfondimento funzioni:**
+**Approfondimento funzioni:**
 >
-> • [vendite.fn_sync_lotto_fatture_stato](/dbzero/vendite/funzioni/fn_sync_lotto_fatture_stato)  
+• [vendite.fn_sync_lotto_fatture_stato](/dbzero/vendite/funzioni/fn_sync_lotto_fatture_stato)  
 > • [vendite.fn_set_fatturazione_lotto_stato](/dbzero/vendite/funzioni/fn_set_fatturazione_lotto_stato)  
 >
----
-
 ### 🎯 Scopo Principale
-
 (latest review 03-02-2026)
 La funzione **`vendite.fn_close_giornaliero_lotto()`** chiude operativamente
 un lotto di tipo **GIORNALIERO** e allinea lo stato documentale delle fatture
@@ -24,7 +21,7 @@ collegate al valore passato (tipicamente stato `INVIATA`).
 
 ---
 
-### ✅ Regole principali
+### Regole principali
 
 * `p_lotto_id` obbligatorio.
 * `p_inviata_stato_doc_fiscale_id` obbligatorio.
@@ -38,7 +35,7 @@ collegate al valore passato (tipicamente stato `INVIATA`).
 
 ---
 
-### ✅ Output
+### Output
 
 Ritorna una riga con:
 
@@ -47,7 +44,7 @@ Ritorna una riga con:
 
 ---
 
-### 🧪 Esempio d’uso
+### Esempio d’uso
 
 ```sql
 SELECT *

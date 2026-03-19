@@ -11,7 +11,7 @@ export const useAuthStore = defineStore('auth', () => {
   const refreshToken = ref(local.get(STORAGE_KEYS.REFRESH_TOKEN))
 
   // Profilo utente caricato dall'endpoint /me/
-  // Struttura JSONB: { utente, ruolo_sistema, risorse_umane, soggetto, emittente }
+  // Struttura JSONB: { utente, ruolo_sistema, risorse_umane, soggetto, emittente, permessi_area }
   const user = ref(null)
 
   const isAuthenticated = computed(() => !!accessToken.value)
@@ -63,7 +63,12 @@ export const useAuthStore = defineStore('auth', () => {
   async function login(username, password) {
     const response = await api.post('/auth/token/', { username, password })
     setTokens(response.data.access, response.data.refresh)
-    await fetchProfile()
+    try {
+      await fetchProfile()
+    } catch (err) {
+      clearTokens()
+      throw err
+    }
   }
 
   async function tryRefreshToken() {
@@ -95,9 +100,34 @@ export const useAuthStore = defineStore('auth', () => {
   // Domini visibili per l'utente corrente (filtra adminOnly in base a ruolo_sistema)
   const isAdmin = computed(() => user.value?.ruolo_sistema === 'ADMIN')
 
+  // Scopo: Domini visibili: nasconde adminOnly per non-admin e BLOCCATO per tutti.
+  // I domini adminOnly hanno gia' il loro guard — non applicare il check livello.
   const visibleDomains = computed(() => {
-    return DOMAINS.filter(d => !d.adminOnly || isAdmin.value)
+    return DOMAINS.filter(d => {
+      if (d.adminOnly) return isAdmin.value
+      if (d.schemaDb && isAreaBlocked(d.schemaDb)) return false
+      return true
+    })
   })
+
+  // Mappa permessi area: { anagrafiche: 'TUTTO', vendite: 'LETTURA', ... }
+  // Popolata da /me/ campo permessi_area (fn_get_user_permissions_map)
+  const permessiArea = computed(() => user.value?.permessi_area || {})
+
+  // Livello accesso per area funzionale (TUTTO | LETTURA | BLOCCATO)
+  function getLivelloArea(schemaDb) {
+    return permessiArea.value[schemaDb] || 'BLOCCATO'
+  }
+
+  // Scopo: Area in sola lettura? (livello LETTURA)
+  function isAreaReadonly(schemaDb) {
+    return getLivelloArea(schemaDb) === 'LETTURA'
+  }
+
+  // Scopo: Area bloccata? (livello BLOCCATO — nessun accesso)
+  function isAreaBlocked(schemaDb) {
+    return getLivelloArea(schemaDb) === 'BLOCCATO'
+  }
 
   return {
     accessToken,
@@ -107,6 +137,10 @@ export const useAuthStore = defineStore('auth', () => {
     isAdmin,
     displayName,
     visibleDomains,
+    permessiArea,
+    getLivelloArea,
+    isAreaReadonly,
+    isAreaBlocked,
     login,
     logout,
     tryRefreshToken,

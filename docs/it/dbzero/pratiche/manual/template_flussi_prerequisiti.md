@@ -2,20 +2,18 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimento tabelle:
+Approfondimento tabelle:
 >
-> * [pratiche.template_flussi](/dbzero/pratiche/tabelle/template_flussi)
-> * [pratiche.flussi](/dbzero/pratiche/tabelle/flussi)
+[pratiche.template_flussi](/dbzero/pratiche/tabelle/template_flussi)
+> [pratiche.flussi](/dbzero/pratiche/tabelle/flussi)
 
 ---
-
 ### 🎯 Scopo Principale
-
 La tabella `pratiche.template_flussi_prerequisiti` definisce il **grafo diretto aciclico (DAG) dei prerequisiti** tra template flussi. Un flusso puo' essere creato solo se tutti i suoi prerequisiti sono stati completati.
 
 ---
 
-### 🧱 Ruolo nel processo
+### Ruolo nel processo
 
 * Configura le **dipendenze** tra step del workflow: "il flusso B richiede il completamento del flusso A".
 * Il trigger guard `trg_flussi_a10_guard_prerequisiti_ins` (DB-5) verifica i prerequisiti al momento della creazione di un flusso.
@@ -23,7 +21,7 @@ La tabella `pratiche.template_flussi_prerequisiti` definisce il **grafo diretto 
 
 ---
 
-### ⚙️ Caratteristiche
+### Caratteristiche
 
 | Aspetto | Dettaglio |
 |---------|-----------|
@@ -34,7 +32,7 @@ La tabella `pratiche.template_flussi_prerequisiti` definisce il **grafo diretto 
 
 ---
 
-### 💡 Esempio
+### Esempio
 
 Per un tipo_prestazione "Allacciamento" con 3 step:
 

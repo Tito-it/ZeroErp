@@ -2,21 +2,18 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> • [vendite.fatturazione_lotti_fatture](/dbzero/vendite/tabelle/fatturazione_lotti_fatture)  
+• [vendite.fatturazione_lotti_fatture](/dbzero/vendite/tabelle/fatturazione_lotti_fatture)  
 >
----
-
 ### 🎯 Scopo Principale
-
 (latest review 23-01-2026)
 `config.stati_sdi` definisce gli **stati di invio SDI** (Italia) utilizzati per
 tracciare l’esito di trasmissione dei documenti fiscali.
 
 ---
 
-### 🧱 Campi chiave (semantica)
+### Campi chiave (semantica)
 
 * **Identita` stato**: `id`, `codice`, `codice_interno`.
 * **Ordine**: `ordine` (progressione stato SDI).
@@ -24,7 +21,7 @@ tracciare l’esito di trasmissione dei documenti fiscali.
 
 ---
 
-### 🔗 Utilizzo
+### Utilizzo
 
 * Lo stato SDI e` collegato alla relazione lotto‑fattura tramite
   `vendite.fatturazione_lotti_fatture.stato_sdi_id`.

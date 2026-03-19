@@ -1,0 +1,36 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Aggiunge indice GIN trigram su indirizzo_normalizzato
+# per ricerche ILIKE/LIKE performanti su indirizzi_dettaglio.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/anagrafiche/20260317-02-add-gin-indirizzo-normalizzato-mctit.yaml
+
+  - changeSet:
+      id: 20260317-02-add-gin-indirizzo-normalizzato
+      author: mctit
+      comment: >
+        Indice GIN trigram su indirizzo_normalizzato per ricerche
+        ILIKE/LIKE performanti. Richiede estensione pg_trgm.
+
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE EXTENSION IF NOT EXISTS pg_trgm;
+
+              CREATE INDEX IF NOT EXISTS ix_indirizzi_dettaglio_indirizzo_norm_gin
+              ON anagrafiche.indirizzi_dettaglio
+              USING gin (indirizzo_normalizzato gin_trgm_ops);
+
+              COMMENT ON INDEX anagrafiche.ix_indirizzi_dettaglio_indirizzo_norm_gin
+                IS 'Indice GIN trigram su indirizzo_normalizzato per ricerche ILIKE/LIKE performanti.';
+
+      rollback:
+        - sql:
+            sql: |
+              DROP INDEX IF EXISTS anagrafiche.ix_indirizzi_dettaglio_indirizzo_norm_gin;

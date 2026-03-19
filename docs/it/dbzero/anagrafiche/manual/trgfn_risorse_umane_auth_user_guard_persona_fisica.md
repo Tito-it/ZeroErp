@@ -2,20 +2,18 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> * [anagrafiche.risorse_umane_auth_user](/dbzero/anagrafiche/tabelle/risorse_umane_auth_user)
-> * [anagrafiche.risorse_umane](/dbzero/anagrafiche/tabelle/risorse_umane)
-> * [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)
+[anagrafiche.risorse_umane_auth_user](/dbzero/anagrafiche/tabelle/risorse_umane_auth_user)
+> [anagrafiche.risorse_umane](/dbzero/anagrafiche/tabelle/risorse_umane)
+> [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)
 >
-> **Approfondimento funzioni:**
+**Approfondimento funzioni:**
 >
-> * [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)
+[script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 10-03-2026)
 La trigger function
 **`anagrafiche.trgfn_risorse_umane_auth_user_guard_persona_fisica()`**
@@ -29,7 +27,7 @@ La guard richiede:
 
 ---
 
-### 🔍 Regole applicate
+### Regole applicate
 
 * Trigger **BEFORE INSERT OR UPDATE** su `anagrafiche.risorse_umane_auth_user`.
 * Risale dalla `risorsa_umana` al `soggetto` associato.
@@ -40,7 +38,7 @@ La guard richiede:
 
 ---
 
-### ✅ Ruolo nel processo
+### Ruolo nel processo
 
 La funzione separa nettamente:
 

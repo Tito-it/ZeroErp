@@ -4,24 +4,22 @@
  
 > 👀 **Vedi anche**     
 >
-> Approdondimento tabelle:   
+Approdondimento tabelle:   
 >
-> * [`dbops.audit_log`](/dbzero/dbops/tabelle/audit_log)   
+[`dbops.audit_log`](/dbzero/dbops/tabelle/audit_log)   
 >
-> Approdondimento funzioni:   
+Approdondimento funzioni:   
 >
-> * [`dbops.fn_audit_end`](/dbzero/dbops/funzioni/fn_audit_end)   
-> * [`dbops.fn_audit_log_once`](/dbzero/dbops/funzioni/fn_audit_log_once)   
+[`dbops.fn_audit_end`](/dbzero/dbops/funzioni/fn_audit_end)   
+> [`dbops.fn_audit_log_once`](/dbzero/dbops/funzioni/fn_audit_log_once)   
 
 ---
-
 ### 🎯 Scopo Principale
-
 La funzione **`fn_audit_begin`** avvia una nuova sessione di auditing registrando un evento iniziale nella tabella `dbops.audit_log`. È utilizzata come punto di partenza per tracciare processi o automazioni che richiedono visibilità sull’intero ciclo di esecuzione.
 
 ---
 
-### 📝 Dettagli
+### Dettagli
 
 * Inserisce un record in `audit_log` con stato **BEGIN**.
 * Restituisce un identificativo (`audit_id`) che deve essere propagato alle operazioni successive.
@@ -29,7 +27,7 @@ La funzione **`fn_audit_begin`** avvia una nuova sessione di auditing registrand
 
 ---
 
-### 🔧 Utilizzo tipico
+### Utilizzo tipico
 
 1. Una procedura invoca `fn_audit_begin` all’inizio di un processo.
 2. L’identificativo generato viene passato a step e funzioni successive.
@@ -37,7 +35,7 @@ La funzione **`fn_audit_begin`** avvia una nuova sessione di auditing registrand
 
 ---
 
-### 📊 Collegamento con `audit_log`
+### Collegamento con `audit_log`
 
 La tabella `audit_log` memorizza:
 
@@ -47,6 +45,6 @@ La tabella `audit_log` memorizza:
 
 ---
 
-### 💡 Esempio pratico
+### Esempio pratico
 
 Durante l’avvio di un batch di caricamento dati, `fn_audit_begin` registra l’inizio del processo e genera un ID di audit. Tutti gli step collegati scriveranno log riferiti a questo ID, garantendo tracciabilità completa.

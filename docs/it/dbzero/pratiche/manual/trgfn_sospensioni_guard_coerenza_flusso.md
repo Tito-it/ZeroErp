@@ -2,18 +2,16 @@
 
 > 👀 **Vedi anche**
 >
-> * [pratiche.sospensioni](/dbzero/pratiche/manual/sospensioni)
-> * [pratiche.flussi](/dbzero/pratiche/tabelle/flussi)
+[pratiche.sospensioni](/dbzero/pratiche/manual/sospensioni)
+> [pratiche.flussi](/dbzero/pratiche/tabelle/flussi)
 
 ---
-
 ### 🎯 Scopo Principale
-
 Guard: verifica che `flusso_id` appartenga alla stessa `pratica_id` della sospensione. Se `flusso_id IS NULL` (sospensione pratica intera), nessun controllo.
 
 ---
 
-### 🔧 Firma
+### Firma
 
 ```sql
 CREATE OR REPLACE FUNCTION pratiche.trgfn_sospensioni_guard_coerenza_flusso()
@@ -22,7 +20,7 @@ RETURNS trigger LANGUAGE plpgsql
 
 ---
 
-### 🔗 Trigger associato
+### Trigger associato
 
 | Nome                                               | Fase   | Evento                       | Tabella                |
 | -------------------------------------------------- | ------ | ---------------------------- | ---------------------- |
@@ -30,7 +28,7 @@ RETURNS trigger LANGUAGE plpgsql
 
 ---
 
-### 📋 Messaggi errore
+### Messaggi errore
 
 | Codice                          | Messaggio                                       |
 | ------------------------------- | ----------------------------------------------- |

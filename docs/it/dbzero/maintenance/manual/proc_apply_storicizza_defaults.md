@@ -1,24 +1,22 @@
 ## 📘 Documentazione Concettuale – Procedura `maintenzance.proc_apply_storicizza_defaults()`
 
-> 🔁 **Collegamenti utili**
+> **Collegamenti utili**
 >
-> Approfondimenti tabelle: 
+Approfondimenti tabelle: 
 >
-> * [`config.storico_set_storicizza`](/dbzero/config/tabelle/storico_set_storicizza)
+[`config.storico_set_storicizza`](/dbzero/config/tabelle/storico_set_storicizza)
 >
-> Scheduler:
-> * [Processi pgAgent](/postgresql/pgAgent)
+Scheduler:
+> [Processi pgAgent](/postgresql/pgAgent)
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 07/01/26)
 La procedura `maintenzance.proc_apply_storicizza_defaults()` ha il compito di **impostare il valore di default `true` per la colonna `storicizza`** in tutte le tabelle elencate nella tabella di configurazione `config.storico_set_storicizza`. È utilizzata per **garantire che le nuove righe inserite siano automaticamente storicizzate**, ove previsto.
 
 ---
 
-### ⚙️ Dettaglio Funzionale
+### Dettaglio Funzionale
 
 Per ogni record della tabella `config.storico_set_storicizza`, la procedura:
 
@@ -107,7 +105,7 @@ $$;
 
 ---
 
-### 🔐 Sicurezza & Best Practice
+### Sicurezza & Best Practice
 
 * È buona norma testare la procedura manualmente prima di attivare il job.
 * Verificare che la colonna `storicizza` esista in tutte le tabelle dichiarate.

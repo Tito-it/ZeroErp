@@ -2,26 +2,23 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> • [vendite.fatturazione_lotti](/dbzero/vendite/tabelle/fatturazione_lotti)  
+• [vendite.fatturazione_lotti](/dbzero/vendite/tabelle/fatturazione_lotti)  
 > • [vendite.fatturazione_lotti_log](/dbzero/vendite/tabelle/fatturazione_lotti_log)  
 >
-> **Approfondimento funzioni:**
+**Approfondimento funzioni:**
 >
-> • [vendite.fn_log_lotto_esito_fatture](/dbzero/vendite/funzioni/fn_log_lotto_esito_fatture)  
+• [vendite.fn_log_lotto_esito_fatture](/dbzero/vendite/funzioni/fn_log_lotto_esito_fatture)  
 >
----
-
 ### 🎯 Scopo Principale
-
 (latest review 28-01-2026)  
 La funzione **`vendite.fn_log_pipeline_fase()`** inserisce un record nel log
 del lotto per registrare l’avanzamento (fase) della pipeline.
 
 ---
 
-### ✅ Regole principali
+### Regole principali
 
 * `lotto_id` obbligatorio.
 * `status` ammessi: `I` (info), `W` (warning), `C` (critical).
@@ -30,13 +27,13 @@ del lotto per registrare l’avanzamento (fase) della pipeline.
 
 ---
 
-### ✅ Output
+### Output
 
 Nessun output (RETURN void).
 
 ---
 
-### 🧪 Esempio
+### Esempio
 
 ```sql
 SELECT vendite.fn_log_pipeline_fase(

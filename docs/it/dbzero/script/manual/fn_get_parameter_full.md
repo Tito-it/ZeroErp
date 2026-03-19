@@ -2,14 +2,14 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento Tabelle:**
+**Approfondimento Tabelle:**
 >
-> * [config.parameters](/dbzero/config/tabelle/parameters)   
-> * [config.parameter_overrides](/dbzero/config/tabelle/parameter_overrides)   
+[config.parameters](/dbzero/config/tabelle/parameters)   
+> [config.parameter_overrides](/dbzero/config/tabelle/parameter_overrides)   
 >
-> **Approfondimento funzioni:**
+**Approfondimento funzioni:**
 >
-> * [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)   
+[script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)   
 
 ---
 
@@ -21,9 +21,7 @@ La funzione **`script.fn_get_parameter_full(...) RETURNS TEXT`** restituisce il 
 con una **precedenza deterministica**.
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest update 21-12-25)
 * **Ricerca safe del parametro**
   Verifica l’esistenza del parametro in `config.parameters` e recupera `id` + `default_value`.
@@ -39,7 +37,7 @@ con una **precedenza deterministica**.
 
 ---
 
-### 🔍 Firma e Parametri di Input (coerenti con il codice attuale)
+### Firma e Parametri di Input (coerenti con il codice attuale)
 
 ```sql
 script.fn_get_parameter_full(
@@ -63,7 +61,7 @@ script.fn_get_parameter_full(
 
 ---
 
-### ⚙️ Precedenza Override (IMPORTANTE)
+### Precedenza Override (IMPORTANTE)
 
 La funzione seleziona **al massimo un override** e, in caso di più match, applica questa precedenza **come da ORDER BY nel codice**:
 
@@ -74,11 +72,11 @@ La funzione seleziona **al massimo un override** e, in caso di più match, appli
 5. **Function** (`function_name`)
 6. **Default** (`config.parameters.default_value`)
 
-> 📌 Questa gerarchia è quella effettivamente implementata: se vuoi un ordine diverso (es. function sopra user), va cambiato l’`ORDER BY`.
+> Questa gerarchia è quella effettivamente implementata: se vuoi un ordine diverso (es. function sopra user), va cambiato l’`ORDER BY`.
 
 ---
 
-### 🧠 Flusso Logico
+### Flusso Logico
 
 1. **Recupero parametro base** (`id`, `default_value`) da `config.parameters`.
 2. Se non trovato:
@@ -96,13 +94,13 @@ La funzione seleziona **al massimo un override** e, in caso di più match, appli
 
 ---
 
-### 🔒 Valore di Ritorno
+### Valore di Ritorno
 
 * **`TEXT`**: valore override più specifico trovato, o `default_value` se nessun override applicabile.
 
 ---
 
-### 💡 Note Operative
+### Note Operative
 
 * **Multi‑ambito reale:** supporta contemporaneamente user/group/tenant/session/function.
 * **Determinismo:** l’`ORDER BY` definisce una precedenza chiara anche quando più override matchano.
@@ -110,6 +108,6 @@ La funzione seleziona **al massimo un override** e, in caso di più match, appli
 
 ---
 
-> 🧠 **“`fn_get_parameter_full` risolve in modo deterministico il valore di un parametro applicando override multi‑ambito (user → group → tenant → session → function), mantenendo logging ed error handling centralizzati.”**
+> **“`fn_get_parameter_full` risolve in modo deterministico il valore di un parametro applicando override multi‑ambito (user → group → tenant → session → function), mantenendo logging ed error handling centralizzati.”**
 
 {% include-markdown "signature-core.md" %}

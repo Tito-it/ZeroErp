@@ -2,21 +2,19 @@
 
 > **Vedi anche**
 >
-> **Tabelle correlate:**
+**Tabelle correlate:**
 >
-> * [config.user_emittenti_fiscali](/dbzero/config/tabelle/user_emittenti_fiscali)
-> * [anagrafiche.emittenti_fiscali](/dbzero/anagrafiche/tabelle/emittenti_fiscali)
+[config.user_emittenti_fiscali](/dbzero/config/tabelle/user_emittenti_fiscali)
+> [anagrafiche.emittenti_fiscali](/dbzero/anagrafiche/tabelle/emittenti_fiscali)
 >
-> **Funzioni correlate:**
+**Funzioni correlate:**
 >
-> * [script.fn_get_ruolo_sistema](/dbzero/script/funzioni/fn_get_ruolo_sistema)
-> * [script.fn_get_emittenti_scope](/dbzero/script/funzioni/fn_get_emittenti_scope)
-> * [script.trgfn_guard_emittente_scope](/dbzero/script/funzioni/trgfn_guard_emittente_scope)
+[script.fn_get_ruolo_sistema](/dbzero/script/funzioni/fn_get_ruolo_sistema)
+> [script.fn_get_emittenti_scope](/dbzero/script/funzioni/fn_get_emittenti_scope)
+> [script.trgfn_guard_emittente_scope](/dbzero/script/funzioni/trgfn_guard_emittente_scope)
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 08-03-2026)
 La funzione **`script.fn_check_user_emittente_scope`** verifica se un utente ha
 accesso a uno specifico emittente fiscale. Pensata per i trigger defense-in-depth

@@ -2,15 +2,12 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> • [anagrafiche.resellers](/dbzero/anagrafiche/tabelle/resellers)  
+• [anagrafiche.resellers](/dbzero/anagrafiche/tabelle/resellers)  
 > • [anagrafiche.resellers_billing_account](/dbzero/anagrafiche/tabelle/resellers_billing_account)  
 >
----
-
 ### 🎯 Scopo Principale
-
 (latest review 26-01-2026)
 La funzione **`anagrafiche.trgfn_resellers_guard_attivo()`** impedisce la
 **disattivazione** di un reseller quando esistono mapping verso
@@ -18,7 +15,7 @@ La funzione **`anagrafiche.trgfn_resellers_guard_attivo()`** impedisce la
 
 ---
 
-### 🔍 Regola applicata
+### Regola applicata
 
 * Trigger **BEFORE UPDATE OF attivo** su `anagrafiche.resellers`.
 * Se `attivo` passa a `false` e sono presenti righe in
@@ -27,7 +24,7 @@ La funzione **`anagrafiche.trgfn_resellers_guard_attivo()`** impedisce la
 
 ---
 
-### ✅ Ruolo nel processo
+### Ruolo nel processo
 
 La guard evita che un reseller diventi inattivo mentre risulta ancora associato
 ad uno o piu` billing account.

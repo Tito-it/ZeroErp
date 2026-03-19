@@ -2,19 +2,17 @@
 
 > 👀 **Vedi anche:**
 >
-> Approfondimento tabelle:      
+Approfondimento tabelle:      
 >
-> * [config.stati](/dbzero/config/tabelle/stati)
+[config.stati](/dbzero/config/tabelle/stati)
 
 ---
-
 ### 🎯 Scopo Principale
-
 La vista `script.vw_stati_estesi` fornisce un accesso **arricchito** ai dati della tabella `config.stati`, estraendo e presentando in colonne dedicate alcune informazioni aggiuntive memorizzate nel campo JSON `extra_country`.
 
 ---
 
-### 🧩 Struttura
+### Struttura
 
 | Colonna             | Fonte                               | Descrizione                         |
 | ------------------- | ----------------------------------- | ----------------------------------- |
@@ -31,7 +29,7 @@ La vista `script.vw_stati_estesi` fornisce un accesso **arricchito** ai dati del
 
 ---
 
-### 🔧 Dettagli tecnici
+### Dettagli tecnici
 
 * Il campo `extra_country` è di tipo JSON/JSONB nella tabella sorgente.
 * La vista usa l'operatore `->>` per estrarre i valori come testo.
@@ -39,7 +37,7 @@ La vista `script.vw_stati_estesi` fornisce un accesso **arricchito** ai dati del
 
 ---
 
-### 🔍 Esempio di utilizzo
+### Esempio di utilizzo
 
 ```sql
 -- Elenco di tutti gli stati con codice ISTAT e stato utilizzo
@@ -60,7 +58,7 @@ ORDER BY descrizione;
 
 ---
 
-### 📌 Note operative
+### Note operative
 
 * La vista semplifica l’accesso ai dati “estesi” evitando di dover scrivere manualmente le estrazioni JSON.
 * Utile per reportistica e query di configurazione che richiedono metadati standardizzati sugli stati.

@@ -245,22 +245,44 @@ class GeoService:
     # Indirizzi dettaglio
     # =================================================================
 
-    # Scopo: Check duplicato indirizzo (stradario_id + civico).
-    #        Generico: usato da IndirizzoDrawer e IndirizzoSoggettoForm.
+    # Scopo: Check duplicato indirizzo via fn_check_indirizzo_duplicato (DB).
+    #        La funzione DB gestisce normalizzazione, LIKE prefix e exact_match.
+    #        Python e' passante: chiama la funzione, formatta il risultato.
+    #        Due flussi: stradario_id diretto, oppure stradario_generale_id + comune_id.
     def check_indirizzo_duplicato(self, payload: dict) -> dict[str, Any]:
         stradario_id = optional_int(payload, "stradario_id")
-        civico = optional_int(payload, "civico")
-        warnings: list[dict[str, str]] = []
-        if stradario_id:
-            existing = self._ind.find_duplicato(stradario_id=stradario_id, civico=civico)
-            if existing:
-                desc = existing.get("via_completa", "")
-                comune = existing.get("descrizione_comune", "")
-                label = f"{desc} {civico or ''}, {comune}".strip().rstrip(",").strip()
-                warnings.append({
-                    "field": "indirizzo",
-                    "message": f"Indirizzo gia' presente: {label}",
-                })
+        stradario_generale_id = optional_int(payload, "stradario_generale_id")
+        comune_id = optional_int(payload, "comune_id")
+        warnings: list[dict[str, Any]] = []
+        # Serve almeno stradario_id oppure stradario_generale_id + comune_id
+        if not stradario_id and not (stradario_generale_id and comune_id):
+            return {"warnings": warnings}
+
+        existing = self._ind.find_duplicato(
+            stradario_id=stradario_id,
+            civico=optional_int(payload, "civico"),
+            estensione_civico=(payload.get("estensione_civico") or "").strip() or None,
+            palazzina=(payload.get("palazzina") or "").strip() or None,
+            scala=(payload.get("scala") or "").strip() or None,
+            piano=(payload.get("piano") or "").strip() or None,
+            interno=(payload.get("interno") or "").strip() or None,
+            stradario_generale_id=stradario_generale_id,
+            comune_id=comune_id,
+            codice_postale_id=optional_int(payload, "codice_postale_id"),
+        )
+        if existing:
+            label = existing["indirizzo_normalizzato"]
+            comune = (existing.get("descrizione_comune") or "").strip()
+            if comune:
+                label = f"{label}, {comune}"
+            exact = existing["exact_match"]
+            msg = f"Indirizzo gia' presente: {label}" if exact else f"Indirizzo simile trovato: {label}"
+            warnings.append({
+                "field": "indirizzo",
+                "message": msg,
+                "indirizzo_dettaglio_id": existing["indirizzo_dettaglio_id"] if exact else None,
+                "exact_match": exact,
+            })
         return {"warnings": warnings}
 
     # Scopo: Lista paginata indirizzi.

@@ -4,15 +4,15 @@
 
 > Approfondimento Tabelle:  
 >
-> * [config.stati](/dbzero/config/tabelle/stati)   
-> * [config.comuni](/dbzero/config/tabelle/comuni)   
-> * [config.stradario](/dbzero/config/tabelle/stradario)        
-> * [config.stradario_generale](/dbzero/config/tabelle/stradario_generale)  
+[config.stati](/dbzero/config/tabelle/stati)   
+> [config.comuni](/dbzero/config/tabelle/comuni)   
+> [config.stradario](/dbzero/config/tabelle/stradario)        
+> [config.stradario_generale](/dbzero/config/tabelle/stradario_generale)  
 >
-> Approfondimento Funzione:  
+Approfondimento Funzione:  
 >
-> * [config.trgfn_toponomastica_bump_normalize](/dbzero/config/funzioni/trgfn_toponomastica_bump_normalize)   
-> * [config.trgfn_toponomastica_protect_update](/dbzero/config/funzioni/trgfn_toponomastica_protect_update)   
+[config.trgfn_toponomastica_bump_normalize](/dbzero/config/funzioni/trgfn_toponomastica_bump_normalize)   
+> [config.trgfn_toponomastica_protect_update](/dbzero/config/funzioni/trgfn_toponomastica_protect_update)   
 
 
 
@@ -20,9 +20,7 @@
 La tabella **`config.toponomastica`** raccoglie i tipi di toponimi utilizzati per la composizione degli indirizzi: è la base per lo **`stradario_generale`**, dove ogni record di toponimo si combina con un nome specifico per generare l’indirizzo completo.
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 02-01-26)
 * **Censimento dei toponimi**
   Elenco delle tipologie di vie, strade, piazze, viali, ecc., utilizzate come prefisso negli indirizzi.
@@ -33,13 +31,13 @@ La tabella **`config.toponomastica`** raccoglie i tipi di toponimi utilizzati pe
 
 ---
 
-### ✅ Gestione attivo/inattivo
+### Gestione attivo/inattivo
 
 La colonna `attivo` permette di **disattivare** i toponimi non piu' utilizzati senza eliminarli, evitando che vengano proposti in nuove configurazioni.
 
 ---
 
-### 🧩 Regola di manutenzione (coerente con la policy indirizzi)
+### Regola di manutenzione (coerente con la policy indirizzi)
 
 Se un toponimo e' **in uso** nello `stradario_generale`, la modifica della descrizione e' bloccata dal guard.  
 In caso di correzioni (es. refusi), si crea un **nuovo** toponimo e si riallineano i record di `config.stradario_generale` interessati.  
@@ -49,7 +47,7 @@ In alternativa, per manutenzioni controllate, utilizzare `maintenance.proc_bump_
 
 ---
 
-### 🧩 Default stato_id
+### Default stato_id
 
 Se `stato_id` non e' valorizzato, viene impostato da parametro (`state_code_iso3`) tramite `script.fn_get_default_by_param`.  
 Se il parametro non e' configurato e `stato_id` resta NULL, l'operazione va in errore.
@@ -57,7 +55,7 @@ Se il parametro non e' configurato e `stato_id` resta NULL, l'operazione va in e
 ---
 
 
-### 💡 Vantaggi Operativi
+### Vantaggi Operativi
 
 * **Standardizzazione degli indirizzi**
   Assicura coerenza nella definizione dei prefissi toponomastici, evitando errori di inserimento.
@@ -68,4 +66,4 @@ Se il parametro non e' configurato e `stato_id` resta NULL, l'operazione va in e
 
 ---
 
-> 🧠 **"Un elenco strutturato e referenziato dei prefissi toponomastici, alla base di un sistema di indirizzamento preciso e coerente."**
+> **"Un elenco strutturato e referenziato dei prefissi toponomastici, alla base di un sistema di indirizzamento preciso e coerente."**

@@ -2,21 +2,18 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> • [vendite.area_geografica_fatturazione_comuni](/dbzero/vendite/tabelle/area_geografica_fatturazione_comuni)  
+• [vendite.area_geografica_fatturazione_comuni](/dbzero/vendite/tabelle/area_geografica_fatturazione_comuni)  
 >
----
-
 ### 🎯 Scopo Principale
-
 (latest review 30-01-2026)  
 La tabella **`vendite.area_geografica_fatturazione`** definisce aree geografiche
 per raggruppare i comuni e supportare filtri di fatturazione (es. per area).
 
 ---
 
-### ✅ Regole principali
+### Regole principali
 
 * `codice` univoco e identificativo area.
 * `attivo` governa la validità dell’area.
@@ -24,7 +21,7 @@ per raggruppare i comuni e supportare filtri di fatturazione (es. per area).
 
 ---
 
-### 🧪 Esempio
+### Esempio
 
 ```sql
 INSERT INTO vendite.area_geografica_fatturazione (codice, descrizione)

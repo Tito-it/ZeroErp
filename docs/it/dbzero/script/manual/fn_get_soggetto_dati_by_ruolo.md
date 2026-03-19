@@ -2,35 +2,33 @@
 
 > Vedi anche
 >
-> Approfondimento viste modello:
+Approfondimento viste modello:
 >
-> * [anagrafiche.vw_soggetti_ruoli_dettaglio](/dbzero/anagrafiche/views/vw_soggetti_ruoli_dettaglio)
-> * [anagrafiche.vw_dati_societari](/dbzero/anagrafiche/views/vw_dati_societari)
+[anagrafiche.vw_soggetti_ruoli_dettaglio](/dbzero/anagrafiche/views/vw_soggetti_ruoli_dettaglio)
+> [anagrafiche.vw_dati_societari](/dbzero/anagrafiche/views/vw_dati_societari)
 >
-> Approfondimento tabelle:
+Approfondimento tabelle:
 >
-> * [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)
-> * [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)
-> * [anagrafiche.dati_societari](/dbzero/anagrafiche/tabelle/dati_societari)
-> * [config.tipi_ruoli](/dbzero/config/tabelle/tipi_ruoli)
-> * [config.tipi_soggetto](/dbzero/config/tabelle/tipi_soggetto)
-> * [config.tipi_soggetto_dettaglio](/dbzero/config/tabelle/tipi_soggetto_dettaglio)
-> * [config.titoli_cortesia](/dbzero/config/tabelle/titoli_cortesia)
-> * [config.forme_giuridiche](/dbzero/config/tabelle/forme_giuridiche)
-> * [config.province](/dbzero/config/tabelle/province)
+[anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)
+> [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)
+> [anagrafiche.dati_societari](/dbzero/anagrafiche/tabelle/dati_societari)
+> [config.tipi_ruoli](/dbzero/config/tabelle/tipi_ruoli)
+> [config.tipi_soggetto](/dbzero/config/tabelle/tipi_soggetto)
+> [config.tipi_soggetto_dettaglio](/dbzero/config/tabelle/tipi_soggetto_dettaglio)
+> [config.titoli_cortesia](/dbzero/config/tabelle/titoli_cortesia)
+> [config.forme_giuridiche](/dbzero/config/tabelle/forme_giuridiche)
+> [config.province](/dbzero/config/tabelle/province)
 >
-> Funzione consumatrice:
+Funzione consumatrice:
 >
-> * [script.fn_get_user_profile](/dbzero/script/funzioni/fn_get_user_profile)
+[script.fn_get_user_profile](/dbzero/script/funzioni/fn_get_user_profile)
 
 La funzione **`script.fn_get_soggetto_dati_by_ruolo(p_soggetto_ruolo_id BIGINT)`** restituisce un record tabellare con i **dati anagrafici fondamentali** di un soggetto a partire dal suo `soggetto_ruolo_id`, includendo tipo ruolo, tipo soggetto, titolo cortesia e, se presenti, i **dati societari completi**.
 
 E' progettata come **punto di accesso generico** per ottenere una fotografia completa di un soggetto in un determinato ruolo, con tutti gli ID delle tabelle collegate inclusi per consentire navigazione e lookup dal frontend.
 
 ---
-
 ### 🎯 Scopo Principale
-
 * **Aggregazione trasversale**: combina in un unico record le informazioni che altrimenti richiederebbero join multipli su 8 tabelle (soggetti_ruoli, soggetti, tipi_ruoli, tipi_soggetto_dettaglio, tipi_soggetto, titoli_cortesia, dati_societari, forme_giuridiche, province).
 
 * **Tutti gli ID inclusi**: ogni FK del soggetto e' esposta (`stato_id`, `comune_id`, `titolo_cortesia_id`, `tipo_soggetto_dettaglio_id`, `default_contatto_id`, `dati_societari_id`, `forma_giuridica_id`, `id_prov_iscri_rea`) per consentire lookup e navigazione dal frontend senza query aggiuntive.

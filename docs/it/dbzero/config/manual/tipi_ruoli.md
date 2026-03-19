@@ -4,22 +4,20 @@
 
 > Approfondimento Tabelle:  
 >
-> * [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)    
+[anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)    
 
 
 La tabella **`config.tipi_ruoli`** serve a definire i ruoli che un soggetto (individuo o società) può assumere all'interno del software Zero ERP. In questo modo la tabella `soggetti` rimane generica e memorizza solo i dati anagrafici di base, mentre `tipi_ruoli` specifica in quali ruoli (cliente, fornitore, gestore, ecc.) ciascun soggetto si trova, a seconda delle esigenze aziendali.
 
 ---
-
 ### 🎯 Scopo Principale
-
 * **Distinzione dei ruoli**: consente di assegnare a ogni record della tabella `soggetti` uno o più ruoli funzionali (es. cliente, fornitore, gestore).
 * **Flessibilità operativa**: un soggetto può assumere ruoli differenti in contesti diversi (ad esempio un fornitore che può diventare cliente in altre transazioni).
 * **Ruolo "gestore"**: l’azienda stessa che utilizza il software viene registrata in `soggetti` e associata al ruolo interno “gestore” per identificare i dati dell’utente principale o amministratore del sistema.
 
 ---
 
-### 🔗 Collegamenti con Altre Tabelle
+### Collegamenti con Altre Tabelle
 
 * **`anagrafica.soggetti_ruoli`**
 
@@ -34,7 +32,7 @@ La tabella **`config.tipi_ruoli`** serve a definire i ruoli che un soggetto (ind
 
 ---
 
-### 💡 Vantaggi Operativi
+### Vantaggi Operativi
 
 * **Invarianza del codice interno**
   Grazie al trigger di lock, il `codice_interno` rimane stabile, semplificando tutte le logiche applicative che fanno riferimento al codice ruolo (es. permessi, reportistica, workflow).
@@ -50,4 +48,4 @@ La tabella **`config.tipi_ruoli`** serve a definire i ruoli che un soggetto (ind
 
 ---
 
-> 🧠 **"Una tabella leggera e versatile per gestire, senza duplicazioni, i ruoli operativi dei soggetti nel sistema Zero ERP, garantendo integrità, audit e flessibilità."**
+> **"Una tabella leggera e versatile per gestire, senza duplicazioni, i ruoli operativi dei soggetti nel sistema Zero ERP, garantendo integrità, audit e flessibilità."**

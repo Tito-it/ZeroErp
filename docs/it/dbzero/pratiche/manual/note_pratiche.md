@@ -2,21 +2,19 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimento tabelle:
+Approfondimento tabelle:
 >
-> * [pratiche.pratiche](/dbzero/pratiche/tabelle/pratiche)
-> * [pratiche.note_flussi](/dbzero/pratiche/tabelle/note_flussi)
-> * [config.tipi_nota](/dbzero/config/tabelle/tipi_nota)
+[pratiche.pratiche](/dbzero/pratiche/tabelle/pratiche)
+> [pratiche.note_flussi](/dbzero/pratiche/tabelle/note_flussi)
+> [config.tipi_nota](/dbzero/config/tabelle/tipi_nota)
 
 ---
-
 ### 🎯 Scopo Principale
-
 La tabella `pratiche.note_pratiche` contiene le **note testuali** associate a una pratica. Ogni nota e' classificata per tipo (GENERALE, INTERNA, CLIENTE, TECNICA, LEGALE) e puo' essere modificata.
 
 ---
 
-### 🧱 Ruolo nel processo
+### Ruolo nel processo
 
 * Consente di aggiungere annotazioni libere a una pratica durante il suo ciclo di vita.
 * Il `tipo_nota_id` determina la **visibilita'** della nota (es. note INTERNA non visibili al cliente).
@@ -25,7 +23,7 @@ La tabella `pratiche.note_pratiche` contiene le **note testuali** associate a un
 
 ---
 
-### ✅ Convenzioni
+### Convenzioni
 
 * PK BIGINT IDENTITY.
 * `storicizza = true`, `tx_id` per correlazione.

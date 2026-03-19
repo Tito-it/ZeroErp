@@ -2,13 +2,11 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimenti funzioni:   
-> - [internal.trgfn_audit_version_info](/dbzero/internal/funzioni/trgfn_audit_version_info)     
+Approfondimenti funzioni:   
+> [internal.trgfn_audit_version_info](/dbzero/internal/funzioni/trgfn_audit_version_info)     
 
 ---
- 
 ### 🎯 Scopo Principale
-
 Mantenere un registro delle versioni dell’applicazione **ZeroErp**, conservando informazioni su:
 
 * **version**: etichetta di release/deploy (es. `1.2.0`, `2025.07.11`).
@@ -17,7 +15,7 @@ Mantenere un registro delle versioni dell’applicazione **ZeroErp**, conservand
 
 ---
 
-### 🔒 Vincoli
+### Vincoli
 
 * **PRIMARY KEY**: `version_info_pkey` su `id` (auto-increment).
 * **DEFAULT**: `app_name` è di default `'ZeroErp'`.
@@ -30,7 +28,7 @@ Mantenere un registro delle versioni dell’applicazione **ZeroErp**, conservand
 
 ---
 
-### ⚙️ Meccanismo di Utilizzo
+### Meccanismo di Utilizzo
 
 1. **Inserimento versione**
    Ogni nuova release inserisce un record con il numero di `version`.
@@ -60,10 +58,10 @@ Mantenere un registro delle versioni dell’applicazione **ZeroErp**, conservand
 
 ---
 
-### 💡 Vantaggi Operativi
+### Vantaggi Operativi
 
 * **Tracciabilità delle release**: ogni modifica rimane storicizzata con timestamp e utente.
 * **Auditing automatico**: nessuna necessità di gestire manualmente i campi di update.
 * **Centralità**: punto unico per consultare la versione corrente e passate del sistema.
 
-> 🧠 **“Un registro versioninfo ben gestito è fondamentale per deployment sicuri, rollback controllati e per supportare processi di monitoraggio e diagnostica.”**
+> **“Un registro versioninfo ben gestito è fondamentale per deployment sicuri, rollback controllati e per supportare processi di monitoraggio e diagnostica.”**

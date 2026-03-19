@@ -2,23 +2,20 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimenti tabelle:   
+Approfondimenti tabelle:   
 >
-> * [config.stati](/dbzero/config/tabelle/stati)   
+[config.stati](/dbzero/config/tabelle/stati)   
 >
-> Approfondimenti funzioni:   
+Approfondimenti funzioni:   
 >
-> * [script.validate_cf_piva_it](/dbzero/script/funzioni/fn_validate_cf_piva_it)   
-
-
+[script.validate_cf_piva_it](/dbzero/script/funzioni/fn_validate_cf_piva_it)   
 ### 🎯 Scopo Principale
-
 (latest review 29-12-25)
 La trigger function **`anagrafiche.trgfn_soggetti_valida_cf_piva_dispatch()`** viene eseguita **`BEFORE INSERT OR UPDATE`** sulla tabella **`anagrafiche.soggetti`** e instrada la validazione di codice fiscale e partita IVA in base allo Stato e al dettaglio di soggetto.
 
 ---
 
-### ⚙️ Obiettivi e Ruolo
+### Obiettivi e Ruolo
 
 1. **Selezione del contesto nazionale**
    Recuperare il `codice_iso2` dello Stato (`stato_id`) per identificare il Paese di validazione.
@@ -30,7 +27,7 @@ La trigger function **`anagrafiche.trgfn_soggetti_valida_cf_piva_dispatch()`** v
 
 ---
 
-### 🔍 Flusso di Esecuzione Dettagliato
+### Flusso di Esecuzione Dettagliato
 
 1. **Recupero Stato**
 
@@ -73,7 +70,7 @@ CREATE TRIGGER trg_soggetti_ins_upd_dispatch_valida_cf_piva
 
 ---
 
-### 💡 Vantaggi Operativi
+### Vantaggi Operativi
 
 * **Centralizzazione validation**: tutta la logica di CF/P.IVA per l’Italia è in un’unica funzione.
 * **Manutenibilità**: nuove regole per altri paesi si aggiungono semplicemente con nuovi branch o funzioni dedicate.
@@ -81,4 +78,4 @@ CREATE TRIGGER trg_soggetti_ins_upd_dispatch_valida_cf_piva
 
 ---
 
-> 🧠 “Con il dispatch centralizzato in `trgfn_soggetti_valida_cf_piva_dispatch`, Zero ERP assicura controlli locali e internazionali sui dati fiscali in modo modulare e a prova di evoluzioni future.”
+> “Con il dispatch centralizzato in `trgfn_soggetti_valida_cf_piva_dispatch`, Zero ERP assicura controlli locali e internazionali sui dati fiscali in modo modulare e a prova di evoluzioni future.”

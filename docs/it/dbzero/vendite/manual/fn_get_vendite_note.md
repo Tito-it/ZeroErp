@@ -2,19 +2,17 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> • [vendite.note](/dbzero/vendite/tabelle/note)  
+• [vendite.note](/dbzero/vendite/tabelle/note)  
 > • [vendite.note_fatture](/dbzero/vendite/tabelle/note_fatture)  
 >
-> **Approfondimento funzioni:**
+**Approfondimento funzioni:**
 >
-> • [script.fn_get_note](/dbzero/script/funzioni/fn_get_note)  
+• [script.fn_get_note](/dbzero/script/funzioni/fn_get_note)  
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 10-02-2026)  
 La funzione **`vendite.fn_get_vendite_note()`** e` un wrapper su
 `script.fn_get_note('vendite.note')` per recuperare le note vendite
@@ -22,7 +20,7 @@ da tabella partizionata in modo uniforme.
 
 ---
 
-### ✅ Regole principali
+### Regole principali
 
 * `target_tipo` identifica il tipo documento (es. `FATTURA`, `ORDINE`, `DDT`).
 * `target_id` identifica la testata.
@@ -32,14 +30,14 @@ da tabella partizionata in modo uniforme.
 
 ---
 
-### ✅ Output
+### Output
 
 Ritorna le note con campi standard: target, anchor, posizione, testo, stile,
 lingua, visibilita`, meta e audit.
 
 ---
 
-### 🧪 Esempio d’uso
+### Esempio d’uso
 
 ```sql
 SELECT *

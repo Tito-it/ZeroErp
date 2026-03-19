@@ -1,13 +1,11 @@
 ## 📘 Documentazione Concettuale – Funzione `vendite.fn_link_commessa_sorgente`
-
 ### 🎯 Scopo Principale
-
 (latest review 24-02-2026)
 Collega la ROOT source a una commessa in modo idempotente e coerente.
 
 ---
 
-### 🔧 Regole applicate
+### Regole applicate
 
 * Una commessa puo` avere una sola ROOT (`ruolo_link='ROOT'`).
 * Se ROOT gia` presente, deve coincidere con la sorgente in ingresso.
@@ -16,7 +14,7 @@ Collega la ROOT source a una commessa in modo idempotente e coerente.
 
 ---
 
-### ✅ Output
+### Output
 
 Ritorna `id` del record in `vendite.commesse_sorgenti`.
 

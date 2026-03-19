@@ -2,23 +2,20 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> • [config.stati_doc_fiscale](/dbzero/config/tabelle/stati_doc_fiscale)  
+• [config.stati_doc_fiscale](/dbzero/config/tabelle/stati_doc_fiscale)  
 > • [vendite.fatturazione_lotti](/dbzero/vendite/tabelle/fatturazione_lotti)  
 > • [vendite.fatture](/dbzero/vendite/tabelle/fatture)  
 >
----
-
 ### 🎯 Scopo Principale
-
 (latest review 24-01-2026)
 `config.stati_doc_fiscale_transizioni` definisce le **transizioni ammesse** tra stati
 documento, con validita` separata per **lotti** e **fatture**.
 
 ---
 
-### 🧱 Campi chiave (semantica)
+### Campi chiave (semantica)
 
 * **Transizione**: `stato_from_id` → `stato_to_id`.
 * **Ammissibilita`**: `ammesso` (TRUE/FALSE).
@@ -29,7 +26,7 @@ documento, con validita` separata per **lotti** e **fatture**.
 
 ---
 
-### ✅ Note operative
+### Note operative
 
 * I guard di stato su `fatture` e `fatturazione_lotti` usano questa tabella.
 * Se `meta.tipo_lotto` e` valorizzato (es. `MASSIVO`, `GIORNALIERO`),

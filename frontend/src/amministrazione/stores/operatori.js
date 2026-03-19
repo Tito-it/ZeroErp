@@ -1,15 +1,16 @@
-// Pinia store per la gestione utenti (lista, dettaglio, CRUD, override).
+// Pinia store per la gestione operatori (lista, dettaglio, CRUD, override).
 // I lookup (UO, qualifiche, aree, azioni, emittenti) sono stati spostati
-// nei componenti via useLookup — lo store gestisce solo dati utenti.
+// nei componenti via useLookup — lo store gestisce solo dati operatori.
 
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import {
-  listUtenti,
-  getUtente,
-  createUtente,
-  updateUtente,
-  disabilitaUtente,
+  listOperatori,
+  getOperatore,
+  createOperatore,
+  updateOperatore,
+  disabilitaOperatore,
+  riattivaOperatore,
   getOverrideAree,
   putOverrideAree,
   getOverrideAzioni,
@@ -21,14 +22,14 @@ import { useTabEvents } from '../../core/composables/useTabEvents'
 
 const { emitDataChanged } = useTabEvents()
 
-export const useUtentiStore = defineStore('amm-utenti', () => {
+export const useOperatoriStore = defineStore('amm-operatori', () => {
   // Lista
   const items = ref([])
   const totalRecords = ref(0)
   const loading = ref(false)
 
   // Dettaglio/corrente
-  const currentUtente = ref(null)
+  const currentOperatore = ref(null)
   const loadingDetail = ref(false)
 
   // Filtri attivi (sincronizzati con la toolbar)
@@ -64,7 +65,7 @@ export const useUtentiStore = defineStore('amm-utenti', () => {
         params.order_dir = f.order_dir || 'ASC'
       }
 
-      const res = await listUtenti(params)
+      const res = await listOperatori(params)
       items.value = res.data.data.results
       totalRecords.value = res.data.data.count
     } finally {
@@ -75,31 +76,38 @@ export const useUtentiStore = defineStore('amm-utenti', () => {
   async function fetchDetail(authUserId) {
     loadingDetail.value = true
     try {
-      const res = await getUtente(authUserId)
-      currentUtente.value = res.data.data
+      const res = await getOperatore(authUserId)
+      currentOperatore.value = res.data.data
     } finally {
       loadingDetail.value = false
     }
   }
 
   async function create(payload) {
-    const res = await createUtente(payload)
+    const res = await createOperatore(payload)
     const created = res.data.data
-    emitDataChanged('utente', created.auth_user_id)
+    emitDataChanged('operatore', created.auth_user_id)
     return created
   }
 
   async function update(authUserId, payload) {
-    const res = await updateUtente(authUserId, payload)
-    currentUtente.value = res.data.data
-    emitDataChanged('utente', authUserId)
+    const res = await updateOperatore(authUserId, payload)
+    currentOperatore.value = res.data.data
+    emitDataChanged('operatore', authUserId)
     return res.data.data
   }
 
   async function disabilita(authUserId) {
-    const res = await disabilitaUtente(authUserId)
-    currentUtente.value = res.data.data
-    emitDataChanged('utente', authUserId)
+    const res = await disabilitaOperatore(authUserId)
+    currentOperatore.value = res.data.data
+    emitDataChanged('operatore', authUserId)
+    return res.data.data
+  }
+
+  async function riattiva(authUserId) {
+    const res = await riattivaOperatore(authUserId)
+    currentOperatore.value = res.data.data
+    emitDataChanged('operatore', authUserId)
     return res.data.data
   }
 
@@ -112,7 +120,7 @@ export const useUtentiStore = defineStore('amm-utenti', () => {
   async function saveOverrideAree(authUserId, items) {
     const res = await putOverrideAree(authUserId, items)
     overrideAree.value = res.data.data.results
-    emitDataChanged('utente', authUserId)
+    emitDataChanged('operatore', authUserId)
   }
 
   // --- Override azioni ---
@@ -124,7 +132,7 @@ export const useUtentiStore = defineStore('amm-utenti', () => {
   async function saveOverrideAzioni(authUserId, items) {
     const res = await putOverrideAzioni(authUserId, items)
     overrideAzioni.value = res.data.data.results
-    emitDataChanged('utente', authUserId)
+    emitDataChanged('operatore', authUserId)
   }
 
   // --- Emittenti scope ---
@@ -136,7 +144,7 @@ export const useUtentiStore = defineStore('amm-utenti', () => {
   async function saveEmittentiScope(authUserId, emittenteIds) {
     const res = await putEmittentiScope(authUserId, emittenteIds)
     emittentiScope.value = res.data.data.results
-    emitDataChanged('utente', authUserId)
+    emitDataChanged('operatore', authUserId)
   }
 
   return {
@@ -148,7 +156,7 @@ export const useUtentiStore = defineStore('amm-utenti', () => {
     fetchList,
 
     // Dettaglio
-    currentUtente,
+    currentOperatore,
     loadingDetail,
     fetchDetail,
 
@@ -156,6 +164,7 @@ export const useUtentiStore = defineStore('amm-utenti', () => {
     create,
     update,
     disabilita,
+    riattiva,
 
     // Override
     overrideAree,

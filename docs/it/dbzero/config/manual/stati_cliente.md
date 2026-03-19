@@ -2,24 +2,22 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimento tabelle:
+Approfondimento tabelle:
 >
-> * [anagrafiche.clienti](/dbzero/anagrafiche/tabelle/clienti)
+[anagrafiche.clienti](/dbzero/anagrafiche/tabelle/clienti)
 >
-> Approfondimento funzioni e view:
+Approfondimento funzioni e view:
 >
-> * [script.trgfn_lock_columns](/dbzero/script/funzioni/trgfn_lock_columns)
-> * [script.view_clienti_istanza_states](/dbzero/script/view/view_clienti_istanza_states)
+[script.trgfn_lock_columns](/dbzero/script/funzioni/trgfn_lock_columns)
+> [script.view_clienti_istanza_states](/dbzero/script/view/view_clienti_istanza_states)
 
 ---
-
 ### 🎯 Scopo Principale
-
 La tabella `config.stati_cliente` definisce i possibili **stati funzionali** di un cliente all’interno di Zero ERP, utilizzati sia per il controllo dei processi (letture, fatturazione) sia per la logica di avanzamento (precontrattuale, attivo, sospeso, chiuso, ecc.).
 
 ---
 
-### 🔗 Collegamenti con Altre Tabelle
+### Collegamenti con Altre Tabelle
 
 | Campo                   | Riferimento                            | Azione                                        |
 | ----------------------- | -------------------------------------- | --------------------------------------------- |
@@ -39,13 +37,13 @@ La tabella `config.stati_cliente` definisce i possibili **stati funzionali** di 
 
 ---
 
-### 🔍 Indicizzazione
+### Indicizzazione
 
 * **`ix_config_stati_cli_desc`**: supporta ricerche per descrizione estesa (`descrizione`).
 
 ---
 
-### 💡 Vantaggi Operativi
+### Vantaggi Operativi
 
 * **Centralizzazione**: tutti i processi leggono gli stati da un unico catalogo configurabile.
 * **Multifunzionalità**: gli stessi stati guidano logica di letture, abilitazione fatture, transizioni contrattuali.
@@ -53,7 +51,7 @@ La tabella `config.stati_cliente` definisce i possibili **stati funzionali** di 
 
 ---
 
-### ⚙️ Trigger e Automatismi
+### Trigger e Automatismi
 
 | Trigger                                    | Evento        | Funzione                                                                        |
 | ------------------------------------------ | ------------- | ------------------------------------------------------------------------------- |
@@ -62,7 +60,7 @@ La tabella `config.stati_cliente` definisce i possibili **stati funzionali** di 
 
 ---
 
-### ✅ Controlli di Coerenza
+### Controlli di Coerenza
 
 * `codice_interno` è **unico** e non può essere modificato.
 * I check sui caratteri `S/N` e sui valori di stato evitano inserimenti fuori standard.

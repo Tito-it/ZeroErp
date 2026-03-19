@@ -7,6 +7,9 @@
 - Prima di implementare: leggi docs in `docs/it/` pertinenti
 - Struttura: backend in `backend/`, DB migrations in `db/changelog/migrations_v2/`
 - Filosofia: **DB-first** — la logica di business sta in PostgreSQL; Django orchestra e espone API; Vue (futuro) solo presentazione
+- **Metodologia di sviluppo**: seguire sempre il modello concentrico descritto in:
+  - `docs/it/sviluppo-concentrico.md` — principi e fasi dello sviluppo concentrico
+  - `docs/it/mappa-concentrica.md` — mappa delle dipendenze e ordine di costruzione
 
 ## Scope
 
@@ -42,6 +45,7 @@
 ## Backend (Django)
 
 - Codice backend in `backend/`
+- **Documento di riferimento obbligatorio**: `docs/it/dev/api.md` — leggere PRIMA di qualsiasi intervento su endpoint, repository o service
 - Versioni: Python 3.14, Django 6.01
 - Evitare API/metodi deprecati; seguire best practice Django
 - Accesso webserver configurato: test migrazione solo su richiesta
@@ -86,7 +90,7 @@ Ogni app puo' contenere piu' repository e service. La regola di naming e' basata
 ## Frontend (Vue)
 
 - Codice frontend in `frontend/`
-- **Documento di riferimento obbligatorio**: `docs/it/frontend/frontend-standards.md` — leggere PRIMA di qualsiasi intervento sul frontend
+- **Documento di riferimento obbligatorio**: `docs/it/dev/frontend/frontend-standards.md` — leggere PRIMA di qualsiasi intervento sul frontend
 - **Guida sviluppo frontend**: `docs/it/dev/work-in-progress/frontend/guida-sviluppo-frontend.md` — convenzioni componenti, composable, routing, CSS, pattern operativi
 - Stack: Vue 3.5, Vite 7, PrimeVue 4.5, Pinia 3, Vue Router 5, vue-i18n 10, Axios
 - Runtime: Node.js 24 LTS (gestito via nvm)

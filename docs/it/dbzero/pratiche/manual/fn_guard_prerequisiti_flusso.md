@@ -2,24 +2,22 @@
 
 > 👀 **Vedi anche**
 >
-> Funzioni collegate:
+Funzioni collegate:
 >
-> * [pratiche.fn_check_prerequisiti_flusso](fn_check_prerequisiti_flusso.md)
-> * `script.fn_log_and_raise_error`
+[pratiche.fn_check_prerequisiti_flusso](fn_check_prerequisiti_flusso.md)
+> `script.fn_log_and_raise_error`
 >
-> Trigger:
+Trigger:
 >
-> * `trg_flussi_a10_guard_prerequisiti_ins` (BEFORE INSERT su flussi)
+`trg_flussi_a10_guard_prerequisiti_ins` (BEFORE INSERT su flussi)
 
 ---
-
 ### 🎯 Scopo Principale
-
 La funzione **`pratiche.fn_guard_prerequisiti_flusso`** e' una **guard fail-fast** (`fn_guard_*`): verifica i prerequisiti e **solleva eccezione** se non sono tutti soddisfatti.
 
 ---
 
-### 🔧 Firma della funzione
+### Firma della funzione
 
 ```sql
 CREATE OR REPLACE FUNCTION pratiche.fn_guard_prerequisiti_flusso(
@@ -32,7 +30,7 @@ LANGUAGE plpgsql
 
 ---
 
-### 📋 Descrizione parametri
+### Descrizione parametri
 
 | Parametro | Tipo | Obbligatorio | Descrizione |
 |-----------|------|:---:|-------------|
@@ -41,7 +39,7 @@ LANGUAGE plpgsql
 
 ---
 
-### ⚙️ Logica di funzionamento
+### Logica di funzionamento
 
 1. Invoca `fn_check_prerequisiti_flusso(p_pratica_id, p_template_flusso_id)`.
 2. Raccoglie i codici di tutti i prerequisiti con `soddisfatto = false` tramite `string_agg`.
@@ -58,7 +56,7 @@ LANGUAGE plpgsql
 
 ---
 
-### 🧪 Esempi di utilizzo
+### Esempi di utilizzo
 
 ```sql
 -- Verifica fail-fast (solleva eccezione se prerequisiti mancanti)
@@ -67,7 +65,7 @@ SELECT pratiche.fn_guard_prerequisiti_flusso(100, 5);
 
 ---
 
-### ✅ Note operative
+### Note operative
 
 * Usata come wrapper dal trigger `trgfn_flussi_guard_prerequisiti()` per bloccare l'INSERT di flussi senza prerequisiti.
 * Puo' essere chiamata anche direttamente dal backend Django prima di tentare l'inserimento.

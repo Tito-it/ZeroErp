@@ -2,28 +2,26 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimento tabelle:
+Approfondimento tabelle:
 >
-> * [pratiche.template_flussi](/dbzero/pratiche/tabelle/template_flussi)
-> * [pratiche.template_flussi_prerequisiti](/dbzero/pratiche/tabelle/template_flussi_prerequisiti)
-> * [pratiche.flussi](/dbzero/pratiche/tabelle/flussi)
-> * [config.stati_flussi_pratiche](/dbzero/config/tabelle/stati_flussi_pratiche)
+[pratiche.template_flussi](/dbzero/pratiche/tabelle/template_flussi)
+> [pratiche.template_flussi_prerequisiti](/dbzero/pratiche/tabelle/template_flussi_prerequisiti)
+> [pratiche.flussi](/dbzero/pratiche/tabelle/flussi)
+> [config.stati_flussi_pratiche](/dbzero/config/tabelle/stati_flussi_pratiche)
 >
-> Funzioni collegate:
+Funzioni collegate:
 >
-> * [pratiche.fn_guard_prerequisiti_flusso](fn_guard_prerequisiti_flusso.md)
+[pratiche.fn_guard_prerequisiti_flusso](fn_guard_prerequisiti_flusso.md)
 
 ---
-
 ### 🎯 Scopo Principale
-
 La funzione **`pratiche.fn_check_prerequisiti_flusso`** e' una **pure check** (`fn_check_*`): verifica se tutti i prerequisiti di un template flusso sono soddisfatti per una data pratica.
 
 Ritorna una **riga per ogni prerequisito** con un flag `soddisfatto` (boolean). Non solleva eccezioni — il chiamante decide come gestire i prerequisiti mancanti.
 
 ---
 
-### 🔧 Firma della funzione
+### Firma della funzione
 
 ```sql
 CREATE OR REPLACE FUNCTION pratiche.fn_check_prerequisiti_flusso(
@@ -42,7 +40,7 @@ STABLE
 
 ---
 
-### 📋 Descrizione parametri
+### Descrizione parametri
 
 | Parametro | Tipo | Obbligatorio | Descrizione |
 |-----------|------|:---:|-------------|
@@ -51,7 +49,7 @@ STABLE
 
 ---
 
-### 📊 Colonne ritornate
+### Colonne ritornate
 
 | Colonna | Tipo | Descrizione |
 |---------|------|-------------|
@@ -62,7 +60,7 @@ STABLE
 
 ---
 
-### ⚙️ Logica di funzionamento
+### Logica di funzionamento
 
 1. Legge i prerequisiti configurati in `pratiche.template_flussi_prerequisiti` per il template indicato.
 2. Per ciascuno, verifica se nella pratica esiste un flusso con quel `template_flusso_id` in stato **COMPLETATO** (tramite `config.stati_flussi_pratiche.codice_interno`).
@@ -70,7 +68,7 @@ STABLE
 
 ---
 
-### 🧪 Esempi di utilizzo
+### Esempi di utilizzo
 
 ```sql
 -- Verifica prerequisiti per pratica 100, template flusso 5
@@ -83,7 +81,7 @@ WHERE NOT soddisfatto;
 
 ---
 
-### ✅ Note operative
+### Note operative
 
 * Funzione `STABLE`: non modifica dati, sicura per uso ripetuto nella stessa transazione.
 * Usata internamente da `fn_guard_prerequisiti_flusso` per la validazione fail-fast.

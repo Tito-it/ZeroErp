@@ -2,17 +2,13 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**    
+**Approfondimento tabelle:**    
 >
-> • [anagrafiche.billing_account](/dbzero/anagrafiche/tabelle/billing_account)    
+• [anagrafiche.billing_account](/dbzero/anagrafiche/tabelle/billing_account)    
 > • [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)    
 > • [vendite.fatture](/dbzero/vendite/tabelle/fatture)    
 >
-
----
-
 ### 🎯 Scopo Principale
-
 (latest review 23-01-2026)
 La tabella `anagrafiche.emittenti_fiscali_billing_account` definisce l’associazione tra **billing account**
 e **emittente fiscale** (ruolo), garantendo che ogni documento abbia un emittente coerente e deterministico.
@@ -22,7 +18,7 @@ associazione specifica per il billing account.
 
 ---
 
-### 🧱 Regole principali
+### Regole principali
 
 * **Unicita` per billing account**: una sola riga per `billing_account_id`.
 * **Default globale**:
@@ -34,7 +30,7 @@ associazione specifica per il billing account.
 
 ---
 
-### 🔗 Collocazione nel processo di fatturazione
+### Collocazione nel processo di fatturazione
 
 1. Durante la generazione delle fatture, l’emittente fiscale viene risolto tramite questa tabella.
 2. Se non esiste un mapping specifico per il BA, viene applicato il default globale.
@@ -42,7 +38,7 @@ associazione specifica per il billing account.
 
 ---
 
-### ✅ Best practice operative
+### Best practice operative
 
 * Inserire sempre un **emittente di default** appena si abilita il modulo fatturazione.
 * Creare mapping specifici per BA solo quando necessario (multi‑emittente).

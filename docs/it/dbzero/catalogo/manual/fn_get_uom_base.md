@@ -2,17 +2,15 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento Tabelle**   
+**Approfondimento Tabelle**   
 > • [`catalogo.articoli`](/dbzero/catalogo/tabelle/articoli)    
 > • [`catalogo.unita_misura`](/dbzero/catalogo/tabelle/unita_misura)    
 >
-> **Approfondimento Funzioni**  
+**Approfondimento Funzioni**  
 > • [`catalogo.fn_get_uom_factor`](/dbzero/catalogo/funzioni/fn_get_uom_factor)     
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest updates 13-01-26)
 La funzione **`catalogo.fn_get_uom_base(p_articolo_id)`** ritorna la **UoM base** dell’articolo, leggendo il campo `catalogo.articoli.uom_id`.
 
@@ -20,7 +18,7 @@ Se l’articolo non esiste o non ha UoM base, ritorna `NULL`.
 
 ---
 
-### 🔁 Logica di calcolo
+### Logica di calcolo
 
 1. Cerca `catalogo.articoli.uom_id` per `p_articolo_id`.
 2. Se trovato → ritorna l’ID della UoM base.
@@ -28,7 +26,7 @@ Se l’articolo non esiste o non ha UoM base, ritorna `NULL`.
 
 ---
 
-### 🔎 Esempi d’uso
+### Esempi d’uso
 
 **1) Recupero UoM base**
 
@@ -68,7 +66,7 @@ WHERE catalogo.fn_get_uom_base(a.id) IS NULL;
 
 ---
 
-### 🧭 Best practice
+### Best practice
 
 * Assicurati che `catalogo.articoli.uom_id` sia valorizzato per gli articoli gestiti in magazzino/fatturazione.
 * Gestisci `NULL` a livello applicativo quando l’articolo non ha UoM base.

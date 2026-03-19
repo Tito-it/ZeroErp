@@ -2,23 +2,20 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> • [pagamenti.vendite_contabili](/dbzero/pagamenti/tabelle/vendite_contabili)  
+• [pagamenti.vendite_contabili](/dbzero/pagamenti/tabelle/vendite_contabili)  
 > • [pagamenti.vendite_contabili_righe_stati](/dbzero/pagamenti/tabelle/vendite_contabili_righe_stati)  
 > • [pagamenti.enti_incasso](/dbzero/pagamenti/tabelle/enti_incasso)  
 >
----
-
 ### 🎯 Scopo Principale
-
 La tabella **`pagamenti.vendite_contabili_righe`** contiene il dettaglio delle
 righe importate/gestite nella testata contabile vendite, con stato di lavorazione
 e riferimenti di abbinamento (fattura, billing account).
 
 ---
 
-### 🧱 Campi chiave (semantica)
+### Campi chiave (semantica)
 
 * `contabile_id`: FK alla testata `pagamenti.vendite_contabili`.
 * `riferimento_ente`: riferimento esterno del flusso (CRO/TRN/UID operazione).
@@ -30,7 +27,7 @@ e riferimenti di abbinamento (fattura, billing account).
 
 ---
 
-### ✅ Regole principali
+### Regole principali
 
 * La riga appartiene sempre a una testata (`contabile_id` obbligatorio).
 * `stato_id` usa il lookup `pagamenti.vendite_contabili_righe_stati`.
@@ -39,7 +36,7 @@ e riferimenti di abbinamento (fattura, billing account).
 
 ---
 
-### 🧪 Esempio d’uso
+### Esempio d’uso
 
 ```sql
 SELECT r.id, r.contabile_id, r.importo, r.stato_id, r.fattura_id

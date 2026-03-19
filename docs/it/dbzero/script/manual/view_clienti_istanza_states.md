@@ -2,21 +2,19 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimento tabelle:
+Approfondimento tabelle:
 >
-> * [anagrafiche.istanze_utilities](/dbzero/anagrafiche/tabelle/istanze_utilities)
-> * [config.stati_cliente](/dbzero/config/tabelle/stati_cliente)
-> * [script.fn_get_stato_cliente_by_istanza](/dbzero/script/funzioni/fn_get_stato_cliente_by_istanza)
+[anagrafiche.istanze_utilities](/dbzero/anagrafiche/tabelle/istanze_utilities)
+> [config.stati_cliente](/dbzero/config/tabelle/stati_cliente)
+> [script.fn_get_stato_cliente_by_istanza](/dbzero/script/funzioni/fn_get_stato_cliente_by_istanza)
 
 ---
-
 ### 🎯 Scopo Principale
-
 La view `script.view_clienti_istanza_states` fornisce una **unificazione** delle informazioni di stato di un’istanza di servizio, arricchita con tutti i campi descrittivi della tabella `config.stati_cliente`. Permette di ottenere rapidamente, per ogni record di `istanze_utilities`, lo stato cliente attuale (o predefinito "Istanza") e i relativi dettagli, senza dover eseguire join o fallback manuali.
 
 ---
 
-### 🔗 Definizione della View
+### Definizione della View
 
 ```sql
 CREATE OR REPLACE VIEW script.view_clienti_istanza_states AS
@@ -42,7 +40,7 @@ FROM
 
 ---
 
-### 📋 Colonne Esposte
+### Colonne Esposte
 
 | Colonna                 | Tipo        | Descrizione                                         |
 | ----------------------- | ----------- | --------------------------------------------------- |
@@ -62,14 +60,14 @@ FROM
 
 ---
 
-### 🔍 Funzionamento Interno
+### Funzionamento Interno
 
 * **Calcolo dello stato**: utilizza `script.fn_get_codice_by_istanza(i.id)` per gestire il fallback tra stato cliente effettivo e stato "Istanza".
 * **Join diretto** con `config.stati_cliente` per recuperare tutti i metadata (descrizioni e flag).
 
 ---
 
-### ⚙️ Considerazioni e Best Practice
+### Considerazioni e Best Practice
 
 * **Performance**: è fondamentale avere indici su `anagrafiche.clienti.istanza_utility_id` e su `config.stati_cliente.codice_interno` per ottimizzare sia la funzione che il join.
 * **Consistenza**: la logica di fallback è centralizzata nella funzione, quindi qualsiasi modifica al codice interno dello stato "Istanza" avrà effetto anche sulla view.

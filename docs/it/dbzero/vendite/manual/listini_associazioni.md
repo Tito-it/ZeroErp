@@ -2,22 +2,19 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> • [vendite.listini](/dbzero/vendite/tabelle/listini)  
+• [vendite.listini](/dbzero/vendite/tabelle/listini)  
 > • [vendite.listini_versioni](/dbzero/vendite/tabelle/listini_versioni)  
 >
----
-
 ### 🎯 Scopo Principale
-
 La tabella `vendite.listini_associazioni` definisce quali listini sono candidati per
 un dato contesto operativo (BA, utility, emittente fiscale), con priorita` di tie-break
 tra listini concorrenti.
 
 ---
 
-### ✅ Regole principali
+### Regole principali
 
 * FK obbligatoria su `listino_id`;
 * dimensioni contesto opzionali:
@@ -31,7 +28,7 @@ tra listini concorrenti.
 
 ---
 
-### 🧩 Utilizzo previsto
+### Utilizzo previsto
 
 * fase 1 del resolver: selezione listini candidati applicabili al contesto;
 * tie-break tra listini tramite `priorita` (valore minore = priorita` piu` alta);

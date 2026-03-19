@@ -2,20 +2,18 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimento Tabelle:   
+Approfondimento Tabelle:   
 >
-> * [dbops.fk_index_policy](/dbzero/dbops/tabelle/fk_index_policy)      
+[dbops.fk_index_policy](/dbzero/dbops/tabelle/fk_index_policy)      
 >
-> Approfondimento view:   
+Approfondimento view:   
 >
-> * [dbops.vw_fk_senza_indice](/dbzero/dbops/manual/vw_fk_senza_indice) 
+[dbops.vw_fk_senza_indice](/dbzero/dbops/manual/vw_fk_senza_indice) 
 
 La funzione **`dbops.fn_populate_fk_index_policy()`** esegue il popolamento automatico di `dbops.fk_index_policy` aggiungendo tutte le foreign key presenti in `dbops.vw_fk_senza_indice` che non hanno ancora un record in policy, impostando per ciascuna `consentito = false`.
 
 ---
-
 ### 🎯 Scopo Principale
-
 * **Coerenza iniziale**
   Garantire che ogni FK rilevata nella view senza indice abbia la propria entry di policy, evitando omissioni.
 * **Popolamento “a freddo”**
@@ -25,7 +23,7 @@ La funzione **`dbops.fn_populate_fk_index_policy()`** esegue il popolamento auto
 
 ---
 
-### 🔍 Flusso Logico
+### Flusso Logico
 
 1. **Lettura FKs senza policy**
    Seleziona dalla view `dbops.vw_fk_senza_indice` tutte le tuple `(schema_name, table_name, constraint_name)` non ancora presenti in `dbops.fk_index_policy`.
@@ -96,7 +94,7 @@ COMMENT ON FUNCTION dbops.fn_populate_fk_index_policy() IS
 
 ---
 
-### 🚀 Utilizzo
+### Utilizzo
 
 Essendo una **funzione** che restituisce `void`, puoi eseguirla direttamente con:
 
@@ -131,4 +129,4 @@ E poi eseguire:
 CALL dbops.apply_population();
 ```
 
-> 🧠 **“Esegui la funzione con `SELECT` o `PERFORM`: non è necessario usare `SELECT * FROM`. Converti in procedura se vuoi chiamare con `CALL`.”**
+> **“Esegui la funzione con `SELECT` o `PERFORM`: non è necessario usare `SELECT * FROM`. Converti in procedura se vuoi chiamare con `CALL`.”**

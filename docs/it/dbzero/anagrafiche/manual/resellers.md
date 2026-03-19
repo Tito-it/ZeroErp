@@ -2,16 +2,13 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> • [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)  
+• [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)  
 > • [anagrafiche.resellers_billing_account](/dbzero/anagrafiche/manual/resellers_billing_account)  
 > • [vendite.fatture](/dbzero/vendite/tabelle/fatture)  
 >
----
-
 ### 🎯 Scopo Principale
-
 (latest review 26-01-2026)
 `anagrafiche.resellers` rappresenta l’anagrafica dei **reseller** disponibili nel sistema.
 Ogni reseller e` un ruolo (`soggetti_ruoli`) che puo` essere collegato a uno o piu`
@@ -19,7 +16,7 @@ Ogni reseller e` un ruolo (`soggetti_ruoli`) che puo` essere collegato a uno o p
 
 ---
 
-### 🧱 Ruolo nel processo
+### Ruolo nel processo
 
 * Abilita la gestione di **canali di vendita indiretti**.
 * Consente aggregazioni o filtri di fatturazione per reseller.
@@ -27,7 +24,7 @@ Ogni reseller e` un ruolo (`soggetti_ruoli`) che puo` essere collegato a uno o p
 
 ---
 
-### 🔗 Regola di collegamento
+### Regola di collegamento
 
 * Il reseller **non** ha un default globale.
 * L’associazione e` sempre esplicita e passa da
@@ -35,14 +32,14 @@ Ogni reseller e` un ruolo (`soggetti_ruoli`) che puo` essere collegato a uno o p
 
 ---
 
-### ✅ Best practice operative
+### Best practice operative
 
 * Mantenere i reseller **attivi** solo se effettivamente utilizzati.
 * Agganciare il reseller al billing account tramite mapping con periodo valido.
 
 ---
 
-### 🔒 Vincoli applicativi (attivo)
+### Vincoli applicativi (attivo)
 
 * Un reseller **non puo` essere disattivato** se esistono mapping
   in `resellers_billing_account` collegati al suo `soggetto_ruolo_id`.

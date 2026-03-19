@@ -2,6 +2,7 @@
 // Scopo: drawer CRUD province.
 import { ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useInjectReadonly } from '../composables/useReadonlyMode'
 import { useProvinceStore } from '../../anagrafiche/stores/province'
 import { useApiHandler } from '../composables/useApiHandler'
 import { useLookup } from '../composables/useLookup'
@@ -20,6 +21,7 @@ const props = defineProps({
 })
 const emit = defineEmits(['update:visible', 'saved'])
 const { t } = useI18n()
+const isReadonly = useInjectReadonly()
 const store = useProvinceStore()
 const { execute, loading } = useApiHandler()
 const regioniLookup = useLookup(() => lookupRegioni())
@@ -60,7 +62,7 @@ async function handleSave() {
     <template #header>
       <DrawerTitle :action="mode === 'create' ? t('common.new') : t('common.edit')" :title="t('geo.provincia')" icon="pi pi-globe" />
     </template>
-    <div class="app-drawer-content">
+    <div class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
       <div class="form-grid">
         <div class="form-field">
           <label>{{ t('geo.col_descrizione') }} *</label>

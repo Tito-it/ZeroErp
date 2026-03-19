@@ -2,16 +2,13 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> • [vendite.tipi_doc_fiscale_registri](/dbzero/vendite/manual/tipi_doc_fiscale_registri)  
+• [vendite.tipi_doc_fiscale_registri](/dbzero/vendite/manual/tipi_doc_fiscale_registri)  
 > • [vendite.fatture](/dbzero/vendite/tabelle/fatture)  
 > • [config.stati_doc_fiscale](/dbzero/config/tabelle/stati_doc_fiscale)  
 >
----
-
 ### 🎯 Scopo Principale
-
 (latest review 27-01-2026)
 La tabella **`config.tipi_doc_fiscale`** rappresenta il catalogo dei **tipi di
 documento fiscale** gestiti dal sistema (es. fattura utility, allaccio, rata,
@@ -20,7 +17,7 @@ indica il *perche`* del documento, separandolo dalla numerazione contabile.
 
 ---
 
-### 🧱 Ruolo nel processo
+### Ruolo nel processo
 
 * Determina il **tipo** del documento da emettere (logica di business).
 * Guida il **raggruppamento** e la selezione delle attivita` fatturabili.
@@ -28,7 +25,7 @@ indica il *perche`* del documento, separandolo dalla numerazione contabile.
 
 ---
 
-### 🔗 Relazioni principali
+### Relazioni principali
 
 * `vendite.fatture.tipo_doc_fiscale_id` → assegna il tipo documento al documento emesso.
 * `vendite.tipi_doc_fiscale_registri` → mapping tipo documento → registro.
@@ -37,7 +34,7 @@ indica il *perche`* del documento, separandolo dalla numerazione contabile.
 
 ---
 
-### ✅ Best practice operative
+### Best practice operative
 
 * Mantenere `codice` e `codice_interno` **immutabili**.
 * Garantire almeno un mapping verso registro per ogni tipo documento attivo.

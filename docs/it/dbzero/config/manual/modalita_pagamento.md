@@ -2,15 +2,15 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimenti tabelle:
+Approfondimenti tabelle:
 >
-> * [config.condizioni_pagamento](/dbzero/config/tabelle/condizioni_pagamento)
-> * [vendite.fatture_testata](/dbzero/vendite/tabelle/fatture_testata)
-> * [vendite.ddt_testata](/dbzero/vendite/tabelle/ddt_testata)
+[config.condizioni_pagamento](/dbzero/config/tabelle/condizioni_pagamento)
+> [vendite.fatture_testata](/dbzero/vendite/tabelle/fatture_testata)
+> [vendite.ddt_testata](/dbzero/vendite/tabelle/ddt_testata)
 >
-> Approfondimenti funzioni/trigger:
+Approfondimenti funzioni/trigger:
 >
-> * [script.trgfn_upd_audit_data_user_generic](/dbzero/script/funzioni/trgfn_upd_audit_data_user_generic)
+[script.trgfn_upd_audit_data_user_generic](/dbzero/script/funzioni/trgfn_upd_audit_data_user_generic)
 
 ---
 
@@ -19,16 +19,14 @@ La tabella **`config.modalita_pagamento`** contiene il **catalogo delle modalit�
 Rappresenta un dominio centrale, da combinare con le condizioni di pagamento per definire come e con quali strumenti il cliente effettua il saldo dei documenti.
 
 ---
-
 ### 🎯 Scopo Principale
-
 * Definire un elenco **normalizzato e univoco** delle modalità di pagamento disponibili nel sistema.
 * Fornire un **codice interno stabile** (`codice`) utilizzabile in configurazioni, mapping e integrazioni.
 * Supportare la definizione di **regole di incasso** e gestionali (es. tracciabilità, obbligo di IBAN, circuiti bancari).
 
 ---
 
-### 🔒 Vincoli e Regole Aziendali
+### Vincoli e Regole Aziendali
 
 * **Identificatore tecnico** (`id`):
 
@@ -54,11 +52,11 @@ Rappresenta un dominio centrale, da combinare con le condizioni di pagamento per
   * `data_update`, `user_update`: tracciano l’ultima modifica.
   * La coerenza di questi campi è garantita dal trigger `trg_modalita_pagamento_upd_audit_data_user_generic`.
 
-> 🔁 È buona pratica non cancellare fisicamente le modalità di pagamento utilizzate in documenti storici, ma eventualmente prevedere in futuro un flag di attivazione se necessario.
+> È buona pratica non cancellare fisicamente le modalità di pagamento utilizzate in documenti storici, ma eventualmente prevedere in futuro un flag di attivazione se necessario.
 
 ---
 
-### 🔗 Relazioni
+### Relazioni
 
 `config.modalita_pagamento` viene utilizzata come dominio di base per:
 
@@ -76,7 +74,7 @@ Rappresenta un dominio centrale, da combinare con le condizioni di pagamento per
 
 ---
 
-### ⚙️ Trigger Associati
+### Trigger Associati
 
 1. **`trg_modalita_pagamento_upd_audit_data_user_generic`**
 
@@ -88,11 +86,11 @@ Rappresenta un dominio centrale, da combinare con le condizioni di pagamento per
 
      * invoca la funzione generica `script.trgfn_upd_audit_data_user_generic()`, che centralizza la logica di aggiornamento campi di audit su più tabelle.
 
-> ✅ Questo garantisce che tutte le variazioni apportate alle modalità di pagamento siano sempre tracciate, semplificando audit e diagnostica.
+> Questo garantisce che tutte le variazioni apportate alle modalità di pagamento siano sempre tracciate, semplificando audit e diagnostica.
 
 ---
 
-### 💡 Vantaggi Operativi
+### Vantaggi Operativi
 
 * **Coerenza**: un unico catalogo di modalità di pagamento per tutti i moduli (vendite, contabilità, incassi).
 * **Semplificazione delle configurazioni**: è possibile combinare la modalità con condizioni di pagamento, listini, profili cliente, ecc.
@@ -101,4 +99,4 @@ Rappresenta un dominio centrale, da combinare con le condizioni di pagamento per
 
 ---
 
-> 🧠 **“Centralizzare le modalità di pagamento è il primo passo per avere un ciclo attivo/crediti chiaro, configurabile e facilmente integrabile con i sistemi bancari e contabili.”**
+> **“Centralizzare le modalità di pagamento è il primo passo per avere un ciclo attivo/crediti chiaro, configurabile e facilmente integrabile con i sistemi bancari e contabili.”**

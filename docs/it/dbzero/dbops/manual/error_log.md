@@ -2,28 +2,26 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimento tabelle:    
+Approfondimento tabelle:    
 >
-> * [config.messaggi_errore](/dbzero/config/tabelle/messaggi_errore)    
-> * [dbops.audit_log](/dbzero/dbops/tabelle/audit_log)    
+[config.messaggi_errore](/dbzero/config/tabelle/messaggi_errore)    
+> [dbops.audit_log](/dbzero/dbops/tabelle/audit_log)    
 >
-> Approfondimento funzioni:    
+Approfondimento funzioni:    
 > 
-> * [dbops.trgfn_tx_id_managed](/dbzero/dbops/funzioni/trgfn_tx_id_managed)    
-> * [script.trgfn_prevent_modification_generic](/dbzero/script/funzioni/trgfn_prevent_modification_generic)    
+[dbops.trgfn_tx_id_managed](/dbzero/dbops/funzioni/trgfn_tx_id_managed)    
+> [script.trgfn_prevent_modification_generic](/dbzero/script/funzioni/trgfn_prevent_modification_generic)    
 
 La tabella **`dbops.error_log`** serve a **centralizzare la registrazione degli errori** che si verificano nelle diverse aree dell’applicazione (database, backend, frontend, job, ecc.), fornendo un quadro completo del contesto, della fonte e della transazione coinvolta.
 
 ---
-
 ### 🎯 Scopo Principale
-
 * Raccogliere in un unico punto gli errori generati da funzioni, trigger o applicazioni, permettendo analisi e allineamento con il catalogo di messaggi di errore.
 * Consentire il **collegamento transazionale** tramite `tx_id`, per ricostruire l’intero flusso di operazioni (ad esempio un job batch) incrociando tabelle come `dbops.audit_log`.
 
 ---
 
-### 🔍 Significato dei Campi Chiave
+### Significato dei Campi Chiave
 
 * **`id`**: identificativo univoco del record di errore.
 * **`occurred_at`**: timestamp con timezone dell’evento di errore.
@@ -36,7 +34,7 @@ La tabella **`dbops.error_log`** serve a **centralizzare la registrazione degli 
 
 ---
 
-### 🔒 Vincoli e Relazioni
+### Vincoli e Relazioni
 
 * **PK**: vincolo `error_log_pkey` su `id`.
 * **FK**: `messaggio_errore_id` → `config.messaggi_errore(id)` (senza azioni di update o delete).
@@ -55,7 +53,7 @@ La tabella **`dbops.error_log`** serve a **centralizzare la registrazione degli 
 
 ---
 
-### ⚙️ Esempi di Utilizzo
+### Esempi di Utilizzo
 
 1. **Recuperare tutti gli errori di una specifica transazione**:
 
@@ -96,7 +94,7 @@ Non rappresenta una scadenza “funzionale” dell’errore, ma solo un **timest
 
 ---
 
-### 💡 Vantaggi Operativi
+### Vantaggi Operativi
 
 * **Tracciabilità a 360°**: unisce errori e transazioni in un unico flusso temporale.
 * **Analisi rapida**: il campo `context` permette filtri e aggregazioni sui metadati.
@@ -105,7 +103,7 @@ Non rappresenta una scadenza “funzionale” dell’errore, ma solo un **timest
 
 ---
 
-### 🧩 Pattern di integrazione con log di dominio
+### Pattern di integrazione con log di dominio
 
 `dbops.error_log` è il **log tecnico centralizzato**.  
 Nei domini applicativi è consigliato affiancarlo con log funzionali dedicati.
@@ -126,4 +124,4 @@ mentre i log di dominio governano stato/esito funzionale visibile in dashboard.
 
 ---
 
-> 🧠 **“Un error log strutturato con identità transazionale e contesto dettagliato semplifica il debug e il monitoraggio degli incidenti applicativi.”**
+> **“Un error log strutturato con identità transazionale e contesto dettagliato semplifica il debug e il monitoraggio degli incidenti applicativi.”**

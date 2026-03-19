@@ -2,15 +2,12 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> • [pagamenti.vendite_movimenti](/dbzero/pagamenti/tabelle/vendite_movimenti)  
+• [pagamenti.vendite_movimenti](/dbzero/pagamenti/tabelle/vendite_movimenti)  
 > • [vendite.fatture](/dbzero/vendite/tabelle/fatture)  
 >
----
-
 ### 🎯 Scopo Principale
-
 (latest review 13-02-2026)  
 La funzione **`pagamenti.fn_get_saldo_fattura()`** restituisce il **residuo**
 della fattura:
@@ -19,7 +16,7 @@ della fattura:
 
 ---
 
-### ✅ Regole principali
+### Regole principali
 
 * `p_fattura_id` obbligatorio (`> 0`).
 * Verifica che la fattura esista.
@@ -27,7 +24,7 @@ della fattura:
 
 ---
 
-### ✅ Output
+### Output
 
 Ritorna una riga con:
 
@@ -36,7 +33,7 @@ Ritorna una riga con:
 
 ---
 
-### 🧪 Esempio d’uso
+### Esempio d’uso
 
 ```sql
 SELECT *

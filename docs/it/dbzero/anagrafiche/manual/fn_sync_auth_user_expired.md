@@ -2,19 +2,17 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> * [anagrafiche.risorse_umane](/dbzero/anagrafiche/tabelle/risorse_umane)
-> * [anagrafiche.risorse_umane_auth_user](/dbzero/anagrafiche/tabelle/risorse_umane_auth_user)
+[anagrafiche.risorse_umane](/dbzero/anagrafiche/tabelle/risorse_umane)
+> [anagrafiche.risorse_umane_auth_user](/dbzero/anagrafiche/tabelle/risorse_umane_auth_user)
 >
-> **Approfondimento funzioni:**
+**Approfondimento funzioni:**
 >
-> * [anagrafiche.fn_sync_auth_user_is_active](/dbzero/anagrafiche/funzioni/fn_sync_auth_user_is_active)
+[anagrafiche.fn_sync_auth_user_is_active](/dbzero/anagrafiche/funzioni/fn_sync_auth_user_is_active)
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 10-03-2026)
 La funzione **`anagrafiche.fn_sync_auth_user_expired()`** esegue una
 sincronizzazione batch degli utenti Django collegati a risorse umane con
@@ -25,7 +23,7 @@ decorrenza della data, senza che avvenga un `UPDATE` esplicito sulla tabella.
 
 ---
 
-### 🔍 Regole applicate
+### Regole applicate
 
 * Cerca le righe di `anagrafiche.risorse_umane` con `valido_al < CURRENT_DATE`.
 * Considera solo le risorse che hanno un collegamento in
@@ -38,7 +36,7 @@ decorrenza della data, senza che avvenga un `UPDATE` esplicito sulla tabella.
 
 ---
 
-### ✅ Ruolo nel processo
+### Ruolo nel processo
 
 La funzione e' pensata come job periodico di riallineamento. Non sostituisce i
 trigger reattivi, ma li completa per il caso di scadenza "overnight" della

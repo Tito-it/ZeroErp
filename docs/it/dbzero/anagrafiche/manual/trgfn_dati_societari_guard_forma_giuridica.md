@@ -2,21 +2,19 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento Tabelle:**
+**Approfondimento Tabelle:**
 > 
-> • [anagrafiche.dati_societari](/dbzero/anagrafiche/tabelle/dati_societari)  
+• [anagrafiche.dati_societari](/dbzero/anagrafiche/tabelle/dati_societari)  
 > • [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)  
 > • [config.forme_giuridiche](/dbzero/config/tabelle/forme_giuridiche)   
 >
-> **Approfondimento Funzioni:**   
+**Approfondimento Funzioni:**   
 > 
-> • [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)   
+• [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)   
 > • [dbops.trgfn_tx_id_managed](/dbzero/dbops/funzioni/trgfn_tx_id_managed)   
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 28-12-25)
 Garantire la **coerenza paese** tra il soggetto e la forma giuridica associata nei dati societari.
 
@@ -24,7 +22,7 @@ La funzione blocca l'operazione se `anagrafiche.soggetti.stato_id` e `config.for
 
 ---
 
-### 🧩 Come Funziona
+### Come Funziona
 
 1. Recupera lo `stato_id` del soggetto collegato a `NEW.soggetto_id`.
 2. Recupera lo `stato_id` della forma giuridica collegata a `NEW.forma_giuridica_id`.
@@ -43,7 +41,7 @@ Gli errori sono prodotti tramite:
 
 ---
 
-### 🔗 Relazioni con altri trigger
+### Relazioni con altri trigger
 
 Questa funzione e' usata come guard su `anagrafiche.dati_societari`, tipicamente in un trigger `BEFORE INSERT OR UPDATE`, ad esempio:
 
@@ -55,12 +53,12 @@ CREATE TRIGGER trg_dati_societari_guard_forma_giuridica
 
 ---
 
-### 💡 Note Implementative
+### Note Implementative
 
 * Il controllo e' volutamente **fail-fast**: se la coerenza paese non e' rispettata, l'operazione viene bloccata.
 * I dettagli utili per il debug (soggetto, forma giuridica, stati) sono inseriti nel payload di errore.
 
 ---
 
-> 🧠 **"La forma giuridica deve appartenere allo stesso paese del soggetto: questo trigger evita associazioni incoerenti."**
+> **"La forma giuridica deve appartenere allo stesso paese del soggetto: questo trigger evita associazioni incoerenti."**
 

@@ -2,21 +2,18 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> • [vendite.fatturazione_lotti](/dbzero/vendite/tabelle/fatturazione_lotti)   
+• [vendite.fatturazione_lotti](/dbzero/vendite/tabelle/fatturazione_lotti)   
 > • [vendite.fatturazione_lotti_fatture](/dbzero/vendite/tabelle/fatturazione_lotti_fatture)   
 > • [vendite.fatture_log](/dbzero/vendite/tabelle/fatture_log)   
 > • [vendite.fatturazione_lotti_log](/dbzero/vendite/tabelle/fatturazione_lotti_log)   
 >
-> **Approfondimento funzioni:**
+**Approfondimento funzioni:**
 >
-> • [vendite.fn_log_lotto_esito_fatture](/dbzero/vendite/funzioni/fn_log_lotto_esito_fatture)   
+• [vendite.fn_log_lotto_esito_fatture](/dbzero/vendite/funzioni/fn_log_lotto_esito_fatture)   
 >
----
-
 ### 🎯 Scopo Principale
-
 (latest review 23-02-2026)  
 La funzione **`vendite.fn_get_lotto_segnalazioni_summary()`** restituisce
 un riepilogo aggregato delle segnalazioni attive (`C`/`W`/`I`) di un lotto,
@@ -28,7 +25,7 @@ unificando:
 
 ---
 
-### ✅ Regole principali
+### Regole principali
 
 * `p_lotto_id` è obbligatorio e deve essere `> 0`.
 * Le conte vengono calcolate solo su record **attivi** (`disabilitato = false`).
@@ -42,7 +39,7 @@ unificando:
 
 ---
 
-### ✅ Output
+### Output
 
 La funzione ritorna una sola riga con:
 
@@ -55,7 +52,7 @@ La funzione ritorna una sola riga con:
 
 ---
 
-### 🧪 Esempio d’uso
+### Esempio d’uso
 
 ```sql
 SELECT *

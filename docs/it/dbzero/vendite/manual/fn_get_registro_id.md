@@ -2,28 +2,25 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> • [config.tipi_doc_fiscale](/dbzero/config/tabelle/tipi_doc_fiscale)  
+• [config.tipi_doc_fiscale](/dbzero/config/tabelle/tipi_doc_fiscale)  
 > • [vendite.tipi_doc_fiscale_registri](/dbzero/vendite/manual/tipi_doc_fiscale_registri)  
 > • [vendite.registri_fatturazione](/dbzero/vendite/tabelle/registri_fatturazione)  
 >
-> **Approfondimento funzioni:**
+**Approfondimento funzioni:**
 >
-> • [vendite.fn_get_anno_registro](/dbzero/vendite/funzioni/fn_get_anno_registro)  
+• [vendite.fn_get_anno_registro](/dbzero/vendite/funzioni/fn_get_anno_registro)  
 > • [vendite.fn_get_next_progressivo](/dbzero/vendite/funzioni/fn_get_next_progressivo)  
 >
----
-
 ### 🎯 Scopo Principale
-
 (latest review 27-01-2026)
 La funzione **`vendite.fn_get_registro_id`** risolve il registro di fatturazione
 in base al mapping **tipo documento → registro**, considerando utility/emittente se presenti.
 
 ---
 
-### 🔍 Parametri di input
+### Parametri di input
 
 | Parametro | Tipo | Descrizione |
 | --- | --- | --- |
@@ -33,7 +30,7 @@ in base al mapping **tipo documento → registro**, considerando utility/emitten
 
 ---
 
-### ✅ Regola applicata
+### Regola applicata
 
 1. tipo_doc + utility + emittente
 2. tipo_doc + utility
@@ -43,7 +40,7 @@ in base al mapping **tipo documento → registro**, considerando utility/emitten
 
 ---
 
-### ✅ Note operative
+### Note operative
 
 * Funzione pensata per la numerazione e per i processi che richiedono il registro contabile.
 * Le varianti sono gestite tramite registri con utility/emittente valorizzati.

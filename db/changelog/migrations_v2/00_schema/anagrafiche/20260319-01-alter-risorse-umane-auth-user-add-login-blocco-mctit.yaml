@@ -1,0 +1,48 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025-2026 Tid (Michele Carlo Titini)
+#
+# Aggiunge colonne per gestione blocco temporaneo login
+# su risorse_umane_auth_user:
+#   tentativi_falliti: contatore tentativi falliti
+#   bloccato_fino_a: timestamp fine blocco temporaneo
+# ------------------------------------------------------------
+
+databaseChangeLog:
+    - logicalFilePath: migrations_v2/00_schema/anagrafiche/20260319-01-alter-risorse-umane-auth-user-add-login-blocco-mctit.yaml
+
+    - changeSet:
+          id: 20260319-01-alter-risorse-umane-auth-user-add-login-blocco
+          author: mctit
+          comment: >
+            Aggiunge tentativi_falliti e bloccato_fino_a a risorse_umane_auth_user
+            per gestione blocco temporaneo login dopo N tentativi falliti.
+          changes:
+              - addColumn:
+                    schemaName: anagrafiche
+                    tableName: risorse_umane_auth_user
+                    columns:
+                        - column:
+                              name: tentativi_falliti
+                              type: smallint
+                              defaultValueNumeric: 0
+                              constraints:
+                                  nullable: false
+                              remarks: "Contatore tentativi di login falliti consecutivi. Reset a 0 al login riuscito o allo sblocco."
+                        - column:
+                              name: bloccato_fino_a
+                              type: timestamptz
+                              constraints:
+                                  nullable: true
+                              remarks: "Timestamp fino a quando l'utente e' bloccato. NULL = non bloccato. Scaduto = sblocco automatico."
+
+          rollback:
+              - dropColumn:
+                    schemaName: anagrafiche
+                    tableName: risorse_umane_auth_user
+                    columnName: tentativi_falliti
+              - dropColumn:
+                    schemaName: anagrafiche
+                    tableName: risorse_umane_auth_user
+                    columnName: bloccato_fino_a

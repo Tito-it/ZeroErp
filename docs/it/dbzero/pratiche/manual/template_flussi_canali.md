@@ -2,21 +2,19 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimento tabelle:
+Approfondimento tabelle:
 >
-> * [pratiche.template_flussi](/dbzero/pratiche/tabelle/template_flussi)
-> * [config.canali_pratiche](/dbzero/config/tabelle/canali_pratiche)
-> * [pratiche.pratiche](/dbzero/pratiche/tabelle/pratiche) (campo `solo_interna`)
+[pratiche.template_flussi](/dbzero/pratiche/tabelle/template_flussi)
+> [config.canali_pratiche](/dbzero/config/tabelle/canali_pratiche)
+> [pratiche.pratiche](/dbzero/pratiche/tabelle/pratiche) (campo `solo_interna`)
 
 ---
-
 ### 🎯 Scopo Principale
-
 La tabella `pratiche.template_flussi_canali` e' la **relazione M:N** tra template flussi e canali di visibilita'. Definisce su quali interfacce esterne un flusso e' esposto (es. portale clienti, app tecnica).
 
 ---
 
-### 🧱 Ruolo nel processo
+### Ruolo nel processo
 
 * Ogni template flusso puo' essere visibile su zero, uno o piu' canali.
 * Pratiche con `solo_interna = true` non espongono flussi su alcun canale — la relazione esiste ma viene ignorata dalla logica applicativa.
@@ -24,7 +22,7 @@ La tabella `pratiche.template_flussi_canali` e' la **relazione M:N** tra templat
 
 ---
 
-### ⚙️ Caratteristiche
+### Caratteristiche
 
 | Aspetto | Dettaglio |
 |---------|-----------|
@@ -36,7 +34,7 @@ La tabella `pratiche.template_flussi_canali` e' la **relazione M:N** tra templat
 
 ---
 
-### 💡 Esempio
+### Esempio
 
 | template_flusso | canale | Significato |
 |-----------------|--------|-------------|

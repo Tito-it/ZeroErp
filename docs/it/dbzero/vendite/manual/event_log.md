@@ -1,13 +1,11 @@
 ## 📘 Documentazione Concettuale – Tabella `vendite.event_log`
-
 ### 🎯 Scopo Principale
-
 `vendite.event_log` centralizza in un unico stream temporale gli eventi tecnici/funzionali
 dei domini vendite (pipeline, commesse, SDI, fatture), con modello **append-only**.
 
 ---
 
-### ✅ Regole principali
+### Regole principali
 
 * una riga per evento (nessun aggiornamento stato in-place);
 * severita` standard: `INFO | WARN | ERROR`;
@@ -17,7 +15,7 @@ dei domini vendite (pipeline, commesse, SDI, fatture), con modello **append-only
 
 ---
 
-### 🧱 Significato colonne
+### Significato colonne
 
 * `id`: identificativo tecnico progressivo dell'evento.
 * `event_time`: data/ora evento usata per ordinare la timeline.
@@ -34,7 +32,7 @@ dei domini vendite (pipeline, commesse, SDI, fatture), con modello **append-only
 
 ---
 
-### 🔒 Immutabilita`
+### Immutabilita`
 
 La tabella e` protetta da trigger append-only:
 
@@ -50,7 +48,7 @@ restano per query specialistiche; `event_log` abilita la timeline unificata per 
 
 ---
 
-### 🧪 Esempi
+### Esempi
 
 Timeline di un lotto:
 

@@ -2,19 +2,17 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimenti tabelle:
+Approfondimenti tabelle:
 >
-> * [catalogo.articoli](/dbzero/catalogo/tabelle/articoli)
-> * [vendite.articoli_gruppi](/dbzero/vendite/tabelle/articoli_gruppi)
-> * [vendite.articoli_spesa](/dbzero/vendite/tabelle/articoli_spesa)
+[catalogo.articoli](/dbzero/catalogo/tabelle/articoli)
+> [vendite.articoli_gruppi](/dbzero/vendite/tabelle/articoli_gruppi)
+> [vendite.articoli_spesa](/dbzero/vendite/tabelle/articoli_spesa)
 >
 
 La tabella **`vendite.articoli_tipologie`** definisce le categorie di appartenenza degli articoli, utili per raggruppamenti omogenei, analisi statistiche e applicazione di regole di fatturazione.
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 14-01-26)
 * Classificare gli articoli secondo **tipologie funzionali** (es. materia prima, servizi, accessori).
 * Distinguere tra **descrizione estesa** e **descrizione breve**, per gestire contesti documentali differenti.
@@ -24,7 +22,7 @@ La tabella **`vendite.articoli_tipologie`** definisce le categorie di appartenen
 
 ---
 
-### 🔒 Vincoli e Logiche Aziendali
+### Vincoli e Logiche Aziendali
 
 * **Unicità**: `codice` deve essere univoco e identificare in modo chiaro la tipologia.
 * **Obbligatorietà**: `descrizione` deve sempre essere valorizzata.
@@ -33,13 +31,13 @@ La tabella **`vendite.articoli_tipologie`** definisce le categorie di appartenen
 
 ---
 
-### 🔗 Relazioni e Indici
+### Relazioni e Indici
 
 * **FK**: può essere referenziata da `vendite.articoli` per classificare ogni articolo in una tipologia.
 
 ---
 
-### 💡 Vantaggi Operativi
+### Vantaggi Operativi
 
 * **Omogeneità**: gli articoli sono classificati in modo coerente e confrontabile.
 * **Flessibilità documentale**: gestione della descrizione breve semplifica la comunicazione sui documenti.
@@ -47,4 +45,4 @@ La tabella **`vendite.articoli_tipologie`** definisce le categorie di appartenen
 
 ---
 
-> 🧠 **“La categorizzazione degli articoli tramite tipologie garantisce uniformità nei processi di vendita e facilita analisi gestionali.”**
+> **“La categorizzazione degli articoli tramite tipologie garantisce uniformità nei processi di vendita e facilita analisi gestionali.”**

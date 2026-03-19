@@ -485,30 +485,34 @@ I nomi usano kebab-case: `reset-draft`, `calcoli-tempo`, `regole-generazione`.
 
 **Core** (`/api/v1/core/`)
 
-| Metodo | Path                                              | Scopo                              |
-| ------ | ------------------------------------------------- | ---------------------------------- |
-| GET    | `me/`                                             | Profilo utente corrente            |
-| GET    | `me/sessioni/`                                    | Sessioni attive                    |
-| POST   | `me/sessioni/{jti}/revoca/`                       | Revoca sessione                    |
-| GET    | `lookup/codici/`                                  | Ricerca codici configurazione      |
-| GET    | `lookup/tipi-ruoli/`                              | Tipi ruolo con visibilita'         |
-| GET    | `lookup/tipi-soggetto-dettaglio/`                 | Tipi soggetto con nature e policy  |
-| GET    | `lookup/tipi-soggetto-dettaglio/{id}/indirizzi/`  | Matrice indirizzi per tipo         |
-| GET    | `lookup/comuni/`                                  | Autocomplete comuni                |
-| GET    | `search/stradario/`                               | Autocomplete stradario per comune  |
-| GET    | `search/`                                         | Ricerca universale soggetti        |
-| GET    | `search/{uuid}/detail/`                           | Dettaglio soggetto per ruolo       |
-| GET    | `users/{id}/permessi-effettivi/`                  | Permessi effettivi utente          |
-| GET    | `users/{id}/permessi-audit/`                      | Audit permessi utente              |
-| GET    | `tracciamento/audit-log/`                         | Audit log sistema                  |
-| GET    | `tracciamento/domini-task/`                       | Domini task registrati             |
-| GET    | `tracciamento/task-registry/`                     | Registry task                      |
-| GET    | `tracciamento/task-implementations/`              | Implementazioni task               |
-| GET    | `tracciamento/job-runs/`                          | Esecuzioni job                     |
-| GET    | `tracciamento/job-summary/`                       | Riepilogo job                      |
-| GET    | `diagnostics/error-envelope/`                     | Simulazione envelope errore (test) |
+| Metodo | Path                                              | Scopo                                                        |
+| ------ | ------------------------------------------------- | ------------------------------------------------------------ |
+| GET    | `me/`                                             | Profilo utente corrente                                      |
+| GET    | `me/sessioni/`                                    | Sessioni attive                                              |
+| POST   | `me/sessioni/{jti}/revoca/`                       | Revoca sessione                                              |
+| GET    | `lookup/codici/`                                  | Ricerca codici configurazione                                |
+| GET    | `lookup/tipi-ruoli/`                              | Tipi ruolo con visibilita'                                   |
+| GET    | `lookup/tipi-ruoli-per-natura/`                   | Tipi ruolo filtrati per natura soggetto                      |
+| GET    | `lookup/forme-giuridiche/`                        | Forme giuridiche con policy                                  |
+| GET    | `lookup/tipi-soggetto-dettaglio/`                 | Tipi soggetto con nature e policy                            |
+| GET    | `lookup/tipi-soggetto-dettaglio/{id}/indirizzi/`  | Matrice indirizzi per tipo                                   |
+| GET    | `lookup/comuni/`                                  | Autocomplete comuni                                          |
+| GET    | `search/stradario/`                               | Autocomplete stradario per comune                            |
+| GET    | `search/stradario-generale/`                      | Autocomplete vie su stradario generale (indice GIN trigram)  |
+| GET    | `search/`                                         | Ricerca universale soggetti                                  |
+| GET    | `search/{uuid}/detail/`                           | Dettaglio soggetto per ruolo                                 |
+| GET    | `users/{id}/permessi-effettivi/`                  | Permessi effettivi utente                                    |
+| GET    | `users/{id}/permessi-audit/`                      | Audit permessi utente                                        |
+| GET    | `tracciamento/audit-log/`                         | Audit log sistema                                            |
+| GET    | `tracciamento/domini-task/`                       | Domini task registrati                                       |
+| GET    | `tracciamento/task-registry/`                     | Registry task                                                |
+| GET    | `tracciamento/task-implementations/`              | Implementazioni task                                         |
+| GET    | `tracciamento/job-runs/`                          | Esecuzioni job                                               |
+| GET    | `tracciamento/job-summary/`                       | Riepilogo job                                                |
+| GET    | `diagnostics/error-envelope/`                     | Simulazione envelope errore (test)                           |
 
 **Amm. Software** (`/api/v1/amm-software/`) — solo ADMIN
+Dettaglio: [api_amm_software.md](api_amm_software.md)
 
 | Metodo | Path                                    | Scopo                          |
 | ------ | --------------------------------------- | ------------------------------ |
@@ -531,7 +535,8 @@ I nomi usano kebab-case: `reset-draft`, `calcoli-tempo`, `regole-generazione`.
 | GET    | `lookup/azioni-processo/`              | Azioni processo per dropdown   |
 | GET    | `lookup/emittenti-fiscali/`            | Emittenti per dropdown         |
 
-**Anagrafiche** (`/api/v1/anagrafiche/`) — gestione geografica
+**Anagrafiche** (`/api/v1/anagrafiche/`) — gestione geografica e soggetti
+Dettaglio: [api_soggetti.md](api_soggetti.md) | [api_indirizzi.md](api_indirizzi.md) | [api_geo_config.md](api_geo_config.md)
 
 | Metodo | Path                    | Scopo                                  |
 | ------ | ----------------------- | -------------------------------------- |
@@ -661,3 +666,43 @@ Quando si crea o tocca un service, si scrivono/aggiornano i test corrispondenti.
 9. Scrivere test service in `tests/services/` (validazione, dedup, not found)
 10. Se endpoint di ricerca: `is_search_endpoint = True`
 11. Registrare i codici errore in `error_policies.py` prima dell'uso
+
+---
+
+## Disattivazione record — ordine UPDATE e trigger
+
+Il database usa trigger `trgfn_prevent_deactivate_if_children` sulle tabelle con
+campo `attivo`. Il trigger **impedisce di disattivare un padre se ha figli attivi**.
+
+Questo vale per tutte le relazioni padre-figlio dove entrambi hanno `attivo`:
+`risorse_umane` → `risorse_umane_auth_user`, e future relazioni analoghe.
+
+### Regola: disattivare dal basso verso l'alto, riattivare dall'alto verso il basso
+
+**Disattivazione** — prima i figli, poi il padre:
+
+```python
+# 1. Disattiva figlio
+UPDATE risorse_umane_auth_user SET attivo = false WHERE ...
+# 2. Disattiva padre (trigger OK: figlio gia' inattivo)
+UPDATE risorse_umane SET attivo = false WHERE ...
+```
+
+**Riattivazione** — prima il padre, poi i figli:
+
+```python
+# 1. Riattiva padre
+UPDATE risorse_umane SET attivo = true WHERE ...
+# 2. Riattiva figlio (padre gia' attivo)
+UPDATE risorse_umane_auth_user SET attivo = true WHERE ...
+```
+
+### Perche'
+
+Il trigger e' una guardia di integrita': un figlio attivo senza padre attivo
+non ha senso nel dominio. Se il codice Python non rispetta l'ordine, il trigger
+blocca l'operazione con errore `E_ATTIVO_BLOCK_CHILDREN_EXIST`.
+
+Questa regola si applica a **qualsiasi** operazione di disattivazione/riattivazione
+nel sistema, non solo agli operatori. Quando si implementa un nuovo endpoint
+`disabilita`/`riattiva`, verificare le relazioni padre-figlio e rispettare l'ordine.

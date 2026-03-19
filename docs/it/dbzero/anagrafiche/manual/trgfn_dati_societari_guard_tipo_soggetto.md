@@ -2,19 +2,18 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento Tabelle:**
+**Approfondimento Tabelle:**
 > 
-> • [anagrafiche.dati_societari](/dbzero/anagrafiche/tabelle/dati_societari)  
+• [anagrafiche.dati_societari](/dbzero/anagrafiche/tabelle/dati_societari)  
 > • [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)  
 > • [config.tipi_soggetto_dettaglio](/dbzero/config/tabelle/tipi_soggetto_dettaglio)   
 >
-> **Approfondimento Funzioni:**   
+**Approfondimento Funzioni:**   
 > 
-> • [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)   
+• [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)   
 > • [dbops.trgfn_tx_id_managed](/dbzero/dbops/funzioni/trgfn_tx_id_managed)   
 
 ---
-
 ### 🎯 Scopo Principale
 (latest review 03-12-25)
 Garantire che *solo* i soggetti autorizzati secondo le **policy dati societari** possano inserire o aggiornare una riga in `anagrafiche.dati_societari`.
@@ -33,13 +32,13 @@ che può assumere i valori:
 | **OPTIONAL** | I dati societari sono facoltativi             | ✔️ Inserimento ammesso                                             |
 | **REQUIRED** | I dati societari sono obbligatori             | ✔️ Inserimento ammesso (obbligo verificato da trigger su soggetti) |
 
-> 🔎 **Nota:** questa funzione controlla il *permesso di inserimento*.
+> **Nota:** questa funzione controlla il *permesso di inserimento*.
 > L’obbligo di presenza di dati societari per policy *REQUIRED* viene verificato dal constraint trigger dedicato:
 > `anagrafiche.trgfn_soggetti_guard_dati_societari_required()`.
 
 ---
 
-### 🧩 Come Funziona
+### Come Funziona
 
 1. Recupera il `tipo_soggetto_dettaglio` associato al soggetto indicato in `NEW.soggetto_id`.
 2. Legge la policy `dati_societari_policy`.
@@ -65,7 +64,7 @@ Gli errori sono prodotti tramite:
 
 ---
 
-### 🔗 Relazioni con altri trigger
+### Relazioni con altri trigger
 
 Questa funzione è utilizzata da:
 
@@ -87,7 +86,7 @@ Insieme realizzano un modello completo:
 
 ---
 
-### 💡 Note Implementative
+### Note Implementative
 
 * La funzione è pensata per essere **estensibile**: se vuoi aggiungere nuove policy o nuovi comportamenti basta modificare la tabella di configurazione.
 * Evita duplicazioni logiche: tutta la definizione dei tipi ammessi è centralizzata in `config.tipi_soggetto_dettaglio`.
@@ -95,4 +94,4 @@ Insieme realizzano un modello completo:
 
 ---
 
-> 🧠 **"Il controllo dei dati societari diventa configurabile: la logica di business è nel dato, non nel codice."**
+> **"Il controllo dei dati societari diventa configurabile: la logica di business è nel dato, non nel codice."**

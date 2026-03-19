@@ -2,25 +2,23 @@
 
 > 👀 **Vedi anche**
 >
-> Tabelle:
+Tabelle:
 >
-> * [pratiche.tipi_prestazione](/dbzero/pratiche/tabelle/tipi_prestazione)
-> * [pratiche.template_flussi](/dbzero/pratiche/tabelle/template_flussi)
-> * [pratiche.calcoli_tempo](/dbzero/pratiche/manual/calcoli_tempo)
+[pratiche.tipi_prestazione](/dbzero/pratiche/tabelle/tipi_prestazione)
+> [pratiche.template_flussi](/dbzero/pratiche/tabelle/template_flussi)
+> [pratiche.calcoli_tempo](/dbzero/pratiche/manual/calcoli_tempo)
 >
-> Funzioni:
+Funzioni:
 >
-> * [fn_valuta_tempo_esecuzione_da_a](/dbzero/pratiche/manual/fn_valuta_tempo_esecuzione_da_a)
+[fn_valuta_tempo_esecuzione_da_a](/dbzero/pratiche/manual/fn_valuta_tempo_esecuzione_da_a)
 
 ---
-
 ### 🎯 Scopo Principale
-
 Soglie temporali e tempo massimo di esecuzione, configurabili per tipo prestazione con coppia di template flusso **da/a**. Misura il tempo impiegato per passare dal completamento di flusso_da al completamento di flusso_a.
 
 ---
 
-### 🧱 Campi chiave (semantica)
+### Campi chiave (semantica)
 
 | Colonna                | Note                                                                  |
 | ---------------------- | --------------------------------------------------------------------- |
@@ -33,7 +31,7 @@ Soglie temporali e tempo massimo di esecuzione, configurabili per tipo prestazio
 
 ---
 
-### 🔒 Vincoli
+### Vincoli
 
 * **UNIQUE** su `(tipo_prestazione_id, template_flusso_da_id, template_flusso_a_id)`.
 * **CHECK** `giorni_esecuzione > 0`, `giorni_warning > 0`, `giorni_critico > 0`.
@@ -43,7 +41,7 @@ Soglie temporali e tempo massimo di esecuzione, configurabili per tipo prestazio
 
 ---
 
-### ✅ Note operative
+### Note operative
 
 * Le formule sono **configurazione**, non dati operativi. Definiscono le regole, non i calcoli.
 * I calcoli effettivi sono in `pratiche.calcoli_tempo`, alimentati dal trigger di completamento.

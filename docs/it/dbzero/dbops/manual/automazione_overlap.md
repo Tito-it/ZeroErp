@@ -2,17 +2,14 @@
 
 > 👀 **Vedi anche**
 >
-> Guide:
-> * [Automazione DB](/guide/automazione-db)
+Guide:
+> [Automazione DB](/guide/automazione-db)
 >
-> Approfondimento funzioni:
-> * [dbops.fn_seed_automazione_overlap](/dbzero/dbops/funzioni/fn_seed_automazione_overlap)
-> * [dbops.fn_apply_automazione_overlap](/dbzero/dbops/funzioni/fn_apply_automazione_overlap)
+Approfondimento funzioni:
+> [dbops.fn_seed_automazione_overlap](/dbzero/dbops/funzioni/fn_seed_automazione_overlap)
+> [dbops.fn_apply_automazione_overlap](/dbzero/dbops/funzioni/fn_apply_automazione_overlap)
 >
----
-
 ### 🎯 Scopo Principale
-
 (latest review 19-01-26)
 La tabella **`dbops.automazione_overlap`** centralizza la configurazione del controllo
 **anti-overlap temporale** tramite vincoli `EXCLUDE USING gist` sulle tabelle versionate.
@@ -25,7 +22,7 @@ L'obiettivo e':
 
 ---
 
-### 🔑 Campi chiave e semantica
+### Campi chiave e semantica
 
 * **`target_schema`** *(text)* – schema della tabella target.
 * **`target_table`** *(text)* – nome tabella target.
@@ -41,7 +38,7 @@ L'obiettivo e':
 
 ---
 
-### ⚙️ Comportamento previsto
+### Comportamento previsto
 
 1. `fn_seed_automazione_overlap` popola la tabella rilevando:
    * presenza di colonne periodo (`valido_*` o `valid_*`);
@@ -53,7 +50,7 @@ L'obiettivo e':
 
 ---
 
-### ✅ Esempi
+### Esempi
 
 **1) Seed automatico (tutte le tabelle nell'ambito):**
 
@@ -74,7 +71,7 @@ WHERE target_schema = 'vendite'
 
 ---
 
-### 🧠 Note operative
+### Note operative
 
 * Le tabelle non versionate **devono restare `active=false`**.
 * Se `key_columns` e' vuoto o le colonne non esistono, il vincolo non viene creato.

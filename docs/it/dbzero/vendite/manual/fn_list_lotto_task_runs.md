@@ -1,12 +1,10 @@
 ## 📘 Documentazione Concettuale – Funzione `vendite.fn_list_lotto_task_runs`
-
 ### 🎯 Scopo Principale
-
 Elenca i task run di un lotto, con filtri opzionali per step e task.
 
 ---
 
-### ✅ Regole principali
+### Regole principali
 
 * `p_lotto_id` obbligatorio (`> 0`)
 * filtri opzionali:
@@ -16,7 +14,7 @@ Elenca i task run di un lotto, con filtri opzionali per step e task.
 
 ---
 
-### ✅ Output
+### Output
 
 Set di righe runtime task con:
 * contesto lotto/step/pipeline

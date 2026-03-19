@@ -2,20 +2,18 @@
 
 > **Vedi anche**
 >
-> **Tabelle correlate:**
+**Tabelle correlate:**
 >
-> * [config.aree_funzionali](/dbzero/config/tabelle/aree_funzionali)
-> * [config.user_override_aree](/dbzero/config/tabelle/user_override_aree)
-> * [config.profili_reparto_aree](/dbzero/config/tabelle/profili_reparto_aree)
+[config.aree_funzionali](/dbzero/config/tabelle/aree_funzionali)
+> [config.user_override_aree](/dbzero/config/tabelle/user_override_aree)
+> [config.profili_reparto_aree](/dbzero/config/tabelle/profili_reparto_aree)
 >
-> **Funzioni correlate:**
+**Funzioni correlate:**
 >
-> * [script.fn_get_ruolo_sistema](/dbzero/script/funzioni/fn_get_ruolo_sistema)
+[script.fn_get_ruolo_sistema](/dbzero/script/funzioni/fn_get_ruolo_sistema)
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 08-03-2026)
 La funzione **`script.fn_resolve_livello_area`** risolve il livello di accesso
 effettivo di un utente per un'area funzionale, identificata tramite `schema_db`.

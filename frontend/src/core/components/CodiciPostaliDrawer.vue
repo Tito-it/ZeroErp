@@ -2,6 +2,7 @@
 // Scopo: drawer CRUD codici postali (CAP).
 import { ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useInjectReadonly } from '../composables/useReadonlyMode'
 import { useCodiciPostaliStore } from '../../anagrafiche/stores/codiciPostali'
 import { useApiHandler } from '../composables/useApiHandler'
 import ComuneAutocomplete from './ComuneAutocomplete.vue'
@@ -18,6 +19,7 @@ const props = defineProps({
 })
 const emit = defineEmits(['update:visible', 'saved'])
 const { t } = useI18n()
+const isReadonly = useInjectReadonly()
 const store = useCodiciPostaliStore()
 const { execute, loading } = useApiHandler()
 
@@ -52,7 +54,7 @@ async function handleSave() {
     <template #header>
       <DrawerTitle :action="mode === 'create' ? t('common.new') : t('common.edit')" :title="t('indirizzi.cap')" icon="pi pi-inbox" />
     </template>
-    <div class="app-drawer-content">
+    <div class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
       <div class="form-grid">
         <div class="form-field">
           <label>{{ t('indirizzi.col_cap') }} *</label>

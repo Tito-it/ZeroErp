@@ -4,17 +4,16 @@
 
 > Approfondimenti tabelle:  
 >
->  * [anagrafiche.gestori](/dbzero/anagrafiche/tabelle/gestori)   
->  * [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli) 
+[anagrafiche.gestori](/dbzero/anagrafiche/tabelle/gestori)   
+>  [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli) 
 
 > Approfondimenti funzioni:   
 >
->  * [script.fn_guard_soggetto_ruolo ](/dbzero/script/funzioni/fn_guard_soggetto_ruolo ) 
+[script.fn_guard_soggetto_ruolo ](/dbzero/script/funzioni/fn_guard_soggetto_ruolo ) 
 
 La trigger function **`anagrafiche.trgfn_gestori_guard_ruolo_gestore()`** si attiva **BEFORE INSERT** e **BEFORE UPDATE** sulla tabella `anagrafiche.gestori`. Il suo scopo è garantire che, ogni volta che si crea o modifica il record del gestore, venga automaticamente gestita (verificata o creata) la corrispondente riga di relazione in `anagrafiche.soggetti_ruoli` con ruolo “Gestore” (`codice_interno = 'GE'`).
 
 ---
-
 ### 🎯 Scopo Principale
 (latest review 05-12-25)
 - **Centralizzare l’assegnazione del ruolo “Gestore”**  
@@ -28,7 +27,7 @@ La trigger function **`anagrafiche.trgfn_gestori_guard_ruolo_gestore()`** si att
 
 ---
 
-### 🔍 Flusso Logico
+### Flusso Logico
 
 1. **Chiamata automatica**  
    Attivata **BEFORE INSERT OR UPDATE** su `anagrafiche.gestori`.  
@@ -37,7 +36,7 @@ La trigger function **`anagrafiche.trgfn_gestori_guard_ruolo_gestore()`** si att
 
      La funzione verifica o crea il record in anagrafiche.soggetti_ruoli e restituisce l’ID.
 
-### 🛠️ Utilizzo in DDL
+### Utilizzo in DDL
 
 Nel DDL di anagrafiche.gestori il trigger viene definito così:
 
@@ -47,7 +46,7 @@ CREATE OR REPLACE TRIGGER trg_gestori_guard_ruolo_gestore_ins_upd
   EXECUTE FUNCTION anagrafiche.trgfn_gestori_guard_ruolo_gestore();
 
 ---
-### 💡 Vantaggi Operativi
+### Vantaggi Operativi
 
     Unica fonte di verità per l’assegnazione del ruolo
     Ogni modifica al gestore delega a una sola funzione centralizzata il compito di controllare/eseguire 

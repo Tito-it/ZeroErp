@@ -2,25 +2,25 @@
 
 > 👀 **Vedi anche**
 >
-> **Guide:**
+**Guide:**
 >
-> * [Gestione degli indirizzi](/guide/gestione-degli-indirizzi)
+[Gestione degli indirizzi](/guide/gestione-degli-indirizzi)
 >
-> **Approfondimento Tabelle:**
+**Approfondimento Tabelle:**
 >
-> * [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)
-> * [anagrafiche.indirizzi_dettaglio](/dbzero/anagrafiche/tabelle/indirizzi_dettaglio)
-> * [config.tipi_indirizzi](/dbzero/config/tabelle/tipi_indirizzi)
-> * [config.tipi_soggetto_dettaglio](/dbzero/config/tabelle/tipi_soggetto_dettaglio)
-> * [config.tipi_soggetto_dettaglio_tipi_indirizzo](/dbzero/config/tabelle/tipi_soggetto_dettaglio_tipi_indirizzo)
-> * [config.comuni](/dbzero/config/tabelle/comuni)
-> * [config.codici_postali](/dbzero/config/tabelle/codici_postali)
-> * [config.stati](/dbzero/config/tabelle/stati)
+[anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)
+> [anagrafiche.indirizzi_dettaglio](/dbzero/anagrafiche/tabelle/indirizzi_dettaglio)
+> [config.tipi_indirizzi](/dbzero/config/tabelle/tipi_indirizzi)
+> [config.tipi_soggetto_dettaglio](/dbzero/config/tabelle/tipi_soggetto_dettaglio)
+> [config.tipi_soggetto_dettaglio_tipi_indirizzo](/dbzero/config/tabelle/tipi_soggetto_dettaglio_tipi_indirizzo)
+> [config.comuni](/dbzero/config/tabelle/comuni)
+> [config.codici_postali](/dbzero/config/tabelle/codici_postali)
+> [config.stati](/dbzero/config/tabelle/stati)
 >
-> **Approfondimento funzioni e trigger:**
+**Approfondimento funzioni e trigger:**
 >
-> * [`anagrafiche.trgfn_indirizzi_soggetti_guard_tipo_indirizzo`](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_soggetti_guard_tipo_indirizzo)  
-> * [`anagrafiche.trgfn_indirizzi_base_normalize`](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_base_normalize)  
+[`anagrafiche.trgfn_indirizzi_soggetti_guard_tipo_indirizzo`](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_soggetti_guard_tipo_indirizzo)  
+> [`anagrafiche.trgfn_indirizzi_base_normalize`](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_base_normalize)  
 
 ---
 
@@ -33,9 +33,7 @@ La tabella **`anagrafiche.indirizzi_soggetti`** gestisce gli **indirizzi associa
 * è pensata per indirizzi **strutturali e identitari** del soggetto (es. residenza, domicilio fiscale, sede legale primaria).
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 16-12-25)
 * **Associazione soggetto → indirizzo**
   Ogni soggetto può avere uno o più indirizzi, distinti per **tipo indirizzo** (RES, DOMFISC, SEDELEG, …), indipendentemente dai ruoli operativi che assumerà nel sistema.
@@ -64,7 +62,7 @@ La tabella **`anagrafiche.indirizzi_soggetti`** gestisce gli **indirizzi associa
 
 ---
 
-### 🧩 Ruolo della matrice `config.tipi_soggetto_dettaglio_tipi_indirizzo`
+### Ruolo della matrice `config.tipi_soggetto_dettaglio_tipi_indirizzo`
 
 Questa tabella è **direttamente governata** dalla matrice:
 
@@ -99,7 +97,7 @@ Questa impostazione consente:
 
 ---
 
-### 🔗 Collegamenti con Altre Tabelle
+### Collegamenti con Altre Tabelle
 
 * **`anagrafiche.soggetti`**
 
@@ -119,7 +117,7 @@ Questa impostazione consente:
 
 ---
 
-### ⚙️ Vincoli e Trigger principali
+### Vincoli e Trigger principali
 
 * **XOR normalizzato / libero**
   Il vincolo `chk_indirizzi_soggetti_xor_norm_libero` garantisce che:
@@ -161,7 +159,7 @@ Questa impostazione consente:
 
 ---
 
-### 💡 Vantaggi Operativi
+### Vantaggi Operativi
 
 * **Indirizzi identitari chiari** per il soggetto
 * **Regole esplicite e configurabili** basate sulla natura del soggetto
@@ -169,11 +167,11 @@ Questa impostazione consente:
 * **Audit e storicizzazione nativi**
 * **Separazione netta** tra indirizzi del soggetto e indirizzi dei documenti
 
-> 🧠 **“`anagrafiche.indirizzi_soggetti` è il punto di verità degli indirizzi identitari del soggetto: flessibile nella forma, rigoroso nelle regole, guidato dalla configurazione e non dal codice.”**
+> **“`anagrafiche.indirizzi_soggetti` è il punto di verità degli indirizzi identitari del soggetto: flessibile nella forma, rigoroso nelle regole, guidato dalla configurazione e non dal codice.”**
 
 ---
 
-### 📊 Diagramma ER (semplificato)
+### Diagramma ER (semplificato)
 
 ```mermaid
 %%{init: {'er': {'layoutDirection': 'TB'}}}%%

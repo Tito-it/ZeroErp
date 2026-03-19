@@ -2,24 +2,22 @@
 
 > 👀 **Vedi anche**
 >
-> Tabelle:
+Tabelle:
 >
-> * [pratiche.giornale](giornale.md)
-> * [pratiche.pratiche](pratiche.md)
+[pratiche.giornale](giornale.md)
+> [pratiche.pratiche](pratiche.md)
 >
-> Overview:
+Overview:
 >
-> * [Trigger business overview](trigger_business_overview.md)
+[Trigger business overview](trigger_business_overview.md)
 
 ---
-
 ### 🎯 Scopo Principale
-
 Registra l'azione **ASSEGNAZIONE_CAMBIATA** nel giornale. Si attiva **AFTER UPDATE OF risorsa_umana_id, unita_organizzativa_id** su `pratiche.pratiche`, solo quando almeno uno dei due valori cambia realmente.
 
 ---
 
-### 🔧 Firma
+### Firma
 
 ```sql
 CREATE OR REPLACE FUNCTION pratiche.trgfn_pratiche_giornale_assegnazione()
@@ -29,7 +27,7 @@ LANGUAGE plpgsql
 
 ---
 
-### ⚙️ Logica
+### Logica
 
 Inserisce una riga in `pratiche.giornale` con:
 
@@ -44,7 +42,7 @@ Inserisce una riga in `pratiche.giornale` con:
 
 ---
 
-### 🔗 Trigger associato
+### Trigger associato
 
 | Nome | Fase | Evento | WHEN |
 |------|------|--------|------|

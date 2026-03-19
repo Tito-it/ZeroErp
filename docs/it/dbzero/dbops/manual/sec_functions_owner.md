@@ -2,16 +2,16 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimenti funzioni tecniche:
+Approfondimenti funzioni tecniche:
 >
-> * [`dbops.fn_sync_functions_owner`](/dbzero/dbops/funzioni/fn_sync_functions_owner)→ Funzione di hardening permessi   
-> * [`dbops.fn_get_or_create_session_tx_id`](/dbzero/dbops/funzioni/fn_get_or_create_session_tx_id) → Gestione sessione TX SQL   
-> * [`script.fn_ensure_logconn`](/dbzero/script/funzioni/fn_ensure_logconn) → Verifica configurazione `dblink`    
+[`dbops.fn_sync_functions_owner`](/dbzero/dbops/funzioni/fn_sync_functions_owner)→ Funzione di hardening permessi   
+> [`dbops.fn_get_or_create_session_tx_id`](/dbzero/dbops/funzioni/fn_get_or_create_session_tx_id) → Gestione sessione TX SQL   
+> [`script.fn_ensure_logconn`](/dbzero/script/funzioni/fn_ensure_logconn) → Verifica configurazione `dblink`    
 >
-> Contesto correlato:
+Contesto correlato:
 >
-> * Documento["Estensione PostgreSQL: dblink"](/postgresql/dblink) –   Configurazione connessione tecnica     (problematica iniziale)
-> * Gestione sicurezza funzioni tecniche (Hardening)
+Documento["Estensione PostgreSQL: dblink"](/postgresql/dblink) –   Configurazione connessione tecnica     (problematica iniziale)
+> Gestione sicurezza funzioni tecniche (Hardening)
 
 ---
 
@@ -22,19 +22,17 @@ Questa tabella è stata introdotta a seguito di problemi riscontrati durante la 
 La soluzione è stata quindi la creazione di un meccanismo automatico di *hardening* (irrobustimento) per mantenere la coerenza dei permessi delle funzioni critiche nel tempo, anche dopo aggiornamenti, restore o clonazioni del database.
 
 ---
-
 ### 🎯 Scopo Principale
-
 * **Centralizzare l'elenco delle funzioni "sensibili"** che richiedono owner dedicato.
 * **Garantire automaticamente la corretta assegnazione dei permessi**, tramite `dbops.fn_sync_functions_owner()`.
 * **Prevenire errori operativi o di sicurezza** derivanti da modifiche accidentali o ripristini non controllati.
 * Supportare la procedura di *hardening post-deploy*, mantenendo coerenza anche in CI, dopo migrazioni o clonazioni del database.
 
-> 🔐 *"La tabella `dbops.sec_functions_owner` rappresenta la policy tecnica per la sicurezza delle funzioni operative di sistema."*
+> *"La tabella `dbops.sec_functions_owner` rappresenta la policy tecnica per la sicurezza delle funzioni operative di sistema."*
 
 ---
 
-### 🔒 Problematiche che hanno portato all'introduzione
+### Problematiche che hanno portato all'introduzione
 
 | Problema riscontrato                                        | Effetto                                                      | Soluzione introdotta                       |
 | ----------------------------------------------------------- | ------------------------------------------------------------ | ------------------------------------------ |
@@ -45,7 +43,7 @@ La soluzione è stata quindi la creazione di un meccanismo automatico di *harden
 
 ---
 
-### 🧱 Struttura Logica
+### Struttura Logica
 
 | Campo            | Tipo | Descrizione                                                    |
 | ---------------- | ---- | -------------------------------------------------------------- |
@@ -59,7 +57,7 @@ La soluzione è stata quindi la creazione di un meccanismo automatico di *harden
 
 ---
 
-### ⚙️ Flusso Operativo
+### Flusso Operativo
 
 ```mermaid
 flowchart TD
@@ -74,7 +72,7 @@ flowchart TD
 
 ---
 
-### 🚀 Esempio Inserimento (fn_get_or_create_session_tx_id)
+### Esempio Inserimento (fn_get_or_create_session_tx_id)
 
 ```yaml
 - insert:
@@ -90,7 +88,7 @@ flowchart TD
 
 ---
 
-### 🔁 Hardening Automatico
+### Hardening Automatico
 
 Ogni esecuzione di `liquibase update` (grazie a `runAlways: true`) esegue:
 
@@ -103,7 +101,7 @@ SELECT dbops.fn_sync_functions_owner();
 
 ---
 
-### 💡 Vantaggi Operativi
+### Vantaggi Operativi
 
 ✔️ Mantiene coerenti i permessi delle funzioni critiche nel tempo.
 ✔️ Evita la necessità di interventi manuali ripetuti su restore/cloni.
@@ -112,7 +110,7 @@ SELECT dbops.fn_sync_functions_owner();
 
 ---
 
-> 🧠 *“Gestire preventivamente le funzioni sensibili tramite hardening riduce rischi operativi e garantisce solidità all'architettura tecnica di Zero ERP.”*
+> *“Gestire preventivamente le funzioni sensibili tramite hardening riduce rischi operativi e garantisce solidità all'architettura tecnica di Zero ERP.”*
 
 ---
 

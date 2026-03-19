@@ -2,20 +2,18 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimenti tabelle:
+Approfondimenti tabelle:
 >
-> * [anagrafiche.istanze_dati_precontrattuali](/dbzero/anagrafiche/tabelle/istanze_dati_precontrattuali)  
-> * [config.classi_utenze](/dbzero/config/tabelle/classi_utenze)  
-> * [config.tipi_utenze](/dbzero/config/tabelle/tipi_utenze)  
+[anagrafiche.istanze_dati_precontrattuali](/dbzero/anagrafiche/tabelle/istanze_dati_precontrattuali)  
+> [config.classi_utenze](/dbzero/config/tabelle/classi_utenze)  
+> [config.tipi_utenze](/dbzero/config/tabelle/tipi_utenze)  
 >
-> Approfondimenti viste:
+Approfondimenti viste:
 >
-> * [anagrafiche.vw_istanze_utilities_dettaglio](/dbzero/anagrafiche/views/vw_istanze_utilities_dettaglio)  
+[anagrafiche.vw_istanze_utilities_dettaglio](/dbzero/anagrafiche/views/vw_istanze_utilities_dettaglio)  
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 09-01-26) 
 La vista **`anagrafiche.vw_istanze_dati_precontrattuali_dettaglio`** unisce i dati pre‑contrattuali
 con i dettagli dell’istanza utility e le decodifiche di **classe** e **tipo utenza**.
@@ -25,7 +23,7 @@ Il **tipo utenza** è derivato dalla classe (`config.classi_utenze.tipo_utenza_i
 
 ---
 
-### 🧱 Struttura logica della vista
+### Struttura logica della vista
 
 La vista parte da `anagrafiche.istanze_dati_precontrattuali` e aggiunge:
 
@@ -58,7 +56,7 @@ La vista parte da `anagrafiche.istanze_dati_precontrattuali` e aggiunge:
 
 ---
 
-### 🔍 Modalita' d'uso tipiche
+### Modalita' d'uso tipiche
 
 ```sql
 SELECT *
@@ -68,7 +66,7 @@ WHERE istanza_utility_id = :istanza_utility_id;
 
 ---
 
-### ✅ Best practice e raccomandazioni
+### Best practice e raccomandazioni
 
 * Usare la vista per letture e reportistica.
 * Per aggiornamenti/modifiche operare sempre sulle tabelle base.

@@ -4,26 +4,24 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimento funzioni:
+Approfondimento funzioni:
 >
-> * [`dbops.fn_run_automations`](/dbzero/dbops/funzioni/fn_run_automations)   
-> * [`dbops.fn_run_automations_tx_id`](/dbzero/dbops/funzioni/fn_run_automations_tx_id)    
-> * [`dbops.fn_run_automations_storico_provision`](/dbzero/dbops/funzioni/fn_run_automations_storico_provision)   
+[`dbops.fn_run_automations`](/dbzero/dbops/funzioni/fn_run_automations)   
+> [`dbops.fn_run_automations_tx_id`](/dbzero/dbops/funzioni/fn_run_automations_tx_id)    
+> [`dbops.fn_run_automations_storico_provision`](/dbzero/dbops/funzioni/fn_run_automations_storico_provision)   
 >
-> Approfondimento tabelle:
+Approfondimento tabelle:
 >
-> * [`dbops.automation_rules_tbl`](/dbzero/dbops/tabelle/automation_rules_tbl)  
-> * [`dbops.automation_overrides_cols`](/dbzero/dbops/tabelle/automation_overrides_cols)   
+[`dbops.automation_rules_tbl`](/dbzero/dbops/tabelle/automation_rules_tbl)  
+> [`dbops.automation_overrides_cols`](/dbzero/dbops/tabelle/automation_overrides_cols)   
 
 ---
-
 ### 🎯 Scopo Principale
-
 La funzione **`fn_name_from_template`** genera in modo consistente un **nome normalizzato** (per trigger, constraint, indici, ecc.) a partire da un **template testuale** con *placeholder* e da un set di parametri (schema, tabella, parent/child, nome FK, operazione).
 
 ---
 
-### 📝 Dettagli
+### Dettagli
 
 **Firma**
 
@@ -60,7 +58,7 @@ CREATE OR REPLACE FUNCTION dbops.fn_name_from_template(
 
 ---
 
-### 🔧 Utilizzo tipico
+### Utilizzo tipico
 
 1. **Naming di trigger**: es. `trg_{table}_{op}_{fkhash6_if_long}`.
 2. **Naming FK**: es. `fk_{child}_{parent}{fkhash6_if_long}` per evitare collisioni su nomi lunghi/composti.
@@ -69,7 +67,7 @@ CREATE OR REPLACE FUNCTION dbops.fn_name_from_template(
 
 ---
 
-### 📊 Collegamento con automazione
+### Collegamento con automazione
 
 La funzione è usata dai processi di automazione (es. `fn_run_automations`, gruppi *TX_ID*, *ATTIVO*, *STORICO*, *FK_NAMING*) per:
 
@@ -79,7 +77,7 @@ La funzione è usata dai processi di automazione (es. `fn_run_automations`, grup
 
 ---
 
-### 💡 Esempi pratici
+### Esempi pratici
 
 **1) Nome trigger UPDATE con hash condizionale**
 
@@ -128,4 +126,4 @@ SELECT dbops.fn_name_from_template(
 
 ---
 
-> 🧠 **In sintesi**: `fn_name_from_template` fornisce un **contratto di naming** chiaro e robusto per tutti gli oggetti DDL generati dall’automazione, con gestione integrata di lunghezza massima, underscore e collisioni tramite *hash* coerente.
+> **In sintesi**: `fn_name_from_template` fornisce un **contratto di naming** chiaro e robusto per tutti gli oggetti DDL generati dall’automazione, con gestione integrata di lunghezza massima, underscore e collisioni tramite *hash* coerente.

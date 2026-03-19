@@ -8,282 +8,273 @@ CREATE FUNCTION fn_crea_soggetto_pg(p_ragione_sociale text, p_tipo_soggetto_dett
 **Definizione completa:**
 
 ```sql
-CREATE OR REPLACE FUNCTION anagrafiche.fn_crea_soggetto_pg(p_ragione_sociale text, p_tipo_soggetto_dettaglio_id bigint, p_email text, p_codice_fiscale text DEFAULT NULL::text, p_partita_iva text DEFAULT NULL::text, p_stato_iso2 character DEFAULT 'IT'::bpchar, p_forma_giuridica_id bigint DEFAULT NULL::bigint, p_id_prov_iscri_rea integer DEFAULT NULL::integer, p_iscrizione_rea character varying DEFAULT NULL::character varying, p_capitale_sociale numeric DEFAULT NULL::numeric, p_socio_unico anagrafiche.socio_unico_enum DEFAULT 'SU'::anagrafiche.socio_unico_enum, p_liquidazione anagrafiche.liquidazione_enum DEFAULT 'LN'::anagrafiche.liquidazione_enum, p_destinatario_fe character DEFAULT NULL::bpchar, p_pec_fatturazione character varying DEFAULT NULL::character varying, p_codice_sdi character varying DEFAULT NULL::character varying)
+CREATE OR REPLACE FUNCTION anagrafiche.fn_crea_soggetto_pg(p_ragione_sociale text, p_tipo_soggetto_dettaglio_id bigint, p_email text, p_codice_fiscale text DEFAULT NULL::text, p_partita_iva text DEFAULT NULL::text, p_stato_iso2 character DEFAULT NULL::bpchar, p_forma_giuridica_id bigint DEFAULT NULL::bigint, p_id_prov_iscri_rea integer DEFAULT NULL::integer, p_iscrizione_rea character varying DEFAULT NULL::character varying, p_capitale_sociale numeric DEFAULT NULL::numeric, p_socio_unico anagrafiche.socio_unico_enum DEFAULT NULL::anagrafiche.socio_unico_enum, p_liquidazione anagrafiche.liquidazione_enum DEFAULT NULL::anagrafiche.liquidazione_enum, p_destinatario_fe character DEFAULT NULL::bpchar, p_pec_fatturazione character varying DEFAULT NULL::character varying, p_codice_sdi character varying DEFAULT NULL::character varying)
  RETURNS uuid
  LANGUAGE plpgsql
 AS $function$
 DECLARE
-  -- Lookup config
-  v_stato_id                    config.stati.id%TYPE;
-  v_dati_societari_policy       config.tipi_soggetto_dettaglio.dati_societari_policy%TYPE;
-  -- Risultato
-  v_soggetto_id                 anagrafiche.soggetti.id%TYPE;
+    -- Lookup config
+    v_stato_id                    config.stati.id%TYPE;
+    v_stato_iso2_resolved         config.stati.codice_iso2%TYPE;
+    v_dati_societari_policy       config.tipi_soggetto_dettaglio.dati_societari_policy%TYPE;
+    v_socio_unico_resolved        anagrafiche.dati_societari.socio_unico%TYPE;
+    v_liquidazione_resolved       anagrafiche.dati_societari.liquidazione%TYPE;
+    -- Risultato
+    v_soggetto_id                 anagrafiche.soggetti.id%TYPE;
 BEGIN
-  -- =========================================================
-  -- Scopo:
-  --   Crea un soggetto Persona Giuridica con contatto default.
-  --   Se il tipo soggetto ha policy dati_societari = REQUIRED,
-  --   crea anche il record in dati_societari.
-  --   Se policy = OPTIONAL, crea dati_societari solo se
-  --   almeno un campo DS e' valorizzato.
-  --   Non crea indirizzi: responsabilita' del chiamante.
-  --   Non assegna ruoli: il chiamante usa
-  --   fn_get_or_create_soggetto_ruolo separatamente.
-  --
-  -- Parametri obbligatori:
-  --   p_ragione_sociale:            ragione sociale
-  --   p_tipo_soggetto_dettaglio_id: tipo soggetto (SC, ENC, ecc.)
-  --   p_email:                      email (contatto default)
-  --
-  -- Parametri opzionali:
-  --   p_codice_fiscale:     CF (guard PG potrebbe richiederlo)
-  --   p_partita_iva:        P.IVA (guard PG potrebbe richiederla)
-  --   p_stato_iso2:         ISO2 nazionalita' (default 'IT')
-  --   p_forma_giuridica_id: forma giuridica
-  --   p_id_prov_iscri_rea:  provincia iscrizione REA
-  --   p_iscrizione_rea:     numero iscrizione REA
-  --   p_capitale_sociale:   capitale sociale
-  --   p_socio_unico:        socio unico enum (default 'SU')
-  --   p_liquidazione:       stato liquidazione (default 'LN')
-  --   p_destinatario_fe:    canale FE ('P'=PEC, 'C'=Codice SDI)
-  --   p_pec_fatturazione:   PEC fatturazione
-  --   p_codice_sdi:         codice destinatario SDI
-  --
-  -- Trigger coinvolti:
-  --   trgfn_soggetti_gen_codice (genera codice)
-  --   trgfn_soggetti_normalize (ragione_sociale_completa)
-  --   trgfn_soggetti_guard_cf_piva_obbligatori (valida CF/PIVA)
-  --   trgfn_soggetti_valida_cf_piva_dispatch (formato CF/PIVA)
-  --   trgfn_soggetti_guard_soggetto_contatti (DEFERRED)
-  --   trgfn_soggetti_guard_indirizzi_required (DEFERRED)
-  --   trgfn_soggetti_guard_dati_societari_required (DEFERRED)
-  --   trgfn_dati_societari_guard_tipo_soggetto (verifica tipo)
-  --   trgfn_dati_societari_guard_forma_giuridica (verifica FG)
-  -- =========================================================
+    -- =========================================================
+    -- Scopo:
+    --   Crea un soggetto Persona Giuridica con contatto default.
+    --   Se il tipo soggetto ha policy dati_societari = REQUIRED,
+    --   crea anche il record in dati_societari.
+    --   Se policy = OPTIONAL, crea dati_societari solo se
+    --   almeno un campo DS e' valorizzato.
+    --   Non crea indirizzi: responsabilita' del chiamante.
+    --   Non assegna ruoli: il chiamante usa
+    --   fn_get_or_create_soggetto_ruolo separatamente.
+    --
+    -- Defaults risolti internamente da config.parameters:
+    --   p_stato_iso2   -> soggetto_default_stato_iso2
+    --   p_socio_unico  -> dati_societari_default_socio_unico
+    --   p_liquidazione -> dati_societari_default_liquidazione
+    -- =========================================================
 
-  -- =============================================================
-  -- Validazione parametri obbligatori
-  -- =============================================================
+    -- =============================================================
+    -- Validazione parametri obbligatori
+    -- =============================================================
 
-  IF p_ragione_sociale IS NULL OR TRIM(p_ragione_sociale) = '' THEN
-    PERFORM script.fn_log_and_raise_error(
-      'database', 'anagrafiche.fn_crea_soggetto_pg',
-      'E_ADMIN_VALIDAZIONE',
-      jsonb_build_object('parametro', 'p_ragione_sociale'),
-      NULL::uuid, 'Ragione sociale obbligatoria.'
+    IF p_ragione_sociale IS NULL OR TRIM(p_ragione_sociale) = '' THEN
+        PERFORM script.fn_log_and_raise_error(
+            'database', 'anagrafiche.fn_crea_soggetto_pg',
+            'E_ADMIN_VALIDAZIONE',
+            jsonb_build_object('parametro', 'p_ragione_sociale'),
+            NULL::uuid, 'Ragione sociale obbligatoria.'
+        );
+    END IF;
+
+    IF p_tipo_soggetto_dettaglio_id IS NULL OR p_tipo_soggetto_dettaglio_id <= 0 THEN
+        PERFORM script.fn_log_and_raise_error(
+            'database', 'anagrafiche.fn_crea_soggetto_pg',
+            'E_ADMIN_VALIDAZIONE',
+            jsonb_build_object('parametro', 'p_tipo_soggetto_dettaglio_id'),
+            NULL::uuid, 'Tipo soggetto dettaglio obbligatorio e > 0.'
+        );
+    END IF;
+
+    -- Verifica che il tipo soggetto esista
+    SELECT tsd.dati_societari_policy
+      INTO v_dati_societari_policy
+      FROM config.tipi_soggetto_dettaglio tsd
+     WHERE tsd.id = p_tipo_soggetto_dettaglio_id;
+
+    IF v_dati_societari_policy IS NULL THEN
+        PERFORM script.fn_log_and_raise_error(
+            'database', 'anagrafiche.fn_crea_soggetto_pg',
+            'E_ADMIN_VALIDAZIONE',
+            jsonb_build_object('p_tipo_soggetto_dettaglio_id', p_tipo_soggetto_dettaglio_id),
+            NULL::uuid,
+            concat('Tipo soggetto dettaglio id=', p_tipo_soggetto_dettaglio_id, ' non trovato.')
+        );
+    END IF;
+
+    IF p_email IS NULL OR TRIM(p_email) = '' THEN
+        PERFORM script.fn_log_and_raise_error(
+            'database', 'anagrafiche.fn_crea_soggetto_pg',
+            'E_ADMIN_VALIDAZIONE',
+            jsonb_build_object('parametro', 'p_email'),
+            NULL::uuid, 'Email obbligatoria (usata per contatto default).'
+        );
+    END IF;
+
+    -- =============================================================
+    -- Risoluzione default da config.parameters
+    -- =============================================================
+
+    -- Stato (nazionalita')
+    v_stato_iso2_resolved := COALESCE(
+        p_stato_iso2,
+        (SELECT default_value FROM config.parameters
+          WHERE code = 'soggetto_default_stato_iso2'),
+        'IT'
     );
-  END IF;
 
-  IF p_tipo_soggetto_dettaglio_id IS NULL OR p_tipo_soggetto_dettaglio_id <= 0 THEN
-    PERFORM script.fn_log_and_raise_error(
-      'database', 'anagrafiche.fn_crea_soggetto_pg',
-      'E_ADMIN_VALIDAZIONE',
-      jsonb_build_object('parametro', 'p_tipo_soggetto_dettaglio_id'),
-      NULL::uuid, 'Tipo soggetto dettaglio obbligatorio e > 0.'
+    SELECT id INTO v_stato_id
+      FROM config.stati
+     WHERE codice_iso2 = v_stato_iso2_resolved;
+
+    IF v_stato_id IS NULL THEN
+        PERFORM script.fn_log_and_raise_error(
+            'database', 'anagrafiche.fn_crea_soggetto_pg',
+            'E_GENERICO',
+            jsonb_build_object('codice_iso2', v_stato_iso2_resolved),
+            NULL::uuid,
+            concat('Stato ', v_stato_iso2_resolved, ' non trovato in config.stati.')
+        );
+    END IF;
+
+    -- Socio unico e liquidazione
+    v_socio_unico_resolved := COALESCE(
+        p_socio_unico,
+        (SELECT default_value FROM config.parameters
+          WHERE code = 'dati_societari_default_socio_unico')::anagrafiche.socio_unico_enum,
+        'SU'::anagrafiche.socio_unico_enum
     );
-  END IF;
 
-  -- Verifica che il tipo soggetto esista
-  SELECT tsd.dati_societari_policy
-    INTO v_dati_societari_policy
-    FROM config.tipi_soggetto_dettaglio tsd
-   WHERE tsd.id = p_tipo_soggetto_dettaglio_id;
-
-  IF v_dati_societari_policy IS NULL THEN
-    PERFORM script.fn_log_and_raise_error(
-      'database', 'anagrafiche.fn_crea_soggetto_pg',
-      'E_ADMIN_VALIDAZIONE',
-      jsonb_build_object('p_tipo_soggetto_dettaglio_id', p_tipo_soggetto_dettaglio_id),
-      NULL::uuid,
-      concat('Tipo soggetto dettaglio id=', p_tipo_soggetto_dettaglio_id, ' non trovato.')
+    v_liquidazione_resolved := COALESCE(
+        p_liquidazione,
+        (SELECT default_value FROM config.parameters
+          WHERE code = 'dati_societari_default_liquidazione')::anagrafiche.liquidazione_enum,
+        'LN'::anagrafiche.liquidazione_enum
     );
-  END IF;
 
-  IF p_email IS NULL OR TRIM(p_email) = '' THEN
-    PERFORM script.fn_log_and_raise_error(
-      'database', 'anagrafiche.fn_crea_soggetto_pg',
-      'E_ADMIN_VALIDAZIONE',
-      jsonb_build_object('parametro', 'p_email'),
-      NULL::uuid, 'Email obbligatoria (usata per contatto default).'
-    );
-  END IF;
+    -- =============================================================
+    -- Guard unicita' CF/PIVA (se forniti)
+    -- =============================================================
 
-  -- =============================================================
-  -- Lookup stato (nazionalita')
-  -- =============================================================
-
-  SELECT id INTO v_stato_id
-    FROM config.stati
-   WHERE codice_iso2 = COALESCE(p_stato_iso2, 'IT');
-
-  IF v_stato_id IS NULL THEN
-    PERFORM script.fn_log_and_raise_error(
-      'database', 'anagrafiche.fn_crea_soggetto_pg',
-      'E_GENERICO',
-      jsonb_build_object('codice_iso2', p_stato_iso2),
-      NULL::uuid,
-      concat('Stato ', COALESCE(p_stato_iso2, 'IT'), ' non trovato in config.stati.')
-    );
-  END IF;
-
-  -- =============================================================
-  -- Guard unicita' CF/PIVA (se forniti)
-  -- Il constraint uq_soggetto_idstato_id_fiscale_univoco gestisce
-  -- l'unicita' a livello DB, ma un guard esplicito da' un errore
-  -- piu' leggibile.
-  -- =============================================================
-
-  IF p_codice_fiscale IS NOT NULL AND TRIM(p_codice_fiscale) <> '' THEN
-    IF EXISTS (
-      SELECT 1 FROM anagrafiche.soggetti
-       WHERE stato_id = v_stato_id
-         AND id_fiscale_univoco_cf_piva = UPPER(TRIM(p_codice_fiscale))
-    ) THEN
-      PERFORM script.fn_log_and_raise_error(
-        'database', 'anagrafiche.fn_crea_soggetto_pg',
-        'E_ADMIN_CF_DUPLICATO',
-        jsonb_build_object('codice_fiscale', p_codice_fiscale),
-        NULL::uuid, 'Codice fiscale gia'' presente in anagrafica.'
-      );
-    END IF;
-  END IF;
-
-  IF p_partita_iva IS NOT NULL AND TRIM(p_partita_iva) <> '' THEN
-    IF EXISTS (
-      SELECT 1 FROM anagrafiche.soggetti
-       WHERE stato_id = v_stato_id
-         AND id_fiscale_univoco_cf_piva = UPPER(TRIM(p_partita_iva))
-    ) THEN
-      PERFORM script.fn_log_and_raise_error(
-        'database', 'anagrafiche.fn_crea_soggetto_pg',
-        'E_ADMIN_PIVA_DUPLICATA',
-        jsonb_build_object('partita_iva', p_partita_iva),
-        NULL::uuid, 'Partita IVA gia'' presente in anagrafica.'
-      );
-    END IF;
-  END IF;
-
-  -- =============================================================
-  -- Step 1: Creazione soggetto (Persona Giuridica)
-  -- Trigger: gen_codice, normalize, guard_cf_piva_obbligatori
-  -- =============================================================
-
-  INSERT INTO anagrafiche.soggetti (
-    ragione_sociale, codice_fiscale, partita_iva,
-    stato_id, tipo_soggetto_dettaglio_id, attivo
-  )
-  VALUES (
-    TRIM(p_ragione_sociale),
-    CASE WHEN p_codice_fiscale IS NOT NULL AND TRIM(p_codice_fiscale) <> ''
-         THEN UPPER(TRIM(p_codice_fiscale))
-         ELSE NULL
-    END,
-    CASE WHEN p_partita_iva IS NOT NULL AND TRIM(p_partita_iva) <> ''
-         THEN UPPER(TRIM(p_partita_iva))
-         ELSE NULL
-    END,
-    v_stato_id, p_tipo_soggetto_dettaglio_id, true
-  )
-  RETURNING id INTO v_soggetto_id;
-
-  -- =============================================================
-  -- Step 2: Creazione contatto default
-  -- Il trigger contatti_set_default_contatto imposta is_default.
-  -- =============================================================
-
-  INSERT INTO anagrafiche.contatti (
-    soggetto_id, nominativo, email, is_default
-  )
-  VALUES (
-    v_soggetto_id,
-    TRIM(p_ragione_sociale),
-    TRIM(p_email),
-    true
-  );
-
-  -- =============================================================
-  -- Step 3: Creazione dati societari (se policy lo richiede)
-  -- Il trigger DEFERRED trgfn_soggetti_guard_dati_societari_required
-  -- verifichera' al COMMIT che i dati societari esistano se REQUIRED.
-  -- Qui li creiamo se:
-  --   - policy = REQUIRED (sempre)
-  --   - policy = OPTIONAL e almeno un campo DS e' valorizzato
-  -- =============================================================
-
-  IF v_dati_societari_policy = 'REQUIRED'
-     OR (v_dati_societari_policy = 'OPTIONAL' AND (
-          p_id_prov_iscri_rea IS NOT NULL
-          OR p_iscrizione_rea IS NOT NULL
-          OR p_capitale_sociale IS NOT NULL
-          OR p_forma_giuridica_id IS NOT NULL
-          OR p_destinatario_fe IS NOT NULL
-          OR p_pec_fatturazione IS NOT NULL
-          OR p_codice_sdi IS NOT NULL
-        ))
-  THEN
-    -- Guard: se creiamo DS, i campi NOT NULL di dati_societari sono obbligatori
-    IF p_id_prov_iscri_rea IS NULL THEN
-      PERFORM script.fn_log_and_raise_error(
-        'database', 'anagrafiche.fn_crea_soggetto_pg',
-        'E_ADMIN_VALIDAZIONE',
-        jsonb_build_object('parametro', 'p_id_prov_iscri_rea'),
-        NULL::uuid,
-        'Provincia iscrizione REA obbligatoria per dati societari.'
-      );
+    IF p_codice_fiscale IS NOT NULL AND TRIM(p_codice_fiscale) <> '' THEN
+        IF EXISTS (
+            SELECT 1 FROM anagrafiche.soggetti
+             WHERE stato_id = v_stato_id
+               AND id_fiscale_univoco_cf_piva = UPPER(TRIM(p_codice_fiscale))
+        ) THEN
+            PERFORM script.fn_log_and_raise_error(
+                'database', 'anagrafiche.fn_crea_soggetto_pg',
+                'E_ADMIN_CF_DUPLICATO',
+                jsonb_build_object('codice_fiscale', p_codice_fiscale),
+                NULL::uuid, 'Codice fiscale gia'' presente in anagrafica.'
+            );
+        END IF;
     END IF;
 
-    IF p_iscrizione_rea IS NULL OR TRIM(p_iscrizione_rea) = '' THEN
-      PERFORM script.fn_log_and_raise_error(
-        'database', 'anagrafiche.fn_crea_soggetto_pg',
-        'E_ADMIN_VALIDAZIONE',
-        jsonb_build_object('parametro', 'p_iscrizione_rea'),
-        NULL::uuid,
-        'Iscrizione REA obbligatoria per dati societari.'
-      );
+    IF p_partita_iva IS NOT NULL AND TRIM(p_partita_iva) <> '' THEN
+        IF EXISTS (
+            SELECT 1 FROM anagrafiche.soggetti
+             WHERE stato_id = v_stato_id
+               AND id_fiscale_univoco_cf_piva = UPPER(TRIM(p_partita_iva))
+        ) THEN
+            PERFORM script.fn_log_and_raise_error(
+                'database', 'anagrafiche.fn_crea_soggetto_pg',
+                'E_ADMIN_PIVA_DUPLICATA',
+                jsonb_build_object('partita_iva', p_partita_iva),
+                NULL::uuid, 'Partita IVA gia'' presente in anagrafica.'
+            );
+        END IF;
     END IF;
 
-    IF p_capitale_sociale IS NULL THEN
-      PERFORM script.fn_log_and_raise_error(
-        'database', 'anagrafiche.fn_crea_soggetto_pg',
-        'E_ADMIN_VALIDAZIONE',
-        jsonb_build_object('parametro', 'p_capitale_sociale'),
-        NULL::uuid,
-        'Capitale sociale obbligatorio per dati societari.'
-      );
-    END IF;
+    -- =============================================================
+    -- Step 1: Creazione soggetto (Persona Giuridica)
+    -- =============================================================
 
-    IF p_destinatario_fe IS NULL THEN
-      PERFORM script.fn_log_and_raise_error(
-        'database', 'anagrafiche.fn_crea_soggetto_pg',
-        'E_ADMIN_VALIDAZIONE',
-        jsonb_build_object('parametro', 'p_destinatario_fe'),
-        NULL::uuid,
-        'Destinatario FE obbligatorio per dati societari (P=PEC, C=Codice SDI).'
-      );
-    END IF;
-
-    INSERT INTO anagrafiche.dati_societari (
-      soggetto_id, capitale_sociale,
-      id_prov_iscri_rea, iscrizione_rea,
-      socio_unico, liquidazione,
-      destinatario_fe, pec_fatturazione, codice_sdi,
-      forma_giuridica_id
+    INSERT INTO anagrafiche.soggetti (
+        ragione_sociale, codice_fiscale, partita_iva,
+        stato_id, tipo_soggetto_dettaglio_id, attivo
     )
     VALUES (
-      v_soggetto_id, p_capitale_sociale,
-      p_id_prov_iscri_rea, TRIM(p_iscrizione_rea),
-      COALESCE(p_socio_unico, 'SU'), COALESCE(p_liquidazione, 'LN'),
-      p_destinatario_fe, TRIM(p_pec_fatturazione), TRIM(p_codice_sdi),
-      p_forma_giuridica_id
-    );
-  END IF;
+        TRIM(p_ragione_sociale),
+        CASE WHEN p_codice_fiscale IS NOT NULL AND TRIM(p_codice_fiscale) <> ''
+             THEN UPPER(TRIM(p_codice_fiscale))
+             ELSE NULL
+        END,
+        CASE WHEN p_partita_iva IS NOT NULL AND TRIM(p_partita_iva) <> ''
+             THEN UPPER(TRIM(p_partita_iva))
+             ELSE NULL
+        END,
+        v_stato_id, p_tipo_soggetto_dettaglio_id, true
+    )
+    RETURNING id INTO v_soggetto_id;
 
-  RETURN v_soggetto_id;
+    -- =============================================================
+    -- Step 2: Creazione contatto default
+    -- =============================================================
+
+    INSERT INTO anagrafiche.contatti (
+        soggetto_id, nominativo, email, is_default
+    )
+    VALUES (
+        v_soggetto_id,
+        TRIM(p_ragione_sociale),
+        TRIM(p_email),
+        true
+    );
+
+    -- =============================================================
+    -- Step 3: Creazione dati societari (se policy lo richiede)
+    -- =============================================================
+
+    IF v_dati_societari_policy = 'REQUIRED'
+       OR (v_dati_societari_policy = 'OPTIONAL' AND (
+            p_id_prov_iscri_rea IS NOT NULL
+            OR p_iscrizione_rea IS NOT NULL
+            OR p_capitale_sociale IS NOT NULL
+            OR p_forma_giuridica_id IS NOT NULL
+            OR p_destinatario_fe IS NOT NULL
+            OR p_pec_fatturazione IS NOT NULL
+            OR p_codice_sdi IS NOT NULL
+          ))
+    THEN
+        -- Guard: campi NOT NULL di dati_societari obbligatori
+        IF p_id_prov_iscri_rea IS NULL THEN
+            PERFORM script.fn_log_and_raise_error(
+                'database', 'anagrafiche.fn_crea_soggetto_pg',
+                'E_ADMIN_VALIDAZIONE',
+                jsonb_build_object('parametro', 'p_id_prov_iscri_rea'),
+                NULL::uuid,
+                'Provincia iscrizione REA obbligatoria per dati societari.'
+            );
+        END IF;
+
+        IF p_iscrizione_rea IS NULL OR TRIM(p_iscrizione_rea) = '' THEN
+            PERFORM script.fn_log_and_raise_error(
+                'database', 'anagrafiche.fn_crea_soggetto_pg',
+                'E_ADMIN_VALIDAZIONE',
+                jsonb_build_object('parametro', 'p_iscrizione_rea'),
+                NULL::uuid,
+                'Iscrizione REA obbligatoria per dati societari.'
+            );
+        END IF;
+
+        IF p_capitale_sociale IS NULL THEN
+            PERFORM script.fn_log_and_raise_error(
+                'database', 'anagrafiche.fn_crea_soggetto_pg',
+                'E_ADMIN_VALIDAZIONE',
+                jsonb_build_object('parametro', 'p_capitale_sociale'),
+                NULL::uuid,
+                'Capitale sociale obbligatorio per dati societari.'
+            );
+        END IF;
+
+        IF p_destinatario_fe IS NULL THEN
+            PERFORM script.fn_log_and_raise_error(
+                'database', 'anagrafiche.fn_crea_soggetto_pg',
+                'E_ADMIN_VALIDAZIONE',
+                jsonb_build_object('parametro', 'p_destinatario_fe'),
+                NULL::uuid,
+                'Destinatario FE obbligatorio per dati societari (P=PEC, C=Codice SDI).'
+            );
+        END IF;
+
+        INSERT INTO anagrafiche.dati_societari (
+            soggetto_id, capitale_sociale,
+            id_prov_iscri_rea, iscrizione_rea,
+            socio_unico, liquidazione,
+            destinatario_fe, pec_fatturazione, codice_sdi,
+            forma_giuridica_id
+        )
+        VALUES (
+            v_soggetto_id, p_capitale_sociale,
+            p_id_prov_iscri_rea, TRIM(p_iscrizione_rea),
+            v_socio_unico_resolved, v_liquidazione_resolved,
+            p_destinatario_fe, TRIM(p_pec_fatturazione), TRIM(p_codice_sdi),
+            p_forma_giuridica_id
+        );
+    END IF;
+
+    RETURN v_soggetto_id;
 END;
 $function$
 
 COMMENT ON FUNCTION anagrafiche.fn_crea_soggetto_pg(p_ragione_sociale text, p_tipo_soggetto_dettaglio_id bigint, p_email text, p_codice_fiscale text, p_partita_iva text, p_stato_iso2 character, p_forma_giuridica_id bigint, p_id_prov_iscri_rea integer, p_iscrizione_rea character varying, p_capitale_sociale numeric, p_socio_unico anagrafiche.socio_unico_enum, p_liquidazione anagrafiche.liquidazione_enum, p_destinatario_fe character, p_pec_fatturazione character varying, p_codice_sdi character varying)
-IS 'Building block: crea soggetto Persona Giuridica + contatto default + dati societari (se policy REQUIRED o dati forniti). Non crea indirizzi ne'' assegna ruoli (responsabilita'' del chiamante).';
+IS 'Building block: crea soggetto PG + contatto default + dati societari (se policy REQUIRED o dati forniti). Default stato_iso2, socio_unico, liquidazione da config.parameters. Non crea indirizzi ne'' assegna ruoli (responsabilita'' del chiamante).';
 ```
 
 ---

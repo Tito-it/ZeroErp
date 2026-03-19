@@ -2,9 +2,9 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> • [vendite.preventivi_righe](/dbzero/vendite/tabelle/preventivi_righe)  
+• [vendite.preventivi_righe](/dbzero/vendite/tabelle/preventivi_righe)  
 > • [vendite.preventivi_indirizzi](/dbzero/vendite/tabelle/preventivi_indirizzi)  
 > • [vendite.attivita_fatturabili](/dbzero/vendite/tabelle/attivita_fatturabili)  
 > • [vendite.attivita_fatturabili_lotti](/dbzero/vendite/tabelle/attivita_fatturabili_lotti)  
@@ -13,9 +13,7 @@
 > • [config.valute](/dbzero/config/tabelle/valute)  
 
 ---
-
 ### 🎯 Scopo Principale
-
 La tabella **`vendite.preventivi`** rappresenta la **testata del preventivo commerciale**:
 raccoglie cliente/BA/utility, condizioni economiche, validita` e stato documento.
 
@@ -24,7 +22,7 @@ E` il punto di ingresso del ramo commerciale che, dopo accettazione, alimenta la
 
 ---
 
-### 🧭 Flusso documentale (allineato pipeline attuale)
+### Flusso documentale (allineato pipeline attuale)
 
 1. **Creazione preventivo** (bozza/emesso).  
 2. **Gestione righe** su `vendite.preventivi_righe` (articoli, qta, prezzi, IVA).  
@@ -39,7 +37,7 @@ Nota:
 
 ---
 
-### 🔁 Revisione preventivi
+### Revisione preventivi
 
 `vendite.preventivi` supporta revisioni multiple dello stesso numero documento:
 
@@ -53,7 +51,7 @@ Regola operativa:
 
 ---
 
-### ⚡ Fatturazione immediata (`fatturazione_immediata`)
+### Fatturazione immediata (`fatturazione_immediata`)
 
 Il flag `fatturazione_immediata` identifica preventivi che devono avere priorita` di
 esecuzione nel ciclo attivo:
@@ -64,11 +62,11 @@ esecuzione nel ciclo attivo:
 Stato implementativo:
 * la semantica funzionale e` definita;
 * l’orchestrazione completa del ramo `PREVENTIVI` con comportamento immediato
-  è tracciata nel WIP `ripresa-lavori-attivita-fatturabili`.
+  è tracciata nel documento `ripresa-lavori-attivita-fatturabili` (superato, vedi `gestione-commesse-v2.md`).
 
 ---
 
-### 📄 Campi chiave funzionali
+### Campi chiave funzionali
 
 * **Identificazione/revisione**: `numero`, `rev`, `is_revision_attiva`
 * **Perimetro fiscale/operativo**: `billing_account_id`, `istanza_utility_id`, `utility_id`
@@ -81,14 +79,14 @@ Stato implementativo:
 
 ---
 
-### 🧷 Audit e metadati
+### Audit e metadati
 
 * `meta jsonb` per estensioni dominio/canale;
 * colonne audit standard (`data_insert`, `user_insert`, `data_update`, `user_update`).
 
 ---
 
-### ✅ Regole di coerenza principali
+### Regole di coerenza principali
 
 1. `chk_preventivi_validita`: intervallo validita` coerente.
 2. `chk_preventivi_competenza_mese_primo`: competenza allineata al primo giorno del mese.
@@ -96,7 +94,7 @@ Stato implementativo:
 
 ---
 
-### 👓 Ruolo nel sistema
+### Ruolo nel sistema
 
 `vendite.preventivi` è la base del ciclo commerciale “offerta -> fatturabile”:
 governa la proposta al cliente, la sua revisione controllata e il passaggio strutturato

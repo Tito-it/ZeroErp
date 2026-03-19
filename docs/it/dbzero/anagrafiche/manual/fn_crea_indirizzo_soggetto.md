@@ -2,26 +2,24 @@
 
 > **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> * [anagrafiche.indirizzi_soggetti](/dbzero/anagrafiche/tabelle/indirizzi_soggetti)
-> * [anagrafiche.indirizzi_dettaglio](/dbzero/anagrafiche/tabelle/indirizzi_dettaglio)
-> * [config.tipi_indirizzi](/dbzero/config/tabelle/tipi_indirizzi)
-> * [config.tipi_soggetto_dettaglio_tipi_indirizzo](/dbzero/config/tabelle/tipi_soggetto_dettaglio_tipi_indirizzo)
+[anagrafiche.indirizzi_soggetti](/dbzero/anagrafiche/tabelle/indirizzi_soggetti)
+> [anagrafiche.indirizzi_dettaglio](/dbzero/anagrafiche/tabelle/indirizzi_dettaglio)
+> [config.tipi_indirizzi](/dbzero/config/tabelle/tipi_indirizzi)
+> [config.tipi_soggetto_dettaglio_tipi_indirizzo](/dbzero/config/tabelle/tipi_soggetto_dettaglio_tipi_indirizzo)
 >
-> **Approfondimento funzioni:**
+**Approfondimento funzioni:**
 >
-> * [anagrafiche.fn_get_or_create_indirizzo_dettaglio](/dbzero/anagrafiche/manual/fn_get_or_create_indirizzo_dettaglio)
-> * [anagrafiche.fn_crea_operatore](/dbzero/anagrafiche/manual/fn_crea_operatore)
+[anagrafiche.fn_get_or_create_indirizzo_dettaglio](/dbzero/anagrafiche/manual/fn_get_or_create_indirizzo_dettaglio)
+> [anagrafiche.fn_crea_operatore](/dbzero/anagrafiche/manual/fn_crea_operatore)
 >
-> **Guide:**
+**Guide:**
 >
-> * [Gestione degli indirizzi](/guide/gestione-degli-indirizzi)
+[Gestione degli indirizzi](/guide/gestione-degli-indirizzi)
 
 ---
-
-### Scopo Principale
-
+### 🎯 Scopo Principale
 (latest review 13-03-2026)
 
 Building block per la creazione di un indirizzo soggetto (`anagrafiche.indirizzi_soggetti`).
@@ -48,8 +46,8 @@ sync geoloc, audit e storicizzazione.
 | `p_comune_id`              | `anagrafiche.indirizzi_soggetti.comune_id%TYPE`   |     No**     | `NULL`  | Obbligatorio se modalita' libera                         |
 | `p_codice_postale_id`      | `anagrafiche.indirizzi_soggetti.codice_postale_id%TYPE` | No**  | `NULL`  | Obbligatorio se modalita' libera                         |
 
-> \* Esattamente uno tra `p_indirizzo_dettaglio_id` e `p_indirizzo_libero` deve essere valorizzato (XOR).
-> \** Obbligatori solo in modalita' libera (guard esplicito + check constraint DB).
+> Esattamente uno tra `p_indirizzo_dettaglio_id` e `p_indirizzo_libero` deve essere valorizzato (XOR).
+> Obbligatori solo in modalita' libera (guard esplicito + check constraint DB).
 
 ---
 

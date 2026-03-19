@@ -2,19 +2,17 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> * [anagrafiche.emittenti_fiscali](/dbzero/anagrafiche/tabelle/emittenti_fiscali)
-> * [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)
+[anagrafiche.emittenti_fiscali](/dbzero/anagrafiche/tabelle/emittenti_fiscali)
+> [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)
 >
-> **Approfondimento funzioni:**
+**Approfondimento funzioni:**
 >
-> * [script.fn_guard_soggetto_ruolo](/dbzero/script/funzioni/fn_guard_soggetto_ruolo)
+[script.fn_guard_soggetto_ruolo](/dbzero/script/funzioni/fn_guard_soggetto_ruolo)
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 12-03-2026)
 La trigger function **`anagrafiche.trgfn_emittenti_fiscali_guard_ruolo_emi_fis()`**
 garantisce che ogni record in `anagrafiche.emittenti_fiscali` sia collegato a un
@@ -27,7 +25,7 @@ guard centrale.
 
 ---
 
-### 🔍 Regola applicata
+### Regola applicata
 
 * Trigger **BEFORE INSERT OR UPDATE** su `anagrafiche.emittenti_fiscali`.
 * La funzione invoca `script.fn_guard_soggetto_ruolo(...)` con:
@@ -38,7 +36,7 @@ guard centrale.
 
 ---
 
-### ✅ Ruolo nel processo
+### Ruolo nel processo
 
 Questa guard impedisce di associare un emittente fiscale a un ruolo anagrafico
 errato e mantiene centralizzata la logica di validazione del legame

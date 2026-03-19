@@ -2,23 +2,21 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimento tabelle:
+Approfondimento tabelle:
 >
-> * [pratiche.tipi_prestazione](/dbzero/pratiche/tabelle/tipi_prestazione)
-> * [pratiche.handler_flussi](/dbzero/pratiche/tabelle/handler_flussi)
-> * [pratiche.template_flussi_prerequisiti](/dbzero/pratiche/tabelle/template_flussi_prerequisiti)
-> * [pratiche.template_flussi_canali](/dbzero/pratiche/tabelle/template_flussi_canali)
-> * [pratiche.flussi](/dbzero/pratiche/tabelle/flussi)
+[pratiche.tipi_prestazione](/dbzero/pratiche/tabelle/tipi_prestazione)
+> [pratiche.handler_flussi](/dbzero/pratiche/tabelle/handler_flussi)
+> [pratiche.template_flussi_prerequisiti](/dbzero/pratiche/tabelle/template_flussi_prerequisiti)
+> [pratiche.template_flussi_canali](/dbzero/pratiche/tabelle/template_flussi_canali)
+> [pratiche.flussi](/dbzero/pratiche/tabelle/flussi)
 
 ---
-
 ### 🎯 Scopo Principale
-
 La tabella `pratiche.template_flussi` definisce i **template degli step di workflow** per ciascun tipo_prestazione. Ogni template descrive un flusso tipo: sequenza di esecuzione, obbligatorieta', direzione, handler automatico opzionale e parametri di configurazione.
 
 ---
 
-### 🧱 Ruolo nel processo
+### Ruolo nel processo
 
 * Quando viene creata una pratica di un dato tipo, i flussi vengono istanziati dai template configurati.
 * I template definiscono l'**ordine** (`sequenza`), l'**obbligatorieta'** e la **direzione** del flusso.
@@ -27,7 +25,7 @@ La tabella `pratiche.template_flussi` definisce i **template degli step di workf
 
 ---
 
-### ⚙️ Colonne specifiche
+### Colonne specifiche
 
 | Colonna | Note |
 |---------|------|
@@ -38,7 +36,7 @@ La tabella `pratiche.template_flussi` definisce i **template degli step di workf
 
 ---
 
-### 🔒 Vincoli
+### Vincoli
 
 * **UQ composito**: `(tipo_prestazione_id, codice)` — codice univoco per tipo_prestazione.
 * **CHECK direzione**: solo valori ENTRATA, USCITA, INTERNA.
@@ -46,7 +44,7 @@ La tabella `pratiche.template_flussi` definisce i **template degli step di workf
 
 ---
 
-### ✅ Convenzioni
+### Convenzioni
 
 * Trigger standard applicati automaticamente da `dbops.fn_run_automations()`.
 * `storicizza = true` per tracciamento modifiche alla configurazione.

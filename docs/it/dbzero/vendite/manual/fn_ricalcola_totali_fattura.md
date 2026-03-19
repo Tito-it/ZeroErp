@@ -2,31 +2,28 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> • [vendite.fatture](/dbzero/vendite/tabelle/fatture)  
+• [vendite.fatture](/dbzero/vendite/tabelle/fatture)  
 > • [vendite.fatture_riepiloghi_iva](/dbzero/vendite/tabelle/fatture_riepiloghi_iva)  
 > • [vendite.fatture_fondi_fattura](/dbzero/vendite/tabelle/fatture_fondi_fattura)  
 > • [anagrafiche.emittenti_fiscali_utilities](/dbzero/anagrafiche/tabelle/emittenti_fiscali_utilities)  
 >
-> **Approfondimento funzioni:**
+**Approfondimento funzioni:**
 >
-> • [vendite.fn_get_totale_fondi_fattura](/dbzero/vendite/funzioni/fn_get_totale_fondi_fattura)  
+• [vendite.fn_get_totale_fondi_fattura](/dbzero/vendite/funzioni/fn_get_totale_fondi_fattura)  
 > • [vendite.fn_get_arrotondamento_scope](/dbzero/vendite/funzioni/fn_get_arrotondamento_scope)  
 > • [vendite.fn_set_arrotondamento_scope](/dbzero/vendite/funzioni/fn_set_arrotondamento_scope)  
 > • [vendite.fn_sync_contabili_fondo_fattura](/dbzero/vendite/funzioni/fn_sync_contabili_fondo_fattura)  
 >
----
-
 ### 🎯 Scopo Principale
-
 La funzione **`vendite.fn_ricalcola_totali_fattura()`** ricalcola i totali
 sulla testata fattura a partire dai **riepiloghi IVA** e dai **fondi fattura**,
 applicando le regole di arrotondamento definite per **emittente/utility**.
 
 ---
 
-### ✅ Regole principali
+### Regole principali
 
 * `p_fattura_id` obbligatorio.
 * Totali calcolati da `fatture_riepiloghi_iva`.
@@ -42,13 +39,13 @@ applicando le regole di arrotondamento definite per **emittente/utility**.
 
 ---
 
-### ✅ Output
+### Output
 
 Non ritorna valori. Aggiorna la testata fattura.
 
 ---
 
-### 🧪 Esempio d’uso
+### Esempio d’uso
 
 ```sql
 SELECT vendite.fn_ricalcola_totali_fattura(

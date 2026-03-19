@@ -2,16 +2,13 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> • [vendite.fatture](/dbzero/vendite/tabelle/fatture)  
+• [vendite.fatture](/dbzero/vendite/tabelle/fatture)  
 > • [vendite.fatture_fondi_fattura_source](/dbzero/vendite/tabelle/fatture_fondi_fattura_source)  
 > • [pagamenti.vendite_movimenti](/dbzero/pagamenti/tabelle/vendite_movimenti)  
 >
----
-
 ### 🎯 Scopo Principale
-
 (latest review 12-02-2026)  
 La funzione **`vendite.fn_genera_fondi_fattura_source()`** genera record
 in `fatture_fondi_fattura_source` per fatture con `minimo = true`,
@@ -19,7 +16,7 @@ e mantiene allineata la source in base al saldo documento.
 
 ---
 
-### ✅ Regole principali
+### Regole principali
 
 * Parametri obbligatori (ID > 0).
 * Seleziona fatture con `minimo = true` nel perimetro BA/utility/tipo_doc/emittente/valuta.
@@ -34,13 +31,13 @@ e mantiene allineata la source in base al saldo documento.
 
 ---
 
-### ✅ Output
+### Output
 
 Ritorna il numero totale di record modificati (`insert` + `update`).
 
 ---
 
-### 🧪 Esempio d’uso
+### Esempio d’uso
 
 ```sql
 SELECT vendite.fn_genera_fondi_fattura_source(

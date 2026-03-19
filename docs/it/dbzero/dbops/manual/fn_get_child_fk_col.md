@@ -2,26 +2,24 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimento Tabelle:
+Approfondimento Tabelle:
 >
-> * [dbops.fk_index_policy](/dbzero/dbops/tabelle/fk_index_policy)    
-> * [dbops.automation_rules_tbl](/dbzero/dbops/tabelle/automation_rules_tbl)   
+[dbops.fk_index_policy](/dbzero/dbops/tabelle/fk_index_policy)    
+> [dbops.automation_rules_tbl](/dbzero/dbops/tabelle/automation_rules_tbl)   
 >
-> Approfondimento funzioni:
+Approfondimento funzioni:
 >
-> * [dbops.fn_foreign_keys_info](/dbzero/dbops/funzioni/fn_foreign_keys_info)  
-> * [dbops.apply_fk_index_policy](/dbzero/dbops/funzioni/apply_fk_index_policy)   
-> * [dbops.fn_get_or_create_session_tx_id](/dbzero/dbops/funzioni/fn_get_or_create_session_tx_id)  
+[dbops.fn_foreign_keys_info](/dbzero/dbops/funzioni/fn_foreign_keys_info)  
+> [dbops.apply_fk_index_policy](/dbzero/dbops/funzioni/apply_fk_index_policy)   
+> [dbops.fn_get_or_create_session_tx_id](/dbzero/dbops/funzioni/fn_get_or_create_session_tx_id)  
 
 ---
-
 ### 🎯 Scopo Principale
-
 La funzione **`dbops.fn_get_child_fk_col(p_conoid oid)`** restituisce **il nome della colonna figlia** coinvolta in un **vincolo di chiave esterna** identificato dal suo **OID** (`pg_constraint.oid`). È pensata come **building-block** per automazioni di analisi/normalizzazione delle FK (naming, indici consigliati, audit), evitando join ripetitivi sui cataloghi `pg_constraint` e `pg_attribute`.
 
 ---
 
-### 🔍 Parametri di input
+### Parametri di input
 
 | Parametro  |  Tipo | Obbligatorio | Descrizione                                                                  |
 | ---------- | ----: | :----------: | ---------------------------------------------------------------------------- |
@@ -31,7 +29,7 @@ La funzione **`dbops.fn_get_child_fk_col(p_conoid oid)`** restituisce **il nome 
 
 ---
 
-### 📤 Valore di ritorno
+### Valore di ritorno
 
 `text` – il **nome della colonna figlia** (attributo della tabella referenziante) corrispondente alla FK.
 
@@ -39,7 +37,7 @@ La funzione **`dbops.fn_get_child_fk_col(p_conoid oid)`** restituisce **il nome 
 
 ---
 
-### ⚙️ Flusso logico (semplificato)
+### Flusso logico (semplificato)
 
 1. Legge da `pg_constraint` il **relid** della tabella figlia (`conrelid`) e l’**indice della colonna** figlia (`conkey[1]`).
 2. Risale a `pg_attribute` filtrando per `attrelid = conrelid` e `attnum = conkey[1]`.
@@ -49,7 +47,7 @@ Questa logica incapsula il mapping OID→(tabella, colonna) evitando al chiamant
 
 ---
 
-### 🧩 Casi d’uso tipici
+### Casi d’uso tipici
 
 * **Naming policy**: derivare dinamicamente il nome della colonna figlia per proporre/rinominare l’identificatore del vincolo (`fk_<tabella_base>_<tabella_ref>`).
 * **Indice consigliato**: individuare rapidamente la/e colonna/e figlia/e per verificare la presenza di un indice a supporto della FK (policy performance).
@@ -57,14 +55,14 @@ Questa logica incapsula il mapping OID→(tabella, colonna) evitando al chiamant
 
 ---
 
-### 🛡️ Permessi e sicurezza
+### Permessi e sicurezza
 
 * La funzione legge i **cataloghi di sistema** (`pg_constraint`, `pg_attribute`); sono necessarie **privilegi di metadato** (in genere disponibili a ruoli tecnici / amministrativi).
 * Non modifica dati né DDL: è **read-only**.
 
 ---
 
-### 🚀 Esempi di utilizzo (concettuali)
+### Esempi di utilizzo (concettuali)
 
 * **Pipeline di enforcement naming**
 
@@ -81,7 +79,7 @@ Questa logica incapsula il mapping OID→(tabella, colonna) evitando al chiamant
 
 ---
 
-### 📌 Considerazioni ed edge case
+### Considerazioni ed edge case
 
 * **FK composte**: se la tua policy richiede di considerare **tutte** le colonne, integra questa funzione con una che ritorni l’intero array `conkey` mappato in nomi colonna.
 * **Vincoli invalidi o parziali**: se l’OID non esiste o il vincolo è stato droppato durante la scansione, prevedere un controllo/gestione eccezioni nel chiamante.
@@ -89,7 +87,7 @@ Questa logica incapsula il mapping OID→(tabella, colonna) evitando al chiamant
 
 ---
 
-### ✅ Benefici
+### Benefici
 
 * **Semplicità**: evita boilerplate SQL verso i cataloghi.
 * **Componibilità**: si integra facilmente in funzioni/trigger di automazione.
@@ -97,4 +95,4 @@ Questa logica incapsula il mapping OID→(tabella, colonna) evitando al chiamant
 
 ---
 
-> 🧠 **In sintesi**: `fn_get_child_fk_col` è un mattone leggero ma strategico per tutte le automazioni che analizzano o normalizzano le **foreign key**: naming, indici, reportistica e audit diventano più semplici, consistenti e manutenibili.
+> **In sintesi**: `fn_get_child_fk_col` è un mattone leggero ma strategico per tutte le automazioni che analizzano o normalizzano le **foreign key**: naming, indici, reportistica e audit diventano più semplici, consistenti e manutenibili.

@@ -3,9 +3,9 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**  
+**Approfondimento tabelle:**  
 >
-> • [anagrafiche.indirizzi](/dbzero/anagrafiche/tabelle/indirizzi)   
+• [anagrafiche.indirizzi](/dbzero/anagrafiche/tabelle/indirizzi)   
 > • [anagrafiche.indirizzi_dettaglio](/dbzero/anagrafiche/tabelle/indirizzi_dettaglio)    
 > • [config.tipi_indirizzi](/dbzero/config/tabelle/tipi_indirizzi)    
 > • [config.comuni](/dbzero/config/tabelle/comuni)   
@@ -14,7 +14,6 @@
 > • [config.stati](/dbzero/config/tabelle/stati)    
 
 ---
-
 ### 🎯 Scopo Principale
 (latest review 15-02-26)
 Restituisce tutti gli **indirizzi** associati a uno specifico `soggetto_ruolo`, producendo per ciascuno:
@@ -34,7 +33,7 @@ Non applica fallback su indirizzi soggetto (la policy master/fallback e demandat
 
 ---
 
-### 🧩 Firma
+### Firma
 
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_get_indirizzi_by_ruolo(
@@ -74,7 +73,7 @@ PARALLEL UNSAFE;
 
 ---
 
-### 🔢 Parametri di input
+### Parametri di input
 
 | Nome                  | Tipo     | Descrizione                                                                            |
 | --------------------- | -------- | -------------------------------------------------------------------------------------- |
@@ -82,7 +81,7 @@ PARALLEL UNSAFE;
 
 ---
 
-### 📤 Valori restituiti
+### Valori restituiti
 
 
 | Colonna              | Tipo       | Descrizione                                                                          |
@@ -124,14 +123,14 @@ PARALLEL UNSAFE;
 
 ---
 
-### 🧷 Dipendenze principali
+### Dipendenze principali
 
 * `anagrafiche.vw_indirizzi_resolved_base`
 * `anagrafiche.vw_indirizzi_resolved_ruolo`
 
 ---
 
-### ⚙️ Proprietà tecniche
+### Proprietà tecniche
 
 | Proprietà      | Valore                           |
 | -------------- | -------------------------------- |
@@ -143,7 +142,7 @@ PARALLEL UNSAFE;
 
 ---
 
-### 🧪 Esempi d’uso
+### Esempi d’uso
 
 ```sql
 SELECT *
@@ -162,7 +161,7 @@ WHERE stato_iso2 = 'IT' AND geoloc IS NOT NULL;
 
 ---
 
-### ✅ Note e Best Practice
+### Note e Best Practice
 
 * Prediligere **normalizzati (A)** per qualità del dato.
 * Il fallback logico permette alta robustezza anche in fase di migrazione/import.

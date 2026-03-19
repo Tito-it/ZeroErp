@@ -2,14 +2,14 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimenti tabelle/domìni collegati:
+Approfondimenti tabelle/domìni collegati:
 >
-> * [config.note_tipologie](/dbzero/config/tabelle/note_tipologie)
-> * [config.note_stili](/dbzero/config/tabelle/note_stili)
+[config.note_tipologie](/dbzero/config/tabelle/note_tipologie)
+> [config.note_stili](/dbzero/config/tabelle/note_stili)
 >
-> Approfondimenti funzioni/trigger:
+Approfondimenti funzioni/trigger:
 >
-> * [config.trgfn_sorgenti_norm](/dbzero/config/funzioni/trgfn_sorgenti_norm)
+[config.trgfn_sorgenti_norm](/dbzero/config/funzioni/trgfn_sorgenti_norm)
 
 ---
 
@@ -22,9 +22,7 @@ La tabella **`config.sorgenti`** definisce il **dizionario centralizzato delle s
 * fungere da perno per collegare record di tabelle eterogenee a **note**, **log**, **attività**, **job**, ecc.
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest update 24-01-2026)
 * Fornire un **catalogo univoco** delle sorgenti applicative utilizzate in:
 
@@ -39,7 +37,7 @@ La tabella **`config.sorgenti`** definisce il **dizionario centralizzato delle s
 
 ---
 
-### 🔒 Vincoli e Regole Aziendali
+### Vincoli e Regole Aziendali
 
 * **Chiave primaria** (`id`):
 
@@ -112,7 +110,7 @@ La tabella **`config.sorgenti`** definisce il **dizionario centralizzato delle s
 
 ---
 
-### 🔗 Relazioni
+### Relazioni
 
 `config.sorgenti` è una tabella **di dominio/i18n logico** usata tipicamente da:
 
@@ -129,11 +127,11 @@ La tabella **`config.sorgenti`** definisce il **dizionario centralizzato delle s
 
   * utilizzando `codice_interno` e la chiave della riga sorgente, è possibile evitare esecuzioni duplicate di processi.
 
-> 🔁 In generale, dove serve un **collegamento generico e riusabile** a “qualcosa nel sistema”, `config.sorgenti` diventa il punto di partenza per identificare *cosa* sia quel “qualcosa”.
+> In generale, dove serve un **collegamento generico e riusabile** a “qualcosa nel sistema”, `config.sorgenti` diventa il punto di partenza per identificare *cosa* sia quel “qualcosa”.
 
 ---
 
-### 💡 Vantaggi Operativi
+### Vantaggi Operativi
 
 * **Centralizzazione**: tutte le sorgenti logiche del sistema sono censite in un unico punto.
 * **Riutilizzo**: le stesse definizioni di sorgente possono essere impiegate in note, log, attività, job, idempotenza, ecc.
@@ -143,4 +141,4 @@ La tabella **`config.sorgenti`** definisce il **dizionario centralizzato delle s
 
 ---
 
-> 🧠 **“`config.sorgenti` è il dizionario centrale che dà un nome e una struttura alle ‘origini’ dei dati e dei processi in Zero ERP, abilitando controlli polimorfi e collegamenti robusti tra moduli diversi.”**
+> **“`config.sorgenti` è il dizionario centrale che dà un nome e una struttura alle ‘origini’ dei dati e dei processi in Zero ERP, abilitando controlli polimorfi e collegamenti robusti tra moduli diversi.”**

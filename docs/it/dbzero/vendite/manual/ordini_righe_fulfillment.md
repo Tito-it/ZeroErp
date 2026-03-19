@@ -2,19 +2,17 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> • [vendite.ordini_righe](/dbzero/vendite/tabelle/ordini_righe)  
+• [vendite.ordini_righe](/dbzero/vendite/tabelle/ordini_righe)  
 > • [vendite.ddt_righe](/dbzero/vendite/tabelle/ddt_righe)
 >
->  **Approfondimento funzioni:**
+**Approfondimento funzioni:**
 > 
-> • [vendite.trgfn_a10_ins_upd_ordini_ful_guard_consistenza](/dbzero/vendite/funzioni/trgfn_a10_ins_upd_ordini_ful_guard_consistenza)   
+• [vendite.trgfn_a10_ins_upd_ordini_ful_guard_consistenza](/dbzero/vendite/funzioni/trgfn_a10_ins_upd_ordini_ful_guard_consistenza)   
 
 ---
-
 ### 🎯 Scopo Principale
-
 Rappresenta l’**evasione (parziale o totale)** delle **righe d’ordine** verso le **righe di DDT**. Ogni record è una **mappatura puntuale riga↔riga** con la **quantità evasa** in **UoM base** (`qta_evasa`).
 
 Obiettivi principali:
@@ -27,7 +25,7 @@ Obiettivi principali:
 
 ---
 
-### 🧭 Flussi tipici
+### Flussi tipici
 
 1. **Spedizione da ordine**: l’operatore seleziona righe ordine → genera DDT → per ogni riga DDT si crea **1..n** record di fulfillment verso le righe d’ordine pertinenti (in genere 1:1).
 2. **Parziale / Backorder**: se si spedisce una parte, si registra `qta_evasa` < `qta_ordine`; la riga ordine rimane **aperta** con residuo > 0.
@@ -35,7 +33,7 @@ Obiettivi principali:
 
 ---
 
-### 🧠 Regole di dominio
+### Regole di dominio
 
 * **Unicità coppia**: una coppia `(ordine_riga_id, ddt_riga_id)` è **unica** (indice `uq_ordini_r_ful_v_pair`).
 
@@ -46,7 +44,7 @@ Obiettivi principali:
 
 ---
 
-### ⚙️ Trigger di coerenza
+### Trigger di coerenza
 
 **`trg_ordini_a10_ins_upd_ful_guard_consistenza`** → `vendite.trgfn_a10_ins_upd_ordini_ful_guard_consistenza()` (BEFORE INSERT/UPDATE)
 
@@ -61,7 +59,7 @@ Funzioni principali (riassunto):
 
 ---
 
-### 🔍 Query utili
+### Query utili
 
 * **Residuo per riga d’ordine**
 
@@ -89,7 +87,7 @@ ORDER BY d.ddt_id;
 
 ---
 
-### ✅ Checklist di conformità
+### Checklist di conformità
 
 * [ ] `uq_ordini_r_ful_v_pair` presente e attivo.
 * [ ] Check `qta_evasa > 0` presente.
@@ -99,7 +97,7 @@ ORDER BY d.ddt_id;
 
 ---
 
-### 🔧 Migliorie puntuali (opzionali)
+### Migliorie puntuali (opzionali)
 
 1. **Indice su `ordine_riga_id`**: per le pagine residuo/report; oggi l’unicità è sulla coppia, ma un indice singolo `ix_fulv_ordine_riga` velocizza molte query.
 2. **Meta JSON**: valutare **GIN** se si filtrano spesso campi di `meta`.
@@ -107,7 +105,7 @@ ORDER BY d.ddt_id;
 
 ---
 
-### 👓 Ruolo nel sistema
+### Ruolo nel sistema
 
 È la **fonte di verità** per:
 

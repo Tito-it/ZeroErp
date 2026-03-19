@@ -2,7 +2,7 @@ import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import { useNavigationStore } from '../stores/navigation'
 import { useTabsStore } from '../stores/tabs'
-import { DOMAINS, resolveTabLabel } from '../core/navigation'
+import { DOMAINS, resolveTabLabel, resolveTabIcon } from '../core/navigation'
 import i18n from '../core/i18n'
 import AppLayout from '../core/components/AppLayout.vue'
 import HomeView from '../core/views/HomeView.vue'
@@ -155,6 +155,16 @@ router.beforeEach(async (to) => {
     return { name: 'forbidden' }
   }
 
+  // Guard livello BLOCCATO: l'utente non ha accesso a questo dominio.
+  // I domini adminOnly hanno gia' il loro guard sopra — non applicare.
+  if (domain) {
+    const domainConfig = DOMAINS.find(d => d.key === domain)
+    if (domainConfig && !domainConfig.adminOnly
+        && domainConfig.schemaDb && auth.isAreaBlocked(domainConfig.schemaDb)) {
+      return { name: 'forbidden' }
+    }
+  }
+
   // Imposta dominio attivo nello store navigation
   const nav = useNavigationStore()
   if (domain && domain !== 'home') {
@@ -170,7 +180,7 @@ router.beforeEach(async (to) => {
       path: to.path,
       label: resolveTabLabel(to.meta, t) || to.path,
       domain: domain,
-      icon: null
+      icon: resolveTabIcon(to.meta)
     })
   }
 })

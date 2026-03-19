@@ -127,7 +127,7 @@
 - [x] 8.1 — Funzione `script.fn_get_override_scaduti(p_giorni_tolleranza)` — originale `20_code/config/20260228-28`, spostata `20_code/script/20260308-08`
 - [x] 8.2 — ALTER 7 tabelle permessi: add `storicizza` + `tx_id` per audit trail — `00_schema/config/20260301-01`, `00_schema/anagrafiche/20260301-01`
   - Tabelle storico, trigger e registry generati dalle automazioni (`STORICO_PROVISION`, `STORICO`, `TX_ID`, `proc_sync_storico_set_storicizza`)
-  - Specifica completa: `docs/it/dev/work-in-progress/proposta-8.2-audit-trail-permessi.md`
+  - Specifica completa: `docs/it/dev/work-done/proposta-8.2-audit-trail-permessi.md`
 
 ### Backend
 

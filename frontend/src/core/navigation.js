@@ -20,23 +20,23 @@
 // 5. Se il dominio ha voci L2, aggiungerlo a domainsWithRoutes nel router
 
 export const DOMAINS = [
-  { key: 'anagrafiche', icon: 'pi pi-users', to: '/anagrafiche' },
-  { key: 'catalogo', icon: 'pi pi-box', to: '/catalogo' },
-  { key: 'vendite', icon: 'pi pi-shopping-cart', to: '/vendite' },
-  { key: 'acquisti', icon: 'pi pi-shopping-bag', to: '/acquisti' },
-  { key: 'magazzino', icon: 'pi pi-warehouse', to: '/magazzino' },
-  { key: 'pagamenti', icon: 'pi pi-credit-card', to: '/pagamenti' },
-  { key: 'contabilita', icon: 'pi pi-calculator', to: '/contabilita' },
-  { key: 'pratiche', icon: 'pi pi-folder', to: '/pratiche' },
-  { key: 'config', icon: 'pi pi-cog', to: '/config' },
-  { key: 'amm-software', icon: 'pi pi-lock', to: '/amm-software', adminOnly: true }
+  { key: 'anagrafiche', icon: 'pi pi-users', to: '/anagrafiche', schemaDb: 'anagrafiche' },
+  { key: 'catalogo', icon: 'pi pi-box', to: '/catalogo', schemaDb: 'catalogo' },
+  { key: 'vendite', icon: 'pi pi-shopping-cart', to: '/vendite', schemaDb: 'vendite' },
+  { key: 'acquisti', icon: 'pi pi-shopping-bag', to: '/acquisti', schemaDb: 'acquisti' },
+  { key: 'magazzino', icon: 'pi pi-warehouse', to: '/magazzino', schemaDb: 'magazzino' },
+  { key: 'pagamenti', icon: 'pi pi-credit-card', to: '/pagamenti', schemaDb: 'pagamenti' },
+  { key: 'contabilita', icon: 'pi pi-calculator', to: '/contabilita', schemaDb: 'contabilita' },
+  { key: 'pratiche', icon: 'pi pi-folder', to: '/pratiche', schemaDb: 'pratiche' },
+  { key: 'config', icon: 'pi pi-cog', to: '/config', schemaDb: 'config' },
+  { key: 'amm-software', icon: 'pi pi-lock', to: '/amm-software', adminOnly: true, schemaDb: 'amm_software' }
 ]
 
 // Voci menu L2 per ogni dominio (sidebar stato DOMINIO).
 // La label viene da i18n `nav_menu.<domainKey>.<itemKey>`
 export const DOMAIN_MENUS = {
   'amm-software': [
-    { key: 'operatori', icon: 'pi pi-users', to: '/amm-software/operatori' },
+    { key: 'operatori', icon: 'pi pi-key', to: '/amm-software/operatori' },
     { key: 'profili-reparto', icon: 'pi pi-sitemap', to: '/amm-software/profili-reparto' },
     { key: 'permessi', icon: 'pi pi-shield', to: '/amm-software/permessi' },
     { key: 'audit-log', icon: 'pi pi-history', to: '/amm-software/audit-log' }
@@ -66,5 +66,20 @@ export function resolveTabLabel(meta, t) {
   const { domain, menuKey } = meta
   if (menuKey) return t(`nav_menu.${domain}.${menuKey}`)
   if (domain && domain !== 'home') return t(`nav.${domain}`)
+  return null
+}
+
+// Risolve l'icona tab dalla route meta.
+// Cerca prima nelle voci L2 (DOMAIN_MENUS), poi nel dominio (DOMAINS).
+export function resolveTabIcon(meta) {
+  const { domain, menuKey } = meta
+  if (menuKey && DOMAIN_MENUS[domain]) {
+    const item = DOMAIN_MENUS[domain].find(m => m.key === menuKey)
+    if (item) return item.icon
+  }
+  if (domain) {
+    const d = DOMAINS.find(d => d.key === domain)
+    if (d) return d.icon
+  }
   return null
 }

@@ -2,9 +2,9 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> • [catalogo.articoli](/dbzero/catalogo/tabelle/articoli)    
+• [catalogo.articoli](/dbzero/catalogo/tabelle/articoli)    
 > • [anagrafiche.billing_account](/dbzero/anagrafiche/tabelle/billing_account)   
 > • [anagrafiche.istanze_utilities](/dbzero/anagrafiche/tabelle/istanze_utilities)   
 > • [config.sorgenti](/dbzero/config/tabelle/sorgenti)   
@@ -13,9 +13,7 @@
 > • [vendite.note](/dbzero/vendite/tabelle/note)   
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 21-01-2026)
 `vendite.attivita_fatturabili` è il **registro centrale delle prestazioni/attività da fatturare** (time & material, canoni, una‑tantum, letture/consumi valorizzati, import batch, ecc.).
 Ogni riga rappresenta **una voce fatturabile** riferita a un *articolo/servizio*, a una *istanza tecnica/utility* e, opzionalmente, a un *billing account*.
@@ -30,7 +28,7 @@ Obiettivi principali:
 
 ---
 
-### 🧭 Collocazione nel flusso di fatturazione
+### Collocazione nel flusso di fatturazione
 
 1. **Acquisizione**: le attività arrivano da input manuali, sistemi esterni, motori di calcolo o letture; vengono registrate qui con `data_attivita`, `quantita`, riferimenti a `articolo_id`, `istanza_utility_id`, `billing_account_id` (opz.).
 2. **Normalizzazione/validazione** (trigger): allineamento della competenza mensile, coerenze su sorgente, BA e istanza.
@@ -41,7 +39,7 @@ Obiettivi principali:
 
 ---
 
-### 📅 Periodo di competenza & regole di fatturabilità
+### Periodo di competenza & regole di fatturabilità
 
 * `competenza_mese` → **competenza mensile** obbligatoria (sempre valorizzata) e al **1° giorno del mese** (es. `YYYY‑MM‑01`).
   Rappresenta l’**anno/mese di fatturazione**. Se non valorizzata, viene derivata
@@ -63,7 +61,7 @@ Tipico filtro di eleggibilità per il motore:
 
 ---
 
-### 🔑 Campi chiave (uso applicativo)
+### Campi chiave (uso applicativo)
 
 * **Identificazione & riferimenti**:
   `uid` (identificativo applicativo), `articolo_id` (servizio/voce), `istanza_utility_id` (punto tecnico), `billing_account_id` (opz. intestazione economica), `area_geografica_id` (opz. area di fatturazione).
@@ -90,7 +88,7 @@ Tipico filtro di eleggibilità per il motore:
 
 ---
 
-### 🔒 Vincoli, indici e trigger (logica)
+### Vincoli, indici e trigger (logica)
 
 * **Vincoli**:
 
@@ -118,7 +116,7 @@ Tipico filtro di eleggibilità per il motore:
 
 ---
 
-### 🧪 Esempi d’uso (query applicative)
+### Esempi d’uso (query applicative)
 
 ```sql
 -- 1) Selezione righe eleggibili per il ciclo del mese M
@@ -141,7 +139,7 @@ WHERE id = ANY(:ids);
 
 ---
 
-### ✅ Best practice operative
+### Best practice operative
 
 * Imporre `approvato = true` come prerequisito di fatturabilità (workflow di approvazione esplicito).
 * Usare `posticipa_al` per rinviare selettivamente righe **senza** perdere la tracciabilità del motivo (`exclude_reason`).
@@ -150,7 +148,7 @@ WHERE id = ANY(:ids);
 
 ---
 
-### 👓 Importanza nel sistema
+### Importanza nel sistema
 
 Questa tabella è il **cuore del ciclo di fatturazione**: tutte le voci da fatturare convergono qui, vengono qualificate per **quando** fatturare (competenza, posticipo, sospensione) e, una volta prelevate, diventano **dettaglio di fattura**.
 La qualità e la coerenza dei dati in `vendite.attivita_fatturabili` determinano direttamente **completezza, correttezza e ripetibilità** dei documenti emessi.

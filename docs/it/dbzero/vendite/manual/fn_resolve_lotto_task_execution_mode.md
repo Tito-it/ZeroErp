@@ -1,13 +1,11 @@
 ## 📘 Documentazione Concettuale – Funzione `vendite.fn_resolve_lotto_task_execution_mode`
-
 ### 🎯 Scopo Principale
-
 Determina in modo deterministico la modalita` di esecuzione del task:
 `RUN`, `SKIP`, `RESUME`, `RESET_REQUIRED`.
 
 ---
 
-### ✅ Regole principali
+### Regole principali
 
 * input obbligatori: `lotto_id`, `pipeline_id`, `task_code`
 * legge policy task da `vendite.fatturazione_pipeline_task_policy`
@@ -22,7 +20,7 @@ Determina in modo deterministico la modalita` di esecuzione del task:
 
 ---
 
-### ✅ Output
+### Output
 
 Una riga con:
 * `execution_mode`

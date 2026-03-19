@@ -2,20 +2,18 @@
 
 > 👀 **Vedi anche**
 >
-> • [vendite.ordini_righe_fulfillment](/dbzero/vendite/tabelle/ordini_righe_fulfillment)  
+• [vendite.ordini_righe_fulfillment](/dbzero/vendite/tabelle/ordini_righe_fulfillment)  
 > • [vendite.ordini_righe](/dbzero/vendite/tabelle/ordini_righe)  
 > • [vendite.ddt_righe](/dbzero/vendite/tabelle/ddt_righe)  
 
 ---
-
 ### 🎯 Scopo Principale
-
 La trigger function `vendite.trgfn_ordini_ful_guard_consistenza()` protegge la
 coerenza delle righe fulfillment ordine↔DDT e impedisce over-fulfillment.
 
 ---
 
-### ✅ Regole principali
+### Regole principali
 
 * `qta_evasa` deve essere `> 0`;
 * blocca in lock la riga ordine e il gruppo fulfillment della stessa riga per
@@ -27,7 +25,7 @@ coerenza delle righe fulfillment ordine↔DDT e impedisce over-fulfillment.
 
 ---
 
-### 🧩 Utilizzo
+### Utilizzo
 
 Viene invocata da trigger `BEFORE INSERT/UPDATE` su
 `vendite.ordini_righe_fulfillment` come guardia di integrità transazionale.

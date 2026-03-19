@@ -4,14 +4,13 @@
 
 >  Approfondimenti tabelle:   
 >
-> * [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)   
-> * [config.tipi_ruoli](/dbzero/config/tabelle/tipi_ruoli)  
+[anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)   
+> [config.tipi_ruoli](/dbzero/config/tabelle/tipi_ruoli)  
 >
 
 La funzione **`script.fn_guard_soggetto_ruolo(p_soggetto_id, p_soggetto_ruolo_id, p_cd_int_ruolo)`** centralizza e semplifica la gestione della relazione tra un **soggetto** e il suo **ruolo**. Garantisce che, ogni volta che si assegna un ruolo a un soggetto, la tabella `anagrafiche.soggetti_ruoli` sia mantenuta correttamente e senza duplicati.
 
 ---
-
 ### 🎯 Scopo Principale
 (latest review 05-12-25)
 - **Verifica esistenza**  
@@ -26,7 +25,7 @@ La funzione **`script.fn_guard_soggetto_ruolo(p_soggetto_id, p_soggetto_ruolo_id
 
 ---
 
-### 🔍 Parametri di Input
+### Parametri di Input
 
 | Nome                  | Tipo      | Descrizione                                                                   |
 | --------------------- | --------- | ----------------------------------------------------------------------------- |
@@ -38,7 +37,7 @@ La funzione **`script.fn_guard_soggetto_ruolo(p_soggetto_id, p_soggetto_ruolo_id
 
 ---
 
-### ⚙️ Flusso Logico
+### Flusso Logico
 
 1. **Recupero ID ruolo**  
    Cerca in `config.tipi_ruoli` il record con `codice_interno = p_cd_int_ruolo`. Se non trovato, solleva eccezione `E_COD_INT_RUOLO`.
@@ -55,7 +54,7 @@ La funzione **`script.fn_guard_soggetto_ruolo(p_soggetto_id, p_soggetto_ruolo_id
 
 ---
 
-### 🔒 Error Handling
+### Error Handling
 
 - **`E_COD_INT_RUOLO`**  
   Ruolo con codice interno `p_cd_int_ruolo` non trovato in `config.tipi_ruoli`.
@@ -66,7 +65,7 @@ La funzione **`script.fn_guard_soggetto_ruolo(p_soggetto_id, p_soggetto_ruolo_id
 
 ---
 
-### 🔗 Integrazione con Trigger
+### Integrazione con Trigger
 
 Utilizzare all’interno di trigger `BEFORE INSERT` o `BEFORE UPDATE` sulle tabelle di assegnazione ruoli:
 
@@ -80,7 +79,7 @@ NEW.soggetto_ruolo_id := script.fn_guard_soggetto_ruolo(
 
 ---
 
-###  💡 Vantaggi Operativi
+###  Vantaggi Operativi
 
  -    Unica fonte di verità
        Tutti i controlli e inserimenti di relazioni soggetto–ruolo passano da un unico punto, migliorando coerenza e manutenzione.

@@ -16,6 +16,7 @@ from apps.core.api.payload_validators import optional_int
 from apps.core.services.error_manager import ErrorManager
 from apps.anagrafiche.db.indirizzi_repository import IndirizziRepository
 from apps.anagrafiche.db.soggetti_repository import SoggettiRepository
+from apps.core.db.lookup_repository import LookupRepository
 from apps.anagrafiche.error_codes import E_ANAG_NOT_FOUND, E_ANAG_VALIDAZIONE
 from apps.anagrafiche.services._validators import (
     create_with_dedup,
@@ -32,6 +33,7 @@ class SoggettiService:
     def __init__(self) -> None:
         self._repo = SoggettiRepository()
         self._ind = IndirizziRepository()
+        self._lookup = LookupRepository()
 
     # =================================================================
     # Lista e dettaglio
@@ -58,10 +60,10 @@ class SoggettiService:
     # Creazione soggetto (orchestratore)
     # =================================================================
 
-    # Scopo: Crea soggetto completo (PF o PG) con contatto e indirizzo.
+    # Scopo: Crea soggetto completo (PF o PG) con contatto e indirizzi.
     #        Determina il path (PF/PG) dal tipo_soggetto_dettaglio_id.
+    #        Se auto_clone=True, clona il primo indirizzo per i tipi obbligatori mancanti.
     #        Tutto in una transazione: i trigger DEFERRED verificano al COMMIT.
-    #        Perimetro: soggetto + contatto default + indirizzo (se fornito).
     #        Risultato: UUID del soggetto creato.
     def create_soggetto(self, payload: dict[str, Any]) -> dict[str, Any]:
         from django.db import transaction
@@ -71,37 +73,21 @@ class SoggettiService:
                              message="Tipo soggetto obbligatorio.")
         assert tipo_id is not None
 
-        # Determina natura dal tipo (via repository)
         natura = self._repo.get_natura_by_tipo_id(tipo_id)
         ErrorManager.require(natura is not None, code=E_ANAG_VALIDAZIONE,
                              message="Tipo soggetto non valido.")
         assert natura is not None
 
-        # Tutto in una transazione: soggetto + contatto + indirizzi + dati societari.
-        # I trigger DEFERRED (guard contatti, indirizzi, dati societari)
-        # verificano al COMMIT — devono vedere tutti i record nella stessa transazione.
         with transaction.atomic():
             if natura == "PF":
                 soggetto_id = self._create_pf(payload)
             else:
                 soggetto_id = self._create_pg(payload, tipo_id)
-            # Indirizzi (obbligatori se matrice lo richiede — trigger DEFERRED verifica al COMMIT).
-            # Gli indirizzi auto-clonati condividono stradario+civico: risolvo il dettaglio
-            # una sola volta e lo riuso per tutti i tipi.
-            indirizzi = payload.get("indirizzi") or []
-            indirizzo_singolo = payload.get("indirizzo")
-            if indirizzo_singolo and isinstance(indirizzo_singolo, dict):
-                indirizzi.append(indirizzo_singolo)
-            resolved_det_id: int | None = None
-            for ind in indirizzi:
-                if not isinstance(ind, dict):
-                    continue
-                # Riusa dettaglio gia' risolto per indirizzi clonati
-                if resolved_det_id and not ind.get("indirizzo_libero") and not ind.get("indirizzo_dettaglio_id"):
-                    ind = dict(ind, indirizzo_dettaglio_id=resolved_det_id)
-                _, det_id = self._create_indirizzo(soggetto_id, ind)
-                if resolved_det_id is None and det_id is not None:
-                    resolved_det_id = det_id
+
+            indirizzi = self._collect_indirizzi(payload)
+            if payload.get("auto_clone", True) and indirizzi:
+                self._apply_auto_clone(indirizzi, tipo_id)
+            self._create_indirizzi_batch(soggetto_id, indirizzi)
 
         return {"id": soggetto_id}
 
@@ -338,7 +324,7 @@ class SoggettiService:
                 email=email_addr,
                 data_nascita=optional_str(payload, "data_nascita"),
                 sesso=payload.get("sesso", "M") or "M",
-                stato_iso2=payload.get("stato_iso2", "IT") or "IT",
+                stato_iso2=optional_str(payload, "stato_iso2"),
             ),
             "Soggetto con questo codice fiscale gia' esistente.",
         )
@@ -366,13 +352,13 @@ class SoggettiService:
                 email=email_addr,
                 codice_fiscale=optional_str(payload, "codice_fiscale"),
                 partita_iva=optional_str(payload, "partita_iva"),
-                stato_iso2=payload.get("stato_iso2", "IT") or "IT",
+                stato_iso2=optional_str(payload, "stato_iso2"),
                 forma_giuridica_id=optional_int(dati_soc, "forma_giuridica_id"),
                 id_prov_iscri_rea=optional_int(dati_soc, "id_prov_iscri_rea"),
                 iscrizione_rea=optional_str(dati_soc, "iscrizione_rea"),
                 capitale_sociale=dati_soc.get("capitale_sociale"),
-                socio_unico=dati_soc.get("socio_unico", "SU") or "SU",
-                liquidazione=dati_soc.get("liquidazione", "LN") or "LN",
+                socio_unico=optional_str(dati_soc, "socio_unico"),
+                liquidazione=optional_str(dati_soc, "liquidazione"),
                 destinatario_fe=optional_str(dati_soc, "destinatario_fe"),
                 pec_fatturazione=optional_str(dati_soc, "pec_fatturazione"),
                 codice_sdi=optional_str(dati_soc, "codice_sdi"),
@@ -400,71 +386,47 @@ class SoggettiService:
                 "note": optional_str(contatto, "note"),
             })
 
-    # Scopo: Crea indirizzo soggetto dal payload (normalizzato o libero).
-    #        Se il payload contiene stradario_id o toponomastica_id + descrizione_via,
-    #        crea prima l'indirizzo dettaglio, poi lo associa al soggetto.
+    # Scopo: Raccoglie indirizzi dal payload (supporta sia "indirizzi" array che "indirizzo" singolo).
+    def _collect_indirizzi(self, payload: dict[str, Any]) -> list[dict[str, Any]]:
+        raw = payload.get("indirizzi")
+        indirizzi = list(raw) if isinstance(raw, list) else []
+        indirizzo_singolo = payload.get("indirizzo")
+        if indirizzo_singolo and isinstance(indirizzo_singolo, dict):
+            indirizzi.append(indirizzo_singolo)
+        return [ind for ind in indirizzi if isinstance(ind, dict)]
+
+    # Scopo: Auto-clona il primo indirizzo per i tipi obbligatori mancanti.
+    #        Policy di dominio: se l'utente compila solo un indirizzo,
+    #        gli obbligatori non compilati ricevono una copia.
+    def _apply_auto_clone(self, indirizzi: list[dict[str, Any]], tipo_id: int) -> None:
+        matrice = self._lookup.list_matrice_indirizzi(tipo_id)
+        tipi_presenti = {ind.get("tipo_indirizzo_codice") for ind in indirizzi}
+        primo = indirizzi[0]
+        for m in matrice:
+            if m["obbligatorio"] and m["codice"] not in tipi_presenti:
+                indirizzi.append({**primo, "tipo_indirizzo_codice": m["codice"]})
+
+    # Scopo: Crea indirizzi in batch con riuso dettaglio per clonati.
+    #        Il primo indirizzo normalizzato risolve il dettaglio, i successivi
+    #        (con stesso stradario+civico) riusano lo stesso indirizzo_dettaglio_id.
+    def _create_indirizzi_batch(self, soggetto_id: str, indirizzi: list[dict[str, Any]]) -> None:
+        resolved_det_id: int | None = None
+        for i, ind in enumerate(indirizzi):
+            if resolved_det_id and not ind.get("indirizzo_libero") and not ind.get("indirizzo_dettaglio_id"):
+                indirizzi[i] = ind = dict(ind, indirizzo_dettaglio_id=resolved_det_id)
+            _, det_id = self._create_indirizzo(soggetto_id, ind)
+            if resolved_det_id is None and det_id is not None:
+                resolved_det_id = det_id
+
+    # Scopo: Dispatch creazione indirizzo soggetto — il payload determina il path.
     def _create_indirizzo(self, soggetto_id: str, payload: dict[str, Any]) -> tuple[int, int | None]:
         tipo_codice = require_str(payload, "tipo_indirizzo_codice",
                                   "Codice tipo indirizzo obbligatorio.")
 
-        # Indirizzo libero (estero): passa direttamente
-        indirizzo_libero = optional_str(payload, "indirizzo_libero")
-        if indirizzo_libero:
-            sog_id = create_with_dedup(
-                lambda: self._repo.crea_indirizzo_soggetto(
-                    soggetto_id,
-                    tipo_indirizzo_codice=tipo_codice,
-                    indirizzo_libero=indirizzo_libero,
-                    stato_id=optional_int(payload, "stato_id"),
-                ),
-                "Indirizzo duplicato per questo soggetto.",
-            )
-            return sog_id, None
+        if optional_str(payload, "indirizzo_libero"):
+            return self._create_indirizzo_libero(soggetto_id, payload, tipo_codice), None
 
-        # Indirizzo normalizzato: risolvi indirizzo_dettaglio_id
-        det_id = optional_int(payload, "indirizzo_dettaglio_id")
-
-        if det_id is None:
-            # Risolvi stradario (esistente o nuovo)
-            stradario_id = optional_int(payload, "stradario_id")
-
-            if stradario_id is None:
-                # Via nuova: crea stradario
-                toponomastica_id = optional_int(payload, "toponomastica_id")
-                descrizione_via = (payload.get("descrizione_via") or "").strip()
-                comune_id = optional_int(payload, "comune_id")
-                codice_postale_id = optional_int(payload, "codice_postale_id")
-
-                ErrorManager.require(toponomastica_id is not None and toponomastica_id > 0,
-                                     code=E_ANAG_VALIDAZIONE, message="Tipo strada obbligatorio.")
-                assert toponomastica_id is not None
-                ErrorManager.require(bool(descrizione_via),
-                                     code=E_ANAG_VALIDAZIONE, message="Nome via obbligatorio.")
-                ErrorManager.require(comune_id is not None and comune_id > 0,
-                                     code=E_ANAG_VALIDAZIONE, message="Comune obbligatorio.")
-                assert comune_id is not None
-                ErrorManager.require(codice_postale_id is not None and codice_postale_id > 0,
-                                     code=E_ANAG_VALIDAZIONE, message="CAP obbligatorio.")
-                assert codice_postale_id is not None
-
-                stradario_id = self._ind.get_or_create_stradario(
-                    toponomastica_id=toponomastica_id, descrizione_via=descrizione_via,
-                    comune_id=comune_id, codice_postale_id=codice_postale_id,
-                )
-
-            assert stradario_id is not None
-            # Crea indirizzo dettaglio (get-or-create)
-            det_id = self._ind.create_indirizzo_dettaglio(
-                stradario_id=stradario_id,
-                civico=optional_int(payload, "civico"),
-                estensione_civico=(payload.get("estensione_civico") or "").strip() or None,
-                palazzina=(payload.get("palazzina") or "").strip() or None,
-                scala=(payload.get("scala") or "").strip() or None,
-                piano=(payload.get("piano") or "").strip() or None,
-                interno=(payload.get("interno") or "").strip() or None,
-            )
-
-        assert det_id is not None
+        det_id = self._resolve_indirizzo_dettaglio(payload)
         sog_id = create_with_dedup(
             lambda: self._repo.crea_indirizzo_soggetto(
                 soggetto_id,
@@ -474,6 +436,69 @@ class SoggettiService:
             "Indirizzo duplicato per questo soggetto.",
         )
         return sog_id, det_id
+
+    # Scopo: Crea indirizzo libero (estero / libera forma).
+    def _create_indirizzo_libero(self, soggetto_id: str, payload: dict[str, Any],
+                                 tipo_codice: str) -> int:
+        return create_with_dedup(
+            lambda: self._repo.crea_indirizzo_soggetto(
+                soggetto_id,
+                tipo_indirizzo_codice=tipo_codice,
+                indirizzo_libero=optional_str(payload, "indirizzo_libero"),
+                stato_id=optional_int(payload, "stato_id"),
+            ),
+            "Indirizzo duplicato per questo soggetto.",
+        )
+
+    # Scopo: Risolve indirizzo_dettaglio_id dal payload.
+    #        Se il payload ha gia' indirizzo_dettaglio_id, lo usa.
+    #        Altrimenti risolve stradario (esistente o nuovo) e crea dettaglio.
+    def _resolve_indirizzo_dettaglio(self, payload: dict[str, Any]) -> int:
+        det_id = optional_int(payload, "indirizzo_dettaglio_id")
+        if det_id is not None:
+            return det_id
+
+        stradario_id = optional_int(payload, "stradario_id")
+        if stradario_id is None:
+            stradario_id = self._create_stradario_da_generale(payload)
+        assert stradario_id is not None
+
+        det_id = self._ind.create_indirizzo_dettaglio(
+            stradario_id=stradario_id,
+            civico=optional_int(payload, "civico"),
+            estensione_civico=(payload.get("estensione_civico") or "").strip() or None,
+            palazzina=(payload.get("palazzina") or "").strip() or None,
+            scala=(payload.get("scala") or "").strip() or None,
+            piano=(payload.get("piano") or "").strip() or None,
+            interno=(payload.get("interno") or "").strip() or None,
+        )
+        assert det_id is not None
+        return det_id
+
+    # Scopo: Crea stradario locale da stradario_generale (via nuova).
+    #        Valida toponomastica, descrizione, comune, CAP.
+    def _create_stradario_da_generale(self, payload: dict[str, Any]) -> int:
+        toponomastica_id = optional_int(payload, "toponomastica_id")
+        descrizione_via = (payload.get("descrizione_via") or "").strip()
+        comune_id = optional_int(payload, "comune_id")
+        codice_postale_id = optional_int(payload, "codice_postale_id")
+
+        ErrorManager.require(toponomastica_id is not None and toponomastica_id > 0,
+                             code=E_ANAG_VALIDAZIONE, message="Tipo strada obbligatorio.")
+        assert toponomastica_id is not None
+        ErrorManager.require(bool(descrizione_via),
+                             code=E_ANAG_VALIDAZIONE, message="Nome via obbligatorio.")
+        ErrorManager.require(comune_id is not None and comune_id > 0,
+                             code=E_ANAG_VALIDAZIONE, message="Comune obbligatorio.")
+        assert comune_id is not None
+        ErrorManager.require(codice_postale_id is not None and codice_postale_id > 0,
+                             code=E_ANAG_VALIDAZIONE, message="CAP obbligatorio.")
+        assert codice_postale_id is not None
+
+        return self._ind.get_or_create_stradario(
+            toponomastica_id=toponomastica_id, descrizione_via=descrizione_via,
+            comune_id=comune_id, codice_postale_id=codice_postale_id,
+        )
 
     # Scopo: Validazione congruenza CF italiano con dati anagrafici (data, sesso, comune).
     #        Non blocca se i dati opzionali non sono forniti — valida solo quelli presenti.

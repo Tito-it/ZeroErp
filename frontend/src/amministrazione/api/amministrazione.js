@@ -5,26 +5,30 @@ import api from '../../core/api'
 
 const BASE = '/amm-software'
 
-// --- Utenti ---
+// --- Operatori ---
 
-export function listUtenti(params = {}) {
+export function listOperatori(params = {}) {
   return api.get(`${BASE}/utenti/`, { params })
 }
 
-export function getUtente(authUserId) {
+export function getOperatore(authUserId) {
   return api.get(`${BASE}/utenti/${authUserId}/`)
 }
 
-export function createUtente(payload) {
+export function createOperatore(payload) {
   return api.post(`${BASE}/utenti/`, payload)
 }
 
-export function updateUtente(authUserId, payload) {
+export function updateOperatore(authUserId, payload) {
   return api.patch(`${BASE}/utenti/${authUserId}/`, payload)
 }
 
-export function disabilitaUtente(authUserId) {
+export function disabilitaOperatore(authUserId) {
   return api.post(`${BASE}/utenti/${authUserId}/disabilita/`)
+}
+
+export function riattivaOperatore(authUserId) {
+  return api.post(`${BASE}/utenti/${authUserId}/riattiva/`)
 }
 
 // --- Override permessi utente ---

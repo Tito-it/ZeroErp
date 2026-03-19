@@ -2,9 +2,9 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**   
+**Approfondimento tabelle:**   
 >
-> • [vendite.contratti](/dbzero/vendite/tabelle/contratti)   
+• [vendite.contratti](/dbzero/vendite/tabelle/contratti)   
 > • [vendite.note_contratto](/dbzero/vendite/tabelle/note_contratto)  
 > • [vendite.regole_fatturazione_articolo](/dbzero/vendite/tabelle/regole_fatturazione_articolo)    
 > • [catalogo.articoli](/dbzero/catalogo/tabelle/articoli)   
@@ -12,9 +12,7 @@
 > • [anagrafiche.istanze_dati_precontrattuali](/dbzero/anagrafiche/tabelle/istanze_dati_precontrattuali)     
 
 ---
-
 ### 🎯 Scopo Principale
-
 (Initial version - 19-01-26)
 `vendite.contratti_righe` contiene il **dettaglio economico e operativo** del contratto: ogni riga rappresenta un **articolo/servizio** con le proprie regole di erogazione (canone, consumo, una‑tantum), periodicita e parametri di quantita/prezzo.
 
@@ -26,7 +24,7 @@ Obiettivi principali:
 
 ---
 
-### 🧭 Collocazione nel flusso
+### Collocazione nel flusso
 
 1. **Creazione contratto** → testata in `vendite.contratti`.
 2. **Inserimento righe** → articoli e regole di erogazione in `vendite.contratti_righe`.
@@ -34,7 +32,7 @@ Obiettivi principali:
 
 ---
 
-### 🧩 Campi chiave e logiche operative
+### Campi chiave e logiche operative
 
 * **Articolo** (`articolo_id`) → servizio/voce di catalogo.
 * **Tipo erogazione** (`tipo_erogazione`) → indica la natura della riga (es. canone, consumo, una‑tantum).
@@ -57,7 +55,7 @@ Per righe che richiedono una UoM operativa:
 
 ---
 
-### 🔗 Collegamento con dati precontrattuali
+### Collegamento con dati precontrattuali
 
 Quando l’istanza e` di tipo utility, i dati di `anagrafiche.istanze_dati_precontrattuali` possono:
 
@@ -69,7 +67,7 @@ Per servizi non‑utility, la riga rimane il punto di verita delle condizioni ec
 
 ---
 
-### 🔒 Vincoli e trigger rilevanti
+### Vincoli e trigger rilevanti
 
 * **FK principali**: contratto, articolo, UoM operativa.
 * **Trigger**:
@@ -79,7 +77,7 @@ Per servizi non‑utility, la riga rimane il punto di verita delle condizioni ec
 
 ---
 
-### ✅ Best practice
+### Best practice
 
 * Impostare `tipo_erogazione` e `fonte_quantita_attesa` in modo coerente con la logica di calcolo.
 * Usare `quantita_fissa` **solo** per righe a canone o una‑tantum.
@@ -88,7 +86,7 @@ Per servizi non‑utility, la riga rimane il punto di verita delle condizioni ec
 
 ---
 
-### 👓 Ruolo nel sistema
+### Ruolo nel sistema
 
 `vendite.contratti_righe` e` il **dettaglio contrattuale operativo**: traduce il contratto in voci fatturabili, collegando catalogo, regole di erogazione e parametri tecnici. E` il ponte tra **accordo commerciale** e **processo di fatturazione**.
 

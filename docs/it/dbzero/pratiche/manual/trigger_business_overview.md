@@ -2,29 +2,27 @@
 
 > 👀 **Vedi anche**
 >
-> Funzioni collegate:
+Funzioni collegate:
 >
-> * [fn_check_prerequisiti_flusso](fn_check_prerequisiti_flusso.md)
-> * [fn_guard_prerequisiti_flusso](fn_guard_prerequisiti_flusso.md)
-> * [fn_genera_pratica_da_flusso](fn_genera_pratica_da_flusso.md)
+[fn_check_prerequisiti_flusso](fn_check_prerequisiti_flusso.md)
+> [fn_guard_prerequisiti_flusso](fn_guard_prerequisiti_flusso.md)
+> [fn_genera_pratica_da_flusso](fn_genera_pratica_da_flusso.md)
 >
-> Tabelle:
+Tabelle:
 >
-> * [pratiche.giornale](giornale.md)
-> * [pratiche.pratiche](pratiche.md)
-> * [pratiche.flussi](flussi.md)
+[pratiche.giornale](giornale.md)
+> [pratiche.pratiche](pratiche.md)
+> [pratiche.flussi](flussi.md)
 
 ---
-
 ### 🎯 Scopo Principale
-
 Questo documento descrive i **trigger business-specific** del modulo pratiche. Sono trigger che implementano logica di dominio (giornale di bordo, guard prerequisiti, generazione cross-pratica).
 
 > **Nota**: i trigger standard (audit, tx_id, storico, lock_columns, attivo) **NON** sono inclusi qui. Sono applicati automaticamente da `dbops.fn_run_automations()`.
 
 ---
 
-### 📊 Matrice Trigger
+### Matrice Trigger
 
 #### `pratiche.pratiche` — 4 trigger business
 
@@ -78,7 +76,7 @@ Le tabelle allegati sono **immutabili** (solo `data_insert/user_insert`), quindi
 
 ---
 
-### 🧱 Convenzioni di naming
+### Convenzioni di naming
 
 I trigger seguono la convenzione progetto:
 
@@ -95,7 +93,7 @@ trg_<tabella>_<fase>_<descrizione>_<eventi>
 
 ---
 
-### 🔧 Trigger Function per il Giornale
+### Trigger Function per il Giornale
 
 Tutte le trigger function giornale seguono lo stesso pattern:
 1. Inseriscono una riga in `pratiche.giornale` con l'azione corrispondente.
@@ -106,7 +104,7 @@ Tutte le trigger function giornale seguono lo stesso pattern:
 
 ---
 
-### 🔗 Generazione Cross-Pratica
+### Generazione Cross-Pratica
 
 Il meccanismo di generazione si attiva quando un flusso passa a stato COMPLETATO:
 

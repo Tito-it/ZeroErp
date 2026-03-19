@@ -5,22 +5,20 @@
 
 > Approfondimenti tabelle:  
 >
->  * [config.stradario](/dbzero/config/tabelle/stradario)   
->  * [config.stradario_generale](/dbzero/config/tabelle/stradario_generale)   
->  * [config.toponomastica](/dbzero/config/tabelle/toponomastica)   
->  * [config.comuni](/dbzero/config/tabelle/comuni)   
->  * [config.province](/dbzero/config/tabelle/province)    
->  * [config.codici_postali](/dbzero/config/tabelle/codici_postali)    
->  * [config.stati](/dbzero/config/tabelle/stati)   
+[config.stradario](/dbzero/config/tabelle/stradario)   
+>  [config.stradario_generale](/dbzero/config/tabelle/stradario_generale)   
+>  [config.toponomastica](/dbzero/config/tabelle/toponomastica)   
+>  [config.comuni](/dbzero/config/tabelle/comuni)   
+>  [config.province](/dbzero/config/tabelle/province)    
+>  [config.codici_postali](/dbzero/config/tabelle/codici_postali)    
+>  [config.stati](/dbzero/config/tabelle/stati)   
 
 
 
 La funzione **`script.fn_get_stradario(p_comune_id integer DEFAULT NULL, p_indirizzo text DEFAULT '') RETURNS TABLE(...)`** fornisce un metodo centralizzato per la ricerca e il recupero di voci dello stradario, sia a livello di comune specifico che su tutto lo stradario generale.
 
 ---
-
 ### 🎯 Scopo Principale
-
 * **Ricerca locale per comune**
   Se viene specificato `p_comune_id`, esegue una query filtrata sul comune indicato, restituendo tutte le vie e toponomastiche che contengono la stringa `p_indirizzo` nel loro nome.
 
@@ -32,7 +30,7 @@ La funzione **`script.fn_get_stradario(p_comune_id integer DEFAULT NULL, p_indir
 
 ---
 
-### 🔍 Parametri di Input
+### Parametri di Input
 
 
    * `p_comune_id`(integer) ID del comune (`config.comuni.id`) su cui limitare la ricerca; `NULL`       per ricerca globale.
@@ -42,7 +40,7 @@ La funzione **`script.fn_get_stradario(p_comune_id integer DEFAULT NULL, p_indir
 
 ---
 
-### ⚙️ Logica di Esecuzione
+### Logica di Esecuzione
 
 1. **Ricerca filtrata (se `p_comune_id` non è `NULL`)**
 
@@ -58,7 +56,7 @@ La funzione **`script.fn_get_stradario(p_comune_id integer DEFAULT NULL, p_indir
 
 ---
 
-### 🔗 Colonne di Output
+### Colonne di Output
 
 La funzione restituisce le colonne seguenti in entrambe le modalità di ricerca:
 
@@ -77,7 +75,7 @@ La funzione restituisce le colonne seguenti in entrambe le modalità di ricerca:
 
 ---
 
-### 💡 Vantaggi Operativi
+### Vantaggi Operativi
 
 * **Centralizzazione**
   Un’unica funzione PL/pgSQL per gestire ricerche su stradario, evitando duplicazione di query in applicazione.
@@ -93,4 +91,4 @@ La funzione restituisce le colonne seguenti in entrambe le modalità di ricerca:
 
 ---
 
-> 🧠 **“Fornire un’interfaccia unica e parametrizzata per le operazioni di ricerca stradale, migliorando coesione, manutenibilità e uniformità dei risultati.”**
+> **“Fornire un’interfaccia unica e parametrizzata per le operazioni di ricerca stradale, migliorando coesione, manutenibilità e uniformità dei risultati.”**

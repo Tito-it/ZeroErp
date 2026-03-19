@@ -2,15 +2,12 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> • [anagrafiche.emittenti_fiscali](/dbzero/anagrafiche/tabelle/emittenti_fiscali)  
+• [anagrafiche.emittenti_fiscali](/dbzero/anagrafiche/tabelle/emittenti_fiscali)  
 > • [config.utilities](/dbzero/config/tabelle/utilities)  
 >
----
-
 ### 🎯 Scopo Principale
-
 La tabella **`anagrafiche.emittenti_fiscali_utilities`** definisce i parametri
 specifici di fatturazione per **emittente fiscale** e **utility**:
 
@@ -19,7 +16,7 @@ specifici di fatturazione per **emittente fiscale** e **utility**:
 
 ---
 
-### 🧱 Campi chiave (semantica)
+### Campi chiave (semantica)
 
 * `emittente_soggetto_ruolo_id`: emittente fiscale (soggetto_ruolo).
 * `utility_id`: utility di riferimento.
@@ -29,7 +26,7 @@ specifici di fatturazione per **emittente fiscale** e **utility**:
 
 ---
 
-### ✅ Regole principali
+### Regole principali
 
 * Unica riga per coppia **(emittente, utility)**.
 * Se entrambe le soglie sono valorizzate: `minimo_soglia_min <= minimo_soglia_max`.
@@ -41,7 +38,7 @@ specifici di fatturazione per **emittente fiscale** e **utility**:
 
 ---
 
-### 🧪 Esempio d’uso
+### Esempio d’uso
 
 ```sql
 SELECT *

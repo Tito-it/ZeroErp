@@ -2,17 +2,15 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimenti tabelle:
+Approfondimenti tabelle:
 >
-> * [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)  
-> * [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)  
-> * [config.tipi_ruoli](/dbzero/config/tabelle/tipi_ruoli)  
-> * [config.titoli_cortesia](/dbzero/config/tabelle/titoli_cortesia)  
+[anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)  
+> [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)  
+> [config.tipi_ruoli](/dbzero/config/tabelle/tipi_ruoli)  
+> [config.titoli_cortesia](/dbzero/config/tabelle/titoli_cortesia)  
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 20-02-26)
 La vista **`anagrafiche.vw_soggetti_ruoli_dettaglio`** fornisce una lettura
 generale dei ruoli soggetto, partendo da `soggetto_ruolo_id` e includendo:
@@ -41,7 +39,7 @@ in modo rapido ragione sociale e riferimenti fiscali di un ruolo.
 
 ---
 
-### 🔍 Esempi d’uso
+### Esempi d’uso
 
 ```sql
 SELECT

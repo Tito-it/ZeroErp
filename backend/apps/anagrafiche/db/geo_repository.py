@@ -11,6 +11,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from apps.core.db._helpers import dynamic_update, row_to_dict, rows_to_list
+
 from django.db import connection
 
 from apps.anagrafiche.db._helpers import extract_paginated
@@ -61,15 +63,14 @@ class GeoRepository:
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [descrizione.strip()])
-            row = cursor.fetchone()
-            assert row is not None
-            cols = [c.name for c in cursor.description]
-            return dict(zip(cols, row))
+            result = row_to_dict(cursor)
+            assert result is not None
+            return result
 
     # Scopo: Aggiorna tipo strada.
     def update_toponomastica(self, toponomastica_id: int, *, descrizione: str | None = None,
                              attivo: bool | None = None) -> bool:
-        return self._dynamic_update("config.toponomastica", toponomastica_id,
+        return dynamic_update("config.toponomastica", toponomastica_id,
                                     descrizione=descrizione, attivo=attivo)
 
     # =================================================================
@@ -112,11 +113,7 @@ class GeoRepository:
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [pk])
-            row = cursor.fetchone()
-            if not row:
-                return None
-            cols = [c.name for c in cursor.description]
-            return dict(zip(cols, row))
+            return row_to_dict(cursor)
 
     # Scopo: Dettaglio singolo regione.
     def get_regione(self, pk: int) -> dict[str, Any] | None:
@@ -128,11 +125,7 @@ class GeoRepository:
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [pk])
-            row = cursor.fetchone()
-            if not row:
-                return None
-            cols = [c.name for c in cursor.description]
-            return dict(zip(cols, row))
+            return row_to_dict(cursor)
 
     # Scopo: Dettaglio singolo stato.
     def get_stato(self, pk: int) -> dict[str, Any] | None:
@@ -147,10 +140,9 @@ class GeoRepository:
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [descrizione.strip(), provincia_id])
-            row = cursor.fetchone()
-            assert row is not None
-            cols = [c.name for c in cursor.description]
-            return dict(zip(cols, row))
+            result = row_to_dict(cursor)
+            assert result is not None
+            return result
 
     # =================================================================
     # Codici Postali (CAP)
@@ -193,11 +185,7 @@ class GeoRepository:
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [pk])
-            row = cursor.fetchone()
-            if not row:
-                return None
-            cols = [c.name for c in cursor.description]
-            return dict(zip(cols, row))
+            return row_to_dict(cursor)
 
     # Scopo: Crea codice postale.
     def create_codice_postale(self, *, codice: str, comune_id: int) -> dict[str, Any]:
@@ -207,15 +195,14 @@ class GeoRepository:
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [codice.strip(), comune_id])
-            row = cursor.fetchone()
-            assert row is not None
-            cols = [c.name for c in cursor.description]
-            return dict(zip(cols, row))
+            result = row_to_dict(cursor)
+            assert result is not None
+            return result
 
     # Scopo: Aggiorna codice postale.
     def update_codice_postale(self, pk: int, *, codice: str | None = None,
                               comune_id: int | None = None) -> bool:
-        return self._dynamic_update("config.codici_postali", pk,
+        return dynamic_update("config.codici_postali", pk,
                                     codice=codice, comune_id=comune_id)
 
     # =================================================================
@@ -259,8 +246,7 @@ class GeoRepository:
         """
         with connection.cursor() as cursor:
             cursor.execute(sql)
-            cols = [c.name for c in cursor.description]
-            return [dict(zip(cols, row)) for row in cursor.fetchall()]
+            return rows_to_list(cursor)
 
     # Scopo: Crea provincia.
     def create_provincia(self, *, descrizione: str, sigla: str,
@@ -271,26 +257,17 @@ class GeoRepository:
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [descrizione.strip(), sigla.strip().upper(), regione_id])
-            row = cursor.fetchone()
-            assert row is not None
-            cols = [c.name for c in cursor.description]
-            return dict(zip(cols, row))
+            result = row_to_dict(cursor)
+            assert result is not None
+            return result
 
     # Scopo: Aggiorna provincia.
     def update_provincia(self, provincia_id: int, *, descrizione: str | None = None,
                          sigla: str | None = None, regione_id: int | None = None) -> bool:
-        fields: list[str] = []
-        params: list[Any] = []
-        if descrizione is not None:
-            fields.append("descrizione = %s")
-            params.append(descrizione.strip())
-        if sigla is not None:
-            fields.append("sigla = %s")
-            params.append(sigla.strip().upper())
-        if regione_id is not None:
-            fields.append("regione_id = %s")
-            params.append(regione_id)
-        return self._execute_update("config.province", provincia_id, fields, params)
+        return dynamic_update("config.province", provincia_id,
+                              descrizione=descrizione,
+                              sigla=sigla.strip().upper() if sigla else sigla,
+                              regione_id=regione_id)
 
     # =================================================================
     # Regioni
@@ -331,8 +308,7 @@ class GeoRepository:
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [stato_id, stato_id])
-            cols = [c.name for c in cursor.description]
-            return [dict(zip(cols, row)) for row in cursor.fetchall()]
+            return rows_to_list(cursor)
 
     # Scopo: Crea regione.
     def create_regione(self, *, descrizione: str, stato_id: int | None = None) -> dict[str, Any]:
@@ -342,15 +318,14 @@ class GeoRepository:
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [descrizione.strip(), stato_id])
-            row = cursor.fetchone()
-            assert row is not None
-            cols = [c.name for c in cursor.description]
-            return dict(zip(cols, row))
+            result = row_to_dict(cursor)
+            assert result is not None
+            return result
 
     # Scopo: Aggiorna regione.
     def update_regione(self, regione_id: int, *, descrizione: str | None = None,
                        stato_id: int | None = None) -> bool:
-        return self._dynamic_update("config.regioni", regione_id,
+        return dynamic_update("config.regioni", regione_id,
                                     descrizione=descrizione, stato_id=stato_id)
 
     # =================================================================
@@ -387,8 +362,7 @@ class GeoRepository:
         sql = "SELECT id, descrizione, codice_iso2 FROM config.stati ORDER BY descrizione"
         with connection.cursor() as cursor:
             cursor.execute(sql)
-            cols = [c.name for c in cursor.description]
-            return [dict(zip(cols, row)) for row in cursor.fetchall()]
+            return rows_to_list(cursor)
 
     # Scopo: Crea stato.
     def create_stato(self, *, descrizione: str, codice_iso2: str | None = None,
@@ -410,37 +384,22 @@ class GeoRepository:
                 codice_telefonico.strip() if codice_telefonico else None,
                 continente.strip() if continente else None,
             ])
-            row = cursor.fetchone()
-            assert row is not None
-            cols = [c.name for c in cursor.description]
-            return dict(zip(cols, row))
+            result = row_to_dict(cursor)
+            assert result is not None
+            return result
 
     # Scopo: Aggiorna stato.
     def update_stato(self, stato_id: int, *, descrizione: str | None = None,
                      codice_iso2: str | None = None, codice_iso3: str | None = None,
                      sigla_stato: str | None = None, codice_telefonico: str | None = None,
                      continente: str | None = None) -> bool:
-        fields: list[str] = []
-        params: list[Any] = []
-        if descrizione is not None:
-            fields.append("descrizione = %s")
-            params.append(descrizione.strip())
-        if codice_iso2 is not None:
-            fields.append("codice_iso2 = %s")
-            params.append(codice_iso2.strip().upper())
-        if codice_iso3 is not None:
-            fields.append("codice_iso3 = %s")
-            params.append(codice_iso3.strip().upper())
-        if sigla_stato is not None:
-            fields.append("sigla_stato = %s")
-            params.append(sigla_stato.strip().upper())
-        if codice_telefonico is not None:
-            fields.append("codice_telefonico = %s")
-            params.append(codice_telefonico.strip())
-        if continente is not None:
-            fields.append("continente = %s")
-            params.append(continente.strip())
-        return self._execute_update("config.stati", stato_id, fields, params)
+        return dynamic_update("config.stati", stato_id,
+                              descrizione=descrizione,
+                              codice_iso2=codice_iso2.strip().upper() if codice_iso2 else codice_iso2,
+                              codice_iso3=codice_iso3.strip().upper() if codice_iso3 else codice_iso3,
+                              sigla_stato=sigla_stato.strip().upper() if sigla_stato else sigla_stato,
+                              codice_telefonico=codice_telefonico,
+                              continente=continente)
 
     # =================================================================
     # Helper interni
@@ -451,30 +410,5 @@ class GeoRepository:
         sql = f"SELECT {columns} FROM {table} WHERE id = %s"  # noqa: S608
         with connection.cursor() as cursor:
             cursor.execute(sql, [pk])
-            row = cursor.fetchone()
-            if not row:
-                return None
-            cols = [c.name for c in cursor.description]
-            return dict(zip(cols, row))
+            return row_to_dict(cursor)
 
-    # Scopo: UPDATE dinamico generico per entita' semplici (descrizione, attivo, ecc.).
-    def _dynamic_update(self, table: str, pk: int, **kwargs) -> bool:
-        fields: list[str] = []
-        params: list[Any] = []
-        for col, val in kwargs.items():
-            if val is not None:
-                if isinstance(val, str):
-                    val = val.strip()
-                fields.append(f"{col} = %s")
-                params.append(val)
-        return self._execute_update(table, pk, fields, params)
-
-    # Scopo: Esegue UPDATE con fields/params pre-costruiti.
-    def _execute_update(self, table: str, pk: int, fields: list[str], params: list[Any]) -> bool:
-        if not fields:
-            return False
-        params.append(pk)
-        sql = f"UPDATE {table} SET {', '.join(fields)} WHERE id = %s"  # noqa: S608
-        with connection.cursor() as cursor:
-            cursor.execute(sql, params)
-            return cursor.rowcount > 0

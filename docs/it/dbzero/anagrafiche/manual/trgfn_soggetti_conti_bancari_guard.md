@@ -2,16 +2,12 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> * [anagrafiche.conti_bancari](/dbzero/anagrafiche/tabelle/conti_bancari)   
-> * [anagrafiche.soggetti_conti_bancari](/dbzero/anagrafiche/tabelle/soggetti_conti_bancari)    
+[anagrafiche.conti_bancari](/dbzero/anagrafiche/tabelle/conti_bancari)   
+> [anagrafiche.soggetti_conti_bancari](/dbzero/anagrafiche/tabelle/soggetti_conti_bancari)    
 >
-
----
-
 ### 🎯 Scopo Principale
-
 (latest review 16-12-25)
 La trigger function **`anagrafiche.trgfn_soggetti_conti_bancari_guard()`** applica controlli di guardia (coerenza e ammissibilità) sui legami tra soggetti e conti bancari, con due obiettivi principali:
 
@@ -22,7 +18,7 @@ In caso di violazione, la funzione genera un **errore applicativo** tramite `ana
 
 ---
 
-### 🛠️ Firma
+### Firma
 
 ```sql
 CREATE OR REPLACE FUNCTION anagrafiche.trgfn_soggetti_conti_bancari_guard()
@@ -32,7 +28,7 @@ LANGUAGE plpgsql;
 
 ---
 
-### 📥 Input (Record Trigger)
+### Input (Record Trigger)
 
 Utilizza questi campi del record `NEW` (tabella legame):
 
@@ -48,14 +44,14 @@ E legge dalla tabella conti:
 
 ---
 
-### 📤 Output
+### Output
 
 * Ritorna `NEW`.
 * In caso di violazione: errore applicativo (bloccante).
 
 ---
 
-### 🔄 Logica Operativa
+### Logica Operativa
 
  **1) Guardia: conto bancario deve essere attivo**
 
@@ -114,21 +110,21 @@ Handler utilizzato:
 
 ---
 
-### 🧩 Side Effects
+### Side Effects
 
 * Nessun DML diretto.
 * Effetto principale: blocco INSERT/UPDATE sul legame se le regole non sono rispettate.
 
 ---
 
-### 🔍 Considerazioni di Modellazione
+### Considerazioni di Modellazione
 
 * La regola “conto attivo” evita collegamenti verso conti bancari dismessi/disattivati, preservando integrità funzionale (oltre alla sola FK).
 * Il controllo date è coerente con un CHECK constraint, ma qui viene reso **bloccante** con un messaggio applicativo centralizzato.
 
 ---
 
-### 🧪 Note per Test (pgTAP / SQL)
+### Note per Test (pgTAP / SQL)
 
 Casi minimi consigliati:
 
@@ -140,7 +136,7 @@ Casi minimi consigliati:
 
 ---
 
-### 🧩 Note di Allineamento (da verificare nel refactor)
+### Note di Allineamento (da verificare nel refactor)
 
 Nel corpo del trigger, il controllo usa:
 
@@ -156,15 +152,15 @@ Inoltre, nel payload della violazione date la chiave `tabella` è impostata a `a
 
 ---
 
-### 📌 Best Practice
+### Best Practice
 
-* ✅ Collegare questa function a un trigger `BEFORE INSERT OR UPDATE` sulla tabella legame soggetto↔conto.
-* ✅ Mantenere la regola “conto attivo” nel layer DB per evitare bypass applicativi.
-* ✅ Allineare il payload dei log ai nomi colonna reali (importante per troubleshooting e dashboard).
+* Collegare questa function a un trigger `BEFORE INSERT OR UPDATE` sulla tabella legame soggetto↔conto.
+* Mantenere la regola “conto attivo” nel layer DB per evitare bypass applicativi.
+* Allineare il payload dei log ai nomi colonna reali (importante per troubleshooting e dashboard).
 
 ---
 
-### 🗂️ Metadati
+### Metadati
 
 * **Schema:** `anagrafiche`
 * **Tipo:** trigger function (guard/consistency)

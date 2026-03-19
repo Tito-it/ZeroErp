@@ -2,24 +2,22 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimento Tabelle:
+Approfondimento Tabelle:
 >
-> * [config.parameter_overrides](/dbzero/config/tabelle/parameter_overrides)
-> * [storico.parameters](/dbzero/storico/tabelle/parameters)
+[config.parameter_overrides](/dbzero/config/tabelle/parameter_overrides)
+> [storico.parameters](/dbzero/storico/tabelle/parameters)
 >
-> Approfondimento funzioni e trigger:
+Approfondimento funzioni e trigger:
 >
-> * [script.trgfn_upd_dlt_storico_generic](/dbzero/script/funzioni/trgfn_upd_dlt_storico_generic)
-> * [dbops.trgfn_tx_id_managed](/dbzero/dbops/funzioni/trgfn_tx_id_managed)
+[script.trgfn_upd_dlt_storico_generic](/dbzero/script/funzioni/trgfn_upd_dlt_storico_generic)
+> [dbops.trgfn_tx_id_managed](/dbzero/dbops/funzioni/trgfn_tx_id_managed)
 
 ---
 
 La tabella **`storico.parameter_overrides`** memorizza gli snapshot delle modifiche operazioni (INSERT, UPDATE, DELETE) sulla tabella operativa `config.parameter_overrides`. Ogni riga rappresenta lo stato completo di un record di override in un preciso istante, sfruttando il campo JSONB per catturare dinamicamente l’intero contenuto.
 
 ---
-
 ### 🎯 Scopo Principale
-
 * **Versionamento degli override**
   Catturare ogni modifica ai record di `config.parameter_overrides`, consentendo di risalire allo stato precedente o iniziale di un override.
 * **Audit e compliance**
@@ -27,7 +25,7 @@ La tabella **`storico.parameter_overrides`** memorizza gli snapshot delle modifi
 
 ---
 
-### 🔗 Collegamenti con Altre Tabelle
+### Collegamenti con Altre Tabelle
 
 * **`config.parameter_overrides`**
 
@@ -41,7 +39,7 @@ La tabella **`storico.parameter_overrides`** memorizza gli snapshot delle modifi
 
 
 
-### 💡 Vantaggi Operativi
+### Vantaggi Operativi
 
 * **Cattura automatica delle modifiche**
   Lo snapshot JSONB elimina la necessità di mantenere colonne di audit per ciascun campo modificato.
@@ -54,4 +52,4 @@ La tabella **`storico.parameter_overrides`** memorizza gli snapshot delle modifi
 
 ---
 
-> 🧠 **“`storico.parameter_overrides` è l’unico punto di verità per tutte le variazioni sugli override di configurazione: snapshot JSONB, auditing completo e flessibilità di schema in un unico modello.”**
+> **“`storico.parameter_overrides` è l’unico punto di verità per tutte le variazioni sugli override di configurazione: snapshot JSONB, auditing completo e flessibilità di schema in un unico modello.”**

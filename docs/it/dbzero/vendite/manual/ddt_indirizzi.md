@@ -4,25 +4,22 @@
 >
 >Approfondimento tabelle:
 >
-> •[vendite.ddt](/dbzero/vendite/tabelle/ddt)     
+•[vendite.ddt](/dbzero/vendite/tabelle/ddt)     
 > •[config.tipi_indirizzi](/dbzero/config/tabelle/tipi_indirizzi)     
 > •[anagrafiche.indirizzi](/dbzero/anagrafiche/tabelle/indirizzi)      
 > •[anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)      
 >
-> Approfondimento funzioni:
+Approfondimento funzioni:
 >
-> •[`vendite.trgfn_tipi_indirizzi_only_allowed`](/dbzero/vendite/funzioni/trgfn_tipi_indirizzi_only_allowed)
+•[`vendite.trgfn_tipi_indirizzi_only_allowed`](/dbzero/vendite/funzioni/trgfn_tipi_indirizzi_only_allowed)
 >
-
----
 ### 🎯 Scopo Principale
-
 vendite.ddt_indirizzi gestisce gli indirizzi associati alla testata DDT tramite snapshot JSON al momento dell’emissione (o conferma logistica). Per ogni DDT è ammesso al più un indirizzo per tipo (es. spedizione, fornitura, residenza), garantito dall’univocità (ddt_id, tipo_indirizzo_id).
 
 Lo snapshot consente di cristallizzare dati variabili (via/numero, CAP, città, provincia, nazione, contatti, e-mail, note di resa, etc.) senza dipendere dalle future modifiche anagrafiche.
 
 ---
-### 🧱 Modello Dati (estratto)
+### Modello Dati (estratto)
 Campo	Tipo	Note
 id	bigint	PK tecnica.
 ddt_id	bigint	FK → vendite.ddt(id).
@@ -56,7 +53,7 @@ ix_ddt_indirizzi_origine_sog_ruolo (origine_soggetto_ruolo_id)
 
 ---
 
-### 🧮 Regole & Trigger
+### Regole & Trigger
 Trigger	Timing	Evento	Azione
 trg_ddt_indirizzi_a10_ins_upd_only_allowed_tipi	BEFORE	INSERT/UPDATE OF tipo_indirizzo_id	vendite.trgfn_tipi_indirizzi_only_allowed('DDT') → whitelist dei tipi ammessi per i DDT.
 
@@ -116,7 +113,7 @@ Per indirizzi internazionali aggiungere campi opzionali (es. line2, line3, count
 
 ---
 
-### 👓 Ruolo nel sistema
+### Ruolo nel sistema
 
 vendite.ddt_indirizzi è fondamentale per la logistica di consegna e per la stampa documentale: garantisce che il luogo/recapito di spedizione/fornitura stampato sul DDT sia quello effettivamente usato durante la spedizione, a prescindere da successive variazioni in anagrafica.
 

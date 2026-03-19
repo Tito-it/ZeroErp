@@ -1,7 +1,5 @@
 ## 📚 Documentazione concettuale - Tabella `dbops.fk_index_policy`
-
 ### 🎯 Scopo Principale
-
 (latest review 16-01-26)
 La tabella **`dbops.fk_index_policy`** definisce una **policy centralizzata** per la gestione degli index sulle foreign key, consentendo di abilitare o disabilitare la creazione/uso di indici per specifici vincoli referenziali.
 
@@ -10,7 +8,7 @@ La tabella **`dbops.fk_index_policy`** definisce una **policy centralizzata** pe
 
 ---
 
-### 🔒 Vincoli
+### Vincoli
 
 | Tipo        | Nome                   | Colonne                                    | Descrizione                                                        |
 | ----------- | ---------------------- | ------------------------------------------ | ------------------------------------------------------------------ |
@@ -18,7 +16,7 @@ La tabella **`dbops.fk_index_policy`** definisce una **policy centralizzata** pe
 
 ---
 
-### 💡 Uso e Casi d’Oro
+### Uso e Casi d’Oro
 
 * **Controllo centralizzato**: gestire in un unico punto l’abilitazione o meno degli indici sui vincoli referenziali, evitando di creare indici non necessari o ridondanti.
 * **Ottimizzazione delle performance**: disabilitare index su FK poco usati per ridurre overhead in scrittura, o forzare index su FK critici per migliorare le join.
@@ -27,7 +25,7 @@ La tabella **`dbops.fk_index_policy`** definisce una **policy centralizzata** pe
 
 ---
 
-### 🔧 Esempio di Utilizzo
+### Esempio di Utilizzo
 
 1. **Disabilitare index su un vincolo**
 
@@ -82,4 +80,4 @@ La tabella **`dbops.fk_index_policy`** definisce una **policy centralizzata** pe
    END$$;
    ```
 
-> 🧠 **“Utilizzare `fk_index_policy` consente di adattare dinamicamente la presenza di indici su foreign key per ottimizzare scritture e letture, centralizzando le decisioni e mantenendo tracciabilità.”**
+> **“Utilizzare `fk_index_policy` consente di adattare dinamicamente la presenza di indici su foreign key per ottimizzare scritture e letture, centralizzando le decisioni e mantenendo tracciabilità.”**

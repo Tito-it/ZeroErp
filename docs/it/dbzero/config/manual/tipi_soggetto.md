@@ -2,19 +2,17 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento Tabelle:**
+**Approfondimento Tabelle:**
 >
-> * [`config.tipi_soggetto_dettaglio`](/dbzero/config/tabelle/tipi_soggetto_dettaglio)    
-> * Impatto su: [`anagrafiche.soggetti` → colonna `tipo_soggetto_dettaglio_id`](/dbzero/anagrafiche/tabelle/soggetti)     
+[`config.tipi_soggetto_dettaglio`](/dbzero/config/tabelle/tipi_soggetto_dettaglio)    
+> Impatto su: [`anagrafiche.soggetti` → colonna `tipo_soggetto_dettaglio_id`](/dbzero/anagrafiche/tabelle/soggetti)     
 >
-> **Funzioni collegate:**  
+**Funzioni collegate:**  
 >
-> * [`anagrafiche.trgfn_soggetti_valida_cf_piva_dispatch`](/dbzero/anagrafiche/funzioni/trgfn_soggetti_valida_cf_piva_dispatch)   
+[`anagrafiche.trgfn_soggetti_valida_cf_piva_dispatch`](/dbzero/anagrafiche/funzioni/trgfn_soggetti_valida_cf_piva_dispatch)   
 
 ---
-
 ### 🎯 Scopo Principale
-
 La tabella **`config.tipi_soggetto`** definisce le **macro-tipologie** dei soggetti presenti nel sistema ERP:
 
 * **PF** → Persona Fisica
@@ -30,7 +28,7 @@ Questa classificazione di alto livello:
 
 ---
 
-### 🧩 Struttura della Tabella
+### Struttura della Tabella
 
 | Colonna                      | Tipo                          | Note                                             |
 | ---------------------------- | ----------------------------- | ------------------------------------------------ |
@@ -49,11 +47,11 @@ Valori ammessi:
 * **ENTE** – Ente / Ente non commerciale
 * **ALTRO** – Categoria residuale
 
-> 📌 Usato per distinguere flussi, controlli e tassazioni basate sulla natura giuridica.
+> Usato per distinguere flussi, controlli e tassazioni basate sulla natura giuridica.
 
 ---
 
-### 🔍 Problematiche Affrontate
+### Problematiche Affrontate
 
 **1. Coerenza tra classificazione generale e dettaglio**
 
@@ -74,7 +72,7 @@ La logica applicativa non dipende più da valori fissi, ma da configurazione str
 
 ---
 
-### 🔒 Vincoli e Trigger
+### Vincoli e Trigger
 
 * **PK:** `pk_tipi_soggetto` su `id`
 * **NOT NULL:** `natura_soggetto`
@@ -83,7 +81,7 @@ La logica applicativa non dipende più da valori fissi, ma da configurazione str
 
 ---
 
-### ⚙️ Meccanismo di Integrazione con il Modello Dati
+### Meccanismo di Integrazione con il Modello Dati
 
  1️⃣ Inserimento Tipi Base
 
@@ -117,11 +115,11 @@ Questo permette di definire formati CF/P.IVA, policy fiscali, vincoli nazionali.
 
 ---
 
-### 💡 Vantaggi Operativi
+### Vantaggi Operativi
 
 * **Chiarezza architetturale**: macro‑tipologie stabili, dettagli variabili.
 * **Scalabilità internazionale**: nuove normative = nuovi dettagli, senza toccare i macro‑tipi.
 * **Validazioni flessibili**: CF/P.IVA dipendono dal paese e dal dettaglio, non dal macro‑tipo.
 * **Riduzione della logica hardcoded**: tutto viene configurato a livello tabellare.
 
-> 🧠 **“Separare la macro‑tipologia dal dettaglio permette un modello robusto, scalabile e adatto a gestire qualsiasi evoluzione normativa.”**
+> **“Separare la macro‑tipologia dal dettaglio permette un modello robusto, scalabile e adatto a gestire qualsiasi evoluzione normativa.”**

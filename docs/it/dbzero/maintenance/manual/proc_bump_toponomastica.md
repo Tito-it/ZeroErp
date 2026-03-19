@@ -2,26 +2,23 @@
 
 > 👀 **Vedi anche**   
 >
-> **Approfondimento tabelle:**    
+**Approfondimento tabelle:**    
 >
-> * [config.toponomastica](/dbzero/config/tabelle/toponomastica)   
-> * [config.stradario_generale](/dbzero/config/tabelle/stradario_generale)   
+[config.toponomastica](/dbzero/config/tabelle/toponomastica)   
+> [config.stradario_generale](/dbzero/config/tabelle/stradario_generale)   
 >
-> **Approfondimento funzioni:**   
+**Approfondimento funzioni:**   
 >
-> * [config.trgfn_toponomastica_bump_normalize](/dbzero/config/funzioni/trgfn_toponomastica_bump_normalize)   
-> * [config.trgfn_toponomastica_protect_update](/dbzero/config/funzioni/trgfn_toponomastica_protect_update)   
+[config.trgfn_toponomastica_bump_normalize](/dbzero/config/funzioni/trgfn_toponomastica_bump_normalize)   
+> [config.trgfn_toponomastica_protect_update](/dbzero/config/funzioni/trgfn_toponomastica_protect_update)   
 >
----
-
 ### 🎯 Scopo Principale
-
 (latest review 02-01-26)
 Consentire la correzione controllata di un toponimo **in uso**, forzando la rinormalizzazione di `config.stradario_generale` tramite i trigger esistenti.
 
 ---
 
-### 🧩 Come Funziona
+### Come Funziona
 
 1. Attiva un flag di manutenzione di sessione (`zeroerp.maintenance_toponomastica = 'on'`).
 2. Aggiorna la descrizione del toponimo (`config.toponomastica.descrizione`).
@@ -29,7 +26,7 @@ Consentire la correzione controllata di un toponimo **in uso**, forzando la rino
 
 ---
 
-### 📥 Parametri
+### Parametri
 
 | Parametro            | Tipo    | Descrizione                     |
 | -------------------- | ------- | ------------------------------- |
@@ -38,18 +35,18 @@ Consentire la correzione controllata di un toponimo **in uso**, forzando la rino
 
 ---
 
-### ✅ Output
+### Output
 
 * Nessun valore di ritorno (procedura).
 
 ---
 
-### 💡 Note Operative
+### Note Operative
 
 * La procedura va usata solo in manutenzione controllata.
 * Fuori manutenzione, il guard blocca le modifiche ai toponimi in uso.
 
 ---
 
-> 🧠 **"Correzione controllata dei toponimi, con riallineamento automatico dello stradario generale."**
+> **"Correzione controllata dei toponimi, con riallineamento automatico dello stradario generale."**
 

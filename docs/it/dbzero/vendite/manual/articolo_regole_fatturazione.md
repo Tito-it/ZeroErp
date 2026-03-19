@@ -2,18 +2,16 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**   
+**Approfondimento tabelle:**   
 >
-> • [catalogo.articoli](/dbzero/catalogo/tabelle/articoli)    
+• [catalogo.articoli](/dbzero/catalogo/tabelle/articoli)    
 > • [catalogo.articoli_componenti](/dbzero/catalogo/tabelle/articoli_componenti)   
 > • [vendite.preventivi_righe](/dbzero/vendite/tabelle/preventivi_righe)   
 > • [vendite.ordini_righe](/dbzero/vendite/tabelle/ordini_righe)   
 > • [vendite.fatture_righe](/dbzero/vendite/tabelle/fatture_righe)   
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 21-01-2026)
 Questa tabella definisce, **per ciascun articolo**, le regole di business che governano:
 
@@ -26,7 +24,7 @@ Il vincolo `UNIQUE (articolo_id)` garantisce una relazione **1:1** tra articolo 
 
 ---
 
-### 🧭 Collocazione nel flusso
+### Collocazione nel flusso
 
 Le regole vengono lette dal motore documentale durante:
 
@@ -44,7 +42,7 @@ Le regole vengono lette dal motore documentale durante:
 
 ---
 
-### 🔍 Visibilità vs generazione
+### Visibilità vs generazione
 
 È importante distinguere:
 
@@ -58,7 +56,7 @@ e **aggregarle in stampa** (visibilità), mantenendo nel DB il dettaglio complet
 **Per visibilità su stampa e UI sarà generata un apposita tabella**
 ---
 
-### 🔑 Campi chiave
+### Campi chiave
 
 * `visibilita_componenti`: `solo_padre` | `padre_componenti` | `solo_componenti`
   → controlla la visibilità dei componenti (non necessariamente la loro generazione).
@@ -70,7 +68,7 @@ e **aggregarle in stampa** (visibilità), mantenendo nel DB il dettaglio complet
 
 ---
 
-### 🧪 Esempi d’uso
+### Esempi d’uso
 
 * **Esplosione kit (visibilità)**
 
@@ -88,14 +86,14 @@ e **aggregarle in stampa** (visibilità), mantenendo nel DB il dettaglio complet
 
 ---
 
-### 🔗 Relazioni e dipendenze
+### Relazioni e dipendenze
 
 * **FK** → `catalogo.articoli(id)` (ON UPDATE CASCADE, ON DELETE RESTRICT).
   Previene l’eliminazione di articoli con regole definite.
 
 ---
 
-### ✅ Aspetti positivi
+### Aspetti positivi
 
 * Coerenza 1:1 con `catalogo.articoli`.
 * Check constraint completi su domini e range (0–6 decimali).
@@ -115,7 +113,7 @@ e **aggregarle in stampa** (visibilità), mantenendo nel DB il dettaglio complet
 
 ---
 
-### 👓 Importanza nel sistema
+### Importanza nel sistema
 
 Tabella cruciale per la **consistenza dei calcoli** e la **leggibilità dei documenti**.
 Stabilisce come un articolo composito viene visualizzato e valorizzato, garantendo uniformità nei calcoli di quantità e importi in tutto il ciclo documentale (`preventivo → ordine → DDT → fattura`).

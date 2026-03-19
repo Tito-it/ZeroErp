@@ -91,13 +91,22 @@ class IndirizziDetailView(DomainAPIView):
 
 
 class IndirizziCheckDuplicatoView(DomainAPIView):
-    """POST check duplicato indirizzo (stradario_id + civico)."""
+    """POST check duplicato indirizzo. Due flussi:
+    A) stradario_id diretto, B) stradario_generale_id + comune_id."""
     area_funzionale = "anagrafiche"
 
     @extend_schema(
         request=inline_serializer(name="IndirizzoCheckDupReq", fields={
-            "stradario_id": serializers.IntegerField(required=False),
+            "stradario_id": serializers.IntegerField(required=False, help_text="Flusso A: stradario locale"),
+            "stradario_generale_id": serializers.IntegerField(required=False, help_text="Flusso B: stradario generale"),
+            "comune_id": serializers.IntegerField(required=False, help_text="Flusso B: comune"),
+            "codice_postale_id": serializers.IntegerField(required=False, help_text="Flusso B: CAP (opzionale)"),
             "civico": serializers.IntegerField(required=False),
+            "estensione_civico": serializers.CharField(required=False),
+            "palazzina": serializers.CharField(required=False),
+            "scala": serializers.CharField(required=False),
+            "piano": serializers.CharField(required=False),
+            "interno": serializers.CharField(required=False),
         }),
         responses={200: inline_serializer(name="IndirizzoCheckDupResp", fields={"data": serializers.DictField()})},
     )

@@ -2,18 +2,16 @@
 
 > 👀 **Vedi anche**
 >
-> * Catalogo funzioni PostgreSQL (`pg_proc`, `pg_namespace`, `pg_description`)   
+Catalogo funzioni PostgreSQL (`pg_proc`, `pg_namespace`, `pg_description`)   
 >
-> Altre view di catalogazione:
+Altre view di catalogazione:
 >  
-> * [dbops.vw_catalogo_oggetti](/dbzero/dbops/views/vw_catalogo_oggetti)  
+[dbops.vw_catalogo_oggetti](/dbzero/dbops/views/vw_catalogo_oggetti)  
 
 La view **`dbops.vw_function_list`** fornisce un inventario completo delle funzioni definite negli schemi **`dbops`** e **`script`**, mostrando firma, tipo di ritorno, numero di parametri e commenti associati.
 
 ---
-
 ### 🎯 Scopo Principale
-
 * Agevolare il **discovery** delle funzioni personalizzate per manutenzione e documentazione.
 * Rendere immediatamente disponibili:
 
@@ -25,7 +23,7 @@ La view **`dbops.vw_function_list`** fornisce un inventario completo delle funzi
 
 ---
 
-### 🔍 Definizione (DDL)
+### Definizione (DDL)
 
 ```sql
 CREATE OR REPLACE VIEW dbops.vw_function_list AS
@@ -58,7 +56,7 @@ WHERE n.nspname = ANY (ARRAY['dbops', 'script']);
 
 ---
 
-### 🔍 Colonne e Significato
+### Colonne e Significato
 
 | Colonna         | Descrizione                                                                       |
 | --------------- | --------------------------------------------------------------------------------- |
@@ -72,7 +70,7 @@ WHERE n.nspname = ANY (ARRAY['dbops', 'script']);
 
 ---
 
-### ⚙️ Esempi di Utilizzo
+### Esempi di Utilizzo
 
 1. **Elencare tutte le funzioni senza commento**:
 
@@ -108,7 +106,7 @@ WHERE n.nspname = ANY (ARRAY['dbops', 'script']);
 
 ---
 
-### 💡 Vantaggi Operativi
+### Vantaggi Operativi
 
 * **Manutenzione semplificata**: individua rapidamente funzioni non documentate.
 * **Analisi delle API interne**: mappa le signature disponibili per integrazioni o refactoring.
@@ -116,4 +114,4 @@ WHERE n.nspname = ANY (ARRAY['dbops', 'script']);
 
 ---
 
-> 🧠 **“Una panoramica centralizzata delle funzioni del database accelera il lavoro di sviluppo, auditing e documentazione del codice SQL.”**
+> **“Una panoramica centralizzata delle funzioni del database accelera il lavoro di sviluppo, auditing e documentazione del codice SQL.”**

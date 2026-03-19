@@ -2,20 +2,18 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento Tabelle:**
+**Approfondimento Tabelle:**
 >
-> * [config.parameters](/dbzero/config/tabelle/parameters)   
-> * [config.parameter_overrides](/dbzero/config/tabelle/parameter_overrides)   
+[config.parameters](/dbzero/config/tabelle/parameters)   
+> [config.parameter_overrides](/dbzero/config/tabelle/parameter_overrides)   
 >
-> **Approfondimento funzioni:**
+**Approfondimento funzioni:**
 >
-> * [script.fn_get_parameter_full](/dbzero/script/funzioni/fn_get_parameter_full)    
-> * [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)    
+[script.fn_get_parameter_full](/dbzero/script/funzioni/fn_get_parameter_full)    
+> [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)    
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest update 21-12-25)
 Recuperare in modo dinamico un valore (tipicamente una **PK**) da una tabella qualsiasi, basandosi su un **codice parametro**.
 
@@ -30,7 +28,7 @@ La funzione:
 
 ---
 
-### 🔗 Collegamenti
+### Collegamenti
 
 * **`script.fn_get_parameter_full`** – risolve il valore di filtro (stringa) usando default + override.
 * **`script.fn_log_and_raise_error`** – logging + raise error standardizzato (`E_DEFAULT_ERRATO`).
@@ -38,7 +36,7 @@ La funzione:
 
 ---
 
-### 🔍 Parametri di Input
+### Parametri di Input
 
 | Nome              | Tipo   | Descrizione                                                               |
 | ----------------- | ------ | ------------------------------------------------------------------------- |
@@ -50,14 +48,14 @@ La funzione:
 
 ---
 
-### 🔒 Valore di Ritorno
+### Valore di Ritorno
 
 * **`TEXT`**: il valore della PK (o identificativo) trovato.
   Il chiamante può fare cast a `INTEGER`, `UUID`, ecc.
 
 ---
 
-### ⚙️ Flusso Logico (coerente con l’implementazione attuale)
+### Flusso Logico (coerente con l’implementazione attuale)
 
  **1️⃣ Risoluzione del valore parametro**
 
@@ -81,7 +79,7 @@ v_param_val := script.fn_get_parameter_full(
 );
 ```
 
-> 📌 Nota: l’uso posizionale richiede di rispettare l’ordine dei parametri. Se in futuro la firma evolvesse, è consigliato usare **named parameters**.
+> Nota: l’uso posizionale richiede di rispettare l’ordine dei parametri. Se in futuro la firma evolvesse, è consigliato usare **named parameters**.
 
 ---
 
@@ -108,7 +106,7 @@ Se `v_lookup_id` è `NULL`, log + raise `E_DEFAULT_ERRATO`.
 
 ---
 
-### 💡 Note Operative
+### Note Operative
 
 * **Sicurezza:** la parte variabile nel `WHERE` usa `USING v_param_val` (parametro) e riduce rischi di injection sul valore.
 * **Limite:** ritorna sempre un solo valore (`LIMIT 1`). Se la tabella non garantisce unicità sul filtro, la scelta è non deterministica.
@@ -116,6 +114,6 @@ Se `v_lookup_id` è `NULL`, log + raise `E_DEFAULT_ERRATO`.
 
 ---
 
-> 🧠 **“`fn_get_default_by_param` standardizza il recupero di ID basati su parametri di configurazione, mantenendo la logica schema‑agnostica, tracciabile e con gestione errori uniforme.”**
+> **“`fn_get_default_by_param` standardizza il recupero di ID basati su parametri di configurazione, mantenendo la logica schema‑agnostica, tracciabile e con gestione errori uniforme.”**
 
 {% include-markdown "signature-core.md" %}

@@ -2,18 +2,15 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> * [anagrafiche.conti_bancari](/dbzero/anagrafiche/tabelle/conti_bancari)   
-> * [anagrafiche.soggetti_ruoli_conti_bancari](/dbzero/anagrafiche/tabelle/soggetti_ruoli_conti_bancari)   
+[anagrafiche.conti_bancari](/dbzero/anagrafiche/tabelle/conti_bancari)   
+> [anagrafiche.soggetti_ruoli_conti_bancari](/dbzero/anagrafiche/tabelle/soggetti_ruoli_conti_bancari)   
 >
-> **Approfondimento funzioni:**
+**Approfondimento funzioni:**
 >
-> * `anagrafiche.trgfn_soggetti_conti_bancari_guard`   
+`anagrafiche.trgfn_soggetti_conti_bancari_guard`   
 >
-
----
-
 ### 🎯 Scopo Principale
 (last review 16-12-25)
 La trigger function **`anagrafiche.trgfn_soggetti_ruoli_conti_bancari_guard()`** applica controlli di guardia sui legami tra **ruoli del soggetto** e **conti bancari**, impedendo:
@@ -25,7 +22,7 @@ In caso di violazione, viene generato un **errore applicativo** tramite `anagraf
 
 ---
 
-### 🛠️ Firma
+### Firma
 
 ```sql
 CREATE OR REPLACE FUNCTION anagrafiche.trgfn_soggetti_ruoli_conti_bancari_guard()
@@ -35,7 +32,7 @@ LANGUAGE plpgsql;
 
 ---
 
-### 📥 Input (Record Trigger)
+### Input (Record Trigger)
 
 Utilizza dal record `NEW` (tabella legame):
 
@@ -51,14 +48,14 @@ E legge da:
 
 ---
 
-### 📤 Output
+### Output
 
 * Ritorna `NEW`.
 * In caso di violazione: errore applicativo (bloccante).
 
 ---
 
-### 🔄 Logica Operativa
+### Logica Operativa
 
  **1) Guardia: conto bancario deve essere attivo**
 
@@ -111,14 +108,14 @@ Handler:
 
 ---
 
-### 🧩 Side Effects
+### Side Effects
 
 * Nessun DML diretto.
 * Effetto: blocco INSERT/UPDATE sul legame soggetto_ruolo↔conto quando non conforme.
 
 ---
 
-### 🧪 Note per Test (pgTAP / SQL)
+### Note per Test (pgTAP / SQL)
 
 Casi minimi consigliati:
 
@@ -130,15 +127,15 @@ Casi minimi consigliati:
 
 ---
 
-### 📌 Best Practice
+### Best Practice
 
-* ✅ Trigger `BEFORE INSERT OR UPDATE` sulla tabella legame soggetti_ruoli↔conti.
-* ✅ Centralizzare i codici errore e mantenere coerenza del “contesto” di log.
-* ✅ Mantenere la guardia sul conto attivo nel DB per evitare bypass applicativi.
+* Trigger `BEFORE INSERT OR UPDATE` sulla tabella legame soggetti_ruoli↔conti.
+* Centralizzare i codici errore e mantenere coerenza del “contesto” di log.
+* Mantenere la guardia sul conto attivo nel DB per evitare bypass applicativi.
 
 ---
 
-### 🗂️ Metadati
+### Metadati
 
 * **Schema:** `anagrafiche`
 * **Tipo:** trigger function (guard/consistency)

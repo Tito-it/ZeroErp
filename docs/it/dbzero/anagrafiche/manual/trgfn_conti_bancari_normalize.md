@@ -2,16 +2,14 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 > 
-> * [anagrafiche.conti_bancari](/dbzero/anagrafiche/tabelle/conti_bancari)     
+[anagrafiche.conti_bancari](/dbzero/anagrafiche/tabelle/conti_bancari)     
 >
-> 💡 **Nota**: questa funzione è pensata per essere agganciata a un trigger `BEFORE INSERT OR UPDATE` sulla tabella conti bancari (o equivalente).
+**Nota**: questa funzione è pensata per essere agganciata a un trigger `BEFORE INSERT OR UPDATE` sulla tabella conti bancari (o equivalente).
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 15-12-26)
 La trigger function **`anagrafiche.trgfn_conti_bancari_normalize()`** normalizza i campi bancari principali prima della persistenza, applicando regole semplici e deterministicamente ripetibili:
 
@@ -27,7 +25,7 @@ Obiettivo:
 
 ---
 
-### 🛠️ Firma
+### Firma
 
 ```sql
 CREATE OR REPLACE FUNCTION anagrafiche.trgfn_conti_bancari_normalize()
@@ -37,7 +35,7 @@ LANGUAGE plpgsql;
 
 ---
 
-### 📥 Input (Record Trigger)
+### Input (Record Trigger)
 
 Utilizza (quando presenti) i campi del record `NEW`:
 
@@ -47,7 +45,7 @@ Utilizza (quando presenti) i campi del record `NEW`:
 
 ---
 
-### 📤 Output
+### Output
 
 * Ritorna `NEW`.
 * Può modificare:
@@ -58,7 +56,7 @@ Utilizza (quando presenti) i campi del record `NEW`:
 
 ---
 
-### 🔄 Logica Operativa
+### Logica Operativa
 
  **1) Normalizzazione IBAN**
 
@@ -95,7 +93,7 @@ Esempio:
 
 ---
 
-### 🧩 Side Effects
+### Side Effects
 
 * Nessun DML diretto.
 * Modifica del record `NEW` (normalizzazione), quindi va usata su trigger **BEFORE**.
@@ -109,12 +107,12 @@ Esempio:
 
 > Se sono previsti vincoli di validazione, vanno implementati con:
 >
-> * CHECK constraint / funzione di validazione dedicata
-> * trigger separato (es. `trgfn_conti_bancari_validate_*`)
+CHECK constraint / funzione di validazione dedicata
+> trigger separato (es. `trgfn_conti_bancari_validate_*`)
 
 ---
 
-### 🔍 Esempi di Comportamento
+### Esempi di Comportamento
 
  **Caso A – IBAN con spazi e paese mancante**
 
@@ -151,7 +149,7 @@ Output:
 
 ---
 
-### 🧪 Note per Test (pgTAP / SQL)
+### Note per Test (pgTAP / SQL)
 
 Casi minimi consigliati:
 
@@ -164,15 +162,15 @@ Casi minimi consigliati:
 
 ---
 
-### 📌 Best Practice
+### Best Practice
 
-* ✅ Trigger `BEFORE INSERT OR UPDATE` su `anagrafiche.conti_bancari`.
-* ✅ Affiancare una validazione formale separata se necessaria (IBAN/BIC).
-* ✅ Evitare validazioni pesanti in normalize: questa funzione deve restare *fast* e ripetibile.
+* Trigger `BEFORE INSERT OR UPDATE` su `anagrafiche.conti_bancari`.
+* Affiancare una validazione formale separata se necessaria (IBAN/BIC).
+* Evitare validazioni pesanti in normalize: questa funzione deve restare *fast* e ripetibile.
 
 ---
 
-### 🗂️ Metadati
+### Metadati
 
 * **Schema:** `anagrafiche`
 * **Tipo:** trigger function (normalize)

@@ -4,7 +4,7 @@
 # Uso: ./scripts/smoke-test-amm-software.sh [password]
 # Richiede utente ADMIN (ruolo_sistema = ADMIN)
 # ------------------------------------------------------------
-# Indice test (0..15):
+# Indice test (0..17):
 #  0) Autenticazione JWT
 #  1) Lookup qualifiche attive (via core/lookup-codici)
 #  2) Lookup unita' organizzative
@@ -22,6 +22,8 @@
 # 14) Matrice indirizzi per tipo PR (Sprint 3)
 # 15) Autocomplete comuni (Sprint 3)
 # 16) Search stradario (Sprint 3)
+# 17) Config resolver per tipo ruolo RIS_UMANA (Sprint 4)
+# 18) Config resolver per tipo ruolo inesistente (Sprint 4)
 # ------------------------------------------------------------
 set -euo pipefail
 
@@ -445,6 +447,42 @@ try:
 except Exception as e:
     print(f'  --- errore parsing: {e}')
 " 2>/dev/null
+
+# ================================================================
+# CONFIG RESOLVER — Sprint 4 (SoggettoResolver)
+# ================================================================
+echo ""
+echo "-- 17. Config resolver RIS_UMANA --"
+
+do_curl GET "/api/v1/anagrafiche/ruoli/RIS_UMANA/config-resolver/"
+check "GET config-resolver RIS_UMANA" 200
+
+echo "$LAST_BODY" | python3 -c "
+import sys, json
+try:
+    d = json.load(sys.stdin)['data']
+    print(f'  --- tipo_ruolo: {d.get(\"tipo_ruolo\",\"?\")}')
+    print(f'  --- nature ammesse: {d.get(\"nature_ammesse\",[])}')
+    dettagli = d.get('tipi_soggetto_dettaglio', [])
+    print(f'  --- tipi dettaglio: {len(dettagli)}')
+    for t in dettagli:
+        cf = 'CF*' if t.get('cf_obbligatorio') else 'CF'
+        piva = 'PIVA*' if t.get('piva_obbligatoria') else 'PIVA'
+        print(f'      {t.get(\"codice_interno\",\"?\")} ({t.get(\"natura_soggetto\",\"?\")}) {cf} {piva}')
+except Exception as e:
+    print(f'  --- errore parsing: {e}')
+" 2>/dev/null
+
+# --- 18. Config resolver ruolo inesistente ---
+echo ""
+echo "-- 18. Config resolver ruolo inesistente --"
+
+do_curl GET "/api/v1/anagrafiche/ruoli/INESISTENTE/config-resolver/"
+if [[ "$LAST_STATUS" == "404" ]] || [[ "$LAST_STATUS" == "400" ]]; then
+    log_ok "GET config-resolver INESISTENTE (HTTP $LAST_STATUS — errore atteso)"
+else
+    log_fail "GET config-resolver INESISTENTE — atteso 404, ricevuto $LAST_STATUS"
+fi
 
 # ================================================================
 echo ""

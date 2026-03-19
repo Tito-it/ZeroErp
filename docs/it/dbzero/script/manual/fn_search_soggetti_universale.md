@@ -2,33 +2,31 @@
 
 > Vedi anche
 >
-> Approfondimento tabelle:
+Approfondimento tabelle:
 >
-> * [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)
-> * [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)
-> * [config.tipi_ruoli](/dbzero/config/tabelle/tipi_ruoli)
-> * [anagrafiche.clienti](/dbzero/anagrafiche/tabelle/clienti)
-> * [config.utilities](/dbzero/config/tabelle/utilities)
-> * [anagrafiche.vw_clienti_codice_ba](/dbzero/anagrafiche/views/vw_clienti_codice_ba)
+[anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)
+> [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)
+> [config.tipi_ruoli](/dbzero/config/tabelle/tipi_ruoli)
+> [anagrafiche.clienti](/dbzero/anagrafiche/tabelle/clienti)
+> [config.utilities](/dbzero/config/tabelle/utilities)
+> [anagrafiche.vw_clienti_codice_ba](/dbzero/anagrafiche/views/vw_clienti_codice_ba)
 >
-> Funzione complementare (livello 2):
+Funzione complementare (livello 2):
 >
-> * [script.fn_get_search_detail](/dbzero/script/funzioni/fn_get_search_detail)
+[script.fn_get_search_detail](/dbzero/script/funzioni/fn_get_search_detail)
 >
-> Funzione dati entita':
+Funzione dati entita':
 >
-> * [script.fn_get_entita_ruolo_detail](/dbzero/script/funzioni/fn_get_entita_ruolo_detail)
+[script.fn_get_entita_ruolo_detail](/dbzero/script/funzioni/fn_get_entita_ruolo_detail)
 >
-> Documento di design:
+Documento di design:
 >
-> * [Contesto Globale Ricerca Universale](/dev/work-in-progress/frontend/contesto-globale-ricerca-universale)
+[Contesto Globale Ricerca Universale](/dev/work-done/frontend/contesto-globale-ricerca-universale)
 
 La funzione **`script.fn_search_soggetti_universale`** implementa il **livello 1** della ricerca universale soggetti. Dato un termine di ricerca e un tipo ruolo, restituisce una lista paginata di soggetti con i dati essenziali per la visualizzazione in tabella.
 
 ---
-
-### Scopo Principale
-
+### 🎯 Scopo Principale
 * **Ricerca per tipo ruolo**: il parametro `p_tipo_ruolo_id` e' obbligatorio. Il dropdown frontend mostra solo i ruoli accessibili all'utente corrente.
 
 * **Ricerca multi-campo**: la ricerca opera su 4 campi con pattern `%termine%` (ILIKE + GIN trgm):

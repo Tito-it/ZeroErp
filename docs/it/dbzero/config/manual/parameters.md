@@ -2,22 +2,21 @@
 
 > 👀 **Vedi anche**  
 >
-> Approfondimento Tabelle:   
+Approfondimento Tabelle:   
 >
-> * [config.parameter_overrides](/dbzero/config/tabelle/parameter_overrides)      
+[config.parameter_overrides](/dbzero/config/tabelle/parameter_overrides)      
 >
-> Approfondimento funzioni :    
+Approfondimento funzioni :    
 >
-> * [script.fn_get_parameter_full](/dbzero/script/funzioni/fn_get_parameter_full)    
+[script.fn_get_parameter_full](/dbzero/script/funzioni/fn_get_parameter_full)    
 >
-> Approfondimento parametri tabellari Vs GUC   
+Approfondimento parametri tabellari Vs GUC   
 >
-> * [parametri-personalizzati-(GUC)](/parametri-personalizzati-(GUC))   
+[parametri-personalizzati-(GUC)](/parametri-personalizzati-(GUC))   
 > All'interno del documento viene spiegata la differenza tra parametri GUC e parametri tabellari
 
 ---
 ### 🎯 Scopo Principale
-
 La tabella **`config.parameters`** implementa un’**architettura a due livelli** per la configurazione dinamica dell’applicazione:
 
 1. **Parametri di sistema (global defaults)**
@@ -29,7 +28,7 @@ La tabella **`config.parameters`** implementa un’**architettura a due livelli*
 
 ---
 
-### 🗂️ Campi principali
+### Campi principali
 
 | Colonna         | Tipo                        | Nullable | Default             | Descrizione                                   |
 | --------------- | --------------------------- | -------- | ------------------- | --------------------------------------------- |
@@ -44,7 +43,7 @@ La tabella **`config.parameters`** implementa un’**architettura a due livelli*
 
 ---
 
-### 🔒 Vincoli
+### Vincoli
 
 | Tipo        | Nome                 | Colonne | Descrizione                    |
 | ----------- | -------------------- | ------- | ------------------------------ |
@@ -53,7 +52,7 @@ La tabella **`config.parameters`** implementa un’**architettura a due livelli*
 
 ---
 
-### 💡 Vantaggi Operativi
+### Vantaggi Operativi
 
 1. **Override multi-livello** (tenant → user → session → function → default) garantito dallo schema.
 2. **Nessuna ripetizione di logica**: l’applicazione chiama una funzione centralizzata (es. `get_parameter_full`) che applica la catena di priorità.
@@ -63,7 +62,7 @@ La tabella **`config.parameters`** implementa un’**architettura a due livelli*
 
 ---
 
-## 🔍 Approfondimenti e Esempi Avanzati
+## Approfondimenti e Esempi Avanzati
 
 ### Esempio: Override Parametro “Valuta”
 
@@ -142,7 +141,7 @@ SELECT config.get_parameter_full(
 restituirà **’PENDING\_APPROVAL’**, senza impattare la configurazione globale.
 
 
-### ⚖️ Confronto: GUC vs Modello a Tabelle
+### Confronto: GUC vs Modello a Tabelle
 
 | Caratteristica              | GUC PostgreSQL                                      | Tabella Override (`config.parameters` + `config.parameter_overrides`)              |
 | --------------------------- | --------------------------------------------------- | ---------------------------------------------------------------------------------- |
@@ -155,11 +154,11 @@ restituirà **’PENDING\_APPROVAL’**, senza impattare la configurazione globa
 
 > **Quando scegliere...**
 >
-> * **GUC PostgreSQL**: per configurazioni strettamente tecniche o performance‑oriented, con requisiti statici o legati al ruolo DB.
-> * **Tabella Override**: per impostazioni dinamiche, multi‑tenant e variabili in base a user/session/function, con tracciamento e versioning completo.
+**GUC PostgreSQL**: per configurazioni strettamente tecniche o performance‑oriented, con requisiti statici o legati al ruolo DB.
+> **Tabella Override**: per impostazioni dinamiche, multi‑tenant e variabili in base a user/session/function, con tracciamento e versioning completo.
 
 ---
 
 
 
-> 🧠 **“Questi esempi mostrano come il modello a due tabelle gestisca override precisi per valuta, stato o qualunque parametro, mantenendo la scalabilità e la manutenibilità.”**
+> **“Questi esempi mostrano come il modello a due tabelle gestisca override precisi per valuta, stato o qualunque parametro, mantenendo la scalabilità e la manutenibilità.”**

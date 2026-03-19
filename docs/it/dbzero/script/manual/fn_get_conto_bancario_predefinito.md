@@ -2,24 +2,23 @@
 
 > 👀 **Vedi anche**  
 >
-> Approfondimento Tabelle / Vista:  
+Approfondimento Tabelle / Vista:  
 >
-> * [anagrafiche.conti_bancari](/dbzero/anagrafiche/tabelle/conti_bancari)    
-> * [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)    
-> * [anagrafiche.soggetti_conti_bancari](/dbzero/anagrafiche/tabelle/soggetti_conti_bancari)   
-> * [anagrafiche.soggetti_ruoli_conti_bancari](/dbzero/anagrafiche/tabelle/soggetti_ruoli_conti_bancari)   
+[anagrafiche.conti_bancari](/dbzero/anagrafiche/tabelle/conti_bancari)    
+> [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)    
+> [anagrafiche.soggetti_conti_bancari](/dbzero/anagrafiche/tabelle/soggetti_conti_bancari)   
+> [anagrafiche.soggetti_ruoli_conti_bancari](/dbzero/anagrafiche/tabelle/soggetti_ruoli_conti_bancari)   
 >
-> Approfondimento vista/funzioni:  
+Approfondimento vista/funzioni:  
 >
-> * [anagrafiche.vw_conti_bancari_per_ruolo](/dbzero/anagrafiche/funzioni/vw_conti_bancari_per_ruolo)   
-> * [script.fn_get_messaggio](/dbzero/script/funzioni/fn_get_messaggio)   
+[anagrafiche.vw_conti_bancari_per_ruolo](/dbzero/anagrafiche/funzioni/vw_conti_bancari_per_ruolo)   
+> [script.fn_get_messaggio](/dbzero/script/funzioni/fn_get_messaggio)   
 
 La funzione **`script.fn_get_conto_bancario_predefinito(soggetto_ruolo_id, uso)`** restituisce, per un determinato **ruolo di soggetto** e un dato **uso del conto** (`INCASSO`, `PAGAMENTO`, `RIMBORSO`, `GENERICO`), **al massimo un conto bancario selezionato**, applicando la logica di priorità e fallback già implementata nella vista **`anagrafiche.vw_conti_bancari_per_ruolo`**.
 
 Se non esiste alcun conto compatibile per l’uso richiesto, la funzione tenta un **fallback automatico** su `uso = 'GENERICO'`. Se nemmeno in questo caso trova un candidato, restituisce `NULL` (nessun conto disponibile).
 
 ---
-
 ### 🎯 Scopo Principale
 (latest review 01-12-25)
 * **Incapsulare la logica di selezione del conto**
@@ -117,7 +116,7 @@ La funzione è implementata in PL/pgSQL con logica simile alla seguente:
 
 ---
 
-### ⚙️ Comportamento funzionale
+### Comportamento funzionale
 
 * **Rispetto della logica RUOLO → SOGGETTO**
   La funzione non replica la logica di priorità tra ruoli e soggetti: la delega interamente alla vista `vw_conti_bancari_per_ruolo`. In questo modo è sufficiente mantenere la logica di selezione in un solo punto.
@@ -166,7 +165,7 @@ JOIN anagrafiche.conti_bancari c
 
 ---
 
-## 💡  Note di modellazione e best practice
+## Note di modellazione e best practice
 
 * La funzione presuppone che la **configurazione dei conti** (legami soggetto/ruolo, flag `predefinito`, `bloccato`, `valido_dal/al`, `attivo`) sia già correttamente gestita dalla logica applicativa e dai trigger delle tabelle sorgenti.
 * In caso di assenza di risultati (`NULL`), è responsabilità del chiamante decidere se:
@@ -178,5 +177,5 @@ JOIN anagrafiche.conti_bancari c
 
 ---
 
-> 🧠 **In sintesi:**
+> **In sintesi:**
 > `script.fn_get_conto_bancario_predefinito` è il wrapper di dominio sulla vista `vw_conti_bancari_per_ruolo`: dato un ruolo e un uso, restituisce il miglior conto disponibile secondo le regole di validità, blocco e priorità, con fallback automatico su `GENERICO` quando necessario.

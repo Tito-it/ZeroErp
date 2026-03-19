@@ -10,6 +10,21 @@
  * @param {Date|string|null} d - Valore data
  * @returns {string|null} - Stringa 'YYYY-MM-DD' o null
  */
+/**
+ * Formatta una data per visualizzazione: DD/MM/YYYY.
+ * Accetta: stringa 'YYYY-MM-DD', Date, null/undefined.
+ *
+ * @param {string|Date|null} d - Valore data
+ * @returns {string} - Stringa 'DD/MM/YYYY' o stringa vuota
+ */
+export function displayDate(d) {
+  if (!d) return ''
+  const s = typeof d === 'string' ? d : toDateString(d)
+  if (!s || s.length < 10) return s || ''
+  const [y, m, day] = s.substring(0, 10).split('-')
+  return `${day}/${m}/${y}`
+}
+
 export function toDateString(d) {
   if (!d) return null
   if (d instanceof Date) {

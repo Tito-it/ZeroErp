@@ -2,20 +2,18 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> * [anagrafiche.risorse_umane](/dbzero/anagrafiche/tabelle/risorse_umane)
-> * [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)
+[anagrafiche.risorse_umane](/dbzero/anagrafiche/tabelle/risorse_umane)
+> [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)
 >
-> **Approfondimento funzioni:**
+**Approfondimento funzioni:**
 >
-> * [script.fn_guard_soggetto_ruolo](/dbzero/script/funzioni/fn_guard_soggetto_ruolo)
-> * [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)
+[script.fn_guard_soggetto_ruolo](/dbzero/script/funzioni/fn_guard_soggetto_ruolo)
+> [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 10-03-2026)
 La trigger function **`anagrafiche.trgfn_risorse_umane_guard_ruolo()`**
 garantisce che ogni riga di `anagrafiche.risorse_umane` sia collegata a un
@@ -24,7 +22,7 @@ garantisce che ogni riga di `anagrafiche.risorse_umane` sia collegata a un
 
 ---
 
-### 🔍 Regole applicate
+### Regole applicate
 
 * Trigger **BEFORE INSERT OR UPDATE** su `anagrafiche.risorse_umane`.
 * Chiama `script.fn_guard_soggetto_ruolo(...)` con `p_cd_int_ruolo := 'RIS_UMANA'`.
@@ -35,7 +33,7 @@ garantisce che ogni riga di `anagrafiche.risorse_umane` sia collegata a un
 
 ---
 
-### ✅ Ruolo nel processo
+### Ruolo nel processo
 
 La funzione protegge la coerenza del modello anagrafico evitando disallineamenti
 tra:

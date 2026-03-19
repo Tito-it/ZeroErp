@@ -2,21 +2,18 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> • [vendite.stati_commessa](/dbzero/vendite/tabelle/stati_commessa)  
+• [vendite.stati_commessa](/dbzero/vendite/tabelle/stati_commessa)  
 > • [vendite.commesse_attivita](/dbzero/vendite/tabelle/commesse_attivita)  
 > • [vendite.commesse_sorgenti](/dbzero/vendite/tabelle/commesse_sorgenti)  
 >
-> **Approfondimento funzioni:**
+**Approfondimento funzioni:**
 >
-> • [vendite.fn_get_or_create_commessa](/dbzero/vendite/funzioni/fn_get_or_create_commessa)  
+• [vendite.fn_get_or_create_commessa](/dbzero/vendite/funzioni/fn_get_or_create_commessa)  
 > • [vendite.fn_get_commessa_stato](/dbzero/vendite/funzioni/fn_get_commessa_stato)  
 >
----
-
 ### 🎯 Scopo Principale
-
 (latest review 26-02-2026)  
 `vendite.commesse` e` la testata di governo del ciclo operativo
 `sorgente -> commessa -> commesse_attivita -> attivita_fatturabili`.
@@ -25,7 +22,7 @@ Contiene le dimensioni che identificano la commessa (BA/utility/emittente, polic
 
 ---
 
-### ✅ Regole principali
+### Regole principali
 
 * `codice` univoco.
 * Stato gestito con FK verso `vendite.stati_commessa`:
@@ -40,7 +37,7 @@ Contiene le dimensioni che identificano la commessa (BA/utility/emittente, polic
 
 ---
 
-### 🧩 Utilizzo previsto
+### Utilizzo previsto
 
 * punto di aggregazione business della pipeline vendite;
 * contenitore delle righe emettibili (`commesse_attivita`);

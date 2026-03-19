@@ -2,17 +2,15 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento Tabelle**   
+**Approfondimento Tabelle**   
 > • [`catalogo.articoli_uom_operativa`](/dbzero/catalogo/tabelle/articoli_uom_operativa)     
 > • [`catalogo.unita_misura_conversioni`](/dbzero/catalogo/tabelle/unita_misura_conversioni)     
 >
-> **Approfondimento Funzioni**   
+**Approfondimento Funzioni**   
 > • [`catalogo.fn_get_uom_base`](/dbzero/catalogo/funzioni/fn_get_uom_base)  
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 13-01-26)
 La funzione **`catalogo.fn_get_uom_factor(p_articolo_id, p_uom_id)`** ritorna il **fattore di conversione** dalla UoM richiesta alla **UoM base** dell’articolo.
 
@@ -20,7 +18,7 @@ Supporta un **fallback globale**: se la conversione articolo-specifica non e' pr
 
 ---
 
-### 🔁 Logica di calcolo
+### Logica di calcolo
 
 1. **UoM base articolo**  
    Legge `catalogo.articoli.uom_id` (tramite `catalogo.fn_get_uom_base`).
@@ -37,7 +35,7 @@ Supporta un **fallback globale**: se la conversione articolo-specifica non e' pr
 
 ---
 
-### 🔎 Esempi d’uso
+### Esempi d’uso
 
 **1) Caso articolo-specifico**
 
@@ -57,7 +55,7 @@ Se l’articolo non ha una conversione specifica per `MJ`, la funzione usa la co
 
 ---
 
-### 🧭 Best practice
+### Best practice
 
 * Definisci conversioni **globali** solo per UoM standard, non per confezioni specifiche.
 * Usa `articoli_uom_operativa` per conversioni **legate al prodotto** (es. pezzi per scatola).

@@ -2,28 +2,26 @@
 
 > 👀 **Vedi anche**
 >
-> Guide:
+Guide:
 >
-> * [Automazioni – Overview del Modulo](/guide/automazione-db)
+[Automazioni – Overview del Modulo](/guide/automazione-db)
 >
-> Approfondimento funzioni e trigger correlati:
+Approfondimento funzioni e trigger correlati:
 >
-> * [dbops.trgfn_child_requires_active_parent](/dbzero/dbops/funzioni/trgfn_child_requires_active_parent)
-> * [dbops.fn_trigger_exists_cascade_by_args](/dbzero/dbops/funzioni/fn_trigger_exists_cascade_by_args)
-> * [dbops.fn_trigger_exists_block_by_args](/dbzero/dbops/funzioni/fn_trigger_exists_block_by_args)
-> * [dbops.fn_trigger_exists_by_name](/dbzero/dbops/funzioni/fn_trigger_exists_by_name)
-> * [dbops.fn_trigger_exists_by_function](/dbzero/dbops/funzioni/fn_trigger_exists_by_function)
+[dbops.trgfn_child_requires_active_parent](/dbzero/dbops/funzioni/trgfn_child_requires_active_parent)
+> [dbops.fn_trigger_exists_cascade_by_args](/dbzero/dbops/funzioni/fn_trigger_exists_cascade_by_args)
+> [dbops.fn_trigger_exists_block_by_args](/dbzero/dbops/funzioni/fn_trigger_exists_block_by_args)
+> [dbops.fn_trigger_exists_by_name](/dbzero/dbops/funzioni/fn_trigger_exists_by_name)
+> [dbops.fn_trigger_exists_by_function](/dbzero/dbops/funzioni/fn_trigger_exists_by_function)
 
 
 ---
-
 ### 🎯 Scopo Principale
-
 La funzione **`dbops.fn_trigger_exists_require_by_args(p_child_rel, p_parent_schema, p_parent_table, p_parent_attivo_col, p_fk_col)`** verifica l’esistenza, sulla **tabella figlia**, di un **constraint trigger deferrable** basato sulla funzione `trgfn_child_requires_active_parent`, parametrizzato con schema/tabella padre, colonna `attivo` del padre e colonna FK del figlio. Serve a garantire idempotenza nelle automazioni della policy **ATTIVO → REQUIRE**.
 
 ---
 
-### 🔍 Parametri di input
+### Parametri di input
 
 | Parametro             | Tipo     | Obbligatorio | Descrizione                                                      |
 | --------------------- | -------- | :----------: | ---------------------------------------------------------------- |
@@ -35,13 +33,13 @@ La funzione **`dbops.fn_trigger_exists_require_by_args(p_child_rel, p_parent_sch
 
 ---
 
-### 📤 Valore di ritorno
+### Valore di ritorno
 
 `boolean` – `true` se esiste un trigger non interno sulla tabella figlia che invoca `dbops.trgfn_child_requires_active_parent(...)` con **esatti argomenti**; `false` altrimenti.
 
 ---
 
-### ⚙️ Flusso logico
+### Flusso logico
 
 1. Legge da `pg_trigger` i trigger definiti su `p_child_rel` ed esclude quelli **interni**.
 2. Joina `pg_proc` per selezionare quelli che chiamano la funzione `trgfn_child_requires_active_parent`.
@@ -50,7 +48,7 @@ La funzione **`dbops.fn_trigger_exists_require_by_args(p_child_rel, p_parent_sch
 
 ---
 
-### 🧩 Casi d’uso tipici
+### Casi d’uso tipici
 
 * **Automazioni ATTIVO – REQUIRE**: prima di creare il constraint trigger, controllare se è già presente con i parametri attesi.
 * **Idempotenza**: evitare duplicazioni quando si rieseguono automazioni su più schemi/tabelloni.
@@ -58,28 +56,28 @@ La funzione **`dbops.fn_trigger_exists_require_by_args(p_child_rel, p_parent_sch
 
 ---
 
-### 🛡️ Permessi e sicurezza
+### Permessi e sicurezza
 
 * Richiede permessi di lettura su `pg_trigger` e `pg_proc`.
 * Funzione **STABLE**: non modifica schema o dati.
 
 ---
 
-### 🚀 Esempi di utilizzo
+### Esempi di utilizzo
 
 * `SELECT dbops.fn_trigger_exists_require_by_args('vendite.righe_ordine','catalogo','articoli','attivo','articolo_id');`
 * `SELECT dbops.fn_trigger_exists_require_by_args('fatture.testate','anagrafiche','clienti','attivo','cliente_id');`
 
 ---
 
-### 📌 Considerazioni
+### Considerazioni
 
 * Il match si basa sulla **stringa della definizione** del trigger: robusto ma sensibile a formattazioni non canoniche.
 * Complementare a `fn_trigger_exists_by_name`/`by_function` per strategie `BY_NAME|BY_FUNCTION|BOTH` e alle verifiche `BLOCK`/`CASCADE`.
 
 ---
 
-### ✅ Benefici
+### Benefici
 
 * **Sicurezza operativa**: impedisce creazioni duplicate del trigger `REQUIRE`.
 * **Manutenibilità**: facilita controlli e report sugli schemi complessi.
@@ -87,4 +85,4 @@ La funzione **`dbops.fn_trigger_exists_require_by_args(p_child_rel, p_parent_sch
 
 ---
 
-> 🧠 **In sintesi**: `fn_trigger_exists_require_by_args` è l’utility di verifica per i trigger **constraint** `REQUIRE` sul figlio, indispensabile per mantenere idempotenza e coerenza nelle automazioni del campo `attivo`.
+> **In sintesi**: `fn_trigger_exists_require_by_args` è l’utility di verifica per i trigger **constraint** `REQUIRE` sul figlio, indispensabile per mantenere idempotenza e coerenza nelle automazioni del campo `attivo`.

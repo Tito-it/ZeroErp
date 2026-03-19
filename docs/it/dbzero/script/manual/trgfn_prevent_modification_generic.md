@@ -2,17 +2,15 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimento funzioni :    
+Approfondimento funzioni :    
 >
-> * [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)    
+[script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)    
 
 
 La trigger function **`script.trgfn_prevent_modification_generic()`** impedisce modifiche o cancellazioni sui record di tabelle di audit (o altre tabelle protette), sollevando un’eccezione centralizzata tramite `fn_log_and_raise_error`.
 
 ---
-
 ### 🎯 Scopo Principale
-
 * **Proteggere dati di audit**
   Garantire l’inalterabilità delle cronologie storiche registrate in tabelle dedicate (es. `config.parameters_audit`).
 * **Centralizzare la gestione degli errori**
@@ -20,7 +18,7 @@ La trigger function **`script.trgfn_prevent_modification_generic()`** impedisce 
 
 ---
 
-### 🔍 Parametri di Input
+### Parametri di Input
 
 Questa funzione **non** riceve parametri espliciti: utilizza le variabili di contesto PL/pgSQL:
 
@@ -31,7 +29,7 @@ Questa funzione **non** riceve parametri espliciti: utilizza le variabili di con
 
 ---
 
-### ⚙️ Flusso di Esecuzione
+### Flusso di Esecuzione
 
 1. **Chiamata dal trigger**
    Eseguita `BEFORE UPDATE` o `BEFORE DELETE` sulla tabella protetta.
@@ -86,7 +84,7 @@ COMMENT ON FUNCTION script.trgfn_prevent_modification_generic() IS
 
 ---
 
-### 🚀 Applicazione del Trigger
+### Applicazione del Trigger
 
 Per proteggere una tabella (es. `config.parameters_audit`):
 
@@ -102,7 +100,7 @@ CREATE TRIGGER trg_prevent_mod_parameters_audit
 
 ---
 
-### 💡 Vantaggi Operativi
+### Vantaggi Operativi
 
 * **Sicurezza dei dati**: impedisce involontarie cancellazioni o modifiche.
 * **Consistenza dei messaggi**: utilizza un sistema di logging/exception centralizzato per coerenza.
@@ -110,4 +108,4 @@ CREATE TRIGGER trg_prevent_mod_parameters_audit
 
 ---
 
-> 🧠 **“Centralizzare la protezione dei dati critici in una trigger function riutilizzabile assicura sicurezza, trasparenza e facilità di manutenzione.”**
+> **“Centralizzare la protezione dei dati critici in una trigger function riutilizzabile assicura sicurezza, trasparenza e facilità di manutenzione.”**

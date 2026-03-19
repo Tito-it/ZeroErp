@@ -2,21 +2,19 @@
 
 > 👀 **Vedi anche** 
 >
-> Approfondimento Tabelle:   
+Approfondimento Tabelle:   
 >
-> * [dbops.fk_index_policy](/dbzero/dbops/tabelle/fk_index_policy)      
+[dbops.fk_index_policy](/dbzero/dbops/tabelle/fk_index_policy)      
 >
-> Approfondimento funzioni:   
+Approfondimento funzioni:   
 >
-> * [dbops.vw_fk_con_indice_missing_policy](/dbzero/dbops/manual/vw_fk_con_indice_missing_policy)  
+[dbops.vw_fk_con_indice_missing_policy](/dbzero/dbops/manual/vw_fk_con_indice_missing_policy)  
 
 
 La funzione **`dbops.fn_seed_fk_index_policy()`** popola automaticamente la tabella `dbops.fk_index_policy` con le foreign key **già indicizzate** ma **non ancora presenti** in policy, **limitandosi agli schemi presenti in `dbops.automation_scope`**, marcandole come `consentito = true` e `generated_by_script = true`.
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 16-01-26)
 * **Sincronizzazione iniziale**
   Aggiunge in `fk_index_policy` tutte le FK con indice esistente rilevate in `vw_fk_con_indice_missing_policy`.
@@ -27,13 +25,13 @@ La funzione **`dbops.fn_seed_fk_index_policy()`** popola automaticamente la tabe
 
 ---
 
-### 🔍 Parametri di Input
+### Parametri di Input
 
 Questa funzione **non** richiede parametri: agisce su tutti i record presenti nella view `dbops.vw_fk_con_indice_missing_policy`.
 
 ---
 
-### ⚙️ Flusso Logico
+### Flusso Logico
 
 1. **Selezione FK da view**
    Recupera `schema_name`, `table_name`, `constraint_name` e `create_index_suggestion` dalla view.
@@ -46,7 +44,7 @@ Questa funzione **non** richiede parametri: agisce su tutti i record presenti ne
 
 ---
 
-### 🚀 Utilizzo
+### Utilizzo
 
 ```sql
 -- Esegui il popolamento iniziale:
@@ -57,7 +55,7 @@ Può essere integrata in un changeSet Liquibase con `runAlways: false` (solo ese
 
 ---
 
-### 💡 Vantaggi Operativi
+### Vantaggi Operativi
 
 * **Completezza**: nessuna FK indicizzata resta scoperta da policy.
 * **Tracciabilità**: `generated_by_script` segnala le policy create automaticamente.
@@ -66,4 +64,4 @@ Può essere integrata in un changeSet Liquibase con `runAlways: false` (solo ese
 
 ---
 
-> 🧠 **“Con `fn_seed_fk_index_policy()` automatizziamo la scoperta e l’inclusione delle FK già indicizzate, mantenendo la policy sempre completa e allineata.”**
+> **“Con `fn_seed_fk_index_policy()` automatizziamo la scoperta e l’inclusione delle FK già indicizzate, mantenendo la policy sempre completa e allineata.”**

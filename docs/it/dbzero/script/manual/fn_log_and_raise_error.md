@@ -2,14 +2,14 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimento tabelle:    
-> - [config.messaggi_errore](/dbzero/config/tabelle/messaggi_errore)    
-> - [dbops.error_log](/dbzero/dbops/tabelle/error_log)    
+Approfondimento tabelle:    
+> [config.messaggi_errore](/dbzero/config/tabelle/messaggi_errore)    
+> [dbops.error_log](/dbzero/dbops/tabelle/error_log)    
 >
-> Approfondimenti funzioni:   
-> - [script.fn_log_error_only](/dbzero/script/funzioni/fn_log_error_only) *(solo log non solleva eccezioni)*  
-> - [script.fn_get_messaggio](/dbzero/script/funzioni/fn_get_messaggio)     
-> - [script.fn_ensure_logconn](/dbzero/script/funzioni/fn_ensure_logconn)     
+Approfondimenti funzioni:   
+> [script.fn_log_error_only](/dbzero/script/funzioni/fn_log_error_only) *(solo log non solleva eccezioni)*  
+> [script.fn_get_messaggio](/dbzero/script/funzioni/fn_get_messaggio)     
+> [script.fn_ensure_logconn](/dbzero/script/funzioni/fn_ensure_logconn)     
 
 
 La funzione **`script.fn_log_and_raise_error`** unifica logging ed escalation di errori in PL/pgSQL, utilizzando l’estensione **dblink** per inserire record di log in una sessione separata e garantire commit immediato, quindi solleva un’eccezione con messaggio, dettaglio e hint.
@@ -31,9 +31,7 @@ AS $$
 ...implementazione completa con dblink_exec...
 $$;
 ```
-
 ### 🎯 Scopo Principale
-
 (last review 28-12-25)
 * **Entrypoint unificato** per error handling: evita duplicazioni di log e raise in trigger, procedure e funzioni.
 * **Logging remoto sicuro**: usa `dblink_exec` su connessione permanente fornita da `script.fn_ensure_logconn()`, per isolare il log dall’eventuale rollback della sessione principale.
@@ -41,7 +39,7 @@ $$;
 
 ---
 
-### 🔍 Parametri
+### Parametri
 
 | Parametro         | Tipo     | Descrizione                                                                        |
 | ----------------- | -------- | ---------------------------------------------------------------------------------- |
@@ -53,7 +51,7 @@ $$;
 
 ---
 
-### ⚙️ Flusso di Esecuzione
+### Flusso di Esecuzione
 
 1. **Assicuro connessione dblink**
 
@@ -108,7 +106,7 @@ $$;
 
 ---
 
-### 🔒 Comportamenti e Side Effects
+### Comportamenti e Side Effects
 
 * **Volatile**: invoca `dblink_exec`, quindi non idempotente.
 * **Connessione permanente**: `logconn` gestita da `script.fn_ensure_logconn()` per evitare overhead di connessioni multiple.
@@ -116,7 +114,7 @@ $$;
 
 ---
 
-### ⚙️ Esempi di Utilizzo
+### Esempi di Utilizzo
 
 1. **Trigger PL/pgSQL con placeholder**
 
@@ -146,7 +144,7 @@ $$;
 
 ---
 
-### 💡 Vantaggi Operativi
+### Vantaggi Operativi
 
 * **Resilienza dei log**: l’uso di dblink isola il logging dall’eventuale rollback.
 * **Flessibilità**: placeholder `%s` e `p_valori` rendono i messaggi dinamici e contestuali.
@@ -155,4 +153,4 @@ $$;
 
 ---
 
-> 🧠 **“Una funzione centralizzata che combina dblink per log persistente e raise exception con template dinamici semplifica error handling, migliorando la robustezza del sistema.”**
+> **“Una funzione centralizzata che combina dblink per log persistente e raise exception con template dinamici semplifica error handling, migliorando la robustezza del sistema.”**

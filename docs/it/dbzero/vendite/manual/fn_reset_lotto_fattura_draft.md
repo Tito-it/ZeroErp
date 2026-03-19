@@ -2,23 +2,21 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> • [vendite.fatturazione_lotti](/dbzero/vendite/tabelle/fatturazione_lotti)  
+• [vendite.fatturazione_lotti](/dbzero/vendite/tabelle/fatturazione_lotti)  
 > • [vendite.fatturazione_lotti_fatture](/dbzero/vendite/tabelle/fatturazione_lotti_fatture)  
 > • [vendite.fatture](/dbzero/vendite/tabelle/fatture)  
 > • [vendite.fatture_righe](/dbzero/vendite/tabelle/fatture_righe)  
 > • [vendite.attivita_fatturabili](/dbzero/vendite/tabelle/attivita_fatturabili)  
 >
-> **Approfondimento funzioni:**
+**Approfondimento funzioni:**
 >
-> • [vendite.fn_cleanup_fatture_by_ids](/dbzero/vendite/funzioni/fn_cleanup_fatture_by_ids)  
+• [vendite.fn_cleanup_fatture_by_ids](/dbzero/vendite/funzioni/fn_cleanup_fatture_by_ids)  
 > • [vendite.fn_reset_lotto_draft](/dbzero/vendite/funzioni/fn_reset_lotto_draft)  
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 10-02-2026)  
 La funzione **`vendite.fn_reset_lotto_fattura_draft()`** effettua il reset tecnico
 di **una singola fattura** appartenente a un lotto **MASSIVO** in stato **DRAFT**,
@@ -26,7 +24,7 @@ senza annullare il lotto.
 
 ---
 
-### ✅ Regole principali
+### Regole principali
 
 * `p_lotto_id` e `p_fattura_id` obbligatori.
 * Lotto deve essere `MASSIVO` e in `DRAFT`.
@@ -36,7 +34,7 @@ senza annullare il lotto.
 
 ---
 
-### ✅ Output
+### Output
 
 Ritorna una riga con:
 
@@ -46,7 +44,7 @@ Ritorna una riga con:
 
 ---
 
-### 🧪 Esempio d’uso
+### Esempio d’uso
 
 ```sql
 SELECT *

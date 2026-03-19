@@ -2,22 +2,20 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimento Tabelle:   
+Approfondimento Tabelle:   
 >
-> * [dbops.transaction_ids](/dbzero/dbops/tabelle/transaction_ids)      
+[dbops.transaction_ids](/dbzero/dbops/tabelle/transaction_ids)      
 >
-> Approfondimento funzioni :    
+Approfondimento funzioni :    
 >
-> * [dbops.fn_generate_tx_id](/dbzero/dbops/funzioni/fn_generate_tx_id)    
-> * [script.uuid_nil](/dbzero/script/funzioni/uuid_nil)    
-> * [script.fn_ensure_logconn](/dbzero/script/funzioni/fn_ensure_logconn)    
+[dbops.fn_generate_tx_id](/dbzero/dbops/funzioni/fn_generate_tx_id)    
+> [script.uuid_nil](/dbzero/script/funzioni/uuid_nil)    
+> [script.fn_ensure_logconn](/dbzero/script/funzioni/fn_ensure_logconn)    
 
 La funzione **`dbops.fn_get_or_create_session_tx_id()`** fornisce un **UUID di transazione** persistente per l’intera sessione database, generandone uno nuovo solo se non già impostato. Questo meccanismo garantisce che tutte le operazioni eseguite nella medesima connessione possano condividere lo stesso **`tx_id`**, semplificando log, tracciabilità e rollback in scenari complessi.
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 10-01-26)
 * **Unicità per sessione**: restituisce un `tx_id` costante per la durata della connessione, evitando chiamate ripetute a generatori esterni.
 * **Fallback sicuro**: in caso di errori di connessione o in contesti di migrazione/test, restituisce un UUID “nil” per non bloccare i processi.
@@ -25,7 +23,7 @@ La funzione **`dbops.fn_get_or_create_session_tx_id()`** fornisce un **UUID di t
 
 ---
 
-### 🔍 Parametri di Input
+### Parametri di Input
 
 Questa funzione **non** richiede parametri. Tutta la logica utilizza variabili di sessione e la funzione di generazione:
 
@@ -35,7 +33,7 @@ Questa funzione **non** richiede parametri. Tutta la logica utilizza variabili d
 
 ---
 
-### ⚙️ Flusso di Esecuzione Dettagliato
+### Flusso di Esecuzione Dettagliato
 
 1. **Verifica connessione di logging**
 
@@ -95,7 +93,7 @@ Questa funzione **non** richiede parametri. Tutta la logica utilizza variabili d
 
 ---
 
-### 🚀 Esempio di Utilizzo
+### Esempio di Utilizzo
 
 ```sql
 -- Prima invocazione in sessione nuova:
@@ -109,7 +107,7 @@ SELECT dbops.fn_get_or_create_session_tx_id() AS tx_id;
 
 ---
 
-### 💡 Vantaggi e Considerazioni
+### Vantaggi e Considerazioni
 
 * **Tracciabilità coerente**: tutte le chiamate in sessione condividono lo stesso `tx_id`, semplificando log e correlazione.
 * **Performance**: riduce chiamate ridondanti a `fn_generate_tx_id`.
@@ -118,4 +116,4 @@ SELECT dbops.fn_get_or_create_session_tx_id() AS tx_id;
 
 ---
 
-> 🧠 **“`fn_get_or_create_session_tx_id` garantisce un unico punto di controllo per il transaction ID di sessione, unendo performance, sicurezza e fallback affidabile.”**
+> **“`fn_get_or_create_session_tx_id` garantisce un unico punto di controllo per il transaction ID di sessione, unendo performance, sicurezza e fallback affidabile.”**

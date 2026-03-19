@@ -2,28 +2,26 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimento tabelle:
+Approfondimento tabelle:
 >
-> * [pratiche.regole_generazione](regole_generazione.md)
-> * [pratiche.pratiche](pratiche.md)
-> * [pratiche.flussi](flussi.md)
-> * [config.stati_pratiche](/dbzero/config/tabelle/stati_pratiche)
+[pratiche.regole_generazione](regole_generazione.md)
+> [pratiche.pratiche](pratiche.md)
+> [pratiche.flussi](flussi.md)
+> [config.stati_pratiche](/dbzero/config/tabelle/stati_pratiche)
 >
-> Trigger:
+Trigger:
 >
-> * `trg_flussi_z90_generazione_upd` (AFTER UPDATE OF stato_id su flussi)
+`trg_flussi_z90_generazione_upd` (AFTER UPDATE OF stato_id su flussi)
 
 ---
-
 ### 🎯 Scopo Principale
-
 La funzione **`pratiche.fn_genera_pratica_da_flusso`** e' il motore della **generazione cross-pratica**: crea una nuova pratica a partire da un flusso completato, secondo una regola configurata in `pratiche.regole_generazione`.
 
 La pratica generata eredita emittente, soggetto e priorita' dalla pratica sorgente, ma con il tipo_prestazione definito dalla regola di destinazione.
 
 ---
 
-### 🔧 Firma della funzione
+### Firma della funzione
 
 ```sql
 CREATE OR REPLACE FUNCTION pratiche.fn_genera_pratica_da_flusso(
@@ -36,7 +34,7 @@ LANGUAGE plpgsql
 
 ---
 
-### 📋 Descrizione parametri
+### Descrizione parametri
 
 | Parametro | Tipo | Obbligatorio | Descrizione |
 |-----------|------|:---:|-------------|
@@ -47,7 +45,7 @@ LANGUAGE plpgsql
 
 ---
 
-### ⚙️ Logica di funzionamento
+### Logica di funzionamento
 
 1. **Validazione parametri**: verifica che `p_flusso_id` e `p_regola_id` siano NOT NULL e > 0.
 2. **Recupera dati flusso**: legge `pratica_id` dal flusso indicato.
@@ -75,7 +73,7 @@ LANGUAGE plpgsql
 
 ---
 
-### 🔗 Catena di invocazione
+### Catena di invocazione
 
 ```
 UPDATE flussi SET stato_id = <COMPLETATO>
@@ -87,7 +85,7 @@ UPDATE flussi SET stato_id = <COMPLETATO>
 
 ---
 
-### ✅ Note operative
+### Note operative
 
 * La funzione e' invocata automaticamente dal trigger `trgfn_flussi_generazione` per le regole con `auto = true`.
 * Le regole con `auto = false` richiedono invocazione esplicita dal backend.

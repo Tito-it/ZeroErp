@@ -2,28 +2,25 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> • [anagrafiche.billing_account](/dbzero/anagrafiche/tabelle/billing_account)  
+• [anagrafiche.billing_account](/dbzero/anagrafiche/tabelle/billing_account)  
 > • [config.utilities](/dbzero/config/tabelle/utilities)  
 > • [anagrafiche.gestori](/dbzero/anagrafiche/tabelle/gestori)  
 > • [config.valute](/dbzero/config/tabelle/valute)  
 >
-> **Approfondimento funzioni:**
+**Approfondimento funzioni:**
 >
-> • [vendite.trgfn_attivita_fatturabili_normalize](/dbzero/vendite/funzioni/trgfn_attivita_fatturabili_normalize)  
+• [vendite.trgfn_attivita_fatturabili_normalize](/dbzero/vendite/funzioni/trgfn_attivita_fatturabili_normalize)  
 >
----
-
 ### 🎯 Scopo Principale
-
 (latest review 26-01-2026)
 La funzione **`vendite.fn_get_valuta_id`** risolve la valuta con fallback
 al **gestore** quando non esistono valori specifici su BA/utility.
 
 ---
 
-### 🔍 Parametri di input
+### Parametri di input
 
 | Parametro | Tipo | Descrizione |
 | --- | --- | --- |
@@ -32,7 +29,7 @@ al **gestore** quando non esistono valori specifici su BA/utility.
 
 ---
 
-### ✅ Regola applicata
+### Regola applicata
 
 1. Se il BA ha una valuta configurata (se prevista) usa quella.
 2. Altrimenti usa `config.utilities.valuta_id` (se prevista).
@@ -41,7 +38,7 @@ al **gestore** quando non esistono valori specifici su BA/utility.
 
 ---
 
-### ✅ Note operative
+### Note operative
 
 * Funzione pensata per l’alimentazione di `attivita_fatturabili` e per calcoli pre‑fattura.
 * Al momento il fallback effettivo e` il **gestore**; BA/utility sono opzionali.

@@ -2,25 +2,22 @@
 
 > 👀 **Vedi anche**   
 >
-> **Approfondimento tabelle:**    
+**Approfondimento tabelle:**    
 >
-> * [config.comuni](/dbzero/config/tabelle/comuni)   
-> * [config.stradario](/dbzero/config/tabelle/stradario)   
+[config.comuni](/dbzero/config/tabelle/comuni)   
+> [config.stradario](/dbzero/config/tabelle/stradario)   
 >
-> **Approfondimento funzioni:**   
+**Approfondimento funzioni:**   
 >
-> * [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)   
+[script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)   
 >
----
-
 ### 🎯 Scopo Principale
-
 (latest review 29-12-25)
 Impedire la modifica dei campi chiave di `config.comuni` quando il comune e' gia' utilizzato nello stradario.
 
 ---
 
-### 🧩 Come Funziona
+### Come Funziona
 
 1. Verifica se il comune e' referenziato in `config.stradario`.
 2. Se **non** e' usato, consente l'UPDATE.
@@ -41,7 +38,7 @@ In caso di modifica, genera errore applicativo con `script.fn_log_and_raise_erro
 
 ---
 
-## 🔗 Trigger Associato
+## Trigger Associato
 
 ```sql
 CREATE TRIGGER trg_comuni_a10_protect_update_upd
@@ -53,12 +50,12 @@ CREATE TRIGGER trg_comuni_a10_protect_update_upd
 
 ---
 
-### 💡 Note Operative
+### Note Operative
 
 * La protezione e' applicata **solo** se il comune risulta in uso nello stradario.
 * I campi di audit restano aggiornabili tramite i trigger standard.
 
 ---
 
-> 🧠 **"Un comune in uso non si modifica: si crea un nuovo riferimento e si riallineano le dipendenze."**
+> **"Un comune in uso non si modifica: si crea un nuovo riferimento e si riallineano le dipendenze."**
 

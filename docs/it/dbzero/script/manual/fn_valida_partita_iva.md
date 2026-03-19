@@ -2,17 +2,16 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimento Tabelle:   
+Approfondimento Tabelle:   
 >
-> * [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)      
+[anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)      
 >
-> Approfondimento funzioni :    
+Approfondimento funzioni :    
 >
-> * [script.fn_valida_codice_fiscale](/dbzero/script/funzioni/fn_valida_codice_fiscale)    
-> * [anagrafiche.trgfn_soggetti_valida_cf_piva_dispatch](/dbzero/anagrafiche/funzioni/trgfn_soggetti_valida_cf_piva_dispatch)    
+[script.fn_valida_codice_fiscale](/dbzero/script/funzioni/fn_valida_codice_fiscale)    
+> [anagrafiche.trgfn_soggetti_valida_cf_piva_dispatch](/dbzero/anagrafiche/funzioni/trgfn_soggetti_valida_cf_piva_dispatch)    
 ---
 ### 🎯 Scopo Principale
-
 Verificare **formalmente** la correttezza di una Partita IVA italiana (11 cifre) calcolando il **check digit** con l’algoritmo di Luhn modificato, restituendo:
 
 * `TRUE` se il carattere di controllo (ultima cifra) è corretto;
@@ -20,7 +19,7 @@ Verificare **formalmente** la correttezza di una Partita IVA italiana (11 cifre)
 
 ---
 
-### 🔍 Parametro di Input
+### Parametro di Input
 
 | Nome   | Tipo   | Descrizione                                                  |
 | ------ | ------ | ------------------------------------------------------------ |
@@ -28,7 +27,7 @@ Verificare **formalmente** la correttezza di una Partita IVA italiana (11 cifre)
 
 ---
 
-### ⚙️ Flusso Operativo
+### Flusso Operativo
 
 1. **Controllo preliminare**
 
@@ -58,7 +57,7 @@ Verificare **formalmente** la correttezza di una Partita IVA italiana (11 cifre)
 
 ---
 
-### 🔒 Scelte di Design
+### Scelte di Design
 
 * **Validazione formale**: limita il controllo al carattere di controllo per garantire efficienza e semplicità.
 * **Algoritmo Luhn modificato**: conforme alle regole italiane di checksum per la Partita IVA.
@@ -66,7 +65,7 @@ Verificare **formalmente** la correttezza di una Partita IVA italiana (11 cifre)
 
 ---
 
-### 💡 Vantaggi Operativi
+### Vantaggi Operativi
 
 * **Performance**: `IMMUTABLE` e semplice logica PL/pgSQL, eseguibile direttamente al DB.
 * **Coerenza**: un’unica funzione di riferimento per la validazione di P.IVA nelle trigger, stored procedure e script.
@@ -74,4 +73,4 @@ Verificare **formalmente** la correttezza di una Partita IVA italiana (11 cifre)
 
 ---
 
-> 🧠 **“Centralizzare il check digit della Partita IVA al livello database garantisce un unico punto di validazione, riduce ridondanza di codice e migliora l’affidabilità dei dati.”**
+> **“Centralizzare il check digit della Partita IVA al livello database garantisce un unico punto di validazione, riduce ridondanza di codice e migliora l’affidabilità dei dati.”**

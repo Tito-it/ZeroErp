@@ -2,15 +2,13 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> • [vendite.fatture_sdi](/dbzero/vendite/tabelle/fatture_sdi)  
+• [vendite.fatture_sdi](/dbzero/vendite/tabelle/fatture_sdi)  
 > • [config.stati_sdi](/dbzero/config/tabelle/stati_sdi)  
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 16-02-2026)  
 `vendite.fatture_sdi_eventi` mantiene lo **storico cronologico eventi SDI**
 per ciascun tentativo (`fattura_sdi_id`).
@@ -24,7 +22,7 @@ Consente di registrare:
 
 ---
 
-### ✅ Regole principali
+### Regole principali
 
 * Ogni evento e` legato a una testata `fatture_sdi`.
 * `stato_sdi_id` e` opzionale: alcuni eventi possono essere solo tecnici/informativi.
@@ -33,7 +31,7 @@ Consente di registrare:
 
 ---
 
-### 🧩 Note operative
+### Note operative
 
 * Lo stato corrente tentativo resta su `fatture_sdi`.
 * Questa tabella e` append-only dal punto di vista applicativo (storico).

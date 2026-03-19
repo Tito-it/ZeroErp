@@ -2,21 +2,19 @@
 
 > 👀 **Vedi anche**
 >
-> Tabelle:
+Tabelle:
 >
-> * [config.transizioni_stati_pratiche](/dbzero/config/manual/transizioni_stati_pratiche)
-> * [config.stati_pratiche](/dbzero/config/tabelle/stati_pratiche)
-> * [pratiche.pratiche](/dbzero/pratiche/tabelle/pratiche)
+[config.transizioni_stati_pratiche](/dbzero/config/manual/transizioni_stati_pratiche)
+> [config.stati_pratiche](/dbzero/config/tabelle/stati_pratiche)
+> [pratiche.pratiche](/dbzero/pratiche/tabelle/pratiche)
 
 ---
-
 ### 🎯 Scopo Principale
-
 Trigger function guard che **blocca transizioni di stato non ammesse** per le pratiche. Consulta la matrice `config.transizioni_stati_pratiche` (solo righe con `attivo = true`) e solleva eccezione se la transizione non e' configurata.
 
 ---
 
-### 🔧 Firma
+### Firma
 
 ```sql
 CREATE OR REPLACE FUNCTION pratiche.trgfn_pratiche_guard_transizione()
@@ -26,7 +24,7 @@ LANGUAGE plpgsql
 
 ---
 
-### ⚙️ Logica
+### Logica
 
 1. Se `OLD.stato_id = NEW.stato_id` → nessuna transizione, RETURN NEW senza controllo.
 2. Cerca la coppia `(OLD.stato_id, NEW.stato_id)` in `config.transizioni_stati_pratiche` con `attivo = true`.
@@ -37,7 +35,7 @@ LANGUAGE plpgsql
 
 ---
 
-### 🔗 Trigger associato
+### Trigger associato
 
 | Nome | Fase | Evento | Tabella |
 |------|------|--------|---------|
@@ -49,7 +47,7 @@ Condizione WHEN: `OLD.stato_id IS DISTINCT FROM NEW.stato_id`.
 
 ---
 
-### 📋 Messaggi errore
+### Messaggi errore
 
 | Codice | Messaggio |
 |--------|-----------|

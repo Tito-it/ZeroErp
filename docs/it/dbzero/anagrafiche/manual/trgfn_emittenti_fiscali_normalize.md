@@ -2,18 +2,16 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> * [anagrafiche.emittenti_fiscali](/dbzero/anagrafiche/tabelle/emittenti_fiscali)
+[anagrafiche.emittenti_fiscali](/dbzero/anagrafiche/tabelle/emittenti_fiscali)
 >
-> **Approfondimento funzioni:**
+**Approfondimento funzioni:**
 >
-> * [config.sistema_codici](/dbzero/config/manual/sistema_codici)
+[config.sistema_codici](/dbzero/config/manual/sistema_codici)
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 12-03-2026)
 La trigger function **`anagrafiche.trgfn_emittenti_fiscali_normalize()`** e'
 attualmente una **no-op controllata**: non modifica `NEW`, ma mantiene
@@ -23,14 +21,14 @@ basato su `config.sistema_codici`.
 
 ---
 
-### 🔄 Contesto di esecuzione
+### Contesto di esecuzione
 
 * Trigger **BEFORE INSERT OR UPDATE** su `anagrafiche.emittenti_fiscali`.
 * La funzione riceve il record `NEW` e lo restituisce invariato.
 
 ---
 
-### ✅ Effetto operativo
+### Effetto operativo
 
 * Nessun campo viene riscritto.
 * Non applica trim, uppercase o derive locali.
@@ -39,7 +37,7 @@ basato su `config.sistema_codici`.
 
 ---
 
-### 🧠 Perche' esiste comunque
+### Perche' esiste comunque
 
 Anche se oggi non contiene logica trasformativa, il trigger conserva un punto
 di estensione coerente per eventuali regole future sugli emittenti fiscali,

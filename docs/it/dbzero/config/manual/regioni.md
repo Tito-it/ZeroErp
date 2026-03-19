@@ -4,20 +4,18 @@
 
 > Approfondimento Tabelle:  
 >
-> * [config.stati](/dbzero/config/tabelle/stati) 
+[config.stati](/dbzero/config/tabelle/stati) 
 >
-> Approfondimento Funzioni:   
+Approfondimento Funzioni:   
 > 
->  * [config.trgfn_regioni_ins_upd_clean_fields](/dbzero/config/funzioni/trgfn_regioni_ins_upd_clean_fields) 
+[config.trgfn_regioni_ins_upd_clean_fields](/dbzero/config/funzioni/trgfn_regioni_ins_upd_clean_fields) 
 
 
 
 La tabella **`config.regioni`** censisce le regioni (italiane e di altri stati), fornendo informazioni amministrative e metadati utili per la gerarchia territoriale e la gestione delle accise.
 
 ---
-
 ### 🎯 Scopo Principale
-
 * **Elenco delle regioni**
   Comprende tutte le regioni appartenenti a uno stato (es. in Italia: `Lazio`, `Campania`, `Sicilia`), con collegamento al rispettivo `stato_id` in **`config.stati`**.
 
@@ -32,7 +30,7 @@ La tabella **`config.regioni`** censisce le regioni (italiane e di altri stati),
 
 ---
 
-### 💡 Vantaggi Operativi
+### Vantaggi Operativi
 
 * **Coerenza geografica**
   Utilizzando `config.regioni` assieme a `config.province` e `config.comuni`, si ottiene una gerarchia completa dei territori, necessaria per reportistica, logistica e compliance fiscale.
@@ -51,4 +49,4 @@ La tabella **`config.regioni`** censisce le regioni (italiane e di altri stati),
 
 ---
 
-> 🧠 **"Un elenco configurabile di regioni, arricchito da metadati specifici per il calcolo delle accise e la gerarchia geografica, alla base di un sistema territoriale completo in Zero ERP."**
+> **"Un elenco configurabile di regioni, arricchito da metadati specifici per il calcolo delle accise e la gerarchia geografica, alla base di un sistema territoriale completo in Zero ERP."**

@@ -2,18 +2,17 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle :**
+**Approfondimento tabelle :**
 >
-> * [anagrafiche.clienti](/dbzero/anagrafiche/tabelle/clienti)    
-> * [anagrafiche.billing_account](/dbzero/anagrafiche/tabelle/billing_account)   
-> * [config.utilities](/dbzero/config/tabelle/utilities)   
+[anagrafiche.clienti](/dbzero/anagrafiche/tabelle/clienti)    
+> [anagrafiche.billing_account](/dbzero/anagrafiche/tabelle/billing_account)   
+> [config.utilities](/dbzero/config/tabelle/utilities)   
 >
-> **Logging/Error handling:**
+**Logging/Error handling:**
 >
-> * `script.fn_log_and_raise_error` (standard Zero ERP per errore applicativo DB)    
+`script.fn_log_and_raise_error` (standard Zero ERP per errore applicativo DB)    
 
 ---
-
 ### 🎯 Scopo Principale
 (latest review 15-02-26)
 La trigger function **`anagrafiche.trgfn_clienti_sync_utility_from_ba()`** garantisce la **coerenza** tra:
@@ -32,7 +31,7 @@ Regola principale:
 
 ---
 
-### 🧭 Contesto e Motivazione
+### Contesto e Motivazione
 
 Nel modello Zero ERP, il `billing_account` identifica un codice cliente (definitivo) per una specifica utility.
 
@@ -47,7 +46,7 @@ Questa trigger function rende la regola:
 
 ---
 
-### 🛠️ Firma
+### Firma
 
 ```sql
 CREATE OR REPLACE FUNCTION anagrafiche.trgfn_clienti_sync_utility_from_ba()
@@ -57,7 +56,7 @@ LANGUAGE plpgsql;
 
 ---
 
-### 📥 Input (Record Trigger)
+### Input (Record Trigger)
 
 Usa i seguenti campi di `NEW` (tabella `anagrafiche.clienti`):
 
@@ -67,7 +66,7 @@ Usa i seguenti campi di `NEW` (tabella `anagrafiche.clienti`):
 
 ---
 
-### 📤 Output
+### Output
 
 * Ritorna `NEW`.
 * Può modificare `NEW.utility_id` **solo** quando è `NULL` (ereditarietà dal BA).
@@ -76,7 +75,7 @@ Usa i seguenti campi di `NEW` (tabella `anagrafiche.clienti`):
 
 ---
 
-### 🔄 Logica Operativa
+### Logica Operativa
 
  **1) Guardia: assenza di billing account**
 
@@ -158,21 +157,21 @@ Errori gestiti (hard):
 
 ---
 
-### 🧩 Side Effects
+### Side Effects
 
 * Non fa DML diretto.
 * Modifica `NEW.utility_id` quando assente.
 
 ---
 
-### ⚙️ Considerazioni di Performance
+### Considerazioni di Performance
 
 * 1 lookup puntuale su `billing_account(id)`.
 * Con PK standard, costo O(1) e trascurabile.
 
 ---
 
-### 🔍 Esempi d’Uso (comportamento atteso)
+### Esempi d’Uso (comportamento atteso)
 
  **Caso A: cliente senza utility → eredita dal BA**
 
@@ -204,7 +203,7 @@ Errori gestiti (hard):
 
 ---
 
-### 🧪 Note per Test (pgTAP / SQL)
+### Note per Test (pgTAP / SQL)
 
 Casi minimi consigliati:
 
@@ -217,15 +216,15 @@ Casi minimi consigliati:
 
 ---
 
-### 📌 Best Practice
+### Best Practice
 
-* ✅ Collegare questa trigger function a un trigger **BEFORE** su `anagrafiche.clienti`.
-* ✅ Limitare l’attivazione ai campi rilevanti (`billing_account_id`, `utility_id`) per evitare overhead.
-* ✅ Mantenere il BA come “source of truth” per l’utility quando il legame è presente.
+* Collegare questa trigger function a un trigger **BEFORE** su `anagrafiche.clienti`.
+* Limitare l’attivazione ai campi rilevanti (`billing_account_id`, `utility_id`) per evitare overhead.
+* Mantenere il BA come “source of truth” per l’utility quando il legame è presente.
 
 ---
 
-### 🗂️ Metadati
+### Metadati
 
 * **Schema:** `anagrafiche`
 * **Tipo:** trigger function di coerenza / auto-sync

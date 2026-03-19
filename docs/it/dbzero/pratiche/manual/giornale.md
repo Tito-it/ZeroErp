@@ -2,20 +2,18 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimento tabelle:
+Approfondimento tabelle:
 >
-> * [pratiche.pratiche](/dbzero/pratiche/tabelle/pratiche)
-> * [pratiche.flussi](/dbzero/pratiche/tabelle/flussi)
+[pratiche.pratiche](/dbzero/pratiche/tabelle/pratiche)
+> [pratiche.flussi](/dbzero/pratiche/tabelle/flussi)
 
 ---
-
 ### 🎯 Scopo Principale
-
 La tabella `pratiche.giornale` e' il **giornale di bordo (audit trail)** del modulo pratiche. Registra ogni evento significativo nel ciclo di vita di pratiche e flussi in modo append-only e immutabile.
 
 ---
 
-### 🧱 Ruolo nel processo
+### Ruolo nel processo
 
 * Ogni modifica rilevante a una pratica o flusso genera un record nel giornale tramite trigger business-specific (DB-5).
 * Il campo `tx_id` consente la **correlazione cross-tabella**: collegando l'evento del giornale con le modifiche nella stessa transazione su altre tabelle.
@@ -23,7 +21,7 @@ La tabella `pratiche.giornale` e' il **giornale di bordo (audit trail)** del mod
 
 ---
 
-### ⚙️ Colonne specifiche
+### Colonne specifiche
 
 | Colonna | Note |
 |---------|------|
@@ -36,7 +34,7 @@ La tabella `pratiche.giornale` e' il **giornale di bordo (audit trail)** del mod
 
 ---
 
-### 📋 Azioni registrate
+### Azioni registrate
 
 | Azione | Trigger | Evento |
 |--------|---------|--------|
@@ -63,7 +61,7 @@ Questi indici sono espliciti (non FK) perche' servono a query frequenti sull'aud
 
 ---
 
-### ✅ Convenzioni
+### Convenzioni
 
 * PK BIGINT IDENTITY (alto volume).
 * Append-only: solo `data_insert/user_insert`, no storicizzazione.

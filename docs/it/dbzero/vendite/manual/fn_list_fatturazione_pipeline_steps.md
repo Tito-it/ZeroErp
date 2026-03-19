@@ -2,18 +2,15 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> • [vendite.fatturazione_pipeline](/dbzero/vendite/tabelle/fatturazione_pipeline)  
+• [vendite.fatturazione_pipeline](/dbzero/vendite/tabelle/fatturazione_pipeline)  
 >
-> **Approfondimento funzioni:**
+**Approfondimento funzioni:**
 >
-> • [vendite.fn_resolve_fatturazione_pipeline_step](/dbzero/vendite/funzioni/fn_resolve_fatturazione_pipeline_step)  
+• [vendite.fn_resolve_fatturazione_pipeline_step](/dbzero/vendite/funzioni/fn_resolve_fatturazione_pipeline_step)  
 >
----
-
 ### 🎯 Scopo Principale
-
 (latest review 08-02-2026)  
 La funzione restituisce la lista step pipeline risolti per `tipo_lotto`,
 `utility_id` e `tipo_doc_fiscale_id`, delegando la precedenza a
@@ -21,7 +18,7 @@ La funzione restituisce la lista step pipeline risolti per `tipo_lotto`,
 
 ---
 
-### ✅ Regole principali
+### Regole principali
 
 * Filtra solo stati lotto (`config.stati_doc_fiscale.applica_lotto = true`).
 * Per ogni stato restituisce al massimo una configurazione risolta.
@@ -29,7 +26,7 @@ La funzione restituisce la lista step pipeline risolti per `tipo_lotto`,
 
 ---
 
-### 🧪 Esempio
+### Esempio
 
 ```sql
 SELECT *

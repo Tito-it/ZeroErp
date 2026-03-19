@@ -2,14 +2,12 @@
 
 > 👀 **Vedi anche**
 >
-> • [vendite.documenti_fatturazione_canali](/dbzero/vendite/tabelle/documenti_fatturazione_canali)  
+• [vendite.documenti_fatturazione_canali](/dbzero/vendite/tabelle/documenti_fatturazione_canali)  
 > • [vendite.fn_set_documento_canale_stato](/dbzero/vendite/funzioni/fn_set_documento_canale_stato)  
 > • [config.sorgenti](/dbzero/config/tabelle/sorgenti)  
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 24-02-2026)  
 La funzione trigger `vendite.trgfn_documenti_sync_canali()` mantiene
 allineato il registro `documenti_fatturazione_canali` sugli eventi
@@ -17,7 +15,7 @@ principali dei documenti commerciali.
 
 ---
 
-### ✅ Regole applicate
+### Regole applicate
 
 * su `vendite.ordini`:
   * apre canale `ORDINE_VENDITA` per l'ordine creato/aggiornato;
@@ -34,7 +32,7 @@ principali dei documenti commerciali.
 
 ---
 
-### 🧩 Obiettivo operativo
+### Obiettivo operativo
 
 Rendere uniforme il tracciamento dei passaggi documento (`preventivo->ordine`,
 `ordine->ddt`) e includere anche i contratti, evitando divergenze applicative

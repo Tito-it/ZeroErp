@@ -2,22 +2,20 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimento funzioni:
+Approfondimento funzioni:
 >
-> * [`dbops.fn_run_automations_storico_provision`](/dbzero/dbops/funzioni/fn_run_automations_storico_provision)
-> * [`maintenance.fn_run_and_log`](/dbzero/maintenance/funzioni/fn_run_and_log)
-> * [`maintenance.proc_automations_storico_job`](/dbzero/maintenance/manual/proc_automations_storico_job)
+[`dbops.fn_run_automations_storico_provision`](/dbzero/dbops/funzioni/fn_run_automations_storico_provision)
+> [`maintenance.fn_run_and_log`](/dbzero/maintenance/funzioni/fn_run_and_log)
+> [`maintenance.proc_automations_storico_job`](/dbzero/maintenance/manual/proc_automations_storico_job)
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 07-01-26)
 * **Eseguire in modo schedulato** il **provisioning delle automazioni STORICO** (setup/adeguamento dei trigger di storicizzazione) incapsulando la chiamata a `dbops.fn_run_automations_storico_provision(...)` in un wrapper **robusto** con **lock anti-overlap** e **logging strutturato**.
 
 ---
 
-### 🧩 Firma
+### Firma
 
 ```sql
 PROCEDURE maintenance.proc_automations_storico_provision_job()
@@ -25,7 +23,7 @@ PROCEDURE maintenance.proc_automations_storico_provision_job()
 
 ---
 
-### 🧩 Descrizione
+### Descrizione
 
 La procedura:
 
@@ -41,7 +39,7 @@ La procedura:
 
 ---
 
-### 🔎 Differenze rispetto a `proc_automations_storico_job`
+### Differenze rispetto a `proc_automations_storico_job`
 
 * **Scopo**: `storico_provision_job` si occupa del **provisioning** (setup/adeguamento) dei trigger; `storico_job` esegue l’**orchestrazione** delle regole STORICO su tabelle nell'ambito.
 * **Funzione chiamata**: `dbops.fn_run_automations_storico_provision(...)` vs `dbops.fn_run_automations_storico(...)`.
@@ -50,7 +48,7 @@ La procedura:
 
 ---
 
-### 🔄 Flusso di esecuzione (alto livello)
+### Flusso di esecuzione (alto livello)
 
 1. **Acquire lock** tramite `p_lock_key`.
 2. **Log start** (`p_jobname`, `p_stepname`).
@@ -60,7 +58,7 @@ La procedura:
 
 ---
 
-### 🧪 Idempotenza & sicurezza
+### Idempotenza & sicurezza
 
 * La procedura è pensata per essere **idempotente** *a livello di orchestrazione*: può essere richiamata più volte senza creare duplicazioni, **se** `dbops.fn_run_automations_storico_provision` applica la policy con controlli di pre‑esistenza (verifica trigger già presenti, strategie di existence, ecc.).
 * Il **lock advisory** previene esecuzioni parallele indesiderate e riduce il rischio di DDL concorrente (creazione trigger) e log duplicati.
@@ -87,7 +85,7 @@ Puoi schedulare con **pgAgent** (Windows/Linux) o con **cron** (Linux).
 
 ---
 
-### 🧰 Osservabilità & diagnostica
+### Osservabilità & diagnostica
 
 * Controlla la tabella/log usata da `fn_run_and_log` (es. `maintenance.job_log` o equivalente) per:
 
@@ -103,7 +101,7 @@ Puoi schedulare con **pgAgent** (Windows/Linux) o con **cron** (Linux).
 
 ---
 
-### 🔗 Dipendenze
+### Dipendenze
 
 * `dbops.fn_run_automations_storico_provision` — provisioning delle regole **STORICO** su tabelle nell'ambito.
 * `maintenance.fn_run_and_log` — esecuzione protetta con logging e advisory lock.
@@ -114,7 +112,7 @@ Puoi schedulare con **pgAgent** (Windows/Linux) o con **cron** (Linux).
 
 ---
 
-### ✅ Checklist di produzione
+### Checklist di produzione
 
 * [ ] La procedura è **deployata** e testata in `dev`/`stage`.
 * [ ] Esiste almeno **un job** (pgAgent/cron) attivo.
@@ -124,7 +122,7 @@ Puoi schedulare con **pgAgent** (Windows/Linux) o con **cron** (Linux).
 
 ---
 
-> 🧠 **In breve**: questa procedura è il wrapper schedulabile e sicuro per il provisioning delle automazioni **STORICO** tramite `dbops.fn_run_automations_storico_provision`, con logging strutturato e prevenzione di esecuzioni concorrenti.
+> **In breve**: questa procedura è il wrapper schedulabile e sicuro per il provisioning delle automazioni **STORICO** tramite `dbops.fn_run_automations_storico_provision`, con logging strutturato e prevenzione di esecuzioni concorrenti.
 
 ---
 

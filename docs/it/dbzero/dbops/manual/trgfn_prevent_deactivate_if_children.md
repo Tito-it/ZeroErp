@@ -4,24 +4,22 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimento funzioni:
+Approfondimento funzioni:
 >
-> * [`dbops.trgfn_child_requires_active_parent`](/dbzero/dbops/funzioni/trgfn_child_requires_active_parent)
+[`dbops.trgfn_child_requires_active_parent`](/dbzero/dbops/funzioni/trgfn_child_requires_active_parent)
 >
-> Approfondimento tabelle:
+Approfondimento tabelle:
 >
-> * [`dbops.automation_rules_tbl`](/dbzero/dbops/tabelle/automation_rules_tbl)
+[`dbops.automation_rules_tbl`](/dbzero/dbops/tabelle/automation_rules_tbl)
 
 ---
-
 ### 🎯 Scopo Principale
-
 *(last review 13-11-26)*
 La funzione **`trgfn_prevent_deactivate_if_children`** è un **trigger function** che impedisce la disattivazione (`attivo = FALSE`) di un record padre se esistono record figli **attivi** associati tramite una FK. Se la tabella figlia **non** ha la colonna `attivo`, il blocco scatta alla semplice presenza di figli collegati. Garantisce integrità logica tra entità padre e figlio, preservando la coerenza dei dati.
 
 ---
 
-### 📝 Dettagli
+### Dettagli
 
 * **Firma**
 
@@ -50,7 +48,7 @@ La funzione **`trgfn_prevent_deactivate_if_children`** è un **trigger function*
 
 ---
 
-### 🔧 Utilizzo tipico
+### Utilizzo tipico
 
 1. Evitare che un padre con figli **attivi** venga disattivato impropriamente.
 2. Applicabile su entità di dominio con attributo booleano `attivo`.
@@ -58,14 +56,14 @@ La funzione **`trgfn_prevent_deactivate_if_children`** è un **trigger function*
 
 ---
 
-### 📊 Collegamento con automazione
+### Collegamento con automazione
 
 * Inseribile tramite `automation_rules_tbl` come regola di consistenza.
 * Complementare a `trgfn_child_requires_active_parent`: insieme rafforzano la gestione coerente dello stato `attivo`.
 
 ---
 
-### 💡 Esempio pratico
+### Esempio pratico
 
 Impedire la disattivazione di un record in `config.gestori` se esistono soggetti **attivi** collegati (o qualsiasi soggetto se la tabella figlia non ha `attivo`):
 
@@ -84,4 +82,4 @@ EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children(
 
 ---
 
-> 🧠 **In sintesi**: `trgfn_prevent_deactivate_if_children` impedisce che un padre venga disattivato mentre esistono figli **attivi** associati (o figli in generale se manca `attivo` sul figlio), rafforzando la coerenza dei dati e prevenendo stati incoerenti nel database.
+> **In sintesi**: `trgfn_prevent_deactivate_if_children` impedisce che un padre venga disattivato mentre esistono figli **attivi** associati (o figli in generale se manca `attivo` sul figlio), rafforzando la coerenza dei dati e prevenendo stati incoerenti nel database.

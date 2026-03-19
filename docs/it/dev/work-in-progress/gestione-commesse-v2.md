@@ -6,7 +6,7 @@ Da consegnare al team DB come base per DB-0 → DB-5.
 
 Riferimenti correlati:
 
-- `docs/it/dev/work-in-progress/ripresa-lavori-attivita-fatturabili.md`
+- `docs/it/dev/work-done/ripresa-lavori-attivita-fatturabili.md` (superato)
 - `docs/it/dev/work-in-progress/gestione-commesse.md` (v1 — superato)
 
 ---

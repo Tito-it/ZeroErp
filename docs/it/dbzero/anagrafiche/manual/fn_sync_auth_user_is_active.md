@@ -2,19 +2,17 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> * [anagrafiche.risorse_umane](/dbzero/anagrafiche/tabelle/risorse_umane)
-> * [anagrafiche.risorse_umane_auth_user](/dbzero/anagrafiche/tabelle/risorse_umane_auth_user)
+[anagrafiche.risorse_umane](/dbzero/anagrafiche/tabelle/risorse_umane)
+> [anagrafiche.risorse_umane_auth_user](/dbzero/anagrafiche/tabelle/risorse_umane_auth_user)
 >
-> **Approfondimento funzioni:**
+**Approfondimento funzioni:**
 >
-> * [anagrafiche.fn_sync_auth_user_expired](/dbzero/anagrafiche/funzioni/fn_sync_auth_user_expired)
+[anagrafiche.fn_sync_auth_user_expired](/dbzero/anagrafiche/funzioni/fn_sync_auth_user_expired)
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 10-03-2026)
 La funzione **`anagrafiche.fn_sync_auth_user_is_active()`** allinea il campo
 `django.auth_user.is_active` allo stato effettivo della risorsa umana
@@ -25,7 +23,7 @@ applicativa dell'utente.
 
 ---
 
-### 🔍 Regole applicate
+### Regole applicate
 
 L'utente deve risultare attivo solo se tutte queste condizioni sono vere:
 
@@ -44,7 +42,7 @@ Inoltre:
 
 ---
 
-### ✅ Ruolo nel processo
+### Ruolo nel processo
 
 Questa funzione e' il punto unico di sincronizzazione tra stato HR e stato di
 accesso applicativo. I trigger su `risorse_umane` e `risorse_umane_auth_user`

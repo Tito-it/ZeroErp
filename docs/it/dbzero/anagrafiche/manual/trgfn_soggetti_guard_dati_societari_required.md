@@ -2,19 +2,18 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento Tabelle:**   
+**Approfondimento Tabelle:**   
 >
-> • [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)   
+• [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)   
 > • [anagrafiche.dati_societari](/dbzero/anagrafiche/tabelle/dati_societari)   
 > • [config.tipi_soggetto_dettaglio](/dbzero/config/tabelle/tipi_soggetto_dettaglio)   
 >
-> **Approfondimento Funzioni/Trigger:**   
+**Approfondimento Funzioni/Trigger:**   
 >
-> • [anagrafiche.trgfn_dati_societari_guard_tipo_soggetto](/dbzero/anagrafiche/funzioni/trgfn_dati_societari_guard_tipo_soggetto)   
+• [anagrafiche.trgfn_dati_societari_guard_tipo_soggetto](/dbzero/anagrafiche/funzioni/trgfn_dati_societari_guard_tipo_soggetto)   
 > • [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)   
 
 ---
-
 ### 🎯 Scopo Principale
 (latest review 03-12-25)
 Garantire che, per tutti i **soggetti** la cui tipologia dettagliata prevede una policy **dati societari obbligatoria**, esista **almeno una riga** associata in `anagrafiche.dati_societari`.
@@ -34,15 +33,15 @@ che può assumere i valori:
 | **OPTIONAL** | I dati societari sono facoltativi           | ⚪ Possono esserci 0 o 1 righe                                   |
 | **REQUIRED** | I dati societari sono obbligatori           | ✅ **Deve** esistere 1 riga (vincolo gestito da questa funzione) |
 
-> 🔎 **Nota:**
+> **Nota:**
 >
-> * L’ammissibilità all’inserimento su `anagrafiche.dati_societari` è gestita da:
->   `anagrafiche.trgfn_dati_societari_guard_tipo_soggetto()`.
-> * L’obbligatorietà di avere una riga per policy **`REQUIRED`** è invece responsabilità di questa funzione, eseguita tramite **constraint trigger DEFERRABLE** su `anagrafiche.soggetti`.
+L’ammissibilità all’inserimento su `anagrafiche.dati_societari` è gestita da:
+> `anagrafiche.trgfn_dati_societari_guard_tipo_soggetto()`.
+> L’obbligatorietà di avere una riga per policy **`REQUIRED`** è invece responsabilità di questa funzione, eseguita tramite **constraint trigger DEFERRABLE** su `anagrafiche.soggetti`.
 
 ---
 
-### 🧩 Come Funziona
+### Come Funziona
 
 La funzione `anagrafiche.trgfn_soggetti_guard_dati_societari_required()` è pensata per essere eseguita come **CONSTRAINT TRIGGER**:
 
@@ -133,7 +132,7 @@ script.fn_log_and_raise_error(
 
 ---
 
-### 🔗 Relazioni con altri trigger e funzioni
+### Relazioni con altri trigger e funzioni
 
 Questa funzione è **complementare** a:
 
@@ -152,7 +151,7 @@ Insieme i due trigger realizzano la seguente matrice di comportamento:
 
 ---
 
-### 🧪 Implicazioni sui test e sulla transazionalità
+### Implicazioni sui test e sulla transazionalità
 
 Essendo un **constraint trigger DEFERRABLE**:
 
@@ -174,7 +173,7 @@ Nei test automatizzati (es. pgTAP) è consigliato:
 
 ---
 
-### 💡 Note Implementative
+### Note Implementative
 
 * La funzione **non introduce logica di business duplicata**: la regola di obbligatorietà
   è derivata esclusivamente dalla configurazione in `config.tipi_soggetto_dettaglio`.
@@ -183,4 +182,4 @@ Nei test automatizzati (es. pgTAP) è consigliato:
 * L’aggiunta di nuove policy o la modifica del comportamento potrà avvenire in modo
   centralizzato agendo sulla configurazione, mantenendo la funzione stabile nel tempo.
 
-> 🧠 **"La coerenza sui dati societari è un vincolo di dominio configurabile, non hardcoded: la funzione applica la policy, non la definisce."**
+> **"La coerenza sui dati societari è un vincolo di dominio configurabile, non hardcoded: la funzione applica la policy, non la definisce."**

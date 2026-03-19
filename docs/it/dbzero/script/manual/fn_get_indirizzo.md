@@ -2,9 +2,9 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> • [anagrafiche.indirizzi](/dbzero/anagrafiche/tabelle/indirizzi)   
+• [anagrafiche.indirizzi](/dbzero/anagrafiche/tabelle/indirizzi)   
 > • [anagrafiche.indirizzi_dettaglio](/dbzero/anagrafiche/tabelle/indirizzi_dettaglio)  
 > • [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)   
 > • [config.tipi_indirizzi](/dbzero/config/tabelle/tipi_indirizzi)  
@@ -12,14 +12,12 @@
 > • [config.comuni](/dbzero/config/tabelle/comuni)  
 > • [config.codici_postali](/dbzero/config/tabelle/codici_postali)  
 >
-> **Approfondimento funzioni:**
+**Approfondimento funzioni:**
 >
-> • [`script.fn_get_indirizzi_by_ruolo`](/dbzero/script/funzioni/fn_get_indirizzi_by_ruolo.md)  
+• [`script.fn_get_indirizzi_by_ruolo`](/dbzero/script/funzioni/fn_get_indirizzi_by_ruolo.md)  
 
 ---
-
 ### 🎯 Scopo Principale
-
 *(latest review 01-12-25)*
 La funzione **`script.fn_get_indirizzo`** restituisce **uno o più indirizzi tecnici** associati a un determinato **`soggetto_ruolo`**, filtrando per **tipo di indirizzo** identificato dal **codice interno** (`config.tipi_indirizzi.codice_interno`).
 
@@ -43,7 +41,7 @@ La funzione opera con policy:
 
 ---
 
-### 🧩 Firma (reale)
+### Firma (reale)
 
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_get_indirizzo(
@@ -86,7 +84,7 @@ PARALLEL UNSAFE;
 
 ---
 
-### 🔢 Parametri di input
+### Parametri di input
 
 | Nome                  | Tipo      | Descrizione                                                                                              |
 | --------------------- | --------- | -------------------------------------------------------------------------------------------------------- |
@@ -97,7 +95,7 @@ PARALLEL UNSAFE;
 
 ---
 
-### 📤 Valori restituiti
+### Valori restituiti
 
 La funzione restituisce **zero, uno o più record**, tutti con struttura **completa e coerente**, derivata direttamente da `fn_get_indirizzi_by_ruolo`.
 
@@ -116,7 +114,7 @@ Alcuni campi rilevanti:
 
 ---
 
-### 🧠 Logica di funzionamento (concettuale)
+### Logica di funzionamento (concettuale)
 
 La funzione implementa una **ricerca iterativa con fallback configurabile**:
 
@@ -139,7 +137,7 @@ La funzione implementa una **ricerca iterativa con fallback configurabile**:
 
 ---
 
-### 🔁 Esempio di catena di fallback
+### Esempio di catena di fallback
 
 | tipo_indirizzo | fallback_tipo_indirizzo |
 | -------------- | ----------------------- |
@@ -159,7 +157,7 @@ Ordine dei tentativi:
 
 ---
 
-### ⚙️ Proprietà tecniche
+### Proprietà tecniche
 
 | Attributo    | Valore            | Note                                              |
 | ------------ | ----------------- | ------------------------------------------------- |
@@ -169,7 +167,7 @@ Ordine dei tentativi:
 
 ---
 
-### 🧪 Esempi d’uso
+### Esempi d’uso
 
 ```sql
 -- 1) Indirizzo SEDEOP per un Gestore, con fallback su SEDELEG

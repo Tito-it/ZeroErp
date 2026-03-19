@@ -2,21 +2,19 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimento Tabelle:   
+Approfondimento Tabelle:   
 >
-> * [dbops.transaction_ids](/dbzero/dbops/tabelle/transaction_ids)      
+[dbops.transaction_ids](/dbzero/dbops/tabelle/transaction_ids)      
 >
-> Approfondimento funzioni :    
+Approfondimento funzioni :    
 >
-> * [dbops.fn_get_or_create_session_tx_id](/dbzero/dbops/funzioni/fn_get_or_create_session_tx_id)    
+[dbops.fn_get_or_create_session_tx_id](/dbzero/dbops/funzioni/fn_get_or_create_session_tx_id)    
 
 
 La funzione **`dbops.fn_generate_tx_id(p_generating_function TEXT, p_session_info JSONB DEFAULT '{}'::jsonb)`** centralizza la **generazione** e la **memorizzazione** di un nuovo identificativo di transazione (UUID) in `dbops.transaction_ids`, associando il contesto di chiamata e le informazioni di sessione.
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 10-01-26)
 * **Unico punto di generazione**
   Evitare duplicazioni di logica ed errori creando sempre il `tx_id` tramite una function dedicata.
@@ -28,7 +26,7 @@ La funzione **`dbops.fn_generate_tx_id(p_generating_function TEXT, p_session_inf
 
 ---
 
-### 🔍 Parametri di Input
+### Parametri di Input
 
 | Nome                    | Tipo    | Default       | Descrizione                                                                   |
 | ----------------------- | ------- | ------------- | ----------------------------------------------------------------------------- |
@@ -37,7 +35,7 @@ La funzione **`dbops.fn_generate_tx_id(p_generating_function TEXT, p_session_inf
 
 ---
 
-### ⚙️ Flusso di Esecuzione
+### Flusso di Esecuzione
 
 1. **Generazione UUID**
 
@@ -58,7 +56,7 @@ La funzione **`dbops.fn_generate_tx_id(p_generating_function TEXT, p_session_inf
 
 ---
 
-### 🚀 Esempio di Utilizzo
+### Esempio di Utilizzo
 
 ```sql
 -- Genera un nuovo tx_id e ne visualizza il valore:
@@ -70,7 +68,7 @@ SELECT dbops.fn_generate_tx_id(
 
 ---
 
-### 💡 Vantaggi Operativi
+### Vantaggi Operativi
 
 * **Centralizzazione**: un’unica entry point per la creazione dei `tx_id`, evitando duplicazioni nella logica applicativa.
 * **Tracciabilità avanzata**: conserva contesto funzionale e dati di sessione per ogni transazione.
@@ -79,4 +77,4 @@ SELECT dbops.fn_generate_tx_id(
 
 ---
 
-> 🧠 **“La funzione `fn_generate_tx_id` semplifica e uniforma la creazione dei transaction IDs, assicurando tracciabilità, sicurezza e facilità di integrazione nell’architettura Zero ERP.”**
+> **“La funzione `fn_generate_tx_id` semplifica e uniforma la creazione dei transaction IDs, assicurando tracciabilità, sicurezza e facilità di integrazione nell’architettura Zero ERP.”**

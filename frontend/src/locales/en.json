@@ -141,7 +141,26 @@
     "password": "Password",
     "login": "Login",
     "logout": "Logout",
-    "login_error": "Invalid credentials"
+    "login_error": "Invalid credentials",
+    "account_disabled": "Account disabled — contact the administrator",
+    "account_not_active": "Account not yet active",
+    "account_expired": "Account expired — contact the administrator",
+    "access_denied": "Access denied",
+    "too_many_attempts": "Too many login attempts. Please try again in a few minutes.",
+    "account_locked": "Account temporarily locked due to too many failed attempts."
+  },
+  "resolver": {
+    "action_search": "Search",
+    "search_label": "Search subject by name, tax code or VAT",
+    "search_placeholder": "Type at least 3 characters...",
+    "confirm_selection": "Confirm selection",
+    "create_new": "Create new subject",
+    "create_and_select": "Create and select",
+    "back_to_search": "Back to search",
+    "already_role": "Already registered as {ruolo}",
+    "natura_blocked": "Subject type not allowed for this role",
+    "open": "Search or create subject",
+    "change": "Change subject"
   },
   "notifications": {
     "save_success": "Saved successfully",
@@ -254,6 +273,8 @@
     "col_ruolo": "Role",
     "col_stato": "Status",
     "col_data_insert": "Created",
+    "col_valido_dal": "Active from",
+    "col_valido_al": "Valid until",
     "col_profilo": "Profile",
     "col_operatori": "Operators",
     "col_area": "Area",
@@ -277,15 +298,23 @@
     "field_ruolo": "System role",
     "field_reparto": "Organizational unit",
     "field_valido_al": "Valid until",
+    "valido_al_illimitato": "Unlimited",
     "select_reparto": "Select department",
     "field_qualifica": "Qualification",
     "select_qualifica": "Select qualification",
     "select_emittenti": "Select issuers",
     "disabilita_operatore": "Disable operator",
+    "riattiva_operatore": "Reactivate operator",
     "disabilita_title": "Confirm disable",
     "disabilita_confirm": "Are you sure you want to disable this operator? Access will be revoked immediately.",
-    "utente_creato": "Operator created successfully",
-    "utente_disabilitato": "Operator disabled",
+    "operatore_creato": "Operator created successfully",
+    "operatore_disabilitato": "Operator disabled",
+    "riattiva_title": "Confirm reactivation",
+    "riattiva_confirm": "Are you sure you want to reactivate this operator? Access will be restored.",
+    "operatore_riattivato": "Operator reactivated",
+    "livello_tutto": "Full",
+    "livello_lettura": "Read-only",
+    "livello_bloccato": "Blocked",
     "admin_full_access": "Administrators have full access to all areas and actions.",
     "override_aree_title": "Area overrides",
     "override_azioni_title": "Action overrides",
@@ -321,7 +350,7 @@
     "col_attivo": "Status",
     "col_descrizione": "Description",
     "campo_comune": "Municipality",
-    "campo_via": "Street",
+    "campo_via": "Address",
     "campo_toponomastica": "Street type",
     "campo_nome_via": "Street name",
     "campo_cap": "Postal Code",
@@ -337,7 +366,8 @@
     "modifica_cap": "Edit Postal Code",
     "cap_creato": "Postal code created",
     "cap_salvato": "Postal code saved",
-    "via_non_presente": "Street not listed, create new",
+    "via_non_presente": "Address not listed, create new",
+    "indirizzo_non_trovato": "Address not found. Select 'Address not listed, create new' to create a new one.",
     "indirizzo_creato": "Address created",
     "indirizzo_salvato": "Address saved",
     "indirizzo_esistente": "Existing address, linked",
@@ -411,7 +441,11 @@
     "nuovo_indirizzo": "New address",
     "gestisci_indirizzi": "Manage addresses",
     "tipi_mancanti": "Required addresses missing: {tipi}",
-    "cambia_indirizzo": "Change address"
+    "cambia_indirizzo": "Change address",
+    "context_soggetto": "Subject",
+    "context_cliente": "Customer",
+    "context_fornitore": "Supplier",
+    "replace_non_trovato": "Address not found. To create a new one use \"Address not listed, create new\"."
   },
   "contatto": {
     "nominativo": "Contact name",
@@ -462,5 +496,8 @@
     "stato": "Country",
     "regione": "Region",
     "provincia": "Province"
+  },
+  "validation": {
+    "email_format": "Invalid email format"
   }
 }

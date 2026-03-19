@@ -2,15 +2,13 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> * [anagrafiche.resellers](/dbzero/anagrafiche/tabelle/resellers)
-> * [config.sistema_codici](/dbzero/config/tabelle/sistema_codici)
+[anagrafiche.resellers](/dbzero/anagrafiche/tabelle/resellers)
+> [config.sistema_codici](/dbzero/config/tabelle/sistema_codici)
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 10-03-2026)
 La trigger function **`anagrafiche.trgfn_resellers_normalize()`** e' oggi una
 **no-op**: non modifica il record `NEW` e ritorna semplicemente il contenuto
@@ -22,7 +20,7 @@ demandata al sistema di codifica configurabile (`config.sistema_codici`).
 
 ---
 
-### 🔍 Regola applicata
+### Regola applicata
 
 * Trigger **BEFORE INSERT OR UPDATE** su `anagrafiche.resellers`.
 * Nessuna trasformazione sui campi.
@@ -30,7 +28,7 @@ demandata al sistema di codifica configurabile (`config.sistema_codici`).
 
 ---
 
-### ✅ Ruolo nel processo
+### Ruolo nel processo
 
 La funzione conserva un hook architetturale dedicato ai reseller senza
 duplicare logica gia' gestita altrove. In particolare, non genera il campo

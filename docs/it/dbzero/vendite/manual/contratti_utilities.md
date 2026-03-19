@@ -2,22 +2,20 @@
 
 > 👀 **Vedi anche**
 >
-> **Guide generali:**    
+**Guide generali:**    
 >
-> • [Generazione di un cliente](/guide/generazione-cliente)    
+• [Generazione di un cliente](/guide/generazione-cliente)    
 > • [Gestione delle istanze utility](/guide/gestione-delle-istanze-utility)    
 >
-> **Approfondimento tabelle:**    
+**Approfondimento tabelle:**    
 >
-> • [vendite.contratti](/dbzero/vendite/tabelle/contratti)    
+• [vendite.contratti](/dbzero/vendite/tabelle/contratti)    
 > • [anagrafiche.istanze_dati_precontrattuali](/dbzero/anagrafiche/tabelle/istanze_dati_precontrattuali)    
 > • [config.classi_utenze](/dbzero/config/tabelle/classi_utenze)    
 > • [config.utilities](/dbzero/config/tabelle/utilities)    
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 20/01/26)
 `vendite.contratti_utilities` conserva lo **snapshot** dei dati pre‑contrattuali al **momento della creazione del contratto**.  
 L’obiettivo e` rendere il contratto **autonomo e stabile**: i dati tecnici/commerciali che lo qualificano non vengono piu` aggiornati dopo la creazione.
@@ -30,7 +28,7 @@ Questa scelta garantisce che:
 
 ---
 
-### 🧭 Regola di snapshot
+### Regola di snapshot
 
 Lo snapshot viene eseguito **solo alla creazione del contratto**:
 
@@ -40,7 +38,7 @@ Lo snapshot viene eseguito **solo alla creazione del contratto**:
 
 ---
 
-### 🔗 Collegamenti principali
+### Collegamenti principali
 
 * **1:1 con contratto** → `contratto_id` (un contratto puo` avere al massimo uno snapshot).
 * **Origine precontrattuale** → `istanza_dati_precontrattuali_id` per tracciabilita.
@@ -48,7 +46,7 @@ Lo snapshot viene eseguito **solo alla creazione del contratto**:
 
 ---
 
-### 🧩 Campi principali (concetto)
+### Campi principali (concetto)
 
 * `contratto_id` → aggancio al contratto.
 * `istanza_dati_precontrattuali_id` → riferimento al record sorgente.
@@ -57,7 +55,7 @@ Lo snapshot viene eseguito **solo alla creazione del contratto**:
 
 ---
 
-### ✅ Ruolo nel processo
+### Ruolo nel processo
 
 `vendite.contratti_utilities` e` il **punto di consolidamento** tra fase pre‑contrattuale e fase contrattuale:
 

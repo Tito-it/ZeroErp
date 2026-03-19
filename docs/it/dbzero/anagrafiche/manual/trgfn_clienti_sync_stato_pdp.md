@@ -1,21 +1,20 @@
 ## 📘 Documentazione Concettuale – Funzione `anagrafiche.trgfn_clienti_sync_stato_pdp()`
 >
-> 👀 **Vedi anche**
+👀 **Vedi anche**
 >
-> **Approfondimeto tabelle:**
+**Approfondimeto tabelle:**
 >
-> • [anagrafiche.clienti](/dbzero/anagrafiche/tabelle/clienti)  
+• [anagrafiche.clienti](/dbzero/anagrafiche/tabelle/clienti)  
 > • [anagrafiche.pdp](/dbzero/anagrafiche/tabelle/pdp)   
 > • [config.stati_cliente](/dbzero/config/tabelle/stati_cliente)   
 > • [config.stati_pdp](/dbzero/config/tabelle/stati_pdp)   
 >
-> **Approfondimento funzioni:**   
+**Approfondimento funzioni:**   
 >
-> • [`anagrafiche.trgfn_clienti_set_periodo()`](/dbzero/anagrafiche/funzioni/trgfn_clienti_set_periodo)    
+• [`anagrafiche.trgfn_clienti_set_periodo()`](/dbzero/anagrafiche/funzioni/trgfn_clienti_set_periodo)    
 > • [`script.fn_log_and_raise_error`](/dbzero/script/funzioni/fn_log_and_raise_error)  
 
 ---
-
 ### 🎯 Scopo Principale
 (latest review 09-12-25)
 La funzione `anagrafiche.trgfn_clienti_sync_stato_pdp()` è una **trigger function di dominio** che sincronizza lo **stato tecnico del PDP** (`anagrafiche.pdp.stato_pdp_id`) in base al cambio di **stato commerciale** del cliente (`anagrafiche.clienti.stato_cliente_id`).
@@ -30,7 +29,7 @@ La funzione è pensata per essere richiamata da un trigger `AFTER INSERT OR UPDA
 
 ---
 
-### 🧱 Contesto e campi interessati
+### Contesto e campi interessati
 
   **Tabella: `anagrafiche.clienti`**
 
@@ -70,7 +69,7 @@ Campi aggiornati:
 
 ---
 
-### 🔍 Logica di funzionamento
+### Logica di funzionamento
 
  0️⃣ Nessun PDP collegato
 
@@ -175,7 +174,7 @@ WHERE p.id = NEW.pdp_id
 * Il PDP viene portato nello stato tecnico **ATT** (attivo).
 * L’UPDATE è condizionato da `IS DISTINCT FROM` per evitare scritture inutili.
 
-> 💡 L’ipotesi di dominio è che l’attivazione del cliente implichi un PDP
+> L’ipotesi di dominio è che l’attivazione del cliente implichi un PDP
 > tecnicamente attivo, salvo casi particolari (es. dismissione tecnica) gestiti altrove.
 
 ---
@@ -193,25 +192,25 @@ WHERE p.id = NEW.pdp_id
 
 * Il PDP viene portato nello stato **DISP** (disponibile), indicando che dal punto di vista commerciale non ci sono più clienti attivi.
 
-> 🔎 Estensione possibile
+> Estensione possibile
 > Nella versione corrente la funzione non verifica l’esistenza di altri clienti ATTIVI sullo stesso PDP.
 > È però progettata (come da commenti iniziali) per essere estesa in futuro includendo un controllo del tipo:
 >
-> ```sql
+```sql
 > SELECT COUNT(*)
 > FROM anagrafiche.clienti c
 > JOIN config.stati_cliente sc
->   ON sc.id = c.stato_cliente_id
+> ON sc.id = c.stato_cliente_id
 > WHERE c.pdp_id = NEW.pdp_id
->   AND sc.codice_interno = 'AT'
->   AND c.id <> NEW.id;
+> AND sc.codice_interno = 'AT'
+> AND c.id <> NEW.id;
 > ```
 >
-> In tal caso, il passaggio a `DISP` verrebbe effettuato **solo se non esistono altri clienti attivi**.
+In tal caso, il passaggio a `DISP` verrebbe effettuato **solo se non esistono altri clienti attivi**.
 
 ---
 
-### 🔧 Trigger associato (schema suggerito)
+### Trigger associato (schema suggerito)
 
 Esempio di collegamento della funzione:
 
@@ -228,7 +227,7 @@ CREATE OR REPLACE TRIGGER trg_clienti_a20_sync_stato_pdp_aft_ins_upd
 
 ---
 
-### ✅ Benefici del disegno
+### Benefici del disegno
 
 * Mantiene **allineati dominio commerciale e dominio tecnico**: lo stato del PDP riflette le condizioni di attivazione/chiusura dei clienti.
 * Centralizza le regole di mapping stato cliente → stato PDP in una singola funzione.

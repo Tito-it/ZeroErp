@@ -2,21 +2,16 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> • [config.tipi_doc_fiscale](/dbzero/config/tabelle/tipi_doc_fiscale)  
+• [config.tipi_doc_fiscale](/dbzero/config/tabelle/tipi_doc_fiscale)  
 > • [vendite.registri_fatturazione](/dbzero/vendite/tabelle/registri_fatturazione)  
 >
+**Approfondimento funzioni:**
 >
-> **Approfondimento funzioni:**
+• [`vendite.fn_get_registro_id`](/dbzero/vendite/funzioni/fn_get_registro_id)
 >
-> • [`vendite.fn_get_registro_id`](/dbzero/vendite/funzioni/fn_get_registro_id)
->
-
----
-
 ### 🎯 Scopo Principale
-
 (latest review 27-01-2026)
 La tabella **`vendite.tipi_doc_fiscale_registri`** definisce il mapping
 **tipo documento fiscale → registro di fatturazione**, necessario per la
@@ -24,7 +19,7 @@ numerazione e la contabilizzazione dei documenti.
 
 ---
 
-### 🧩 Campi chiave
+### Campi chiave
 
 * `tipo_doc_fiscale_id` → tipo documento fiscale (FK).
 * `registro_id` → registro di fatturazione associato (FK).
@@ -32,7 +27,7 @@ numerazione e la contabilizzazione dei documenti.
 
 ---
 
-### ✅ Regole principali
+### Regole principali
 
 * mapping **multiplo** per `tipo_doc_fiscale_id` verso registri diversi.
 * la selezione del registro e` determinata da `vendite.fn_get_registro_id`.

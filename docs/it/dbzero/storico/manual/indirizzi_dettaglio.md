@@ -2,23 +2,21 @@
  
 > 👀 **Vedi anche**  
 >
-> Approfondimento tabelle:   
+Approfondimento tabelle:   
 >
-> * [anagrafiche.indirizzi_dettaglio](/dbzero/anagrafiche/tabelle/indirizzi_dettaglio)    
+[anagrafiche.indirizzi_dettaglio](/dbzero/anagrafiche/tabelle/indirizzi_dettaglio)    
 >
-> Approfondimento funzioni:   
+Approfondimento funzioni:   
 >
-> * [script.trgfn_upd_dlt_storico_generic](/dbzero/script/funzioni/trgfn_upd_dlt_storico_generic)    
-
+[script.trgfn_upd_dlt_storico_generic](/dbzero/script/funzioni/trgfn_upd_dlt_storico_generic)    
 ### 🎯 Scopo Principale
-
 * **Audit Trail**: tracciare ogni modifica ai dettagli degli indirizzi consentendo la ricostruzione dello stato storico.
 * **Versioning temporale**: supportare query basate su periodi di validità tramite `valid_from` e `valid_to`.
 * **Schema futuro‑proof**: salvare l’intero stato del record in JSONB senza richiedere aggiornamenti di schema a ogni nuova colonna.
 
 ---
 
-### 🛠️ Struttura Standard delle Tabelle di Storico
+### Struttura Standard delle Tabelle di Storico
 
 Tutte le tabelle di storico in Zero ERP, incluso `storico.indirizzi_dettaglio`, adottano uno **schema di colonne standard**:
 
@@ -34,7 +32,7 @@ Tutte le tabelle di storico in Zero ERP, incluso `storico.indirizzi_dettaglio`, 
 
 ---
 
-### 🔄 Meccanismo di Popolamento
+### Meccanismo di Popolamento
 
 La popolazione degli snapshot avviene tramite la trigger function generica `script.trgfn_upd_dlt_storico_generic()` applicata sulla tabella sorgente, che:
 
@@ -45,7 +43,7 @@ La popolazione degli snapshot avviene tramite la trigger function generica `scri
 
 ---
 
-### 💡 Vantaggi Operativi
+### Vantaggi Operativi
 
 * **Storicizzazione automatica**: nessuna logica custom su ogni tabella; il pattern JSONB consente evoluzioni senza migrazione di schema.
 * **Coerenza transazionale**: associando `tx_id`, si raggruppano snapshot multipli nella stessa operazione di business.
@@ -53,4 +51,4 @@ La popolazione degli snapshot avviene tramite la trigger function generica `scri
 
 ---
 
-> 🧠 **“`storico.indirizzi_dettaglio` segue lo standard storico di Zero ERP: semplici regole per uno storico completo e affidabile, con flessibilità JSONB e robustezza transazionale.”**
+> **“`storico.indirizzi_dettaglio` segue lo standard storico di Zero ERP: semplici regole per uno storico completo e affidabile, con flessibilità JSONB e robustezza transazionale.”**

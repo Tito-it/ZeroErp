@@ -2,19 +2,17 @@
 
 > 👀 **Vedi anche**
 >
-> * [pratiche.calcoli_tempo](/dbzero/pratiche/manual/calcoli_tempo)
+[pratiche.calcoli_tempo](/dbzero/pratiche/manual/calcoli_tempo)
 
 ---
-
 ### 🎯 Scopo Principale
-
 Guard: blocca UPDATE sui campi di riferimento immutabili della tabella `pratiche.calcoli_tempo`.
 
 Campi protetti: `pratica_id`, `flusso_da_id`, `flusso_a_id`, `formula_tempo_id`, `giorni_formula`, `data_inizio_calcolo`.
 
 ---
 
-### 🔧 Firma
+### Firma
 
 ```sql
 CREATE OR REPLACE FUNCTION pratiche.trgfn_calcoli_tempo_guard_immutabili()
@@ -23,7 +21,7 @@ RETURNS trigger LANGUAGE plpgsql
 
 ---
 
-### 🔗 Trigger associato
+### Trigger associato
 
 | Nome                                            | Fase   | Evento                                                                                    | Tabella                 |
 | ----------------------------------------------- | ------ | ----------------------------------------------------------------------------------------- | ----------------------- |
@@ -31,7 +29,7 @@ RETURNS trigger LANGUAGE plpgsql
 
 ---
 
-### 📋 Messaggi errore
+### Messaggi errore
 
 | Codice                      | Messaggio                  |
 | --------------------------- | -------------------------- |

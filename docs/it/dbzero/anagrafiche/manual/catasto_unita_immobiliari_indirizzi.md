@@ -1,17 +1,16 @@
-## 🧭 Documentazione Tecnica – Tabella `anagrafiche.catasto_unita_immobiliari_indirizzi`
+## Documentazione Tecnica – Tabella `anagrafiche.catasto_unita_immobiliari_indirizzi`
 
-> 🧩 **Destinatari:** DBA / backend / analisti funzionali
+> **Destinatari:** DBA / backend / analisti funzionali
 >
-> 👀 **Vedi anche**
+👀 **Vedi anche**
 >
-> **Tabelle**
+**Tabelle**
 >
-> * [`anagrafiche.catasto_unita_immobiliari`](/dbzero/anagrafiche/tabelle/catasto_unita_immobiliari)
-> * [`anagrafiche.indirizzi_dettaglio`](/dbzero/anagrafiche/tabelle/indirizzi_dettaglio)
-> * [`anagrafiche.istanze_utilities`](/dbzero/anagrafiche/tabelle/istanze_utilities)
+[`anagrafiche.catasto_unita_immobiliari`](/dbzero/anagrafiche/tabelle/catasto_unita_immobiliari)
+> [`anagrafiche.indirizzi_dettaglio`](/dbzero/anagrafiche/tabelle/indirizzi_dettaglio)
+> [`anagrafiche.istanze_utilities`](/dbzero/anagrafiche/tabelle/istanze_utilities)
 
 ---
-
 ### 🎯 Scopo Principale
 (latest review 16-12-25)
 La tabella `anagrafiche.catasto_unita_immobiliari_indirizzi` è una **tabella ponte** che esplicita la relazione tra:
@@ -28,7 +27,7 @@ consentendo una modellazione **robusta**, **riusabile** e coerente con i flussi 
 
 ---
 
-### 🧱 Struttura della tabella
+### Struttura della tabella
 
 | Campo                    |            Tipo | Null  | Descrizione                                          |
 | ------------------------ | --------------: | :---: | ---------------------------------------------------- |
@@ -38,7 +37,7 @@ consentendo una modellazione **robusta**, **riusabile** e coerente con i flussi 
 
 ---
 
-### 🔐 Vincoli e integrità
+### Vincoli e integrità
 
 **🔑 Chiave primaria**
 
@@ -61,15 +60,15 @@ Garantisce che **lo stesso indirizzo non venga associato due volte alla stessa u
 
 ---
 
-### 🔄 Ruolo nei flussi di business
+### Ruolo nei flussi di business
 
 **🔁 Subentro / riattivazione utenza**
 
 Nel flusso tipico:
 
-1. 🔒 una istanza/cliente viene **chiusa** (stato CH)
+1. una istanza/cliente viene **chiusa** (stato CH)
 2. 🆕 viene creata una **nuova istanza** sullo stesso indirizzo
-3. 🧩 la nuova istanza viene collegata alla **stessa unità immobiliare catastale**
+3. la nuova istanza viene collegata alla **stessa unità immobiliare catastale**
 
 Questa tabella consente di:
 
@@ -78,14 +77,14 @@ Questa tabella consente di:
 
 ---
 
-### 🧪 Controlli consigliati (pgTAP)
+### Controlli consigliati (pgTAP)
 
 I test automatici dovrebbero verificare:
 
-1. ✅ inserimento corretto del legame unità↔indirizzo
-2. ❌ rifiuto di duplicati su `(catasto_unita_id, indirizzo_dettaglio_id)`
-3. 🔗 coerenza FK (no record orfani)
-4. 🔁 scenario di subentro:
+1. inserimento corretto del legame unità↔indirizzo
+2. rifiuto di duplicati su `(catasto_unita_id, indirizzo_dettaglio_id)`
+3. coerenza FK (no record orfani)
+4. scenario di subentro:
 
    * stessa unità catastale
    * stesso indirizzo
@@ -118,7 +117,7 @@ erDiagram
 
 ---
 
-### 📝 Note finali
+### Note finali
 
 * La tabella **non contiene logica di dominio**, ma è fondamentale per la **coerenza del modello**.
 * Permette di evolvere in futuro verso:

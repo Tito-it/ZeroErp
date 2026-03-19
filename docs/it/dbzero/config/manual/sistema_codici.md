@@ -3,9 +3,7 @@
 La tabella **`config.sistema_codici`** definisce le regole per la generazione automatica di codici alfanumerici, utilizzati in vari ambiti (ordini, clienti, fatture, ecc.).
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 18-01-26)
 * **Definizione del formato codice**
   Consente di specificare per ogni tipo di codice (`codice_interno`) un **prefisso**, un **separatore** e la **lunghezza numerica** totale, rendendo parametrica la struttura dei codici generati.
@@ -18,7 +16,7 @@ La tabella **`config.sistema_codici`** definisce le regole per la generazione au
 
 ---
 
-### 🔄 Parametri di Configurazione
+### Parametri di Configurazione
 
 * **`prefisso`**
   Prefisso testuale anteposto alla parte numerica (es. `ORD-`, `CL-`).
@@ -33,7 +31,7 @@ La tabella **`config.sistema_codici`** definisce le regole per la generazione au
 
 ---
 
-### 💡 Vantaggi Operativi
+### Vantaggi Operativi
 
 * **Uniformità dei codici**
   Garantisce che tutti i codici generati rispettino lo stesso pattern configurato, migliorando la leggibilità e la coerenza aziendale.
@@ -46,4 +44,4 @@ La tabella **`config.sistema_codici`** definisce le regole per la generazione au
 
 ---
 
-> 🧠 **"Un sistema configurabile di generazione codici, che separa prefisso, numerazione e logica di sequenza, per codifiche coerenti e facilmente modificabili."**
+> **"Un sistema configurabile di generazione codici, che separa prefisso, numerazione e logica di sequenza, per codifiche coerenti e facilmente modificabili."**

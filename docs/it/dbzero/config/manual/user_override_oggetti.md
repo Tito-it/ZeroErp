@@ -2,14 +2,14 @@
 
 > 👀 **Vedi anche**
 >
-> Architettura di riferimento:
+Architettura di riferimento:
 >
-> * [Architettura Permessi e Autorizzazioni](/guide/architettura-permessi-e-autorizzazioni)
+[Architettura Permessi e Autorizzazioni](/guide/architettura-permessi-e-autorizzazioni)
 >
-> Tabelle correlate:
+Tabelle correlate:
 >
-> * [config.user_override_aree](/dbzero/config/tabelle/user_override_aree)
-> * [config.area_model_overrides](/dbzero/config/tabelle/area_model_overrides)
+[config.user_override_aree](/dbzero/config/tabelle/user_override_aree)
+> [config.area_model_overrides](/dbzero/config/tabelle/area_model_overrides)
 
 ---
 
@@ -18,15 +18,13 @@ La tabella **`config.user_override_oggetti`** consente di sovrascrivere il livel
 È il livello più granulare della catena di risoluzione: sovrascrive sia il profilo reparto che l'override area.
 
 ---
-
 ### 🎯 Scopo Principale
-
 * Consentire **granularità a livello di singola entità** (model Django).
 * Esempio: un utente ha TUTTO su Anagrafiche ma solo LETTURA su `anagrafiche.clienti`.
 
 ---
 
-### 🔑 Colonne chiave
+### Colonne chiave
 
 | Colonna | Scopo |
 |---------|-------|
@@ -54,10 +52,10 @@ Questo override è al **primo livello** della catena di risoluzione (massima pri
 
 ---
 
-### 💡 Uso consigliato
+### Uso consigliato
 
 Questa tabella è pensata per **eccezioni rare e puntuali**. Se molti utenti hanno override sullo stesso model, probabilmente serve una riorganizzazione dei profili reparto o una separazione dell'area funzionale.
 
 ---
 
-> 🧠 **"`config.user_override_oggetti` è il livello più granulare del sistema permessi: usare con parsimonia per eccezioni puntuali."**
+> **"`config.user_override_oggetti` è il livello più granulare del sistema permessi: usare con parsimonia per eccezioni puntuali."**

@@ -1,14 +1,12 @@
 ## 📘 Documentazione Concettuale – Tabella `dbops.automazione_guard_utility_tipo_ruolo`
-
 ### 🎯 Scopo Principale
-
 La tabella **`dbops.automazione_guard_utility_tipo_ruolo`** configura le tabelle
 su cui applicare automaticamente il trigger di guardia
 **utility -> tipo_ruolo**.
 
 ---
 
-### ✅ Regole principali
+### Regole principali
 
 * Una riga per tabella target (`schema_name`, `table_name`).
 * `utility_column` indica la colonna utility (default `utility_id`).
@@ -18,7 +16,7 @@ su cui applicare automaticamente il trigger di guardia
 
 ---
 
-### 🔁 Flusso operativo
+### Flusso operativo
 
 1. `dbops.fn_seed_automazione_guard_utility_tipo_ruolo(...)` popola/aggiorna la configurazione.
 2. `dbops.fn_apply_automazione_guard_utility_tipo_ruolo(...)` crea i trigger.
@@ -27,7 +25,7 @@ su cui applicare automaticamente il trigger di guardia
 
 ---
 
-### 🧪 Esempio d’uso
+### Esempio d’uso
 
 ```sql
 SELECT dbops.fn_seed_automazione_guard_utility_tipo_ruolo(ARRAY['anagrafiche']);

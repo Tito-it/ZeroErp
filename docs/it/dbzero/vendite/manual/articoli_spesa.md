@@ -2,19 +2,17 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimenti tabelle:
+Approfondimenti tabelle:
 >
-> * [catalogo.articoli](/dbzero/catalogo/tabelle/articoli)
-> * [vendite.articoli_gruppi](/dbzero/vendite/tabelle/articoli_gruppi)
-> * [vendite.articoli_tipologie](/dbzero/vendite/tabelle/articoli_tipologie)
+[catalogo.articoli](/dbzero/catalogo/tabelle/articoli)
+> [vendite.articoli_gruppi](/dbzero/vendite/tabelle/articoli_gruppi)
+> [vendite.articoli_tipologie](/dbzero/vendite/tabelle/articoli_tipologie)
 >
 
 La tabella **`vendite.articoli_spesa`** mappa gli **articoli** su specifiche **voci di spesa** (es. energia, gas, oneri, servizi), consentendo di categorizzare le righe di documento per finalità **gestionali, fiscali e di stampa**. Include una **descrizione per fattura** dedicata, utile a migliorare la leggibilità del documento verso il cliente.
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 14-01-26)
 * Definire un **catalogo centralizzato** delle voci di spesa utilizzabili in fatturazione.
 * Abilitare **riepiloghi e totalizzazioni** per voce di spesa nei documenti (es. bolletta, fattura).
@@ -24,7 +22,7 @@ La tabella **`vendite.articoli_spesa`** mappa gli **articoli** su specifiche **v
 
 ---
 
-### 🔒 Vincoli e Logiche Aziendali
+### Vincoli e Logiche Aziendali
 
 * **Unicità**: ogni voce di spesa è identificata da un `codice` univoco.
 * **Obbligatorietà**: `descrizione` deve essere sempre valorizzata.
@@ -34,7 +32,7 @@ La tabella **`vendite.articoli_spesa`** mappa gli **articoli** su specifiche **v
 
 ---
 
-### 🔗 Relazioni e Indici
+### Relazioni e Indici
 
 * **Relazioni**: utilizzata come riferimento in `vendite.articoli` per associare ogni articolo alla propria voce di spesa.
 * **Indice univoco**: `uq_articoli_spesa_codice` garantisce l’unicità del codice.
@@ -42,7 +40,7 @@ La tabella **`vendite.articoli_spesa`** mappa gli **articoli** su specifiche **v
 
 ---
 
-### 💡 Vantaggi Operativi
+### Vantaggi Operativi
 
 * **Totalizzazione semplice**: consente di stampare subtotali per categoria di spesa.
 * **Chiarezza verso il cliente**: con `descrizione_fattura` ottimizzata per il documento.
@@ -51,4 +49,4 @@ La tabella **`vendite.articoli_spesa`** mappa gli **articoli** su specifiche **v
 
 ---
 
-> 🧠 **“La voce di spesa è la lente con cui il cliente legge la fattura: governa descrizioni e raggruppamenti per una comunicazione chiara e professionale.”**
+> **“La voce di spesa è la lente con cui il cliente legge la fattura: governa descrizioni e raggruppamenti per una comunicazione chiara e professionale.”**

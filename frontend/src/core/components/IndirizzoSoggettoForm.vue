@@ -11,6 +11,7 @@ import Checkbox from 'primevue/checkbox'
 import Message from 'primevue/message'
 import ComuneAutocomplete from './ComuneAutocomplete.vue'
 import StradarioAutocomplete from './StradarioAutocomplete.vue'
+import StradarioGeneraleAutocomplete from './StradarioGeneraleAutocomplete.vue'
 
 const { t } = useI18n()
 
@@ -18,12 +19,13 @@ defineProps({
   form: { type: Object, required: true },
   isLibera: { type: Boolean, default: false },
   tipiStato: { type: Array, default: () => [] },
-  toponomasticaLookup: { type: Object, required: true },
   statiLookup: { type: Object, default: null },
   capOptions: { type: Array, default: () => [] },
   loadingCap: { type: Boolean, default: false },
   autoClone: { type: Boolean, default: true },
   indirizzoWarnings: { type: Array, default: () => [] },
+  addressNotFound: { type: Boolean, default: false },
+  comuneInitialItem: { type: Object, default: null },
   disabled: { type: Boolean, default: false }
 })
 
@@ -52,8 +54,18 @@ defineEmits(['update:isLibera', 'update:autoClone', 'switchTipo'])
       </div>
     </div>
 
-    <!-- Switch modalita' libera -->
-    <div class="form-field">
+    <!-- Checkbox: auto-clone + formato libero + via non presente (affiancati) -->
+    <div class="form-row-inline" style="flex-wrap: wrap;">
+      <div v-if="tipiStato.filter(t => t.obbligatorio).length > 1" style="display: flex; align-items: center; gap: 0.5rem;">
+        <Checkbox
+          :modelValue="autoClone"
+          @update:modelValue="$emit('update:autoClone', $event)"
+          :binary="true"
+          input-id="auto-clone"
+          :disabled="disabled"
+        />
+        <label for="auto-clone" class="app-text-secondary">{{ t('indirizzo_soggetto.auto_clone') }}</label>
+      </div>
       <div style="display: flex; align-items: center; gap: 0.5rem;">
         <Checkbox
           :modelValue="isLibera"
@@ -64,68 +76,59 @@ defineEmits(['update:isLibera', 'update:autoClone', 'switchTipo'])
         />
         <label for="indirizzo-libero">{{ t('indirizzo_soggetto.modalita_libera') }}</label>
       </div>
+      <div v-if="!isLibera" style="display: flex; align-items: center; gap: 0.5rem;">
+        <Checkbox v-model="form.via_nuova" :binary="true" input-id="via-nuova-sogg" :disabled="disabled" />
+        <label for="via-nuova-sogg">{{ t('indirizzi.via_non_presente') }}</label>
+      </div>
     </div>
 
     <!-- === MODALITA' NORMALIZZATA === -->
     <template v-if="!isLibera">
       <div class="form-field">
         <label>{{ t('indirizzi.campo_comune') }} *</label>
-        <ComuneAutocomplete v-model="form.comune_id" :disabled="disabled" />
+        <ComuneAutocomplete v-model="form.comune_id"
+          :initial-item="form._comune_obj || comuneInitialItem"
+          :disabled="disabled"
+          @item-selected="obj => form._comune_obj = obj" />
       </div>
 
-      <!-- Via esistente (stradario) -->
+      <!-- Via esistente (stradario locale) -->
       <template v-if="!form.via_nuova">
         <div class="form-field">
           <label>{{ t('indirizzi.campo_via') }} *</label>
           <StradarioAutocomplete
-            v-model="form.stradario_obj"
+            v-model="form.via_obj"
             :comune-id="form.comune_id"
             :disabled="disabled || !form.comune_id"
           />
         </div>
       </template>
 
-      <!-- Checkbox via non presente -->
-      <div class="form-field">
-        <div style="display: flex; align-items: center; gap: 0.5rem;">
-          <Checkbox v-model="form.via_nuova" :binary="true" input-id="via-nuova-sogg" :disabled="disabled" />
-          <label for="via-nuova-sogg">{{ t('indirizzi.via_non_presente') }}</label>
-        </div>
-      </div>
-
-      <!-- Via nuova -->
+      <!-- Via nuova: autocomplete su stradario_generale -->
       <template v-if="form.via_nuova">
         <div class="form-field">
-          <label>{{ t('indirizzi.campo_toponomastica') }} *</label>
-          <Select
-            v-model="form.toponomastica_id"
-            :options="toponomasticaLookup.items.value"
-            option-label="descrizione"
-            option-value="id"
-            :placeholder="t('indirizzi.campo_toponomastica')"
-            :loading="toponomasticaLookup.loading.value"
+          <label>{{ t('indirizzi.campo_via') }} *</label>
+          <StradarioGeneraleAutocomplete
+            v-model="form.via_obj"
             :disabled="disabled"
-            class="w-full"
-          />
-        </div>
-        <div class="form-field">
-          <label>{{ t('indirizzi.campo_nome_via') }} *</label>
-          <InputText v-model="form.nome_via" :disabled="disabled" class="w-full" />
-        </div>
-        <div class="form-field">
-          <label>{{ t('indirizzi.campo_cap') }} *</label>
-          <Select
-            v-model="form.codice_postale_id"
-            :options="capOptions"
-            option-label="codice"
-            option-value="id"
-            :placeholder="t('indirizzi.campo_cap')"
-            :loading="loadingCap"
-            :disabled="disabled || !form.comune_id"
-            class="w-full"
           />
         </div>
       </template>
+
+      <!-- CAP: sempre visibile (auto-set da stradario, fallback da comune) -->
+      <div class="form-field">
+        <label>{{ t('indirizzi.campo_cap') }} *</label>
+        <Select
+          v-model="form.codice_postale_id"
+          :options="capOptions"
+          option-label="codice"
+          option-value="id"
+          :placeholder="t('indirizzi.campo_cap')"
+          :loading="loadingCap"
+          :disabled="disabled || !form.comune_id"
+          class="w-full"
+        />
+      </div>
 
       <!-- Civico e dettagli -->
       <div class="form-grid-2col">
@@ -135,7 +138,7 @@ defineEmits(['update:isLibera', 'update:autoClone', 'switchTipo'])
         </div>
         <div class="form-field">
           <label>{{ t('indirizzi.campo_estensione') }}</label>
-          <InputText v-model="form.estensione_civico" :disabled="disabled" class="w-full" />
+          <InputText :model-value="form.estensione_civico" @update:model-value="v => form.estensione_civico = (v || '').toUpperCase()" :disabled="disabled" class="w-full" />
         </div>
         <div class="form-field">
           <label>{{ t('indirizzi.campo_palazzina') }}</label>
@@ -157,6 +160,9 @@ defineEmits(['update:isLibera', 'update:autoClone', 'switchTipo'])
 
       <Message v-for="(msg, i) in indirizzoWarnings" :key="i" severity="warn" size="small" class="mt-1">
         {{ msg }}
+      </Message>
+      <Message v-if="addressNotFound" severity="warn" size="small" class="mt-1">
+        {{ t('indirizzi.indirizzo_non_trovato') }}
       </Message>
     </template>
 
@@ -186,21 +192,6 @@ defineEmits(['update:isLibera', 'update:autoClone', 'switchTipo'])
       </div>
     </template>
 
-    <!-- Auto-clone checkbox -->
-    <div v-if="tipiStato.filter(t => t.obbligatorio).length > 1" class="form-field">
-      <div style="display: flex; align-items: center; gap: 0.5rem;">
-        <Checkbox
-          :modelValue="autoClone"
-          @update:modelValue="$emit('update:autoClone', $event)"
-          :binary="true"
-          input-id="auto-clone"
-          :disabled="disabled"
-        />
-        <label for="auto-clone" class="app-text-secondary">
-          {{ t('indirizzo_soggetto.auto_clone') }}
-        </label>
-      </div>
-    </div>
   </div>
 </template>
 

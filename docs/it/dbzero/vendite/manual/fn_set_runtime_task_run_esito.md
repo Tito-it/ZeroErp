@@ -1,13 +1,11 @@
 ## 📘 Documentazione Concettuale – Funzione `vendite.fn_set_runtime_task_run_esito`
-
 ### 🎯 Scopo Principale
-
 Helper condiviso per applicare l'esito runtime di un task-run
 nei domini `LOTTO` e `ATTIVITA_FATTURABILI`.
 
 ---
 
-### ✅ Regole principali
+### Regole principali
 
 * `p_scope` obbligatorio (`LOTTO|ATTIVITA_FATTURABILI`)
 * `p_task_run_id` obbligatorio (`> 0`)
@@ -20,7 +18,7 @@ nei domini `LOTTO` e `ATTIVITA_FATTURABILI`.
 
 ---
 
-### 🧩 Utilizzo previsto
+### Utilizzo previsto
 
 * usata dalle funzioni wrapper:
   * `fn_complete_lotto_task_run`

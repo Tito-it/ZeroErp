@@ -2,24 +2,22 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimenti tabelle: 
+Approfondimenti tabelle: 
 >
-> * [anagrafiche.billing_account](/dbzero/anagrafiche/tabelle/billing_account)
+[anagrafiche.billing_account](/dbzero/anagrafiche/tabelle/billing_account)
 >
-> Approfondimenti funzioni:
+Approfondimenti funzioni:
 >
-> * [config.sistema_codici](/dbzero/config/manual/sistema_codici)
+[config.sistema_codici](/dbzero/config/manual/sistema_codici)
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 28-12-25)
 Il trigger `anagrafiche.trgfn_billing_account_guard_normalize` applica le **validazioni di business** e normalizza i campi, mentre la generazione del `codice` e' demandata al sistema automatico basato su `config.sistema_codici`.
 
 ---
 
-### 🔄 Contesto di Esecuzione
+### Contesto di Esecuzione
 
 * **Tipo**: `BEFORE INSERT OR UPDATE` trigger sulla tabella `anagrafiche.billing_account`
 * **Oggetto**: opera sul record `NEW`
@@ -27,7 +25,7 @@ Il trigger `anagrafiche.trgfn_billing_account_guard_normalize` applica le **vali
 ---
 
 
-### 📋 Logica Operativa
+### Logica Operativa
 
 1. **Normalizzazione `codice (account)`**
 
@@ -39,7 +37,7 @@ Il trigger `anagrafiche.trgfn_billing_account_guard_normalize` applica le **vali
 
 ---
 
-### 🔍 Impatto e Vantaggi
+### Impatto e Vantaggi
 
 * **Consistenza**: garantisce che nessun record venga creato senza un codice di fatturazione.
 * **Automazione**: la generazione del codice e' gestita dal trigger automatico su `config.sistema_codici`.

@@ -2,21 +2,18 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> • [vendite.commesse](/dbzero/vendite/tabelle/commesse)  
+• [vendite.commesse](/dbzero/vendite/tabelle/commesse)  
 > • [vendite.commesse_attivita](/dbzero/vendite/tabelle/commesse_attivita)  
 >
-> **Approfondimento funzioni:**
+**Approfondimento funzioni:**
 >
-> • [vendite.fn_get_or_create_commessa](/dbzero/vendite/funzioni/fn_get_or_create_commessa)  
+• [vendite.fn_get_or_create_commessa](/dbzero/vendite/funzioni/fn_get_or_create_commessa)  
 > • [vendite.fn_upsert_commessa_attivita](/dbzero/vendite/funzioni/fn_upsert_commessa_attivita)  
 > • [vendite.fn_list_commesse_emittibili](/dbzero/vendite/funzioni/fn_list_commesse_emittibili)  
 >
----
-
 ### 🎯 Scopo Principale
-
 (latest review 26-02-2026)  
 `vendite.stati_commessa` e` la lookup centrale degli stati lifecycle della commessa.
 
@@ -28,7 +25,7 @@ Oltre al codice stato, espone tre flag operativi usati in runtime:
 
 ---
 
-### ✅ Regole principali
+### Regole principali
 
 * PK tecnica su `id`.
 * Unicita` su `codice` e `codice_interno`.
@@ -38,7 +35,7 @@ Oltre al codice stato, espone tre flag operativi usati in runtime:
 
 ---
 
-### 🧩 Seed di base
+### Seed di base
 
 Seed iniziale previsto:
 

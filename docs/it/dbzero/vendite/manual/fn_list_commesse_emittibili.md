@@ -2,27 +2,24 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> • [vendite.commesse](/dbzero/vendite/tabelle/commesse)  
+• [vendite.commesse](/dbzero/vendite/tabelle/commesse)  
 > • [vendite.stati_commessa](/dbzero/vendite/tabelle/stati_commessa)  
 > • [vendite.commesse_attivita](/dbzero/vendite/tabelle/commesse_attivita)  
 >
-> **Approfondimento funzioni:**
+**Approfondimento funzioni:**
 >
-> • [vendite.fn_get_commessa_stato](/dbzero/vendite/funzioni/fn_get_commessa_stato)  
+• [vendite.fn_get_commessa_stato](/dbzero/vendite/funzioni/fn_get_commessa_stato)  
 > • [vendite.fn_emit_attivita_fatturabili_da_commessa](/dbzero/vendite/funzioni/fn_emit_attivita_fatturabili_da_commessa)  
 >
----
-
 ### 🎯 Scopo Principale
-
 (latest review 26-02-2026)  
 Elenca le commesse candidate all'emissione verso `attivita_fatturabili`, applicando i criteri minimi di prontezza operativa.
 
 ---
 
-### ✅ Regole principali
+### Regole principali
 
 * Funzione read-only (`STABLE`).
 * Restituisce solo commesse con:
@@ -40,7 +37,7 @@ Elenca le commesse candidate all'emissione verso `attivita_fatturabili`, applica
 
 ---
 
-### ✅ Output
+### Output
 
 Per ogni commessa idonea restituisce:
 
@@ -51,7 +48,7 @@ Per ogni commessa idonea restituisce:
 
 ---
 
-### 🧪 Esempio d'uso
+### Esempio d'uso
 
 ```sql
 SELECT *

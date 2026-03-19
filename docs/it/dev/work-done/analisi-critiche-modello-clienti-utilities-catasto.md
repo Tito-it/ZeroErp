@@ -28,7 +28,7 @@ Riferimenti trasversali:
 - [anagrafiche.billing_account – doc auto](/dbzero/anagrafiche/tabelle/billing_account)
 - [anagrafiche.clienti – doc auto](/dbzero/anagrafiche/tabelle/clienti)
 - [script.fn_subentro_cliente – doc auto](/dbzero/script/funzioni/fn_subentro_cliente)
-- [Analisi gravita precedente](/dev/work-in-progress/analisi-gravita-anagrafiche-indirizzi-soggetti-istanze)
+- [Analisi gravita precedente](/dev/work-done/analisi-gravita-anagrafiche-indirizzi-soggetti-istanze)
 - [Modello fatturazione utilities](/dev/work-in-progress/fatturazione-modello-utilities-gas-ee-idrico)
 
 ---

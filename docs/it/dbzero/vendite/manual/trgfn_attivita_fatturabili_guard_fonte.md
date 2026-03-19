@@ -2,21 +2,18 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> • [vendite.attivita_fatturabili](/dbzero/vendite/tabelle/attivita_fatturabili)  
+• [vendite.attivita_fatturabili](/dbzero/vendite/tabelle/attivita_fatturabili)  
 > • [vendite.articolo_regole_fatturazione](/dbzero/vendite/tabelle/articolo_regole_fatturazione)  
 >
-> **Approfondimento funzioni:**
+**Approfondimento funzioni:**
 >
-> • [vendite.trgfn_attivita_fatturabili_normalize](/dbzero/vendite/funzioni/trgfn_attivita_fatturabili_normalize)  
+• [vendite.trgfn_attivita_fatturabili_normalize](/dbzero/vendite/funzioni/trgfn_attivita_fatturabili_normalize)  
 > • [vendite.trgfn_attivita_fatturabili_guard_ba_coerenza](/dbzero/vendite/funzioni/trgfn_attivita_fatturabili_guard_ba_coerenza)  
 > • [vendite.trgfn_attivita_fatturabili_guard_fatturato](/dbzero/vendite/funzioni/trgfn_attivita_fatturabili_guard_fatturato)  
 >
----
-
 ### 🎯 Scopo Principale
-
 (latest review 29-01-2026)  
 La funzione **`vendite.trgfn_attivita_fatturabili_guard_fonte()`** verifica
 la coerenza della **fonte quantita** e delle **competenze** per le righe di
@@ -24,7 +21,7 @@ la coerenza della **fonte quantita** e delle **competenze** per le righe di
 
 ---
 
-### ✅ Regole principali
+### Regole principali
 
 * La regola di fatturazione per articolo deve esistere.
 * La fonte quantita deve essere tra: `TIMESHEET`, `MANUALE`, `FISSA`.
@@ -34,13 +31,13 @@ la coerenza della **fonte quantita** e delle **competenze** per le righe di
 
 ---
 
-### ✅ Output
+### Output
 
 Nessun output (trigger BEFORE). In caso di incoerenza viene sollevato errore.
 
 ---
 
-### 🧪 Esempio (caso non valido)
+### Esempio (caso non valido)
 
 ```sql
 INSERT INTO vendite.attivita_fatturabili (

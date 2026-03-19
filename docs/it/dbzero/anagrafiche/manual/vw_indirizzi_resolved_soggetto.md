@@ -2,20 +2,18 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimenti tabelle:
+Approfondimenti tabelle:
 >
-> * [anagrafiche.indirizzi_soggetti](/dbzero/anagrafiche/tabelle/indirizzi_soggetti)    
-> * [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)   
-> * [anagrafiche.indirizzi_dettaglio](/dbzero/anagrafiche/tabelle/indirizzi_dettaglio)    
+[anagrafiche.indirizzi_soggetti](/dbzero/anagrafiche/tabelle/indirizzi_soggetti)    
+> [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)   
+> [anagrafiche.indirizzi_dettaglio](/dbzero/anagrafiche/tabelle/indirizzi_dettaglio)    
 >
-> Approfondimenti viste:
+Approfondimenti viste:
 >
-> * [anagrafiche.vw_indirizzi_dettaglio](/dbzero/anagrafiche/viste/vw_indirizzi_dettaglio)    
+[anagrafiche.vw_indirizzi_dettaglio](/dbzero/anagrafiche/viste/vw_indirizzi_dettaglio)    
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 20-12-25)
 La vista **`anagrafiche.vw_indirizzi_resolved_soggetto`** fornisce una rappresentazione **normalizzata e pronta all’uso** degli indirizzi **associati direttamente a un soggetto**, indipendentemente dai suoi ruoli.
 
@@ -35,7 +33,7 @@ La vista è **read-only** e rappresenta il **layer canonico di lettura** per gli
 
 ---
 
-### 🔗 Collegamenti principali
+### Collegamenti principali
 
 * **Tabelle sorgenti**:
 
@@ -55,7 +53,7 @@ La vista è **read-only** e rappresenta il **layer canonico di lettura** per gli
 
 ---
 
-### 🧱 Struttura logica della vista
+### Struttura logica della vista
 
 La vista parte dalla tabella `anagrafiche.indirizzi_soggetti` e applica:
 
@@ -90,7 +88,7 @@ Il risultato è un record **"resolved"**, semanticamente completo e coerente con
 
 ---
 
-### 🔍 Modalità d’uso tipiche
+### Modalità d’uso tipiche
 
 **1. Elenco indirizzi di un soggetto**
 
@@ -116,7 +114,7 @@ Questa vista è tipicamente utilizzata come **secondo livello di lookup**, quand
 
 ---
 
-### ✅ Best practice e raccomandazioni
+### Best practice e raccomandazioni
 
 * Utilizzare questa vista per leggere indirizzi **anagrafici generali** del soggetto.
 * Non duplicare indirizzi di ruolo in questa tabella: il loro ambito corretto è `anagrafiche.indirizzi`.

@@ -2,25 +2,23 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimento Tabelle:   
+Approfondimento Tabelle:   
 >
-> * [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)      
+[anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)      
 >
-> Approfondimento funzioni :    
+Approfondimento funzioni :    
 >
-> * [script.fn_valida_partita_iva](/dbzero/script/funzioni/fn_valida_partita_iva)    
-> * [anagrafiche.trgfn_soggetti_valida_cf_piva_dispatch](/dbzero/anagrafiche/funzioni/trgfn_soggetti_valida_cf_piva_dispatch)    
+[script.fn_valida_partita_iva](/dbzero/script/funzioni/fn_valida_partita_iva)    
+> [anagrafiche.trgfn_soggetti_valida_cf_piva_dispatch](/dbzero/anagrafiche/funzioni/trgfn_soggetti_valida_cf_piva_dispatch)    
 ---
-
 ### 🎯 Scopo Principale
-
 * **Validazione formale** del Codice Fiscale (CF) calcolando e confrontando il carattere di controllo.
 * **Supporto omocodici**, garantendo validità anche per CF derivati con omolettere.
 * **Delegare al backend** i controlli di congruenza con data di nascita, sesso e luogo di nascita per mantenere flessibilità applicativa.
 
 ---
 
-### 🔍 Parametri di Input
+### Parametri di Input
 
 | Nome | Tipo   | Descrizione                                             |
 | ---- | ------ | ------------------------------------------------------- |
@@ -28,7 +26,7 @@
 
 ---
 
-### ⚙️ Flusso Operativo
+### Flusso Operativo
 
 1. **Verifica preliminare**
 
@@ -50,7 +48,7 @@
 
 ---
 
-### 🔒 Limiti e Scelte di Design
+### Limiti e Scelte di Design
 
 * **Solo Check Digit**: non verifica congruenza con data di nascita, sesso, luogo di nascita.
 * **Omocodici**: supporta CF omocodici (stessa data, sesso, luogo, nome e cognome).
@@ -58,7 +56,7 @@
 
 ---
 
-### 💡 Vantaggi Operativi
+### Vantaggi Operativi
 
 * **Efficienza**: logica SQL compatta e `IMMUTABLE`, ottimizzata per database-level validation.
 * **Affidabilità**: garantisce uniformità del controllo formale in tutta l’applicazione.
@@ -66,4 +64,4 @@
 
 ---
 
-> 🧠 **“Una validazione del CF snella e centralizzata al DB accelera i controlli di input, lasciando al backend la gestione delle regole di contesto e di business.”**
+> **“Una validazione del CF snella e centralizzata al DB accelera i controlli di input, lasciando al backend la gestione delle regole di contesto e di business.”**

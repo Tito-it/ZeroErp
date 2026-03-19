@@ -2,15 +2,11 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**    
+**Approfondimento tabelle:**    
 >
-> • [anagrafiche.emittenti_fiscali_billing_account](/dbzero/anagrafiche/manual/emittenti_fiscali_billing_account)    
+• [anagrafiche.emittenti_fiscali_billing_account](/dbzero/anagrafiche/manual/emittenti_fiscali_billing_account)    
 >
-
----
-
 ### 🎯 Scopo Principale
-
 La funzione `anagrafiche.trgfn_emittenti_fiscali_default_guard()` garantisce che
 esista **esattamente un** emittente fiscale di default.
 
@@ -19,14 +15,14 @@ per validare la coerenza **a fine transazione**.
 
 ---
 
-### ✅ Regola applicata
+### Regola applicata
 
 * Il conteggio delle righe con `is_default = true` deve essere **pari a 1**.
 * In caso contrario, la funzione logga e blocca tramite `script.fn_log_and_raise_error(...)`.
 
 ---
 
-### 🧠 Perche` e` importante
+### Perche` e` importante
 
 Il default globale e` la **garanzia di fallback** quando un billing account non ha
 associazione specifica. Senza questo vincolo, il processo di fatturazione

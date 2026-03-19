@@ -1,13 +1,11 @@
 ## 📘 Documentazione Concettuale – Funzione `vendite.fn_emit_attivita_fatturabili_da_commessa`
-
 ### 🎯 Scopo Principale
-
 (latest review 24-02-2026)
 Esegue il pull da `commesse_attivita` verso `attivita_fatturabili` (step 0 pipeline attività fatturabili).
 
 ---
 
-### 🔧 Regole applicate
+### Regole applicate
 
 * La ROOT source della commessa e` obbligatoria (`commesse_sorgenti`).
 * La sorgente delle righe AF e` sempre `COMMESSA`.
@@ -21,7 +19,7 @@ Esegue il pull da `commesse_attivita` verso `attivita_fatturabili` (step 0 pipel
 
 ---
 
-### ✅ Output
+### Output
 
 Ritorna contatori:
 

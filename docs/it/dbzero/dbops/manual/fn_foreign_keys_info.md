@@ -2,14 +2,12 @@
 
 > 👀 **Vedi anche:**
 >
-> * [information_schema.table_constraints](https://www.postgresql.org/docs/current/infoschema-table-constraints.html)
-> * [information_schema.key_column_usage](https://www.postgresql.org/docs/current/infoschema-key-column-usage.html)
-> * [information_schema.constraint_column\_usage](https://www.postgresql.org/docs/current/infoschema-constraint-column-usage.html)
+[information_schema.table_constraints](https://www.postgresql.org/docs/current/infoschema-table-constraints.html)
+> [information_schema.key_column_usage](https://www.postgresql.org/docs/current/infoschema-key-column-usage.html)
+> [information_schema.constraint_column\_usage](https://www.postgresql.org/docs/current/infoschema-constraint-column-usage.html)
 
 ---
-
 ### 🎯 Scopo Principale
-
 `dbops.fn_foreign_keys_info(tabella)` restituisce una vista unificata di **tutte le relazioni tramite chiavi esterne** (
 foreign key) che coinvolgono la tabella specificata, distinguendo tra:
 
@@ -18,7 +16,7 @@ foreign key) che coinvolgono la tabella specificata, distinguendo tra:
 
 ---
 
-### 🧩 Firma
+### Firma
 
 ```sql
 FUNCTION dbops.fn_foreign_keys_info(tabella text)
@@ -34,7 +32,7 @@ RETURNS TABLE (
 
 ---
 
-### 🔧 Comportamento
+### Comportamento
 
 1. **Incoming FK**
 
@@ -50,7 +48,7 @@ RETURNS TABLE (
 
 ---
 
-### 🔍 Esempio di utilizzo
+### Esempio di utilizzo
 
 ```sql
 -- Trova tutte le FK in cui è coinvolta la tabella 'clienti'
@@ -69,7 +67,7 @@ FROM dbops.fn_foreign_keys_info('clienti');
 
 ---
 
-### 📌 Note operative
+### Note operative
 
 * La funzione lavora su `information_schema`, quindi è indipendente dallo schema logico (funziona su tutte le tabelle visibili all'utente).
 * I nomi delle tabelle/colonne restituiti sono in formato semplice (senza schema). Per distinguere tabelle con lo stesso nome in schemi diversi, può essere utile estendere la funzione includendo `table_schema`.

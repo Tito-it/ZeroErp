@@ -2,17 +2,15 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimento tabelle:
+Approfondimento tabelle:
 >
-> * [vendite.ddt_righe](/dbzero/vendite/tabelle/ddt_righe)   
-> * [vendite.ordini_righe_fulfillment](/dbzero/vendite/tabelle/ordini_righe_fulfillment)   
-> * [vendite.mv_ddt_ordini] – **vista materializzata** delle coppie Testata DDT ↔ Testata Ordine      
-> * [config.stati_doc_ddt](/dbzero/config/tabelle/stati_doc_ddt)   
+[vendite.ddt_righe](/dbzero/vendite/tabelle/ddt_righe)   
+> [vendite.ordini_righe_fulfillment](/dbzero/vendite/tabelle/ordini_righe_fulfillment)   
+> [vendite.mv_ddt_ordini] – **vista materializzata** delle coppie Testata DDT ↔ Testata Ordine      
+> [config.stati_doc_ddt](/dbzero/config/tabelle/stati_doc_ddt)   
 
 ---
-
 ### 🎯 Scopo Principale
-
 La tabella **`vendite.ddt`** rappresenta la **testata** dei Documenti di Trasporto. È il fulcro del ciclo logistico tra **Ordini** (evasione/spedizione) e **Fatture** (conto vendita / accompagnatoria).
 
 * Traccia i **metadati di spedizione** (data, mittente/destinatario, causale, vettore).
@@ -25,7 +23,7 @@ La tabella **`vendite.ddt`** rappresenta la **testata** dei Documenti di Traspor
 ---
 
 
-### 🔑 Relazioni chiave
+### Relazioni chiave
 
 * **`vendite.ddt_righe(ddt_id)`** → righe del documento (1–N).
 * **`vendite.ordini_righe_fulfillment(ddt_riga_id)`** → mappatura riga DDT con riga Ordine.
@@ -51,7 +49,7 @@ EMESSO → IN_TRANSITO → CONSEGNATO → (RESO opz.)
 
 ---
 
-### 🔒 Vincoli e indici
+### Vincoli e indici
 
 * **PK**: `id`
 * **UQ consigliate**: `anno+serie+numero` (o progressivo per gestore)
@@ -65,7 +63,7 @@ EMESSO → IN_TRANSITO → CONSEGNATO → (RESO opz.)
 
 ---
 
-### 🧭 Flussi di processo collegati
+### Flussi di processo collegati
 
 1. **Evasione da Ordine**
 
@@ -95,7 +93,7 @@ EMESSO → IN_TRANSITO → CONSEGNATO → (RESO opz.)
 
 ---
 
-### 🧪 Query tipiche
+### Query tipiche
 
 * **Selezione DDT per range di date e stato**
 
@@ -140,7 +138,7 @@ EMESSO → IN_TRANSITO → CONSEGNATO → (RESO opz.)
 
 ---
 
-### ✅ Checklist di conformità
+### Checklist di conformità
 
 * [ ] UQ corretta su numerazione (o progressivo per gestore)
 * [ ] FK a domini/stati coerenti

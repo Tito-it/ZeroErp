@@ -2,26 +2,22 @@
 
 > 👀 **Vedi anche**
 >
-> Guide generali:
+Guide generali:
 >
-> * [Generazione di un cliente](/guide/generazione-cliente)
+[Generazione di un cliente](/guide/generazione-cliente)
 >
-> Approfondimento tabelle:
+Approfondimento tabelle:
 >
-> * [anagrafiche.istanze_utilities](/dbzero/anagrafiche/tabelle/istanze_utilities)
-> * [anagrafiche.clienti](/dbzero/anagrafiche/tabelle/clienti)
-> * [config.utilities](/dbzero/config/tabelle/utilities)
-> * [config.tipi_utenze](/dbzero/config/tabelle/tipi_utenze)
-> * [config.classi_utenze](/dbzero/config/tabelle/classi_utenze)
-> * [vendite.contratti](/dbzero/vendite/tabelle/contratti)
-> * [vendite.contratti_righe](/dbzero/vendite/tabelle/contratti_righe)
-> * [vendite.regole_fatturazione_articolo](/dbzero/vendite/tabelle/regole_fatturazione_articolo)
+[anagrafiche.istanze_utilities](/dbzero/anagrafiche/tabelle/istanze_utilities)
+> [anagrafiche.clienti](/dbzero/anagrafiche/tabelle/clienti)
+> [config.utilities](/dbzero/config/tabelle/utilities)
+> [config.tipi_utenze](/dbzero/config/tabelle/tipi_utenze)
+> [config.classi_utenze](/dbzero/config/tabelle/classi_utenze)
+> [vendite.contratti](/dbzero/vendite/tabelle/contratti)
+> [vendite.contratti_righe](/dbzero/vendite/tabelle/contratti_righe)
+> [vendite.regole_fatturazione_articolo](/dbzero/vendite/tabelle/regole_fatturazione_articolo)
 >
-
----
-
 ### 🎯 Scopo Principale
-
 (latest review 09-01-26)
 La tabella `anagrafiche.istanze_dati_precontrattuali` raccoglie **tutte le informazioni pre‑contrattuali** relative ad una specifica **istanza utility** (fornitura/utenza). Il campo **`meta` (JSONB)** consente di archiviare attributi **specifici per tipo di utility** (es. potenza impegnata, pressione, soglie tecniche, parametri di profilazione).
 
@@ -33,7 +29,7 @@ Tali informazioni, una volta **caricate**, sono considerate **definitive** e:
 
 ---
 
-### 🔗 Collegamenti con Altre Tabelle
+### Collegamenti con Altre Tabelle
 
 | Campo                | Riferimento                         | Cardinalità | ON UPDATE | ON DELETE |
 | -------------------- | ----------------------------------- | ----------- | --------- | --------- |
@@ -46,7 +42,7 @@ Tali informazioni, una volta **caricate**, sono considerate **definitive** e:
 
 ---
 
-### 🧩 Campi Chiave e Regole
+### Campi Chiave e Regole
 
 * `param_1_num` / `param_2_txt` → placeholder **core** per parametri più comuni (es. **potenza impegnata**, **tensione/pressione**).
 * `classe_utenza_id` → determina il **tipo utenza** tramite la relazione con `config.classi_utenze`.
@@ -59,7 +55,7 @@ Tali informazioni, una volta **caricate**, sono considerate **definitive** e:
 
 ---
 
-### 🧱 Vincoli & Integrità
+### Vincoli & Integrità
 
 * **PK**: `id`.
 * **FK**: verso `istanze_utilities`, `utilities`, `tipi_utenze`, `classi_utenze` come da tabella collegamenti.
@@ -68,7 +64,7 @@ Tali informazioni, una volta **caricate**, sono considerate **definitive** e:
 ---
 
 
-### 🔎 Query Tipiche
+### Query Tipiche
 
 **1) Ultimo snapshot per istanza**
 
@@ -113,7 +109,7 @@ WHERE c.id = :contratto_id
 
 ---
 
-### 🧪 Esempi d’Uso (flusso)
+### Esempi d’Uso (flusso)
 
 1. **Inserimento**: arrivano dati da CRM/portale/api → popolazione campi base + `meta`.
 2. **Validazione**: controlli automatici/umani (range, coerenza con `istanze_utilities`, esistenza codifiche).
@@ -121,7 +117,7 @@ WHERE c.id = :contratto_id
 
 ---
 
-### ✅ Best Practice
+### Best Practice
 
 * Definisci un **mini‑schema per utility** (chiavi JSON standard, es. `elettrico.*`, `gas.*`).
 * **Versiona** lo schema (`meta.schema_version`) e mantieni una pagina di mapping in documentazione.

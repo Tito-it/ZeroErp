@@ -2,19 +2,17 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimento tabelle:
+Approfondimento tabelle:
 >
-> * [pratiche.template_flussi](/dbzero/pratiche/tabelle/template_flussi)
+[pratiche.template_flussi](/dbzero/pratiche/tabelle/template_flussi)
 
 ---
-
 ### 🎯 Scopo Principale
-
 La tabella `pratiche.handler_flussi` e' il **registry degli handler flusso**. Ogni record mappa una `handler_key` univoca a un handler Python nel `handler_registry.py` di Django. Il DB contiene solo la chiave; il mapping effettivo e' nel codice applicativo.
 
 ---
 
-### 🧱 Ruolo nel processo
+### Ruolo nel processo
 
 * I template flussi con `handler_id NOT NULL` delegano l'esecuzione a un handler automatico.
 * I template con `handler_id NULL` rappresentano **step manuali** (completati dall'operatore).
@@ -22,7 +20,7 @@ La tabella `pratiche.handler_flussi` e' il **registry degli handler flusso**. Og
 
 ---
 
-### 🔗 Relazione con Django
+### Relazione con Django
 
 ```python
 # In services/handler_registry.py
@@ -39,7 +37,7 @@ I parametri operativi per l'handler sono configurati nel campo `handler_params` 
 
 ---
 
-### ⚙️ Colonne specifiche
+### Colonne specifiche
 
 | Colonna | Note |
 |---------|------|
@@ -48,7 +46,7 @@ I parametri operativi per l'handler sono configurati nel campo `handler_params` 
 
 ---
 
-### ✅ Convenzioni
+### Convenzioni
 
 * Registry puro: no `storicizza`, no `tx_id` (non serve tracciamento transazionale).
 * Trigger standard applicati automaticamente da `dbops.fn_run_automations()`.

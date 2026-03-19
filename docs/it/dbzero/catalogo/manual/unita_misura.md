@@ -2,17 +2,15 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimenti tabelle:
+Approfondimenti tabelle:
 >
-> * [catalogo.articoli](/dbzero/catalogo/tabelle/articoli)
+[catalogo.articoli](/dbzero/catalogo/tabelle/articoli)
 >
 
 La tabella **`catalogo.unita_misura`** contiene il catalogo delle unità di misura utilizzabili nel sistema. Ogni unità definisce la modalità di contabilizzazione, movimentazione e fatturazione degli articoli (es. pezzo, chilogrammo, standard metro cubo, kilowattora).
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 13-01-26)
 * Centralizzare le **unità di misura** in un unico repository.
 * Fornire sia una **descrizione tecnica interna** sia una **descrizione breve** per la stampa in documenti fiscali e commerciali.
@@ -20,7 +18,7 @@ La tabella **`catalogo.unita_misura`** contiene il catalogo delle unità di misu
 
 ---
 
-### 🔒 Vincoli e Logiche Aziendali
+### Vincoli e Logiche Aziendali
 
 * **Unicità**: `codice` deve essere univoco e identificare in modo chiaro l’unità (es. `PZ`, `KG`, `SMC`, `KWH`).
 * **Obbligatorietà**: `descrizione` deve sempre essere valorizzata.
@@ -29,14 +27,14 @@ La tabella **`catalogo.unita_misura`** contiene il catalogo delle unità di misu
 
 ---
 
-### 🔗 Relazioni e Indici
+### Relazioni e Indici
 
 * **FK**: utilizzata come chiave esterna in `catalogo.articoli` e in tutte le tabelle di movimenti/fatturazione.
 
 
 ---
 
-### 💡 Vantaggi Operativi
+### Vantaggi Operativi
 
 * **Uniformità**: gli articoli condividono un set standard di unità di misura.
 * **Chiarezza documentale**: separazione tra descrizione tecnica e descrizione per stampa migliora la leggibilità delle fatture.
@@ -44,4 +42,4 @@ La tabella **`catalogo.unita_misura`** contiene il catalogo delle unità di misu
 
 ---
 
-> 🧠 **“Un’anagrafica unificata delle unità di misura assicura coerenza nei processi di magazzino e fatturazione, riducendo errori e ambiguità.”**
+> **“Un’anagrafica unificata delle unità di misura assicura coerenza nei processi di magazzino e fatturazione, riducendo errori e ambiguità.”**

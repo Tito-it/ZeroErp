@@ -3,30 +3,28 @@
 
 > 👀 **Vedi anche**    
 >
-> Guide:   
+Guide:   
 >
-> * [Gestione degli indirizzi](/guide/gestione-degli-indirizzi)       
+[Gestione degli indirizzi](/guide/gestione-degli-indirizzi)       
 >
-> Approfondimento Tabelle:      
+Approfondimento Tabelle:      
 >
-> * [anagrafiche.indirizzi](/dbzero/anagrafiche/tabelle/indirizzi)    
-> * [config.stradario](/dbzero/config/tabelle/stradario)  
-> * [config.comuni](/dbzero/config/tabelle/comuni)    
-> * [config.province](/dbzero/config/tabelle/province)   
-> * [storico.indirizzi_dettaglio](/dbzero/storico/tabelle/indirizzi_dettaglio)    
+[anagrafiche.indirizzi](/dbzero/anagrafiche/tabelle/indirizzi)    
+> [config.stradario](/dbzero/config/tabelle/stradario)  
+> [config.comuni](/dbzero/config/tabelle/comuni)    
+> [config.province](/dbzero/config/tabelle/province)   
+> [storico.indirizzi_dettaglio](/dbzero/storico/tabelle/indirizzi_dettaglio)    
 >
-> Approfondimento funzioni:   
+Approfondimento funzioni:   
 >
-> * [anagrafiche.trgfn_dettaglio_normalize](/dbzero/anagrafiche/funzioni/trgfn_dettaglio_normalize)    
-> * [script.trgfn_storico_generic](/dbzero/script/funzioni/trgfn_storico_generic)
+[anagrafiche.trgfn_dettaglio_normalize](/dbzero/anagrafiche/funzioni/trgfn_dettaglio_normalize)    
+> [script.trgfn_storico_generic](/dbzero/script/funzioni/trgfn_storico_generic)
 
 
 La tabella **`anagrafiche.indirizzi_dettaglio`** contiene il dettaglio degli indirizzi civici, collegati a una specifica via (tramite `stradario_id`) e al relativo contesto geografico (comune, provincia, regione, stato). In essa sono memorizzati numeri civici, estensioni, palazzine, interni, piani, dati di geolocalizzazione e un campo di indirizzo normalizzato generato automaticamente.
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 10-01-26)
 * **Dettagliare lo stradario**  
   Associare a ciascuna via (memorizzata in `config.stradario`) le singole unità civiche (numeri civici, estensioni, palazzine, interni, piani), ottenendo così l’indirizzo completo e navigabile.  
@@ -38,14 +36,14 @@ La tabella **`anagrafiche.indirizzi_dettaglio`** contiene il dettaglio degli ind
 
 ---
 
-### 🧩 Regola di riclassificazione
+### Regola di riclassificazione
 
 Il cambio di via (`stradario_id`) e' protetto da un guard: la modifica manuale e' bloccata.  
 La riclassificazione va eseguita tramite la procedura `maintenance.proc_bump_indirizzi_dettaglio(...)`, che abilita la manutenzione e forza la rinormalizzazione con storico.
 
 ---
 
-### 🔗 Collegamenti con Altre Tabelle
+### Collegamenti con Altre Tabelle
 
 * **`config.stradario`**  
   - Il campo `stradario_id` (integer) fa riferimento alla chiave primaria di `config.stradario`.  
@@ -63,7 +61,7 @@ La riclassificazione va eseguita tramite la procedura `maintenance.proc_bump_ind
 
 ---
 
-### 💡 Vantaggi Operativi
+### Vantaggi Operativi
 
 * **Ricostruzione gerarchica completa**  
   Mediante `stradario_id`, è possibile risalire in modo automatico e veloce all’intera struttura geografica (via → comune → provincia → regione → stato) senza duplicare dati.  
@@ -78,7 +76,7 @@ La riclassificazione va eseguita tramite la procedura `maintenance.proc_bump_ind
 
 ---
 
-> 🧠 **“Una tabella di dettaglio civico che unisce normalizzazione testuale, geolocalizzazione puntuale e collegamenti gerarchici: il fulcro del sistema di indirizzamento completo in Zero ERP.”**  
+> **“Una tabella di dettaglio civico che unisce normalizzazione testuale, geolocalizzazione puntuale e collegamenti gerarchici: il fulcro del sistema di indirizzamento completo in Zero ERP.”**  
 
 
 ###  Diagramma ER 

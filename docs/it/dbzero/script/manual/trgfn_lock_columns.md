@@ -2,17 +2,15 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimenti tabelle:   
+Approfondimenti tabelle:   
 >
->  * [config.messaggi_errore](/dbzero/config/tabelle/messaggi_errore)   
->  * [dbops.error_log](/dbzero/dbops/tabelle/error_log)   
+[config.messaggi_errore](/dbzero/config/tabelle/messaggi_errore)   
+>  [dbops.error_log](/dbzero/dbops/tabelle/error_log)   
 >
-> Approfondimenti funzioni:   
+Approfondimenti funzioni:   
 >
->  * [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)   
-
+[script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)   
 ### 🎯 Scopo Principale
-
 -  Trigger function generica per **bloccare modifiche non autorizzate** su colonne specificate, integrando:
 
 * **Controllo dinamico** delle colonne PASSATE come argomenti al trigger
@@ -48,7 +46,7 @@
 
 ---
 
-### 🔍 Punti di Interesse
+### Punti di Interesse
 
 * **TG\_ARGV**: array variadico; le posizioni pari/dispai determinano colonna e messaggio
 * **EXECUTE dinamico**: `format('SELECT ($1).%I, ($2).%I', ... )` per ottenere valori senza hard‑coding
@@ -57,7 +55,7 @@
 
 ---
 
-### 🚀 Esempio di Utilizzo
+### Esempio di Utilizzo
 
 ```sql
 CREATE TRIGGER trg_lock_sensitive
@@ -83,4 +81,4 @@ CREATE TRIGGER trg_lock_sensitive
 
 ---
 
-> 🧠 **“Con `trgfn_lock_columns` gestisci centralmente i blocchi di sicurezza su colonne critiche, integrando log e messaggi dinamici in un’unica soluzione.”**
+> **“Con `trgfn_lock_columns` gestisci centralmente i blocchi di sicurezza su colonne critiche, integrando log e messaggi dinamici in un’unica soluzione.”**

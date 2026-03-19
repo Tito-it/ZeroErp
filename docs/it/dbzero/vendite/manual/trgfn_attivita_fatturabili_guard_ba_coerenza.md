@@ -2,20 +2,17 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> • [vendite.attivita_fatturabili](/dbzero/vendite/tabelle/attivita_fatturabili)  
+• [vendite.attivita_fatturabili](/dbzero/vendite/tabelle/attivita_fatturabili)  
 > • [anagrafiche.billing_account](/dbzero/anagrafiche/tabelle/billing_account)  
 >
-> **Approfondimento funzioni:**
+**Approfondimento funzioni:**
 >
-> • [vendite.trgfn_attivita_fatturabili_normalize](/dbzero/vendite/funzioni/trgfn_attivita_fatturabili_normalize)  
+• [vendite.trgfn_attivita_fatturabili_normalize](/dbzero/vendite/funzioni/trgfn_attivita_fatturabili_normalize)  
 > • [vendite.trgfn_attivita_fatturabili_guard_fonte](/dbzero/vendite/funzioni/trgfn_attivita_fatturabili_guard_fonte)  
 >
----
-
 ### 🎯 Scopo Principale
-
 (latest review 29-01-2026)  
 La funzione **`vendite.trgfn_attivita_fatturabili_guard_ba_coerenza()`** valida
 la coerenza tra `billing_account_id` e `istanza_utility_id` sulle righe di
@@ -23,7 +20,7 @@ la coerenza tra `billing_account_id` e `istanza_utility_id` sulle righe di
 
 ---
 
-### ✅ Regole principali
+### Regole principali
 
 * Se `billing_account_id` e` valorizzato, deve esistere in `anagrafiche.billing_account`.
 * `istanza_utility_id` deve coincidere con quella del billing account.
@@ -31,13 +28,13 @@ la coerenza tra `billing_account_id` e `istanza_utility_id` sulle righe di
 
 ---
 
-### ✅ Output
+### Output
 
 Nessun output (trigger BEFORE). In caso di errore, l’operazione viene bloccata.
 
 ---
 
-### 🧪 Esempio (caso non valido)
+### Esempio (caso non valido)
 
 ```sql
 INSERT INTO vendite.attivita_fatturabili (

@@ -2,27 +2,24 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> • [vendite.commesse](/dbzero/vendite/tabelle/commesse)  
+• [vendite.commesse](/dbzero/vendite/tabelle/commesse)  
 > • [vendite.commesse_attivita](/dbzero/vendite/tabelle/commesse_attivita)  
 > • [config.sorgenti](/dbzero/config/tabelle/sorgenti)  
 >
-> **Approfondimento funzioni:**
+**Approfondimento funzioni:**
 >
-> • [vendite.fn_get_commessa_stato](/dbzero/vendite/funzioni/fn_get_commessa_stato)  
+• [vendite.fn_get_commessa_stato](/dbzero/vendite/funzioni/fn_get_commessa_stato)  
 > • [vendite.fn_list_commesse_emittibili](/dbzero/vendite/funzioni/fn_list_commesse_emittibili)  
 >
----
-
 ### 🎯 Scopo Principale
-
 (latest review 26-02-2026)  
 Restituisce il dettaglio righe di una commessa (`commesse_attivita`) con filtri opzionali e paginazione, per uso backend in consultazione e pre-validazione dei flussi di emissione.
 
 ---
 
-### ✅ Regole principali
+### Regole principali
 
 * Funzione read-only (`STABLE`).
 * `p_commessa_id` obbligatorio (`> 0`).
@@ -38,7 +35,7 @@ Restituisce il dettaglio righe di una commessa (`commesse_attivita`) con filtri 
 
 ---
 
-### ✅ Output
+### Output
 
 Elenco righe `commesse_attivita` della commessa con i principali campi operativi:
 
@@ -50,7 +47,7 @@ Elenco righe `commesse_attivita` della commessa con i principali campi operativi
 
 ---
 
-### 🧪 Esempio d'uso
+### Esempio d'uso
 
 ```sql
 SELECT *

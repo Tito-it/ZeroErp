@@ -2,19 +2,17 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimento tabelle:
+Approfondimento tabelle:
 >
-> * [pratiche.pratiche](/dbzero/pratiche/tabelle/pratiche)
+[pratiche.pratiche](/dbzero/pratiche/tabelle/pratiche)
 
 ---
-
 ### 🎯 Scopo Principale
-
 La tabella `config.priorita_pratiche` definisce i **livelli di priorita'** assegnabili alle pratiche. Ogni pratica ha una priorita' obbligatoria che ne influenza l'ordine di lavorazione.
 
 ---
 
-### 🧱 Ruolo nel processo
+### Ruolo nel processo
 
 * Determina l'**ordine di lavorazione** delle pratiche nelle code di lavoro.
 * Il cambio priorita' viene registrato nel **giornale** con azione `PRIORITA_CAMBIATA`.
@@ -22,7 +20,7 @@ La tabella `config.priorita_pratiche` definisce i **livelli di priorita'** asseg
 
 ---
 
-### 📋 Valori previsti (seed DB-6)
+### Valori previsti (seed DB-6)
 
 | codice_interno | sequenza | Descrizione |
 |----------------|----------|-------------|
@@ -33,13 +31,13 @@ La tabella `config.priorita_pratiche` definisce i **livelli di priorita'** asseg
 
 ---
 
-### ⚙️ Colonne specifiche
+### Colonne specifiche
 
 * **`sequenza`** (INTEGER NOT NULL): ordinamento numerico per le code di lavoro. Non presente nelle altre tabelle config standard.
 
 ---
 
-### ✅ Convenzioni
+### Convenzioni
 
 * Pattern config standard + colonna `sequenza`.
 * Trigger standard applicati automaticamente da `dbops.fn_run_automations()`.

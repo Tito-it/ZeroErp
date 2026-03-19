@@ -2,18 +2,15 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> • [pagamenti.centri_riscossione](/dbzero/pagamenti/tabelle/centri_riscossione)  
+• [pagamenti.centri_riscossione](/dbzero/pagamenti/tabelle/centri_riscossione)  
 > • [pagamenti.enti_incasso](/dbzero/pagamenti/tabelle/enti_incasso)  
 > • [pagamenti.vendite_contabili_stati](/dbzero/pagamenti/tabelle/vendite_contabili_stati)  
 > • [pagamenti.vendite_contabili_righe](/dbzero/pagamenti/tabelle/vendite_contabili_righe)  
 > • [pagamenti.vendite_movimenti](/dbzero/pagamenti/tabelle/vendite_movimenti)  
 >
----
-
 ### 🎯 Scopo Principale
-
 La tabella **`pagamenti.vendite_contabili`** rappresenta la **testata contabile**
 per l’aggregazione di movimenti vendite. Serve a raggruppare movimenti per
 centro riscossione e data contabile, con eventuale dettaglio del canale
@@ -21,7 +18,7 @@ centro riscossione e data contabile, con eventuale dettaglio del canale
 
 ---
 
-### 🧱 Campi chiave (semantica)
+### Campi chiave (semantica)
 
 * `codice`: identificativo testata contabile.
 * `centro_riscossione_id`: riferimento principale al centro riscossione.
@@ -33,7 +30,7 @@ centro riscossione e data contabile, con eventuale dettaglio del canale
 
 ---
 
-### ✅ Regole principali
+### Regole principali
 
 * `codice` univoco.
 * Ogni testata e` collegata a un solo centro riscossione.
@@ -46,7 +43,7 @@ centro riscossione e data contabile, con eventuale dettaglio del canale
 
 ---
 
-### 🧪 Esempio d’uso
+### Esempio d’uso
 
 ```sql
 SELECT *

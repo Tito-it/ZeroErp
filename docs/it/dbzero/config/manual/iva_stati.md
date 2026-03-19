@@ -2,28 +2,26 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimento tabelle:    
+Approfondimento tabelle:    
 >
-> * [config.iva](/dbzero/config/tabelle/iva)    
-> * [config.stati](/dbzero/config/tabelle/stati)    
+[config.iva](/dbzero/config/tabelle/iva)    
+> [config.stati](/dbzero/config/tabelle/stati)    
 >
-> Approfondimenti funzioni:   
+Approfondimenti funzioni:   
 >
-> * [script.fn_get_iva_override](/dbzero/script/funzioni/fn_get_iva_override)  
-> * [script.trgfn_upd_audit_data_user_generic](/dbzero/script/funzioni/trgfn_upd_audit_data_user_generic)     
+[script.fn_get_iva_override](/dbzero/script/funzioni/fn_get_iva_override)  
+> [script.trgfn_upd_audit_data_user_generic](/dbzero/script/funzioni/trgfn_upd_audit_data_user_generic)     
 
 La tabella **`config.iva_stati`** permette di definire **override locali** di aliquota e assoggettamento IVA per specifici Stati o Paesi, personalizzando il comportamento dei codici IVA principali in base al contesto geografico.
 
 ---
-
 ### 🎯 Scopo Principale
-
 * Sovrascrivere, per ogni coppia `(iva_id, stato_id)`, i valori di aliquota e assoggettamento di default definiti in `config.iva`.
 * Gestire scenari in cui normative locali richiedono aliquote differenti o modalità di assoggettamento speciali.
 
 ---
 
-### 🔒 Vincoli e Logiche Aziendali
+### Vincoli e Logiche Aziendali
 
 * **PK composito** `(iva_id, stato_id)`: garantisce un solo override per ciascuna combinazione di codice IVA e Stato.
 * **Aliquota e assoggettamento**: entrambe sempre valorizzate; `aliquota_override` rappresenta la percentuale locale, mentre `assoggettamento_override` segue gli stessi codici di default (`NS`, `NI`, `ND`, `ES`, `RC`, `ED`, \`\`).
@@ -31,7 +29,7 @@ La tabella **`config.iva_stati`** permette di definire **override locali** di al
 
 ---
 
-### 🔗 Relazioni e Indici
+### Relazioni e Indici
 
 * **FK**:
 
@@ -41,7 +39,7 @@ La tabella **`config.iva_stati`** permette di definire **override locali** di al
 
 ---
 
-### ⚙️ Trigger Associati
+### Trigger Associati
 
 1. **`trg_upd_iva_stati_audit_data_user`**
 
@@ -50,7 +48,7 @@ La tabella **`config.iva_stati`** permette di definire **override locali** di al
 
 ---
 
-### 💡 Vantaggi Operativi
+### Vantaggi Operativi
 
 * **Flessibilità normativa**: consente di adattare codici IVA a normative locali diverse senza duplicare codici principali.
 * **Integrità referenziale**: eliminazione a cascata su `iva` pulisce automaticamente gli override obsoleti.
@@ -58,4 +56,4 @@ La tabella **`config.iva_stati`** permette di definire **override locali** di al
 
 ---
 
-> 🧠 **“Un meccanismo di overriding geografico semplifica la gestione di eccezioni fiscali locali, mantenendo il catalogo IVA principale pulito e centralizzato.”**
+> **“Un meccanismo di overriding geografico semplifica la gestione di eccezioni fiscali locali, mantenendo il catalogo IVA principale pulito e centralizzato.”**

@@ -2,31 +2,29 @@
 
 > 👀 **Vedi anche**
 >
-> Guide:
+Guide:
 >
-> * [Automazione DB](/guide/automazione-db)   
+[Automazione DB](/guide/automazione-db)   
 >
-> Approfondimento tabelle:
+Approfondimento tabelle:
 >
-> * [dbops.automation_rules_tbl](/dbzero/dbops/tabelle/automation_rules_tbl)   
+[dbops.automation_rules_tbl](/dbzero/dbops/tabelle/automation_rules_tbl)   
 >
-> Approfondimento funzioni e trigger:
+Approfondimento funzioni e trigger:
 >
-> * [dbops.fn_run_automations](/dbzero/dbops/funzioni/fn_run_automations)    
-> * [dbops.fn_resolve_scope](/dbzero/dbops/funzioni/fn_resolve_scope)   
-> * [dbops.fn_get_override_col](/dbzero/dbops/funzioni/fn_get_override_col)   
-> * [script.trgfn_storico_generic](/dbzero/script/funzioni/trgfn_storico_generic)   
+[dbops.fn_run_automations](/dbzero/dbops/funzioni/fn_run_automations)    
+> [dbops.fn_resolve_scope](/dbzero/dbops/funzioni/fn_resolve_scope)   
+> [dbops.fn_get_override_col](/dbzero/dbops/funzioni/fn_get_override_col)   
+> [script.trgfn_storico_generic](/dbzero/script/funzioni/trgfn_storico_generic)   
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 26-12-25)
 La funzione **`dbops.fn_run_automations_storico(p_exec_mode, p_schemas, p_dry_run)`** automatizza la creazione (o la simulazione) del **trigger unico di storicizzazione** `BEFORE UPDATE OR DELETE` per le tabelle applicative, delegando la logica alla funzione `script.trgfn_storico_generic`. È uno dei moduli orchestrati da `fn_run_automations`.
 
 ---
 
-### 🔍 Parametri di input
+### Parametri di input
 
 | Parametro     | Tipo    | Obbligatorio | Descrizione                                                               |
 | ------------- | ------- | :----------: | ------------------------------------------------------------------------- |
@@ -36,13 +34,13 @@ La funzione **`dbops.fn_run_automations_storico(p_exec_mode, p_schemas, p_dry_ru
 
 ---
 
-### 📤 Valore di ritorno
+### Valore di ritorno
 
 `void` – non restituisce valori; crea i trigger richiesti o produce log di simulazione.
 
 ---
 
-### ⚙️ Flusso logico
+### Flusso logico
 
 1. **Ambito**: determina gli schemi effettivi con `fn_resolve_scope`; esclude sempre lo schema `storico`.
 2. **Scansione tabelle**: per ogni tabella nell'ambito e in `fn_table_in_scope`, verifica che esista la **tabella omologa** nello schema `storico`.
@@ -58,7 +56,7 @@ La funzione **`dbops.fn_run_automations_storico(p_exec_mode, p_schemas, p_dry_ru
 
 ---
 
-### 🧩 Casi d’uso tipici
+### Casi d’uso tipici
 
 * **Uniformare la storicizzazione**: passare da due trigger separati (UPDATE/DELETE) a un **unico trigger** standard.
 * **Post‑deploy**: applicare la regola a tutte le nuove tabelle con storico presente.
@@ -66,21 +64,21 @@ La funzione **`dbops.fn_run_automations_storico(p_exec_mode, p_schemas, p_dry_ru
 
 ---
 
-### 🛡️ Permessi e sicurezza
+### Permessi e sicurezza
 
 * Richiede privilegi DDL sulle tabelle target.
 * In `dry_run` non modifica oggetti, utile per audit/analisi preventiva.
 
 ---
 
-### 🚀 Esempi di utilizzo
+### Esempi di utilizzo
 
 * **Simulazione**: `SELECT dbops.fn_run_automations_storico('AUTO', ARRAY['anagrafiche'], true);`
 * **Applicazione**: `SELECT dbops.fn_run_automations_storico('FORCE', NULL, false);`
 
 ---
 
-### 📌 Considerazioni
+### Considerazioni
 
 * La presenza dell’omologo nello schema `storico` è prerequisito: in caso contrario, il trigger non viene creato.
 * `name_template` e `existence_strategy` rendono la regola adattabile a naming legacy o transizioni graduali.
@@ -88,7 +86,7 @@ La funzione **`dbops.fn_run_automations_storico(p_exec_mode, p_schemas, p_dry_ru
 
 ---
 
-### ✅ Benefici
+### Benefici
 
 * **Coerenza**: stessa semantica di storicizzazione su tutte le tabelle.
 * **Manutenibilità**: un solo trigger da gestire, con logica centralizzata.
@@ -96,4 +94,4 @@ La funzione **`dbops.fn_run_automations_storico(p_exec_mode, p_schemas, p_dry_ru
 
 ---
 
-> 🧠 **In sintesi**: `fn_run_automations_storico` è il modulo che standardizza la **storicizzazione** in Zero ERP, creando in modo idempotente il trigger unico `UPDATE OR DELETE` basato su `trgfn_storico_generic`.
+> **In sintesi**: `fn_run_automations_storico` è il modulo che standardizza la **storicizzazione** in Zero ERP, creando in modo idempotente il trigger unico `UPDATE OR DELETE` basato su `trgfn_storico_generic`.

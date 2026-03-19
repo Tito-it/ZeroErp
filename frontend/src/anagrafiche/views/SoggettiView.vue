@@ -6,6 +6,7 @@
 import { ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useDrawerState } from '../../core/composables/useDrawerState'
+import { useReadonlyMode } from '../../core/composables/useReadonlyMode'
 import { useContextStore } from '../../stores/context'
 import SoggettiSearchTable from '../components/SoggettiSearchTable.vue'
 import SoggettoDrawer from '../components/SoggettoDrawer.vue'
@@ -13,6 +14,7 @@ import ContattiSoggettoDrawer from '../../core/components/ContattiSoggettoDrawer
 import IndirizziSoggettoDrawer from '../../core/components/IndirizziSoggettoDrawer.vue'
 
 const drawer = useDrawerState()
+const { isReadonly } = useReadonlyMode('anagrafiche')
 const ctx = useContextStore()
 const route = useRoute()
 

@@ -2,26 +2,24 @@
 
 > 👀 **Vedi anche:**
 >
-> Approfondimento tabelle:
+Approfondimento tabelle:
 >
-> * [maintenance.job\_definitions](/dbzero/maintenance/job_definitions) *(ipotetico riferimento a definizione job)*
+[maintenance.job\_definitions](/dbzero/maintenance/job_definitions) *(ipotetico riferimento a definizione job)*
 >
-> Approfondimento funzioni/procedure:
+Approfondimento funzioni/procedure:
 >
-> * [maintenance.fn_run_and_log](/dbzero/maintenance/funzioni/fn_run_and_log)
-> * [maintenance.proc_apply_storicizza_defaults_job](/dbzero/maintenance/funzioni/proc_apply_storicizza_defaults_job)
+[maintenance.fn_run_and_log](/dbzero/maintenance/funzioni/fn_run_and_log)
+> [maintenance.proc_apply_storicizza_defaults_job](/dbzero/maintenance/funzioni/proc_apply_storicizza_defaults_job)
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 07-01-26)
 La tabella `maintenance.job_run_log` memorizza i log di esecuzione dei job schedulati o lanciati manualmente all’interno del sistema Zero ERP.
 Ogni riga rappresenta una singola esecuzione di un job, includendo informazioni di stato, tempi di inizio/fine, eventuali errori e dettagli di esecuzione.
 
 ---
 
-### ⚙️ Vincoli e Relazioni
+### Vincoli e Relazioni
 
 * **`job_run_log_pkey`**: Chiave primaria su `id`.
 * **Relazioni logiche** (non vincolate da FK nel DDL):
@@ -31,7 +29,7 @@ Ogni riga rappresenta una singola esecuzione di un job, includendo informazioni 
 
 ---
 
-### 🔍 Considerazioni di Progettazione
+### Considerazioni di Progettazione
 
 * Permette la **tracciabilità completa** delle esecuzioni, con dettagli utili per debug e audit.
 * Il campo `run_uuid` consente di correlare log multipli appartenenti alla stessa sessione o esecuzione.
@@ -46,7 +44,7 @@ Ogni riga rappresenta una singola esecuzione di un job, includendo informazioni 
 
 ---
 
-> 🧠 **“Questa tabella rappresenta il cuore del sistema di tracciamento dei job, fornendo una base solida per l’analisi delle esecuzioni e la diagnosi dei problemi.”**
+> **“Questa tabella rappresenta il cuore del sistema di tracciamento dei job, fornendo una base solida per l’analisi delle esecuzioni e la diagnosi dei problemi.”**
 
 ---
 

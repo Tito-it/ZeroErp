@@ -2,24 +2,23 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimento Tabelle:
+Approfondimento Tabelle:
 >
-> * [anagrafiche.conti_bancari](/dbzero/anagrafiche/tabelle/conti_bancari)
-> * [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)
-> * [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)
-> * [anagrafiche.soggetti_conti_bancari](/dbzero/anagrafiche/tabelle/soggetti_conti_bancari)
-> * [anagrafiche.soggetti_ruoli_conti_bancari](/dbzero/anagrafiche/tabelle/soggetti_ruoli_conti_bancari)
+[anagrafiche.conti_bancari](/dbzero/anagrafiche/tabelle/conti_bancari)
+> [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)
+> [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)
+> [anagrafiche.soggetti_conti_bancari](/dbzero/anagrafiche/tabelle/soggetti_conti_bancari)
+> [anagrafiche.soggetti_ruoli_conti_bancari](/dbzero/anagrafiche/tabelle/soggetti_ruoli_conti_bancari)
 >
-> Approfondimento funzioni:
+Approfondimento funzioni:
 >
-> * [script.fn_get_conto_bancario_predefinito](/dbzero/script/funzioni/fn_get_conto_bancario_predefinito)
+[script.fn_get_conto_bancario_predefinito](/dbzero/script/funzioni/fn_get_conto_bancario_predefinito)
 
 La vista **`anagrafiche.vw_conti_bancari_per_ruolo`** espone, per ogni **ruolo di soggetto** (`soggetto_ruolo_id`) e per ciascun **uso del conto** (`INCASSO`, `PAGAMENTO`, `RIMBORSO`, `GENERICO`), **al massimo un conto bancario selezionato** secondo una logica di **priorità RUOLO → SOGGETTO**, tenendo conto di validità, blocchi e stato di attivazione del conto.
 
 È l’artefatto centrale per tutte le logiche applicative che devono recuperare “il conto corrente da usare ora” per un determinato ruolo.
 
 ---
-
 ### 🎯 Scopo Principale
 (latest review 28-11-25)
 * **Selezione unificata del conto per ruolo**
@@ -42,7 +41,7 @@ Questa vista è pensata per essere utilizzata direttamente oppure incapsulata in
 
 ---
 
-### ⚙️ Struttura logica della vista
+### Struttura logica della vista
 
 La vista è costruita in più passi mediante CTE:
 
@@ -123,7 +122,7 @@ La vista è costruita in più passi mediante CTE:
 
 ---
 
-### 🔍 Colonne esposte
+### Colonne esposte
 
 | Colonna                   | Tipo          | Descrizione                                                                                 |
 | ------------------------- | ------------- | ------------------------------------------------------------------------------------------- |
@@ -140,7 +139,7 @@ La vista è costruita in più passi mediante CTE:
 
 ---
 
-### ⚙️ Comportamento funzionale
+### Comportamento funzionale
 
 * **Filtro temporale**
   Sono inclusi solo i legami per cui:
@@ -201,7 +200,7 @@ WHERE v.soggetto_ruolo_id = :p_soggetto_ruolo_id;
 
 ---
 
-### 吝 Note di modellazione e best practice
+### Note di modellazione e best practice
 
 * La vista assume che tutta la logica di **normalizzazione e validazione IBAN/BIC**, nonché di **gestione storicizzazione e flag `bloccato`**, sia già gestita a livello di tabelle e trigger (`*_guard`, `*_normalize`).
 * È possibile avere **più legami** per lo stesso `(soggetto/ruolo, uso)`; la vista ne espone comunque **uno solo**, seguendo le priorità definite.
@@ -209,5 +208,5 @@ WHERE v.soggetto_ruolo_id = :p_soggetto_ruolo_id;
 
 ---
 
-> 🧠**In sintesi:**
+> **In sintesi:**
 > `anagrafiche.vw_conti_bancari_per_ruolo` fornisce una vista già “risolta” del conto da utilizzare per ciascun ruolo e uso, applicando automaticamente le priorità RUOLO → SOGGETTO, la selezione del predefinito e i vincoli di validità, blocco e attivazione.

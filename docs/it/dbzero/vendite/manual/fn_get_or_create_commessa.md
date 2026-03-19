@@ -2,27 +2,24 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> • [vendite.commesse](/dbzero/vendite/tabelle/commesse)  
+• [vendite.commesse](/dbzero/vendite/tabelle/commesse)  
 > • [vendite.stati_commessa](/dbzero/vendite/tabelle/stati_commessa)  
 > • [anagrafiche.billing_account](/dbzero/anagrafiche/tabelle/billing_account)  
 >
-> **Approfondimento funzioni:**
+**Approfondimento funzioni:**
 >
-> • [anagrafiche.fn_get_emittente_fiscale_id](/dbzero/anagrafiche/funzioni/fn_get_emittente_fiscale_id)  
+• [anagrafiche.fn_get_emittente_fiscale_id](/dbzero/anagrafiche/funzioni/fn_get_emittente_fiscale_id)  
 > • [vendite.fn_get_commessa_stato](/dbzero/vendite/funzioni/fn_get_commessa_stato)  
 >
----
-
 ### 🎯 Scopo Principale
-
 (latest review 26-02-2026)  
 Recupera una commessa riusabile, coerente con il contesto BA/utility e parametri funzionali, oppure ne crea una nuova in modo sicuro anche con chiamate concorrenti.
 
 ---
 
-### ✅ Regole principali
+### Regole principali
 
 * `p_billing_account_id` e `p_utility_id` obbligatori (`> 0`).
 * Verifica coerenza tra utility del billing account e utility richiesta.
@@ -35,7 +32,7 @@ Recupera una commessa riusabile, coerente con il contesto BA/utility e parametri
 
 ---
 
-### ✅ Output
+### Output
 
 Ritorna `commessa_id`:
 
@@ -44,7 +41,7 @@ Ritorna `commessa_id`:
 
 ---
 
-### 🧪 Esempio d'uso
+### Esempio d'uso
 
 ```sql
 SELECT vendite.fn_get_or_create_commessa(

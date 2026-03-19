@@ -1,12 +1,10 @@
 ## 📘 Documentazione Concettuale – Funzione `vendite.fn_cancel_lotto_task_run`
-
 ### 🎯 Scopo Principale
-
 Chiude un task run impostando `task_stato = ANNULLATO`.
 
 ---
 
-### ✅ Regole principali
+### Regole principali
 
 * `p_task_run_id` obbligatorio (`> 0`)
 * merge di `p_meta` sui metadati esistenti
@@ -14,7 +12,7 @@ Chiude un task run impostando `task_stato = ANNULLATO`.
 
 ---
 
-### ✅ Output
+### Output
 
 `void`
 

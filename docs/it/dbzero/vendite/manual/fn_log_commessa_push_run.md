@@ -2,20 +2,17 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> • [vendite.commesse_push_log](/dbzero/vendite/tabelle/commesse_push_log)  
+• [vendite.commesse_push_log](/dbzero/vendite/tabelle/commesse_push_log)  
 >
----
-
 ### 🎯 Scopo Principale
-
 `vendite.fn_log_commessa_push_run` registra in modo uniforme il risultato di un
 run dell'orchestratore push commesse scrivendo una riga in `commesse_push_log`.
 
 ---
 
-### ✅ Regole principali
+### Regole principali
 
 * valida `stato` (`COMPLETATO | PARZIALE | ERRORE`),
 * valida `durata_ms` (se presente, `>= 0`),
@@ -25,7 +22,7 @@ run dell'orchestratore push commesse scrivendo una riga in `commesse_push_log`.
 
 ---
 
-### 🧪 Esempio d’uso
+### Esempio d’uso
 
 ```sql
 SELECT vendite.fn_log_commessa_push_run(

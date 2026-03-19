@@ -2,19 +2,17 @@
 
 > 👀 **Vedi anche**
 >
-> * [pratiche.calcoli_tempo](/dbzero/pratiche/manual/calcoli_tempo)
-> * [pratiche.sospensioni](/dbzero/pratiche/manual/sospensioni)
-> * [fn_valuta_tempo_esecuzione_da_a](/dbzero/pratiche/manual/fn_valuta_tempo_esecuzione_da_a)
+[pratiche.calcoli_tempo](/dbzero/pratiche/manual/calcoli_tempo)
+> [pratiche.sospensioni](/dbzero/pratiche/manual/sospensioni)
+> [fn_valuta_tempo_esecuzione_da_a](/dbzero/pratiche/manual/fn_valuta_tempo_esecuzione_da_a)
 
 ---
-
 ### 🎯 Scopo Principale
-
 Funzione **check** (pura, STABLE): calcola i giorni netti trascorsi tra il completamento di `flusso_da` e il completamento di `flusso_a`, sottraendo i periodi di sospensione della pratica.
 
 ---
 
-### 🔧 Firma
+### Firma
 
 ```sql
 CREATE OR REPLACE FUNCTION pratiche.fn_calcola_tempo_netto_da_a(
@@ -27,7 +25,7 @@ LANGUAGE plpgsql STABLE
 
 ---
 
-### ⚙️ Logica
+### Logica
 
 1. Recupera `data_fine` del flusso_da come punto di partenza.
 2. Se flusso_a e' gia' COMPLETATO, usa `data_fine` del flusso_a; altrimenti `NOW()`.

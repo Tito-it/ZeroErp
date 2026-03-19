@@ -2,17 +2,15 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimento funzioni:   
+Approfondimento funzioni:   
 >
-> * [dbops.vw_fk_senza_indice](/dbzero/dbops/views/vw_fk_senza_indice)   
-> * [dbops.vw_fk_con_indice_missing_policy](/dbzero/dbops/views/vw_fk_con_indice_missing_policy)     
+[dbops.vw_fk_senza_indice](/dbzero/dbops/views/vw_fk_senza_indice)   
+> [dbops.vw_fk_con_indice_missing_policy](/dbzero/dbops/views/vw_fk_con_indice_missing_policy)     
 
 La view **`dbops.vw_duplicate_indexes`** identifica gli **indici duplicati** all’interno dello stesso schema e tabella, cioè quegli indici che coprono esattamente lo stesso insieme di colonne (`cols`). La view è **limitata agli schemi presenti in `dbops.automation_scope`**; per ciascun gruppo di colonne con più indici restituisce i nomi degli indici coinvolti e il numero totale di occorrenze.
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 10-01-26)
 * **Individuare indici ridondanti**
   Scoprire indici che hanno lo stesso set di colonne e possono quindi essere unificati o rimossi.
@@ -23,7 +21,7 @@ La view **`dbops.vw_duplicate_indexes`** identifica gli **indici duplicati** all
 
 ---
 
-### ⚙️ Flusso di Costruzione
+### Flusso di Costruzione
 
 1. **CTE `index_cols`**
 
@@ -45,7 +43,7 @@ La view **`dbops.vw_duplicate_indexes`** identifica gli **indici duplicati** all
 
 ---
 
-### 💡 Vantaggi Operativi
+### Vantaggi Operativi
 
 * **Riduzione di ridondanze**: facilita la rimozione di indici duplicati per liberare spazio e ridurre costi di manutenzione.
 * **Chiarezza**: fornisce un elenco immediato dei gruppi di indici da esaminare.
@@ -53,4 +51,4 @@ La view **`dbops.vw_duplicate_indexes`** identifica gli **indici duplicati** all
 
 ---
 
-> 🧠 **“Con `vw_duplicate_indexes`, tenere sotto controllo gli indici duplicati diventa semplice, supportando azioni di consolidamento per ottimizzare il database.”**
+> **“Con `vw_duplicate_indexes`, tenere sotto controllo gli indici duplicati diventa semplice, supportando azioni di consolidamento per ottimizzare il database.”**

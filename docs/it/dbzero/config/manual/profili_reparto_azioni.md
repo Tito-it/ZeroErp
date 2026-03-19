@@ -2,15 +2,15 @@
 
 > 👀 **Vedi anche**
 >
-> Architettura di riferimento:
+Architettura di riferimento:
 >
-> * [Architettura Permessi e Autorizzazioni](/guide/architettura-permessi-e-autorizzazioni)
+[Architettura Permessi e Autorizzazioni](/guide/architettura-permessi-e-autorizzazioni)
 >
-> Tabelle correlate:
+Tabelle correlate:
 >
-> * [config.unita_organizzative](/dbzero/config/tabelle/unita_organizzative)
-> * [config.azioni_processo](/dbzero/config/tabelle/azioni_processo)
-> * [config.user_override_azioni](/dbzero/config/tabelle/user_override_azioni)
+[config.unita_organizzative](/dbzero/config/tabelle/unita_organizzative)
+> [config.azioni_processo](/dbzero/config/tabelle/azioni_processo)
+> [config.user_override_azioni](/dbzero/config/tabelle/user_override_azioni)
 
 ---
 
@@ -19,16 +19,14 @@ La tabella **`config.profili_reparto_azioni`** definisce le **azioni di processo
 Come per le aree, l'ereditarietà è automatica: tutti gli operatori del reparto ereditano le abilitazioni configurate.
 
 ---
-
 ### 🎯 Scopo Principale
-
 * Definire quali **azioni di processo** sono abilitate per ogni reparto.
 * Consentire la gestione centralizzata delle abilitazioni critiche.
 * Le eccezioni individuali sono gestite in `config.user_override_azioni`.
 
 ---
 
-### 🔑 Colonne chiave
+### Colonne chiave
 
 | Colonna | Scopo |
 |---------|-------|
@@ -44,4 +42,4 @@ Se un'azione non ha riga per il reparto, è **negata** (default sicuro). Il camp
 
 ---
 
-> 🧠 **"`config.profili_reparto_azioni` controlla le operazioni critiche a livello di reparto, con override individuali possibili tramite `user_override_azioni`."**
+> **"`config.profili_reparto_azioni` controlla le operazioni critiche a livello di reparto, con override individuali possibili tramite `user_override_azioni`."**

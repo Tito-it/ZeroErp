@@ -2,27 +2,25 @@
 
 > **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> * [config.stradario](/dbzero/config/tabelle/stradario)
-> * [config.stradario_generale](/dbzero/config/tabelle/stradario_generale)
-> * [config.toponomastica](/dbzero/config/tabelle/toponomastica)
-> * [config.comuni](/dbzero/config/tabelle/comuni)
-> * [config.codici_postali](/dbzero/config/tabelle/codici_postali)
+[config.stradario](/dbzero/config/tabelle/stradario)
+> [config.stradario_generale](/dbzero/config/tabelle/stradario_generale)
+> [config.toponomastica](/dbzero/config/tabelle/toponomastica)
+> [config.comuni](/dbzero/config/tabelle/comuni)
+> [config.codici_postali](/dbzero/config/tabelle/codici_postali)
 >
-> **Approfondimento funzioni:**
+**Approfondimento funzioni:**
 >
-> * [anagrafiche.fn_search_indirizzi_dettaglio](/dbzero/anagrafiche/manual/fn_search_indirizzi_dettaglio)
-> * [anagrafiche.fn_get_or_create_indirizzo_dettaglio](/dbzero/anagrafiche/manual/fn_get_or_create_indirizzo_dettaglio)
+[anagrafiche.fn_search_indirizzi_dettaglio](/dbzero/anagrafiche/manual/fn_search_indirizzi_dettaglio)
+> [anagrafiche.fn_get_or_create_indirizzo_dettaglio](/dbzero/anagrafiche/manual/fn_get_or_create_indirizzo_dettaglio)
 >
-> **Guide:**
+**Guide:**
 >
-> * [Gestione degli indirizzi](/guide/gestione-degli-indirizzi)
+[Gestione degli indirizzi](/guide/gestione-degli-indirizzi)
 
 ---
-
-### Scopo Principale
-
+### 🎯 Scopo Principale
 (latest review 13-03-2026)
 Ricerca vie (stradario) per autocomplete frontend. L'utente seleziona
 un comune e cerca una via nel comune selezionato.

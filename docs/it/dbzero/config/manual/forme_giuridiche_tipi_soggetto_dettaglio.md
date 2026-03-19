@@ -2,17 +2,13 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimento Tabelle:
+Approfondimento Tabelle:
 >
-> * [config.forme_giuridiche](/dbzero/config/tabelle/forme_giuridiche)   
-> * [config.tipi_soggetto_dettaglio](/dbzero/config/tabelle/tipi_soggetto_dettaglio)   
-> * [anagrafiche.dati_societari](/dbzero/anagrafiche/tabelle/dati_societari)   
+[config.forme_giuridiche](/dbzero/config/tabelle/forme_giuridiche)   
+> [config.tipi_soggetto_dettaglio](/dbzero/config/tabelle/tipi_soggetto_dettaglio)   
+> [anagrafiche.dati_societari](/dbzero/anagrafiche/tabelle/dati_societari)   
 >
-
----
-
 ### 🎯 Scopo Principale
-
 (latest review 21-12-25)
 La tabella **`config.forme_giuridiche_tipi_soggetto_dettaglio`** è una **matrice di configurazione** (Strada **B**) che definisce:
 
@@ -30,7 +26,7 @@ Questa matrice evita regole hardcoded nei trigger e rende le compatibilità **co
 
 ---
 
-### 🧩 Ruolo nel Modello Dati
+### Ruolo nel Modello Dati
 
 Nel modello Zero ERP:
 
@@ -46,7 +42,7 @@ Questa tabella è utile per:
 
 ---
 
-### 🧱 Struttura – Attributi principali
+### Struttura – Attributi principali
 
 | Colonna                      | Tipo        | Obblig. | Descrizione sintetica                                     |
 | ---------------------------- | ----------- | ------- | --------------------------------------------------------- |
@@ -62,7 +58,7 @@ Questa tabella è utile per:
 
 ---
 
-### ✅ Vincoli principali
+### Vincoli principali
 
 * **PK composta (tabella ponte)**
 
@@ -80,7 +76,7 @@ Questa tabella è utile per:
 
 ---
 
-### ⚙️ Regole di Funzionamento (concettuali)
+### Regole di Funzionamento (concettuali)
 
  **1️⃣ Matrice presente = vincolo attivo**
 
@@ -105,11 +101,11 @@ A seconda della scelta progettuale, è possibile adottare la stessa logica usata
 
 * **se non esiste alcuna riga**, il sistema può considerare il dominio **libero** (non vincolato).
 
-> 📌 Questa policy è una decisione di sistema: se vuoi evitare combinazioni casuali, puoi scegliere “matrice obbligatoria” per certi paesi.
+> Questa policy è una decisione di sistema: se vuoi evitare combinazioni casuali, puoi scegliere “matrice obbligatoria” per certi paesi.
 
 ---
 
-### 🔍 Esempi d’Uso (concettuali)
+### Esempi d’Uso (concettuali)
 
  **✔ IT – Società di capitali (SC)**
 
@@ -131,7 +127,7 @@ A seconda della scelta progettuale, è possibile adottare la stessa logica usata
 
 ---
 
-### 💡 Vantaggi Operativi
+### Vantaggi Operativi
 
 * **Configurazione e versioning**: regole come dati, non codice.
 * **Coerenza cross-sistema**: DB e applicazione leggono la stessa matrice.
@@ -140,7 +136,7 @@ A seconda della scelta progettuale, è possibile adottare la stessa logica usata
 
 ---
 
-### 📌 Diagramma ER relazioni (concettuale)
+### Diagramma ER relazioni (concettuale)
 
 ```mermaid
 %%{init: {'er': {'layoutDirection': 'TB'}}}%%
@@ -151,6 +147,6 @@ erDiagram
 
 ---
 
-> 🧠 **“`config.forme_giuridiche_tipi_soggetto_dettaglio` è la matrice che governa la compatibilità tra tipologie soggetto (per paese) e forme giuridiche, rendendo le regole configurabili, tracciabili e versionabili.”**
+> **“`config.forme_giuridiche_tipi_soggetto_dettaglio` è la matrice che governa la compatibilità tra tipologie soggetto (per paese) e forme giuridiche, rendendo le regole configurabili, tracciabili e versionabili.”**
 
 {% include-markdown "signature-core.md" %}

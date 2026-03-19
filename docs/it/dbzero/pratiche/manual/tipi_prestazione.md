@@ -2,21 +2,19 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimento tabelle:
+Approfondimento tabelle:
 >
-> * [pratiche.pratiche](/dbzero/pratiche/tabelle/pratiche)
-> * [pratiche.template_flussi](/dbzero/pratiche/tabelle/template_flussi)
-> * [pratiche.regole_generazione](/dbzero/pratiche/tabelle/regole_generazione)
+[pratiche.pratiche](/dbzero/pratiche/tabelle/pratiche)
+> [pratiche.template_flussi](/dbzero/pratiche/tabelle/template_flussi)
+> [pratiche.regole_generazione](/dbzero/pratiche/tabelle/regole_generazione)
 
 ---
-
 ### 🎯 Scopo Principale
-
 La tabella `pratiche.tipi_prestazione` definisce il **catalogo dei tipi di pratica** gestibili dal sistema. Ogni pratica ha un `tipo_prestazione_id` che ne determina la natura e il workflow applicabile.
 
 ---
 
-### 🧱 Ruolo nel processo
+### Ruolo nel processo
 
 * Definisce **quali pratiche** il sistema puo' gestire (es. "Sopralluogo", "Allacciamento", "Reclamo").
 * Ogni tipo e' collegato a uno o piu' **template flussi** che definiscono gli step del workflow.
@@ -25,7 +23,7 @@ La tabella `pratiche.tipi_prestazione` definisce il **catalogo dei tipi di prati
 
 ---
 
-### ⚙️ Colonne specifiche
+### Colonne specifiche
 
 | Colonna | Note |
 |---------|------|
@@ -48,7 +46,7 @@ La validazione avviene nel **service Django** (non nel DB) perche' richiede look
 
 ---
 
-### ✅ Convenzioni
+### Convenzioni
 
 * Struttura config-like nel schema `pratiche`: `codice` UNIQUE, `codice_interno` UNIQUE + locked, `attivo`, `meta`, audit.
 * Trigger standard applicati automaticamente da `dbops.fn_run_automations()`.

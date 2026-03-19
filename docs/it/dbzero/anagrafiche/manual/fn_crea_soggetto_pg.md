@@ -2,27 +2,25 @@
 
 > **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> * [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)
-> * [anagrafiche.contatti](/dbzero/anagrafiche/tabelle/contatti)
-> * [anagrafiche.dati_societari](/dbzero/anagrafiche/tabelle/dati_societari)
-> * [config.tipi_soggetto_dettaglio](/dbzero/config/tabelle/tipi_soggetto_dettaglio)
+[anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)
+> [anagrafiche.contatti](/dbzero/anagrafiche/tabelle/contatti)
+> [anagrafiche.dati_societari](/dbzero/anagrafiche/tabelle/dati_societari)
+> [config.tipi_soggetto_dettaglio](/dbzero/config/tabelle/tipi_soggetto_dettaglio)
 >
-> **Approfondimento funzioni:**
+**Approfondimento funzioni:**
 >
-> * [anagrafiche.fn_crea_soggetto_pf](/dbzero/anagrafiche/manual/fn_crea_soggetto_pf) -- controparte PF
-> * [script.fn_get_or_create_soggetto_ruolo](/dbzero/script/manual/fn_get_or_create_soggetto_ruolo)
+[anagrafiche.fn_crea_soggetto_pf](/dbzero/anagrafiche/manual/fn_crea_soggetto_pf) -- controparte PF
+> [script.fn_get_or_create_soggetto_ruolo](/dbzero/script/manual/fn_get_or_create_soggetto_ruolo)
 >
-> **Guide:**
+**Guide:**
 >
-> * [Soggetti e ruoli anagrafici](/guide/soggetti-e-ruoli-anagrafici)
-> * [Gestione degli indirizzi](/guide/gestione-degli-indirizzi)
+[Soggetti e ruoli anagrafici](/guide/soggetti-e-ruoli-anagrafici)
+> [Gestione degli indirizzi](/guide/gestione-degli-indirizzi)
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 14-03-2026)
 Building block atomico per la creazione di un soggetto Persona Giuridica
 con contatto default obbligatorio e dati societari (condizionali alla

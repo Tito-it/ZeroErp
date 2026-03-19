@@ -2,18 +2,17 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimenti tabelle:   
+Approfondimenti tabelle:   
 >
-> * [anagrafiche.indirizzi_dettaglio](/dbzero/anagrafiche/tabelle/indirizzi_dettaglio)   
-> * [anagrafiche.indirizzi](/dbzero/anagrafiche/tabelle/indirizzi)   
+[anagrafiche.indirizzi_dettaglio](/dbzero/anagrafiche/tabelle/indirizzi_dettaglio)   
+> [anagrafiche.indirizzi](/dbzero/anagrafiche/tabelle/indirizzi)   
 >
-> Approfondimenti funzioni:   
+Approfondimenti funzioni:   
 >
-> * [`anagrafiche.vw_indirizzi_dettaglio`](/dbzero/anagrafiche/views/vw_indirizzi_dettaglio)
+[`anagrafiche.vw_indirizzi_dettaglio`](/dbzero/anagrafiche/views/vw_indirizzi_dettaglio)
 
-> * Leggere in fondo la nota tecnica.
+> Leggere in fondo la nota tecnica.
 ---
-
 ### 🎯 Scopo Principale
 (latest review 28-11-25)
 La funzione **`anagrafiche.fn_search_indirizzi_dettaglio`** fornisce un **punto unico di ingresso** per la ricerca degli indirizzi di dettaglio normalizzati, appoggiandosi alla vista:
@@ -86,10 +85,10 @@ La funzione restituisce **righe della vista** `anagrafiche.vw_indirizzi_dettagli
 
 > ⚠️ **Regola di validazione**: è obbligatorio valorizzare **almeno uno** tra:
 >
-> * `p_stradario_id`, oppure
-> * `p_indirizzo_norm` (non vuoto).
+`p_stradario_id`, oppure
+> `p_indirizzo_norm` (non vuoto).
 >
-> Se entrambi sono NULL / vuoti, la funzione solleva un `RAISE EXCEPTION` con messaggio esplicito.
+Se entrambi sono NULL / vuoti, la funzione solleva un `RAISE EXCEPTION` con messaggio esplicito.
 
 ---
 
@@ -218,7 +217,7 @@ La funzione restituisce **righe della vista** `anagrafiche.vw_indirizzi_dettagli
 
 ---
 
-### ✅ Best practice e raccomandazioni
+### Best practice e raccomandazioni
 
 * Utilizzare questa funzione come **entry point standard** per tutte le ricerche programmatiche sugli indirizzi di dettaglio (UI, API, batch).
 * Evitare di replicare logica di filtro direttamente su `anagrafiche.indirizzi_dettaglio` salvo casi particolari; preferire la combinazione:

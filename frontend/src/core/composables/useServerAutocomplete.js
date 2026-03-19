@@ -2,7 +2,7 @@
 // Gestisce debounce, loading, min length, e trasformazione risposta.
 // Usato da ComuneAutocomplete e StradarioAutocomplete.
 
-import { ref } from 'vue'
+import { ref, onUnmounted } from 'vue'
 
 /**
  * @param {Function} searchFn - Funzione che riceve (query) e ritorna Promise axios
@@ -42,6 +42,8 @@ export function useServerAutocomplete(searchFn, options = {}) {
       }
     }, debounceMs)
   }
+
+  onUnmounted(() => clearTimeout(debounceTimer))
 
   return { suggestions, loading, onSearch }
 }

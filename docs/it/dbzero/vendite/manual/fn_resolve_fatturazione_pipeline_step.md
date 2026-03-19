@@ -2,19 +2,16 @@
 
 > 👀 **Vedi anche**
 >
-> **Approfondimento tabelle:**
+**Approfondimento tabelle:**
 >
-> • [vendite.fatturazione_pipeline](/dbzero/vendite/tabelle/fatturazione_pipeline)  
+• [vendite.fatturazione_pipeline](/dbzero/vendite/tabelle/fatturazione_pipeline)  
 > • [config.stati_doc_fiscale](/dbzero/config/tabelle/stati_doc_fiscale)  
 >
-> **Approfondimento funzioni:**
+**Approfondimento funzioni:**
 >
-> • [vendite.fn_list_fatturazione_pipeline_steps](/dbzero/vendite/funzioni/fn_list_fatturazione_pipeline_steps)  
+• [vendite.fn_list_fatturazione_pipeline_steps](/dbzero/vendite/funzioni/fn_list_fatturazione_pipeline_steps)  
 >
----
-
 ### 🎯 Scopo Principale
-
 (latest review 08-02-2026)  
 La funzione risolve la configurazione pipeline per un singolo step
 (`stato_doc_fiscale_id`) applicando fallback su `utility_id` e
@@ -22,7 +19,7 @@ La funzione risolve la configurazione pipeline per un singolo step
 
 ---
 
-### ✅ Precedenza fallback
+### Precedenza fallback
 
 1. `utility_id` + `tipo_doc_fiscale_id`
 2. `utility_id` + `tipo_doc_fiscale_id = NULL`
@@ -31,7 +28,7 @@ La funzione risolve la configurazione pipeline per un singolo step
 
 ---
 
-### ✅ Output
+### Output
 
 Ritorna la riga pipeline risolta con:
 * `processi` (o `rollback` se `p_rollback = true`)
@@ -40,7 +37,7 @@ Ritorna la riga pipeline risolta con:
 
 ---
 
-### 🧪 Esempio
+### Esempio
 
 ```sql
 SELECT *

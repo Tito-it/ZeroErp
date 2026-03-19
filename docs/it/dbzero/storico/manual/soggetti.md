@@ -2,14 +2,14 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimento Tabelle:
+Approfondimento Tabelle:
 >
-> * [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)
+[anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)
 >
-> Approfondimento funzioni e trigger:
+Approfondimento funzioni e trigger:
 >
-> * [dbops.trgfn_tx_id_managed](/dbzero/dbops/funzioni/trgfn_tx_id_managed)
-> * [script.trgfn_upd_dlt_storico_generic](/dbzero/script/funzioni/trgfn_upd_dlt_storico_generic)
+[dbops.trgfn_tx_id_managed](/dbzero/dbops/funzioni/trgfn_tx_id_managed)
+> [script.trgfn_upd_dlt_storico_generic](/dbzero/script/funzioni/trgfn_upd_dlt_storico_generic)
 
 ---
 
@@ -22,9 +22,7 @@ Questo permette di:
 * ripristinare o analizzare lo storico di un soggetto in qualsiasi momento
 
 ---
-
 ### 🎯 Scopo Principale
-
 * **Versionamento dei soggetti**
   Ogni modifica (INSERT, UPDATE, DELETE) su `anagrafiche.soggetti` genera un record in storico con lo stato precedente, il tipo di operazione e i metadati di audit.
 
@@ -33,7 +31,7 @@ Questo permette di:
 
 ---
 
-### 🔗 Collegamenti con Altre Tabelle
+### Collegamenti con Altre Tabelle
 
 * **`anagrafiche.soggetti`**
 
@@ -46,7 +44,7 @@ Questo permette di:
 
 ---
 
-### 🏷️ Campi Rilevanti
+### Campi Rilevanti
 
 | Campo             | Descrizione                                                 |
 | ----------------- | ----------------------------------------------------------- |
@@ -62,7 +60,7 @@ Questo permette di:
 
 ---
 
-### 💡 Vantaggi Operativi
+### Vantaggi Operativi
 
 * **Analisi storica**
   Possibilità di ricostruire flussi di modifica, comparare versioni e rispondere a esigenze di auditing e compliance.
@@ -73,5 +71,5 @@ Questo permette di:
 * **Integrazione con data warehousing**
   `valid_from` e `valid_to` permettono di esporre facilmente i dati temporali in viste dimensionali o in processi ETL.
 
-> 🧠 **“`storico.soggetti` è il registro cronologico di ogni cambiamento ai soggetti: auditing nativo, versioning JSON ed eliminazione di silos storici.”**
+> **“`storico.soggetti` è il registro cronologico di ogni cambiamento ai soggetti: auditing nativo, versioning JSON ed eliminazione di silos storici.”**
 

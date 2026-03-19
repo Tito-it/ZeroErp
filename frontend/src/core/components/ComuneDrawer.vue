@@ -3,6 +3,7 @@
 // Riusabile da: tab Comuni, futuro gestione anagrafiche.
 import { ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useInjectReadonly } from '../composables/useReadonlyMode'
 import { useComuniStore } from '../../anagrafiche/stores/comuni'
 import { useApiHandler } from '../composables/useApiHandler'
 import { useLookup } from '../composables/useLookup'
@@ -21,6 +22,7 @@ const props = defineProps({
 const emit = defineEmits(['update:visible', 'saved'])
 
 const { t } = useI18n()
+const isReadonly = useInjectReadonly()
 const store = useComuniStore()
 const { execute, loading } = useApiHandler()
 const provinceLookup = useLookup(() => lookupProvince())
@@ -65,7 +67,7 @@ async function handleSave() {
     <template #header>
       <DrawerTitle :action="t('common.new')" :title="t('indirizzi.comune')" icon="pi pi-building" />
     </template>
-    <div class="app-drawer-content">
+    <div class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
       <div class="form-grid">
         <div class="form-field">
           <label>{{ t('indirizzi.campo_descrizione') }} *</label>

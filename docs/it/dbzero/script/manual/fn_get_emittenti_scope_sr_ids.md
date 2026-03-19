@@ -2,21 +2,19 @@
 
 > **Vedi anche**
 >
-> **Tabelle correlate:**
+**Tabelle correlate:**
 >
-> * [config.user_emittenti_fiscali](/dbzero/config/tabelle/user_emittenti_fiscali)
-> * [anagrafiche.emittenti_fiscali](/dbzero/anagrafiche/tabelle/emittenti_fiscali)
-> * [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)
+[config.user_emittenti_fiscali](/dbzero/config/tabelle/user_emittenti_fiscali)
+> [anagrafiche.emittenti_fiscali](/dbzero/anagrafiche/tabelle/emittenti_fiscali)
+> [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)
 >
-> **Funzioni correlate:**
+**Funzioni correlate:**
 >
-> * [script.fn_get_ruolo_sistema](/dbzero/script/funzioni/fn_get_ruolo_sistema)
-> * [script.fn_get_emittenti_scope](/dbzero/script/funzioni/fn_get_emittenti_scope)
+[script.fn_get_ruolo_sistema](/dbzero/script/funzioni/fn_get_ruolo_sistema)
+> [script.fn_get_emittenti_scope](/dbzero/script/funzioni/fn_get_emittenti_scope)
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 08-03-2026)
 La funzione **`script.fn_get_emittenti_scope_sr_ids`** restituisce i `soggetto_ruolo_id`
 degli emittenti fiscali autorizzati per un utente.

@@ -2,24 +2,22 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimento Tabelle:
+Approfondimento Tabelle:
 >
-> * [config.parameters](/dbzero/config/tabelle/parameters)
-> * [storico.parameter_overrides](/dbzero/storico/tabelle/parameter_overrides)
+[config.parameters](/dbzero/config/tabelle/parameters)
+> [storico.parameter_overrides](/dbzero/storico/tabelle/parameter_overrides)
 >
-> Approfondimento funzioni e trigger:
+Approfondimento funzioni e trigger:
 >
-> * [script.trgfn_upd_dlt_storico_generic](/dbzero/script/funzioni/trgfn_upd_dlt_storico_generic)
-> * [dbops.trgfn_tx_id_managed](/dbzero/dbops/funzioni/trgfn_tx_id_managed)
+[script.trgfn_upd_dlt_storico_generic](/dbzero/script/funzioni/trgfn_upd_dlt_storico_generic)
+> [dbops.trgfn_tx_id_managed](/dbzero/dbops/funzioni/trgfn_tx_id_managed)
 
 ---
 
 La tabella **`storico.parameters`** conserva gli **snapshot** delle modifiche sulla tabella operativa `config.parameters`. Ogni record storico è un JSONB che cattura lo stato completo del parametro, con informazioni di validità e metadati di audit.
 
 ---
-
 ### 🎯 Scopo Principale
-
 * **Versionamento dei parametri**
   Registrare ogni modifica (INSERT, UPDATE, DELETE) sui parametri definiti in `config.parameters`, abilitando rollback e analisi storica.
 * **Audit e compliance**
@@ -27,7 +25,7 @@ La tabella **`storico.parameters`** conserva gli **snapshot** delle modifiche su
 
 ---
 
-### 🔗 Collegamenti con Altre Tabelle
+### Collegamenti con Altre Tabelle
 
 * **`config.parameters`**
 
@@ -40,7 +38,7 @@ La tabella **`storico.parameters`** conserva gli **snapshot** delle modifiche su
 ---
 
 
-### 💡 Vantaggi Operativi
+### Vantaggi Operativi
 
 * **Snapshot automatici**
   Non serve gestire manualmente ogni colonna di audit: il JSONB cattura l’intero record.
@@ -53,4 +51,4 @@ La tabella **`storico.parameters`** conserva gli **snapshot** delle modifiche su
 
 ---
 
-> 🧠 **“`storico.parameters` è la fonte unica per tracciare l’evoluzione dei parametri di sistema: snapshot JSON, auditing completo e integrazione con il modello di storicizzazione unificato di Zero ERP.”**
+> **“`storico.parameters` è la fonte unica per tracciare l’evoluzione dei parametri di sistema: snapshot JSON, auditing completo e integrazione con il modello di storicizzazione unificato di Zero ERP.”**

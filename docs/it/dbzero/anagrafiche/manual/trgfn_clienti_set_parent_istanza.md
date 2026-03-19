@@ -2,18 +2,17 @@
 
 > 👀 **Vedi anche**
 >
-> * [Guida – Gestione delle Istanze Utility e Collegamento con PDP & Clienti](/guide/gestione-delle-istanze-utility)   
-> * [Generazione di un cliente](/guide/generazione-cliente)   
+[Guida – Gestione delle Istanze Utility e Collegamento con PDP & Clienti](/guide/gestione-delle-istanze-utility)   
+> [Generazione di un cliente](/guide/generazione-cliente)   
 >
-> Approfondimenti tabelle:
+Approfondimenti tabelle:
 > 
-> * [anagrafiche.istanze_utilities](/dbzero/anagrafiche/tabelle/istanze_utilities)   
-> * [anagrafiche.clienti](/dbzero/anagrafiche/tabelle/clienti)   
-> * [anagrafiche.pdp](/dbzero/anagrafiche/tabelle/pdp)   
-> * [config.stati_cliente](/dbzero/config/tabelle/stati_cliente)   
+[anagrafiche.istanze_utilities](/dbzero/anagrafiche/tabelle/istanze_utilities)   
+> [anagrafiche.clienti](/dbzero/anagrafiche/tabelle/clienti)   
+> [anagrafiche.pdp](/dbzero/anagrafiche/tabelle/pdp)   
+> [config.stati_cliente](/dbzero/config/tabelle/stati_cliente)   
 
 ---
-
 ### 🎯 Scopo Principale
 (latest update 09-12-25)
 La funzione `anagrafiche.trgfn_clienti_set_parent_istanza()` ha il compito di **mantenere la catena lineare delle istanze** (`istanze_utilities.parent_istanza_id`) per ciascun **PDP** quando viene inserito o attivato un nuovo cliente.
@@ -28,7 +27,7 @@ Questa funzione viene richiamata da un **trigger su `anagrafiche.clienti`** (tip
 
 ---
 
-### 🧱 Tabelle e colonne coinvolte
+### Tabelle e colonne coinvolte
 
 **`anagrafiche.clienti`**
 
@@ -60,7 +59,7 @@ La funzione utilizza `codice_interno` per **escludere** dalla catena i clienti c
 
 ---
 
-### 🔍 Regole di business implementate
+### Regole di business implementate
 
 La funzione applica le seguenti regole:
 
@@ -108,7 +107,7 @@ La funzione applica le seguenti regole:
 
 ---
 
-### 🧠 Logica di funzionamento (vista semplificata)
+### Logica di funzionamento (vista semplificata)
 
 Pseudo-flusso logico interno:
 
@@ -170,7 +169,7 @@ Pseudo-flusso logico interno:
 
 ---
 
-### 🧪 Casi d’uso principali
+### Casi d’uso principali
 
 1. **Primo cliente sul PDP**
 
@@ -197,7 +196,7 @@ Pseudo-flusso logico interno:
 
 ---
 
-### 🚀 Benefici del disegno
+### Benefici del disegno
 
 * La **catena delle istanze** per PDP è gestita in modo **automatico**, vicino al dato, senza demandare la logica all’applicativo.
 * Si ottiene una cronologia **lineare e interpretabile** delle attivazioni sullo stesso punto di prelievo.
@@ -209,7 +208,7 @@ Pseudo-flusso logico interno:
 
 ---
 
-### 🔧 Trigger associato (schema suggerito)
+### Trigger associato (schema suggerito)
 
 Un possibile trigger associato alla funzione è:
 
@@ -227,7 +226,7 @@ CREATE OR REPLACE TRIGGER trg_clienti_set_parent_istanza_ins
 
 ---
 
-### 📌 Note operative
+### Note operative
 
 * La funzione **non modifica `NEW`**, ma agisce su `anagrafiche.istanze_utilities` tramite `parent_istanza_id`.
 * È consigliato mantenere la logica **idempotente**: più chiamate sulla stessa riga cliente non devono generare incoerenze.

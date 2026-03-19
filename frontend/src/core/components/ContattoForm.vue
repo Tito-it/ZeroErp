@@ -3,21 +3,35 @@
 // Associabile a soggetto, ruolo o utility. Campi adattabili via props.
 // Usa useContattoForm per stato e lookup.
 
+import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { isEmailValid } from '../utils/validators'
 import InputText from 'primevue/inputtext'
 import Textarea from 'primevue/textarea'
 import Select from 'primevue/select'
 
 const { t } = useI18n()
 
-defineProps({
+// Validazione real-time @blur per email e PEC
+const emailInvalid = ref(false)
+const pecInvalid = ref(false)
+
+function onEmailBlur() {
+  emailInvalid.value = !!props.form.email?.trim() && !isEmailValid(props.form.email)
+}
+function onPecBlur() {
+  pecInvalid.value = !!props.form.pec?.trim() && !isEmailValid(props.form.pec)
+}
+
+const props = defineProps({
   form: { type: Object, required: true },
   tipiContatto: { type: Object, required: true },
   unitaOrganizzative: { type: Object, default: null },
   requireEmail: { type: Boolean, default: false },
   showUO: { type: Boolean, default: true },
   tipoDisabled: { type: Boolean, default: false },
-  disabled: { type: Boolean, default: false }
+  disabled: { type: Boolean, default: false },
+  errors: { type: Array, default: () => [] }
 })
 </script>
 
@@ -31,11 +45,21 @@ defineProps({
     <div class="form-grid-2col">
       <div class="form-field">
         <label>{{ t('common.email') }}{{ requireEmail ? ' *' : '' }}</label>
-        <InputText v-model="form.email" :disabled="disabled" class="w-full" />
+        <InputText v-model="form.email" :disabled="disabled" class="w-full"
+          :invalid="emailInvalid || errors.includes('email') || errors.includes('email_format')"
+          @blur="onEmailBlur" />
+        <small v-if="emailInvalid || errors.includes('email_format')" class="app-field-error">
+          {{ t('validation.email_format') }}
+        </small>
       </div>
       <div class="form-field">
         <label>{{ t('common.pec') }}</label>
-        <InputText v-model="form.pec" :disabled="disabled" class="w-full" />
+        <InputText v-model="form.pec" :disabled="disabled" class="w-full"
+          :invalid="pecInvalid || errors.includes('pec_format')"
+          @blur="onPecBlur" />
+        <small v-if="pecInvalid || errors.includes('pec_format')" class="app-field-error">
+          {{ t('validation.email_format') }}
+        </small>
       </div>
     </div>
 

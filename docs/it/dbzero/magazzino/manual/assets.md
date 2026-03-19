@@ -2,15 +2,15 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimento tabelle:
+Approfondimento tabelle:
 >
-> * [catalogo.articoli](/dbzero/catalogo/tabelle/articoli) 
-> * [config.stati_assets](/dbzero/config/tabelle/stati_assets)
-> * [config.assets_ownership](/dbzero/config/tabelle/assets_ownership)
-> * [magazzino.magazzini](/dbzero/magazzino/tabelle/magazzini)
-> * [magazzino.ubicazioni](/dbzero/magazzino/tabelle/ubicazioni)
-> * [anagrafiche.billing_account](/dbzero/anagrafiche/tabelle/billing_account)
-> * [vendite.contratti] (/dbzero/vendite/tabelle/contratti)
+[catalogo.articoli](/dbzero/catalogo/tabelle/articoli) 
+> [config.stati_assets](/dbzero/config/tabelle/stati_assets)
+> [config.assets_ownership](/dbzero/config/tabelle/assets_ownership)
+> [magazzino.magazzini](/dbzero/magazzino/tabelle/magazzini)
+> [magazzino.ubicazioni](/dbzero/magazzino/tabelle/ubicazioni)
+> [anagrafiche.billing_account](/dbzero/anagrafiche/tabelle/billing_account)
+> [vendite.contratti] (/dbzero/vendite/tabelle/contratti)
 
 ---
 
@@ -19,9 +19,7 @@ La tabella **`magazzino.assets`** rappresenta l’**istanza fisica di un bene du
 Ogni riga descrive **un singolo asset fisico**, collegato ad un articolo di catalogo, ad uno stato del ciclo di vita e, opzionalmente, a un cliente/contratto/magazzino/ubicazione.
 
 ---
-
 ### 🎯 Scopo Principale
-
 * Tracciare a livello puntuale **tutti gli asset fisici** gestiti da Zero ERP.
 * Collegare l’asset a:
 
@@ -40,7 +38,7 @@ Ogni riga descrive **un singolo asset fisico**, collegato ad un articolo di cata
 ---
 
 
-### 🔗 Relazioni principali
+### Relazioni principali
 
 * **Catalogo articoli** → identifica modello e caratteristiche dell’asset.
 * **Proprietà asset** → `ownership_id` collega a chi è il proprietario.
@@ -50,7 +48,7 @@ Ogni riga descrive **un singolo asset fisico**, collegato ad un articolo di cata
 
 ---
 
-### ⚙️ Indici
+### Indici
 
 Ottimizzano ricerche operative:
 
@@ -63,7 +61,7 @@ Ottimizzano ricerche operative:
 
 ---
 
-### ⚙️ Trigger previsti
+### Trigger previsti
 
 * **Trigger audit** → aggiornano `data_update` / `user_update` automaticamente.
 * **Trigger TX-ID** → integrano il record nei batch logici.
@@ -72,7 +70,7 @@ Ottimizzano ricerche operative:
 
 ---
 
-### 💡 Vantaggi operativi
+### Vantaggi operativi
 
 * Tracciabilità completa del patrimonio fisico.
 * Governance chiara di proprietà, stato, ubicazione e contratto.
@@ -82,4 +80,4 @@ Ottimizzano ricerche operative:
 
 ---
 
-> 🧠 **“`magazzino.assets` è la vista unificata dell’intero ciclo di vita degli asset: logistica, tecnica e commerciale.”**
+> **“`magazzino.assets` è la vista unificata dell’intero ciclo di vita degli asset: logistica, tecnica e commerciale.”**

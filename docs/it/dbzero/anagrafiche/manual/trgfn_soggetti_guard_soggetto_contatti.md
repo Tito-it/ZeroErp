@@ -2,22 +2,20 @@
 
 > 👀 **Vedi anche**
 >
-> Approfondimento tabelle:    
+Approfondimento tabelle:    
 >
-> * [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)    
-> * [anagrafiche.contatti](/dbzero/anagrafiche/tabelle/contatti)    
+[anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)    
+> [anagrafiche.contatti](/dbzero/anagrafiche/tabelle/contatti)    
 >
-> Approfondimento funzioni :    
+Approfondimento funzioni :    
 >
-> * [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)     
+[script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)     
 
 
 La trigger function **`anagrafiche.trgfn_soggetti_guard_soggetto_contatti()`** verifica, al termine dell’inserimento o aggiornamento di un record in `anagrafiche.soggetti`, che il soggetto associato abbia almeno un contatto valido. Se non trova contatti con `is_default = TRUE` o almeno un canale valorizzato (email, telefono, cellulare, PEC), registra l’evento e solleva un’eccezione centralizzata.
 
 ---
-
 ### 🎯 Scopo Principale
-
 (latest review 28-12-25)
 * **Validazione di integrità**
   Garantire che ogni soggetto disponga di almeno un contatto predefinito o dotato di un canale attivo.
@@ -30,7 +28,7 @@ La trigger function **`anagrafiche.trgfn_soggetti_guard_soggetto_contatti()`** v
 
 ---
 
-### 🔍 Parametri e Contesto del Trigger
+### Parametri e Contesto del Trigger
 
 * **Trigger associato**: `AFTER INSERT OR UPDATE` su `anagrafiche.soggetti`, definito come:
 
@@ -45,7 +43,7 @@ La trigger function **`anagrafiche.trgfn_soggetti_guard_soggetto_contatti()`** v
 
 ---
 
-### ⚙️ Flusso Logico
+### Flusso Logico
 
 1. **Conteggio contatti validi**
 
@@ -81,7 +79,7 @@ La trigger function **`anagrafiche.trgfn_soggetti_guard_soggetto_contatti()`** v
 
 ---
 
-### 🔒 Error Handling e Logging
+### Error Handling e Logging
 
 * **Codice errore**: `E_SOGGETTO_NO_CONTATTI` (messaggio configurato in `config.messaggi_errore`).
 * **Context payload**: JSON `{ "soggetto_id": <NEW.id> }` passato a `fn_log_and_raise_error` per dettagliare l’evento di errore.
@@ -89,7 +87,7 @@ La trigger function **`anagrafiche.trgfn_soggetti_guard_soggetto_contatti()`** v
 
 ---
 
-### 💡 Vantaggi Operativi
+### Vantaggi Operativi
 
 * **Integrità garantita**
   Nessun soggetto privo di contatti validi può essere creato o aggiornato, prevenendo dati anomali.
@@ -102,4 +100,4 @@ La trigger function **`anagrafiche.trgfn_soggetti_guard_soggetto_contatti()`** v
 
 ---
 
-> 🧠 **“Usare un constraint trigger deferrable per verificare i contatti di un soggetto assicura integrità e coerenza dei dati, sfruttando logging e gestione errori centralizzata.”**
+> **“Usare un constraint trigger deferrable per verificare i contatti di un soggetto assicura integrità e coerenza dei dati, sfruttando logging e gestione errori centralizzata.”**
