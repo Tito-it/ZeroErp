@@ -104,7 +104,7 @@ class PermissionsAuditRepository:
             sql += "AND valid_from <= %s::timestamptz "
             params.append(data_a)
 
-        sql += "ORDER BY valid_from DESC, id DESC "
+        sql += "ORDER BY valid_from DESC, tx_id DESC "
 
         offset = (page - 1) * page_size
         sql += "LIMIT %s OFFSET %s"

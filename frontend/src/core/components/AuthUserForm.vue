@@ -26,13 +26,13 @@ defineProps({
       <label>{{ t('common.email') }} *</label>
       <InputText v-model="form.email" type="email" :disabled="disabled" class="w-full" />
     </div>
-    <template v-if="showPassword">
-      <div class="form-field">
+    <div v-if="showPassword" class="form-row-inline">
+      <div class="form-field" style="flex: 1;">
         <label>{{ t('common.password') }} *</label>
         <Password v-model="form.password" :disabled="disabled"
           :feedback="false" toggleMask class="w-full" />
       </div>
-      <div class="form-field">
+      <div class="form-field" style="flex: 1;">
         <label>{{ t('common.password_confirm') }} *</label>
         <Password v-model="form.password_confirm" :disabled="disabled"
           :feedback="false" toggleMask class="w-full"
@@ -41,7 +41,7 @@ defineProps({
           {{ t('common.password_mismatch') }}
         </small>
       </div>
-    </template>
+    </div>
   </div>
 </template>
 

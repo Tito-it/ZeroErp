@@ -155,6 +155,16 @@ router.beforeEach(async (to) => {
     return { name: 'forbidden' }
   }
 
+  // Guard livello BLOCCATO: l'utente non ha accesso a questo dominio.
+  // I domini adminOnly hanno gia' il loro guard sopra — non applicare.
+  if (domain) {
+    const domainConfig = DOMAINS.find(d => d.key === domain)
+    if (domainConfig && !domainConfig.adminOnly
+        && domainConfig.schemaDb && auth.isAreaBlocked(domainConfig.schemaDb)) {
+      return { name: 'forbidden' }
+    }
+  }
+
   // Imposta dominio attivo nello store navigation
   const nav = useNavigationStore()
   if (domain && domain !== 'home') {

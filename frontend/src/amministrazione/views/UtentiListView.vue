@@ -4,12 +4,13 @@
 // Button Nuovo -> apre UtenteDrawer in modalita' crea.
 import { ref, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useUtentiStore } from '../stores/utenti'
+import { useOperatoriStore } from '../stores/operatori'
 import { useSearchTable } from '../../core/composables/useSearchTable'
 import { useTabFreshness } from '../../core/composables/useTabFreshness'
 import { useDrawerState } from '../../core/composables/useDrawerState'
 import { useLookup } from '../../core/composables/useLookup'
 import { listUnitaOrganizzative } from '../api/amministrazione'
+import { RUOLO_SISTEMA, buildRuoloOptions } from '../constants'
 import UtenteDrawer from '../components/UtenteDrawer.vue'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
@@ -17,26 +18,22 @@ import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
 import NewButton from '../../core/components/NewButton.vue'
 import Badge from 'primevue/badge'
+import { displayDate } from '../../core/utils/date'
 
 const { t } = useI18n()
-const store = useUtentiStore()
+const store = useOperatoriStore()
 const unitaOrg = useLookup(listUnitaOrganizzative, { immediate: true })
 const { searchText, onPage, onSort, applyFilters, paginatorProps } = useSearchTable(store)
 const drawer = useDrawerState()
 
-useTabFreshness(store, 'utente')
+useTabFreshness(store, 'operatore')
 
 // Filtri locali (extra rispetto a search)
 const ruoloFilter = ref(null)
 const uoFilter = ref(null)
 const activeFilter = ref(null)
 
-const ruoloOptions = [
-  { label: t('amm.ruolo_all'), value: null },
-  { label: t('amm.ruolo_admin'), value: 'ADMIN' },
-  { label: t('amm.ruolo_operativo'), value: 'OPERATIVO' },
-  { label: t('amm.ruolo_disabilitato'), value: 'DISABILITATO' }
-]
+const ruoloOptions = buildRuoloOptions(t, { includeAll: true })
 
 const activeOptions = [
   { label: t('amm.stato_all'), value: null },
@@ -54,18 +51,17 @@ function applyExtraFilters() {
 }
 
 function onDrawerSaved() {
-  drawer.close()
   store.fetchList()
 }
 
 function ruoloBadgeSeverity(ruolo) {
-  if (ruolo === 'ADMIN') return 'danger'
-  if (ruolo === 'DISABILITATO') return 'secondary'
+  if (ruolo === RUOLO_SISTEMA.ADMIN) return 'warn'
+  if (ruolo === RUOLO_SISTEMA.DISABILITATO) return 'danger'
   return 'info'
 }
 
 function activeBadgeSeverity(active) {
-  return active ? 'success' : 'warn'
+  return active ? 'success' : 'danger'
 }
 </script>
 
@@ -121,9 +117,9 @@ function activeBadgeSeverity(active) {
       selection-mode="single"
       data-key="auth_user_id"
     >
-      <Column field="last_name" :header="t('amm.col_nome')" sortable>
+      <Column field="soggetto_cognome" :header="t('amm.col_nome')" sortable>
         <template #body="{ data }">
-          {{ data.last_name }} {{ data.first_name }}
+          {{ data.soggetto_cognome }} {{ data.soggetto_nome }}
         </template>
       </Column>
       <Column field="username" :header="t('amm.col_username')" sortable />
@@ -141,7 +137,12 @@ function activeBadgeSeverity(active) {
           />
         </template>
       </Column>
-      <Column field="data_insert" :header="t('amm.col_data_insert')" sortable />
+      <Column field="valido_dal" :header="t('amm.col_valido_dal')" sortable>
+        <template #body="{ data }">{{ displayDate(data.valido_dal) }}</template>
+      </Column>
+      <Column field="valido_al" :header="t('amm.col_valido_al')" sortable>
+        <template #body="{ data }">{{ displayDate(data.valido_al) }}</template>
+      </Column>
     </DataTable>
 
     <UtenteDrawer

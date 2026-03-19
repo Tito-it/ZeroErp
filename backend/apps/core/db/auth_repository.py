@@ -5,6 +5,8 @@
 # Scopo: Building block repository per auth_user (Django).
 # Chiama anagrafiche.fn_crea_auth_user per creare un utente
 # Django con guard unicita' username/email.
+# Gestisce anche il blocco login per tentativi falliti
+# (fn_check_blocco_login, fn_registra_tentativo_login).
 # Riusabile da qualsiasi dominio che necessiti un utente Django.
 # ------------------------------------------------------------
 
@@ -42,3 +44,28 @@ class AuthRepository:
             row = cursor.fetchone()
             assert row is not None
             return row[0]
+
+    # Scopo: Verifica se l'utente e' bloccato per tentativi falliti.
+    # Lancia errore DB (E_UTENTE_BLOCCATO) se blocco attivo.
+    # Se blocco scaduto, lo resetta automaticamente.
+    def check_blocco_login(self, auth_user_id: int) -> None:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT script.fn_check_blocco_login(%s)",
+                [auth_user_id],
+            )
+
+    # Scopo: Registra esito tentativo login (successo/fallimento).
+    # Se fallimento supera soglia, imposta blocco temporaneo.
+    # Ritorna { bloccato, minuti_rimanenti, tentativi }.
+    def registra_tentativo_login(self, auth_user_id: int, *, successo: bool) -> dict:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT script.fn_registra_tentativo_login(%s, %s)",
+                [auth_user_id, successo],
+            )
+            row = cursor.fetchone()
+            if not row or not row[0]:
+                return {"bloccato": False, "minuti_rimanenti": 0, "tentativi": 0}
+            import json
+            return json.loads(row[0]) if isinstance(row[0], str) else row[0]

@@ -24,6 +24,7 @@ defineProps({
   loadingCap: { type: Boolean, default: false },
   autoClone: { type: Boolean, default: true },
   indirizzoWarnings: { type: Array, default: () => [] },
+  addressNotFound: { type: Boolean, default: false },
   comuneInitialItem: { type: Object, default: null },
   disabled: { type: Boolean, default: false }
 })
@@ -53,8 +54,18 @@ defineEmits(['update:isLibera', 'update:autoClone', 'switchTipo'])
       </div>
     </div>
 
-    <!-- Switch modalita' libera -->
-    <div class="form-field">
+    <!-- Checkbox: auto-clone + formato libero + via non presente (affiancati) -->
+    <div class="form-row-inline" style="flex-wrap: wrap;">
+      <div v-if="tipiStato.filter(t => t.obbligatorio).length > 1" style="display: flex; align-items: center; gap: 0.5rem;">
+        <Checkbox
+          :modelValue="autoClone"
+          @update:modelValue="$emit('update:autoClone', $event)"
+          :binary="true"
+          input-id="auto-clone"
+          :disabled="disabled"
+        />
+        <label for="auto-clone" class="app-text-secondary">{{ t('indirizzo_soggetto.auto_clone') }}</label>
+      </div>
       <div style="display: flex; align-items: center; gap: 0.5rem;">
         <Checkbox
           :modelValue="isLibera"
@@ -65,16 +76,23 @@ defineEmits(['update:isLibera', 'update:autoClone', 'switchTipo'])
         />
         <label for="indirizzo-libero">{{ t('indirizzo_soggetto.modalita_libera') }}</label>
       </div>
+      <div v-if="!isLibera" style="display: flex; align-items: center; gap: 0.5rem;">
+        <Checkbox v-model="form.via_nuova" :binary="true" input-id="via-nuova-sogg" :disabled="disabled" />
+        <label for="via-nuova-sogg">{{ t('indirizzi.via_non_presente') }}</label>
+      </div>
     </div>
 
     <!-- === MODALITA' NORMALIZZATA === -->
     <template v-if="!isLibera">
       <div class="form-field">
         <label>{{ t('indirizzi.campo_comune') }} *</label>
-        <ComuneAutocomplete v-model="form.comune_id" :initial-item="comuneInitialItem" :disabled="disabled" />
+        <ComuneAutocomplete v-model="form.comune_id"
+          :initial-item="form._comune_obj || comuneInitialItem"
+          :disabled="disabled"
+          @item-selected="obj => form._comune_obj = obj" />
       </div>
 
-      <!-- Via esistente (stradario) -->
+      <!-- Via esistente (stradario locale) -->
       <template v-if="!form.via_nuova">
         <div class="form-field">
           <label>{{ t('indirizzi.campo_via') }} *</label>
@@ -85,14 +103,6 @@ defineEmits(['update:isLibera', 'update:autoClone', 'switchTipo'])
           />
         </div>
       </template>
-
-      <!-- Checkbox via non presente -->
-      <div class="form-field">
-        <div style="display: flex; align-items: center; gap: 0.5rem;">
-          <Checkbox v-model="form.via_nuova" :binary="true" input-id="via-nuova-sogg" :disabled="disabled" />
-          <label for="via-nuova-sogg">{{ t('indirizzi.via_non_presente') }}</label>
-        </div>
-      </div>
 
       <!-- Via nuova: autocomplete su stradario_generale -->
       <template v-if="form.via_nuova">
@@ -148,8 +158,11 @@ defineEmits(['update:isLibera', 'update:autoClone', 'switchTipo'])
         </div>
       </div>
 
-      <Message v-for="(msg, i) in indirizzoWarnings" :key="i" severity="info" size="small" class="mt-1">
+      <Message v-for="(msg, i) in indirizzoWarnings" :key="i" severity="warn" size="small" class="mt-1">
         {{ msg }}
+      </Message>
+      <Message v-if="addressNotFound" severity="warn" size="small" class="mt-1">
+        {{ t('indirizzi.indirizzo_non_trovato') }}
       </Message>
     </template>
 
@@ -179,21 +192,6 @@ defineEmits(['update:isLibera', 'update:autoClone', 'switchTipo'])
       </div>
     </template>
 
-    <!-- Auto-clone checkbox -->
-    <div v-if="tipiStato.filter(t => t.obbligatorio).length > 1" class="form-field">
-      <div style="display: flex; align-items: center; gap: 0.5rem;">
-        <Checkbox
-          :modelValue="autoClone"
-          @update:modelValue="$emit('update:autoClone', $event)"
-          :binary="true"
-          input-id="auto-clone"
-          :disabled="disabled"
-        />
-        <label for="auto-clone" class="app-text-secondary">
-          {{ t('indirizzo_soggetto.auto_clone') }}
-        </label>
-      </div>
-    </div>
   </div>
 </template>
 

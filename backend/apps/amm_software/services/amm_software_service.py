@@ -8,13 +8,16 @@
 
 from __future__ import annotations
 
+import uuid as uuid_mod
 from typing import Any
 
 from django.contrib.auth.hashers import make_password
 
 from apps.core.api.payload_validators import optional_int
 from apps.core.services.error_manager import ErrorManager
+from apps.core.services.service_errors import ServiceError
 from apps.core.services.permissions_cache import invalidate_department, invalidate_user
+from apps.amm_software.constants import DEFAULT_RUOLO_SISTEMA, DEFAULT_SESSO, RUOLO_ADMIN
 from apps.amm_software.db.amm_software_repository import AmmSoftwareRepository
 
 E_AMM_VALIDAZIONE = "E_AMM_VALIDAZIONE"
@@ -31,36 +34,59 @@ class AmmSoftwareService:
     # Utenti
     # =================================================================
 
-    # Scopo: Crea operatore completo. Validazione, hash password, delega al repository.
+    # Scopo: Crea operatore completo. Due flussi:
+    # Flusso A (soggetto_id assente): crea soggetto PF nuovo — cognome/nome/CF obbligatori.
+    # Flusso B (soggetto_id presente): associa soggetto esistente — dati persona non richiesti.
+    # In entrambi: username, email, password, qualifica obbligatori.
     def create_operatore(self, payload: dict) -> dict[str, Any]:
-        cognome = (payload.get("cognome") or "").strip()
-        nome = (payload.get("nome") or "").strip()
-        codice_fiscale = (payload.get("codice_fiscale") or "").strip()
+        soggetto_id = (payload.get("soggetto_id") or "").strip() or None
         username = (payload.get("username") or "").strip()
         email = (payload.get("email") or "").strip()
         password = payload.get("password") or ""
-        qualifica_id = payload.get("qualifica_id")
+        raw_qualifica = payload.get("qualifica_id")
 
-        ErrorManager.require(bool(cognome), code=E_AMM_VALIDAZIONE, message="Cognome obbligatorio.")
-        ErrorManager.require(bool(nome), code=E_AMM_VALIDAZIONE, message="Nome obbligatorio.")
-        ErrorManager.require(bool(codice_fiscale), code=E_AMM_VALIDAZIONE, message="Codice fiscale obbligatorio.")
+        # Guard UUID soggetto_id (flusso B)
+        if soggetto_id:
+            try:
+                uuid_mod.UUID(soggetto_id)
+            except (ValueError, AttributeError):
+                ErrorManager.require(False, code=E_AMM_VALIDAZIONE, message="UUID soggetto non valido.")
+
+        # Guard qualifica_id numerico
+        try:
+            qualifica_id = int(raw_qualifica) if raw_qualifica is not None else None
+        except (ValueError, TypeError):
+            qualifica_id = None
+
+        # Validazione comune (entrambi i flussi)
         ErrorManager.require(bool(username), code=E_AMM_VALIDAZIONE, message="Username obbligatorio.")
         ErrorManager.require(bool(email), code=E_AMM_VALIDAZIONE, message="Email obbligatoria.")
         ErrorManager.require(bool(password), code=E_AMM_VALIDAZIONE, message="Password obbligatoria.")
-        ErrorManager.require(qualifica_id is not None and int(qualifica_id) > 0, code=E_AMM_VALIDAZIONE, message="Qualifica obbligatoria.")
+        ErrorManager.require(qualifica_id is not None and qualifica_id > 0, code=E_AMM_VALIDAZIONE, message="Qualifica obbligatoria.")
+
+        # Validazione flusso A: dati persona obbligatori solo se soggetto nuovo
+        cognome = (payload.get("cognome") or "").strip()
+        nome = (payload.get("nome") or "").strip()
+        codice_fiscale = (payload.get("codice_fiscale") or "").strip()
+
+        if not soggetto_id:
+            ErrorManager.require(bool(cognome), code=E_AMM_VALIDAZIONE, message="Cognome obbligatorio per soggetto nuovo.")
+            ErrorManager.require(bool(nome), code=E_AMM_VALIDAZIONE, message="Nome obbligatorio per soggetto nuovo.")
+            ErrorManager.require(bool(codice_fiscale), code=E_AMM_VALIDAZIONE, message="Codice fiscale obbligatorio per soggetto nuovo.")
 
         auth_user_id = self._repo.crea_operatore(
-            cognome=cognome,
-            nome=nome,
-            codice_fiscale=codice_fiscale,
+            soggetto_id=soggetto_id,
+            cognome=cognome or None,
+            nome=nome or None,
+            codice_fiscale=codice_fiscale or None,
             username=username,
             email=email,
             password_hash=make_password(password),
-            qualifica_id=int(qualifica_id),  # type: ignore[arg-type]
+            qualifica_id=qualifica_id,  # type: ignore[arg-type]
             unita_organizzativa_id=int(payload["unita_organizzativa_id"]) if payload.get("unita_organizzativa_id") else None,
             data_nascita=payload.get("data_nascita"),
-            sesso=payload.get("sesso", "M"),
-            ruolo_sistema=payload.get("ruolo_sistema", "OPERATIVO"),
+            sesso=payload.get("sesso", DEFAULT_SESSO),
+            ruolo_sistema=payload.get("ruolo_sistema", DEFAULT_RUOLO_SISTEMA),
             valido_dal=payload.get("valido_dal"),
             valido_al=payload.get("valido_al"),
             comune_nascita_id=optional_int(payload, "comune_nascita_id"),
@@ -93,11 +119,26 @@ class AmmSoftwareService:
         return self._repo.get_utente_detail(auth_user_id) or {}
 
     # Scopo: Disabilita utente, invalida cache e blacklist token.
+    # Guard: impedisce di disabilitare l'ultimo ADMIN attivo.
     def disabilita_utente(self, auth_user_id: int) -> dict[str, Any]:
-        self.get_utente(auth_user_id)  # verifica esistenza
+        utente = self.get_utente(auth_user_id)
+        if utente.get("ruolo_sistema") == RUOLO_ADMIN:
+            if self._repo.count_admin_attivi() <= 1:
+                raise ServiceError(
+                    code="E_ADMIN_ULTIMO",
+                    message="Impossibile disabilitare l'ultimo amministratore.",
+                    detail="Deve esistere almeno un utente ADMIN attivo nel sistema.",
+                )
         self._repo.disabilita_utente(auth_user_id)
         invalidate_user(auth_user_id)
         _blacklist_user_tokens(auth_user_id)
+        return self._repo.get_utente_detail(auth_user_id) or {}
+
+    # Scopo: Riattiva utente disabilitato, invalida cache.
+    def riattiva_utente(self, auth_user_id: int) -> dict[str, Any]:
+        self.get_utente(auth_user_id)  # verifica esistenza
+        self._repo.riattiva_utente(auth_user_id)
+        invalidate_user(auth_user_id)
         return self._repo.get_utente_detail(auth_user_id) or {}
 
     # =================================================================

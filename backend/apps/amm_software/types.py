@@ -17,18 +17,23 @@ class UtenteRow(TypedDict):
     email: str
     first_name: str
     last_name: str
+    soggetto_cognome: str | None
+    soggetto_nome: str | None
     ruolo_sistema: str | None
     is_active: bool
     unita_organizzativa_id: int | None
     unita_organizzativa_nome: str | None
     risorsa_umana_id: int | None
     attivo: bool | None
+    valido_dal: str | None
     valido_al: str | None
-    data_insert: str | None
 
 
 class UtenteDetailRow(UtenteRow):
-    """Riga dettaglio utente con conteggi override."""
+    """Riga dettaglio utente con conteggi override e dati soggetto."""
+    soggetto_id: str | None
+    ragione_sociale_completa: str | None
+    codice_fiscale: str | None
     override_aree_count: int
     override_azioni_count: int
     emittenti_count: int

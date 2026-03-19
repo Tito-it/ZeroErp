@@ -11,17 +11,20 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from django.db import connection
+from django.db import connection, transaction
 
 from apps.core.db._helpers import row_to_dict, rows_to_list
 
 from apps.core.services.error_manager import ErrorManager
+from apps.amm_software.constants import (
+    DEFAULT_LIMIT, RUOLO_ADMIN, RUOLO_DISABILITATO, RUOLO_OPERATIVO,
+)
 from apps.amm_software.types import UtenteDetailRow, UtenteRow
 
 # Colonne ammesse per ordinamento lista utenti
 ALLOWED_ORDER_COLUMNS = frozenset({
-    "last_name", "username", "ruolo_sistema", "is_active",
-    "unita_organizzativa_nome", "data_insert",
+    "last_name", "soggetto_cognome", "username", "ruolo_sistema",
+    "is_active", "unita_organizzativa_nome", "valido_dal", "valido_al",
 })
 
 
@@ -38,7 +41,7 @@ class AmmSoftwareRepository:
         ruolo_sistema: str | None = None,
         unita_organizzativa_id: int | None = None,
         is_active: bool | None = None,
-        limit: int = 50,
+        limit: int = DEFAULT_LIMIT,
         offset: int = 0,
         order_by: str | None = None,
         order_dir: str | None = None,
@@ -54,11 +57,12 @@ class AmmSoftwareRepository:
 
         if search:
             conditions.append(
-                "(au.username ILIKE %s OR au.first_name ILIKE %s "
-                "OR au.last_name ILIKE %s OR au.email ILIKE %s)"
+                "(au.username ILIKE %s OR au.email ILIKE %s "
+                "OR s.cognome ILIKE %s OR s.nome ILIKE %s "
+                "OR s.ragione_sociale_completa ILIKE %s)"
             )
             like_term = f"%{search}%"
-            params.extend([like_term, like_term, like_term, like_term])
+            params.extend([like_term] * 5)
 
         if ruolo_sistema:
             conditions.append("rua.ruolo_sistema = %s::config.ruolo_sistema")
@@ -79,7 +83,7 @@ class AmmSoftwareRepository:
             direction = "DESC" if order_dir and order_dir.upper() == "DESC" else "ASC"
             order_clause = f"ORDER BY {order_by} {direction}, au.id"
         else:
-            order_clause = "ORDER BY au.last_name ASC, au.username ASC, au.id"
+            order_clause = "ORDER BY soggetto_cognome ASC, au.username ASC, au.id"
 
         sql = f"""
             SELECT au.id AS auth_user_id,
@@ -87,20 +91,26 @@ class AmmSoftwareRepository:
                    au.email,
                    au.first_name,
                    au.last_name,
+                   COALESCE(s.cognome, au.last_name) AS soggetto_cognome,
+                   COALESCE(s.nome, au.first_name) AS soggetto_nome,
                    rua.ruolo_sistema::text,
                    au.is_active,
                    ru.unita_organizzativa_id,
                    uo.descrizione AS unita_organizzativa_nome,
                    ru.id AS risorsa_umana_id,
                    ru.attivo,
+                   ru.valido_dal::text,
                    ru.valido_al::text,
-                   au.date_joined::text AS data_insert,
                    COUNT(*) OVER() AS total_count
               FROM auth_user au
               LEFT JOIN anagrafiche.risorse_umane_auth_user rua
                 ON rua.auth_user_id = au.id
               LEFT JOIN anagrafiche.risorse_umane ru
                 ON ru.id = rua.risorsa_umana_id
+              LEFT JOIN anagrafiche.soggetti_ruoli sr
+                ON sr.id = ru.soggetto_ruolo_id
+              LEFT JOIN anagrafiche.soggetti s
+                ON s.id = sr.soggetto_id
               LEFT JOIN config.unita_organizzative uo
                 ON uo.id = ru.unita_organizzativa_id
              WHERE {where_clause}
@@ -136,14 +146,19 @@ class AmmSoftwareRepository:
                    au.email,
                    au.first_name,
                    au.last_name,
+                   COALESCE(s.cognome, au.last_name) AS soggetto_cognome,
+                   COALESCE(s.nome, au.first_name) AS soggetto_nome,
+                   s.id AS soggetto_id,
+                   s.ragione_sociale_completa,
+                   s.codice_fiscale,
                    rua.ruolo_sistema::text,
                    au.is_active,
                    ru.unita_organizzativa_id,
                    uo.descrizione AS unita_organizzativa_nome,
                    ru.id AS risorsa_umana_id,
                    ru.attivo,
+                   ru.valido_dal::text,
                    ru.valido_al::text,
-                   au.date_joined::text AS data_insert,
                    COALESCE((SELECT COUNT(*) FROM config.user_override_aree uoa
                              WHERE uoa.auth_user_id = au.id), 0) AS override_aree_count,
                    COALESCE((SELECT COUNT(*) FROM config.user_override_azioni uoz
@@ -155,6 +170,10 @@ class AmmSoftwareRepository:
                 ON rua.auth_user_id = au.id
               LEFT JOIN anagrafiche.risorse_umane ru
                 ON ru.id = rua.risorsa_umana_id
+              LEFT JOIN anagrafiche.soggetti_ruoli sr
+                ON sr.id = ru.soggetto_ruolo_id
+              LEFT JOIN anagrafiche.soggetti s
+                ON s.id = sr.soggetto_id
               LEFT JOIN config.unita_organizzative uo
                 ON uo.id = ru.unita_organizzativa_id
              WHERE au.id = %s
@@ -248,27 +267,70 @@ class AmmSoftwareRepository:
                     [auth_user_id],
                 )
 
+    # Scopo: Conta utenti con ruolo_sistema ADMIN e attivo = true.
+    def count_admin_attivi(self) -> int:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """SELECT COUNT(*)
+                     FROM anagrafiche.risorse_umane_auth_user
+                    WHERE ruolo_sistema = %s::config.ruolo_sistema
+                      AND attivo = true""",
+                [RUOLO_ADMIN],
+            )
+            return cursor.fetchone()[0]
+
     # Scopo: Disabilita un utente impostando ruolo_sistema=DISABILITATO e attivo=false.
     # Chiama fn_sync_auth_user_is_active per sincronizzare auth_user.is_active.
     def disabilita_utente(self, auth_user_id: int) -> None:
         with connection.cursor() as cursor:
-            # Imposta ruolo_sistema = DISABILITATO
+            # 1. Disattiva figlio (risorse_umane_auth_user) PRIMA del padre
             cursor.execute(
                 """UPDATE anagrafiche.risorse_umane_auth_user
-                      SET ruolo_sistema = 'DISABILITATO'::config.ruolo_sistema
+                      SET ruolo_sistema = %s::config.ruolo_sistema,
+                          attivo = false
                     WHERE auth_user_id = %s""",
-                [auth_user_id],
+                [RUOLO_DISABILITATO, auth_user_id],
             )
-            # Imposta attivo = false su risorse_umane
+            # 2. Disattiva padre (risorse_umane) + imposta valido_al = oggi
             cursor.execute(
                 """UPDATE anagrafiche.risorse_umane ru
-                      SET attivo = false
+                      SET attivo = false,
+                          valido_al = CURRENT_DATE
                      FROM anagrafiche.risorse_umane_auth_user rua
                     WHERE rua.risorsa_umana_id = ru.id
                       AND rua.auth_user_id = %s""",
                 [auth_user_id],
             )
-            # Sync auth_user.is_active
+            # 3. Sync auth_user.is_active
+            cursor.execute(
+                "SELECT anagrafiche.fn_sync_auth_user_is_active(%s)",
+                [auth_user_id],
+            )
+
+    # Scopo: Riattiva un utente precedentemente disabilitato.
+    # Imposta ruolo_sistema = OPERATIVO, attivo = true, e sincronizza auth_user.is_active.
+    def riattiva_utente(self, auth_user_id: int) -> None:
+        with connection.cursor() as cursor:
+            # 1. Riattiva padre (risorse_umane) + aggiorna valido_dal = oggi, rimuove valido_al
+            cursor.execute(
+                """UPDATE anagrafiche.risorse_umane ru
+                      SET attivo = true,
+                          valido_dal = CURRENT_DATE,
+                          valido_al = NULL
+                     FROM anagrafiche.risorse_umane_auth_user rua
+                    WHERE rua.risorsa_umana_id = ru.id
+                      AND rua.auth_user_id = %s""",
+                [auth_user_id],
+            )
+            # 2. Riattiva figlio (risorse_umane_auth_user)
+            cursor.execute(
+                """UPDATE anagrafiche.risorse_umane_auth_user
+                      SET ruolo_sistema = %s::config.ruolo_sistema,
+                          attivo = true
+                    WHERE auth_user_id = %s""",
+                [RUOLO_OPERATIVO, auth_user_id],
+            )
+            # 3. Sync auth_user.is_active
             cursor.execute(
                 "SELECT anagrafiche.fn_sync_auth_user_is_active(%s)",
                 [auth_user_id],
@@ -278,17 +340,19 @@ class AmmSoftwareRepository:
     # Chiama i building block: fn_crea_auth_user, fn_crea_soggetto_pf, fn_crea_risorsa_umana.
     # Parametri Sprint 3: comune_nascita_id, indirizzo_resid_dettaglio_id,
     # indirizzo_domfisc_dettaglio_id (normalizzati via stradario).
+    # Due flussi: soggetto_id NULL (crea soggetto nuovo) o valorizzato (usa esistente).
     # Ritorna l'auth_user_id del nuovo operatore.
     def crea_operatore(
         self,
         *,
-        cognome: str,
-        nome: str,
-        codice_fiscale: str,
         username: str,
         email: str,
         password_hash: str,
         qualifica_id: int,
+        soggetto_id: str | None = None,
+        cognome: str | None = None,
+        nome: str | None = None,
+        codice_fiscale: str | None = None,
         unita_organizzativa_id: int | None = None,
         data_nascita: str | None = None,
         sesso: str = "M",
@@ -301,6 +365,7 @@ class AmmSoftwareRepository:
     ) -> int:
         sql = """
             SELECT anagrafiche.fn_crea_operatore(
+                p_soggetto_id                    := %s::uuid,
                 p_cognome                        := %s,
                 p_nome                           := %s,
                 p_codice_fiscale                 := %s,
@@ -320,6 +385,7 @@ class AmmSoftwareRepository:
             )
         """
         params = [
+            soggetto_id,
             cognome, nome, codice_fiscale,
             username, email, password_hash,
             qualifica_id, unita_organizzativa_id,
@@ -368,7 +434,7 @@ class AmmSoftwareRepository:
     # Scopo: Sostituisce gli override aree di un utente (replace semantics).
     # Cancella tutti gli override esistenti e inserisce i nuovi.
     def put_override_aree(self, auth_user_id: int, items: list[dict[str, Any]]) -> None:
-        with connection.cursor() as cursor:
+        with transaction.atomic(), connection.cursor() as cursor:
             cursor.execute(
                 "DELETE FROM config.user_override_aree WHERE auth_user_id = %s",
                 [auth_user_id],
@@ -412,7 +478,7 @@ class AmmSoftwareRepository:
 
     # Scopo: Sostituisce gli override azioni di un utente (replace semantics).
     def put_override_azioni(self, auth_user_id: int, items: list[dict[str, Any]]) -> None:
-        with connection.cursor() as cursor:
+        with transaction.atomic(), connection.cursor() as cursor:
             cursor.execute(
                 "DELETE FROM config.user_override_azioni WHERE auth_user_id = %s",
                 [auth_user_id],
@@ -453,7 +519,7 @@ class AmmSoftwareRepository:
 
     # Scopo: Sostituisce gli emittenti scope di un utente (replace semantics).
     def put_emittenti_scope(self, auth_user_id: int, emittente_ids: list[int]) -> None:
-        with connection.cursor() as cursor:
+        with transaction.atomic(), connection.cursor() as cursor:
             cursor.execute(
                 "DELETE FROM config.user_emittenti_fiscali WHERE auth_user_id = %s",
                 [auth_user_id],
@@ -530,7 +596,7 @@ class AmmSoftwareRepository:
     def put_profilo_reparto(
         self, uo_id: int, aree: list[dict[str, Any]], azioni: list[dict[str, Any]]
     ) -> None:
-        with connection.cursor() as cursor:
+        with transaction.atomic(), connection.cursor() as cursor:
             # Aree: replace
             cursor.execute(
                 "DELETE FROM config.profili_reparto_aree WHERE unita_organizzativa_id = %s",

@@ -42,6 +42,8 @@ export function buildIndirizzoPayload(data) {
 export function useIndirizzoBase() {
   const form = reactive({
     comune_id: null,
+    // Oggetto comune per display nell'AutoComplete (necessario per restore dopo toggle)
+    _comune_obj: null,
     // Oggetto via unificato: contiene dati da stradario O da stradario_generale.
     // Da stradario: { stradario_id, indirizzo_normalizzato, toponimo, denominazione, codice_postale_id }
     // Da stradario_generale: { stradario_generale_id, toponomastica_id, toponimo, denominazione, indirizzo_normalizzato }
@@ -60,12 +62,14 @@ export function useIndirizzoBase() {
   const capOptions = ref([])
   const loadingCap = ref(false)
   let capVersion = 0
+  let _restoring = false  // Sopprime reset CAP durante restore
 
   // Check duplicato indirizzo
   const { indirizzoWarnings, existingDettaglioId, checkDuplicato, resetWarnings } = useIndirizzoDuplicato()
 
   // --- Watch: CAP ---
   watch(() => form.comune_id, async (id) => {
+    if (_restoring) return  // Non resettare durante restore
     capOptions.value = []
     form.codice_postale_id = null
     if (id) {
@@ -95,14 +99,23 @@ export function useIndirizzoBase() {
   watch(capOptions, _autoSetCap)
 
   // --- Watch: check duplicato ---
-  // Scatta solo se via da stradario (ha stradario_id) e non in via_nuova
+  // Flusso A: via da stradario locale (stradario_id)
+  // Flusso B: via da stradario_generale (stradario_generale_id + comune_id)
+  // Scatta su cambio via, civico, dettagli civico, comune o CAP.
   watch([
     () => form.via_obj, () => form.civico, () => form.estensione_civico,
     () => form.palazzina, () => form.scala, () => form.piano, () => form.interno,
+    () => form.comune_id, () => form.codice_postale_id,
   ], () => {
-    if (form.via_nuova || !form.via_obj?.stradario_id) { resetWarnings(); return }
+    const obj = form.via_obj
+    const hasStradario = obj?.stradario_id
+    const hasGenerale = obj?.stradario_generale_id && form.comune_id
+    if (!hasStradario && !hasGenerale) { resetWarnings(); return }
     checkDuplicato({
-      stradario_id: form.via_obj.stradario_id,
+      stradario_id: obj.stradario_id || null,
+      stradario_generale_id: obj.stradario_generale_id || null,
+      comune_id: form.comune_id || null,
+      codice_postale_id: form.codice_postale_id || null,
       civico: form.civico || null,
       estensione_civico: (form.estensione_civico || '').trim() || null,
       palazzina: (form.palazzina || '').trim() || null,
@@ -112,10 +125,9 @@ export function useIndirizzoBase() {
     })
   })
 
-  // --- Watch: via_nuova → resetta warning (la via_obj resta) ---
-  watch(() => form.via_nuova, (val) => {
-    if (val) resetWarnings()
-  })
+  // --- Watch: via_nuova toggle → resetta warning duplicato ---
+  // Quando l'utente cambia il checkbox "crea nuovo", i warning non sono piu' validi.
+  watch(() => form.via_nuova, () => { resetWarnings() })
 
   // Scopo: Validazione parte indirizzo.
   // CAP obbligatorio sempre (auto-set da stradario, fallback da comune).
@@ -130,12 +142,13 @@ export function useIndirizzoBase() {
   // Scopo: Indirizzo da stradario + civico inserito ma non trovato nel DB.
   // Condiviso da IndirizzoDrawer e IndirizziSoggettoDrawer (no duplicazione).
   // I consumer aggiungono condizioni locali (isCreate, isLibera).
-  const addressNotFound = computed(() =>
-    !form.via_nuova
-    && !!form.via_obj?.stradario_id
-    && !!form.civico
-    && !existingDettaglioId.value
-  )
+  // Scopo: true se l'indirizzo (via + civico) non esiste ancora nel DB.
+  // Flusso A: via da stradario locale. Flusso B: via da stradario generale + comune.
+  const addressNotFound = computed(() => {
+    if (form.via_nuova) return false  // "crea nuovo" attivo: non segnalare
+    const hasVia = form.via_obj?.stradario_id || (form.via_obj?.stradario_generale_id && form.comune_id)
+    return !!hasVia && !!form.civico && !existingDettaglioId.value
+  })
 
   // Scopo: Costruisce payload indirizzo dal form reattivo corrente.
   // Delega a buildIndirizzoPayload (helper statico condiviso).
@@ -147,6 +160,7 @@ export function useIndirizzoBase() {
   function snapshot() {
     return {
       comune_id: form.comune_id,
+      _comune_obj: form._comune_obj,
       via_obj: form.via_obj,
       via_nuova: form.via_nuova,
       codice_postale_id: form.codice_postale_id,
@@ -159,9 +173,11 @@ export function useIndirizzoBase() {
     }
   }
 
-  // Scopo: Ripristina form da snapshot.
+  // Scopo: Ripristina form da snapshot senza triggerare reset CAP.
   function restore(snap) {
+    _restoring = true
     form.comune_id = snap.comune_id ?? null
+    form._comune_obj = snap._comune_obj ?? null
     form.via_obj = snap.via_obj ?? null
     form.via_nuova = snap.via_nuova ?? false
     form.codice_postale_id = snap.codice_postale_id ?? null
@@ -171,10 +187,25 @@ export function useIndirizzoBase() {
     form.scala = snap.scala || ''
     form.piano = snap.piano || ''
     form.interno = snap.interno || ''
+    // Ricarica opzioni CAP per il comune ripristinato (senza resettare il valore)
+    if (form.comune_id) {
+      const v = ++capVersion
+      loadingCap.value = true
+      lookupCodiciPostaliByComune(form.comune_id).then(res => {
+        if (v !== capVersion) return
+        capOptions.value = res.data.data.results
+      }).finally(() => {
+        if (v === capVersion) loadingCap.value = false
+        _restoring = false
+      })
+    } else {
+      _restoring = false
+    }
   }
 
   function reset() {
     form.comune_id = null
+    form._comune_obj = null
     form.via_obj = null
     form.via_nuova = false
     form.codice_postale_id = null

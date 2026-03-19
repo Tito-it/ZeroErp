@@ -21,9 +21,10 @@ export function useContattoForm(options = {}) {
     note: ''
   })
 
-  // Lookup tipi contatto (config.tipi_contatti) — lazy, caricato al primo uso
+  // Lookup tipi contatto (config.tipi_contatti) — caricato al mount
   const tipiContatto = useLookup(
-    () => lookupCodici('config.tipi_contatti')
+    () => lookupCodici('config.tipi_contatti'),
+    { immediate: true }
   )
 
   // Lookup unita organizzative (config.unita_organizzative) — lazy

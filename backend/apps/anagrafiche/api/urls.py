@@ -17,9 +17,12 @@ from apps.anagrafiche.api.views_soggetti import (
     SoggettiView,
 )
 from apps.anagrafiche.api.views_stati import StatiDetailView, StatiLookupView, StatiView
+from apps.anagrafiche.api.views_ruoli_config import RuoliConfigResolverView
 from apps.anagrafiche.api.views_toponomastica import ToponomasticaDetailView, ToponomasticaView
 
 urlpatterns = [
+    # Ruoli — config resolver (prima delle rotte parametriche)
+    path("ruoli/<str:tipo_ruolo_codice>/config-resolver/", RuoliConfigResolverView.as_view(), name="anagrafiche-ruoli-config-resolver"),
     # Soggetti — utility (prima delle rotte con <str:soggetto_id>)
     path("soggetti/valida-cf-piva/", ValidaCFPIVAView.as_view(), name="anagrafiche-valida-cf-piva"),
     path("soggetti/genera-cf/", GeneraCFView.as_view(), name="anagrafiche-genera-cf"),

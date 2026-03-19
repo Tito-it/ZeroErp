@@ -14,6 +14,7 @@ urlpatterns = [
     path("utenti/", views.UtentiListView.as_view(), name="amm-utenti-list"),
     path("utenti/<int:auth_user_id>/", views.UtentiDetailView.as_view(), name="amm-utenti-detail"),
     path("utenti/<int:auth_user_id>/disabilita/", views.UtentiDisabilitaView.as_view(), name="amm-utenti-disabilita"),
+    path("utenti/<int:auth_user_id>/riattiva/", views.UtentiRiattivaView.as_view(), name="amm-utenti-riattiva"),
     # Override permessi utente
     path("utenti/<int:auth_user_id>/override-aree/", views.OverrideAreeView.as_view(), name="amm-override-aree"),
     path("utenti/<int:auth_user_id>/override-azioni/", views.OverrideAzioniView.as_view(), name="amm-override-azioni"),
