@@ -16,6 +16,8 @@
 | ruolo_sistema | USER-DEFINED | NO | 'OPERATIVO'::config.ruolo_sistema |
 | storicizza | boolean | NO | true |
 | tx_id | uuid | YES |  |
+| tentativi_falliti | smallint | NO | 0 |
+| bloccato_fino_a | timestamp with time zone | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |

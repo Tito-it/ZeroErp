@@ -4,7 +4,8 @@
 
 ## ⚙️ Funzioni
 - [fn_check_azione_processo](funzioni/fn_check_azione_processo.md) — (latest review 08-03-2026) La funzione **`script.fn_check_azione_processo`** verifica se un'azione di processo (identificata da `permission_codename`) e abilitata per un utente.
-- [fn_check_indirizzo_duplicato](funzioni/fn_check_indirizzo_duplicato.md) — Verifica l'esistenza di un indirizzo duplicato o simile in `anagrafiche.indirizzi_dettaglio`. Costruisce la stringa normalizzata tramite `fn_build_indirizzo_normalizzato` (unica source of truth), poi cerca match prefix sulla vista `vw_indirizzi_dettaglio`.
+- [fn_check_blocco_login](funzioni/fn_check_blocco_login.md)
+- [fn_check_indirizzo_duplicato](funzioni/fn_check_indirizzo_duplicato.md)
 - [fn_check_user_emittente_scope](funzioni/fn_check_user_emittente_scope.md) — (latest review 08-03-2026) La funzione **`script.fn_check_user_emittente_scope`** verifica se un utente ha accesso a uno specifico emittente fiscale. Pensata per i trigger defense-in-depth su tabelle operative (fatture, pagamenti).
 - [fn_clone_catasto_from_parent_by_istanza](funzioni/fn_clone_catasto_from_parent_by_istanza.md) — (latest review 15-12-25) La funzione **`script.fn_clone_catasto_from_parent_by_istanza(p_istanza_utilities_id)`** gestisce la **clonazione** di un record catastale (`anagrafiche.catasto_unita_immobiliari`) dalla **parent_istanza** verso l’istanza corrente, tipicamente nel flusso di **subentro**.
 - [fn_disdetta_cliente](funzioni/fn_disdetta_cliente.md)
@@ -46,6 +47,7 @@
 - [fn_log_error_only](funzioni/fn_log_error_only.md) — (latest review 23-11-25) * **Logging “silenzioso”**: inserisce una riga in `dbops.error_log` con contesto ricco, ma **non** solleva eccezioni. * **Separazione delle responsabilità**: differenzia chiaramente i casi di **solo tracciamento** da quelli di **error handling critico** (per cui usare `fn_log_and_raise_error`).
 - [fn_norm_testo](funzioni/fn_norm_testo.md)
 - [fn_norm_via](funzioni/fn_norm_via.md)
+- [fn_registra_tentativo_login](funzioni/fn_registra_tentativo_login.md)
 - [fn_resolve_codice_postale](funzioni/fn_resolve_codice_postale.md) — Risolve il `codice_postale_id` con logica di fallback a due livelli. Unica source of truth per la logica CAP (prima nel watcher Vue).
 - [fn_resolve_livello_area](funzioni/fn_resolve_livello_area.md) — (latest review 08-03-2026) La funzione **`script.fn_resolve_livello_area`** risolve il livello di accesso effettivo di un utente per un'area funzionale, identificata tramite `schema_db`.
 - [fn_resolve_livello_oggetto](funzioni/fn_resolve_livello_oggetto.md) — (latest review 08-03-2026) La funzione **`script.fn_resolve_livello_oggetto`** risolve il livello di accesso per un singolo model Django (`app_label` + `model_name`).
