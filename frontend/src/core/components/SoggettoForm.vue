@@ -7,7 +7,7 @@ import { ref, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { generaCF, validaCFPIVA } from '../../anagrafiche/api/anagrafiche'
 import { toDateString, displayDate } from '../utils/date'
-import { capitalizeWords, capitalizeFirst } from '../utils/string'
+import { capitalizeWords, capitalizeFirst, blockNonAlphanumeric, normalizeUpperNoSpaces } from '../utils/string'
 import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
 import DatePicker from 'primevue/datepicker'
@@ -170,7 +170,7 @@ async function onValidaPIVA() {
           <label>{{ t('common.data_nascita') }}</label>
           <InputText v-if="disabled" :model-value="displayDate(form.data_nascita)" disabled class="w-full" />
           <DatePicker v-else v-model="form.data_nascita" :dateFormat="DATE_FORMAT"
-            show-icon show-button-bar :manual-input="true" class="w-full" />
+            show-icon icon-display="input" show-button-bar :manual-input="true" class="w-full" />
         </div>
       </div>
       <div class="form-field">
@@ -195,7 +195,9 @@ async function onValidaPIVA() {
         <label>{{ t('common.codice_fiscale') }} *</label>
         <div class="app-input-with-action">
           <InputText v-model="form.codice_fiscale" :disabled="disabled || cfDisabled" class="w-full"
-            @blur="onValidaCF" />
+            @blur="onValidaCF"
+            @keypress="blockNonAlphanumeric"
+            @input="normalizeUpperNoSpaces(form, 'codice_fiscale')" />
           <Button
             v-if="isPF && !cfDisabled"
             icon="pi pi-bolt"

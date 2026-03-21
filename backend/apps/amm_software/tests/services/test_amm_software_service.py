@@ -13,12 +13,12 @@ Indice test eseguiti:
  3) test_create_operatore_missing_password — password vuota
  4) test_create_operatore_missing_qualifica — qualifica mancante
  5) test_create_operatore_password_hashed — password non in chiaro
- 6) test_get_utente_ok — dettaglio utente
- 7) test_get_utente_not_found — id inesistente
- 8) test_update_utente_ok — aggiorna e invalida cache
- 9) test_update_utente_not_found — id inesistente
-10) test_disabilita_utente_ok — disabilita e invalida cache + blacklist
-11) test_disabilita_utente_not_found — id inesistente
+ 6) test_get_operatore_ok — dettaglio operatore
+ 7) test_get_operatore_not_found — id inesistente
+ 8) test_update_operatore_ok — aggiorna e invalida cache
+ 9) test_update_operatore_not_found — id inesistente
+10) test_disabilita_operatore_ok — disabilita e invalida cache + blacklist
+11) test_disabilita_operatore_not_found — id inesistente
 12) test_put_override_aree_invalidates_cache — invalida cache dopo save
 13) test_put_override_azioni_invalidates_cache — invalida cache dopo save
 14) test_put_emittenti_scope_invalidates_cache — invalida cache dopo save
@@ -46,7 +46,7 @@ class TestCreateOperatore(TestCase):
         """Happy path: crea operatore, password hashata."""
         mock_repo = mock_repo_cls.return_value
         mock_repo.crea_operatore.return_value = 1
-        mock_repo.get_utente_detail.return_value = {"auth_user_id": 1, "username": "test"}
+        mock_repo.get_operatore_detail.return_value = {"auth_user_id": 1, "username": "test"}
         from apps.amm_software.services.amm_software_service import AmmSoftwareService
         result = AmmSoftwareService().create_operatore({
             "cognome": "Rossi", "nome": "Mario", "codice_fiscale": "RSSMRA80A01H501Z",
@@ -60,7 +60,7 @@ class TestCreateOperatore(TestCase):
 
     @patch(REPO)
     def test_create_operatore_missing_cognome(self, mock_repo_cls):
-        """Cognome vuoto → ServiceError."""
+        """Cognome vuoto -> ServiceError."""
         from apps.amm_software.services.amm_software_service import AmmSoftwareService
         with self.assertRaises(ServiceError) as ctx:
             AmmSoftwareService().create_operatore({
@@ -71,7 +71,7 @@ class TestCreateOperatore(TestCase):
 
     @patch(REPO)
     def test_create_operatore_missing_password(self, mock_repo_cls):
-        """Password vuota → ServiceError."""
+        """Password vuota -> ServiceError."""
         from apps.amm_software.services.amm_software_service import AmmSoftwareService
         with self.assertRaises(ServiceError) as ctx:
             AmmSoftwareService().create_operatore({
@@ -82,7 +82,7 @@ class TestCreateOperatore(TestCase):
 
     @patch(REPO)
     def test_create_operatore_missing_qualifica(self, mock_repo_cls):
-        """Qualifica None → ServiceError."""
+        """Qualifica None -> ServiceError."""
         from apps.amm_software.services.amm_software_service import AmmSoftwareService
         with self.assertRaises(ServiceError) as ctx:
             AmmSoftwareService().create_operatore({
@@ -97,7 +97,7 @@ class TestCreateOperatore(TestCase):
         """Verifica che make_password venga chiamato con la password raw."""
         mock_repo = mock_repo_cls.return_value
         mock_repo.crea_operatore.return_value = 1
-        mock_repo.get_utente_detail.return_value = {}
+        mock_repo.get_operatore_detail.return_value = {}
         from apps.amm_software.services.amm_software_service import AmmSoftwareService
         AmmSoftwareService().create_operatore({
             "cognome": "R", "nome": "M", "codice_fiscale": "CF",
@@ -106,69 +106,69 @@ class TestCreateOperatore(TestCase):
         mock_pw.assert_called_once_with("mypassword")
 
 
-class TestGetUtente(TestCase):
-    """Test AmmSoftwareService.get_utente()."""
+class TestGetOperatore(TestCase):
+    """Test AmmSoftwareService.get_operatore()."""
 
     @patch(REPO)
-    def test_get_utente_ok(self, mock_repo_cls):
-        mock_repo_cls.return_value.get_utente_detail.return_value = {"auth_user_id": 1}
+    def test_get_operatore_ok(self, mock_repo_cls):
+        mock_repo_cls.return_value.get_operatore_detail.return_value = {"auth_user_id": 1}
         from apps.amm_software.services.amm_software_service import AmmSoftwareService
-        result = AmmSoftwareService().get_utente(1)
+        result = AmmSoftwareService().get_operatore(1)
         self.assertEqual(result["auth_user_id"], 1)
 
     @patch(REPO)
-    def test_get_utente_not_found(self, mock_repo_cls):
-        mock_repo_cls.return_value.get_utente_detail.return_value = None
+    def test_get_operatore_not_found(self, mock_repo_cls):
+        mock_repo_cls.return_value.get_operatore_detail.return_value = None
         from apps.amm_software.services.amm_software_service import AmmSoftwareService
         with self.assertRaises(ServiceError) as ctx:
-            AmmSoftwareService().get_utente(999)
+            AmmSoftwareService().get_operatore(999)
         self.assertEqual(ctx.exception.code, "E_AMM_UTENTE_NOT_FOUND")
 
 
-class TestUpdateUtente(TestCase):
-    """Test AmmSoftwareService.update_utente()."""
+class TestUpdateOperatore(TestCase):
+    """Test AmmSoftwareService.update_operatore()."""
 
     @patch(INVALIDATE_USER)
     @patch(REPO)
-    def test_update_utente_ok(self, mock_repo_cls, mock_invalidate):
+    def test_update_operatore_ok(self, mock_repo_cls, mock_invalidate):
         """Aggiorna e invalida cache."""
         mock_repo = mock_repo_cls.return_value
-        mock_repo.get_utente_detail.return_value = {"auth_user_id": 1}
+        mock_repo.get_operatore_detail.return_value = {"auth_user_id": 1}
         from apps.amm_software.services.amm_software_service import AmmSoftwareService
-        AmmSoftwareService().update_utente(1, {"email": "new@test.it"})
-        mock_repo.update_utente.assert_called_once()
+        AmmSoftwareService().update_operatore(1, {"email": "new@test.it"})
+        mock_repo.update_operatore.assert_called_once()
         mock_invalidate.assert_called_once_with(1)
 
     @patch(REPO)
-    def test_update_utente_not_found(self, mock_repo_cls):
-        mock_repo_cls.return_value.get_utente_detail.return_value = None
+    def test_update_operatore_not_found(self, mock_repo_cls):
+        mock_repo_cls.return_value.get_operatore_detail.return_value = None
         from apps.amm_software.services.amm_software_service import AmmSoftwareService
         with self.assertRaises(ServiceError):
-            AmmSoftwareService().update_utente(999, {"email": "x"})
+            AmmSoftwareService().update_operatore(999, {"email": "x"})
 
 
-class TestDisabilitaUtente(TestCase):
-    """Test AmmSoftwareService.disabilita_utente()."""
+class TestDisabilitaOperatore(TestCase):
+    """Test AmmSoftwareService.disabilita_operatore()."""
 
     @patch(BLACKLIST)
     @patch(INVALIDATE_USER)
     @patch(REPO)
-    def test_disabilita_utente_ok(self, mock_repo_cls, mock_invalidate, mock_blacklist):
+    def test_disabilita_operatore_ok(self, mock_repo_cls, mock_invalidate, mock_blacklist):
         """Disabilita, invalida cache, blacklist token."""
         mock_repo = mock_repo_cls.return_value
-        mock_repo.get_utente_detail.return_value = {"auth_user_id": 1}
+        mock_repo.get_operatore_detail.return_value = {"auth_user_id": 1}
         from apps.amm_software.services.amm_software_service import AmmSoftwareService
-        AmmSoftwareService().disabilita_utente(1)
-        mock_repo.disabilita_utente.assert_called_once_with(1)
+        AmmSoftwareService().disabilita_operatore(1)
+        mock_repo.disabilita_operatore.assert_called_once_with(1)
         mock_invalidate.assert_called_once_with(1)
         mock_blacklist.assert_called_once_with(1)
 
     @patch(REPO)
-    def test_disabilita_utente_not_found(self, mock_repo_cls):
-        mock_repo_cls.return_value.get_utente_detail.return_value = None
+    def test_disabilita_operatore_not_found(self, mock_repo_cls):
+        mock_repo_cls.return_value.get_operatore_detail.return_value = None
         from apps.amm_software.services.amm_software_service import AmmSoftwareService
         with self.assertRaises(ServiceError):
-            AmmSoftwareService().disabilita_utente(999)
+            AmmSoftwareService().disabilita_operatore(999)
 
 
 class TestOverrideCache(TestCase):

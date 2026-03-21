@@ -1,25 +1,37 @@
 <script setup>
 // Scopo: footer standard per drawer con pulsanti Annulla/Salva.
 // Riusabile in tutti i drawer del progetto.
-// In modalita' sola lettura (provide/inject) si nasconde automaticamente.
+// Auto-hide: si nasconde in modalita' sola lettura (inject) o se l'azione non e' abilitata.
+// Prop action opzionale: se presente, nasconde i pulsanti di scrittura (Salva).
+// Il pulsante Annulla resta sempre visibile (chiusura drawer).
+import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useInjectReadonly } from '../composables/useReadonlyMode'
+import { useAuthStore } from '../../stores/auth'
 import Button from 'primevue/button'
 
-defineProps({
+const props = defineProps({
   loading: { type: Boolean, default: false },
   disabled: { type: Boolean, default: false },
   saveLabel: { type: String, default: null },
-  cancelLabel: { type: String, default: null }
+  cancelLabel: { type: String, default: null },
+  action: { type: String, default: null }
 })
 
 const emit = defineEmits(['save', 'cancel'])
 const { t } = useI18n()
 const isReadonly = useInjectReadonly()
+const auth = useAuthStore()
+
+const isVisible = computed(() => {
+  if (isReadonly.value) return false
+  if (props.action && !auth.isActionAllowed(props.action)) return false
+  return true
+})
 </script>
 
 <template>
-  <div v-if="!isReadonly" class="app-drawer-footer">
+  <div v-if="isVisible" class="app-drawer-footer">
     <Button
       :label="cancelLabel || t('common.cancel')"
       severity="secondary"

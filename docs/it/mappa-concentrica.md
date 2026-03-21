@@ -4,7 +4,7 @@
 >
 > Riferimento metodologico: [sviluppo-concentrico.md](sviluppo-concentrico.md)
 
-*Ultimo aggiornamento: 18 marzo 2026*
+*Ultimo aggiornamento: 20 marzo 2026*
 
 ---
 
@@ -98,7 +98,7 @@ Stabile. Modifiche solo per correzioni o estensioni non-breaking (nuove policy, 
 | `config`         | App Django | Operativo | Operativo | —         | Stati, nazioni, UO, termini pagamento, priorita', canali; policy operative trasversali |
 | `anagrafiche`    | App Django | Operativo | Operativo | Operativo | Soggetti, indirizzi, contatti, risorse umane, emittenti fiscali                        |
 | `catalogo`       | App Django | Operativo | Operativo | —         | Articoli, UoM, listini, distinte base                                                  |
-| `amm-software`   | App Django | Operativo | Operativo | Parziale  | Gestione operatori, permessi, profili reparto (solo ADMIN)                              |
+| `amm-software`   | App Django | Operativo | Operativo | Operativo | Gestione operatori, permessi riepilogo, profili reparto, audit log (solo ADMIN)          |
 
 ### Frontend Anello 1 — Stato dettagliato
 
@@ -108,11 +108,12 @@ Stabile. Modifiche solo per correzioni o estensioni non-breaking (nuove policy, 
 | Gestione Soggetti          | In test UI | PF/PG/ENTE end-to-end, 3 building block, ruoli, CF validator IT con omocodia  |
 | Pannello Config            | Operativo | 67 tabelle CRUD generiche con drawer dinamico, metadata-driven               |
 | Building block soggetto    | Operativo | SoggettoForm, ContattoForm, IndirizzoSoggettoForm, DatiSocietariForm, ComuneAutocomplete, StradarioAutocomplete, StradarioGeneraleAutocomplete |
-| Modalita' sola lettura     | Operativo | Pattern protect CSS + provide/inject: 11 drawer, 3 view, 2 componenti core auto-hide (NewButton, DrawerFooter) |
-| Amm. Software — Operatori  | Parziale  | Lista con filtri, creazione operatore, drawer modifica — mancano test UI reali |
-| Amm. Software — Profili    | Parziale  | Gestione profili reparto — mancano test UI reali                               |
-| Amm. Software — Permessi   | Placeholder | Solo pagina placeholder, da implementare                                     |
-| Amm. Software — Audit Log  | Placeholder | Solo pagina placeholder, da implementare                                     |
+| Modalita' sola lettura     | Operativo | Pattern protect CSS + provide/inject: tutti i drawer con app-readonly, 2 componenti core auto-hide (NewButton, DrawerFooter) |
+| Azioni processo (Livello 2)| Operativo | Prop `action` su NewButton/DrawerFooter, composable useActionPermission, mappa da /me/ |
+| Amm. Software — Operatori  | Operativo | Lista con filtri/sort, drawer crea/modifica unificato, tab permessi override, rename utenti→operatori |
+| Amm. Software — Profili    | Operativo | Lista reparti, drawer editor aree (Select livello) + azioni (ToggleSwitch), confirm save |
+| Amm. Software — Permessi   | Operativo | Matrice operatori × aree con Tag colorati, colonne dinamiche, filtri reparto/ruolo |
+| Amm. Software — Audit Log  | Operativo | Timeline globale 6 tabelle storico, paginazione lazy, sort server-side, filtro tipo |
 
 ### Cosa fornisce agli anelli esterni
 
@@ -121,7 +122,8 @@ Stabile. Modifiche solo per correzioni o estensioni non-breaking (nuove policy, 
 - Lookup e decodifiche centralizzate
 - **Policy operative trasversali**: configurazioni che governano il comportamento del sistema su piu' domini e non appartengono a nessun dominio specifico (es. `user_emittenti_fiscali` — ambito operativo per emittente)
 - **Gestione geografica completa**: indirizzi, toponomastica, comuni, province, regioni, stati — API + UI con autorizzazione per area `anagrafiche`
-- **Building block frontend riutilizzabili**: composable centralizzati (useSearchTable, useDrawerState, useTabFreshness), componenti atomici (SoggettoForm, AuthUserForm, autocomplete), CSS utility classes
+- **Building block frontend riutilizzabili**: composable centralizzati (useSearchTable, useDrawerState, useTabFreshness, useReadonlyMode, useActionPermission), componenti atomici (SoggettoForm, AuthUserForm, autocomplete, NewButton, DrawerFooter con prop `action`), CSS utility classes
+- **Sistema permessi a 2 livelli**: Livello 1 area (TUTTO/LETTURA/BLOCCATO) + Livello 2 azioni processo (abilitata/negata), con enforcement backend (ZeroERPPermission) e auto-hide frontend (prop `action`)
 
 ### Regola di posizionamento in `config`
 
@@ -313,16 +315,27 @@ Gli anelli esterni possono dipendere direttamente da anelli non adiacenti — ve
   - 57 endpoint documentati: soggetti, indirizzi, geo config, amm. software
   - 3 doc esistenti aggiornate: lookup codici, user profile, api overview
 
+- ~~Frontend Sprint 7: Amm. Software completa + Permessi Livello 1+2~~ — **FATTO** (20 marzo 2026)
+  - Area Amm. Software: 4 pagine operative (operatori, profili reparto, permessi riepilogo, audit log)
+  - Refactor naming utenti→operatori su tutto lo stack (backend, frontend, test, doc, smoke test)
+  - Livello 1 consolidato: useReadonlyMode su tutte le view, app-readonly su tutti i drawer
+  - Livello 2 azioni processo: prop `action` su NewButton/DrawerFooter, composable useActionPermission
+  - DB: fn_get_user_actions_map + fn_get_user_profile arricchito con azioni_abilitate
+  - Costanti enum centralizzate in core/constants.js (RUOLO_SISTEMA, LIVELLO_ACCESSO)
+  - Helper severity riutilizzabili, useConfirmAction (confirmSave/Delete/Action), displayTimestamp
+  - Audit qualita': fix race condition, null safety, SQL validation, toast validazione
+  - Sort default: soggetti (ragione_sociale), operatori (cognome), audit (timestamp DESC)
+
 ### In corso
 
 - **Gestione Soggetti**: backend + frontend completati — in fase di test UI
-- **Modalita' sola lettura**: implementata — da verificare con test UI utente LETTURA
+- **Amm. Software**: 4 pagine completate — da testare nel browser
 - **Gestione Geografica**: operativo — UI da migliorare
 
 ### Breve termine
 
-- Test UI reali su Gestione Soggetti, modalita' sola lettura, Gestione Geografica
-- Completamento Amm. Software: pagine Permessi e Audit Log
+- Test UI reali su Gestione Soggetti, Amm. Software, Gestione Geografica
+- Seed azioni processo per nuovi domini (anagrafiche, config) + prop `action` sui componenti
 - ClienteService Django (orchestrator creazione/subentro/disdetta cliente)
 
 ### Medio termine

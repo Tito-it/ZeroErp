@@ -16,6 +16,14 @@ from apps.anagrafiche.api.views_soggetti import (
     SoggettiRuoliView,
     SoggettiView,
 )
+from apps.anagrafiche.api.views_conti_bancari import (
+    BankBranchesLookupView,
+    ContiBancariLookupView,
+    RuoloContiBancariDetailView,
+    RuoloContiBancariView,
+    SoggettoContiBancariDetailView,
+    SoggettoContiBancariView,
+)
 from apps.anagrafiche.api.views_stati import StatiDetailView, StatiLookupView, StatiView
 from apps.anagrafiche.api.views_ruoli_config import RuoliConfigResolverView
 from apps.anagrafiche.api.views_toponomastica import ToponomasticaDetailView, ToponomasticaView
@@ -23,6 +31,9 @@ from apps.anagrafiche.api.views_toponomastica import ToponomasticaDetailView, To
 urlpatterns = [
     # Ruoli — config resolver (prima delle rotte parametriche)
     path("ruoli/<str:tipo_ruolo_codice>/config-resolver/", RuoliConfigResolverView.as_view(), name="anagrafiche-ruoli-config-resolver"),
+    # Conti bancari ruolo
+    path("ruoli/<int:soggetto_ruolo_id>/conti-bancari/", RuoloContiBancariView.as_view(), name="anagrafiche-ruoli-conti-bancari"),
+    path("ruoli/<int:soggetto_ruolo_id>/conti-bancari/<int:cb_id>/", RuoloContiBancariDetailView.as_view(), name="anagrafiche-ruoli-conti-bancari-detail"),
     # Soggetti — utility (prima delle rotte con <str:soggetto_id>)
     path("soggetti/valida-cf-piva/", ValidaCFPIVAView.as_view(), name="anagrafiche-valida-cf-piva"),
     path("soggetti/genera-cf/", GeneraCFView.as_view(), name="anagrafiche-genera-cf"),
@@ -34,6 +45,12 @@ urlpatterns = [
     path("soggetti/<str:soggetto_id>/indirizzi/", SoggettiIndirizziView.as_view(), name="anagrafiche-soggetti-indirizzi"),
     path("soggetti/<str:soggetto_id>/indirizzi/<int:indirizzo_soggetto_id>/", SoggettiIndirizziDetailView.as_view(), name="anagrafiche-soggetti-indirizzi-detail"),
     path("soggetti/<str:soggetto_id>/ruoli/", SoggettiRuoliView.as_view(), name="anagrafiche-soggetti-ruoli"),
+    # Conti bancari soggetto
+    path("soggetti/<str:soggetto_id>/conti-bancari/", SoggettoContiBancariView.as_view(), name="anagrafiche-soggetti-conti-bancari"),
+    path("soggetti/<str:soggetto_id>/conti-bancari/<int:cb_id>/", SoggettoContiBancariDetailView.as_view(), name="anagrafiche-soggetti-conti-bancari-detail"),
+    # Conti bancari — lookup
+    path("conti-bancari/lookup/", ContiBancariLookupView.as_view(), name="anagrafiche-conti-bancari-lookup"),
+    path("bank-branches/lookup/", BankBranchesLookupView.as_view(), name="anagrafiche-bank-branches-lookup"),
     # Indirizzi dettaglio
     path("indirizzi/check-duplicato/", IndirizziCheckDuplicatoView.as_view(), name="anagrafiche-indirizzi-check-duplicato"),
     path("indirizzi/", IndirizziView.as_view(), name="anagrafiche-indirizzi-list"),

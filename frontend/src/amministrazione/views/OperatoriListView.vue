@@ -1,17 +1,18 @@
 <script setup>
 // Scopo: pagina lista operatori con DataTable lazy, filtri e paginazione.
-// Click riga -> apre UtenteDrawer in modalita' modifica.
-// Button Nuovo -> apre UtenteDrawer in modalita' crea.
+// Click riga -> apre OperatoreDrawer in modalita' modifica.
+// Button Nuovo -> apre OperatoreDrawer in modalita' crea.
 import { ref, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useOperatoriStore } from '../stores/operatori'
 import { useSearchTable } from '../../core/composables/useSearchTable'
 import { useTabFreshness } from '../../core/composables/useTabFreshness'
 import { useDrawerState } from '../../core/composables/useDrawerState'
+import { useReadonlyMode } from '../../core/composables/useReadonlyMode'
 import { useLookup } from '../../core/composables/useLookup'
 import { listUnitaOrganizzative } from '../api/amministrazione'
-import { RUOLO_SISTEMA, buildRuoloOptions } from '../constants'
-import UtenteDrawer from '../components/UtenteDrawer.vue'
+import { RUOLO_SISTEMA, buildRuoloOptions, getRuoloSeverity } from '../constants'
+import OperatoreDrawer from '../components/OperatoreDrawer.vue'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import InputText from 'primevue/inputtext'
@@ -25,6 +26,7 @@ const store = useOperatoriStore()
 const unitaOrg = useLookup(listUnitaOrganizzative, { immediate: true })
 const { searchText, onPage, onSort, applyFilters, paginatorProps } = useSearchTable(store)
 const drawer = useDrawerState()
+useReadonlyMode('amm_software')
 
 useTabFreshness(store, 'operatore')
 
@@ -54,11 +56,7 @@ function onDrawerSaved() {
   store.fetchList()
 }
 
-function ruoloBadgeSeverity(ruolo) {
-  if (ruolo === RUOLO_SISTEMA.ADMIN) return 'warn'
-  if (ruolo === RUOLO_SISTEMA.DISABILITATO) return 'danger'
-  return 'info'
-}
+const ruoloBadgeSeverity = getRuoloSeverity
 
 function activeBadgeSeverity(active) {
   return active ? 'success' : 'danger'
@@ -145,7 +143,7 @@ function activeBadgeSeverity(active) {
       </Column>
     </DataTable>
 
-    <UtenteDrawer
+    <OperatoreDrawer
       :visible="drawer.state.visible"
       @update:visible="v => drawer.state.visible = v"
       :mode="drawer.state.mode"

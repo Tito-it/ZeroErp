@@ -15,7 +15,7 @@ import Tag from 'primevue/tag'
 const emit = defineEmits(['row-click', 'new'])
 const { t } = useI18n()
 const store = useIndirizziStore()
-const { searchText, onPage, onSort, applyFilters, paginatorProps } = useSearchTable(store)
+const { searchText, onPage, onSort, applyFilters, paginatorProps } = useSearchTable(store, { defaultSortField: 'indirizzo_normalizzato' })
 
 const comuneFilter = ref(null)
 

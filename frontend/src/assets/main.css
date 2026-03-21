@@ -382,6 +382,12 @@ a {
  * Tablet: < 1024px — filtri wrappano, pulsanti azione solo icona + tooltip
  * Mobile: < 768px — padding ridotto (gestito da AppLayout)
  */
+/* Icona calendario DatePicker colorata (primary).
+ * Applicare show-icon icon-display="input" sul DatePicker. */
+.p-datepicker-input-icon {
+  color: var(--p-primary-color);
+}
+
 @media (max-width: 1023px) {
   .app-page-action .p-button-label {
     display: none;

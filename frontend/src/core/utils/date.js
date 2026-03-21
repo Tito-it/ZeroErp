@@ -25,6 +25,26 @@ export function displayDate(d) {
   return `${day}/${m}/${y}`
 }
 
+/**
+ * Formatta un timestamp per visualizzazione: DD/MM/YYYY, HH:mm:ss.
+ * Accetta: stringa ISO, Date, null/undefined.
+ *
+ * @param {string|Date|null} ts - Valore timestamp
+ * @returns {string} - Stringa 'DD/MM/YYYY, HH:mm:ss' o stringa vuota
+ */
+export function displayTimestamp(ts) {
+  if (!ts) return ''
+  const d = ts instanceof Date ? ts : new Date(ts)
+  if (isNaN(d.getTime())) return ''
+  const day = String(d.getDate()).padStart(2, '0')
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const y = d.getFullYear()
+  const hh = String(d.getHours()).padStart(2, '0')
+  const mm = String(d.getMinutes()).padStart(2, '0')
+  const ss = String(d.getSeconds()).padStart(2, '0')
+  return `${day}/${m}/${y}, ${hh}:${mm}:${ss}`
+}
+
 export function toDateString(d) {
   if (!d) return null
   if (d instanceof Date) {

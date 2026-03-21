@@ -14,7 +14,7 @@ import NewButton from './NewButton.vue'
 const emit = defineEmits(['new'])
 const { t } = useI18n()
 const store = useComuniStore()
-const { searchText, onPage, onSort, paginatorProps } = useSearchTable(store)
+const { searchText, onPage, onSort, paginatorProps } = useSearchTable(store, { defaultSortField: 'descrizione' })
 
 useTabFreshness(store, 'comune')
 onMounted(() => { store.fetchList() })

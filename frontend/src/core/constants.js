@@ -35,6 +35,25 @@ export const BREAKPOINTS = {
   TABLET: 1024
 }
 
+// Lunghezze campo standard
+export const FIELD_LENGTH = {
+  IBAN_MAX: 34  // ISO 13616: max 34 caratteri alfanumerici
+}
+
+// Enum ruolo sistema (allineato a config.ruolo_sistema nel DB)
+export const RUOLO_SISTEMA = {
+  ADMIN: 'ADMIN',
+  OPERATIVO: 'OPERATIVO',
+  DISABILITATO: 'DISABILITATO'
+}
+
+// Enum livello accesso (allineato a config.livello_accesso nel DB)
+export const LIVELLO_ACCESSO = {
+  TUTTO: 'TUTTO',
+  LETTURA: 'LETTURA',
+  BLOCCATO: 'BLOCCATO'
+}
+
 // Keyboard shortcuts
 export const SHORTCUTS = {
   SEARCH: { key: 'k', ctrl: true, shift: false },

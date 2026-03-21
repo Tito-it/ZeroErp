@@ -16,8 +16,16 @@ import { PAGINATION } from '../constants'
 export function useSearchTable(store, options = {}) {
   const {
     debounceMs = 400,
-    extraFilters = null // funzione che ritorna filtri aggiuntivi da applicare
+    extraFilters = null, // funzione che ritorna filtri aggiuntivi da applicare
+    defaultSortField = null, // campo sort iniziale (es. 'descrizione')
+    defaultSortOrder = 'asc' // direzione sort iniziale
   } = options
+
+  // Inizializza sort default nello store se non gia' impostato
+  if (defaultSortField && !store.filters.order_by) {
+    store.filters.order_by = defaultSortField
+    store.filters.order_dir = defaultSortOrder
+  }
 
   const searchText = ref('')
   let searchTimeout = null
@@ -64,7 +72,7 @@ export function useSearchTable(store, options = {}) {
     store.fetchList()
   }
 
-  // Props da passare al DataTable via v-bind
+  // Props da passare al DataTable via v-bind (include paginazione e sort default)
   const paginatorProps = computed(() => ({
     totalRecords: store.totalRecords,
     rows: store.filters.limit,
@@ -73,7 +81,9 @@ export function useSearchTable(store, options = {}) {
     paginator: true,
     paginatorPosition: 'top',
     paginatorTemplate: 'FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink RowsPerPageDropdown JumpToPageDropdown CurrentPageReport',
-    currentPageReportTemplate: '{currentPage}/{totalPages}'
+    currentPageReportTemplate: '{currentPage}/{totalPages}',
+    sortField: store.filters.order_by || null,
+    sortOrder: store.filters.order_dir === 'desc' ? -1 : store.filters.order_dir === 'asc' ? 1 : null
   }))
 
   return {

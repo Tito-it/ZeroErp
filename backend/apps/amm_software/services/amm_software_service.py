@@ -21,7 +21,7 @@ from apps.amm_software.constants import DEFAULT_RUOLO_SISTEMA, DEFAULT_SESSO, RU
 from apps.amm_software.db.amm_software_repository import AmmSoftwareRepository
 
 E_AMM_VALIDAZIONE = "E_AMM_VALIDAZIONE"
-E_AMM_NOT_FOUND = "E_AMM_UTENTE_NOT_FOUND"
+E_AMM_NOT_FOUND = "E_AMM_OPERATORE_NOT_FOUND"
 
 
 class AmmSoftwareService:
@@ -31,7 +31,7 @@ class AmmSoftwareService:
         self._repo = AmmSoftwareRepository()
 
     # =================================================================
-    # Utenti
+    # Operatori
     # =================================================================
 
     # Scopo: Crea operatore completo. Due flussi:
@@ -93,19 +93,19 @@ class AmmSoftwareService:
             indirizzo_resid_dettaglio_id=optional_int(payload, "indirizzo_resid_dettaglio_id"),
             indirizzo_domfisc_dettaglio_id=optional_int(payload, "indirizzo_domfisc_dettaglio_id"),
         )
-        return self._repo.get_utente_detail(auth_user_id) or {}
+        return self._repo.get_operatore_detail(auth_user_id) or {}
 
-    # Scopo: Dettaglio utente con validazione esistenza.
-    def get_utente(self, auth_user_id: int) -> dict[str, Any]:
-        utente = self._repo.get_utente_detail(auth_user_id)
-        ErrorManager.require(utente is not None, code=E_AMM_NOT_FOUND, message=f"Utente {auth_user_id} non trovato.")
-        assert utente is not None
-        return utente
+    # Scopo: Dettaglio operatore con validazione esistenza.
+    def get_operatore(self, auth_user_id: int) -> dict[str, Any]:
+        operatore = self._repo.get_operatore_detail(auth_user_id)
+        ErrorManager.require(operatore is not None, code=E_AMM_NOT_FOUND, message=f"Operatore {auth_user_id} non trovato.")
+        assert operatore is not None
+        return operatore
 
-    # Scopo: Aggiorna utente e invalida cache permessi.
-    def update_utente(self, auth_user_id: int, payload: dict) -> dict[str, Any]:
-        self.get_utente(auth_user_id)  # verifica esistenza
-        self._repo.update_utente(
+    # Scopo: Aggiorna operatore e invalida cache permessi.
+    def update_operatore(self, auth_user_id: int, payload: dict) -> dict[str, Any]:
+        self.get_operatore(auth_user_id)  # verifica esistenza
+        self._repo.update_operatore(
             auth_user_id,
             email=payload.get("email"),
             first_name=payload.get("first_name"),
@@ -116,30 +116,30 @@ class AmmSoftwareService:
             valido_al=payload.get("valido_al"),
         )
         invalidate_user(auth_user_id)
-        return self._repo.get_utente_detail(auth_user_id) or {}
+        return self._repo.get_operatore_detail(auth_user_id) or {}
 
-    # Scopo: Disabilita utente, invalida cache e blacklist token.
+    # Scopo: Disabilita operatore, invalida cache e blacklist token.
     # Guard: impedisce di disabilitare l'ultimo ADMIN attivo.
-    def disabilita_utente(self, auth_user_id: int) -> dict[str, Any]:
-        utente = self.get_utente(auth_user_id)
-        if utente.get("ruolo_sistema") == RUOLO_ADMIN:
+    def disabilita_operatore(self, auth_user_id: int) -> dict[str, Any]:
+        operatore = self.get_operatore(auth_user_id)
+        if operatore.get("ruolo_sistema") == RUOLO_ADMIN:
             if self._repo.count_admin_attivi() <= 1:
                 raise ServiceError(
                     code="E_ADMIN_ULTIMO",
                     message="Impossibile disabilitare l'ultimo amministratore.",
-                    detail="Deve esistere almeno un utente ADMIN attivo nel sistema.",
+                    detail="Deve esistere almeno un operatore ADMIN attivo nel sistema.",
                 )
-        self._repo.disabilita_utente(auth_user_id)
+        self._repo.disabilita_operatore(auth_user_id)
         invalidate_user(auth_user_id)
         _blacklist_user_tokens(auth_user_id)
-        return self._repo.get_utente_detail(auth_user_id) or {}
+        return self._repo.get_operatore_detail(auth_user_id) or {}
 
-    # Scopo: Riattiva utente disabilitato, invalida cache.
-    def riattiva_utente(self, auth_user_id: int) -> dict[str, Any]:
-        self.get_utente(auth_user_id)  # verifica esistenza
-        self._repo.riattiva_utente(auth_user_id)
+    # Scopo: Riattiva operatore disabilitato, invalida cache.
+    def riattiva_operatore(self, auth_user_id: int) -> dict[str, Any]:
+        self.get_operatore(auth_user_id)  # verifica esistenza
+        self._repo.riattiva_operatore(auth_user_id)
         invalidate_user(auth_user_id)
-        return self._repo.get_utente_detail(auth_user_id) or {}
+        return self._repo.get_operatore_detail(auth_user_id) or {}
 
     # =================================================================
     # Override permessi
@@ -163,9 +163,9 @@ class AmmSoftwareService:
         invalidate_user(auth_user_id)
         return self._repo.get_emittenti_scope(auth_user_id)
 
-    # Scopo: Lista utenti con filtri.
-    def list_utenti(self, **params) -> tuple[list, int]:
-        return self._repo.list_utenti(**params)
+    # Scopo: Lista operatori con filtri.
+    def list_operatori(self, **params) -> tuple[list, int]:
+        return self._repo.list_operatori(**params)
 
     # Scopo: Lista override aree.
     def get_override_aree(self, auth_user_id: int) -> list:
@@ -213,8 +213,20 @@ class AmmSoftwareService:
         invalidate_department(uo_id)
         return self._repo.get_profilo_reparto(uo_id)
 
+    # =================================================================
+    # Riepilogo permessi
+    # =================================================================
 
-# Scopo: Invalida token JWT utente via blacklist SimpleJWT (best-effort).
+    # Scopo: Matrice permessi effettivi per tutti gli operatori attivi.
+    def get_permessi_riepilogo(self, **params) -> dict:
+        return self._repo.get_permessi_riepilogo(**params)
+
+    # Scopo: Audit log globale modifiche permessi.
+    def list_audit_log(self, **params) -> tuple[list, int]:
+        return self._repo.list_audit_log(**params)
+
+
+# Scopo: Invalida token JWT operatore via blacklist SimpleJWT (best-effort).
 def _blacklist_user_tokens(auth_user_id: int) -> None:
     try:
         from rest_framework_simplejwt.token_blacklist.models import OutstandingToken

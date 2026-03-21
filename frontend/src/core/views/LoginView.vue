@@ -60,6 +60,11 @@ async function handleLogin() {
 
 <template>
   <div class="login-page">
+    <img
+      src="@/assets/images/zeroerp-doodle.jpeg"
+      alt=""
+      class="login-bg"
+    />
     <div class="login-card">
       <div class="login-logo">
         <LogoBrand size="large" />
@@ -108,20 +113,36 @@ async function handleLogin() {
 
 <style scoped>
 .login-page {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
   min-height: 100vh;
-  background: var(--app-content-bg);
+  background: #0a0a0a;
+  overflow: hidden;
+}
+
+.login-bg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: center;
+  opacity: 0.35;
+  pointer-events: none;
 }
 
 .login-card {
+  position: relative;
+  z-index: 1;
   width: 100%;
   max-width: 380px;
   padding: 2.5rem 2rem;
   border-radius: var(--app-login-card-radius);
   background: var(--app-login-card-bg);
   border: 1px solid var(--app-login-card-border);
+  backdrop-filter: blur(8px);
 }
 
 .login-logo {

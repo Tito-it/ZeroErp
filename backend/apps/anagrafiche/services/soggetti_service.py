@@ -14,6 +14,7 @@ from typing import Any
 
 from apps.core.api.payload_validators import optional_int
 from apps.core.services.error_manager import ErrorManager
+from apps.anagrafiche.db.conti_bancari_repository import ContiBancariRepository
 from apps.anagrafiche.db.indirizzi_repository import IndirizziRepository
 from apps.anagrafiche.db.soggetti_repository import SoggettiRepository
 from apps.core.db.lookup_repository import LookupRepository
@@ -33,6 +34,7 @@ class SoggettiService:
     def __init__(self) -> None:
         self._repo = SoggettiRepository()
         self._ind = IndirizziRepository()
+        self._conti = ContiBancariRepository()
         self._lookup = LookupRepository()
 
     # =================================================================
@@ -54,6 +56,7 @@ class SoggettiService:
         soggetto["indirizzi"] = self._repo.get_soggetto_indirizzi(soggetto_id)
         soggetto["ruoli"] = self._repo.get_soggetto_ruoli(soggetto_id)
         soggetto["dati_societari"] = self._repo.get_dati_societari(soggetto_id)
+        soggetto["conti_bancari"] = self._conti.list_conti_soggetto(soggetto_id)
         return soggetto
 
     # =================================================================
