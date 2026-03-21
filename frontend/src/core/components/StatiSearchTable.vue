@@ -13,7 +13,7 @@ import InputText from 'primevue/inputtext'
 const emit = defineEmits(['row-click', 'new'])
 const { t } = useI18n()
 const store = useStatiStore()
-const { searchText, onPage, onSort, paginatorProps } = useSearchTable(store)
+const { searchText, onPage, onSort, paginatorProps } = useSearchTable(store, { defaultSortField: 'descrizione' })
 
 useTabFreshness(store, 'stato')
 onMounted(() => { store.fetchList() })

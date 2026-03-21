@@ -16,10 +16,10 @@ import TagList from '../../core/components/TagList.vue'
 import NewButton from '../../core/components/NewButton.vue'
 import Button from 'primevue/button'
 
-const emit = defineEmits(['new', 'row-click', 'contatti', 'indirizzi'])
+const emit = defineEmits(['new', 'row-click', 'contatti', 'indirizzi', 'conti-bancari'])
 const { t } = useI18n()
 const store = useSoggettiStore()
-const { searchText, onPage, onSort, applyFilters, paginatorProps } = useSearchTable(store)
+const { searchText, onPage, onSort, applyFilters, paginatorProps } = useSearchTable(store, { defaultSortField: 'ragione_sociale_completa' })
 
 const tipiSoggetto = useLookup(lookupTipiSoggettoDettaglio, { immediate: true })
 const tipoFilter = ref(null)
@@ -91,6 +91,9 @@ onMounted(() => { store.fetchList() })
             <Button icon="pi pi-map-marker" text rounded size="small" class="app-action-btn"
               v-tooltip.top="t('indirizzo_soggetto.gestisci_indirizzi')"
               @click.stop="emit('indirizzi', data)" />
+            <Button icon="pi pi-wallet" text rounded size="small" class="app-action-btn"
+              v-tooltip.top="t('conti_bancari.gestisci_conti')"
+              @click.stop="emit('conti-bancari', data)" />
           </div>
         </template>
       </Column>

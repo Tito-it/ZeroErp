@@ -206,7 +206,7 @@ class TestOverridePermissionDenied(TestCase):
         from apps.core.api.permissions import IsAdminZeroERP
         request = _make_request()
         request.user = MagicMock(is_authenticated=True, is_superuser=False, id=2)
-        request.path = "/api/v1/amm-software/utenti/1/override-aree/"
+        request.path = "/api/v1/amm-software/operatori/1/override-aree/"
 
         perm = IsAdminZeroERP()
         self.assertFalse(perm.has_permission(request, OverrideAreeView()))

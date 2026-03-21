@@ -3,12 +3,13 @@
 # Copyright (C) 2026 Tid (Michele Carlo Titini)
 # Doc: Python
 # Scopo: Repository per accesso DB del modulo amministrazione.
-# Gestisce query utenti, override permessi e profili reparto.
+# Gestisce query operatori, override permessi e profili reparto.
 # ------------------------------------------------------------
 
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
 
 from django.db import connection, transaction
@@ -19,9 +20,9 @@ from apps.core.services.error_manager import ErrorManager
 from apps.amm_software.constants import (
     DEFAULT_LIMIT, RUOLO_ADMIN, RUOLO_DISABILITATO, RUOLO_OPERATIVO,
 )
-from apps.amm_software.types import UtenteDetailRow, UtenteRow
+from apps.amm_software.types import OperatoreDetailRow, OperatoreRow
 
-# Colonne ammesse per ordinamento lista utenti
+# Colonne ammesse per ordinamento lista operatori
 ALLOWED_ORDER_COLUMNS = frozenset({
     "last_name", "soggetto_cognome", "username", "ruolo_sistema",
     "is_active", "unita_organizzativa_nome", "valido_dal", "valido_al",
@@ -29,12 +30,12 @@ ALLOWED_ORDER_COLUMNS = frozenset({
 
 
 class AmmSoftwareRepository:
-    """Accesso DB per amministrazione utenti e reparti."""
+    """Accesso DB per amministrazione operatori e reparti."""
 
-    # Scopo: Restituisce la lista paginata degli utenti con filtri opzionali.
+    # Scopo: Restituisce la lista paginata degli operatori con filtri opzionali.
     # JOIN: auth_user + risorse_umane_auth_user + risorse_umane + unita_organizzative.
     # Risultato: (lista righe, conteggio totale).
-    def list_utenti(
+    def list_operatori(
         self,
         *,
         search: str | None = None,
@@ -45,7 +46,7 @@ class AmmSoftwareRepository:
         offset: int = 0,
         order_by: str | None = None,
         order_dir: str | None = None,
-    ) -> tuple[list[UtenteRow], int]:
+    ) -> tuple[list[OperatoreRow], int]:
         # Validazione ordinamento
         if order_by and order_by not in ALLOWED_ORDER_COLUMNS:
             order_by = None
@@ -130,7 +131,7 @@ class AmmSoftwareRepository:
             return [], 0
 
         total_count = rows[0][cols.index("total_count")]
-        results: list[UtenteRow] = []
+        results: list[OperatoreRow] = []
         for row in rows:
             d = dict(zip(cols, row))
             d.pop("total_count", None)
@@ -138,8 +139,8 @@ class AmmSoftwareRepository:
 
         return results, total_count
 
-    # Scopo: Restituisce il dettaglio completo di un utente con conteggi override.
-    def get_utente_detail(self, auth_user_id: int) -> UtenteDetailRow | None:
+    # Scopo: Restituisce il dettaglio completo di un operatore con conteggi override.
+    def get_operatore_detail(self, auth_user_id: int) -> OperatoreDetailRow | None:
         sql = """
             SELECT au.id AS auth_user_id,
                    au.username,
@@ -190,9 +191,9 @@ class AmmSoftwareRepository:
 
         return dict(zip(cols, row))  # type: ignore[return-value]
 
-    # Scopo: Aggiorna i campi modificabili di un utente (auth_user + risorse_umane).
+    # Scopo: Aggiorna i campi modificabili di un operatore (auth_user + risorse_umane).
     # Dopo la modifica, il chiamante deve invalidare la cache permessi.
-    def update_utente(
+    def update_operatore(
         self,
         auth_user_id: int,
         *,
@@ -267,7 +268,7 @@ class AmmSoftwareRepository:
                     [auth_user_id],
                 )
 
-    # Scopo: Conta utenti con ruolo_sistema ADMIN e attivo = true.
+    # Scopo: Conta operatori con ruolo_sistema ADMIN e attivo = true.
     def count_admin_attivi(self) -> int:
         with connection.cursor() as cursor:
             cursor.execute(
@@ -279,9 +280,9 @@ class AmmSoftwareRepository:
             )
             return cursor.fetchone()[0]
 
-    # Scopo: Disabilita un utente impostando ruolo_sistema=DISABILITATO e attivo=false.
+    # Scopo: Disabilita un operatore impostando ruolo_sistema=DISABILITATO e attivo=false.
     # Chiama fn_sync_auth_user_is_active per sincronizzare auth_user.is_active.
-    def disabilita_utente(self, auth_user_id: int) -> None:
+    def disabilita_operatore(self, auth_user_id: int) -> None:
         with connection.cursor() as cursor:
             # 1. Disattiva figlio (risorse_umane_auth_user) PRIMA del padre
             cursor.execute(
@@ -307,9 +308,9 @@ class AmmSoftwareRepository:
                 [auth_user_id],
             )
 
-    # Scopo: Riattiva un utente precedentemente disabilitato.
+    # Scopo: Riattiva un operatore precedentemente disabilitato.
     # Imposta ruolo_sistema = OPERATIVO, attivo = true, e sincronizza auth_user.is_active.
-    def riattiva_utente(self, auth_user_id: int) -> None:
+    def riattiva_operatore(self, auth_user_id: int) -> None:
         with connection.cursor() as cursor:
             # 1. Riattiva padre (risorse_umane) + aggiorna valido_dal = oggi, rimuove valido_al
             cursor.execute(
@@ -412,10 +413,10 @@ class AmmSoftwareRepository:
             return rows_to_list(cursor)
 
     # ================================================================== #
-    # Override aree per utente                                             #
+    # Override aree per operatore                                           #
     # ================================================================== #
 
-    # Scopo: Restituisce gli override aree per un utente con nome area.
+    # Scopo: Restituisce gli override aree per un operatore con nome area.
     def get_override_aree(self, auth_user_id: int) -> list[dict[str, Any]]:
         sql = """
             SELECT uoa.id, uoa.area_id, af.codice AS area_codice,
@@ -431,7 +432,7 @@ class AmmSoftwareRepository:
             cursor.execute(sql, [auth_user_id])
             return rows_to_list(cursor)
 
-    # Scopo: Sostituisce gli override aree di un utente (replace semantics).
+    # Scopo: Sostituisce gli override aree di un operatore (replace semantics).
     # Cancella tutti gli override esistenti e inserisce i nuovi.
     def put_override_aree(self, auth_user_id: int, items: list[dict[str, Any]]) -> None:
         with transaction.atomic(), connection.cursor() as cursor:
@@ -455,10 +456,10 @@ class AmmSoftwareRepository:
                 )
 
     # ================================================================== #
-    # Override azioni per utente                                           #
+    # Override azioni per operatore                                         #
     # ================================================================== #
 
-    # Scopo: Restituisce gli override azioni per un utente con descrizione azione.
+    # Scopo: Restituisce gli override azioni per un operatore con descrizione azione.
     def get_override_azioni(self, auth_user_id: int) -> list[dict[str, Any]]:
         sql = """
             SELECT uoz.id, uoz.azione_id, ap.permission_codename,
@@ -476,7 +477,7 @@ class AmmSoftwareRepository:
             cursor.execute(sql, [auth_user_id])
             return rows_to_list(cursor)
 
-    # Scopo: Sostituisce gli override azioni di un utente (replace semantics).
+    # Scopo: Sostituisce gli override azioni di un operatore (replace semantics).
     def put_override_azioni(self, auth_user_id: int, items: list[dict[str, Any]]) -> None:
         with transaction.atomic(), connection.cursor() as cursor:
             cursor.execute(
@@ -499,10 +500,10 @@ class AmmSoftwareRepository:
                 )
 
     # ================================================================== #
-    # Emittenti scope per utente                                           #
+    # Emittenti scope per operatore                                         #
     # ================================================================== #
 
-    # Scopo: Restituisce gli emittenti fiscali associati a un utente.
+    # Scopo: Restituisce gli emittenti fiscali associati a un operatore.
     def get_emittenti_scope(self, auth_user_id: int) -> list[dict[str, Any]]:
         sql = """
             SELECT uef.id, uef.emittente_fiscale_id,
@@ -517,7 +518,7 @@ class AmmSoftwareRepository:
             cursor.execute(sql, [auth_user_id])
             return rows_to_list(cursor)
 
-    # Scopo: Sostituisce gli emittenti scope di un utente (replace semantics).
+    # Scopo: Sostituisce gli emittenti scope di un operatore (replace semantics).
     def put_emittenti_scope(self, auth_user_id: int, emittente_ids: list[int]) -> None:
         with transaction.atomic(), connection.cursor() as cursor:
             cursor.execute(
@@ -623,6 +624,170 @@ class AmmSoftwareRepository:
                 )
 
     # ================================================================== #
+    # Audit log globale permessi                                           #
+    # ================================================================== #
+
+    _AUDIT_TABLES: list[tuple[str, str]] = [
+        ("storico.user_override_aree", "user_override_aree"),
+        ("storico.user_override_azioni", "user_override_azioni"),
+        ("storico.user_emittenti_fiscali", "user_emittenti_fiscali"),
+        ("storico.risorse_umane_auth_user", "risorse_umane_auth_user"),
+        ("storico.profili_reparto_aree", "profili_reparto_aree"),
+        ("storico.profili_reparto_azioni", "profili_reparto_azioni"),
+    ]
+
+    _OP_LABELS: dict[int, str] = {1: "INIZIALE", 2: "MODIFICA", 3: "ELIMINAZIONE"}
+
+    # Scopo: Restituisce la timeline globale degli eventi audit permessi.
+    # Paginata, filtri opzionali: data_da, data_a, tabella.
+    # Colonne ammesse per ordinamento audit log (whitelist)
+    _AUDIT_ORDER_COLUMNS: frozenset[str] = frozenset({
+        "timestamp", "valid_from", "user_modifica", "user_insert",
+        "tabella", "tipo_operazione",
+    })
+
+    def list_audit_log(
+        self,
+        *,
+        data_da: str | None = None,
+        data_a: str | None = None,
+        tabella: str | None = None,
+        order_by: str | None = None,
+        order_dir: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> tuple[list[dict[str, Any]], int]:
+        unions: list[str] = []
+        params: list[Any] = []
+
+        for schema_table, label in self._AUDIT_TABLES:
+            if tabella and tabella != label:
+                continue
+            unions.append(
+                f"SELECT '{label}' AS tabella, "
+                f"s.valid_from, s.tipo_operazione, s.user_insert, "
+                f"s.snapshot "
+                f"FROM {schema_table} s"
+            )
+
+        if not unions:
+            return [], 0
+
+        sql = f"WITH events AS ({' UNION ALL '.join(unions)}) "
+        sql += "SELECT tabella, valid_from, tipo_operazione, user_insert, "
+        sql += "snapshot, COUNT(*) OVER() AS total_count "
+        sql += "FROM events WHERE true "
+
+        if data_da:
+            sql += "AND valid_from >= %s::timestamptz "
+            params.append(data_da)
+        if data_a:
+            sql += "AND valid_from <= %s::timestamptz "
+            params.append(data_a)
+
+        # Ordinamento sicuro (whitelist). Il frontend manda il nome campo
+        # come appare nel risultato; mappiamo al nome colonna SQL.
+        _col_map = {"timestamp": "valid_from", "user_modifica": "user_insert"}
+        safe_col = _col_map.get(order_by, order_by) if order_by else None
+        if safe_col and safe_col in self._AUDIT_ORDER_COLUMNS:
+            direction = "ASC" if order_dir and order_dir.upper() == "ASC" else "DESC"
+            sql += f"ORDER BY {safe_col} {direction}, valid_from DESC "
+        else:
+            sql += "ORDER BY valid_from DESC "
+        sql += "LIMIT %s OFFSET %s"
+        params.extend([limit, offset])
+
+        with connection.cursor() as cursor:
+            cursor.execute(sql, params)
+            rows = cursor.fetchall()
+
+        if not rows:
+            return [], 0
+
+        total_count = rows[0][5]
+        events = [
+            {
+                "tabella": row[0],
+                "timestamp": row[1].isoformat() if row[1] else None,
+                "tipo_operazione": self._OP_LABELS.get(row[2], str(row[2])),
+                "user_modifica": row[3],
+                "snapshot": row[4],
+            }
+            for row in rows
+        ]
+        return events, total_count
+
+    # ================================================================== #
+    # Riepilogo permessi (matrice operatori × aree)                        #
+    # ================================================================== #
+
+    # Scopo: Restituisce la matrice permessi effettivi per tutti gli operatori attivi.
+    # Ogni riga contiene dati operatore + una colonna per ogni area funzionale
+    # con il livello effettivo (TUTTO/LETTURA/BLOCCATO) calcolato dalla funzione SQL.
+    # Filtri opzionali: reparto, ruolo_sistema.
+    def get_permessi_riepilogo(
+        self,
+        *,
+        unita_organizzativa_id: int | None = None,
+        ruolo_sistema: str | None = None,
+    ) -> dict[str, Any]:
+        # 1. Recupera aree funzionali attive (per le colonne)
+        aree = self.list_aree_funzionali()
+
+        # 2. Query operatori attivi con livello effettivo per ogni area
+        conditions: list[str] = ["au.is_active = true"]
+        params: list[Any] = []
+
+        if unita_organizzativa_id is not None:
+            conditions.append("ru.unita_organizzativa_id = %s")
+            params.append(unita_organizzativa_id)
+
+        if ruolo_sistema:
+            conditions.append("rua.ruolo_sistema = %s::config.ruolo_sistema")
+            params.append(ruolo_sistema)
+
+        where_clause = " AND ".join(conditions)
+
+        # Genera una subquery per ogni area funzionale.
+        # I codici area provengono dal DB (config.aree_funzionali) — validati come
+        # identificatori sicuri (solo alfanumerici + underscore) per prevenire injection.
+        _SAFE_IDENT = re.compile(r'^[a-zA-Z_][a-zA-Z0-9_]*$')
+        area_columns = ", ".join(
+            f"script.fn_resolve_livello_area(au.id, '{a['codice']}')::text AS area_{a['codice']}"
+            for a in aree
+            if _SAFE_IDENT.match(a['codice'])
+        )
+
+        sql = f"""
+            SELECT au.id AS auth_user_id,
+                   au.username,
+                   COALESCE(s.cognome, au.last_name) AS cognome,
+                   COALESCE(s.nome, au.first_name) AS nome,
+                   rua.ruolo_sistema::text,
+                   uo.descrizione AS reparto,
+                   {area_columns}
+              FROM auth_user au
+              LEFT JOIN anagrafiche.risorse_umane_auth_user rua
+                ON rua.auth_user_id = au.id
+              LEFT JOIN anagrafiche.risorse_umane ru
+                ON ru.id = rua.risorsa_umana_id
+              LEFT JOIN anagrafiche.soggetti_ruoli sr
+                ON sr.id = ru.soggetto_ruolo_id
+              LEFT JOIN anagrafiche.soggetti s
+                ON s.id = sr.soggetto_id
+              LEFT JOIN config.unita_organizzative uo
+                ON uo.id = ru.unita_organizzativa_id
+             WHERE {where_clause}
+             ORDER BY COALESCE(s.cognome, au.last_name), au.username
+        """
+
+        with connection.cursor() as cursor:
+            cursor.execute(sql, params)
+            rows = rows_to_list(cursor)
+
+        return {"aree": aree, "operatori": rows}
+
+    # ================================================================== #
     # Lookup: aree funzionali e azioni processo                            #
     # ================================================================== #
 
@@ -651,7 +816,7 @@ class AmmSoftwareRepository:
             )
             return rows_to_list(cursor)
 
-    # Scopo: Lista emittenti fiscali per dropdown scope utente.
+    # Scopo: Lista emittenti fiscali per dropdown scope operatore.
     def list_emittenti_fiscali(self) -> list[dict[str, Any]]:
         with connection.cursor() as cursor:
             cursor.execute(

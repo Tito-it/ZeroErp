@@ -2,32 +2,32 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2026 Tid (Michele Carlo Titini)
 # Doc: Python
-# Scopo: Test unitari POST creazione utente modulo Amm. Software.
+# Scopo: Test unitari POST creazione operatore modulo Amm. Software.
 # Tutti i test usano mock — nessuna dipendenza da DB reale (CI-compatible).
 # ------------------------------------------------------------
 
 """
 Indice test eseguiti:
- 1) test_crea_utente_success — POST crea utente con successo (flusso A)
- 2) test_crea_utente_missing_cognome — POST senza cognome -> errore (flusso A)
- 3) test_crea_utente_missing_password — POST senza password -> errore
- 4) test_crea_utente_missing_cf — POST senza codice_fiscale -> errore (flusso A)
- 5) test_crea_utente_missing_qualifica — POST senza qualifica_id -> errore
- 6) test_crea_utente_password_hashed — POST verifica che password venga hashata
- 7) test_crea_utente_permission_denied — OPERATIVO non puo' creare
- 8) test_crea_utente_with_sprint3_params — POST con comune_nascita e indirizzi
- 9) test_crea_utente_sprint3_params_optional — POST senza params Sprint 3 (retrocompatibile)
-10) test_crea_utente_flow_b_soggetto_esistente — POST con soggetto_id (flusso B)
-11) test_crea_utente_flow_b_cognome_non_richiesto — flusso B: cognome assente OK
-12) test_crea_utente_flow_b_uuid_invalido — soggetto_id malformato -> errore 400
-13) test_crea_utente_qualifica_non_numerica — qualifica_id non numerico -> errore 400
+ 1) test_crea_operatore_success — POST crea operatore con successo (flusso A)
+ 2) test_crea_operatore_missing_cognome — POST senza cognome -> errore (flusso A)
+ 3) test_crea_operatore_missing_password — POST senza password -> errore
+ 4) test_crea_operatore_missing_cf — POST senza codice_fiscale -> errore (flusso A)
+ 5) test_crea_operatore_missing_qualifica — POST senza qualifica_id -> errore
+ 6) test_crea_operatore_password_hashed — POST verifica che password venga hashata
+ 7) test_crea_operatore_permission_denied — OPERATIVO non puo' creare
+ 8) test_crea_operatore_with_sprint3_params — POST con comune_nascita e indirizzi
+ 9) test_crea_operatore_sprint3_params_optional — POST senza params Sprint 3 (retrocompatibile)
+10) test_crea_operatore_flow_b_soggetto_esistente — POST con soggetto_id (flusso B)
+11) test_crea_operatore_flow_b_cognome_non_richiesto — flusso B: cognome assente OK
+12) test_crea_operatore_flow_b_uuid_invalido — soggetto_id malformato -> errore 400
+13) test_crea_operatore_qualifica_non_numerica — qualifica_id non numerico -> errore 400
 """
 
 import json
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
-from apps.amm_software.api.views import UtentiListView
+from apps.amm_software.api.views import OperatoriListView
 
 
 SAMPLE_DETAIL = {
@@ -80,14 +80,14 @@ def _make_operativo_request(payload: dict) -> MagicMock:
     return request
 
 
-class TestCreaUtenteSuccess(TestCase):
-    """POST /api/v1/amm-software/utenti/ — creazione con successo."""
+class TestCreaOperatoreSuccess(TestCase):
+    """POST /api/v1/amm-software/operatori/ — creazione con successo."""
 
     @patch("apps.amm_software.api.views.handle_post_json")
-    def test_crea_utente_success(self, mock_handle):
-        """POST crea utente con successo — handler invocato."""
+    def test_crea_operatore_success(self, mock_handle):
+        """POST crea operatore con successo — handler invocato."""
         mock_handle.return_value = MagicMock(status_code=200)
-        view = UtentiListView()
+        view = OperatoriListView()
         request = _make_admin_request(VALID_PAYLOAD)
 
         view.post(request)
@@ -101,17 +101,17 @@ class TestCreaUtenteSuccess(TestCase):
     @patch("apps.core.api.endpoint_helpers.get_request_id", return_value=None)
     @patch("apps.core.api.endpoint_helpers.get_idempotency_key", return_value=None)
     @patch("apps.core.api.endpoint_helpers.parse_json_body")
-    def test_crea_utente_password_hashed(
+    def test_crea_operatore_password_hashed(
         self, mock_parse, mock_idemp, mock_reqid, mock_make_pw, mock_repo_cls
     ):
         """POST verifica che password venga hashata prima di passare al DB."""
         mock_parse.return_value = VALID_PAYLOAD
         mock_repo = MagicMock()
         mock_repo.crea_operatore.return_value = 42
-        mock_repo.get_utente_detail.return_value = SAMPLE_DETAIL
+        mock_repo.get_operatore_detail.return_value = SAMPLE_DETAIL
         mock_repo_cls.return_value = mock_repo
 
-        view = UtentiListView()
+        view = OperatoriListView()
         request = _make_admin_request(VALID_PAYLOAD)
         response = view.post(request)
 
@@ -121,18 +121,18 @@ class TestCreaUtenteSuccess(TestCase):
         self.assertEqual(response.status_code, 200)
 
 
-class TestCreaUtenteValidation(TestCase):
-    """POST /api/v1/amm-software/utenti/ — validazione campi obbligatori."""
+class TestCreaOperatoreValidation(TestCase):
+    """POST /api/v1/amm-software/operatori/ — validazione campi obbligatori."""
 
     @patch("apps.core.api.endpoint_helpers.get_request_id", return_value=None)
     @patch("apps.core.api.endpoint_helpers.get_idempotency_key", return_value=None)
     @patch("apps.core.api.endpoint_helpers.parse_json_body")
-    def test_crea_utente_missing_cognome(self, mock_parse, mock_idemp, mock_reqid):
+    def test_crea_operatore_missing_cognome(self, mock_parse, mock_idemp, mock_reqid):
         """POST senza cognome -> errore validazione."""
         payload = {**VALID_PAYLOAD, "cognome": ""}
         mock_parse.return_value = payload
 
-        view = UtentiListView()
+        view = OperatoriListView()
         request = _make_admin_request(payload)
         response = view.post(request)
 
@@ -142,12 +142,12 @@ class TestCreaUtenteValidation(TestCase):
     @patch("apps.core.api.endpoint_helpers.get_request_id", return_value=None)
     @patch("apps.core.api.endpoint_helpers.get_idempotency_key", return_value=None)
     @patch("apps.core.api.endpoint_helpers.parse_json_body")
-    def test_crea_utente_missing_password(self, mock_parse, mock_idemp, mock_reqid):
+    def test_crea_operatore_missing_password(self, mock_parse, mock_idemp, mock_reqid):
         """POST senza password -> errore validazione."""
         payload = {**VALID_PAYLOAD, "password": ""}
         mock_parse.return_value = payload
 
-        view = UtentiListView()
+        view = OperatoriListView()
         request = _make_admin_request(payload)
         response = view.post(request)
 
@@ -157,12 +157,12 @@ class TestCreaUtenteValidation(TestCase):
     @patch("apps.core.api.endpoint_helpers.get_request_id", return_value=None)
     @patch("apps.core.api.endpoint_helpers.get_idempotency_key", return_value=None)
     @patch("apps.core.api.endpoint_helpers.parse_json_body")
-    def test_crea_utente_missing_cf(self, mock_parse, mock_idemp, mock_reqid):
+    def test_crea_operatore_missing_cf(self, mock_parse, mock_idemp, mock_reqid):
         """POST senza codice_fiscale -> errore validazione."""
         payload = {**VALID_PAYLOAD, "codice_fiscale": ""}
         mock_parse.return_value = payload
 
-        view = UtentiListView()
+        view = OperatoriListView()
         request = _make_admin_request(payload)
         response = view.post(request)
 
@@ -172,13 +172,13 @@ class TestCreaUtenteValidation(TestCase):
     @patch("apps.core.api.endpoint_helpers.get_request_id", return_value=None)
     @patch("apps.core.api.endpoint_helpers.get_idempotency_key", return_value=None)
     @patch("apps.core.api.endpoint_helpers.parse_json_body")
-    def test_crea_utente_missing_qualifica(self, mock_parse, mock_idemp, mock_reqid):
+    def test_crea_operatore_missing_qualifica(self, mock_parse, mock_idemp, mock_reqid):
         """POST senza qualifica_id -> errore validazione."""
         payload = {**VALID_PAYLOAD}
         payload.pop("qualifica_id")
         mock_parse.return_value = payload
 
-        view = UtentiListView()
+        view = OperatoriListView()
         request = _make_admin_request(payload)
         response = view.post(request)
 
@@ -194,25 +194,25 @@ VALID_PAYLOAD_SPRINT3 = {
 }
 
 
-class TestCreaUtenteSprint3(TestCase):
-    """POST /api/v1/amm-software/utenti/ — parametri Sprint 3."""
+class TestCreaOperatoreSprint3(TestCase):
+    """POST /api/v1/amm-software/operatori/ — parametri Sprint 3."""
 
     @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
     @patch("apps.amm_software.services.amm_software_service.make_password", return_value="hashed_pw")
     @patch("apps.core.api.endpoint_helpers.get_request_id", return_value=None)
     @patch("apps.core.api.endpoint_helpers.get_idempotency_key", return_value=None)
     @patch("apps.core.api.endpoint_helpers.parse_json_body")
-    def test_crea_utente_with_sprint3_params(
+    def test_crea_operatore_with_sprint3_params(
         self, mock_parse, mock_idemp, mock_reqid, mock_make_pw, mock_repo_cls
     ):
         """POST con comune_nascita_id e indirizzi — passati al repository."""
         mock_parse.return_value = VALID_PAYLOAD_SPRINT3
         mock_repo = MagicMock()
         mock_repo.crea_operatore.return_value = 42
-        mock_repo.get_utente_detail.return_value = SAMPLE_DETAIL
+        mock_repo.get_operatore_detail.return_value = SAMPLE_DETAIL
         mock_repo_cls.return_value = mock_repo
 
-        view = UtentiListView()
+        view = OperatoriListView()
         request = _make_admin_request(VALID_PAYLOAD_SPRINT3)
         response = view.post(request)
 
@@ -227,17 +227,17 @@ class TestCreaUtenteSprint3(TestCase):
     @patch("apps.core.api.endpoint_helpers.get_request_id", return_value=None)
     @patch("apps.core.api.endpoint_helpers.get_idempotency_key", return_value=None)
     @patch("apps.core.api.endpoint_helpers.parse_json_body")
-    def test_crea_utente_sprint3_params_optional(
+    def test_crea_operatore_sprint3_params_optional(
         self, mock_parse, mock_idemp, mock_reqid, mock_make_pw, mock_repo_cls
     ):
         """POST senza parametri Sprint 3 — retrocompatibile, valori None."""
         mock_parse.return_value = VALID_PAYLOAD
         mock_repo = MagicMock()
         mock_repo.crea_operatore.return_value = 42
-        mock_repo.get_utente_detail.return_value = SAMPLE_DETAIL
+        mock_repo.get_operatore_detail.return_value = SAMPLE_DETAIL
         mock_repo_cls.return_value = mock_repo
 
-        view = UtentiListView()
+        view = OperatoriListView()
         request = _make_admin_request(VALID_PAYLOAD)
         response = view.post(request)
 
@@ -258,25 +258,25 @@ VALID_PAYLOAD_FLOW_B = {
 }
 
 
-class TestCreaUtenteFlowB(TestCase):
-    """POST /api/v1/amm-software/utenti/ — flusso B (soggetto esistente)."""
+class TestCreaOperatoreFlowB(TestCase):
+    """POST /api/v1/amm-software/operatori/ — flusso B (soggetto esistente)."""
 
     @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
     @patch("apps.amm_software.services.amm_software_service.make_password", return_value="hashed_pw")
     @patch("apps.core.api.endpoint_helpers.get_request_id", return_value=None)
     @patch("apps.core.api.endpoint_helpers.get_idempotency_key", return_value=None)
     @patch("apps.core.api.endpoint_helpers.parse_json_body")
-    def test_crea_utente_flow_b_soggetto_esistente(
+    def test_crea_operatore_flow_b_soggetto_esistente(
         self, mock_parse, mock_idemp, mock_reqid, mock_make_pw, mock_repo_cls
     ):
         """POST con soggetto_id — flusso B: soggetto_id passato al repository."""
         mock_parse.return_value = VALID_PAYLOAD_FLOW_B
         mock_repo = MagicMock()
         mock_repo.crea_operatore.return_value = 42
-        mock_repo.get_utente_detail.return_value = SAMPLE_DETAIL
+        mock_repo.get_operatore_detail.return_value = SAMPLE_DETAIL
         mock_repo_cls.return_value = mock_repo
 
-        view = UtentiListView()
+        view = OperatoriListView()
         request = _make_admin_request(VALID_PAYLOAD_FLOW_B)
         response = view.post(request)
 
@@ -292,7 +292,7 @@ class TestCreaUtenteFlowB(TestCase):
     @patch("apps.core.api.endpoint_helpers.get_request_id", return_value=None)
     @patch("apps.core.api.endpoint_helpers.get_idempotency_key", return_value=None)
     @patch("apps.core.api.endpoint_helpers.parse_json_body")
-    def test_crea_utente_flow_b_cognome_non_richiesto(
+    def test_crea_operatore_flow_b_cognome_non_richiesto(
         self, mock_parse, mock_idemp, mock_reqid, mock_make_pw, mock_repo_cls
     ):
         """Flusso B: cognome vuoto e' accettato (soggetto gia' esiste)."""
@@ -300,10 +300,10 @@ class TestCreaUtenteFlowB(TestCase):
         mock_parse.return_value = payload
         mock_repo = MagicMock()
         mock_repo.crea_operatore.return_value = 42
-        mock_repo.get_utente_detail.return_value = SAMPLE_DETAIL
+        mock_repo.get_operatore_detail.return_value = SAMPLE_DETAIL
         mock_repo_cls.return_value = mock_repo
 
-        view = UtentiListView()
+        view = OperatoriListView()
         request = _make_admin_request(payload)
         response = view.post(request)
 
@@ -313,12 +313,12 @@ class TestCreaUtenteFlowB(TestCase):
     @patch("apps.core.api.endpoint_helpers.get_request_id", return_value=None)
     @patch("apps.core.api.endpoint_helpers.get_idempotency_key", return_value=None)
     @patch("apps.core.api.endpoint_helpers.parse_json_body")
-    def test_crea_utente_flow_b_uuid_invalido(self, mock_parse, mock_idemp, mock_reqid):
+    def test_crea_operatore_flow_b_uuid_invalido(self, mock_parse, mock_idemp, mock_reqid):
         """Flusso B: soggetto_id non UUID valido -> errore 400."""
         payload = {**VALID_PAYLOAD_FLOW_B, "soggetto_id": "non-un-uuid"}
         mock_parse.return_value = payload
 
-        view = UtentiListView()
+        view = OperatoriListView()
         request = _make_admin_request(payload)
         response = view.post(request)
 
@@ -328,12 +328,12 @@ class TestCreaUtenteFlowB(TestCase):
     @patch("apps.core.api.endpoint_helpers.get_request_id", return_value=None)
     @patch("apps.core.api.endpoint_helpers.get_idempotency_key", return_value=None)
     @patch("apps.core.api.endpoint_helpers.parse_json_body")
-    def test_crea_utente_qualifica_non_numerica(self, mock_parse, mock_idemp, mock_reqid):
+    def test_crea_operatore_qualifica_non_numerica(self, mock_parse, mock_idemp, mock_reqid):
         """qualifica_id non numerico -> errore 400."""
         payload = {**VALID_PAYLOAD, "qualifica_id": "abc"}
         mock_parse.return_value = payload
 
-        view = UtentiListView()
+        view = OperatoriListView()
         request = _make_admin_request(payload)
         response = view.post(request)
 
@@ -341,17 +341,17 @@ class TestCreaUtenteFlowB(TestCase):
         self.assertIn("error", data)
 
 
-class TestCreaUtentePermission(TestCase):
-    """POST /api/v1/amm-software/utenti/ — verifica permessi."""
+class TestCreaOperatorePermission(TestCase):
+    """POST /api/v1/amm-software/operatori/ — verifica permessi."""
 
     @patch("apps.core.api.permissions.PermissionResolver")
     @patch("apps.core.api.permissions.ZeroERPPermission._get_cache", return_value={})
     @patch("apps.core.api.permissions.ZeroERPPermission._save_cache_to_redis")
-    def test_crea_utente_permission_denied(self, mock_save, mock_cache, mock_resolver):
-        """OPERATIVO non puo' creare utenti."""
+    def test_crea_operatore_permission_denied(self, mock_save, mock_cache, mock_resolver):
+        """OPERATIVO non puo' creare operatori."""
         mock_resolver.get_ruolo_sistema.return_value = "OPERATIVO"
 
-        view = UtentiListView()
+        view = OperatoriListView()
         request = _make_operativo_request(VALID_PAYLOAD)
         view.request = request
 

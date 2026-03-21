@@ -623,7 +623,7 @@ La view (`UtenteDrawer`) li compone e gestisce il submit.
 
 ### R3 — Il backend assembla, il frontend compone
 
-Il frontend manda un **payload unico** al backend (es. `POST /api/v1/amm-software/utenti/`).
+Il frontend manda un **payload unico** al backend (es. `POST /api/v1/amm-software/operatori/`).
 Il backend (service layer) scompone il payload e chiama i building block SQL nella sequenza corretta.
 Il frontend non chiama mai i building block singolarmente — l'orchestrazione e' responsabilita' del backend.
 

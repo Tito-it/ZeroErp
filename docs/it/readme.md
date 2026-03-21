@@ -9,10 +9,12 @@ L'obiettivo e` ridurre la complessita` superflua mantenendo rigore su dati, rego
 
 ## Stato progetto
 
-> **Sviluppo attivo — frontend in costruzione.**
+> **Sviluppo attivo — frontend operativo su aree core.**
 >
-> DB e API backend operativi. Frontend Vue in sviluppo: layout applicativo,
-> gestione operatori, gestione geografica (indirizzi, comuni, province, regioni, stati).
+> DB e API backend operativi. Frontend Vue operativo su: layout applicativo,
+> gestione soggetti (PF/PG/ENTE), gestione geografica (7 tab CRUD), pannello configurazione (67 tabelle),
+> amministrazione software (operatori, profili reparto, permessi, audit log),
+> sistema permessi a 2 livelli (area + azioni processo).
 > Non ancora rilasciato per produzione.
 
 ---
@@ -75,7 +77,7 @@ Approfondimento:
 ## Architettura
 
 ```
-Frontend (futuro)
+Frontend Vue 3 (presentazione, zero logica business)
     |
 API REST Django (orchestrazione, permessi, endpoint)
     |
@@ -136,17 +138,22 @@ Il modello e` pensato per supportare processi non lineari e gestione multi-repar
 
 ## Stato dello Sviluppo
 
-Fotografia sintetica (15 marzo 2026):
+Fotografia sintetica (20 marzo 2026):
 
 - Database core: operativo (13 schemi, 200+ tabelle, trigger, funzioni, viste)
-- API backend: operativo (621 test, 21+ endpoint anagrafiche, 19 pratiche, vendite, core)
+- API backend: operativo (689+ test, 57+ endpoint documentati)
 - Motore pratiche: operativo (workflow, giornale, sospensioni, macchina a stati)
-- Frontend Vue: in sviluppo attivo
-  - Layout applicativo (sidebar, tabs, breadcrumb, ricerca universale)
-  - Gestione operatori e profili reparto (Amm. Software — parziale, test UI pendenti)
-  - Gestione geografica completa (indirizzi, toponomastica, comuni, province, regioni, stati)
-  - Building block riutilizzabili (SoggettoForm, AuthUserForm, composable centralizzati)
-- Documentazione: in aggiornamento continuo
+- Sistema permessi: operativo a 2 livelli
+  - Livello 1: area funzionale (TUTTO/LETTURA/BLOCCATO) — sidebar, route guard, CSS protect
+  - Livello 2: azioni processo (abilitata/negata) — prop `action` su componenti, backend 403
+- Frontend Vue: operativo su aree core
+  - Layout applicativo (sidebar morfica, content tabs, breadcrumb, ricerca universale, shortcut tastiera)
+  - Amm. Software completa: operatori, profili reparto, permessi riepilogo, audit log (solo ADMIN)
+  - Gestione soggetti: PF/PG/ENTE end-to-end, ruoli, contatti, indirizzi, CF validator IT
+  - Gestione geografica: 7 tab CRUD (indirizzi, toponomastica, comuni, CAP, province, regioni, stati)
+  - Pannello configurazione: 67 tabelle CRUD generiche con drawer dinamico metadata-driven
+  - Building block riutilizzabili: 20+ composable, 15+ componenti core, CSS utility classes
+- Documentazione: 57+ endpoint documentati, frontend-standards, mappa concentrica aggiornata
 
  [Mappa](./mappa-concentrica.md)
 
@@ -180,10 +187,15 @@ Struttura essenziale:
 
 1. ~~Consolidamento nucleo DB e motore pratiche~~ — fatto
 2. ~~Espansione API dominio (anagrafiche, vendite, pratiche)~~ — fatto
-3. Frontend operativo per uso interno — in corso
-4. Test UI reali su aree completate (Amm. Software, Gestione Geografica)
-5. Gestione Soggetti (anagrafica completa: soggetto + contatto + indirizzo)
-6. Evoluzione integrazioni e moduli verticali
+3. ~~Frontend layout applicativo + building block~~ — fatto
+4. ~~Gestione Soggetti (PF/PG/ENTE end-to-end)~~ — fatto, in test UI
+5. ~~Gestione Geografica (7 tab CRUD)~~ — fatto
+6. ~~Amm. Software (operatori, profili, permessi, audit)~~ — fatto, in test UI
+7. ~~Sistema permessi 2 livelli (area + azioni processo)~~ — fatto
+8. Test UI reali su aree completate — in corso
+9. Seed azioni processo per nuovi domini + integrazione componenti
+10. ClienteService Django (orchestrator creazione/subentro/disdetta)
+11. Evoluzione integrazioni e moduli verticali
 
 ---
 

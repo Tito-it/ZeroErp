@@ -538,34 +538,61 @@ Dettaglio: [api_amm_software.md](api_amm_software.md)
 **Anagrafiche** (`/api/v1/anagrafiche/`) — gestione geografica e soggetti
 Dettaglio: [api_soggetti.md](api_soggetti.md) | [api_indirizzi.md](api_indirizzi.md) | [api_geo_config.md](api_geo_config.md)
 
-| Metodo | Path                    | Scopo                                  |
-| ------ | ----------------------- | -------------------------------------- |
-| GET    | `indirizzi/`            | Lista indirizzi dettaglio              |
-| POST   | `indirizzi/`            | Crea indirizzo (via esistente o nuova) |
-| GET    | `indirizzi/{id}/`       | Dettaglio indirizzo                    |
-| PATCH  | `indirizzi/{id}/`       | Aggiorna civico/dettagli               |
-| GET    | `codici-postali/`       | CAP per comune                         |
-| GET    | `toponomastica/`        | Lista toponomastica                    |
-| POST   | `toponomastica/`        | Crea tipo strada                       |
-| GET    | `toponomastica/{id}/`   | Dettaglio tipo strada                  |
-| PATCH  | `toponomastica/{id}/`   | Aggiorna tipo strada                   |
-| GET    | `comuni/`               | Lista comuni                           |
-| POST   | `comuni/`               | Crea comune                            |
-| GET    | `province/`             | Lista province                         |
-| POST   | `province/`             | Crea provincia                         |
-| GET    | `province/{id}/`        | Dettaglio provincia                    |
-| PATCH  | `province/{id}/`        | Aggiorna provincia                     |
-| GET    | `province/lookup/`      | Province per dropdown                  |
-| GET    | `regioni/`              | Lista regioni                          |
-| POST   | `regioni/`              | Crea regione                           |
-| GET    | `regioni/{id}/`         | Dettaglio regione                      |
-| PATCH  | `regioni/{id}/`         | Aggiorna regione                       |
-| GET    | `regioni/lookup/`       | Regioni per dropdown                   |
-| GET    | `stati/`                | Lista stati                            |
-| POST   | `stati/`                | Crea stato                             |
-| GET    | `stati/{id}/`           | Dettaglio stato                        |
-| PATCH  | `stati/{id}/`           | Aggiorna stato                         |
-| GET    | `stati/lookup/`         | Stati per dropdown                     |
+| Metodo | Path                                          | Scopo                                                      |
+| ------ | --------------------------------------------- | ---------------------------------------------------------- |
+| GET    | `indirizzi/`                                  | Lista indirizzi dettaglio                                  |
+| POST   | `indirizzi/`                                  | Crea indirizzo (via esistente o nuova)                     |
+| GET    | `indirizzi/{id}/`                             | Dettaglio indirizzo                                        |
+| PATCH  | `indirizzi/{id}/`                             | Aggiorna civico/dettagli                                   |
+| GET    | `codici-postali/`                             | CAP per comune                                             |
+| GET    | `toponomastica/`                              | Lista toponomastica                                        |
+| POST   | `toponomastica/`                              | Crea tipo strada                                           |
+| GET    | `toponomastica/{id}/`                         | Dettaglio tipo strada                                      |
+| PATCH  | `toponomastica/{id}/`                         | Aggiorna tipo strada                                       |
+| GET    | `comuni/`                                     | Lista comuni                                               |
+| POST   | `comuni/`                                     | Crea comune                                                |
+| GET    | `province/`                                   | Lista province                                             |
+| POST   | `province/`                                   | Crea provincia                                             |
+| GET    | `province/{id}/`                              | Dettaglio provincia                                        |
+| PATCH  | `province/{id}/`                              | Aggiorna provincia                                         |
+| GET    | `province/lookup/`                            | Province per dropdown                                      |
+| GET    | `regioni/`                                    | Lista regioni                                              |
+| POST   | `regioni/`                                    | Crea regione                                               |
+| GET    | `regioni/{id}/`                               | Dettaglio regione                                          |
+| PATCH  | `regioni/{id}/`                               | Aggiorna regione                                           |
+| GET    | `regioni/lookup/`                             | Regioni per dropdown                                       |
+| GET    | `stati/`                                      | Lista stati                                                |
+| POST   | `stati/`                                      | Crea stato                                                 |
+| GET    | `stati/{id}/`                                 | Dettaglio stato                                            |
+| PATCH  | `stati/{id}/`                                 | Aggiorna stato                                             |
+| GET    | `stati/lookup/`                               | Stati per dropdown                                         |
+| GET    | `soggetti/`                                   | Lista soggetti paginata                                    |
+| POST   | `soggetti/`                                   | Crea soggetto (PF/PG + contatto + indirizzo)               |
+| GET    | `soggetti/{id}/`                              | Dettaglio soggetto (contatti, indirizzi, ruoli, conti)     |
+| PATCH  | `soggetti/{id}/`                              | Aggiorna soggetto                                          |
+| GET    | `soggetti/{id}/contatti/`                     | Lista contatti soggetto                                    |
+| POST   | `soggetti/{id}/contatti/`                     | Crea contatto                                              |
+| PATCH  | `soggetti/{id}/contatti/{cid}/`               | Aggiorna contatto                                          |
+| DELETE | `soggetti/{id}/contatti/{cid}/`               | Elimina contatto                                           |
+| GET    | `soggetti/{id}/indirizzi/`                    | Lista indirizzi soggetto                                   |
+| POST   | `soggetti/{id}/indirizzi/`                    | Crea indirizzo soggetto                                    |
+| PUT    | `soggetti/{id}/indirizzi/{iid}/`              | Sostituisce indirizzo                                      |
+| DELETE | `soggetti/{id}/indirizzi/{iid}/`              | Elimina indirizzo                                          |
+| GET    | `soggetti/{id}/ruoli/`                        | Lista ruoli soggetto                                       |
+| POST   | `soggetti/{id}/ruoli/`                        | Assegna ruolo                                              |
+| GET    | `soggetti/{id}/conti-bancari/`                | Lista conti bancari soggetto                               |
+| POST   | `soggetti/{id}/conti-bancari/`                | Crea legame soggetto ↔ conto (get_or_create IBAN)          |
+| PATCH  | `soggetti/{id}/conti-bancari/{cbid}/`         | Aggiorna legame conto soggetto                             |
+| DELETE | `soggetti/{id}/conti-bancari/{cbid}/`         | Elimina legame conto soggetto                              |
+| GET    | `ruoli/{id}/conti-bancari/`                   | Lista conti ruolo (+ ereditati)                            |
+| POST   | `ruoli/{id}/conti-bancari/`                   | Crea legame ruolo ↔ conto                                  |
+| PATCH  | `ruoli/{id}/conti-bancari/{cbid}/`            | Aggiorna legame conto ruolo                                |
+| DELETE | `ruoli/{id}/conti-bancari/{cbid}/`            | Elimina legame conto ruolo                                 |
+| GET    | `conti-bancari/lookup/`                       | Autocomplete IBAN registro                                 |
+| GET    | `bank-branches/lookup/`                       | Autocomplete filiali bancarie                              |
+| POST   | `soggetti/valida-cf-piva/`                    | Validazione CF/PIVA (errori + warning)                     |
+| POST   | `soggetti/genera-cf/`                         | Genera CF italiano                                         |
+| GET    | `ruoli/{codice}/config-resolver/`             | Config resolver per tipo ruolo                             |
 
 **Auth** (`/api/v1/auth/`)
 

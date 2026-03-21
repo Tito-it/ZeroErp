@@ -26,6 +26,7 @@ import DrawerFooter from '../../core/components/DrawerFooter.vue'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import IndirizziSoggettoDrawer from '../../core/components/IndirizziSoggettoDrawer.vue'
 import ContattiSoggettoDrawer from '../../core/components/ContattiSoggettoDrawer.vue'
+import ContiBancariDrawer from '../../core/components/ContiBancariDrawer.vue'
 import Drawer from 'primevue/drawer'
 import Button from 'primevue/button'
 import Tag from 'primevue/tag'
@@ -52,11 +53,13 @@ const comuneNascitaItem = ref(null)
 // Ruoli (edit mode, readonly)
 const ruoliAssegnati = ref([])
 
-// Drawer indirizzi e contatti (edit mode)
+// Drawer indirizzi, contatti e conti bancari (edit mode)
 const indirizziDrawerVisible = ref(false)
 const indirizziRiepilogo = ref([])
 const contattiDrawerVisible = ref(false)
 const contattiRiepilogo = ref([])
+const contiBancariDrawerVisible = ref(false)
+const contiBancariRiepilogo = ref([])
 
 const props = defineProps({
   visible: Boolean,
@@ -169,9 +172,10 @@ function populateFromDetail(data) {
   }
   // Ruoli
   ruoliAssegnati.value = data.ruoli || []
-  // Indirizzi e contatti riepilogo
+  // Indirizzi, contatti e conti bancari riepilogo
   indirizziRiepilogo.value = data.indirizzi || []
   contattiRiepilogo.value = data.contatti || []
+  contiBancariRiepilogo.value = data.conti_bancari || []
 }
 
 
@@ -189,6 +193,14 @@ async function onIndirizziSaved() {
   try {
     const data = await store.fetchDetail(props.itemId)
     indirizziRiepilogo.value = data.indirizzi || []
+  } catch { /* silent */ }
+}
+
+async function onContiBancariSaved() {
+  if (!props.itemId) return
+  try {
+    const data = await store.fetchDetail(props.itemId)
+    contiBancariRiepilogo.value = data.conti_bancari || []
   } catch { /* silent */ }
 }
 
@@ -446,6 +458,33 @@ async function handleSave() {
         />
       </template>
 
+      <!-- Sezione: Conti bancari riepilogo (edit mode) -->
+      <template v-if="isEdit">
+        <div class="app-drawer-section">
+          <h4>{{ t('conti_bancari.titolo') }}</h4>
+        </div>
+        <div class="riepilogo-section">
+          <div v-if="contiBancariRiepilogo.length > 0" class="riepilogo-list">
+            <div v-for="cb in contiBancariRiepilogo" :key="cb.id" class="riepilogo-item">
+              <Tag :value="cb.uso" severity="info" />
+              <span class="riepilogo-detail" style="font-family: monospace;">{{ cb.iban }}</span>
+              <span v-if="cb.filiale_nome" class="riepilogo-detail">{{ cb.filiale_nome }}</span>
+            </div>
+          </div>
+          <div v-else style="color: var(--p-text-muted-color); font-size: 0.85rem;">
+            {{ t('conti_bancari.nessun_conto') }}
+          </div>
+          <Button
+            :label="t('conti_bancari.gestisci_conti')"
+            icon="pi pi-wallet"
+            text
+            size="small"
+            class="app-action-btn app-escape mt-025"
+            @click="contiBancariDrawerVisible = true"
+          />
+        </div>
+      </template>
+
       <!-- Sezione: Ruoli (solo edit mode, readonly) -->
       <template v-if="isEdit">
         <div class="app-drawer-section">
@@ -484,6 +523,15 @@ async function handleSave() {
     @update:visible="v => contattiDrawerVisible = v"
     :soggetto-id="props.itemId"
     @saved="onContattiSaved"
+  />
+
+  <!-- Drawer conti bancari soggetto (edit mode) -->
+  <ContiBancariDrawer
+    :visible="contiBancariDrawerVisible"
+    @update:visible="v => contiBancariDrawerVisible = v"
+    :owner-id="props.itemId"
+    :owner-name="_buildNominativo()"
+    @saved="onContiBancariSaved"
   />
 </template>
 

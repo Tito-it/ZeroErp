@@ -15,7 +15,7 @@ import Tag from 'primevue/tag'
 const emit = defineEmits(['row-click', 'new'])
 const { t } = useI18n()
 const store = useToponomasticaStore()
-const { searchText, onPage, onSort, paginatorProps } = useSearchTable(store)
+const { searchText, onPage, onSort, paginatorProps } = useSearchTable(store, { defaultSortField: 'descrizione' })
 
 useTabFreshness(store, 'toponomastica')
 onMounted(() => { store.fetchList() })

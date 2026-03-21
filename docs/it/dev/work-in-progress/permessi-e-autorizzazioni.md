@@ -565,3 +565,171 @@ a una chiamata SQL + gestione cache L1/L2.
 
 I trigger defense-in-depth (task 5.1-5.3) potranno usare direttamente `fn_check_user_emittente_scope`
 e `fn_resolve_livello_area` senza logica duplicata.
+
+---
+
+## 9. Frontend — Livello 1 (TUTTO / LETTURA / BLOCCATO)
+
+> Sezione aggiunta 20/03/2026. Copre l'implementazione frontend del sistema permessi area.
+
+### 9.1 Infrastruttura (completata)
+
+- [x] F9.1 — `useReadonlyMode(schemaDb)` composable provider/consumer — `core/composables/useReadonlyMode.js`
+- [x] F9.2 — `DrawerFooter` si nasconde in LETTURA via `useInjectReadonly()` — `core/components/DrawerFooter.vue`
+- [x] F9.3 — `NewButton` si nasconde in LETTURA via `useInjectReadonly()` — `core/components/NewButton.vue`
+- [x] F9.4 — `visibleDomains` filtra BLOCCATO (skip adminOnly) — `stores/auth.js`
+- [x] F9.5 — Route guard BLOCCATO → redirect `/forbidden` (skip adminOnly) — `router/index.js`
+- [x] F9.6 — Tutti i DOMAINS con `schemaDb` — `core/navigation.js`
+- [x] F9.7 — `LIVELLO_ACCESSO` constants + `buildLivelloOptions(t)` — `amministrazione/constants.js`
+- [x] F9.8 — Classe CSS `.app-blocked` — `main.css`
+
+### 9.2 Consolidamento per dominio (completato)
+
+- [x] F9.9 — `SoggettiView` + `IndirizziView` con `useReadonlyMode('anagrafiche')` a livello view
+- [x] F9.10 — `ConfigTablePanel` con `useReadonlyMode('config')` a livello componente
+- [x] F9.11 — `OperatoriListView` con `useReadonlyMode('amm_software')` a livello view
+- [x] F9.12 — `RepartiProfiloView` con `useReadonlyMode('amm_software')` a livello view
+- [x] F9.13 — `RepartoProfiloEditor` migrato da Button custom a `DrawerFooter`
+- [x] F9.14 — `ConfirmDialog` duplicati rimossi da drawer → solo globale in `App.vue`
+- [x] F9.15 — `useConfirmAction` composable con `confirmSave`, `confirmDelete`, `confirmAction` (rejectClass secondary)
+
+### 9.3 Pattern stabilito
+
+- **Regola**: ogni View chiama `useReadonlyMode(schemaDb)` → fornisce context a tutti i figli
+- **Regola**: mai `<ConfirmDialog>` dentro un Drawer — usare sempre il globale in `App.vue`
+- **Regola**: i domini `adminOnly` bypassano i check BLOCCATO/LETTURA (il guard admin basta)
+
+---
+
+## 10. Refactor naming utenti → operatori
+
+> Sezione aggiunta 20/03/2026. Nel contesto ERP gas/energia, "utente" e' ambiguo
+> (utente servizio vs operatore software). Si uniforma a "operatore/operatori".
+
+### 10.1 Frontend (completato)
+
+- [x] R10.1 — Store: `operatori.js` (gia' rinominato sprint 7)
+- [x] R10.2 — View: `UtentiListView.vue` → `OperatoriListView.vue`
+- [x] R10.3 — Drawer: `UtenteDrawer.vue` → `OperatoreDrawer.vue`
+- [x] R10.4 — Tab permessi: `OperatorePermessiTab.vue` (gia' rinominato sprint 7)
+- [x] R10.5 — Router: import aggiornato a `OperatoriListView.vue`
+- [x] R10.6 — Chiavi i18n: `amm.operatore*` (gia' rinominate sprint 7)
+
+### 10.2 Backend — URL API
+
+- [x] R10.7 — `urls_v1.py`: path `"utenti/"` → `"operatori/"` (7 path)
+- [x] R10.8 — Route names: `"amm-utenti-*"` → `"amm-operatori-*"` (7 nomi)
+
+### 10.3 Backend — Views
+
+- [x] R10.9 — `UtentiListView` → `OperatoriListView`
+- [x] R10.10 — `UtentiDetailView` → `OperatoriDetailView`
+- [x] R10.11 — `UtentiDisabilitaView` → `OperatoriDisabilitaView`
+- [x] R10.12 — `UtentiRiattivaView` → `OperatoriRiattivaView`
+- [x] R10.13 — Nomi serializer inline: `Utenti*` / `Utente*` → `Operatori*` / `Operatore*`
+- [x] R10.14 — Commenti sezione e docstring
+
+### 10.4 Backend — Service
+
+- [x] R10.15 — `list_utenti()` → `list_operatori()`
+- [x] R10.16 — `get_utente()` → `get_operatore()`
+- [x] R10.17 — `update_utente()` → `update_operatore()`
+- [x] R10.18 — `disabilita_utente()` → `disabilita_operatore()`
+- [x] R10.19 — `riattiva_utente()` → `riattiva_operatore()`
+- [x] R10.20 — Costante `E_AMM_UTENTE_NOT_FOUND` → `E_AMM_OPERATORE_NOT_FOUND`
+- [x] R10.21 — Commenti sezione e docstring
+
+### 10.5 Backend — Repository
+
+- [x] R10.22 — `list_utenti()` → `list_operatori()`
+- [x] R10.23 — `get_utente_detail()` → `get_operatore_detail()`
+- [x] R10.24 — `update_utente()` → `update_operatore()`
+- [x] R10.25 — `disabilita_utente()` → `disabilita_operatore()`
+- [x] R10.26 — `riattiva_utente()` → `riattiva_operatore()`
+- [x] R10.27 — Commenti sezione, docstring aggiornate
+
+### 10.6 Backend — Types
+
+- [x] R10.28 — `UtenteRow` → `OperatoreRow`
+- [x] R10.29 — `UtenteDetailRow` → `OperatoreDetailRow`
+- [x] R10.30 — Docstring aggiornate
+
+### 10.7 Backend — Test
+
+- [x] R10.31 — `test_utenti_views.py` → `test_operatori_views.py` (file + classi + costanti + URL mockate)
+- [x] R10.32 — `test_crea_utente.py` → `test_crea_operatore.py` (file + classi + URL mockate)
+- [x] R10.33 — `test_amm_software_service.py` — nomi test con `utente` → `operatore`
+- [x] R10.34 — `test_override_permessi.py` — URL mockate aggiornate
+
+### 10.8 Frontend — API endpoints
+
+- [x] R10.35 — `amministrazione.js`: URL `${BASE}/utenti/` → `${BASE}/operatori/` (tutte le funzioni)
+- [x] R10.36 — Commento sezione override: `// --- Override permessi utente ---` → `// --- Override permessi operatore ---`
+
+### 10.9 Smoke test
+
+- [x] R10.37 — `smoke-test-amm-software.sh`: URL e commenti aggiornati
+
+---
+
+## 11. Pagine mancanti Amm. Software
+
+> Sezione aggiunta 20/03/2026. Due pagine PlaceholderView da implementare.
+
+### 11.1 Pagina Permessi (`/amm-software/permessi`)
+
+**Scopo**: vista riepilogativa dei permessi effettivi di tutti gli operatori.
+A differenza del tab `OperatorePermessiTab` (override singolo operatore), questa pagina
+mostra la matrice risultante operatore × area con il livello effettivo calcolato.
+
+**Endpoint backend esistente**: `GET /api/v1/core/users/{user_id}/permessi-effettivi/`
+
+#### Sviluppi necessari
+
+- [x] P11.1 — Backend: `GET /api/v1/amm-software/permessi-riepilogo/`
+  - Matrice operatori × aree con livello effettivo da `script.fn_resolve_livello_area()`
+  - Filtri: `unita_organizzativa_id`, `ruolo_sistema`
+  - Repository: `get_permessi_riepilogo()`, Service: `get_permessi_riepilogo()`
+- [x] P11.2 — Frontend: `PermessiRiepilogoView.vue`
+  - DataTable con colonne dinamiche: Operatore, Reparto, Ruolo + 1 colonna per area
+  - Tag colorati: verde TUTTO, giallo LETTURA, rosso BLOCCATO
+  - Filtri Select per reparto e ruolo
+- [x] P11.3 — Router: PlaceholderView sostituita con `PermessiRiepilogoView`
+- [x] P11.4 — i18n: chiavi `amm.permessi_*` in it.json e en.json
+
+### 11.2 Pagina Audit Log (`/amm-software/audit-log`)
+
+**Scopo**: storico modifiche ai permessi (chi ha cambiato cosa, quando).
+
+**Endpoint backend esistente**: `GET /api/v1/core/users/{user_id}/permessi-audit/`
+
+#### Sviluppi necessari
+
+- [x] P11.5 — Backend: `GET /api/v1/amm-software/audit-log/`
+  - UNION ALL su 6 tabelle storico permessi, paginato
+  - Filtri: `data_da`, `data_a`, `tabella`, `limit`, `offset`
+  - Repository: `list_audit_log()`, Service: `list_audit_log()`
+- [x] P11.6 — Repository: `list_audit_log()` in `amm_software_repository.py`
+  - Query UNION ALL, colonne: tabella, timestamp, tipo_operazione, user_modifica, snapshot
+- [x] P11.7 — Frontend: `AuditLogView.vue`
+  - DataTable paginata lazy, filtro per tipo tabella
+  - Colonne: Data, Chi, Tipo, Operazione, Dettaglio (estratto da snapshot)
+  - Sola lettura — nessun drawer
+- [x] P11.8 — Router: PlaceholderView sostituita con `AuditLogView`
+- [x] P11.9 — i18n: chiavi `amm.audit_*` in it.json e en.json
+
+---
+
+## Ordine di esecuzione consigliato
+
+1. **Refactor naming** (sez. 10) — prima di tutto, per non lavorare su nomi vecchi
+   - 10.2–10.6: backend (URL, views, service, repository, types)
+   - 10.7: test backend
+   - 10.8: frontend API endpoints
+   - 10.9: smoke test
+2. **Pagina Permessi** (sez. 11.1) — priorita' alta, completa l'area admin
+   - P11.1: endpoint backend
+   - P11.2–P11.4: frontend view + router + i18n
+3. **Pagina Audit Log** (sez. 11.2) — priorita' media
+   - P11.5–P11.6: endpoint + repository backend
+   - P11.7–P11.9: frontend view + router + i18n

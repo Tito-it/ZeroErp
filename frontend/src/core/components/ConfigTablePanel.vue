@@ -63,8 +63,8 @@ const selectedLabel = computed(() => {
 watch(selectedRel, async (rel) => {
   page.value = 1
   searchRecords.value = ''
-  sortField.value = null
-  sortOrder.value = null
+  sortField.value = 'descrizione'
+  sortOrder.value = 1
   tableColumns.value = []
   if (rel) {
     try {

@@ -192,6 +192,34 @@ export function lookupStati() {
   return api.get(`${BASE}/stati/lookup/`)
 }
 
+// --- Conti bancari soggetto ---
+
+export function listSoggettoContiBancari(soggettoId) {
+  return api.get(`${BASE}/soggetti/${soggettoId}/conti-bancari/`)
+}
+
+export function createSoggettoContoBancario(soggettoId, payload) {
+  return api.post(`${BASE}/soggetti/${soggettoId}/conti-bancari/`, payload)
+}
+
+export function updateSoggettoContoBancario(soggettoId, cbId, payload) {
+  return api.patch(`${BASE}/soggetti/${soggettoId}/conti-bancari/${cbId}/`, payload)
+}
+
+export function deleteSoggettoContoBancario(soggettoId, cbId) {
+  return api.delete(`${BASE}/soggetti/${soggettoId}/conti-bancari/${cbId}/`)
+}
+
+// --- Conti bancari lookup ---
+
+export function lookupContiBancari(search) {
+  return api.get(`${BASE}/conti-bancari/lookup/`, { params: { search } })
+}
+
+export function lookupBankBranches(search) {
+  return api.get(`${BASE}/bank-branches/lookup/`, { params: { search } })
+}
+
 // --- Ruoli config resolver ---
 
 export function getConfigResolver(tipoRuoloCodice) {

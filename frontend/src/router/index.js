@@ -49,7 +49,7 @@ const router = createRouter({
         {
           path: 'amm-software/operatori',
           name: 'amm-software-operatori',
-          component: () => import('../amministrazione/views/UtentiListView.vue'),
+          component: () => import('../amministrazione/views/OperatoriListView.vue'),
           meta: { domain: 'amm-software', menuKey: 'operatori' }
         },
         {
@@ -61,13 +61,13 @@ const router = createRouter({
         {
           path: 'amm-software/permessi',
           name: 'amm-software-permessi',
-          component: () => import('../core/views/PlaceholderView.vue'),
+          component: () => import('../amministrazione/views/PermessiRiepilogoView.vue'),
           meta: { domain: 'amm-software', menuKey: 'permessi' }
         },
         {
           path: 'amm-software/audit-log',
           name: 'amm-software-audit-log',
-          component: () => import('../core/views/PlaceholderView.vue'),
+          component: () => import('../amministrazione/views/AuditLogView.vue'),
           meta: { domain: 'amm-software', menuKey: 'audit-log' }
         },
 

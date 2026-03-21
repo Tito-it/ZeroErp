@@ -137,19 +137,19 @@ Il modulo Amministrazione appartiene all'**Anello 1 — Infrastruttura Applicati
 
 ### Backend
 
-- [x] 2.2 — `GET /api/v1/amm-software/utenti/`
+- [x] 2.2 — `GET /api/v1/amm-software/operatori/`
   - Paginazione standard DRF (page/page_size)
   - Filtri query string: `ruolo_sistema`, `unita_organizzativa_id`, `is_active`, `search`
   - Permission: `IsAdminZeroERP`
   - **Prerequisiti**: DB 2.1, BE 1.2
 
-- [x] 2.3 — `GET /api/v1/amm-software/utenti/{auth_user_id}/`
+- [x] 2.3 — `GET /api/v1/amm-software/operatori/{auth_user_id}/`
   - Dettaglio completo: dati auth_user + risorsa_umana + override permessi correnti
   - Include lista `user_override_aree`, `user_override_azioni`, `user_emittenti_fiscali`
   - Riusa l'output di `GET /api/v1/core/users/{id}/permessi-effettivi/` come sotto-sezione
   - **Prerequisiti**: 2.2
 
-- [x] 2.4 — `PATCH /api/v1/amm-software/utenti/{auth_user_id}/`
+- [x] 2.4 — `PATCH /api/v1/amm-software/operatori/{auth_user_id}/`
   - Campi modificabili: `email`, `first_name`, `last_name`, `ruolo_sistema`,
     `unita_organizzativa_id`, `attivo` (risorsa_umana), `valido_al`
   - Modifiche a `ruolo_sistema` e `attivo` devono chiamare `fn_sync_auth_user_is_active`
@@ -157,7 +157,7 @@ Il modulo Amministrazione appartiene all'**Anello 1 — Infrastruttura Applicati
   - Dopo modifica: invalida cache permessi con `permissions_cache.invalidate_user(auth_user_id)`
   - **Prerequisiti**: 2.3
 
-- [x] 2.5 — `POST /api/v1/amm-software/utenti/{auth_user_id}/disabilita/`
+- [x] 2.5 — `POST /api/v1/amm-software/operatori/{auth_user_id}/disabilita/`
   - Shortcut: imposta `ruolo_sistema = DISABILITATO` + `risorse_umane.attivo = false`
   - Chiama `fn_sync_auth_user_is_active` (sync `auth_user.is_active = false`)
   - Invalida token via blacklist SimpleJWT se configurato (`BLACKLIST_AFTER_ROTATION`)
@@ -220,7 +220,7 @@ Tutto deve avvenire in un'unica transazione DB. Se uno step fallisce, rollback c
 
 ### Backend
 
-- [x] 3.2 — `POST /api/v1/amm-software/utenti/`
+- [x] 3.2 — `POST /api/v1/amm-software/operatori/`
   - Serializer con validazione: username univoco, email valida, password strength
   - Chiama `fn_crea_operatore` via `cursor.execute()` in transaction
   - Password: ricevuta in chiaro dal frontend, hashata con `make_password()` prima di
@@ -262,19 +262,19 @@ ma non permette modifica. Queste API colmano il gap.
 
 ### Backend
 
-- [x] 4.1 — `GET/PUT /api/v1/amm-software/utenti/{id}/override-aree/`
+- [x] 4.1 — `GET/PUT /api/v1/amm-software/operatori/{id}/override-aree/`
   - GET: lista override aree attivi per l'utente (include `valido_dal`, `valido_al`)
   - PUT: sostituisce la lista completa degli override aree (replace semantics)
   - Ogni item: `area_id`, `livello` (TUTTO/LETTURA/BLOCCATO), `valido_dal`, `valido_al`
   - Dopo scrittura: `invalidate_user(auth_user_id)`
   - **Prerequisiti**: BE 1.2
 
-- [x] 4.2 — `GET/PUT /api/v1/amm-software/utenti/{id}/override-azioni/`
+- [x] 4.2 — `GET/PUT /api/v1/amm-software/operatori/{id}/override-azioni/`
   - Come 4.1 ma per `config.user_override_azioni`
   - Ogni item: `azione_id`, `abilitata` (boolean), `valido_dal`, `valido_al`
   - **Prerequisiti**: BE 1.2
 
-- [x] 4.3 — `GET/PUT /api/v1/amm-software/utenti/{id}/emittenti-scope/`
+- [x] 4.3 — `GET/PUT /api/v1/amm-software/operatori/{id}/emittenti-scope/`
   - GET: lista emittenti autorizzati per l'utente
   - PUT: sostituisce la lista (lista vuota = nessuna restrizione per ADMIN/OPERATIVO senza whitelist)
   - Ogni item: `emittente_fiscale_id`
@@ -333,7 +333,7 @@ con `ruolo_sistema = ADMIN`. Il frontend legge il ruolo dal JWT o da un endpoint
 src/
   views/
     amministrazione/
-      UtentiListView.vue          ← pagina lista operatori
+      OperatoriListView.vue          ← pagina lista operatori
       RepartiProfiloView.vue      ← pagina configurazione profili reparto
   components/
     amministrazione/
@@ -364,7 +364,7 @@ src/
 
 ### 6.2 Lista Utenti
 
-- [x] 6.3 — `UtentiListView.vue` — pagina principale
+- [x] 6.3 — `OperatoriListView.vue` — pagina principale
   - DataTable PrimeVue con colonne: nome/cognome, username, reparto, ruolo_sistema, stato (badge)
   - Filtri toolbar: search (text), reparto (dropdown), ruolo_sistema (dropdown), attivo (toggle)
   - Pulsante "+ Nuovo operatore" → apre `UtenteDrawer.vue` in modalità creazione
@@ -411,7 +411,7 @@ src/
 
 ### Backend
 
-- [x] 7.1 — Route Vue: `/amm-software/operatori` → `UtentiListView`
+- [x] 7.1 — Route Vue: `/amm-software/operatori` → `OperatoriListView`
 - [x] 7.2 — Route Vue: `/amm-software/profili-reparto` → `RepartiProfiloView`
 - [x] 7.3 — Voce sidebar "Amm. Software" con icona `pi pi-lock`
   - 4 sotto-voci: Operatori, Profili Reparto, Permessi (placeholder), Audit Log (placeholder)
@@ -427,13 +427,13 @@ src/
 | 1.2     | Infra     | BE   | App `apps/amm_software/` struttura base               | 1.1          | DONE  |
 | 1.3     | Infra     | Test | Test `IsAdminZeroERP` (6 test)                        | 1.1          | DONE  |
 | 2.1     | Utenti    | DB   | Query lista utenti (repository)                       | —            | DONE  |
-| 2.2     | Utenti    | BE   | `GET /amm-software/utenti/`                           | 2.1, 1.2     | DONE  |
-| 2.3     | Utenti    | BE   | `GET /amm-software/utenti/{id}/`                      | 2.2          | DONE  |
-| 2.4     | Utenti    | BE   | `PATCH /amm-software/utenti/{id}/`                    | 2.3          | DONE  |
+| 2.2     | Utenti    | BE   | `GET /amm-software/operatori/`                           | 2.1, 1.2     | DONE  |
+| 2.3     | Utenti    | BE   | `GET /amm-software/operatori/{id}/`                      | 2.2          | DONE  |
+| 2.4     | Utenti    | BE   | `PATCH /amm-software/operatori/{id}/`                    | 2.3          | DONE  |
 | 2.5     | Utenti    | BE   | `POST .../disabilita/`                                | 2.4          | DONE  |
 | 2.6–2.9 | Utenti    | Test | Test lista, dettaglio, modifica, disabilita (15 test) | 2.2–2.5      | DONE  |
 | 3.1     | Creazione | DB   | `anagrafiche.fn_crea_operatore`                       | —            | DONE  |
-| 3.2     | Creazione | BE   | `POST /amm-software/utenti/`                          | 3.1, 1.2     | DONE  |
+| 3.2     | Creazione | BE   | `POST /amm-software/operatori/`                          | 3.1, 1.2     | DONE  |
 | 3.3     | Creazione | Test | Test orchestratore BE (7 test)                        | 3.2          | DONE  |
 | 3.4     | Creazione | Test | Test pgTAP `fn_crea_operatore` (5 test)               | 3.1          | DONE  |
 | 4.1     | Override  | BE   | API override aree (GET/PUT)                           | 1.2          | DONE  |
@@ -446,7 +446,7 @@ src/
 | 5.4–5.6 | Reparti   | Test | Test profili reparto (10 test)                        | 5.1–5.3      | DONE  |
 | 6.1     | Frontend  | BE   | `GET /core/me/` + guard DB utente                     | —            | DONE  |
 | 6.2     | Frontend  | FE   | Guard sidebar ADMIN + badge topbar                    | 6.1          | DONE  |
-| 6.3     | Frontend  | FE   | `UtentiListView.vue`                                  | 2.2, 6.2     | DONE  |
+| 6.3     | Frontend  | FE   | `OperatoriListView.vue`                                  | 2.2, 6.2     | DONE  |
 | 6.4     | Frontend  | FE   | `UtenteDrawer.vue` V1 (crea + modifica)               | 3.2, 2.4     | DONE  |
 | 6.5     | Frontend  | FE   | `UtentePermessiTab.vue`                               | 4.1–4.3      | DONE  |
 | 6.6     | Frontend  | FE   | `RepartiProfiloView.vue`                              | 5.1          | DONE  |
@@ -455,7 +455,7 @@ src/
 | **8.1** | Resolver  | DB   | Endpoint config-resolver per tipo ruolo               | —            | TODO  |
 | **8.2** | Resolver  | DB   | Evoluzione `fn_crea_operatore` (soggetto esistente)   | 8.1          | TODO  |
 | **8.3** | Resolver  | BE   | `GET /anagrafiche/ruoli/{tipo_ruolo}/config-resolver/` | 8.1         | TODO  |
-| **8.4** | Resolver  | BE   | Evoluzione `POST /amm-software/utenti/` (due flussi)  | 8.2, 8.3    | TODO  |
+| **8.4** | Resolver  | BE   | Evoluzione `POST /amm-software/operatori/` (due flussi)  | 8.2, 8.3    | TODO  |
 | **8.5** | Resolver  | FE   | Componente `SoggettoResolver.vue` (sotto-drawer)      | 8.3          | TODO  |
 | **8.6** | Resolver  | FE   | `UtenteDrawer.vue` V2 (integra SoggettoResolver)      | 8.4, 8.5    | TODO  |
 | **8.7** | Resolver  | Test | Test config-resolver + evoluzione creazione            | 8.3, 8.4    | TODO  |
@@ -662,7 +662,7 @@ Implementazione: `apps/anagrafiche/db/soggetti_repository.py` (query inline)
 
 ### 8.4 — Backend: Evoluzione POST creazione operatore
 
-`POST /api/v1/amm-software/utenti/` accetta due payload:
+`POST /api/v1/amm-software/operatori/` accetta due payload:
 
 **Flusso A — soggetto nuovo** (come oggi):
 

@@ -14,7 +14,7 @@ import InputText from 'primevue/inputtext'
 const emit = defineEmits(['row-click', 'new'])
 const { t } = useI18n()
 const store = useCodiciPostaliStore()
-const { searchText, onPage, onSort, applyFilters, paginatorProps } = useSearchTable(store)
+const { searchText, onPage, onSort, applyFilters, paginatorProps } = useSearchTable(store, { defaultSortField: 'comune_descrizione' })
 
 const comuneFilter = ref(null)
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ------------------------------------------------------------
-# Smoke test locale per API Amm. Software (amministrazione utenti)
+# Smoke test locale per API Amm. Software (amministrazione operatori)
 # Uso: ./scripts/smoke-test-amm-software.sh [password]
 # Richiede utente ADMIN (ruolo_sistema = ADMIN)
 # ------------------------------------------------------------
@@ -11,12 +11,12 @@
 #  3) Lookup aree funzionali
 #  4) Lookup azioni processo
 #  5) Lookup emittenti fiscali
-#  6) Lista utenti (GET)
-#  7) Lista utenti con filtro ruolo_sistema
-#  8) Lista utenti con paginazione
-#  9) Dettaglio utente corrente
-# 10) Override aree (GET) utente corrente
-# 11) Override azioni (GET) utente corrente
+#  6) Lista operatori (GET)
+#  7) Lista operatori con filtro ruolo_sistema
+#  8) Lista operatori con paginazione
+#  9) Dettaglio operatore corrente
+# 10) Override aree (GET) operatore corrente
+# 11) Override azioni (GET) operatore corrente
 # 12) Lista reparti
 # 13) Lookup tipi soggetto dettaglio (Sprint 3)
 # 14) Matrice indirizzi per tipo PR (Sprint 3)
@@ -233,13 +233,13 @@ except Exception as e:
 " 2>/dev/null
 
 # ================================================================
-# LISTA UTENTI
+# LISTA OPERATORI
 # ================================================================
 echo ""
-echo "-- 6. Lista utenti --"
+echo "-- 6. Lista operatori --"
 
-do_curl GET "/api/v1/amm-software/utenti/"
-check "GET lista utenti" 200
+do_curl GET "/api/v1/amm-software/operatori/"
+check "GET lista operatori" 200
 
 echo "$LAST_BODY" | python3 -c "
 import sys, json
@@ -247,7 +247,7 @@ try:
     d = json.load(sys.stdin)['data']
     results = d.get('results', [])
     count = d.get('count', len(results))
-    print(f'  --- utenti totali: {count}')
+    print(f'  --- operatori totali: {count}')
     for u in results[:3]:
         print(f'      {u.get(\"username\",\"?\")} ({u.get(\"first_name\",\"\")} {u.get(\"last_name\",\"\")}) ruolo={u.get(\"ruolo_sistema\",\"?\")}')
     if len(results) > 3:
@@ -258,27 +258,27 @@ except Exception as e:
 
 # --- 7. Filtro ruolo ---
 echo ""
-echo "-- 7. Lista utenti filtro ruolo_sistema --"
+echo "-- 7. Lista operatori filtro ruolo_sistema --"
 
-do_curl GET "/api/v1/amm-software/utenti/?ruolo_sistema=ADMIN"
-check "GET utenti filtro ADMIN" 200
+do_curl GET "/api/v1/amm-software/operatori/?ruolo_sistema=ADMIN"
+check "GET operatori filtro ADMIN" 200
 
 echo "$LAST_BODY" | python3 -c "
 import sys, json
 try:
     d = json.load(sys.stdin)['data']
     count = d.get('count', len(d.get('results', [])))
-    print(f'  --- utenti ADMIN: {count}')
+    print(f'  --- operatori ADMIN: {count}')
 except Exception as e:
     print(f'  --- errore parsing: {e}')
 " 2>/dev/null
 
 # --- 8. Paginazione ---
 echo ""
-echo "-- 8. Lista utenti paginazione --"
+echo "-- 8. Lista operatori paginazione --"
 
-do_curl GET "/api/v1/amm-software/utenti/?limit=2&offset=0"
-check "GET utenti limit=2 offset=0" 200
+do_curl GET "/api/v1/amm-software/operatori/?limit=2&offset=0"
+check "GET operatori limit=2 offset=0" 200
 
 echo "$LAST_BODY" | python3 -c "
 import sys, json
@@ -295,10 +295,10 @@ except Exception as e:
 # DETTAGLIO UTENTE
 # ================================================================
 echo ""
-echo "-- 9. Dettaglio utente corrente --"
+echo "-- 9. Dettaglio operatore corrente --"
 
-do_curl GET "/api/v1/amm-software/utenti/${USER_ID}/"
-check "GET dettaglio utente $USER_ID" 200
+do_curl GET "/api/v1/amm-software/operatori/${USER_ID}/"
+check "GET dettaglio operatore $USER_ID" 200
 
 echo "$LAST_BODY" | python3 -c "
 import sys, json
@@ -319,8 +319,8 @@ except Exception as e:
 echo ""
 echo "-- 10. Override aree (GET) --"
 
-do_curl GET "/api/v1/amm-software/utenti/${USER_ID}/override-aree/"
-check "GET override aree utente $USER_ID" 200
+do_curl GET "/api/v1/amm-software/operatori/${USER_ID}/override-aree/"
+check "GET override aree operatore $USER_ID" 200
 
 echo "$LAST_BODY" | python3 -c "
 import sys, json
@@ -337,8 +337,8 @@ except Exception as e:
 echo ""
 echo "-- 11. Override azioni (GET) --"
 
-do_curl GET "/api/v1/amm-software/utenti/${USER_ID}/override-azioni/"
-check "GET override azioni utente $USER_ID" 200
+do_curl GET "/api/v1/amm-software/operatori/${USER_ID}/override-azioni/"
+check "GET override azioni operatore $USER_ID" 200
 
 echo "$LAST_BODY" | python3 -c "
 import sys, json

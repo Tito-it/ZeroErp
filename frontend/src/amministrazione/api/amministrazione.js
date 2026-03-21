@@ -8,53 +8,63 @@ const BASE = '/amm-software'
 // --- Operatori ---
 
 export function listOperatori(params = {}) {
-  return api.get(`${BASE}/utenti/`, { params })
+  return api.get(`${BASE}/operatori/`, { params })
 }
 
 export function getOperatore(authUserId) {
-  return api.get(`${BASE}/utenti/${authUserId}/`)
+  return api.get(`${BASE}/operatori/${authUserId}/`)
 }
 
 export function createOperatore(payload) {
-  return api.post(`${BASE}/utenti/`, payload)
+  return api.post(`${BASE}/operatori/`, payload)
 }
 
 export function updateOperatore(authUserId, payload) {
-  return api.patch(`${BASE}/utenti/${authUserId}/`, payload)
+  return api.patch(`${BASE}/operatori/${authUserId}/`, payload)
 }
 
 export function disabilitaOperatore(authUserId) {
-  return api.post(`${BASE}/utenti/${authUserId}/disabilita/`)
+  return api.post(`${BASE}/operatori/${authUserId}/disabilita/`)
 }
 
 export function riattivaOperatore(authUserId) {
-  return api.post(`${BASE}/utenti/${authUserId}/riattiva/`)
+  return api.post(`${BASE}/operatori/${authUserId}/riattiva/`)
 }
 
-// --- Override permessi utente ---
+// --- Override permessi operatore ---
 
 export function getOverrideAree(authUserId) {
-  return api.get(`${BASE}/utenti/${authUserId}/override-aree/`)
+  return api.get(`${BASE}/operatori/${authUserId}/override-aree/`)
 }
 
 export function putOverrideAree(authUserId, items) {
-  return api.put(`${BASE}/utenti/${authUserId}/override-aree/`, { items })
+  return api.put(`${BASE}/operatori/${authUserId}/override-aree/`, { items })
 }
 
 export function getOverrideAzioni(authUserId) {
-  return api.get(`${BASE}/utenti/${authUserId}/override-azioni/`)
+  return api.get(`${BASE}/operatori/${authUserId}/override-azioni/`)
 }
 
 export function putOverrideAzioni(authUserId, items) {
-  return api.put(`${BASE}/utenti/${authUserId}/override-azioni/`, { items })
+  return api.put(`${BASE}/operatori/${authUserId}/override-azioni/`, { items })
 }
 
 export function getEmittentiScope(authUserId) {
-  return api.get(`${BASE}/utenti/${authUserId}/emittenti-scope/`)
+  return api.get(`${BASE}/operatori/${authUserId}/emittenti-scope/`)
 }
 
 export function putEmittentiScope(authUserId, emittenteIds) {
-  return api.put(`${BASE}/utenti/${authUserId}/emittenti-scope/`, { emittente_ids: emittenteIds })
+  return api.put(`${BASE}/operatori/${authUserId}/emittenti-scope/`, { emittente_ids: emittenteIds })
+}
+
+// --- Riepilogo permessi ---
+
+export function getPermessiRiepilogo(params = {}) {
+  return api.get(`${BASE}/permessi-riepilogo/`, { params })
+}
+
+export function getAuditLog(params = {}) {
+  return api.get(`${BASE}/audit-log/`, { params })
 }
 
 // --- Reparti e profili ---
