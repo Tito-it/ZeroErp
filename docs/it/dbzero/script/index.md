@@ -37,6 +37,7 @@
 - [fn_get_stato_cliente_by_istanza](funzioni/fn_get_stato_cliente_by_istanza.md) — Fornire lo **stato cliente** associato a una specifica **istanza di servizio**, restituendo:
 - [fn_get_stradario](funzioni/fn_get_stradario.md) — * **Ricerca locale per comune**   Se viene specificato `p_comune_id`, esegue una query filtrata sul comune indicato, restituendo tutte le vie e toponomastiche che contengono la stringa `p_indirizzo` nel loro nome.
 - [fn_get_tipo_contatto_id](funzioni/fn_get_tipo_contatto_id.md) — Recuperare l’ID del tipo di contatto corrispondente a un **codice interno** (`cod_int_tipo_contatto`), garantendo al contempo il logging e la tracciabilità tramite un `tx_id` di sessione.
+- [fn_get_user_actions_map](funzioni/fn_get_user_actions_map.md)
 - [fn_get_user_permissions_map](funzioni/fn_get_user_permissions_map.md)
 - [fn_get_user_profile](funzioni/fn_get_user_profile.md) — * **Profilo utente completo in una chiamata**: evita al backend di orchestrare query multiple per comporre il profilo.
 - [fn_get_vie_discendenti](funzioni/fn_get_vie_discendenti.md)
