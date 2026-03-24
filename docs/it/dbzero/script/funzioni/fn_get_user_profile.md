@@ -56,8 +56,8 @@ BEGIN
     --   Dato un auth_user_id, restituisce un JSONB con il profilo
     --   completo dell'utente: dati auth_user, risorse umane
     --   (qualifica, UO), soggetto anagrafico con dati societari,
-    --   emittente fiscale associato (se presente), e mappa
-    --   permessi per area funzionale.
+    --   emittente fiscale associato (se presente), mappa
+    --   permessi per area funzionale, e mappa azioni abilitate.
     --
     -- Parametri:
     --   p_auth_user_id: ID dell'utente Django (auth_user.id)
@@ -65,7 +65,8 @@ BEGIN
     -- Restituisce:
     --   JSONB con chiavi: utente, ruolo_sistema, risorse_umane,
     --   soggetto, emittente (null se non associato),
-    --   permessi_area (mappa {schema_db: livello}).
+    --   permessi_area (mappa {schema_db: livello}),
+    --   azioni_abilitate (mappa {codename: boolean}).
     -- =========================================================
 
     -- Guard: parametro obbligatorio e valido
@@ -319,15 +320,17 @@ BEGIN
 
     -- -------------------------------------------------------
     -- 5. Comporre risultato finale
-    --    Aggiunta chiave permessi_area (mappa livelli per area)
+    --    Chiavi: permessi_area (mappa livelli per area)
+    --           azioni_abilitate (mappa codename: boolean)
     -- -------------------------------------------------------
     v_result := jsonb_build_object(
-        'utente',         v_utente,
-        'ruolo_sistema',  v_ruolo_sistema,
-        'risorse_umane',  v_risorse_umane,
-        'soggetto',       v_soggetto,
-        'emittente',      v_emittente,
-        'permessi_area',  script.fn_get_user_permissions_map(p_auth_user_id)
+        'utente',            v_utente,
+        'ruolo_sistema',     v_ruolo_sistema,
+        'risorse_umane',     v_risorse_umane,
+        'soggetto',          v_soggetto,
+        'emittente',         v_emittente,
+        'permessi_area',     script.fn_get_user_permissions_map(p_auth_user_id),
+        'azioni_abilitate',  script.fn_get_user_actions_map(p_auth_user_id)
     );
 
     RETURN v_result;
@@ -335,7 +338,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_get_user_profile(p_auth_user_id integer)
-IS 'Profilo utente completo: JSONB con blocchi utente, ruolo_sistema, risorse_umane (qualifica, UO), soggetto (dati anagrafici + societari), emittente fiscale (se associato), permessi_area (mappa {schema_db: livello_accesso}). Dipende da fn_get_soggetto_dati_by_ruolo e fn_get_user_permissions_map.';
+IS 'Profilo utente completo: JSONB con blocchi utente, ruolo_sistema, risorse_umane (qualifica, UO), soggetto (dati anagrafici + societari), emittente fiscale (se associato), permessi_area (mappa {schema_db: livello_accesso}), azioni_abilitate (mappa {codename: boolean}). Dipende da fn_get_soggetto_dati_by_ruolo, fn_get_user_permissions_map e fn_get_user_actions_map.';
 ```
 
 ---
