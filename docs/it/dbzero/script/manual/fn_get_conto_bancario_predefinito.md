@@ -14,13 +14,15 @@ Approfondimento vista/funzioni:
 [anagrafiche.vw_conti_bancari_per_ruolo](/dbzero/anagrafiche/funzioni/vw_conti_bancari_per_ruolo)   
 > [script.fn_get_messaggio](/dbzero/script/funzioni/fn_get_messaggio)   
 
-La funzione **`script.fn_get_conto_bancario_predefinito(soggetto_ruolo_id, uso)`** restituisce, per un determinato **ruolo di soggetto** e un dato **uso del conto** (`INCASSO`, `PAGAMENTO`, `RIMBORSO`, `GENERICO`), **al massimo un conto bancario selezionato**, applicando la logica di priorità e fallback già implementata nella vista **`anagrafiche.vw_conti_bancari_per_ruolo`**.
+La funzione **`script.fn_get_conto_bancario_predefinito(soggetto_ruolo_id, uso, utility_id)`** restituisce, per un determinato **ruolo di soggetto**, un dato **uso del conto** (`INCASSO`, `PAGAMENTO`, `RIMBORSO`, `GENERICO`) e opzionalmente una **utility**, **al massimo un conto bancario selezionato**, applicando una cascata a **7 livelli** sulla vista flat **`anagrafiche.vw_conti_bancari_per_ruolo`**.
 
-Se non esiste alcun conto compatibile per l’uso richiesto, la funzione tenta un **fallback automatico** su `uso = 'GENERICO'`. Se nemmeno in questo caso trova un candidato, restituisce `NULL` (nessun conto disponibile).
+La cascata combina due dimensioni: **utility** (specifica → generico → soggetto) e **uso** (richiesto → GENERICO). Se nessun conto è trovato, restituisce `NULL`.
 
 ---
 ### 🎯 Scopo Principale
-(latest review 01-12-25)
+
+(latest review 24-03-26)
+
 * **Incapsulare la logica di selezione del conto**
   Fornisce un punto di accesso unico per ottenere “il conto da usare ora” dato un `soggetto_ruolo_id` e un `uso`, senza dover ripetere join e ordinamenti sulle tabelle sorgenti.
 
@@ -36,8 +38,9 @@ Se non esiste alcun conto compatibile per l’uso richiesto, la funzione tenta u
 
 | Nome                | Tipo      | Obbligatorio | Descrizione                                                                              |
 | ------------------- | --------- | ------------ | ---------------------------------------------------------------------------------------- |
-| `soggetto_ruolo_id` | `BIGINT`  | Sì           | Identificativo del ruolo (`anagrafiche.soggetti_ruoli.id`) per cui selezionare il conto. |
-| `uso`               | `VARCHAR` | Sì           | Uso richiesto del conto: `INCASSO`, `PAGAMENTO`, `RIMBORSO` o `GENERICO`.                |
+| `p_soggetto_ruolo_id` | `BIGINT` | Sì | Identificativo del ruolo (`anagrafiche.soggetti_ruoli.id`) per cui selezionare il conto. |
+| `p_uso` | `VARCHAR` | Sì | Uso richiesto del conto: `INCASSO`, `PAGAMENTO`, `RIMBORSO` o `GENERICO`. |
+| `p_utility_id` | `INTEGER` | No | ID della utility (`config.utilities.id`). Se valorizzato, il livello ruolo+utility ha priorità. Se NULL, parte dal livello ruolo generico. |
 
 ---
 
@@ -66,53 +69,25 @@ Se non viene trovato alcun conto idoneo né per l’uso richiesto né per `GENER
 
 ### 易 Logica interna (alto livello)
 
-La funzione è implementata in PL/pgSQL con logica simile alla seguente:
+La funzione interroga la vista flat `vw_conti_bancari_per_ruolo` con filtri progressivi:
 
-1. **Ricerca diretta per l’uso richiesto**
+**FASE A — uso richiesto:**
 
-   ```plpgsql
-   SELECT *
-     INTO v_res
-     FROM anagrafiche.vw_conti_bancari_per_ruolo v
-    WHERE v.soggetto_ruolo_id = p_soggetto_ruolo_id
-      AND v.uso               = p_uso
-    LIMIT 1;
+1. Ruolo + utility specifica + uso richiesto (solo se `p_utility_id` valorizzato)
+2. Ruolo + utility NULL + uso richiesto
+3. Soggetto + uso richiesto
 
-   IF v_res.soggetto_ruolo_id IS NOT NULL THEN
-       RETURN v_res;
-   END IF;
-   ```
+**FASE B — fallback a uso GENERICO** (solo se uso diverso da GENERICO):
 
-   * Se esiste almeno un candidato per `(soggetto_ruolo_id, uso)`, viene restituito direttamente.
-   * Grazie alla vista, questa riga è già il **miglior candidato** (priorità RUOLO→SOGGETTO, predefinito, recenza).
+1. Ruolo + utility specifica + GENERICO (solo se `p_utility_id` valorizzato)
+2. Ruolo + utility NULL + GENERICO
+3. Soggetto + GENERICO
 
-2. **Fallback su uso `GENERICO`**
+**Nessun conto trovato** → `RETURN NULL`
 
-   ```plpgsql
-   IF p_uso IS DISTINCT FROM 'GENERICO' THEN
-       SELECT *
-         INTO v_res
-         FROM anagrafiche.vw_conti_bancari_per_ruolo v
-        WHERE v.soggetto_ruolo_id = p_soggetto_ruolo_id
-          AND v.uso               = 'GENERICO'
-        LIMIT 1;
+A ogni livello: `ORDER BY predefinito DESC, data_update DESC LIMIT 1`.
 
-       IF v_res.soggetto_ruolo_id IS NOT NULL THEN
-           RETURN v_res;
-       END IF;
-   END IF;
-   ```
-
-   * Viene eseguito solo se l’uso richiesto **non è già `GENERICO`**.
-   * Se esiste un conto `GENERICO` per il ruolo indicato, viene restituito come soluzione di ripiego.
-
-3. **Nessun conto trovato**
-
-   ```plpgsql
-   RETURN NULL;
-   ```
-
-   * Viene notificata l’assenza di un conto idoneo lasciando al chiamante la gestione dell’errore di dominio (es. bloccare l’operazione o chiedere all’utente di configurare un conto).
+Il chiamante riceve il **miglior conto disponibile** secondo le regole di validita, blocco, priorita utility e predefinito. In caso di assenza, e responsabilita del chiamante gestire l’errore di dominio.
 
 ---
 

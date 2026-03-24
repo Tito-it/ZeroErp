@@ -192,7 +192,9 @@ SELECT ok(
     'vw_conti_bancari_per_ruolo restituisce una riga per il ruolo del Gestore e uso=INCASSO'
 );
 
--- Test 5: la vista deve scegliere il conto SOGGETTO come fonte e puntare al conto creato
+-- Test 5: la prima riga (per priorita) deve essere il conto SOGGETTO creato
+-- Nota: la vista e flat (senza DISTINCT ON), ordina per priorita.
+-- La selezione singola e delegata a fn_get_conto_bancario_predefinito.
 SELECT is(
     (
         SELECT row(v.fonte, v.conto_bancario_id, v.predefinito)::text
@@ -201,7 +203,14 @@ SELECT is(
           ON v.soggetto_ruolo_id = g.soggetto_ruolo_id
         JOIN tmp_costanti_vw_conto_gestore k
           ON v.uso = k.uso_test
-        -- DISTINCT ON in vista garantisce una sola riga per (soggetto_ruolo_id, uso)
+        ORDER BY
+            CASE
+                WHEN v.fonte = 'RUOLO' AND v.utility_id IS NOT NULL THEN 1
+                WHEN v.fonte = 'RUOLO' AND v.utility_id IS NULL     THEN 2
+                WHEN v.fonte = 'SOGGETTO'                           THEN 3
+            END,
+            v.predefinito DESC, v.data_update DESC
+        LIMIT 1
     ),
     (
         SELECT row('SOGGETTO'::varchar,
@@ -209,7 +218,7 @@ SELECT is(
                    TRUE)::text
         FROM tmp_conto_vw_gestore c
     ),
-    'vw_conti_bancari_per_ruolo seleziona il conto corretto come fonte=SOGGETTO, predefinito=true'
+    'vw_conti_bancari_per_ruolo: prima riga per priorita e fonte=SOGGETTO, predefinito=true'
 );
 
 SET CONSTRAINTS ALL IMMEDIATE;

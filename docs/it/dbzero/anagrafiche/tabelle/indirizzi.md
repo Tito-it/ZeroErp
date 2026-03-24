@@ -23,6 +23,7 @@
 | codice_postale_id | integer | YES |  |
 | storicizza | boolean | NO | false |
 | tx_id | uuid | YES |  |
+| utility_id | integer | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -32,11 +33,11 @@
 | FOREIGN KEY | fk_codici_postali_config | codice_postale_id |
 | FOREIGN KEY | fk_comuni_config | comune_id |
 | FOREIGN KEY | fk_indirizzi_dettaglio_anagrafiche | indirizzo_dettaglio_id |
+| FOREIGN KEY | fk_indirizzi_utilities | utility_id |
 | FOREIGN KEY | fk_soggetti_ruoli_anagrafiche | soggetto_ruolo_id |
 | FOREIGN KEY | fk_stati_config | stato_id |
 | FOREIGN KEY | fk_tipi_indirizzo_config | tipo_indirizzo_id |
 | PRIMARY KEY | pk_indirizzi | id |
-| UNIQUE | uq_indirizzi_ruolo_tipo | soggetto_ruolo_id, tipo_indirizzo_id |
 
 ## 📑 Indici
 | Nome | Definizione |
@@ -47,9 +48,11 @@
 | ix_anagrafiche_indirizzi_soggetto_ruolo_id | `CREATE INDEX ix_anagrafiche_indirizzi_soggetto_ruolo_id ON anagrafiche.indirizzi USING btree (soggetto_ruolo_id)` |
 | ix_anagrafiche_indirizzi_stato_id | `CREATE INDEX ix_anagrafiche_indirizzi_stato_id ON anagrafiche.indirizzi USING btree (stato_id)` |
 | ix_anagrafiche_indirizzi_tipo_indirizzo_id | `CREATE INDEX ix_anagrafiche_indirizzi_tipo_indirizzo_id ON anagrafiche.indirizzi USING btree (tipo_indirizzo_id)` |
+| ix_anagrafiche_indirizzi_utility_id | `CREATE INDEX ix_anagrafiche_indirizzi_utility_id ON anagrafiche.indirizzi USING btree (utility_id)` |
 | ix_indirizzi_geoloc_gist | `CREATE INDEX ix_indirizzi_geoloc_gist ON anagrafiche.indirizzi USING gist (geoloc)` |
 | pk_indirizzi | `CREATE UNIQUE INDEX pk_indirizzi ON anagrafiche.indirizzi USING btree (id)` |
-| uq_indirizzi_ruolo_tipo | `CREATE UNIQUE INDEX uq_indirizzi_ruolo_tipo ON anagrafiche.indirizzi USING btree (soggetto_ruolo_id, tipo_indirizzo_id)` |
+| uq_indirizzi_ruolo_tipo_no_utility | `CREATE UNIQUE INDEX uq_indirizzi_ruolo_tipo_no_utility ON anagrafiche.indirizzi USING btree (soggetto_ruolo_id, tipo_indirizzo_id) WHERE (utility_id IS NULL)` |
+| uq_indirizzi_ruolo_utility_tipo | `CREATE UNIQUE INDEX uq_indirizzi_ruolo_utility_tipo ON anagrafiche.indirizzi USING btree (soggetto_ruolo_id, utility_id, tipo_indirizzo_id) WHERE (utility_id IS NOT NULL)` |
 
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
