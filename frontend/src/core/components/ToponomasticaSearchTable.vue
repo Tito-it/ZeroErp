@@ -10,12 +10,13 @@ import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import InputText from 'primevue/inputtext'
 import NewButton from './NewButton.vue'
+import Button from 'primevue/button'
 import Tag from 'primevue/tag'
 
 const emit = defineEmits(['row-click', 'new'])
 const { t } = useI18n()
 const store = useToponomasticaStore()
-const { searchText, onPage, onSort, paginatorProps } = useSearchTable(store, { defaultSortField: 'descrizione' })
+const { searchText, onPage, onSort, reload, paginatorProps } = useSearchTable(store, { defaultSortField: 'descrizione' })
 
 useTabFreshness(store, 'toponomastica')
 onMounted(() => { store.fetchList() })
@@ -34,7 +35,10 @@ function onRowClick(event) {
           :placeholder="t('indirizzi.search_toponomastica')"
         />
       </div>
-      <NewButton :tooltip="t('indirizzi.nuova_toponomastica')" @click="emit('new')" />
+      <div class="app-page-actions">
+        <Button icon="pi pi-refresh" text class="app-reload-btn" v-tooltip.bottom="t('common.reload_list')" @click="reload" />
+        <NewButton :tooltip="t('indirizzi.nuova_toponomastica')" @click="emit('new')" />
+      </div>
     </div>
 
     <DataTable

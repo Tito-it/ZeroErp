@@ -6,6 +6,7 @@ import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Tag from 'primevue/tag'
 import { useSearchDetail } from '../../composables/useSearchDetail'
+import { STATO_CLIENTE_MAP } from '../../utils/severity'
 import DetailActions from './DetailActions.vue'
 
 const { t } = useI18n()
@@ -18,21 +19,6 @@ const props = defineProps({
 const emit = defineEmits(['set-context', 'open-detail'])
 
 const { detailRows, loading } = useSearchDetail(props)
-
-// Mappa stati cliente -> severity Tag PrimeVue
-const STATO_SEVERITY = {
-  AT: 'success',
-  PR: 'info',
-  RS: 'warn',
-  SF: 'warn',
-  SC: 'danger',
-  CH: 'secondary',
-  CF: 'secondary',
-  CM: 'danger',
-  CW: 'secondary',
-  AN: 'danger',
-  AG: 'danger'
-}
 </script>
 
 <template>
@@ -56,7 +42,7 @@ const STATO_SEVERITY = {
           <Tag
             v-if="data.stato_codice"
             :value="data.stato_descrizione"
-            :severity="STATO_SEVERITY[data.stato_codice] || 'secondary'"
+            :severity="STATO_CLIENTE_MAP[(data.stato_codice || '').trim()] || 'secondary'"
           />
           <span v-else>-</span>
         </template>

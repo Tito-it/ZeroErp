@@ -10,7 +10,9 @@ import { useApiHandler } from '../composables/useApiHandler'
 import { useContattoForm } from '../composables/useContattoForm'
 import {
   listSoggettoContatti, createSoggettoContatto,
-  updateSoggettoContatto, deleteSoggettoContatto
+  updateSoggettoContatto, deleteSoggettoContatto,
+  listRuoloContatti, createRuoloContatto,
+  updateRuoloContatto, deleteRuoloContatto
 } from '../../anagrafiche/api/anagrafiche'
 import { DRAWER_WIDTH } from '../constants'
 import ContattoForm from './ContattoForm.vue'
@@ -25,14 +27,29 @@ const isReadonly = useInjectReadonly()
 const { execute, loading } = useApiHandler()
 const contatto = useContattoForm()
 
+// Context 'soggetto' (default) o 'ruolo': determina quale set di API usare.
+// Per 'soggetto': soggettoId = soggetto UUID. Per 'ruolo': soggettoId = soggetto_ruolo_id (int).
+// utilityId: opzionale, usato in context 'ruolo' per cascata a 3 livelli.
 const props = defineProps({
   visible: { type: Boolean, default: false },
-  soggettoId: { type: String, default: null },
+  soggettoId: { type: [String, Number], default: null },
+  context: { type: String, default: 'soggetto' },
+  utilityId: { type: Number, default: null }
 })
+
+// Scopo: Risolve le funzioni API in base al context (soggetto o ruolo).
+function apiFor(action) {
+  if (props.context === 'ruolo') {
+    return { list: listRuoloContatti, create: createRuoloContatto,
+             update: updateRuoloContatto, remove: deleteRuoloContatto }[action]
+  }
+  return { list: listSoggettoContatti, create: createSoggettoContatto,
+           update: updateSoggettoContatto, remove: deleteSoggettoContatto }[action]
+}
 
 const emit = defineEmits(['update:visible', 'saved'])
 
-// Lista contatti esistenti
+// Lista contatti: in context ruolo contiene sia ruolo (editabili) che soggetto (readonly)
 const contattiList = ref([])
 const listLoading = ref(false)
 
@@ -41,13 +58,25 @@ const formMode = ref(null)
 const editId = ref(null)
 const formErrors = ref([])
 
+// Scopo: Carica contatti. In context 'ruolo' l'API ritorna contatti_ruolo + contatti_soggetto
+//        con campo 'fonte'. In context 'soggetto' ritorna lista piatta.
 async function loadContatti() {
   if (!props.soggettoId) return
   listLoading.value = true
   try {
-    const res = await listSoggettoContatti(props.soggettoId)
+    const listParams = props.context === 'ruolo' && props.utilityId
+      ? { utility_id: props.utilityId } : {}
+    const res = await apiFor('list')(props.soggettoId, listParams)
     const payload = res.data?.data
-    contattiList.value = payload?.results || payload || []
+    if (props.context === 'ruolo' && payload?.contatti_ruolo) {
+      // Unisce: prima ruolo (editabili), poi soggetto (readonly)
+      contattiList.value = [
+        ...payload.contatti_ruolo.map(c => ({ ...c, fonte: 'ruolo' })),
+        ...payload.contatti_soggetto.map(c => ({ ...c, fonte: 'soggetto' })),
+      ]
+    } else {
+      contattiList.value = payload?.results || payload || []
+    }
   } catch {
     contattiList.value = []
   } finally {
@@ -97,13 +126,16 @@ async function onSaveForm() {
 
   if (formMode.value === 'edit' && editId.value) {
     const result = await execute(
-      () => updateSoggettoContatto(props.soggettoId, editId.value, { ...contatto.form }),
+      () => apiFor('update')(props.soggettoId, editId.value, { ...contatto.form }),
       { successMessage: t('contatto.contatto_salvato') }
     )
     if (result === null) return
   } else {
     const result = await execute(
-      () => createSoggettoContatto(props.soggettoId, { ...contatto.form }),
+      () => apiFor('create')(props.soggettoId, {
+        ...contatto.form,
+        ...(props.context === 'ruolo' && props.utilityId ? { utility_id: props.utilityId } : {})
+      }),
       { successMessage: t('contatto.contatto_creato') }
     )
     if (result === null) return
@@ -119,7 +151,7 @@ async function onSaveForm() {
 
 async function onDelete(c) {
   const result = await execute(
-    () => deleteSoggettoContatto(props.soggettoId, c.id),
+    () => apiFor('remove')(props.soggettoId, c.id),
     { successMessage: t('contatto.contatto_eliminato') }
   )
   if (result !== null) {
@@ -154,10 +186,15 @@ async function onDelete(c) {
         </div>
 
         <div v-else-if="contattiList.length > 0" class="contatti-list">
-          <div v-for="c in contattiList" :key="c.id" class="contatto-card">
+          <div v-for="c in contattiList" :key="c.id"
+            class="contatto-card" :class="{ 'contatto-card-inherited': c.fonte === 'soggetto' }">
             <div class="contatto-card-content">
               <div class="contatto-card-nome">
-                <Tag v-if="c.tipo_contatto_descrizione" :value="c.tipo_contatto_descrizione" severity="info" />
+                <Tag v-if="c.fonte" :value="c.fonte === 'soggetto' ? t('common.soggetto') : t('common.ruolo')"
+                  :severity="c.fonte === 'soggetto' ? 'secondary' : 'info'" />
+                <Tag v-if="c.tipo_contatto_descrizione"
+                  :value="c.tipo_contatto_descrizione + (c.utility_codice ? ' · ' + c.utility_codice : '')"
+                  severity="info" />
                 <strong>{{ c.nominativo }}</strong>
               </div>
               <div class="contatto-card-detail">
@@ -167,7 +204,7 @@ async function onDelete(c) {
                 <span v-if="c.pec"><i class="pi pi-at" /> {{ c.pec }}</span>
               </div>
             </div>
-            <div v-if="!formMode" class="contatto-card-actions">
+            <div v-if="!formMode && c.fonte !== 'soggetto'" class="contatto-card-actions">
               <Button icon="pi pi-pencil" text rounded size="small"
                 class="app-action-btn" :title="t('common.edit')" @click="onStartEdit(c)" />
               <Button icon="pi pi-trash" severity="danger" text rounded size="small"
@@ -229,6 +266,11 @@ async function onDelete(c) {
   border: 1px solid var(--p-surface-200);
   border-radius: var(--p-border-radius-sm, 4px);
   padding: 0.5rem 0.75rem;
+}
+
+.contatto-card-inherited {
+  background: var(--p-surface-50);
+  opacity: 0.8;
 }
 
 .contatto-card-content {

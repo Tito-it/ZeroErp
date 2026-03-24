@@ -64,6 +64,22 @@ a {
   min-width: 0;
 }
 
+/* Gruppo azioni toolbar (refresh + new) */
+.app-page-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+/* Pulsante ricarica lista — icona verde coerente con app-action-btn */
+.app-reload-btn.p-button {
+  color: var(--p-primary-color);
+}
+.app-reload-btn.p-button:hover:not(:disabled) {
+  color: var(--p-primary-700);
+  background: var(--p-primary-50);
+}
+
 /* ===== Drawer header globale =====
  * Titolo centrato con colore primario — vale per TUTTI i drawer. */
 .p-drawer-title {
@@ -115,9 +131,31 @@ a {
   background: var(--app-table-stripe-bg);
 }
 
-/* Fix: ultima riga parzialmente nascosta dal bordo inferiore */
+/* Fix: ultima riga nascosta/tagliata dal bordo inferiore della scrollbar.
+ * Con scrollHeight="flex" e paginatorPosition="top", il calcolo altezza
+ * del body PrimeVue puo' risultare qualche pixel troppo corto.
+ * Il padding extra sull'ultima riga garantisce visibilita' completa. */
 .app-datatable .p-datatable-tbody > tr:last-child > td {
-  padding-bottom: calc(var(--app-table-cell-padding) + 2px);
+  padding-bottom: calc(var(--app-table-cell-padding) + 4px);
+}
+
+/* Spazio aggiuntivo in fondo al body scrollabile per evitare che
+ * l'ultima riga venga mangiata dal calcolo flex del DataTable. */
+.app-datatable .p-datatable-tbody::after {
+  content: '';
+  display: table-row;
+  height: 3.5rem;
+}
+
+/* Fix globale: quando app-tab-content e' figlio diretto di app-page (senza TabView),
+ * la catena flex deve propagarsi identicamente a quando e' dentro un TabPanel.
+ * Questo copre sia le view con TabView (IndirizziView) sia quelle dirette (ClientiView). */
+.app-page > .app-tab-content {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
 }
 
 /* ===== Paginator compatto =====
@@ -213,8 +251,17 @@ a {
   font-size: 0.75rem;
 }
 
+/* Variante 3 colonne per campi corti (CIG, CUP, commessa).
+ * Collassa a 1 colonna su schermi stretti (< 480px). */
+.form-grid-3col {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 0.75rem;
+}
+
 @media (max-width: 479px) {
-  .form-grid-2col {
+  .form-grid-2col,
+  .form-grid-3col {
     grid-template-columns: 1fr;
   }
 }

@@ -264,6 +264,25 @@ erDiagram
 
 ---
 
+## Istanze fittizie nella creazione manuale del cliente
+
+Per le utility con `config.utilities.richiede_pdp = false` (manifatturiero, servizi generici, ecc.), la creazione del cliente avviene **manualmente** dall'interfaccia, senza passare dal motore pratiche.
+
+In questo caso l'istanza viene generata automaticamente come **contenitore tecnico trasparente**:
+
+* `fittizia = TRUE` — l'istanza non rappresenta un punto di erogazione fisico
+* `indirizzo_dettaglio_id` — facoltativo, a discrezione dell'operatore. Se fornito, viene salvato come dato informativo
+* `pdp_id = NULL` — nessun punto di prelievo associato
+* `utility_id` — la utility scelta dall'operatore (solo quelle con `richiede_pdp = false`)
+
+L'operatore non interagisce direttamente con l'istanza: il `ClienteService` la crea dietro le quinte come parte della transazione atomica di creazione cliente (istanza + billing account + cliente).
+
+Per le utility con `richiede_pdp = true` (GAS, Energia, Idrico), la creazione del cliente passa obbligatoriamente dal motore pratiche e l'istanza e sempre reale, con indirizzo e PDP obbligatori.
+
+Per i dettagli completi: [Guida Generazione Cliente — Creazione manuale vs creazione da pratica](/guide/generazione-cliente#creazione-manuale-vs-creazione-da-pratica).
+
+---
+
 Le funzionalita descritte in questa guida sono basate sul modello strutturale introdotto nel 2025, che definisce formalmente l'identita dell'istanza, il vincolo 1 istanza = 1 cliente, e la gestione della catena di subentri tramite `parent_istanza_id`.
 
 Per i dettagli completi e i vincoli formali: [anagrafiche.istanze_utilities](/dbzero/anagrafiche/tabelle/istanze_utilities)

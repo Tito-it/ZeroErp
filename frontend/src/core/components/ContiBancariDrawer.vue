@@ -12,7 +12,9 @@ import { useContoBancarioForm } from '../composables/useContoBancarioForm'
 import { useConfirmAction } from '../composables/useConfirmAction'
 import {
   listSoggettoContiBancari, createSoggettoContoBancario,
-  updateSoggettoContoBancario, deleteSoggettoContoBancario
+  updateSoggettoContoBancario, deleteSoggettoContoBancario,
+  listRuoloContiBancari, createRuoloContoBancario,
+  updateRuoloContoBancario, deleteRuoloContoBancario
 } from '../../anagrafiche/api/anagrafiche'
 import { DRAWER_WIDTH } from '../constants'
 import ContoBancarioForm from './ContoBancarioForm.vue'
@@ -28,13 +30,24 @@ const { execute, loading } = useApiHandler()
 const conto = useContoBancarioForm()
 const { confirmDelete } = useConfirmAction()
 
-// Nota: quando si implementera' il context 'ruolo', aggiungere prop context
-// e branching API (listRuoloContiBancari, createRuoloContoBancario, ecc.)
+// Context 'soggetto' (default) o 'ruolo': determina quale set di API usare.
+// Per 'soggetto': ownerId = soggetto UUID. Per 'ruolo': ownerId = soggetto_ruolo_id (int).
 const props = defineProps({
   visible: { type: Boolean, default: false },
-  ownerId: { type: String, default: null },
-  ownerName: { type: String, default: '' }
+  ownerId: { type: [String, Number], default: null },
+  ownerName: { type: String, default: '' },
+  context: { type: String, default: 'soggetto' }
 })
+
+// Scopo: Risolve le funzioni API in base al context (soggetto o ruolo).
+function apiFor(action) {
+  if (props.context === 'ruolo') {
+    return { list: listRuoloContiBancari, create: createRuoloContoBancario,
+             update: updateRuoloContoBancario, remove: deleteRuoloContoBancario }[action]
+  }
+  return { list: listSoggettoContiBancari, create: createSoggettoContoBancario,
+           update: updateSoggettoContoBancario, remove: deleteSoggettoContoBancario }[action]
+}
 
 const emit = defineEmits(['update:visible', 'saved'])
 
@@ -48,13 +61,21 @@ const editId = ref(null)
 const formErrors = ref([])
 
 // Scopo: Carica lista conti bancari dal backend.
+//        In context 'ruolo' l'API ritorna conti_ruolo + conti_ereditati.
 async function loadConti() {
   if (!props.ownerId) return
   listLoading.value = true
   try {
-    const res = await listSoggettoContiBancari(props.ownerId)
+    const res = await apiFor('list')(props.ownerId)
     const payload = res.data?.data
-    contiList.value = payload?.results || payload || []
+    if (props.context === 'ruolo' && payload?.conti_ruolo) {
+      contiList.value = [
+        ...payload.conti_ruolo.map(c => ({ ...c, fonte: 'ruolo' })),
+        ...(payload.conti_ereditati || []).map(c => ({ ...c, fonte: 'soggetto' })),
+      ]
+    } else {
+      contiList.value = payload?.results || payload || []
+    }
   } catch {
     contiList.value = []
   } finally {
@@ -101,13 +122,13 @@ async function onSaveForm() {
 
   if (formMode.value === 'edit' && editId.value) {
     const result = await execute(
-      () => updateSoggettoContoBancario(props.ownerId, editId.value, conto.toUpdatePayload()),
+      () => apiFor('update')(props.ownerId, editId.value, conto.toUpdatePayload()),
       { successMessage: t('conti_bancari.conto_salvato') }
     )
     if (result === null) return
   } else {
     const result = await execute(
-      () => createSoggettoContoBancario(props.ownerId, conto.toCreatePayload()),
+      () => apiFor('create')(props.ownerId, conto.toCreatePayload()),
       { successMessage: t('conti_bancari.conto_creato') }
     )
     if (result === null) return
@@ -127,7 +148,7 @@ async function onDelete(c) {
     message: t('conti_bancari.conferma_elimina', { iban: ibanShort, uso: c.uso }),
     accept: async () => {
       const result = await execute(
-        () => deleteSoggettoContoBancario(props.ownerId, c.id),
+        () => apiFor('remove')(props.ownerId, c.id),
         { successMessage: t('conti_bancari.conto_eliminato') }
       )
       if (result !== null) {
@@ -176,9 +197,12 @@ function usoSeverity(uso) {
         </div>
 
         <div v-else-if="contiList.length > 0" class="conti-list">
-          <div v-for="c in contiList" :key="c.id" class="conto-card">
+          <div v-for="c in contiList" :key="c.id"
+            class="conto-card" :class="{ 'conto-card-inherited': c.fonte === 'soggetto' }">
             <div class="conto-card-content">
               <div class="conto-card-header">
+                <Tag v-if="c.fonte" :value="c.fonte === 'soggetto' ? t('common.soggetto') : t('common.ruolo')"
+                  :severity="c.fonte === 'soggetto' ? 'secondary' : 'info'" />
                 <Tag :value="c.uso" :severity="usoSeverity(c.uso)" />
                 <i v-if="c.predefinito" class="pi pi-star-fill conto-star" :title="t('conti_bancari.predefinito')" />
                 <Tag v-if="c.bloccato" :value="t('conti_bancari.bloccato')" severity="danger" />
@@ -189,7 +213,7 @@ function usoSeverity(uso) {
                 <span v-if="c.filiale_nome"><i class="pi pi-building" /> {{ c.filiale_nome }}</span>
               </div>
             </div>
-            <div v-if="!formMode" class="conto-card-actions">
+            <div v-if="!formMode && c.fonte !== 'soggetto'" class="conto-card-actions">
               <Button icon="pi pi-pencil" text rounded size="small"
                 class="app-action-btn" :title="t('common.edit')" @click="onStartEdit(c)" />
               <Button icon="pi pi-trash" severity="danger" text rounded size="small"
@@ -251,6 +275,11 @@ function usoSeverity(uso) {
   border: 1px solid var(--p-surface-200);
   border-radius: var(--p-border-radius-sm, 4px);
   padding: 0.5rem 0.75rem;
+}
+
+.conto-card-inherited {
+  background: var(--p-surface-50);
+  opacity: 0.8;
 }
 
 .conto-card-content {

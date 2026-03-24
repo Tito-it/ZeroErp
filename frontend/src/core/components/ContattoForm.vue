@@ -19,8 +19,15 @@ const pecInvalid = ref(false)
 function onEmailBlur() {
   emailInvalid.value = !!props.form.email?.trim() && !isEmailValid(props.form.email)
 }
+function onEmailInput() {
+  // Reset errore durante la digitazione — rivalidera' su blur
+  if (emailInvalid.value) emailInvalid.value = false
+}
 function onPecBlur() {
   pecInvalid.value = !!props.form.pec?.trim() && !isEmailValid(props.form.pec)
+}
+function onPecInput() {
+  if (pecInvalid.value) pecInvalid.value = false
 }
 
 const props = defineProps({
@@ -47,7 +54,7 @@ const props = defineProps({
         <label>{{ t('common.email') }}{{ requireEmail ? ' *' : '' }}</label>
         <InputText v-model="form.email" :disabled="disabled" class="w-full"
           :invalid="emailInvalid || errors.includes('email') || errors.includes('email_format')"
-          @blur="onEmailBlur" />
+          @blur="onEmailBlur" @input="onEmailInput" />
         <small v-if="emailInvalid || errors.includes('email_format')" class="app-field-error">
           {{ t('validation.email_format') }}
         </small>
@@ -56,7 +63,7 @@ const props = defineProps({
         <label>{{ t('common.pec') }}</label>
         <InputText v-model="form.pec" :disabled="disabled" class="w-full"
           :invalid="pecInvalid || errors.includes('pec_format')"
-          @blur="onPecBlur" />
+          @blur="onPecBlur" @input="onPecInput" />
         <small v-if="pecInvalid || errors.includes('pec_format')" class="app-field-error">
           {{ t('validation.email_format') }}
         </small>
@@ -75,7 +82,7 @@ const props = defineProps({
     </div>
 
     <div class="form-field">
-      <label>{{ t('contatto.tipo_contatto') }}</label>
+      <label>{{ t('contatto.tipo_contatto') }} *</label>
       <Select
         v-model="form.tipo_contatto_id"
         :options="tipiContatto.items.value"
@@ -84,7 +91,6 @@ const props = defineProps({
         option-value="id"
         :placeholder="t('contatto.select_tipo_contatto')"
         :disabled="disabled || tipoDisabled"
-        show-clear
         class="w-full"
       />
     </div>
