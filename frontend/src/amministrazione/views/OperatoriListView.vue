@@ -18,13 +18,14 @@ import Column from 'primevue/column'
 import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
 import NewButton from '../../core/components/NewButton.vue'
+import Button from 'primevue/button'
 import Badge from 'primevue/badge'
 import { displayDate } from '../../core/utils/date'
 
 const { t } = useI18n()
 const store = useOperatoriStore()
 const unitaOrg = useLookup(listUnitaOrganizzative, { immediate: true })
-const { searchText, onPage, onSort, applyFilters, paginatorProps } = useSearchTable(store)
+const { searchText, onPage, onSort, applyFilters, reload, paginatorProps } = useSearchTable(store)
 const drawer = useDrawerState()
 useReadonlyMode('amm_software')
 
@@ -53,6 +54,7 @@ function applyExtraFilters() {
 }
 
 function onDrawerSaved() {
+  drawer.close()
   store.fetchList()
 }
 
@@ -96,7 +98,10 @@ function activeBadgeSeverity(active) {
           @change="applyExtraFilters"
         />
       </div>
-      <NewButton :tooltip="t('amm.nuovo_operatore')" @click="drawer.openCreate" />
+      <div class="app-page-actions">
+        <Button icon="pi pi-refresh" text class="app-reload-btn" v-tooltip.bottom="t('common.reload_list')" @click="reload" />
+        <NewButton :tooltip="t('amm.nuovo_operatore')" @click="drawer.openCreate" />
+      </div>
     </div>
 
     <DataTable

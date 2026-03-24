@@ -220,6 +220,60 @@ export function lookupBankBranches(search) {
   return api.get(`${BASE}/bank-branches/lookup/`, { params: { search } })
 }
 
+// --- Clienti ---
+
+export function listClienti(params = {}) {
+  return api.get(`${BASE}/clienti/`, { params })
+}
+
+export function getCliente(id) {
+  return api.get(`${BASE}/clienti/${id}/`)
+}
+
+export function createCliente(payload) {
+  return api.post(`${BASE}/clienti/`, payload)
+}
+
+export function listUtilitiesManual() {
+  return api.get(`${BASE}/utilities/manual-lookup/`)
+}
+
+// --- Contatti ruolo ---
+
+export function listRuoloContatti(ruoloId, params = {}) {
+  return api.get(`${BASE}/ruoli/${ruoloId}/contatti/`, { params })
+}
+
+export function createRuoloContatto(ruoloId, payload) {
+  return api.post(`${BASE}/ruoli/${ruoloId}/contatti/`, payload)
+}
+
+export function updateRuoloContatto(ruoloId, contattoId, payload) {
+  return api.patch(`${BASE}/ruoli/${ruoloId}/contatti/${contattoId}/`, payload)
+}
+
+export function deleteRuoloContatto(ruoloId, contattoId) {
+  return api.delete(`${BASE}/ruoli/${ruoloId}/contatti/${contattoId}/`)
+}
+
+// --- Conti bancari ruolo ---
+
+export function listRuoloContiBancari(ruoloId) {
+  return api.get(`${BASE}/ruoli/${ruoloId}/conti-bancari/`)
+}
+
+export function createRuoloContoBancario(ruoloId, payload) {
+  return api.post(`${BASE}/ruoli/${ruoloId}/conti-bancari/`, payload)
+}
+
+export function updateRuoloContoBancario(ruoloId, cbId, payload) {
+  return api.patch(`${BASE}/ruoli/${ruoloId}/conti-bancari/${cbId}/`, payload)
+}
+
+export function deleteRuoloContoBancario(ruoloId, cbId) {
+  return api.delete(`${BASE}/ruoli/${ruoloId}/conti-bancari/${cbId}/`)
+}
+
 // --- Ruoli config resolver ---
 
 export function getConfigResolver(tipoRuoloCodice) {

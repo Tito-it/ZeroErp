@@ -121,11 +121,16 @@ class ContiBancariService:
     # Conti bancari ruolo
     # =================================================================
 
-    # Scopo: Lista conti bancari associati a un ruolo, inclusi i conti
-    #        ereditati dal soggetto (con flag fonte per la UI).
+    # Scopo: Lista conti bancari associati a un ruolo, con fallback per uso.
+    #        Se il ruolo ha un conto con un certo uso, quello del soggetto con
+    #        lo stesso uso non viene mostrato. Fallback solo per usi non coperti.
     def list_conti_ruolo(self, soggetto_ruolo_id: int) -> dict[str, Any]:
         conti_ruolo = self._repo.list_conti_ruolo(soggetto_ruolo_id)
         conti_ereditati = self._repo.list_conti_ereditati_ruolo(soggetto_ruolo_id)
+        # Filtra: escludi ereditati il cui 'uso' e' gia' coperto dal ruolo
+        usi_ruolo = {c.get("uso") for c in conti_ruolo if c.get("uso")}
+        if usi_ruolo:
+            conti_ereditati = [c for c in conti_ereditati if c.get("uso") not in usi_ruolo]
         return {
             "conti_ruolo": conti_ruolo,
             "conti_ereditati": conti_ereditati,

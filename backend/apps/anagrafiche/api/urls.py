@@ -1,5 +1,7 @@
 from django.urls import path
 
+from apps.anagrafiche.api.views_clienti import ClientiDetailView, ClientiView, UtilitiesManualLookupView
+from apps.anagrafiche.api.views_contatti_ruolo import RuoloContattiDetailView, RuoloContattiView
 from apps.anagrafiche.api.views_codici_postali import CodiciPostaliDetailView, CodiciPostaliView
 from apps.anagrafiche.api.views_comuni import ComuniView
 from apps.anagrafiche.api.views_indirizzi import IndirizziCheckDuplicatoView, IndirizziDetailView, IndirizziView
@@ -29,6 +31,14 @@ from apps.anagrafiche.api.views_ruoli_config import RuoliConfigResolverView
 from apps.anagrafiche.api.views_toponomastica import ToponomasticaDetailView, ToponomasticaView
 
 urlpatterns = [
+    # Clienti
+    path("clienti/", ClientiView.as_view(), name="anagrafiche-clienti-list"),
+    path("clienti/<int:cliente_id>/", ClientiDetailView.as_view(), name="anagrafiche-clienti-detail"),
+    # Utility ammesse per creazione manuale
+    path("utilities/manual-lookup/", UtilitiesManualLookupView.as_view(), name="anagrafiche-utilities-manual-lookup"),
+    # Contatti ruolo
+    path("ruoli/<int:soggetto_ruolo_id>/contatti/", RuoloContattiView.as_view(), name="anagrafiche-ruoli-contatti"),
+    path("ruoli/<int:soggetto_ruolo_id>/contatti/<int:contatto_id>/", RuoloContattiDetailView.as_view(), name="anagrafiche-ruoli-contatti-detail"),
     # Ruoli — config resolver (prima delle rotte parametriche)
     path("ruoli/<str:tipo_ruolo_codice>/config-resolver/", RuoliConfigResolverView.as_view(), name="anagrafiche-ruoli-config-resolver"),
     # Conti bancari ruolo

@@ -10,11 +10,12 @@ import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import InputText from 'primevue/inputtext'
 import NewButton from './NewButton.vue'
+import Button from 'primevue/button'
 
 const emit = defineEmits(['new'])
 const { t } = useI18n()
 const store = useComuniStore()
-const { searchText, onPage, onSort, paginatorProps } = useSearchTable(store, { defaultSortField: 'descrizione' })
+const { searchText, onPage, onSort, reload, paginatorProps } = useSearchTable(store, { defaultSortField: 'descrizione' })
 
 useTabFreshness(store, 'comune')
 onMounted(() => { store.fetchList() })
@@ -29,7 +30,10 @@ onMounted(() => { store.fetchList() })
           :placeholder="t('indirizzi.search_comune')"
         />
       </div>
-      <NewButton :tooltip="t('indirizzi.nuovo_comune')" @click="emit('new')" />
+      <div class="app-page-actions">
+        <Button icon="pi pi-refresh" text class="app-reload-btn" v-tooltip.bottom="t('common.reload_list')" @click="reload" />
+        <NewButton :tooltip="t('indirizzi.nuovo_comune')" @click="emit('new')" />
+      </div>
     </div>
 
     <DataTable

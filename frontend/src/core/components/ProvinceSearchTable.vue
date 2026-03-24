@@ -9,11 +9,12 @@ import NewButton from './NewButton.vue'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import InputText from 'primevue/inputtext'
+import Button from 'primevue/button'
 
 const emit = defineEmits(['row-click', 'new'])
 const { t } = useI18n()
 const store = useProvinceStore()
-const { searchText, onPage, onSort, paginatorProps } = useSearchTable(store, { defaultSortField: 'descrizione' })
+const { searchText, onPage, onSort, reload, paginatorProps } = useSearchTable(store, { defaultSortField: 'descrizione' })
 
 useTabFreshness(store, 'provincia')
 onMounted(() => { store.fetchList() })
@@ -27,7 +28,10 @@ function onRowClick(event) { emit('row-click', event.data) }
       <div class="app-page-filters">
         <InputText v-model="searchText" :placeholder="t('geo.search_provincia')" />
       </div>
-      <NewButton :tooltip="t('geo.nuova_provincia')" @click="emit('new')" />
+      <div class="app-page-actions">
+        <Button icon="pi pi-refresh" text class="app-reload-btn" v-tooltip.bottom="t('common.reload_list')" @click="reload" />
+        <NewButton :tooltip="t('geo.nuova_provincia')" @click="emit('new')" />
+      </div>
     </div>
     <DataTable
       :value="store.items" :loading="store.loading" v-bind="paginatorProps"

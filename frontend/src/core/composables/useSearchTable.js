@@ -10,7 +10,7 @@
 // paginatorProps include: totalRecords, rows, first, rowsPerPageOptions,
 //   paginator, paginatorTemplate, currentPageReportTemplate
 
-import { ref, computed, watch, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { PAGINATION } from '../constants'
 
 export function useSearchTable(store, options = {}) {
@@ -40,8 +40,25 @@ export function useSearchTable(store, options = {}) {
     }, debounceMs)
   })
 
-  // Cleanup timeout on unmount
-  onUnmounted(() => { clearTimeout(searchTimeout) })
+  // Scopo: ricarica lista mantenendo filtri e paginazione correnti
+  function reload() {
+    store.fetchList()
+  }
+
+  // Scopo: intercetta F5 per ricaricare la lista senza reload browser
+  function onKeydown(e) {
+    if (e.key === 'F5') {
+      e.preventDefault()
+      reload()
+    }
+  }
+  onMounted(() => { window.addEventListener('keydown', onKeydown) })
+
+  // Cleanup timeout e listener on unmount
+  onUnmounted(() => {
+    clearTimeout(searchTimeout)
+    window.removeEventListener('keydown', onKeydown)
+  })
 
   // Handler @page DataTable — guard contro loop infinito e click rapidi.
   // PrimeVue DataTable ri-emette @page quando items cambia; senza guard si crea un ciclo.
@@ -91,6 +108,7 @@ export function useSearchTable(store, options = {}) {
     onPage,
     onSort,
     applyFilters,
+    reload,
     paginatorProps
   }
 }

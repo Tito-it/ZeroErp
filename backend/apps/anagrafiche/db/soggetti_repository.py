@@ -262,33 +262,37 @@ class SoggettiRepository:
             cursor.execute(sql, [soggetto_id])
             return rows_to_list(cursor)
 
-    # Scopo: Crea contatto per un soggetto.
+    # Scopo: Crea contatto per un soggetto. Se soggetto_ruolo_id fornito, il contatto
+    #        e' specifico del ruolo; altrimenti e' a livello soggetto (fallback).
     def crea_contatto(
         self, soggetto_id: str, *, nominativo: str, email: str | None = None,
         telefono: str | None = None, cellulare: str | None = None,
         pec: str | None = None, tipo_contatto_id: int | None = None,
         unita_organizzativa_id: int | None = None, note: str | None = None,
+        soggetto_ruolo_id: int | None = None, utility_id: int | None = None,
     ) -> dict[str, Any]:
         sql = """
             INSERT INTO anagrafiche.contatti
-                (soggetto_id, nominativo, email, telefono, cellulare, pec,
-                 tipo_contatto_id, unita_organizzativa_id, note)
-            VALUES (%s::uuid, %s, %s, %s, %s, %s, %s, %s, %s)
+                (soggetto_id, soggetto_ruolo_id, utility_id, nominativo, email,
+                 telefono, cellulare, pec, tipo_contatto_id, unita_organizzativa_id, note)
+            VALUES (%s::uuid, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING id, nominativo, email, telefono, cellulare, pec,
-                      tipo_contatto_id, unita_organizzativa_id, note
+                      tipo_contatto_id, unita_organizzativa_id, note,
+                      soggetto_ruolo_id, utility_id
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [
-                soggetto_id, nominativo, email, telefono, cellulare, pec,
-                tipo_contatto_id, unita_organizzativa_id, note,
+                soggetto_id, soggetto_ruolo_id, utility_id, nominativo, email,
+                telefono, cellulare, pec, tipo_contatto_id, unita_organizzativa_id, note,
             ])
             result = row_to_dict(cursor)
             assert result is not None
             return result
 
-    # Scopo: Aggiorna un contatto esistente con verifica ownership soggetto.
+    # Scopo: Aggiorna un contatto esistente con verifica ownership soggetto o ruolo.
     def update_contatto(self, contatto_id: int, data: dict[str, Any],
-                        soggetto_id: str | None = None) -> bool:
+                        soggetto_id: str | None = None,
+                        soggetto_ruolo_id: int | None = None) -> bool:
         _ALLOWED = {
             "nominativo", "email", "telefono", "cellulare", "pec",
             "tipo_contatto_id", "unita_organizzativa_id", "note",
@@ -303,6 +307,9 @@ class SoggettiRepository:
         if soggetto_id is not None:
             where += " AND soggetto_id = %s::uuid"
             values.append(soggetto_id)
+        if soggetto_ruolo_id is not None:
+            where += " AND soggetto_ruolo_id = %s"
+            values.append(soggetto_ruolo_id)
         sql = f"UPDATE anagrafiche.contatti SET {set_clause} {where}"  # noqa: S608
         with connection.cursor() as cursor:
             cursor.execute(sql, values)

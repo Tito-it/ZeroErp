@@ -3,7 +3,7 @@
 // Sezioni: Soggetto (resolver in crea, banner in modifica),
 // Auth (solo crea), Dati anagrafici, Collocazione.
 // TabView: Dati + Permessi (permessi solo in modifica).
-import { ref, watch, computed } from 'vue'
+import { ref, watch, computed, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useOperatoriStore } from '../stores/operatori'
 import { useApiHandler } from '../../core/composables/useApiHandler'
@@ -98,6 +98,8 @@ function resetForm() {
 // Carica dati quando il drawer si apre
 watch(() => props.visible, async (val) => {
   if (!val) return
+  // Forza remount TabView dopo che il drawer è visibile (ink bar fix)
+  nextTick(() => { tabViewKey.value++ })
   if (isEdit.value && props.authUserId) {
     await store.fetchDetail(props.authUserId)
     const u = store.currentOperatore
@@ -157,7 +159,6 @@ async function onSave() {
     )
     if (result !== null) {
       emit('saved')
-      emit('update:visible', false)
     }
   } else {
     // Validazione client-side per creazione
@@ -186,10 +187,12 @@ async function onSave() {
     )
     if (result !== null) {
       emit('saved')
-      emit('update:visible', false)
     }
   }
 }
+
+// Scopo: forza remount TabView dopo apertura drawer per ink bar
+const tabViewKey = ref(0)
 
 const isDisabilitato = computed(() => form.value.ruolo_sistema === RUOLO_SISTEMA.DISABILITATO)
 
@@ -219,7 +222,6 @@ async function eseguiToggleStato() {
     )
     if (result !== null) {
       emit('saved')
-      emit('update:visible', false)
     }
   } else {
     const result = await execute(
@@ -228,7 +230,6 @@ async function eseguiToggleStato() {
     )
     if (result !== null) {
       emit('saved')
-      emit('update:visible', false)
     }
   }
 }
@@ -262,7 +263,7 @@ function onClose() {
     </template>
 
     <div :class="{ 'app-readonly': isReadonly }">
-    <TabView>
+    <TabView :key="tabViewKey">
       <TabPanel :header="t('amm.tab_dati')">
         <!-- === Sezione Soggetto === -->
         <h4>{{ t('amm.section_persona') }}</h4>

@@ -122,7 +122,7 @@ class TestGetOperatore(TestCase):
         from apps.amm_software.services.amm_software_service import AmmSoftwareService
         with self.assertRaises(ServiceError) as ctx:
             AmmSoftwareService().get_operatore(999)
-        self.assertEqual(ctx.exception.code, "E_AMM_UTENTE_NOT_FOUND")
+        self.assertEqual(ctx.exception.code, "E_AMM_OPERATORE_NOT_FOUND")
 
 
 class TestUpdateOperatore(TestCase):
