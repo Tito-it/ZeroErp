@@ -1,0 +1,214 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+#
+# Ricrea catena conti bancari con supporto utility_id:
+#   - vw_conti_bancari_per_ruolo (flat, senza DISTINCT ON)
+#   - fn_get_conto_bancario_predefinito (cascata 7 livelli)
+#
+# Ordine: DROP funzione (RETURNS vista type), DROP vista, CREATE vista, CREATE funzione.
+# Pattern %TYPE usato ovunque applicabile.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: /migrations_v2/20_code/script/20260324-05-recreate-conti-bancari-chain-utility-mctit.yaml
+
+  - changeSet:
+      id: 20260324-05-recreate-conti-bancari-chain-utility
+      author: mctit
+      runOnChange: true
+      comment: >
+        Ricrea catena conti bancari con utility_id. La vista diventa flat
+        (espone tutte le candidate senza DISTINCT ON). La funzione implementa
+        cascata 7 livelli: ruolo+utility+uso, ruolo+generico+uso, soggetto+uso,
+        poi fallback GENERICO per ciascuno.
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+
+              -- ==========================================================
+              -- DROP in ordine inverso di dipendenza
+              -- La funzione RETURNS anagrafiche.vw_conti_bancari_per_ruolo
+              -- quindi va droppata PRIMA della vista.
+              -- ==========================================================
+              DROP FUNCTION IF EXISTS script.fn_get_conto_bancario_predefinito(bigint, character varying);
+              DROP FUNCTION IF EXISTS script.fn_get_conto_bancario_predefinito(bigint, character varying, integer);
+              DROP VIEW IF EXISTS anagrafiche.vw_conti_bancari_per_ruolo;
+
+              -- ==========================================================
+              -- 1. vw_conti_bancari_per_ruolo
+              --    Vista flat: espone tutte le candidate RUOLO + SOGGETTO
+              --    con utility_id/utility_codice. Nessun DISTINCT ON.
+              --    La selezione singola e nella funzione.
+              -- ==========================================================
+              CREATE VIEW anagrafiche.vw_conti_bancari_per_ruolo AS
+              WITH role_cand AS (
+                  SELECT
+                      sr.id                AS soggetto_ruolo_id,
+                      r.uso,
+                      r.conto_bancario_id,
+                      r.id                 AS soggetto_ruolo_conto_id,
+                      NULL::bigint         AS soggetto_conto_id,
+                      r.utility_id,
+                      r.predefinito,
+                      r.valido_dal,
+                      r.valido_al,
+                      r.data_update,
+                      'RUOLO'::varchar(10) AS fonte
+                  FROM anagrafiche.soggetti_ruoli sr
+                  JOIN anagrafiche.soggetti_ruoli_conti_bancari r ON r.soggetto_ruolo_id = sr.id
+                  JOIN anagrafiche.conti_bancari cb ON cb.id = r.conto_bancario_id
+                  WHERE (r.valido_dal IS NULL OR r.valido_dal <= CURRENT_DATE)
+                    AND (r.valido_al  IS NULL OR r.valido_al  >= CURRENT_DATE)
+                    AND COALESCE(r.bloccato, false) = false
+                    AND cb.attivo = true
+              ),
+              subj_cand AS (
+                  SELECT
+                      sr.id                AS soggetto_ruolo_id,
+                      s.uso,
+                      s.conto_bancario_id,
+                      NULL::bigint         AS soggetto_ruolo_conto_id,
+                      s.id                 AS soggetto_conto_id,
+                      NULL::integer        AS utility_id,
+                      s.predefinito,
+                      s.valido_dal,
+                      s.valido_al,
+                      s.data_update,
+                      'SOGGETTO'::varchar(10) AS fonte
+                  FROM anagrafiche.soggetti_ruoli sr
+                  JOIN anagrafiche.soggetti_conti_bancari s ON s.soggetto_id = sr.soggetto_id
+                  JOIN anagrafiche.conti_bancari cb ON cb.id = s.conto_bancario_id
+                  WHERE (s.valido_dal IS NULL OR s.valido_dal <= CURRENT_DATE)
+                    AND (s.valido_al  IS NULL OR s.valido_al  >= CURRENT_DATE)
+                    AND COALESCE(s.bloccato, false) = false
+                    AND cb.attivo = true
+              )
+              SELECT
+                  c.soggetto_ruolo_id,
+                  c.uso,
+                  c.conto_bancario_id,
+                  c.soggetto_ruolo_conto_id,
+                  c.soggetto_conto_id,
+                  c.utility_id,
+                  ut.codice              AS utility_codice,
+                  c.fonte,
+                  c.predefinito,
+                  c.valido_dal,
+                  c.valido_al,
+                  c.data_update
+              FROM (
+                  SELECT * FROM role_cand
+                  UNION ALL
+                  SELECT * FROM subj_cand
+              ) c
+              LEFT JOIN config.utilities ut ON ut.id = c.utility_id
+              ORDER BY
+                  c.soggetto_ruolo_id, c.uso,
+                  CASE
+                      WHEN c.fonte = 'RUOLO' AND c.utility_id IS NOT NULL THEN 1
+                      WHEN c.fonte = 'RUOLO' AND c.utility_id IS NULL     THEN 2
+                      WHEN c.fonte = 'SOGGETTO'                           THEN 3
+                  END,
+                  c.predefinito DESC,
+                  c.data_update DESC;
+
+              COMMENT ON VIEW anagrafiche.vw_conti_bancari_per_ruolo IS
+                'Vista flat conti bancari con utility_id. Tutte le candidate RUOLO + SOGGETTO. Selezione singola in fn_get_conto_bancario_predefinito.';
+
+              -- ==========================================================
+              -- 2. fn_get_conto_bancario_predefinito
+              --    Cascata 7 livelli con p_utility_id opzionale.
+              --    RETURNS tipo della vista.
+              -- ==========================================================
+              CREATE OR REPLACE FUNCTION script.fn_get_conto_bancario_predefinito(
+                  p_soggetto_ruolo_id  anagrafiche.soggetti_ruoli.id%TYPE,
+                  p_uso                anagrafiche.soggetti_ruoli_conti_bancari.uso%TYPE,
+                  p_utility_id         config.utilities.id%TYPE DEFAULT NULL
+              )
+              RETURNS anagrafiche.vw_conti_bancari_per_ruolo
+              LANGUAGE plpgsql
+              STABLE
+              AS $function$
+              DECLARE
+                  v_res  anagrafiche.vw_conti_bancari_per_ruolo%ROWTYPE;
+                  v_uso  anagrafiche.soggetti_ruoli_conti_bancari.uso%TYPE
+                         := UPPER(TRIM(COALESCE(p_uso, 'GENERICO')));
+              BEGIN
+                  -- FASE A: uso richiesto
+
+                  -- 1) Ruolo + utility specifica + uso richiesto
+                  IF p_utility_id IS NOT NULL THEN
+                      SELECT * INTO v_res
+                      FROM anagrafiche.vw_conti_bancari_per_ruolo v
+                      WHERE v.soggetto_ruolo_id = p_soggetto_ruolo_id
+                        AND v.uso = v_uso AND v.fonte = 'RUOLO'
+                        AND v.utility_id = p_utility_id
+                      ORDER BY v.predefinito DESC, v.data_update DESC
+                      LIMIT 1;
+                      IF v_res.soggetto_ruolo_id IS NOT NULL THEN RETURN v_res; END IF;
+                  END IF;
+
+                  -- 2) Ruolo + utility NULL + uso richiesto
+                  SELECT * INTO v_res
+                  FROM anagrafiche.vw_conti_bancari_per_ruolo v
+                  WHERE v.soggetto_ruolo_id = p_soggetto_ruolo_id
+                    AND v.uso = v_uso AND v.fonte = 'RUOLO'
+                    AND v.utility_id IS NULL
+                  ORDER BY v.predefinito DESC, v.data_update DESC
+                  LIMIT 1;
+                  IF v_res.soggetto_ruolo_id IS NOT NULL THEN RETURN v_res; END IF;
+
+                  -- 3) Soggetto + uso richiesto
+                  SELECT * INTO v_res
+                  FROM anagrafiche.vw_conti_bancari_per_ruolo v
+                  WHERE v.soggetto_ruolo_id = p_soggetto_ruolo_id
+                    AND v.uso = v_uso AND v.fonte = 'SOGGETTO'
+                  ORDER BY v.predefinito DESC, v.data_update DESC
+                  LIMIT 1;
+                  IF v_res.soggetto_ruolo_id IS NOT NULL THEN RETURN v_res; END IF;
+
+                  -- FASE B: fallback a uso GENERICO
+                  IF v_uso <> 'GENERICO' THEN
+
+                      -- 4) Ruolo + utility specifica + GENERICO
+                      IF p_utility_id IS NOT NULL THEN
+                          SELECT * INTO v_res
+                          FROM anagrafiche.vw_conti_bancari_per_ruolo v
+                          WHERE v.soggetto_ruolo_id = p_soggetto_ruolo_id
+                            AND v.uso = 'GENERICO' AND v.fonte = 'RUOLO'
+                            AND v.utility_id = p_utility_id
+                          ORDER BY v.predefinito DESC, v.data_update DESC
+                          LIMIT 1;
+                          IF v_res.soggetto_ruolo_id IS NOT NULL THEN RETURN v_res; END IF;
+                      END IF;
+
+                      -- 5) Ruolo + utility NULL + GENERICO
+                      SELECT * INTO v_res
+                      FROM anagrafiche.vw_conti_bancari_per_ruolo v
+                      WHERE v.soggetto_ruolo_id = p_soggetto_ruolo_id
+                        AND v.uso = 'GENERICO' AND v.fonte = 'RUOLO'
+                        AND v.utility_id IS NULL
+                      ORDER BY v.predefinito DESC, v.data_update DESC
+                      LIMIT 1;
+                      IF v_res.soggetto_ruolo_id IS NOT NULL THEN RETURN v_res; END IF;
+
+                      -- 6) Soggetto + GENERICO
+                      SELECT * INTO v_res
+                      FROM anagrafiche.vw_conti_bancari_per_ruolo v
+                      WHERE v.soggetto_ruolo_id = p_soggetto_ruolo_id
+                        AND v.uso = 'GENERICO' AND v.fonte = 'SOGGETTO'
+                      ORDER BY v.predefinito DESC, v.data_update DESC
+                      LIMIT 1;
+                      IF v_res.soggetto_ruolo_id IS NOT NULL THEN RETURN v_res; END IF;
+                  END IF;
+
+                  -- 7) Nessun conto trovato
+                  RETURN NULL;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_get_conto_bancario_predefinito(bigint, character varying, integer) IS
+                'Selezione conto bancario con cascata 7 livelli: ruolo+utility+uso, ruolo+generico+uso, soggetto+uso, poi fallback GENERICO. Restituisce al massimo una riga (o NULL).';

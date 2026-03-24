@@ -2,7 +2,7 @@
 
 > Data apertura: 2026-03-24
 >
-> Stato: **DA FARE**
+> Stato: **IN CORSO** — DB completato, backend/frontend da fare
 >
 > Priorità: alta (prerequisito per gestione clienti multi-utility completa)
 
@@ -38,7 +38,20 @@ permette un solo indirizzo di fatturazione per ruolo CLIENTE.
 
 Già implementato su:
 - `anagrafiche.contatti` → `utility_id` nullable, UNIQUE `(soggetto_id, soggetto_ruolo_id, utility_id, tipo_contatto_id)`
-- `anagrafiche.conti_bancari` → `utility_id` nullable, UNIQUE con utility
+
+**Nota sulla differenza strutturale contatti vs indirizzi/conti bancari:**
+
+Il modello contatti usa **una sola tabella** con contesto determinato dai campi nullable
+(`soggetto_id` sempre presente, `soggetto_ruolo_id` e `utility_id` opzionali).
+Il modello indirizzi usa **due tabelle** separate (`indirizzi` per ruolo, `indirizzi_soggetti`
+per soggetto). Il modello conti bancari analogamente usa due tabelle di legame
+(`soggetti_conti_bancari` per soggetto, `soggetti_ruoli_conti_bancari` per ruolo).
+
+Conseguenza: `utility_id` va aggiunto **solo** sulle tabelle layer ruolo (`anagrafiche.indirizzi`
+e `anagrafiche.soggetti_ruoli_conti_bancari`). Le tabelle layer soggetto non sono impattate.
+La cascata contatti (4 livelli: utility → ruolo → soggetto+utility → soggetto) non si replica
+integralmente — il livello "soggetto + utility" non esiste perché le tabelle soggetto non hanno
+`utility_id`. La cascata target è a **3 livelli** (utility → ruolo generico → soggetto).
 
 ---
 
@@ -53,9 +66,9 @@ Prima di iniziare il refactor verificare che:
 
 ---
 
-## STEP 1 — DB: Modifica schema tabella `anagrafiche.indirizzi`
+## STEP 1 — DB: Modifica schema tabella `anagrafiche.indirizzi` ✅
 
-**Competenza: DBA**
+**Competenza: DBA** — Completato 2026-03-24
 
 ### 1.1 Aggiungere colonna `utility_id`
 
@@ -111,13 +124,13 @@ CREATE INDEX ix_anagrafiche_indirizzi_utility_id
 
 ### 1.4 Changeset Liquibase
 
-File: `db/changelog/migrations_v2/00_schema/anagrafiche/YYYYMMDD-XX-add-utility-id-indirizzi-mctit.yaml`
+File: `db/changelog/migrations_v2/00_schema/anagrafiche/20260324-02-add-utility-id-indirizzi-mctit.yaml`
 
 ---
 
-## STEP 2 — DB: Aggiornare trigger guard
+## STEP 2 — DB: Aggiornare trigger guard ✅
 
-**Competenza: DBA**
+**Competenza: DBA** — Completato 2026-03-24 (verifica: nessuna modifica necessaria)
 
 ### 2.1 `trgfn_indirizzi_guard_tipo_ruolo_tipi_indirizzo`
 
@@ -129,23 +142,26 @@ non dipende dall'utility.
 **Azione**: verificare che il trigger non faccia assunzioni sulla unicità
 `(soggetto_ruolo_id, tipo_indirizzo_id)`. Se sì, aggiornare.
 
-### 2.2 Trigger storicizzazione
+### 2.2 Altri trigger da verificare
 
-`trgfn_storico_generic` copia la riga completa in `storico.indirizzi_id` — se la tabella
-storico non ha `utility_id`, aggiungere la colonna anche lì.
+| Trigger | Impatto atteso | Azione |
+| --- | --- | --- |
+| `trgfn_indirizzi_base_normalize` | Opera su `anagrafiche.indirizzi` — deve gestire/ignorare `utility_id` senza interferenze | Verificare che non azzeri colonne extra non previste |
+| `trgfn_indirizzi_sync_geoloc` | Sincronizza geolocalizzazione da `indirizzi_dettaglio` — non dipende da utility | Nessuna modifica attesa, verifica sola |
+| `trgfn_child_requires_active_parent` | Verifica che soggetto/indirizzi_dettaglio siano attivi | Valutare se aggiungere check su `config.utilities.attivo` quando `utility_id IS NOT NULL` |
+| `trgfn_prevent_deactivate_if_children` | Su `indirizzi_dettaglio`, blocca disattivazione con figli attivi | Non impattato |
 
-```sql
-ALTER TABLE storico.indirizzi_id
-  ADD COLUMN utility_id integer NULL;
-```
+### 2.3 Trigger storicizzazione
 
-**Changeset**: `db/changelog/migrations_v2/00_schema/storico/YYYYMMDD-XX-add-utility-id-storico-indirizzi-mctit.yaml`
+`trgfn_storico_generic` salva la riga come **snapshot JSONB** — il nuovo campo `utility_id`
+viene automaticamente incluso nello snapshot senza modifiche alla tabella `storico.indirizzi`.
+**Nessuna migrazione necessaria sullo schema storico.**
 
 ---
 
-## STEP 3 — DB: Aggiornare viste resolved
+## STEP 3 — DB: Aggiornare viste resolved ✅
 
-**Competenza: DBA**
+**Competenza: DBA** — Completato 2026-03-24
 
 Le 4 viste devono esporre `utility_id` e il codice utility per la UI.
 
@@ -176,13 +192,18 @@ Non impattata (tabella `indirizzi_soggetti` non ha `utility_id`).
 Se è UNION di ruolo + soggetto, aggiungere `NULL AS utility_id, NULL AS utility_codice`
 sul ramo soggetto per compatibilità.
 
-**Changeset**: `db/changelog/migrations_v2/20_code/anagrafiche/YYYYMMDD-XX-recreate-indirizzi-views-utility-mctit.yaml`
+### 3.5 `vw_indirizzi_dettaglio`
+
+Non impattata (vista sul dettaglio civico, non ha contesto ruolo/utility).
+
+**Changeset**: `db/changelog/migrations_v2/20_code/script/20260324-04-recreate-indirizzi-chain-utility-mctit.yaml`
+(contiene DROP + CREATE dell'intera catena: 4 viste + 4 funzioni, in ordine di dipendenza)
 
 ---
 
-## STEP 4 — DB: Aggiornare funzioni di risoluzione
+## STEP 4 — DB: Aggiornare funzioni di risoluzione ✅
 
-**Competenza: DBA**
+**Competenza: DBA** — Completato 2026-03-24
 
 ### 4.1 `script.fn_get_indirizzo(p_soggetto_ruolo_id, p_tipo_codice)`
 
@@ -226,7 +247,53 @@ script.fn_get_indirizzi_by_ruolo(
 Con `p_utility_id = NULL` restituisce TUTTI gli indirizzi del ruolo (comportamento attuale).
 Con `p_utility_id = 5` restituisce solo quelli dell'utility 5 + quelli generici (utility NULL).
 
-**Changeset**: `db/changelog/migrations_v2/20_code/script/YYYYMMDD-XX-update-fn-get-indirizzo-utility-mctit.yaml`
+### 4.3 Funzioni non impattate
+
+Le seguenti funzioni operano sul layer soggetto, che non ha `utility_id`:
+
+- `script.fn_get_indirizzi_by_soggetto(p_soggetto_id)` — tutti gli indirizzi del layer soggetto → **nessuna modifica**
+- `script.fn_get_indirizzo_by_soggetto(p_soggetto_id, p_tipo_codice)` — indirizzo soggetto con fallback tra tipi → **nessuna modifica**
+
+**Changeset**: incluso in `20260324-04-recreate-indirizzi-chain-utility-mctit.yaml` (unico file per tutta la catena)
+
+---
+
+## Riepilogo lavoro DB completato (2026-03-24)
+
+### Changeset Liquibase applicati
+
+| # | File | Contenuto |
+| --- | --- | --- |
+| 02 | `00_schema/anagrafiche/20260324-02-add-utility-id-indirizzi-mctit.yaml` | Colonna `utility_id` + FK + 2 partial unique index su `anagrafiche.indirizzi` |
+| 03 | `00_schema/anagrafiche/20260324-03-add-utility-id-src-bancari-mctit.yaml` | Colonna `utility_id` + FK + 4 partial unique index su `anagrafiche.soggetti_ruoli_conti_bancari` |
+| 04 | `20_code/script/20260324-04-recreate-indirizzi-chain-utility-mctit.yaml` | DROP + CREATE intera catena indirizzi: 4 viste resolved + 4 funzioni (by_ruolo, by_soggetto, indirizzo_by_soggetto, indirizzo) con `%TYPE`, `p_utility_id` e `utility_id`/`utility_codice` in output |
+| 05 | `20_code/script/20260324-05-recreate-conti-bancari-chain-utility-mctit.yaml` | DROP + CREATE vista flat `vw_conti_bancari_per_ruolo` (senza DISTINCT ON) + funzione `fn_get_conto_bancario_predefinito` con cascata 7 livelli |
+
+### Scelte architetturali
+
+- **Storicizzazione**: le tabelle `storico.*` usano snapshot JSONB — `utility_id` incluso automaticamente, nessuna migrazione storico
+- **Vista conti bancari flat**: rimosso `DISTINCT ON`, la selezione singola e nella funzione `fn_get_conto_bancario_predefinito` (coerenza con pattern indirizzi: vista espone, funzione decide)
+- **Catena dipendenze**: changeset 04 e 05 usano `splitStatements: false` con DROP in ordine inverso di dipendenza e CREATE in ordine corretto (pattern da `20260311-02-repair`)
+- **`%TYPE`**: usato in tutti i parametri, RETURNS TABLE e DECLARE delle funzioni ricreate
+- **`config.utilities` non ha campo `attivo`**: i trigger `trgfn_child_requires_active_parent` non necessitano check su utility
+
+### Test pgTAP
+
+| File | Assert | Stato |
+| --- | --- | --- |
+| `db/pgtap/anagrafiche/test-indirizzi-utility-cascata.sql` | 14 | ✅ Nuovo — partial unique, fn_get_indirizzi_by_ruolo con/senza utility, fn_get_indirizzo cascata 3 livelli, viste con utility_id/utility_codice |
+| `db/pgtap/anagrafiche/test-conti-bancari-utility-cascata.sql` | 10 | ✅ Nuovo — partial unique predefinito, fn_get_conto cascata 7 livelli, vista flat con utility_codice |
+| `db/pgtap/anagrafiche/test_vw_conti_bancari_per_ruolo_gestore.sql` | 5 | ✅ Aggiornato — test 5 adattato per vista flat (LIMIT 1 + ORDER BY priorita) |
+| `db/pgtap/anagrafiche/test-indirizzi-fallback.sql` | 14 | ✅ Invariato — funziona con DEFAULT sui nuovi parametri |
+| `db/pgtap/anagrafiche/test_fn_get_conto_bancario_predefinito.sql` | 6 | ✅ Invariato — funziona con DEFAULT sul terzo parametro |
+
+### Documentazione manuale aggiornata
+
+- `docs/it/dbzero/script/manual/fn_get_indirizzo.md` — scopo, firma, parametri, logica 3 livelli, esempi
+- `docs/it/dbzero/script/manual/fn_get_indirizzi_by_ruolo.md` — scopo, firma con `p_utility_id`, logica filtro
+- `docs/it/dbzero/script/manual/fn_get_conto_bancario_predefinito.md` — scopo, `p_utility_id`, cascata 7 livelli
+- `docs/it/dbzero/anagrafiche/manual/vw_conti_bancari_per_ruolo.md` — scopo flat, utility_id/utility_codice, ordinamento
+- `docs/it/dbzero/anagrafiche/manual/vw_indirizzi_resolved_base.md` — utility_id/utility_codice nella tabella campi
 
 ---
 
@@ -244,7 +311,7 @@ Seguire il pattern di `views_contatti_ruolo.py`:
 
 - `GET /api/v1/anagrafiche/ruoli/{soggetto_ruolo_id}/indirizzi/?utility_id=X`
   - Cascata 3 livelli: utility → ruolo → soggetto (per tipo_indirizzo_id)
-  - Response: `{ contatti_ruolo: [...], contatti_soggetto: [...] }` (stessa struttura contatti)
+  - Response: `{ indirizzi_ruolo: [...], indirizzi_soggetto: [...] }` (stessa struttura contatti)
 - `POST /api/v1/anagrafiche/ruoli/{soggetto_ruolo_id}/indirizzi/`
   - Crea indirizzo con `utility_id` opzionale
 - `PATCH /api/v1/anagrafiche/ruoli/{soggetto_ruolo_id}/indirizzi/{id}/`
@@ -351,10 +418,10 @@ File: `docs/it/guide/generazione-cliente.md` — nota su indirizzi per utility
 
 | Area | File impattati | Complessità |
 |------|---------------|-------------|
-| DB schema | 2 (indirizzi + storico) | bassa |
+| DB schema | 1 (indirizzi — storico usa JSONB, nessuna modifica) | bassa |
 | DB viste | 3-4 (resolved_*) | media |
 | DB funzioni | 2 (fn_get_indirizzo, fn_get_indirizzi_by_ruolo) | media-alta |
-| DB trigger | 1 (guard, verifica sola) | bassa |
+| DB trigger | 4 (guard tipo + normalize + sync_geoloc + child_requires_active_parent — verifica) | bassa |
 | Backend API | 2-3 (views, urls, repository) | media |
 | Frontend | 2-3 (drawer, api, integrazione) | media |
 | Documentazione | 5-6 guide/tabelle | bassa |
@@ -369,7 +436,7 @@ File: `docs/it/guide/generazione-cliente.md` — nota su indirizzi per utility
 | Dati esistenti senza utility_id | Colonna nullable, dati esistenti restano con NULL (livello ruolo generico) |
 | Retrocompatibilità funzioni DB | Parametro `p_utility_id DEFAULT NULL` — chiamanti esistenti invariati |
 | Vincolo UNIQUE con NULL PostgreSQL | Due partial unique index (WHERE IS NULL / IS NOT NULL) |
-| Storicizzazione | Aggiungere utility_id anche alla tabella storico prima della migrazione dati |
+| Storicizzazione | Tabelle storico usano JSONB snapshot — utility_id incluso automaticamente, nessuna modifica |
 
 ---
 
@@ -407,17 +474,47 @@ il predefinito è unico per `(soggetto_ruolo_id, uso)`.
 5. Ruolo + uso GENERICO (utility NULL)
 6. Soggetto + uso GENERICO (fallback finale)
 
-### Nota: `sepa_mandati` già usa `istanza_utility_id`
+### Integrazione con mandati SEPA — catena di risoluzione
 
-La tabella `pagamenti.sepa_mandati` ha già i campi `istanza_utility_id` e `billing_account_id`
-per il perimetro — il modello pagamenti è già predisposto per la distinzione per utility.
-Manca solo il livello di selezione del conto.
+La tabella `pagamenti.sepa_mandati` ha i campi `istanza_utility_id` e `billing_account_id`
+per il perimetro, più `soggetto_ruolo_conto_id` che punta al legame ruolo ↔ conto selezionato.
+
+**Catena di risoluzione utility per un mandato SEPA:**
+
+```text
+sepa_mandati.billing_account_id
+    → billing_account.utility_id     → config.utilities(id)
+```
+
+`istanze_utilities` **non ha** `utility_id` direttamente — la utility si ricava sempre
+tramite `billing_account.utility_id`. Il vincolo `UNIQUE(istanza_utility_id, utility_id)`
+su `billing_account` garantisce la coerenza.
+
+**Flusso operativo per creazione/rinnovo mandato dopo il refactor:**
+
+1. Dal mandato → `billing_account_id` → `billing_account.utility_id` = conosco la utility
+2. `fn_get_conto_bancario_predefinito(ruolo, 'INCASSO', utility_id)` → seleziona il conto migliore
+3. Il conto trovato diventa `soggetto_ruolo_conto_id` del mandato
+4. `iban_snapshot` = snapshot dell'IBAN al momento della creazione
+
+**Fallback per mandati senza utility specifica (aziende non-utility):**
+
+Per aziende non-utility l'istanza è fittizia e il BA ha una utility "generica/default".
+Il conto si risolve con `utility_id = NULL` (generico ruolo) come fallback naturale della
+cascata. Non serve un mandato "senza perimetro" — il vincolo `chk_sepa_mandati_perimetro`
+(`billing_account_id IS NOT NULL OR istanza_utility_id IS NOT NULL`) resta valido.
+
+**Per aziende utility con unico IBAN per tutti i servizi:**
+
+Il conto a livello `(ruolo, NULL, INCASSO)` — senza utility — fa da fallback per tutte
+le utility. Ogni mandato resta legato al suo BA specifico, ma il conto che "vince" nella
+cascata è lo stesso per tutti perché non ci sono override per utility.
 
 ---
 
-## STEP 8 — DB: Modifica schema `soggetti_ruoli_conti_bancari`
+## STEP 8 — DB: Modifica schema `soggetti_ruoli_conti_bancari` ✅
 
-**Competenza: DBA**
+**Competenza: DBA** — Completato 2026-03-24
 
 ### 8.1 Aggiungere colonna `utility_id`
 
@@ -473,39 +570,52 @@ CREATE INDEX ix_soggetti_ruoli_conti_bancari_utility_id
 
 ### 8.4 Trigger storicizzazione
 
-Verificare se esiste tabella storico per `soggetti_ruoli_conti_bancari` — se sì,
-aggiungere `utility_id` anche lì.
+`trgfn_storico_generic` salva la riga come **snapshot JSONB** — il nuovo campo `utility_id`
+viene automaticamente incluso nello snapshot senza modifiche alla tabella storico.
+**Nessuna migrazione necessaria sullo schema storico.**
 
 ### 8.5 Changeset Liquibase
 
-File: `db/changelog/migrations_v2/00_schema/anagrafiche/YYYYMMDD-XX-add-utility-id-src-bancari-mctit.yaml`
+File: `db/changelog/migrations_v2/00_schema/anagrafiche/20260324-03-add-utility-id-src-bancari-mctit.yaml`
 
 ---
 
-## STEP 9 — DB: Aggiornare vista e funzione di selezione
+## STEP 9 — DB: Aggiornare vista e funzione di selezione ✅
 
-**Competenza: DBA**
+**Competenza: DBA** — Completato 2026-03-24
 
 ### 9.1 `vw_conti_bancari_per_ruolo`
 
-La vista deve esporre `utility_id` e `utility_codice`. La logica di priorità diventa:
+**Cambio architetturale**: la vista attuale restituisce **una sola riga per `(ruolo, uso)`**
+tramite `ROW_NUMBER() OVER (PARTITION BY soggetto_ruolo_id, uso)`. Con `utility_id` questo
+approccio non funziona più — il PARTITION dovrebbe cambiare, ma la logica di cascata
+(utility → generico → soggetto) richiede un filtering dinamico che non si esprime in una vista.
+
+**Decisione: la vista diventa flat (espone tutte le righe), la funzione fa la logica.**
+
+La vista aggiornata:
+
+- Espone `utility_id` e `utility_codice` (JOIN su `config.utilities`)
+- **Rimuove** il `ROW_NUMBER()` / `DISTINCT ON` — restituisce tutte le candidate
+- Mantiene i filtri esistenti: `valido_dal <= oggi`, `valido_al >= oggi`, `bloccato = false`, `conto attivo = true`
+- Espone `fonte` (`RUOLO` / `SOGGETTO`) come oggi
 
 ```sql
-ORDER BY
-  CASE WHEN fonte = 'RUOLO' AND utility_id IS NOT NULL THEN 1   -- utility specifica
-       WHEN fonte = 'RUOLO' AND utility_id IS NULL     THEN 2   -- ruolo generico
-       WHEN fonte = 'SOGGETTO'                         THEN 3   -- fallback soggetto
-  END,
-  predefinito DESC,
-  data_update DESC
+-- Colonne aggiunte alla SELECT
+srcb.utility_id,
+u.codice AS utility_codice
+
+-- JOIN aggiunto
+LEFT JOIN config.utilities u ON u.id = srcb.utility_id
 ```
 
-Con `ROW_NUMBER() OVER (PARTITION BY soggetto_ruolo_id, uso)` la vista restituisce
-una riga per combinazione `(ruolo, uso)`. Per supportare utility, il PARTITION deve
-includere utility_id oppure la vista deve essere parametrizzata.
+Questo è lo stesso pattern degli indirizzi: le viste `vw_indirizzi_resolved_*` espongono
+tutto, `fn_get_indirizzo` fa il fallback. Coerenza architetturale.
 
-**Opzione consigliata**: la vista espone tutte le righe con fonte e utility_id;
-la funzione `fn_get_conto_bancario_predefinito` fa il filtering con cascata.
+**Nota retrocompatibilità**: i chiamanti che oggi fanno `SELECT * FROM vw_conti_bancari_per_ruolo
+WHERE soggetto_ruolo_id = X AND uso = 'INCASSO'` riceveranno più righe dopo il refactor.
+Devono migrare a `fn_get_conto_bancario_predefinito` per la selezione singola.
+Verificare che nessun chiamante dipenda dal comportamento "1 riga per (ruolo, uso)".
 
 ### 9.2 `script.fn_get_conto_bancario_predefinito`
 
@@ -530,7 +640,8 @@ Catena completa:
 
 Il default `p_utility_id = NULL` mantiene retrocompatibilità.
 
-**Changeset**: `db/changelog/migrations_v2/20_code/anagrafiche/YYYYMMDD-XX-recreate-vw-conti-bancari-utility-mctit.yaml`
+**Changeset**: `db/changelog/migrations_v2/20_code/script/20260324-05-recreate-conti-bancari-chain-utility-mctit.yaml`
+(contiene DROP + CREATE della vista flat e della funzione con cascata 7 livelli)
 
 ---
 
@@ -614,13 +725,13 @@ File: `docs/it/dbzero/anagrafiche/tabelle/soggetti_ruoli_conti_bancari.md`
 
 | Area | File impattati | Complessità |
 |------|---------------|-------------|
-| DB schema indirizzi | 2 (indirizzi + storico) | bassa |
-| DB schema conti | 2 (soggetti_ruoli_conti_bancari + storico) | bassa |
+| DB schema indirizzi | 1 (indirizzi — storico usa JSONB, nessuna modifica) | bassa |
+| DB schema conti | 1 (soggetti_ruoli_conti_bancari — storico usa JSONB, nessuna modifica) | bassa |
 | DB viste indirizzi | 3-4 (resolved_*) | media |
 | DB vista conti | 1 (vw_conti_bancari_per_ruolo) | media |
 | DB funzioni indirizzi | 2 (fn_get_indirizzo, fn_get_indirizzi_by_ruolo) | media-alta |
 | DB funzioni conti | 1 (fn_get_conto_bancario_predefinito) | media |
-| DB trigger | 2 (guard indirizzi verifica, guard conti verifica) | bassa |
+| DB trigger | 5 (guard tipo + normalize + sync_geoloc + child_active indirizzi, guard conti) | bassa |
 | Backend indirizzi | 3 (views, urls, repository) | media |
 | Backend conti | 2 (service, views aggiornamento) | media |
 | Frontend indirizzi | 3 (drawer, api, integrazione) | media |
@@ -637,9 +748,10 @@ File: `docs/it/dbzero/anagrafiche/tabelle/soggetti_ruoli_conti_bancari.md`
 | Dati esistenti senza utility_id | Colonna nullable su entrambe le tabelle, dati esistenti = livello ruolo generico |
 | Retrocompatibilità funzioni DB | Parametro `p_utility_id DEFAULT NULL` su tutte le funzioni |
 | Vincolo UNIQUE con NULL PostgreSQL | Partial unique index (WHERE IS NULL / IS NOT NULL) su entrambe le tabelle |
-| Storicizzazione | Aggiungere utility_id alle tabelle storico prima delle migrazioni dati |
+| Storicizzazione | Tabelle storico usano JSONB snapshot — utility_id incluso automaticamente, nessuna modifica |
 | Vincolo predefinito conti | 4 partial index (2 per utility valorizzata, 2 per NULL) — più complesso di indirizzi |
-| Mandati SEPA | Già predisposti con `istanza_utility_id` — nessun impatto |
+| Mandati SEPA | La utility si ricava da `billing_account.utility_id`, non da `istanza_utility_id` (che non ha utility_id). Il flusso di creazione/rinnovo mandato deve chiamare `fn_get_conto_bancario_predefinito` con il nuovo parametro `p_utility_id` derivato dal BA |
+| Vista conti flat | La vista `vw_conti_bancari_per_ruolo` non restituisce più 1 riga per (ruolo, uso) — verificare che tutti i chiamanti usino la funzione per la selezione singola |
 
 ---
 

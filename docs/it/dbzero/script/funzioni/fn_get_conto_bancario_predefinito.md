@@ -2,54 +2,97 @@
 # ⚙️ Funzione `fn_get_conto_bancario_predefinito`
 
 ```sql
-CREATE FUNCTION fn_get_conto_bancario_predefinito(p_soggetto_ruolo_id bigint, p_uso character varying)
+CREATE FUNCTION fn_get_conto_bancario_predefinito(p_soggetto_ruolo_id bigint, p_uso character varying, p_utility_id integer)
 ```
 
 **Definizione completa:**
 
 ```sql
-CREATE OR REPLACE FUNCTION script.fn_get_conto_bancario_predefinito(p_soggetto_ruolo_id bigint, p_uso character varying)
+CREATE OR REPLACE FUNCTION script.fn_get_conto_bancario_predefinito(p_soggetto_ruolo_id bigint, p_uso character varying, p_utility_id integer DEFAULT NULL::integer)
  RETURNS anagrafiche.vw_conti_bancari_per_ruolo
  LANGUAGE plpgsql
  STABLE
 AS $function$
 DECLARE
-    v_res anagrafiche.vw_conti_bancari_per_ruolo%ROWTYPE;
-    v_uso varchar := UPPER(TRIM(COALESCE(p_uso, 'GENERICO')));
+    v_res  anagrafiche.vw_conti_bancari_per_ruolo%ROWTYPE;
+    v_uso  anagrafiche.soggetti_ruoli_conti_bancari.uso%TYPE
+           := UPPER(TRIM(COALESCE(p_uso, 'GENERICO')));
 BEGIN
-    -- 1) Tentativo diretto sull'uso richiesto (normalizzato)
-    SELECT *
-    INTO v_res
-    FROM anagrafiche.vw_conti_bancari_per_ruolo v
-    WHERE v.soggetto_ruolo_id = p_soggetto_ruolo_id
-    AND v.uso               = v_uso
-    LIMIT 1;
+    -- FASE A: uso richiesto
 
-    IF v_res.soggetto_ruolo_id IS NOT NULL THEN
-        RETURN v_res;
-    END IF;
-
-    -- 2) Fallback su GENERICO (solo se uso diverso)
-    IF v_uso <> 'GENERICO' THEN
-        SELECT *
-        INTO v_res
+    -- 1) Ruolo + utility specifica + uso richiesto
+    IF p_utility_id IS NOT NULL THEN
+        SELECT * INTO v_res
         FROM anagrafiche.vw_conti_bancari_per_ruolo v
         WHERE v.soggetto_ruolo_id = p_soggetto_ruolo_id
-        AND v.uso               = 'GENERICO'
+          AND v.uso = v_uso AND v.fonte = 'RUOLO'
+          AND v.utility_id = p_utility_id
+        ORDER BY v.predefinito DESC, v.data_update DESC
         LIMIT 1;
-
-        IF v_res.soggetto_ruolo_id IS NOT NULL THEN
-            RETURN v_res;
-        END IF;
+        IF v_res.soggetto_ruolo_id IS NOT NULL THEN RETURN v_res; END IF;
     END IF;
 
-    -- 3) Nessun conto trovato
+    -- 2) Ruolo + utility NULL + uso richiesto
+    SELECT * INTO v_res
+    FROM anagrafiche.vw_conti_bancari_per_ruolo v
+    WHERE v.soggetto_ruolo_id = p_soggetto_ruolo_id
+      AND v.uso = v_uso AND v.fonte = 'RUOLO'
+      AND v.utility_id IS NULL
+    ORDER BY v.predefinito DESC, v.data_update DESC
+    LIMIT 1;
+    IF v_res.soggetto_ruolo_id IS NOT NULL THEN RETURN v_res; END IF;
+
+    -- 3) Soggetto + uso richiesto
+    SELECT * INTO v_res
+    FROM anagrafiche.vw_conti_bancari_per_ruolo v
+    WHERE v.soggetto_ruolo_id = p_soggetto_ruolo_id
+      AND v.uso = v_uso AND v.fonte = 'SOGGETTO'
+    ORDER BY v.predefinito DESC, v.data_update DESC
+    LIMIT 1;
+    IF v_res.soggetto_ruolo_id IS NOT NULL THEN RETURN v_res; END IF;
+
+    -- FASE B: fallback a uso GENERICO
+    IF v_uso <> 'GENERICO' THEN
+
+        -- 4) Ruolo + utility specifica + GENERICO
+        IF p_utility_id IS NOT NULL THEN
+            SELECT * INTO v_res
+            FROM anagrafiche.vw_conti_bancari_per_ruolo v
+            WHERE v.soggetto_ruolo_id = p_soggetto_ruolo_id
+              AND v.uso = 'GENERICO' AND v.fonte = 'RUOLO'
+              AND v.utility_id = p_utility_id
+            ORDER BY v.predefinito DESC, v.data_update DESC
+            LIMIT 1;
+            IF v_res.soggetto_ruolo_id IS NOT NULL THEN RETURN v_res; END IF;
+        END IF;
+
+        -- 5) Ruolo + utility NULL + GENERICO
+        SELECT * INTO v_res
+        FROM anagrafiche.vw_conti_bancari_per_ruolo v
+        WHERE v.soggetto_ruolo_id = p_soggetto_ruolo_id
+          AND v.uso = 'GENERICO' AND v.fonte = 'RUOLO'
+          AND v.utility_id IS NULL
+        ORDER BY v.predefinito DESC, v.data_update DESC
+        LIMIT 1;
+        IF v_res.soggetto_ruolo_id IS NOT NULL THEN RETURN v_res; END IF;
+
+        -- 6) Soggetto + GENERICO
+        SELECT * INTO v_res
+        FROM anagrafiche.vw_conti_bancari_per_ruolo v
+        WHERE v.soggetto_ruolo_id = p_soggetto_ruolo_id
+          AND v.uso = 'GENERICO' AND v.fonte = 'SOGGETTO'
+        ORDER BY v.predefinito DESC, v.data_update DESC
+        LIMIT 1;
+        IF v_res.soggetto_ruolo_id IS NOT NULL THEN RETURN v_res; END IF;
+    END IF;
+
+    -- 7) Nessun conto trovato
     RETURN NULL;
 END;
 $function$
 
-COMMENT ON FUNCTION script.fn_get_conto_bancario_predefinito(p_soggetto_ruolo_id bigint, p_uso character varying)
-IS 'Restituisce il conto bancario predefinito per (soggetto_ruolo_id, uso) usando la vista anagrafiche.vw_conti_bancari_per_ruolo. Priorità: uso richiesto, poi fallback a uso=GENERICO. Restituisce al massimo una riga (o NULL).';
+COMMENT ON FUNCTION script.fn_get_conto_bancario_predefinito(p_soggetto_ruolo_id bigint, p_uso character varying, p_utility_id integer)
+IS 'Selezione conto bancario con cascata 7 livelli: ruolo+utility+uso, ruolo+generico+uso, soggetto+uso, poi fallback GENERICO. Restituisce al massimo una riga (o NULL).';
 ```
 
 ---

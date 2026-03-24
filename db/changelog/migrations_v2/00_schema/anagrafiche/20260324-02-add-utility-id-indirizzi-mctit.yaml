@@ -1,0 +1,70 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Aggiunge utility_id a anagrafiche.indirizzi per supportare
+# indirizzi specifici per utility (es. fatturazione GAS vs IDRICO).
+# Sostituisce il vincolo UNIQUE (ruolo, tipo) con partial unique
+# index che gestiscono NULL su utility_id.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: /migrations_v2/00_schema/anagrafiche/20260324-02-add-utility-id-indirizzi-mctit.yaml
+
+  - changeSet:
+      id: 20260324-02-add-utility-id-indirizzi
+      author: mctit
+      comment: >
+        Aggiunge colonna utility_id a anagrafiche.indirizzi con FK verso
+        config.utilities. Sostituisce il vincolo UNIQUE uq_indirizzi_ruolo_tipo
+        con due partial unique index per gestire NULL su utility_id.
+        Aggiunge indice su utility_id.
+      changes:
+        # 1. Aggiungere colonna utility_id
+        - addColumn:
+            schemaName: anagrafiche
+            tableName: indirizzi
+            columns:
+              - column:
+                  name: utility_id
+                  type: integer
+                  constraints:
+                    nullable: true
+
+        # 2. FK verso config.utilities
+        - addForeignKeyConstraint:
+            constraintName: fk_indirizzi_utilities
+            baseTableSchemaName: anagrafiche
+            baseTableName: indirizzi
+            baseColumnNames: utility_id
+            referencedTableSchemaName: config
+            referencedTableName: utilities
+            referencedColumnNames: id
+
+        # 3. Rimuovere il vecchio vincolo UNIQUE
+        - dropUniqueConstraint:
+            schemaName: anagrafiche
+            tableName: indirizzi
+            constraintName: uq_indirizzi_ruolo_tipo
+
+        # 4. Partial unique index per righe con utility_id NULL
+        - sql:
+            sql: >
+              CREATE UNIQUE INDEX uq_indirizzi_ruolo_tipo_no_utility
+              ON anagrafiche.indirizzi (soggetto_ruolo_id, tipo_indirizzo_id)
+              WHERE utility_id IS NULL
+
+        # 5. Partial unique index per righe con utility_id valorizzato
+        - sql:
+            sql: >
+              CREATE UNIQUE INDEX uq_indirizzi_ruolo_utility_tipo
+              ON anagrafiche.indirizzi (soggetto_ruolo_id, utility_id, tipo_indirizzo_id)
+              WHERE utility_id IS NOT NULL
+
+        # 6. Indice su utility_id
+        - createIndex:
+            schemaName: anagrafiche
+            tableName: indirizzi
+            indexName: ix_anagrafiche_indirizzi_utility_id
+            columns:
+              - column:
+                  name: utility_id

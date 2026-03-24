@@ -30,6 +30,9 @@
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
 | user_update | text | YES | CURRENT_USER |
+| uid | uuid | NO | uuidv7() |
+| stato_fornitore_id | integer | YES |  |
+| termine_pagamento_id | bigint | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -39,10 +42,13 @@
 | CHECK | chk_fornitori_ritenuta_aliquota |  |
 | FOREIGN KEY | fk_fornitori_modalita_pagamento | modalita_pagamento_id |
 | FOREIGN KEY | fk_fornitori_soggetti_ruoli | soggetto_ruolo_id |
+| FOREIGN KEY | fk_fornitori_stati_fornitore | stato_fornitore_id |
+| FOREIGN KEY | fk_fornitori_termini_pagamento | termine_pagamento_id |
 | FOREIGN KEY | fk_fornitori_valute | valuta_id |
 | PRIMARY KEY | pk_fornitori | id |
 | UNIQUE | uq_fornitori_codice | codice |
 | UNIQUE | uq_fornitori_soggetto_ruolo_id | soggetto_ruolo_id |
+| UNIQUE | uq_fornitori_uid | uid |
 
 ## 📑 Indici
 | Nome | Definizione |
@@ -52,6 +58,7 @@
 | pk_fornitori | `CREATE UNIQUE INDEX pk_fornitori ON anagrafiche.fornitori USING btree (id)` |
 | uq_fornitori_codice | `CREATE UNIQUE INDEX uq_fornitori_codice ON anagrafiche.fornitori USING btree (codice)` |
 | uq_fornitori_soggetto_ruolo_id | `CREATE UNIQUE INDEX uq_fornitori_soggetto_ruolo_id ON anagrafiche.fornitori USING btree (soggetto_ruolo_id)` |
+| uq_fornitori_uid | `CREATE UNIQUE INDEX uq_fornitori_uid ON anagrafiche.fornitori USING btree (uid)` |
 
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |

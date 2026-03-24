@@ -21,51 +21,25 @@ DECLARE
   v_rows_found integer;
   v_visited_tipo_ids config.tipi_indirizzi.id%TYPE[] := '{}'::integer[];
 BEGIN
-  -- Recupera tipo_soggetto_dettaglio per risolvere la matrice fallback
-  SELECT s.tipo_soggetto_dettaglio_id
-  INTO v_tipo_soggetto_dettaglio_id
-  FROM anagrafiche.soggetti s
-  WHERE s.id = p_soggetto_id;
+  SELECT s.tipo_soggetto_dettaglio_id INTO v_tipo_soggetto_dettaglio_id
+  FROM anagrafiche.soggetti s WHERE s.id = p_soggetto_id;
+  IF v_tipo_soggetto_dettaglio_id IS NULL THEN RETURN; END IF;
 
-  IF v_tipo_soggetto_dettaglio_id IS NULL THEN
-    RETURN;
-  END IF;
-
-  -- Loop con fallback: cerca indirizzo per tipo richiesto,
-  -- se non trovato segue la catena fallback su
-  -- config.tipi_soggetto_dettaglio_tipi_indirizzo
   LOOP
     RETURN QUERY
-    SELECT *
-    FROM anagrafiche.vw_indirizzi_resolved_soggetto r
-    WHERE r.soggetto_id = p_soggetto_id
-      AND r.tipo_indirizzo_codice = v_current_codice;
+    SELECT * FROM anagrafiche.vw_indirizzi_resolved_soggetto r
+    WHERE r.soggetto_id = p_soggetto_id AND r.tipo_indirizzo_codice = v_current_codice;
 
     GET DIAGNOSTICS v_rows_found = ROW_COUNT;
-    IF v_rows_found > 0 THEN
-      RETURN;
-    END IF;
+    IF v_rows_found > 0 THEN RETURN; END IF;
 
-    -- Risolvi ID tipo indirizzo corrente
-    SELECT ti.id
-    INTO v_current_tipo_id
-    FROM config.tipi_indirizzi ti
-    WHERE ti.codice_interno = v_current_codice;
-
-    IF v_current_tipo_id IS NULL THEN
-      RETURN;
-    END IF;
-
-    -- Protezione anti-loop circolare
-    IF v_current_tipo_id = ANY (v_visited_tipo_ids) THEN
-      RETURN;
-    END IF;
-
+    SELECT ti.id INTO v_current_tipo_id
+    FROM config.tipi_indirizzi ti WHERE ti.codice_interno = v_current_codice;
+    IF v_current_tipo_id IS NULL THEN RETURN; END IF;
+    IF v_current_tipo_id = ANY (v_visited_tipo_ids) THEN RETURN; END IF;
     v_visited_tipo_ids := array_append(v_visited_tipo_ids, v_current_tipo_id);
 
-    -- Cerca fallback nella matrice tipo_soggetto_dettaglio/tipo_indirizzo
-    SELECT m.fallback_tipo_indirizzo_id
-    INTO v_fallback_tipo_id
+    SELECT m.fallback_tipo_indirizzo_id INTO v_fallback_tipo_id
     FROM config.tipi_soggetto_dettaglio_tipi_indirizzo m
     WHERE m.tipo_soggetto_dettaglio_id = v_tipo_soggetto_dettaglio_id
       AND m.tipo_indirizzo_id = v_current_tipo_id
@@ -73,20 +47,11 @@ BEGIN
       AND (m.valido_dal IS NULL OR m.valido_dal <= current_date)
       AND (m.valido_al IS NULL OR m.valido_al >= current_date)
     LIMIT 1;
+    IF v_fallback_tipo_id IS NULL THEN RETURN; END IF;
 
-    IF v_fallback_tipo_id IS NULL THEN
-      RETURN;
-    END IF;
-
-    -- Passa al codice del tipo fallback per il prossimo ciclo
-    SELECT ti.codice_interno
-    INTO v_current_codice
-    FROM config.tipi_indirizzi ti
-    WHERE ti.id = v_fallback_tipo_id;
-
-    IF v_current_codice IS NULL THEN
-      RETURN;
-    END IF;
+    SELECT ti.codice_interno INTO v_current_codice
+    FROM config.tipi_indirizzi ti WHERE ti.id = v_fallback_tipo_id;
+    IF v_current_codice IS NULL THEN RETURN; END IF;
   END LOOP;
 END;
 $function$

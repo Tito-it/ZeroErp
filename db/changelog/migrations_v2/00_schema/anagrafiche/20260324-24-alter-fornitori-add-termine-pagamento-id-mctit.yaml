@@ -1,0 +1,52 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Aggiunge termine_pagamento_id FK a anagrafiche.fornitori
+# per allineamento al pattern clienti (config.termini_pagamento).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: /migrations_v2/00_schema/anagrafiche/20260324-24-alter-fornitori-add-termine-pagamento-id-mctit.yaml
+
+  - changeSet:
+      id: 20260324-24-alter-fornitori-add-termine-pagamento-id
+      author: mctit
+      comment: >
+        Aggiunge colonna termine_pagamento_id (BIGINT, nullable) con FK
+        verso config.termini_pagamento a anagrafiche.fornitori.
+        Allineamento al pattern clienti. Le colonne giorni_pagamento e
+        fine_mese restano come fallback/override per ora.
+      changes:
+        # 1. Aggiungere colonna
+        - addColumn:
+            schemaName: anagrafiche
+            tableName: fornitori
+            columns:
+              - column:
+                  name: termine_pagamento_id
+                  type: bigint
+                  remarks: "FK verso config.termini_pagamento. Termini strutturati con rate/offset."
+                  constraints:
+                    nullable: true
+
+        # 2. FK verso config.termini_pagamento
+        - addForeignKeyConstraint:
+            constraintName: fk_fornitori_termini_pagamento
+            baseTableSchemaName: anagrafiche
+            baseTableName: fornitori
+            baseColumnNames: termine_pagamento_id
+            referencedTableSchemaName: config
+            referencedTableName: termini_pagamento
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+
+      rollback:
+        - dropForeignKeyConstraint:
+            baseTableSchemaName: anagrafiche
+            baseTableName: fornitori
+            constraintName: fk_fornitori_termini_pagamento
+        - dropColumn:
+            schemaName: anagrafiche
+            tableName: fornitori
+            columnName: termine_pagamento_id

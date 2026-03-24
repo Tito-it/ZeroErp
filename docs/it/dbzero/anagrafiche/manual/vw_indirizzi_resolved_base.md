@@ -23,7 +23,8 @@ Approfondimenti tabelle:
 
 ---
 ### 🎯 Scopo Principale
-(latest review 23-12-25)
+
+(latest review 24-03-26)
 La vista **`anagrafiche.vw_indirizzi_resolved_base`** è il **layer comune** per la risoluzione degli indirizzi, e unifica in un solo output:
 
 * indirizzi **per ruolo** (`anagrafiche.indirizzi`),
@@ -71,6 +72,8 @@ La vista è costruita come:
 | `indirizzo_id`               | `bigint`               | PK della tabella di origine.              |
 | `soggetto_id`                | `uuid`                 | Soggetto proprietario dell’indirizzo.     |
 | `soggetto_ruolo_id`          | `bigint`               | Valorizzato solo se scope=RUOLO.          |
+| `utility_id`                 | `integer`              | ID utility (`config.utilities.id`). Valorizzato solo se scope=RUOLO e indirizzo specifico per utility. NULL per scope=SOGGETTO e per indirizzi generici. |
+| `utility_codice`             | `varchar`              | Codice utility (es. `GAS`, `IDRICO`). NULL se `utility_id` è NULL. |
 | `tipo_indirizzo_id`          | `integer`              | Tipo indirizzo (ID tecnico).              |
 | `tipo_indirizzo_codice`      | `varchar`              | Codice interno del tipo indirizzo.        |
 | `tipo_indirizzo_descrizione` | `text`                 | Descrizione del tipo indirizzo.           |
