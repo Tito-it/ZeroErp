@@ -8,8 +8,7 @@ SELECT b.scope,
     b.indirizzo_id,
     b.soggetto_id,
     b.soggetto_ruolo_id,
-    b.utility_id,
-    ut.codice AS utility_codice,
+    b.istanza_utility_id,
     b.tipo_indirizzo_id,
     ti.codice_interno AS tipo_indirizzo_codice,
     ti.descrizione AS tipo_indirizzo_descrizione,
@@ -51,11 +50,11 @@ SELECT b.scope,
     b.user_insert,
     b.data_update,
     b.user_update
-   FROM ((((((((((((((( SELECT 'RUOLO'::text AS scope,
+   FROM (((((((((((((( SELECT 'RUOLO'::text AS scope,
             i.id AS indirizzo_id,
             sr.soggetto_id,
             i.soggetto_ruolo_id,
-            i.utility_id,
+            i.istanza_utility_id,
             i.tipo_indirizzo_id,
             i.indirizzo_dettaglio_id,
             i.indirizzo_libero,
@@ -80,7 +79,7 @@ SELECT b.scope,
             isg.id AS indirizzo_id,
             isg.soggetto_id,
             NULL::bigint AS soggetto_ruolo_id,
-            NULL::integer AS utility_id,
+            NULL::bigint AS istanza_utility_id,
             isg.tipo_indirizzo_id,
             isg.indirizzo_dettaglio_id,
             isg.indirizzo_libero,
@@ -100,7 +99,6 @@ SELECT b.scope,
             isg.user_update
            FROM anagrafiche.indirizzi_soggetti isg) b
      JOIN config.tipi_indirizzi ti ON ((ti.id = b.tipo_indirizzo_id)))
-     LEFT JOIN config.utilities ut ON ((ut.id = b.utility_id)))
      LEFT JOIN anagrafiche.vw_indirizzi_dettaglio vidd ON ((vidd.indirizzo_dettaglio_id = b.indirizzo_dettaglio_id)))
      LEFT JOIN script.vw_indirizzo_completo ic ON ((ic.id_comune = b.comune_id)))
      LEFT JOIN config.stradario s ON ((s.id = vidd.stradario_id)))

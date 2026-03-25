@@ -2,14 +2,14 @@
 # ⚙️ Funzione `fn_get_indirizzo`
 
 ```sql
-CREATE FUNCTION fn_get_indirizzo(p_soggetto_ruolo_id bigint, p_tipo_codice character varying, p_utility_id integer)
+CREATE FUNCTION fn_get_indirizzo(p_soggetto_ruolo_id bigint, p_tipo_codice character varying, p_istanza_utility_id bigint)
 ```
 
 **Definizione completa:**
 
 ```sql
-CREATE OR REPLACE FUNCTION script.fn_get_indirizzo(p_soggetto_ruolo_id bigint, p_tipo_codice character varying, p_utility_id integer DEFAULT NULL::integer)
- RETURNS TABLE(tipo_indirizzo character varying, indirizzo_completo text, geoloc geometry, indirizzo_id bigint, soggetto_ruolo_id bigint, utility_id integer, utility_codice character varying, tipo_indirizzo_id integer, indirizzo_dettaglio_id bigint, indirizzo_libero text, is_normalizzato boolean, stato_id integer, stato_descrizione character varying, stato_iso2 character, regione_id integer, regione_descrizione character varying, provincia_id integer, provincia_sigla character, provincia_descrizione character, comune_id integer, comune_descrizione character varying, codice_postale_id integer, cap_codice character, locality character varying, administrative_area character varying, sublocality character varying, postal_box character varying)
+CREATE OR REPLACE FUNCTION script.fn_get_indirizzo(p_soggetto_ruolo_id bigint, p_tipo_codice character varying, p_istanza_utility_id bigint DEFAULT NULL::bigint)
+ RETURNS TABLE(tipo_indirizzo character varying, indirizzo_completo text, geoloc geometry, indirizzo_id bigint, soggetto_ruolo_id bigint, istanza_utility_id bigint, tipo_indirizzo_id integer, indirizzo_dettaglio_id bigint, indirizzo_libero text, is_normalizzato boolean, stato_id integer, stato_descrizione character varying, stato_iso2 character, regione_id integer, regione_descrizione character varying, provincia_id integer, provincia_sigla character, provincia_descrizione character, comune_id integer, comune_descrizione character varying, codice_postale_id integer, cap_codice character, locality character varying, administrative_area character varying, sublocality character varying, postal_box character varying)
  LANGUAGE plpgsql
  STABLE ROWS 10
 AS $function$
@@ -30,14 +30,14 @@ BEGIN
 
     IF v_tipo_ruolo_id IS NULL THEN RETURN; END IF;
 
-    -- FASE 1: RUOLO + UTILITY SPECIFICA (se p_utility_id valorizzato)
-    IF p_utility_id IS NOT NULL THEN
+    -- FASE 1: RUOLO + ISTANZA SPECIFICA (se p_istanza_utility_id valorizzato)
+    IF p_istanza_utility_id IS NOT NULL THEN
         v_current_codice := p_tipo_codice;
         v_visited_tipo_ids := '{}'::integer[];
         LOOP
             RETURN QUERY
             SELECT f.tipo_indirizzo, f.indirizzo_completo, f.geoloc,
-                f.indirizzo_id, f.soggetto_ruolo_id, f.utility_id, f.utility_codice,
+                f.indirizzo_id, f.soggetto_ruolo_id, f.istanza_utility_id,
                 f.tipo_indirizzo_id, f.indirizzo_dettaglio_id, f.indirizzo_libero,
                 f.is_normalizzato,
                 f.stato_id, f.stato_descrizione, f.stato_iso2,
@@ -46,9 +46,9 @@ BEGIN
                 f.comune_id, f.comune_descrizione,
                 f.codice_postale_id, f.cap_codice,
                 f.locality, f.administrative_area, f.sublocality, f.postal_box
-            FROM script.fn_get_indirizzi_by_ruolo(p_soggetto_ruolo_id, p_utility_id) f
+            FROM script.fn_get_indirizzi_by_ruolo(p_soggetto_ruolo_id, p_istanza_utility_id) f
             WHERE f.tipo_indirizzo = v_current_codice
-              AND f.utility_id = p_utility_id;
+              AND f.istanza_utility_id = p_istanza_utility_id;
 
             GET DIAGNOSTICS v_rows_found = ROW_COUNT;
             IF v_rows_found > 0 THEN RETURN; END IF;
@@ -75,13 +75,13 @@ BEGIN
         END LOOP;
     END IF;
 
-    -- FASE 2: RUOLO GENERICO (utility_id IS NULL)
+    -- FASE 2: RUOLO GENERICO (istanza_utility_id IS NULL)
     v_current_codice := p_tipo_codice;
     v_visited_tipo_ids := '{}'::integer[];
     LOOP
         RETURN QUERY
         SELECT f.tipo_indirizzo, f.indirizzo_completo, f.geoloc,
-            f.indirizzo_id, f.soggetto_ruolo_id, f.utility_id, f.utility_codice,
+            f.indirizzo_id, f.soggetto_ruolo_id, f.istanza_utility_id,
             f.tipo_indirizzo_id, f.indirizzo_dettaglio_id, f.indirizzo_libero,
             f.is_normalizzato,
             f.stato_id, f.stato_descrizione, f.stato_iso2,
@@ -92,7 +92,7 @@ BEGIN
             f.locality, f.administrative_area, f.sublocality, f.postal_box
         FROM script.fn_get_indirizzi_by_ruolo(p_soggetto_ruolo_id) f
         WHERE f.tipo_indirizzo = v_current_codice
-          AND f.utility_id IS NULL;
+          AND f.istanza_utility_id IS NULL;
 
         GET DIAGNOSTICS v_rows_found = ROW_COUNT;
         IF v_rows_found > 0 THEN RETURN; END IF;
@@ -126,8 +126,7 @@ BEGIN
         r.geoloc,
         r.indirizzo_id,
         p_soggetto_ruolo_id,
-        r.utility_id,
-        r.utility_codice,
+        r.istanza_utility_id,
         r.tipo_indirizzo_id,
         r.indirizzo_dettaglio_id,
         r.indirizzo_libero,
@@ -154,8 +153,8 @@ BEGIN
 END;
 $function$
 
-COMMENT ON FUNCTION script.fn_get_indirizzo(p_soggetto_ruolo_id bigint, p_tipo_codice character varying, p_utility_id integer)
-IS 'Policy indirizzi 3 livelli: (1) ruolo+utility con fallback tipo, (2) ruolo generico con fallback tipo, (3) soggetto con fallback tipo.';
+COMMENT ON FUNCTION script.fn_get_indirizzo(p_soggetto_ruolo_id bigint, p_tipo_codice character varying, p_istanza_utility_id bigint)
+IS 'Policy indirizzi 3 livelli: (1) ruolo+istanza con fallback tipo, (2) ruolo generico con fallback tipo, (3) soggetto con fallback tipo.';
 ```
 
 ---

@@ -2,14 +2,14 @@
 # ⚙️ Funzione `fn_get_contatti`
 
 ```sql
-CREATE FUNCTION fn_get_contatti(p_soggetto_id uuid, p_soggetto_ruolo_id bigint, p_utility_id integer, p_tipo_contatto_id integer, p_unita_organizzativa_id integer)
+CREATE FUNCTION fn_get_contatti(p_soggetto_id uuid, p_soggetto_ruolo_id bigint, p_istanza_utility_id bigint, p_tipo_contatto_id integer, p_unita_organizzativa_id integer)
 ```
 
 **Definizione completa:**
 
 ```sql
-CREATE OR REPLACE FUNCTION script.fn_get_contatti(p_soggetto_id uuid, p_soggetto_ruolo_id bigint DEFAULT NULL::bigint, p_utility_id integer DEFAULT NULL::integer, p_tipo_contatto_id integer DEFAULT NULL::integer, p_unita_organizzativa_id integer DEFAULT NULL::integer)
- RETURNS TABLE(id bigint, tipo_contatto_id integer, soggetto_id uuid, soggetto_ruolo_id bigint, utility_id integer, nominativo character varying, email character varying, telefono character varying, cellulare character varying, pec character varying, note text, is_default boolean, default_context character varying)
+CREATE OR REPLACE FUNCTION script.fn_get_contatti(p_soggetto_id uuid, p_soggetto_ruolo_id bigint DEFAULT NULL::bigint, p_istanza_utility_id bigint DEFAULT NULL::bigint, p_tipo_contatto_id integer DEFAULT NULL::integer, p_unita_organizzativa_id integer DEFAULT NULL::integer)
+ RETURNS TABLE(id bigint, tipo_contatto_id integer, soggetto_id uuid, soggetto_ruolo_id bigint, istanza_utility_id bigint, nominativo character varying, email character varying, telefono character varying, cellulare character varying, pec character varying, note text, is_default boolean, default_context character varying)
  LANGUAGE sql
 AS $function$
 
@@ -17,50 +17,45 @@ AS $function$
 fn_get_contatti
 
 Scopo:
-    Restituisce, per un dato soggetto (ed eventuale ruolo/utility),
-    il "miglior" contatto per ciascun tipo_contatto_id, secondo logica di priorità:
+    Restituisce, per un dato soggetto (ed eventuale ruolo/istanza),
+    il "miglior" contatto per ciascun tipo_contatto_id, secondo logica
+    di priorita a 3 livelli:
 
-    1) soggetto + ruolo + utility
-    2) soggetto + ruolo
-    3) soggetto + utility
-    4) solo soggetto
+    1) soggetto + ruolo + istanza
+    2) soggetto + ruolo (generico)
+    3) solo soggetto (fallback)
 
-    A parità di priorità, viene preferito il contatto marcato is_default = TRUE,
-    se presente.
-
-Nota:
-    Questa funzione è pensata anche per essere riutilizzata da una funzione
-    dedicata ai "default" (es. script.fn_get_contatto_default) che potrà
-    filtrare sul flag is_default e/o su default_context.
+    A parita di priorita, viene preferito il contatto marcato
+    is_default = TRUE, se presente.
 */
 
 WITH validate AS (
-    -- 1) Validazione p_soggetto_id (obbligatorio)
+    -- Validazione p_soggetto_id (obbligatorio)
     SELECT script.fn_log_and_raise_error(
         'database',
         'fn_get_contatti',
         'ERRORE_PARAMETRI',
         jsonb_build_object(
-            'soggetto_id',        p_soggetto_id,
-            'soggetto_ruolo_id',  p_soggetto_ruolo_id,
-            'utility_id',         p_utility_id,
-            'tipo_contatto_id',   p_tipo_contatto_id,
+            'soggetto_id',           p_soggetto_id,
+            'soggetto_ruolo_id',     p_soggetto_ruolo_id,
+            'istanza_utility_id',    p_istanza_utility_id,
+            'tipo_contatto_id',      p_tipo_contatto_id,
             'unita_organizzativa_id', p_unita_organizzativa_id
         ),
-        NULL::uuid,                                  -- p_tx_id (NULL → helper lo ricrea)
+        NULL::uuid,
         COALESCE(p_soggetto_id::text, 'NULL')
     )
     WHERE p_soggetto_id IS NULL
 ),
 candidates AS (
-    -- 2) Costruzione dei candidati con calcolo della priority
+    -- Costruzione dei candidati con calcolo della priority (3 livelli)
     SELECT
         c.id,
         c.tipo_contatto_id,
         c.unita_organizzativa_id,
         c.soggetto_id,
         c.soggetto_ruolo_id,
-        c.utility_id,
+        c.istanza_utility_id,
         c.nominativo,
         c.email,
         c.telefono,
@@ -70,14 +65,17 @@ candidates AS (
         c.is_default,
         c.default_context,
         CASE
+            -- Livello 1: ruolo + istanza (match esatto)
             WHEN c.soggetto_ruolo_id IS NOT DISTINCT FROM p_soggetto_ruolo_id
-            AND c.utility_id        IS NOT DISTINCT FROM p_utility_id
-                THEN 1   -- ruolo + utility
+             AND c.istanza_utility_id IS NOT DISTINCT FROM p_istanza_utility_id
+             AND c.istanza_utility_id IS NOT NULL
+                THEN 1
+            -- Livello 2: ruolo generico (istanza NULL)
             WHEN c.soggetto_ruolo_id IS NOT DISTINCT FROM p_soggetto_ruolo_id
-                THEN 2   -- solo ruolo
-            WHEN c.utility_id        IS NOT DISTINCT FROM p_utility_id
-                THEN 3   -- solo utility
-            ELSE 4           -- solo soggetto
+             AND c.istanza_utility_id IS NULL
+                THEN 2
+            -- Livello 3: solo soggetto
+            ELSE 3
         END AS priority
     FROM anagrafiche.contatti AS c
     WHERE c.soggetto_id = p_soggetto_id
@@ -86,8 +84,8 @@ candidates AS (
         OR c.soggetto_ruolo_id IS NOT DISTINCT FROM p_soggetto_ruolo_id
     )
     AND (
-            c.utility_id IS NULL
-        OR c.utility_id IS NOT DISTINCT FROM p_utility_id
+            c.istanza_utility_id IS NULL
+        OR c.istanza_utility_id IS NOT DISTINCT FROM p_istanza_utility_id
     )
     AND (
             p_tipo_contatto_id IS NULL
@@ -99,8 +97,8 @@ candidates AS (
     )
 ),
 ranked AS (
-    -- 3) Una sola riga per tipo_contatto_id:
-    --    priorità di contesto + preferenza per is_default = TRUE
+    -- Una sola riga per tipo_contatto_id:
+    -- priorita di contesto + preferenza per is_default = TRUE
     SELECT
         candidates.*,
         ROW_NUMBER() OVER (
@@ -113,18 +111,18 @@ ranked AS (
                     ELSE 1
                 END,
                 CASE WHEN candidates.is_default THEN 0 ELSE 1 END,
-                candidates.id   -- per stabilizzare l'ordinamento
+                candidates.id
         ) AS rn
     FROM candidates
 )
 
--- 4) Ritorno solo i "migliori" per tipo_contatto_id
+-- Ritorno solo i "migliori" per tipo_contatto_id
 SELECT
     r.id,
     r.tipo_contatto_id,
     r.soggetto_id,
     r.soggetto_ruolo_id,
-    r.utility_id,
+    r.istanza_utility_id,
     r.nominativo,
     r.email,
     r.telefono,
@@ -138,11 +136,8 @@ WHERE r.rn = 1;
 
 $function$
 
-COMMENT ON FUNCTION script.fn_get_contatti(p_soggetto_id uuid, p_soggetto_ruolo_id bigint, p_utility_id integer, p_tipo_contatto_id integer, p_unita_organizzativa_id integer)
-IS 'Restituisce per ogni tipo_contatto_id il contatto con priorità: 
-1) soggetto+ruolo+utility, 2) soggetto+ruolo, 3) soggetto+utility, 
-4) Soggetto (fallback). Filtra esattamente sui parametri passati. p_soggetto_id obbligatorio.
-Supporta il filtro opzionale per unita_organizzativa e preferisce is_default = TRUE a parità di contesto.';
+COMMENT ON FUNCTION script.fn_get_contatti(p_soggetto_id uuid, p_soggetto_ruolo_id bigint, p_istanza_utility_id bigint, p_tipo_contatto_id integer, p_unita_organizzativa_id integer)
+IS 'Contatto migliore per tipo_contatto_id con cascata 3 livelli: (1) ruolo+istanza, (2) ruolo generico, (3) soggetto. p_soggetto_id obbligatorio.';
 ```
 
 ---
