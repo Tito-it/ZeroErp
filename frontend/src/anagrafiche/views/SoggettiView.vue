@@ -3,7 +3,7 @@
 // Se la ricerca universale ha selezionato un soggetto (contextStore),
 // apre automaticamente il drawer in edit mode.
 // Supporta apertura diretta drawer contatti/indirizzi dalla lista.
-import { ref, watch } from 'vue'
+import { ref, watch, nextTick } from 'vue'
 import { useRoute } from 'vue-router'
 import { useDrawerState } from '../../core/composables/useDrawerState'
 import { useReadonlyMode } from '../../core/composables/useReadonlyMode'
@@ -45,9 +45,10 @@ function onContiBancari(data) {
 }
 
 // Se la ricerca universale ha selezionato un soggetto, apri il drawer in edit.
+// Il filtro lista viene applicato automaticamente da useSearchTable (legge ctx.searchTerm).
 watch(() => route.fullPath, () => {
   if (route.name === 'anagrafiche-soggetti' && ctx.soggettoId) {
-    drawer.editRow({ id: ctx.soggettoId })
+    nextTick(() => drawer.editRow({ id: ctx.soggettoId }))
   }
 }, { immediate: true })
 </script>

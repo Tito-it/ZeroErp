@@ -268,22 +268,12 @@ IS 'Tabella di riferimento per gli stati operativi dei fornitori.';
 
 ---
 
-### STEP 5 — Trigger `require_attivo` su FK esistenti
+### ~~STEP 5~~ — RIMOSSO: Trigger `require_attivo` su valuta e modalita pagamento
 
-**Motivazione:** i clienti hanno trigger `require_attivo` su IVA, PDP, termini_pagamento. I fornitori non hanno nessun trigger di questo tipo sulle FK esistenti.
-
-**Trigger da aggiungere:**
-
-| Trigger | Funzione | Evento | Scopo |
-|---------|----------|--------|-------|
-| `trg_fornitori_a10_modalita_pagamento_require_attivo_ins_upd` | `dbops.trgfn_child_requires_active_parent('config', 'modalita_pagamento', 'attivo', 'modalita_pagamento_id')` | AFTER INS/UPD | Impedisce uso di modalita disattivata |
-| `trg_fornitori_a10_valuta_require_attivo_ins_upd` | `dbops.trgfn_child_requires_active_parent('config', 'valute', 'attivo', 'valuta_id')` | AFTER INS/UPD | Impedisce uso di valuta disattivata |
-
-**Nota:** verificare che `config.modalita_pagamento` e `config.valute` abbiano colonna `attivo`. Se manca, aggiungerla prima.
-
-**File migration:**
-
-- `db/changelog/migrations_v2/20_code/anagrafiche/YYYYMMDD-NN-trigger-fornitori-require-attivo-fk.yaml`
+> **Non applicabile**: `config.valute` e `config.modalita_pagamento` non hanno colonna `attivo`
+> e non e previsto aggiungerla. I trigger require_attivo su queste FK non si faranno.
+> I trigger require_attivo su `stato_fornitore_id` e `termine_pagamento_id` sono gia
+> implementati nello STEP 5b (migration 20260324-28).
 
 ---
 
@@ -550,9 +540,11 @@ STEP 3: ALTER fornitori — stato_fornitore_id + FK + NOT NULL + drop      ✅ F
     ↓
 STEP 4: ALTER fornitori — termine_pagamento_id + FK                      ✅ FATTO
     ↓
-STEP 5: Trigger su config.stati_fornitore (lock + audit)                 ✅ FATTO
+STEP 5: ~~Trigger require_attivo valuta/modalita~~ RIMOSSO (no colonna attivo)
     ↓
 STEP 5b: Trigger require_attivo su FK (stato_fornitore, termini)         ✅ FATTO
+    ↓
+STEP 5c: Trigger su config.stati_fornitore (lock + audit)                ✅ FATTO
     ↓
 STEP 6: Update trgfn_fornitori_guard_normalize (pec, ritenuta)           ✅ FATTO
     ↓
@@ -611,7 +603,7 @@ STEP 9: Trigger guard su acquisti.ordini e acquisti.ddt                   FUTURO
 | Valuta | via BA | FK → `config.valute` |
 | Guard ruolo | `trgfn_clienti_guard_ruolo_cliente` | `trgfn_fornitori_guard_ruolo_fornitore` |
 | Guard attivo | via stato cliente | `fn_guard_fornitore_attivo` |
-| Require attivo FK | IVA, PDP, termini | valuta, modalita, termini, stato |
+| Require attivo FK | IVA, PDP, termini | termini, stato (valuta e modalita non hanno `attivo`) |
 | Lock codice | n/a | `trgfn_lock_columns('codice')` |
 | Delete block | GUC maintenance | GUC maintenance |
 | Audit | standard | standard |
@@ -623,5 +615,378 @@ STEP 9: Trigger guard su acquisti.ordini e acquisti.ddt                   FUTURO
 
 ---
 
-*Documento aggiornato il 2026-03-24 — basato su analisi struttura DB reale*
+## Analisi completezza DB — Segnalazioni
+
+### Conferme positive
+
+Il lavoro DB e solido: tutti gli STEP 1-8 risultano FATTO. Il pattern ruoli e rispettato (guard, normalize, lock, delete block, audit, storicizzazione, require_attivo su FK config).
+
+### Gap identificati
+
+| # | Area | Problema | Priorita | Azione suggerita |
+|---|------|----------|----------|------------------|
+| G1 | Lookup whitelist | `config.stati_fornitore` **non e nella whitelist** del lookup generico (`core/db/dbops_repository.py`) | Alta | Aggiungere `"config.stati_fornitore"` alla lista in `dbops_repository.py` — serve per i filtri/dropdown frontend |
+| G2 | STEP 9 — Acquisti | `acquisti.ordini` e `acquisti.ddt` **non hanno** colonna `fornitore_id` FK verso `anagrafiche.fornitori` | Bassa (futuro) | Le tabelle acquisti esistono con struttura completa ma il collegamento FK fornitore va aggiunto quando si sviluppa il ciclo passivo. Non blocca lo sviluppo fornitori |
+| G3 | Navigation frontend | Fornitori **non presente** in `core/navigation.js` ne nelle rotte Vue Router | Alta | Da aggiungere durante lo sviluppo frontend (FE-1) |
+
+**Nota su valute e modalita pagamento**: `config.valute` e `config.modalita_pagamento` non hanno colonna `attivo` e non e previsto aggiungerla. I trigger require_attivo su queste FK non si faranno. I due trigger require_attivo effettivi (su `stato_fornitore_id` e `termine_pagamento_id`) sono gia implementati.
+
+### Raccomandazioni
+
+1. **G1** e bloccante per il frontend: senza il lookup, il dropdown stati fornitore non funziona
+2. **G2** e correttamente marcato FUTURO nel documento
+3. **G3** si risolve naturalmente durante lo step FE-1
+
+---
+
+## Piano di sviluppo Backend + Frontend
+
+> **Metodologia**: Sviluppo concentrico — ogni anello chiude un percorso end-to-end verificabile.
+> **Posizione**: Anello 1 (Dati Base) — i fornitori sono un ruolo anagrafico, stessa natura di clienti/vettori/emittenti.
+> **Base di riferimento**: pattern clienti (`views_clienti.py`, `clienti_service.py`, `clienti_repository.py`, `ClienteDrawer.vue`, `ClientiSearchTable.vue`, `ClientiView.vue`) con **semplificazione significativa** — nessuna cascata istanza/BA.
+
+### Differenze chiave clienti vs fornitori
+
+| Aspetto | Clienti | Fornitori |
+|---------|---------|-----------|
+| Cascata creazione | Complessa: ruolo CL → istanza_utility → billing_account → cliente | **Semplice**: ruolo FO → insert fornitore |
+| Dipendenza utility | Si (FK istanza, BA, utility, PDP) | **No** — nessun concetto utility |
+| Stato | FK → `config.stati_cliente` | FK → `config.stati_fornitore` |
+| Campi specifici | PA (CIG/CUP/commessa), garanzia, servizio da fatturare | Ritenuta acconto, rating, qualifica, canale FE, PEC, bollo |
+| Vista DB | `vw_clienti_codice_ba` (JOIN BA + istanza) | `vw_fornitori_dettaglio` (JOIN diretto soggetto + config) |
+| Complessita service | Alta (~200 righe, validazione multi-entita) | **Media** (~100 righe, CRUD diretto) |
+
+---
+
+### FASE 1 — Backend: Repository + Service + API
+
+> Anello concentrico: **chiude il percorso dati** dal DB all'endpoint REST.
+
+#### BE-1: Repository (`fornitori_repository.py`)
+
+**File**: `backend/apps/anagrafiche/db/fornitori_repository.py`
+
+**Classe**: `FornitoriRepository`
+
+**Metodi da implementare:**
+
+| Metodo | Tipo | SQL | Note |
+|--------|------|-----|------|
+| `list_fornitori(search, stato_fornitore_id, attivo, limit, offset, order_by, order_dir)` | Read | SELECT su `vw_fornitori_dettaglio` con filtri, ILIKE su codice/ragione_sociale/partita_iva/codice_fiscale, paginazione | Tiebreaker `f.id` obbligatorio |
+| `get_fornitore(fornitore_id)` | Read | SELECT su `vw_fornitori_dettaglio` WHERE id = %s | Riga completa con decodifiche FK |
+| `create_fornitore(**kwargs)` | Write | INSERT INTO `anagrafiche.fornitori` con colonne ammesse | Colonne: soggetto_ruolo_id, codice, stato_fornitore_id, attivo, valuta_id, modalita_pagamento_id, termine_pagamento_id, giorni_pagamento, fine_mese, split_payment, ritenuta_acconto, ritenuta_aliquota, regime_fiscale, bollo_esente, canale_fe, pec_email, rating, qualifica_scadenza, note, meta |
+| `update_fornitore(fornitore_id, data)` | Write | UPDATE delta con normalizzazione nullable (stringhe vuote → NULL) | `_UPDATE_ALLOWED` e `_UPDATE_NULLABLE` come in clienti |
+| `get_or_create_ruolo_fornitore(soggetto_id)` | Write | Chiama `script.fn_get_or_create_soggetto_ruolo(soggetto_id, 'FO')` | Pattern identico a clienti |
+| `exists(fornitore_id)` | Read | SELECT EXISTS WHERE id = %s | Per guard service |
+
+**Pattern**: cursor.execute + parameterized queries, `row_to_dict()` + `rows_to_list()` helper da `_helpers.py`.
+
+#### BE-2: Service (`fornitori_service.py`)
+
+**File**: `backend/apps/anagrafiche/services/fornitori_service.py`
+
+**Classe**: `FornitoriService`
+
+**Metodi:**
+
+| Metodo | Scopo | Logica |
+|--------|-------|--------|
+| `list_fornitori(**params)` | Lista paginata | Delega a repository, restituisce dict con count + results |
+| `get_fornitore(fornitore_id)` | Dettaglio singolo | Guard esistenza, restituisce dict completo |
+| `crea_fornitore(payload)` | Creazione end-to-end | 1) `_require_str(payload, "soggetto_id")` 2) `get_or_create_ruolo_fornitore(soggetto_id)` 3) INSERT fornitore in `transaction.atomic()` |
+| `update_fornitore(fornitore_id, payload)` | Aggiornamento parziale | Guard esistenza, delta update con normalizzazione |
+
+**Validazioni service:**
+- `soggetto_id` obbligatorio (POST)
+- Campi opzionali con tipizzazione: `optional_int`, `optional_bool`, `optional_iso_date`
+- Coerenza ritenuta: se `ritenuta_acconto=true` allora `ritenuta_aliquota` obbligatoria (nota: gia validato dal trigger DB, ma il service puo dare errore user-friendly prima)
+- Duplicato: catch `IntegrityError` su `uq_fornitori_soggetto_ruolo_id` → `E_ANAG_DUPLICATO`
+
+**Error codes** (gia registrati in `error_policies.py`):
+- `E_ANAG_VALIDAZIONE` (400) — input invalido
+- `E_ANAG_NOT_FOUND` (404) — fornitore non trovato
+- `E_ANAG_DUPLICATO` (409) — soggetto ha gia ruolo FO
+
+#### BE-3: Views (`views_fornitori.py`)
+
+**File**: `backend/apps/anagrafiche/api/views_fornitori.py`
+
+**Endpoint:**
+
+| Classe | Metodo | Path | Scopo |
+|--------|--------|------|-------|
+| `FornitoriView` | GET | `/api/v1/anagrafiche/fornitori/` | Lista paginata con search + filtri |
+| `FornitoriView` | POST | `/api/v1/anagrafiche/fornitori/` | Crea fornitore |
+| `FornitoriDetailView` | GET | `/api/v1/anagrafiche/fornitori/<id>/` | Dettaglio |
+| `FornitoriDetailView` | PATCH | `/api/v1/anagrafiche/fornitori/<id>/` | Aggiorna campi editabili |
+
+**Pattern:**
+- Eredita da `DomainAPIView` con `area_funzionale = "anagrafiche"`
+- `is_search_endpoint = True` su `FornitoriView`
+- POST usa `handle_post_json` con `require_idempotency_key=True`
+- PATCH usa `request.data` diretto (pattern adottato)
+- `@extend_schema` con `inline_serializer` per ogni metodo
+
+#### BE-4: Routing (`urls.py`)
+
+**File**: `backend/apps/anagrafiche/api/urls.py` — aggiungere:
+
+```python
+# Fornitori
+path("fornitori/", FornitoriView.as_view(), name="anagrafiche-fornitori-list"),
+path("fornitori/<int:fornitore_id>/", FornitoriDetailView.as_view(), name="anagrafiche-fornitori-detail"),
+```
+
+#### BE-5: Lookup whitelist
+
+**File**: `backend/apps/core/db/dbops_repository.py` — aggiungere `"config.stati_fornitore"` alla whitelist lookup generico.
+
+#### BE-6: Test
+
+**File test API**: `backend/apps/anagrafiche/tests/api/test_fornitori_api.py`
+
+| Test | Cosa verifica |
+|------|---------------|
+| `test_list_fornitori_ok` | GET lista con mock service |
+| `test_get_fornitore_ok` | GET dettaglio |
+| `test_get_fornitore_not_found` | 404 |
+| `test_create_fornitore_ok` | POST con payload valido |
+| `test_update_fornitore_ok` | PATCH con payload parziale |
+| `test_update_fornitore_not_found` | PATCH 404 |
+
+**File test service**: `backend/apps/anagrafiche/tests/services/test_fornitori_service.py`
+
+| Test | Cosa verifica |
+|------|---------------|
+| `test_list_ok` | Delega a repository |
+| `test_get_ok` | Restituisce dettaglio |
+| `test_get_not_found` | Raise ServiceError E_ANAG_NOT_FOUND |
+| `test_create_ok` | get_or_create ruolo + insert + transaction |
+| `test_create_soggetto_missing` | Validazione soggetto_id obbligatorio |
+| `test_create_duplicate` | IntegrityError → E_ANAG_DUPLICATO |
+| `test_update_ok` | Delta update |
+| `test_update_not_found` | Raise E_ANAG_NOT_FOUND |
+| `test_update_no_valid_fields` | Nessun campo valido → E_ANAG_VALIDAZIONE |
+
+**Pattern test**: `unittest.TestCase` con mock repository (no DB reale), compatibile CI.
+
+---
+
+### FASE 2 — Frontend: Store + API + Componenti
+
+> Anello concentrico: **chiude il percorso visivo** dall'API al browser.
+
+#### FE-1: API client + Store + Rotta + Navigazione
+
+**File API**: `frontend/src/anagrafiche/api/anagrafiche.js` — aggiungere:
+
+```javascript
+// --- Fornitori ---
+export function listFornitori(params = {}) { ... }
+export function getFornitore(id) { ... }
+export function createFornitore(payload) { ... }
+export function updateFornitore(fornitoreId, payload) { ... }
+```
+
+**File Store**: `frontend/src/anagrafiche/stores/fornitori.js`
+
+Store Pinia `useFornitoriStore()` con:
+- State: `items`, `totalRecords`, `loading`, `filters` (search, stato_fornitore_id, attivo, limit, offset, order_by, order_dir)
+- Actions: `fetchList()`, `fetchDetail(id)`, `create(payload)`, `update(fornitoreId, payload)`
+- Integrazione `useTabEvents()` per `emitDataChanged('fornitore', id)`
+
+**Rotta**: `frontend/src/router/` — aggiungere:
+
+```javascript
+{
+  path: '/anagrafiche/fornitori',
+  name: 'fornitori',
+  component: () => import('@/anagrafiche/views/FornitoriView.vue'),
+  meta: { requiresAuth: true, area: 'anagrafiche', title: 'Fornitori' }
+}
+```
+
+**Navigazione**: `frontend/src/core/navigation.js` — aggiungere voce Fornitori nel dominio Anagrafiche con icona appropriata (es. `pi-truck` o `pi-building`).
+
+#### FE-2: `FornitoriSearchTable.vue`
+
+**File**: `frontend/src/anagrafiche/components/FornitoriSearchTable.vue`
+
+**Colonne DataTable:**
+
+| Colonna | Campo | Sortable | Note |
+|---------|-------|----------|------|
+| Codice | `codice` | Si | |
+| Ragione sociale | `ragione_sociale_completa` | Si | Da soggetto via vista |
+| P.IVA | `partita_iva` | No | |
+| C.F. | `codice_fiscale` | No | |
+| Mod. pagamento | `modalita_pagamento_desc` | No | |
+| Stato | `stato_descrizione` | Si | Tag con severity (AT=success, SO=warn, CE/BL=danger, VE=info) |
+| Attivo | `attivo` | Si | Badge si/no |
+
+**Toolbar:**
+- Search input (debounce 400ms via `useSearchTable`)
+- Filtro Stato fornitore (Select via `useLookup('config.stati_fornitore')`)
+- Filtro Attivo (Select boolean)
+- Reload button
+- NewButton
+
+**Click riga** → emit `@row-click` per apertura drawer edit.
+
+**Pulsanti riga** (come clienti): Contatti, Indirizzi, Conti bancari (3 icone).
+
+#### FE-3: `FornitoreDrawer.vue`
+
+**File**: `frontend/src/anagrafiche/components/FornitoreDrawer.vue`
+
+**Larghezza**: `DRAWER_WIDTH.STANDARD` (640px) — form non complesso come pratiche.
+
+**Modalita CREATE:**
+
+| Sezione | Campi | Componente |
+|---------|-------|------------|
+| Soggetto | SoggettoResolver (search/create soggetto) | Componente esistente riutilizzabile |
+| Pagamento | `modalita_pagamento_id` (Select lookup), `termine_pagamento_id` (Select lookup), `valuta_id` (Select lookup), `giorni_pagamento` (InputNumber), `fine_mese` (Checkbox) | |
+| Fiscale | `split_payment` (Checkbox), `ritenuta_acconto` (Checkbox), `ritenuta_aliquota` (InputNumber, visibile se ritenuta_acconto), `regime_fiscale` (InputText), `bollo_esente` (Checkbox) | |
+| FE/SDI | `canale_fe` (InputText, maxlength 7), `pec_email` (InputText) | |
+| Rating | `rating` (InputNumber 0-100), `qualifica_scadenza` (Calendar) | |
+| Note | `note` (Textarea) | |
+
+**Modalita EDIT:**
+- Header: codice fornitore (readonly) + stato (Tag)
+- Tutti i campi editabili tranne `soggetto_ruolo_id` e `codice`
+- Sezione info: data_insert, data_update (readonly)
+- Pulsanti gestione: Contatti, Indirizzi, Conti bancari (come clienti)
+
+**Sub-drawer**: ContattiSoggettoDrawer, IndirizziSoggettoDrawer, ContiBancariDrawer — gia esistenti, riutilizzabili tramite `soggetto_id` e `soggetto_ruolo_id`.
+
+#### FE-4: `FornitoriView.vue`
+
+**File**: `frontend/src/anagrafiche/views/FornitoriView.vue`
+
+Orchestrator della pagina — pattern identico a `ClientiView.vue`:
+- `FornitoriSearchTable` + `FornitoreDrawer` + 3 sub-drawer
+- Composable: `useDrawerState()`, `useReadonlyMode()`, `useFornitoriStore()`
+- Event flow: `@new` → `openCreate()`, `@row-click` → `editRow()`, sub-drawer per contatti/indirizzi/conti
+
+#### FE-5: Traduzioni i18n
+
+**File**: `frontend/src/locales/it.json` — aggiungere sezione `fornitori`:
+
+```json
+{
+  "fornitori": {
+    "titolo": "Fornitori",
+    "search_placeholder": "Cerca per codice, ragione sociale, P.IVA...",
+    "filtro_stato": "Stato",
+    "filtro_attivo": "Attivo",
+    "nuovo_fornitore": "Nuovo fornitore",
+    "fornitore_creato": "Fornitore creato con successo",
+    "fornitore_salvato": "Fornitore salvato con successo",
+    "col_codice": "Codice",
+    "col_ragione_sociale": "Ragione sociale",
+    "col_partita_iva": "Partita IVA",
+    "col_codice_fiscale": "Codice fiscale",
+    "col_modalita_pagamento": "Mod. pagamento",
+    "col_stato": "Stato",
+    "col_attivo": "Attivo",
+    "sez_pagamento": "Pagamento",
+    "sez_fiscale": "Fiscale",
+    "sez_fe_sdi": "Fattura elettronica / SDI",
+    "sez_rating": "Rating e qualifica",
+    "sez_note": "Note"
+  }
+}
+```
+
+---
+
+### FASE 3 — Test end-to-end e rifinitura
+
+> Anello concentrico: **verifica coerenza** tra tutti gli strati.
+
+#### T-1: Test backend CI
+
+- Eseguire `./manage-test.sh apps.anagrafiche.tests -v 2` — tutti i test nuovi + regressione esistenti
+- Verificare che i nuovi test funzionino senza DB (mock completi)
+
+#### T-2: Smoke test curl
+
+**File**: `backend/scripts/tests/smoke-test-fornitori.sh`
+
+| # | Test | Metodo | Path | Verifica |
+|---|------|--------|------|----------|
+| 1 | Lista vuota/paginata | GET | `/api/v1/anagrafiche/fornitori/` | 200 + envelope |
+| 2 | Crea fornitore | POST | `/api/v1/anagrafiche/fornitori/` | 201 + id |
+| 3 | Dettaglio | GET | `/api/v1/anagrafiche/fornitori/{id}/` | 200 + dati completi |
+| 4 | Aggiorna | PATCH | `/api/v1/anagrafiche/fornitori/{id}/` | 200 |
+| 5 | Dettaglio not found | GET | `/api/v1/anagrafiche/fornitori/99999/` | 404 |
+| 6 | Crea duplicato | POST | `/api/v1/anagrafiche/fornitori/` (stesso soggetto) | 409 |
+| 7 | Lookup stati | GET | `/api/v1/core/lookup/codici/?rel=config.stati_fornitore` | 200 + lista stati |
+
+#### T-3: Test UI browser
+
+- Navigazione sidebar → Anagrafiche → Fornitori
+- Lista con paginazione, search, filtri stato/attivo
+- Crea fornitore: seleziona soggetto → compila form → salva
+- Edit fornitore: click riga → modifica campi → salva
+- Sub-drawer: contatti, indirizzi, conti bancari
+- Modalita sola lettura (utente senza permessi scrittura anagrafiche)
+
+---
+
+### Ordine di esecuzione (sviluppo concentrico)
+
+```
+FASE 1 — Backend (anello dati)
+  │
+  ├── BE-1: fornitori_repository.py         ← primo: accesso DB
+  ├── BE-2: fornitori_service.py            ← orchestra il repository
+  ├── BE-3: views_fornitori.py              ← espone via REST
+  ├── BE-4: urls.py (aggiunta rotte)        ← registra endpoint
+  ├── BE-5: lookup whitelist                ← abilita dropdown
+  └── BE-6: test (API + service)            ← verifica anello
+  │
+FASE 2 — Frontend (anello presentazione)
+  │
+  ├── FE-1: API client + store + rotta + nav ← connessione al backend
+  ├── FE-2: FornitoriSearchTable.vue         ← lista
+  ├── FE-3: FornitoreDrawer.vue              ← form crea/modifica
+  ├── FE-4: FornitoriView.vue                ← orchestrator pagina
+  └── FE-5: Traduzioni i18n                  ← testi
+  │
+FASE 3 — Verifica (coerenza tra anelli)
+  │
+  ├── T-1: Test backend CI                   ← regressione
+  ├── T-2: Smoke test curl                   ← end-to-end reale
+  └── T-3: Test UI browser                   ← validazione visiva
+```
+
+### Stima file da creare/modificare
+
+| Tipo | File | Azione |
+|------|------|--------|
+| Backend | `apps/anagrafiche/db/fornitori_repository.py` | **Nuovo** |
+| Backend | `apps/anagrafiche/services/fornitori_service.py` | **Nuovo** |
+| Backend | `apps/anagrafiche/api/views_fornitori.py` | **Nuovo** |
+| Backend | `apps/anagrafiche/api/urls.py` | **Modifica** (aggiunta 2 path) |
+| Backend | `apps/core/db/dbops_repository.py` | **Modifica** (aggiunta whitelist) |
+| Backend | `apps/anagrafiche/tests/api/test_fornitori_api.py` | **Nuovo** |
+| Backend | `apps/anagrafiche/tests/services/test_fornitori_service.py` | **Nuovo** |
+| Backend | `backend/scripts/tests/smoke-test-fornitori.sh` | **Nuovo** |
+| Frontend | `src/anagrafiche/api/anagrafiche.js` | **Modifica** (aggiunta 4 funzioni) |
+| Frontend | `src/anagrafiche/stores/fornitori.js` | **Nuovo** |
+| Frontend | `src/anagrafiche/components/FornitoriSearchTable.vue` | **Nuovo** |
+| Frontend | `src/anagrafiche/components/FornitoreDrawer.vue` | **Nuovo** |
+| Frontend | `src/anagrafiche/views/FornitoriView.vue` | **Nuovo** |
+| Frontend | `src/router/` (file rotte) | **Modifica** (aggiunta rotta) |
+| Frontend | `src/core/navigation.js` | **Modifica** (aggiunta voce) |
+| Frontend | `src/locales/it.json` | **Modifica** (aggiunta sezione) |
+| Doc | `docs/it/dev/api.md` | **Modifica** (aggiunta tabella endpoint fornitori) |
+
+**Totale**: 8 file nuovi, 9 file modificati
+
+---
+
+*Piano aggiornato il 2026-03-25 — sviluppo concentrico, base pattern clienti semplificato*
 *Da revisionare e approvare prima dell'implementazione*

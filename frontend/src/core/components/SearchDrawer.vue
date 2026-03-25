@@ -1,6 +1,7 @@
 <script setup>
 import { ref, computed, watch, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useRouter } from 'vue-router'
 import Drawer from 'primevue/drawer'
 import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
@@ -16,6 +17,7 @@ import DrawerTitle from './DrawerTitle.vue'
 import SearchDetailTable from './details/SearchDetailTable.vue'
 
 const { t } = useI18n()
+const router = useRouter()
 const { execute, loading } = useApiHandler()
 const pagination = usePagination()
 const context = useContextStore()
@@ -31,8 +33,8 @@ const selectedTipoRuolo = ref(null)
 const searchTerm = ref('')
 const results = ref([])
 const expandedRows = ref({})
-const sortField = ref(null)
-const sortOrder = ref(null)
+const sortField = ref('ragione_sociale_completa')
+const sortOrder = ref(1)
 let debounceTimer = null
 
 // Mappa tipo ruolo codice -> variante del componente dettaglio
@@ -102,8 +104,8 @@ onUnmounted(() => clearTimeout(debounceTimer))
 function onFilterChange() {
   pagination.reset()
   expandedRows.value = {}
-  sortField.value = null
-  sortOrder.value = null
+  sortField.value = 'ragione_sociale_completa'
+  sortOrder.value = 1
   doSearch()
 }
 
@@ -127,7 +129,22 @@ const ENTITA_ID_KEY = {
   FORNITORE: 'fornitore_id'
 }
 
-// Scopo: imposta il contesto globale dall'entita' selezionata e chiude il drawer
+// Mappa tipo ruolo codice -> nome rotta lista corrispondente
+const TIPO_RUOLO_ROUTES = {
+  CLIENTE: 'anagrafiche-clienti',
+  // FORNITORE: 'anagrafiche-fornitori', — future
+}
+
+// Rotte che possono gestire il contesto senza navigazione (hanno watcher su ctx)
+const CONTEXT_AWARE_ROUTES = new Set([
+  'anagrafiche-soggetti',
+  'anagrafiche-clienti',
+  // 'anagrafiche-fornitori', — future
+])
+
+// Scopo: imposta il contesto globale dall'entita' selezionata, chiude il drawer.
+// Se la pagina corrente puo' gestire il contesto, non naviga (il watcher della View
+// aprira' il drawer). Altrimenti naviga alla lista corrispondente.
 function handleSetContext(row) {
   const codice = selectedTipoRuolo.value?.codice
   const entitaKey = ENTITA_ID_KEY[codice]
@@ -142,15 +159,27 @@ function handleSetContext(row) {
     meta: {
       codice: row.soggetto_codice,
       id_fiscale: row.id_fiscale_univoco
-    }
+    },
+    searchTerm: searchTerm.value
   })
   emit('update:visible', false)
+
+  // Naviga solo se la pagina corrente non gestisce il contesto
+  const currentRoute = router.currentRoute.value.name
+  if (!CONTEXT_AWARE_ROUTES.has(currentRoute)) {
+    const routeName = TIPO_RUOLO_ROUTES[codice] || 'anagrafiche-soggetti'
+    const query = searchTerm.value ? { search: searchTerm.value } : {}
+    router.push({ name: routeName, query })
+  }
 }
 
 // Scopo: naviga alla scheda anagrafica completa del soggetto
-function handleOpenDetail(/* row */) {
-  // Navigazione alla scheda — da implementare quando le rotte anagrafiche saranno pronte
+function handleOpenDetail(row) {
+  const codice = selectedTipoRuolo.value?.codice
+  const routeName = TIPO_RUOLO_ROUTES[codice] || 'anagrafiche-soggetti'
+  const query = searchTerm.value ? { search: searchTerm.value } : {}
   emit('update:visible', false)
+  router.push({ name: routeName, query })
 }
 
 // Scopo: reset stato quando il drawer viene aperto

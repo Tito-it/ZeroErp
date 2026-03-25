@@ -31,6 +31,7 @@ export const useContextStore = defineStore('context', () => {
   const entitaId = ref(null)
   const label = ref('')
   const meta = ref(null)
+  const searchTerm = ref('')
 
   const hasContext = computed(() => !!soggettoId.value)
 
@@ -53,6 +54,7 @@ export const useContextStore = defineStore('context', () => {
     entitaId.value = payload.entita_id || null
     label.value = payload.label || ''
     meta.value = payload.meta || null
+    searchTerm.value = payload.searchTerm || ''
   }
 
   // Scopo: rimuove il contesto globale, torna a navigazione non filtrata
@@ -64,6 +66,7 @@ export const useContextStore = defineStore('context', () => {
     entitaId.value = null
     label.value = ''
     meta.value = null
+    searchTerm.value = ''
   }
 
   return {
@@ -74,6 +77,7 @@ export const useContextStore = defineStore('context', () => {
     entitaId,
     label,
     meta,
+    searchTerm,
     hasContext,
     contextLabel,
     contextIcon,

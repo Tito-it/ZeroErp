@@ -29,3 +29,19 @@ export const STATO_CLIENTE_MAP = {
 export function statoClienteSeverity(codice) {
   return resolveSeverity(STATO_CLIENTE_MAP, codice)
 }
+
+// --- Mappa stati fornitore ---
+// VE=in verifica(blu), AT=attivo(verde), SO=sospeso(arancio),
+// CE=cessato(rosso), BL=blacklist(rosso)
+export const STATO_FORNITORE_MAP = {
+  VE: 'info',
+  AT: 'success',
+  SO: 'warn',
+  CE: 'danger',
+  BL: 'danger',
+}
+
+// Scopo: Shortcut per stato fornitore (usabile direttamente nei template).
+export function statoFornitoreSeverity(codice) {
+  return resolveSeverity(STATO_FORNITORE_MAP, codice)
+}

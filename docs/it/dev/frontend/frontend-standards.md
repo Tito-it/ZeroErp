@@ -181,6 +181,42 @@ const { searchText, onPage, onSort, paginatorProps } = useSearchTable(store)
 
 Nessun componente lista deve implementare onPage/onSort/debounce manualmente.
 
+### Pattern: Ricerca universale → lista filtrata
+
+Quando l'utente seleziona un risultato dalla ricerca universale (SearchDrawer), il sistema:
+
+1. **Imposta il contesto** globale (`contextStore.setContext` con `searchTerm`)
+2. **Naviga** alla rotta lista corrispondente
+3. **`useSearchTable`** legge automaticamente il termine da `route.query.search` o `contextStore.searchTerm`
+
+**Nessuna configurazione necessaria nelle singole SearchTable** — `useSearchTable` centralizza
+la risoluzione del termine di ricerca iniziale. Le SearchTable si usano esattamente come prima:
+
+```js
+const { searchText, onPage, onSort, paginatorProps } = useSearchTable(store, {
+  defaultSortField: 'ragione_sociale_completa'
+})
+```
+
+**Nella View** serve solo il watcher per auto-apertura drawer da contesto:
+
+```js
+import { useContextStore } from '../../stores/context'
+const ctx = useContextStore()
+
+watch(() => route.fullPath, () => {
+  if (route.name === 'anagrafiche-clienti' && ctx.entitaId) {
+    nextTick(() => drawer.editRow({ id: ctx.entitaId }, 'id'))
+  }
+}, { immediate: true })
+```
+
+**Per aggiungere una nuova lista:**
+
+- Aggiungere la rotta nella mappa `TIPO_RUOLO_ROUTES` in `SearchDrawer.vue`
+- Implementare il watcher `ctx → drawer.editRow` nella View se supporta auto-apertura
+- Nient'altro: `useSearchTable` fa il resto
+
 ### ⚠️ REGOLA CRITICA: Paginazione deterministica (backend)
 
 **Ogni query SQL paginata (LIMIT/OFFSET) DEVE avere `id` come tiebreaker nell'ORDER BY.**
@@ -923,5 +959,5 @@ const { isAllowed } = useActionPermission('genera_fatture_lotti')
 
 ---
 
-*ZeroERP Frontend Standards — rev. 8 (18 marzo 2026)*
+*ZeroERP Frontend Standards — rev. 9 (25 marzo 2026)*
 *Sviluppo Concentrico — anello esterno, radici nell'infrastruttura*

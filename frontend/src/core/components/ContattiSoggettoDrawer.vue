@@ -15,6 +15,7 @@ import {
   updateRuoloContatto, deleteRuoloContatto
 } from '../../anagrafiche/api/anagrafiche'
 import { DRAWER_WIDTH } from '../constants'
+import { sortByFonte } from '../utils/string'
 import ContattoForm from './ContattoForm.vue'
 import DrawerTitle from './DrawerTitle.vue'
 import DrawerFooter from './DrawerFooter.vue'
@@ -70,10 +71,10 @@ async function loadContatti() {
     const payload = res.data?.data
     if (props.context === 'ruolo' && payload?.contatti_ruolo) {
       // Il backend gia' include 'fonte' (utility/ruolo/soggetto) nei dict
-      contattiList.value = [
+      contattiList.value = sortByFonte([
         ...payload.contatti_ruolo,
         ...(payload.contatti_soggetto || []),
-      ]
+      ])
     } else {
       contattiList.value = payload?.results || payload || []
     }

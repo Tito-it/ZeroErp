@@ -17,6 +17,7 @@ import {
   updateRuoloContoBancario, deleteRuoloContoBancario
 } from '../../anagrafiche/api/anagrafiche'
 import { DRAWER_WIDTH } from '../constants'
+import { sortByFonte } from '../utils/string'
 import ContoBancarioForm from './ContoBancarioForm.vue'
 import DrawerTitle from './DrawerTitle.vue'
 import DrawerFooter from './DrawerFooter.vue'
@@ -73,10 +74,10 @@ async function loadConti() {
     const payload = res.data?.data
     if (props.context === 'ruolo' && payload?.conti_ruolo) {
       // Il backend gia' include 'fonte' (utility/ruolo/soggetto) nei dict
-      contiList.value = [
+      contiList.value = sortByFonte([
         ...payload.conti_ruolo,
         ...(payload.conti_ereditati || []),
-      ]
+      ])
     } else {
       contiList.value = payload?.results || payload || []
     }
