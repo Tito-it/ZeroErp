@@ -34,6 +34,7 @@
 
 ## ⚙️ Funzioni
 - [fn_build_indirizzo_normalizzato](funzioni/fn_build_indirizzo_normalizzato.md) — Centralizza **tutta** la logica di normalizzazione degli indirizzi fisici. E' la **unica source of truth**: il trigger `trgfn_indirizzi_dettaglio_normalize` la chiama e assegna i risultati (zero logica nel trigger). Il backend Python la usa per check duplicato via GIN index.
+- [fn_check_fornitore_attivo](funzioni/fn_check_fornitore_attivo.md)
 - [fn_crea_auth_user](funzioni/fn_crea_auth_user.md) — (latest review 13-03-2026) Building block atomico per la creazione di un record `auth_user` (Django). Gestisce la validazione dei parametri e i guard di unicita' su username e email.
 - [fn_crea_indirizzo_soggetto](funzioni/fn_crea_indirizzo_soggetto.md) — (latest review 13-03-2026)
 - [fn_crea_operatore](funzioni/fn_crea_operatore.md)
@@ -42,6 +43,7 @@
 - [fn_crea_soggetto_pg](funzioni/fn_crea_soggetto_pg.md) — (latest review 14-03-2026) Building block atomico per la creazione di un soggetto Persona Giuridica con contatto default obbligatorio e dati societari (condizionali alla `dati_societari_policy` del tipo soggetto).
 - [fn_get_emittente_fiscale_id](funzioni/fn_get_emittente_fiscale_id.md) — (last review 23-01-2026) La funzione `anagrafiche.fn_get_emittente_fiscale_id()` risolve l’emittente fiscale associato a un `billing_account`. Se non esiste un mapping specifico, usa l’emittente **di default globale**.
 - [fn_get_or_create_indirizzo_dettaglio](funzioni/fn_get_or_create_indirizzo_dettaglio.md) — (latest review 13-03-2026) Building block atomico per l'upsert di un civico normalizzato in `anagrafiche.indirizzi_dettaglio`.
+- [fn_guard_fornitore_attivo](funzioni/fn_guard_fornitore_attivo.md)
 - [fn_notify_cambio_reparto](funzioni/fn_notify_cambio_reparto.md) — (latest review 10-03-2026) La funzione **`anagrafiche.fn_notify_cambio_reparto()`** emette una notifica PostgreSQL sul canale `cambio_reparto` quando una risorsa umana viene spostata da un'unita' organizzativa a un'altra.
 - [fn_search_indirizzi_dettaglio](funzioni/fn_search_indirizzi_dettaglio.md) — (latest review 28-11-25) La funzione **`anagrafiche.fn_search_indirizzi_dettaglio`** fornisce un **punto unico di ingresso** per la ricerca degli indirizzi di dettaglio normalizzati, appoggiandosi alla vista:
 - [fn_sync_auth_user_expired](funzioni/fn_sync_auth_user_expired.md) — (latest review 10-03-2026) La funzione **`anagrafiche.fn_sync_auth_user_expired()`** esegue una sincronizzazione batch degli utenti Django collegati a risorse umane con finestra di validita' scaduta.
@@ -109,6 +111,7 @@
 - [vw_clienti_codice_ba](views/vw_clienti_codice_ba.md)
 - [vw_conti_bancari_per_ruolo](views/vw_conti_bancari_per_ruolo.md) — (latest review 24-03-26)
 - [vw_dati_societari](views/vw_dati_societari.md) — (latest review 23-12-25) La vista **`anagrafiche.vw_dati_societari`** offre una lettura unificata dei dati societari con:
+- [vw_fornitori_dettaglio](views/vw_fornitori_dettaglio.md)
 - [vw_indirizzi_dettaglio](views/vw_indirizzi_dettaglio.md) — (latest review 28-11-25) La vista **`anagrafiche.vw_indirizzi_dettaglio`** fornisce una rappresentazione "comoda" e già arricchita degli indirizzi di dettaglio, a partire dalla tabella sorgente [`anagrafiche.indirizzi_dettaglio`](/dbzero/anagrafiche/tabelle/indirizzi_dettaglio) collegata allo stradario [`config.stradario`](/dbzero/config/tabelle/stradario).
 - [vw_indirizzi_resolved_all](views/vw_indirizzi_resolved_all.md) — (latest review 20-12-25) La vista **`anagrafiche.vw_indirizzi_resolved_all`** rappresenta il **punto unico e canonico di lettura** degli indirizzi in Zero ERP.
 - [vw_indirizzi_resolved_base](views/vw_indirizzi_resolved_base.md) — (latest review 24-03-26) La vista **`anagrafiche.vw_indirizzi_resolved_base`** è il **layer comune** per la risoluzione degli indirizzi, e unifica in un solo output:
