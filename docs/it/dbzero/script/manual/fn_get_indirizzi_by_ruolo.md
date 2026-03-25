@@ -15,8 +15,8 @@
 
 ---
 ### 🎯 Scopo Principale
-(latest review 24-03-26)
-Restituisce gli **indirizzi** associati a uno specifico `soggetto_ruolo`, con filtro opzionale per **utility**, producendo per ciascuno:
+(latest review 25-03-26)
+Restituisce gli **indirizzi** associati a uno specifico `soggetto_ruolo`, con filtro opzionale per **istanza utility**, producendo per ciascuno:
 
 * il **tipo di indirizzo** (`codice_interno`) e indicazione se **normalizzato**;
 * una stringa **human‑readable** dell’**indirizzo completo** secondo regole di priorità;
@@ -31,7 +31,7 @@ Restituisce gli **indirizzi** associati a uno specifico `soggetto_ruolo`, con fi
 Questa funzione usa il layer **RUOLO** come sorgente master e legge dalla vista resolved base.
 Non applica fallback su indirizzi soggetto (la policy master/fallback e demandata a `script.fn_get_indirizzo`).
 
-Se `p_utility_id` è valorizzato, restituisce solo gli indirizzi della utility specifica + quelli generici (utility NULL). Se `p_utility_id` è NULL, restituisce tutti gli indirizzi del ruolo.
+Se `p_istanza_utility_id` è valorizzato, restituisce solo gli indirizzi della istanza specifica + quelli generici (istanza NULL). Se `p_istanza_utility_id` è NULL, restituisce tutti gli indirizzi del ruolo.
 
 ---
 
@@ -40,7 +40,7 @@ Se `p_utility_id` è valorizzato, restituisce solo gli indirizzi della utility s
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_get_indirizzi_by_ruolo(
   p_soggetto_ruolo_id  anagrafiche.soggetti_ruoli.id%TYPE,
-  p_utility_id         config.utilities.id%TYPE DEFAULT NULL
+  p_istanza_utility_id anagrafiche.istanze_utilities.id%TYPE DEFAULT NULL
 )
 RETURNS TABLE(
   tipo_indirizzo         config.tipi_indirizzi.codice_interno%TYPE,
@@ -48,8 +48,7 @@ RETURNS TABLE(
   geoloc                 geometry,
   indirizzo_id           anagrafiche.indirizzi.id%TYPE,
   soggetto_ruolo_id      anagrafiche.indirizzi.soggetto_ruolo_id%TYPE,
-  utility_id             anagrafiche.indirizzi.utility_id%TYPE,
-  utility_codice         config.utilities.codice%TYPE,
+  istanza_utility_id     anagrafiche.indirizzi.istanza_utility_id%TYPE,
   tipo_indirizzo_id      anagrafiche.indirizzi.tipo_indirizzo_id%TYPE,
   indirizzo_dettaglio_id anagrafiche.indirizzi.indirizzo_dettaglio_id%TYPE,
   indirizzo_libero       anagrafiche.indirizzi.indirizzo_libero%TYPE,
@@ -67,7 +66,7 @@ STABLE;
 | Nome | Tipo | Obbligatorio | Descrizione |
 | --- | --- | :---: | --- |
 | `p_soggetto_ruolo_id` | `bigint` | si | ID della relazione in `anagrafiche.soggetti_ruoli` a cui sono collegati gli indirizzi. |
-| `p_utility_id` | `integer` | no | ID della utility (`config.utilities.id`). Se valorizzato filtra per utility specifica + generici (NULL). Se NULL restituisce tutti. |
+| `p_istanza_utility_id` | `bigint` | no | ID della istanza utility (`anagrafiche.istanze_utilities.id`). Se valorizzato filtra per istanza specifica + generici (NULL). Se NULL restituisce tutti. |
 
 ---
 
@@ -109,8 +108,8 @@ STABLE;
 1. Legge da `anagrafiche.vw_indirizzi_resolved_base`.
 2. Filtra `scope = 'RUOLO'`.
 3. Filtra per `soggetto_ruolo_id = p_soggetto_ruolo_id`.
-4. Se `p_utility_id` è valorizzato: filtra `utility_id = p_utility_id OR utility_id IS NULL`.
-5. Ordina per `tipo_indirizzo_codice, utility_id NULLS LAST, indirizzo_id`.
+4. Se `p_istanza_utility_id` è valorizzato: filtra `istanza_utility_id = p_istanza_utility_id OR istanza_utility_id IS NULL`.
+5. Ordina per `tipo_indirizzo_codice, istanza_utility_id NULLS LAST, indirizzo_id`.
 
 ---
 
@@ -139,7 +138,7 @@ STABLE;
 -- Tutti gli indirizzi del ruolo
 SELECT * FROM script.fn_get_indirizzi_by_ruolo(123);
 
--- Solo indirizzi per utility GAS (id=1) + generici
+-- Solo indirizzi per istanza GAS (id=1) + generici
 SELECT * FROM script.fn_get_indirizzi_by_ruolo(123, 1);
 
 -- Solo indirizzi normalizzati

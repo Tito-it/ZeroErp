@@ -146,8 +146,15 @@ SELECT is(
 
 -- =========================================================
 -- 6) Inserimento contatto di RUOLO con unita_organizzativa
---    e tipo_contatto NULL (categoria opzionale)
+--    e un secondo tipo_contatto (tipo_contatto_id NOT NULL dal 20260324-01)
 -- =========================================================
+CREATE TEMP TABLE tmp_tipo_contatto_test_2 AS
+SELECT id AS tipo_contatto_id
+FROM config.tipi_contatti
+WHERE id <> (SELECT tipo_contatto_id FROM tmp_tipo_contatto_test)
+ORDER BY id
+LIMIT 1;
+
 WITH ins AS (
     INSERT INTO anagrafiche.contatti (
         tipo_contatto_id,
@@ -160,16 +167,17 @@ WITH ins AS (
         is_default
     )
     SELECT
-        NULL,
+        tc2.tipo_contatto_id,
         sr.soggetto_id,
         sr.soggetto_ruolo_id,
         uo.unita_organizzativa_id,
         'Contatto RUOLO UO PGTAP',
         'ruolo.uo.titnmhl@example.com',
-        'PGTAP – contatto ruolo con unita_organizzativa e tipo_contatto NULL',
+        'PGTAP – contatto ruolo con unita_organizzativa e secondo tipo_contatto',
         FALSE
     FROM tmp_soggetto_ruolo_test sr,
-         tmp_unita_organizzativa_test uo
+         tmp_unita_organizzativa_test uo,
+         tmp_tipo_contatto_test_2 tc2
     RETURNING id
 )
 SELECT id
@@ -272,7 +280,7 @@ SELECT ok(
 
 -- =========================================================
 -- 11) fn_get_contatti:
---    (d) soggetto + ruolo + unita_organizzativa + tipo_contatto NULL
+--    (d) soggetto + ruolo + unita_organizzativa + tipo_contatto_2
 --        → contatto ruolo con unita_organizzativa
 -- =========================================================
 SELECT ok(
@@ -282,16 +290,15 @@ SELECT ok(
             (SELECT soggetto_id            FROM tmp_soggetto_ruolo_test),
             (SELECT soggetto_ruolo_id      FROM tmp_soggetto_ruolo_test),
             NULL,
-            NULL,
+            (SELECT tipo_contatto_id       FROM tmp_tipo_contatto_test_2),
             (SELECT unita_organizzativa_id FROM tmp_unita_organizzativa_test)
         ) AS f
         JOIN anagrafiche.contatti c
           ON c.id = f.id
         WHERE c.soggetto_ruolo_id = (SELECT soggetto_ruolo_id FROM tmp_soggetto_ruolo_test)
           AND c.unita_organizzativa_id = (SELECT unita_organizzativa_id FROM tmp_unita_organizzativa_test)
-          AND c.tipo_contatto_id IS NULL
     ),
-    'fn_get_contatti(soggetto, ruolo, unita_organizzativa, NULL): ritorna un contatto con unita_organizzativa'
+    'fn_get_contatti(soggetto, ruolo, NULL, tipo_2, unita_org): ritorna contatto con unita_organizzativa'
 );
 
 -- Fine test

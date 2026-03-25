@@ -1,0 +1,101 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Sostituisce utility_id con istanza_utility_id su anagrafiche.indirizzi.
+# Rimuove i partial unique index basati su utility_id e li ricrea
+# con istanza_utility_id (bigint).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: /migrations_v2/00_schema/anagrafiche/20260325-02-replace-utility-with-istanza-indirizzi-mctit.yaml
+
+  - changeSet:
+      id: 20260325-02-replace-utility-with-istanza-indirizzi
+      author: mctit
+      comment: >
+        Sostituisce utility_id (integer, FK config.utilities) con
+        istanza_utility_id (bigint, FK anagrafiche.istanze_utilities)
+        su anagrafiche.indirizzi. Ricrea partial unique index.
+      changes:
+        # 0. DROP catena dipendente da utility_id (funzioni poi viste)
+        #    Saranno ricreate con istanza_utility_id nel changeset 20260325-04
+        - sql:
+            sql: >
+              DROP FUNCTION IF EXISTS script.fn_get_indirizzo(bigint, character varying, integer);
+              DROP FUNCTION IF EXISTS script.fn_get_indirizzo(bigint, character varying);
+              DROP FUNCTION IF EXISTS script.fn_get_indirizzo_by_soggetto(uuid, character varying);
+              DROP FUNCTION IF EXISTS script.fn_get_indirizzi_by_soggetto(uuid);
+              DROP FUNCTION IF EXISTS script.fn_get_indirizzi_by_ruolo(bigint, integer);
+              DROP FUNCTION IF EXISTS script.fn_get_indirizzi_by_ruolo(bigint);
+              DROP VIEW IF EXISTS anagrafiche.vw_indirizzi_resolved_ruolo;
+              DROP VIEW IF EXISTS anagrafiche.vw_indirizzi_resolved_soggetto;
+              DROP VIEW IF EXISTS anagrafiche.vw_indirizzi_resolved_all;
+              DROP VIEW IF EXISTS anagrafiche.vw_indirizzi_resolved_base
+
+        # 1. Rimuovere vecchi partial unique index
+        - sql:
+            sql: >
+              DROP INDEX IF EXISTS anagrafiche.uq_indirizzi_ruolo_tipo_no_utility
+        - sql:
+            sql: >
+              DROP INDEX IF EXISTS anagrafiche.uq_indirizzi_ruolo_utility_tipo
+
+        # 2. Rimuovere indice e FK su utility_id
+        - dropIndex:
+            schemaName: anagrafiche
+            tableName: indirizzi
+            indexName: ix_anagrafiche_indirizzi_utility_id
+
+        - dropForeignKeyConstraint:
+            baseTableSchemaName: anagrafiche
+            baseTableName: indirizzi
+            constraintName: fk_indirizzi_utilities
+
+        - dropColumn:
+            schemaName: anagrafiche
+            tableName: indirizzi
+            columnName: utility_id
+
+        # 3. Aggiungere colonna istanza_utility_id (bigint)
+        - addColumn:
+            schemaName: anagrafiche
+            tableName: indirizzi
+            columns:
+              - column:
+                  name: istanza_utility_id
+                  type: bigint
+                  constraints:
+                    nullable: true
+
+        # 4. FK verso anagrafiche.istanze_utilities
+        - addForeignKeyConstraint:
+            constraintName: fk_indirizzi_istanze_utilities
+            baseTableSchemaName: anagrafiche
+            baseTableName: indirizzi
+            baseColumnNames: istanza_utility_id
+            referencedTableSchemaName: anagrafiche
+            referencedTableName: istanze_utilities
+            referencedColumnNames: id
+
+        # 5. Partial unique: generico ruolo (istanza NULL)
+        - sql:
+            sql: >
+              CREATE UNIQUE INDEX uq_indirizzi_ruolo_tipo_no_istanza
+              ON anagrafiche.indirizzi (soggetto_ruolo_id, tipo_indirizzo_id)
+              WHERE istanza_utility_id IS NULL
+
+        # 6. Partial unique: specifico istanza
+        - sql:
+            sql: >
+              CREATE UNIQUE INDEX uq_indirizzi_ruolo_istanza_tipo
+              ON anagrafiche.indirizzi (soggetto_ruolo_id, istanza_utility_id, tipo_indirizzo_id)
+              WHERE istanza_utility_id IS NOT NULL
+
+        # 7. Indice su istanza_utility_id
+        - createIndex:
+            schemaName: anagrafiche
+            tableName: indirizzi
+            indexName: ix_indirizzi_istanza_utility_id
+            columns:
+              - column:
+                  name: istanza_utility_id

@@ -1,6 +1,6 @@
 # Guida – Gestione dei Conti Bancari
 
-> (latest review 04-03-26)
+> (latest review 25-03-26)
 >
 > Destinatari: sviluppatori database, backend e analisti funzionali
 >
@@ -66,23 +66,23 @@ conti_bancari (registro unico IBAN)
     │       soggetto_id + conto_bancario_id + uso + predefinito
     │       un predefinito per (soggetto, uso)
     │
-    └── soggetti_ruoli_conti_bancari (livello ruolo — con utility opzionale)
-            soggetto_ruolo_id + utility_id + conto_bancario_id + uso + predefinito
-            un predefinito per (ruolo, utility, uso)
-            utility_id nullable: NULL = generico ruolo, valorizzato = specifico utility
+    └── soggetti_ruoli_conti_bancari (livello ruolo — con istanza opzionale)
+            soggetto_ruolo_id + istanza_utility_id + conto_bancario_id + uso + predefinito
+            un predefinito per (ruolo, istanza, uso)
+            istanza_utility_id nullable: NULL = generico ruolo, valorizzato = specifico istanza
 
 vw_conti_bancari_per_ruolo (vista flat — espone tutte le righe candidate)
-    unisce ruolo + soggetto, espone utility_id e utility_codice
+    unisce ruolo + soggetto, espone istanza_utility_id
     filtra: valido oggi, non bloccato, conto attivo
     la selezione del "vincente" e nella funzione, non nella vista
 
-fn_get_conto_bancario_predefinito(ruolo, uso, utility_id DEFAULT NULL)
+fn_get_conto_bancario_predefinito(ruolo, uso, istanza_utility_id DEFAULT NULL)
     cascata 7 livelli:
-    1. ruolo + utility + uso richiesto
-    2. ruolo + uso richiesto (utility NULL)
+    1. ruolo + istanza + uso richiesto
+    2. ruolo + uso richiesto (istanza NULL)
     3. soggetto + uso richiesto
-    4. ruolo + utility + uso GENERICO
-    5. ruolo + uso GENERICO (utility NULL)
+    4. ruolo + istanza + uso GENERICO
+    5. ruolo + uso GENERICO (istanza NULL)
     6. soggetto + uso GENERICO
     7. NULL
     restituisce 0 o 1 riga
@@ -90,8 +90,8 @@ fn_get_conto_bancario_predefinito(ruolo, uso, utility_id DEFAULT NULL)
 
 * **Registro** = l'IBAN esiste una sola volta, normalizzato e validato
 * **Legame soggetto** = il livello base, usato come fallback finale
-* **Legame ruolo** = l'override specifico per un ruolo, con `utility_id` opzionale per differenziare per servizio
-* **Predefinito** = un solo conto predefinito per ogni combinazione (ruolo, utility, uso)
+* **Legame ruolo** = l'override specifico per un ruolo, con `istanza_utility_id` opzionale per differenziare per istanza di servizio
+* **Predefinito** = un solo conto predefinito per ogni combinazione (ruolo, istanza, uso)
 * **Regola predefinito/bloccato** = non e possibile bloccare un conto predefinito; il service backend impedisce la combinazione
 
 ---
@@ -204,8 +204,11 @@ Da un punto di vista tecnico:
 
 **Vincoli:**
 
-* `UNIQUE (soggetto_ruolo_id, conto_bancario_id, uso)` — un legame per combinazione
-* `UNIQUE PARTIAL (soggetto_ruolo_id, uso) WHERE predefinito=true` — un solo predefinito per uso
+* 4 partial unique index per gestire NULL su `istanza_utility_id`:
+  * `uq_src_bancari_ruolo_istanza_conto_uso` — un legame per (ruolo, istanza, conto, uso) con istanza
+  * `uq_src_bancari_ruolo_conto_uso_no_istanza` — un legame per (ruolo, conto, uso) senza istanza
+  * `uq_src_bancari_predefinito_istanza` — un predefinito per (ruolo, istanza, uso) con istanza
+  * `uq_src_bancari_predefinito_no_istanza` — un predefinito per (ruolo, uso) senza istanza
 * `CHECK chk_soggetti_ruoli_conti_bancari_uso` — valori ammessi
 * `CHECK chk_soggetti_ruoli_conti_bancari_validita` — coerenza date
 
@@ -226,7 +229,7 @@ Il sistema offre due artefatti per recuperare il conto bancario corretto, entram
 
 #### `anagrafiche.vw_conti_bancari_per_ruolo`
 
-La view unisce le candidate di entrambi i livelli e restituisce **una sola riga per ogni combinazione `(soggetto_ruolo_id, uso)`**. L'ordinamento interno privilegia il legame ruolo (`fonte='RUOLO'`) rispetto al soggetto (`fonte='SOGGETTO'`), poi il flag predefinito, poi la recenza.
+La view e **flat**: unisce le candidate di entrambi i livelli e restituisce **tutte le righe candidate**, ordinate per priorita (ruolo+istanza > ruolo generico > soggetto, poi predefinito, poi recenza). La **selezione singola** con cascata istanza e uso e delegata alla funzione `fn_get_conto_bancario_predefinito`.
 
 La view espone:
 
@@ -248,7 +251,7 @@ La view espone:
 
 #### `script.fn_get_conto_bancario_predefinito`
 
-La funzione e il punto d'ingresso consigliato quando serve **un singolo conto** per un'operazione specifica. Interroga la view per il ruolo e l'uso indicati. Se non trova risultati e l'uso non e gia `GENERICO`, ritenta con `uso='GENERICO'` come fallback.
+La funzione e il punto d'ingresso consigliato quando serve **un singolo conto** per un'operazione specifica. Interroga la view con cascata a **7 livelli** combinando istanza e uso.
 
 Da un punto di vista tecnico:
 
@@ -256,16 +259,19 @@ Da un punto di vista tecnico:
 | --- | --- | --- |
 | `p_soggetto_ruolo_id` | BIGINT | Ruolo del soggetto (obbligatorio) |
 | `p_uso` | VARCHAR | Uso richiesto, normalizzato a UPPER(TRIM()) |
+| `p_istanza_utility_id` | BIGINT | ID istanza (`anagrafiche.istanze_utilities.id`). Opzionale — se NULL parte dal livello ruolo generico |
 
 **Restituisce:** un record di tipo `anagrafiche.vw_conti_bancari_per_ruolo` o NULL.
 
-**Catena di fallback completa:**
+**Catena di fallback completa (7 livelli):**
 
-1. Legame ruolo per l'uso richiesto
-2. Legame soggetto per l'uso richiesto
-3. Legame ruolo per uso `GENERICO`
-4. Legame soggetto per uso `GENERICO`
-5. NULL (nessun conto disponibile)
+1. Ruolo + istanza specifica + uso richiesto
+2. Ruolo + istanza NULL + uso richiesto
+3. Soggetto + uso richiesto
+4. Ruolo + istanza specifica + uso GENERICO
+5. Ruolo + istanza NULL + uso GENERICO
+6. Soggetto + uso GENERICO
+7. NULL (nessun conto disponibile)
 
 > Documentazione dettagliata: [script.fn_get_conto_bancario_predefinito](/dbzero/script/funzioni/fn_get_conto_bancario_predefinito)
 

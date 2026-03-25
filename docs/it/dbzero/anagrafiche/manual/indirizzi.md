@@ -29,7 +29,9 @@ Approfondimento funzioni e trigger:
 La tabella **`anagrafiche.indirizzi`** gestisce l’associazione tra un soggetto/ruolo e un indirizzo, integrando sia **indirizzi normalizzati** (collegati a `indirizzi_dettaglio`), sia **indirizzi liberi**, utili per contesti internazionali o non strutturati.
 
 Supporta:
+
 - Identificazione del tipo di indirizzo (es. legale, sede operativa, corrispondenza)
+- **Differenziazione per istanza di servizio** tramite `istanza_utility_id` (opzionale)
 - Riferimenti geografici completi
 - Storicizzazione delle modifiche
 - Geolocalizzazione
@@ -37,9 +39,14 @@ Supporta:
 
 ---
 ### 🎯 Scopo Principale
-(latest review 10-01-26)
-* **Associazione soggetto/ruolo → indirizzo**  
-  Ogni soggetto può avere più indirizzi distinti in base al ruolo (es. cliente, fornitore) e al tipo di indirizzo (es. sede legale, spedizione, residenza).
+(latest review 25-03-26)
+* **Associazione soggetto/ruolo/istanza → indirizzo**
+  Ogni soggetto può avere più indirizzi distinti in base al ruolo (es. cliente, fornitore), al tipo di indirizzo (es. sede legale, spedizione, residenza) e all'istanza di servizio (es. GAS Corridonia vs GAS Civitanova).
+
+* **Cascata a 3 livelli**
+  - **Livello 1 — Istanza**: `istanza_utility_id` valorizzato → indirizzo specifico per il servizio
+  - **Livello 2 — Ruolo generico**: `istanza_utility_id` NULL → indirizzo generico del ruolo
+  - **Livello 3 — Soggetto**: indirizzo da `indirizzi_soggetti` (fallback readonly)
 
 * **Supporto per due modalità**  
   - **Normalizzata**: tramite `indirizzo_dettaglio_id`, si collega a una via e civico specifici (con geolocalizzazione puntuale e struttura gerarchica).
@@ -64,20 +71,31 @@ Supporta:
 
 ### Collegamenti con Altre Tabelle
 
-* **`anagrafiche.soggetti_ruoli`**  
-  - Ogni indirizzo è riferito a una specifica combinazione soggetto/ruolo.  
-  - Vincolo `RESTRICT` in caso di eliminazione (non si può eliminare un ruolo associato a indirizzi).  
+* **`anagrafiche.soggetti_ruoli`**
+  - Ogni indirizzo è riferito a una specifica combinazione soggetto/ruolo.
+  - Vincolo `RESTRICT` in caso di eliminazione (non si può eliminare un ruolo associato a indirizzi).
 
-* **`config.tipi_indirizzi`**  
-  - Definisce la tipologia dell’indirizzo (es. domicilio fiscale, sede legale, corrispondenza).  
-  - Obbligatoria per ogni record.  
+* **`anagrafiche.istanze_utilities`** (opzionale)
+  - Se `istanza_utility_id` è valorizzato, l’indirizzo è specifico per quell’istanza di servizio.
+  - Se NULL, l’indirizzo è generico del ruolo (fallback per tutte le istanze).
 
-* **`anagrafiche.indirizzi_dettaglio`**  
-  - Se presente, indica che l’indirizzo è in modalità normalizzata.  
-  - In caso contrario, devono essere valorizzati i campi dell’indirizzo libero.  
+* **`config.tipi_indirizzi`**
+  - Definisce la tipologia dell’indirizzo (es. domicilio fiscale, sede legale, corrispondenza).
+  - Obbligatoria per ogni record.
 
-* **`config.comuni`, `config.codici_postali`, `config.stati`**  
-  - Utilizzati solo per la modalità libera per fornire contesto geografico anche a indirizzi non normalizzati.  
+* **`anagrafiche.indirizzi_dettaglio`**
+  - Se presente, indica che l’indirizzo è in modalità normalizzata.
+  - In caso contrario, devono essere valorizzati i campi dell’indirizzo libero.
+
+* **`config.comuni`, `config.codici_postali`, `config.stati`**
+  - Utilizzati solo per la modalità libera per fornire contesto geografico anche a indirizzi non normalizzati.
+
+### Vincoli UNIQUE
+
+Due partial unique index per gestire la cascata istanza/ruolo generico:
+
+- `uq_indirizzi_ruolo_tipo_no_istanza (soggetto_ruolo_id, tipo_indirizzo_id) WHERE istanza_utility_id IS NULL` — un solo indirizzo generico per tipo per ruolo
+- `uq_indirizzi_ruolo_istanza_tipo (soggetto_ruolo_id, istanza_utility_id, tipo_indirizzo_id) WHERE istanza_utility_id IS NOT NULL` — un solo indirizzo per tipo per istanza
 
 ---
 
@@ -110,13 +128,14 @@ Supporta:
 ```mermaid
 %%{init: {'er': {'layoutDirection': 'TB'}}}%%
 erDiagram
-    soggetti_ruoli   ||--o{ indirizzi : has
-    tipi_indirizzi   ||--o{ indirizzi : typed_as
+    soggetti_ruoli      ||--o{ indirizzi : has
+    istanze_utilities   ||--o{ indirizzi : scoped_by
+    tipi_indirizzi      ||--o{ indirizzi : typed_as
     indirizzi_dettaglio ||--o{ indirizzi : normalized_by
-    comuni           ||--o{ indirizzi : uses
-    codici_postali   ||--o{ indirizzi : uses
-    stati            ||--o{ indirizzi : uses
-    indirizzi               ||--o{ storico_indirizzi : history
+    comuni              ||--o{ indirizzi : uses
+    codici_postali      ||--o{ indirizzi : uses
+    stati               ||--o{ indirizzi : uses
+    indirizzi           ||--o{ storico_indirizzi : history
 
 ```
 

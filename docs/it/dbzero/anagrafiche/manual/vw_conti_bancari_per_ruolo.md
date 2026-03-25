@@ -21,16 +21,16 @@ A differenza della versione precedente (che restituiva una sola riga per coppia 
 ---
 ### 🎯 Scopo Principale
 
-(latest review 24-03-26)
+(latest review 25-03-26)
 
 * **Vista flat di tutte le candidate per ruolo**
-  Espone tutte le righe candidate da entrambi i livelli di legame, con `utility_id` e `utility_codice`:
+  Espone tutte le righe candidate da entrambi i livelli di legame, con `istanza_utility_id`:
 
-  * legami a livello **ruolo** (`soggetti_ruoli_conti_bancari`) — con `utility_id` nullable
-  * legami a livello **soggetto** (`soggetti_conti_bancari`) — `utility_id` sempre NULL
+  * legami a livello **ruolo** (`soggetti_ruoli_conti_bancari`) — con `istanza_utility_id` nullable
+  * legami a livello **soggetto** (`soggetti_conti_bancari`) — `istanza_utility_id` sempre NULL
 
 * **Ordinamento di priorita (non selezione)**
-  Le righe sono ordinate per priorita: ruolo+utility > ruolo generico > soggetto, poi predefinito, poi recenza. La vista **non** applica `DISTINCT ON`: restituisce tutte le candidate.
+  Le righe sono ordinate per priorita: ruolo+istanza > ruolo generico > soggetto, poi predefinito, poi recenza. La vista **non** applica `DISTINCT ON`: restituisce tutte le candidate.
 
 * **Filtro su validita e stato**
   Espone soltanto conti:
@@ -40,7 +40,7 @@ A differenza della versione precedente (che restituiva una sola riga per coppia 
   * con **validita compatibile con la data odierna** (`valido_dal/valido_al`).
 
 * **Selezione singola delegata alla funzione**
-  La scelta del "miglior conto" con cascata utility e uso e responsabilita di `fn_get_conto_bancario_predefinito`.
+  La scelta del "miglior conto" con cascata istanza e uso e responsabilita di `fn_get_conto_bancario_predefinito`.
 
 ---
 
@@ -89,15 +89,13 @@ La vista è costruita in più passi mediante CTE:
    * `predefinito`, `priority`, `valido_dal`, `valido_al`, `data_update`
    * `fonte` (`'RUOLO'` o `'SOGGETTO'`)
 
-4. **JOIN su `config.utilities`** per esporre `utility_codice` accanto a `utility_id`.
-
-5. **Ordinamento finale** (senza `DISTINCT ON`):
+4. **Ordinamento finale** (senza `DISTINCT ON`):
 
    ```sql
    ORDER BY soggetto_ruolo_id, uso,
      CASE
-       WHEN fonte = ‘RUOLO’ AND utility_id IS NOT NULL THEN 1
-       WHEN fonte = ‘RUOLO’ AND utility_id IS NULL     THEN 2
+       WHEN fonte = ‘RUOLO’ AND istanza_utility_id IS NOT NULL THEN 1
+       WHEN fonte = ‘RUOLO’ AND istanza_utility_id IS NULL     THEN 2
        WHEN fonte = ‘SOGGETTO’                         THEN 3
      END,
      predefinito DESC,
@@ -106,8 +104,8 @@ La vista è costruita in più passi mediante CTE:
 
    Ordine di priorita:
 
-   1. **Ruolo + utility specifica** (massima priorita)
-   2. **Ruolo generico** (utility NULL)
+   1. **Ruolo + istanza specifica** (massima priorita)
+   2. **Ruolo generico** (istanza NULL)
    3. **Soggetto** (fallback)
    4. `predefinito DESC` → legame marcato predefinito
    5. `data_update DESC` → piu recente
@@ -125,8 +123,7 @@ La vista è costruita in più passi mediante CTE:
 | `conto_bancario_id`       | `bigint`      | Riferimento a `anagrafiche.conti_bancari.id` del conto selezionato.                         |
 | `soggetto_ruolo_conto_id` | `bigint`      | ID del legame ruolo↔conto (`soggetti_ruoli_conti_bancari`), se la fonte è `RUOLO`.          |
 | `soggetto_conto_id`       | `bigint`      | ID del legame soggetto↔conto (`soggetti_conti_bancari`), se la fonte è `SOGGETTO`.          |
-| `utility_id`              | `integer`     | ID della utility (`config.utilities.id`). NULL per legami generici o fonte SOGGETTO.         |
-| `utility_codice`          | `varchar`     | Codice della utility (es. `GAS`, `IDRICO`). NULL se `utility_id` è NULL.                    |
+| `istanza_utility_id`      | `bigint`      | ID della istanza utility (`anagrafiche.istanze_utilities.id`). NULL per legami generici o fonte SOGGETTO. |
 | `fonte`                   | `varchar`     | Origine della selezione: `'RUOLO'` oppure `'SOGGETTO'`.                                     |
 | `predefinito`             | `boolean`     | Indica se il legame usato è marcato come **predefinito** per quel `(soggetto/ruolo, uso)`.  |
 | `valido_dal`              | `date`        | Data di inizio validità del legame selezionato.                                             |
