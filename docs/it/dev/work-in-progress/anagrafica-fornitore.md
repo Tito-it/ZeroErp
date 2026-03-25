@@ -546,19 +546,21 @@ STEP 1: config.stati_fornitore (tabella + seed)                          ✅ FAT
     ↓
 STEP 2: ALTER fornitori — uid UUID (allineamento pattern ruoli recenti)  ✅ FATTO
     ↓
-STEP 3: ALTER fornitori — stato_fornitore_id + FK                        ✅ FATTO (nullable, NOT NULL dopo migrazione dati)
+STEP 3: ALTER fornitori — stato_fornitore_id + FK + NOT NULL + drop      ✅ FATTO (completo)
     ↓
 STEP 4: ALTER fornitori — termine_pagamento_id + FK                      ✅ FATTO
     ↓
-STEP 5: Trigger require_attivo su FK esistenti (modalita_pagamento, valuta, stato, termini)
+STEP 5: Trigger su config.stati_fornitore (lock + audit)                 ✅ FATTO
     ↓
-STEP 6: Update trgfn_fornitori_guard_normalize (normalize pec, guard ritenuta)
+STEP 5b: Trigger require_attivo su FK (stato_fornitore, termini)         ✅ FATTO
     ↓
-STEP 7: Vista vw_fornitori_dettaglio (dipende da STEP 3 e 4)
+STEP 6: Update trgfn_fornitori_guard_normalize (pec, ritenuta)           ✅ FATTO
     ↓
-STEP 8: fn_guard_fornitore_attivo + fn_check_fornitore_attivo
+STEP 7: Vista vw_fornitori_dettaglio                                     ✅ FATTO
     ↓
-STEP 9: Trigger guard su acquisti.ordini e acquisti.ddt
+STEP 8: fn_guard_fornitore_attivo + fn_check_fornitore_attivo            ✅ FATTO
+    ↓
+STEP 9: Trigger guard su acquisti.ordini e acquisti.ddt                   FUTURO (ciclo passivo)
 ```
 
 > **Nota:** STEP 6 originale (gen_codice_fornitore) rimosso — il codice e gestito
@@ -572,14 +574,14 @@ STEP 9: Trigger guard su acquisti.ordini e acquisti.ddt
 | 2 | 1 | `80_data/changelog/20260324-26-upsert-config-stati-fornitore-mctit.yaml` | Seed CSV | ✅ |
 | 3 | 2 | `00_schema/anagrafiche/20260324-22-alter-fornitori-add-uid-mctit.yaml` | DDL | ✅ |
 | 4 | 3 | `00_schema/anagrafiche/20260324-23-alter-fornitori-add-stato-fornitore-id-mctit.yaml` | DDL | ✅ |
-| 5 | 3 | `80_data/ — migrazione stato_operativo → stato_fornitore_id` | Data migration | da fare |
-| 6 | 3 | `00_schema/ — drop stato_operativo + NOT NULL + aggiorna indice` | DDL | da fare (dopo migrazione dati) |
+| 5 | 3 | `00_schema/anagrafiche/20260324-32-alter-fornitori-finalize-stato-fornitore-id-mctit.yaml` | DDL | ✅ |
 | 7 | 4 | `00_schema/anagrafiche/20260324-24-alter-fornitori-add-termine-pagamento-id-mctit.yaml` | DDL | ✅ |
-| 8 | 5 | `20_code/ — trigger require_attivo su FK (valuta, modalita, stato, termini)` | Trigger | da fare |
-| 9 | 6 | `20_code/ — update trgfn_fornitori_guard_normalize` | Trigger fn | da fare |
-| 10 | 7 | `20_code/ — view vw_fornitori_dettaglio` | View | da fare |
-| 11 | 8 | `20_code/ — fn_guard_fornitore_attivo + fn_check_fornitore_attivo` | Function | da fare |
-| 12 | 9 | `20_code/ — trigger guard fornitore su acquisti.ordini e acquisti.ddt` | Trigger | da fare |
+| 8 | 5 | `20_code/config/20260324-27-trigger-stati-fornitore-mctit.yaml` | Trigger | ✅ |
+| 9 | 5b | `20_code/anagrafiche/20260324-28-trigger-fornitori-require-attivo-fk-mctit.yaml` | Trigger | ✅ |
+| 10 | 6 | `20_code/anagrafiche/20260324-29-update-trgfn-fornitori-guard-normalize-mctit.yaml` | Trigger fn | ✅ |
+| 11 | 7 | `20_code/anagrafiche/20260324-30-create-view-vw-fornitori-dettaglio-mctit.yaml` | View | ✅ |
+| 12 | 8 | `20_code/anagrafiche/20260324-31-create-fn-guard-check-fornitore-attivo-mctit.yaml` | Function | ✅ |
+| 13 | 9 | Trigger guard fornitore su acquisti.ordini e acquisti.ddt | Trigger | futuro |
 
 ---
 

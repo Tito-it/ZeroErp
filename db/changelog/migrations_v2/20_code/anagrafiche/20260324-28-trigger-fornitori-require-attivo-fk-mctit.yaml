@@ -1,0 +1,68 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Trigger require_attivo sulle FK di anagrafiche.fornitori:
+# - stato_fornitore_id → config.stati_fornitore
+# - termine_pagamento_id → config.termini_pagamento
+# Pattern allineato ai trigger su anagrafiche.clienti.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: /migrations_v2/20_code/anagrafiche/20260324-28-trigger-fornitori-require-attivo-fk-mctit.yaml
+
+  - changeSet:
+      id: 20260324-28-trigger-fornitori-require-attivo-fk
+      author: mctit
+      runOnChange: true
+      comment: >
+        Trigger CONSTRAINT DEFERRABLE su anagrafiche.fornitori per
+        impedire l'uso di record disattivati nelle FK:
+        1) stato_fornitore_id → config.stati_fornitore.attivo
+        2) termine_pagamento_id → config.termini_pagamento.attivo
+        Nota: config.valute e config.modalita_pagamento non hanno
+        colonna attivo — trigger require_attivo non applicabili per ora.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- 1) Require attivo su stato_fornitore_id
+              DROP TRIGGER IF EXISTS trg_fornitori_a10_stati_fornitore_require_attivo_ins_upd
+                ON anagrafiche.fornitori;
+
+              CREATE CONSTRAINT TRIGGER trg_fornitori_a10_stati_fornitore_require_attivo_ins_upd
+                AFTER INSERT OR UPDATE OF stato_fornitore_id
+                ON anagrafiche.fornitori
+                DEFERRABLE INITIALLY DEFERRED
+                FOR EACH ROW
+                EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent(
+                  'config',
+                  'stati_fornitore',
+                  'attivo',
+                  'stato_fornitore_id'
+                );
+
+              COMMENT ON TRIGGER trg_fornitori_a10_stati_fornitore_require_attivo_ins_upd
+                ON anagrafiche.fornitori IS
+                'Impedisce l''uso di uno stato fornitore disattivato (config.stati_fornitore.attivo = false).';
+
+              -- 2) Require attivo su termine_pagamento_id
+              DROP TRIGGER IF EXISTS trg_fornitori_a10_termini_pagamento_require_attivo_ins_upd
+                ON anagrafiche.fornitori;
+
+              CREATE CONSTRAINT TRIGGER trg_fornitori_a10_termini_pagamento_require_attivo_ins_upd
+                AFTER INSERT OR UPDATE OF termine_pagamento_id
+                ON anagrafiche.fornitori
+                DEFERRABLE INITIALLY DEFERRED
+                FOR EACH ROW
+                EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent(
+                  'config',
+                  'termini_pagamento',
+                  'attivo',
+                  'termine_pagamento_id'
+                );
+
+              COMMENT ON TRIGGER trg_fornitori_a10_termini_pagamento_require_attivo_ins_upd
+                ON anagrafiche.fornitori IS
+                'Impedisce l''uso di termini di pagamento disattivati (config.termini_pagamento.attivo = false).';
