@@ -8,7 +8,6 @@
 | soggetto_ruolo_id | bigint | NO |  |
 | codice | character varying | YES |  |
 | attivo | boolean | NO | true |
-| stato_operativo | character varying | YES |  |
 | valuta_id | integer | YES |  |
 | modalita_pagamento_id | integer | YES |  |
 | giorni_pagamento | smallint | YES |  |
@@ -31,7 +30,7 @@
 | data_update | timestamp with time zone | NO | now() |
 | user_update | text | YES | CURRENT_USER |
 | uid | uuid | NO | uuidv7() |
-| stato_fornitore_id | integer | YES |  |
+| stato_fornitore_id | integer | NO |  |
 | termine_pagamento_id | bigint | YES |  |
 
 ## 🔒 Vincoli
@@ -53,7 +52,7 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
-| ix_fornitori_attivo_stato | `CREATE INDEX ix_fornitori_attivo_stato ON anagrafiche.fornitori USING btree (attivo, stato_operativo)` |
+| ix_fornitori_attivo_stato | `CREATE INDEX ix_fornitori_attivo_stato ON anagrafiche.fornitori USING btree (attivo, stato_fornitore_id)` |
 | ix_fornitori_codice_trgm | `CREATE INDEX ix_fornitori_codice_trgm ON anagrafiche.fornitori USING gin (codice gin_trgm_ops)` |
 | pk_fornitori | `CREATE UNIQUE INDEX pk_fornitori ON anagrafiche.fornitori USING btree (id)` |
 | uq_fornitori_codice | `CREATE UNIQUE INDEX uq_fornitori_codice ON anagrafiche.fornitori USING btree (codice)` |

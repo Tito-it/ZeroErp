@@ -16,23 +16,17 @@ databaseChangeLog:
       author: mctit
       comment: >
         Tabella vuota: nessuna migrazione dati necessaria.
-        1) Imposta default su stato_fornitore_id (id dello stato VE = in verifica).
-        2) Rende stato_fornitore_id NOT NULL.
-        3) Droppa colonna stato_operativo (sostituita dalla FK).
-        4) Droppa indice ix_fornitori_attivo_stato (usa stato_operativo).
-        5) Ricrea indice su (attivo, stato_fornitore_id).
+        1) Rende stato_fornitore_id NOT NULL (no default: valorizzato da applicazione/trigger).
+        2) Droppa colonna stato_operativo (sostituita dalla FK).
+        3) Droppa indice ix_fornitori_attivo_stato (usa stato_operativo).
+        4) Ricrea indice su (attivo, stato_fornitore_id).
       changes:
         - sql:
             dbms: postgresql
             splitStatements: false
             stripComments: false
             sql: |
-              -- 1) Default: stato VE (in verifica) — id=1 dal seed
-              ALTER TABLE anagrafiche.fornitori
-                ALTER COLUMN stato_fornitore_id
-                SET DEFAULT (SELECT id FROM config.stati_fornitore WHERE codice_interno = 'VE');
-
-              -- 2) NOT NULL
+              -- 1) NOT NULL (nessun default: l'applicazione/trigger valorizza sempre)
               ALTER TABLE anagrafiche.fornitori
                 ALTER COLUMN stato_fornitore_id SET NOT NULL;
 
@@ -53,8 +47,6 @@ databaseChangeLog:
               DROP INDEX IF EXISTS anagrafiche.ix_fornitori_attivo_stato;
               ALTER TABLE anagrafiche.fornitori
                 ALTER COLUMN stato_fornitore_id DROP NOT NULL;
-              ALTER TABLE anagrafiche.fornitori
-                ALTER COLUMN stato_fornitore_id DROP DEFAULT;
               ALTER TABLE anagrafiche.fornitori
                 ADD COLUMN IF NOT EXISTS stato_operativo character varying;
               CREATE INDEX ix_fornitori_attivo_stato

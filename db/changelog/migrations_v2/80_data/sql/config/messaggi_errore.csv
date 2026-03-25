@@ -16,9 +16,21 @@ E_DATI_SOCIETARI_SOGGETTO_NON_TROVATO,it,Il soggetto richiede dati societari. So
 E_DATI_SOCIETARI_TIPO_DETTAGLIO_NON_CONFIGURATO,it,"Non è stato configurata la policy per il tipo_soggetto. Soggetto_id %s , cod_tipo_soggetto_int %s",110,"",""
 E_DATI_SOCIETARI_TIPO_SOGGETTO_NON_AMMESSO,it,Non sono richiesti dati societari per soggetto_id %s e codice tipo soggetto %s,27,Informazioni della tabella anagrafiche.dati_societari non collegate ad un soggetto ti tipo Aziendale.,Collegare le informazioni ad un soggetto di tipo aziendale
 E_DATI_SOCIETARI_REQUIRED_MANCANTI,it,"Sono richiesti dati societari per soggetto_id %s e codice tipo soggetto %s""",111,"",""
+E_ADMIN_VALIDAZIONE,it,%s.,310,,
+E_ADMIN_CF_DUPLICATO,it,%s.,311,,
+E_ADMIN_UO_NON_TROVATA,it,%s.,312,,
+E_AUTH_USER_SOGGETTO_CON_PIVA,it,Operatore non può essere associato ad una partita iva %s.,314,,
+E_FORNITORE_ID_INVALIDO,it,Fornitore_id deve essere NOT NULL e > 0. Id %s,315,,
+E_FORNITORE_NON_TROVATO,it,Fornitore non valido id %s.,316,,
+E_FORNITORE_NON_ATTIVO,it,Fornitore id %s non attivo.,317,,
+E_FORNITORE_BLOCCATO,it,Fornitore id %s bloccato.,318,,
 E_CODICE,it,Il codice %s non è stato trovato nella tabella %s,112,"",""
 E_DATA_CHIUSURA,it,data_chiusura (%s) < data_attivazione (%s) per cliente %s,113,"",""
 E_DATA_APERTURA,it,per il cliente %s non è stato indicata una data apertura ma lo stato è attivo,114,"",""
+SEQUENZA_NON_CONFIGURATA,it,Nessuna sequenza configurata per codice_interno: %s,8,"",""
+PRATICHE_TRANSIZIONE_NON_AMMESSA,it,Transizione pratica non ammessa: %s,301,Transizione stato pratica non consentita dalla matrice config.transizioni_stati_pratiche.,Verificare la sequenza di stati corretta per la pratica.
+FLUSSI_TRANSIZIONE_NON_AMMESSA,it,Transizione flusso non ammessa: %s,302,Transizione stato flusso non consentita dalla matrice config.transizioni_stati_flussi_pratiche.,Verificare la sequenza di stati corretta per il flusso.
+SOSPENSIONI_FLUSSO_NON_COERENTE,it,Il flusso %s non appartiene alla pratica %s,303,Il flusso indicato non appartiene alla pratica della sospensione.,Verificare che flusso_id e pratica_id siano coerenti.
 CATASTO_SOURCE_NOT_FOUND,it,Clone catasto impossibile: parent_istanza_id (%s) nullo o parent senza catasto agganciato. Istanza_id %s,115,"",""
 E_DATA_FINE_INFERIORE_DI_INIZIO,it,Il valore della data finale %s è inferiore  alla data iniziale %s,34,Data finale inferiore uguale alla data finale,Modificare la data finale con un valore maggiore o uguale di iniziale
 E_DATA_AL_MINORE_DAL,it,Il valore della data al %s è inferiore  alla data dal %s,118,"",""
@@ -29,7 +41,7 @@ E_DATA_ERRATA,it,Data %s errata o mancante.,122,"",""
 E_ATTIVO_BLOCK_FKCOL_NOT_FOUND,it,%s,123,"",""
 E_ATTIVO_BLOCK_CHILDREN_EXIST,it,%s,125,"",""
 E_STORICO_PARENT_PK_NOT_FOUND,it,"Impossibile determinare PK o tipo per tabella padre. Schema %s , tabella %s",121,"",""
-E_RIGA_GIA_FATTURATA,it,Riga già fatturata.(id_riga %s),129,,
+E_RIGA_GIA_FATTURATA,it,Riga già fatturata.(id_riga %s),129,"",""
 E_EMITTENTE_DEFAULT_MISSING,it,Emittente fiscale di default mancante. %s,130,"",""
 E_SOGGETTO_NO_CONTATTI,it,"Il soggetto non ha contatti validi: è necessario almeno un contatto con email, telefono, cellulare o PEC.",2,"",""
 E_ARTICOLO_NON_COMPOSITO,it,Articolo deve essere composito = true . (%s),127,"",""
@@ -42,11 +54,7 @@ CF_NON_VALIDO,it,Codice Fiscale non valido: %s,5,"",""
 E_ATTIVO_BLOCK_ARGS,it,%s,124,"",""
 E_IVA_CONTO_ACQ_ERR,it,Il conto %s IVA acquisti non è un conto di tipo Acquisto.,3,"",""
 PIVA_NON_VALIDA,it,Partita IVA non valida: %s,7,"",""
-SEQUENZA_NON_CONFIGURATA,it,Nessuna sequenza configurata per codice_interno: %s,8,"",""
-ERRORE_PARAMETRI,it,Parametri obbligatori : %s,15,Non sono stati indicati tutti i parametri necessari,Inserire tutti i parametri obbligatori
 E_IVA_CONTO_VEN_ERR,it,Il conto %s IVA vendita non è un conto di tipo Vendita.,4,"",""
-E_COD_INT_RUOLO,it,Ruolo con cd_int_ruolo = %s non trovato in config.tipi_ruoli,11,"",""
-E_SOGGETTI_RUOLI,it,"Errore soggetti ruoli (id=%s, soggetto_id=%s, ruolo_id=%s), Non è stata assegnata la relazione anagrafice.soggetti_ruoli ",10,"",""
 E_QUERY_FAILED,it,Errore di esecuzione della query per la tabella: schema %s  tabella %s. SQLSTATE(%s),31,La query è errata,""
 E_DEFAULT_ERRATO,it,la tabella %s parametro %s non ha valori per %s,28,Il codice impostato nella tabella dei parametri non ha un valore valido,Verificare la tabella dei parametri di default e reimpostare il codice correttamente
 E_STORICO_PROVISION,it,Errore generazione della tabella nello schema storico,44,"",""
@@ -70,6 +78,8 @@ E_QTA_NON_POSITIVA,it,La quantità deve essere positiva. Valore(%s),81,"",""
 E_FULFILL_NOT_FOUND,it,"Mancano i legami fulfillment. Tabella %s id %s , con tabella %s id %s. ",82,"",""
 E_ARTICOLO_MISMATCH,it,"Articolo non corrispondente.Tabella %s id %s , con tabella %s id %s. ",83,"",""
 E_UOM_MISMATCH,it,"Unità di misura non corrispondente.Tabella %s id %s  Uom %s, con tabella %s id %s UOM %s. ",84,"",""
+E_RUOLO_NATURA_NON_AMMESSA,it,Natura soggetto %s non ammessa per il ruolo %s. Soggetto_id %s,200,La natura del soggetto non rientra tra quelle previste per il ruolo.,Verificare la configurazione in config.tipi_ruoli_nature_ammesse.
+E_RUOLO_NATURA_TIPO_DET_NULL,it,Impossibile assegnare il ruolo %s al soggetto %s: tipo_soggetto_dettaglio non configurato.,201,Il soggetto non ha tipo_soggetto_dettaglio_id valorizzato ma il ruolo richiede una verifica della natura.,Configurare tipo_soggetto_dettaglio_id sul soggetto prima di assegnare il ruolo.
 E_COLONNA_NON_MODIFICABILE,it,Colonna non modificabile: %s,12,"",""
 E_ARGOMENTI_A_COPPIE,it,Passare gli argomenti a coppie,13,"",""
 E_DEFAULT_CONTATTO_MISSING,it,Tipo contatto DEFAULT non trovato in config.tipi_contatti. Impossibile creare contatto fallback.,1,"",""
@@ -96,10 +106,11 @@ E_QTA_OPER_STEP_INVALIDO,it,"Quantità operativa step invalido. (%s %s , %s %s )
 E_QTA_OPERATIVA_NON_INTERA,it,"Quantità operativa non intera. (%s %s, %s %s )",93,"",""
 E_SOGGETTO_NULL,it,soggetto_id (%s)  mancante per il ruolo   %s.,98,"",""
 E_SOGGETTI_RUOLI_RACE,it,"Race condition su soggetti_ruoli per soggetto %s, id ruolo %s , cod_int_ruolo %."" .",99,"",""
+ERRORE_PARAMETRI,it,Parametri obbligatori : %s,15,Non sono stati indicati tutti i parametri necessari,Inserire tutti i parametri obbligatori
+E_COD_INT_RUOLO,it,Ruolo con cd_int_ruolo = %s non trovato in config.tipi_ruoli,11,"",""
+E_SOGGETTI_RUOLI,it,"Errore soggetti ruoli (id=%s, soggetto_id=%s, ruolo_id=%s), Non è stata assegnata la relazione anagrafice.soggetti_ruoli ",10,"",""
 E_BILLING_ACCOUNT_UTILITY_NULL,it,Billing account %s senza utility associata.,100,"",""
 E_RISORSA_UMANA_SOGGETTO_MISMATCH,it,Il soggetto  a cui è collegata la risorsa non è un gestore (soggetto_ruolo id %s).,126,"",""
-E_RUOLO_NATURA_NON_AMMESSA,it,Natura soggetto %s non ammessa per il ruolo %s. Soggetto_id %s,200,La natura del soggetto non rientra tra quelle previste per il ruolo.,Verificare la configurazione in config.tipi_ruoli_nature_ammesse.
-E_RUOLO_NATURA_TIPO_DET_NULL,it,Impossibile assegnare il ruolo %s al soggetto %s: tipo_soggetto_dettaglio non configurato.,201,Il soggetto non ha tipo_soggetto_dettaglio_id valorizzato ma il ruolo richiede una verifica della natura.,Configurare tipo_soggetto_dettaglio_id sul soggetto prima di assegnare il ruolo.
 E_PIVA_OBBLIGATORIA,it,Partita IVA obbligatoria per tipo soggetto %s. Soggetto_id %s,202,Il tipo di soggetto richiede la partita IVA ma il campo e' vuoto.,Valorizzare il campo partita_iva prima di proseguire.
 E_CF_OBBLIGATORIO,it,Codice Fiscale obbligatorio per tipo soggetto %s. Soggetto_id %s,203,Il tipo di soggetto richiede il codice fiscale ma il campo e' vuoto.,Valorizzare il campo codice_fiscale prima di proseguire.
 E_PARAMETRO_INVALIDO,it,Parametro non valido: %s,204,Un parametro obbligatorio e' nullo o ha un valore non ammesso.,Verificare i parametri passati alla funzione.
@@ -110,6 +121,3 @@ E_DATA_CESSAZIONE_INVALIDA,it,Data cessazione %s precedente alla data attivazion
 E_DISSOCIAZIONE_PARENT_CON_ATTIVITA,it,Impossibile rimuovere parent: attivita non fatturate sul billing account %s (ex parent: %s).,209,Esistono attivita_fatturabili non ancora fatturate collegate a questo billing account.,Fatturare le attivita pendenti prima di rimuovere il parent_account_id.
 E_PARENT_SELF,it,Parent account non puo' essere uguale all'id del record (parent: %s).,210,Un billing account non puo' avere se stesso come parent.,Indicare un parent_account_id diverso dall'id del record.
 PRATICHE_PREREQUISITI_NON_SODDISFATTI,it,Prerequisiti non soddisfatti per il template flusso. Mancanti: %s,300,I prerequisiti configurati per il template flusso non sono tutti in stato COMPLETATO.,Completare i flussi prerequisiti prima di procedere con il nuovo flusso.
-PRATICHE_TRANSIZIONE_NON_AMMESSA,it,Transizione pratica non ammessa: %s,301,Transizione stato pratica non consentita dalla matrice config.transizioni_stati_pratiche.,Verificare la sequenza di stati corretta per la pratica.
-FLUSSI_TRANSIZIONE_NON_AMMESSA,it,Transizione flusso non ammessa: %s,302,Transizione stato flusso non consentita dalla matrice config.transizioni_stati_flussi_pratiche.,Verificare la sequenza di stati corretta per il flusso.
-SOSPENSIONI_FLUSSO_NON_COERENTE,it,Il flusso %s non appartiene alla pratica %s,303,Il flusso indicato non appartiene alla pratica della sospensione.,Verificare che flusso_id e pratica_id siano coerenti.
