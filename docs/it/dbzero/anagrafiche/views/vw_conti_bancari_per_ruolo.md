@@ -9,7 +9,7 @@ WITH role_cand AS (
             r.conto_bancario_id,
             r.id AS soggetto_ruolo_conto_id,
             NULL::bigint AS soggetto_conto_id,
-            r.utility_id,
+            r.istanza_utility_id,
             r.predefinito,
             r.valido_dal,
             r.valido_al,
@@ -25,7 +25,7 @@ WITH role_cand AS (
             s.conto_bancario_id,
             NULL::bigint AS soggetto_ruolo_conto_id,
             s.id AS soggetto_conto_id,
-            NULL::integer AS utility_id,
+            NULL::bigint AS istanza_utility_id,
             s.predefinito,
             s.valido_dal,
             s.valido_al,
@@ -36,24 +36,23 @@ WITH role_cand AS (
              JOIN anagrafiche.conti_bancari cb ON ((cb.id = s.conto_bancario_id)))
           WHERE (((s.valido_dal IS NULL) OR (s.valido_dal <= CURRENT_DATE)) AND ((s.valido_al IS NULL) OR (s.valido_al >= CURRENT_DATE)) AND (COALESCE(s.bloccato, false) = false) AND (cb.attivo = true))
         )
- SELECT c.soggetto_ruolo_id,
-    c.uso,
-    c.conto_bancario_id,
-    c.soggetto_ruolo_conto_id,
-    c.soggetto_conto_id,
-    c.utility_id,
-    ut.codice AS utility_codice,
-    c.fonte,
-    c.predefinito,
-    c.valido_dal,
-    c.valido_al,
-    c.data_update
-   FROM (( SELECT role_cand.soggetto_ruolo_id,
+ SELECT soggetto_ruolo_id,
+    uso,
+    conto_bancario_id,
+    soggetto_ruolo_conto_id,
+    soggetto_conto_id,
+    istanza_utility_id,
+    fonte,
+    predefinito,
+    valido_dal,
+    valido_al,
+    data_update
+   FROM ( SELECT role_cand.soggetto_ruolo_id,
             role_cand.uso,
             role_cand.conto_bancario_id,
             role_cand.soggetto_ruolo_conto_id,
             role_cand.soggetto_conto_id,
-            role_cand.utility_id,
+            role_cand.istanza_utility_id,
             role_cand.predefinito,
             role_cand.valido_dal,
             role_cand.valido_al,
@@ -66,21 +65,20 @@ WITH role_cand AS (
             subj_cand.conto_bancario_id,
             subj_cand.soggetto_ruolo_conto_id,
             subj_cand.soggetto_conto_id,
-            subj_cand.utility_id,
+            subj_cand.istanza_utility_id,
             subj_cand.predefinito,
             subj_cand.valido_dal,
             subj_cand.valido_al,
             subj_cand.data_update,
             subj_cand.fonte
            FROM subj_cand) c
-     LEFT JOIN config.utilities ut ON ((ut.id = c.utility_id)))
-  ORDER BY c.soggetto_ruolo_id, c.uso,
+  ORDER BY soggetto_ruolo_id, uso,
         CASE
-            WHEN (((c.fonte)::text = 'RUOLO'::text) AND (c.utility_id IS NOT NULL)) THEN 1
-            WHEN (((c.fonte)::text = 'RUOLO'::text) AND (c.utility_id IS NULL)) THEN 2
-            WHEN ((c.fonte)::text = 'SOGGETTO'::text) THEN 3
+            WHEN (((fonte)::text = 'RUOLO'::text) AND (istanza_utility_id IS NOT NULL)) THEN 1
+            WHEN (((fonte)::text = 'RUOLO'::text) AND (istanza_utility_id IS NULL)) THEN 2
+            WHEN ((fonte)::text = 'SOGGETTO'::text) THEN 3
             ELSE NULL::integer
-        END, c.predefinito DESC, c.data_update DESC;
+        END, predefinito DESC, data_update DESC;
 ```
 
 

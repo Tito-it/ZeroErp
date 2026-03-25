@@ -1,4 +1,4 @@
-## 📘 Documentazione Funzione – `script.fn_get_conto_bancario_predefinito(soggetto_ruolo_id, uso)`
+## 📘 Documentazione Funzione – `script.fn_get_conto_bancario_predefinito(soggetto_ruolo_id, uso, istanza_utility_id)`
 
 > 👀 **Vedi anche**  
 >
@@ -14,14 +14,14 @@ Approfondimento vista/funzioni:
 [anagrafiche.vw_conti_bancari_per_ruolo](/dbzero/anagrafiche/funzioni/vw_conti_bancari_per_ruolo)   
 > [script.fn_get_messaggio](/dbzero/script/funzioni/fn_get_messaggio)   
 
-La funzione **`script.fn_get_conto_bancario_predefinito(soggetto_ruolo_id, uso, utility_id)`** restituisce, per un determinato **ruolo di soggetto**, un dato **uso del conto** (`INCASSO`, `PAGAMENTO`, `RIMBORSO`, `GENERICO`) e opzionalmente una **utility**, **al massimo un conto bancario selezionato**, applicando una cascata a **7 livelli** sulla vista flat **`anagrafiche.vw_conti_bancari_per_ruolo`**.
+La funzione **`script.fn_get_conto_bancario_predefinito(soggetto_ruolo_id, uso, istanza_utility_id)`** restituisce, per un determinato **ruolo di soggetto**, un dato **uso del conto** (`INCASSO`, `PAGAMENTO`, `RIMBORSO`, `GENERICO`) e opzionalmente una **istanza utility**, **al massimo un conto bancario selezionato**, applicando una cascata a **7 livelli** sulla vista flat **`anagrafiche.vw_conti_bancari_per_ruolo`**.
 
-La cascata combina due dimensioni: **utility** (specifica → generico → soggetto) e **uso** (richiesto → GENERICO). Se nessun conto è trovato, restituisce `NULL`.
+La cascata combina due dimensioni: **istanza** (specifica → generico → soggetto) e **uso** (richiesto → GENERICO). Se nessun conto è trovato, restituisce `NULL`.
 
 ---
 ### 🎯 Scopo Principale
 
-(latest review 24-03-26)
+(latest review 25-03-26)
 
 * **Incapsulare la logica di selezione del conto**
   Fornisce un punto di accesso unico per ottenere “il conto da usare ora” dato un `soggetto_ruolo_id` e un `uso`, senza dover ripetere join e ordinamenti sulle tabelle sorgenti.
@@ -40,7 +40,7 @@ La cascata combina due dimensioni: **utility** (specifica → generico → sogge
 | ------------------- | --------- | ------------ | ---------------------------------------------------------------------------------------- |
 | `p_soggetto_ruolo_id` | `BIGINT` | Sì | Identificativo del ruolo (`anagrafiche.soggetti_ruoli.id`) per cui selezionare il conto. |
 | `p_uso` | `VARCHAR` | Sì | Uso richiesto del conto: `INCASSO`, `PAGAMENTO`, `RIMBORSO` o `GENERICO`. |
-| `p_utility_id` | `INTEGER` | No | ID della utility (`config.utilities.id`). Se valorizzato, il livello ruolo+utility ha priorità. Se NULL, parte dal livello ruolo generico. |
+| `p_istanza_utility_id` | `BIGINT` | No | ID della istanza utility (`anagrafiche.istanze_utilities.id`). Se valorizzato, il livello ruolo+istanza ha priorità. Se NULL, parte dal livello ruolo generico. |
 
 ---
 
@@ -73,21 +73,21 @@ La funzione interroga la vista flat `vw_conti_bancari_per_ruolo` con filtri prog
 
 **FASE A — uso richiesto:**
 
-1. Ruolo + utility specifica + uso richiesto (solo se `p_utility_id` valorizzato)
-2. Ruolo + utility NULL + uso richiesto
+1. Ruolo + istanza specifica + uso richiesto (solo se `p_istanza_utility_id` valorizzato)
+2. Ruolo + istanza NULL + uso richiesto
 3. Soggetto + uso richiesto
 
 **FASE B — fallback a uso GENERICO** (solo se uso diverso da GENERICO):
 
-1. Ruolo + utility specifica + GENERICO (solo se `p_utility_id` valorizzato)
-2. Ruolo + utility NULL + GENERICO
+1. Ruolo + istanza specifica + GENERICO (solo se `p_istanza_utility_id` valorizzato)
+2. Ruolo + istanza NULL + GENERICO
 3. Soggetto + GENERICO
 
 **Nessun conto trovato** → `RETURN NULL`
 
 A ogni livello: `ORDER BY predefinito DESC, data_update DESC LIMIT 1`.
 
-Il chiamante riceve il **miglior conto disponibile** secondo le regole di validita, blocco, priorita utility e predefinito. In caso di assenza, e responsabilita del chiamante gestire l’errore di dominio.
+Il chiamante riceve il **miglior conto disponibile** secondo le regole di validita, blocco, priorita istanza e predefinito. In caso di assenza, e responsabilita del chiamante gestire l’errore di dominio.
 
 ---
 

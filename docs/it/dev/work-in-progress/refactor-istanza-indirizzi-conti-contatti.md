@@ -2,7 +2,7 @@
 
 > Data apertura: 2026-03-25
 >
-> Stato: **DA FARE** — priorita alta, bloccante
+> Stato: **IN CORSO** — DB e documentazione completati, backend/frontend da fare
 >
 > Priorita: **CRITICA** — difetto architetturale, va risolto prima di proseguire
 
@@ -13,12 +13,12 @@
 ### Percorso decisionale
 
 Durante lo sprint 8 (gestione clienti) e emerso che indirizzi, conti bancari e contatti
-a livello ruolo non avevano un campo per differenziare i dati per utility, a differenza
-del modello contatti che gia aveva `utility_id`. E stato quindi avviato il refactor
-`refactor-indirizzi-conti-utility.md` che ha aggiunto `utility_id` a tutte e tre le tabelle.
+a livello ruolo non avevano un campo per differenziare i dati per utility/istanza.
+E stato quindi avviato il refactor `refactor-indirizzi-conti-utility.md` che ha aggiunto
+`utility_id` a indirizzi e conti bancari (contatti lo aveva gia).
 
-Il refactor e stato completato end-to-end (DB, backend, frontend, test, documentazione).
-Tuttavia, durante la fase di test e verifica funzionale, l'analisi di uno scenario reale
+Il refactor lato DB e stato completato (schema, viste, funzioni, test pgTAP).
+Tuttavia, durante la fase di verifica funzionale, l'analisi di uno scenario reale
 ha evidenziato un difetto architetturale nel campo scelto come differenziatore.
 
 ### Scenario che ha evidenziato il problema
@@ -31,6 +31,11 @@ Soggetto Titini, azienda multi-sede:
 4. **Problema**: il vincolo `UNIQUE(soggetto_ruolo_id, utility_id, tipo_indirizzo_id)`
    impedisce un secondo indirizzo fatturazione perche entrambi i clienti condividono
    lo stesso `soggetto_ruolo_id` (CLIENTE) e la stessa `utility_id` (GAS)
+
+**Perche condividono lo stesso `soggetto_ruolo_id`**: il vincolo
+`UNIQUE(soggetto_id, tipo_ruolo_id)` su `soggetti_ruoli` garantisce un solo ruolo
+CLIENTE per soggetto. La molteplicita sta nella tabella `clienti` (un record per istanza),
+non in `soggetti_ruoli`.
 
 Lo stesso problema si replica su conti bancari (IBAN incasso diverso per sede) e
 contatti (referente commerciale diverso per sede).
@@ -48,13 +53,56 @@ questi vantaggi:
 
 - **Esiste sempre**: ogni attivazione/pratica parte con una istanza utility
 - **Univoco per servizio specifico**: due GAS dello stesso soggetto hanno istanze diverse
-- **Implica la utility**: `istanza_utility → billing_account → utility`, quindi
-  `utility_codice` e sempre derivabile per la UI senza campo ridondante
-- **Elimina un livello di cascata**: il livello "generico utility" (utility valorizzata,
-  istanza NULL) non ha senso pratico — o il dato e specifico dell'istanza, o e generico
-  del ruolo. Non esiste un caso d'uso per "generico della utility ma non dell'istanza"
+- **Implica la utility**: la utility si recupera dal payload cliente che ha gia
+  `utility_id` (sincronizzato dal BA via trigger) — non serve derivarla nelle viste
 - **Stessa complessita implementativa**: 3 livelli di cascata come prima, stesso numero
   di partial unique index, stesse funzioni di risoluzione — cambia solo il campo
+
+### Nota su `istanze_utilities` e la utility
+
+La tabella `istanze_utilities` **non ha** una colonna `utility_id` diretta.
+Ogni istanza appartiene concettualmente a una sola utility, ma il dato e derivato:
+
+- Via `billing_account`: `UNIQUE(istanza_utility_id, utility_id)` — ma e 1:N (parent + sub-account)
+- Via `clienti`: `UNIQUE(istanza_utility_id)` + `utility_id` — 1:1, il percorso piu sicuro
+
+Per la UI, il `utility_codice` e gia disponibile nel payload cliente (campo `utility_id`
+sincronizzato dal BA via `trgfn_clienti_sync_utility_from_ba`). Le viste DB non devono
+derivarlo — basta esporre `istanza_utility_id`.
+
+### Nota su `istanze_utilities.indirizzo_dettaglio_id`
+
+L'istanza ha un riferimento diretto a un indirizzo (`indirizzo_dettaglio_id`), che
+rappresenta il **luogo fisico del servizio** (dove si trova il contatore/punto di fornitura).
+Gli `indirizzi` con `istanza_utility_id` sono invece indirizzi **operativi del ruolo**
+(fatturazione, corrispondenza, ecc.) — dove mandare le cose per quel servizio.
+Sono complementari, non in conflitto.
+
+### Come si risale alla utility da un'istanza
+
+La tabella `istanze_utilities` non ha `utility_id` diretto. La utility si ricava dalle
+tabelle satellite che la portano con vincolo UNIQUE:
+
+| Tabella | Vincolo | Quando esiste |
+|---------|---------|---------------|
+| `istanze_dati_precontrattuali` | `UNIQUE(istanza_utility_id, utility_id)` | Fase precontrattuale (creazione da pratica) |
+| `billing_account` | `UNIQUE(istanza_utility_id, utility_id)` | Dopo creazione BA (sempre per clienti) |
+| `clienti` | `UNIQUE(istanza_utility_id)` + `utility_id` | Dopo creazione cliente |
+
+**Ordine cronologico di disponibilita:**
+
+1. **Pratica aperta** → `istanze_dati_precontrattuali` e il primo punto dove il legame
+   istanza → utility viene registrato (prima di BA e cliente)
+2. **BA creato** → `billing_account.utility_id` disponibile
+3. **Cliente creato** → `clienti.utility_id` disponibile (sincronizzato dal BA via trigger)
+
+**Nota per il motore pratiche:** nella creazione da pratica (utility con `richiede_pdp = true`:
+GAS, IDRICO, ENERGIA) e fondamentale che `istanze_dati_precontrattuali` venga popolato
+subito alla creazione dell'istanza. Senza questo record, la utility non e reperibile
+dall'istanza nella fase precontrattuale (BA e cliente non esistono ancora).
+
+Nella creazione immediata (utility con `richiede_pdp = false`), `istanze_dati_precontrattuali`
+non e necessario perche BA e cliente vengono creati atomicamente dal `ClienteService`.
 
 ### Decisione
 
@@ -65,23 +113,12 @@ farlo dopo con dati in produzione.
 
 ---
 
-## Problema tecnico
-
-Il refactor precedente ha aggiunto `utility_id` a indirizzi, conti bancari e contatti
-per differenziare i dati per utility (GAS, IDRICO, ecc.). Ma `utility_id` non e il
-differenziatore corretto per i motivi descritti sopra.
-
-**Il vero differenziatore e `istanza_utility_id`**, che:
-- Esiste sempre (ogni attivazione ha una istanza utility)
-- E unico per combinazione soggetto + servizio specifico
-- Implica gia la utility (derivabile con JOIN)
-- Elimina la necessita del livello intermedio "generico utility"
-
 ## Soluzione
 
-Sostituire `utility_id` con `istanza_utility_id` su tutte e tre le tabelle.
+Sostituire `utility_id` con `istanza_utility_id` (`bigint`, FK → `anagrafiche.istanze_utilities`)
+su tutte e tre le tabelle.
 
-### Cascata target (3 livelli — stessa di prima, campo diverso)
+### Cascata target (3 livelli)
 
 | Priorita | istanza_utility_id | soggetto_ruolo_id | Significato | Editabile |
 |----------|-------------------|-------------------|-------------|-----------|
@@ -89,15 +126,22 @@ Sostituire `utility_id` con `istanza_utility_id` su tutte e tre le tabelle.
 | 2 | NULL | valorizzato | Generico ruolo CLIENTE | Si |
 | 3 | — | — | Soggetto (fallback da tabelle soggetto) | No (readonly) |
 
-**Vantaggi rispetto al modello con `utility_id`:**
-- Nessuna collisione: due GAS dello stesso soggetto hanno istanze diverse
-- Livello "generico utility" eliminato — non ha senso pratico
-- Cascata piu semplice e corretta
-- `utility_codice` per la UI si deriva sempre da istanza → BA → utility
+**Nota sul tipo `bigint`:** `anagrafiche.istanze_utilities.id` e `bigint` — il campo
+`istanza_utility_id` e tutti i parametri funzione (`p_istanza_utility_id`) devono essere
+`bigint`, non `integer`.
 
-### Nota: nessuna retrocompatibilita necessaria
+### Cosa espongono le viste
 
-Non siamo in produzione. Possiamo sostituire direttamente senza migrazioni di transizione.
+Le viste espongono **solo `istanza_utility_id`** — niente `istanza_codice` ne
+`utility_codice`. Le viste servono per la risoluzione (cascata), non per mostrare
+dettagli dell'istanza. Il frontend/backend ha gia `utility_codice` e `istanza_codice`
+dal payload cliente. Zero JOIN aggiuntivi, zero rischi di prodotto cartesiano.
+
+### Nessuna retrocompatibilita necessaria
+
+Non siamo in produzione. Si sostituisce direttamente. I changeset del refactor precedente
+(02-05 del 2026-03-24) sono nel branch — servono nuovi changeset (regola Liquibase:
+mai modificare changeset gia pushati).
 
 ---
 
@@ -105,51 +149,62 @@ Non siamo in produzione. Possiamo sostituire direttamente senza migrazioni di tr
 
 | Tabella | Campo attuale | Campo nuovo | Note |
 |---------|--------------|-------------|------|
-| `anagrafiche.contatti` | `utility_id` (FK → config.utilities) | `istanza_utility_id` (FK → config.istanze_utilities) | Gia esistente da sprint precedenti |
-| `anagrafiche.indirizzi` | `utility_id` (FK → config.utilities) | `istanza_utility_id` (FK → config.istanze_utilities) | Aggiunto nel refactor 2026-03-24 |
-| `anagrafiche.soggetti_ruoli_conti_bancari` | `utility_id` (FK → config.utilities) | `istanza_utility_id` (FK → config.istanze_utilities) | Aggiunto nel refactor 2026-03-24 |
+| `anagrafiche.contatti` | `utility_id integer` (FK → config.utilities) | `istanza_utility_id bigint` (FK → anagrafiche.istanze_utilities) | Esistente da sprint precedenti |
+| `anagrafiche.indirizzi` | `utility_id integer` (FK → config.utilities) | `istanza_utility_id bigint` (FK → anagrafiche.istanze_utilities) | Aggiunto nel refactor 2026-03-24 |
+| `anagrafiche.soggetti_ruoli_conti_bancari` | `utility_id integer` (FK → config.utilities) | `istanza_utility_id bigint` (FK → anagrafiche.istanze_utilities) | Aggiunto nel refactor 2026-03-24 |
 
 ---
 
-## STEP 1 — DB: Schema `anagrafiche.contatti`
+## STEP 1 — DB: Schema `anagrafiche.contatti` ✅
 
-**Competenza: DBA**
+**Competenza: DBA** — Completato 2026-03-25
 
 ### 1.1 Rimuovere `utility_id`, aggiungere `istanza_utility_id`
 
 ```sql
--- Rimuovere vecchio campo e FK
-ALTER TABLE anagrafiche.contatti DROP CONSTRAINT IF EXISTS fk_contatti_utilities;
+-- Rimuovere vecchio campo, vincolo UNIQUE e FK
+ALTER TABLE anagrafiche.contatti DROP CONSTRAINT IF EXISTS fk_utilities_config;
+DROP INDEX IF EXISTS uq_contatti_multilevel;
 ALTER TABLE anagrafiche.contatti DROP COLUMN utility_id;
 
--- Aggiungere nuovo campo
+-- Aggiungere nuovo campo (bigint come istanze_utilities.id)
 ALTER TABLE anagrafiche.contatti
-  ADD COLUMN istanza_utility_id integer NULL;
+  ADD COLUMN istanza_utility_id bigint NULL;
 
 ALTER TABLE anagrafiche.contatti
   ADD CONSTRAINT fk_contatti_istanze_utilities
-  FOREIGN KEY (istanza_utility_id) REFERENCES config.istanze_utilities(id);
+  FOREIGN KEY (istanza_utility_id) REFERENCES anagrafiche.istanze_utilities(id);
 ```
 
-### 1.2 Ricreare vincoli UNIQUE
+### 1.2 Ricreare vincoli UNIQUE (partial index per gestire NULL)
 
-Rimuovere i vecchi vincoli basati su `utility_id` e creare i nuovi:
+La tabella contatti ha 3 livelli di contesto (non 4 — il livello "soggetto + utility
+senza ruolo" non ha senso con `istanza_utility_id`):
+
+1. **Soggetto puro** — `soggetto_ruolo_id IS NULL`, `istanza_utility_id IS NULL`
+2. **Ruolo generico** — `soggetto_ruolo_id IS NOT NULL`, `istanza_utility_id IS NULL`
+3. **Ruolo + istanza** — `soggetto_ruolo_id IS NOT NULL`, `istanza_utility_id IS NOT NULL`
 
 ```sql
--- Per righe con istanza_utility_id NULL (generico ruolo)
+-- Livello soggetto puro: un contatto per (soggetto, tipo)
+CREATE UNIQUE INDEX uq_contatti_soggetto_tipo
+  ON anagrafiche.contatti (soggetto_id, tipo_contatto_id)
+  WHERE soggetto_ruolo_id IS NULL AND istanza_utility_id IS NULL;
+
+-- Livello ruolo generico: un contatto per (soggetto, ruolo, tipo)
 CREATE UNIQUE INDEX uq_contatti_ruolo_tipo_no_istanza
   ON anagrafiche.contatti (soggetto_id, soggetto_ruolo_id, tipo_contatto_id)
-  WHERE istanza_utility_id IS NULL AND soggetto_ruolo_id IS NOT NULL;
+  WHERE soggetto_ruolo_id IS NOT NULL AND istanza_utility_id IS NULL;
 
--- Per righe con istanza_utility_id valorizzato
+-- Livello ruolo + istanza: un contatto per (soggetto, ruolo, istanza, tipo)
 CREATE UNIQUE INDEX uq_contatti_ruolo_istanza_tipo
   ON anagrafiche.contatti (soggetto_id, soggetto_ruolo_id, istanza_utility_id, tipo_contatto_id)
-  WHERE istanza_utility_id IS NOT NULL;
+  WHERE soggetto_ruolo_id IS NOT NULL AND istanza_utility_id IS NOT NULL;
 ```
 
-**Nota:** verificare i nomi esatti dei vincoli esistenti da droppare. La tabella contatti
-ha una struttura multilevel (soggetto/ruolo/utility) — i vincoli partial index vanno
-ricreati tutti sostituendo `utility_id` con `istanza_utility_id`.
+**Nota:** il vecchio vincolo `uq_contatti_multilevel` era un singolo indice UNIQUE
+standard (non partial) su `(soggetto_id, soggetto_ruolo_id, utility_id, tipo_contatto_id)`.
+Con `istanza_utility_id` servono 3 partial index per coprire i 3 livelli distinti.
 
 ### 1.3 Indice
 
@@ -160,26 +215,30 @@ CREATE INDEX ix_contatti_istanza_utility_id
 
 ### 1.4 Changeset Liquibase
 
-File: `db/changelog/migrations_v2/00_schema/anagrafiche/YYYYMMDD-XX-replace-utility-with-istanza-contatti-mctit.yaml`
+File: `db/changelog/migrations_v2/00_schema/anagrafiche/20260325-XX-replace-utility-with-istanza-contatti-mctit.yaml`
 
 ---
 
-## STEP 2 — DB: Schema `anagrafiche.indirizzi`
+## STEP 2 — DB: Schema `anagrafiche.indirizzi` ✅
 
-**Competenza: DBA**
+**Competenza: DBA** — Completato 2026-03-25
 
 ### 2.1 Rimuovere `utility_id`, aggiungere `istanza_utility_id`
 
 ```sql
 ALTER TABLE anagrafiche.indirizzi DROP CONSTRAINT IF EXISTS fk_indirizzi_utilities;
+DROP INDEX IF EXISTS uq_indirizzi_ruolo_tipo_no_utility;
+DROP INDEX IF EXISTS uq_indirizzi_ruolo_utility_tipo;
+DROP INDEX IF EXISTS ix_anagrafiche_indirizzi_utility_id;
 ALTER TABLE anagrafiche.indirizzi DROP COLUMN utility_id;
 
+-- bigint come istanze_utilities.id
 ALTER TABLE anagrafiche.indirizzi
-  ADD COLUMN istanza_utility_id integer NULL;
+  ADD COLUMN istanza_utility_id bigint NULL;
 
 ALTER TABLE anagrafiche.indirizzi
   ADD CONSTRAINT fk_indirizzi_istanze_utilities
-  FOREIGN KEY (istanza_utility_id) REFERENCES config.istanze_utilities(id);
+  FOREIGN KEY (istanza_utility_id) REFERENCES anagrafiche.istanze_utilities(id);
 ```
 
 ### 2.2 Ricreare vincoli UNIQUE
@@ -205,28 +264,34 @@ CREATE INDEX ix_indirizzi_istanza_utility_id
 
 ### 2.4 Changeset Liquibase
 
-File: `db/changelog/migrations_v2/00_schema/anagrafiche/YYYYMMDD-XX-replace-utility-with-istanza-indirizzi-mctit.yaml`
+File: `db/changelog/migrations_v2/00_schema/anagrafiche/20260325-XX-replace-utility-with-istanza-indirizzi-mctit.yaml`
 
 ---
 
-## STEP 3 — DB: Schema `anagrafiche.soggetti_ruoli_conti_bancari`
+## STEP 3 — DB: Schema `anagrafiche.soggetti_ruoli_conti_bancari` ✅
 
-**Competenza: DBA**
+**Competenza: DBA** — Completato 2026-03-25
 
 ### 3.1 Rimuovere `utility_id`, aggiungere `istanza_utility_id`
 
 ```sql
 ALTER TABLE anagrafiche.soggetti_ruoli_conti_bancari
   DROP CONSTRAINT IF EXISTS fk_soggetti_ruoli_conti_bancari_utilities;
+DROP INDEX IF EXISTS uq_src_bancari_ruolo_utility_conto_uso;
+DROP INDEX IF EXISTS uq_src_bancari_ruolo_conto_uso_no_utility;
+DROP INDEX IF EXISTS uq_src_bancari_predefinito_utility;
+DROP INDEX IF EXISTS uq_src_bancari_predefinito_no_utility;
+DROP INDEX IF EXISTS ix_soggetti_ruoli_conti_bancari_utility_id;
 ALTER TABLE anagrafiche.soggetti_ruoli_conti_bancari
   DROP COLUMN utility_id;
 
+-- bigint come istanze_utilities.id
 ALTER TABLE anagrafiche.soggetti_ruoli_conti_bancari
-  ADD COLUMN istanza_utility_id integer NULL;
+  ADD COLUMN istanza_utility_id bigint NULL;
 
 ALTER TABLE anagrafiche.soggetti_ruoli_conti_bancari
   ADD CONSTRAINT fk_src_bancari_istanze_utilities
-  FOREIGN KEY (istanza_utility_id) REFERENCES config.istanze_utilities(id);
+  FOREIGN KEY (istanza_utility_id) REFERENCES anagrafiche.istanze_utilities(id);
 ```
 
 ### 3.2 Ricreare vincoli UNIQUE
@@ -260,69 +325,66 @@ CREATE INDEX ix_src_bancari_istanza_utility_id
 
 ### 3.4 Changeset Liquibase
 
-File: `db/changelog/migrations_v2/00_schema/anagrafiche/YYYYMMDD-XX-replace-utility-with-istanza-src-bancari-mctit.yaml`
+File: `db/changelog/migrations_v2/00_schema/anagrafiche/20260325-XX-replace-utility-with-istanza-src-bancari-mctit.yaml`
 
 ---
 
-## STEP 4 — DB: Aggiornare viste resolved indirizzi
+## STEP 4 — DB: Aggiornare viste resolved indirizzi ✅
 
-**Competenza: DBA**
+**Competenza: DBA** — Completato 2026-03-25
+
+Le viste espongono **solo `istanza_utility_id`** — niente `istanza_codice`, niente
+`utility_codice`. Nessun JOIN aggiuntivo.
 
 ### 4.1 `vw_indirizzi_resolved_base`
 
-Sostituire nella SELECT:
+Sostituire nella SELECT del ramo RUOLO:
 ```sql
 -- DA:
 i.utility_id,
-u.codice AS utility_codice
-LEFT JOIN config.utilities u ON u.id = i.utility_id
+-- e il JOIN: LEFT JOIN config.utilities ut ON ut.id = b.utility_id
 
 -- A:
 i.istanza_utility_id,
-iu.codice AS istanza_codice,
-ut.codice AS utility_codice
-LEFT JOIN config.istanze_utilities iu ON iu.id = i.istanza_utility_id
-LEFT JOIN vendite.billing_account ba ON ba.istanza_utility_id = iu.id
-LEFT JOIN config.utilities ut ON ut.id = ba.utility_id
+-- rimuovere il JOIN a config.utilities
 ```
 
-**Nota:** verificare il percorso corretto per derivare `utility_codice` da
-`istanza_utility_id`. Potrebbe essere diretto (`istanze_utilities.utility_id`)
-o tramite `billing_account`. Controllare lo schema.
+Ramo SOGGETTO: `NULL::bigint AS istanza_utility_id`
 
-### 4.2 `vw_indirizzi_resolved_ruolo`
+### 4.2 `vw_indirizzi_resolved_ruolo` e `vw_indirizzi_resolved_all`
 
-Se dipende dalla base, aggiornamento automatico. Altrimenti stesse modifiche.
+Dipendono dalla base — si aggiornano automaticamente. Solo la lista colonne nella
+SELECT esplicita va aggiornata (`utility_id` → `istanza_utility_id`, rimuovere
+`utility_codice`).
 
-### 4.3 `vw_indirizzi_resolved_all`
+### 4.3 Changeset Liquibase
 
-Ramo soggetto: `NULL AS istanza_utility_id, NULL AS istanza_codice, NULL AS utility_codice`
-
-### 4.4 Changeset Liquibase
-
-File: `db/changelog/migrations_v2/20_code/script/YYYYMMDD-XX-recreate-indirizzi-chain-istanza-mctit.yaml`
+File: `db/changelog/migrations_v2/20_code/script/20260325-XX-recreate-indirizzi-chain-istanza-mctit.yaml`
 (DROP + CREATE intera catena: viste + funzioni, come fatto per utility_id)
 
 ---
 
-## STEP 5 — DB: Aggiornare funzioni di risoluzione indirizzi
+## STEP 5 — DB: Aggiornare funzioni di risoluzione indirizzi ✅
 
-**Competenza: DBA**
+**Competenza: DBA** — Completato 2026-03-25
 
 ### 5.1 `script.fn_get_indirizzo`
 
-Firma aggiornata:
+Firma aggiornata (tutti i tipi con `%TYPE`):
 ```sql
 script.fn_get_indirizzo(
-  p_soggetto_ruolo_id BIGINT,
-  p_tipo_codice TEXT,
-  p_istanza_utility_id INTEGER DEFAULT NULL  -- sostituisce p_utility_id
+  p_soggetto_ruolo_id anagrafiche.soggetti_ruoli.id%TYPE,
+  p_tipo_codice config.tipi_indirizzi.codice_interno%TYPE,
+  p_istanza_utility_id anagrafiche.istanze_utilities.id%TYPE DEFAULT NULL
 )
 ```
 
+RETURNS TABLE: `istanza_utility_id` al posto di `utility_id` e `utility_codice`.
+Tipo `bigint` (o `%TYPE`).
+
 Cascata:
 1. Layer ruolo + istanza → tipo esatto
-2. Layer ruolo + istanza → fallback tipo
+2. Layer ruolo + istanza → fallback tipo (da matrice)
 3. Layer ruolo generico (istanza NULL) → tipo esatto
 4. Layer ruolo generico → fallback tipo
 5. Layer soggetto → tipo esatto
@@ -333,34 +395,51 @@ Cascata:
 Firma aggiornata:
 ```sql
 script.fn_get_indirizzi_by_ruolo(
-  p_soggetto_ruolo_id BIGINT,
-  p_istanza_utility_id INTEGER DEFAULT NULL
+  p_soggetto_ruolo_id anagrafiche.soggetti_ruoli.id%TYPE,
+  p_istanza_utility_id anagrafiche.istanze_utilities.id%TYPE DEFAULT NULL
 )
 ```
 
-Con `NULL` restituisce TUTTI. Con valore, filtra per istanza + generici.
+RETURNS TABLE: `istanza_utility_id` al posto di `utility_id` e `utility_codice`.
+
+Con `NULL` restituisce TUTTI. Con valore, filtra per istanza + generici (istanza NULL).
+
+### 5.3 Funzioni layer soggetto
+
+`fn_get_indirizzi_by_soggetto` e `fn_get_indirizzo_by_soggetto` operano sul layer
+soggetto che non ha `istanza_utility_id`. L'unico adattamento e nel RETURNS TABLE:
+il campo `utility_id` / `utility_codice` diventa `istanza_utility_id bigint`
+(sempre NULL per il layer soggetto). Necessario per compatibilita con la UNION nella
+vista base e con il RETURNS TABLE della funzione principale.
 
 ---
 
-## STEP 6 — DB: Aggiornare vista e funzione conti bancari
+## STEP 6 — DB: Aggiornare vista e funzione conti bancari ✅
 
-**Competenza: DBA**
+**Competenza: DBA** — Completato 2026-03-25
 
 ### 6.1 `vw_conti_bancari_per_ruolo`
 
-Sostituire `utility_id` / `utility_codice` con `istanza_utility_id` / `istanza_codice` / `utility_codice`
-(derivato tramite JOIN).
+La vista resta **flat** (nessun DISTINCT ON — decisione confermata).
+Sostituire `utility_id` e `utility_codice` con `istanza_utility_id` (solo il campo,
+nessun JOIN aggiuntivo). Rimuovere il `LEFT JOIN config.utilities`.
+
+Ramo SOGGETTO: `NULL::bigint AS istanza_utility_id`
 
 ### 6.2 `script.fn_get_conto_bancario_predefinito`
 
 Firma aggiornata:
 ```sql
 script.fn_get_conto_bancario_predefinito(
-  p_soggetto_ruolo_id BIGINT,
-  p_uso VARCHAR,
-  p_istanza_utility_id INTEGER DEFAULT NULL
+  p_soggetto_ruolo_id anagrafiche.soggetti_ruoli.id%TYPE,
+  p_uso anagrafiche.soggetti_ruoli_conti_bancari.uso%TYPE,
+  p_istanza_utility_id anagrafiche.istanze_utilities.id%TYPE DEFAULT NULL
 )
 ```
+
+**Nota:** `RETURNS anagrafiche.vw_conti_bancari_per_ruolo` — il tipo di ritorno dipende
+dalla struttura della vista. Se la vista cambia colonne (da `utility_id` a
+`istanza_utility_id`), la funzione va ricostruita dopo la vista.
 
 Cascata 7 livelli (stessa struttura, `istanza_utility_id` al posto di `utility_id`):
 1. Ruolo + istanza + uso specifico
@@ -373,34 +452,127 @@ Cascata 7 livelli (stessa struttura, `istanza_utility_id` al posto di `utility_i
 
 ### 6.3 Changeset Liquibase
 
-File: `db/changelog/migrations_v2/20_code/script/YYYYMMDD-XX-recreate-conti-bancari-chain-istanza-mctit.yaml`
+File: `db/changelog/migrations_v2/20_code/script/20260325-XX-recreate-conti-bancari-chain-istanza-mctit.yaml`
 
 ---
 
-## STEP 7 — DB: Aggiornare funzioni/viste contatti
+## STEP 7 — DB: Aggiornare funzioni contatti ✅
 
-**Competenza: DBA**
+**Competenza: DBA** — Completato 2026-03-25
 
-Stessa logica degli STEP 4-6 applicata alle viste e funzioni contatti.
-Verificare quali viste/funzioni usano `utility_id` su `anagrafiche.contatti` e aggiornarle.
+### 7.1 `script.fn_get_contatti`
 
-### 7.1 Changeset Liquibase
+Sostituire `p_utility_id integer` con `p_istanza_utility_id bigint` nella firma.
+Nel corpo, sostituire tutti i riferimenti a `utility_id` / `c.utility_id` /
+`p_utility_id` con `istanza_utility_id` / `c.istanza_utility_id` /
+`p_istanza_utility_id`.
 
-File: `db/changelog/migrations_v2/20_code/script/YYYYMMDD-XX-recreate-contatti-chain-istanza-mctit.yaml`
+La cascata contatti resta a **3 livelli** (non 4):
+
+| priority | Condizione | Significato |
+|----------|-----------|-------------|
+| 1 | ruolo + istanza match | Specifico istanza |
+| 2 | ruolo match, istanza NULL/generica | Generico ruolo |
+| 3 | solo soggetto | Fallback soggetto |
+
+Il vecchio livello 3 ("soggetto + utility") non ha senso con `istanza_utility_id` e
+va eliminato. Il CASE nel calcolo priority va semplificato di conseguenza.
+
+### 7.2 `script.fn_get_contatto_default`
+
+Wrapper su `fn_get_contatti` — aggiornare solo la firma del parametro
+(`p_utility_id` → `p_istanza_utility_id bigint`).
+
+### 7.3 Chiamanti da aggiornare
+
+Censimento funzioni/viste che chiamano `fn_get_contatti` o `fn_get_contatto_default`
+con `p_utility_id`:
+
+- `script.fn_get_search_detail` — chiama `fn_get_contatti` nella sezione CL (clienti).
+  Ha gia `p_utility_id` nella firma — va aggiornato a `p_istanza_utility_id`
+- Verificare se ci sono altri chiamanti con: `grep -r 'fn_get_contatti\|fn_get_contatto_default'`
+
+### 7.4 Changeset Liquibase
+
+File: `db/changelog/migrations_v2/20_code/script/20260325-XX-recreate-contatti-chain-istanza-mctit.yaml`
 
 ---
 
-## STEP 8 — DB: Aggiornare test pgTAP
+## STEP 8 — DB: Aggiornare test pgTAP ✅
 
-**Competenza: DBA**
+**Competenza: DBA** — Completato 2026-03-25
 
 | File test | Modifica |
 |-----------|----------|
-| `test-indirizzi-utility-cascata.sql` | Rinominare/adattare: fixture con `istanza_utility_id`, cascata 3 livelli con istanza |
+| `test-indirizzi-utility-cascata.sql` | Rinominare: fixture con `istanza_utility_id` (bigint), cascata 3 livelli con istanza. Serve un'istanza reale nel DB di test |
 | `test-conti-bancari-utility-cascata.sql` | Stessa logica, cascata con istanza |
-| `test-indirizzi-fallback.sql` | Verificare compatibilita DEFAULT NULL |
+| `test-indirizzi-fallback.sql` | Verificare compatibilita DEFAULT NULL sul nuovo parametro |
 | `test_fn_get_conto_bancario_predefinito.sql` | Verificare compatibilita DEFAULT NULL |
-| Eventuali test contatti | Adattare se presenti |
+| `test-contatti-soggetto-cliente.sql` | Se usa `utility_id`, adattare a `istanza_utility_id` |
+
+**Nota:** i test necessitano di un'istanza utility reale nel DB per le fixture.
+Verificare se esiste un helper di creazione istanza nei test esistenti
+(es. `create-cliente.sql`, `test-istanza-cliente-chain.sql`).
+
+---
+
+## Riepilogo lavoro DB e documentazione completato (2026-03-25)
+
+### Changeset Liquibase applicati
+
+| # | File | Contenuto |
+| --- | --- | --- |
+| 01 | `00_schema/anagrafiche/20260325-01-replace-utility-with-istanza-contatti-mctit.yaml` | DROP `utility_id` + ADD `istanza_utility_id bigint` + 3 partial unique index su `contatti` (2 changeSet: DDL+pulizia duplicati, poi indici) |
+| 02 | `00_schema/anagrafiche/20260325-02-replace-utility-with-istanza-indirizzi-mctit.yaml` | DROP catena viste/funzioni + DROP `utility_id` + ADD `istanza_utility_id bigint` + 2 partial unique index su `indirizzi` |
+| 03 | `00_schema/anagrafiche/20260325-03-replace-utility-with-istanza-src-bancari-mctit.yaml` | DROP catena vista/funzione + DROP `utility_id` + ADD `istanza_utility_id bigint` + 4 partial unique index su `soggetti_ruoli_conti_bancari` |
+| 04 | `20_code/script/20260325-04-recreate-indirizzi-chain-istanza-mctit.yaml` | CREATE 4 viste resolved + 4 funzioni con `istanza_utility_id`, senza `utility_codice`, `%TYPE` |
+| 05 | `20_code/script/20260325-05-recreate-conti-bancari-chain-istanza-mctit.yaml` | CREATE vista flat + funzione cascata 7 livelli con `istanza_utility_id` |
+| 06 | `20_code/script/20260325-06-recreate-contatti-chain-istanza-mctit.yaml` | CREATE `fn_get_contatti` (cascata 3 livelli) + `fn_get_contatto_default` + `trgfn_contatti_set_default_contatto` (contesto 'istanza') |
+
+### Scelte architetturali
+
+- **Tipo `bigint`**: `istanze_utilities.id` e `bigint` — tutti i campi e parametri allineati
+- **Viste senza JOIN utility**: espongono solo `istanza_utility_id`, niente `utility_codice`. Il frontend lo ha dal payload cliente
+- **Contatti 3 livelli**: cascata semplificata da 4 a 3 (rimosso livello "soggetto + utility")
+- **Trigger default contesto 'istanza'**: `trgfn_contatti_set_default_contatto` aggiornato da 'utility' a 'istanza'
+- **`fn_get_search_detail` non modificata**: il suo `p_utility_id` e un filtro di ricerca, non il differenziatore
+
+### Test pgTAP
+
+| File | Assert | Stato |
+| --- | --- | --- |
+| `test-indirizzi-istanza-cascata.sql` | 14 | ✅ Nuovo — partial unique, fn_get_indirizzi_by_ruolo con/senza istanza, fn_get_indirizzo cascata 3 livelli, viste con istanza_utility_id |
+| `test-conti-bancari-istanza-cascata.sql` | 10 | ✅ Nuovo — partial unique predefinito, fn_get_conto cascata 7 livelli, vista flat con istanza_utility_id |
+| `test_vw_conti_bancari_per_ruolo_gestore.sql` | 5 | ✅ Aggiornato — `utility_id` → `istanza_utility_id` nell'ORDER BY |
+| `test-contatti-soggetto-cliente.sql` | 12 | ✅ Aggiornato — fix per `tipo_contatto_id NOT NULL` (changeset 20260324-01) |
+| `test-indirizzi-fallback.sql` | 14 | ✅ Invariato — funziona con DEFAULT NULL |
+| `test_fn_get_conto_bancario_predefinito.sql` | 6 | ✅ Invariato — funziona con DEFAULT NULL |
+
+Test obsoleti eliminati: `test-indirizzi-utility-cascata.sql`, `test-conti-bancari-utility-cascata.sql`
+
+### Documentazione aggiornata
+
+**Guide operative (3):**
+
+- `docs/it/guide/gestione-degli-indirizzi.md` — cascata con `istanza_utility_id`, vincoli, firme funzioni
+- `docs/it/guide/gestione-conti-bancari.md` — vista flat, cascata 7 livelli, firma con `p_istanza_utility_id`
+- `docs/it/guide/gestione-dei-contatti.md` — cascata da 4 a 3 livelli, 3 partial unique, trigger 'istanza'
+
+**Doc manuali tabelle (3):**
+
+- `contatti.md`, `indirizzi.md`, `soggetti_ruoli_conti_bancari.md`
+
+**Doc manuali funzioni (5):**
+
+- `fn_get_indirizzo.md`, `fn_get_indirizzi_by_ruolo.md`, `fn_get_conto_bancario_predefinito.md`, `fn_get_contatti.md`, `fn_get_contatto_default.md`
+
+**Doc manuali viste (2):**
+
+- `vw_indirizzi_resolved_base.md`, `vw_conti_bancari_per_ruolo.md`
+
+**Guida istanze (1):**
+
+- `gestione-delle-istanze-utility.md` — nota sulla reperibilita utility da istanza (3 percorsi cronologici)
 
 ---
 
@@ -423,12 +595,11 @@ File: `db/changelog/migrations_v2/20_code/script/YYYYMMDD-XX-recreate-contatti-c
 ### 9.3 Service
 
 - Validazione: se `istanza_utility_id` fornito, verificare che esista e appartenga
-  allo stesso soggetto (tramite `istanze_utilities → soggetto_id`)
-- `create_with_dedup`: messaggio errore aggiornato
+  allo stesso soggetto (tramite `istanze_utilities.soggetto_id`)
 
 ### 9.4 Smoke test
 
-- `smoke-test-indirizzi-ruolo.sh` — aggiornare parametri `utility_id` → `istanza_utility_id`
+- `smoke-test-indirizzi-ruolo.sh` — aggiornare parametri
 
 ---
 
@@ -465,20 +636,15 @@ Stessa logica applicata a:
 
 ### 12.1 Drawer cliente
 
-Il ClienteDrawer attualmente passa `utility_id` ai sotto-drawer (contatti, indirizzi, conti).
-Deve passare `istanza_utility_id` — derivato dal record cliente:
-
-```
-cliente → billing_account → istanza_utility_id
-```
-
-Verificare che il GET cliente ritorni `istanza_utility_id` nel payload.
+Il ClienteDrawer passa il contesto ai sotto-drawer (contatti, indirizzi, conti).
+Deve passare `istanza_utility_id` — disponibile direttamente dal record cliente
+(`clienti.istanza_utility_id`).
 
 ### 12.2 Lista clienti
 
-La ClientiSearchTable usa `utility_id` come filtro. Valutare se aggiungere
-anche `istanza_utility_id` come filtro o se la utility basta per la lista
-(la utility si mostra nella colonna, l'istanza e un livello sotto).
+La ClientiSearchTable usa `utility_id` come filtro colonna. Questo resta invariato —
+la utility e il filtro corretto per la lista (mostra il tipo di servizio).
+L'`istanza_utility_id` entra in gioco solo quando si apre il drawer del singolo cliente.
 
 ---
 
@@ -497,28 +663,20 @@ Tutti e tre i drawer:
 File: `frontend/src/anagrafiche/api/anagrafiche.js`
 
 ```javascript
-// DA:
-export const listRuoloIndirizzi = (ruoloId, params) =>
-  api.get(`/anagrafiche/ruoli/${ruoloId}/indirizzi/`, { params })
 // Il params conteneva { utility_id: X }, ora conterra { istanza_utility_id: X }
 ```
 
 ### 13.3 Badge fonte
 
-Il badge "utility_codice" nei card deve derivare da istanza → utility.
-Il backend dovrebbe gia restituire `utility_codice` nel payload (derivato via JOIN).
-Se non lo fa, aggiungere nel serializer/repository.
+Il badge "utility_codice" nei card viene dal payload cliente (che ha gia `utility_id`
+sincronizzato dal BA). Non serve derivarlo dalla vista — il frontend lo ha gia
+nel contesto del drawer.
 
 ### 13.4 ClienteDrawer e ClientiView
 
-- `ClienteDrawer.vue`: passa `istanza-utility-id` ai sotto-drawer
+- `ClienteDrawer.vue`: passa `istanza-utility-id` ai sotto-drawer (dal record cliente)
 - `ClientiView.vue`: `onContatti/onIndirizzi/onContiBancari` passa `istanza_utility_id`
-  dal record cliente (non piu `utility_id`)
-
-### 13.5 ClientiSearchTable
-
-Valutare se la colonna filtro resta `utility_id` (per filtrare per utility nella lista)
-o se serve anche `istanza_utility_id`.
+  dal record cliente
 
 ---
 
@@ -529,7 +687,6 @@ o se serve anche `istanza_utility_id`.
 ### 14.1 Backend
 
 - Aggiornare tutti i test unitari che usano `utility_id` → `istanza_utility_id`
-- `test_clienti_service.py`, `test_conti_bancari_service.py`, test contatti/indirizzi
 - Smoke test: tutti i 3 script
 
 ### 14.2 Frontend
@@ -540,31 +697,32 @@ o se serve anche `istanza_utility_id`.
 
 ---
 
-## STEP 15 — Documentazione
+## STEP 15 — Documentazione ✅
 
-**Competenza: Tutti**
+**Competenza: Tutti** — Completato 2026-03-25
 
 ### 15.1 Guide operative
 
 - `gestione-degli-indirizzi.md` — cascata con istanza_utility_id
 - `gestione-conti-bancari.md` — idem
-- Guide contatti — idem
+- `gestione-dei-contatti.md` — cascata a 3 livelli (non piu 4)
 
-### 15.2 Doc API manuali
+### 15.2 Doc funzioni DB (auto-generata, aggiornata dopo apply)
 
-- `api_indirizzi_ruolo.md` — parametro istanza_utility_id
-- `api_conti_bancari_ruolo.md` — idem
-- `api_contatti_ruolo.md` — idem
-
-### 15.3 Doc funzioni DB
-
-- `fn_get_indirizzo.md` — nuovo parametro
+- `fn_get_indirizzo.md` — nuovo parametro `p_istanza_utility_id`
 - `fn_get_indirizzi_by_ruolo.md` — idem
 - `fn_get_conto_bancario_predefinito.md` — idem
+- `fn_get_contatti.md` — `p_istanza_utility_id`, cascata 3 livelli
+- `fn_get_contatto_default.md` — idem
+
+### 15.3 Doc manuali funzioni
+
+Aggiornare i file in `docs/it/dbzero/script/manual/` per le funzioni modificate.
 
 ### 15.4 Aggiornare il WIP precedente
 
-- `refactor-indirizzi-conti-utility.md` — aggiungere nota che e stato superato da questo refactor
+`refactor-indirizzi-conti-utility.md` — aggiungere nota che il refactor DB con `utility_id`
+e stato superato da questo refactor con `istanza_utility_id`.
 
 ---
 
@@ -572,9 +730,11 @@ o se serve anche `istanza_utility_id`.
 
 | Area | File impattati | Complessita |
 |------|---------------|-------------|
-| DB schema | 3 tabelle (DROP utility_id + ADD istanza_utility_id + vincoli) | media |
-| DB viste | 4-6 (resolved indirizzi + flat conti + eventuali contatti) | media |
-| DB funzioni | 4-5 (fn_get_indirizzo, fn_get_indirizzi_by_ruolo, fn_get_conto_predefinito, contatti) | media |
+| DB schema | 3 tabelle (DROP utility_id + ADD istanza_utility_id bigint + vincoli) | media |
+| DB viste | 4 (resolved base/ruolo/soggetto/all) + 1 (conti flat) | media |
+| DB funzioni indirizzi | 4 (fn_get_indirizzo, by_ruolo, by_soggetto, indirizzo_by_soggetto) | media |
+| DB funzioni conti | 1 (fn_get_conto_bancario_predefinito) | bassa |
+| DB funzioni contatti | 2 (fn_get_contatti, fn_get_contatto_default) + chiamanti (fn_get_search_detail) | media |
 | DB test pgTAP | 4-5 file | bassa |
 | Backend API | 6-8 file (views, repository, service per 3 entita) | media |
 | Backend test | 4-5 file | bassa |
@@ -582,22 +742,19 @@ o se serve anche `istanza_utility_id`.
 | Frontend API | 1 file (anagrafiche.js) | bassa |
 | Documentazione | 8-10 file | bassa |
 
-**Stima complessiva:** il lavoro e speculare al refactor utility_id appena completato.
-La struttura e identica, cambia solo il campo. Il grosso del lavoro e DB (schema + viste + funzioni).
-Backend e frontend sono rename meccanici.
-
 ---
 
 ## Ordine di esecuzione
 
 ```
-STEP 1-3   → DB: schema (3 tabelle) .............. DBA
-STEP 4-7   → DB: viste + funzioni + contatti ...... DBA
-STEP 8     → DB: test pgTAP ...................... DBA
-STEP 9-12  → Backend: API 3 entita + clienti ...... Backend
-STEP 13    → Frontend: prop rename + API .......... Frontend
-STEP 14    → Test integrazione ................... Tutti
-STEP 15    → Documentazione ...................... Tutti
+STEP 1-3   → DB: schema (3 tabelle) .............. DBA       ✅ 2026-03-25
+STEP 4-7   → DB: viste + funzioni (indirizzi,
+             conti, contatti) ..................... DBA       ✅ 2026-03-25
+STEP 8     → DB: test pgTAP ...................... DBA       ✅ 2026-03-25
+STEP 9-12  → Backend: API 3 entita + clienti ...... Backend  ⬜ DA FARE
+STEP 13    → Frontend: prop rename + API .......... Frontend ⬜ DA FARE
+STEP 14    → Test integrazione ................... Tutti     ⬜ DA FARE
+STEP 15    → Documentazione ...................... Tutti     ✅ 2026-03-25
 ```
 
 ---

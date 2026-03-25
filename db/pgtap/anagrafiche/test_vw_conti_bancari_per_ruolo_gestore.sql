@@ -205,8 +205,8 @@ SELECT is(
           ON v.uso = k.uso_test
         ORDER BY
             CASE
-                WHEN v.fonte = 'RUOLO' AND v.utility_id IS NOT NULL THEN 1
-                WHEN v.fonte = 'RUOLO' AND v.utility_id IS NULL     THEN 2
+                WHEN v.fonte = 'RUOLO' AND v.istanza_utility_id IS NOT NULL THEN 1
+                WHEN v.fonte = 'RUOLO' AND v.istanza_utility_id IS NULL     THEN 2
                 WHEN v.fonte = 'SOGGETTO'                           THEN 3
             END,
             v.predefinito DESC, v.data_update DESC

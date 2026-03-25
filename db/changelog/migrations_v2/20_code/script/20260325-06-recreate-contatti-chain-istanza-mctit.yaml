@@ -1,0 +1,364 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+#
+# Ricrea catena funzioni contatti con istanza_utility_id (bigint):
+#   - fn_get_contatti (cascata 3 livelli)
+#   - fn_get_contatto_default (wrapper)
+#
+# Rispetto alla versione precedente:
+#   - p_utility_id integer -> p_istanza_utility_id bigint
+#   - utility_id nel RETURNS TABLE -> istanza_utility_id bigint
+#   - Cascata semplificata da 4 a 3 livelli:
+#     1) ruolo + istanza, 2) ruolo generico, 3) soggetto
+#   - Rimosso livello "soggetto + utility" (non ha senso con istanza)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+    - logicalFilePath: /migrations_v2/20_code/script/20260325-06-recreate-contatti-chain-istanza-mctit.yaml
+
+    - changeSet:
+          id: 20260325-06-recreate-contatti-chain-istanza
+          author: mctit
+          runOnChange: false
+          comment: >
+              Ricrea fn_get_contatti e fn_get_contatto_default con
+              istanza_utility_id (bigint). Cascata 3 livelli:
+              ruolo+istanza -> ruolo generico -> soggetto.
+          changes:
+              - sql:
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+
+                        -- ==========================================================
+                        -- DROP vecchie firme (utility_id integer e istanza bigint)
+                        -- ==========================================================
+                        DROP FUNCTION IF EXISTS script.fn_get_contatto_default(uuid, bigint, integer, integer, integer);
+                        DROP FUNCTION IF EXISTS script.fn_get_contatto_default(uuid, bigint, bigint, integer, integer);
+                        DROP FUNCTION IF EXISTS script.fn_get_contatti(uuid, bigint, integer, integer, integer);
+                        DROP FUNCTION IF EXISTS script.fn_get_contatti(uuid, bigint, bigint, integer, integer);
+                        DROP FUNCTION IF EXISTS script.fn_get_contatti(uuid, bigint, integer, integer);
+
+                        -- ==========================================================
+                        -- 1. fn_get_contatti
+                        --    Cascata 3 livelli con p_istanza_utility_id (bigint).
+                        --    Restituisce il "miglior" contatto per tipo_contatto_id.
+                        -- ==========================================================
+                        CREATE OR REPLACE FUNCTION script.fn_get_contatti(
+                            p_soggetto_id            anagrafiche.soggetti.id%TYPE,
+                            p_soggetto_ruolo_id      anagrafiche.soggetti_ruoli.id%TYPE DEFAULT NULL,
+                            p_istanza_utility_id     anagrafiche.istanze_utilities.id%TYPE DEFAULT NULL,
+                            p_tipo_contatto_id       config.tipi_contatti.id%TYPE DEFAULT NULL,
+                            p_unita_organizzativa_id config.unita_organizzative.id%TYPE DEFAULT NULL
+                        )
+                        RETURNS TABLE (
+                            id                 anagrafiche.contatti.id%TYPE,
+                            tipo_contatto_id   anagrafiche.contatti.tipo_contatto_id%TYPE,
+                            soggetto_id        anagrafiche.contatti.soggetto_id%TYPE,
+                            soggetto_ruolo_id  anagrafiche.contatti.soggetto_ruolo_id%TYPE,
+                            istanza_utility_id anagrafiche.contatti.istanza_utility_id%TYPE,
+                            nominativo         anagrafiche.contatti.nominativo%TYPE,
+                            email              anagrafiche.contatti.email%TYPE,
+                            telefono           anagrafiche.contatti.telefono%TYPE,
+                            cellulare          anagrafiche.contatti.cellulare%TYPE,
+                            pec                anagrafiche.contatti.pec%TYPE,
+                            note               anagrafiche.contatti.note%TYPE,
+                            is_default         anagrafiche.contatti.is_default%TYPE,
+                            default_context    anagrafiche.contatti.default_context%TYPE
+                        )
+                        LANGUAGE sql
+                        AS $function$
+
+                        /*
+                        fn_get_contatti
+
+                        Scopo:
+                            Restituisce, per un dato soggetto (ed eventuale ruolo/istanza),
+                            il "miglior" contatto per ciascun tipo_contatto_id, secondo logica
+                            di priorita a 3 livelli:
+
+                            1) soggetto + ruolo + istanza
+                            2) soggetto + ruolo (generico)
+                            3) solo soggetto (fallback)
+
+                            A parita di priorita, viene preferito il contatto marcato
+                            is_default = TRUE, se presente.
+                        */
+
+                        WITH validate AS (
+                            -- Validazione p_soggetto_id (obbligatorio)
+                            SELECT script.fn_log_and_raise_error(
+                                'database',
+                                'fn_get_contatti',
+                                'ERRORE_PARAMETRI',
+                                jsonb_build_object(
+                                    'soggetto_id',           p_soggetto_id,
+                                    'soggetto_ruolo_id',     p_soggetto_ruolo_id,
+                                    'istanza_utility_id',    p_istanza_utility_id,
+                                    'tipo_contatto_id',      p_tipo_contatto_id,
+                                    'unita_organizzativa_id', p_unita_organizzativa_id
+                                ),
+                                NULL::uuid,
+                                COALESCE(p_soggetto_id::text, 'NULL')
+                            )
+                            WHERE p_soggetto_id IS NULL
+                        ),
+                        candidates AS (
+                            -- Costruzione dei candidati con calcolo della priority (3 livelli)
+                            SELECT
+                                c.id,
+                                c.tipo_contatto_id,
+                                c.unita_organizzativa_id,
+                                c.soggetto_id,
+                                c.soggetto_ruolo_id,
+                                c.istanza_utility_id,
+                                c.nominativo,
+                                c.email,
+                                c.telefono,
+                                c.cellulare,
+                                c.pec,
+                                c.note,
+                                c.is_default,
+                                c.default_context,
+                                CASE
+                                    -- Livello 1: ruolo + istanza (match esatto)
+                                    WHEN c.soggetto_ruolo_id IS NOT DISTINCT FROM p_soggetto_ruolo_id
+                                     AND c.istanza_utility_id IS NOT DISTINCT FROM p_istanza_utility_id
+                                     AND c.istanza_utility_id IS NOT NULL
+                                        THEN 1
+                                    -- Livello 2: ruolo generico (istanza NULL)
+                                    WHEN c.soggetto_ruolo_id IS NOT DISTINCT FROM p_soggetto_ruolo_id
+                                     AND c.istanza_utility_id IS NULL
+                                        THEN 2
+                                    -- Livello 3: solo soggetto
+                                    ELSE 3
+                                END AS priority
+                            FROM anagrafiche.contatti AS c
+                            WHERE c.soggetto_id = p_soggetto_id
+                            AND (
+                                    c.soggetto_ruolo_id IS NULL
+                                OR c.soggetto_ruolo_id IS NOT DISTINCT FROM p_soggetto_ruolo_id
+                            )
+                            AND (
+                                    c.istanza_utility_id IS NULL
+                                OR c.istanza_utility_id IS NOT DISTINCT FROM p_istanza_utility_id
+                            )
+                            AND (
+                                    p_tipo_contatto_id IS NULL
+                                OR c.tipo_contatto_id = p_tipo_contatto_id
+                            )
+                            AND (
+                                    c.unita_organizzativa_id IS NULL
+                                OR c.unita_organizzativa_id IS NOT DISTINCT FROM p_unita_organizzativa_id
+                            )
+                        ),
+                        ranked AS (
+                            -- Una sola riga per tipo_contatto_id:
+                            -- priorita di contesto + preferenza per is_default = TRUE
+                            SELECT
+                                candidates.*,
+                                ROW_NUMBER() OVER (
+                                    PARTITION BY candidates.tipo_contatto_id
+                                    ORDER BY
+                                        candidates.priority,
+                                        CASE
+                                            WHEN p_unita_organizzativa_id IS NULL THEN 0
+                                            WHEN candidates.unita_organizzativa_id IS NOT DISTINCT FROM p_unita_organizzativa_id THEN 0
+                                            ELSE 1
+                                        END,
+                                        CASE WHEN candidates.is_default THEN 0 ELSE 1 END,
+                                        candidates.id
+                                ) AS rn
+                            FROM candidates
+                        )
+
+                        -- Ritorno solo i "migliori" per tipo_contatto_id
+                        SELECT
+                            r.id,
+                            r.tipo_contatto_id,
+                            r.soggetto_id,
+                            r.soggetto_ruolo_id,
+                            r.istanza_utility_id,
+                            r.nominativo,
+                            r.email,
+                            r.telefono,
+                            r.cellulare,
+                            r.pec,
+                            r.note,
+                            r.is_default,
+                            r.default_context
+                        FROM ranked AS r
+                        WHERE r.rn = 1;
+
+                        $function$;
+
+                        COMMENT ON FUNCTION script.fn_get_contatti(uuid, bigint, bigint, integer, integer) IS
+                          'Contatto migliore per tipo_contatto_id con cascata 3 livelli: (1) ruolo+istanza, (2) ruolo generico, (3) soggetto. p_soggetto_id obbligatorio.';
+
+                        -- ==========================================================
+                        -- 2. fn_get_contatto_default
+                        --    Wrapper su fn_get_contatti con filtro is_default.
+                        -- ==========================================================
+                        CREATE OR REPLACE FUNCTION script.fn_get_contatto_default(
+                            p_soggetto_id            anagrafiche.soggetti.id%TYPE,
+                            p_soggetto_ruolo_id      anagrafiche.soggetti_ruoli.id%TYPE DEFAULT NULL,
+                            p_istanza_utility_id     anagrafiche.istanze_utilities.id%TYPE DEFAULT NULL,
+                            p_tipo_contatto_id       config.tipi_contatti.id%TYPE DEFAULT NULL,
+                            p_unita_organizzativa_id config.unita_organizzative.id%TYPE DEFAULT NULL
+                        )
+                        RETURNS TABLE (
+                            id                 anagrafiche.contatti.id%TYPE,
+                            tipo_contatto_id   anagrafiche.contatti.tipo_contatto_id%TYPE,
+                            soggetto_id        anagrafiche.contatti.soggetto_id%TYPE,
+                            soggetto_ruolo_id  anagrafiche.contatti.soggetto_ruolo_id%TYPE,
+                            istanza_utility_id anagrafiche.contatti.istanza_utility_id%TYPE,
+                            nominativo         anagrafiche.contatti.nominativo%TYPE,
+                            email              anagrafiche.contatti.email%TYPE,
+                            telefono           anagrafiche.contatti.telefono%TYPE,
+                            cellulare          anagrafiche.contatti.cellulare%TYPE,
+                            pec                anagrafiche.contatti.pec%TYPE,
+                            note               anagrafiche.contatti.note%TYPE,
+                            is_default         anagrafiche.contatti.is_default%TYPE,
+                            default_context    anagrafiche.contatti.default_context%TYPE
+                        )
+                        LANGUAGE sql
+                        AS $function$
+
+                        /*
+                        fn_get_contatto_default
+
+                        Restituisce il contatto marcato come DEFAULT per un soggetto
+                        (e opzionalmente per ruolo, istanza, tipo_contatto, unita_organizzativa).
+                        Riutilizza fn_get_contatti per costruire i candidati.
+                        Filtra is_default = TRUE. Ritorna 0 o 1 record.
+                        */
+
+                        WITH all_candidates AS (
+                            SELECT *
+                            FROM script.fn_get_contatti(
+                                p_soggetto_id,
+                                p_soggetto_ruolo_id,
+                                p_istanza_utility_id,
+                                p_tipo_contatto_id,
+                                p_unita_organizzativa_id
+                            )
+                        ),
+                        only_default AS (
+                            SELECT *,
+                                ROW_NUMBER() OVER (
+                                        ORDER BY
+                                            CASE WHEN is_default THEN 0 ELSE 1 END,
+                                            id
+                                ) AS rn
+                            FROM all_candidates
+                            WHERE is_default = TRUE
+                        )
+
+                        SELECT
+                            id,
+                            tipo_contatto_id,
+                            soggetto_id,
+                            soggetto_ruolo_id,
+                            istanza_utility_id,
+                            nominativo,
+                            email,
+                            telefono,
+                            cellulare,
+                            pec,
+                            note,
+                            is_default,
+                            default_context
+                        FROM only_default
+                        WHERE rn = 1;
+
+                        $function$;
+
+                        COMMENT ON FUNCTION script.fn_get_contatto_default(uuid, bigint, bigint, integer, integer) IS
+                          'Contatto DEFAULT per soggetto (opz. ruolo, istanza, tipo, unita). Wrapper su fn_get_contatti con filtro is_default. 0 o 1 record.';
+    - changeSet:
+          id: 20260325-06-02-recreate-contatti-chain-istanza
+          author: mctit
+          runOnChange: true
+          comment: >
+              Ricrea fn_get_contatti e fn_get_contatto_default con
+              istanza_utility_id (bigint). Cascata 3 livelli:
+              ruolo+istanza -> ruolo generico -> soggetto.
+          changes:
+              - sql:
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+
+
+
+
+                        -- ==========================================================
+                        -- 3. trgfn_contatti_set_default_contatto
+                        --    Aggiornato: utility_id -> istanza_utility_id
+                        --    Contesto: 'istanza' al posto di 'utility'
+                        -- ==========================================================
+                        -- DROP FUNCTION IF EXISTS anagrafiche.trgfn_contatti_set_default_contatto();
+
+                        CREATE OR REPLACE FUNCTION anagrafiche.trgfn_contatti_set_default_contatto()
+                        RETURNS trigger
+                        LANGUAGE plpgsql
+                        AS $function$
+                        DECLARE
+                          cnt INTEGER;
+                          ctx TEXT;
+                        BEGIN
+                          -- 1) Reset del context
+                          NEW.default_context := NULL;
+
+                          -- 2) Determino il contesto per questo contatto
+                          ctx := CASE
+                            WHEN NEW.istanza_utility_id IS NOT NULL THEN 'istanza'
+                            WHEN NEW.soggetto_ruolo_id  IS NOT NULL THEN 'ruolo'
+                            ELSE 'soggetto'
+                          END;
+
+                          -- 3) Se il nuovo contatto e marcato default:
+                          IF NEW.is_default THEN
+                            UPDATE anagrafiche.contatti
+                              SET is_default = FALSE,
+                                  default_context = NULL
+                            WHERE soggetto_id = NEW.soggetto_id
+                              AND id <> COALESCE(NEW.id, 0)
+                              AND is_default
+                              AND default_context = ctx;
+
+                            NEW.default_context := ctx;
+
+                            IF ctx = 'soggetto' THEN
+                              UPDATE anagrafiche.soggetti
+                                SET default_contatto_id = NEW.id
+                              WHERE id = NEW.soggetto_id;
+                            END IF;
+                            RETURN NEW;
+                          END IF;
+
+                          -- 4) Se non esiste ancora alcun default in questo contesto
+                          SELECT COUNT(*) INTO cnt
+                            FROM anagrafiche.contatti
+                          WHERE soggetto_id = NEW.soggetto_id
+                            AND is_default
+                            AND default_context = ctx;
+
+                          IF cnt = 0 THEN
+                              NEW.is_default      := TRUE;
+                              NEW.default_context := ctx;
+
+                              IF ctx = 'soggetto' THEN
+                                UPDATE anagrafiche.soggetti
+                                  SET default_contatto_id = NEW.id
+                                WHERE id = NEW.soggetto_id;
+                              END IF;
+                          END IF;
+
+                          RETURN NEW;
+                        END;
+                        $function$;
+
+                        COMMENT ON FUNCTION anagrafiche.trgfn_contatti_set_default_contatto() IS
+                          'Trigger: imposta il primo contatto come default nel contesto corretto (soggetto|ruolo|istanza). Aggiorna default_contatto_id su soggetti. Ripulisce solo quelli dello stesso contesto.';

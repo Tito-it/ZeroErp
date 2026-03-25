@@ -1,0 +1,116 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Sostituisce utility_id con istanza_utility_id su
+# anagrafiche.soggetti_ruoli_conti_bancari.
+# Rimuove i 4 partial unique index basati su utility_id e li
+# ricrea con istanza_utility_id (bigint).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: /migrations_v2/00_schema/anagrafiche/20260325-03-replace-utility-with-istanza-src-bancari-mctit.yaml
+
+  - changeSet:
+      id: 20260325-03-replace-utility-with-istanza-src-bancari
+      author: mctit
+      comment: >
+        Sostituisce utility_id (integer, FK config.utilities) con
+        istanza_utility_id (bigint, FK anagrafiche.istanze_utilities)
+        su anagrafiche.soggetti_ruoli_conti_bancari. Ricrea 4 partial
+        unique index (legame + predefinito, con/senza istanza).
+      changes:
+        # 0. DROP catena dipendente da utility_id (funzione poi vista)
+        #    Saranno ricreate con istanza_utility_id nel changeset 20260325-05
+        - sql:
+            sql: >
+              DROP FUNCTION IF EXISTS script.fn_get_conto_bancario_predefinito(bigint, character varying, integer);
+              DROP FUNCTION IF EXISTS script.fn_get_conto_bancario_predefinito(bigint, character varying);
+              DROP VIEW IF EXISTS anagrafiche.vw_conti_bancari_per_ruolo
+
+        # 1. Rimuovere vecchi partial unique index
+        - sql:
+            sql: >
+              DROP INDEX IF EXISTS anagrafiche.uq_src_bancari_ruolo_utility_conto_uso
+        - sql:
+            sql: >
+              DROP INDEX IF EXISTS anagrafiche.uq_src_bancari_ruolo_conto_uso_no_utility
+        - sql:
+            sql: >
+              DROP INDEX IF EXISTS anagrafiche.uq_src_bancari_predefinito_utility
+        - sql:
+            sql: >
+              DROP INDEX IF EXISTS anagrafiche.uq_src_bancari_predefinito_no_utility
+
+        # 2. Rimuovere indice e FK su utility_id
+        - dropIndex:
+            schemaName: anagrafiche
+            tableName: soggetti_ruoli_conti_bancari
+            indexName: ix_soggetti_ruoli_conti_bancari_utility_id
+
+        - dropForeignKeyConstraint:
+            baseTableSchemaName: anagrafiche
+            baseTableName: soggetti_ruoli_conti_bancari
+            constraintName: fk_soggetti_ruoli_conti_bancari_utilities
+
+        - dropColumn:
+            schemaName: anagrafiche
+            tableName: soggetti_ruoli_conti_bancari
+            columnName: utility_id
+
+        # 3. Aggiungere colonna istanza_utility_id (bigint)
+        - addColumn:
+            schemaName: anagrafiche
+            tableName: soggetti_ruoli_conti_bancari
+            columns:
+              - column:
+                  name: istanza_utility_id
+                  type: bigint
+                  constraints:
+                    nullable: true
+
+        # 4. FK verso anagrafiche.istanze_utilities
+        - addForeignKeyConstraint:
+            constraintName: fk_src_bancari_istanze_utilities
+            baseTableSchemaName: anagrafiche
+            baseTableName: soggetti_ruoli_conti_bancari
+            baseColumnNames: istanza_utility_id
+            referencedTableSchemaName: anagrafiche
+            referencedTableName: istanze_utilities
+            referencedColumnNames: id
+
+        # 5. Partial unique: legame (ruolo, istanza, conto, uso) con istanza valorizzata
+        - sql:
+            sql: >
+              CREATE UNIQUE INDEX uq_src_bancari_ruolo_istanza_conto_uso
+              ON anagrafiche.soggetti_ruoli_conti_bancari (soggetto_ruolo_id, istanza_utility_id, conto_bancario_id, uso)
+              WHERE istanza_utility_id IS NOT NULL
+
+        # 6. Partial unique: legame (ruolo, conto, uso) senza istanza
+        - sql:
+            sql: >
+              CREATE UNIQUE INDEX uq_src_bancari_ruolo_conto_uso_no_istanza
+              ON anagrafiche.soggetti_ruoli_conti_bancari (soggetto_ruolo_id, conto_bancario_id, uso)
+              WHERE istanza_utility_id IS NULL
+
+        # 7. Partial unique: un solo predefinito per (ruolo, istanza, uso) con istanza
+        - sql:
+            sql: >
+              CREATE UNIQUE INDEX uq_src_bancari_predefinito_istanza
+              ON anagrafiche.soggetti_ruoli_conti_bancari (soggetto_ruolo_id, istanza_utility_id, uso)
+              WHERE predefinito = true AND istanza_utility_id IS NOT NULL
+
+        # 8. Partial unique: un solo predefinito per (ruolo, uso) senza istanza
+        - sql:
+            sql: >
+              CREATE UNIQUE INDEX uq_src_bancari_predefinito_no_istanza
+              ON anagrafiche.soggetti_ruoli_conti_bancari (soggetto_ruolo_id, uso)
+              WHERE predefinito = true AND istanza_utility_id IS NULL
+
+        # 9. Indice su istanza_utility_id
+        - createIndex:
+            schemaName: anagrafiche
+            tableName: soggetti_ruoli_conti_bancari
+            indexName: ix_src_bancari_istanza_utility_id
+            columns:
+              - column:
+                  name: istanza_utility_id
