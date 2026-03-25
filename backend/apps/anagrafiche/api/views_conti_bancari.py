@@ -167,15 +167,21 @@ class RuoloContiBancariView(DomainAPIView):
     area_funzionale = "anagrafiche"
 
     @extend_schema(
+        parameters=[
+            OpenApiParameter(name="utility_id", type=int, required=False),
+        ],
         responses={200: inline_serializer(
             name="RuoloContiBancariListResp",
             fields={"data": serializers.DictField()},
         )},
     )
-    # Scopo: Lista conti del ruolo (propri + ereditati dal soggetto).
+    # Scopo: Lista conti del ruolo con cascata 3 livelli (utility → ruolo → soggetto).
+    #        Query param utility_id opzionale; se NULL, cascata parte da livello ruolo.
     def get(self, request: Request, soggetto_ruolo_id: int) -> JsonResponse:
+        utility_id_str = request.query_params.get("utility_id")
+        utility_id = int(utility_id_str) if utility_id_str is not None else None
         svc = ContiBancariService()
-        result = svc.list_conti_ruolo(soggetto_ruolo_id)
+        result = svc.list_conti_ruolo(soggetto_ruolo_id, utility_id=utility_id)
         return success_response(result)
 
     @extend_schema(

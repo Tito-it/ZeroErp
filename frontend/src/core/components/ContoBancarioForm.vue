@@ -97,7 +97,8 @@ function ibanOptionLabel(item) {
       <div class="form-field" style="justify-content: flex-end;">
         <div style="display: flex; align-items: center; gap: 0.5rem;">
           <Checkbox v-model="form.predefinito" :binary="true" :disabled="disabled"
-            input-id="cb-predefinito" />
+            input-id="cb-predefinito"
+            @update:model-value="v => { if (v) form.bloccato = false }" />
           <label for="cb-predefinito">{{ t('conti_bancari.predefinito') }}</label>
         </div>
       </div>
@@ -149,7 +150,7 @@ function ibanOptionLabel(item) {
           class="w-full"
           :invalid="errors.includes('iban') || errors.includes('iban_format')"
           :min-length="4"
-          :maxlength="FIELD_LENGTH.IBAN_MAX"
+          :inputProps="{ maxlength: FIELD_LENGTH.IBAN_MAX }"
           fluid
           @complete="ibanAc.onSearch"
           @item-select="onIbanItemSelect"
@@ -194,7 +195,8 @@ function ibanOptionLabel(item) {
       <div class="form-field">
         <div style="display: flex; align-items: center; gap: 0.5rem;">
           <Checkbox v-model="form.bloccato" :binary="true" :disabled="disabled"
-            input-id="cb-bloccato" />
+            input-id="cb-bloccato"
+            @update:model-value="v => { if (v) form.predefinito = false }" />
           <label for="cb-bloccato">{{ t('conti_bancari.bloccato') }}</label>
         </div>
       </div>

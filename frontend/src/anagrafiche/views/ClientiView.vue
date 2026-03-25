@@ -18,7 +18,7 @@ useReadonlyMode('anagrafiche')
 
 // Sotto-drawer dalla lista
 const contattiDrawer = ref({ visible: false, ruoloId: null, utilityId: null })
-const indirizziDrawer = ref({ visible: false, soggettoId: null })
+const indirizziDrawer = ref({ visible: false, ruoloId: null, utilityId: null })
 const contiBancariDrawer = ref({ visible: false, ruoloId: null, ownerName: '' })
 
 function onContatti(data) {
@@ -26,14 +26,15 @@ function onContatti(data) {
 }
 
 function onIndirizzi(data) {
-  indirizziDrawer.value = { visible: true, soggettoId: data.soggetto_id }
+  indirizziDrawer.value = { visible: true, ruoloId: data.soggetto_ruolo_id, utilityId: data.utility_id }
 }
 
 function onContiBancari(data) {
   contiBancariDrawer.value = {
     visible: true,
     ruoloId: data.soggetto_ruolo_id,
-    ownerName: data.ragione_sociale_completa || ''
+    ownerName: data.ragione_sociale_completa || '',
+    utilityId: data.utility_id,
   }
 }
 
@@ -79,8 +80,9 @@ async function onDrawerSaved(result) {
     <IndirizziSoggettoDrawer
       :visible="indirizziDrawer.visible"
       @update:visible="v => indirizziDrawer.visible = v"
-      :soggetto-id="indirizziDrawer.soggettoId"
-      :tipo-soggetto-dettaglio-id="null"
+      :soggetto-id="indirizziDrawer.ruoloId"
+      :utility-id="indirizziDrawer.utilityId"
+      context="ruolo"
     />
 
     <ContiBancariDrawer
@@ -88,6 +90,7 @@ async function onDrawerSaved(result) {
       @update:visible="v => contiBancariDrawer.visible = v"
       :owner-id="contiBancariDrawer.ruoloId"
       :owner-name="contiBancariDrawer.ownerName"
+      :utility-id="contiBancariDrawer.utilityId"
       context="ruolo"
     />
   </div>

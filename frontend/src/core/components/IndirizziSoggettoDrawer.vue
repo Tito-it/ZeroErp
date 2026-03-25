@@ -1,7 +1,8 @@
 <script setup>
-// Scopo: Drawer dedicato per gestione indirizzi di un soggetto.
-// Riutilizzabile da: SoggettoDrawer (edit), futuro ClienteDrawer, FornitoreDrawer.
-// Mostra lista indirizzi esistenti con "Cambia" + form per aggiungere nuovi.
+// Scopo: Drawer dedicato per gestione indirizzi di un soggetto o ruolo.
+// Riutilizzabile da: SoggettoDrawer (context='soggetto'), ClienteDrawer (context='ruolo').
+// Context 'soggetto': lista piatta + form aggiungi/cambia (via matrice).
+// Context 'ruolo': cascata 3 livelli (utility→ruolo→soggetto) con fonte badge.
 
 import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -9,9 +10,10 @@ import { useInjectReadonly } from '../composables/useReadonlyMode'
 import { useApiHandler } from '../composables/useApiHandler'
 import { useIndirizzoSoggettoForm } from '../composables/useIndirizzoSoggettoForm'
 import {
-  listSoggettoIndirizzi, createSoggettoIndirizzo, replaceSoggettoIndirizzo
+  listSoggettoIndirizzi, createSoggettoIndirizzo, replaceSoggettoIndirizzo,
+  listRuoloIndirizzi, createRuoloIndirizzo, updateRuoloIndirizzo, deleteRuoloIndirizzo
 } from '../../anagrafiche/api/anagrafiche'
-import { lookupMatriceIndirizzi } from '../apiCore'
+import { lookupMatriceIndirizzi, lookupCodici } from '../apiCore'
 import { DRAWER_WIDTH } from '../constants'
 import IndirizzoSoggettoForm from './IndirizzoSoggettoForm.vue'
 import DrawerTitle from './DrawerTitle.vue'
@@ -26,12 +28,18 @@ const isReadonly = useInjectReadonly()
 const { execute, loading } = useApiHandler()
 const indirizzo = useIndirizzoSoggettoForm()
 
+// Context 'soggetto' (default) o 'ruolo': determina quale set di API usare.
+// Per 'soggetto': soggettoId = soggetto UUID. Per 'ruolo': soggettoId = soggetto_ruolo_id (int).
+// utilityId: opzionale, usato in context 'ruolo' per cascata a 3 livelli.
 const props = defineProps({
   visible: { type: Boolean, default: false },
-  soggettoId: { type: String, default: null },
+  soggettoId: { type: [String, Number], default: null },
   tipoSoggettoDettaglioId: { type: Number, default: null },
   context: { type: String, default: 'soggetto' },
+  utilityId: { type: Number, default: null },
 })
+
+const isRuolo = computed(() => props.context === 'ruolo')
 
 const emit = defineEmits(['update:visible', 'saved'])
 
@@ -47,13 +55,30 @@ const replaceId = ref(null)
 const replaceLabel = ref('')
 const comuneInitialItem = ref(null)
 
+// Scopo: Carica indirizzi. In context 'ruolo' l'API ritorna indirizzi_ruolo + indirizzi_soggetto
+//        con campo 'fonte'. In context 'soggetto' ritorna lista piatta.
 async function loadIndirizzi() {
   if (!props.soggettoId) return
   listLoading.value = true
   try {
-    const res = await listSoggettoIndirizzi(props.soggettoId)
-    const payload = res.data?.data
-    indirizziList.value = payload?.results || payload || []
+    if (isRuolo.value) {
+      const listParams = props.utilityId ? { utility_id: props.utilityId } : {}
+      const res = await listRuoloIndirizzi(props.soggettoId, listParams)
+      const payload = res.data?.data
+      if (payload?.indirizzi_ruolo) {
+        // Il backend gia' include 'fonte' (utility/ruolo/soggetto) nei dict
+        indirizziList.value = [
+          ...payload.indirizzi_ruolo,
+          ...(payload.indirizzi_soggetto || []),
+        ]
+      } else {
+        indirizziList.value = []
+      }
+    } else {
+      const res = await listSoggettoIndirizzi(props.soggettoId)
+      const payload = res.data?.data
+      indirizziList.value = payload?.results || payload || []
+    }
   } catch {
     indirizziList.value = []
   } finally {
@@ -61,11 +86,24 @@ async function loadIndirizzi() {
   }
 }
 
+// Scopo: Carica matrice tipi indirizzo.
+//        Context soggetto: matrice filtrata per tipo_soggetto_dettaglio.
+//        Context ruolo: lookup generico tipi_indirizzi (il trigger DB valida i tipi ammessi).
 async function loadMatrice() {
-  if (!props.tipoSoggettoDettaglioId) return
   try {
-    const res = await lookupMatriceIndirizzi(props.tipoSoggettoDettaglioId)
-    matriceCompleta.value = res.data.data.results
+    if (isRuolo.value) {
+      const res = await lookupCodici('config.tipi_indirizzi', { limit: 100 })
+      // Mappa al formato matrice: codice, descrizione, obbligatorio=false
+      matriceCompleta.value = (res.data?.data?.results || []).map(t => ({
+        codice: t.codice || t.codice_interno,
+        descrizione: t.descrizione,
+        obbligatorio: false,
+      }))
+    } else {
+      if (!props.tipoSoggettoDettaglioId) return
+      const res = await lookupMatriceIndirizzi(props.tipoSoggettoDettaglioId)
+      matriceCompleta.value = res.data.data.results
+    }
   } catch {
     matriceCompleta.value = []
   }
@@ -92,7 +130,12 @@ watch(() => props.visible, async (val) => {
   formMode.value = null
   replaceId.value = null
   indirizzo.reset()
-  await Promise.all([loadIndirizzi(), loadMatrice()])
+  // In context ruolo la matrice non serve (il trigger DB valida i tipi ammessi)
+  if (isRuolo.value) {
+    await loadIndirizzi()
+  } else {
+    await Promise.all([loadIndirizzi(), loadMatrice()])
+  }
 })
 
 // Blocca save se indirizzo da stradario non trovato (centralizzato in useIndirizzoBase).
@@ -103,11 +146,19 @@ const addressNotFound = computed(() =>
 
 // === Azioni ===
 
-function onStartNew() {
+async function onStartNew() {
   formMode.value = 'new'
   comuneInitialItem.value = null
   indirizzo.reset()
-  indirizzo.setMatrice(matriceDisponibile.value)
+  if (isRuolo.value) {
+    // In context ruolo: carica matrice se non gia' caricata
+    if (matriceCompleta.value.length === 0) {
+      await loadMatrice()
+    }
+    indirizzo.setMatrice(matriceCompleta.value)
+  } else {
+    indirizzo.setMatrice(matriceDisponibile.value)
+  }
 }
 
 function onStartReplace(ind) {
@@ -153,10 +204,22 @@ async function onSaveForm() {
 
   let success = true
 
-  if (formMode.value === 'replace') {
+  if (isRuolo.value) {
+    // Context ruolo: usa API ruolo con utility_id opzionale
     const payload = payloads[0]
-    // Se match esatto trovato, passa indirizzo_dettaglio_id al backend.
-    // Il backend ignora stradario_id/civico se indirizzo_dettaglio_id e' presente.
+    if (indirizzo.existingDettaglioId.value) {
+      payload.indirizzo_dettaglio_id = indirizzo.existingDettaglioId.value
+    }
+    if (props.utilityId) {
+      payload.utility_id = props.utilityId
+    }
+    const result = await execute(
+      () => createRuoloIndirizzo(props.soggettoId, payload),
+      { successMessage: t('indirizzi.indirizzo_creato') }
+    )
+    if (result === null) success = false
+  } else if (formMode.value === 'replace') {
+    const payload = payloads[0]
     if (indirizzo.existingDettaglioId.value) {
       payload.indirizzo_dettaglio_id = indirizzo.existingDettaglioId.value
     }
@@ -179,6 +242,18 @@ async function onSaveForm() {
     formMode.value = null
     replaceId.value = null
     indirizzo.reset()
+    await loadIndirizzi()
+    emit('saved')
+  }
+}
+
+// Scopo: Elimina indirizzo ruolo (solo context ruolo).
+async function onDeleteRuolo(ind) {
+  const result = await execute(
+    () => deleteRuoloIndirizzo(props.soggettoId, ind.id),
+    { successMessage: t('indirizzi.indirizzo_eliminato') }
+  )
+  if (result !== null) {
     await loadIndirizzi()
     emit('saved')
   }
@@ -210,16 +285,26 @@ async function onSaveForm() {
         </div>
 
         <div v-else-if="indirizziList.length > 0" class="indirizzi-list">
-          <div v-for="ind in indirizziList" :key="ind.id" class="indirizzo-card">
+          <div v-for="ind in indirizziList" :key="ind.id"
+            class="indirizzo-card" :class="{ 'indirizzo-card-soggetto': ind.fonte === 'soggetto', 'indirizzo-card-ruolo': ind.fonte === 'ruolo' }">
             <div class="indirizzo-card-content">
-              <Tag :value="ind.tipo_indirizzo_descrizione" severity="info" />
+              <div class="indirizzo-card-nome">
+                <Tag v-if="ind.fonte" :value="ind.fonte === 'soggetto' ? t('common.soggetto') : (ind.fonte === 'utility' ? ind.utility_codice : t('common.ruolo'))"
+                  :severity="ind.fonte === 'soggetto' ? 'secondary' : 'info'" />
+                <Tag :value="ind.tipo_indirizzo_descrizione" severity="info" />
+              </div>
               <div class="indirizzo-card-detail">
-                <span class="indirizzo-card-text">{{ ind.indirizzo_display }}</span>
-                <span v-if="ind.descrizione_comune" class="indirizzo-card-comune">{{ ind.descrizione_comune }}</span>
+                <span class="indirizzo-card-text">{{ ind.indirizzo_display || ind.indirizzo_libero }}</span>
+                <span v-if="ind.comune_descrizione || ind.descrizione_comune" class="indirizzo-card-comune">
+                  {{ ind.comune_descrizione || ind.descrizione_comune }}
+                  <template v-if="ind.cap || ind.cap_codice"> — {{ ind.cap || ind.cap_codice }}</template>
+                  <template v-if="ind.provincia_sigla"> ({{ ind.provincia_sigla }})</template>
+                </span>
               </div>
             </div>
+            <!-- Azioni soggetto: solo Cambia (replace) -->
             <Button
-              v-if="!formMode"
+              v-if="!formMode && !isRuolo"
               icon="pi pi-pencil"
               text
               rounded
@@ -228,6 +313,11 @@ async function onSaveForm() {
               :title="t('indirizzo_soggetto.cambia_indirizzo')"
               @click="onStartReplace(ind)"
             />
+            <!-- Azioni ruolo: edit + delete (solo se editabile) -->
+            <div v-if="!formMode && isRuolo && ind.fonte !== 'soggetto'" class="indirizzo-card-actions">
+              <Button icon="pi pi-trash" severity="danger" text rounded size="small"
+                :title="t('common.delete')" @click="onDeleteRuolo(ind)" />
+            </div>
           </div>
         </div>
 
@@ -237,8 +327,8 @@ async function onSaveForm() {
           {{ t('indirizzo_soggetto.tipi_mancanti', { tipi: tipiMancanti.map(t => t.descrizione).join(', ') }) }}
         </div>
 
-        <!-- Pulsante aggiungi (solo se ci sono tipi disponibili) -->
-        <div v-if="!formMode && matriceDisponibile.length > 0" class="mt-05">
+        <!-- Pulsante aggiungi (soggetto: se ci sono tipi disponibili, ruolo: sempre) -->
+        <div v-if="!formMode && (isRuolo || matriceDisponibile.length > 0)" class="mt-05">
           <Button
             :label="t('indirizzo_soggetto.aggiungi_indirizzo')"
             icon="pi pi-plus"
@@ -327,9 +417,30 @@ async function onSaveForm() {
   white-space: nowrap;
 }
 
+.indirizzo-card-soggetto {
+  border-color: var(--p-orange-300);
+  opacity: 0.5;
+}
+.indirizzo-card-ruolo {
+  border-color: var(--p-blue-300);
+}
+
+.indirizzo-card-nome {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.25rem;
+}
+
 .indirizzo-card-comune {
   font-size: 0.75rem;
   color: var(--p-text-muted-color);
+}
+
+.indirizzo-card-actions {
+  display: flex;
+  gap: 0.25rem;
+  flex-shrink: 0;
 }
 
 .indirizzi-warning {

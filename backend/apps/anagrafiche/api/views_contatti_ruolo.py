@@ -18,8 +18,10 @@ from apps.core.api.base_views import DomainAPIView
 from apps.core.api.endpoint_helpers import handle_post_json
 from apps.core.api.success_responses import success_response
 from apps.core.services.error_manager import ErrorManager
+from apps.anagrafiche.db._helpers import resolve_soggetto_id
 from apps.anagrafiche.db.soggetti_repository import SoggettiRepository
 from apps.anagrafiche.error_codes import E_ANAG_NOT_FOUND
+from apps.anagrafiche.services._validators import create_with_dedup
 
 
 _repo = SoggettiRepository()
@@ -46,18 +48,10 @@ class RuoloContattiView(DomainAPIView):
     def get(self, request: Request, soggetto_ruolo_id: int) -> JsonResponse:
         from django.db import connection
         from apps.core.db._helpers import rows_to_list
-        utility_id = request.query_params.get("utility_id")
-        utility_id = int(utility_id) if utility_id else None
-        # Recupera soggetto_id dal ruolo
+        utility_id_str = request.query_params.get("utility_id")
+        utility_id = int(utility_id_str) if utility_id_str is not None else None
         with connection.cursor() as cursor:
-            cursor.execute(
-                "SELECT soggetto_id FROM anagrafiche.soggetti_ruoli WHERE id = %s",
-                [soggetto_ruolo_id])
-            row = cursor.fetchone()
-        ErrorManager.require(row is not None, code=E_ANAG_NOT_FOUND,
-                             message="Ruolo non trovato.")
-        assert row is not None
-        soggetto_id = str(row[0])
+            soggetto_id = resolve_soggetto_id(cursor, soggetto_ruolo_id)
         _COLS = """c.id, c.nominativo, c.email, c.telefono, c.cellulare,
                    c.pec, c.note, c.tipo_contatto_id,
                    tc.descrizione AS tipo_contatto_descrizione,
@@ -77,7 +71,10 @@ class RuoloContattiView(DomainAPIView):
                 cursor.execute(sql_util, [soggetto_ruolo_id, utility_id])
                 l1 = rows_to_list(cursor)
                 results.extend(l1)
-                tipi_coperti.update(c["tipo_contatto_id"] for c in l1 if c["tipo_contatto_id"])
+                tipi_coperti.update(
+                    c["tipo_contatto_id"] for c in l1
+                    if c["tipo_contatto_id"] is not None
+                )
             # Livello 2: contatti ruolo senza utility (generici del ruolo)
             sql_ruolo = f"""
                 SELECT {_COLS}, 'ruolo' AS fonte FROM anagrafiche.contatti c {_JOIN}
@@ -86,10 +83,10 @@ class RuoloContattiView(DomainAPIView):
             cursor.execute(sql_ruolo, [soggetto_ruolo_id])
             l2 = rows_to_list(cursor)
             for c in l2:
-                if c["tipo_contatto_id"] not in tipi_coperti:
+                tipo = c["tipo_contatto_id"]
+                if tipo is not None and tipo not in tipi_coperti:
                     results.append(c)
-                    if c["tipo_contatto_id"]:
-                        tipi_coperti.add(c["tipo_contatto_id"])
+                    tipi_coperti.add(tipo)
             # Livello 3: contatti soggetto (fallback)
             sql_sogg = f"""
                 SELECT {_COLS}, 'soggetto' AS fonte FROM anagrafiche.contatti c {_JOIN}
@@ -98,10 +95,10 @@ class RuoloContattiView(DomainAPIView):
             cursor.execute(sql_sogg, [soggetto_id])
             l3 = rows_to_list(cursor)
             for c in l3:
-                if c["tipo_contatto_id"] not in tipi_coperti:
+                tipo = c["tipo_contatto_id"]
+                if tipo is not None and tipo not in tipi_coperti:
                     results.append(c)
-                    if c["tipo_contatto_id"]:
-                        tipi_coperti.add(c["tipo_contatto_id"])
+                    tipi_coperti.add(tipo)
         # Separa per fonte per la UI
         contatti_editabili = [c for c in results if c["fonte"] in ('utility', 'ruolo')]
         contatti_readonly = [c for c in results if c["fonte"] == 'soggetto']
@@ -123,33 +120,27 @@ class RuoloContattiView(DomainAPIView):
     def post(self, request: Request, soggetto_ruolo_id: int) -> JsonResponse:
         def _handler(payload):
             from django.db import connection
-            from apps.core.db._helpers import row_to_dict
-            # Recupera soggetto_id dal ruolo
             with connection.cursor() as cursor:
-                cursor.execute(
-                    "SELECT soggetto_id FROM anagrafiche.soggetti_ruoli WHERE id = %s",
-                    [soggetto_ruolo_id])
-                row = cursor.fetchone()
-            ErrorManager.require(row is not None, code=E_ANAG_NOT_FOUND,
-                                 message="Ruolo non trovato.")
-            assert row is not None
-            soggetto_id = str(row[0])
+                soggetto_id = resolve_soggetto_id(cursor, soggetto_ruolo_id)
             # Crea contatto con soggetto_ruolo_id e utility_id opzionale
             utility_id = payload.get("utility_id")
             if utility_id is not None:
                 utility_id = int(utility_id)
-            result = _repo.crea_contatto(
-                soggetto_id,
-                nominativo=payload.get("nominativo", ""),
-                email=payload.get("email"),
-                telefono=payload.get("telefono"),
-                cellulare=payload.get("cellulare"),
-                pec=payload.get("pec"),
-                tipo_contatto_id=payload.get("tipo_contatto_id"),
-                unita_organizzativa_id=payload.get("unita_organizzativa_id"),
-                note=payload.get("note"),
-                soggetto_ruolo_id=soggetto_ruolo_id,
-                utility_id=utility_id,
+            result = create_with_dedup(
+                lambda: _repo.crea_contatto(
+                    soggetto_id,
+                    nominativo=payload.get("nominativo", ""),
+                    email=payload.get("email"),
+                    telefono=payload.get("telefono"),
+                    cellulare=payload.get("cellulare"),
+                    pec=payload.get("pec"),
+                    tipo_contatto_id=payload.get("tipo_contatto_id"),
+                    unita_organizzativa_id=payload.get("unita_organizzativa_id"),
+                    note=payload.get("note"),
+                    soggetto_ruolo_id=soggetto_ruolo_id,
+                    utility_id=utility_id,
+                ),
+                "Contatto con questo tipo gia' presente per il ruolo/utility.",
             )
             return result
         return handle_post_json(request, handler=_handler)

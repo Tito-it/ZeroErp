@@ -304,3 +304,34 @@ class ClientiRepository:
         with connection.cursor() as cursor:
             cursor.execute(sql, [cliente_id])
             return row_to_dict(cursor)
+
+    # Campi editabili sul cliente (pagamento, PA, garanzia, servizio).
+    _UPDATE_ALLOWED = {
+        "iva_id", "modalita_pagamento_id", "termine_pagamento_id",
+        "tipo_gg_scadenza_ft", "nr_giorni_scadenza",
+        "cliente_pa", "split_payment",
+        "codice_cig", "codice_cup", "codice_commessa",
+        "servizio_da_fatturare",
+        "garanzia_tipo", "garanzia_importo",
+    }
+    _UPDATE_NULLABLE = {
+        "iva_id", "modalita_pagamento_id", "termine_pagamento_id",
+        "codice_cig", "codice_cup", "codice_commessa",
+    }
+
+    # Scopo: Aggiorna campi editabili di un cliente (delta update).
+    def update_cliente(self, cliente_id: int, data: dict[str, Any]) -> bool:
+        # Normalizza stringhe vuote a None per campi nullable
+        for k in self._UPDATE_NULLABLE:
+            if k in data and isinstance(data[k], str) and not data[k].strip():
+                data[k] = None
+        fields = [(k, v) for k, v in data.items() if k in self._UPDATE_ALLOWED]
+        if not fields:
+            return False
+        set_clause = ", ".join(f"{f[0]} = %s" for f in fields)
+        values: list[Any] = [f[1] for f in fields]
+        values.append(cliente_id)
+        sql = f"UPDATE anagrafiche.clienti SET {set_clause} WHERE id = %s"  # noqa: S608
+        with connection.cursor() as cursor:
+            cursor.execute(sql, values)
+            return cursor.rowcount > 0

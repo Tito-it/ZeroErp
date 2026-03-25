@@ -79,6 +79,7 @@ class ContiBancariService:
         self._require_soggetto_exists(soggetto_id)
         conto_bancario_id = self._resolve_conto_bancario(payload)
         legame_payload = self._extract_legame_payload(payload)
+        self._guard_predefinito_bloccato(legame_payload)
 
         with transaction.atomic():
             result = create_with_dedup(
@@ -97,6 +98,9 @@ class ContiBancariService:
         payload: dict[str, Any],
     ) -> dict[str, Any]:
         self._require_soggetto_exists(soggetto_id)
+        # Guard predefinito/bloccato: legge stato corrente per merge con payload
+        current = self._repo.get_legame_flags_soggetto(conto_soggetto_id)
+        self._guard_predefinito_bloccato(payload, current)
         return update_with_dedup(
             lambda: self._repo.update_conto_soggetto(
                 conto_soggetto_id, soggetto_id, payload,
@@ -121,22 +125,49 @@ class ContiBancariService:
     # Conti bancari ruolo
     # =================================================================
 
-    # Scopo: Lista conti bancari associati a un ruolo, con fallback per uso.
-    #        Se il ruolo ha un conto con un certo uso, quello del soggetto con
-    #        lo stesso uso non viene mostrato. Fallback solo per usi non coperti.
-    def list_conti_ruolo(self, soggetto_ruolo_id: int) -> dict[str, Any]:
+    # Scopo: Lista conti bancari associati a un ruolo, con cascata 3 livelli per uso.
+    #        Cascata: utility specifica → ruolo generico (NULL) → soggetto.
+    #        Se utility_id e' None (ruoli senza utility), la cascata parte
+    #        dal livello 2 (ruolo generico) e fallback su soggetto.
+    #        Retrocompatibile: senza utility_id, comportamento invariato.
+    def list_conti_ruolo(
+        self, soggetto_ruolo_id: int, utility_id: int | None = None,
+    ) -> dict[str, Any]:
         conti_ruolo = self._repo.list_conti_ruolo(soggetto_ruolo_id)
         conti_ereditati = self._repo.list_conti_ereditati_ruolo(soggetto_ruolo_id)
-        # Filtra: escludi ereditati il cui 'uso' e' gia' coperto dal ruolo
-        usi_ruolo = {c.get("uso") for c in conti_ruolo if c.get("uso")}
-        if usi_ruolo:
-            conti_ereditati = [c for c in conti_ereditati if c.get("uso") not in usi_ruolo]
+
+        editabili: list[dict[str, Any]] = []
+        usi_coperti: set[str] = set()
+
+        if utility_id is not None:
+            # L1: ruolo + utility specifica
+            for c in conti_ruolo:
+                uso = c.get("uso")
+                if c.get("utility_id") == utility_id:
+                    editabili.append({**c, "fonte": "utility"})
+                    if uso is not None:
+                        usi_coperti.add(uso)
+
+        # L2: ruolo generico (utility NULL) — usi non ancora coperti
+        for c in conti_ruolo:
+            uso = c.get("uso")
+            if c.get("utility_id") is None and uso not in usi_coperti:
+                editabili.append({**c, "fonte": "ruolo"})
+                if uso is not None:
+                    usi_coperti.add(uso)
+
+        # L3: soggetto (fallback readonly) — usi non ancora coperti
+        readonly = [
+            {**c, "fonte": "soggetto"}
+            for c in conti_ereditati if c.get("uso") not in usi_coperti
+        ]
+
         return {
-            "conti_ruolo": conti_ruolo,
-            "conti_ereditati": conti_ereditati,
+            "conti_ruolo": editabili,
+            "conti_ereditati": readonly,
         }
 
-    # Scopo: Crea legame ruolo ↔ conto bancario.
+    # Scopo: Crea legame ruolo ↔ conto bancario con utility_id opzionale.
     #        Stessa logica di create_conto_soggetto ma per ruolo.
     def create_conto_ruolo(
         self, soggetto_ruolo_id: int, payload: dict[str, Any],
@@ -145,6 +176,11 @@ class ContiBancariService:
 
         conto_bancario_id = self._resolve_conto_bancario(payload)
         legame_payload = self._extract_legame_payload(payload)
+        self._guard_predefinito_bloccato(legame_payload)
+        # utility_id opzionale (NULL = generico ruolo)
+        utility_id = optional_int(payload, "utility_id")
+        if utility_id is not None:
+            legame_payload["utility_id"] = utility_id
 
         with transaction.atomic():
             result = create_with_dedup(
@@ -162,6 +198,9 @@ class ContiBancariService:
         self, soggetto_ruolo_id: int, conto_ruolo_id: int,
         payload: dict[str, Any],
     ) -> dict[str, Any]:
+        # Guard predefinito/bloccato: legge stato corrente per merge con payload
+        current = self._repo.get_legame_flags_ruolo(conto_ruolo_id)
+        self._guard_predefinito_bloccato(payload, current)
         return update_with_dedup(
             lambda: self._repo.update_conto_ruolo(
                 conto_ruolo_id, soggetto_ruolo_id, payload,
@@ -223,6 +262,28 @@ class ContiBancariService:
             intestatario_predefinito=optional_str(payload, "intestatario_predefinito"),
         )
         return conto_id
+
+    # Scopo: Valida coerenza predefinito/bloccato.
+    #        Regola: un conto predefinito non puo' essere bloccato.
+    #        Se il payload imposta bloccato=true, verifica che predefinito non sia true
+    #        (nel payload stesso o, per update, nel record corrente).
+    def _guard_predefinito_bloccato(
+        self, payload: dict[str, Any], current: dict[str, Any] | None = None,
+    ) -> None:
+        predefinito = payload.get("predefinito")
+        bloccato = payload.get("bloccato")
+        # Per update: il campo non nel payload resta al valore corrente
+        if current is not None:
+            if predefinito is None:
+                predefinito = current.get("predefinito")
+            if bloccato is None:
+                bloccato = current.get("bloccato")
+        if predefinito and bloccato:
+            ErrorManager.require(
+                False, code=E_ANAG_VALIDAZIONE,
+                message="Non e' possibile bloccare un conto predefinito. "
+                        "Rimuovi il flag predefinito prima di bloccare.",
+            )
 
     # Scopo: Estrae i campi del legame (soggetto o ruolo) dal payload.
     #        Separa i dati registro (iban, bic, banca) dai dati legame (uso, predefinito, ecc.).

@@ -29,6 +29,11 @@ Indice test eseguiti:
 19) test_update_conto_ruolo_ok — aggiorna legame ruolo
 20) test_delete_conto_ruolo_ok — elimina legame ruolo
 21) test_extract_legame_bool_absent — booleani non inviati non sovrascrivono
+22) test_list_conti_ruolo_cascata_utility — cascata 3 livelli con utility_id
+23) test_list_conti_ruolo_no_utility — senza utility = comportamento retrocompatibile
+24) test_create_conto_ruolo_with_utility — crea legame con utility_id
+25) test_guard_predefinito_bloccato_create — crea con predefinito+bloccato rifiutato
+26) test_guard_predefinito_bloccato_update — blocca un predefinito rifiutato
 """
 
 from unittest import TestCase
@@ -213,7 +218,9 @@ class TestContiBancariSoggetto(TestCase):
     def test_update_conto_soggetto_ok(self, mock_sog, mock_cb):
         """Aggiorna legame soggetto — happy path."""
         mock_sog.return_value.exists_soggetto.return_value = True
-        mock_cb.return_value.update_conto_soggetto.return_value = True
+        repo = mock_cb.return_value
+        repo.get_legame_flags_soggetto.return_value = {"predefinito": False, "bloccato": False}
+        repo.update_conto_soggetto.return_value = True
         from apps.anagrafiche.services.conti_bancari_service import ContiBancariService
         result = ContiBancariService().update_conto_soggetto(
             _FAKE_UUID, 10, {"uso": "PAGAMENTO"},
@@ -225,7 +232,9 @@ class TestContiBancariSoggetto(TestCase):
     def test_update_conto_soggetto_not_found(self, mock_sog, mock_cb):
         """Legame inesistente → E_ANAG_NOT_FOUND."""
         mock_sog.return_value.exists_soggetto.return_value = True
-        mock_cb.return_value.update_conto_soggetto.return_value = False
+        repo = mock_cb.return_value
+        repo.get_legame_flags_soggetto.return_value = {"predefinito": False, "bloccato": False}
+        repo.update_conto_soggetto.return_value = False
         from apps.anagrafiche.services.conti_bancari_service import ContiBancariService
         with self.assertRaises(ServiceError) as ctx:
             ContiBancariService().update_conto_soggetto(
@@ -293,7 +302,9 @@ class TestContiBancariRuolo(TestCase):
     @patch(_SOG_REPO)
     def test_update_conto_ruolo_ok(self, _sog, mock_cb):
         """Aggiorna legame ruolo — happy path."""
-        mock_cb.return_value.update_conto_ruolo.return_value = True
+        repo = mock_cb.return_value
+        repo.get_legame_flags_ruolo.return_value = {"predefinito": False, "bloccato": False}
+        repo.update_conto_ruolo.return_value = True
         from apps.anagrafiche.services.conti_bancari_service import ContiBancariService
         result = ContiBancariService().update_conto_ruolo(10, 20, {"predefinito": True})
         self.assertTrue(result["updated"])
@@ -306,6 +317,120 @@ class TestContiBancariRuolo(TestCase):
         from apps.anagrafiche.services.conti_bancari_service import ContiBancariService
         result = ContiBancariService().delete_conto_ruolo(10, 20)
         self.assertTrue(result["deleted"])
+
+
+class TestContiBancariRuoloCascataUtility(TestCase):
+    """Test cascata 3 livelli con utility_id."""
+
+    @patch(_CB_REPO)
+    @patch(_SOG_REPO)
+    def test_list_conti_ruolo_cascata_utility(self, _sog, mock_cb):
+        """Con utility_id: L1 utility vince, L2 generico solo se uso non coperto,
+        L3 soggetto solo se uso non coperto da L1+L2."""
+        repo = mock_cb.return_value
+        repo.list_conti_ruolo.return_value = [
+            # L1: utility 5 + INCASSO
+            {"id": 1, "uso": "INCASSO", "utility_id": 5, "utility_codice": "GAS"},
+            # L2: generico + INCASSO (sara' nascosto da L1)
+            {"id": 2, "uso": "INCASSO", "utility_id": None, "utility_codice": None},
+            # L2: generico + PAGAMENTO (non coperto, passa)
+            {"id": 3, "uso": "PAGAMENTO", "utility_id": None, "utility_codice": None},
+        ]
+        repo.list_conti_ereditati_ruolo.return_value = [
+            # L3: soggetto + INCASSO (nascosto da L1)
+            {"id": 10, "uso": "INCASSO"},
+            # L3: soggetto + GENERICO (non coperto, passa)
+            {"id": 11, "uso": "GENERICO"},
+        ]
+        from apps.anagrafiche.services.conti_bancari_service import ContiBancariService
+        result = ContiBancariService().list_conti_ruolo(10, utility_id=5)
+        editabili = result["conti_ruolo"]
+        readonly = result["conti_ereditati"]
+        # Editabili: id=1 (utility INCASSO) + id=3 (generico PAGAMENTO)
+        self.assertEqual(len(editabili), 2)
+        self.assertEqual(editabili[0]["id"], 1)
+        self.assertEqual(editabili[0]["fonte"], "utility")
+        self.assertEqual(editabili[1]["id"], 3)
+        self.assertEqual(editabili[1]["fonte"], "ruolo")
+        # Readonly: id=11 (soggetto GENERICO), id=10 nascosto
+        self.assertEqual(len(readonly), 1)
+        self.assertEqual(readonly[0]["id"], 11)
+        self.assertEqual(readonly[0]["fonte"], "soggetto")
+
+    @patch(_CB_REPO)
+    @patch(_SOG_REPO)
+    def test_list_conti_ruolo_no_utility(self, _sog, mock_cb):
+        """Senza utility_id: retrocompatibile, tutti i ruolo mostrati + soggetto fallback."""
+        repo = mock_cb.return_value
+        repo.list_conti_ruolo.return_value = [
+            {"id": 1, "uso": "INCASSO", "utility_id": None, "utility_codice": None},
+        ]
+        repo.list_conti_ereditati_ruolo.return_value = [
+            {"id": 10, "uso": "INCASSO"},
+            {"id": 11, "uso": "GENERICO"},
+        ]
+        from apps.anagrafiche.services.conti_bancari_service import ContiBancariService
+        result = ContiBancariService().list_conti_ruolo(10)
+        editabili = result["conti_ruolo"]
+        readonly = result["conti_ereditati"]
+        # Ruolo copre INCASSO → soggetto INCASSO nascosto, GENERICO passa
+        self.assertEqual(len(editabili), 1)
+        self.assertEqual(editabili[0]["fonte"], "ruolo")
+        self.assertEqual(len(readonly), 1)
+        self.assertEqual(readonly[0]["uso"], "GENERICO")
+
+    @patch(_CB_REPO)
+    @patch(_SOG_REPO)
+    def test_create_conto_ruolo_with_utility(self, _sog, mock_cb):
+        """Crea legame ruolo con utility_id."""
+        repo = mock_cb.return_value
+        repo.get_or_create_conto_bancario.return_value = (1, True)
+        repo.create_conto_ruolo.return_value = {
+            "id": 30, "conto_bancario_id": 1, "uso": "INCASSO", "utility_id": 5,
+        }
+        from apps.anagrafiche.services.conti_bancari_service import ContiBancariService
+        result = ContiBancariService().create_conto_ruolo(10, {
+            "iban": _FAKE_IBAN, "bank_branch_id": 1,
+            "uso": "INCASSO", "utility_id": 5,
+        })
+        self.assertEqual(result["utility_id"], 5)
+        # Verifica che utility_id sia stato passato al repo
+        call_kwargs = repo.create_conto_ruolo.call_args
+        self.assertEqual(call_kwargs[1].get("utility_id"), 5)
+
+
+class TestGuardPredefinitBloccato(TestCase):
+    """Test regola: un conto predefinito non puo' essere bloccato."""
+
+    @patch(_CB_REPO)
+    @patch(_SOG_REPO)
+    def test_guard_predefinito_bloccato_create(self, mock_sog, mock_cb):
+        """Crea con predefinito=true + bloccato=true → E_ANAG_VALIDAZIONE."""
+        mock_sog.return_value.exists_soggetto.return_value = True
+        mock_cb.return_value.get_or_create_conto_bancario.return_value = (1, True)
+        from apps.anagrafiche.services.conti_bancari_service import ContiBancariService
+        with self.assertRaises(ServiceError) as ctx:
+            ContiBancariService().create_conto_soggetto(_FAKE_UUID, {
+                "iban": _FAKE_IBAN, "bank_branch_id": 1,
+                "predefinito": True, "bloccato": True,
+            })
+        self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
+        self.assertIn("predefinito", ctx.exception.message)
+
+    @patch(_CB_REPO)
+    @patch(_SOG_REPO)
+    def test_guard_predefinito_bloccato_update(self, mock_sog, mock_cb):
+        """Blocca un conto gia' predefinito → E_ANAG_VALIDAZIONE."""
+        mock_sog.return_value.exists_soggetto.return_value = True
+        repo = mock_cb.return_value
+        # Il record corrente e' predefinito
+        repo.get_legame_flags_soggetto.return_value = {"predefinito": True, "bloccato": False}
+        from apps.anagrafiche.services.conti_bancari_service import ContiBancariService
+        with self.assertRaises(ServiceError) as ctx:
+            ContiBancariService().update_conto_soggetto(
+                _FAKE_UUID, 10, {"bloccato": True},
+            )
+        self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
 
 
 class TestExtractLegamePayload(TestCase):

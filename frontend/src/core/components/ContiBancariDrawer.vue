@@ -36,7 +36,8 @@ const props = defineProps({
   visible: { type: Boolean, default: false },
   ownerId: { type: [String, Number], default: null },
   ownerName: { type: String, default: '' },
-  context: { type: String, default: 'soggetto' }
+  context: { type: String, default: 'soggetto' },
+  utilityId: { type: Number, default: null },
 })
 
 // Scopo: Risolve le funzioni API in base al context (soggetto o ruolo).
@@ -66,12 +67,15 @@ async function loadConti() {
   if (!props.ownerId) return
   listLoading.value = true
   try {
-    const res = await apiFor('list')(props.ownerId)
+    const listParams = props.context === 'ruolo' && props.utilityId
+      ? { utility_id: props.utilityId } : {}
+    const res = await apiFor('list')(props.ownerId, listParams)
     const payload = res.data?.data
     if (props.context === 'ruolo' && payload?.conti_ruolo) {
+      // Il backend gia' include 'fonte' (utility/ruolo/soggetto) nei dict
       contiList.value = [
-        ...payload.conti_ruolo.map(c => ({ ...c, fonte: 'ruolo' })),
-        ...(payload.conti_ereditati || []).map(c => ({ ...c, fonte: 'soggetto' })),
+        ...payload.conti_ruolo,
+        ...(payload.conti_ereditati || []),
       ]
     } else {
       contiList.value = payload?.results || payload || []
@@ -127,8 +131,13 @@ async function onSaveForm() {
     )
     if (result === null) return
   } else {
+    const payload = conto.toCreatePayload()
+    // In context ruolo, includi utility_id se presente
+    if (props.context === 'ruolo' && props.utilityId) {
+      payload.utility_id = props.utilityId
+    }
     const result = await execute(
-      () => apiFor('create')(props.ownerId, conto.toCreatePayload()),
+      () => apiFor('create')(props.ownerId, payload),
       { successMessage: t('conti_bancari.conto_creato') }
     )
     if (result === null) return
@@ -198,16 +207,19 @@ function usoSeverity(uso) {
 
         <div v-else-if="contiList.length > 0" class="conti-list">
           <div v-for="c in contiList" :key="c.id"
-            class="conto-card" :class="{ 'conto-card-inherited': c.fonte === 'soggetto' }">
+            class="conto-card" :class="{ 'conto-card-soggetto': c.fonte === 'soggetto', 'conto-card-ruolo': c.fonte === 'ruolo' }">
             <div class="conto-card-content">
               <div class="conto-card-header">
-                <Tag v-if="c.fonte" :value="c.fonte === 'soggetto' ? t('common.soggetto') : t('common.ruolo')"
+                <Tag v-if="c.fonte" :value="c.fonte === 'soggetto' ? t('common.soggetto') : (c.fonte === 'utility' ? (c.utility_codice || t('common.utility')) : t('common.ruolo'))"
                   :severity="c.fonte === 'soggetto' ? 'secondary' : 'info'" />
                 <Tag :value="c.uso" :severity="usoSeverity(c.uso)" />
-                <i v-if="c.predefinito" class="pi pi-star-fill conto-star" :title="t('conti_bancari.predefinito')" />
                 <Tag v-if="c.bloccato" :value="t('conti_bancari.bloccato')" severity="danger" />
+                <Tag v-if="c.verificato && !c.bloccato" :value="t('conti_bancari.verificato')" severity="info" />
               </div>
-              <div class="conto-card-iban">{{ c.iban }}</div>
+              <div class="conto-card-iban">
+                <i v-if="c.predefinito" class="pi pi-check-circle conto-predefinito" v-tooltip.top="t('conti_bancari.predefinito')" />
+                {{ c.iban }}
+              </div>
               <div class="conto-card-detail">
                 <span v-if="c.bic_swift"><i class="pi pi-code" /> {{ c.bic_swift }}</span>
                 <span v-if="c.filiale_nome"><i class="pi pi-building" /> {{ c.filiale_nome }}</span>
@@ -277,9 +289,12 @@ function usoSeverity(uso) {
   padding: 0.5rem 0.75rem;
 }
 
-.conto-card-inherited {
-  background: var(--p-surface-50);
-  opacity: 0.8;
+.conto-card-soggetto {
+  border-color: var(--p-orange-300);
+  opacity: 0.5;
+}
+.conto-card-ruolo {
+  border-color: var(--p-blue-300);
 }
 
 .conto-card-content {
@@ -294,9 +309,9 @@ function usoSeverity(uso) {
   margin-bottom: 0.25rem;
 }
 
-.conto-star {
-  color: var(--p-yellow-500);
-  font-size: 0.75rem;
+.conto-predefinito {
+  color: var(--p-green-500);
+  font-size: 1.1rem;
 }
 
 .conto-card-iban {
