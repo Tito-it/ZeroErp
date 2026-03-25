@@ -10,8 +10,10 @@ import { useLookup } from '../../core/composables/useLookup'
 import { listAreeFunzionali, listAzioniProcesso } from '../api/amministrazione'
 import { LIVELLO_ACCESSO, buildLivelloOptions } from '../constants'
 import { DRAWER_WIDTH } from '../../core/constants'
-import { useConfirm } from 'primevue/useconfirm'
+import { useConfirmAction } from '../../core/composables/useConfirmAction'
+import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
+import DrawerFooter from '../../core/components/DrawerFooter.vue'
 import Drawer from 'primevue/drawer'
 import Accordion from 'primevue/accordion'
 import AccordionPanel from 'primevue/accordionpanel'
@@ -21,13 +23,12 @@ import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Select from 'primevue/select'
 import ToggleSwitch from 'primevue/toggleswitch'
-import Button from 'primevue/button'
-import ConfirmDialog from 'primevue/confirmdialog'
 
 const { t } = useI18n()
 const repartiStore = useRepartiStore()
 const { execute, loading } = useApiHandler()
-const confirm = useConfirm()
+const { confirmSave } = useConfirmAction()
+const isReadonly = useInjectReadonly()
 const areeFunzionali = useLookup(listAreeFunzionali, { immediate: true })
 const azioniProcesso = useLookup(listAzioniProcesso, { immediate: true })
 
@@ -51,7 +52,7 @@ watch(() => props.visible, async (val) => {
   const profilo = repartiStore.currentProfilo
   if (profilo) {
     // Inizializza con tutte le aree, precompilando quelle gia' configurate
-    const existingMap = new Map(profilo.aree.map(a => [a.area_id, a.livello]))
+    const existingMap = new Map((profilo.aree || []).map(a => [a.area_id, a.livello]))
     localAree.value = (areeFunzionali.items.value || []).map(af => ({
       area_id: af.id,
       area_codice: af.codice,
@@ -59,7 +60,7 @@ watch(() => props.visible, async (val) => {
       livello: existingMap.get(af.id) || LIVELLO_ACCESSO.BLOCCATO
     }))
 
-    const existingAzioni = new Map(profilo.azioni.map(a => [a.azione_id, a.abilitata]))
+    const existingAzioni = new Map((profilo.azioni || []).map(a => [a.azione_id, a.abilitata]))
     localAzioni.value = (azioniProcesso.items.value || []).map(ap => ({
       azione_id: ap.id,
       permission_codename: ap.permission_codename,
@@ -72,26 +73,21 @@ watch(() => props.visible, async (val) => {
 })
 
 function onSave() {
-  confirm.require({
-    message: t('amm.profilo_save_confirm'),
-    header: t('amm.profilo_save_title'),
-    icon: 'pi pi-exclamation-triangle',
-    accept: async () => {
-      const aree = localAree.value.map(a => ({
-        area_id: a.area_id,
-        livello: a.livello
-      }))
-      const azioni = localAzioni.value.map(a => ({
-        azione_id: a.azione_id,
-        abilitata: a.abilitata
-      }))
-      const result = await execute(
-        () => repartiStore.saveProfilo(props.uoId, aree, azioni),
-        { successMessage: t('notifications.save_success') }
-      )
-      if (result) emit('saved')
-    }
-  })
+  confirmSave(async () => {
+    const aree = localAree.value.map(a => ({
+      area_id: a.area_id,
+      livello: a.livello
+    }))
+    const azioni = localAzioni.value.map(a => ({
+      azione_id: a.azione_id,
+      abilitata: a.abilitata
+    }))
+    const result = await execute(
+      () => repartiStore.saveProfilo(props.uoId, aree, azioni),
+      { successMessage: t('notifications.save_success') }
+    )
+    if (result) emit('saved')
+  }, t('amm.profilo_save_confirm'))
 }
 
 function onClose() {
@@ -108,10 +104,10 @@ function onClose() {
     @update:visible="val => emit('update:visible', val)"
   >
     <template #header>
-      <DrawerTitle action="" :title="t('amm.profilo_reparto', { nome: uoNome })" icon="pi pi-sitemap" />
+      <DrawerTitle :action="t('common.edit')" :title="t('amm.profilo_reparto', { nome: uoNome })" icon="pi pi-sitemap" />
     </template>
-    <ConfirmDialog />
 
+    <div :class="{ 'app-readonly': isReadonly }">
     <Accordion :multiple="true" :active-index="[0, 1]">
       <AccordionPanel>
         <AccordionHeader>{{ t('amm.aree_funzionali') }}</AccordionHeader>
@@ -143,10 +139,8 @@ function onClose() {
         </AccordionContent>
       </AccordionPanel>
     </Accordion>
-
-    <div class="flex justify-end gap-2 mt-4">
-      <Button :label="t('common.cancel')" severity="secondary" @click="onClose" />
-      <Button :label="t('common.save')" icon="pi pi-check" :loading="loading" @click="onSave" />
     </div>
+
+    <DrawerFooter :loading="loading" @save="onSave" @cancel="onClose" />
   </Drawer>
 </template>

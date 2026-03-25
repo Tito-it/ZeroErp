@@ -1,0 +1,153 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Sostituisce utility_id con istanza_utility_id su anagrafiche.contatti.
+# Il vecchio vincolo UNIQUE uq_contatti_multilevel (non partial) viene
+# sostituito da 3 partial unique index per i 3 livelli di contesto:
+#   - soggetto puro (ruolo NULL, istanza NULL)
+#   - ruolo generico (istanza NULL)
+#   - ruolo + istanza
+#
+# Due changeSet separati: il primo pulisce i duplicati di test (DML),
+# il secondo fa il DDL. Separazione necessaria perche il DELETE attiva
+# trigger deferred che impediscono CREATE INDEX nella stessa transazione.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: /migrations_v2/00_schema/anagrafiche/20260325-01-replace-utility-with-istanza-contatti-mctit.yaml
+
+  # ============================================================
+  # changeSet 1: DDL (drop vecchi vincoli, swap colonna) + pulizia duplicati
+  # ============================================================
+  - changeSet:
+      id: 20260325-01a-contatti-drop-utility-add-istanza-cleanup
+      author: mctit
+      comment: >
+        Drop vincolo UNIQUE uq_contatti_multilevel, FK e colonna utility_id.
+        Aggiunge istanza_utility_id (bigint) con FK.
+        Pulisce duplicati di test per preparare i nuovi partial unique index.
+      changes:
+        # 1. Rimuovere vecchio vincolo UNIQUE (constraint, non indice)
+        - dropUniqueConstraint:
+            schemaName: anagrafiche
+            tableName: contatti
+            constraintName: uq_contatti_multilevel
+
+        # 2. Rimuovere FK e colonna utility_id
+        - dropForeignKeyConstraint:
+            baseTableSchemaName: anagrafiche
+            baseTableName: contatti
+            constraintName: fk_utilities_config
+
+        - dropColumn:
+            schemaName: anagrafiche
+            tableName: contatti
+            columnName: utility_id
+
+        # 3. Aggiungere colonna istanza_utility_id (bigint come istanze_utilities.id)
+        - addColumn:
+            schemaName: anagrafiche
+            tableName: contatti
+            columns:
+              - column:
+                  name: istanza_utility_id
+                  type: bigint
+                  constraints:
+                    nullable: true
+
+        # 4. FK verso anagrafiche.istanze_utilities
+        - addForeignKeyConstraint:
+            constraintName: fk_contatti_istanze_utilities
+            baseTableSchemaName: anagrafiche
+            baseTableName: contatti
+            baseColumnNames: istanza_utility_id
+            referencedTableSchemaName: anagrafiche
+            referencedTableName: istanze_utilities
+            referencedColumnNames: id
+
+        # 5. Nullifica soggetti.default_contatto_id per i contatti duplicati da eliminare
+        #    (FK fk_contatti_anagrafiche impedirebbe il DELETE)
+        - sql:
+            sql: >
+              UPDATE anagrafiche.soggetti SET default_contatto_id = NULL
+              WHERE default_contatto_id IN (
+                SELECT id FROM (
+                  SELECT id, ROW_NUMBER() OVER (
+                    PARTITION BY soggetto_id, tipo_contatto_id
+                    ORDER BY data_update DESC, id DESC
+                  ) AS rn
+                  FROM anagrafiche.contatti
+                  WHERE soggetto_ruolo_id IS NULL AND istanza_utility_id IS NULL
+                ) sub WHERE rn > 1
+              )
+
+        # 6. Pulizia duplicati di test (livello soggetto puro)
+        - sql:
+            sql: >
+              DELETE FROM anagrafiche.contatti
+              WHERE id IN (
+                SELECT id FROM (
+                  SELECT id, ROW_NUMBER() OVER (
+                    PARTITION BY soggetto_id, tipo_contatto_id
+                    ORDER BY data_update DESC, id DESC
+                  ) AS rn
+                  FROM anagrafiche.contatti
+                  WHERE soggetto_ruolo_id IS NULL AND istanza_utility_id IS NULL
+                ) sub WHERE rn > 1
+              )
+
+        # 6. Pulizia duplicati di test (livello ruolo generico)
+        - sql:
+            sql: >
+              DELETE FROM anagrafiche.contatti
+              WHERE id IN (
+                SELECT id FROM (
+                  SELECT id, ROW_NUMBER() OVER (
+                    PARTITION BY soggetto_id, soggetto_ruolo_id, tipo_contatto_id
+                    ORDER BY data_update DESC, id DESC
+                  ) AS rn
+                  FROM anagrafiche.contatti
+                  WHERE soggetto_ruolo_id IS NOT NULL AND istanza_utility_id IS NULL
+                ) sub WHERE rn > 1
+              )
+
+  # ============================================================
+  # changeSet 2: Creazione partial unique index e indice FK
+  # (transazione separata — trigger deferred gia risolti)
+  # ============================================================
+  - changeSet:
+      id: 20260325-01b-contatti-create-partial-unique-indexes
+      author: mctit
+      comment: >
+        Crea 3 partial unique index per i 3 livelli di contesto
+        e l'indice sulla colonna istanza_utility_id.
+      changes:
+        # 1. Partial unique: soggetto puro (ruolo NULL, istanza NULL)
+        - sql:
+            sql: >
+              CREATE UNIQUE INDEX uq_contatti_soggetto_tipo
+              ON anagrafiche.contatti (soggetto_id, tipo_contatto_id)
+              WHERE soggetto_ruolo_id IS NULL AND istanza_utility_id IS NULL
+
+        # 2. Partial unique: ruolo generico (istanza NULL)
+        - sql:
+            sql: >
+              CREATE UNIQUE INDEX uq_contatti_ruolo_tipo_no_istanza
+              ON anagrafiche.contatti (soggetto_id, soggetto_ruolo_id, tipo_contatto_id)
+              WHERE soggetto_ruolo_id IS NOT NULL AND istanza_utility_id IS NULL
+
+        # 3. Partial unique: ruolo + istanza
+        - sql:
+            sql: >
+              CREATE UNIQUE INDEX uq_contatti_ruolo_istanza_tipo
+              ON anagrafiche.contatti (soggetto_id, soggetto_ruolo_id, istanza_utility_id, tipo_contatto_id)
+              WHERE soggetto_ruolo_id IS NOT NULL AND istanza_utility_id IS NOT NULL
+
+        # 4. Indice su istanza_utility_id
+        - createIndex:
+            schemaName: anagrafiche
+            tableName: contatti
+            indexName: ix_contatti_istanza_utility_id
+            columns:
+              - column:
+                  name: istanza_utility_id

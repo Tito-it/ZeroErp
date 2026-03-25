@@ -5,6 +5,7 @@ import { onMounted, onUnmounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRepartiStore } from '../stores/reparti'
 import { useTabEvents } from '../../core/composables/useTabEvents'
+import { useReadonlyMode } from '../../core/composables/useReadonlyMode'
 import RepartoProfiloEditor from '../components/RepartoProfiloEditor.vue'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
@@ -12,6 +13,7 @@ import Badge from 'primevue/badge'
 
 const { t } = useI18n()
 const store = useRepartiStore()
+useReadonlyMode('amm_software')
 const { onDataChanged } = useTabEvents()
 
 const editorVisible = ref(false)
@@ -29,7 +31,7 @@ onMounted(() => {
 
 function onRowClick(event) {
   selectedUoId.value = event.data.id
-  selectedUoNome.value = event.data.nome
+  selectedUoNome.value = event.data.descrizione
   editorVisible.value = true
 }
 
@@ -56,7 +58,7 @@ function profiloSeverity(count) {
       selection-mode="single"
       data-key="id"
     >
-      <Column field="nome" :header="t('amm.col_reparto')" />
+      <Column field="descrizione" :header="t('amm.col_reparto')" />
       <Column field="profilo_aree_count" :header="t('amm.col_profilo')">
         <template #body="{ data }">
           <Badge

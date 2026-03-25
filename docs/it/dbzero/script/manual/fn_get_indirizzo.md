@@ -18,26 +18,28 @@
 
 ---
 ### 🎯 Scopo Principale
-*(latest review 01-12-25)*
-La funzione **`script.fn_get_indirizzo`** restituisce **uno o più indirizzi tecnici** associati a un determinato **`soggetto_ruolo`**, filtrando per **tipo di indirizzo** identificato dal **codice interno** (`config.tipi_indirizzi.codice_interno`).
+*(latest review 25-03-26)*
+La funzione **`script.fn_get_indirizzo`** restituisce **uno o più indirizzi tecnici** associati a un determinato **`soggetto_ruolo`**, filtrando per **tipo di indirizzo** identificato dal **codice interno** (`config.tipi_indirizzi.codice_interno`) e opzionalmente per **istanza utility** (`anagrafiche.istanze_utilities.id`).
 
 La funzione:
 
 * **non implementa** la logica di composizione dell’indirizzo,
 * **delega integralmente** il recupero e la normalizzazione dei dati a `script.fn_get_indirizzi_by_ruolo`,
-* aggiunge una logica di **fallback multi-livello** basata sulla matrice di configurazione
+* aggiunge una logica di **fallback a 3 livelli** (istanza → generico → soggetto) con catena tipo basata sulla matrice di configurazione
   [`config.tipi_ruolo_tipi_indirizzo`](/dbzero/config/tabelle/tipi_ruolo_tipi_indirizzo).
 * se il layer ruolo non risolve alcun indirizzo, applica fallback sul layer soggetto
   tramite `script.fn_get_indirizzo_by_soggetto`.
 
 In pratica:
 
-> “Dammi l’indirizzo per questo tipo dal layer ruolo; se non esiste, segui la catena fallback del ruolo e, in ultima istanza, usa il layer soggetto.”
+> “Dammi l’indirizzo per questo tipo: prima cerca nel layer ruolo per la istanza specifica, poi nel layer ruolo generico, poi nel layer soggetto — applicando la catena fallback tipo a ogni livello.”
 
 📌 **Nota di ambito**
-La funzione opera con policy:
-* **master** su `soggetto_ruolo` (matrice **ruolo ↔ tipo indirizzo**),
-* **fallback finale** su indirizzi diretti del soggetto (matrice `config.tipi_soggetto_dettaglio_tipi_indirizzo`).
+La funzione opera con policy a **3 livelli**:
+
+* **Livello 1**: ruolo + istanza specifica (se `p_istanza_utility_id` valorizzato)
+* **Livello 2**: ruolo generico (istanza NULL)
+* **Livello 3**: fallback finale su indirizzi diretti del soggetto (matrice `config.tipi_soggetto_dettaglio_tipi_indirizzo`)
 
 ---
 
@@ -45,51 +47,38 @@ La funzione opera con policy:
 
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_get_indirizzo(
-  p_soggetto_ruolo_id bigint,
-  p_tipo_codice       character varying
+  p_soggetto_ruolo_id  anagrafiche.soggetti_ruoli.id%TYPE,
+  p_tipo_codice        config.tipi_indirizzi.codice_interno%TYPE,
+  p_istanza_utility_id anagrafiche.istanze_utilities.id%TYPE DEFAULT NULL
 )
 RETURNS TABLE(
-  tipo_indirizzo          character varying,
+  tipo_indirizzo         config.tipi_indirizzi.codice_interno%TYPE,
   indirizzo_completo     text,
   geoloc                 geometry,
-  indirizzo_id           bigint,
-  soggetto_ruolo_id      bigint,
-  tipo_indirizzo_id      integer,
-  indirizzo_dettaglio_id bigint,
-  indirizzo_libero       text,
+  indirizzo_id           anagrafiche.indirizzi.id%TYPE,
+  soggetto_ruolo_id      anagrafiche.indirizzi.soggetto_ruolo_id%TYPE,
+  istanza_utility_id     anagrafiche.indirizzi.istanza_utility_id%TYPE,
+  tipo_indirizzo_id      anagrafiche.indirizzi.tipo_indirizzo_id%TYPE,
+  indirizzo_dettaglio_id anagrafiche.indirizzi.indirizzo_dettaglio_id%TYPE,
+  indirizzo_libero       anagrafiche.indirizzi.indirizzo_libero%TYPE,
   is_normalizzato        boolean,
-  stato_id               integer,
-  stato_descrizione      character varying,
-  stato_iso2             character,
-  regione_id             integer,
-  regione_descrizione    character varying,
-  provincia_id           integer,
-  provincia_sigla        character varying,
-  provincia_descrizione  character varying,
-  comune_id              integer,
-  comune_descrizione     character varying,
-  codice_postale_id      integer,
-  cap_codice             character,
-  locality               character varying,
-  administrative_area    character varying,
-  sublocality            character varying,
-  postal_box             character varying
+  ...campi geografici (stato, regione, provincia, comune, CAP, locality, administrative_area, sublocality, postal_box)
 )
 LANGUAGE plpgsql
-STABLE
-PARALLEL UNSAFE;
+STABLE ROWS 10;
 ```
 
-📌 Il result-set restituito è **identico** a quello prodotto da `script.fn_get_indirizzi_by_ruolo`, con la sola differenza che i record sono **filtrati** per tipo indirizzo e fallback.
+📌 Il result-set include ora `istanza_utility_id`. La struttura è identica a `script.fn_get_indirizzi_by_ruolo`, con i record filtrati per tipo indirizzo e cascata fallback.
 
 ---
 
 ### Parametri di input
 
-| Nome                  | Tipo      | Descrizione                                                                                              |
-| --------------------- | --------- | -------------------------------------------------------------------------------------------------------- |
-| `p_soggetto_ruolo_id` | `bigint`  | ID della relazione in `anagrafiche.soggetti_ruoli`.                                                      |
-| `p_tipo_codice`       | `varchar` | Codice interno del tipo indirizzo (`config.tipi_indirizzi.codice_interno`, es. `RES`, `FATT`, `SEDEOP`). |
+| Nome                  | Tipo      | Obbligatorio | Descrizione                                                                                              |
+| --------------------- | --------- | :---: | -------------------------------------------------------------------------------------------------------- |
+| `p_soggetto_ruolo_id` | `bigint`  | si | ID della relazione in `anagrafiche.soggetti_ruoli`.                                                      |
+| `p_tipo_codice`       | `varchar` | si | Codice interno del tipo indirizzo (`config.tipi_indirizzi.codice_interno`, es. `RES`, `FATT`, `SEDEOP`). |
+| `p_istanza_utility_id` | `bigint` | no | ID della istanza utility (`anagrafiche.istanze_utilities.id`). Se NULL, salta il livello 1 e parte dal livello 2 (ruolo generico). |
 
 > 🔹 Il tipo indirizzo viene passato tramite **codice interno** (chiave funzionale stabile), non tramite ID tecnico.
 
@@ -116,44 +105,56 @@ Alcuni campi rilevanti:
 
 ### Logica di funzionamento (concettuale)
 
-La funzione implementa una **ricerca iterativa con fallback configurabile**:
+La funzione implementa una **ricerca a 3 livelli**, ciascuno con catena fallback tipo:
 
-1. Determina il **tipo ruolo** associato al `soggetto_ruolo`.
-2. Prova a recuperare indirizzi del tipo richiesto (`p_tipo_codice`) nel layer ruolo.
-3. Se vengono trovati uno o più record, **li restituisce e termina**.
-4. In assenza di risultati nel layer ruolo:
+**FASE 1 — Ruolo + istanza specifica** (solo se `p_istanza_utility_id` è valorizzato):
 
-   * consulta `config.tipi_ruolo_tipi_indirizzo` per individuare un `fallback_tipo_indirizzo_id`,
-   * traduce l’ID in `codice_interno`,
-   * ripete il tentativo.
-5. La catena ruolo termina quando:
+1. Cerca indirizzi con `istanza_utility_id = p_istanza_utility_id` per il tipo richiesto.
+2. Se non trovati, segue la catena fallback tipo sulla matrice `config.tipi_ruolo_tipi_indirizzo`.
+3. Se trovati, restituisce e termina.
 
-   * viene trovato almeno un indirizzo,
-   * il fallback è `NULL`,
-   * viene rilevato un **loop** nella catena (protezione A → B → A).
-6. Se il layer ruolo non produce risultati, applica fallback su `script.fn_get_indirizzo_by_soggetto(...)`.
+**FASE 2 — Ruolo generico** (istanza NULL):
+
+1. Cerca indirizzi con `istanza_utility_id IS NULL` per il tipo richiesto.
+2. Se non trovati, segue la catena fallback tipo.
+3. Se trovati, restituisce e termina.
+
+**FASE 3 — Fallback soggetto**:
+
+1. Delega a `script.fn_get_indirizzo_by_soggetto(...)` con la propria catena fallback tipo.
+
+La catena tipo a ogni livello termina quando:
+
+* viene trovato almeno un indirizzo,
+* il fallback è `NULL`,
+* viene rilevato un **loop** nella catena (protezione A → B → A).
 
 📌 **Comportamento intenzionale**: la funzione **non solleva errori** se nessun indirizzo è disponibile; restituisce semplicemente zero righe.
 
 ---
 
-### Esempio di catena di fallback
+### Esempio di cascata con istanza
 
-| tipo_indirizzo | fallback_tipo_indirizzo |
-| -------------- | ----------------------- |
-| SEDEOP         | SEDELEG                 |
-| FORNITURA      | SEDEOP                  |
-
-Effetto pratico:
+Soggetto Titini, ruolo CLIENTE (id=64), istanza GAS (id=1):
 
 ```sql
-SELECT *
-FROM script.fn_get_indirizzo(p_soggetto_ruolo_id, 'FORNITURA');
+-- Con istanza: cerca prima GAS, poi generico, poi soggetto
+SELECT * FROM script.fn_get_indirizzo(64, 'FATT', 1);
 ```
 
 Ordine dei tentativi:
 
-`FORNITURA → SEDEOP → SEDELEG`
+1. `FATT` con `istanza_utility_id = 1` (GAS)
+2. `FATT` con `istanza_utility_id IS NULL` (generico)
+3. `FATT` dal layer soggetto (con propria catena fallback tipo)
+
+### Esempio di catena fallback tipo (senza utility)
+
+```sql
+SELECT * FROM script.fn_get_indirizzo(63, 'FORNITURA');
+```
+
+Ordine: `FORNITURA → SEDEOP → SEDELEG` (catena da matrice `tipi_ruolo_tipi_indirizzo`)
 
 ---
 

@@ -103,6 +103,26 @@ Regola: se l'istanza e legata a un PDP, non puo essere fittizia.
 
 Ogni istanza appartiene a una sola utility (GAS, ENERGIA, ecc.). Serve per filtri, validazioni e per identificare i PDP compatibili.
 
+**Nota importante:** la tabella `istanze_utilities` **non ha** una colonna `utility_id` diretta. La utility dell'istanza e un dato implicito, registrato nelle tabelle satellite:
+
+| Tabella | Vincolo | Quando esiste |
+|---------|---------|---------------|
+| `istanze_dati_precontrattuali` | `UNIQUE(istanza_utility_id, utility_id)` | Fase precontrattuale (creazione da pratica) |
+| `billing_account` | `UNIQUE(istanza_utility_id, utility_id)` | Dopo creazione BA |
+| `clienti` | `UNIQUE(istanza_utility_id)` + `utility_id` | Dopo creazione cliente |
+
+Tutti e tre i vincoli UNIQUE garantiscono che **una istanza corrisponde a una sola utility**.
+
+**Ordine cronologico di disponibilita:**
+
+1. **Pratica aperta** — `istanze_dati_precontrattuali` e il primo punto dove il legame istanza → utility viene registrato. Nella creazione da pratica (utility con `richiede_pdp = true`: GAS, IDRICO, ENERGIA) questo record **deve** essere creato subito insieme all'istanza, perche BA e cliente non esistono ancora
+2. **BA creato** — `billing_account.utility_id` disponibile
+3. **Cliente creato** — `clienti.utility_id` disponibile (sincronizzato dal BA via trigger `trgfn_clienti_sync_utility_from_ba`)
+
+Nella creazione immediata (utility con `richiede_pdp = false`) non c'e fase precontrattuale: BA e cliente vengono creati atomicamente dal `ClienteService`, e la utility e immediatamente disponibile da `billing_account` e `clienti`.
+
+**Perche e importante:** il sistema usa `istanza_utility_id` come differenziatore su indirizzi, conti bancari e contatti a livello ruolo (cascata istanza → generico ruolo → soggetto). In qualsiasi fase del ciclo di vita dell'istanza, la utility deve essere reperibile per la UI e per le funzioni di risoluzione. Se `istanze_dati_precontrattuali` non viene popolato nella fase precontrattuale, la utility resta ignota fino alla creazione del BA.
+
 ### PDP (opzionale)
 
 L'istanza puo essere collegata a un punto di prelievo gia esistente:
@@ -261,6 +281,25 @@ erDiagram
 * Spostare un PDP di indirizzo (vietato dal modello fisico)
 * Marcare `fittizia = TRUE` con un PDP associato
 * Confondere il vincolo "un cliente per PDP" con "un cliente per indirizzo"
+
+---
+
+## Istanze fittizie nella creazione manuale del cliente
+
+Per le utility con `config.utilities.richiede_pdp = false` (manifatturiero, servizi generici, ecc.), la creazione del cliente avviene **manualmente** dall'interfaccia, senza passare dal motore pratiche.
+
+In questo caso l'istanza viene generata automaticamente come **contenitore tecnico trasparente**:
+
+* `fittizia = TRUE` — l'istanza non rappresenta un punto di erogazione fisico
+* `indirizzo_dettaglio_id` — facoltativo, a discrezione dell'operatore. Se fornito, viene salvato come dato informativo
+* `pdp_id = NULL` — nessun punto di prelievo associato
+* `utility_id` — la utility scelta dall'operatore (solo quelle con `richiede_pdp = false`)
+
+L'operatore non interagisce direttamente con l'istanza: il `ClienteService` la crea dietro le quinte come parte della transazione atomica di creazione cliente (istanza + billing account + cliente).
+
+Per le utility con `richiede_pdp = true` (GAS, Energia, Idrico), la creazione del cliente passa obbligatoriamente dal motore pratiche e l'istanza e sempre reale, con indirizzo e PDP obbligatori.
+
+Per i dettagli completi: [Guida Generazione Cliente — Creazione manuale vs creazione da pratica](/guide/generazione-cliente#creazione-manuale-vs-creazione-da-pratica).
 
 ---
 

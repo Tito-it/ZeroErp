@@ -1,0 +1,46 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Aggiunge uid UUID a anagrafiche.fornitori per allineamento
+# al pattern dei ruoli recenti (vettori, emittenti_fiscali).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: /migrations_v2/00_schema/anagrafiche/20260324-22-alter-fornitori-add-uid-mctit.yaml
+
+  - changeSet:
+      id: 20260324-22-alter-fornitori-add-uid
+      author: mctit
+      comment: >
+        Aggiunge colonna uid UUID NOT NULL DEFAULT uuidv7() con vincolo
+        UNIQUE a anagrafiche.fornitori. Allineamento al pattern standard
+        dei ruoli recenti (vettori, emittenti_fiscali, psp).
+        I record esistenti ricevono uid automaticamente dal DEFAULT.
+      changes:
+        - addColumn:
+            schemaName: anagrafiche
+            tableName: fornitori
+            columns:
+              - column:
+                  name: uid
+                  type: uuid
+                  defaultValueComputed: "uuidv7()"
+                  remarks: "UID univoco per esposizione API."
+                  constraints:
+                    nullable: false
+
+        - addUniqueConstraint:
+            schemaName: anagrafiche
+            tableName: fornitori
+            columnNames: uid
+            constraintName: uq_fornitori_uid
+
+      rollback:
+        - dropUniqueConstraint:
+            schemaName: anagrafiche
+            tableName: fornitori
+            constraintName: uq_fornitori_uid
+        - dropColumn:
+            schemaName: anagrafiche
+            tableName: fornitori
+            columnName: uid

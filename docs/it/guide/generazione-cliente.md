@@ -148,6 +148,25 @@ Per evitare che il frontend debba gestire manualmente tutti questi passi, e prev
 
 Tutto avviene in una transazione atomica: se un passo fallisce, nessuna modifica viene salvata.
 
+### Creazione manuale vs creazione da pratica
+
+Il sistema supporta due modalita di creazione del cliente, governate dal flag `config.utilities.richiede_pdp`:
+
+| `richiede_pdp` | Modalita | Istanza | Indirizzo | Esempio utility |
+| --- | --- | --- | --- | --- |
+| `false` | Manuale (da interfaccia) | Sempre fittizia | Facoltativo | Manifatturiero, servizi |
+| `true` | Solo via pratiche | Reale (con PDP) | Obbligatorio | GAS, Energia, Idrico |
+
+**Creazione manuale** (`richiede_pdp = false`):
+
+L'operatore crea il cliente direttamente dall'interfaccia. Il `ClienteService` genera in trasparenza l'istanza fittizia, il billing account e il record cliente in una transazione atomica. L'operatore puo facoltativamente collegare un indirizzo del soggetto all'istanza, ma non e obbligatorio. L'istanza resta fittizia in entrambi i casi perche non rappresenta un punto di erogazione fisico.
+
+**Creazione da pratica** (`richiede_pdp = true`):
+
+Per utility con ciclo tecnico complesso (contatore, allaccio, verifica fisica), la creazione del cliente passa obbligatoriamente dal motore pratiche. L'istanza e reale, collegata a un indirizzo e a un PDP, e il flusso include step di verifica e approvazione.
+
+> **Nota architetturale**: il flag `richiede_pdp` e il discriminante unico per le due modalita. Se in futuro servira un'utility senza PDP che richiede comunque il workflow pratiche, bastera aggiungere un boolean `solo_pratica` su `config.utilities` — vedi [WIP sviluppo-gestione-clienti](../dev/work-in-progress/sviluppo-gestione-clienti.md).
+
 ---
 
 ## Flusso operativo step-by-step

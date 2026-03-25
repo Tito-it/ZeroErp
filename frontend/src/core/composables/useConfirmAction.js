@@ -1,11 +1,11 @@
-// Composable per dialog di conferma azioni distruttive.
+// Composable per dialog di conferma standard.
 // Usa PrimeVue ConfirmDialog — richiede <ConfirmDialog /> in App.vue.
 //
 // Uso:
-//   const { confirmDelete } = useConfirmAction()
-//   confirmDelete('Mario Rossi', async () => {
-//     await execute(() => api.delete(`/anagrafiche/soggetti/${id}/`))
-//   })
+//   const { confirmSave, confirmDelete, confirmAction } = useConfirmAction()
+//   confirmSave(onAcceptFn)
+//   confirmSave(onAcceptFn, 'Le modifiche impattano tutti gli operatori.')
+//   confirmDelete('Mario Rossi', onAcceptFn)
 
 import { useConfirm } from 'primevue/useconfirm'
 import { useI18n } from 'vue-i18n'
@@ -26,6 +26,7 @@ export function useConfirmAction() {
       message: t('confirm.delete_message', { name: itemName }),
       icon: 'pi pi-exclamation-triangle',
       acceptClass: 'p-button-danger',
+      rejectClass: 'p-button-secondary',
       acceptLabel: t('common.confirm'),
       rejectLabel: t('common.cancel'),
       accept: onAccept
@@ -48,11 +49,31 @@ export function useConfirmAction() {
       message: message,
       icon: 'pi pi-exclamation-triangle',
       acceptClass: danger ? 'p-button-danger' : '',
+      rejectClass: 'p-button-secondary',
       acceptLabel: acceptLabel || t('common.confirm'),
       rejectLabel: t('common.cancel'),
       accept: onAccept
     })
   }
 
-  return { confirmDelete, confirmAction }
+  /**
+   * Mostra un dialog di conferma salvataggio.
+   * Messaggio standard, sovrascrivibile con parametro opzionale.
+   *
+   * @param {Function} onAccept - callback eseguita alla conferma
+   * @param {string} [message] - messaggio personalizzato (default: confirm.save_message)
+   */
+  function confirmSave(onAccept, message) {
+    confirm.require({
+      header: t('confirm.save_title'),
+      message: message || t('confirm.save_message'),
+      icon: 'pi pi-exclamation-triangle',
+      rejectClass: 'p-button-secondary',
+      acceptLabel: t('common.confirm'),
+      rejectLabel: t('common.cancel'),
+      accept: onAccept
+    })
+  }
+
+  return { confirmSave, confirmDelete, confirmAction }
 }

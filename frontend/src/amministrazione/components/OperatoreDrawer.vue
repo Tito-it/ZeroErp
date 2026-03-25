@@ -3,7 +3,7 @@
 // Sezioni: Soggetto (resolver in crea, banner in modifica),
 // Auth (solo crea), Dati anagrafici, Collocazione.
 // TabView: Dati + Permessi (permessi solo in modifica).
-import { ref, watch, computed } from 'vue'
+import { ref, watch, computed, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useOperatoriStore } from '../stores/operatori'
 import { useApiHandler } from '../../core/composables/useApiHandler'
@@ -16,6 +16,8 @@ import { DRAWER_WIDTH } from '../../core/constants'
 import { displayDate } from '../../core/utils/date'
 import { capitalizeWords } from '../../core/utils/string'
 import { isEmailValid } from '../../core/utils/validators'
+import { useNotify } from '../../core/composables/useNotify'
+import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import SoggettoResolver from '../../core/components/SoggettoResolver.vue'
 import SoggettoMessageBanner from '../../core/components/SoggettoMessageBanner.vue'
 import AuthUserForm from '../../core/components/AuthUserForm.vue'
@@ -29,12 +31,13 @@ import TabView from 'primevue/tabview'
 import TabPanel from 'primevue/tabpanel'
 import Button from 'primevue/button'
 import { useConfirm } from 'primevue/useconfirm'
-import ConfirmDialog from 'primevue/confirmdialog'
 
 const { t } = useI18n()
 const store = useOperatoriStore()
 const { execute, loading } = useApiHandler()
 const confirm = useConfirm()
+const notify = useNotify()
+const isReadonly = useInjectReadonly()
 
 // Building block: auth user (solo creazione)
 const auth = useAuthUser()
@@ -95,6 +98,8 @@ function resetForm() {
 // Carica dati quando il drawer si apre
 watch(() => props.visible, async (val) => {
   if (!val) return
+  // Forza remount TabView dopo che il drawer è visibile (ink bar fix)
+  nextTick(() => { tabViewKey.value++ })
   if (isEdit.value && props.authUserId) {
     await store.fetchDetail(props.authUserId)
     const u = store.currentOperatore
@@ -154,13 +159,15 @@ async function onSave() {
     )
     if (result !== null) {
       emit('saved')
-      emit('update:visible', false)
     }
   } else {
     // Validazione client-side per creazione
     const authErrors = auth.validate()
     if (!form.value.qualifica_id) authErrors.push('qualifica_id')
-    if (authErrors.length) return
+    if (authErrors.length) {
+      notify.error(t('notifications.validation_error'))
+      return
+    }
 
     const sogg = soggettoSelezionato.value
     const payload = {
@@ -180,10 +187,12 @@ async function onSave() {
     )
     if (result !== null) {
       emit('saved')
-      emit('update:visible', false)
     }
   }
 }
+
+// Scopo: forza remount TabView dopo apertura drawer per ink bar
+const tabViewKey = ref(0)
 
 const isDisabilitato = computed(() => form.value.ruolo_sistema === RUOLO_SISTEMA.DISABILITATO)
 
@@ -213,7 +222,6 @@ async function eseguiToggleStato() {
     )
     if (result !== null) {
       emit('saved')
-      emit('update:visible', false)
     }
   } else {
     const result = await execute(
@@ -222,14 +230,12 @@ async function eseguiToggleStato() {
     )
     if (result !== null) {
       emit('saved')
-      emit('update:visible', false)
     }
   }
 }
 
 function onToggleStato() {
   confirm.require({
-    group: 'operatore-stato',
     message: isDisabilitato.value ? t('amm.riattiva_confirm') : t('amm.disabilita_confirm'),
     header: isDisabilitato.value ? t('amm.riattiva_title') : t('amm.disabilita_title'),
     icon: isDisabilitato.value ? 'pi pi-check-circle' : 'pi pi-exclamation-triangle',
@@ -246,7 +252,6 @@ function onClose() {
 </script>
 
 <template>
-  <ConfirmDialog group="operatore-stato" />
   <Drawer
     :visible="props.visible"
     position="right"
@@ -257,7 +262,8 @@ function onClose() {
       <DrawerTitle :action="isEdit ? t('common.edit') : t('common.new')" :title="t('amm.operatore')" icon="pi pi-user" />
     </template>
 
-    <TabView>
+    <div :class="{ 'app-readonly': isReadonly }">
+    <TabView :key="tabViewKey">
       <TabPanel :header="t('amm.tab_dati')">
         <!-- === Sezione Soggetto === -->
         <h4>{{ t('amm.section_persona') }}</h4>
@@ -296,7 +302,7 @@ function onClose() {
         </template>
 
         <!-- === Sezione Dati anagrafici + Collocazione === -->
-        <h4 class="mt-3">{{ isEdit ? '' : t('amm.section_collocazione') }}</h4>
+        <h4 v-if="!isEdit" class="mt-3">{{ t('amm.section_collocazione') }}</h4>
         <div class="form-grid">
           <!-- Cognome / Nome (solo modifica — in creazione vengono dal soggetto) -->
           <template v-if="isEdit">
@@ -365,6 +371,7 @@ function onClose() {
         <OperatorePermessiTab :auth-user-id="props.authUserId" />
       </TabPanel>
     </TabView>
+    </div>
 
     <!-- Sotto-drawer: SoggettoResolver (solo creazione) -->
     <SoggettoResolver

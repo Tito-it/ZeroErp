@@ -2,48 +2,51 @@
 
 > 👀 **Vedi anche**
 > Approfondimento tabelle:
->    
-[anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)    
-> [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)    
-> [config.tipi_contatti](/dbzero/config/tabelle/tipi_contatti)    
+>
+[anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)
+> [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)
+> [config.tipi_contatti](/dbzero/config/tabelle/tipi_contatti)
 > [config.unita_organizzative](/dbzero/config/tabelle/unita_organizzative)
-> [config.utilities](/dbzero/config/tabelle/utilities)    
+> [anagrafiche.istanze_utilities](/dbzero/anagrafiche/tabelle/istanze_utilities)
 >
-Approfondimenti funzioni:   
+Approfondimenti funzioni:
 >
-[anagrafiche.trgfn_contatti_set_default_contatto](/dbzero/anagrafiche/funzioni/trgfn_contatti_set_default_contatto)     
+[anagrafiche.trgfn_contatti_set_default_contatto](/dbzero/anagrafiche/funzioni/trgfn_contatti_set_default_contatto)
 
 
-La tabella **`anagrafiche.contatti`** è il **punto di raccolta centralizzato** per tutte le informazioni di contatto nell’applicazione, a diversi livelli di granularità:
+La tabella **`anagrafiche.contatti`** è il **punto di raccolta centralizzato** per tutte le informazioni di contatto nell'applicazione, a diversi livelli di granularità:
 
-- **Soggetto** (`soggetto_id` obbligatorio)  
-- **Ruolo assegnato al soggetto** (`soggetto_ruolo_id`, opzionale)  
-- **Servizio/utility** (`utility_id`, opzionale)  
+- **Soggetto** (`soggetto_id` obbligatorio)
+- **Ruolo assegnato al soggetto** (`soggetto_ruolo_id`, opzionale)
+- **Istanza di servizio** (`istanza_utility_id`, opzionale)
 
 In questo modo è possibile definire:
 
-1. **Contatto “globale” del soggetto**  
-   (solo `soggetto_id`, `soggetto_ruolo_id` e `utility_id` a `NULL`)
+1. **Contatto "globale" del soggetto**
+   (solo `soggetto_id`, `soggetto_ruolo_id` e `istanza_utility_id` a `NULL`)
 
-2. **Contatto legato a uno specifico ruolo**  
-   (ad es. l’amministratore di un soggetto, con `soggetto_ruolo_id` valorizzato)
+2. **Contatto legato a uno specifico ruolo**
+   (ad es. l'amministratore di un soggetto, con `soggetto_ruolo_id` valorizzato)
 
-3. **Contatto associato a un servizio/utility**  
-   (ad es. referente tecnico per un determinato servizio)
+3. **Contatto associato a una specifica istanza di servizio**
+   (ad es. referente tecnico per il contratto GAS di Corridonia, con `istanza_utility_id` valorizzato)
 
 ---
 ### 🎯 Scopo Principale
-(latest review 06-01-26)
-* **Centralizzare i contatti**  
-  Un’unica tabella per tutti i numeri di telefono, email, PEC e nominativi, evitando duplicazioni e frammentazione.
+(latest review 25-03-26)
+* **Centralizzare i contatti**
+  Un'unica tabella per tutti i numeri di telefono, email, PEC e nominativi, evitando duplicazioni e frammentazione.
 
-* **Gestire livelli di contesto**  
-  Tramite i campi `soggetto_ruolo_id` e `utility_id` (che possono essere **`NULL`**), si modellano contatti generici o specifici.
+* **Gestire livelli di contesto (3 livelli)**
+  Tramite i campi `soggetto_ruolo_id` e `istanza_utility_id` (che possono essere **`NULL`**), si modellano contatti generici o specifici:
+  - **Livello 1 — Istanza**: `soggetto_ruolo_id` e `istanza_utility_id` valorizzati → specifico per servizio
+  - **Livello 2 — Ruolo generico**: `soggetto_ruolo_id` valorizzato, `istanza_utility_id` NULL → generico del ruolo
+  - **Livello 3 — Soggetto**: `soggetto_ruolo_id` NULL, `istanza_utility_id` NULL → fallback soggetto
 
-* **Identificare il contatto “default”**  
+* **Identificare il contatto "default"**
   Il flag `is_default` permette di marcare un solo contatto di riferimento per ciascun soggetto.
 
-* **Separare reparto e categoria**  
+* **Separare reparto e categoria**
   Il reparto/ufficio e' indicato da `unita_organizzativa_id`, mentre `tipo_contatto_id`
   identifica la categoria del contatto (opzionale). Questo evita di usare `tipi_contatti` come reparto.
 
@@ -51,26 +54,28 @@ In questo modo è possibile definire:
 
 ### Vincoli e Relazioni
 
-- **`PK (id)`**: identificatore univoco del contact record.  
-- **`UNIQUE (soggetto_id, soggetto_ruolo_id, utility_id, tipo_contatto_id)`**  
-  Garantisce una sola entry per combinazione di soggetto/ruolo/utility e tipo di contatto.  
-- **Foreign Keys**  
-  - `soggetto_id` → `anagrafiche.soggetti(id)` **ON DELETE CASCADE**  
-  - `soggetto_ruolo_id` → `anagrafiche.soggetti_ruoli(id)` **ON DELETE CASCADE**  
-  - `tipo_contatto_id` → `config.tipi_contatti(id)` **ON DELETE RESTRICT** (nullable)  
+- **`PK (id)`**: identificatore univoco del contact record.
+- **Vincoli UNIQUE**: 3 partial unique index per i 3 livelli di contesto:
+  - `uq_contatti_soggetto_tipo (soggetto_id, tipo_contatto_id) WHERE soggetto_ruolo_id IS NULL AND istanza_utility_id IS NULL` — soggetto puro
+  - `uq_contatti_ruolo_tipo_no_istanza (soggetto_id, soggetto_ruolo_id, tipo_contatto_id) WHERE soggetto_ruolo_id IS NOT NULL AND istanza_utility_id IS NULL` — ruolo generico
+  - `uq_contatti_ruolo_istanza_tipo (soggetto_id, soggetto_ruolo_id, istanza_utility_id, tipo_contatto_id) WHERE soggetto_ruolo_id IS NOT NULL AND istanza_utility_id IS NOT NULL` — ruolo + istanza
+- **Foreign Keys**
+  - `soggetto_id` → `anagrafiche.soggetti(id)` **ON DELETE CASCADE**
+  - `soggetto_ruolo_id` → `anagrafiche.soggetti_ruoli(id)` **ON DELETE CASCADE**
+  - `tipo_contatto_id` → `config.tipi_contatti(id)` **ON DELETE RESTRICT**
   - `unita_organizzativa_id` → `config.unita_organizzative(id)` **ON DELETE RESTRICT**
-  - `utility_id` → `config.utilities(id)` **ON DELETE CASCADE**  
+  - `istanza_utility_id` → `anagrafiche.istanze_utilities(id)`
 
 ---
 
 ### Relazioni e Trigger
 
-- **Trigger `trg_contatti_set_default_contatto_ins_upd`**  
-  Assicura che esista al più un contatto `is_default = TRUE` per ogni `soggetto_id`:  
-  - Se `NEW.is_default = TRUE`, resetta gli altri a `FALSE`.  
+- **Trigger `trg_contatti_set_default_contatto_ins_upd`**
+  Assicura che esista al più un contatto `is_default = TRUE` per ogni `soggetto_id`:
+  - Se `NEW.is_default = TRUE`, resetta gli altri a `FALSE`.
   - Se nessun contatto precedente è `default`, marca automaticamente il primo inserito/aggiornato.
 
-- **Trigger `trg_contatti_audit_data_user_upd`**  
+- **Trigger `trg_contatti_audit_data_user_upd`**
   Aggiorna i campi `data_update` e `user_update` ad ogni modifica.
 
 
@@ -81,14 +86,14 @@ In questo modo è possibile definire:
 * `ix_contatti_soggetto` su `soggetto_id` per ricerche rapide per soggetto.
 * `ix_contatti_tipo` su `tipo_contatto_id` per filtrare contatti per tipologia.
 * `ix_contatti_unita_organizzativa_id` su `unita_organizzativa_id` per filtrare contatti per reparto.
-* `ix_contatti_utility` su `utility_id` per isolare contatti per servizio.
+* `ix_contatti_istanza_utility_id` su `istanza_utility_id` per isolare contatti per istanza di servizio.
 
-Migliorano le performance nelle query di recupero contatti per soggetto, tipo o servizio.
+Migliorano le performance nelle query di recupero contatti per soggetto, tipo o istanza.
 
 
 ---
 
-### Esempi di Utilizzo 
+### Esempi di Utilizzo
 
 ```sql
 -- 1) Contatto globale per il soggetto UUID '123e4567-e89b-12d3-a456-426614174000'
@@ -109,12 +114,12 @@ INSERT INTO anagrafiche.contatti (
   'Luca Bianchi', '3801234567'
 );
 
--- 3) Contatto per utility (utility_id = 5)
+-- 3) Contatto per istanza specifica (istanza_utility_id = 5)
 INSERT INTO anagrafiche.contatti (
-  tipo_contatto_id, unita_organizzativa_id, soggetto_id, utility_id,
-  nominativo, pec
+  tipo_contatto_id, unita_organizzativa_id, soggetto_id, soggetto_ruolo_id,
+  istanza_utility_id, nominativo, pec
 ) VALUES (
-  3, 3, '123e4567-e89b-12d3-a456-426614174000', 5,
+  3, 3, '123e4567-e89b-12d3-a456-426614174000', 10, 5,
   'Ufficio Tecnico', 'tecnico@azienda.pec'
 );
 
@@ -134,7 +139,7 @@ SELECT *
 
 ### Vantaggi Operativi
 
- - Flessibilità: un singolo modello per ogni combinazione soggetto/ruolo/servizio e tipo di contatto.
+ - Flessibilità: un singolo modello per ogni combinazione soggetto/ruolo/istanza e tipo di contatto.
 
  - Univocità: constraint e trigger assicurano coerenza e un solo contatto predefinito per soggetto.
 
@@ -144,12 +149,12 @@ SELECT *
 
 ---
 
-> **Centralizzare i contatti in un’unica tabella con supporto multi-contesto e contact default migliora coerenza, performance e usabilità del sistema.”**
+> **Centralizzare i contatti in un'unica tabella con supporto multi-contesto e contact default migliora coerenza, performance e usabilità del sistema."**
 
 
 ---
 
-###  Diagramma ER relazioni 
+###  Diagramma ER relazioni
 
 
 ```mermaid
@@ -157,17 +162,17 @@ SELECT *
 erDiagram
     soggetti         ||--o{ contatti : has
     soggetti_ruoli   ||--o{ contatti : scoped_by
-    utilities        ||--o{ contatti : for
+    istanze_utilities ||--o{ contatti : for
     tipi_contatti    ||--o{ contatti : typed_as
     unita_organizzative ||--o{ contatti : belongs_to
     titoli_cortesia  ||--o{ contatti : courtesy
 
-    soggetti        { uuid id PK }
-    soggetti_ruoli  { bigint id PK }
-    utilities       { int id PK }
-    tipi_contatti   { int id PK }
-    titoli_cortesia { int id PK }
-    contatti        { int id PK }
+    soggetti           { uuid id PK }
+    soggetti_ruoli     { bigint id PK }
+    istanze_utilities  { bigint id PK }
+    tipi_contatti      { int id PK }
+    titoli_cortesia    { int id PK }
+    contatti           { bigint id PK }
 
 ```
 

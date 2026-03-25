@@ -1,4 +1,4 @@
-// Scopo: Utility centralizzate per formattazione stringhe.
+// Scopo: Utility centralizzate per formattazione stringhe e ordinamento liste.
 // Primo carattere maiuscolo per nomi, cognomi, ragioni sociali.
 
 /**
@@ -24,4 +24,57 @@ export function capitalizeFirst(s) {
   if (!s) return ''
   const t = s.trim()
   return t.charAt(0).toUpperCase() + t.slice(1)
+}
+
+/**
+ * Blocca keypress per caratteri non alfanumerici.
+ * Usare come handler @keypress su InputText/AutoComplete.
+ *
+ * @param {KeyboardEvent} event
+ */
+export function blockNonAlphanumeric(event) {
+  if (!/[a-zA-Z0-9]/.test(event.key)) {
+    event.preventDefault()
+  }
+}
+
+/**
+ * Normalizza un campo reactive a uppercase senza spazi.
+ * Usare come handler @input su campi come IBAN, CF, P.IVA.
+ *
+ * @param {object} form - Oggetto reactive
+ * @param {string} field - Nome del campo da normalizzare
+ */
+export function normalizeUpperNoSpaces(form, field) {
+  if (typeof form[field] === 'string') {
+    form[field] = form[field].toUpperCase().replace(/\s/g, '')
+  }
+}
+
+/**
+ * Normalizza un campo reactive a uppercase (mantiene spazi).
+ * Usare come handler @input su campi che ammettono spazi.
+ *
+ * @param {object} form - Oggetto reactive
+ * @param {string} field - Nome del campo da normalizzare
+ */
+export function normalizeUpper(form, field) {
+  if (typeof form[field] === 'string') {
+    form[field] = form[field].toUpperCase()
+  }
+}
+
+/**
+ * Ordina array di oggetti per campo 'fonte' nella cascata standard:
+ * soggetto (generico) → ruolo → utility (specifico).
+ * Ordine inverso rispetto al fallback di risoluzione.
+ *
+ * @param {Array} items - Array con campo 'fonte' (soggetto/ruolo/utility)
+ * @returns {Array} - Nuovo array ordinato (non muta l'originale)
+ */
+const FONTE_ORDER = { soggetto: 0, ruolo: 1, utility: 2 }
+export function sortByFonte(items) {
+  return [...items].sort((a, b) =>
+    (FONTE_ORDER[a.fonte] ?? 9) - (FONTE_ORDER[b.fonte] ?? 9)
+  )
 }

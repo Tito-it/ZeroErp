@@ -16,10 +16,12 @@ import TagList from '../../core/components/TagList.vue'
 import NewButton from '../../core/components/NewButton.vue'
 import Button from 'primevue/button'
 
-const emit = defineEmits(['new', 'row-click', 'contatti', 'indirizzi'])
+const emit = defineEmits(['new', 'row-click', 'contatti', 'indirizzi', 'conti-bancari'])
 const { t } = useI18n()
 const store = useSoggettiStore()
-const { searchText, onPage, onSort, applyFilters, paginatorProps } = useSearchTable(store)
+const { searchText, onPage, onSort, applyFilters, reload, paginatorProps } = useSearchTable(store, {
+  defaultSortField: 'ragione_sociale_completa'
+})
 
 const tipiSoggetto = useLookup(lookupTipiSoggettoDettaglio, { immediate: true })
 const tipoFilter = ref(null)
@@ -54,7 +56,10 @@ onMounted(() => { store.fetchList() })
           @change="onTipoChange"
         />
       </div>
-      <NewButton :tooltip="t('soggetti.nuovo_soggetto')" @click="emit('new')" />
+      <div class="app-page-actions">
+        <Button icon="pi pi-refresh" text class="app-reload-btn" v-tooltip.bottom="t('common.reload_list')" @click="reload" />
+        <NewButton :tooltip="t('soggetti.nuovo_soggetto')" @click="emit('new')" />
+      </div>
     </div>
 
     <DataTable
@@ -75,7 +80,7 @@ onMounted(() => { store.fetchList() })
     >
       <Column field="codice" :header="t('config_panel.col_codice')" sortable style="width: 130px;" />
       <Column field="ragione_sociale_completa" :header="t('soggetti.col_ragione_sociale')" sortable style="width: 180px;" />
-      <Column field="codice_fiscale" :header="t('common.codice_fiscale')" sortable style="width: 170px;" />
+      <Column field="codice_fiscale" :header="t('common.id_fiscale')" sortable style="width: 170px;" />
       <Column field="tipo_descrizione" :header="t('soggetti.col_tipo')" sortable style="width: 100px;" />
       <Column field="ruoli" :header="t('soggetti.col_ruoli')" style="width: 240px;">
         <template #body="{ data }">
@@ -91,6 +96,9 @@ onMounted(() => { store.fetchList() })
             <Button icon="pi pi-map-marker" text rounded size="small" class="app-action-btn"
               v-tooltip.top="t('indirizzo_soggetto.gestisci_indirizzi')"
               @click.stop="emit('indirizzi', data)" />
+            <Button icon="pi pi-wallet" text rounded size="small" class="app-action-btn"
+              v-tooltip.top="t('conti_bancari.gestisci_conti')"
+              @click.stop="emit('conti-bancari', data)" />
           </div>
         </template>
       </Column>

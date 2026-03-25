@@ -181,6 +181,42 @@ const { searchText, onPage, onSort, paginatorProps } = useSearchTable(store)
 
 Nessun componente lista deve implementare onPage/onSort/debounce manualmente.
 
+### Pattern: Ricerca universale → lista filtrata
+
+Quando l'utente seleziona un risultato dalla ricerca universale (SearchDrawer), il sistema:
+
+1. **Imposta il contesto** globale (`contextStore.setContext` con `searchTerm`)
+2. **Naviga** alla rotta lista corrispondente
+3. **`useSearchTable`** legge automaticamente il termine da `route.query.search` o `contextStore.searchTerm`
+
+**Nessuna configurazione necessaria nelle singole SearchTable** — `useSearchTable` centralizza
+la risoluzione del termine di ricerca iniziale. Le SearchTable si usano esattamente come prima:
+
+```js
+const { searchText, onPage, onSort, paginatorProps } = useSearchTable(store, {
+  defaultSortField: 'ragione_sociale_completa'
+})
+```
+
+**Nella View** serve solo il watcher per auto-apertura drawer da contesto:
+
+```js
+import { useContextStore } from '../../stores/context'
+const ctx = useContextStore()
+
+watch(() => route.fullPath, () => {
+  if (route.name === 'anagrafiche-clienti' && ctx.entitaId) {
+    nextTick(() => drawer.editRow({ id: ctx.entitaId }, 'id'))
+  }
+}, { immediate: true })
+```
+
+**Per aggiungere una nuova lista:**
+
+- Aggiungere la rotta nella mappa `TIPO_RUOLO_ROUTES` in `SearchDrawer.vue`
+- Implementare il watcher `ctx → drawer.editRow` nella View se supporta auto-apertura
+- Nient'altro: `useSearchTable` fa il resto
+
 ### ⚠️ REGOLA CRITICA: Paginazione deterministica (backend)
 
 **Ogni query SQL paginata (LIMIT/OFFSET) DEVE avere `id` come tiebreaker nell'ORDER BY.**
@@ -654,6 +690,62 @@ Regola: in sola lettura **si puo' solo chiudere/uscire**, mai aprire/creare/modi
 
 ---
 
+## Azioni processo — Livello 2 (pattern "action gate")
+
+### Principio
+
+Le azioni di processo controllano **singole operazioni** (es. "crea soggetto", "genera fatture") dentro un'area a cui l'operatore ha gia' accesso. Sono il livello di granularita' sotto TUTTO/LETTURA/BLOCCATO.
+
+### Piramide permessi
+
+```
+Livello 1: Area (TUTTO / LETTURA / BLOCCATO)  → sidebar + route guard + .app-readonly
+Livello 2: Azione processo (abilitata / negata) → prop action su NewButton / DrawerFooter
+```
+
+### Come funziona
+
+L'endpoint `/me/` ritorna `azioni_abilitate: { codename: boolean }` per tutte le azioni attive. Lo store `auth.js` espone `isActionAllowed(codename)`.
+
+I componenti `NewButton` e `DrawerFooter` accettano una prop opzionale `action`:
+- Se **assente** (default): il componente funziona come prima (solo check readonly)
+- Se **presente**: il componente si nasconde se l'azione non e' abilitata
+
+```vue
+<!-- Pulsante "Nuovo" visibile solo se l'azione e' abilitata -->
+<NewButton action="crea_soggetto" :tooltip="t('...')" @click="..." />
+
+<!-- Footer Salva visibile solo se l'azione e' abilitata -->
+<DrawerFooter action="modifica_soggetto" @save="..." @cancel="..." />
+```
+
+### Come aggiungere un'azione
+
+1. **DB**: inserire riga in `config.azioni_processo` (seed CSV)
+2. **Backend**: aggiungere `post_permission = "codename"` sulla view API
+3. **Frontend**: aggiungere prop `action="codename"` su `NewButton` o `DrawerFooter`
+4. **Configurazione**: da Amm. Software → Profili reparto, abilitare per reparto
+
+### Composable per casi avanzati
+
+Per logica condizionale oltre ai componenti standard:
+
+```js
+import { useActionPermission } from '@/core/composables/useActionPermission'
+
+const { isAllowed } = useActionPermission('genera_fatture_lotti')
+// <Button v-if="isAllowed" ... />
+```
+
+### Regole
+
+- Mai hardcodare codename nei componenti — usare costanti se ripetuti
+- Il backend blocca sempre con 403 anche se il frontend non nasconde il bottone (defense-in-depth)
+- ADMIN ha tutte le azioni abilitate — il check frontend lo gestisce automaticamente
+- La prop `action` e' cumulativa con readonly: se readonly=true, il componente e' nascosto a prescindere
+
+---
+
 ## Regole per il developer
 
 1. Ogni componente e' autonomo — logica nei composables di `core/`
@@ -671,6 +763,8 @@ Regola: in sola lettura **si puo' solo chiudere/uscire**, mai aprire/creare/modi
 13. Stato drawer da `useDrawerState` — mai `ref(false)` + `ref('create')` separati
 14. CSS layout da `main.css` — mai `<style scoped>` per layout form/pagina
 15. Sola lettura da classe `.app-readonly` sul container — mai componenti duplicati
+16. Azioni processo via prop `action` su `NewButton`/`DrawerFooter` — mai `v-if` manuali per permessi
+17. `ConfirmDialog` solo globale in `App.vue` — mai dentro Drawer (interferenza overlay)
 
 ---
 
@@ -718,6 +812,7 @@ Regola: in sola lettura **si puo' solo chiudere/uscire**, mai aprire/creare/modi
 | `ContattoForm` | Form contatto (nominativo, email, tel, pec, tipo, UO) | `form`, `tipiContatto`, `unitaOrganizzative` | ContattiSoggettoDrawer |
 | `IndirizzoSoggettoForm` | Form indirizzo con barra multi-tipo, via_obj, check duplicato | composable props | IndirizziSoggettoDrawer |
 | `DatiSocietariForm` | Form dati societari (FG, REA, capitale, FE) | `form`, `formeGiuridiche`, `provinceLookup` | SoggettoDrawer |
+| `ContoBancarioForm` | Form conto bancario: IBAN autocomplete, filiale, uso, date, flags | `form`, `usiDisponibili` | ContiBancariDrawer |
 | `AuthUserForm` | Form credenziali operatore | `form`, `isEdit` | UtenteDrawer |
 
 #### Autocomplete
@@ -734,6 +829,7 @@ Regola: in sola lettura **si puo' solo chiudere/uscire**, mai aprire/creare/modi
 | --- | --- | --- |
 | `IndirizziSoggettoDrawer` | Gestione indirizzi soggetto: multi-tipo, replace, auto-clone, addressNotFound | SoggettoDrawer |
 | `ContattiSoggettoDrawer` | Gestione contatti soggetto: lista, CRUD, validazione email/PEC | SoggettoDrawer |
+| `ContiBancariDrawer` | Gestione conti bancari soggetto: lista, CRUD, autocomplete IBAN/filiale | SoggettoDrawer |
 
 #### Drawer e SearchTable geografici
 
@@ -780,6 +876,7 @@ Regola: in sola lettura **si puo' solo chiudere/uscire**, mai aprire/creare/modi
 | --- | --- | --- |
 | `useSoggettoForm` | Stato form soggetto PF/PG/ENTE, matrice indirizzi, validazione | SoggettoDrawer, UtenteDrawer |
 | `useContattoForm` | Stato form contatto con validazione email/PEC | ContattiSoggettoDrawer |
+| `useContoBancarioForm` | Stato form conto bancario: IBAN autocomplete, filiale, uso, payload create/update | ContiBancariDrawer |
 | `useDatiSocietariForm` | Stato form dati societari con policy forma giuridica | SoggettoDrawer |
 | `useAuthUser` | Stato form credenziali + permessi operatore | UtenteDrawer |
 
@@ -792,12 +889,15 @@ Regola: in sola lettura **si puo' solo chiudere/uscire**, mai aprire/creare/modi
 | `useIndirizzoMultiTipo` | Barra tag tipo indirizzo con snapshot/restore per cambio tipo | useIndirizzoSoggettoForm |
 | `useIndirizzoDuplicato` | Check duplicato indirizzo via API con exact_match + indirizzoWarnings | useIndirizzoBase |
 
-#### Modalita sola lettura
+#### Modalita sola lettura e azioni processo
 
 | Composable | Scopo | Usato da |
 | --- | --- | --- |
 | `useReadonlyMode` | Provider: derive isReadonly da permessi area + provide | View (SoggettiView, IndirizziView, ConfigTablePanel) |
 | `useInjectReadonly` | Consumer: inject isReadonly dal provider padre | NewButton, DrawerFooter, tutti i Drawer |
+| `useActionPermission` | Verifica se un'azione processo e' abilitata (computed reattivo) | Componenti dominio con logica condizionale avanzata |
+
+**Nota**: per i casi standard, usare la prop `action` su `NewButton`/`DrawerFooter` invece del composable diretto.
 
 #### Ricerca universale
 
@@ -859,5 +959,5 @@ Regola: in sola lettura **si puo' solo chiudere/uscire**, mai aprire/creare/modi
 
 ---
 
-*ZeroERP Frontend Standards — rev. 8 (18 marzo 2026)*
+*ZeroERP Frontend Standards — rev. 9 (25 marzo 2026)*
 *Sviluppo Concentrico — anello esterno, radici nell'infrastruttura*

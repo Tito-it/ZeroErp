@@ -8,7 +8,7 @@ asgiref==3.11.1
     # via
     #   -r ../requirements.in
     #   django
-attrs==25.4.0
+attrs==26.1.0
     # via
     #   jsonschema
     #   referencing
@@ -21,7 +21,7 @@ django==6.0.3
     #   drf-spectacular
 django-redis==6.0.0
     # via -r ../requirements.in
-djangorestframework==3.16.1
+djangorestframework==3.17.0
     # via
     #   -r ../requirements.in
     #   djangorestframework-simplejwt
@@ -52,7 +52,7 @@ pyjwt==2.12.1
     #   djangorestframework-simplejwt
 pyyaml==6.0.3
     # via drf-spectacular
-redis==7.3.0
+redis==7.4.0
     # via
     #   -r ../requirements.in
     #   django-redis

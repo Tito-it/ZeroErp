@@ -18,8 +18,8 @@ export const useSoggettiStore = defineStore('anagrafiche-soggetti', () => {
     tipo_soggetto_dettaglio_id: null,
     limit: 25,
     offset: 0,
-    order_by: null,
-    order_dir: null
+    order_by: 'ragione_sociale_completa',
+    order_dir: 'asc'
   })
 
   // Scopo: Carica lista paginata soggetti con filtri.

@@ -23,6 +23,7 @@
 | codice_postale_id | integer | YES |  |
 | storicizza | boolean | NO | false |
 | tx_id | uuid | YES |  |
+| istanza_utility_id | bigint | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -32,11 +33,11 @@
 | FOREIGN KEY | fk_codici_postali_config | codice_postale_id |
 | FOREIGN KEY | fk_comuni_config | comune_id |
 | FOREIGN KEY | fk_indirizzi_dettaglio_anagrafiche | indirizzo_dettaglio_id |
+| FOREIGN KEY | fk_indirizzi_istanze_utilities | istanza_utility_id |
 | FOREIGN KEY | fk_soggetti_ruoli_anagrafiche | soggetto_ruolo_id |
 | FOREIGN KEY | fk_stati_config | stato_id |
 | FOREIGN KEY | fk_tipi_indirizzo_config | tipo_indirizzo_id |
 | PRIMARY KEY | pk_indirizzi | id |
-| UNIQUE | uq_indirizzi_ruolo_tipo | soggetto_ruolo_id, tipo_indirizzo_id |
 
 ## 📑 Indici
 | Nome | Definizione |
@@ -48,8 +49,10 @@
 | ix_anagrafiche_indirizzi_stato_id | `CREATE INDEX ix_anagrafiche_indirizzi_stato_id ON anagrafiche.indirizzi USING btree (stato_id)` |
 | ix_anagrafiche_indirizzi_tipo_indirizzo_id | `CREATE INDEX ix_anagrafiche_indirizzi_tipo_indirizzo_id ON anagrafiche.indirizzi USING btree (tipo_indirizzo_id)` |
 | ix_indirizzi_geoloc_gist | `CREATE INDEX ix_indirizzi_geoloc_gist ON anagrafiche.indirizzi USING gist (geoloc)` |
+| ix_indirizzi_istanza_utility_id | `CREATE INDEX ix_indirizzi_istanza_utility_id ON anagrafiche.indirizzi USING btree (istanza_utility_id)` |
 | pk_indirizzi | `CREATE UNIQUE INDEX pk_indirizzi ON anagrafiche.indirizzi USING btree (id)` |
-| uq_indirizzi_ruolo_tipo | `CREATE UNIQUE INDEX uq_indirizzi_ruolo_tipo ON anagrafiche.indirizzi USING btree (soggetto_ruolo_id, tipo_indirizzo_id)` |
+| uq_indirizzi_ruolo_istanza_tipo | `CREATE UNIQUE INDEX uq_indirizzi_ruolo_istanza_tipo ON anagrafiche.indirizzi USING btree (soggetto_ruolo_id, istanza_utility_id, tipo_indirizzo_id) WHERE (istanza_utility_id IS NOT NULL)` |
+| uq_indirizzi_ruolo_tipo_no_istanza | `CREATE UNIQUE INDEX uq_indirizzi_ruolo_tipo_no_istanza ON anagrafiche.indirizzi USING btree (soggetto_ruolo_id, tipo_indirizzo_id) WHERE (istanza_utility_id IS NULL)` |
 
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |

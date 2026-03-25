@@ -10,12 +10,13 @@ import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import InputText from 'primevue/inputtext'
 import NewButton from '../../core/components/NewButton.vue'
+import Button from 'primevue/button'
 import Tag from 'primevue/tag'
 
 const emit = defineEmits(['row-click', 'new'])
 const { t } = useI18n()
 const store = useIndirizziStore()
-const { searchText, onPage, onSort, applyFilters, paginatorProps } = useSearchTable(store)
+const { searchText, onPage, onSort, applyFilters, reload, paginatorProps } = useSearchTable(store, { defaultSortField: 'indirizzo_normalizzato' })
 
 const comuneFilter = ref(null)
 
@@ -46,7 +47,10 @@ function onRowClick(event) {
           @update:model-value="onComuneChange"
         />
       </div>
-      <NewButton :tooltip="t('indirizzi.nuovo_indirizzo')" @click="emit('new')" />
+      <div class="app-page-actions">
+        <Button icon="pi pi-refresh" text class="app-reload-btn" v-tooltip.bottom="t('common.reload_list')" @click="reload" />
+        <NewButton :tooltip="t('indirizzi.nuovo_indirizzo')" @click="emit('new')" />
+      </div>
     </div>
 
     <DataTable

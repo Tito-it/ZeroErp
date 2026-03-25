@@ -3,6 +3,7 @@ import { ref, computed } from 'vue'
 import api from '../core/api'
 import { DOMAINS } from '../core/navigation'
 import { local, STORAGE_KEYS } from '../core/storage'
+import { RUOLO_SISTEMA, LIVELLO_ACCESSO } from '../core/constants'
 import { useNavigationStore } from './navigation'
 import { useTabsStore } from './tabs'
 
@@ -11,7 +12,7 @@ export const useAuthStore = defineStore('auth', () => {
   const refreshToken = ref(local.get(STORAGE_KEYS.REFRESH_TOKEN))
 
   // Profilo utente caricato dall'endpoint /me/
-  // Struttura JSONB: { utente, ruolo_sistema, risorse_umane, soggetto, emittente, permessi_area }
+  // Struttura JSONB: { utente, ruolo_sistema, risorse_umane, soggetto, emittente, permessi_area, azioni_abilitate }
   const user = ref(null)
 
   const isAuthenticated = computed(() => !!accessToken.value)
@@ -98,7 +99,7 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   // Domini visibili per l'utente corrente (filtra adminOnly in base a ruolo_sistema)
-  const isAdmin = computed(() => user.value?.ruolo_sistema === 'ADMIN')
+  const isAdmin = computed(() => user.value?.ruolo_sistema === RUOLO_SISTEMA.ADMIN)
 
   // Scopo: Domini visibili: nasconde adminOnly per non-admin e BLOCCATO per tutti.
   // I domini adminOnly hanno gia' il loro guard — non applicare il check livello.
@@ -116,17 +117,27 @@ export const useAuthStore = defineStore('auth', () => {
 
   // Livello accesso per area funzionale (TUTTO | LETTURA | BLOCCATO)
   function getLivelloArea(schemaDb) {
-    return permessiArea.value[schemaDb] || 'BLOCCATO'
+    return permessiArea.value[schemaDb] || LIVELLO_ACCESSO.BLOCCATO
   }
 
   // Scopo: Area in sola lettura? (livello LETTURA)
   function isAreaReadonly(schemaDb) {
-    return getLivelloArea(schemaDb) === 'LETTURA'
+    return getLivelloArea(schemaDb) === LIVELLO_ACCESSO.LETTURA
   }
 
   // Scopo: Area bloccata? (livello BLOCCATO — nessun accesso)
   function isAreaBlocked(schemaDb) {
-    return getLivelloArea(schemaDb) === 'BLOCCATO'
+    return getLivelloArea(schemaDb) === LIVELLO_ACCESSO.BLOCCATO
+  }
+
+  // Mappa azioni abilitate: { genera_fatture_lotti: true, reset_lotto_draft: false, ... }
+  // Popolata da /me/ campo azioni_abilitate (fn_get_user_actions_map)
+  const azioniAbilitate = computed(() => user.value?.azioni_abilitate || {})
+
+  // Scopo: Azione di processo abilitata? ADMIN ha tutto, default false.
+  function isActionAllowed(codename) {
+    if (isAdmin.value) return true
+    return azioniAbilitate.value[codename] === true
   }
 
   return {
@@ -141,6 +152,8 @@ export const useAuthStore = defineStore('auth', () => {
     getLivelloArea,
     isAreaReadonly,
     isAreaBlocked,
+    azioniAbilitate,
+    isActionAllowed,
     login,
     logout,
     tryRefreshToken,

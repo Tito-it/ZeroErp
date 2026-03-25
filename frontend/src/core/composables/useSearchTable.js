@@ -1,6 +1,11 @@
 // Composable centralizzato per DataTable con ricerca, paginazione server-side e sort.
 // Elimina la duplicazione di onPage/onSort/debounce search in ogni lista.
 //
+// Ricerca universale: legge automaticamente il termine di ricerca da:
+//   1. route.query.search (navigazione diretta dal SearchDrawer)
+//   2. contextStore.searchTerm (navigazione indiretta da menu/tab)
+// Nessuna configurazione necessaria nelle singole SearchTable o View.
+//
 // Uso:
 //   const { searchText, onPage, onSort, paginatorProps } = useSearchTable(store)
 //
@@ -10,20 +15,56 @@
 // paginatorProps include: totalRecords, rows, first, rowsPerPageOptions,
 //   paginator, paginatorTemplate, currentPageReportTemplate
 
-import { ref, computed, watch, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { useRoute } from 'vue-router'
+import { useContextStore } from '../../stores/context'
 import { PAGINATION } from '../constants'
 
 export function useSearchTable(store, options = {}) {
   const {
     debounceMs = 400,
-    extraFilters = null // funzione che ritorna filtri aggiuntivi da applicare
+    extraFilters = null, // funzione che ritorna filtri aggiuntivi da applicare
+    defaultSortField = null, // campo sort iniziale (es. 'descrizione')
+    defaultSortOrder = 'asc' // direzione sort iniziale
   } = options
 
-  const searchText = ref('')
-  let searchTimeout = null
+  const route = useRoute()
+  const ctx = useContextStore()
 
-  // Debounce search → aggiorna store.filters.search e resetta offset
+  // Inizializza sort default nello store se non gia' impostato
+  if (defaultSortField && !store.filters.order_by) {
+    store.filters.order_by = defaultSortField
+    store.filters.order_dir = defaultSortOrder
+  }
+
+  // Risolve termine ricerca iniziale: route query > context > vuoto
+  const resolvedSearch = route.query.search || ctx.searchTerm || ''
+  const searchText = ref(resolvedSearch)
+  if (resolvedSearch) {
+    store.filters.search = resolvedSearch
+  }
+  let searchTimeout = null
+  let skipNextDebounce = false
+
+  // Watch reattivo su ctx.searchTerm — gestisce nuove ricerche da SearchDrawer
+  // e navigazione tra pagine con contesto attivo. Aggiorna immediatamente (no debounce).
+  watch(() => ctx.searchTerm, (newTerm) => {
+    const term = newTerm || ''
+    if (term !== searchText.value) {
+      skipNextDebounce = true
+      searchText.value = term
+      store.filters.search = term
+      store.filters.offset = 0
+      store.fetchList()
+    }
+  })
+
+  // Debounce search da input utente → aggiorna store.filters.search e resetta offset
   watch(searchText, () => {
+    if (skipNextDebounce) {
+      skipNextDebounce = false
+      return
+    }
     clearTimeout(searchTimeout)
     searchTimeout = setTimeout(() => {
       store.filters.search = searchText.value || ''
@@ -32,8 +73,25 @@ export function useSearchTable(store, options = {}) {
     }, debounceMs)
   })
 
-  // Cleanup timeout on unmount
-  onUnmounted(() => { clearTimeout(searchTimeout) })
+  // Scopo: ricarica lista mantenendo filtri e paginazione correnti
+  function reload() {
+    store.fetchList()
+  }
+
+  // Scopo: intercetta F5 per ricaricare la lista senza reload browser
+  function onKeydown(e) {
+    if (e.key === 'F5') {
+      e.preventDefault()
+      reload()
+    }
+  }
+  onMounted(() => { window.addEventListener('keydown', onKeydown) })
+
+  // Cleanup timeout e listener on unmount
+  onUnmounted(() => {
+    clearTimeout(searchTimeout)
+    window.removeEventListener('keydown', onKeydown)
+  })
 
   // Handler @page DataTable — guard contro loop infinito e click rapidi.
   // PrimeVue DataTable ri-emette @page quando items cambia; senza guard si crea un ciclo.
@@ -64,7 +122,7 @@ export function useSearchTable(store, options = {}) {
     store.fetchList()
   }
 
-  // Props da passare al DataTable via v-bind
+  // Props da passare al DataTable via v-bind (include paginazione e sort default)
   const paginatorProps = computed(() => ({
     totalRecords: store.totalRecords,
     rows: store.filters.limit,
@@ -73,7 +131,9 @@ export function useSearchTable(store, options = {}) {
     paginator: true,
     paginatorPosition: 'top',
     paginatorTemplate: 'FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink RowsPerPageDropdown JumpToPageDropdown CurrentPageReport',
-    currentPageReportTemplate: '{currentPage}/{totalPages}'
+    currentPageReportTemplate: '{currentPage}/{totalPages}',
+    sortField: store.filters.order_by || null,
+    sortOrder: store.filters.order_dir === 'desc' ? -1 : store.filters.order_dir === 'asc' ? 1 : null
   }))
 
   return {
@@ -81,6 +141,7 @@ export function useSearchTable(store, options = {}) {
     onPage,
     onSort,
     applyFilters,
+    reload,
     paginatorProps
   }
 }

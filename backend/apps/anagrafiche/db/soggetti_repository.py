@@ -262,33 +262,37 @@ class SoggettiRepository:
             cursor.execute(sql, [soggetto_id])
             return rows_to_list(cursor)
 
-    # Scopo: Crea contatto per un soggetto.
+    # Scopo: Crea contatto per un soggetto. Se soggetto_ruolo_id fornito, il contatto
+    #        e' specifico del ruolo; altrimenti e' a livello soggetto (fallback).
     def crea_contatto(
         self, soggetto_id: str, *, nominativo: str, email: str | None = None,
         telefono: str | None = None, cellulare: str | None = None,
         pec: str | None = None, tipo_contatto_id: int | None = None,
         unita_organizzativa_id: int | None = None, note: str | None = None,
+        soggetto_ruolo_id: int | None = None, utility_id: int | None = None,
     ) -> dict[str, Any]:
         sql = """
             INSERT INTO anagrafiche.contatti
-                (soggetto_id, nominativo, email, telefono, cellulare, pec,
-                 tipo_contatto_id, unita_organizzativa_id, note)
-            VALUES (%s::uuid, %s, %s, %s, %s, %s, %s, %s, %s)
+                (soggetto_id, soggetto_ruolo_id, utility_id, nominativo, email,
+                 telefono, cellulare, pec, tipo_contatto_id, unita_organizzativa_id, note)
+            VALUES (%s::uuid, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING id, nominativo, email, telefono, cellulare, pec,
-                      tipo_contatto_id, unita_organizzativa_id, note
+                      tipo_contatto_id, unita_organizzativa_id, note,
+                      soggetto_ruolo_id, utility_id
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [
-                soggetto_id, nominativo, email, telefono, cellulare, pec,
-                tipo_contatto_id, unita_organizzativa_id, note,
+                soggetto_id, soggetto_ruolo_id, utility_id, nominativo, email,
+                telefono, cellulare, pec, tipo_contatto_id, unita_organizzativa_id, note,
             ])
             result = row_to_dict(cursor)
             assert result is not None
             return result
 
-    # Scopo: Aggiorna un contatto esistente con verifica ownership soggetto.
+    # Scopo: Aggiorna un contatto esistente con verifica ownership soggetto o ruolo.
     def update_contatto(self, contatto_id: int, data: dict[str, Any],
-                        soggetto_id: str | None = None) -> bool:
+                        soggetto_id: str | None = None,
+                        soggetto_ruolo_id: int | None = None) -> bool:
         _ALLOWED = {
             "nominativo", "email", "telefono", "cellulare", "pec",
             "tipo_contatto_id", "unita_organizzativa_id", "note",
@@ -303,6 +307,9 @@ class SoggettiRepository:
         if soggetto_id is not None:
             where += " AND soggetto_id = %s::uuid"
             values.append(soggetto_id)
+        if soggetto_ruolo_id is not None:
+            where += " AND soggetto_ruolo_id = %s"
+            values.append(soggetto_ruolo_id)
         sql = f"UPDATE anagrafiche.contatti SET {set_clause} {where}"  # noqa: S608
         with connection.cursor() as cursor:
             cursor.execute(sql, values)
@@ -399,6 +406,91 @@ class SoggettiRepository:
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [indirizzo_soggetto_id, soggetto_id])
+            return cursor.rowcount > 0
+
+    # =================================================================
+    # Indirizzi ruolo (anagrafiche.indirizzi — con utility_id)
+    # =================================================================
+
+    # Campi ammessi per update indirizzi ruolo.
+    _IND_RUOLO_ALLOWED = {
+        "tipo_indirizzo_id", "utility_id", "indirizzo_dettaglio_id",
+        "indirizzo_libero", "stato_id", "comune_id", "codice_postale_id",
+        "administrative_area", "locality", "sublocality", "postal_box",
+    }
+    _IND_RUOLO_NULLABLE = {
+        "utility_id", "indirizzo_dettaglio_id", "indirizzo_libero",
+        "stato_id", "comune_id", "codice_postale_id",
+        "administrative_area", "locality", "sublocality", "postal_box",
+    }
+
+    # Scopo: Crea indirizzo a livello ruolo.
+    #        Supporta modalita' normalizzata (indirizzo_dettaglio_id)
+    #        e libera (indirizzo_libero + stato_id).
+    #        Il trigger guard valida tipo_indirizzo_id vs matrice ammessi.
+    def crea_indirizzo_ruolo(
+        self, soggetto_ruolo_id: int, *,
+        tipo_indirizzo_id: int,
+        utility_id: int | None = None,
+        indirizzo_dettaglio_id: int | None = None,
+        indirizzo_libero: str | None = None,
+        stato_id: int | None = None,
+        comune_id: int | None = None,
+        codice_postale_id: int | None = None,
+    ) -> dict[str, Any]:
+        sql = """
+            INSERT INTO anagrafiche.indirizzi
+                (soggetto_ruolo_id, tipo_indirizzo_id, utility_id,
+                 indirizzo_dettaglio_id, indirizzo_libero,
+                 stato_id, comune_id, codice_postale_id)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            RETURNING id, soggetto_ruolo_id, tipo_indirizzo_id, utility_id,
+                      indirizzo_dettaglio_id, indirizzo_libero,
+                      stato_id, comune_id, codice_postale_id
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [
+                soggetto_ruolo_id, tipo_indirizzo_id, utility_id,
+                indirizzo_dettaglio_id, indirizzo_libero,
+                stato_id, comune_id, codice_postale_id,
+            ])
+            result = row_to_dict(cursor)
+            assert result is not None
+            return result
+
+    # Scopo: Aggiorna indirizzo ruolo con ownership check su soggetto_ruolo_id.
+    def update_indirizzo_ruolo(
+        self, indirizzo_id: int, soggetto_ruolo_id: int,
+        data: dict[str, Any],
+    ) -> bool:
+        # Normalizza stringhe vuote a None per campi nullable
+        for k in self._IND_RUOLO_NULLABLE:
+            if k in data and isinstance(data[k], str) and not data[k].strip():
+                data[k] = None
+        fields = [(k, v) for k, v in data.items() if k in self._IND_RUOLO_ALLOWED]
+        if not fields:
+            return False
+        set_clause = ", ".join(f"{f[0]} = %s" for f in fields)
+        values: list[Any] = [f[1] for f in fields]
+        values.extend([indirizzo_id, soggetto_ruolo_id])
+        sql = (
+            f"UPDATE anagrafiche.indirizzi SET {set_clause} "  # noqa: S608
+            "WHERE id = %s AND soggetto_ruolo_id = %s"
+        )
+        with connection.cursor() as cursor:
+            cursor.execute(sql, values)
+            return cursor.rowcount > 0
+
+    # Scopo: Elimina indirizzo ruolo con ownership check su soggetto_ruolo_id.
+    def delete_indirizzo_ruolo(
+        self, indirizzo_id: int, soggetto_ruolo_id: int,
+    ) -> bool:
+        sql = """
+            DELETE FROM anagrafiche.indirizzi
+             WHERE id = %s AND soggetto_ruolo_id = %s
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [indirizzo_id, soggetto_ruolo_id])
             return cursor.rowcount > 0
 
     # =================================================================

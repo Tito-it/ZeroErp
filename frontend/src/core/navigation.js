@@ -43,6 +43,8 @@ export const DOMAIN_MENUS = {
   ],
   'anagrafiche': [
     { key: 'soggetti', icon: 'pi pi-users', to: '/anagrafiche/soggetti' },
+    { key: 'clienti', icon: 'pi pi-briefcase', to: '/anagrafiche/clienti' },
+    { key: 'fornitori', icon: 'pi pi-clipboard', to: '/anagrafiche/fornitori' },
     { key: 'indirizzi', icon: 'pi pi-map-marker', to: '/anagrafiche/indirizzi' }
   ],
   'catalogo': [],

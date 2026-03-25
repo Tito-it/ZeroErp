@@ -192,6 +192,128 @@ export function lookupStati() {
   return api.get(`${BASE}/stati/lookup/`)
 }
 
+// --- Conti bancari soggetto ---
+
+export function listSoggettoContiBancari(soggettoId) {
+  return api.get(`${BASE}/soggetti/${soggettoId}/conti-bancari/`)
+}
+
+export function createSoggettoContoBancario(soggettoId, payload) {
+  return api.post(`${BASE}/soggetti/${soggettoId}/conti-bancari/`, payload)
+}
+
+export function updateSoggettoContoBancario(soggettoId, cbId, payload) {
+  return api.patch(`${BASE}/soggetti/${soggettoId}/conti-bancari/${cbId}/`, payload)
+}
+
+export function deleteSoggettoContoBancario(soggettoId, cbId) {
+  return api.delete(`${BASE}/soggetti/${soggettoId}/conti-bancari/${cbId}/`)
+}
+
+// --- Conti bancari lookup ---
+
+export function lookupContiBancari(search) {
+  return api.get(`${BASE}/conti-bancari/lookup/`, { params: { search } })
+}
+
+export function lookupBankBranches(search) {
+  return api.get(`${BASE}/bank-branches/lookup/`, { params: { search } })
+}
+
+// --- Clienti ---
+
+export function listClienti(params = {}) {
+  return api.get(`${BASE}/clienti/`, { params })
+}
+
+export function getCliente(id) {
+  return api.get(`${BASE}/clienti/${id}/`)
+}
+
+export function createCliente(payload) {
+  return api.post(`${BASE}/clienti/`, payload)
+}
+
+export function updateCliente(clienteId, payload) {
+  return api.patch(`${BASE}/clienti/${clienteId}/`, payload)
+}
+
+export function listUtilitiesManual() {
+  return api.get(`${BASE}/utilities/manual-lookup/`)
+}
+
+// --- Fornitori ---
+
+export function listFornitori(params = {}) {
+  return api.get(`${BASE}/fornitori/`, { params })
+}
+
+export function getFornitore(id) {
+  return api.get(`${BASE}/fornitori/${id}/`)
+}
+
+export function createFornitore(payload) {
+  return api.post(`${BASE}/fornitori/`, payload)
+}
+
+export function updateFornitore(fornitoreId, payload) {
+  return api.patch(`${BASE}/fornitori/${fornitoreId}/`, payload)
+}
+
+// --- Contatti ruolo ---
+
+export function listRuoloContatti(ruoloId, params = {}) {
+  return api.get(`${BASE}/ruoli/${ruoloId}/contatti/`, { params })
+}
+
+export function createRuoloContatto(ruoloId, payload) {
+  return api.post(`${BASE}/ruoli/${ruoloId}/contatti/`, payload)
+}
+
+export function updateRuoloContatto(ruoloId, contattoId, payload) {
+  return api.patch(`${BASE}/ruoli/${ruoloId}/contatti/${contattoId}/`, payload)
+}
+
+export function deleteRuoloContatto(ruoloId, contattoId) {
+  return api.delete(`${BASE}/ruoli/${ruoloId}/contatti/${contattoId}/`)
+}
+
+// --- Conti bancari ruolo ---
+
+export function listRuoloContiBancari(ruoloId, params = {}) {
+  return api.get(`${BASE}/ruoli/${ruoloId}/conti-bancari/`, { params })
+}
+
+export function createRuoloContoBancario(ruoloId, payload) {
+  return api.post(`${BASE}/ruoli/${ruoloId}/conti-bancari/`, payload)
+}
+
+export function updateRuoloContoBancario(ruoloId, cbId, payload) {
+  return api.patch(`${BASE}/ruoli/${ruoloId}/conti-bancari/${cbId}/`, payload)
+}
+
+export function deleteRuoloContoBancario(ruoloId, cbId) {
+  return api.delete(`${BASE}/ruoli/${ruoloId}/conti-bancari/${cbId}/`)
+}
+
+// --- Indirizzi ruolo ---
+
+export function listRuoloIndirizzi(ruoloId, params = {}) {
+  return api.get(`${BASE}/ruoli/${ruoloId}/indirizzi/`, { params })
+}
+
+export function createRuoloIndirizzo(ruoloId, payload) {
+  return api.post(`${BASE}/ruoli/${ruoloId}/indirizzi/`, payload)
+}
+
+export function updateRuoloIndirizzo(ruoloId, indirizzoId, payload) {
+  return api.patch(`${BASE}/ruoli/${ruoloId}/indirizzi/${indirizzoId}/`, payload)
+}
+
+export function deleteRuoloIndirizzo(ruoloId, indirizzoId) {
+  return api.delete(`${BASE}/ruoli/${ruoloId}/indirizzi/${indirizzoId}/`)
+}
+
 // --- Ruoli config resolver ---
 
 export function getConfigResolver(tipoRuoloCodice) {

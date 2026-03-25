@@ -1,0 +1,303 @@
+# API Fornitori (Anagrafiche)
+
+## Scopo
+
+Endpoint REST per la gestione dei fornitori. Il fornitore e' un ruolo specializzato
+del soggetto base (pattern `soggetti → soggetti_ruoli → fornitori`, relazione 1:1
+via `soggetto_ruolo_id`).
+
+## Contesto
+
+Tutti gli endpoint risiedono sotto `/api/v1/anagrafiche/fornitori/`.
+L'autenticazione avviene tramite token JWT (`Authorization: Bearer <token>`).
+Le risposte seguono l'envelope standard `{"data": ...}`.
+La view usa `DomainAPIView` con `area_funzionale = "anagrafiche"`.
+
+## Base URL
+
+```
+/api/v1/anagrafiche/fornitori/
+```
+
+## Dipendenze DB
+
+| Oggetto | Tipo | Ruolo |
+| --- | --- | --- |
+| `anagrafiche.fornitori` | Tabella | Tabella master fornitore |
+| `anagrafiche.vw_fornitori_dettaglio` | Vista | Source per lista/search (join soggetto + config) |
+| `config.stati_fornitore` | Tabella | Stati operativi (VE, AT, SO, CE, BL) |
+| `script.fn_get_or_create_soggetto_ruolo` | Funzione | Crea ruolo FO se non esiste |
+| `config.sistema_codici` + `script.fn_generate_codice` | Funzione | Auto-generazione codice fornitore |
+| `anagrafiche.trgfn_soggetti_ruoli_guard_indirizzi_required` | Trigger | Verifica indirizzi obbligatori su assegnazione ruolo |
+
+---
+
+## 1. Lista fornitori
+
+Restituisce l'elenco paginato dei fornitori con ricerca full-text e filtri.
+
+| | |
+|---|---|
+| **Metodo** | `GET` |
+| **URL** | `/api/v1/anagrafiche/fornitori/` |
+| **Throttling** | `is_search_endpoint = True` |
+
+### Parametri query
+
+| Parametro | Tipo | Obbligatorio | Descrizione |
+| --- | --- | --- | --- |
+| `search` | string | No | Ricerca su codice, ragione_sociale, P.IVA, codice_fiscale (ILIKE) |
+| `stato_fornitore_id` | int | No | Filtra per stato operativo (FK `config.stati_fornitore`) |
+| `attivo` | bool | No | Filtra per flag attivo (`true`/`false`). Se omesso: nessun filtro |
+| `limit` | int | No | Risultati per pagina (default: 25, max: 200) |
+| `offset` | int | No | Offset per paginazione |
+| `order_by` | string | No | Campo di ordinamento (default: `ragione_sociale_completa`) |
+| `order_dir` | string | No | Direzione: `asc` o `desc` |
+
+**Colonne ordinabili:** `codice`, `ragione_sociale_completa`, `codice_fiscale`,
+`partita_iva`, `stato_descrizione`, `attivo`, `modalita_pagamento_desc`, `data_insert`.
+
+### Risposta (200)
+
+```json
+{
+  "data": {
+    "count": 42,
+    "page": 1,
+    "page_size": 25,
+    "total_pages": 2,
+    "results": [
+      {
+        "id": 1,
+        "codice": "FO-000001",
+        "attivo": true,
+        "stato_codice": "AT",
+        "stato_descrizione": "Attivo",
+        "blocca_ordini": false,
+        "soggetto_id": "a1b2c3d4-...",
+        "ragione_sociale_completa": "Acme Srl",
+        "codice_fiscale": "01234567890",
+        "partita_iva": "01234567890",
+        "valuta_iso": "EUR",
+        "modalita_pagamento_codice": "BB",
+        "modalita_pagamento_desc": "Bonifico Bancario",
+        "termine_pagamento_codice": "30GG",
+        "giorni_pagamento": 30,
+        "fine_mese": true,
+        "split_payment": false,
+        "ritenuta_acconto": false,
+        "regime_fiscale": "RF01",
+        "rating": 80,
+        "qualifica_scadenza": null,
+        "canale_fe": "0000000",
+        "pec_email": "acme@pec.it",
+        "data_insert": "2026-01-15T10:30:00+01:00",
+        "data_update": "2026-03-20T14:00:00+01:00"
+      }
+    ]
+  },
+  "meta": { "request_id": "..." }
+}
+```
+
+---
+
+## 2. Crea fornitore
+
+Crea un fornitore in transazione atomica: assegna il ruolo FO al soggetto
+(get or create) e inserisce il record fornitore con stato iniziale `VE` (In verifica).
+
+| | |
+|---|---|
+| **Metodo** | `POST` |
+| **URL** | `/api/v1/anagrafiche/fornitori/` |
+| **Body** | JSON |
+| **Handler** | `handle_post_json` |
+
+### Prerequisiti
+
+- Il soggetto deve esistere
+- Il soggetto deve avere tutti gli indirizzi obbligatori definiti nella matrice
+  `config.tipi_ruolo_tipi_indirizzo` per il tipo ruolo FORNITORE (verificato
+  dal trigger DB `trgfn_soggetti_ruoli_guard_indirizzi_required`)
+
+### Parametri body
+
+| Campo | Tipo | Obbligatorio | Descrizione |
+| --- | --- | --- | --- |
+| `soggetto_id` | UUID | **Si** | ID del soggetto base |
+| `valuta_id` | int | No | FK `config.valute` |
+| `modalita_pagamento_id` | int | No | FK `config.modalita_pagamento` |
+| `termine_pagamento_id` | int | No | FK `config.termini_pagamento` |
+| `giorni_pagamento` | int | No | Giorni pagamento (override manuale) |
+| `fine_mese` | bool | No | Scadenza a fine mese |
+| `split_payment` | bool | No | Split payment attivo |
+| `ritenuta_acconto` | bool | No | Soggetto a ritenuta d'acconto |
+| `ritenuta_aliquota` | float | No | Aliquota ritenuta (obbligatoria se `ritenuta_acconto = true`, validato da trigger DB) |
+| `regime_fiscale` | string | No | Codice regime fiscale SDI (es. `RF01`) |
+| `bollo_esente` | bool | No | Esente da bollo |
+| `canale_fe` | string | No | Codice destinatario SDI (7 caratteri, normalizzato uppercase dal trigger) |
+| `pec_email` | string | No | PEC per fatturazione elettronica (normalizzata lowercase dal trigger) |
+| `rating` | int | No | Rating qualifica 0-100 |
+| `qualifica_scadenza` | date | No | Data scadenza qualifica (ISO 8601) |
+| `note` | string | No | Note libere |
+
+### Risposta (200)
+
+```json
+{
+  "data": {
+    "id": 1,
+    "soggetto_ruolo_id": 50
+  },
+  "meta": { "request_id": "..." }
+}
+```
+
+### Errori
+
+| Codice | HTTP | Causa |
+| --- | --- | --- |
+| `E_ANAG_VALIDAZIONE` | 400 | `soggetto_id` mancante o non valido |
+| `E_ANAG_DUPLICATO` | 409 | Il soggetto ha gia' il ruolo FORNITORE |
+| `E_INDIRIZZO_OBBLIGATORIO_MANCANTE` | 400 | Indirizzi obbligatori mancanti per il ruolo FO (trigger DB) |
+
+---
+
+## 3. Dettaglio fornitore
+
+Restituisce il dettaglio completo di un fornitore con dati soggetto e decodifiche FK.
+
+| | |
+|---|---|
+| **Metodo** | `GET` |
+| **URL** | `/api/v1/anagrafiche/fornitori/{fornitore_id}/` |
+
+### Risposta (200)
+
+```json
+{
+  "data": {
+    "id": 1,
+    "uid": "019bac81-0000-...",
+    "codice": "FO-000001",
+    "attivo": true,
+    "soggetto_ruolo_id": 50,
+    "stato_fornitore_id": 2,
+    "soggetto_id": "a1b2c3d4-...",
+    "ragione_sociale_completa": "Acme Srl",
+    "codice_fiscale": "01234567890",
+    "partita_iva": "01234567890",
+    "valuta_id": 1,
+    "valuta_iso": "EUR",
+    "modalita_pagamento_id": 3,
+    "modalita_pagamento_descrizione": "Bonifico Bancario",
+    "termine_pagamento_id": null,
+    "termine_pagamento_descrizione": null,
+    "giorni_pagamento": 30,
+    "fine_mese": true,
+    "split_payment": false,
+    "ritenuta_acconto": false,
+    "ritenuta_aliquota": null,
+    "regime_fiscale": "RF01",
+    "bollo_esente": false,
+    "canale_fe": "0000000",
+    "pec_email": "acme@pec.it",
+    "rating": 80,
+    "qualifica_scadenza": null,
+    "stato_codice": "AT",
+    "stato_descrizione": "Attivo",
+    "blocca_ordini": false,
+    "note": null,
+    "data_insert": "2026-01-15T10:30:00+01:00",
+    "data_update": "2026-03-20T14:00:00+01:00"
+  },
+  "meta": { "request_id": "..." }
+}
+```
+
+### Errori
+
+| Codice | HTTP | Causa |
+| --- | --- | --- |
+| `E_ANAG_NOT_FOUND` | 404 | Fornitore con id indicato non trovato |
+
+---
+
+## 4. Aggiorna fornitore
+
+Aggiornamento parziale (delta) dei campi editabili del fornitore.
+Solo i campi inclusi nel payload vengono modificati.
+
+| | |
+|---|---|
+| **Metodo** | `PATCH` |
+| **URL** | `/api/v1/anagrafiche/fornitori/{fornitore_id}/` |
+| **Body** | JSON (usa `request.data` DRF, non `handle_post_json`) |
+
+### Campi editabili
+
+| Campo | Tipo | Note |
+| --- | --- | --- |
+| `stato_fornitore_id` | int | FK `config.stati_fornitore` (trigger require_attivo) |
+| `attivo` | bool | Flag attivazione |
+| `valuta_id` | int | Nullable |
+| `modalita_pagamento_id` | int | Nullable |
+| `termine_pagamento_id` | int | Nullable (trigger require_attivo) |
+| `giorni_pagamento` | int | Nullable |
+| `fine_mese` | bool | |
+| `split_payment` | bool | |
+| `ritenuta_acconto` | bool | |
+| `ritenuta_aliquota` | float | Nullable (obbligatoria se ritenuta_acconto, trigger DB) |
+| `regime_fiscale` | string | Nullable |
+| `bollo_esente` | bool | |
+| `canale_fe` | string | Nullable, 7 char, uppercase (trigger normalize) |
+| `pec_email` | string | Nullable, lowercase (trigger normalize) |
+| `rating` | int | Nullable, 0-100 (check DB) |
+| `qualifica_scadenza` | date | Nullable |
+| `note` | string | Nullable |
+
+**Normalizzazione:** le stringhe vuote nei campi nullable vengono convertite a `NULL`.
+
+### Risposta (200)
+
+```json
+{
+  "data": { "updated": true },
+  "meta": { "request_id": "..." }
+}
+```
+
+### Errori
+
+| Codice | HTTP | Causa |
+| --- | --- | --- |
+| `E_ANAG_NOT_FOUND` | 404 | Fornitore non trovato o nessun campo modificato |
+
+---
+
+## Regole di business (DB-first)
+
+Le seguenti regole sono gestite dal database tramite trigger e vincoli, non dal
+backend Python:
+
+| Regola | Oggetto DB |
+| --- | --- |
+| Validazione ruolo FO | `trgfn_fornitori_guard_ruolo_fornitore` |
+| Normalizzazione canale_fe (uppercase) e pec_email (lowercase) | `trgfn_fornitori_guard_normalize` |
+| Coerenza ritenuta (aliquota obbligatoria se ritenuta_acconto = true) | `trgfn_fornitori_guard_normalize` |
+| Blocco modifica codice | `script.trgfn_lock_columns('codice')` |
+| Blocco delete senza GUC | `script.trgfn_delete_block_by_guc('zeroerp.maintenance_ruoli_delete')` |
+| Require attivo su stato_fornitore_id | `dbops.trgfn_child_requires_active_parent` |
+| Require attivo su termine_pagamento_id | `dbops.trgfn_child_requires_active_parent` |
+| Indirizzi obbligatori per ruolo FO | `trgfn_soggetti_ruoli_guard_indirizzi_required` |
+| Rating range 0-100 | `chk_fornitori_rating` |
+| Ritenuta aliquota range | `chk_fornitori_ritenuta_aliquota` |
+| Canale FE lunghezza 7 | `chk_fornitori_canale_fe_len` |
+| Auto-generazione codice | `config.sistema_codici` + `script.fn_generate_codice` |
+| Storicizzazione | `script.trgfn_storico_generic('fornitori_id')` |
+| Audit timestamp/user | `script.trgfn_audit_data_user_generic` |
+
+## Note di migrazione
+
+Nessuna — gli endpoint sono nuovi, non sostituiscono API esistenti.

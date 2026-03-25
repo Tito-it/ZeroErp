@@ -45,6 +45,7 @@
 - [stati_doc_ordini](tabelle/stati_doc_ordini.md)
 - [stati_doc_preventivi](tabelle/stati_doc_preventivi.md)
 - [stati_flussi_pratiche](tabelle/stati_flussi_pratiche.md) — La tabella `config.stati_flussi_pratiche` definisce i possibili **stati di un flusso operativo** all'interno di una pratica. Ogni flusso ha esattamente uno stato che ne indica l'avanzamento nel workflow.
+- [stati_fornitore](tabelle/stati_fornitore.md)
 - [stati_pdp](tabelle/stati_pdp.md) — * **Dominio degli stati tecnici del PDP**   Fornisce il catalogo centralizzato degli stati tecnici ammessi per i punti di prelievo, utilizzato da `anagrafiche.pdp.stato_pdp_id`.
 - [stati_pratiche](tabelle/stati_pratiche.md) — La tabella `config.stati_pratiche` definisce i possibili **stati del ciclo di vita** di una pratica. Ogni pratica ha esattamente uno stato, che ne governa le transizioni e le operazioni consentite.
 - [stati_sdi](tabelle/stati_sdi.md) — (latest review 23-01-2026) `config.stati_sdi` definisce gli **stati di invio SDI** (Italia) utilizzati per tracciare l’esito di trasmissione dei documenti fiscali.

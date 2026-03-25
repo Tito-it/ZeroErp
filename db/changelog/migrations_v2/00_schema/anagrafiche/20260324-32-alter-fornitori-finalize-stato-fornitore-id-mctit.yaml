@@ -1,0 +1,53 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Finalizza migrazione stato fornitori:
+# - stato_fornitore_id → NOT NULL con default (VE = in verifica)
+# - drop colonna stato_operativo (VARCHAR libero, sostituita)
+# - ricrea indice ix_fornitori_attivo_stato su (attivo, stato_fornitore_id)
+# Nota: tabella vuota in sviluppo, nessuna migrazione dati necessaria.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: /migrations_v2/00_schema/anagrafiche/20260324-32-alter-fornitori-finalize-stato-fornitore-id-mctit.yaml
+
+  - changeSet:
+      id: 20260324-32-alter-fornitori-finalize-stato-fornitore-id
+      author: mctit
+      comment: >
+        Tabella vuota: nessuna migrazione dati necessaria.
+        1) Rende stato_fornitore_id NOT NULL (no default: valorizzato da applicazione/trigger).
+        2) Droppa colonna stato_operativo (sostituita dalla FK).
+        3) Droppa indice ix_fornitori_attivo_stato (usa stato_operativo).
+        4) Ricrea indice su (attivo, stato_fornitore_id).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- 1) NOT NULL (nessun default: l'applicazione/trigger valorizza sempre)
+              ALTER TABLE anagrafiche.fornitori
+                ALTER COLUMN stato_fornitore_id SET NOT NULL;
+
+              -- 3) Drop colonna legacy
+              ALTER TABLE anagrafiche.fornitori
+                DROP COLUMN IF EXISTS stato_operativo;
+
+              -- 4) Drop indice vecchio (riferiva stato_operativo)
+              DROP INDEX IF EXISTS anagrafiche.ix_fornitori_attivo_stato;
+
+              -- 5) Ricrea indice su (attivo, stato_fornitore_id)
+              CREATE INDEX ix_fornitori_attivo_stato
+                ON anagrafiche.fornitori (attivo, stato_fornitore_id);
+
+      rollback:
+        - sql:
+            sql: |
+              DROP INDEX IF EXISTS anagrafiche.ix_fornitori_attivo_stato;
+              ALTER TABLE anagrafiche.fornitori
+                ALTER COLUMN stato_fornitore_id DROP NOT NULL;
+              ALTER TABLE anagrafiche.fornitori
+                ADD COLUMN IF NOT EXISTS stato_operativo character varying;
+              CREATE INDEX ix_fornitori_attivo_stato
+                ON anagrafiche.fornitori (attivo, stato_operativo);

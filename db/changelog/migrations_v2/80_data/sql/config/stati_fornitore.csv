@@ -1,0 +1,6 @@
+id,codice,codice_interno,descrizione,descrizione_breve,attivo,blocca_ordini,data_insert,user_insert,data_update,user_update
+1,VE,VE,In verifica / valutazione,In verifica,t,t,2026-03-24 00:00:00+01,SEED,2026-03-24 00:00:00+01,SEED
+2,AT,AT,Attivo / Qualificato,Attivo,t,f,2026-03-24 00:00:00+01,SEED,2026-03-24 00:00:00+01,SEED
+3,SO,SO,Sospeso,Sospeso,t,t,2026-03-24 00:00:00+01,SEED,2026-03-24 00:00:00+01,SEED
+4,CE,CE,Cessato,Cessato,t,t,2026-03-24 00:00:00+01,SEED,2026-03-24 00:00:00+01,SEED
+5,BL,BL,Blacklist,Blacklist,t,t,2026-03-24 00:00:00+01,SEED,2026-03-24 00:00:00+01,SEED

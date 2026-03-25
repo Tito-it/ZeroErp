@@ -1,6 +1,6 @@
 # Guida – Gestione dei Contatti
 
-> (latest review 04-03-26)
+> (latest review 25-03-26)
 >
 > Destinatari: sviluppatori database, backend, integratori e analisti funzionali
 >
@@ -22,9 +22,9 @@ Il modello centralizza tutti i contatti in un'unica tabella (`anagrafiche.contat
 
 * **Soggetto**: il contatto generico della persona o azienda
 * **Ruolo**: il contatto specifico per un ruolo del soggetto (es. il referente del cliente)
-* **Utility**: il contatto per un servizio specifico (es. il referente per la fornitura gas)
+* **Istanza**: il contatto per una specifica istanza di servizio (es. il referente per il contratto GAS di Corridonia)
 
-Questa gerarchia permette al sistema di risolvere automaticamente il contatto piu appropriato: se un processo cerca il referente del cliente per un servizio e non lo trova, ricade sul referente del cliente, e poi su quello generico del soggetto.
+Questa gerarchia permette al sistema di risolvere automaticamente il contatto piu appropriato: se un processo cerca il referente del cliente per un'istanza e non lo trova, ricade sul referente del cliente, e poi su quello generico del soggetto.
 
 **Cosa troverai in questa guida:**
 
@@ -48,7 +48,7 @@ Questa gerarchia permette al sistema di risolvere automaticamente il contatto pi
 * [config.tipi_contatti](/dbzero/config/tabelle/tipi_contatti) — categorie di contatto (opzionale)
 * [config.unita_organizzative](/dbzero/config/tabelle/unita_organizzative) — reparti/uffici (opzionale, gerarchico)
 * [config.titoli_cortesia](/dbzero/config/tabelle/titoli_cortesia) — titoli di cortesia (Sig., Dott., ecc.)
-* [config.utilities](/dbzero/config/tabelle/utilities) — servizi/utility
+* [anagrafiche.istanze_utilities](/dbzero/anagrafiche/tabelle/istanze_utilities) — istanze di servizio
 
 ---
 
@@ -65,14 +65,14 @@ soggetti (chi sei)
     │       └── contatti (contesto: ruolo)
     │               contatti specifici per il ruolo
     │
-    └── utilities (quale servizio)
+    └── istanze_utilities (quale istanza di servizio)
             │
-            └── contatti (contesto: utility)
-                    contatti specifici per il servizio
+            └── contatti (contesto: istanza)
+                    contatti specifici per l'istanza di servizio
 ```
 
 * **Contatto** = un punto di comunicazione con un nome, email, telefono, cellulare, PEC
-* **Contesto** = il livello a cui il contatto e associato (soggetto, ruolo o utility)
+* **Contesto** = il livello a cui il contatto e associato (soggetto, ruolo o istanza)
 * **Default** = un solo contatto predefinito per ogni contesto, gestito automaticamente
 
 ---
@@ -92,14 +92,17 @@ Ogni contatto e collegato a:
 
 * **Un soggetto** (`soggetto_id` — obbligatorio): l'identita anagrafica
 * **Un ruolo** (`soggetto_ruolo_id` — opzionale): il ruolo specifico del soggetto
-* **Una utility** (`utility_id` — opzionale): il servizio specifico
+* **Un'istanza** (`istanza_utility_id` — opzionale, `bigint`, FK verso `anagrafiche.istanze_utilities`): la specifica istanza di servizio
 
 La combinazione di questi tre campi determina il **contesto** del contatto.
 
 Da un punto di vista tecnico:
 
 * `id` (BIGINT) e la chiave primaria
-* Il vincolo UNIQUE `uq_contatti_multilevel` su `(soggetto_id, soggetto_ruolo_id, utility_id, tipo_contatto_id)` impedisce contatti duplicati per la stessa combinazione
+* 3 partial unique index per i 3 livelli di contesto:
+  * `uq_contatti_soggetto_tipo` — soggetto puro (ruolo NULL, istanza NULL)
+  * `uq_contatti_ruolo_tipo_no_istanza` — ruolo generico (istanza NULL)
+  * `uq_contatti_ruolo_istanza_tipo` — ruolo + istanza
 * La FK su `soggetto_id` e ON DELETE CASCADE: cancellando il soggetto si cancellano tutti i suoi contatti
 * La FK su `soggetto_ruolo_id` e ON DELETE CASCADE: cancellando il ruolo si cancellano i contatti associati
 
@@ -109,11 +112,11 @@ Da un punto di vista tecnico:
 
 Il contesto determina a quale livello il contatto e operativo. Non viene specificato esplicitamente dall'utente: il trigger lo calcola automaticamente in base ai campi valorizzati.
 
-| Contesto   | Significato                                 | Condizione                                        |
-| ---------- | ------------------------------------------- | ------------------------------------------------- |
-| `soggetto` | Contatto generale del soggetto              | `soggetto_ruolo_id` e `utility_id` entrambi NULL  |
-| `ruolo`    | Contatto specifico di un ruolo              | `soggetto_ruolo_id` valorizzato                   |
-| `utility`  | Contatto per un servizio specifico          | `utility_id` valorizzato                          |
+| Contesto   | Significato                                 | Condizione                                                |
+| ---------- | ------------------------------------------- | --------------------------------------------------------- |
+| `soggetto` | Contatto generale del soggetto              | `soggetto_ruolo_id` e `istanza_utility_id` entrambi NULL  |
+| `ruolo`    | Contatto specifico di un ruolo              | `soggetto_ruolo_id` valorizzato, `istanza_utility_id` NULL |
+| `istanza`  | Contatto per un'istanza di servizio         | `soggetto_ruolo_id` e `istanza_utility_id` valorizzati    |
 
 L'esistenza di contatti a piu livelli permette al sistema di risolvere **fallback intelligenti**: se non esiste un contatto specifico per il ruolo, si usa quello del soggetto.
 
@@ -163,14 +166,14 @@ In ogni contesto puo esistere **un solo contatto default**. Il sistema gestisce 
 
 Il trigger:
 
-1. **Determina il contesto** in base ai campi valorizzati (utility → ruolo → soggetto)
+1. **Determina il contesto** in base ai campi valorizzati (istanza → ruolo → soggetto)
 2. **Se il contatto e marcato default** (`is_default = TRUE`): rimuove il flag dagli altri contatti dello stesso soggetto con lo stesso contesto
 3. **Se nessun default esiste nel contesto**: promuove automaticamente il contatto corrente a default
 4. **Sincronizza il soggetto**: se il contesto e `soggetto`, aggiorna `anagrafiche.soggetti.default_contatto_id`
 
 In pratica: il primo contatto inserito per un soggetto diventa automaticamente il default. Se un secondo contatto viene marcato come default, il primo perde il flag. Non serve gestire questa logica manualmente.
 
-I contesti sono **indipendenti**: un soggetto puo avere un default a livello soggetto, un default diverso per il ruolo CLIENTE, e un altro per una utility. Non interferiscono tra loro.
+I contesti sono **indipendenti**: un soggetto puo avere un default a livello soggetto, un default diverso per il ruolo CLIENTE, e un altro per un'istanza di servizio. Non interferiscono tra loro.
 
 Da un punto di vista tecnico, la logica del trigger:
 
@@ -180,8 +183,8 @@ NEW.default_context := NULL;
 
 -- 2. Determinazione contesto
 ctx := CASE
-  WHEN NEW.utility_id        IS NOT NULL THEN 'utility'
-  WHEN NEW.soggetto_ruolo_id IS NOT NULL THEN 'ruolo'
+  WHEN NEW.istanza_utility_id IS NOT NULL THEN 'istanza'
+  WHEN NEW.soggetto_ruolo_id  IS NOT NULL THEN 'ruolo'
   ELSE 'soggetto'
 END;
 
@@ -217,10 +220,9 @@ Se la verifica fallisce, la transazione viene rifiutata con errore `E_SOGGETTO_N
 
 Restituisce il contatto **piu rilevante per ogni tipo contatto** (`tipo_contatto_id`), applicando una prioritizzazione a cascata:
 
-1. soggetto + ruolo + utility (massima specificita)
-2. soggetto + ruolo
-3. soggetto + utility
-4. soggetto (fallback)
+1. soggetto + ruolo + istanza (massima specificita)
+2. soggetto + ruolo (generico)
+3. soggetto (fallback)
 
 A parita di priorita, preferisce il contatto marcato `is_default = TRUE`.
 
@@ -228,7 +230,7 @@ A parita di priorita, preferisce il contatto marcato `is_default = TRUE`.
 | --- | --- | :---: | --- |
 | `p_soggetto_id` | UUID | si | Il soggetto di riferimento |
 | `p_soggetto_ruolo_id` | BIGINT | no | Filtra per ruolo |
-| `p_utility_id` | INTEGER | no | Filtra per utility |
+| `p_istanza_utility_id` | BIGINT | no | Filtra per istanza di servizio |
 | `p_tipo_contatto_id` | INTEGER | no | Filtra per tipo contatto |
 | `p_unita_organizzativa_id` | INTEGER | no | Filtra per unita organizzativa |
 
@@ -246,11 +248,11 @@ E la funzione consigliata quando serve **un singolo riferimento** (es. il contat
 
 ### R1 — Un contatto per combinazione
 
-Il vincolo UNIQUE `uq_contatti_multilevel` su `(soggetto_id, soggetto_ruolo_id, utility_id, tipo_contatto_id)` garantisce che non possano esistere due contatti identici per la stessa combinazione di soggetto, ruolo, utility e tipo.
+I 3 partial unique index (`uq_contatti_soggetto_tipo`, `uq_contatti_ruolo_tipo_no_istanza`, `uq_contatti_ruolo_istanza_tipo`) garantiscono che non possano esistere due contatti identici per la stessa combinazione di soggetto, ruolo, istanza e tipo nei rispettivi livelli di contesto.
 
 ### R2 — Un solo default per contesto
 
-Il trigger `trgfn_contatti_set_default_contatto` garantisce che in ogni contesto (soggetto, ruolo, utility) esista al piu un contatto con `is_default = TRUE`. Il primo contatto inserito in un contesto diventa default automaticamente.
+Il trigger `trgfn_contatti_set_default_contatto` garantisce che in ogni contesto (soggetto, ruolo, istanza) esista al piu un contatto con `is_default = TRUE`. Il primo contatto inserito in un contesto diventa default automaticamente.
 
 ### R3 — Integrita soggetto-contatti
 
@@ -264,7 +266,7 @@ I trigger `trgfn_child_requires_active_parent` verificano che il soggetto refere
 
 ### R5 — Fallback nella risoluzione
 
-La funzione `fn_get_contatti` applica una catena di fallback automatica: utility → ruolo → soggetto. Il contatto del soggetto ha sempre priorita bassa come fallback, mai come override di un contatto piu specifico.
+La funzione `fn_get_contatti` applica una catena di fallback automatica a 3 livelli: istanza → ruolo → soggetto. Il contatto del soggetto ha sempre priorita bassa come fallback, mai come override di un contatto piu specifico.
 
 ---
 
@@ -386,20 +388,20 @@ erDiagram
         bigint id PK
         uuid soggetto_id FK
         bigint soggetto_ruolo_id FK
-        integer utility_id FK
+        bigint istanza_utility_id FK
         varchar nominativo
         boolean is_default
         varchar default_context
     }
 
-    utilities {
-        integer id PK
+    istanze_utilities {
+        bigint id PK
     }
 
     soggetti ||--o{ contatti : "ha contatti"
     soggetti ||--o{ soggetti_ruoli : "ha ruoli"
     soggetti_ruoli ||--o{ contatti : "scoped by"
-    utilities ||--o{ contatti : "per utility"
+    istanze_utilities ||--o{ contatti : "per istanza"
     soggetti }o--o| contatti : "default_contatto"
 ```
 

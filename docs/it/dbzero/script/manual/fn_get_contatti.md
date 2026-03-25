@@ -9,7 +9,7 @@ Approfondimento tabelle:
 > [anagrafiche.contatti](/dbzero/anagrafiche/tabelle/contatti)
 > [config.tipi_contatti](/dbzero/config/tabelle/tipi_contatti)
 > [config.unita_organizzative](/dbzero/config/tabelle/unita_organizzative)
-> [config.utilities](/dbzero/config/tabelle/utilities)
+> [anagrafiche.istanze_utilities](/dbzero/anagrafiche/tabelle/istanze_utilities)
 >
 Approfondimento funzioni:
 >
@@ -17,23 +17,22 @@ Approfondimento funzioni:
 >
 [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)
 
-La funzione **`script.fn_get_contatti(p_soggetto_id UUID, p_soggetto_ruolo_id BIGINT DEFAULT NULL, p_utility_id INTEGER DEFAULT NULL, p_tipo_contatto_id INTEGER DEFAULT NULL, p_unita_organizzativa_id INTEGER DEFAULT NULL)`** restituisce **al più un contatto per ciascun `tipo_contatto_id`**, applicando una logica di priorità basata sul **contesto** (soggetto / ruolo / utility) e privilegiando, a parità di priorità, i contatti marcati come **`is_default = TRUE`**.
+La funzione **`script.fn_get_contatti(p_soggetto_id UUID, p_soggetto_ruolo_id BIGINT DEFAULT NULL, p_istanza_utility_id BIGINT DEFAULT NULL, p_tipo_contatto_id INTEGER DEFAULT NULL, p_unita_organizzativa_id INTEGER DEFAULT NULL)`** restituisce **al più un contatto per ciascun `tipo_contatto_id`**, applicando una logica di priorità basata sul **contesto** (soggetto / ruolo / istanza) e privilegiando, a parità di priorità, i contatti marcati come **`is_default = TRUE`**.
 
 È pensata come **punto di accesso generico** per il recupero dei contatti e come base per funzioni più specializzate (ad esempio `script.fn_get_contatto_default`).
 
 ---
 ### 🎯 Scopo Principale
-(latest review 03-12-25)
+(latest review 25-03-26)
 * **Selezione univoca per tipo**
   Per ogni `tipo_contatto_id` vengono restituiti **al più** un record, che rappresenta il contatto “migliore” in base al contesto richiesto.
 
 * **Gerarchia di contesti (priority)**
   I contatti vengono classificati secondo una gerarchia di priorità:
 
-  1. **soggetto + ruolo + utility**
-  2. **soggetto + ruolo**
-  3. **soggetto + utility**
-  4. **solo soggetto** (fallback generico sul soggetto)
+  1. **soggetto + ruolo + istanza**
+  2. **soggetto + ruolo** (generico)
+  3. **solo soggetto** (fallback generico sul soggetto)
 
   In questo modo, se esistono contatti specifici per ruolo/utility, vengono preferiti rispetto a quelli generici del soggetto.
 
@@ -54,7 +53,7 @@ La funzione **`script.fn_get_contatti(p_soggetto_id UUID, p_soggetto_ruolo_id BI
 | --------------------- | -------- | ------- | ------------ | ---------------------------------------------------------------------------------------------------------------------------------- |
 | `p_soggetto_id`       | `UUID`   | —       | ✅ Sì         | Identificativo del soggetto. Se `NULL`, viene generato un errore tramite `fn_log_and_raise_error`.                                 |
 | `p_soggetto_ruolo_id` | `BIGINT` | `NULL`  | ❌ No         | Se valorizzato, consente di privilegiare/filtrare i contatti legati a uno specifico ruolo del soggetto.                            |
-| `p_utility_id`        | `INT`    | `NULL`  | ❌ No         | Se valorizzato, consente di privilegiare/filtrare i contatti associati a una determinata utility/servizio.                         |
+| `p_istanza_utility_id` | `BIGINT` | `NULL`  | ❌ No         | Se valorizzato, consente di privilegiare/filtrare i contatti associati a una determinata istanza utility.                         |
 | `p_tipo_contatto_id`  | `INT`    | `NULL`  | ❌ No         | Se valorizzato, limita il risultato ai contatti di uno specifico `tipo_contatto`. |
 | `p_unita_organizzativa_id` | `INT` | `NULL` | ❌ No | Se valorizzato, privilegia/filtra i contatti legati a una unita organizzativa specifica. |
 
@@ -70,7 +69,7 @@ La funzione restituisce una **tabella** con le seguenti colonne:
 | `tipo_contatto_id`  | `INT`     | Riferimento a `config.tipi_contatti` (opzionale).                                                                       |
 | `soggetto_id`       | `UUID`    | Riferimento al soggetto (`anagrafiche.soggetti.id`).                                                                    |
 | `soggetto_ruolo_id` | `BIGINT`  | Eventuale riferimento al ruolo del soggetto (`anagrafiche.soggetti_ruoli.id`). Può essere `NULL` per contatti generici. |
-| `utility_id`        | `INT`     | Eventuale riferimento a una utility/servizio (`config.utilities.id`). Può essere `NULL`.                                |
+| `istanza_utility_id` | `BIGINT`  | Eventuale riferimento a una istanza utility (`anagrafiche.istanze_utilities.id`). Può essere `NULL`.                    |
 | `nominativo`        | `VARCHAR` | Nominativo del contatto.                                                                                                |
 | `email`             | `VARCHAR` | Indirizzo email.                                                                                                        |
 | `telefono`          | `VARCHAR` | Numero di telefono fisso.                                                                                               |
@@ -78,7 +77,7 @@ La funzione restituisce una **tabella** con le seguenti colonne:
 | `pec`               | `VARCHAR` | Indirizzo PEC.                                                                                                          |
 | `note`              | `TEXT`    | Note libere sul contatto.                                                                                               |
 | `is_default`        | `BOOLEAN` | Indica se il contatto è marcato come default all’interno del proprio contesto.                                          |
-| `default_context`   | `VARCHAR` | Contesto in cui il contatto è default (`'soggetto'`, `'ruolo'`, `'utility'`).                                           |
+| `default_context`   | `VARCHAR` | Contesto in cui il contatto è default (`'soggetto'`, `'ruolo'`, `'istanza'`).                                           |
 
 Per ogni `tipo_contatto_id`, è restituita **al più una riga** (la “migliore” in base a contesto e default).
 
@@ -105,7 +104,7 @@ Per ogni `tipo_contatto_id`, è restituita **al più una riga** (la “migliore�
 
      ```sql
      AND (c.soggetto_ruolo_id IS NULL OR c.soggetto_ruolo_id IS NOT DISTINCT FROM p_soggetto_ruolo_id)
-     AND (c.utility_id        IS NULL OR c.utility_id        IS NOT DISTINCT FROM p_utility_id)
+     AND (c.istanza_utility_id IS NULL OR c.istanza_utility_id IS NOT DISTINCT FROM p_istanza_utility_id)
      AND (p_tipo_contatto_id IS NULL OR c.tipo_contatto_id  = p_tipo_contatto_id)
      AND (c.unita_organizzativa_id IS NULL OR c.unita_organizzativa_id IS NOT DISTINCT FROM p_unita_organizzativa_id)
      ```
@@ -115,10 +114,9 @@ Per ogni `tipo_contatto_id`, è restituita **al più una riga** (la “migliore�
      ```sql
      CASE
        WHEN c.soggetto_ruolo_id IS NOT DISTINCT FROM p_soggetto_ruolo_id
-        AND c.utility_id        IS NOT DISTINCT FROM p_utility_id THEN 1  -- ruolo + utility
+        AND c.istanza_utility_id IS NOT DISTINCT FROM p_istanza_utility_id THEN 1  -- ruolo + istanza
        WHEN c.soggetto_ruolo_id IS NOT DISTINCT FROM p_soggetto_ruolo_id THEN 2  -- solo ruolo
-       WHEN c.utility_id        IS NOT DISTINCT FROM p_utility_id        THEN 3  -- solo utility
-       ELSE 4  -- solo soggetto
+       ELSE 3  -- solo soggetto
      END AS priority
      ```
 
@@ -159,7 +157,7 @@ SELECT *
 FROM script.fn_get_contatti(
   p_soggetto_id       => '123e4567-e89b-12d3-a456-426614174000',
   p_soggetto_ruolo_id => NULL,
-  p_utility_id        => NULL,
+  p_istanza_utility_id => NULL,
   p_tipo_contatto_id  => NULL
 );
 
@@ -168,7 +166,7 @@ SELECT *
 FROM script.fn_get_contatti(
   p_soggetto_id       => '123e4567-e89b-12d3-a456-426614174000',
   p_soggetto_ruolo_id => 10,   -- id in anagrafiche.soggetti_ruoli
-  p_utility_id        => NULL,
+  p_istanza_utility_id => NULL,
   p_tipo_contatto_id  => NULL
 );
 
@@ -177,7 +175,7 @@ SELECT *
 FROM script.fn_get_contatti(
   p_soggetto_id       => '123e4567-e89b-12d3-a456-426614174000',
   p_soggetto_ruolo_id => NULL,
-  p_utility_id        => NULL,
+  p_istanza_utility_id => NULL,
   p_tipo_contatto_id  => 1     -- id di config.tipi_contatti
 );
 ```
@@ -187,7 +185,7 @@ FROM script.fn_get_contatti(
 ### Vantaggi Operativi
 
 * **Centralizzazione della logica**: la selezione dei contatti segue regole chiare e riutilizzabili, evitando duplicazioni di `CASE WHEN` e join complesse nelle query applicative.
-* **Chiarezza del contesto**: la colonna `default_context` permette di capire rapidamente se un contatto è default per soggetto, ruolo o utility.
+* **Chiarezza del contesto**: la colonna `default_context` permette di capire rapidamente se un contatto è default per soggetto, ruolo o istanza.
 * **Estendibilità**: ulteriori funzioni (es. `script.fn_get_contatto_default`) possono basarsi su `fn_get_contatti`, limitandosi a filtrare ulteriormente i risultati.
 * **Compatibilità evolutiva**: l’uso di una funzione dedicata permette di cambiare la strategia di priorità o di aggiungere nuovi contesti senza impattare direttamente le query applicative.
 

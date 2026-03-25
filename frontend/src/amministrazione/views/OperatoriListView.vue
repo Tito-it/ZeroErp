@@ -1,30 +1,33 @@
 <script setup>
 // Scopo: pagina lista operatori con DataTable lazy, filtri e paginazione.
-// Click riga -> apre UtenteDrawer in modalita' modifica.
-// Button Nuovo -> apre UtenteDrawer in modalita' crea.
+// Click riga -> apre OperatoreDrawer in modalita' modifica.
+// Button Nuovo -> apre OperatoreDrawer in modalita' crea.
 import { ref, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useOperatoriStore } from '../stores/operatori'
 import { useSearchTable } from '../../core/composables/useSearchTable'
 import { useTabFreshness } from '../../core/composables/useTabFreshness'
 import { useDrawerState } from '../../core/composables/useDrawerState'
+import { useReadonlyMode } from '../../core/composables/useReadonlyMode'
 import { useLookup } from '../../core/composables/useLookup'
 import { listUnitaOrganizzative } from '../api/amministrazione'
-import { RUOLO_SISTEMA, buildRuoloOptions } from '../constants'
-import UtenteDrawer from '../components/UtenteDrawer.vue'
+import { RUOLO_SISTEMA, buildRuoloOptions, getRuoloSeverity } from '../constants'
+import OperatoreDrawer from '../components/OperatoreDrawer.vue'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
 import NewButton from '../../core/components/NewButton.vue'
+import Button from 'primevue/button'
 import Badge from 'primevue/badge'
 import { displayDate } from '../../core/utils/date'
 
 const { t } = useI18n()
 const store = useOperatoriStore()
 const unitaOrg = useLookup(listUnitaOrganizzative, { immediate: true })
-const { searchText, onPage, onSort, applyFilters, paginatorProps } = useSearchTable(store)
+const { searchText, onPage, onSort, applyFilters, reload, paginatorProps } = useSearchTable(store)
 const drawer = useDrawerState()
+useReadonlyMode('amm_software')
 
 useTabFreshness(store, 'operatore')
 
@@ -51,14 +54,11 @@ function applyExtraFilters() {
 }
 
 function onDrawerSaved() {
+  drawer.close()
   store.fetchList()
 }
 
-function ruoloBadgeSeverity(ruolo) {
-  if (ruolo === RUOLO_SISTEMA.ADMIN) return 'warn'
-  if (ruolo === RUOLO_SISTEMA.DISABILITATO) return 'danger'
-  return 'info'
-}
+const ruoloBadgeSeverity = getRuoloSeverity
 
 function activeBadgeSeverity(active) {
   return active ? 'success' : 'danger'
@@ -98,7 +98,10 @@ function activeBadgeSeverity(active) {
           @change="applyExtraFilters"
         />
       </div>
-      <NewButton :tooltip="t('amm.nuovo_operatore')" @click="drawer.openCreate" />
+      <div class="app-page-actions">
+        <Button icon="pi pi-refresh" text class="app-reload-btn" v-tooltip.bottom="t('common.reload_list')" @click="reload" />
+        <NewButton :tooltip="t('amm.nuovo_operatore')" @click="drawer.openCreate" />
+      </div>
     </div>
 
     <DataTable
@@ -145,7 +148,7 @@ function activeBadgeSeverity(active) {
       </Column>
     </DataTable>
 
-    <UtenteDrawer
+    <OperatoreDrawer
       :visible="drawer.state.visible"
       @update:visible="v => drawer.state.visible = v"
       :mode="drawer.state.mode"

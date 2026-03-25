@@ -10,8 +10,8 @@ from __future__ import annotations
 from typing import TypedDict
 
 
-class UtenteRow(TypedDict):
-    """Riga lista utenti."""
+class OperatoreRow(TypedDict):
+    """Riga lista operatori."""
     auth_user_id: int
     username: str
     email: str
@@ -29,8 +29,8 @@ class UtenteRow(TypedDict):
     valido_al: str | None
 
 
-class UtenteDetailRow(UtenteRow):
-    """Riga dettaglio utente con conteggi override e dati soggetto."""
+class OperatoreDetailRow(OperatoreRow):
+    """Riga dettaglio operatore con conteggi override e dati soggetto."""
     soggetto_id: str | None
     ragione_sociale_completa: str | None
     codice_fiscale: str | None

@@ -9,7 +9,7 @@
 > • [anagrafiche.contatti](/dbzero/anagrafiche/tabelle/contatti)   
 > • [config.tipi_contatti](/dbzero/config/tabelle/tipi_contatti)   
 > • [config.unita_organizzative](/dbzero/config/tabelle/unita_organizzative)
-> • [config.utilities](/dbzero/config/tabelle/utilities)   
+> • [anagrafiche.istanze_utilities](/dbzero/anagrafiche/tabelle/istanze_utilities)
 >
 **Approfondimento funzioni:**
 >
@@ -18,7 +18,7 @@
 ---
 
 ### 🎯 Scopo principale
-(latest review 03-12-25)
+(latest review 25-03-26)
 La funzione **`script.fn_get_contatto_default`** restituisce **il contatto “di default”** per un determinato **soggetto** e, opzionalmente, per un determinato:
 
 * **ruolo** (`soggetto_ruolo`),
@@ -38,7 +38,7 @@ La funzione **riutilizza la logica di `script.fn_get_contatti`** per costruire l
 CREATE OR REPLACE FUNCTION script.fn_get_contatto_default(
     p_soggetto_id       uuid,
     p_soggetto_ruolo_id bigint  DEFAULT NULL,
-    p_utility_id        integer DEFAULT NULL,
+    p_istanza_utility_id bigint  DEFAULT NULL,
     p_tipo_contatto_id  integer DEFAULT NULL,
     p_unita_organizzativa_id integer DEFAULT NULL
 )
@@ -47,7 +47,7 @@ RETURNS TABLE (
     tipo_contatto_id integer,
     soggetto_id      uuid,
     soggetto_ruolo_id bigint,
-    utility_id       integer,
+    istanza_utility_id bigint,
     nominativo       varchar,
     email            varchar,
     telefono         varchar,
@@ -68,7 +68,7 @@ LANGUAGE sql;
 | --------------------- | --------- | :---: | -------------------------------------------------------------------------------------------------------------------- |
 | `p_soggetto_id`       | `uuid`    |  Sì   | Identificativo del soggetto in `anagrafiche.soggetti`. È il **pivot principale** di ricerca.                         |
 | `p_soggetto_ruolo_id` | `bigint`  |  No   | Se valorizzato, restringe la ricerca ai contatti legati a **quello specifico ruolo** (`anagrafiche.soggetti_ruoli`). |
-| `p_utility_id`        | `integer` |  No   | Se valorizzato, filtra per una specifica **utility** (es. servizio/fornitura collegata al contatto).                 |
+| `p_istanza_utility_id` | `bigint` |  No   | Se valorizzato, filtra per una specifica **istanza utility** (`anagrafiche.istanze_utilities`).                      |
 | `p_tipo_contatto_id`  | `integer` |  No   | Se valorizzato, limita ai contatti di un certo **tipo** (FK a `config.tipi_contatti`).                               |
 | `p_unita_organizzativa_id` | `integer` | No | Se valorizzato, restringe ai contatti del reparto/ufficio (`config.unita_organizzative`). |
 
@@ -86,7 +86,7 @@ La funzione restituisce **0 o 1 record** con la stessa struttura di `fn_get_cont
 | `tipo_contatto_id`  | `integer` | Tipo di contatto (FK `config.tipi_contatti.id`).                                                       |
 | `soggetto_id`       | `uuid`    | Soggetto di riferimento (`anagrafiche.soggetti.id`).                                                   |
 | `soggetto_ruolo_id` | `bigint`  | Ruolo specifico del soggetto, se presente.                                                             |
-| `utility_id`        | `integer` | Utility collegata a questo contatto (se il modello di dominio lo prevede).                             |
+| `istanza_utility_id` | `bigint` | Istanza utility collegata a questo contatto (`anagrafiche.istanze_utilities.id`). Può essere `NULL`.   |
 | `nominativo`        | `varchar` | Nominativo del contatto (persona fisica o label funzionale).                                           |
 | `email`             | `varchar` | Email principale.                                                                                      |
 | `telefono`          | `varchar` | Numero di telefono fisso.                                                                              |
@@ -112,7 +112,7 @@ WITH all_candidates AS (
     FROM script.fn_get_contatti(
         p_soggetto_id,
         p_soggetto_ruolo_id,
-        p_utility_id,
+        p_istanza_utility_id,
         p_tipo_contatto_id,
         p_unita_organizzativa_id
     )
@@ -172,7 +172,7 @@ WHERE rn = 1;
 * `anagrafiche.contatti`
 * `config.tipi_contatti`
 * `config.unita_organizzative`
-* `config.utilities`
+* `anagrafiche.istanze_utilities`
 
 ---
 
@@ -212,7 +212,7 @@ SELECT *
 FROM script.fn_get_contatto_default(
     p_soggetto_id      => 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'::uuid,
     p_soggetto_ruolo_id => 12345,
-    p_utility_id        => 10,
+    p_istanza_utility_id => 10,
     p_tipo_contatto_id  => 2   -- es. "Referente amministrativo"
 );
 ```

@@ -40,8 +40,8 @@ export const useOperatoriStore = defineStore('amm-operatori', () => {
     is_active: null,
     limit: 25,
     offset: 0,
-    order_by: null,
-    order_dir: null
+    order_by: 'soggetto_cognome',
+    order_dir: 'asc'
   })
 
   // Override corrente

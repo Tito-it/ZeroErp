@@ -15,8 +15,8 @@
 
 ---
 ### 🎯 Scopo Principale
-(latest review 15-02-26)
-Restituisce tutti gli **indirizzi** associati a uno specifico `soggetto_ruolo`, producendo per ciascuno:
+(latest review 25-03-26)
+Restituisce gli **indirizzi** associati a uno specifico `soggetto_ruolo`, con filtro opzionale per **istanza utility**, producendo per ciascuno:
 
 * il **tipo di indirizzo** (`codice_interno`) e indicazione se **normalizzato**;
 * una stringa **human‑readable** dell’**indirizzo completo** secondo regole di priorità;
@@ -31,53 +31,42 @@ Restituisce tutti gli **indirizzi** associati a uno specifico `soggetto_ruolo`, 
 Questa funzione usa il layer **RUOLO** come sorgente master e legge dalla vista resolved base.
 Non applica fallback su indirizzi soggetto (la policy master/fallback e demandata a `script.fn_get_indirizzo`).
 
+Se `p_istanza_utility_id` è valorizzato, restituisce solo gli indirizzi della istanza specifica + quelli generici (istanza NULL). Se `p_istanza_utility_id` è NULL, restituisce tutti gli indirizzi del ruolo.
+
 ---
 
 ### Firma
 
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_get_indirizzi_by_ruolo(
-  p_soggetto_ruolo_id bigint
+  p_soggetto_ruolo_id  anagrafiche.soggetti_ruoli.id%TYPE,
+  p_istanza_utility_id anagrafiche.istanze_utilities.id%TYPE DEFAULT NULL
 )
 RETURNS TABLE(
-  tipo_indirizzo character varying,
-  indirizzo_completo text,
-  geoloc geometry,
-  indirizzo_id bigint,
-  soggetto_ruolo_id bigint,
-  tipo_indirizzo_id integer,
-  indirizzo_dettaglio_id bigint,
-  indirizzo_libero text,
-  is_normalizzato boolean,
-  stato_id integer,
-  stato_descrizione character varying,
-  stato_iso2 character,
-  regione_id integer,
-  regione_descrizione character varying,
-  provincia_id integer,
-  provincia_sigla character varying,
-  provincia_descrizione character varying,
-  comune_id integer,
-  comune_descrizione character varying,
-  codice_postale_id integer,
-  cap_codice character,
-  locality character varying,
-  administrative_area character varying,
-  sublocality character varying,
-  postal_box character varying
+  tipo_indirizzo         config.tipi_indirizzi.codice_interno%TYPE,
+  indirizzo_completo     text,
+  geoloc                 geometry,
+  indirizzo_id           anagrafiche.indirizzi.id%TYPE,
+  soggetto_ruolo_id      anagrafiche.indirizzi.soggetto_ruolo_id%TYPE,
+  istanza_utility_id     anagrafiche.indirizzi.istanza_utility_id%TYPE,
+  tipo_indirizzo_id      anagrafiche.indirizzi.tipo_indirizzo_id%TYPE,
+  indirizzo_dettaglio_id anagrafiche.indirizzi.indirizzo_dettaglio_id%TYPE,
+  indirizzo_libero       anagrafiche.indirizzi.indirizzo_libero%TYPE,
+  is_normalizzato        boolean,
+  ...campi geografici (stato, regione, provincia, comune, CAP, locality, ecc.)
 )
 LANGUAGE sql
-STABLE
-PARALLEL UNSAFE;
+STABLE;
 ```
 
 ---
 
 ### Parametri di input
 
-| Nome                  | Tipo     | Descrizione                                                                            |
-| --------------------- | -------- | -------------------------------------------------------------------------------------- |
-| `p_soggetto_ruolo_id` | `bigint` | ID della relazione in `anagrafiche.soggetti_ruoli` a cui sono collegati gli indirizzi. |
+| Nome | Tipo | Obbligatorio | Descrizione |
+| --- | --- | :---: | --- |
+| `p_soggetto_ruolo_id` | `bigint` | si | ID della relazione in `anagrafiche.soggetti_ruoli` a cui sono collegati gli indirizzi. |
+| `p_istanza_utility_id` | `bigint` | no | ID della istanza utility (`anagrafiche.istanze_utilities.id`). Se valorizzato filtra per istanza specifica + generici (NULL). Se NULL restituisce tutti. |
 
 ---
 
@@ -119,7 +108,8 @@ PARALLEL UNSAFE;
 1. Legge da `anagrafiche.vw_indirizzi_resolved_base`.
 2. Filtra `scope = 'RUOLO'`.
 3. Filtra per `soggetto_ruolo_id = p_soggetto_ruolo_id`.
-4. Ordina per `tipo_indirizzo_codice, indirizzo_id`.
+4. Se `p_istanza_utility_id` è valorizzato: filtra `istanza_utility_id = p_istanza_utility_id OR istanza_utility_id IS NULL`.
+5. Ordina per `tipo_indirizzo_codice, istanza_utility_id NULLS LAST, indirizzo_id`.
 
 ---
 
@@ -145,18 +135,15 @@ PARALLEL UNSAFE;
 ### Esempi d’uso
 
 ```sql
-SELECT *
-FROM script.fn_get_indirizzi_by_ruolo(123);
+-- Tutti gli indirizzi del ruolo
+SELECT * FROM script.fn_get_indirizzi_by_ruolo(123);
+
+-- Solo indirizzi per istanza GAS (id=1) + generici
+SELECT * FROM script.fn_get_indirizzi_by_ruolo(123, 1);
 
 -- Solo indirizzi normalizzati
-SELECT *
-FROM script.fn_get_indirizzi_by_ruolo(123)
+SELECT * FROM script.fn_get_indirizzi_by_ruolo(123)
 WHERE is_normalizzato;
-
--- Recupero indirizzo solo italiano con geolocalizzazione
-SELECT *
-FROM script.fn_get_indirizzi_by_ruolo(123)
-WHERE stato_iso2 = 'IT' AND geoloc IS NOT NULL;
 ```
 
 ---

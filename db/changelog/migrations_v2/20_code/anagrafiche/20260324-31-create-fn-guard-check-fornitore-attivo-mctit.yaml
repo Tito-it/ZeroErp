@@ -1,0 +1,173 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Funzioni guard e check per verifica fornitore attivo:
+# - fn_guard_fornitore_attivo: fail-fast, raise se non attivo
+# - fn_check_fornitore_attivo: puro boolean, no raise
+# Usate dal ciclo passivo (ordini, DDT) per impedire operazioni
+# verso fornitori inattivi o con stato che blocca ordini.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+    - logicalFilePath: /migrations_v2/20_code/anagrafiche/20260324-31-create-fn-guard-check-fornitore-attivo-mctit.yaml
+
+    - changeSet:
+          id: 20260324-31-create-fn-guard-check-fornitore-attivo
+          author: mctit
+          runOnChange: true
+          comment: >
+              Crea fn_guard_fornitore_attivo (fail-fast, raise) e
+              fn_check_fornitore_attivo (puro boolean).
+              Verificano che il fornitore sia attivo e che lo stato
+              operativo non blocchi la creazione di ordini/DDT.
+              Parametri con %TYPE per type-safety.
+          changes:
+              - sql:
+                    dbms: postgresql
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+                        -- ============================================================
+                        -- fn_guard_fornitore_attivo
+                        -- Scopo: verifica fail-fast che il fornitore sia attivo e
+                        --        il suo stato operativo non blocchi gli ordini.
+                        --        Se non valido, solleva eccezione via fn_log_and_raise_error.
+                        -- Parametri:
+                        --   p_fornitore_id: ID del fornitore da verificare (NOT NULL, > 0)
+                        -- Regole:
+                        --   1) p_fornitore_id obbligatorio e > 0
+                        --   2) il fornitore deve esistere
+                        --   3) attivo deve essere true
+                        --   4) lo stato non deve avere blocca_ordini = true
+                        -- ============================================================
+                        CREATE OR REPLACE FUNCTION anagrafiche.fn_guard_fornitore_attivo(
+                            p_fornitore_id  anagrafiche.fornitori.id%TYPE
+                        )
+                        RETURNS VOID
+                        LANGUAGE plpgsql
+                        STABLE
+                        AS $$
+                        DECLARE
+                            v_attivo          anagrafiche.fornitori.attivo%TYPE;
+                            v_blocca_ordini   config.stati_fornitore.blocca_ordini%TYPE;
+                            v_stato_desc      config.stati_fornitore.descrizione%TYPE;
+                        BEGIN
+                            -- Guard: parametro obbligatorio
+                            IF p_fornitore_id IS NULL OR p_fornitore_id <= 0 THEN
+                                PERFORM script.fn_log_and_raise_error(
+                                    'database',
+                                    'anagrafiche.fn_guard_fornitore_attivo',
+                                    'E_FORNITORE_ID_INVALIDO',
+                                    jsonb_build_object(
+                                        'detail', 'p_fornitore_id deve essere NOT NULL e > 0',
+                                        'p_fornitore_id', p_fornitore_id
+                                    ),
+                                    NULL::uuid,
+                                    p_fornitore_id::text
+                                );
+                            END IF;
+
+                            -- Recupera stato fornitore
+                            SELECT f.attivo,
+                                   sf.blocca_ordini,
+                                   sf.descrizione
+                            INTO   v_attivo,
+                                   v_blocca_ordini,
+                                   v_stato_desc
+                            FROM   anagrafiche.fornitori f
+                            LEFT JOIN config.stati_fornitore sf
+                              ON sf.id = f.stato_fornitore_id
+                            WHERE  f.id = p_fornitore_id;
+
+                            -- Guard: fornitore deve esistere
+                            IF NOT FOUND THEN
+                                PERFORM script.fn_log_and_raise_error(
+                                    'database',
+                                    'anagrafiche.fn_guard_fornitore_attivo',
+                                    'E_FORNITORE_NON_TROVATO',
+                                    jsonb_build_object(
+                                        'detail', format('Fornitore id=%s non trovato', p_fornitore_id),
+                                        'p_fornitore_id', p_fornitore_id
+                                    ),
+                                    NULL::uuid,
+                                    p_fornitore_id::text
+                                );
+                            END IF;
+
+                            -- Guard: fornitore deve essere attivo
+                            IF v_attivo IS DISTINCT FROM true THEN
+                                PERFORM script.fn_log_and_raise_error(
+                                    'database',
+                                    'anagrafiche.fn_guard_fornitore_attivo',
+                                    'E_FORNITORE_NON_ATTIVO',
+                                    jsonb_build_object(
+                                        'detail', format('Fornitore id=%s non attivo', p_fornitore_id),
+                                        'p_fornitore_id', p_fornitore_id,
+                                        'attivo', v_attivo
+                                    ),
+                                    NULL::uuid,
+                                    p_fornitore_id::text
+                                );
+                            END IF;
+
+                            -- Guard: stato non deve bloccare ordini
+                            IF v_blocca_ordini = true THEN
+                                PERFORM script.fn_log_and_raise_error(
+                                    'anagrafiche',
+                                    'fn_guard_fornitore_attivo',
+                                    'E_FORNITORE_BLOCCATO',
+                                    jsonb_build_object(
+                                        'detail', format('Fornitore id=%s in stato "%s" - ordini bloccati',
+                                                         p_fornitore_id, v_stato_desc),
+                                        'p_fornitore_id', p_fornitore_id,
+                                        'stato_descrizione', v_stato_desc,
+                                        'blocca_ordini', v_blocca_ordini
+                                    ),
+                                    NULL::uuid,
+                                    format('Fornitore id=%s in stato "%s" - ordini bloccati',
+                                           p_fornitore_id, v_stato_desc)
+                                );
+                            END IF;
+                        END;
+                        $$;
+
+                        COMMENT ON FUNCTION anagrafiche.fn_guard_fornitore_attivo(anagrafiche.fornitori.id%TYPE)
+                        IS 'Guard fail-fast: verifica che il fornitore sia attivo e il suo stato operativo non blocchi ordini/DDT. Raise via fn_log_and_raise_error se non valido.';
+
+                        -- ============================================================
+                        -- fn_check_fornitore_attivo
+                        -- Scopo: verifica puro boolean (no raise) se il fornitore e
+                        --        attivo e il suo stato non blocca ordini.
+                        -- Parametri:
+                        --   p_fornitore_id: ID del fornitore da verificare
+                        -- Ritorna: TRUE se attivo e non bloccato, FALSE altrimenti
+                        -- ============================================================
+                        CREATE OR REPLACE FUNCTION anagrafiche.fn_check_fornitore_attivo(
+                            p_fornitore_id  anagrafiche.fornitori.id%TYPE
+                        )
+                        RETURNS BOOLEAN
+                        LANGUAGE plpgsql
+                        STABLE
+                        AS $$
+                        BEGIN
+                            -- Puro boolean: true se fornitore attivo e stato non blocca ordini
+                            RETURN EXISTS (
+                                SELECT 1
+                                FROM   anagrafiche.fornitori f
+                                JOIN   config.stati_fornitore sf
+                                  ON   sf.id = f.stato_fornitore_id
+                                WHERE  f.id = p_fornitore_id
+                                  AND  f.attivo = true
+                                  AND  sf.blocca_ordini = false
+                            );
+                        END;
+                        $$;
+
+                        COMMENT ON FUNCTION anagrafiche.fn_check_fornitore_attivo(anagrafiche.fornitori.id%TYPE)
+                        IS 'Check puro boolean: ritorna TRUE se il fornitore e attivo e il suo stato non blocca ordini, FALSE altrimenti. No raise.';
+
+          rollback:
+              - sql:
+                    sql: |
+                        DROP FUNCTION IF EXISTS anagrafiche.fn_guard_fornitore_attivo(bigint);
+                        DROP FUNCTION IF EXISTS anagrafiche.fn_check_fornitore_attivo(bigint);

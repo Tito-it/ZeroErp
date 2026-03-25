@@ -23,7 +23,7 @@ Base URL: `/api/v1/amm-software/`
 
 ## 1. Utenti
 
-### 1.1 GET /api/v1/amm-software/utenti/ -- Lista utenti
+### 1.1 GET /api/v1/amm-software/operatori/ -- Lista utenti
 
 Restituisce la lista paginata degli operatori con filtri opzionali.
 
@@ -72,12 +72,12 @@ Restituisce la lista paginata degli operatori con filtri opzionali.
 
 ```bash
 curl -H "Authorization: Bearer <token>" \
-  "https://host/api/v1/amm-software/utenti/?search=titini&ruolo_sistema=ADMIN&limit=10"
+  "https://host/api/v1/amm-software/operatori/?search=titini&ruolo_sistema=ADMIN&limit=10"
 ```
 
 ---
 
-### 1.2 POST /api/v1/amm-software/utenti/ -- Crea utente
+### 1.2 POST /api/v1/amm-software/operatori/ -- Crea utente
 
 Crea un nuovo operatore completo: utente Django, soggetto persona fisica, risorsa umana.
 La creazione e' orchestrata dalla funzione DB `anagrafiche.fn_crea_operatore`.
@@ -121,12 +121,12 @@ curl -X POST -H "Authorization: Bearer <token>" \
     "ruolo_sistema": "OPERATIVO",
     "unita_organizzativa_id": 2
   }' \
-  "https://host/api/v1/amm-software/utenti/"
+  "https://host/api/v1/amm-software/operatori/"
 ```
 
 ---
 
-### 1.3 GET /api/v1/amm-software/utenti/{id}/ -- Dettaglio utente
+### 1.3 GET /api/v1/amm-software/operatori/{id}/ -- Dettaglio utente
 
 Restituisce il dettaglio completo di un utente, inclusi i conteggi degli override
 permessi e degli emittenti associati.
@@ -163,12 +163,12 @@ permessi e degli emittenti associati.
 
 ```bash
 curl -H "Authorization: Bearer <token>" \
-  "https://host/api/v1/amm-software/utenti/1/"
+  "https://host/api/v1/amm-software/operatori/1/"
 ```
 
 ---
 
-### 1.4 PATCH /api/v1/amm-software/utenti/{id}/ -- Aggiorna utente
+### 1.4 PATCH /api/v1/amm-software/operatori/{id}/ -- Aggiorna utente
 
 Aggiorna i campi modificabili di un utente. Solo i campi presenti nel payload vengono modificati.
 Dopo la modifica, la cache permessi dell'utente viene invalidata.
@@ -200,12 +200,12 @@ Dopo la modifica, la cache permessi dell'utente viene invalidata.
 curl -X PATCH -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
   -d '{"ruolo_sistema": "ADMIN", "unita_organizzativa_id": 3}' \
-  "https://host/api/v1/amm-software/utenti/1/"
+  "https://host/api/v1/amm-software/operatori/1/"
 ```
 
 ---
 
-### 1.5 POST /api/v1/amm-software/utenti/{id}/disabilita/ -- Disabilita utente
+### 1.5 POST /api/v1/amm-software/operatori/{id}/disabilita/ -- Disabilita utente
 
 Disabilita un utente impostando `ruolo_sistema = DISABILITATO` e `attivo = false`.
 Sincronizza `auth_user.is_active`, invalida la cache permessi e inserisce tutti i
@@ -229,14 +229,14 @@ token JWT dell'utente nella blacklist (SimpleJWT), impedendo ulteriori accessi.
 
 ```bash
 curl -X POST -H "Authorization: Bearer <token>" \
-  "https://host/api/v1/amm-software/utenti/1/disabilita/"
+  "https://host/api/v1/amm-software/operatori/1/disabilita/"
 ```
 
 ---
 
 ## 2. Permessi utente
 
-### 2.1 GET /api/v1/amm-software/utenti/{id}/override-aree/ -- Lista override aree
+### 2.1 GET /api/v1/amm-software/operatori/{id}/override-aree/ -- Lista override aree
 
 Restituisce gli override del livello di accesso alle aree funzionali per un utente.
 Gli override permettono di aumentare o ridurre il livello di accesso rispetto al
@@ -270,12 +270,12 @@ profilo del reparto di appartenenza.
 
 ```bash
 curl -H "Authorization: Bearer <token>" \
-  "https://host/api/v1/amm-software/utenti/1/override-aree/"
+  "https://host/api/v1/amm-software/operatori/1/override-aree/"
 ```
 
 ---
 
-### 2.2 PUT /api/v1/amm-software/utenti/{id}/override-aree/ -- Salva override aree
+### 2.2 PUT /api/v1/amm-software/operatori/{id}/override-aree/ -- Salva override aree
 
 Sostituisce completamente gli override aree di un utente (semantica replace: cancella
 tutti gli esistenti e inserisce i nuovi). Invalida la cache permessi.
@@ -314,12 +314,12 @@ tutti gli esistenti e inserisce i nuovi). Invalida la cache permessi.
 curl -X PUT -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
   -d '{"items": [{"area_id": 3, "livello": "COMPLETO", "motivo": "Promozione"}]}' \
-  "https://host/api/v1/amm-software/utenti/1/override-aree/"
+  "https://host/api/v1/amm-software/operatori/1/override-aree/"
 ```
 
 ---
 
-### 2.3 GET /api/v1/amm-software/utenti/{id}/override-azioni/ -- Lista override azioni
+### 2.3 GET /api/v1/amm-software/operatori/{id}/override-azioni/ -- Lista override azioni
 
 Restituisce gli override sulle singole azioni di processo per un utente.
 Permette di abilitare o disabilitare specifiche azioni indipendentemente dal
@@ -354,12 +354,12 @@ profilo del reparto.
 
 ```bash
 curl -H "Authorization: Bearer <token>" \
-  "https://host/api/v1/amm-software/utenti/1/override-azioni/"
+  "https://host/api/v1/amm-software/operatori/1/override-azioni/"
 ```
 
 ---
 
-### 2.4 PUT /api/v1/amm-software/utenti/{id}/override-azioni/ -- Salva override azioni
+### 2.4 PUT /api/v1/amm-software/operatori/{id}/override-azioni/ -- Salva override azioni
 
 Sostituisce completamente gli override azioni di un utente (semantica replace).
 Invalida la cache permessi.
@@ -398,12 +398,12 @@ Invalida la cache permessi.
 curl -X PUT -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
   -d '{"items": [{"azione_id": 12, "abilitata": true, "motivo": "Delega"}]}' \
-  "https://host/api/v1/amm-software/utenti/1/override-azioni/"
+  "https://host/api/v1/amm-software/operatori/1/override-azioni/"
 ```
 
 ---
 
-### 2.5 GET /api/v1/amm-software/utenti/{id}/emittenti-scope/ -- Lista emittenti scope
+### 2.5 GET /api/v1/amm-software/operatori/{id}/emittenti-scope/ -- Lista emittenti scope
 
 Restituisce gli emittenti fiscali a cui l'utente ha accesso (whitelist).
 Se la lista e' vuota, l'utente ha accesso all'unico emittente attivo (se presente).
@@ -432,12 +432,12 @@ Se la lista e' vuota, l'utente ha accesso all'unico emittente attivo (se present
 
 ```bash
 curl -H "Authorization: Bearer <token>" \
-  "https://host/api/v1/amm-software/utenti/1/emittenti-scope/"
+  "https://host/api/v1/amm-software/operatori/1/emittenti-scope/"
 ```
 
 ---
 
-### 2.6 PUT /api/v1/amm-software/utenti/{id}/emittenti-scope/ -- Salva emittenti scope
+### 2.6 PUT /api/v1/amm-software/operatori/{id}/emittenti-scope/ -- Salva emittenti scope
 
 Sostituisce completamente la whitelist emittenti di un utente (semantica replace).
 Invalida la cache permessi.
@@ -464,7 +464,7 @@ Invalida la cache permessi.
 curl -X PUT -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
   -d '{"emittente_ids": [10, 15]}' \
-  "https://host/api/v1/amm-software/utenti/1/emittenti-scope/"
+  "https://host/api/v1/amm-software/operatori/1/emittenti-scope/"
 ```
 
 ---

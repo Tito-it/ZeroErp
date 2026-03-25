@@ -1,5 +1,6 @@
 <script setup>
 // Scopo: vista principale Gestione Geografica con 7 tab.
+import { ref, onMounted, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useDrawerState } from '../../core/composables/useDrawerState'
 import { useReadonlyMode } from '../../core/composables/useReadonlyMode'
@@ -29,11 +30,15 @@ const capDrawer = useDrawerState()
 const provDrawer = useDrawerState()
 const regDrawer = useDrawerState()
 const statoDrawer = useDrawerState()
+
+// Scopo: forza remount TabView dopo mount per ink bar
+const tabViewKey = ref(0)
+onMounted(() => { nextTick(() => { tabViewKey.value++ }) })
 </script>
 
 <template>
   <div class="app-page">
-    <TabView lazy>
+    <TabView lazy :key="tabViewKey">
       <TabPanel :header="t('indirizzi.tab_indirizzi')">
         <IndirizziSearchTable
           @new="indDrawer.openCreate"

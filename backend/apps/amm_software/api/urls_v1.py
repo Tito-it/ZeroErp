@@ -10,15 +10,18 @@ from django.urls import path
 from . import views
 
 urlpatterns = [
-    # Utenti
-    path("utenti/", views.UtentiListView.as_view(), name="amm-utenti-list"),
-    path("utenti/<int:auth_user_id>/", views.UtentiDetailView.as_view(), name="amm-utenti-detail"),
-    path("utenti/<int:auth_user_id>/disabilita/", views.UtentiDisabilitaView.as_view(), name="amm-utenti-disabilita"),
-    path("utenti/<int:auth_user_id>/riattiva/", views.UtentiRiattivaView.as_view(), name="amm-utenti-riattiva"),
-    # Override permessi utente
-    path("utenti/<int:auth_user_id>/override-aree/", views.OverrideAreeView.as_view(), name="amm-override-aree"),
-    path("utenti/<int:auth_user_id>/override-azioni/", views.OverrideAzioniView.as_view(), name="amm-override-azioni"),
-    path("utenti/<int:auth_user_id>/emittenti-scope/", views.EmittentiScopeView.as_view(), name="amm-emittenti-scope"),
+    # Operatori
+    path("operatori/", views.OperatoriListView.as_view(), name="amm-operatori-list"),
+    path("operatori/<int:auth_user_id>/", views.OperatoriDetailView.as_view(), name="amm-operatori-detail"),
+    path("operatori/<int:auth_user_id>/disabilita/", views.OperatoriDisabilitaView.as_view(), name="amm-operatori-disabilita"),
+    path("operatori/<int:auth_user_id>/riattiva/", views.OperatoriRiattivaView.as_view(), name="amm-operatori-riattiva"),
+    # Override permessi operatore
+    path("operatori/<int:auth_user_id>/override-aree/", views.OverrideAreeView.as_view(), name="amm-override-aree"),
+    path("operatori/<int:auth_user_id>/override-azioni/", views.OverrideAzioniView.as_view(), name="amm-override-azioni"),
+    path("operatori/<int:auth_user_id>/emittenti-scope/", views.EmittentiScopeView.as_view(), name="amm-emittenti-scope"),
+    # Riepilogo permessi e audit
+    path("permessi-riepilogo/", views.PermessiRiepilogoView.as_view(), name="amm-permessi-riepilogo"),
+    path("audit-log/", views.AuditLogView.as_view(), name="amm-audit-log"),
     # Reparti e profili
     path("reparti/", views.RepartiListView.as_view(), name="amm-reparti-list"),
     path("reparti/<int:uo_id>/profilo/", views.RepartoProfiloView.as_view(), name="amm-reparto-profilo"),
