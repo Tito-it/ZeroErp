@@ -28,7 +28,7 @@ BEGIN
                 'p_fornitore_id', p_fornitore_id
             ),
             NULL::uuid,
-            'p_fornitore_id deve essere NOT NULL e > 0'
+            p_fornitore_id::text
         );
     END IF;
 
@@ -55,7 +55,7 @@ BEGIN
                 'p_fornitore_id', p_fornitore_id
             ),
             NULL::uuid,
-            format('Fornitore id=%s non trovato', p_fornitore_id)
+            p_fornitore_id::text
         );
     END IF;
 
@@ -71,7 +71,7 @@ BEGIN
                 'attivo', v_attivo
             ),
             NULL::uuid,
-            format('Fornitore id=%s non attivo', p_fornitore_id)
+            p_fornitore_id::text
         );
     END IF;
 
