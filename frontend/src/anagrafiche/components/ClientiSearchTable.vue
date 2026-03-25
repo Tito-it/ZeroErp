@@ -22,7 +22,9 @@ import NewButton from '../../core/components/NewButton.vue'
 const emit = defineEmits(['new', 'row-click', 'contatti', 'indirizzi', 'conti-bancari'])
 const { t } = useI18n()
 const store = useClientiStore()
-const { searchText, onPage, onSort, applyFilters, reload, paginatorProps } = useSearchTable(store, { defaultSortField: 'ragione_sociale_completa' })
+const { searchText, onPage, onSort, applyFilters, reload, paginatorProps } = useSearchTable(store, {
+  defaultSortField: 'ragione_sociale_completa'
+})
 
 // Lookup filtri
 const utilities = useLookup(() => listUtilitiesManual(), { immediate: true })

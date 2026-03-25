@@ -535,11 +535,15 @@ Dettaglio: [api_amm_software.md](api_amm_software.md)
 | GET    | `lookup/azioni-processo/`              | Azioni processo per dropdown   |
 | GET    | `lookup/emittenti-fiscali/`            | Emittenti per dropdown         |
 
-**Anagrafiche** (`/api/v1/anagrafiche/`) — gestione geografica e soggetti
-Dettaglio: [api_soggetti.md](api_soggetti.md) | [api_indirizzi.md](api_indirizzi.md) | [api_geo_config.md](api_geo_config.md)
+**Anagrafiche** (`/api/v1/anagrafiche/`) — gestione geografica, soggetti e ruoli
+Dettaglio: [api_soggetti.md](api_soggetti.md) | [api_indirizzi.md](api_indirizzi.md) | [api_geo_config.md](api_geo_config.md) | [api_fornitori.md](api_fornitori.md)
 
 | Metodo | Path                                          | Scopo                                                      |
 | ------ | --------------------------------------------- | ---------------------------------------------------------- |
+| GET    | `fornitori/`                                  | Lista fornitori paginata con search e filtri               |
+| POST   | `fornitori/`                                  | Crea fornitore (ruolo FO + insert atomico)                 |
+| GET    | `fornitori/{id}/`                             | Dettaglio fornitore completo                               |
+| PATCH  | `fornitori/{id}/`                             | Aggiorna campi editabili fornitore                         |
 | GET    | `indirizzi/`                                  | Lista indirizzi dettaglio                                  |
 | POST   | `indirizzi/`                                  | Crea indirizzo (via esistente o nuova)                     |
 | GET    | `indirizzi/{id}/`                             | Dettaglio indirizzo                                        |

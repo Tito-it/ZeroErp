@@ -1,6 +1,7 @@
 from django.urls import path
 
 from apps.anagrafiche.api.views_clienti import ClientiDetailView, ClientiView, UtilitiesManualLookupView
+from apps.anagrafiche.api.views_fornitori import FornitoriDetailView, FornitoriView
 from apps.anagrafiche.api.views_contatti_ruolo import RuoloContattiDetailView, RuoloContattiView
 from apps.anagrafiche.api.views_indirizzi_ruolo import RuoloIndirizziDetailView, RuoloIndirizziView
 from apps.anagrafiche.api.views_codici_postali import CodiciPostaliDetailView, CodiciPostaliView
@@ -35,6 +36,9 @@ urlpatterns = [
     # Clienti
     path("clienti/", ClientiView.as_view(), name="anagrafiche-clienti-list"),
     path("clienti/<int:cliente_id>/", ClientiDetailView.as_view(), name="anagrafiche-clienti-detail"),
+    # Fornitori
+    path("fornitori/", FornitoriView.as_view(), name="anagrafiche-fornitori-list"),
+    path("fornitori/<int:fornitore_id>/", FornitoriDetailView.as_view(), name="anagrafiche-fornitori-detail"),
     # Utility ammesse per creazione manuale
     path("utilities/manual-lookup/", UtilitiesManualLookupView.as_view(), name="anagrafiche-utilities-manual-lookup"),
     # Contatti ruolo

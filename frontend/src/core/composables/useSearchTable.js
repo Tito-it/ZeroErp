@@ -1,6 +1,11 @@
 // Composable centralizzato per DataTable con ricerca, paginazione server-side e sort.
 // Elimina la duplicazione di onPage/onSort/debounce search in ogni lista.
 //
+// Ricerca universale: legge automaticamente il termine di ricerca da:
+//   1. route.query.search (navigazione diretta dal SearchDrawer)
+//   2. contextStore.searchTerm (navigazione indiretta da menu/tab)
+// Nessuna configurazione necessaria nelle singole SearchTable o View.
+//
 // Uso:
 //   const { searchText, onPage, onSort, paginatorProps } = useSearchTable(store)
 //
@@ -11,6 +16,8 @@
 //   paginator, paginatorTemplate, currentPageReportTemplate
 
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { useRoute } from 'vue-router'
+import { useContextStore } from '../../stores/context'
 import { PAGINATION } from '../constants'
 
 export function useSearchTable(store, options = {}) {
@@ -21,17 +28,43 @@ export function useSearchTable(store, options = {}) {
     defaultSortOrder = 'asc' // direzione sort iniziale
   } = options
 
+  const route = useRoute()
+  const ctx = useContextStore()
+
   // Inizializza sort default nello store se non gia' impostato
   if (defaultSortField && !store.filters.order_by) {
     store.filters.order_by = defaultSortField
     store.filters.order_dir = defaultSortOrder
   }
 
-  const searchText = ref('')
+  // Risolve termine ricerca iniziale: route query > context > vuoto
+  const resolvedSearch = route.query.search || ctx.searchTerm || ''
+  const searchText = ref(resolvedSearch)
+  if (resolvedSearch) {
+    store.filters.search = resolvedSearch
+  }
   let searchTimeout = null
+  let skipNextDebounce = false
 
-  // Debounce search → aggiorna store.filters.search e resetta offset
+  // Watch reattivo su ctx.searchTerm — gestisce nuove ricerche da SearchDrawer
+  // e navigazione tra pagine con contesto attivo. Aggiorna immediatamente (no debounce).
+  watch(() => ctx.searchTerm, (newTerm) => {
+    const term = newTerm || ''
+    if (term !== searchText.value) {
+      skipNextDebounce = true
+      searchText.value = term
+      store.filters.search = term
+      store.filters.offset = 0
+      store.fetchList()
+    }
+  })
+
+  // Debounce search da input utente → aggiorna store.filters.search e resetta offset
   watch(searchText, () => {
+    if (skipNextDebounce) {
+      skipNextDebounce = false
+      return
+    }
     clearTimeout(searchTimeout)
     searchTimeout = setTimeout(() => {
       store.filters.search = searchText.value || ''

@@ -2,9 +2,11 @@
 // Scopo: vista principale Gestione Clienti.
 // SearchTable + Drawer creazione/visualizzazione.
 // Sotto-drawer indirizzi e conti bancari dalla lista (come SoggettiView).
-import { ref } from 'vue'
+import { ref, watch, nextTick } from 'vue'
+import { useRoute } from 'vue-router'
 import { useDrawerState } from '../../core/composables/useDrawerState'
 import { useReadonlyMode } from '../../core/composables/useReadonlyMode'
+import { useContextStore } from '../../stores/context'
 import { useClientiStore } from '../stores/clienti'
 import ClientiSearchTable from '../components/ClientiSearchTable.vue'
 import ClienteDrawer from '../components/ClienteDrawer.vue'
@@ -14,7 +16,17 @@ import ContiBancariDrawer from '../../core/components/ContiBancariDrawer.vue'
 
 const drawer = useDrawerState()
 const store = useClientiStore()
+const ctx = useContextStore()
+const route = useRoute()
 useReadonlyMode('anagrafiche')
+
+// Se la ricerca universale ha selezionato un cliente, apri il drawer in edit.
+// Il filtro lista viene applicato automaticamente da useSearchTable (legge ctx.searchTerm).
+watch(() => route.fullPath, () => {
+  if (route.name === 'anagrafiche-clienti' && ctx.entitaId) {
+    nextTick(() => drawer.editRow({ id: ctx.entitaId }, 'id'))
+  }
+}, { immediate: true })
 
 // Sotto-drawer dalla lista
 const contattiDrawer = ref({ visible: false, ruoloId: null, utilityId: null })

@@ -19,7 +19,9 @@ import Button from 'primevue/button'
 const emit = defineEmits(['new', 'row-click', 'contatti', 'indirizzi', 'conti-bancari'])
 const { t } = useI18n()
 const store = useSoggettiStore()
-const { searchText, onPage, onSort, applyFilters, reload, paginatorProps } = useSearchTable(store, { defaultSortField: 'ragione_sociale_completa' })
+const { searchText, onPage, onSort, applyFilters, reload, paginatorProps } = useSearchTable(store, {
+  defaultSortField: 'ragione_sociale_completa'
+})
 
 const tipiSoggetto = useLookup(lookupTipiSoggettoDettaglio, { immediate: true })
 const tipoFilter = ref(null)

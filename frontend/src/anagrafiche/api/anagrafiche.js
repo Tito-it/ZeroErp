@@ -242,6 +242,24 @@ export function listUtilitiesManual() {
   return api.get(`${BASE}/utilities/manual-lookup/`)
 }
 
+// --- Fornitori ---
+
+export function listFornitori(params = {}) {
+  return api.get(`${BASE}/fornitori/`, { params })
+}
+
+export function getFornitore(id) {
+  return api.get(`${BASE}/fornitori/${id}/`)
+}
+
+export function createFornitore(payload) {
+  return api.post(`${BASE}/fornitori/`, payload)
+}
+
+export function updateFornitore(fornitoreId, payload) {
+  return api.patch(`${BASE}/fornitori/${fornitoreId}/`, payload)
+}
+
 // --- Contatti ruolo ---
 
 export function listRuoloContatti(ruoloId, params = {}) {

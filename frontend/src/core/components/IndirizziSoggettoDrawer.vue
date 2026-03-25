@@ -15,6 +15,7 @@ import {
 } from '../../anagrafiche/api/anagrafiche'
 import { lookupMatriceIndirizzi, lookupCodici } from '../apiCore'
 import { DRAWER_WIDTH } from '../constants'
+import { sortByFonte } from '../utils/string'
 import IndirizzoSoggettoForm from './IndirizzoSoggettoForm.vue'
 import DrawerTitle from './DrawerTitle.vue'
 import DrawerFooter from './DrawerFooter.vue'
@@ -67,10 +68,10 @@ async function loadIndirizzi() {
       const payload = res.data?.data
       if (payload?.indirizzi_ruolo) {
         // Il backend gia' include 'fonte' (utility/ruolo/soggetto) nei dict
-        indirizziList.value = [
+        indirizziList.value = sortByFonte([
           ...payload.indirizzi_ruolo,
           ...(payload.indirizzi_soggetto || []),
-        ]
+        ])
       } else {
         indirizziList.value = []
       }

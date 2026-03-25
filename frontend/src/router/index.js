@@ -85,6 +85,12 @@ const router = createRouter({
           meta: { domain: 'anagrafiche', menuKey: 'clienti' }
         },
         {
+          path: 'anagrafiche/fornitori',
+          name: 'anagrafiche-fornitori',
+          component: () => import('../anagrafiche/views/FornitoriView.vue'),
+          meta: { domain: 'anagrafiche', menuKey: 'fornitori' }
+        },
+        {
           path: 'anagrafiche/indirizzi',
           name: 'anagrafiche-indirizzi',
           component: () => import('../anagrafiche/views/IndirizziView.vue'),
