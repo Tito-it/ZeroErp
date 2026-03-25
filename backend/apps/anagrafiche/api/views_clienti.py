@@ -83,7 +83,7 @@ class ClientiView(DomainAPIView):
 # =================================================================
 
 class ClientiDetailView(DomainAPIView):
-    """GET dettaglio cliente con dati istanza, BA, soggetto."""
+    """GET dettaglio, PATCH aggiorna cliente."""
     area_funzionale = "anagrafiche"
 
     @extend_schema(
@@ -94,6 +94,26 @@ class ClientiDetailView(DomainAPIView):
         svc = ClientiService()
         data = svc.get_cliente(cliente_id)
         return success_response(data)
+
+    @extend_schema(
+        request=inline_serializer(name="ClienteUpdateReq", fields={
+            "iva_id": serializers.IntegerField(required=False),
+            "modalita_pagamento_id": serializers.IntegerField(required=False),
+            "termine_pagamento_id": serializers.IntegerField(required=False),
+            "tipo_gg_scadenza_ft": serializers.CharField(required=False),
+            "nr_giorni_scadenza": serializers.IntegerField(required=False),
+            "cliente_pa": serializers.CharField(required=False),
+            "split_payment": serializers.CharField(required=False),
+            "garanzia_tipo": serializers.CharField(required=False),
+            "garanzia_importo": serializers.FloatField(required=False),
+        }),
+        responses={200: inline_serializer(name="ClienteUpdateResp", fields={"data": serializers.DictField()})},
+    )
+    # Scopo: Aggiorna campi editabili del cliente (pagamento, PA, garanzia, servizio).
+    def patch(self, request: Request, cliente_id: int) -> JsonResponse:
+        svc = ClientiService()
+        result = svc.update_cliente(cliente_id, request.data)
+        return success_response(result)
 
 
 # =================================================================

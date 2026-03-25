@@ -23,6 +23,9 @@ Indice test eseguiti:
 12) test_crea_cliente_missing_utility — utility_id mancante → errore
 13) test_crea_cliente_utility_non_trovata — utility inesistente → errore
 14) test_crea_cliente_duplicato_istanza — IntegrityError UNIQUE istanza → E_ANAG_DUPLICATO
+15) test_update_cliente_ok — aggiorna campi editabili
+16) test_update_cliente_not_found — id inesistente → E_ANAG_NOT_FOUND
+17) test_update_cliente_no_fields — nessun campo valido → E_ANAG_NOT_FOUND
 """
 
 from unittest import TestCase
@@ -283,3 +286,45 @@ class TestCreaClienteDuplicato(TestCase):
         with self.assertRaises(ServiceError) as ctx:
             ClientiService().crea_cliente(_base_payload())
         self.assertEqual(ctx.exception.code, "E_ANAG_DUPLICATO")
+
+
+# =================================================================
+# Update cliente
+# =================================================================
+
+class TestUpdateCliente(TestCase):
+
+    @patch(CLI_REPO)
+    def test_update_cliente_ok(self, mock_repo):
+        """Aggiorna campi editabili — happy path."""
+        repo = mock_repo.return_value
+        repo.get_cliente.return_value = {"id": 1, "utility_id": 10}
+        repo.update_cliente.return_value = True
+        from apps.anagrafiche.services.clienti_service import ClientiService
+        result = ClientiService().update_cliente(1, {
+            "iva_id": 5, "cliente_pa": "S", "garanzia_importo": 500,
+        })
+        self.assertTrue(result["updated"])
+        repo.update_cliente.assert_called_once_with(1, {
+            "iva_id": 5, "cliente_pa": "S", "garanzia_importo": 500,
+        })
+
+    @patch(CLI_REPO)
+    def test_update_cliente_not_found(self, mock_repo):
+        """Cliente inesistente → E_ANAG_NOT_FOUND."""
+        mock_repo.return_value.get_cliente.return_value = None
+        from apps.anagrafiche.services.clienti_service import ClientiService
+        with self.assertRaises(ServiceError) as ctx:
+            ClientiService().update_cliente(999, {"iva_id": 5})
+        self.assertEqual(ctx.exception.code, "E_ANAG_NOT_FOUND")
+
+    @patch(CLI_REPO)
+    def test_update_cliente_no_fields(self, mock_repo):
+        """Nessun campo valido → E_ANAG_NOT_FOUND (nessuna riga aggiornata)."""
+        repo = mock_repo.return_value
+        repo.get_cliente.return_value = {"id": 1, "utility_id": 10}
+        repo.update_cliente.return_value = False
+        from apps.anagrafiche.services.clienti_service import ClientiService
+        with self.assertRaises(ServiceError) as ctx:
+            ClientiService().update_cliente(1, {"campo_ignoto": "valore"})
+        self.assertEqual(ctx.exception.code, "E_ANAG_NOT_FOUND")

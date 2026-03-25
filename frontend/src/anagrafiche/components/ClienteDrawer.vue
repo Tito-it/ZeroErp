@@ -39,21 +39,21 @@ const modalitaPagamento = useLookup(() => lookupCodici('config.modalita_pagament
 const terminiPagamento = useLookup(() => lookupCodici('config.termini_pagamento'), { immediate: true })
 const ivaList = useLookup(() => lookupCodici('config.iva'), { immediate: true })
 
-// Opzioni statiche
-const tipoGgOptions = [
-  { value: 'N', label: 'Nessuno' },
-  { value: 'G', label: 'Giorni' },
-  { value: 'M', label: 'Mese' },
-  { value: 'F', label: 'Fine mese' }
-]
-const paOptions = [
-  { value: 'N', label: 'No' },
-  { value: 'S', label: 'Si' }
-]
-const garanziaTipoOptions = [
-  { value: 'D', label: 'Deposito' },
-  { value: 'F', label: 'Fidejussione' }
-]
+// Opzioni statiche (label tramite i18n)
+const tipoGgOptions = computed(() => [
+  { value: 'N', label: t('clienti.opt_gg_nessuno') },
+  { value: 'G', label: t('clienti.opt_gg_giorni') },
+  { value: 'M', label: t('clienti.opt_gg_mese') },
+  { value: 'F', label: t('clienti.opt_gg_fine_mese') },
+])
+const paOptions = computed(() => [
+  { value: 'N', label: t('common.no') },
+  { value: 'S', label: t('common.yes') },
+])
+const garanziaTipoOptions = computed(() => [
+  { value: 'D', label: t('clienti.opt_garanzia_deposito') },
+  { value: 'F', label: t('clienti.opt_garanzia_fidejussione') },
+])
 
 const props = defineProps({
   visible: Boolean,
@@ -151,15 +151,10 @@ watch(() => props.visible, async (val) => {
   }
 })
 
-// Scopo: Salva nuovo cliente.
-async function onSave() {
-  const sogg = soggettoSelezionato.value
-  if (!sogg || !form.value.utility_id) return
+// Scopo: Costruisce il payload dei campi editabili (condiviso tra create e update).
+function buildEditablePayload() {
   const f = form.value
-  const payload = {
-    soggetto_id: sogg.id,
-    utility_id: f.utility_id,
-    indirizzo_dettaglio_id: f.indirizzo_dettaglio_id || null,
+  return {
     iva_id: f.iva_id || null,
     modalita_pagamento_id: f.modalita_pagamento_id || null,
     termine_pagamento_id: f.termine_pagamento_id || null,
@@ -172,13 +167,35 @@ async function onSave() {
     codice_commessa: f.codice_commessa || null,
     servizio_da_fatturare: f.servizio_da_fatturare,
     garanzia_tipo: f.garanzia_tipo,
-    garanzia_importo: f.garanzia_importo || 0
+    garanzia_importo: f.garanzia_importo || 0,
   }
-  const result = await execute(
-    () => store.create(payload),
-    { successMessage: t('clienti.cliente_creato') }
-  )
-  if (result !== null) emit('saved', result)
+}
+
+// Scopo: Salva cliente (create o update).
+async function onSave() {
+  if (isEdit.value) {
+    // Update: solo campi editabili
+    const result = await execute(
+      () => store.update(props.clienteId, buildEditablePayload()),
+      { successMessage: t('clienti.cliente_salvato') }
+    )
+    if (result !== null) emit('saved', result)
+  } else {
+    // Create: campi editabili + soggetto + utility + indirizzo
+    const sogg = soggettoSelezionato.value
+    if (!sogg || !form.value.utility_id) return
+    const payload = {
+      soggetto_id: sogg.id,
+      utility_id: form.value.utility_id,
+      indirizzo_dettaglio_id: form.value.indirizzo_dettaglio_id || null,
+      ...buildEditablePayload(),
+    }
+    const result = await execute(
+      () => store.create(payload),
+      { successMessage: t('clienti.cliente_creato') }
+    )
+    if (result !== null) emit('saved', result)
+  }
 }
 
 const canSave = computed(() => !!soggettoSelezionato.value && !!form.value.utility_id)
@@ -219,7 +236,7 @@ function onClose() {
   >
     <template #header>
       <DrawerTitle
-        :action="isEdit ? t('common.view') : t('common.new')"
+        :action="isEdit ? t('common.edit') : t('common.new')"
         :title="t('clienti.cliente')"
         icon="pi pi-briefcase"
       />
@@ -253,24 +270,23 @@ function onClose() {
           />
         </div>
 
-        <!-- === Stato (solo edit) === -->
-        <div v-if="isEdit && detail" class="form-field">
-          <label>{{ t('clienti.col_stato') }}</label>
-          <Tag :value="detail.stato_descrizione" :severity="statoClienteSeverity(detail.stato_codice)" />
-        </div>
-
         <!-- === Servizio === -->
         <h4 class="mt-3">{{ t('clienti.section_servizio') }}</h4>
-        <div class="form-grid-2col">
-          <div class="form-field">
+        <!-- Riga: utility + servizio_da_fatturare + stato (edit) -->
+        <div class="cliente-servizio-row">
+          <div class="form-field" style="flex: 2;">
             <label>{{ t('clienti.field_utility') }} <span v-if="!isEdit">*</span></label>
             <Select v-model="form.utility_id" :options="utilities.items.value" :loading="utilities.loading.value"
               option-label="descrizione" option-value="id" class="w-full" :placeholder="t('clienti.select_utility')"
               :disabled="isEdit" />
           </div>
-          <div class="form-field">
+          <div class="form-field" style="flex: 1;">
             <label>{{ t('clienti.field_servizio_fatturare') }}</label>
-            <Checkbox v-model="form.servizio_da_fatturare" :binary="true" :disabled="isEdit" />
+            <Checkbox v-model="form.servizio_da_fatturare" :binary="true" />
+          </div>
+          <div v-if="isEdit && detail" class="form-field" style="flex: 1; align-self: flex-end;">
+            <Tag :value="detail.stato_descrizione" :severity="statoClienteSeverity(detail.stato_codice)"
+              style="font-size: 0.95rem; padding: 0.5rem 1rem;" />
           </div>
         </div>
         <div v-if="!isEdit && indirizziSoggetto.length > 0" class="form-field">
@@ -280,7 +296,7 @@ function onClose() {
             :placeholder="t('clienti.select_indirizzo')" show-clear />
         </div>
 
-        <!-- === Codici + Date (solo edit) === -->
+        <!-- === Riepilogo identificativo (solo edit, readonly) === -->
         <template v-if="isEdit && detail">
           <div class="form-grid-2col">
             <div class="form-field">
@@ -318,31 +334,31 @@ function onClose() {
           <label>{{ t('clienti.field_iva') }}</label>
           <Select v-model="form.iva_id" :options="ivaList.items.value" :loading="ivaList.loading.value"
             option-label="descrizione" option-value="id" class="w-full"
-            :placeholder="t('clienti.select_iva')" show-clear :disabled="isEdit" />
+            :placeholder="t('clienti.select_iva')" show-clear />
         </div>
         <div class="form-grid-2col">
           <div class="form-field">
             <label>{{ t('clienti.field_modalita_pagamento') }}</label>
             <Select v-model="form.modalita_pagamento_id" :options="modalitaPagamento.items.value" :loading="modalitaPagamento.loading.value"
               option-label="descrizione" option-value="id" class="w-full"
-              :placeholder="t('clienti.select_modalita')" show-clear :disabled="isEdit" />
+              :placeholder="t('clienti.select_modalita')" show-clear />
           </div>
           <div class="form-field">
             <label>{{ t('clienti.field_termine_pagamento') }}</label>
             <Select v-model="form.termine_pagamento_id" :options="terminiPagamento.items.value" :loading="terminiPagamento.loading.value"
               option-label="descrizione" option-value="id" class="w-full"
-              :placeholder="t('clienti.select_termine')" show-clear :disabled="isEdit" />
+              :placeholder="t('clienti.select_termine')" show-clear />
           </div>
         </div>
         <div class="form-grid-2col">
           <div class="form-field">
             <label>{{ t('clienti.field_tipo_gg_scadenza') }}</label>
             <Select v-model="form.tipo_gg_scadenza_ft" :options="tipoGgOptions"
-              option-label="label" option-value="value" class="w-full" :disabled="isEdit" />
+              option-label="label" option-value="value" class="w-full" />
           </div>
           <div class="form-field">
             <label>{{ t('clienti.field_nr_giorni') }}</label>
-            <InputNumber v-model="form.nr_giorni_scadenza" class="w-full" :min="0" :disabled="isEdit" />
+            <InputNumber v-model="form.nr_giorni_scadenza" class="w-full" :min="0" />
           </div>
         </div>
 
@@ -352,26 +368,26 @@ function onClose() {
           <div class="form-field">
             <label>{{ t('clienti.field_cliente_pa') }}</label>
             <Select v-model="form.cliente_pa" :options="paOptions"
-              option-label="label" option-value="value" class="w-full" :disabled="isEdit" />
+              option-label="label" option-value="value" class="w-full" />
           </div>
           <div class="form-field">
             <label>{{ t('clienti.field_split_payment') }}</label>
             <Select v-model="form.split_payment" :options="paOptions"
-              option-label="label" option-value="value" class="w-full" :disabled="isEdit" />
+              option-label="label" option-value="value" class="w-full" />
           </div>
         </div>
         <div v-if="form.cliente_pa === 'S'" class="form-grid-3col">
           <div class="form-field">
             <label>{{ t('clienti.field_codice_cig') }}</label>
-            <InputText v-model="form.codice_cig" class="w-full" :disabled="isEdit" />
+            <InputText v-model="form.codice_cig" class="w-full" />
           </div>
           <div class="form-field">
             <label>{{ t('clienti.field_codice_cup') }}</label>
-            <InputText v-model="form.codice_cup" class="w-full" :disabled="isEdit" />
+            <InputText v-model="form.codice_cup" class="w-full" />
           </div>
           <div class="form-field">
             <label>{{ t('clienti.field_codice_commessa') }}</label>
-            <InputText v-model="form.codice_commessa" class="w-full" :disabled="isEdit" />
+            <InputText v-model="form.codice_commessa" class="w-full" />
           </div>
         </div>
 
@@ -381,16 +397,16 @@ function onClose() {
           <div class="form-field">
             <label>{{ t('clienti.field_garanzia_tipo') }}</label>
             <Select v-model="form.garanzia_tipo" :options="garanziaTipoOptions"
-              option-label="label" option-value="value" class="w-full" :disabled="isEdit" />
+              option-label="label" option-value="value" class="w-full" />
           </div>
           <div class="form-field">
             <label>{{ t('clienti.field_garanzia_importo') }}</label>
             <InputNumber v-model="form.garanzia_importo" class="w-full" :min="0"
-              mode="decimal" :min-fraction-digits="2" :disabled="isEdit" />
+              mode="decimal" :min-fraction-digits="2" />
           </div>
         </div>
 
-        <!-- === Gestione (solo edit) === -->
+        <!-- === Gestione sotto-drawer (solo edit) === -->
         <template v-if="isEdit && detail">
           <h4 class="mt-3">{{ t('clienti.section_gestione') }}</h4>
           <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
@@ -402,9 +418,9 @@ function onClose() {
 
       </div>
 
-      <!-- Footer salva (solo creazione) -->
-      <div v-if="!isEdit" class="flex justify-end mt-4">
-        <DrawerFooter :loading="loading" :disabled="!canSave" @save="onSave" @cancel="onClose" />
+      <!-- Footer salva/annulla -->
+      <div class="flex justify-end mt-4">
+        <DrawerFooter :loading="loading" :disabled="!isEdit && !canSave" @save="onSave" @cancel="onClose" />
       </div>
     </div>
 
@@ -429,13 +445,14 @@ function onClose() {
       context="ruolo"
     />
 
-    <!-- Sotto-drawer: Indirizzi soggetto (solo edit) -->
+    <!-- Sotto-drawer: Indirizzi ruolo (solo edit) -->
     <IndirizziSoggettoDrawer
       v-if="isEdit && detail"
       :visible="indirizziDrawer.visible"
       @update:visible="v => indirizziDrawer.visible = v"
-      :soggetto-id="detail.soggetto_id"
-      :tipo-soggetto-dettaglio-id="null"
+      :soggetto-id="detail.soggetto_ruolo_id"
+      :utility-id="detail.utility_id"
+      context="ruolo"
     />
 
     <!-- Sotto-drawer: Conti bancari ruolo (solo edit) -->
@@ -445,7 +462,16 @@ function onClose() {
       @update:visible="v => contiBancariDrawer.visible = v"
       :owner-id="detail.soggetto_ruolo_id"
       :owner-name="detail.ragione_sociale_completa || ''"
+      :utility-id="detail.utility_id"
       context="ruolo"
     />
   </Drawer>
 </template>
+
+<style scoped>
+.cliente-servizio-row {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-end;
+}
+</style>

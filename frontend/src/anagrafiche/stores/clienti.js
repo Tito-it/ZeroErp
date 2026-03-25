@@ -2,7 +2,7 @@
 
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import { listClienti, getCliente, createCliente } from '../api/anagrafiche'
+import { listClienti, getCliente, createCliente, updateCliente } from '../api/anagrafiche'
 import { useTabEvents } from '../../core/composables/useTabEvents'
 
 export const useClientiStore = defineStore('anagrafiche-clienti', () => {
@@ -57,8 +57,15 @@ export const useClientiStore = defineStore('anagrafiche-clienti', () => {
     return res.data.data
   }
 
+  // Scopo: Aggiorna campi editabili del cliente.
+  async function update(clienteId, payload) {
+    const res = await updateCliente(clienteId, payload)
+    emitDataChanged('cliente', clienteId)
+    return res.data.data
+  }
+
   return {
     items, totalRecords, loading, filters,
-    fetchList, fetchDetail, create
+    fetchList, fetchDetail, create, update
   }
 })

@@ -234,6 +234,10 @@ export function createCliente(payload) {
   return api.post(`${BASE}/clienti/`, payload)
 }
 
+export function updateCliente(clienteId, payload) {
+  return api.patch(`${BASE}/clienti/${clienteId}/`, payload)
+}
+
 export function listUtilitiesManual() {
   return api.get(`${BASE}/utilities/manual-lookup/`)
 }
@@ -258,8 +262,8 @@ export function deleteRuoloContatto(ruoloId, contattoId) {
 
 // --- Conti bancari ruolo ---
 
-export function listRuoloContiBancari(ruoloId) {
-  return api.get(`${BASE}/ruoli/${ruoloId}/conti-bancari/`)
+export function listRuoloContiBancari(ruoloId, params = {}) {
+  return api.get(`${BASE}/ruoli/${ruoloId}/conti-bancari/`, { params })
 }
 
 export function createRuoloContoBancario(ruoloId, payload) {
@@ -272,6 +276,24 @@ export function updateRuoloContoBancario(ruoloId, cbId, payload) {
 
 export function deleteRuoloContoBancario(ruoloId, cbId) {
   return api.delete(`${BASE}/ruoli/${ruoloId}/conti-bancari/${cbId}/`)
+}
+
+// --- Indirizzi ruolo ---
+
+export function listRuoloIndirizzi(ruoloId, params = {}) {
+  return api.get(`${BASE}/ruoli/${ruoloId}/indirizzi/`, { params })
+}
+
+export function createRuoloIndirizzo(ruoloId, payload) {
+  return api.post(`${BASE}/ruoli/${ruoloId}/indirizzi/`, payload)
+}
+
+export function updateRuoloIndirizzo(ruoloId, indirizzoId, payload) {
+  return api.patch(`${BASE}/ruoli/${ruoloId}/indirizzi/${indirizzoId}/`, payload)
+}
+
+export function deleteRuoloIndirizzo(ruoloId, indirizzoId) {
+  return api.delete(`${BASE}/ruoli/${ruoloId}/indirizzi/${indirizzoId}/`)
 }
 
 // --- Ruoli config resolver ---

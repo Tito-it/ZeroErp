@@ -69,10 +69,10 @@ async function loadContatti() {
     const res = await apiFor('list')(props.soggettoId, listParams)
     const payload = res.data?.data
     if (props.context === 'ruolo' && payload?.contatti_ruolo) {
-      // Unisce: prima ruolo (editabili), poi soggetto (readonly)
+      // Il backend gia' include 'fonte' (utility/ruolo/soggetto) nei dict
       contattiList.value = [
-        ...payload.contatti_ruolo.map(c => ({ ...c, fonte: 'ruolo' })),
-        ...payload.contatti_soggetto.map(c => ({ ...c, fonte: 'soggetto' })),
+        ...payload.contatti_ruolo,
+        ...(payload.contatti_soggetto || []),
       ]
     } else {
       contattiList.value = payload?.results || payload || []
@@ -187,7 +187,7 @@ async function onDelete(c) {
 
         <div v-else-if="contattiList.length > 0" class="contatti-list">
           <div v-for="c in contattiList" :key="c.id"
-            class="contatto-card" :class="{ 'contatto-card-inherited': c.fonte === 'soggetto' }">
+            class="contatto-card" :class="{ 'contatto-card-soggetto': c.fonte === 'soggetto', 'contatto-card-ruolo': c.fonte === 'ruolo' }">
             <div class="contatto-card-content">
               <div class="contatto-card-nome">
                 <Tag v-if="c.fonte" :value="c.fonte === 'soggetto' ? t('common.soggetto') : t('common.ruolo')"
@@ -268,9 +268,12 @@ async function onDelete(c) {
   padding: 0.5rem 0.75rem;
 }
 
-.contatto-card-inherited {
-  background: var(--p-surface-50);
-  opacity: 0.8;
+.contatto-card-soggetto {
+  border-color: var(--p-orange-300);
+  opacity: 0.5;
+}
+.contatto-card-ruolo {
+  border-color: var(--p-blue-300);
 }
 
 .contatto-card-content {

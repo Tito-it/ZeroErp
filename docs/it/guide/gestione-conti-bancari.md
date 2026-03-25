@@ -62,28 +62,37 @@ Quando un processo (fatturazione, pagamenti, rimborsi) cerca il conto da usare, 
 ```text
 conti_bancari (registro unico IBAN)
     │
-    ├── soggetti_conti_bancari (livello soggetto — fallback)
+    ├── soggetti_conti_bancari (livello soggetto — fallback finale)
     │       soggetto_id + conto_bancario_id + uso + predefinito
     │       un predefinito per (soggetto, uso)
     │
-    └── soggetti_ruoli_conti_bancari (livello ruolo — override)
-            soggetto_ruolo_id + conto_bancario_id + uso + predefinito
-            un predefinito per (ruolo, uso)
+    └── soggetti_ruoli_conti_bancari (livello ruolo — con utility opzionale)
+            soggetto_ruolo_id + utility_id + conto_bancario_id + uso + predefinito
+            un predefinito per (ruolo, utility, uso)
+            utility_id nullable: NULL = generico ruolo, valorizzato = specifico utility
 
-vw_conti_bancari_per_ruolo
-    unisce i due livelli con priorita RUOLO > SOGGETTO
+vw_conti_bancari_per_ruolo (vista flat — espone tutte le righe candidate)
+    unisce ruolo + soggetto, espone utility_id e utility_codice
     filtra: valido oggi, non bloccato, conto attivo
-    restituisce 1 riga per (soggetto_ruolo_id, uso)
+    la selezione del "vincente" e nella funzione, non nella vista
 
-fn_get_conto_bancario_predefinito(ruolo, uso)
-    interroga la view, con fallback a uso GENERICO
+fn_get_conto_bancario_predefinito(ruolo, uso, utility_id DEFAULT NULL)
+    cascata 7 livelli:
+    1. ruolo + utility + uso richiesto
+    2. ruolo + uso richiesto (utility NULL)
+    3. soggetto + uso richiesto
+    4. ruolo + utility + uso GENERICO
+    5. ruolo + uso GENERICO (utility NULL)
+    6. soggetto + uso GENERICO
+    7. NULL
     restituisce 0 o 1 riga
 ```
 
 * **Registro** = l'IBAN esiste una sola volta, normalizzato e validato
-* **Legame soggetto** = il livello base, usato come fallback
-* **Legame ruolo** = l'override specifico per un ruolo (cliente, fornitore, gestore)
-* **Predefinito** = un solo conto predefinito per ogni combinazione (soggetto/ruolo, uso)
+* **Legame soggetto** = il livello base, usato come fallback finale
+* **Legame ruolo** = l'override specifico per un ruolo, con `utility_id` opzionale per differenziare per servizio
+* **Predefinito** = un solo conto predefinito per ogni combinazione (ruolo, utility, uso)
+* **Regola predefinito/bloccato** = non e possibile bloccare un conto predefinito; il service backend impedisce la combinazione
 
 ---
 

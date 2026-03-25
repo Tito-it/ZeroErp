@@ -2,7 +2,7 @@
 
 > Data apertura: 2026-03-24
 >
-> Stato: **IN CORSO** — DB completato, backend/frontend da fare
+> Stato: **COMPLETATO (sviluppo)** — DB, backend, frontend, smoke test, PATCH cliente, doc API — test UI manuali pendenti
 >
 > Priorità: alta (prerequisito per gestione clienti multi-utility completa)
 
@@ -297,9 +297,9 @@ Le seguenti funzioni operano sul layer soggetto, che non ha `utility_id`:
 
 ---
 
-## STEP 5 — Backend: Repository e Service
+## STEP 5 — Backend: Repository e Service ✅
 
-**Competenza: Backend Python/Django**
+**Competenza: Backend Python/Django** — Completato 2026-03-24
 
 **Prerequisiti**: STEP 1-4 completati e migrati
 
@@ -343,9 +343,9 @@ Aggiungere metodi a `SoggettiRepository` o creare `IndirizziRuoloRepository`:
 
 ---
 
-## STEP 6 — Frontend: Drawer indirizzi ruolo
+## STEP 6 — Frontend: Drawer indirizzi ruolo ✅
 
-**Competenza: Frontend Vue.js**
+**Competenza: Frontend Vue.js** — Completato 2026-03-25
 
 **Prerequisiti**: STEP 5 completato
 
@@ -386,9 +386,9 @@ passando `utility_id` del cliente.
 
 ---
 
-## STEP 7 — Documentazione
+## STEP 7 — Documentazione (parziale)
 
-**Competenza: Tutti**
+**Competenza: Tutti** — Doc API backend completate, guide operative da aggiornare
 
 ### 7.1 Aggiornare guida indirizzi
 
@@ -645,9 +645,9 @@ Il default `p_utility_id = NULL` mantiene retrocompatibilità.
 
 ---
 
-## STEP 10 — Backend: API conti bancari con utility
+## STEP 10 — Backend: API conti bancari con utility ✅
 
-**Competenza: Backend Python/Django**
+**Competenza: Backend Python/Django** — Completato 2026-03-24
 
 **Prerequisiti**: STEP 8-9 completati e migrati
 
@@ -676,9 +676,9 @@ Il metodo `crea_conto_ruolo` deve accettare `utility_id` opzionale.
 
 ---
 
-## STEP 11 — Frontend: Drawer conti bancari con utility
+## STEP 11 — Frontend: Drawer conti bancari con utility ✅
 
-**Competenza: Frontend Vue.js**
+**Competenza: Frontend Vue.js** — Completato 2026-03-25
 
 **Prerequisiti**: STEP 10 completato
 
@@ -752,6 +752,59 @@ File: `docs/it/dbzero/anagrafiche/tabelle/soggetti_ruoli_conti_bancari.md`
 | Vincolo predefinito conti | 4 partial index (2 per utility valorizzata, 2 per NULL) — più complesso di indirizzi |
 | Mandati SEPA | La utility si ricava da `billing_account.utility_id`, non da `istanza_utility_id` (che non ha utility_id). Il flusso di creazione/rinnovo mandato deve chiamare `fn_get_conto_bancario_predefinito` con il nuovo parametro `p_utility_id` derivato dal BA |
 | Vista conti flat | La vista `vw_conti_bancari_per_ruolo` non restituisce più 1 riga per (ruolo, uso) — verificare che tutti i chiamanti usino la funzione per la selezione singola |
+
+---
+
+## Test UI manuali da completare
+
+Lo sviluppo e` completo. Prima di chiudere il WIP, eseguire i seguenti test manuali
+sulla UI per verificare il corretto funzionamento end-to-end in tutti gli scenari.
+
+### Indirizzi ruolo
+
+| # | Scenario | Dove | Verifica |
+| --- | --- | --- | --- |
+| 1 | Lista indirizzi senza utility | ClienteDrawer edit → Gestisci indirizzi | Mostra indirizzi ruolo (editabili) + soggetto (readonly grigio) |
+| 2 | Lista indirizzi con utility | ClientiView lista → pulsante indirizzi | Cascata: utility vince su ruolo per stesso tipo, soggetto fallback |
+| 3 | Crea indirizzo normalizzato | Drawer indirizzi → Aggiungi | Seleziona tipo, cerca indirizzo dettaglio, salva OK |
+| 4 | Crea indirizzo libero | Drawer indirizzi → Aggiungi → modalita` libera | Testo libero + stato estero, salva OK |
+| 5 | Crea duplicato | Stesso tipo + utility gia` presente | Errore E_ANAG_DUPLICATO con messaggio chiaro |
+| 6 | Elimina indirizzo ruolo | Drawer indirizzi → icona cestino | Conferma, lista aggiornata |
+| 7 | Indirizzo soggetto readonly | Drawer indirizzi → card grigia | Nessun pulsante azione visibile |
+
+### Conti bancari ruolo
+
+| # | Scenario | Dove | Verifica |
+| --- | --- | --- | --- |
+| 8 | Lista conti con utility | ClienteDrawer edit → Gestisci conti | Cascata: utility > ruolo > soggetto, badge fonte corretto |
+| 9 | Crea conto con utility | Drawer conti → Aggiungi | IBAN autocomplete, filiale, uso, salva con utility_id |
+| 10 | Predefinito spunta verde | Conto con predefinito=true | Spunta verde prima dell'IBAN, tooltip "Predefinito" |
+| 11 | Verificato badge blu | Conto con verificato=true (non bloccato) | Tag "Verificato" blu visibile |
+| 12 | Bloccato badge rosso | Conto con bloccato=true | Tag "Bloccato" rosso, verificato nascosto |
+| 13 | Predefinito/bloccato mutuo esclusivo | Attiva predefinito poi bloccato | Predefinito si spegne; e viceversa |
+| 14 | IBAN maxlength | Digita piu` di 34 caratteri | Input bloccato a 34 |
+| 15 | Crea duplicato | Stesso IBAN + uso + ruolo + utility | Errore E_ANAG_DUPLICATO |
+
+### Contatti ruolo
+
+| # | Scenario | Dove | Verifica |
+| --- | --- | --- | --- |
+| 16 | Lista contatti con utility | ClienteDrawer edit → Gestisci contatti | Cascata: utility > ruolo > soggetto |
+| 17 | Crea contatto | Drawer contatti → Aggiungi | Tipo obbligatorio, nominativo, salva OK |
+| 18 | Crea duplicato tipo+utility | Stesso tipo_contatto + utility | Errore E_ANAG_DUPLICATO con messaggio chiaro |
+| 19 | Modifica contatto ruolo | Click matita su contatto editabile | Form pre-popolato, salva OK |
+| 20 | Elimina contatto ruolo | Click cestino | Conferma, lista aggiornata |
+| 21 | Contatto soggetto readonly | Card grigia senza azioni | Nessun pulsante visibile |
+
+### Cliente drawer (PATCH)
+
+| # | Scenario | Dove | Verifica |
+| --- | --- | --- | --- |
+| 22 | Modifica pagamento | ClienteDrawer edit → cambia IVA/modalita` | Salva OK, ricarica mostra nuovo valore |
+| 23 | Modifica PA | ClienteDrawer edit → cliente_pa=Si` | Appaiono campi CIG/CUP/Commessa, salva OK |
+| 24 | Modifica garanzia | ClienteDrawer edit → cambia importo | Salva OK |
+| 25 | Campi protetti | ClienteDrawer edit → utility, BA, istanza, date | Tutti disabled/readonly, non modificabili |
+| 26 | Stato inline | ClienteDrawer edit → riga utility | Tag stato visibile accanto a utility + servizio |
 
 ---
 

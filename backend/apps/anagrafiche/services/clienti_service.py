@@ -56,6 +56,15 @@ class ClientiService:
         assert cliente is not None
         return cliente
 
+    # Scopo: Aggiorna campi editabili di un cliente (pagamento, PA, garanzia, servizio).
+    def update_cliente(self, cliente_id: int, payload: dict[str, Any]) -> dict[str, Any]:
+        # Verifica che il cliente esista
+        self.get_cliente(cliente_id)
+        updated = self._repo.update_cliente(cliente_id, payload)
+        ErrorManager.require(updated, code=E_ANAG_NOT_FOUND,
+                             message="Cliente non trovato o nessun campo modificato.")
+        return {"updated": True}
+
     # =================================================================
     # Creazione cliente (orchestratore riusabile)
     # =================================================================

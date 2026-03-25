@@ -66,9 +66,15 @@ L'unicita del civico e garantita dal vincolo `uq_indirizzi_dettaglio_norm`: non 
 
 E l'indirizzo **operativo**, legato a un ruolo del soggetto (`soggetto_ruolo_id`). Esempi: l'indirizzo di spedizione di un cliente, la sede operativa di un fornitore, l'indirizzo di fatturazione.
 
+La colonna `utility_id` (nullable, FK verso `config.utilities`) consente di differenziare
+indirizzi per utility: ad esempio il cliente Titini puo avere un indirizzo di fatturazione per GAS
+(Corridonia) e uno diverso per IDRICO (Civitanova). Con `utility_id = NULL` l'indirizzo e generico
+del ruolo e fa da fallback per tutte le utility che non hanno un override specifico.
+
 I tipi di indirizzo ammessi dipendono dal tipo di ruolo: la matrice `config.tipi_ruolo_tipi_indirizzo` definisce quali tipi sono consentiti per ciascun tipo di ruolo ([R5](#r5--validazione-tipo-indirizzo-per-ruolo)).
 
-Vincolo di unicita: un solo indirizzo per tipo per ruolo (`UNIQUE (soggetto_ruolo_id, tipo_indirizzo_id)` — [R2](#r2--unicita-per-tipo)).
+Vincolo di unicita: un solo indirizzo per combinazione `(soggetto_ruolo_id, utility_id, tipo_indirizzo_id)`,
+gestito con due partial unique index per il trattamento NULL di PostgreSQL ([R2](#r2--unicita-per-tipo)).
 
 ### Indirizzo per soggetto (`anagrafiche.indirizzi_soggetti`)
 
@@ -129,16 +135,23 @@ Le viste espongono anche la **provenienza** (`source`: `RUOLO` / `SOGGETTO`) com
 
 ## Policy di risoluzione (master/fallback)
 
-Quando un processo ha bisogno di un indirizzo — per fatturare, per spedire, per comunicare — il sistema non chiede al chiamante di sapere se l'indirizzo sta a livello ruolo o soggetto. La risoluzione avviene automaticamente:
+Quando un processo ha bisogno di un indirizzo — per fatturare, per spedire, per comunicare — il sistema non chiede al chiamante di sapere se l'indirizzo sta a livello utility, ruolo o soggetto. La risoluzione avviene automaticamente con una **cascata a 3 livelli**:
 
-1. **Master** — cerco nel layer **ruolo** (`anagrafiche.indirizzi`) il tipo richiesto. Se il tipo esatto non esiste, la matrice `config.tipi_ruolo_tipi_indirizzo` definisce una catena di fallback tra tipi (es. se non c'e SEDEOP, usa SEDELEG).
-2. **Fallback** — se il layer ruolo non risolve, cerco nel layer **soggetto** (`anagrafiche.indirizzi_soggetti`) con la stessa logica di fallback tra tipi.
+1. **Utility** — cerco nel layer **ruolo** il tipo richiesto con la utility specifica (`utility_id = X`). Se il tipo esatto non esiste, la matrice `config.tipi_ruolo_tipi_indirizzo` definisce una catena di fallback tra tipi.
+2. **Ruolo generico** — se il livello utility non risolve, cerco nello stesso layer ruolo con `utility_id IS NULL` (indirizzo generico, valido per tutte le utility).
+3. **Soggetto** — se il layer ruolo non risolve, cerco nel layer **soggetto** (`anagrafiche.indirizzi_soggetti`) con la stessa logica di fallback tra tipi.
 
-La funzione [`script.fn_get_indirizzo(p_soggetto_ruolo_id, p_tipo_codice)`](/dbzero/script/funzioni/fn_get_indirizzo) implementa questa catena e restituisce un set ricco con 26 colonne (indirizzo completo, geolocalizzazione, gerarchia geografica).
+| Priorita` | utility_id | soggetto_ruolo_id | Significato | Editabile |
+| --- | --- | --- | --- | --- |
+| 1 | valorizzato | valorizzato | Indirizzo specifico utility | Si` |
+| 2 | NULL | valorizzato | Indirizzo generico ruolo | Si` |
+| 3 | — | — | Indirizzo soggetto | No (readonly) |
+
+La funzione [`script.fn_get_indirizzo(p_soggetto_ruolo_id, p_tipo_codice, p_utility_id DEFAULT NULL)`](/dbzero/script/funzioni/fn_get_indirizzo) implementa questa catena e restituisce un set ricco con 28 colonne (indirizzo completo, utility_id, utility_codice, geolocalizzazione, gerarchia geografica). Il parametro `p_utility_id` e opzionale — senza di esso la cascata parte dal livello 2 (retrocompatibile).
 
 Per letture dirette senza fallback:
 
-* [`script.fn_get_indirizzi_by_ruolo(p_soggetto_ruolo_id)`](/dbzero/script/funzioni/fn_get_indirizzi_by_ruolo) — solo layer ruolo
+* [`script.fn_get_indirizzi_by_ruolo(p_soggetto_ruolo_id, p_utility_id DEFAULT NULL)`](/dbzero/script/funzioni/fn_get_indirizzi_by_ruolo) — solo layer ruolo, con filtro utility opzionale
 * [`script.fn_get_indirizzi_by_soggetto(p_soggetto_id)`](/dbzero/script/funzioni/fn_get_indirizzi_by_soggetto) — solo layer soggetto
 * [`script.fn_get_indirizzo_by_soggetto(p_soggetto_id, p_tipo_codice)`](/dbzero/script/funzioni/fn_get_indirizzo_by_soggetto) — layer soggetto con fallback tra tipi
 
@@ -154,7 +167,7 @@ Un indirizzo e **normalizzato** oppure **libero**, mai entrambi. I check constra
 
 Un solo indirizzo per tipo per entita:
 
-* Layer ruolo: `UNIQUE (soggetto_ruolo_id, tipo_indirizzo_id)`
+* Layer ruolo: `UNIQUE (soggetto_ruolo_id, utility_id, tipo_indirizzo_id)` — implementato con due partial unique index per gestire NULL (`uq_indirizzi_ruolo_tipo_no_utility` per `utility_id IS NULL`, `uq_indirizzi_ruolo_utility_tipo` per `utility_id IS NOT NULL`)
 * Layer soggetto: `UNIQUE (soggetto_id, tipo_indirizzo_id)`
 
 ### R3 — Completezza indirizzo libero

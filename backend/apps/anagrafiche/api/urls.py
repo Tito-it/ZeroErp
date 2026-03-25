@@ -2,6 +2,7 @@ from django.urls import path
 
 from apps.anagrafiche.api.views_clienti import ClientiDetailView, ClientiView, UtilitiesManualLookupView
 from apps.anagrafiche.api.views_contatti_ruolo import RuoloContattiDetailView, RuoloContattiView
+from apps.anagrafiche.api.views_indirizzi_ruolo import RuoloIndirizziDetailView, RuoloIndirizziView
 from apps.anagrafiche.api.views_codici_postali import CodiciPostaliDetailView, CodiciPostaliView
 from apps.anagrafiche.api.views_comuni import ComuniView
 from apps.anagrafiche.api.views_indirizzi import IndirizziCheckDuplicatoView, IndirizziDetailView, IndirizziView
@@ -41,6 +42,9 @@ urlpatterns = [
     path("ruoli/<int:soggetto_ruolo_id>/contatti/<int:contatto_id>/", RuoloContattiDetailView.as_view(), name="anagrafiche-ruoli-contatti-detail"),
     # Ruoli — config resolver (prima delle rotte parametriche)
     path("ruoli/<str:tipo_ruolo_codice>/config-resolver/", RuoliConfigResolverView.as_view(), name="anagrafiche-ruoli-config-resolver"),
+    # Indirizzi ruolo
+    path("ruoli/<int:soggetto_ruolo_id>/indirizzi/", RuoloIndirizziView.as_view(), name="anagrafiche-ruoli-indirizzi"),
+    path("ruoli/<int:soggetto_ruolo_id>/indirizzi/<int:indirizzo_id>/", RuoloIndirizziDetailView.as_view(), name="anagrafiche-ruoli-indirizzi-detail"),
     # Conti bancari ruolo
     path("ruoli/<int:soggetto_ruolo_id>/conti-bancari/", RuoloContiBancariView.as_view(), name="anagrafiche-ruoli-conti-bancari"),
     path("ruoli/<int:soggetto_ruolo_id>/conti-bancari/<int:cb_id>/", RuoloContiBancariDetailView.as_view(), name="anagrafiche-ruoli-conti-bancari-detail"),

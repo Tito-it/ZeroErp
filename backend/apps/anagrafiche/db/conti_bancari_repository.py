@@ -30,12 +30,14 @@ _LEGAME_CONTO_JOIN = """
               LEFT JOIN anagrafiche.bank_branches bb
                 ON bb.id = cb.bank_branch_id"""
 
-# Campi ammessi e nullable per update legami (identici per soggetto e ruolo).
+# Campi ammessi e nullable per update legami.
+# utility_id ammesso solo per legame ruolo (non soggetto), ma il filtro
+# avviene a livello service, qui e' generico.
 _LEGAME_ALLOWED = {
     "uso", "predefinito", "valido_dal", "valido_al",
-    "intestazione_dichiarata", "verificato", "bloccato",
+    "intestazione_dichiarata", "verificato", "bloccato", "utility_id",
 }
-_LEGAME_NULLABLE = {"valido_dal", "valido_al", "intestazione_dichiarata"}
+_LEGAME_NULLABLE = {"valido_dal", "valido_al", "intestazione_dichiarata", "utility_id"}
 
 
 def _normalize_legame_data(data: dict[str, Any]) -> list[tuple[str, Any]]:
@@ -229,15 +231,19 @@ class ContiBancariRepository:
     # =================================================================
 
     # Scopo: Lista conti bancari associati a un ruolo con dati registro e filiale.
+    #        Include utility_id e utility_codice per cascata 3 livelli.
     def list_conti_ruolo(self, soggetto_ruolo_id: int) -> list[dict[str, Any]]:
         sql = f"""
             SELECT srcb.id, srcb.conto_bancario_id, srcb.uso, srcb.predefinito,
                    srcb.valido_dal::text, srcb.valido_al::text,
                    srcb.intestazione_dichiarata,
                    srcb.verificato, srcb.bloccato,
+                   srcb.utility_id,
+                   u.codice AS utility_codice,
                    {_LEGAME_CONTO_COLS}
               FROM anagrafiche.soggetti_ruoli_conti_bancari srcb
               {_LEGAME_CONTO_JOIN.format(alias='srcb')}
+              LEFT JOIN config.utilities u ON u.id = srcb.utility_id
              WHERE srcb.soggetto_ruolo_id = %s
              ORDER BY srcb.uso, srcb.predefinito DESC, srcb.id
         """
@@ -267,7 +273,7 @@ class ContiBancariRepository:
             cursor.execute(sql, [soggetto_ruolo_id])
             return rows_to_list(cursor)
 
-    # Scopo: Crea legame ruolo ↔ conto bancario.
+    # Scopo: Crea legame ruolo ↔ conto bancario con utility_id opzionale.
     def create_conto_ruolo(
         self, soggetto_ruolo_id: int, *,
         conto_bancario_id: int,
@@ -278,22 +284,24 @@ class ContiBancariRepository:
         intestazione_dichiarata: str | None = None,
         verificato: bool = False,
         bloccato: bool = False,
+        utility_id: int | None = None,
     ) -> dict[str, Any]:
         sql = """
             INSERT INTO anagrafiche.soggetti_ruoli_conti_bancari
                 (soggetto_ruolo_id, conto_bancario_id, uso, predefinito,
                  valido_dal, valido_al, intestazione_dichiarata,
-                 verificato, bloccato)
-            VALUES (%s, %s, %s, %s, %s::date, %s::date, %s, %s, %s)
+                 verificato, bloccato, utility_id)
+            VALUES (%s, %s, %s, %s, %s::date, %s::date, %s, %s, %s, %s)
             RETURNING id, conto_bancario_id, uso, predefinito,
                       valido_dal::text, valido_al::text,
-                      intestazione_dichiarata, verificato, bloccato
+                      intestazione_dichiarata, verificato, bloccato,
+                      utility_id
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [
                 soggetto_ruolo_id, conto_bancario_id, uso, predefinito,
                 valido_dal, valido_al, intestazione_dichiarata,
-                verificato, bloccato,
+                verificato, bloccato, utility_id,
             ])
             result = row_to_dict(cursor)
             assert result is not None
@@ -320,6 +328,24 @@ class ContiBancariRepository:
         with connection.cursor() as cursor:
             cursor.execute(sql, [conto_ruolo_id, soggetto_ruolo_id])
             return cursor.rowcount > 0
+
+    # =================================================================
+    # Lettura flag legame (soggetto o ruolo)
+    # =================================================================
+
+    # Scopo: Legge predefinito e bloccato di un legame conto (soggetto o ruolo).
+    #        Usato dal service per validare coerenza predefinito/bloccato su update.
+    def get_legame_flags_soggetto(self, record_id: int) -> dict[str, Any] | None:
+        sql = "SELECT predefinito, bloccato FROM anagrafiche.soggetti_conti_bancari WHERE id = %s"
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [record_id])
+            return row_to_dict(cursor)
+
+    def get_legame_flags_ruolo(self, record_id: int) -> dict[str, Any] | None:
+        sql = "SELECT predefinito, bloccato FROM anagrafiche.soggetti_ruoli_conti_bancari WHERE id = %s"
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [record_id])
+            return row_to_dict(cursor)
 
     # =================================================================
     # Lookup filiali bancarie (anagrafiche.bank_branches)
