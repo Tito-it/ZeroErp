@@ -30,12 +30,12 @@ const contatto = useContattoForm()
 
 // Context 'soggetto' (default) o 'ruolo': determina quale set di API usare.
 // Per 'soggetto': soggettoId = soggetto UUID. Per 'ruolo': soggettoId = soggetto_ruolo_id (int).
-// utilityId: opzionale, usato in context 'ruolo' per cascata a 3 livelli.
+// istanzaUtilityId: opzionale, usato in context 'ruolo' per cascata a 3 livelli.
 const props = defineProps({
   visible: { type: Boolean, default: false },
   soggettoId: { type: [String, Number], default: null },
   context: { type: String, default: 'soggetto' },
-  utilityId: { type: Number, default: null }
+  istanzaUtilityId: { type: Number, default: null }
 })
 
 // Scopo: Risolve le funzioni API in base al context (soggetto o ruolo).
@@ -65,8 +65,8 @@ async function loadContatti() {
   if (!props.soggettoId) return
   listLoading.value = true
   try {
-    const listParams = props.context === 'ruolo' && props.utilityId
-      ? { utility_id: props.utilityId } : {}
+    const listParams = props.context === 'ruolo' && props.istanzaUtilityId
+      ? { istanza_utility_id: props.istanzaUtilityId } : {}
     const res = await apiFor('list')(props.soggettoId, listParams)
     const payload = res.data?.data
     if (props.context === 'ruolo' && payload?.contatti_ruolo) {
@@ -135,7 +135,7 @@ async function onSaveForm() {
     const result = await execute(
       () => apiFor('create')(props.soggettoId, {
         ...contatto.form,
-        ...(props.context === 'ruolo' && props.utilityId ? { utility_id: props.utilityId } : {})
+        ...(props.context === 'ruolo' && props.istanzaUtilityId ? { istanza_utility_id: props.istanzaUtilityId } : {})
       }),
       { successMessage: t('contatto.contatto_creato') }
     )
@@ -188,13 +188,13 @@ async function onDelete(c) {
 
         <div v-else-if="contattiList.length > 0" class="contatti-list">
           <div v-for="c in contattiList" :key="c.id"
-            class="contatto-card" :class="{ 'contatto-card-soggetto': c.fonte === 'soggetto', 'contatto-card-ruolo': c.fonte === 'ruolo' }">
+            class="contatto-card" :class="{ 'contatto-card-soggetto': c.fonte === 'soggetto', 'contatto-card-ruolo': c.fonte === 'ruolo' || c.fonte === 'istanza' }">
             <div class="contatto-card-content">
               <div class="contatto-card-nome">
-                <Tag v-if="c.fonte" :value="c.fonte === 'soggetto' ? t('common.soggetto') : t('common.ruolo')"
+                <Tag v-if="c.fonte" :value="c.fonte === 'soggetto' ? t('common.soggetto') : (c.fonte === 'istanza' && c.utility_codice ? c.utility_codice : t('common.ruolo'))"
                   :severity="c.fonte === 'soggetto' ? 'secondary' : 'info'" />
                 <Tag v-if="c.tipo_contatto_descrizione"
-                  :value="c.tipo_contatto_descrizione + (c.utility_codice ? ' · ' + c.utility_codice : '')"
+                  :value="c.tipo_contatto_descrizione"
                   severity="info" />
                 <strong>{{ c.nominativo }}</strong>
               </div>

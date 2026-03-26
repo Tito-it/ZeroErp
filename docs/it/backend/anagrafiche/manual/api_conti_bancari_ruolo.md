@@ -3,14 +3,15 @@
 ## Scopo
 
 Endpoint REST per la gestione dei conti bancari a livello ruolo con supporto
-utility. La lista implementa la cascata a 3 livelli: utility specifica,
+istanza. La lista implementa la cascata a 3 livelli: istanza specifica,
 ruolo generico, soggetto (fallback readonly).
 
 ## Contesto
 
 I legami ruolo ↔ conto sono nella tabella `anagrafiche.soggetti_ruoli_conti_bancari`.
-La colonna `utility_id` (nullable) consente conti specifici per utility
-(es. conto INCASSO GAS diverso da INCASSO IDRICO).
+La colonna `istanza_utility_id` (nullable, bigint FK → `anagrafiche.istanze_utilities`)
+consente conti specifici per istanza di servizio
+(es. conto INCASSO GAS Corridonia diverso da INCASSO GAS Civitanova).
 
 Il registro IBAN (`anagrafiche.conti_bancari`) e` condiviso: il legame punta
 a un conto del registro tramite `conto_bancario_id`. La creazione usa
@@ -40,17 +41,17 @@ Restituisce i conti del ruolo con cascata per `uso`.
 
 | Parametro | Tipo | Obbligatorio | Descrizione |
 |---|---|---|---|
-| `utility_id` | int | No | Se presente, attiva il livello 1 (utility specifica) |
+| `istanza_utility_id` | int | No | Se presente, attiva il livello 1 (istanza specifica) |
 
 ### Cascata di risoluzione
 
 | Priorita` | Livello | Condizione | `fonte` | Editabile |
 |---|---|---|---|---|
-| 1 | Utility | `utility_id = X` | `utility` | Si` |
-| 2 | Ruolo generico | `utility_id IS NULL`, uso non coperto da L1 | `ruolo` | Si` |
+| 1 | Istanza | `istanza_utility_id = X` | `istanza` | Si` |
+| 2 | Ruolo generico | `istanza_utility_id IS NULL`, uso non coperto da L1 | `ruolo` | Si` |
 | 3 | Soggetto | Uso non coperto da L1+L2 | `soggetto` | No (readonly) |
 
-Senza `utility_id`, la cascata parte dal livello 2 (retrocompatibile).
+Senza `istanza_utility_id`, la cascata parte dal livello 2.
 
 ### Risposta (200)
 
@@ -68,8 +69,7 @@ Senza `utility_id`, la cascata parte dal livello 2 (retrocompatibile).
         "intestazione_dichiarata": null,
         "verificato": true,
         "bloccato": false,
-        "utility_id": 5,
-        "utility_codice": "GAS",
+        "istanza_utility_id": 100,
         "iban": "IT60X0542811101000000123456",
         "bic_swift": "BPPIITRRXXX",
         "intestatario_predefinito": "Mario Rossi",
@@ -79,7 +79,7 @@ Senza `utility_id`, la cascata parte dal livello 2 (retrocompatibile).
         "filiale_nome": "Banca Popolare Milano",
         "bank_code": "05428",
         "branch_code": "11101",
-        "fonte": "utility"
+        "fonte": "istanza"
       }
     ],
     "conti_ereditati": [
@@ -93,10 +93,10 @@ Senza `utility_id`, la cascata parte dal livello 2 (retrocompatibile).
 
 ### Dipendenze DB
 
-- Tabella `anagrafiche.soggetti_ruoli_conti_bancari` (con `utility_id`)
+- Tabella `anagrafiche.soggetti_ruoli_conti_bancari` (con `istanza_utility_id`)
 - Tabella `anagrafiche.soggetti_conti_bancari` (fallback soggetto)
 - Tabella `anagrafiche.conti_bancari` (registro IBAN)
-- Tabella `config.utilities` (lookup codice)
+- Tabella `anagrafiche.istanze_utilities` (FK istanza)
 
 ---
 
@@ -120,7 +120,7 @@ Associa un conto al ruolo. Se l'IBAN non esiste nel registro, viene creato
 | `conto_bancario_id` | int | No* | ID diretto dal registro (bypass IBAN resolution) |
 | `uso` | string | No | `INCASSO`, `PAGAMENTO`, `RIMBORSO`, `GENERICO` (default) |
 | `predefinito` | bool | No | Se predefinito per questo uso |
-| `utility_id` | int | No | Se presente, legame specifico per utility |
+| `istanza_utility_id` | int | No | Se presente, legame specifico per istanza |
 | `valido_dal` | date | No | Data inizio validita` |
 | `valido_al` | date | No | Data fine validita` |
 
@@ -135,16 +135,16 @@ Associa un conto al ruolo. Se l'IBAN non esiste nel registro, viene creato
     "conto_bancario_id": 10,
     "uso": "INCASSO",
     "predefinito": true,
-    "utility_id": 5
+    "istanza_utility_id": 100
   }
 }
 ```
 
 ### Regole
 
-- Vincolo UNIQUE parziale: un solo legame per `(soggetto_ruolo_id, utility_id, conto_bancario_id, uso)`
-- Un solo predefinito per `(soggetto_ruolo_id, utility_id, uso)`
-- `utility_id = NULL` crea un legame generico del ruolo
+- Vincolo UNIQUE parziale: un solo legame per `(soggetto_ruolo_id, istanza_utility_id, conto_bancario_id, uso)`
+- Un solo predefinito per `(soggetto_ruolo_id, istanza_utility_id, uso)`
+- `istanza_utility_id = NULL` crea un legame generico del ruolo
 
 ---
 
@@ -161,7 +161,7 @@ Associa un conto al ruolo. Se l'IBAN non esiste nel registro, viene creato
 |---|---|---|
 | `uso` | string | Cambia tipo d'uso |
 | `predefinito` | bool | Segna/rimuovi come predefinito |
-| `utility_id` | int/null | Assegna/cambia/rimuovi utility |
+| `istanza_utility_id` | int/null | Assegna/cambia/rimuovi istanza |
 | `valido_dal` | date | Inizio validita` |
 | `valido_al` | date | Fine validita` |
 | `intestazione_dichiarata` | string | Intestazione dichiarata |
@@ -195,15 +195,15 @@ Associa un conto al ruolo. Se l'IBAN non esiste nel registro, viene creato
 
 | Oggetto | Schema | Tipo | Ruolo |
 |---|---|---|---|
-| `anagrafiche.soggetti_ruoli_conti_bancari` | anagrafiche | tabella | Legami ruolo con utility |
+| `anagrafiche.soggetti_ruoli_conti_bancari` | anagrafiche | tabella | Legami ruolo con istanza |
 | `anagrafiche.soggetti_conti_bancari` | anagrafiche | tabella | Fallback soggetto |
 | `anagrafiche.conti_bancari` | anagrafiche | tabella | Registro IBAN condiviso |
 | `anagrafiche.bank_branches` | anagrafiche | tabella | Filiali bancarie |
-| `config.utilities` | config | tabella | Lookup utility_codice |
+| `anagrafiche.istanze_utilities` | anagrafiche | tabella | FK istanza_utility_id |
 
 ## Note di migrazione
 
-- Changeset DB: `20260324-03-add-utility-id-src-bancari-mctit.yaml` (schema)
-- Changeset DB: `20260324-05-recreate-conti-bancari-chain-utility-mctit.yaml` (vista + funzione)
-- Retrocompatibilita`: senza `utility_id`, il comportamento e` identico al modello precedente
-- Campo `fonte` aggiunto nella risposta lista: `utility`, `ruolo`, `soggetto`
+- Changeset DB: `20260325-03-replace-utility-with-istanza-src-bancari-mctit.yaml` (schema)
+- Changeset DB: `20260325-05-recreate-conti-bancari-chain-istanza-mctit.yaml` (vista + funzione)
+- Le viste non espongono piu` `utility_codice` — il frontend lo ha dal payload cliente
+- Campo `fonte` nella risposta lista: `istanza`, `ruolo`, `soggetto`

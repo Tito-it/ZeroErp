@@ -38,7 +38,7 @@ const props = defineProps({
   ownerId: { type: [String, Number], default: null },
   ownerName: { type: String, default: '' },
   context: { type: String, default: 'soggetto' },
-  utilityId: { type: Number, default: null },
+  istanzaUtilityId: { type: Number, default: null },
 })
 
 // Scopo: Risolve le funzioni API in base al context (soggetto o ruolo).
@@ -68,8 +68,8 @@ async function loadConti() {
   if (!props.ownerId) return
   listLoading.value = true
   try {
-    const listParams = props.context === 'ruolo' && props.utilityId
-      ? { utility_id: props.utilityId } : {}
+    const listParams = props.context === 'ruolo' && props.istanzaUtilityId
+      ? { istanza_utility_id: props.istanzaUtilityId } : {}
     const res = await apiFor('list')(props.ownerId, listParams)
     const payload = res.data?.data
     if (props.context === 'ruolo' && payload?.conti_ruolo) {
@@ -133,9 +133,9 @@ async function onSaveForm() {
     if (result === null) return
   } else {
     const payload = conto.toCreatePayload()
-    // In context ruolo, includi utility_id se presente
-    if (props.context === 'ruolo' && props.utilityId) {
-      payload.utility_id = props.utilityId
+    // In context ruolo, includi istanza_utility_id se presente
+    if (props.context === 'ruolo' && props.istanzaUtilityId) {
+      payload.istanza_utility_id = props.istanzaUtilityId
     }
     const result = await execute(
       () => apiFor('create')(props.ownerId, payload),
@@ -208,10 +208,10 @@ function usoSeverity(uso) {
 
         <div v-else-if="contiList.length > 0" class="conti-list">
           <div v-for="c in contiList" :key="c.id"
-            class="conto-card" :class="{ 'conto-card-soggetto': c.fonte === 'soggetto', 'conto-card-ruolo': c.fonte === 'ruolo' }">
+            class="conto-card" :class="{ 'conto-card-soggetto': c.fonte === 'soggetto', 'conto-card-ruolo': c.fonte === 'ruolo' || c.fonte === 'istanza' }">
             <div class="conto-card-content">
               <div class="conto-card-header">
-                <Tag v-if="c.fonte" :value="c.fonte === 'soggetto' ? t('common.soggetto') : (c.fonte === 'utility' ? (c.utility_codice || t('common.utility')) : t('common.ruolo'))"
+                <Tag v-if="c.fonte" :value="c.fonte === 'soggetto' ? t('common.soggetto') : (c.fonte === 'istanza' && c.utility_codice ? c.utility_codice : t('common.ruolo'))"
                   :severity="c.fonte === 'soggetto' ? 'secondary' : 'info'" />
                 <Tag :value="c.uso" :severity="usoSeverity(c.uso)" />
                 <Tag v-if="c.bloccato" :value="t('conti_bancari.bloccato')" severity="danger" />

@@ -18,11 +18,11 @@
 # 10) Elimina secondo conto
 # 11) Lista conti bancari dopo eliminazione
 # 12) Dettaglio soggetto — verifica sezione conti_bancari
-# 13) Recupera ruolo e utility per test cascata
-# 14) Crea conto ruolo con utility
-# 15) Lista conti ruolo con utility_id — cascata con fonte
-# 16) DELETE conto ruolo utility
-# 17) Lista conti ruolo senza utility — retrocompatibile
+# 13) Recupera ruolo e istanza per test cascata
+# 14) Crea conto ruolo con istanza
+# 15) Lista conti ruolo con istanza_utility_id — cascata con fonte
+# 16) DELETE conto ruolo istanza
+# 17) Lista conti ruolo senza istanza — retrocompatibile
 # ------------------------------------------------------------
 set -euo pipefail
 
@@ -334,18 +334,18 @@ else
     log_fail "Chiave conti_bancari mancante nel dettaglio soggetto"
 fi
 
-# --- 13. Recupera ruolo e utility per test cascata ---
+# --- 13. Recupera ruolo e istanza per test cascata ---
 echo ""
-echo "-- 13. Recupera ruolo e utility --"
+echo "-- 13. Recupera ruolo e istanza --"
 
 RUOLO_ID=""
-UTILITY_ID=""
+ISTANZA_UTILITY_ID=""
 
-# Cerca un cliente per avere soggetto_ruolo_id e utility
+# Cerca un cliente per avere soggetto_ruolo_id e istanza_utility_id
 do_curl GET "/api/v1/anagrafiche/clienti/?limit=1"
 if [[ "$LAST_STATUS" == "200" ]]; then
     RUOLO_ID=$(json_get "$LAST_BODY" ".data.results.0.soggetto_ruolo_id")
-    UTILITY_ID=$(json_get "$LAST_BODY" ".data.results.0.utility_id")
+    ISTANZA_UTILITY_ID=$(json_get "$LAST_BODY" ".data.results.0.istanza_utility_id")
 fi
 
 # Fallback: ruoli del soggetto
@@ -356,38 +356,38 @@ if [[ -z "$RUOLO_ID" || "$RUOLO_ID" == "" ]]; then
     fi
 fi
 
-CONTO_RUOLO_UTIL_ID=""
+CONTO_RUOLO_IST_ID=""
 
 if [[ -n "$RUOLO_ID" && "$RUOLO_ID" != "" ]]; then
     log_ok "Ruolo id=$RUOLO_ID trovato"
 
-    # --- 14. Crea conto ruolo con utility ---
+    # --- 14. Crea conto ruolo con istanza ---
     echo ""
-    echo "-- 14. Crea conto ruolo con utility --"
+    echo "-- 14. Crea conto ruolo con istanza --"
 
     SMOKE_IBAN_RUOLO="IT00Z$(printf '%023d' $((SMOKE_TS + 2)))"
 
     PAYLOAD="{\"iban\": \"${SMOKE_IBAN_RUOLO}\", \"bank_branch_id\": ${BRANCH_ID}, \"uso\": \"INCASSO\""
-    if [[ -n "$UTILITY_ID" && "$UTILITY_ID" != "" && "$UTILITY_ID" != "None" ]]; then
-        PAYLOAD="${PAYLOAD}, \"utility_id\": ${UTILITY_ID}"
+    if [[ -n "$ISTANZA_UTILITY_ID" && "$ISTANZA_UTILITY_ID" != "" && "$ISTANZA_UTILITY_ID" != "None" ]]; then
+        PAYLOAD="${PAYLOAD}, \"istanza_utility_id\": ${ISTANZA_UTILITY_ID}"
     fi
     PAYLOAD="${PAYLOAD}}"
 
     do_curl POST "/api/v1/anagrafiche/ruoli/${RUOLO_ID}/conti-bancari/" "$PAYLOAD"
     if [[ "$LAST_STATUS" == "200" ]]; then
         check "Crea conto ruolo" "200" ".data.id"
-        CONTO_RUOLO_UTIL_ID="$EXTRACTED"
-        log_info "Conto ruolo creato id=$CONTO_RUOLO_UTIL_ID"
+        CONTO_RUOLO_IST_ID="$EXTRACTED"
+        log_info "Conto ruolo creato id=$CONTO_RUOLO_IST_ID"
     else
         log_info "Crea conto ruolo fallito — HTTP $LAST_STATUS (possibile vincolo UNIQUE)"
     fi
 
-    # --- 15. Lista conti ruolo con utility_id ---
+    # --- 15. Lista conti ruolo con istanza_utility_id ---
     echo ""
-    echo "-- 15. Lista conti ruolo con cascata utility --"
+    echo "-- 15. Lista conti ruolo con cascata istanza --"
 
-    if [[ -n "$UTILITY_ID" && "$UTILITY_ID" != "" && "$UTILITY_ID" != "None" ]]; then
-        do_curl GET "/api/v1/anagrafiche/ruoli/${RUOLO_ID}/conti-bancari/?utility_id=${UTILITY_ID}"
+    if [[ -n "$ISTANZA_UTILITY_ID" && "$ISTANZA_UTILITY_ID" != "" && "$ISTANZA_UTILITY_ID" != "None" ]]; then
+        do_curl GET "/api/v1/anagrafiche/ruoli/${RUOLO_ID}/conti-bancari/?istanza_utility_id=${ISTANZA_UTILITY_ID}"
     else
         do_curl GET "/api/v1/anagrafiche/ruoli/${RUOLO_ID}/conti-bancari/"
     fi
@@ -399,28 +399,28 @@ if [[ -n "$RUOLO_ID" && "$RUOLO_ID" != "" ]]; then
     # Verifica campo fonte nei conti_ruolo
     if [[ "$CR_COUNT" -gt 0 ]]; then
         FIRST_FONTE=$(json_get "$LAST_BODY" ".data.conti_ruolo.0.fonte")
-        if [[ "$FIRST_FONTE" == "utility" || "$FIRST_FONTE" == "ruolo" ]]; then
+        if [[ "$FIRST_FONTE" == "istanza" || "$FIRST_FONTE" == "ruolo" ]]; then
             log_ok "Campo fonte presente: '$FIRST_FONTE'"
         else
             log_fail "Campo fonte mancante o errato: '$FIRST_FONTE'"
         fi
     fi
 
-    # --- 16. DELETE conto ruolo utility ---
+    # --- 16. DELETE conto ruolo istanza ---
     echo ""
-    echo "-- 16. DELETE conto ruolo utility --"
-    if [[ -n "$CONTO_RUOLO_UTIL_ID" && "$CONTO_RUOLO_UTIL_ID" != "" ]]; then
-        do_curl DELETE "/api/v1/anagrafiche/ruoli/${RUOLO_ID}/conti-bancari/${CONTO_RUOLO_UTIL_ID}/"
+    echo "-- 16. DELETE conto ruolo istanza --"
+    if [[ -n "$CONTO_RUOLO_IST_ID" && "$CONTO_RUOLO_IST_ID" != "" ]]; then
+        do_curl DELETE "/api/v1/anagrafiche/ruoli/${RUOLO_ID}/conti-bancari/${CONTO_RUOLO_IST_ID}/"
         check "DELETE conto ruolo" "200"
     else
         log_info "Skip — nessun conto ruolo creato"
     fi
 
-    # --- 17. Lista conti ruolo senza utility (retrocompatibile) ---
+    # --- 17. Lista conti ruolo senza istanza (retrocompatibile) ---
     echo ""
-    echo "-- 17. Lista conti ruolo senza utility --"
+    echo "-- 17. Lista conti ruolo senza istanza --"
     do_curl GET "/api/v1/anagrafiche/ruoli/${RUOLO_ID}/conti-bancari/"
-    check "Lista conti ruolo (no utility)" "200"
+    check "Lista conti ruolo (no istanza)" "200"
     CR_FINAL=$(json_len "$LAST_BODY" ".data.conti_ruolo")
     CE_FINAL=$(json_len "$LAST_BODY" ".data.conti_ereditati")
     log_info "Finale: ruolo=$CR_FINAL, ereditati=$CE_FINAL"

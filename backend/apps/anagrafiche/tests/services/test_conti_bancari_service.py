@@ -29,9 +29,9 @@ Indice test eseguiti:
 19) test_update_conto_ruolo_ok — aggiorna legame ruolo
 20) test_delete_conto_ruolo_ok — elimina legame ruolo
 21) test_extract_legame_bool_absent — booleani non inviati non sovrascrivono
-22) test_list_conti_ruolo_cascata_utility — cascata 3 livelli con utility_id
-23) test_list_conti_ruolo_no_utility — senza utility = comportamento retrocompatibile
-24) test_create_conto_ruolo_with_utility — crea legame con utility_id
+22) test_list_conti_ruolo_cascata_istanza — cascata 3 livelli con istanza_utility_id
+23) test_list_conti_ruolo_no_istanza — senza istanza = comportamento retrocompatibile
+24) test_create_conto_ruolo_with_istanza — crea legame con istanza_utility_id
 25) test_guard_predefinito_bloccato_create — crea con predefinito+bloccato rifiutato
 26) test_guard_predefinito_bloccato_update — blocca un predefinito rifiutato
 """
@@ -319,22 +319,22 @@ class TestContiBancariRuolo(TestCase):
         self.assertTrue(result["deleted"])
 
 
-class TestContiBancariRuoloCascataUtility(TestCase):
-    """Test cascata 3 livelli con utility_id."""
+class TestContiBancariRuoloCascataIstanza(TestCase):
+    """Test cascata 3 livelli con istanza_utility_id."""
 
     @patch(_CB_REPO)
     @patch(_SOG_REPO)
-    def test_list_conti_ruolo_cascata_utility(self, _sog, mock_cb):
-        """Con utility_id: L1 utility vince, L2 generico solo se uso non coperto,
+    def test_list_conti_ruolo_cascata_istanza(self, _sog, mock_cb):
+        """Con istanza_utility_id: L1 istanza vince, L2 generico solo se uso non coperto,
         L3 soggetto solo se uso non coperto da L1+L2."""
         repo = mock_cb.return_value
         repo.list_conti_ruolo.return_value = [
-            # L1: utility 5 + INCASSO
-            {"id": 1, "uso": "INCASSO", "utility_id": 5, "utility_codice": "GAS"},
+            # L1: istanza 5 + INCASSO
+            {"id": 1, "uso": "INCASSO", "istanza_utility_id": 5},
             # L2: generico + INCASSO (sara' nascosto da L1)
-            {"id": 2, "uso": "INCASSO", "utility_id": None, "utility_codice": None},
+            {"id": 2, "uso": "INCASSO", "istanza_utility_id": None},
             # L2: generico + PAGAMENTO (non coperto, passa)
-            {"id": 3, "uso": "PAGAMENTO", "utility_id": None, "utility_codice": None},
+            {"id": 3, "uso": "PAGAMENTO", "istanza_utility_id": None},
         ]
         repo.list_conti_ereditati_ruolo.return_value = [
             # L3: soggetto + INCASSO (nascosto da L1)
@@ -343,13 +343,13 @@ class TestContiBancariRuoloCascataUtility(TestCase):
             {"id": 11, "uso": "GENERICO"},
         ]
         from apps.anagrafiche.services.conti_bancari_service import ContiBancariService
-        result = ContiBancariService().list_conti_ruolo(10, utility_id=5)
+        result = ContiBancariService().list_conti_ruolo(10, istanza_utility_id=5)
         editabili = result["conti_ruolo"]
         readonly = result["conti_ereditati"]
-        # Editabili: id=1 (utility INCASSO) + id=3 (generico PAGAMENTO)
+        # Editabili: id=1 (istanza INCASSO) + id=3 (generico PAGAMENTO)
         self.assertEqual(len(editabili), 2)
         self.assertEqual(editabili[0]["id"], 1)
-        self.assertEqual(editabili[0]["fonte"], "utility")
+        self.assertEqual(editabili[0]["fonte"], "istanza")
         self.assertEqual(editabili[1]["id"], 3)
         self.assertEqual(editabili[1]["fonte"], "ruolo")
         # Readonly: id=11 (soggetto GENERICO), id=10 nascosto
@@ -359,11 +359,11 @@ class TestContiBancariRuoloCascataUtility(TestCase):
 
     @patch(_CB_REPO)
     @patch(_SOG_REPO)
-    def test_list_conti_ruolo_no_utility(self, _sog, mock_cb):
-        """Senza utility_id: retrocompatibile, tutti i ruolo mostrati + soggetto fallback."""
+    def test_list_conti_ruolo_no_istanza(self, _sog, mock_cb):
+        """Senza istanza_utility_id: tutti i ruolo mostrati + soggetto fallback."""
         repo = mock_cb.return_value
         repo.list_conti_ruolo.return_value = [
-            {"id": 1, "uso": "INCASSO", "utility_id": None, "utility_codice": None},
+            {"id": 1, "uso": "INCASSO", "istanza_utility_id": None},
         ]
         repo.list_conti_ereditati_ruolo.return_value = [
             {"id": 10, "uso": "INCASSO"},
@@ -381,22 +381,22 @@ class TestContiBancariRuoloCascataUtility(TestCase):
 
     @patch(_CB_REPO)
     @patch(_SOG_REPO)
-    def test_create_conto_ruolo_with_utility(self, _sog, mock_cb):
-        """Crea legame ruolo con utility_id."""
+    def test_create_conto_ruolo_with_istanza(self, _sog, mock_cb):
+        """Crea legame ruolo con istanza_utility_id."""
         repo = mock_cb.return_value
         repo.get_or_create_conto_bancario.return_value = (1, True)
         repo.create_conto_ruolo.return_value = {
-            "id": 30, "conto_bancario_id": 1, "uso": "INCASSO", "utility_id": 5,
+            "id": 30, "conto_bancario_id": 1, "uso": "INCASSO", "istanza_utility_id": 5,
         }
         from apps.anagrafiche.services.conti_bancari_service import ContiBancariService
         result = ContiBancariService().create_conto_ruolo(10, {
             "iban": _FAKE_IBAN, "bank_branch_id": 1,
-            "uso": "INCASSO", "utility_id": 5,
+            "uso": "INCASSO", "istanza_utility_id": 5,
         })
-        self.assertEqual(result["utility_id"], 5)
-        # Verifica che utility_id sia stato passato al repo
+        self.assertEqual(result["istanza_utility_id"], 5)
+        # Verifica che istanza_utility_id sia stato passato al repo
         call_kwargs = repo.create_conto_ruolo.call_args
-        self.assertEqual(call_kwargs[1].get("utility_id"), 5)
+        self.assertEqual(call_kwargs[1].get("istanza_utility_id"), 5)
 
 
 class TestGuardPredefinitBloccato(TestCase):
