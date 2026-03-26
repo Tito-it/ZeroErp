@@ -2,7 +2,7 @@
 // Scopo: Drawer dedicato per gestione indirizzi di un soggetto o ruolo.
 // Riutilizzabile da: SoggettoDrawer (context='soggetto'), ClienteDrawer (context='ruolo').
 // Context 'soggetto': lista piatta + form aggiungi/cambia (via matrice).
-// Context 'ruolo': cascata 3 livelli (utility→ruolo→soggetto) con fonte badge.
+// Context 'ruolo': cascata 3 livelli (istanza→ruolo→soggetto) con fonte badge.
 
 import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -31,13 +31,13 @@ const indirizzo = useIndirizzoSoggettoForm()
 
 // Context 'soggetto' (default) o 'ruolo': determina quale set di API usare.
 // Per 'soggetto': soggettoId = soggetto UUID. Per 'ruolo': soggettoId = soggetto_ruolo_id (int).
-// utilityId: opzionale, usato in context 'ruolo' per cascata a 3 livelli.
+// istanzaUtilityId: opzionale, usato in context 'ruolo' per cascata a 3 livelli.
 const props = defineProps({
   visible: { type: Boolean, default: false },
   soggettoId: { type: [String, Number], default: null },
   tipoSoggettoDettaglioId: { type: Number, default: null },
   context: { type: String, default: 'soggetto' },
-  utilityId: { type: Number, default: null },
+  istanzaUtilityId: { type: Number, default: null },
 })
 
 const isRuolo = computed(() => props.context === 'ruolo')
@@ -63,7 +63,7 @@ async function loadIndirizzi() {
   listLoading.value = true
   try {
     if (isRuolo.value) {
-      const listParams = props.utilityId ? { utility_id: props.utilityId } : {}
+      const listParams = props.istanzaUtilityId ? { istanza_utility_id: props.istanzaUtilityId } : {}
       const res = await listRuoloIndirizzi(props.soggettoId, listParams)
       const payload = res.data?.data
       if (payload?.indirizzi_ruolo) {
@@ -206,13 +206,13 @@ async function onSaveForm() {
   let success = true
 
   if (isRuolo.value) {
-    // Context ruolo: usa API ruolo con utility_id opzionale
+    // Context ruolo: usa API ruolo con istanza_utility_id opzionale
     const payload = payloads[0]
     if (indirizzo.existingDettaglioId.value) {
       payload.indirizzo_dettaglio_id = indirizzo.existingDettaglioId.value
     }
-    if (props.utilityId) {
-      payload.utility_id = props.utilityId
+    if (props.istanzaUtilityId) {
+      payload.istanza_utility_id = props.istanzaUtilityId
     }
     const result = await execute(
       () => createRuoloIndirizzo(props.soggettoId, payload),
@@ -287,10 +287,10 @@ async function onDeleteRuolo(ind) {
 
         <div v-else-if="indirizziList.length > 0" class="indirizzi-list">
           <div v-for="ind in indirizziList" :key="ind.id"
-            class="indirizzo-card" :class="{ 'indirizzo-card-soggetto': ind.fonte === 'soggetto', 'indirizzo-card-ruolo': ind.fonte === 'ruolo' }">
+            class="indirizzo-card" :class="{ 'indirizzo-card-soggetto': ind.fonte === 'soggetto', 'indirizzo-card-ruolo': ind.fonte === 'ruolo' || ind.fonte === 'istanza' }">
             <div class="indirizzo-card-content">
               <div class="indirizzo-card-nome">
-                <Tag v-if="ind.fonte" :value="ind.fonte === 'soggetto' ? t('common.soggetto') : (ind.fonte === 'utility' ? ind.utility_codice : t('common.ruolo'))"
+                <Tag v-if="ind.fonte" :value="ind.fonte === 'soggetto' ? t('common.soggetto') : (ind.fonte === 'istanza' && ind.utility_codice ? ind.utility_codice : t('common.ruolo'))"
                   :severity="ind.fonte === 'soggetto' ? 'secondary' : 'info'" />
                 <Tag :value="ind.tipo_indirizzo_descrizione" severity="info" />
               </div>

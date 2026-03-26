@@ -269,20 +269,20 @@ class SoggettiRepository:
         telefono: str | None = None, cellulare: str | None = None,
         pec: str | None = None, tipo_contatto_id: int | None = None,
         unita_organizzativa_id: int | None = None, note: str | None = None,
-        soggetto_ruolo_id: int | None = None, utility_id: int | None = None,
+        soggetto_ruolo_id: int | None = None, istanza_utility_id: int | None = None,
     ) -> dict[str, Any]:
         sql = """
             INSERT INTO anagrafiche.contatti
-                (soggetto_id, soggetto_ruolo_id, utility_id, nominativo, email,
+                (soggetto_id, soggetto_ruolo_id, istanza_utility_id, nominativo, email,
                  telefono, cellulare, pec, tipo_contatto_id, unita_organizzativa_id, note)
             VALUES (%s::uuid, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING id, nominativo, email, telefono, cellulare, pec,
                       tipo_contatto_id, unita_organizzativa_id, note,
-                      soggetto_ruolo_id, utility_id
+                      soggetto_ruolo_id, istanza_utility_id
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [
-                soggetto_id, soggetto_ruolo_id, utility_id, nominativo, email,
+                soggetto_id, soggetto_ruolo_id, istanza_utility_id, nominativo, email,
                 telefono, cellulare, pec, tipo_contatto_id, unita_organizzativa_id, note,
             ])
             result = row_to_dict(cursor)
@@ -409,17 +409,17 @@ class SoggettiRepository:
             return cursor.rowcount > 0
 
     # =================================================================
-    # Indirizzi ruolo (anagrafiche.indirizzi — con utility_id)
+    # Indirizzi ruolo (anagrafiche.indirizzi — con istanza_utility_id)
     # =================================================================
 
     # Campi ammessi per update indirizzi ruolo.
     _IND_RUOLO_ALLOWED = {
-        "tipo_indirizzo_id", "utility_id", "indirizzo_dettaglio_id",
+        "tipo_indirizzo_id", "istanza_utility_id", "indirizzo_dettaglio_id",
         "indirizzo_libero", "stato_id", "comune_id", "codice_postale_id",
         "administrative_area", "locality", "sublocality", "postal_box",
     }
     _IND_RUOLO_NULLABLE = {
-        "utility_id", "indirizzo_dettaglio_id", "indirizzo_libero",
+        "istanza_utility_id", "indirizzo_dettaglio_id", "indirizzo_libero",
         "stato_id", "comune_id", "codice_postale_id",
         "administrative_area", "locality", "sublocality", "postal_box",
     }
@@ -431,7 +431,7 @@ class SoggettiRepository:
     def crea_indirizzo_ruolo(
         self, soggetto_ruolo_id: int, *,
         tipo_indirizzo_id: int,
-        utility_id: int | None = None,
+        istanza_utility_id: int | None = None,
         indirizzo_dettaglio_id: int | None = None,
         indirizzo_libero: str | None = None,
         stato_id: int | None = None,
@@ -440,17 +440,17 @@ class SoggettiRepository:
     ) -> dict[str, Any]:
         sql = """
             INSERT INTO anagrafiche.indirizzi
-                (soggetto_ruolo_id, tipo_indirizzo_id, utility_id,
+                (soggetto_ruolo_id, tipo_indirizzo_id, istanza_utility_id,
                  indirizzo_dettaglio_id, indirizzo_libero,
                  stato_id, comune_id, codice_postale_id)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-            RETURNING id, soggetto_ruolo_id, tipo_indirizzo_id, utility_id,
+            RETURNING id, soggetto_ruolo_id, tipo_indirizzo_id, istanza_utility_id,
                       indirizzo_dettaglio_id, indirizzo_libero,
                       stato_id, comune_id, codice_postale_id
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [
-                soggetto_ruolo_id, tipo_indirizzo_id, utility_id,
+                soggetto_ruolo_id, tipo_indirizzo_id, istanza_utility_id,
                 indirizzo_dettaglio_id, indirizzo_libero,
                 stato_id, comune_id, codice_postale_id,
             ])

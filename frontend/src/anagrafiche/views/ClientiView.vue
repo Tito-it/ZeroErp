@@ -29,16 +29,16 @@ watch(() => route.fullPath, () => {
 }, { immediate: true })
 
 // Sotto-drawer dalla lista
-const contattiDrawer = ref({ visible: false, ruoloId: null, utilityId: null })
-const indirizziDrawer = ref({ visible: false, ruoloId: null, utilityId: null })
-const contiBancariDrawer = ref({ visible: false, ruoloId: null, ownerName: '' })
+const contattiDrawer = ref({ visible: false, ruoloId: null, istanzaUtilityId: null })
+const indirizziDrawer = ref({ visible: false, ruoloId: null, istanzaUtilityId: null })
+const contiBancariDrawer = ref({ visible: false, ruoloId: null, ownerName: '', istanzaUtilityId: null })
 
 function onContatti(data) {
-  contattiDrawer.value = { visible: true, ruoloId: data.soggetto_ruolo_id, utilityId: data.utility_id }
+  contattiDrawer.value = { visible: true, ruoloId: data.soggetto_ruolo_id, istanzaUtilityId: data.istanza_utility_id }
 }
 
 function onIndirizzi(data) {
-  indirizziDrawer.value = { visible: true, ruoloId: data.soggetto_ruolo_id, utilityId: data.utility_id }
+  indirizziDrawer.value = { visible: true, ruoloId: data.soggetto_ruolo_id, istanzaUtilityId: data.istanza_utility_id }
 }
 
 function onContiBancari(data) {
@@ -46,7 +46,7 @@ function onContiBancari(data) {
     visible: true,
     ruoloId: data.soggetto_ruolo_id,
     ownerName: data.ragione_sociale_completa || '',
-    utilityId: data.utility_id,
+    istanzaUtilityId: data.istanza_utility_id,
   }
 }
 
@@ -85,7 +85,7 @@ async function onDrawerSaved(result) {
       :visible="contattiDrawer.visible"
       @update:visible="v => contattiDrawer.visible = v"
       :soggetto-id="contattiDrawer.ruoloId"
-      :utility-id="contattiDrawer.utilityId"
+      :istanza-utility-id="contattiDrawer.istanzaUtilityId"
       context="ruolo"
     />
 
@@ -93,7 +93,7 @@ async function onDrawerSaved(result) {
       :visible="indirizziDrawer.visible"
       @update:visible="v => indirizziDrawer.visible = v"
       :soggetto-id="indirizziDrawer.ruoloId"
-      :utility-id="indirizziDrawer.utilityId"
+      :istanza-utility-id="indirizziDrawer.istanzaUtilityId"
       context="ruolo"
     />
 
@@ -102,7 +102,7 @@ async function onDrawerSaved(result) {
       @update:visible="v => contiBancariDrawer.visible = v"
       :owner-id="contiBancariDrawer.ruoloId"
       :owner-name="contiBancariDrawer.ownerName"
-      :utility-id="contiBancariDrawer.utilityId"
+      :istanza-utility-id="contiBancariDrawer.istanzaUtilityId"
       context="ruolo"
     />
   </div>

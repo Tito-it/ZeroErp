@@ -168,20 +168,20 @@ class RuoloContiBancariView(DomainAPIView):
 
     @extend_schema(
         parameters=[
-            OpenApiParameter(name="utility_id", type=int, required=False),
+            OpenApiParameter(name="istanza_utility_id", type=int, required=False),
         ],
         responses={200: inline_serializer(
             name="RuoloContiBancariListResp",
             fields={"data": serializers.DictField()},
         )},
     )
-    # Scopo: Lista conti del ruolo con cascata 3 livelli (utility → ruolo → soggetto).
-    #        Query param utility_id opzionale; se NULL, cascata parte da livello ruolo.
+    # Scopo: Lista conti del ruolo con cascata 3 livelli (istanza → ruolo → soggetto).
+    #        Query param istanza_utility_id opzionale; se NULL, cascata parte da livello ruolo.
     def get(self, request: Request, soggetto_ruolo_id: int) -> JsonResponse:
-        utility_id_str = request.query_params.get("utility_id")
-        utility_id = int(utility_id_str) if utility_id_str is not None else None
+        istanza_str = request.query_params.get("istanza_utility_id")
+        istanza_utility_id = int(istanza_str) if istanza_str and istanza_str.strip() else None
         svc = ContiBancariService()
-        result = svc.list_conti_ruolo(soggetto_ruolo_id, utility_id=utility_id)
+        result = svc.list_conti_ruolo(soggetto_ruolo_id, istanza_utility_id=istanza_utility_id)
         return success_response(result)
 
     @extend_schema(
@@ -191,6 +191,7 @@ class RuoloContiBancariView(DomainAPIView):
             "bank_branch_id": serializers.IntegerField(),
             "uso": serializers.CharField(required=False),
             "predefinito": serializers.BooleanField(required=False),
+            "istanza_utility_id": serializers.IntegerField(required=False),
         }),
         responses={200: inline_serializer(
             name="RuoloContoBancarioCreateResp",

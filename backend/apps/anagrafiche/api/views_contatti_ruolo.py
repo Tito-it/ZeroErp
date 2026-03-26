@@ -10,7 +10,7 @@
 from __future__ import annotations
 
 from django.http import JsonResponse
-from drf_spectacular.utils import extend_schema, inline_serializer
+from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
 from rest_framework import serializers
 from rest_framework.request import Request
 
@@ -36,49 +36,57 @@ class RuoloContattiView(DomainAPIView):
     area_funzionale = "anagrafiche"
 
     @extend_schema(
+        parameters=[
+            OpenApiParameter(name="istanza_utility_id", type=int, required=False),
+        ],
         responses={200: inline_serializer(name="RuoloContattiListResp", fields={"data": serializers.DictField()})},
     )
     # Scopo: Lista contatti con cascata a 3 livelli per tipo_contatto_id:
-    #        1. Contatti ruolo + utility specifica → VINCE (fonte='utility')
-    #        2. Contatti ruolo + utility NULL      → fallback ruolo (fonte='ruolo')
+    #        1. Contatti ruolo + istanza specifica → VINCE (fonte='istanza')
+    #        2. Contatti ruolo + istanza NULL      → fallback ruolo (fonte='ruolo')
     #           mostrati solo se tipo non coperto dal livello 1
     #        3. Contatti soggetto (ruolo NULL)      → fallback soggetto (fonte='soggetto')
     #           mostrati solo se tipo non coperto dai livelli 1 e 2
-    #        Query param opzionale: utility_id (se assente, nessun filtro utility).
+    #        Query param opzionale: istanza_utility_id (se assente, nessun filtro istanza).
     def get(self, request: Request, soggetto_ruolo_id: int) -> JsonResponse:
         from django.db import connection
         from apps.core.db._helpers import rows_to_list
-        utility_id_str = request.query_params.get("utility_id")
-        utility_id = int(utility_id_str) if utility_id_str is not None else None
+        istanza_str = request.query_params.get("istanza_utility_id")
+        istanza_utility_id = int(istanza_str) if istanza_str and istanza_str.strip() else None
         with connection.cursor() as cursor:
             soggetto_id = resolve_soggetto_id(cursor, soggetto_ruolo_id)
         _COLS = """c.id, c.nominativo, c.email, c.telefono, c.cellulare,
                    c.pec, c.note, c.tipo_contatto_id,
                    tc.descrizione AS tipo_contatto_descrizione,
-                   c.unita_organizzativa_id, c.utility_id,
-                   u.codice AS utility_codice"""
-        _JOIN = """LEFT JOIN config.tipi_contatti tc ON tc.id = c.tipo_contatto_id
-                   LEFT JOIN config.utilities u ON u.id = c.utility_id"""
+                   c.unita_organizzativa_id, c.istanza_utility_id,
+                   (SELECT u.codice FROM config.utilities u
+                    WHERE u.id = COALESCE(
+                      (SELECT idp.utility_id FROM anagrafiche.istanze_dati_precontrattuali idp
+                        WHERE idp.istanza_utility_id = c.istanza_utility_id LIMIT 1),
+                      (SELECT ba.utility_id FROM anagrafiche.billing_account ba
+                        WHERE ba.istanza_utility_id = c.istanza_utility_id LIMIT 1)
+                    )) AS utility_codice"""
+        _JOIN = """LEFT JOIN config.tipi_contatti tc ON tc.id = c.tipo_contatto_id"""
         with connection.cursor() as cursor:
             results = []
             tipi_coperti = set()
-            # Livello 1: contatti ruolo + utility specifica
-            if utility_id is not None:
-                sql_util = f"""
-                    SELECT {_COLS}, 'utility' AS fonte FROM anagrafiche.contatti c {_JOIN}
-                     WHERE c.soggetto_ruolo_id = %s AND c.utility_id = %s ORDER BY c.id
+            # Livello 1: contatti ruolo + istanza specifica
+            if istanza_utility_id is not None:
+                sql_ist = f"""
+                    SELECT {_COLS}, 'istanza' AS fonte FROM anagrafiche.contatti c {_JOIN}
+                     WHERE c.soggetto_ruolo_id = %s AND c.istanza_utility_id = %s ORDER BY c.id
                 """
-                cursor.execute(sql_util, [soggetto_ruolo_id, utility_id])
+                cursor.execute(sql_ist, [soggetto_ruolo_id, istanza_utility_id])
                 l1 = rows_to_list(cursor)
                 results.extend(l1)
                 tipi_coperti.update(
                     c["tipo_contatto_id"] for c in l1
                     if c["tipo_contatto_id"] is not None
                 )
-            # Livello 2: contatti ruolo senza utility (generici del ruolo)
+            # Livello 2: contatti ruolo senza istanza (generici del ruolo)
             sql_ruolo = f"""
                 SELECT {_COLS}, 'ruolo' AS fonte FROM anagrafiche.contatti c {_JOIN}
-                 WHERE c.soggetto_ruolo_id = %s AND c.utility_id IS NULL ORDER BY c.id
+                 WHERE c.soggetto_ruolo_id = %s AND c.istanza_utility_id IS NULL ORDER BY c.id
             """
             cursor.execute(sql_ruolo, [soggetto_ruolo_id])
             l2 = rows_to_list(cursor)
@@ -100,7 +108,7 @@ class RuoloContattiView(DomainAPIView):
                     results.append(c)
                     tipi_coperti.add(tipo)
         # Separa per fonte per la UI
-        contatti_editabili = [c for c in results if c["fonte"] in ('utility', 'ruolo')]
+        contatti_editabili = [c for c in results if c["fonte"] in ('istanza', 'ruolo')]
         contatti_readonly = [c for c in results if c["fonte"] == 'soggetto']
         return success_response({
             "contatti_ruolo": contatti_editabili,
@@ -112,6 +120,7 @@ class RuoloContattiView(DomainAPIView):
             "nominativo": serializers.CharField(),
             "email": serializers.CharField(required=False),
             "telefono": serializers.CharField(required=False),
+            "istanza_utility_id": serializers.IntegerField(required=False),
         }),
         responses={200: inline_serializer(name="RuoloContattoCreateResp", fields={"data": serializers.DictField()})},
     )
@@ -122,10 +131,10 @@ class RuoloContattiView(DomainAPIView):
             from django.db import connection
             with connection.cursor() as cursor:
                 soggetto_id = resolve_soggetto_id(cursor, soggetto_ruolo_id)
-            # Crea contatto con soggetto_ruolo_id e utility_id opzionale
-            utility_id = payload.get("utility_id")
-            if utility_id is not None:
-                utility_id = int(utility_id)
+            # Crea contatto con soggetto_ruolo_id e istanza_utility_id opzionale
+            istanza_utility_id = payload.get("istanza_utility_id")
+            if istanza_utility_id is not None:
+                istanza_utility_id = int(istanza_utility_id)
             result = create_with_dedup(
                 lambda: _repo.crea_contatto(
                     soggetto_id,
@@ -138,9 +147,9 @@ class RuoloContattiView(DomainAPIView):
                     unita_organizzativa_id=payload.get("unita_organizzativa_id"),
                     note=payload.get("note"),
                     soggetto_ruolo_id=soggetto_ruolo_id,
-                    utility_id=utility_id,
+                    istanza_utility_id=istanza_utility_id,
                 ),
-                "Contatto con questo tipo gia' presente per il ruolo/utility.",
+                "Contatto con questo tipo gia' presente per il ruolo/istanza.",
             )
             return result
         return handle_post_json(request, handler=_handler)

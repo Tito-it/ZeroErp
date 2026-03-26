@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ------------------------------------------------------------
-# Smoke test locale per API Indirizzi Ruolo (con utility)
+# Smoke test locale per API Indirizzi Ruolo (con istanza)
 # Uso: ./scripts/tests/smoke-test-indirizzi-ruolo.sh [password]
 # Prerequisiti: almeno un soggetto con ruolo e un indirizzo_dettaglio nel DB
 # ------------------------------------------------------------
@@ -9,14 +9,14 @@
 #  1) Recupera soggetto con ruolo
 #  2) Lista indirizzi soggetto (fallback L3)
 #  3) Recupera indirizzo_dettaglio e tipo_indirizzo disponibile
-#  4) Crea indirizzo ruolo generico (utility NULL)
-#  5) Lista indirizzi ruolo senza utility — vede ruolo + soggetto
-#  6) Lookup utility disponibili
-#  7) Crea indirizzo ruolo con utility (stesso tipo — cascata L1)
-#  8) Lista indirizzi ruolo con utility — L1 vince, L2 nascosto per stesso tipo
+#  4) Crea indirizzo ruolo generico (istanza NULL)
+#  5) Lista indirizzi ruolo senza istanza — vede ruolo + soggetto
+#  6) Lookup istanza_utility_id disponibile
+#  7) Crea indirizzo ruolo con istanza (stesso tipo — cascata L1)
+#  8) Lista indirizzi ruolo con istanza — L1 vince, L2 nascosto per stesso tipo
 #  9) PATCH indirizzo ruolo — aggiorna indirizzo_libero
-# 10) Crea duplicato (stesso tipo+utility — atteso errore)
-# 11) DELETE indirizzo ruolo utility
+# 10) Crea duplicato (stesso tipo+istanza — atteso errore)
+# 11) DELETE indirizzo ruolo istanza
 # 12) DELETE indirizzo ruolo generico
 # 13) Lista finale — verifica solo soggetto rimasto
 # ------------------------------------------------------------
@@ -163,7 +163,7 @@ do_curl GET "/api/v1/anagrafiche/clienti/?limit=1"
 if [[ "$LAST_STATUS" == "200" ]]; then
     RUOLO_ID=$(json_get "$LAST_BODY" ".data.results.0.soggetto_ruolo_id")
     SOGG_ID=$(json_get "$LAST_BODY" ".data.results.0.soggetto_id")
-    UTILITY_ID_FROM_CLIENT=$(json_get "$LAST_BODY" ".data.results.0.utility_id")
+    ISTANZA_UTILITY_ID_FROM_CLIENT=$(json_get "$LAST_BODY" ".data.results.0.istanza_utility_id")
 fi
 
 if [[ -z "$RUOLO_ID" || "$RUOLO_ID" == "" ]]; then
@@ -284,90 +284,81 @@ else
     log_fail "Struttura risposta mancante"
 fi
 
-# --- 6. Lookup utility disponibili ---
+# --- 6. Lookup istanza_utility_id disponibile ---
 echo ""
-echo "-- 6. Lookup utility --"
+echo "-- 6. Lookup istanza_utility_id --"
 
-UTILITY_ID=""
-if [[ -n "$UTILITY_ID_FROM_CLIENT" && "$UTILITY_ID_FROM_CLIENT" != "" && "$UTILITY_ID_FROM_CLIENT" != "None" ]]; then
-    UTILITY_ID="$UTILITY_ID_FROM_CLIENT"
-    log_info "Utility dal cliente: id=$UTILITY_ID"
-else
-    do_curl GET "/api/v1/core/lookup/codici/?rel=config.utilities&limit=1"
-    if [[ "$LAST_STATUS" == "200" ]]; then
-        UTILITY_ID=$(json_get "$LAST_BODY" ".data.results.0.id")
-        UTILITY_DESC=$(json_get "$LAST_BODY" ".data.results.0.descrizione")
-        if [[ -n "$UTILITY_ID" && "$UTILITY_ID" != "" ]]; then
-            log_info "Utility trovata: id=$UTILITY_ID ($UTILITY_DESC)"
-        fi
-    fi
+ISTANZA_UTILITY_ID=""
+if [[ -n "$ISTANZA_UTILITY_ID_FROM_CLIENT" && "$ISTANZA_UTILITY_ID_FROM_CLIENT" != "" && "$ISTANZA_UTILITY_ID_FROM_CLIENT" != "None" ]]; then
+    ISTANZA_UTILITY_ID="$ISTANZA_UTILITY_ID_FROM_CLIENT"
+    log_info "Istanza utility dal cliente: id=$ISTANZA_UTILITY_ID"
 fi
 
-# --- 7. Crea indirizzo ruolo con utility ---
+# --- 7. Crea indirizzo ruolo con istanza ---
 echo ""
-echo "-- 7. Crea indirizzo ruolo con utility --"
+echo "-- 7. Crea indirizzo ruolo con istanza --"
 
-IND_RUOLO_UTIL_ID=""
-if [[ -n "$UTILITY_ID" && "$UTILITY_ID" != "" ]]; then
+IND_RUOLO_IST_ID=""
+if [[ -n "$ISTANZA_UTILITY_ID" && "$ISTANZA_UTILITY_ID" != "" ]]; then
     if [[ -n "$IND_DET_ID" && "$IND_DET_ID" != "" ]]; then
         do_curl POST "/api/v1/anagrafiche/ruoli/${RUOLO_ID}/indirizzi/" \
             "{
                 \"tipo_indirizzo_id\": ${TIPO_IND_ID},
-                \"utility_id\": ${UTILITY_ID},
+                \"istanza_utility_id\": ${ISTANZA_UTILITY_ID},
                 \"indirizzo_dettaglio_id\": ${IND_DET_ID}
             }"
     else
         do_curl POST "/api/v1/anagrafiche/ruoli/${RUOLO_ID}/indirizzi/" \
             "{
                 \"tipo_indirizzo_id\": ${TIPO_IND_ID},
-                \"utility_id\": ${UTILITY_ID},
-                \"indirizzo_libero\": \"Via Utility Smoke 1, 62014 Corridonia\"
+                \"istanza_utility_id\": ${ISTANZA_UTILITY_ID},
+                \"indirizzo_libero\": \"Via Istanza Smoke 1, 62014 Corridonia\"
             }"
     fi
 
     if [[ "$LAST_STATUS" == "200" ]]; then
-        check "Crea indirizzo con utility" "200" ".data.id"
-        IND_RUOLO_UTIL_ID="$EXTRACTED"
-        log_info "Indirizzo utility creato id=$IND_RUOLO_UTIL_ID"
+        check "Crea indirizzo con istanza" "200" ".data.id"
+        IND_RUOLO_IST_ID="$EXTRACTED"
+        log_info "Indirizzo istanza creato id=$IND_RUOLO_IST_ID"
 
-        # Verifica che utility_id sia nella risposta
-        RESP_UTIL=$(json_get "$LAST_BODY" ".data.utility_id")
-        if [[ "$RESP_UTIL" == "$UTILITY_ID" ]]; then
-            log_ok "utility_id=$UTILITY_ID corretto nella risposta"
+        # Verifica che istanza_utility_id sia nella risposta
+        RESP_IST=$(json_get "$LAST_BODY" ".data.istanza_utility_id")
+        if [[ "$RESP_IST" == "$ISTANZA_UTILITY_ID" ]]; then
+            log_ok "istanza_utility_id=$ISTANZA_UTILITY_ID corretto nella risposta"
         else
-            log_fail "utility_id atteso $UTILITY_ID, ricevuto $RESP_UTIL"
+            log_fail "istanza_utility_id atteso $ISTANZA_UTILITY_ID, ricevuto $RESP_IST"
         fi
     else
-        log_info "Creazione con utility fallita — HTTP $LAST_STATUS"
+        log_info "Creazione con istanza fallita — HTTP $LAST_STATUS"
         ERRCODE=$(json_get "$LAST_BODY" ".error.code")
         log_info "Codice errore: $ERRCODE"
     fi
 else
-    log_info "Nessuna utility disponibile — skip test cascata utility"
+    log_info "Nessuna istanza disponibile — skip test cascata istanza"
 fi
 
-# --- 8. Lista con utility_id — cascata L1 vince ---
+# --- 8. Lista con istanza_utility_id — cascata L1 vince ---
 echo ""
-echo "-- 8. Lista con cascata utility --"
+echo "-- 8. Lista con cascata istanza --"
 
-if [[ -n "$UTILITY_ID" && "$UTILITY_ID" != "" ]]; then
-    do_curl GET "/api/v1/anagrafiche/ruoli/${RUOLO_ID}/indirizzi/?utility_id=${UTILITY_ID}"
-    check "Lista con utility_id" "200"
+if [[ -n "$ISTANZA_UTILITY_ID" && "$ISTANZA_UTILITY_ID" != "" ]]; then
+    do_curl GET "/api/v1/anagrafiche/ruoli/${RUOLO_ID}/indirizzi/?istanza_utility_id=${ISTANZA_UTILITY_ID}"
+    check "Lista con istanza_utility_id" "200"
     CASCATA_RUOLO=$(json_len "$LAST_BODY" ".data.indirizzi_ruolo")
     CASCATA_SOGG=$(json_len "$LAST_BODY" ".data.indirizzi_soggetto")
-    log_info "Con utility: ruolo=$CASCATA_RUOLO, soggetto=$CASCATA_SOGG"
+    log_info "Con istanza: ruolo=$CASCATA_RUOLO, soggetto=$CASCATA_SOGG"
 
-    # Verifica che il primo editabile abbia fonte='utility' (se ne abbiamo creato uno)
-    if [[ -n "$IND_RUOLO_UTIL_ID" && "$IND_RUOLO_UTIL_ID" != "" && "$CASCATA_RUOLO" -gt 0 ]]; then
+    # Verifica che il primo editabile abbia fonte='istanza' (se ne abbiamo creato uno)
+    if [[ -n "$IND_RUOLO_IST_ID" && "$IND_RUOLO_IST_ID" != "" && "$CASCATA_RUOLO" -gt 0 ]]; then
         FIRST_FONTE=$(json_get "$LAST_BODY" ".data.indirizzi_ruolo.0.fonte")
-        if [[ "$FIRST_FONTE" == "utility" ]]; then
-            log_ok "Primo indirizzo ha fonte='utility' (L1 vince)"
+        if [[ "$FIRST_FONTE" == "istanza" ]]; then
+            log_ok "Primo indirizzo ha fonte='istanza' (L1 vince)"
         else
-            log_info "Primo indirizzo fonte='$FIRST_FONTE' (atteso 'utility')"
+            log_info "Primo indirizzo fonte='$FIRST_FONTE' (atteso 'istanza')"
         fi
     fi
 else
-    log_info "Skip — nessuna utility"
+    log_info "Skip — nessuna istanza"
 fi
 
 # --- 9. PATCH indirizzo ruolo ---

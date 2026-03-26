@@ -126,12 +126,11 @@ class ContiBancariService:
     # =================================================================
 
     # Scopo: Lista conti bancari associati a un ruolo, con cascata 3 livelli per uso.
-    #        Cascata: utility specifica → ruolo generico (NULL) → soggetto.
-    #        Se utility_id e' None (ruoli senza utility), la cascata parte
+    #        Cascata: istanza specifica → ruolo generico (NULL) → soggetto.
+    #        Se istanza_utility_id e' None (ruoli senza istanza), la cascata parte
     #        dal livello 2 (ruolo generico) e fallback su soggetto.
-    #        Retrocompatibile: senza utility_id, comportamento invariato.
     def list_conti_ruolo(
-        self, soggetto_ruolo_id: int, utility_id: int | None = None,
+        self, soggetto_ruolo_id: int, istanza_utility_id: int | None = None,
     ) -> dict[str, Any]:
         conti_ruolo = self._repo.list_conti_ruolo(soggetto_ruolo_id)
         conti_ereditati = self._repo.list_conti_ereditati_ruolo(soggetto_ruolo_id)
@@ -139,19 +138,19 @@ class ContiBancariService:
         editabili: list[dict[str, Any]] = []
         usi_coperti: set[str] = set()
 
-        if utility_id is not None:
-            # L1: ruolo + utility specifica
+        if istanza_utility_id is not None:
+            # L1: ruolo + istanza specifica
             for c in conti_ruolo:
                 uso = c.get("uso")
-                if c.get("utility_id") == utility_id:
-                    editabili.append({**c, "fonte": "utility"})
+                if c.get("istanza_utility_id") == istanza_utility_id:
+                    editabili.append({**c, "fonte": "istanza"})
                     if uso is not None:
                         usi_coperti.add(uso)
 
-        # L2: ruolo generico (utility NULL) — usi non ancora coperti
+        # L2: ruolo generico (istanza NULL) — usi non ancora coperti
         for c in conti_ruolo:
             uso = c.get("uso")
-            if c.get("utility_id") is None and uso not in usi_coperti:
+            if c.get("istanza_utility_id") is None and uso not in usi_coperti:
                 editabili.append({**c, "fonte": "ruolo"})
                 if uso is not None:
                     usi_coperti.add(uso)
@@ -167,7 +166,7 @@ class ContiBancariService:
             "conti_ereditati": readonly,
         }
 
-    # Scopo: Crea legame ruolo ↔ conto bancario con utility_id opzionale.
+    # Scopo: Crea legame ruolo ↔ conto bancario con istanza_utility_id opzionale.
     #        Stessa logica di create_conto_soggetto ma per ruolo.
     def create_conto_ruolo(
         self, soggetto_ruolo_id: int, payload: dict[str, Any],
@@ -177,10 +176,10 @@ class ContiBancariService:
         conto_bancario_id = self._resolve_conto_bancario(payload)
         legame_payload = self._extract_legame_payload(payload)
         self._guard_predefinito_bloccato(legame_payload)
-        # utility_id opzionale (NULL = generico ruolo)
-        utility_id = optional_int(payload, "utility_id")
-        if utility_id is not None:
-            legame_payload["utility_id"] = utility_id
+        # istanza_utility_id opzionale (NULL = generico ruolo)
+        istanza_utility_id = optional_int(payload, "istanza_utility_id")
+        if istanza_utility_id is not None:
+            legame_payload["istanza_utility_id"] = istanza_utility_id
 
         with transaction.atomic():
             result = create_with_dedup(

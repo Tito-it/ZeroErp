@@ -441,7 +441,7 @@ function onClose() {
       :visible="contattiDrawer.visible"
       @update:visible="v => contattiDrawer.visible = v"
       :soggetto-id="detail.soggetto_ruolo_id"
-      :utility-id="detail.utility_id"
+      :istanza-utility-id="detail.istanza_utility_id"
       context="ruolo"
     />
 
@@ -451,7 +451,7 @@ function onClose() {
       :visible="indirizziDrawer.visible"
       @update:visible="v => indirizziDrawer.visible = v"
       :soggetto-id="detail.soggetto_ruolo_id"
-      :utility-id="detail.utility_id"
+      :istanza-utility-id="detail.istanza_utility_id"
       context="ruolo"
     />
 
@@ -462,7 +462,7 @@ function onClose() {
       @update:visible="v => contiBancariDrawer.visible = v"
       :owner-id="detail.soggetto_ruolo_id"
       :owner-name="detail.ragione_sociale_completa || ''"
-      :utility-id="detail.utility_id"
+      :istanza-utility-id="detail.istanza_utility_id"
       context="ruolo"
     />
   </Drawer>
