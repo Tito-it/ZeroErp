@@ -2,49 +2,23 @@
 # ⚙️ Funzione `fn_crea_soggetto_pf`
 
 ```sql
-CREATE FUNCTION fn_crea_soggetto_pf(p_cognome text, p_nome text, p_codice_fiscale text, p_email text, p_data_nascita date, p_sesso character, p_stato_iso2 character, p_comune_nascita_id integer)
+CREATE FUNCTION fn_crea_soggetto_pf(p_cognome text, p_nome text, p_codice_fiscale text, p_email character varying, p_data_nascita date, p_sesso character, p_stato_iso2 character, p_comune_nascita_id integer, p_tipo_contatto_id integer)
 ```
 
 **Definizione completa:**
 
 ```sql
-CREATE OR REPLACE FUNCTION anagrafiche.fn_crea_soggetto_pf(p_cognome text DEFAULT NULL::text, p_nome text DEFAULT NULL::text, p_codice_fiscale text DEFAULT NULL::text, p_email text DEFAULT NULL::text, p_data_nascita date DEFAULT NULL::date, p_sesso character DEFAULT NULL::bpchar, p_stato_iso2 character DEFAULT NULL::bpchar, p_comune_nascita_id integer DEFAULT NULL::integer)
+CREATE OR REPLACE FUNCTION anagrafiche.fn_crea_soggetto_pf(p_cognome text DEFAULT NULL::text, p_nome text DEFAULT NULL::text, p_codice_fiscale text DEFAULT NULL::text, p_email character varying DEFAULT NULL::character varying, p_data_nascita date DEFAULT NULL::date, p_sesso character DEFAULT NULL::bpchar, p_stato_iso2 character DEFAULT NULL::bpchar, p_comune_nascita_id integer DEFAULT NULL::integer, p_tipo_contatto_id integer DEFAULT NULL::integer)
  RETURNS uuid
  LANGUAGE plpgsql
 AS $function$
 DECLARE
-    -- Lookup config
     v_tipo_soggetto_dettaglio_id  config.tipi_soggetto_dettaglio.id%TYPE;
     v_stato_id                    config.stati.id%TYPE;
     v_stato_iso2_resolved         config.stati.codice_iso2%TYPE;
-    -- Risultato
+    v_tipo_contatto_id            config.tipi_contatti.id%TYPE;
     v_soggetto_id                 anagrafiche.soggetti.id%TYPE;
 BEGIN
-    -- =========================================================
-    -- Scopo:
-    --   Crea un soggetto Persona Fisica (natura PR = Privato)
-    --   con contatto default. Non crea indirizzo: il
-    --   chiamante e' responsabile se la matrice config
-    --   richiede RES per la natura PR.
-    --
-    -- Parametri obbligatori:
-    --   p_cognome:        cognome
-    --   p_nome:           nome
-    --   p_codice_fiscale: CF (guard PF lo richiede)
-    --   p_email:          email (usata per contatto default)
-    --
-    -- Parametri opzionali:
-    --   p_data_nascita:      data nascita (default NULL)
-    --   p_sesso:             sesso (default da parametro o 'M')
-    --   p_stato_iso2:        ISO2 nazionalita' (default da
-    --                        config.parameters soggetto_default_stato_iso2)
-    --   p_comune_nascita_id: comune di nascita (default NULL)
-    --
-    -- Defaults risolti internamente:
-    --   p_stato_iso2 -> config.parameters.soggetto_default_stato_iso2
-    --   p_sesso      -> 'M' (hardcode accettabile, non e' config)
-    -- =========================================================
-
     -- =============================================================
     -- Validazione parametri obbligatori
     -- =============================================================
@@ -72,8 +46,7 @@ BEGIN
             'database', 'anagrafiche.fn_crea_soggetto_pf',
             'E_ADMIN_VALIDAZIONE',
             jsonb_build_object('parametro', 'p_codice_fiscale'),
-            NULL::uuid,
-            'Codice fiscale obbligatorio (richiesto da guard persona fisica).'
+            NULL::uuid, 'Codice fiscale obbligatorio.'
         );
     END IF;
 
@@ -86,14 +59,29 @@ BEGIN
         );
     END IF;
 
+    -- Tipo contatto: fallback al primo dalla tabella se non fornito
+    v_tipo_contatto_id := COALESCE(
+        p_tipo_contatto_id,
+        (SELECT id FROM config.tipi_contatti ORDER BY id LIMIT 1)
+    );
+
+    IF v_tipo_contatto_id IS NULL THEN
+        PERFORM script.fn_log_and_raise_error(
+            'database', 'anagrafiche.fn_crea_soggetto_pf',
+            'E_ADMIN_VALIDAZIONE',
+            jsonb_build_object('parametro', 'p_tipo_contatto_id'),
+            NULL::uuid,
+            'Tipo contatto obbligatorio e nessun tipo contatto trovato in config.tipi_contatti.'
+        );
+    END IF;
+
     -- =============================================================
-    -- Lookup config (no ID hardcoded)
+    -- Lookup tipo soggetto dettaglio (Persona Fisica — natura PR)
     -- =============================================================
 
-    -- Natura: PR = Privato (Persona Fisica senza P.IVA)
-    SELECT id INTO v_tipo_soggetto_dettaglio_id
-    FROM config.tipi_soggetto_dettaglio
-    WHERE codice_interno = 'PR';
+    SELECT tsd.id INTO v_tipo_soggetto_dettaglio_id
+    FROM config.tipi_soggetto_dettaglio tsd
+    WHERE tsd.codice_interno = 'PR';
 
     IF v_tipo_soggetto_dettaglio_id IS NULL THEN
         PERFORM script.fn_log_and_raise_error(
@@ -105,12 +93,12 @@ BEGIN
         );
     END IF;
 
-    -- Stato (nazionalita') — default da config.parameters
+    -- Stato (nazionalita) — default da config.parameters
     v_stato_iso2_resolved := COALESCE(
         p_stato_iso2,
         (SELECT default_value FROM config.parameters
           WHERE code = 'soggetto_default_stato_iso2'),
-        'IT'  -- fallback ultimo livello se parametro mancante
+        'IT'
     );
 
     SELECT id INTO v_stato_id
@@ -128,7 +116,7 @@ BEGIN
     END IF;
 
     -- =============================================================
-    -- Guard unicita' CF
+    -- Guard unicita CF per stato
     -- =============================================================
 
     IF EXISTS (
@@ -162,14 +150,15 @@ BEGIN
     RETURNING id INTO v_soggetto_id;
 
     -- =============================================================
-    -- Step 2: Creazione contatto default
+    -- Step 2: Creazione contatto default con tipo_contatto_id
     -- =============================================================
 
     INSERT INTO anagrafiche.contatti (
-        soggetto_id, nominativo, email, is_default
+        soggetto_id, tipo_contatto_id, nominativo, email, is_default
     )
     VALUES (
         v_soggetto_id,
+        v_tipo_contatto_id,
         TRIM(p_cognome) || ' ' || TRIM(p_nome),
         TRIM(p_email),
         true
@@ -179,8 +168,8 @@ BEGIN
 END;
 $function$
 
-COMMENT ON FUNCTION anagrafiche.fn_crea_soggetto_pf(p_cognome text, p_nome text, p_codice_fiscale text, p_email text, p_data_nascita date, p_sesso character, p_stato_iso2 character, p_comune_nascita_id integer)
-IS 'Building block: crea soggetto Persona Fisica (natura PR) + contatto default. Default stato_iso2 da config.parameters (soggetto_default_stato_iso2). Guard CF univoco. NON crea indirizzo (responsabilita'' del chiamante). Riusabile da orchestratori.';
+COMMENT ON FUNCTION anagrafiche.fn_crea_soggetto_pf(p_cognome text, p_nome text, p_codice_fiscale text, p_email character varying, p_data_nascita date, p_sesso character, p_stato_iso2 character, p_comune_nascita_id integer, p_tipo_contatto_id integer)
+IS 'Crea soggetto PF (natura PR) + contatto default con tipo_contatto_id. Fallback tipo contatto: primo da config.tipi_contatti. Default stato_iso2 da config.parameters. Guard CF univoco. NON crea indirizzo.';
 ```
 
 ---
