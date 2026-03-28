@@ -38,6 +38,7 @@ class TestIndirizziRuoloCrudApi(SimpleTestCase):
     @patch(_REPO)
     def test_create_indirizzo_ruolo_ok(self, mock_repo, _auth):
         """POST /anagrafiche/ruoli/{id}/indirizzi/ — crea normalizzato."""
+        mock_repo.resolve_tipo_indirizzo_id.return_value = 1
         mock_repo.crea_indirizzo_ruolo.return_value = {
             "id": 50, "soggetto_ruolo_id": 10, "tipo_indirizzo_id": 1,
             "istanza_utility_id": None, "indirizzo_dettaglio_id": 100,
@@ -45,7 +46,7 @@ class TestIndirizziRuoloCrudApi(SimpleTestCase):
         resp = self.client.post(
             "/api/v1/anagrafiche/ruoli/10/indirizzi/",
             data=json.dumps({
-                "tipo_indirizzo_id": 1,
+                "tipo_indirizzo_codice": "RES",
                 "indirizzo_dettaglio_id": 100,
             }),
             content_type="application/json",
@@ -62,6 +63,7 @@ class TestIndirizziRuoloCrudApi(SimpleTestCase):
     @patch(_REPO)
     def test_create_indirizzo_ruolo_with_istanza(self, mock_repo, _auth):
         """POST con istanza_utility_id — crea indirizzo specifico istanza."""
+        mock_repo.resolve_tipo_indirizzo_id.return_value = 1
         mock_repo.crea_indirizzo_ruolo.return_value = {
             "id": 51, "soggetto_ruolo_id": 10, "tipo_indirizzo_id": 1,
             "istanza_utility_id": 5, "indirizzo_dettaglio_id": 100,
@@ -69,7 +71,7 @@ class TestIndirizziRuoloCrudApi(SimpleTestCase):
         resp = self.client.post(
             "/api/v1/anagrafiche/ruoli/10/indirizzi/",
             data=json.dumps({
-                "tipo_indirizzo_id": 1,
+                "tipo_indirizzo_codice": "RES",
                 "indirizzo_dettaglio_id": 100,
                 "istanza_utility_id": 5,
             }),
@@ -86,6 +88,7 @@ class TestIndirizziRuoloCrudApi(SimpleTestCase):
     @patch(_REPO)
     def test_create_indirizzo_ruolo_libero(self, mock_repo, _auth):
         """POST con indirizzo_libero — crea indirizzo in modalita' libera."""
+        mock_repo.resolve_tipo_indirizzo_id.return_value = 3
         mock_repo.crea_indirizzo_ruolo.return_value = {
             "id": 52, "soggetto_ruolo_id": 10, "tipo_indirizzo_id": 3,
             "istanza_utility_id": None, "indirizzo_libero": "123 Main St, London",
@@ -94,7 +97,7 @@ class TestIndirizziRuoloCrudApi(SimpleTestCase):
         resp = self.client.post(
             "/api/v1/anagrafiche/ruoli/10/indirizzi/",
             data=json.dumps({
-                "tipo_indirizzo_id": 3,
+                "tipo_indirizzo_codice": "EST",
                 "indirizzo_libero": "123 Main St, London",
                 "stato_id": 2,
             }),
