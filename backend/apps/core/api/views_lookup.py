@@ -99,6 +99,56 @@ class LookupMatriceIndirizziView(DomainAPIView):
         return success_response({"results": results})
 
 
+class LookupMatriceIndirizziRuoloView(DomainAPIView):
+    """Matrice indirizzi ammessi per un tipo ruolo (codice_interno)."""
+    skip_area_check = True
+
+    @extend_schema(
+        responses={200: inline_serializer(
+            name="MatriceIndirizziRuoloResponse",
+            fields={"data": serializers.ListField(child=serializers.DictField())},
+        )},
+    )
+    def get(self, request: Request, tipo_ruolo_codice: str) -> JsonResponse:
+        repo = LookupRepository()
+        results = repo.list_matrice_indirizzi_ruolo(tipo_ruolo_codice)
+        return success_response({"results": results})
+
+
+class LookupSistemaCodiciView(DomainAPIView):
+    """GET verifica configurazione sistema codici per schema/tabella/colonna."""
+    skip_area_check = True
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(name="schema", type=str, required=True),
+            OpenApiParameter(name="tabella", type=str, required=True),
+            OpenApiParameter(name="colonna", type=str, required=False),
+        ],
+        responses={200: inline_serializer(
+            name="SistemaCodiciResponse",
+            fields={"data": serializers.DictField()},
+        )},
+    )
+    # Scopo: Verifica se esiste configurazione sistema codici.
+    #        Se configurato: auto=true, il codice viene generato dal DB.
+    #        Se non configurato: auto=false, il codice deve essere inserito manualmente.
+    def get(self, request: Request) -> JsonResponse:
+        schema = request.query_params.get("schema", "")
+        tabella = request.query_params.get("tabella", "")
+        colonna = request.query_params.get("colonna", "codice")
+        repo = LookupRepository()
+        config = repo.get_sistema_codici(schema, tabella, colonna)
+        if config:
+            return success_response({
+                "auto": config["usa_sequenza"],
+                "prefisso": config["prefisso"],
+                "separatore": config["separatore"],
+                "lunghezza_numero": config["lunghezza_numero"],
+            })
+        return success_response({"auto": False})
+
+
 class LookupComuniView(DomainAPIView):
     """Autocomplete comuni con ricerca ILIKE."""
     skip_area_check = True

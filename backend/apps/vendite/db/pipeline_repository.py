@@ -407,7 +407,7 @@ class VenditePipelineRepository:
                 """
                 SELECT id
                 FROM config.stati_doc_fiscale
-                WHERE codice = %s
+                WHERE COALESCE(codice_interno, codice) = %s
                   AND attivo IS TRUE
                 ORDER BY ordine
                 LIMIT 1

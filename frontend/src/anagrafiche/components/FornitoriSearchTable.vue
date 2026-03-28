@@ -29,20 +29,8 @@ const { searchText, onPage, onSort, applyFilters, reload, paginatorProps } = use
 const statiFornitore = useLookup(() => lookupCodici('config.stati_fornitore'), { immediate: true })
 
 const statoFilter = ref(null)
-const attivoFilter = ref(null)
-
-const attivoOptions = computed(() => [
-  { value: true, label: t('common.yes') },
-  { value: false, label: t('common.no') }
-])
-
 function onStatoChange() {
   store.filters.stato_fornitore_id = statoFilter.value
-  applyFilters()
-}
-
-function onAttivoChange() {
-  store.filters.attivo = attivoFilter.value
   applyFilters()
 }
 
@@ -69,15 +57,6 @@ onMounted(() => { store.fetchList() })
           :placeholder="t('fornitori.filtro_stato')"
           show-clear
           @change="onStatoChange"
-        />
-        <Select
-          v-model="attivoFilter"
-          :options="attivoOptions"
-          option-label="label"
-          option-value="value"
-          :placeholder="t('fornitori.filtro_attivo')"
-          show-clear
-          @change="onAttivoChange"
         />
       </div>
       <div class="app-page-actions">
@@ -111,11 +90,6 @@ onMounted(() => { store.fetchList() })
       <Column field="stato_descrizione" :header="t('fornitori.col_stato')" sortable style="width: 110px;">
         <template #body="{ data }">
           <Tag :value="data.stato_descrizione" :severity="statoFornitoreSeverity(data.stato_codice)" />
-        </template>
-      </Column>
-      <Column field="attivo" :header="t('fornitori.col_attivo')" sortable style="width: 80px;">
-        <template #body="{ data }">
-          <Tag :value="data.attivo ? t('common.yes') : t('common.no')" :severity="data.attivo ? 'success' : 'secondary'" />
         </template>
       </Column>
       <Column field="data_insert" :header="t('fornitori.col_data_insert')" sortable style="width: 110px;">

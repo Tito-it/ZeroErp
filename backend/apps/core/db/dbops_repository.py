@@ -169,6 +169,7 @@ class DbopsRepository:
                  WHERE (
                      %s::text IS NULL
                      OR codice ILIKE %s
+                     OR codice_interno ILIKE %s
                      OR descrizione ILIKE %s
                  )
                  ORDER BY {} {}, id
@@ -182,6 +183,7 @@ class DbopsRepository:
                     order_dir,
                     attivo_only,
                     LOOKUP_MAX_SOURCE_ROWS,
+                    search_pattern,
                     search_pattern,
                     search_pattern,
                     search_pattern,
@@ -202,6 +204,7 @@ class DbopsRepository:
                 "codice_interno": row[2],
                 "descrizione": row[3],
                 "attivo": row[4],
+                "codice_stabile": row[2] or row[1],  # COALESCE(codice_interno, codice)
             }
             for row in rows
         ]

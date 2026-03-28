@@ -11,9 +11,9 @@ import { useApiHandler } from '../composables/useApiHandler'
 import { useIndirizzoSoggettoForm } from '../composables/useIndirizzoSoggettoForm'
 import {
   listSoggettoIndirizzi, createSoggettoIndirizzo, replaceSoggettoIndirizzo,
-  listRuoloIndirizzi, createRuoloIndirizzo, updateRuoloIndirizzo, deleteRuoloIndirizzo
+  listRuoloIndirizzi, createRuoloIndirizzo, deleteRuoloIndirizzo
 } from '../../anagrafiche/api/anagrafiche'
-import { lookupMatriceIndirizzi, lookupCodici } from '../apiCore'
+import { lookupMatriceIndirizzi, lookupMatriceIndirizziRuolo, lookupCodici } from '../apiCore'
 import { DRAWER_WIDTH } from '../constants'
 import { sortByFonte } from '../utils/string'
 import IndirizzoSoggettoForm from './IndirizzoSoggettoForm.vue'
@@ -38,6 +38,7 @@ const props = defineProps({
   tipoSoggettoDettaglioId: { type: Number, default: null },
   context: { type: String, default: 'soggetto' },
   istanzaUtilityId: { type: Number, default: null },
+  tipoRuoloCodice: { type: String, default: null },
 })
 
 const isRuolo = computed(() => props.context === 'ruolo')
@@ -78,7 +79,11 @@ async function loadIndirizzi() {
     } else {
       const res = await listSoggettoIndirizzi(props.soggettoId)
       const payload = res.data?.data
-      indirizziList.value = payload?.results || payload || []
+      const items = payload?.results || payload || []
+      // Ordina per tipo indirizzo alfabetico (coerente con context ruolo)
+      indirizziList.value = items.sort((a, b) =>
+        (a.tipo_indirizzo_descrizione || '').localeCompare(b.tipo_indirizzo_descrizione || '')
+      )
     }
   } catch {
     indirizziList.value = []
@@ -89,19 +94,16 @@ async function loadIndirizzi() {
 
 // Scopo: Carica matrice tipi indirizzo.
 //        Context soggetto: matrice filtrata per tipo_soggetto_dettaglio.
-//        Context ruolo: lookup generico tipi_indirizzi (il trigger DB valida i tipi ammessi).
+//        Context ruolo: matrice per tipo ruolo (tipi ammessi dal trigger guard).
+//        Context soggetto: matrice per tipo soggetto dettaglio.
 async function loadMatrice() {
   try {
-    if (isRuolo.value) {
-      const res = await lookupCodici('config.tipi_indirizzi', { limit: 100 })
-      // Mappa al formato matrice: codice, descrizione, obbligatorio=false
-      matriceCompleta.value = (res.data?.data?.results || []).map(t => ({
-        codice: t.codice || t.codice_interno,
-        descrizione: t.descrizione,
-        obbligatorio: false,
-      }))
-    } else {
-      if (!props.tipoSoggettoDettaglioId) return
+    if (isRuolo.value && props.tipoRuoloCodice) {
+      // Matrice filtrata per tipo ruolo — coerente con trigger DB
+      const res = await lookupMatriceIndirizziRuolo(props.tipoRuoloCodice)
+      matriceCompleta.value = res.data.data.results
+    } else if (props.tipoSoggettoDettaglioId) {
+      // Matrice filtrata per tipo soggetto dettaglio
       const res = await lookupMatriceIndirizzi(props.tipoSoggettoDettaglioId)
       matriceCompleta.value = res.data.data.results
     }
@@ -156,7 +158,7 @@ async function onStartNew() {
     if (matriceCompleta.value.length === 0) {
       await loadMatrice()
     }
-    indirizzo.setMatrice(matriceCompleta.value)
+    indirizzo.setMatrice(matriceCompleta.value, tipiEsistenti.value)
   } else {
     indirizzo.setMatrice(matriceDisponibile.value)
   }
@@ -173,23 +175,30 @@ function onStartReplace(ind) {
     descrizione: ind.tipo_indirizzo_descrizione,
     obbligatorio: true,
   }])
-  // Pre-popola tutti i campi dall'indirizzo esistente (se normalizzato)
-  if (ind.det_comune_id && ind.stradario_id) {
-    comuneInitialItem.value = { id: ind.det_comune_id, descrizione: ind.descrizione_comune }
-    indirizzo.form.comune_id = ind.det_comune_id
-    indirizzo.form.via_obj = {
-      stradario_id: ind.stradario_id,
-      indirizzo_normalizzato: ind.stradario_display || ind.indirizzo_display,
+  // Pre-popola tutti i campi dall'indirizzo esistente (se normalizzato).
+  // withSuppressedChecks evita che il watcher scateni il check duplicato
+  // (troverebbe lo stesso indirizzo che stiamo modificando).
+  // Imposta l'id dettaglio esistente: evita il messaggio "indirizzo non presente"
+  // (addressNotFound controlla existingDettaglioId).
+  indirizzo.existingDettaglioId.value = ind.indirizzo_dettaglio_id || null
+  indirizzo.withSuppressedChecks(() => {
+    if (ind.det_comune_id && ind.stradario_id) {
+      comuneInitialItem.value = { id: ind.det_comune_id, descrizione: ind.descrizione_comune }
+      indirizzo.form.comune_id = ind.det_comune_id
+      indirizzo.form.via_obj = {
+        stradario_id: ind.stradario_id,
+        indirizzo_normalizzato: ind.stradario_display || ind.indirizzo_display,
+      }
+      indirizzo.form.civico = ind.civico ?? null
+      indirizzo.form.estensione_civico = (ind.estensione_civico || '').replace(/^\//, '')
+      indirizzo.form.palazzina = ind.palazzina || ''
+      indirizzo.form.scala = ind.scala || ''
+      indirizzo.form.piano = ind.piano || ''
+      indirizzo.form.interno = ind.interno || ''
+    } else {
+      comuneInitialItem.value = null
     }
-    indirizzo.form.civico = ind.civico ?? null
-    indirizzo.form.estensione_civico = (ind.estensione_civico || '').replace(/^\//, '')
-    indirizzo.form.palazzina = ind.palazzina || ''
-    indirizzo.form.scala = ind.scala || ''
-    indirizzo.form.piano = ind.piano || ''
-    indirizzo.form.interno = ind.interno || ''
-  } else {
-    comuneInitialItem.value = null
-  }
+  })
 }
 
 function onCancelForm() {
@@ -205,8 +214,31 @@ async function onSaveForm() {
 
   let success = true
 
-  if (isRuolo.value) {
-    // Context ruolo: usa API ruolo con istanza_utility_id opzionale
+  if (isRuolo.value && formMode.value === 'replace' && replaceId.value) {
+    // Context ruolo + replace: DELETE vecchio + CREATE nuovo (stessa transazione lato server non garantita,
+    // ma il tipo resta lo stesso quindi il vincolo UNIQUE non e' violato dopo il delete).
+    const payload = payloads[0]
+    if (indirizzo.existingDettaglioId.value) {
+      payload.indirizzo_dettaglio_id = indirizzo.existingDettaglioId.value
+    }
+    if (props.istanzaUtilityId) {
+      payload.istanza_utility_id = props.istanzaUtilityId
+    }
+    // Step 1: elimina vecchio
+    const deleted = await execute(
+      () => deleteRuoloIndirizzo(props.soggettoId, replaceId.value),
+      { silent: true }
+    )
+    if (deleted === null) { success = false } else {
+      // Step 2: crea nuovo con stesso tipo
+      const result = await execute(
+        () => createRuoloIndirizzo(props.soggettoId, payload),
+        { successMessage: t('indirizzi.indirizzo_salvato') }
+      )
+      if (result === null) success = false
+    }
+  } else if (isRuolo.value) {
+    // Context ruolo + new: crea nuovo indirizzo
     const payload = payloads[0]
     if (indirizzo.existingDettaglioId.value) {
       payload.indirizzo_dettaglio_id = indirizzo.existingDettaglioId.value
@@ -305,7 +337,7 @@ async function onDeleteRuolo(ind) {
             </div>
             <!-- Azioni soggetto: solo Cambia (replace) -->
             <Button
-              v-if="!formMode && !isRuolo"
+              v-if="!formMode && !isReadonly && !isRuolo"
               icon="pi pi-pencil"
               text
               rounded
@@ -314,8 +346,11 @@ async function onDeleteRuolo(ind) {
               :title="t('indirizzo_soggetto.cambia_indirizzo')"
               @click="onStartReplace(ind)"
             />
-            <!-- Azioni ruolo: edit + delete (solo se editabile) -->
-            <div v-if="!formMode && isRuolo && ind.fonte !== 'soggetto'" class="indirizzo-card-actions">
+            <!-- Azioni ruolo: cambia + delete (solo se editabile e non readonly) -->
+            <div v-if="!formMode && !isReadonly && isRuolo && ind.fonte !== 'soggetto'" class="indirizzo-card-actions">
+              <Button icon="pi pi-pencil" text rounded size="small"
+                :title="t('indirizzo_soggetto.cambia_indirizzo')"
+                @click="onStartReplace(ind)" />
               <Button icon="pi pi-trash" severity="danger" text rounded size="small"
                 :title="t('common.delete')" @click="onDeleteRuolo(ind)" />
             </div>
@@ -328,8 +363,8 @@ async function onDeleteRuolo(ind) {
           {{ t('indirizzo_soggetto.tipi_mancanti', { tipi: tipiMancanti.map(t => t.descrizione).join(', ') }) }}
         </div>
 
-        <!-- Pulsante aggiungi (soggetto: se ci sono tipi disponibili, ruolo: sempre) -->
-        <div v-if="!formMode && (isRuolo || matriceDisponibile.length > 0)" class="mt-05">
+        <!-- Pulsante aggiungi (soggetto: se ci sono tipi disponibili, ruolo: sempre, mai in readonly) -->
+        <div v-if="!formMode && !isReadonly && (isRuolo || matriceDisponibile.length > 0)" class="mt-05">
           <Button
             :label="t('indirizzo_soggetto.aggiungi_indirizzo')"
             icon="pi pi-plus"
@@ -354,6 +389,7 @@ async function onDeleteRuolo(ind) {
           :is-libera="indirizzo.isLibera.value"
           @update:is-libera="v => indirizzo.isLibera.value = v"
           :tipi-stato="indirizzo.tipiStato.value"
+          :tipi-esistenti="[...tipiEsistenti]"
           :stati-lookup="indirizzo.statiLookup"
           :cap-options="indirizzo.capOptions.value"
           :loading-cap="indirizzo.loadingCap.value"

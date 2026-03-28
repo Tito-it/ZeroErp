@@ -1,4 +1,4 @@
-// Scopo: gestione content tabs tipo browser — apertura, chiusura, stato dirty, persistenza
+// Scopo: gestione content tabs tipo browser — apertura, chiusura, stato dirty, persistenza, split view
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { TABS } from '../core/constants'
@@ -14,22 +14,44 @@ export const useTabsStore = defineStore('tabs', () => {
   const tabs = ref([])
   const activeTabId = ref(null)
 
+  // --- Split view state ---
+  const pinnedTabId = ref(null)
+
   // Tab attiva corrente
   const activeTab = computed(() =>
     tabs.value.find(t => t.id === activeTabId.value) || null
+  )
+
+  // Tab pinnata nel pannello secondario (split view)
+  const pinnedTab = computed(() =>
+    tabs.value.find(t => t.id === pinnedTabId.value) || null
+  )
+
+  // Split attivo (derivato: pinnedTabId presente e tab ancora esistente)
+  const isSplit = computed(() => pinnedTab.value !== null)
+
+  // Tab disponibili per il popover "Affianca" (tutte tranne l'attiva)
+  const splittableTabs = computed(() =>
+    tabs.value.filter(t => t.id !== activeTabId.value)
   )
 
   // Apre una tab (o attiva quella esistente per la stessa route)
   function openTab({ path, label, domain, icon }) {
     const existing = tabs.value.find(t => t.path === path)
     if (existing) {
+      // Se la tab esistente e' quella pinnata nello split, chiudi lo split prima di attivarla
+      if (isSplit.value && existing.id === pinnedTabId.value) {
+        pinnedTabId.value = null
+      }
       activeTabId.value = existing.id
       return existing
     }
     // Limite massimo tab
     if (tabs.value.length >= TABS.MAX_OPEN) {
-      // Chiudi la tab piu' vecchia non-dirty
-      const closable = tabs.value.find(t => !t.dirty && t.id !== activeTabId.value)
+      // Chiudi la tab piu' vecchia non-dirty (esclusa attiva e pinnata)
+      const closable = tabs.value.find(t =>
+        !t.dirty && t.id !== activeTabId.value && t.id !== pinnedTabId.value
+      )
       if (closable) removeTab(closable.id)
     }
     const tab = {
@@ -51,6 +73,10 @@ export const useTabsStore = defineStore('tabs', () => {
   function removeTab(tabId) {
     const idx = tabs.value.findIndex(t => t.id === tabId)
     if (idx === -1) return
+    // Se la tab rimossa e' quella pinnata nello split, chiudi lo split (senza doppio persist)
+    if (pinnedTabId.value === tabId) {
+      pinnedTabId.value = null
+    }
     tabs.value.splice(idx, 1)
     // Se era la tab attiva, attiva la piu' vicina
     if (activeTabId.value === tabId) {
@@ -110,6 +136,39 @@ export const useTabsStore = defineStore('tabs', () => {
     return tabs.value.some(t => t.dirty)
   }
 
+  // --- Split view methods ---
+
+  // Pinna una tab nel pannello secondario read-only
+  function pinTab(tabId) {
+    const tab = tabs.value.find(t => t.id === tabId)
+    if (!tab) return
+    // Servono almeno 2 tab per lo split (una nel primario, una nel secondario)
+    if (tabs.value.length < 2) return
+    // Se si pinna la tab attiva, sposta il primario sulla prima tab disponibile
+    if (tabId === activeTabId.value) {
+      const other = tabs.value.find(t => t.id !== tabId)
+      if (!other) return
+      activeTabId.value = other.id
+    }
+    pinnedTabId.value = tabId
+    persistTabs()
+  }
+
+  // Chiude lo split view
+  function closeSplit() {
+    pinnedTabId.value = null
+    persistTabs()
+  }
+
+  // Scambia pannello primario e secondario
+  function swapPanels() {
+    if (!isSplit.value) return
+    const prevActive = activeTabId.value
+    activeTabId.value = pinnedTabId.value
+    pinnedTabId.value = prevActive
+    persistTabs()
+  }
+
   // Persistenza in sessionStorage
   function persistTabs() {
     try {
@@ -119,10 +178,15 @@ export const useTabsStore = defineStore('tabs', () => {
         domain: t.domain,
         icon: t.icon
       }))
-      session.set(STORAGE_KEYS.OPEN_TABS, JSON.stringify({
+      const payload = {
         tabs: data,
         activeTabPath: activeTab.value?.path || null
-      }))
+      }
+      // Salva stato split solo se attivo
+      if (isSplit.value && pinnedTab.value) {
+        payload.splitPinnedPath = pinnedTab.value.path
+      }
+      session.set(STORAGE_KEYS.OPEN_TABS, JSON.stringify(payload))
     } catch { /* sessionStorage pieno o non disponibile */ }
   }
 
@@ -154,6 +218,13 @@ export const useTabsStore = defineStore('tabs', () => {
       } else if (tabs.value.length > 0) {
         activeTabId.value = tabs.value[0].id
       }
+      // Ripristina split view se salvato
+      if (data.splitPinnedPath) {
+        const pinned = tabs.value.find(x => x.path === data.splitPinnedPath)
+        if (pinned && pinned.id !== activeTabId.value) {
+          pinnedTabId.value = pinned.id
+        }
+      }
     } catch { /* JSON corrotto, ignoriamo */ }
   }
 
@@ -161,6 +232,7 @@ export const useTabsStore = defineStore('tabs', () => {
   function closeAll() {
     tabs.value = []
     activeTabId.value = null
+    pinnedTabId.value = null
     session.remove(STORAGE_KEYS.OPEN_TABS)
   }
 
@@ -168,6 +240,14 @@ export const useTabsStore = defineStore('tabs', () => {
     tabs,
     activeTabId,
     activeTab,
+    // Split view
+    pinnedTab,
+    isSplit,
+    splittableTabs,
+    pinTab,
+    closeSplit,
+    swapPanels,
+    // Tab operations
     openTab,
     removeTab,
     activateTab,

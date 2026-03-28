@@ -2,9 +2,14 @@
 
 > Data apertura: 2026-03-24
 >
-> Stato: **COMPLETATO (sviluppo)** — DB, backend, frontend, smoke test, PATCH cliente, doc API — test UI manuali pendenti
+> Stato: **DEPRECATO** — superato dal refactor `istanza_utility_id`
 >
-> Priorità: alta (prerequisito per gestione clienti multi-utility completa)
+> Priorità: n/a — documento conservato come memoria storica dello sviluppo
+>
+> **NOTA:** Questo approccio (utility_id) e stato sostituito dal refactor
+> `refactor-istanza-indirizzi-conti-contatti.md` che usa `istanza_utility_id`
+> come differenziatore corretto. Vedi `docs/it/dev/done/refactor-istanza-indirizzi-conti-contatti.md`
+> per il documento definitivo.
 
 ---
 

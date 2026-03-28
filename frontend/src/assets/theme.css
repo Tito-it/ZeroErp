@@ -105,3 +105,10 @@
   /* Tablet: 768px - 1023px */
   /* Mobile: < 768px */
 }
+
+/* Tablet: sidebar collassata piu' stretta */
+@media (max-width: 1023px) and (min-width: 768px) {
+  :root {
+    --app-sidebar-width-collapsed: 46px;
+  }
+}

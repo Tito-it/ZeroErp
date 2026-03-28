@@ -2,9 +2,9 @@
 
 > Data apertura: 2026-03-25
 >
-> Stato: **COMPLETATO** — DB, documentazione, backend e frontend completati
+> Stato: **CHIUSO** — DB, documentazione, backend e frontend completati (25-27 marzo 2026)
 >
-> Priorita: **CRITICA** — difetto architetturale, va risolto prima di proseguire
+> Priorita: **CRITICA** — difetto architetturale risolto
 
 ---
 

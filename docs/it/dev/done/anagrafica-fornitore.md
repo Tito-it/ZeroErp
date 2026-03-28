@@ -3,7 +3,7 @@
 > **Modulo:** Ciclo Passivo / Acquisti
 > **Area:** Anagrafiche
 > **Versione:** 2.0 — basata su analisi struttura esistente
-> **Stato:** In definizione
+> **Stato:** **CHIUSO** — sviluppo completato end-to-end (backend, frontend, test UI) — 25-27 marzo 2026
 > **Data:** 2026-03-24
 
 ---

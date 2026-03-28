@@ -1,27 +1,31 @@
 <script setup>
 // Scopo: sidebar morfica — mostra SidebarHome o SidebarDomain in base al dominio attivo.
-// Gestisce header, toggle collapse, logout e transizione tra stati.
+// Gestisce header, toggle collapse e transizione tra stati.
+// Prop mobile: forza layout collassato (solo icone) senza toggle, usato nel drawer overlay.
+import { computed, provide } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useRouter } from 'vue-router'
-import { useAuthStore } from '../../stores/auth'
 import { useUiStore } from '../../stores/ui'
 import { useNavigationStore } from '../../stores/navigation'
 import SidebarHome from './SidebarHome.vue'
 import SidebarDomain from './SidebarDomain.vue'
 import LogoBrand from './LogoBrand.vue'
 
+const props = defineProps({
+  mobile: { type: Boolean, default: false }
+})
+
 const { t } = useI18n()
-const router = useRouter()
-const auth = useAuthStore()
 const ui = useUiStore()
 const nav = useNavigationStore()
 
 const emit = defineEmits(['navigate'])
 
-async function handleLogout() {
-  await auth.logout()
-  router.push({ name: 'login' })
-}
+// In mobile il layout e' sempre collassato (solo icone)
+const isCollapsed = computed(() => props.mobile || ui.effectiveSidebarCollapsed)
+
+// Fornisce lo stato collapsed ai figli (SidebarItem, SidebarDomain)
+// cosi' rispettano il mobile senza leggere direttamente lo store ui
+provide('sidebarCollapsed', isCollapsed)
 
 function onChildNavigate() {
   emit('navigate')
@@ -29,10 +33,10 @@ function onChildNavigate() {
 </script>
 
 <template>
-  <div class="app-sidebar-inner" :class="{ collapsed: ui.effectiveSidebarCollapsed }">
+  <div class="app-sidebar-inner" :class="{ collapsed: isCollapsed }">
     <!-- Header: logo + titolo -->
     <div class="sidebar-header">
-      <LogoBrand :showText="!ui.effectiveSidebarCollapsed" />
+      <LogoBrand :showText="!isCollapsed" />
     </div>
 
     <!-- Contenuto morfico -->
@@ -51,22 +55,13 @@ function onChildNavigate() {
       </Transition>
     </nav>
 
-    <!-- Footer: toggle + logout -->
-    <div class="sidebar-footer">
+    <!-- Footer: toggle collapse (solo inline, non in mobile drawer) -->
+    <div v-if="!mobile" class="sidebar-footer">
       <div class="sidebar-toggle" @click="ui.toggleSidebar()"
-        v-tooltip.right="ui.effectiveSidebarCollapsed ? t('nav.collapse') : null"
+        v-tooltip.right="isCollapsed ? t('nav.collapse') : null"
       >
-        <i :class="ui.effectiveSidebarCollapsed ? 'pi pi-angle-right' : 'pi pi-angle-left'"></i>
-        <span v-if="!ui.effectiveSidebarCollapsed">{{ t('nav.collapse') }}</span>
-      </div>
-
-      <div
-        class="sidebar-user"
-        @click="handleLogout"
-        v-tooltip.right="ui.effectiveSidebarCollapsed ? t('auth.logout') : null"
-      >
-        <i class="pi pi-sign-out"></i>
-        <span v-if="!ui.effectiveSidebarCollapsed">{{ t('auth.logout') }}</span>
+        <i :class="isCollapsed ? 'pi pi-angle-double-right' : 'pi pi-angle-double-left'"></i>
+        <span v-if="!isCollapsed">{{ t('nav.collapse') }}</span>
       </div>
     </div>
   </div>
@@ -90,7 +85,7 @@ function onChildNavigate() {
 
 .collapsed .sidebar-header {
   justify-content: center;
-  padding: 1rem 0.5rem;
+  padding: 1rem 0.25rem;
 }
 
 .sidebar-nav {
@@ -105,7 +100,6 @@ function onChildNavigate() {
   padding: 0.5rem;
 }
 
-.sidebar-user,
 .sidebar-toggle {
   display: flex;
   align-items: center;
@@ -119,29 +113,21 @@ function onChildNavigate() {
   transition: background var(--app-transition-fast);
 }
 
-.sidebar-user i,
 .sidebar-toggle i {
   color: var(--app-icon-color);
 }
 
-.sidebar-user:hover i,
 .sidebar-toggle:hover i {
   color: inherit;
 }
 
-.collapsed .sidebar-user,
 .collapsed .sidebar-toggle {
   justify-content: center;
-  padding: 0.5rem;
+  padding: 0.5rem 0.35rem;
 }
 
-.sidebar-user:hover,
 .sidebar-toggle:hover {
   background: var(--app-sidebar-item-hover-bg);
-}
-
-.sidebar-toggle {
-  margin-top: 2px;
 }
 
 /* Transizione morfica tra SidebarHome e SidebarDomain */

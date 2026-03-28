@@ -49,6 +49,7 @@ const filteredTables = computed(() => {
 
 // Colonne disponibili (derivate dal metadata della tabella selezionata)
 const tableColumns = ref([])
+const hasCodice = computed(() => tableColumns.value.includes('codice'))
 const hasAttivo = computed(() => tableColumns.value.includes('attivo'))
 const hasCodiceInterno = computed(() => tableColumns.value.includes('codice_interno'))
 
@@ -203,7 +204,7 @@ function selectTable(rel) {
           selection-mode="single"
           data-key="id"
         >
-          <Column field="codice" :header="t('config_panel.col_codice')" sortable />
+          <Column v-if="hasCodice" field="codice" :header="t('config_panel.col_codice')" sortable />
           <Column v-if="hasCodiceInterno" field="codice_interno" :header="t('config_panel.col_codice_interno')" />
           <Column field="descrizione" :header="t('config_panel.col_descrizione')" sortable />
           <Column v-if="hasAttivo" field="attivo" :header="t('config_panel.col_attivo')">

@@ -47,7 +47,7 @@ class LookupRepository:
         self, natura_soggetto: str | None = None
     ) -> list[dict[str, Any]]:
         sql = """
-            SELECT tr.id, tr.codice, tr.descrizione
+            SELECT tr.id, COALESCE(tr.codice_interno, tr.codice) AS codice, tr.descrizione
               FROM config.tipi_ruoli tr
              WHERE (%s::varchar IS NULL OR NOT EXISTS (
                        SELECT 1 FROM config.tipi_ruoli_nature_ammesse m
@@ -72,7 +72,7 @@ class LookupRepository:
         self, tipo_soggetto_dettaglio_id: int | None = None
     ) -> list[dict[str, Any]]:
         sql = """
-            SELECT fg.id, fg.codice, fg.descrizione,
+            SELECT fg.id, COALESCE(fg.codice_interno, fg.codice) AS codice, fg.descrizione,
                    fg.rea_policy, fg.capitale_sociale_policy, fg.attivo
               FROM config.forme_giuridiche fg
              WHERE fg.attivo = true
@@ -113,6 +113,56 @@ class LookupRepository:
         with connection.cursor() as cursor:
             cursor.execute(sql, [tipo_soggetto_dettaglio_id])
             return rows_to_list(cursor)
+
+    # Scopo: Restituisce la matrice indirizzi ammessi per un tipo ruolo (codice_interno).
+    # Usa config.tipi_ruolo_tipi_indirizzo — validata dal trigger guard sul DB.
+    def list_matrice_indirizzi_ruolo(
+        self, tipo_ruolo_codice: str
+    ) -> list[dict[str, Any]]:
+        sql = """
+            SELECT trti.tipo_indirizzo_id,
+                   COALESCE(ti.codice_interno, ti.codice) AS codice,
+                   ti.descrizione,
+                   trti.obbligatorio,
+                   trti.fallback_tipo_indirizzo_id,
+                   COALESCE(ti_fb.codice_interno, ti_fb.codice) AS fallback_codice
+              FROM config.tipi_ruolo_tipi_indirizzo trti
+              JOIN config.tipi_ruoli tr
+                ON tr.id = trti.tipo_ruolo_id
+              JOIN config.tipi_indirizzi ti
+                ON ti.id = trti.tipo_indirizzo_id
+              LEFT JOIN config.tipi_indirizzi ti_fb
+                ON ti_fb.id = trti.fallback_tipo_indirizzo_id
+             WHERE COALESCE(tr.codice_interno, tr.codice) = %s
+               AND trti.attivo = true
+             ORDER BY trti.obbligatorio DESC, ti.descrizione
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [tipo_ruolo_codice])
+            return rows_to_list(cursor)
+
+    # Scopo: Verifica se esiste una configurazione sistema codici per schema/tabella/colonna.
+    #        Restituisce la configurazione (prefisso, separatore, usa_sequenza, etc.)
+    #        oppure None se non configurato (codice deve essere editabile manualmente).
+    def get_sistema_codici(
+        self, schema_tabella: str, nome_tabella: str, nome_colonna: str = "codice",
+    ) -> dict[str, Any] | None:
+        sql = """
+            SELECT id, codice_interno, prefisso, separatore,
+                   lunghezza_numero, usa_sequenza,
+                   schema_tabella, nome_tabella, nome_colonna
+              FROM config.sistema_codici
+             WHERE schema_tabella = %s
+               AND nome_tabella = %s
+               AND nome_colonna = %s
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [schema_tabella, nome_tabella, nome_colonna])
+            row = cursor.fetchone()
+            if not row:
+                return None
+            cols = [c.name for c in cursor.description]
+            return dict(zip(cols, row))
 
     # Scopo: Ricerca comuni per autocomplete (ILIKE su descrizione).
     # Restituisce id, descrizione, provincia sigla.

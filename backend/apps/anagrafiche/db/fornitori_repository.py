@@ -54,6 +54,7 @@ class FornitoriRepository:
         }
         # Colonne opzionali: incluse solo se valorizzate (non None)
         _OPTIONAL = [
+            "codice",
             "valuta_id", "modalita_pagamento_id", "termine_pagamento_id",
             "giorni_pagamento", "fine_mese",
             "split_payment", "ritenuta_acconto", "ritenuta_aliquota",

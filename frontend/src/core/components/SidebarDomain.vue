@@ -3,10 +3,9 @@
 // Icona stella per impostare la pagina preferita per il dominio.
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
-import { computed } from 'vue'
+import { computed, inject, ref } from 'vue'
 import { useNavigationStore } from '../../stores/navigation'
 import { useTabsStore } from '../../stores/tabs'
-import { useUiStore } from '../../stores/ui'
 import SidebarItem from './SidebarItem.vue'
 
 const { t } = useI18n()
@@ -14,7 +13,7 @@ const route = useRoute()
 const router = useRouter()
 const nav = useNavigationStore()
 const tabs = useTabsStore()
-const ui = useUiStore()
+const isCollapsed = inject('sidebarCollapsed', ref(false))
 
 const emit = defineEmits(['navigate'])
 
@@ -63,7 +62,7 @@ function handleToggleFavorite(item) {
     <div class="sidebar-divider"></div>
 
     <!-- Titolo dominio (solo se sidebar espansa) -->
-    <div v-if="!ui.effectiveSidebarCollapsed" class="domain-title">
+    <div v-if="!isCollapsed" class="domain-title">
       {{ domainLabel }}
     </div>
 
@@ -81,7 +80,7 @@ function handleToggleFavorite(item) {
       </span>
       <!-- Stella preferito -->
       <i
-        v-if="!ui.effectiveSidebarCollapsed"
+        v-if="!isCollapsed"
         class="pi favorite-star"
         :class="nav.isFavorite(item.to) ? 'pi-star-fill' : 'pi-star'"
         @click.stop="handleToggleFavorite(item)"

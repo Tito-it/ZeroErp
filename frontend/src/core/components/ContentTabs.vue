@@ -1,13 +1,17 @@
 <script setup>
 // Scopo: barra content tabs tipo browser — ogni pagina aperta diventa una tab.
 // Su mobile la barra diventa un dropdown Select.
+// Include bottone "Affianca" per split view read-only (solo desktop >= 1280px).
+import { ref, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import Select from 'primevue/select'
+import Popover from 'primevue/popover'
 import { useTabsStore } from '../../stores/tabs'
 import { useContextStore } from '../../stores/context'
 import { useUiStore } from '../../stores/ui'
 import { useConfirmCloseTab } from '../composables/useConfirmCloseTab'
+import { BREAKPOINTS } from '../constants'
 
 const { t } = useI18n()
 const router = useRouter()
@@ -16,7 +20,20 @@ const context = useContextStore()
 const ui = useUiStore()
 const { closeTab } = useConfirmCloseTab()
 
+const splitPopover = ref(null)
+
+// Split view disponibile solo su desktop largo con almeno 2 tab
+const canSplit = computed(() =>
+  ui.windowWidth >= BREAKPOINTS.DESKTOP_SPLIT && tabs.splittableTabs.length > 0
+)
+
 function handleTabClick(tab) {
+  // Se si clicca la tab pinnata, fare swap (evita activeTabId === pinnedTabId)
+  if (tabs.isSplit && tabs.pinnedTab?.id === tab.id) {
+    tabs.swapPanels()
+    router.push(tab.path)
+    return
+  }
   tabs.activateTab(tab.id)
   router.push(tab.path)
 }
@@ -33,6 +50,21 @@ function handleDropdownChange(tabId) {
     router.push(tab.path)
   }
 }
+
+function toggleSplitPopover(event) {
+  if (tabs.isSplit) {
+    tabs.closeSplit()
+  } else {
+    splitPopover.value?.toggle(event)
+  }
+}
+
+function handlePinTab(tab) {
+  tabs.pinTab(tab.id)
+  splitPopover.value?.hide()
+  // Navigazione alla tab attiva nel primario (potrebbe essere cambiata se si pinnava l'attiva)
+  if (tabs.activeTab) router.push(tabs.activeTab.path)
+}
 </script>
 
 <template>
@@ -43,10 +75,15 @@ function handleDropdownChange(tabId) {
         v-for="tab in tabs.tabs"
         :key="tab.id"
         class="content-tab"
-        :class="{ active: tabs.activeTabId === tab.id }"
+        :class="{
+          active: tabs.activeTabId === tab.id,
+          pinned: tabs.isSplit && tabs.pinnedTab?.id === tab.id
+        }"
         @click="handleTabClick(tab)"
       >
         <i v-if="tab.icon" :class="tab.icon" class="tab-icon"></i>
+        <!-- Indicatore tab pinnata -->
+        <i v-if="tabs.isSplit && tabs.pinnedTab?.id === tab.id" class="pi pi-thumbtack tab-pin-icon"></i>
         <span class="tab-label">{{ tab.label }}</span>
         <!-- Indicatore dirty -->
         <span v-if="tab.dirty" class="tab-dirty-dot" v-tooltip.top="t('tabs.close_confirm_title')"></span>
@@ -63,6 +100,36 @@ function handleDropdownChange(tabId) {
           v-tooltip.top="t('tabs.close')"
         ></i>
       </div>
+
+      <!-- Spacer per spingere il bottone Affianca a destra -->
+      <div class="content-tabs-spacer"></div>
+
+      <!-- Bottone Affianca / Chiudi split — icona verde coerente con app-action-btn -->
+      <button
+        v-if="canSplit"
+        class="split-toggle-btn"
+        :class="{ 'split-active': tabs.isSplit }"
+        @click="toggleSplitPopover"
+        v-tooltip.top="tabs.isSplit ? t('tabs.split_close') : t('tabs.split_open')"
+      >
+        <i :class="tabs.isSplit ? 'pi pi-times' : 'pi pi-objects-column'"></i>
+      </button>
+
+      <!-- Popover con lista tab da affiancare -->
+      <Popover ref="splitPopover" class="split-popover">
+        <div class="split-popover-header">{{ t('tabs.split_select') }}</div>
+        <div class="split-popover-list">
+          <div
+            v-for="tab in tabs.splittableTabs"
+            :key="tab.id"
+            class="split-popover-item"
+            @click="handlePinTab(tab)"
+          >
+            <i v-if="tab.icon" :class="tab.icon" class="split-popover-icon"></i>
+            <span>{{ tab.label }}</span>
+          </div>
+        </div>
+      </Popover>
     </div>
 
     <!-- Mobile: dropdown -->
@@ -169,6 +236,90 @@ function handleDropdownChange(tabId) {
 .tab-close:hover {
   opacity: 1 !important;
   background: var(--app-sidebar-item-hover-bg);
+}
+
+/* Tab pinnata nello split */
+.content-tab.pinned {
+  border-bottom-color: var(--p-orange-400);
+}
+
+.tab-pin-icon {
+  font-size: 0.6rem;
+  color: var(--p-orange-400);
+}
+
+/* Spacer tra tab e bottone Affianca */
+.content-tabs-spacer {
+  flex: 1;
+  min-width: 1rem;
+}
+
+/* Bottone Affianca / Chiudi split — icona verde, sfondo neutro (come app-action-btn) */
+.split-toggle-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.85rem;
+  height: 1.85rem;
+  margin: auto 0.4rem;
+  font-size: 0.95rem;
+  color: var(--p-primary-color);
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: color var(--app-transition-fast), background var(--app-transition-fast);
+}
+
+.split-toggle-btn:hover {
+  color: var(--p-primary-700);
+  background: var(--p-primary-50);
+}
+
+.split-toggle-btn.split-active {
+  color: var(--p-red-500);
+}
+
+.split-toggle-btn.split-active:hover {
+  color: var(--p-red-600);
+  background: var(--p-red-50);
+}
+
+/* Popover selettore tab per split */
+:deep(.split-popover) {
+  min-width: 200px;
+  max-width: 320px;
+}
+
+.split-popover-header {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--app-topbar-breadcrumb-color);
+  padding: 0.4rem 0.6rem;
+  border-bottom: 1px solid var(--app-toolbar-border);
+}
+
+.split-popover-list {
+  padding: 0.25rem 0;
+}
+
+.split-popover-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.45rem 0.6rem;
+  font-size: var(--app-font-size-sm);
+  cursor: pointer;
+  transition: background var(--app-transition-fast);
+}
+
+.split-popover-item:hover {
+  background: var(--app-toolbar-tab-hover-bg);
+}
+
+.split-popover-icon {
+  font-size: 0.8rem;
+  color: var(--app-icon-color);
 }
 
 /* Mobile dropdown */

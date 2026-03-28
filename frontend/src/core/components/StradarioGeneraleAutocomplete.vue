@@ -1,9 +1,9 @@
 <script setup>
 // Scopo: Autocomplete su stradario_generale (senza comune/CAP) per via nuova.
 // L'utente cerca una via in tutta Italia, poi sceglie comune e CAP separatamente.
-// Emette l'oggetto selezionato via v-model: { stradario_generale_id, toponomastica_id, toponimo, denominazione, indirizzo_normalizzato }
+// Espone noResults per segnalare che la via digitata non esiste.
 
-import { computed } from 'vue'
+import { computed, watch } from 'vue'
 import AutoComplete from 'primevue/autocomplete'
 import { searchStradarioGenerale } from '../apiCore'
 import { useServerAutocomplete } from '../composables/useServerAutocomplete'
@@ -18,7 +18,7 @@ const props = defineProps({
 
 const emit = defineEmits(['update:modelValue'])
 
-const { suggestions, loading, onSearch } = useServerAutocomplete(
+const { suggestions, loading, noResults, clearNoResults, onSearch } = useServerAutocomplete(
   (query) => searchStradarioGenerale(query),
   { minLength: 2, debounceMs: 300 }
 )
@@ -27,19 +27,23 @@ const placeholder = computed(() => t('common.select_via'))
 
 function formatLabel(item) {
   if (!item) return ''
-  // Mostra TOPONIMO + DENOMINAZIONE (es. "VIA ROMA")
+  if (typeof item === 'string') return item
   return item.toponimo && item.denominazione
     ? `${item.toponimo} ${item.denominazione}`
     : item.indirizzo_normalizzato || ''
 }
 
 function onSelect(event) {
+  clearNoResults()
   emit('update:modelValue', event.value ?? null)
 }
 
 function onClear() {
+  clearNoResults()
   emit('update:modelValue', null)
 }
+
+defineExpose({ noResults })
 </script>
 
 <template>

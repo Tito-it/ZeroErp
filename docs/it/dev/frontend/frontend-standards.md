@@ -157,6 +157,57 @@ Ogni schermata di elenco segue questo schema fisso:
 - **Ricerca** con debounce 400ms (gestito da `useSearchTable`)
 - **DataTable** sempre con: `lazy`, `removable-sort`, `striped-rows`, `scrollable`, `scrollHeight="flex"`
 
+### Scorciatoie da tastiera (Keyboard Shortcuts)
+
+Scorciatoie globali per operatori ERP power user. Due meccanismi:
+
+**1. `useKeyboardShortcuts(shortcuts)` — composable generico**
+
+Per shortcut che NON devono attivarsi dentro input/textarea/select (evita conflitti con la digitazione).
+
+```js
+import { useKeyboardShortcuts } from '../composables/useKeyboardShortcuts'
+useKeyboardShortcuts([
+  { key: 'F5', ctrl: false, action: () => reload() },
+])
+```
+
+Usato da: `useSearchTable` (F5 ricarica lista).
+
+**2. Listener diretto `window.addEventListener('keydown')` — per shortcut che devono funzionare SEMPRE**
+
+Per shortcut come Ctrl+S che devono attivarsi anche dentro un campo input.
+
+```js
+function onKeydown(e) {
+  if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+    e.preventDefault()
+    emit('save')
+  }
+}
+onMounted(() => window.addEventListener('keydown', onKeydown))
+onUnmounted(() => window.removeEventListener('keydown', onKeydown))
+```
+
+Usato da: `DrawerFooter` (Ctrl+S salva).
+
+**Shortcut attive:**
+
+| Shortcut | Contesto | Azione | Componente |
+|----------|----------|--------|------------|
+| `F5` | Lista (DataTable) | Ricarica lista senza reload browser | `useSearchTable` |
+| `Ctrl+S` | Drawer (qualsiasi) | Salva — rispetta disabled/loading/readonly | `DrawerFooter` |
+| `Esc` | Drawer PrimeVue | Chiude drawer (nativo PrimeVue `dismissable`) | Drawer |
+| `Ctrl+K` | Globale | Apre ricerca universale | `AppTopbar` |
+
+**Regole:**
+- `useKeyboardShortcuts` per shortcut che NON devono interferire con la digitazione
+- Listener diretto per shortcut che devono funzionare SEMPRE (Ctrl+S, Ctrl+K)
+- Sempre `e.preventDefault()` per evitare l'azione default del browser
+- Sempre cleanup in `onUnmounted`
+
+---
+
 ### Classi CSS standard
 
 | Classe             | Dove applicare                    | Scopo                                         |

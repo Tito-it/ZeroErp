@@ -94,7 +94,12 @@
     "close_confirm_title": "Unsaved changes",
     "close_confirm_message": "There are unsaved changes. Close anyway?",
     "close_confirm_accept": "Close without saving",
-    "close_confirm_reject": "Cancel"
+    "close_confirm_reject": "Cancel",
+    "split_open": "Side by side",
+    "split_close": "Close side view",
+    "split_select": "Select tab to show alongside",
+    "split_readonly": "Read only",
+    "split_swap": "Swap panels"
   },
   "errors": {
     "not_found_title": "Page not found",
@@ -396,6 +401,8 @@
     "cap_salvato": "Postal code saved",
     "via_non_presente": "Address not listed, create new",
     "indirizzo_non_trovato": "Address not found. Select 'Address not listed, create new' to create a new one.",
+    "via_non_trovata_crea_nuovo": "Street not found in local directory. Select 'Address not listed, create new' to search the general directory.",
+    "via_non_trovata_stradario_generale": "Street not found in the general directory. Please verify the data or contact the administrator to register the street in the General Directory section.",
     "indirizzo_creato": "Address created",
     "indirizzo_salvato": "Address saved",
     "indirizzo_esistente": "Existing address, linked",
