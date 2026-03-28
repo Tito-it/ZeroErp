@@ -53,7 +53,7 @@ BEGIN
 
   IF v_order_col NOT IN ('descrizione', 'codice') THEN
     PERFORM script.fn_log_and_raise_error(
-      'dbops', 'fn_get_lookup_codici', 'E_GENERICO',
+      'dbops', 'fn_get_lookup_codicfn_crea_soggetto_pfi', 'E_GENERICO',
       jsonb_build_object('detail','p_order_col non valido', 'p_order_col', p_order_col),
       NULL::uuid,
       'p_order_col ammesso solo: descrizione, codice'

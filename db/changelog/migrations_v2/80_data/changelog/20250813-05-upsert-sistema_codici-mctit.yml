@@ -40,9 +40,6 @@ databaseChangeLog:
               - column: { name: separatore, type: STRING }
               - column: { name: lunghezza_numero, type: STRING }
               - column: { name: usa_sequenza, type: STRING }
-              - column: { name: schema_tabella, type: STRING }
-              - column: { name: nome_tabella, type: STRING }
-              - column: { name: nome_colonna, type: STRING }
               - column: { name: data_insert, type: STRING }
               - column: { name: user_insert, type: STRING }
               - column:
@@ -51,6 +48,9 @@ databaseChangeLog:
                   defaultValue: "NOW()"
               - column: { name: user_update, type: STRING }
               - column: { name: tx_id, type: uuid }
+              - column: { name: schema_tabella, type: STRING }
+              - column: { name: nome_tabella, type: STRING }
+              - column: { name: nome_colonna, type: STRING }
 
   - changeSet:
       id: 20250813-90-upsert-sistema_codici

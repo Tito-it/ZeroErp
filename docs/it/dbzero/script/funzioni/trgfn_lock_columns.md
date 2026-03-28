@@ -20,9 +20,12 @@ DECLARE
   oldval  text;
   newval  text;
 BEGIN
- 
+  -- 0) GUC override per manutenzione
+  IF current_setting('zeroerp.allow_lock_columns_override', true) = 'on' THEN
+    RETURN NEW;
+  END IF;
 
-  -- 1) Se il numero di argomenti non è pari, errore
+  -- 1) Se il numero di argomenti non e pari, errore
   IF n_args % 2 <> 0 THEN
     PERFORM script.fn_log_and_raise_error(
       'database',
@@ -66,7 +69,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.trgfn_lock_columns()
-IS 'Verifica che le colonne specificate non vengano modificate: in caso contrario logga e solleva errore.';
+IS 'Impedisce modifica colonne protette. Override: SET LOCAL zeroerp.allow_lock_columns_override = ''on''. Argomenti a coppie (colonna, codice_messaggio).';
 ```
 
 ---
