@@ -125,7 +125,54 @@ Richiesta invio email
 
 I template email sono parametrizzabili con variabili (`{{nome}}`, `{{link}}`, `{{azienda}}`).
 Ogni template ha un `codice` univoco (es. `INVITO_OPERATORE`, `RESET_PASSWORD`).
-I template possono essere sovrascritti per reparto.
+I template possono essere sovrascritti per reparto e per tipo pratica.
+
+#### Ambito di proprietà e visibilità
+
+Ogni email (bozza e log) ha un **ambito** che determina chi può vederla:
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│  Ambito         │ Significato              │ Visibilità          │
+├──────────────────────────────────────────────────────────────────┤
+│  SISTEMA        │ Email di infrastruttura   │ Solo ADMIN          │
+│                 │ (inviti, reset, notifiche) │                     │
+├──────────────────────────────────────────────────────────────────┤
+│  REPARTO        │ Email del reparto          │ Tutti gli operatori │
+│                 │ (comunicazioni a clienti/  │ dell'unità org.     │
+│                 │  fornitori nel contesto    │ + ADMIN             │
+│                 │  del reparto)              │                     │
+├──────────────────────────────────────────────────────────────────┤
+│  OPERATORE      │ Email personale            │ Solo l'operatore    │
+│                 │ dell'operatore             │ che l'ha creata     │
+│                 │                            │ + ADMIN             │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+Quando una email è legata a una **pratica** (`pratica_id`), è consultabile
+anche dalla scheda pratica stessa — indipendentemente dall'ambito.
+Questo permette di ricostruire la storia comunicativa di una pratica.
+
+#### Risoluzione template: reparto + tipo pratica
+
+I template possono essere specializzati non solo per reparto, ma anche per
+**tipo pratica**. Questo permette testi diversi per la stessa azione in contesti diversi:
+
+```
+Azione "Invia comunicazione" dalla pratica
+  → tipo_pratica = "RECLAMO", reparto = "Acquisti"
+  → lookup: template con codice=COMUNICAZIONE_PRATICA
+             + tipo_pratica_id=<reclamo>
+             + unita_organizzativa_id=<acquisti>
+             + lingua='it'
+  → non trovato? → fallback senza tipo_pratica
+  → non trovato? → fallback sistema
+```
+
+Esempi:
+- Reclamo (reparto Acquisti): "Gentile fornitore, in merito alla segnalazione..."
+- Offerta (reparto Commerciale): "Gentile cliente, le confermiamo l'offerta..."
+- Generico (sistema): "Comunicazione relativa alla pratica {{codice_pratica}}"
 
 #### DB
 
@@ -167,9 +214,11 @@ Vincoli:
 config.email_template
 ├── id                      SERIAL PK
 ├── codice                  VARCHAR(100) NOT NULL
-│                           (es. 'INVITO_OPERATORE', 'RESET_PASSWORD', 'NOTIFICA_GENERICA')
+│                           (es. 'INVITO_OPERATORE', 'RESET_PASSWORD', 'COMUNICAZIONE_PRATICA')
 ├── unita_organizzativa_id  INTEGER NULL FK → config.unita_organizzative(id)
 │                           (NULL = template di sistema/default)
+├── tipo_pratica_id         INTEGER NULL FK → pratiche.tipi_pratica(id)
+│                           (NULL = generico, non legato a un tipo pratica specifico)
 ├── lingua                  VARCHAR(5) NOT NULL DEFAULT 'it'
 ├── oggetto                 TEXT NOT NULL
 │                           (supporta variabili: "Benvenuto {{nome}} in {{azienda}}")
@@ -186,7 +235,8 @@ config.email_template
 ```
 
 Vincoli:
-  - UNIQUE su `(codice, unita_organizzativa_id, lingua)` — permette override per reparto+lingua
+  - UNIQUE su `(codice, unita_organizzativa_id, tipo_pratica_id, lingua)` — permette override per reparto+tipo pratica+lingua
+  - FK su `tipo_pratica_id` → `pratiche.tipi_pratica(id)`
   - FK su `unita_organizzativa_id`
 
 - [ ] 1.1.3 — Creare tabella `config.email_log`
@@ -214,7 +264,134 @@ config.email_log
 ├── user_insert             TEXT NOT NULL DEFAULT CURRENT_USER
 ```
 
-- [ ] 1.1.4 — Seed dati: account di sistema (codice `SISTEMA`) e template base
+- [ ] 1.1.4 — Creare tabella `config.email_outbox`
+
+Bozze email preparate dal sistema e modificabili dall'operatore prima dell'invio.
+Flusso: template renderizzato → bozza editabile → conferma invio → email_log.
+
+```
+config.email_outbox
+├── id                      BIGSERIAL PK
+├── email_account_id        INTEGER NULL FK → config.email_account(id)
+├── email_template_id       INTEGER NULL FK → config.email_template(id)
+│                           (template di origine, per riferimento)
+├── ambito                  VARCHAR(20) NOT NULL DEFAULT 'SISTEMA'
+│                           ('SISTEMA', 'REPARTO', 'OPERATORE')
+│                           Determina la visibilità:
+│                             SISTEMA   → solo ADMIN
+│                             REPARTO   → operatori dell'unità org. + ADMIN
+│                             OPERATORE → solo chi l'ha creata + ADMIN
+├── unita_organizzativa_id  INTEGER NULL FK → config.unita_organizzative(id)
+│                           (obbligatorio se ambito = REPARTO)
+├── pratica_id              BIGINT NULL FK → pratiche.pratiche(id)
+│                           (se collegata a una pratica — visibile dalla scheda pratica)
+├── destinatario            VARCHAR(255) NOT NULL
+├── destinatari_cc          TEXT[] NULL
+│                           (array di indirizzi CC)
+├── oggetto                 TEXT NOT NULL
+│                           (pre-compilato dal template, editabile)
+├── corpo_html              TEXT NOT NULL
+│                           (pre-compilato e renderizzato, editabile)
+├── corpo_testo             TEXT NULL
+│                           (versione plaintext, editabile)
+├── stato                   VARCHAR(20) NOT NULL DEFAULT 'DRAFT'
+│                           ('DRAFT', 'READY', 'SENT', 'CANCELLED')
+├── contesto_json           JSONB NOT NULL DEFAULT '{}'
+│                           (variabili usate per il rendering iniziale)
+├── auth_user_id            INTEGER NULL
+│                           (operatore destinatario, se applicabile)
+├── creato_da_user_id       INTEGER NULL
+│                           (operatore che ha creato la bozza)
+├── inviato_at              TIMESTAMPTZ NULL
+├── email_log_id            BIGINT NULL FK → config.email_log(id)
+│                           (collegamento al log dopo invio effettivo)
+├── tx_id                   UUID NULL
+├── meta                    JSONB NOT NULL DEFAULT '{}'
+├── data_insert             TIMESTAMPTZ NOT NULL DEFAULT now()
+├── user_insert             TEXT NOT NULL DEFAULT CURRENT_USER
+├── data_update             TIMESTAMPTZ NOT NULL DEFAULT now()
+├── user_update             TEXT NOT NULL DEFAULT CURRENT_USER
+```
+
+Vincoli:
+  - CHECK: `stato IN ('DRAFT', 'READY', 'SENT', 'CANCELLED')`
+  - CHECK: `ambito IN ('SISTEMA', 'REPARTO', 'OPERATORE')`
+  - CHECK: `ambito = 'REPARTO' → unita_organizzativa_id IS NOT NULL`
+  - FK su `email_account_id`, `email_template_id`, `email_log_id`, `pratica_id`, `unita_organizzativa_id`
+  - INDEX su `(stato, creato_da_user_id)` per lista bozze operatore
+  - INDEX su `pratica_id` per consultazione dalla scheda pratica
+  - INDEX su `(ambito, unita_organizzativa_id)` per filtro reparto
+
+- [ ] 1.1.5 — Creare tabella `config.email_allegato`
+
+Allegati associati a una bozza outbox. Supporta sia allegati caricati dall'operatore
+sia allegati di default del template (es. guida utente PDF, policy aziendale).
+
+```
+config.email_allegato
+├── id                      BIGSERIAL PK
+├── email_outbox_id         BIGINT NULL FK → config.email_outbox(id) ON DELETE CASCADE
+├── email_log_id            BIGINT NULL FK → config.email_log(id)
+│                           (popolato dopo invio, per consultazione storica)
+├── nome_file               VARCHAR(255) NOT NULL
+│                           (nome originale del file, es. "guida-utente.pdf")
+├── mime_type               VARCHAR(100) NOT NULL
+│                           (es. "application/pdf", "image/png")
+├── dimensione_bytes        BIGINT NOT NULL
+├── file_path               VARCHAR(512) NOT NULL
+│                           (percorso relativo nello storage, es. "email_attachments/2026/03/uuid.pdf")
+├── origine                 VARCHAR(20) NOT NULL DEFAULT 'UPLOAD'
+│                           ('UPLOAD' = caricato dall'operatore, 'TEMPLATE' = default del template)
+├── meta                    JSONB NOT NULL DEFAULT '{}'
+├── data_insert             TIMESTAMPTZ NOT NULL DEFAULT now()
+├── user_insert             TEXT NOT NULL DEFAULT CURRENT_USER
+```
+
+Vincoli:
+  - CHECK: `origine IN ('UPLOAD', 'TEMPLATE')`
+  - CHECK: `dimensione_bytes > 0`
+  - CHECK: almeno uno tra `email_outbox_id` e `email_log_id` NOT NULL
+  - INDEX su `email_outbox_id`, INDEX su `email_log_id`
+
+- [ ] 1.1.6 — Aggiornare tabella `config.email_log` — colonne corpo inviato
+
+Aggiungere colonne per conservare il testo esattamente come inviato (dopo eventuali
+modifiche manuali dall'outbox), per consultazione post-invio fedele:
+
+```sql
+ALTER TABLE config.email_log
+  ADD COLUMN corpo_inviato_html  TEXT NULL,
+  ADD COLUMN corpo_inviato_testo TEXT NULL,
+  ADD COLUMN destinatari_cc      TEXT[] NULL,
+  ADD COLUMN email_outbox_id     BIGINT NULL
+    REFERENCES config.email_outbox(id),
+  ADD COLUMN ambito              VARCHAR(20) NOT NULL DEFAULT 'SISTEMA'
+    CHECK (ambito IN ('SISTEMA', 'REPARTO', 'OPERATORE')),
+  ADD COLUMN unita_organizzativa_id INTEGER NULL
+    REFERENCES config.unita_organizzative(id),
+  ADD COLUMN pratica_id          BIGINT NULL
+    REFERENCES pratiche.pratiche(id);
+
+COMMENT ON COLUMN config.email_log.corpo_inviato_html
+  IS 'Corpo HTML esattamente come inviato (dopo eventuali modifiche manuali)';
+COMMENT ON COLUMN config.email_log.corpo_inviato_testo
+  IS 'Corpo plaintext esattamente come inviato';
+COMMENT ON COLUMN config.email_log.destinatari_cc
+  IS 'Indirizzi CC usati nell''invio';
+COMMENT ON COLUMN config.email_log.email_outbox_id
+  IS 'FK bozza di origine (NULL se invio diretto senza anteprima)';
+COMMENT ON COLUMN config.email_log.ambito
+  IS 'Ambito visibilita'': SISTEMA (solo admin), REPARTO (operatori UO), OPERATORE (solo creatore)';
+COMMENT ON COLUMN config.email_log.unita_organizzativa_id
+  IS 'Reparto proprietario (obbligatorio se ambito=REPARTO)';
+COMMENT ON COLUMN config.email_log.pratica_id
+  IS 'Pratica collegata (consultabile dalla scheda pratica)';
+
+CREATE INDEX ix_email_log_pratica_id ON config.email_log(pratica_id);
+CREATE INDEX ix_email_log_ambito_uo ON config.email_log(ambito, unita_organizzativa_id);
+```
+
+- [ ] 1.1.7 — Seed dati: account di sistema (codice `SISTEMA`) e template base
   - Template `INVITO_OPERATORE`
   - Template `RESET_PASSWORD`
   - Template `CAMBIO_PASSWORD_CONFERMA`
@@ -222,73 +399,192 @@ config.email_log
 
 #### Backend
 
-- [ ] 1.1.5 — Creare `apps/core/services/email_service.py` — `EmailDispatchService`
+- [ ] 1.1.8 — Creare `apps/core/services/email_service.py` — `EmailDispatchService`
 
 Responsabilità:
   - `resolve_account(unita_organizzativa_id=None)` → trova account email:
     1. Se `unita_organizzativa_id` fornito → cerca account del reparto
     2. Fallback → account con codice `SISTEMA`
-  - `resolve_template(codice, unita_organizzativa_id=None, lingua='it')` → trova template:
-    1. Template specifico per reparto+lingua
-    2. Fallback → template di sistema per lingua
-    3. Fallback → template di sistema lingua `it`
+  - `resolve_template(codice, unita_organizzativa_id=None, tipo_pratica_id=None, lingua='it')` → trova template:
+    1. Template specifico per reparto+tipo pratica+lingua
+    2. Fallback → template reparto+lingua (senza tipo pratica)
+    3. Fallback → template sistema+tipo pratica+lingua
+    4. Fallback → template di sistema per lingua
+    5. Fallback → template di sistema lingua `it`
   - `render_template(template, variabili: dict)` → sostituisce `{{chiave}}` con valori
-  - `send_email(codice_template, destinatario, variabili, unita_organizzativa_id=None)`:
-    1. Risolve account e template
+  - `send_email(codice_template, destinatario, variabili, unita_organizzativa_id=None, tipo_pratica_id=None, ambito='SISTEMA', pratica_id=None)`:
+    1. Risolve account e template (con tipo_pratica_id)
     2. Renderizza oggetto e corpo
-    3. Crea record in `config.email_log` con stato `PENDING`
-    4. Tenta invio SMTP
-    5. Aggiorna stato (`SENT` o `FAILED`)
+    3. Crea record in `config.email_log` con stato `PENDING`, ambito, pratica_id
+    4. Tenta invio SMTP (con allegati se presenti)
+    5. Salva corpo inviato in `corpo_inviato_html` / `corpo_inviato_testo`
+    6. Aggiorna stato (`SENT` o `FAILED`)
+  - `send_from_outbox(outbox_id)` — invia una bozza confermata:
+    1. Legge bozza da `email_outbox` (stato `READY`)
+    2. Crea record `email_log` con corpo dalla bozza (non dal template),
+       propagando `ambito`, `unita_organizzativa_id`, `pratica_id` dalla bozza
+    3. Allega file da `email_allegato`
+    4. Aggiorna bozza: `stato = 'SENT'`, `email_log_id = <id>`
+    5. Copia allegati su `email_log_id`
   - `retry_failed()` — riprocessa email `FAILED` con `tentativi < max_tentativi`
 
-- [ ] 1.1.6 — Creare `apps/core/db/email_repository.py`
+- [ ] 1.1.9 — Creare `apps/core/services/email_outbox_service.py` — `EmailOutboxService`
+
+Responsabilità:
+  - `prepare_draft(codice_template, destinatario, variabili, unita_organizzativa_id=None, tipo_pratica_id=None, creato_da_user_id=None, ambito='SISTEMA', pratica_id=None)`:
+    1. Risolve account e template (con tipo_pratica_id per specializzazione)
+    2. Renderizza oggetto e corpo con variabili
+    3. Crea record in `config.email_outbox` con stato `DRAFT`, ambito, pratica_id
+    4. Ritorna bozza con id, oggetto, corpo renderizzato (editabili dal frontend)
+  - `update_draft(outbox_id, oggetto=None, corpo_html=None, corpo_testo=None, destinatari_cc=None)`:
+    1. Verifica stato `DRAFT`
+    2. Aggiorna i campi modificati
+  - `confirm_draft(outbox_id)`:
+    1. Verifica stato `DRAFT` → imposta `READY`
+    2. Chiama `EmailDispatchService.send_from_outbox(outbox_id)`
+  - `cancel_draft(outbox_id)`:
+    1. Imposta stato `CANCELLED`
+    2. Elimina allegati fisici (cleanup storage)
+  - `add_attachment(outbox_id, file, origine='UPLOAD')`:
+    1. Valida file (tipo MIME, dimensione max configurabile)
+    2. Salva su storage (path: `email_attachments/YYYY/MM/<uuid>.<ext>`)
+    3. Crea record `email_allegato`
+  - `remove_attachment(allegato_id)`:
+    1. Elimina file fisico + record DB
+  - `list_drafts(creato_da_user_id=None, stato=None)`:
+    1. Lista bozze con filtri
+
+- [ ] 1.1.10 — Creare `apps/core/db/email_repository.py`
 
 Responsabilità:
   - Query su `config.email_account`, `config.email_template`, `config.email_log`
+  - Query su `config.email_outbox`, `config.email_allegato`
   - Decriptazione password SMTP (usando `django.core.signing` o `Fernet`)
-  - Insert/update `email_log`
+  - Insert/update `email_log`, `email_outbox`, `email_allegato`
 
-- [ ] 1.1.7 — Creare management command `send_pending_emails`
+- [ ] 1.1.11 — Creare management command `send_pending_emails`
   - Processa email con stato `PENDING` o `RETRY`
   - Eseguibile come cron job (pgAgent o crontab)
   - Flag `--dry-run` per preview
 
-- [ ] 1.1.8 — Configurare `EMAIL_BACKEND` in settings.py
+- [ ] 1.1.12 — Configurare `EMAIL_BACKEND` in settings.py
   - Default: `django.core.mail.backends.smtp.EmailBackend`
   - Dev/test: `django.core.mail.backends.console.EmailBackend`
   - Il service NON usa il backend globale Django ma connessioni SMTP per-account
+  - Configurazione storage allegati: `EMAIL_ATTACHMENTS_ROOT`, `EMAIL_ATTACHMENT_MAX_SIZE_MB`
 
-- [ ] 1.1.9 — API admin per gestione account email (CRUD)
+- [ ] 1.1.13 — API admin per gestione account email (CRUD)
   - `GET/POST /api/v1/amm-software/email-accounts/`
   - `GET/PUT/DELETE /api/v1/amm-software/email-accounts/<id>/`
   - Solo ruolo ADMIN
   - La password SMTP viene accettata in chiaro e salvata crittografata
 
-- [ ] 1.1.10 — API admin per gestione template email (CRUD)
+- [ ] 1.1.14 — API admin per gestione template email (CRUD)
   - `GET/POST /api/v1/amm-software/email-templates/`
   - `GET/PUT/DELETE /api/v1/amm-software/email-templates/<id>/`
   - Solo ruolo ADMIN
   - Endpoint preview: `POST .../preview/` con variabili di esempio
 
-- [ ] 1.1.11 — API admin per consultazione log email
-  - `GET /api/v1/amm-software/email-log/` con filtri (stato, destinatario, date)
-  - Solo ruolo ADMIN
+- [ ] 1.1.15 — API outbox email (preparazione, modifica, invio bozze)
+  - `POST /api/v1/email/prepare/` — prepara bozza da template + variabili, ritorna draft editabile
+    - Accetta: `ambito`, `pratica_id`, `tipo_pratica_id` per specializzazione
+  - `GET /api/v1/email/outbox/` — lista bozze visibili all'operatore
+    - Filtri: stato, date, ambito, pratica_id
+    - Regole visibilita':
+      - ADMIN → vede tutte
+      - Operatore → vede le proprie (ambito=OPERATORE) + quelle del suo reparto (ambito=REPARTO, stessa UO)
+  - `GET /api/v1/email/outbox/<id>/` — dettaglio bozza con allegati
+  - `PUT /api/v1/email/outbox/<id>/` — modifica oggetto, corpo, CC
+  - `POST /api/v1/email/outbox/<id>/send/` — conferma e invia
+  - `POST /api/v1/email/outbox/<id>/cancel/` — annulla bozza
+  - Permessi: operatore autenticato (le proprie bozze + reparto) o ADMIN (tutte)
+
+- [ ] 1.1.16 — API allegati email
+  - `POST /api/v1/email/outbox/<id>/allegati/` — upload allegato (multipart)
+  - `GET /api/v1/email/outbox/<id>/allegati/` — lista allegati della bozza
+  - `DELETE /api/v1/email/allegati/<allegato_id>/` — rimuovi allegato
+  - `GET /api/v1/email/allegati/<allegato_id>/download/` — download file
+  - Validazione: tipo MIME whitelist, dimensione max, numero max allegati per email
+  - Stesso endpoint download usabile per allegati da `email_log` (consultazione storica)
+
+- [ ] 1.1.17 — API consultazione log email (migliorata, con visibilita' per ambito)
+  - `GET /api/v1/email/log/` — log email visibili all'operatore
+    - Filtri: stato, destinatario, date, ambito, pratica_id, unita_organizzativa_id
+    - Regole visibilita' (stesse dell'outbox):
+      - ADMIN → vede tutte
+      - Operatore → vede le proprie (ambito=OPERATORE) + quelle del suo reparto (ambito=REPARTO, stessa UO)
+      - Le email con `pratica_id` sono visibili anche a chi ha accesso alla pratica
+  - `GET /api/v1/email/log/<id>/` — dettaglio con corpo inviato + allegati
+  - `POST /api/v1/email/log/<id>/reinvia/` — re-invia email (crea nuova bozza outbox pre-compilata dalla mail originale)
+  - `GET /api/v1/amm-software/email-log/` — endpoint admin: vede tutto, senza filtro ambito (retrocompatibile)
 
 #### Frontend
 
-- [ ] 1.1.12 — Pannello admin: gestione account email
+- [ ] 1.1.18 — Pannello admin: gestione account email
   - Lista account con stato attivo/inattivo
   - Form creazione/modifica con test connessione SMTP
   - Associazione a reparto (autocomplete unità organizzativa)
 
-- [ ] 1.1.13 — Pannello admin: gestione template email
+- [ ] 1.1.19 — Pannello admin: gestione template email
   - Lista template raggruppati per codice
   - Editor con preview HTML
   - Indicazione variabili disponibili per tipo template
 
-- [ ] 1.1.14 — Pannello admin: log email (sola lettura)
-  - Tabella con filtri: stato, destinatario, data
-  - Dettaglio con corpo renderizzato
+- [ ] 1.1.20 — Dialog/drawer "Componi email" (componente riutilizzabile)
+
+Componente che si apre quando un'azione genera un invio email (invito operatore,
+reset password, notifica generica). Flusso UX:
+
+```
+Azione utente (es. "Invia invito")
+  → API prepare → bozza creata
+  → Dialog si apre con:
+    ┌─────────────────────────────────────────────┐
+    │  Componi email                          [X] │
+    ├─────────────────────────────────────────────┤
+    │  Da: Ufficio Acquisti <acq@azienda.it>  [i] │
+    │  A:  mario.rossi@azienda.it                 │
+    │  CC: [+ aggiungi]                           │
+    │  Oggetto: [Benvenuto Mario in ZeroErp    ]  │
+    ├─────────────────────────────────────────────┤
+    │  [Editor HTML/testo con toolbar base]        │
+    │  Corpo pre-compilato dal template,           │
+    │  editabile dall'operatore                    │
+    ├─────────────────────────────────────────────┤
+    │  Allegati:                                   │
+    │  📎 guida-utente.pdf (1.2 MB) [x]           │
+    │  [+ Aggiungi allegato]                       │
+    ├─────────────────────────────────────────────┤
+    │         [Annulla]  [Invia email]             │
+    └─────────────────────────────────────────────┘
+```
+
+Caratteristiche:
+  - Oggetto e corpo pre-compilati e modificabili
+  - Editor HTML semplice (grassetto, corsivo, link, liste) — usare componente PrimeVue `Editor` o libreria leggera
+  - Toggle HTML/plaintext per vedere entrambe le versioni
+  - Upload allegati drag & drop (con progress bar)
+  - Indicazione account mittente (non editabile, risolto dal backend)
+  - Pulsante "Invia" chiama `POST .../send/`, "Annulla" chiama `POST .../cancel/`
+
+- [ ] 1.1.21 — Consultazione log email (con visibilita' per ambito)
+  - Tabella con filtri: stato, destinatario, data, template, **ambito, reparto, pratica**
+  - Visibilita' automatica: l'operatore vede solo le sue + quelle del reparto
+  - Dettaglio email inviata con:
+    - Corpo HTML esattamente come inviato (render in iframe/panel)
+    - Lista allegati con download
+    - Metadati: account mittente, template usato, variabili, timestamp
+    - Badge ambito: "Sistema" / "Reparto Acquisti" / "Personale"
+    - Link alla pratica collegata (se presente)
+  - Pulsante "Re-invia" → crea nuova bozza outbox pre-compilata dalla mail originale
+  - Pulsante "Esporta" → download email come .eml (opzionale, bassa priorità)
+
+- [ ] 1.1.22 — Tab "Comunicazioni" nel drawer pratica
+  - Lista email inviate nel contesto della pratica (`pratica_id`)
+  - Ordinate per data, con stato e destinatario
+  - Click → apre dettaglio email (corpo inviato + allegati)
+  - Pulsante "Nuova comunicazione" → apre dialog Componi email (1.1.20)
+    con `pratica_id` pre-impostato, template risolto per tipo pratica + reparto
 
 #### Test
 
@@ -297,6 +593,15 @@ Responsabilità:
 - [ ] 1.1.T3 — Test Django: risoluzione template per reparto+lingua con fallback
 - [ ] 1.1.T4 — Test Django: rendering template con variabili
 - [ ] 1.1.T5 — Test Django: retry email fallite
+- [ ] 1.1.T6 — Test Django: `EmailOutboxService.prepare_draft` → bozza creata con corpo renderizzato
+- [ ] 1.1.T7 — Test Django: modifica bozza (oggetto, corpo, CC) → campi aggiornati
+- [ ] 1.1.T8 — Test Django: conferma e invio bozza → stato SENT + email_log creato con corpo inviato
+- [ ] 1.1.T9 — Test Django: annullamento bozza → stato CANCELLED + allegati eliminati
+- [ ] 1.1.T10 — Test Django: upload allegato → file salvato + record creato
+- [ ] 1.1.T11 — Test Django: validazione allegato (tipo MIME non consentito, dimensione eccessiva → errore)
+- [ ] 1.1.T12 — Test Django: invio con allegati → email contiene attachment MIME
+- [ ] 1.1.T13 — Test Django: re-invio da log → nuova bozza pre-compilata con corpo/allegati originali
+- [ ] 1.1.T14 — Test Django: consultazione log con corpo inviato fedele (non ri-renderizzato)
 
 ---
 
@@ -493,6 +798,7 @@ COMMENT ON COLUMN anagrafiche.risorse_umane_auth_user.deve_cambiare_password
        - Risolve reparto dell'operatore → sceglie account email mittente
        - Invia email con template `RESET_PASSWORD` e link:
          `{FRONTEND_URL}/reset-password/{token}`
+       - **Invio diretto** (senza outbox/anteprima — è self-service, non ci sono operatori coinvolti)
     3. Se NON trovato → **risponde comunque 200** (sicurezza: non rivelare email esistenti)
   - Response: `{ message: "Se l'email è registrata, riceverai un link" }`
 
@@ -565,29 +871,35 @@ COMMENT ON COLUMN anagrafiche.risorse_umane_auth_user.invito_inviato_at
 - [ ] 3.3 — Creare `apps/anagrafiche/services/invito_operatore_service.py`
 
 Responsabilità:
-  - `invia_invito(auth_user_id, invitato_da_user_id)`:
+  - `prepara_invito(auth_user_id, invitato_da_user_id)`:
     1. Verifica operatore invitabile (fn_check_operatore_invitabile)
     2. Imposta password casuale temporanea (`User.set_password(random)`)
     3. Imposta `deve_cambiare_password = true`
     4. Crea token monouso tipo `INVITO_OPERATORE` (scadenza 72 ore)
     5. Risolve reparto dell'operatore → account email mittente
-    6. Invia email con template `INVITO_OPERATORE`:
+    6. **Crea bozza outbox** con template `INVITO_OPERATORE`:
        - Link: `{FRONTEND_URL}/attivazione/{token}`
        - Variabili: nome, cognome, azienda, ruolo, invitato_da
-    7. Aggiorna `invito_inviato_at`
-    8. Log audit: `INVITO_INVIATO`
+    7. Ritorna `outbox_id` per anteprima/modifica frontend
+  - `conferma_invito(outbox_id, invitato_da_user_id)`:
+    1. Chiama `EmailOutboxService.confirm_draft(outbox_id)` → invio effettivo
+    2. Aggiorna `invito_inviato_at`
+    3. Log audit: `INVITO_INVIATO`
   - `reinvia_invito(auth_user_id, invitato_da_user_id)`:
     1. Invalida token precedenti tipo `INVITO_OPERATORE`
-    2. Riesegue `invia_invito`
+    2. Riesegue `prepara_invito`
 
 - [ ] 3.4 — Creare endpoint admin `POST /api/v1/amm-software/operatori/<id>/invita/`
   - Solo ruolo ADMIN
-  - Chiama `invito_operatore_service.invia_invito()`
-  - Response: `{ inviato: true, email: "m***@azienda.it" }` (email mascherata)
+  - Chiama `invito_operatore_service.prepara_invito()`
+  - Response: `{ outbox_id: 123, email: "m***@azienda.it" }` (bozza pronta per anteprima)
+  - Il frontend apre il dialog "Componi email" (1.1.20) con la bozza editabile
+  - L'invio effettivo avviene quando l'admin conferma dal dialog
 
 - [ ] 3.5 — Creare endpoint admin `POST /api/v1/amm-software/operatori/<id>/reinvia-invito/`
   - Solo ruolo ADMIN
   - Per rinviare invito scaduto o non ricevuto
+  - Stessa logica: prepara bozza → anteprima → conferma
 
 - [ ] 3.6 — Creare endpoint pubblico `POST /api/v1/auth/attivazione/`
   - Input: `{ token, new_password, new_password_confirm }`
@@ -798,6 +1110,77 @@ Fase 1 (BB-1 Email + BB-2 Token + BB-3 Cambio Password)
 | 4 | `qrcode` | >=8.0 | Generazione QR code per setup authenticator |
 | 4 | `Pillow` | >=11.0 | Dipendenza qrcode per output immagine |
 
+## Confini del sistema email — cosa costruiamo e cosa no
+
+> Questa sezione documenta una scelta architetturale deliberata, presa il 2026-03-28,
+> su dove finisce il sistema email di ZeroErp e dove inizia il territorio di strumenti esterni.
+
+### Cosa costruiamo (punti 1-7)
+
+Il sistema email di ZeroErp copre le esigenze di un ERP in produzione:
+
+| # | Funzionalita' | Esempio |
+|---|---|---|
+| 1 | **Email transazionali di sistema** | Invito operatore, reset password, conferma 2FA |
+| 2 | **Notifiche operative** | Pratica scaduta, SLA in allarme, lotto completato |
+| 3 | **Log completo di ogni invio** | Corpo esatto inviato, allegati, destinatari, esito |
+| 4 | **Template per reparto/tipo pratica** | Testi diversi per "Reclamo Acquisti" vs "Offerta Commerciale" |
+| 5 | **Comunicazioni ad-hoc da pratica** | Operatore scrive al cliente dalla scheda pratica, con anteprima |
+| 6 | **Storico comunicativo della pratica** | Dalla pratica si vedono tutte le email inviate nel suo contesto |
+| 7 | **Allegati** | Documenti inviati insieme alla email |
+
+Tutto questo e' **solo invio** (SMTP out). L'email e' un canale di uscita, non una casella di posta.
+
+### Cosa NON costruiamo (punti 8-11) — e perche'
+
+| # | Funzionalita' esclusa | Motivazione |
+|---|---|---|
+| 8 | **Casella di posta in ingresso per reparto** | Richiede IMAP polling/push, parsing MIME, gestione spam, deduplicazione — complessita' enorme per un risultato mediocre rispetto a strumenti dedicati |
+| 9 | **Thread di conversazione** | Richiede matching In-Reply-To/References, correlazione mail in ingresso con pratiche — logica di un mail client, non di un ERP |
+| 10 | **Ricezione email e associazione automatica a pratiche** | Richiede NLP/regole per capire a quale pratica si riferisce una mail ricevuta — territorio di CRM/ticketing |
+| 11 | **Gestione completa CRM/ticketing via email** | Zammad, FreeScout, Chatwoot e simili fanno esattamente questo, con anni di maturita'. Replicarlo dentro l'ERP produce qualcosa di inferiore che va mantenuto per sempre |
+
+### Strategia per il futuro: integrazione via API
+
+L'architettura attuale e' pensata per lasciare la porta aperta:
+
+```
+┌─────────────────────┐          ┌─────────────────────────┐
+│     ZeroErp         │          │  Sistema esterno         │
+│                     │   API    │  (Zammad, FreeScout,     │
+│  pratiche.pratiche  │◄────────►│   Chatwoot, ...)         │
+│  config.email_log   │          │                          │
+│  ambito / pratica_id│          │  Casella ingresso        │
+│  unita_organizzativa│          │  Thread conversazioni    │
+│                     │          │  Ticketing               │
+└─────────────────────┘          └─────────────────────────┘
+```
+
+I dati di collegamento ci sono gia':
+- **`pratica_id`** su outbox/log → il sistema esterno puo' taggare le sue conversazioni con l'ID pratica ZeroErp
+- **`ambito` + `unita_organizzativa_id`** → il sistema esterno puo' mappare i suoi team/inbox ai reparti ZeroErp
+- **`email_log`** → quando ZeroErp invia, il sistema esterno puo' leggere il log via API per tenere il thread sincronizzato
+- **Webhook** → il sistema esterno puo' notificare ZeroErp quando arriva una risposta (futuro endpoint `POST /api/v1/email/incoming-webhook/`)
+
+Quando servira' il CRM/ticketing, non si butta via niente: si aggiunge un'integrazione
+bidirezionale via API. I dati restano nel sistema che li gestisce meglio.
+
+### Nel contesto attuale (2026)
+
+Nel mondo pre-API, l'ERP doveva fare da postino perche' non c'era altro modo.
+Oggi le comunicazioni critiche passano per canali dedicati:
+
+- **Fatture** → SDI (gia' nel piano ZeroErp)
+- **PEC** → canale legale con regole proprie
+- **Ordini/DDT** → portali B2B, EDI
+- **Pagamenti** → notifiche bancarie automatiche
+
+L'email resta utile per comunicazioni operative e notifiche, ma non e' piu'
+il canale unico. ZeroErp la gestisce per quello che serve (invio + tracciamento),
+senza tentare di diventare un mail client.
+
+---
+
 ## Note di sicurezza
 
 - **Token in chiaro MAI salvati in DB** — solo hash SHA-256
@@ -808,6 +1191,8 @@ Fase 1 (BB-1 Email + BB-2 Token + BB-3 Cambio Password)
 - **Anti-replay TOTP**: salva ultimo codice usato, rifiuta duplicati
 - **Rate limiting** su tutti gli endpoint pubblici sensibili
 - **Audit log** per ogni operazione critica (cambio password, reset, invito, 2FA)
+- **Allegati email**: validazione MIME type whitelist, dimensione max configurabile, storage su filesystem (non in DB)
+- **Corpo email inviato salvato** in `email_log` per consultazione fedele post-invio (non ri-renderizzato dal template)
 
 ---
 ---
@@ -1083,6 +1468,13 @@ databaseChangeLog:
                     nullable: true
 
               - column:
+                  name: tipo_pratica_id
+                  type: integer
+                  remarks: "FK tipo pratica per specializzazione. NULL = generico (non legato a un tipo pratica)."
+                  constraints:
+                    nullable: true
+
+              - column:
                   name: lingua
                   type: character varying(5)
                   defaultValue: "it"
@@ -1164,8 +1556,8 @@ databaseChangeLog:
         - addUniqueConstraint:
             schemaName: config
             tableName: email_template
-            columnNames: codice, unita_organizzativa_id, lingua
-            constraintName: uq_email_template_codice_uo_lingua
+            columnNames: codice, unita_organizzativa_id, tipo_pratica_id, lingua
+            constraintName: uq_email_template_codice_uo_tp_lingua
 
         - addForeignKeyConstraint:
             baseTableSchemaName: config
@@ -1175,6 +1567,17 @@ databaseChangeLog:
             referencedTableName: unita_organizzative
             referencedColumnNames: id
             constraintName: fk_email_template_unita_organizzativa
+            onUpdate: NO ACTION
+            onDelete: RESTRICT
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: config
+            baseTableName: email_template
+            baseColumnNames: tipo_pratica_id
+            referencedTableSchemaName: pratiche
+            referencedTableName: tipi_pratica
+            referencedColumnNames: id
+            constraintName: fk_email_template_tipo_pratica
             onUpdate: NO ACTION
             onDelete: RESTRICT
 
@@ -1783,6 +2186,602 @@ databaseChangeLog:
 
 ---
 
+### A.1.8 `config.email_outbox`
+
+**File**: `00_schema/config/20260328-08-create-email-outbox-mctit.yaml`
+
+```yaml
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025-2026 Tid (Michele Carlo Titini)
+#
+# Bozze email preparate dal sistema, editabili dall'operatore
+# prima dell'invio. Flusso: template -> bozza -> anteprima -> invio.
+# Fase: 1 (BB-1 Sistema Email Generico - Outbox)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20260328-08-create-email-outbox-mctit.yaml
+
+  - changeSet:
+      id: 20260328-08-create-email-outbox
+      author: mctit
+      comment: >
+        Bozze email editabili. Il sistema prepara la bozza dal template,
+        l'operatore puo' modificare oggetto/corpo/CC prima dell'invio.
+        Stato: DRAFT -> READY -> SENT (o CANCELLED).
+      changes:
+        - createTable:
+            schemaName: config
+            tableName: email_outbox
+            remarks: "Bozze email editabili prima dell'invio."
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  remarks: "PK tecnica."
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_email_outbox
+                    nullable: false
+
+              - column:
+                  name: email_account_id
+                  type: integer
+                  remarks: "FK account SMTP che sara' usato per l'invio."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: email_template_id
+                  type: integer
+                  remarks: "FK template di origine (per riferimento). NULL se composta manualmente."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: ambito
+                  type: character varying(20)
+                  defaultValue: "SISTEMA"
+                  remarks: "Ambito visibilita': SISTEMA (solo admin), REPARTO (operatori UO), OPERATORE (solo creatore)."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: unita_organizzativa_id
+                  type: integer
+                  remarks: "FK reparto proprietario. Obbligatorio se ambito=REPARTO."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: pratica_id
+                  type: bigint
+                  remarks: "FK pratica collegata. Se presente, la email e' visibile dalla scheda pratica."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: destinatario
+                  type: character varying(255)
+                  remarks: "Indirizzo email destinatario principale."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: destinatari_cc
+                  type: text[]
+                  remarks: "Array indirizzi CC (opzionale)."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: oggetto
+                  type: text
+                  remarks: "Oggetto email pre-compilato dal template, editabile."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: corpo_html
+                  type: text
+                  remarks: "Corpo HTML pre-compilato e renderizzato, editabile."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: corpo_testo
+                  type: text
+                  remarks: "Corpo plaintext (opzionale, editabile)."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: stato
+                  type: character varying(20)
+                  defaultValue: "DRAFT"
+                  remarks: "Stato bozza: DRAFT, READY, SENT, CANCELLED."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: contesto_json
+                  type: jsonb
+                  defaultValueComputed: "'{}'::jsonb"
+                  remarks: "Variabili usate per il rendering iniziale dal template."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: auth_user_id
+                  type: integer
+                  remarks: "FK operatore destinatario (se applicabile)."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: creato_da_user_id
+                  type: integer
+                  remarks: "FK operatore che ha creato la bozza."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: inviato_at
+                  type: timestamp with time zone
+                  remarks: "Timestamp invio effettivo."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: email_log_id
+                  type: bigint
+                  remarks: "FK al record email_log creato dopo l'invio."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: tx_id
+                  type: uuid
+                  remarks: "Transaction ID per correlazione audit."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: meta
+                  type: jsonb
+                  defaultValueComputed: "'{}'::jsonb"
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: data_insert
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: user_insert
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: data_update
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: user_update
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  constraints:
+                    nullable: false
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: config
+            baseTableName: email_outbox
+            baseColumnNames: email_account_id
+            referencedTableSchemaName: config
+            referencedTableName: email_account
+            referencedColumnNames: id
+            constraintName: fk_email_outbox_email_account
+            onUpdate: NO ACTION
+            onDelete: SET NULL
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: config
+            baseTableName: email_outbox
+            baseColumnNames: email_template_id
+            referencedTableSchemaName: config
+            referencedTableName: email_template
+            referencedColumnNames: id
+            constraintName: fk_email_outbox_email_template
+            onUpdate: NO ACTION
+            onDelete: SET NULL
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: config
+            baseTableName: email_outbox
+            baseColumnNames: email_log_id
+            referencedTableSchemaName: config
+            referencedTableName: email_log
+            referencedColumnNames: id
+            constraintName: fk_email_outbox_email_log
+            onUpdate: NO ACTION
+            onDelete: SET NULL
+
+        - createIndex:
+            schemaName: config
+            tableName: email_outbox
+            indexName: ix_email_outbox_stato_creato_da
+            columns:
+              - column:
+                  name: stato
+              - column:
+                  name: creato_da_user_id
+
+        - sql:
+            sql: |
+              ALTER TABLE config.email_outbox
+                ADD CONSTRAINT chk_email_outbox_stato
+                CHECK (stato IN ('DRAFT', 'READY', 'SENT', 'CANCELLED'));
+
+              COMMENT ON TABLE config.email_outbox
+                IS 'Bozze email editabili. Flusso: template renderizzato -> bozza DRAFT -> anteprima/modifica -> SENT o CANCELLED.';
+
+      rollback:
+        - dropTable:
+            schemaName: config
+            tableName: email_outbox
+```
+
+---
+
+### A.1.9 `config.email_allegato`
+
+**File**: `00_schema/config/20260328-09-create-email-allegato-mctit.yaml`
+
+```yaml
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025-2026 Tid (Michele Carlo Titini)
+#
+# Allegati email associati a bozze outbox o log email.
+# File salvati su filesystem, non in DB.
+# Fase: 1 (BB-1 Sistema Email Generico - Allegati)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20260328-09-create-email-allegato-mctit.yaml
+
+  - changeSet:
+      id: 20260328-09-create-email-allegato
+      author: mctit
+      comment: >
+        Allegati email. Associati a email_outbox (bozza) o email_log (storico).
+        Il file fisico e' su filesystem (path relativo in file_path).
+        Origine: UPLOAD (caricato dall'operatore) o TEMPLATE (default del template).
+      changes:
+        - createTable:
+            schemaName: config
+            tableName: email_allegato
+            remarks: "Allegati email su filesystem, associati a outbox o log."
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  remarks: "PK tecnica."
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_email_allegato
+                    nullable: false
+
+              - column:
+                  name: email_outbox_id
+                  type: bigint
+                  remarks: "FK bozza email (NULL dopo invio se copiato su log)."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: email_log_id
+                  type: bigint
+                  remarks: "FK log email (popolato dopo invio per consultazione storica)."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: nome_file
+                  type: character varying(255)
+                  remarks: "Nome originale del file (es. guida-utente.pdf)."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: mime_type
+                  type: character varying(100)
+                  remarks: "Tipo MIME (es. application/pdf, image/png)."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: dimensione_bytes
+                  type: bigint
+                  remarks: "Dimensione file in bytes."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: file_path
+                  type: character varying(512)
+                  remarks: "Percorso relativo nello storage (es. email_attachments/2026/03/uuid.pdf)."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: origine
+                  type: character varying(20)
+                  defaultValue: "UPLOAD"
+                  remarks: "Origine: UPLOAD (caricato dall'operatore) o TEMPLATE (default del template)."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: meta
+                  type: jsonb
+                  defaultValueComputed: "'{}'::jsonb"
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: data_insert
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: user_insert
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  constraints:
+                    nullable: false
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: config
+            baseTableName: email_allegato
+            baseColumnNames: email_outbox_id
+            referencedTableSchemaName: config
+            referencedTableName: email_outbox
+            referencedColumnNames: id
+            constraintName: fk_email_allegato_outbox
+            onUpdate: NO ACTION
+            onDelete: CASCADE
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: config
+            baseTableName: email_allegato
+            baseColumnNames: email_log_id
+            referencedTableSchemaName: config
+            referencedTableName: email_log
+            referencedColumnNames: id
+            constraintName: fk_email_allegato_log
+            onUpdate: NO ACTION
+            onDelete: SET NULL
+
+        - createIndex:
+            schemaName: config
+            tableName: email_allegato
+            indexName: ix_email_allegato_outbox_id
+            columns:
+              - column:
+                  name: email_outbox_id
+
+        - createIndex:
+            schemaName: config
+            tableName: email_allegato
+            indexName: ix_email_allegato_log_id
+            columns:
+              - column:
+                  name: email_log_id
+
+        - sql:
+            sql: |
+              ALTER TABLE config.email_allegato
+                ADD CONSTRAINT chk_email_allegato_origine
+                CHECK (origine IN ('UPLOAD', 'TEMPLATE'));
+
+              ALTER TABLE config.email_allegato
+                ADD CONSTRAINT chk_email_allegato_dimensione
+                CHECK (dimensione_bytes > 0);
+
+              COMMENT ON TABLE config.email_allegato
+                IS 'Allegati email su filesystem. Associati a outbox (bozza) o log (storico invio). ON DELETE CASCADE su outbox.';
+
+      rollback:
+        - dropTable:
+            schemaName: config
+            tableName: email_allegato
+```
+
+---
+
+### A.1.10 ALTER `config.email_log` — corpo inviato, ambito, pratica, outbox
+
+**File**: `00_schema/config/20260328-10-alter-email-log-add-corpo-inviato-mctit.yaml`
+
+```yaml
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2025-2026 Tid (Michele Carlo Titini)
+#
+# Aggiunge: corpo inviato (consultazione fedele post-invio),
+# ambito visibilita' (SISTEMA/REPARTO/OPERATORE),
+# collegamento a pratica e bozza outbox.
+# Fase: 1 (BB-1 Sistema Email Generico)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+    - logicalFilePath: migrations_v2/00_schema/config/20260328-10-alter-email-log-add-corpo-inviato-mctit.yaml
+
+    - changeSet:
+          id: 20260328-10-alter-email-log-add-corpo-inviato
+          author: mctit
+          comment: >
+            Aggiunge corpo_inviato_html/testo, destinatari_cc,
+            ambito (SISTEMA/REPARTO/OPERATORE), unita_organizzativa_id,
+            pratica_id, email_outbox_id.
+          changes:
+              - addColumn:
+                    schemaName: config
+                    tableName: email_log
+                    columns:
+                        - column:
+                              name: corpo_inviato_html
+                              type: text
+                              constraints:
+                                  nullable: true
+                              remarks: "Corpo HTML esattamente come inviato (dopo eventuali modifiche manuali)."
+                        - column:
+                              name: corpo_inviato_testo
+                              type: text
+                              constraints:
+                                  nullable: true
+                              remarks: "Corpo plaintext esattamente come inviato."
+                        - column:
+                              name: destinatari_cc
+                              type: text[]
+                              constraints:
+                                  nullable: true
+                              remarks: "Indirizzi CC usati nell'invio."
+                        - column:
+                              name: ambito
+                              type: character varying(20)
+                              defaultValue: "SISTEMA"
+                              constraints:
+                                  nullable: false
+                              remarks: "Ambito visibilita': SISTEMA (solo admin), REPARTO (operatori UO), OPERATORE (solo creatore)."
+                        - column:
+                              name: unita_organizzativa_id
+                              type: integer
+                              constraints:
+                                  nullable: true
+                              remarks: "Reparto proprietario. Obbligatorio se ambito=REPARTO."
+                        - column:
+                              name: pratica_id
+                              type: bigint
+                              constraints:
+                                  nullable: true
+                              remarks: "Pratica collegata. Consultabile dalla scheda pratica."
+                        - column:
+                              name: email_outbox_id
+                              type: bigint
+                              constraints:
+                                  nullable: true
+                              remarks: "FK bozza di origine (NULL se invio diretto senza anteprima)."
+
+              - addForeignKeyConstraint:
+                    baseTableSchemaName: config
+                    baseTableName: email_log
+                    baseColumnNames: email_outbox_id
+                    referencedTableSchemaName: config
+                    referencedTableName: email_outbox
+                    referencedColumnNames: id
+                    constraintName: fk_email_log_outbox
+                    onUpdate: NO ACTION
+                    onDelete: SET NULL
+
+              - addForeignKeyConstraint:
+                    baseTableSchemaName: config
+                    baseTableName: email_log
+                    baseColumnNames: unita_organizzativa_id
+                    referencedTableSchemaName: config
+                    referencedTableName: unita_organizzative
+                    referencedColumnNames: id
+                    constraintName: fk_email_log_unita_organizzativa
+                    onUpdate: NO ACTION
+                    onDelete: SET NULL
+
+              - addForeignKeyConstraint:
+                    baseTableSchemaName: config
+                    baseTableName: email_log
+                    baseColumnNames: pratica_id
+                    referencedTableSchemaName: pratiche
+                    referencedTableName: pratiche
+                    referencedColumnNames: id
+                    constraintName: fk_email_log_pratica
+                    onUpdate: NO ACTION
+                    onDelete: SET NULL
+
+              - createIndex:
+                    schemaName: config
+                    tableName: email_log
+                    indexName: ix_email_log_pratica_id
+                    columns:
+                      - column:
+                          name: pratica_id
+
+              - createIndex:
+                    schemaName: config
+                    tableName: email_log
+                    indexName: ix_email_log_ambito_uo
+                    columns:
+                      - column:
+                          name: ambito
+                      - column:
+                          name: unita_organizzativa_id
+
+              - sql:
+                    sql: |
+                      ALTER TABLE config.email_log
+                        ADD CONSTRAINT chk_email_log_ambito
+                        CHECK (ambito IN ('SISTEMA', 'REPARTO', 'OPERATORE'));
+
+          rollback:
+              - dropColumn:
+                    schemaName: config
+                    tableName: email_log
+                    columnName: corpo_inviato_html
+              - dropColumn:
+                    schemaName: config
+                    tableName: email_log
+                    columnName: corpo_inviato_testo
+              - dropColumn:
+                    schemaName: config
+                    tableName: email_log
+                    columnName: destinatari_cc
+              - dropColumn:
+                    schemaName: config
+                    tableName: email_log
+                    columnName: ambito
+              - dropColumn:
+                    schemaName: config
+                    tableName: email_log
+                    columnName: unita_organizzativa_id
+              - dropColumn:
+                    schemaName: config
+                    tableName: email_log
+                    columnName: pratica_id
+              - dropColumn:
+                    schemaName: config
+                    tableName: email_log
+                    columnName: email_outbox_id
+```
+
+---
+
 ## A.2 Funzioni (20_code)
 
 ### A.2.1 `config.fn_resolve_email_account`
@@ -1909,8 +2908,13 @@ databaseChangeLog:
 # Liquibase changelog per Zero ERP
 # Copyright (C) 2025-2026 Tid (Michele Carlo Titini)
 #
-# Risolve il template email per codice, reparto e lingua.
-# Catena di fallback: reparto+lingua -> sistema+lingua -> sistema+it.
+# Risolve il template email per codice, reparto, tipo pratica e lingua.
+# Catena di fallback a 5 livelli:
+#   1. reparto + tipo pratica + lingua
+#   2. reparto + lingua (senza tipo pratica)
+#   3. sistema + tipo pratica + lingua
+#   4. sistema + lingua
+#   5. sistema + lingua 'it'
 # Fase: 1 (BB-1 Sistema Email Generico)
 # ------------------------------------------------------------
 
@@ -1921,8 +2925,8 @@ databaseChangeLog:
           id: 20260328-02-create-fn-resolve-email-template
           author: mctit
           comment: >
-            Risolve template email per codice, reparto e lingua.
-            Catena di fallback: reparto+lingua -> sistema+lingua -> sistema+it.
+            Risolve template email per codice, reparto, tipo pratica e lingua.
+            Catena di fallback a 5 livelli per specializzazione progressiva.
           runOnChange: true
           changes:
               - sql:
@@ -1933,6 +2937,8 @@ databaseChangeLog:
                         CREATE OR REPLACE FUNCTION config.fn_resolve_email_template(
                             p_codice                  config.email_template.codice%TYPE,
                             p_unita_organizzativa_id  config.email_template.unita_organizzativa_id%TYPE
+                                                      DEFAULT NULL,
+                            p_tipo_pratica_id         config.email_template.tipo_pratica_id%TYPE
                                                       DEFAULT NULL,
                             p_lingua                  config.email_template.lingua%TYPE
                                                       DEFAULT 'it'
@@ -1946,15 +2952,19 @@ databaseChangeLog:
                         BEGIN
                             -- =========================================================
                             -- Scopo:
-                            --   Risolve il template email dato codice, reparto e lingua.
+                            --   Risolve il template email dato codice, reparto,
+                            --   tipo pratica e lingua.
                             --   Catena di fallback (primo trovato attivo):
-                            --     1. Template specifico reparto + lingua richiesta
-                            --     2. Template di sistema (uo IS NULL) + lingua richiesta
-                            --     3. Template di sistema (uo IS NULL) + lingua 'it'
+                            --     1. Reparto + tipo pratica + lingua
+                            --     2. Reparto + lingua (senza tipo pratica)
+                            --     3. Sistema + tipo pratica + lingua
+                            --     4. Sistema + lingua
+                            --     5. Sistema + lingua 'it' (fallback finale)
                             --
                             -- Parametri:
-                            --   p_codice: codice tipo template (es. INVITO_OPERATORE)
+                            --   p_codice: codice tipo template (es. COMUNICAZIONE_PRATICA)
                             --   p_unita_organizzativa_id: ID reparto (NULL = solo sistema)
+                            --   p_tipo_pratica_id: ID tipo pratica (NULL = generico)
                             --   p_lingua: codice lingua ISO (default 'it')
                             --
                             -- Restituisce:
@@ -1967,7 +2977,34 @@ databaseChangeLog:
                                 RETURN NULL;
                             END IF;
 
-                            -- 1. Template specifico del reparto + lingua
+                            -- Helper: SELECT base per evitare ripetizione
+                            -- (ogni step e' esplicito per chiarezza e performance)
+
+                            -- 1. Reparto + tipo pratica + lingua
+                            IF p_unita_organizzativa_id IS NOT NULL AND p_tipo_pratica_id IS NOT NULL THEN
+                                SELECT jsonb_build_object(
+                                    'id',                     et.id,
+                                    'codice',                 et.codice,
+                                    'oggetto',                et.oggetto,
+                                    'corpo_html',             et.corpo_html,
+                                    'corpo_testo',            et.corpo_testo,
+                                    'variabili_disponibili',  et.variabili_disponibili,
+                                    'lingua',                 et.lingua
+                                )
+                                INTO v_result
+                                FROM config.email_template et
+                                WHERE et.codice = p_codice
+                                  AND et.unita_organizzativa_id = p_unita_organizzativa_id
+                                  AND et.tipo_pratica_id = p_tipo_pratica_id
+                                  AND et.lingua = p_lingua
+                                  AND et.attivo = true;
+
+                                IF v_result IS NOT NULL THEN
+                                    RETURN v_result;
+                                END IF;
+                            END IF;
+
+                            -- 2. Reparto + lingua (senza tipo pratica)
                             IF p_unita_organizzativa_id IS NOT NULL THEN
                                 SELECT jsonb_build_object(
                                     'id',                     et.id,
@@ -1982,6 +3019,7 @@ databaseChangeLog:
                                 FROM config.email_template et
                                 WHERE et.codice = p_codice
                                   AND et.unita_organizzativa_id = p_unita_organizzativa_id
+                                  AND et.tipo_pratica_id IS NULL
                                   AND et.lingua = p_lingua
                                   AND et.attivo = true;
 
@@ -1990,7 +3028,31 @@ databaseChangeLog:
                                 END IF;
                             END IF;
 
-                            -- 2. Template di sistema + lingua richiesta
+                            -- 3. Sistema + tipo pratica + lingua
+                            IF p_tipo_pratica_id IS NOT NULL THEN
+                                SELECT jsonb_build_object(
+                                    'id',                     et.id,
+                                    'codice',                 et.codice,
+                                    'oggetto',                et.oggetto,
+                                    'corpo_html',             et.corpo_html,
+                                    'corpo_testo',            et.corpo_testo,
+                                    'variabili_disponibili',  et.variabili_disponibili,
+                                    'lingua',                 et.lingua
+                                )
+                                INTO v_result
+                                FROM config.email_template et
+                                WHERE et.codice = p_codice
+                                  AND et.unita_organizzativa_id IS NULL
+                                  AND et.tipo_pratica_id = p_tipo_pratica_id
+                                  AND et.lingua = p_lingua
+                                  AND et.attivo = true;
+
+                                IF v_result IS NOT NULL THEN
+                                    RETURN v_result;
+                                END IF;
+                            END IF;
+
+                            -- 4. Sistema + lingua richiesta (senza tipo pratica)
                             SELECT jsonb_build_object(
                                 'id',                     et.id,
                                 'codice',                 et.codice,
@@ -2004,6 +3066,7 @@ databaseChangeLog:
                             FROM config.email_template et
                             WHERE et.codice = p_codice
                               AND et.unita_organizzativa_id IS NULL
+                              AND et.tipo_pratica_id IS NULL
                               AND et.lingua = p_lingua
                               AND et.attivo = true;
 
@@ -2011,7 +3074,7 @@ databaseChangeLog:
                                 RETURN v_result;
                             END IF;
 
-                            -- 3. Fallback finale: sistema + lingua 'it'
+                            -- 5. Fallback finale: sistema + lingua 'it'
                             IF p_lingua <> 'it' THEN
                                 SELECT jsonb_build_object(
                                     'id',                     et.id,
@@ -2026,6 +3089,7 @@ databaseChangeLog:
                                 FROM config.email_template et
                                 WHERE et.codice = p_codice
                                   AND et.unita_organizzativa_id IS NULL
+                                  AND et.tipo_pratica_id IS NULL
                                   AND et.lingua = 'it'
                                   AND et.attivo = true;
                             END IF;
@@ -2034,8 +3098,8 @@ databaseChangeLog:
                         END;
                         $function$;
 
-                        COMMENT ON FUNCTION config.fn_resolve_email_template(character varying, integer, character varying)
-                          IS 'Risolve template email. Fallback: reparto+lingua -> sistema+lingua -> sistema+it. Ritorna JSONB con oggetto, corpo_html, corpo_testo, variabili.';
+                        COMMENT ON FUNCTION config.fn_resolve_email_template(character varying, integer, integer, character varying)
+                          IS 'Risolve template email. Fallback a 5 livelli: reparto+tipo_pratica+lingua -> reparto+lingua -> sistema+tipo_pratica+lingua -> sistema+lingua -> sistema+it.';
 ```
 
 ---
@@ -2439,29 +3503,36 @@ databaseChangeLog:
 | 5 | `00_schema/config/20260328-05-create-auth-totp-device-mctit.yaml` | Tabella `config.auth_totp_device` | 4 |
 | 6 | `00_schema/anagrafiche/20260328-06-alter-risorse-umane-auth-user-add-auth-flags-mctit.yaml` | ALTER +2 colonne (Fase 1+3) | 1+3 |
 | 7 | `00_schema/anagrafiche/20260328-07-alter-risorse-umane-auth-user-add-totp-obbligatorio-mctit.yaml` | ALTER +1 colonna (Fase 4) | 4 |
-| 8 | `20_code/config/20260328-01-create-fn-resolve-email-account-mctit.yaml` | Funzione risoluzione account | 1 |
-| 9 | `20_code/config/20260328-02-create-fn-resolve-email-template-mctit.yaml` | Funzione risoluzione template | 1 |
-| 10 | `20_code/config/20260328-03-create-fn-cleanup-token-scaduti-mctit.yaml` | Funzione pulizia token | 1 |
-| 11 | `20_code/script/20260328-04-create-fn-check-operatore-invitabile-mctit.yaml` | Funzione check invitabilita' | 3 |
-| 12 | `20_code/script/20260328-05-update-fn-get-user-profile-auth-flags-mctit.yaml` | Update profilo utente +3 chiavi | 1+4 |
-| 13 | `80_data/sql/config/email_template.csv` | Seed template email base | 1 |
-| 14 | `80_data/changelog/20260328-70-upsert-config-email-template-mctit.yaml` | Changelog seed template | 1 |
+| 8 | `00_schema/config/20260328-08-create-email-outbox-mctit.yaml` | Tabella `config.email_outbox` | 1 |
+| 9 | `00_schema/config/20260328-09-create-email-allegato-mctit.yaml` | Tabella `config.email_allegato` | 1 |
+| 10 | `00_schema/config/20260328-10-alter-email-log-add-corpo-inviato-mctit.yaml` | ALTER `email_log` +4 colonne (corpo inviato, CC, outbox FK) | 1 |
+| 11 | `20_code/config/20260328-01-create-fn-resolve-email-account-mctit.yaml` | Funzione risoluzione account | 1 |
+| 12 | `20_code/config/20260328-02-create-fn-resolve-email-template-mctit.yaml` | Funzione risoluzione template | 1 |
+| 13 | `20_code/config/20260328-03-create-fn-cleanup-token-scaduti-mctit.yaml` | Funzione pulizia token | 1 |
+| 14 | `20_code/script/20260328-04-create-fn-check-operatore-invitabile-mctit.yaml` | Funzione check invitabilita' | 3 |
+| 15 | `20_code/script/20260328-05-update-fn-get-user-profile-auth-flags-mctit.yaml` | Update profilo utente +3 chiavi | 1+4 |
+| 16 | `80_data/sql/config/email_template.csv` | Seed template email base | 1 |
+| 17 | `80_data/changelog/20260328-70-upsert-config-email-template-mctit.yaml` | Changelog seed template | 1 |
 
 ### Ordine di applicazione
 
 ```text
 -- Fase 1 (prima):
-01 → 02 → 03 → 04 → 06 → 08 → 09 → 10 → 13+14 → 12(parziale)
+01 → 02 → 03 → 04 → 06 → 08 → 09 → 10 → 11 → 12 → 13 → 16+17 → 15(parziale)
 
 -- Fase 3 (dopo Fase 1):
-06 gia' applicato → 11
+06 gia' applicato → 14
 
 -- Fase 4 (ultima):
-05 → 07 → 12(completo, con lookup TOTP)
+05 → 07 → 15(completo, con lookup TOTP)
 ```
 
-> **Nota su #12** (`fn_get_user_profile`): per Fase 1 basta aggiungere solo
+> **Nota su #15** (`fn_get_user_profile`): per Fase 1 basta aggiungere solo
 > `deve_cambiare_password`. Le chiavi `totp_abilitato` e `totp_obbligatorio`
 > si aggiungono in Fase 4 quando la tabella `auth_totp_device` esiste.
 > Si possono fare 2 migration separate oppure una sola se si creano tutti
 > gli oggetti DB insieme.
+>
+> **Nota su #8-10** (outbox, allegati, alter email_log): creano le tabelle
+> per il flusso bozza→anteprima→invio. `email_outbox` deve essere creata
+> prima di `email_allegato` (FK) e prima dell'ALTER su `email_log` (FK).
