@@ -8,3 +8,4 @@ id,codice_interno,descrizione,prefisso,separatore,lunghezza_numero,usa_sequenza,
 7,ddt,Numero ddt,DDT,"",7,t,2025-10-31 19:25:09.326307+01,titodb,2026-03-01 12:56:47.16872+01,titodb,13a4876e-aee4-45e9-a6af-c07b45a57b6c,vendite,ddt,numero
 8,contratto,Numero contratto,CNT,"",7,t,2025-11-01 18:35:35.185402+01,titodb,2026-03-01 12:56:47.16872+01,titodb,dd70b7e5-10b5-4b66-8827-bcc22723a2c7,vendite,contratti,numero
 15,fornitori,Codice fornitore,FORN,,7,t,2026-03-28 15:50:58.565352+01,titodb,2026-03-28 15:50:58.565352+01,titodb,019d34ed-471c-79cb-be79-f7356d96ff74,anagrafiche,fornitori,codice
+16,pratica,Codice pratica,PRA,-,7,t,2026-03-28 00:00:00+01,SEED,2026-03-28 00:00:00+01,SEED,019d34ed-471c-79cb-be79-f7356d96ff75,pratiche,pratiche,codice

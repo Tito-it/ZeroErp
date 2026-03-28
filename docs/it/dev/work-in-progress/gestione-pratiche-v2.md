@@ -1,6 +1,6 @@
 # Gestione Pratiche v2 — Piano di completamento
 
-> **Stato**: Pianificazione
+> **Stato**: In corso (DB completato, BE/FE da fare)
 > **Prerequisiti**: Pratiche v1 (DB+BE completi, FE stub)
 > **Approccio**: refactor diretto, nessuna retrocompatibilita', nessuna produzione attiva
 >
@@ -14,7 +14,7 @@
 
 | Area | Stato | Gap |
 |------|-------|-----|
-| DB Schema | 20 migrazioni, 15+ tabelle | Manca collegamento ruolo/istanza, codice prefisso |
+| DB Schema | 20 migrazioni, 15+ tabelle | Manca collegamento ruolo/istanza |
 | DB Trigger/Funzioni | 34 migrazioni, tutte operative | OK |
 | Backend Repository | 2 file | list/get ritornano solo ID, mancano JOIN display |
 | Backend Service | 31 metodi | Manca guard pre/post-attivazione |
@@ -28,60 +28,71 @@
 
 ### Priorita' ALTA — Senza questi il frontend non funziona
 
-| # | Area | Descrizione |
-|---|------|-------------|
-| **G1** | DB | Aggiungere `soggetto_ruolo_id` e `istanza_utility_id` a `pratiche.pratiche` |
-| **G2** | DB | Repository: JOIN display fields su list/get (soggetto, stato, priorita', tipo, risorsa, UO) |
-| **G3** | BE | Aggiornare `PraticaRow` TypedDict con nuovi campi display |
-| **G4** | BE | Aggiornare `crea_pratica` per accettare soggetto_ruolo_id e istanza_utility_id |
-| **G5** | BE | Guard pre/post-attivazione nel service (verifica BA del soggetto) |
-| **G6** | FE | Aggiornare store/drawer/searchTable per i nuovi campi |
+| # | Area | Descrizione | Stato |
+|---|------|-------------|-------|
+| **G1** | DB | Aggiungere `soggetto_ruolo_id` e `istanza_utility_id` a `pratiche.pratiche` | ✅ |
+| **G2** | DB | Trigger guard coerenza soggetto-ruolo-istanza | ✅ |
+| **G3** | DB | Codice pratica via `config.sistema_codici` (prefisso fisso standard) | ✅ |
+| **G4** | BE | Aggiornare `PraticaRow` TypedDict con nuovi campi display | da fare |
+| **G5** | BE | Repository: JOIN display fields su list/get | da fare |
+| **G6** | BE | Aggiornare `crea_pratica` per accettare soggetto_ruolo_id e istanza_utility_id | da fare |
+| **G7** | BE | Guard pre/post-attivazione nel service | da fare |
+| **G8** | FE | Aggiornare store/drawer/searchTable per i nuovi campi | da fare |
 
 ### Priorita' MEDIA — Funzionalita' di dominio
 
-| # | Area | Descrizione |
-|---|------|-------------|
-| **G7** | DB | Codice pratica con prefisso dominio (CLI/SOG/FOR/INT) |
-| **G8** | DB+BE | Note pratiche/flussi — CRUD endpoint (tabelle esistono, API manca) |
-| **G9** | DB+BE | Allegati pratiche/flussi — CRUD endpoint (tabelle esistono, API manca) |
-| **G10** | FE | Tab Note nel drawer pratica |
-| **G11** | FE | Tab Allegati nel drawer pratica |
+| # | Area | Descrizione | Stato |
+|---|------|-------------|-------|
+| **G9** | DB | Note pratiche/flussi — tabelle esistono, trigger giornale gia' operativi | ✅ (gia' in v1) |
+| **G10** | DB | Allegati pratiche/flussi — tabelle esistono, trigger giornale gia' operativi | ✅ (gia' in v1) |
+| **G11** | BE | Note pratiche/flussi — CRUD endpoint (tabelle esistono, API manca) | da fare |
+| **G12** | BE | Allegati pratiche/flussi — CRUD endpoint (tabelle esistono, API manca) | da fare |
+| **G13** | FE | Tab Note nel drawer pratica | da fare |
+| **G14** | FE | Tab Allegati nel drawer pratica | da fare |
 
 ### Priorita' BASSA — Automazioni e estensioni
 
-| # | Area | Descrizione |
-|---|------|-------------|
-| **G12** | BE | pgAgent job riattivazione automatica sospensioni |
-| **G13** | BE | SLA alert (WARNING/CRITICO da calcoli_tempo) |
-| **G14** | DB | Tabelle estensione ext_* (Anello 3, quando servono) |
-| **G15** | BE | Handler concreti nel registry (quando i domini li usano) |
+| # | Area | Descrizione | Stato |
+|---|------|-------------|-------|
+| **G15** | BE | pgAgent job riattivazione automatica sospensioni | da fare |
+| **G16** | BE | SLA alert (WARNING/CRITICO da calcoli_tempo) | da fare |
+| **G17** | DB | Tabelle estensione ext_* (Anello 3, quando servono) | futuro |
+| **G18** | BE | Handler concreti nel registry (quando i domini li usano) | futuro |
 
 ---
 
-## Fase 1 — DB: Collegamento anagrafico + display fields
+## Fase 1 — DB: Collegamento anagrafico + codice (✅ COMPLETATA)
 
 ### 1.1 ALTER pratiche.pratiche — nuovi campi opzionali
 
-**Migration**: `00_schema/pratiche/YYYYMMDD-NN-alter-pratiche-add-ruolo-istanza-mctit.yaml`
+**Migration**: `00_schema/pratiche/20260328-11-alter-pratiche-add-ruolo-istanza-mctit.yaml` ✅
 
 ```sql
+-- Collegamento opzionale al ruolo anagrafico del soggetto
 ALTER TABLE pratiche.pratiche
   ADD COLUMN soggetto_ruolo_id BIGINT
-    REFERENCES anagrafiche.soggetti_ruoli(id),
+    REFERENCES anagrafiche.soggetti_ruoli(id);
+
+-- Collegamento opzionale alla istanza/utility del soggetto
+ALTER TABLE pratiche.pratiche
   ADD COLUMN istanza_utility_id BIGINT
-    REFERENCES anagrafiche.istanze_dati_precontrattuali(istanza_utility_id);
+    REFERENCES anagrafiche.istanze_utilities(id);
 
 COMMENT ON COLUMN pratiche.pratiche.soggetto_ruolo_id IS
   'FK opzionale a soggetti_ruoli — quando la pratica e'' nel contesto di un ruolo (cliente, fornitore)';
 COMMENT ON COLUMN pratiche.pratiche.istanza_utility_id IS
-  'FK opzionale a istanze_dati_precontrattuali — quando la pratica e'' nel contesto di una istanza/utility';
+  'FK opzionale a istanze_utilities — quando la pratica e'' nel contesto di una istanza/utility';
 ```
 
-**Vincoli logici** (non FK constraint ma validazione service):
+> **NOTA**: la FK di `istanza_utility_id` punta a `anagrafiche.istanze_utilities(id)`,
+> NON a `istanze_dati_precontrattuali` (quella e' una tabella figlia con dati specifici
+> di pre-contratto, non la tabella master delle istanze).
+
+**Vincoli logici** (validati dal trigger guard §1.2):
 
 - `istanza_utility_id` richiede `soggetto_ruolo_id` (non puo' avere istanza senza ruolo)
 - `soggetto_ruolo_id` richiede `soggetto_id` (il ruolo deve appartenere al soggetto)
-- Tutti e tre opzionali (pratica interna: tutti NULL)
+- Tutti opzionali (pratica interna: tutti NULL)
 
 **Catena collegamento**:
 
@@ -89,62 +100,74 @@ COMMENT ON COLUMN pratiche.pratiche.istanza_utility_id IS
 pratiche.pratiche
   └── soggetto_id (UUID)              → anagrafiche.soggetti
   └── soggetto_ruolo_id (BIGINT)      → anagrafiche.soggetti_ruoli
-  └── istanza_utility_id (BIGINT)     → anagrafiche.istanze_dati_precontrattuali
+  └── istanza_utility_id (BIGINT)     → anagrafiche.istanze_utilities
                                             └── → billing_account → utility
 ```
 
-### 1.2 Funzione DB helper: fn_resolve_contesto_pratica
+### 1.2 Trigger guard coerenza soggetto-ruolo-istanza
 
-**Migration**: `20_code/pratiche/YYYYMMDD-NN-create-fn-resolve-contesto-pratica-mctit.yaml`
-
-Funzione utile per il prefisso codice e per validazione:
-
-```sql
-CREATE OR REPLACE FUNCTION pratiche.fn_resolve_contesto_pratica(
-  p_soggetto_id UUID,
-  p_soggetto_ruolo_id BIGINT,
-  p_emittente_fiscale_id BIGINT
-) RETURNS TEXT AS $$
--- Ritorna il contesto: 'INT', 'SOG', 'CLI', 'FOR'
--- Basato su: soggetto NULL → INT, ruolo cliente attivo → CLI, ruolo fornitore → FOR, else → SOG
-$$;
-```
-
-Questa funzione:
-
-- Centralizza la logica "che tipo di pratica e'?" nel DB
-- Usata dal trigger codice (G7) e dal service per validazione
-- Evita duplicazione della logica in Python
-
-### 1.3 Trigger codice pratica con prefisso dominio (G7)
-
-**Migration**: `20_code/pratiche/YYYYMMDD-NN-create-trgfn-pratiche-codice-prefisso-mctit.yaml`
-
-```sql
-CREATE OR REPLACE FUNCTION pratiche.trgfn_pratiche_codice_prefisso()
-RETURNS TRIGGER AS $$
--- BEFORE INSERT: genera codice con prefisso
--- Usa fn_resolve_contesto_pratica per il prefisso
--- Formato: <PREFISSO>-<ANNO>-<SEQUENZA 6 cifre>
--- Sequenza per (prefisso, anno, emittente_fiscale_id)
-$$;
-```
-
-**Richiede**: tabella sequenze per contatore (o usa `config.sistema_codici` esistente).
-
-### 1.4 Trigger guard coerenza soggetto-ruolo-istanza
-
-**Migration**: `20_code/pratiche/YYYYMMDD-NN-create-trgfn-pratiche-guard-contesto-mctit.yaml`
+**Migration**: `20_code/pratiche/20260328-12-create-trgfn-pratiche-guard-contesto-mctit.yaml` ✅
 
 ```sql
 CREATE OR REPLACE FUNCTION pratiche.trgfn_pratiche_guard_contesto()
-RETURNS TRIGGER AS $$
--- BEFORE INSERT/UPDATE:
--- Se istanza_utility_id NOT NULL → soggetto_ruolo_id deve essere NOT NULL
--- Se soggetto_ruolo_id NOT NULL → soggetto_id deve essere NOT NULL
--- Se soggetto_ruolo_id NOT NULL → deve appartenere a soggetto_id
+RETURNS trigger
+LANGUAGE plpgsql AS $$
+-- Scopo: validare la coerenza gerarchica del contesto anagrafico
+--        sulla pratica: soggetto → ruolo → istanza.
+-- Regole:
+--   1. istanza_utility_id NOT NULL → soggetto_ruolo_id obbligatorio
+--   2. soggetto_ruolo_id NOT NULL → soggetto_id obbligatorio
+--   3. soggetto_ruolo_id deve appartenere a soggetto_id
+--   4. istanza_utility_id deve appartenere al soggetto_id
+DECLARE
+    v_soggetto_id_ruolo  anagrafiche.soggetti_ruoli.soggetto_id%TYPE;
+    v_soggetto_id_istanza anagrafiche.istanze_utilities.soggetto_id%TYPE;
+BEGIN
+    -- ... (4 regole con fn_log_and_raise_error)
+    RETURN NEW;
+END;
 $$;
+
+-- Trigger BEFORE INSERT/UPDATE OF soggetto_id, soggetto_ruolo_id, istanza_utility_id
+CREATE TRIGGER trg_pratiche_a10_guard_contesto_ins_upd
+  BEFORE INSERT OR UPDATE OF soggetto_id, soggetto_ruolo_id, istanza_utility_id
+  ON pratiche.pratiche
+  FOR EACH ROW
+  EXECUTE FUNCTION pratiche.trgfn_pratiche_guard_contesto();
 ```
+
+**Messaggi errore** (aggiunti in `config.messaggi_errore.csv`):
+
+| Codice | ID | Messaggio |
+|--------|----|-----------|
+| `PRATICHE_ISTANZA_SENZA_RUOLO` | 304 | istanza_utility_id richiede soggetto_ruolo_id |
+| `PRATICHE_RUOLO_SENZA_SOGGETTO` | 305 | soggetto_ruolo_id richiede soggetto_id |
+| `PRATICHE_RUOLO_NON_COERENTE` | 306 | Il ruolo %s non appartiene al soggetto %s |
+| `PRATICHE_ISTANZA_NON_COERENTE` | 307 | L'istanza %s non appartiene al soggetto %s |
+
+> **Nota**: la validazione nel trigger DB e' la linea di difesa ultima.
+> Il service Python puo' fare le stesse verifiche per dare errori user-friendly,
+> ma il DB garantisce l'integrita' anche per accessi diretti.
+
+### 1.3 Codice pratica — sistema standard
+
+Il codice pratica usa il meccanismo centralizzato `config.sistema_codici` +
+`script.fn_generate_codice()`, con prefisso fisso `PRA`.
+
+**Azione**: aggiunta riga in `80_data/sql/config/sistema_codici.csv` (id=16) ✅
+
+Il trigger `trg_sistema_codici_z90_sync_gen_codice_ins_upd_dlt` crea automaticamente:
+
+- Sequenza `pratiche.pratiche_codice_seq`
+- Trigger function `pratiche.trgfn_pratiche_gen_codice()`
+- Trigger `trg_pratiche_a10_gen_codice_ins_upd`
+
+Formato generato: `PRA-0000001`, `PRA-0000002`, ecc.
+
+> **Scelta progettuale**: per ora prefisso fisso `PRA`. Se in futuro servira'
+> un prefisso dinamico (CLI/SOG/FOR/INT basato sul contesto anagrafico),
+> si creera' un trigger dedicato `trgfn_pratiche_codice_prefisso()` con la
+> logica di risoluzione contesto. Questo NON e' necessario nella v2.
 
 ---
 
@@ -250,15 +273,16 @@ def crea_pratica(
     priorita_id: int,
     # ... altri ...
 ) -> int:
-    # Validazione coerenza contesto
+    # Validazione coerenza contesto (stesse regole del trigger DB,
+    # ma qui per dare errori user-friendly via ServiceError)
     if istanza_utility_id is not None and soggetto_ruolo_id is None:
         raise ServiceError("istanza_utility_id richiede soggetto_ruolo_id")
     if soggetto_ruolo_id is not None and soggetto_id is None:
         raise ServiceError("soggetto_ruolo_id richiede soggetto_id")
-    # ... guard pre/post-attivazione (G5) ...
+    # ... guard pre/post-attivazione (G7) ...
 ```
 
-### 2.5 Guard pre/post-attivazione (G5)
+### 2.5 Guard pre/post-attivazione (G7)
 
 Nel service, prima dell'INSERT:
 
@@ -341,7 +365,7 @@ Il form si adatta dinamicamente: soggetto → ruolo → istanza (cascata).
 - Mostrare soggetto, ruolo, istanza/utility come campi readonly nell'header
 - Usare i campi display dal backend (niente lookup client-side per i dati gia' presenti)
 
-### 4.5 Tab Note (G10)
+### 4.5 Tab Note (G13)
 
 Componente `PraticaNoteTab.vue`:
 
@@ -349,7 +373,7 @@ Componente `PraticaNoteTab.vue`:
 - Form inline per nuova nota (Select tipo + Textarea)
 - Edit/delete su note esistenti
 
-### 4.6 Tab Allegati (G11)
+### 4.6 Tab Allegati (G14)
 
 Componente `PraticaAllegatiTab.vue` — v1 senza upload file:
 
@@ -378,10 +402,10 @@ Componente `PraticaAllegatiTab.vue` — v1 senza upload file:
 ## Ordine di esecuzione
 
 ```text
-Fase 1 (DB)
-  1.4 Guard contesto ──> 1.1 ALTER pratiche ──> 1.2 fn_resolve_contesto ──> 1.3 Codice prefisso
-                                │
-                                v
+Fase 1 (DB) ✅ COMPLETATA
+  1.1 ALTER pratiche ──> 1.2 Guard contesto ──> 1.3 Codice sistema_codici
+                                                        │
+                                                        v
 Fase 2 (Backend)
   2.1 TypedDict ──> 2.2 SQL JOIN ──> 2.3 _map_row ──> 2.4 crea_pratica ──> 2.5 Guard attivazione
                                                                                │
@@ -398,30 +422,64 @@ Fase 5 (Test)
   5.1 Test Django ──> 5.2 Smoke test
 ```
 
-**Stima**: le fasi sono sequenziali ma ogni fase e' piccola (1-2 sessioni di lavoro).
+---
+
+## Riepilogo file migration DB
+
+| N. | STEP | Percorso | Tipo | Stato |
+|----|------|----------|------|-------|
+| 1 | 1.1 | `00_schema/pratiche/20260328-11-alter-pratiche-add-ruolo-istanza-mctit.yaml` | DDL | ✅ |
+| 2 | 1.2 | `20_code/pratiche/20260328-12-create-trgfn-pratiche-guard-contesto-mctit.yaml` | Trigger fn + trigger | ✅ |
+| 3 | 1.3 | `80_data/sql/config/sistema_codici.csv` — riga `pratica` (id=16, PRA) | Seed | ✅ |
+| 4 | 1.2 | `80_data/sql/config/messaggi_errore.csv` — 4 messaggi (id 304-307) | Seed | ✅ |
 
 ---
 
-## Funzioni DB utili (esistenti e nuove)
+## Funzioni DB — riepilogo
 
-### Esistenti da sfruttare
+### Esistenti (gia' operative, da sfruttare)
 
-| Funzione | Schema | Uso |
-|----------|--------|-----|
-| `dbops.fn_run_automations()` | dbops | Trigger standard (audit, tx_id, storico, lock) — applicati automaticamente |
-| `dbops.fn_gen_codice()` | dbops | Generazione codici con sequenza — da usare per il prefisso pratica |
-| `config.fn_get_lookup_codici()` | config | Lookup generiche — gia' usate dal frontend |
-| `pratiche.fn_check_prerequisiti_flusso()` | pratiche | Verifica prerequisiti flusso |
-| `pratiche.fn_genera_pratica_da_flusso()` | pratiche | Generazione cross-pratica |
-| `pratiche.fn_calcola_tempo_netto_da_a()` | pratiche | Calcolo tempo netto tra flussi |
+| Funzione | Schema | Uso nel contesto |
+|----------|--------|------------------|
+| `script.fn_generate_codice()` | script | Generazione codice pratica (via sistema_codici) |
+| `script.fn_log_and_raise_error()` | script | Errori nel trigger guard contesto |
+| `pratiche.fn_check_prerequisiti_flusso()` | pratiche | Verifica prerequisiti flusso (invariata) |
+| `pratiche.fn_genera_pratica_da_flusso()` | pratiche | Generazione cross-pratica (invariata) |
+| `pratiche.fn_calcola_tempo_netto_da_a()` | pratiche | Calcolo tempo netto tra flussi (invariata) |
+| `pratiche.fn_valuta_tempo_esecuzione_da_a()` | pratiche | Valutazione SLA (OK/WARNING/CRITICO/SFORATO) |
+| `pratiche.trgfn_pratiche_guard_transizione()` | pratiche | Guard transizioni stato pratica |
+| `pratiche.trgfn_flussi_guard_transizione()` | pratiche | Guard transizioni stato flusso |
+| `pratiche.trgfn_flussi_guard_prerequisiti()` | pratiche | Guard prerequisiti flusso |
+| `pratiche.trgfn_flussi_generazione()` | pratiche | Generazione cross-pratica automatica |
+| `pratiche.trgfn_flussi_calcolo_tempo_completamento()` | pratiche | Calcolo tempo al completamento |
+| `pratiche.trgfn_sospensioni_propaga()` | pratiche | Propagazione sospensione ai flussi |
+| `pratiche.trgfn_sospensioni_riattiva()` | pratiche | Ripristino stati alla riattivazione |
+| `pratiche.trgfn_sospensioni_guard_coerenza_flusso()` | pratiche | Guard coerenza flusso/pratica |
+| `pratiche.trgfn_calcoli_tempo_guard_immutabili()` | pratiche | Guard campi immutabili calcoli |
+| `pratiche.trgfn_pratiche_giornale_ins()` | pratiche | Giornale: PRATICA_CREATA |
+| `pratiche.trgfn_pratiche_giornale_stato()` | pratiche | Giornale: STATO_CAMBIATO |
+| `pratiche.trgfn_pratiche_giornale_assegnazione()` | pratiche | Giornale: ASSEGNAZIONE_CAMBIATA |
+| `pratiche.trgfn_pratiche_giornale_priorita()` | pratiche | Giornale: PRIORITA_CAMBIATA |
+| `pratiche.trgfn_flussi_giornale_ins()` | pratiche | Giornale: FLUSSO_CREATO |
+| `pratiche.trgfn_flussi_giornale_stato()` | pratiche | Giornale: FLUSSO_STATO_CAMBIATO |
+| `pratiche.trgfn_note_pratiche_giornale()` | pratiche | Giornale: NOTA_AGGIUNTA (pratica) |
+| `pratiche.trgfn_note_flussi_giornale()` | pratiche | Giornale: NOTA_AGGIUNTA (flusso) |
+| `pratiche.trgfn_allegati_pratiche_giornale()` | pratiche | Giornale: ALLEGATO_AGGIUNTO (pratica) |
+| `pratiche.trgfn_allegati_flussi_giornale()` | pratiche | Giornale: ALLEGATO_AGGIUNTO (flusso) |
+| `pratiche.trgfn_sospensioni_giornale_ins()` | pratiche | Giornale: SOSPENSIONE_REGISTRATA |
+| `pratiche.trgfn_sospensioni_giornale_riattivazione()` | pratiche | Giornale: SOSPENSIONE_CHIUSA |
 
-### Nuove da creare
+### Create in v2
 
 | Funzione | Schema | Scopo |
 |----------|--------|-------|
-| `pratiche.fn_resolve_contesto_pratica()` | pratiche | Ritorna 'INT'/'SOG'/'CLI'/'FOR' dato soggetto + ruolo |
-| `pratiche.trgfn_pratiche_codice_prefisso()` | pratiche | Trigger BEFORE INSERT: genera codice con prefisso dominio |
-| `pratiche.trgfn_pratiche_guard_contesto()` | pratiche | Trigger BEFORE INSERT/UPDATE: coerenza soggetto-ruolo-istanza |
+| `pratiche.trgfn_pratiche_guard_contesto()` | pratiche | Guard coerenza soggetto-ruolo-istanza ✅ |
+
+> **Rimossi dal piano v2** (non necessari ora):
+>
+> - `fn_resolve_contesto_pratica()` — serviva per prefisso dinamico, non piu' richiesto
+> - `trgfn_pratiche_codice_prefisso()` — sostituito da sistema_codici standard
+> - Tabella contatori codice — non necessaria con sequenza standard
 
 ---
 
@@ -429,10 +487,21 @@ Fase 5 (Test)
 
 1. **Refactor diretto**: nessuna retrocompatibilita' con v1 — il modulo non e' in produzione
 2. **Collegamento a 3 livelli**: soggetto_id + soggetto_ruolo_id + istanza_utility_id sulla tabella pratiche
-3. **Display fields via JOIN**: il backend ritorna dati pronti per la UI, il frontend non fa lookup per dati gia' in lista
-4. **Named columns nel mapping**: basta indici posizionali, si usa `cursor.description`
-5. **Guard pre/post-attivazione nel service**: logica cross-schema non adatta a trigger DB
-6. **Codice prefisso dal trigger DB**: usa `fn_resolve_contesto_pratica` + `fn_gen_codice`
+3. **FK istanza_utility_id**: punta a `anagrafiche.istanze_utilities(id)`, NON a `istanze_dati_precontrattuali`
+4. **Display fields via JOIN**: il backend ritorna dati pronti per la UI, il frontend non fa lookup per dati gia' in lista
+5. **Named columns nel mapping**: basta indici posizionali, si usa `cursor.description`
+6. **Guard pre/post-attivazione nel service**: logica cross-schema non adatta a trigger DB
+7. **Codice prefisso standard**: usa `config.sistema_codici` con prefisso fisso `PRA` (no prefisso dinamico in v2)
+8. **Guard contesto nel trigger DB**: linea di difesa ultima, il service replica per errori user-friendly
+
+---
+
+## Elementi futuri (NON in v2)
+
+- Codice pratica con prefisso dinamico (CLI/SOG/FOR/INT) — trigger dedicato quando richiesto
+- Tabelle estensione `ext_*` per dati specifici per tipo flusso (Anello 3)
+- Handler concreti nel registry per automazioni dominio-specifiche
+- Upload file allegati (storage filesystem/object storage)
 
 ---
 

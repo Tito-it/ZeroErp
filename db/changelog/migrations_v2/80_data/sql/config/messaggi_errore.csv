@@ -16,14 +16,14 @@ E_DATI_SOCIETARI_SOGGETTO_NON_TROVATO,it,Il soggetto richiede dati societari. So
 E_DATI_SOCIETARI_TIPO_DETTAGLIO_NON_CONFIGURATO,it,"Non è stato configurata la policy per il tipo_soggetto. Soggetto_id %s , cod_tipo_soggetto_int %s",110,"",""
 E_DATI_SOCIETARI_TIPO_SOGGETTO_NON_AMMESSO,it,Non sono richiesti dati societari per soggetto_id %s e codice tipo soggetto %s,27,Informazioni della tabella anagrafiche.dati_societari non collegate ad un soggetto ti tipo Aziendale.,Collegare le informazioni ad un soggetto di tipo aziendale
 E_DATI_SOCIETARI_REQUIRED_MANCANTI,it,"Sono richiesti dati societari per soggetto_id %s e codice tipo soggetto %s""",111,"",""
-E_ADMIN_VALIDAZIONE,it,%s.,310,,
-E_ADMIN_CF_DUPLICATO,it,%s.,311,,
-E_ADMIN_UO_NON_TROVATA,it,%s.,312,,
-E_AUTH_USER_SOGGETTO_CON_PIVA,it,Operatore non può essere associato ad una partita iva %s.,314,,
-E_FORNITORE_ID_INVALIDO,it,Fornitore_id deve essere NOT NULL e > 0. Id %s,315,,
-E_FORNITORE_NON_TROVATO,it,Fornitore non valido id %s.,316,,
-E_FORNITORE_NON_ATTIVO,it,Fornitore id %s non attivo.,317,,
-E_FORNITORE_BLOCCATO,it,Fornitore id %s bloccato.,318,,
+E_ADMIN_VALIDAZIONE,it,%s.,310,"",""
+E_ADMIN_CF_DUPLICATO,it,%s.,311,"",""
+E_ADMIN_UO_NON_TROVATA,it,%s.,312,"",""
+E_AUTH_USER_SOGGETTO_CON_PIVA,it,Operatore non può essere associato ad una partita iva %s.,314,"",""
+E_FORNITORE_ID_INVALIDO,it,Fornitore_id deve essere NOT NULL e > 0. Id %s,315,"",""
+E_FORNITORE_NON_TROVATO,it,Fornitore non valido id %s.,316,"",""
+E_FORNITORE_NON_ATTIVO,it,Fornitore id %s non attivo.,317,"",""
+E_FORNITORE_BLOCCATO,it,Fornitore id %s bloccato.,318,"",""
 E_CODICE,it,Il codice %s non è stato trovato nella tabella %s,112,"",""
 E_DATA_CHIUSURA,it,data_chiusura (%s) < data_attivazione (%s) per cliente %s,113,"",""
 E_DATA_APERTURA,it,per il cliente %s non è stato indicata una data apertura ma lo stato è attivo,114,"",""
@@ -121,3 +121,7 @@ E_DATA_CESSAZIONE_INVALIDA,it,Data cessazione %s precedente alla data attivazion
 E_DISSOCIAZIONE_PARENT_CON_ATTIVITA,it,Impossibile rimuovere parent: attivita non fatturate sul billing account %s (ex parent: %s).,209,Esistono attivita_fatturabili non ancora fatturate collegate a questo billing account.,Fatturare le attivita pendenti prima di rimuovere il parent_account_id.
 E_PARENT_SELF,it,Parent account non puo' essere uguale all'id del record (parent: %s).,210,Un billing account non puo' avere se stesso come parent.,Indicare un parent_account_id diverso dall'id del record.
 PRATICHE_PREREQUISITI_NON_SODDISFATTI,it,Prerequisiti non soddisfatti per il template flusso. Mancanti: %s,300,I prerequisiti configurati per il template flusso non sono tutti in stato COMPLETATO.,Completare i flussi prerequisiti prima di procedere con il nuovo flusso.
+PRATICHE_ISTANZA_SENZA_RUOLO,it,istanza_utility_id richiede soggetto_ruolo_id. Istanza %s,304,La pratica ha una istanza/utility assegnata ma manca il ruolo anagrafico del soggetto.,Valorizzare soggetto_ruolo_id prima di assegnare istanza_utility_id.
+PRATICHE_RUOLO_SENZA_SOGGETTO,it,soggetto_ruolo_id richiede soggetto_id. Ruolo %s,305,La pratica ha un ruolo anagrafico assegnato ma manca il soggetto.,Valorizzare soggetto_id prima di assegnare soggetto_ruolo_id.
+PRATICHE_RUOLO_NON_COERENTE,it,Il ruolo %s non appartiene al soggetto %s,306,Il soggetto_ruolo_id indicato non appartiene al soggetto_id della pratica.,Verificare che soggetto_ruolo_id appartenga effettivamente al soggetto_id indicato.
+PRATICHE_ISTANZA_NON_COERENTE,it,L'istanza %s non appartiene al soggetto %s,307,L'istanza_utility_id indicata non appartiene al soggetto_id della pratica.,Verificare che istanza_utility_id appartenga effettivamente al soggetto_id indicato.
