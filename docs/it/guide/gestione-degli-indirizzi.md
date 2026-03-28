@@ -158,6 +158,52 @@ Per letture dirette senza fallback:
 
 ---
 
+## Azioni UI per contesto e livello
+
+Il drawer `IndirizziSoggettoDrawer` viene riusato in context **soggetto** e **ruolo**.
+Le azioni disponibili su ogni indirizzo dipendono dal contesto di apertura e dal livello
+(`fonte`) dell'indirizzo nella cascata.
+
+### Context soggetto
+
+Aperto da: lista soggetti, SoggettoDrawer (edit mode).
+
+| Fonte | Pennino (cambia) | Cestino (elimina) | Note |
+|-------|:---:|:---:|-------|
+| *(tutti gli indirizzi)* | Si | No | L'azione "cambia" e un replace (delete + create). Il delete diretto non e esposto perche un indirizzo soggetto e ereditato da tutti i ruoli — rimuoverlo potrebbe avere impatto a cascata. |
+
+### Context ruolo
+
+Aperto da: ClienteDrawer (edit mode), FornitoreDrawer, lista clienti/fornitori, SoggettoPreviewBadges.
+
+| Fonte | Pennino (cambia) | Cestino (elimina) | Note |
+|-------|:---:|:---:|-------|
+| `soggetto` | No | No | Indirizzo ereditato, readonly. Per modificarlo l'utente deve accedere al drawer soggetto. |
+| `ruolo` | Si | Si | Indirizzo generico del ruolo (istanza_utility_id = NULL). Override del livello soggetto. |
+| `istanza` | Si | Si | Indirizzo specifico dell'istanza. Override del livello ruolo. |
+
+### Matrice tipi indirizzo ammessi
+
+In context soggetto i tipi ammessi vengono dalla matrice `config.tipi_soggetto_dettaglio_tipi_indirizzo`
+(filtrata per tipo soggetto dettaglio: PF, PG, ENTE).
+
+In context ruolo i tipi ammessi vengono dalla matrice `config.tipi_ruolo_tipi_indirizzo`
+(filtrata per tipo ruolo: CLIENTE, FORNITORE, ecc.). Il trigger guard
+`trgfn_indirizzi_guard_tipo_ruolo_tipi_indirizzo` valida al salvataggio.
+
+I tipi gia creati per l'istanza corrente sono disabilitati nella barra tab del form
+(icona lucchetto, non selezionabili) per evitare errori di duplicazione.
+
+### Ordinamento lista
+
+* **Context soggetto:** alfabetico per tipo indirizzo descrizione.
+* **Context ruolo:** prima per fonte (soggetto → ruolo → istanza), poi alfabetico per tipo indirizzo.
+
+La funzione `sortByFonte()` (`core/utils/string.js`) gestisce l'ordinamento per tutti e tre
+i drawer (indirizzi, contatti, conti bancari).
+
+---
+
 ## Regole di dominio
 
 ### R1 — XOR normalizzato/libero

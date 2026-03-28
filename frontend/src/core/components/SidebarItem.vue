@@ -2,9 +2,10 @@
 // Scopo: voce sidebar riutilizzabile — icona + label + tooltip quando collapsed.
 // Usato da SidebarHome e SidebarDomain per evitare duplicazione template.
 // Possiede i propri stili (non dipende da :deep nel parent).
-import { useUiStore } from '../../stores/ui'
+// Inietta lo stato collapsed dal parent (AppSidebar) per supportare mobile drawer.
+import { inject, ref } from 'vue'
 
-const ui = useUiStore()
+const isCollapsed = inject('sidebarCollapsed', ref(false))
 
 defineProps({
   icon: { type: String, required: true },
@@ -18,12 +19,12 @@ defineEmits(['click'])
 <template>
   <div
     class="sidebar-item"
-    :class="{ active, collapsed: ui.effectiveSidebarCollapsed }"
+    :class="{ active, collapsed: isCollapsed }"
     @click="$emit('click')"
-    v-tooltip.right="ui.effectiveSidebarCollapsed ? label : null"
+    v-tooltip.right="isCollapsed ? label : null"
   >
     <i :class="icon"></i>
-    <span v-if="!ui.effectiveSidebarCollapsed">
+    <span v-if="!isCollapsed">
       <slot>{{ label }}</slot>
     </span>
   </div>
@@ -45,7 +46,7 @@ defineEmits(['click'])
 
 .sidebar-item.collapsed {
   justify-content: center;
-  padding: 0.6rem;
+  padding: 0.5rem 0.35rem;
 }
 
 .sidebar-item:hover {

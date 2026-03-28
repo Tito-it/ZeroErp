@@ -35,6 +35,18 @@ export function lookupMatriceIndirizzi(tipoSoggettoDettaglioId) {
   )
 }
 
+export function lookupMatriceIndirizziRuolo(tipoRuoloCodice) {
+  return api.get(
+    `${BASE}/lookup/tipi-ruolo/${tipoRuoloCodice}/indirizzi/`
+  )
+}
+
+// --- Sistema codici ---
+
+export function lookupSistemaCodici(schema, tabella, colonna = 'codice') {
+  return api.get(`${BASE}/lookup/sistema-codici/`, { params: { schema, tabella, colonna } })
+}
+
 export function searchComuni(search, limit = 20) {
   return api.get(`${BASE}/lookup/comuni/`, { params: { search, limit } })
 }

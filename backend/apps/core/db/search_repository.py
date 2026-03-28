@@ -123,7 +123,7 @@ class SearchRepository:
         with connection.cursor() as cursor:
             cursor.execute(
                 """
-                SELECT id, codice, descrizione
+                SELECT id, COALESCE(codice_interno, codice) AS codice, descrizione
                   FROM config.tipi_ruoli
                  WHERE ricerca_visibile = true
                  ORDER BY descrizione

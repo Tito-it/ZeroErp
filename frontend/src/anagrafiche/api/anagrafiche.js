@@ -260,6 +260,24 @@ export function updateFornitore(fornitoreId, payload) {
   return api.patch(`${BASE}/fornitori/${fornitoreId}/`, payload)
 }
 
+// --- Matrice indirizzi ruolo ---
+
+export function listMatriceIndirizzi(params = {}) {
+  return api.get(`${BASE}/matrice-indirizzi-ruolo/`, { params })
+}
+
+export function getMatriceIndirizzo(id) {
+  return api.get(`${BASE}/matrice-indirizzi-ruolo/${id}/`)
+}
+
+export function createMatriceIndirizzo(payload) {
+  return api.post(`${BASE}/matrice-indirizzi-ruolo/`, payload)
+}
+
+export function updateMatriceIndirizzo(id, payload) {
+  return api.patch(`${BASE}/matrice-indirizzi-ruolo/${id}/`, payload)
+}
+
 // --- Contatti ruolo ---
 
 export function listRuoloContatti(ruoloId, params = {}) {

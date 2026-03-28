@@ -254,7 +254,7 @@ class CommesseRepository:
         warnings: list[str] = []
         with connection.cursor() as cursor:
             cursor.execute(
-                "SELECT codice FROM config.sorgenti"
+                "SELECT COALESCE(codice_interno, codice) AS codice FROM config.sorgenti"
                 " WHERE scope = 'PUSH_COMMESSA' AND attivo = true"
             )
             db_codici = {row[0] for row in cursor.fetchall()}
@@ -277,7 +277,7 @@ class CommesseRepository:
         """Codici sorgente attivi per scope PUSH_COMMESSA, ordinati per id registrazione."""
         with connection.cursor() as cursor:
             cursor.execute(
-                "SELECT codice FROM config.sorgenti"
+                "SELECT COALESCE(codice_interno, codice) AS codice FROM config.sorgenti"
                 " WHERE scope = 'PUSH_COMMESSA' AND attivo = true"
                 " ORDER BY id"
             )

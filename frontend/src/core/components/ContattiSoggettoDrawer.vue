@@ -76,7 +76,10 @@ async function loadContatti() {
         ...(payload.contatti_soggetto || []),
       ])
     } else {
-      contattiList.value = payload?.results || payload || []
+      const items = payload?.results || payload || []
+      contattiList.value = items.sort((a, b) =>
+        (a.tipo_contatto_descrizione || '').localeCompare(b.tipo_contatto_descrizione || '')
+      )
     }
   } catch {
     contattiList.value = []
@@ -205,7 +208,7 @@ async function onDelete(c) {
                 <span v-if="c.pec"><i class="pi pi-at" /> {{ c.pec }}</span>
               </div>
             </div>
-            <div v-if="!formMode && c.fonte !== 'soggetto'" class="contatto-card-actions">
+            <div v-if="!formMode && !isReadonly && c.fonte !== 'soggetto'" class="contatto-card-actions">
               <Button icon="pi pi-pencil" text rounded size="small"
                 class="app-action-btn" :title="t('common.edit')" @click="onStartEdit(c)" />
               <Button icon="pi pi-trash" severity="danger" text rounded size="small"
@@ -214,8 +217,8 @@ async function onDelete(c) {
           </div>
         </div>
 
-        <!-- Pulsante aggiungi -->
-        <div v-if="!formMode" class="mt-05">
+        <!-- Pulsante aggiungi (nascosto in readonly) -->
+        <div v-if="!formMode && !isReadonly" class="mt-05">
           <Button
             :label="t('contatto.aggiungi_contatto')"
             icon="pi pi-plus"

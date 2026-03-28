@@ -13,6 +13,7 @@ import ClienteDrawer from '../components/ClienteDrawer.vue'
 import ContattiSoggettoDrawer from '../../core/components/ContattiSoggettoDrawer.vue'
 import IndirizziSoggettoDrawer from '../../core/components/IndirizziSoggettoDrawer.vue'
 import ContiBancariDrawer from '../../core/components/ContiBancariDrawer.vue'
+import { TIPO_RUOLO } from '../../core/constants'
 
 const drawer = useDrawerState()
 const store = useClientiStore()
@@ -94,6 +95,7 @@ async function onDrawerSaved(result) {
       @update:visible="v => indirizziDrawer.visible = v"
       :soggetto-id="indirizziDrawer.ruoloId"
       :istanza-utility-id="indirizziDrawer.istanzaUtilityId"
+      :tipo-ruolo-codice="TIPO_RUOLO.CLIENTE"
       context="ruolo"
     />
 

@@ -79,7 +79,10 @@ async function loadConti() {
         ...(payload.conti_ereditati || []),
       ])
     } else {
-      contiList.value = payload?.results || payload || []
+      const items = payload?.results || payload || []
+      contiList.value = items.sort((a, b) =>
+        (a.uso || '').localeCompare(b.uso || '')
+      )
     }
   } catch {
     contiList.value = []
@@ -226,7 +229,7 @@ function usoSeverity(uso) {
                 <span v-if="c.filiale_nome"><i class="pi pi-building" /> {{ c.filiale_nome }}</span>
               </div>
             </div>
-            <div v-if="!formMode && c.fonte !== 'soggetto'" class="conto-card-actions">
+            <div v-if="!formMode && !isReadonly && c.fonte !== 'soggetto'" class="conto-card-actions">
               <Button icon="pi pi-pencil" text rounded size="small"
                 class="app-action-btn" :title="t('common.edit')" @click="onStartEdit(c)" />
               <Button icon="pi pi-trash" severity="danger" text rounded size="small"
@@ -235,8 +238,8 @@ function usoSeverity(uso) {
           </div>
         </div>
 
-        <!-- Pulsante aggiungi -->
-        <div v-if="!formMode" class="mt-05">
+        <!-- Pulsante aggiungi (nascosto in readonly) -->
+        <div v-if="!formMode && !isReadonly" class="mt-05">
           <Button
             :label="t('conti_bancari.aggiungi_conto')"
             icon="pi pi-plus"

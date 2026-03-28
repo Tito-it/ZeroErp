@@ -287,6 +287,7 @@ class ClientiRepository:
                    s.ragione_sociale_completa,
                    s.codice_fiscale,
                    s.partita_iva,
+                   s.tipo_soggetto_dettaglio_id,
                    -- Billing account
                    ba.codice AS ba_codice,
                    ba.fatturazione_ordini AS ba_fatturazione_ordini,

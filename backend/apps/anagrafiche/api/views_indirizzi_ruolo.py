@@ -21,8 +21,10 @@ from apps.core.api.success_responses import success_response
 from apps.core.services.error_manager import ErrorManager
 from apps.anagrafiche.db._helpers import resolve_soggetto_id
 from apps.anagrafiche.db.soggetti_repository import SoggettiRepository
+from apps.anagrafiche.services.soggetti_service import SoggettiService
 from apps.anagrafiche.error_codes import E_ANAG_NOT_FOUND
 from apps.anagrafiche.services._validators import create_with_dedup
+from apps.core.services.service_errors import ServiceError
 
 _repo = SoggettiRepository()
 
@@ -48,14 +50,24 @@ _COLS = """v.indirizzo_id AS id,
            v.indirizzo_display,
            v.indirizzo_libero,
            v.comune_id,
+           v.comune_id AS det_comune_id,
            v.comune_descrizione,
+           v.comune_descrizione AS descrizione_comune,
            v.cap,
            v.provincia_sigla,
            v.stato_id,
            v.stato_descrizione,
            v.stato_iso2,
            v.codice_postale_id,
-           v.cap_codice"""
+           v.cap_codice,
+           v.stradario_id,
+           v.via_norm AS stradario_display,
+           v.civico,
+           v.estensione_civico,
+           v.palazzina,
+           v.scala,
+           v.piano,
+           v.interno"""
 
 
 # =================================================================
@@ -86,8 +98,9 @@ class RuoloIndirizziView(DomainAPIView):
         from django.db import connection
         from apps.core.db._helpers import rows_to_list
 
-        istanza_str = request.query_params.get("istanza_utility_id")
-        istanza_utility_id = int(istanza_str) if istanza_str and istanza_str.strip() else None
+        from apps.core.api.payload_validators import qp_int_strict
+        raw_istanza = request.query_params.get("istanza_utility_id")
+        istanza_utility_id = qp_int_strict(raw_istanza, "istanza_utility_id", None) if raw_istanza else None
 
         with connection.cursor() as cursor:
             soggetto_id = resolve_soggetto_id(cursor, soggetto_ruolo_id)
@@ -153,7 +166,7 @@ class RuoloIndirizziView(DomainAPIView):
 
     @extend_schema(
         request=inline_serializer(name="RuoloIndirizzoCreateReq", fields={
-            "tipo_indirizzo_id": serializers.IntegerField(),
+            "tipo_indirizzo_codice": serializers.CharField(help_text="Codice tipo indirizzo (es. RES, DOM)"),
             "istanza_utility_id": serializers.IntegerField(required=False),
             "indirizzo_dettaglio_id": serializers.IntegerField(required=False),
             "indirizzo_libero": serializers.CharField(required=False),
@@ -167,21 +180,41 @@ class RuoloIndirizziView(DomainAPIView):
         )},
     )
     # Scopo: Crea indirizzo associato al ruolo.
-    #        Accetta modalita' normalizzata (indirizzo_dettaglio_id)
+    #        Accetta tipo_indirizzo_codice (risolto a id internamente),
+    #        modalita' normalizzata (indirizzo_dettaglio_id)
     #        o libera (indirizzo_libero + stato_id).
     #        Il trigger DB valida tipo_indirizzo_id contro la matrice ammessi.
     def post(self, request: Request, soggetto_ruolo_id: int) -> JsonResponse:
         def _handler(payload: dict) -> dict:
+            # Risolvi tipo_indirizzo_codice → tipo_indirizzo_id
+            tipo_codice = payload.get("tipo_indirizzo_codice")
+            if not tipo_codice:
+                raise ServiceError(code="E_VALIDAZIONE", message="tipo_indirizzo_codice obbligatorio.")
+            tipo_id = _repo.resolve_tipo_indirizzo_id(tipo_codice)
+            if tipo_id is None:
+                raise ServiceError(code="E_VALIDAZIONE", message=f"Tipo indirizzo '{tipo_codice}' non trovato.")
+
             istanza_utility_id = payload.get("istanza_utility_id")
             if istanza_utility_id is not None:
                 istanza_utility_id = int(istanza_utility_id)
+
+            # Risolvi indirizzo: normalizzato (stradario → dettaglio) o libero
+            indirizzo_libero = (payload.get("indirizzo_libero") or "").strip() or None
+            if indirizzo_libero:
+                # Modalita' libera
+                indirizzo_dettaglio_id = None
+            else:
+                # Modalita' normalizzata — risolvi stradario → indirizzo_dettaglio
+                svc = SoggettiService()
+                indirizzo_dettaglio_id = svc._resolve_indirizzo_dettaglio(payload)
+
             result = create_with_dedup(
                 lambda: _repo.crea_indirizzo_ruolo(
                     soggetto_ruolo_id,
-                    tipo_indirizzo_id=int(payload["tipo_indirizzo_id"]),
+                    tipo_indirizzo_id=tipo_id,
                     istanza_utility_id=istanza_utility_id,
-                    indirizzo_dettaglio_id=payload.get("indirizzo_dettaglio_id"),
-                    indirizzo_libero=payload.get("indirizzo_libero"),
+                    indirizzo_dettaglio_id=indirizzo_dettaglio_id,
+                    indirizzo_libero=indirizzo_libero,
                     stato_id=payload.get("stato_id"),
                     comune_id=payload.get("comune_id"),
                     codice_postale_id=payload.get("codice_postale_id"),

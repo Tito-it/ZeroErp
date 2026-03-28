@@ -1,9 +1,9 @@
 <script setup>
-// Scopo: topbar principale — emittente, area title, context chip, ricerca, data.
+// Scopo: topbar principale — emittente, area title, context chip, ricerca, user badge, data, logout.
 // Su mobile mostra hamburger per aprire il drawer sidebar.
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import Button from 'primevue/button'
 import Chip from 'primevue/chip'
 import { useAuthStore } from '../../stores/auth'
@@ -14,6 +14,7 @@ import SearchDrawer from './SearchDrawer.vue'
 
 const { t, locale } = useI18n()
 const route = useRoute()
+const router = useRouter()
 const auth = useAuthStore()
 const ui = useUiStore()
 const context = useContextStore()
@@ -40,6 +41,26 @@ const formattedDate = computed(() => {
     year: 'numeric'
   })
 })
+
+// Iniziali utente (max 2 caratteri) per il badge non-admin
+const userInitials = computed(() => {
+  if (!auth.user) return '?'
+  const soggetto = auth.user.soggetto
+  if (soggetto?.nome && soggetto?.cognome) {
+    return (soggetto.nome[0] + soggetto.cognome[0]).toUpperCase()
+  }
+  const utente = auth.user.utente
+  if (utente?.first_name && utente?.last_name) {
+    return (utente.first_name[0] + utente.last_name[0]).toUpperCase()
+  }
+  if (utente?.username) return utente.username.substring(0, 2).toUpperCase()
+  return '?'
+})
+
+async function handleLogout() {
+  await auth.logout()
+  router.push('/login')
+}
 </script>
 
 <template>
@@ -78,26 +99,36 @@ const formattedDate = computed(() => {
         </template>
       </Chip>
 
-      <!-- Pulsante ricerca universale -->
-      <Button
-        icon="pi pi-search"
-        text
-        rounded
-        size="small"
-        v-tooltip.bottom="t('context.tooltip_search')"
+      <!-- Pulsante ricerca universale — icona verde, sfondo neutro -->
+      <button
         class="topbar-search-btn"
+        v-tooltip.bottom="t('context.tooltip_search')"
         @click="ui.openSearchDrawer()"
-      />
+      >
+        <i class="pi pi-search"></i>
+      </button>
 
-      <!-- Badge admin -->
-      <Chip v-if="auth.isAdmin" class="admin-chip">
+      <!-- Badge admin o iniziali utente -->
+      <Chip v-if="auth.isAdmin" class="admin-chip" v-tooltip.bottom="auth.displayName">
         <template #default>
           <i class="pi pi-shield admin-chip-icon" />
           <span class="admin-chip-label">Admin</span>
         </template>
       </Chip>
+      <span v-else class="user-initials-badge" v-tooltip.bottom="auth.displayName">
+        {{ userInitials }}
+      </span>
 
       <span class="topbar-date">{{ formattedDate }}</span>
+
+      <!-- Logout -->
+      <button
+        class="topbar-logout-btn"
+        v-tooltip.bottom="t('auth.logout')"
+        @click="handleLogout"
+      >
+        <i class="pi pi-sign-out"></i>
+      </button>
     </div>
   </header>
 
@@ -166,12 +197,25 @@ const formattedDate = computed(() => {
   white-space: nowrap;
 }
 
+/* Pulsante ricerca — icona verde, sfondo neutro (come app-action-btn) */
 .topbar-search-btn {
-  color: var(--app-topbar-breadcrumb-color);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.85rem;
+  height: 1.85rem;
+  font-size: 0.95rem;
+  color: var(--p-primary-color);
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: color var(--app-transition-fast), background var(--app-transition-fast);
 }
 
 .topbar-search-btn:hover {
-  color: var(--app-topbar-breadcrumb-active-color);
+  color: var(--p-primary-700);
+  background: var(--p-primary-50);
 }
 
 /* Chip contesto globale */
@@ -213,6 +257,45 @@ const formattedDate = computed(() => {
   margin-left: 0.3rem;
   font-weight: 600;
   color: var(--p-orange-500);
+}
+
+/* Bottone logout — icona verde come ricerca */
+.topbar-logout-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.85rem;
+  height: 1.85rem;
+  font-size: 0.95rem;
+  color: var(--p-primary-color);
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: color var(--app-transition-fast), background var(--app-transition-fast);
+}
+
+.topbar-logout-btn:hover {
+  color: var(--p-red-500);
+  background: var(--p-red-50);
+}
+
+/* Badge iniziali utente (non-admin) — sfondo celeste pastello */
+.user-initials-badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--p-blue-600);
+  background: var(--p-blue-50);
+  border: 1px solid var(--p-blue-200);
+  border-radius: 50%;
+  cursor: default;
+  user-select: none;
 }
 
 /* Mobile — nasconde data e azienda, semplifica */

@@ -13,6 +13,21 @@ export const TOAST_DURATION = {
   SYSTEM_ERROR: 0  // 0 = persistente, chiusura manuale
 }
 
+// Codici interni tipi ruolo (codice_interno da config.tipi_ruoli — fissi e immutabili)
+export const TIPO_RUOLO = {
+  CLIENTE: 'CL',
+  FORNITORE: 'FO',
+  GESTORE: 'GE',
+  VENDITORE: 'VE',
+  DISTRIBUTORE: 'DI',
+  RESELLER: 'RE',
+  VETTORE: 'VT',
+  EMITTENTE_FISCALE: 'EF',
+  BANCA: 'BANK_B',
+  RISORSA_UMANA: 'RIS_UMANA',
+  PSP: 'PSP',
+}
+
 // Paginazione default
 export const PAGINATION = {
   DEFAULT_ROWS: 25,
@@ -32,7 +47,8 @@ export const TABS = {
 // Breakpoint responsive (valori fissi usati nei @media e nello store ui)
 export const BREAKPOINTS = {
   MOBILE: 768,
-  TABLET: 1024
+  TABLET: 1024,
+  DESKTOP_SPLIT: 1280  // soglia minima per split view tab affiancate
 }
 
 // Lunghezze campo standard
@@ -61,5 +77,7 @@ export const SHORTCUTS = {
   PREV_TAB: { key: 'Tab', ctrl: true, shift: true },
   CLOSE_TAB: { key: 'w', ctrl: true, shift: false },
   TOGGLE_SIDEBAR: { key: 'b', ctrl: true, shift: false },
-  GO_HOME: { key: 'Home', ctrl: true, shift: false }
+  GO_HOME: { key: 'Home', ctrl: true, shift: false },
+  SPLIT_SWAP: { key: 'ArrowRight', ctrl: true, shift: true },
+  SPLIT_CLOSE: { key: 'w', ctrl: true, shift: true }
 }

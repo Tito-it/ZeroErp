@@ -24,26 +24,34 @@ Permettere all'operatore di affiancare due tab aperte in una vista 50/50 (split 
 
 `<router-view>` di Vue Router renderizza **un solo componente** basato sulla route corrente. `KeepAlive` li tiene in memoria ma ne mostra solo uno. Per lo split view servono **due componenti visibili simultaneamente**.
 
-## Approccio proposto — Tecnica "Pannello Protect"
+## Approccio proposto — Sola lettura via provide/inject
 
 ### Ispirazione AS/400
 
-Sull'AS/400 per rendere read-only un formato video bastava emettere un formato "protect" sopra — nessuna duplicazione di logica, stessa schermata, solo l'interazione bloccata. In termini OOP: mettere tutto sopra un pannello e impostare il pannello come readonly.
+Sull'AS/400 per rendere read-only un formato video bastava emettere un formato "protect" sopra — nessuna duplicazione di logica, stessa schermata, solo l'interazione bloccata.
 
-### Equivalente CSS: `pointer-events: none`
+### ~~Scartato: `pointer-events: none` su tutta la pagina~~
 
-In Vue/CSS il concetto e' identico: **non duplichiamo la view, renderizziamo lo stesso componente wrappato in un overlay che blocca ogni interazione**.
+Il primo approccio era un CSS `pointer-events: none` globale sul pannello. **Scartato** perche' blocca l'intera pagina: paginazione, sort colonne, scroll DataTable, click su righe — non solo la scrittura. L'app ha gia' un meccanismo di sola lettura per operatori (livello LETTURA) che lascia la pagina navigabile.
 
-```css
-.split-readonly-panel {
-  pointer-events: none;     /* blocca OGNI click, hover, focus */
-  user-select: text;        /* ma permetti copia testo (Ctrl+C) */
-  opacity: 0.85;            /* feedback visivo "stai guardando" */
-  filter: saturate(0.7);    /* leggermente desaturato */
-}
+### Approccio scelto: `provide(READONLY_KEY, true)` nel pannello split
+
+Il `SplitReadonlyPanel` fa `provide(READONLY_KEY, ref(true))` — lo stesso meccanismo che `useReadonlyMode` usa per gli operatori con livello LETTURA. La pagina nel pannello secondario e' **completamente navigabile** (paginazione, sort, scroll, click riga per aprire dettaglio in drawer), ma le **azioni di scrittura sono bloccate**:
+
+- `NewButton` si nasconde automaticamente (`useInjectReadonly()`)
+- `DrawerFooter` si nasconde automaticamente (no Save/Cancel)
+- I drawer form applicano `.app-readonly` (input non interattivi)
+
+**Modifica chiave a `useReadonlyMode`**: aggiunto `inject` del parent READONLY_KEY con OR logico — se un parent (SplitReadonlyPanel) ha gia' fornito `readonly=true`, il valore si propaga anche se i permessi dell'operatore consentirebbero la scrittura.
+
+```javascript
+// useReadonlyMode.js — prima:
+const isReadonly = computed(() => auth.isAreaReadonly(areaSchemaDb))
+
+// useReadonlyMode.js — dopo:
+const parentReadonly = inject(READONLY_KEY, ref(false))
+const isReadonly = computed(() => parentReadonly.value || auth.isAreaReadonly(areaSchemaDb))
 ```
-
-**Una riga CSS** (`pointer-events: none`) e tutto il contenuto diventa read-only: bottoni, form, input, drawer, DataTable, tutto. Zero componenti Preview da creare, zero duplicazione.
 
 ### Perche' questo approccio
 
@@ -52,7 +60,8 @@ In Vue/CSS il concetto e' identico: **non duplichiamo la view, renderizziamo lo 
 | Componenti `*Preview.vue` per dominio | Puliti | Un componente per ogni dominio, manutenzione doppia |
 | Doppio router-view | Nativo | Vue Router non supporta route diverse in parallelo |
 | iframe | Isolamento | Duplica stato app, auth, store |
-| **Stesso componente + CSS protect** | **Zero duplicazione, funziona su ogni dominio automaticamente** | **Serve component resolution dal router** |
+| `pointer-events: none` globale | Zero config | Blocca TUTTA l'interazione (anche paginazione, scroll) |
+| **provide/inject readonly (scelto)** | **Navigabile, zero duplicazione, funziona su ogni dominio** | **Serve component resolution dal router** |
 
 ### Come funziona
 
@@ -62,11 +71,11 @@ In Vue/CSS il concetto e' identico: **non duplichiamo la view, renderizziamo lo 
 4. L'operatore puo' comunque **leggere tutto e copiare testo** (`user-select: text`)
 5. Il componente e' vivo: se i dati cambiano nel primario, `useTabEvents` aggiorna anche il secondario
 
-```
+```text
 +------------------------------------------------------------------+
 | AppTopbar                                                        |
 +------------------------------------------------------------------+
-| Tab1 [pin]  | Tab2 *attiva* | Tab3        | Tab4                 |
+| Tab1 | Tab2 *attiva* | Tab3 | Tab4  ·············  [⫏ Affianca] |
 +------------------------------------------------------------------+
 |                          |  [sola lettura]                       |
 |   Pannello Primario      |   Pannello Secondario (pinnato)       |
@@ -103,20 +112,38 @@ isSplit              // computed: splitMode === true
 
 Persistenza: estendere `persistTabs()` / `restoreTabs()` per salvare `splitMode` + `pinnedTabPath`.
 
-### Fase 2 — ContentTabs.vue: controlli split
+### Fase 2 — ContentTabs.vue: bottone "Affianca" e controlli split
 
-Aggiungere per ogni tab un'**azione pin** visibile su hover (icona `pi pi-window-maximize`):
+#### Scelta UX: bottone sulla barra tab (non hover su singola tab)
 
+L'approccio iniziale prevedeva un'icona pin su hover di ogni tab non attiva. Scartato perche':
+
+- Hover-dipendente: non funziona su touch/tablet
+- Target piccolo, poco discoverable
+- L'operatore deve sapere *prima* che la funzione esiste
+
+**Approccio scelto**: bottone "Affianca" posizionato a **destra della barra ContentTabs**, allineato alla fine della riga tab. L'azione e' nel contesto giusto (barra tab = gestione tab) ed e' sempre visibile.
+
+```text
+[Soggetti X] [Config X] [Fatture X]  ···················  [⫏ Affianca]
+                                                            ^-- visibile solo su desktop >= 1280px
 ```
-[Soggetti X] [Config [pin] X] [Fatture X]
-                      ^-- hover su tab NON attiva: appare icona pin
-```
 
-**Interazione UX**:
+#### Flusso interazione
 
-- **Attivare split**: click sull'icona pin di una tab NON attiva -> pinnata a destra, attiva resta a sinistra
-- **Disattivare split**: click su "X" nell'header del pannello secondario (o shortcut)
-- **Tab pinnata**: indicatore visivo (icona pin fissa, bordo accent)
+1. **Attivare split**: click su "Affianca" → si apre un **Popover PrimeVue** con la lista delle tab aperte (esclusa quella attiva). Ogni voce mostra icona + label della tab.
+2. **Selezionare tab**: click su una voce del popover → `tabs.pinTab(tabId)` → split attivato, tab selezionata nel pannello secondario read-only.
+3. **Stato split attivo**: il bottone "Affianca" diventa **"Chiudi split"** (icona `pi pi-times` o `pi pi-window-minimize`), colore accent per feedback visivo. Il pannello secondario ha anche il suo header con X per chiudere.
+4. **Disattivare split**: click su "Chiudi split" nella barra tab OPPURE click su "X" nell'header del pannello secondario OPPURE shortcut.
+5. **Tab pinnata**: nella barra tab la tab pinnata mostra un indicatore visivo (icona pin `pi pi-thumbtack`, bordo accent) per distinguerla dalle altre.
+
+#### Visibilita' responsive
+
+Il bottone "Affianca" si mostra **solo su desktop >= 1280px** tramite CSS media query. Su tablet e mobile non appare — lo split non ha senso su schermi piccoli. Se lo split e' attivo e la finestra scende sotto 1280px, `closeSplit()` automatico (watcher su viewport).
+
+#### Requisito minimo
+
+Il popover si mostra solo se ci sono **almeno 2 tab aperte** (serve una tab da affiancare). Con una sola tab il bottone e' disabilitato o nascosto.
 
 ### Fase 3 — AppLayout.vue: layout split
 
@@ -163,18 +190,23 @@ Modificare `.app-content` per supportare grid a 2 colonne quando split e' attivo
 }
 ```
 
-### Fase 4 — SplitReadonlyPanel.vue: il "formato protect"
+### Fase 4 — SplitReadonlyPanel.vue: sola lettura via provide/inject
 
-Componente core — risolve il componente dalla route della tab pinnata e lo renderizza con CSS protect:
+Componente core — risolve il componente dalla route della tab pinnata, fornisce `READONLY_KEY = true` via provide/inject. La pagina resta navigabile, le azioni di scrittura sono bloccate dai componenti stessi (NewButton, DrawerFooter, drawer form).
 
 ```vue
 <script setup>
-import { computed } from 'vue'
+import { computed, ref, provide } from 'vue'
 import { useRouter } from 'vue-router'
 import { useTabsStore } from '@/stores/tabs'
+import { READONLY_KEY, BLOCKED_KEY } from '../composables/useReadonlyMode'
 
 const router = useRouter()
 const tabs = useTabsStore()
+
+// Forza readonly su tutti i componenti figli (come livello LETTURA per operatori)
+provide(READONLY_KEY, ref(true))
+provide(BLOCKED_KEY, ref(false))
 
 const pinnedComponent = computed(() => {
   if (!tabs.pinnedTab) return null
@@ -185,55 +217,29 @@ const pinnedComponent = computed(() => {
 </script>
 
 <template>
-  <div class="app-content-panel secondary">
-    <!-- Header con label e chiudi -->
+  <div class="split-secondary-panel">
     <div class="split-panel-header">
       <i :class="tabs.pinnedTab?.icon" />
       <span>{{ tabs.pinnedTab?.label }}</span>
       <span class="split-readonly-badge">Sola lettura</span>
-      <button @click="tabs.swapPanels()">
-        <i class="pi pi-arrows-h" />
-      </button>
-      <button @click="tabs.closeSplit()">
-        <i class="pi pi-times" />
-      </button>
+      <button @click="tabs.swapPanels()"><i class="pi pi-arrows-h" /></button>
+      <button @click="tabs.closeSplit()"><i class="pi pi-times" /></button>
     </div>
-
-    <!-- IL FORMATO PROTECT: stessa view, interazione bloccata -->
-    <!-- Eccezione: i bottoni .split-escape restano cliccabili (come F12/F3 su AS/400) -->
-    <div class="split-readonly-panel">
+    <!-- Pagina navigabile: paginazione, sort, scroll, click riga OK -->
+    <!-- Scrittura bloccata: NewButton nascosto, DrawerFooter nascosto, form readonly -->
+    <div class="split-panel-content">
       <component :is="pinnedComponent" :key="tabs.pinnedTab?.path" />
     </div>
   </div>
 </template>
+```
 
-<style scoped>
-.split-readonly-panel {
-  pointer-events: none;      /* protect globale */
-  user-select: text;         /* permetti copia testo */
-  opacity: 0.85;
-  filter: saturate(0.7);
-  flex: 1;
-  overflow-y: auto;
-  border-left: 2px solid var(--app-border-color);
-}
+**Modifica necessaria a `useReadonlyMode`**: il composable deve rispettare il readonly del parent con OR logico, altrimenti la View nel pannello split sovrascrive il provide con il proprio valore (basato sui permessi operatore).
 
-/* "F12/F3" — elementi che restano attivi dentro il pannello protect */
-.split-readonly-panel :deep(.tab-close),         /* X chiudi tab */
-.split-readonly-panel :deep(.p-dialog-close),     /* X chiudi dialog */
-.split-readonly-panel :deep(.p-drawer-close),     /* X chiudi drawer */
-.split-readonly-panel :deep(.split-escape) {      /* classe generica escape */
-  pointer-events: auto;
-  cursor: pointer;
-}
-
-.split-readonly-badge {
-  font-size: 0.7rem;
-  background: var(--app-warning-light);
-  color: var(--app-warning-dark);
-  padding: 2px 8px;
-  border-radius: 4px;
-}
+```javascript
+// useReadonlyMode.js
+const parentReadonly = inject(READONLY_KEY, ref(false))
+const isReadonly = computed(() => parentReadonly.value || auth.isAreaReadonly(areaSchemaDb))
 
 .split-panel-header {
   display: flex;
@@ -308,7 +314,7 @@ Se l'operatore modifica un soggetto nel pannello primario, il pannello secondari
 | Fase | Complessita' | Note |
 | --- | --- | --- |
 | 1. Store split | Bassa | 3-4 metodi, persistenza |
-| 2. ContentTabs UI | Bassa | Icona pin su hover |
+| 2. ContentTabs UI | Bassa | Bottone "Affianca" + Popover selettore tab |
 | 3. AppLayout grid | Bassa | CSS grid condizionale |
 | 4. SplitReadonlyPanel | **Bassa** | Un componente, CSS protect |
 | 5. Shortcuts | Bassa | Pattern gia' in uso |
@@ -326,6 +332,11 @@ Se l'operatore modifica un soggetto nel pannello primario, il pannello secondari
 | Interazione | Nessuna | Nessuna (pointer-events: none) |
 | Copia testo | Da implementare | Gratis (user-select: text) |
 | Effort totale | Medio (cresce con i domini) | Basso (fisso) |
+
+## Decisioni prese
+
+1. **UX attivazione split**: bottone "Affianca" sulla barra ContentTabs (destra) + Popover con lista tab. Scartato: icona pin su hover singola tab (hover-dipendente, poco discoverable).
+2. **Responsive**: split view solo desktop >= 1280px. Tablet e mobile esclusi.
 
 ## Decisioni aperte
 

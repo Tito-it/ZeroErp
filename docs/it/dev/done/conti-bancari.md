@@ -6,6 +6,7 @@
 > Area: anagrafiche (soggetti → conti bancari → ruoli)
 >
 > Data inizio: 20 marzo 2026
+> **Stato: CHIUSO** — sviluppo completato end-to-end (DB, backend, frontend, test, doc) — 27 marzo 2026
 
 ---
 

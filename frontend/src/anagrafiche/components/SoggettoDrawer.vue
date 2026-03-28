@@ -225,8 +225,6 @@ watch(() => props.visible, async (val) => {
     datiSocietari.reset()
     comuneNascitaItem.value = null
     ruoliAssegnati.value = []
-    ruoliDisponibili.value = []
-    nuovoRuoloId.value = null
     nominativoManuale = false
     // Pre-imposta tipo soggetto se indicato dal chiamante (es. SoggettoResolver)
     if (props.tipoDefaultId) {
@@ -290,6 +288,7 @@ async function handleSave() {
       partita_iva: soggetto.form.partita_iva,
       sesso: soggetto.form.sesso,
       data_nascita: toDateString(soggetto.form.data_nascita),
+      comune_nascita_id: soggetto.form.comune_nascita_id,
       contatto: { ...contatto.form },
     }
 
@@ -414,6 +413,24 @@ async function handleSave() {
         />
       </template>
 
+      <!-- Sezione: Dati societari (condizionale) — subito dopo anagrafica/P.IVA -->
+      <template v-if="soggetto.showDatiSocietari.value">
+        <div class="app-drawer-section">
+          <h4>{{ t('soggetti.section_dati_societari') }}</h4>
+        </div>
+        <DatiSocietariForm
+          :form="datiSocietari.form"
+          :forme-giuridiche="formeGiuridicheLookup"
+          :province-lookup="provinceLookup"
+          :show-rea="datiSocietari.showRea.value"
+          :require-rea="datiSocietari.requireRea.value"
+          :show-capitale-sociale="datiSocietari.showCapitaleSociale.value"
+          :require-capitale-sociale="datiSocietari.requireCapitaleSociale.value"
+          :required="soggetto.requireDatiSocietari.value"
+          :disabled="false"
+        />
+      </template>
+
       <!-- Sezione: Indirizzi riepilogo (edit mode) + pulsante Gestisci -->
       <template v-if="isEdit">
         <div class="app-drawer-section">
@@ -438,24 +455,6 @@ async function handleSave() {
             @click="indirizziDrawerVisible = true"
           />
         </div>
-      </template>
-
-      <!-- Sezione: Dati societari (condizionale) -->
-      <template v-if="soggetto.showDatiSocietari.value">
-        <div class="app-drawer-section">
-          <h4>{{ t('soggetti.section_dati_societari') }}</h4>
-        </div>
-        <DatiSocietariForm
-          :form="datiSocietari.form"
-          :forme-giuridiche="formeGiuridicheLookup"
-          :province-lookup="provinceLookup"
-          :show-rea="datiSocietari.showRea.value"
-          :require-rea="datiSocietari.requireRea.value"
-          :show-capitale-sociale="datiSocietari.showCapitaleSociale.value"
-          :require-capitale-sociale="datiSocietari.requireCapitaleSociale.value"
-          :required="soggetto.requireDatiSocietari.value"
-          :disabled="false"
-        />
       </template>
 
       <!-- Sezione: Conti bancari riepilogo (edit mode) -->

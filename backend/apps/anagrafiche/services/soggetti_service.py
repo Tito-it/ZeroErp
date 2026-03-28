@@ -328,6 +328,8 @@ class SoggettiService:
                 data_nascita=optional_str(payload, "data_nascita"),
                 sesso=payload.get("sesso", "M") or "M",
                 stato_iso2=optional_str(payload, "stato_iso2"),
+                comune_nascita_id=optional_int(payload, "comune_nascita_id"),
+                tipo_contatto_id=optional_int(contatto, "tipo_contatto_id"),
             ),
             "Soggetto con questo codice fiscale gia' esistente.",
         )
@@ -365,6 +367,7 @@ class SoggettiService:
                 destinatario_fe=optional_str(dati_soc, "destinatario_fe"),
                 pec_fatturazione=optional_str(dati_soc, "pec_fatturazione"),
                 codice_sdi=optional_str(dati_soc, "codice_sdi"),
+                tipo_contatto_id=optional_int(contatto, "tipo_contatto_id"),
             ),
             "Soggetto PG con CF/PIVA duplicata.",
         )
