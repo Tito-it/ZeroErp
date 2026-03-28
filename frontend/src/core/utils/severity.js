@@ -45,3 +45,49 @@ export const STATO_FORNITORE_MAP = {
 export function statoFornitoreSeverity(codice) {
   return resolveSeverity(STATO_FORNITORE_MAP, codice)
 }
+
+// --- Mappa stati pratica ---
+// BOZZA=secondario, APERTA=info, SOSPESA=arancio, CHIUSA=verde, ANNULLATA=rosso
+export const STATO_PRATICA_MAP = {
+  BOZZA: 'secondary',
+  APERTA: 'info',
+  SOSPESA: 'warn',
+  CHIUSA: 'success',
+  ANNULLATA: 'danger',
+}
+
+// Scopo: Shortcut per stato pratica.
+export function statoPraticaSeverity(codice) {
+  return resolveSeverity(STATO_PRATICA_MAP, codice)
+}
+
+// --- Mappa priorita' pratica ---
+// BASSA=secondario, NORMALE=info, ALTA=arancio, URGENTE=rosso
+export const PRIORITA_PRATICA_MAP = {
+  BASSA: 'secondary',
+  NORMALE: 'info',
+  ALTA: 'warn',
+  URGENTE: 'danger',
+}
+
+// Scopo: Shortcut per priorita' pratica.
+export function prioritaPraticaSeverity(codice) {
+  return resolveSeverity(PRIORITA_PRATICA_MAP, codice)
+}
+
+// --- Mappa stati flusso pratica ---
+// DA_ESEGUIRE=secondario, IN_CORSO=info, COMPLETATO=verde, SOSPESO=arancio,
+// ANNULLATO=rosso, ERRORE=rosso
+export const STATO_FLUSSO_MAP = {
+  DA_ESEGUIRE: 'secondary',
+  IN_CORSO: 'info',
+  COMPLETATO: 'success',
+  SOSPESO: 'warn',
+  ANNULLATO: 'danger',
+  ERRORE: 'danger',
+}
+
+// Scopo: Shortcut per stato flusso pratica.
+export function statoFlussoSeverity(codice) {
+  return resolveSeverity(STATO_FLUSSO_MAP, codice)
+}
