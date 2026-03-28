@@ -21,7 +21,7 @@ django==6.0.3
     #   drf-spectacular
 django-redis==6.0.0
     # via -r ../requirements.in
-djangorestframework==3.17.0
+djangorestframework==3.17.1
     # via
     #   -r ../requirements.in
     #   djangorestframework-simplejwt
@@ -30,7 +30,7 @@ djangorestframework-simplejwt==5.5.1
     # via -r ../requirements.in
 drf-spectacular==0.29.0
     # via -r ../requirements.in
-gunicorn==25.1.0
+gunicorn==25.3.0
     # via -r ../requirements.in
 inflection==0.5.1
     # via drf-spectacular

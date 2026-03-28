@@ -53,7 +53,9 @@ export const DOMAIN_MENUS = {
   'magazzino': [],
   'pagamenti': [],
   'contabilita': [],
-  'pratiche': [],
+  'pratiche': [
+    { key: 'gestione', icon: 'pi pi-folder-open', to: '/pratiche' }
+  ],
   'config': [
     { key: 'tabelle', icon: 'pi pi-table', to: '/config/tabelle' }
   ]

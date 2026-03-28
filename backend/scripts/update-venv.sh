@@ -52,7 +52,10 @@ python -m piptools compile --upgrade "$IN" --output-file "$OUT"
 # 4) Sincronizza l'ambiente con requirements.txt (installa e rimuove pacchetti extra)
 python -m piptools sync "$OUT"
 
-# 5) Verifica integrità dipendenze
+# 5) Aggiorna pacchetti tool del venv non in requirements.in
+python -m pip install -U wheel setuptools 2>/dev/null || true
+
+# 6) Verifica integrità dipendenze
 python -m pip check
 
 echo "OK -> $OUT updated and venv synced"

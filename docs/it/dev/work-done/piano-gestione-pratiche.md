@@ -1,5 +1,9 @@
 # Piano di Sviluppo — Modulo Gestione Pratiche
 
+> **STATO: COMPLETATO (v1 — DB+BE)** — Spostato in work-done.
+> Il completamento del modulo (frontend, collegamento ruolo/istanza, note, allegati)
+> e' nel piano v2: `work-in-progress/gestione-pratiche-v2.md`
+>
 > Riferimento tecnico: [sviluppo-gestione-pratiche.md](sviluppo-gestione-pratiche.md)
 >
 > Approccio: sviluppo concentrico — dal nucleo DB verso l'esterno (backend, API).
@@ -652,6 +656,290 @@ DB-1 ──> DB-2 ──> DB-3 ──> DB-4 ──> DB-5 ──> DB-6 ──> DB
 Le fasi DB sono sequenziali (ogni fase dipende dalla precedente).
 Le fasi Backend partono dopo DB-6 (DB completo con seed).
 DB-7 (test pgTAP) puo' procedere in parallelo con BE-1.
+
+---
+
+---
+
+## Recap stato attuale (28 marzo 2026)
+
+### Completato
+
+| Area | Stato | Dettaglio |
+|------|-------|-----------|
+| **DB Schema** | FATTO | 15+ tabelle in schema `pratiche`, 8 tabelle config, 9 funzioni/trigger PL/pgSQL |
+| **DB Seed** | FATTO | Stati, priorita', canali, transizioni, messaggi errore |
+| **DB Test** | FATTO | 7 file pgTAP coprono funzioni, trigger, generazione cross-pratica |
+| **Backend Repository** | FATTO | 2 file: `pratiche_repository.py`, `generazione_repository.py` |
+| **Backend Services** | FATTO | 3 file: `pratiche_service.py` (31 metodi), `generazione_service.py`, `handler_registry.py` |
+| **Backend API** | FATTO | 20 APIView classes, 19 endpoint REST sotto `/api/v1/pratiche/` |
+| **Backend Test** | FATTO | 8 file test (5 service + 3 API), 90 unit test con mock |
+| **Frontend** | STUB | Directory `src/pratiche/` con `.gitkeep`, dominio in navigation, nessuna pagina |
+
+### Non implementato
+
+| Area | Descrizione | Priorita' |
+|------|-------------|-----------|
+| **BE-6 Sospensioni + Tempo** | Tabelle DB pronte (`sospensioni`, `formule_tempo`, `calcoli_tempo`), API esposte, ma calcolo SLA e riattivazione automatica (pgAgent) non implementati | Media |
+| **Tabelle estensione `ext_*`** | 5 tabelle specializzate (appuntamento, preventivo, sopralluogo, comunicazione, spedizione) — progettate ma non create | Bassa (Anello 3) |
+| **Handler Python** | `HANDLER_MAP` vuoto — nessun handler di dominio implementato | Media |
+| **Integrazione Anello 3** | vendite/anagrafiche/acquisti non usano ancora il motore pratiche | Futura |
+| **Frontend completo** | Nessuna pagina UI implementata | **Alta — prossimo sprint** |
+
+### Basi ora disponibili (non c'erano prima)
+
+Quando lo sviluppo pratiche fu bloccato, mancavano le basi ora completate:
+
+1. **Sistema tab browser-style** — content tabs con KeepAlive, dirty state, persistenza
+2. **Pattern lista standard** — `useSearchTable`, `NewButton`, paginazione, sort, filtri
+3. **Pattern drawer CRUD** — `useDrawerState`, `DrawerFooter`, `app-readonly`, `useConfirmCloseTab`
+4. **Sola lettura** — `useReadonlyMode` + provide/inject (livello LETTURA per operatori)
+5. **Split view** — tab affiancate in readonly (Fase 1-4 completate)
+6. **Pattern form universale** — `SoggettoForm`, `form-grid`, CSS utility classes
+7. **Gestione permessi** — `useActionPermission`, `DomainAPIView.area_funzionale`, livelli accesso
+8. **Ricerca universale** — `SearchDrawer`, `useSearchTable` con context
+9. **Building blocks anagrafiche** — drawer soggetto/cliente/fornitore end-to-end funzionanti come riferimento
+
+---
+
+## Fasi Frontend (FE) — Piano dettagliato
+
+> Le fasi frontend seguono il pattern concentrico: prima la lista (visibilita'),
+> poi il dettaglio (consultazione), poi le azioni (operativita').
+> Ogni fase produce una pagina funzionante e testabile.
+
+### Riepilogo Fasi Frontend
+
+| Fase | Descrizione | Prerequisiti | Complessita' |
+|------|-------------|-------------|-------------|
+| **FE-1** | Store + API client pratiche | Nessuno (backend pronto) | Bassa |
+| **FE-2** | Lista pratiche (SearchTable + filtri) | FE-1 | Bassa |
+| **FE-3** | Drawer dettaglio pratica (consultazione) | FE-2 | Media |
+| **FE-4** | Drawer creazione pratica | FE-3 | Media |
+| **FE-5** | Tab flussi dentro il drawer pratica | FE-3 | Media |
+| **FE-6** | Azioni pratica (stato, assegnazione, sospensione) | FE-3 | Media |
+| **FE-7** | Giornale pratica (timeline audit) | FE-3 | Bassa |
+| **FE-8** | Route, navigazione, i18n | FE-2 | Bassa |
+
+---
+
+### FE-1 — Store Pinia + API client
+
+**Obiettivo**: layer dati frontend per il dominio pratiche.
+
+**File da creare**:
+
+```
+src/pratiche/
+  api/
+    pratiche-api.js        — client Axios per tutti gli endpoint /api/v1/pratiche/
+  stores/
+    pratiche.js            — store Pinia: lista, filtri, paginazione, pratica selezionata
+```
+
+**Dettaglio `pratiche-api.js`**:
+
+- `fetchPratiche(params)` — GET lista con filtri + paginazione
+- `fetchPratica(id)` — GET dettaglio
+- `createPratica(payload)` — POST crea
+- `updatePratica(id, payload)` — PATCH aggiorna
+- `cambiaStato(id, stato)` — POST stato
+- `assegnaPratica(id, payload)` — POST assegnazione
+- `fetchGiornale(id)` — GET giornale
+- `fetchFlussi(id)` — GET lista flussi
+- `createFlusso(id, payload)` — POST crea flusso
+- `cambiaStatoFlusso(id, flussoId, stato)` — POST stato flusso
+- `fetchPrerequisiti(id, flussoId)` — GET prerequisiti
+- `sospendi(id)` / `riattiva(id)` — POST sospensione/riattivazione
+
+**Dettaglio `pratiche.js` store**:
+
+- Pattern identico agli store esistenti (es. `clienti.js`, `soggetti.js`)
+- State: `items`, `totalRecords`, `loading`, `filters`
+- Actions: `fetchList`, `resetFilters`
+- `useSearchTable(store)` per paginazione/sort/debounce
+
+**Riferimento**: `src/anagrafiche/stores/clienti.js` + `src/anagrafiche/api/clienti-api.js`
+
+---
+
+### FE-2 — Lista pratiche (PraticheView + PraticheSearchTable)
+
+**Obiettivo**: pagina lista pratiche con SearchTable standard.
+
+**File da creare**:
+
+```
+src/pratiche/
+  views/
+    PraticheView.vue           — vista principale (app-page + SearchTable + Drawer)
+  components/
+    PraticheSearchTable.vue    — DataTable lazy con colonne pratiche
+```
+
+**Colonne DataTable**:
+
+| Colonna | Campo | Note |
+|---------|-------|------|
+| Codice | `codice` | Link/click per aprire dettaglio |
+| Tipo prestazione | `tipo_prestazione_descrizione` | |
+| Soggetto | `soggetto_display` | Ragione sociale |
+| Stato | `stato_descrizione` | Tag con severita' (colore per stato) |
+| Priorita' | `priorita_descrizione` | Tag con severita' |
+| Assegnata a | `risorsa_umana_display` | Nome risorsa |
+| Data scadenza | `data_scadenza` | Formattata DATE_FORMAT |
+| Data apertura | `date_insert` | |
+
+**Filtri toolbar**:
+
+- Ricerca testo (codice, descrizione, soggetto)
+- Filtro stato (Select con opzioni da lookup)
+- Filtro priorita' (Select con opzioni da lookup)
+
+**Pattern**: identico a `ClientiView.vue` + `ClientiSearchTable.vue`
+
+---
+
+### FE-3 — Drawer dettaglio pratica (PraticaDrawer)
+
+**Obiettivo**: drawer laterale con i dati della pratica in consultazione/edit.
+
+**File da creare**:
+
+```
+src/pratiche/
+  components/
+    PraticaDrawer.vue          — drawer STANDARD (640px), form dati pratica
+```
+
+**Sezioni drawer**:
+
+1. **Header**: codice pratica + stato (Tag) + priorita' (Tag)
+2. **Dati principali**: tipo prestazione, soggetto (link), descrizione, data scadenza
+3. **Assegnazione**: risorsa umana, unita' organizzativa
+4. **Meta** (se presente): JSON renderizzato come key-value
+
+**Comportamento**:
+
+- Click riga lista → apre drawer in edit
+- `NewButton` → apre drawer in creazione (vedi FE-4)
+- `DrawerFooter` con Save/Cancel (nascosto in readonly)
+- `useInjectReadonly()` per operatori LETTURA
+
+**Pattern**: identico a `ClienteDrawer.vue`
+
+---
+
+### FE-4 — Drawer creazione pratica
+
+**Obiettivo**: estensione del drawer per la creazione di una nuova pratica.
+
+**Campi form creazione**:
+
+- Tipo prestazione (AutoComplete o Select da lookup)
+- Soggetto (AutoComplete server-side — pattern `SoggettoResolver`)
+- Descrizione (textarea)
+- Priorita' (Select da lookup)
+- Data scadenza (DatePicker)
+- Note iniziale (textarea, opzionale)
+
+**Logica**: `pratiche-api.createPratica()` → refresh lista → chiudi drawer
+
+---
+
+### FE-5 — Tab flussi dentro il drawer pratica
+
+**Obiettivo**: sezione flussi nella parte bassa del drawer pratica.
+
+**Opzioni implementative** (decisione aperta):
+
+- **Opzione A**: TabView dentro il drawer (tab "Dati" + tab "Flussi" + tab "Giornale")
+- **Opzione B**: Accordion/Panel collapsabile sotto i dati principali
+
+**Contenuto tab flussi**:
+
+- Lista flussi della pratica (DataTable compatta inline, non paginata)
+- Colonne: sequenza, template flusso, stato (Tag), esito, risorsa, data scadenza
+- Click su flusso → espande dettaglio inline o sotto-drawer
+- Bottone "Nuovo flusso" (se pratica in stato che lo consente)
+
+**Decisione da prendere**: la UI dei flussi e' un sotto-drawer o un expand inline? Il sotto-drawer e' coerente con il pattern app, ma i flussi sono strettamente legati alla pratica.
+
+---
+
+### FE-6 — Azioni pratica (stato, assegnazione, sospensione)
+
+**Obiettivo**: bottoni azione nel drawer pratica per operazioni di stato.
+
+**Azioni**:
+
+| Azione | Condizione visibilita' | API |
+|--------|----------------------|-----|
+| Apri pratica | stato = BOZZA | POST stato → APERTA |
+| Sospendi | stato = APERTA | POST sospendi |
+| Riattiva | stato = SOSPESA | POST riattiva |
+| Chiudi | stato = APERTA/SOSPESA | POST stato → CHIUSA |
+| Annulla | stato != CHIUSA/ANNULLATA | POST stato → ANNULLATA |
+| Assegna | sempre (se non readonly) | POST assegnazione |
+
+**Pattern**: bottoni nella toolbar del drawer, visibilita' condizionale basata su stato pratica.
+Usare `useActionPermission` per controllo permessi azione.
+
+---
+
+### FE-7 — Giornale pratica (timeline audit)
+
+**Obiettivo**: tab/sezione che mostra la cronologia completa delle azioni sulla pratica.
+
+**Rendering**: Timeline verticale (PrimeVue Timeline) o lista cronologica inversa.
+
+**Dati per entry**:
+
+- Timestamp
+- Tipo evento (creazione, cambio stato, assegnazione, nota, ...)
+- Dettaglio (JSON → rendering human-readable)
+- tx_id (per tracciabilita' cross-tabella)
+
+**Pattern**: componente `GiornaleTimeline.vue` riutilizzabile (il giornale sara' usato anche da altri domini).
+
+---
+
+### FE-8 — Route, navigazione, i18n
+
+**Obiettivo**: integrare il dominio pratiche nel sistema di navigazione.
+
+**Attivita'**:
+
+1. Aggiungere route in `router/index.js`:
+   - `/pratiche` → `PraticheView.vue`
+2. Popolare `DOMAIN_MENUS.pratiche` in `navigation.js`:
+   - `{ key: 'gestione', to: '/pratiche', icon: 'pi pi-folder' }`
+3. Aggiungere chiavi i18n in `it.json` / `en.json`:
+   - `nav.pratiche`, `nav_menu.pratiche.gestione`
+   - `pratiche.codice`, `pratiche.stato`, `pratiche.priorita`, ecc.
+
+---
+
+## Ordine di Esecuzione Consigliato (completo)
+
+```text
+DB-1 ──> DB-2 ──> DB-3 ──> DB-4 ──> DB-5 ──> DB-6 ──> DB-7     FATTO
+                                                          │
+                                                          v
+                                        BE-1 ──> ... ──> BE-5    FATTO
+                                                          │
+                                                          v
+                            FE-1 ──> FE-8 ──> FE-2 ──> FE-3 ──> FE-4
+                                                          │
+                                                    ┌─────┼─────┐
+                                                    v     v     v
+                                                  FE-5  FE-6  FE-7
+```
+
+FE-1 (store/api) e FE-8 (route/nav/i18n) si fanno per primi in parallelo.
+FE-2 (lista) dipende da FE-1.
+FE-3 (drawer dettaglio) dipende da FE-2.
+FE-4, FE-5, FE-6, FE-7 dipendono da FE-3 e sono parallelizzabili.
 
 ---
 
