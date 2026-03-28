@@ -58,8 +58,8 @@ async function onSearch({ query }) {
           try { ruoli = JSON.parse(s.ruoli) } catch { /* malformato, ignora */ }
         }
         const naturaOk = !nature.length || nature.includes(s.natura_soggetto)
-        const haRuolo = ruoli.some(r => r.codice === ruoloCodice)
-        return { ...s, ruoli, _naturaBloccata: !naturaOk, _ruoloDuplicato: haRuolo }
+        const ruoloTrovato = ruoli.find(r => r.codice === ruoloCodice)
+        return { ...s, ruoli, _naturaBloccata: !naturaOk, _ruoloDuplicato: !!ruoloTrovato, _ruoloDescrizione: ruoloTrovato?.descrizione }
       })
     } catch {
       suggestions.value = []
@@ -105,10 +105,11 @@ watch(() => props.visible, async (val) => {
 
 function onSoggettoSelect(event) {
   const s = event.value
-  if (!s || s._naturaBloccata || s._ruoloDuplicato) {
+  if (!s || s._naturaBloccata) {
     selectedSoggetto.value = null
     return
   }
+  // _ruoloDuplicato: avviso, non blocco — lo stesso soggetto puo' avere piu' istanze
   selectedSoggetto.value = s
 }
 
@@ -130,7 +131,9 @@ async function confermaSelezionato() {
     nome: s.nome || null,
     cf: s.codice_fiscale,
     piva: s.partita_iva,
-    email
+    email,
+    ruoli: s.ruoli || [],
+    tipo_soggetto_dettaglio_id: s.tipo_soggetto_dettaglio_id || null
   })
   emit('update:visible', false)
 }
@@ -187,7 +190,7 @@ function onClose() {
           @item-select="onSoggettoSelect"
         >
           <template #option="{ option }">
-            <div class="resolver-suggestion" :class="{ 'resolver-blocked': option._naturaBloccata || option._ruoloDuplicato }">
+            <div class="resolver-suggestion" :class="{ 'resolver-blocked': option._naturaBloccata }">
               <div class="resolver-suggestion-name">
                 <strong>{{ option.ragione_sociale_completa }}</strong>
                 <span class="resolver-suggestion-tipo">{{ option.tipo_descrizione }}</span>
@@ -198,7 +201,7 @@ function onClose() {
               </div>
               <div v-if="option._ruoloDuplicato" class="resolver-warning">
                 <i class="pi pi-exclamation-triangle" />
-                {{ t('resolver.already_role', { ruolo: configResolver?.tipo_ruolo_descrizione }) }}
+                {{ t('resolver.already_role', { ruolo: option._ruoloDescrizione || tipoRuoloCodice }) }}
               </div>
               <div v-else-if="option._naturaBloccata" class="resolver-warning">
                 <i class="pi pi-ban" />

@@ -22,14 +22,21 @@ export function useIndirizzoMultiTipo({ baseSnapshot, baseRestore, baseReset, fo
     }))
   )
 
-  // Scopo: Inizializza la matrice tipi e seleziona il primo obbligatorio.
-  function setMatrice(matrice) {
+  // Scopo: Inizializza la matrice tipi e seleziona il primo obbligatorio disponibile.
+  // excludeCodici: Set di codici gia' esistenti da non pre-selezionare.
+  function setMatrice(matrice, excludeCodici = null) {
     tipiMatrice.value = matrice
     indirizziSalvati.value = {}
-    const primo = matrice.find(m => m.obbligatorio) || matrice[0]
+    const disponibili = excludeCodici
+      ? matrice.filter(m => !excludeCodici.has(m.codice))
+      : matrice
+    const primo = disponibili.find(m => m.obbligatorio) || disponibili[0] || null
     if (primo) {
       tipoAttivo.value = primo.codice
       form.tipo_indirizzo_codice = primo.codice
+    } else {
+      tipoAttivo.value = null
+      form.tipo_indirizzo_codice = null
     }
   }
 

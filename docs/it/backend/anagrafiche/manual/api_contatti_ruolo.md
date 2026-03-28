@@ -3,14 +3,14 @@
 ## Scopo
 
 Endpoint REST per la gestione dei contatti a livello ruolo con supporto
-utility. Implementa la cascata a 3 livelli: utility specifica, ruolo generico,
+istanza. Implementa la cascata a 3 livelli: istanza specifica, ruolo generico,
 soggetto (fallback readonly).
 
 ## Contesto
 
 I contatti risiedono in un'unica tabella `anagrafiche.contatti` con contesto
 determinato dai campi nullable: `soggetto_id` (sempre presente),
-`soggetto_ruolo_id` (se livello ruolo), `utility_id` (se specifico utility).
+`soggetto_ruolo_id` (se livello ruolo), `istanza_utility_id` (se specifico istanza).
 
 L'autenticazione avviene tramite token JWT. Le risposte seguono l'envelope
 standard `{"data": ...}`.
@@ -36,14 +36,14 @@ Restituisce i contatti del ruolo con cascata per `tipo_contatto_id`.
 
 | Parametro | Tipo | Obbligatorio | Descrizione |
 |---|---|---|---|
-| `utility_id` | int | No | Se presente, attiva il livello 1 (utility specifica) |
+| `istanza_utility_id` | int | No | Se presente, attiva il livello 1 (istanza specifica) |
 
 ### Cascata di risoluzione
 
 | Priorita` | Livello | Condizione | `fonte` | Editabile |
 |---|---|---|---|---|
-| 1 | Utility | `utility_id = X` | `utility` | Si` |
-| 2 | Ruolo generico | `utility_id IS NULL`, tipo non coperto da L1 | `ruolo` | Si` |
+| 1 | Istanza | `istanza_utility_id = X` | `istanza` | Si` |
+| 2 | Ruolo generico | `istanza_utility_id IS NULL`, tipo non coperto da L1 | `ruolo` | Si` |
 | 3 | Soggetto | `soggetto_ruolo_id IS NULL`, tipo non coperto da L1+L2 | `soggetto` | No |
 
 ### Risposta (200)
@@ -63,9 +63,8 @@ Restituisce i contatti del ruolo con cascata per `tipo_contatto_id`.
         "tipo_contatto_id": 1,
         "tipo_contatto_descrizione": "Referente commerciale",
         "unita_organizzativa_id": null,
-        "utility_id": 5,
-        "utility_codice": "GAS",
-        "fonte": "utility"
+        "istanza_utility_id": 100,
+        "fonte": "istanza"
       }
     ],
     "contatti_soggetto": [
@@ -97,7 +96,7 @@ Restituisce i contatti del ruolo con cascata per `tipo_contatto_id`.
 | `pec` | string | No | PEC |
 | `tipo_contatto_id` | int | Si` | Tipo contatto (NOT NULL) |
 | `unita_organizzativa_id` | int | No | Unita` organizzativa |
-| `utility_id` | int | No | Se presente, contatto specifico per utility |
+| `istanza_utility_id` | int | No | Se presente, contatto specifico per istanza |
 | `note` | string | No | Note |
 
 ---
@@ -129,11 +128,13 @@ Ownership check su `soggetto_ruolo_id`.
 | Oggetto | Schema | Tipo | Ruolo |
 |---|---|---|---|
 | `anagrafiche.contatti` | anagrafiche | tabella | Tabella unica contatti multi-livello |
+| `anagrafiche.istanze_utilities` | anagrafiche | tabella | FK istanza_utility_id |
 | `config.tipi_contatti` | config | tabella | Lookup tipo contatto |
-| `config.utilities` | config | tabella | Lookup utility_codice |
 
 ## Note di migrazione
 
-- `utility_id` e` stato aggiunto con vincolo UNIQUE multi-livello `uq_contatti_multilevel`
-- `tipo_contatto_id` e` NOT NULL (migrazione precedente)
+- Changeset DB: `20260325-01-replace-utility-with-istanza-contatti-mctit.yaml` (schema)
+- Changeset DB: `20260325-06-recreate-contatti-chain-istanza-mctit.yaml` (funzioni)
+- 3 partial unique index sostituiscono il vecchio `uq_contatti_multilevel`
+- Il JOIN a `config.utilities` e` stato rimosso — `utility_codice` non e` piu` esposto
 - Il pattern cascata e` condiviso con indirizzi ruolo e conti bancari ruolo

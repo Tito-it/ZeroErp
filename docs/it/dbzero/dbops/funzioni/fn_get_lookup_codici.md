@@ -34,6 +34,8 @@ BEGIN
   --   - ordinamento ammesso solo su codice|descrizione e ASC|DESC
   --   - se la tabella ha colonna attivo e p_attivo_only=true,
   --     applica WHERE attivo IS TRUE
+  --   - codice: se la colonna esiste la restituisce,
+  --     altrimenti COALESCE(codice_interno, id::text)
   --   - codice_interno: se la colonna esiste la restituisce,
   --     altrimenti NULL::text
   --   - attivo: se la colonna esiste (boolean) la restituisce,
@@ -127,7 +129,7 @@ BEGIN
     );
   END IF;
 
-  -- Check colonna codice (obbligatoria)
+  -- Check colonna codice (opzionale — fallback a codice_interno o id)
   SELECT EXISTS (
     SELECT 1
       FROM pg_attribute a
@@ -137,15 +139,6 @@ BEGIN
        AND NOT a.attisdropped
   )
     INTO v_has_codice;
-
-  IF NOT v_has_codice THEN
-    PERFORM script.fn_log_and_raise_error(
-      'dbops', 'fn_get_lookup_codici', 'E_GENERICO',
-      jsonb_build_object('detail','colonna codice mancante', 'tabella', p_rel::text),
-      NULL::uuid,
-      concat('Colonna codice mancante in ', p_rel::text)
-    );
-  END IF;
 
   -- Check colonna codice_interno (opzionale)
   SELECT EXISTS (
@@ -157,6 +150,16 @@ BEGIN
        AND NOT a.attisdropped
   )
     INTO v_has_codice_interno;
+
+  -- Almeno una tra codice e codice_interno deve esistere
+  IF NOT v_has_codice AND NOT v_has_codice_interno THEN
+    PERFORM script.fn_log_and_raise_error(
+      'dbops', 'fn_get_lookup_codici', 'E_GENERICO',
+      jsonb_build_object('detail','ne codice ne codice_interno presenti', 'tabella', p_rel::text),
+      NULL::uuid,
+      concat('Tabella ', p_rel::text, ': serve almeno codice o codice_interno')
+    );
+  END IF;
 
   -- Check colonna descrizione (obbligatoria)
   SELECT EXISTS (
@@ -213,9 +216,18 @@ BEGIN
     END IF;
   END IF;
 
+  -- Fallback order_col: se codice non esiste, ordina per descrizione
+  IF v_order_col = 'codice' AND NOT v_has_codice THEN
+    v_order_col := 'descrizione';
+  END IF;
+
   -- Costruzione SQL dinamico
   v_sql := format(
-    'SELECT t.id::bigint, t.codice::text, %s, t.descrizione::text, %s FROM %s t',
+    'SELECT t.id::bigint, %s, %s, t.descrizione::text, %s FROM %s t',
+    CASE WHEN v_has_codice
+         THEN 't.codice::text'
+         ELSE 'COALESCE(t.codice_interno, t.id::text)::text'
+    END,
     CASE WHEN v_has_codice_interno
          THEN 't.codice_interno::text'
          ELSE 'NULL::text AS codice_interno'
@@ -246,7 +258,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION dbops.fn_get_lookup_codici(p_rel regclass, p_order_col text, p_order_dir text, p_attivo_only boolean, p_limit integer, p_offset integer)
-IS 'Lookup generico id/codice/codice_interno/descrizione/attivo con ordinamento validato e filtro attivo opzionale. codice_interno e attivo restituiti se le colonne esistono, altrimenti NULL.';
+IS 'Lookup generico id/codice/codice_interno/descrizione/attivo con ordinamento validato e filtro attivo opzionale. codice e codice_interno e attivo restituiti se le colonne esistono, altrimenti fallback o NULL.';
 ```
 
 ---

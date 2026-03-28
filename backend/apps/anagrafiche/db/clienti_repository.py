@@ -31,6 +31,19 @@ class ClientiRepository:
     # Helpers condivisi (riusabili da service per singoli step)
     # =================================================================
 
+    # Scopo: Restituisce l'id IVA di default da config.parameters (code='DEFAULT_IVA_ID').
+    #        Usato come default per clienti creati senza iva_id esplicito.
+    def get_default_iva_id(self) -> int:
+        sql = """
+            SELECT script.fn_get_parameter_full('DEFAULT_IVA_ID')
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql)
+            row = cursor.fetchone()
+        if not row or row[0] is None:
+            raise ValueError("Parametro 'DEFAULT_IVA_ID' non trovato in config.parameters.")
+        return int(row[0])
+
     # Scopo: Verifica se l'utility ammette creazione manuale (richiede_pdp = false).
     def get_utility(self, utility_id: int) -> dict[str, Any] | None:
         sql = """
@@ -182,6 +195,7 @@ class ClientiRepository:
         search_pattern = f"%{search.strip()}%" if search and search.strip() else None
         sql = f"""
             SELECT cl.id,
+                   cl.istanza_utility_id,
                    cl.soggetto_ruolo_id,
                    s.id AS soggetto_id,
                    s.codice AS soggetto_codice,
@@ -273,6 +287,7 @@ class ClientiRepository:
                    s.ragione_sociale_completa,
                    s.codice_fiscale,
                    s.partita_iva,
+                   s.tipo_soggetto_dettaglio_id,
                    -- Billing account
                    ba.codice AS ba_codice,
                    ba.fatturazione_ordini AS ba_fatturazione_ordini,

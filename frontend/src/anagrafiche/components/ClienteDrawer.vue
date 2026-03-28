@@ -8,16 +8,18 @@ import { useClientiStore } from '../stores/clienti'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useLookup } from '../../core/composables/useLookup'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
+import { useContattoForm } from '../../core/composables/useContattoForm'
+import { useIndirizzoSoggettoForm } from '../../core/composables/useIndirizzoSoggettoForm'
 import { listUtilitiesManual, listSoggettoIndirizzi } from '../api/anagrafiche'
 import { lookupCodici } from '../../core/apiCore'
-import { DRAWER_WIDTH } from '../../core/constants'
+import { DRAWER_WIDTH, TIPO_RUOLO } from '../../core/constants'
 import { displayDate } from '../../core/utils/date'
 import { statoClienteSeverity } from '../../core/utils/severity'
 import SoggettoResolver from '../../core/components/SoggettoResolver.vue'
 import SoggettoMessageBanner from '../../core/components/SoggettoMessageBanner.vue'
-import ContattiSoggettoDrawer from '../../core/components/ContattiSoggettoDrawer.vue'
-import IndirizziSoggettoDrawer from '../../core/components/IndirizziSoggettoDrawer.vue'
-import ContiBancariDrawer from '../../core/components/ContiBancariDrawer.vue'
+import SoggettoPreviewBadges from '../../core/components/SoggettoPreviewBadges.vue'
+import ContattoForm from '../../core/components/ContattoForm.vue'
+import IndirizzoSoggettoForm from '../../core/components/IndirizzoSoggettoForm.vue'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import DrawerFooter from '../../core/components/DrawerFooter.vue'
 import Drawer from 'primevue/drawer'
@@ -32,12 +34,16 @@ const { t } = useI18n()
 const store = useClientiStore()
 const { execute, loading } = useApiHandler()
 const isReadonly = useInjectReadonly()
+const contatto = useContattoForm()
+const contattoErrors = ref([])
+const indirizzo = useIndirizzoSoggettoForm()
 
 // Lookup
 const utilities = useLookup(() => listUtilitiesManual(), { immediate: true })
 const modalitaPagamento = useLookup(() => lookupCodici('config.modalita_pagamento'), { immediate: true })
 const terminiPagamento = useLookup(() => lookupCodici('config.termini_pagamento'), { immediate: true })
 const ivaList = useLookup(() => lookupCodici('config.iva'), { immediate: true })
+const statiCliente = useLookup(() => lookupCodici('config.stati_cliente'), { immediate: true })
 
 // Opzioni statiche (label tramite i18n)
 const tipoGgOptions = computed(() => [
@@ -83,7 +89,8 @@ function defaultForm() {
     cliente_pa: 'N', split_payment: 'N',
     codice_cig: null, codice_cup: null, codice_commessa: null,
     servizio_da_fatturare: true,
-    garanzia_tipo: 'D', garanzia_importo: 0
+    garanzia_tipo: 'D', garanzia_importo: 0,
+    stato_cliente_id: null
   }
 }
 
@@ -92,6 +99,9 @@ function resetForm() {
   indirizziSoggetto.value = []
   detail.value = null
   form.value = defaultForm()
+  contatto.reset()
+  contattoErrors.value = []
+  indirizzo.reset()
 }
 
 // Scopo: Popola form dai dati dettaglio (edit mode).
@@ -111,6 +121,7 @@ function populateFormFromDetail(d) {
     codice_commessa: d.codice_commessa,
     servizio_da_fatturare: d.servizio_da_fatturare ?? true,
     garanzia_tipo: (d.garanzia_tipo || 'D').trim(),
+    stato_cliente_id: d.stato_cliente_id,
     garanzia_importo: d.garanzia_importo || 0
   }
 }
@@ -125,6 +136,13 @@ async function loadIndirizziSoggetto(soggettoId) {
     }))
   } catch { indirizziSoggetto.value = [] }
 }
+
+// Scopo: estrae soggetto_ruolo_id CLIENTE dal soggetto selezionato (se ha gia il ruolo)
+const previewRuoloId = computed(() => {
+  const ruoli = soggettoSelezionato.value?.ruoli || []
+  const cliente = ruoli.find(r => r.codice === TIPO_RUOLO.CLIENTE)
+  return cliente?.soggetto_ruolo_id || null
+})
 
 function onSoggettoSelezionato(data) {
   soggettoSelezionato.value = data
@@ -148,6 +166,7 @@ watch(() => props.visible, async (val) => {
     populateFormFromDetail(d)
   } else {
     resetForm()
+    indirizzo.loadMatriceRuolo(TIPO_RUOLO.CLIENTE)
   }
 })
 
@@ -168,6 +187,7 @@ function buildEditablePayload() {
     servizio_da_fatturare: f.servizio_da_fatturare,
     garanzia_tipo: f.garanzia_tipo,
     garanzia_importo: f.garanzia_importo || 0,
+    stato_cliente_id: f.stato_cliente_id || null,
   }
 }
 
@@ -181,7 +201,16 @@ async function onSave() {
     )
     if (result !== null) emit('saved', result)
   } else {
-    // Create: campi editabili + soggetto + utility + indirizzo
+    // Validazione contatto inline (solo se compilato)
+    const hasContatto = (contatto.form.nominativo || '').trim()
+    if (hasContatto) {
+      contattoErrors.value = contatto.validate()
+      if (contattoErrors.value.length > 0) return
+    } else {
+      contattoErrors.value = []
+    }
+
+    // Create: campi editabili + soggetto + utility + indirizzo + contatto
     const sogg = soggettoSelezionato.value
     if (!sogg || !form.value.utility_id) return
     const payload = {
@@ -189,6 +218,12 @@ async function onSave() {
       utility_id: form.value.utility_id,
       indirizzo_dettaglio_id: form.value.indirizzo_dettaglio_id || null,
       ...buildEditablePayload(),
+    }
+    if (hasContatto) {
+      payload.contatto = { ...contatto.form }
+    }
+    if (indirizzo.hasIndirizzi.value) {
+      payload.indirizzi = indirizzo.toPayloadArray()
     }
     const result = await execute(
       () => store.create(payload),
@@ -213,13 +248,6 @@ const dataSospRiattDetail = computed(() => {
     : { label: t('clienti.col_riattivato_il'), date: riatt }
 })
 
-// Sotto-drawer
-const contattiDrawer = ref({ visible: false })
-const indirizziDrawer = ref({ visible: false })
-const contiBancariDrawer = ref({ visible: false })
-function openContatti() { contattiDrawer.value = { visible: true } }
-function openIndirizzi() { indirizziDrawer.value = { visible: true } }
-function openContiBancari() { contiBancariDrawer.value = { visible: true } }
 
 function onClose() {
   emit('update:visible', false)
@@ -270,6 +298,9 @@ function onClose() {
           />
         </div>
 
+        <!-- Sezioni dati cliente: visibili solo dopo selezione soggetto (create) o sempre (edit) -->
+        <template v-if="isEdit || soggettoSelezionato">
+
         <!-- === Servizio === -->
         <h4 class="mt-3">{{ t('clienti.section_servizio') }}</h4>
         <!-- Riga: utility + servizio_da_fatturare + stato (edit) -->
@@ -288,12 +319,6 @@ function onClose() {
             <Tag :value="detail.stato_descrizione" :severity="statoClienteSeverity(detail.stato_codice)"
               style="font-size: 0.95rem; padding: 0.5rem 1rem;" />
           </div>
-        </div>
-        <div v-if="!isEdit && indirizziSoggetto.length > 0" class="form-field">
-          <label>{{ t('clienti.field_indirizzo') }}</label>
-          <Select v-model="form.indirizzo_dettaglio_id" :options="indirizziSoggetto"
-            option-label="label" option-value="value" class="w-full"
-            :placeholder="t('clienti.select_indirizzo')" show-clear />
         </div>
 
         <!-- === Riepilogo identificativo (solo edit, readonly) === -->
@@ -406,17 +431,58 @@ function onClose() {
           </div>
         </div>
 
-        <!-- === Gestione sotto-drawer (solo edit) === -->
-        <template v-if="isEdit && detail">
-          <h4 class="mt-3">{{ t('clienti.section_gestione') }}</h4>
-          <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
-            <Button icon="pi pi-id-card" :label="t('clienti.gestisci_contatti')" outlined @click="openContatti" />
-            <Button icon="pi pi-map-marker" :label="t('clienti.gestisci_indirizzi')" outlined @click="openIndirizzi" />
-            <Button icon="pi pi-wallet" :label="t('clienti.gestisci_conti')" outlined @click="openContiBancari" />
+        <!-- === Contatto inline (solo creazione) === -->
+        <template v-if="!isEdit">
+          <div class="app-drawer-section">
+            <h4>{{ t('soggetti.section_contatto') }}</h4>
           </div>
+          <ContattoForm
+            :form="contatto.form"
+            :tipi-contatto="contatto.tipiContatto"
+            :unita-organizzative="contatto.unitaOrganizzative"
+            :errors="contattoErrors"
+            :show-u-o="false"
+            :disabled="false"
+          />
         </template>
 
+        <!-- === Indirizzo inline (solo creazione) === -->
+        <template v-if="!isEdit">
+          <div class="app-drawer-section">
+            <h4>{{ t('soggetti.section_indirizzo') }}</h4>
+          </div>
+          <IndirizzoSoggettoForm
+            :form="indirizzo.form"
+            :is-libera="indirizzo.isLibera.value"
+            @update:is-libera="v => indirizzo.isLibera.value = v"
+            :tipi-stato="indirizzo.tipiStato.value"
+            :stati-lookup="indirizzo.statiLookup"
+            :cap-options="indirizzo.capOptions.value"
+            :loading-cap="indirizzo.loadingCap.value"
+            :auto-clone="indirizzo.autoClone.value"
+            @update:auto-clone="v => indirizzo.autoClone.value = v"
+            @switch-tipo="indirizzo.switchTipo"
+            :indirizzo-warnings="indirizzo.indirizzoWarnings.value"
+            :address-not-found="indirizzo.addressNotFound.value"
+            :disabled="false"
+          />
+        </template>
+
+        </template><!-- fine v-if="isEdit || soggettoSelezionato" -->
+
       </div>
+
+      <!-- Badge indirizzi/contatti/conti — creazione: readonly preview, edit: editabile -->
+      <SoggettoPreviewBadges v-if="!isEdit && previewRuoloId"
+        :soggetto-ruolo-id="previewRuoloId"
+        :tipo-soggetto-dettaglio-id="soggettoSelezionato?.tipo_soggetto_dettaglio_id"
+        :tipo-ruolo-codice="TIPO_RUOLO.CLIENTE"
+        preview />
+      <SoggettoPreviewBadges v-else-if="isEdit && detail"
+        :soggetto-ruolo-id="detail.soggetto_ruolo_id"
+        :istanza-utility-id="detail.istanza_utility_id"
+        :tipo-soggetto-dettaglio-id="detail.tipo_soggetto_dettaglio_id"
+        :tipo-ruolo-codice="TIPO_RUOLO.CLIENTE" />
 
       <!-- Footer salva/annulla -->
       <div class="flex justify-end mt-4">
@@ -428,43 +494,13 @@ function onClose() {
     <SoggettoResolver
       v-if="!isEdit"
       :visible="resolverVisible"
-      tipo-ruolo-codice="CL"
+      :tipo-ruolo-codice="TIPO_RUOLO.CLIENTE"
       @update:visible="v => resolverVisible = v"
       @soggetto-selezionato="onSoggettoSelezionato"
       @soggetto-creato="onSoggettoCreato"
       @annullato="resolverVisible = false"
     />
 
-    <!-- Sotto-drawer: Contatti ruolo (solo edit) -->
-    <ContattiSoggettoDrawer
-      v-if="isEdit && detail"
-      :visible="contattiDrawer.visible"
-      @update:visible="v => contattiDrawer.visible = v"
-      :soggetto-id="detail.soggetto_ruolo_id"
-      :utility-id="detail.utility_id"
-      context="ruolo"
-    />
-
-    <!-- Sotto-drawer: Indirizzi ruolo (solo edit) -->
-    <IndirizziSoggettoDrawer
-      v-if="isEdit && detail"
-      :visible="indirizziDrawer.visible"
-      @update:visible="v => indirizziDrawer.visible = v"
-      :soggetto-id="detail.soggetto_ruolo_id"
-      :utility-id="detail.utility_id"
-      context="ruolo"
-    />
-
-    <!-- Sotto-drawer: Conti bancari ruolo (solo edit) -->
-    <ContiBancariDrawer
-      v-if="isEdit && detail"
-      :visible="contiBancariDrawer.visible"
-      @update:visible="v => contiBancariDrawer.visible = v"
-      :owner-id="detail.soggetto_ruolo_id"
-      :owner-name="detail.ragione_sociale_completa || ''"
-      :utility-id="detail.utility_id"
-      context="ruolo"
-    />
   </Drawer>
 </template>
 

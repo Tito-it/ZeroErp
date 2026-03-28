@@ -2,43 +2,25 @@
 # ⚙️ Funzione `fn_crea_soggetto_pg`
 
 ```sql
-CREATE FUNCTION fn_crea_soggetto_pg(p_ragione_sociale text, p_tipo_soggetto_dettaglio_id bigint, p_email text, p_codice_fiscale text, p_partita_iva text, p_stato_iso2 character, p_forma_giuridica_id bigint, p_id_prov_iscri_rea integer, p_iscrizione_rea character varying, p_capitale_sociale numeric, p_socio_unico anagrafiche.socio_unico_enum, p_liquidazione anagrafiche.liquidazione_enum, p_destinatario_fe character, p_pec_fatturazione character varying, p_codice_sdi character varying)
+CREATE FUNCTION fn_crea_soggetto_pg(p_ragione_sociale text, p_tipo_soggetto_dettaglio_id bigint, p_email character varying, p_codice_fiscale text, p_partita_iva text, p_stato_iso2 character, p_forma_giuridica_id bigint, p_id_prov_iscri_rea integer, p_iscrizione_rea character varying, p_capitale_sociale numeric, p_socio_unico anagrafiche.socio_unico_enum, p_liquidazione anagrafiche.liquidazione_enum, p_destinatario_fe character, p_pec_fatturazione character varying, p_codice_sdi character varying, p_tipo_contatto_id integer)
 ```
 
 **Definizione completa:**
 
 ```sql
-CREATE OR REPLACE FUNCTION anagrafiche.fn_crea_soggetto_pg(p_ragione_sociale text, p_tipo_soggetto_dettaglio_id bigint, p_email text, p_codice_fiscale text DEFAULT NULL::text, p_partita_iva text DEFAULT NULL::text, p_stato_iso2 character DEFAULT NULL::bpchar, p_forma_giuridica_id bigint DEFAULT NULL::bigint, p_id_prov_iscri_rea integer DEFAULT NULL::integer, p_iscrizione_rea character varying DEFAULT NULL::character varying, p_capitale_sociale numeric DEFAULT NULL::numeric, p_socio_unico anagrafiche.socio_unico_enum DEFAULT NULL::anagrafiche.socio_unico_enum, p_liquidazione anagrafiche.liquidazione_enum DEFAULT NULL::anagrafiche.liquidazione_enum, p_destinatario_fe character DEFAULT NULL::bpchar, p_pec_fatturazione character varying DEFAULT NULL::character varying, p_codice_sdi character varying DEFAULT NULL::character varying)
+CREATE OR REPLACE FUNCTION anagrafiche.fn_crea_soggetto_pg(p_ragione_sociale text, p_tipo_soggetto_dettaglio_id bigint, p_email character varying, p_codice_fiscale text DEFAULT NULL::text, p_partita_iva text DEFAULT NULL::text, p_stato_iso2 character DEFAULT NULL::bpchar, p_forma_giuridica_id bigint DEFAULT NULL::bigint, p_id_prov_iscri_rea integer DEFAULT NULL::integer, p_iscrizione_rea character varying DEFAULT NULL::character varying, p_capitale_sociale numeric DEFAULT NULL::numeric, p_socio_unico anagrafiche.socio_unico_enum DEFAULT NULL::anagrafiche.socio_unico_enum, p_liquidazione anagrafiche.liquidazione_enum DEFAULT NULL::anagrafiche.liquidazione_enum, p_destinatario_fe character DEFAULT NULL::bpchar, p_pec_fatturazione character varying DEFAULT NULL::character varying, p_codice_sdi character varying DEFAULT NULL::character varying, p_tipo_contatto_id integer DEFAULT NULL::integer)
  RETURNS uuid
  LANGUAGE plpgsql
 AS $function$
 DECLARE
-    -- Lookup config
     v_stato_id                    config.stati.id%TYPE;
     v_stato_iso2_resolved         config.stati.codice_iso2%TYPE;
     v_dati_societari_policy       config.tipi_soggetto_dettaglio.dati_societari_policy%TYPE;
     v_socio_unico_resolved        anagrafiche.dati_societari.socio_unico%TYPE;
     v_liquidazione_resolved       anagrafiche.dati_societari.liquidazione%TYPE;
-    -- Risultato
+    v_tipo_contatto_id            config.tipi_contatti.id%TYPE;
     v_soggetto_id                 anagrafiche.soggetti.id%TYPE;
 BEGIN
-    -- =========================================================
-    -- Scopo:
-    --   Crea un soggetto Persona Giuridica con contatto default.
-    --   Se il tipo soggetto ha policy dati_societari = REQUIRED,
-    --   crea anche il record in dati_societari.
-    --   Se policy = OPTIONAL, crea dati_societari solo se
-    --   almeno un campo DS e' valorizzato.
-    --   Non crea indirizzi: responsabilita' del chiamante.
-    --   Non assegna ruoli: il chiamante usa
-    --   fn_get_or_create_soggetto_ruolo separatamente.
-    --
-    -- Defaults risolti internamente da config.parameters:
-    --   p_stato_iso2   -> soggetto_default_stato_iso2
-    --   p_socio_unico  -> dati_societari_default_socio_unico
-    --   p_liquidazione -> dati_societari_default_liquidazione
-    -- =========================================================
-
     -- =============================================================
     -- Validazione parametri obbligatori
     -- =============================================================
@@ -61,7 +43,7 @@ BEGIN
         );
     END IF;
 
-    -- Verifica che il tipo soggetto esista
+    -- Verifica che il tipo soggetto esista e recupera policy dati societari
     SELECT tsd.dati_societari_policy
       INTO v_dati_societari_policy
       FROM config.tipi_soggetto_dettaglio tsd
@@ -86,11 +68,27 @@ BEGIN
         );
     END IF;
 
+    -- Tipo contatto: fallback al primo dalla tabella se non fornito
+    v_tipo_contatto_id := COALESCE(
+        p_tipo_contatto_id,
+        (SELECT id FROM config.tipi_contatti ORDER BY id LIMIT 1)
+    );
+
+    IF v_tipo_contatto_id IS NULL THEN
+        PERFORM script.fn_log_and_raise_error(
+            'database', 'anagrafiche.fn_crea_soggetto_pg',
+            'E_ADMIN_VALIDAZIONE',
+            jsonb_build_object('parametro', 'p_tipo_contatto_id'),
+            NULL::uuid,
+            'Tipo contatto obbligatorio e nessun tipo contatto trovato in config.tipi_contatti.'
+        );
+    END IF;
+
     -- =============================================================
     -- Risoluzione default da config.parameters
     -- =============================================================
 
-    -- Stato (nazionalita')
+    -- Stato (nazionalita)
     v_stato_iso2_resolved := COALESCE(
         p_stato_iso2,
         (SELECT default_value FROM config.parameters
@@ -112,7 +110,7 @@ BEGIN
         );
     END IF;
 
-    -- Socio unico e liquidazione
+    -- Socio unico e liquidazione (default da config.parameters)
     v_socio_unico_resolved := COALESCE(
         p_socio_unico,
         (SELECT default_value FROM config.parameters
@@ -128,7 +126,7 @@ BEGIN
     );
 
     -- =============================================================
-    -- Guard unicita' CF/PIVA (se forniti)
+    -- Guard unicita CF/PIVA per stato (se forniti)
     -- =============================================================
 
     IF p_codice_fiscale IS NOT NULL AND TRIM(p_codice_fiscale) <> '' THEN
@@ -184,21 +182,23 @@ BEGIN
     RETURNING id INTO v_soggetto_id;
 
     -- =============================================================
-    -- Step 2: Creazione contatto default
+    -- Step 2: Creazione contatto default con tipo_contatto_id
     -- =============================================================
 
     INSERT INTO anagrafiche.contatti (
-        soggetto_id, nominativo, email, is_default
+        soggetto_id, tipo_contatto_id, nominativo, email, is_default
     )
     VALUES (
         v_soggetto_id,
+        v_tipo_contatto_id,
         TRIM(p_ragione_sociale),
         TRIM(p_email),
         true
     );
 
     -- =============================================================
-    -- Step 3: Creazione dati societari (se policy lo richiede)
+    -- Step 3: Creazione dati societari (se policy lo richiede
+    --         o se almeno un campo DS e fornito con policy OPTIONAL)
     -- =============================================================
 
     IF v_dati_societari_policy = 'REQUIRED'
@@ -212,7 +212,7 @@ BEGIN
             OR p_codice_sdi IS NOT NULL
           ))
     THEN
-        -- Guard: campi NOT NULL di dati_societari obbligatori
+        -- Guard campi NOT NULL di dati_societari
         IF p_id_prov_iscri_rea IS NULL THEN
             PERFORM script.fn_log_and_raise_error(
                 'database', 'anagrafiche.fn_crea_soggetto_pg',
@@ -273,8 +273,8 @@ BEGIN
 END;
 $function$
 
-COMMENT ON FUNCTION anagrafiche.fn_crea_soggetto_pg(p_ragione_sociale text, p_tipo_soggetto_dettaglio_id bigint, p_email text, p_codice_fiscale text, p_partita_iva text, p_stato_iso2 character, p_forma_giuridica_id bigint, p_id_prov_iscri_rea integer, p_iscrizione_rea character varying, p_capitale_sociale numeric, p_socio_unico anagrafiche.socio_unico_enum, p_liquidazione anagrafiche.liquidazione_enum, p_destinatario_fe character, p_pec_fatturazione character varying, p_codice_sdi character varying)
-IS 'Building block: crea soggetto PG + contatto default + dati societari (se policy REQUIRED o dati forniti). Default stato_iso2, socio_unico, liquidazione da config.parameters. Non crea indirizzi ne'' assegna ruoli (responsabilita'' del chiamante).';
+COMMENT ON FUNCTION anagrafiche.fn_crea_soggetto_pg(p_ragione_sociale text, p_tipo_soggetto_dettaglio_id bigint, p_email character varying, p_codice_fiscale text, p_partita_iva text, p_stato_iso2 character, p_forma_giuridica_id bigint, p_id_prov_iscri_rea integer, p_iscrizione_rea character varying, p_capitale_sociale numeric, p_socio_unico anagrafiche.socio_unico_enum, p_liquidazione anagrafiche.liquidazione_enum, p_destinatario_fe character, p_pec_fatturazione character varying, p_codice_sdi character varying, p_tipo_contatto_id integer)
+IS 'Crea soggetto PG + contatto default con tipo_contatto_id + dati societari (se policy). Fallback tipo contatto: primo da config.tipi_contatti. Default stato_iso2, socio_unico, liquidazione da config.parameters. NON crea indirizzi ne assegna ruoli.';
 ```
 
 ---

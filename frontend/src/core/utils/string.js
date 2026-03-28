@@ -72,9 +72,14 @@ export function normalizeUpper(form, field) {
  * @param {Array} items - Array con campo 'fonte' (soggetto/ruolo/utility)
  * @returns {Array} - Nuovo array ordinato (non muta l'originale)
  */
-const FONTE_ORDER = { soggetto: 0, ruolo: 1, utility: 2 }
+const FONTE_ORDER = { soggetto: 0, ruolo: 1, istanza: 2 }
 export function sortByFonte(items) {
-  return [...items].sort((a, b) =>
-    (FONTE_ORDER[a.fonte] ?? 9) - (FONTE_ORDER[b.fonte] ?? 9)
-  )
+  return [...items].sort((a, b) => {
+    const fonteOrd = (FONTE_ORDER[a.fonte] ?? 9) - (FONTE_ORDER[b.fonte] ?? 9)
+    if (fonteOrd !== 0) return fonteOrd
+    // A parita' di fonte, ordina per tipo indirizzo/contatto alfabetico
+    const descA = a.tipo_indirizzo_descrizione || a.tipo_contatto_descrizione || a.uso || ''
+    const descB = b.tipo_indirizzo_descrizione || b.tipo_contatto_descrizione || b.uso || ''
+    return descA.localeCompare(descB)
+  })
 }

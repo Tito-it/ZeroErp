@@ -48,7 +48,9 @@ class SoggettiRepository:
                    tsd.id AS tipo_soggetto_dettaglio_id,
                    ts.id AS natura_soggetto,
                    (SELECT COALESCE(jsonb_agg(jsonb_build_object(
-                       'codice', tr.codice, 'descrizione', tr.descrizione
+                       'soggetto_ruolo_id', sr.id,
+                       'codice', COALESCE(tr.codice_interno, tr.codice),
+                       'descrizione', tr.descrizione
                    ) ORDER BY tr.descrizione), '[]'::jsonb)
                     FROM anagrafiche.soggetti_ruoli sr
                     JOIN config.tipi_ruoli tr ON tr.id = sr.tipo_ruolo_id
@@ -140,22 +142,26 @@ class SoggettiRepository:
         self, *, cognome: str, nome: str, codice_fiscale: str, email: str,
         data_nascita: str | None = None, sesso: str = "M",
         stato_iso2: str = "IT",
+        comune_nascita_id: int | None = None,
+        tipo_contatto_id: int | None = None,
     ) -> str:
         sql = """
             SELECT anagrafiche.fn_crea_soggetto_pf(
-                p_cognome        := %s,
-                p_nome           := %s,
-                p_codice_fiscale := %s,
-                p_email          := %s,
-                p_data_nascita   := %s::date,
-                p_sesso          := %s,
-                p_stato_iso2     := %s
+                p_cognome           := %s,
+                p_nome              := %s,
+                p_codice_fiscale    := %s,
+                p_email             := %s,
+                p_data_nascita      := %s::date,
+                p_sesso             := %s,
+                p_stato_iso2        := %s,
+                p_comune_nascita_id := %s,
+                p_tipo_contatto_id  := %s
             )
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [
                 cognome, nome, codice_fiscale, email,
-                data_nascita, sesso, stato_iso2,
+                data_nascita, sesso, stato_iso2, comune_nascita_id, tipo_contatto_id,
             ])
             row = cursor.fetchone()
             assert row is not None
@@ -176,6 +182,7 @@ class SoggettiRepository:
         destinatario_fe: str | None = None,
         pec_fatturazione: str | None = None,
         codice_sdi: str | None = None,
+        tipo_contatto_id: int | None = None,
     ) -> str:
         sql = """
             SELECT anagrafiche.fn_crea_soggetto_pg(
@@ -193,7 +200,8 @@ class SoggettiRepository:
                 p_liquidazione               := %s::anagrafiche.liquidazione_enum,
                 p_destinatario_fe            := %s,
                 p_pec_fatturazione           := %s,
-                p_codice_sdi                 := %s
+                p_codice_sdi                 := %s,
+                p_tipo_contatto_id           := %s
             )
         """
         with connection.cursor() as cursor:
@@ -203,6 +211,7 @@ class SoggettiRepository:
                 forma_giuridica_id, id_prov_iscri_rea, iscrizione_rea,
                 capitale_sociale, socio_unico, liquidazione,
                 destinatario_fe, pec_fatturazione, codice_sdi,
+                tipo_contatto_id,
             ])
             row = cursor.fetchone()
             assert row is not None
@@ -269,20 +278,20 @@ class SoggettiRepository:
         telefono: str | None = None, cellulare: str | None = None,
         pec: str | None = None, tipo_contatto_id: int | None = None,
         unita_organizzativa_id: int | None = None, note: str | None = None,
-        soggetto_ruolo_id: int | None = None, utility_id: int | None = None,
+        soggetto_ruolo_id: int | None = None, istanza_utility_id: int | None = None,
     ) -> dict[str, Any]:
         sql = """
             INSERT INTO anagrafiche.contatti
-                (soggetto_id, soggetto_ruolo_id, utility_id, nominativo, email,
+                (soggetto_id, soggetto_ruolo_id, istanza_utility_id, nominativo, email,
                  telefono, cellulare, pec, tipo_contatto_id, unita_organizzativa_id, note)
             VALUES (%s::uuid, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING id, nominativo, email, telefono, cellulare, pec,
                       tipo_contatto_id, unita_organizzativa_id, note,
-                      soggetto_ruolo_id, utility_id
+                      soggetto_ruolo_id, istanza_utility_id
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [
-                soggetto_id, soggetto_ruolo_id, utility_id, nominativo, email,
+                soggetto_id, soggetto_ruolo_id, istanza_utility_id, nominativo, email,
                 telefono, cellulare, pec, tipo_contatto_id, unita_organizzativa_id, note,
             ])
             result = row_to_dict(cursor)
@@ -409,17 +418,17 @@ class SoggettiRepository:
             return cursor.rowcount > 0
 
     # =================================================================
-    # Indirizzi ruolo (anagrafiche.indirizzi — con utility_id)
+    # Indirizzi ruolo (anagrafiche.indirizzi — con istanza_utility_id)
     # =================================================================
 
     # Campi ammessi per update indirizzi ruolo.
     _IND_RUOLO_ALLOWED = {
-        "tipo_indirizzo_id", "utility_id", "indirizzo_dettaglio_id",
+        "tipo_indirizzo_id", "istanza_utility_id", "indirizzo_dettaglio_id",
         "indirizzo_libero", "stato_id", "comune_id", "codice_postale_id",
         "administrative_area", "locality", "sublocality", "postal_box",
     }
     _IND_RUOLO_NULLABLE = {
-        "utility_id", "indirizzo_dettaglio_id", "indirizzo_libero",
+        "istanza_utility_id", "indirizzo_dettaglio_id", "indirizzo_libero",
         "stato_id", "comune_id", "codice_postale_id",
         "administrative_area", "locality", "sublocality", "postal_box",
     }
@@ -431,7 +440,7 @@ class SoggettiRepository:
     def crea_indirizzo_ruolo(
         self, soggetto_ruolo_id: int, *,
         tipo_indirizzo_id: int,
-        utility_id: int | None = None,
+        istanza_utility_id: int | None = None,
         indirizzo_dettaglio_id: int | None = None,
         indirizzo_libero: str | None = None,
         stato_id: int | None = None,
@@ -440,17 +449,17 @@ class SoggettiRepository:
     ) -> dict[str, Any]:
         sql = """
             INSERT INTO anagrafiche.indirizzi
-                (soggetto_ruolo_id, tipo_indirizzo_id, utility_id,
+                (soggetto_ruolo_id, tipo_indirizzo_id, istanza_utility_id,
                  indirizzo_dettaglio_id, indirizzo_libero,
                  stato_id, comune_id, codice_postale_id)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-            RETURNING id, soggetto_ruolo_id, tipo_indirizzo_id, utility_id,
+            RETURNING id, soggetto_ruolo_id, tipo_indirizzo_id, istanza_utility_id,
                       indirizzo_dettaglio_id, indirizzo_libero,
                       stato_id, comune_id, codice_postale_id
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [
-                soggetto_ruolo_id, tipo_indirizzo_id, utility_id,
+                soggetto_ruolo_id, tipo_indirizzo_id, istanza_utility_id,
                 indirizzo_dettaglio_id, indirizzo_libero,
                 stato_id, comune_id, codice_postale_id,
             ])
@@ -493,6 +502,14 @@ class SoggettiRepository:
             cursor.execute(sql, [indirizzo_id, soggetto_ruolo_id])
             return cursor.rowcount > 0
 
+    # Scopo: Risolve tipo_indirizzo codice → id. Usa COALESCE(codice_interno, codice) per match.
+    def resolve_tipo_indirizzo_id(self, codice: str) -> int | None:
+        sql = "SELECT id FROM config.tipi_indirizzi WHERE COALESCE(codice_interno, codice) = %s LIMIT 1"
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [codice])
+            row = cursor.fetchone()
+            return row[0] if row else None
+
     # =================================================================
     # Ruoli
     # =================================================================
@@ -501,7 +518,7 @@ class SoggettiRepository:
     def get_soggetto_ruoli(self, soggetto_id: str) -> list[dict[str, Any]]:
         sql = """
             SELECT sr.id, sr.tipo_ruolo_id,
-                   tr.codice AS ruolo_codice,
+                   COALESCE(tr.codice_interno, tr.codice) AS ruolo_codice,
                    tr.descrizione AS ruolo_descrizione
               FROM anagrafiche.soggetti_ruoli sr
               JOIN config.tipi_ruoli tr ON tr.id = sr.tipo_ruolo_id
@@ -570,9 +587,9 @@ class SoggettiRepository:
     def get_config_resolver(self, tipo_ruolo_codice: str) -> dict[str, Any] | None:
         # 1. Recupera tipo_ruolo
         sql_ruolo = """
-            SELECT tr.id, tr.codice, tr.descrizione
+            SELECT tr.id, COALESCE(tr.codice_interno, tr.codice) AS codice, tr.descrizione
               FROM config.tipi_ruoli tr
-             WHERE tr.codice = %s
+             WHERE COALESCE(tr.codice_interno, tr.codice) = %s
         """
         # 2. Nature ammesse per il ruolo (dalla matrice config)
         sql_nature = """
@@ -596,7 +613,7 @@ class SoggettiRepository:
                    tsd.dati_societari_policy
               FROM config.tipi_soggetto_dettaglio tsd
               JOIN config.tipi_soggetto ts ON ts.id = tsd.tipo_soggetto_id
-             WHERE ts.id = ANY(%s)
+             WHERE (%s::bigint[] IS NULL OR ts.id = ANY(%s))
              ORDER BY tsd.codice_interno
         """
         with connection.cursor() as cursor:
@@ -608,13 +625,10 @@ class SoggettiRepository:
             cursor.execute(sql_nature, [ruolo["id"]])
             nature = rows_to_list(cursor)
 
-            # Se nessuna natura configurata, il ruolo accetta tutte le nature
-            if nature:
-                nature_ids = [n["tipo_soggetto_id"] for n in nature]
-            else:
-                nature_ids = ["PF", "PG", "ENTE"]
+            # Se nessuna natura configurata, il ruolo accetta tutte le nature (NULL = nessun filtro)
+            nature_ids = [n["tipo_soggetto_id"] for n in nature] if nature else None
 
-            cursor.execute(sql_dettaglio, [nature_ids])
+            cursor.execute(sql_dettaglio, [nature_ids, nature_ids])
             dettagli = rows_to_list(cursor)
 
         return {

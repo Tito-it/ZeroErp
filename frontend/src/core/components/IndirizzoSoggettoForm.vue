@@ -3,6 +3,7 @@
 // Supporta multi-tipo con barra tag, auto-clone per obbligatori.
 // Modalita' normalizzata (comune + via + civico) e libera (estero).
 
+import { ref, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import InputText from 'primevue/inputtext'
 import InputNumber from 'primevue/inputnumber'
@@ -15,7 +16,7 @@ import StradarioGeneraleAutocomplete from './StradarioGeneraleAutocomplete.vue'
 
 const { t } = useI18n()
 
-defineProps({
+const props = defineProps({
   form: { type: Object, required: true },
   isLibera: { type: Boolean, default: false },
   tipiStato: { type: Array, default: () => [] },
@@ -25,38 +26,72 @@ defineProps({
   autoClone: { type: Boolean, default: true },
   indirizzoWarnings: { type: Array, default: () => [] },
   addressNotFound: { type: Boolean, default: false },
+  tipiEsistenti: { type: Array, default: () => [] },
   comuneInitialItem: { type: Object, default: null },
   disabled: { type: Boolean, default: false }
 })
 
 defineEmits(['update:isLibera', 'update:autoClone', 'switchTipo'])
+
+const stradarioRef = ref(null)
+const stradarioGenRef = ref(null)
+
+// Arricchisce tipiStato con flag 'esistente' (gia' creato nel DB per questa istanza)
+const tipiStatoArricchiti = computed(() =>
+  props.tipiStato.map(t => ({
+    ...t,
+    esistente: props.tipiEsistenti.includes(t.codice),
+  }))
+)
+
+// Descrizione del tipo indirizzo attivo (per il titolo sopra il form)
+const tipoAttivoDescrizione = computed(() => {
+  const attivo = tipiStatoArricchiti.value.find(t => t.attivo)
+  return attivo?.descrizione || null
+})
+
+// True se almeno un tab e' selezionato (non esistente)
+const hasTabAttivo = computed(() => !!tipoAttivoDescrizione.value)
+
+// Warning "via non trovata" — differenziato per stradario locale vs generale
+const viaNoResultsLocale = computed(() =>
+  !props.form.via_nuova && (stradarioRef.value?.noResults || false)
+)
+const viaNoResultsGenerale = computed(() =>
+  props.form.via_nuova && (stradarioGenRef.value?.noResults || false)
+)
 </script>
 
 <template>
   <div class="form-grid">
-    <!-- Barra tag tipi indirizzo -->
-    <div v-if="tipiStato.length > 0" class="indirizzo-tipi-bar">
+    <!-- Barra tab tipi indirizzo -->
+    <div v-if="tipiStatoArricchiti.length > 0" class="indirizzo-tipi-bar">
       <div
-        v-for="tipo in tipiStato"
+        v-for="tipo in tipiStatoArricchiti"
         :key="tipo.codice"
-        class="indirizzo-tipo-tag"
+        class="indirizzo-tipo-tab"
         :class="{
-          'indirizzo-tipo-tag--attivo': tipo.attivo,
-          'indirizzo-tipo-tag--compilato': tipo.compilato,
-          'indirizzo-tipo-tag--obbligatorio': tipo.obbligatorio,
+          'indirizzo-tipo-tab--attivo': tipo.attivo,
+          'indirizzo-tipo-tab--compilato': tipo.compilato && !tipo.attivo,
+          'indirizzo-tipo-tab--esistente': tipo.esistente,
         }"
-        @click="$emit('switchTipo', tipo.codice)"
-        :title="tipo.obbligatorio ? t('indirizzo_soggetto.obbligatorio') : ''"
+        @click="!tipo.esistente && $emit('switchTipo', tipo.codice)"
+        :title="tipo.esistente ? t('indirizzo_soggetto.tipo_gia_creato') : (tipo.obbligatorio ? t('indirizzo_soggetto.obbligatorio') : '')"
       >
-        <i v-if="tipo.compilato" class="pi pi-check" style="font-size: 0.7rem;" />
+        <i v-if="tipo.compilato && !tipo.esistente" class="pi pi-check" style="font-size: 0.7rem;" />
+        <i v-else-if="tipo.esistente" class="pi pi-lock" style="font-size: 0.65rem;" />
         <span>{{ tipo.descrizione }}</span>
-        <span v-if="tipo.obbligatorio" class="indirizzo-tipo-req">*</span>
+        <span v-if="tipo.obbligatorio && !tipo.esistente" class="indirizzo-tipo-req">*</span>
       </div>
     </div>
 
+    <!-- Titolo tipo attivo + opzioni (solo se un tab e' selezionato) -->
+    <template v-if="hasTabAttivo">
+    <div class="indirizzo-tipo-titolo">{{ tipoAttivoDescrizione }}</div>
+
     <!-- Checkbox: auto-clone + formato libero + via non presente (affiancati) -->
     <div class="form-row-inline" style="flex-wrap: wrap;">
-      <div v-if="tipiStato.filter(t => t.obbligatorio).length > 1" style="display: flex; align-items: center; gap: 0.5rem;">
+      <div v-if="tipiStatoArricchiti.filter(t => t.obbligatorio && !t.esistente).length > 1" style="display: flex; align-items: center; gap: 0.5rem;">
         <Checkbox
           :modelValue="autoClone"
           @update:modelValue="$emit('update:autoClone', $event)"
@@ -84,12 +119,28 @@ defineEmits(['update:isLibera', 'update:autoClone', 'switchTipo'])
 
     <!-- === MODALITA' NORMALIZZATA === -->
     <template v-if="!isLibera">
-      <div class="form-field">
-        <label>{{ t('indirizzi.campo_comune') }} *</label>
-        <ComuneAutocomplete v-model="form.comune_id"
-          :initial-item="form._comune_obj || comuneInitialItem"
-          :disabled="disabled"
-          @item-selected="obj => form._comune_obj = obj" />
+      <!-- Comune + CAP affiancati -->
+      <div style="display: flex; gap: 0.5rem;">
+        <div class="form-field" style="flex: 3;">
+          <label>{{ t('indirizzi.campo_comune') }} *</label>
+          <ComuneAutocomplete v-model="form.comune_id"
+            :initial-item="form._comune_obj || comuneInitialItem"
+            :disabled="disabled"
+            @item-selected="obj => form._comune_obj = obj" />
+        </div>
+        <div class="form-field" style="flex: 1;">
+          <label>{{ t('indirizzi.campo_cap') }} *</label>
+          <Select
+            v-model="form.codice_postale_id"
+            :options="capOptions"
+            option-label="codice"
+            option-value="id"
+            :placeholder="t('indirizzi.campo_cap')"
+            :loading="loadingCap"
+            :disabled="disabled || !form.comune_id"
+            class="w-full"
+          />
+        </div>
       </div>
 
       <!-- Via esistente (stradario locale) -->
@@ -97,6 +148,7 @@ defineEmits(['update:isLibera', 'update:autoClone', 'switchTipo'])
         <div class="form-field">
           <label>{{ t('indirizzi.campo_via') }} *</label>
           <StradarioAutocomplete
+            ref="stradarioRef"
             v-model="form.via_obj"
             :comune-id="form.comune_id"
             :disabled="disabled || !form.comune_id"
@@ -109,26 +161,12 @@ defineEmits(['update:isLibera', 'update:autoClone', 'switchTipo'])
         <div class="form-field">
           <label>{{ t('indirizzi.campo_via') }} *</label>
           <StradarioGeneraleAutocomplete
+            ref="stradarioGenRef"
             v-model="form.via_obj"
             :disabled="disabled"
           />
         </div>
       </template>
-
-      <!-- CAP: sempre visibile (auto-set da stradario, fallback da comune) -->
-      <div class="form-field">
-        <label>{{ t('indirizzi.campo_cap') }} *</label>
-        <Select
-          v-model="form.codice_postale_id"
-          :options="capOptions"
-          option-label="codice"
-          option-value="id"
-          :placeholder="t('indirizzi.campo_cap')"
-          :loading="loadingCap"
-          :disabled="disabled || !form.comune_id"
-          class="w-full"
-        />
-      </div>
 
       <!-- Civico e dettagli -->
       <div class="form-grid-2col">
@@ -158,10 +196,16 @@ defineEmits(['update:isLibera', 'update:autoClone', 'switchTipo'])
         </div>
       </div>
 
-      <Message v-for="(msg, i) in indirizzoWarnings" :key="i" severity="warn" size="small" class="mt-1">
+      <Message v-if="viaNoResultsLocale" severity="warn" size="small" class="mt-1">
+        {{ t('indirizzi.via_non_trovata_crea_nuovo') }}
+      </Message>
+      <Message v-if="viaNoResultsGenerale" severity="warn" size="small" class="mt-1">
+        {{ t('indirizzi.via_non_trovata_stradario_generale') }}
+      </Message>
+      <Message v-for="(msg, i) in indirizzoWarnings" :key="i" v-show="form.via_nuova" severity="warn" size="small" class="mt-1">
         {{ msg }}
       </Message>
-      <Message v-if="addressNotFound" severity="warn" size="small" class="mt-1">
+      <Message v-if="addressNotFound && form.via_nuova" severity="warn" size="small" class="mt-1">
         {{ t('indirizzi.indirizzo_non_trovato') }}
       </Message>
     </template>
@@ -192,6 +236,8 @@ defineEmits(['update:isLibera', 'update:autoClone', 'switchTipo'])
       </div>
     </template>
 
+    </template><!-- /hasTabAttivo -->
+
   </div>
 </template>
 
@@ -199,44 +245,52 @@ defineEmits(['update:isLibera', 'update:autoClone', 'switchTipo'])
 .indirizzo-tipi-bar {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.4rem;
-  margin-bottom: 0.25rem;
+  gap: 0;
+  margin-bottom: 0.5rem;
 }
 
-.indirizzo-tipo-tag {
+.indirizzo-tipo-tab {
   display: inline-flex;
   align-items: center;
-  gap: 0.25rem;
-  padding: 0.25rem 0.6rem;
-  border-radius: var(--p-border-radius-sm, 4px);
-  font-size: 0.8rem;
+  gap: 0.3rem;
+  padding: 0.5rem 0.85rem;
+  font-size: 0.85rem;
   cursor: pointer;
-  border: 1px solid var(--p-surface-300);
-  background: var(--p-surface-50);
   color: var(--p-text-muted-color);
+  border-bottom: 2px solid transparent;
   transition: all 0.15s;
+  user-select: none;
 }
 
-.indirizzo-tipo-tag:hover {
-  border-color: var(--p-primary-300);
-  background: var(--p-primary-50);
+.indirizzo-tipo-tab:hover:not(.indirizzo-tipo-tab--esistente) {
+  color: var(--p-primary-500);
+  border-bottom-color: var(--p-primary-200);
 }
 
-.indirizzo-tipo-tag--attivo {
-  border-color: var(--p-primary-500);
-  background: var(--p-primary-50);
+.indirizzo-tipo-tab--attivo {
   color: var(--p-primary-700);
+  border-bottom-color: var(--p-primary-500);
   font-weight: 600;
 }
 
-.indirizzo-tipo-tag--compilato {
-  border-color: var(--p-green-300);
+.indirizzo-tipo-tab--compilato {
   color: var(--p-green-700);
+  border-bottom-color: var(--p-green-300);
 }
 
-.indirizzo-tipo-tag--compilato.indirizzo-tipo-tag--attivo {
-  border-color: var(--p-primary-500);
+.indirizzo-tipo-tab--esistente {
+  color: var(--p-surface-400);
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.indirizzo-tipo-titolo {
+  font-size: 0.95rem;
+  font-weight: 600;
   color: var(--p-primary-700);
+  margin-bottom: 0.5rem;
+  padding-bottom: 0.25rem;
+  border-bottom: 1px solid var(--p-surface-200);
 }
 
 .indirizzo-tipo-req {

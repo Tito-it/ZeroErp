@@ -2,9 +2,9 @@
 
 > Data apertura: 2026-03-25
 >
-> Stato: **IN CORSO** — DB e documentazione completati, backend/frontend da fare
+> Stato: **CHIUSO** — DB, documentazione, backend e frontend completati (25-27 marzo 2026)
 >
-> Priorita: **CRITICA** — difetto architetturale, va risolto prima di proseguire
+> Priorita: **CRITICA** — difetto architetturale risolto
 
 ---
 
@@ -576,124 +576,304 @@ Test obsoleti eliminati: `test-indirizzi-utility-cascata.sql`, `test-conti-banca
 
 ---
 
-## STEP 9 — Backend: API indirizzi ruolo
+## STEP 9 — Backend: API indirizzi ruolo ✅
 
 **Competenza: Backend Python/Django**
 
-### 9.1 `views_indirizzi_ruolo.py`
+### 9.1 `views_indirizzi_ruolo.py` — `backend/apps/anagrafiche/api/views_indirizzi_ruolo.py`
 
-- `GET /ruoli/{id}/indirizzi/?istanza_utility_id=X` — sostituisce `?utility_id=X`
-- `POST` — campo `istanza_utility_id` nel payload (sostituisce `utility_id`)
-- `PATCH` — idem
+**Nota:** Le query attualmente leggono da viste DB (`vw_indirizzi_resolved_ruolo`,
+`vw_indirizzi_resolved_soggetto`) che gia espongono `istanza_utility_id` (STEP 4).
+Le colonne `utility_codice` non esistono piu nelle viste — vanno rimosse dalla SELECT.
 
-### 9.2 Repository
+| Riga attuale | Cambio | Dettaglio |
+|---|---|---|
+| L7 | commento | `utility → ruolo` diventa `istanza → ruolo` |
+| L34 | `_COLS` | `v.utility_id` → `v.istanza_utility_id`, rimuovere `v.utility_codice` |
+| L64 | `@extend_schema` | `OpenApiParameter("utility_id", int)` → `OpenApiParameter("istanza_utility_id", int)` |
+| L72 | commento | `utility specifica` → `istanza specifica`, `fonte='utility'` → `fonte='istanza'` |
+| L77 | commento | `utility_id` → `istanza_utility_id` |
+| L82-83 | query param | `utility_id_str = request.query_params.get("utility_id")` → `...get("istanza_utility_id")` |
+| L94 | SQL fonte | `'utility' AS fonte` → `'istanza' AS fonte` |
+| L97 | SQL WHERE | `v.utility_id = %s` → `v.istanza_utility_id = %s` |
+| L108-113 | SQL L2 | `v.utility_id IS NULL` → `v.istanza_utility_id IS NULL` |
+| L140 | fonte filter | `"utility"` → `"istanza"` nel filtro editabili |
+| L150 | `@extend_schema` POST | `"utility_id": IntegerField` → `"istanza_utility_id": IntegerField` |
+| L168-175 | handler POST | `payload.get("utility_id")` → `payload.get("istanza_utility_id")`, passare `istanza_utility_id=` al repo |
+| L182 | messaggio errore | `ruolo/utility` → `ruolo/istanza` |
+| L199 | `@extend_schema` PATCH | `"utility_id"` → `"istanza_utility_id"` |
 
-- `list_indirizzi_ruolo(soggetto_ruolo_id, istanza_utility_id=None)`
-- `crea_indirizzo_ruolo(..., istanza_utility_id=None)`
-- Tutti i metodi: rinominare parametro `utility_id` → `istanza_utility_id`
+### 9.2 Repository — `backend/apps/anagrafiche/db/soggetti_repository.py`
 
-### 9.3 Service
+| Riga attuale | Cambio | Dettaglio |
+|---|---|---|
+| L412 | commento | `utility_id` → `istanza_utility_id` |
+| L414 | `_IND_RUOLO_ALLOWED` | `"utility_id"` → `"istanza_utility_id"` |
+| L418 | `_IND_RUOLO_NULLABLE` | `"utility_id"` → `"istanza_utility_id"` |
+| L434 | `crea_indirizzo_ruolo()` | parametro `utility_id=None` → `istanza_utility_id=None` |
+| L442-445 | INSERT SQL | colonna `utility_id` → `istanza_utility_id` nel tuple VALUES e RETURNING |
+| L462-482 | `update_indirizzo_ruolo()` | i set ammessi gia derivano da `_IND_RUOLO_ALLOWED` — il rename propagato automaticamente |
 
-- Validazione: se `istanza_utility_id` fornito, verificare che esista e appartenga
-  allo stesso soggetto (tramite `istanze_utilities.soggetto_id`)
+**Nota tipo:** `istanza_utility_id` e `bigint` nel DB. Il parametro Python puo restare
+`int | None` perche Python int gestisce qualsiasi dimensione. Nei `%s` placeholder nessun
+cast necessario — psycopg2 gestisce int→bigint.
 
-### 9.4 Smoke test
+### 9.3 Smoke test — `backend/scripts/tests/smoke-test-indirizzi-ruolo.sh`
 
-- `smoke-test-indirizzi-ruolo.sh` — aggiornare parametri
+| Sezione | Cambio |
+|---------|--------|
+| Indice test (commenti) | `utility` → `istanza` nei nomi test |
+| L166 | `UTILITY_ID_FROM_CLIENT` → `ISTANZA_UTILITY_ID_FROM_CLIENT` (estrarre `istanza_utility_id` dal dettaglio cliente) |
+| L292, L316, L354 | parametro API `utility_id=` → `istanza_utility_id=` |
+| L349-371 | Test 7-8: cascata con `istanza_utility_id` |
+| Payload POST/PATCH | campo `utility_id` → `istanza_utility_id` |
 
 ---
 
-## STEP 10 — Backend: API conti bancari ruolo
+## STEP 10 — Backend: API conti bancari ruolo ✅
 
 **Competenza: Backend Python/Django**
 
-Stessa logica dello STEP 9 applicata a:
+### 10.1 `views_conti_bancari.py` — `backend/apps/anagrafiche/api/views_conti_bancari.py`
 
-- `views_conti_bancari.py` (o view dedicata ruolo)
-- `conti_bancari_repository.py`
-- `conti_bancari_service.py`
-- `smoke-test-conti-bancari.sh`
+| Riga attuale | Cambio | Dettaglio |
+|---|---|---|
+| L171 | `@extend_schema` | `OpenApiParameter("utility_id", int)` → `OpenApiParameter("istanza_utility_id", int)` |
+| L178 | commento | `utility → ruolo → soggetto` → `istanza → ruolo → soggetto` |
+| L181-182 | query param | `get("utility_id")` → `get("istanza_utility_id")` |
+| L184 | service call | `utility_id=utility_id` → `istanza_utility_id=istanza_utility_id` |
 
-Rinominare `utility_id` → `istanza_utility_id` ovunque.
+### 10.2 Service — `backend/apps/anagrafiche/services/conti_bancari_service.py`
+
+| Riga attuale | Cambio | Dettaglio |
+|---|---|---|
+| L134-169 | `list_conti_ruolo()` | parametro `utility_id=None` → `istanza_utility_id=None`, commenti cascata L1/L2/L3 aggiornati |
+| L142-149 | L1 query | filtro `utility_id` → `istanza_utility_id` nelle condizioni SQL/repo |
+| L151-157 | L2 query | filtro `utility_id IS NULL` → `istanza_utility_id IS NULL` |
+| L172-194 | `create_conto_ruolo()` | parametro `utility_id` → `istanza_utility_id` nel payload legame |
+| L180-183 | payload build | `payload["utility_id"]` → `payload["istanza_utility_id"]` |
+
+### 10.3 Repository — `backend/apps/anagrafiche/db/conti_bancari_repository.py`
+
+| Riga attuale | Cambio | Dettaglio |
+|---|---|---|
+| L38 | `_LEGAME_ALLOWED` | `"utility_id"` → `"istanza_utility_id"` |
+| L40 | `_LEGAME_NULLABLE` | `"utility_id"` → `"istanza_utility_id"` |
+| L241 | SELECT | `srcb.utility_id` → `srcb.istanza_utility_id` |
+| L242 | SELECT + JOIN | rimuovere `u.codice AS utility_codice` e il `LEFT JOIN config.utilities u ON u.id = srcb.utility_id` |
+| L287 | `create_conto_ruolo()` | parametro `utility_id` → `istanza_utility_id` |
+| L290-294 | INSERT | colonna `utility_id` → `istanza_utility_id` |
+| L297-298 | RETURNING | `utility_id` → `istanza_utility_id` |
+
+### 10.4 Smoke test — `backend/scripts/tests/smoke-test-conti-bancari.sh`
+
+| Sezione | Cambio |
+|---------|--------|
+| L15, L22-23 | Indice test: `utility` → `istanza` |
+| L348, L371-372 | Estrazione `UTILITY_ID` dal cliente → `ISTANZA_UTILITY_ID` |
+| L370-374 | Payload `utility_id` → `istanza_utility_id` |
+| L389-390 | GET param `?utility_id=` → `?istanza_utility_id=` |
 
 ---
 
-## STEP 11 — Backend: API contatti ruolo
+## STEP 11 — Backend: API contatti ruolo ✅
 
 **Competenza: Backend Python/Django**
 
-Stessa logica applicata a:
+### 11.1 `views_contatti_ruolo.py` — `backend/apps/anagrafiche/api/views_contatti_ruolo.py`
 
-- `views_contatti_ruolo.py`
-- Repository/service contatti
-- Smoke test contatti
+**Nota:** I contatti usano query dirette sulla tabella `anagrafiche.contatti` (non viste resolved).
+Il campo e gia `istanza_utility_id` nella tabella (STEP 1). Le query SQL vanno aggiornate.
+
+| Riga attuale | Cambio | Dettaglio |
+|---|---|---|
+| L42 | commento | `utility specifica` → `istanza specifica`, `fonte='utility'` → `fonte='istanza'` |
+| L47 | commento | `utility_id` → `istanza_utility_id` |
+| L51-52 | query param | `get("utility_id")` → `get("istanza_utility_id")` |
+| L58 | `_COLS` | `c.utility_id` → `c.istanza_utility_id`, rimuovere `u.codice AS utility_codice` |
+| L60-61 | `_JOIN` | rimuovere `LEFT JOIN config.utilities u ON u.id = c.utility_id` |
+| L68 | SQL fonte L1 | `'utility' AS fonte` → `'istanza' AS fonte` |
+| L69 | SQL WHERE L1 | `c.utility_id = %s` → `c.istanza_utility_id = %s` |
+| L81 | SQL WHERE L2 | `c.utility_id IS NULL` → `c.istanza_utility_id IS NULL` |
+| L103 | fonte filter | `'utility'` → `'istanza'` nel filtro editabili |
+| L125 | commento POST | `utility_id opzionale` → `istanza_utility_id opzionale` |
+| L126-128 | handler POST | `payload.get("utility_id")` → `payload.get("istanza_utility_id")` |
+| L141 | repo call | `utility_id=utility_id` → `istanza_utility_id=istanza_utility_id` |
+| L143 | messaggio | `ruolo/utility` → `ruolo/istanza` |
+
+### 11.2 Repository contatti — `backend/apps/anagrafiche/db/soggetti_repository.py`
+
+| Riga attuale | Cambio | Dettaglio |
+|---|---|---|
+| L272 | `crea_contatto()` | parametro `utility_id=None` → `istanza_utility_id=None` |
+| L275-276 | INSERT SQL | colonna `utility_id` → `istanza_utility_id` |
+| L281 | RETURNING | `utility_id` → `istanza_utility_id` |
+
+### 11.3 Smoke test contatti
+
+Se esiste `smoke-test-contatti.sh`, aggiornare con la stessa logica degli altri smoke test.
+Verificare esistenza: `backend/scripts/tests/smoke-test-contatti*.sh`
 
 ---
 
-## STEP 12 — Backend: API clienti
+## STEP 12 — Backend: API clienti ✅
 
 **Competenza: Backend Python/Django**
 
-### 12.1 Drawer cliente
+### 12.1 `clienti_repository.py` — `backend/apps/anagrafiche/db/clienti_repository.py`
 
-Il ClienteDrawer passa il contesto ai sotto-drawer (contatti, indirizzi, conti).
-Deve passare `istanza_utility_id` — disponibile direttamente dal record cliente
-(`clienti.istanza_utility_id`).
+**Nota:** `clienti.utility_id` resta invariato — e il tipo di servizio del cliente.
+`clienti.istanza_utility_id` e la FK all'istanza. Il repository clienti espone
+`istanza_utility_id` nel dettaglio cliente, che il frontend usa per passarlo ai sotto-drawer.
 
-### 12.2 Lista clienti
+| Riga attuale | Cambio | Dettaglio |
+|---|---|---|
+| Nessuno | Verificare | Che il dettaglio cliente gia esponga `istanza_utility_id` (campo gia presente nella tabella `clienti`) |
+| Query list | Verificare | Che `istanza_utility_id` sia nel SELECT della lista/dettaglio cliente |
 
-La ClientiSearchTable usa `utility_id` come filtro colonna. Questo resta invariato —
-la utility e il filtro corretto per la lista (mostra il tipo di servizio).
-L'`istanza_utility_id` entra in gioco solo quando si apre il drawer del singolo cliente.
+**Nota importante:** `clienti.utility_id` (integer, FK → config.utilities) **non va toccato**.
+Solo i 3 sotto-drawer (contatti, indirizzi, conti) cambiano da `utility_id` a `istanza_utility_id`.
+Il record cliente fornisce `istanza_utility_id` che viene passato ai sotto-drawer.
+
+### 12.2 `clienti_service.py` — `backend/apps/anagrafiche/services/clienti_service.py`
+
+| Riga attuale | Cambio | Dettaglio |
+|---|---|---|
+| Nessuno | Verificare | Che `ClienteService` non passi `utility_id` ai sotto-servizi contatti/indirizzi/conti. Se lo fa, rinominare in `istanza_utility_id` |
+
+### 12.3 Lista clienti — **INVARIATO**
+
+La `ClientiSearchTable` usa `utility_id` come filtro colonna per tipo servizio.
+Questo resta corretto — la utility e il filtro di ricerca, non il differenziatore istanza.
+L'`istanza_utility_id` entra in gioco solo nel drawer del singolo cliente.
 
 ---
 
-## STEP 13 — Frontend: Drawer indirizzi, conti, contatti
+## STEP 13 — Frontend: Drawer indirizzi, conti, contatti ⬜
 
 **Competenza: Frontend Vue.js**
 
-### 13.1 Prop rename
+**Principio generale (da frontend-standards.md):** Un solo modo di fare ogni cosa.
+La modifica e meccanica (rename prop + rename parametro API) su componenti riutilizzabili
+in `core/components/`. I componenti dominio (`anagrafiche/`) passano solo il valore.
 
-Tutti e tre i drawer:
-- Prop `utility-id` → `istanza-utility-id`
-- Parametro API: `utility_id` → `istanza_utility_id`
+### 13.1 Drawer Indirizzi — `frontend/src/core/components/IndirizziSoggettoDrawer.vue`
 
-### 13.2 API client
+| Riga attuale | Cambio | Dettaglio |
+|---|---|---|
+| L34 | commento | `utilityId` → `istanzaUtilityId` |
+| L40 | prop | `utilityId: { type: Number, default: null }` → `istanzaUtilityId: { type: Number, default: null }` |
+| L66 | load params | `props.utilityId ? { utility_id: props.utilityId }` → `props.istanzaUtilityId ? { istanza_utility_id: props.istanzaUtilityId }` |
+| L214-215 | save payload | `props.utilityId → payload.utility_id` → `props.istanzaUtilityId → payload.istanza_utility_id` |
 
-File: `frontend/src/anagrafiche/api/anagrafiche.js`
+### 13.2 Drawer Contatti — `frontend/src/core/components/ContattiSoggettoDrawer.vue`
 
-```javascript
-// Il params conteneva { utility_id: X }, ora conterra { istanza_utility_id: X }
-```
+| Riga attuale | Cambio | Dettaglio |
+|---|---|---|
+| L33 | commento | `utilityId` → `istanzaUtilityId` |
+| L38 | prop | `utilityId: { type: Number, default: null }` → `istanzaUtilityId: { type: Number, default: null }` |
+| L68-69 | load params | `props.utilityId ? { utility_id: props.utilityId }` → `props.istanzaUtilityId ? { istanza_utility_id: props.istanzaUtilityId }` |
+| L138 | save payload | `props.utilityId ? { utility_id: props.utilityId }` → `props.istanzaUtilityId ? { istanza_utility_id: props.istanzaUtilityId }` |
 
-### 13.3 Badge fonte
+### 13.3 Drawer Conti Bancari — `frontend/src/core/components/ContiBancariDrawer.vue`
 
-Il badge "utility_codice" nei card viene dal payload cliente (che ha gia `utility_id`
-sincronizzato dal BA). Non serve derivarlo dalla vista — il frontend lo ha gia
-nel contesto del drawer.
+| Riga attuale | Cambio | Dettaglio |
+|---|---|---|
+| L41 | prop | `utilityId: { type: Number, default: null }` → `istanzaUtilityId: { type: Number, default: null }` |
+| L71-72 | load params | `props.utilityId ? { utility_id: props.utilityId }` → `props.istanzaUtilityId ? { istanza_utility_id: props.istanzaUtilityId }` |
+| L136-138 | save payload | `props.utilityId → payload.utility_id` → `props.istanzaUtilityId → payload.istanza_utility_id` |
 
-### 13.4 ClienteDrawer e ClientiView
+### 13.4 ClienteDrawer — `frontend/src/anagrafiche/components/ClienteDrawer.vue`
 
-- `ClienteDrawer.vue`: passa `istanza-utility-id` ai sotto-drawer (dal record cliente)
-- `ClientiView.vue`: `onContatti/onIndirizzi/onContiBancari` passa `istanza_utility_id`
-  dal record cliente
+| Riga attuale | Cambio | Dettaglio |
+|---|---|---|
+| L444 | sub-drawer contatti | `:utility-id="detail.utility_id"` → `:istanza-utility-id="detail.istanza_utility_id"` |
+| L454 | sub-drawer indirizzi | `:utility-id="detail.utility_id"` → `:istanza-utility-id="detail.istanza_utility_id"` |
+| L465 | sub-drawer conti | `:utility-id="detail.utility_id"` → `:istanza-utility-id="detail.istanza_utility_id"` |
+
+**Nota:** `detail.utility_id` va cambiato con `detail.istanza_utility_id`. Il campo
+`istanza_utility_id` deve essere presente nel payload di dettaglio del cliente restituito
+dal backend (STEP 12.1). `form.utility_id` per la creazione cliente **resta invariato**
+(e il tipo di servizio, non l'istanza).
+
+### 13.5 ClientiView — `frontend/src/anagrafiche/views/ClientiView.vue`
+
+| Riga attuale | Cambio | Dettaglio |
+|---|---|---|
+| L32 | ref contatti | `utilityId: null` → `istanzaUtilityId: null` |
+| L33 | ref indirizzi | `utilityId: null` → `istanzaUtilityId: null` |
+| L37 | handler contatti | `utilityId: data.utility_id` → `istanzaUtilityId: data.istanza_utility_id` |
+| L41 | handler indirizzi | `utilityId: data.utility_id` → `istanzaUtilityId: data.istanza_utility_id` |
+| L49 | handler conti | `utilityId: data.utility_id` → `istanzaUtilityId: data.istanza_utility_id` |
+| L88 | template contatti | `:utility-id="contattiDrawer.utilityId"` → `:istanza-utility-id="contattiDrawer.istanzaUtilityId"` |
+| L96 | template indirizzi | `:utility-id="indirizziDrawer.utilityId"` → `:istanza-utility-id="indirizziDrawer.istanzaUtilityId"` |
+| L105 | template conti | `:utility-id="contiBancariDrawer.utilityId"` → `:istanza-utility-id="contiBancariDrawer.istanzaUtilityId"` |
+
+**Nota:** `data.utility_id` (dal record riga della tabella clienti) diventa
+`data.istanza_utility_id`. Il campo deve essere esposto dalla API lista clienti
+oppure dal dettaglio. Verificare che la query lista clienti nel backend includa
+`istanza_utility_id`.
+
+### 13.6 ClientiSearchTable — **INVARIATO**
+
+`store.filters.utility_id` resta invariato — filtra per tipo servizio (utility),
+non per istanza. Corretto cosi.
+
+### 13.7 API client — `frontend/src/anagrafiche/api/anagrafiche.js`
+
+Le funzioni `listRuoloContatti`, `listRuoloContiBancari`, `listRuoloIndirizzi` ricevono
+`params` generico — non serve modificarle. Il rename del parametro e gia gestito
+dai drawer (13.1–13.3) che costruiscono `{ istanza_utility_id: X }` invece di
+`{ utility_id: X }`.
+
+### 13.8 Badge fonte nei card
+
+Il badge `utility_codice` nei card resta — viene dal payload cliente che ha
+`utility_id` sincronizzato dal BA. Non dipende dalla vista (che non espone piu
+`utility_codice`). Nessuna modifica.
 
 ---
 
-## STEP 14 — Test
+## STEP 14 — Test (backend ✅, frontend ⬜)
 
 **Competenza: Tutti**
 
-### 14.1 Backend
+### 14.1 Test unitari Django
 
-- Aggiornare tutti i test unitari che usano `utility_id` → `istanza_utility_id`
-- Smoke test: tutti i 3 script
+| File | Cambio |
+|------|--------|
+| `apps/anagrafiche/tests/api/test_indirizzi_ruolo_api.py` | `utility_id` → `istanza_utility_id` in fixture, assertion, payload (L43-44, L59, L63-74) |
+| `apps/anagrafiche/tests/services/test_conti_bancari_service.py` | `utility_id` → `istanza_utility_id` in mock, fixture, nome test (L32-34) |
+| `apps/anagrafiche/tests/services/test_clienti_service.py` | Verificare se i mock passano `utility_id` ai sotto-servizi. `utility_id` nel payload creazione cliente **resta** (e il tipo servizio), ma se il service crea contatti/indirizzi con `utility_id` va cambiato in `istanza_utility_id` |
 
-### 14.2 Frontend
+### 14.2 Smoke test (3 script)
 
-- Test manuali UI: creare contatti/indirizzi/conti per istanza specifica
-- Verificare cascata: istanza → ruolo generico → soggetto
-- Verificare che due clienti stessa utility, istanze diverse, possano avere dati diversi
+| Script | Note |
+|--------|------|
+| `smoke-test-indirizzi-ruolo.sh` | Dettaglio in STEP 9.3 |
+| `smoke-test-conti-bancari.sh` | Dettaglio in STEP 10.4 |
+| `smoke-test-clienti.sh` | L178, L188: se usa `utility_id` per cascata sotto-drawer, aggiornare. Il filtro lista clienti per `utility_id` **resta** |
+
+### 14.3 Test manuali UI (post-frontend)
+
+- [ ] Creare contatto per istanza specifica → verificare salvataggio con `istanza_utility_id`
+- [ ] Creare indirizzo per istanza specifica → idem
+- [ ] Creare conto bancario per istanza specifica → idem
+- [ ] Verificare cascata: istanza → ruolo generico → soggetto (3 livelli visibili nel drawer)
+- [ ] Verificare scenario critico: due clienti stessa utility (GAS), istanze diverse,
+  possano avere indirizzi/contatti/conti diversi senza collisione UNIQUE
+- [ ] Verificare che il badge utility_codice resti visibile nei card
+
+### 14.4 Esecuzione test Django
+
+```bash
+# Test singola app
+./manage-test.sh apps.anagrafiche.tests.api -v 2
+./manage-test.sh apps.anagrafiche.tests.services -v 2
+
+# Tutti i test
+./manage-test.sh -v 2
+```
 
 ---
 
@@ -726,21 +906,28 @@ e stato superato da questo refactor con `istanza_utility_id`.
 
 ---
 
-## Riepilogo impatto
+## Riepilogo impatto (aggiornato dopo analisi codice)
 
 | Area | File impattati | Complessita |
 |------|---------------|-------------|
-| DB schema | 3 tabelle (DROP utility_id + ADD istanza_utility_id bigint + vincoli) | media |
-| DB viste | 4 (resolved base/ruolo/soggetto/all) + 1 (conti flat) | media |
-| DB funzioni indirizzi | 4 (fn_get_indirizzo, by_ruolo, by_soggetto, indirizzo_by_soggetto) | media |
-| DB funzioni conti | 1 (fn_get_conto_bancario_predefinito) | bassa |
-| DB funzioni contatti | 2 (fn_get_contatti, fn_get_contatto_default) + chiamanti (fn_get_search_detail) | media |
-| DB test pgTAP | 4-5 file | bassa |
-| Backend API | 6-8 file (views, repository, service per 3 entita) | media |
-| Backend test | 4-5 file | bassa |
-| Frontend drawer | 3 drawer + ClienteDrawer + ClientiView | bassa (rename prop) |
-| Frontend API | 1 file (anagrafiche.js) | bassa |
-| Documentazione | 8-10 file | bassa |
+| DB schema | 3 tabelle (DROP utility_id + ADD istanza_utility_id bigint + vincoli) | ✅ media |
+| DB viste | 4 (resolved base/ruolo/soggetto/all) + 1 (conti flat) | ✅ media |
+| DB funzioni indirizzi | 4 (fn_get_indirizzo, by_ruolo, by_soggetto, indirizzo_by_soggetto) | ✅ media |
+| DB funzioni conti | 1 (fn_get_conto_bancario_predefinito) | ✅ bassa |
+| DB funzioni contatti | 2 (fn_get_contatti, fn_get_contatto_default) + trigger | ✅ media |
+| DB test pgTAP | 6 file (2 nuovi + 4 aggiornati) | ✅ bassa |
+| **Backend views** | **3 file** (`views_indirizzi_ruolo.py`, `views_contatti_ruolo.py`, `views_conti_bancari.py`) | **media** |
+| **Backend repository** | **2 file** (`soggetti_repository.py` indirizzi+contatti, `conti_bancari_repository.py`) | **media** |
+| **Backend service** | **1 file** (`conti_bancari_service.py`) | **bassa** |
+| **Backend clienti** | **2 file** (`clienti_repository.py` verifica, `clienti_service.py` verifica) | **bassa** |
+| **Backend test** | **3 file** (`test_indirizzi_ruolo_api.py`, `test_conti_bancari_service.py`, `test_clienti_service.py`) | **bassa** |
+| **Smoke test** | **3 script** (`smoke-test-indirizzi-ruolo.sh`, `smoke-test-conti-bancari.sh`, `smoke-test-clienti.sh`) | **bassa** |
+| **Frontend drawer core** | **3 file** (`IndirizziSoggettoDrawer.vue`, `ContattiSoggettoDrawer.vue`, `ContiBancariDrawer.vue`) | **bassa** |
+| **Frontend clienti** | **2 file** (`ClienteDrawer.vue`, `ClientiView.vue`) | **bassa** |
+| **Frontend API/store** | **0 file** (nessuna modifica necessaria — params sono dinamici) | **nessuna** |
+| Documentazione | 13 file (guide + funzioni + manuali + viste) | ✅ bassa |
+
+**Totale file da modificare: Backend 14, Frontend 5**
 
 ---
 
@@ -751,13 +938,23 @@ STEP 1-3   → DB: schema (3 tabelle) .............. DBA       ✅ 2026-03-25
 STEP 4-7   → DB: viste + funzioni (indirizzi,
              conti, contatti) ..................... DBA       ✅ 2026-03-25
 STEP 8     → DB: test pgTAP ...................... DBA       ✅ 2026-03-25
-STEP 9-12  → Backend: API 3 entita + clienti ...... Backend  ⬜ DA FARE
-STEP 13    → Frontend: prop rename + API .......... Frontend ⬜ DA FARE
-STEP 14    → Test integrazione ................... Tutti     ⬜ DA FARE
-STEP 15    → Documentazione ...................... Tutti     ✅ 2026-03-25
+STEP 15    → Documentazione DB ................... DBA       ✅ 2026-03-25
+─── FASE BACKEND ──────────────────────────────────────────────────────
+STEP 9     → Backend: API indirizzi ruolo ........ Backend   ✅ 2026-03-25
+STEP 10    → Backend: API conti bancari ruolo .... Backend   ✅ 2026-03-25
+STEP 11    → Backend: API contatti ruolo ......... Backend   ✅ 2026-03-25
+STEP 12    → Backend: API clienti (verifica) ..... Backend   ✅ 2026-03-25
+STEP 14.1  → Backend: test unitari Django ........ Backend   ✅ 2026-03-25
+STEP 14.2  → Backend: smoke test (3 script) ...... Backend   ✅ 2026-03-25
+─── FASE FRONTEND (dopo) ──────────────────────────────────────────────
+STEP 13.1  → Frontend: 3 drawer core ............ Frontend  ✅ 2026-03-25
+STEP 13.4  → Frontend: ClienteDrawer ............ Frontend  ✅ 2026-03-25
+STEP 13.5  → Frontend: ClientiView .............. Frontend  ✅ 2026-03-25
+STEP 14.3  → Frontend: test manuali UI .......... Frontend  ⬜ DA FARE
 ```
 
 ---
 
 *ZeroERP Refactor istanza_utility — aperto 25 marzo 2026*
+*Aggiornato: 25 marzo 2026 — piano dettagliato backend/frontend con analisi file reali*
 *Priorita CRITICA — prerequisito architetturale per gestione clienti multi-istanza*

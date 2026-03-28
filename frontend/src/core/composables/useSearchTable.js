@@ -51,6 +51,7 @@ export function useSearchTable(store, options = {}) {
   watch(() => ctx.searchTerm, (newTerm) => {
     const term = newTerm || ''
     if (term !== searchText.value) {
+      clearTimeout(searchTimeout)
       skipNextDebounce = true
       searchText.value = term
       store.filters.search = term

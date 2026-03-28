@@ -31,13 +31,13 @@ _LEGAME_CONTO_JOIN = """
                 ON bb.id = cb.bank_branch_id"""
 
 # Campi ammessi e nullable per update legami.
-# utility_id ammesso solo per legame ruolo (non soggetto), ma il filtro
+# istanza_utility_id ammesso solo per legame ruolo (non soggetto), ma il filtro
 # avviene a livello service, qui e' generico.
 _LEGAME_ALLOWED = {
     "uso", "predefinito", "valido_dal", "valido_al",
-    "intestazione_dichiarata", "verificato", "bloccato", "utility_id",
+    "intestazione_dichiarata", "verificato", "bloccato", "istanza_utility_id",
 }
-_LEGAME_NULLABLE = {"valido_dal", "valido_al", "intestazione_dichiarata", "utility_id"}
+_LEGAME_NULLABLE = {"valido_dal", "valido_al", "intestazione_dichiarata", "istanza_utility_id"}
 
 
 def _normalize_legame_data(data: dict[str, Any]) -> list[tuple[str, Any]]:
@@ -231,19 +231,24 @@ class ContiBancariRepository:
     # =================================================================
 
     # Scopo: Lista conti bancari associati a un ruolo con dati registro e filiale.
-    #        Include utility_id e utility_codice per cascata 3 livelli.
+    #        Include istanza_utility_id per cascata 3 livelli.
     def list_conti_ruolo(self, soggetto_ruolo_id: int) -> list[dict[str, Any]]:
         sql = f"""
             SELECT srcb.id, srcb.conto_bancario_id, srcb.uso, srcb.predefinito,
                    srcb.valido_dal::text, srcb.valido_al::text,
                    srcb.intestazione_dichiarata,
                    srcb.verificato, srcb.bloccato,
-                   srcb.utility_id,
-                   u.codice AS utility_codice,
+                   srcb.istanza_utility_id,
+                   (SELECT u.codice FROM config.utilities u
+                    WHERE u.id = COALESCE(
+                      (SELECT idp.utility_id FROM anagrafiche.istanze_dati_precontrattuali idp
+                        WHERE idp.istanza_utility_id = srcb.istanza_utility_id LIMIT 1),
+                      (SELECT ba.utility_id FROM anagrafiche.billing_account ba
+                        WHERE ba.istanza_utility_id = srcb.istanza_utility_id LIMIT 1)
+                    )) AS utility_codice,
                    {_LEGAME_CONTO_COLS}
               FROM anagrafiche.soggetti_ruoli_conti_bancari srcb
               {_LEGAME_CONTO_JOIN.format(alias='srcb')}
-              LEFT JOIN config.utilities u ON u.id = srcb.utility_id
              WHERE srcb.soggetto_ruolo_id = %s
              ORDER BY srcb.uso, srcb.predefinito DESC, srcb.id
         """
@@ -273,7 +278,7 @@ class ContiBancariRepository:
             cursor.execute(sql, [soggetto_ruolo_id])
             return rows_to_list(cursor)
 
-    # Scopo: Crea legame ruolo ↔ conto bancario con utility_id opzionale.
+    # Scopo: Crea legame ruolo ↔ conto bancario con istanza_utility_id opzionale.
     def create_conto_ruolo(
         self, soggetto_ruolo_id: int, *,
         conto_bancario_id: int,
@@ -284,24 +289,24 @@ class ContiBancariRepository:
         intestazione_dichiarata: str | None = None,
         verificato: bool = False,
         bloccato: bool = False,
-        utility_id: int | None = None,
+        istanza_utility_id: int | None = None,
     ) -> dict[str, Any]:
         sql = """
             INSERT INTO anagrafiche.soggetti_ruoli_conti_bancari
                 (soggetto_ruolo_id, conto_bancario_id, uso, predefinito,
                  valido_dal, valido_al, intestazione_dichiarata,
-                 verificato, bloccato, utility_id)
+                 verificato, bloccato, istanza_utility_id)
             VALUES (%s, %s, %s, %s, %s::date, %s::date, %s, %s, %s, %s)
             RETURNING id, conto_bancario_id, uso, predefinito,
                       valido_dal::text, valido_al::text,
                       intestazione_dichiarata, verificato, bloccato,
-                      utility_id
+                      istanza_utility_id
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [
                 soggetto_ruolo_id, conto_bancario_id, uso, predefinito,
                 valido_dal, valido_al, intestazione_dichiarata,
-                verificato, bloccato, utility_id,
+                verificato, bloccato, istanza_utility_id,
             ])
             result = row_to_dict(cursor)
             assert result is not None

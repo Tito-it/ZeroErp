@@ -107,6 +107,7 @@ export function useIndirizzoBase() {
     () => form.palazzina, () => form.scala, () => form.piano, () => form.interno,
     () => form.comune_id, () => form.codice_postale_id,
   ], () => {
+    if (_restoring) return
     const obj = form.via_obj
     const hasStradario = obj?.stradario_id
     const hasGenerale = obj?.stradario_generale_id && form.comune_id
@@ -219,6 +220,13 @@ export function useIndirizzoBase() {
     resetWarnings()
   }
 
+  // Scopo: Esegue una funzione sopprimendo i watcher (check duplicato, reset CAP).
+  //        Usato da onStartReplace per popolare il form senza effetti collaterali.
+  function withSuppressedChecks(fn) {
+    _restoring = true
+    try { fn() } finally { _restoring = false }
+  }
+
   return {
     form,
     capOptions,
@@ -227,6 +235,7 @@ export function useIndirizzoBase() {
     existingDettaglioId,
     addressNotFound,
     resetWarnings,
+    withSuppressedChecks,
     validate,
     buildPayload,
     snapshot,

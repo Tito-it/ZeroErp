@@ -17,6 +17,8 @@ from apps.core.api.views_lookup import (
     LookupComuniView,
     LookupFormeGiuridicheView,
     LookupMatriceIndirizziView,
+    LookupMatriceIndirizziRuoloView,
+    LookupSistemaCodiciView,
     LookupTipiRuoliPerNaturaView,
     LookupTipiSoggettoDettaglioView,
     SearchStradarioGeneraleView,
@@ -80,9 +82,19 @@ urlpatterns = [
         name="core-lookup-matrice-indirizzi",
     ),
     path(
+        "lookup/tipi-ruolo/<str:tipo_ruolo_codice>/indirizzi/",
+        LookupMatriceIndirizziRuoloView.as_view(),
+        name="core-lookup-matrice-indirizzi-ruolo",
+    ),
+    path(
         "lookup/tipi-ruoli-natura/",
         LookupTipiRuoliPerNaturaView.as_view(),
         name="core-lookup-tipi-ruoli-natura",
+    ),
+    path(
+        "lookup/sistema-codici/",
+        LookupSistemaCodiciView.as_view(),
+        name="core-lookup-sistema-codici",
     ),
     path(
         "lookup/forme-giuridiche/",

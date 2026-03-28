@@ -12,7 +12,7 @@ import api from '../api'
 import { useApiHandler } from '../composables/useApiHandler'
 import { usePagination } from '../composables/usePagination'
 import { useContextStore } from '../../stores/context'
-import { DRAWER_WIDTH } from '../constants'
+import { DRAWER_WIDTH, TIPO_RUOLO } from '../constants'
 import DrawerTitle from './DrawerTitle.vue'
 import SearchDetailTable from './details/SearchDetailTable.vue'
 
@@ -38,7 +38,7 @@ const sortOrder = ref(1)
 let debounceTimer = null
 
 // Mappa tipo ruolo codice -> variante del componente dettaglio
-const DETAIL_VARIANTS = { CLIENTE: 'cliente', FORNITORE: 'fornitore' }
+const DETAIL_VARIANTS = { [TIPO_RUOLO.CLIENTE]: 'cliente', [TIPO_RUOLO.FORNITORE]: 'fornitore' }
 
 const currentDetailVariant = computed(() => {
   return DETAIL_VARIANTS[selectedTipoRuolo.value?.codice] || 'generic'
@@ -125,21 +125,21 @@ function onSort(event) {
 
 // Mappa tipo ruolo codice -> chiave ID entita' nel JSONB di dettaglio
 const ENTITA_ID_KEY = {
-  CLIENTE: 'cliente_id',
-  FORNITORE: 'fornitore_id'
+  [TIPO_RUOLO.CLIENTE]: 'cliente_id',
+  [TIPO_RUOLO.FORNITORE]: 'fornitore_id'
 }
 
 // Mappa tipo ruolo codice -> nome rotta lista corrispondente
 const TIPO_RUOLO_ROUTES = {
-  CLIENTE: 'anagrafiche-clienti',
-  // FORNITORE: 'anagrafiche-fornitori', — future
+  [TIPO_RUOLO.CLIENTE]: 'anagrafiche-clienti',
+  [TIPO_RUOLO.FORNITORE]: 'anagrafiche-fornitori',
 }
 
 // Rotte che possono gestire il contesto senza navigazione (hanno watcher su ctx)
 const CONTEXT_AWARE_ROUTES = new Set([
   'anagrafiche-soggetti',
   'anagrafiche-clienti',
-  // 'anagrafiche-fornitori', — future
+  'anagrafiche-fornitori',
 ])
 
 // Scopo: imposta il contesto globale dall'entita' selezionata, chiude il drawer.
@@ -271,7 +271,7 @@ watch(() => props.visible, (newVal) => {
         <Column field="ragione_sociale_completa" :header="t('search.col_name')" sortable />
         <Column field="id_fiscale_univoco" :header="t('search.col_fiscal_id')" sortable style="width: 160px" />
         <Column
-          v-if="selectedTipoRuolo?.codice === 'CLIENTE'"
+          v-if="selectedTipoRuolo?.codice === TIPO_RUOLO.CLIENTE"
           field="utility_list"
           :header="t('search.col_utility')"
           sortable

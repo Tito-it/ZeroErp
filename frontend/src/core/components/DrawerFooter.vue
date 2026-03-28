@@ -4,7 +4,7 @@
 // Auto-hide: si nasconde in modalita' sola lettura (inject) o se l'azione non e' abilitata.
 // Prop action opzionale: se presente, nasconde i pulsanti di scrittura (Salva).
 // Il pulsante Annulla resta sempre visibile (chiusura drawer).
-import { computed } from 'vue'
+import { computed, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useInjectReadonly } from '../composables/useReadonlyMode'
 import { useAuthStore } from '../../stores/auth'
@@ -28,6 +28,18 @@ const isVisible = computed(() => {
   if (props.action && !auth.isActionAllowed(props.action)) return false
   return true
 })
+
+// Ctrl+S → salva (funziona anche dentro input/textarea)
+function onKeydown(e) {
+  if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+    e.preventDefault()
+    if (isVisible.value && !props.disabled && !props.loading) {
+      emit('save')
+    }
+  }
+}
+onMounted(() => window.addEventListener('keydown', onKeydown))
+onUnmounted(() => window.removeEventListener('keydown', onKeydown))
 </script>
 
 <template>

@@ -4,7 +4,7 @@
 # Doc: Python
 # Scopo: API views indirizzi a livello ruolo — CRUD indirizzi
 #        con soggetto_ruolo_id e cascata 3 livelli:
-#        utility → ruolo generico → soggetto (readonly).
+#        istanza → ruolo generico → soggetto (readonly).
 #        Pattern analogo a views_contatti_ruolo.py.
 # ------------------------------------------------------------
 
@@ -21,18 +21,27 @@ from apps.core.api.success_responses import success_response
 from apps.core.services.error_manager import ErrorManager
 from apps.anagrafiche.db._helpers import resolve_soggetto_id
 from apps.anagrafiche.db.soggetti_repository import SoggettiRepository
+from apps.anagrafiche.services.soggetti_service import SoggettiService
 from apps.anagrafiche.error_codes import E_ANAG_NOT_FOUND
 from apps.anagrafiche.services._validators import create_with_dedup
+from apps.core.services.service_errors import ServiceError
 
 _repo = SoggettiRepository()
 
 # Colonne selezionate dalle viste resolved (subset utile per la UI).
 # Fonte: vw_indirizzi_resolved_ruolo / vw_indirizzi_resolved_soggetto
-# (changeset 20260324-04-recreate-indirizzi-chain-utility-mctit.yaml)
+# (changeset 20260325-04-recreate-indirizzi-chain-istanza-mctit.yaml)
+_RESOLVE_UTILITY = """(SELECT u.codice FROM config.utilities u
+            WHERE u.id = COALESCE(
+              (SELECT idp.utility_id FROM anagrafiche.istanze_dati_precontrattuali idp
+                WHERE idp.istanza_utility_id = v.istanza_utility_id LIMIT 1),
+              (SELECT ba.utility_id FROM anagrafiche.billing_account ba
+                WHERE ba.istanza_utility_id = v.istanza_utility_id LIMIT 1)
+            )) AS utility_codice"""
+
 _COLS = """v.indirizzo_id AS id,
            v.soggetto_ruolo_id,
-           v.utility_id,
-           v.utility_codice,
+           v.istanza_utility_id,
            v.tipo_indirizzo_id,
            v.tipo_indirizzo_codice,
            v.tipo_indirizzo_descrizione,
@@ -41,14 +50,24 @@ _COLS = """v.indirizzo_id AS id,
            v.indirizzo_display,
            v.indirizzo_libero,
            v.comune_id,
+           v.comune_id AS det_comune_id,
            v.comune_descrizione,
+           v.comune_descrizione AS descrizione_comune,
            v.cap,
            v.provincia_sigla,
            v.stato_id,
            v.stato_descrizione,
            v.stato_iso2,
            v.codice_postale_id,
-           v.cap_codice"""
+           v.cap_codice,
+           v.stradario_id,
+           v.via_norm AS stradario_display,
+           v.civico,
+           v.estensione_civico,
+           v.palazzina,
+           v.scala,
+           v.piano,
+           v.interno"""
 
 
 # =================================================================
@@ -61,7 +80,7 @@ class RuoloIndirizziView(DomainAPIView):
 
     @extend_schema(
         parameters=[
-            OpenApiParameter(name="utility_id", type=int, required=False),
+            OpenApiParameter(name="istanza_utility_id", type=int, required=False),
         ],
         responses={200: inline_serializer(
             name="RuoloIndirizziListResp",
@@ -69,18 +88,19 @@ class RuoloIndirizziView(DomainAPIView):
         )},
     )
     # Scopo: Lista indirizzi con cascata a 3 livelli per tipo_indirizzo_id:
-    #        1. Indirizzi ruolo + utility specifica (fonte='utility')
-    #        2. Indirizzi ruolo + utility NULL (fonte='ruolo')
+    #        1. Indirizzi ruolo + istanza specifica (fonte='istanza')
+    #        2. Indirizzi ruolo + istanza NULL (fonte='ruolo')
     #           mostrati solo se tipo non coperto dal livello 1
     #        3. Indirizzi soggetto (fonte='soggetto', readonly)
     #           mostrati solo se tipo non coperto dai livelli 1 e 2
-    #        Query param opzionale: utility_id.
+    #        Query param opzionale: istanza_utility_id.
     def get(self, request: Request, soggetto_ruolo_id: int) -> JsonResponse:
         from django.db import connection
         from apps.core.db._helpers import rows_to_list
 
-        utility_id_str = request.query_params.get("utility_id")
-        utility_id = int(utility_id_str) if utility_id_str is not None else None
+        from apps.core.api.payload_validators import qp_int_strict
+        raw_istanza = request.query_params.get("istanza_utility_id")
+        istanza_utility_id = qp_int_strict(raw_istanza, "istanza_utility_id", None) if raw_istanza else None
 
         with connection.cursor() as cursor:
             soggetto_id = resolve_soggetto_id(cursor, soggetto_ruolo_id)
@@ -88,16 +108,16 @@ class RuoloIndirizziView(DomainAPIView):
             results: list[dict] = []
             tipi_coperti: set[int] = set()
 
-            # Livello 1: indirizzi ruolo + utility specifica
-            if utility_id is not None:
-                sql_util = f"""
-                    SELECT {_COLS}, 'utility' AS fonte
+            # Livello 1: indirizzi ruolo + istanza specifica
+            if istanza_utility_id is not None:
+                sql_ist = f"""
+                    SELECT {_COLS}, {_RESOLVE_UTILITY}, 'istanza' AS fonte
                       FROM anagrafiche.vw_indirizzi_resolved_ruolo v
                      WHERE v.soggetto_ruolo_id = %s
-                       AND v.utility_id = %s
+                       AND v.istanza_utility_id = %s
                      ORDER BY v.tipo_indirizzo_id, v.indirizzo_id
                 """
-                cursor.execute(sql_util, [soggetto_ruolo_id, utility_id])
+                cursor.execute(sql_ist, [soggetto_ruolo_id, istanza_utility_id])
                 l1 = rows_to_list(cursor)
                 results.extend(l1)
                 tipi_coperti.update(
@@ -105,12 +125,12 @@ class RuoloIndirizziView(DomainAPIView):
                     if c["tipo_indirizzo_id"] is not None
                 )
 
-            # Livello 2: indirizzi ruolo senza utility (generici del ruolo)
+            # Livello 2: indirizzi ruolo senza istanza (generici del ruolo)
             sql_ruolo = f"""
-                SELECT {_COLS}, 'ruolo' AS fonte
+                SELECT {_COLS}, {_RESOLVE_UTILITY}, 'ruolo' AS fonte
                   FROM anagrafiche.vw_indirizzi_resolved_ruolo v
                  WHERE v.soggetto_ruolo_id = %s
-                   AND v.utility_id IS NULL
+                   AND v.istanza_utility_id IS NULL
                  ORDER BY v.tipo_indirizzo_id, v.indirizzo_id
             """
             cursor.execute(sql_ruolo, [soggetto_ruolo_id])
@@ -123,7 +143,7 @@ class RuoloIndirizziView(DomainAPIView):
 
             # Livello 3: indirizzi soggetto (fallback readonly)
             sql_sogg = f"""
-                SELECT {_COLS}, 'soggetto' AS fonte
+                SELECT {_COLS}, {_RESOLVE_UTILITY}, 'soggetto' AS fonte
                   FROM anagrafiche.vw_indirizzi_resolved_soggetto v
                  WHERE v.soggetto_id = %s::uuid
                  ORDER BY v.tipo_indirizzo_id, v.indirizzo_id
@@ -137,7 +157,7 @@ class RuoloIndirizziView(DomainAPIView):
                     tipi_coperti.add(tipo)
 
         # Separa per fonte per la UI
-        indirizzi_editabili = [c for c in results if c["fonte"] in ("utility", "ruolo")]
+        indirizzi_editabili = [c for c in results if c["fonte"] in ("istanza", "ruolo")]
         indirizzi_readonly = [c for c in results if c["fonte"] == "soggetto"]
         return success_response({
             "indirizzi_ruolo": indirizzi_editabili,
@@ -146,8 +166,8 @@ class RuoloIndirizziView(DomainAPIView):
 
     @extend_schema(
         request=inline_serializer(name="RuoloIndirizzoCreateReq", fields={
-            "tipo_indirizzo_id": serializers.IntegerField(),
-            "utility_id": serializers.IntegerField(required=False),
+            "tipo_indirizzo_codice": serializers.CharField(help_text="Codice tipo indirizzo (es. RES, DOM)"),
+            "istanza_utility_id": serializers.IntegerField(required=False),
             "indirizzo_dettaglio_id": serializers.IntegerField(required=False),
             "indirizzo_libero": serializers.CharField(required=False),
             "stato_id": serializers.IntegerField(required=False),
@@ -160,26 +180,46 @@ class RuoloIndirizziView(DomainAPIView):
         )},
     )
     # Scopo: Crea indirizzo associato al ruolo.
-    #        Accetta modalita' normalizzata (indirizzo_dettaglio_id)
+    #        Accetta tipo_indirizzo_codice (risolto a id internamente),
+    #        modalita' normalizzata (indirizzo_dettaglio_id)
     #        o libera (indirizzo_libero + stato_id).
     #        Il trigger DB valida tipo_indirizzo_id contro la matrice ammessi.
     def post(self, request: Request, soggetto_ruolo_id: int) -> JsonResponse:
         def _handler(payload: dict) -> dict:
-            utility_id = payload.get("utility_id")
-            if utility_id is not None:
-                utility_id = int(utility_id)
+            # Risolvi tipo_indirizzo_codice → tipo_indirizzo_id
+            tipo_codice = payload.get("tipo_indirizzo_codice")
+            if not tipo_codice:
+                raise ServiceError(code="E_VALIDAZIONE", message="tipo_indirizzo_codice obbligatorio.")
+            tipo_id = _repo.resolve_tipo_indirizzo_id(tipo_codice)
+            if tipo_id is None:
+                raise ServiceError(code="E_VALIDAZIONE", message=f"Tipo indirizzo '{tipo_codice}' non trovato.")
+
+            istanza_utility_id = payload.get("istanza_utility_id")
+            if istanza_utility_id is not None:
+                istanza_utility_id = int(istanza_utility_id)
+
+            # Risolvi indirizzo: normalizzato (stradario → dettaglio) o libero
+            indirizzo_libero = (payload.get("indirizzo_libero") or "").strip() or None
+            if indirizzo_libero:
+                # Modalita' libera
+                indirizzo_dettaglio_id = None
+            else:
+                # Modalita' normalizzata — risolvi stradario → indirizzo_dettaglio
+                svc = SoggettiService()
+                indirizzo_dettaglio_id = svc._resolve_indirizzo_dettaglio(payload)
+
             result = create_with_dedup(
                 lambda: _repo.crea_indirizzo_ruolo(
                     soggetto_ruolo_id,
-                    tipo_indirizzo_id=int(payload["tipo_indirizzo_id"]),
-                    utility_id=utility_id,
-                    indirizzo_dettaglio_id=payload.get("indirizzo_dettaglio_id"),
-                    indirizzo_libero=payload.get("indirizzo_libero"),
+                    tipo_indirizzo_id=tipo_id,
+                    istanza_utility_id=istanza_utility_id,
+                    indirizzo_dettaglio_id=indirizzo_dettaglio_id,
+                    indirizzo_libero=indirizzo_libero,
                     stato_id=payload.get("stato_id"),
                     comune_id=payload.get("comune_id"),
                     codice_postale_id=payload.get("codice_postale_id"),
                 ),
-                "Indirizzo con questo tipo gia' presente per il ruolo/utility.",
+                "Indirizzo con questo tipo gia' presente per il ruolo/istanza.",
             )
             return result
         return handle_post_json(request, handler=_handler)
@@ -196,7 +236,7 @@ class RuoloIndirizziDetailView(DomainAPIView):
     @extend_schema(
         request=inline_serializer(name="RuoloIndirizzoUpdateReq", fields={
             "tipo_indirizzo_id": serializers.IntegerField(required=False),
-            "utility_id": serializers.IntegerField(required=False),
+            "istanza_utility_id": serializers.IntegerField(required=False),
             "indirizzo_dettaglio_id": serializers.IntegerField(required=False),
             "indirizzo_libero": serializers.CharField(required=False),
             "stato_id": serializers.IntegerField(required=False),

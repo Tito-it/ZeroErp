@@ -44,6 +44,36 @@ const props = defineProps({
 
 <template>
   <div class="form-grid">
+    <div class="form-grid-2col">
+      <div class="form-field">
+        <label>{{ t('contatto.tipo_contatto') }} *</label>
+        <Select
+          v-model="form.tipo_contatto_id"
+          :options="tipiContatto.items.value"
+          :loading="tipiContatto.loading.value"
+          option-label="descrizione"
+          option-value="id"
+          :placeholder="t('contatto.select_tipo_contatto')"
+          :disabled="disabled || tipoDisabled"
+          class="w-full"
+        />
+      </div>
+      <div v-if="showUO && unitaOrganizzative" class="form-field">
+        <label>{{ t('contatto.unita_organizzativa') }}</label>
+        <Select
+          v-model="form.unita_organizzativa_id"
+          :options="unitaOrganizzative.items.value"
+          :loading="unitaOrganizzative.loading.value"
+          option-label="descrizione"
+          option-value="id"
+          :placeholder="t('contatto.select_unita_organizzativa')"
+          :disabled="disabled"
+          show-clear
+          class="w-full"
+        />
+      </div>
+    </div>
+
     <div class="form-field">
       <label>{{ t('contatto.nominativo') }} *</label>
       <InputText v-model="form.nominativo" :disabled="disabled" class="w-full" />
@@ -79,35 +109,6 @@ const props = defineProps({
         <label>{{ t('contatto.cellulare') }}</label>
         <InputText v-model="form.cellulare" :disabled="disabled" class="w-full" />
       </div>
-    </div>
-
-    <div class="form-field">
-      <label>{{ t('contatto.tipo_contatto') }} *</label>
-      <Select
-        v-model="form.tipo_contatto_id"
-        :options="tipiContatto.items.value"
-        :loading="tipiContatto.loading.value"
-        option-label="descrizione"
-        option-value="id"
-        :placeholder="t('contatto.select_tipo_contatto')"
-        :disabled="disabled || tipoDisabled"
-        class="w-full"
-      />
-    </div>
-
-    <div v-if="showUO && unitaOrganizzative" class="form-field">
-      <label>{{ t('contatto.unita_organizzativa') }}</label>
-      <Select
-        v-model="form.unita_organizzativa_id"
-        :options="unitaOrganizzative.items.value"
-        :loading="unitaOrganizzative.loading.value"
-        option-label="descrizione"
-        option-value="id"
-        :placeholder="t('contatto.select_unita_organizzativa')"
-        :disabled="disabled"
-        show-clear
-        class="w-full"
-      />
     </div>
 
     <div class="form-field">

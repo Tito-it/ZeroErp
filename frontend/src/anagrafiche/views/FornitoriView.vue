@@ -1,13 +1,13 @@
 <script setup>
 // Scopo: Vista principale Gestione Fornitori.
-// SearchTable + Drawer creazione/modifica + sotto-drawer contatti/indirizzi/conti.
-// Pattern identico a ClientiView (adattato al dominio fornitore).
+// SearchTable + Drawer creazione/modifica + sotto-drawer contatti/indirizzi/conti da lista.
 import { ref, watch, nextTick } from 'vue'
 import { useRoute } from 'vue-router'
 import { useDrawerState } from '../../core/composables/useDrawerState'
 import { useReadonlyMode } from '../../core/composables/useReadonlyMode'
 import { useContextStore } from '../../stores/context'
 import { useFornitoriStore } from '../stores/fornitori'
+import { TIPO_RUOLO } from '../../core/constants'
 import FornitoriSearchTable from '../components/FornitoriSearchTable.vue'
 import FornitoreDrawer from '../components/FornitoreDrawer.vue'
 import ContattiSoggettoDrawer from '../../core/components/ContattiSoggettoDrawer.vue'
@@ -20,7 +20,6 @@ const ctx = useContextStore()
 const route = useRoute()
 useReadonlyMode('anagrafiche')
 
-// Se la ricerca universale ha selezionato un fornitore, apri il drawer in edit.
 watch(() => route.fullPath, () => {
   if (route.name === 'anagrafiche-fornitori' && ctx.entitaId) {
     nextTick(() => drawer.editRow({ id: ctx.entitaId }, 'id'))
@@ -35,11 +34,9 @@ const contiBancariDrawer = ref({ visible: false, ruoloId: null, ownerName: '' })
 function onContatti(data) {
   contattiDrawer.value = { visible: true, ruoloId: data.soggetto_ruolo_id }
 }
-
 function onIndirizzi(data) {
   indirizziDrawer.value = { visible: true, ruoloId: data.soggetto_ruolo_id }
 }
-
 function onContiBancari(data) {
   contiBancariDrawer.value = {
     visible: true,
@@ -48,7 +45,6 @@ function onContiBancari(data) {
   }
 }
 
-// Scopo: Dopo salvataggio, riapre in edit se era creazione (per gestire contatti/indirizzi/banca).
 async function onDrawerSaved(result) {
   store.filters.offset = 0
   await store.fetchList()
@@ -90,6 +86,7 @@ async function onDrawerSaved(result) {
       :visible="indirizziDrawer.visible"
       @update:visible="v => indirizziDrawer.visible = v"
       :soggetto-id="indirizziDrawer.ruoloId"
+      :tipo-ruolo-codice="TIPO_RUOLO.FORNITORE"
       context="ruolo"
     />
 

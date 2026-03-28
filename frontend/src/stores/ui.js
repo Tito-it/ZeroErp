@@ -26,7 +26,10 @@ export const useUiStore = defineStore('ui', () => {
     storedValue !== null ? storedValue === 'true' : !isDesktop.value
   )
 
-  const effectiveSidebarCollapsed = computed(() => sidebarCollapsed.value)
+  // Su tablet la sidebar e' sempre collassata, indipendentemente dalla preferenza
+  const effectiveSidebarCollapsed = computed(() =>
+    isTablet.value ? true : sidebarCollapsed.value
+  )
 
   // Search drawer — stato condiviso tra AppLayout (shortcut) e AppTopbar (pulsante)
   const searchDrawerVisible = ref(false)

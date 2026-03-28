@@ -16,6 +16,7 @@ from typing import Any
 from django.db import IntegrityError, transaction
 
 from apps.anagrafiche.db.clienti_repository import ClientiRepository
+from apps.anagrafiche.db.soggetti_repository import SoggettiRepository
 from apps.anagrafiche.error_codes import E_ANAG_DUPLICATO, E_ANAG_NOT_FOUND, E_ANAG_VALIDAZIONE
 from apps.anagrafiche.services._validators import optional_str
 from apps.core.services.service_errors import ServiceError
@@ -35,6 +36,7 @@ class ClientiService:
 
     def __init__(self) -> None:
         self._repo = ClientiRepository()
+        self._sogg_repo = SoggettiRepository()
 
     # =================================================================
     # Lista e dettaglio
@@ -95,13 +97,16 @@ class ClientiService:
         ba_fatturazione_ordini = optional_str(payload, "ba_fatturazione_ordini")
         ba_parent_account_id = optional_int(payload, "ba_parent_account_id")
 
-        # Dati cliente opzionali (passati direttamente al repository)
+        # Dati cliente (passati direttamente al repository)
         cliente_data: dict[str, Any] = {}
         for key in ["termine_pagamento_id", "modalita_pagamento_id", "iva_id",
                      "nr_giorni_scadenza"]:
             val = optional_int(payload, key)
             if val is not None:
                 cliente_data[key] = val
+        # iva_id e' NOT NULL senza default DB: se non fornito, risolvi dal DB
+        if "iva_id" not in cliente_data:
+            cliente_data["iva_id"] = self._repo.get_default_iva_id()
         for key in ["tipo_gg_scadenza_ft", "cliente_pa", "split_payment",
                      "garanzia_tipo"]:
             val = optional_str(payload, key)
@@ -129,6 +134,10 @@ class ClientiService:
                 message="Utility con PDP richiesto: la creazione manuale non e' ammessa. "
                         "Utilizzare il motore pratiche.")
 
+        # Contatto e indirizzi inline (opzionali, per creazione da drawer)
+        contatto_data = payload.get("contatto")
+        indirizzi_data = payload.get("indirizzi", [])
+
         with transaction.atomic():
             return self._execute_creazione(
                 soggetto_id=soggetto_id,
@@ -139,10 +148,12 @@ class ClientiService:
                 ba_fatturazione_ordini=ba_fatturazione_ordini,
                 ba_parent_account_id=ba_parent_account_id,
                 cliente_data=cliente_data,
+                contatto_data=contatto_data,
+                indirizzi_data=indirizzi_data,
             )
 
     # Scopo: Esegue la catena di creazione dentro la transazione atomica.
-    #        Step: ruolo CLIENTE → istanza (se manca) → BA (se manca) → cliente.
+    #        Step: ruolo CLIENTE → istanza → BA → cliente → contatto → indirizzi ruolo.
     def _execute_creazione(
         self, *,
         soggetto_id: str,
@@ -153,6 +164,8 @@ class ClientiService:
         ba_fatturazione_ordini: str | None,
         ba_parent_account_id: int | None,
         cliente_data: dict[str, Any],
+        contatto_data: dict[str, Any] | None = None,
+        indirizzi_data: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
         # Step 1: Ruolo CLIENTE (get or create)
         soggetto_ruolo_id = self._repo.get_or_create_ruolo_cliente(soggetto_id)
@@ -194,6 +207,26 @@ class ClientiService:
                     message="Esiste gia' un cliente per questa istanza.",
                     detail=err_detail) from exc
             raise
+
+        # Step 5: Contatto ruolo (se fornito dal drawer inline)
+        if contatto_data and contatto_data.get("nominativo"):
+            self._sogg_repo.crea_contatto(
+                soggetto_id,
+                nominativo=contatto_data.get("nominativo", ""),
+                email=optional_str(contatto_data, "email"),
+                telefono=optional_str(contatto_data, "telefono"),
+                cellulare=optional_str(contatto_data, "cellulare"),
+                pec=optional_str(contatto_data, "pec"),
+                tipo_contatto_id=optional_int(contatto_data, "tipo_contatto_id"),
+                note=optional_str(contatto_data, "note"),
+                soggetto_ruolo_id=soggetto_ruolo_id,
+            )
+
+        # Step 6: Indirizzi ruolo (se forniti dal drawer inline — auto-clone incluso)
+        if indirizzi_data:
+            from apps.anagrafiche.services.fornitori_service import FornitoriService
+            FornitoriService()._create_indirizzi_ruolo(
+                soggetto_ruolo_id, list(indirizzi_data), tipo_ruolo_codice="CL")
 
         return {
             "id": cliente_id,

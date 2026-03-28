@@ -19,9 +19,13 @@ export const BLOCKED_KEY = Symbol('appBlocked')
 
 // Provider: la View chiama questo composable con l'area funzionale.
 // Fornisce isReadonly e isBlocked a tutti i componenti figli via provide.
+// Se un parent ha gia' fornito readonly=true (es. SplitReadonlyPanel),
+// il valore viene propagato con OR — il pannello split forza readonly
+// indipendentemente dai permessi dell'operatore.
 export function useReadonlyMode(areaSchemaDb) {
   const auth = useAuthStore()
-  const isReadonly = computed(() => auth.isAreaReadonly(areaSchemaDb))
+  const parentReadonly = inject(READONLY_KEY, ref(false))
+  const isReadonly = computed(() => parentReadonly.value || auth.isAreaReadonly(areaSchemaDb))
   const isBlocked = computed(() => auth.isAreaBlocked(areaSchemaDb))
   provide(READONLY_KEY, isReadonly)
   provide(BLOCKED_KEY, isBlocked)

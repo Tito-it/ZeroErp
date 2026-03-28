@@ -8,6 +8,7 @@ import { useLookup } from './useLookup'
 import { useIndirizzoBase, buildIndirizzoPayload } from './useIndirizzoBase'
 import { useIndirizzoMultiTipo } from './useIndirizzoMultiTipo'
 import { lookupStati } from '../../anagrafiche/api/anagrafiche'
+import { lookupMatriceIndirizzi, lookupMatriceIndirizziRuolo } from '../apiCore'
 
 export function useIndirizzoSoggettoForm() {
   // Composable base: comune, via, civico, CAP, check duplicato
@@ -137,6 +138,22 @@ export function useIndirizzoSoggettoForm() {
     form.locality = data.locality || ''
   }
 
+  // Scopo: Carica matrice indirizzi per tipo soggetto dettaglio e setta nel multi-tipo.
+  async function loadMatriceTipo(tipoSoggettoDettaglioId) {
+    try {
+      const res = await lookupMatriceIndirizzi(tipoSoggettoDettaglioId)
+      multiTipo.setMatrice(res.data?.data?.results || [])
+    } catch { multiTipo.setMatrice([]) }
+  }
+
+  // Scopo: Carica matrice indirizzi per codice ruolo (es. 'FO', 'CL') e setta nel multi-tipo.
+  async function loadMatriceRuolo(tipoRuoloCodice) {
+    try {
+      const res = await lookupMatriceIndirizziRuolo(tipoRuoloCodice)
+      multiTipo.setMatrice(res.data?.data?.results || [])
+    } catch { multiTipo.setMatrice([]) }
+  }
+
   return {
     form,
     isLibera,
@@ -147,6 +164,8 @@ export function useIndirizzoSoggettoForm() {
     hasIndirizzi,
     switchTipo: multiTipo.switchTipo,
     setMatrice: multiTipo.setMatrice,
+    loadMatriceTipo,
+    loadMatriceRuolo,
     toPayloadArray,
     // Lookup
     statiLookup,
@@ -155,6 +174,8 @@ export function useIndirizzoSoggettoForm() {
     indirizzoWarnings: base.indirizzoWarnings,
     existingDettaglioId: base.existingDettaglioId,
     addressNotFound: base.addressNotFound,
+    resetWarnings: base.resetWarnings,
+    withSuppressedChecks: base.withSuppressedChecks,
     // Singolo
     canSave,
     validate,

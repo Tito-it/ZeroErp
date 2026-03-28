@@ -1,22 +1,25 @@
 <script setup>
 // Scopo: Drawer unico creazione/modifica fornitore.
-// In creazione: SoggettoResolver + campi editabili.
-// In edit: banner soggetto readonly + campi editabili + gestione contatti/indirizzi/conti.
+// In creazione: SoggettoResolver + campi editabili + contatto/indirizzo inline.
+// In edit: banner soggetto readonly + campi editabili + badge contatti/indirizzi/conti.
+// Pattern analogo a SoggettoDrawer: payload unificato al backend in transazione atomica.
 import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useFornitoriStore } from '../stores/fornitori'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useLookup } from '../../core/composables/useLookup'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
+import { useContattoForm } from '../../core/composables/useContattoForm'
+import { useIndirizzoSoggettoForm } from '../../core/composables/useIndirizzoSoggettoForm'
+import { useCodiceField } from '../../core/composables/useCodiceField'
 import { lookupCodici } from '../../core/apiCore'
-import { DRAWER_WIDTH } from '../../core/constants'
-import { displayDate } from '../../core/utils/date'
+import { DRAWER_WIDTH, TIPO_RUOLO } from '../../core/constants'
 import { statoFornitoreSeverity } from '../../core/utils/severity'
 import SoggettoResolver from '../../core/components/SoggettoResolver.vue'
 import SoggettoMessageBanner from '../../core/components/SoggettoMessageBanner.vue'
-import ContattiSoggettoDrawer from '../../core/components/ContattiSoggettoDrawer.vue'
-import IndirizziSoggettoDrawer from '../../core/components/IndirizziSoggettoDrawer.vue'
-import ContiBancariDrawer from '../../core/components/ContiBancariDrawer.vue'
+import SoggettoPreviewBadges from '../../core/components/SoggettoPreviewBadges.vue'
+import ContattoForm from '../../core/components/ContattoForm.vue'
+import IndirizzoSoggettoForm from '../../core/components/IndirizzoSoggettoForm.vue'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import DrawerFooter from '../../core/components/DrawerFooter.vue'
 import Drawer from 'primevue/drawer'
@@ -33,6 +36,10 @@ const { t } = useI18n()
 const store = useFornitoriStore()
 const { execute, loading } = useApiHandler()
 const isReadonly = useInjectReadonly()
+const contatto = useContattoForm()
+const contattoErrors = ref([])
+const indirizzo = useIndirizzoSoggettoForm()
+const codiceField = useCodiceField('anagrafiche', 'fornitori')
 
 // Lookup
 const modalitaPagamento = useLookup(() => lookupCodici('config.modalita_pagamento'), { immediate: true })
@@ -60,6 +67,7 @@ const soggettoSelezionato = ref(null)
 
 function defaultForm() {
   return {
+    codice: null,
     valuta_id: null, modalita_pagamento_id: null, termine_pagamento_id: null,
     giorni_pagamento: null, fine_mese: false,
     split_payment: false, ritenuta_acconto: false, ritenuta_aliquota: null,
@@ -74,6 +82,9 @@ function resetForm() {
   soggettoSelezionato.value = null
   detail.value = null
   form.value = defaultForm()
+  contatto.reset()
+  contattoErrors.value = []
+  indirizzo.reset()
 }
 
 // Scopo: Popola form dai dati dettaglio (edit mode).
@@ -105,12 +116,15 @@ function clearSoggetto() { soggettoSelezionato.value = null }
 // Carica dati
 watch(() => props.visible, async (val) => {
   if (!val) return
+  if (!codiceField.loaded.value) codiceField.load()
   if (isEdit.value && props.fornitoreId) {
     const d = await store.fetchDetail(props.fornitoreId)
     detail.value = d
     populateFormFromDetail(d)
   } else {
     resetForm()
+    // Carica matrice indirizzi obbligatori per ruolo FO
+    indirizzo.loadMatriceRuolo(TIPO_RUOLO.FORNITORE)
   }
 })
 
@@ -151,11 +165,32 @@ async function onSave() {
     )
     if (result !== null) emit('saved', result)
   } else {
+    // Validazione contatto inline (solo se compilato — il contatto non e' obbligatorio per FO)
+    const hasContatto = (contatto.form.nominativo || '').trim()
+    if (hasContatto) {
+      contattoErrors.value = contatto.validate()
+      if (contattoErrors.value.length > 0) return
+    } else {
+      contattoErrors.value = []
+    }
+
     const sogg = soggettoSelezionato.value
     if (!sogg) return
     const payload = {
       soggetto_id: sogg.id,
       ...buildEditablePayload(),
+    }
+    // Codice manuale (solo se non auto-generato e compilato)
+    if (codiceField.isEditable.value && form.value.codice) {
+      payload.codice = form.value.codice.trim()
+    }
+    // Contatto solo se compilato
+    if (hasContatto) {
+      payload.contatto = { ...contatto.form }
+    }
+    // Indirizzi inline (se compilati)
+    if (indirizzo.hasIndirizzi.value) {
+      payload.indirizzi = indirizzo.toPayloadArray()
     }
     const result = await execute(
       () => store.create(payload),
@@ -166,17 +201,6 @@ async function onSave() {
 }
 
 const canSave = computed(() => isEdit.value || !!soggettoSelezionato.value)
-
-// Sotto-drawer
-const contattiDrawer = ref({ visible: false })
-const indirizziDrawer = ref({ visible: false })
-const contiBancariDrawer = ref({ visible: false })
-const indirizziSoggettoDrawer = ref({ visible: false })
-function openContatti() { contattiDrawer.value = { visible: true } }
-function openIndirizzi() { indirizziDrawer.value = { visible: true } }
-function openContiBancari() { contiBancariDrawer.value = { visible: true } }
-// Scopo: Apre sotto-drawer indirizzi a livello soggetto (create mode).
-function openIndirizziSoggetto() { indirizziSoggettoDrawer.value = { visible: true } }
 
 function onClose() {
   emit('update:visible', false)
@@ -225,6 +249,12 @@ function onClose() {
           />
         </div>
 
+        <!-- === Codice manuale (solo create, se non auto-generato) === -->
+        <div v-if="!isEdit && codiceField.isEditable.value" class="form-field">
+          <label>{{ t('fornitori.col_codice') }}</label>
+          <InputText v-model="form.codice" class="w-full" :placeholder="t('fornitori.placeholder_codice')" />
+        </div>
+
         <!-- === Identificativo (solo edit) === -->
         <template v-if="isEdit && detail">
           <div class="form-grid-2col">
@@ -244,6 +274,9 @@ function onClose() {
           </div>
         </template>
 
+        <!-- Sezioni dati fornitore: visibili solo dopo selezione soggetto (create) o sempre (edit) -->
+        <template v-if="isEdit || soggettoSelezionato">
+
         <!-- === Pagamento === -->
         <h4 class="mt-3">{{ t('fornitori.section_pagamento') }}</h4>
         <div class="form-grid-2col">
@@ -254,27 +287,27 @@ function onClose() {
               :placeholder="t('fornitori.select_modalita')" show-clear />
           </div>
           <div class="form-field">
-            <label>{{ t('fornitori.field_termine_pagamento') }}</label>
-            <Select v-model="form.termine_pagamento_id" :options="terminiPagamento.items.value" :loading="terminiPagamento.loading.value"
-              option-label="descrizione" option-value="id" class="w-full"
-              :placeholder="t('fornitori.select_termine')" show-clear />
-          </div>
-        </div>
-        <div class="form-grid-2col">
-          <div class="form-field">
             <label>{{ t('fornitori.field_valuta') }}</label>
             <Select v-model="form.valuta_id" :options="valute.items.value" :loading="valute.loading.value"
               option-label="descrizione" option-value="id" class="w-full"
               :placeholder="t('fornitori.select_valuta')" show-clear />
           </div>
+        </div>
+        <div class="form-grid-3col">
+          <div class="form-field">
+            <label>{{ t('fornitori.field_termine_pagamento') }}</label>
+            <Select v-model="form.termine_pagamento_id" :options="terminiPagamento.items.value" :loading="terminiPagamento.loading.value"
+              option-label="descrizione" option-value="id" class="w-full"
+              :placeholder="t('fornitori.select_termine')" show-clear />
+          </div>
           <div class="form-field">
             <label>{{ t('fornitori.field_giorni_pagamento') }}</label>
-            <InputNumber v-model="form.giorni_pagamento" class="w-full" :min="0" />
+            <InputNumber v-model="form.giorni_pagamento" :min="0" :max="999" class="w-full" />
           </div>
-        </div>
-        <div class="form-field">
-          <Checkbox v-model="form.fine_mese" :binary="true" input-id="fine_mese" />
-          <label for="fine_mese" class="ml-2">{{ t('fornitori.field_fine_mese') }}</label>
+          <div class="form-field">
+            <label>{{ t('fornitori.field_fine_mese') }}</label>
+            <Checkbox v-model="form.fine_mese" :binary="true" input-id="fine_mese" />
+          </div>
         </div>
 
         <!-- === Fiscale === -->
@@ -285,17 +318,19 @@ function onClose() {
             <InputText v-model="form.regime_fiscale" class="w-full" :placeholder="t('fornitori.placeholder_regime')" />
           </div>
           <div class="form-field">
+            <label>{{ t('fornitori.field_split_payment') }}</label>
             <Checkbox v-model="form.split_payment" :binary="true" input-id="split_payment" />
-            <label for="split_payment" class="ml-2">{{ t('fornitori.field_split_payment') }}</label>
           </div>
         </div>
-        <div class="form-field">
-          <Checkbox v-model="form.bollo_esente" :binary="true" input-id="bollo_esente" />
-          <label for="bollo_esente" class="ml-2">{{ t('fornitori.field_bollo_esente') }}</label>
-        </div>
-        <div class="form-field">
-          <Checkbox v-model="form.ritenuta_acconto" :binary="true" input-id="ritenuta_acconto" />
-          <label for="ritenuta_acconto" class="ml-2">{{ t('fornitori.field_ritenuta_acconto') }}</label>
+        <div class="form-grid-2col">
+          <div class="form-field">
+            <label>{{ t('fornitori.field_bollo_esente') }}</label>
+            <Checkbox v-model="form.bollo_esente" :binary="true" input-id="bollo_esente" />
+          </div>
+          <div class="form-field">
+            <label>{{ t('fornitori.field_ritenuta_acconto') }}</label>
+            <Checkbox v-model="form.ritenuta_acconto" :binary="true" input-id="ritenuta_acconto" />
+          </div>
         </div>
         <div v-if="form.ritenuta_acconto" class="form-field">
           <label>{{ t('fornitori.field_ritenuta_aliquota') }}</label>
@@ -335,56 +370,61 @@ function onClose() {
           <Textarea v-model="form.note" class="w-full" rows="3" auto-resize />
         </div>
 
-        <!-- === Info audit (solo edit) === -->
-        <template v-if="isEdit && detail">
-          <div class="form-grid-2col mt-3">
-            <div class="form-field">
-              <label>{{ t('common.data_insert') }}</label>
-              <InputText :model-value="displayDate(detail.data_insert)" disabled class="w-full" />
-            </div>
-            <div class="form-field">
-              <label>{{ t('common.data_update') }}</label>
-              <InputText :model-value="displayDate(detail.data_update)" disabled class="w-full" />
-            </div>
+        <!-- === Contatto inline (solo creazione) === -->
+        <template v-if="!isEdit">
+          <div class="app-drawer-section">
+            <h4>{{ t('soggetti.section_contatto') }}</h4>
           </div>
+          <ContattoForm
+            :form="contatto.form"
+            :tipi-contatto="contatto.tipiContatto"
+            :unita-organizzative="contatto.unitaOrganizzative"
+            :errors="contattoErrors"
+            :show-u-o="false"
+            :disabled="false"
+          />
         </template>
 
-        <!-- === Indirizzi soggetto (create mode) === -->
-        <!-- In creazione, il trigger DB richiede indirizzi obbligatori per il ruolo FO.
-             L'utente deve poter gestire gli indirizzi del soggetto prima di salvare. -->
-        <template v-if="!isEdit && soggettoSelezionato">
-          <h4 class="mt-3">{{ t('fornitori.section_indirizzi_soggetto') }}</h4>
-          <p class="text-color-secondary" style="font-size: 0.85rem; margin: 0 0 0.5rem 0;">
-            {{ t('fornitori.hint_indirizzi_obbligatori') }}
-          </p>
-          <Button icon="pi pi-map-marker" :label="t('fornitori.gestisci_indirizzi')" outlined @click="openIndirizziSoggetto" />
+        <!-- === Indirizzo inline (solo creazione) === -->
+        <template v-if="!isEdit">
+          <div class="app-drawer-section">
+            <h4>{{ t('soggetti.section_indirizzo') }}</h4>
+          </div>
+          <IndirizzoSoggettoForm
+            :form="indirizzo.form"
+            :is-libera="indirizzo.isLibera.value"
+            @update:is-libera="v => indirizzo.isLibera.value = v"
+            :tipi-stato="indirizzo.tipiStato.value"
+            :stati-lookup="indirizzo.statiLookup"
+            :cap-options="indirizzo.capOptions.value"
+            :loading-cap="indirizzo.loadingCap.value"
+            :auto-clone="indirizzo.autoClone.value"
+            @update:auto-clone="v => indirizzo.autoClone.value = v"
+            @switch-tipo="indirizzo.switchTipo"
+            :indirizzo-warnings="indirizzo.indirizzoWarnings.value"
+            :address-not-found="indirizzo.addressNotFound.value"
+            :disabled="false"
+          />
         </template>
 
-        <!-- === Gestione sotto-drawer (solo edit) === -->
-        <template v-if="isEdit && detail">
-          <h4 class="mt-3">{{ t('fornitori.section_gestione') }}</h4>
-          <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
-            <Button icon="pi pi-id-card" :label="t('fornitori.gestisci_contatti')" outlined @click="openContatti" />
-            <Button icon="pi pi-map-marker" :label="t('fornitori.gestisci_indirizzi')" outlined @click="openIndirizzi" />
-            <Button icon="pi pi-wallet" :label="t('fornitori.gestisci_conti')" outlined @click="openContiBancari" />
-          </div>
-        </template>
+        </template><!-- fine v-if="isEdit || soggettoSelezionato" -->
 
       </div>
 
+      <!-- Badge indirizzi/contatti/conti — creazione: soggetto preview, edit: ruolo editabile -->
+      <SoggettoPreviewBadges v-if="!isEdit && soggettoSelezionato"
+        :soggetto-id="soggettoSelezionato.id"
+        :tipo-ruolo-codice="TIPO_RUOLO.FORNITORE"
+        preview />
+      <SoggettoPreviewBadges v-else-if="isEdit && detail"
+        :soggetto-ruolo-id="detail.soggetto_ruolo_id"
+        :tipo-ruolo-codice="TIPO_RUOLO.FORNITORE" />
+
+      <!-- Footer salva/annulla -->
       <div class="flex justify-end mt-4">
         <DrawerFooter :loading="loading" :disabled="!canSave" @save="onSave" @cancel="onClose" />
       </div>
     </div>
-
-    <!-- Sotto-drawer: Indirizzi soggetto (create mode — per indirizzi obbligatori ruolo FO) -->
-    <IndirizziSoggettoDrawer
-      v-if="!isEdit && soggettoSelezionato"
-      :visible="indirizziSoggettoDrawer.visible"
-      @update:visible="v => indirizziSoggettoDrawer.visible = v"
-      :soggetto-id="soggettoSelezionato.id"
-      context="soggetto"
-    />
 
     <!-- Sotto-drawer: SoggettoResolver (solo creazione) -->
     <SoggettoResolver
@@ -397,32 +437,5 @@ function onClose() {
       @annullato="resolverVisible = false"
     />
 
-    <!-- Sotto-drawer: Contatti ruolo (solo edit) -->
-    <ContattiSoggettoDrawer
-      v-if="isEdit && detail"
-      :visible="contattiDrawer.visible"
-      @update:visible="v => contattiDrawer.visible = v"
-      :soggetto-id="detail.soggetto_ruolo_id"
-      context="ruolo"
-    />
-
-    <!-- Sotto-drawer: Indirizzi ruolo (solo edit) -->
-    <IndirizziSoggettoDrawer
-      v-if="isEdit && detail"
-      :visible="indirizziDrawer.visible"
-      @update:visible="v => indirizziDrawer.visible = v"
-      :soggetto-id="detail.soggetto_ruolo_id"
-      context="ruolo"
-    />
-
-    <!-- Sotto-drawer: Conti bancari ruolo (solo edit) -->
-    <ContiBancariDrawer
-      v-if="isEdit && detail"
-      :visible="contiBancariDrawer.visible"
-      @update:visible="v => contiBancariDrawer.visible = v"
-      :owner-id="detail.soggetto_ruolo_id"
-      :owner-name="detail.ragione_sociale_completa || ''"
-      context="ruolo"
-    />
   </Drawer>
 </template>

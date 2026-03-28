@@ -1,8 +1,9 @@
 <script setup>
 // Scopo: Autocomplete stradario con ricerca server-side filtrata per comune.
 // Mostra indirizzo_normalizzato, emette l'oggetto selezionato via v-model.
+// Espone noResults per segnalare che la via digitata non esiste nello stradario.
 
-import { computed } from 'vue'
+import { computed, watch } from 'vue'
 import AutoComplete from 'primevue/autocomplete'
 import { searchStradario } from '../apiCore'
 import { useServerAutocomplete } from '../composables/useServerAutocomplete'
@@ -18,7 +19,7 @@ const props = defineProps({
 
 const emit = defineEmits(['update:modelValue'])
 
-const { suggestions, loading, onSearch } = useServerAutocomplete(
+const { suggestions, loading, noResults, clearNoResults, onSearch } = useServerAutocomplete(
   (query) => searchStradario(props.comuneId, query),
   { minLength: 2, debounceMs: 300 }
 )
@@ -31,12 +32,16 @@ function formatLabel(item) {
 }
 
 function onSelect(event) {
+  clearNoResults()
   emit('update:modelValue', event.value ?? null)
 }
 
 function onClear() {
+  clearNoResults()
   emit('update:modelValue', null)
 }
+
+defineExpose({ noResults })
 </script>
 
 <template>

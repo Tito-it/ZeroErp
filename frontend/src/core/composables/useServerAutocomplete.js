@@ -20,10 +20,12 @@ export function useServerAutocomplete(searchFn, options = {}) {
 
   const suggestions = ref([])
   const loading = ref(false)
+  const noResults = ref(false)
   let debounceTimer = null
 
   function onSearch({ query }) {
     clearTimeout(debounceTimer)
+    noResults.value = false
 
     if (!query || query.length < minLength) {
       suggestions.value = []
@@ -35,15 +37,21 @@ export function useServerAutocomplete(searchFn, options = {}) {
       try {
         const res = await searchFn(query)
         suggestions.value = transform(res)
+        noResults.value = suggestions.value.length === 0
       } catch {
         suggestions.value = []
+        noResults.value = true
       } finally {
         loading.value = false
       }
     }, debounceMs)
   }
 
+  function clearNoResults() {
+    noResults.value = false
+  }
+
   onUnmounted(() => clearTimeout(debounceTimer))
 
-  return { suggestions, loading, onSearch }
+  return { suggestions, loading, noResults, clearNoResults, onSearch }
 }
