@@ -12,8 +12,11 @@ export const useAuthStore = defineStore('auth', () => {
   const refreshToken = ref(local.get(STORAGE_KEYS.REFRESH_TOKEN))
 
   // Profilo utente caricato dall'endpoint /me/
-  // Struttura JSONB: { utente, ruolo_sistema, risorse_umane, soggetto, emittente, permessi_area, azioni_abilitate }
+  // Struttura JSONB: { utente, ruolo_sistema, risorse_umane, soggetto, emittente, permessi_area, azioni_abilitate, deve_cambiare_password }
   const user = ref(null)
+
+  // Flag cambio password obbligatorio (impostato al login se deve_cambiare_password = true)
+  const passwordChangeRequired = ref(false)
 
   const isAuthenticated = computed(() => !!accessToken.value)
 
@@ -42,6 +45,7 @@ export const useAuthStore = defineStore('auth', () => {
     accessToken.value = null
     refreshToken.value = null
     user.value = null
+    passwordChangeRequired.value = false
     local.remove(STORAGE_KEYS.ACCESS_TOKEN)
     local.remove(STORAGE_KEYS.REFRESH_TOKEN)
     useTabsStore().closeAll()
@@ -64,6 +68,8 @@ export const useAuthStore = defineStore('auth', () => {
   async function login(username, password) {
     const response = await api.post('/auth/token/', { username, password })
     setTokens(response.data.access, response.data.refresh)
+    // Controlla flag cambio password dal backend
+    passwordChangeRequired.value = !!response.data.password_change_required
     try {
       await fetchProfile()
     } catch (err) {
@@ -140,12 +146,19 @@ export const useAuthStore = defineStore('auth', () => {
     return azioniAbilitate.value[codename] === true
   }
 
+  // Scopo: Getter per determinare se l'operatore deve cambiare password.
+  const mustChangePassword = computed(() =>
+    passwordChangeRequired.value || !!user.value?.deve_cambiare_password
+  )
+
   return {
     accessToken,
     refreshToken,
     user,
     isAuthenticated,
     isAdmin,
+    mustChangePassword,
+    passwordChangeRequired,
     displayName,
     visibleDomains,
     permessiArea,
@@ -154,6 +167,7 @@ export const useAuthStore = defineStore('auth', () => {
     isAreaBlocked,
     azioniAbilitate,
     isActionAllowed,
+    setTokens,
     login,
     logout,
     tryRefreshToken,

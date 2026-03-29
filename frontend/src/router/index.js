@@ -25,11 +25,35 @@ function domainPlaceholderRoutes() {
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
   routes: [
-    // Rotta login — senza layout (niente sidebar/topbar)
+    // Rotte pubbliche — senza layout (niente sidebar/topbar)
     {
       path: '/login',
       name: 'login',
       component: () => import('../core/views/LoginView.vue'),
+      meta: { public: true }
+    },
+    {
+      path: '/change-password',
+      name: 'change-password',
+      component: () => import('../core/views/ChangePasswordView.vue'),
+      meta: { requiresAuth: true }
+    },
+    {
+      path: '/password-reset',
+      name: 'password-reset',
+      component: () => import('../core/views/PasswordResetRequestView.vue'),
+      meta: { public: true }
+    },
+    {
+      path: '/reset-password/:token',
+      name: 'password-reset-confirm',
+      component: () => import('../core/views/PasswordResetConfirmView.vue'),
+      meta: { public: true }
+    },
+    {
+      path: '/attivazione/:token',
+      name: 'attivazione',
+      component: () => import('../core/views/AttivazioneView.vue'),
       meta: { public: true }
     },
 
@@ -109,7 +133,7 @@ const router = createRouter({
         {
           path: 'pratiche',
           name: 'pratiche-gestione',
-          component: () => import('../pratiche/views/PraticheView.vue'),
+          component: () => import('../pratiche/views/PraticheDashboard.vue'),
           meta: { domain: 'pratiche', menuKey: 'gestione' }
         },
 
@@ -140,7 +164,7 @@ const router = createRouter({
 router.beforeEach(async (to) => {
   const auth = useAuthStore()
 
-  // Rotte pubbliche
+  // Rotte pubbliche (login, reset, attivazione)
   if (to.meta.public) {
     if (to.name === 'login' && auth.isAuthenticated) {
       return { name: 'home' }
@@ -148,7 +172,7 @@ router.beforeEach(async (to) => {
     return
   }
 
-  // Utente non autenticato -> login
+  // Utente non autenticato -> login (vale per requiresAuth e rotte layout)
   if (!auth.isAuthenticated) {
     return {
       name: 'login',
@@ -167,6 +191,11 @@ router.beforeEach(async (to) => {
         query: to.fullPath !== '/' ? { redirect: to.fullPath } : {}
       }
     }
+  }
+
+  // Guard cambio password obbligatorio: redirect a /change-password
+  if (auth.mustChangePassword && to.name !== 'change-password') {
+    return { name: 'change-password' }
   }
 
   // Guard dominio admin: controlla permesso

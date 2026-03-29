@@ -263,11 +263,11 @@ Filtri: `stato`, `pratica_id`, `limit`, `offset`.
 ### Dettaglio / Modifica bozza
 
 ```http
-GET /api/v1/core/email/outbox/{id}/
-PUT /api/v1/core/email/outbox/{id}/
+GET   /api/v1/core/email/outbox/{id}/
+PATCH /api/v1/core/email/outbox/{id}/
 ```
 
-GET include lista allegati. PUT accetta: `oggetto`, `corpo_html`, `corpo_testo`,
+GET include lista allegati. PATCH accetta: `oggetto`, `corpo_html`, `corpo_testo`,
 `destinatari_cc`, `destinatario`. Solo bozze DRAFT sono modificabili.
 
 **Ownership check**: solo il creatore della bozza (o superuser) puo' accedere.
@@ -278,8 +278,11 @@ GET include lista allegati. PUT accetta: `oggetto`, `corpo_html`, `corpo_testo`,
 POST /api/v1/core/email/outbox/{id}/send/
 ```
 
-Transizione: DRAFT → READY → SENT. Crea record in `email_log` con corpo dalla
-bozza (non dal template originale). Copia allegati su `email_log_id`.
+Transizione: DRAFT → READY → SENT (se SMTP riuscito) oppure DRAFT → READY → DRAFT
+(se SMTP fallito — l'operatore puo' riprovare). Crea record in `email_log` con corpo
+dalla bozza (non dal template originale). Copia allegati su `email_log_id`.
+Lo stato SMTP e' nel log (`SENT` o `FAILED`); lo stato outbox riflette se l'operatore
+deve agire (DRAFT = da riprovare, SENT = completato).
 
 ### Annulla bozza
 
@@ -406,11 +409,15 @@ l'`email_account_id` originale (non risolve da zero).
 ## Sicurezza
 
 - Password SMTP crittografata con Fernet (chiave derivata da `SECRET_KEY`) — mai in chiaro in DB o API
-- Ownership check su tutte le operazioni outbox operatore
+- Guard su password NULL: `decrypt()` e `test_connection` gestiscono account senza password configurata
+- Ownership check su tutte le operazioni outbox e allegati (fail-closed se nessun outbox padre)
 - Path traversal guard su download allegati (`normpath` + `startswith`)
-- Whitelist colonne aggiornabili nei metodi UPDATE del repository
+- Whitelist colonne aggiornabili nei metodi UPDATE del repository (previene SQL injection da kwargs)
 - MIME type whitelist per upload allegati
 - Template rendering sicuro: solo sostituzione `{{chiave}}`, nessuna esecuzione codice
+- Outbox: stato riflette esito reale (SENT su successo, DRAFT su fallimento SMTP)
+- SMTP catch specifico: `(SMTPException, OSError, ValueError)` — errori di programmazione non mascherati
+- Connessione SMTP chiusa in `finally` (no connection leak)
 
 ## Settings Django
 

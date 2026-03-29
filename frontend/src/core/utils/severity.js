@@ -92,3 +92,17 @@ export const STATO_FLUSSO_MAP = {
 export function statoFlussoSeverity(codice) {
   return resolveSeverity(STATO_FLUSSO_MAP, codice)
 }
+
+// --- Mappa esiti flusso ---
+// POSITIVO=verde, NEGATIVO=rosso, PARZIALE=arancio, NON_APPLICABILE=secondario
+export const ESITO_FLUSSO_MAP = {
+  POSITIVO: 'success',
+  NEGATIVO: 'danger',
+  PARZIALE: 'warn',
+  NON_APPLICABILE: 'secondary',
+}
+
+// Scopo: Shortcut per esito flusso.
+export function esitoFlussoSeverity(codice) {
+  return resolveSeverity(ESITO_FLUSSO_MAP, codice)
+}

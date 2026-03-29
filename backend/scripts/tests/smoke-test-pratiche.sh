@@ -31,6 +31,10 @@
 # 23) Aggiorna nota pratica (v2)
 # 24) Elimina nota pratica (v2)
 # 25) Lista allegati pratica — vuota (v2)
+# 26) Coda lavoro operatore (v2.1)
+# 27) Coda lavoro senza emittente → errore (v2.1)
+# 28) Competenze flussi lista (v2.1)
+# 29) Verifica data_apertura nel dettaglio (v2.1)
 # ------------------------------------------------------------
 set -euo pipefail
 
@@ -438,11 +442,48 @@ echo "-- 25. Lista allegati --"
 do_curl GET "/api/v1/pratiche/${PRATICA_ID}/allegati/"
 check "GET lista allegati (vuota)" 200
 
+# --- 26. Coda lavoro operatore (v2.1) ---
+echo ""
+echo "-- 26. Coda lavoro --"
+
+do_curl GET "/api/v1/pratiche/coda-lavoro/?emittente_fiscale_id=$EMITTENTE_FISCALE_ID"
+check "GET coda lavoro" 200
+
+# --- 27. Coda lavoro senza emittente → errore (v2.1) ---
+echo ""
+echo "-- 27. Coda lavoro senza emittente --"
+
+do_curl GET "/api/v1/pratiche/coda-lavoro/"
+check "GET coda lavoro senza emittente → 400" 400
+
+# --- 28. Competenze flussi lista (v2.1) ---
+echo ""
+echo "-- 28. Competenze flussi --"
+
+do_curl GET "/api/v1/pratiche/competenze-flussi/"
+check "GET competenze flussi" 200
+
+# --- 29. Verifica data_apertura nel dettaglio (v2.1) ---
+echo ""
+echo "-- 29. Verifica data_apertura --"
+
+do_curl GET "/api/v1/pratiche/${PRATICA_ID}/"
+HAS_DATA_APERTURA=$(echo "$LAST_BODY" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+print('data_apertura' in d.get('data', {}))
+" 2>/dev/null)
+if [[ "$HAS_DATA_APERTURA" == "True" ]]; then
+    log_ok "Campo data_apertura presente nel dettaglio"
+else
+    log_fail "Campo data_apertura mancante nel dettaglio"
+fi
+
 # ================================================================
 echo ""
 echo "========================================="
 echo -e " Risultato: ${GREEN}$PASS OK${NC} / ${RED}$FAIL FAIL${NC}"
-echo "========================================="
+echo "=========================================
 echo ""
 
 if [[ $FAIL -gt 0 ]]; then

@@ -151,20 +151,29 @@ class PasswordResetConfirmView(APIView):
                 code=E_RESET, message="La nuova password e la conferma non coincidono.",
             )
 
-            # Consuma token (lancia ServiceError se invalido)
-            ip = get_client_ip(request._request)
-            auth_user_id = _token_service.consume(token, _RESET_TOKEN_TIPO, ip=ip)
+            # Valida token SENZA consumarlo (per poter validare la password prima)
+            token_result = _token_service.validate(token, _RESET_TOKEN_TIPO)
+            ErrorManager.require(
+                token_result is not None,
+                code=E_RESET, message="Token non valido, scaduto o gia' utilizzato.",
+            )
+            assert token_result is not None
+            auth_user_id, _ = token_result
 
             # Trova utente
             user = User.objects.filter(id=auth_user_id).first()
             ErrorManager.require(user is not None, code=E_RESET, message="Utente non trovato.")
             assert user is not None
 
-            # Valida nuova password (4 validators Django)
+            # Valida nuova password PRIMA di consumare il token
             try:
                 validate_password(new_password, user=user)
             except DjangoValidationError as exc:
                 ErrorManager.require(False, code=E_RESET, message=" ".join(exc.messages))
+
+            # Ora consuma il token (password validata con successo)
+            ip = get_client_ip(request._request)
+            _token_service.consume(token, _RESET_TOKEN_TIPO, ip=ip)
 
             # Applica nuova password + reset flag (atomico)
             with transaction.atomic():

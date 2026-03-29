@@ -72,6 +72,7 @@ BOZZA e inserisce la pratica in transazione atomica.
         "canale_origine_id": null,
         "codice": "PRA-0000001",
         "descrizione": "Manutenzione caldaia",
+        "data_apertura": null,
         "data_scadenza": "2026-04-30",
         "meta": {},
         "data_insert": "2026-03-28T10:00:00+00:00",
@@ -133,5 +134,6 @@ BOZZA e inserisce la pratica in transazione atomica.
 ## Note di migrazione
 
 - v2 (28 marzo 2026): aggiunti `soggetto_ruolo_id`, `istanza_utility_id`, display fields via JOIN, parametro `search`.
+- v2.1 (29 marzo 2026): aggiunto `data_apertura` (DATE, valorizzato da trigger alla transizione BOZZA → APERTA).
 - Rimosso `solo_interna` (campo eliminato dal DB).
 - I display fields eliminano la necessita' di lookup client-side per le colonne lista.

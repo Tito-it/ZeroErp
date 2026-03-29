@@ -12,6 +12,7 @@ import Aura from '@primeuix/themes/aura'
 import 'primeicons/primeicons.css'
 import './assets/theme.css'
 import './assets/main.css'
+import './assets/auth-pages.css'
 
 const app = createApp(App)
 

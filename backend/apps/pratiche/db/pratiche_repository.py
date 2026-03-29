@@ -15,7 +15,7 @@ from apps.core.services.error_manager import ErrorManager
 
 
 _PRATICHE_ORDER_COLS = {
-    "codice", "descrizione", "data_scadenza", "data_insert",
+    "codice", "descrizione", "data_apertura", "data_scadenza", "data_insert",
     "tipo_prestazione_descrizione", "stato_descrizione",
     "priorita_descrizione", "soggetto_display", "risorsa_umana_display",
 }
@@ -52,7 +52,7 @@ class PraticheRepository:
         p.stato_id, p.priorita_id,
         p.risorsa_umana_id, p.unita_organizzativa_id,
         p.pratica_padre_id, p.flusso_origine_id, p.canale_origine_id,
-        p.codice, p.descrizione, p.data_scadenza,
+        p.codice, p.descrizione, p.data_apertura, p.data_scadenza,
         p.meta, p.data_insert, p.user_insert,
         tp.codice AS tipo_prestazione_codice,
         tp.descrizione AS tipo_prestazione_descrizione,
@@ -799,6 +799,97 @@ class PraticheRepository:
         )
         assert row is not None
         return {"pre_attivazione": bool(row[0]), "post_attivazione": bool(row[1])}
+
+    # -- CODA LAVORO OPERATORE ------------------------------------------
+
+    # Scopo: Restituisce la coda di lavoro di un operatore su tre livelli
+    #        (ASSEGNATO, COMPETENZA, REPARTO) chiamando la funzione DB.
+    def list_coda_lavoro(
+        self,
+        risorsa_umana_id: int,
+        emittente_fiscale_id: int,
+    ) -> list[dict[str, Any]]:
+        sql = """
+            SELECT *
+            FROM pratiche.fn_coda_lavoro_operatore(%s, %s)
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [risorsa_umana_id, emittente_fiscale_id])
+            rows = cursor.fetchall()
+            return self._dicts_from_cursor(cursor, rows)
+
+    # -- PRENDI IN CARICO FLUSSO -----------------------------------------
+
+    # Scopo: Assegna un flusso DA_ESEGUIRE all'operatore, verificando competenza.
+    # Delega alla funzione DB che gestisce lock (FOR UPDATE) e validazione.
+    # Ritorna True se assegnato, False se gia' assegnato allo stesso operatore.
+    def prendi_in_carico_flusso(
+        self,
+        flusso_id: int,
+        risorsa_umana_id: int,
+    ) -> bool:
+        sql = """
+            SELECT pratiche.fn_prendi_in_carico_flusso(%s, %s)
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [flusso_id, risorsa_umana_id])
+            row = cursor.fetchone()
+            assert row is not None
+        return bool(row[0])
+
+    # -- COMPETENZE FLUSSI -----------------------------------------------
+
+    # Scopo: Restituisce le competenze flussi con display fields da JOIN.
+    def list_competenze_flussi(self) -> list[dict[str, Any]]:
+        sql = """
+            SELECT cf.id, cf.template_flusso_id, cf.unita_organizzativa_id,
+                   cf.risorsa_umana_id, cf.attivo,
+                   tf.codice AS template_flusso_codice,
+                   tf.descrizione AS template_flusso_descrizione,
+                   uo.descrizione AS unita_organizzativa_descrizione,
+                   sog.ragione_sociale_completa AS risorsa_umana_display
+            FROM pratiche.competenze_flussi cf
+            JOIN pratiche.template_flussi tf ON tf.id = cf.template_flusso_id
+            JOIN config.unita_organizzative uo ON uo.id = cf.unita_organizzativa_id
+            JOIN anagrafiche.risorse_umane ru ON ru.id = cf.risorsa_umana_id
+            LEFT JOIN anagrafiche.soggetti_ruoli sr ON sr.id = ru.soggetto_ruolo_id
+            LEFT JOIN anagrafiche.soggetti sog ON sog.id = sr.soggetto_id
+            ORDER BY tf.codice, uo.descrizione, sog.ragione_sociale_completa
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql)
+            rows = cursor.fetchall()
+            return self._dicts_from_cursor(cursor, rows)
+
+    # Scopo: Crea una competenza flusso e ritorna l'ID.
+    def create_competenza_flusso(self, data: dict[str, Any]) -> int:
+        sql = """
+            INSERT INTO pratiche.competenze_flussi (
+                template_flusso_id, unita_organizzativa_id, risorsa_umana_id, attivo
+            ) VALUES (%s, %s, %s, %s)
+            RETURNING id
+        """
+        params = [
+            data["template_flusso_id"],
+            data["unita_organizzativa_id"],
+            data["risorsa_umana_id"],
+            data.get("attivo", True),
+        ]
+        with connection.cursor() as cursor:
+            cursor.execute(sql, params)
+            row = cursor.fetchone()
+            assert row is not None
+        return int(row[0])
+
+    # Scopo: Elimina una competenza flusso per ID.
+    def delete_competenza_flusso(self, competenza_id: int) -> bool:
+        sql = """
+            DELETE FROM pratiche.competenze_flussi
+            WHERE id = %s
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [competenza_id])
+            return cursor.rowcount > 0
 
     # -- VERIFICA STATO BA SOGGETTO (cross-schema) ----------------------
 

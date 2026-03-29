@@ -99,7 +99,7 @@ Utile se l'invito e' scaduto o non e' stato ricevuto.
 POST /api/v1/auth/attivazione/
 ```
 
-**Non autenticato** (`AllowAny`).
+**Non autenticato** (`AllowAny`). Rate limiting: 3 richieste / 15 minuti per IP.
 
 ### Input
 
@@ -111,19 +111,22 @@ POST /api/v1/auth/attivazione/
 }
 ```
 
-### Validazioni
+### Validazioni (ordine critico)
 
 1. `token` non vuoto
 2. `new_password` non vuota
 3. `new_password == new_password_confirm`
-4. Token valido tipo `INVITO_OPERATORE` (non scaduto, non usato)
+4. Token valido tipo `INVITO_OPERATORE` — **validato senza consumare**
 5. Password passa i 4 validators Django
+6. **Solo dopo validazione password**: il token viene consumato
+
+> Se la password e' troppo debole (es. "12345678"), il token resta valido
+> e l'operatore puo' riprovare con una password piu' forte.
 
 ### Azioni (atomiche)
 
-1. Consuma token (registra IP e timestamp)
-2. `user.set_password(new_password)` + save
-3. Reset flag `deve_cambiare_password = false`
+1. `user.set_password(new_password)` + save
+2. Reset flag `deve_cambiare_password = false`
 
 ### Output
 
@@ -152,7 +155,10 @@ POST /api/v1/auth/attivazione/
 - **Token SHA-256**: solo hash in DB, token in chiaro solo nell'email
 - **Scadenza 72 ore**: l'operatore ha 3 giorni per attivare
 - **Invalidazione**: il reinvio invalida automaticamente il token precedente
+- **Validate-before-consume**: la password viene validata PRIMA di consumare il token — password debole non brucia il token
+- **Rate limiting**: 3/15min per IP sull'endpoint attivazione
 - **IP tracking**: l'attivazione registra l'IP di chi consuma il token
+- **Operazioni atomiche**: password + flag in `transaction.atomic()`, email invito in try/except (non blocca il flusso)
 - **Email mascherata**: la response all'admin mostra solo `m***@dominio`
 
 ## Dipendenze DB

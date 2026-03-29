@@ -140,6 +140,30 @@ export function deleteAllegato(praticaId, allegatoId) {
   return api.delete(`${BASE}/${praticaId}/allegati/${allegatoId}/`)
 }
 
+// --- Coda lavoro operatore ---
+
+export function fetchCodaLavoro(params = {}) {
+  return api.get(`${BASE}/coda-lavoro/`, { params })
+}
+
+export function prendiInCaricoFlusso(flussoId) {
+  return api.post(`${BASE}/flussi/${flussoId}/prendi-in-carico/`, {})
+}
+
+// --- Competenze flussi ---
+
+export function fetchCompetenzeFlussi() {
+  return api.get(`${BASE}/competenze-flussi/`)
+}
+
+export function createCompetenzaFlusso(payload) {
+  return api.post(`${BASE}/competenze-flussi/`, payload)
+}
+
+export function deleteCompetenzaFlusso(competenzaId) {
+  return api.delete(`${BASE}/competenze-flussi/${competenzaId}/`)
+}
+
 // --- Formule tempo (lookup globale, non legato a pratica) ---
 
 export function fetchFormuleTempo(params = {}) {

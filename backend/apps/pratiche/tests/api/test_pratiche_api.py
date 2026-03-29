@@ -53,6 +53,7 @@ def _mock_pratica_row(pratica_id: int = 1) -> dict:
         "canale_origine_id": None,
         "codice": "PRA-0000001",
         "descrizione": "Test",
+        "data_apertura": None,
         "data_scadenza": None,
         "meta": {},
         "data_insert": "2026-03-04T10:00:00+00:00",
