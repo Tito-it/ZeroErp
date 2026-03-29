@@ -4,6 +4,7 @@
 - [fn_check_azione_processo](manual/fn_check_azione_processo.md) — (latest review 08-03-2026) La funzione **`script.fn_check_azione_processo`** verifica se un'azione di processo (identificata da `permission_codename`) e abilitata per un utente.
 - [fn_check_blocco_login](manual/fn_check_blocco_login.md)
 - [fn_check_indirizzo_duplicato](manual/fn_check_indirizzo_duplicato.md)
+- [fn_check_operatore_invitabile](manual/fn_check_operatore_invitabile.md)
 - [fn_check_user_emittente_scope](manual/fn_check_user_emittente_scope.md) — (latest review 08-03-2026) La funzione **`script.fn_check_user_emittente_scope`** verifica se un utente ha accesso a uno specifico emittente fiscale. Pensata per i trigger defense-in-depth su tabelle operative (fatture, pagamenti).
 - [fn_clone_catasto_from_parent_by_istanza](manual/fn_clone_catasto_from_parent_by_istanza.md) — (latest review 15-12-25) La funzione **`script.fn_clone_catasto_from_parent_by_istanza(p_istanza_utilities_id)`** gestisce la **clonazione** di un record catastale (`anagrafiche.catasto_unita_immobiliari`) dalla **parent_istanza** verso l’istanza corrente, tipicamente nel flusso di **subentro**.
 - [fn_ensure_logconn](manual/fn_ensure_logconn.md) — * **Stabilire una connessione persistente** a un database remoto o a se stesso attraverso l’estensione `dblink`, evitando overhead di creazione/removal di connessioni multiple. * **Supporto al logging remoto**: utilizzata da funzioni come `script.fn_log_error_only` per eseguire INSERT in un contesto transazionale separato.
@@ -74,3 +75,4 @@
 
 ## 📘 Altri contenuti manuali
 - [fn_get_contatti_default](manual/fn_get_contatti_default.md) — * **Ottenere il contatto “di riferimento”**   Fornire un modo semplice e univoco per ottenere il **contatto principale** da utilizzare in un certo contesto (es. contatto predefinito del cliente, contatto principale del ruolo Gestore, ecc.).
+- [fn_get_user_profile_auth_flags](manual/fn_get_user_profile_auth_flags.md)

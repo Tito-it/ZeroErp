@@ -35,10 +35,12 @@
 - [trgfn_flussi_guard_transizione](funzioni/trgfn_flussi_guard_transizione.md) — Trigger function guard che **blocca transizioni di stato non ammesse** per i flussi pratica. Consulta la matrice `config.transizioni_stati_flussi_pratiche` (solo righe con `attivo = true`) e solleva eccezione se la transizione non e' configurata.
 - [trgfn_note_flussi_giornale](funzioni/trgfn_note_flussi_giornale.md) — Registra l'azione **NOTA_AGGIUNTA** nel giornale a livello flusso. Si attiva **AFTER INSERT** su `pratiche.note_flussi`.
 - [trgfn_note_pratiche_giornale](funzioni/trgfn_note_pratiche_giornale.md) — Registra l'azione **NOTA_AGGIUNTA** nel giornale a livello pratica. Si attiva **AFTER INSERT** su `pratiche.note_pratiche`.
+- [trgfn_pratiche_gen_codice](funzioni/trgfn_pratiche_gen_codice.md)
 - [trgfn_pratiche_giornale_assegnazione](funzioni/trgfn_pratiche_giornale_assegnazione.md) — Registra l'azione **ASSEGNAZIONE_CAMBIATA** nel giornale. Si attiva **AFTER UPDATE OF risorsa_umana_id, unita_organizzativa_id** su `pratiche.pratiche`, solo quando almeno uno dei due valori cambia realmente.
 - [trgfn_pratiche_giornale_ins](funzioni/trgfn_pratiche_giornale_ins.md) — Registra l'azione **PRATICA_CREATA** nel giornale. Si attiva **AFTER INSERT** su `pratiche.pratiche`.
 - [trgfn_pratiche_giornale_priorita](funzioni/trgfn_pratiche_giornale_priorita.md) — Registra l'azione **PRIORITA_CAMBIATA** nel giornale. Si attiva **AFTER UPDATE OF priorita_id** su `pratiche.pratiche`, solo quando il valore cambia realmente.
 - [trgfn_pratiche_giornale_stato](funzioni/trgfn_pratiche_giornale_stato.md) — Registra l'azione **STATO_CAMBIATO** nel giornale. Si attiva **AFTER UPDATE OF stato_id** su `pratiche.pratiche`, solo quando il valore cambia realmente (`WHEN OLD.stato_id IS DISTINCT FROM NEW.stato_id`).
+- [trgfn_pratiche_guard_contesto](funzioni/trgfn_pratiche_guard_contesto.md)
 - [trgfn_pratiche_guard_transizione](funzioni/trgfn_pratiche_guard_transizione.md) — Trigger function guard che **blocca transizioni di stato non ammesse** per le pratiche. Consulta la matrice `config.transizioni_stati_pratiche` (solo righe con `attivo = true`) e solleva eccezione se la transizione non e' configurata.
 - [trgfn_sospensioni_giornale_ins](funzioni/trgfn_sospensioni_giornale_ins.md)
 - [trgfn_sospensioni_giornale_riattivazione](funzioni/trgfn_sospensioni_giornale_riattivazione.md)

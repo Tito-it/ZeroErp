@@ -25,6 +25,8 @@
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
 | user_update | text | NO | CURRENT_USER |
+| soggetto_ruolo_id | bigint | YES |  |
+| istanza_utility_id | bigint | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -32,10 +34,12 @@
 | FOREIGN KEY | fk_pratiche_canale_origine | canale_origine_id |
 | FOREIGN KEY | fk_pratiche_emittente_fiscale | emittente_fiscale_id |
 | FOREIGN KEY | fk_pratiche_flusso_origine | flusso_origine_id |
+| FOREIGN KEY | fk_pratiche_istanza_utility | istanza_utility_id |
 | FOREIGN KEY | fk_pratiche_pratica_padre | pratica_padre_id |
 | FOREIGN KEY | fk_pratiche_priorita | priorita_id |
 | FOREIGN KEY | fk_pratiche_risorsa_umana | risorsa_umana_id |
 | FOREIGN KEY | fk_pratiche_soggetto | soggetto_id |
+| FOREIGN KEY | fk_pratiche_soggetto_ruolo | soggetto_ruolo_id |
 | FOREIGN KEY | fk_pratiche_stato | stato_id |
 | FOREIGN KEY | fk_pratiche_tipo_prestazione | tipo_prestazione_id |
 | FOREIGN KEY | fk_pratiche_unita_organizzativa | unita_organizzativa_id |
@@ -49,6 +53,10 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
+| trg_pratiche_a10_gen_codice_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION pratiche.trgfn_pratiche_gen_codice()` |
+| trg_pratiche_a10_gen_codice_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION pratiche.trgfn_pratiche_gen_codice()` |
+| trg_pratiche_a10_guard_contesto_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION pratiche.trgfn_pratiche_guard_contesto()` |
+| trg_pratiche_a10_guard_contesto_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION pratiche.trgfn_pratiche_guard_contesto()` |
 | trg_pratiche_a10_guard_transizione_upd | BEFORE | UPDATE | `EXECUTE FUNCTION pratiche.trgfn_pratiche_guard_transizione()` |
 | trg_pratiche_z90_giornale_assegnazione_upd | AFTER | UPDATE | `EXECUTE FUNCTION pratiche.trgfn_pratiche_giornale_assegnazione()` |
 | trg_pratiche_z90_giornale_ins | AFTER | INSERT | `EXECUTE FUNCTION pratiche.trgfn_pratiche_giornale_ins()` |

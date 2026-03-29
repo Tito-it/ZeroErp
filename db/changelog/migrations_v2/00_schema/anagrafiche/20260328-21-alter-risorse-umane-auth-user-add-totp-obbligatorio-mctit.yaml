@@ -1,0 +1,34 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Aggiunge a anagrafiche.risorse_umane_auth_user:
+#   totp_obbligatorio — se true l'operatore DEVE configurare
+#                        il 2FA TOTP per accedere al sistema.
+# Fase: 4 (2FA TOTP)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+    - logicalFilePath: migrations_v2/00_schema/anagrafiche/20260328-21-alter-risorse-umane-auth-user-add-totp-obbligatorio-mctit.yaml
+
+    - changeSet:
+          id: 20260328-21-alter-risorse-umane-auth-user-add-totp-obbligatorio
+          author: mctit
+          comment: >
+              Aggiunge totp_obbligatorio: se true l'operatore DEVE
+              configurare il 2FA per accedere al sistema.
+          changes:
+              - sql:
+                    dbms: postgresql
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+                        ALTER TABLE anagrafiche.risorse_umane_auth_user
+                          ADD COLUMN totp_obbligatorio boolean NOT NULL DEFAULT false;
+
+                        COMMENT ON COLUMN anagrafiche.risorse_umane_auth_user.totp_obbligatorio IS
+                          'Se true, l''operatore DEVE configurare il 2FA TOTP per accedere.';
+
+          rollback:
+              - sql:
+                    sql: |
+                        ALTER TABLE anagrafiche.risorse_umane_auth_user DROP COLUMN IF EXISTS totp_obbligatorio;
