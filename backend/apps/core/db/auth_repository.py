@@ -69,3 +69,26 @@ class AuthRepository:
                 return {"bloccato": False, "minuti_rimanenti": 0, "tentativi": 0}
             import json
             return json.loads(row[0]) if isinstance(row[0], str) else row[0]
+
+    # Scopo: Legge il flag deve_cambiare_password per un auth_user.
+    def get_deve_cambiare_password(self, auth_user_id: int) -> bool:
+        sql = """
+            SELECT deve_cambiare_password
+              FROM anagrafiche.risorse_umane_auth_user
+             WHERE auth_user_id = %s
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [auth_user_id])
+            row = cursor.fetchone()
+            return bool(row[0]) if row else False
+
+    # Scopo: Imposta il flag deve_cambiare_password per un auth_user.
+    def set_deve_cambiare_password(self, auth_user_id: int, valore: bool) -> bool:
+        sql = """
+            UPDATE anagrafiche.risorse_umane_auth_user
+               SET deve_cambiare_password = %s, data_update = now()
+             WHERE auth_user_id = %s
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [valore, auth_user_id])
+            return cursor.rowcount > 0

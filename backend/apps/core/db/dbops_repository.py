@@ -35,6 +35,7 @@ _REL_CONSENTITE: frozenset[str] = frozenset(
         "config.causali_trasporto",
         "config.classi_utenze",
         "config.conti_contabili",
+        "config.email_account",
         "config.forme_giuridiche",
         "config.iva",
         "config.iva_assoggettamenti",

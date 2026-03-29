@@ -65,10 +65,15 @@ class AuditTokenObtainPairView(TokenObtainPairView):
                     )
             raise
 
-        # 3. Login OK: reset contatore + audit sessione
+        # 3. Login OK: reset contatore + audit sessione + check cambio password
         if response.status_code == 200:
             if user:
                 _auth_repo.registra_tentativo_login(user.id, successo=True)
+
+                # Check flag deve_cambiare_password
+                if _auth_repo.get_deve_cambiare_password(user.id):
+                    response.data["password_change_required"] = True
+
             user_id, jti = self._extract_claims(response)
             session_audit_service.record_login(
                 user_id=user_id,
