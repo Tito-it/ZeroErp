@@ -1,0 +1,143 @@
+{% include-markdown "it/dbzero/script/manual/fn_check_operatore_invitabile.md" %}
+# ⚙️ Funzione `fn_check_operatore_invitabile`
+
+```sql
+CREATE FUNCTION fn_check_operatore_invitabile(p_auth_user_id integer)
+```
+
+**Definizione completa:**
+
+```sql
+CREATE OR REPLACE FUNCTION script.fn_check_operatore_invitabile(p_auth_user_id integer)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ STABLE
+AS $function$
+DECLARE
+    -- Tipi espliciti per colonne django.auth_user:
+    -- %TYPE non utilizzabile perche' la tabella django.auth_user
+    -- viene creata da Django migrate DOPO Liquibase.
+    v_is_active     BOOLEAN;
+    v_email         VARCHAR(254);
+    v_last_login    TIMESTAMPTZ;
+    v_ruolo_sistema anagrafiche.risorse_umane_auth_user.ruolo_sistema%TYPE;
+    v_rau_attivo    anagrafiche.risorse_umane_auth_user.attivo%TYPE;
+BEGIN
+    -- =========================================================
+    -- Scopo:
+    --   Verifica se un operatore puo' ricevere un invito email
+    --   per il primo accesso al sistema.
+    --
+    -- Condizioni per essere invitabile:
+    --   1. auth_user esiste e is_active = true
+    --   2. risorse_umane_auth_user esiste e attivo = true
+    --   3. ruolo_sistema <> 'DISABILITATO'
+    --   4. auth_user ha un indirizzo email
+    --   5. auth_user.last_login IS NULL (mai loggato)
+    --
+    -- Parametri:
+    --   p_auth_user_id: ID utente Django
+    --
+    -- Restituisce:
+    --   JSONB: {invitabile: bool, motivo: text, email: text}
+    -- =========================================================
+
+    -- Guard: parametro obbligatorio
+    IF p_auth_user_id IS NULL OR p_auth_user_id <= 0 THEN
+        RETURN jsonb_build_object(
+            'invitabile', false,
+            'motivo', 'auth_user_id non valido',
+            'email', NULL
+        );
+    END IF;
+
+    -- Recupera dati auth_user + risorse_umane_auth_user
+    -- in una sola query per avere il quadro completo
+    -- e dare il motivo piu' specifico.
+    -- NB: rau.attivo=false causa is_active=false via trigger
+    -- sync, quindi rau.attivo va verificato per primo.
+    SELECT au.is_active, au.email, au.last_login,
+           rau.ruolo_sistema::text, rau.attivo
+      INTO v_is_active, v_email, v_last_login,
+           v_ruolo_sistema, v_rau_attivo
+      FROM django.auth_user au
+      LEFT JOIN anagrafiche.risorse_umane_auth_user rau
+        ON rau.auth_user_id = au.id
+     WHERE au.id = p_auth_user_id;
+
+    IF v_is_active IS NULL THEN
+        RETURN jsonb_build_object(
+            'invitabile', false,
+            'motivo', 'Utente non trovato',
+            'email', NULL
+        );
+    END IF;
+
+    -- Verifica rau PRIMA di is_active: rau.attivo=false
+    -- causa is_active=false via trigger sync, il motivo
+    -- primario e' rau non attivo.
+    IF v_ruolo_sistema IS NULL THEN
+        RETURN jsonb_build_object(
+            'invitabile', false,
+            'motivo', 'Nessun record risorse_umane_auth_user',
+            'email', v_email
+        );
+    END IF;
+
+    IF v_rau_attivo = false THEN
+        RETURN jsonb_build_object(
+            'invitabile', false,
+            'motivo', 'Record risorse_umane_auth_user non attivo',
+            'email', v_email
+        );
+    END IF;
+
+    IF v_ruolo_sistema = 'DISABILITATO' THEN
+        RETURN jsonb_build_object(
+            'invitabile', false,
+            'motivo', 'Ruolo sistema DISABILITATO',
+            'email', v_email
+        );
+    END IF;
+
+    -- is_active=false senza rau.attivo=false: disattivazione
+    -- diretta su auth_user (non causata dal trigger sync)
+    IF v_is_active = false THEN
+        RETURN jsonb_build_object(
+            'invitabile', false,
+            'motivo', 'Utente disattivato (is_active=false)',
+            'email', v_email
+        );
+    END IF;
+
+    IF v_email IS NULL OR trim(v_email) = '' THEN
+        RETURN jsonb_build_object(
+            'invitabile', false,
+            'motivo', 'Nessun indirizzo email configurato',
+            'email', NULL
+        );
+    END IF;
+
+    IF v_last_login IS NOT NULL THEN
+        RETURN jsonb_build_object(
+            'invitabile', false,
+            'motivo', 'Utente ha gia'' effettuato login',
+            'email', v_email
+        );
+    END IF;
+
+    -- Tutte le condizioni soddisfatte
+    RETURN jsonb_build_object(
+        'invitabile', true,
+        'motivo', NULL,
+        'email', v_email
+    );
+END;
+$function$
+
+COMMENT ON FUNCTION script.fn_check_operatore_invitabile(p_auth_user_id integer)
+IS 'Verifica se operatore e'' invitabile: attivo, con email, mai loggato. Ritorna JSONB {invitabile, motivo, email}.';
+```
+
+---
+{% include-markdown "signature-core.md" %}

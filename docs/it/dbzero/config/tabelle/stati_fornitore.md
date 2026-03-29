@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/config/manual/stati_fornitore.md" %}
 # 📚 Tabella `stati_fornitore`
 
 ## 🗂️ Campi principali

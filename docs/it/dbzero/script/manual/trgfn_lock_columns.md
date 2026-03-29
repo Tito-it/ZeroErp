@@ -19,19 +19,41 @@ Approfondimenti funzioni:
 
 ---
 
+### GUC di override per manutenzione
+
+La funzione supporta un **override via GUC** per consentire la modifica delle colonne
+protette in contesti di manutenzione, senza dover DISABLE/ENABLE TRIGGER:
+
+```sql
+BEGIN;
+SET LOCAL zeroerp.allow_lock_columns_override = 'on';
+UPDATE anagrafiche.fornitori SET codice = 'NUOVO-CODICE' WHERE id = 123;
+COMMIT;
+```
+
+- **GUC**: `zeroerp.allow_lock_columns_override`
+- **Valore di attivazione**: `'on'`
+- **Scope consigliato**: `SET LOCAL` (solo la transazione corrente)
+- **Default**: assente o qualsiasi valore diverso da `'on'` → colonne protette
+- **Pattern**: coerente con `trgfn_delete_block_by_guc` che usa GUC per l'override delle delete
+
+---
+
 ### 🎯  Comportamento Chiave
 
-1. **Validazione degli argomenti**
+1. **GUC override** — se `zeroerp.allow_lock_columns_override = 'on'`, ritorna `NEW` immediatamente senza controlli
+
+2. **Validazione degli argomenti**
 
    * Accetta un numero pari di parametri (`colonna`, `msgcode`)
-   * Se dispari, invoca `fn_log_and_raise_error('database', TG_NAME, 'E_ARGOMENTI_A_COPPIE', {...})`
+   * Se dispari, invoca `fn_log_and_raise_error(‘database’, TG_NAME, ‘E_ARGOMENTI_A_COPPIE’, {...})`
 
-2. **Ciclo di verifica**
+3. **Ciclo di verifica**
 
    * Per ogni coppia, estrae **OLD.col** e **NEW\.col** in modo dinamico
    * Confronta i valori: se **distinti**, scatta il blocco
 
-3. **Gestione dell’errore**
+4. **Gestione dell’errore**
 
    * Chiama `script.fn_log_and_raise_error` con:
 
@@ -42,7 +64,7 @@ Approfondimenti funzioni:
      * **Placeholder**: il nome della colonna per sostituire `%s`
    * La funzione logga su `dbops.error_log` (via dblink\_connect) e **rialza un’eccezione** con dettaglio e hint
 
-4. **Permette UPDATE** solo se nessuna colonna protetta è stata modificata
+5. **Permette UPDATE** solo se nessuna colonna protetta è stata modificata
 
 ---
 

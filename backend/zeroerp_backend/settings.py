@@ -149,6 +149,7 @@ MIDDLEWARE = [
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'apps.core.middleware.jwt_audit_middleware.JwtAuditMiddleware',
+    'apps.core.middleware.password_change_middleware.PasswordChangeRequiredMiddleware',
     'apps.core.middleware.request_log_middleware.RequestLogMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
@@ -260,6 +261,14 @@ else:
         }
     }
 PERMISSIONS_CACHE_TTL = int(env("PERMISSIONS_CACHE_TTL", "300"))
+
+# --- Frontend URL (per link in email: reset password, invito, ecc.) ---
+FRONTEND_URL = env("FRONTEND_URL", "http://localhost:5173")
+
+# --- Email ---
+# In DEBUG con account SMTP vuoto/placeholder, le email vengono loggate in console.
+# Per invio reale: configurare config.email_account con SMTP host reale (es. Gmail).
+EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
 
 # --- Proxy HTTPS/Nginx + cookie sicuri ---
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")  # fidati dell'header di Nginx

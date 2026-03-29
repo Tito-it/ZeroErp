@@ -1,5 +1,9 @@
 # ZeroERP — Schema `pratiche` — Motore Workflow
 
+> **STATO: COMPLETATO (v1)** — Spostato in work-done.
+> Il completamento del modulo (collegamento ruolo/istanza, display fields, note, allegati,
+> codice prefisso) e' nel piano v2: `work-in-progress/gestione-pratiche-v2.md`
+>
 > Documento concettuale di sviluppo. La fonte di verita' per DDL, funzioni e trigger
 > e' nelle migrazioni Liquibase in `db/changelog/migrations_v2/`.
 > Questo documento descrive architettura, regole e decisioni progettuali.

@@ -6,7 +6,48 @@
 
 ---
 
-## 1. Ricerca universale: modalita "Tutti i ruoli"
+## 1. Indirizzi: suggerimento "Applica anche al soggetto"
+
+> Priorita: bassa | Complessita: bassa | Stato: **DA FARE**
+
+### Situazione attuale
+
+La cascata indirizzi (istanza → ruolo → soggetto) funziona correttamente in **lettura**:
+se un livello specifico non ha un indirizzo di un certo tipo, il fallback lo eredita dal
+livello superiore. La **scrittura** avviene al livello dove serve (servizio, ruolo, soggetto).
+
+### Idea valutata e scartata
+
+Invertire la logica di scrittura: se scrivo un indirizzo a livello servizio e non esiste a
+livello soggetto, crearlo automaticamente sul soggetto cosi' tutti i livelli lo vedono.
+
+**Scartata perche'**:
+
+- Effetti collaterali invisibili: altri servizi/ruoli vedono un indirizzo che non hanno chiesto
+- Modifica = cascata incontrollata: toccare l'indirizzo soggetto impatta tutti i livelli
+- Conflitto di ownership: chi possiede l'indirizzo? Il soggetto o il servizio che l'ha creato?
+
+### Miglioria proposta
+
+Quando l'operatore crea un indirizzo a livello servizio/ruolo e il soggetto **non ha ancora**
+un indirizzo di quel tipo, mostrare un **suggerimento UI** (non automatico):
+
+> "Il soggetto non ha un indirizzo di tipo [FATTURAZIONE]. Vuoi applicarlo anche al soggetto?"
+
+L'operatore sceglie esplicitamente. Se accetta, il sistema crea l'indirizzo anche a livello
+soggetto. Azione consapevole, nessun automatismo.
+
+### Impatto tecnico
+
+| Area | Modifica | Complessita |
+|------|----------|-------------|
+| **Frontend — Drawer indirizzo** | Dopo save, check se il soggetto ha gia' quel tipo | Bassa |
+| **Frontend — UI** | Toast/dialog con suggerimento e bottone "Applica al soggetto" | Bassa |
+| **Backend** | Nessuna modifica — usa le API esistenti per creare l'indirizzo soggetto | Nessuna |
+
+---
+
+## 2. Ricerca universale: modalita "Tutti i ruoli"
 
 > Priorita: media | Complessita: media | Stato: **DA FARE**
 

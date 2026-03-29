@@ -70,6 +70,25 @@ export const LIVELLO_ACCESSO = {
   BLOCCATO: 'BLOCCATO'
 }
 
+// Codici interni stati pratica (codice_interno da config.stati_pratiche — fissi e immutabili)
+export const STATO_PRATICA = {
+  BOZZA: 'BOZZA',
+  APERTA: 'APERTA',
+  SOSPESA: 'SOSPESA',
+  CHIUSA: 'CHIUSA',
+  ANNULLATA: 'ANNULLATA',
+}
+
+// Codici interni stati flusso pratica (codice_interno da config.stati_flussi_pratiche)
+export const STATO_FLUSSO = {
+  DA_ESEGUIRE: 'DA_ESEGUIRE',
+  IN_CORSO: 'IN_CORSO',
+  COMPLETATO: 'COMPLETATO',
+  SOSPESO: 'SOSPESO',
+  ANNULLATO: 'ANNULLATO',
+  ERRORE: 'ERRORE',
+}
+
 // Keyboard shortcuts
 export const SHORTCUTS = {
   SEARCH: { key: 'k', ctrl: true, shift: false },

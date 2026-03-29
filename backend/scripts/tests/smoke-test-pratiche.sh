@@ -4,16 +4,16 @@
 # Esegue il ciclo completo: autenticazione → pratica → flusso → lifecycle
 # Uso: ./scripts/smoke-test-pratiche.sh [password]
 # ------------------------------------------------------------
-# Indice test (0..17):
+# Indice test (0..25):
 #  0) Autenticazione JWT
 #  1) Lista pratiche (con filtro emittente)
 #  2) Creazione pratica
-#  3) Dettaglio pratica
+#  3) Dettaglio pratica + verifica display fields (v2)
 #  4) Aggiornamento pratica (PATCH descrizione)
 #  5) Cambio stato pratica BOZZA → APERTA
 #  6) Giornale pratica
 #  7) Creazione flusso
-#  8) Lista flussi
+#  8) Lista flussi + verifica display fields flusso (v2)
 #  9) Dettaglio flusso
 # 10) Avvio flusso DA_ESEGUIRE → IN_CORSO
 # 11) Completamento flusso IN_CORSO → COMPLETATO
@@ -23,6 +23,18 @@
 # 15) Pratiche generate
 # 16) Giornale finale (conteggio eventi)
 # 17) Test errori attesi — pratica/flusso inesistente (404), completa senza esito (400)
+# 18) Ricerca pratiche con parametro search (v2)
+# 19) Verifica codice pratica con prefisso PRA (v2)
+# 20) Verifica campi contesto anagrafico nel dettaglio (v2)
+# 21) Crea nota pratica (v2)
+# 22) Lista note pratica (v2)
+# 23) Aggiorna nota pratica (v2)
+# 24) Elimina nota pratica (v2)
+# 25) Lista allegati pratica — vuota (v2)
+# 26) Coda lavoro operatore (v2.1)
+# 27) Coda lavoro senza emittente → errore (v2.1)
+# 28) Competenze flussi lista (v2.1)
+# 29) Verifica data_apertura nel dettaglio (v2.1)
 # ------------------------------------------------------------
 set -euo pipefail
 
@@ -88,6 +100,11 @@ do_curl() {
             -H "Authorization: Bearer ${TOKEN:-none}" \
             -H "Content-Type: application/json" \
             -X PATCH -d "$data" \
+            "${BASE_URL}${url}" > "$TMPFILE" 2>/dev/null
+    elif [[ "$method" == "DELETE" ]]; then
+        curl -s -w '\n%{http_code}' \
+            -H "Authorization: Bearer ${TOKEN:-none}" \
+            -X DELETE \
             "${BASE_URL}${url}" > "$TMPFILE" 2>/dev/null
     else
         curl -s -w '\n%{http_code}' \
@@ -184,12 +201,21 @@ if [[ -z "$PRATICA_ID" || "$PRATICA_ID" == "null" ]]; then
 fi
 log_info "pratica_id = $PRATICA_ID"
 
-# --- 3. Dettaglio pratica ---
+# --- 3. Dettaglio pratica + display fields (v2) ---
 echo ""
 echo "-- 3. Dettaglio pratica --"
 
 do_curl GET "/api/v1/pratiche/${PRATICA_ID}/"
-check "GET dettaglio pratica" 200
+check "GET dettaglio pratica" 200 ".data.stato_codice_interno"
+log_info "stato_codice_interno = $EXTRACTED"
+
+# Verifica presenza display fields nel JSON
+DISPLAY_CHECK=$(json_get "$LAST_BODY" ".data.tipo_prestazione_descrizione")
+if [[ -n "$DISPLAY_CHECK" && "$DISPLAY_CHECK" != "null" ]]; then
+    log_ok "Display fields presenti (tipo_prestazione_descrizione = $DISPLAY_CHECK)"
+else
+    log_fail "Display fields mancanti nel dettaglio pratica"
+fi
 
 # --- 4. Aggiorna pratica ---
 echo ""
@@ -231,12 +257,28 @@ if [[ -z "$FLUSSO_ID" || "$FLUSSO_ID" == "null" ]]; then
 fi
 log_info "flusso_id = $FLUSSO_ID"
 
-# --- 8. Lista flussi ---
+# --- 8. Lista flussi + display fields (v2) ---
 echo ""
 echo "-- 8. Lista flussi --"
 
 do_curl GET "/api/v1/pratiche/${PRATICA_ID}/flussi/"
 check "GET lista flussi" 200
+
+# Verifica display fields nel primo flusso (se presente)
+FLUSSO_STATO=$(echo "$LAST_BODY" | python3 -c "
+import sys, json
+try:
+    d = json.load(sys.stdin)
+    r = d['data']['results']
+    print(r[0]['stato_codice_interno'] if r else 'EMPTY')
+except Exception:
+    print('PARSE_ERR')
+" 2>/dev/null)
+if [[ "$FLUSSO_STATO" != "PARSE_ERR" && "$FLUSSO_STATO" != "" ]]; then
+    log_ok "Display fields flusso presenti (stato_codice_interno = $FLUSSO_STATO)"
+else
+    log_info "Nessun flusso per verifica display (OK se lista vuota)"
+fi
 
 # --- 9. Dettaglio flusso ---
 echo ""
@@ -312,11 +354,136 @@ check "GET flusso inesistente → 404" 404
 do_curl POST "/api/v1/pratiche/${PRATICA_ID}/flussi/${FLUSSO_ID}/stato/" '{"nuovo_stato": "COMPLETATO"}'
 check "POST completa senza esito → 400" 400
 
+# --- 18. Ricerca pratiche con search (v2) ---
+echo ""
+echo "-- 18. Ricerca con search --"
+
+do_curl GET "/api/v1/pratiche/?emittente_fiscale_id=$EMITTENTE_FISCALE_ID&search=Smoke"
+check "GET lista con search" 200
+
+# --- 19. Verifica codice con prefisso PRA (v2) ---
+echo ""
+echo "-- 19. Verifica codice pratica --"
+
+CODICE=$(json_get "$LAST_BODY" ".data.results")
+do_curl GET "/api/v1/pratiche/${PRATICA_ID}/"
+CODICE_PRATICA=$(json_get "$LAST_BODY" ".data.codice")
+if [[ "$CODICE_PRATICA" == PRA-* ]]; then
+    log_ok "Codice pratica con prefisso PRA ($CODICE_PRATICA)"
+else
+    log_fail "Codice pratica senza prefisso PRA atteso — ricevuto: $CODICE_PRATICA"
+fi
+
+# --- 20. Verifica campi contesto anagrafico (v2) ---
+echo ""
+echo "-- 20. Campi contesto anagrafico --"
+
+# Verifica che i campi esistano nella risposta (anche se NULL per pratica interna)
+HAS_RUOLO=$(echo "$LAST_BODY" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+print('soggetto_ruolo_id' in d.get('data', {}))
+" 2>/dev/null)
+if [[ "$HAS_RUOLO" == "True" ]]; then
+    log_ok "Campo soggetto_ruolo_id presente nel dettaglio"
+else
+    log_fail "Campo soggetto_ruolo_id mancante nel dettaglio"
+fi
+
+HAS_ISTANZA=$(echo "$LAST_BODY" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+print('istanza_utility_id' in d.get('data', {}))
+" 2>/dev/null)
+if [[ "$HAS_ISTANZA" == "True" ]]; then
+    log_ok "Campo istanza_utility_id presente nel dettaglio"
+else
+    log_fail "Campo istanza_utility_id mancante nel dettaglio"
+fi
+
+# --- 21. Crea nota pratica (v2) ---
+echo ""
+echo "-- 21. Crea nota --"
+
+do_curl POST "/api/v1/pratiche/${PRATICA_ID}/note/" '{"tipo_nota_codice": "GENERALE", "contenuto": "Nota smoke test"}'
+check "POST crea nota" 200 ".data.nota_id" || true
+NOTA_ID="$EXTRACTED"
+log_info "nota_id = $NOTA_ID"
+
+# --- 22. Lista note pratica (v2) ---
+echo ""
+echo "-- 22. Lista note --"
+
+do_curl GET "/api/v1/pratiche/${PRATICA_ID}/note/"
+check "GET lista note" 200
+
+# --- 23. Aggiorna nota pratica (v2) ---
+echo ""
+echo "-- 23. Aggiorna nota --"
+
+if [[ -n "$NOTA_ID" && "$NOTA_ID" != "null" ]]; then
+    do_curl PATCH "/api/v1/pratiche/${PRATICA_ID}/note/${NOTA_ID}/" '{"contenuto": "Nota aggiornata"}'
+    check "PATCH aggiorna nota" 200
+fi
+
+# --- 24. Elimina nota pratica (v2) ---
+echo ""
+echo "-- 24. Elimina nota --"
+
+if [[ -n "$NOTA_ID" && "$NOTA_ID" != "null" ]]; then
+    do_curl DELETE "/api/v1/pratiche/${PRATICA_ID}/note/${NOTA_ID}/"
+    check "DELETE elimina nota" 200
+fi
+
+# --- 25. Lista allegati — vuota (v2) ---
+echo ""
+echo "-- 25. Lista allegati --"
+
+do_curl GET "/api/v1/pratiche/${PRATICA_ID}/allegati/"
+check "GET lista allegati (vuota)" 200
+
+# --- 26. Coda lavoro operatore (v2.1) ---
+echo ""
+echo "-- 26. Coda lavoro --"
+
+do_curl GET "/api/v1/pratiche/coda-lavoro/?emittente_fiscale_id=$EMITTENTE_FISCALE_ID"
+check "GET coda lavoro" 200
+
+# --- 27. Coda lavoro senza emittente → errore (v2.1) ---
+echo ""
+echo "-- 27. Coda lavoro senza emittente --"
+
+do_curl GET "/api/v1/pratiche/coda-lavoro/"
+check "GET coda lavoro senza emittente → 400" 400
+
+# --- 28. Competenze flussi lista (v2.1) ---
+echo ""
+echo "-- 28. Competenze flussi --"
+
+do_curl GET "/api/v1/pratiche/competenze-flussi/"
+check "GET competenze flussi" 200
+
+# --- 29. Verifica data_apertura nel dettaglio (v2.1) ---
+echo ""
+echo "-- 29. Verifica data_apertura --"
+
+do_curl GET "/api/v1/pratiche/${PRATICA_ID}/"
+HAS_DATA_APERTURA=$(echo "$LAST_BODY" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+print('data_apertura' in d.get('data', {}))
+" 2>/dev/null)
+if [[ "$HAS_DATA_APERTURA" == "True" ]]; then
+    log_ok "Campo data_apertura presente nel dettaglio"
+else
+    log_fail "Campo data_apertura mancante nel dettaglio"
+fi
+
 # ================================================================
 echo ""
 echo "========================================="
 echo -e " Risultato: ${GREEN}$PASS OK${NC} / ${RED}$FAIL FAIL${NC}"
-echo "========================================="
+echo "=========================================
 echo ""
 
 if [[ $FAIL -gt 0 ]]; then

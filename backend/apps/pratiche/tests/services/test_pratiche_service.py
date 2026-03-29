@@ -9,19 +9,27 @@
 """
 Indice test eseguiti:
 1) PraticheServiceTests.test_crea_pratica_ok
-2) PraticheServiceTests.test_crea_pratica_errore_emittente_zero
-3) PraticheServiceTests.test_crea_pratica_errore_tipo_prestazione_zero
-4) PraticheServiceTests.test_crea_pratica_errore_priorita_zero
-5) PraticheServiceTests.test_aggiorna_pratica_ok
-6) PraticheServiceTests.test_aggiorna_pratica_non_trovata
-7) PraticheServiceTests.test_aggiorna_pratica_errore_id_zero
-8) PraticheServiceTests.test_cambia_stato_pratica_ok
-9) PraticheServiceTests.test_cambia_stato_pratica_errore_id_zero
-10) PraticheServiceTests.test_cambia_stato_pratica_errore_stato_vuoto
-11) PraticheServiceTests.test_assegna_pratica_ok
-12) PraticheServiceTests.test_assegna_pratica_nessun_dato
-13) PraticheServiceTests.test_cerca_pratiche_ok
-14) PraticheServiceTests.test_get_giornale_ok
+2) PraticheServiceTests.test_crea_pratica_con_contesto_anagrafico
+3) PraticheServiceTests.test_crea_pratica_errore_emittente_zero
+4) PraticheServiceTests.test_crea_pratica_errore_tipo_prestazione_zero
+5) PraticheServiceTests.test_crea_pratica_errore_priorita_zero
+6) PraticheServiceTests.test_crea_pratica_errore_istanza_senza_ruolo
+7) PraticheServiceTests.test_crea_pratica_errore_ruolo_senza_soggetto
+8) PraticheServiceTests.test_aggiorna_pratica_ok
+9) PraticheServiceTests.test_aggiorna_pratica_non_trovata
+10) PraticheServiceTests.test_aggiorna_pratica_errore_id_zero
+11) PraticheServiceTests.test_cambia_stato_pratica_ok
+12) PraticheServiceTests.test_cambia_stato_pratica_errore_id_zero
+13) PraticheServiceTests.test_cambia_stato_pratica_errore_stato_vuoto
+14) PraticheServiceTests.test_assegna_pratica_ok
+15) PraticheServiceTests.test_assegna_pratica_nessun_dato
+16) PraticheServiceTests.test_cerca_pratiche_ok
+17) PraticheServiceTests.test_cerca_pratiche_con_search
+18) PraticheServiceTests.test_get_giornale_ok
+19) PraticheServiceTests.test_crea_pratica_guard_post_attivazione_ok
+20) PraticheServiceTests.test_crea_pratica_guard_post_attivazione_rifiuto
+21) PraticheServiceTests.test_crea_pratica_guard_pre_attivazione_rifiuto
+22) PraticheServiceTests.test_crea_pratica_guard_universale_bypass
 """
 
 from unittest.mock import MagicMock, patch
@@ -37,12 +45,14 @@ _ATOMIC = "django.db.transaction.Atomic"
 
 
 def _mock_pratica_row(pratica_id: int = 1) -> dict:
-    """Genera una PraticaRow fittizia per i test."""
+    """Genera una PraticaRow fittizia per i test (v2 con display fields)."""
     return {
         "id": pratica_id,
         "emittente_fiscale_id": 10,
         "tipo_prestazione_id": 5,
         "soggetto_id": None,
+        "soggetto_ruolo_id": None,
+        "istanza_utility_id": None,
         "stato_id": 1,
         "priorita_id": 2,
         "risorsa_umana_id": None,
@@ -50,12 +60,22 @@ def _mock_pratica_row(pratica_id: int = 1) -> dict:
         "pratica_padre_id": None,
         "flusso_origine_id": None,
         "canale_origine_id": None,
-        "codice": "P-001",
+        "codice": "PRA-0000001",
         "descrizione": "Test pratica",
+        "data_apertura": None,
         "data_scadenza": None,
         "meta": {},
         "data_insert": "2026-03-04T10:00:00+00:00",
         "user_insert": "test_user",
+        "tipo_prestazione_codice": "MANUTENZIONE",
+        "tipo_prestazione_descrizione": "Manutenzione ordinaria",
+        "stato_codice_interno": "BOZZA",
+        "stato_descrizione": "Bozza",
+        "priorita_codice_interno": "NORMALE",
+        "priorita_descrizione": "Normale",
+        "soggetto_display": None,
+        "risorsa_umana_display": None,
+        "unita_organizzativa_descrizione": None,
     }
 
 
@@ -74,6 +94,7 @@ class PraticheServiceTests(SimpleTestCase):
     @patch(f"{_SVC}.PraticheRepository")
     def test_crea_pratica_ok(self, MockRepo):
         repo = MockRepo.return_value
+        repo.get_tipo_prestazione_attivazione.return_value = {"pre_attivazione": True, "post_attivazione": True}
         repo.resolve_stato_pratica.return_value = 1
         repo.create_pratica.return_value = 42
 
@@ -113,6 +134,50 @@ class PraticheServiceTests(SimpleTestCase):
                 emittente_fiscale_id=10,
                 tipo_prestazione_id=5,
                 priorita_id=0,
+            )
+        self.assertEqual(ctx.exception.code, "E_PRATICA_VALIDATION")
+
+    # Scopo: Verifica creazione con contesto anagrafico completo (soggetto + ruolo + istanza).
+    @patch(f"{_SVC}.PraticheRepository")
+    def test_crea_pratica_con_contesto_anagrafico(self, MockRepo):
+        repo = MockRepo.return_value
+        repo.get_tipo_prestazione_attivazione.return_value = {"pre_attivazione": True, "post_attivazione": True}
+        repo.resolve_stato_pratica.return_value = 1
+        repo.create_pratica.return_value = 50
+
+        result = pratiche_service.crea_pratica(
+            emittente_fiscale_id=10,
+            tipo_prestazione_id=5,
+            priorita_id=2,
+            soggetto_id="aaa-bbb-ccc",
+            soggetto_ruolo_id=100,
+            istanza_utility_id=200,
+        )
+        self.assertEqual(result, 50)
+        call_data = repo.create_pratica.call_args[0][0]
+        self.assertEqual(call_data["soggetto_ruolo_id"], 100)
+        self.assertEqual(call_data["istanza_utility_id"], 200)
+
+    # Scopo: Verifica errore se istanza_utility_id presente senza soggetto_ruolo_id.
+    def test_crea_pratica_errore_istanza_senza_ruolo(self):
+        with self.assertRaises(ServiceError) as ctx:
+            pratiche_service.crea_pratica(
+                emittente_fiscale_id=10,
+                tipo_prestazione_id=5,
+                priorita_id=2,
+                soggetto_id="aaa-bbb-ccc",
+                istanza_utility_id=200,
+            )
+        self.assertEqual(ctx.exception.code, "E_PRATICA_VALIDATION")
+
+    # Scopo: Verifica errore se soggetto_ruolo_id presente senza soggetto_id.
+    def test_crea_pratica_errore_ruolo_senza_soggetto(self):
+        with self.assertRaises(ServiceError) as ctx:
+            pratiche_service.crea_pratica(
+                emittente_fiscale_id=10,
+                tipo_prestazione_id=5,
+                priorita_id=2,
+                soggetto_ruolo_id=100,
             )
         self.assertEqual(ctx.exception.code, "E_PRATICA_VALIDATION")
 
@@ -197,6 +262,17 @@ class PraticheServiceTests(SimpleTestCase):
         self.assertEqual(len(items), 1)
         repo.list_pratiche.assert_called_once()
 
+    # Scopo: Verifica che il parametro search venga passato al repository.
+    @patch(f"{_SVC}.PraticheRepository")
+    def test_cerca_pratiche_con_search(self, MockRepo):
+        repo = MockRepo.return_value
+        repo.list_pratiche.return_value = ([_mock_pratica_row()], 1)
+
+        pratiche_service.cerca_pratiche(emittente_fiscale_id=10, search="PRA-000")
+
+        call_kwargs = repo.list_pratiche.call_args[1]
+        self.assertEqual(call_kwargs["search"], "PRA-000")
+
     # Scopo: Verifica delega a repository per giornale pratica.
     @patch(f"{_SVC}.PraticheRepository")
     def test_get_giornale_ok(self, MockRepo):
@@ -213,3 +289,82 @@ class PraticheServiceTests(SimpleTestCase):
 
         self.assertEqual(total, 1)
         self.assertEqual(items[0]["tx_id"], "abc-123")
+
+    # --- Guard pre/post-attivazione ---
+
+    # Scopo: Tipo post-attivazione + soggetto con BA attivo → OK.
+    @patch(f"{_SVC}.PraticheRepository")
+    def test_crea_pratica_guard_post_attivazione_ok(self, MockRepo):
+        repo = MockRepo.return_value
+        repo.get_tipo_prestazione_attivazione.return_value = {
+            "pre_attivazione": False, "post_attivazione": True
+        }
+        repo.ha_ba_attivo.return_value = True
+        repo.resolve_stato_pratica.return_value = 1
+        repo.create_pratica.return_value = 60
+
+        result = pratiche_service.crea_pratica(
+            emittente_fiscale_id=10,
+            tipo_prestazione_id=5,
+            priorita_id=2,
+            soggetto_id="aaa-bbb-ccc",
+        )
+        self.assertEqual(result, 60)
+
+    # Scopo: Tipo post-attivazione + soggetto SENZA BA attivo → errore.
+    @patch(f"{_SVC}.PraticheRepository")
+    def test_crea_pratica_guard_post_attivazione_rifiuto(self, MockRepo):
+        repo = MockRepo.return_value
+        repo.get_tipo_prestazione_attivazione.return_value = {
+            "pre_attivazione": False, "post_attivazione": True
+        }
+        repo.ha_ba_attivo.return_value = False
+
+        with self.assertRaises(ServiceError) as ctx:
+            pratiche_service.crea_pratica(
+                emittente_fiscale_id=10,
+                tipo_prestazione_id=5,
+                priorita_id=2,
+                soggetto_id="aaa-bbb-ccc",
+            )
+        self.assertEqual(ctx.exception.code, "E_PRATICA_VALIDATION")
+        self.assertIn("post-attivazione", ctx.exception.message)
+
+    # Scopo: Tipo pre-attivazione + soggetto CON BA attivo → errore.
+    @patch(f"{_SVC}.PraticheRepository")
+    def test_crea_pratica_guard_pre_attivazione_rifiuto(self, MockRepo):
+        repo = MockRepo.return_value
+        repo.get_tipo_prestazione_attivazione.return_value = {
+            "pre_attivazione": True, "post_attivazione": False
+        }
+        repo.ha_ba_attivo.return_value = True
+
+        with self.assertRaises(ServiceError) as ctx:
+            pratiche_service.crea_pratica(
+                emittente_fiscale_id=10,
+                tipo_prestazione_id=5,
+                priorita_id=2,
+                soggetto_id="aaa-bbb-ccc",
+            )
+        self.assertEqual(ctx.exception.code, "E_PRATICA_VALIDATION")
+        self.assertIn("pre-attivazione", ctx.exception.message)
+
+    # Scopo: Tipo universale (pre=true, post=true) → bypass check BA (niente query).
+    @patch(f"{_SVC}.PraticheRepository")
+    def test_crea_pratica_guard_universale_bypass(self, MockRepo):
+        repo = MockRepo.return_value
+        repo.get_tipo_prestazione_attivazione.return_value = {
+            "pre_attivazione": True, "post_attivazione": True
+        }
+        repo.resolve_stato_pratica.return_value = 1
+        repo.create_pratica.return_value = 70
+
+        result = pratiche_service.crea_pratica(
+            emittente_fiscale_id=10,
+            tipo_prestazione_id=5,
+            priorita_id=2,
+            soggetto_id="aaa-bbb-ccc",
+        )
+        self.assertEqual(result, 70)
+        # ha_ba_attivo non deve essere chiamato (bypass)
+        repo.ha_ba_attivo.assert_not_called()

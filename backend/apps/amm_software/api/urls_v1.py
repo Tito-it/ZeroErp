@@ -7,7 +7,7 @@
 
 from django.urls import path
 
-from . import views
+from . import email_views, invito_views, views
 
 urlpatterns = [
     # Operatori
@@ -30,4 +30,18 @@ urlpatterns = [
     path("lookup/aree-funzionali/", views.LookupAreeView.as_view(), name="amm-aree-list"),
     path("lookup/azioni-processo/", views.LookupAzioniView.as_view(), name="amm-azioni-list"),
     path("lookup/emittenti-fiscali/", views.LookupEmittentiView.as_view(), name="amm-emittenti-list"),
+    # Invito operatore
+    path("operatori/<int:auth_user_id>/invita/", invito_views.InvitaOperatoreView.as_view(), name="amm-operatori-invita"),
+    path("operatori/<int:auth_user_id>/reinvia-invito/", invito_views.ReinviaInvitoView.as_view(), name="amm-operatori-reinvia-invito"),
+    # Email — Account SMTP
+    path("email-accounts/", email_views.EmailAccountListView.as_view(), name="amm-email-accounts-list"),
+    path("email-accounts/<int:account_id>/", email_views.EmailAccountDetailView.as_view(), name="amm-email-accounts-detail"),
+    path("email-accounts/<int:account_id>/test/", email_views.EmailAccountTestView.as_view(), name="amm-email-accounts-test"),
+    # Email — Template
+    path("email-templates/", email_views.EmailTemplateListView.as_view(), name="amm-email-templates-list"),
+    path("email-templates/<int:template_id>/", email_views.EmailTemplateDetailView.as_view(), name="amm-email-templates-detail"),
+    path("email-templates/<int:template_id>/preview/", email_views.EmailTemplatePreviewView.as_view(), name="amm-email-templates-preview"),
+    # Email — Log
+    path("email-log/", email_views.EmailLogListView.as_view(), name="amm-email-log-list"),
+    path("email-log/<int:log_id>/", email_views.EmailLogDetailView.as_view(), name="amm-email-log-detail"),
 ]

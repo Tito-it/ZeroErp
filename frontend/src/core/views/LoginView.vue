@@ -48,6 +48,11 @@ async function handleLogin() {
   loading.value = true
   try {
     await auth.login(username.value, password.value)
+    // Se deve cambiare password, redirect forzato
+    if (auth.mustChangePassword) {
+      router.push('/change-password')
+      return
+    }
     const redirect = route.query.redirect || '/'
     router.push(redirect)
   } catch (err) {
@@ -106,75 +111,13 @@ async function handleLogin() {
           :disabled="!username || !password"
           fluid
         />
+
+        <router-link to="/password-reset" class="forgot-link">
+          {{ t('auth.forgot_password') }}
+        </router-link>
       </form>
     </div>
   </div>
 </template>
 
-<style scoped>
-.login-page {
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 100vh;
-  background: #0a0a0a;
-  overflow: hidden;
-}
-
-.login-bg {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-  object-position: center;
-  opacity: 0.35;
-  pointer-events: none;
-}
-
-.login-card {
-  position: relative;
-  z-index: 1;
-  width: 100%;
-  max-width: 380px;
-  padding: 2.5rem 2rem;
-  border-radius: var(--app-login-card-radius);
-  background: var(--app-login-card-bg);
-  border: 1px solid var(--app-login-card-border);
-  backdrop-filter: blur(8px);
-}
-
-.login-logo {
-  display: flex;
-  justify-content: center;
-  margin-bottom: 2rem;
-}
-
-.login-form {
-  display: flex;
-  flex-direction: column;
-  gap: 1.25rem;
-}
-
-.field {
-  display: flex;
-  flex-direction: column;
-  gap: 0.4rem;
-}
-
-.field label {
-  font-size: var(--app-font-size-sm);
-  font-weight: 500;
-  color: var(--p-text-muted-color);
-}
-
-.login-error {
-  padding: 0.6rem 0.75rem;
-  border-radius: 6px;
-  background: var(--app-login-error-bg);
-  color: var(--app-login-error-color);
-  font-size: var(--app-font-size-sm);
-  text-align: center;
-}
-</style>
+<!-- CSS in assets/auth-pages.css (condiviso tra tutte le view auth) -->

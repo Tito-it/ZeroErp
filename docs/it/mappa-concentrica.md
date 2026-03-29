@@ -4,7 +4,7 @@
 >
 > Riferimento metodologico: [sviluppo-concentrico.md](sviluppo-concentrico.md)
 
-*Ultimo aggiornamento: 20 marzo 2026*
+*Ultimo aggiornamento: 29 marzo 2026*
 
 ---
 
@@ -144,9 +144,9 @@ Stabile. Cresce per aggiunta di nuove tabelle config (es. `config.canali_pratich
 
 > Motore trasversale che gli anelli esterni usano per tracciare, orchestrare e automatizzare.
 
-| Componente | Tipo       | DB        | Backend   | Descrizione                                                                                                                          |
-| ---------- | ---------- | --------- | --------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| `pratiche` | App Django | Operativo | Operativo | Workflow engine, giornale di bordo, generazione cross-pratica, handler dispatch, sospensioni, calcoli tempo, macchina a stati rigida |
+| Componente | Tipo       | DB        | Backend   | Frontend  | Descrizione                                                                                                                          |
+| ---------- | ---------- | --------- | --------- | --------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `pratiche` | App Django | Operativo | Operativo | Operativo | Workflow engine, giornale, generazione cross-pratica, handler dispatch, sospensioni, calcoli tempo, macchina a stati, note, allegati |
 
 ### Cosa fornisce agli anelli esterni
 
@@ -171,20 +171,39 @@ Non e' un processo di business specifico (come vendite o acquisti). E' l'**infra
 
 ### Stato sviluppo dettagliato
 
+**v1 (4-6 marzo 2026):**
+
 | Fase                       | Stato | Riferimento                                                      |
 | -------------------------- | ----- | ---------------------------------------------------------------- |
 | DB-1..DB-7                 | FATTO | Tabelle, funzioni, trigger, seed, test pgTAP                     |
-| BE-1 Setup app             | FATTO | Directory, apps.py, types.py, models.py                          |
-| BE-2 Repository            | FATTO | pratiche_repository.py, generazione_repository.py                |
-| BE-3 Services              | FATTO | pratiche_service.py, generazione_service.py, handler_registry.py |
-| BE-4 API                   | FATTO | views.py, urls_v1.py, 19 endpoint REST                           |
-| BE-5 Test                  | FATTO | 90 test (55 service + 35 API) con mock                           |
+| BE-1..BE-5                 | FATTO | App setup, repository, service, API (19 endpoint), 90 test       |
 | BE-6 Sospensioni + Calcoli | FATTO | Service, repository, API, 26 test unitari, 18 smoke test curl    |
 | BE-7 Macchina a stati      | FATTO | Transizioni validate da trigger DB (config-driven)               |
 
-Documentazione backend: [docs/it/backend/pratiche/index.md](backend/pratiche/index.md)
+**v2 (28-29 marzo 2026):**
 
-Piano esecutivo: [piano-gestione-pratiche.md](dev/work-in-progress/piano-gestione-pratiche.md)
+| Fase | Stato | Riferimento |
+| ---- | ----- | ----------- |
+| DB: collegamento ruolo/istanza | FATTO | ALTER + trigger guard contesto + codice PRA via sistema_codici |
+| BE: JOIN display fields | FATTO | list/get pratiche e flussi con 7 JOIN, named columns (no indici posizionali) |
+| BE: contesto anagrafico | FATTO | soggetto_id + soggetto_ruolo_id + istanza_utility_id, validazione coerenza |
+| BE: guard pre/post-attivazione | FATTO | Verifica stato BA del soggetto per tipo prestazione |
+| BE: order_by + search | FATTO | Ordinamento dinamico con whitelist, ricerca ILIKE su codice/descrizione/soggetto |
+| BE: filtro data | FATTO | data_da/data_a con default anno-1 |
+| BE: note CRUD | FATTO | 4 endpoint (GET/POST/PATCH/DELETE), 6 test, giornale trigger |
+| BE: allegati CRUD | FATTO | 3 endpoint (GET/POST/DELETE, immutabili), 4 test, giornale trigger |
+| FE: lista pratiche | FATTO | SearchTable con filtri (stato, priorita', data_da/data_a, search), display fields |
+| FE: drawer dettaglio | FATTO | 5 tab (Dati, Flussi, Note, Allegati, Giornale), azioni stato, severity |
+| FE: drawer creazione | FATTO | Soggetto opzionale (SoggettoResolver), ruolo, tipo prestazione, priorita' |
+| FE: tab flussi | FATTO | Lista compatta, crea/avvia/completa flusso inline |
+| FE: tab note | FATTO | Form inline crea + lista con edit/delete |
+| FE: tab allegati | FATTO | Lista metadati con delete (upload posticipato) |
+| FE: tab giornale | FATTO | Timeline audit con icone/severity per tipo azione |
+| Test totali | 115 | 105 Django (mock CI) + 25 smoke test bash |
+
+Documentazione: [gestione-pratiche-v2.md](dev/work-in-progress/gestione-pratiche-v2.md) | API: [api_pratiche_list](backend/pratiche/manual/api_pratiche_list) | [api_pratiche_note](backend/pratiche/manual/api_pratiche_note) | [api_pratiche_allegati](backend/pratiche/manual/api_pratiche_allegati)
+
+Piano v1 (storico): [work-done/piano-gestione-pratiche.md](dev/work-done/piano-gestione-pratiche.md)
 
 ---
 
@@ -326,23 +345,38 @@ Gli anelli esterni possono dipendere direttamente da anelli non adiacenti — ve
   - Audit qualita': fix race condition, null safety, SQL validation, toast validazione
   - Sort default: soggetti (ragione_sociale), operatori (cognome), audit (timestamp DESC)
 
+- ~~Frontend Split View (tab affiancate)~~ — **FATTO** (29 marzo 2026)
+  - Split view read-only via provide/inject (stessa sola lettura degli operatori LETTURA)
+  - Bottone "Affianca" sulla barra ContentTabs, Popover selettore tab
+  - Responsive: solo desktop >= 1280px, chiusura automatica sotto soglia
+- ~~Frontend Pratiche v2~~ — **FATTO** (29 marzo 2026)
+  - Lista con display fields (7 JOIN backend), filtri (stato, priorita', data_da/data_a, search)
+  - Drawer creazione con SoggettoResolver + selezione ruolo + cascata
+  - Drawer dettaglio con 5 tab: Dati (azioni stato), Flussi, Note, Allegati, Giornale
+  - Backend: 26 endpoint REST, 115 test Django, 25 smoke test
+  - Collegamento anagrafico 3 livelli: soggetto → ruolo → istanza (guard DB + service)
+  - Guard pre/post-attivazione tipo prestazione
+- ~~Topbar: logout, badge iniziali utente, icone coerenti~~ — **FATTO** (29 marzo 2026)
+- ~~Sidebar mobile: drawer collassato (solo icone)~~ — **FATTO** (29 marzo 2026)
+
 ### In corso
 
 - **Gestione Soggetti**: backend + frontend completati — in fase di test UI
-- **Amm. Software**: 4 pagine completate — da testare nel browser
 - **Gestione Geografica**: operativo — UI da migliorare
+- **Gestione Clienti/Fornitori**: drawer end-to-end, sotto-drawer contatti/indirizzi/conti
 
 ### Breve termine
 
-- Test UI reali su Gestione Soggetti, Amm. Software, Gestione Geografica
+- Test UI reali su Gestione Pratiche, Soggetti, Clienti, Fornitori
 - Seed azioni processo per nuovi domini (anagrafiche, config) + prop `action` sui componenti
-- ClienteService Django (orchestrator creazione/subentro/disdetta cliente)
+- Upload file allegati pratiche (storage filesystem/object storage)
 
 ### Medio termine
 
 - Integrazione `vendite` → `pratiche`: eventi di vendita generano pratiche con giornale
-- Integrazione `anagrafiche` → `pratiche`: onboarding cliente/fornitore tracciato (attualmente CRUD anagrafiche NON scrive nel giornale di bordo — solo audit DB tecnico)
+- Integrazione `anagrafiche` → `pratiche`: onboarding cliente/fornitore tracciato
 - Attivazione handler flusso per automazioni specifiche
+- pgAgent job riattivazione automatica sospensioni
 
 ### Lungo termine
 
@@ -363,4 +397,4 @@ Gli anelli esterni possono dipendere direttamente da anelli non adiacenti — ve
 
 ---
 
-*Mappa Concentrica — ZeroERP (marzo 2026)*
+*Mappa Concentrica — ZeroERP (29 marzo 2026)*

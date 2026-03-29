@@ -30,6 +30,22 @@ tra una risorsa umana e l'utente software Django.
 
 ---
 
+### Campi di gestione autenticazione avanzata
+
+Aggiunti con changeset `20260328-19`:
+
+| Campo | Tipo | Default | Scopo |
+|-------|------|---------|-------|
+| `deve_cambiare_password` | boolean NOT NULL | `false` | Se `true`, l'operatore deve cambiare password al prossimo login. Impostato a `true` alla creazione account o su richiesta admin. Dopo il cambio password viene resettato a `false`. |
+| `invito_inviato_at` | timestamptz | NULL | Timestamp dell'ultimo invito inviato. `NULL` = mai invitato. Usato per il flusso di invito primo accesso (Fase 3). |
+| `totp_obbligatorio` | boolean NOT NULL | `false` | Se `true`, l'operatore DEVE configurare il 2FA TOTP per accedere. Se il device non e' configurato, un middleware blocca la navigazione e forza il setup. (Fase 4, changeset -21) |
+
+Il campo `deve_cambiare_password` viene letto dal login (`AuditTokenObtainPairView`): se `true`, il response include `password_change_required: true` e un middleware blocca la navigazione fino al cambio password.
+
+Il campo `totp_obbligatorio` viene letto da `fn_get_user_profile` e propagato al frontend. Se `true` e il 2FA non e' configurato, il comportamento e' analogo al cambio password: blocco navigazione fino al completamento del setup.
+
+---
+
 ### Note operative
 
 * La presenza del collegamento e' opzionale: non tutte le risorse

@@ -16,6 +16,8 @@ class PraticaRow(TypedDict):
     emittente_fiscale_id: int
     tipo_prestazione_id: int
     soggetto_id: str | None
+    soggetto_ruolo_id: int | None
+    istanza_utility_id: int | None
     stato_id: int
     priorita_id: int
     risorsa_umana_id: int | None
@@ -25,10 +27,21 @@ class PraticaRow(TypedDict):
     canale_origine_id: int | None
     codice: str | None
     descrizione: str | None
+    data_apertura: str | None
     data_scadenza: str | None
     meta: dict[str, Any]
     data_insert: str
     user_insert: str
+    # Campi display da JOIN
+    tipo_prestazione_codice: str
+    tipo_prestazione_descrizione: str
+    stato_codice_interno: str
+    stato_descrizione: str
+    priorita_codice_interno: str
+    priorita_descrizione: str
+    soggetto_display: str | None
+    risorsa_umana_display: str | None
+    unita_organizzativa_descrizione: str | None
 
 
 # -- Tabella pratiche.flussi --
@@ -48,6 +61,11 @@ class FlussoRow(TypedDict):
     meta: dict[str, Any]
     data_insert: str
     user_insert: str
+    # Campi display da JOIN
+    stato_codice_interno: str
+    stato_descrizione: str
+    template_flusso_codice: str | None
+    template_flusso_descrizione: str | None
 
 
 # -- Tabella pratiche.giornale --
@@ -169,3 +187,35 @@ class CanalePraticaRow(TypedDict):
     codice: str
     descrizione: str | None
     codice_interno: str
+
+
+# -- Tabella pratiche.competenze_flussi --
+
+class CompetenzaFlussoRow(TypedDict):
+    id: int
+    template_flusso_id: int
+    unita_organizzativa_id: int
+    risorsa_umana_id: int
+    attivo: bool
+    template_flusso_codice: str
+    template_flusso_descrizione: str
+    unita_organizzativa_descrizione: str
+    risorsa_umana_display: str
+
+
+# -- Return di pratiche.fn_coda_lavoro_operatore() --
+
+class CodaLavoroRow(TypedDict):
+    livello: str
+    flusso_id: int
+    pratica_id: int
+    pratica_codice: str | None
+    pratica_descrizione: str | None
+    priorita_codice: str
+    tipo_prestazione_codice: str
+    template_flusso_codice: str | None
+    template_flusso_desc: str | None
+    stato_flusso_codice: str
+    sequenza: int
+    data_scadenza: str | None
+    risorsa_assegnata: str | None

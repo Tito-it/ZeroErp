@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/config/manual/trgfn_stati_doc_fiscale_chiude_lotto_guard.md" %}
 # ⚙️ Funzione `trgfn_stati_doc_fiscale_chiude_lotto_guard`
 
 ```sql

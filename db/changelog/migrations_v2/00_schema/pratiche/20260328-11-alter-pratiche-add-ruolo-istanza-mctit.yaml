@@ -1,0 +1,58 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ALTER pratiche.pratiche: aggiunge collegamento opzionale al
+# ruolo anagrafico (soggetto_ruolo_id) e alla istanza/utility
+# (istanza_utility_id) del soggetto.
+# Catena: soggetto_id → soggetto_ruolo_id → istanza_utility_id
+# Tutti opzionali: pratica interna = tutti NULL.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+    - logicalFilePath: migrations_v2/00_schema/pratiche/20260328-11-alter-pratiche-add-ruolo-istanza-mctit.yaml
+
+    - changeSet:
+          id: 20260328-11-alter-pratiche-add-ruolo-istanza
+          author: mctit
+          comment: >
+              Aggiunge a pratiche.pratiche due FK opzionali per il contesto anagrafico:
+              1) soggetto_ruolo_id → anagrafiche.soggetti_ruoli (ruolo del soggetto)
+              2) istanza_utility_id → anagrafiche.istanze_utilities (istanza/utility)
+              Entrambe nullable: una pratica interna non ha ne' ruolo ne' istanza.
+          changes:
+              - sql:
+                    dbms: postgresql
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+                        -- 1) FK opzionale al ruolo anagrafico del soggetto
+                        ALTER TABLE pratiche.pratiche
+                          ADD COLUMN soggetto_ruolo_id BIGINT;
+
+                        ALTER TABLE pratiche.pratiche
+                          ADD CONSTRAINT fk_pratiche_soggetto_ruolo
+                          FOREIGN KEY (soggetto_ruolo_id)
+                          REFERENCES anagrafiche.soggetti_ruoli(id);
+
+                        COMMENT ON COLUMN pratiche.pratiche.soggetto_ruolo_id IS
+                          'FK opzionale a soggetti_ruoli — contesto ruolo (cliente, fornitore) della pratica';
+
+                        -- 2) FK opzionale alla istanza/utility
+                        ALTER TABLE pratiche.pratiche
+                          ADD COLUMN istanza_utility_id BIGINT;
+
+                        ALTER TABLE pratiche.pratiche
+                          ADD CONSTRAINT fk_pratiche_istanza_utility
+                          FOREIGN KEY (istanza_utility_id)
+                          REFERENCES anagrafiche.istanze_utilities(id);
+
+                        COMMENT ON COLUMN pratiche.pratiche.istanza_utility_id IS
+                          'FK opzionale a istanze_utilities — contesto istanza/utility della pratica';
+
+          rollback:
+              - sql:
+                    sql: |
+                        ALTER TABLE pratiche.pratiche DROP CONSTRAINT IF EXISTS fk_pratiche_istanza_utility;
+                        ALTER TABLE pratiche.pratiche DROP COLUMN IF EXISTS istanza_utility_id;
+                        ALTER TABLE pratiche.pratiche DROP CONSTRAINT IF EXISTS fk_pratiche_soggetto_ruolo;
+                        ALTER TABLE pratiche.pratiche DROP COLUMN IF EXISTS soggetto_ruolo_id;
