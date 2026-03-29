@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/config/manual/stati_doc_ddt.md" %}
 # 📚 Tabella `stati_doc_ddt`
 
 ## 🗂️ Campi principali

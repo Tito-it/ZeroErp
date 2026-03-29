@@ -18,8 +18,10 @@
 - [api_pratica_sospendi](manual/api_pratica_sospendi.md) — Esporre via HTTP la sospensione di una pratica con motivo obbligatorio e data di riattivazione opzionale.
 - [api_pratica_sospensioni](manual/api_pratica_sospensioni.md) — Esporre via HTTP la lista delle sospensioni (attive e chiuse) di una pratica.
 - [api_pratica_stato](manual/api_pratica_stato.md) — Esporre via HTTP il cambio stato di una pratica tramite codice_interno.
+- [api_pratiche_allegati](manual/api_pratiche_allegati.md) — Esporre via HTTP la gestione allegati associati a una pratica. V1: solo metadati (nome_file, tipo, dimensione) — upload file posticipato. Gli allegati sono immutabili: solo creazione e eliminazione, nessun aggiornamento.
 - [api_pratiche_generate](manual/api_pratiche_generate.md) — Esporre via HTTP le pratiche generate da un flusso.
 - [api_pratiche_list](manual/api_pratiche_list.md) — Esporre via HTTP l'elenco paginato delle pratiche con filtri e la creazione di nuove pratiche.
+- [api_pratiche_note](manual/api_pratiche_note.md) — Esporre via HTTP il CRUD note associate a una pratica. Le note sono annotazioni testuali con tipo (GENERALE, INTERNA, CLIENTE, TECNICA, LEGALE) registrate nel giornale automaticamente dal trigger DB.
 - [api_regole_generazione](manual/api_regole_generazione.md) — Esporre via HTTP le regole di generazione cross-pratica applicabili a un flusso.
 
 ## Altri contenuti

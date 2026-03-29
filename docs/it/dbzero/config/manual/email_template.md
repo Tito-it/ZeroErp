@@ -11,7 +11,7 @@
 
 ---
 
-### Scopo Principale
+### 🎯 Scopo Principale
 
 La tabella `config.email_template` contiene i **template email parametrizzabili** con variabili `{{...}}`. Ogni template puo' essere specializzato per reparto, tipo prestazione e lingua, con una catena di fallback a 5 livelli.
 
@@ -55,12 +55,12 @@ Il rendering sostituisce `{{nome}}` con il valore passato dal chiamante. Le vari
 
 ### Template di sistema previsti (seed)
 
-| codice | Fase | Variabili principali |
-|--------|------|---------------------|
-| `INVITO_OPERATORE` | 3 | nome, cognome, azienda, link, scadenza_ore, invitato_da |
-| `RESET_PASSWORD` | 2 | nome, azienda, link, scadenza_ore |
-| `CAMBIO_PASSWORD_CONFERMA` | 1 | nome, azienda, data_cambio |
-| `NOTIFICA_GENERICA` | 1 | oggetto_custom, corpo_custom |
+| codice                     | Fase | Variabili principali                                    |
+| -------------------------- | ---- | ------------------------------------------------------- |
+| `INVITO_OPERATORE`         | 3    | nome, cognome, azienda, link, scadenza_ore, invitato_da |
+| `RESET_PASSWORD`           | 2    | nome, azienda, link, scadenza_ore                       |
+| `CAMBIO_PASSWORD_CONFERMA` | 1    | nome, azienda, data_cambio                              |
+| `NOTIFICA_GENERICA`        | 1    | oggetto_custom, corpo_custom                            |
 
 ---
 

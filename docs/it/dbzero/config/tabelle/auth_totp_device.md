@@ -30,5 +30,11 @@
 | auth_totp_device_pkey | `CREATE UNIQUE INDEX auth_totp_device_pkey ON config.auth_totp_device USING btree (id)` |
 | uq_auth_totp_device_auth_user | `CREATE UNIQUE INDEX uq_auth_totp_device_auth_user ON config.auth_totp_device USING btree (auth_user_id)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_auth_totp_device_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_auth_totp_device_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+
 ---
 {% include-markdown "signature-core.md" %}
