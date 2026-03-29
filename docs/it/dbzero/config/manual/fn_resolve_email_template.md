@@ -1,6 +1,6 @@
 # fn_resolve_email_template
 
-### Scopo
+### 🎯 Scopo Principale
 
 Risolve il template email da utilizzare per un dato codice, reparto, tipo prestazione e lingua. Implementa una catena di fallback a 5 livelli che permette di specializzare i testi per reparto e tipo pratica mantenendo sempre un default di sistema.
 
@@ -24,12 +24,12 @@ config.fn_resolve_email_template(
 
 ## Parametri
 
-| Parametro | Tipo | Obbligatorio | Descrizione |
-|-----------|------|:------------:|-------------|
-| `p_codice` | `email_template.codice%TYPE` | Si | Codice tipo template (es. `INVITO_OPERATORE`, `COMUNICAZIONE_PRATICA`) |
-| `p_unita_organizzativa_id` | `email_template.unita_organizzativa_id%TYPE` | No | ID reparto per override. NULL = solo sistema |
-| `p_tipo_prestazione_id` | `email_template.tipo_prestazione_id%TYPE` | No | ID tipo prestazione per specializzazione. NULL = generico |
-| `p_lingua` | `email_template.lingua%TYPE` | No | Codice lingua ISO (default `it`) |
+| Parametro                  | Tipo                                         | Obbligatorio | Descrizione                                                            |
+| -------------------------- | -------------------------------------------- | :----------: | ---------------------------------------------------------------------- |
+| `p_codice`                 | `email_template.codice%TYPE`                 |      Si      | Codice tipo template (es. `INVITO_OPERATORE`, `COMUNICAZIONE_PRATICA`) |
+| `p_unita_organizzativa_id` | `email_template.unita_organizzativa_id%TYPE` |      No      | ID reparto per override. NULL = solo sistema                           |
+| `p_tipo_prestazione_id`    | `email_template.tipo_prestazione_id%TYPE`    |      No      | ID tipo prestazione per specializzazione. NULL = generico              |
+| `p_lingua`                 | `email_template.lingua%TYPE`                 |      No      | Codice lingua ISO (default `it`)                                       |
 
 ## Catena di fallback (5 livelli)
 
@@ -52,15 +52,15 @@ Se `p_codice` e' NULL, ritorna immediatamente NULL.
 
 JSONB con le chiavi:
 
-| Chiave | Tipo | Descrizione |
-|--------|------|-------------|
-| `id` | integer | ID del template trovato |
-| `codice` | text | Codice tipo template |
-| `oggetto` | text | Oggetto email con variabili `{{...}}` |
-| `corpo_html` | text | Corpo HTML con variabili `{{...}}` |
-| `corpo_testo` | text | Corpo plaintext (puo' essere null) |
-| `variabili_disponibili` | jsonb | Array variabili accettate |
-| `lingua` | text | Lingua del template trovato |
+| Chiave                  | Tipo    | Descrizione                           |
+| ----------------------- | ------- | ------------------------------------- |
+| `id`                    | integer | ID del template trovato               |
+| `codice`                | text    | Codice tipo template                  |
+| `oggetto`               | text    | Oggetto email con variabili `{{...}}` |
+| `corpo_html`            | text    | Corpo HTML con variabili `{{...}}`    |
+| `corpo_testo`           | text    | Corpo plaintext (puo' essere null)    |
+| `variabili_disponibili` | jsonb   | Array variabili accettate             |
+| `lingua`                | text    | Lingua del template trovato           |
 
 ## Dipendenze
 

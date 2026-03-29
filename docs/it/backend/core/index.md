@@ -3,6 +3,7 @@
 ## API
 - [api-domain-conventions](manual/api-domain-conventions.md) — Definire uno standard unico per costruire future API di dominio.
 - [api_diagnostics_error_envelope](manual/api_diagnostics_error_envelope.md) — Fornire un endpoint tecnico per validare contratto error envelope e policy retry.
+- [api_email](manual/api_email.md) — Sistema completo di invio email con risoluzione automatica account SMTP e template per reparto/contesto. Supporta invio diretto, bozze editabili (outbox), allegati, consultazione log. Ogni email e' tracciata in config.e…
 - [api_endpoint_helpers](manual/api_endpoint_helpers.md) — Centralizzare il flusso standard dei POST JSON (parse, validazione base, envelope, idempotenza).
 - [api_logout](manual/api_logout.md) — Invalida il refresh token corrente (blacklist) e registra l'evento LOGOUT nella tabella dbops.sessioni_utente, chiudendo la sessione associata al JTI.
 - [api_lookup_codici](manual/api_lookup_codici.md) — Espone una ricerca generica su tabelle di configurazione con struttura id / codice / descrizione. Permette autocompletamento e ricerca ILIKE da UI senza dover creare endpoint dedicati per ogni tabella config.
@@ -16,6 +17,7 @@
 - [api_search_validation](manual/api_search_validation.md) — Evitare query di ricerca troppo generiche che degradano performance e selettivita`.
 - [api_sessioni_attive](manual/api_sessioni_attive.md) — Permette all'utente autenticato di visualizzare le proprie sessioni attive (esclusa quella corrente) e di revocare sessioni sospette.
 - [api_throttling](manual/api_throttling.md) — Limitare burst di chiamate sugli endpoint search per proteggere backend e DB.
+- [api_token_cambio_password](manual/api_token_cambio_password.md) — Building block per token monouso (inviti, reset password, conferme) e meccanismo di cambio password obbligatorio al primo accesso. I due componenti lavorano insieme: il flag deve_cambiare_password forza il cambio, il To…
 - [api_tracciamento](manual/api_tracciamento.md) — Espone in lettura i tre livelli di tracciamento del sistema: audit log operativo, task registry multi-dominio e log esecuzioni job pgAgent. Fornisce agli anelli esterni e alla futura UI una vista unificata sulle operazi…
 - [api_user_profile](manual/api_user_profile.md) — Restituisce il profilo completo dell'utente autenticato: dati anagrafici (soggetto), risorse umane, ruolo_sistema e dati emittente fiscale associato.
 - [api_write_checklist](manual/api_write_checklist.md) — Fornire una checklist operativa pronta per nuovi endpoint write (POST/PUT/PATCH/DELETE con side effect).

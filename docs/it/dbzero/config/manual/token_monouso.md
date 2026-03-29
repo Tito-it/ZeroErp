@@ -9,7 +9,7 @@
 
 ---
 
-### Scopo Principale
+### 🎯 Scopo Principale
 
 La tabella `config.token_monouso` implementa un **meccanismo generico di token monouso** riutilizzabile per qualsiasi flusso che richieda un link sicuro con scadenza: invito operatore, reset password, conferma email, attivazione account.
 
@@ -41,11 +41,11 @@ Creazione → token attivo (utilizzato = false)
 
 ### Tipi previsti
 
-| tipo | Fase | Scadenza | Uso |
-|------|------|----------|-----|
-| `INVITO_OPERATORE` | 3 | 72 ore | Link di attivazione primo accesso |
-| `RESET_PASSWORD` | 2 | 1 ora | Link reset password dimenticata |
-| `CONFERMA_EMAIL` | futuro | 24 ore | Conferma cambio indirizzo email |
+| tipo               | Fase   | Scadenza | Uso                               |
+| ------------------ | ------ | -------- | --------------------------------- |
+| `INVITO_OPERATORE` | 3      | 72 ore   | Link di attivazione primo accesso |
+| `RESET_PASSWORD`   | 2      | 1 ora    | Link reset password dimenticata   |
+| `CONFERMA_EMAIL`   | futuro | 24 ore   | Conferma cambio indirizzo email   |
 
 ---
 

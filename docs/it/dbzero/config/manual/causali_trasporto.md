@@ -8,9 +8,6 @@ Approfondimenti tabelle:
 > [vendite.ddt_testata](/dbzero/vendite/tabelle/ddt_testata)     
 > [vendite.ddt_righe](/dbzero/vendite/tabelle/ddt_righe)    
 >
-Approfondimenti funzioni/trigger generici:   
->
-[script.trgfn_upd_audit_data_user_generic](/dbzero/script/funzioni/trgfn_upd_audit_data_user_generic)  
 
 ---
 

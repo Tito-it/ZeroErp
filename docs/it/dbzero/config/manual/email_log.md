@@ -12,7 +12,7 @@
 
 ---
 
-### Scopo Principale
+### 🎯 Scopo Principale
 
 La tabella `config.email_log` registra **ogni email inviata dal sistema**, conservando il corpo esattamente come inviato (dopo eventuali modifiche manuali dall'outbox), lo stato di invio, il contesto e l'ambito di visibilita'.
 
@@ -36,11 +36,11 @@ Il management command `send_pending_emails` processa le email PENDING e RETRY.
 
 Ogni email ha un `ambito` che determina chi puo' consultarla:
 
-| Ambito | Visibilita' |
-|--------|------------|
-| `SISTEMA` | Solo admin (email transazionali: inviti, reset, notifiche) |
-| `REPARTO` | Tutti gli operatori dell'unita' organizzativa + admin |
-| `OPERATORE` | Solo l'operatore che l'ha creata + admin |
+| Ambito      | Visibilita'                                                |
+| ----------- | ---------------------------------------------------------- |
+| `SISTEMA`   | Solo admin (email transazionali: inviti, reset, notifiche) |
+| `REPARTO`   | Tutti gli operatori dell'unita' organizzativa + admin      |
+| `OPERATORE` | Solo l'operatore che l'ha creata + admin                   |
 
 Le email con `pratica_id` valorizzato sono inoltre visibili dalla scheda pratica, indipendentemente dall'ambito.
 

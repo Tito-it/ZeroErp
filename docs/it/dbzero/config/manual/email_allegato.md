@@ -9,7 +9,7 @@
 
 ---
 
-### Scopo Principale
+### 🎯 Scopo Principale
 
 La tabella `config.email_allegato` traccia i **file allegati** alle email. I file sono salvati su filesystem (non in DB); la tabella contiene solo i metadati e il percorso relativo.
 
@@ -25,9 +25,9 @@ La tabella `config.email_allegato` traccia i **file allegati** alle email. I fil
 
 ### Origine
 
-| Valore | Significato |
-|--------|------------|
-| `UPLOAD` | Caricato manualmente dall'operatore (drag & drop nel dialog) |
+| Valore     | Significato                                                               |
+| ---------- | ------------------------------------------------------------------------- |
+| `UPLOAD`   | Caricato manualmente dall'operatore (drag & drop nel dialog)              |
 | `TEMPLATE` | Allegato di default del template (es. guida utente PDF, policy aziendale) |
 
 ---

@@ -11,7 +11,7 @@
 
 ---
 
-### Scopo Principale
+### 🎯 Scopo Principale
 
 La tabella `config.email_account` definisce gli **account SMTP** utilizzati dal sistema per l'invio di email. Ogni unita' organizzativa (reparto) puo' avere il proprio account mittente; un account con `unita_organizzativa_id = NULL` funge da **fallback di sistema**.
 
@@ -46,11 +46,11 @@ L'account determina il mittente (`email_from`), il reply-to e tutti i parametri 
 
 ### Esempio di configurazione
 
-| codice | unita_organizzativa_id | email_from | Uso |
-|--------|------------------------|------------|-----|
-| `SISTEMA` | NULL | `noreply@azienda.it` | Inviti, reset password, notifiche di sistema |
-| `ACQ_01` | 3 (Ufficio Acquisti) | `acquisti@azienda.it` | Comunicazioni a fornitori |
-| `COMM_01` | 5 (Commerciale) | `commerciale@azienda.it` | Comunicazioni a clienti |
+| codice    | unita_organizzativa_id | email_from               | Uso                                          |
+| --------- | ---------------------- | ------------------------ | -------------------------------------------- |
+| `SISTEMA` | NULL                   | `noreply@azienda.it`     | Inviti, reset password, notifiche di sistema |
+| `ACQ_01`  | 3 (Ufficio Acquisti)   | `acquisti@azienda.it`    | Comunicazioni a fornitori                    |
+| `COMM_01` | 5 (Commerciale)        | `commerciale@azienda.it` | Comunicazioni a clienti                      |
 
 ---
 

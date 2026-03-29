@@ -8,7 +8,7 @@
 
 ---
 
-### Scopo Principale
+### 🎯 Scopo Principale
 
 La tabella `config.auth_totp_device` gestisce i **device TOTP** per l'autenticazione a due fattori (2FA). Relazione 1:1 con `auth_user`: ogni utente puo' avere al massimo un device TOTP configurato.
 

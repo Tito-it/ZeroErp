@@ -33,11 +33,12 @@ databaseChangeLog:
                         STABLE
                         AS $function$
                         DECLARE
-                            v_is_active     django.auth_user.is_active%TYPE;
-                            v_email         django.auth_user.email%TYPE;
-                            v_last_login    django.auth_user.last_login%TYPE;
+                            v_is_active     BOOLEAN;
+                            v_email         VARCHAR(254);
+                            v_last_login    TIMESTAMPTZ;
                             v_ruolo_sistema anagrafiche.risorse_umane_auth_user.ruolo_sistema%TYPE;
                             v_rau_attivo    anagrafiche.risorse_umane_auth_user.attivo%TYPE;
+
                         BEGIN
                             -- =========================================================
                             -- Scopo:

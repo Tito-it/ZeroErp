@@ -1,6 +1,6 @@
 # fn_resolve_email_account
 
-### Scopo
+### 🎯 Scopo Principale
 
 Risolve l'account SMTP da utilizzare per l'invio di una email, dato il reparto (unita' organizzativa) del contesto. Implementa una catena di fallback a 2 livelli per garantire che ci sia sempre un account disponibile.
 
@@ -19,9 +19,9 @@ config.fn_resolve_email_account(
 
 ## Parametri
 
-| Parametro | Tipo | Obbligatorio | Descrizione |
-|-----------|------|:------------:|-------------|
-| `p_unita_organizzativa_id` | `email_account.unita_organizzativa_id%TYPE` | No | ID reparto. NULL = usa direttamente l'account di sistema |
+| Parametro                  | Tipo                                        | Obbligatorio | Descrizione                                              |
+| -------------------------- | ------------------------------------------- | :----------: | -------------------------------------------------------- |
+| `p_unita_organizzativa_id` | `email_account.unita_organizzativa_id%TYPE` |      No      | ID reparto. NULL = usa direttamente l'account di sistema |
 
 ## Catena di fallback
 
@@ -39,18 +39,18 @@ Se nessun account trovato in nessun livello, ritorna `NULL`.
 
 JSONB con le chiavi:
 
-| Chiave | Tipo | Descrizione |
-|--------|------|-------------|
-| `id` | integer | ID dell'account |
-| `codice` | text | Codice account (es. `SISTEMA`, `ACQ_01`) |
-| `smtp_host` | text | Hostname SMTP |
-| `smtp_port` | integer | Porta SMTP |
-| `smtp_use_tls` | boolean | Flag STARTTLS |
-| `smtp_use_ssl` | boolean | Flag SSL diretto |
-| `smtp_username` | text | Username SMTP |
-| `smtp_password_encrypted` | text | Password crittografata (Fernet) |
-| `email_from` | text | Indirizzo mittente |
-| `email_reply_to` | text | Indirizzo reply-to (puo' essere null) |
+| Chiave                    | Tipo    | Descrizione                              |
+| ------------------------- | ------- | ---------------------------------------- |
+| `id`                      | integer | ID dell'account                          |
+| `codice`                  | text    | Codice account (es. `SISTEMA`, `ACQ_01`) |
+| `smtp_host`               | text    | Hostname SMTP                            |
+| `smtp_port`               | integer | Porta SMTP                               |
+| `smtp_use_tls`            | boolean | Flag STARTTLS                            |
+| `smtp_use_ssl`            | boolean | Flag SSL diretto                         |
+| `smtp_username`           | text    | Username SMTP                            |
+| `smtp_password_encrypted` | text    | Password crittografata (Fernet)          |
+| `email_from`              | text    | Indirizzo mittente                       |
+| `email_reply_to`          | text    | Indirizzo reply-to (puo' essere null)    |
 
 ## Dipendenze
 

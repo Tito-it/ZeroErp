@@ -1,6 +1,6 @@
 # fn_cleanup_token_scaduti
 
-### Scopo
+### 🎯 Scopo Principale
 
 Pulizia periodica dei token monouso scaduti o gia' utilizzati. Pensata per esecuzione automatica come job pgAgent notturno, elimina i record che non hanno piu' utilita' operativa.
 
@@ -18,9 +18,9 @@ config.fn_cleanup_token_scaduti(
 
 ## Parametri
 
-| Parametro | Tipo | Obbligatorio | Descrizione |
-|-----------|------|:------------:|-------------|
-| `p_giorni_retention` | `integer` | No | Giorni di retention dopo scadenza/utilizzo (default 30). Se NULL o < 0, usa 30 |
+| Parametro            | Tipo      | Obbligatorio | Descrizione                                                                    |
+| -------------------- | --------- | :----------: | ------------------------------------------------------------------------------ |
+| `p_giorni_retention` | `integer` |      No      | Giorni di retention dopo scadenza/utilizzo (default 30). Se NULL o < 0, usa 30 |
 
 ## Logica di eliminazione
 
@@ -39,8 +39,8 @@ I token ancora validi e non utilizzati non vengono mai eliminati, indipendenteme
 
 ## Risultato
 
-| Tipo | Descrizione |
-|------|-------------|
+| Tipo      | Descrizione               |
+| --------- | ------------------------- |
 | `integer` | Numero di token eliminati |
 
 ## Dipendenze

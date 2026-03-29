@@ -6,7 +6,7 @@
 - [aree_funzionali](tabelle/aree_funzionali.md) — * Definire il **perimetro funzionale** su cui si applicano i livelli di accesso (TUTTO / LETTURA / BLOCCATO). * Fornire il **mapping area → schema DB** per la risoluzione automatica dei permessi in Django. * Gestire l'**ordine di visualizzazione** nell'interfaccia di configurazione profili reparto.
 - [aspetti_beni](tabelle/aspetti_beni.md)
 - [assets_ownership](tabelle/assets_ownership.md) — * Definire un **catalogo univoco e governato** delle modalità di proprietà degli asset. * Assicurare coerenza tra domini diversi (magazzino, installazioni, contratti, fatturazione, manutenzione). * Abilitare logiche avanzate, tra cui:
-- [auth_totp_device](tabelle/auth_totp_device.md)
+- [auth_totp_device](tabelle/auth_totp_device.md) — La tabella `config.auth_totp_device` gestisce i **device TOTP** per l'autenticazione a due fattori (2FA). Relazione 1:1 con `auth_user`: ogni utente puo' avere al massimo un device TOTP configurato.
 - [azioni_processo](tabelle/azioni_processo.md) — * Catalogare le **azioni di processo** che richiedono abilitazione esplicita. * Raccordare il **codename Django** (`Meta.permissions` → `auth_permission`) con la gestione profili. * Segnalare le azioni **pericolose** che richiedono conferma aggiuntiva nella UI.
 - [canali_pratiche](tabelle/canali_pratiche.md) — La tabella `config.canali_pratiche` definisce i **canali di visibilita'** attraverso cui i flussi di una pratica possono essere esposti verso l'esterno. Non e' un flag booleano sulla pratica ma un **registry di interfacce** configurabile.
 - [categoria_accisa](tabelle/categoria_accisa.md)
@@ -15,11 +15,11 @@
 - [codici_postali](tabelle/codici_postali.md) — * **Elenco dei codici postali**   Per ogni comune (city/municipality), memorizza tutti i codici postali (Postal Code o ZIP Code) validi per quell’area geografica.
 - [comuni](tabelle/comuni.md) — (last review 30-12-25) * **Censimento dei comuni**   Elenco dei comuni presenti in ciascuno stato, identificati da nome e collegamento gerarchico a provincia e stato. * **Attributi specifici per stato**   La colonna `extra_country` (JSONB) permette di memorizzare dati aggiuntivi specifici per ogni paese (per l’Italia: codice catastale, codice ISTAT, fascia climatica, ecc.). * **Integrazione con lo stradario**   L’associazione tra `config.stradario_generale` (prefissi e nomi delle vie) e `config.comuni` genera la tabella `config.stradario`, che contiene l’indirizzo completo con la localizzazione geografica sul comune di appartenenza.   Utilizzata per associare i record di **`config.stradario`** al comune di appartenenza, completa il percorso di indirizzamento. * **Storicizzazione**   Il campo `storicizza` se true attiva il trigger per la storicizzazione delle informazioni sulla tabella `storico.comuni`. Il front-end dovrà sempre impostare a true il valore, solo per funzioni administrator si potrà non gestire a true.
 - [conti_contabili](tabelle/conti_contabili.md) — * Mantenere il catalogo centralizzato dei **codici conto** con descrizioni e tipologia. * Supportare la validazione dei riferimenti contabili in altre tabelle (ad esempio `config.iva`).
-- [email_account](tabelle/email_account.md)
-- [email_allegato](tabelle/email_allegato.md)
-- [email_log](tabelle/email_log.md)
-- [email_outbox](tabelle/email_outbox.md)
-- [email_template](tabelle/email_template.md)
+- [email_account](tabelle/email_account.md) — La tabella `config.email_account` definisce gli **account SMTP** utilizzati dal sistema per l'invio di email. Ogni unita' organizzativa (reparto) puo' avere il proprio account mittente; un account con `unita_organizzativa_id = NULL` funge da **fallback di sistema**.
+- [email_allegato](tabelle/email_allegato.md) — La tabella `config.email_allegato` traccia i **file allegati** alle email. I file sono salvati su filesystem (non in DB); la tabella contiene solo i metadati e il percorso relativo.
+- [email_log](tabelle/email_log.md) — La tabella `config.email_log` registra **ogni email inviata dal sistema**, conservando il corpo esattamente come inviato (dopo eventuali modifiche manuali dall'outbox), lo stato di invio, il contesto e l'ambito di visibilita'.
+- [email_outbox](tabelle/email_outbox.md) — La tabella `config.email_outbox` contiene le **bozze email** preparate dal sistema e modificabili dall'operatore prima dell'invio. Rappresenta il passaggio intermedio tra la generazione automatica dal template e l'invio effettivo.
+- [email_template](tabelle/email_template.md) — La tabella `config.email_template` contiene i **template email parametrizzabili** con variabili `{{...}}`. Ogni template puo' essere specializzato per reparto, tipo prestazione e lingua, con una catena di fallback a 5 livelli.
 - [forme_giuridiche](tabelle/forme_giuridiche.md) — (latest review 21-12-25)
 - [forme_giuridiche_tipi_soggetto_dettaglio](tabelle/forme_giuridiche_tipi_soggetto_dettaglio.md) — (latest review 21-12-25) La tabella **`config.forme_giuridiche_tipi_soggetto_dettaglio`** è una **matrice di configurazione** (Strada **B**) che definisce:
 - [iva](tabelle/iva.md) — * Centralizzare i **codici IVA** disponibili in un unico repository configurabile. * Gestire:
@@ -44,12 +44,12 @@
 - [stati](tabelle/stati.md) — * **Elenco degli stati/paesi**   Contiene tutte le nazioni riconosciute, con sigle e codici ISO standard (ISO 3166-1 alpha-2 e alpha-3) e prefisso telefonico internazionale.
 - [stati_assets](tabelle/stati_assets.md) — (latest review 16-01-26) * Fornire un **catalogo centralizzato e stabile** degli stati in cui può trovarsi un asset. * Supportare la gestione del **ciclo di vita degli asset**, inclusi:
 - [stati_cliente](tabelle/stati_cliente.md) — La tabella `config.stati_cliente` definisce i possibili **stati funzionali** di un cliente all’interno di Zero ERP, utilizzati sia per il controllo dei processi (letture, fatturazione) sia per la logica di avanzamento (precontrattuale, attivo, sospeso, chiuso, ecc.).
-- [stati_doc_contratti](tabelle/stati_doc_contratti.md)
-- [stati_doc_ddt](tabelle/stati_doc_ddt.md)
+- [stati_doc_contratti](tabelle/stati_doc_contratti.md) — (latest review 29-03-2026) `config.stati_doc_contratti` definisce gli **stati documento** del ciclo di vita dei contratti commerciali. Fornisce un catalogo centralizzato per rappresentare le fasi operative del contratto, dalla bozza fino alla chiusura.
+- [stati_doc_ddt](tabelle/stati_doc_ddt.md) — (latest review 29-03-2026) `config.stati_doc_ddt` definisce gli **stati documento** dei Documenti di Trasporto. Centralizza il vocabolario di stato usato nel ciclo logistico, dalla emissione alla consegna o agli eventuali esiti finali.
 - [stati_doc_fiscale](tabelle/stati_doc_fiscale.md) — (latest review 23-01-2026) `config.stati_doc_fiscale` definisce gli **stati documento** utilizzati dal ciclo fatturazione. Gli stessi stati possono essere applicati sia alle **fatture** sia ai **lotti**, tramite flag di applicabilita`.
 - [stati_doc_fiscale_transizioni](tabelle/stati_doc_fiscale_transizioni.md) — (latest review 24-01-2026) `config.stati_doc_fiscale_transizioni` definisce le **transizioni ammesse** tra stati documento, con validita` separata per **lotti** e **fatture**.
-- [stati_doc_ordini](tabelle/stati_doc_ordini.md)
-- [stati_doc_preventivi](tabelle/stati_doc_preventivi.md)
+- [stati_doc_ordini](tabelle/stati_doc_ordini.md) — (latest review 29-03-2026) `config.stati_doc_ordini` definisce gli **stati documento** del ciclo ordine di vendita. Raccoglie in un catalogo unico le fasi di avanzamento commerciale e operativo dell'ordine, dalla bozza fino all'evasione o chiusura.
+- [stati_doc_preventivi](tabelle/stati_doc_preventivi.md) — (latest review 29-03-2026) `config.stati_doc_preventivi` definisce gli **stati documento** del ciclo dei preventivi commerciali. Serve a governare il passaggio dalla proposta iniziale alla sua accettazione, revisione o chiusura operativa.
 - [stati_flussi_pratiche](tabelle/stati_flussi_pratiche.md) — La tabella `config.stati_flussi_pratiche` definisce i possibili **stati di un flusso operativo** all'interno di una pratica. Ogni flusso ha esattamente uno stato che ne indica l'avanzamento nel workflow.
 - [stati_fornitore](tabelle/stati_fornitore.md)
 - [stati_pdp](tabelle/stati_pdp.md) — * **Dominio degli stati tecnici del PDP**   Fornisce il catalogo centralizzato degli stati tecnici ammessi per i punti di prelievo, utilizzato da `anagrafiche.pdp.stato_pdp_id`.
@@ -78,7 +78,7 @@
 - [tipi_ubicazione](tabelle/tipi_ubicazione.md)
 - [tipi_utenze](tabelle/tipi_utenze.md)
 - [titoli_cortesia](tabelle/titoli_cortesia.md) — * **Uniformare i titoli**     Gestire centralmente i titoli di cortesia per tutti i soggetti/contatti, evitando discrepanze tra form, report e stampe.
-- [token_monouso](tabelle/token_monouso.md)
+- [token_monouso](tabelle/token_monouso.md) — La tabella `config.token_monouso` implementa un **meccanismo generico di token monouso** riutilizzabile per qualsiasi flusso che richieda un link sicuro con scadenza: invito operatore, reset password, conferma email, attivazione account.
 - [toponomastica](tabelle/toponomastica.md) — (latest review 02-01-26) * **Censimento dei toponimi**   Elenco delle tipologie di vie, strade, piazze, viali, ecc., utilizzate come prefisso negli indirizzi. * **Fondamentale per lo stradario**   Fornisce i prefissi standardizzati che, uniti al nome (es. "Garibaldi", "Roma"), generano i record di **`stradario_generale`**. * **Integrazione con lo stato geografico**   Collegato alla tabella `config.stati` per associare ogni tipo di toponimo all’area amministrativa di riferimento.
 - [transizioni_stati_flussi_pratiche](tabelle/transizioni_stati_flussi_pratiche.md) — `config.transizioni_stati_flussi_pratiche` definisce la **matrice delle transizioni ammesse** tra stati dei flussi pratica. Il trigger guard `trgfn_flussi_guard_transizione` consulta questa tabella per bloccare qualsiasi transizione non configurata.
 - [transizioni_stati_pratiche](tabelle/transizioni_stati_pratiche.md) — `config.transizioni_stati_pratiche` definisce la **matrice delle transizioni ammesse** tra stati delle pratiche. Il trigger guard `trgfn_pratiche_guard_transizione` consulta questa tabella per bloccare qualsiasi transizione non configurata.
@@ -92,11 +92,11 @@
 - [valute](tabelle/valute.md) — * **Definizione delle valute**   Elenco centralizzato di tutte le valute supportate, con codici interni e standard ISO 4217. * **Supporto ai moduli finanziari**   Garantisce alle aree di fatturazione, contabilità e reporting uniformità nella rappresentazione e conversione delle valute. * **Tracciabilità e auditing**   Memorizza informazioni di inserimento e aggiornamento per mantenere la storicità delle modifiche.
 
 ## ⚙️ Funzioni
-- [fn_cleanup_token_scaduti](funzioni/fn_cleanup_token_scaduti.md)
+- [fn_cleanup_token_scaduti](funzioni/fn_cleanup_token_scaduti.md) — Pulizia periodica dei token monouso scaduti o gia' utilizzati. Pensata per esecuzione automatica come job pgAgent notturno, elimina i record che non hanno piu' utilita' operativa.
 - [fn_get_aliquota_iva](funzioni/fn_get_aliquota_iva.md) — (latest review 10-02-2026)   La funzione **`config.fn_get_aliquota_iva()`** restituisce l’aliquota IVA applicando l’eventuale override definito in `config.iva_stati` per lo Stato specificato.
 - [fn_get_stati_doc_fiscale](funzioni/fn_get_stati_doc_fiscale.md) — (latest review 24-01-2026) La funzione **`config.fn_get_stati_doc_fiscale`** restituisce gli stati validi per **LOTTO** o **FATTURA**, con eventuale filtro sulle **transizioni ammesse**.
-- [fn_resolve_email_account](funzioni/fn_resolve_email_account.md)
-- [fn_resolve_email_template](funzioni/fn_resolve_email_template.md)
+- [fn_resolve_email_account](funzioni/fn_resolve_email_account.md) — Risolve l'account SMTP da utilizzare per l'invio di una email, dato il reparto (unita' organizzativa) del contesto. Implementa una catena di fallback a 2 livelli per garantire che ci sia sempre un account disponibile.
+- [fn_resolve_email_template](funzioni/fn_resolve_email_template.md) — Risolve il template email da utilizzare per un dato codice, reparto, tipo prestazione e lingua. Implementa una catena di fallback a 5 livelli che permette di specializzare i testi per reparto e tipo pratica mantenendo sempre un default di sistema.
 - [trgfn_comuni_protect_update](funzioni/trgfn_comuni_protect_update.md) — (latest review 29-12-25) Impedire la modifica dei campi chiave di `config.comuni` quando il comune e' gia' utilizzato nello stradario.
 - [trgfn_iva_guard_conti_iva](funzioni/trgfn_iva_guard_conti_iva.md) — * **Validazione contestuale**: eseguire controlli sui campi contabili prima di inserire o aggiornare un record in `config.iva`. * **Coerenza dei dati**: evitare associazioni errate tra codici IVA e conti di tipo sbagliato.
 - [trgfn_iva_stati_normalize](funzioni/trgfn_iva_stati_normalize.md) — (latest review 15-01-26) * **Impostare valori di default** per campi mancanti in `config.iva_stati` (ad esempio, assegnare `stato_id` da `config.stati` se `NEW.stato_id` è `NULL`). * **Pulire e normalizzare** ulteriori campi (es. trimming, uppercasing) seguendo le regole di business.
