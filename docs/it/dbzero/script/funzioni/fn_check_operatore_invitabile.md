@@ -14,9 +14,12 @@ CREATE OR REPLACE FUNCTION script.fn_check_operatore_invitabile(p_auth_user_id i
  STABLE
 AS $function$
 DECLARE
-    v_is_active     django.auth_user.is_active%TYPE;
-    v_email         django.auth_user.email%TYPE;
-    v_last_login    django.auth_user.last_login%TYPE;
+    -- Tipi espliciti per colonne django.auth_user:
+    -- %TYPE non utilizzabile perche' la tabella django.auth_user
+    -- viene creata da Django migrate DOPO Liquibase.
+    v_is_active     BOOLEAN;
+    v_email         VARCHAR(254);
+    v_last_login    TIMESTAMPTZ;
     v_ruolo_sistema anagrafiche.risorse_umane_auth_user.ruolo_sistema%TYPE;
     v_rau_attivo    anagrafiche.risorse_umane_auth_user.attivo%TYPE;
 BEGIN
