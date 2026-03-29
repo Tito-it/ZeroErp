@@ -48,6 +48,16 @@ Il servizio delega tutte le operazioni DB al `PraticheRepository` e le operazion
 | `get_sospensioni(pratica_id)` | pratica_id | `list[SospensioneRow]` | Lista sospensioni pratica (tutte) |
 | `get_calcoli_tempo(pratica_id)` | pratica_id | `list[CalcoloTempoRow]` | Calcoli tempo prestazione da/a |
 
+### Coda lavoro e competenze
+
+| Funzione | Input | Output | Descrizione |
+|---|---|---|---|
+| `get_coda_lavoro(risorsa_umana_id, emittente_fiscale_id)` | risorsa_umana_id, emittente_fiscale_id | `list[CodaLavoroRow]` | Coda lavoro operatore su 3 livelli |
+| `prendi_in_carico(flusso_id, risorsa_umana_id)` | flusso_id, risorsa_umana_id | `bool` | Assegna flusso DA_ESEGUIRE all'operatore |
+| `get_competenze_flussi()` | — | `list[CompetenzaFlussoRow]` | Matrice competenze con display fields |
+| `crea_competenza_flusso(...)` | template_flusso_id, unita_organizzativa_id, risorsa_umana_id, attivo? | `int` (competenza_id) | Crea competenza (admin) |
+| `elimina_competenza_flusso(competenza_id)` | competenza_id | `None` | Elimina competenza (admin) |
+
 ### Supporto
 
 | Funzione | Input | Output | Descrizione |
@@ -56,6 +66,7 @@ Il servizio delega tutte le operazioni DB al `PraticheRepository` e le operazion
 | `get_canali_disponibili(template_flusso_id)` | template_flusso_id | `list[CanalePraticaRow]` | Canali abilitati per template |
 | `dispatch_handler(flusso_id)` | flusso_id | `dict \| None` | Invoca handler Python se configurato |
 | `get_giornale(pratica_id, limit, offset)` | pratica_id, limit, offset | `(list[GiornaleRow], int)` | Giornale paginato |
+| `get_formule_tempo(tipo_prestazione_id)` | tipo_prestazione_id | `list[FormulaTempoRow]` | Formule tempo attive per tipo |
 
 ## Regole
 
@@ -79,6 +90,9 @@ Il servizio delega tutte le operazioni DB al `PraticheRepository` e le operazion
 - `pratiche.template_flussi_canali` + `config.canali_pratiche` (canali)
 - `pratiche.sospensioni` (CRUD sospensioni via PraticheRepository)
 - `pratiche.calcoli_tempo` (lettura via PraticheRepository)
+- `pratiche.competenze_flussi` (CRUD competenze via PraticheRepository)
+- `pratiche.fn_coda_lavoro_operatore` (coda lavoro operatore)
+- `pratiche.fn_prendi_in_carico_flusso` (presa in carico con FOR UPDATE)
 
 ## Note di migrazione
 

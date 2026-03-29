@@ -705,3 +705,119 @@ def get_formule_tempo(tipo_prestazione_id: int) -> list[dict[str, Any]]:
     return repo.list_formule_tempo(tipo_prestazione_id)
 
 
+# -- CODA LAVORO OPERATORE ------------------------------------------------
+
+
+# Scopo: Restituisce la coda di lavoro dell'operatore su tre livelli.
+# Obiettivo: alimenta la sidebar della dashboard pratiche.
+# Perimetro: delega alla funzione DB fn_coda_lavoro_operatore.
+def get_coda_lavoro(
+    risorsa_umana_id: int,
+    emittente_fiscale_id: int,
+) -> list[dict[str, Any]]:
+    ErrorManager.require(
+        risorsa_umana_id > 0,
+        code="E_INVALID_ID",
+        message="risorsa_umana_id deve essere > 0",
+    )
+    assert risorsa_umana_id > 0
+    ErrorManager.require(
+        emittente_fiscale_id > 0,
+        code="E_INVALID_ID",
+        message="emittente_fiscale_id deve essere > 0",
+    )
+    assert emittente_fiscale_id > 0
+
+    repo = PraticheRepository()
+    return repo.list_coda_lavoro(risorsa_umana_id, emittente_fiscale_id)
+
+
+# Scopo: Prende in carico un flusso assegnandolo all'operatore corrente.
+# Obiettivo: azione "prendi in carico" dalla coda di lavoro.
+# Perimetro: delega alla funzione DB fn_prendi_in_carico_flusso
+#   che gestisce lock, validazione stato e verifica competenza.
+# Risultato: True se assegnato, False se gia' assegnato allo stesso operatore.
+@transaction.atomic()
+def prendi_in_carico(flusso_id: int, risorsa_umana_id: int) -> bool:
+    ErrorManager.require(
+        flusso_id > 0,
+        code="E_INVALID_ID",
+        message="flusso_id deve essere > 0",
+    )
+    assert flusso_id > 0
+    ErrorManager.require(
+        risorsa_umana_id > 0,
+        code="E_INVALID_ID",
+        message="risorsa_umana_id deve essere > 0",
+    )
+    assert risorsa_umana_id > 0
+
+    repo = PraticheRepository()
+    return repo.prendi_in_carico_flusso(flusso_id, risorsa_umana_id)
+
+
+# -- COMPETENZE FLUSSI ----------------------------------------------------
+
+
+# Scopo: Restituisce la matrice competenze con display fields.
+def get_competenze_flussi() -> list[dict[str, Any]]:
+    repo = PraticheRepository()
+    return repo.list_competenze_flussi()
+
+
+# Scopo: Crea una nuova competenza flusso (operazione admin).
+@transaction.atomic()
+def crea_competenza_flusso(
+    *,
+    template_flusso_id: int,
+    unita_organizzativa_id: int,
+    risorsa_umana_id: int,
+    attivo: bool = True,
+) -> int:
+    ErrorManager.require(
+        template_flusso_id > 0,
+        code="E_INVALID_ID",
+        message="template_flusso_id deve essere > 0",
+    )
+    assert template_flusso_id > 0
+    ErrorManager.require(
+        unita_organizzativa_id > 0,
+        code="E_INVALID_ID",
+        message="unita_organizzativa_id deve essere > 0",
+    )
+    assert unita_organizzativa_id > 0
+    ErrorManager.require(
+        risorsa_umana_id > 0,
+        code="E_INVALID_ID",
+        message="risorsa_umana_id deve essere > 0",
+    )
+    assert risorsa_umana_id > 0
+
+    repo = PraticheRepository()
+    return repo.create_competenza_flusso({
+        "template_flusso_id": template_flusso_id,
+        "unita_organizzativa_id": unita_organizzativa_id,
+        "risorsa_umana_id": risorsa_umana_id,
+        "attivo": attivo,
+    })
+
+
+# Scopo: Elimina una competenza flusso (operazione admin).
+@transaction.atomic()
+def elimina_competenza_flusso(competenza_id: int) -> None:
+    ErrorManager.require(
+        competenza_id > 0,
+        code="E_INVALID_ID",
+        message="competenza_id deve essere > 0",
+    )
+    assert competenza_id > 0
+
+    repo = PraticheRepository()
+    deleted = repo.delete_competenza_flusso(competenza_id)
+    ErrorManager.require(
+        deleted,
+        code="E_NOT_FOUND",
+        message=f"Competenza {competenza_id} non trovata",
+    )
+
+

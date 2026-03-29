@@ -30,8 +30,10 @@ def encrypt(plaintext: str) -> str:
 def decrypt(token: str) -> str:
     """Scopo: Decrittografa un token Fernet e ritorna la stringa originale.
 
-    Lancia InvalidToken se la chiave non corrisponde o il token e' corrotto.
+    Lancia ValueError se il token e' vuoto/nullo o invalido.
     """
+    if not token:
+        raise ValueError("Token vuoto o nullo — impossibile decrittografare.")
     f = Fernet(_derive_key())
     try:
         return f.decrypt(token.encode()).decode()

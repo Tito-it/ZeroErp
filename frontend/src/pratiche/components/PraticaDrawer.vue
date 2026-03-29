@@ -384,7 +384,7 @@ function onClose() {
                 </div>
                 <div class="form-field">
                   <label>{{ t('pratiche.col_data_apertura') }}</label>
-                  <InputText :model-value="displayDate(detail.data_insert)" disabled class="w-full" />
+                  <InputText :model-value="displayDate(detail.data_apertura)" disabled class="w-full" />
                 </div>
               </div>
               <div v-if="detail.risorsa_umana_display" class="form-field">

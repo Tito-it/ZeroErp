@@ -2,21 +2,20 @@
 # ------------------------------------------------------------
 # Smoke test per sistema email, cambio password, reset password
 # Uso: ./scripts/tests/smoke-test-email-auth.sh [password]
-# Prerequisiti: utente ADMIN con accesso API, DB con tabelle email
 # ------------------------------------------------------------
 # Indice test (0..11):
 #  0) Login JWT admin
-#  1) GET /amm-software/email-accounts/ → lista account
-#  2) GET /amm-software/email-templates/ → lista template
-#  3) GET /amm-software/email-templates/?codice=INVITO_OPERATORE → filtro codice
-#  4) POST /amm-software/email-templates/{id}/preview/ → rendering variabili
-#  5) GET /amm-software/email-log/ → lista log (puo' essere vuota)
-#  6) POST /core/email/prepare/ → prepara bozza outbox
-#  7) GET /core/email/outbox/ → lista bozze operatore
-#  8) POST /core/email/outbox/{id}/cancel/ → annulla bozza
-#  9) POST /auth/password-reset-request/ → richiesta reset (sempre 200)
-# 10) GET /auth/password-reset-validate/token-inesistente/ → token invalido
-# 11) POST /auth/password-reset-confirm/ → token invalido (errore atteso)
+#  1) GET /amm-software/email-accounts/
+#  2) GET /amm-software/email-templates/
+#  3) GET /amm-software/email-templates/?codice=INVITO_OPERATORE
+#  4) POST /amm-software/email-templates/{id}/preview/
+#  5) GET /amm-software/email-log/
+#  6) POST /core/email/prepare/
+#  7) GET /core/email/outbox/
+#  8) POST /core/email/outbox/{id}/cancel/
+#  9) POST /auth/password-reset-request/
+# 10) GET /auth/password-reset-validate/token-inesistente/
+# 11) POST /auth/password-reset-confirm/
 # ------------------------------------------------------------
 set -euo pipefail
 
@@ -54,44 +53,6 @@ except Exception:
 " 2>/dev/null
 }
 
-do_get() {
-    local path="$1"
-    curl -s -w '\n%{http_code}' \
-        -H "Authorization: Bearer $ACCESS_TOKEN" \
-        "${BASE_URL}${path}" > "$TMPFILE" 2>/dev/null
-    LAST_STATUS=$(tail -1 "$TMPFILE")
-    LAST_BODY=$(sed '$d' "$TMPFILE")
-}
-
-do_post() {
-    local path="$1" body="${2:-{}}"
-    curl -s -w '\n%{http_code}' \
-        -H "Content-Type: application/json" \
-        -H "Authorization: Bearer $ACCESS_TOKEN" \
-        -d "$body" \
-        "${BASE_URL}${path}" > "$TMPFILE" 2>/dev/null
-    LAST_STATUS=$(tail -1 "$TMPFILE")
-    LAST_BODY=$(sed '$d' "$TMPFILE")
-}
-
-do_post_anon() {
-    local path="$1" body="${2:-{}}"
-    curl -s -w '\n%{http_code}' \
-        -H "Content-Type: application/json" \
-        -d "$body" \
-        "${BASE_URL}${path}" > "$TMPFILE" 2>/dev/null
-    LAST_STATUS=$(tail -1 "$TMPFILE")
-    LAST_BODY=$(sed '$d' "$TMPFILE")
-}
-
-do_get_anon() {
-    local path="$1"
-    curl -s -w '\n%{http_code}' \
-        "${BASE_URL}${path}" > "$TMPFILE" 2>/dev/null
-    LAST_STATUS=$(tail -1 "$TMPFILE")
-    LAST_BODY=$(sed '$d' "$TMPFILE")
-}
-
 # ================================================================
 echo ""
 echo "========================================="
@@ -109,9 +70,11 @@ if [[ -z "$PASSWORD" ]]; then
     echo ""
 fi
 
+LOGIN_BODY=$(printf '{"username":"%s","password":"%s"}' "$USERNAME" "$PASSWORD")
+
 curl -s -w '\n%{http_code}' \
     -H "Content-Type: application/json" \
-    -d "{\"username\":\"$USERNAME\",\"password\":\"$PASSWORD\"}" \
+    -d "$LOGIN_BODY" \
     "${BASE_URL}/api/v1/auth/token/" > "$TMPFILE" 2>/dev/null
 
 AUTH_STATUS=$(tail -1 "$TMPFILE")
@@ -126,16 +89,53 @@ fi
 ACCESS_TOKEN=$(json_get "$AUTH_BODY" "access")
 log_ok "Login riuscito (HTTP $AUTH_STATUS)"
 
-# Verifica flag password_change_required (se presente)
 PW_FLAG=$(json_get "$AUTH_BODY" "password_change_required")
 if [[ -n "$PW_FLAG" && "$PW_FLAG" != "" ]]; then
     log_info "password_change_required=$PW_FLAG"
 fi
 
+# Helper: GET autenticato
+auth_get() {
+    curl -s -w '\n%{http_code}' \
+        -H "Authorization: Bearer $ACCESS_TOKEN" \
+        "${BASE_URL}$1" > "$TMPFILE" 2>/dev/null
+    LAST_STATUS=$(tail -1 "$TMPFILE")
+    LAST_BODY=$(sed '$d' "$TMPFILE")
+}
+
+# Helper: POST autenticato
+auth_post() {
+    curl -s -w '\n%{http_code}' \
+        -H "Content-Type: application/json" \
+        -H "Authorization: Bearer $ACCESS_TOKEN" \
+        -d "$2" \
+        "${BASE_URL}$1" > "$TMPFILE" 2>/dev/null
+    LAST_STATUS=$(tail -1 "$TMPFILE")
+    LAST_BODY=$(sed '$d' "$TMPFILE")
+}
+
+# Helper: POST anonimo
+anon_post() {
+    curl -s -w '\n%{http_code}' \
+        -H "Content-Type: application/json" \
+        -d "$2" \
+        "${BASE_URL}$1" > "$TMPFILE" 2>/dev/null
+    LAST_STATUS=$(tail -1 "$TMPFILE")
+    LAST_BODY=$(sed '$d' "$TMPFILE")
+}
+
+# Helper: GET anonimo
+anon_get() {
+    curl -s -w '\n%{http_code}' \
+        "${BASE_URL}$1" > "$TMPFILE" 2>/dev/null
+    LAST_STATUS=$(tail -1 "$TMPFILE")
+    LAST_BODY=$(sed '$d' "$TMPFILE")
+}
+
 # --- 1. Lista account email ---
 echo ""
 echo "-- 1. GET /email-accounts/ --"
-do_get "/api/v1/amm-software/email-accounts/"
+auth_get "/api/v1/amm-software/email-accounts/"
 if [[ "$LAST_STATUS" == "200" ]]; then
     COUNT=$(json_get "$LAST_BODY" "data.count")
     log_ok "Lista account email: count=$COUNT"
@@ -146,7 +146,7 @@ fi
 # --- 2. Lista template email ---
 echo ""
 echo "-- 2. GET /email-templates/ --"
-do_get "/api/v1/amm-software/email-templates/"
+auth_get "/api/v1/amm-software/email-templates/"
 if [[ "$LAST_STATUS" == "200" ]]; then
     COUNT=$(json_get "$LAST_BODY" "data.count")
     log_ok "Lista template email: count=$COUNT"
@@ -157,28 +157,28 @@ fi
 # --- 3. Filtro template per codice ---
 echo ""
 echo "-- 3. GET /email-templates/?codice=INVITO_OPERATORE --"
-do_get "/api/v1/amm-software/email-templates/?codice=INVITO_OPERATORE"
+auth_get "/api/v1/amm-software/email-templates/?codice=INVITO_OPERATORE"
+TEMPLATE_ID=""
 if [[ "$LAST_STATUS" == "200" ]]; then
     COUNT=$(json_get "$LAST_BODY" "data.count")
-    log_ok "Template INVITO_OPERATORE: count=$COUNT"
-    # Salva ID per preview
     TEMPLATE_ID=$(json_get "$LAST_BODY" "data.results.0.id")
+    log_ok "Template INVITO_OPERATORE: count=$COUNT id=$TEMPLATE_ID"
 else
     log_fail "Template filtro codice: HTTP $LAST_STATUS"
-    TEMPLATE_ID=""
 fi
 
 # --- 4. Preview template ---
 echo ""
 echo "-- 4. POST /email-templates/{id}/preview/ --"
-if [[ -n "$TEMPLATE_ID" && "$TEMPLATE_ID" != "" ]]; then
-    do_post "/api/v1/amm-software/email-templates/${TEMPLATE_ID}/preview/" \
-        '{"variabili":{"nome":"Mario","cognome":"Rossi","azienda":"ZeroErp","link":"https://example.com","scadenza_ore":"72","invitato_da":"Admin"}}'
+if [[ -n "$TEMPLATE_ID" ]]; then
+    auth_post "/api/v1/amm-software/email-templates/${TEMPLATE_ID}/preview/" \
+              '{"variabili":{"nome":"Mario","cognome":"Rossi","azienda":"ZeroErp"}}'
     if [[ "$LAST_STATUS" == "200" ]]; then
         OGGETTO=$(json_get "$LAST_BODY" "data.oggetto")
-        log_ok "Preview: oggetto='$OGGETTO'"
+        log_ok "Preview: oggetto=$(echo "$OGGETTO" | head -c 50)"
     else
-        log_fail "Preview template: HTTP $LAST_STATUS"
+        log_fail "Preview: HTTP $LAST_STATUS"
+        log_info "$(echo "$LAST_BODY" | head -c 200)"
     fi
 else
     log_info "Skipped (nessun template trovato)"
@@ -187,7 +187,7 @@ fi
 # --- 5. Lista log email ---
 echo ""
 echo "-- 5. GET /email-log/ --"
-do_get "/api/v1/amm-software/email-log/"
+auth_get "/api/v1/amm-software/email-log/"
 if [[ "$LAST_STATUS" == "200" ]]; then
     COUNT=$(json_get "$LAST_BODY" "data.count")
     log_ok "Log email: count=$COUNT"
@@ -198,85 +198,85 @@ fi
 # --- 6. Prepara bozza outbox ---
 echo ""
 echo "-- 6. POST /core/email/prepare/ --"
-do_post "/api/v1/core/email/prepare/" \
-    '{"codice_template":"NOTIFICA_GENERICA","destinatario":"test@example.com","variabili":{"oggetto_custom":"Test smoke","corpo_custom":"Corpo di test"}}'
+auth_post "/api/v1/core/email/prepare/" \
+          '{"codice_template":"NOTIFICA_GENERICA","destinatario":"test@example.com","variabili":{"oggetto_custom":"Test","corpo_custom":"Corpo"}}'
+OUTBOX_ID=""
 if [[ "$LAST_STATUS" == "200" ]]; then
     OUTBOX_ID=$(json_get "$LAST_BODY" "data.id")
     log_ok "Bozza creata: id=$OUTBOX_ID"
 else
     log_fail "Prepara bozza: HTTP $LAST_STATUS"
-    log_info "$LAST_BODY" | head -c 300
-    OUTBOX_ID=""
+    log_info "$(echo "$LAST_BODY" | head -c 200)"
 fi
 
 # --- 7. Lista outbox ---
 echo ""
 echo "-- 7. GET /core/email/outbox/ --"
-do_get "/api/v1/core/email/outbox/"
+auth_get "/api/v1/core/email/outbox/"
 if [[ "$LAST_STATUS" == "200" ]]; then
     COUNT=$(json_get "$LAST_BODY" "data.count")
     log_ok "Outbox: count=$COUNT"
 else
-    log_fail "Outbox lista: HTTP $LAST_STATUS"
+    log_fail "Outbox: HTTP $LAST_STATUS"
 fi
 
 # --- 8. Annulla bozza ---
 echo ""
 echo "-- 8. POST /core/email/outbox/{id}/cancel/ --"
-if [[ -n "$OUTBOX_ID" && "$OUTBOX_ID" != "" ]]; then
-    do_post "/api/v1/core/email/outbox/${OUTBOX_ID}/cancel/"
+if [[ -n "$OUTBOX_ID" ]]; then
+    auth_post "/api/v1/core/email/outbox/${OUTBOX_ID}/cancel/" '{}'
     if [[ "$LAST_STATUS" == "200" ]]; then
         STATO=$(json_get "$LAST_BODY" "data.stato")
         if [[ "$STATO" == "CANCELLED" ]]; then
             log_ok "Bozza annullata: stato=$STATO"
         else
-            log_fail "Bozza annullata: stato atteso CANCELLED, ricevuto $STATO"
+            log_fail "Stato atteso CANCELLED, ricevuto $STATO"
         fi
     else
         log_fail "Annulla bozza: HTTP $LAST_STATUS"
     fi
 else
-    log_info "Skipped (nessuna bozza creata)"
+    log_info "Skipped (nessuna bozza)"
 fi
 
-# --- 9. Reset password request (anonimo) ---
+# --- 9. Reset password request ---
 echo ""
 echo "-- 9. POST /auth/password-reset-request/ --"
-do_post_anon "/api/v1/auth/password-reset-request/" \
-    '{"email":"inesistente@nowhere.test"}'
+anon_post "/api/v1/auth/password-reset-request/" '{"email":"inesistente@nowhere.test"}'
 if [[ "$LAST_STATUS" == "200" ]]; then
-    log_ok "Reset request: HTTP 200 (risposta opaca, email inesistente)"
+    log_ok "Reset request: HTTP 200 (risposta opaca)"
+elif [[ "$LAST_STATUS" == "429" ]]; then
+    log_ok "Reset request: HTTP 429 (rate limited)"
 else
-    log_fail "Reset request: HTTP $LAST_STATUS (atteso 200)"
+    log_fail "Reset request: HTTP $LAST_STATUS"
+    log_info "$(echo "$LAST_BODY" | head -c 200)"
 fi
 
-# --- 10. Reset password validate (token invalido) ---
+# --- 10. Validate token invalido ---
 echo ""
 echo "-- 10. GET /auth/password-reset-validate/token-inesistente/ --"
-do_get_anon "/api/v1/auth/password-reset-validate/token-inesistente/"
+anon_get "/api/v1/auth/password-reset-validate/token-inesistente/"
 if [[ "$LAST_STATUS" == "200" ]]; then
     VALID=$(json_get "$LAST_BODY" "data.valid")
     if [[ "$VALID" == "False" ]]; then
         log_ok "Token invalido: valid=False"
     else
-        log_fail "Token invalido: atteso valid=False, ricevuto valid=$VALID"
+        log_fail "Atteso valid=False, ricevuto $VALID"
     fi
 else
-    log_fail "Validate token: HTTP $LAST_STATUS"
+    log_fail "Validate: HTTP $LAST_STATUS"
 fi
 
-# --- 11. Reset password confirm (token invalido → errore) ---
+# --- 11. Confirm con token invalido ---
 echo ""
 echo "-- 11. POST /auth/password-reset-confirm/ --"
-do_post_anon "/api/v1/auth/password-reset-confirm/" \
-    '{"token":"token-inesistente","new_password":"NuovaPass123!","new_password_confirm":"NuovaPass123!"}'
+anon_post "/api/v1/auth/password-reset-confirm/" '{"token":"bad","new_password":"Test123!","new_password_confirm":"Test123!"}'
 if [[ "$LAST_STATUS" == "400" ]]; then
-    CODE=$(json_get "$LAST_BODY" "error.code")
-    log_ok "Confirm con token invalido: HTTP 400, code=$CODE"
+    log_ok "Confirm token invalido: HTTP 400"
 elif [[ "$LAST_STATUS" == "429" ]]; then
-    log_ok "Rate limited (429) — corretto per test ripetuti"
+    log_ok "Confirm: HTTP 429 (rate limited)"
 else
-    log_fail "Confirm token invalido: HTTP $LAST_STATUS (atteso 400)"
+    log_fail "Confirm: HTTP $LAST_STATUS"
 fi
 
 # ================================================================
@@ -285,6 +285,4 @@ echo "========================================="
 echo -e " Risultato: ${GREEN}$PASS OK${NC} / ${RED}$FAIL FAIL${NC}"
 echo "========================================="
 
-if [[ "$FAIL" -gt 0 ]]; then
-    exit 1
-fi
+[[ "$FAIL" -eq 0 ]]

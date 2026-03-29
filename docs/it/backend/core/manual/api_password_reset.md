@@ -126,13 +126,14 @@ POST /api/v1/auth/password-reset-confirm/
 }
 ```
 
-#### Validazioni
+#### Validazioni (ordine critico)
 
 1. `token` non vuoto
 2. `new_password` non vuota
 3. `new_password == new_password_confirm`
-4. Token valido (non scaduto, non gia' usato) — consuma il token
+4. Token valido (non scaduto, non gia' usato) — **validato senza consumare**
 5. `new_password` passa i 4 validators Django
+6. **Solo dopo la validazione password**: il token viene consumato
 
 #### Azioni (atomiche)
 
@@ -179,6 +180,7 @@ per parsing rate custom (`"3/15m"`).
 - **Scadenza 1 ora**: token reset ha vita breve
 - **Invalidazione**: alla creazione di un nuovo token, i precedenti vengono invalidati
 - **IP tracking**: il consumo del token registra l'IP di chi lo usa
+- **Validate-before-consume**: la password viene validata PRIMA di consumare il token — se la password e' troppo debole, il token resta valido e l'operatore puo' riprovare
 - **Blacklist JWT**: al reset, tutti i token JWT dell'utente vengono invalidati
 - **Rate limiting**: 3/15min per IP su request e confirm
 - **Email conferma**: l'operatore riceve notifica del cambio avvenuto
@@ -203,5 +205,5 @@ per parsing rate custom (`"3/15m"`).
 
 | File | Scopo |
 | --- | --- |
-| `apps/core/api/password_reset_views.py` | 3 view + helper `_get_user_uo_id` |
+| `apps/core/api/password_reset_views.py` | 3 view (request, validate, confirm) |
 | `apps/core/api/throttling.py` | `PasswordResetRateThrottle` + base class condivisa |

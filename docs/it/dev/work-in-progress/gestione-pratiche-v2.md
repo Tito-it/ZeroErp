@@ -701,110 +701,180 @@ Assegna un flusso DA_ESEGUIRE all'operatore, verificando la competenza:
 
 ---
 
-### 6.4 Interfaccia operativa — PraticheDashboard
+### 6.4 Interfaccia operativa — PraticheDashboard (✅ IMPLEMENTATA)
 
 L'interfaccia operativa abbandona il pattern drawer-centrico in favore di un
 **layout dashboard** con sidebar + master-detail, adattivo per desktop e tablet.
 
-#### Layout desktop (>= 1280px)
+#### Stato iniziale — lista vuota
+
+All'apertura la dashboard mostra **solo i filtri e un messaggio** "Eseguire una ricerca
+per visualizzare le pratiche". La sidebar coda lavoro e l'area flussi sono nascoste.
+La ricerca testuale richiede **minimo 3 caratteri**. Se si svuota la search senza
+filtri attivi, la dashboard torna allo stato iniziale.
 
 ```text
 ┌──────────────────────────────────────────────────────────┐
-│  FILTRI (collassabili: tipo, stato, priorita', date)     │
-├───────────────┬──────────────────────────────────────────┤
-│               │                                          │
-│  SIDEBAR      │  AREA PRINCIPALE                         │
-│  280px fissi  │                                          │
-│               │  ┌───────────────────────────────────┐   │
-│  ■ ASSEGNATI  │  │  Elenco pratiche (filtrate)       │   │
-│  PRA-0042     │  │  click riga → seleziona           │   │
-│  Diagnosi     │  │                                   │   │
-│  ● IN_CORSO   │  └───────────────────────────────────┘   │
-│               │                                          │
-│  PRA-0067     │  ┌─────────────────┬─────────────────┐   │
-│  Valutazione  │  │ FLUSSI DA FARE  │ FLUSSI FATTI    │   │
-│  ○ DA_ESEG.   │  │ (della pratica  │ (della pratica  │   │
-│               │  │  selezionata)   │  selezionata)   │   │
-│  ■ DA PRENDERE│  │                 │                 │   │
-│  PRA-0051     │  │ click →         │ readonly        │   │
-│  Assegnazione │  │ FlussoDrawer    │ con esito       │   │
-│               │  │                 │                 │   │
-│  ■ REPARTO    │  └─────────────────┴─────────────────┘   │
-│  PRA-0072     │                                          │
-│  (Marco)      │                                          │
-│               │                                          │
-└───────────────┴──────────────────────────────────────────┘
+│  [🔍 Cerca...]  [Stato ▼]  [Priorita' ▼]  [Dal] [Al]  [+ Nuovo]  │
+├──────────────────────────────────────────────────────────┤
+│                                                          │
+│                    🔍                                     │
+│     Eseguire una ricerca per visualizzare le pratiche    │
+│                                                          │
+├──────────────────────────────────────────────────────────┤
+│  Seleziona una pratica per vedere i flussi               │
+│  ┌─────────────────┬─────────────────┐                   │
+│  │   (vuoto)       │   (vuoto)       │                   │
+│  └─────────────────┴─────────────────┘                   │
+└──────────────────────────────────────────────────────────┘
 ```
 
-**Sidebar sinistra** (280px): la coda di lavoro dell'operatore, alimentata da
-`fn_coda_lavoro_operatore`. Tre sezioni con badge contatore:
+#### Layout desktop dopo ricerca (>= 1280px)
 
-- **Assegnati a me**: flussi con `risorsa_umana_id = me`, stato DA_ESEGUIRE o IN_CORSO
-- **Da prendere**: flussi senza assegnazione dove ho competenza (tabella `competenze_flussi`)
-- **Del mio reparto**: flussi della mia unita' organizzativa (visibilita')
+```text
+┌──────────────────────────────────────────────────────────┐
+│  [🔍 Cerca...]  [Stato ▼]  [Priorita' ▼]  [Dal] [Al]  [+ Nuovo]  │
+├──────────┬───────────────────────────────────────────────┤
+│          │  [Paginatore: ◀ 1/3 ▶ | 10/pag]              │
+│ CODA     │───────────────────────────────────────────────│
+│ LAVORO   │  Codice   │ Tipo │ Soggetto │ Stato │ Prio.  │
+│──────────│───────────┼──────┼──────────┼───────┼────────│
+│■ASSEGNATI│  PRA-001  │ MAN  │ Rossi    │ APERTA│ ALTA   │
+│ PRA-0042 │  PRA-002  │ ASS  │ Bianchi  │ BOZZA │ NORM   │
+│ Diagnosi │  PRA-003  │ REC  │ Verdi    │ APERTA│ URG    │
+│ ● IN_COR │                    (scroll interno)           │
+│          ├───────────────────────────────────────────────│
+│■DA PREND.│  📂 Visualizzazione pratica codice: PRA-001   │
+│ PRA-0051 │───────────────────────────────────────────────│
+│ Assegnaz.│  DA FARE (3)       │  COMPLETATI (1)          │
+│ [Prendi] │  ○ Valutazione     │  ✓ Ricezione [POSITIVO]  │
+│          │  ○ Diagnosi        │                          │
+│■REPARTO  │  ● Assegnamento    │                          │
+│ PRA-0072 │                    │                          │
+│ (Marco)  │                    │                          │
+└──────────┴───────────────────────────────────────────────┘
+```
 
-**Area principale superiore**: tabella pratiche filtrata (SearchTable esistente). Click su
-riga seleziona la pratica per la sezione inferiore.
+**Sidebar sinistra** (260px): coda lavoro dell'operatore con titolo verde info e
+sottolineatura sotto il testo. Tre sezioni con badge contatore e separatore verde
+tra i gruppi:
 
-**Area principale inferiore**: split in due colonne — flussi da fare (click apre FlussoDrawer
-per esecuzione) e flussi completati (readonly con esito).
+- **Assegnati a me**: flussi con `risorsa_umana_id = me`, stato DA_ESEGUIRE o IN_CORSO.
+  Mostra tag stato + tag priorita'.
+- **Da prendere**: flussi non assegnati dove ho competenza (tabella `competenze_flussi`).
+  Mostra tag stato + bottone "Prendi in carico".
+- **Del mio reparto**: flussi della mia unita' organizzativa.
+  Mostra tag stato + nome risorsa assegnata.
+
+La sidebar e' allineata verticalmente con le righe della tabella (spacer 90px replica
+l'altezza toolbar filtri + paginator).
+
+**Area principale superiore**: tabella pratiche con **paginazione a 10 righe**. Click su
+riga seleziona la pratica per la sezione inferiore. La DataTable usa scroll interno
+calcolato dinamicamente via `ResizeObserver` (non `scrollHeight="flex"`).
+
+**Barra contesto pratica**: sopra l'area flussi, mostra "Visualizzazione pratica codice:
+PRA-XXXXX" (verde info con icona) quando una pratica e' selezionata, oppure "Seleziona
+una pratica per vedere i flussi" (grigio corsivo) quando nessuna.
+
+**Area flussi** (230px fissi): split in due colonne — flussi da fare (card cliccabili,
+aprono FlussoDrawer) e flussi completati (readonly con esito). Ogni card mostra
+sequenza, stato tag, codice template, descrizione, scadenza.
 
 **Azioni**:
 
-- Click su elemento sidebar "Assegnati" o "Da prendere" → apre FlussoDrawer per esecuzione
-- Click su elemento sidebar "Da prendere" con conferma → `fn_prendi_in_carico_flusso` + apre drawer
-- Doppio click su pratica in sidebar → apre PraticaDrawer (dettaglio testata)
-- Click su flusso "da fare" nell'area inferiore → apre FlussoDrawer
+- Click su elemento sidebar → seleziona la pratica corrispondente e carica i flussi
+- Click "Prendi in carico" su elemento COMPETENZA → `fn_prendi_in_carico_flusso`, ricarica coda
+- Click su flusso "da fare" nell'area inferiore → apre FlussoDrawer per esecuzione
+- Click riga tabella → seleziona pratica, carica flussi sotto
+- Click "Nuovo" → apre PraticaDrawer in creazione
 
-#### Layout tablet (768-1279px)
+#### Layout tablet/mobile (< 1280px)
 
 ```text
 ┌──────────────────────────────────────────┐
-│  FILTRI (hamburger per espandere)        │
+│  [🔍 Cerca...]  [Stato ▼]  [+ Nuovo]    │
 ├──────────────────────────────────────────┤
-│  Toggle: [Miei ■3] [Prendere ■2] [UO ■5]│
+│  CODA LAVORO (160px, scroll orizzontale) │
+│  ■ Assegnati ■ Da prendere ■ Reparto    │
+╞══════════════════════════════════════════╡
+│  PRA-001 │ MAN │ Rossi │ APERTA │ ALTA  │
+│  PRA-002 │ ASS │ Bianchi │ BOZZA │ NORM │
+│  PRA-003 │ REC │ Verdi │ APERTA │ URG   │
+│  ... (niente scroll interno, pagina      │
+│       scrolla verticalmente)             │
 ├──────────────────────────────────────────┤
-│  Lista flussi (vista selezionata)        │
-│  PRA-0042 / Diagnosi tecnica            │
-│  PRA-0051 / Assegnazione tecnico        │
-├──────────────────────────────────────────┤
-│  Flussi (tab: Da fare | Completati)      │
-│  ○ Valutazione    (click → drawer)       │
-│  ○ Assegnazione                          │
+│  📂 Visualizzazione pratica: PRA-001     │
+│  DA FARE (2)    │  COMPLETATI (1)        │
+│  ○ Valutazione  │  ✓ Ricezione           │
+│  ○ Diagnosi     │                        │
 └──────────────────────────────────────────┘
 ```
 
-La sidebar diventa un **toggle** a tre viste (Miei / Da prendere / Reparto) con badge contatore.
-I flussi da fare/fatti passano da split orizzontale a **tab**. Stesso contenuto, layout verticale.
+Su schermi piccoli:
 
-#### FlussoDrawer
+- Layout verticale (`flex-direction: column`), container scrolla (`overflow-y: auto`)
+- Sidebar coda lavoro: 160px fissi, larghezza 100%, senza spacer
+- DataTable **senza scroll interno** (`scrollable=false`): le righe si espandono, la pagina scrolla
+- Area flussi: 200px fissi in fondo
+- Il separatore sidebar rimane verde info per coerenza visiva
 
-Il drawer di esecuzione flusso e' **dinamico**: il contenuto dipende dal `template_flusso_id`
-e dal campo `handler_params` (JSONB) del template. Il drawer mostra:
+#### FlussoDrawer (✅ IMPLEMENTATO)
 
-- **Header**: codice pratica, tipo prestazione, soggetto, priorita'
-- **Corpo**: form specifico per tipo flusso (determinato da handler_params o da componente
-  Vue registrato per template_flusso.codice)
-- **Footer**: azioni stato (Avvia → IN_CORSO, Completa con esito, Sospendi)
-- **Tab laterali**: Note flusso, Allegati flusso
+Drawer di esecuzione flusso (larghezza STANDARD = 640px). Il contenuto si adatta
+allo stato corrente del flusso:
 
-Se il template ha `handler_id` NOT NULL, il drawer mostra anche i risultati dell'handler
-automatico e le opzioni di retry/override.
+- **DA_ESEGUIRE**: header con codice pratica, stato, template, data — bottone "Avvia flusso"
+- **IN_CORSO**: form completamento con Select esito (POSITIVO/NEGATIVO/PARZIALE/NON_APPLICABILE)
+  + Textarea note esito — bottone "Completa" (disabilitato senza esito)
+- **COMPLETATO**: mostra esito con Tag severity (verde/rosso/arancio) + note esito readonly
 
-#### Componenti Vue
+La severity dell'esito usa `esitoFlussoSeverity()` centralizzata in `core/utils/severity.js`
+(riusabile ovunque serva mostrare un esito flusso).
+
+#### Componenti Vue (✅ IMPLEMENTATI)
 
 ```text
 src/pratiche/
 ├── views/
-│   └── PraticheDashboard.vue            -- layout principale (sidebar + main)
+│   ├── PraticheDashboard.vue            -- layout dashboard (sidebar + master-detail)
+│   └── PraticheView.vue                 -- layout semplice (fallback, SearchTable + Drawer)
 ├── components/
-│   ├── PraticheFiltri.vue               -- barra filtri collassabile
-│   ├── PraticheCodaLavoro.vue           -- sidebar: coda lavoro operatore
-│   ├── PraticheSearchTable.vue          -- tabella master (esiste, da adattare)
-│   ├── PraticaFlussiPanel.vue           -- pannello flussi split/tab
-│   ├── PraticaDrawer.vue               -- drawer testata (esiste, da adattare)
-│   └── FlussoDrawer.vue                 -- drawer esecuzione flusso (NUOVO)
+│   ├── PraticheCodaLavoro.vue           -- sidebar: coda lavoro 3 livelli (riutilizzabile)
+│   ├── PraticheSearchTable.vue          -- tabella master con scroll dinamico
+│   ├── PraticaFlussiPanel.vue           -- pannello flussi split da fare/completati (riutilizzabile)
+│   ├── PraticaDrawer.vue               -- drawer testata pratica (creazione + edit con tab)
+│   ├── FlussoDrawer.vue                 -- drawer esecuzione flusso (riutilizzabile)
+│   ├── PraticaFlussiTab.vue            -- tab flussi nel drawer pratica
+│   ├── PraticaNoteTab.vue              -- tab note nel drawer pratica
+│   ├── PraticaAllegatiTab.vue          -- tab allegati nel drawer pratica
+│   └── PraticaGiornaleTab.vue          -- tab giornale nel drawer pratica
 ```
+
+**Principio riusabilita'**: `PraticheCodaLavoro`, `PraticaFlussiPanel` e `FlussoDrawer` sono
+componenti puri — ricevono dati via props, emettono eventi, zero dipendenza diretta dallo store.
+Possono essere riusati in altri contesti (es. dashboard ticket quando il modulo assistenza sara'
+sviluppato).
+
+#### Dettagli implementativi
+
+- **Paginazione**: default 10 righe (store `filters.limit = 10`)
+- **Search minimo 3 caratteri**: lo store blocca `fetchList()` se search < 3 e nessun filtro attivo
+- **Clear search torna a stato vuoto**: `hasSearched = false`, sidebar e flussi scompaiono
+- **Scroll DataTable**: desktop usa `ResizeObserver` + `getBoundingClientRect()` per calcolare
+  `scrollHeight` dinamico. Mobile disabilita scroll interno (`scrollable=false`)
+- **Ricalcolo layout**: watch su `hasSearched` emette `window.dispatchEvent(new Event('resize'))`
+  con delay 50ms per forzare PrimeVue a riadattarsi
+- **Helper `get_risorsa_umana_id`**: in `core/api/endpoint_helpers.py`, risolve JWT → risorsa_umana
+  con cache per-request (`setattr(request, '_risorsa_umana_id', ...)`)
+- **Colonna data_apertura**: mostra `data_apertura` (non `data_insert`) sia nella SearchTable
+  che nel PraticaDrawer
+
+#### Bloccante: GRANT mancanti
+
+La tabella `pratiche.competenze_flussi` non ha ancora i GRANT per il ruolo applicativo Django.
+Lo smoke test test 26 (coda lavoro) fallisce con "permesso negato". Da risolvere lato DB
+prima del test completo.
 
 ---
 

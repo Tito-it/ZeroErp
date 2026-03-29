@@ -2,7 +2,7 @@
 // Scopo: DataTable paginata pratiche con search, filtro stato, priorita' e data.
 // I campi display (stato_descrizione, soggetto_display, ecc.) arrivano dal backend via JOIN.
 // I lookup servono solo per popolare i filtri Select.
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { usePraticheStore } from '../stores/pratiche'
 import { useSearchTable } from '../../core/composables/useSearchTable'
@@ -62,11 +62,35 @@ function onDataAChange() {
 function onRowClick(event) { emit('row-click', event.data) }
 
 useTabFreshness(store, 'pratica')
-onMounted(() => { store.fetchList() })
+// La lista parte vuota — l'operatore deve cercare o applicare un filtro.
+
+// Scopo: calcolo dinamico altezza scroll DataTable.
+// Desktop (>=1280px): calcola altezza dal viewport reale meno area flussi.
+// Mobile/tablet (<1280px): niente scroll interno, la pagina scrolla.
+const tableContainer = ref(null)
+const tableScrollHeight = ref(null)
+
+function recalcScrollHeight() {
+  if (window.innerWidth < 1280) {
+    // Mobile/tablet: niente scroll interno DataTable, scrolla il container padre
+    tableScrollHeight.value = null
+    return
+  }
+  if (!tableContainer.value) return
+  const rect = tableContainer.value.getBoundingClientRect()
+  const available = window.innerHeight - rect.top - 100 - 240
+  tableScrollHeight.value = Math.max(available, 150) + 'px'
+}
+
+onMounted(() => {
+  recalcScrollHeight()
+  window.addEventListener('resize', recalcScrollHeight)
+})
+onUnmounted(() => { window.removeEventListener('resize', recalcScrollHeight) })
 </script>
 
 <template>
-  <div class="app-tab-content">
+  <div ref="tableContainer" class="app-tab-content">
     <div class="app-page-toolbar">
       <div class="app-page-filters">
         <InputText
@@ -120,15 +144,22 @@ onMounted(() => { store.fetchList() })
       </div>
     </div>
 
+    <!-- Placeholder: nessuna ricerca effettuata -->
+    <div v-if="!store.hasSearched && !store.loading" class="pratiche-search-hint">
+      <i class="pi pi-search" />
+      <span>{{ t('pratiche.eseguire_ricerca') }}</span>
+    </div>
+
     <DataTable
+      v-show="store.hasSearched || store.loading"
       :value="store.items"
       :loading="store.loading"
       v-bind="paginatorProps"
       lazy
       removable-sort
       striped-rows
-      scrollable
-      scrollHeight="flex"
+      :scrollable="!!tableScrollHeight"
+      :scrollHeight="tableScrollHeight || undefined"
       class="app-datatable"
       @page="onPage"
       @sort="onSort"
@@ -153,9 +184,27 @@ onMounted(() => { store.fetchList() })
       <Column field="data_scadenza" :header="t('pratiche.col_data_scadenza')" sortable style="width: 110px;">
         <template #body="{ data }">{{ displayDate(data.data_scadenza) }}</template>
       </Column>
-      <Column field="data_insert" :header="t('pratiche.col_data_apertura')" sortable style="width: 110px;">
-        <template #body="{ data }">{{ displayDate(data.data_insert) }}</template>
+      <Column field="data_apertura" :header="t('pratiche.col_data_apertura')" sortable style="width: 110px;">
+        <template #body="{ data }">{{ displayDate(data.data_apertura) }}</template>
       </Column>
     </DataTable>
   </div>
 </template>
+
+<style scoped>
+.pratiche-search-hint {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  height: 100%;
+  color: var(--text-color-secondary);
+  font-size: 0.95rem;
+}
+
+.pratiche-search-hint .pi-search {
+  font-size: 2rem;
+  opacity: 0.4;
+}
+</style>

@@ -9,6 +9,9 @@
 from django.urls import path
 
 from apps.pratiche.api.views import (
+    ApiCodaLavoro,
+    ApiCompetenzaFlussoDetail,
+    ApiCompetenzeFlussiList,
     ApiFormuleTempo,
     ApiPraticaAllegatoDetail,
     ApiPraticaAllegatiList,
@@ -33,9 +36,14 @@ from apps.pratiche.api.views import (
     ApiPraticaSospensioni,
     ApiPraticaStato,
     ApiPraticheList,
+    ApiPrendiInCarico,
 )
 
 urlpatterns = [
+    # --- Coda lavoro e competenze ---
+    path("coda-lavoro/", ApiCodaLavoro.as_view(), name="pratiche-coda-lavoro"),
+    path("competenze-flussi/", ApiCompetenzeFlussiList.as_view(), name="pratiche-competenze-flussi-list"),
+    path("competenze-flussi/<int:competenza_id>/", ApiCompetenzaFlussoDetail.as_view(), name="pratiche-competenza-flusso-detail"),
     # --- Formule tempo ---
     path("formule-tempo/", ApiFormuleTempo.as_view(), name="pratiche-formule-tempo"),
     # --- Pratiche ---
@@ -64,6 +72,8 @@ urlpatterns = [
     path("<int:pratica_id>/flussi/<int:flusso_id>/regole-generazione/", ApiPraticaFlussoRegoleGenerazione.as_view(), name="pratiche-flusso-regole-generazione"),
     path("<int:pratica_id>/flussi/<int:flusso_id>/genera/", ApiPraticaFlussoGenera.as_view(), name="pratiche-flusso-genera"),
     path("<int:pratica_id>/flussi/<int:flusso_id>/pratiche-generate/", ApiPraticaFlussoPraticheGenerate.as_view(), name="pratiche-flusso-pratiche-generate"),
+    # --- Prendi in carico flusso ---
+    path("flussi/<int:flusso_id>/prendi-in-carico/", ApiPrendiInCarico.as_view(), name="pratiche-flusso-prendi-in-carico"),
     # --- Sospensioni flusso ---
     path("<int:pratica_id>/flussi/<int:flusso_id>/sospendi/", ApiPraticaFlussoSospendi.as_view(), name="pratiche-flusso-sospendi"),
     path("<int:pratica_id>/flussi/<int:flusso_id>/riattiva/", ApiPraticaFlussoRiattiva.as_view(), name="pratiche-flusso-riattiva"),

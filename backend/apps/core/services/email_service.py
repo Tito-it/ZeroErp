@@ -285,9 +285,13 @@ class EmailDispatchService:
         if self.is_console_mode(account):
             return {"success": True, "message": "Console mode (DEBUG) — nessun test SMTP necessario."}
 
+        encrypted_pw = account.get("smtp_password_encrypted")
+        if not encrypted_pw:
+            return {"success": False, "message": "Password SMTP non configurata per l'account."}
+
         server: smtplib.SMTP | smtplib.SMTP_SSL | None = None
         try:
-            password = crypto_service.decrypt(account["smtp_password_encrypted"])
+            password = crypto_service.decrypt(encrypted_pw)
             if account.get("smtp_use_ssl"):
                 server = smtplib.SMTP_SSL(account["smtp_host"], account["smtp_port"], timeout=_SMTP_TIMEOUT_TEST)
             else:

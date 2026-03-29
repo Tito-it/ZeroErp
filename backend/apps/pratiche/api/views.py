@@ -12,7 +12,7 @@ from rest_framework import serializers
 from rest_framework.request import Request
 from apps.core.api.base_views import DomainAPIView
 
-from apps.core.api.endpoint_helpers import handle_post_json
+from apps.core.api.endpoint_helpers import get_risorsa_umana_id, handle_post_json
 from apps.core.api.payload_validators import optional_int
 from apps.core.api.success_responses import success_response
 from apps.core.services.error_manager import ErrorManager
@@ -24,7 +24,7 @@ from apps.pratiche.services import generazione_service, pratiche_service
 # Evita duplicazione del pattern get+check+ownership in ogni view nested.
 def _get_flusso_verificato(
     repo: PraticheRepository, pratica_id: int, flusso_id: int,
-) -> FlussoRow:
+) -> dict:
     flusso = repo.get_flusso(flusso_id)
     ErrorManager.require(
         flusso is not None,
@@ -881,6 +881,151 @@ class ApiPraticaAllegatoDetail(DomainAPIView):
     # Scopo: Elimina un allegato.
     def delete(self, request: Request, pratica_id: int, allegato_id: int) -> JsonResponse:
         pratiche_service.elimina_allegato_pratica(allegato_id=allegato_id, pratica_id=pratica_id)
+        return success_response({"deleted": True})
+
+
+# ================================================================== #
+# Coda lavoro operatore                                                #
+# ================================================================== #
+
+
+class ApiCodaLavoro(DomainAPIView):
+    """GET coda lavoro dell'operatore corrente su tre livelli."""
+    area_funzionale = "pratiche"
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(name="emittente_fiscale_id", type=int, required=True, description="ID emittente fiscale (obbligatorio)."),
+        ],
+        responses={200: inline_serializer(
+            name="CodaLavoroResponse",
+            fields={
+                "data": inline_serializer(name="CodaLavoroData", fields={
+                    "results": serializers.ListField(child=serializers.DictField()),
+                }),
+            },
+        )},
+    )
+    # Scopo: Restituisce via GET la coda di lavoro dell'operatore autenticato.
+    def get(self, request: Request) -> JsonResponse:
+        qp = request.query_params
+        emittente_fiscale_id = optional_int({"v": qp.get("emittente_fiscale_id")}, "v")
+        ErrorManager.require(
+            emittente_fiscale_id is not None and emittente_fiscale_id > 0,
+            code="E_PRATICA_VALIDATION",
+            message="emittente_fiscale_id obbligatorio",
+        )
+        assert emittente_fiscale_id is not None
+
+        risorsa_umana_id = get_risorsa_umana_id(request)
+        ErrorManager.require(
+            risorsa_umana_id is not None and risorsa_umana_id > 0,
+            code="E_PRATICA_VALIDATION",
+            message="Operatore non associato a una risorsa umana",
+        )
+        assert risorsa_umana_id is not None
+
+        items = pratiche_service.get_coda_lavoro(risorsa_umana_id, emittente_fiscale_id)
+        return success_response({"results": items})
+
+
+# ================================================================== #
+# Prendi in carico flusso                                              #
+# ================================================================== #
+
+
+class ApiPrendiInCarico(DomainAPIView):
+    """POST prendi in carico un flusso DA_ESEGUIRE."""
+    area_funzionale = "pratiche"
+
+    @extend_schema(
+        request=inline_serializer(
+            name="PrendiInCaricoRequest",
+            fields={},
+        ),
+        responses={200: inline_serializer(
+            name="PrendiInCaricoResponse",
+            fields={"data": inline_serializer(name="PrendiInCaricoData", fields={
+                "assegnato": serializers.BooleanField(),
+                "status": serializers.CharField(),
+            })},
+        )},
+    )
+    # Scopo: Gestisce la richiesta HTTP POST per prendere in carico un flusso.
+    def post(self, request: Request, flusso_id: int) -> JsonResponse:
+        risorsa_umana_id = get_risorsa_umana_id(request)
+        ErrorManager.require(
+            risorsa_umana_id is not None and risorsa_umana_id > 0,
+            code="E_PRATICA_VALIDATION",
+            message="Operatore non associato a una risorsa umana",
+        )
+        assert risorsa_umana_id is not None
+
+        def _handler(payload: dict[str, object]) -> dict[str, object]:
+            assegnato = pratiche_service.prendi_in_carico(flusso_id, risorsa_umana_id)
+            return {"assegnato": assegnato, "status": "ok"}
+
+        return handle_post_json(request, handler=_handler)
+
+
+# ================================================================== #
+# Competenze flussi — admin CRUD                                       #
+# ================================================================== #
+
+
+class ApiCompetenzeFlussiList(DomainAPIView):
+    """GET lista competenze, POST crea competenza."""
+    area_funzionale = "pratiche"
+
+    @extend_schema(
+        responses={200: inline_serializer(
+            name="CompetenzeFlussiListResp",
+            fields={"data": serializers.ListField(child=serializers.DictField())},
+        )},
+    )
+    # Scopo: Restituisce via GET la matrice competenze flussi con display fields.
+    def get(self, request: Request) -> JsonResponse:
+        items = pratiche_service.get_competenze_flussi()
+        return success_response({"results": items})
+
+    @extend_schema(
+        request=inline_serializer(name="CompetenzaFlussoCreateReq", fields={
+            "template_flusso_id": serializers.IntegerField(),
+            "unita_organizzativa_id": serializers.IntegerField(),
+            "risorsa_umana_id": serializers.IntegerField(),
+            "attivo": serializers.BooleanField(required=False),
+        }),
+        responses={200: inline_serializer(
+            name="CompetenzaFlussoCreateResp",
+            fields={"data": serializers.DictField()},
+        )},
+    )
+    # Scopo: Crea una competenza flusso (operazione admin).
+    def post(self, request: Request) -> JsonResponse:
+        def _handler(payload: dict) -> dict:
+            competenza_id = pratiche_service.crea_competenza_flusso(
+                template_flusso_id=int(payload["template_flusso_id"]),
+                unita_organizzativa_id=int(payload["unita_organizzativa_id"]),
+                risorsa_umana_id=int(payload["risorsa_umana_id"]),
+                attivo=bool(payload.get("attivo", True)),
+            )
+            return {"competenza_id": competenza_id, "status": "ok"}
+        return handle_post_json(request, handler=_handler)
+
+
+class ApiCompetenzaFlussoDetail(DomainAPIView):
+    """DELETE elimina competenza."""
+    area_funzionale = "pratiche"
+
+    @extend_schema(
+        responses={200: inline_serializer(
+            name="CompetenzaFlussoDeleteResp",
+            fields={"data": serializers.DictField()},
+        )},
+    )
+    # Scopo: Elimina una competenza flusso (operazione admin).
+    def delete(self, request: Request, competenza_id: int) -> JsonResponse:
+        pratiche_service.elimina_competenza_flusso(competenza_id)
         return success_response({"deleted": True})
 
 

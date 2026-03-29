@@ -31,6 +31,29 @@ def get_scope_user_id(request: HttpRequest | Request) -> int | None:
     return None if user.is_superuser else user.id
 
 
+# Scopo: Restituisce il risorsa_umana_id dell'utente autenticato.
+# Risolve dalla tabella bridge anagrafiche.risorse_umane_auth_user.
+# Ritorna None se l'utente non e' associato a una risorsa umana.
+def get_risorsa_umana_id(request: HttpRequest | Request) -> int | None:
+    user = request.user
+    if not user or not user.is_authenticated:
+        return None
+    # Cache per-request: evita query ripetute nella stessa richiesta HTTP.
+    cache_attr = "_risorsa_umana_id"
+    if hasattr(request, cache_attr):
+        return getattr(request, cache_attr)
+    from django.db import connection
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT risorsa_umana_id FROM anagrafiche.risorse_umane_auth_user WHERE auth_user_id = %s LIMIT 1",
+            [user.id],
+        )
+        row = cursor.fetchone()
+    result = int(row[0]) if row else None
+    setattr(request, cache_attr, result)
+    return result
+
+
 # Scopo: Gestisce endpoint POST JSON con parsing, validazione, idempotency opzionale e envelope uniforme.
 def handle_post_json(
     request: HttpRequest | Request,

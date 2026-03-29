@@ -1,0 +1,118 @@
+/* CSS condiviso per tutte le pagine auth (login, reset, attivazione, cambio password) */
+.login-page {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  background: #0a0a0a;
+  overflow: hidden;
+}
+
+.login-bg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: center;
+  opacity: 0.35;
+  pointer-events: none;
+}
+
+.login-card {
+  position: relative;
+  z-index: 1;
+  width: 390px;
+  height: 390px;
+  border-radius: 50%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem 3rem;
+  background: var(--app-login-card-bg);
+  border: 1px solid var(--app-login-card-border);
+  backdrop-filter: blur(8px);
+}
+
+.login-card--large {
+  width: 430px;
+  height: 430px;
+}
+
+.login-logo {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 1rem;
+}
+
+.login-title {
+  text-align: center;
+  margin: 0 0 0.5rem 0;
+  font-size: 1.15rem;
+  color: var(--p-text-color);
+}
+
+.login-subtitle {
+  text-align: center;
+  margin: 0 0 0.3rem 0;
+  font-size: 0.8rem;
+  color: var(--p-text-muted-color);
+}
+
+.login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  width: 100%;
+  max-width: 240px;
+}
+
+.login-form--wide {
+  max-width: 250px;
+  gap: 0.7rem;
+}
+
+.login-page .field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.login-page .field label {
+  font-size: var(--app-font-size-sm);
+  font-weight: 500;
+  color: var(--p-text-muted-color);
+}
+
+.login-error {
+  padding: 0.6rem 0.75rem;
+  border-radius: 6px;
+  background: var(--app-login-error-bg);
+  color: var(--app-login-error-color);
+  font-size: var(--app-font-size-sm);
+  text-align: center;
+}
+
+.login-success {
+  padding: 0.6rem 0.75rem;
+  border-radius: 6px;
+  background: rgba(34, 197, 94, 0.15);
+  color: #22c55e;
+  font-size: var(--app-font-size-sm);
+  text-align: center;
+}
+
+.back-link,
+.forgot-link {
+  text-align: center;
+  color: var(--p-text-muted-color);
+  font-size: var(--app-font-size-sm);
+  text-decoration: none;
+}
+
+.back-link:hover,
+.forgot-link:hover {
+  color: var(--p-primary-color);
+}
