@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/config/manual/tipi_evento_assets.md" %}
 # 📚 Tabella `tipi_evento_assets`
 
 ## 🗂️ Campi principali

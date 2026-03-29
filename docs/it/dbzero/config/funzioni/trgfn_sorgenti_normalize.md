@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/config/manual/trgfn_sorgenti_normalize.md" %}
 # ⚙️ Funzione `trgfn_sorgenti_normalize`
 
 ```sql

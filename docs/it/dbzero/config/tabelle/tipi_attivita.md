@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/config/manual/tipi_attivita.md" %}
 # 📚 Tabella `tipi_attivita`
 
 ## 🗂️ Campi principali

@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/config/manual/trgfn_tipi_ruoli_guard_entita_ref.md" %}
 # ⚙️ Funzione `trgfn_tipi_ruoli_guard_entita_ref`
 
 ```sql
