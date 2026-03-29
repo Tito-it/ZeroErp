@@ -116,7 +116,7 @@ class EmailRepository:
         unita_organizzativa_id: int | None = None,
         attivo: bool = True,
     ) -> int:
-        encrypted_pw = crypto_service.encrypt(smtp_password) if smtp_password else ""
+        encrypted_pw = crypto_service.encrypt(smtp_password) if smtp_password else None
         sql = """
             INSERT INTO config.email_account
                 (codice, descrizione, unita_organizzativa_id,

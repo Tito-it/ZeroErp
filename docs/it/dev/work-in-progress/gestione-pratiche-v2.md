@@ -533,11 +533,6 @@ END IF;
 - Non sovrascrivibile manualmente (guard o immutabilita' dopo prima valorizzazione)
 - NULL per pratiche ancora in BOZZA
 
-**Nota su `flussi`**: la tabella `flussi` ha gia' `data_fine` (completamento) ma NON ha
-`data_inizio` (quando passa a IN_CORSO). Valutare se aggiungere `data_inizio` con lo stesso
-pattern (trigger su transizione DA_ESEGUIRE → IN_CORSO). Utile per calcoli durata flusso
-senza dover interrogare il giornale.
-
 ---
 
 ### 6.2 Tabella `pratiche.competenze_flussi` — matrice competenze operatore
@@ -829,17 +824,130 @@ L'endpoint coda-lavoro ricava `risorsa_umana_id` dall'utente autenticato (JWT �
 
 ### 6.6 Riepilogo migration DB fase 6
 
-| #  | Oggetto                                                          | Tipo | Note                                         |
-| -- | ---------------------------------------------------------------- | ---- | -------------------------------------------- |
-| M1 | `ALTER pratiche.pratiche ADD COLUMN data_apertura`               | DDL  | TIMESTAMPTZ nullable                         |
-| M2 | Trigger valorizzazione `data_apertura` (BOZZA → APERTA)        | Code | Trigger BEFORE UPDATE OF stato_id            |
-| M3 | `ALTER pratiche.flussi ADD COLUMN data_inizio`                  | DDL  | TIMESTAMPTZ nullable (opzionale, da valutare)|
-| M4 | Trigger valorizzazione `data_inizio` flusso (DA_ESEGUIRE → IN_CORSO) | Code | Come M2                                |
-| M5 | `CREATE TABLE pratiche.competenze_flussi`                       | DDL  | Con unique composite                         |
-| M6 | `CREATE FUNCTION pratiche.fn_coda_lavoro_operatore(...)`        | Code | Funzione SQL                                 |
+| #  | Oggetto                                                    | Tipo | Stato | Note                              |
+| -- | ---------------------------------------------------------- | ---- | ----- | --------------------------------- |
+| M1 | `ALTER pratiche.pratiche ADD COLUMN data_apertura`         | DDL  | ✅    | DATE nullable                     |
+| M2 | Trigger valorizzazione `data_apertura` (BOZZA → APERTA)  | Code | ✅    | Fase m50, immutabile, CURRENT_DATE |
+| M3 | `CREATE TABLE pratiche.competenze_flussi`                 | DDL  | ✅    | Con unique composite, FK rinominate |
+| M4 | `CREATE FUNCTION pratiche.fn_coda_lavoro_operatore(...)`  | Code | ✅    | CTE singola scansione, 3 livelli  |
+| M5 | `CREATE FUNCTION pratiche.fn_prendi_in_carico_flusso(...)` | Code | ✅    | FOR UPDATE + ROW_COUNT check      |
 | M7 | `CREATE FUNCTION pratiche.fn_prendi_in_carico_flusso(...)` | Code | Funzione PL/pgSQL |
 
-**Ordine**: M1 → M2 → M3 → M4 → M5 → M6 → M7
+**Ordine**: M1 → M2 → M3 → M4 → M5
+
+---
+
+## Fase 7 — Piano Backend
+
+Prerequisito: fase 6 DB completata (migration M1-M5 applicate).
+
+Il backend pratiche v1 e' gia' sostanzialmente completo (40+ metodi repository,
+30+ service, 26 view API, 36 endpoint). La fase 7 aggiorna il codice esistente
+per i nuovi campi v2 e aggiunge gli endpoint per coda lavoro e competenze.
+
+### Stato attuale backend v1
+
+| Componente | File | Righe | Stato |
+| ---------- | ---- | ----- | ----- |
+| Types | `types.py` | 189 | 11 TypedDict, da aggiornare |
+| Repository | `pratiche_repository.py` | 825 | 40+ metodi, SQL da riscrivere con JOIN display |
+| Repository gen. | `generazione_repository.py` | 94 | Completo, invariato |
+| Service | `pratiche_service.py` | 707 | 30+ metodi, da aggiornare per nuovi campi |
+| Service gen. | `generazione_service.py` | 87 | Completo, invariato |
+| Handler registry | `handler_registry.py` | 41 | Completo, invariato |
+| Views | `views.py` | 924 | 26 view, da aggiornare + nuove |
+| Routes | `urls_v1.py` | 70 | 36 path, da estendere |
+| Test API | `tests/api/` | 969 | 5 file, da aggiornare |
+| Test service | `tests/services/` | 557 | 5 file, da aggiornare |
+
+### Cosa NON cambia
+
+- `generazione_service.py` / `generazione_repository.py` — gia' operativi
+- `handler_registry.py` — invariato (HANDLER_MAP vuoto, estendibile)
+- Endpoint sospensioni, giornale, calcoli tempo, formule tempo — gia' completi
+- Endpoint note e allegati — gia' completi
+- Pattern architetturale (3 layer, DomainAPIView, handle_post_json)
+
+### Cosa viene eliminato/semplificato
+
+- Indici posizionali nel mapping row → dict: sostituiti da `cursor.description`
+- Lookup client-side per stato/priorita'/tipo: ora il backend li restituisce via JOIN
+
+### Fase A — Types (`types.py`)
+
+| # | Azione | Dettaglio |
+| - | ------ | --------- |
+| A1 | Aggiornare `PraticaRow` | Aggiungere: `soggetto_ruolo_id`, `istanza_utility_id`, `data_apertura`, campi display (tipo_prestazione_codice, tipo_prestazione_descrizione, stato_codice_interno, stato_descrizione, priorita_codice_interno, priorita_descrizione, soggetto_display, risorsa_umana_display, unita_organizzativa_descrizione) |
+| A2 | Aggiungere `CompetenzaFlussoRow` | TypedDict per `pratiche.competenze_flussi` |
+| A3 | Aggiungere `CodaLavoroRow` | TypedDict per risultato `fn_coda_lavoro_operatore` (livello, flusso_id, pratica_id, pratica_codice, ecc.) |
+
+### Fase B — Repository (`pratiche_repository.py`)
+
+| # | Azione | Dettaglio |
+| - | ------ | --------- |
+| B1 | Riscrivere `list_pratiche` SQL | JOIN a tipi_prestazione, stati_pratiche, priorita_pratiche, soggetti, risorse_umane, unita_organizzative. Aggiungere campi v2 (soggetto_ruolo_id, istanza_utility_id, data_apertura) |
+| B2 | Riscrivere `get_pratica` SQL | Stessi JOIN di B1 per coerenza |
+| B3 | Riscrivere mapping row → dict | Usare `cursor.description` per named columns. Pattern: `cols = [d[0] for d in cursor.description]; dict(zip(cols, row))` |
+| B4 | Aggiornare `create_pratica` | Aggiungere `soggetto_ruolo_id`, `istanza_utility_id` nell'INSERT |
+| B5 | Aggiungere `list_coda_lavoro` | Chiama `SELECT * FROM pratiche.fn_coda_lavoro_operatore(p_risorsa_umana_id, p_emittente_fiscale_id)` |
+| B6 | Aggiungere `prendi_in_carico_flusso` | Chiama `SELECT pratiche.fn_prendi_in_carico_flusso(p_flusso_id, p_risorsa_umana_id)` |
+| B7 | Aggiungere CRUD `competenze_flussi` | `list_competenze(emittente_id)`, `create_competenza(data)`, `delete_competenza(id)` |
+
+### Fase C — Service (`pratiche_service.py`)
+
+| # | Azione | Dettaglio |
+| - | ------ | --------- |
+| C1 | Aggiornare `crea_pratica` | Accettare `soggetto_ruolo_id`, `istanza_utility_id`. Guard coerenza contesto gia' presente — verificare allineamento con trigger DB |
+| C2 | Aggiungere `get_coda_lavoro` | Delega a repository. Ricava `risorsa_umana_id` dall'utente autenticato |
+| C3 | Aggiungere `prendi_in_carico` | Delega a repository con validazione parametri |
+| C4 | Aggiungere CRUD competenze | `list_competenze`, `crea_competenza`, `elimina_competenza` (operazioni admin) |
+
+### Fase D — API Views (`views.py`) + Routes (`urls_v1.py`)
+
+| # | Azione | Dettaglio |
+| - | ------ | --------- |
+| D1 | Aggiornare `ApiPraticheList.post` | Accettare `soggetto_ruolo_id`, `istanza_utility_id` nel payload |
+| D2 | Aggiungere `ApiCodaLavoro` | `GET /api/v1/pratiche/coda-lavoro/` — coda lavoro operatore corrente |
+| D3 | Aggiungere `ApiPrendiInCarico` | `POST /api/v1/pratiche/flussi/{fid}/prendi-in-carico/` |
+| D4 | Aggiungere `ApiCompetenzeFlussiList` | `GET/POST /api/v1/pratiche/competenze-flussi/` (admin) |
+| D5 | Aggiungere `ApiCompetenzaFlussoDetail` | `DELETE /api/v1/pratiche/competenze-flussi/{id}/` (admin) |
+| D6 | Aggiungere route in `urls_v1.py` | 4 nuove path per D2-D5 |
+
+### Fase E — Test
+
+| # | Azione | Dettaglio |
+| - | ------ | --------- |
+| E1 | Aggiornare test `crea_pratica` | Nuovi campi (soggetto_ruolo_id, istanza_utility_id) |
+| E2 | Aggiornare test API list/detail | Verificare campi display nella risposta |
+| E3 | Aggiungere test coda lavoro | Service + API (mock fn_coda_lavoro_operatore) |
+| E4 | Aggiungere test prendi in carico | Service + API (mock fn_prendi_in_carico_flusso) |
+| E5 | Aggiungere test competenze CRUD | Service + API |
+
+### Ordine di esecuzione
+
+```text
+Fase A (types)
+  A1 PraticaRow → A2 CompetenzaFlussoRow → A3 CodaLavoroRow
+                                                │
+                                                v
+Fase B (repository)
+  B3 mapping named → B1 list_pratiche → B2 get_pratica → B4 create_pratica
+                                                          │
+                                                          v
+                     B5 coda_lavoro → B6 prendi_in_carico → B7 competenze CRUD
+                                                              │
+                                                              v
+Fase C (service)
+  C1 crea_pratica → C2 coda_lavoro → C3 prendi_in_carico → C4 competenze
+                                                              │
+                                                              v
+Fase D (views + routes)
+  D1 create payload → D2 coda_lavoro → D3 prendi → D4-D5 competenze → D6 routes
+                                                                        │
+                                                                        v
+Fase E (test)
+  E1 create → E2 list/detail → E3 coda → E4 prendi → E5 competenze
+```
 
 ---
 

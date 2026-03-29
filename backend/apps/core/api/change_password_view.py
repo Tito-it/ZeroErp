@@ -24,6 +24,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 
 from apps.core.api.base_views import DomainAPIView
 from apps.core.api.endpoint_helpers import handle_post_json
+from django.http import JsonResponse
 from apps.core.api.success_responses import success_response
 from apps.core.db.auth_repository import AuthRepository
 from apps.core.services import session_audit_service
@@ -45,7 +46,7 @@ class ChangePasswordView(DomainAPIView):
     #        all'operatore di cambiare la propria password (sia volontario
     #        che obbligatorio al primo accesso). Resetta flag, invalida
     #        sessioni precedenti, ritorna nuovi token JWT in envelope standard.
-    def post(self, request: Request) -> success_response:
+    def post(self, request: Request) -> JsonResponse:
         def _handler(payload: dict[str, Any]) -> dict[str, Any]:
             user = request.user
 

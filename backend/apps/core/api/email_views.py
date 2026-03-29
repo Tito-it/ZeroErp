@@ -31,6 +31,22 @@ E_EMAIL_OP = "E_EMAIL_OP"
 
 # Scopo: Verifica che l'operatore possa accedere a una bozza outbox.
 #        Superuser bypassa. Altrimenti: l'operatore deve essere il creatore.
+# Scopo: Verifica che l'operatore possa accedere a un allegato.
+#        Risale all'outbox padre e applica ownership check.
+#        Se nessun outbox padre trovato, nega l'accesso (fail-closed).
+def _check_allegato_access(request: Request, repo: EmailRepository, allegato: dict[str, Any]) -> None:
+    if request.user.is_superuser:
+        return
+    outbox_id = allegato.get("email_outbox_id")
+    if outbox_id:
+        outbox = repo.get_outbox(outbox_id)
+        if outbox:
+            _check_outbox_access(request, outbox)
+            return
+    # Nessun outbox padre: nega accesso per sicurezza (fail-closed)
+    ErrorManager.require(False, code=E_EMAIL_OP, message="Non hai accesso a questo allegato.")
+
+
 def _check_outbox_access(request: Request, outbox: dict[str, Any]) -> None:
     if request.user.is_superuser:
         return
@@ -248,11 +264,7 @@ class EmailAllegatoDeleteView(DomainAPIView):
         allegato = repo.get_allegato(allegato_id)
         ErrorManager.require(allegato is not None, code=E_EMAIL_OP, message="Allegato non trovato.")
         assert allegato is not None
-        # Verifica proprieta' tramite outbox padre
-        if allegato.get("email_outbox_id"):
-            outbox = repo.get_outbox(allegato["email_outbox_id"])
-            if outbox:
-                _check_outbox_access(request, outbox)
+        _check_allegato_access(request, repo, allegato)
 
         service = EmailOutboxService()
         service.remove_attachment(allegato_id)
@@ -272,11 +284,7 @@ class EmailAllegatoDownloadView(DomainAPIView):
         allegato = repo.get_allegato(allegato_id)
         ErrorManager.require(allegato is not None, code=E_EMAIL_OP, message="Allegato non trovato.")
         assert allegato is not None
-        # Verifica proprieta' tramite outbox padre
-        if allegato.get("email_outbox_id"):
-            outbox = repo.get_outbox(allegato["email_outbox_id"])
-            if outbox:
-                _check_outbox_access(request, outbox)
+        _check_allegato_access(request, repo, allegato)
 
         rel_path = allegato["file_path"]
         root = _get_attachments_root()
