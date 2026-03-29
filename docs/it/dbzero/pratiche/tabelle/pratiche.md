@@ -27,6 +27,7 @@
 | user_update | text | NO | CURRENT_USER |
 | soggetto_ruolo_id | bigint | YES |  |
 | istanza_utility_id | bigint | YES |  |
+| data_apertura | date | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -58,6 +59,7 @@
 | trg_pratiche_a10_guard_contesto_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION pratiche.trgfn_pratiche_guard_contesto()` |
 | trg_pratiche_a10_guard_contesto_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION pratiche.trgfn_pratiche_guard_contesto()` |
 | trg_pratiche_a10_guard_transizione_upd | BEFORE | UPDATE | `EXECUTE FUNCTION pratiche.trgfn_pratiche_guard_transizione()` |
+| trg_pratiche_m50_set_data_apertura_upd | BEFORE | UPDATE | `EXECUTE FUNCTION pratiche.trgfn_pratiche_set_data_apertura()` |
 | trg_pratiche_z90_giornale_assegnazione_upd | AFTER | UPDATE | `EXECUTE FUNCTION pratiche.trgfn_pratiche_giornale_assegnazione()` |
 | trg_pratiche_z90_giornale_ins | AFTER | INSERT | `EXECUTE FUNCTION pratiche.trgfn_pratiche_giornale_ins()` |
 | trg_pratiche_z90_giornale_priorita_upd | AFTER | UPDATE | `EXECUTE FUNCTION pratiche.trgfn_pratiche_giornale_priorita()` |

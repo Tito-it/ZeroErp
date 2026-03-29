@@ -1,0 +1,174 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Funzione pratiche.fn_prendi_in_carico_flusso: assegna un
+# flusso DA_ESEGUIRE all'operatore corrente, verificando
+# che abbia competenza attiva per quel tipo di flusso.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+    - logicalFilePath: migrations_v2/20_code/pratiche/20260329-15-create-fn-prendi-in-carico-flusso-mctit.yaml
+
+    - changeSet:
+          id: 20260329-15-create-fn-prendi-in-carico-flusso
+          author: mctit
+          runOnChange: true
+          comment: >
+              Funzione che assegna un flusso non assegnato all'operatore,
+              verificando competenza attiva. Operazione atomica: guard + UPDATE.
+              Da invocare dal service Python, non direttamente dalla UI.
+          changes:
+              - sql:
+                    dbms: postgresql
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+                        CREATE OR REPLACE FUNCTION pratiche.fn_prendi_in_carico_flusso(
+                            p_flusso_id        pratiche.flussi.id%TYPE,
+                            p_risorsa_umana_id anagrafiche.risorse_umane.id%TYPE
+                        )
+                        RETURNS BOOLEAN
+                        LANGUAGE plpgsql
+                        AS $function$
+                        -- Scopo: assegnare un flusso DA_ESEGUIRE all'operatore corrente,
+                        --        verificando che abbia competenza attiva per quel tipo di flusso.
+                        -- Regole:
+                        --   1. Il flusso deve esistere
+                        --   2. Il flusso deve essere in stato DA_ESEGUIRE
+                        --   3. Il flusso non deve essere gia' assegnato ad altro operatore
+                        --   4. L'operatore deve avere competenza attiva per il template_flusso_id
+                        -- Risultato: true se assegnato, false se gia' assegnato allo stesso operatore.
+                        -- Errori: raise se il flusso non esiste, stato errato, o competenza mancante.
+                        DECLARE
+                            v_stato_id          pratiche.flussi.stato_id%TYPE;
+                            v_risorsa_attuale   pratiche.flussi.risorsa_umana_id%TYPE;
+                            v_template_id       pratiche.flussi.template_flusso_id%TYPE;
+                            v_da_eseguire_id    config.stati_flussi_pratiche.id%TYPE;
+                            v_ha_competenza     BOOLEAN;
+                        BEGIN
+                            -- Guard: parametri obbligatori
+                            IF p_flusso_id IS NULL OR p_flusso_id <= 0 THEN
+                                PERFORM script.fn_log_and_raise_error(
+                                    'pratiche',
+                                    'pratiche.fn_prendi_in_carico_flusso',
+                                    'E_PARAMETRO_INVALIDO',
+                                    jsonb_build_object('p_flusso_id', p_flusso_id),
+                                    NULL::uuid,
+                                    'p_flusso_id'
+                                );
+                            END IF;
+
+                            IF p_risorsa_umana_id IS NULL OR p_risorsa_umana_id <= 0 THEN
+                                PERFORM script.fn_log_and_raise_error(
+                                    'pratiche',
+                                    'pratiche.fn_prendi_in_carico_flusso',
+                                    'E_PARAMETRO_INVALIDO',
+                                    jsonb_build_object('p_risorsa_umana_id', p_risorsa_umana_id),
+                                    NULL::uuid,
+                                    'p_risorsa_umana_id'
+                                );
+                            END IF;
+
+                            -- Recupera stato corrente del flusso
+                            SELECT f.stato_id, f.risorsa_umana_id, f.template_flusso_id
+                              INTO v_stato_id, v_risorsa_attuale, v_template_id
+                              FROM pratiche.flussi f
+                             WHERE f.id = p_flusso_id;
+
+                            IF NOT FOUND THEN
+                                PERFORM script.fn_log_and_raise_error(
+                                    'pratiche',
+                                    'pratiche.fn_prendi_in_carico_flusso',
+                                    'E_VALORE_MANCANTE',
+                                    jsonb_build_object('flusso_id', p_flusso_id),
+                                    NULL::uuid,
+                                    concat('flusso_id ', p_flusso_id)
+                                );
+                            END IF;
+
+                            -- Verifica stato DA_ESEGUIRE
+                            SELECT id INTO v_da_eseguire_id
+                              FROM config.stati_flussi_pratiche
+                             WHERE codice_interno = 'DA_ESEGUIRE';
+
+                            IF v_stato_id <> v_da_eseguire_id THEN
+                                PERFORM script.fn_log_and_raise_error(
+                                    'pratiche',
+                                    'pratiche.fn_prendi_in_carico_flusso',
+                                    'FLUSSI_PRESA_CARICO_STATO_ERRATO',
+                                    jsonb_build_object(
+                                        'flusso_id', p_flusso_id,
+                                        'stato_id', v_stato_id,
+                                        'stato_richiesto', v_da_eseguire_id
+                                    ),
+                                    NULL::uuid,
+                                    p_flusso_id::text
+                                );
+                            END IF;
+
+                            -- Gia' assegnato allo stesso operatore: noop
+                            IF v_risorsa_attuale = p_risorsa_umana_id THEN
+                                RETURN FALSE;
+                            END IF;
+
+                            -- Gia' assegnato ad altro operatore: errore
+                            IF v_risorsa_attuale IS NOT NULL THEN
+                                PERFORM script.fn_log_and_raise_error(
+                                    'pratiche',
+                                    'pratiche.fn_prendi_in_carico_flusso',
+                                    'FLUSSI_GIA_ASSEGNATO',
+                                    jsonb_build_object(
+                                        'flusso_id', p_flusso_id,
+                                        'risorsa_attuale', v_risorsa_attuale,
+                                        'risorsa_richiedente', p_risorsa_umana_id
+                                    ),
+                                    NULL::uuid,
+                                    p_flusso_id::text,
+                                    v_risorsa_attuale::text
+                                );
+                            END IF;
+
+                            -- Verifica competenza (solo per flussi template-based)
+                            IF v_template_id IS NOT NULL THEN
+                                SELECT EXISTS (
+                                    SELECT 1 FROM pratiche.competenze_flussi cf
+                                     WHERE cf.template_flusso_id = v_template_id
+                                       AND cf.risorsa_umana_id = p_risorsa_umana_id
+                                       AND cf.attivo = true
+                                ) INTO v_ha_competenza;
+
+                                IF NOT v_ha_competenza THEN
+                                    PERFORM script.fn_log_and_raise_error(
+                                        'pratiche',
+                                        'pratiche.fn_prendi_in_carico_flusso',
+                                        'FLUSSI_COMPETENZA_MANCANTE',
+                                        jsonb_build_object(
+                                            'flusso_id', p_flusso_id,
+                                            'template_flusso_id', v_template_id,
+                                            'risorsa_umana_id', p_risorsa_umana_id
+                                        ),
+                                        NULL::uuid,
+                                        p_flusso_id::text,
+                                        p_risorsa_umana_id::text
+                                    );
+                                END IF;
+                            END IF;
+
+                            -- Assegna il flusso
+                            UPDATE pratiche.flussi
+                               SET risorsa_umana_id = p_risorsa_umana_id
+                             WHERE id = p_flusso_id;
+
+                            RETURN TRUE;
+                        END;
+                        $function$;
+
+                        COMMENT ON FUNCTION pratiche.fn_prendi_in_carico_flusso(
+                            pratiche.flussi.id%TYPE,
+                            anagrafiche.risorse_umane.id%TYPE
+                        ) IS 'Assegna un flusso DA_ESEGUIRE all''operatore, verificando competenza attiva.';
+
+          rollback:
+              - sql:
+                    sql: |
+                        DROP FUNCTION IF EXISTS pratiche.fn_prendi_in_carico_flusso(BIGINT, BIGINT);

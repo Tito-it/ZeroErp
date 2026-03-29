@@ -6,6 +6,7 @@
 - [aree_funzionali](tabelle/aree_funzionali.md) — * Definire il **perimetro funzionale** su cui si applicano i livelli di accesso (TUTTO / LETTURA / BLOCCATO). * Fornire il **mapping area → schema DB** per la risoluzione automatica dei permessi in Django. * Gestire l'**ordine di visualizzazione** nell'interfaccia di configurazione profili reparto.
 - [aspetti_beni](tabelle/aspetti_beni.md)
 - [assets_ownership](tabelle/assets_ownership.md) — * Definire un **catalogo univoco e governato** delle modalità di proprietà degli asset. * Assicurare coerenza tra domini diversi (magazzino, installazioni, contratti, fatturazione, manutenzione). * Abilitare logiche avanzate, tra cui:
+- [auth_totp_device](tabelle/auth_totp_device.md)
 - [azioni_processo](tabelle/azioni_processo.md) — * Catalogare le **azioni di processo** che richiedono abilitazione esplicita. * Raccordare il **codename Django** (`Meta.permissions` → `auth_permission`) con la gestione profili. * Segnalare le azioni **pericolose** che richiedono conferma aggiuntiva nella UI.
 - [canali_pratiche](tabelle/canali_pratiche.md) — La tabella `config.canali_pratiche` definisce i **canali di visibilita'** attraverso cui i flussi di una pratica possono essere esposti verso l'esterno. Non e' un flag booleano sulla pratica ma un **registry di interfacce** configurabile.
 - [categoria_accisa](tabelle/categoria_accisa.md)

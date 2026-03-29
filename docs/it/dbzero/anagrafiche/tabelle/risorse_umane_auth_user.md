@@ -20,6 +20,7 @@
 | bloccato_fino_a | timestamp with time zone | YES |  |
 | deve_cambiare_password | boolean | NO | false |
 | invito_inviato_at | timestamp with time zone | YES |  |
+| totp_obbligatorio | boolean | NO | false |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
