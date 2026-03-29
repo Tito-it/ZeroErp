@@ -124,9 +124,8 @@ class EmailOutboxService:
         assert outbox is not None
         ErrorManager.require(outbox["stato"] == "DRAFT", code=E_OUTBOX, message="Solo bozze DRAFT sono modificabili.")
 
-        # Filtra solo campi editabili (la whitelist e' nel repository)
-        allowed = {"oggetto", "corpo_html", "corpo_testo", "destinatari_cc", "destinatario"}
-        fields = {k: v for k, v in kwargs.items() if k in allowed}
+        # Filtra solo campi editabili (stessa whitelist del repository)
+        fields = {k: v for k, v in kwargs.items() if k in EmailRepository._OUTBOX_UPDATE_COLS}
         if fields:
             self._repo.update_outbox(outbox_id, **fields)
 
@@ -172,9 +171,13 @@ class EmailOutboxService:
         self._repo.update_log_outbox_link(log_id, outbox_id)
         self._repo.copy_allegati_to_log(outbox_id, log_id)
 
-        # Aggiorna outbox come SENT (anche se SMTP ha fallito — lo stato SMTP e' nel log)
+        # Aggiorna outbox in base all'esito reale dell'invio
         now = datetime.now(timezone.utc).isoformat()
-        self._repo.update_outbox_stato(outbox_id, "SENT", email_log_id=log_id, inviato_at=now)
+        if success:
+            self._repo.update_outbox_stato(outbox_id, "SENT", email_log_id=log_id, inviato_at=now)
+        else:
+            # Torna a DRAFT per permettere all'operatore di riprovare
+            self._repo.update_outbox_stato(outbox_id, "DRAFT", email_log_id=log_id)
 
         return self._repo.get_outbox(outbox_id) or {}
 

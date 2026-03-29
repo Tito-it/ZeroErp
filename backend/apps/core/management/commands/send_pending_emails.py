@@ -91,16 +91,8 @@ class Command(BaseCommand):
                 failed += 1
                 continue
 
-            # Invio via _send_smtp (gestisce log stato internamente)
-            success = dispatch._send_smtp(
-                account,
-                row["destinatario"],
-                log_detail.get("destinatari_cc"),
-                row["oggetto"],
-                log_detail.get("corpo_inviato_html", ""),
-                log_detail.get("corpo_inviato_testo"),
-                row["id"],
-            )
+            # Invio via metodo pubblico retry_log_entry
+            success = dispatch.retry_log_entry(row["id"], account, log_detail)
             if success:
                 sent += 1
             else:

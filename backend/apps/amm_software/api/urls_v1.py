@@ -7,7 +7,7 @@
 
 from django.urls import path
 
-from . import email_views, views
+from . import email_views, invito_views, views
 
 urlpatterns = [
     # Operatori
@@ -30,6 +30,9 @@ urlpatterns = [
     path("lookup/aree-funzionali/", views.LookupAreeView.as_view(), name="amm-aree-list"),
     path("lookup/azioni-processo/", views.LookupAzioniView.as_view(), name="amm-azioni-list"),
     path("lookup/emittenti-fiscali/", views.LookupEmittentiView.as_view(), name="amm-emittenti-list"),
+    # Invito operatore
+    path("operatori/<int:auth_user_id>/invita/", invito_views.InvitaOperatoreView.as_view(), name="amm-operatori-invita"),
+    path("operatori/<int:auth_user_id>/reinvia-invito/", invito_views.ReinviaInvitoView.as_view(), name="amm-operatori-reinvia-invito"),
     # Email — Account SMTP
     path("email-accounts/", email_views.EmailAccountListView.as_view(), name="amm-email-accounts-list"),
     path("email-accounts/<int:account_id>/", email_views.EmailAccountDetailView.as_view(), name="amm-email-accounts-detail"),

@@ -178,7 +178,11 @@ class EmailDispatchService:
     ) -> bool:
         server: smtplib.SMTP | smtplib.SMTP_SSL | None = None
         try:
-            password = crypto_service.decrypt(account["smtp_password_encrypted"])
+            encrypted_pw = account.get("smtp_password_encrypted")
+            if not encrypted_pw:
+                self._repo.update_log_stato(log_id, "FAILED", errore="Password SMTP non configurata per l'account.")
+                return False
+            password = crypto_service.decrypt(encrypted_pw)
 
             msg = MIMEMultipart("alternative")
             msg["Subject"] = oggetto
@@ -210,7 +214,7 @@ class EmailDispatchService:
             logger.info("Email inviata: log_id=%s dest=%s", log_id, destinatario)
             return True
 
-        except Exception as exc:
+        except (smtplib.SMTPException, OSError, ValueError) as exc:
             self._repo.update_log_stato(log_id, "FAILED", errore=str(exc)[:500])
             logger.exception("Errore invio email: log_id=%s dest=%s", log_id, destinatario)
             return False
@@ -244,6 +248,32 @@ class EmailDispatchService:
             "-" * 60,
             corpo_testo or "(solo HTML)",
             separator,
+        )
+
+    # Scopo: Ritenta l'invio di un'email gia' presente nel log (per management command).
+    #        Usa l'account specificato, aggiorna lo stato del log.
+    def retry_log_entry(self, log_id: int, account: dict[str, Any], log_detail: dict[str, Any]) -> bool:
+        if self.is_console_mode(account):
+            self._send_console(
+                account,
+                log_detail["destinatario"],
+                log_detail.get("destinatari_cc"),
+                log_detail["oggetto"],
+                log_detail.get("corpo_inviato_html", ""),
+                log_detail.get("corpo_inviato_testo"),
+            )
+            from datetime import datetime, timezone
+            now = datetime.now(timezone.utc).isoformat()
+            self._repo.update_log_stato(log_id, "SENT", inviato_at=now)
+            return True
+        return self._send_smtp(
+            account,
+            log_detail["destinatario"],
+            log_detail.get("destinatari_cc"),
+            log_detail["oggetto"],
+            log_detail.get("corpo_inviato_html", ""),
+            log_detail.get("corpo_inviato_testo"),
+            log_id,
         )
 
     # Scopo: Testa la connessione SMTP di un account (senza inviare email).

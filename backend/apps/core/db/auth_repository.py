@@ -12,6 +12,8 @@
 
 from __future__ import annotations
 
+import json
+
 from django.db import connection
 
 
@@ -67,7 +69,6 @@ class AuthRepository:
             row = cursor.fetchone()
             if not row or not row[0]:
                 return {"bloccato": False, "minuti_rimanenti": 0, "tentativi": 0}
-            import json
             return json.loads(row[0]) if isinstance(row[0], str) else row[0]
 
     # Scopo: Legge il flag deve_cambiare_password per un auth_user.
@@ -81,6 +82,30 @@ class AuthRepository:
             cursor.execute(sql, [auth_user_id])
             row = cursor.fetchone()
             return bool(row[0]) if row else False
+
+    # Scopo: Recupera unita_organizzativa_id dell'operatore dal bridge HR.
+    def get_unita_organizzativa_id(self, auth_user_id: int) -> int | None:
+        sql = """
+            SELECT ru.unita_organizzativa_id
+              FROM anagrafiche.risorse_umane_auth_user rau
+              JOIN anagrafiche.risorse_umane ru ON ru.id = rau.risorsa_umana_id
+             WHERE rau.auth_user_id = %s
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [auth_user_id])
+            row = cursor.fetchone()
+            return row[0] if row else None
+
+    # Scopo: Aggiorna invito_inviato_at su risorse_umane_auth_user.
+    def set_invito_inviato_at(self, auth_user_id: int) -> bool:
+        sql = """
+            UPDATE anagrafiche.risorse_umane_auth_user
+               SET invito_inviato_at = now(), data_update = now()
+             WHERE auth_user_id = %s
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [auth_user_id])
+            return cursor.rowcount > 0
 
     # Scopo: Imposta il flag deve_cambiare_password per un auth_user.
     def set_deve_cambiare_password(self, auth_user_id: int, valore: bool) -> bool:

@@ -262,6 +262,9 @@ else:
     }
 PERMISSIONS_CACHE_TTL = int(env("PERMISSIONS_CACHE_TTL", "300"))
 
+# --- Frontend URL (per link in email: reset password, invito, ecc.) ---
+FRONTEND_URL = env("FRONTEND_URL", "http://localhost:5173")
+
 # --- Email ---
 # In DEBUG con account SMTP vuoto/placeholder, le email vengono loggate in console.
 # Per invio reale: configurare config.email_account con SMTP host reale (es. Gmail).

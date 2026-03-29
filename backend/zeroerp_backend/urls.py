@@ -23,6 +23,12 @@ from rest_framework.permissions import AllowAny
 from apps.core.api.auth_views import AuditTokenObtainPairView, AuditTokenRefreshView
 from apps.core.api.change_password_view import ChangePasswordView
 from apps.core.api.logout_view import LogoutView
+from apps.core.api.attivazione_view import AttivazioneView
+from apps.core.api.password_reset_views import (
+    PasswordResetConfirmView,
+    PasswordResetRequestView,
+    PasswordResetValidateView,
+)
 
 
 # Scopo: Gestisce `health_view` nel flusso applicativo del modulo.
@@ -63,6 +69,26 @@ urlpatterns = [
         "api/v1/auth/change-password/",
         ChangePasswordView.as_view(),
         name="auth-change-password",
+    ),
+    path(
+        "api/v1/auth/password-reset-request/",
+        PasswordResetRequestView.as_view(),
+        name="auth-password-reset-request",
+    ),
+    path(
+        "api/v1/auth/password-reset-validate/<str:token>/",
+        PasswordResetValidateView.as_view(),
+        name="auth-password-reset-validate",
+    ),
+    path(
+        "api/v1/auth/password-reset-confirm/",
+        PasswordResetConfirmView.as_view(),
+        name="auth-password-reset-confirm",
+    ),
+    path(
+        "api/v1/auth/attivazione/",
+        AttivazioneView.as_view(),
+        name="auth-attivazione",
     ),
     path("api/v1/core/", include("apps.core.api.urls_v1")),
     path("api/v1/vendite/", include("apps.vendite.api.urls_v1")),

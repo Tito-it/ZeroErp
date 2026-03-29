@@ -103,6 +103,8 @@ class UpdateDraftTests(TestCase):
         repo = MockRepo.return_value
         repo.get_outbox.return_value = _MOCK_OUTBOX_DRAFT
         repo.update_outbox.return_value = True
+        # Mock _OUTBOX_UPDATE_COLS referenziato dal service
+        MockRepo._OUTBOX_UPDATE_COLS = frozenset({"oggetto", "corpo_html", "corpo_testo", "destinatario", "destinatari_cc"})
 
         service = EmailOutboxService()
         service.update_draft(10, oggetto="Nuovo oggetto")
