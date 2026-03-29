@@ -21,6 +21,7 @@ from django.views.generic import RedirectView
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 from rest_framework.permissions import AllowAny
 from apps.core.api.auth_views import AuditTokenObtainPairView, AuditTokenRefreshView
+from apps.core.api.change_password_view import ChangePasswordView
 from apps.core.api.logout_view import LogoutView
 
 
@@ -57,6 +58,11 @@ urlpatterns = [
         "api/v1/auth/logout/",
         LogoutView.as_view(),
         name="auth-logout",
+    ),
+    path(
+        "api/v1/auth/change-password/",
+        ChangePasswordView.as_view(),
+        name="auth-change-password",
     ),
     path("api/v1/core/", include("apps.core.api.urls_v1")),
     path("api/v1/vendite/", include("apps.vendite.api.urls_v1")),

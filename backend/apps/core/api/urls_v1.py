@@ -30,6 +30,18 @@ from apps.core.api.views_config_crud import (
     ConfigTableRecordsView,
     ConfigTablesListView,
 )
+from apps.core.api.email_views import (
+    EmailAllegatoDeleteView,
+    EmailAllegatoDownloadView,
+    EmailAllegatoListView,
+    EmailAllegatoUploadView,
+    EmailLogOperatoreListView,
+    EmailOutboxCancelView,
+    EmailOutboxDetailView,
+    EmailOutboxListView,
+    EmailOutboxSendView,
+    EmailPrepareView,
+)
 from apps.core.api.views_tracciamento import (
     ApiAuditLog,
     ApiDominiTask,
@@ -173,4 +185,15 @@ urlpatterns = [
     path("config/tables/<str:rel>/metadata/", ConfigTableMetadataView.as_view(), name="core-config-metadata"),
     path("config/tables/<str:rel>/", ConfigTableRecordsView.as_view(), name="core-config-records"),
     path("config/tables/<str:rel>/<int:pk>/", ConfigTableRecordDetailView.as_view(), name="core-config-record-detail"),
+    # --- Email operatore (outbox, allegati, log) ---
+    path("email/prepare/", EmailPrepareView.as_view(), name="core-email-prepare"),
+    path("email/outbox/", EmailOutboxListView.as_view(), name="core-email-outbox-list"),
+    path("email/outbox/<int:outbox_id>/", EmailOutboxDetailView.as_view(), name="core-email-outbox-detail"),
+    path("email/outbox/<int:outbox_id>/send/", EmailOutboxSendView.as_view(), name="core-email-outbox-send"),
+    path("email/outbox/<int:outbox_id>/cancel/", EmailOutboxCancelView.as_view(), name="core-email-outbox-cancel"),
+    path("email/outbox/<int:outbox_id>/allegati/", EmailAllegatoUploadView.as_view(), name="core-email-allegato-upload"),
+    path("email/outbox/<int:outbox_id>/allegati/list/", EmailAllegatoListView.as_view(), name="core-email-allegato-list"),
+    path("email/allegati/<int:allegato_id>/", EmailAllegatoDeleteView.as_view(), name="core-email-allegato-delete"),
+    path("email/allegati/<int:allegato_id>/download/", EmailAllegatoDownloadView.as_view(), name="core-email-allegato-download"),
+    path("email/log/", EmailLogOperatoreListView.as_view(), name="core-email-log-list"),
 ]

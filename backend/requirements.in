@@ -23,5 +23,9 @@ gunicorn>=25.0
 
 # Utilities
 packaging>=26.0
+
+# Crittografia (Fernet per password SMTP, secret TOTP)
+cryptography>=44.0
+
 # Security constraints
 PyJWT>=2.12.0

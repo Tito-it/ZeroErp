@@ -55,6 +55,141 @@ class TaskRegistryImplRow(TypedDict):
     attivo: bool
 
 
+# --- Email Account (config.email_account) ---
+
+class EmailAccountRow(TypedDict):
+    id: int
+    codice: str
+    descrizione: str
+    unita_organizzativa_id: int | None
+    smtp_host: str
+    smtp_port: int
+    smtp_use_tls: bool
+    smtp_use_ssl: bool
+    smtp_username: str
+    smtp_password_encrypted: str
+    email_from: str
+    email_reply_to: str | None
+    attivo: bool
+
+
+class EmailAccountResolvedRow(TypedDict):
+    """Risultato di fn_resolve_email_account — senza meta/audit."""
+    id: int
+    codice: str
+    smtp_host: str
+    smtp_port: int
+    smtp_use_tls: bool
+    smtp_use_ssl: bool
+    smtp_username: str
+    smtp_password_encrypted: str
+    email_from: str
+    email_reply_to: str | None
+
+
+# --- Email Template (config.email_template) ---
+
+class EmailTemplateRow(TypedDict):
+    id: int
+    codice: str
+    unita_organizzativa_id: int | None
+    tipo_prestazione_id: int | None
+    lingua: str
+    oggetto: str
+    corpo_html: str
+    corpo_testo: str | None
+    variabili_disponibili: list[str]
+    attivo: bool
+
+
+class EmailTemplateResolvedRow(TypedDict):
+    """Risultato di fn_resolve_email_template — solo campi per rendering."""
+    id: int
+    codice: str
+    oggetto: str
+    corpo_html: str
+    corpo_testo: str | None
+    variabili_disponibili: list[str]
+    lingua: str
+
+
+# --- Email Log (config.email_log) ---
+
+class EmailLogRow(TypedDict):
+    id: int
+    email_account_id: int | None
+    email_template_id: int | None
+    destinatario: str
+    destinatari_cc: list[str] | None
+    oggetto: str
+    corpo_inviato_html: str | None
+    corpo_inviato_testo: str | None
+    stato: str
+    errore: str | None
+    tentativi: int
+    max_tentativi: int
+    prossimo_tentativo: str | None
+    inviato_at: str | None
+    ambito: str
+    unita_organizzativa_id: int | None
+    pratica_id: int | None
+    auth_user_id: int | None
+    contesto_json: dict[str, Any]
+    data_insert: str
+
+
+# --- Token Monouso (config.token_monouso) ---
+
+class TokenMonousoRow(TypedDict):
+    id: int
+    token_hash: str
+    tipo: str
+    auth_user_id: int
+    scadenza: str
+    utilizzato: bool
+    utilizzato_at: str | None
+    ip_utilizzo: str | None
+    meta: dict[str, Any]
+    data_insert: str
+
+
+# --- Email Outbox (config.email_outbox) ---
+
+class EmailOutboxRow(TypedDict):
+    id: int
+    email_account_id: int | None
+    email_template_id: int | None
+    ambito: str
+    unita_organizzativa_id: int | None
+    pratica_id: int | None
+    destinatario: str
+    destinatari_cc: list[str] | None
+    oggetto: str
+    corpo_html: str
+    corpo_testo: str | None
+    stato: str
+    contesto_json: dict[str, Any]
+    auth_user_id: int | None
+    creato_da_user_id: int | None
+    inviato_at: str | None
+    email_log_id: int | None
+    data_insert: str
+
+
+# --- Email Allegato (config.email_allegato) ---
+
+class EmailAllegatoRow(TypedDict):
+    id: int
+    email_outbox_id: int | None
+    email_log_id: int | None
+    nome_file: str
+    mime_type: str
+    dimensione_bytes: int
+    file_path: str
+    origine: str
+    data_insert: str
+
+
 # --- Job Run Log (maintenance.job_run_log) ---
 
 class JobRunLogRow(TypedDict):
