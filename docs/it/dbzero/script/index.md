@@ -6,6 +6,7 @@
 - [fn_check_azione_processo](funzioni/fn_check_azione_processo.md) — (latest review 08-03-2026) La funzione **`script.fn_check_azione_processo`** verifica se un'azione di processo (identificata da `permission_codename`) e abilitata per un utente.
 - [fn_check_blocco_login](funzioni/fn_check_blocco_login.md)
 - [fn_check_indirizzo_duplicato](funzioni/fn_check_indirizzo_duplicato.md)
+- [fn_check_operatore_invitabile](funzioni/fn_check_operatore_invitabile.md)
 - [fn_check_user_emittente_scope](funzioni/fn_check_user_emittente_scope.md) — (latest review 08-03-2026) La funzione **`script.fn_check_user_emittente_scope`** verifica se un utente ha accesso a uno specifico emittente fiscale. Pensata per i trigger defense-in-depth su tabelle operative (fatture, pagamenti).
 - [fn_clone_catasto_from_parent_by_istanza](funzioni/fn_clone_catasto_from_parent_by_istanza.md) — (latest review 15-12-25) La funzione **`script.fn_clone_catasto_from_parent_by_istanza(p_istanza_utilities_id)`** gestisce la **clonazione** di un record catastale (`anagrafiche.catasto_unita_immobiliari`) dalla **parent_istanza** verso l’istanza corrente, tipicamente nel flusso di **subentro**.
 - [fn_disdetta_cliente](funzioni/fn_disdetta_cliente.md)

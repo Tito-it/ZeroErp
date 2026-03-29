@@ -1,0 +1,41 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Aggiunge a anagrafiche.risorse_umane_auth_user:
+#   deve_cambiare_password — cambio password obbligatorio
+#                            al primo accesso (Fase 1)
+#   invito_inviato_at — tracking invito operatore (Fase 3)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+    - logicalFilePath: migrations_v2/00_schema/anagrafiche/20260328-19-alter-risorse-umane-auth-user-add-auth-flags-mctit.yaml
+
+    - changeSet:
+          id: 20260328-19-alter-risorse-umane-auth-user-add-auth-flags
+          author: mctit
+          comment: >
+              Aggiunge deve_cambiare_password (Fase 1 - cambio password obbligatorio
+              al primo accesso) e invito_inviato_at (Fase 3 - tracking invito operatore).
+          changes:
+              - sql:
+                    dbms: postgresql
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+                        ALTER TABLE anagrafiche.risorse_umane_auth_user
+                          ADD COLUMN deve_cambiare_password boolean NOT NULL DEFAULT false;
+
+                        ALTER TABLE anagrafiche.risorse_umane_auth_user
+                          ADD COLUMN invito_inviato_at timestamptz;
+
+                        COMMENT ON COLUMN anagrafiche.risorse_umane_auth_user.deve_cambiare_password IS
+                          'Se true, l''operatore deve cambiare password al prossimo login. Impostato a true alla creazione o su richiesta admin.';
+
+                        COMMENT ON COLUMN anagrafiche.risorse_umane_auth_user.invito_inviato_at IS
+                          'Timestamp ultimo invito inviato. NULL = mai invitato.';
+
+          rollback:
+              - sql:
+                    sql: |
+                        ALTER TABLE anagrafiche.risorse_umane_auth_user DROP COLUMN IF EXISTS invito_inviato_at;
+                        ALTER TABLE anagrafiche.risorse_umane_auth_user DROP COLUMN IF EXISTS deve_cambiare_password;

@@ -1,0 +1,54 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Upsert dati config.email_template
+# Seed: template di sistema per invito, reset, conferma, generico.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260329-61-upsert-config-email-template-mctit.yaml
+
+  - changeSet:
+      id: 20260329-61-upsert-config-email-template
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: config
+            tableName: email_template
+      changes:
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/config/email_template.csv
+            tableName: email_template
+            schemaName: config
+            separator: ","
+            encoding: UTF-8
+            nullValue: ""
+            primaryKey: "id"
+            columns:
+              - column: { name: id, type: STRING }
+              - column: { name: codice, type: STRING }
+              - column: { name: unita_organizzativa_id, type: NUMERIC }
+              - column: { name: tipo_prestazione_id, type: NUMERIC }
+              - column: { name: lingua, type: STRING }
+              - column: { name: oggetto, type: STRING }
+              - column: { name: corpo_html, type: STRING }
+              - column: { name: corpo_testo, type: STRING }
+              - column:
+                  name: variabili_disponibili
+                  type: JSON
+                  defaultValue: "[]"
+              - column: { name: attivo, type: BOOLEAN }
+              - column:
+                  name: meta
+                  type: JSON
+                  defaultValue: "{}"
+              - column: { name: data_insert, type: STRING }
+              - column: { name: user_insert, type: STRING }
+              - column: { name: data_update, type: STRING }
+              - column: { name: user_update, type: STRING }

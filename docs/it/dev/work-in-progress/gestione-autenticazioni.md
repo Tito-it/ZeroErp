@@ -162,7 +162,7 @@ I template possono essere specializzati non solo per reparto, ma anche per
 Azione "Invia comunicazione" dalla pratica
   → tipo_pratica = "RECLAMO", reparto = "Acquisti"
   → lookup: template con codice=COMUNICAZIONE_PRATICA
-             + tipo_pratica_id=<reclamo>
+             + tipo_prestazione_id=<reclamo>
              + unita_organizzativa_id=<acquisti>
              + lingua='it'
   → non trovato? → fallback senza tipo_pratica
@@ -217,8 +217,8 @@ config.email_template
 │                           (es. 'INVITO_OPERATORE', 'RESET_PASSWORD', 'COMUNICAZIONE_PRATICA')
 ├── unita_organizzativa_id  INTEGER NULL FK → config.unita_organizzative(id)
 │                           (NULL = template di sistema/default)
-├── tipo_pratica_id         INTEGER NULL FK → pratiche.tipi_pratica(id)
-│                           (NULL = generico, non legato a un tipo pratica specifico)
+├── tipo_prestazione_id     INTEGER NULL FK → pratiche.tipi_prestazione(id)
+│                           (NULL = generico, non legato a un tipo prestazione specifico)
 ├── lingua                  VARCHAR(5) NOT NULL DEFAULT 'it'
 ├── oggetto                 TEXT NOT NULL
 │                           (supporta variabili: "Benvenuto {{nome}} in {{azienda}}")
@@ -235,8 +235,8 @@ config.email_template
 ```
 
 Vincoli:
-  - UNIQUE su `(codice, unita_organizzativa_id, tipo_pratica_id, lingua)` — permette override per reparto+tipo pratica+lingua
-  - FK su `tipo_pratica_id` → `pratiche.tipi_pratica(id)`
+  - UNIQUE su `(codice, unita_organizzativa_id, tipo_prestazione_id, lingua)` — permette override per reparto+tipo pratica+lingua
+  - FK su `tipo_prestazione_id` → `pratiche.tipi_prestazione(id)`
   - FK su `unita_organizzativa_id`
 
 - [ ] 1.1.3 — Creare tabella `config.email_log`
@@ -405,15 +405,15 @@ Responsabilità:
   - `resolve_account(unita_organizzativa_id=None)` → trova account email:
     1. Se `unita_organizzativa_id` fornito → cerca account del reparto
     2. Fallback → account con codice `SISTEMA`
-  - `resolve_template(codice, unita_organizzativa_id=None, tipo_pratica_id=None, lingua='it')` → trova template:
+  - `resolve_template(codice, unita_organizzativa_id=None, tipo_prestazione_id=None, lingua='it')` → trova template:
     1. Template specifico per reparto+tipo pratica+lingua
     2. Fallback → template reparto+lingua (senza tipo pratica)
     3. Fallback → template sistema+tipo pratica+lingua
     4. Fallback → template di sistema per lingua
     5. Fallback → template di sistema lingua `it`
   - `render_template(template, variabili: dict)` → sostituisce `{{chiave}}` con valori
-  - `send_email(codice_template, destinatario, variabili, unita_organizzativa_id=None, tipo_pratica_id=None, ambito='SISTEMA', pratica_id=None)`:
-    1. Risolve account e template (con tipo_pratica_id)
+  - `send_email(codice_template, destinatario, variabili, unita_organizzativa_id=None, tipo_prestazione_id=None, ambito='SISTEMA', pratica_id=None)`:
+    1. Risolve account e template (con tipo_prestazione_id)
     2. Renderizza oggetto e corpo
     3. Crea record in `config.email_log` con stato `PENDING`, ambito, pratica_id
     4. Tenta invio SMTP (con allegati se presenti)
@@ -431,8 +431,8 @@ Responsabilità:
 - [ ] 1.1.9 — Creare `apps/core/services/email_outbox_service.py` — `EmailOutboxService`
 
 Responsabilità:
-  - `prepare_draft(codice_template, destinatario, variabili, unita_organizzativa_id=None, tipo_pratica_id=None, creato_da_user_id=None, ambito='SISTEMA', pratica_id=None)`:
-    1. Risolve account e template (con tipo_pratica_id per specializzazione)
+  - `prepare_draft(codice_template, destinatario, variabili, unita_organizzativa_id=None, tipo_prestazione_id=None, creato_da_user_id=None, ambito='SISTEMA', pratica_id=None)`:
+    1. Risolve account e template (con tipo_prestazione_id per specializzazione)
     2. Renderizza oggetto e corpo con variabili
     3. Crea record in `config.email_outbox` con stato `DRAFT`, ambito, pratica_id
     4. Ritorna bozza con id, oggetto, corpo renderizzato (editabili dal frontend)
@@ -487,7 +487,7 @@ Responsabilità:
 
 - [ ] 1.1.15 — API outbox email (preparazione, modifica, invio bozze)
   - `POST /api/v1/email/prepare/` — prepara bozza da template + variabili, ritorna draft editabile
-    - Accetta: `ambito`, `pratica_id`, `tipo_pratica_id` per specializzazione
+    - Accetta: `ambito`, `pratica_id`, `tipo_prestazione_id` per specializzazione
   - `GET /api/v1/email/outbox/` — lista bozze visibili all'operatore
     - Filtri: stato, date, ambito, pratica_id
     - Regole visibilita':
@@ -1199,9 +1199,15 @@ senza tentare di diventare un mail client.
 
 ## Appendice A — Specifiche DB Complete
 
-> Questa appendice contiene tutte le DDL, funzioni e seed da creare sul **server DB**.
-> Ogni sezione indica il file migration Liquibase da creare e il contenuto completo.
+> Questa appendice contiene le DDL, funzioni e seed da creare sul **server DB**.
 > Percorso base: `db/changelog/migrations_v2/`
+>
+> **ATTENZIONE — Progressivi aggiornati**: le sezioni A.1.1-A.1.7 e A.1.8-A.1.10
+> sono state scritte con progressivi provvisori (`-01` a `-10`). I file **effettivamente
+> creati** nel repo usano i progressivi `-13` a `-19` (vedi riepilogo A.4).
+> Le DDL qui sotto restano valide come **riferimento strutturale** — il contenuto
+> SQL e' quello implementato nei changeset reali.
+> Per i progressivi di funzioni e seed si usera' `-22` in avanti (vedi A.4).
 
 ---
 
@@ -1468,9 +1474,9 @@ databaseChangeLog:
                     nullable: true
 
               - column:
-                  name: tipo_pratica_id
+                  name: tipo_prestazione_id
                   type: integer
-                  remarks: "FK tipo pratica per specializzazione. NULL = generico (non legato a un tipo pratica)."
+                  remarks: "FK tipo prestazione per specializzazione. NULL = generico."
                   constraints:
                     nullable: true
 
@@ -1556,7 +1562,7 @@ databaseChangeLog:
         - addUniqueConstraint:
             schemaName: config
             tableName: email_template
-            columnNames: codice, unita_organizzativa_id, tipo_pratica_id, lingua
+            columnNames: codice, unita_organizzativa_id, tipo_prestazione_id, lingua
             constraintName: uq_email_template_codice_uo_tp_lingua
 
         - addForeignKeyConstraint:
@@ -1573,9 +1579,9 @@ databaseChangeLog:
         - addForeignKeyConstraint:
             baseTableSchemaName: config
             baseTableName: email_template
-            baseColumnNames: tipo_pratica_id
+            baseColumnNames: tipo_prestazione_id
             referencedTableSchemaName: pratiche
-            referencedTableName: tipi_pratica
+            referencedTableName: tipi_prestazione
             referencedColumnNames: id
             constraintName: fk_email_template_tipo_pratica
             onUpdate: NO ACTION
@@ -2938,7 +2944,7 @@ databaseChangeLog:
                             p_codice                  config.email_template.codice%TYPE,
                             p_unita_organizzativa_id  config.email_template.unita_organizzativa_id%TYPE
                                                       DEFAULT NULL,
-                            p_tipo_pratica_id         config.email_template.tipo_pratica_id%TYPE
+                            p_tipo_prestazione_id         config.email_template.tipo_prestazione_id%TYPE
                                                       DEFAULT NULL,
                             p_lingua                  config.email_template.lingua%TYPE
                                                       DEFAULT 'it'
@@ -2964,7 +2970,7 @@ databaseChangeLog:
                             -- Parametri:
                             --   p_codice: codice tipo template (es. COMUNICAZIONE_PRATICA)
                             --   p_unita_organizzativa_id: ID reparto (NULL = solo sistema)
-                            --   p_tipo_pratica_id: ID tipo pratica (NULL = generico)
+                            --   p_tipo_prestazione_id: ID tipo prestazione (NULL = generico)
                             --   p_lingua: codice lingua ISO (default 'it')
                             --
                             -- Restituisce:
@@ -2981,7 +2987,7 @@ databaseChangeLog:
                             -- (ogni step e' esplicito per chiarezza e performance)
 
                             -- 1. Reparto + tipo pratica + lingua
-                            IF p_unita_organizzativa_id IS NOT NULL AND p_tipo_pratica_id IS NOT NULL THEN
+                            IF p_unita_organizzativa_id IS NOT NULL AND p_tipo_prestazione_id IS NOT NULL THEN
                                 SELECT jsonb_build_object(
                                     'id',                     et.id,
                                     'codice',                 et.codice,
@@ -2995,7 +3001,7 @@ databaseChangeLog:
                                 FROM config.email_template et
                                 WHERE et.codice = p_codice
                                   AND et.unita_organizzativa_id = p_unita_organizzativa_id
-                                  AND et.tipo_pratica_id = p_tipo_pratica_id
+                                  AND et.tipo_prestazione_id = p_tipo_prestazione_id
                                   AND et.lingua = p_lingua
                                   AND et.attivo = true;
 
@@ -3019,7 +3025,7 @@ databaseChangeLog:
                                 FROM config.email_template et
                                 WHERE et.codice = p_codice
                                   AND et.unita_organizzativa_id = p_unita_organizzativa_id
-                                  AND et.tipo_pratica_id IS NULL
+                                  AND et.tipo_prestazione_id IS NULL
                                   AND et.lingua = p_lingua
                                   AND et.attivo = true;
 
@@ -3029,7 +3035,7 @@ databaseChangeLog:
                             END IF;
 
                             -- 3. Sistema + tipo pratica + lingua
-                            IF p_tipo_pratica_id IS NOT NULL THEN
+                            IF p_tipo_prestazione_id IS NOT NULL THEN
                                 SELECT jsonb_build_object(
                                     'id',                     et.id,
                                     'codice',                 et.codice,
@@ -3043,7 +3049,7 @@ databaseChangeLog:
                                 FROM config.email_template et
                                 WHERE et.codice = p_codice
                                   AND et.unita_organizzativa_id IS NULL
-                                  AND et.tipo_pratica_id = p_tipo_pratica_id
+                                  AND et.tipo_prestazione_id = p_tipo_prestazione_id
                                   AND et.lingua = p_lingua
                                   AND et.attivo = true;
 
@@ -3066,7 +3072,7 @@ databaseChangeLog:
                             FROM config.email_template et
                             WHERE et.codice = p_codice
                               AND et.unita_organizzativa_id IS NULL
-                              AND et.tipo_pratica_id IS NULL
+                              AND et.tipo_prestazione_id IS NULL
                               AND et.lingua = p_lingua
                               AND et.attivo = true;
 
@@ -3089,7 +3095,7 @@ databaseChangeLog:
                                 FROM config.email_template et
                                 WHERE et.codice = p_codice
                                   AND et.unita_organizzativa_id IS NULL
-                                  AND et.tipo_pratica_id IS NULL
+                                  AND et.tipo_prestazione_id IS NULL
                                   AND et.lingua = 'it'
                                   AND et.attivo = true;
                             END IF;
@@ -3492,47 +3498,69 @@ databaseChangeLog:
 
 ---
 
-## A.4 Riepilogo file da creare sul server DB
+## A.4 Riepilogo file — Tabelle (00_schema)
 
-| # | Percorso | Oggetto | Fase |
+> I progressivi reali usati sono `-13` a `-19` (i precedenti `-01` a `-12` sono gia' occupati).
+> I file sotto sono quelli **effettivamente creati** nel repo.
+
+### Creati (Fase 1 — tabelle + ALTER)
+
+| Progr. | Percorso | Oggetto | Stato |
 | --- | --- | --- | --- |
-| 1 | `00_schema/config/20260328-01-create-email-account-mctit.yaml` | Tabella `config.email_account` | 1 |
-| 2 | `00_schema/config/20260328-02-create-email-template-mctit.yaml` | Tabella `config.email_template` | 1 |
-| 3 | `00_schema/config/20260328-03-create-email-log-mctit.yaml` | Tabella `config.email_log` | 1 |
-| 4 | `00_schema/config/20260328-04-create-token-monouso-mctit.yaml` | Tabella `config.token_monouso` | 1 |
-| 5 | `00_schema/config/20260328-05-create-auth-totp-device-mctit.yaml` | Tabella `config.auth_totp_device` | 4 |
-| 6 | `00_schema/anagrafiche/20260328-06-alter-risorse-umane-auth-user-add-auth-flags-mctit.yaml` | ALTER +2 colonne (Fase 1+3) | 1+3 |
-| 7 | `00_schema/anagrafiche/20260328-07-alter-risorse-umane-auth-user-add-totp-obbligatorio-mctit.yaml` | ALTER +1 colonna (Fase 4) | 4 |
-| 8 | `00_schema/config/20260328-08-create-email-outbox-mctit.yaml` | Tabella `config.email_outbox` | 1 |
-| 9 | `00_schema/config/20260328-09-create-email-allegato-mctit.yaml` | Tabella `config.email_allegato` | 1 |
-| 10 | `00_schema/config/20260328-10-alter-email-log-add-corpo-inviato-mctit.yaml` | ALTER `email_log` +4 colonne (corpo inviato, CC, outbox FK) | 1 |
-| 11 | `20_code/config/20260328-01-create-fn-resolve-email-account-mctit.yaml` | Funzione risoluzione account | 1 |
-| 12 | `20_code/config/20260328-02-create-fn-resolve-email-template-mctit.yaml` | Funzione risoluzione template | 1 |
-| 13 | `20_code/config/20260328-03-create-fn-cleanup-token-scaduti-mctit.yaml` | Funzione pulizia token | 1 |
-| 14 | `20_code/script/20260328-04-create-fn-check-operatore-invitabile-mctit.yaml` | Funzione check invitabilita' | 3 |
-| 15 | `20_code/script/20260328-05-update-fn-get-user-profile-auth-flags-mctit.yaml` | Update profilo utente +3 chiavi | 1+4 |
-| 16 | `80_data/sql/config/email_template.csv` | Seed template email base | 1 |
-| 17 | `80_data/changelog/20260328-70-upsert-config-email-template-mctit.yaml` | Changelog seed template | 1 |
+| -13 | `00_schema/config/20260328-13-create-email-account-mctit.yaml` | Tabella `config.email_account` | ✅ |
+| -14 | `00_schema/config/20260328-14-create-email-template-mctit.yaml` | Tabella `config.email_template` (con `tipo_prestazione_id`) | ✅ |
+| -15 | `00_schema/config/20260328-15-create-email-log-mctit.yaml` | Tabella `config.email_log` (con ambito, pratica_id, corpo inviato) | ✅ |
+| -16 | `00_schema/config/20260328-16-create-email-outbox-mctit.yaml` | Tabella `config.email_outbox` (con ambito, pratica_id) + FK circolari log | ✅ |
+| -17 | `00_schema/config/20260328-17-create-email-allegato-mctit.yaml` | Tabella `config.email_allegato` | ✅ |
+| -18 | `00_schema/config/20260328-18-create-token-monouso-mctit.yaml` | Tabella `config.token_monouso` | ✅ |
+| -19 | `00_schema/anagrafiche/20260328-19-alter-risorse-umane-auth-user-add-auth-flags-mctit.yaml` | ALTER +2 colonne (`deve_cambiare_password`, `invito_inviato_at`) | ✅ |
+
+### Da creare (Fase 4 — 2FA TOTP)
+
+| Progr. | Percorso | Oggetto | Stato |
+| --- | --- | --- | --- |
+| -20 | `00_schema/config/20260328-20-create-auth-totp-device-mctit.yaml` | Tabella `config.auth_totp_device` | da fare |
+| -21 | `00_schema/anagrafiche/20260328-21-alter-risorse-umane-auth-user-add-totp-obbligatorio-mctit.yaml` | ALTER +1 colonna (`totp_obbligatorio`) | da fare |
+
+### Da creare (20_code — Funzioni)
+
+| Progr. | Percorso | Oggetto | Stato |
+| --- | --- | --- | --- |
+| -22 | `20_code/config/20260328-22-create-fn-resolve-email-account-mctit.yaml` | Funzione risoluzione account | da fare |
+| -23 | `20_code/config/20260328-23-create-fn-resolve-email-template-mctit.yaml` | Funzione risoluzione template (fallback 5 livelli) | da fare |
+| -24 | `20_code/config/20260328-24-create-fn-cleanup-token-scaduti-mctit.yaml` | Funzione pulizia token | da fare |
+| -25 | `20_code/script/20260328-25-create-fn-check-operatore-invitabile-mctit.yaml` | Funzione check invitabilita' | da fare |
+| -26 | `20_code/script/20260328-26-update-fn-get-user-profile-auth-flags-mctit.yaml` | Update profilo utente +3 chiavi | da fare |
+
+### Da creare (80_data — Seed)
+
+| Progr. | Percorso | Oggetto | Stato |
+| --- | --- | --- | --- |
+| — | `80_data/sql/config/email_template.csv` | Seed template email base | da fare |
+| -70 | `80_data/changelog/20260328-70-upsert-config-email-template-mctit.yaml` | Changelog seed template | da fare |
 
 ### Ordine di applicazione
 
 ```text
--- Fase 1 (prima):
-01 → 02 → 03 → 04 → 06 → 08 → 09 → 10 → 11 → 12 → 13 → 16+17 → 15(parziale)
+-- Fase 1 (tabelle):
+-13 → -14 → -15 → -16 → -17 → -18 → -19
 
--- Fase 3 (dopo Fase 1):
-06 gia' applicato → 14
+-- Fase 1 (funzioni + seed):
+-22 → -23 → -24 → seed(-70) → -26(parziale: solo deve_cambiare_password)
 
--- Fase 4 (ultima):
-05 → 07 → 15(completo, con lookup TOTP)
+-- Fase 3 (invito operatore):
+-19 gia' applicato → -25
+
+-- Fase 4 (2FA TOTP):
+-20 → -21 → -26(completo, con lookup TOTP)
 ```
 
-> **Nota su #15** (`fn_get_user_profile`): per Fase 1 basta aggiungere solo
+> **Nota su -26** (`fn_get_user_profile`): per Fase 1 basta aggiungere solo
 > `deve_cambiare_password`. Le chiavi `totp_abilitato` e `totp_obbligatorio`
 > si aggiungono in Fase 4 quando la tabella `auth_totp_device` esiste.
 > Si possono fare 2 migration separate oppure una sola se si creano tutti
 > gli oggetti DB insieme.
 >
-> **Nota su #8-10** (outbox, allegati, alter email_log): creano le tabelle
-> per il flusso bozza→anteprima→invio. `email_outbox` deve essere creata
-> prima di `email_allegato` (FK) e prima dell'ALTER su `email_log` (FK).
+> **Nota sulle FK circolari** (-15/-16): `email_log.email_outbox_id` e
+> `email_outbox.email_log_id` si referenziano a vicenda. La FK da log→outbox
+> e' aggiunta nel changeset -16 (dopo che entrambe le tabelle esistono).

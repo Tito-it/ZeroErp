@@ -14,6 +14,11 @@
 - [codici_postali](tabelle/codici_postali.md) — * **Elenco dei codici postali**   Per ogni comune (city/municipality), memorizza tutti i codici postali (Postal Code o ZIP Code) validi per quell’area geografica.
 - [comuni](tabelle/comuni.md) — (last review 30-12-25) * **Censimento dei comuni**   Elenco dei comuni presenti in ciascuno stato, identificati da nome e collegamento gerarchico a provincia e stato. * **Attributi specifici per stato**   La colonna `extra_country` (JSONB) permette di memorizzare dati aggiuntivi specifici per ogni paese (per l’Italia: codice catastale, codice ISTAT, fascia climatica, ecc.). * **Integrazione con lo stradario**   L’associazione tra `config.stradario_generale` (prefissi e nomi delle vie) e `config.comuni` genera la tabella `config.stradario`, che contiene l’indirizzo completo con la localizzazione geografica sul comune di appartenenza.   Utilizzata per associare i record di **`config.stradario`** al comune di appartenenza, completa il percorso di indirizzamento. * **Storicizzazione**   Il campo `storicizza` se true attiva il trigger per la storicizzazione delle informazioni sulla tabella `storico.comuni`. Il front-end dovrà sempre impostare a true il valore, solo per funzioni administrator si potrà non gestire a true.
 - [conti_contabili](tabelle/conti_contabili.md) — * Mantenere il catalogo centralizzato dei **codici conto** con descrizioni e tipologia. * Supportare la validazione dei riferimenti contabili in altre tabelle (ad esempio `config.iva`).
+- [email_account](tabelle/email_account.md)
+- [email_allegato](tabelle/email_allegato.md)
+- [email_log](tabelle/email_log.md)
+- [email_outbox](tabelle/email_outbox.md)
+- [email_template](tabelle/email_template.md)
 - [forme_giuridiche](tabelle/forme_giuridiche.md) — (latest review 21-12-25)
 - [forme_giuridiche_tipi_soggetto_dettaglio](tabelle/forme_giuridiche_tipi_soggetto_dettaglio.md) — (latest review 21-12-25) La tabella **`config.forme_giuridiche_tipi_soggetto_dettaglio`** è una **matrice di configurazione** (Strada **B**) che definisce:
 - [iva](tabelle/iva.md) — * Centralizzare i **codici IVA** disponibili in un unico repository configurabile. * Gestire:
@@ -72,6 +77,7 @@
 - [tipi_ubicazione](tabelle/tipi_ubicazione.md)
 - [tipi_utenze](tabelle/tipi_utenze.md)
 - [titoli_cortesia](tabelle/titoli_cortesia.md) — * **Uniformare i titoli**     Gestire centralmente i titoli di cortesia per tutti i soggetti/contatti, evitando discrepanze tra form, report e stampe.
+- [token_monouso](tabelle/token_monouso.md)
 - [toponomastica](tabelle/toponomastica.md) — (latest review 02-01-26) * **Censimento dei toponimi**   Elenco delle tipologie di vie, strade, piazze, viali, ecc., utilizzate come prefisso negli indirizzi. * **Fondamentale per lo stradario**   Fornisce i prefissi standardizzati che, uniti al nome (es. "Garibaldi", "Roma"), generano i record di **`stradario_generale`**. * **Integrazione con lo stato geografico**   Collegato alla tabella `config.stati` per associare ogni tipo di toponimo all’area amministrativa di riferimento.
 - [transizioni_stati_flussi_pratiche](tabelle/transizioni_stati_flussi_pratiche.md) — `config.transizioni_stati_flussi_pratiche` definisce la **matrice delle transizioni ammesse** tra stati dei flussi pratica. Il trigger guard `trgfn_flussi_guard_transizione` consulta questa tabella per bloccare qualsiasi transizione non configurata.
 - [transizioni_stati_pratiche](tabelle/transizioni_stati_pratiche.md) — `config.transizioni_stati_pratiche` definisce la **matrice delle transizioni ammesse** tra stati delle pratiche. Il trigger guard `trgfn_pratiche_guard_transizione` consulta questa tabella per bloccare qualsiasi transizione non configurata.
@@ -85,8 +91,11 @@
 - [valute](tabelle/valute.md) — * **Definizione delle valute**   Elenco centralizzato di tutte le valute supportate, con codici interni e standard ISO 4217. * **Supporto ai moduli finanziari**   Garantisce alle aree di fatturazione, contabilità e reporting uniformità nella rappresentazione e conversione delle valute. * **Tracciabilità e auditing**   Memorizza informazioni di inserimento e aggiornamento per mantenere la storicità delle modifiche.
 
 ## ⚙️ Funzioni
+- [fn_cleanup_token_scaduti](funzioni/fn_cleanup_token_scaduti.md)
 - [fn_get_aliquota_iva](funzioni/fn_get_aliquota_iva.md) — (latest review 10-02-2026)   La funzione **`config.fn_get_aliquota_iva()`** restituisce l’aliquota IVA applicando l’eventuale override definito in `config.iva_stati` per lo Stato specificato.
 - [fn_get_stati_doc_fiscale](funzioni/fn_get_stati_doc_fiscale.md) — (latest review 24-01-2026) La funzione **`config.fn_get_stati_doc_fiscale`** restituisce gli stati validi per **LOTTO** o **FATTURA**, con eventuale filtro sulle **transizioni ammesse**.
+- [fn_resolve_email_account](funzioni/fn_resolve_email_account.md)
+- [fn_resolve_email_template](funzioni/fn_resolve_email_template.md)
 - [trgfn_comuni_protect_update](funzioni/trgfn_comuni_protect_update.md) — (latest review 29-12-25) Impedire la modifica dei campi chiave di `config.comuni` quando il comune e' gia' utilizzato nello stradario.
 - [trgfn_iva_guard_conti_iva](funzioni/trgfn_iva_guard_conti_iva.md) — * **Validazione contestuale**: eseguire controlli sui campi contabili prima di inserire o aggiornare un record in `config.iva`. * **Coerenza dei dati**: evitare associazioni errate tra codici IVA e conti di tipo sbagliato.
 - [trgfn_iva_stati_normalize](funzioni/trgfn_iva_stati_normalize.md) — (latest review 15-01-26) * **Impostare valori di default** per campi mancanti in `config.iva_stati` (ad esempio, assegnare `stato_id` da `config.stati` se `NEW.stato_id` è `NULL`). * **Pulire e normalizzare** ulteriori campi (es. trimming, uppercasing) seguendo le regole di business.

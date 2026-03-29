@@ -28,6 +28,8 @@ DECLARE
     v_valido_al        anagrafiche.risorse_umane.valido_al%TYPE;
     v_ru_attivo        anagrafiche.risorse_umane.attivo%TYPE;
     v_risorse_umane    jsonb;
+    -- Flag autenticazione avanzata
+    v_deve_cambiare_password  anagrafiche.risorse_umane_auth_user.deve_cambiare_password%TYPE;
     -- Blocco soggetto
     v_soggetto         jsonb;
     -- Blocco emittente
@@ -57,7 +59,8 @@ BEGIN
     --   completo dell'utente: dati auth_user, risorse umane
     --   (qualifica, UO), soggetto anagrafico con dati societari,
     --   emittente fiscale associato (se presente), mappa
-    --   permessi per area funzionale, e mappa azioni abilitate.
+    --   permessi per area funzionale, mappa azioni abilitate,
+    --   e flag deve_cambiare_password.
     --
     -- Parametri:
     --   p_auth_user_id: ID dell'utente Django (auth_user.id)
@@ -66,7 +69,8 @@ BEGIN
     --   JSONB con chiavi: utente, ruolo_sistema, risorse_umane,
     --   soggetto, emittente (null se non associato),
     --   permessi_area (mappa {schema_db: livello}),
-    --   azioni_abilitate (mappa {codename: boolean}).
+    --   azioni_abilitate (mappa {codename: boolean}),
+    --   deve_cambiare_password (boolean).
     -- =========================================================
 
     -- Guard: parametro obbligatorio e valido
@@ -106,13 +110,16 @@ BEGIN
 
     -- -------------------------------------------------------
     -- 2. Risolvere risorse_umane_auth_user -> risorse_umane
+    --    Incluso flag deve_cambiare_password
     -- -------------------------------------------------------
     SELECT rau.id,
            rau.ruolo_sistema,
-           rau.risorsa_umana_id
+           rau.risorsa_umana_id,
+           rau.deve_cambiare_password
       INTO v_rau_id,
            v_ruolo_sistema,
-           v_risorsa_umana_id
+           v_risorsa_umana_id,
+           v_deve_cambiare_password
       FROM anagrafiche.risorse_umane_auth_user rau
      WHERE rau.auth_user_id = p_auth_user_id;
 
@@ -186,7 +193,7 @@ BEGIN
             jsonb_build_object('auth_user_id', p_auth_user_id,
                               'risorsa_umana_id', v_risorsa_umana_id),
             NULL::uuid,
-            'Utente disabilitato: risorsa umana non attiva.'
+            v_risorsa_umana_id::text
         );
     END IF;
 
@@ -198,7 +205,7 @@ BEGIN
             jsonb_build_object('auth_user_id', p_auth_user_id,
                               'valido_dal', v_valido_dal),
             NULL::uuid,
-            'Utente non ancora attivo: valido_dal=' || v_valido_dal || '.'
+            v_valido_dal::text 
         );
     END IF;
 
@@ -210,7 +217,7 @@ BEGIN
             jsonb_build_object('auth_user_id', p_auth_user_id,
                               'valido_al', v_valido_al),
             NULL::uuid,
-            'Utente scaduto: valido_al=' || v_valido_al || '.'
+            v_valido_al::text
         );
     END IF;
 
@@ -290,9 +297,8 @@ BEGIN
               FROM anagrafiche.emittenti_fiscali ef
              WHERE ef.attivo = true;
         END IF;
-        -- Se count > 1, nessun emittente selezionato (corretto: ambiguo)
 
-        v_uef_id := NULL;  -- nessun record whitelist in questo caso
+        v_uef_id := NULL;
     END IF;
 
     -- 4c. Se emittente trovato, comporre il blocco
@@ -300,12 +306,10 @@ BEGIN
         DECLARE
             v_ef_soggetto jsonb;
         BEGIN
-            -- Dati soggetto dell'emittente
             SELECT row_to_json(t.*)::jsonb
               INTO v_ef_soggetto
               FROM script.fn_get_soggetto_dati_by_ruolo(v_ef_sr_id) t;
 
-            -- Comporre blocco emittente: campi emittente + campi soggetto
             v_emittente := jsonb_build_object(
                 'emittente_fiscale_id',    v_ef_id,
                 'emittente_fiscale_uid',   v_ef_uid,
@@ -320,17 +324,18 @@ BEGIN
 
     -- -------------------------------------------------------
     -- 5. Comporre risultato finale
-    --    Chiavi: permessi_area (mappa livelli per area)
-    --           azioni_abilitate (mappa codename: boolean)
+    --    Chiavi: permessi_area, azioni_abilitate,
+    --    deve_cambiare_password
     -- -------------------------------------------------------
     v_result := jsonb_build_object(
-        'utente',            v_utente,
-        'ruolo_sistema',     v_ruolo_sistema,
-        'risorse_umane',     v_risorse_umane,
-        'soggetto',          v_soggetto,
-        'emittente',         v_emittente,
-        'permessi_area',     script.fn_get_user_permissions_map(p_auth_user_id),
-        'azioni_abilitate',  script.fn_get_user_actions_map(p_auth_user_id)
+        'utente',                   v_utente,
+        'ruolo_sistema',            v_ruolo_sistema,
+        'risorse_umane',            v_risorse_umane,
+        'soggetto',                 v_soggetto,
+        'emittente',                v_emittente,
+        'permessi_area',            script.fn_get_user_permissions_map(p_auth_user_id),
+        'azioni_abilitate',         script.fn_get_user_actions_map(p_auth_user_id),
+        'deve_cambiare_password',   COALESCE(v_deve_cambiare_password, false)
     );
 
     RETURN v_result;
@@ -338,7 +343,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_get_user_profile(p_auth_user_id integer)
-IS 'Profilo utente completo: JSONB con blocchi utente, ruolo_sistema, risorse_umane (qualifica, UO), soggetto (dati anagrafici + societari), emittente fiscale (se associato), permessi_area (mappa {schema_db: livello_accesso}), azioni_abilitate (mappa {codename: boolean}). Dipende da fn_get_soggetto_dati_by_ruolo, fn_get_user_permissions_map e fn_get_user_actions_map.';
+IS 'Profilo utente completo: JSONB con blocchi utente, ruolo_sistema, risorse_umane (qualifica, UO), soggetto, emittente fiscale, permessi_area, azioni_abilitate, deve_cambiare_password. Dipende da fn_get_soggetto_dati_by_ruolo, fn_get_user_permissions_map, fn_get_user_actions_map.';
 ```
 
 ---

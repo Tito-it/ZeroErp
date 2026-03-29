@@ -18,6 +18,8 @@
 | tx_id | uuid | YES |  |
 | tentativi_falliti | smallint | NO | 0 |
 | bloccato_fino_a | timestamp with time zone | YES |  |
+| deve_cambiare_password | boolean | NO | false |
+| invito_inviato_at | timestamp with time zone | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
