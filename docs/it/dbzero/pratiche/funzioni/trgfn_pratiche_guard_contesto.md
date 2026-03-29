@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/pratiche/manual/trgfn_pratiche_guard_contesto.md" %}
 # ⚙️ Funzione `trgfn_pratiche_guard_contesto`
 
 ```sql
