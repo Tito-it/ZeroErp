@@ -108,6 +108,38 @@ export function fetchPraticheGenerate(praticaId, flussoId) {
   return api.get(`${BASE}/${praticaId}/flussi/${flussoId}/pratiche-generate/`)
 }
 
+// --- Note pratica ---
+
+export function fetchNote(praticaId) {
+  return api.get(`${BASE}/${praticaId}/note/`)
+}
+
+export function createNota(praticaId, payload) {
+  return api.post(`${BASE}/${praticaId}/note/`, payload)
+}
+
+export function updateNota(praticaId, notaId, payload) {
+  return api.patch(`${BASE}/${praticaId}/note/${notaId}/`, payload)
+}
+
+export function deleteNota(praticaId, notaId) {
+  return api.delete(`${BASE}/${praticaId}/note/${notaId}/`)
+}
+
+// --- Allegati pratica ---
+
+export function fetchAllegati(praticaId) {
+  return api.get(`${BASE}/${praticaId}/allegati/`)
+}
+
+export function createAllegato(praticaId, payload) {
+  return api.post(`${BASE}/${praticaId}/allegati/`, payload)
+}
+
+export function deleteAllegato(praticaId, allegatoId) {
+  return api.delete(`${BASE}/${praticaId}/allegati/${allegatoId}/`)
+}
+
 // --- Formule tempo (lookup globale, non legato a pratica) ---
 
 export function fetchFormuleTempo(params = {}) {

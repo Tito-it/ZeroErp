@@ -36,8 +36,8 @@
 | **G4** | BE | Aggiornare `PraticaRow` TypedDict con nuovi campi display | da fare |
 | **G5** | BE | Repository: JOIN display fields su list/get | da fare |
 | **G6** | BE | Aggiornare `crea_pratica` per accettare soggetto_ruolo_id e istanza_utility_id | da fare |
-| **G7** | BE | Guard pre/post-attivazione nel service | da fare |
-| **G8** | FE | Aggiornare store/drawer/searchTable per i nuovi campi | da fare |
+| **G7** | BE | Guard pre/post-attivazione nel service | ✅ |
+| **G8** | FE | Aggiornare store/drawer/searchTable per i nuovi campi | ✅ |
 
 ### Priorita' MEDIA — Funzionalita' di dominio
 
@@ -45,10 +45,10 @@
 |---|------|-------------|-------|
 | **G9** | DB | Note pratiche/flussi — tabelle esistono, trigger giornale gia' operativi | ✅ (gia' in v1) |
 | **G10** | DB | Allegati pratiche/flussi — tabelle esistono, trigger giornale gia' operativi | ✅ (gia' in v1) |
-| **G11** | BE | Note pratiche/flussi — CRUD endpoint (tabelle esistono, API manca) | da fare |
-| **G12** | BE | Allegati pratiche/flussi — CRUD endpoint (tabelle esistono, API manca) | da fare |
-| **G13** | FE | Tab Note nel drawer pratica | da fare |
-| **G14** | FE | Tab Allegati nel drawer pratica | da fare |
+| **G11** | BE | Note pratiche/flussi — CRUD endpoint (tabelle esistono, API manca) | ✅ |
+| **G12** | BE | Allegati pratiche/flussi — CRUD endpoint (tabelle esistono, API manca) | ✅ |
+| **G13** | FE | Tab Note nel drawer pratica | ✅ |
+| **G14** | FE | Tab Allegati nel drawer pratica | ✅ |
 
 ### Priorita' BASSA — Automazioni e estensioni
 

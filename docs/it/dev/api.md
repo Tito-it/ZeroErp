@@ -456,6 +456,7 @@ I nomi usano kebab-case: `reset-draft`, `calcoli-tempo`, `regole-generazione`.
 | GET    | `commesse/{id}/attivita/`              | Attivita` commessa           |
 
 **Pratiche** (`/api/v1/pratiche/`)
+Dettaglio: [api_pratiche_list.md](/backend/pratiche/manual/api_pratiche_list) | [api_pratiche_generate.md](/backend/pratiche/manual/api_pratiche_generate) | [api_pratiche_note.md](/backend/pratiche/manual/api_pratiche_note) | [api_pratiche_allegati.md](/backend/pratiche/manual/api_pratiche_allegati)
 
 | Metodo | Path                                    | Scopo                              |
 | ------ | --------------------------------------- | ---------------------------------- |
@@ -481,6 +482,13 @@ I nomi usano kebab-case: `reset-draft`, `calcoli-tempo`, `regole-generazione`.
 | GET    | `{id}/flussi/{fid}/pratiche-generate/`  | Pratiche generate                  |
 | POST   | `{id}/flussi/{fid}/sospendi/`           | Sospendi flusso                    |
 | POST   | `{id}/flussi/{fid}/riattiva/`           | Riattiva flusso                    |
+| GET    | `{id}/note/`                            | Elenco note pratica                |
+| POST   | `{id}/note/`                            | Crea nota                          |
+| PATCH  | `{id}/note/{nid}/`                      | Aggiorna nota                      |
+| DELETE | `{id}/note/{nid}/`                      | Elimina nota                       |
+| GET    | `{id}/allegati/`                        | Elenco allegati pratica            |
+| POST   | `{id}/allegati/`                        | Crea record allegato               |
+| DELETE | `{id}/allegati/{aid}/`                  | Elimina allegato                   |
 | GET    | `formule-tempo/`                        | Formule tempo per tipo prestazione |
 
 **Core** (`/api/v1/core/`)

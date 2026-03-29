@@ -10,6 +10,8 @@ from django.urls import path
 
 from apps.pratiche.api.views import (
     ApiFormuleTempo,
+    ApiPraticaAllegatoDetail,
+    ApiPraticaAllegatiList,
     ApiPraticaAssegnazione,
     ApiPraticaCalcoliTempo,
     ApiPraticaDetail,
@@ -24,6 +26,8 @@ from apps.pratiche.api.views import (
     ApiPraticaFlussoSospendi,
     ApiPraticaFlussoStato,
     ApiPraticaGiornale,
+    ApiPraticaNotaDetail,
+    ApiPraticaNoteList,
     ApiPraticaRiattiva,
     ApiPraticaSospendi,
     ApiPraticaSospensioni,
@@ -44,6 +48,12 @@ urlpatterns = [
     path("<int:pratica_id>/riattiva/", ApiPraticaRiattiva.as_view(), name="pratiche-riattiva"),
     path("<int:pratica_id>/sospensioni/", ApiPraticaSospensioni.as_view(), name="pratiche-sospensioni"),
     path("<int:pratica_id>/calcoli-tempo/", ApiPraticaCalcoliTempo.as_view(), name="pratiche-calcoli-tempo"),
+    # --- Note ---
+    path("<int:pratica_id>/note/", ApiPraticaNoteList.as_view(), name="pratiche-note-list"),
+    path("<int:pratica_id>/note/<int:nota_id>/", ApiPraticaNotaDetail.as_view(), name="pratiche-nota-detail"),
+    # --- Allegati ---
+    path("<int:pratica_id>/allegati/", ApiPraticaAllegatiList.as_view(), name="pratiche-allegati-list"),
+    path("<int:pratica_id>/allegati/<int:allegato_id>/", ApiPraticaAllegatoDetail.as_view(), name="pratiche-allegato-detail"),
     # --- Flussi ---
     path("<int:pratica_id>/flussi/", ApiPraticaFlussiList.as_view(), name="pratiche-flussi-list"),
     path("<int:pratica_id>/flussi/<int:flusso_id>/", ApiPraticaFlussoDetail.as_view(), name="pratiche-flusso-detail"),

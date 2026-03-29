@@ -157,6 +157,39 @@ Ogni schermata di elenco segue questo schema fisso:
 - **Ricerca** con debounce 400ms (gestito da `useSearchTable`)
 - **DataTable** sempre con: `lazy`, `removable-sort`, `striped-rows`, `scrollable`, `scrollHeight="flex"`
 
+### Filtro data standard (obbligatorio su liste con date)
+
+Ogni SearchTable che mostra dati con data di apertura/creazione deve avere il filtro data:
+
+- **Due DatePicker**: "Dal" (`data_da`) e "Al" (`data_a`) nella toolbar filtri
+- **Default `data_da`**: 1 gennaio dell'anno corrente - 1 (es. `2025-01-01` se oggi e' `2026-03-29`)
+- **`data_a`**: null (nessun limite superiore di default)
+- Il filtro si applica su `data_insert` (o colonna data apertura dedicata se esiste)
+- Backend: `WHERE data_insert >= data_da::date AND data_insert < (data_a::date + INTERVAL '1 day')`
+- Il tiebreaker `id` nell'ORDER BY garantisce paginazione deterministica
+
+**Implementazione nello store:**
+
+```js
+const defaultDataDa = `${new Date().getFullYear() - 1}-01-01`
+
+const filters = ref({
+  // ... altri filtri ...
+  data_da: defaultDataDa,
+  data_a: null,
+})
+```
+
+**Implementazione nella SearchTable:**
+
+```html
+<DatePicker v-model="dataDaFilter" :placeholder="t('common.data_da')"
+  date-format="dd/mm/yy" show-icon show-button-bar style="width: 150px;"
+  @date-select="onDataDaChange" @clear-click="onDataDaChange" />
+```
+
+Le chiavi i18n `common.data_da` ("Dal") e `common.data_a` ("Al") sono condivise da tutte le liste.
+
 ### Scorciatoie da tastiera (Keyboard Shortcuts)
 
 Scorciatoie globali per operatori ERP power user. Due meccanismi:
@@ -502,17 +535,64 @@ Il pulsante di creazione ha un comportamento standard su tutte le schermate:
 
 ---
 
-## Tag stato (attivo/non attivo)
+## Tag stato e severity (standard cromatico)
 
-Quando una riga ha un campo `attivo`, lo stato si mostra con un `Tag` PrimeVue:
+Le severity PrimeVue (`Tag`, `Badge`) seguono una convenzione fissa in tutta l'app.
+Le mappe sono centralizzate in `core/utils/severity.js` — un solo punto di modifica.
+
+### Severity standard PrimeVue
+
+| Severity | Colore | Significato |
+|----------|--------|-------------|
+| `success` | Verde | Completato, attivo, OK |
+| `info` | Azzurro | In corso, informativo, normale |
+| `warn` | Arancio | Attenzione, sospeso, intermedio |
+| `danger` | Rosso | Errore, annullato, urgente, bloccato |
+| `secondary` | Grigio | Bozza, inattivo, basso |
+
+### Attivo / Non attivo (tabelle config)
 
 ```html
 <Tag :value="data.attivo ? t('indirizzi.attivo') : t('indirizzi.non_attivo')"
      :severity="data.attivo ? 'success' : 'warn'" />
 ```
 
-Severita' standard: `success` = verde (attivo), `warn` = arancione (non attivo).
-Mai usare colori diversi per lo stesso concetto.
+### Stati pratica
+
+| Stato | Severity | Colore |
+|-------|----------|--------|
+| BOZZA | `secondary` | Grigio |
+| APERTA | `info` | Azzurro |
+| SOSPESA | `warn` | Arancio |
+| CHIUSA | `success` | Verde |
+| ANNULLATA | `danger` | Rosso |
+
+### Priorita' (scala cromatica progressiva)
+
+| Priorita' | Severity | Colore |
+|-----------|----------|--------|
+| BASSA | `secondary` | Grigio |
+| NORMALE | `info` | Azzurro |
+| ALTA | `warn` | Arancio |
+| URGENTE | `danger` | Rosso |
+
+### Stati flusso pratica
+
+| Stato | Severity | Colore |
+|-------|----------|--------|
+| DA_ESEGUIRE | `secondary` | Grigio |
+| IN_CORSO | `info` | Azzurro |
+| COMPLETATO | `success` | Verde |
+| SOSPESO | `warn` | Arancio |
+| ANNULLATO | `danger` | Rosso |
+| ERRORE | `danger` | Rosso |
+
+### Come aggiungere una nuova mappa
+
+1. Aggiungere la mappa in `core/utils/severity.js` con costante `NOME_MAP` e shortcut `nomeSeverity(codice)`
+2. Usare `resolveSeverity(map, codice)` che fa trim automatico e fallback a `'secondary'`
+3. Nel componente: `<Tag :value="data.descrizione" :severity="nomeSeverity(data.codice_interno)" />`
+4. Il `codice_interno` deve arrivare dal backend via JOIN (no lookup client-side)
 
 ---
 

@@ -16,6 +16,8 @@ class PraticaRow(TypedDict):
     emittente_fiscale_id: int
     tipo_prestazione_id: int
     soggetto_id: str | None
+    soggetto_ruolo_id: int | None
+    istanza_utility_id: int | None
     stato_id: int
     priorita_id: int
     risorsa_umana_id: int | None
@@ -29,6 +31,16 @@ class PraticaRow(TypedDict):
     meta: dict[str, Any]
     data_insert: str
     user_insert: str
+    # Campi display da JOIN
+    tipo_prestazione_codice: str
+    tipo_prestazione_descrizione: str
+    stato_codice_interno: str
+    stato_descrizione: str
+    priorita_codice_interno: str
+    priorita_descrizione: str
+    soggetto_display: str | None
+    risorsa_umana_display: str | None
+    unita_organizzativa_descrizione: str | None
 
 
 # -- Tabella pratiche.flussi --
@@ -48,6 +60,11 @@ class FlussoRow(TypedDict):
     meta: dict[str, Any]
     data_insert: str
     user_insert: str
+    # Campi display da JOIN
+    stato_codice_interno: str
+    stato_descrizione: str
+    template_flusso_codice: str | None
+    template_flusso_descrizione: str | None
 
 
 # -- Tabella pratiche.giornale --

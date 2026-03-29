@@ -1,8 +1,8 @@
 <script setup>
 // Scopo: Drawer dettaglio/creazione pratica con TabView (Dati, Flussi, Giornale).
 // In edit: 3 tab + bottoni azioni stato nel tab Dati.
+//          I campi display (stato_descrizione, soggetto_display, ecc.) arrivano dal backend.
 // In create: solo form creazione (no tab).
-// Pattern: DrawerTitle + DrawerFooter + TabView + useApiHandler + useInjectReadonly.
 import { ref, watch, computed, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { usePraticheStore } from '../stores/pratiche'
@@ -15,7 +15,11 @@ import { statoPraticaSeverity, prioritaPraticaSeverity } from '../../core/utils/
 import { DRAWER_WIDTH, STATO_PRATICA } from '../../core/constants'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import DrawerFooter from '../../core/components/DrawerFooter.vue'
+import SoggettoResolver from '../../core/components/SoggettoResolver.vue'
+import SoggettoMessageBanner from '../../core/components/SoggettoMessageBanner.vue'
 import PraticaFlussiTab from './PraticaFlussiTab.vue'
+import PraticaNoteTab from './PraticaNoteTab.vue'
+import PraticaAllegatiTab from './PraticaAllegatiTab.vue'
 import PraticaGiornaleTab from './PraticaGiornaleTab.vue'
 import Drawer from 'primevue/drawer'
 import InputText from 'primevue/inputtext'
@@ -32,8 +36,7 @@ const store = usePraticheStore()
 const { execute, loading } = useApiHandler()
 const isReadonly = useInjectReadonly()
 
-// Lookup
-const statiPratica = useLookup(() => lookupCodici('config.stati_pratiche'), { immediate: true })
+// Lookup per popolare i Select dei form (non per display — quello arriva dal backend)
 const prioritaPratica = useLookup(() => lookupCodici('config.priorita_pratiche'), { immediate: true })
 const tipiPrestazione = useLookup(() => lookupCodici('pratiche.tipi_prestazione'), { immediate: true })
 
@@ -59,12 +62,37 @@ function defaultForm() {
   }
 }
 
+// Selezione soggetto e ruolo (solo creazione)
+const resolverVisible = ref(false)
+const soggettoSelezionato = ref(null)
+const ruoloSelezionato = ref(null)
+
+// Ruoli disponibili dal soggetto selezionato
+const ruoliDisponibili = computed(() => {
+  if (!soggettoSelezionato.value?.ruoli) return []
+  return soggettoSelezionato.value.ruoli.map(r => ({
+    value: r.soggetto_ruolo_id,
+    label: r.descrizione || r.codice
+  }))
+})
+
+function onSoggettoRicevuto(data) {
+  soggettoSelezionato.value = data
+  ruoloSelezionato.value = null
+}
+
+function clearSoggetto() {
+  soggettoSelezionato.value = null
+  ruoloSelezionato.value = null
+}
+
 function resetForm() {
   detail.value = null
   form.value = defaultForm()
+  soggettoSelezionato.value = null
+  ruoloSelezionato.value = null
 }
 
-// Scopo: Popola form dai dati dettaglio (edit mode).
 function populateFormFromDetail(d) {
   form.value = {
     tipo_prestazione_id: d.tipo_prestazione_id,
@@ -74,19 +102,9 @@ function populateFormFromDetail(d) {
   }
 }
 
-// Scopo: Risolve un campo di un lookup ID dalla lista caricata.
-function lookupField(items, id, field = 'descrizione') {
-  if (id == null) return ''
-  const item = items.find(i => i.id === id)
-  return item?.[field] || ''
-}
+// Stato corrente dalla risposta backend (campo display, no lookup)
+const statoCorrente = computed(() => (detail.value?.stato_codice_interno || '').trim())
 
-// Scopo: Codice interno stato pratica corrente (per condizioni azioni e severity).
-const statoCorrente = computed(() =>
-  lookupField(statiPratica.items.value, detail.value?.stato_id, 'codice_interno').trim()
-)
-
-// Carica dati quando il drawer si apre
 watch(() => props.visible, async (val) => {
   if (!val) return
   nextTick(() => { tabViewKey.value++ })
@@ -99,7 +117,6 @@ watch(() => props.visible, async (val) => {
   }
 })
 
-// Scopo: Ricarica dettaglio (usato dopo azioni stato o refresh da tab flussi).
 async function reloadDetail() {
   if (!props.praticaId) return
   const d = await store.fetchDetail(props.praticaId)
@@ -107,49 +124,31 @@ async function reloadDetail() {
   populateFormFromDetail(d)
 }
 
-// --- Azioni stato pratica (FE-6) ---
+// --- Azioni stato pratica ---
 
-async function onApriPratica() {
-  const result = await execute(
-    () => store.cambiaStato(props.praticaId, { nuovo_stato: STATO_PRATICA.APERTA }),
-    { successMessage: t('pratiche.stato_cambiato') }
-  )
+// Scopo: esegue un'azione sullo store e ricarica il dettaglio se OK.
+async function executeAction(fn) {
+  const result = await execute(fn, { successMessage: t('pratiche.stato_cambiato') })
   if (result !== null) { await reloadDetail(); emit('saved', result) }
 }
 
-async function onSospendiPratica() {
-  const result = await execute(
-    () => store.sospendi(props.praticaId, { motivo: t('pratiche.sospensione_manuale') }),
-    { successMessage: t('pratiche.stato_cambiato') }
-  )
-  if (result !== null) { await reloadDetail(); emit('saved', result) }
+function onApriPratica() {
+  executeAction(() => store.cambiaStato(props.praticaId, { nuovo_stato: STATO_PRATICA.APERTA }))
+}
+function onSospendiPratica() {
+  executeAction(() => store.sospendi(props.praticaId, { motivo: t('pratiche.sospensione_manuale') }))
+}
+function onRiattivaPratica() {
+  executeAction(() => store.riattiva(props.praticaId))
+}
+function onChiudiPratica() {
+  executeAction(() => store.cambiaStato(props.praticaId, { nuovo_stato: STATO_PRATICA.CHIUSA }))
+}
+function onAnnullaPratica() {
+  executeAction(() => store.cambiaStato(props.praticaId, { nuovo_stato: STATO_PRATICA.ANNULLATA }))
 }
 
-async function onRiattivaPratica() {
-  const result = await execute(
-    () => store.riattiva(props.praticaId),
-    { successMessage: t('pratiche.stato_cambiato') }
-  )
-  if (result !== null) { await reloadDetail(); emit('saved', result) }
-}
-
-async function onChiudiPratica() {
-  const result = await execute(
-    () => store.cambiaStato(props.praticaId, { nuovo_stato: STATO_PRATICA.CHIUSA }),
-    { successMessage: t('pratiche.stato_cambiato') }
-  )
-  if (result !== null) { await reloadDetail(); emit('saved', result) }
-}
-
-async function onAnnullaPratica() {
-  const result = await execute(
-    () => store.cambiaStato(props.praticaId, { nuovo_stato: STATO_PRATICA.ANNULLATA }),
-    { successMessage: t('pratiche.stato_cambiato') }
-  )
-  if (result !== null) { await reloadDetail(); emit('saved', result) }
-}
-
-// --- Salvataggio (FE-4 create / FE-3 update) ---
+// --- Salvataggio ---
 
 async function onSave() {
   if (isEdit.value) {
@@ -171,7 +170,9 @@ async function onSave() {
       descrizione: form.value.descrizione || null,
       data_scadenza: form.value.data_scadenza
         ? form.value.data_scadenza.toISOString().split('T')[0]
-        : null
+        : null,
+      soggetto_id: soggettoSelezionato.value?.id || null,
+      soggetto_ruolo_id: ruoloSelezionato.value || null,
     }
     const result = await execute(
       () => store.create(payload),
@@ -209,9 +210,39 @@ function onClose() {
 
     <div :class="{ 'app-readonly': isReadonly }">
 
-      <!-- === CREAZIONE: form semplice senza tab === -->
+      <!-- === CREAZIONE: form con soggetto/ruolo opzionali === -->
       <template v-if="!isEdit">
         <div class="form-grid">
+
+          <!-- Soggetto (opzionale — pratica interna se non selezionato) -->
+          <h4>{{ t('pratiche.section_soggetto') }}</h4>
+          <div v-if="soggettoSelezionato" class="mb-3">
+            <SoggettoMessageBanner
+              :ragione-sociale="soggettoSelezionato.ragione_sociale"
+              :codice-fiscale="soggettoSelezionato.cf"
+            />
+            <Button :label="t('resolver.change')" icon="pi pi-pencil"
+              text size="small" class="mt-1" @click="clearSoggetto" />
+          </div>
+          <div v-else class="mb-3">
+            <Button :label="t('resolver.open')" icon="pi pi-search"
+              outlined class="w-full" @click="resolverVisible = true" />
+            <small class="text-color-secondary">{{ t('pratiche.soggetto_opzionale') }}</small>
+          </div>
+
+          <!-- Ruolo (opzionale — visibile solo se soggetto selezionato e ha ruoli) -->
+          <div v-if="soggettoSelezionato && ruoliDisponibili.length > 0" class="form-field">
+            <label>{{ t('pratiche.field_ruolo') }}</label>
+            <Select
+              v-model="ruoloSelezionato"
+              :options="ruoliDisponibili"
+              option-label="label" option-value="value"
+              class="w-full" :placeholder="t('pratiche.select_ruolo')" show-clear
+            />
+          </div>
+
+          <!-- Dati pratica -->
+          <h4 class="mt-3">{{ t('pratiche.section_dati') }}</h4>
           <div class="form-field">
             <label>{{ t('pratiche.col_tipo_prestazione') }} *</label>
             <Select
@@ -244,6 +275,16 @@ function onClose() {
         <div class="flex justify-end mt-4">
           <DrawerFooter :loading="loading" :disabled="!canSave" @save="onSave" @cancel="onClose" />
         </div>
+
+        <!-- Sotto-drawer: SoggettoResolver -->
+        <SoggettoResolver
+          :visible="resolverVisible"
+          tipo-ruolo-codice=""
+          @update:visible="v => resolverVisible = v"
+          @soggetto-selezionato="onSoggettoRicevuto"
+          @soggetto-creato="onSoggettoRicevuto"
+          @annullato="resolverVisible = false"
+        />
       </template>
 
       <!-- === EDIT: TabView con Dati + Flussi + Giornale === -->
@@ -252,7 +293,7 @@ function onClose() {
 
           <!-- Tab Dati -->
           <TabPanel :header="t('pratiche.tab_dati')">
-            <!-- Intestazione: codice + stato + priorita' -->
+            <!-- Intestazione: codice + stato + priorita' (display dal backend) -->
             <div class="pratica-header-row">
               <div class="form-field" style="flex: 1;">
                 <label>{{ t('pratiche.col_codice') }}</label>
@@ -260,19 +301,25 @@ function onClose() {
               </div>
               <div style="display: flex; gap: 0.5rem; align-self: flex-end;">
                 <Tag
-                  :value="lookupField(statiPratica.items.value, detail.stato_id)"
-                  :severity="statoPraticaSeverity(statoCorrente)"
+                  :value="detail.stato_descrizione"
+                  :severity="statoPraticaSeverity(detail.stato_codice_interno)"
                 />
                 <Tag
-                  v-if="detail.priorita_id"
-                  :value="lookupField(prioritaPratica.items.value, detail.priorita_id)"
-                  :severity="prioritaPraticaSeverity(lookupField(prioritaPratica.items.value, detail.priorita_id, 'codice_interno'))"
+                  v-if="detail.priorita_descrizione"
+                  :value="detail.priorita_descrizione"
+                  :severity="prioritaPraticaSeverity(detail.priorita_codice_interno)"
                 />
               </div>
             </div>
 
-            <!-- Azioni stato (FE-6) -->
-            <div v-if="!isReadonly" class="pratica-actions">
+            <!-- Soggetto (se presente) -->
+            <div v-if="detail.soggetto_display" class="form-field">
+              <label>{{ t('pratiche.col_soggetto') }}</label>
+              <InputText :model-value="detail.soggetto_display" disabled class="w-full" />
+            </div>
+
+            <!-- Azioni stato (nascosto quando nessun bottone visibile) -->
+            <div v-if="!isReadonly && statoCorrente !== STATO_PRATICA.CHIUSA && statoCorrente !== STATO_PRATICA.ANNULLATA" class="pratica-actions">
               <Button
                 v-if="statoCorrente === STATO_PRATICA.BOZZA"
                 :label="t('pratiche.azione_apri')"
@@ -314,13 +361,7 @@ function onClose() {
             <div class="form-grid">
               <div class="form-field">
                 <label>{{ t('pratiche.col_tipo_prestazione') }}</label>
-                <Select
-                  v-model="form.tipo_prestazione_id"
-                  :options="tipiPrestazione.items.value"
-                  :loading="tipiPrestazione.loading.value"
-                  option-label="descrizione" option-value="id"
-                  class="w-full" disabled
-                />
+                <InputText :model-value="detail.tipo_prestazione_descrizione" disabled class="w-full" />
               </div>
               <div class="form-field">
                 <label>{{ t('pratiche.col_priorita') }}</label>
@@ -346,6 +387,10 @@ function onClose() {
                   <InputText :model-value="displayDate(detail.data_insert)" disabled class="w-full" />
                 </div>
               </div>
+              <div v-if="detail.risorsa_umana_display" class="form-field">
+                <label>{{ t('pratiche.col_assegnata_a') }}</label>
+                <InputText :model-value="detail.risorsa_umana_display" disabled class="w-full" />
+              </div>
             </div>
 
             <div class="flex justify-end mt-4">
@@ -353,7 +398,7 @@ function onClose() {
             </div>
           </TabPanel>
 
-          <!-- Tab Flussi (FE-5) -->
+          <!-- Tab Flussi -->
           <TabPanel :header="t('pratiche.tab_flussi')">
             <PraticaFlussiTab
               :pratica-id="props.praticaId"
@@ -362,7 +407,17 @@ function onClose() {
             />
           </TabPanel>
 
-          <!-- Tab Giornale (FE-7) -->
+          <!-- Tab Note -->
+          <TabPanel :header="t('pratiche.tab_note')">
+            <PraticaNoteTab :pratica-id="props.praticaId" />
+          </TabPanel>
+
+          <!-- Tab Allegati -->
+          <TabPanel :header="t('pratiche.tab_allegati')">
+            <PraticaAllegatiTab :pratica-id="props.praticaId" />
+          </TabPanel>
+
+          <!-- Tab Giornale -->
           <TabPanel :header="t('pratiche.tab_giornale')">
             <PraticaGiornaleTab :pratica-id="props.praticaId" />
           </TabPanel>

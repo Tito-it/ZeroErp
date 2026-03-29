@@ -69,6 +69,7 @@ export const PRIORITA_PRATICA_MAP = {
   ALTA: 'warn',
   URGENTE: 'danger',
 }
+// Scala cromatica: grigio(bassa) → azzurro(normale) → arancio(alta) → rosso(urgente)
 
 // Scopo: Shortcut per priorita' pratica.
 export function prioritaPraticaSeverity(codice) {
