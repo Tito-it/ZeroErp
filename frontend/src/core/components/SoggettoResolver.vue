@@ -18,7 +18,7 @@ const { t } = useI18n()
 
 const props = defineProps({
   visible: Boolean,
-  tipoRuoloCodice: { type: String, required: true }
+  tipoRuoloCodice: { type: String, default: '' }
 })
 
 const emit = defineEmits(['update:visible', 'soggetto-selezionato', 'soggetto-creato', 'annullato'])
@@ -94,8 +94,12 @@ watch(() => props.visible, async (val) => {
 
   configLoading.value = true
   try {
-    const res = await getConfigResolver(props.tipoRuoloCodice)
-    configResolver.value = res.data.data
+    if (props.tipoRuoloCodice) {
+      const res = await getConfigResolver(props.tipoRuoloCodice)
+      configResolver.value = res.data.data
+    } else {
+      configResolver.value = null
+    }
   } catch {
     configResolver.value = null
   } finally {

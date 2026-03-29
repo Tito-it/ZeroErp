@@ -12,19 +12,69 @@ from typing import Any
 from django.db import connection
 
 from apps.core.services.error_manager import ErrorManager
-from apps.pratiche.types import (
-    CalcoloTempoRow,
-    CanalePraticaRow,
-    FlussoRow,
-    FormulaTempoRow,
-    GiornaleRow,
-    PraticaRow,
-    PrerequisitoCheckRow,
-    SospensioneRow,
-)
+
+
+_PRATICHE_ORDER_COLS = {
+    "codice", "descrizione", "data_scadenza", "data_insert",
+    "tipo_prestazione_descrizione", "stato_descrizione",
+    "priorita_descrizione", "soggetto_display", "risorsa_umana_display",
+}
 
 
 class PraticheRepository:
+
+    # -- HELPER generico: named columns da cursor.description --
+
+    @staticmethod
+    def _dict_from_cursor(cursor, row) -> dict[str, Any]:
+        """Converte una riga DB in dict usando i nomi colonna dal cursor."""
+        cols = [desc[0] for desc in cursor.description]
+        d = dict(zip(cols, row))
+        for k, v in d.items():
+            if hasattr(v, 'isoformat'):
+                d[k] = v.isoformat()
+        return d
+
+    @staticmethod
+    def _dicts_from_cursor(cursor, rows) -> list[dict[str, Any]]:
+        """Converte una lista di righe DB in lista di dict."""
+        cols = [desc[0] for desc in cursor.description]
+        return [
+            {k: (v.isoformat() if hasattr(v, 'isoformat') else v) for k, v in zip(cols, row)}
+            for row in rows
+        ]
+
+    # -- SQL comuni pratiche (JOIN display fields) --
+
+    _PRATICA_SELECT = """
+        p.id, p.emittente_fiscale_id, p.tipo_prestazione_id,
+        p.soggetto_id, p.soggetto_ruolo_id, p.istanza_utility_id,
+        p.stato_id, p.priorita_id,
+        p.risorsa_umana_id, p.unita_organizzativa_id,
+        p.pratica_padre_id, p.flusso_origine_id, p.canale_origine_id,
+        p.codice, p.descrizione, p.data_scadenza,
+        p.meta, p.data_insert, p.user_insert,
+        tp.codice AS tipo_prestazione_codice,
+        tp.descrizione AS tipo_prestazione_descrizione,
+        sp.codice_interno AS stato_codice_interno,
+        sp.descrizione AS stato_descrizione,
+        pp.codice_interno AS priorita_codice_interno,
+        pp.descrizione AS priorita_descrizione,
+        s.ragione_sociale_completa AS soggetto_display,
+        sru.ragione_sociale_completa AS risorsa_umana_display,
+        uo.descrizione AS unita_organizzativa_descrizione
+    """
+
+    _PRATICA_JOINS = """
+        JOIN pratiche.tipi_prestazione tp ON tp.id = p.tipo_prestazione_id
+        JOIN config.stati_pratiche sp ON sp.id = p.stato_id
+        JOIN config.priorita_pratiche pp ON pp.id = p.priorita_id
+        LEFT JOIN anagrafiche.soggetti s ON s.id = p.soggetto_id
+        LEFT JOIN anagrafiche.risorse_umane ru ON ru.id = p.risorsa_umana_id
+        LEFT JOIN anagrafiche.soggetti_ruoli srr ON srr.id = ru.soggetto_ruolo_id
+        LEFT JOIN anagrafiche.soggetti sru ON sru.id = srr.soggetto_id
+        LEFT JOIN config.unita_organizzative uo ON uo.id = p.unita_organizzativa_id
+    """
 
     # -- PRATICHE --------------------------------------------------------
 
@@ -38,11 +88,18 @@ class PraticheRepository:
         stato_codice_interno: str | None = None,
         tipo_prestazione_id: int | None = None,
         soggetto_id: str | None = None,
+        search: str | None = None,
+        data_da: str | None = None,
+        data_a: str | None = None,
         limit: int,
         offset: int,
-    ) -> tuple[list[PraticaRow], int]:
+        order_by: str = "data_insert",
+        order_dir: str = "desc",
+    ) -> tuple[list[dict[str, Any]], int]:
         safe_limit = max(1, min(int(limit), 200))
         safe_offset = max(0, int(offset))
+        order_col = order_by if order_by in _PRATICHE_ORDER_COLS else "data_insert"
+        direction = "DESC" if order_dir and order_dir.upper() == "DESC" else "ASC"
 
         conditions: list[str] = ["p.emittente_fiscale_id = %s"]
         params: list[Any] = [emittente_fiscale_id]
@@ -56,33 +113,36 @@ class PraticheRepository:
         if soggetto_id is not None:
             conditions.append("p.soggetto_id = %s")
             params.append(soggetto_id)
+        if data_da:
+            conditions.append("p.data_insert >= %s::date")
+            params.append(data_da)
+        if data_a:
+            conditions.append("p.data_insert < (%s::date + INTERVAL '1 day')")
+            params.append(data_a)
+        if search:
+            conditions.append("""(
+                p.codice ILIKE %s
+                OR p.descrizione ILIKE %s
+                OR s.ragione_sociale_completa ILIKE %s
+            )""")
+            pattern = f"%{search.strip()}%"
+            params.extend([pattern, pattern, pattern])
 
         where_clause = "WHERE " + " AND ".join(conditions)
-
-        joins = """
-            JOIN config.stati_pratiche sp ON sp.id = p.stato_id
-        """
 
         count_sql = f"""
             SELECT COUNT(*)
             FROM pratiche.pratiche p
-            {joins}
+            {self._PRATICA_JOINS}
             {where_clause}
         """
 
         data_sql = f"""
-            SELECT
-                p.id, p.emittente_fiscale_id, p.tipo_prestazione_id,
-                p.soggetto_id, p.stato_id, p.priorita_id,
-                p.risorsa_umana_id, p.unita_organizzativa_id,
-                p.pratica_padre_id, p.flusso_origine_id,
-                p.canale_origine_id,
-                p.codice, p.descrizione, p.data_scadenza,
-                p.meta, p.data_insert, p.user_insert
+            SELECT {self._PRATICA_SELECT}
             FROM pratiche.pratiche p
-            {joins}
+            {self._PRATICA_JOINS}
             {where_clause}
-            ORDER BY p.data_insert DESC, p.id DESC
+            ORDER BY {order_col} {direction}, p.id
             LIMIT %s OFFSET %s
         """
 
@@ -94,41 +154,36 @@ class PraticheRepository:
 
             cursor.execute(data_sql, params + [safe_limit, safe_offset])
             rows = cursor.fetchall()
+            result = self._dicts_from_cursor(cursor, rows)
 
-        return [self._map_pratica_row(r) for r in rows], total_count
+        return result, total_count
 
-    # Scopo: Restituisce il dettaglio di una singola pratica per ID.
-    def get_pratica(self, pratica_id: int) -> PraticaRow | None:
-        sql = """
-            SELECT
-                p.id, p.emittente_fiscale_id, p.tipo_prestazione_id,
-                p.soggetto_id, p.stato_id, p.priorita_id,
-                p.risorsa_umana_id, p.unita_organizzativa_id,
-                p.pratica_padre_id, p.flusso_origine_id,
-                p.canale_origine_id,
-                p.codice, p.descrizione, p.data_scadenza,
-                p.meta, p.data_insert, p.user_insert
+    # Scopo: Restituisce il dettaglio di una singola pratica per ID con display fields.
+    def get_pratica(self, pratica_id: int) -> dict[str, Any] | None:
+        sql = f"""
+            SELECT {self._PRATICA_SELECT}
             FROM pratiche.pratiche p
+            {self._PRATICA_JOINS}
             WHERE p.id = %s
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [pratica_id])
             row = cursor.fetchone()
-
-        if not row:
-            return None
-        return self._map_pratica_row(row)
+            if not row:
+                return None
+            return self._dict_from_cursor(cursor, row)
 
     # Scopo: Inserisce una nuova pratica e ritorna l'ID generato.
     def create_pratica(self, data: dict[str, Any]) -> int:
         sql = """
             INSERT INTO pratiche.pratiche (
                 emittente_fiscale_id, tipo_prestazione_id, soggetto_id,
+                soggetto_ruolo_id, istanza_utility_id,
                 stato_id, priorita_id, risorsa_umana_id,
                 unita_organizzativa_id, canale_origine_id,
                 descrizione, data_scadenza, meta
             ) VALUES (
-                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb
+                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb
             )
             RETURNING id
         """
@@ -136,6 +191,8 @@ class PraticheRepository:
             data["emittente_fiscale_id"],
             data["tipo_prestazione_id"],
             data.get("soggetto_id"),
+            data.get("soggetto_ruolo_id"),
+            data.get("istanza_utility_id"),
             data["stato_id"],
             data["priorita_id"],
             data.get("risorsa_umana_id"),
@@ -204,44 +261,51 @@ class PraticheRepository:
 
     # -- FLUSSI ----------------------------------------------------------
 
-    # Scopo: Restituisce i flussi di una pratica ordinati per sequenza.
-    def list_flussi(self, pratica_id: int) -> list[FlussoRow]:
-        sql = """
-            SELECT
-                f.id, f.pratica_id, f.template_flusso_id, f.stato_id,
-                f.flusso_padre_id, f.risorsa_umana_id,
-                f.unita_organizzativa_id, f.sequenza,
-                f.esito, f.note_esito, f.data_scadenza,
-                f.meta, f.data_insert, f.user_insert
+    _FLUSSO_SELECT = """
+        f.id, f.pratica_id, f.template_flusso_id, f.stato_id,
+        f.flusso_padre_id, f.risorsa_umana_id,
+        f.unita_organizzativa_id, f.sequenza,
+        f.esito, f.note_esito, f.data_scadenza,
+        f.meta, f.data_insert, f.user_insert,
+        sf.codice_interno AS stato_codice_interno,
+        sf.descrizione AS stato_descrizione,
+        tf.codice AS template_flusso_codice,
+        tf.descrizione AS template_flusso_descrizione
+    """
+
+    _FLUSSO_JOINS = """
+        JOIN config.stati_flussi_pratiche sf ON sf.id = f.stato_id
+        LEFT JOIN pratiche.template_flussi tf ON tf.id = f.template_flusso_id
+    """
+
+    # Scopo: Restituisce i flussi di una pratica ordinati per sequenza, con display fields.
+    def list_flussi(self, pratica_id: int) -> list[dict[str, Any]]:
+        sql = f"""
+            SELECT {self._FLUSSO_SELECT}
             FROM pratiche.flussi f
+            {self._FLUSSO_JOINS}
             WHERE f.pratica_id = %s
             ORDER BY f.sequenza, f.id
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [pratica_id])
             rows = cursor.fetchall()
+            return self._dicts_from_cursor(cursor, rows)
 
-        return [self._map_flusso_row(r) for r in rows]
-
-    # Scopo: Restituisce il dettaglio di un singolo flusso.
-    def get_flusso(self, flusso_id: int) -> FlussoRow | None:
-        sql = """
-            SELECT
-                f.id, f.pratica_id, f.template_flusso_id, f.stato_id,
-                f.flusso_padre_id, f.risorsa_umana_id,
-                f.unita_organizzativa_id, f.sequenza,
-                f.esito, f.note_esito, f.data_scadenza,
-                f.meta, f.data_insert, f.user_insert
+    # Scopo: Restituisce il dettaglio di un singolo flusso con display fields.
+    def get_flusso(self, flusso_id: int) -> dict[str, Any] | None:
+        sql = f"""
+            SELECT {self._FLUSSO_SELECT}
             FROM pratiche.flussi f
+            {self._FLUSSO_JOINS}
             WHERE f.id = %s
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [flusso_id])
             row = cursor.fetchone()
-
-        if not row:
-            return None
-        return self._map_flusso_row(row)
+            if not row:
+                return None
+            return self._dict_from_cursor(cursor, row)
 
     # Scopo: Inserisce un nuovo flusso. Il trigger DB valida i prerequisiti.
     def create_flusso(self, data: dict[str, Any]) -> int:
@@ -300,7 +364,7 @@ class PraticheRepository:
     # Ritorna una riga per ogni prerequisito con flag soddisfatto.
     def check_prerequisiti(
         self, pratica_id: int, template_flusso_id: int,
-    ) -> list[PrerequisitoCheckRow]:
+    ) -> list[dict[str, Any]]:
         sql = """
             SELECT prerequisito_id, codice, descrizione, soddisfatto
             FROM pratiche.fn_check_prerequisiti_flusso(%s, %s)
@@ -308,16 +372,7 @@ class PraticheRepository:
         with connection.cursor() as cursor:
             cursor.execute(sql, [pratica_id, template_flusso_id])
             rows = cursor.fetchall()
-
-        return [
-            {
-                "prerequisito_id": int(r[0]),
-                "codice": str(r[1]),
-                "descrizione": str(r[2]),
-                "soddisfatto": bool(r[3]),
-            }
-            for r in rows
-        ]
+            return self._dicts_from_cursor(cursor, rows)
 
     # -- GIORNALE --------------------------------------------------------
 
@@ -325,7 +380,7 @@ class PraticheRepository:
     # Ordinato cronologicamente (piu' recente in cima), include tx_id per tracciabilita'.
     def get_giornale_pratica(
         self, pratica_id: int, *, limit: int = 100, offset: int = 0,
-    ) -> tuple[list[GiornaleRow], int]:
+    ) -> tuple[list[dict[str, Any]], int]:
         safe_limit = max(1, min(int(limit), 200))
         safe_offset = max(0, int(offset))
 
@@ -353,27 +408,14 @@ class PraticheRepository:
 
             cursor.execute(data_sql, [pratica_id, safe_limit, safe_offset])
             rows = cursor.fetchall()
+            result = self._dicts_from_cursor(cursor, rows)
 
-        result: list[GiornaleRow] = [
-            {
-                "id": int(r[0]),
-                "pratica_id": int(r[1]),
-                "flusso_id": None if r[2] is None else int(r[2]),
-                "azione": str(r[3]),
-                "origine": str(r[4]),
-                "dettaglio": r[5] if isinstance(r[5], dict) else {},
-                "tx_id": str(r[6]) if r[6] is not None else None,
-                "data_insert": r[7].isoformat() if r[7] is not None else "",
-                "user_insert": str(r[8]),
-            }
-            for r in rows
-        ]
         return result, total_count
 
     # -- CANALI ----------------------------------------------------------
 
     # Scopo: Restituisce i canali abilitati per un template flusso.
-    def get_canali_flusso(self, template_flusso_id: int) -> list[CanalePraticaRow]:
+    def get_canali_flusso(self, template_flusso_id: int) -> list[dict[str, Any]]:
         sql = """
             SELECT cp.id, cp.codice, cp.descrizione, cp.codice_interno
             FROM pratiche.template_flussi_canali tfc
@@ -386,16 +428,7 @@ class PraticheRepository:
         with connection.cursor() as cursor:
             cursor.execute(sql, [template_flusso_id])
             rows = cursor.fetchall()
-
-        return [
-            {
-                "id": int(r[0]),
-                "codice": str(r[1]),
-                "descrizione": r[2],
-                "codice_interno": str(r[3]),
-            }
-            for r in rows
-        ]
+            return self._dicts_from_cursor(cursor, rows)
 
     # -- SOSPENSIONI -----------------------------------------------------
 
@@ -447,7 +480,7 @@ class PraticheRepository:
             )
 
     # Scopo: Trova la sospensione attiva (data_fine IS NULL) per una pratica intera.
-    def get_sospensione_attiva_pratica(self, pratica_id: int) -> SospensioneRow | None:
+    def get_sospensione_attiva_pratica(self, pratica_id: int) -> dict[str, Any] | None:
         sql = f"""
             SELECT {self._SOSPENSIONE_COLS}
             FROM pratiche.sospensioni
@@ -457,12 +490,12 @@ class PraticheRepository:
         with connection.cursor() as cursor:
             cursor.execute(sql, [pratica_id])
             row = cursor.fetchone()
-        if not row:
-            return None
-        return self._map_sospensione_row(row)
+            if not row:
+                return None
+            return self._dict_from_cursor(cursor, row)
 
     # Scopo: Trova la sospensione attiva per un flusso specifico.
-    def get_sospensione_attiva_flusso(self, pratica_id: int, flusso_id: int) -> SospensioneRow | None:
+    def get_sospensione_attiva_flusso(self, pratica_id: int, flusso_id: int) -> dict[str, Any] | None:
         sql = f"""
             SELECT {self._SOSPENSIONE_COLS}
             FROM pratiche.sospensioni
@@ -472,12 +505,12 @@ class PraticheRepository:
         with connection.cursor() as cursor:
             cursor.execute(sql, [pratica_id, flusso_id])
             row = cursor.fetchone()
-        if not row:
-            return None
-        return self._map_sospensione_row(row)
+            if not row:
+                return None
+            return self._dict_from_cursor(cursor, row)
 
     # Scopo: Restituisce le sospensioni di una pratica (tutte, ordinate per data).
-    def list_sospensioni(self, pratica_id: int) -> list[SospensioneRow]:
+    def list_sospensioni(self, pratica_id: int) -> list[dict[str, Any]]:
         sql = f"""
             SELECT {self._SOSPENSIONE_COLS}
             FROM pratiche.sospensioni
@@ -487,14 +520,165 @@ class PraticheRepository:
         with connection.cursor() as cursor:
             cursor.execute(sql, [pratica_id])
             rows = cursor.fetchall()
-        return [self._map_sospensione_row(r) for r in rows]
+            return self._dicts_from_cursor(cursor, rows)
+
+    # -- NOTE PRATICHE ---------------------------------------------------
+
+    _NOTA_SELECT = """
+        n.id, n.pratica_id, n.tipo_nota_id,
+        tn.codice_interno AS tipo_nota_codice,
+        tn.descrizione AS tipo_nota_descrizione,
+        n.contenuto, n.data_insert, n.user_insert,
+        n.data_update, n.user_update
+    """
+
+    _NOTA_JOINS = """
+        JOIN config.tipi_nota tn ON tn.id = n.tipo_nota_id
+    """
+
+    # Scopo: Restituisce le note di una pratica con tipo nota display.
+    def list_note_pratica(self, pratica_id: int) -> list[dict[str, Any]]:
+        sql = f"""
+            SELECT {self._NOTA_SELECT}
+            FROM pratiche.note_pratiche n
+            {self._NOTA_JOINS}
+            WHERE n.pratica_id = %s
+            ORDER BY n.data_insert DESC, n.id DESC
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [pratica_id])
+            rows = cursor.fetchall()
+            return self._dicts_from_cursor(cursor, rows)
+
+    # Scopo: Crea una nota per la pratica. Risolve tipo_nota da codice_interno.
+    def create_nota_pratica(
+        self, pratica_id: int, tipo_nota_codice: str, contenuto: str,
+    ) -> int:
+        with connection.cursor() as cursor:
+            # Risolve tipo_nota_id prima dell'INSERT per errore chiaro
+            cursor.execute(
+                "SELECT id FROM config.tipi_nota WHERE codice_interno = %s AND attivo = true",
+                [tipo_nota_codice],
+            )
+            tipo_row = cursor.fetchone()
+            ErrorManager.require(
+                tipo_row is not None,
+                code="E_CONFIG_MANCANTE",
+                message=f"Tipo nota '{tipo_nota_codice}' non trovato o non attivo",
+            )
+            assert tipo_row is not None
+
+            cursor.execute(
+                """INSERT INTO pratiche.note_pratiche (pratica_id, tipo_nota_id, contenuto)
+                   VALUES (%s, %s, %s) RETURNING id""",
+                [pratica_id, tipo_row[0], contenuto],
+            )
+            row = cursor.fetchone()
+            assert row is not None
+        return int(row[0])
+
+    # Scopo: Aggiorna il contenuto di una nota (ownership check su pratica_id).
+    def update_nota_pratica(
+        self, nota_id: int, pratica_id: int, contenuto: str,
+    ) -> bool:
+        sql = """
+            UPDATE pratiche.note_pratiche
+            SET contenuto = %s
+            WHERE id = %s AND pratica_id = %s
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [contenuto, nota_id, pratica_id])
+            return cursor.rowcount > 0
+
+    # Scopo: Elimina una nota (ownership check su pratica_id).
+    def delete_nota_pratica(self, nota_id: int, pratica_id: int) -> bool:
+        sql = """
+            DELETE FROM pratiche.note_pratiche
+            WHERE id = %s AND pratica_id = %s
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [nota_id, pratica_id])
+            return cursor.rowcount > 0
+
+    # -- ALLEGATI PRATICHE -----------------------------------------------
+
+    _ALLEGATO_SELECT = """
+        a.id, a.pratica_id, a.tipo_allegato_id,
+        ta.codice_interno AS tipo_allegato_codice,
+        ta.descrizione AS tipo_allegato_descrizione,
+        a.nome_file, a.percorso, a.mime_type, a.dimensione,
+        a.allegato_padre_id, a.data_insert, a.user_insert
+    """
+
+    _ALLEGATO_JOINS = """
+        JOIN config.tipi_allegato ta ON ta.id = a.tipo_allegato_id
+    """
+
+    # Scopo: Restituisce gli allegati di una pratica con tipo allegato display.
+    def list_allegati_pratica(self, pratica_id: int) -> list[dict[str, Any]]:
+        sql = f"""
+            SELECT {self._ALLEGATO_SELECT}
+            FROM pratiche.allegati_pratiche a
+            {self._ALLEGATO_JOINS}
+            WHERE a.pratica_id = %s
+            ORDER BY a.data_insert DESC, a.id DESC
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [pratica_id])
+            rows = cursor.fetchall()
+            return self._dicts_from_cursor(cursor, rows)
+
+    # Scopo: Crea un record allegato (senza upload file — solo metadati).
+    # Il file verra' caricato in una fase successiva.
+    def create_allegato_pratica(
+        self, pratica_id: int, tipo_allegato_codice: str,
+        nome_file: str, *, percorso: str | None = None,
+        mime_type: str | None = None, dimensione: int | None = None,
+        allegato_padre_id: int | None = None,
+    ) -> int:
+        with connection.cursor() as cursor:
+            # Risolve tipo_allegato_id prima dell'INSERT per errore chiaro
+            cursor.execute(
+                "SELECT id FROM config.tipi_allegato WHERE codice_interno = %s AND attivo = true",
+                [tipo_allegato_codice],
+            )
+            tipo_row = cursor.fetchone()
+            ErrorManager.require(
+                tipo_row is not None,
+                code="E_CONFIG_MANCANTE",
+                message=f"Tipo allegato '{tipo_allegato_codice}' non trovato o non attivo",
+            )
+            assert tipo_row is not None
+
+            cursor.execute(
+                """INSERT INTO pratiche.allegati_pratiche (
+                       pratica_id, tipo_allegato_id, nome_file,
+                       percorso, mime_type, dimensione, allegato_padre_id
+                   ) VALUES (%s, %s, %s, %s, %s, %s, %s) RETURNING id""",
+                [pratica_id, tipo_row[0], nome_file,
+                 percorso, mime_type, dimensione, allegato_padre_id],
+            )
+            row = cursor.fetchone()
+            assert row is not None
+        return int(row[0])
+
+    # Scopo: Elimina un allegato (ownership check su pratica_id).
+    # Gli allegati sono immutabili (no update), solo delete per rimozione.
+    def delete_allegato_pratica(self, allegato_id: int, pratica_id: int) -> bool:
+        sql = """
+            DELETE FROM pratiche.allegati_pratiche
+            WHERE id = %s AND pratica_id = %s
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [allegato_id, pratica_id])
+            return cursor.rowcount > 0
 
     # -- CALCOLI TEMPO ---------------------------------------------------
 
     # Scopo: Restituisce i calcoli tempo di una pratica arricchiti con stato_tempo live.
     # Usa LEFT JOIN LATERAL su fn_valuta_tempo_esecuzione_da_a per calcolare
     # giorni_rimanenti e stato_tempo (OK/WARNING/CRITICO/SFORATO) in tempo reale.
-    def list_calcoli_tempo(self, pratica_id: int) -> list[CalcoloTempoRow]:
+    def list_calcoli_tempo(self, pratica_id: int) -> list[dict[str, Any]]:
         sql = """
             SELECT ct.id, ct.pratica_id, ct.flusso_da_id, ct.flusso_a_id,
                    ct.formula_tempo_id, ct.data_inizio_calcolo, ct.data_fine_calcolo,
@@ -511,12 +695,12 @@ class PraticheRepository:
         with connection.cursor() as cursor:
             cursor.execute(sql, [pratica_id])
             rows = cursor.fetchall()
-        return [self._map_calcolo_tempo_row(r) for r in rows]
+            return self._dicts_from_cursor(cursor, rows)
 
     # -- FORMULE TEMPO -----------------------------------------------------
 
     # Scopo: Restituisce le formule tempo attive per un tipo prestazione.
-    def list_formule_tempo(self, tipo_prestazione_id: int) -> list[FormulaTempoRow]:
+    def list_formule_tempo(self, tipo_prestazione_id: int) -> list[dict[str, Any]]:
         sql = """
             SELECT ft.id, ft.tipo_prestazione_id,
                    ft.template_flusso_da_id, ft.template_flusso_a_id,
@@ -529,7 +713,7 @@ class PraticheRepository:
         with connection.cursor() as cursor:
             cursor.execute(sql, [tipo_prestazione_id])
             rows = cursor.fetchall()
-        return [self._map_formula_tempo_row(r) for r in rows]
+            return self._dicts_from_cursor(cursor, rows)
 
     # -- RISOLUZIONE STATO -----------------------------------------------
 
@@ -595,95 +779,47 @@ class PraticheRepository:
         handler_params = row[1] if isinstance(row[1], dict) else {}
         return str(row[0]), handler_params
 
-    # -- MAPPING HELPERS -------------------------------------------------
+    # -- TIPO PRESTAZIONE ------------------------------------------------
 
-    @staticmethod
-    def _map_pratica_row(r: tuple) -> PraticaRow:
-        return {
-            "id": int(r[0]),
-            "emittente_fiscale_id": int(r[1]),
-            "tipo_prestazione_id": int(r[2]),
-            "soggetto_id": str(r[3]) if r[3] is not None else None,
-            "stato_id": int(r[4]),
-            "priorita_id": int(r[5]),
-            "risorsa_umana_id": None if r[6] is None else int(r[6]),
-            "unita_organizzativa_id": None if r[7] is None else int(r[7]),
-            "pratica_padre_id": None if r[8] is None else int(r[8]),
-            "flusso_origine_id": None if r[9] is None else int(r[9]),
-            "canale_origine_id": None if r[10] is None else int(r[10]),
-            "codice": r[11],
-            "descrizione": r[12],
-            "data_scadenza": r[13].isoformat() if r[13] is not None else None,
-            "meta": r[14] if isinstance(r[14], dict) else {},
-            "data_insert": r[15].isoformat() if r[15] is not None else "",
-            "user_insert": str(r[16]),
-        }
+    # Scopo: Legge pre_attivazione e post_attivazione dal tipo prestazione.
+    # Usato dal service per il guard di ammissibilita' pratica.
+    def get_tipo_prestazione_attivazione(self, tipo_prestazione_id: int) -> dict[str, bool]:
+        sql = """
+            SELECT pre_attivazione, post_attivazione
+            FROM pratiche.tipi_prestazione
+            WHERE id = %s AND attivo = true
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [tipo_prestazione_id])
+            row = cursor.fetchone()
+        ErrorManager.require(
+            row is not None,
+            code="E_CONFIG_MANCANTE",
+            message=f"Tipo prestazione {tipo_prestazione_id} non trovato o non attivo",
+        )
+        assert row is not None
+        return {"pre_attivazione": bool(row[0]), "post_attivazione": bool(row[1])}
 
-    @staticmethod
-    def _map_sospensione_row(r: tuple) -> SospensioneRow:
-        return {
-            "id": int(r[0]),
-            "pratica_id": int(r[1]),
-            "flusso_id": None if r[2] is None else int(r[2]),
-            "data_inizio": r[3].isoformat() if r[3] is not None else "",
-            "data_fine": r[4].isoformat() if r[4] is not None else None,
-            "data_riattivazione_prevista": r[5].isoformat() if r[5] is not None else None,
-            "motivo": str(r[6]),
-            "data_insert": r[7].isoformat() if r[7] is not None else "",
-            "user_insert": str(r[8]),
-            "data_update": r[9].isoformat() if r[9] is not None else None,
-            "user_update": str(r[10]) if r[10] is not None else None,
-        }
+    # -- VERIFICA STATO BA SOGGETTO (cross-schema) ----------------------
 
-    @staticmethod
-    def _map_calcolo_tempo_row(r: tuple) -> CalcoloTempoRow:
-        return {
-            "id": int(r[0]),
-            "pratica_id": int(r[1]),
-            "flusso_da_id": int(r[2]),
-            "flusso_a_id": int(r[3]),
-            "formula_tempo_id": int(r[4]),
-            "data_inizio_calcolo": r[5].isoformat() if r[5] is not None else "",
-            "data_fine_calcolo": r[6].isoformat() if r[6] is not None else None,
-            "giorni_lordi": None if r[7] is None else int(r[7]),
-            "giorni_sospensione": None if r[8] is None else int(r[8]),
-            "giorni_netti": None if r[9] is None else int(r[9]),
-            "giorni_formula": int(r[10]),
-            "sforato": None if r[11] is None else bool(r[11]),
-            "giorni_rimanenti": None if r[12] is None else int(r[12]),
-            "stato_tempo": None if r[13] is None else str(r[13]),
-        }
-
-    @staticmethod
-    def _map_formula_tempo_row(r: tuple) -> FormulaTempoRow:
-        return {
-            "id": int(r[0]),
-            "tipo_prestazione_id": int(r[1]),
-            "template_flusso_da_id": int(r[2]),
-            "template_flusso_a_id": int(r[3]),
-            "giorni_esecuzione": int(r[4]),
-            "giorni_warning": int(r[5]),
-            "giorni_critico": int(r[6]),
-            "attivo": bool(r[7]),
-            "descrizione": str(r[8]) if r[8] is not None else None,
-            "meta": r[9] if isinstance(r[9], dict) else {},
-        }
-
-    @staticmethod
-    def _map_flusso_row(r: tuple) -> FlussoRow:
-        return {
-            "id": int(r[0]),
-            "pratica_id": int(r[1]),
-            "template_flusso_id": None if r[2] is None else int(r[2]),
-            "stato_id": int(r[3]),
-            "flusso_padre_id": None if r[4] is None else int(r[4]),
-            "risorsa_umana_id": None if r[5] is None else int(r[5]),
-            "unita_organizzativa_id": None if r[6] is None else int(r[6]),
-            "sequenza": int(r[7]),
-            "esito": r[8],
-            "note_esito": r[9],
-            "data_scadenza": r[10].isoformat() if r[10] is not None else None,
-            "meta": r[11] if isinstance(r[11], dict) else {},
-            "data_insert": r[12].isoformat() if r[12] is not None else "",
-            "user_insert": str(r[13]),
-        }
+    # Scopo: Verifica se il soggetto ha un billing_account attivo per l'emittente.
+    # Ritorna True se esiste un BA con data_attivazione NOT NULL e data_chiusura IS NULL.
+    # Usato dal guard pre/post-attivazione in crea_pratica.
+    # La query attraversa: clienti → billing_account → istanze_utilities.
+    def ha_ba_attivo(self, soggetto_id: str, emittente_fiscale_id: int) -> bool:
+        sql = """
+            SELECT EXISTS (
+                SELECT 1
+                FROM anagrafiche.clienti cl
+                JOIN anagrafiche.billing_account ba ON ba.id = cl.billing_account_id
+                JOIN anagrafiche.istanze_utilities iu ON iu.id = cl.istanza_utility_id
+                WHERE iu.soggetto_id = %s::uuid
+                  AND iu.emittente_fiscale_id = %s
+                  AND cl.data_attivazione IS NOT NULL
+                  AND cl.data_chiusura IS NULL
+            )
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [soggetto_id, emittente_fiscale_id])
+            row = cursor.fetchone()
+        return bool(row[0]) if row else False

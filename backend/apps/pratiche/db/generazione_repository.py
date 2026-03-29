@@ -12,7 +12,7 @@ from typing import Any
 from django.db import connection
 
 from apps.core.services.error_manager import ErrorManager
-from apps.pratiche.types import PraticaRow, RegolaGenerazioneRow
+from apps.pratiche.types import RegolaGenerazioneRow
 
 
 class GenerazioneRepository:
@@ -52,27 +52,19 @@ class GenerazioneRepository:
         ]
 
     # Scopo: Restituisce le pratiche generate da un flusso (via flusso_origine_id).
-    def get_pratiche_generate_da_flusso(self, flusso_id: int) -> list[PraticaRow]:
-        sql = """
-            SELECT
-                p.id, p.emittente_fiscale_id, p.tipo_prestazione_id,
-                p.soggetto_id, p.stato_id, p.priorita_id,
-                p.risorsa_umana_id, p.unita_organizzativa_id,
-                p.pratica_padre_id, p.flusso_origine_id,
-                p.canale_origine_id,
-                p.codice, p.descrizione, p.data_scadenza,
-                p.meta, p.data_insert, p.user_insert
+    def get_pratiche_generate_da_flusso(self, flusso_id: int) -> list[dict[str, Any]]:
+        from apps.pratiche.db.pratiche_repository import PraticheRepository
+        sql = f"""
+            SELECT {PraticheRepository._PRATICA_SELECT}
             FROM pratiche.pratiche p
+            {PraticheRepository._PRATICA_JOINS}
             WHERE p.flusso_origine_id = %s
             ORDER BY p.id
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [flusso_id])
             rows = cursor.fetchall()
-
-        # Riusa il mapper di PraticheRepository per coerenza.
-        from apps.pratiche.db.pratiche_repository import PraticheRepository
-        return [PraticheRepository._map_pratica_row(r) for r in rows]
+            return PraticheRepository._dicts_from_cursor(cursor, rows)
 
     # Scopo: Invoca fn_genera_pratica_da_flusso per generazione manuale.
     # Obiettivo: generazione esplicita per regole con auto=false.

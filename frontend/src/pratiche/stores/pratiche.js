@@ -18,14 +18,19 @@ export const usePraticheStore = defineStore('pratiche', () => {
   const totalRecords = ref(0)
   const loading = ref(false)
 
+  // Default data_da: 1 gennaio anno corrente - 1
+  const defaultDataDa = `${new Date().getFullYear() - 1}-01-01`
+
   const filters = ref({
     search: '',
     stato_id: null,
     priorita_id: null,
     risorsa_umana_id: null,
+    data_da: defaultDataDa,
+    data_a: null,
     limit: 25,
     offset: 0,
-    order_by: 'date_insert',
+    order_by: 'data_insert',
     order_dir: 'desc'
   })
 
@@ -34,13 +39,20 @@ export const usePraticheStore = defineStore('pratiche', () => {
     loading.value = true
     try {
       const params = {}
-      const emittenteId = auth.user?.emittente?.id
-      if (emittenteId) params.emittente_fiscale_id = emittenteId
+      const emittenteId = auth.user?.emittente?.emittente_fiscale_id
+      if (!emittenteId) {
+        items.value = []
+        totalRecords.value = 0
+        return
+      }
+      params.emittente_fiscale_id = emittenteId
       const f = filters.value
       if (f.search) params.search = f.search
       if (f.stato_id != null) params.stato_id = f.stato_id
       if (f.priorita_id != null) params.priorita_id = f.priorita_id
       if (f.risorsa_umana_id != null) params.risorsa_umana_id = f.risorsa_umana_id
+      if (f.data_da) params.data_da = f.data_da
+      if (f.data_a) params.data_a = f.data_a
       params.limit = f.limit
       params.offset = f.offset
       if (f.order_by) {
@@ -63,7 +75,7 @@ export const usePraticheStore = defineStore('pratiche', () => {
 
   // Scopo: Crea nuova pratica (aggiunge emittente_fiscale_id dal profilo utente).
   async function create(payload) {
-    const emittenteId = auth.user?.emittente?.id
+    const emittenteId = auth.user?.emittente?.emittente_fiscale_id
     const res = await createPratica({ ...payload, emittente_fiscale_id: emittenteId })
     emitDataChanged('pratica', res.data.data.id)
     return res.data.data
