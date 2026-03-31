@@ -1,7 +1,7 @@
 <script setup>
 // Scopo: topbar principale — emittente, area title, context chip, ricerca, user badge, data, logout.
 // Su mobile mostra hamburger per aprire il drawer sidebar.
-import { computed } from 'vue'
+import { computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import Button from 'primevue/button'
@@ -10,7 +10,9 @@ import { useAuthStore } from '../../stores/auth'
 import { useUiStore } from '../../stores/ui'
 import { useContextStore } from '../../stores/context'
 import { resolveTabLabel } from '../navigation'
+import { getAIStatus } from '../api/ai-api'
 import SearchDrawer from './SearchDrawer.vue'
+import AiAssistantDrawer from './AiAssistantDrawer.vue'
 
 const { t, locale } = useI18n()
 const route = useRoute()
@@ -61,6 +63,18 @@ async function handleLogout() {
   await auth.logout()
   router.push('/login')
 }
+
+// Scopo: Verifica disponibilita' AI al mount (best-effort, non blocca).
+//        Solo se l'utente e' autenticato, per evitare 401 inutili.
+onMounted(async () => {
+  if (!auth.isAuthenticated) return
+  try {
+    const response = await getAIStatus()
+    ui.aiAvailable = response.data?.data?.enabled === true
+  } catch {
+    ui.aiAvailable = false
+  }
+})
 </script>
 
 <template>
@@ -99,13 +113,23 @@ async function handleLogout() {
         </template>
       </Chip>
 
-      <!-- Pulsante ricerca universale — icona verde, sfondo neutro -->
+      <!-- Pulsante ricerca universale -->
       <button
-        class="topbar-search-btn"
+        class="topbar-icon-btn"
         v-tooltip.bottom="t('context.tooltip_search')"
         @click="ui.openSearchDrawer()"
       >
         <i class="pi pi-search"></i>
+      </button>
+
+      <!-- Pulsante assistente AI — visibile solo se AI disponibile -->
+      <button
+        v-if="ui.aiAvailable"
+        class="topbar-icon-btn"
+        v-tooltip.bottom="`${t('ai.title')} (Ctrl+.)`"
+        @click="ui.toggleAiDrawer()"
+      >
+        <i class="pi pi-microchip-ai"></i>
       </button>
 
       <!-- Badge admin o iniziali utente -->
@@ -123,7 +147,7 @@ async function handleLogout() {
 
       <!-- Logout -->
       <button
-        class="topbar-logout-btn"
+        class="topbar-icon-btn topbar-logout-btn"
         v-tooltip.bottom="t('auth.logout')"
         @click="handleLogout"
       >
@@ -133,6 +157,7 @@ async function handleLogout() {
   </header>
 
   <SearchDrawer v-model:visible="ui.searchDrawerVisible" />
+  <AiAssistantDrawer v-model:visible="ui.aiDrawerVisible" />
 </template>
 
 <style scoped>
@@ -197,8 +222,8 @@ async function handleLogout() {
   white-space: nowrap;
 }
 
-/* Pulsante ricerca — icona verde, sfondo neutro (come app-action-btn) */
-.topbar-search-btn {
+/* Bottone icona topbar — classe riutilizzabile per search, AI, logout */
+.topbar-icon-btn {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -213,7 +238,7 @@ async function handleLogout() {
   transition: color var(--app-transition-fast), background var(--app-transition-fast);
 }
 
-.topbar-search-btn:hover {
+.topbar-icon-btn:hover {
   color: var(--p-primary-700);
   background: var(--p-primary-50);
 }
@@ -259,22 +284,7 @@ async function handleLogout() {
   color: var(--p-orange-500);
 }
 
-/* Bottone logout — icona verde come ricerca */
-.topbar-logout-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 1.85rem;
-  height: 1.85rem;
-  font-size: 0.95rem;
-  color: var(--p-primary-color);
-  background: transparent;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: color var(--app-transition-fast), background var(--app-transition-fast);
-}
-
+/* Logout — override hover rosso (usa topbar-icon-btn come base) */
 .topbar-logout-btn:hover {
   color: var(--p-red-500);
   background: var(--p-red-50);

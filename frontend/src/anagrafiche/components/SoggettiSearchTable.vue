@@ -1,7 +1,7 @@
 <script setup>
 // Scopo: DataTable paginata soggetti con search e filtro tipo.
 // Riusabile da: SoggettiView, futuro ricerca soggetti in altri domini.
-import { onMounted, ref } from 'vue'
+import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useSoggettiStore } from '../stores/soggetti'
 import { useSearchTable } from '../../core/composables/useSearchTable'
@@ -14,6 +14,7 @@ import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
 import TagList from '../../core/components/TagList.vue'
 import NewButton from '../../core/components/NewButton.vue'
+import SearchHint from '../../core/components/SearchHint.vue'
 import Button from 'primevue/button'
 
 const emit = defineEmits(['new', 'row-click', 'contatti', 'indirizzi', 'conti-bancari'])
@@ -34,7 +35,7 @@ function onTipoChange() {
 function onRowClick(event) { emit('row-click', event.data) }
 
 useTabFreshness(store, 'soggetto')
-onMounted(() => { store.fetchList() })
+// La lista parte vuota — l'operatore deve cercare o applicare un filtro.
 </script>
 
 <template>
@@ -62,7 +63,11 @@ onMounted(() => { store.fetchList() })
       </div>
     </div>
 
+    <!-- Placeholder: nessuna ricerca effettuata -->
+    <SearchHint v-if="!store.hasSearched && !store.loading" />
+
     <DataTable
+      v-show="store.hasSearched || store.loading"
       :value="store.items"
       :loading="store.loading"
       v-bind="paginatorProps"

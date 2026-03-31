@@ -55,6 +55,18 @@ API_SEARCH_THROTTLE_RATE = env("DJANGO_API_SEARCH_THROTTLE_RATE", "30/min")
 API_STRONG_IDEMPOTENCY_ENABLED = env("DJANGO_API_STRONG_IDEMPOTENCY_ENABLED", "0") == "1"
 REQUEST_LOG_ENABLED = env("DJANGO_REQUEST_LOG_ENABLED", "1") == "1"
 
+# ── Assistente AI ──
+AI_ENABLED = env("AI_ENABLED", "0") == "1"
+AI_PROVIDER = env("AI_PROVIDER", "mock")
+AI_API_KEY = env("AI_API_KEY", "")
+AI_MODEL = env("AI_MODEL", "claude-sonnet-4-20250514")
+AI_MAX_TOKENS = int(env("AI_MAX_TOKENS", "4096"))
+AI_CONVERSATION_TTL = int(env("AI_CONVERSATION_TTL", "900"))
+AI_EMBEDDING_PROVIDER = env("AI_EMBEDDING_PROVIDER", "same")
+AI_EMBEDDING_MODEL = env("AI_EMBEDDING_MODEL", "")
+AI_DOCS_PATH = env("AI_DOCS_PATH", "docs/it/")
+AI_CONTEXT_FILE = env("AI_CONTEXT_FILE", "docs/it/ai/ai-context.md")
+
 
 # Application definition
 
@@ -80,7 +92,7 @@ INSTALLED_APPS = [
     'apps.pratiche',
     'apps.amm_software',
     'rest_framework_simplejwt.token_blacklist',
-]
+] + (['apps.ai_assistant'] if AI_ENABLED else [])
 
 REST_FRAMEWORK = {
     # API backend solo JSON: evita output HTML non richiesto su endpoint REST.
