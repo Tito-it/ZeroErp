@@ -1,0 +1,265 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+#
+# Fix E_GENERICO — vendite batch 9 (4 funzioni):
+#   - fn_log_commessa_push_run (3x)
+#   - fn_log_lotto_esito_fatture (1x)
+#   - fn_log_pipeline_fase (3x)
+#   - fn_numera_fattura_opz_emessa (2x)
+# Nota: fn_numera_fattura_opz_emessa usava gia' E_FATTURA_NON_TROVATA
+# ma il codice mancava nel CSV — aggiunto (id 140).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+    - logicalFilePath: migrations_v2/20_code/vendite/20260331-18-fix-vendite-fn-e-generico-batch9-mctit.yaml
+
+    - changeSet:
+          id: 20260331-18-fix-fn-log-commessa-push-run
+          author: mctit
+          runOnChange: true
+          comment: >
+              Fix fn_log_commessa_push_run: 3x E_GENERICO → E_PARAMETRO_INVALIDO.
+          changes:
+              - sql:
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+                        -- Fix 20260331: 3x E_GENERICO → E_PARAMETRO_INVALIDO
+                        CREATE OR REPLACE FUNCTION vendite.fn_log_commessa_push_run(
+                            p_dry_run      BOOLEAN DEFAULT FALSE,
+                            p_source_types TEXT[] DEFAULT NULL,
+                            p_risultato    JSONB DEFAULT '{}',
+                            p_stato        CHARACTER VARYING DEFAULT 'COMPLETATO',
+                            p_durata_ms    INTEGER DEFAULT NULL
+                        )
+                        RETURNS vendite.commesse_push_log.id%TYPE
+                        LANGUAGE plpgsql
+                        AS $function$
+                        DECLARE
+                            v_id    vendite.commesse_push_log.id%TYPE;
+                            v_stato vendite.commesse_push_log.stato%TYPE;
+                        BEGIN
+                            v_stato := upper(COALESCE(NULLIF(btrim(p_stato), ''), ''));
+
+                            IF v_stato = '' THEN
+                                PERFORM script.fn_log_and_raise_error('vendite', 'fn_log_commessa_push_run', 'E_PARAMETRO_INVALIDO',
+                                    jsonb_build_object('parametro', 'p_stato', 'valore', p_stato), NULL::uuid, 'p_stato obbligatorio');
+                            END IF;
+
+                            IF v_stato NOT IN ('COMPLETATO', 'PARZIALE', 'ERRORE') THEN
+                                PERFORM script.fn_log_and_raise_error('vendite', 'fn_log_commessa_push_run', 'E_PARAMETRO_INVALIDO',
+                                    jsonb_build_object('parametro', 'p_stato', 'valore', v_stato), NULL::uuid, concat('p_stato=', v_stato, ' (ammessi: COMPLETATO, PARZIALE, ERRORE)'));
+                            END IF;
+
+                            IF p_durata_ms IS NOT NULL AND p_durata_ms < 0 THEN
+                                PERFORM script.fn_log_and_raise_error('vendite', 'fn_log_commessa_push_run', 'E_PARAMETRO_INVALIDO',
+                                    jsonb_build_object('parametro', 'p_durata_ms', 'valore', p_durata_ms), NULL::uuid, 'p_durata_ms se fornito deve essere >= 0');
+                            END IF;
+
+                            INSERT INTO vendite.commesse_push_log (dry_run, source_types, risultato, stato, durata_ms)
+                            VALUES (COALESCE(p_dry_run, FALSE), p_source_types, COALESCE(p_risultato, '{}'::jsonb), v_stato, p_durata_ms)
+                            RETURNING id INTO v_id;
+
+                            RETURN v_id;
+                        END;
+                        $function$;
+
+                        COMMENT ON FUNCTION vendite.fn_log_commessa_push_run(BOOLEAN, TEXT[], JSONB, CHARACTER VARYING, INTEGER)
+                          IS 'Registra run push commesse in commesse_push_log con validazioni stato/durata.';
+
+    - changeSet:
+          id: 20260331-18-fix-fn-log-lotto-esito-fatture
+          author: mctit
+          runOnChange: true
+          comment: >
+              Fix fn_log_lotto_esito_fatture: 1x E_GENERICO → E_PARAMETRO_INVALIDO.
+          changes:
+              - sql:
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+                        -- Fix 20260331: 1x E_GENERICO → E_PARAMETRO_INVALIDO
+                        CREATE OR REPLACE FUNCTION vendite.fn_log_lotto_esito_fatture(
+                            p_lotto_id vendite.fatturazione_lotti.id%TYPE
+                        )
+                        RETURNS void
+                        LANGUAGE plpgsql
+                        AS $function$
+                        DECLARE
+                            v_has_critical BOOLEAN;
+                            v_has_warning  BOOLEAN;
+                            v_status       CHARACTER;
+                        BEGIN
+                            IF p_lotto_id IS NULL OR p_lotto_id <= 0 THEN
+                                PERFORM script.fn_log_and_raise_error('vendite', 'fn_log_lotto_esito_fatture', 'E_PARAMETRO_INVALIDO',
+                                    jsonb_build_object('parametro', 'p_lotto_id', 'valore', p_lotto_id), NULL::uuid, 'p_lotto_id obbligatorio e > 0');
+                            END IF;
+
+                            SELECT EXISTS (
+                                SELECT 1 FROM vendite.fatturazione_lotti_fatture lf
+                                JOIN vendite.fatture_log fl ON fl.fattura_id = lf.fattura_id
+                                WHERE lf.lotto_id = p_lotto_id AND fl.disabilitato IS FALSE AND fl.status = 'C'
+                            ) INTO v_has_critical;
+
+                            SELECT EXISTS (
+                                SELECT 1 FROM vendite.fatturazione_lotti_fatture lf
+                                JOIN vendite.fatture_log fl ON fl.fattura_id = lf.fattura_id
+                                WHERE lf.lotto_id = p_lotto_id AND fl.disabilitato IS FALSE AND fl.status = 'W'
+                            ) INTO v_has_warning;
+
+                            v_status := CASE WHEN v_has_critical THEN 'C' WHEN v_has_warning THEN 'W' ELSE 'I' END;
+
+                            PERFORM vendite.fn_log_pipeline_fase(p_lotto_id, NULL, 'Esito fatture lotto', v_status, NULL, jsonb_build_object('source', 'fatture_log'));
+                        END;
+                        $function$;
+
+                        COMMENT ON FUNCTION vendite.fn_log_lotto_esito_fatture(BIGINT)
+                          IS 'Esito lotto dai log fatture (C/W/I) → evento sintetico su fatturazione_lotti_log.';
+
+    - changeSet:
+          id: 20260331-18-fix-fn-log-pipeline-fase
+          author: mctit
+          runOnChange: true
+          comment: >
+              Fix fn_log_pipeline_fase: 3x E_GENERICO →
+              E_PARAMETRO_INVALIDO (2) + E_VALORE_MANCANTE (1).
+          changes:
+              - sql:
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+                        -- Fix 20260331: 3x E_GENERICO → codici specifici
+                        CREATE OR REPLACE FUNCTION vendite.fn_log_pipeline_fase(
+                            p_lotto_id             vendite.fatturazione_lotti.id%TYPE,
+                            p_stato_doc_fiscale_id config.stati_doc_fiscale.id%TYPE,
+                            p_fase                 TEXT,
+                            p_status               CHARACTER DEFAULT 'I',
+                            p_messaggio            TEXT DEFAULT NULL,
+                            p_meta                 JSONB DEFAULT '{}'
+                        )
+                        RETURNS void
+                        LANGUAGE plpgsql
+                        AS $function$
+                        DECLARE
+                            v_tipo_lotto      vendite.fatturazione_lotti.tipo_lotto%TYPE;
+                            v_stato_operativo vendite.fatturazione_lotti.stato_operativo%TYPE;
+                        BEGIN
+                            IF p_lotto_id IS NULL OR p_lotto_id <= 0 THEN
+                                PERFORM script.fn_log_and_raise_error('vendite', 'fn_log_pipeline_fase', 'E_PARAMETRO_INVALIDO',
+                                    jsonb_build_object('parametro', 'p_lotto_id', 'valore', p_lotto_id), NULL::uuid, 'p_lotto_id obbligatorio e > 0');
+                            END IF;
+
+                            IF p_status IS NULL OR p_status NOT IN ('I', 'W', 'C') THEN
+                                PERFORM script.fn_log_and_raise_error('vendite', 'fn_log_pipeline_fase', 'E_PARAMETRO_INVALIDO',
+                                    jsonb_build_object('parametro', 'p_status', 'valore', p_status), NULL::uuid, concat('p_status=', coalesce(p_status::text, 'NULL'), ' (ammessi: I, W, C)'));
+                            END IF;
+
+                            SELECT l.tipo_lotto, l.stato_operativo INTO v_tipo_lotto, v_stato_operativo
+                              FROM vendite.fatturazione_lotti l WHERE l.id = p_lotto_id;
+
+                            IF NOT FOUND THEN
+                                PERFORM script.fn_log_and_raise_error('vendite', 'fn_log_pipeline_fase', 'E_VALORE_MANCANTE',
+                                    jsonb_build_object('lotto_id', p_lotto_id), NULL::uuid, concat('lotto_id ', p_lotto_id));
+                            END IF;
+
+                            INSERT INTO vendite.fatturazione_lotti_log (
+                                lotto_id, data_ora, messaggio, status, disabilitato, fase,
+                                stato_doc_fiscale_id, tipo_lotto, stato_operativo, meta,
+                                data_insert, user_insert, data_update, user_update
+                            )
+                            VALUES (
+                                p_lotto_id, now(), COALESCE(p_messaggio, p_fase, 'pipeline'), p_status,
+                                FALSE, p_fase, p_stato_doc_fiscale_id, v_tipo_lotto, v_stato_operativo,
+                                COALESCE(p_meta, '{}'::jsonb), now(), current_user, now(), current_user
+                            );
+                        END;
+                        $function$;
+
+                        COMMENT ON FUNCTION vendite.fn_log_pipeline_fase(BIGINT, BIGINT, TEXT, CHARACTER, TEXT, JSONB)
+                          IS 'Registra fase pipeline nel log lotto con metadati stato operativo.';
+
+    - changeSet:
+          id: 20260331-18-fix-fn-numera-fattura-opz-emessa
+          author: mctit
+          runOnChange: true
+          comment: >
+              Fix fn_numera_fattura_opz_emessa: 2x E_GENERICO → E_PARAMETRO_INVALIDO.
+              Nota: E_FATTURA_NON_TROVATA gia' usata correttamente — aggiunto al CSV (id 140).
+          changes:
+              - sql:
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+                        -- Fix 20260331: 2x E_GENERICO → E_PARAMETRO_INVALIDO
+                        -- Nota: E_FATTURA_NON_TROVATA gia' usata nell'originale — mantenuta
+                        CREATE OR REPLACE FUNCTION vendite.fn_numera_fattura_opz_emessa(
+                            p_fattura_id              vendite.fatture.id%TYPE,
+                            p_set_emessa              BOOLEAN DEFAULT TRUE,
+                            p_codice_interno_emessa   CHARACTER VARYING DEFAULT 'EMESSA'
+                        )
+                        RETURNS TABLE(registro_id BIGINT, anno SMALLINT, mese SMALLINT, serie CHARACTER VARYING, numero BIGINT)
+                        LANGUAGE plpgsql
+                        AS $function$
+                        DECLARE
+                            v_is_numbered  BOOLEAN;
+                            v_reset        vendite.registri_fatturazione.reset_policy%TYPE;
+                            v_data         vendite.fatture.data%TYPE;
+                            v_registro_id  vendite.fatture.registro_id%TYPE;
+                            v_anno         vendite.fatture.anno%TYPE;
+                            v_mese         SMALLINT;
+                            v_serie        vendite.fatture.serie%TYPE;
+                            v_numero       vendite.fatture.numero%TYPE;
+                            v_stato_emessa_id config.stati_doc_fiscale.id%TYPE;
+                        BEGIN
+                            IF p_fattura_id IS NULL OR p_fattura_id <= 0 THEN
+                                PERFORM script.fn_log_and_raise_error('vendite', 'fn_numera_fattura_opz_emessa', 'E_PARAMETRO_INVALIDO',
+                                    jsonb_build_object('parametro', 'p_fattura_id', 'valore', p_fattura_id), NULL::uuid, 'p_fattura_id obbligatorio e > 0');
+                            END IF;
+
+                            IF p_set_emessa IS TRUE AND (p_codice_interno_emessa IS NULL OR btrim(p_codice_interno_emessa) = '') THEN
+                                PERFORM script.fn_log_and_raise_error('vendite', 'fn_numera_fattura_opz_emessa', 'E_PARAMETRO_INVALIDO',
+                                    jsonb_build_object('parametro', 'p_codice_interno_emessa', 'valore', p_codice_interno_emessa),
+                                    NULL::uuid, 'p_codice_interno_emessa obbligatorio se p_set_emessa=true');
+                            END IF;
+
+                            -- Lock riga fattura
+                            SELECT f.numero IS NOT NULL, f.data, f.registro_id, r.reset_policy, f.anno, f.serie, f.numero
+                              INTO v_is_numbered, v_data, v_registro_id, v_reset, v_anno, v_serie, v_numero
+                              FROM vendite.fatture f
+                              JOIN vendite.registri_fatturazione r ON r.id = f.registro_id
+                             WHERE f.id = p_fattura_id FOR UPDATE;
+
+                            IF v_registro_id IS NULL THEN
+                                PERFORM script.fn_log_and_raise_error('vendite', 'fn_numera_fattura_opz_emessa', 'E_FATTURA_NON_TROVATA',
+                                    jsonb_build_object('fattura_id', p_fattura_id), NULL::uuid, p_fattura_id::text);
+                            END IF;
+
+                            -- Idempotente: se gia' numerata ritorna valori correnti
+                            IF v_is_numbered THEN
+                                v_mese := CASE WHEN v_reset = 'MENSILE' THEN EXTRACT(MONTH FROM v_data)::SMALLINT ELSE NULL END;
+                                RETURN QUERY SELECT v_registro_id, v_anno, v_mese, v_serie, v_numero;
+                                RETURN;
+                            END IF;
+
+                            -- Assegna numero
+                            SELECT t.registro_id, t.anno, t.mese, t.serie, t.numero
+                              INTO v_registro_id, v_anno, v_mese, v_serie, v_numero
+                              FROM vendite.fn_assign_numero_fattura(p_fattura_id) AS t;
+
+                            -- Opzionale: stato EMESSA
+                            IF p_set_emessa THEN
+                                SELECT id INTO v_stato_emessa_id
+                                  FROM config.stati_doc_fiscale WHERE codice_interno = p_codice_interno_emessa LIMIT 1;
+
+                                IF v_stato_emessa_id IS NOT NULL THEN
+                                    UPDATE vendite.fatture SET stato_doc_fiscale_id = COALESCE(stato_doc_fiscale_id, v_stato_emessa_id) WHERE id = p_fattura_id;
+                                END IF;
+                            END IF;
+
+                            RETURN QUERY SELECT v_registro_id, v_anno, v_mese, v_serie, v_numero;
+                        END;
+                        $function$;
+
+                        COMMENT ON FUNCTION vendite.fn_numera_fattura_opz_emessa(BIGINT, BOOLEAN, CHARACTER VARYING)
+                          IS 'Assegna numero fattura (idempotente) e opzionalmente imposta stato EMESSA.';

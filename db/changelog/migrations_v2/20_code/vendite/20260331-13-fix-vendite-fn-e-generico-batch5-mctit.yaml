@@ -1,0 +1,197 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+#
+# Fix E_GENERICO — vendite batch 5 (4 funzioni):
+#   - fn_get_pipeline_task_policy (3x)
+#   - fn_get_registro_id (2x)
+#   - fn_get_tipo_doc_fiscale_id (2x)
+#   - fn_get_totale_fondi_fattura (1x)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+    - logicalFilePath: migrations_v2/20_code/vendite/20260331-13-fix-vendite-fn-e-generico-batch5-mctit.yaml
+
+    - changeSet:
+          id: 20260331-13-fix-fn-get-pipeline-task-policy
+          author: mctit
+          runOnChange: true
+          comment: >
+              Fix fn_get_pipeline_task_policy: 3x E_GENERICO →
+              E_PARAMETRO_INVALIDO (2) + E_CONFIG_MANCANTE (1).
+          changes:
+              - sql:
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+                        -- Fix 20260331: 3x E_GENERICO → codici specifici
+                        CREATE OR REPLACE FUNCTION vendite.fn_get_pipeline_task_policy(
+                            p_pipeline_id vendite.fatturazione_pipeline.id%TYPE,
+                            p_task_code   vendite.fatturazione_pipeline_task_policy.task_code%TYPE
+                        )
+                        RETURNS TABLE(annullabile BOOLEAN, resume_mode CHARACTER VARYING, attivo BOOLEAN, meta JSONB)
+                        LANGUAGE plpgsql
+                        AS $function$
+                        BEGIN
+                            IF p_pipeline_id IS NULL OR p_pipeline_id <= 0 THEN
+                                PERFORM script.fn_log_and_raise_error('vendite', 'fn_get_pipeline_task_policy', 'E_PARAMETRO_INVALIDO',
+                                    jsonb_build_object('parametro', 'p_pipeline_id', 'valore', p_pipeline_id), NULL::uuid, 'p_pipeline_id obbligatorio e > 0');
+                            END IF;
+                            IF p_task_code IS NULL OR btrim(p_task_code) = '' THEN
+                                PERFORM script.fn_log_and_raise_error('vendite', 'fn_get_pipeline_task_policy', 'E_PARAMETRO_INVALIDO',
+                                    jsonb_build_object('parametro', 'p_task_code', 'valore', p_task_code), NULL::uuid, 'p_task_code obbligatorio');
+                            END IF;
+
+                            RETURN QUERY
+                            SELECT p.annullabile, p.resume_mode, p.attivo, p.meta
+                              FROM vendite.fatturazione_pipeline_task_policy p
+                             WHERE p.pipeline_id = p_pipeline_id AND p.task_code = p_task_code AND p.attivo IS TRUE;
+
+                            IF NOT FOUND THEN
+                                PERFORM script.fn_log_and_raise_error('vendite', 'fn_get_pipeline_task_policy', 'E_CONFIG_MANCANTE',
+                                    jsonb_build_object('pipeline_id', p_pipeline_id, 'task_code', p_task_code), NULL::uuid,
+                                    concat('policy task pipeline:', p_pipeline_id, ' task:', p_task_code));
+                            END IF;
+                        END;
+                        $function$;
+
+                        COMMENT ON FUNCTION vendite.fn_get_pipeline_task_policy(BIGINT, CHARACTER VARYING)
+                          IS 'Policy attiva del task per pipeline (annullabile/resume_mode/meta).';
+
+    - changeSet:
+          id: 20260331-13-fix-fn-get-registro-id
+          author: mctit
+          runOnChange: true
+          comment: >
+              Fix fn_get_registro_id: 2x E_GENERICO →
+              E_PARAMETRO_INVALIDO + E_CONFIG_MANCANTE.
+          changes:
+              - sql:
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+                        -- Fix 20260331: 2x E_GENERICO → codici specifici
+                        CREATE OR REPLACE FUNCTION vendite.fn_get_registro_id(
+                            p_tipo_doc_fiscale_id         config.tipi_doc_fiscale.id%TYPE,
+                            p_utility_id                  config.utilities.id%TYPE              DEFAULT NULL,
+                            p_emittente_soggetto_ruolo_id anagrafiche.soggetti_ruoli.id%TYPE    DEFAULT NULL
+                        )
+                        RETURNS vendite.registri_fatturazione.id%TYPE
+                        LANGUAGE plpgsql
+                        AS $function$
+                        DECLARE
+                            v_registro_id vendite.registri_fatturazione.id%TYPE;
+                        BEGIN
+                            IF p_tipo_doc_fiscale_id IS NULL THEN
+                                PERFORM script.fn_log_and_raise_error('vendite', 'fn_get_registro_id', 'E_PARAMETRO_INVALIDO',
+                                    jsonb_build_object('parametro', 'p_tipo_doc_fiscale_id', 'valore', NULL), NULL::uuid, 'p_tipo_doc_fiscale_id obbligatorio');
+                            END IF;
+
+                            -- Risoluzione con fallback: tipo_doc+utility+emittente → tipo_doc+utility → tipo_doc+emittente → tipo_doc
+                            SELECT r.id INTO v_registro_id
+                              FROM vendite.tipi_doc_fiscale_registri m
+                              JOIN vendite.registri_fatturazione r ON r.id = m.registro_id
+                             WHERE m.tipo_doc_fiscale_id = p_tipo_doc_fiscale_id
+                               AND (r.utility_id IS NULL OR r.utility_id = p_utility_id)
+                               AND (r.emittente_soggetto_ruolo_id IS NULL OR r.emittente_soggetto_ruolo_id = p_emittente_soggetto_ruolo_id)
+                             ORDER BY
+                                 CASE
+                                     WHEN r.utility_id = p_utility_id AND r.emittente_soggetto_ruolo_id = p_emittente_soggetto_ruolo_id THEN 1
+                                     WHEN r.utility_id = p_utility_id AND r.emittente_soggetto_ruolo_id IS NULL THEN 2
+                                     WHEN r.utility_id IS NULL AND r.emittente_soggetto_ruolo_id = p_emittente_soggetto_ruolo_id THEN 3
+                                     WHEN r.utility_id IS NULL AND r.emittente_soggetto_ruolo_id IS NULL THEN 4
+                                     ELSE 9
+                                 END, r.id
+                             LIMIT 1;
+
+                            IF v_registro_id IS NULL THEN
+                                PERFORM script.fn_log_and_raise_error('vendite', 'fn_get_registro_id', 'E_CONFIG_MANCANTE',
+                                    jsonb_build_object('tipo_doc_fiscale_id', p_tipo_doc_fiscale_id, 'utility_id', p_utility_id, 'emittente', p_emittente_soggetto_ruolo_id),
+                                    NULL::uuid, concat('registro non risolto per tipo_doc ', p_tipo_doc_fiscale_id));
+                            END IF;
+
+                            RETURN v_registro_id;
+                        END;
+                        $function$;
+
+                        COMMENT ON FUNCTION vendite.fn_get_registro_id(BIGINT, INTEGER, BIGINT)
+                          IS 'Risoluzione registro_id con fallback utility/emittente.';
+
+    - changeSet:
+          id: 20260331-13-fix-fn-get-tipo-doc-fiscale-id
+          author: mctit
+          runOnChange: true
+          comment: >
+              Fix fn_get_tipo_doc_fiscale_id: 2x E_GENERICO →
+              E_PARAMETRO_INVALIDO + E_CODICE.
+          changes:
+              - sql:
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+                        -- Fix 20260331: 2x E_GENERICO → codici specifici
+                        CREATE OR REPLACE FUNCTION vendite.fn_get_tipo_doc_fiscale_id(
+                            p_sorgente_tipo_id config.sorgenti.id%TYPE
+                        )
+                        RETURNS config.tipi_doc_fiscale.id%TYPE
+                        LANGUAGE plpgsql
+                        AS $function$
+                        DECLARE
+                            v_tipo_doc_id config.tipi_doc_fiscale.id%TYPE;
+                        BEGIN
+                            IF p_sorgente_tipo_id IS NULL THEN
+                                PERFORM script.fn_log_and_raise_error('vendite', 'fn_get_tipo_doc_fiscale_id', 'E_PARAMETRO_INVALIDO',
+                                    jsonb_build_object('parametro', 'p_sorgente_tipo_id', 'valore', NULL), NULL::uuid, 'p_sorgente_tipo_id obbligatorio');
+                            END IF;
+
+                            SELECT s.tipo_doc_fiscale_id INTO v_tipo_doc_id
+                              FROM config.sorgenti s WHERE s.id = p_sorgente_tipo_id;
+
+                            IF v_tipo_doc_id IS NULL THEN
+                                PERFORM script.fn_log_and_raise_error('vendite', 'fn_get_tipo_doc_fiscale_id', 'E_CODICE',
+                                    jsonb_build_object('sorgente_tipo_id', p_sorgente_tipo_id), NULL::uuid, p_sorgente_tipo_id::text, 'config.sorgenti');
+                            END IF;
+
+                            RETURN v_tipo_doc_id;
+                        END;
+                        $function$;
+
+                        COMMENT ON FUNCTION vendite.fn_get_tipo_doc_fiscale_id(BIGINT)
+                          IS 'Risoluzione tipo_doc_fiscale_id dalla sorgente (no fallback).';
+
+    - changeSet:
+          id: 20260331-13-fix-fn-get-totale-fondi-fattura
+          author: mctit
+          runOnChange: true
+          comment: >
+              Fix fn_get_totale_fondi_fattura: 1x E_GENERICO → E_PARAMETRO_INVALIDO.
+          changes:
+              - sql:
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+                        -- Fix 20260331: 1x E_GENERICO → E_PARAMETRO_INVALIDO
+                        CREATE OR REPLACE FUNCTION vendite.fn_get_totale_fondi_fattura(
+                            p_fattura_id vendite.fatture.id%TYPE
+                        )
+                        RETURNS NUMERIC
+                        LANGUAGE plpgsql
+                        AS $function$
+                        DECLARE
+                            v_totale vendite.fatture_fondi_fattura.importo%TYPE;
+                        BEGIN
+                            IF p_fattura_id IS NULL OR p_fattura_id <= 0 THEN
+                                PERFORM script.fn_log_and_raise_error('vendite', 'fn_get_totale_fondi_fattura', 'E_PARAMETRO_INVALIDO',
+                                    jsonb_build_object('parametro', 'p_fattura_id', 'valore', p_fattura_id), NULL::uuid, 'p_fattura_id obbligatorio e > 0');
+                            END IF;
+
+                            SELECT COALESCE(SUM(ff.importo), 0) INTO v_totale
+                              FROM vendite.fatture_fondi_fattura ff
+                             WHERE ff.fattura_id = p_fattura_id AND ff.attivo IS TRUE;
+
+                            RETURN v_totale;
+                        END;
+                        $function$;
+
+                        COMMENT ON FUNCTION vendite.fn_get_totale_fondi_fattura(BIGINT)
+                          IS 'Totale fondi fattura attivi per fattura.';

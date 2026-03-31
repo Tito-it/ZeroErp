@@ -29,6 +29,7 @@ from apps.core.api.password_reset_views import (
     PasswordResetRequestView,
     PasswordResetValidateView,
 )
+from django.conf import settings
 
 
 # Scopo: Gestisce `health_view` nel flusso applicativo del modulo.
@@ -97,3 +98,11 @@ urlpatterns = [
     path("api/v1/anagrafiche/", include("apps.anagrafiche.api.urls")),
     path("", RedirectView.as_view(url="/admin/", permanent=False)),
 ]
+
+# Rotte AI assistant — incluse solo se AI_ENABLED=True
+if getattr(settings, "AI_ENABLED", False):
+    # Inserisce prima del RedirectView catch-all (ultimo elemento)
+    urlpatterns.insert(
+        len(urlpatterns) - 1,
+        path("api/v1/ai-assistant/", include("apps.ai_assistant.api.urls_v1")),
+    )

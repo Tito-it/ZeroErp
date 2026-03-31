@@ -36,6 +36,13 @@ export const useUiStore = defineStore('ui', () => {
 
   function openSearchDrawer() { searchDrawerVisible.value = true }
 
+  // AI assistant drawer — stato condiviso tra AppTopbar (pulsante) e shortcut
+  const aiDrawerVisible = ref(false)
+  const aiAvailable = ref(false)
+
+  function openAiDrawer() { aiDrawerVisible.value = true }
+  function toggleAiDrawer() { aiDrawerVisible.value = !aiDrawerVisible.value }
+
   function toggleSidebar() {
     sidebarCollapsed.value = !sidebarCollapsed.value
     local.set(STORAGE_KEYS.SIDEBAR_COLLAPSED, sidebarCollapsed.value)
@@ -69,6 +76,10 @@ export const useUiStore = defineStore('ui', () => {
     effectiveSidebarCollapsed,
     searchDrawerVisible,
     openSearchDrawer,
+    aiDrawerVisible,
+    aiAvailable,
+    openAiDrawer,
+    toggleAiDrawer,
     toggleSidebar
   }
 })

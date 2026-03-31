@@ -27,5 +27,8 @@ packaging>=26.0
 # Crittografia (Fernet per password SMTP, secret TOTP)
 cryptography>=44.0
 
+# AI Assistant
+anthropic>=0.52
+
 # Security constraints
 PyJWT>=2.12.0

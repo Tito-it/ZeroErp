@@ -12,6 +12,7 @@ export const useSoggettiStore = defineStore('anagrafiche-soggetti', () => {
   const items = ref([])
   const totalRecords = ref(0)
   const loading = ref(false)
+  const hasSearched = ref(false)
 
   const filters = ref({
     search: '',
@@ -23,12 +24,31 @@ export const useSoggettiStore = defineStore('anagrafiche-soggetti', () => {
   })
 
   // Scopo: Carica lista paginata soggetti con filtri.
+  // La lista parte vuota: richiede search (min 3 car) o filtro attivo.
   async function fetchList() {
+    const f = filters.value
+    const searchTerm = (f.search || '').trim()
+    const hasFilters = f.tipo_soggetto_dettaglio_id != null
+
+    // Search con meno di 3 caratteri e nessun filtro attivo → ignora
+    if (searchTerm.length > 0 && searchTerm.length < 3 && !hasFilters) {
+      return
+    }
+    if (!searchTerm && !hasFilters && !hasSearched.value) {
+      return
+    }
+    // Search svuotata senza filtri → torna a stato vuoto
+    if (!searchTerm && !hasFilters) {
+      items.value = []
+      totalRecords.value = 0
+      hasSearched.value = false
+      return
+    }
+
     loading.value = true
     try {
       const params = {}
-      const f = filters.value
-      if (f.search) params.search = f.search
+      if (searchTerm.length >= 3) params.search = searchTerm
       if (f.tipo_soggetto_dettaglio_id != null) {
         params.tipo_soggetto_dettaglio_id = f.tipo_soggetto_dettaglio_id
       }
@@ -48,6 +68,7 @@ export const useSoggettiStore = defineStore('anagrafiche-soggetti', () => {
       }))
       items.value = results
       totalRecords.value = res.data.data.count
+      hasSearched.value = true
     } finally {
       loading.value = false
     }
@@ -74,7 +95,7 @@ export const useSoggettiStore = defineStore('anagrafiche-soggetti', () => {
   }
 
   return {
-    items, totalRecords, loading, filters,
+    items, totalRecords, loading, hasSearched, filters,
     fetchList, fetchDetail, create, update
   }
 })

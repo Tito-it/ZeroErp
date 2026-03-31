@@ -19,6 +19,7 @@ import DatePicker from 'primevue/datepicker'
 import Tag from 'primevue/tag'
 import Button from 'primevue/button'
 import NewButton from '../../core/components/NewButton.vue'
+import SearchHint from '../../core/components/SearchHint.vue'
 
 const emit = defineEmits(['new', 'row-click'])
 const { t } = useI18n()
@@ -145,10 +146,7 @@ onUnmounted(() => { window.removeEventListener('resize', recalcScrollHeight) })
     </div>
 
     <!-- Placeholder: nessuna ricerca effettuata -->
-    <div v-if="!store.hasSearched && !store.loading" class="pratiche-search-hint">
-      <i class="pi pi-search" />
-      <span>{{ t('pratiche.eseguire_ricerca') }}</span>
-    </div>
+    <SearchHint v-if="!store.hasSearched && !store.loading" :message="t('pratiche.eseguire_ricerca')" />
 
     <DataTable
       v-show="store.hasSearched || store.loading"
@@ -191,20 +189,3 @@ onUnmounted(() => { window.removeEventListener('resize', recalcScrollHeight) })
   </div>
 </template>
 
-<style scoped>
-.pratiche-search-hint {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 0.75rem;
-  height: 100%;
-  color: var(--text-color-secondary);
-  font-size: 0.95rem;
-}
-
-.pratiche-search-hint .pi-search {
-  font-size: 2rem;
-  opacity: 0.4;
-}
-</style>

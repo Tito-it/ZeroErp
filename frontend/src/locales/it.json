@@ -8,6 +8,7 @@
     "view": "Visualizza",
     "search": "Cerca",
     "reload_list": "Ricarica lista (F5)",
+    "eseguire_ricerca": "Eseguire una ricerca per visualizzare i risultati",
     "confirm": "Conferma",
     "yes": "Sì",
     "no": "No",
@@ -817,5 +818,19 @@
     "competenze_flussi": "Competenze flussi",
     "eseguire_ricerca": "Eseguire una ricerca per visualizzare le pratiche",
     "visualizzazione_pratica": "Visualizzazione pratica codice: {codice}"
+  },
+  "ai": {
+    "title": "Assistente AI",
+    "placeholder": "Scrivi una domanda...",
+    "send": "Invia",
+    "clear": "Nuova conversazione",
+    "loading": "Sto elaborando...",
+    "error": "Errore nella comunicazione con l'assistente.",
+    "disabled": "Assistente AI non disponibile",
+    "navigate": "Apri",
+    "welcome": "Ciao! Sono l'assistente AI di ZeroERP. Chiedimi informazioni su pratiche, soggetti o altre aree del sistema.",
+    "confirm_title": "Conferma operazione",
+    "confirm_cancel": "Operazione annullata",
+    "confirm_success": "Operazione completata"
   }
 }

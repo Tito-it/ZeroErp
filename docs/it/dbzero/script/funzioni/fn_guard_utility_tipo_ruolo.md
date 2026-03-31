@@ -13,89 +13,97 @@ CREATE OR REPLACE FUNCTION script.fn_guard_utility_tipo_ruolo(p_utility_id integ
  LANGUAGE plpgsql
 AS $function$
 DECLARE
-  v_has_matrix boolean := false;
-  v_is_allowed boolean := false;
+    v_has_matrix BOOLEAN := false;
+    v_is_allowed BOOLEAN := false;
 BEGIN
-  -- Guard parametri numerici ID: null o <= 0 non ammessi.
-  IF p_utility_id IS NULL OR p_utility_id <= 0 THEN
-    PERFORM script.fn_log_and_raise_error(
-      'database',
-      'script.fn_guard_utility_tipo_ruolo',
-      'ERRORE_PARAMETRI',
-      jsonb_build_object(
-        'detail', 'p_utility_id obbligatorio e > 0',
-        'p_utility_id', p_utility_id,
-        'context', p_context
-      ),
-      NULL::uuid,
-      concat('p_utility_id non valido: ', p_utility_id::text, ' context: ', p_context)
-    );
-  END IF;
+    -- Guard: parametri obbligatori e > 0
+    IF p_utility_id IS NULL OR p_utility_id <= 0 THEN
+        PERFORM script.fn_log_and_raise_error(
+            'database',
+            'script.fn_guard_utility_tipo_ruolo',
+            'ERRORE_PARAMETRI',
+            jsonb_build_object(
+                'detail', 'p_utility_id obbligatorio e > 0',
+                'p_utility_id', p_utility_id,
+                'context', p_context
+            ),
+            NULL::uuid,
+            concat('p_utility_id non valido: ', p_utility_id::text, ' context: ', p_context)
+        );
+    END IF;
 
-  IF p_tipo_ruolo_id IS NULL OR p_tipo_ruolo_id <= 0 THEN
-    PERFORM script.fn_log_and_raise_error(
-      'database',
-      'script.fn_guard_utility_tipo_ruolo',
-      'ERRORE_PARAMETRI',
-      jsonb_build_object(
-        'detail', 'p_tipo_ruolo_id obbligatorio e > 0',
-        'p_tipo_ruolo_id', p_tipo_ruolo_id,
-        'context', p_context
-      ),
-      NULL::uuid,
-      concat('p_tipo_ruolo_id non valido: ', p_tipo_ruolo_id::text, ' context: ', p_context)
-    );
-  END IF;
+    IF p_tipo_ruolo_id IS NULL OR p_tipo_ruolo_id <= 0 THEN
+        PERFORM script.fn_log_and_raise_error(
+            'database',
+            'script.fn_guard_utility_tipo_ruolo',
+            'ERRORE_PARAMETRI',
+            jsonb_build_object(
+                'detail', 'p_tipo_ruolo_id obbligatorio e > 0',
+                'p_tipo_ruolo_id', p_tipo_ruolo_id,
+                'context', p_context
+            ),
+            NULL::uuid,
+            concat('p_tipo_ruolo_id non valido: ', p_tipo_ruolo_id::text, ' context: ', p_context)
+        );
+    END IF;
 
-  -- 1) Esiste matrice attiva/valida per utility?
-  SELECT EXISTS (
-    SELECT 1
-    FROM config.utilities_tipi_ruolo m
-    WHERE m.utility_id = p_utility_id
-      AND m.attivo = true
-      AND (m.valido_dal IS NULL OR m.valido_dal <= CURRENT_DATE)
-      AND (m.valido_al IS NULL OR m.valido_al >= CURRENT_DATE)
-  )
-  INTO v_has_matrix;
+    -- NOTA: le due query EXISTS sulla matrice hanno condizioni
+    -- identiche tranne tipo_ruolo_id. Scelta progettuale: si
+    -- mantengono separate per rendere esplicito il pattern a 2 step
+    -- (1: la matrice esiste? → fail-open se no; 2: il ruolo e'
+    -- ammesso? → fail-close se no). Unificarle in una sola query
+    -- con FILTER peggiorerebbe la leggibilita' senza beneficio
+    -- prestazionale (tabella config con poche righe).
 
-  -- Fail-open: nessuna regola attiva/valida -> nessun vincolo.
-  IF NOT v_has_matrix THEN
-    RETURN;
-  END IF;
+    -- 1) Esiste matrice attiva/valida per utility?
+    SELECT EXISTS (
+        SELECT 1
+          FROM config.utilities_tipi_ruolo m
+         WHERE m.utility_id = p_utility_id
+           AND m.attivo = true
+           AND (m.valido_dal IS NULL OR m.valido_dal <= CURRENT_DATE)
+           AND (m.valido_al IS NULL OR m.valido_al >= CURRENT_DATE)
+    )
+    INTO v_has_matrix;
 
-  -- 2) Se matrice presente, il ruolo deve essere esplicitamente ammesso.
-  SELECT EXISTS (
-    SELECT 1
-    FROM config.utilities_tipi_ruolo m
-    WHERE m.utility_id = p_utility_id
-      AND m.tipo_ruolo_id = p_tipo_ruolo_id
-      AND m.attivo = true
-      AND (m.valido_dal IS NULL OR m.valido_dal <= CURRENT_DATE)
-      AND (m.valido_al IS NULL OR m.valido_al >= CURRENT_DATE)
-  )
-  INTO v_is_allowed;
+    -- Fail-open: nessuna regola attiva/valida → nessun vincolo
+    IF NOT v_has_matrix THEN
+        RETURN;
+    END IF;
 
-  IF NOT v_is_allowed THEN
-    PERFORM script.fn_log_and_raise_error(
-      'database',
-      'script.fn_guard_utility_tipo_ruolo',
-      'E_GENERICO',
-      jsonb_build_object(
-        'detail', 'Tipo ruolo non ammesso per utility in base alla matrice configurata',
-        'utility_id', p_utility_id,
-        'tipo_ruolo_id', p_tipo_ruolo_id,
-        'context', p_context
-      ),
-      NULL::uuid,
-      concat('Tipo ruolo non ammesso per utility: ', p_utility_id::text, 
-      ' tipo_ruolo_id: ', p_tipo_ruolo_id::text)
-    );
-  END IF;
+    -- 2) Matrice presente: il ruolo deve essere esplicitamente ammesso
+    SELECT EXISTS (
+        SELECT 1
+          FROM config.utilities_tipi_ruolo m
+         WHERE m.utility_id = p_utility_id
+           AND m.tipo_ruolo_id = p_tipo_ruolo_id
+           AND m.attivo = true
+           AND (m.valido_dal IS NULL OR m.valido_dal <= CURRENT_DATE)
+           AND (m.valido_al IS NULL OR m.valido_al >= CURRENT_DATE)
+    )
+    INTO v_is_allowed;
+
+    IF NOT v_is_allowed THEN
+        -- Fix: E_GENERICO → E_UTILITY_RUOLO_NON_AMMESSO
+        PERFORM script.fn_log_and_raise_error(
+            'database',
+            'script.fn_guard_utility_tipo_ruolo',
+            'E_UTILITY_RUOLO_NON_AMMESSO',
+            jsonb_build_object(
+                'utility_id', p_utility_id,
+                'tipo_ruolo_id', p_tipo_ruolo_id,
+                'context', p_context
+            ),
+            NULL::uuid,
+            p_tipo_ruolo_id::text,
+            p_utility_id::text
+        );
+    END IF;
 END;
 $function$
 
 COMMENT ON FUNCTION script.fn_guard_utility_tipo_ruolo(p_utility_id integer, p_tipo_ruolo_id integer, p_context text)
-IS 'Guard utility->tipo_ruolo: se matrice utility assente fail-open; se presente ammette solo ruoli configurati attivi/validi.';
+IS 'Guard utility→tipo_ruolo: fail-open se matrice assente; fail-close se presente e ruolo non ammesso. Errore: E_UTILITY_RUOLO_NON_AMMESSO.';
 ```
 
 ---

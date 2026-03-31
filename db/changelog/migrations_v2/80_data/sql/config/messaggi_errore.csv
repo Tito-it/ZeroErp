@@ -18,6 +18,7 @@ E_DATI_SOCIETARI_TIPO_SOGGETTO_NON_AMMESSO,it,Non sono richiesti dati societari 
 E_DATI_SOCIETARI_REQUIRED_MANCANTI,it,"Sono richiesti dati societari per soggetto_id %s e codice tipo soggetto %s""",111,"",""
 E_ADMIN_VALIDAZIONE,it,%s.,310,"",""
 E_ADMIN_CF_DUPLICATO,it,%s.,311,"",""
+E_ADMIN_PIVA_DUPLICATA,it,Partita IVA gia' presente in anagrafica.,313,Esiste gia' un soggetto con la stessa partita IVA per lo stesso stato.,Verificare la partita IVA o utilizzare il soggetto esistente.
 E_ADMIN_UO_NON_TROVATA,it,%s.,312,"",""
 E_AUTH_USER_SOGGETTO_CON_PIVA,it,Operatore non può essere associato ad una partita iva %s.,314,"",""
 E_FORNITORE_ID_INVALIDO,it,Fornitore_id deve essere NOT NULL e > 0. Id %s,315,"",""
@@ -43,6 +44,21 @@ E_ATTIVO_BLOCK_CHILDREN_EXIST,it,%s,125,"",""
 E_STORICO_PARENT_PK_NOT_FOUND,it,"Impossibile determinare PK o tipo per tabella padre. Schema %s , tabella %s",121,"",""
 E_RIGA_GIA_FATTURATA,it,Riga già fatturata.(id_riga %s),129,"",""
 E_EMITTENTE_DEFAULT_MISSING,it,Emittente fiscale di default mancante. %s,130,"",""
+E_EMITTENTE_DISATTIVAZIONE_BLOCCATA,it,Disattivazione emittente fiscale non consentita: mapping billing_account presente. Soggetto_ruolo_id %s,131,L'emittente fiscale ha ancora billing_account associati.,Rimuovere i mapping billing_account prima di disattivare l'emittente.
+E_EMITTENTE_DEFAULT_SINGLETON,it,Deve esistere un solo emittente fiscale di default. Trovati: %s,132,Il vincolo di singolarita' del default e' violato.,Verificare che un solo emittente abbia is_default=true in emittenti_fiscali_billing_account.
+E_RESELLER_DISATTIVAZIONE_BLOCCATA,it,Disattivazione reseller non consentita: mapping billing_account presente. Soggetto_ruolo_id %s,133,Il reseller ha ancora billing_account associati.,Rimuovere i mapping billing_account prima di disattivare il reseller.
+E_UTILITY_RUOLO_NON_AMMESSO,it,Tipo ruolo %s non ammesso per utility %s in base alla matrice configurata.,134,La matrice config.utilities_tipi_ruolo esclude questo tipo ruolo per la utility indicata.,Verificare la configurazione in config.utilities_tipi_ruolo o aggiungere il tipo ruolo ammesso.
+E_TIPI_RUOLI_ENTITA_INVALIDA,it,Configurazione entita' non valida per tipo ruolo %s: %s,135,La tabella/colonna entita' configurata in config.tipi_ruoli non e' valida.,Verificare entita_tabella e entita_colonna_codice in config.tipi_ruoli.
+E_CHIUDE_LOTTO_SINGLETON,it,chiude_lotto deve avere una sola riga TRUE in config.stati_doc_fiscale. Trovate: %s,136,Il vincolo di singolarita' del flag chiude_lotto e' violato.,Verificare che un solo stato in config.stati_doc_fiscale abbia chiude_lotto=true.
+E_LOTTO_PARAMETRO_NON_COERENTE,it,Parametro non coerente con lotto esistente: %s (lotto_id %s),137,Il valore del parametro non corrisponde a quello gia' presente sul lotto.,Verificare i parametri passati rispetto al lotto esistente.
+E_LOTTO_NON_RIUTILIZZABILE,it,Lotto %s in esecuzione non riutilizzabile (stato_operativo: %s),138,Il lotto e' in stato IN_ESECUZIONE + CHIUSO e non puo' essere riutilizzato.,Creare un nuovo lotto oppure attendere il completamento.
+E_COMMESSA_ROOT_CONFLITTO,it,ROOT source gia' presente con chiave diversa per commessa %s,139,La commessa ha gia' una ROOT source associata con parametri diversi.,Verificare sorgente_tipo_id e sorgente_uid della ROOT esistente.
+E_PREZZO_LISTINO_NON_TROVATO,it,Nessun prezzo listino risolto per articolo %s,141,Il resolver listini non ha trovato candidati validi.,Verificare listini associazioni e versioni attive per articolo/uom/data.
+E_PREZZO_LISTINO_AMBIGUO,it,Pareggio totale resolver prezzi per articolo %s (tie_count %s),142,Piu' candidati con lo stesso livello di match.,Verificare e disambiguare le associazioni listino.
+E_LOTTO_NON_TROVATO,it,Lotto non trovato (id %s),143,Il lotto indicato non esiste.,Verificare l'id lotto passato.
+E_COMMESSA_NON_MODIFICABILE,it,Commessa %s non in stato modificabile,144,La commessa e' in uno stato che non consente modifiche.,Verificare lo stato della commessa.
+E_COMMESSA_ATTIVITA_NON_COERENTE,it,Attivita' commessa non coerente: %s,145,L'attivita non appartiene alla commessa o i parametri non sono coerenti.,Verificare commessa_id e commessa_attivita_id.
+E_FATTURA_NON_TROVATA,it,Fattura non trovata (id %s),140,La fattura indicata non esiste nella tabella vendite.fatture.,Verificare l'id fattura passato.
 E_SOGGETTO_NO_CONTATTI,it,"Il soggetto non ha contatti validi: è necessario almeno un contatto con email, telefono, cellulare o PEC.",2,"",""
 E_ARTICOLO_NON_COMPOSITO,it,Articolo deve essere composito = true . (%s),127,"",""
 ERRORE_PARAMETRI_TABELLA,it,Parametro:%s  non trovato nella tabella: %s,16,Il parametro segnalato non è stato caricato nella tabella indicata.,Caricare il parametro nella rispettiva tabella
@@ -128,6 +144,8 @@ PRATICHE_ISTANZA_NON_COERENTE,it,L'istanza %s non appartiene al soggetto %s,307,
 FLUSSI_PRESA_CARICO_STATO_ERRATO,it,Flusso %s non in stato DA_ESEGUIRE: presa in carico non consentita.,320,Il flusso deve essere in stato DA_ESEGUIRE per poter essere preso in carico.,Verificare che il flusso sia nello stato corretto prima della presa in carico.
 FLUSSI_GIA_ASSEGNATO,it,Flusso %s gia' assegnato all'operatore %s.,321,Il flusso e' gia' assegnato ad un altro operatore.,Contattare l'operatore assegnato o richiedere la riassegnazione.
 FLUSSI_COMPETENZA_MANCANTE,it,Operatore %s non abilitato per il flusso %s.,322,L'operatore non ha competenza attiva per questo tipo di flusso.,Verificare la matrice competenze in pratiche.competenze_flussi.
+E_PDP_OBBLIGATORIO,it,PDP obbligatorio per utility %s (richiede_pdp=true). Billing account %s,330,La utility richiede un PDP ma non e' stato fornito.,Associare un PDP al cliente prima di procedere.
+E_PDP_UTILITY_MISMATCH,it,Mismatch utility tra billing_account %s e PDP %s: utility billing=%s utility PDP=%s,331,La utility del PDP non corrisponde a quella del billing account.,Verificare che il PDP appartenga alla stessa utility del billing account.
 E_UTENTE_DISABILITATO,it,Utente disabilitato: %s,319,L'operatore risulta disabilitato (ruolo_sistema DISABILITATO o risorsa umana non attiva).,Verificare lo stato dell'operatore in anagrafiche.risorse_umane_auth_user e anagrafiche.risorse_umane.
 E_UTENTE_NON_ATTIVO,it,Utente non ancora attivo: %s,320,La risorsa umana ha una data valido_dal futura rispetto alla data corrente.,Attendere la data di validita' oppure anticipare valido_dal in anagrafiche.risorse_umane.
 E_UTENTE_SCADUTO,it,Utente scaduto: %s,321,La risorsa umana ha una data valido_al passata rispetto alla data corrente.,Rinnovare la validita' aggiornando valido_al in anagrafiche.risorse_umane.

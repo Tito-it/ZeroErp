@@ -13,45 +13,24 @@ CREATE OR REPLACE FUNCTION vendite.fn_sync_pagamento_fondo_fattura(p_fattura_fig
  LANGUAGE plpgsql
 AS $function$
 DECLARE
-  v_inserted integer := 0;
-  v_updated integer := 0;
-  v_annullati integer := 0;
+    v_inserted INTEGER := 0;
+    v_updated  INTEGER := 0;
+    v_annullati INTEGER := 0;
 BEGIN
-  -- =========================================================
-  -- DEPRECATA:
-  --   mantenuta per retrocompatibilita'. La logica reale ora
-  --   e' in vendite.fn_sync_contabili_fondo_fattura().
-  -- =========================================================
+    IF p_fattura_figlia_id IS NULL OR p_fattura_figlia_id <= 0 THEN
+        PERFORM script.fn_log_and_raise_error('vendite', 'fn_sync_pagamento_fondo_fattura', 'E_PARAMETRO_INVALIDO',
+            jsonb_build_object('parametro', 'p_fattura_figlia_id', 'valore', p_fattura_figlia_id), NULL::uuid, 'p_fattura_figlia_id obbligatorio e > 0');
+    END IF;
 
-  IF p_fattura_figlia_id IS NULL OR p_fattura_figlia_id <= 0 THEN
-    PERFORM script.fn_log_and_raise_error(
-      'vendite', 'fn_sync_pagamento_fondo_fattura', 'E_GENERICO',
-      jsonb_build_object(
-        'scope','FATTURA',
-        'severity','C',
-        'code','E_GENERICO',
-        'lotto_id', NULL,
-        'fattura_id', p_fattura_figlia_id,
-        'context', jsonb_build_object('detail','p_fattura_figlia_id obbligatorio')
-      ),
-      NULL::uuid,
-      'p_fattura_figlia_id non valido'
-    );
-  END IF;
+    SELECT s.inserted_righe, s.updated_righe, s.annullati_source INTO v_inserted, v_updated, v_annullati
+      FROM vendite.fn_sync_contabili_fondo_fattura(p_fattura_figlia_id => p_fattura_figlia_id) s;
 
-  SELECT s.inserted_righe, s.updated_righe, s.annullati_source
-    INTO v_inserted, v_updated, v_annullati
-    FROM vendite.fn_sync_contabili_fondo_fattura(
-      p_fattura_figlia_id => p_fattura_figlia_id
-    ) s;
-
-  RETURN QUERY
-  SELECT v_inserted, v_updated, v_annullati;
+    RETURN QUERY SELECT v_inserted, v_updated, v_annullati;
 END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_sync_pagamento_fondo_fattura(p_fattura_figlia_id bigint)
-IS 'Wrapper deprecato: delega a fn_sync_contabili_fondo_fattura per retrocompatibilita.';
+IS 'Wrapper deprecato: delega a fn_sync_contabili_fondo_fattura.';
 ```
 
 ---

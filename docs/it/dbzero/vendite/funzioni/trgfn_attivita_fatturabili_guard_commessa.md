@@ -13,141 +13,71 @@ CREATE OR REPLACE FUNCTION vendite.trgfn_attivita_fatturabili_guard_commessa()
  LANGUAGE plpgsql
 AS $function$
 DECLARE
-  v_guard_enabled boolean := false;
-  v_bypass_setting text;
-  v_bypass_enabled boolean := false;
-  v_is_superuser boolean := false;
-  v_commessa_from_attivita vendite.commesse_attivita.commessa_id%TYPE;
+    v_guard_enabled BOOLEAN := FALSE;
+    v_bypass_setting TEXT;
+    v_bypass_enabled BOOLEAN := FALSE;
+    v_is_superuser BOOLEAN := FALSE;
+    v_commessa_from_attivita vendite.commesse_attivita.commessa_id%TYPE;
 BEGIN
-  -- =========================================================
-  -- Scopo:
-  --   Impedire bypass del layer commessa sulle scritture
-  --   di vendite.attivita_fatturabili.
-  --
-  -- Regole:
-  --   - attivabile/disattivabile via config.parameters
-  --     (code = attivita_fatturabili_require_commessa)
-  --   - bypass manutenzione via GUC
-  --     zeroerp.maintenance_allow_attivita_bypass=true
-  --     SOLO per superuser: utenti applicativi non possono bypassare
-  --   - quando attivo:
-  --       * commessa_id e commessa_attivita_id obbligatori
-  --       * devono essere valorizzati a coppia
-  --       * commessa_attivita_id deve appartenere alla commessa_id
-  -- =========================================================
-
-  BEGIN
-    SELECT COALESCE(NULLIF(btrim(p.default_value), ''), 'false')::boolean
-      INTO v_guard_enabled
-      FROM config.parameters p
-     WHERE p.code = 'attivita_fatturabili_require_commessa'
-     LIMIT 1;
-  EXCEPTION
-    WHEN OTHERS THEN
-      v_guard_enabled := false;
-  END;
-
-  -- Bypass consentito solo a superuser: il GUC puo` essere settato
-  -- da qualsiasi sessione, ma ha effetto solo se il ruolo e` privilegiato.
-  BEGIN
-    SELECT usesuper
-      INTO v_is_superuser
-      FROM pg_user
-     WHERE usename = current_user;
-  EXCEPTION
-    WHEN OTHERS THEN
-      v_is_superuser := false;
-  END;
-
-  IF v_is_superuser THEN
+    -- Config flag
     BEGIN
-      v_bypass_setting := current_setting('zeroerp.maintenance_allow_attivita_bypass', true);
-      IF v_bypass_setting IS NOT NULL AND btrim(v_bypass_setting) <> '' THEN
-        v_bypass_enabled := v_bypass_setting::boolean;
-      END IF;
-    EXCEPTION
-      WHEN OTHERS THEN
-        v_bypass_enabled := false;
+        SELECT COALESCE(NULLIF(btrim(p.default_value), ''), 'false')::BOOLEAN INTO v_guard_enabled
+          FROM config.parameters p WHERE p.code = 'attivita_fatturabili_require_commessa' LIMIT 1;
+    EXCEPTION WHEN OTHERS THEN v_guard_enabled := FALSE;
     END;
-  END IF;
 
-  IF v_bypass_enabled OR NOT v_guard_enabled THEN
+    -- Bypass solo superuser
+    BEGIN
+        SELECT usesuper INTO v_is_superuser FROM pg_user WHERE usename = current_user;
+    EXCEPTION WHEN OTHERS THEN v_is_superuser := FALSE;
+    END;
+
+    IF v_is_superuser THEN
+        BEGIN
+            v_bypass_setting := current_setting('zeroerp.maintenance_allow_attivita_bypass', TRUE);
+            IF v_bypass_setting IS NOT NULL AND btrim(v_bypass_setting) <> '' THEN v_bypass_enabled := v_bypass_setting::BOOLEAN; END IF;
+        EXCEPTION WHEN OTHERS THEN v_bypass_enabled := FALSE;
+        END;
+    END IF;
+
+    IF v_bypass_enabled OR NOT v_guard_enabled THEN RETURN NEW; END IF;
+
+    -- Guard: coppia obbligatoria
+    IF (NEW.commessa_id IS NULL AND NEW.commessa_attivita_id IS NOT NULL)
+       OR (NEW.commessa_id IS NOT NULL AND NEW.commessa_attivita_id IS NULL) THEN
+        PERFORM script.fn_log_and_raise_error('vendite', 'trgfn_attivita_fatturabili_guard_commessa', 'E_PARAMETRO_INVALIDO',
+            jsonb_build_object('commessa_id', NEW.commessa_id, 'commessa_attivita_id', NEW.commessa_attivita_id),
+            NULL::uuid, 'commessa_id e commessa_attivita_id devono essere valorizzati a coppia');
+    END IF;
+
+    -- Guard: commessa obbligatoria
+    IF NEW.commessa_id IS NULL THEN
+        PERFORM script.fn_log_and_raise_error('vendite', 'trgfn_attivita_fatturabili_guard_commessa', 'E_COMMESSA_ATTIVITA_NON_COERENTE',
+            jsonb_build_object('attivita_id', NEW.id), NULL::uuid, 'inserimento senza commessa non consentito');
+    END IF;
+
+    -- Guard: commessa_attivita_id deve esistere
+    SELECT ca.commessa_id INTO v_commessa_from_attivita
+      FROM vendite.commesse_attivita ca WHERE ca.id = NEW.commessa_attivita_id;
+
+    IF v_commessa_from_attivita IS NULL THEN
+        PERFORM script.fn_log_and_raise_error('vendite', 'trgfn_attivita_fatturabili_guard_commessa', 'E_COMMESSA_ATTIVITA_NON_COERENTE',
+            jsonb_build_object('commessa_attivita_id', NEW.commessa_attivita_id), NULL::uuid, concat('commessa_attivita_id ', NEW.commessa_attivita_id, ' non trovata'));
+    END IF;
+
+    -- Guard: coerenza commessa_id ↔ commessa_attivita_id
+    IF v_commessa_from_attivita <> NEW.commessa_id THEN
+        PERFORM script.fn_log_and_raise_error('vendite', 'trgfn_attivita_fatturabili_guard_commessa', 'E_COMMESSA_ATTIVITA_NON_COERENTE',
+            jsonb_build_object('commessa_id', NEW.commessa_id, 'commessa_attivita_id', NEW.commessa_attivita_id, 'commessa_attesa', v_commessa_from_attivita),
+            NULL::uuid, concat('attivita ', NEW.commessa_attivita_id, ' appartiene a commessa ', v_commessa_from_attivita, ' non a ', NEW.commessa_id));
+    END IF;
+
     RETURN NEW;
-  END IF;
-
-  IF (NEW.commessa_id IS NULL AND NEW.commessa_attivita_id IS NOT NULL)
-     OR (NEW.commessa_id IS NOT NULL AND NEW.commessa_attivita_id IS NULL) THEN
-    PERFORM script.fn_log_and_raise_error(
-      'vendite', 'trgfn_attivita_fatturabili_guard_commessa', 'E_GENERICO',
-      jsonb_build_object(
-        'scope','COMMESSE','severity','C','code','E_GENERICO',
-        'context',jsonb_build_object(
-          'detail','commessa_id e commessa_attivita_id devono essere valorizzati a coppia',
-          'commessa_id',NEW.commessa_id,
-          'commessa_attivita_id',NEW.commessa_attivita_id
-        )
-      ),
-      NULL::uuid, 'pair_commessa_non_valida'
-    );
-  END IF;
-
-  IF NEW.commessa_id IS NULL THEN
-    PERFORM script.fn_log_and_raise_error(
-      'vendite', 'trgfn_attivita_fatturabili_guard_commessa', 'E_GENERICO',
-      jsonb_build_object(
-        'scope','COMMESSE','severity','C','code','E_GENERICO',
-        'context',jsonb_build_object(
-          'detail','inserimento/aggiornamento attivita_fatturabili senza commessa non consentito',
-          'attivita_id',NEW.id
-        )
-      ),
-      NULL::uuid, 'commessa_obbligatoria'
-    );
-  END IF;
-
-  SELECT ca.commessa_id
-    INTO v_commessa_from_attivita
-    FROM vendite.commesse_attivita ca
-   WHERE ca.id = NEW.commessa_attivita_id;
-
-  IF v_commessa_from_attivita IS NULL THEN
-    PERFORM script.fn_log_and_raise_error(
-      'vendite', 'trgfn_attivita_fatturabili_guard_commessa', 'E_GENERICO',
-      jsonb_build_object(
-        'scope','COMMESSE','severity','C','code','E_GENERICO',
-        'context',jsonb_build_object(
-          'detail','commessa_attivita_id non trovata',
-          'commessa_attivita_id',NEW.commessa_attivita_id
-        )
-      ),
-      NULL::uuid, 'commessa_attivita_non_trovata'
-    );
-  END IF;
-
-  IF v_commessa_from_attivita <> NEW.commessa_id THEN
-    PERFORM script.fn_log_and_raise_error(
-      'vendite', 'trgfn_attivita_fatturabili_guard_commessa', 'E_GENERICO',
-      jsonb_build_object(
-        'scope','COMMESSE','severity','C','code','E_GENERICO',
-        'context',jsonb_build_object(
-          'detail','commessa_attivita_id non coerente con commessa_id',
-          'commessa_id',NEW.commessa_id,
-          'commessa_attivita_id',NEW.commessa_attivita_id,
-          'commessa_attesa',v_commessa_from_attivita
-        )
-      ),
-      NULL::uuid,
-      concat('commessa_attivita_non_coerente_', NEW.commessa_attivita_id::text,
-      '_commessa_from_attivita_', v_commessa_from_attivita::text)
-    );
-  END IF;
-
-  RETURN NEW;
-END
+END;
 $function$
 
 COMMENT ON FUNCTION vendite.trgfn_attivita_fatturabili_guard_commessa()
-IS 'Guardrail anti-bypass su attivita_fatturabili: commessa_id+commessa_attivita_id obbligatori quando il flag e` attivo. Bypass GUC consentito solo a superuser.';
+IS 'Guard anti-bypass: commessa_id+commessa_attivita_id obbligatori e coerenti. Bypass GUC solo superuser.';
 ```
 
 ---

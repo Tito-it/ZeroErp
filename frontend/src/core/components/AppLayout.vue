@@ -75,6 +75,10 @@ useKeyboardShortcuts([
   {
     ...SHORTCUTS.SPLIT_CLOSE,
     action: () => tabs.closeSplit()
+  },
+  {
+    ...SHORTCUTS.AI_ASSISTANT,
+    action: () => { if (ui.aiAvailable) ui.toggleAiDrawer() }
   }
 ])
 

@@ -10,6 +10,7 @@ export const useClientiStore = defineStore('anagrafiche-clienti', () => {
   const items = ref([])
   const totalRecords = ref(0)
   const loading = ref(false)
+  const hasSearched = ref(false)
 
   const filters = ref({
     search: '',
@@ -22,12 +23,31 @@ export const useClientiStore = defineStore('anagrafiche-clienti', () => {
   })
 
   // Scopo: Carica lista paginata clienti con filtri.
+  // La lista parte vuota: richiede search (min 3 car) o filtro attivo.
   async function fetchList() {
+    const f = filters.value
+    const searchTerm = (f.search || '').trim()
+    const hasFilters = f.utility_id != null || f.stato_cliente_id != null
+
+    // Search con meno di 3 caratteri e nessun filtro attivo → ignora
+    if (searchTerm.length > 0 && searchTerm.length < 3 && !hasFilters) {
+      return
+    }
+    if (!searchTerm && !hasFilters && !hasSearched.value) {
+      return
+    }
+    // Search svuotata senza filtri → torna a stato vuoto
+    if (!searchTerm && !hasFilters) {
+      items.value = []
+      totalRecords.value = 0
+      hasSearched.value = false
+      return
+    }
+
     loading.value = true
     try {
       const params = {}
-      const f = filters.value
-      if (f.search) params.search = f.search
+      if (searchTerm.length >= 3) params.search = searchTerm
       if (f.utility_id != null) params.utility_id = f.utility_id
       if (f.stato_cliente_id != null) params.stato_cliente_id = f.stato_cliente_id
       params.limit = f.limit
@@ -39,6 +59,7 @@ export const useClientiStore = defineStore('anagrafiche-clienti', () => {
       const res = await listClienti(params)
       items.value = res.data.data.results
       totalRecords.value = res.data.data.count
+      hasSearched.value = true
     } finally {
       loading.value = false
     }
@@ -65,7 +86,7 @@ export const useClientiStore = defineStore('anagrafiche-clienti', () => {
   }
 
   return {
-    items, totalRecords, loading, filters,
+    items, totalRecords, loading, hasSearched, filters,
     fetchList, fetchDetail, create, update
   }
 })

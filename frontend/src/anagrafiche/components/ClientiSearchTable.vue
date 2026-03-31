@@ -1,7 +1,7 @@
 <script setup>
 // Scopo: DataTable paginata clienti con search, filtro utility e stato.
 // Riusabile da: ClientiView, futuro ricerca clienti in altri domini.
-import { ref, onMounted } from 'vue'
+import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useClientiStore } from '../stores/clienti'
 import { useSearchTable } from '../../core/composables/useSearchTable'
@@ -18,6 +18,7 @@ import Select from 'primevue/select'
 import Tag from 'primevue/tag'
 import Button from 'primevue/button'
 import NewButton from '../../core/components/NewButton.vue'
+import SearchHint from '../../core/components/SearchHint.vue'
 
 const emit = defineEmits(['new', 'row-click', 'contatti', 'indirizzi', 'conti-bancari'])
 const { t } = useI18n()
@@ -58,7 +59,7 @@ function dataSospRiatt(row) {
 }
 
 useTabFreshness(store, 'cliente')
-onMounted(() => { store.fetchList() })
+// La lista parte vuota — l'operatore deve cercare o applicare un filtro.
 </script>
 
 <template>
@@ -96,7 +97,11 @@ onMounted(() => { store.fetchList() })
       </div>
     </div>
 
+    <!-- Placeholder: nessuna ricerca effettuata -->
+    <SearchHint v-if="!store.hasSearched && !store.loading" />
+
     <DataTable
+      v-show="store.hasSearched || store.loading"
       :value="store.items"
       :loading="store.loading"
       v-bind="paginatorProps"

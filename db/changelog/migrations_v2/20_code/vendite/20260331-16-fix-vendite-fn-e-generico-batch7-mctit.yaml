@@ -1,0 +1,329 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+#
+# Fix E_GENERICO — vendite batch 7 (4 funzioni):
+#   - fn_list_commessa_attivita (2x)
+#   - fn_list_consumi_da_pushare (1x)
+#   - fn_list_contratti_da_pushare (1x)
+#   - fn_list_ddt_da_pushare (1x)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+    - logicalFilePath: migrations_v2/20_code/vendite/20260331-16-fix-vendite-fn-e-generico-batch7-mctit.yaml
+
+    - changeSet:
+          id: 20260331-16-fix-fn-list-commessa-attivita
+          author: mctit
+          runOnChange: true
+          comment: >
+              Fix fn_list_commessa_attivita: 2x E_GENERICO →
+              E_PARAMETRO_INVALIDO + E_VALORE_MANCANTE.
+          changes:
+              - sql:
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+                        -- Fix 20260331: 2x E_GENERICO → codici specifici
+                        CREATE OR REPLACE FUNCTION vendite.fn_list_commessa_attivita(
+                            p_commessa_id        vendite.commesse.id%TYPE,
+                            p_stato_emissione    CHARACTER VARYING DEFAULT NULL,
+                            p_stato_approvazione CHARACTER VARYING DEFAULT NULL,
+                            p_competenza_mese    DATE DEFAULT NULL,
+                            p_limit              INTEGER DEFAULT 1000,
+                            p_offset             INTEGER DEFAULT 0
+                        )
+                        RETURNS TABLE(id BIGINT, commessa_id BIGINT, segment_key CHARACTER VARYING,
+                            articolo_id UUID, istanza_utility_id BIGINT, data_attivita DATE,
+                            uom_id BIGINT, quantita NUMERIC, competenza_mese DATE, competenza_dal DATE,
+                            competenza_al DATE, prezzo_snapshot NUMERIC, prezzo_bloccato BOOLEAN,
+                            prezzo_da_riallineare BOOLEAN, stato_approvazione CHARACTER VARYING,
+                            stato_emissione CHARACTER VARYING, sorgente_tipo_id BIGINT,
+                            sorgente_codice CHARACTER VARYING, meta JSONB, data_update TIMESTAMPTZ)
+                        LANGUAGE plpgsql STABLE
+                        AS $function$
+                        DECLARE
+                            v_competenza_mese vendite.commesse_attivita.competenza_mese%TYPE;
+                        BEGIN
+                            IF p_commessa_id IS NULL OR p_commessa_id <= 0 THEN
+                                PERFORM script.fn_log_and_raise_error('vendite', 'fn_list_commessa_attivita', 'E_PARAMETRO_INVALIDO',
+                                    jsonb_build_object('parametro', 'p_commessa_id', 'valore', p_commessa_id), NULL::uuid, 'p_commessa_id obbligatorio e > 0');
+                            END IF;
+
+                            IF NOT EXISTS (SELECT 1 FROM vendite.commesse c WHERE c.id = p_commessa_id) THEN
+                                PERFORM script.fn_log_and_raise_error('vendite', 'fn_list_commessa_attivita', 'E_VALORE_MANCANTE',
+                                    jsonb_build_object('commessa_id', p_commessa_id), NULL::uuid, concat('commessa_id ', p_commessa_id));
+                            END IF;
+
+                            -- Sanitize limit/offset
+                            IF p_limit IS NULL OR p_limit <= 0 THEN p_limit := 1000; END IF;
+                            IF p_limit > 10000 THEN p_limit := 10000; END IF;
+                            IF p_offset IS NULL OR p_offset < 0 THEN p_offset := 0; END IF;
+
+                            v_competenza_mese := CASE WHEN p_competenza_mese IS NOT NULL
+                                THEN date_trunc('month', p_competenza_mese)::DATE ELSE NULL END;
+
+                            RETURN QUERY
+                            SELECT ca.id, ca.commessa_id, ca.segment_key, ca.articolo_id, ca.istanza_utility_id,
+                                   ca.data_attivita, ca.uom_id, ca.quantita, ca.competenza_mese, ca.competenza_dal,
+                                   ca.competenza_al, ca.prezzo_snapshot, ca.prezzo_bloccato, ca.prezzo_da_riallineare,
+                                   ca.stato_approvazione, ca.stato_emissione, ca.sorgente_tipo_id,
+                                   s.codice AS sorgente_codice, ca.meta, ca.data_update
+                              FROM vendite.commesse_attivita ca
+                              LEFT JOIN config.sorgenti s ON s.id = ca.sorgente_tipo_id
+                             WHERE ca.commessa_id = p_commessa_id
+                               AND (p_stato_emissione IS NULL OR ca.stato_emissione = p_stato_emissione)
+                               AND (p_stato_approvazione IS NULL OR ca.stato_approvazione = p_stato_approvazione)
+                               AND (v_competenza_mese IS NULL OR ca.competenza_mese = v_competenza_mese)
+                             ORDER BY ca.id LIMIT p_limit OFFSET p_offset;
+                        END;
+                        $function$;
+
+                        COMMENT ON FUNCTION vendite.fn_list_commessa_attivita(BIGINT, CHARACTER VARYING, CHARACTER VARYING, DATE, INTEGER, INTEGER)
+                          IS 'Read-only: righe commesse_attivita con filtri opzionali e paginazione. JOIN sorgenti per codice.';
+
+    - changeSet:
+          id: 20260331-16-fix-fn-list-consumi-da-pushare
+          author: mctit
+          runOnChange: true
+          comment: >
+              Fix fn_list_consumi_da_pushare: 1x E_GENERICO → E_CODICE.
+          changes:
+              - sql:
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+                        -- Fix 20260331: 1x E_GENERICO → E_CODICE (sorgente ATTIVITA_CONSUMI)
+                        CREATE OR REPLACE FUNCTION vendite.fn_list_consumi_da_pushare(
+                            p_competenza_mese    DATE DEFAULT NULL,
+                            p_billing_account_id anagrafiche.billing_account.id%TYPE DEFAULT NULL,
+                            p_limit              INTEGER DEFAULT NULL
+                        )
+                        RETURNS TABLE(consumo_id BIGINT, consumo_uid UUID, billing_account_id BIGINT,
+                            utility_id INTEGER, emittente_soggetto_ruolo_id BIGINT, competenza_dal DATE,
+                            competenza_al DATE, fatturazione_immediata BOOLEAN, sorgente_tipo_id BIGINT,
+                            sorgente_uid TEXT, segment_key CHARACTER VARYING, articolo_id UUID,
+                            istanza_utility_id BIGINT, data_attivita DATE, uom_id BIGINT, quantita NUMERIC,
+                            qta_operativa NUMERIC, uom_operativa_id BIGINT, factor_to_base NUMERIC,
+                            competenza_mese DATE, prezzo_snapshot NUMERIC, prezzo_bloccato BOOLEAN,
+                            pricing_mode CHARACTER VARYING, tipo_movimento CHARACTER VARYING,
+                            tipo_consumo CHARACTER VARYING, valuta_id INTEGER, meta JSONB,
+                            tipo_doc_fiscale_id BIGINT)
+                        LANGUAGE plpgsql
+                        AS $function$
+                        DECLARE
+                            v_sorgente_tipo_id    config.sorgenti.id%TYPE;
+                            v_tipo_doc_fiscale_id config.sorgenti.tipo_doc_fiscale_id%TYPE;
+                        BEGIN
+                            SELECT s.id, s.tipo_doc_fiscale_id INTO v_sorgente_tipo_id, v_tipo_doc_fiscale_id
+                              FROM config.sorgenti s WHERE s.codice = 'ATTIVITA_CONSUMI' AND s.attivo IS TRUE LIMIT 1;
+
+                            IF v_sorgente_tipo_id IS NULL THEN
+                                PERFORM script.fn_log_and_raise_error('vendite', 'fn_list_consumi_da_pushare', 'E_CODICE',
+                                    jsonb_build_object('codice', 'ATTIVITA_CONSUMI'), NULL::uuid, 'ATTIVITA_CONSUMI', 'config.sorgenti');
+                            END IF;
+
+                            RETURN QUERY
+                            SELECT ac.id, ac.uid, ac.billing_account_id, ba.utility_id,
+                                   anagrafiche.fn_get_emittente_fiscale_id(ac.billing_account_id),
+                                   ac.periodo_dal, ac.periodo_al, FALSE, v_sorgente_tipo_id,
+                                   ac.uid::text, ('CONS:' || ac.uid::text)::VARCHAR, NULL::UUID,
+                                   ba.istanza_utility_id, COALESCE(ac.periodo_dal, ac.competenza_mese),
+                                   ac.uom_id, ac.consumo_totale, ac.consumo_totale, ac.uom_id,
+                                   1::NUMERIC, ac.competenza_mese, NULL::NUMERIC, FALSE,
+                                   'FIXED'::VARCHAR, 'NORMALE'::VARCHAR, 'CONSUMO'::VARCHAR,
+                                   NULL::INTEGER,
+                                   jsonb_build_object('consumo_uid', ac.uid, 'stato_calcolo', ac.stato_calcolo,
+                                       'periodo_dal', ac.periodo_dal, 'periodo_al', ac.periodo_al,
+                                       'tipo_commessa', 'AUTO', 'policy_fatturazione', 'DA_DOCUMENTO'),
+                                   v_tipo_doc_fiscale_id
+                              FROM vendite.attivita_consumi ac
+                              JOIN anagrafiche.billing_account ba ON ba.id = ac.billing_account_id
+                             WHERE ac.stato_calcolo = 'OK' AND ac.fattura_id IS NULL
+                               AND (p_competenza_mese IS NULL OR ac.competenza_mese = p_competenza_mese)
+                               AND (p_billing_account_id IS NULL OR ac.billing_account_id = p_billing_account_id)
+                               AND NOT EXISTS (
+                                   SELECT 1 FROM vendite.commesse_attivita ca
+                                    WHERE ca.segment_key LIKE 'CONS:' || ac.uid::text || ':%'
+                                      AND ca.stato_emissione = 'EMESSA'
+                               )
+                             ORDER BY ac.competenza_mese, ac.id LIMIT p_limit;
+                        END;
+                        $function$;
+
+                        COMMENT ON FUNCTION vendite.fn_list_consumi_da_pushare(DATE, BIGINT, INTEGER)
+                          IS 'Consumi eligible al push su commessa AUTO (stato_calcolo OK, non fatturati).';
+
+    - changeSet:
+          id: 20260331-16-fix-fn-list-contratti-da-pushare
+          author: mctit
+          runOnChange: true
+          comment: >
+              Fix fn_list_contratti_da_pushare: 1x E_GENERICO → E_CODICE.
+          changes:
+              - sql:
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+                        -- Fix 20260331: 1x E_GENERICO → E_CODICE (sorgente CONTRATTO)
+                        CREATE OR REPLACE FUNCTION vendite.fn_list_contratti_da_pushare(
+                            p_competenza_mese    DATE DEFAULT NULL,
+                            p_billing_account_id anagrafiche.billing_account.id%TYPE DEFAULT NULL,
+                            p_limit              INTEGER DEFAULT NULL
+                        )
+                        RETURNS TABLE(contratto_id BIGINT, contratto_uid UUID, riga_id BIGINT,
+                            billing_account_id BIGINT, utility_id INTEGER, emittente_soggetto_ruolo_id BIGINT,
+                            competenza_dal DATE, competenza_al DATE, fatturazione_immediata BOOLEAN,
+                            sorgente_tipo_id BIGINT, sorgente_uid TEXT, segment_key CHARACTER VARYING,
+                            articolo_id UUID, istanza_utility_id BIGINT, data_attivita DATE, uom_id BIGINT,
+                            quantita NUMERIC, qta_operativa NUMERIC, uom_operativa_id BIGINT,
+                            factor_to_base NUMERIC, competenza_mese DATE, prezzo_snapshot NUMERIC,
+                            prezzo_bloccato BOOLEAN, pricing_mode CHARACTER VARYING,
+                            tipo_movimento CHARACTER VARYING, tipo_consumo CHARACTER VARYING,
+                            valuta_id INTEGER, meta JSONB, tipo_doc_fiscale_id BIGINT)
+                        LANGUAGE plpgsql
+                        AS $function$
+                        DECLARE
+                            v_sorgente_tipo_id    config.sorgenti.id%TYPE;
+                            v_tipo_doc_fiscale_id config.sorgenti.tipo_doc_fiscale_id%TYPE;
+                            v_stato_attivo_id     config.stati_doc_contratti.id%TYPE;
+                        BEGIN
+                            SELECT s.id, s.tipo_doc_fiscale_id INTO v_sorgente_tipo_id, v_tipo_doc_fiscale_id
+                              FROM config.sorgenti s WHERE s.codice = 'CONTRATTO' AND s.attivo IS TRUE LIMIT 1;
+
+                            IF v_sorgente_tipo_id IS NULL THEN
+                                PERFORM script.fn_log_and_raise_error('vendite', 'fn_list_contratti_da_pushare', 'E_CODICE',
+                                    jsonb_build_object('codice', 'CONTRATTO'), NULL::uuid, 'CONTRATTO', 'config.sorgenti');
+                            END IF;
+
+                            SELECT s.id INTO v_stato_attivo_id
+                              FROM config.stati_doc_contratti s WHERE s.codice = 'ATTIVO' AND s.attivo IS TRUE LIMIT 1;
+
+                            RETURN QUERY
+                            SELECT c.id, c.uid, cr.id, c.billing_account_id, c.utility_id,
+                                   anagrafiche.fn_get_emittente_fiscale_id(c.billing_account_id),
+                                   c.valido_dal, c.valido_al, FALSE, v_sorgente_tipo_id, c.uid::text,
+                                   ('CONTR:' || c.uid::text || ':R:' || cr.id::text || ':M:' ||
+                                    to_char(date_trunc('month', COALESCE(c.valido_dal, c.data))::DATE, 'YYYY-MM'))::VARCHAR,
+                                   cr.articolo_id, c.istanza_utility_id,
+                                   COALESCE(c.valido_dal, c.data), NULL::BIGINT, cr.quantita_fissa,
+                                   cr.qta_operativa, cr.uom_operativa_id, COALESCE(cr.factor_to_base, 1::NUMERIC),
+                                   date_trunc('month', COALESCE(c.valido_dal, c.data))::DATE,
+                                   cr.prezzo_unitario, (cr.prezzo_unitario IS NOT NULL),
+                                   'FIXED'::VARCHAR, 'NORMALE'::VARCHAR,
+                                   COALESCE(cr.tipo_erogazione, 'CANONE')::VARCHAR, NULL::INTEGER,
+                                   jsonb_build_object('contratto_numero', c.numero, 'periodicita', cr.periodicita,
+                                       'generazione_canone', cr.generazione_canone, 'competenza_canone', cr.competenza_canone,
+                                       'tipo_erogazione', cr.tipo_erogazione, 'tipo_commessa', 'AUTO', 'policy_fatturazione', 'DA_DOCUMENTO'),
+                                   v_tipo_doc_fiscale_id
+                              FROM vendite.contratti c
+                              JOIN vendite.contratti_righe cr ON cr.contratto_id = c.id AND COALESCE(cr.attivo, TRUE) IS TRUE
+                             WHERE c.billing_account_id IS NOT NULL
+                               AND (v_stato_attivo_id IS NULL OR c.stato_doc_contratto_id = v_stato_attivo_id)
+                               AND (c.valido_al IS NULL OR c.valido_al >= COALESCE(p_competenza_mese, CURRENT_DATE))
+                               AND (p_competenza_mese IS NULL OR date_trunc('month', COALESCE(c.valido_dal, c.data))::DATE = p_competenza_mese)
+                               AND (p_billing_account_id IS NULL OR c.billing_account_id = p_billing_account_id)
+                               AND NOT EXISTS (
+                                   SELECT 1 FROM vendite.commesse_attivita ca
+                                    WHERE ca.segment_key = 'CONTR:' || c.uid::text || ':R:' || cr.id::text
+                                        || ':M:' || to_char(date_trunc('month', COALESCE(c.valido_dal, c.data))::DATE, 'YYYY-MM')
+                                      AND ca.stato_emissione = 'EMESSA'
+                               )
+                             ORDER BY c.id, cr.id LIMIT p_limit;
+                        END;
+                        $function$;
+
+                        COMMENT ON FUNCTION vendite.fn_list_contratti_da_pushare(DATE, BIGINT, INTEGER)
+                          IS 'Righe contratto eligible al push su commessa (stato ATTIVO, in validita).';
+
+    - changeSet:
+          id: 20260331-16-fix-fn-list-ddt-da-pushare
+          author: mctit
+          runOnChange: true
+          comment: >
+              Fix fn_list_ddt_da_pushare: 1x E_GENERICO → E_CODICE.
+          changes:
+              - sql:
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+                        -- Fix 20260331: 1x E_GENERICO → E_CODICE (sorgente DDT_VENDITA)
+                        CREATE OR REPLACE FUNCTION vendite.fn_list_ddt_da_pushare(
+                            p_competenza_mese    DATE DEFAULT NULL,
+                            p_billing_account_id anagrafiche.billing_account.id%TYPE DEFAULT NULL,
+                            p_limit              INTEGER DEFAULT NULL
+                        )
+                        RETURNS TABLE(ddt_id BIGINT, ddt_uid UUID, riga_id BIGINT, billing_account_id BIGINT,
+                            utility_id INTEGER, emittente_soggetto_ruolo_id BIGINT, competenza_dal DATE,
+                            competenza_al DATE, fatturazione_immediata BOOLEAN, sorgente_tipo_id BIGINT,
+                            sorgente_uid TEXT, segment_key CHARACTER VARYING, articolo_id UUID,
+                            istanza_utility_id BIGINT, data_attivita DATE, uom_id BIGINT, quantita NUMERIC,
+                            qta_operativa NUMERIC, uom_operativa_id BIGINT, factor_to_base NUMERIC,
+                            competenza_mese DATE, prezzo_snapshot NUMERIC, prezzo_bloccato BOOLEAN,
+                            pricing_mode CHARACTER VARYING, tipo_movimento CHARACTER VARYING,
+                            tipo_consumo CHARACTER VARYING, valuta_id INTEGER, meta JSONB,
+                            tipo_doc_fiscale_id BIGINT)
+                        LANGUAGE plpgsql
+                        AS $function$
+                        DECLARE
+                            v_sorgente_tipo_id    config.sorgenti.id%TYPE;
+                            v_tipo_doc_fiscale_id config.sorgenti.tipo_doc_fiscale_id%TYPE;
+                        BEGIN
+                            SELECT s.id, s.tipo_doc_fiscale_id INTO v_sorgente_tipo_id, v_tipo_doc_fiscale_id
+                              FROM config.sorgenti s WHERE s.codice = 'DDT_VENDITA' AND s.attivo IS TRUE LIMIT 1;
+
+                            IF v_sorgente_tipo_id IS NULL THEN
+                                PERFORM script.fn_log_and_raise_error('vendite', 'fn_list_ddt_da_pushare', 'E_CODICE',
+                                    jsonb_build_object('codice', 'DDT_VENDITA'), NULL::uuid, 'DDT_VENDITA', 'config.sorgenti');
+                            END IF;
+
+                            RETURN QUERY
+                            SELECT d.id, d.uid, dr.id,
+                                   COALESCE(d.billing_account_id, src.src_billing_account_id),
+                                   ba.utility_id,
+                                   anagrafiche.fn_get_emittente_fiscale_id(COALESCE(d.billing_account_id, src.src_billing_account_id)),
+                                   d.data, d.data, FALSE, v_sorgente_tipo_id, d.uid::text,
+                                   ('DDT:' || d.uid::text || ':R:' || dr.id::text)::VARCHAR,
+                                   dr.articolo_id, ba.istanza_utility_id, d.data, NULL::BIGINT,
+                                   dr.quantita, dr.qta_operativa, dr.uom_operativa_id,
+                                   COALESCE(dr.factor_to_base, 1::NUMERIC),
+                                   date_trunc('month', d.data)::DATE,
+                                   COALESCE(dr.prezzo_unitario, src.src_prezzo_unitario),
+                                   (COALESCE(dr.prezzo_unitario, src.src_prezzo_unitario) IS NOT NULL),
+                                   'FIXED'::VARCHAR, 'NORMALE'::VARCHAR, 'CONGUAGLIO'::VARCHAR,
+                                   COALESCE(d.valuta_id, src.src_valuta_id),
+                                   jsonb_build_object('ddt_numero', d.numero, 'ddt_anno', d.anno, 'ddt_serie', d.serie,
+                                       'ordine_sorgente_uid', src.src_ordine_uid, 'ordine_fatturaz_trg', src.src_fatturazione_trigger,
+                                       'tipo_commessa', 'AUTO', 'policy_fatturazione', 'DA_DOCUMENTO'),
+                                   v_tipo_doc_fiscale_id
+                              FROM vendite.ddt d
+                              JOIN config.stati_doc_ddt sdd ON sdd.id = d.stato_doc_ddt_id
+                              JOIN vendite.ddt_righe dr ON dr.ddt_id = d.id AND dr.attivo IS TRUE
+                              LEFT JOIN LATERAL (
+                                  SELECT o_src.billing_account_id AS src_billing_account_id,
+                                         o_src.fatturazione_trigger AS src_fatturazione_trigger,
+                                         o_src.uid AS src_ordine_uid, o_src.valuta_id AS src_valuta_id,
+                                         or_r.prezzo_unitario AS src_prezzo_unitario
+                                    FROM vendite.ordini_righe_fulfillment ful
+                                    JOIN vendite.ordini_righe or_r ON or_r.id = ful.ordine_riga_id
+                                    JOIN vendite.ordini o_src ON o_src.id = or_r.ordine_id
+                                   WHERE ful.ddt_riga_id = dr.id ORDER BY ful.id LIMIT 1
+                              ) src ON TRUE
+                              JOIN anagrafiche.billing_account ba
+                                ON ba.id = COALESCE(d.billing_account_id, src.src_billing_account_id)
+                             WHERE COALESCE(d.billing_account_id, src.src_billing_account_id) IS NOT NULL
+                               AND ((src.src_fatturazione_trigger IS NOT NULL AND src.src_fatturazione_trigger != 'CONFERMATO' AND sdd.codice = src.src_fatturazione_trigger)
+                                    OR (src.src_fatturazione_trigger IS NULL AND d.billing_account_id IS NOT NULL AND sdd.codice IN ('SPEDITO', 'CONSEGNATO')))
+                               AND (p_competenza_mese IS NULL OR date_trunc('month', d.data)::DATE = p_competenza_mese)
+                               AND (p_billing_account_id IS NULL OR COALESCE(d.billing_account_id, src.src_billing_account_id) = p_billing_account_id)
+                               AND NOT EXISTS (
+                                   SELECT 1 FROM vendite.commesse_attivita ca
+                                    WHERE ca.segment_key = 'DDT:' || d.uid::text || ':R:' || dr.id::text
+                                      AND ca.stato_emissione = 'EMESSA'
+                               )
+                             ORDER BY d.id, dr.id LIMIT p_limit;
+                        END;
+                        $function$;
+
+                        COMMENT ON FUNCTION vendite.fn_list_ddt_da_pushare(DATE, BIGINT, INTEGER)
+                          IS 'Righe DDT eligible al push su commessa. DDT da ordine e DDT autonomi.';

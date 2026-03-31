@@ -8,6 +8,7 @@
     "view": "View",
     "search": "Search",
     "reload_list": "Reload list (F5)",
+    "eseguire_ricerca": "Search to display results",
     "confirm": "Confirm",
     "yes": "Yes",
     "no": "No",
@@ -731,5 +732,19 @@
     "competenze_flussi": "Flow competences",
     "eseguire_ricerca": "Search to display practices",
     "visualizzazione_pratica": "Viewing practice code: {codice}"
+  },
+  "ai": {
+    "title": "AI Assistant",
+    "placeholder": "Ask a question...",
+    "send": "Send",
+    "clear": "New conversation",
+    "loading": "Processing...",
+    "error": "Error communicating with the assistant.",
+    "disabled": "AI Assistant not available",
+    "navigate": "Open",
+    "welcome": "Hello! I'm ZeroERP's AI assistant. Ask me about practices, subjects or other areas of the system.",
+    "confirm_title": "Confirm operation",
+    "confirm_cancel": "Operation cancelled",
+    "confirm_success": "Operation completed"
   }
 }

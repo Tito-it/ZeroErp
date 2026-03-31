@@ -1,0 +1,361 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+#
+# Fix E_GENERICO — vendite batch 10 (4 funzioni):
+#   - fn_prepare_sdi_payload (4x)
+#   - fn_reset_fondi_fattura (2x)
+#   - fn_reset_lotto_draft (7x)
+#   - fn_reset_lotto_fattura_draft (7x)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+    - logicalFilePath: migrations_v2/20_code/vendite/20260331-19-fix-vendite-fn-e-generico-batch10-mctit.yaml
+
+    - changeSet:
+          id: 20260331-19-fix-fn-prepare-sdi-payload
+          author: mctit
+          runOnChange: true
+          comment: >
+              Fix fn_prepare_sdi_payload: 4x E_GENERICO → codici specifici.
+          changes:
+              - sql:
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+                        -- Fix 20260331: 4x E_GENERICO → codici specifici
+                        CREATE OR REPLACE FUNCTION vendite.fn_prepare_sdi_payload(
+                            p_lotto_id                  vendite.fatturazione_lotti.id%TYPE,
+                            p_stato_sdi_codice_interno  CHARACTER VARYING DEFAULT 'DA_INVIARE',
+                            p_force_new_tentativo       BOOLEAN DEFAULT FALSE
+                        )
+                        RETURNS TABLE(fattura_sdi_id BIGINT, fattura_id BIGINT, tentativo_num SMALLINT,
+                            stato_sdi_id BIGINT, codice_documento TEXT, numero_fattura BIGINT,
+                            data_fattura DATE, billing_account_id BIGINT, emittente_soggetto_ruolo_id BIGINT,
+                            valuta_id INTEGER, totale_a_pagare NUMERIC)
+                        LANGUAGE plpgsql
+                        AS $function$
+                        DECLARE
+                            v_stato_sdi_id config.stati_sdi.id%TYPE;
+                            v_exists_lotto BOOLEAN := FALSE;
+                        BEGIN
+                            IF p_lotto_id IS NULL OR p_lotto_id <= 0 THEN
+                                PERFORM script.fn_log_and_raise_error('vendite', 'fn_prepare_sdi_payload', 'E_PARAMETRO_INVALIDO',
+                                    jsonb_build_object('parametro', 'p_lotto_id', 'valore', p_lotto_id), NULL::uuid, 'p_lotto_id obbligatorio e > 0');
+                            END IF;
+
+                            IF p_stato_sdi_codice_interno IS NULL OR btrim(p_stato_sdi_codice_interno) = '' THEN
+                                PERFORM script.fn_log_and_raise_error('vendite', 'fn_prepare_sdi_payload', 'E_PARAMETRO_INVALIDO',
+                                    jsonb_build_object('parametro', 'p_stato_sdi_codice_interno', 'valore', p_stato_sdi_codice_interno), NULL::uuid, 'p_stato_sdi_codice_interno obbligatorio');
+                            END IF;
+
+                            SELECT EXISTS (SELECT 1 FROM vendite.fatturazione_lotti fl WHERE fl.id = p_lotto_id) INTO v_exists_lotto;
+
+                            IF NOT COALESCE(v_exists_lotto, FALSE) THEN
+                                PERFORM script.fn_log_and_raise_error('vendite', 'fn_prepare_sdi_payload', 'E_VALORE_MANCANTE',
+                                    jsonb_build_object('lotto_id', p_lotto_id), NULL::uuid, concat('lotto_id ', p_lotto_id));
+                            END IF;
+
+                            SELECT s.id INTO v_stato_sdi_id
+                              FROM config.stati_sdi s
+                             WHERE s.codice_interno = p_stato_sdi_codice_interno AND s.attivo IS TRUE
+                             ORDER BY s.ordine NULLS LAST, s.id LIMIT 1;
+
+                            IF v_stato_sdi_id IS NULL THEN
+                                PERFORM script.fn_log_and_raise_error('vendite', 'fn_prepare_sdi_payload', 'E_CODICE',
+                                    jsonb_build_object('codice_interno', p_stato_sdi_codice_interno), NULL::uuid, p_stato_sdi_codice_interno, 'config.stati_sdi');
+                            END IF;
+
+                            -- Upsert fatture_sdi + RETURN QUERY (logica invariata dall'originale)
+                            RETURN QUERY
+                            WITH target_fatture AS (
+                                SELECT f.id AS f_id, f.numero, f.data, f.billing_account_id,
+                                       f.emittente_soggetto_ruolo_id, f.valuta_id,
+                                       COALESCE(f.anno::text, '') || COALESCE(f.serie, '') || COALESCE(f.numero::text, '') AS codice_doc
+                                  FROM vendite.fatturazione_lotti_fatture lf
+                                  JOIN vendite.fatture f ON f.id = lf.fattura_id
+                                 WHERE lf.lotto_id = p_lotto_id AND lf.esclusa IS FALSE
+                            ), upserted AS (
+                                INSERT INTO vendite.fatture_sdi (fattura_id, tentativo, stato_sdi_id, meta)
+                                SELECT tf.f_id,
+                                       COALESCE((SELECT MAX(fs2.tentativo) FROM vendite.fatture_sdi fs2 WHERE fs2.fattura_id = tf.f_id), 0)
+                                         + CASE WHEN p_force_new_tentativo THEN 1 ELSE 0 END,
+                                       v_stato_sdi_id, '{}'::jsonb
+                                  FROM target_fatture tf
+                                 WHERE p_force_new_tentativo IS TRUE
+                                    OR NOT EXISTS (SELECT 1 FROM vendite.fatture_sdi fs3 WHERE fs3.fattura_id = tf.f_id)
+                                ON CONFLICT (fattura_id, tentativo) DO UPDATE SET stato_sdi_id = v_stato_sdi_id, data_update = now()
+                                RETURNING vendite.fatture_sdi.id AS fs_id, vendite.fatture_sdi.fattura_id AS fs_fattura_id, vendite.fatture_sdi.tentativo AS fs_tentativo, vendite.fatture_sdi.stato_sdi_id AS fs_stato_sdi_id
+                            )
+                            SELECT u.fs_id, u.fs_fattura_id, u.fs_tentativo, u.fs_stato_sdi_id,
+                                   tf.codice_doc, tf.numero, tf.data, tf.billing_account_id,
+                                   tf.emittente_soggetto_ruolo_id, tf.valuta_id,
+                                   COALESCE((SELECT SUM(ri.totale_riga) FROM vendite.fatture_riepiloghi_iva ri WHERE ri.fattura_id = u.fs_fattura_id), 0)
+                              FROM upserted u
+                              JOIN target_fatture tf ON tf.f_id = u.fs_fattura_id;
+                        END;
+                        $function$;
+
+                        COMMENT ON FUNCTION vendite.fn_prepare_sdi_payload(BIGINT, CHARACTER VARYING, BOOLEAN)
+                          IS 'Prepara dataset SDI per lotto e apre/riusa tentativi su fatture_sdi.';
+
+    - changeSet:
+          id: 20260331-19-fix-fn-reset-fondi-fattura
+          author: mctit
+          runOnChange: true
+          comment: >
+              Fix fn_reset_fondi_fattura: 2x E_GENERICO →
+              E_PARAMETRO_INVALIDO + E_CONFIG_MANCANTE.
+          changes:
+              - sql:
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+                        -- Fix 20260331: 2x E_GENERICO → codici specifici
+                        CREATE OR REPLACE FUNCTION vendite.fn_reset_fondi_fattura(
+                            p_fattura_id vendite.fatture.id%TYPE
+                        )
+                        RETURNS TABLE(updated_source INTEGER, deleted_fondi INTEGER)
+                        LANGUAGE plpgsql
+                        AS $function$
+                        DECLARE
+                            v_updated_source INTEGER := 0;
+                            v_deleted_fondi  INTEGER := 0;
+                            v_stato_contabile_chiusa_id pagamenti.vendite_contabili_stati.id%TYPE;
+                        BEGIN
+                            IF p_fattura_id IS NULL OR p_fattura_id <= 0 THEN
+                                PERFORM script.fn_log_and_raise_error('vendite', 'fn_reset_fondi_fattura', 'E_PARAMETRO_INVALIDO',
+                                    jsonb_build_object('parametro', 'p_fattura_id', 'valore', p_fattura_id), NULL::uuid, 'p_fattura_id obbligatorio e > 0');
+                            END IF;
+
+                            SELECT s.id INTO v_stato_contabile_chiusa_id
+                              FROM pagamenti.vendite_contabili_stati s WHERE s.codice_interno = 'CHIUSA' AND s.attivo IS TRUE LIMIT 1;
+
+                            IF v_stato_contabile_chiusa_id IS NULL THEN
+                                PERFORM script.fn_log_and_raise_error('vendite', 'fn_reset_fondi_fattura', 'E_CONFIG_MANCANTE',
+                                    jsonb_build_object('codice_interno', 'CHIUSA'), NULL::uuid, 'stato contabile CHIUSA non configurato');
+                            END IF;
+
+                            -- Logica CTE invariata dall'originale
+                            WITH src AS (
+                                SELECT s.id AS source_id, s.fattura_sorgente_id, fs.numero AS fattura_sorgente_numero, fs.data AS fattura_sorgente_data
+                                  FROM vendite.fatture_fondi_fattura_source s
+                                  JOIN vendite.tipi_fondi_fattura t ON t.id = s.tipo_fondo_fattura_id
+                                  JOIN vendite.fatture fs ON fs.id = s.fattura_sorgente_id
+                                 WHERE s.fattura_figlia_id = p_fattura_id AND s.stato = 'ASSEGNATO' AND t.codice_interno = 'F_F_ADD_ACC'
+                                   FOR UPDATE
+                            ), bloccate AS (
+                                SELECT DISTINCT src.source_id, src.fattura_sorgente_id, src.fattura_sorgente_numero, src.fattura_sorgente_data
+                                  FROM src
+                                  JOIN pagamenti.vendite_contabili_righe cr ON cr.attivo IS TRUE AND COALESCE(cr.meta->>'origine', '') = 'FONDO_FATTURA' AND COALESCE(cr.meta->>'fondo_source_id', '') = src.source_id::text
+                                  JOIN pagamenti.vendite_contabili c ON c.id = cr.contabile_id
+                                 WHERE c.stato_id = v_stato_contabile_chiusa_id
+                            ), warn AS (
+                                INSERT INTO vendite.fatture_log (fattura_id, data_ora, messaggio, status, disabilitato, meta, data_insert, user_insert, data_update, user_update)
+                                SELECT p_fattura_id, now(), format('Minimo non ripristinabile: gia postato (fattura %s del %s)', COALESCE(b.fattura_sorgente_numero::text, 'N/D'), COALESCE(to_char(b.fattura_sorgente_data, 'YYYY-MM-DD'), 'N/D')),
+                                       'W', FALSE, jsonb_build_object('source_id', b.source_id, 'fattura_sorgente_id', b.fattura_sorgente_id, 'cause', 'CONTABILE_CHIUSA'), now(), current_user, now(), current_user
+                                  FROM bloccate b RETURNING id
+                            ), ann AS (
+                                UPDATE vendite.fatture_fondi_fattura_source s SET stato = 'ANNULLATO', data_update = now(), user_update = current_user FROM bloccate b WHERE s.id = b.source_id RETURNING s.id
+                            ), resettabili AS (
+                                SELECT s.* FROM src s WHERE NOT EXISTS (SELECT 1 FROM bloccate b WHERE b.source_id = s.source_id)
+                            ), del_righe AS (
+                                DELETE FROM pagamenti.vendite_contabili_righe cr USING resettabili r, pagamenti.vendite_contabili c
+                                WHERE c.id = cr.contabile_id AND COALESCE(cr.meta->>'origine', '') = 'FONDO_FATTURA' AND COALESCE(cr.meta->>'fondo_source_id', '') = r.source_id::text AND c.stato_id IS DISTINCT FROM v_stato_contabile_chiusa_id RETURNING cr.id
+                            ), upd AS (
+                                UPDATE vendite.fatture_fondi_fattura_source s SET fattura_figlia_id = NULL, data_assegnazione = NULL, user_assegnazione = NULL, stato = 'DISPONIBILE', data_update = now(), user_update = current_user FROM resettabili r WHERE s.id = r.source_id RETURNING s.id, s.fattura_sorgente_id
+                            ), del_ff AS (
+                                DELETE FROM vendite.fatture_fondi_fattura ff USING upd u WHERE ff.fattura_id = p_fattura_id AND ff.riferimento_fattura_id = u.fattura_sorgente_id RETURNING ff.id
+                            )
+                            SELECT (SELECT COUNT(*)::INTEGER FROM upd), (SELECT COUNT(*)::INTEGER FROM del_ff) INTO v_updated_source, v_deleted_fondi;
+
+                            RETURN QUERY SELECT COALESCE(v_updated_source, 0), COALESCE(v_deleted_fondi, 0);
+                        END;
+                        $function$;
+
+                        COMMENT ON FUNCTION vendite.fn_reset_fondi_fattura(BIGINT)
+                          IS 'Reset fondi applicati alla fattura con blocco su contabili CHIUSA e warning.';
+
+    - changeSet:
+          id: 20260331-19-fix-fn-reset-lotto-draft
+          author: mctit
+          runOnChange: true
+          comment: >
+              Fix fn_reset_lotto_draft: 7x E_GENERICO → codici specifici.
+          changes:
+              - sql:
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+                        -- Fix 20260331: 7x E_GENERICO → codici specifici
+                        CREATE OR REPLACE FUNCTION vendite.fn_reset_lotto_draft(
+                            p_lotto_id vendite.fatturazione_lotti.id%TYPE
+                        )
+                        RETURNS TABLE(updated_lotti INTEGER, updated_attivita INTEGER, deleted_fatture INTEGER, deleted_righe INTEGER)
+                        LANGUAGE plpgsql
+                        AS $function$
+                        DECLARE
+                            v_tipo_lotto           vendite.fatturazione_lotti.tipo_lotto%TYPE;
+                            v_stato_doc_fiscale_id vendite.fatturazione_lotti.stato_doc_fiscale_id%TYPE;
+                            v_lock_batch_id        vendite.fatturazione_lotti.lock_batch_id%TYPE;
+                            v_draft_id             config.stati_doc_fiscale.id%TYPE;
+                            v_annullata_id         config.stati_doc_fiscale.id%TYPE;
+                            v_fatture_ids          BIGINT[];
+                            v_bad_fatture          INTEGER := 0;
+                            v_updated_lotti        INTEGER := 0;
+                            v_updated_attivita     INTEGER := 0;
+                            v_deleted_fatture      INTEGER := 0;
+                            v_deleted_righe        INTEGER := 0;
+                        BEGIN
+                            IF p_lotto_id IS NULL OR p_lotto_id <= 0 THEN
+                                PERFORM script.fn_log_and_raise_error('vendite', 'fn_reset_lotto_draft', 'E_PARAMETRO_INVALIDO',
+                                    jsonb_build_object('parametro', 'p_lotto_id', 'valore', p_lotto_id), NULL::uuid, 'p_lotto_id obbligatorio e > 0');
+                            END IF;
+
+                            SELECT fl.tipo_lotto, fl.stato_doc_fiscale_id, fl.lock_batch_id
+                              INTO v_tipo_lotto, v_stato_doc_fiscale_id, v_lock_batch_id
+                              FROM vendite.fatturazione_lotti fl WHERE fl.id = p_lotto_id;
+
+                            IF v_tipo_lotto IS NULL THEN
+                                PERFORM script.fn_log_and_raise_error('vendite', 'fn_reset_lotto_draft', 'E_VALORE_MANCANTE',
+                                    jsonb_build_object('lotto_id', p_lotto_id), NULL::uuid, concat('lotto_id ', p_lotto_id));
+                            END IF;
+
+                            IF v_tipo_lotto <> 'MASSIVO' THEN
+                                PERFORM script.fn_log_and_raise_error('vendite', 'fn_reset_lotto_draft', 'E_PARAMETRO_INVALIDO',
+                                    jsonb_build_object('parametro', 'tipo_lotto', 'valore', v_tipo_lotto, 'lotto_id', p_lotto_id),
+                                    NULL::uuid, concat('rollback solo per MASSIVO, tipo=', v_tipo_lotto));
+                            END IF;
+
+                            SELECT s.id INTO v_draft_id FROM config.stati_doc_fiscale s WHERE s.codice_interno = 'DRAFT' AND s.attivo IS TRUE LIMIT 1;
+                            IF v_draft_id IS NULL THEN
+                                PERFORM script.fn_log_and_raise_error('vendite', 'fn_reset_lotto_draft', 'E_CONFIG_MANCANTE',
+                                    jsonb_build_object('codice_interno', 'DRAFT'), NULL::uuid, 'stato DRAFT non configurato');
+                            END IF;
+
+                            SELECT s.id INTO v_annullata_id FROM config.stati_doc_fiscale s WHERE s.codice_interno = 'ANNULLATA' AND s.attivo IS TRUE LIMIT 1;
+                            IF v_annullata_id IS NULL THEN
+                                PERFORM script.fn_log_and_raise_error('vendite', 'fn_reset_lotto_draft', 'E_CONFIG_MANCANTE',
+                                    jsonb_build_object('codice_interno', 'ANNULLATA'), NULL::uuid, 'stato ANNULLATA non configurato');
+                            END IF;
+
+                            IF v_stato_doc_fiscale_id IS DISTINCT FROM v_draft_id THEN
+                                PERFORM script.fn_log_and_raise_error('vendite', 'fn_reset_lotto_draft', 'E_PARAMETRO_INVALIDO',
+                                    jsonb_build_object('parametro', 'stato_doc_fiscale', 'valore', v_stato_doc_fiscale_id, 'lotto_id', p_lotto_id),
+                                    NULL::uuid, concat('rollback solo se DRAFT, stato=', v_stato_doc_fiscale_id));
+                            END IF;
+
+                            SELECT count(*) INTO v_bad_fatture
+                              FROM vendite.fatture f JOIN vendite.fatturazione_lotti_fatture lf ON lf.fattura_id = f.id
+                             WHERE lf.lotto_id = p_lotto_id AND f.stato_doc_fiscale_id IS DISTINCT FROM v_draft_id;
+
+                            IF v_bad_fatture > 0 THEN
+                                PERFORM script.fn_log_and_raise_error('vendite', 'fn_reset_lotto_draft', 'E_PARAMETRO_INVALIDO',
+                                    jsonb_build_object('parametro', 'fatture_non_draft', 'count', v_bad_fatture, 'lotto_id', p_lotto_id),
+                                    NULL::uuid, concat('fatture non DRAFT: ', v_bad_fatture));
+                            END IF;
+
+                            SELECT array_agg(lf.fattura_id) INTO v_fatture_ids
+                              FROM vendite.fatturazione_lotti_fatture lf WHERE lf.lotto_id = p_lotto_id;
+                            IF v_fatture_ids IS NULL THEN v_fatture_ids := ARRAY[]::BIGINT[]; END IF;
+
+                            SELECT c.deleted_fatture, c.deleted_righe, c.updated_attivita INTO v_deleted_fatture, v_deleted_righe, v_updated_attivita
+                              FROM vendite.fn_cleanup_fatture_by_ids(v_fatture_ids, v_lock_batch_id) AS c;
+
+                            UPDATE vendite.fatturazione_lotti SET stato_operativo = 'CHIUSO', stato_doc_fiscale_id = v_annullata_id, stato_lotto = 'COMPLETATO', data_update = now(), user_update = current_user WHERE id = p_lotto_id;
+                            GET DIAGNOSTICS v_updated_lotti = ROW_COUNT;
+
+                            RETURN QUERY SELECT v_updated_lotti, v_updated_attivita, v_deleted_fatture, v_deleted_righe;
+                        END;
+                        $function$;
+
+                        COMMENT ON FUNCTION vendite.fn_reset_lotto_draft(BIGINT)
+                          IS 'Rollback tecnico lotto MASSIVO DRAFT: elimina fatture/righe e ripristina attivita.';
+
+    - changeSet:
+          id: 20260331-19-fix-fn-reset-lotto-fattura-draft
+          author: mctit
+          runOnChange: true
+          comment: >
+              Fix fn_reset_lotto_fattura_draft: 7x E_GENERICO → codici specifici.
+          changes:
+              - sql:
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+                        -- Fix 20260331: 7x E_GENERICO → codici specifici
+                        CREATE OR REPLACE FUNCTION vendite.fn_reset_lotto_fattura_draft(
+                            p_lotto_id   vendite.fatturazione_lotti.id%TYPE,
+                            p_fattura_id vendite.fatture.id%TYPE
+                        )
+                        RETURNS TABLE(updated_attivita INTEGER, deleted_fatture INTEGER, deleted_righe INTEGER)
+                        LANGUAGE plpgsql
+                        AS $function$
+                        DECLARE
+                            v_tipo_lotto           vendite.fatturazione_lotti.tipo_lotto%TYPE;
+                            v_stato_doc_fiscale_id vendite.fatturazione_lotti.stato_doc_fiscale_id%TYPE;
+                            v_lock_batch_id        vendite.fatturazione_lotti.lock_batch_id%TYPE;
+                            v_draft_id             config.stati_doc_fiscale.id%TYPE;
+                            v_is_linked            BOOLEAN := FALSE;
+                            v_updated_attivita     INTEGER := 0;
+                            v_deleted_fatture      INTEGER := 0;
+                            v_deleted_righe        INTEGER := 0;
+                        BEGIN
+                            IF p_lotto_id IS NULL OR p_lotto_id <= 0 THEN
+                                PERFORM script.fn_log_and_raise_error('vendite', 'fn_reset_lotto_fattura_draft', 'E_PARAMETRO_INVALIDO',
+                                    jsonb_build_object('parametro', 'p_lotto_id', 'valore', p_lotto_id), NULL::uuid, 'p_lotto_id obbligatorio e > 0');
+                            END IF;
+
+                            IF p_fattura_id IS NULL OR p_fattura_id <= 0 THEN
+                                PERFORM script.fn_log_and_raise_error('vendite', 'fn_reset_lotto_fattura_draft', 'E_PARAMETRO_INVALIDO',
+                                    jsonb_build_object('parametro', 'p_fattura_id', 'valore', p_fattura_id), NULL::uuid, 'p_fattura_id obbligatorio e > 0');
+                            END IF;
+
+                            SELECT fl.tipo_lotto, fl.stato_doc_fiscale_id, fl.lock_batch_id
+                              INTO v_tipo_lotto, v_stato_doc_fiscale_id, v_lock_batch_id
+                              FROM vendite.fatturazione_lotti fl WHERE fl.id = p_lotto_id;
+
+                            IF v_tipo_lotto IS NULL THEN
+                                PERFORM script.fn_log_and_raise_error('vendite', 'fn_reset_lotto_fattura_draft', 'E_VALORE_MANCANTE',
+                                    jsonb_build_object('lotto_id', p_lotto_id), NULL::uuid, concat('lotto_id ', p_lotto_id));
+                            END IF;
+
+                            IF v_tipo_lotto <> 'MASSIVO' THEN
+                                PERFORM script.fn_log_and_raise_error('vendite', 'fn_reset_lotto_fattura_draft', 'E_PARAMETRO_INVALIDO',
+                                    jsonb_build_object('parametro', 'tipo_lotto', 'valore', v_tipo_lotto, 'lotto_id', p_lotto_id),
+                                    NULL::uuid, concat('reset solo per MASSIVO, tipo=', v_tipo_lotto));
+                            END IF;
+
+                            SELECT s.id INTO v_draft_id FROM config.stati_doc_fiscale s WHERE s.codice_interno = 'DRAFT' AND s.attivo IS TRUE LIMIT 1;
+                            IF v_draft_id IS NULL THEN
+                                PERFORM script.fn_log_and_raise_error('vendite', 'fn_reset_lotto_fattura_draft', 'E_CONFIG_MANCANTE',
+                                    jsonb_build_object('codice_interno', 'DRAFT'), NULL::uuid, 'stato DRAFT non configurato');
+                            END IF;
+
+                            IF v_stato_doc_fiscale_id IS DISTINCT FROM v_draft_id THEN
+                                PERFORM script.fn_log_and_raise_error('vendite', 'fn_reset_lotto_fattura_draft', 'E_PARAMETRO_INVALIDO',
+                                    jsonb_build_object('parametro', 'stato_doc_fiscale', 'valore', v_stato_doc_fiscale_id, 'lotto_id', p_lotto_id),
+                                    NULL::uuid, concat('reset solo se DRAFT, stato=', v_stato_doc_fiscale_id));
+                            END IF;
+
+                            SELECT EXISTS (
+                                SELECT 1 FROM vendite.fatturazione_lotti_fatture lf
+                                JOIN vendite.fatture f ON f.id = lf.fattura_id
+                                WHERE lf.lotto_id = p_lotto_id AND lf.fattura_id = p_fattura_id AND f.stato_doc_fiscale_id = v_draft_id
+                            ) INTO v_is_linked;
+
+                            IF COALESCE(v_is_linked, FALSE) = FALSE THEN
+                                PERFORM script.fn_log_and_raise_error('vendite', 'fn_reset_lotto_fattura_draft', 'E_PARAMETRO_INVALIDO',
+                                    jsonb_build_object('parametro', 'fattura_non_collegata_o_non_draft', 'lotto_id', p_lotto_id, 'fattura_id', p_fattura_id),
+                                    NULL::uuid, 'fattura non collegata al lotto o non in DRAFT');
+                            END IF;
+
+                            SELECT c.deleted_fatture, c.deleted_righe, c.updated_attivita INTO v_deleted_fatture, v_deleted_righe, v_updated_attivita
+                              FROM vendite.fn_cleanup_fatture_by_ids(ARRAY[p_fattura_id], v_lock_batch_id) AS c;
+
+                            RETURN QUERY SELECT v_updated_attivita, v_deleted_fatture, v_deleted_righe;
+                        END;
+                        $function$;
+
+                        COMMENT ON FUNCTION vendite.fn_reset_lotto_fattura_draft(BIGINT, BIGINT)
+                          IS 'Reset singola fattura DRAFT in lotto MASSIVO senza annullare il lotto.';

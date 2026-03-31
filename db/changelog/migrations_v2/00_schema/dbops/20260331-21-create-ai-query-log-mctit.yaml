@@ -1,0 +1,178 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+#
+# Tabella dbops.ai_query_log: log interazioni assistente AI.
+# Append-only, con retention via cleanup_at.
+# Correlata a dbops.request_log tramite request_id.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/dbops/20260331-21-create-ai-query-log-mctit.yaml
+
+  - changeSet:
+      id: 20260331-21-create-ai-query-log
+      author: mctit
+      comment: >
+        Crea tabella dbops.ai_query_log per logging interazioni assistente AI.
+        Fase 0 integrazione AI — solo infrastruttura, nessuna funzionalita' visibile.
+
+      changes:
+        - createTable:
+            schemaName: dbops
+            tableName: ai_query_log
+            remarks: "Log interazioni assistente AI: input utente, strumenti invocati, risposta, metriche provider."
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  generationType: ALWAYS
+                  remarks: "PK tecnica (GENERATED ALWAYS)."
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_ai_query_log
+                    nullable: false
+
+              - column:
+                  name: request_id
+                  type: uuid
+                  remarks: "UUID request dal middleware RequestContextMiddleware. Correla con dbops.request_log."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: user_id
+                  type: integer
+                  remarks: "FK auth_user.id — operatore che ha inviato la query AI."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: input_text
+                  type: text
+                  remarks: "Testo in linguaggio naturale inviato dall'utente all'assistente."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: tools_called
+                  type: jsonb
+                  remarks: "Array strumenti invocati: [{name, input, duration_ms}]. NULL se nessun tool usato."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: response_text
+                  type: text
+                  remarks: "Risposta finale formulata dall'LLM. NULL se errore prima della generazione."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: provider
+                  type: varchar(50)
+                  remarks: "Provider AI utilizzato: anthropic, mistral, local."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: model
+                  type: varchar(100)
+                  remarks: "Modello specifico utilizzato (es. claude-sonnet-4-20250514)."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: tokens_input
+                  type: integer
+                  remarks: "Token di input consumati nella richiesta. NULL se non disponibile dal provider."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: tokens_output
+                  type: integer
+                  remarks: "Token di output generati nella risposta. NULL se non disponibile dal provider."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: duration_ms
+                  type: integer
+                  remarks: "Durata totale della richiesta AI in millisecondi (inclusi tool call)."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: error_code
+                  type: varchar(100)
+                  remarks: "Codice errore applicativo se la richiesta e' fallita. NULL se successo."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: cleanup_at
+                  type: timestamp with time zone
+                  remarks: "Timestamp retention per pulizia schedulata (pattern standard dbops)."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: data_insert
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  remarks: "Audit: timestamp inserimento."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: user_insert
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  remarks: "Audit: utente DB che ha inserito il record."
+                  constraints:
+                    nullable: false
+
+        # -- Indici --
+        - createIndex:
+            schemaName: dbops
+            tableName: ai_query_log
+            indexName: ix_ai_query_log_request_id
+            columns:
+              - column:
+                  name: request_id
+
+        - createIndex:
+            schemaName: dbops
+            tableName: ai_query_log
+            indexName: ix_ai_query_log_user_id
+            columns:
+              - column:
+                  name: user_id
+
+        - createIndex:
+            schemaName: dbops
+            tableName: ai_query_log
+            indexName: ix_ai_query_log_data_insert
+            columns:
+              - column:
+                  name: data_insert
+                  descending: true
+
+        - createIndex:
+            schemaName: dbops
+            tableName: ai_query_log
+            indexName: ix_ai_query_log_cleanup_at
+            columns:
+              - column:
+                  name: cleanup_at
+
+        # -- COMMENT sulla tabella --
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON TABLE dbops.ai_query_log
+              IS 'Log interazioni assistente AI: registra input utente, strumenti invocati, risposta LLM, metriche token/durata e provider. Append-only con retention via cleanup_at.';

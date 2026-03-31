@@ -13,64 +13,30 @@ CREATE OR REPLACE FUNCTION vendite.fn_get_pipeline_task_policy(p_pipeline_id big
  LANGUAGE plpgsql
 AS $function$
 BEGIN
-  -- =========================================================
-  -- Scopo:
-  --   Restituisce la policy runtime del task per pipeline.
-  -- =========================================================
-  IF p_pipeline_id IS NULL OR p_pipeline_id <= 0 THEN
-    PERFORM script.fn_log_and_raise_error(
-      'vendite', 'fn_get_pipeline_task_policy', 'E_GENERICO',
-      jsonb_build_object(
-        'scope','LOTTO','severity','C','code','E_GENERICO',
-        'lotto_id',NULL,'fattura_id',NULL,
-        'context',jsonb_build_object('detail','pipeline_id obbligatorio','pipeline_id',p_pipeline_id)
-      ),
-      NULL::uuid,
-      'pipeline_id obbligatorio'
-    );
-  END IF;
+    IF p_pipeline_id IS NULL OR p_pipeline_id <= 0 THEN
+        PERFORM script.fn_log_and_raise_error('vendite', 'fn_get_pipeline_task_policy', 'E_PARAMETRO_INVALIDO',
+            jsonb_build_object('parametro', 'p_pipeline_id', 'valore', p_pipeline_id), NULL::uuid, 'p_pipeline_id obbligatorio e > 0');
+    END IF;
+    IF p_task_code IS NULL OR btrim(p_task_code) = '' THEN
+        PERFORM script.fn_log_and_raise_error('vendite', 'fn_get_pipeline_task_policy', 'E_PARAMETRO_INVALIDO',
+            jsonb_build_object('parametro', 'p_task_code', 'valore', p_task_code), NULL::uuid, 'p_task_code obbligatorio');
+    END IF;
 
-  IF p_task_code IS NULL OR btrim(p_task_code) = '' THEN
-    PERFORM script.fn_log_and_raise_error(
-      'vendite', 'fn_get_pipeline_task_policy', 'E_GENERICO',
-      jsonb_build_object(
-        'scope','LOTTO','severity','C','code','E_GENERICO',
-        'lotto_id',NULL,'fattura_id',NULL,
-        'context',jsonb_build_object('detail','task_code obbligatorio','task_code',p_task_code)
-      ),
-      NULL::uuid,
-      'task_code obbligatorio'
-    );
-  END IF;
+    RETURN QUERY
+    SELECT p.annullabile, p.resume_mode, p.attivo, p.meta
+      FROM vendite.fatturazione_pipeline_task_policy p
+     WHERE p.pipeline_id = p_pipeline_id AND p.task_code = p_task_code AND p.attivo IS TRUE;
 
-  RETURN QUERY
-  SELECT p.annullabile, p.resume_mode, p.attivo, p.meta
-  FROM vendite.fatturazione_pipeline_task_policy p
-  WHERE p.pipeline_id = p_pipeline_id
-    AND p.task_code = p_task_code
-    AND p.attivo IS TRUE;
-
-  IF NOT FOUND THEN
-    PERFORM script.fn_log_and_raise_error(
-      'vendite', 'fn_get_pipeline_task_policy', 'E_GENERICO',
-      jsonb_build_object(
-        'scope','LOTTO','severity','C','code','E_GENERICO',
-        'lotto_id',NULL,'fattura_id',NULL,
-        'context',jsonb_build_object(
-          'detail','policy task non trovata',
-          'pipeline_id',p_pipeline_id,
-          'task_code',p_task_code
-        )
-      ),
-      NULL::uuid,
-      concat('Policy task non trovata pipeline:', p_pipeline_id::text, ' task:', p_task_code)
-    );
-  END IF;
-END
+    IF NOT FOUND THEN
+        PERFORM script.fn_log_and_raise_error('vendite', 'fn_get_pipeline_task_policy', 'E_CONFIG_MANCANTE',
+            jsonb_build_object('pipeline_id', p_pipeline_id, 'task_code', p_task_code), NULL::uuid,
+            concat('policy task pipeline:', p_pipeline_id, ' task:', p_task_code));
+    END IF;
+END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_get_pipeline_task_policy(p_pipeline_id bigint, p_task_code character varying)
-IS 'Restituisce la policy attiva del task per pipeline (annullabile/resume_mode/meta).';
+IS 'Policy attiva del task per pipeline (annullabile/resume_mode/meta).';
 ```
 
 ---
