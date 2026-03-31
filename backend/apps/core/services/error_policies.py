@@ -439,6 +439,55 @@ class ErrorPolicyRegistry:
             ui_action="show_empty_state",
             user_message="Nessun risultato trovato.",
         ),
+        # ── Assistente AI ──
+        "E_AI_DISABLED": ErrorPolicy(
+            code="E_AI_DISABLED",
+            http_status=501,
+            ui_action="show_error_banner",
+            user_message="Funzionalita' assistente AI non attiva.",
+        ),
+        "E_AI_PROVIDER_UNKNOWN": ErrorPolicy(
+            code="E_AI_PROVIDER_UNKNOWN",
+            http_status=500,
+            ui_action="show_error_banner",
+            user_message="Provider AI non riconosciuto.",
+        ),
+        "E_AI_PROVIDER_ERROR": ErrorPolicy(
+            code="E_AI_PROVIDER_ERROR",
+            http_status=502,
+            ui_action="show_error_banner",
+            user_message="Errore nella comunicazione con il provider AI.",
+        ),
+        "E_AI_QUERY_EMPTY": ErrorPolicy(
+            code="E_AI_QUERY_EMPTY",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message="Il messaggio non puo' essere vuoto.",
+        ),
+        "E_AI_QUERY_TOO_LONG": ErrorPolicy(
+            code="E_AI_QUERY_TOO_LONG",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message="Il messaggio supera la lunghezza massima consentita.",
+        ),
+        "E_AI_TOOL_NOT_FOUND": ErrorPolicy(
+            code="E_AI_TOOL_NOT_FOUND",
+            http_status=500,
+            ui_action="show_error_banner",
+            user_message="Strumento AI richiesto non disponibile.",
+        ),
+        "E_AI_TOOL_DENIED": ErrorPolicy(
+            code="E_AI_TOOL_DENIED",
+            http_status=403,
+            ui_action="show_error_banner",
+            user_message="Non hai i permessi per questo strumento AI.",
+        ),
+        "E_AI_CONFIRMATION_REQUIRED": ErrorPolicy(
+            code="E_AI_CONFIRMATION_REQUIRED",
+            http_status=428,
+            ui_action="show_error_banner",
+            user_message="Operazione in scrittura: conferma esplicita richiesta.",
+        ),
     }
 
     # Scopo: Risolve la policy per un codice errore. Per codici applicativi

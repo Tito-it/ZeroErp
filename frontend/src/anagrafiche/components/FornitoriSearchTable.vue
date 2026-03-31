@@ -1,7 +1,7 @@
 <script setup>
 // Scopo: DataTable paginata fornitori con search, filtro stato e attivo.
 // Riusabile da: FornitoriView, futuro ricerca fornitori in altri domini.
-import { ref, computed, onMounted } from 'vue'
+import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useFornitoriStore } from '../stores/fornitori'
 import { useSearchTable } from '../../core/composables/useSearchTable'
@@ -17,6 +17,7 @@ import Select from 'primevue/select'
 import Tag from 'primevue/tag'
 import Button from 'primevue/button'
 import NewButton from '../../core/components/NewButton.vue'
+import SearchHint from '../../core/components/SearchHint.vue'
 
 const emit = defineEmits(['new', 'row-click', 'contatti', 'indirizzi', 'conti-bancari'])
 const { t } = useI18n()
@@ -37,7 +38,7 @@ function onStatoChange() {
 function onRowClick(event) { emit('row-click', event.data) }
 
 useTabFreshness(store, 'fornitore')
-onMounted(() => { store.fetchList() })
+// La lista parte vuota — l'operatore deve cercare o applicare un filtro.
 </script>
 
 <template>
@@ -65,7 +66,11 @@ onMounted(() => { store.fetchList() })
       </div>
     </div>
 
+    <!-- Placeholder: nessuna ricerca effettuata -->
+    <SearchHint v-if="!store.hasSearched && !store.loading" />
+
     <DataTable
+      v-show="store.hasSearched || store.loading"
       :value="store.items"
       :loading="store.loading"
       v-bind="paginatorProps"

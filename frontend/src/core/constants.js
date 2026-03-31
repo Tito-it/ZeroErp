@@ -98,5 +98,6 @@ export const SHORTCUTS = {
   TOGGLE_SIDEBAR: { key: 'b', ctrl: true, shift: false },
   GO_HOME: { key: 'Home', ctrl: true, shift: false },
   SPLIT_SWAP: { key: 'ArrowRight', ctrl: true, shift: true },
-  SPLIT_CLOSE: { key: 'w', ctrl: true, shift: true }
+  SPLIT_CLOSE: { key: 'w', ctrl: true, shift: true },
+  AI_ASSISTANT: { key: '.', ctrl: true, shift: false }
 }

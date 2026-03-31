@@ -1,6 +1,6 @@
 <script setup>
 // Scopo: DataTable indirizzi dettaglio con ricerca, filtro comune e CRUD.
-import { ref, onMounted } from 'vue'
+import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useIndirizziStore } from '../stores/indirizzi'
 import { useSearchTable } from '../../core/composables/useSearchTable'
@@ -10,6 +10,7 @@ import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import InputText from 'primevue/inputtext'
 import NewButton from '../../core/components/NewButton.vue'
+import SearchHint from '../../core/components/SearchHint.vue'
 import Button from 'primevue/button'
 import Tag from 'primevue/tag'
 
@@ -21,7 +22,7 @@ const { searchText, onPage, onSort, applyFilters, reload, paginatorProps } = use
 const comuneFilter = ref(null)
 
 useTabFreshness(store, 'indirizzo')
-onMounted(() => { store.fetchList() })
+// La lista parte vuota — l'operatore deve cercare o applicare un filtro.
 
 function onComuneChange(id) {
   comuneFilter.value = id
@@ -53,7 +54,11 @@ function onRowClick(event) {
       </div>
     </div>
 
+    <!-- Placeholder: nessuna ricerca effettuata -->
+    <SearchHint v-if="!store.hasSearched && !store.loading" />
+
     <DataTable
+      v-show="store.hasSearched || store.loading"
       :value="store.items"
       :loading="store.loading"
       v-bind="paginatorProps"
