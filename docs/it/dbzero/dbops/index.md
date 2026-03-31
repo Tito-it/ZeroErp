@@ -2,6 +2,7 @@
 
 ## 📚 Tabelle
 - [_defaults_backup_usercols](tabelle/_defaults_backup_usercols.md)
+- [ai_query_log](tabelle/ai_query_log.md)
 - [audit_log](tabelle/audit_log.md) — (latest review 10-01-26) * Monitorare e storicizzare ogni chiamata a funzioni, job e API interne. * Fornire dettagli su utente, parametri e performance di esecuzione. * Collegare gli eventi di audit agli errori e ad altri log tramite `tx_id` gestito dal trigger.
 - [automation_cleanup_exclusions](tabelle/automation_cleanup_exclusions.md) — (latest review 07-02-26) * Consentire esclusioni esplicite dal **calcolo `cleanup_at`** e dalla **purge**. * Fornire tracciabilità e motivazione (`reason`) delle eccezioni.
 - [automation_delete_block](tabelle/automation_delete_block.md) — (latest review 23-01-2026) `dbops.automation_delete_block` centralizza la configurazione dei trigger che **bloccano** le DELETE sulle tabelle sensibili (es. ruoli), con possibilità di bypass tramite **GUC**.

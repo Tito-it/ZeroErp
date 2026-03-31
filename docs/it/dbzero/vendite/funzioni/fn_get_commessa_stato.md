@@ -13,94 +13,58 @@ CREATE OR REPLACE FUNCTION vendite.fn_get_commessa_stato(p_commessa_id bigint)
  LANGUAGE plpgsql
 AS $function$
 BEGIN
-  -- =========================================================
-  -- Scopo:
-  --   Fornire in un'unica chiamata stato testata commessa,
-  --   flag operativi da stati_commessa e contatori principali
-  --   delle righe commessa.
-  --
-  -- Regole:
-  --   - p_commessa_id obbligatorio e > 0
-  --   - errore esplicito se commessa non trovata
-  --   - stato_commessa restituito da stati_commessa.codice
-  --     per backward compatibility
-  -- =========================================================
-  IF p_commessa_id IS NULL OR p_commessa_id <= 0 THEN
-    PERFORM script.fn_log_and_raise_error(
-      'vendite','fn_get_commessa_stato','E_GENERICO',
-      jsonb_build_object(
-        'scope','COMMESSE','severity','C','code','E_GENERICO',
-        'lotto_id',NULL,'fattura_id',NULL,
-        'context',jsonb_build_object('detail','commessa_id obbligatorio','commessa_id',p_commessa_id)
-      ),
-      NULL::uuid,
-      'commessa_id obbligatorio'
-    );
-  END IF;
+    -- Guard: parametro obbligatorio
+    IF p_commessa_id IS NULL OR p_commessa_id <= 0 THEN
+        PERFORM script.fn_log_and_raise_error(
+            'vendite', 'fn_get_commessa_stato', 'E_PARAMETRO_INVALIDO',
+            jsonb_build_object('parametro', 'p_commessa_id', 'valore', p_commessa_id),
+            NULL::uuid, 'p_commessa_id obbligatorio e > 0'
+        );
+    END IF;
 
-  IF NOT EXISTS (
-    SELECT 1
+    IF NOT EXISTS (SELECT 1 FROM vendite.commesse c WHERE c.id = p_commessa_id) THEN
+        PERFORM script.fn_log_and_raise_error(
+            'vendite', 'fn_get_commessa_stato', 'E_VALORE_MANCANTE',
+            jsonb_build_object('commessa_id', p_commessa_id),
+            NULL::uuid, concat('commessa_id ', p_commessa_id)
+        );
+    END IF;
+
+    RETURN QUERY
+    SELECT
+        c.id AS commessa_id,
+        c.stato_commessa_id,
+        sc.codice AS stato_commessa,
+        sc.chiude_commessa,
+        sc.emittibile,
+        sc.modificabile,
+        c.policy_fatturazione,
+        c.fatturazione_immediata,
+        c.priorita_operativa,
+        c.billing_account_id,
+        c.utility_id,
+        c.emittente_soggetto_ruolo_id,
+        COALESCE(count(ca.id), 0)::BIGINT AS total_attivita,
+        COALESCE(count(*) FILTER (WHERE ca.stato_approvazione = 'APPROVATA'), 0)::BIGINT,
+        COALESCE(count(*) FILTER (WHERE ca.stato_approvazione <> 'APPROVATA'), 0)::BIGINT,
+        COALESCE(count(*) FILTER (WHERE ca.stato_emissione = 'EMESSA'), 0)::BIGINT,
+        COALESCE(count(*) FILTER (WHERE ca.stato_emissione <> 'EMESSA'), 0)::BIGINT,
+        COALESCE(count(*) FILTER (WHERE ca.prezzo_da_riallineare IS TRUE), 0)::BIGINT,
+        GREATEST(c.data_update, COALESCE(max(ca.data_update), c.data_update))
     FROM vendite.commesse c
+    JOIN vendite.stati_commessa sc ON sc.id = c.stato_commessa_id
+    LEFT JOIN vendite.commesse_attivita ca ON ca.commessa_id = c.id
     WHERE c.id = p_commessa_id
-  ) THEN
-    PERFORM script.fn_log_and_raise_error(
-      'vendite','fn_get_commessa_stato','E_GENERICO',
-      jsonb_build_object(
-        'scope','COMMESSE','severity','C','code','E_GENERICO',
-        'lotto_id',NULL,'fattura_id',NULL,
-        'context',jsonb_build_object('detail','commessa non trovata','commessa_id',p_commessa_id)
-      ),
-      NULL::uuid,
-      concat('commessa non trovata: ', p_commessa_id::text)
-    );
-  END IF;
-
-  RETURN QUERY
-  SELECT
-    c.id AS commessa_id,
-    c.stato_commessa_id,
-    sc.codice AS stato_commessa,
-    sc.chiude_commessa,
-    sc.emittibile,
-    sc.modificabile,
-    c.policy_fatturazione,
-    c.fatturazione_immediata,
-    c.priorita_operativa,
-    c.billing_account_id,
-    c.utility_id,
-    c.emittente_soggetto_ruolo_id,
-    COALESCE(count(ca.id), 0)::bigint AS total_attivita,
-    COALESCE(count(*) FILTER (WHERE ca.stato_approvazione = 'APPROVATA'), 0)::bigint AS total_approvate,
-    COALESCE(count(*) FILTER (WHERE ca.stato_approvazione <> 'APPROVATA'), 0)::bigint AS total_non_approvate,
-    COALESCE(count(*) FILTER (WHERE ca.stato_emissione = 'EMESSA'), 0)::bigint AS total_emesse,
-    COALESCE(count(*) FILTER (WHERE ca.stato_emissione <> 'EMESSA'), 0)::bigint AS total_non_emesse,
-    COALESCE(count(*) FILTER (WHERE ca.prezzo_da_riallineare IS TRUE), 0)::bigint AS total_prezzo_da_riallineare,
-    GREATEST(c.data_update, COALESCE(max(ca.data_update), c.data_update)) AS last_update
-  FROM vendite.commesse c
-  JOIN vendite.stati_commessa sc
-    ON sc.id = c.stato_commessa_id
-  LEFT JOIN vendite.commesse_attivita ca
-    ON ca.commessa_id = c.id
-  WHERE c.id = p_commessa_id
-  GROUP BY
-    c.id,
-    c.stato_commessa_id,
-    sc.codice,
-    sc.chiude_commessa,
-    sc.emittibile,
-    sc.modificabile,
-    c.policy_fatturazione,
-    c.fatturazione_immediata,
-    c.priorita_operativa,
-    c.billing_account_id,
-    c.utility_id,
-    c.emittente_soggetto_ruolo_id,
-    c.data_update;
-END
+    GROUP BY c.id, c.stato_commessa_id, sc.codice, sc.chiude_commessa,
+             sc.emittibile, sc.modificabile, c.policy_fatturazione,
+             c.fatturazione_immediata, c.priorita_operativa,
+             c.billing_account_id, c.utility_id,
+             c.emittente_soggetto_ruolo_id, c.data_update;
+END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_get_commessa_stato(p_commessa_id bigint)
-IS 'Restituisce stato testata commessa (con FK stato_commessa_id + codice per backward compat), flag operativi (chiude/emittibile/modificabile) e contatori principali di commesse_attivita in un singolo round-trip.';
+IS 'Stato testata commessa con flag operativi e contatori attivita in singolo round-trip.';
 ```
 
 ---

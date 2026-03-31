@@ -21,10 +21,7 @@ DECLARE
     v_tipo_contatto_id            config.tipi_contatti.id%TYPE;
     v_soggetto_id                 anagrafiche.soggetti.id%TYPE;
 BEGIN
-    -- =============================================================
     -- Validazione parametri obbligatori
-    -- =============================================================
-
     IF p_ragione_sociale IS NULL OR TRIM(p_ragione_sociale) = '' THEN
         PERFORM script.fn_log_and_raise_error(
             'database', 'anagrafiche.fn_crea_soggetto_pg',
@@ -84,10 +81,7 @@ BEGIN
         );
     END IF;
 
-    -- =============================================================
     -- Risoluzione default da config.parameters
-    -- =============================================================
-
     -- Stato (nazionalita)
     v_stato_iso2_resolved := COALESCE(
         p_stato_iso2,
@@ -101,12 +95,13 @@ BEGIN
      WHERE codice_iso2 = v_stato_iso2_resolved;
 
     IF v_stato_id IS NULL THEN
+        -- Fix: E_GENERICO → E_CODICE
         PERFORM script.fn_log_and_raise_error(
             'database', 'anagrafiche.fn_crea_soggetto_pg',
-            'E_GENERICO',
+            'E_CODICE',
             jsonb_build_object('codice_iso2', v_stato_iso2_resolved),
             NULL::uuid,
-            concat('Stato ', v_stato_iso2_resolved, ' non trovato in config.stati.')
+            v_stato_iso2_resolved, 'config.stati'
         );
     END IF;
 
@@ -125,10 +120,7 @@ BEGIN
         'LN'::anagrafiche.liquidazione_enum
     );
 
-    -- =============================================================
     -- Guard unicita CF/PIVA per stato (se forniti)
-    -- =============================================================
-
     IF p_codice_fiscale IS NOT NULL AND TRIM(p_codice_fiscale) <> '' THEN
         IF EXISTS (
             SELECT 1 FROM anagrafiche.soggetti
@@ -159,10 +151,7 @@ BEGIN
         END IF;
     END IF;
 
-    -- =============================================================
     -- Step 1: Creazione soggetto (Persona Giuridica)
-    -- =============================================================
-
     INSERT INTO anagrafiche.soggetti (
         ragione_sociale, codice_fiscale, partita_iva,
         stato_id, tipo_soggetto_dettaglio_id, attivo
@@ -181,10 +170,7 @@ BEGIN
     )
     RETURNING id INTO v_soggetto_id;
 
-    -- =============================================================
     -- Step 2: Creazione contatto default con tipo_contatto_id
-    -- =============================================================
-
     INSERT INTO anagrafiche.contatti (
         soggetto_id, tipo_contatto_id, nominativo, email, is_default
     )
@@ -196,11 +182,8 @@ BEGIN
         true
     );
 
-    -- =============================================================
     -- Step 3: Creazione dati societari (se policy lo richiede
     --         o se almeno un campo DS e fornito con policy OPTIONAL)
-    -- =============================================================
-
     IF v_dati_societari_policy = 'REQUIRED'
        OR (v_dati_societari_policy = 'OPTIONAL' AND (
             p_id_prov_iscri_rea IS NOT NULL

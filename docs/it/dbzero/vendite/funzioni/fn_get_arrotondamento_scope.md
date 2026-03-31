@@ -80,7 +80,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_get_arrotondamento_scope(p_billing_account_id bigint, p_utility_id integer, p_tipo_doc_fiscale_id bigint, p_emittente_soggetto_ruolo_id bigint, p_valuta_id bigint)
-IS 'Restituisce il saldo tecnico arrotondamenti per scope (0 se assente).';
+IS 'Saldo tecnico arrotondamenti per scope (0 se assente).';
 ```
 
 ---

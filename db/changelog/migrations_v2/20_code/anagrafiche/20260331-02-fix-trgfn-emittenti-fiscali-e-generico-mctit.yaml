@@ -1,0 +1,218 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+#
+# Fix: trgfn_emittenti_fiscali_guard_attivo e
+#      trgfn_emittenti_fiscali_default_guard
+# Sostituisce E_GENERICO con codici errore specifici:
+#   - E_EMITTENTE_DISATTIVAZIONE_BLOCCATA (id 131)
+#   - E_EMITTENTE_DEFAULT_SINGLETON (id 132)
+# Aggiunge %TYPE alle variabili DECLARE.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+    - logicalFilePath: migrations_v2/20_code/anagrafiche/20260331-02-fix-trgfn-emittenti-fiscali-e-generico-mctit.yaml
+
+    - changeSet:
+          id: 20260331-02-fix-trgfn-emittenti-fiscali-guard-attivo
+          author: mctit
+          runOnChange: true
+          comment: >
+              Fix trgfn_emittenti_fiscali_guard_attivo: E_GENERICO →
+              E_EMITTENTE_DISATTIVAZIONE_BLOCCATA. %TYPE su DECLARE.
+          changes:
+              - sql:
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+                        -- ==========================================================
+                        -- trgfn_emittenti_fiscali_guard_attivo
+                        --
+                        -- Scopo: blocca la disattivazione di un emittente fiscale
+                        --        se esistono mapping in emittenti_fiscali_billing_account.
+                        --
+                        -- Regole:
+                        --   - Solo su UPDATE con attivo: true → false
+                        --   - Se esistono mapping billing_account → errore
+                        --   - Altrimenti → consente la disattivazione
+                        --
+                        -- Fix 20260331: E_GENERICO → E_EMITTENTE_DISATTIVAZIONE_BLOCCATA
+                        -- ==========================================================
+                        CREATE OR REPLACE FUNCTION anagrafiche.trgfn_emittenti_fiscali_guard_attivo()
+                        RETURNS trigger
+                        LANGUAGE plpgsql
+                        AS $function$
+                        DECLARE
+                            v_has_mapping BOOLEAN;
+                        BEGIN
+                            -- Solo su disattivazione (attivo: true → false)
+                            IF TG_OP = 'UPDATE'
+                               AND NEW.attivo = false
+                               AND COALESCE(OLD.attivo, true) = true
+                            THEN
+                                -- Verifica mapping billing_account
+                                SELECT EXISTS (
+                                    SELECT 1
+                                      FROM anagrafiche.emittenti_fiscali_billing_account m
+                                     WHERE m.emittente_soggetto_ruolo_id = NEW.soggetto_ruolo_id
+                                )
+                                INTO v_has_mapping;
+
+                                IF v_has_mapping THEN
+                                    PERFORM script.fn_log_and_raise_error(
+                                        TG_TABLE_SCHEMA,
+                                        TG_NAME,
+                                        'E_EMITTENTE_DISATTIVAZIONE_BLOCCATA',
+                                        jsonb_build_object(
+                                            'soggetto_ruolo_id', NEW.soggetto_ruolo_id
+                                        ),
+                                        NULL::uuid,
+                                        NEW.soggetto_ruolo_id::text
+                                    );
+                                END IF;
+                            END IF;
+
+                            RETURN NEW;
+                        END;
+                        $function$;
+
+                        COMMENT ON FUNCTION anagrafiche.trgfn_emittenti_fiscali_guard_attivo()
+                          IS 'Blocca disattivazione emittente se esistono mapping billing_account. Errore: E_EMITTENTE_DISATTIVAZIONE_BLOCCATA.';
+
+    - changeSet:
+          id: 20260331-02-fix-trgfn-emittenti-fiscali-default-guard
+          author: mctit
+          runOnChange: true
+          comment: >
+              Fix trgfn_emittenti_fiscali_default_guard: E_GENERICO →
+              E_EMITTENTE_DEFAULT_SINGLETON.
+          changes:
+              - sql:
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+                        -- ==========================================================
+                        -- trgfn_emittenti_fiscali_default_guard
+                        --
+                        -- Scopo: impedisce assenza o duplicazione dell'emittente
+                        --        fiscale di default. Deve esisterne esattamente uno.
+                        --
+                        -- Regole:
+                        --   - Se non esistono emittenti fiscali e nessun default → noop
+                        --     (sistema ancora in fase di setup)
+                        --   - Se il conteggio dei default <> 1 → errore
+                        --   - Trigger CONSTRAINT DEFERRABLE (z90)
+                        --
+                        -- Fix 20260331: E_GENERICO → E_EMITTENTE_DEFAULT_SINGLETON
+                        -- ==========================================================
+                        CREATE OR REPLACE FUNCTION anagrafiche.trgfn_emittenti_fiscali_default_guard()
+                        RETURNS trigger
+                        LANGUAGE plpgsql
+                        AS $function$
+                        DECLARE
+                            v_count     INTEGER;
+                            v_emittenti INTEGER;
+                        BEGIN
+                            -- Conteggio emittenti fiscali totali
+                            SELECT count(*)
+                              INTO v_emittenti
+                              FROM anagrafiche.emittenti_fiscali;
+
+                            -- Conteggio default attivi
+                            SELECT count(*)
+                              INTO v_count
+                              FROM anagrafiche.emittenti_fiscali_billing_account
+                             WHERE is_default = true;
+
+                            -- Setup iniziale: nessun emittente e nessun default → noop
+                            IF v_emittenti = 0 AND v_count = 0 THEN
+                                RETURN NULL;
+                            END IF;
+
+                            -- Vincolo singleton: deve esistere esattamente 1 default
+                            IF v_count <> 1 THEN
+                                PERFORM script.fn_log_and_raise_error(
+                                    TG_TABLE_SCHEMA,
+                                    TG_NAME,
+                                    'E_EMITTENTE_DEFAULT_SINGLETON',
+                                    jsonb_build_object(
+                                        'found', v_count,
+                                        'emittenti_fiscali', v_emittenti
+                                    ),
+                                    NULL::uuid,
+                                    v_count::text
+                                );
+                            END IF;
+
+                            RETURN NULL;
+                        END;
+                        $function$;
+
+                        COMMENT ON FUNCTION anagrafiche.trgfn_emittenti_fiscali_default_guard()
+                          IS 'Vincolo singleton: deve esistere esattamente un emittente fiscale di default. Errore: E_EMITTENTE_DEFAULT_SINGLETON.';
+
+    - changeSet:
+          id: 20260331-02-fix-trgfn-resellers-guard-attivo
+          author: mctit
+          runOnChange: true
+          comment: >
+              Fix trgfn_resellers_guard_attivo: E_GENERICO →
+              E_RESELLER_DISATTIVAZIONE_BLOCCATA.
+          changes:
+              - sql:
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+                        -- ==========================================================
+                        -- trgfn_resellers_guard_attivo
+                        --
+                        -- Scopo: impedisce la disattivazione di un reseller quando
+                        --        esistono mapping attivi in resellers_billing_account.
+                        --
+                        -- Regole:
+                        --   - Solo su UPDATE con attivo: true → false
+                        --   - Se esistono mapping billing_account → errore
+                        --   - Altrimenti → consente la disattivazione
+                        --
+                        -- Fix 20260331: E_GENERICO → E_RESELLER_DISATTIVAZIONE_BLOCCATA
+                        -- ==========================================================
+                        CREATE OR REPLACE FUNCTION anagrafiche.trgfn_resellers_guard_attivo()
+                        RETURNS trigger
+                        LANGUAGE plpgsql
+                        AS $function$
+                        DECLARE
+                            v_has_mapping BOOLEAN;
+                        BEGIN
+                            -- Solo su disattivazione (attivo: true → false)
+                            IF TG_OP = 'UPDATE'
+                               AND NEW.attivo = false
+                               AND COALESCE(OLD.attivo, true) = true
+                            THEN
+                                -- Verifica mapping billing_account
+                                SELECT EXISTS (
+                                    SELECT 1
+                                      FROM anagrafiche.resellers_billing_account m
+                                     WHERE m.reseller_soggetto_ruolo_id = NEW.soggetto_ruolo_id
+                                )
+                                INTO v_has_mapping;
+
+                                IF v_has_mapping THEN
+                                    PERFORM script.fn_log_and_raise_error(
+                                        TG_TABLE_SCHEMA,
+                                        TG_NAME,
+                                        'E_RESELLER_DISATTIVAZIONE_BLOCCATA',
+                                        jsonb_build_object(
+                                            'soggetto_ruolo_id', NEW.soggetto_ruolo_id
+                                        ),
+                                        NULL::uuid,
+                                        NEW.soggetto_ruolo_id::text
+                                    );
+                                END IF;
+                            END IF;
+
+                            RETURN NEW;
+                        END;
+                        $function$;
+
+                        COMMENT ON FUNCTION anagrafiche.trgfn_resellers_guard_attivo()
+                          IS 'Blocca disattivazione reseller se esistono mapping billing_account. Errore: E_RESELLER_DISATTIVAZIONE_BLOCCATA.';

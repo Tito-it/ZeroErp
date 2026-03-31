@@ -13,41 +13,23 @@ CREATE OR REPLACE FUNCTION vendite.fn_get_totale_fondi_fattura(p_fattura_id bigi
  LANGUAGE plpgsql
 AS $function$
 DECLARE
-  v_totale vendite.fatture_fondi_fattura.importo%TYPE;
+    v_totale vendite.fatture_fondi_fattura.importo%TYPE;
 BEGIN
-  -- =========================================================
-  -- Scopo:
-  --   Restituisce il totale fondi fattura attivi per la fattura.
-  -- =========================================================
+    IF p_fattura_id IS NULL OR p_fattura_id <= 0 THEN
+        PERFORM script.fn_log_and_raise_error('vendite', 'fn_get_totale_fondi_fattura', 'E_PARAMETRO_INVALIDO',
+            jsonb_build_object('parametro', 'p_fattura_id', 'valore', p_fattura_id), NULL::uuid, 'p_fattura_id obbligatorio e > 0');
+    END IF;
 
-  IF p_fattura_id IS NULL OR p_fattura_id <= 0 THEN
-    PERFORM script.fn_log_and_raise_error(
-      'vendite', 'fn_get_totale_fondi_fattura', 'E_GENERICO',
-      jsonb_build_object(
-        'scope','FATTURA',
-        'severity','C',
-        'code','E_GENERICO',
-        'lotto_id', NULL,
-        'fattura_id', p_fattura_id,
-        'context', jsonb_build_object('detail','fattura_id obbligatoria')
-      ),
-      NULL::uuid,
-      'fattura_id non valido'
-    );
-  END IF;
+    SELECT COALESCE(SUM(ff.importo), 0) INTO v_totale
+      FROM vendite.fatture_fondi_fattura ff
+     WHERE ff.fattura_id = p_fattura_id AND ff.attivo IS TRUE;
 
-  SELECT COALESCE(SUM(ff.importo), 0)
-    INTO v_totale
-    FROM vendite.fatture_fondi_fattura ff
-   WHERE ff.fattura_id = p_fattura_id
-     AND ff.attivo IS TRUE;
-
-  RETURN v_totale;
+    RETURN v_totale;
 END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_get_totale_fondi_fattura(p_fattura_id bigint)
-IS 'Restituisce il totale dei fondi fattura attivi associati alla fattura.';
+IS 'Totale fondi fattura attivi per fattura.';
 ```
 
 ---

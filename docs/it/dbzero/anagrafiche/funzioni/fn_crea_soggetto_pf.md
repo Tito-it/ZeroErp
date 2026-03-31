@@ -19,10 +19,7 @@ DECLARE
     v_tipo_contatto_id            config.tipi_contatti.id%TYPE;
     v_soggetto_id                 anagrafiche.soggetti.id%TYPE;
 BEGIN
-    -- =============================================================
     -- Validazione parametri obbligatori
-    -- =============================================================
-
     IF p_cognome IS NULL OR TRIM(p_cognome) = '' THEN
         PERFORM script.fn_log_and_raise_error(
             'database', 'anagrafiche.fn_crea_soggetto_pf',
@@ -75,21 +72,19 @@ BEGIN
         );
     END IF;
 
-    -- =============================================================
     -- Lookup tipo soggetto dettaglio (Persona Fisica — natura PR)
-    -- =============================================================
-
     SELECT tsd.id INTO v_tipo_soggetto_dettaglio_id
     FROM config.tipi_soggetto_dettaglio tsd
     WHERE tsd.codice_interno = 'PR';
 
     IF v_tipo_soggetto_dettaglio_id IS NULL THEN
+        -- Fix: E_GENERICO → E_CODICE
         PERFORM script.fn_log_and_raise_error(
             'database', 'anagrafiche.fn_crea_soggetto_pf',
-            'E_GENERICO',
+            'E_CODICE',
             jsonb_build_object('codice_interno', 'PR'),
             NULL::uuid,
-            'Tipo soggetto dettaglio PR non trovato in config.tipi_soggetto_dettaglio.'
+            'PR', 'config.tipi_soggetto_dettaglio'
         );
     END IF;
 
@@ -106,19 +101,17 @@ BEGIN
     WHERE codice_iso2 = v_stato_iso2_resolved;
 
     IF v_stato_id IS NULL THEN
+        -- Fix: E_GENERICO → E_CODICE
         PERFORM script.fn_log_and_raise_error(
             'database', 'anagrafiche.fn_crea_soggetto_pf',
-            'E_GENERICO',
+            'E_CODICE',
             jsonb_build_object('codice_iso2', v_stato_iso2_resolved),
             NULL::uuid,
-            concat('Stato ', v_stato_iso2_resolved, ' non trovato in config.stati.')
+            v_stato_iso2_resolved, 'config.stati'
         );
     END IF;
 
-    -- =============================================================
     -- Guard unicita CF per stato
-    -- =============================================================
-
     IF EXISTS (
         SELECT 1 FROM anagrafiche.soggetti
          WHERE stato_id = v_stato_id
@@ -132,10 +125,7 @@ BEGIN
         );
     END IF;
 
-    -- =============================================================
     -- Step 1: Creazione soggetto (Persona Fisica)
-    -- =============================================================
-
     INSERT INTO anagrafiche.soggetti (
         cognome, nome, codice_fiscale, data_nascita, sesso,
         stato_id, tipo_soggetto_dettaglio_id, comune_id, attivo
@@ -149,10 +139,7 @@ BEGIN
     )
     RETURNING id INTO v_soggetto_id;
 
-    -- =============================================================
     -- Step 2: Creazione contatto default con tipo_contatto_id
-    -- =============================================================
-
     INSERT INTO anagrafiche.contatti (
         soggetto_id, tipo_contatto_id, nominativo, email, is_default
     )

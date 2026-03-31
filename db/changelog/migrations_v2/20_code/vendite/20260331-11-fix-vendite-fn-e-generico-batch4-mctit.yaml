@@ -1,0 +1,344 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+#
+# Fix E_GENERICO — vendite batch 4 (3 funzioni):
+#   - fn_get_next_progressivo (1x)
+#   - fn_get_or_create_commessa (6x)
+#   - fn_get_or_create_fattura_header (3x)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+    - logicalFilePath: migrations_v2/20_code/vendite/20260331-11-fix-vendite-fn-e-generico-batch4-mctit.yaml
+
+    - changeSet:
+          id: 20260331-11-fix-fn-get-next-progressivo
+          author: mctit
+          runOnChange: true
+          comment: >
+              Fix fn_get_next_progressivo: 1x E_GENERICO → E_PARAMETRO_INVALIDO.
+          changes:
+              - sql:
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+                        -- ==========================================================
+                        -- fn_get_next_progressivo
+                        --
+                        -- Scopo: prossimo progressivo per registro/anno/mese/serie
+                        --        con lock (advisory + FOR UPDATE).
+                        --
+                        -- Fix 20260331: 1x E_GENERICO → E_PARAMETRO_INVALIDO
+                        -- ==========================================================
+                        CREATE OR REPLACE FUNCTION vendite.fn_get_next_progressivo(
+                            p_registro_id vendite.registri_fatturazione.id%TYPE,
+                            p_data        DATE,
+                            p_serie       TEXT DEFAULT NULL
+                        )
+                        RETURNS BIGINT
+                        LANGUAGE plpgsql
+                        AS $function$
+                        DECLARE
+                            v_anno  SMALLINT;
+                            v_mese  SMALLINT := 0;
+                            v_serie TEXT := COALESCE(p_serie, '');
+                            v_last  BIGINT;
+                            v_next  BIGINT;
+                        BEGIN
+                            IF p_registro_id IS NULL OR p_data IS NULL THEN
+                                PERFORM script.fn_log_and_raise_error(
+                                    'vendite', 'fn_get_next_progressivo', 'E_PARAMETRO_INVALIDO',
+                                    jsonb_build_object('parametro', 'p_registro_id/p_data', 'registro_id', p_registro_id, 'data', p_data),
+                                    NULL::uuid, 'p_registro_id e p_data obbligatori'
+                                );
+                            END IF;
+
+                            v_anno := vendite.fn_get_anno_registro(p_data);
+
+                            -- Lock transazionale per evitare interleaving
+                            PERFORM pg_advisory_xact_lock(
+                                hashtext('registri_fatturazione_progressivi'),
+                                hashtext(p_registro_id::text || '|' || v_anno::text || '|' || v_serie)
+                            );
+
+                            SELECT rp.last_numero INTO v_last
+                              FROM vendite.registri_fatturazione_progressivi rp
+                             WHERE rp.registro_id = p_registro_id
+                               AND rp.anno = v_anno AND rp.mese = v_mese AND rp.serie = v_serie
+                               FOR UPDATE;
+
+                            IF v_last IS NULL THEN
+                                INSERT INTO vendite.registri_fatturazione_progressivi (registro_id, anno, mese, serie, last_numero, attivo)
+                                VALUES (p_registro_id, v_anno, v_mese, v_serie, 0, true)
+                                RETURNING last_numero INTO v_last;
+                            END IF;
+
+                            v_next := v_last + 1;
+
+                            UPDATE vendite.registri_fatturazione_progressivi
+                               SET last_numero = v_next
+                             WHERE registro_id = p_registro_id AND anno = v_anno AND mese = v_mese AND serie = v_serie;
+
+                            RETURN v_next;
+                        END;
+                        $function$;
+
+                        COMMENT ON FUNCTION vendite.fn_get_next_progressivo(BIGINT, DATE, TEXT)
+                          IS 'Prossimo progressivo con lock su registri_fatturazione_progressivi.';
+
+    - changeSet:
+          id: 20260331-11-fix-fn-get-or-create-commessa
+          author: mctit
+          runOnChange: true
+          comment: >
+              Fix fn_get_or_create_commessa: 6x E_GENERICO → codici specifici.
+          changes:
+              - sql:
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+                        -- ==========================================================
+                        -- fn_get_or_create_commessa
+                        --
+                        -- Scopo: recupera commessa aperta compatibile o ne crea una
+                        --        nuova con parametri coerenti.
+                        --
+                        -- Fix 20260331: 6x E_GENERICO → codici specifici
+                        -- ==========================================================
+                        CREATE OR REPLACE FUNCTION vendite.fn_get_or_create_commessa(
+                            p_billing_account_id          anagrafiche.billing_account.id%TYPE,
+                            p_utility_id                  config.utilities.id%TYPE,
+                            p_tipo_commessa               CHARACTER VARYING DEFAULT 'AUTO',
+                            p_policy_fatturazione         CHARACTER VARYING DEFAULT 'DA_DOCUMENTO',
+                            p_fatturazione_immediata      BOOLEAN DEFAULT FALSE,
+                            p_priorita_operativa          CHARACTER VARYING DEFAULT 'NORMALE',
+                            p_emittente_soggetto_ruolo_id anagrafiche.soggetti_ruoli.id%TYPE DEFAULT NULL,
+                            p_competenza_dal              DATE DEFAULT NULL,
+                            p_competenza_al               DATE DEFAULT NULL,
+                            p_meta                        JSONB DEFAULT '{}',
+                            p_force_new                   BOOLEAN DEFAULT FALSE
+                        )
+                        RETURNS vendite.commesse.id%TYPE
+                        LANGUAGE plpgsql
+                        AS $function$
+                        DECLARE
+                            v_commessa_id vendite.commesse.id%TYPE;
+                            v_ba_utility  anagrafiche.billing_account.utility_id%TYPE;
+                            v_ba_found    BOOLEAN := FALSE;
+                            v_emittente   vendite.commesse.emittente_soggetto_ruolo_id%TYPE;
+                            v_codice      vendite.commesse.codice%TYPE;
+                        BEGIN
+                            -- Guard: parametri obbligatori
+                            IF p_billing_account_id IS NULL OR p_billing_account_id <= 0 THEN
+                                PERFORM script.fn_log_and_raise_error(
+                                    'vendite', 'fn_get_or_create_commessa', 'E_PARAMETRO_INVALIDO',
+                                    jsonb_build_object('parametro', 'p_billing_account_id', 'valore', p_billing_account_id),
+                                    NULL::uuid, 'p_billing_account_id obbligatorio e > 0'
+                                );
+                            END IF;
+
+                            IF p_utility_id IS NULL OR p_utility_id <= 0 THEN
+                                PERFORM script.fn_log_and_raise_error(
+                                    'vendite', 'fn_get_or_create_commessa', 'E_PARAMETRO_INVALIDO',
+                                    jsonb_build_object('parametro', 'p_utility_id', 'valore', p_utility_id),
+                                    NULL::uuid, 'p_utility_id obbligatorio e > 0'
+                                );
+                            END IF;
+
+                            IF p_competenza_dal IS NOT NULL AND p_competenza_al IS NOT NULL AND p_competenza_dal > p_competenza_al THEN
+                                PERFORM script.fn_log_and_raise_error(
+                                    'vendite', 'fn_get_or_create_commessa', 'E_DATA_AL_MINORE_DAL',
+                                    jsonb_build_object('competenza_dal', p_competenza_dal, 'competenza_al', p_competenza_al),
+                                    NULL::uuid, p_competenza_al::text, p_competenza_dal::text
+                                );
+                            END IF;
+
+                            -- Verifica BA
+                            SELECT ba.utility_id, TRUE INTO v_ba_utility, v_ba_found
+                              FROM anagrafiche.billing_account ba WHERE ba.id = p_billing_account_id;
+
+                            IF NOT v_ba_found THEN
+                                PERFORM script.fn_log_and_raise_error(
+                                    'vendite', 'fn_get_or_create_commessa', 'E_VALORE_MANCANTE',
+                                    jsonb_build_object('billing_account_id', p_billing_account_id),
+                                    NULL::uuid, concat('billing_account_id ', p_billing_account_id)
+                                );
+                            END IF;
+
+                            IF v_ba_utility IS NULL THEN
+                                PERFORM script.fn_log_and_raise_error(
+                                    'vendite', 'fn_get_or_create_commessa', 'E_BILLING_ACCOUNT_UTILITY_NULL',
+                                    jsonb_build_object('billing_account_id', p_billing_account_id),
+                                    NULL::uuid, p_billing_account_id::text
+                                );
+                            END IF;
+
+                            IF v_ba_utility <> p_utility_id THEN
+                                PERFORM script.fn_log_and_raise_error(
+                                    'vendite', 'fn_get_or_create_commessa', 'E_CLIENTE_UTILITY_MISMATCH_BA',
+                                    jsonb_build_object('billing_account_id', p_billing_account_id, 'ba_utility_id', v_ba_utility, 'utility_id', p_utility_id),
+                                    NULL::uuid, p_billing_account_id::text, p_utility_id::text, v_ba_utility::text
+                                );
+                            END IF;
+
+                            -- Risolve emittente
+                            v_emittente := COALESCE(p_emittente_soggetto_ruolo_id, anagrafiche.fn_get_emittente_fiscale_id(p_billing_account_id));
+
+                            IF NOT p_force_new THEN
+                                -- Advisory lock su contesto dimensionale
+                                PERFORM pg_advisory_xact_lock(
+                                    hashtext('fn_get_or_create_commessa'),
+                                    hashtext(
+                                        p_billing_account_id::text || E'\x1F' || p_utility_id::text || E'\x1F' ||
+                                        p_tipo_commessa || E'\x1F' || p_policy_fatturazione || E'\x1F' ||
+                                        p_fatturazione_immediata::text || E'\x1F' || p_priorita_operativa || E'\x1F' ||
+                                        COALESCE(v_emittente::text, '') || E'\x1F' ||
+                                        COALESCE(p_competenza_dal::text, '') || E'\x1F' || COALESCE(p_competenza_al::text, '')
+                                    )
+                                );
+
+                                -- Cerca commessa riusabile (stato non terminale)
+                                SELECT c.id INTO v_commessa_id
+                                  FROM vendite.commesse c
+                                  JOIN vendite.stati_commessa sc ON sc.id = c.stato_commessa_id AND sc.chiude_commessa = FALSE
+                                 WHERE c.billing_account_id = p_billing_account_id
+                                   AND c.utility_id = p_utility_id
+                                   AND c.tipo_commessa = p_tipo_commessa
+                                   AND c.policy_fatturazione = p_policy_fatturazione
+                                   AND c.fatturazione_immediata = p_fatturazione_immediata
+                                   AND c.priorita_operativa = p_priorita_operativa
+                                   AND COALESCE(c.emittente_soggetto_ruolo_id, -1) = COALESCE(v_emittente, -1)
+                                   AND c.competenza_dal IS NOT DISTINCT FROM p_competenza_dal
+                                   AND c.competenza_al IS NOT DISTINCT FROM p_competenza_al
+                                 ORDER BY c.id DESC LIMIT 1;
+
+                                IF v_commessa_id IS NOT NULL THEN RETURN v_commessa_id; END IF;
+                            END IF;
+
+                            v_codice := 'CMM-' || to_char(clock_timestamp(), 'YYYYMMDDHH24MISSMS') || '-' || substr(md5(random()::text), 1, 6);
+
+                            INSERT INTO vendite.commesse (codice, tipo_commessa, policy_fatturazione, fatturazione_immediata,
+                                priorita_operativa, billing_account_id, utility_id, emittente_soggetto_ruolo_id,
+                                competenza_dal, competenza_al, meta)
+                            VALUES (v_codice, p_tipo_commessa, p_policy_fatturazione, p_fatturazione_immediata,
+                                p_priorita_operativa, p_billing_account_id, p_utility_id, v_emittente,
+                                p_competenza_dal, p_competenza_al, COALESCE(p_meta, '{}'::jsonb))
+                            RETURNING id INTO v_commessa_id;
+
+                            RETURN v_commessa_id;
+                        END;
+                        $function$;
+
+                        COMMENT ON FUNCTION vendite.fn_get_or_create_commessa(BIGINT, INTEGER, CHARACTER VARYING, CHARACTER VARYING, BOOLEAN, CHARACTER VARYING, BIGINT, DATE, DATE, JSONB, BOOLEAN)
+                          IS 'Recupera o crea commessa coerente con BA/utility e fallback emittente fiscale. Advisory lock previene doppia creazione.';
+
+    - changeSet:
+          id: 20260331-11-fix-fn-get-or-create-fattura-header
+          author: mctit
+          runOnChange: true
+          comment: >
+              Fix fn_get_or_create_fattura_header: 3x E_GENERICO → codici specifici.
+          changes:
+              - sql:
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+                        -- ==========================================================
+                        -- fn_get_or_create_fattura_header
+                        --
+                        -- Scopo: recupera o crea testata fattura DRAFT per il lotto.
+                        --
+                        -- Fix 20260331: 3x E_GENERICO → codici specifici
+                        -- ==========================================================
+                        CREATE OR REPLACE FUNCTION vendite.fn_get_or_create_fattura_header(
+                            p_lotto_id    vendite.fatturazione_lotti.id%TYPE,
+                            p_attivita_id vendite.attivita_fatturabili.id%TYPE
+                        )
+                        RETURNS vendite.fatture.id%TYPE
+                        LANGUAGE plpgsql
+                        AS $function$
+                        DECLARE
+                            v_key          JSONB;
+                            v_fattura_id   vendite.fatture.id%TYPE;
+                            v_stato_doc_id config.stati_doc_fiscale.id%TYPE;
+                            v_registro_id  vendite.registri_fatturazione.id%TYPE;
+                            v_ba_id        anagrafiche.billing_account.id%TYPE;
+                            v_tipo_doc_id  config.tipi_doc_fiscale.id%TYPE;
+                            v_valuta_id    config.valute.id%TYPE;
+                            v_emittente_id anagrafiche.soggetti_ruoli.id%TYPE;
+                            v_reseller_id  anagrafiche.soggetti_ruoli.id%TYPE;
+                        BEGIN
+                            -- Guard: parametri obbligatori
+                            IF p_lotto_id IS NULL OR p_lotto_id <= 0 OR p_attivita_id IS NULL OR p_attivita_id <= 0 THEN
+                                PERFORM script.fn_log_and_raise_error(
+                                    'vendite', 'fn_get_or_create_fattura_header', 'E_PARAMETRO_INVALIDO',
+                                    jsonb_build_object('parametro', 'p_lotto_id/p_attivita_id', 'lotto_id', p_lotto_id, 'attivita_id', p_attivita_id),
+                                    NULL::uuid, 'p_lotto_id e p_attivita_id obbligatori e > 0'
+                                );
+                            END IF;
+
+                            -- Chiave documento dall'attivita'
+                            v_key := vendite.fn_build_fattura_key(p_attivita_id);
+                            v_ba_id := (v_key->>'billing_account_id')::BIGINT;
+                            v_tipo_doc_id := (v_key->>'tipo_doc_fiscale_id')::BIGINT;
+                            v_valuta_id := (v_key->>'valuta_id')::INTEGER;
+                            v_emittente_id := (v_key->>'emittente_soggetto_ruolo_id')::BIGINT;
+                            v_reseller_id := NULLIF(v_key->>'reseller_soggetto_ruolo_id', '')::BIGINT;
+                            v_registro_id := (v_key->>'registro_id')::BIGINT;
+
+                            IF v_ba_id IS NULL OR v_tipo_doc_id IS NULL OR v_valuta_id IS NULL
+                               OR v_emittente_id IS NULL OR v_registro_id IS NULL THEN
+                                PERFORM script.fn_log_and_raise_error(
+                                    'vendite', 'fn_get_or_create_fattura_header', 'E_VALORE_MANCANTE',
+                                    jsonb_build_object('attivita_id', p_attivita_id, 'chiave', v_key),
+                                    NULL::uuid, concat('chiave documento incompleta per attivita_id ', p_attivita_id)
+                                );
+                            END IF;
+
+                            -- Stato DRAFT
+                            SELECT id INTO v_stato_doc_id
+                              FROM config.stati_doc_fiscale
+                             WHERE codice_interno = 'DRAFT' AND attivo IS TRUE
+                             ORDER BY id LIMIT 1;
+
+                            IF v_stato_doc_id IS NULL THEN
+                                PERFORM script.fn_log_and_raise_error(
+                                    'vendite', 'fn_get_or_create_fattura_header', 'E_CONFIG_MANCANTE',
+                                    jsonb_build_object('codice_interno', 'DRAFT'),
+                                    NULL::uuid, 'stato DRAFT non trovato'
+                                );
+                            END IF;
+
+                            -- Cerca fattura gia' nel lotto con stessa chiave
+                            SELECT f.id INTO v_fattura_id
+                              FROM vendite.fatturazione_lotti_fatture lf
+                              JOIN vendite.fatture f ON f.id = lf.fattura_id
+                             WHERE lf.lotto_id = p_lotto_id
+                               AND f.billing_account_id = v_ba_id
+                               AND f.tipo_doc_fiscale_id = v_tipo_doc_id
+                               AND f.valuta_id = v_valuta_id
+                               AND f.emittente_soggetto_ruolo_id = v_emittente_id
+                               AND COALESCE(f.reseller_soggetto_ruolo_id, 0) = COALESCE(v_reseller_id, 0)
+                               AND f.registro_id = v_registro_id
+                             ORDER BY f.id LIMIT 1;
+
+                            IF v_fattura_id IS NOT NULL THEN RETURN v_fattura_id; END IF;
+
+                            -- Crea fattura + link lotto
+                            INSERT INTO vendite.fatture (registro_id, data, tipo_doc_fiscale_id, stato_doc_fiscale_id,
+                                emittente_soggetto_ruolo_id, billing_account_id, reseller_soggetto_ruolo_id,
+                                valuta_id, tasso_cambio, meta)
+                            VALUES (v_registro_id, current_date, v_tipo_doc_id, v_stato_doc_id,
+                                v_emittente_id, v_ba_id, v_reseller_id,
+                                v_valuta_id, 1, jsonb_build_object('lotto_id', p_lotto_id))
+                            RETURNING id INTO v_fattura_id;
+
+                            INSERT INTO vendite.fatturazione_lotti_fatture (lotto_id, fattura_id, esclusa, meta)
+                            VALUES (p_lotto_id, v_fattura_id, FALSE, jsonb_build_object('origine', 'bozza'));
+
+                            RETURN v_fattura_id;
+                        END;
+                        $function$;
+
+                        COMMENT ON FUNCTION vendite.fn_get_or_create_fattura_header(BIGINT, BIGINT)
+                          IS 'Recupera o crea testata fattura DRAFT per lotto da chiave documento dell''attivita.';

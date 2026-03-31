@@ -13,122 +13,55 @@ CREATE OR REPLACE FUNCTION vendite.fn_list_preventivi_da_pushare(p_competenza_me
  LANGUAGE plpgsql
 AS $function$
 DECLARE
-  v_sorgente_tipo_id    config.sorgenti.id%TYPE;
-  v_tipo_doc_fiscale_id config.sorgenti.tipo_doc_fiscale_id%TYPE;
-  v_stato_accettato_id  config.stati_doc_preventivi.id%TYPE;
+    v_sorgente_tipo_id    config.sorgenti.id%TYPE;
+    v_tipo_doc_fiscale_id config.sorgenti.tipo_doc_fiscale_id%TYPE;
+    v_stato_accettato_id  config.stati_doc_preventivi.id%TYPE;
 BEGIN
-  -- =========================================================
-  -- Scopo:
-  --   Restituire le righe preventivo pronte per il push su
-  --   commessa, con tutti i campi necessari agli handler.
-  --
-  -- Regole:
-  --   - stato documento ACCETTATO (codice da config.stati_doc_preventivi)
-  --   - esclude righe gia` EMESSA in commessa (via NOT EXISTS)
-  --   - riga attivo = true, quantita > 0, prezzo >= 0
-  --   - esclude righe con segment_key gia` EMESSA in commessa
-  --   - prezzo_bloccato = fatturazione_immediata (documento)
-  --   - tipo_commessa target: REALE, policy: DA_DOCUMENTO
-  --
-  -- NOTE:
-  --   - preventivi_righe.uom_id e` stata droppata (mai popolata dal trigger);
-  --     restituito NULL::bigint.
-  -- =========================================================
+    SELECT s.id, s.tipo_doc_fiscale_id INTO v_sorgente_tipo_id, v_tipo_doc_fiscale_id
+      FROM config.sorgenti s WHERE s.codice = 'PREVENTIVO' AND s.attivo IS TRUE LIMIT 1;
 
-  -- Lookup sorgente PREVENTIVO attiva + tipo_doc_fiscale_id (§26 B+D).
-  SELECT s.id, s.tipo_doc_fiscale_id
-    INTO v_sorgente_tipo_id, v_tipo_doc_fiscale_id
-  FROM config.sorgenti s
-  WHERE s.codice = 'PREVENTIVO' AND s.attivo IS TRUE
-  LIMIT 1;
+    IF v_sorgente_tipo_id IS NULL THEN
+        PERFORM script.fn_log_and_raise_error('vendite', 'fn_list_preventivi_da_pushare', 'E_CODICE',
+            jsonb_build_object('codice', 'PREVENTIVO'), NULL::uuid, 'PREVENTIVO', 'config.sorgenti');
+    END IF;
 
-  IF v_sorgente_tipo_id IS NULL THEN
-    PERFORM script.fn_log_and_raise_error(
-      'vendite','fn_list_preventivi_da_pushare','E_GENERICO',
-      jsonb_build_object(
-        'scope','COMMESSE','severity','C','code','E_GENERICO',
-        'lotto_id',NULL,'fattura_id',NULL,
-        'context',jsonb_build_object('detail','sorgente PREVENTIVO non configurata/attiva')
-      ),
-      NULL::uuid,
-      'sorgente PREVENTIVO non configurata/attiva'
-    );
-  END IF;
+    SELECT s.id INTO v_stato_accettato_id
+      FROM config.stati_doc_preventivi s WHERE s.codice = 'ACCETTATO' AND s.attivo IS TRUE LIMIT 1;
 
-  -- Lookup stato documento ACCETTATO.
-  SELECT s.id INTO v_stato_accettato_id
-  FROM config.stati_doc_preventivi s
-  WHERE s.codice = 'ACCETTATO' AND s.attivo IS TRUE
-  LIMIT 1;
-
-  RETURN QUERY
-  SELECT
-    p.id                                                          AS preventivo_id,
-    p.uid                                                         AS preventivo_uid,
-    pr.id                                                         AS riga_id,
-    p.billing_account_id,
-    p.utility_id,
-    anagrafiche.fn_get_emittente_fiscale_id(p.billing_account_id) AS emittente_soggetto_ruolo_id,
-    p.validita_dal                                                AS competenza_dal,
-    p.validita_al                                                 AS competenza_al,
-    p.fatturazione_immediata,
-    v_sorgente_tipo_id                                            AS sorgente_tipo_id,
-    p.uid::text                                                   AS sorgente_uid,
-    -- segment_key: stabile e deterministico per idempotenza upsert
-    ('PREV:' || p.uid::text || ':R:' || pr.id::text)::varchar    AS segment_key,
-    pr.articolo_id,
-    p.istanza_utility_id,
-    COALESCE(p.validita_dal, p.data)                             AS data_attivita,
-    -- uom_id rimosso da preventivi_righe (colonna droppata, mai valorizzata)
-    NULL::bigint                                                  AS uom_id,
-    pr.quantita,
-    pr.qta_operativa,
-    pr.uom_operativa_id,
-    COALESCE(pr.factor_to_base, 1::numeric)                      AS factor_to_base,
-    date_trunc('month', COALESCE(p.validita_dal, p.data))::date  AS competenza_mese,
-    pr.prezzo_unitario                                            AS prezzo_snapshot,
-    -- prezzo_bloccato = true solo per fatturazione immediata;
-    -- per periodica rimane ricalcolabile al momento del pull.
-    COALESCE(p.fatturazione_immediata, false)                    AS prezzo_bloccato,
-    'FIXED'::varchar                                              AS pricing_mode,
-    'NORMALE'::varchar                                            AS tipo_movimento,
-    'CONGUAGLIO'::varchar                                         AS tipo_consumo,
-    p.valuta_id,
-    jsonb_build_object(
-      'preventivo_numero',  p.numero,
-      'preventivo_rev',     p.rev,
-      'tipo_commessa',      'REALE',
-      'policy_fatturazione','DA_DOCUMENTO'
-    )                                                             AS meta,
-    v_tipo_doc_fiscale_id                                           AS tipo_doc_fiscale_id
-  FROM vendite.preventivi p
-  JOIN vendite.preventivi_righe pr
-    ON pr.preventivo_id = p.id
-   AND pr.attivo IS TRUE
-   AND pr.quantita > 0
-   AND pr.prezzo_unitario >= 0
-  WHERE p.billing_account_id IS NOT NULL
-    AND p.utility_id IS NOT NULL
-    -- Stato documento: ACCETTATO (NULL = configurazione mancante, non filtra).
-    AND (v_stato_accettato_id IS NULL OR p.stato_doc_preventivo_id = v_stato_accettato_id)
-    -- Filtri opzionali.
-    AND (p_competenza_mese IS NULL
-         OR date_trunc('month', COALESCE(p.validita_dal, p.data))::date = p_competenza_mese)
-    AND (p_billing_account_id IS NULL OR p.billing_account_id = p_billing_account_id)
-    -- Esclude righe gia` emesse in commessa (ottimizzazione batch).
-    AND NOT EXISTS (
-      SELECT 1
-      FROM vendite.commesse_attivita ca
-      WHERE ca.segment_key = 'PREV:' || p.uid::text || ':R:' || pr.id::text
-        AND ca.stato_emissione = 'EMESSA'
-    )
-  ORDER BY p.id, pr.id
-  LIMIT p_limit;
-END
+    RETURN QUERY
+    SELECT p.id, p.uid, pr.id, p.billing_account_id, p.utility_id,
+           anagrafiche.fn_get_emittente_fiscale_id(p.billing_account_id),
+           p.validita_dal, p.validita_al, p.fatturazione_immediata,
+           v_sorgente_tipo_id, p.uid::text,
+           ('PREV:' || p.uid::text || ':R:' || pr.id::text)::VARCHAR,
+           pr.articolo_id, p.istanza_utility_id,
+           COALESCE(p.validita_dal, p.data), NULL::BIGINT,
+           pr.quantita, pr.qta_operativa, pr.uom_operativa_id,
+           COALESCE(pr.factor_to_base, 1::NUMERIC),
+           date_trunc('month', COALESCE(p.validita_dal, p.data))::DATE,
+           pr.prezzo_unitario, COALESCE(p.fatturazione_immediata, FALSE),
+           'FIXED'::VARCHAR, 'NORMALE'::VARCHAR, 'CONGUAGLIO'::VARCHAR,
+           p.valuta_id,
+           jsonb_build_object('preventivo_numero', p.numero, 'preventivo_rev', p.rev,
+               'tipo_commessa', 'REALE', 'policy_fatturazione', 'DA_DOCUMENTO'),
+           v_tipo_doc_fiscale_id
+      FROM vendite.preventivi p
+      JOIN vendite.preventivi_righe pr ON pr.preventivo_id = p.id AND pr.attivo IS TRUE AND pr.quantita > 0 AND pr.prezzo_unitario >= 0
+     WHERE p.billing_account_id IS NOT NULL AND p.utility_id IS NOT NULL
+       AND (v_stato_accettato_id IS NULL OR p.stato_doc_preventivo_id = v_stato_accettato_id)
+       AND (p_competenza_mese IS NULL OR date_trunc('month', COALESCE(p.validita_dal, p.data))::DATE = p_competenza_mese)
+       AND (p_billing_account_id IS NULL OR p.billing_account_id = p_billing_account_id)
+       AND NOT EXISTS (
+           SELECT 1 FROM vendite.commesse_attivita ca
+            WHERE ca.segment_key = 'PREV:' || p.uid::text || ':R:' || pr.id::text
+              AND ca.stato_emissione = 'EMESSA'
+       )
+     ORDER BY p.id, pr.id LIMIT p_limit;
+END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_list_preventivi_da_pushare(p_competenza_mese date, p_billing_account_id bigint, p_limit integer)
-IS 'Lista righe preventivo eligible al push su commessa (stato ACCETTATO). Restituisce tutti i campi per get_or_create_commessa + upsert_commessa_attivita. Esclude righe gia` emesse via NOT EXISTS su commesse_attivita.';
+IS 'Righe preventivo eligible al push su commessa (stato ACCETTATO).';
 ```
 
 ---

@@ -13,76 +13,44 @@ CREATE OR REPLACE FUNCTION vendite.fn_get_lotto_segnalazioni_summary(p_lotto_id 
  LANGUAGE plpgsql
 AS $function$
 BEGIN
-  -- =========================================================
-  -- Scopo:
-  --   Restituisce il riepilogo segnalazioni attive del lotto
-  --   aggregando sorgenti fatture_log e fatturazione_lotti_log,
-  --   includendo anche il blocco tecnico da tabella ponte
-  --   (stato_esecuzione='ERRORE').
-  --
-  -- Regole:
-  --   - conta solo log attivi (disabilitato = false)
-  --   - severita` gestite: C, W, I
-  --   - colonna aggiuntiva: count ponte stato_esecuzione ERRORE
-  -- =========================================================
+    -- Guard: parametro obbligatorio
+    IF p_lotto_id IS NULL OR p_lotto_id <= 0 THEN
+        PERFORM script.fn_log_and_raise_error(
+            'vendite', 'fn_get_lotto_segnalazioni_summary', 'E_PARAMETRO_INVALIDO',
+            jsonb_build_object('parametro', 'p_lotto_id', 'valore', p_lotto_id),
+            NULL::uuid, 'p_lotto_id obbligatorio e > 0'
+        );
+    END IF;
 
-  IF p_lotto_id IS NULL OR p_lotto_id <= 0 THEN
-    PERFORM script.fn_log_and_raise_error(
-      'vendite', 'fn_get_lotto_segnalazioni_summary', 'E_GENERICO',
-      jsonb_build_object(
-        'scope','LOTTO',
-        'severity','C',
-        'code','E_GENERICO',
-        'lotto_id', p_lotto_id,
-        'fattura_id', NULL,
-        'context', jsonb_build_object('detail','lotto_id obbligatorio')
-      ),
-      NULL::uuid,
-      'lotto_id obbligatorio e > 0'
-    );
-  END IF;
-
-  RETURN QUERY
-  WITH fatture_agg AS (
-    SELECT
-      COUNT(*) FILTER (WHERE fl.status = 'C') AS fatture_critical_count,
-      COUNT(*) FILTER (WHERE fl.status = 'W') AS fatture_warning_count
-    FROM vendite.fatturazione_lotti_fatture lf
-    JOIN vendite.fatture_log fl
-      ON fl.fattura_id = lf.fattura_id
-    WHERE lf.lotto_id = p_lotto_id
-      AND fl.disabilitato IS FALSE
-  ),
-  lotto_agg AS (
-    SELECT
-      COUNT(*) FILTER (WHERE ll.status = 'C') AS lotto_critical_count,
-      COUNT(*) FILTER (WHERE ll.status = 'W') AS lotto_warning_count,
-      COUNT(*) FILTER (WHERE ll.status = 'I') AS lotto_info_count
-    FROM vendite.fatturazione_lotti_log ll
-    WHERE ll.lotto_id = p_lotto_id
-      AND ll.disabilitato IS FALSE
-  ),
-  ponte_agg AS (
-    SELECT
-      COUNT(*) FILTER (WHERE lf.stato_esecuzione = 'ERRORE') AS fatture_stato_esecuzione_errore_count
-    FROM vendite.fatturazione_lotti_fatture lf
-    WHERE lf.lotto_id = p_lotto_id
-  )
-  SELECT
-    COALESCE(fa.fatture_critical_count, 0),
-    COALESCE(fa.fatture_warning_count, 0),
-    COALESCE(la.lotto_critical_count, 0),
-    COALESCE(la.lotto_warning_count, 0),
-    COALESCE(la.lotto_info_count, 0),
-    COALESCE(pa.fatture_stato_esecuzione_errore_count, 0)
-  FROM fatture_agg fa
-  CROSS JOIN lotto_agg la
-  CROSS JOIN ponte_agg pa;
-END
+    RETURN QUERY
+    WITH fatture_agg AS (
+        SELECT COUNT(*) FILTER (WHERE fl.status = 'C') AS fc,
+               COUNT(*) FILTER (WHERE fl.status = 'W') AS fw
+          FROM vendite.fatturazione_lotti_fatture lf
+          JOIN vendite.fatture_log fl ON fl.fattura_id = lf.fattura_id
+         WHERE lf.lotto_id = p_lotto_id AND fl.disabilitato IS FALSE
+    ),
+    lotto_agg AS (
+        SELECT COUNT(*) FILTER (WHERE ll.status = 'C') AS lc,
+               COUNT(*) FILTER (WHERE ll.status = 'W') AS lw,
+               COUNT(*) FILTER (WHERE ll.status = 'I') AS li
+          FROM vendite.fatturazione_lotti_log ll
+         WHERE ll.lotto_id = p_lotto_id AND ll.disabilitato IS FALSE
+    ),
+    ponte_agg AS (
+        SELECT COUNT(*) FILTER (WHERE lf.stato_esecuzione = 'ERRORE') AS pe
+          FROM vendite.fatturazione_lotti_fatture lf
+         WHERE lf.lotto_id = p_lotto_id
+    )
+    SELECT COALESCE(fa.fc, 0), COALESCE(fa.fw, 0),
+           COALESCE(la.lc, 0), COALESCE(la.lw, 0), COALESCE(la.li, 0),
+           COALESCE(pa.pe, 0)
+      FROM fatture_agg fa CROSS JOIN lotto_agg la CROSS JOIN ponte_agg pa;
+END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_get_lotto_segnalazioni_summary(p_lotto_id bigint)
-IS 'Riepiloga segnalazioni lotto attive (log fatture/lotto) e conteggio ponte fatture con stato_esecuzione=ERRORE.';
+IS 'Riepilogo segnalazioni lotto attive (log fatture/lotto) + conteggio ponte errore.';
 ```
 
 ---

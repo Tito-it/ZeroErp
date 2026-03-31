@@ -1,0 +1,219 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+#
+# Fix E_GENERICO — vendite batch 12 (3 funzioni brevi):
+#   - fn_resolve_termini_pagamento (1x)
+#   - fn_ricalcola_fattura (1x)
+#   - fn_ricalcola_riepiloghi_iva_lotto (2x)
+# NOTA: fn_resolve_prezzo_listino (8x) in file dedicato -24.
+# NOTA: fn_set_runtime_task_run_esito e fn_sync_attivita_stato_esecuzione
+#       SKIP — dipendono da vendite.attivita_fatturabili_lotti (rimossa).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+    - logicalFilePath: migrations_v2/20_code/vendite/20260331-23-fix-vendite-fn-e-generico-batch12-mctit.yaml
+
+    - changeSet:
+          id: 20260331-23-fix-fn-resolve-termini-pagamento
+          author: mctit
+          runOnChange: true
+          comment: >
+              Fix fn_resolve_termini_pagamento: 1x E_GENERICO → E_PARAMETRO_INVALIDO.
+              Solo guard iniziale — corpo invariato.
+          changes:
+              - sql:
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+                        -- Fix 20260331: 1x E_GENERICO → E_PARAMETRO_INVALIDO
+                        -- NOTA: corpo funzione lungo (CTE con sorgenti ordini/preventivi/contratti).
+                        -- Rigenerata integralmente per CREATE OR REPLACE.
+                        CREATE OR REPLACE FUNCTION vendite.fn_resolve_termini_pagamento(
+                            p_fattura_id         vendite.fatture.id%TYPE DEFAULT NULL,
+                            p_billing_account_id anagrafiche.billing_account.id%TYPE DEFAULT NULL,
+                            p_attivita_ids       BIGINT[] DEFAULT NULL
+                        )
+                        RETURNS TABLE(termini_pagamento_id BIGINT, termini_distinti BIGINT[])
+                        LANGUAGE plpgsql
+                        AS $function$
+                        DECLARE
+                            v_tp_fattura config.termini_pagamento.id%TYPE;
+                            v_tp_cliente config.termini_pagamento.id%TYPE;
+                            v_tp_default config.termini_pagamento.id%TYPE;
+                        BEGIN
+                            -- Guard
+                            IF p_fattura_id IS NOT NULL AND p_fattura_id <= 0 THEN
+                                PERFORM script.fn_log_and_raise_error('vendite', 'fn_resolve_termini_pagamento', 'E_PARAMETRO_INVALIDO',
+                                    jsonb_build_object('parametro', 'p_fattura_id', 'valore', p_fattura_id), NULL::uuid, 'p_fattura_id se fornito deve essere > 0');
+                            END IF;
+
+                            -- 1) Termine dalla fattura
+                            IF p_fattura_id IS NOT NULL THEN
+                                SELECT f.termini_pagamento_id INTO v_tp_fattura FROM vendite.fatture f WHERE f.id = p_fattura_id;
+                                IF v_tp_fattura IS NOT NULL THEN
+                                    RETURN QUERY SELECT v_tp_fattura, ARRAY[v_tp_fattura]::BIGINT[];
+                                    RETURN;
+                                END IF;
+                            END IF;
+
+                            -- 2) Termine dalla sorgente attivita'
+                            IF p_attivita_ids IS NOT NULL AND array_length(p_attivita_ids, 1) > 0 THEN
+                                RETURN QUERY
+                                WITH sorg AS (
+                                    SELECT a.id, s.codice_interno AS src_code, a.sorgente_uid
+                                      FROM vendite.attivita_fatturabili a
+                                      JOIN config.sorgenti s ON s.id = a.sorgente_tipo_id
+                                     WHERE a.id = ANY(p_attivita_ids)
+                                ), terms AS (
+                                    SELECT DISTINCT CASE
+                                        WHEN src.src_code = 'ORDINE_VENDITA' THEN o.termini_pagamento_id
+                                        WHEN src.src_code = 'PREVENTIVO'     THEN p.termini_pagamento_id
+                                        WHEN src.src_code = 'CONTRATTO'      THEN c.termini_pagamento_id
+                                        ELSE NULL END AS tp_id
+                                      FROM sorg src
+                                      LEFT JOIN vendite.ordini     o ON (src.src_code='ORDINE_VENDITA' AND src.sorgente_uid = o.uid)
+                                      LEFT JOIN vendite.preventivi p ON (src.src_code='PREVENTIVO'     AND src.sorgente_uid = p.uid)
+                                      LEFT JOIN vendite.contratti  c ON (src.src_code='CONTRATTO'      AND src.sorgente_uid = c.uid)
+                                ), agg AS (
+                                    SELECT ARRAY_REMOVE(ARRAY_AGG(DISTINCT tp_id), NULL) AS termini FROM terms
+                                )
+                                SELECT CASE WHEN array_length(agg.termini, 1) = 1 THEN agg.termini[1] ELSE NULL END, agg.termini FROM agg;
+                                RETURN;
+                            END IF;
+
+                            -- 3) Termine dal cliente (billing account)
+                            IF p_billing_account_id IS NOT NULL THEN
+                                SELECT cl.termine_pagamento_id INTO v_tp_cliente
+                                  FROM anagrafiche.clienti cl
+                                  JOIN anagrafiche.billing_account ba ON ba.id = p_billing_account_id
+                                 WHERE cl.billing_account_id = ba.id LIMIT 1;
+                                IF v_tp_cliente IS NOT NULL THEN
+                                    RETURN QUERY SELECT v_tp_cliente, ARRAY[v_tp_cliente]::BIGINT[];
+                                    RETURN;
+                                END IF;
+                            END IF;
+
+                            -- 4) Default TP_1RATA
+                            SELECT tp.id INTO v_tp_default FROM config.termini_pagamento tp WHERE tp.codice_interno = 'TP_1RATA' AND tp.attivo IS TRUE LIMIT 1;
+                            RETURN QUERY SELECT v_tp_default, ARRAY_REMOVE(ARRAY[v_tp_default], NULL)::BIGINT[];
+                        END;
+                        $function$;
+
+                        COMMENT ON FUNCTION vendite.fn_resolve_termini_pagamento(BIGINT, BIGINT, BIGINT[])
+                          IS 'Risolve termini_pagamento: fattura → sorgente attivita → cliente → default TP_1RATA.';
+
+    - changeSet:
+          id: 20260331-23-fix-fn-ricalcola-fattura
+          author: mctit
+          runOnChange: true
+          comment: >
+              Fix fn_ricalcola_fattura: 1x E_GENERICO → E_PARAMETRO_INVALIDO.
+          changes:
+              - sql:
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+                        -- Fix 20260331: 1x E_GENERICO → E_PARAMETRO_INVALIDO
+                        CREATE OR REPLACE FUNCTION vendite.fn_ricalcola_fattura(
+                            p_fattura_id vendite.fatture.id%TYPE
+                        )
+                        RETURNS void
+                        LANGUAGE plpgsql
+                        AS $function$
+                        BEGIN
+                            IF p_fattura_id IS NULL OR p_fattura_id <= 0 THEN
+                                PERFORM script.fn_log_and_raise_error('vendite', 'fn_ricalcola_fattura', 'E_PARAMETRO_INVALIDO',
+                                    jsonb_build_object('parametro', 'p_fattura_id', 'valore', p_fattura_id), NULL::uuid, 'p_fattura_id obbligatorio e > 0');
+                            END IF;
+
+                            PERFORM vendite.fn_ricalcola_riepilogo_iva_fattura(p_fattura_id);
+                            PERFORM vendite.fn_ricalcola_totali_fattura(p_fattura_id);
+                        END;
+                        $function$;
+
+                        COMMENT ON FUNCTION vendite.fn_ricalcola_fattura(BIGINT)
+                          IS 'Wrapper ricalcolo fattura: riepiloghi IVA + totali testata.';
+
+    - changeSet:
+          id: 20260331-23-fix-fn-ricalcola-riepiloghi-iva-lotto
+          author: mctit
+          runOnChange: true
+          comment: >
+              Fix fn_ricalcola_riepiloghi_iva_lotto: 2x E_GENERICO → E_PARAMETRO_INVALIDO.
+              Corpo invariato (batch loop).
+          changes:
+              - sql:
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+                        -- Fix 20260331: 2x E_GENERICO → E_PARAMETRO_INVALIDO
+                        CREATE OR REPLACE FUNCTION vendite.fn_ricalcola_riepiloghi_iva_lotto(
+                            p_lotto_id   vendite.fatturazione_lotti.id%TYPE,
+                            p_batch_size INTEGER DEFAULT 1000
+                        )
+                        RETURNS TABLE(fatture_count INTEGER, deleted_rows INTEGER, inserted_rows INTEGER)
+                        LANGUAGE plpgsql
+                        AS $function$
+                        DECLARE
+                            v_deleted_rows  INTEGER := 0;
+                            v_inserted_rows INTEGER := 0;
+                            v_fatture_count INTEGER := 0;
+                            v_batch_size    INTEGER := 1000;
+                            v_ids           BIGINT[];
+                            v_slice         BIGINT[];
+                            v_fattura_id    vendite.fatture.id%TYPE;
+                            v_start         INTEGER := 1;
+                            v_end           INTEGER := 0;
+                            v_max           INTEGER := 0;
+                            v_tmp_deleted   INTEGER;
+                            v_tmp_inserted  INTEGER;
+                        BEGIN
+                            IF p_lotto_id IS NULL OR p_lotto_id <= 0 THEN
+                                PERFORM script.fn_log_and_raise_error('vendite', 'fn_ricalcola_riepiloghi_iva_lotto', 'E_PARAMETRO_INVALIDO',
+                                    jsonb_build_object('parametro', 'p_lotto_id', 'valore', p_lotto_id), NULL::uuid, 'p_lotto_id obbligatorio e > 0');
+                            END IF;
+
+                            IF p_batch_size IS NULL OR p_batch_size <= 0 THEN
+                                PERFORM script.fn_log_and_raise_error('vendite', 'fn_ricalcola_riepiloghi_iva_lotto', 'E_PARAMETRO_INVALIDO',
+                                    jsonb_build_object('parametro', 'p_batch_size', 'valore', p_batch_size), NULL::uuid, 'p_batch_size obbligatorio e > 0');
+                            END IF;
+
+                            v_batch_size := p_batch_size;
+
+                            SELECT array_agg(lf.fattura_id ORDER BY lf.fattura_id) INTO v_ids
+                              FROM vendite.fatturazione_lotti_fatture lf WHERE lf.lotto_id = p_lotto_id;
+
+                            IF v_ids IS NULL THEN
+                                RETURN QUERY SELECT 0, 0, 0;
+                                RETURN;
+                            END IF;
+
+                            v_max := array_length(v_ids, 1);
+
+                            WHILE v_start <= v_max LOOP
+                                v_end := LEAST(v_start + v_batch_size - 1, v_max);
+                                v_slice := v_ids[v_start:v_end];
+
+                                FOR i IN 1..array_length(v_slice, 1) LOOP
+                                    v_fattura_id := v_slice[i];
+                                    v_fatture_count := v_fatture_count + 1;
+
+                                    SELECT r.deleted_rows, r.inserted_rows INTO v_tmp_deleted, v_tmp_inserted
+                                      FROM vendite.fn_ricalcola_riepilogo_iva_fattura(v_fattura_id) r;
+
+                                    v_deleted_rows := v_deleted_rows + COALESCE(v_tmp_deleted, 0);
+                                    v_inserted_rows := v_inserted_rows + COALESCE(v_tmp_inserted, 0);
+
+                                    PERFORM vendite.fn_ricalcola_totali_fattura(v_fattura_id);
+                                END LOOP;
+
+                                v_start := v_end + 1;
+                            END LOOP;
+
+                            RETURN QUERY SELECT v_fatture_count, v_deleted_rows, v_inserted_rows;
+                        END;
+                        $function$;
+
+                        COMMENT ON FUNCTION vendite.fn_ricalcola_riepiloghi_iva_lotto(BIGINT, INTEGER)
+                          IS 'Ricalcolo riepiloghi IVA + totali per lotto con batch.';

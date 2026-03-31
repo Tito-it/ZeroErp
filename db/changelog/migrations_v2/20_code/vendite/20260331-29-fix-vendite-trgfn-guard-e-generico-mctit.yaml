@@ -1,0 +1,190 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+#
+# Fix E_GENERICO — 3 trigger function vendite:
+#   - trgfn_fatturazione_lotti_guard_stato (2x)
+#   - trgfn_fatture_guard_stato (3x)
+#   - trgfn_logs_guard_delete (1x → E_DELETE_NOT_ALLOWED)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+    - logicalFilePath: migrations_v2/20_code/vendite/20260331-29-fix-vendite-trgfn-guard-e-generico-mctit.yaml
+
+    - changeSet:
+          id: 20260331-29-fix-trgfn-fatturazione-lotti-guard-stato
+          author: mctit
+          runOnChange: true
+          comment: >
+              Fix trgfn_fatturazione_lotti_guard_stato: 2x E_GENERICO →
+              E_LOTTO_PARAMETRO_NON_COERENTE.
+          changes:
+              - sql:
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+                        -- Fix 20260331: 2x E_GENERICO → E_LOTTO_PARAMETRO_NON_COERENTE
+                        CREATE OR REPLACE FUNCTION vendite.trgfn_fatturazione_lotti_guard_stato()
+                        RETURNS trigger
+                        LANGUAGE plpgsql
+                        AS $function$
+                        DECLARE
+                            v_ok BOOLEAN;
+                            v_bypass TEXT;
+                            v_tipo_lotto TEXT;
+                        BEGIN
+                            -- Bypass per reset tecnico
+                            v_bypass := current_setting('zeroerp.maintenance_reset_lotto_draft', true);
+                            IF v_bypass IS NOT NULL AND lower(v_bypass) IN ('1', 'true', 'on', 'yes') THEN
+                                RETURN NEW;
+                            END IF;
+
+                            IF TG_OP = 'UPDATE'
+                               AND NEW.stato_doc_fiscale_id IS NOT NULL
+                               AND NEW.stato_doc_fiscale_id IS DISTINCT FROM OLD.stato_doc_fiscale_id
+                            THEN
+                                IF OLD.stato_doc_fiscale_id IS NULL THEN
+                                    -- Prima assegnazione: verifica applica_lotto
+                                    SELECT s.applica_lotto INTO v_ok
+                                      FROM config.stati_doc_fiscale s
+                                     WHERE s.id = NEW.stato_doc_fiscale_id AND s.attivo;
+
+                                    IF COALESCE(v_ok, FALSE) = FALSE THEN
+                                        PERFORM script.fn_log_and_raise_error('database', 'vendite.trgfn_fatturazione_lotti_guard_stato', 'E_LOTTO_PARAMETRO_NON_COERENTE',
+                                            jsonb_build_object('parametro', 'stato_doc_fiscale_id', 'atteso', 'applica_lotto=true', 'ricevuto', NEW.stato_doc_fiscale_id),
+                                            NULL::uuid, 'stato non applicabile a lotto', NEW.stato_doc_fiscale_id::text);
+                                    END IF;
+                                ELSE
+                                    -- Transizione: verifica ammessa e non solo_fattura
+                                    SELECT EXISTS (
+                                        SELECT 1 FROM config.stati_doc_fiscale_transizioni t
+                                         WHERE t.ammesso AND t.stato_from_id = OLD.stato_doc_fiscale_id AND t.stato_to_id = NEW.stato_doc_fiscale_id
+                                           AND t.solo_fattura = FALSE
+                                           AND ((t.meta->>'tipo_lotto') IS NULL OR (t.meta->>'tipo_lotto') = NEW.tipo_lotto)
+                                    ) INTO v_ok;
+
+                                    IF NOT v_ok THEN
+                                        v_tipo_lotto := COALESCE(NEW.tipo_lotto, '');
+                                        PERFORM script.fn_log_and_raise_error('database', 'vendite.trgfn_fatturazione_lotti_guard_stato', 'E_LOTTO_PARAMETRO_NON_COERENTE',
+                                            jsonb_build_object('parametro', 'transizione_stato', 'atteso', concat(OLD.stato_doc_fiscale_id, '→ammessa'), 'ricevuto', NEW.stato_doc_fiscale_id, 'tipo_lotto', v_tipo_lotto),
+                                            NULL::uuid, concat('transizione ', OLD.stato_doc_fiscale_id, '→', NEW.stato_doc_fiscale_id), v_tipo_lotto);
+                                    END IF;
+                                END IF;
+                            END IF;
+
+                            RETURN NEW;
+                        END;
+                        $function$;
+
+                        COMMENT ON FUNCTION vendite.trgfn_fatturazione_lotti_guard_stato()
+                          IS 'Guard transizioni stato lotti via config.stati_doc_fiscale_transizioni. Bypass via GUC.';
+
+    - changeSet:
+          id: 20260331-29-fix-trgfn-fatture-guard-stato
+          author: mctit
+          runOnChange: true
+          comment: >
+              Fix trgfn_fatture_guard_stato: 3x E_GENERICO →
+              E_LOTTO_PARAMETRO_NON_COERENTE.
+          changes:
+              - sql:
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+                        -- Fix 20260331: 3x E_GENERICO → E_LOTTO_PARAMETRO_NON_COERENTE
+                        CREATE OR REPLACE FUNCTION vendite.trgfn_fatture_guard_stato()
+                        RETURNS trigger
+                        LANGUAGE plpgsql
+                        AS $function$
+                        DECLARE
+                            v_ok BOOLEAN;
+                            v_tipo_lotto vendite.fatturazione_lotti.tipo_lotto%TYPE;
+                            v_old_ordine config.stati_doc_fiscale.ordine%TYPE;
+                            v_new_ordine config.stati_doc_fiscale.ordine%TYPE;
+                        BEGIN
+                            IF TG_OP = 'UPDATE'
+                               AND NEW.stato_doc_fiscale_id IS NOT NULL
+                               AND NEW.stato_doc_fiscale_id IS DISTINCT FROM OLD.stato_doc_fiscale_id
+                            THEN
+                                -- Blocco retrocessione per lotti giornalieri
+                                SELECT l.tipo_lotto, s_old.ordine, s_new.ordine
+                                  INTO v_tipo_lotto, v_old_ordine, v_new_ordine
+                                  FROM vendite.fatturazione_lotti_fatture lf
+                                  JOIN vendite.fatturazione_lotti l ON l.id = lf.lotto_id
+                                  LEFT JOIN config.stati_doc_fiscale s_old ON s_old.id = OLD.stato_doc_fiscale_id
+                                  LEFT JOIN config.stati_doc_fiscale s_new ON s_new.id = NEW.stato_doc_fiscale_id
+                                 WHERE lf.fattura_id = NEW.id ORDER BY l.id LIMIT 1;
+
+                                IF v_tipo_lotto = 'GIORNALIERO' AND v_old_ordine IS NOT NULL AND v_new_ordine IS NOT NULL AND v_new_ordine < v_old_ordine THEN
+                                    PERFORM script.fn_log_and_raise_error(TG_TABLE_SCHEMA, TG_NAME, 'E_LOTTO_PARAMETRO_NON_COERENTE',
+                                        jsonb_build_object('parametro', 'retrocessione_giornaliero', 'atteso', concat('ordine>=', v_old_ordine), 'ricevuto', v_new_ordine),
+                                        NULL::uuid, concat('retrocessione ', OLD.stato_doc_fiscale_id, '→', NEW.stato_doc_fiscale_id), 'GIORNALIERO');
+                                END IF;
+
+                                IF OLD.stato_doc_fiscale_id IS NULL THEN
+                                    -- Prima assegnazione
+                                    SELECT s.applica_fattura INTO v_ok FROM config.stati_doc_fiscale s WHERE s.id = NEW.stato_doc_fiscale_id AND s.attivo;
+                                    IF COALESCE(v_ok, FALSE) = FALSE THEN
+                                        PERFORM script.fn_log_and_raise_error(TG_TABLE_SCHEMA, TG_NAME, 'E_LOTTO_PARAMETRO_NON_COERENTE',
+                                            jsonb_build_object('parametro', 'stato_doc_fiscale_id', 'atteso', 'applica_fattura=true', 'ricevuto', NEW.stato_doc_fiscale_id),
+                                            NULL::uuid, 'stato non applicabile a fattura', NEW.stato_doc_fiscale_id::text);
+                                    END IF;
+                                ELSE
+                                    -- Transizione ammessa
+                                    SELECT EXISTS (
+                                        SELECT 1 FROM config.stati_doc_fiscale_transizioni t
+                                         WHERE t.ammesso AND t.stato_from_id = OLD.stato_doc_fiscale_id AND t.stato_to_id = NEW.stato_doc_fiscale_id AND t.solo_lotto = FALSE
+                                    ) INTO v_ok;
+                                    IF NOT v_ok THEN
+                                        PERFORM script.fn_log_and_raise_error(TG_TABLE_SCHEMA, TG_NAME, 'E_LOTTO_PARAMETRO_NON_COERENTE',
+                                            jsonb_build_object('parametro', 'transizione_stato', 'atteso', concat(OLD.stato_doc_fiscale_id, '→ammessa'), 'ricevuto', NEW.stato_doc_fiscale_id),
+                                            NULL::uuid, concat('transizione ', OLD.stato_doc_fiscale_id, '→', NEW.stato_doc_fiscale_id), 'fattura');
+                                    END IF;
+                                END IF;
+                            END IF;
+
+                            RETURN NEW;
+                        END;
+                        $function$;
+
+                        COMMENT ON FUNCTION vendite.trgfn_fatture_guard_stato()
+                          IS 'Guard transizioni stato fatture via config.stati_doc_fiscale_transizioni. Blocco retrocessione GIORNALIERO.';
+
+    - changeSet:
+          id: 20260331-29-fix-trgfn-logs-guard-delete
+          author: mctit
+          runOnChange: true
+          comment: >
+              Fix trgfn_logs_guard_delete: 1x E_GENERICO → E_DELETE_NOT_ALLOWED.
+          changes:
+              - sql:
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+                        -- Fix 20260331: 1x E_GENERICO → E_DELETE_NOT_ALLOWED
+                        CREATE OR REPLACE FUNCTION vendite.trgfn_logs_guard_delete()
+                        RETURNS trigger
+                        LANGUAGE plpgsql
+                        AS $function$
+                        DECLARE
+                            v_allow_logs  TEXT;
+                            v_allow_reset TEXT;
+                        BEGIN
+                            v_allow_logs := current_setting('zeroerp.maintenance_allow_delete_logs', true);
+                            v_allow_reset := current_setting('zeroerp.maintenance_reset_lotto_draft', true);
+
+                            IF COALESCE(lower(v_allow_logs), 'off') NOT IN ('on', 'true', '1')
+                               AND COALESCE(lower(v_allow_reset), 'off') NOT IN ('on', 'true', '1') THEN
+                                PERFORM script.fn_log_and_raise_error(
+                                    'vendite', TG_NAME, 'E_DELETE_NOT_ALLOWED',
+                                    jsonb_build_object('table', TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME, 'id', OLD.id),
+                                    NULL::uuid, TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME, OLD.id::text
+                                );
+                            END IF;
+
+                            RETURN OLD;
+                        END;
+                        $function$;
+
+                        COMMENT ON FUNCTION vendite.trgfn_logs_guard_delete()
+                          IS 'Blocca DELETE su log fatture/lotti salvo GUC maintenance.';

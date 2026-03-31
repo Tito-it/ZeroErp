@@ -13,49 +13,47 @@ CREATE OR REPLACE FUNCTION script.trgfn_delete_block_by_guc()
  LANGUAGE plpgsql
 AS $function$
 BEGIN
-  IF TG_NARGS < 1 THEN
+    -- Guard: argomento trigger obbligatorio
+    IF TG_NARGS < 1 THEN
+        PERFORM script.fn_log_and_raise_error(
+            TG_TABLE_SCHEMA,
+            TG_NAME,
+            'ERRORE_PARAMETRI',
+            jsonb_build_object(
+                'detail', 'Argomenti trigger mancanti',
+                'expected', 'guc_key',
+                'found', TG_NARGS
+            ),
+            NULL::uuid,
+            concat('TG_ARGV[0] (guc_key) mancante per trigger ', TG_NAME)
+        );
+    END IF;
+
+    -- Se la GUC e' abilitata → consente DELETE
+    IF current_setting(TG_ARGV[0], true) = 'on' THEN
+        RETURN OLD;
+    END IF;
+
+    -- Delete bloccata da policy
     PERFORM script.fn_log_and_raise_error(
-      TG_TABLE_SCHEMA,
-      TG_NAME,
-      'E_GENERICO',
-      jsonb_build_object(
-        'detail','Argomenti trigger mancanti',
-        'expected','guc_key',
-        'found', TG_NARGS
-      ),
-      NULL::uuid,
-      concat('Argomenti trigger mancanti ',
-        'expected ',' guc_key ',
-        'found ', TG_NARGS::text)
+        TG_TABLE_SCHEMA,
+        TG_NAME,
+        'E_DELETE_NOT_ALLOWED',
+        jsonb_build_object(
+            'table', TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+            'id', OLD.id
+        ),
+        NULL::uuid,
+        TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+        OLD.id::text
     );
-  END IF;
 
-  IF current_setting(TG_ARGV[0], true) = 'on' THEN
     RETURN OLD;
-  END IF;
-
-  PERFORM script.fn_log_and_raise_error(
-    TG_TABLE_SCHEMA,
-    TG_NAME,
-    'E_GENERICO',
-    jsonb_build_object(
-      'detail','Delete non consentita (policy ruoli)',
-      'table', TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
-      'id', OLD.id
-    ),
-    NULL::uuid,
-    concat('Delete non consentita (policy ruoli) ',
-      'table ', TG_TABLE_SCHEMA , '.' , TG_TABLE_NAME,
-      ' id ', OLD.id::text)
-    
-  );
-
-  RETURN OLD;
-END
+END;
 $function$
 
 COMMENT ON FUNCTION script.trgfn_delete_block_by_guc()
-IS 'Blocca DELETE se la GUC non e'' abilitata; usa fn_log_and_raise_error.';
+IS 'Blocca DELETE se GUC non abilitata. Errori: ERRORE_PARAMETRI, E_DELETE_NOT_ALLOWED.';
 ```
 
 ---
