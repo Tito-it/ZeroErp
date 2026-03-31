@@ -1,7 +1,7 @@
 <script setup>
 // Scopo: DataTable paginata clienti con search, filtro utility e stato.
 // Riusabile da: ClientiView, futuro ricerca clienti in altri domini.
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useClientiStore } from '../stores/clienti'
 import { useSearchTable } from '../../core/composables/useSearchTable'
@@ -59,7 +59,12 @@ function dataSospRiatt(row) {
 }
 
 useTabFreshness(store, 'cliente')
-// La lista parte vuota — l'operatore deve cercare o applicare un filtro.
+// La lista parte vuota — salvo che arrivi con search precaricata da URL/context.
+onMounted(() => {
+  if (searchText.value) {
+    store.fetchList()
+  }
+})
 </script>
 
 <template>
