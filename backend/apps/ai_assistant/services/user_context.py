@@ -13,10 +13,11 @@ from __future__ import annotations
 from typing import Any
 
 from apps.core.services.error_manager import ErrorManager
+from apps.core.services.permissions_resolver import PermissionResolver
 
 
 # Scopo: Recupera l'emittente_fiscale_id dal profilo utente.
-#        Catena di fallback: attributo diretto → profilo DB → primo emittente.
+#        Catena di fallback: attributo diretto → profilo DB → PermissionResolver.
 #        Usato dai tool AI che necessitano del contesto emittente.
 def get_emittente_fiscale_id(request: Any) -> int:
     user = request.user
@@ -29,15 +30,16 @@ def get_emittente_fiscale_id(request: Any) -> int:
 
     repo = CoreRepository()
 
-    # Fallback 1: profilo utente
+    # Fallback 1: profilo utente (emittente e' un blocco annidato)
     profile = repo.get_user_profile(user.id)
-    if profile and profile.get("emittente_fiscale_id"):
-        return int(profile["emittente_fiscale_id"])
+    emittente = profile.get("emittente") if profile else None
+    if emittente and emittente.get("emittente_fiscale_id"):
+        return int(emittente["emittente_fiscale_id"])
 
-    # Fallback 2: primo emittente associato
-    emittenti = repo.get_user_emittenti(user.id)
-    if emittenti:
-        return int(emittenti[0]["id"])
+    # Fallback 2: PermissionResolver (componente generico core)
+    emittenti_ids = PermissionResolver.get_emittenti_ids(user)
+    if emittenti_ids:
+        return emittenti_ids[0]
 
     ErrorManager.raise_error(
         code="E_PRATICA_VALIDATION",

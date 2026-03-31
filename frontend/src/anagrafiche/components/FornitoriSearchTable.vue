@@ -1,7 +1,7 @@
 <script setup>
 // Scopo: DataTable paginata fornitori con search, filtro stato e attivo.
 // Riusabile da: FornitoriView, futuro ricerca fornitori in altri domini.
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useFornitoriStore } from '../stores/fornitori'
 import { useSearchTable } from '../../core/composables/useSearchTable'
@@ -38,7 +38,12 @@ function onStatoChange() {
 function onRowClick(event) { emit('row-click', event.data) }
 
 useTabFreshness(store, 'fornitore')
-// La lista parte vuota — l'operatore deve cercare o applicare un filtro.
+// La lista parte vuota — salvo che arrivi con search precaricata da URL/context.
+onMounted(() => {
+  if (searchText.value) {
+    store.fetchList()
+  }
+})
 </script>
 
 <template>

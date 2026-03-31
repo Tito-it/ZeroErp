@@ -1,6 +1,6 @@
 <script setup>
 // Scopo: DataTable indirizzi dettaglio con ricerca, filtro comune e CRUD.
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useIndirizziStore } from '../stores/indirizzi'
 import { useSearchTable } from '../../core/composables/useSearchTable'
@@ -22,7 +22,12 @@ const { searchText, onPage, onSort, applyFilters, reload, paginatorProps } = use
 const comuneFilter = ref(null)
 
 useTabFreshness(store, 'indirizzo')
-// La lista parte vuota — l'operatore deve cercare o applicare un filtro.
+// La lista parte vuota — salvo che arrivi con search precaricata da URL/context.
+onMounted(() => {
+  if (searchText.value) {
+    store.fetchList()
+  }
+})
 
 function onComuneChange(id) {
   comuneFilter.value = id
@@ -75,11 +80,6 @@ function onRowClick(event) {
       data-key="indirizzo_dettaglio_id"
     >
       <Column field="indirizzo_normalizzato" :header="t('indirizzi.col_indirizzo')" sortable />
-      <Column field="civico" :header="t('indirizzi.col_civico')" sortable>
-        <template #body="{ data }">
-          {{ data.civico }}{{ data.estensione_civico || '' }}
-        </template>
-      </Column>
       <Column field="descrizione_comune" :header="t('indirizzi.col_comune')" sortable />
       <Column field="provincia" :header="t('indirizzi.col_provincia')" sortable />
       <Column field="cap" :header="t('indirizzi.col_cap')" sortable />

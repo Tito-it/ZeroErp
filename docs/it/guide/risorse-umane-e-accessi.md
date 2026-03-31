@@ -1,6 +1,6 @@
 # Guida – Risorse Umane e Accessi al Software
 
-> (latest review 02-03-2026)
+> (latest review 31-03-2026)
 >
 > Destinatari: sviluppatori database, backend, integratori e analisti funzionali
 >
@@ -9,6 +9,7 @@
 > * [Guida Soggetti & Ruoli](/guide/soggetti-e-ruoli-anagrafici)
 > * [Gestione dei contatti](/guide/gestione-dei-contatti)
 > * [Architettura Permessi e Autorizzazioni](/guide/architettura-permessi-e-autorizzazioni)
+> * [Guida Gestione Mail](/guide/gestione-mail)
 
 ---
 
@@ -25,6 +26,10 @@ Questa guida copre **due aspetti strettamente legati**: il modulo risorse umane 
 * Il meccanismo automatico che blocca il login quando una risorsa viene disattivata o scade
 * Come vengono gestiti i permessi (profili reparto, override individuali) e come si propagano al cambio reparto
 * Il ciclo di vita completo: dall'assunzione alla cessazione, con i passi operativi per ogni fase
+* **Il primo accesso**: come l'admin invita un operatore e come l'operatore attiva il suo account
+* **Cambio password**: meccanismo obbligatorio e volontario
+* **Reset password dimenticata**: flusso self-service senza intervento admin
+* **Sicurezza login**: blocco per tentativi falliti, throttle per IP, audit sessioni
 
 ### Il collegamento a Django e opzionale
 
@@ -43,6 +48,8 @@ Non tutte le risorse umane accedono al software. Un magazziniere potrebbe non av
 * [config.qualifiche](/dbzero/config/tabelle/qualifiche) — mansioni e posizioni
 * [config.unita_organizzative](/dbzero/config/tabelle/unita_organizzative) — reparti e uffici
 * [config.ruolo_sistema](/dbzero/config/tabelle/ruolo_sistema) — classificazione utente (ADMIN, OPERATIVO, DISABILITATO)
+* [config.token_monouso](/dbzero/config/tabelle/token_monouso) — token sicuri per inviti e reset password
+* [config.email_account](/dbzero/config/tabelle/email_account) — account SMTP per invio email (vedi [Guida Gestione Mail](/guide/gestione-mail))
 
 ---
 
@@ -275,6 +282,182 @@ La sequenza e l'inversa della cessazione:
 
 ---
 
+## Primo accesso e gestione credenziali
+
+Questa sezione descrive come un operatore entra nel sistema per la prima volta, come gestisce
+la propria password e come puo' recuperarla autonomamente. Sono meccanismi complementari
+al ciclo di vita descritto sopra: l'assunzione crea la risorsa, i flussi qui sotto abilitano
+l'accesso effettivo.
+
+### Scelta architetturale: nessuna password comunicata
+
+In Zero ERP **nessuna password viene mai comunicata verbalmente o via messaggio**. L'admin non
+assegna una password all'operatore — il sistema genera un token monouso, lo invia via email,
+e l'operatore sceglie la propria password al primo accesso. Questa scelta elimina il rischio
+di password condivise, annotate su post-it o inviate in chiaro su canali non sicuri.
+
+### Invito operatore
+
+Quando l'admin crea un operatore e decide di abilitarlo al software, il flusso e':
+
+```text
+1. Admin → Amm. Software → Operatori → seleziona operatore → "Invia invito"
+   |
+2. Il sistema verifica 5 condizioni di invitabilita':
+   - auth_user esiste e is_active = true
+   - risorse_umane_auth_user esiste e attivo = true
+   - ruolo_sistema <> DISABILITATO
+   - l'utente ha un indirizzo email configurato
+   - last_login IS NULL (non ha mai fatto login)
+   |
+3. Imposta una password temporanea casuale (MAI comunicata)
+4. Imposta il flag deve_cambiare_password = true
+5. Genera un token monouso tipo INVITO_OPERATORE (scadenza 72 ore)
+6. Invia email con link di attivazione
+7. Registra invito_inviato_at
+   |
+8. L'operatore riceve l'email → clicca il link
+   |
+9. Pagina attivazione: sceglie la propria password
+   - Il token viene validato PRIMA, la password DOPO
+   - Se la password e' troppo debole, il token resta valido e l'operatore riprova
+   |
+10. Account attivato → l'operatore fa login con la password scelta
+```
+
+**Reinvio invito**: se l'email non e' arrivata o il token e' scaduto, l'admin puo'
+reinviare l'invito. Il sistema invalida automaticamente il token precedente e ne genera
+uno nuovo.
+
+**L'email di invito** viene inviata con l'account SMTP del reparto dell'operatore
+(se configurato) o con l'account di sistema. Il template e' personalizzabile per reparto
+(vedi [Guida Gestione Mail](/guide/gestione-mail)).
+
+### Cambio password obbligatorio
+
+Il flag `deve_cambiare_password` su `risorse_umane_auth_user` forza l'operatore a cambiare
+password prima di poter usare il sistema. Il meccanismo e':
+
+1. **Al login**: se il flag e' attivo, la response JWT include `password_change_required: true`
+2. **Frontend**: il router guard redirect a `/change-password` e blocca ogni altra navigazione
+3. **Backend**: il middleware `PasswordChangeRequiredMiddleware` blocca tutte le API tranne:
+   * `POST /auth/change-password/`
+   * `POST /auth/logout/`
+   * `GET /core/me/`
+4. **Dopo il cambio**: il flag viene resettato, i vecchi token JWT invalidati, nuovi token rilasciati
+
+Il middleware opera in **fail-closed**: se il DB non risponde durante il check, l'accesso
+viene bloccato (503) piuttosto che concesso.
+
+Il flag puo' essere impostato in tre scenari:
+
+| Scenario | Chi lo imposta | Quando |
+| --- | --- | --- |
+| Primo accesso | `InvitoOperatoreService` | Alla creazione dell'invito |
+| Reset admin | L'admin manualmente | Quando vuole forzare un cambio |
+| Reset password dimenticata | `PasswordResetConfirmView` | Alla conferma del reset |
+
+### Cambio password volontario
+
+L'operatore puo' cambiare la propria password in qualsiasi momento da **Profilo → Cambia password**
+(rotta `/change-password`). Il flusso richiede:
+
+1. Password attuale (verifica identita')
+2. Nuova password (passa i 4 validators Django)
+3. Conferma nuova password
+
+Al successo: password aggiornata, tutti i token JWT precedenti invalidati,
+nuova coppia JWT rilasciata, profilo ricaricato.
+
+### Reset password dimenticata
+
+L'operatore puo' reimpostare la password **senza intervento admin** tramite il link
+"Password dimenticata?" nella pagina di login. Il flusso e' completamente self-service:
+
+```text
+1. Operatore clicca "Password dimenticata?" nel login
+   |
+2. Inserisce la propria email
+   |
+3. Il sistema risponde SEMPRE con lo stesso messaggio
+   (non rivela se l'email esiste — sicurezza)
+   |
+4. Se l'email e' registrata e l'utente e' attivo:
+   - Genera token monouso tipo RESET_PASSWORD (scadenza 1 ora)
+   - Invia email con link di reset
+   |
+5. L'operatore clicca il link nell'email
+   |
+6. La pagina verifica il token (senza consumarlo)
+   - Se valido: mostra il form per la nuova password
+   - Se invalido/scaduto: mostra messaggio + link per nuova richiesta
+   |
+7. L'operatore inserisce la nuova password
+   - Il token viene validato PRIMA, la password DOPO
+   - Se la password e' debole, il token resta valido e l'operatore riprova
+   |
+8. Password reimpostata, tutti i JWT invalidati
+9. Email di conferma inviata all'operatore
+10. L'operatore fa login con la nuova password
+```
+
+**Scelta validate-before-consume**: il token viene consumato solo DOPO che la password
+ha superato tutti i 4 validators Django. Se l'operatore inserisce una password troppo
+semplice (es. "12345678"), riceve l'errore ma il token resta valido — puo' riprovare
+immediatamente senza dover richiedere un nuovo link. Questa scelta evita frustrazione
+e riduce il carico sul sistema email.
+
+### Token monouso
+
+Sia l'invito che il reset password usano lo stesso meccanismo di **token monouso generico**
+(`config.token_monouso`):
+
+| Caratteristica | Valore |
+| --- | --- |
+| Lunghezza | 32 bytes casuali → 64 caratteri hex |
+| Storage | Solo hash SHA-256 in DB — il token in chiaro **non e' recuperabile** |
+| Invalidazione | Alla creazione, tutti i token precedenti dello stesso tipo/utente vengono invalidati |
+| Consumo | Registra IP e timestamp |
+| Pulizia | `config.fn_cleanup_token_scaduti()` — job pgAgent periodico |
+
+Il token in chiaro viaggia **solo** nell'email di invito o reset. Non e' mai salvato
+in DB, non e' mai visibile nell'API, non e' mai loggato.
+
+### Sicurezza login
+
+Il sistema protegge il login con tre meccanismi complementari:
+
+#### Blocco per utente (tentativi falliti)
+
+Dopo N tentativi falliti consecutivi, l'utente viene bloccato temporaneamente.
+Il blocco si resetta automaticamente alla scadenza o al login riuscito.
+
+* `script.fn_check_blocco_login(auth_user_id)` — verifica se l'utente e' bloccato
+* `script.fn_registra_tentativo_login(auth_user_id, successo)` — registra l'esito
+* `risorse_umane_auth_user.tentativi_falliti` — contatore
+* `risorse_umane_auth_user.bloccato_fino_a` — timestamp fine blocco
+
+#### Throttle per IP (rate limiting)
+
+Indipendentemente dall'utente, ogni IP e' limitato a 5 tentativi di login ogni 5 minuti
+e 3 richieste di reset password ogni 15 minuti. Protegge da attacchi brute-force
+distribuiti su piu' utenti dallo stesso IP.
+
+#### Audit sessioni
+
+Ogni evento di autenticazione viene registrato in `dbops.sessioni_utente`:
+
+| Evento | Quando | Dati registrati |
+| --- | --- | --- |
+| LOGIN | Login JWT riuscito | user_id, IP, user_agent, session_id |
+| REFRESH | Refresh token | user_id, IP, session_id |
+| LOGOUT | Logout esplicito | user_id, IP, session_id |
+| PASSWORD_CHANGED | Cambio password | user_id |
+| PASSWORD_RESET | Reset password da link | user_id |
+| INVITO_INVIATO | Invito operatore | user_id, admin_id |
+
+---
+
 ## Diagrammi ER
 
 Il modello e rappresentato in due diagrammi separati per facilitare la lettura.
@@ -440,6 +623,10 @@ I contatti non sostituiscono le risorse umane, ma possono riferirle quando serve
 * Per riattivare: **risorsa prima, ponte dopo**.
 * Al cambio reparto la cache viene invalidata automaticamente — non serve intervento manuale.
 * Mantieni una policy chiara su `attivo` e periodi di validita: la scadenza overnight lavora ogni notte, ma la disattivazione esplicita e sempre preferibile per cessazioni programmate.
+* Per il primo accesso, usa sempre il flusso di **invito**: l'admin non deve comunicare password a voce o via messaggio.
+* Il **reinvio invito** invalida automaticamente il token precedente — non serve annullare manualmente.
+* Il reset password e' **self-service**: l'operatore lo fa da solo, l'admin non deve intervenire.
+* Per la configurazione email (account SMTP, template, personalizzazioni): vedi [Guida Gestione Mail](/guide/gestione-mail).
 
 ---
 
