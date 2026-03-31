@@ -28,7 +28,7 @@ python-dateutil==2.9.0.post0
 python-discovery==1.2.1
 python-dotenv==1.2.2
 PyYAML==6.0.3
-requests==2.33.0
+requests==2.33.1
 setuptools==82.0.1
 six==1.17.0
 super_collections==0.6.2
