@@ -1,0 +1,450 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+#
+# Fix E_GENERICO — vendite batch 1 (4 funzioni):
+#   - fn_applica_fondi_fattura (7x)
+#   - fn_assign_numero_fattura (2x)
+#   - fn_build_fattura_key (2x)
+#   - fn_close_giornaliero_lotto (4x)
+# Semplifica anche il JSONB context (rimossi campi envelope
+# ridondanti: scope, severity, code).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+    - logicalFilePath: migrations_v2/20_code/vendite/20260331-08-fix-vendite-fn-e-generico-batch1-mctit.yaml
+
+    - changeSet:
+          id: 20260331-08-fix-fn-applica-fondi-fattura
+          author: mctit
+          runOnChange: true
+          comment: >
+              Fix fn_applica_fondi_fattura: 7x E_GENERICO → E_PARAMETRO_INVALIDO.
+              Semplificato JSONB context.
+          changes:
+              - sql:
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+                        -- ==========================================================
+                        -- fn_applica_fondi_fattura
+                        --
+                        -- Scopo: applica i fondi fattura in stato DISPONIBILE ad una
+                        --        fattura figlia, creando le righe in fatture_fondi_fattura
+                        --        e aggiornando la source a stato ASSEGNATO.
+                        --
+                        -- Fix 20260331: 7x E_GENERICO → E_PARAMETRO_INVALIDO
+                        -- ==========================================================
+                        CREATE OR REPLACE FUNCTION vendite.fn_applica_fondi_fattura(
+                            p_billing_account_id         anagrafiche.billing_account.id%TYPE,
+                            p_utility_id                 config.utilities.id%TYPE,
+                            p_tipo_doc_fiscale_id        config.tipi_doc_fiscale.id%TYPE,
+                            p_emittente_soggetto_ruolo_id anagrafiche.soggetti_ruoli.id%TYPE,
+                            p_valuta_id                  config.valute.id%TYPE,
+                            p_fattura_figlia_id          vendite.fatture.id%TYPE,
+                            p_tipo_fondo_fattura_id      vendite.tipi_fondi_fattura.id%TYPE DEFAULT NULL
+                        )
+                        RETURNS INTEGER
+                        LANGUAGE plpgsql
+                        AS $function$
+                        DECLARE
+                            v_inserted INTEGER := 0;
+                        BEGIN
+                            -- Guard: parametri obbligatori
+                            IF p_billing_account_id IS NULL OR p_billing_account_id <= 0 THEN
+                                PERFORM script.fn_log_and_raise_error(
+                                    'vendite', 'fn_applica_fondi_fattura', 'E_PARAMETRO_INVALIDO',
+                                    jsonb_build_object('parametro', 'p_billing_account_id', 'valore', p_billing_account_id),
+                                    NULL::uuid, 'p_billing_account_id obbligatorio e > 0'
+                                );
+                            END IF;
+
+                            IF p_utility_id IS NULL OR p_utility_id <= 0 THEN
+                                PERFORM script.fn_log_and_raise_error(
+                                    'vendite', 'fn_applica_fondi_fattura', 'E_PARAMETRO_INVALIDO',
+                                    jsonb_build_object('parametro', 'p_utility_id', 'valore', p_utility_id),
+                                    NULL::uuid, 'p_utility_id obbligatorio e > 0'
+                                );
+                            END IF;
+
+                            IF p_tipo_doc_fiscale_id IS NULL OR p_tipo_doc_fiscale_id <= 0 THEN
+                                PERFORM script.fn_log_and_raise_error(
+                                    'vendite', 'fn_applica_fondi_fattura', 'E_PARAMETRO_INVALIDO',
+                                    jsonb_build_object('parametro', 'p_tipo_doc_fiscale_id', 'valore', p_tipo_doc_fiscale_id),
+                                    NULL::uuid, 'p_tipo_doc_fiscale_id obbligatorio e > 0'
+                                );
+                            END IF;
+
+                            IF p_emittente_soggetto_ruolo_id IS NULL OR p_emittente_soggetto_ruolo_id <= 0 THEN
+                                PERFORM script.fn_log_and_raise_error(
+                                    'vendite', 'fn_applica_fondi_fattura', 'E_PARAMETRO_INVALIDO',
+                                    jsonb_build_object('parametro', 'p_emittente_soggetto_ruolo_id', 'valore', p_emittente_soggetto_ruolo_id),
+                                    NULL::uuid, 'p_emittente_soggetto_ruolo_id obbligatorio e > 0'
+                                );
+                            END IF;
+
+                            IF p_valuta_id IS NULL OR p_valuta_id <= 0 THEN
+                                PERFORM script.fn_log_and_raise_error(
+                                    'vendite', 'fn_applica_fondi_fattura', 'E_PARAMETRO_INVALIDO',
+                                    jsonb_build_object('parametro', 'p_valuta_id', 'valore', p_valuta_id),
+                                    NULL::uuid, 'p_valuta_id obbligatorio e > 0'
+                                );
+                            END IF;
+
+                            IF p_fattura_figlia_id IS NULL OR p_fattura_figlia_id <= 0 THEN
+                                PERFORM script.fn_log_and_raise_error(
+                                    'vendite', 'fn_applica_fondi_fattura', 'E_PARAMETRO_INVALIDO',
+                                    jsonb_build_object('parametro', 'p_fattura_figlia_id', 'valore', p_fattura_figlia_id),
+                                    NULL::uuid, 'p_fattura_figlia_id obbligatorio e > 0'
+                                );
+                            END IF;
+
+                            IF p_tipo_fondo_fattura_id IS NOT NULL AND p_tipo_fondo_fattura_id <= 0 THEN
+                                PERFORM script.fn_log_and_raise_error(
+                                    'vendite', 'fn_applica_fondi_fattura', 'E_PARAMETRO_INVALIDO',
+                                    jsonb_build_object('parametro', 'p_tipo_fondo_fattura_id', 'valore', p_tipo_fondo_fattura_id),
+                                    NULL::uuid, 'p_tipo_fondo_fattura_id se fornito deve essere > 0'
+                                );
+                            END IF;
+
+                            -- Applica fondi: CTE con lock, update source, insert righe
+                            WITH src AS (
+                                SELECT s.*
+                                  FROM vendite.fatture_fondi_fattura_source s
+                                 WHERE s.stato = 'DISPONIBILE'
+                                   AND s.fattura_figlia_id IS NULL
+                                   AND s.billing_account_id = p_billing_account_id
+                                   AND s.utility_id = p_utility_id
+                                   AND s.tipo_doc_fiscale_id = p_tipo_doc_fiscale_id
+                                   AND s.emittente_soggetto_ruolo_id = p_emittente_soggetto_ruolo_id
+                                   AND s.valuta_id = p_valuta_id
+                                   AND (p_tipo_fondo_fattura_id IS NULL OR s.tipo_fondo_fattura_id = p_tipo_fondo_fattura_id)
+                                   FOR UPDATE SKIP LOCKED
+                            ), upd AS (
+                                UPDATE vendite.fatture_fondi_fattura_source s
+                                   SET fattura_figlia_id = p_fattura_figlia_id,
+                                       data_assegnazione = now(),
+                                       user_assegnazione = current_user,
+                                       stato = 'ASSEGNATO',
+                                       data_update = now(),
+                                       user_update = current_user
+                                  FROM src
+                                 WHERE s.id = src.id
+                                RETURNING s.*
+                            )
+                            INSERT INTO vendite.fatture_fondi_fattura (
+                                fattura_id, tipo_fondo_fattura_id, importo,
+                                riferimento_fattura_id, meta, attivo,
+                                data_insert, user_insert, data_update, user_update
+                            )
+                            SELECT
+                                p_fattura_figlia_id, u.tipo_fondo_fattura_id, u.importo,
+                                u.fattura_sorgente_id, u.meta, TRUE,
+                                now(), current_user, now(), current_user
+                              FROM upd u;
+
+                            GET DIAGNOSTICS v_inserted = ROW_COUNT;
+
+                            RETURN v_inserted;
+                        END;
+                        $function$;
+
+                        COMMENT ON FUNCTION vendite.fn_applica_fondi_fattura(BIGINT, INTEGER, BIGINT, BIGINT, INTEGER, BIGINT, BIGINT)
+                          IS 'Applica fondi DISPONIBILE alla fattura figlia, crea righe fondi e marca source come ASSEGNATO.';
+
+    - changeSet:
+          id: 20260331-08-fix-fn-assign-numero-fattura
+          author: mctit
+          runOnChange: true
+          comment: >
+              Fix fn_assign_numero_fattura: 2x E_GENERICO →
+              E_PARAMETRO_INVALIDO + E_VALORE_MANCANTE.
+          changes:
+              - sql:
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+                        -- ==========================================================
+                        -- fn_assign_numero_fattura
+                        --
+                        -- Scopo: assegnare progressivo di fattura usando il registro.
+                        --
+                        -- Fix 20260331: 2x E_GENERICO → E_PARAMETRO_INVALIDO + E_VALORE_MANCANTE
+                        -- ==========================================================
+                        CREATE OR REPLACE FUNCTION vendite.fn_assign_numero_fattura(
+                            p_fattura_id vendite.fatture.id%TYPE
+                        )
+                        RETURNS TABLE(
+                            registro_id vendite.fatture.registro_id%TYPE,
+                            anno        vendite.fatture.anno%TYPE,
+                            mese        SMALLINT,
+                            serie       vendite.fatture.serie%TYPE,
+                            numero      vendite.fatture.numero%TYPE
+                        )
+                        LANGUAGE plpgsql
+                        AS $function$
+                        DECLARE
+                            v_registro_id vendite.fatture.registro_id%TYPE;
+                            v_data        vendite.fatture.data%TYPE;
+                            v_serie       vendite.fatture.serie%TYPE;
+                            v_reset       vendite.registri_fatturazione.reset_policy%TYPE;
+                            v_anno        vendite.fatture.anno%TYPE;
+                            v_mese        SMALLINT;
+                            v_numero      vendite.fatture.numero%TYPE;
+                        BEGIN
+                            -- Guard: parametro obbligatorio
+                            IF p_fattura_id IS NULL OR p_fattura_id <= 0 THEN
+                                PERFORM script.fn_log_and_raise_error(
+                                    'vendite', 'fn_assign_numero_fattura', 'E_PARAMETRO_INVALIDO',
+                                    jsonb_build_object('parametro', 'p_fattura_id', 'valore', p_fattura_id),
+                                    NULL::uuid, 'p_fattura_id obbligatorio e > 0'
+                                );
+                            END IF;
+
+                            -- Recupera dati fattura + registro con lock
+                            SELECT f.registro_id,
+                                   f.data,
+                                   COALESCE(f.serie, r.serie_default, ''),
+                                   r.reset_policy
+                              INTO v_registro_id, v_data, v_serie, v_reset
+                              FROM vendite.fatture f
+                              JOIN vendite.registri_fatturazione r ON r.id = f.registro_id
+                             WHERE f.id = p_fattura_id
+                               FOR UPDATE;
+
+                            IF v_registro_id IS NULL THEN
+                                PERFORM script.fn_log_and_raise_error(
+                                    'vendite', 'fn_assign_numero_fattura', 'E_VALORE_MANCANTE',
+                                    jsonb_build_object('fattura_id', p_fattura_id),
+                                    NULL::uuid, concat('fattura_id ', p_fattura_id)
+                                );
+                            END IF;
+
+                            -- Calcolo progressivo
+                            v_anno := vendite.fn_get_anno_registro(v_data);
+                            v_numero := vendite.fn_get_next_progressivo(v_registro_id, v_data, v_serie);
+                            v_mese := CASE WHEN v_reset = 'MENSILE'
+                                           THEN EXTRACT(MONTH FROM v_data)::SMALLINT
+                                           ELSE NULL
+                                       END;
+
+                            -- Aggiorna testata fattura
+                            UPDATE vendite.fatture
+                               SET anno = v_anno,
+                                   serie = NULLIF(v_serie, ''),
+                                   numero = v_numero,
+                                   data_update = now(),
+                                   user_update = current_user
+                             WHERE id = p_fattura_id;
+
+                            RETURN QUERY SELECT v_registro_id, v_anno, v_mese, NULLIF(v_serie, '')::VARCHAR, v_numero;
+                        END;
+                        $function$;
+
+                        COMMENT ON FUNCTION vendite.fn_assign_numero_fattura(BIGINT)
+                          IS 'Assegna anno/serie/numero alla fattura usando registro e progressivo con lock.';
+
+    - changeSet:
+          id: 20260331-08-fix-fn-build-fattura-key
+          author: mctit
+          runOnChange: true
+          comment: >
+              Fix fn_build_fattura_key: 2x E_GENERICO →
+              E_PARAMETRO_INVALIDO + E_VALORE_MANCANTE.
+          changes:
+              - sql:
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+                        -- ==========================================================
+                        -- fn_build_fattura_key
+                        --
+                        -- Scopo: costruisce la chiave logica di aggregazione documento
+                        --        a partire da una riga di attivita_fatturabili.
+                        --
+                        -- Fix 20260331: 2x E_GENERICO → E_PARAMETRO_INVALIDO + E_VALORE_MANCANTE
+                        -- ==========================================================
+                        CREATE OR REPLACE FUNCTION vendite.fn_build_fattura_key(
+                            p_attivita_id vendite.attivita_fatturabili.id%TYPE
+                        )
+                        RETURNS jsonb
+                        LANGUAGE plpgsql
+                        AS $function$
+                        DECLARE
+                            v_ba_id              anagrafiche.billing_account.id%TYPE;
+                            v_ba_fattura_id      anagrafiche.billing_account.id%TYPE;
+                            v_tipo_doc_fiscale_id config.tipi_doc_fiscale.id%TYPE;
+                            v_valuta_id          config.valute.id%TYPE;
+                            v_utility_id         config.utilities.id%TYPE;
+                            v_emittente_id       anagrafiche.soggetti_ruoli.id%TYPE;
+                            v_reseller_id        anagrafiche.soggetti_ruoli.id%TYPE;
+                            v_registro_id        vendite.registri_fatturazione.id%TYPE;
+                        BEGIN
+                            -- Guard: parametro obbligatorio
+                            IF p_attivita_id IS NULL OR p_attivita_id <= 0 THEN
+                                PERFORM script.fn_log_and_raise_error(
+                                    'vendite', 'fn_build_fattura_key', 'E_PARAMETRO_INVALIDO',
+                                    jsonb_build_object('parametro', 'p_attivita_id', 'valore', p_attivita_id),
+                                    NULL::uuid, 'p_attivita_id obbligatorio e > 0'
+                                );
+                            END IF;
+
+                            -- Recupera BA, tipo doc, valuta, utility dall'attivita'
+                            SELECT a.billing_account_id,
+                                   COALESCE(ba.parent_account_id, a.billing_account_id),
+                                   a.tipo_doc_fiscale_id,
+                                   a.valuta_id,
+                                   ba.utility_id
+                              INTO v_ba_id, v_ba_fattura_id, v_tipo_doc_fiscale_id, v_valuta_id, v_utility_id
+                              FROM vendite.attivita_fatturabili a
+                              JOIN anagrafiche.billing_account ba ON ba.id = a.billing_account_id
+                             WHERE a.id = p_attivita_id;
+
+                            IF v_ba_id IS NULL THEN
+                                PERFORM script.fn_log_and_raise_error(
+                                    'vendite', 'fn_build_fattura_key', 'E_VALORE_MANCANTE',
+                                    jsonb_build_object('attivita_id', p_attivita_id),
+                                    NULL::uuid, concat('attivita o BA non trovati per id ', p_attivita_id)
+                                );
+                            END IF;
+
+                            -- Emittente dal mapping BA → emittente fiscale
+                            v_emittente_id := anagrafiche.fn_get_emittente_fiscale_id(v_ba_fattura_id);
+
+                            -- Reseller dal mapping BA → reseller (opzionale)
+                            SELECT rb.reseller_soggetto_ruolo_id
+                              INTO v_reseller_id
+                              FROM anagrafiche.resellers_billing_account rb
+                             WHERE rb.billing_account_id = v_ba_fattura_id
+                             ORDER BY rb.id
+                             LIMIT 1;
+
+                            -- Registro dal tipo documento
+                            v_registro_id := vendite.fn_get_registro_id(v_tipo_doc_fiscale_id);
+
+                            RETURN jsonb_build_object(
+                                'billing_account_id', v_ba_fattura_id,
+                                'tipo_doc_fiscale_id', v_tipo_doc_fiscale_id,
+                                'valuta_id', v_valuta_id,
+                                'emittente_soggetto_ruolo_id', v_emittente_id,
+                                'reseller_soggetto_ruolo_id', v_reseller_id,
+                                'utility_id', v_utility_id,
+                                'registro_id', v_registro_id
+                            );
+                        END;
+                        $function$;
+
+                        COMMENT ON FUNCTION vendite.fn_build_fattura_key(BIGINT)
+                          IS 'Chiave logica aggregazione documento da attivita_fatturabili. BA padre se presente, emittente, reseller, registro.';
+
+    - changeSet:
+          id: 20260331-08-fix-fn-close-giornaliero-lotto
+          author: mctit
+          runOnChange: true
+          comment: >
+              Fix fn_close_giornaliero_lotto: 4x E_GENERICO →
+              E_PARAMETRO_INVALIDO (2) + E_VALORE_MANCANTE +
+              E_PARAMETRO_INVALIDO (tipo lotto errato).
+          changes:
+              - sql:
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+                        -- ==========================================================
+                        -- fn_close_giornaliero_lotto
+                        --
+                        -- Scopo: chiudere un lotto giornaliero e portare le fatture
+                        --        collegate allo stato documentale target.
+                        --
+                        -- Regole:
+                        --   - parametri obbligatori e > 0
+                        --   - lotto deve esistere ed essere di tipo GIORNALIERO
+                        --   - stato_operativo del lotto → CHIUSO
+                        --   - stato_doc_fiscale su lotto e fatture → valore passato
+                        --
+                        -- Fix 20260331: 4x E_GENERICO → codici specifici
+                        -- ==========================================================
+                        CREATE OR REPLACE FUNCTION vendite.fn_close_giornaliero_lotto(
+                            p_lotto_id                    vendite.fatturazione_lotti.id%TYPE,
+                            p_inviata_stato_doc_fiscale_id config.stati_doc_fiscale.id%TYPE
+                        )
+                        RETURNS TABLE(updated_lotti INTEGER, updated_fatture INTEGER)
+                        LANGUAGE plpgsql
+                        AS $function$
+                        DECLARE
+                            v_updated_lotti   INTEGER := 0;
+                            v_updated_fatture INTEGER := 0;
+                            v_tipo_lotto      vendite.fatturazione_lotti.tipo_lotto%TYPE;
+                        BEGIN
+                            -- Guard: parametri obbligatori
+                            IF p_lotto_id IS NULL OR p_lotto_id <= 0 THEN
+                                PERFORM script.fn_log_and_raise_error(
+                                    'vendite', 'fn_close_giornaliero_lotto', 'E_PARAMETRO_INVALIDO',
+                                    jsonb_build_object('parametro', 'p_lotto_id', 'valore', p_lotto_id),
+                                    NULL::uuid, 'p_lotto_id obbligatorio e > 0'
+                                );
+                            END IF;
+
+                            IF p_inviata_stato_doc_fiscale_id IS NULL OR p_inviata_stato_doc_fiscale_id <= 0 THEN
+                                PERFORM script.fn_log_and_raise_error(
+                                    'vendite', 'fn_close_giornaliero_lotto', 'E_PARAMETRO_INVALIDO',
+                                    jsonb_build_object('parametro', 'p_inviata_stato_doc_fiscale_id', 'valore', p_inviata_stato_doc_fiscale_id),
+                                    NULL::uuid, 'p_inviata_stato_doc_fiscale_id obbligatorio e > 0'
+                                );
+                            END IF;
+
+                            -- Recupera tipo lotto
+                            SELECT fl.tipo_lotto
+                              INTO v_tipo_lotto
+                              FROM vendite.fatturazione_lotti fl
+                             WHERE fl.id = p_lotto_id;
+
+                            IF v_tipo_lotto IS NULL THEN
+                                PERFORM script.fn_log_and_raise_error(
+                                    'vendite', 'fn_close_giornaliero_lotto', 'E_VALORE_MANCANTE',
+                                    jsonb_build_object('lotto_id', p_lotto_id),
+                                    NULL::uuid, concat('lotto_id ', p_lotto_id)
+                                );
+                            END IF;
+
+                            -- Guard: solo lotti giornalieri
+                            IF v_tipo_lotto <> 'GIORNALIERO' THEN
+                                PERFORM script.fn_log_and_raise_error(
+                                    'vendite', 'fn_close_giornaliero_lotto', 'E_PARAMETRO_INVALIDO',
+                                    jsonb_build_object(
+                                        'parametro', 'tipo_lotto',
+                                        'valore', v_tipo_lotto,
+                                        'lotto_id', p_lotto_id
+                                    ),
+                                    NULL::uuid,
+                                    concat('Lotto ', p_lotto_id, ' tipo=', v_tipo_lotto, ' (richiesto GIORNALIERO)')
+                                );
+                            END IF;
+
+                            -- Chiudi lotto
+                            UPDATE vendite.fatturazione_lotti
+                               SET stato_operativo = 'CHIUSO',
+                                   stato_doc_fiscale_id = p_inviata_stato_doc_fiscale_id,
+                                   data_update = now(),
+                                   user_update = current_user
+                             WHERE id = p_lotto_id;
+
+                            GET DIAGNOSTICS v_updated_lotti = ROW_COUNT;
+
+                            -- Allinea stato fatture
+                            UPDATE vendite.fatture f
+                               SET stato_doc_fiscale_id = p_inviata_stato_doc_fiscale_id,
+                                   data_update = now(),
+                                   user_update = current_user
+                              FROM vendite.fatturazione_lotti_fatture lf
+                             WHERE lf.lotto_id = p_lotto_id
+                               AND lf.fattura_id = f.id;
+
+                            GET DIAGNOSTICS v_updated_fatture = ROW_COUNT;
+
+                            RETURN QUERY SELECT v_updated_lotti, v_updated_fatture;
+                        END;
+                        $function$;
+
+                        COMMENT ON FUNCTION vendite.fn_close_giornaliero_lotto(BIGINT, BIGINT)
+                          IS 'Chiude lotto giornaliero e allinea stato doc fiscale su tutte le fatture collegate.';

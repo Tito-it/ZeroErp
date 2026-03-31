@@ -1,0 +1,255 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+#
+# Fix E_GENERICO — vendite batch 11 (2 funzioni):
+#   - fn_resolve_fatturazione_pipeline_step (4x)
+#   - fn_resolve_lotto_task_execution_mode (4x)
+# NOTA: fn_resolve_commessa_prezzi rimossa — dipende da
+#       vendite.attivita_fatturabili_lotti che non esiste piu'.
+#       Da verificare se la funzione va rimossa dal DB.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+    - logicalFilePath: migrations_v2/20_code/vendite/20260331-20-fix-vendite-fn-e-generico-batch11-mctit.yaml
+
+    - changeSet:
+          id: 20260331-20-fix-fn-resolve-commessa-prezzi
+          author: mctit
+          runOnChange: true
+          comment: >
+              SKIP: fn_resolve_commessa_prezzi dipende da vendite.attivita_fatturabili_lotti
+              che non esiste piu'. La funzione non viene rigenerata.
+          preConditions:
+              - onFail: MARK_RAN
+              - tableExists:
+                    schemaName: vendite
+                    tableName: attivita_fatturabili_lotti
+          changes:
+              - sql:
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+                        -- Fix 20260331: 2x E_GENERICO → codici specifici (solo guard)
+                        -- Il corpo del loop (resolve prezzo per riga) resta invariato.
+                        CREATE OR REPLACE FUNCTION vendite.fn_resolve_commessa_prezzi(
+                            p_lotto_id vendite.attivita_fatturabili_lotti.id%TYPE
+                        )
+                        RETURNS TABLE(attivita_id BIGINT, prezzo_attuale NUMERIC, prezzo_risolto NUMERIC,
+                            delta_prezzo NUMERIC, stale BOOLEAN, esito TEXT, listino_versione_id BIGINT,
+                            listino_riga_id BIGINT, match_level SMALLINT, dettaglio TEXT)
+                        LANGUAGE plpgsql
+                        AS $function$
+                        DECLARE
+                            v_lotto vendite.attivita_fatturabili_lotti%ROWTYPE;
+                            v_row RECORD;
+                            v_res RECORD;
+                            v_billing_account_id vendite.attivita_fatturabili.billing_account_id%TYPE;
+                            v_utility_id         vendite.attivita_fatturabili_lotti.utility_id%TYPE;
+                            v_emittente_id       vendite.attivita_fatturabili_lotti.emittente_soggetto_ruolo_id%TYPE;
+                        BEGIN
+                            IF p_lotto_id IS NULL OR p_lotto_id <= 0 THEN
+                                PERFORM script.fn_log_and_raise_error('vendite', 'fn_resolve_commessa_prezzi', 'E_PARAMETRO_INVALIDO',
+                                    jsonb_build_object('parametro', 'p_lotto_id', 'valore', p_lotto_id), NULL::uuid, 'p_lotto_id obbligatorio e > 0');
+                            END IF;
+
+                            SELECT l.* INTO v_lotto FROM vendite.attivita_fatturabili_lotti l WHERE l.id = p_lotto_id;
+
+                            IF NOT FOUND THEN
+                                PERFORM script.fn_log_and_raise_error('vendite', 'fn_resolve_commessa_prezzi', 'E_VALORE_MANCANTE',
+                                    jsonb_build_object('lotto_id', p_lotto_id), NULL::uuid, concat('lotto_attivita_id ', p_lotto_id));
+                            END IF;
+
+                            -- Loop resolve prezzi (logica invariata dall'originale)
+                            FOR v_row IN
+                                SELECT a.id AS attivita_id, a.articolo_id, a.uom_id,
+                                       a.billing_account_id, a.prezzo_unitario, a.prezzo_bloccato,
+                                       a.data_attivita, a.competenza_mese, a.area_geografica_id
+                                  FROM vendite.attivita_fatturabili a
+                                 WHERE a.lotto_attivita_id = p_lotto_id
+                                 ORDER BY a.id
+                            LOOP
+                                v_billing_account_id := v_row.billing_account_id;
+                                v_utility_id := v_lotto.utility_id;
+                                v_emittente_id := v_lotto.emittente_soggetto_ruolo_id;
+
+                                BEGIN
+                                    SELECT r.* INTO v_res
+                                      FROM vendite.fn_resolve_prezzo_listino(
+                                          v_row.articolo_id, v_utility_id, v_emittente_id,
+                                          v_billing_account_id, v_row.uom_id,
+                                          COALESCE(v_row.data_attivita, v_row.competenza_mese, CURRENT_DATE),
+                                          v_row.area_geografica_id
+                                      ) r;
+
+                                    attivita_id := v_row.attivita_id;
+                                    prezzo_attuale := v_row.prezzo_unitario;
+                                    prezzo_risolto := v_res.prezzo;
+                                    delta_prezzo := COALESCE(v_row.prezzo_unitario, 0) - COALESCE(v_res.prezzo, 0);
+                                    stale := (COALESCE(v_row.prezzo_unitario, 0) <> COALESCE(v_res.prezzo, 0));
+                                    esito := CASE
+                                        WHEN v_res.prezzo IS NULL THEN 'PREZZO_ASSENTE'
+                                        WHEN v_row.prezzo_bloccato THEN 'BLOCCATO'
+                                        WHEN stale THEN 'STALE'
+                                        ELSE 'OK'
+                                    END;
+                                    listino_versione_id := v_res.listino_versione_id;
+                                    listino_riga_id := v_res.listino_riga_id;
+                                    match_level := v_res.match_level;
+                                    dettaglio := v_res.dettaglio;
+                                    RETURN NEXT;
+                                EXCEPTION WHEN OTHERS THEN
+                                    attivita_id := v_row.attivita_id;
+                                    prezzo_attuale := v_row.prezzo_unitario;
+                                    prezzo_risolto := NULL;
+                                    delta_prezzo := NULL;
+                                    stale := NULL;
+                                    esito := 'ERRORE_RESOLVER';
+                                    listino_versione_id := NULL;
+                                    listino_riga_id := NULL;
+                                    match_level := NULL;
+                                    dettaglio := SQLERRM;
+                                    RETURN NEXT;
+                                END;
+                            END LOOP;
+                        END;
+                        $function$;
+
+                        COMMENT ON FUNCTION vendite.fn_resolve_commessa_prezzi(BIGINT)
+                          IS 'Analisi prezzi stantii su attivita lotto vs listino. Non fallisce alla prima riga: riporta esito per riga.';
+
+    - changeSet:
+          id: 20260331-20-fix-fn-resolve-fatturazione-pipeline-step
+          author: mctit
+          runOnChange: true
+          comment: >
+              Fix fn_resolve_fatturazione_pipeline_step: 4x E_GENERICO → E_PARAMETRO_INVALIDO.
+          changes:
+              - sql:
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+                        -- Fix 20260331: 4x E_GENERICO → E_PARAMETRO_INVALIDO
+                        CREATE OR REPLACE FUNCTION vendite.fn_resolve_fatturazione_pipeline_step(
+                            p_tipo_lotto          TEXT,
+                            p_stato_doc_fiscale_id config.stati_doc_fiscale.id%TYPE,
+                            p_utility_id          config.utilities.id%TYPE DEFAULT NULL,
+                            p_tipo_doc_fiscale_id config.tipi_doc_fiscale.id%TYPE DEFAULT NULL,
+                            p_rollback            BOOLEAN DEFAULT FALSE
+                        )
+                        RETURNS TABLE(pipeline_id BIGINT, stato_doc_fiscale_id BIGINT, descrizione TEXT,
+                            ordine SMALLINT, processi JSONB, utility_id INTEGER, tipo_doc_fiscale_id BIGINT, livello_match TEXT)
+                        LANGUAGE plpgsql
+                        AS $function$
+                        BEGIN
+                            IF p_tipo_lotto IS NULL OR btrim(p_tipo_lotto) = '' THEN
+                                PERFORM script.fn_log_and_raise_error('vendite', 'fn_resolve_fatturazione_pipeline_step', 'E_PARAMETRO_INVALIDO',
+                                    jsonb_build_object('parametro', 'p_tipo_lotto', 'valore', p_tipo_lotto), NULL::uuid, 'p_tipo_lotto obbligatorio');
+                            END IF;
+                            IF p_stato_doc_fiscale_id IS NULL OR p_stato_doc_fiscale_id <= 0 THEN
+                                PERFORM script.fn_log_and_raise_error('vendite', 'fn_resolve_fatturazione_pipeline_step', 'E_PARAMETRO_INVALIDO',
+                                    jsonb_build_object('parametro', 'p_stato_doc_fiscale_id', 'valore', p_stato_doc_fiscale_id), NULL::uuid, 'p_stato_doc_fiscale_id obbligatorio e > 0');
+                            END IF;
+                            IF p_utility_id IS NOT NULL AND p_utility_id <= 0 THEN
+                                PERFORM script.fn_log_and_raise_error('vendite', 'fn_resolve_fatturazione_pipeline_step', 'E_PARAMETRO_INVALIDO',
+                                    jsonb_build_object('parametro', 'p_utility_id', 'valore', p_utility_id), NULL::uuid, 'p_utility_id se fornito deve essere > 0');
+                            END IF;
+                            IF p_tipo_doc_fiscale_id IS NOT NULL AND p_tipo_doc_fiscale_id <= 0 THEN
+                                PERFORM script.fn_log_and_raise_error('vendite', 'fn_resolve_fatturazione_pipeline_step', 'E_PARAMETRO_INVALIDO',
+                                    jsonb_build_object('parametro', 'p_tipo_doc_fiscale_id', 'valore', p_tipo_doc_fiscale_id), NULL::uuid, 'p_tipo_doc_fiscale_id se fornito deve essere > 0');
+                            END IF;
+
+                            RETURN QUERY
+                            SELECT fp.id, fp.stato_doc_fiscale_id, fp.descrizione, sd.ordine,
+                                   CASE WHEN p_rollback THEN fp.rollback ELSE fp.processi END,
+                                   fp.utility_id, fp.tipo_doc_fiscale_id,
+                                   CASE WHEN fp.utility_id IS NOT NULL AND fp.tipo_doc_fiscale_id IS NOT NULL THEN 'UTILITY_TIPO_DOC'
+                                        WHEN fp.utility_id IS NOT NULL THEN 'UTILITY'
+                                        WHEN fp.tipo_doc_fiscale_id IS NOT NULL THEN 'TIPO_DOC'
+                                        ELSE 'FALLBACK' END
+                              FROM vendite.fatturazione_pipeline fp
+                              JOIN config.stati_doc_fiscale sd ON sd.id = fp.stato_doc_fiscale_id
+                             WHERE fp.attivo IS TRUE AND fp.tipo_lotto = p_tipo_lotto AND fp.stato_doc_fiscale_id = p_stato_doc_fiscale_id
+                               AND (fp.utility_id = p_utility_id OR fp.utility_id IS NULL)
+                               AND (fp.tipo_doc_fiscale_id = p_tipo_doc_fiscale_id OR fp.tipo_doc_fiscale_id IS NULL)
+                             ORDER BY CASE WHEN fp.utility_id IS NOT NULL AND fp.tipo_doc_fiscale_id IS NOT NULL THEN 4
+                                           WHEN fp.utility_id IS NOT NULL THEN 3 WHEN fp.tipo_doc_fiscale_id IS NOT NULL THEN 2 ELSE 1 END DESC, fp.id ASC
+                             LIMIT 1;
+                        END;
+                        $function$;
+
+                        COMMENT ON FUNCTION vendite.fn_resolve_fatturazione_pipeline_step(TEXT, BIGINT, INTEGER, BIGINT, BOOLEAN)
+                          IS 'Risoluzione step pipeline con precedenza specifica e fallback globale.';
+
+    - changeSet:
+          id: 20260331-20-fix-fn-resolve-lotto-task-execution-mode
+          author: mctit
+          runOnChange: true
+          comment: >
+              Fix fn_resolve_lotto_task_execution_mode: 4x E_GENERICO →
+              E_PARAMETRO_INVALIDO (3) + E_CONFIG_MANCANTE (1).
+          changes:
+              - sql:
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+                        -- Fix 20260331: 4x E_GENERICO → codici specifici
+                        CREATE OR REPLACE FUNCTION vendite.fn_resolve_lotto_task_execution_mode(
+                            p_lotto_id             vendite.fatturazione_lotti.id%TYPE,
+                            p_pipeline_id          vendite.fatturazione_pipeline.id%TYPE,
+                            p_stato_doc_fiscale_id config.stati_doc_fiscale.id%TYPE,
+                            p_task_code            vendite.fatturazione_pipeline_task_policy.task_code%TYPE
+                        )
+                        RETURNS TABLE(execution_mode TEXT, annullabile BOOLEAN, resume_mode CHARACTER VARYING,
+                            last_task_stato CHARACTER VARYING, last_tentativo SMALLINT, policy_meta JSONB, run_meta JSONB)
+                        LANGUAGE plpgsql
+                        AS $function$
+                        DECLARE
+                            v_policy   vendite.fatturazione_pipeline_task_policy%ROWTYPE;
+                            v_last_run vendite.fatturazione_lotti_task_runs%ROWTYPE;
+                        BEGIN
+                            IF p_lotto_id IS NULL OR p_lotto_id <= 0 THEN
+                                PERFORM script.fn_log_and_raise_error('vendite', 'fn_resolve_lotto_task_execution_mode', 'E_PARAMETRO_INVALIDO',
+                                    jsonb_build_object('parametro', 'p_lotto_id', 'valore', p_lotto_id), NULL::uuid, 'p_lotto_id obbligatorio e > 0');
+                            END IF;
+                            IF p_pipeline_id IS NULL OR p_pipeline_id <= 0 THEN
+                                PERFORM script.fn_log_and_raise_error('vendite', 'fn_resolve_lotto_task_execution_mode', 'E_PARAMETRO_INVALIDO',
+                                    jsonb_build_object('parametro', 'p_pipeline_id', 'valore', p_pipeline_id), NULL::uuid, 'p_pipeline_id obbligatorio e > 0');
+                            END IF;
+                            IF p_task_code IS NULL OR btrim(p_task_code) = '' THEN
+                                PERFORM script.fn_log_and_raise_error('vendite', 'fn_resolve_lotto_task_execution_mode', 'E_PARAMETRO_INVALIDO',
+                                    jsonb_build_object('parametro', 'p_task_code', 'valore', p_task_code), NULL::uuid, 'p_task_code obbligatorio');
+                            END IF;
+
+                            SELECT p.* INTO v_policy FROM vendite.fatturazione_pipeline_task_policy p
+                             WHERE p.pipeline_id = p_pipeline_id AND p.task_code = p_task_code AND p.attivo IS TRUE;
+
+                            IF NOT FOUND THEN
+                                PERFORM script.fn_log_and_raise_error('vendite', 'fn_resolve_lotto_task_execution_mode', 'E_CONFIG_MANCANTE',
+                                    jsonb_build_object('pipeline_id', p_pipeline_id, 'task_code', p_task_code), NULL::uuid,
+                                    concat('policy task pipeline:', p_pipeline_id, ' task:', p_task_code));
+                            END IF;
+
+                            SELECT r.* INTO v_last_run FROM vendite.fatturazione_lotti_task_runs r
+                             WHERE r.lotto_id = p_lotto_id AND r.task_code = p_task_code
+                               AND r.stato_doc_fiscale_id IS NOT DISTINCT FROM p_stato_doc_fiscale_id
+                             ORDER BY r.tentativo DESC, r.id DESC LIMIT 1;
+
+                            IF NOT FOUND THEN
+                                RETURN QUERY SELECT 'RUN'::TEXT, v_policy.annullabile, v_policy.resume_mode,
+                                    NULL::CHARACTER VARYING, NULL::SMALLINT, COALESCE(v_policy.meta, '{}'::JSONB), '{}'::JSONB;
+                                RETURN;
+                            END IF;
+
+                            RETURN QUERY SELECT
+                                CASE WHEN v_last_run.task_stato = 'COMPLETATO' THEN 'SKIP'
+                                     WHEN v_last_run.task_stato IN ('IN_ESECUZIONE', 'ERRORE') THEN
+                                         CASE WHEN v_policy.resume_mode IN ('RESUME_TASK', 'RESUME_STEP') THEN 'RESUME' ELSE 'RESET_REQUIRED' END
+                                     WHEN v_last_run.task_stato = 'ANNULLATO' THEN 'RUN' ELSE 'RUN' END::TEXT,
+                                v_policy.annullabile, v_policy.resume_mode, v_last_run.task_stato,
+                                v_last_run.tentativo, COALESCE(v_policy.meta, '{}'::JSONB), COALESCE(v_last_run.meta, '{}'::JSONB);
+                        END;
+                        $function$;
+
+                        COMMENT ON FUNCTION vendite.fn_resolve_lotto_task_execution_mode(BIGINT, BIGINT, BIGINT, CHARACTER VARYING)
+                          IS 'Risoluzione modalita esecuzione task lotto: RUN/SKIP/RESUME/RESET_REQUIRED.';

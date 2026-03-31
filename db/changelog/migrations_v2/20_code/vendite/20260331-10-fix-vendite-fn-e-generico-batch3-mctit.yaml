@@ -1,0 +1,327 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+#
+# Fix E_GENERICO — vendite batch 3 (4 funzioni):
+#   - fn_get_arrotondamento_scope (5x)
+#   - fn_get_commessa_stato (2x)
+#   - fn_get_lotto_segnalazioni_summary (1x)
+#   - fn_get_lotto_task_last_run (2x)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+    - logicalFilePath: migrations_v2/20_code/vendite/20260331-10-fix-vendite-fn-e-generico-batch3-mctit.yaml
+
+    - changeSet:
+          id: 20260331-10-fix-fn-get-arrotondamento-scope
+          author: mctit
+          runOnChange: true
+          comment: >
+              Fix fn_get_arrotondamento_scope: 5x E_GENERICO → E_PARAMETRO_INVALIDO.
+          changes:
+              - sql:
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+                        -- ==========================================================
+                        -- fn_get_arrotondamento_scope
+                        --
+                        -- Scopo: restituisce il saldo tecnico arrotondamenti per scope.
+                        --        Se lo scope non esiste, restituisce 0.
+                        --
+                        -- Fix 20260331: 5x E_GENERICO → E_PARAMETRO_INVALIDO
+                        -- ==========================================================
+                        CREATE OR REPLACE FUNCTION vendite.fn_get_arrotondamento_scope(
+                            p_billing_account_id          anagrafiche.billing_account.id%TYPE,
+                            p_utility_id                  config.utilities.id%TYPE,
+                            p_tipo_doc_fiscale_id         config.tipi_doc_fiscale.id%TYPE,
+                            p_emittente_soggetto_ruolo_id anagrafiche.soggetti_ruoli.id%TYPE,
+                            p_valuta_id                   config.valute.id%TYPE
+                        )
+                        RETURNS NUMERIC
+                        LANGUAGE plpgsql
+                        AS $function$
+                        DECLARE
+                            v_saldo vendite.fatture_arrotondamenti_scope.saldo_arrotondamento%TYPE;
+                        BEGIN
+                            -- Guard: tutti i parametri obbligatori e > 0
+                            IF p_billing_account_id IS NULL OR p_billing_account_id <= 0 THEN
+                                PERFORM script.fn_log_and_raise_error('vendite', 'fn_get_arrotondamento_scope', 'E_PARAMETRO_INVALIDO',
+                                    jsonb_build_object('parametro', 'p_billing_account_id', 'valore', p_billing_account_id), NULL::uuid, 'p_billing_account_id obbligatorio e > 0');
+                            END IF;
+                            IF p_utility_id IS NULL OR p_utility_id <= 0 THEN
+                                PERFORM script.fn_log_and_raise_error('vendite', 'fn_get_arrotondamento_scope', 'E_PARAMETRO_INVALIDO',
+                                    jsonb_build_object('parametro', 'p_utility_id', 'valore', p_utility_id), NULL::uuid, 'p_utility_id obbligatorio e > 0');
+                            END IF;
+                            IF p_tipo_doc_fiscale_id IS NULL OR p_tipo_doc_fiscale_id <= 0 THEN
+                                PERFORM script.fn_log_and_raise_error('vendite', 'fn_get_arrotondamento_scope', 'E_PARAMETRO_INVALIDO',
+                                    jsonb_build_object('parametro', 'p_tipo_doc_fiscale_id', 'valore', p_tipo_doc_fiscale_id), NULL::uuid, 'p_tipo_doc_fiscale_id obbligatorio e > 0');
+                            END IF;
+                            IF p_emittente_soggetto_ruolo_id IS NULL OR p_emittente_soggetto_ruolo_id <= 0 THEN
+                                PERFORM script.fn_log_and_raise_error('vendite', 'fn_get_arrotondamento_scope', 'E_PARAMETRO_INVALIDO',
+                                    jsonb_build_object('parametro', 'p_emittente_soggetto_ruolo_id', 'valore', p_emittente_soggetto_ruolo_id), NULL::uuid, 'p_emittente_soggetto_ruolo_id obbligatorio e > 0');
+                            END IF;
+                            IF p_valuta_id IS NULL OR p_valuta_id <= 0 THEN
+                                PERFORM script.fn_log_and_raise_error('vendite', 'fn_get_arrotondamento_scope', 'E_PARAMETRO_INVALIDO',
+                                    jsonb_build_object('parametro', 'p_valuta_id', 'valore', p_valuta_id), NULL::uuid, 'p_valuta_id obbligatorio e > 0');
+                            END IF;
+
+                            SELECT s.saldo_arrotondamento INTO v_saldo
+                              FROM vendite.fatture_arrotondamenti_scope s
+                             WHERE s.billing_account_id = p_billing_account_id
+                               AND s.utility_id = p_utility_id
+                               AND s.tipo_doc_fiscale_id = p_tipo_doc_fiscale_id
+                               AND s.emittente_soggetto_ruolo_id = p_emittente_soggetto_ruolo_id
+                               AND s.valuta_id = p_valuta_id;
+
+                            RETURN COALESCE(v_saldo, 0);
+                        END;
+                        $function$;
+
+                        COMMENT ON FUNCTION vendite.fn_get_arrotondamento_scope(BIGINT, INTEGER, BIGINT, BIGINT, BIGINT)
+                          IS 'Saldo tecnico arrotondamenti per scope (0 se assente).';
+
+    - changeSet:
+          id: 20260331-10-fix-fn-get-commessa-stato
+          author: mctit
+          runOnChange: true
+          comment: >
+              Fix fn_get_commessa_stato: 2x E_GENERICO →
+              E_PARAMETRO_INVALIDO + E_VALORE_MANCANTE. Semplificato JSONB.
+          changes:
+              - sql:
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+                        -- ==========================================================
+                        -- fn_get_commessa_stato
+                        --
+                        -- Scopo: stato testata commessa, flag operativi e contatori
+                        --        principali in un singolo round-trip.
+                        --
+                        -- Fix 20260331: 2x E_GENERICO → codici specifici
+                        -- ==========================================================
+                        CREATE OR REPLACE FUNCTION vendite.fn_get_commessa_stato(
+                            p_commessa_id vendite.commesse.id%TYPE
+                        )
+                        RETURNS TABLE(
+                            commessa_id                BIGINT,
+                            stato_commessa_id          BIGINT,
+                            stato_commessa             CHARACTER VARYING,
+                            chiude_commessa            BOOLEAN,
+                            emittibile                 BOOLEAN,
+                            modificabile               BOOLEAN,
+                            policy_fatturazione        CHARACTER VARYING,
+                            fatturazione_immediata     BOOLEAN,
+                            priorita_operativa         CHARACTER VARYING,
+                            billing_account_id         BIGINT,
+                            utility_id                 INTEGER,
+                            emittente_soggetto_ruolo_id BIGINT,
+                            total_attivita             BIGINT,
+                            total_approvate            BIGINT,
+                            total_non_approvate        BIGINT,
+                            total_emesse               BIGINT,
+                            total_non_emesse           BIGINT,
+                            total_prezzo_da_riallineare BIGINT,
+                            last_update                TIMESTAMPTZ
+                        )
+                        LANGUAGE plpgsql
+                        AS $function$
+                        BEGIN
+                            -- Guard: parametro obbligatorio
+                            IF p_commessa_id IS NULL OR p_commessa_id <= 0 THEN
+                                PERFORM script.fn_log_and_raise_error(
+                                    'vendite', 'fn_get_commessa_stato', 'E_PARAMETRO_INVALIDO',
+                                    jsonb_build_object('parametro', 'p_commessa_id', 'valore', p_commessa_id),
+                                    NULL::uuid, 'p_commessa_id obbligatorio e > 0'
+                                );
+                            END IF;
+
+                            IF NOT EXISTS (SELECT 1 FROM vendite.commesse c WHERE c.id = p_commessa_id) THEN
+                                PERFORM script.fn_log_and_raise_error(
+                                    'vendite', 'fn_get_commessa_stato', 'E_VALORE_MANCANTE',
+                                    jsonb_build_object('commessa_id', p_commessa_id),
+                                    NULL::uuid, concat('commessa_id ', p_commessa_id)
+                                );
+                            END IF;
+
+                            RETURN QUERY
+                            SELECT
+                                c.id AS commessa_id,
+                                c.stato_commessa_id,
+                                sc.codice AS stato_commessa,
+                                sc.chiude_commessa,
+                                sc.emittibile,
+                                sc.modificabile,
+                                c.policy_fatturazione,
+                                c.fatturazione_immediata,
+                                c.priorita_operativa,
+                                c.billing_account_id,
+                                c.utility_id,
+                                c.emittente_soggetto_ruolo_id,
+                                COALESCE(count(ca.id), 0)::BIGINT AS total_attivita,
+                                COALESCE(count(*) FILTER (WHERE ca.stato_approvazione = 'APPROVATA'), 0)::BIGINT,
+                                COALESCE(count(*) FILTER (WHERE ca.stato_approvazione <> 'APPROVATA'), 0)::BIGINT,
+                                COALESCE(count(*) FILTER (WHERE ca.stato_emissione = 'EMESSA'), 0)::BIGINT,
+                                COALESCE(count(*) FILTER (WHERE ca.stato_emissione <> 'EMESSA'), 0)::BIGINT,
+                                COALESCE(count(*) FILTER (WHERE ca.prezzo_da_riallineare IS TRUE), 0)::BIGINT,
+                                GREATEST(c.data_update, COALESCE(max(ca.data_update), c.data_update))
+                            FROM vendite.commesse c
+                            JOIN vendite.stati_commessa sc ON sc.id = c.stato_commessa_id
+                            LEFT JOIN vendite.commesse_attivita ca ON ca.commessa_id = c.id
+                            WHERE c.id = p_commessa_id
+                            GROUP BY c.id, c.stato_commessa_id, sc.codice, sc.chiude_commessa,
+                                     sc.emittibile, sc.modificabile, c.policy_fatturazione,
+                                     c.fatturazione_immediata, c.priorita_operativa,
+                                     c.billing_account_id, c.utility_id,
+                                     c.emittente_soggetto_ruolo_id, c.data_update;
+                        END;
+                        $function$;
+
+                        COMMENT ON FUNCTION vendite.fn_get_commessa_stato(BIGINT)
+                          IS 'Stato testata commessa con flag operativi e contatori attivita in singolo round-trip.';
+
+    - changeSet:
+          id: 20260331-10-fix-fn-get-lotto-segnalazioni-summary
+          author: mctit
+          runOnChange: true
+          comment: >
+              Fix fn_get_lotto_segnalazioni_summary: 1x E_GENERICO → E_PARAMETRO_INVALIDO.
+          changes:
+              - sql:
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+                        -- ==========================================================
+                        -- fn_get_lotto_segnalazioni_summary
+                        --
+                        -- Scopo: riepilogo segnalazioni attive del lotto.
+                        --
+                        -- Fix 20260331: 1x E_GENERICO → E_PARAMETRO_INVALIDO
+                        -- ==========================================================
+                        CREATE OR REPLACE FUNCTION vendite.fn_get_lotto_segnalazioni_summary(
+                            p_lotto_id vendite.fatturazione_lotti.id%TYPE
+                        )
+                        RETURNS TABLE(
+                            fatture_critical_count                BIGINT,
+                            fatture_warning_count                 BIGINT,
+                            lotto_critical_count                  BIGINT,
+                            lotto_warning_count                   BIGINT,
+                            lotto_info_count                      BIGINT,
+                            fatture_stato_esecuzione_errore_count BIGINT
+                        )
+                        LANGUAGE plpgsql
+                        AS $function$
+                        BEGIN
+                            -- Guard: parametro obbligatorio
+                            IF p_lotto_id IS NULL OR p_lotto_id <= 0 THEN
+                                PERFORM script.fn_log_and_raise_error(
+                                    'vendite', 'fn_get_lotto_segnalazioni_summary', 'E_PARAMETRO_INVALIDO',
+                                    jsonb_build_object('parametro', 'p_lotto_id', 'valore', p_lotto_id),
+                                    NULL::uuid, 'p_lotto_id obbligatorio e > 0'
+                                );
+                            END IF;
+
+                            RETURN QUERY
+                            WITH fatture_agg AS (
+                                SELECT COUNT(*) FILTER (WHERE fl.status = 'C') AS fc,
+                                       COUNT(*) FILTER (WHERE fl.status = 'W') AS fw
+                                  FROM vendite.fatturazione_lotti_fatture lf
+                                  JOIN vendite.fatture_log fl ON fl.fattura_id = lf.fattura_id
+                                 WHERE lf.lotto_id = p_lotto_id AND fl.disabilitato IS FALSE
+                            ),
+                            lotto_agg AS (
+                                SELECT COUNT(*) FILTER (WHERE ll.status = 'C') AS lc,
+                                       COUNT(*) FILTER (WHERE ll.status = 'W') AS lw,
+                                       COUNT(*) FILTER (WHERE ll.status = 'I') AS li
+                                  FROM vendite.fatturazione_lotti_log ll
+                                 WHERE ll.lotto_id = p_lotto_id AND ll.disabilitato IS FALSE
+                            ),
+                            ponte_agg AS (
+                                SELECT COUNT(*) FILTER (WHERE lf.stato_esecuzione = 'ERRORE') AS pe
+                                  FROM vendite.fatturazione_lotti_fatture lf
+                                 WHERE lf.lotto_id = p_lotto_id
+                            )
+                            SELECT COALESCE(fa.fc, 0), COALESCE(fa.fw, 0),
+                                   COALESCE(la.lc, 0), COALESCE(la.lw, 0), COALESCE(la.li, 0),
+                                   COALESCE(pa.pe, 0)
+                              FROM fatture_agg fa CROSS JOIN lotto_agg la CROSS JOIN ponte_agg pa;
+                        END;
+                        $function$;
+
+                        COMMENT ON FUNCTION vendite.fn_get_lotto_segnalazioni_summary(BIGINT)
+                          IS 'Riepilogo segnalazioni lotto attive (log fatture/lotto) + conteggio ponte errore.';
+
+    - changeSet:
+          id: 20260331-10-fix-fn-get-lotto-task-last-run
+          author: mctit
+          runOnChange: true
+          comment: >
+              Fix fn_get_lotto_task_last_run: 2x E_GENERICO → E_PARAMETRO_INVALIDO.
+          changes:
+              - sql:
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+                        -- ==========================================================
+                        -- fn_get_lotto_task_last_run
+                        --
+                        -- Scopo: restituisce l'ultimo run disponibile per task+step+lotto.
+                        --
+                        -- Fix 20260331: 2x E_GENERICO → E_PARAMETRO_INVALIDO
+                        -- ==========================================================
+                        CREATE OR REPLACE FUNCTION vendite.fn_get_lotto_task_last_run(
+                            p_lotto_id              vendite.fatturazione_lotti.id%TYPE,
+                            p_stato_doc_fiscale_id  config.stati_doc_fiscale.id%TYPE,
+                            p_task_code             vendite.fatturazione_lotti_task_runs.task_code%TYPE
+                        )
+                        RETURNS TABLE(
+                            id                    BIGINT,
+                            lotto_id              BIGINT,
+                            pipeline_id           BIGINT,
+                            stato_doc_fiscale_id  INTEGER,
+                            task_code             CHARACTER VARYING,
+                            fase                  CHARACTER VARYING,
+                            tentativo             SMALLINT,
+                            task_stato            CHARACTER VARYING,
+                            started_at            TIMESTAMPTZ,
+                            ended_at              TIMESTAMPTZ,
+                            error_code            CHARACTER VARYING,
+                            error_message         TEXT,
+                            meta                  JSONB
+                        )
+                        LANGUAGE plpgsql
+                        AS $function$
+                        BEGIN
+                            -- Guard: parametri obbligatori
+                            IF p_lotto_id IS NULL OR p_lotto_id <= 0 THEN
+                                PERFORM script.fn_log_and_raise_error(
+                                    'vendite', 'fn_get_lotto_task_last_run', 'E_PARAMETRO_INVALIDO',
+                                    jsonb_build_object('parametro', 'p_lotto_id', 'valore', p_lotto_id),
+                                    NULL::uuid, 'p_lotto_id obbligatorio e > 0'
+                                );
+                            END IF;
+
+                            IF p_task_code IS NULL OR btrim(p_task_code) = '' THEN
+                                PERFORM script.fn_log_and_raise_error(
+                                    'vendite', 'fn_get_lotto_task_last_run', 'E_PARAMETRO_INVALIDO',
+                                    jsonb_build_object('parametro', 'p_task_code', 'valore', p_task_code),
+                                    NULL::uuid, 'p_task_code obbligatorio'
+                                );
+                            END IF;
+
+                            RETURN QUERY
+                            SELECT r.id, r.lotto_id, r.pipeline_id, r.stato_doc_fiscale_id,
+                                   r.task_code, r.fase, r.tentativo, r.task_stato,
+                                   r.started_at, r.ended_at, r.error_code, r.error_message, r.meta
+                              FROM vendite.fatturazione_lotti_task_runs r
+                             WHERE r.lotto_id = p_lotto_id
+                               AND r.task_code = p_task_code
+                               AND r.stato_doc_fiscale_id IS NOT DISTINCT FROM p_stato_doc_fiscale_id
+                             ORDER BY r.tentativo DESC, r.id DESC
+                             LIMIT 1;
+                        END;
+                        $function$;
+
+                        COMMENT ON FUNCTION vendite.fn_get_lotto_task_last_run(BIGINT, BIGINT, CHARACTER VARYING)
+                          IS 'Ultimo run task per lotto/stato/task.';

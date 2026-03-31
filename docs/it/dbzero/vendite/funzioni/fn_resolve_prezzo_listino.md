@@ -13,253 +13,112 @@ CREATE OR REPLACE FUNCTION vendite.fn_resolve_prezzo_listino(p_articolo_id uuid,
  LANGUAGE plpgsql
 AS $function$
 DECLARE
-  v_listino_id vendite.listini.id%TYPE;
-  v_listino_versione_id vendite.listini_versioni.id%TYPE;
-  v_listino_riga_id vendite.listini_righe.id%TYPE;
-  v_listino_associazione_id vendite.listini_associazioni.id%TYPE;
-  v_prezzo vendite.listini_righe.prezzo%TYPE;
-  v_match_level smallint;
-  v_tie_count integer;
+    v_listino_id              vendite.listini.id%TYPE;
+    v_listino_versione_id     vendite.listini_versioni.id%TYPE;
+    v_listino_riga_id         vendite.listini_righe.id%TYPE;
+    v_listino_associazione_id vendite.listini_associazioni.id%TYPE;
+    v_prezzo                  vendite.listini_righe.prezzo%TYPE;
+    v_match_level             SMALLINT;
+    v_tie_count               INTEGER;
 BEGIN
-  -- =========================================================
-  -- Scopo:
-  --   Risolvere il prezzo listino per articolo/uom/data con
-  --   precedenze ufficiali e tie-break deterministici.
-  --
-  -- Regole:
-  --   - p_data_riferimento obbligatoria
-  --   - copertura utility e non-utility
-  --   - candidati ricavati da listini_associazioni + versioni + righe
-  --   - AMBIGUOUS_PRICE_MATCH se pareggio totale sui tie-break semantici
-  --   - CTE eseguita una sola volta: tie_count via window function
-  -- =========================================================
-  IF p_articolo_id IS NULL THEN
-    PERFORM script.fn_log_and_raise_error(
-      'vendite','fn_resolve_prezzo_listino','E_GENERICO',
-      jsonb_build_object('scope','LISTINI','severity','C','code','E_GENERICO','lotto_id',NULL,'fattura_id',NULL,'context',jsonb_build_object('detail','articolo_id obbligatorio')),
-      NULL::uuid, 'articolo_id obbligatorio'
-    );
-  END IF;
+    -- Guard: parametri obbligatori
+    IF p_articolo_id IS NULL THEN
+        PERFORM script.fn_log_and_raise_error('vendite', 'fn_resolve_prezzo_listino', 'E_PARAMETRO_INVALIDO',
+            jsonb_build_object('parametro', 'p_articolo_id', 'valore', NULL), NULL::uuid, 'p_articolo_id obbligatorio');
+    END IF;
+    IF p_uom_id IS NULL OR p_uom_id <= 0 THEN
+        PERFORM script.fn_log_and_raise_error('vendite', 'fn_resolve_prezzo_listino', 'E_PARAMETRO_INVALIDO',
+            jsonb_build_object('parametro', 'p_uom_id', 'valore', p_uom_id), NULL::uuid, 'p_uom_id obbligatorio e > 0');
+    END IF;
+    IF p_data_riferimento IS NULL THEN
+        PERFORM script.fn_log_and_raise_error('vendite', 'fn_resolve_prezzo_listino', 'E_PARAMETRO_INVALIDO',
+            jsonb_build_object('parametro', 'p_data_riferimento', 'valore', NULL), NULL::uuid, 'p_data_riferimento obbligatoria');
+    END IF;
+    IF p_billing_account_id IS NOT NULL AND p_billing_account_id <= 0 THEN
+        PERFORM script.fn_log_and_raise_error('vendite', 'fn_resolve_prezzo_listino', 'E_PARAMETRO_INVALIDO',
+            jsonb_build_object('parametro', 'p_billing_account_id', 'valore', p_billing_account_id), NULL::uuid, 'p_billing_account_id se fornito deve essere > 0');
+    END IF;
+    IF p_utility_id IS NOT NULL AND p_utility_id <= 0 THEN
+        PERFORM script.fn_log_and_raise_error('vendite', 'fn_resolve_prezzo_listino', 'E_PARAMETRO_INVALIDO',
+            jsonb_build_object('parametro', 'p_utility_id', 'valore', p_utility_id), NULL::uuid, 'p_utility_id se fornito deve essere > 0');
+    END IF;
+    IF p_emittente_soggetto_ruolo_id IS NOT NULL AND p_emittente_soggetto_ruolo_id <= 0 THEN
+        PERFORM script.fn_log_and_raise_error('vendite', 'fn_resolve_prezzo_listino', 'E_PARAMETRO_INVALIDO',
+            jsonb_build_object('parametro', 'p_emittente_soggetto_ruolo_id', 'valore', p_emittente_soggetto_ruolo_id), NULL::uuid, 'p_emittente_soggetto_ruolo_id se fornito deve essere > 0');
+    END IF;
 
-  IF p_uom_id IS NULL OR p_uom_id <= 0 THEN
-    PERFORM script.fn_log_and_raise_error(
-      'vendite','fn_resolve_prezzo_listino','E_GENERICO',
-      jsonb_build_object('scope','LISTINI','severity','C','code','E_GENERICO','lotto_id',NULL,'fattura_id',NULL,'context',jsonb_build_object('detail','uom_id obbligatorio','uom_id',p_uom_id)),
-      NULL::uuid, 'uom_id obbligatorio'
-    );
-  END IF;
+    -- CTE unica: candidati + ranking + tie_count in un solo pass
+    WITH candidati AS (
+        SELECT l.id AS listino_id, v.id AS listino_versione_id, r.id AS listino_riga_id,
+               a.id AS listino_associazione_id, r.prezzo,
+               a.priorita AS associazione_priorita, v.priorita AS versione_priorita,
+               v.valido_dal, v.valido_al,
+               CASE
+                   WHEN p_billing_account_id IS NOT NULL AND p_utility_id IS NOT NULL AND p_emittente_soggetto_ruolo_id IS NOT NULL
+                        AND r.billing_account_id = p_billing_account_id AND r.utility_id = p_utility_id AND r.emittente_soggetto_ruolo_id = p_emittente_soggetto_ruolo_id THEN 1
+                   WHEN p_billing_account_id IS NOT NULL AND p_utility_id IS NOT NULL
+                        AND r.billing_account_id = p_billing_account_id AND r.utility_id = p_utility_id AND r.emittente_soggetto_ruolo_id IS NULL THEN 2
+                   WHEN p_billing_account_id IS NOT NULL AND p_utility_id IS NULL AND p_emittente_soggetto_ruolo_id IS NOT NULL
+                        AND r.billing_account_id = p_billing_account_id AND r.utility_id IS NULL AND r.emittente_soggetto_ruolo_id = p_emittente_soggetto_ruolo_id THEN 3
+                   WHEN p_billing_account_id IS NOT NULL AND p_utility_id IS NULL
+                        AND r.billing_account_id = p_billing_account_id AND r.utility_id IS NULL AND r.emittente_soggetto_ruolo_id IS NULL THEN 4
+                   WHEN p_utility_id IS NOT NULL AND p_emittente_soggetto_ruolo_id IS NOT NULL
+                        AND r.billing_account_id IS NULL AND r.utility_id = p_utility_id AND r.emittente_soggetto_ruolo_id = p_emittente_soggetto_ruolo_id THEN 5
+                   WHEN p_utility_id IS NOT NULL
+                        AND r.billing_account_id IS NULL AND r.utility_id = p_utility_id AND r.emittente_soggetto_ruolo_id IS NULL THEN 6
+                   WHEN r.billing_account_id IS NULL AND r.utility_id IS NULL AND r.emittente_soggetto_ruolo_id IS NULL THEN 7
+                   ELSE NULL
+               END AS match_rank
+          FROM vendite.listini_associazioni a
+          JOIN vendite.listini l ON l.id = a.listino_id
+          JOIN vendite.listini_versioni v ON v.listino_id = l.id
+          JOIN vendite.listini_righe r ON r.listino_versione_id = v.id
+         WHERE a.attivo IS TRUE AND l.attivo IS TRUE AND v.attivo IS TRUE AND v.stato = 'ATTIVA' AND r.attivo IS TRUE
+           AND p_data_riferimento >= a.valido_dal AND (a.valido_al IS NULL OR p_data_riferimento <= a.valido_al)
+           AND p_data_riferimento >= v.valido_dal AND (v.valido_al IS NULL OR p_data_riferimento <= v.valido_al)
+           AND (a.billing_account_id IS NULL OR a.billing_account_id = p_billing_account_id)
+           AND (a.utility_id IS NULL OR a.utility_id = p_utility_id)
+           AND (a.emittente_soggetto_ruolo_id IS NULL OR a.emittente_soggetto_ruolo_id = p_emittente_soggetto_ruolo_id)
+           AND r.articolo_id = p_articolo_id AND r.uom_id = p_uom_id
+           AND (r.billing_account_id IS NULL OR r.billing_account_id = p_billing_account_id)
+           AND (r.utility_id IS NULL OR r.utility_id = p_utility_id)
+           AND (r.emittente_soggetto_ruolo_id IS NULL OR r.emittente_soggetto_ruolo_id = p_emittente_soggetto_ruolo_id)
+    ), candidati_validi AS (
+        SELECT * FROM candidati WHERE match_rank IS NOT NULL
+    ), candidati_ranked AS (
+        SELECT c.*,
+               row_number() OVER (ORDER BY c.match_rank, c.associazione_priorita, c.versione_priorita,
+                   c.valido_dal DESC, COALESCE(c.valido_al, 'infinity'::DATE) ASC,
+                   c.listino_id, c.listino_versione_id, c.listino_associazione_id, c.listino_riga_id) AS rn,
+               count(*) OVER (PARTITION BY c.match_rank, c.associazione_priorita, c.versione_priorita,
+                   c.valido_dal, COALESCE(c.valido_al, 'infinity'::DATE)) AS tie_count
+          FROM candidati_validi c
+    )
+    SELECT cr.listino_id, cr.listino_versione_id, cr.listino_riga_id,
+           cr.listino_associazione_id, cr.prezzo, cr.match_rank, cr.tie_count
+      INTO v_listino_id, v_listino_versione_id, v_listino_riga_id,
+           v_listino_associazione_id, v_prezzo, v_match_level, v_tie_count
+      FROM candidati_ranked cr WHERE cr.rn = 1;
 
-  IF p_data_riferimento IS NULL THEN
-    PERFORM script.fn_log_and_raise_error(
-      'vendite','fn_resolve_prezzo_listino','E_GENERICO',
-      jsonb_build_object('scope','LISTINI','severity','C','code','E_GENERICO','lotto_id',NULL,'fattura_id',NULL,'context',jsonb_build_object('detail','p_data_riferimento obbligatoria')),
-      NULL::uuid, 'p_data_riferimento obbligatoria'
-    );
-  END IF;
+    IF NOT FOUND THEN
+        PERFORM script.fn_log_and_raise_error('vendite', 'fn_resolve_prezzo_listino', 'E_PREZZO_LISTINO_NON_TROVATO',
+            jsonb_build_object('articolo_id', p_articolo_id, 'uom_id', p_uom_id, 'data_riferimento', p_data_riferimento,
+                'billing_account_id', p_billing_account_id, 'utility_id', p_utility_id, 'emittente', p_emittente_soggetto_ruolo_id),
+            NULL::uuid, p_articolo_id::text);
+    END IF;
 
-  IF p_billing_account_id IS NOT NULL AND p_billing_account_id <= 0 THEN
-    PERFORM script.fn_log_and_raise_error(
-      'vendite','fn_resolve_prezzo_listino','E_GENERICO',
-      jsonb_build_object('scope','LISTINI','severity','C','code','E_GENERICO','lotto_id',NULL,'fattura_id',NULL,'context',jsonb_build_object('detail','billing_account_id non valido','billing_account_id',p_billing_account_id)),
-      NULL::uuid, 'billing_account_id non valido'
-    );
-  END IF;
+    IF v_tie_count > 1 THEN
+        PERFORM script.fn_log_and_raise_error('vendite', 'fn_resolve_prezzo_listino', 'E_PREZZO_LISTINO_AMBIGUO',
+            jsonb_build_object('articolo_id', p_articolo_id, 'uom_id', p_uom_id, 'match_level', v_match_level, 'tie_count', v_tie_count),
+            NULL::uuid, p_articolo_id::text, v_tie_count::text);
+    END IF;
 
-  IF p_utility_id IS NOT NULL AND p_utility_id <= 0 THEN
-    PERFORM script.fn_log_and_raise_error(
-      'vendite','fn_resolve_prezzo_listino','E_GENERICO',
-      jsonb_build_object('scope','LISTINI','severity','C','code','E_GENERICO','lotto_id',NULL,'fattura_id',NULL,'context',jsonb_build_object('detail','utility_id non valido','utility_id',p_utility_id)),
-      NULL::uuid, 'utility_id non valido'
-    );
-  END IF;
-
-  IF p_emittente_soggetto_ruolo_id IS NOT NULL AND p_emittente_soggetto_ruolo_id <= 0 THEN
-    PERFORM script.fn_log_and_raise_error(
-      'vendite','fn_resolve_prezzo_listino','E_GENERICO',
-      jsonb_build_object('scope','LISTINI','severity','C','code','E_GENERICO','lotto_id',NULL,'fattura_id',NULL,'context',jsonb_build_object('detail','emittente_soggetto_ruolo_id non valido','emittente_soggetto_ruolo_id',p_emittente_soggetto_ruolo_id)),
-      NULL::uuid, 'emittente_soggetto_ruolo_id non valido'
-    );
-  END IF;
-
-  -- Unica esecuzione della CTE: row_number() per il vincitore,
-  -- count() OVER PARTITION per il tie-count semantico in un solo pass.
-  WITH candidati AS (
-    SELECT
-      l.id AS listino_id,
-      v.id AS listino_versione_id,
-      r.id AS listino_riga_id,
-      a.id AS listino_associazione_id,
-      r.prezzo,
-      a.priorita AS associazione_priorita,
-      v.priorita AS versione_priorita,
-      v.valido_dal,
-      v.valido_al,
-      CASE
-        WHEN p_billing_account_id IS NOT NULL
-         AND p_utility_id IS NOT NULL
-         AND p_emittente_soggetto_ruolo_id IS NOT NULL
-         AND r.billing_account_id = p_billing_account_id
-         AND r.utility_id = p_utility_id
-         AND r.emittente_soggetto_ruolo_id = p_emittente_soggetto_ruolo_id THEN 1
-        WHEN p_billing_account_id IS NOT NULL
-         AND p_utility_id IS NOT NULL
-         AND r.billing_account_id = p_billing_account_id
-         AND r.utility_id = p_utility_id
-         AND r.emittente_soggetto_ruolo_id IS NULL THEN 2
-        WHEN p_billing_account_id IS NOT NULL
-         AND p_utility_id IS NULL
-         AND p_emittente_soggetto_ruolo_id IS NOT NULL
-         AND r.billing_account_id = p_billing_account_id
-         AND r.utility_id IS NULL
-         AND r.emittente_soggetto_ruolo_id = p_emittente_soggetto_ruolo_id THEN 3
-        WHEN p_billing_account_id IS NOT NULL
-         AND p_utility_id IS NULL
-         AND r.billing_account_id = p_billing_account_id
-         AND r.utility_id IS NULL
-         AND r.emittente_soggetto_ruolo_id IS NULL THEN 4
-        WHEN p_utility_id IS NOT NULL
-         AND p_emittente_soggetto_ruolo_id IS NOT NULL
-         AND r.billing_account_id IS NULL
-         AND r.utility_id = p_utility_id
-         AND r.emittente_soggetto_ruolo_id = p_emittente_soggetto_ruolo_id THEN 5
-        WHEN p_utility_id IS NOT NULL
-         AND r.billing_account_id IS NULL
-         AND r.utility_id = p_utility_id
-         AND r.emittente_soggetto_ruolo_id IS NULL THEN 6
-        WHEN r.billing_account_id IS NULL
-         AND r.utility_id IS NULL
-         AND r.emittente_soggetto_ruolo_id IS NULL THEN 7
-        ELSE NULL
-      END AS match_rank
-    FROM vendite.listini_associazioni a
-    JOIN vendite.listini l
-      ON l.id = a.listino_id
-    JOIN vendite.listini_versioni v
-      ON v.listino_id = l.id
-    JOIN vendite.listini_righe r
-      ON r.listino_versione_id = v.id
-    WHERE a.attivo IS TRUE
-      AND l.attivo IS TRUE
-      AND v.attivo IS TRUE
-      AND v.stato = 'ATTIVA'
-      AND r.attivo IS TRUE
-      AND p_data_riferimento >= a.valido_dal
-      AND (a.valido_al IS NULL OR p_data_riferimento <= a.valido_al)
-      AND p_data_riferimento >= v.valido_dal
-      AND (v.valido_al IS NULL OR p_data_riferimento <= v.valido_al)
-      AND (a.billing_account_id IS NULL OR a.billing_account_id = p_billing_account_id)
-      AND (a.utility_id IS NULL OR a.utility_id = p_utility_id)
-      AND (a.emittente_soggetto_ruolo_id IS NULL OR a.emittente_soggetto_ruolo_id = p_emittente_soggetto_ruolo_id)
-      AND r.articolo_id = p_articolo_id
-      AND r.uom_id = p_uom_id
-      AND (r.billing_account_id IS NULL OR r.billing_account_id = p_billing_account_id)
-      AND (r.utility_id IS NULL OR r.utility_id = p_utility_id)
-      AND (r.emittente_soggetto_ruolo_id IS NULL OR r.emittente_soggetto_ruolo_id = p_emittente_soggetto_ruolo_id)
-  ),
-  candidati_validi AS (
-    SELECT * FROM candidati WHERE match_rank IS NOT NULL
-  ),
-  candidati_ranked AS (
-    SELECT
-      c.*,
-      row_number() OVER (
-        ORDER BY
-          c.match_rank,
-          c.associazione_priorita,
-          c.versione_priorita,
-          c.valido_dal DESC,
-          COALESCE(c.valido_al, 'infinity'::date) ASC,
-          c.listino_id,
-          c.listino_versione_id,
-          c.listino_associazione_id,
-          c.listino_riga_id
-      ) AS rn,
-      -- Conta i candidati con lo stesso livello semantico del vincitore:
-      -- se > 1, il resolver non puo` scegliere deterministicamente.
-      count(*) OVER (
-        PARTITION BY
-          c.match_rank,
-          c.associazione_priorita,
-          c.versione_priorita,
-          c.valido_dal,
-          COALESCE(c.valido_al, 'infinity'::date)
-      ) AS tie_count
-    FROM candidati_validi c
-  )
-  SELECT
-    cr.listino_id,
-    cr.listino_versione_id,
-    cr.listino_riga_id,
-    cr.listino_associazione_id,
-    cr.prezzo,
-    cr.match_rank,
-    cr.tie_count
-  INTO
-    v_listino_id,
-    v_listino_versione_id,
-    v_listino_riga_id,
-    v_listino_associazione_id,
-    v_prezzo,
-    v_match_level,
-    v_tie_count
-  FROM candidati_ranked cr
-  WHERE cr.rn = 1;
-
-  IF NOT FOUND THEN
-    PERFORM script.fn_log_and_raise_error(
-      'vendite','fn_resolve_prezzo_listino','E_GENERICO',
-      jsonb_build_object(
-        'scope','LISTINI','severity','C','code','PRICE_NOT_FOUND',
-        'lotto_id',NULL,'fattura_id',NULL,
-        'context',jsonb_build_object(
-          'detail','Nessun prezzo listino risolto',
-          'articolo_id',p_articolo_id,
-          'uom_id',p_uom_id,
-          'data_riferimento',p_data_riferimento,
-          'billing_account_id',p_billing_account_id,
-          'utility_id',p_utility_id,
-          'emittente_soggetto_ruolo_id',p_emittente_soggetto_ruolo_id
-        )
-      ),
-      NULL::uuid, 'Nessun prezzo listino risolto'
-    );
-  END IF;
-
-  IF v_tie_count > 1 THEN
-    PERFORM script.fn_log_and_raise_error(
-      'vendite','fn_resolve_prezzo_listino','E_GENERICO',
-      jsonb_build_object(
-        'scope','LISTINI','severity','C','code','AMBIGUOUS_PRICE_MATCH',
-        'lotto_id',NULL,'fattura_id',NULL,
-        'context',jsonb_build_object(
-          'detail','Pareggio totale resolver prezzi',
-          'articolo_id',p_articolo_id,
-          'uom_id',p_uom_id,
-          'data_riferimento',p_data_riferimento,
-          'billing_account_id',p_billing_account_id,
-          'utility_id',p_utility_id,
-          'emittente_soggetto_ruolo_id',p_emittente_soggetto_ruolo_id,
-          'match_level',v_match_level,
-          'tie_count',v_tie_count
-        )
-      ),
-      NULL::uuid, 'AMBIGUOUS_PRICE_MATCH: pareggio totale resolver prezzi'
-    );
-  END IF;
-
-  RETURN QUERY
-  SELECT
-    v_listino_id,
-    v_listino_versione_id,
-    v_listino_riga_id,
-    v_listino_associazione_id,
-    v_prezzo,
-    v_match_level;
-END
+    RETURN QUERY SELECT v_listino_id, v_listino_versione_id, v_listino_riga_id, v_listino_associazione_id, v_prezzo, v_match_level;
+END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_resolve_prezzo_listino(p_articolo_id uuid, p_uom_id bigint, p_data_riferimento date, p_billing_account_id bigint, p_utility_id integer, p_emittente_soggetto_ruolo_id bigint)
-IS 'Risoluzione prezzo listino per articolo/uom/data con precedenze utility/non-utility, tie-break multi-listino e gestione ambiguita. CTE eseguita una sola volta con tie_count via window function.';
+IS 'Resolver prezzo listino con precedenze utility/non-utility, tie-break e gestione ambiguita.';
 ```
 
 ---

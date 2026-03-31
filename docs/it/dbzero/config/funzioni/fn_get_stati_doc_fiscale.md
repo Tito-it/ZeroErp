@@ -13,62 +13,56 @@ CREATE OR REPLACE FUNCTION config.fn_get_stati_doc_fiscale(p_target text, p_from
  LANGUAGE plpgsql
 AS $function$
 DECLARE
-  v_target text := upper(btrim(p_target));
+    v_target TEXT := upper(btrim(p_target));
 BEGIN
-  -- =========================================================
-  -- Scopo:
-  --   Restituisce gli stati doc_fiscale validi per LOTTO o
-  --   FATTURA, con eventuale filtro sulle transizioni ammesse.
-  --
-  -- Regole:
-  --   - Se p_from_id IS NULL: tutti gli stati applicabili.
-  --   - Se p_from_id valorizzato: solo transizioni ammesse.
-  -- =========================================================
-  IF v_target NOT IN ('LOTTO','FATTURA') THEN
-    PERFORM script.fn_log_and_raise_error(
-      'config',
-      'fn_get_stati_doc_fiscale',
-      'E_GENERICO',
-      jsonb_build_object(
-        'detail','Target non valido',
-        'target', p_target
-      ),
-      NULL::uuid,
-      'Target non valido (usa LOTTO o FATTURA)'
-    );
-  END IF;
+    -- Guard: target valido
+    IF v_target NOT IN ('LOTTO', 'FATTURA') THEN
+        PERFORM script.fn_log_and_raise_error(
+            'config',
+            'fn_get_stati_doc_fiscale',
+            'E_PARAMETRO_INVALIDO',
+            jsonb_build_object(
+                'parametro', 'p_target',
+                'valore', p_target
+            ),
+            NULL::uuid,
+            concat('p_target=', coalesce(p_target, 'NULL'), ' (ammessi: LOTTO, FATTURA)')
+        );
+    END IF;
 
-  IF p_from_id IS NULL THEN
+    -- Senza filtro: tutti gli stati applicabili
+    IF p_from_id IS NULL THEN
+        RETURN QUERY
+        SELECT s.*
+          FROM config.stati_doc_fiscale s
+         WHERE s.attivo
+           AND (
+             (v_target = 'LOTTO'   AND s.applica_lotto) OR
+             (v_target = 'FATTURA' AND s.applica_fattura)
+           )
+         ORDER BY s.ordine NULLS LAST, s.id;
+        RETURN;
+    END IF;
+
+    -- Con filtro: solo transizioni ammesse
     RETURN QUERY
     SELECT s.*
-    FROM config.stati_doc_fiscale s
-    WHERE s.attivo
-      AND (
-        (v_target = 'LOTTO'   AND s.applica_lotto) OR
-        (v_target = 'FATTURA' AND s.applica_fattura)
-      )
-    ORDER BY s.ordine NULLS LAST, s.id;
-    RETURN;
-  END IF;
-
-  RETURN QUERY
-  SELECT s.*
-  FROM config.stati_doc_fiscale_transizioni t
-  JOIN config.stati_doc_fiscale s
-    ON s.id = t.stato_to_id
-  WHERE t.ammesso
-    AND t.stato_from_id = p_from_id
-    AND (
-      (v_target = 'LOTTO'   AND t.solo_fattura = false) OR
-      (v_target = 'FATTURA' AND t.solo_lotto = false)
-    )
-    AND (
-      (v_target = 'LOTTO'   AND s.applica_lotto) OR
-      (v_target = 'FATTURA' AND s.applica_fattura)
-    )
-    AND s.attivo
-  ORDER BY s.ordine NULLS LAST, s.id;
-END
+      FROM config.stati_doc_fiscale_transizioni t
+      JOIN config.stati_doc_fiscale s
+        ON s.id = t.stato_to_id
+     WHERE t.ammesso
+       AND t.stato_from_id = p_from_id
+       AND (
+         (v_target = 'LOTTO'   AND t.solo_fattura = false) OR
+         (v_target = 'FATTURA' AND t.solo_lotto = false)
+       )
+       AND (
+         (v_target = 'LOTTO'   AND s.applica_lotto) OR
+         (v_target = 'FATTURA' AND s.applica_fattura)
+       )
+       AND s.attivo
+     ORDER BY s.ordine NULLS LAST, s.id;
+END;
 $function$
 
 COMMENT ON FUNCTION config.fn_get_stati_doc_fiscale(p_target text, p_from_id bigint)

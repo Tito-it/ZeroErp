@@ -1,6 +1,8 @@
 # Area 'pratiche' (Backend)
 
 ## API
+- [api_coda_lavoro](manual/api_coda_lavoro.md) — Esporre via HTTP la coda di lavoro dell'operatore autenticato, organizzata su tre livelli di priorita': flussi assegnati, flussi per competenza, flussi del reparto.
+- [api_competenze_flussi](manual/api_competenze_flussi.md) — Esporre via HTTP la gestione della matrice competenze flussi: per ogni tipo di flusso e reparto, quali operatori sono abilitati a eseguire il flusso. Configurazione statica gestita dall'amministratore.
 - [api_flussi_list](manual/api_flussi_list.md) — Esporre via HTTP la lista e la creazione dei flussi di una pratica.
 - [api_flusso_canali](manual/api_flusso_canali.md) — Esporre via HTTP i canali abilitati per il template del flusso.
 - [api_flusso_detail](manual/api_flusso_detail.md) — Esporre via HTTP il dettaglio di un flusso con verifica ownership pratica.
@@ -22,6 +24,7 @@
 - [api_pratiche_generate](manual/api_pratiche_generate.md) — Esporre via HTTP le pratiche generate da un flusso.
 - [api_pratiche_list](manual/api_pratiche_list.md) — Esporre via HTTP l'elenco paginato delle pratiche con filtri e la creazione di nuove pratiche.
 - [api_pratiche_note](manual/api_pratiche_note.md) — Esporre via HTTP il CRUD note associate a una pratica. Le note sono annotazioni testuali con tipo (GENERALE, INTERNA, CLIENTE, TECNICA, LEGALE) registrate nel giornale automaticamente dal trigger DB.
+- [api_prendi_in_carico](manual/api_prendi_in_carico.md) — Esporre via HTTP la presa in carico di un flusso DA_ESEGUIRE da parte dell'operatore autenticato.
 - [api_regole_generazione](manual/api_regole_generazione.md) — Esporre via HTTP le regole di generazione cross-pratica applicabili a un flusso.
 
 ## Altri contenuti

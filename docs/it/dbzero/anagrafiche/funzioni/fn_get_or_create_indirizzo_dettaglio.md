@@ -15,31 +15,7 @@ AS $function$
 DECLARE
     v_id  anagrafiche.indirizzi_dettaglio.id%TYPE;
 BEGIN
-    -- =========================================================
-    -- Scopo:
-    --   Upsert indirizzo dettaglio (civico normalizzato).
-    --   Cerca per chiave naturale; se non esiste, lo crea.
-    --   Il vincolo uq_indirizzi_dettaglio_norm garantisce
-    --   la deduplicazione.
-    --
-    -- Parametri:
-    --   p_stradario_id:      obbligatorio — via locale
-    --   p_civico..p_interno: opzionali — dettagli civico
-    --
-    -- Restituisce:
-    --   indirizzi_dettaglio.id (bigint)
-    --
-    -- Trigger coinvolti (INSERT):
-    --   trgfn_indirizzi_dettaglio_normalize (via_norm, civico_norm,
-    --     indirizzo_normalizzato)
-    --   trgfn_audit_data_user_generic
-    --   trgfn_tx_id_managed
-    -- =========================================================
-
-    -- =============================================================
     -- Guard: p_stradario_id obbligatorio
-    -- =============================================================
-
     IF p_stradario_id IS NULL OR p_stradario_id <= 0 THEN
         PERFORM script.fn_log_and_raise_error(
             'database', 'anagrafiche.fn_get_or_create_indirizzo_dettaglio',
@@ -51,30 +27,22 @@ BEGIN
         );
     END IF;
 
-    -- =============================================================
     -- Guard: verificare che lo stradario esista
-    -- =============================================================
-
     IF NOT EXISTS (
         SELECT 1 FROM config.stradario WHERE id = p_stradario_id
     ) THEN
+        -- Fix: E_GENERICO → E_CODICE
         PERFORM script.fn_log_and_raise_error(
             'database', 'anagrafiche.fn_get_or_create_indirizzo_dettaglio',
-            'E_GENERICO',
+            'E_CODICE',
             jsonb_build_object('stradario_id', p_stradario_id),
             NULL::uuid,
-            concat('Stradario id=', p_stradario_id, ' non trovato in config.stradario.')
+            p_stradario_id::text, 'config.stradario'
         );
     END IF;
 
-    -- =============================================================
     -- Ricerca per chiave naturale
-    -- Allineata al vincolo uq_indirizzi_dettaglio_norm:
-    --   (stradario_id, civico, COALESCE(estensione_civico,''),
-    --    COALESCE(palazzina,''), COALESCE(scala,''),
-    --    COALESCE(piano,''), COALESCE(interno,''))
-    -- =============================================================
-
+    -- Allineata al vincolo uq_indirizzi_dettaglio_norm
     SELECT id INTO v_id
     FROM anagrafiche.indirizzi_dettaglio
     WHERE stradario_id = p_stradario_id
@@ -90,12 +58,16 @@ BEGIN
         RETURN v_id;
     END IF;
 
-    -- =============================================================
     -- Creazione nuovo civico
     -- I trigger calcolano: via_norm, civico_norm,
     -- indirizzo_normalizzato, audit, tx_id
-    -- =============================================================
-
+    --
+    -- NOTA: la query di ricerca per chiave naturale e' volutamente
+    -- duplicata nel blocco EXCEPTION WHEN unique_violation.
+    -- Scelta progettuale: il pattern SELECT → INSERT → ri-SELECT
+    -- e' piu' leggibile e manutenibile rispetto a INSERT ON CONFLICT
+    -- DO NOTHING + fallback, e il caso race condition e' raro.
+    -- Se la chiave naturale cambia, aggiornare entrambe le SELECT.
     BEGIN
         INSERT INTO anagrafiche.indirizzi_dettaglio (
             stradario_id, civico, estensione_civico,
@@ -128,7 +100,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION anagrafiche.fn_get_or_create_indirizzo_dettaglio(p_stradario_id integer, p_civico integer, p_estensione_civico character varying, p_palazzina character varying, p_scala character varying, p_piano character varying, p_interno character varying)
-IS 'Building block: upsert indirizzo dettaglio (civico). Cerca per chiave naturale (stradario_id + civico + estensione + palazzina + scala + piano + interno), crea se non esiste. Gestisce race condition. Riusabile da orchestratori.';
+IS 'Building block: upsert indirizzo dettaglio (civico). Cerca per chiave naturale, crea se non esiste. Gestisce race condition. Riusabile da orchestratori.';
 ```
 
 ---

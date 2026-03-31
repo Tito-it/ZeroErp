@@ -1,0 +1,143 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+#
+# Fix: fn_guard_utility_tipo_ruolo
+# Sostituisce E_GENERICO con E_UTILITY_RUOLO_NON_AMMESSO.
+# Aggiunge %TYPE ai parametri.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+    - logicalFilePath: migrations_v2/20_code/script/20260331-04-fix-fn-guard-utility-tipo-ruolo-e-generico-mctit.yaml
+
+    - changeSet:
+          id: 20260331-04-fix-fn-guard-utility-tipo-ruolo
+          author: mctit
+          runOnChange: true
+          comment: >
+              Fix fn_guard_utility_tipo_ruolo: E_GENERICO →
+              E_UTILITY_RUOLO_NON_AMMESSO. %TYPE sui parametri.
+          changes:
+              - sql:
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+                        -- ==========================================================
+                        -- fn_guard_utility_tipo_ruolo
+                        --
+                        -- Scopo: guard fail-fast per la matrice utility → tipo_ruolo.
+                        --        Se la matrice config.utilities_tipi_ruolo ha righe
+                        --        attive/valide per la utility, il tipo ruolo deve
+                        --        essere esplicitamente ammesso. Se la matrice non
+                        --        esiste per la utility → fail-open (nessun vincolo).
+                        --
+                        -- Regole:
+                        --   - p_utility_id, p_tipo_ruolo_id obbligatori e > 0
+                        --   - Fail-open se nessuna riga attiva/valida per la utility
+                        --   - Fail-close se matrice presente e ruolo non ammesso
+                        --
+                        -- Fix 20260331: E_GENERICO → E_UTILITY_RUOLO_NON_AMMESSO
+                        -- ==========================================================
+                        CREATE OR REPLACE FUNCTION script.fn_guard_utility_tipo_ruolo(
+                            p_utility_id    config.utilities.id%TYPE,
+                            p_tipo_ruolo_id config.tipi_ruoli.id%TYPE,
+                            p_context       TEXT DEFAULT NULL
+                        )
+                        RETURNS void
+                        LANGUAGE plpgsql
+                        AS $function$
+                        DECLARE
+                            v_has_matrix BOOLEAN := false;
+                            v_is_allowed BOOLEAN := false;
+                        BEGIN
+                            -- Guard: parametri obbligatori e > 0
+                            IF p_utility_id IS NULL OR p_utility_id <= 0 THEN
+                                PERFORM script.fn_log_and_raise_error(
+                                    'database',
+                                    'script.fn_guard_utility_tipo_ruolo',
+                                    'ERRORE_PARAMETRI',
+                                    jsonb_build_object(
+                                        'detail', 'p_utility_id obbligatorio e > 0',
+                                        'p_utility_id', p_utility_id,
+                                        'context', p_context
+                                    ),
+                                    NULL::uuid,
+                                    concat('p_utility_id non valido: ', p_utility_id::text, ' context: ', p_context)
+                                );
+                            END IF;
+
+                            IF p_tipo_ruolo_id IS NULL OR p_tipo_ruolo_id <= 0 THEN
+                                PERFORM script.fn_log_and_raise_error(
+                                    'database',
+                                    'script.fn_guard_utility_tipo_ruolo',
+                                    'ERRORE_PARAMETRI',
+                                    jsonb_build_object(
+                                        'detail', 'p_tipo_ruolo_id obbligatorio e > 0',
+                                        'p_tipo_ruolo_id', p_tipo_ruolo_id,
+                                        'context', p_context
+                                    ),
+                                    NULL::uuid,
+                                    concat('p_tipo_ruolo_id non valido: ', p_tipo_ruolo_id::text, ' context: ', p_context)
+                                );
+                            END IF;
+
+                            -- NOTA: le due query EXISTS sulla matrice hanno condizioni
+                            -- identiche tranne tipo_ruolo_id. Scelta progettuale: si
+                            -- mantengono separate per rendere esplicito il pattern a 2 step
+                            -- (1: la matrice esiste? → fail-open se no; 2: il ruolo e'
+                            -- ammesso? → fail-close se no). Unificarle in una sola query
+                            -- con FILTER peggiorerebbe la leggibilita' senza beneficio
+                            -- prestazionale (tabella config con poche righe).
+
+                            -- 1) Esiste matrice attiva/valida per utility?
+                            SELECT EXISTS (
+                                SELECT 1
+                                  FROM config.utilities_tipi_ruolo m
+                                 WHERE m.utility_id = p_utility_id
+                                   AND m.attivo = true
+                                   AND (m.valido_dal IS NULL OR m.valido_dal <= CURRENT_DATE)
+                                   AND (m.valido_al IS NULL OR m.valido_al >= CURRENT_DATE)
+                            )
+                            INTO v_has_matrix;
+
+                            -- Fail-open: nessuna regola attiva/valida → nessun vincolo
+                            IF NOT v_has_matrix THEN
+                                RETURN;
+                            END IF;
+
+                            -- 2) Matrice presente: il ruolo deve essere esplicitamente ammesso
+                            SELECT EXISTS (
+                                SELECT 1
+                                  FROM config.utilities_tipi_ruolo m
+                                 WHERE m.utility_id = p_utility_id
+                                   AND m.tipo_ruolo_id = p_tipo_ruolo_id
+                                   AND m.attivo = true
+                                   AND (m.valido_dal IS NULL OR m.valido_dal <= CURRENT_DATE)
+                                   AND (m.valido_al IS NULL OR m.valido_al >= CURRENT_DATE)
+                            )
+                            INTO v_is_allowed;
+
+                            IF NOT v_is_allowed THEN
+                                -- Fix: E_GENERICO → E_UTILITY_RUOLO_NON_AMMESSO
+                                PERFORM script.fn_log_and_raise_error(
+                                    'database',
+                                    'script.fn_guard_utility_tipo_ruolo',
+                                    'E_UTILITY_RUOLO_NON_AMMESSO',
+                                    jsonb_build_object(
+                                        'utility_id', p_utility_id,
+                                        'tipo_ruolo_id', p_tipo_ruolo_id,
+                                        'context', p_context
+                                    ),
+                                    NULL::uuid,
+                                    p_tipo_ruolo_id::text,
+                                    p_utility_id::text
+                                );
+                            END IF;
+                        END;
+                        $function$;
+
+                        COMMENT ON FUNCTION script.fn_guard_utility_tipo_ruolo(
+                            config.utilities.id%TYPE,
+                            config.tipi_ruoli.id%TYPE,
+                            TEXT
+                        ) IS 'Guard utility→tipo_ruolo: fail-open se matrice assente; fail-close se presente e ruolo non ammesso. Errore: E_UTILITY_RUOLO_NON_AMMESSO.';

@@ -1,0 +1,32 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+#
+# SKIP: fn_set_runtime_task_run_esito
+# Dipende da vendite.attivita_fatturabili_lotti (tabella rimossa).
+# Da verificare se la funzione va rimossa dal DB.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+    - logicalFilePath: migrations_v2/20_code/vendite/20260331-25-skip-fn-set-runtime-task-run-esito-mctit.yaml
+
+    - changeSet:
+          id: 20260331-25-skip-fn-set-runtime-task-run-esito
+          author: mctit
+          comment: >
+              SKIP: fn_set_runtime_task_run_esito dipende da
+              vendite.attivita_fatturabili_lotti che non esiste piu'.
+              Non viene rigenerata. Da verificare rimozione.
+          preConditions:
+              - onFail: MARK_RAN
+              - tableExists:
+                    schemaName: vendite
+                    tableName: attivita_fatturabili_lotti
+          changes:
+              - sql:
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+                        -- Placeholder: changeset eseguito solo se la tabella esiste.
+                        -- Se la tabella non esiste, il changeset viene marcato MARK_RAN.
+                        SELECT 1;

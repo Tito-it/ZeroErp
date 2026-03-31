@@ -12,150 +12,70 @@ CREATE OR REPLACE FUNCTION vendite.fn_resolve_termini_pagamento(p_fattura_id big
  LANGUAGE plpgsql
 AS $function$
 DECLARE
-  v_tp_fattura config.termini_pagamento.id%TYPE;
-  v_tp_cliente config.termini_pagamento.id%TYPE;
-  v_tp_default config.termini_pagamento.id%TYPE;
+    v_tp_fattura config.termini_pagamento.id%TYPE;
+    v_tp_cliente config.termini_pagamento.id%TYPE;
+    v_tp_default config.termini_pagamento.id%TYPE;
 BEGIN
-  -- =========================================================
-  -- Scopo:
-  --   Determina termini_pagamento_id per fattura o insieme attivita'.
-  --
-  -- Priorita':
-  --   1) termini gia' presenti in fattura
-  --   2) termini derivati da sorgente attivita' (ordine/preventivo/contratto)
-  --   3) termini cliente via billing account
-  --   4) default config.termini_pagamento (TP_1RATA)
-  -- =========================================================
-
-  -- 1) Se la fattura ha già il termine, usa quello
-  IF p_fattura_id IS NOT NULL THEN
-    IF p_fattura_id <= 0 THEN
-      PERFORM script.fn_log_and_raise_error(
-        'vendite', 'fn_resolve_termini_pagamento', 'E_GENERICO',
-        jsonb_build_object(
-          'scope','FATTURA',
-          'severity','C',
-          'code','E_GENERICO',
-          'lotto_id', NULL,
-          'fattura_id', p_fattura_id,
-          'context', jsonb_build_object('detail','fattura_id non valido')
-        ),
-        NULL::uuid,
-        'fattura_id non valido'
-      );
+    -- Guard
+    IF p_fattura_id IS NOT NULL AND p_fattura_id <= 0 THEN
+        PERFORM script.fn_log_and_raise_error('vendite', 'fn_resolve_termini_pagamento', 'E_PARAMETRO_INVALIDO',
+            jsonb_build_object('parametro', 'p_fattura_id', 'valore', p_fattura_id), NULL::uuid, 'p_fattura_id se fornito deve essere > 0');
     END IF;
 
-    SELECT f.termini_pagamento_id
-      INTO v_tp_fattura
-    FROM vendite.fatture f
-    WHERE f.id = p_fattura_id;
-
-    IF v_tp_fattura IS NOT NULL THEN
-      RETURN QUERY SELECT v_tp_fattura, ARRAY[v_tp_fattura]::BIGINT[];
-      RETURN;
-    END IF;
-  END IF;
-
-  -- 2) Se passo attività, risalgo alla testata sorgente (no righe)
-  IF p_attivita_ids IS NOT NULL AND array_length(p_attivita_ids,1) > 0 THEN
-    RETURN QUERY
-    WITH sorg AS (
-      SELECT a.id,
-            s.codice_interno AS src_code,
-            a.sorgente_uid
-      FROM vendite.attivita_fatturabili a
-      JOIN config.sorgenti s ON s.id = a.sorgente_tipo_id
-      WHERE a.id = ANY(p_attivita_ids)
-    ),
-    terms AS (
-      SELECT DISTINCT
-        CASE
-          WHEN src.src_code = 'ORDINE_VENDITA' THEN o.termini_pagamento_id
-          WHEN src.src_code = 'PREVENTIVO'     THEN p.termini_pagamento_id
-          WHEN src.src_code = 'CONTRATTO'      THEN c.termini_pagamento_id
-          ELSE NULL
-        END AS tp_id
-      FROM sorg src
-      LEFT JOIN vendite.ordini     o ON (src.src_code='ORDINE_VENDITA' AND src.sorgente_uid = o.uid)
-      LEFT JOIN vendite.preventivi p ON (src.src_code='PREVENTIVO'     AND src.sorgente_uid = p.uid)
-      LEFT JOIN vendite.contratti  c ON (src.src_code='CONTRATTO'      AND src.sorgente_uid = c.uid)
-    ),
-    agg AS (
-      SELECT ARRAY_REMOVE(ARRAY_AGG(DISTINCT tp_id), NULL) AS termini
-      FROM terms
-    )
-    SELECT
-      CASE WHEN array_length(termini,1) = 1 THEN termini[1] ELSE NULL END AS termini_pagamento_id,
-      COALESCE(termini, ARRAY[]::BIGINT[]) AS termini_distinti
-    FROM agg;
-
-    IF FOUND THEN
-      -- Con un solo valore o con split richiesto, il chiamante gestisce.
-      -- Con array vuoto, procede fallback cliente/default.
-    END IF;
-  END IF;
-
-  -- 3) Fallback su cliente via BA
-  IF p_billing_account_id IS NOT NULL THEN
-    IF p_billing_account_id <= 0 THEN
-      PERFORM script.fn_log_and_raise_error(
-        'vendite', 'fn_resolve_termini_pagamento', 'E_GENERICO',
-        jsonb_build_object(
-          'scope','FATTURA',
-          'severity','C',
-          'code','E_GENERICO',
-          'lotto_id', NULL,
-          'fattura_id', p_fattura_id,
-          'context', jsonb_build_object('detail','billing_account_id non valido', 'billing_account_id', p_billing_account_id)
-        ),
-        NULL::uuid,
-        'billing_account_id non valido'
-      );
+    -- 1) Termine dalla fattura
+    IF p_fattura_id IS NOT NULL THEN
+        SELECT f.termini_pagamento_id INTO v_tp_fattura FROM vendite.fatture f WHERE f.id = p_fattura_id;
+        IF v_tp_fattura IS NOT NULL THEN
+            RETURN QUERY SELECT v_tp_fattura, ARRAY[v_tp_fattura]::BIGINT[];
+            RETURN;
+        END IF;
     END IF;
 
-    SELECT c.termini_pagamento_id
-      INTO v_tp_cliente
-    FROM anagrafiche.clienti c
-    JOIN anagrafiche.billing_account ba ON ba.cliente_id = c.id
-    WHERE ba.id = p_billing_account_id;
-
-    IF v_tp_cliente IS NOT NULL THEN
-      RETURN QUERY SELECT v_tp_cliente, ARRAY[v_tp_cliente]::BIGINT[];
-      RETURN;
+    -- 2) Termine dalla sorgente attivita'
+    IF p_attivita_ids IS NOT NULL AND array_length(p_attivita_ids, 1) > 0 THEN
+        RETURN QUERY
+        WITH sorg AS (
+            SELECT a.id, s.codice_interno AS src_code, a.sorgente_uid
+              FROM vendite.attivita_fatturabili a
+              JOIN config.sorgenti s ON s.id = a.sorgente_tipo_id
+             WHERE a.id = ANY(p_attivita_ids)
+        ), terms AS (
+            SELECT DISTINCT CASE
+                WHEN src.src_code = 'ORDINE_VENDITA' THEN o.termini_pagamento_id
+                WHEN src.src_code = 'PREVENTIVO'     THEN p.termini_pagamento_id
+                WHEN src.src_code = 'CONTRATTO'      THEN c.termini_pagamento_id
+                ELSE NULL END AS tp_id
+              FROM sorg src
+              LEFT JOIN vendite.ordini     o ON (src.src_code='ORDINE_VENDITA' AND src.sorgente_uid = o.uid)
+              LEFT JOIN vendite.preventivi p ON (src.src_code='PREVENTIVO'     AND src.sorgente_uid = p.uid)
+              LEFT JOIN vendite.contratti  c ON (src.src_code='CONTRATTO'      AND src.sorgente_uid = c.uid)
+        ), agg AS (
+            SELECT ARRAY_REMOVE(ARRAY_AGG(DISTINCT tp_id), NULL) AS termini FROM terms
+        )
+        SELECT CASE WHEN array_length(agg.termini, 1) = 1 THEN agg.termini[1] ELSE NULL END, agg.termini FROM agg;
+        RETURN;
     END IF;
-  END IF;
 
-  -- 4) Default 'TP_1RATA'
-  SELECT tp.id
-    INTO v_tp_default
-    FROM config.termini_pagamento tp
-   WHERE tp.codice_interno = 'TP_1RATA'
-     AND tp.attivo IS TRUE
-   LIMIT 1;
+    -- 3) Termine dal cliente (billing account)
+    IF p_billing_account_id IS NOT NULL THEN
+        SELECT cl.termine_pagamento_id INTO v_tp_cliente
+          FROM anagrafiche.clienti cl
+          JOIN anagrafiche.billing_account ba ON ba.id = p_billing_account_id
+         WHERE cl.billing_account_id = ba.id LIMIT 1;
+        IF v_tp_cliente IS NOT NULL THEN
+            RETURN QUERY SELECT v_tp_cliente, ARRAY[v_tp_cliente]::BIGINT[];
+            RETURN;
+        END IF;
+    END IF;
 
-  IF v_tp_default IS NULL THEN
-    PERFORM script.fn_log_and_raise_error(
-      'vendite', 'fn_resolve_termini_pagamento', 'E_GENERICO',
-      jsonb_build_object(
-        'scope','FATTURA',
-        'severity','C',
-        'code','E_GENERICO',
-        'lotto_id', NULL,
-        'fattura_id', p_fattura_id,
-        'context', jsonb_build_object('detail','Termine di pagamento TP_1RATA non configurato')
-      ),
-      NULL::uuid,
-      'Termine di pagamento TP_1RATA non configurato'
-    );
-  END IF;
-
-  RETURN QUERY
-  SELECT v_tp_default, ARRAY[v_tp_default]::bigint[];
+    -- 4) Default TP_1RATA
+    SELECT tp.id INTO v_tp_default FROM config.termini_pagamento tp WHERE tp.codice_interno = 'TP_1RATA' AND tp.attivo IS TRUE LIMIT 1;
+    RETURN QUERY SELECT v_tp_default, ARRAY_REMOVE(ARRAY[v_tp_default], NULL)::BIGINT[];
 END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_resolve_termini_pagamento(p_fattura_id bigint, p_billing_account_id bigint, p_attivita_ids bigint[])
-IS 'Risoluzione termini pagamento con fallback: fattura, sorgenti attivita, cliente BA e default TP_1RATA.';
+IS 'Risolve termini_pagamento: fattura → sorgente attivita → cliente → default TP_1RATA.';
 ```
 
 ---

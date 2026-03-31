@@ -13,38 +13,25 @@ CREATE OR REPLACE FUNCTION vendite.fn_list_lotto_task_runs(p_lotto_id bigint, p_
  LANGUAGE plpgsql
 AS $function$
 BEGIN
-  -- =========================================================
-  -- Scopo:
-  --   Elenca i task run del lotto (filtri opzionali).
-  -- =========================================================
-  IF p_lotto_id IS NULL OR p_lotto_id <= 0 THEN
-    PERFORM script.fn_log_and_raise_error(
-      'vendite', 'fn_list_lotto_task_runs', 'E_GENERICO',
-      jsonb_build_object(
-        'scope','LOTTO','severity','C','code','E_GENERICO',
-        'lotto_id',p_lotto_id,'fattura_id',NULL,
-        'context',jsonb_build_object('detail','lotto_id obbligatorio','lotto_id',p_lotto_id)
-      ),
-      NULL::uuid,
-      'lotto_id obbligatorio'
-    );
-  END IF;
+    IF p_lotto_id IS NULL OR p_lotto_id <= 0 THEN
+        PERFORM script.fn_log_and_raise_error('vendite', 'fn_list_lotto_task_runs', 'E_PARAMETRO_INVALIDO',
+            jsonb_build_object('parametro', 'p_lotto_id', 'valore', p_lotto_id), NULL::uuid, 'p_lotto_id obbligatorio e > 0');
+    END IF;
 
-  RETURN QUERY
-  SELECT
-    r.id, r.lotto_id, r.pipeline_id, r.stato_doc_fiscale_id,
-    r.task_code, r.fase, r.tentativo, r.task_stato,
-    r.started_at, r.ended_at, r.error_code, r.error_message, r.meta
-  FROM vendite.fatturazione_lotti_task_runs r
-  WHERE r.lotto_id = p_lotto_id
-    AND (p_stato_doc_fiscale_id IS NULL OR r.stato_doc_fiscale_id = p_stato_doc_fiscale_id::integer)
-    AND (p_task_code IS NULL OR r.task_code = p_task_code)
-  ORDER BY r.started_at ASC, r.id ASC;
-END
+    RETURN QUERY
+    SELECT r.id, r.lotto_id, r.pipeline_id, r.stato_doc_fiscale_id,
+           r.task_code, r.fase, r.tentativo, r.task_stato,
+           r.started_at, r.ended_at, r.error_code, r.error_message, r.meta
+      FROM vendite.fatturazione_lotti_task_runs r
+     WHERE r.lotto_id = p_lotto_id
+       AND (p_stato_doc_fiscale_id IS NULL OR r.stato_doc_fiscale_id = p_stato_doc_fiscale_id::INTEGER)
+       AND (p_task_code IS NULL OR r.task_code = p_task_code)
+     ORDER BY r.started_at ASC, r.id ASC;
+END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_list_lotto_task_runs(p_lotto_id bigint, p_stato_doc_fiscale_id bigint, p_task_code character varying)
-IS 'Elenca i task run associati al lotto, con filtri opzionali per stato/task.';
+IS 'Task run del lotto con filtri opzionali per stato/task.';
 ```
 
 ---
