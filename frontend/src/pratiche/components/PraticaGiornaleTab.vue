@@ -6,6 +6,7 @@ import { ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { fetchGiornale } from '../api/pratiche-api'
 import { displayDate } from '../../core/utils/date'
+import { azioneGiornaleStyle } from '../../core/utils/severity'
 import Tag from 'primevue/tag'
 
 const { t } = useI18n()
@@ -17,23 +18,8 @@ const props = defineProps({
 const eventi = ref([])
 const loading = ref(false)
 
-// Scopo: Mappa azione giornale a severity e icona.
-function azioneStyle(azione) {
-  const map = {
-    CREAZIONE: { severity: 'info', icon: 'pi pi-plus-circle' },
-    CAMBIO_STATO: { severity: 'warn', icon: 'pi pi-sync' },
-    ASSEGNAZIONE: { severity: 'secondary', icon: 'pi pi-user' },
-    CAMBIO_PRIORITA: { severity: 'secondary', icon: 'pi pi-flag' },
-    NOTA: { severity: 'secondary', icon: 'pi pi-comment' },
-    ALLEGATO: { severity: 'secondary', icon: 'pi pi-paperclip' },
-    SOSPENSIONE: { severity: 'warn', icon: 'pi pi-pause' },
-    RIATTIVAZIONE: { severity: 'success', icon: 'pi pi-play' },
-    CREAZIONE_FLUSSO: { severity: 'info', icon: 'pi pi-sitemap' },
-    CAMBIO_STATO_FLUSSO: { severity: 'warn', icon: 'pi pi-sync' },
-    GENERAZIONE: { severity: 'info', icon: 'pi pi-copy' },
-  }
-  return map[(azione || '').trim()] || { severity: 'secondary', icon: 'pi pi-circle' }
-}
+// Alias locale per brevita' nel template.
+const azioneStyle = azioneGiornaleStyle
 
 // Scopo: Formatta il dettaglio JSON in testo leggibile.
 function formatDettaglio(dettaglio) {

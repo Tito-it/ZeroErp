@@ -23,7 +23,7 @@ from rest_framework.permissions import AllowAny
 from apps.core.api.auth_views import AuditTokenObtainPairView, AuditTokenRefreshView
 from apps.core.api.change_password_view import ChangePasswordView
 from apps.core.api.logout_view import LogoutView
-from apps.core.api.attivazione_view import AttivazioneView
+from apps.core.api.attivazione_view import AttivazioneValidateView, AttivazioneView
 from apps.core.api.password_reset_views import (
     PasswordResetConfirmView,
     PasswordResetRequestView,
@@ -85,6 +85,11 @@ urlpatterns = [
         "api/v1/auth/password-reset-confirm/",
         PasswordResetConfirmView.as_view(),
         name="auth-password-reset-confirm",
+    ),
+    path(
+        "api/v1/auth/attivazione-validate/<str:token>/",
+        AttivazioneValidateView.as_view(),
+        name="auth-attivazione-validate",
     ),
     path(
         "api/v1/auth/attivazione/",

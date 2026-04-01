@@ -10,7 +10,7 @@ import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useAuthUser } from '../../core/composables/useAuthUser'
 import { useLookup } from '../../core/composables/useLookup'
 import { lookupCodici } from '../../core/apiCore'
-import { listUnitaOrganizzative } from '../api/amministrazione'
+import { listUnitaOrganizzative, invitaOperatore, reinviaInvito } from '../api/amministrazione'
 import { RUOLO_SISTEMA, TIPO_RUOLO_CODICE, buildRuoloOptions } from '../constants'
 import { DRAWER_WIDTH } from '../../core/constants'
 import { displayDate } from '../../core/utils/date'
@@ -30,12 +30,12 @@ import Select from 'primevue/select'
 import TabView from 'primevue/tabview'
 import TabPanel from 'primevue/tabpanel'
 import Button from 'primevue/button'
-import { useConfirm } from 'primevue/useconfirm'
+import { useConfirmAction } from '../../core/composables/useConfirmAction'
 
 const { t } = useI18n()
 const store = useOperatoriStore()
 const { execute, loading } = useApiHandler()
-const confirm = useConfirm()
+const { confirmAction } = useConfirmAction()
 const notify = useNotify()
 const isReadonly = useInjectReadonly()
 
@@ -59,6 +59,14 @@ const props = defineProps({
 const emit = defineEmits(['update:visible', 'saved', 'cancelled'])
 
 const isEdit = computed(() => props.mode === 'edit')
+const invitaLoading = ref(false)
+
+// Scopo: Mostra pulsante invito se operatore non ha mai fatto login.
+const canInvite = computed(() => {
+  const u = store.currentOperatore
+  return isEdit.value && u && !u.last_login && u.is_active
+})
+const hasBeenInvited = computed(() => !!store.currentOperatore?.invito_inviato_at)
 
 const ruoloOptions = buildRuoloOptions(t)
 
@@ -70,6 +78,7 @@ const form = ref({
   ruolo_sistema: RUOLO_SISTEMA.OPERATIVO,
   qualifica_id: null,
   unita_organizzativa_id: null,
+  valido_dal: null,
   valido_al: null,
   // Dati soggetto associato (sola lettura)
   soggetto_id: null,
@@ -88,6 +97,7 @@ function resetForm() {
     ruolo_sistema: RUOLO_SISTEMA.OPERATIVO,
     qualifica_id: null,
     unita_organizzativa_id: null,
+    valido_dal: null,
     valido_al: null,
     soggetto_id: null,
     ragione_sociale: null,
@@ -105,16 +115,19 @@ watch(() => props.visible, async (val) => {
     const u = store.currentOperatore
     if (u) {
       form.value = {
+        username: u.username || '',
         cognome: u.soggetto_cognome || u.last_name || '',
         nome: u.soggetto_nome || u.first_name || '',
         email: u.email || '',
         ruolo_sistema: u.ruolo_sistema || RUOLO_SISTEMA.OPERATIVO,
         qualifica_id: null,
         unita_organizzativa_id: u.unita_organizzativa_id,
+        valido_dal: u.valido_dal || null,
         valido_al: u.valido_al || null,
         soggetto_id: u.soggetto_id || null,
         ragione_sociale: u.ragione_sociale_completa || null,
-        codice_fiscale: u.codice_fiscale || null
+        codice_fiscale: u.codice_fiscale || null,
+        emittenti_descrizione: u.emittenti_descrizione || ''
       }
     }
   } else {
@@ -235,13 +248,39 @@ async function eseguiToggleStato() {
 }
 
 function onToggleStato() {
-  confirm.require({
+  confirmAction({
+    title: isDisabilitato.value ? t('amm.riattiva_title') : t('amm.disabilita_title'),
     message: isDisabilitato.value ? t('amm.riattiva_confirm') : t('amm.disabilita_confirm'),
-    header: isDisabilitato.value ? t('amm.riattiva_title') : t('amm.disabilita_title'),
-    icon: isDisabilitato.value ? 'pi pi-check-circle' : 'pi pi-exclamation-triangle',
-    acceptClass: 'p-button-success',
-    rejectClass: 'p-button-secondary',
-    accept: eseguiToggleStato
+    danger: !isDisabilitato.value,
+    onAccept: eseguiToggleStato
+  })
+}
+
+// Scopo: Invia o reinvia invito operatore con conferma.
+function onInvita() {
+  const isReinvio = hasBeenInvited.value
+  confirmAction({
+    title: t('amm.invito_confirm_title'),
+    message: isReinvio ? t('amm.reinvio_confirm_msg') : t('amm.invito_confirm_msg'),
+    onAccept: async () => {
+      invitaLoading.value = true
+      try {
+        const apiFn = isReinvio ? reinviaInvito : invitaOperatore
+        const res = await apiFn(props.authUserId)
+        const data = res.data?.data
+        const msg = data?.email
+          ? t('amm.invito_inviato') + ` (${data.email})`
+          : t('amm.invito_inviato')
+        notify.success(msg)
+        // Ricarica dettaglio per aggiornare invito_inviato_at
+        await store.fetchDetail(props.authUserId)
+      } catch (err) {
+        const errMsg = err?.response?.data?.error?.message || t('common.error')
+        notify.error(errMsg)
+      } finally {
+        invitaLoading.value = false
+      }
+    }
   })
 }
 
@@ -304,17 +343,31 @@ function onClose() {
         <!-- === Sezione Dati anagrafici + Collocazione === -->
         <h4 v-if="!isEdit" class="mt-3">{{ t('amm.section_collocazione') }}</h4>
         <div class="form-grid">
-          <!-- Cognome / Nome (solo modifica — in creazione vengono dal soggetto) -->
-          <template v-if="isEdit">
+          <!-- Username + Emittente su stessa riga (solo modifica, sola lettura) -->
+          <div v-if="isEdit" class="form-grid-2col">
             <div class="form-field">
-              <label>{{ t('common.cognome') }}</label>
-              <InputText v-model="form.cognome" class="w-full"
-                @blur="form.cognome = capitalizeWords(form.cognome)" />
+              <label>{{ t('common.username') }}</label>
+              <InputText :model-value="form.username" disabled class="w-full" />
             </div>
             <div class="form-field">
-              <label>{{ t('common.nome') }}</label>
-              <InputText v-model="form.nome" class="w-full"
-                @blur="form.nome = capitalizeWords(form.nome)" />
+              <label>{{ t('amm.field_emittente') }}</label>
+              <InputText :model-value="form.emittenti_descrizione || '—'" disabled class="w-full" />
+            </div>
+          </div>
+
+          <!-- Cognome + Nome su stessa riga (solo modifica) -->
+          <template v-if="isEdit">
+            <div class="form-grid-2col">
+              <div class="form-field">
+                <label>{{ t('common.cognome') }}</label>
+                <InputText v-model="form.cognome" class="w-full"
+                  @blur="form.cognome = capitalizeWords(form.cognome)" />
+              </div>
+              <div class="form-field">
+                <label>{{ t('common.nome') }}</label>
+                <InputText v-model="form.nome" class="w-full"
+                  @blur="form.nome = capitalizeWords(form.nome)" />
+              </div>
             </div>
             <div class="form-field">
               <label>{{ t('common.email') }}</label>
@@ -347,21 +400,49 @@ function onClose() {
               class="w-full" :placeholder="t('amm.select_reparto')" />
           </div>
 
-          <!-- Valido al: solo modifica (sola lettura) -->
-          <div v-if="isEdit" class="form-field">
-            <label>{{ t('amm.field_valido_al') }}</label>
-            <InputText :model-value="form.valido_al ? displayDate(form.valido_al) : t('amm.valido_al_illimitato')" disabled class="w-full" />
-          </div>
+          <!-- Valido dal + Disabilita / Valido al + Riattiva (solo modifica) -->
+          <template v-if="isEdit">
+            <div class="form-grid-2col" style="align-items: flex-end;">
+              <div class="form-field">
+                <label>{{ t('amm.field_valido_dal') }}</label>
+                <InputText :model-value="form.valido_dal ? displayDate(form.valido_dal) : '—'" disabled class="w-full" />
+              </div>
+              <div v-if="!isDisabilitato" class="form-field">
+                <Button
+                  :label="t('amm.disabilita_operatore')"
+                  severity="danger" icon="pi pi-ban"
+                  outlined size="small"
+                  @click="onToggleStato" />
+              </div>
+            </div>
+            <div class="form-grid-2col" style="align-items: flex-end;">
+              <div class="form-field">
+                <label>{{ t('amm.field_valido_al') }}</label>
+                <InputText :model-value="form.valido_al ? displayDate(form.valido_al) : t('amm.valido_al_illimitato')" disabled class="w-full" />
+              </div>
+              <div v-if="isDisabilitato" class="form-field">
+                <Button
+                  :label="t('amm.riattiva_operatore')"
+                  severity="success" icon="pi pi-check-circle"
+                  outlined size="small"
+                  @click="onToggleStato" />
+              </div>
+            </div>
+          </template>
         </div>
 
-        <!-- Azioni footer -->
-        <div class="flex justify-between mt-4">
-          <Button v-if="isEdit"
-            :label="isDisabilitato ? t('amm.riattiva_operatore') : t('amm.disabilita_operatore')"
-            :severity="isDisabilitato ? 'success' : 'danger'"
-            :icon="isDisabilitato ? 'pi pi-check-circle' : 'pi pi-ban'"
-            outlined @click="onToggleStato" />
-          <span v-else />
+        <!-- Invito operatore (solo modifica, mai loggato) -->
+        <div v-if="canInvite" class="mt-3">
+          <Button
+            :label="hasBeenInvited ? t('amm.reinvia_invito') : t('amm.invita_operatore')"
+            icon="pi pi-envelope"
+            :loading="invitaLoading"
+            outlined size="small"
+            @click="onInvita" />
+        </div>
+
+        <!-- Footer Salva/Annulla -->
+        <div class="flex justify-end mt-4">
           <DrawerFooter :loading="loading" :disabled="!canSave" @save="onSave" @cancel="onClose" />
         </div>
       </TabPanel>

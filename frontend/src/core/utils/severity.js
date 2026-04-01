@@ -106,3 +106,26 @@ export const ESITO_FLUSSO_MAP = {
 export function esitoFlussoSeverity(codice) {
   return resolveSeverity(ESITO_FLUSSO_MAP, codice)
 }
+
+// --- Mappa azioni giornale pratica ---
+// Associa azione giornale a severity e icona per la timeline audit.
+export const AZIONE_GIORNALE_MAP = {
+  CREAZIONE: { severity: 'info', icon: 'pi pi-plus-circle' },
+  CAMBIO_STATO: { severity: 'warn', icon: 'pi pi-sync' },
+  ASSEGNAZIONE: { severity: 'secondary', icon: 'pi pi-user' },
+  CAMBIO_PRIORITA: { severity: 'secondary', icon: 'pi pi-flag' },
+  NOTA: { severity: 'secondary', icon: 'pi pi-comment' },
+  ALLEGATO: { severity: 'secondary', icon: 'pi pi-paperclip' },
+  SOSPENSIONE: { severity: 'warn', icon: 'pi pi-pause' },
+  RIATTIVAZIONE: { severity: 'success', icon: 'pi pi-play' },
+  CREAZIONE_FLUSSO: { severity: 'info', icon: 'pi pi-sitemap' },
+  CAMBIO_STATO_FLUSSO: { severity: 'warn', icon: 'pi pi-sync' },
+  GENERAZIONE: { severity: 'info', icon: 'pi pi-copy' },
+}
+
+const _AZIONE_DEFAULT = { severity: 'secondary', icon: 'pi pi-circle' }
+
+// Scopo: Risolve severity+icon per azione giornale. Trim automatico, fallback secondario.
+export function azioneGiornaleStyle(azione) {
+  return AZIONE_GIORNALE_MAP[(azione || '').trim()] || _AZIONE_DEFAULT
+}

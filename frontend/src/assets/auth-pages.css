@@ -104,6 +104,21 @@
   text-align: center;
 }
 
+/* Icona info requisiti password — accanto alla label, tooltip al hover */
+.password-info-icon {
+  font-size: 0.75rem;
+  color: var(--p-primary-color);
+  cursor: help;
+  margin-left: 0.25rem;
+  vertical-align: middle;
+}
+
+/* Pulsante submit pagine auth — non fluid, centrato con margine laterale */
+.auth-submit-btn {
+  align-self: center;
+  min-width: 60%;
+}
+
 .back-link,
 .forgot-link {
   text-align: center;

@@ -1,5 +1,14 @@
 # Architettura Building Block — DB, Backend, Frontend
 
+> **SUPERATO** — Questo documento è stato sostituito dai cataloghi building block aggiornati:
+>
+> * [Catalogo Building Block Backend](../../backend/catalogo-building-block-backend.md) — inventario completo backend
+> * [Catalogo Building Block Frontend](../../frontend/catalogo-building-block-frontend.md) — inventario completo frontend
+>
+> Il contenuto sottostante è conservato come riferimento storico (strategia e motivazioni originali).
+
+---
+
 > Documento master per la scomposizione in building block riutilizzabili su tutti i livelli.
 > Data: 2026-03-12 | Aggiornato: 2026-03-14
 > Stato: **Backend COMPLETATO — Frontend PARZIALMENTE COMPLETATO (FE-1..FE-9, FE-11)**

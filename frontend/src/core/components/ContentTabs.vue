@@ -2,7 +2,7 @@
 // Scopo: barra content tabs tipo browser — ogni pagina aperta diventa una tab.
 // Su mobile la barra diventa un dropdown Select.
 // Include bottone "Affianca" per split view read-only (solo desktop >= 1280px).
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import Select from 'primevue/select'
@@ -11,7 +11,8 @@ import { useTabsStore } from '../../stores/tabs'
 import { useContextStore } from '../../stores/context'
 import { useUiStore } from '../../stores/ui'
 import { useConfirmCloseTab } from '../composables/useConfirmCloseTab'
-import { BREAKPOINTS } from '../constants'
+import { useNotify } from '../composables/useNotify'
+import { BREAKPOINTS, TABS } from '../constants'
 
 const { t } = useI18n()
 const router = useRouter()
@@ -19,6 +20,24 @@ const tabs = useTabsStore()
 const context = useContextStore()
 const ui = useUiStore()
 const { closeTab } = useConfirmCloseTab()
+const { warn } = useNotify()
+
+// Mostra toast quando il limite tab viene raggiunto
+watch(() => tabs.tabLimitReached, (reached) => {
+  if (reached) {
+    warn(t('notifications.tab_limit_reached'))
+    tabs.tabLimitReached = false
+  }
+})
+
+// Schede rimanenti — visibile quando <= 5
+const remainingTabs = computed(() => TABS.MAX_OPEN - tabs.tabs.length)
+const remainingClass = computed(() => {
+  const r = remainingTabs.value
+  if (r <= 1) return 'remaining-red'
+  if (r <= 3) return 'remaining-orange'
+  return 'remaining-green'
+})
 
 const splitPopover = ref(null)
 
@@ -100,6 +119,14 @@ function handlePinTab(tab) {
           v-tooltip.top="t('tabs.close')"
         ></i>
       </div>
+
+      <!-- Contatore schede rimanenti -->
+      <span
+        v-if="remainingTabs <= 5"
+        class="tab-remaining"
+        :class="remainingClass"
+        v-tooltip.top="t('tabs.remaining', { count: remainingTabs })"
+      >{{ remainingTabs }}</span>
 
       <!-- Spacer per spingere il bottone Affianca a destra -->
       <div class="content-tabs-spacer"></div>
@@ -246,6 +273,36 @@ function handlePinTab(tab) {
 .tab-pin-icon {
   font-size: 0.6rem;
   color: var(--p-orange-400);
+}
+
+/* Contatore schede rimanenti */
+.tab-remaining {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.3rem;
+  height: 1.3rem;
+  margin: auto 0.3rem;
+  padding: 0 0.3rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  border-radius: 4px;
+  line-height: 1;
+}
+
+.tab-remaining.remaining-green {
+  color: var(--p-green-400);
+  background: color-mix(in srgb, var(--p-green-400) 15%, transparent);
+}
+
+.tab-remaining.remaining-orange {
+  color: #fff;
+  background: var(--p-orange-500);
+}
+
+.tab-remaining.remaining-red {
+  color: #fff;
+  background: var(--p-red-500);
 }
 
 /* Spacer tra tab e bottone Affianca */

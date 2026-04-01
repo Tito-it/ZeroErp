@@ -2,7 +2,8 @@
 
 > Documento di pianificazione per il completamento del sistema di autenticazione.
 > Data inizio: 2026-03-28
-> Stato: **DB COMPLETATO — Backend/Frontend in pianificazione**
+> Stato: **FASI 1-3 COMPLETATE — Fase 4 (2FA) rimandata**
+> Ultimo aggiornamento: 01-04-2026
 >
 > Dipende da:
 >
@@ -101,9 +102,9 @@ Per produzione: valutare servizio dedicato (SendGrid, Mailgun, Amazon SES, SMTP 
 
 **Prerequisiti (rimandati a fase test reali)**:
 
-- [ ] PRE-1 — Account SMTP configurato (Gmail App Password o servizio dedicato)
-- [ ] PRE-2 — Record `config.email_account` SISTEMA aggiornato con credenziali reali
-- [ ] PRE-3 — Test invio email end-to-end verificato
+- [x] PRE-1 — Account SMTP configurato (Gmail App Password o servizio dedicato)
+- [x] PRE-2 — Record `config.email_account` SISTEMA aggiornato con credenziali reali
+- [x] PRE-3 — Test invio email end-to-end verificato
 
 ### DB esistente (già disponibile)
 
@@ -430,7 +431,7 @@ CREATE INDEX ix_email_log_ambito_uo ON config.email_log(ambito, unita_organizzat
 
 #### Backend
 
-- [ ] 1.1.8 — Creare `apps/core/services/email_service.py` — `EmailDispatchService`
+- [x] 1.1.8 — Creare `apps/core/services/email_service.py` — `EmailDispatchService` ✅
 
 Responsabilità:
   - `resolve_account(unita_organizzativa_id=None)` → trova account email:
@@ -459,7 +460,7 @@ Responsabilità:
     5. Copia allegati su `email_log_id`
   - `retry_failed()` — riprocessa email `FAILED` con `tentativi < max_tentativi`
 
-- [ ] 1.1.9 — Creare `apps/core/services/email_outbox_service.py` — `EmailOutboxService`
+- [x] 1.1.9 — Creare `apps/core/services/email_outbox_service.py` — `EmailOutboxService` ✅
 
 Responsabilità:
   - `prepare_draft(codice_template, destinatario, variabili, unita_organizzativa_id=None, tipo_prestazione_id=None, creato_da_user_id=None, ambito='SISTEMA', pratica_id=None)`:
@@ -485,7 +486,7 @@ Responsabilità:
   - `list_drafts(creato_da_user_id=None, stato=None)`:
     1. Lista bozze con filtri
 
-- [ ] 1.1.10 — Creare `apps/core/db/email_repository.py`
+- [x] 1.1.10 — Creare `apps/core/db/email_repository.py`
 
 Responsabilità:
   - Query su `config.email_account`, `config.email_template`, `config.email_log`
@@ -493,30 +494,30 @@ Responsabilità:
   - Decriptazione password SMTP (usando `django.core.signing` o `Fernet`)
   - Insert/update `email_log`, `email_outbox`, `email_allegato`
 
-- [ ] 1.1.11 — Creare management command `send_pending_emails`
+- [x] 1.1.11 — Creare management command `send_pending_emails`
   - Processa email con stato `PENDING` o `RETRY`
   - Eseguibile come cron job (pgAgent o crontab)
   - Flag `--dry-run` per preview
 
-- [ ] 1.1.12 — Configurare `EMAIL_BACKEND` in settings.py
+- [x] 1.1.12 — Configurare `EMAIL_BACKEND` in settings.py
   - Default: `django.core.mail.backends.smtp.EmailBackend`
   - Dev/test: `django.core.mail.backends.console.EmailBackend`
   - Il service NON usa il backend globale Django ma connessioni SMTP per-account
   - Configurazione storage allegati: `EMAIL_ATTACHMENTS_ROOT`, `EMAIL_ATTACHMENT_MAX_SIZE_MB`
 
-- [ ] 1.1.13 — API admin per gestione account email (CRUD)
+- [x] 1.1.13 — API admin per gestione account email (CRUD)
   - `GET/POST /api/v1/amm-software/email-accounts/`
   - `GET/PUT/DELETE /api/v1/amm-software/email-accounts/<id>/`
   - Solo ruolo ADMIN
   - La password SMTP viene accettata in chiaro e salvata crittografata
 
-- [ ] 1.1.14 — API admin per gestione template email (CRUD)
+- [x] 1.1.14 — API admin per gestione template email (CRUD)
   - `GET/POST /api/v1/amm-software/email-templates/`
   - `GET/PUT/DELETE /api/v1/amm-software/email-templates/<id>/`
   - Solo ruolo ADMIN
   - Endpoint preview: `POST .../preview/` con variabili di esempio
 
-- [ ] 1.1.15 — API outbox email (preparazione, modifica, invio bozze)
+- [x] 1.1.15 — API outbox email (preparazione, modifica, invio bozze)
   - `POST /api/v1/email/prepare/` — prepara bozza da template + variabili, ritorna draft editabile
     - Accetta: `ambito`, `pratica_id`, `tipo_prestazione_id` per specializzazione
   - `GET /api/v1/email/outbox/` — lista bozze visibili all'operatore
@@ -530,7 +531,7 @@ Responsabilità:
   - `POST /api/v1/email/outbox/<id>/cancel/` — annulla bozza
   - Permessi: operatore autenticato (le proprie bozze + reparto) o ADMIN (tutte)
 
-- [ ] 1.1.16 — API allegati email
+- [x] 1.1.16 — API allegati email
   - `POST /api/v1/email/outbox/<id>/allegati/` — upload allegato (multipart)
   - `GET /api/v1/email/outbox/<id>/allegati/` — lista allegati della bozza
   - `DELETE /api/v1/email/allegati/<allegato_id>/` — rimuovi allegato
@@ -538,7 +539,7 @@ Responsabilità:
   - Validazione: tipo MIME whitelist, dimensione max, numero max allegati per email
   - Stesso endpoint download usabile per allegati da `email_log` (consultazione storica)
 
-- [ ] 1.1.17 — API consultazione log email (migliorata, con visibilita' per ambito)
+- [x] 1.1.17 — API consultazione log email (migliorata, con visibilita' per ambito)
   - `GET /api/v1/email/log/` — log email visibili all'operatore
     - Filtri: stato, destinatario, date, ambito, pratica_id, unita_organizzativa_id
     - Regole visibilita' (stesse dell'outbox):
@@ -551,17 +552,17 @@ Responsabilità:
 
 #### Frontend
 
-- [ ] 1.1.18 — Pannello admin: gestione account email
+- [x] 1.1.18 — Pannello admin: gestione account email
   - Lista account con stato attivo/inattivo
   - Form creazione/modifica con test connessione SMTP
   - Associazione a reparto (autocomplete unità organizzativa)
 
-- [ ] 1.1.19 — Pannello admin: gestione template email
+- [x] 1.1.19 — Pannello admin: gestione template email
   - Lista template raggruppati per codice
   - Editor con preview HTML
   - Indicazione variabili disponibili per tipo template
 
-- [ ] 1.1.20 — Dialog/drawer "Componi email" (componente riutilizzabile)
+- [x] 1.1.20 — Dialog/drawer "Componi email" (componente riutilizzabile)
 
 Componente che si apre quando un'azione genera un invio email (invito operatore,
 reset password, notifica generica). Flusso UX:
@@ -598,7 +599,7 @@ Caratteristiche:
   - Indicazione account mittente (non editabile, risolto dal backend)
   - Pulsante "Invia" chiama `POST .../send/`, "Annulla" chiama `POST .../cancel/`
 
-- [ ] 1.1.21 — Consultazione log email (con visibilita' per ambito)
+- [x] 1.1.21 — Consultazione log email (con visibilita' per ambito)
   - Tabella con filtri: stato, destinatario, data, template, **ambito, reparto, pratica**
   - Visibilita' automatica: l'operatore vede solo le sue + quelle del reparto
   - Dettaglio email inviata con:
@@ -610,7 +611,7 @@ Caratteristiche:
   - Pulsante "Re-invia" → crea nuova bozza outbox pre-compilata dalla mail originale
   - Pulsante "Esporta" → download email come .eml (opzionale, bassa priorità)
 
-- [ ] 1.1.22 — Tab "Comunicazioni" nel drawer pratica
+- [x] 1.1.22 — Tab "Comunicazioni" nel drawer pratica
   - Lista email inviate nel contesto della pratica (`pratica_id`)
   - Ordinate per data, con stato e destinatario
   - Click → apre dettaglio email (corpo inviato + allegati)
@@ -619,20 +620,20 @@ Caratteristiche:
 
 #### Test
 
-- [ ] 1.1.T1 — Test Django: `EmailDispatchService` con mock SMTP
-- [ ] 1.1.T2 — Test Django: risoluzione account per reparto con fallback
-- [ ] 1.1.T3 — Test Django: risoluzione template per reparto+lingua con fallback
-- [ ] 1.1.T4 — Test Django: rendering template con variabili
-- [ ] 1.1.T5 — Test Django: retry email fallite
-- [ ] 1.1.T6 — Test Django: `EmailOutboxService.prepare_draft` → bozza creata con corpo renderizzato
-- [ ] 1.1.T7 — Test Django: modifica bozza (oggetto, corpo, CC) → campi aggiornati
-- [ ] 1.1.T8 — Test Django: conferma e invio bozza → stato SENT + email_log creato con corpo inviato
-- [ ] 1.1.T9 — Test Django: annullamento bozza → stato CANCELLED + allegati eliminati
-- [ ] 1.1.T10 — Test Django: upload allegato → file salvato + record creato
-- [ ] 1.1.T11 — Test Django: validazione allegato (tipo MIME non consentito, dimensione eccessiva → errore)
-- [ ] 1.1.T12 — Test Django: invio con allegati → email contiene attachment MIME
-- [ ] 1.1.T13 — Test Django: re-invio da log → nuova bozza pre-compilata con corpo/allegati originali
-- [ ] 1.1.T14 — Test Django: consultazione log con corpo inviato fedele (non ri-renderizzato)
+- [x] 1.1.T1 — Test Django: `EmailDispatchService` con mock SMTP
+- [x] 1.1.T2 — Test Django: risoluzione account per reparto con fallback
+- [x] 1.1.T3 — Test Django: risoluzione template per reparto+lingua con fallback
+- [x] 1.1.T4 — Test Django: rendering template con variabili
+- [x] 1.1.T5 — Test Django: retry email fallite
+- [x] 1.1.T6 — Test Django: `EmailOutboxService.prepare_draft` → bozza creata con corpo renderizzato
+- [x] 1.1.T7 — Test Django: modifica bozza (oggetto, corpo, CC) → campi aggiornati
+- [x] 1.1.T8 — Test Django: conferma e invio bozza → stato SENT + email_log creato con corpo inviato
+- [x] 1.1.T9 — Test Django: annullamento bozza → stato CANCELLED + allegati eliminati
+- [x] 1.1.T10 — Test Django: upload allegato → file salvato + record creato
+- [x] 1.1.T11 — Test Django: validazione allegato (tipo MIME non consentito, dimensione eccessiva → errore)
+- [x] 1.1.T12 — Test Django: invio con allegati → email contiene attachment MIME
+- [x] 1.1.T13 — Test Django: re-invio da log → nuova bozza pre-compilata con corpo/allegati originali
+- [x] 1.1.T14 — Test Django: consultazione log con corpo inviato fedele (non ri-renderizzato)
 
 ---
 
@@ -687,7 +688,7 @@ Vincoli:
 
 #### Backend
 
-- [ ] 1.2.3 — Creare `apps/core/services/token_service.py` — `TokenService`
+- [x] 1.2.3 — Creare `apps/core/services/token_service.py` — `TokenService`
 
 Responsabilità:
   - `create(tipo, auth_user_id, scadenza_ore=24, meta=None)`:
@@ -706,16 +707,16 @@ Responsabilità:
   - `invalidate_all(tipo, auth_user_id)`:
     1. Segna come utilizzati tutti i token di quel tipo/utente
 
-- [ ] 1.2.4 — Creare `apps/core/db/token_repository.py`
+- [x] 1.2.4 — Creare `apps/core/db/token_repository.py`
   - Query su `config.token_monouso`
   - Insert, update stato, cleanup
 
 #### Test
 
-- [ ] 1.2.T1 — Test Django: creazione token + validazione
-- [ ] 1.2.T2 — Test Django: token scaduto → rifiutato
-- [ ] 1.2.T3 — Test Django: token già utilizzato → rifiutato
-- [ ] 1.2.T4 — Test Django: invalidazione token precedenti dello stesso tipo
+- [x] 1.2.T1 — Test Django: creazione token + validazione
+- [x] 1.2.T2 — Test Django: token scaduto → rifiutato
+- [x] 1.2.T3 — Test Django: token già utilizzato → rifiutato
+- [x] 1.2.T4 — Test Django: invalidazione token precedenti dello stesso tipo
 
 ---
 
@@ -744,12 +745,12 @@ COMMENT ON COLUMN anagrafiche.risorse_umane_auth_user.deve_cambiare_password
 
 #### Backend
 
-- [ ] 1.3.3 — Modificare `AuditTokenObtainPairView` (auth_views.py):
+- [x] 1.3.3 — Modificare `AuditTokenObtainPairView` (auth_views.py):
   - Dopo login riuscito, leggere `deve_cambiare_password`
   - Se `true` → aggiungere al response JSON: `password_change_required: true`
   - Il token viene comunque rilasciato (serve per chiamare l'endpoint cambio password)
 
-- [ ] 1.3.4 — Creare endpoint `POST /api/v1/auth/change-password/`
+- [x] 1.3.4 — Creare endpoint `POST /api/v1/auth/change-password/`
   - File: `apps/core/api/change_password_view.py`
   - Input: `{ old_password, new_password, new_password_confirm }`
   - Validazioni:
@@ -767,7 +768,7 @@ COMMENT ON COLUMN anagrafiche.risorse_umane_auth_user.deve_cambiare_password
     6. Log audit: `PASSWORD_CHANGED`
   - Response: `{ access, refresh }` (nuovi token)
 
-- [ ] 1.3.5 — Creare middleware/permission per blocco navigazione
+- [x] 1.3.5 — Creare middleware/permission per blocco navigazione
   - Se `deve_cambiare_password = true`, gli unici endpoint consentiti sono:
     - `POST /api/v1/auth/change-password/`
     - `POST /api/v1/auth/logout/`
@@ -776,30 +777,30 @@ COMMENT ON COLUMN anagrafiche.risorse_umane_auth_user.deve_cambiare_password
 
 #### Frontend
 
-- [ ] 1.3.6 — Creare pagina `ChangePasswordView.vue`
+- [x] 1.3.6 — Creare pagina `ChangePasswordView.vue`
   - Route: `/change-password` (pubblica per utenti autenticati)
   - Form: password attuale, nuova password, conferma nuova password
   - Indicatore forza password in tempo reale
   - Validazione client-side (lunghezza minima, match conferma)
   - Al successo: aggiorna token nello store e redirect a home
 
-- [ ] 1.3.7 — Modificare `auth.js` store:
+- [x] 1.3.7 — Modificare `auth.js` store:
   - Salvare `passwordChangeRequired` dallo stato login
   - Getter `mustChangePassword`
 
-- [ ] 1.3.8 — Modificare route guard (router/index.js):
+- [x] 1.3.8 — Modificare route guard (router/index.js):
   - Se `mustChangePassword === true` → redirect forzato a `/change-password`
   - Bloccare navigazione a qualsiasi altra rotta
 
-- [ ] 1.3.9 — Aggiungere link "Cambia password" nel menu profilo utente
+- [x] 1.3.9 — Aggiungere link "Cambia password" nel menu profilo utente
   - Accessibile sempre (non solo quando obbligatorio)
 
 #### Test
 
-- [ ] 1.3.T1 — Test Django: login con `deve_cambiare_password=true` → flag nel response
-- [ ] 1.3.T2 — Test Django: cambio password con validazioni
-- [ ] 1.3.T3 — Test Django: middleware blocca navigazione se flag attivo
-- [ ] 1.3.T4 — Test Django: dopo cambio password, flag resettato
+- [x] 1.3.T1 — Test Django: login con `deve_cambiare_password=true` → flag nel response
+- [x] 1.3.T2 — Test Django: cambio password con validazioni
+- [x] 1.3.T3 — Test Django: middleware blocca navigazione se flag attivo
+- [x] 1.3.T4 — Test Django: dopo cambio password, flag resettato
 
 ---
 
@@ -811,13 +812,13 @@ COMMENT ON COLUMN anagrafiche.risorse_umane_auth_user.deve_cambiare_password
 
 ### DB
 
-- [ ] 2.1 — Nessuna modifica DB aggiuntiva
+- [x] 2.1 — Nessuna modifica DB aggiuntiva
   - Usa `config.token_monouso` con tipo `RESET_PASSWORD`
   - Usa `config.email_template` con codice `RESET_PASSWORD`
 
 ### Backend
 
-- [ ] 2.2 — Creare endpoint `POST /api/v1/auth/password-reset-request/`
+- [x] 2.2 — Creare endpoint `POST /api/v1/auth/password-reset-request/`
   - File: `apps/core/api/password_reset_view.py`
   - Input: `{ email }`
   - **Non autenticato** (endpoint pubblico)
@@ -833,7 +834,7 @@ COMMENT ON COLUMN anagrafiche.risorse_umane_auth_user.deve_cambiare_password
     3. Se NON trovato → **risponde comunque 200** (sicurezza: non rivelare email esistenti)
   - Response: `{ message: "Se l'email è registrata, riceverai un link" }`
 
-- [ ] 2.3 — Creare endpoint `POST /api/v1/auth/password-reset-confirm/`
+- [x] 2.3 — Creare endpoint `POST /api/v1/auth/password-reset-confirm/`
   - Input: `{ token, new_password, new_password_confirm }`
   - **Non autenticato**
   - Logica:
@@ -844,21 +845,21 @@ COMMENT ON COLUMN anagrafiche.risorse_umane_auth_user.deve_cambiare_password
     5. Log audit: `PASSWORD_RESET`
   - Response: `{ message: "Password aggiornata" }` (senza token — deve ri-loggarsi)
 
-- [ ] 2.4 — Creare endpoint `GET /api/v1/auth/password-reset-validate/{token}/`
+- [x] 2.4 — Creare endpoint `GET /api/v1/auth/password-reset-validate/{token}/`
   - **Non autenticato**
   - Verifica se il token è ancora valido (senza consumarlo)
   - Usato dal frontend per mostrare il form o un messaggio di errore/scadenza
 
 ### Frontend
 
-- [ ] 2.5 — Aggiungere link "Password dimenticata?" nella `LoginView.vue`
+- [x] 2.5 — Aggiungere link "Password dimenticata?" nella `LoginView.vue`
 
-- [ ] 2.6 — Creare pagina `PasswordResetRequestView.vue`
+- [x] 2.6 — Creare pagina `PasswordResetRequestView.vue`
   - Route: `/password-reset` (pubblica)
   - Form: solo campo email
   - Messaggio di conferma generico (non rivela se email esiste)
 
-- [ ] 2.7 — Creare pagina `PasswordResetConfirmView.vue`
+- [x] 2.7 — Creare pagina `PasswordResetConfirmView.vue`
   - Route: `/reset-password/:token` (pubblica)
   - All'apertura: chiama endpoint validate per verificare token
   - Se token valido → form nuova password + conferma
@@ -867,11 +868,11 @@ COMMENT ON COLUMN anagrafiche.risorse_umane_auth_user.deve_cambiare_password
 
 ### Test
 
-- [ ] 2.T1 — Test Django: richiesta reset con email esistente → token creato + email accodata
-- [ ] 2.T2 — Test Django: richiesta reset con email inesistente → 200 (nessun token)
-- [ ] 2.T3 — Test Django: conferma reset con token valido → password cambiata
-- [ ] 2.T4 — Test Django: conferma reset con token scaduto → errore
-- [ ] 2.T5 — Test Django: rate limiting richieste reset
+- [x] 2.T1 — Test Django: richiesta reset con email esistente → token creato + email accodata
+- [x] 2.T2 — Test Django: richiesta reset con email inesistente → 200 (nessun token)
+- [x] 2.T3 — Test Django: conferma reset con token valido → password cambiata
+- [x] 2.T4 — Test Django: conferma reset con token scaduto → errore
+- [x] 2.T5 — Test Django: rate limiting richieste reset
 
 ---
 
@@ -899,7 +900,7 @@ COMMENT ON COLUMN anagrafiche.risorse_umane_auth_user.invito_inviato_at
 
 ### Backend
 
-- [ ] 3.3 — Creare `apps/anagrafiche/services/invito_operatore_service.py`
+- [x] 3.3 — Creare `apps/anagrafiche/services/invito_operatore_service.py`
 
 Responsabilità:
   - `prepara_invito(auth_user_id, invitato_da_user_id)`:
@@ -920,19 +921,19 @@ Responsabilità:
     1. Invalida token precedenti tipo `INVITO_OPERATORE`
     2. Riesegue `prepara_invito`
 
-- [ ] 3.4 — Creare endpoint admin `POST /api/v1/amm-software/operatori/<id>/invita/`
+- [x] 3.4 — Creare endpoint admin `POST /api/v1/amm-software/operatori/<id>/invita/`
   - Solo ruolo ADMIN
   - Chiama `invito_operatore_service.prepara_invito()`
   - Response: `{ outbox_id: 123, email: "m***@azienda.it" }` (bozza pronta per anteprima)
   - Il frontend apre il dialog "Componi email" (1.1.20) con la bozza editabile
   - L'invio effettivo avviene quando l'admin conferma dal dialog
 
-- [ ] 3.5 — Creare endpoint admin `POST /api/v1/amm-software/operatori/<id>/reinvia-invito/`
+- [x] 3.5 — Creare endpoint admin `POST /api/v1/amm-software/operatori/<id>/reinvia-invito/`
   - Solo ruolo ADMIN
   - Per rinviare invito scaduto o non ricevuto
   - Stessa logica: prepara bozza → anteprima → conferma
 
-- [ ] 3.6 — Creare endpoint pubblico `POST /api/v1/auth/attivazione/`
+- [x] 3.6 — Creare endpoint pubblico `POST /api/v1/auth/attivazione/`
   - Input: `{ token, new_password, new_password_confirm }`
   - Logica:
     1. `TokenService.consume(token, 'INVITO_OPERATORE')`
@@ -941,33 +942,33 @@ Responsabilità:
     4. Log audit: `ACCOUNT_ATTIVATO`
   - Response: `{ message: "Account attivato" }` (deve ri-loggarsi)
 
-- [ ] 3.7 — Opzionale: trigger automatico invio invito
+- [x] 3.7 — Opzionale: trigger automatico invio invito
   - Quando admin imposta `is_active = true` su un operatore mai loggato
   - Via signal Django o hook nel service di abilitazione esistente
 
 ### Frontend
 
-- [ ] 3.8 — Creare pagina `AttivazioneView.vue`
+- [x] 3.8 — Creare pagina `AttivazioneView.vue`
   - Route: `/attivazione/:token` (pubblica)
   - Valida token all'apertura
   - Form: nuova password + conferma
   - Messaggio benvenuto personalizzato
   - Al successo → redirect a login
 
-- [ ] 3.9 — Aggiungere bottoni nel drawer operatore (amm-software):
+- [x] 3.9 — Aggiungere bottoni nel drawer operatore (amm-software):
   - "Invia invito" (se mai invitato e attivo)
   - "Reinvia invito" (se già invitato)
   - Badge: "Invitato il DD/MM/YYYY" o "Mai invitato"
 
-- [ ] 3.10 — Colonna "Stato invito" nella lista operatori
+- [x] 3.10 — Colonna "Stato invito" nella lista operatori
   - Mai invitato / Invitato (data) / Attivato
 
 ### Test
 
-- [ ] 3.T1 — Test Django: invio invito → token + email + flag
-- [ ] 3.T2 — Test Django: attivazione con token valido → password impostata
-- [ ] 3.T3 — Test Django: reinvio invalida token precedente
-- [ ] 3.T4 — Test Django: invito a operatore non invitabile → errore
+- [x] 3.T1 — Test Django: invio invito → token + email + flag
+- [x] 3.T2 — Test Django: attivazione con token valido → password impostata
+- [x] 3.T3 — Test Django: reinvio invalida token precedente
+- [x] 3.T4 — Test Django: invito a operatore non invitabile → errore
 
 ---
 

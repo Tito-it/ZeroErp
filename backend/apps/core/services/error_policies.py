@@ -488,6 +488,49 @@ class ErrorPolicyRegistry:
             ui_action="show_error_banner",
             user_message="Operazione in scrittura: conferma esplicita richiesta.",
         ),
+        # --- Autenticazione: token, email, invito, cambio/reset password ---
+        "E_TOKEN": ErrorPolicy(
+            code="E_TOKEN",
+            http_status=400,
+            ui_action="show_error_banner",
+            user_message="Token non valido, scaduto o gia' utilizzato.",
+        ),
+        "E_EMAIL": ErrorPolicy(
+            code="E_EMAIL",
+            http_status=400,
+            ui_action="show_error_banner",
+            user_message="Errore configurazione email.",
+        ),
+        "E_OUTBOX": ErrorPolicy(
+            code="E_OUTBOX",
+            http_status=400,
+            ui_action="show_error_banner",
+            user_message="Errore gestione bozza email.",
+        ),
+        "E_INVITO_OPERATORE": ErrorPolicy(
+            code="E_INVITO_OPERATORE",
+            http_status=400,
+            ui_action="show_error_banner",
+            user_message="Operatore non invitabile.",
+        ),
+        "E_CHANGE_PASSWORD": ErrorPolicy(
+            code="E_CHANGE_PASSWORD",
+            http_status=400,
+            ui_action="show_error_banner",
+            user_message="Errore cambio password.",
+        ),
+        "E_RESET_PASSWORD": ErrorPolicy(
+            code="E_RESET_PASSWORD",
+            http_status=400,
+            ui_action="show_error_banner",
+            user_message="Errore reset password.",
+        ),
+        "E_ATTIVAZIONE": ErrorPolicy(
+            code="E_ATTIVAZIONE",
+            http_status=400,
+            ui_action="show_error_banner",
+            user_message="Errore attivazione account.",
+        ),
     }
 
     # Scopo: Risolve la policy per un codice errore. Per codici applicativi

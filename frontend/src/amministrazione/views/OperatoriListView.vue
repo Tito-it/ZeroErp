@@ -127,6 +127,7 @@ function activeBadgeSeverity(active) {
       </Column>
       <Column field="username" :header="t('amm.col_username')" sortable />
       <Column field="unita_organizzativa_nome" :header="t('amm.col_reparto')" sortable />
+      <Column field="emittenti_descrizione" :header="t('amm.field_emittente')" />
       <Column field="ruolo_sistema" :header="t('amm.col_ruolo')" sortable>
         <template #body="{ data }">
           <Badge :value="data.ruolo_sistema" :severity="ruoloBadgeSeverity(data.ruolo_sistema)" />

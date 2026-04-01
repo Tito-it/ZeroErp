@@ -2,7 +2,7 @@
 // Scopo: Tab flussi dentro il drawer pratica.
 // Lista compatta flussi con stato, sequenza, esito.
 // Bottone "Nuovo flusso" se pratica in stato che lo consente.
-import { ref, watch } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { listFlussi, createFlusso, cambiaStatoFlusso } from '../api/pratiche-api'
 import { useApiHandler } from '../../core/composables/useApiHandler'
@@ -13,6 +13,7 @@ import { STATO_PRATICA, STATO_FLUSSO } from '../../core/constants'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Tag from 'primevue/tag'
+import Select from 'primevue/select'
 import Button from 'primevue/button'
 
 const { t } = useI18n()
@@ -28,6 +29,16 @@ const emit = defineEmits(['refresh'])
 
 const flussi = ref([])
 const loading = ref(false)
+
+// Dialog esito inline per completamento flusso
+const completandoFlussoId = ref(null)
+const esitoSelezionato = ref(null)
+const esitiOptions = computed(() => [
+  { value: 'POSITIVO', label: t('pratiche.esito_positivo') },
+  { value: 'NEGATIVO', label: t('pratiche.esito_negativo') },
+  { value: 'PARZIALE', label: t('pratiche.esito_parziale') },
+  { value: 'NON_APPLICABILE', label: t('pratiche.esito_non_applicabile') },
+])
 
 async function loadFlussi() {
   loading.value = true
@@ -66,17 +77,30 @@ async function onAvviaFlusso(flusso) {
   }
 }
 
-// Scopo: Completa flusso (IN_CORSO → COMPLETATO).
-// TODO: in futuro mostrare dialog per scegliere esito (POSITIVO/NEGATIVO) e note.
-async function onCompletaFlusso(flusso) {
+// Scopo: Apre il mini-form inline per scegliere l'esito prima di completare.
+function onChiediEsito(flusso) {
+  completandoFlussoId.value = flusso.id
+  esitoSelezionato.value = null
+}
+
+function onAnnullaEsito() {
+  completandoFlussoId.value = null
+  esitoSelezionato.value = null
+}
+
+// Scopo: Completa flusso (IN_CORSO → COMPLETATO) con esito scelto dall'utente.
+async function onConfermaCompletamento() {
+  if (!esitoSelezionato.value || !completandoFlussoId.value) return
   const result = await execute(
-    () => cambiaStatoFlusso(props.praticaId, flusso.id, {
+    () => cambiaStatoFlusso(props.praticaId, completandoFlussoId.value, {
       nuovo_stato: STATO_FLUSSO.COMPLETATO,
-      esito: 'POSITIVO'
+      esito: esitoSelezionato.value
     }),
     { successMessage: t('pratiche.flusso_completato') }
   )
   if (result !== null) {
+    completandoFlussoId.value = null
+    esitoSelezionato.value = null
     await loadFlussi()
     emit('refresh')
   }
@@ -129,25 +153,41 @@ watch(() => props.praticaId, (id) => {
       <Column field="data_scadenza" :header="t('pratiche.col_data_scadenza')" style="width: 100px;">
         <template #body="{ data }">{{ displayDate(data.data_scadenza) }}</template>
       </Column>
-      <Column :header="t('pratiche.flusso_col_azioni')" style="width: 90px;" :exportable="false">
+      <Column :header="t('pratiche.flusso_col_azioni')" style="width: 260px;" :exportable="false">
         <template #body="{ data }">
-          <div v-if="!isReadonly" style="display: flex; gap: 0.25rem;">
+          <div v-if="!isReadonly" style="display: flex; gap: 0.25rem; align-items: center;">
             <Button
-              v-if="(data.stato_codice_interno || '').trim() === STATO_FLUSSO.DA_ESEGUIRE"
+              v-if="(data.stato_codice_interno || '') === STATO_FLUSSO.DA_ESEGUIRE"
               icon="pi pi-play"
               text rounded size="small"
               class="app-action-btn"
               v-tooltip.top="t('pratiche.flusso_avvia')"
               @click.stop="onAvviaFlusso(data)"
             />
+            <!-- IN_CORSO: se non sto completando questo flusso, mostro il bottone -->
             <Button
-              v-if="(data.stato_codice_interno || '').trim() === STATO_FLUSSO.IN_CORSO"
+              v-if="(data.stato_codice_interno || '') === STATO_FLUSSO.IN_CORSO && completandoFlussoId !== data.id"
               icon="pi pi-check"
               text rounded size="small"
               class="app-action-btn"
               v-tooltip.top="t('pratiche.flusso_completa')"
-              @click.stop="onCompletaFlusso(data)"
+              @click.stop="onChiediEsito(data)"
             />
+            <!-- IN_CORSO + completando: mini-form esito inline -->
+            <div v-if="completandoFlussoId === data.id" style="display: flex; gap: 0.25rem; align-items: center;">
+              <Select
+                v-model="esitoSelezionato"
+                :options="esitiOptions"
+                option-label="label" option-value="value"
+                :placeholder="t('pratiche.flusso_esito')"
+                style="width: 150px;"
+              />
+              <Button icon="pi pi-check" text rounded size="small" severity="success"
+                :disabled="!esitoSelezionato"
+                @click.stop="onConfermaCompletamento" />
+              <Button icon="pi pi-times" text rounded size="small" severity="secondary"
+                @click.stop="onAnnullaEsito" />
+            </div>
           </div>
         </template>
       </Column>

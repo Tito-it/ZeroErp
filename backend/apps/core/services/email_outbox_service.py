@@ -17,7 +17,7 @@ from typing import Any
 from django.conf import settings
 
 from apps.core.db.email_repository import EmailRepository
-from apps.core.services.email_service import EmailDispatchService
+from apps.core.services.email_service import E_EMAIL, EmailDispatchService
 from apps.core.services.error_manager import ErrorManager
 
 E_OUTBOX = "E_OUTBOX"
@@ -76,27 +76,15 @@ class EmailOutboxService:
         creato_da_user_id: int | None = None,
         destinatari_cc: list[str] | None = None,
     ) -> dict[str, Any]:
-        # Risolvi template
-        template = self._repo.resolve_template(
-            codice_template,
+        # Risolvi template + account + renderizza (metodo condiviso con EmailDispatchService)
+        template, account, oggetto, corpo_html, corpo_testo = self._dispatch.resolve_and_render(
+            codice_template=codice_template,
+            variabili=variabili,
             unita_organizzativa_id=unita_organizzativa_id,
             tipo_prestazione_id=tipo_prestazione_id,
             lingua=lingua,
+            error_code=E_OUTBOX,
         )
-        ErrorManager.require(template is not None, code=E_OUTBOX, message=f"Template '{codice_template}' non trovato.")
-        assert template is not None
-
-        # Risolvi account
-        account = self._repo.resolve_account(unita_organizzativa_id)
-        ErrorManager.require(account is not None, code=E_OUTBOX, message="Nessun account email configurato.")
-        assert account is not None
-
-        # Renderizza
-        oggetto = self._dispatch.render_template(template["oggetto"], variabili)
-        corpo_html = self._dispatch.render_template(template["corpo_html"], variabili)
-        corpo_testo = None
-        if template.get("corpo_testo"):
-            corpo_testo = self._dispatch.render_template(template["corpo_testo"], variabili)
 
         # Crea bozza
         outbox_id = self._repo.create_outbox(
@@ -263,7 +251,7 @@ class EmailOutboxService:
 
 # Scopo: Elimina file fisico da storage (ignora errori se non esiste).
 def _delete_file(rel_path: str | None) -> None:
-    if not rel_path:
+    if not rel_path or not rel_path.strip():
         return
     abs_path = os.path.join(_get_attachments_root(), rel_path)
     try:

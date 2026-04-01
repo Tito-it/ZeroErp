@@ -11,7 +11,7 @@ import { useTabEvents } from './useTabEvents'
 export function useTabFreshness(store, entityType) {
   const { onDataChanged } = useTabEvents()
   const cleanup = onDataChanged(e => {
-    if (e.entityType === entityType) store.fetchList()
+    if (e.entityType === entityType) store.fetchList().catch(() => {})
   })
   onUnmounted(() => { cleanup() })
 }

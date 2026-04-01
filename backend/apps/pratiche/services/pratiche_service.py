@@ -561,7 +561,8 @@ def riattiva_pratica(pratica_id: int) -> None:
 
 
 # Scopo: Verifica che il flusso esista e appartenga alla pratica indicata.
-def _verifica_flusso_pratica(
+# Funzione pubblica: usata sia internamente dal service sia dalle views API.
+def verifica_flusso_pratica(
     repo: PraticheRepository, pratica_id: int, flusso_id: int,
 ) -> dict[str, Any]:
     flusso = repo.get_flusso(flusso_id)
@@ -611,7 +612,7 @@ def sospendi_flusso(
     )
 
     repo = PraticheRepository()
-    _verifica_flusso_pratica(repo, pratica_id, flusso_id)
+    verifica_flusso_pratica(repo, pratica_id, flusso_id)
 
     # Verifica che non ci sia gia' una sospensione attiva sul flusso.
     sosp_attiva = repo.get_sospensione_attiva_flusso(pratica_id, flusso_id)
@@ -653,7 +654,7 @@ def riattiva_flusso(pratica_id: int, flusso_id: int) -> None:
     assert flusso_id > 0
 
     repo = PraticheRepository()
-    _verifica_flusso_pratica(repo, pratica_id, flusso_id)
+    verifica_flusso_pratica(repo, pratica_id, flusso_id)
 
     # Cerca la sospensione attiva per il flusso specifico.
     sosp_attiva = repo.get_sospensione_attiva_flusso(pratica_id, flusso_id)

@@ -29,7 +29,7 @@ class LogoutView(DomainAPIView):
     # Scopo: Blacklista il refresh token corrente e registra evento LOGOUT.
     def post(self, request: Request) -> Response:
         refresh_token = request.data.get("refresh")
-        if not refresh_token:
+        if not refresh_token or not isinstance(refresh_token, str):
             raise ServiceError(
                 code="E_LOGOUT_NO_TOKEN",
                 message="Refresh token richiesto per il logout.",
@@ -57,7 +57,7 @@ class LogoutView(DomainAPIView):
         if sid:
             session_audit_service.record_logout(
                 user_id=request.user.id,
-                request=request._request,
+                request=request._request if hasattr(request, "_request") else request,
                 jti=sid,
             )
         return Response(status=204)

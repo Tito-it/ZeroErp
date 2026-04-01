@@ -48,6 +48,7 @@ Non tutte le risorse umane accedono al software. Un magazziniere potrebbe non av
 * [config.qualifiche](/dbzero/config/tabelle/qualifiche) — mansioni e posizioni
 * [config.unita_organizzative](/dbzero/config/tabelle/unita_organizzative) — reparti e uffici
 * [config.ruolo_sistema](/dbzero/config/tabelle/ruolo_sistema) — classificazione utente (ADMIN, OPERATIVO, DISABILITATO)
+* [config.user_emittenti_fiscali](/dbzero/config/tabelle/user_emittenti_fiscali) — scope emittenti fiscali per operatore
 * [config.token_monouso](/dbzero/config/tabelle/token_monouso) — token sicuri per inviti e reset password
 * [config.email_account](/dbzero/config/tabelle/email_account) — account SMTP per invio email (vedi [Guida Gestione Mail](/guide/gestione-mail))
 
@@ -279,6 +280,33 @@ La sequenza e l'inversa della cessazione:
 2. Riattivare il ponte: UPDATE `risorse_umane_auth_user.attivo = true` — il trigger sync imposta `auth_user.is_active = true` e il login viene riabilitato
 
 **Perche questo ordine?** Il framework ATTIVO (`trgfn_child_requires_active_parent`) impedisce di attivare un figlio se il genitore e inattivo. Bisogna riattivare la risorsa (genitore) prima del ponte (figlio).
+
+### Assegnazione emittente fiscale (scope operativo)
+
+Dopo aver creato l'operatore e collegato il suo account Django, e necessario definire **su quali emittenti fiscali** l'operatore puo lavorare. Questo vincolo determina il **perimetro dati** visibile: un operatore assegnato a un emittente vedra solo documenti, fatture, pratiche e movimenti di quell'emittente.
+
+**Tabella coinvolta:** `config.user_emittenti_fiscali` — legame N:1 tra `auth_user` e `anagrafiche.emittenti_fiscali`.
+
+**Come si configura (da interfaccia):**
+
+1. Andare in **Amm. Software → Operatori**
+2. Aprire l'operatore in modifica (click sulla riga)
+3. Passare al **tab Permessi**
+4. Nella sezione **Emittenti Scope** selezionare l'emittente fiscale dal dropdown
+5. Premere **Salva** nella sezione
+
+**Regole:**
+
+* Se l'operatore non ha nessun emittente assegnato, il comportamento dipende dal ruolo: un ADMIN vede tutto (bypass scope), un OPERATIVO non vedra dati filtrati per emittente
+* L'emittente fiscale e un soggetto con ruolo EMITTENTE nel sistema anagrafico — il dropdown mostra la **ragione sociale** del soggetto associato
+* Il vincolo e verificato a runtime da `get_scope_user_id(request)` negli endpoint API: se l'utente ha emittenti assegnati, le query vengono filtrate automaticamente
+* La modifica dell'emittente ha effetto immediato — non richiede invalidazione cache perche il check avviene ad ogni richiesta API
+
+**Quando serve:**
+
+* **Azienda mono-emittente**: assegnare l'unico emittente a tutti gli operatori (il sistema lo pre-seleziona se ce n'e uno solo)
+* **Gruppo multi-emittente**: assegnare a ciascun operatore solo gli emittenti su cui opera
+* **Consulenti esterni**: limitare lo scope al singolo emittente del cliente che seguono
 
 ---
 

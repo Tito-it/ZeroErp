@@ -7,13 +7,16 @@ import { useI18n } from 'vue-i18n'
 import { fetchAllegati, deleteAllegato } from '../api/pratiche-api'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
+import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { displayTimestamp } from '../../core/utils/date'
+import { formatSize } from '../../core/utils/format'
 import Tag from 'primevue/tag'
 import Button from 'primevue/button'
 
 const { t } = useI18n()
 const { execute } = useApiHandler()
 const isReadonly = useInjectReadonly()
+const { confirmDelete } = useConfirmAction()
 
 const props = defineProps({
   praticaId: { type: Number, required: true }
@@ -21,14 +24,6 @@ const props = defineProps({
 
 const allegati = ref([])
 const loading = ref(false)
-
-// Scopo: Formatta dimensione file in formato leggibile.
-function formatSize(bytes) {
-  if (!bytes) return ''
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-}
 
 async function loadAllegati() {
   loading.value = true
@@ -40,13 +35,15 @@ async function loadAllegati() {
   }
 }
 
-// Scopo: Elimina un allegato.
-async function onElimina(allegato) {
-  const result = await execute(
-    () => deleteAllegato(props.praticaId, allegato.id),
-    { successMessage: t('pratiche.allegato_eliminato') }
-  )
-  if (result !== null) await loadAllegati()
+// Scopo: Elimina un allegato con conferma.
+function onElimina(allegato) {
+  confirmDelete(allegato.nome_file, async () => {
+    const result = await execute(
+      () => deleteAllegato(props.praticaId, allegato.id),
+      { successMessage: t('pratiche.allegato_eliminato') }
+    )
+    if (result !== null) await loadAllegati()
+  })
 }
 
 watch(() => props.praticaId, (id) => {

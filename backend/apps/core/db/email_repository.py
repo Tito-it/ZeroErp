@@ -14,6 +14,16 @@ from typing import Any
 
 from django.db import connection
 
+
+# Scopo: Parsa un campo JSONB che psycopg2 potrebbe restituire come stringa.
+def _parse_jsonb_field(row: dict[str, Any], field: str) -> None:
+    val = row.get(field)
+    if isinstance(val, str):
+        try:
+            row[field] = json.loads(val)
+        except (json.JSONDecodeError, TypeError):
+            pass
+
 from apps.core.db._helpers import row_to_dict, rows_to_list
 from apps.core.services import crypto_service
 
@@ -243,6 +253,7 @@ class EmailRepository:
         total = rows[0]["total_count"] if rows else 0
         for r in rows:
             r.pop("total_count", None)
+            _parse_jsonb_field(r, "variabili_disponibili")
         return rows, total
 
     # Scopo: Dettaglio singolo template email per ID (incluso corpo).
@@ -261,7 +272,10 @@ class EmailRepository:
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [template_id])
-            return row_to_dict(cursor)
+            result = row_to_dict(cursor)
+            if result:
+                _parse_jsonb_field(result, "variabili_disponibili")
+            return result
 
     # Scopo: Crea un nuovo template email.
     def create_template(

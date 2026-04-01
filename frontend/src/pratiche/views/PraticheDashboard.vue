@@ -3,7 +3,7 @@
 // Layout: desktop = sidebar 280px + area principale con SearchTable sopra e FlussiPanel sotto.
 // Tablet: sidebar collassa in toggle, flussi passano da split a tab.
 // Riusa: PraticheCodaLavoro, PraticheSearchTable, PraticaFlussiPanel, PraticaDrawer, FlussoDrawer.
-import { ref, computed, watch, onMounted, nextTick } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useDrawerState } from '../../core/composables/useDrawerState'
 import { useApiHandler } from '../../core/composables/useApiHandler'
@@ -100,17 +100,29 @@ watch(() => store.selectedPraticaId, (id, oldId) => {
 })
 
 // Ricalcola layout DataTable quando hasSearched cambia (sidebar/flussi appaiono/scompaiono).
-// Doppio nextTick + setTimeout: PrimeVue DataTable con scrollHeight="flex" ricalcola
-// l'altezza interna solo dopo che il DOM flex si e' stabilizzato completamente.
-watch(() => store.hasSearched, () => {
-  nextTick(() => {
-    setTimeout(() => window.dispatchEvent(new Event('resize')), 50)
-  })
+// ResizeObserver sul container: deterministico, senza setTimeout.
+const dashboardRef = ref(null)
+let resizeObserver = null
+
+onMounted(() => {
+  if (dashboardRef.value) {
+    resizeObserver = new ResizeObserver(() => {
+      window.dispatchEvent(new Event('resize'))
+    })
+    resizeObserver.observe(dashboardRef.value)
+  }
+})
+
+onUnmounted(() => {
+  if (resizeObserver) {
+    resizeObserver.disconnect()
+    resizeObserver = null
+  }
 })
 </script>
 
 <template>
-  <div class="app-page pratiche-dashboard">
+  <div ref="dashboardRef" class="app-page pratiche-dashboard">
 
     <!-- Sidebar: Coda lavoro -->
     <aside v-if="store.hasSearched" class="dashboard-sidebar">
