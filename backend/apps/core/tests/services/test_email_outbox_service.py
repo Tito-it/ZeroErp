@@ -62,11 +62,13 @@ class PrepareDraftTests(TestCase):
     def test_prepare_draft_creates_outbox(self, MockRepo, MockDispatch):
         repo = MockRepo.return_value
         dispatch = MockDispatch.return_value
-        repo.resolve_template.return_value = _MOCK_TEMPLATE
-        repo.resolve_account.return_value = _MOCK_ACCOUNT
         repo.create_outbox.return_value = 10
         repo.get_outbox.return_value = _MOCK_OUTBOX_DRAFT
-        dispatch.render_template.side_effect = lambda tpl, var: tpl.replace("{{nome}}", var.get("nome", ""))
+        # resolve_and_render ritorna (template, account, oggetto, corpo_html, corpo_testo)
+        dispatch.resolve_and_render.return_value = (
+            _MOCK_TEMPLATE, _MOCK_ACCOUNT,
+            "Ciao Mario", "<p>Benvenuto Mario</p>", "Benvenuto Mario",
+        )
 
         service = EmailOutboxService()
         result = service.prepare_draft(
@@ -77,13 +79,17 @@ class PrepareDraftTests(TestCase):
 
         self.assertEqual(result["id"], 10)
         repo.create_outbox.assert_called_once()
+        dispatch.resolve_and_render.assert_called_once()
 
     # Scopo: Verifica che template non trovato lanci ServiceError.
     @patch(_DISPATCH)
     @patch(_REPO)
     def test_prepare_draft_template_not_found(self, MockRepo, MockDispatch):
-        repo = MockRepo.return_value
-        repo.resolve_template.return_value = None
+        dispatch = MockDispatch.return_value
+        # resolve_and_render lancia ServiceError se template non trovato
+        dispatch.resolve_and_render.side_effect = ServiceError(
+            code="E_OUTBOX", message="Template 'INESISTENTE' non trovato.",
+        )
 
         service = EmailOutboxService()
         with self.assertRaises(ServiceError):

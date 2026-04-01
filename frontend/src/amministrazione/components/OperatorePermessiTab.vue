@@ -1,7 +1,7 @@
 <script setup>
 // Scopo: tab permessi dentro il drawer modifica operatore.
 // Sezioni: override aree, override azioni, emittenti scope.
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useOperatoriStore } from '../stores/operatori'
 import { useApiHandler } from '../../core/composables/useApiHandler'
@@ -12,7 +12,6 @@ import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Select from 'primevue/select'
 import ToggleSwitch from 'primevue/toggleswitch'
-import MultiSelect from 'primevue/multiselect'
 import Button from 'primevue/button'
 import Message from 'primevue/message'
 
@@ -82,10 +81,14 @@ async function saveAzioni() {
 }
 
 async function saveEmittenti() {
-  await execute(
+  const result = await execute(
     () => store.saveEmittentiScope(props.authUserId, localEmittentiIds.value),
     { successMessage: t('notifications.save_success') }
   )
+  if (result !== null) {
+    // Aggiorna lista operatori dopo che execute ha completato (nextTick evita conflitto)
+    nextTick(() => store.fetchList().catch(() => {}))
+  }
 }
 
 function addAreaOverride() {
@@ -169,14 +172,15 @@ function removeAzioneOverride(index) {
     <!-- Emittenti Scope -->
     <h4>{{ t('amm.emittenti_scope_title') }}</h4>
     <p class="text-sm text-color-secondary mb-2">{{ t('amm.emittenti_scope_hint') }}</p>
-    <MultiSelect
-      v-model="localEmittentiIds"
+    <Select
+      :modelValue="localEmittentiIds.length ? localEmittentiIds[0] : null"
       :options="emittentiFiscali.items.value"
-      option-label="descrizione"
+      option-label="ragione_sociale"
       option-value="id"
       :placeholder="t('amm.select_emittenti')"
+      show-clear
       class="w-full mb-2"
-      display="chip"
+      @update:modelValue="v => localEmittentiIds = v != null ? [v] : []"
     />
     <div class="flex justify-end">
       <Button :label="t('common.save')" icon="pi pi-check" size="small" @click="saveEmittenti" />

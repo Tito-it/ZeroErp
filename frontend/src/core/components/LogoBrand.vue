@@ -1,6 +1,9 @@
 <script setup>
 // Scopo: componente logo ZeroERP riutilizzabile — usato in sidebar e login.
+// Usa il logo SVG centralizzato in assets/images/logo-zeroerp.svg.
 // Accetta prop size per varianti dimensionali.
+import logoSrc from '@/assets/images/logo-zeroerp.svg'
+
 defineProps({
   size: {
     type: String,
@@ -16,7 +19,7 @@ defineProps({
 
 <template>
   <div class="logo-brand" :class="[`logo-brand--${size}`]">
-    <span class="logo-brand-icon">Z</span>
+    <img :src="logoSrc" alt="ZeroERP" class="logo-brand-icon" />
     <span v-if="showText" class="logo-brand-text">ZeroERP</span>
   </div>
 </template>
@@ -29,17 +32,11 @@ defineProps({
 }
 
 .logo-brand-icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
   width: var(--app-logo-size);
   height: var(--app-logo-size);
   min-width: var(--app-logo-size);
   border-radius: var(--app-logo-radius);
-  background: var(--app-logo-bg);
-  color: var(--app-logo-color);
-  font-weight: 700;
-  font-size: var(--app-font-size-lg);
+  object-fit: cover;
 }
 
 .logo-brand-text {
@@ -54,7 +51,6 @@ defineProps({
   width: 40px;
   height: 40px;
   min-width: 40px;
-  font-size: 1.3rem;
 }
 
 .logo-brand--large .logo-brand-text {

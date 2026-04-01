@@ -5,6 +5,7 @@
 >
 > Vedi anche:
 >
+> * [Catalogo building block backend](backend/catalogo-building-block-backend.md) — inventario completo componenti riutilizzabili
 > * [Policy ricerca e paginazione](/dev/Policy-ricerca-e-paginazione(API-DB))
 > * [Messaggi di errore e log](/guide/Messaggi-di-Errore-e-Generazione-Log)
 > * [Guida fatturazione](/guide/fatturazione) — esempio completo di dominio con API
@@ -437,182 +438,17 @@ Tutte le API canoniche sotto `/api/v1/*`. Le route legacy sono disabilitate di d
 
 I nomi usano kebab-case: `reset-draft`, `calcoli-tempo`, `regole-generazione`.
 
-### Endpoint attivi (marzo 2026)
+### Endpoint attivi
 
-**Vendite** (`/api/v1/vendite/`)
+Per l'inventario completo degli endpoint attivi per dominio, consultare la documentazione OpenAPI generata automaticamente all'endpoint `/api/docs/` oppure i documenti manuali per dominio:
 
-| Metodo | Path                                   | Scopo                        |
-| ------ | -------------------------------------- | ---------------------------- |
-| GET    | `lotti/`                               | Elenco lotti fatturazione    |
-| POST   | `pipeline/run/`                        | Avvia pipeline lotto         |
-| GET    | `lotti/{id}/fatture/`                  | Fatture di un lotto          |
-| GET    | `lotti/{id}/segnalazioni/`             | Riepilogo segnalazioni lotto |
-| GET    | `lotti/{id}/task-runs/`                | Task run runtime lotto       |
-| POST   | `lotti/{id}/reset-draft/`              | Reset lotto a DRAFT          |
-| POST   | `lotti/{id}/fatture/{id}/reset-draft/` | Reset singola fattura        |
-| POST   | `commesse/push/run/`                   | Avvia push commesse          |
-| GET    | `commesse/push/{id}/`                  | Dettaglio push log           |
-| GET    | `commesse/{id}/stato/`                 | Stato commessa               |
-| GET    | `commesse/{id}/attivita/`              | Attivita` commessa           |
+* **Pratiche**: [api_pratiche_list.md](/backend/pratiche/manual/api_pratiche_list) | [api_pratiche_generate.md](/backend/pratiche/manual/api_pratiche_generate) | [api_pratiche_note.md](/backend/pratiche/manual/api_pratiche_note) | [api_pratiche_allegati.md](/backend/pratiche/manual/api_pratiche_allegati)
+* **Amm. Software**: [api_amm_software.md](api_amm_software.md)
+* **Anagrafiche**: [api_soggetti.md](api_soggetti.md) | [api_indirizzi.md](api_indirizzi.md) | [api_geo_config.md](api_geo_config.md) | [api_fornitori.md](api_fornitori.md)
+* **Auth**: [api_token_cambio_password.md](/backend/core/manual/api_token_cambio_password) | [api_password_reset.md](/backend/core/manual/api_password_reset) | [api_invito_operatore.md](/backend/core/manual/api_invito_operatore)
+* **Email**: [api_email.md](/backend/core/manual/api_email)
 
-**Pratiche** (`/api/v1/pratiche/`)
-Dettaglio: [api_pratiche_list.md](/backend/pratiche/manual/api_pratiche_list) | [api_pratiche_generate.md](/backend/pratiche/manual/api_pratiche_generate) | [api_pratiche_note.md](/backend/pratiche/manual/api_pratiche_note) | [api_pratiche_allegati.md](/backend/pratiche/manual/api_pratiche_allegati)
-
-| Metodo | Path                                    | Scopo                              |
-| ------ | --------------------------------------- | ---------------------------------- |
-| GET    | `/` (root)                              | Elenco pratiche                    |
-| POST   | `/` (root)                              | Crea pratica                       |
-| GET    | `{id}/`                                 | Dettaglio pratica                  |
-| PATCH  | `{id}/`                                 | Aggiorna pratica                   |
-| POST   | `{id}/stato/`                           | Cambia stato pratica               |
-| POST   | `{id}/assegnazione/`                    | Assegna pratica                    |
-| GET    | `{id}/giornale/`                        | Giornale pratica                   |
-| POST   | `{id}/sospendi/`                        | Sospendi pratica                   |
-| POST   | `{id}/riattiva/`                        | Riattiva pratica                   |
-| GET    | `{id}/sospensioni/`                     | Elenco sospensioni                 |
-| GET    | `{id}/calcoli-tempo/`                   | Calcoli tempo pratica              |
-| GET    | `{id}/flussi/`                          | Elenco flussi                      |
-| POST   | `{id}/flussi/`                          | Crea flusso                        |
-| GET    | `{id}/flussi/{fid}/`                    | Dettaglio flusso                   |
-| POST   | `{id}/flussi/{fid}/stato/`              | Cambia stato flusso                |
-| GET    | `{id}/flussi/{fid}/prerequisiti/`       | Prerequisiti flusso                |
-| GET    | `{id}/flussi/{fid}/canali/`             | Canali flusso                      |
-| GET    | `{id}/flussi/{fid}/regole-generazione/` | Regole generazione                 |
-| POST   | `{id}/flussi/{fid}/genera/`             | Genera pratica da flusso           |
-| GET    | `{id}/flussi/{fid}/pratiche-generate/`  | Pratiche generate                  |
-| POST   | `{id}/flussi/{fid}/sospendi/`           | Sospendi flusso                    |
-| POST   | `{id}/flussi/{fid}/riattiva/`           | Riattiva flusso                    |
-| GET    | `{id}/note/`                            | Elenco note pratica                |
-| POST   | `{id}/note/`                            | Crea nota                          |
-| PATCH  | `{id}/note/{nid}/`                      | Aggiorna nota                      |
-| DELETE | `{id}/note/{nid}/`                      | Elimina nota                       |
-| GET    | `{id}/allegati/`                        | Elenco allegati pratica            |
-| POST   | `{id}/allegati/`                        | Crea record allegato               |
-| DELETE | `{id}/allegati/{aid}/`                  | Elimina allegato                   |
-| GET    | `formule-tempo/`                        | Formule tempo per tipo prestazione |
-
-**Core** (`/api/v1/core/`)
-
-| Metodo | Path                                              | Scopo                                                        |
-| ------ | ------------------------------------------------- | ------------------------------------------------------------ |
-| GET    | `me/`                                             | Profilo utente corrente                                      |
-| GET    | `me/sessioni/`                                    | Sessioni attive                                              |
-| POST   | `me/sessioni/{jti}/revoca/`                       | Revoca sessione                                              |
-| GET    | `lookup/codici/`                                  | Ricerca codici configurazione                                |
-| GET    | `lookup/tipi-ruoli/`                              | Tipi ruolo con visibilita'                                   |
-| GET    | `lookup/tipi-ruoli-per-natura/`                   | Tipi ruolo filtrati per natura soggetto                      |
-| GET    | `lookup/forme-giuridiche/`                        | Forme giuridiche con policy                                  |
-| GET    | `lookup/tipi-soggetto-dettaglio/`                 | Tipi soggetto con nature e policy                            |
-| GET    | `lookup/tipi-soggetto-dettaglio/{id}/indirizzi/`  | Matrice indirizzi per tipo                                   |
-| GET    | `lookup/comuni/`                                  | Autocomplete comuni                                          |
-| GET    | `search/stradario/`                               | Autocomplete stradario per comune                            |
-| GET    | `search/stradario-generale/`                      | Autocomplete vie su stradario generale (indice GIN trigram)  |
-| GET    | `search/`                                         | Ricerca universale soggetti                                  |
-| GET    | `search/{uuid}/detail/`                           | Dettaglio soggetto per ruolo                                 |
-| GET    | `users/{id}/permessi-effettivi/`                  | Permessi effettivi utente                                    |
-| GET    | `users/{id}/permessi-audit/`                      | Audit permessi utente                                        |
-| GET    | `tracciamento/audit-log/`                         | Audit log sistema                                            |
-| GET    | `tracciamento/domini-task/`                       | Domini task registrati                                       |
-| GET    | `tracciamento/task-registry/`                     | Registry task                                                |
-| GET    | `tracciamento/task-implementations/`              | Implementazioni task                                         |
-| GET    | `tracciamento/job-runs/`                          | Esecuzioni job                                               |
-| GET    | `tracciamento/job-summary/`                       | Riepilogo job                                                |
-| GET    | `diagnostics/error-envelope/`                     | Simulazione envelope errore (test)                           |
-
-**Amm. Software** (`/api/v1/amm-software/`) — solo ADMIN
-Dettaglio: [api_amm_software.md](api_amm_software.md)
-
-| Metodo | Path                                    | Scopo                          |
-| ------ | --------------------------------------- | ------------------------------ |
-| GET    | `utenti/`                               | Lista operatori con filtri     |
-| POST   | `utenti/`                               | Crea operatore                 |
-| GET    | `utenti/{id}/`                          | Dettaglio operatore            |
-| PATCH  | `utenti/{id}/`                          | Modifica operatore             |
-| POST   | `utenti/{id}/disabilita/`               | Disabilita operatore           |
-| GET    | `utenti/{id}/override-aree/`            | Override aree utente           |
-| PUT    | `utenti/{id}/override-aree/`            | Sostituisce override aree      |
-| GET    | `utenti/{id}/override-azioni/`          | Override azioni utente         |
-| PUT    | `utenti/{id}/override-azioni/`          | Sostituisce override azioni    |
-| GET    | `utenti/{id}/emittenti-scope/`          | Scope emittenti utente         |
-| PUT    | `utenti/{id}/emittenti-scope/`          | Sostituisce scope emittenti    |
-| GET    | `reparti/`                              | Lista reparti                  |
-| GET    | `reparti/{id}/profilo/`                 | Profilo reparto                |
-| PUT    | `reparti/{id}/profilo/`                 | Sostituisce profilo reparto    |
-| GET    | `lookup/unita-organizzative/`           | UO per dropdown                |
-| GET    | `lookup/aree-funzionali/`              | Aree funzionali per dropdown   |
-| GET    | `lookup/azioni-processo/`              | Azioni processo per dropdown   |
-| GET    | `lookup/emittenti-fiscali/`            | Emittenti per dropdown         |
-
-**Anagrafiche** (`/api/v1/anagrafiche/`) — gestione geografica, soggetti e ruoli
-Dettaglio: [api_soggetti.md](api_soggetti.md) | [api_indirizzi.md](api_indirizzi.md) | [api_geo_config.md](api_geo_config.md) | [api_fornitori.md](api_fornitori.md)
-
-| Metodo | Path                                          | Scopo                                                      |
-| ------ | --------------------------------------------- | ---------------------------------------------------------- |
-| GET    | `fornitori/`                                  | Lista fornitori paginata con search e filtri               |
-| POST   | `fornitori/`                                  | Crea fornitore (ruolo FO + insert atomico)                 |
-| GET    | `fornitori/{id}/`                             | Dettaglio fornitore completo                               |
-| PATCH  | `fornitori/{id}/`                             | Aggiorna campi editabili fornitore                         |
-| GET    | `indirizzi/`                                  | Lista indirizzi dettaglio                                  |
-| POST   | `indirizzi/`                                  | Crea indirizzo (via esistente o nuova)                     |
-| GET    | `indirizzi/{id}/`                             | Dettaglio indirizzo                                        |
-| PATCH  | `indirizzi/{id}/`                             | Aggiorna civico/dettagli                                   |
-| GET    | `codici-postali/`                             | CAP per comune                                             |
-| GET    | `toponomastica/`                              | Lista toponomastica                                        |
-| POST   | `toponomastica/`                              | Crea tipo strada                                           |
-| GET    | `toponomastica/{id}/`                         | Dettaglio tipo strada                                      |
-| PATCH  | `toponomastica/{id}/`                         | Aggiorna tipo strada                                       |
-| GET    | `comuni/`                                     | Lista comuni                                               |
-| POST   | `comuni/`                                     | Crea comune                                                |
-| GET    | `province/`                                   | Lista province                                             |
-| POST   | `province/`                                   | Crea provincia                                             |
-| GET    | `province/{id}/`                              | Dettaglio provincia                                        |
-| PATCH  | `province/{id}/`                              | Aggiorna provincia                                         |
-| GET    | `province/lookup/`                            | Province per dropdown                                      |
-| GET    | `regioni/`                                    | Lista regioni                                              |
-| POST   | `regioni/`                                    | Crea regione                                               |
-| GET    | `regioni/{id}/`                               | Dettaglio regione                                          |
-| PATCH  | `regioni/{id}/`                               | Aggiorna regione                                           |
-| GET    | `regioni/lookup/`                             | Regioni per dropdown                                       |
-| GET    | `stati/`                                      | Lista stati                                                |
-| POST   | `stati/`                                      | Crea stato                                                 |
-| GET    | `stati/{id}/`                                 | Dettaglio stato                                            |
-| PATCH  | `stati/{id}/`                                 | Aggiorna stato                                             |
-| GET    | `stati/lookup/`                               | Stati per dropdown                                         |
-| GET    | `soggetti/`                                   | Lista soggetti paginata                                    |
-| POST   | `soggetti/`                                   | Crea soggetto (PF/PG + contatto + indirizzo)               |
-| GET    | `soggetti/{id}/`                              | Dettaglio soggetto (contatti, indirizzi, ruoli, conti)     |
-| PATCH  | `soggetti/{id}/`                              | Aggiorna soggetto                                          |
-| GET    | `soggetti/{id}/contatti/`                     | Lista contatti soggetto                                    |
-| POST   | `soggetti/{id}/contatti/`                     | Crea contatto                                              |
-| PATCH  | `soggetti/{id}/contatti/{cid}/`               | Aggiorna contatto                                          |
-| DELETE | `soggetti/{id}/contatti/{cid}/`               | Elimina contatto                                           |
-| GET    | `soggetti/{id}/indirizzi/`                    | Lista indirizzi soggetto                                   |
-| POST   | `soggetti/{id}/indirizzi/`                    | Crea indirizzo soggetto                                    |
-| PUT    | `soggetti/{id}/indirizzi/{iid}/`              | Sostituisce indirizzo                                      |
-| DELETE | `soggetti/{id}/indirizzi/{iid}/`              | Elimina indirizzo                                          |
-| GET    | `soggetti/{id}/ruoli/`                        | Lista ruoli soggetto                                       |
-| POST   | `soggetti/{id}/ruoli/`                        | Assegna ruolo                                              |
-| GET    | `soggetti/{id}/conti-bancari/`                | Lista conti bancari soggetto                               |
-| POST   | `soggetti/{id}/conti-bancari/`                | Crea legame soggetto ↔ conto (get_or_create IBAN)          |
-| PATCH  | `soggetti/{id}/conti-bancari/{cbid}/`         | Aggiorna legame conto soggetto                             |
-| DELETE | `soggetti/{id}/conti-bancari/{cbid}/`         | Elimina legame conto soggetto                              |
-| GET    | `ruoli/{id}/conti-bancari/`                   | Lista conti ruolo (+ ereditati)                            |
-| POST   | `ruoli/{id}/conti-bancari/`                   | Crea legame ruolo ↔ conto                                  |
-| PATCH  | `ruoli/{id}/conti-bancari/{cbid}/`            | Aggiorna legame conto ruolo                                |
-| DELETE | `ruoli/{id}/conti-bancari/{cbid}/`            | Elimina legame conto ruolo                                 |
-| GET    | `conti-bancari/lookup/`                       | Autocomplete IBAN registro                                 |
-| GET    | `bank-branches/lookup/`                       | Autocomplete filiali bancarie                              |
-| POST   | `soggetti/valida-cf-piva/`                    | Validazione CF/PIVA (errori + warning)                     |
-| POST   | `soggetti/genera-cf/`                         | Genera CF italiano                                         |
-| GET    | `ruoli/{codice}/config-resolver/`             | Config resolver per tipo ruolo                             |
-
-**Auth** (`/api/v1/auth/`)
-
-| Metodo | Path              | Scopo           |
-| ------ | ----------------- | --------------- |
-| POST   | `token/`          | Login JWT       |
-| POST   | `token/refresh/`  | Refresh JWT     |
-| POST   | `logout/`         | Logout + revoca |
+Per i building block backend riutilizzabili (helpers, services, repository), consultare il [Catalogo Building Block Backend](backend/catalogo-building-block-backend.md).
 
 ---
 

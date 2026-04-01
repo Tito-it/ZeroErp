@@ -12,7 +12,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from django.db import connection
+from django.db import connection, transaction
 
 from apps.core.db._helpers import row_to_dict
 
@@ -31,8 +31,8 @@ class TokenRepository:
         scadenza_iso: str,
         meta: dict[str, Any] | None = None,
     ) -> int:
-        with connection.cursor() as cursor:
-            # Invalida token precedenti dello stesso tipo/utente
+        with transaction.atomic(), connection.cursor() as cursor:
+            # Invalida token precedenti dello stesso tipo/utente (atomico)
             self.invalidate_all(tipo, auth_user_id)
             # Inserisci nuovo token
             cursor.execute(

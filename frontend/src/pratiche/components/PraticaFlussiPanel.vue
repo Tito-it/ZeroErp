@@ -2,11 +2,11 @@
 // Scopo: Pannello flussi di una pratica, diviso in "da fare" e "completati".
 // Riutilizzabile: riceve flussi via props, emette eventi per azioni.
 // Usato nella dashboard (area inferiore) e potenzialmente nel drawer.
-import { computed } from 'vue'
+import { toRef } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { STATO_FLUSSO } from '../../core/constants'
 import { statoFlussoSeverity } from '../../core/utils/severity'
 import { displayDate } from '../../core/utils/date'
+import { useFlussiFilter } from '../composables/useFlussiFilter'
 import Tag from 'primevue/tag'
 import Button from 'primevue/button'
 
@@ -20,20 +20,7 @@ const props = defineProps({
 
 const emit = defineEmits(['open-flusso', 'avvia-flusso', 'completa-flusso'])
 
-// Flussi da fare: DA_ESEGUIRE, IN_CORSO, SOSPESO, ERRORE
-const flussiDaFare = computed(() =>
-  props.flussi.filter(f => [
-    STATO_FLUSSO.DA_ESEGUIRE, STATO_FLUSSO.IN_CORSO,
-    STATO_FLUSSO.SOSPESO, STATO_FLUSSO.ERRORE
-  ].includes(f.stato_codice_interno))
-)
-
-// Flussi completati: COMPLETATO, ANNULLATO
-const flussiCompletati = computed(() =>
-  props.flussi.filter(f => [
-    STATO_FLUSSO.COMPLETATO, STATO_FLUSSO.ANNULLATO
-  ].includes(f.stato_codice_interno))
-)
+const { flussiDaFare, flussiCompletati } = useFlussiFilter(toRef(props, 'flussi'))
 
 function onClickFlusso(flusso) {
   emit('open-flusso', flusso)

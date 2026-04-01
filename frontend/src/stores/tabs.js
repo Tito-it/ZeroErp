@@ -14,6 +14,9 @@ export const useTabsStore = defineStore('tabs', () => {
   const tabs = ref([])
   const activeTabId = ref(null)
 
+  // Flag reattivo: segnala ai componenti che il limite tab e' stato raggiunto
+  const tabLimitReached = ref(false)
+
   // --- Split view state ---
   const pinnedTabId = ref(null)
 
@@ -46,13 +49,10 @@ export const useTabsStore = defineStore('tabs', () => {
       activeTabId.value = existing.id
       return existing
     }
-    // Limite massimo tab
+    // Limite massimo tab — blocca apertura e segnala al componente
     if (tabs.value.length >= TABS.MAX_OPEN) {
-      // Chiudi la tab piu' vecchia non-dirty (esclusa attiva e pinnata)
-      const closable = tabs.value.find(t =>
-        !t.dirty && t.id !== activeTabId.value && t.id !== pinnedTabId.value
-      )
-      if (closable) removeTab(closable.id)
+      tabLimitReached.value = true
+      return null
     }
     const tab = {
       id: generateId(),
@@ -240,6 +240,7 @@ export const useTabsStore = defineStore('tabs', () => {
     tabs,
     activeTabId,
     activeTab,
+    tabLimitReached,
     // Split view
     pinnedTab,
     isSplit,

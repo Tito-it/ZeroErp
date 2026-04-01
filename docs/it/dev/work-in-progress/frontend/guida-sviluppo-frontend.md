@@ -113,47 +113,9 @@ frontend/src/
 
 Tutti i composable condivisi in **`src/core/composables/`**.
 
-### Catalogo completo (24 composable)
+### Catalogo completo
 
-#### Infrastruttura
-
-| Composable | Scopo |
-|------------|-------|
-| `useSearchTable` | Pattern lista paginata: loading, pagination, fetchList, sort, refresh. Usato da tutte le SearchTable |
-| `useDrawerState` | Stato drawer: visible, mode (create/edit), editId, open/close/reset |
-| `useTabFreshness` | Ricarica dati quando un tab diventa visibile dopo cambio |
-| `useTabEvents` | Bus eventi tra tab |
-| `useTabLabel` | Risoluzione label tab |
-| `usePagination` | Paginazione server-side (usato internamente da useSearchTable) |
-| `useApiHandler` | Wrapper API con loading/error/execute() |
-| `useNotify` | Toast centralizzato (success, error, systemError). MAI importare useToast direttamente |
-| `useConfirmAction` | Dialog conferma (wrappa useConfirm PrimeVue) |
-| `useConfirmCloseTab` | Conferma chiusura tab con modifiche non salvate |
-| `useDirtyState` | Tracking stato dirty di un form |
-| `useKeyboardShortcuts` | Shortcut globali (Ctrl+K ricerca, Ctrl+W chiudi tab, Ctrl+Tab naviga) |
-| `useLoading` | Stato loading generico |
-| `useReadonlyMode` | Provider/inject per modalita sola lettura per area funzionale |
-
-#### Lookup e autocomplete
-
-| Composable | Scopo |
-|------------|-------|
-| `useLookup` | Caricamento lookup generico con cache (per dropdown da API) |
-| `useServerAutocomplete` | Autocomplete con ricerca server-side e debounce |
-
-#### Building block dominio
-
-| Composable | Scopo |
-|------------|-------|
-| `useSoggettoForm` | Form soggetto PF/PG/ENTE guidato da matrice tipo |
-| `useContattoForm` | Form contatto con validazione email/PEC |
-| `useIndirizzoBase` | Composable condiviso indirizzo: comune, via, civico, CAP, check duplicato, addressNotFound |
-| `useIndirizzoSoggettoForm` | Estende useIndirizzoBase per indirizzi soggetto: multi-tipo, auto-clone, libera |
-| `useIndirizzoMultiTipo` | Barra tag multi-tipo con snapshot/restore per tipo indirizzo |
-| `useIndirizzoDuplicato` | Check duplicato indirizzo via API con exact_match |
-| `useDatiSocietariForm` | Form dati societari (forma giuridica, REA, capitale) |
-| `useAuthUser` | Form utente auth (username, email, password) |
-| `useSearchDetail` | Dettaglio da ricerca universale (row expansion) |
+Per l'inventario completo dei composable disponibili (infrastruttura, lookup, building block dominio), consultare il [Catalogo Building Block Frontend](../../frontend/catalogo-building-block-frontend.md#composables-srccorecomposables).
 
 ### Regola toast
 

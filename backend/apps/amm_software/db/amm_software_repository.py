@@ -102,6 +102,14 @@ class AmmSoftwareRepository:
                    ru.attivo,
                    ru.valido_dal::text,
                    ru.valido_al::text,
+                   (SELECT string_agg(COALESCE(s_ef.ragione_sociale_completa, ef.descrizione), ', '
+                                      ORDER BY COALESCE(s_ef.ragione_sociale_completa, ef.descrizione))
+                      FROM config.user_emittenti_fiscali uef
+                      JOIN anagrafiche.emittenti_fiscali ef ON ef.id = uef.emittente_fiscale_id
+                      LEFT JOIN anagrafiche.soggetti_ruoli sr_ef ON sr_ef.id = ef.soggetto_ruolo_id
+                      LEFT JOIN anagrafiche.soggetti s_ef ON s_ef.id = sr_ef.soggetto_id
+                     WHERE uef.auth_user_id = au.id
+                   ) AS emittenti_descrizione,
                    COUNT(*) OVER() AS total_count
               FROM auth_user au
               LEFT JOIN anagrafiche.risorse_umane_auth_user rua
@@ -165,7 +173,18 @@ class AmmSoftwareRepository:
                    COALESCE((SELECT COUNT(*) FROM config.user_override_azioni uoz
                              WHERE uoz.auth_user_id = au.id), 0) AS override_azioni_count,
                    COALESCE((SELECT COUNT(*) FROM config.user_emittenti_fiscali uef
-                             WHERE uef.auth_user_id = au.id), 0) AS emittenti_count
+                             WHERE uef.auth_user_id = au.id), 0) AS emittenti_count,
+                   (SELECT string_agg(COALESCE(s_ef.ragione_sociale_completa, ef.descrizione), ', '
+                                      ORDER BY COALESCE(s_ef.ragione_sociale_completa, ef.descrizione))
+                      FROM config.user_emittenti_fiscali uef
+                      JOIN anagrafiche.emittenti_fiscali ef ON ef.id = uef.emittente_fiscale_id
+                      LEFT JOIN anagrafiche.soggetti_ruoli sr_ef ON sr_ef.id = ef.soggetto_ruolo_id
+                      LEFT JOIN anagrafiche.soggetti s_ef ON s_ef.id = sr_ef.soggetto_id
+                     WHERE uef.auth_user_id = au.id
+                   ) AS emittenti_descrizione,
+                   au.last_login,
+                   rua.invito_inviato_at,
+                   rua.deve_cambiare_password
               FROM auth_user au
               LEFT JOIN anagrafiche.risorse_umane_auth_user rua
                 ON rua.auth_user_id = au.id
@@ -730,6 +749,7 @@ class AmmSoftwareRepository:
         *,
         unita_organizzativa_id: int | None = None,
         ruolo_sistema: str | None = None,
+        emittente_fiscale_id: int | None = None,
     ) -> dict[str, Any]:
         # 1. Recupera aree funzionali attive (per le colonne)
         aree = self.list_aree_funzionali()
@@ -745,6 +765,13 @@ class AmmSoftwareRepository:
         if ruolo_sistema:
             conditions.append("rua.ruolo_sistema = %s::config.ruolo_sistema")
             params.append(ruolo_sistema)
+
+        if emittente_fiscale_id is not None:
+            conditions.append(
+                "EXISTS (SELECT 1 FROM config.user_emittenti_fiscali uef"
+                " WHERE uef.auth_user_id = au.id AND uef.emittente_fiscale_id = %s)"
+            )
+            params.append(emittente_fiscale_id)
 
         where_clause = " AND ".join(conditions)
 
@@ -817,12 +844,16 @@ class AmmSoftwareRepository:
             return rows_to_list(cursor)
 
     # Scopo: Lista emittenti fiscali per dropdown scope operatore.
+    #        Espone ragione_sociale del soggetto associato via soggetto_ruolo_id.
     def list_emittenti_fiscali(self) -> list[dict[str, Any]]:
         with connection.cursor() as cursor:
             cursor.execute(
-                """SELECT id, codice, descrizione
-                     FROM anagrafiche.emittenti_fiscali
-                    WHERE attivo = true
-                    ORDER BY descrizione"""
+                """SELECT ef.id, ef.codice, ef.descrizione,
+                          s.ragione_sociale_completa AS ragione_sociale
+                     FROM anagrafiche.emittenti_fiscali ef
+                     LEFT JOIN anagrafiche.soggetti_ruoli sr ON sr.id = ef.soggetto_ruolo_id
+                     LEFT JOIN anagrafiche.soggetti s ON s.id = sr.soggetto_id
+                    WHERE ef.attivo = true
+                    ORDER BY s.ragione_sociale_completa, ef.descrizione"""
             )
             return rows_to_list(cursor)

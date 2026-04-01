@@ -94,6 +94,24 @@ const router = createRouter({
           component: () => import('../amministrazione/views/AuditLogView.vue'),
           meta: { domain: 'amm-software', menuKey: 'audit-log' }
         },
+        {
+          path: 'amm-software/email-accounts',
+          name: 'amm-software-email-accounts',
+          component: () => import('../amministrazione/views/EmailAccountsListView.vue'),
+          meta: { domain: 'amm-software', menuKey: 'email-accounts' }
+        },
+        {
+          path: 'amm-software/email-templates',
+          name: 'amm-software-email-templates',
+          component: () => import('../amministrazione/views/EmailTemplatesListView.vue'),
+          meta: { domain: 'amm-software', menuKey: 'email-templates' }
+        },
+        {
+          path: 'amm-software/email-log',
+          name: 'amm-software-email-log',
+          component: () => import('../amministrazione/views/EmailLogsListView.vue'),
+          meta: { domain: 'amm-software', menuKey: 'email-log' }
+        },
 
         // --- Anagrafiche ---
         {
@@ -225,12 +243,14 @@ router.beforeEach(async (to) => {
   // Apre tab (escluso home e pagine errore)
   if (domain && domain !== 'home' && to.name !== 'forbidden' && to.name !== 'not-found') {
     const tabs = useTabsStore()
-    tabs.openTab({
+    const opened = tabs.openTab({
       path: to.path,
       label: resolveTabLabel(to.meta, t) || to.path,
       domain: domain,
       icon: resolveTabIcon(to.meta)
     })
+    // Limite raggiunto — blocca navigazione
+    if (!opened) return false
   }
 })
 

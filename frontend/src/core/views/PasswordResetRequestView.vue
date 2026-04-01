@@ -1,6 +1,7 @@
 <script setup>
 import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { extractApiError } from '../utils/apiError'
 import api from '../api'
 import LogoBrand from '../components/LogoBrand.vue'
 import InputText from 'primevue/inputtext'
@@ -8,7 +9,7 @@ import Button from 'primevue/button'
 
 const { t } = useI18n()
 
-const email = ref('')
+const username = ref('')
 const sent = ref(false)
 const errorMessage = ref('')
 const loading = ref(false)
@@ -17,14 +18,14 @@ async function handleRequest() {
   errorMessage.value = ''
   loading.value = true
   try {
-    await api.post('/auth/password-reset-request/', { email: email.value })
+    await api.post('/auth/password-reset-request/', { username: username.value })
     sent.value = true
   } catch (err) {
     const status = err?.response?.status
     if (status === 429) {
       errorMessage.value = t('auth.too_many_attempts')
     } else {
-      errorMessage.value = err?.response?.data?.error?.message || t('auth.login_error')
+      errorMessage.value = extractApiError(err, t('auth.login_error'))
     }
   } finally {
     loading.value = false
@@ -45,13 +46,12 @@ async function handleRequest() {
       <template v-if="!sent">
         <form @submit.prevent="handleRequest" class="login-form">
           <div class="field">
-            <label for="email">{{ t('auth.reset_email_label') }}</label>
+            <label for="username">{{ t('auth.reset_username_label') }}</label>
             <InputText
-              id="email"
-              v-model="email"
-              type="email"
+              id="username"
+              v-model="username"
               :disabled="loading"
-              autocomplete="email"
+              autocomplete="username"
               fluid
             />
           </div>
@@ -62,8 +62,8 @@ async function handleRequest() {
             type="submit"
             :label="t('auth.reset_request_btn')"
             :loading="loading"
-            :disabled="!email"
-            fluid
+            :disabled="!username"
+            class="auth-submit-btn"
           />
 
           <router-link to="/login" class="back-link">
@@ -74,7 +74,7 @@ async function handleRequest() {
 
       <template v-else>
         <div class="login-form">
-          <div class="login-success">{{ t('auth.reset_email_sent') }}</div>
+          <div class="login-success">{{ t('auth.reset_username_sent') }}</div>
           <router-link to="/login" class="back-link">
             {{ t('auth.back_to_login') }}
           </router-link>

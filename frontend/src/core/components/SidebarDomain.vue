@@ -29,13 +29,14 @@ function handleBackHome() {
 }
 
 function handleMenuClick(item) {
-  // Apre la tab (o attiva quella esistente)
-  tabs.openTab({
+  // Apre la tab (o attiva quella esistente) — se limite raggiunto, blocca navigazione
+  const opened = tabs.openTab({
     path: item.to,
     label: t(`nav_menu.${nav.currentDomain}.${item.key}`),
     domain: nav.currentDomain,
     icon: item.icon
   })
+  if (!opened) return
   router.push(item.to)
   emit('navigate')
 }

@@ -31,6 +31,16 @@ export function riattivaOperatore(authUserId) {
   return api.post(`${BASE}/operatori/${authUserId}/riattiva/`)
 }
 
+// --- Invito operatore ---
+
+export function invitaOperatore(authUserId) {
+  return api.post(`${BASE}/operatori/${authUserId}/invita/`)
+}
+
+export function reinviaInvito(authUserId) {
+  return api.post(`${BASE}/operatori/${authUserId}/reinvia-invito/`)
+}
+
 // --- Override permessi operatore ---
 
 export function getOverrideAree(authUserId) {
@@ -79,6 +89,56 @@ export function getProfiloReparto(uoId) {
 
 export function putProfiloReparto(uoId, aree, azioni) {
   return api.put(`${BASE}/reparti/${uoId}/profilo/`, { aree, azioni })
+}
+
+// --- Email Accounts ---
+
+export function listEmailAccounts(params = {}) {
+  return api.get(`${BASE}/email-accounts/`, { params })
+}
+
+export function getEmailAccount(id) {
+  return api.get(`${BASE}/email-accounts/${id}/`)
+}
+
+export function createEmailAccount(payload) {
+  return api.post(`${BASE}/email-accounts/`, payload)
+}
+
+export function updateEmailAccount(id, payload) {
+  return api.patch(`${BASE}/email-accounts/${id}/`, payload)
+}
+
+export function testEmailAccount(id) {
+  return api.post(`${BASE}/email-accounts/${id}/test/`)
+}
+
+// --- Email Templates ---
+
+export function listEmailTemplates(params = {}) {
+  return api.get(`${BASE}/email-templates/`, { params })
+}
+
+export function getEmailTemplate(id) {
+  return api.get(`${BASE}/email-templates/${id}/`)
+}
+
+export function updateEmailTemplate(id, payload) {
+  return api.patch(`${BASE}/email-templates/${id}/`, payload)
+}
+
+export function previewEmailTemplate(id, variabili) {
+  return api.post(`${BASE}/email-templates/${id}/preview/`, { variabili })
+}
+
+// --- Email Log ---
+
+export function listEmailLogs(params = {}) {
+  return api.get(`${BASE}/email-log/`, { params })
+}
+
+export function getEmailLog(id) {
+  return api.get(`${BASE}/email-log/${id}/`)
 }
 
 // --- Lookup ---

@@ -13,31 +13,15 @@ from rest_framework.request import Request
 from apps.core.api.base_views import DomainAPIView
 
 from apps.core.api.endpoint_helpers import get_risorsa_umana_id, handle_post_json
-from apps.core.api.payload_validators import optional_int
+from apps.core.api.payload_validators import optional_int, paginated_envelope, parse_list_params, qp_int_strict, qp_str
 from apps.core.api.success_responses import success_response
 from apps.core.services.error_manager import ErrorManager
 from apps.pratiche.db.pratiche_repository import PraticheRepository
 from apps.pratiche.services import generazione_service, pratiche_service
 
 
-# Scopo: Recupera un flusso verificando esistenza e appartenenza alla pratica.
-# Evita duplicazione del pattern get+check+ownership in ogni view nested.
-def _get_flusso_verificato(
-    repo: PraticheRepository, pratica_id: int, flusso_id: int,
-) -> dict:
-    flusso = repo.get_flusso(flusso_id)
-    ErrorManager.require(
-        flusso is not None,
-        code="E_FLUSSO_NOT_FOUND",
-        message=f"Flusso {flusso_id} non trovato",
-    )
-    assert flusso is not None
-    ErrorManager.require(
-        flusso["pratica_id"] == pratica_id,
-        code="E_FLUSSO_OWNERSHIP",
-        message=f"Flusso {flusso_id} non appartiene alla pratica {pratica_id}",
-    )
-    return flusso
+# Alias locale: la verifica ownership flusso-pratica e' centralizzata nel service.
+_get_flusso_verificato = pratiche_service.verifica_flusso_pratica
 
 
 # ================================================================== #
@@ -71,39 +55,34 @@ class ApiPraticheList(DomainAPIView):
     # Scopo: Restituisce via GET l'elenco paginato delle pratiche con filtri.
     def get(self, request: Request) -> JsonResponse:
         qp = request.query_params
-        emittente_fiscale_id = optional_int({"v": qp.get("emittente_fiscale_id")}, "v")
+        emittente_fiscale_id = qp_int_strict(qp.get("emittente_fiscale_id"), "emittente_fiscale_id", default=0)
         ErrorManager.require(
-            emittente_fiscale_id is not None and emittente_fiscale_id > 0,
+            emittente_fiscale_id > 0,
             code="E_PRATICA_VALIDATION",
             message="emittente_fiscale_id obbligatorio",
         )
-        assert emittente_fiscale_id is not None
 
-        stato = qp.get("stato") or None
+        p = parse_list_params(qp, default_order="data_insert", default_limit=50)
+        stato = qp_str(qp.get("stato"))
         tipo_prestazione_id = optional_int({"v": qp.get("tipo_prestazione_id")}, "v")
-        soggetto_id = qp.get("soggetto_id") or None
-        search = qp.get("search") or None
-        data_da = qp.get("data_da") or None
-        data_a = qp.get("data_a") or None
-        limit = optional_int({"v": qp.get("limit", "50")}, "v") or 50
-        offset = optional_int({"v": qp.get("offset", "0")}, "v") or 0
-        order_by = qp.get("order_by", "data_insert")
-        order_dir = qp.get("order_dir", "desc")
+        soggetto_id = qp_str(qp.get("soggetto_id"))
+        data_da = qp_str(qp.get("data_da"))
+        data_a = qp_str(qp.get("data_a"))
 
         items, total = pratiche_service.cerca_pratiche(
             emittente_fiscale_id=emittente_fiscale_id,
             stato_codice_interno=stato,
             tipo_prestazione_id=tipo_prestazione_id,
             soggetto_id=soggetto_id,
-            search=search,
+            search=p["search"],
             data_da=data_da,
             data_a=data_a,
-            limit=limit,
-            offset=offset,
-            order_by=order_by,
-            order_dir=order_dir,
+            limit=p["limit"],
+            offset=p["offset"],
+            order_by=p["order_by"],
+            order_dir=p["order_dir"],
         )
-        return success_response({"count": total, "results": items})
+        return success_response(paginated_envelope(items, total, p["page"], p["limit"]))
 
     @extend_schema(
         request=inline_serializer(
@@ -909,13 +888,12 @@ class ApiCodaLavoro(DomainAPIView):
     # Scopo: Restituisce via GET la coda di lavoro dell'operatore autenticato.
     def get(self, request: Request) -> JsonResponse:
         qp = request.query_params
-        emittente_fiscale_id = optional_int({"v": qp.get("emittente_fiscale_id")}, "v")
+        emittente_fiscale_id = qp_int_strict(qp.get("emittente_fiscale_id"), "emittente_fiscale_id", default=0)
         ErrorManager.require(
-            emittente_fiscale_id is not None and emittente_fiscale_id > 0,
+            emittente_fiscale_id > 0,
             code="E_PRATICA_VALIDATION",
             message="emittente_fiscale_id obbligatorio",
         )
-        assert emittente_fiscale_id is not None
 
         risorsa_umana_id = get_risorsa_umana_id(request)
         ErrorManager.require(

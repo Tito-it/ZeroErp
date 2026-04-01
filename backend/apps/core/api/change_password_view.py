@@ -15,19 +15,16 @@ from typing import Any
 
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
-from django.db import transaction
+from django.http import JsonResponse
 from drf_spectacular.utils import extend_schema
 from rest_framework.request import Request
-from rest_framework_simplejwt.exceptions import TokenError
-from rest_framework_simplejwt.token_blacklist.models import OutstandingToken
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from apps.core.api.base_views import DomainAPIView
 from apps.core.api.endpoint_helpers import handle_post_json
-from django.http import JsonResponse
-from apps.core.api.success_responses import success_response
 from apps.core.db.auth_repository import AuthRepository
 from apps.core.services import session_audit_service
+from apps.core.services.auth_helpers import apply_new_password
 from apps.core.services.error_manager import ErrorManager
 
 logger = logging.getLogger("security")
@@ -79,17 +76,7 @@ class ChangePasswordView(DomainAPIView):
                 ErrorManager.require(False, code=E_CHANGE_PW, message=" ".join(exc.messages))
 
             # Operazioni atomiche: password + flag + blacklist
-            with transaction.atomic():
-                user.set_password(new_password)
-                user.save(update_fields=["password"])
-                _auth_repo.set_deve_cambiare_password(user.id, False)
-
-                # Blacklista refresh token precedenti
-                for ot in OutstandingToken.objects.filter(user=user):
-                    try:
-                        RefreshToken(ot.token).blacklist()
-                    except TokenError:
-                        pass
+            apply_new_password(user, new_password, blacklist_tokens=True, auth_repo=_auth_repo)
 
             # Genera nuova coppia JWT (fuori dalla transazione — non critico)
             refresh = RefreshToken.for_user(user)
@@ -97,7 +84,7 @@ class ChangePasswordView(DomainAPIView):
             # Audit
             session_audit_service.record_login(
                 user_id=user.id,
-                request=request._request,
+                request=request._request if hasattr(request, "_request") else request,
                 jti=str(refresh.get("sid", refresh.get("jti", ""))),
             )
             logger.info("security.password_changed user_id=%s", user.id)

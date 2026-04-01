@@ -68,9 +68,9 @@ class InvitoOperatoreService:
 
             # 4. Genera token invito
             token_plain = self._token_service.create(
-            tipo=_INVITO_TOKEN_TIPO,
-            auth_user_id=auth_user_id,
-            scadenza_ore=_INVITO_SCADENZA_ORE,
+                tipo=_INVITO_TOKEN_TIPO,
+                auth_user_id=auth_user_id,
+                scadenza_ore=_INVITO_SCADENZA_ORE,
                 meta={"invitato_da_user_id": invitato_da_user_id},
             )
 
@@ -90,25 +90,27 @@ class InvitoOperatoreService:
         # 9. Invia email (non blocca il flusso se fallisce — il token e' gia' valido)
         try:
             self._email_service.send_email(
-            codice_template=_TEMPLATE_INVITO,
-            destinatario=email,
-            variabili={
-                "nome": operatore_nome.get("first_name", ""),
-                "cognome": operatore_nome.get("last_name", ""),
-                "azienda": "ZeroErp",
-                "link": link,
-                "scadenza_ore": str(_INVITO_SCADENZA_ORE),
-                "invitato_da": invitato_da_nome,
-            },
-            unita_organizzativa_id=uo_id,
-            ambito="SISTEMA",
+                codice_template=_TEMPLATE_INVITO,
+                destinatario=email,
+                variabili={
+                    "nome": operatore_nome.get("first_name", ""),
+                    "cognome": operatore_nome.get("last_name", ""),
+                    "azienda": "ZeroErp",
+                    "link": link,
+                    "scadenza_ore": str(_INVITO_SCADENZA_ORE),
+                    "invitato_da": invitato_da_nome,
+                },
+                unita_organizzativa_id=uo_id,
+                ambito="SISTEMA",
                 auth_user_id=auth_user_id,
             )
         except Exception:
             logger.exception("Errore invio email invito per user_id=%s — token valido, invito recuperabile", auth_user_id)
 
         # 10. Aggiorna timestamp invito
-        self._auth_repo.set_invito_inviato_at(auth_user_id)
+        invito_updated = self._auth_repo.set_invito_inviato_at(auth_user_id)
+        if not invito_updated:
+            logger.warning("Timestamp invito non aggiornato per user_id=%s — riga non trovata", auth_user_id)
 
         logger.info("security.invito_inviato user_id=%s email=%s da=%s", auth_user_id, email, invitato_da_user_id)
 

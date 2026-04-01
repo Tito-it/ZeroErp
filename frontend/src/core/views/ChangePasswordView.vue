@@ -1,16 +1,20 @@
 <script setup>
 import { ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useAuthStore } from '../../stores/auth'
+import { usePasswordValidation } from '../composables/usePasswordValidation'
+import { extractApiError } from '../utils/apiError'
 import api from '../api'
 import LogoBrand from '../components/LogoBrand.vue'
 import Password from 'primevue/password'
 import Button from 'primevue/button'
 
 const { t } = useI18n()
+const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
+const { validateNewPassword } = usePasswordValidation()
 
 const oldPassword = ref('')
 const newPassword = ref('')
@@ -23,12 +27,9 @@ async function handleChangePassword() {
   errorMessage.value = ''
   successMessage.value = ''
 
-  if (newPassword.value.length < 8) {
-    errorMessage.value = t('auth.password_too_short')
-    return
-  }
-  if (newPassword.value !== confirmPassword.value) {
-    errorMessage.value = t('auth.password_mismatch')
+  const pwError = validateNewPassword(newPassword.value, confirmPassword.value)
+  if (pwError) {
+    errorMessage.value = t(pwError)
     return
   }
 
@@ -48,12 +49,9 @@ async function handleChangePassword() {
       try { await auth.fetchProfile() } catch { /* non blocca il flusso */ }
     }
     successMessage.value = t('auth.password_changed_success')
-    setTimeout(() => router.push('/'), 1500)
+    setTimeout(() => router.push(route.query.redirect || '/'), 1500)
   } catch (err) {
-    const msg = err?.response?.data?.error?.message
-      || err?.response?.data?.data?.message
-      || t('auth.login_error')
-    errorMessage.value = msg
+    errorMessage.value = extractApiError(err, t('auth.login_error'))
   } finally {
     loading.value = false
   }
@@ -88,7 +86,9 @@ async function handleChangePassword() {
         </div>
 
         <div class="field">
-          <label for="new_password">{{ t('auth.new_password') }}</label>
+          <label for="new_password">{{ t('auth.new_password') }}
+            <i class="pi pi-info-circle password-info-icon" v-tooltip.right="t('auth.password_hint')" />
+          </label>
           <Password
             id="new_password"
             v-model="newPassword"
@@ -121,7 +121,7 @@ async function handleChangePassword() {
           :label="t('auth.change_password')"
           :loading="loading"
           :disabled="!oldPassword || !newPassword || !confirmPassword"
-          fluid
+          class="auth-submit-btn"
         />
       </form>
     </div>

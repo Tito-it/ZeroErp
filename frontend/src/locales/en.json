@@ -68,7 +68,10 @@
       "operatori": "Operators",
       "profili-reparto": "Department Profiles",
       "permessi": "Permissions",
-      "audit-log": "Audit Log"
+      "audit-log": "Audit Log",
+      "email-accounts": "Email Accounts",
+      "email-templates": "Email Templates",
+      "email-log": "Email Log"
     },
     "anagrafiche": {
       "soggetti": "Subjects",
@@ -701,7 +704,9 @@
     "nota_placeholder": "Write a note...",
     "nota_creata": "Note added",
     "nota_salvata": "Note updated",
+    "nota": "note",
     "nota_eliminata": "Note deleted",
+    "conferma_annulla": "Are you sure you want to cancel this case? This operation cannot be undone.",
     "note_vuote": "No notes",
     "tab_allegati": "Attachments",
     "allegato_eliminato": "Attachment deleted",
