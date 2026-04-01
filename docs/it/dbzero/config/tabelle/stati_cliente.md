@@ -5,7 +5,7 @@
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | integer | NO |  |
-| codice_interno | character | NO |  |
+| codice_interno | character varying | NO |  |
 | descrizione | character varying | NO | ''::character varying |
 | descrizione_breve | character | NO |  |
 | check_lettura | character | NO | 'S'::bpchar |

@@ -1,0 +1,67 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+#
+# Ricrea vista script.view_clienti_istanza_states dopo
+# conversione config.stati_cliente.codice_interno da CHAR(5)
+# a VARCHAR(50) (migration 20260401-21 in 00_schema/config).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260401-23-recreate-view-clienti-istanza-states-mctit.yaml
+
+  - changeSet:
+      id: 20260401-23-recreate-view-clienti-istanza-states
+      author: mctit
+      runOnChange: true
+      comment: >
+        Ricrea vista script.view_clienti_istanza_states droppata
+        dalla migration 20260401-21 (ALTER codice_interno CHAR->VARCHAR).
+        Definizione identica alla precedente.
+
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ==========================================================
+              -- Vista: script.view_clienti_istanza_states
+              --
+              -- Scopo: espone per ogni istanza utility lo stato cliente
+              --        corrente con tutti i campi di config.stati_cliente.
+              --        Risolve lo stato tramite fn_get_stato_cliente_by_istanza.
+              --
+              -- Colonne:
+              --   istanza_id           - ID istanza utility
+              --   stato_id             - ID stato cliente
+              --   cod_int_stato_cliente - codice_interno dello stato
+              --   desc_stato_cliente   - descrizione completa
+              --   desc_breve_stato     - descrizione breve
+              --   check_lettura        - flag lettura abilitata
+              --   abilita_fattura      - flag fatturazione abilitata
+              --   stato_cliente        - codice stato
+              --   stato_cliente_ia     - indicatore attivita'
+              --   stato_data/user_*    - audit dello stato
+              --
+              -- Ricreata dopo ALTER codice_interno CHAR(5) -> VARCHAR(50).
+              -- ==========================================================
+              CREATE OR REPLACE VIEW script.view_clienti_istanza_states
+              AS
+              SELECT i.id AS istanza_id,
+                  sc.id AS stato_id,
+                  sc.codice_interno AS cod_int_stato_cliente,
+                  sc.descrizione AS desc_stato_cliente,
+                  sc.descrizione_breve AS desc_breve_stato,
+                  sc.check_lettura,
+                  sc.abilita_fattura,
+                  sc.codice AS stato_cliente,
+                  sc.stato_cliente_ia,
+                  sc.data_insert AS stato_data_insert,
+                  sc.user_insert AS stato_user_insert,
+                  sc.data_update AS stato_data_update,
+                  sc.user_update AS stato_user_update
+              FROM anagrafiche.istanze_utilities i
+                  JOIN config.stati_cliente sc ON sc.id = script.fn_get_stato_cliente_by_istanza(i.id);
+
+              COMMENT ON VIEW script.view_clienti_istanza_states IS
+                'Stato cliente corrente per istanza utility, risolto tramite fn_get_stato_cliente_by_istanza.';
