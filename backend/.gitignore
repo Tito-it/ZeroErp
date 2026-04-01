@@ -32,8 +32,8 @@ site/
 workspaces/
 .vscode/
 
-# Tools / private
-tools/
+# Tools / private (solo root backend, non sotto apps/)
+/tools/
 privato/
 
 # Created by venv; see https://docs.python.org/3/library/venv.html#
@@ -72,6 +72,6 @@ privato/
 # ignora carella doc site
 site/
 
-# ignora cartella tools
-tools/
+# ignora cartella tools (solo root backend, non sotto apps/)
+/tools/
 

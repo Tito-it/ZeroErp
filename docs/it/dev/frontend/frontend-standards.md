@@ -157,6 +157,97 @@ Ogni schermata di elenco segue questo schema fisso:
 - **Ricerca** con debounce 400ms (gestito da `useSearchTable`)
 - **DataTable** sempre con: `lazy`, `removable-sort`, `striped-rows`, `scrollable`, `scrollHeight="flex"`
 
+### Empty state — liste che partono vuote (standard)
+
+Le liste che possono selezionare troppi dati partono **vuote** e mostrano un placeholder
+finche' l'utente non applica una ricerca (min 3 caratteri) o un filtro.
+
+**Componenti coinvolti:**
+
+| Elemento | Dove |
+| --- | --- |
+| `SearchHint.vue` | `core/components/` — placeholder riutilizzabile (icona search + messaggio) |
+| `hasSearched` | Nello store Pinia — `ref(false)`, diventa `true` dopo il primo fetch |
+| Guardia in `fetchList()` | Nello store — blocca la chiamata API se non ci sono filtri attivi |
+
+**1. Store — aggiungere `hasSearched` e guardia in `fetchList()`:**
+
+```js
+const hasSearched = ref(false)
+
+async function fetchList() {
+  const f = filters.value
+  const searchTerm = (f.search || '').trim()
+  const hasFilters = f.filtro_1 != null || f.filtro_2 != null // adattare ai filtri reali
+
+  // Search con meno di 3 caratteri e nessun filtro attivo → ignora
+  if (searchTerm.length > 0 && searchTerm.length < 3 && !hasFilters) return
+  // Primo caricamento senza filtri → resta vuoto
+  if (!searchTerm && !hasFilters && !hasSearched.value) return
+  // Search svuotata senza filtri → torna a stato vuoto
+  if (!searchTerm && !hasFilters) {
+    items.value = []
+    totalRecords.value = 0
+    hasSearched.value = false
+    return
+  }
+
+  loading.value = true
+  try {
+    const params = {}
+    if (searchTerm.length >= 3) params.search = searchTerm
+    // ... costruzione params ...
+    const res = await listEntita(params)
+    items.value = res.data.data.results
+    totalRecords.value = res.data.data.count
+    hasSearched.value = true
+  } finally {
+    loading.value = false
+  }
+}
+
+// Esporre hasSearched nel return
+return { items, totalRecords, loading, hasSearched, filters, fetchList, ... }
+```
+
+**2. SearchTable — placeholder + fetch condizionale:**
+
+```vue
+<script setup>
+import { onMounted } from 'vue'
+import SearchHint from '../../core/components/SearchHint.vue'
+
+const { searchText, ... } = useSearchTable(store, { ... })
+
+useTabFreshness(store, 'entita')
+// La lista parte vuota — salvo che arrivi con search precaricata da URL/context.
+onMounted(() => {
+  if (searchText.value) {
+    store.fetchList()
+  }
+})
+</script>
+
+<template>
+  <!-- Placeholder: nessuna ricerca effettuata -->
+  <SearchHint v-if="!store.hasSearched && !store.loading" />
+
+  <DataTable v-show="store.hasSearched || store.loading" ...>
+    ...
+  </DataTable>
+</template>
+```
+
+**Regole:**
+
+- **NON usare** `onMounted(() => store.fetchList())` incondizionato — caricerebbe tutti i dati
+- Il `onMounted` condizionale (`if searchText.value`) serve per la **ricerca universale e AI**:
+  quando l'utente arriva da SearchDrawer, AI Assistant o link con `?search=...`,
+  il termine e' gia' in `searchText` e la lista deve mostrare i risultati immediatamente
+- `SearchHint` accetta prop `message` opzionale per messaggi personalizzati;
+  default: `$t('common.eseguire_ricerca')`
+- La chiave i18n `common.eseguire_ricerca` e' condivisa da tutte le liste
+
 ### Filtro data standard (obbligatorio su liste con date)
 
 Ogni SearchTable che mostra dati con data di apertura/creazione deve avere il filtro data:
@@ -295,10 +386,16 @@ watch(() => route.fullPath, () => {
 }, { immediate: true })
 ```
 
+**Compatibilita' con empty state:** le liste che partono vuote (vedi sezione "Empty state")
+usano `onMounted(() => { if (searchText.value) store.fetchList() })` per garantire
+che il termine precaricato da ricerca universale o AI venga eseguito al mount.
+Senza questo `onMounted` condizionale, la lista resta vuota anche con search precaricata.
+
 **Per aggiungere una nuova lista:**
 
 - Aggiungere la rotta nella mappa `TIPO_RUOLO_ROUTES` in `SearchDrawer.vue`
 - Implementare il watcher `ctx → drawer.editRow` nella View se supporta auto-apertura
+- Se la lista usa empty state: aggiungere `onMounted` condizionale (vedi sezione "Empty state")
 - Nient'altro: `useSearchTable` fa il resto
 
 ### ⚠️ REGOLA CRITICA: Paginazione deterministica (backend)

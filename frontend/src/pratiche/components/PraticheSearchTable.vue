@@ -83,7 +83,11 @@ function recalcScrollHeight() {
   tableScrollHeight.value = Math.max(available, 150) + 'px'
 }
 
+// La lista parte vuota — salvo che arrivi con search precaricata da URL/context.
 onMounted(() => {
+  if (searchText.value) {
+    store.fetchList()
+  }
   recalcScrollHeight()
   window.addEventListener('resize', recalcScrollHeight)
 })

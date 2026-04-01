@@ -1,7 +1,7 @@
 <script setup>
 // Scopo: DataTable paginata soggetti con search e filtro tipo.
 // Riusabile da: SoggettiView, futuro ricerca soggetti in altri domini.
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useSoggettiStore } from '../stores/soggetti'
 import { useSearchTable } from '../../core/composables/useSearchTable'
@@ -35,7 +35,12 @@ function onTipoChange() {
 function onRowClick(event) { emit('row-click', event.data) }
 
 useTabFreshness(store, 'soggetto')
-// La lista parte vuota — l'operatore deve cercare o applicare un filtro.
+// La lista parte vuota — salvo che arrivi con search precaricata da URL/context.
+onMounted(() => {
+  if (searchText.value) {
+    store.fetchList()
+  }
+})
 </script>
 
 <template>
