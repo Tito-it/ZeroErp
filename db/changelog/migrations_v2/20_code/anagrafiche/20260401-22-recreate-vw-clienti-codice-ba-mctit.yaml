@@ -1,0 +1,75 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+#
+# Ricrea vista anagrafiche.vw_clienti_codice_ba dopo
+# conversione config.stati_cliente.codice_interno da CHAR(5)
+# a VARCHAR(50) (migration 20260401-21 in 00_schema/config).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20260401-22-recreate-vw-clienti-codice-ba-mctit.yaml
+
+  - changeSet:
+      id: 20260401-22-recreate-vw-clienti-codice-ba
+      author: mctit
+      runOnChange: true
+      comment: >
+        Ricrea vista anagrafiche.vw_clienti_codice_ba droppata
+        dalla migration 20260401-21 (ALTER codice_interno CHAR->VARCHAR).
+        Definizione identica alla precedente.
+
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ==========================================================
+              -- Vista: anagrafiche.vw_clienti_codice_ba
+              --
+              -- Scopo: espone per ogni riga cliente i dati necessari alla
+              --        ricerca universale per codice (billing_account) e al
+              --        dettaglio entita' (fn_get_entita_ruolo_detail ramo CL).
+              --
+              -- Colonne:
+              --   soggetto_ruolo_id    - FK soggetti_ruoli per join
+              --   id / entita_id       - ID cliente
+              --   billing_account_id   - FK billing_account
+              --   codice               - codice dal billing_account
+              --   utility_id           - FK utility
+              --   stato_cliente_id     - FK stato cliente
+              --   stato_codice         - codice_interno dello stato
+              --   stato_descrizione    - descrizione breve dello stato
+              --   data_attivazione     - data attivazione cliente
+              --   data_sospensione     - data sospensione
+              --   data_riattivazione   - data riattivazione
+              --   data_chiusura        - data chiusura
+              --
+              -- Usata come target dinamico in tipi_ruoli.entita_tabella
+              -- per il tipo ruolo CL.
+              --
+              -- Ricreata dopo ALTER codice_interno CHAR(5) -> VARCHAR(50).
+              -- ==========================================================
+              CREATE OR REPLACE VIEW anagrafiche.vw_clienti_codice_ba AS
+              SELECT
+                cl.soggetto_ruolo_id,
+                cl.id,
+                cl.id                    AS entita_id,
+                cl.billing_account_id,
+                ba.codice,
+                cl.utility_id,
+                cl.stato_cliente_id,
+                sc.codice_interno        AS stato_codice,
+                sc.descrizione_breve     AS stato_descrizione,
+                cl.data_attivazione,
+                cl.data_sospensione,
+                cl.data_riattivazione,
+                cl.data_chiusura
+              FROM anagrafiche.clienti cl
+                JOIN config.stati_cliente sc
+                  ON sc.id = cl.stato_cliente_id
+                LEFT JOIN anagrafiche.billing_account ba
+                  ON ba.id = cl.billing_account_id;
+
+              COMMENT ON VIEW anagrafiche.vw_clienti_codice_ba IS
+                'Vista flat clienti con codice da billing_account, stato e date ciclo vita. Usata per ricerca codice universale (entita_tabella in tipi_ruoli) e come source dati per dettaglio entita'' CL.';
