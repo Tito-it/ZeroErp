@@ -25,8 +25,12 @@ BOZZA e inserisce la pratica in transazione atomica.
   - `tipo_prestazione_id` (int, opzionale) — filtro tipo prestazione
   - `soggetto_id` (string UUID, opzionale) — filtro UUID soggetto
   - `search` (string, opzionale) — ricerca ILIKE su codice, descrizione, ragione_sociale soggetto
+  - `data_da` (string ISO date, opzionale) — filtro data inserimento da (>=)
+  - `data_a` (string ISO date, opzionale) — filtro data inserimento a (<= fine giorno)
   - `limit` (int, opzionale) — righe per pagina, default `50`, max `200`
   - `offset` (int, opzionale) — offset paginazione, default `0`
+  - `order_by` (string, opzionale) — colonna ordinamento, default `data_insert`
+  - `order_dir` (string, opzionale) — direzione (`asc`/`desc`), default `desc`
 
 ### POST — Creazione pratica
 
@@ -51,10 +55,15 @@ BOZZA e inserisce la pratica in transazione atomica.
 
 ### GET 200:
 
+Envelope paginata standard (`paginated_envelope`):
+
 ```json
 {
   "data": {
     "count": 1,
+    "page": 1,
+    "page_size": 50,
+    "total_pages": 1,
     "results": [
       {
         "id": 42,
@@ -118,8 +127,10 @@ BOZZA e inserisce la pratica in transazione atomica.
   - Il ruolo deve appartenere al soggetto
   - L'istanza deve appartenere al soggetto
 - `is_search_endpoint = True` sulla view GET: attiva throttling `SearchBurstRateThrottle`.
-- Ordinamento GET: `data_insert DESC, id`.
-- Paginazione offset: `COUNT(*)` + dati con `LIMIT/OFFSET`.
+- Ordinamento GET: configurabile via `order_by`/`order_dir`, default `data_insert DESC`, tiebreaker `id`.
+- Whitelist colonne ordinamento: `codice`, `descrizione`, `data_apertura`, `data_scadenza`, `data_insert`, `tipo_prestazione_descrizione`, `stato_descrizione`, `priorita_descrizione`, `soggetto_display`, `risorsa_umana_display`.
+- Paginazione offset: `COUNT(*)` + dati con `LIMIT/OFFSET`. Risposta via `paginated_envelope` (count, page, page_size, total_pages, results).
+- Parsing parametri via `parse_list_params` e `qp_int_strict` (building block core).
 
 ## Dipendenze DB
 
@@ -137,3 +148,4 @@ BOZZA e inserisce la pratica in transazione atomica.
 - v2.1 (29 marzo 2026): aggiunto `data_apertura` (DATE, valorizzato da trigger alla transizione BOZZA → APERTA).
 - Rimosso `solo_interna` (campo eliminato dal DB).
 - I display fields eliminano la necessita' di lookup client-side per le colonne lista.
+- v2.2 (1 aprile 2026): risposta GET allineata a `paginated_envelope` (aggiunto page, page_size, total_pages). Parsing via `parse_list_params`/`qp_int_strict`. Aggiunti parametri `data_da`, `data_a`, `order_by`, `order_dir`.

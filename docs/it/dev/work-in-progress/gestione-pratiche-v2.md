@@ -33,9 +33,9 @@
 | **G1** | DB | Aggiungere `soggetto_ruolo_id` e `istanza_utility_id` a `pratiche.pratiche` | ✅ |
 | **G2** | DB | Trigger guard coerenza soggetto-ruolo-istanza | ✅ |
 | **G3** | DB | Codice pratica via `config.sistema_codici` (prefisso fisso standard) | ✅ |
-| **G4** | BE | Aggiornare `PraticaRow` TypedDict con nuovi campi display | da fare |
-| **G5** | BE | Repository: JOIN display fields su list/get | da fare |
-| **G6** | BE | Aggiornare `crea_pratica` per accettare soggetto_ruolo_id e istanza_utility_id | da fare |
+| **G4** | BE | Aggiornare `PraticaRow` TypedDict con nuovi campi display | ✅ |
+| **G5** | BE | Repository: JOIN display fields su list/get | ✅ |
+| **G6** | BE | Aggiornare `crea_pratica` per accettare soggetto_ruolo_id e istanza_utility_id | ✅ |
 | **G7** | BE | Guard pre/post-attivazione nel service | ✅ |
 | **G8** | FE | Aggiornare store/drawer/searchTable per i nuovi campi | ✅ |
 

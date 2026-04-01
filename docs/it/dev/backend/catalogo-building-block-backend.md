@@ -75,6 +75,9 @@
 | `fn_list_lookup_codici` | [lookup_service.py](../../../../backend/apps/core/services/lookup_service.py) | Lookup generico tabelle codici con paginazione |
 | `as_bool` / `empty_to_none` | [value_normalizer.py](../../../../backend/apps/core/services/value_normalizer.py) | Normalizzazione valori (bool, stringa vuota → None) |
 | `set_request_context` / `get_request_id` / `get_client_ip` | [request_context.py](../../../../backend/apps/core/services/request_context.py) | Context vars per request_id, idempotency_key, IP client |
+| `validate_and_extract_token` | [auth_helpers.py](../../../../backend/apps/core/services/auth_helpers.py) | Valida token monouso senza consumo, estrae auth_user_id e meta |
+| `apply_new_password` | [auth_helpers.py](../../../../backend/apps/core/services/auth_helpers.py) | Set password + reset flag + blacklist JWT in transazione atomica |
+| `ComplexityValidator` | [password_validators.py](../../../../backend/apps/core/password_validators.py) | Validator password: maiuscola + minuscola + numero + carattere speciale |
 
 ---
 
