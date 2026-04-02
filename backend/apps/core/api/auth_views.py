@@ -14,6 +14,7 @@ from __future__ import annotations
 import logging
 
 from django.contrib.auth.models import User
+from drf_spectacular.utils import extend_schema
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework_simplejwt.exceptions import AuthenticationFailed, InvalidToken
@@ -36,6 +37,7 @@ class AuditTokenObtainPairView(TokenObtainPairView):
 
     throttle_classes = [LoginRateThrottle]
 
+    @extend_schema(summary="Login JWT con audit e blocco utente", responses={200: dict})
     # Scopo: Esegue il login JWT con check blocco utente e registrazione tentativi.
     # Flusso: check blocco → verifica credenziali → registra esito → audit sessione.
     def post(self, request: Request, *args, **kwargs) -> Response:
@@ -77,7 +79,7 @@ class AuditTokenObtainPairView(TokenObtainPairView):
             user_id, jti = self._extract_claims(response)
             session_audit_service.record_login(
                 user_id=user_id,
-                request=request._request,
+                request=request._request if hasattr(request, "_request") else request,
                 jti=jti,
             )
 
@@ -110,6 +112,7 @@ class AuditTokenObtainPairView(TokenObtainPairView):
 class AuditTokenRefreshView(TokenRefreshView):
     """Override di TokenRefreshView: dopo refresh con successo registra evento REFRESH."""
 
+    @extend_schema(summary="Refresh JWT con audit sessione", responses={200: dict})
     # Scopo: Esegue il refresh JWT e registra l'evento REFRESH in dbops.sessioni_utente.
     def post(self, request: Request, *args, **kwargs) -> Response:
         response = super().post(request, *args, **kwargs)
@@ -117,7 +120,7 @@ class AuditTokenRefreshView(TokenRefreshView):
             user_id, jti = self._extract_claims(request)
             session_audit_service.record_refresh(
                 user_id=user_id,
-                request=request._request,
+                request=request._request if hasattr(request, "_request") else request,
                 jti=jti,
             )
         return response

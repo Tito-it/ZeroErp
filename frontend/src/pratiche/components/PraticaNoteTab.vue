@@ -4,10 +4,12 @@
 // Form inline per nuova nota (Select tipo + Textarea).
 // Edit/delete su note esistenti.
 import { ref, watch } from 'vue'
+
 import { useI18n } from 'vue-i18n'
 import { fetchNote, createNota, updateNota, deleteNota } from '../api/pratiche-api'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
+import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { useLookup } from '../../core/composables/useLookup'
 import { lookupCodici } from '../../core/apiCore'
 import { displayTimestamp } from '../../core/utils/date'
@@ -19,6 +21,7 @@ import Tag from 'primevue/tag'
 const { t } = useI18n()
 const { execute } = useApiHandler()
 const isReadonly = useInjectReadonly()
+const { confirmDelete } = useConfirmAction()
 
 const props = defineProps({
   praticaId: { type: Number, required: true }
@@ -27,9 +30,14 @@ const props = defineProps({
 const note = ref([])
 const loading = ref(false)
 
-// Form nuova nota
-const nuovaNota = ref({ tipo_nota_codice: 'GENERALE', contenuto: '' })
+// Form nuova nota — il tipo default e' il primo del lookup (evita hardcoded 'GENERALE')
 const tipiNota = useLookup(() => lookupCodici('config.tipi_nota'), { immediate: true })
+const nuovaNota = ref({ tipo_nota_codice: null, contenuto: '' })
+watch(() => tipiNota.items.value, (items) => {
+  if (items.length > 0 && !nuovaNota.value.tipo_nota_codice) {
+    nuovaNota.value.tipo_nota_codice = items[0].codice_interno
+  }
+})
 
 // Nota in editing (null = nessuna)
 const editingId = ref(null)
@@ -82,13 +90,15 @@ async function onSalvaEdit(nota) {
   }
 }
 
-// Scopo: Elimina una nota.
-async function onElimina(nota) {
-  const result = await execute(
-    () => deleteNota(props.praticaId, nota.id),
-    { successMessage: t('pratiche.nota_eliminata') }
-  )
-  if (result !== null) await loadNote()
+// Scopo: Elimina una nota con conferma.
+function onElimina(nota) {
+  confirmDelete(t('pratiche.nota'), async () => {
+    const result = await execute(
+      () => deleteNota(props.praticaId, nota.id),
+      { successMessage: t('pratiche.nota_eliminata') }
+    )
+    if (result !== null) await loadNote()
+  })
 }
 
 watch(() => props.praticaId, (id) => {
@@ -114,7 +124,7 @@ watch(() => props.praticaId, (id) => {
           icon="pi pi-plus"
           :label="t('pratiche.nota_aggiungi')"
           size="small"
-          :disabled="!nuovaNota.contenuto.trim()"
+          :disabled="!nuovaNota.contenuto.trim() || !nuovaNota.tipo_nota_codice"
           @click="onCrea"
         />
       </div>

@@ -2,6 +2,8 @@
 import { ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
+import { usePasswordValidation } from '../composables/usePasswordValidation'
+import { extractApiError } from '../utils/apiError'
 import api from '../api'
 import LogoBrand from '../components/LogoBrand.vue'
 import Password from 'primevue/password'
@@ -10,6 +12,7 @@ import Button from 'primevue/button'
 const { t } = useI18n()
 const route = useRoute()
 const router = useRouter()
+const { validateNewPassword } = usePasswordValidation()
 
 const token = ref(route.params.token || '')
 const newPassword = ref('')
@@ -36,12 +39,9 @@ async function handleConfirm() {
   errorMessage.value = ''
   successMessage.value = ''
 
-  if (newPassword.value.length < 8) {
-    errorMessage.value = t('auth.password_too_short')
-    return
-  }
-  if (newPassword.value !== confirmPassword.value) {
-    errorMessage.value = t('auth.password_mismatch')
+  const pwError = validateNewPassword(newPassword.value, confirmPassword.value)
+  if (pwError) {
+    errorMessage.value = t(pwError)
     return
   }
 
@@ -55,8 +55,7 @@ async function handleConfirm() {
     successMessage.value = t('auth.reset_success')
     setTimeout(() => router.push('/login'), 2000)
   } catch (err) {
-    const msg = err?.response?.data?.error?.message || t('auth.login_error')
-    errorMessage.value = msg
+    errorMessage.value = extractApiError(err, t('auth.login_error'))
   } finally {
     loading.value = false
   }
@@ -92,7 +91,9 @@ async function handleConfirm() {
       <!-- Form nuova password -->
       <form v-else @submit.prevent="handleConfirm" class="login-form">
         <div class="field">
-          <label for="new_password">{{ t('auth.new_password') }}</label>
+          <label for="new_password">{{ t('auth.new_password') }}
+            <i class="pi pi-info-circle password-info-icon" v-tooltip.right="t('auth.password_hint')" />
+          </label>
           <Password
             id="new_password"
             v-model="newPassword"
@@ -125,7 +126,7 @@ async function handleConfirm() {
           :label="t('auth.reset_confirm')"
           :loading="loading"
           :disabled="!newPassword || !confirmPassword"
-          fluid
+          class="auth-submit-btn"
         />
 
         <router-link to="/login" class="back-link">

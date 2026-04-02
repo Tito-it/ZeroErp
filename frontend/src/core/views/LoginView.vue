@@ -109,7 +109,7 @@ async function handleLogin() {
           :label="t('auth.login')"
           :loading="loading"
           :disabled="!username || !password"
-          fluid
+          class="auth-submit-btn"
         />
 
         <router-link to="/password-reset" class="forgot-link">

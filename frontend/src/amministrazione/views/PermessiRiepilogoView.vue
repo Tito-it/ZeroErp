@@ -2,11 +2,11 @@
 // Scopo: vista riepilogo permessi effettivi (matrice operatori × aree).
 // Mostra per ogni operatore attivo il livello effettivo calcolato dal backend
 // su ogni area funzionale. Filtri per reparto e ruolo.
-import { ref, onMounted, computed } from 'vue'
+import { ref, watch, onMounted, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useReadonlyMode } from '../../core/composables/useReadonlyMode'
 import { useLookup } from '../../core/composables/useLookup'
-import { getPermessiRiepilogo, listUnitaOrganizzative } from '../api/amministrazione'
+import { getPermessiRiepilogo, listUnitaOrganizzative, listEmittentiFiscali } from '../api/amministrazione'
 import { buildRuoloOptions, getLivelloSeverity, getLivelloLabel, getRuoloSeverity } from '../constants'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
@@ -23,8 +23,22 @@ let fetchSeq = 0
 
 const repartoFilter = ref(null)
 const ruoloFilter = ref(null)
+const emittenteFilter = ref(null)
 const unitaOrg = useLookup(listUnitaOrganizzative, { immediate: true })
+const emittenti = useLookup(listEmittentiFiscali, { immediate: true })
 const ruoloOptions = buildRuoloOptions(t, { includeAll: true })
+
+// Se esiste un solo emittente, impostalo come default e carica
+const emittentiReady = ref(false)
+watch(() => emittenti.items.value, (items) => {
+  if (items.length > 0 && !emittentiReady.value) {
+    emittentiReady.value = true
+    if (items.length === 1) {
+      emittenteFilter.value = items[0].id
+    }
+    fetchData()
+  }
+}, { immediate: true })
 
 async function fetchData() {
   const seq = ++fetchSeq
@@ -33,6 +47,7 @@ async function fetchData() {
     const params = {}
     if (repartoFilter.value) params.unita_organizzativa_id = repartoFilter.value
     if (ruoloFilter.value) params.ruolo_sistema = ruoloFilter.value
+    if (emittenteFilter.value) params.emittente_fiscale_id = emittenteFilter.value
     const res = await getPermessiRiepilogo(params)
     if (seq !== fetchSeq) return // risposta obsoleta, scarta
     const data = res.data?.data || {}
@@ -43,7 +58,7 @@ async function fetchData() {
   }
 }
 
-onMounted(fetchData)
+// fetchData chiamato dal watch emittenti dopo il caricamento lookup
 
 function applyFilters() {
   fetchData()
@@ -63,6 +78,15 @@ const areaColumns = computed(() =>
   <div class="app-page">
     <div class="app-page-toolbar">
       <div class="app-page-filters">
+        <Select
+          v-model="emittenteFilter"
+          :options="[{ ragione_sociale: t('amm.permessi_filter_emittente'), id: null }, ...emittenti.items.value]"
+          :loading="emittenti.loading.value"
+          option-label="ragione_sociale"
+          option-value="id"
+          :placeholder="t('amm.permessi_filter_emittente')"
+          @change="applyFilters"
+        />
         <Select
           v-model="repartoFilter"
           :options="[{ descrizione: t('amm.select_reparto'), id: null }, ...unitaOrg.items.value]"

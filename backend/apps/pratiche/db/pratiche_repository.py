@@ -11,6 +11,7 @@ from typing import Any
 
 from django.db import connection
 
+from apps.core.db._helpers import row_to_dict, rows_to_list
 from apps.core.services.error_manager import ErrorManager
 
 
@@ -22,27 +23,6 @@ _PRATICHE_ORDER_COLS = {
 
 
 class PraticheRepository:
-
-    # -- HELPER generico: named columns da cursor.description --
-
-    @staticmethod
-    def _dict_from_cursor(cursor, row) -> dict[str, Any]:
-        """Converte una riga DB in dict usando i nomi colonna dal cursor."""
-        cols = [desc[0] for desc in cursor.description]
-        d = dict(zip(cols, row))
-        for k, v in d.items():
-            if hasattr(v, 'isoformat'):
-                d[k] = v.isoformat()
-        return d
-
-    @staticmethod
-    def _dicts_from_cursor(cursor, rows) -> list[dict[str, Any]]:
-        """Converte una lista di righe DB in lista di dict."""
-        cols = [desc[0] for desc in cursor.description]
-        return [
-            {k: (v.isoformat() if hasattr(v, 'isoformat') else v) for k, v in zip(cols, row)}
-            for row in rows
-        ]
 
     # -- SQL comuni pratiche (JOIN display fields) --
 
@@ -75,6 +55,18 @@ class PraticheRepository:
         LEFT JOIN anagrafiche.soggetti sru ON sru.id = srr.soggetto_id
         LEFT JOIN config.unita_organizzative uo ON uo.id = p.unita_organizzativa_id
     """
+
+    # -- Metodi pubblici per SQL comuni (usati anche da GenerazioneRepository) --
+
+    @classmethod
+    def pratica_select_sql(cls) -> str:
+        """Restituisce il frammento SELECT per pratiche con display fields."""
+        return cls._PRATICA_SELECT
+
+    @classmethod
+    def pratica_joins_sql(cls) -> str:
+        """Restituisce il frammento JOIN per pratiche con display fields."""
+        return cls._PRATICA_JOINS
 
     # -- PRATICHE --------------------------------------------------------
 
@@ -149,12 +141,16 @@ class PraticheRepository:
         with connection.cursor() as cursor:
             cursor.execute(count_sql, params)
             row = cursor.fetchone()
+            ErrorManager.require(
+                row is not None,
+                code="E_PRATICA_QUERY",
+                message="Errore conteggio pratiche",
+            )
             assert row is not None
             total_count = int(row[0])
 
             cursor.execute(data_sql, params + [safe_limit, safe_offset])
-            rows = cursor.fetchall()
-            result = self._dicts_from_cursor(cursor, rows)
+            result = rows_to_list(cursor)
 
         return result, total_count
 
@@ -168,10 +164,7 @@ class PraticheRepository:
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [pratica_id])
-            row = cursor.fetchone()
-            if not row:
-                return None
-            return self._dict_from_cursor(cursor, row)
+            return row_to_dict(cursor)
 
     # Scopo: Inserisce una nuova pratica e ritorna l'ID generato.
     def create_pratica(self, data: dict[str, Any]) -> int:
@@ -205,6 +198,11 @@ class PraticheRepository:
         with connection.cursor() as cursor:
             cursor.execute(sql, params)
             row = cursor.fetchone()
+            ErrorManager.require(
+                row is not None,
+                code="E_PRATICA_INSERT",
+                message="Errore inserimento pratica (RETURNING id nullo)",
+            )
             assert row is not None
         return int(row[0])
 
@@ -289,8 +287,7 @@ class PraticheRepository:
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [pratica_id])
-            rows = cursor.fetchall()
-            return self._dicts_from_cursor(cursor, rows)
+            return rows_to_list(cursor)
 
     # Scopo: Restituisce il dettaglio di un singolo flusso con display fields.
     def get_flusso(self, flusso_id: int) -> dict[str, Any] | None:
@@ -302,10 +299,7 @@ class PraticheRepository:
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [flusso_id])
-            row = cursor.fetchone()
-            if not row:
-                return None
-            return self._dict_from_cursor(cursor, row)
+            return row_to_dict(cursor)
 
     # Scopo: Inserisce un nuovo flusso. Il trigger DB valida i prerequisiti.
     def create_flusso(self, data: dict[str, Any]) -> int:
@@ -333,6 +327,11 @@ class PraticheRepository:
         with connection.cursor() as cursor:
             cursor.execute(sql, params)
             row = cursor.fetchone()
+            ErrorManager.require(
+                row is not None,
+                code="E_FLUSSO_INSERT",
+                message="Errore inserimento flusso (RETURNING id nullo)",
+            )
             assert row is not None
         return int(row[0])
 
@@ -371,8 +370,7 @@ class PraticheRepository:
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [pratica_id, template_flusso_id])
-            rows = cursor.fetchall()
-            return self._dicts_from_cursor(cursor, rows)
+            return rows_to_list(cursor)
 
     # -- GIORNALE --------------------------------------------------------
 
@@ -403,12 +401,16 @@ class PraticheRepository:
         with connection.cursor() as cursor:
             cursor.execute(count_sql, [pratica_id])
             row = cursor.fetchone()
+            ErrorManager.require(
+                row is not None,
+                code="E_GIORNALE_QUERY",
+                message="Errore conteggio giornale",
+            )
             assert row is not None
             total_count = int(row[0])
 
             cursor.execute(data_sql, [pratica_id, safe_limit, safe_offset])
-            rows = cursor.fetchall()
-            result = self._dicts_from_cursor(cursor, rows)
+            result = rows_to_list(cursor)
 
         return result, total_count
 
@@ -427,8 +429,7 @@ class PraticheRepository:
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [template_flusso_id])
-            rows = cursor.fetchall()
-            return self._dicts_from_cursor(cursor, rows)
+            return rows_to_list(cursor)
 
     # -- SOSPENSIONI -----------------------------------------------------
 
@@ -460,6 +461,11 @@ class PraticheRepository:
         with connection.cursor() as cursor:
             cursor.execute(sql, params)
             row = cursor.fetchone()
+            ErrorManager.require(
+                row is not None,
+                code="E_SOSPENSIONE_INSERT",
+                message="Errore inserimento sospensione (RETURNING id nullo)",
+            )
             assert row is not None
         return int(row[0])
 
@@ -489,10 +495,7 @@ class PraticheRepository:
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [pratica_id])
-            row = cursor.fetchone()
-            if not row:
-                return None
-            return self._dict_from_cursor(cursor, row)
+            return row_to_dict(cursor)
 
     # Scopo: Trova la sospensione attiva per un flusso specifico.
     def get_sospensione_attiva_flusso(self, pratica_id: int, flusso_id: int) -> dict[str, Any] | None:
@@ -504,10 +507,7 @@ class PraticheRepository:
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [pratica_id, flusso_id])
-            row = cursor.fetchone()
-            if not row:
-                return None
-            return self._dict_from_cursor(cursor, row)
+            return row_to_dict(cursor)
 
     # Scopo: Restituisce le sospensioni di una pratica (tutte, ordinate per data).
     def list_sospensioni(self, pratica_id: int) -> list[dict[str, Any]]:
@@ -519,8 +519,7 @@ class PraticheRepository:
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [pratica_id])
-            rows = cursor.fetchall()
-            return self._dicts_from_cursor(cursor, rows)
+            return rows_to_list(cursor)
 
     # -- NOTE PRATICHE ---------------------------------------------------
 
@@ -547,8 +546,7 @@ class PraticheRepository:
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [pratica_id])
-            rows = cursor.fetchall()
-            return self._dicts_from_cursor(cursor, rows)
+            return rows_to_list(cursor)
 
     # Scopo: Crea una nota per la pratica. Risolve tipo_nota da codice_interno.
     def create_nota_pratica(
@@ -574,6 +572,11 @@ class PraticheRepository:
                 [pratica_id, tipo_row[0], contenuto],
             )
             row = cursor.fetchone()
+            ErrorManager.require(
+                row is not None,
+                code="E_NOTA_INSERT",
+                message="Errore inserimento nota (RETURNING id nullo)",
+            )
             assert row is not None
         return int(row[0])
 
@@ -625,8 +628,7 @@ class PraticheRepository:
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [pratica_id])
-            rows = cursor.fetchall()
-            return self._dicts_from_cursor(cursor, rows)
+            return rows_to_list(cursor)
 
     # Scopo: Crea un record allegato (senza upload file — solo metadati).
     # Il file verra' caricato in una fase successiva.
@@ -659,6 +661,11 @@ class PraticheRepository:
                  percorso, mime_type, dimensione, allegato_padre_id],
             )
             row = cursor.fetchone()
+            ErrorManager.require(
+                row is not None,
+                code="E_ALLEGATO_INSERT",
+                message="Errore inserimento allegato (RETURNING id nullo)",
+            )
             assert row is not None
         return int(row[0])
 
@@ -694,8 +701,7 @@ class PraticheRepository:
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [pratica_id])
-            rows = cursor.fetchall()
-            return self._dicts_from_cursor(cursor, rows)
+            return rows_to_list(cursor)
 
     # -- FORMULE TEMPO -----------------------------------------------------
 
@@ -712,8 +718,7 @@ class PraticheRepository:
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [tipo_prestazione_id])
-            rows = cursor.fetchall()
-            return self._dicts_from_cursor(cursor, rows)
+            return rows_to_list(cursor)
 
     # -- RISOLUZIONE STATO -----------------------------------------------
 
@@ -815,8 +820,7 @@ class PraticheRepository:
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [risorsa_umana_id, emittente_fiscale_id])
-            rows = cursor.fetchall()
-            return self._dicts_from_cursor(cursor, rows)
+            return rows_to_list(cursor)
 
     # -- PRENDI IN CARICO FLUSSO -----------------------------------------
 
@@ -834,6 +838,11 @@ class PraticheRepository:
         with connection.cursor() as cursor:
             cursor.execute(sql, [flusso_id, risorsa_umana_id])
             row = cursor.fetchone()
+            ErrorManager.require(
+                row is not None,
+                code="E_FLUSSO_PRESA_IN_CARICO",
+                message="Errore presa in carico flusso",
+            )
             assert row is not None
         return bool(row[0])
 
@@ -858,8 +867,7 @@ class PraticheRepository:
         """
         with connection.cursor() as cursor:
             cursor.execute(sql)
-            rows = cursor.fetchall()
-            return self._dicts_from_cursor(cursor, rows)
+            return rows_to_list(cursor)
 
     # Scopo: Crea una competenza flusso e ritorna l'ID.
     def create_competenza_flusso(self, data: dict[str, Any]) -> int:
@@ -878,6 +886,11 @@ class PraticheRepository:
         with connection.cursor() as cursor:
             cursor.execute(sql, params)
             row = cursor.fetchone()
+            ErrorManager.require(
+                row is not None,
+                code="E_COMPETENZA_INSERT",
+                message="Errore inserimento competenza flusso (RETURNING id nullo)",
+            )
             assert row is not None
         return int(row[0])
 

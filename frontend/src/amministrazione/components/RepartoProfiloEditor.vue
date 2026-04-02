@@ -108,8 +108,8 @@ function onClose() {
     </template>
 
     <div :class="{ 'app-readonly': isReadonly }">
-    <Accordion :multiple="true" :active-index="[0, 1]">
-      <AccordionPanel>
+    <Accordion :value="['aree', 'azioni']" multiple>
+      <AccordionPanel value="aree">
         <AccordionHeader>{{ t('amm.aree_funzionali') }}</AccordionHeader>
         <AccordionContent>
           <DataTable :value="localAree" size="small">
@@ -124,7 +124,7 @@ function onClose() {
         </AccordionContent>
       </AccordionPanel>
 
-      <AccordionPanel>
+      <AccordionPanel value="azioni">
         <AccordionHeader>{{ t('amm.azioni_processo') }}</AccordionHeader>
         <AccordionContent>
           <DataTable :value="localAzioni" size="small">

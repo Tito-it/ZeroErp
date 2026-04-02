@@ -44,8 +44,6 @@
   --app-card-radius: 8px;
 
   /* ===== Logo ===== */
-  --app-logo-bg: #4ade80;
-  --app-logo-color: #1e3a5f;
   --app-logo-size: 32px;
   --app-logo-radius: 8px;
 
@@ -93,6 +91,12 @@
   --app-table-header-padding: 0.35rem 0.5rem;
   --app-table-stripe-bg: color-mix(in srgb, var(--p-surface-700) 30%, transparent);
   --app-table-hover-bg: color-mix(in srgb, var(--p-primary-color) 8%, transparent);
+
+  /* ===== Aree di contenuto/preview (editor, anteprima, code block) ===== */
+  --app-preview-bg: var(--p-surface-900);
+  --app-preview-border: var(--p-surface-700);
+  --app-preview-radius: 6px;
+  --app-preview-padding: 1rem;
 
   /* ===== Sidebar mobile (drawer overlay) ===== */
   --app-sidebar-mobile-width: 280px;

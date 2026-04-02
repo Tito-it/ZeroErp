@@ -9,6 +9,7 @@ export const DRAWER_WIDTH = {
 // Durata toast in millisecondi
 export const TOAST_DURATION = {
   SUCCESS: 3000,
+  WARN: 4000,
   ERROR: 5000,
   SYSTEM_ERROR: 0  // 0 = persistente, chiusura manuale
 }

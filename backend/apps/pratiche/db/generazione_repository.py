@@ -11,6 +11,7 @@ from typing import Any
 
 from django.db import connection
 
+from apps.core.db._helpers import rows_to_list
 from apps.core.services.error_manager import ErrorManager
 from apps.pratiche.types import RegolaGenerazioneRow
 
@@ -34,37 +35,21 @@ class GenerazioneRepository:
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [template_flusso_id])
-            rows = cursor.fetchall()
-
-        return [
-            {
-                "id": int(r[0]),
-                "template_flusso_origine_id": int(r[1]),
-                "tipo_prestazione_dest_id": int(r[2]),
-                "template_flusso_dest_id": None if r[3] is None else int(r[3]),
-                "esito_richiesto": r[4],
-                "auto": bool(r[5]),
-                "attivo": bool(r[6]),
-                "descrizione": r[7],
-                "meta": r[8] if isinstance(r[8], dict) else {},
-            }
-            for r in rows
-        ]
+            return rows_to_list(cursor)
 
     # Scopo: Restituisce le pratiche generate da un flusso (via flusso_origine_id).
     def get_pratiche_generate_da_flusso(self, flusso_id: int) -> list[dict[str, Any]]:
         from apps.pratiche.db.pratiche_repository import PraticheRepository
         sql = f"""
-            SELECT {PraticheRepository._PRATICA_SELECT}
+            SELECT {PraticheRepository.pratica_select_sql()}
             FROM pratiche.pratiche p
-            {PraticheRepository._PRATICA_JOINS}
+            {PraticheRepository.pratica_joins_sql()}
             WHERE p.flusso_origine_id = %s
             ORDER BY p.id
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [flusso_id])
-            rows = cursor.fetchall()
-            return PraticheRepository._dicts_from_cursor(cursor, rows)
+            return rows_to_list(cursor)
 
     # Scopo: Invoca fn_genera_pratica_da_flusso per generazione manuale.
     # Obiettivo: generazione esplicita per regole con auto=false.
@@ -89,5 +74,10 @@ class GenerazioneRepository:
         with connection.cursor() as cursor:
             cursor.execute(sql, [flusso_id, regola_id])
             row = cursor.fetchone()
+            ErrorManager.require(
+                row is not None,
+                code="E_GENERAZIONE_PRATICA",
+                message="Errore generazione pratica da flusso",
+            )
             assert row is not None
         return int(row[0])

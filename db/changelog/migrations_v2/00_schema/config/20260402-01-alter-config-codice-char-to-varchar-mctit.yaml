@@ -1,0 +1,162 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+#
+# Converte colonna 'codice' da CHAR(N) a VARCHAR(50) su 7
+# tabelle config per coerenza con il resto dello schema.
+#
+# Tabelle coinvolte:
+#   - config.ambiti              CHAR(4)  -> VARCHAR(50)
+#   - config.codici_postali      CHAR(10) -> VARCHAR(50)
+#   - config.iva                 CHAR(10) -> VARCHAR(50)
+#   - config.iva_natura          CHAR(10) -> VARCHAR(50)
+#   - config.modalita_pagamento  CHAR(10) -> VARCHAR(50)
+#   - config.stati_cliente       CHAR(2)  -> VARCHAR(50)
+#   - config.valute              CHAR(10) -> VARCHAR(50)
+#
+# Operazioni:
+#   1. DROP viste dipendenti (ordine: figlie prima dei padri)
+#   2. TRIM trailing spaces su tutte le colonne
+#   3. ALTER COLUMN su tutte le tabelle
+#
+# Viste ricreate da changeSet separati in 20_code.
+#
+# Motivazione: CHAR causa padding con spazi che richiede
+# .trim() lato applicativo e puo' generare mismatch nei
+# confronti stringa.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20260402-01-alter-config-codice-char-to-varchar-mctit.yaml
+
+  - changeSet:
+      id: 20260402-01-alter-config-codice-char-to-varchar
+      author: mctit
+      comment: >
+        Converte colonna codice da CHAR(N) a VARCHAR(50) su 7 tabelle config.
+        Trim dati esistenti. Drop/ricrea viste dipendenti.
+
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ==========================================================
+              -- Migrazione: codice CHAR(N) -> VARCHAR(50) su 7 tabelle
+              --
+              -- Scopo: allineare il tipo a VARCHAR per eliminare padding
+              --        spazi e garantire confronti stringa corretti.
+              --
+              -- Ordine drop viste: figlie prima dei padri per rispettare
+              -- le dipendenze PostgreSQL (_RETURN rule).
+              -- ==========================================================
+
+              -- --------------------------------------------------------
+              -- FASE 1: DROP viste dipendenti
+              -- --------------------------------------------------------
+
+              -- Funzioni che dipendono dal tipo delle viste
+              -- (RETURNS SETOF <vista>) — droppate prima delle viste.
+              -- Ricreate da changeSet 20260402-08 e 20260402-09.
+              DROP FUNCTION IF EXISTS script.fn_get_indirizzi_by_soggetto(uuid);
+              DROP FUNCTION IF EXISTS script.fn_get_indirizzo_by_soggetto(uuid, character varying);
+              DROP FUNCTION IF EXISTS anagrafiche.fn_search_indirizzi_dettaglio(integer,integer,text,text,text,text,text,text,integer);
+
+              -- Tutte le funzioni che dipendono dal tipo delle viste
+              -- (vedi 20260325-04 per il pattern di drop completo)
+              DROP FUNCTION IF EXISTS script.fn_get_indirizzo(bigint, character varying);
+              DROP FUNCTION IF EXISTS script.fn_get_indirizzo(bigint, character varying, bigint);
+              DROP FUNCTION IF EXISTS script.fn_get_indirizzi_by_ruolo(bigint);
+              DROP FUNCTION IF EXISTS script.fn_get_indirizzi_by_ruolo(bigint, bigint);
+
+              -- Foglie: viste che nessun altro oggetto referenzia
+              DROP VIEW IF EXISTS anagrafiche.vw_istanze_dati_precontrattuali_dettaglio;
+              DROP VIEW IF EXISTS anagrafiche.vw_indirizzi_resolved_all;
+              DROP VIEW IF EXISTS anagrafiche.vw_indirizzi_resolved_ruolo;
+              DROP VIEW IF EXISTS anagrafiche.vw_indirizzi_resolved_soggetto;
+
+              -- Livello intermedio: resolved_base dipende da vw_indirizzi_dettaglio
+              DROP VIEW IF EXISTS anagrafiche.vw_indirizzi_resolved_base;
+
+              -- Livello intermedio: viste che dipendono da vw_indirizzi_dettaglio
+              DROP VIEW IF EXISTS anagrafiche.vw_istanze_utilities_dettaglio;
+              DROP VIEW IF EXISTS anagrafiche.vw_pdp;
+              DROP VIEW IF EXISTS anagrafiche.vw_indirizzi_dettaglio;
+
+              -- Radice: vw_indirizzo_completo (dipende da codici_postali.codice)
+              DROP VIEW IF EXISTS script.vw_indirizzo_completo;
+
+              -- Vista stati_cliente (usa sc.codice)
+              DROP VIEW IF EXISTS script.view_clienti_istanza_states;
+
+              -- Vista fornitori (usa mp.codice e v.codice — non v.iso_code)
+              DROP VIEW IF EXISTS anagrafiche.vw_fornitori_dettaglio;
+
+              -- Viste iva
+              DROP VIEW IF EXISTS catalogo.vw_articoli_dettaglio;
+              DROP VIEW IF EXISTS dbops.vw_diag_v_clienti_links;
+
+              -- --------------------------------------------------------
+              -- FASE 2: TRIM trailing spaces (padding CHAR)
+              -- --------------------------------------------------------
+
+              -- ambiti
+              UPDATE config.ambiti
+                SET codice = TRIM(TRAILING FROM codice)
+                WHERE codice <> TRIM(TRAILING FROM codice);
+
+              -- codici_postali
+              UPDATE config.codici_postali
+                SET codice = TRIM(TRAILING FROM codice)
+                WHERE codice <> TRIM(TRAILING FROM codice);
+
+              -- iva
+              UPDATE config.iva
+                SET codice = TRIM(TRAILING FROM codice)
+                WHERE codice <> TRIM(TRAILING FROM codice);
+
+              -- iva_natura
+              UPDATE config.iva_natura
+                SET codice = TRIM(TRAILING FROM codice)
+                WHERE codice <> TRIM(TRAILING FROM codice);
+
+              -- modalita_pagamento
+              UPDATE config.modalita_pagamento
+                SET codice = TRIM(TRAILING FROM codice)
+                WHERE codice <> TRIM(TRAILING FROM codice);
+
+              -- stati_cliente
+              UPDATE config.stati_cliente
+                SET codice = TRIM(TRAILING FROM codice)
+                WHERE codice <> TRIM(TRAILING FROM codice);
+
+              -- valute
+              UPDATE config.valute
+                SET codice = TRIM(TRAILING FROM codice)
+                WHERE codice <> TRIM(TRAILING FROM codice);
+
+              -- --------------------------------------------------------
+              -- FASE 3: ALTER COLUMN CHAR(N) -> VARCHAR(50)
+              -- --------------------------------------------------------
+
+              ALTER TABLE config.ambiti
+                ALTER COLUMN codice TYPE VARCHAR(50);
+
+              ALTER TABLE config.codici_postali
+                ALTER COLUMN codice TYPE VARCHAR(50);
+
+              ALTER TABLE config.iva
+                ALTER COLUMN codice TYPE VARCHAR(50);
+
+              ALTER TABLE config.iva_natura
+                ALTER COLUMN codice TYPE VARCHAR(50);
+
+              ALTER TABLE config.modalita_pagamento
+                ALTER COLUMN codice TYPE VARCHAR(50);
+
+              ALTER TABLE config.stati_cliente
+                ALTER COLUMN codice TYPE VARCHAR(50);
+
+              ALTER TABLE config.valute
+                ALTER COLUMN codice TYPE VARCHAR(50);

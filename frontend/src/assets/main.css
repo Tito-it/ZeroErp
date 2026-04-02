@@ -383,6 +383,15 @@ a {
   color: var(--app-icon-color);
 }
 
+/* Riquadro anteprima/preview — riutilizzabile per preview email, code, contenuti HTML */
+.app-preview-box {
+  margin-top: 0.75rem;
+  border: 1px solid var(--app-preview-border);
+  border-radius: var(--app-preview-radius);
+  padding: var(--app-preview-padding);
+  background: var(--app-preview-bg);
+}
+
 /* Footer drawer (pulsanti Annulla/Salva) */
 .app-drawer-footer {
   display: flex;

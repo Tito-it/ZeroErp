@@ -21,10 +21,10 @@ Il flusso e' completamente self-service. L'admin non interviene.
 ```text
 1. Operatore clicca "Password dimenticata?" nel frontend
    |
-2. POST /password-reset-request/ { email }
-   → Cerca utente con email attiva
-   → Se trovato: genera token + invia email con link
-   → Risposta SEMPRE 200 (non rivela se email esiste)
+2. POST /password-reset-request/ { username }
+   → Cerca utente attivo per username
+   → Se trovato e ha email: genera token + invia email con link
+   → Risposta SEMPRE 200 (non rivela se utente esiste)
    |
 3. Operatore riceve email con link: {FRONTEND_URL}/reset-password/{token}
    |
@@ -56,7 +56,7 @@ POST /api/v1/auth/password-reset-request/
 #### Input
 
 ```json
-{ "email": "mario@azienda.it" }
+{ "username": "mario.rossi" }
 ```
 
 #### Output (sempre 200)
@@ -64,13 +64,13 @@ POST /api/v1/auth/password-reset-request/
 ```json
 {
   "data": {
-    "message": "Se l'email e' registrata, riceverai un link per reimpostare la password."
+    "message": "Se l'utente esiste e ha un'email configurata, ricevera' un link per reimpostare la password."
   }
 }
 ```
 
-> **Sicurezza**: la risposta e' identica sia che l'email esista o no.
-> Non rivela quali email sono registrate nel sistema.
+> **Sicurezza**: la risposta e' identica sia che l'utente esista o no.
+> Non rivela quali username sono registrati nel sistema.
 
 #### Logica interna (se utente trovato)
 
@@ -175,7 +175,7 @@ per parsing rate custom (`"3/15m"`).
 
 ## Sicurezza
 
-- **Risposta opaca**: la request ritorna sempre 200 (non rivela email registrate)
+- **Risposta opaca**: la request ritorna sempre 200 (non rivela username registrati)
 - **Token SHA-256**: solo l'hash e' in DB, il token in chiaro viaggia solo nell'email
 - **Scadenza 1 ora**: token reset ha vita breve
 - **Invalidazione**: alla creazione di un nuovo token, i precedenti vengono invalidati

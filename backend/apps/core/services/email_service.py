@@ -49,10 +49,59 @@ class EmailDispatchService:
 
         return re.sub(r"\{\{(\s*\w+\s*)\}\}", _replace, testo)
 
-    # Scopo: Determina se un account e' in console mode (DEBUG + host vuoto/placeholder).
+    # Scopo: Determina se un account e' in console mode.
+    #        Console mode se: host vuoto/placeholder (indipendentemente da DEBUG),
+    #        oppure DEBUG=True con qualsiasi account.
     def is_console_mode(self, account: dict[str, Any]) -> bool:
         smtp_host = account.get("smtp_host", "")
-        return settings.DEBUG and (not smtp_host or smtp_host == _SMTP_PLACEHOLDER_HOST)
+        if not smtp_host or smtp_host == _SMTP_PLACEHOLDER_HOST:
+            return True
+        return settings.DEBUG
+
+    # Scopo: Risolve template e account con fallback, renderizza le variabili.
+    #        Usato da send_email e da EmailOutboxService.prepare_draft.
+    #        Ritorna (template, account, oggetto, corpo_html, corpo_testo).
+    def resolve_and_render(
+        self,
+        *,
+        codice_template: str,
+        variabili: dict[str, Any],
+        unita_organizzativa_id: int | None = None,
+        tipo_prestazione_id: int | None = None,
+        lingua: str = "it",
+        error_code: str = E_EMAIL,
+    ) -> tuple[dict[str, Any], dict[str, Any], str, str, str | None]:
+        # 1. Risolvi template con fallback
+        template = self._repo.resolve_template(
+            codice_template,
+            unita_organizzativa_id=unita_organizzativa_id,
+            tipo_prestazione_id=tipo_prestazione_id,
+            lingua=lingua,
+        )
+        ErrorManager.require(
+            template is not None,
+            code=error_code,
+            message=f"Template email '{codice_template}' non trovato.",
+        )
+        assert template is not None
+
+        # 2. Risolvi account SMTP con fallback
+        account = self._repo.resolve_account(unita_organizzativa_id)
+        ErrorManager.require(
+            account is not None,
+            code=error_code,
+            message="Nessun account email configurato (ne' per reparto ne' SISTEMA).",
+        )
+        assert account is not None
+
+        # 3. Renderizza oggetto e corpo
+        oggetto = self.render_template(template["oggetto"], variabili)
+        corpo_html = self.render_template(template["corpo_html"], variabili)
+        corpo_testo = None
+        if template.get("corpo_testo"):
+            corpo_testo = self.render_template(template["corpo_testo"], variabili)
+
+        return template, account, oggetto, corpo_html, corpo_testo
 
     # Scopo: Invia un'email risolvendo account e template con fallback per reparto.
     #        In modalita' DEBUG con account senza smtp_host, logga in console.
@@ -72,37 +121,14 @@ class EmailDispatchService:
         auth_user_id: int | None = None,
         destinatari_cc: list[str] | None = None,
     ) -> tuple[int, bool]:
-        # 1. Risolvi template con fallback
-        template = self._repo.resolve_template(
-            codice_template,
+        template, account, oggetto, corpo_html, corpo_testo = self.resolve_and_render(
+            codice_template=codice_template,
+            variabili=variabili,
             unita_organizzativa_id=unita_organizzativa_id,
             tipo_prestazione_id=tipo_prestazione_id,
             lingua=lingua,
         )
-        ErrorManager.require(
-            template is not None,
-            code=E_EMAIL,
-            message=f"Template email '{codice_template}' non trovato.",
-        )
-        assert template is not None
 
-        # 2. Risolvi account SMTP con fallback
-        account = self._repo.resolve_account(unita_organizzativa_id)
-        ErrorManager.require(
-            account is not None,
-            code=E_EMAIL,
-            message="Nessun account email configurato (ne' per reparto ne' SISTEMA).",
-        )
-        assert account is not None
-
-        # 3. Renderizza oggetto e corpo
-        oggetto = self.render_template(template["oggetto"], variabili)
-        corpo_html = self.render_template(template["corpo_html"], variabili)
-        corpo_testo = None
-        if template.get("corpo_testo"):
-            corpo_testo = self.render_template(template["corpo_testo"], variabili)
-
-        # 4. Delega invio al metodo pubblico per dati raw
         return self.send_raw(
             account=account,
             destinatario=destinatario,
@@ -262,7 +288,6 @@ class EmailDispatchService:
                 log_detail.get("corpo_inviato_html", ""),
                 log_detail.get("corpo_inviato_testo"),
             )
-            from datetime import datetime, timezone
             now = datetime.now(timezone.utc).isoformat()
             self._repo.update_log_stato(log_id, "SENT", inviato_at=now)
             return True

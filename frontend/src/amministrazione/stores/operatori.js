@@ -144,7 +144,7 @@ export const useOperatoriStore = defineStore('amm-operatori', () => {
   async function saveEmittentiScope(authUserId, emittenteIds) {
     const res = await putEmittentiScope(authUserId, emittenteIds)
     emittentiScope.value = res.data.data.results
-    emitDataChanged('operatore', authUserId)
+    return res.data.data
   }
 
   return {

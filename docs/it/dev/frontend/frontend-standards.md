@@ -4,6 +4,10 @@
 > È vincolante per qualsiasi contributo al frontend. Le deroghe devono essere documentate e motivate.
 >
 > Aggiornato: 15 marzo 2026
+>
+> Vedi anche:
+>
+> * [Catalogo building block frontend](catalogo-building-block-frontend.md) — inventario completo componenti, composable, utility, classi CSS
 
 ---
 
@@ -551,69 +555,11 @@ il principio di riuso.
 5. **i18n** — tutti i testi tramite `$t()`, mai hardcoded
 6. **Responsive** — testare su mobile (flex-wrap, no larghezze fisse)
 
-### Componenti core gia' implementati
+### Componenti core e composable
 
-**Layout e navigazione:**
+Per l'inventario completo di componenti, composable, utility e classi CSS disponibili, consultare il [Catalogo Building Block Frontend](catalogo-building-block-frontend.md).
 
-| Componente          | Scopo                                                  |
-| ------------------- | ------------------------------------------------------ |
-| `AppLayout.vue`     | Layout master: sidebar + topbar + tabs + contenuto     |
-| `AppTopbar.vue`     | Topbar con profilo, ricerca, sessioni                  |
-| `AppSidebar.vue`    | Sidebar morfica a 3 stati                              |
-| `AppBreadcrumb.vue` | Breadcrumb derivato da route meta                      |
-| `ContentTabs.vue`   | Barra tab multi-entita' con KeepAlive                  |
-| `SearchDrawer.vue`  | Ricerca universale soggetti (WIDE)                     |
-| `StatusPage.vue`    | Pagina stato riutilizzabile (errore, WIP, placeholder) |
-
-**Form building block:**
-
-| Componente                  | Scopo                                                  |
-| --------------------------- | ------------------------------------------------------ |
-| `SoggettoForm.vue`          | Form universale PF/PG/ENTE guidato da matrice DB       |
-| `AuthUserForm.vue`          | Form credenziali (username, email, password)           |
-| `ComuneAutocomplete.vue`    | Autocomplete comuni server-side                        |
-| `StradarioAutocomplete.vue` | Autocomplete stradario filtrato per comune             |
-| `NewButton.vue`             | Pulsante "+ Nuovo" con tooltip contestuale, responsive |
-| `DrawerFooter.vue`          | Footer drawer Annulla/Salva standardizzato             |
-
-**SearchTable (DataTable riutilizzabili):**
-
-| Componente                     | Scopo                        | Riuso                   |
-| ------------------------------ | ---------------------------- | ----------------------- |
-| `ToponomasticaSearchTable.vue` | Lista toponomastica con CRUD | Tab gestione geografica |
-| `ComuniSearchTable.vue`        | Lista comuni con creazione   | Tab gestione geografica |
-| `ProvinceSearchTable.vue`      | Lista province con CRUD      | Tab gestione geografica |
-| `RegioniSearchTable.vue`       | Lista regioni con CRUD       | Tab gestione geografica |
-| `StatiSearchTable.vue`         | Lista stati con CRUD         | Tab gestione geografica |
-
-**Drawer CRUD:**
-
-| Componente                | Scopo                                     |
-| ------------------------- | ----------------------------------------- |
-| `ToponomasticaDrawer.vue` | CRUD toponomastica (SIMPLE)               |
-| `ComuneDrawer.vue`        | Creazione comuni (SIMPLE)                 |
-| `ProvinceDrawer.vue`      | CRUD province con select regione (SIMPLE) |
-| `RegioniDrawer.vue`       | CRUD regioni con select stato (SIMPLE)    |
-| `StatiDrawer.vue`         | CRUD stati con 6 campi (STANDARD)         |
-
----
-
-## Composable centralizzati
-
-| Composable                           | Scopo                                                        | Usato da                  |
-| ------------------------------------ | ------------------------------------------------------------ | ------------------------- |
-| `useSearchTable(store)`              | Debounce search, onPage, onSort, paginatorProps              | Tutti i SearchTable       |
-| `useTabFreshness(store, entityType)` | Inter-tab refresh su data change + cleanup                   | Tutti i SearchTable       |
-| `useDrawerState()`                   | Stato drawer reactive (visible, mode, itemId, itemData)      | Tutte le viste con drawer |
-| `useApiHandler()`                    | Wrapper API con loading, toast automatici, error handling    | Tutti i componenti        |
-| `useNotify()`                        | Toast centralizzati (success, error, systemError)            | Via useApiHandler         |
-| `useLookup(fetchFn)`                 | Cache generica per lookup dropdown                           | Form con select           |
-| `useServerAutocomplete(searchFn)`    | Ricerca server con debounce (min 2 char, 300ms)              | Autocomplete              |
-| `useSoggettoForm(options)`           | State universale PF/PG/ENTE guidato da matrice DB            | SoggettoForm              |
-| `useAuthUser()`                      | State credenziali con password match                         | AuthUserForm              |
-| `usePagination()`                    | Stato paginazione server-side (legacy, usare useSearchTable) | SearchDrawer              |
-| `useTabEvents()`                     | Event bus inter-tab (emitDataChanged, onDataChanged)         | Store + SearchTable       |
-| `useConfirmAction()`                 | Dialog conferma azioni distruttive                           | Drawer con delete         |
+La checklist sopra resta il riferimento per decidere **dove** collocare un nuovo componente; il catalogo elenca **cosa** esiste gia'.
 
 ---
 

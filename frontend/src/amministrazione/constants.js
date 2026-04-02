@@ -47,6 +47,33 @@ export function buildAuditTabellaOptions(t) {
   ]
 }
 
+// --- Email log stati ---
+export const EMAIL_LOG_STATO = {
+  PENDING: 'PENDING',
+  SENT: 'SENT',
+  FAILED: 'FAILED',
+  RETRY: 'RETRY'
+}
+
+// Scopo: Costruisce le opzioni stato email log per Select filtro.
+export function buildEmailLogStatoOptions(t) {
+  return [
+    { label: t('amm.email_stato_tutti'), value: null },
+    { label: t('amm.email_stato_sent'), value: EMAIL_LOG_STATO.SENT },
+    { label: t('amm.email_stato_failed'), value: EMAIL_LOG_STATO.FAILED },
+    { label: t('amm.email_stato_pending'), value: EMAIL_LOG_STATO.PENDING },
+    { label: t('amm.email_stato_retry'), value: EMAIL_LOG_STATO.RETRY }
+  ]
+}
+
+// Scopo: Restituisce la severity PrimeVue per uno stato email log.
+export function getEmailLogStatoSeverity(stato) {
+  if (stato === EMAIL_LOG_STATO.SENT) return 'success'
+  if (stato === EMAIL_LOG_STATO.FAILED) return 'danger'
+  if (stato === EMAIL_LOG_STATO.RETRY) return 'warn'
+  return 'info' // PENDING
+}
+
 // --- Severity mapping riusabili ---
 
 // Scopo: Restituisce la severity PrimeVue per un livello accesso.

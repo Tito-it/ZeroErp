@@ -5,12 +5,12 @@
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | integer | NO |  |
-| codice_interno | character | NO |  |
+| codice_interno | character varying | NO |  |
 | descrizione | character varying | NO | ''::character varying |
 | descrizione_breve | character | NO |  |
 | check_lettura | character | NO | 'S'::bpchar |
 | abilita_fattura | character | NO | 'S'::bpchar |
-| codice | character | NO | 'IS'::bpchar |
+| codice | character varying | NO | 'IS'::bpchar |
 | stato_cliente_ia | character | NO | 'I'::bpchar |
 | data_insert | timestamp with time zone | NO | now() |
 | user_insert | text | NO | CURRENT_USER |

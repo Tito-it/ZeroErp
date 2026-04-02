@@ -14,6 +14,14 @@ export function useNotify() {
     })
   }
 
+  function warn(message) {
+    toast.add({
+      severity: 'warn',
+      summary: message || t('notifications.generic_warn'),
+      life: TOAST_DURATION.WARN
+    })
+  }
+
   function error(message) {
     toast.add({
       severity: 'error',
@@ -30,5 +38,5 @@ export function useNotify() {
     })
   }
 
-  return { success, error, systemError }
+  return { success, warn, error, systemError }
 }

@@ -9,8 +9,9 @@ import { usePraticheStore } from '../stores/pratiche'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useLookup } from '../../core/composables/useLookup'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
+import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { lookupCodici } from '../../core/apiCore'
-import { displayDate } from '../../core/utils/date'
+import { displayDate, toDateString } from '../../core/utils/date'
 import { statoPraticaSeverity, prioritaPraticaSeverity } from '../../core/utils/severity'
 import { DRAWER_WIDTH, STATO_PRATICA } from '../../core/constants'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
@@ -35,6 +36,7 @@ const { t } = useI18n()
 const store = usePraticheStore()
 const { execute, loading } = useApiHandler()
 const isReadonly = useInjectReadonly()
+const { confirmAction } = useConfirmAction()
 
 // Lookup per popolare i Select dei form (non per display — quello arriva dal backend)
 const prioritaPratica = useLookup(() => lookupCodici('config.priorita_pratiche'), { immediate: true })
@@ -103,7 +105,7 @@ function populateFormFromDetail(d) {
 }
 
 // Stato corrente dalla risposta backend (campo display, no lookup)
-const statoCorrente = computed(() => (detail.value?.stato_codice_interno || '').trim())
+const statoCorrente = computed(() => detail.value?.stato_codice_interno || '')
 
 watch(() => props.visible, async (val) => {
   if (!val) return
@@ -145,7 +147,12 @@ function onChiudiPratica() {
   executeAction(() => store.cambiaStato(props.praticaId, { nuovo_stato: STATO_PRATICA.CHIUSA }))
 }
 function onAnnullaPratica() {
-  executeAction(() => store.cambiaStato(props.praticaId, { nuovo_stato: STATO_PRATICA.ANNULLATA }))
+  confirmAction({
+    title: t('pratiche.azione_annulla'),
+    message: t('pratiche.conferma_annulla'),
+    danger: true,
+    onAccept: () => executeAction(() => store.cambiaStato(props.praticaId, { nuovo_stato: STATO_PRATICA.ANNULLATA }))
+  })
 }
 
 // --- Salvataggio ---
@@ -155,7 +162,7 @@ async function onSave() {
     const payload = {
       descrizione: form.value.descrizione || null,
       data_scadenza: form.value.data_scadenza
-        ? form.value.data_scadenza.toISOString().split('T')[0]
+        ? toDateString(form.value.data_scadenza)
         : null
     }
     const result = await execute(
@@ -169,7 +176,7 @@ async function onSave() {
       priorita_id: form.value.priorita_id,
       descrizione: form.value.descrizione || null,
       data_scadenza: form.value.data_scadenza
-        ? form.value.data_scadenza.toISOString().split('T')[0]
+        ? toDateString(form.value.data_scadenza)
         : null,
       soggetto_id: soggettoSelezionato.value?.id || null,
       soggetto_ruolo_id: ruoloSelezionato.value || null,

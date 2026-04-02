@@ -23,14 +23,12 @@ from drf_spectacular.utils import extend_schema
 from rest_framework.permissions import AllowAny
 from rest_framework.request import Request
 from rest_framework.views import APIView
-from rest_framework_simplejwt.exceptions import TokenError
-from rest_framework_simplejwt.token_blacklist.models import OutstandingToken
-from rest_framework_simplejwt.tokens import RefreshToken
 
 from apps.core.api.endpoint_helpers import handle_post_json
 from apps.core.api.success_responses import success_response
 from apps.core.api.throttling import PasswordResetRateThrottle
 from apps.core.db.auth_repository import AuthRepository
+from apps.core.services.auth_helpers import apply_new_password, validate_and_extract_token
 from apps.core.services.email_service import EmailDispatchService
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.request_context import get_client_ip
@@ -58,18 +56,19 @@ class PasswordResetRequestView(APIView):
     throttle_classes = [PasswordResetRateThrottle]
 
     @extend_schema(summary="Richiesta reset password", responses={200: dict})
-    # Scopo: Riceve email, genera token, invia email con link reset.
-    #        Risponde sempre 200 per non rivelare se l'email esiste.
+    # Scopo: Riceve username, cerca utente attivo con email configurata,
+    #        genera token e invia email con link reset.
+    #        Risponde sempre 200 per non rivelare se l'utente esiste.
     def post(self, request: Request) -> JsonResponse:
         def _handler(payload: dict[str, Any]) -> dict[str, Any]:
-            email = (payload.get("email") or "").strip().lower()
-            if not email:
-                # Risposta generica anche senza email
-                return {"message": "Se l'email e' registrata, riceverai un link per reimpostare la password."}
+            username = (payload.get("username") or "").strip()
+            _MSG = "Se l'utente esiste e ha un'email configurata, ricevera' un link per reimpostare la password."
+            if not username:
+                return {"message": _MSG}
 
-            # Cerca utente con questa email (best-effort)
-            user = User.objects.filter(email=email, is_active=True).first()
-            if user:
+            # Cerca utente attivo per username
+            user = User.objects.filter(username=username, is_active=True).first()
+            if user and user.email:
                 # Genera token reset
                 token_plain = _token_service.create(
                     tipo=_RESET_TOKEN_TIPO,
@@ -90,7 +89,7 @@ class PasswordResetRequestView(APIView):
                 try:
                     _email_service.send_email(
                         codice_template=_TEMPLATE_RESET,
-                        destinatario=email,
+                        destinatario=user.email,
                         variabili={
                             "nome": user.first_name or user.username,
                             "azienda": "ZeroErp",
@@ -104,10 +103,10 @@ class PasswordResetRequestView(APIView):
                 except Exception:
                     logger.exception("Errore invio email reset per user_id=%s", user.id)
 
-                logger.info("security.password_reset_requested user_id=%s email=%s", user.id, email)
+                logger.info("security.password_reset_requested user_id=%s username=%s", user.id, username)
 
             # Risposta identica sia che l'utente esista o no
-            return {"message": "Se l'email e' registrata, riceverai un link per reimpostare la password."}
+            return {"message": _MSG}
 
         return handle_post_json(request, handler=_handler)
 
@@ -151,14 +150,10 @@ class PasswordResetConfirmView(APIView):
                 code=E_RESET, message="La nuova password e la conferma non coincidono.",
             )
 
-            # Valida token SENZA consumarlo (per poter validare la password prima)
-            token_result = _token_service.validate(token, _RESET_TOKEN_TIPO)
-            ErrorManager.require(
-                token_result is not None,
-                code=E_RESET, message="Token non valido, scaduto o gia' utilizzato.",
+            # Valida token SENZA consumarlo
+            auth_user_id, _ = validate_and_extract_token(
+                token, _RESET_TOKEN_TIPO, E_RESET, _token_service,
             )
-            assert token_result is not None
-            auth_user_id, _ = token_result
 
             # Trova utente
             user = User.objects.filter(id=auth_user_id).first()
@@ -171,22 +166,11 @@ class PasswordResetConfirmView(APIView):
             except DjangoValidationError as exc:
                 ErrorManager.require(False, code=E_RESET, message=" ".join(exc.messages))
 
-            # Ora consuma il token (password validata con successo)
-            ip = get_client_ip(request._request)
-            _token_service.consume(token, _RESET_TOKEN_TIPO, ip=ip)
-
-            # Applica nuova password + reset flag (atomico)
+            # Consuma token + applica password + reset flag + blacklist (atomico)
+            ip = get_client_ip(request._request if hasattr(request, "_request") else request)
             with transaction.atomic():
-                user.set_password(new_password)
-                user.save(update_fields=["password"])
-                _auth_repo.set_deve_cambiare_password(auth_user_id, False)
-
-                # Blacklista refresh token precedenti
-                for ot in OutstandingToken.objects.filter(user=user):
-                    try:
-                        RefreshToken(ot.token).blacklist()
-                    except TokenError:
-                        pass
+                _token_service.consume(token, _RESET_TOKEN_TIPO, ip=ip)
+                apply_new_password(user, new_password, blacklist_tokens=True, auth_repo=_auth_repo)
 
             # Invia email conferma
             uo_id = _auth_repo.get_unita_organizzativa_id(auth_user_id)

@@ -1,0 +1,90 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+#
+# Ricrea vista script.vw_indirizzo_completo dopo conversione
+# config.codici_postali.codice CHAR -> VARCHAR
+# (migration 20260402-21 in 00_schema/config).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260402-03-recreate-vw-indirizzo-completo-mctit.yaml
+
+  - changeSet:
+      id: 20260402-03-recreate-vw-indirizzo-completo
+      author: mctit
+      runOnChange: true
+      comment: >
+        Ricrea vista script.vw_indirizzo_completo droppata dalla
+        migration 20260402-21 (ALTER codice CHAR->VARCHAR).
+
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ==========================================================
+              -- Vista: script.vw_indirizzo_completo
+              --
+              -- Scopo: indirizzo completo con comune, provincia, CAP,
+              --        via e geolocalizzazione da stradario.
+              --
+              -- Ricreata dopo ALTER codice CHAR -> VARCHAR su
+              -- config.codici_postali.
+              -- ==========================================================
+              CREATE OR REPLACE VIEW script.vw_indirizzo_completo AS
+              SELECT s.id AS id_stradario,
+                  c.id AS id_comune,
+                  c.descrizione AS comune,
+                  p.sigla AS provincia,
+                  cp.codice AS codice_postale,
+                  ve.indirizzo_generale,
+                  s.geoloc,
+                  s.meta,
+                  ve.id_via,
+                  ve.tipo_toponimo,
+                  ve.nome_strada
+              FROM config.stradario s
+                  JOIN config.comuni c ON s.comune_id = c.id
+                  JOIN config.province p ON c.provincia_id = p.id
+                  JOIN config.codici_postali cp ON s.codice_postale_id = cp.id
+                  JOIN script.vw_stradario_esteso ve ON s.stradario_generale_id = ve.id_via;
+
+              COMMENT ON VIEW script.vw_indirizzo_completo IS
+                'Indirizzo completo: stradario + comune + provincia + CAP + via estesa.';
+
+              -- ==========================================================
+              -- Vista: anagrafiche.vw_indirizzi_dettaglio
+              --
+              -- Scopo: dettaglio indirizzo normalizzato con comune,
+              --        CAP e provincia da vw_indirizzo_completo.
+              --        Necessaria PRIMA di vw_indirizzi_resolved_base.
+              -- ==========================================================
+              CREATE OR REPLACE VIEW anagrafiche.vw_indirizzi_dettaglio AS
+              SELECT idd.id AS indirizzo_dettaglio_id,
+                  idd.stradario_id,
+                  s.comune_id,
+                  idd.indirizzo_normalizzato,
+                  idd.via_norm,
+                  idd.civico,
+                  idd.estensione_civico,
+                  idd.palazzina,
+                  idd.scala,
+                  idd.piano,
+                  idd.interno,
+                  idd.altro,
+                  idd.civic_geoloc,
+                  idd.street_geoloc,
+                  idd.attivo,
+                  idd.storicizza,
+                  idd.tx_id,
+                  idd.data_insert,
+                  idd.user_insert,
+                  idd.data_update,
+                  idd.user_update,
+                  ic.comune AS descrizione_comune,
+                  ic.codice_postale AS cap,
+                  ic.provincia
+              FROM anagrafiche.indirizzi_dettaglio idd
+                  JOIN config.stradario s ON s.id = idd.stradario_id
+                  JOIN script.vw_indirizzo_completo ic ON ic.id_stradario = idd.stradario_id;

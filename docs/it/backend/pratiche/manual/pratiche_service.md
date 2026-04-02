@@ -65,6 +65,7 @@ Il servizio delega tutte le operazioni DB al `PraticheRepository` e le operazion
 | `verifica_prerequisiti(pratica_id, template_flusso_id)` | pratica_id, template_flusso_id | `list[PrerequisitoCheckRow]` | Check prerequisiti (pura lettura) |
 | `get_canali_disponibili(template_flusso_id)` | template_flusso_id | `list[CanalePraticaRow]` | Canali abilitati per template |
 | `dispatch_handler(flusso_id)` | flusso_id | `dict \| None` | Invoca handler Python se configurato |
+| `verifica_flusso_pratica(repo, pratica_id, flusso_id)` | repo, pratica_id, flusso_id | `dict` | Verifica esistenza e ownership flusso/pratica |
 | `get_giornale(pratica_id, limit, offset)` | pratica_id, limit, offset | `(list[GiornaleRow], int)` | Giornale paginato |
 | `get_formule_tempo(tipo_prestazione_id)` | tipo_prestazione_id | `list[FormulaTempoRow]` | Formule tempo attive per tipo |
 
@@ -76,7 +77,7 @@ Il servizio delega tutte le operazioni DB al `PraticheRepository` e le operazion
 - `dispatch_handler`: import inline di `handler_registry.get_handler` per evitare import circolari; ritorna `None` se il flusso non ha template, non ha handler_key, o l'handler non e' registrato.
 - `assegna_pratica`: noop se nessun campo di assegnazione fornito.
 - Le funzioni sospensione verificano unicita' sospensione attiva prima dell'INSERT.
-- `_verifica_flusso_pratica(repo, pratica_id, flusso_id)`: helper privato per ownership check flusso/pratica riusato da `sospendi_flusso` e `riattiva_flusso`.
+- `verifica_flusso_pratica(repo, pratica_id, flusso_id)`: helper **pubblico** per ownership check flusso/pratica. Usato internamente dal service (sospensioni, flussi) e dalle views API (alias `_get_flusso_verificato`). Unica fonte di verita' per la verifica esistenza + appartenenza flusso.
 
 ## Dipendenze DB
 
@@ -98,3 +99,4 @@ Il servizio delega tutte le operazioni DB al `PraticheRepository` e le operazion
 
 - Le funzioni inline `_resolve_stato_pratica`, `_resolve_stato_flusso`, `_get_handler_key` sono state migrate nel `PraticheRepository` come metodi di istanza.
 - `cambia_stato_flusso` e' stata aggiunta per gestire transizioni generiche (SOSPESO, ANNULLATO) senza passare dalla view con logica inline.
+- v2.2 (1 aprile 2026): `_verifica_flusso_pratica` rinominata `verifica_flusso_pratica` (pubblica). La funzione duplicata in `views.py` e' stata sostituita con alias al service. Repository allineato ai building block core (`row_to_dict`/`rows_to_list`, `ErrorManager.require` su tutti i fetchone). `pratica_select_sql()`/`pratica_joins_sql()` esposti come classmethod pubblici per uso cross-repository.

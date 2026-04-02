@@ -13,6 +13,9 @@ CREATE OR REPLACE FUNCTION script.fn_get_indirizzi_by_soggetto(p_soggetto_id uui
  LANGUAGE sql
  STABLE
 AS $function$
+  -- Restituisce tutti gli indirizzi identitari (layer SOGGETTO)
+  -- per il soggetto indicato, ordinati per tipo indirizzo e id.
+  -- Usa la vista resolved_base filtrata per scope = SOGGETTO.
   SELECT r.*
   FROM anagrafiche.vw_indirizzi_resolved_base r
   WHERE r.scope = 'SOGGETTO'
@@ -21,7 +24,7 @@ AS $function$
 $function$
 
 COMMENT ON FUNCTION script.fn_get_indirizzi_by_soggetto(p_soggetto_id uuid)
-IS 'Indirizzi layer SOGGETTO (identitario) da vw_indirizzi_resolved_base.';
+IS 'Restituisce tutti gli indirizzi layer SOGGETTO (identitario) per un dato soggetto_id, ordinati per tipo e id.';
 ```
 
 ---

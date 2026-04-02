@@ -2,6 +2,8 @@
 import { ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
+import { usePasswordValidation } from '../composables/usePasswordValidation'
+import { extractApiError, extractApiErrorCode } from '../utils/apiError'
 import api from '../api'
 import LogoBrand from '../components/LogoBrand.vue'
 import Password from 'primevue/password'
@@ -10,6 +12,7 @@ import Button from 'primevue/button'
 const { t } = useI18n()
 const route = useRoute()
 const router = useRouter()
+const { validateNewPassword } = usePasswordValidation()
 
 const token = ref(route.params.token || '')
 const newPassword = ref('')
@@ -24,22 +27,21 @@ onMounted(async () => {
     tokenValid.value = false
     return
   }
-  // Valida token invito (riuso endpoint validate con tipo diverso — il backend
-  // accetta qualsiasi tipo su validate, controlla il DB)
-  // Per semplicita' assumiamo il token valido se presente (il backend verifichera' al submit)
-  tokenValid.value = true
+  try {
+    const res = await api.get(`/auth/attivazione-validate/${token.value}/`)
+    tokenValid.value = res.data?.data?.valid === true
+  } catch {
+    tokenValid.value = false
+  }
 })
 
 async function handleActivation() {
   errorMessage.value = ''
   successMessage.value = ''
 
-  if (newPassword.value.length < 8) {
-    errorMessage.value = t('auth.password_too_short')
-    return
-  }
-  if (newPassword.value !== confirmPassword.value) {
-    errorMessage.value = t('auth.password_mismatch')
+  const pwError = validateNewPassword(newPassword.value, confirmPassword.value)
+  if (pwError) {
+    errorMessage.value = t(pwError)
     return
   }
 
@@ -53,12 +55,12 @@ async function handleActivation() {
     successMessage.value = t('auth.activation_success')
     setTimeout(() => router.push('/login'), 2000)
   } catch (err) {
-    const code = err?.response?.data?.error?.code
-    if (code === 'E_TOKEN') {
+    const code = extractApiErrorCode(err)
+    if (code === 'E_TOKEN' || code === 'E_ATTIVAZIONE') {
       errorMessage.value = t('auth.activation_token_invalid')
       tokenValid.value = false
     } else {
-      errorMessage.value = err?.response?.data?.error?.message || t('auth.login_error')
+      errorMessage.value = extractApiError(err, t('auth.login_error'))
     }
   } finally {
     loading.value = false
@@ -76,8 +78,13 @@ async function handleActivation() {
 
       <h2 class="login-title">{{ t('auth.activation') }}</h2>
 
+      <!-- Token in validazione -->
+      <div v-if="tokenValid === null" class="login-form">
+        <p class="login-subtitle">{{ t('common.loading') }}</p>
+      </div>
+
       <!-- Token invalido -->
-      <div v-if="tokenValid === false" class="login-form">
+      <div v-else-if="tokenValid === false" class="login-form">
         <div class="login-error">{{ t('auth.activation_token_invalid') }}</div>
         <router-link to="/login" class="back-link">
           {{ t('auth.back_to_login') }}
@@ -89,7 +96,9 @@ async function handleActivation() {
         <p class="login-subtitle">{{ t('auth.activation_welcome') }}</p>
 
         <div class="field">
-          <label for="new_password">{{ t('auth.new_password') }}</label>
+          <label for="new_password">{{ t('auth.new_password') }}
+            <i class="pi pi-info-circle password-info-icon" v-tooltip.right="t('auth.password_hint')" />
+          </label>
           <Password
             id="new_password"
             v-model="newPassword"
@@ -122,7 +131,7 @@ async function handleActivation() {
           :label="t('auth.activate_btn')"
           :loading="loading"
           :disabled="!newPassword || !confirmPassword"
-          fluid
+          class="auth-submit-btn"
         />
       </form>
     </div>

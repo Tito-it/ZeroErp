@@ -34,7 +34,9 @@ Il flusso e' guidato dall'admin ma l'attivazione e' self-service.
    |
 3. Operatore riceve email → clicca link
    |
-4. Frontend apre pagina attivazione
+4. GET /auth/attivazione-validate/{token}/
+   → Se valido: frontend mostra form password
+   → Se invalido/scaduto: messaggio errore
    |
 5. POST /auth/attivazione/ { token, new_password, new_password_confirm }
    → Consuma token
@@ -90,6 +92,29 @@ POST /api/v1/amm-software/operatori/{auth_user_id}/reinvia-invito/
 
 Invalida il token invito precedente, ne genera uno nuovo e rinvia l'email.
 Utile se l'invito e' scaduto o non e' stato ricevuto.
+
+---
+
+## Endpoint Pubblico — Validazione Token Invito
+
+```http
+GET /api/v1/auth/attivazione-validate/{token}/
+```
+
+**Non autenticato** (`AllowAny`). Verifica se un token invito e' ancora valido senza consumarlo.
+Usato dal frontend per mostrare il form di attivazione o un messaggio di errore/scadenza.
+
+### Output
+
+```json
+{ "data": { "valid": true } }
+```
+
+oppure:
+
+```json
+{ "data": { "valid": false, "message": "Token non valido, scaduto o gia' utilizzato." } }
+```
 
 ---
 
@@ -176,5 +201,5 @@ POST /api/v1/auth/attivazione/
 | --- | --- |
 | `apps/anagrafiche/services/invito_operatore_service.py` | Service: verifica, genera, invia, reinvia |
 | `apps/amm_software/api/invito_views.py` | 2 endpoint admin (invita, reinvia) |
-| `apps/core/api/attivazione_view.py` | 1 endpoint pubblico (attivazione) |
+| `apps/core/api/attivazione_view.py` | 2 endpoint pubblici (validate + attivazione) |
 | `apps/core/db/auth_repository.py` | +get_unita_organizzativa_id, +set_invito_inviato_at |

@@ -1,0 +1,90 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+#
+# Allinea config.stati_cliente.codice_interno da CHAR(5) a
+# VARCHAR(50) per coerenza con tutte le altre tabelle stati_*.
+#
+# Operazioni:
+#   1. DROP trigger lock su codice_interno (dipendenza colonna)
+#   2. DROP viste dipendenti dalla colonna
+#   3. Trim trailing spaces dai valori esistenti
+#   4. ALTER COLUMN da CHAR(5) a VARCHAR(50)
+#   5. Rigenera trigger lock via automation framework
+#
+# Le viste vengono ricreate da changeSet separati in 20_code
+# (runOnChange: true), non in questo file.
+#
+# Motivazione: CHAR(5) causa padding con spazi che richiede
+# .trim() lato applicativo e puo' generare mismatch nei
+# confronti stringa con letterali ('AT' vs 'AT   ').
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20260401-21-alter-stati-cliente-codice-interno-varchar-mctit.yaml
+
+  - changeSet:
+      id: 20260401-21-alter-stati-cliente-codice-interno-varchar
+      author: mctit
+      comment: >
+        Converte config.stati_cliente.codice_interno da CHAR(5) a VARCHAR(50).
+        Trim dei dati esistenti per eliminare padding spazi.
+        Drop trigger lock e viste dipendenti; trigger rigenerato da automation,
+        viste ricreate da changeSet dedicati in 20_code.
+
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ==========================================================
+              -- Migrazione: codice_interno CHAR(5) -> VARCHAR(50)
+              --
+              -- Scopo: allineare il tipo a VARCHAR per coerenza con le
+              --        altre tabelle stati_* (stati_doc_fiscale,
+              --        stati_pratiche, stati_flussi_pratiche, ecc.)
+              --
+              -- Regole:
+              --   - DROP trigger lock (PG richiede rimozione per ALTER
+              --     TYPE su colonna referenziata da BEFORE UPDATE OF)
+              --   - DROP viste dipendenti (regola _RETURN)
+              --   - Trim trailing spaces dai valori esistenti
+              --   - Alter column type a VARCHAR(50)
+              --   - Rigenera trigger via automation framework
+              --   - Viste ricreate da changeSet in 20_code
+              --
+              -- Rischio: BASSO — le funzioni che usano %TYPE si adattano
+              --          automaticamente; i letterali ('AT', 'CH', 'IS')
+              --          funzionano correttamente dopo il trim.
+              -- ==========================================================
+
+              -- 1. Drop trigger lock (dipendenza diretta su colonna codice_interno)
+              DROP TRIGGER IF EXISTS trg_stati_cliente_a10_lock_columns_upd
+                ON config.stati_cliente;
+
+              -- 2. Drop viste dipendenti dalla colonna codice_interno
+              DROP VIEW IF EXISTS script.view_clienti_istanza_states;
+              DROP VIEW IF EXISTS anagrafiche.vw_clienti_codice_ba;
+
+              -- 3. Trim trailing spaces dai valori esistenti (CHAR padding)
+              UPDATE config.stati_cliente
+                SET codice_interno = TRIM(TRAILING FROM codice_interno)
+                WHERE codice_interno <> TRIM(TRAILING FROM codice_interno);
+
+              -- 4. Alter column type da CHAR(5) a VARCHAR(50)
+              ALTER TABLE config.stati_cliente
+                ALTER COLUMN codice_interno TYPE VARCHAR(50);
+
+              -- 5. Rigenera trigger lock via automation framework
+              --    fn_run_automations_lock_columns rileva il trigger mancante
+              --    e lo ricrea con BEFORE UPDATE OF codice_interno
+              DO $$
+              BEGIN
+                PERFORM dbops.fn_run_automations_lock_columns(
+                  'AUTO',
+                  ARRAY['config'],
+                  false
+                );
+              END;
+              $$;

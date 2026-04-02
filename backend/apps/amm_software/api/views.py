@@ -267,6 +267,7 @@ class PermessiRiepilogoView(AdminAPIView):
         result = AmmSoftwareService().get_permessi_riepilogo(
             unita_organizzativa_id=optional_int({"v": qp.get("unita_organizzativa_id")}, "v"),
             ruolo_sistema=qp.get("ruolo_sistema") or None,
+            emittente_fiscale_id=optional_int({"v": qp.get("emittente_fiscale_id")}, "v"),
         )
         return success_response(result)
 
