@@ -17,18 +17,31 @@ DECLARE
   v_limit integer := COALESCE(p_limit, 50);
   v_pattern text;
 BEGIN
+  /*
+    Ricerca indirizzi dettaglio con due modalita':
+      - Per stradario_id: ricerca esatta con filtri opzionali
+        su civico, estensione, palazzina, scala, piano, interno
+      - Per pattern: ricerca fuzzy case-insensitive su
+        indirizzo_normalizzato
+    Almeno uno tra p_stradario_id e p_indirizzo_norm deve
+    essere valorizzato.
+  */
+
+  -- Normalizza il pattern di ricerca
   IF p_indirizzo_norm IS NOT NULL THEN
     v_pattern := NULLIF(btrim(p_indirizzo_norm), '');
   ELSE
     v_pattern := NULL;
   END IF;
 
+  -- Guard: almeno un criterio di ricerca obbligatorio
   IF p_stradario_id IS NULL AND v_pattern IS NULL THEN
     RAISE EXCEPTION
       'fn_search_indirizzi_dettaglio: valorizzare almeno p_stradario_id o p_indirizzo_norm (non vuoto)'
       USING HINT = 'Per ricerche fuzzy usare p_indirizzo_norm, per ricerche esatte usare p_stradario_id + dettagli civico.';
   END IF;
 
+  -- Ricerca per stradario_id (+ filtri opzionali + pattern opzionale)
   IF p_stradario_id IS NOT NULL THEN
     RETURN QUERY
     SELECT *
@@ -54,6 +67,7 @@ BEGIN
     RETURN;
   END IF;
 
+  -- Ricerca fuzzy solo per pattern
   RETURN QUERY
   SELECT *
   FROM anagrafiche.vw_indirizzi_dettaglio v
@@ -70,10 +84,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION anagrafiche.fn_search_indirizzi_dettaglio(p_stradario_id integer, p_civico integer, p_estensione_civico text, p_palazzina text, p_scala text, p_piano text, p_interno text, p_indirizzo_norm text, p_limit integer)
-IS 'Funzione di ricerca indirizzi di dettaglio:
- - Se p_stradario_id è valorizzato → ricerca per stradario_id (+ eventuali dettagli civico e pattern).
- - Se p_stradario_id è NULL       → ricerca fuzzy su indirizzo_normalizzato (pattern case-insensitive).
- Ritorna righe da anagrafiche.vw_indirizzi_dettaglio, solo attive, limitate da p_limit.';
+IS 'Ricerca indirizzi dettaglio: per stradario_id (esatta) o per pattern fuzzy su indirizzo_normalizzato. Solo righe attive, limitate da p_limit.';
 ```
 
 ---

@@ -1,0 +1,293 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+#
+# Ricrea funzioni script.fn_get_indirizzi_by_ruolo e
+# script.fn_get_indirizzo dopo DROP esplicito nella
+# migration 20260402-01 (ALTER codice CHAR->VARCHAR).
+#
+# Definizioni identiche a 20260325-04, con %TYPE su tutti
+# i parametri input e RETURNS TABLE.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260402-10-recreate-fn-get-indirizzi-by-ruolo-e-indirizzo-mctit.yaml
+
+  - changeSet:
+      id: 20260402-10-recreate-fn-get-indirizzi-by-ruolo-e-indirizzo
+      author: mctit
+      runOnChange: true
+      comment: >
+        Ricrea fn_get_indirizzi_by_ruolo e fn_get_indirizzo
+        droppate dalla migration 20260402-01. %TYPE su firme.
+
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ==========================================================
+              -- Funzione: script.fn_get_indirizzi_by_ruolo
+              --
+              -- Scopo: restituisce gli indirizzi layer RUOLO per un
+              --        soggetto_ruolo_id. Se p_istanza_utility_id valorizzato,
+              --        filtra istanza specifica + generici (NULL).
+              -- ==========================================================
+              CREATE OR REPLACE FUNCTION script.fn_get_indirizzi_by_ruolo(
+                p_soggetto_ruolo_id    anagrafiche.soggetti_ruoli.id%TYPE,
+                p_istanza_utility_id   anagrafiche.istanze_utilities.id%TYPE DEFAULT NULL
+              )
+              RETURNS TABLE(
+                tipo_indirizzo         config.tipi_indirizzi.codice_interno%TYPE,
+                indirizzo_completo     text,
+                geoloc                 geometry,
+                indirizzo_id           anagrafiche.indirizzi.id%TYPE,
+                soggetto_ruolo_id      anagrafiche.indirizzi.soggetto_ruolo_id%TYPE,
+                istanza_utility_id     anagrafiche.indirizzi.istanza_utility_id%TYPE,
+                tipo_indirizzo_id      anagrafiche.indirizzi.tipo_indirizzo_id%TYPE,
+                indirizzo_dettaglio_id anagrafiche.indirizzi.indirizzo_dettaglio_id%TYPE,
+                indirizzo_libero       anagrafiche.indirizzi.indirizzo_libero%TYPE,
+                is_normalizzato        boolean,
+                stato_id               config.stati.id%TYPE,
+                stato_descrizione      config.stati.descrizione%TYPE,
+                stato_iso2             config.stati.codice_iso2%TYPE,
+                regione_id             config.regioni.id%TYPE,
+                regione_descrizione    config.regioni.descrizione%TYPE,
+                provincia_id           config.province.id%TYPE,
+                provincia_sigla        config.province.sigla%TYPE,
+                provincia_descrizione  config.province.descrizione%TYPE,
+                comune_id              config.comuni.id%TYPE,
+                comune_descrizione     config.comuni.descrizione%TYPE,
+                codice_postale_id      config.codici_postali.id%TYPE,
+                cap_codice             config.codici_postali.codice%TYPE,
+                locality               anagrafiche.indirizzi.locality%TYPE,
+                administrative_area    anagrafiche.indirizzi.administrative_area%TYPE,
+                sublocality            anagrafiche.indirizzi.sublocality%TYPE,
+                postal_box             anagrafiche.indirizzi.postal_box%TYPE
+              )
+              LANGUAGE sql
+              STABLE
+              AS $function$
+                -- Proiezione dalla vista base, filtrata per scope RUOLO.
+                -- Se p_istanza_utility_id valorizzato: istanza specifica + generici (NULL).
+                -- Se p_istanza_utility_id NULL: tutti gli indirizzi del ruolo.
+                SELECT
+                  r.tipo_indirizzo_codice, r.indirizzo_display, r.geoloc,
+                  r.indirizzo_id, r.soggetto_ruolo_id, r.istanza_utility_id,
+                  r.tipo_indirizzo_id, r.indirizzo_dettaglio_id, r.indirizzo_libero,
+                  r.is_normalizzato,
+                  r.stato_id, r.stato_descrizione, r.stato_iso2,
+                  r.regione_id, r.regione_descrizione,
+                  r.provincia_id, r.provincia_sigla, r.provincia_descrizione,
+                  r.comune_id, r.comune_descrizione,
+                  r.codice_postale_id, r.cap_codice,
+                  r.locality, r.administrative_area, r.sublocality, r.postal_box
+                FROM anagrafiche.vw_indirizzi_resolved_base r
+                WHERE r.scope = 'RUOLO'
+                  AND r.soggetto_ruolo_id = p_soggetto_ruolo_id
+                  AND (p_istanza_utility_id IS NULL
+                       OR r.istanza_utility_id = p_istanza_utility_id
+                       OR r.istanza_utility_id IS NULL)
+                ORDER BY r.tipo_indirizzo_codice, r.istanza_utility_id NULLS LAST, r.indirizzo_id;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_get_indirizzi_by_ruolo(bigint, bigint) IS
+                'Indirizzi layer RUOLO. Se p_istanza_utility_id valorizzato filtra istanza specifica + generici (NULL).';
+
+              -- ==========================================================
+              -- Funzione: script.fn_get_indirizzo
+              --
+              -- Scopo: policy indirizzi a 3 livelli con fallback:
+              --   1. Ruolo + istanza specifica con fallback tipo
+              --   2. Ruolo generico con fallback tipo
+              --   3. Soggetto con fallback tipo
+              -- ==========================================================
+              CREATE OR REPLACE FUNCTION script.fn_get_indirizzo(
+                p_soggetto_ruolo_id    anagrafiche.soggetti_ruoli.id%TYPE,
+                p_tipo_codice          config.tipi_indirizzi.codice_interno%TYPE,
+                p_istanza_utility_id   anagrafiche.istanze_utilities.id%TYPE DEFAULT NULL
+              )
+              RETURNS TABLE(
+                tipo_indirizzo         config.tipi_indirizzi.codice_interno%TYPE,
+                indirizzo_completo     text,
+                geoloc                 geometry,
+                indirizzo_id           anagrafiche.indirizzi.id%TYPE,
+                soggetto_ruolo_id      anagrafiche.indirizzi.soggetto_ruolo_id%TYPE,
+                istanza_utility_id     anagrafiche.indirizzi.istanza_utility_id%TYPE,
+                tipo_indirizzo_id      anagrafiche.indirizzi.tipo_indirizzo_id%TYPE,
+                indirizzo_dettaglio_id anagrafiche.indirizzi.indirizzo_dettaglio_id%TYPE,
+                indirizzo_libero       anagrafiche.indirizzi.indirizzo_libero%TYPE,
+                is_normalizzato        boolean,
+                stato_id               config.stati.id%TYPE,
+                stato_descrizione      config.stati.descrizione%TYPE,
+                stato_iso2             config.stati.codice_iso2%TYPE,
+                regione_id             config.regioni.id%TYPE,
+                regione_descrizione    config.regioni.descrizione%TYPE,
+                provincia_id           config.province.id%TYPE,
+                provincia_sigla        config.province.sigla%TYPE,
+                provincia_descrizione  config.province.descrizione%TYPE,
+                comune_id              config.comuni.id%TYPE,
+                comune_descrizione     config.comuni.descrizione%TYPE,
+                codice_postale_id      config.codici_postali.id%TYPE,
+                cap_codice             config.codici_postali.codice%TYPE,
+                locality               anagrafiche.indirizzi.locality%TYPE,
+                administrative_area    anagrafiche.indirizzi.administrative_area%TYPE,
+                sublocality            anagrafiche.indirizzi.sublocality%TYPE,
+                postal_box             anagrafiche.indirizzi.postal_box%TYPE
+              )
+              LANGUAGE plpgsql
+              STABLE ROWS 10
+              AS $function$
+              DECLARE
+                  v_tipo_ruolo_id      anagrafiche.soggetti_ruoli.tipo_ruolo_id%TYPE;
+                  v_soggetto_id        anagrafiche.soggetti_ruoli.soggetto_id%TYPE;
+                  v_current_codice     config.tipi_indirizzi.codice_interno%TYPE;
+                  v_current_tipo_id    config.tipi_indirizzi.id%TYPE;
+                  v_fallback_tipo_id   config.tipi_ruolo_tipi_indirizzo.fallback_tipo_indirizzo_id%TYPE;
+                  v_rows_found         integer;
+                  v_visited_tipo_ids   config.tipi_indirizzi.id%TYPE[] := '{}'::integer[];
+              BEGIN
+                  /*
+                    Policy indirizzi a 3 livelli con fallback per tipo:
+                      FASE 1: ruolo + istanza specifica (se p_istanza_utility_id valorizzato)
+                      FASE 2: ruolo generico (istanza IS NULL)
+                      FASE 3: fallback soggetto (via fn_get_indirizzo_by_soggetto)
+                    Ogni fase segue la catena fallback in tipi_ruolo_tipi_indirizzo
+                    con protezione anti-loop circolare.
+                  */
+
+                  -- Recupera soggetto e tipo ruolo
+                  SELECT sr.tipo_ruolo_id, sr.soggetto_id
+                    INTO v_tipo_ruolo_id, v_soggetto_id
+                  FROM anagrafiche.soggetti_ruoli sr
+                  WHERE sr.id = p_soggetto_ruolo_id;
+
+                  IF v_tipo_ruolo_id IS NULL THEN RETURN; END IF;
+
+                  -- FASE 1: RUOLO + ISTANZA SPECIFICA
+                  IF p_istanza_utility_id IS NOT NULL THEN
+                      v_current_codice := p_tipo_codice;
+                      v_visited_tipo_ids := '{}'::integer[];
+                      LOOP
+                          RETURN QUERY
+                          SELECT f.tipo_indirizzo, f.indirizzo_completo, f.geoloc,
+                              f.indirizzo_id, f.soggetto_ruolo_id, f.istanza_utility_id,
+                              f.tipo_indirizzo_id, f.indirizzo_dettaglio_id, f.indirizzo_libero,
+                              f.is_normalizzato,
+                              f.stato_id, f.stato_descrizione, f.stato_iso2,
+                              f.regione_id, f.regione_descrizione,
+                              f.provincia_id, f.provincia_sigla, f.provincia_descrizione,
+                              f.comune_id, f.comune_descrizione,
+                              f.codice_postale_id, f.cap_codice,
+                              f.locality, f.administrative_area, f.sublocality, f.postal_box
+                          FROM script.fn_get_indirizzi_by_ruolo(p_soggetto_ruolo_id, p_istanza_utility_id) f
+                          WHERE f.tipo_indirizzo = v_current_codice
+                            AND f.istanza_utility_id = p_istanza_utility_id;
+
+                          GET DIAGNOSTICS v_rows_found = ROW_COUNT;
+                          IF v_rows_found > 0 THEN RETURN; END IF;
+
+                          -- Cerca fallback per tipo indirizzo
+                          SELECT ti.id INTO v_current_tipo_id
+                          FROM config.tipi_indirizzi ti WHERE ti.codice_interno = v_current_codice;
+                          IF v_current_tipo_id IS NULL THEN EXIT; END IF;
+                          IF v_current_tipo_id = ANY (v_visited_tipo_ids) THEN EXIT; END IF;
+                          v_visited_tipo_ids := array_append(v_visited_tipo_ids, v_current_tipo_id);
+
+                          SELECT m.fallback_tipo_indirizzo_id INTO v_fallback_tipo_id
+                          FROM config.tipi_ruolo_tipi_indirizzo m
+                          WHERE m.tipo_ruolo_id = v_tipo_ruolo_id
+                            AND m.tipo_indirizzo_id = v_current_tipo_id
+                            AND m.attivo = TRUE
+                            AND (m.valido_dal IS NULL OR m.valido_dal <= current_date)
+                            AND (m.valido_al IS NULL OR m.valido_al >= current_date)
+                          LIMIT 1;
+                          IF v_fallback_tipo_id IS NULL THEN EXIT; END IF;
+
+                          SELECT ti.codice_interno INTO v_current_codice
+                          FROM config.tipi_indirizzi ti WHERE ti.id = v_fallback_tipo_id;
+                          IF v_current_codice IS NULL THEN EXIT; END IF;
+                      END LOOP;
+                  END IF;
+
+                  -- FASE 2: RUOLO GENERICO (istanza_utility_id IS NULL)
+                  v_current_codice := p_tipo_codice;
+                  v_visited_tipo_ids := '{}'::integer[];
+                  LOOP
+                      RETURN QUERY
+                      SELECT f.tipo_indirizzo, f.indirizzo_completo, f.geoloc,
+                          f.indirizzo_id, f.soggetto_ruolo_id, f.istanza_utility_id,
+                          f.tipo_indirizzo_id, f.indirizzo_dettaglio_id, f.indirizzo_libero,
+                          f.is_normalizzato,
+                          f.stato_id, f.stato_descrizione, f.stato_iso2,
+                          f.regione_id, f.regione_descrizione,
+                          f.provincia_id, f.provincia_sigla, f.provincia_descrizione,
+                          f.comune_id, f.comune_descrizione,
+                          f.codice_postale_id, f.cap_codice,
+                          f.locality, f.administrative_area, f.sublocality, f.postal_box
+                      FROM script.fn_get_indirizzi_by_ruolo(p_soggetto_ruolo_id) f
+                      WHERE f.tipo_indirizzo = v_current_codice
+                        AND f.istanza_utility_id IS NULL;
+
+                      GET DIAGNOSTICS v_rows_found = ROW_COUNT;
+                      IF v_rows_found > 0 THEN RETURN; END IF;
+
+                      -- Cerca fallback per tipo indirizzo
+                      SELECT ti.id INTO v_current_tipo_id
+                      FROM config.tipi_indirizzi ti WHERE ti.codice_interno = v_current_codice;
+                      IF v_current_tipo_id IS NULL THEN EXIT; END IF;
+                      IF v_current_tipo_id = ANY (v_visited_tipo_ids) THEN EXIT; END IF;
+                      v_visited_tipo_ids := array_append(v_visited_tipo_ids, v_current_tipo_id);
+
+                      SELECT m.fallback_tipo_indirizzo_id INTO v_fallback_tipo_id
+                      FROM config.tipi_ruolo_tipi_indirizzo m
+                      WHERE m.tipo_ruolo_id = v_tipo_ruolo_id
+                        AND m.tipo_indirizzo_id = v_current_tipo_id
+                        AND m.attivo = TRUE
+                        AND (m.valido_dal IS NULL OR m.valido_dal <= current_date)
+                        AND (m.valido_al IS NULL OR m.valido_al >= current_date)
+                      LIMIT 1;
+                      IF v_fallback_tipo_id IS NULL THEN EXIT; END IF;
+
+                      SELECT ti.codice_interno INTO v_current_codice
+                      FROM config.tipi_indirizzi ti WHERE ti.id = v_fallback_tipo_id;
+                      IF v_current_codice IS NULL THEN EXIT; END IF;
+                  END LOOP;
+
+                  -- FASE 3: FALLBACK SOGGETTO
+                  RETURN QUERY
+                  SELECT
+                      r.tipo_indirizzo_codice,
+                      r.indirizzo_display,
+                      r.geoloc,
+                      r.indirizzo_id,
+                      p_soggetto_ruolo_id,
+                      r.istanza_utility_id,
+                      r.tipo_indirizzo_id,
+                      r.indirizzo_dettaglio_id,
+                      r.indirizzo_libero,
+                      r.is_normalizzato,
+                      r.stato_id,
+                      r.stato_descrizione,
+                      r.stato_iso2,
+                      r.regione_id,
+                      r.regione_descrizione,
+                      r.provincia_id,
+                      r.provincia_sigla,
+                      r.provincia_descrizione,
+                      r.comune_id,
+                      r.comune_descrizione,
+                      r.codice_postale_id,
+                      r.cap_codice,
+                      r.locality,
+                      r.administrative_area,
+                      r.sublocality,
+                      r.postal_box
+                  FROM script.fn_get_indirizzo_by_soggetto(v_soggetto_id, p_tipo_codice) r;
+
+                  RETURN;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_get_indirizzo(bigint, character varying, bigint) IS
+                'Policy indirizzi 3 livelli: (1) ruolo+istanza con fallback tipo, (2) ruolo generico con fallback tipo, (3) soggetto con fallback tipo.';

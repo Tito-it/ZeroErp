@@ -9,7 +9,7 @@ CREATE FUNCTION fn_get_indirizzo(p_soggetto_ruolo_id bigint, p_tipo_codice chara
 
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_get_indirizzo(p_soggetto_ruolo_id bigint, p_tipo_codice character varying, p_istanza_utility_id bigint DEFAULT NULL::bigint)
- RETURNS TABLE(tipo_indirizzo character varying, indirizzo_completo text, geoloc geometry, indirizzo_id bigint, soggetto_ruolo_id bigint, istanza_utility_id bigint, tipo_indirizzo_id integer, indirizzo_dettaglio_id bigint, indirizzo_libero text, is_normalizzato boolean, stato_id integer, stato_descrizione character varying, stato_iso2 character, regione_id integer, regione_descrizione character varying, provincia_id integer, provincia_sigla character, provincia_descrizione character, comune_id integer, comune_descrizione character varying, codice_postale_id integer, cap_codice character, locality character varying, administrative_area character varying, sublocality character varying, postal_box character varying)
+ RETURNS TABLE(tipo_indirizzo character varying, indirizzo_completo text, geoloc geometry, indirizzo_id bigint, soggetto_ruolo_id bigint, istanza_utility_id bigint, tipo_indirizzo_id integer, indirizzo_dettaglio_id bigint, indirizzo_libero text, is_normalizzato boolean, stato_id integer, stato_descrizione character varying, stato_iso2 character, regione_id integer, regione_descrizione character varying, provincia_id integer, provincia_sigla character, provincia_descrizione character, comune_id integer, comune_descrizione character varying, codice_postale_id integer, cap_codice character varying, locality character varying, administrative_area character varying, sublocality character varying, postal_box character varying)
  LANGUAGE plpgsql
  STABLE ROWS 10
 AS $function$
@@ -22,6 +22,15 @@ DECLARE
     v_rows_found         integer;
     v_visited_tipo_ids   config.tipi_indirizzi.id%TYPE[] := '{}'::integer[];
 BEGIN
+    /*
+      Policy indirizzi a 3 livelli con fallback per tipo:
+        FASE 1: ruolo + istanza specifica (se p_istanza_utility_id valorizzato)
+        FASE 2: ruolo generico (istanza IS NULL)
+        FASE 3: fallback soggetto (via fn_get_indirizzo_by_soggetto)
+      Ogni fase segue la catena fallback in tipi_ruolo_tipi_indirizzo
+      con protezione anti-loop circolare.
+    */
+
     -- Recupera soggetto e tipo ruolo
     SELECT sr.tipo_ruolo_id, sr.soggetto_id
       INTO v_tipo_ruolo_id, v_soggetto_id
@@ -30,7 +39,7 @@ BEGIN
 
     IF v_tipo_ruolo_id IS NULL THEN RETURN; END IF;
 
-    -- FASE 1: RUOLO + ISTANZA SPECIFICA (se p_istanza_utility_id valorizzato)
+    -- FASE 1: RUOLO + ISTANZA SPECIFICA
     IF p_istanza_utility_id IS NOT NULL THEN
         v_current_codice := p_tipo_codice;
         v_visited_tipo_ids := '{}'::integer[];
@@ -53,6 +62,7 @@ BEGIN
             GET DIAGNOSTICS v_rows_found = ROW_COUNT;
             IF v_rows_found > 0 THEN RETURN; END IF;
 
+            -- Cerca fallback per tipo indirizzo
             SELECT ti.id INTO v_current_tipo_id
             FROM config.tipi_indirizzi ti WHERE ti.codice_interno = v_current_codice;
             IF v_current_tipo_id IS NULL THEN EXIT; END IF;
@@ -97,6 +107,7 @@ BEGIN
         GET DIAGNOSTICS v_rows_found = ROW_COUNT;
         IF v_rows_found > 0 THEN RETURN; END IF;
 
+        -- Cerca fallback per tipo indirizzo
         SELECT ti.id INTO v_current_tipo_id
         FROM config.tipi_indirizzi ti WHERE ti.codice_interno = v_current_codice;
         IF v_current_tipo_id IS NULL THEN EXIT; END IF;
