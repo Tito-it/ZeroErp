@@ -23,9 +23,9 @@ databaseChangeLog:
 
       preConditions:
         - onFail: MARK_RAN
-        - not:
-            - indexExists:
-                indexName: ix_auth_user_email_unique
+        - tableExists:
+            schemaName: django
+            tableName: auth_user
 
       changes:
         - sql:
