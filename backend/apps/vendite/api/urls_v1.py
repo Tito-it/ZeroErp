@@ -1,4 +1,4 @@
-from django.urls import path
+from django.urls import include, path
 
 from apps.vendite.api.views import (
     ApiCommessaAttivita,
@@ -15,6 +15,7 @@ from apps.vendite.api.views import (
 )
 
 urlpatterns = [
+    path("listini/", include("apps.vendite.api.urls_listini")),
     path("lotti/", ApiLottiList.as_view(), name="vendite-lotti-list"),
     path("pipeline/run/", ApiRunLottoPipeline.as_view(), name="vendite-run-lotto-pipeline"),
     path(

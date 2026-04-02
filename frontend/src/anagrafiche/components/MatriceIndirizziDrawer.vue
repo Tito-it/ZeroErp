@@ -14,6 +14,7 @@ import { DRAWER_WIDTH } from '../../core/constants'
 import { displayDate } from '../../core/utils/date'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import DrawerFooter from '../../core/components/DrawerFooter.vue'
+import LookupSelect from '../../core/components/LookupSelect.vue'
 import Drawer from 'primevue/drawer'
 import Select from 'primevue/select'
 import Checkbox from 'primevue/checkbox'
@@ -26,7 +27,6 @@ const isReadonly = useInjectReadonly()
 const { emitDataChanged } = useTabEvents()
 
 // Lookup
-const tipiRuoli = useLookup(() => lookupCodici('config.tipi_ruoli'), { immediate: true })
 const tipiIndirizzi = useLookup(() => lookupCodici('config.tipi_indirizzi'), { immediate: true })
 
 const props = defineProps({
@@ -152,12 +152,9 @@ function onClose() {
         <!-- Tipo Ruolo -->
         <div class="form-field">
           <label>{{ t('matrice_indirizzi.field_tipo_ruolo') }} <span v-if="!isEdit">*</span></label>
-          <Select v-if="!isEdit"
+          <LookupSelect v-if="!isEdit"
             v-model="form.tipo_ruolo_id"
-            :options="tipiRuoli.items.value"
-            :loading="tipiRuoli.loading.value"
-            option-label="descrizione"
-            option-value="id"
+            rel="config.tipi_ruoli"
             class="w-full"
             :placeholder="t('matrice_indirizzi.select_ruolo')"
           />
@@ -167,12 +164,9 @@ function onClose() {
         <!-- Tipo Indirizzo -->
         <div class="form-field">
           <label>{{ t('matrice_indirizzi.field_tipo_indirizzo') }} <span v-if="!isEdit">*</span></label>
-          <Select v-if="!isEdit"
+          <LookupSelect v-if="!isEdit"
             v-model="form.tipo_indirizzo_id"
-            :options="tipiIndirizzi.items.value"
-            :loading="tipiIndirizzi.loading.value"
-            option-label="descrizione"
-            option-value="id"
+            rel="config.tipi_indirizzi"
             class="w-full"
             :placeholder="t('matrice_indirizzi.select_tipo_indirizzo')"
           />

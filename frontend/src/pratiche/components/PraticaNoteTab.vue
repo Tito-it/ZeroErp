@@ -10,11 +10,9 @@ import { fetchNote, createNota, updateNota, deleteNota } from '../api/pratiche-a
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
-import { useLookup } from '../../core/composables/useLookup'
-import { lookupCodici } from '../../core/apiCore'
 import { displayTimestamp } from '../../core/utils/date'
 import Textarea from 'primevue/textarea'
-import Select from 'primevue/select'
+import LookupSelect from '../../core/components/LookupSelect.vue'
 import Button from 'primevue/button'
 import Tag from 'primevue/tag'
 
@@ -30,14 +28,7 @@ const props = defineProps({
 const note = ref([])
 const loading = ref(false)
 
-// Form nuova nota — il tipo default e' il primo del lookup (evita hardcoded 'GENERALE')
-const tipiNota = useLookup(() => lookupCodici('config.tipi_nota'), { immediate: true })
 const nuovaNota = ref({ tipo_nota_codice: null, contenuto: '' })
-watch(() => tipiNota.items.value, (items) => {
-  if (items.length > 0 && !nuovaNota.value.tipo_nota_codice) {
-    nuovaNota.value.tipo_nota_codice = items[0].codice_interno
-  }
-})
 
 // Nota in editing (null = nessuna)
 const editingId = ref(null)
@@ -111,12 +102,10 @@ watch(() => props.praticaId, (id) => {
     <!-- Form nuova nota -->
     <div v-if="!isReadonly" class="nota-form">
       <div class="nota-form-row">
-        <Select
+        <LookupSelect
           v-model="nuovaNota.tipo_nota_codice"
-          :options="tipiNota.items.value"
-          :loading="tipiNota.loading.value"
-          option-label="descrizione"
-          option-value="codice_interno"
+          rel="config.tipi_nota"
+          value-field="codice_interno"
           :placeholder="t('pratiche.nota_tipo')"
           style="width: 160px;"
         />

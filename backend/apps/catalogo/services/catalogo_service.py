@@ -1,0 +1,1731 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+# Doc: Python
+# Scopo: Facade applicativa generica per lo schema catalogo (articoli e lookup).
+# ------------------------------------------------------------
+
+from __future__ import annotations
+
+from datetime import date
+from decimal import Decimal, InvalidOperation
+from typing import Any
+from uuid import UUID
+
+from django.db import IntegrityError
+
+from apps.catalogo.db.catalogo_bom_repository import (
+    COMPONENTE_WRITE_COLUMNS,
+    NOTA_WRITE_COLUMNS,
+    CatalogoBomRepository,
+)
+from apps.catalogo.db.catalogo_repository import (
+    ARTICOLI_CREATE_COLUMNS,
+    ARTICOLI_ORDER_COLUMNS,
+    ARTICOLI_UPDATE_COLUMNS,
+    CatalogoRepository,
+)
+from apps.catalogo.db.catalogo_uom_repository import (
+    UOM_OPERATIVA_WRITE_COLUMNS,
+    CatalogoUomRepository,
+)
+from apps.core.api.payload_validators import paginated_envelope
+from apps.core.services.error_manager import ErrorManager
+
+_ORDER_BY_VALIDI: frozenset[str] = frozenset(ARTICOLI_ORDER_COLUMNS.keys())
+_ORDER_DIR_VALIDI: frozenset[str] = frozenset({"asc", "desc"})
+_ARTICOLO_FLAG_FIELDS: tuple[str, ...] = (
+    "is_composito",
+    "is_solo_componente",
+    "requires_serial",
+    "voce_utility",
+)
+_ARTICOLO_INT_FIELDS: tuple[str, ...] = (
+    "uom_id",
+    "tipo_voce_id",
+    "gruppo_voce_id",
+    "spesa_id",
+    "iva_id",
+    "conto_contabile_vendita_id",
+    "conto_contabile_acquisto_id",
+)
+_ARTICOLO_NULLABLE_FIELDS: frozenset[str] = frozenset({
+    "descrizione_breve",
+    *_ARTICOLO_INT_FIELDS,
+    "meta",
+})
+_ARTICOLO_CREATE_ALLOWED_KEYS: frozenset[str] = frozenset(ARTICOLI_CREATE_COLUMNS.keys())
+_ARTICOLO_UPDATE_ALLOWED_KEYS: frozenset[str] = frozenset(ARTICOLI_UPDATE_COLUMNS.keys())
+_UOM_CREATE_ALLOWED_KEYS: frozenset[str] = frozenset(UOM_OPERATIVA_WRITE_COLUMNS.keys())
+_UOM_UPDATE_ALLOWED_KEYS: frozenset[str] = frozenset(key for key in UOM_OPERATIVA_WRITE_COLUMNS if key != "uom_id")
+_COMPONENTE_CREATE_ALLOWED_KEYS: frozenset[str] = frozenset(COMPONENTE_WRITE_COLUMNS.keys())
+_COMPONENTE_UPDATE_ALLOWED_KEYS: frozenset[str] = frozenset(
+    key for key in COMPONENTE_WRITE_COLUMNS if key != "componente_id"
+)
+_NOTA_ALLOWED_KEYS: frozenset[str] = frozenset(NOTA_WRITE_COLUMNS.keys())
+_ROUNDING_MODE_VALIDI: frozenset[str] = frozenset({"UP", "DOWN", "HALF_UP", "HALF_DOWN", "HALF_EVEN"})
+_NOTA_ANCHOR_VALIDI: frozenset[str] = frozenset({"DOCUMENTO", "RIGA"})
+_NOTA_POSIZIONE_VALIDI: frozenset[str] = frozenset({"HEADER", "FOOTER", "SEZIONE", "BEFORE", "AFTER"})
+
+
+class _MissingType:
+    pass
+
+
+_MISSING = _MissingType()
+
+
+# Scopo: Valida paginazione e restituisce offset calcolato in modo uniforme.
+def _validate_pagination(page: int, page_size: int, function_name: str) -> int:
+    ErrorManager.require(
+        page >= 1,
+        code="E_CATALOGO_VALIDATION",
+        message="Parametri paginazione non validi.",
+        detail="page deve essere >= 1",
+        context={"page": page},
+        function_name=function_name,
+        log_to_db=True,
+    )
+    ErrorManager.require(
+        1 <= page_size <= 200,
+        code="E_CATALOGO_VALIDATION",
+        message="Parametri paginazione non validi.",
+        detail="page_size deve essere compreso tra 1 e 200",
+        context={"page_size": page_size},
+        function_name=function_name,
+        log_to_db=True,
+    )
+    return (page - 1) * page_size
+
+
+# Scopo: Valida il limite dei lookup con messaggio uniforme e massimo configurabile.
+def _validate_lookup_limit(limit: int, *, max_limit: int, function_name: str) -> None:
+    ErrorManager.require(
+        1 <= limit <= max_limit,
+        code="E_CATALOGO_VALIDATION",
+        message="Parametri lookup non validi.",
+        detail=f"limit deve essere compreso tra 1 e {max_limit}",
+        context={"limit": limit, "max_limit": max_limit},
+        function_name=function_name,
+        log_to_db=True,
+    )
+
+
+# Scopo: Normalizza e valida ordinamento lista articoli contro whitelist locale.
+def _validate_order(order_by: str, order_dir: str, function_name: str) -> tuple[str, str]:
+    ErrorManager.require(
+        order_by in _ORDER_BY_VALIDI,
+        code="E_CATALOGO_VALIDATION",
+        message="Parametri ordinamento non validi.",
+        detail=(
+            "order_by deve essere uno tra: "
+            f"{', '.join(sorted(_ORDER_BY_VALIDI))}"
+        ),
+        context={"order_by": order_by},
+        function_name=function_name,
+        log_to_db=True,
+    )
+    ErrorManager.require(
+        order_dir in _ORDER_DIR_VALIDI,
+        code="E_CATALOGO_VALIDATION",
+        message="Parametri ordinamento non validi.",
+        detail="order_dir deve essere 'asc' o 'desc'",
+        context={"order_dir": order_dir},
+        function_name=function_name,
+        log_to_db=True,
+    )
+    return order_by, order_dir
+
+
+# Scopo: Restituisce envelope uniforme count/results per lookup e liste figlie.
+def _build_results_response(results: list[dict[str, object]]) -> dict[str, object]:
+    return {"count": len(results), "results": results}
+
+
+# Scopo: Blocca chiavi non supportate per evitare typo silenziosi lato client.
+def _validate_payload_keys(
+    payload: dict[str, Any],
+    *,
+    allowed_keys: frozenset[str],
+    function_name: str,
+    message: str = "Payload articolo non valido.",
+) -> None:
+    unknown_keys = sorted(key for key in payload.keys() if key not in allowed_keys)
+    ErrorManager.require(
+        not unknown_keys,
+        code="E_CATALOGO_VALIDATION",
+        message=message,
+        detail=f"Campi non supportati: {', '.join(unknown_keys)}",
+        context={
+            "unknown_keys": unknown_keys,
+            "allowed_keys": sorted(allowed_keys),
+        },
+        function_name=function_name,
+        log_to_db=True,
+    )
+
+
+# Scopo: Estrae stringa obbligatoria non vuota dal payload.
+def _require_string(
+    payload: dict[str, Any],
+    key: str,
+    *,
+    function_name: str,
+    message: str,
+) -> str:
+    value = payload.get(key)
+    cleaned = value.strip() if isinstance(value, str) else ""
+    ErrorManager.require(
+        bool(cleaned),
+        code="E_CATALOGO_VALIDATION",
+        message=message,
+        detail=f"{key} obbligatorio e non vuoto.",
+        context={"field": key},
+        function_name=function_name,
+        log_to_db=True,
+    )
+    return cleaned
+
+
+# Scopo: Estrae stringa presente nel payload; supporta NULL esplicito se consentito.
+def _extract_string(
+    payload: dict[str, Any],
+    key: str,
+    *,
+    function_name: str,
+    nullable: bool,
+    message: str = "Payload articolo non valido.",
+) -> str | None | _MissingType:
+    if key not in payload:
+        return _MISSING
+    value = payload.get(key)
+    if value is None:
+        ErrorManager.require(
+            nullable,
+            code="E_CATALOGO_VALIDATION",
+            message=message,
+            detail=f"{key} non puo' essere null.",
+            context={"field": key},
+            function_name=function_name,
+            log_to_db=True,
+        )
+        return None
+    ErrorManager.require(
+        isinstance(value, str),
+        code="E_CATALOGO_VALIDATION",
+        message=message,
+        detail=f"{key} deve essere una stringa.",
+        context={"field": key},
+        function_name=function_name,
+        log_to_db=True,
+    )
+    cleaned = value.strip()
+    if nullable and cleaned == "":
+        return None
+    ErrorManager.require(
+        bool(cleaned),
+        code="E_CATALOGO_VALIDATION",
+        message=message,
+        detail=f"{key} non puo' essere vuoto.",
+        context={"field": key},
+        function_name=function_name,
+        log_to_db=True,
+    )
+    return cleaned
+
+
+# Scopo: Estrae FK/interi opzionali consentendo NULL esplicito o stringa vuota.
+def _extract_nullable_int(
+    payload: dict[str, Any],
+    key: str,
+    *,
+    function_name: str,
+    message: str = "Payload articolo non valido.",
+) -> int | None | _MissingType:
+    if key not in payload:
+        return _MISSING
+    value = payload.get(key)
+    if value is None:
+        return None
+    if isinstance(value, str) and value.strip() == "":
+        return None
+    if isinstance(value, int) and not isinstance(value, bool):
+        return value
+    ErrorManager.require(
+        not isinstance(value, (bool, float)),
+        code="E_CATALOGO_VALIDATION",
+        message=message,
+        detail=f"{key} deve essere un intero o null.",
+        context={"field": key},
+        function_name=function_name,
+        log_to_db=True,
+    )
+    try:
+        if isinstance(value, str):
+            return int(value.strip())
+        raise TypeError(f"{key}_invalid")
+    except (TypeError, ValueError) as exc:
+        ErrorManager.raise_error(
+            code="E_CATALOGO_VALIDATION",
+            message=message,
+            detail=f"{key} deve essere un intero o null.",
+            context={"field": key},
+            function_name=function_name,
+            log_to_db=True,
+            cause=exc,
+        )
+
+
+# Scopo: Estrae booleano solo se esplicitamente presente nel payload.
+def _extract_present_bool(
+    payload: dict[str, Any],
+    key: str,
+    *,
+    function_name: str,
+    message: str = "Payload articolo non valido.",
+) -> bool | _MissingType:
+    if key not in payload:
+        return _MISSING
+    value = payload.get(key)
+    ErrorManager.require(
+        isinstance(value, bool),
+        code="E_CATALOGO_VALIDATION",
+        message=message,
+        detail=f"{key} deve essere booleano.",
+        context={"field": key},
+        function_name=function_name,
+        log_to_db=True,
+    )
+    return value
+
+
+# Scopo: Estrae meta JSON come dict oppure NULL esplicito.
+def _extract_meta(
+    payload: dict[str, Any],
+    *,
+    function_name: str,
+    message: str = "Payload articolo non valido.",
+) -> dict[str, Any] | None | _MissingType:
+    if "meta" not in payload:
+        return _MISSING
+    value = payload.get("meta")
+    if value is None:
+        return None
+    ErrorManager.require(
+        isinstance(value, dict),
+        code="E_CATALOGO_VALIDATION",
+        message=message,
+        detail="meta deve essere un oggetto JSON o null.",
+        context={"field": "meta"},
+        function_name=function_name,
+        log_to_db=True,
+    )
+    return value
+
+
+# Scopo: Converte e valida un valore numerico decimale opzionale.
+def _extract_decimal(
+    payload: dict[str, Any],
+    key: str,
+    *,
+    function_name: str,
+    nullable: bool,
+    min_value: Decimal | None = None,
+    message: str = "Payload catalogo non valido.",
+) -> Decimal | None | _MissingType:
+    if key not in payload:
+        return _MISSING
+    value = payload.get(key)
+    if value is None:
+        ErrorManager.require(
+            nullable,
+            code="E_CATALOGO_VALIDATION",
+            message=message,
+            detail=f"{key} non puo' essere null.",
+            context={"field": key},
+            function_name=function_name,
+            log_to_db=True,
+        )
+        return None
+    ErrorManager.require(
+        not isinstance(value, bool),
+        code="E_CATALOGO_VALIDATION",
+        message=message,
+        detail=f"{key} deve essere numerico.",
+        context={"field": key},
+        function_name=function_name,
+        log_to_db=True,
+    )
+    try:
+        decimal_value = Decimal(str(value).strip())
+    except (InvalidOperation, AttributeError) as exc:
+        ErrorManager.raise_error(
+            code="E_CATALOGO_VALIDATION",
+            message=message,
+            detail=f"{key} deve essere numerico.",
+            context={"field": key},
+            function_name=function_name,
+            log_to_db=True,
+            cause=exc,
+        )
+    if min_value is not None:
+        ErrorManager.require(
+            decimal_value >= min_value,
+            code="E_CATALOGO_VALIDATION",
+            message=message,
+            detail=f"{key} deve essere >= {min_value}.",
+            context={"field": key, "min_value": str(min_value)},
+            function_name=function_name,
+            log_to_db=True,
+        )
+    return decimal_value
+
+
+# Scopo: Estrae data ISO opzionale dal payload JSON.
+def _extract_payload_date(
+    payload: dict[str, Any],
+    key: str,
+    *,
+    function_name: str,
+    nullable: bool,
+    message: str = "Payload catalogo non valido.",
+) -> date | None | _MissingType:
+    if key not in payload:
+        return _MISSING
+    value = payload.get(key)
+    if value is None:
+        ErrorManager.require(
+            nullable,
+            code="E_CATALOGO_VALIDATION",
+            message=message,
+            detail=f"{key} non puo' essere null.",
+            context={"field": key},
+            function_name=function_name,
+            log_to_db=True,
+        )
+        return None
+    ErrorManager.require(
+        isinstance(value, str),
+        code="E_CATALOGO_VALIDATION",
+        message=message,
+        detail=f"{key} deve essere una data ISO YYYY-MM-DD.",
+        context={"field": key},
+        function_name=function_name,
+        log_to_db=True,
+    )
+    cleaned = value.strip()
+    ErrorManager.require(
+        bool(cleaned) or nullable,
+        code="E_CATALOGO_VALIDATION",
+        message=message,
+        detail=f"{key} non puo' essere vuoto.",
+        context={"field": key},
+        function_name=function_name,
+        log_to_db=True,
+    )
+    if cleaned == "":
+        return None
+    try:
+        return date.fromisoformat(cleaned)
+    except ValueError as exc:
+        ErrorManager.raise_error(
+            code="E_CATALOGO_VALIDATION",
+            message=message,
+            detail=f"{key} deve essere una data ISO YYYY-MM-DD.",
+            context={"field": key},
+            function_name=function_name,
+            log_to_db=True,
+            cause=exc,
+        )
+
+
+# Scopo: Estrae UUID opzionale dal payload JSON.
+def _extract_payload_uuid(
+    payload: dict[str, Any],
+    key: str,
+    *,
+    function_name: str,
+    nullable: bool,
+    message: str = "Payload catalogo non valido.",
+) -> UUID | None | _MissingType:
+    if key not in payload:
+        return _MISSING
+    value = payload.get(key)
+    if value is None:
+        ErrorManager.require(
+            nullable,
+            code="E_CATALOGO_VALIDATION",
+            message=message,
+            detail=f"{key} non puo' essere null.",
+            context={"field": key},
+            function_name=function_name,
+            log_to_db=True,
+        )
+        return None
+    try:
+        return value if isinstance(value, UUID) else UUID(str(value))
+    except (TypeError, ValueError, AttributeError) as exc:
+        ErrorManager.raise_error(
+            code="E_CATALOGO_VALIDATION",
+            message=message,
+            detail=f"{key} deve essere un UUID valido.",
+            context={"field": key},
+            function_name=function_name,
+            log_to_db=True,
+            cause=exc,
+        )
+
+
+# Scopo: Estrae stringa opzionale ma limitata ad un set di valori ammessi.
+def _extract_enum_string(
+    payload: dict[str, Any],
+    key: str,
+    *,
+    function_name: str,
+    allowed_values: frozenset[str],
+    nullable: bool = False,
+    message: str = "Payload catalogo non valido.",
+) -> str | None | _MissingType:
+    value = _extract_string(
+        payload,
+        key,
+        function_name=function_name,
+        nullable=nullable,
+        message=message,
+    )
+    if value is _MISSING or value is None:
+        return value
+    upper_value = value.upper()
+    ErrorManager.require(
+        upper_value in allowed_values,
+        code="E_CATALOGO_VALIDATION",
+        message=message,
+        detail=f"{key} deve essere uno tra: {', '.join(sorted(allowed_values))}",
+        context={"field": key, "allowed_values": sorted(allowed_values)},
+        function_name=function_name,
+        log_to_db=True,
+    )
+    return upper_value
+
+
+# Scopo: Valida coerenza intervallo date inclusivo dal/al.
+def _validate_date_interval(
+    *,
+    valido_dal: date | None | _MissingType,
+    valido_al: date | None | _MissingType,
+    function_name: str,
+    payload_name: str,
+) -> None:
+    if valido_dal is _MISSING or valido_al is _MISSING or valido_dal is None or valido_al is None:
+        return
+    ErrorManager.require(
+        valido_al > valido_dal,
+        code="E_CATALOGO_VALIDATION",
+        message=f"Payload {payload_name} non valido.",
+        detail="valido_al deve essere successivo a valido_dal.",
+        context={"valido_dal": valido_dal.isoformat(), "valido_al": valido_al.isoformat()},
+        function_name=function_name,
+        log_to_db=True,
+    )
+
+
+# Scopo: Estrae i campi scrivibili di un articolo con una sola regola condivisa.
+def _extract_articolo_payload(
+    payload: dict[str, Any],
+    *,
+    for_update: bool,
+    function_name: str,
+) -> dict[str, Any]:
+    data: dict[str, Any] = {}
+
+    if for_update:
+        ErrorManager.require(
+            "codice" not in payload,
+            code="E_CATALOGO_VALIDATION",
+            message="Payload articolo non valido.",
+            detail="codice e' immutabile e non puo' essere aggiornato.",
+            context={"field": "codice"},
+            function_name=function_name,
+            log_to_db=True,
+        )
+        _validate_payload_keys(
+            payload,
+            allowed_keys=_ARTICOLO_UPDATE_ALLOWED_KEYS | {"codice"},
+            function_name=function_name,
+        )
+        descrizione = _extract_string(
+            payload,
+            "descrizione",
+            function_name=function_name,
+            nullable=False,
+        )
+        if descrizione is not _MISSING:
+            data["descrizione"] = descrizione
+    else:
+        _validate_payload_keys(
+            payload,
+            allowed_keys=_ARTICOLO_CREATE_ALLOWED_KEYS,
+            function_name=function_name,
+        )
+        data["codice"] = _require_string(
+            payload,
+            "codice",
+            function_name=function_name,
+            message="codice obbligatorio.",
+        )
+        data["descrizione"] = _require_string(
+            payload,
+            "descrizione",
+            function_name=function_name,
+            message="descrizione obbligatoria.",
+        )
+
+    descrizione_breve = _extract_string(
+        payload,
+        "descrizione_breve",
+        function_name=function_name,
+        nullable=True,
+    )
+    if descrizione_breve is not _MISSING:
+        data["descrizione_breve"] = descrizione_breve
+
+    for field_name in _ARTICOLO_INT_FIELDS:
+        field_value = _extract_nullable_int(
+            payload,
+            field_name,
+            function_name=function_name,
+        )
+        if field_value is not _MISSING:
+            data[field_name] = field_value
+
+    for field_name in _ARTICOLO_FLAG_FIELDS:
+        field_value = _extract_present_bool(
+            payload,
+            field_name,
+            function_name=function_name,
+        )
+        if field_value is not _MISSING:
+            data[field_name] = field_value
+
+    meta = _extract_meta(payload, function_name=function_name)
+    if meta is not _MISSING:
+        data["meta"] = meta
+
+    return data
+
+
+# Scopo: Converte IntegrityError su articoli in errore applicativo leggibile.
+def _translate_articolo_integrity_error(exc: IntegrityError, *, function_name: str) -> None:
+    detail = str(exc)
+    lowered = detail.lower()
+    if (
+        "uq_articoli_codice" in lowered
+        or "articoli_codice_key" in lowered
+        or "key (codice)=" in lowered
+    ):
+        ErrorManager.raise_error(
+            code="E_CATALOGO_VALIDATION",
+            message="Codice articolo gia' esistente.",
+            detail=detail,
+            function_name=function_name,
+            log_to_db=True,
+            cause=exc,
+        )
+    ErrorManager.raise_error(
+        code="E_CATALOGO_VALIDATION",
+        message="Violazione vincoli articolo.",
+        detail=detail,
+        function_name=function_name,
+        log_to_db=True,
+        cause=exc,
+    )
+
+
+# Scopo: Estrae il payload scrivibile di una UoM operativa con regole condivise.
+def _extract_uom_operativa_payload(
+    payload: dict[str, Any],
+    *,
+    for_update: bool,
+    function_name: str,
+) -> dict[str, Any]:
+    data: dict[str, Any] = {}
+    payload_message = "Payload UoM operativa non valido."
+
+    if for_update:
+        ErrorManager.require(
+            "uom_id" not in payload,
+            code="E_CATALOGO_VALIDATION",
+            message="Payload UoM operativa non valido.",
+            detail="uom_id e' immutabile e non puo' essere aggiornato.",
+            context={"field": "uom_id"},
+            function_name=function_name,
+            log_to_db=True,
+        )
+        _validate_payload_keys(
+            payload,
+            allowed_keys=_UOM_UPDATE_ALLOWED_KEYS | {"uom_id"},
+            function_name=function_name,
+            message=payload_message,
+        )
+    else:
+        _validate_payload_keys(
+            payload,
+            allowed_keys=_UOM_CREATE_ALLOWED_KEYS,
+            function_name=function_name,
+            message=payload_message,
+        )
+        data["uom_id"] = _extract_nullable_int(
+            payload,
+            "uom_id",
+            function_name=function_name,
+            message=payload_message,
+        )
+        ErrorManager.require(
+            isinstance(data["uom_id"], int),
+            code="E_CATALOGO_VALIDATION",
+            message="Payload UoM operativa non valido.",
+            detail="uom_id obbligatorio.",
+            context={"field": "uom_id"},
+            function_name=function_name,
+            log_to_db=True,
+        )
+
+    for field_name in (
+        "is_base",
+        "is_sell_uom",
+        "is_purchase_uom",
+        "is_logistic_uom",
+        "forbid_fraction",
+        "require_lot",
+        "attivo",
+    ):
+        field_value = _extract_present_bool(
+            payload,
+            field_name,
+            function_name=function_name,
+            message=payload_message,
+        )
+        if field_value is not _MISSING:
+            data[field_name] = field_value
+
+    for field_name, min_value in {
+        "factor_to_base": Decimal("0.000001"),
+        "qty_step": Decimal("0.000001"),
+    }.items():
+        field_value = _extract_decimal(
+            payload,
+            field_name,
+            function_name=function_name,
+            nullable=True,
+            min_value=min_value,
+            message=payload_message,
+        )
+        if field_value is not _MISSING:
+            data[field_name] = field_value
+
+    max_decimals = _extract_nullable_int(
+        payload,
+        "max_decimals",
+        function_name=function_name,
+        message=payload_message,
+    )
+    if max_decimals is not _MISSING:
+        ErrorManager.require(
+            max_decimals is None or 0 <= max_decimals <= 6,
+            code="E_CATALOGO_VALIDATION",
+            message="Payload UoM operativa non valido.",
+            detail="max_decimals deve essere compreso tra 0 e 6.",
+            context={"field": "max_decimals", "value": max_decimals},
+            function_name=function_name,
+            log_to_db=True,
+        )
+        data["max_decimals"] = max_decimals
+
+    rounding_mode = _extract_enum_string(
+        payload,
+        "rounding_mode",
+        function_name=function_name,
+        allowed_values=_ROUNDING_MODE_VALIDI,
+        nullable=False,
+        message=payload_message,
+    )
+    if rounding_mode is not _MISSING:
+        data["rounding_mode"] = rounding_mode
+
+    gtin = _extract_string(
+        payload,
+        "gtin",
+        function_name=function_name,
+        nullable=True,
+        message=payload_message,
+    )
+    if gtin is not _MISSING:
+        data["gtin"] = gtin
+
+    valido_dal = _extract_payload_date(
+        payload,
+        "valido_dal",
+        function_name=function_name,
+        nullable=True,
+        message=payload_message,
+    )
+    valido_al = _extract_payload_date(
+        payload,
+        "valido_al",
+        function_name=function_name,
+        nullable=True,
+        message=payload_message,
+    )
+    if valido_dal is not _MISSING:
+        data["valido_dal"] = valido_dal
+    if valido_al is not _MISSING:
+        data["valido_al"] = valido_al
+    _validate_date_interval(
+        valido_dal=valido_dal,
+        valido_al=valido_al,
+        function_name=function_name,
+        payload_name="UoM operativa",
+    )
+
+    meta = _extract_meta(payload, function_name=function_name, message=payload_message)
+    if meta is not _MISSING:
+        data["meta"] = meta
+
+    if data.get("is_base") is True and "factor_to_base" in data:
+        ErrorManager.require(
+            data["factor_to_base"] == Decimal("1"),
+            code="E_CATALOGO_VALIDATION",
+            message="Payload UoM operativa non valido.",
+            detail="La UoM base deve avere factor_to_base = 1.",
+            context={"field": "factor_to_base"},
+            function_name=function_name,
+            log_to_db=True,
+        )
+
+    forbid_fraction = data.get("forbid_fraction")
+    if forbid_fraction is True:
+        max_decimals_value = data.get("max_decimals")
+        qty_step_value = data.get("qty_step")
+        if max_decimals_value is not None:
+            ErrorManager.require(
+                max_decimals_value == 0,
+                code="E_CATALOGO_VALIDATION",
+                message="Payload UoM operativa non valido.",
+                detail="Con forbid_fraction=true max_decimals deve essere 0.",
+                context={"field": "max_decimals"},
+                function_name=function_name,
+                log_to_db=True,
+            )
+        if qty_step_value is not None:
+            ErrorManager.require(
+                qty_step_value == Decimal("1"),
+                code="E_CATALOGO_VALIDATION",
+                message="Payload UoM operativa non valido.",
+                detail="Con forbid_fraction=true qty_step deve essere 1.",
+                context={"field": "qty_step"},
+                function_name=function_name,
+                log_to_db=True,
+            )
+
+    return data
+
+
+# Scopo: Estrae il payload scrivibile di un componente BoM con regole condivise.
+def _extract_componente_payload(
+    payload: dict[str, Any],
+    *,
+    for_update: bool,
+    function_name: str,
+) -> dict[str, Any]:
+    data: dict[str, Any] = {}
+    payload_message = "Payload componente non valido."
+
+    if for_update:
+        ErrorManager.require(
+            "componente_id" not in payload,
+            code="E_CATALOGO_VALIDATION",
+            message="Payload componente non valido.",
+            detail="componente_id e' immutabile e non puo' essere aggiornato.",
+            context={"field": "componente_id"},
+            function_name=function_name,
+            log_to_db=True,
+        )
+        _validate_payload_keys(
+            payload,
+            allowed_keys=_COMPONENTE_UPDATE_ALLOWED_KEYS | {"componente_id"},
+            function_name=function_name,
+            message=payload_message,
+        )
+    else:
+        _validate_payload_keys(
+            payload,
+            allowed_keys=_COMPONENTE_CREATE_ALLOWED_KEYS,
+            function_name=function_name,
+            message=payload_message,
+        )
+        componente_id = _extract_payload_uuid(
+            payload,
+            "componente_id",
+            function_name=function_name,
+            nullable=False,
+            message=payload_message,
+        )
+        ErrorManager.require(
+            isinstance(componente_id, UUID),
+            code="E_CATALOGO_VALIDATION",
+            message="Payload componente non valido.",
+            detail="componente_id obbligatorio.",
+            context={"field": "componente_id"},
+            function_name=function_name,
+            log_to_db=True,
+        )
+        data["componente_id"] = componente_id
+
+    coeff_qta = _extract_decimal(
+        payload,
+        "coeff_qta",
+        function_name=function_name,
+        nullable=False,
+        min_value=Decimal("0"),
+        message=payload_message,
+    )
+    if coeff_qta is not _MISSING:
+        data["coeff_qta"] = coeff_qta
+    elif not for_update:
+        ErrorManager.raise_error(
+            code="E_CATALOGO_VALIDATION",
+            message="Payload componente non valido.",
+            detail="coeff_qta obbligatorio.",
+            context={"field": "coeff_qta"},
+            function_name=function_name,
+            log_to_db=True,
+        )
+
+    valido_dal = _extract_payload_date(
+        payload,
+        "valido_dal",
+        function_name=function_name,
+        nullable=False,
+        message=payload_message,
+    )
+    valido_al = _extract_payload_date(
+        payload,
+        "valido_al",
+        function_name=function_name,
+        nullable=True,
+        message=payload_message,
+    )
+    if valido_dal is not _MISSING:
+        data["valido_dal"] = valido_dal
+    elif not for_update:
+        ErrorManager.raise_error(
+            code="E_CATALOGO_VALIDATION",
+            message="Payload componente non valido.",
+            detail="valido_dal obbligatorio.",
+            context={"field": "valido_dal"},
+            function_name=function_name,
+            log_to_db=True,
+        )
+    if valido_al is not _MISSING:
+        data["valido_al"] = valido_al
+    _validate_date_interval(
+        valido_dal=valido_dal,
+        valido_al=valido_al,
+        function_name=function_name,
+        payload_name="componente",
+    )
+
+    for field_name in ("partecipa_qta", "determina_qta_padre", "obbligatorio", "attivo"):
+        field_value = _extract_present_bool(
+            payload,
+            field_name,
+            function_name=function_name,
+            message=payload_message,
+        )
+        if field_value is not _MISSING:
+            data[field_name] = field_value
+
+    meta = _extract_meta(payload, function_name=function_name, message=payload_message)
+    if meta is not _MISSING:
+        data["meta"] = meta
+
+    return data
+
+
+# Scopo: Estrae il payload scrivibile di una nota catalogo con validazioni comuni.
+def _extract_nota_payload(
+    payload: dict[str, Any],
+    *,
+    for_update: bool,
+    function_name: str,
+) -> dict[str, Any]:
+    data: dict[str, Any] = {}
+    payload_message = "Payload nota non valido."
+    _validate_payload_keys(
+        payload,
+        allowed_keys=_NOTA_ALLOWED_KEYS,
+        function_name=function_name,
+        message=payload_message,
+    )
+
+    target_riga_id = _extract_payload_uuid(
+        payload,
+        "target_riga_id",
+        function_name=function_name,
+        nullable=True,
+        message=payload_message,
+    )
+    if target_riga_id is not _MISSING:
+        data["target_riga_id"] = target_riga_id
+
+    anchor_tipo = _extract_enum_string(
+        payload,
+        "anchor_tipo",
+        function_name=function_name,
+        allowed_values=_NOTA_ANCHOR_VALIDI,
+        message=payload_message,
+    )
+    if anchor_tipo is not _MISSING:
+        data["anchor_tipo"] = anchor_tipo
+
+    posizione = _extract_enum_string(
+        payload,
+        "posizione",
+        function_name=function_name,
+        allowed_values=_NOTA_POSIZIONE_VALIDI,
+        message=payload_message,
+    )
+    if posizione is not _MISSING:
+        data["posizione"] = posizione
+
+    seq = _extract_nullable_int(
+        payload,
+        "seq",
+        function_name=function_name,
+        message=payload_message,
+    )
+    if seq is not _MISSING:
+        ErrorManager.require(
+            seq is None or seq >= 0,
+            code="E_CATALOGO_VALIDATION",
+            message="Payload nota non valido.",
+            detail="seq deve essere >= 0.",
+            context={"field": "seq", "value": seq},
+            function_name=function_name,
+            log_to_db=True,
+        )
+        data["seq"] = seq
+
+    testo = _extract_string(
+        payload,
+        "testo",
+        function_name=function_name,
+        nullable=True,
+        message=payload_message,
+    )
+    if testo is not _MISSING:
+        data["testo"] = testo
+    testo_md = _extract_string(
+        payload,
+        "testo_md",
+        function_name=function_name,
+        nullable=True,
+        message=payload_message,
+    )
+    if testo_md is not _MISSING:
+        data["testo_md"] = testo_md
+
+    id_stile = _extract_nullable_int(
+        payload,
+        "id_stile",
+        function_name=function_name,
+        message=payload_message,
+    )
+    if id_stile is not _MISSING:
+        ErrorManager.require(
+            isinstance(id_stile, int),
+            code="E_CATALOGO_VALIDATION",
+            message="Payload nota non valido.",
+            detail="id_stile deve essere un intero.",
+            context={"field": "id_stile"},
+            function_name=function_name,
+            log_to_db=True,
+        )
+        data["id_stile"] = id_stile
+    elif not for_update:
+        ErrorManager.raise_error(
+            code="E_CATALOGO_VALIDATION",
+            message="Payload nota non valido.",
+            detail="id_stile obbligatorio.",
+            context={"field": "id_stile"},
+            function_name=function_name,
+            log_to_db=True,
+        )
+
+    id_lingua = _extract_nullable_int(
+        payload,
+        "id_lingua",
+        function_name=function_name,
+        message=payload_message,
+    )
+    if id_lingua is not _MISSING:
+        data["id_lingua"] = id_lingua
+
+    for field_name in ("visibile", "solo_stampa"):
+        field_value = _extract_present_bool(
+            payload,
+            field_name,
+            function_name=function_name,
+            message=payload_message,
+        )
+        if field_value is not _MISSING:
+            data[field_name] = field_value
+
+    meta = _extract_meta(payload, function_name=function_name, message=payload_message)
+    if meta is not _MISSING:
+        data["meta"] = meta
+
+    if not for_update:
+        ErrorManager.require(
+            bool(data.get("testo")) or bool(data.get("testo_md")),
+            code="E_CATALOGO_VALIDATION",
+            message="Payload nota non valido.",
+            detail="Almeno uno tra testo e testo_md deve essere valorizzato.",
+            context={"fields": ["testo", "testo_md"]},
+            function_name=function_name,
+            log_to_db=True,
+        )
+
+    return data
+
+
+# Scopo: Traduce IntegrityError su UoM operative in errore applicativo uniforme.
+def _translate_uom_integrity_error(exc: IntegrityError, *, function_name: str) -> None:
+    ErrorManager.raise_error(
+        code="E_CATALOGO_VALIDATION",
+        message="Violazione vincoli UoM operativa.",
+        detail=str(exc),
+        function_name=function_name,
+        log_to_db=True,
+        cause=exc,
+    )
+
+
+# Scopo: Traduce IntegrityError su componenti BoM in errore applicativo uniforme.
+def _translate_componente_integrity_error(exc: IntegrityError, *, function_name: str) -> None:
+    ErrorManager.raise_error(
+        code="E_CATALOGO_VALIDATION",
+        message="Violazione vincoli componente.",
+        detail=str(exc),
+        function_name=function_name,
+        log_to_db=True,
+        cause=exc,
+    )
+
+
+# Scopo: Traduce IntegrityError su note catalogo in errore applicativo uniforme.
+def _translate_nota_integrity_error(exc: IntegrityError, *, function_name: str) -> None:
+    ErrorManager.raise_error(
+        code="E_CATALOGO_VALIDATION",
+        message="Violazione vincoli nota.",
+        detail=str(exc),
+        function_name=function_name,
+        log_to_db=True,
+        cause=exc,
+    )
+
+
+# Scopo: Risolve una nota da id e richiede un solo record anche con PK composita.
+def _resolve_single_nota(nota_id: int, *, function_name: str) -> dict[str, Any]:
+    repository = CatalogoBomRepository()
+    candidates = repository.resolve_nota(nota_id)
+    ErrorManager.require(
+        bool(candidates),
+        code="E_CATALOGO_NOTA_NOT_FOUND",
+        message="Nota non trovata.",
+        detail=f"Nessuna nota con id={nota_id}.",
+        context={"nota_id": nota_id},
+        function_name=function_name,
+        log_to_db=False,
+    )
+    ErrorManager.require(
+        len(candidates) == 1,
+        code="E_CATALOGO_VALIDATION",
+        message="Nota ambigua.",
+        detail=f"Più note condividono id={nota_id}; serve discriminante target_tipo.",
+        context={"nota_id": nota_id, "target_tipi": [item["nota_target_tipo"] for item in candidates]},
+        function_name=function_name,
+        log_to_db=True,
+    )
+    return candidates[0]
+
+
+# Scopo: Restituisce elenco articoli paginato con filtri, search e ordinamento.
+def fn_list_articoli(
+    *,
+    attivo: bool | None = None,
+    is_composito: bool | None = None,
+    voce_utility: bool | None = None,
+    tipo_voce_id: int | None = None,
+    gruppo_voce_id: int | None = None,
+    search: str | None = None,
+    data_da: date | None = None,
+    data_a: date | None = None,
+    order_by: str = "descrizione",
+    order_dir: str = "asc",
+    limit: int = 25,
+    offset: int = 0,
+) -> tuple[list[dict[str, object]], int]:
+    function_name = "catalogo.catalogo_service.fn_list_articoli"
+    order_by, order_dir = _validate_order(order_by, order_dir, function_name)
+
+    repository = CatalogoRepository()
+    return repository.list_articoli(
+        attivo=attivo,
+        is_composito=is_composito,
+        voce_utility=voce_utility,
+        tipo_voce_id=tipo_voce_id,
+        gruppo_voce_id=gruppo_voce_id,
+        search=search,
+        data_da=data_da,
+        data_a=data_a,
+        order_by=order_by,
+        order_dir=order_dir,
+        limit=limit,
+        offset=offset,
+    )
+
+
+# Scopo: Restituisce il dettaglio di un articolo o solleva not found uniforme.
+def _get_articolo_base(articolo_id: UUID | str) -> dict[str, object]:
+    repository = CatalogoRepository()
+    articolo = repository.get_articolo(articolo_id)
+    ErrorManager.require(
+        articolo is not None,
+        code="E_CATALOGO_ARTICOLO_NOT_FOUND",
+        message="Articolo non trovato.",
+        detail=f"Nessun articolo con id={articolo_id}.",
+        context={"articolo_id": articolo_id},
+        function_name="catalogo.catalogo_service.fn_get_articolo",
+        log_to_db=False,
+    )
+    assert articolo is not None
+    return articolo
+
+
+# Scopo: Restituisce il dettaglio completo di un articolo con UoM, componenti e note.
+def fn_get_articolo(articolo_id: UUID | str) -> dict[str, object]:
+    articolo = _get_articolo_base(articolo_id)
+    uom_repository = CatalogoUomRepository()
+    bom_repository = CatalogoBomRepository()
+
+    articolo["uom_operative"] = uom_repository.list_uom_operative(articolo_id)
+    articolo["componenti"] = (
+        bom_repository.list_componenti(articolo_id)
+        if articolo.get("is_composito") is True
+        else []
+    )
+    articolo["note"] = bom_repository.list_note_articolo(articolo_id)
+    return articolo
+
+
+# Scopo: Crea un articolo e restituisce il dettaglio completo appena persistito.
+def fn_create_articolo(payload: dict[str, Any]) -> dict[str, object]:
+    function_name = "catalogo.catalogo_service.fn_create_articolo"
+    data = _extract_articolo_payload(payload, for_update=False, function_name=function_name)
+    repository = CatalogoRepository()
+    try:
+        articolo_id = repository.create_articolo(data)
+    except IntegrityError as exc:
+        _translate_articolo_integrity_error(exc, function_name=function_name)
+    return fn_get_articolo(articolo_id)
+
+
+# Scopo: Aggiorna un articolo sui soli campi presenti e restituisce il dettaglio aggiornato.
+def fn_update_articolo(articolo_id: UUID | str, payload: dict[str, Any]) -> dict[str, object]:
+    function_name = "catalogo.catalogo_service.fn_update_articolo"
+    data = _extract_articolo_payload(payload, for_update=True, function_name=function_name)
+    ErrorManager.require(
+        bool(data),
+        code="E_CATALOGO_VALIDATION",
+        message="Payload articolo non valido.",
+        detail="Nessun campo aggiornabile presente nel payload.",
+        context={"allowed_nullable_fields": sorted(_ARTICOLO_NULLABLE_FIELDS)},
+        function_name=function_name,
+        log_to_db=True,
+    )
+    repository = CatalogoRepository()
+    try:
+        updated = repository.update_articolo(articolo_id, data)
+    except IntegrityError as exc:
+        _translate_articolo_integrity_error(exc, function_name=function_name)
+    ErrorManager.require(
+        updated,
+        code="E_CATALOGO_ARTICOLO_NOT_FOUND",
+        message="Articolo non trovato.",
+        detail=f"Nessun articolo con id={articolo_id}.",
+        context={"articolo_id": articolo_id},
+        function_name=function_name,
+        log_to_db=False,
+    )
+    return fn_get_articolo(articolo_id)
+
+
+# Scopo: Disattiva soft un articolo e restituisce il dettaglio aggiornato.
+def fn_disattiva_articolo(articolo_id: UUID | str) -> dict[str, object]:
+    articolo = fn_get_articolo(articolo_id)
+    if articolo.get("attivo") is False:
+        return articolo
+
+    repository = CatalogoRepository()
+    updated = repository.deactivate_articolo(articolo_id)
+    ErrorManager.require(
+        updated,
+        code="E_CATALOGO_ARTICOLO_NOT_FOUND",
+        message="Articolo non trovato.",
+        detail=f"Nessun articolo attivo con id={articolo_id}.",
+        context={"articolo_id": articolo_id},
+        function_name="catalogo.catalogo_service.fn_disattiva_articolo",
+        log_to_db=False,
+    )
+    return fn_get_articolo(articolo_id)
+
+
+# Scopo: Restituisce lookup articoli limitato per autocomplete cross-dominio.
+def fn_lookup_articoli(
+    *,
+    search: str | None = None,
+    voce_utility: bool | None = None,
+    attivo: bool | None = True,
+    is_composito: bool | None = None,
+    limit: int = 20,
+) -> dict[str, object]:
+    _validate_lookup_limit(
+        limit,
+        max_limit=50,
+        function_name="catalogo.catalogo_service.fn_lookup_articoli",
+    )
+    repository = CatalogoRepository()
+    results = repository.lookup_articoli(
+        search=search,
+        voce_utility=voce_utility,
+        attivo=attivo,
+        is_composito=is_composito,
+        limit=limit,
+    )
+    return _build_results_response(results)
+
+
+# Scopo: Restituisce lookup UoM attive limitato per autocomplete e select.
+def fn_lookup_unita_misura(
+    *,
+    search: str | None = None,
+    limit: int = 200,
+) -> dict[str, object]:
+    _validate_lookup_limit(
+        limit,
+        max_limit=200,
+        function_name="catalogo.catalogo_service.fn_lookup_unita_misura",
+    )
+    repository = CatalogoRepository()
+    results = repository.lookup_unita_misura(search=search, limit=limit)
+    return _build_results_response(results)
+
+
+# Scopo: Lista UoM operative dell'articolo, previa verifica esistenza articolo.
+def fn_list_uom_operative(articolo_id: UUID | str) -> dict[str, object]:
+    _get_articolo_base(articolo_id)
+    repository = CatalogoUomRepository()
+    return _build_results_response(repository.list_uom_operative(articolo_id))
+
+
+# Scopo: Crea una UoM operativa per l'articolo e restituisce la riga arricchita.
+def fn_create_uom_operativa(articolo_id: UUID | str, payload: dict[str, Any]) -> dict[str, object]:
+    function_name = "catalogo.catalogo_service.fn_create_uom_operativa"
+    _get_articolo_base(articolo_id)
+    data = _extract_uom_operativa_payload(payload, for_update=False, function_name=function_name)
+    repository = CatalogoUomRepository()
+    try:
+        uom_operativa_id = repository.create_uom_operativa(articolo_id, data)
+    except IntegrityError as exc:
+        _translate_uom_integrity_error(exc, function_name=function_name)
+    result = repository.get_uom_operativa(articolo_id, uom_operativa_id)
+    assert result is not None
+    return result
+
+
+# Scopo: Aggiorna una UoM operativa per l'articolo e restituisce la riga aggiornata.
+def fn_update_uom_operativa(
+    articolo_id: UUID | str,
+    uom_operativa_id: int,
+    payload: dict[str, Any],
+) -> dict[str, object]:
+    function_name = "catalogo.catalogo_service.fn_update_uom_operativa"
+    _get_articolo_base(articolo_id)
+    data = _extract_uom_operativa_payload(payload, for_update=True, function_name=function_name)
+    ErrorManager.require(
+        bool(data),
+        code="E_CATALOGO_VALIDATION",
+        message="Payload UoM operativa non valido.",
+        detail="Nessun campo aggiornabile presente nel payload.",
+        function_name=function_name,
+        log_to_db=True,
+    )
+    repository = CatalogoUomRepository()
+    try:
+        updated = repository.update_uom_operativa(articolo_id, uom_operativa_id, data)
+    except IntegrityError as exc:
+        _translate_uom_integrity_error(exc, function_name=function_name)
+    ErrorManager.require(
+        updated,
+        code="E_CATALOGO_UOM_NOT_FOUND",
+        message="UoM operativa non trovata.",
+        detail=f"Nessuna UoM operativa id={uom_operativa_id} per articolo id={articolo_id}.",
+        context={"articolo_id": articolo_id, "uom_operativa_id": uom_operativa_id},
+        function_name=function_name,
+        log_to_db=False,
+    )
+    result = repository.get_uom_operativa(articolo_id, uom_operativa_id)
+    assert result is not None
+    return result
+
+
+# Scopo: Elimina una UoM operativa per l'articolo con ownership check.
+def fn_delete_uom_operativa(articolo_id: UUID | str, uom_operativa_id: int) -> dict[str, object]:
+    function_name = "catalogo.catalogo_service.fn_delete_uom_operativa"
+    _get_articolo_base(articolo_id)
+    repository = CatalogoUomRepository()
+    try:
+        deleted = repository.delete_uom_operativa(articolo_id, uom_operativa_id)
+    except IntegrityError as exc:
+        _translate_uom_integrity_error(exc, function_name=function_name)
+    ErrorManager.require(
+        deleted,
+        code="E_CATALOGO_UOM_NOT_FOUND",
+        message="UoM operativa non trovata.",
+        detail=f"Nessuna UoM operativa id={uom_operativa_id} per articolo id={articolo_id}.",
+        context={"articolo_id": articolo_id, "uom_operativa_id": uom_operativa_id},
+        function_name=function_name,
+        log_to_db=False,
+    )
+    return {"deleted": True}
+
+
+# Scopo: Lista componenti BoM dell'articolo, previa verifica esistenza articolo.
+def fn_list_componenti(articolo_id: UUID | str) -> dict[str, object]:
+    _get_articolo_base(articolo_id)
+    repository = CatalogoBomRepository()
+    return _build_results_response(repository.list_componenti(articolo_id))
+
+
+# Scopo: Crea un componente BoM per l'articolo e restituisce la riga arricchita.
+def fn_create_componente(articolo_id: UUID | str, payload: dict[str, Any]) -> dict[str, object]:
+    function_name = "catalogo.catalogo_service.fn_create_componente"
+    articolo = _get_articolo_base(articolo_id)
+    data = _extract_componente_payload(payload, for_update=False, function_name=function_name)
+    ErrorManager.require(
+        str(data["componente_id"]) != str(articolo["id"]),
+        code="E_CATALOGO_VALIDATION",
+        message="Payload componente non valido.",
+        detail="Un articolo non puo' essere componente di se stesso.",
+        context={"articolo_id": str(articolo["id"]), "componente_id": str(data["componente_id"])},
+        function_name=function_name,
+        log_to_db=True,
+    )
+    repository = CatalogoBomRepository()
+    try:
+        componente_row_id = repository.create_componente(articolo_id, data)
+    except IntegrityError as exc:
+        _translate_componente_integrity_error(exc, function_name=function_name)
+    result = repository.get_componente(articolo_id, componente_row_id)
+    assert result is not None
+    return result
+
+
+# Scopo: Aggiorna un componente BoM e restituisce la riga aggiornata.
+def fn_update_componente(
+    articolo_id: UUID | str,
+    componente_row_id: UUID | str,
+    payload: dict[str, Any],
+) -> dict[str, object]:
+    function_name = "catalogo.catalogo_service.fn_update_componente"
+    _get_articolo_base(articolo_id)
+    data = _extract_componente_payload(payload, for_update=True, function_name=function_name)
+    ErrorManager.require(
+        bool(data),
+        code="E_CATALOGO_VALIDATION",
+        message="Payload componente non valido.",
+        detail="Nessun campo aggiornabile presente nel payload.",
+        function_name=function_name,
+        log_to_db=True,
+    )
+    repository = CatalogoBomRepository()
+    try:
+        updated = repository.update_componente(articolo_id, componente_row_id, data)
+    except IntegrityError as exc:
+        _translate_componente_integrity_error(exc, function_name=function_name)
+    ErrorManager.require(
+        updated,
+        code="E_CATALOGO_COMPONENTE_NOT_FOUND",
+        message="Componente non trovato.",
+        detail=f"Nessun componente id={componente_row_id} per articolo id={articolo_id}.",
+        context={"articolo_id": articolo_id, "componente_row_id": str(componente_row_id)},
+        function_name=function_name,
+        log_to_db=False,
+    )
+    result = repository.get_componente(articolo_id, componente_row_id)
+    assert result is not None
+    return result
+
+
+# Scopo: Elimina un componente BoM con ownership check sul prodotto.
+def fn_delete_componente(articolo_id: UUID | str, componente_row_id: UUID | str) -> dict[str, object]:
+    function_name = "catalogo.catalogo_service.fn_delete_componente"
+    _get_articolo_base(articolo_id)
+    repository = CatalogoBomRepository()
+    try:
+        deleted = repository.delete_componente(articolo_id, componente_row_id)
+    except IntegrityError as exc:
+        _translate_componente_integrity_error(exc, function_name=function_name)
+    ErrorManager.require(
+        deleted,
+        code="E_CATALOGO_COMPONENTE_NOT_FOUND",
+        message="Componente non trovato.",
+        detail=f"Nessun componente id={componente_row_id} per articolo id={articolo_id}.",
+        context={"articolo_id": articolo_id, "componente_row_id": str(componente_row_id)},
+        function_name=function_name,
+        log_to_db=False,
+    )
+    return {"deleted": True}
+
+
+# Scopo: Lista note articolo con dati arricchiti.
+def fn_list_note_articolo(articolo_id: UUID | str) -> dict[str, object]:
+    _get_articolo_base(articolo_id)
+    repository = CatalogoBomRepository()
+    return _build_results_response(repository.list_note_articolo(articolo_id))
+
+
+# Scopo: Crea una nota articolo e restituisce il dettaglio arricchito della nota.
+def fn_create_nota_articolo(articolo_id: UUID | str, payload: dict[str, Any]) -> dict[str, object]:
+    function_name = "catalogo.catalogo_service.fn_create_nota_articolo"
+    _get_articolo_base(articolo_id)
+    data = _extract_nota_payload(payload, for_update=False, function_name=function_name)
+    repository = CatalogoBomRepository()
+    try:
+        nota_id = repository.create_nota_articolo(articolo_id, data)
+    except IntegrityError as exc:
+        _translate_nota_integrity_error(exc, function_name=function_name)
+    result = repository.get_nota_articolo(articolo_id, nota_id)
+    assert result is not None
+    return result
+
+
+# Scopo: Aggiorna una nota catalogo e restituisce il record arricchito coerente col target.
+def fn_update_nota(nota_id: int, payload: dict[str, Any]) -> dict[str, object]:
+    function_name = "catalogo.catalogo_service.fn_update_nota"
+    resolved = _resolve_single_nota(nota_id, function_name=function_name)
+    data = _extract_nota_payload(payload, for_update=True, function_name=function_name)
+    ErrorManager.require(
+        bool(data),
+        code="E_CATALOGO_VALIDATION",
+        message="Payload nota non valido.",
+        detail="Nessun campo aggiornabile presente nel payload.",
+        function_name=function_name,
+        log_to_db=True,
+    )
+    repository = CatalogoBomRepository()
+    try:
+        updated = repository.update_nota(nota_id, resolved["nota_target_tipo"], data)
+    except IntegrityError as exc:
+        _translate_nota_integrity_error(exc, function_name=function_name)
+    ErrorManager.require(
+        updated,
+        code="E_CATALOGO_NOTA_NOT_FOUND",
+        message="Nota non trovata.",
+        detail=f"Nessuna nota con id={nota_id}.",
+        context={"nota_id": nota_id},
+        function_name=function_name,
+        log_to_db=False,
+    )
+    if resolved["nota_target_tipo"] == "ARTICOLI":
+        result = repository.get_nota_articolo(resolved["nota_target_id"], nota_id)
+    else:
+        result = repository.get_nota_componente(nota_id)
+    assert result is not None
+    return result
+
+
+# Scopo: Elimina una nota catalogo usando il discriminante target della PK composita.
+def fn_delete_nota(nota_id: int) -> dict[str, object]:
+    function_name = "catalogo.catalogo_service.fn_delete_nota"
+    resolved = _resolve_single_nota(nota_id, function_name=function_name)
+    repository = CatalogoBomRepository()
+    try:
+        deleted = repository.delete_nota(nota_id, resolved["nota_target_tipo"])
+    except IntegrityError as exc:
+        _translate_nota_integrity_error(exc, function_name=function_name)
+    ErrorManager.require(
+        deleted,
+        code="E_CATALOGO_NOTA_NOT_FOUND",
+        message="Nota non trovata.",
+        detail=f"Nessuna nota con id={nota_id}.",
+        context={"nota_id": nota_id},
+        function_name=function_name,
+        log_to_db=False,
+    )
+    return {"deleted": True}
+
+
+# ============================================================
+# Sezione CRUD unita_misura
+# ============================================================
+
+_UOM_ORDER_BY_VALIDI: frozenset[str] = frozenset({"codice", "descrizione", "data_insert", "data_update"})
+_UOM_ALLOWED_KEYS: frozenset[str] = frozenset({"codice", "descrizione", "descrizione_fattura"})
+
+
+# Scopo: Lista paginata unita' di misura con filtri e ordinamento.
+def fn_list_unita_misura(
+    *,
+    attivo: bool | None = None,
+    search: str | None = None,
+    order_by: str = "codice",
+    order_dir: str = "asc",
+    limit: int = 25,
+    offset: int = 0,
+) -> tuple[list[dict[str, object]], int]:
+    function_name = "catalogo.catalogo_service.fn_list_unita_misura"
+    order_by, order_dir = _validate_order(order_by, order_dir, function_name)
+    ErrorManager.require(
+        order_by in _UOM_ORDER_BY_VALIDI,
+        code="E_CATALOGO_VALIDATION",
+        message="Parametri ordinamento non validi.",
+        detail=f"order_by deve essere uno tra: {', '.join(sorted(_UOM_ORDER_BY_VALIDI))}",
+        context={"order_by": order_by},
+        function_name=function_name,
+        log_to_db=True,
+    )
+    repository = CatalogoRepository()
+    return repository.list_unita_misura(
+        attivo=attivo,
+        search=search,
+        order_by=order_by,
+        order_dir=order_dir,
+        limit=limit,
+        offset=offset,
+    )
+
+
+# Scopo: Dettaglio singola unita' di misura.
+def fn_get_unita_misura(uom_id: int) -> dict[str, object]:
+    function_name = "catalogo.catalogo_service.fn_get_unita_misura"
+    repository = CatalogoRepository()
+    result = repository.get_unita_misura(uom_id)
+    ErrorManager.require(
+        result is not None,
+        code="E_CATALOGO_UOM_NOT_FOUND",
+        message="Unita' di misura non trovata.",
+        detail=f"Nessuna unita' di misura con id={uom_id}.",
+        context={"uom_id": uom_id},
+        function_name=function_name,
+        log_to_db=False,
+    )
+    assert result is not None
+    return result
+
+
+# Scopo: Crea una nuova unita' di misura.
+def fn_create_unita_misura(payload: dict[str, Any]) -> dict[str, object]:
+    function_name = "catalogo.catalogo_service.fn_create_unita_misura"
+    _validate_payload_keys(payload, allowed_keys=_UOM_ALLOWED_KEYS, function_name=function_name, message="Payload UoM non valido.")
+    codice = _require_string(payload, "codice", function_name=function_name, message="Codice obbligatorio.")
+    descrizione = _require_string(payload, "descrizione", function_name=function_name, message="Descrizione obbligatoria.")
+    descrizione_fattura = _extract_string(payload, "descrizione_fattura", function_name=function_name, nullable=True)
+
+    data: dict[str, Any] = {"codice": codice.upper(), "descrizione": descrizione}
+    if descrizione_fattura is not _MISSING:
+        data["descrizione_fattura"] = descrizione_fattura
+
+    repository = CatalogoRepository()
+    try:
+        new_id = repository.create_unita_misura(data)
+    except IntegrityError as exc:
+        msg = str(exc).lower()
+        if "uq_unita_misura_codice" in msg or "unique" in msg:
+            ErrorManager.raise_error(
+                code="E_CATALOGO_VALIDATION",
+                message="Codice UoM gia' esistente.",
+                detail=f"codice={codice} gia' presente.",
+                context={"codice": codice},
+                function_name=function_name,
+                log_to_db=True,
+                cause=exc,
+            )
+        raise
+    return fn_get_unita_misura(new_id)
+
+
+# Scopo: Aggiorna una unita' di misura.
+def fn_update_unita_misura(uom_id: int, payload: dict[str, Any]) -> dict[str, object]:
+    function_name = "catalogo.catalogo_service.fn_update_unita_misura"
+    update_keys = frozenset({"descrizione", "descrizione_fattura"})
+    unknown = sorted(k for k in payload if k not in update_keys)
+    ErrorManager.require(
+        not unknown,
+        code="E_CATALOGO_VALIDATION",
+        message="Payload UoM non valido.",
+        detail=f"Campi non supportati: {', '.join(unknown)}",
+        context={"unknown_keys": unknown},
+        function_name=function_name,
+        log_to_db=True,
+    )
+    data: dict[str, Any] = {}
+    descrizione = _extract_string(payload, "descrizione", function_name=function_name, nullable=False)
+    if descrizione is not _MISSING:
+        data["descrizione"] = descrizione
+    descrizione_fattura = _extract_string(payload, "descrizione_fattura", function_name=function_name, nullable=True)
+    if descrizione_fattura is not _MISSING:
+        data["descrizione_fattura"] = descrizione_fattura
+
+    if data:
+        repository = CatalogoRepository()
+        updated = repository.update_unita_misura(uom_id, data)
+        ErrorManager.require(
+            updated,
+            code="E_CATALOGO_UOM_NOT_FOUND",
+            message="Unita' di misura non trovata.",
+            detail=f"Nessuna unita' di misura con id={uom_id}.",
+            context={"uom_id": uom_id},
+            function_name=function_name,
+            log_to_db=False,
+        )
+    return fn_get_unita_misura(uom_id)
+
+
+# Scopo: Disattiva una unita' di misura (soft-delete con guard DB).
+def fn_disattiva_unita_misura(uom_id: int) -> dict[str, object]:
+    function_name = "catalogo.catalogo_service.fn_disattiva_unita_misura"
+    repository = CatalogoRepository()
+    try:
+        deactivated = repository.deactivate_unita_misura(uom_id)
+    except IntegrityError as exc:
+        ErrorManager.raise_error(
+            code="E_CATALOGO_VALIDATION",
+            message="Impossibile disattivare: esistono entita' collegate attive.",
+            detail=str(exc),
+            context={"uom_id": uom_id},
+            function_name=function_name,
+            log_to_db=True,
+            cause=exc,
+        )
+    ErrorManager.require(
+        deactivated,
+        code="E_CATALOGO_UOM_NOT_FOUND",
+        message="Unita' di misura non trovata o gia' disattivata.",
+        detail=f"Nessuna unita' di misura attiva con id={uom_id}.",
+        context={"uom_id": uom_id},
+        function_name=function_name,
+        log_to_db=False,
+    )
+    return fn_get_unita_misura(uom_id)

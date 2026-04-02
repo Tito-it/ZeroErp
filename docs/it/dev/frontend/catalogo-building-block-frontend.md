@@ -69,6 +69,7 @@
 | `isEmailValid` | [validators.js](../../../../frontend/src/core/utils/validators.js) | Validazione formato email/PEC (UX, non RFC) |
 | `resolveSeverity` | [severity.js](../../../../frontend/src/core/utils/severity.js) | Risolve severity PrimeVue da mappa codice |
 | `statoClienteSeverity` / `statoFornitoreSeverity` | [severity.js](../../../../frontend/src/core/utils/severity.js) | Colori stato cliente/fornitore |
+| `statoVersioneListinoSeverity` / `dominioListinoSeverity` | [severity.js](../../../../frontend/src/core/utils/severity.js) | Colori stato versione (BOZZA/ATTIVA/CHIUSA) e dominio listino (UTILITY/COMMERCIO) |
 | `statoPraticaSeverity` / `prioritaPraticaSeverity` | [severity.js](../../../../frontend/src/core/utils/severity.js) | Colori stato/priorità pratica |
 | `statoFlussoSeverity` / `esitoFlussoSeverity` | [severity.js](../../../../frontend/src/core/utils/severity.js) | Colori stato/esito flusso |
 | `azioneGiornaleStyle` | [severity.js](../../../../frontend/src/core/utils/severity.js) | Stile azione giornale (severity + icona) |
@@ -267,7 +268,14 @@ I CSS globali sono organizzati in 3 file. Ogni classe è commentata nel sorgente
 | `StradarioAutocomplete` | [StradarioAutocomplete.vue](../../../../frontend/src/core/components/StradarioAutocomplete.vue) | Autocomplete stradario locale |
 | `StradarioGeneraleAutocomplete` | [StradarioGeneraleAutocomplete.vue](../../../../frontend/src/core/components/StradarioGeneraleAutocomplete.vue) | Autocomplete stradario nazionale |
 
-### Ricerca e Lookup
+### Lookup e Select
+
+| Componente | File | Descrizione |
+|---|---|---|
+| `LookupSelect` | [LookupSelect.vue](../../../../frontend/src/core/components/LookupSelect.vue) | Select generico per tabelle lookup whitelisted (`id, codice, descrizione`). Prop `rel` mappa alla whitelist in `dbops_repository.py` (~45 tabelle). Sostituisce il pattern `useLookup(() => lookupCodici(...))` + `<Select>`. Props: `rel` (obbligatorio), `placeholder`, `label-field` (default `descrizione`), `value-field` (default `id`), `show-clear`, `filter` (default true), `disabled`. Emette `@change`. |
+| `ArticoloLookup` | [ArticoloLookup.vue](../../../../frontend/src/core/components/ArticoloLookup.vue) | Autocomplete articolo server-side cross-dominio. Props: `voce-utility`, `solo-attivi`, `placeholder`, `disabled`. Emette `@select`. Usato da: righe listino, distinta base, test resolver. |
+
+### Ricerca
 
 | Componente | File | Descrizione |
 |---|---|---|

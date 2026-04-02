@@ -83,6 +83,60 @@ class ErrorPolicyRegistry:
             ui_action="highlight_form_fields",
             user_message="Parametri non validi.",
         ),
+        "E_VENDITE_LISTINO_NOT_FOUND": ErrorPolicy(
+            code="E_VENDITE_LISTINO_NOT_FOUND",
+            http_status=404,
+            ui_action="show_empty_state",
+            user_message="Listino non trovato.",
+        ),
+        "E_VENDITE_LISTINO_VERSIONE_NOT_FOUND": ErrorPolicy(
+            code="E_VENDITE_LISTINO_VERSIONE_NOT_FOUND",
+            http_status=404,
+            ui_action="show_empty_state",
+            user_message="Versione listino non trovata.",
+        ),
+        "E_VENDITE_LISTINO_RIGA_NOT_FOUND": ErrorPolicy(
+            code="E_VENDITE_LISTINO_RIGA_NOT_FOUND",
+            http_status=404,
+            ui_action="show_empty_state",
+            user_message="Riga listino non trovata.",
+        ),
+        "E_VENDITE_LISTINO_ASSOCIAZIONE_NOT_FOUND": ErrorPolicy(
+            code="E_VENDITE_LISTINO_ASSOCIAZIONE_NOT_FOUND",
+            http_status=404,
+            ui_action="show_empty_state",
+            user_message="Associazione listino non trovata.",
+        ),
+        "E_CATALOGO_VALIDATION": ErrorPolicy(
+            code="E_CATALOGO_VALIDATION",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message="Parametri catalogo non validi.",
+        ),
+        "E_CATALOGO_ARTICOLO_NOT_FOUND": ErrorPolicy(
+            code="E_CATALOGO_ARTICOLO_NOT_FOUND",
+            http_status=404,
+            ui_action="show_empty_state",
+            user_message="Articolo non trovato.",
+        ),
+        "E_CATALOGO_UOM_NOT_FOUND": ErrorPolicy(
+            code="E_CATALOGO_UOM_NOT_FOUND",
+            http_status=404,
+            ui_action="show_empty_state",
+            user_message="UoM operativa non trovata.",
+        ),
+        "E_CATALOGO_COMPONENTE_NOT_FOUND": ErrorPolicy(
+            code="E_CATALOGO_COMPONENTE_NOT_FOUND",
+            http_status=404,
+            ui_action="show_empty_state",
+            user_message="Componente non trovato.",
+        ),
+        "E_CATALOGO_NOTA_NOT_FOUND": ErrorPolicy(
+            code="E_CATALOGO_NOTA_NOT_FOUND",
+            http_status=404,
+            ui_action="show_empty_state",
+            user_message="Nota non trovata.",
+        ),
         "E_DATABASE": ErrorPolicy(
             code="E_DATABASE",
             http_status=400,
@@ -530,6 +584,155 @@ class ErrorPolicyRegistry:
             http_status=400,
             ui_action="show_error_banner",
             user_message="Errore attivazione account.",
+        ),
+        # ── Codici cross-schema da refactor E_GENERICO (31 marzo 2026) ──
+        # --- Validazione parametri (400) ---
+        "E_PARAMETRO_INVALIDO": ErrorPolicy(
+            code="E_PARAMETRO_INVALIDO",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message="Parametro obbligatorio mancante o non valido.",
+        ),
+        "E_VALORE_MANCANTE": ErrorPolicy(
+            code="E_VALORE_MANCANTE",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message="Valore obbligatorio mancante.",
+        ),
+        "E_CODICE": ErrorPolicy(
+            code="E_CODICE",
+            http_status=400,
+            ui_action="show_error_banner",
+            user_message="Codice di configurazione non trovato.",
+        ),
+        "E_DATA_AL_MINORE_DAL": ErrorPolicy(
+            code="E_DATA_AL_MINORE_DAL",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message="La data 'al' non puo' essere anteriore alla data 'dal'.",
+        ),
+        "E_TIPI_RUOLI_ENTITA_INVALIDA": ErrorPolicy(
+            code="E_TIPI_RUOLI_ENTITA_INVALIDA",
+            http_status=400,
+            ui_action="show_error_banner",
+            user_message="Configurazione tipo ruolo non valida.",
+        ),
+        # --- Coerenza dati (400) ---
+        "E_PDP_OBBLIGATORIO": ErrorPolicy(
+            code="E_PDP_OBBLIGATORIO",
+            http_status=400,
+            ui_action="show_error_banner",
+            user_message="Piano dati precontrattuali obbligatorio.",
+        ),
+        "E_PDP_UTILITY_MISMATCH": ErrorPolicy(
+            code="E_PDP_UTILITY_MISMATCH",
+            http_status=400,
+            ui_action="show_error_banner",
+            user_message="Utility non coerente con il piano dati precontrattuali.",
+        ),
+        "E_CLIENTE_UTILITY_MISMATCH_BA": ErrorPolicy(
+            code="E_CLIENTE_UTILITY_MISMATCH_BA",
+            http_status=400,
+            ui_action="show_error_banner",
+            user_message="Utility non coerente con il billing account del cliente.",
+        ),
+        "E_BILLING_ACCOUNT_UTILITY_NULL": ErrorPolicy(
+            code="E_BILLING_ACCOUNT_UTILITY_NULL",
+            http_status=400,
+            ui_action="show_error_banner",
+            user_message="Billing account senza utility associata.",
+        ),
+        "E_UTILITY_RUOLO_NON_AMMESSO": ErrorPolicy(
+            code="E_UTILITY_RUOLO_NON_AMMESSO",
+            http_status=400,
+            ui_action="show_error_banner",
+            user_message="Tipo ruolo non ammesso per questa utility.",
+        ),
+        "E_LOTTO_PARAMETRO_NON_COERENTE": ErrorPolicy(
+            code="E_LOTTO_PARAMETRO_NON_COERENTE",
+            http_status=400,
+            ui_action="show_error_banner",
+            user_message="Parametri lotto non coerenti.",
+        ),
+        "E_COMMESSA_ATTIVITA_NON_COERENTE": ErrorPolicy(
+            code="E_COMMESSA_ATTIVITA_NON_COERENTE",
+            http_status=400,
+            ui_action="show_error_banner",
+            user_message="Attivita' non coerente con la commessa.",
+        ),
+        "E_RIGA_GIA_FATTURATA": ErrorPolicy(
+            code="E_RIGA_GIA_FATTURATA",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Riga gia' fatturata.",
+        ),
+        "E_PREZZO_LISTINO_AMBIGUO": ErrorPolicy(
+            code="E_PREZZO_LISTINO_AMBIGUO",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Piu' prezzi trovati per lo stesso articolo/listino.",
+        ),
+        # --- Not found (404) ---
+        "E_FATTURA_NON_TROVATA": ErrorPolicy(
+            code="E_FATTURA_NON_TROVATA",
+            http_status=404,
+            ui_action="show_empty_state",
+            user_message="Fattura non trovata.",
+        ),
+        "E_LOTTO_NON_TROVATO": ErrorPolicy(
+            code="E_LOTTO_NON_TROVATO",
+            http_status=404,
+            ui_action="show_empty_state",
+            user_message="Lotto non trovato.",
+        ),
+        "E_PREZZO_LISTINO_NON_TROVATO": ErrorPolicy(
+            code="E_PREZZO_LISTINO_NON_TROVATO",
+            http_status=404,
+            ui_action="show_empty_state",
+            user_message="Prezzo listino non trovato.",
+        ),
+        "E_EMITTENTE_DEFAULT_MISSING": ErrorPolicy(
+            code="E_EMITTENTE_DEFAULT_MISSING",
+            http_status=404,
+            ui_action="show_error_banner",
+            user_message="Emittente fiscale default non configurato.",
+        ),
+        # --- Conflitto / azione bloccata (409) ---
+        "E_LOTTO_NON_RIUTILIZZABILE": ErrorPolicy(
+            code="E_LOTTO_NON_RIUTILIZZABILE",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Lotto non riutilizzabile.",
+        ),
+        "E_CHIUDE_LOTTO_SINGLETON": ErrorPolicy(
+            code="E_CHIUDE_LOTTO_SINGLETON",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Un solo stato puo' avere il flag chiude_lotto attivo.",
+        ),
+        "E_EMITTENTE_DEFAULT_SINGLETON": ErrorPolicy(
+            code="E_EMITTENTE_DEFAULT_SINGLETON",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Un solo emittente fiscale puo' essere impostato come default.",
+        ),
+        "E_EMITTENTE_DISATTIVAZIONE_BLOCCATA": ErrorPolicy(
+            code="E_EMITTENTE_DISATTIVAZIONE_BLOCCATA",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Impossibile disattivare l'emittente fiscale: esistono entita' collegate.",
+        ),
+        "E_RESELLER_DISATTIVAZIONE_BLOCCATA": ErrorPolicy(
+            code="E_RESELLER_DISATTIVAZIONE_BLOCCATA",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Impossibile disattivare il reseller: esistono entita' collegate.",
+        ),
+        "E_COMMESSA_ROOT_CONFLITTO": ErrorPolicy(
+            code="E_COMMESSA_ROOT_CONFLITTO",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Conflitto: commessa root gia' esistente per questa sorgente.",
         ),
     }
 

@@ -8,6 +8,7 @@ import { useTabFreshness } from '../../core/composables/useTabFreshness'
 import { useLookup } from '../../core/composables/useLookup'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { lookupCodici } from '../../core/apiCore'
+import LookupSelect from '../../core/components/LookupSelect.vue'
 import { listMatriceIndirizzi, updateMatriceIndirizzo } from '../api/anagrafiche'
 import { displayDate } from '../../core/utils/date'
 import { defineStore } from 'pinia'
@@ -67,7 +68,6 @@ const { searchText, onPage, onSort, applyFilters, reload, paginatorProps } = use
 })
 
 // Lookup filtri
-const tipiRuoli = useLookup(() => lookupCodici('config.tipi_ruoli'), { immediate: true })
 const tipiIndirizzi = useLookup(() => lookupCodici('config.tipi_indirizzi'), { immediate: true })
 
 const ruoloFilter = ref(null)
@@ -136,12 +136,9 @@ onMounted(() => { store.fetchList() })
           v-model="searchText"
           :placeholder="t('matrice_indirizzi.search_placeholder')"
         />
-        <Select
+        <LookupSelect
           v-model="ruoloFilter"
-          :options="tipiRuoli.items.value"
-          :loading="tipiRuoli.loading.value"
-          option-label="descrizione"
-          option-value="id"
+          rel="config.tipi_ruoli"
           :placeholder="t('matrice_indirizzi.filtro_ruolo')"
           show-clear
           @change="onRuoloChange"

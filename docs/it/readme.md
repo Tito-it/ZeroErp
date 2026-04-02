@@ -9,12 +9,17 @@ L'obiettivo e` ridurre la complessita` superflua mantenendo rigore su dati, rego
 
 ## Stato progetto
 
-> **Sviluppo attivo — frontend operativo su aree core.**
+> **Sviluppo attivo — backend e frontend operativi su domini core e catalogo/vendite.**
 >
-> DB e API backend operativi. Frontend Vue operativo su: layout applicativo,
+> DB e API backend operativi su 13 schemi. Frontend Vue operativo su: layout applicativo,
 > gestione soggetti (PF/PG/ENTE), gestione geografica (7 tab CRUD), pannello configurazione (67 tabelle),
 > amministrazione software (operatori, profili reparto, permessi, audit log),
-> sistema permessi a 2 livelli (area + azioni processo).
+> gestione clienti/fornitori (drawer end-to-end con sotto-drawer),
+> gestione pratiche (dashboard, flussi, note, allegati, giornale),
+> catalogo articoli (CRUD, UoM, BoM, note), unita' di misura,
+> listini vendita (versioni, righe prezzo, associazioni, test resolver),
+> integrazione AI (9 tool, widget conversazionale),
+> autenticazione completa (email, token, reset pw, invito operatore).
 > Non ancora rilasciato per produzione.
 
 ---
@@ -138,22 +143,32 @@ Il modello e` pensato per supportare processi non lineari e gestione multi-repar
 
 ## Stato dello Sviluppo
 
-Fotografia sintetica (20 marzo 2026):
+Fotografia sintetica (3 aprile 2026):
 
 - Database core: operativo (13 schemi, 200+ tabelle, trigger, funzioni, viste)
-- API backend: operativo (689+ test, 57+ endpoint documentati)
-- Motore pratiche: operativo (workflow, giornale, sospensioni, macchina a stati)
+- API backend: operativo (890+ test, 80+ endpoint)
+- Motore pratiche: operativo (workflow, giornale, sospensioni, macchina a stati, note, allegati)
 - Sistema permessi: operativo a 2 livelli
   - Livello 1: area funzionale (TUTTO/LETTURA/BLOCCATO) — sidebar, route guard, CSS protect
   - Livello 2: azioni processo (abilitata/negata) — prop `action` su componenti, backend 403
-- Frontend Vue: operativo su aree core
-  - Layout applicativo (sidebar morfica, content tabs, breadcrumb, ricerca universale, shortcut tastiera)
-  - Amm. Software completa: operatori, profili reparto, permessi riepilogo, audit log (solo ADMIN)
+- Autenticazione: completa (JWT, email BB, token monouso, reset pw, invito, cambio pw obbligatorio)
+- Catalogo e Listini: operativi
+  - Articoli CRUD con UoM operative, distinta base, note (19 endpoint, 49 test)
+  - Unita' di misura CRUD (backend + frontend)
+  - Listini vendita: versioni, righe prezzo, associazioni, test resolver (18 endpoint, 29 test)
+- Integrazione AI v1: operativa (9 tool, widget flottante, 61 test)
+- Frontend Vue: operativo su domini core, anagrafiche, catalogo, vendite, pratiche
+  - Layout applicativo (sidebar morfica, content tabs, split view, breadcrumb, ricerca universale)
+  - Amm. Software completa: operatori, profili reparto, permessi riepilogo, audit log, email
   - Gestione soggetti: PF/PG/ENTE end-to-end, ruoli, contatti, indirizzi, CF validator IT
-  - Gestione geografica: 7 tab CRUD (indirizzi, toponomastica, comuni, CAP, province, regioni, stati)
-  - Pannello configurazione: 67 tabelle CRUD generiche con drawer dinamico metadata-driven
-  - Building block riutilizzabili: 20+ composable, 15+ componenti core, CSS utility classes
-- Documentazione: 57+ endpoint documentati, frontend-standards, mappa concentrica aggiornata
+  - Gestione geografica: 7 tab CRUD
+  - Gestione clienti/fornitori: drawer con sotto-drawer contatti/indirizzi/conti
+  - Gestione pratiche v2: dashboard, flussi, note, allegati, giornale
+  - Catalogo articoli: lista, drawer con 3 tab (UoM, BoM, note), ArticoloLookup BB
+  - Listini: lista, drawer con versioni/associazioni, sub-drawer righe, test resolver
+  - Pannello configurazione: 67 tabelle CRUD generiche
+  - Building block riutilizzabili: 25+ composable, 20+ componenti core, LookupSelect generico, CSS utility classes
+- Documentazione: frontend-standards, catalogo-building-block (frontend + backend), mappa concentrica
 
  [Mappa](./mappa-concentrica.md)
 
@@ -190,12 +205,16 @@ Struttura essenziale:
 3. ~~Frontend layout applicativo + building block~~ — fatto
 4. ~~Gestione Soggetti (PF/PG/ENTE end-to-end)~~ — fatto, in test UI
 5. ~~Gestione Geografica (7 tab CRUD)~~ — fatto
-6. ~~Amm. Software (operatori, profili, permessi, audit)~~ — fatto, in test UI
+6. ~~Amm. Software (operatori, profili, permessi, audit)~~ — fatto
 7. ~~Sistema permessi 2 livelli (area + azioni processo)~~ — fatto
-8. Test UI reali su aree completate — in corso
-9. Seed azioni processo per nuovi domini + integrazione componenti
-10. ClienteService Django (orchestrator creazione/subentro/disdetta)
-11. Evoluzione integrazioni e moduli verticali
+8. ~~Gestione Clienti/Fornitori (CRUD, drawer, sotto-drawer)~~ — fatto, v2 pianificata
+9. ~~Gestione Pratiche v2 (dashboard, flussi, note, allegati, giornale)~~ — fatto, in test UI
+10. ~~Autenticazione completa (email, token, reset pw, invito)~~ — fatto, 2FA pianificato
+11. ~~Integrazione AI v1 (9 tool, widget conversazionale)~~ — fatto, v2 in corso
+12. ~~Catalogo articoli + UoM + listini vendita~~ — fatto, in test UI
+13. Test UI reali su articoli, listini, pratiche, clienti, fornitori — in corso
+14. Permessi v2 (livello oggetto) — pianificato
+15. Integrazione vendite/pratiche e moduli verticali
 
 ---
 
