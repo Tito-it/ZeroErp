@@ -21,11 +21,26 @@ DECLARE
   v_rows_found integer;
   v_visited_tipo_ids config.tipi_indirizzi.id%TYPE[] := '{}'::integer[];
 BEGIN
+  /*
+    Restituisce l'indirizzo di un soggetto per tipo_codice richiesto.
+    Se non trova indirizzi per quel tipo, segue la catena di fallback
+    configurata in config.tipi_soggetto_dettaglio_tipi_indirizzo
+    fino a trovare un match o esaurire i fallback.
+
+    Regole:
+      - Recupera tipo_soggetto_dettaglio_id dal soggetto
+      - Loop: cerca indirizzo per tipo corrente
+      - Se trovato: ritorna. Se non trovato: segue fallback
+      - Protezione anti-loop circolare via v_visited_tipo_ids
+  */
+
+  -- Recupera il tipo soggetto dettaglio per determinare la catena fallback
   SELECT s.tipo_soggetto_dettaglio_id INTO v_tipo_soggetto_dettaglio_id
   FROM anagrafiche.soggetti s WHERE s.id = p_soggetto_id;
   IF v_tipo_soggetto_dettaglio_id IS NULL THEN RETURN; END IF;
 
   LOOP
+    -- Cerca indirizzi per il tipo corrente
     RETURN QUERY
     SELECT * FROM anagrafiche.vw_indirizzi_resolved_soggetto r
     WHERE r.soggetto_id = p_soggetto_id AND r.tipo_indirizzo_codice = v_current_codice;
@@ -33,12 +48,16 @@ BEGIN
     GET DIAGNOSTICS v_rows_found = ROW_COUNT;
     IF v_rows_found > 0 THEN RETURN; END IF;
 
+    -- Nessun indirizzo trovato: cerca fallback
     SELECT ti.id INTO v_current_tipo_id
     FROM config.tipi_indirizzi ti WHERE ti.codice_interno = v_current_codice;
     IF v_current_tipo_id IS NULL THEN RETURN; END IF;
+
+    -- Protezione anti-loop circolare
     IF v_current_tipo_id = ANY (v_visited_tipo_ids) THEN RETURN; END IF;
     v_visited_tipo_ids := array_append(v_visited_tipo_ids, v_current_tipo_id);
 
+    -- Legge il fallback dalla matrice tipo_soggetto_dettaglio / tipo_indirizzo
     SELECT m.fallback_tipo_indirizzo_id INTO v_fallback_tipo_id
     FROM config.tipi_soggetto_dettaglio_tipi_indirizzo m
     WHERE m.tipo_soggetto_dettaglio_id = v_tipo_soggetto_dettaglio_id
@@ -49,12 +68,16 @@ BEGIN
     LIMIT 1;
     IF v_fallback_tipo_id IS NULL THEN RETURN; END IF;
 
+    -- Risolve il codice del tipo fallback per il prossimo ciclo
     SELECT ti.codice_interno INTO v_current_codice
     FROM config.tipi_indirizzi ti WHERE ti.id = v_fallback_tipo_id;
     IF v_current_codice IS NULL THEN RETURN; END IF;
   END LOOP;
 END;
 $function$
+
+COMMENT ON FUNCTION script.fn_get_indirizzo_by_soggetto(p_soggetto_id uuid, p_tipo_codice character varying)
+IS 'Restituisce l''indirizzo di un soggetto per tipo richiesto, con fallback configurato in tipi_soggetto_dettaglio_tipi_indirizzo.';
 ```
 
 ---

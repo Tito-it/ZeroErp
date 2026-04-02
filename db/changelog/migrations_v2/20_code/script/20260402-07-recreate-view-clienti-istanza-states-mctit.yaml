@@ -1,0 +1,55 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+#
+# Ricrea vista script.view_clienti_istanza_states dopo
+# conversione config.stati_cliente.codice CHAR -> VARCHAR
+# (migration 20260402-21 in 00_schema/config).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260402-07-recreate-view-clienti-istanza-states-mctit.yaml
+
+  - changeSet:
+      id: 20260402-07-recreate-view-clienti-istanza-states
+      author: mctit
+      runOnChange: true
+      comment: >
+        Ricrea vista script.view_clienti_istanza_states droppata
+        dalla migration 20260402-21 (ALTER codice CHAR->VARCHAR
+        su stati_cliente).
+
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ==========================================================
+              -- Vista: script.view_clienti_istanza_states
+              --
+              -- Scopo: stato cliente corrente per istanza utility,
+              --        risolto tramite fn_get_stato_cliente_by_istanza.
+              --
+              -- Ricreata dopo ALTER codice CHAR(2) -> VARCHAR(50)
+              -- su config.stati_cliente.
+              -- ==========================================================
+              CREATE OR REPLACE VIEW script.view_clienti_istanza_states
+              AS
+              SELECT i.id AS istanza_id,
+                  sc.id AS stato_id,
+                  sc.codice_interno AS cod_int_stato_cliente,
+                  sc.descrizione AS desc_stato_cliente,
+                  sc.descrizione_breve AS desc_breve_stato,
+                  sc.check_lettura,
+                  sc.abilita_fattura,
+                  sc.codice AS stato_cliente,
+                  sc.stato_cliente_ia,
+                  sc.data_insert AS stato_data_insert,
+                  sc.user_insert AS stato_user_insert,
+                  sc.data_update AS stato_data_update,
+                  sc.user_update AS stato_user_update
+              FROM anagrafiche.istanze_utilities i
+                  JOIN config.stati_cliente sc ON sc.id = script.fn_get_stato_cliente_by_istanza(i.id);
+
+              COMMENT ON VIEW script.view_clienti_istanza_states IS
+                'Stato cliente corrente per istanza utility, risolto tramite fn_get_stato_cliente_by_istanza.';

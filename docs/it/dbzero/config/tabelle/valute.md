@@ -5,7 +5,7 @@
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | integer | NO |  |
-| codice | character | NO |  |
+| codice | character varying | NO |  |
 | iso_code | character | NO |  |
 | iso_num_code | smallint | YES |  |
 | descrizione | character varying | NO |  |
