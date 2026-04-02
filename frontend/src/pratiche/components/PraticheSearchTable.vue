@@ -7,14 +7,12 @@ import { useI18n } from 'vue-i18n'
 import { usePraticheStore } from '../stores/pratiche'
 import { useSearchTable } from '../../core/composables/useSearchTable'
 import { useTabFreshness } from '../../core/composables/useTabFreshness'
-import { useLookup } from '../../core/composables/useLookup'
-import { lookupCodici } from '../../core/apiCore'
 import { displayDate, toDateString } from '../../core/utils/date'
 import { statoPraticaSeverity, prioritaPraticaSeverity } from '../../core/utils/severity'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import InputText from 'primevue/inputtext'
-import Select from 'primevue/select'
+import LookupSelect from '../../core/components/LookupSelect.vue'
 import DatePicker from 'primevue/datepicker'
 import Tag from 'primevue/tag'
 import Button from 'primevue/button'
@@ -28,10 +26,6 @@ const { searchText, onPage, onSort, applyFilters, reload, paginatorProps } = use
   defaultSortField: 'data_insert',
   defaultSortOrder: -1
 })
-
-// Lookup per popolare i filtri Select (non per le colonne — quelle usano i dati dal backend)
-const statiPratica = useLookup(() => lookupCodici('config.stati_pratiche'), { immediate: true })
-const prioritaPratica = useLookup(() => lookupCodici('config.priorita_pratiche'), { immediate: true })
 
 const statoFilter = ref(null)
 const prioritaFilter = ref(null)
@@ -102,22 +96,16 @@ onUnmounted(() => { window.removeEventListener('resize', recalcScrollHeight) })
           v-model="searchText"
           :placeholder="t('pratiche.search_placeholder')"
         />
-        <Select
+        <LookupSelect
           v-model="statoFilter"
-          :options="statiPratica.items.value"
-          :loading="statiPratica.loading.value"
-          option-label="descrizione"
-          option-value="id"
+          rel="config.stati_pratiche"
           :placeholder="t('pratiche.filtro_stato')"
           show-clear
           @change="onStatoChange"
         />
-        <Select
+        <LookupSelect
           v-model="prioritaFilter"
-          :options="prioritaPratica.items.value"
-          :loading="prioritaPratica.loading.value"
-          option-label="descrizione"
-          option-value="id"
+          rel="config.priorita_pratiche"
           :placeholder="t('pratiche.filtro_priorita')"
           show-clear
           @change="onPrioritaChange"

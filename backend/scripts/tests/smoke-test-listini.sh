@@ -1,0 +1,370 @@
+#!/usr/bin/env bash
+# ------------------------------------------------------------
+# Smoke test locale per API Vendite Listini (Fase 5 backend)
+# Uso: ./scripts/tests/smoke-test-listini.sh [password]
+# ------------------------------------------------------------
+# Indice test (0..19):
+#  0) Autenticazione JWT + estrazione user_id
+#  1) Preflight permessi aree vendite/catalogo
+#  2) Seed articolo attivo + UoM da catalogo
+#  3) Crea listino
+#  4) Dettaglio listino creato
+#  5) PATCH listino
+#  6) PATCH codice listino non ammesso (400 atteso)
+#  7) Crea versione BOZZA
+#  8) Lista versioni
+#  9) PATCH versione
+# 10) Crea riga prezzo fallback
+# 11) Lista righe prezzo
+# 12) PATCH riga prezzo
+# 13) Crea associazione fallback
+# 14) Lista associazioni
+# 15) PATCH associazione
+# 16) Attiva versione
+# 17) Test resolver prezzo
+# 18) DELETE riga prezzo
+# 19) DELETE associazione
+# ------------------------------------------------------------
+set -euo pipefail
+
+BASE_URL="${BASE_URL:-http://127.0.0.1:8000}"
+USERNAME="${SMOKE_USER:-tid}"
+PASSWORD="${1:-${SMOKE_PASSWORD:-}}"
+
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m'
+
+PASS=0
+FAIL=0
+EXTRACTED=""
+LAST_STATUS=""
+LAST_BODY=""
+
+TMPFILE=$(mktemp)
+trap "rm -f $TMPFILE" EXIT
+
+log_ok()   { ((PASS++)) || true; echo -e "  ${GREEN}OK${NC}  $1"; }
+log_fail() { ((FAIL++)) || true; echo -e "  ${RED}FAIL${NC} $1"; }
+log_info() { echo -e "  ${YELLOW}---${NC} $1"; }
+
+json_get() {
+    local json="$1" expr="$2"
+    echo "$json" | python3 -c "
+import sys, json
+try:
+    d = json.load(sys.stdin)
+    for k in '$expr'.lstrip('.').split('.'):
+        if k.isdigit():
+            d = d[int(k)]
+        else:
+            d = d[k]
+    print(d)
+except Exception:
+    print('')
+" 2>/dev/null
+}
+
+do_curl() {
+    local method="$1" url="$2" data="${3:-}"
+    if [[ "$method" == "GET" ]]; then
+        curl -s -w '\n%{http_code}' \
+            -H "Authorization: Bearer ${TOKEN:-none}" \
+            "${BASE_URL}${url}" > "$TMPFILE" 2>/dev/null
+    elif [[ "$method" == "DELETE" ]]; then
+        curl -s -w '\n%{http_code}' \
+            -X DELETE \
+            -H "Authorization: Bearer ${TOKEN:-none}" \
+            "${BASE_URL}${url}" > "$TMPFILE" 2>/dev/null
+    else
+        curl -s -w '\n%{http_code}' \
+            -X "$method" \
+            -H "Authorization: Bearer ${TOKEN:-none}" \
+            -H "Content-Type: application/json" \
+            -d "$data" \
+            "${BASE_URL}${url}" > "$TMPFILE" 2>/dev/null
+    fi
+    LAST_STATUS=$(tail -1 "$TMPFILE")
+    LAST_BODY=$(sed '$d' "$TMPFILE")
+}
+
+check() {
+    local label="$1" expected="$2" json_expr="${3:-}"
+    if [[ "$LAST_STATUS" == "$expected" ]]; then
+        log_ok "$label (HTTP $LAST_STATUS)"
+    else
+        log_fail "$label — atteso HTTP $expected, ricevuto $LAST_STATUS"
+        echo "       Body: $(echo "$LAST_BODY" | head -c 500)"
+        return 1
+    fi
+    if [[ -n "$json_expr" ]]; then
+        EXTRACTED=$(json_get "$LAST_BODY" "$json_expr")
+    fi
+    return 0
+}
+
+echo ""
+echo "========================================="
+echo " Smoke test API Vendite Listini"
+echo " Base URL: $BASE_URL"
+echo "========================================="
+
+# --- 0. Autenticazione JWT ---
+echo ""
+echo "-- 0. Autenticazione --"
+
+if [[ -z "$PASSWORD" ]]; then
+    echo -n "Password per utente '$USERNAME': "
+    read -rs PASSWORD
+    echo ""
+fi
+
+curl -s -w '\n%{http_code}' \
+    -H "Content-Type: application/json" \
+    -d "{\"username\":\"$USERNAME\",\"password\":\"$PASSWORD\"}" \
+    "${BASE_URL}/api/v1/auth/token/" > "$TMPFILE" 2>/dev/null
+
+AUTH_STATUS=$(tail -1 "$TMPFILE")
+AUTH_BODY=$(sed '$d' "$TMPFILE")
+
+if [[ "$AUTH_STATUS" != "200" ]]; then
+    echo -e "${RED}ERRORE: autenticazione fallita (HTTP $AUTH_STATUS)${NC}"
+    echo "$AUTH_BODY" | head -c 300
+    exit 1
+fi
+
+TOKEN=$(json_get "$AUTH_BODY" ".access")
+if [[ -z "$TOKEN" ]]; then
+    echo -e "${RED}ERRORE: token JWT non trovato nella risposta${NC}"
+    exit 1
+fi
+
+USER_ID=$(echo "$TOKEN" | cut -d. -f2 | python3 -c "
+import sys, base64, json
+payload = sys.stdin.read().strip()
+padding = (-len(payload)) % 4
+decoded = base64.urlsafe_b64decode(payload + '=' * padding)
+print(json.loads(decoded).get('user_id', ''))
+" 2>/dev/null)
+
+log_ok "JWT ottenuto per '$USERNAME' (user_id=${USER_ID:-?})"
+
+# --- 1. Preflight permessi aree vendite/catalogo ---
+echo ""
+echo "-- 1. Preflight permessi aree vendite/catalogo --"
+do_curl GET "/api/v1/core/users/${USER_ID}/permessi-effettivi/"
+check "Permessi effettivi utente corrente" "200"
+
+readarray -t PERM_LEVELS < <(echo "$LAST_BODY" | python3 -c "
+import sys, json
+try:
+    areas = json.load(sys.stdin)['data']['aree']
+    wanted = {'vendite': '', 'catalogo': ''}
+    for area in areas:
+        schema = area.get('schema_db')
+        if schema in wanted:
+            wanted[schema] = area.get('livello', '')
+    print(wanted['vendite'])
+    print(wanted['catalogo'])
+except Exception:
+    print('')
+    print('')
+" 2>/dev/null)
+
+VENDITE_LEVEL="${PERM_LEVELS[0]:-}"
+CATALOGO_LEVEL="${PERM_LEVELS[1]:-}"
+
+if [[ -z "$VENDITE_LEVEL" ]]; then
+    echo -e "${RED}ERRORE:${NC} area funzionale 'vendite' non trovata nei permessi effettivi dell'utente."
+    exit 2
+fi
+
+if [[ "$VENDITE_LEVEL" != "TUTTO" ]]; then
+    echo -e "${RED}ERRORE:${NC} utente '$USERNAME' senza permesso write su 'vendite' (livello=$VENDITE_LEVEL)."
+    echo "Per questo smoke serve livello TUTTO sull'area vendite."
+    exit 2
+fi
+
+if [[ -z "$CATALOGO_LEVEL" ]]; then
+    echo -e "${RED}ERRORE:${NC} area funzionale 'catalogo' non trovata nei permessi effettivi dell'utente."
+    exit 2
+fi
+
+if [[ "$CATALOGO_LEVEL" != "LETTURA" && "$CATALOGO_LEVEL" != "TUTTO" ]]; then
+    echo -e "${RED}ERRORE:${NC} utente '$USERNAME' senza permesso read su 'catalogo' (livello=$CATALOGO_LEVEL)."
+    echo "Per questo smoke serve almeno LETTURA sull'area catalogo."
+    exit 2
+fi
+
+log_ok "Permessi vendite validi per CRUD (livello=$VENDITE_LEVEL)"
+log_ok "Permessi catalogo validi per lookup seed (livello=$CATALOGO_LEVEL)"
+
+TEST_SUFFIX=$(date +%Y%m%d%H%M%S)
+TODAY=$(date +%F)
+LISTINO_CODE="SMK-LST-${TEST_SUFFIX}"
+LISTINO_DESC="Smoke listino ${TEST_SUFFIX}"
+LISTINO_DESC_UPDATED="Smoke listino aggiornato ${TEST_SUFFIX}"
+VERSION_CODE="V-${TEST_SUFFIX}"
+
+# --- 2. Seed articolo attivo + UoM da catalogo ---
+echo ""
+echo "-- 2. Seed articolo attivo + UoM --"
+do_curl GET "/api/v1/catalogo/articoli/?attivo=true&page=1&page_size=1&order_by=codice&order_dir=asc"
+check "Lista articoli attivi seed" "200"
+ARTICOLO_ID=$(json_get "$LAST_BODY" ".data.results.0.id")
+ARTICOLO_CODE=$(json_get "$LAST_BODY" ".data.results.0.codice")
+UOM_ID=$(json_get "$LAST_BODY" ".data.results.0.uom_id")
+UOM_CODE=$(json_get "$LAST_BODY" ".data.results.0.uom_codice")
+
+if [[ -z "$ARTICOLO_ID" || -z "$UOM_ID" ]]; then
+    echo -e "${RED}ERRORE:${NC} nessun articolo attivo con UoM disponibile trovato; impossibile eseguire lo smoke listini."
+    exit 3
+fi
+
+log_info "Articolo seed: id=${ARTICOLO_ID} codice=${ARTICOLO_CODE:-?} uom_id=${UOM_ID} uom=${UOM_CODE:-?}"
+
+# --- 3. Crea listino ---
+echo ""
+echo "-- 3. Crea listino --"
+do_curl POST "/api/v1/vendite/listini/" "{\"codice\":\"${LISTINO_CODE}\",\"descrizione\":\"${LISTINO_DESC}\",\"dominio\":\"COMMERCIO\"}"
+check "Create listino" "200" ".data.id"
+LISTINO_ID="$EXTRACTED"
+log_info "Listino creato: id=${LISTINO_ID} codice=${LISTINO_CODE}"
+
+# --- 4. Dettaglio listino creato ---
+echo ""
+echo "-- 4. Dettaglio listino creato --"
+do_curl GET "/api/v1/vendite/listini/${LISTINO_ID}/"
+check "Dettaglio listino creato" "200" ".data.codice"
+if [[ "$EXTRACTED" == "$LISTINO_CODE" ]]; then
+    log_ok "Codice dettaglio coerente (${EXTRACTED})"
+else
+    log_fail "Codice dettaglio incoerente: atteso ${LISTINO_CODE}, ricevuto ${EXTRACTED:-<vuoto>}"
+fi
+
+# --- 5. PATCH listino ---
+echo ""
+echo "-- 5. PATCH listino --"
+do_curl PATCH "/api/v1/vendite/listini/${LISTINO_ID}/" "{\"descrizione\":\"${LISTINO_DESC_UPDATED}\"}"
+check "PATCH listino descrizione" "200" ".data.descrizione"
+if [[ "$EXTRACTED" == "$LISTINO_DESC_UPDATED" ]]; then
+    log_ok "Descrizione listino aggiornata coerente"
+else
+    log_fail "Descrizione listino incoerente: atteso '${LISTINO_DESC_UPDATED}', ricevuto '${EXTRACTED:-<vuoto>}'"
+fi
+
+# --- 6. PATCH codice listino non ammesso ---
+echo ""
+echo "-- 6. PATCH codice listino non ammesso --"
+do_curl PATCH "/api/v1/vendite/listini/${LISTINO_ID}/" "{\"codice\":\"${LISTINO_CODE}-NEW\"}"
+check "PATCH codice listino non ammesso" "400" ".error.code"
+log_info "Codice errore: ${EXTRACTED:-n/d}"
+
+# --- 7. Crea versione BOZZA ---
+echo ""
+echo "-- 7. Crea versione BOZZA --"
+do_curl POST "/api/v1/vendite/listini/${LISTINO_ID}/versioni/" "{\"codice_versione\":\"${VERSION_CODE}\",\"valido_dal\":\"${TODAY}\",\"priorita\":100}"
+check "Create versione BOZZA" "200" ".data.id"
+VERSIONE_ID="$EXTRACTED"
+log_info "Versione creata: id=${VERSIONE_ID} codice=${VERSION_CODE}"
+
+# --- 8. Lista versioni ---
+echo ""
+echo "-- 8. Lista versioni --"
+do_curl GET "/api/v1/vendite/listini/${LISTINO_ID}/versioni/"
+check "Lista versioni listino" "200" ".data.count"
+log_info "Versioni trovate: ${EXTRACTED:-?}"
+
+# --- 9. PATCH versione ---
+echo ""
+echo "-- 9. PATCH versione --"
+do_curl PATCH "/api/v1/vendite/listini/${LISTINO_ID}/versioni/${VERSIONE_ID}/" "{\"priorita\":90}"
+check "PATCH versione priorita" "200" ".data.priorita"
+log_info "Priorita versione aggiornata: ${EXTRACTED:-n/d}"
+
+# --- 10. Crea riga prezzo fallback ---
+echo ""
+echo "-- 10. Crea riga prezzo fallback --"
+do_curl POST "/api/v1/vendite/listini/${LISTINO_ID}/versioni/${VERSIONE_ID}/righe/" "{\"articolo_id\":\"${ARTICOLO_ID}\",\"uom_id\":${UOM_ID},\"prezzo\":\"12.5000000000\"}"
+check "Create riga prezzo fallback" "200" ".data.id"
+RIGA_ID="$EXTRACTED"
+log_info "Riga creata: id=${RIGA_ID}"
+
+# --- 11. Lista righe prezzo ---
+echo ""
+echo "-- 11. Lista righe prezzo --"
+do_curl GET "/api/v1/vendite/listini/${LISTINO_ID}/versioni/${VERSIONE_ID}/righe/"
+check "Lista righe prezzo" "200" ".data.count"
+log_info "Righe trovate: ${EXTRACTED:-?}"
+
+# --- 12. PATCH riga prezzo ---
+echo ""
+echo "-- 12. PATCH riga prezzo --"
+do_curl PATCH "/api/v1/vendite/listini/${LISTINO_ID}/versioni/${VERSIONE_ID}/righe/${RIGA_ID}/" "{\"prezzo\":\"13.7500000000\"}"
+check "PATCH riga prezzo" "200" ".data.prezzo"
+log_info "Prezzo riga aggiornato: ${EXTRACTED:-n/d}"
+
+# --- 13. Crea associazione fallback ---
+echo ""
+echo "-- 13. Crea associazione fallback --"
+do_curl POST "/api/v1/vendite/listini/${LISTINO_ID}/associazioni/" "{\"priorita\":100,\"valido_dal\":\"${TODAY}\"}"
+check "Create associazione fallback" "200" ".data.id"
+ASSOC_ID="$EXTRACTED"
+log_info "Associazione creata: id=${ASSOC_ID}"
+
+# --- 14. Lista associazioni ---
+echo ""
+echo "-- 14. Lista associazioni --"
+do_curl GET "/api/v1/vendite/listini/${LISTINO_ID}/associazioni/"
+check "Lista associazioni listino" "200" ".data.count"
+log_info "Associazioni trovate: ${EXTRACTED:-?}"
+
+# --- 15. PATCH associazione ---
+echo ""
+echo "-- 15. PATCH associazione --"
+do_curl PATCH "/api/v1/vendite/listini/${LISTINO_ID}/associazioni/${ASSOC_ID}/" "{\"priorita\":90}"
+check "PATCH associazione priorita" "200" ".data.priorita"
+log_info "Priorita associazione aggiornata: ${EXTRACTED:-n/d}"
+
+# --- 16. Attiva versione ---
+echo ""
+echo "-- 16. Attiva versione --"
+do_curl POST "/api/v1/vendite/listini/${LISTINO_ID}/versioni/${VERSIONE_ID}/stato/" "{\"stato\":\"ATTIVA\"}"
+check "Attiva versione listino" "200" ".data.stato"
+if [[ "$EXTRACTED" == "ATTIVA" ]]; then
+    log_ok "Versione attivata coerentemente"
+else
+    log_fail "Stato versione incoerente: atteso ATTIVA, ricevuto '${EXTRACTED:-<vuoto>}'"
+fi
+
+# --- 17. Test resolver prezzo ---
+echo ""
+echo "-- 17. Test resolver prezzo --"
+do_curl POST "/api/v1/vendite/listini/test-prezzo/" "{\"articolo_id\":\"${ARTICOLO_ID}\",\"uom_id\":${UOM_ID},\"data_riferimento\":\"${TODAY}\"}"
+check "Test resolver prezzo" "200" ".data.prezzo"
+log_info "Prezzo risolto: ${EXTRACTED:-n/d}"
+MATCH_LEVEL=$(json_get "$LAST_BODY" ".data.match_level")
+log_info "Match level: ${MATCH_LEVEL:-n/d}"
+
+# --- 18. DELETE riga prezzo ---
+echo ""
+echo "-- 18. DELETE riga prezzo --"
+do_curl DELETE "/api/v1/vendite/listini/${LISTINO_ID}/versioni/${VERSIONE_ID}/righe/${RIGA_ID}/"
+check "DELETE riga prezzo" "200" ".data.deleted"
+log_info "Riga rimossa: ${EXTRACTED:-n/d}"
+
+# --- 19. DELETE associazione ---
+echo ""
+echo "-- 19. DELETE associazione --"
+do_curl DELETE "/api/v1/vendite/listini/${LISTINO_ID}/associazioni/${ASSOC_ID}/"
+check "DELETE associazione" "200" ".data.deleted"
+log_info "Associazione rimossa: ${EXTRACTED:-n/d}"
+
+echo ""
+echo "========================================="
+echo -e " Risultato: ${GREEN}$PASS OK${NC} / ${RED}$FAIL FAIL${NC}"
+echo "========================================="
+echo "Nota: lo smoke rimuove riga e associazione create, ma lascia listino e versione di test."
+
+[[ "$FAIL" -eq 0 ]] && exit 0 || exit 1

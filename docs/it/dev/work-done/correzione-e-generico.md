@@ -1,7 +1,9 @@
 # Refactor E_GENERICO — Deprecazione e sostituzione con codici errore specifici
 
-> **Stato**: In corso
+> **Stato**: COMPLETATO
 > **Inizio**: 31 marzo 2026
+> **FINE**: 02 Aprile 2026
+
 > **Approccio**: per schema, senza retrocompatibilita' (no produzione attiva)
 
 ---
@@ -24,13 +26,13 @@ fallback generico in molte funzioni PL/pgSQL. Questo rende impossibile:
 Per ogni errore, scegliere il codice piu' appropriato tra quelli esistenti in
 `config.messaggi_errore`, oppure crearne uno nuovo se nessuno calza. Riferimenti:
 
-| Pattern errore | Codice da usare |
-|----------------|-----------------|
-| Lookup per id/codice fallito su tabella config | `E_CODICE` (id 112) |
-| Parametro obbligatorio mancante o non valido | `E_PARAMETRO_INVALIDO` (id 204) o `E_ADMIN_VALIDAZIONE` (id 310) |
-| Argomenti trigger mancanti | `ERRORE_PARAMETRI` (id 15) |
-| Delete non consentita da policy | `E_DELETE_NOT_ALLOWED` (id 91) |
-| Regola di business specifica | Creare codice dedicato (es. `E_PDP_OBBLIGATORIO`) |
+| Pattern errore                                 | Codice da usare                                                  |
+| ---------------------------------------------- | ---------------------------------------------------------------- |
+| Lookup per id/codice fallito su tabella config | `E_CODICE` (id 112)                                              |
+| Parametro obbligatorio mancante o non valido   | `E_PARAMETRO_INVALIDO` (id 204) o `E_ADMIN_VALIDAZIONE` (id 310) |
+| Argomenti trigger mancanti                     | `ERRORE_PARAMETRI` (id 15)                                       |
+| Delete non consentita da policy                | `E_DELETE_NOT_ALLOWED` (id 91)                                   |
+| Regola di business specifica                   | Creare codice dedicato (es. `E_PDP_OBBLIGATORIO`)                |
 
 ## Metodo di refactor
 
@@ -210,15 +212,15 @@ Changeset: `20260331-30-fix-trgfn-attivita-fatturabili-guard-commessa-e-generico
 
 ## Messaggi errore creati durante il refactor
 
-| Codice | ID | Schema | Creato per |
-|--------|----|--------|------------|
-| `E_ADMIN_PIVA_DUPLICATA` | 313 | anagrafiche | fn_crea_soggetto_pg (PIVA duplicata) |
-| `E_PDP_OBBLIGATORIO` | 330 | anagrafiche | trgfn_clienti_sync_utility_from_ba |
-| `E_PDP_UTILITY_MISMATCH` | 331 | anagrafiche | trgfn_clienti_sync_utility_from_ba |
-| `E_EMITTENTE_DISATTIVAZIONE_BLOCCATA` | 131 | anagrafiche | trgfn_emittenti_fiscali_guard_attivo |
-| `E_EMITTENTE_DEFAULT_SINGLETON` | 132 | anagrafiche | trgfn_emittenti_fiscali_default_guard |
-| `E_RESELLER_DISATTIVAZIONE_BLOCCATA` | 133 | anagrafiche | trgfn_resellers_guard_attivo |
-| `E_UTILITY_RUOLO_NON_AMMESSO` | 134 | script | fn_guard_utility_tipo_ruolo |
+| Codice                                | ID  | Schema      | Creato per                            |
+| ------------------------------------- | --- | ----------- | ------------------------------------- |
+| `E_ADMIN_PIVA_DUPLICATA`              | 313 | anagrafiche | fn_crea_soggetto_pg (PIVA duplicata)  |
+| `E_PDP_OBBLIGATORIO`                  | 330 | anagrafiche | trgfn_clienti_sync_utility_from_ba    |
+| `E_PDP_UTILITY_MISMATCH`              | 331 | anagrafiche | trgfn_clienti_sync_utility_from_ba    |
+| `E_EMITTENTE_DISATTIVAZIONE_BLOCCATA` | 131 | anagrafiche | trgfn_emittenti_fiscali_guard_attivo  |
+| `E_EMITTENTE_DEFAULT_SINGLETON`       | 132 | anagrafiche | trgfn_emittenti_fiscali_default_guard |
+| `E_RESELLER_DISATTIVAZIONE_BLOCCATA`  | 133 | anagrafiche | trgfn_resellers_guard_attivo          |
+| `E_UTILITY_RUOLO_NON_AMMESSO`         | 134 | script      | fn_guard_utility_tipo_ruolo           |
 
 Codici esistenti riutilizzati: `E_CODICE` (112), `ERRORE_PARAMETRI` (15), `E_DELETE_NOT_ALLOWED` (91), `E_PARAMETRO_INVALIDO` (204), `E_ADMIN_VALIDAZIONE` (310).
 

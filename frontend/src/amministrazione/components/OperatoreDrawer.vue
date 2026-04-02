@@ -9,7 +9,6 @@ import { useOperatoriStore } from '../stores/operatori'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useAuthUser } from '../../core/composables/useAuthUser'
 import { useLookup } from '../../core/composables/useLookup'
-import { lookupCodici } from '../../core/apiCore'
 import { listUnitaOrganizzative, invitaOperatore, reinviaInvito } from '../api/amministrazione'
 import { RUOLO_SISTEMA, TIPO_RUOLO_CODICE, buildRuoloOptions } from '../constants'
 import { DRAWER_WIDTH } from '../../core/constants'
@@ -24,6 +23,7 @@ import AuthUserForm from '../../core/components/AuthUserForm.vue'
 import OperatorePermessiTab from './OperatorePermessiTab.vue'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import DrawerFooter from '../../core/components/DrawerFooter.vue'
+import LookupSelect from '../../core/components/LookupSelect.vue'
 import Drawer from 'primevue/drawer'
 import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
@@ -47,7 +47,6 @@ const resolverVisible = ref(false)
 const soggettoSelezionato = ref(null)
 
 // Lookup
-const qualifiche = useLookup(() => lookupCodici('config.qualifiche'), { immediate: true })
 const unitaOrg = useLookup(listUnitaOrganizzative, { immediate: true })
 
 const props = defineProps({
@@ -384,10 +383,8 @@ function onClose() {
           <!-- Qualifica: solo creazione -->
           <div v-if="!isEdit" class="form-field">
             <label>{{ t('amm.field_qualifica') }} *</label>
-            <Select v-model="form.qualifica_id"
-              :options="qualifiche.items.value"
-              :loading="qualifiche.loading.value"
-              option-label="descrizione" option-value="id"
+            <LookupSelect v-model="form.qualifica_id"
+              rel="config.qualifiche"
               class="w-full" :placeholder="t('amm.select_qualifica')" />
           </div>
 

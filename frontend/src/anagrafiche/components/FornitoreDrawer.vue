@@ -7,12 +7,10 @@ import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useFornitoriStore } from '../stores/fornitori'
 import { useApiHandler } from '../../core/composables/useApiHandler'
-import { useLookup } from '../../core/composables/useLookup'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useContattoForm } from '../../core/composables/useContattoForm'
 import { useIndirizzoSoggettoForm } from '../../core/composables/useIndirizzoSoggettoForm'
 import { useCodiceField } from '../../core/composables/useCodiceField'
-import { lookupCodici } from '../../core/apiCore'
 import { DRAWER_WIDTH, TIPO_RUOLO } from '../../core/constants'
 import { statoFornitoreSeverity } from '../../core/utils/severity'
 import SoggettoResolver from '../../core/components/SoggettoResolver.vue'
@@ -22,6 +20,7 @@ import ContattoForm from '../../core/components/ContattoForm.vue'
 import IndirizzoSoggettoForm from '../../core/components/IndirizzoSoggettoForm.vue'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import DrawerFooter from '../../core/components/DrawerFooter.vue'
+import LookupSelect from '../../core/components/LookupSelect.vue'
 import Drawer from 'primevue/drawer'
 import Select from 'primevue/select'
 import InputText from 'primevue/inputtext'
@@ -40,12 +39,6 @@ const contatto = useContattoForm()
 const contattoErrors = ref([])
 const indirizzo = useIndirizzoSoggettoForm()
 const codiceField = useCodiceField('anagrafiche', 'fornitori')
-
-// Lookup
-const modalitaPagamento = useLookup(() => lookupCodici('config.modalita_pagamento'), { immediate: true })
-const terminiPagamento = useLookup(() => lookupCodici('config.termini_pagamento'), { immediate: true })
-const valute = useLookup(() => lookupCodici('config.valute'), { immediate: true })
-const statiFornitore = useLookup(() => lookupCodici('config.stati_fornitore'), { immediate: true })
 
 const props = defineProps({
   visible: Boolean,
@@ -269,8 +262,7 @@ function onClose() {
           </div>
           <div class="form-field">
             <label>{{ t('fornitori.field_stato') }}</label>
-            <Select v-model="form.stato_fornitore_id" :options="statiFornitore.items.value" :loading="statiFornitore.loading.value"
-              option-label="descrizione" option-value="id" class="w-full" />
+            <LookupSelect v-model="form.stato_fornitore_id" rel="config.stati_fornitore" class="w-full" />
           </div>
         </template>
 
@@ -282,22 +274,19 @@ function onClose() {
         <div class="form-grid-2col">
           <div class="form-field">
             <label>{{ t('fornitori.field_modalita_pagamento') }}</label>
-            <Select v-model="form.modalita_pagamento_id" :options="modalitaPagamento.items.value" :loading="modalitaPagamento.loading.value"
-              option-label="descrizione" option-value="id" class="w-full"
+            <LookupSelect v-model="form.modalita_pagamento_id" rel="config.modalita_pagamento" class="w-full"
               :placeholder="t('fornitori.select_modalita')" show-clear />
           </div>
           <div class="form-field">
             <label>{{ t('fornitori.field_valuta') }}</label>
-            <Select v-model="form.valuta_id" :options="valute.items.value" :loading="valute.loading.value"
-              option-label="descrizione" option-value="id" class="w-full"
+            <LookupSelect v-model="form.valuta_id" rel="config.valute" class="w-full"
               :placeholder="t('fornitori.select_valuta')" show-clear />
           </div>
         </div>
         <div class="form-grid-3col">
           <div class="form-field">
             <label>{{ t('fornitori.field_termine_pagamento') }}</label>
-            <Select v-model="form.termine_pagamento_id" :options="terminiPagamento.items.value" :loading="terminiPagamento.loading.value"
-              option-label="descrizione" option-value="id" class="w-full"
+            <LookupSelect v-model="form.termine_pagamento_id" rel="config.termini_pagamento" class="w-full"
               :placeholder="t('fornitori.select_termine')" show-clear />
           </div>
           <div class="form-field">

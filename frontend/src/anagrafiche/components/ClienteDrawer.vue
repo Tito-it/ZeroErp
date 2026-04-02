@@ -11,7 +11,6 @@ import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useContattoForm } from '../../core/composables/useContattoForm'
 import { useIndirizzoSoggettoForm } from '../../core/composables/useIndirizzoSoggettoForm'
 import { listUtilitiesManual, listSoggettoIndirizzi } from '../api/anagrafiche'
-import { lookupCodici } from '../../core/apiCore'
 import { DRAWER_WIDTH, TIPO_RUOLO } from '../../core/constants'
 import { displayDate } from '../../core/utils/date'
 import { statoClienteSeverity } from '../../core/utils/severity'
@@ -22,6 +21,7 @@ import ContattoForm from '../../core/components/ContattoForm.vue'
 import IndirizzoSoggettoForm from '../../core/components/IndirizzoSoggettoForm.vue'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import DrawerFooter from '../../core/components/DrawerFooter.vue'
+import LookupSelect from '../../core/components/LookupSelect.vue'
 import Drawer from 'primevue/drawer'
 import Select from 'primevue/select'
 import InputText from 'primevue/inputtext'
@@ -40,10 +40,6 @@ const indirizzo = useIndirizzoSoggettoForm()
 
 // Lookup
 const utilities = useLookup(() => listUtilitiesManual(), { immediate: true })
-const modalitaPagamento = useLookup(() => lookupCodici('config.modalita_pagamento'), { immediate: true })
-const terminiPagamento = useLookup(() => lookupCodici('config.termini_pagamento'), { immediate: true })
-const ivaList = useLookup(() => lookupCodici('config.iva'), { immediate: true })
-const statiCliente = useLookup(() => lookupCodici('config.stati_cliente'), { immediate: true })
 
 // Opzioni statiche (label tramite i18n)
 const tipoGgOptions = computed(() => [
@@ -357,21 +353,18 @@ function onClose() {
         <h4 class="mt-3">{{ t('clienti.section_pagamento') }}</h4>
         <div class="form-field">
           <label>{{ t('clienti.field_iva') }}</label>
-          <Select v-model="form.iva_id" :options="ivaList.items.value" :loading="ivaList.loading.value"
-            option-label="descrizione" option-value="id" class="w-full"
+          <LookupSelect v-model="form.iva_id" rel="config.iva" class="w-full"
             :placeholder="t('clienti.select_iva')" show-clear />
         </div>
         <div class="form-grid-2col">
           <div class="form-field">
             <label>{{ t('clienti.field_modalita_pagamento') }}</label>
-            <Select v-model="form.modalita_pagamento_id" :options="modalitaPagamento.items.value" :loading="modalitaPagamento.loading.value"
-              option-label="descrizione" option-value="id" class="w-full"
+            <LookupSelect v-model="form.modalita_pagamento_id" rel="config.modalita_pagamento" class="w-full"
               :placeholder="t('clienti.select_modalita')" show-clear />
           </div>
           <div class="form-field">
             <label>{{ t('clienti.field_termine_pagamento') }}</label>
-            <Select v-model="form.termine_pagamento_id" :options="terminiPagamento.items.value" :loading="terminiPagamento.loading.value"
-              option-label="descrizione" option-value="id" class="w-full"
+            <LookupSelect v-model="form.termine_pagamento_id" rel="config.termini_pagamento" class="w-full"
               :placeholder="t('clienti.select_termine')" show-clear />
           </div>
         </div>

@@ -4,7 +4,7 @@
 >
 > Riferimento metodologico: [sviluppo-concentrico.md](sviluppo-concentrico.md)
 
-*Ultimo aggiornamento: 29 marzo 2026*
+*Ultimo aggiornamento: 3 aprile 2026*
 
 ---
 
@@ -213,7 +213,7 @@ Piano v1 (storico): [work-done/piano-gestione-pratiche.md](dev/work-done/piano-g
 
 | Componente    | Tipo       | DB        | Backend   | Descrizione                                                                            |
 | ------------- | ---------- | --------- | --------- | -------------------------------------------------------------------------------------- |
-| `vendite`     | App Django | Operativo | Operativo | Ciclo attivo: preventivi, ordini, DDT, fatture, pipeline fatturazione, lotti, commesse |
+| `vendite`     | App Django | Operativo | Operativo | Ciclo attivo: preventivi, ordini, DDT, fatture, pipeline fatturazione, lotti, commesse, **listini** |
 | `acquisti`    | App Django | Operativo | Stub      | Ciclo passivo: richieste offerta, ordini, DDT, fatture                                 |
 | `magazzino`   | App Django | Operativo | Stub      | Movimenti, giacenze, lotti, seriali                                                    |
 | `pagamenti`   | App Django | Operativo | Stub      | Scadenze, riconciliazioni                                                              |
@@ -359,20 +359,58 @@ Gli anelli esterni possono dipendere direttamente da anelli non adiacenti — ve
 - ~~Topbar: logout, badge iniziali utente, icone coerenti~~ — **FATTO** (29 marzo 2026)
 - ~~Sidebar mobile: drawer collassato (solo icone)~~ — **FATTO** (29 marzo 2026)
 
+### Completato (aprile 2026)
+
+- ~~Integrazione AI v1~~ — **FATTO** (31 marzo 2026)
+  - Anello 4 — strato di interazione intelligente sopra le API esistenti
+  - 9 tool (6 lettura + 3 scrittura con conferma), widget flottante non modale
+  - Contesto documentale statico, multi-tool chaining, timeout 30s
+  - Shortcut Ctrl+., tema scuro, responsive, 61 test unitari
+- ~~Gestione Autenticazioni fasi 1-3~~ — **FATTO** (1 aprile 2026)
+  - Email building block: account multipli, template Jinja, log, risoluzione mittente per contesto
+  - Token monouso: creazione, validazione, consumo, invalidazione, crittografia Fernet
+  - Reset password self-service, invito operatore, cambio password obbligatorio al primo accesso
+  - Frontend: 5 pagine auth (login, reset, invito, cambio pw), 890 test backend
+  - Fase 4 (2FA TOTP) rimandata — pianificata in WIP
+- ~~Refactor E_GENERICO~~ — **FATTO** (2 aprile 2026)
+  - Deprecato codice errore generico `E_GENERICO` su tutto il DB
+  - Sostituito con codici specifici per schema: `E_PARAMETRO_INVALIDO`, `E_PREZZO_LISTINO_NON_TROVATO`, `E_PREZZO_LISTINO_AMBIGUO`, ecc.
+  - Tutte le funzioni PL/pgSQL ora usano codici identificabili per frontend/monitoring
+- ~~Gestione Clienti v1~~ — **FATTO** (marzo 2026)
+  - CRUD completo: creazione manuale, drawer con contatti/indirizzi/conti a 2 livelli
+  - Catena automatica: istanza fittizia + billing account + cliente
+  - 5 endpoint API, 29 test service, drawer frontend con sotto-drawer
+  - v2 (subentro, disdetta, BA parent/child) pianificata in WIP
+- ~~Gestione Articoli e Listini~~ — **FATTO** (3 aprile 2026)
+  - Catalogo: backend 3 repository (articoli, UoM, BoM) + 19 funzioni service + 19 endpoint API
+  - UoM CRUD: backend completo + frontend (lista, drawer, route)
+  - Listini: backend 19 metodi repository + 18 funzioni service + 18 endpoint API
+  - Frontend catalogo: ArticoliSearchTable, ArticoloDrawer (3 tab), UnitaMisuraView, ArticoloLookup BB
+  - Frontend listini: ListiniSearchTable, ListinoDrawer (2 tab), VersioneDrawer (righe prezzo), TestResolverDialog
+  - Building block: `LookupSelect` generico (29 Select sostituiti in 15 file), `ArticoloLookup` cross-dominio
+  - Severity centralizzate: `statoVersioneListinoSeverity`, `dominioListinoSeverity`
+  - 77 test backend, build frontend OK
+
 ### In corso
 
 - **Gestione Soggetti**: backend + frontend completati — in fase di test UI
 - **Gestione Geografica**: operativo — UI da migliorare
-- **Gestione Clienti/Fornitori**: drawer end-to-end, sotto-drawer contatti/indirizzi/conti
+- **Gestione Clienti/Fornitori**: drawer end-to-end operativo, v2 (subentro/disdetta) pianificata
+- **Gestione Pratiche v2**: frontend operativo — in fase di test UI
+- **Integrazione AI v2**: evoluzione con contesto dinamico e nuovi tool — WIP
+- **Autenticazione 2FA**: fase 4 TOTP — WIP
+- **Permessi v2**: livello oggetto e granularita' fine — pianificato
 
 ### Breve termine
 
-- Test UI reali su Gestione Pratiche, Soggetti, Clienti, Fornitori
-- Seed azioni processo per nuovi domini (anagrafiche, config) + prop `action` sui componenti
+- Test UI reali su Articoli, Listini, UoM, Pratiche, Soggetti, Clienti, Fornitori
+- Seed azioni processo per nuovi domini (catalogo, vendite) + prop `action` sui componenti
 - Upload file allegati pratiche (storage filesystem/object storage)
+- Documentazione API per catalogo e vendite/listini
 
 ### Medio termine
 
+- Frontend listini: fase 6 (frontend) da testare su UI reale
 - Integrazione `vendite` → `pratiche`: eventi di vendita generano pratiche con giornale
 - Integrazione `anagrafiche` → `pratiche`: onboarding cliente/fornitore tracciato
 - Attivazione handler flusso per automazioni specifiche
@@ -397,4 +435,4 @@ Gli anelli esterni possono dipendere direttamente da anelli non adiacenti — ve
 
 ---
 
-*Mappa Concentrica — ZeroERP (29 marzo 2026)*
+*Mappa Concentrica — ZeroERP (3 aprile 2026)*
