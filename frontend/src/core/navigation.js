@@ -50,8 +50,14 @@ export const DOMAIN_MENUS = {
     { key: 'fornitori', icon: 'pi pi-clipboard', to: '/anagrafiche/fornitori' },
     { key: 'indirizzi', icon: 'pi pi-map-marker', to: '/anagrafiche/indirizzi' }
   ],
-  'catalogo': [],
-  'vendite': [],
+  'catalogo': [
+    { key: 'articoli', icon: 'pi pi-box', to: '/catalogo/articoli' },
+    { key: 'unita-misura', icon: 'pi pi-arrows-h', to: '/catalogo/unita-misura' }
+  ],
+  'vendite': [
+    { key: 'preventivi', icon: 'pi pi-file', to: '/vendite/preventivi' },
+    { key: 'listini', icon: 'pi pi-tag', to: '/vendite/listini' }
+  ],
   'acquisti': [],
   'magazzino': [],
   'pagamenti': [],
@@ -60,7 +66,8 @@ export const DOMAIN_MENUS = {
     { key: 'gestione', icon: 'pi pi-folder-open', to: '/pratiche' }
   ],
   'config': [
-    { key: 'tabelle', icon: 'pi pi-table', to: '/config/tabelle' }
+    { key: 'tabelle', icon: 'pi pi-table', to: '/config/tabelle' },
+    { key: 'impostazioni', icon: 'pi pi-sliders-h', to: '/config/impostazioni' }
   ]
 }
 

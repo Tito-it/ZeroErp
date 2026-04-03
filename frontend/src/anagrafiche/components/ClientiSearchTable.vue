@@ -7,7 +7,6 @@ import { useClientiStore } from '../stores/clienti'
 import { useSearchTable } from '../../core/composables/useSearchTable'
 import { useTabFreshness } from '../../core/composables/useTabFreshness'
 import { useLookup } from '../../core/composables/useLookup'
-import { lookupCodici } from '../../core/apiCore'
 import { listUtilitiesManual } from '../api/anagrafiche'
 import { displayDate } from '../../core/utils/date'
 import { statoClienteSeverity } from '../../core/utils/severity'
@@ -19,6 +18,7 @@ import Tag from 'primevue/tag'
 import Button from 'primevue/button'
 import NewButton from '../../core/components/NewButton.vue'
 import SearchHint from '../../core/components/SearchHint.vue'
+import LookupSelect from '../../core/components/LookupSelect.vue'
 
 const emit = defineEmits(['new', 'row-click', 'contatti', 'indirizzi', 'conti-bancari'])
 const { t } = useI18n()
@@ -29,8 +29,6 @@ const { searchText, onPage, onSort, applyFilters, reload, paginatorProps } = use
 
 // Lookup filtri
 const utilities = useLookup(() => listUtilitiesManual(), { immediate: true })
-const statiCliente = useLookup(() => lookupCodici('config.stati_cliente'), { immediate: true })
-
 const utilityFilter = ref(null)
 const statoFilter = ref(null)
 
@@ -85,12 +83,9 @@ onMounted(() => {
           show-clear
           @change="onUtilityChange"
         />
-        <Select
+        <LookupSelect
           v-model="statoFilter"
-          :options="statiCliente.items.value"
-          :loading="statiCliente.loading.value"
-          option-label="descrizione"
-          option-value="id"
+          rel="config.stati_cliente"
           :placeholder="t('clienti.filtro_stato')"
           show-clear
           @change="onStatoChange"

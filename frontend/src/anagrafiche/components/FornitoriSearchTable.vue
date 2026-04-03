@@ -6,18 +6,16 @@ import { useI18n } from 'vue-i18n'
 import { useFornitoriStore } from '../stores/fornitori'
 import { useSearchTable } from '../../core/composables/useSearchTable'
 import { useTabFreshness } from '../../core/composables/useTabFreshness'
-import { useLookup } from '../../core/composables/useLookup'
-import { lookupCodici } from '../../core/apiCore'
 import { displayDate } from '../../core/utils/date'
 import { statoFornitoreSeverity } from '../../core/utils/severity'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import InputText from 'primevue/inputtext'
-import Select from 'primevue/select'
 import Tag from 'primevue/tag'
 import Button from 'primevue/button'
 import NewButton from '../../core/components/NewButton.vue'
 import SearchHint from '../../core/components/SearchHint.vue'
+import LookupSelect from '../../core/components/LookupSelect.vue'
 
 const emit = defineEmits(['new', 'row-click', 'contatti', 'indirizzi', 'conti-bancari'])
 const { t } = useI18n()
@@ -25,9 +23,6 @@ const store = useFornitoriStore()
 const { searchText, onPage, onSort, applyFilters, reload, paginatorProps } = useSearchTable(store, {
   defaultSortField: 'ragione_sociale_completa'
 })
-
-// Lookup filtri
-const statiFornitore = useLookup(() => lookupCodici('config.stati_fornitore'), { immediate: true })
 
 const statoFilter = ref(null)
 function onStatoChange() {
@@ -54,12 +49,9 @@ onMounted(() => {
           v-model="searchText"
           :placeholder="t('fornitori.search_placeholder')"
         />
-        <Select
+        <LookupSelect
           v-model="statoFilter"
-          :options="statiFornitore.items.value"
-          :loading="statiFornitore.loading.value"
-          option-label="descrizione"
-          option-value="id"
+          rel="config.stati_fornitore"
           :placeholder="t('fornitori.filtro_stato')"
           show-clear
           @change="onStatoChange"

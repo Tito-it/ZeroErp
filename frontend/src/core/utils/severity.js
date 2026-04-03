@@ -129,3 +129,41 @@ const _AZIONE_DEFAULT = { severity: 'secondary', icon: 'pi pi-circle' }
 export function azioneGiornaleStyle(azione) {
   return AZIONE_GIORNALE_MAP[(azione || '').trim()] || _AZIONE_DEFAULT
 }
+
+// --- Mappa stati versione listino ---
+// BOZZA=grigio, ATTIVA=verde, CHIUSA=arancio
+export const STATO_VERSIONE_LISTINO_MAP = {
+  BOZZA: 'secondary',
+  ATTIVA: 'success',
+  CHIUSA: 'warn',
+}
+export function statoVersioneListinoSeverity(codice) {
+  return resolveSeverity(STATO_VERSIONE_LISTINO_MAP, codice)
+}
+
+// --- Mappa stati preventivo vendita ---
+// DRAFT=grigio, EMESSO=azzurro, ACCETTATO=verde, RIFIUTATO=rosso,
+// SCADUTO=arancio, ANNULLATO=rosso
+export const STATO_PREVENTIVO_MAP = {
+  DRAFT: 'secondary',
+  EMESSO: 'info',
+  ACCETTATO: 'success',
+  RIFIUTATO: 'danger',
+  SCADUTO: 'warn',
+  ANNULLATO: 'danger',
+}
+
+// Scopo: Shortcut per stato preventivo vendita.
+export function statoPreventiveSeverity(codice) {
+  return resolveSeverity(STATO_PREVENTIVO_MAP, codice)
+}
+
+// --- Mappa domini listino ---
+// UTILITY=azzurro, COMMERCIO=arancio
+export const DOMINIO_LISTINO_MAP = {
+  UTILITY: 'info',
+  COMMERCIO: 'warn',
+}
+export function dominioListinoSeverity(codice) {
+  return resolveSeverity(DOMINIO_LISTINO_MAP, codice)
+}

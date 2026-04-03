@@ -78,6 +78,9 @@
 | `validate_and_extract_token` | [auth_helpers.py](../../../../backend/apps/core/services/auth_helpers.py) | Valida token monouso senza consumo, estrae auth_user_id e meta |
 | `apply_new_password` | [auth_helpers.py](../../../../backend/apps/core/services/auth_helpers.py) | Set password + reset flag + blacklist JWT in transazione atomica |
 | `ComplexityValidator` | [password_validators.py](../../../../backend/apps/core/password_validators.py) | Validator password: maiuscola + minuscola + numero + carattere speciale |
+| `ParameterService.get_parameter` | [parameter_service.py](../../../../backend/apps/core/services/parameter_service.py) | Risolve parametro singolo con override utente (user → group → tenant → default). Lancia `E_PARAMETER_NOT_FOUND` se assente |
+| `ParameterService.get_parameter_int` | [parameter_service.py](../../../../backend/apps/core/services/parameter_service.py) | Risolve parametro e converte a intero. Lancia `E_PARAMETER_VALIDATION` se non numerico |
+| `ParameterService.get_defaults` | [parameter_service.py](../../../../backend/apps/core/services/parameter_service.py) | Risolve N parametri in un colpo. Restituisce `{code: valore}`, codici assenti esclusi silenziosamente |
 
 ---
 
@@ -94,6 +97,8 @@
 | `SessionAuditRepository` | [session_audit_repository.py](../../../../backend/apps/core/db/session_audit_repository.py) | Insert/list eventi sessione |
 | `TokenRepository` | [token_repository.py](../../../../backend/apps/core/db/token_repository.py) | CRUD token monouso (create, find_valid, consume, invalidate) |
 | `EmailRepository` | [email_repository.py](../../../../backend/apps/core/db/email_repository.py) | Risoluzione template/account, log email, gestione bozze e allegati |
+| `ParameterRepository.get_parameter` | [parameter_repository.py](../../../../backend/apps/core/db/parameter_repository.py) | Risolve parametro singolo via `script.fn_get_parameter_full` con override utente/gruppo |
+| `ParameterRepository.get_parameters` | [parameter_repository.py](../../../../backend/apps/core/db/parameter_repository.py) | Risolve N parametri (max 20) in una sessione DB. Restituisce `{code: valore}` |
 
 ---
 
@@ -103,6 +108,21 @@
 |---|---|---|
 | `ApiExceptionMiddleware` | [api_exception_middleware.py](../../../../backend/apps/core/middleware/api_exception_middleware.py) | Converte eccezioni in envelope errore JSON per /api/* |
 | `RequestContextMiddleware` | [request_context_middleware.py](../../../../backend/apps/core/middleware/request_context_middleware.py) | Assegna request_id e idempotency_key, aggiunge header risposta |
+
+---
+
+## Preventivi vendita (`apps/vendite/`)
+
+| Building Block | File | Descrizione |
+|---|---|---|
+| `PreventiviRepository` | [preventivi_repository.py](../../../../backend/apps/vendite/db/preventivi_repository.py) | Accesso DB preventivi: CRUD testata, righe, indirizzi, scope emittente, stato fatturazione, pratiche collegate |
+| `PreventiviRepository.resolve_contesto_pratica` | [preventivi_repository.py](../../../../backend/apps/vendite/db/preventivi_repository.py) | Risolve emittente_fiscale (default), soggetto_id, soggetto_ruolo_id dal BA del preventivo |
+| `preventivi_service.*` | [preventivi_service.py](../../../../backend/apps/vendite/services/preventivi_service.py) | Facade preventivi: list, get, crea, aggiorna, cambia_stato, crea_revisione, righe, indirizzi, push_commessa, genera_pratica (via BB `pratiche_service.crea_pratica`) |
+| `PreventivoListRow` | [types.py](../../../../backend/apps/vendite/types.py) | TypedDict riga lista preventivi con JOIN stato/cliente |
+| `PreventivoDetailRow` | [types.py](../../../../backend/apps/vendite/types.py) | TypedDict dettaglio preventivo con tutte le decodifiche |
+| `PreventivoRigaRow` | [types.py](../../../../backend/apps/vendite/types.py) | TypedDict riga preventivo con articolo/UoM/IVA |
+| `PreventivoStatoFatturazioneRow` | [types.py](../../../../backend/apps/vendite/types.py) | TypedDict stato fatturazione downstream (commessa/AF/fatturato) |
+| `PreventivoPraticaRow` | [types.py](../../../../backend/apps/vendite/types.py) | TypedDict pratica collegata via pratiche_sorgenti |
 
 ---
 

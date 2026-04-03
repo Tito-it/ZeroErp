@@ -1,0 +1,53 @@
+<script setup>
+// Scopo: Vista principale gestione impostazioni parametri.
+import { ref } from 'vue'
+import { useI18n } from 'vue-i18n'
+import { useImpostazioniStore } from '../stores/impostazioni'
+import { useApiHandler } from '../../core/composables/useApiHandler'
+import { useReadonlyMode } from '../../core/composables/useReadonlyMode'
+import ImpostazioniSearchTable from '../components/ImpostazioniSearchTable.vue'
+import ImpostazioniOverrideDrawer from '../components/ImpostazioniOverrideDrawer.vue'
+
+const { t } = useI18n()
+const store = useImpostazioniStore()
+const { execute } = useApiHandler()
+useReadonlyMode('config')
+
+const drawerVisible = ref(false)
+const selectedParameter = ref(null)
+
+function onEditOverride(parameter) {
+  selectedParameter.value = parameter
+  drawerVisible.value = true
+}
+
+async function onRemoveOverride(parameter) {
+  if (!parameter.user_override_id) return
+  const result = await execute(
+    () => store.removeOverride(parameter.user_override_id),
+    { successMessage: t('impostazioni.override_removed') }
+  )
+  if (result) await store.fetchList()
+}
+
+function onDrawerSaved() {
+  drawerVisible.value = false
+}
+</script>
+
+<template>
+  <div class="app-page">
+    <ImpostazioniSearchTable
+      @edit-override="onEditOverride"
+      @remove-override="onRemoveOverride"
+    />
+
+    <ImpostazioniOverrideDrawer
+      :visible="drawerVisible"
+      @update:visible="v => drawerVisible = v"
+      :parameter="selectedParameter"
+      @saved="onDrawerSaved"
+      @cancelled="drawerVisible = false"
+    />
+  </div>
+</template>

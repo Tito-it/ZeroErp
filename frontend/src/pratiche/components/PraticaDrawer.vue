@@ -7,10 +7,8 @@ import { ref, watch, computed, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { usePraticheStore } from '../stores/pratiche'
 import { useApiHandler } from '../../core/composables/useApiHandler'
-import { useLookup } from '../../core/composables/useLookup'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
-import { lookupCodici } from '../../core/apiCore'
 import { displayDate, toDateString } from '../../core/utils/date'
 import { statoPraticaSeverity, prioritaPraticaSeverity } from '../../core/utils/severity'
 import { DRAWER_WIDTH, STATO_PRATICA } from '../../core/constants'
@@ -22,6 +20,7 @@ import PraticaFlussiTab from './PraticaFlussiTab.vue'
 import PraticaNoteTab from './PraticaNoteTab.vue'
 import PraticaAllegatiTab from './PraticaAllegatiTab.vue'
 import PraticaGiornaleTab from './PraticaGiornaleTab.vue'
+import LookupSelect from '../../core/components/LookupSelect.vue'
 import Drawer from 'primevue/drawer'
 import InputText from 'primevue/inputtext'
 import Textarea from 'primevue/textarea'
@@ -37,10 +36,6 @@ const store = usePraticheStore()
 const { execute, loading } = useApiHandler()
 const isReadonly = useInjectReadonly()
 const { confirmAction } = useConfirmAction()
-
-// Lookup per popolare i Select dei form (non per display — quello arriva dal backend)
-const prioritaPratica = useLookup(() => lookupCodici('config.priorita_pratiche'), { immediate: true })
-const tipiPrestazione = useLookup(() => lookupCodici('pratiche.tipi_prestazione'), { immediate: true })
 
 const props = defineProps({
   visible: Boolean,
@@ -252,21 +247,17 @@ function onClose() {
           <h4 class="mt-3">{{ t('pratiche.section_dati') }}</h4>
           <div class="form-field">
             <label>{{ t('pratiche.col_tipo_prestazione') }} *</label>
-            <Select
+            <LookupSelect
               v-model="form.tipo_prestazione_id"
-              :options="tipiPrestazione.items.value"
-              :loading="tipiPrestazione.loading.value"
-              option-label="descrizione" option-value="id"
+              rel="pratiche.tipi_prestazione"
               class="w-full" :placeholder="t('pratiche.select_tipo_prestazione')"
             />
           </div>
           <div class="form-field">
             <label>{{ t('pratiche.col_priorita') }} *</label>
-            <Select
+            <LookupSelect
               v-model="form.priorita_id"
-              :options="prioritaPratica.items.value"
-              :loading="prioritaPratica.loading.value"
-              option-label="descrizione" option-value="id"
+              rel="config.priorita_pratiche"
               class="w-full" :placeholder="t('pratiche.select_priorita')"
             />
           </div>
@@ -372,11 +363,9 @@ function onClose() {
               </div>
               <div class="form-field">
                 <label>{{ t('pratiche.col_priorita') }}</label>
-                <Select
+                <LookupSelect
                   v-model="form.priorita_id"
-                  :options="prioritaPratica.items.value"
-                  :loading="prioritaPratica.loading.value"
-                  option-label="descrizione" option-value="id"
+                  rel="config.priorita_pratiche"
                   class="w-full" :placeholder="t('pratiche.select_priorita')" show-clear
                 />
               </div>

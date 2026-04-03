@@ -1,0 +1,95 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Vista vendite.vw_preventivi_righe_dettaglio — righe con dati articolo, UoM, IVA
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260403-07-create-vw-preventivi-righe-dettaglio-mctit.yaml
+
+  - changeSet:
+      id: 20260403-07-create-vw-preventivi-righe-dettaglio
+      author: mctit
+      runOnChange: true
+      validCheckSum:
+        - ANY
+      comment: >
+        Vista righe preventivo con JOIN su articolo, unita' di misura operativa
+        e aliquota IVA. Espone sia righe attive che inattive (flag attivo).
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ==========================================================
+              -- Vista: vendite.vw_preventivi_righe_dettaglio
+              --
+              -- Scopo: righe preventivo arricchite con dati articolo,
+              --        unita' di misura operativa e aliquota IVA.
+              --
+              -- JOIN principali:
+              --   - catalogo.articoli        → codice e descrizione articolo
+              --   - catalogo.unita_misura    → codice UoM operativa
+              --   - config.iva               → codice e aliquota IVA
+              --
+              -- Note:
+              --   - importo_riga calcolato: qta * prezzo * (1 - sconto/100)
+              --   - importo_iva_riga calcolato: importo_riga * aliquota/100
+              --   - include righe inattive per storico revisioni
+              -- ==========================================================
+              CREATE OR REPLACE VIEW vendite.vw_preventivi_righe_dettaglio AS
+              SELECT
+                pr.id,
+                pr.preventivo_id,
+                pr.ordine,
+                pr.attivo,
+                -- Articolo
+                pr.articolo_id,
+                a.codice                                  AS articolo_codice,
+                a.descrizione                             AS articolo_descrizione,
+                -- Descrizione riga (override articolo)
+                pr.descrizione,
+                -- Quantita'
+                pr.quantita,
+                pr.qta_operativa,
+                pr.factor_to_base,
+                -- UoM operativa
+                pr.uom_operativa_id,
+                um.codice                                 AS uom_codice,
+                -- Prezzo e sconto
+                pr.prezzo_unitario,
+                pr.sconto_percentuale,
+                -- IVA
+                pr.iva_id,
+                iva.codice                                AS iva_codice,
+                iva.aliquota_iva                          AS iva_aliquota,
+                -- Importi calcolati
+                ROUND(
+                  pr.quantita * pr.prezzo_unitario
+                  * (1 - COALESCE(pr.sconto_percentuale, 0) / 100),
+                  2
+                )                                         AS importo_riga,
+                ROUND(
+                  pr.quantita * pr.prezzo_unitario
+                  * (1 - COALESCE(pr.sconto_percentuale, 0) / 100)
+                  * COALESCE(iva.aliquota_iva, 0) / 100,
+                  2
+                )                                         AS importo_iva_riga,
+                -- Meta e audit
+                pr.meta,
+                pr.data_insert,
+                pr.data_update
+              FROM vendite.preventivi_righe pr
+              -- Articolo
+              LEFT JOIN catalogo.articoli a
+                ON a.id = pr.articolo_id
+              -- UoM operativa
+              LEFT JOIN catalogo.unita_misura um
+                ON um.id = pr.uom_operativa_id
+              -- IVA
+              LEFT JOIN config.iva iva
+                ON iva.id = pr.iva_id
+              ORDER BY pr.preventivo_id, pr.ordine, pr.id;
+
+              COMMENT ON VIEW vendite.vw_preventivi_righe_dettaglio
+              IS 'Righe preventivo con dati articolo, UoM, IVA e importi calcolati. Include righe attive e inattive.';

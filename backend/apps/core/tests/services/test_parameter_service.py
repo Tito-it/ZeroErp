@@ -1,0 +1,172 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+# Doc: Python
+# Scopo: Test unitari per ParameterService — risoluzione parametri
+#        con override, conversione a intero, lista per utente,
+#        CRUD override personale.
+# ------------------------------------------------------------
+
+"""
+Indice test eseguiti:
+ 1) ParameterServiceTests.test_get_parameter_returns_value
+ 2) ParameterServiceTests.test_get_parameter_not_found_raises
+ 3) ParameterServiceTests.test_get_parameter_int_returns_int
+ 4) ParameterServiceTests.test_get_parameter_int_invalid_raises
+ 5) ParameterServiceTests.test_get_defaults_returns_dict
+ 6) ParameterServiceTests.test_get_defaults_empty_codes
+ 7) ParameterServiceTests.test_get_parameter_passes_user_context
+ 8) ParameterServiceTests.test_get_parameter_passes_emittente_fiscale
+ 9) ParameterServiceTests.test_list_parameters_for_user
+10) ParameterServiceTests.test_upsert_user_override
+11) ParameterServiceTests.test_upsert_user_override_empty_code_raises
+12) ParameterServiceTests.test_delete_user_override
+13) ParameterServiceTests.test_delete_user_override_not_found_raises
+14) ParameterServiceTests.test_get_emittente_fiscale_id_for_user
+"""
+
+from unittest import TestCase
+from unittest.mock import patch, MagicMock
+
+from apps.core.services.parameter_service import ParameterService
+from apps.core.services.service_errors import ServiceError
+
+REPO_PATH = "apps.core.services.parameter_service.ParameterRepository"
+
+
+class ParameterServiceTests(TestCase):
+
+    def setUp(self):
+        self._patcher = patch(REPO_PATH)
+        self._mock_repo_cls = self._patcher.start()
+        self._mock_repo = MagicMock()
+        self._mock_repo_cls.return_value = self._mock_repo
+        self.svc = ParameterService()
+
+    def tearDown(self):
+        self._patcher.stop()
+
+    # Scopo: Verifica che get_parameter restituisca il valore dal repository.
+    def test_get_parameter_returns_value(self):
+        self._mock_repo.get_parameter.return_value = "16"
+        result = self.svc.get_parameter("DEFAULT_IVA_ID")
+        self.assertEqual(result, "16")
+        self._mock_repo.get_parameter.assert_called_once_with(
+            "DEFAULT_IVA_ID", None, None, None,
+        )
+
+    # Scopo: Verifica che get_parameter lanci ServiceError se il parametro non esiste.
+    def test_get_parameter_not_found_raises(self):
+        self._mock_repo.get_parameter.return_value = None
+        with self.assertRaises(ServiceError) as ctx:
+            self.svc.get_parameter("INESISTENTE")
+        self.assertEqual(ctx.exception.code, "E_PARAMETER_NOT_FOUND")
+
+    # Scopo: Verifica che get_parameter_int converta correttamente a intero.
+    def test_get_parameter_int_returns_int(self):
+        self._mock_repo.get_parameter.return_value = "42"
+        result = self.svc.get_parameter_int("DEFAULT_IVA_ID")
+        self.assertEqual(result, 42)
+        self.assertIsInstance(result, int)
+
+    # Scopo: Verifica che get_parameter_int lanci errore per valore non numerico.
+    def test_get_parameter_int_invalid_raises(self):
+        self._mock_repo.get_parameter.return_value = "non_un_numero"
+        with self.assertRaises(ServiceError) as ctx:
+            self.svc.get_parameter_int("BAD_PARAM")
+        self.assertEqual(ctx.exception.code, "E_PARAMETER_VALIDATION")
+
+    # Scopo: Verifica che get_defaults restituisca un dizionario di parametri.
+    def test_get_defaults_returns_dict(self):
+        self._mock_repo.get_parameters.return_value = {
+            "DEFAULT_IVA_ID": "16",
+            "DEFAULT_CURRENCY": "EUR",
+        }
+        result = self.svc.get_defaults(["DEFAULT_IVA_ID", "DEFAULT_CURRENCY"])
+        self.assertEqual(len(result), 2)
+        self.assertEqual(result["DEFAULT_IVA_ID"], "16")
+        self.assertEqual(result["DEFAULT_CURRENCY"], "EUR")
+
+    # Scopo: Verifica che get_defaults con lista vuota restituisca dizionario vuoto.
+    def test_get_defaults_empty_codes(self):
+        self._mock_repo.get_parameters.return_value = {}
+        result = self.svc.get_defaults([])
+        self.assertEqual(result, {})
+
+    # Scopo: Verifica che il contesto utente venga passato al repository.
+    def test_get_parameter_passes_user_context(self):
+        self._mock_repo.get_parameter.return_value = "99"
+        self.svc.get_parameter("TEST_PARAM", django_user_id=5, group_ids=[1, 2])
+        self._mock_repo.get_parameter.assert_called_once_with(
+            "TEST_PARAM", 5, [1, 2], None,
+        )
+
+    # Scopo: Verifica che emittente_fiscale_id venga propagato al repository.
+    def test_get_parameter_passes_emittente_fiscale(self):
+        self._mock_repo.get_parameter.return_value = "10"
+        self.svc.get_parameter(
+            "DEFAULT_IVA_ID",
+            django_user_id=5,
+            group_ids=[1],
+            emittente_fiscale_id=3,
+        )
+        self._mock_repo.get_parameter.assert_called_once_with(
+            "DEFAULT_IVA_ID", 5, [1], 3,
+        )
+
+    # Scopo: Verifica che list_parameters_for_user deleghi al repository.
+    def test_list_parameters_for_user(self):
+        mock_data = [
+            {
+                "code": "DEFAULT_IVA_ID",
+                "description": "IVA default",
+                "default_value": "22",
+                "emittente_value": "10",
+                "group_value": None,
+                "user_value": "5",
+                "user_override_id": 42,
+                "resolved_value": "5",
+            },
+        ]
+        self._mock_repo.list_for_user.return_value = mock_data
+        result = self.svc.list_parameters_for_user(
+            django_user_id=1, group_ids=[2], emittente_fiscale_id=3,
+        )
+        self.assertEqual(result, mock_data)
+        self._mock_repo.list_for_user.assert_called_once_with(1, [2], 3)
+
+    # Scopo: Verifica che upsert_user_override chiami il repository e restituisca l'ID.
+    def test_upsert_user_override(self):
+        self._mock_repo.upsert_user_override.return_value = 99
+        result = self.svc.upsert_user_override("DEFAULT_IVA_ID", 5, "10")
+        self.assertEqual(result, 99)
+        self._mock_repo.upsert_user_override.assert_called_once_with(
+            "DEFAULT_IVA_ID", 5, "10",
+        )
+
+    # Scopo: Verifica che upsert con codice vuoto lanci errore.
+    def test_upsert_user_override_empty_code_raises(self):
+        with self.assertRaises(ServiceError) as ctx:
+            self.svc.upsert_user_override("", 5, "10")
+        self.assertEqual(ctx.exception.code, "E_PARAMETER_VALIDATION")
+
+    # Scopo: Verifica che delete_user_override chiami il repository.
+    def test_delete_user_override(self):
+        self._mock_repo.delete_user_override.return_value = True
+        result = self.svc.delete_user_override(42, 5)
+        self.assertTrue(result)
+        self._mock_repo.delete_user_override.assert_called_once_with(42, 5)
+
+    # Scopo: Verifica che delete_user_override lanci errore se non trovato.
+    def test_delete_user_override_not_found_raises(self):
+        self._mock_repo.delete_user_override.return_value = False
+        with self.assertRaises(ServiceError) as ctx:
+            self.svc.delete_user_override(42, 5)
+        self.assertEqual(ctx.exception.code, "E_PARAMETER_NOT_FOUND")
+
+    # Scopo: Verifica che get_emittente_fiscale_id_for_user deleghi al repository.
+    def test_get_emittente_fiscale_id_for_user(self):
+        self._mock_repo.get_emittente_fiscale_id_for_user.return_value = 7
+        result = self.svc.get_emittente_fiscale_id_for_user(1)
+        self.assertEqual(result, 7)
+        self._mock_repo.get_emittente_fiscale_id_for_user.assert_called_once_with(1)
