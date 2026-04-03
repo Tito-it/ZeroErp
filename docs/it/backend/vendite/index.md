@@ -1,10 +1,10 @@
 # Area 'vendite' (Backend)
 
 ## API
-- [api_listini](manual/api_listini.md) — Esporre via HTTP la gestione completa dei listini vendite: anagrafica, versioni, righe prezzo, associazioni e test del resolver.
 - [api_commessa_attivita](manual/api_commessa_attivita.md) — Esporre via HTTP la lista paginata delle attività (commesse_attivita) di una commessa, con filtri opzionali per stato emissione, stato approvazione e mese di competenza.
 - [api_commessa_stato](manual/api_commessa_stato.md) — Esporre via HTTP lo stato e i contatori aggregati di una singola commessa, per dashboard e monitoraggio avanzamento.
 - [api_commesse_push_log](manual/api_commesse_push_log.md) — Esporre via HTTP il dettaglio di un singolo push log commesse, per consultazione operativa e diagnostica delle esecuzioni push.
+- [api_listini](manual/api_listini.md) — Esporre via HTTP la gestione completa dei listini vendite: anagrafica listino, versioni temporali, righe prezzo, associazioni di contesto e test del resolver prezzo.
 - [api_lotti_list](manual/api_lotti_list.md) — Esporre via HTTP l'elenco paginato dei lotti di fatturazione con filtri opzionali e decodifica delle FK.
 - [api_lotto_fatture_list](manual/api_lotto_fatture_list.md) — Esporre via HTTP l'elenco paginato delle fatture appartenenti a un lotto, con decodifiche FK, filtri opzionali e ordinamento configurabile.
 - [api_lotto_segnalazioni_summary](manual/api_lotto_segnalazioni_summary.md) — Esporre via HTTP il riepilogo segnalazioni attive di un lotto, con indicazione di blocco avanzamento step.
