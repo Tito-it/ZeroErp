@@ -1,0 +1,172 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Tabella pratiche.pratiche_sorgenti — tabella ponte sorgenti esterne delle pratiche
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/pratiche/20260403-01-create-pratiche-sorgenti-mctit.yaml
+
+  - changeSet:
+      id: 20260403-01-create-pratiche-sorgenti
+      author: mctit
+      comment: >
+        Tabella ponte che collega una pratica a una o piu' sorgenti esterne
+        (preventivo vendita, preventivo acquisto, ordine, contratto, ecc.).
+        Pattern allineato a vendite.commesse_sorgenti.
+        Una pratica puo' avere piu' sorgenti ROOT di tipi diversi e una
+        sorgente puo' essere collegata a piu' pratiche.
+      changes:
+        - createTable:
+            schemaName: pratiche
+            tableName: pratiche_sorgenti
+            remarks: "Tabella ponte: collega pratiche a sorgenti esterne (preventivi, ordini, contratti)."
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  remarks: "PK tecnica."
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_pratiche_sorgenti
+                    nullable: false
+
+              - column:
+                  name: pratica_id
+                  type: bigint
+                  remarks: "FK a pratiche.pratiche."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: sorgente_tipo_id
+                  type: bigint
+                  remarks: "FK a config.sorgenti — tipo documento sorgente."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: sorgente_uid
+                  type: text
+                  remarks: "Identificatore della sorgente (es. UUID preventivo). Text per flessibilita'."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: sorgente_riga
+                  type: bigint
+                  remarks: "ID riga specifica della sorgente (opzionale)."
+
+              - column:
+                  name: ruolo_link
+                  type: varchar(30)
+                  defaultValue: "ROOT"
+                  remarks: "Ruolo del collegamento: ROOT = sorgente principale, COLLEGATO = secondaria."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: meta
+                  type: jsonb
+                  defaultValueComputed: "'{}'::jsonb"
+                  remarks: "Metadati/estensioni."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: storicizza
+                  type: boolean
+                  defaultValueBoolean: true
+                  remarks: "Flag storicizzazione."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: tx_id
+                  type: uuid
+                  remarks: "Transaction ID di sessione."
+
+              - column:
+                  name: data_insert
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: user_insert
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: data_update
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: user_update
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  constraints:
+                    nullable: false
+
+        # -- Vincolo UNIQUE: una sola associazione per pratica + tipo + uid + ruolo
+        - addUniqueConstraint:
+            schemaName: pratiche
+            tableName: pratiche_sorgenti
+            columnNames: pratica_id, sorgente_tipo_id, sorgente_uid, ruolo_link
+            constraintName: uq_pratiche_sorgenti_pratica_tipo_uid_ruolo
+
+        # -- Indice per query bidirezionale: dalla sorgente alle pratiche
+        - createIndex:
+            schemaName: pratiche
+            tableName: pratiche_sorgenti
+            indexName: ix_pratiche_sorgenti_tipo_uid
+            columns:
+              - column:
+                  name: sorgente_tipo_id
+              - column:
+                  name: sorgente_uid
+
+        # -- CHECK: ruolo_link ammette solo valori noti
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE pratiche.pratiche_sorgenti
+                ADD CONSTRAINT chk_pratiche_sorgenti_ruolo
+                CHECK (ruolo_link IN ('ROOT', 'COLLEGATO'));
+
+        # -- Foreign keys
+        - addForeignKeyConstraint:
+            baseTableSchemaName: pratiche
+            baseTableName: pratiche_sorgenti
+            baseColumnNames: pratica_id
+            referencedTableSchemaName: pratiche
+            referencedTableName: pratiche
+            referencedColumnNames: id
+            constraintName: fk_pratiche_sorgenti_pratica
+            onDelete: NO ACTION
+            onUpdate: CASCADE
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: pratiche
+            baseTableName: pratiche_sorgenti
+            baseColumnNames: sorgente_tipo_id
+            referencedTableSchemaName: config
+            referencedTableName: sorgenti
+            referencedColumnNames: id
+            constraintName: fk_pratiche_sorgenti_tipo
+            onDelete: NO ACTION
+            onUpdate: CASCADE
+
+      rollback:
+        - dropTable:
+            schemaName: pratiche
+            tableName: pratiche_sorgenti

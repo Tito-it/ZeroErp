@@ -1,0 +1,128 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# UPDATE script.fn_get_parameter_full: emittente_fiscale_id al posto di tenant_id
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260403-15-update-fn-get-parameter-full-emittente-mctit.yaml
+
+  # 1) Drop vecchia firma (text, integer, integer, integer[], text, text)
+  - changeSet:
+      id: 20260403-15a-drop-fn-get-parameter-full-old
+      author: mctit
+      comment: >
+        Rimuove la vecchia firma di fn_get_parameter_full che usava p_tenant_id (integer).
+        Necessario perche' la nuova firma cambia tipo: p_emittente_fiscale_id (bigint).
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: true
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_get_parameter_full(text, integer, integer, integer[], text, text);
+
+  # 2) Crea nuova funzione con emittente_fiscale_id
+  - changeSet:
+      id: 20260403-15b-create-fn-get-parameter-full-emittente
+      author: mctit
+      runOnChange: true
+      comment: >
+        Nuova firma di fn_get_parameter_full con p_emittente_fiscale_id (bigint)
+        al posto di p_tenant_id (integer). Catena priorita':
+        user -> group -> emittente -> session -> function -> default.
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: true
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_get_parameter_full(
+                  p_code                  text,
+                  p_emittente_fiscale_id  bigint   DEFAULT NULL,
+                  p_django_user_id        integer  DEFAULT NULL,
+                  p_group_ids             integer[] DEFAULT NULL,
+                  p_session_key           text     DEFAULT NULL,
+                  p_function_name         text     DEFAULT NULL
+              )
+              RETURNS text
+              LANGUAGE plpgsql
+              STABLE
+              AS $function$
+              DECLARE
+                  v_param_id  config.parameters.id%TYPE;
+                  v_default   config.parameters.default_value%TYPE;
+                  v_result    config.parameter_overrides.overridden_value%TYPE;
+              BEGIN
+                  -- Recupera parametro base
+                  SELECT id, default_value
+                    INTO v_param_id, v_default
+                  FROM config.parameters
+                  WHERE code = p_code;
+
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          'fn_get_parameter_full',
+                          'ERRORE_PARAMETRI_TABELLA',
+                          jsonb_build_object(
+                              'codice_parametro', p_code,
+                              'nome_tabella',      'config.parameters'
+                          ),
+                          NULL::uuid,
+                          'config.parameters',
+                          p_code::text
+                      );
+                      RAISE EXCEPTION 'Parametro % non trovato in config.parameters', p_code
+                        USING ERRCODE = '22023';
+                  END IF;
+
+                  -- Risoluzione override con priorita' via COALESCE + subquery indipendenti.
+                  -- Ogni subquery usa l'indice composto (parameter_id, <scope>).
+                  -- COALESCE valuta in cortocircuito: se user esiste, le successive non vengono eseguite.
+                  -- Se il parametro di scope e' NULL, la subquery ritorna NULL senza accesso a disco.
+                  SELECT COALESCE(
+                      -- 1) user (massima priorita')
+                      (SELECT po.overridden_value
+                       FROM config.parameter_overrides po
+                       WHERE po.parameter_id = v_param_id
+                         AND po.django_user_id = p_django_user_id
+                         AND po.attivo = true
+                       LIMIT 1),
+                      -- 2) group
+                      (SELECT po.overridden_value
+                       FROM config.parameter_overrides po
+                       WHERE po.parameter_id = v_param_id
+                         AND po.django_group_id = ANY(p_group_ids)
+                         AND po.attivo = true
+                       ORDER BY po.id
+                       LIMIT 1),
+                      -- 3) emittente
+                      (SELECT po.overridden_value
+                       FROM config.parameter_overrides po
+                       WHERE po.parameter_id = v_param_id
+                         AND po.emittente_fiscale_id = p_emittente_fiscale_id
+                         AND po.attivo = true
+                       LIMIT 1),
+                      -- 4) session
+                      (SELECT po.overridden_value
+                       FROM config.parameter_overrides po
+                       WHERE po.parameter_id = v_param_id
+                         AND po.session_key = p_session_key
+                         AND po.attivo = true
+                       LIMIT 1),
+                      -- 5) function
+                      (SELECT po.overridden_value
+                       FROM config.parameter_overrides po
+                       WHERE po.parameter_id = v_param_id
+                         AND po.function_name = p_function_name
+                         AND po.attivo = true
+                       LIMIT 1),
+                      -- 6) default
+                      v_default
+                  ) INTO v_result;
+
+                  RETURN v_result;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_get_parameter_full(text, bigint, integer, integer[], text, text)
+                IS 'Risoluzione parametro con precedenza: user -> group -> emittente -> session -> function -> default. Usa config.parameter_overrides con emittente_fiscale_id.';

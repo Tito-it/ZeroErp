@@ -1,0 +1,191 @@
+{% include-markdown "it/dbzero/vendite/manual/fn_cambia_stato_preventivo.md" %}
+# ⚙️ Funzione `fn_cambia_stato_preventivo`
+
+```sql
+CREATE FUNCTION fn_cambia_stato_preventivo(p_preventivo_id bigint, p_nuovo_stato character varying, p_user text)
+```
+
+**Definizione completa:**
+
+```sql
+CREATE OR REPLACE FUNCTION vendite.fn_cambia_stato_preventivo(p_preventivo_id bigint, p_nuovo_stato character varying, p_user text)
+ RETURNS TABLE(preventivo_id bigint, stato_precedente character varying, stato_nuovo character varying)
+ LANGUAGE plpgsql
+AS $function$
+DECLARE
+  v_stato_corrente_id   vendite.preventivi.stato_doc_preventivo_id%TYPE;
+  v_stato_corrente_cod  config.stati_doc_preventivi.codice%TYPE;
+  v_nuovo_stato_id      config.stati_doc_preventivi.id%TYPE;
+  v_transizione_ok      boolean;
+  v_count_righe         bigint;
+  v_totale_doc          vendite.preventivi.totale_documento%TYPE;
+  v_has_commessa        boolean;
+  v_numero              vendite.preventivi.numero%TYPE;
+  v_uid                 vendite.preventivi.uid%TYPE;
+BEGIN
+  -- ==========================================================
+  -- Scopo:
+  --   Eseguire la transizione di stato di un preventivo vendita,
+  --   validando la transizione tramite la matrice configurabile
+  --   config.transizioni_stati_preventivi.
+  --
+  -- Regole:
+  --   - La transizione deve essere presente e attiva nella matrice
+  --   - DRAFT → EMESSO: richiede almeno una riga attiva con qta > 0
+  --     e totale_documento > 0
+  --   - Verso ANNULLATO: blocco duro se il preventivo ha righe
+  --     gia' inviate in commessa (stato_emissione EMESSA)
+  --
+  -- Parametri:
+  --   p_preventivo_id : ID del preventivo
+  --   p_nuovo_stato   : codice dello stato destinazione
+  --   p_user          : utente che esegue la transizione
+  --
+  -- Ritorna:
+  --   preventivo_id, stato_precedente (codice), stato_nuovo (codice)
+  -- ==========================================================
+
+  -- Guard: parametri obbligatori
+  IF p_preventivo_id IS NULL OR p_preventivo_id <= 0 THEN
+    PERFORM script.fn_log_and_raise_error(
+      'vendite', 'fn_cambia_stato_preventivo',
+      'E_PARAMETRO_INVALIDO',
+      jsonb_build_object('param', 'p_preventivo_id', 'value', p_preventivo_id),
+      NULL::uuid,
+      'p_preventivo_id = ' || COALESCE(p_preventivo_id::text, 'NULL')
+    );
+  END IF;
+
+  -- Recupera stato corrente, numero e uid in una sola query
+  SELECT p.stato_doc_preventivo_id, sdp.codice, p.numero, p.uid
+    INTO v_stato_corrente_id, v_stato_corrente_cod, v_numero, v_uid
+    FROM vendite.preventivi p
+    JOIN config.stati_doc_preventivi sdp ON sdp.id = p.stato_doc_preventivo_id
+   WHERE p.id = p_preventivo_id;
+
+  IF v_stato_corrente_id IS NULL THEN
+    PERFORM script.fn_log_and_raise_error(
+      'vendite', 'fn_cambia_stato_preventivo',
+      'PREV_STATO_CORRENTE_NON_TROVATO',
+      jsonb_build_object('preventivo_id', p_preventivo_id),
+      NULL::uuid,
+      p_preventivo_id::text
+    );
+  END IF;
+
+  -- Recupera ID dello stato destinazione
+  SELECT id INTO v_nuovo_stato_id
+    FROM config.stati_doc_preventivi
+   WHERE codice = p_nuovo_stato AND attivo IS TRUE;
+
+  IF v_nuovo_stato_id IS NULL THEN
+    PERFORM script.fn_log_and_raise_error(
+      'vendite', 'fn_cambia_stato_preventivo',
+      'E_STATO_SCONOSCIUTO',
+      jsonb_build_object('codice', p_nuovo_stato),
+      NULL::uuid,
+      p_nuovo_stato
+    );
+  END IF;
+
+  -- Valida transizione via matrice config
+  SELECT EXISTS(
+    SELECT 1
+      FROM config.transizioni_stati_preventivi t
+     WHERE t.stato_da_id = v_stato_corrente_id
+       AND t.stato_a_id  = v_nuovo_stato_id
+       AND t.attivo IS TRUE
+  ) INTO v_transizione_ok;
+
+  IF NOT v_transizione_ok THEN
+    PERFORM script.fn_log_and_raise_error(
+      'vendite', 'fn_cambia_stato_preventivo',
+      'PREV_TRANSIZIONE_NON_AMMESSA',
+      jsonb_build_object(
+        'preventivo_id', p_preventivo_id,
+        'stato_da', v_stato_corrente_cod,
+        'stato_a', p_nuovo_stato
+      ),
+      NULL::uuid,
+      v_stato_corrente_cod, p_nuovo_stato
+    );
+  END IF;
+
+  -- Guard DRAFT → EMESSO: almeno una riga attiva con quantita > 0
+  IF v_stato_corrente_cod = 'DRAFT' AND p_nuovo_stato = 'EMESSO' THEN
+    SELECT COUNT(*)
+      INTO v_count_righe
+      FROM vendite.preventivi_righe pr
+     WHERE pr.preventivo_id = p_preventivo_id
+       AND pr.attivo IS TRUE
+       AND pr.quantita > 0;
+
+    IF v_count_righe = 0 THEN
+      PERFORM script.fn_log_and_raise_error(
+        'vendite', 'fn_cambia_stato_preventivo',
+        'PREV_NESSUNA_RIGA_ATTIVA',
+        jsonb_build_object('preventivo_id', p_preventivo_id),
+        NULL::uuid,
+        v_numero
+      );
+    END IF;
+
+    -- Guard: totale_documento > 0
+    SELECT p.totale_documento
+      INTO v_totale_doc
+      FROM vendite.preventivi p
+     WHERE p.id = p_preventivo_id;
+
+    IF COALESCE(v_totale_doc, 0) <= 0 THEN
+      PERFORM script.fn_log_and_raise_error(
+        'vendite', 'fn_cambia_stato_preventivo',
+        'PREV_TOTALE_NON_POSITIVO',
+        jsonb_build_object(
+          'preventivo_id', p_preventivo_id,
+          'totale_documento', v_totale_doc
+        ),
+        NULL::uuid,
+        v_numero, COALESCE(v_totale_doc, 0)::text
+      );
+    END IF;
+  END IF;
+
+  -- Guard verso ANNULLATO: blocco se righe in commessa attive.
+  -- Usa v_uid gia' caricato e starts_with() (PG 18, index-friendly).
+  IF p_nuovo_stato = 'ANNULLATO' THEN
+    SELECT EXISTS(
+      SELECT 1
+        FROM vendite.commesse_attivita ca
+       WHERE starts_with(ca.segment_key, 'PREV:' || v_uid::text || ':R:')
+         AND ca.stato_emissione = 'EMESSA'
+    ) INTO v_has_commessa;
+
+    IF v_has_commessa THEN
+      PERFORM script.fn_log_and_raise_error(
+        'vendite', 'fn_cambia_stato_preventivo',
+        'PREV_ANNULLAMENTO_COMMESSA_ATTIVA',
+        jsonb_build_object('preventivo_id', p_preventivo_id),
+        NULL::uuid,
+        v_numero
+      );
+    END IF;
+  END IF;
+
+  -- Esecuzione: aggiorna stato
+  UPDATE vendite.preventivi
+     SET stato_doc_preventivo_id = v_nuovo_stato_id,
+         user_update = COALESCE(p_user, CURRENT_USER)
+   WHERE id = p_preventivo_id;
+
+  -- Ritorna risultato
+  RETURN QUERY
+  SELECT p_preventivo_id, v_stato_corrente_cod, p_nuovo_stato;
+END
+$function$
+
+COMMENT ON FUNCTION vendite.fn_cambia_stato_preventivo(p_preventivo_id bigint, p_nuovo_stato character varying, p_user text)
+IS 'Transizione stato preventivo vendita. Valida via matrice config.transizioni_stati_preventivi. Guard: righe/totale per emissione, blocco annullamento con commessa attiva.';
+```
+
+---
+{% include-markdown "signature-core.md" %}

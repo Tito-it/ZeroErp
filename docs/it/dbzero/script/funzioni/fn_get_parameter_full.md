@@ -2,21 +2,21 @@
 # ⚙️ Funzione `fn_get_parameter_full`
 
 ```sql
-CREATE FUNCTION fn_get_parameter_full(p_code text, p_tenant_id integer, p_django_user_id integer, p_group_ids integer[], p_session_key text, p_function_name text)
+CREATE FUNCTION fn_get_parameter_full(p_code text, p_emittente_fiscale_id bigint, p_django_user_id integer, p_group_ids integer[], p_session_key text, p_function_name text)
 ```
 
 **Definizione completa:**
 
 ```sql
-CREATE OR REPLACE FUNCTION script.fn_get_parameter_full(p_code text, p_tenant_id integer DEFAULT NULL::integer, p_django_user_id integer DEFAULT NULL::integer, p_group_ids integer[] DEFAULT NULL::integer[], p_session_key text DEFAULT NULL::text, p_function_name text DEFAULT NULL::text)
+CREATE OR REPLACE FUNCTION script.fn_get_parameter_full(p_code text, p_emittente_fiscale_id bigint DEFAULT NULL::bigint, p_django_user_id integer DEFAULT NULL::integer, p_group_ids integer[] DEFAULT NULL::integer[], p_session_key text DEFAULT NULL::text, p_function_name text DEFAULT NULL::text)
  RETURNS text
  LANGUAGE plpgsql
  STABLE
 AS $function$
 DECLARE
-    v_param_id  BIGINT;
-    v_default   TEXT;
-    v_override  TEXT;
+    v_param_id  config.parameters.id%TYPE;
+    v_default   config.parameters.default_value%TYPE;
+    v_result    config.parameter_overrides.overridden_value%TYPE;
 BEGIN
     
     SELECT id, default_value
@@ -43,40 +43,55 @@ BEGIN
 
     
     
-    SELECT po.overridden_value
-      INTO v_override
-    FROM config.parameter_overrides po
-    WHERE po.parameter_id = v_param_id
-      AND (
-        (p_django_user_id IS NOT NULL AND po.django_user_id = p_django_user_id) OR
-        (p_group_ids     IS NOT NULL AND po.django_group_id = ANY(p_group_ids)) OR
-        (p_tenant_id     IS NOT NULL AND po.tenant_id       = p_tenant_id) OR
-        (p_session_key   IS NOT NULL AND po.session_key     = p_session_key) OR
-        (p_function_name IS NOT NULL AND po.function_name   = p_function_name)
-      )
-    ORDER BY
-      CASE
-        WHEN po.django_user_id = p_django_user_id THEN 1
-        WHEN (p_group_ids IS NOT NULL AND po.django_group_id = ANY(p_group_ids)) THEN 2
-        WHEN po.tenant_id   = p_tenant_id   THEN 3
-        WHEN po.session_key = p_session_key THEN 4
-        WHEN po.function_name = p_function_name THEN 5
-        ELSE 6
-      END,
-      po.id
-    LIMIT 1;
-
     
-    IF FOUND THEN
-        RETURN v_override;
-    ELSE
-        RETURN v_default;
-    END IF;
+    
+    SELECT COALESCE(
+        
+        (SELECT po.overridden_value
+         FROM config.parameter_overrides po
+         WHERE po.parameter_id = v_param_id
+           AND po.django_user_id = p_django_user_id
+           AND po.attivo = true
+         LIMIT 1),
+        
+        (SELECT po.overridden_value
+         FROM config.parameter_overrides po
+         WHERE po.parameter_id = v_param_id
+           AND po.django_group_id = ANY(p_group_ids)
+           AND po.attivo = true
+         ORDER BY po.id
+         LIMIT 1),
+        
+        (SELECT po.overridden_value
+         FROM config.parameter_overrides po
+         WHERE po.parameter_id = v_param_id
+           AND po.emittente_fiscale_id = p_emittente_fiscale_id
+           AND po.attivo = true
+         LIMIT 1),
+        
+        (SELECT po.overridden_value
+         FROM config.parameter_overrides po
+         WHERE po.parameter_id = v_param_id
+           AND po.session_key = p_session_key
+           AND po.attivo = true
+         LIMIT 1),
+        
+        (SELECT po.overridden_value
+         FROM config.parameter_overrides po
+         WHERE po.parameter_id = v_param_id
+           AND po.function_name = p_function_name
+           AND po.attivo = true
+         LIMIT 1),
+        
+        v_default
+    ) INTO v_result;
+
+    RETURN v_result;
 END;
 $function$
 
-COMMENT ON FUNCTION script.fn_get_parameter_full(p_code text, p_tenant_id integer, p_django_user_id integer, p_group_ids integer[], p_session_key text, p_function_name text)
-IS 'Risoluzione parametro con precedenza: user → group → tenant → session → function → default. Usa config.parameter_overrides (django_user_id/django_group_id).';
+COMMENT ON FUNCTION script.fn_get_parameter_full(p_code text, p_emittente_fiscale_id bigint, p_django_user_id integer, p_group_ids integer[], p_session_key text, p_function_name text)
+IS 'Risoluzione parametro con precedenza: user -> group -> emittente -> session -> function -> default. Usa config.parameter_overrides con emittente_fiscale_id.';
 ```
 
 ---
