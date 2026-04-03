@@ -9,6 +9,8 @@
 - [api_logout](manual/api_logout.md) — Invalida il refresh token corrente (blacklist) e registra l'evento LOGOUT nella tabella dbops.sessioni_utente, chiudendo la sessione associata al JTI.
 - [api_lookup_codici](manual/api_lookup_codici.md) — Espone una ricerca generica su tabelle di configurazione con struttura id / codice / descrizione. Permette autocompletamento e ricerca ILIKE da UI senza dover creare endpoint dedicati per ogni tabella config.
 - [api_pagination](manual/api_pagination.md) — Fornire configurazioni DRF standard per paginazione coerente su endpoint list/search.
+- [api_parameter_settings](manual/api_parameter_settings.md) — Esporre via HTTP la gestione dei parametri di sistema con risoluzione override multi-livello (user, group, emittente fiscale) e CRUD override personale operatore.
+- [api_parameters](manual/api_parameters.md) — Espone la gestione dei parametri di sistema (config.parameters) con risoluzione override multi-livello per l'utente autenticato. Supporta:
 - [api_password_reset](manual/api_password_reset.md) — Permette all'operatore di reimpostare la propria password via email, senza intervento admin. Tre endpoint pubblici (non autenticati) con rate limiting.
 - [api_permessi_audit](manual/api_permessi_audit.md) — Endpoint che restituisce la timeline audit delle modifiche ai permessi di un utente. Interroga le 7 tabelle storico del sistema permessi con filtri opzionali e paginazione.
 - [api_permessi_effettivi](manual/api_permessi_effettivi.md) — Esporre un endpoint diagnostico che restituisce i permessi effettivi risolti per un utente, iterando tutte le aree funzionali attive e mostrando il livello di accesso, le azioni consentite e lo stato del profilo reparto.

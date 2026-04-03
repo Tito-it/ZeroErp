@@ -5,114 +5,135 @@
 # ------------------------------------------------------------
 
 databaseChangeLog:
-  - logicalFilePath: migrations_v2/00_schema/config/20260403-14-alter-parameter-overrides-add-emittente-mctit.yaml
+    - logicalFilePath: migrations_v2/00_schema/config/20260403-14-alter-parameter-overrides-add-emittente-mctit.yaml
 
-  - changeSet:
-      id: 20260403-14-alter-parameter-overrides-add-emittente
-      author: mctit
-      comment: >
-        Sostituisce tenant_id con emittente_fiscale_id su config.parameter_overrides.
-        Allinea il sistema parametri all'architettura multi-emittente di ZeroErp.
-        Operazioni: add colonna, add FK, drop indice/constraint/colonna vecchi,
-        nuovo unique constraint e indice composto.
-      changes:
-        # 1) Aggiunge colonna emittente_fiscale_id
-        - addColumn:
-            schemaName: config
-            tableName: parameter_overrides
-            columns:
-              - column:
-                  name: emittente_fiscale_id
-                  type: bigint
-                  remarks: "FK -> anagrafiche.emittenti_fiscali.id (scope emittente)."
-                  constraints:
-                    nullable: true
+    - changeSet:
+          id: 20260403-14-alter-parameter-overrides-add-emittente
+          author: mctit
+          runOnChange: false
+          validCheckSum:
+              - ANY
+          comment: >
+              Sostituisce tenant_id con emittente_fiscale_id su config.parameter_overrides.
+              Allinea il sistema parametri all'architettura multi-emittente di ZeroErp.
+              Operazioni: add colonna, add FK, drop indice/constraint/colonna vecchi,
+              nuovo unique constraint e indice composto.
+          changes:
+              # 1) Aggiunge colonna emittente_fiscale_id
+              - addColumn:
+                    schemaName: config
+                    tableName: parameter_overrides
+                    columns:
+                        - column:
+                              name: emittente_fiscale_id
+                              type: bigint
+                              remarks: "FK -> anagrafiche.emittenti_fiscali.id (scope emittente)."
+                              constraints:
+                                  nullable: true
 
-        # 2) FK verso anagrafiche.emittenti_fiscali
-        - addForeignKeyConstraint:
-            baseTableSchemaName: config
-            baseTableName: parameter_overrides
-            baseColumnNames: emittente_fiscale_id
-            constraintName: fk_overrides_emittente_fiscale
-            referencedTableSchemaName: anagrafiche
-            referencedTableName: emittenti_fiscali
-            referencedColumnNames: id
-            onUpdate: CASCADE
-            onDelete: NO ACTION
+              # 2) FK verso anagrafiche.emittenti_fiscali
+              - addForeignKeyConstraint:
+                    baseTableSchemaName: config
+                    baseTableName: parameter_overrides
+                    baseColumnNames: emittente_fiscale_id
+                    constraintName: fk_overrides_emittente_fiscale
+                    referencedTableSchemaName: anagrafiche
+                    referencedTableName: emittenti_fiscali
+                    referencedColumnNames: id
+                    onUpdate: CASCADE
+                    onDelete: NO ACTION
 
-        # 3) Drop indice vecchio su tenant_id
-        - dropIndex:
-            schemaName: config
-            tableName: parameter_overrides
-            indexName: ix_overrides_param_tenant
+              # 3-5) Spostati nel changeSet 14-02 (con precondizioni onFail: MARK_RAN)
 
-        # 4) Drop unique constraint vecchio
-        - dropUniqueConstraint:
-            schemaName: config
-            tableName: parameter_overrides
-            constraintName: uq_overrides_full_scope_v2
+              # 6) Nuovo unique constraint con emittente_fiscale_id
+              - addUniqueConstraint:
+                    schemaName: config
+                    tableName: parameter_overrides
+                    columnNames: parameter_id, emittente_fiscale_id, django_user_id, django_group_id, session_key, function_name
+                    constraintName: uq_overrides_full_scope_v3
 
-        # 5) Drop colonna tenant_id
-        - dropColumn:
-            schemaName: config
-            tableName: parameter_overrides
-            columnName: tenant_id
+              # 7) Indice composto per query della funzione
+              - createIndex:
+                    schemaName: config
+                    tableName: parameter_overrides
+                    indexName: ix_parameter_overrides_emittente
+                    columns:
+                        - column:
+                              name: parameter_id
+                        - column:
+                              name: emittente_fiscale_id
 
-        # 6) Nuovo unique constraint con emittente_fiscale_id
-        - addUniqueConstraint:
-            schemaName: config
-            tableName: parameter_overrides
-            columnNames: parameter_id, emittente_fiscale_id, django_user_id, django_group_id, session_key, function_name
-            constraintName: uq_overrides_full_scope_v3
+          rollback:
+              - dropIndex:
+                    schemaName: config
+                    tableName: parameter_overrides
+                    indexName: ix_parameter_overrides_emittente
+              - dropUniqueConstraint:
+                    schemaName: config
+                    tableName: parameter_overrides
+                    constraintName: uq_overrides_full_scope_v3
+              - dropForeignKeyConstraint:
+                    baseTableSchemaName: config
+                    baseTableName: parameter_overrides
+                    constraintName: fk_overrides_emittente_fiscale
+              - dropColumn:
+                    schemaName: config
+                    tableName: parameter_overrides
+                    columnName: emittente_fiscale_id
 
-        # 7) Indice composto per query della funzione
-        - createIndex:
-            schemaName: config
-            tableName: parameter_overrides
-            indexName: ix_parameter_overrides_emittente
-            columns:
-              - column:
-                  name: parameter_id
-              - column:
-                  name: emittente_fiscale_id
+    - changeSet:
+          id: 20260403-14-02-drop-tenant-id-parameter-overrides
+          author: mctit
+          comment: >
+              Rimuove indice, unique constraint e colonna tenant_id da parameter_overrides.
+              Precondizioni onFail MARK_RAN per idempotenza (se gia' rimossi).
+          preConditions:
+              - onFail: MARK_RAN
+              - columnExists:
+                    schemaName: config
+                    tableName: parameter_overrides
+                    columnName: tenant_id
+          changes:
+              # 3) Drop indice vecchio su tenant_id
+              - sql:
+                    splitStatements: false
+                    sql: |
+                      DROP INDEX IF EXISTS config.ix_overrides_param_tenant;
 
-      rollback:
-        - dropIndex:
-            schemaName: config
-            tableName: parameter_overrides
-            indexName: ix_parameter_overrides_emittente
-        - dropUniqueConstraint:
-            schemaName: config
-            tableName: parameter_overrides
-            constraintName: uq_overrides_full_scope_v3
-        - addColumn:
-            schemaName: config
-            tableName: parameter_overrides
-            columns:
-              - column:
-                  name: tenant_id
-                  type: integer
-                  constraints:
-                    nullable: true
-        - addUniqueConstraint:
-            schemaName: config
-            tableName: parameter_overrides
-            columnNames: parameter_id, tenant_id, django_user_id, django_group_id, session_key, function_name
-            constraintName: uq_overrides_full_scope_v2
-        - createIndex:
-            schemaName: config
-            tableName: parameter_overrides
-            indexName: ix_overrides_param_tenant
-            columns:
-              - column:
-                  name: parameter_id
-              - column:
-                  name: tenant_id
-        - dropForeignKeyConstraint:
-            baseTableSchemaName: config
-            baseTableName: parameter_overrides
-            constraintName: fk_overrides_emittente_fiscale
-        - dropColumn:
-            schemaName: config
-            tableName: parameter_overrides
-            columnName: emittente_fiscale_id
+              # 4) Drop unique constraint vecchio
+              - sql:
+                    splitStatements: false
+                    sql: |
+                      ALTER TABLE config.parameter_overrides
+                        DROP CONSTRAINT IF EXISTS uq_overrides_full_scope_v2;
+
+              # 5) Drop colonna tenant_id
+              - dropColumn:
+                    schemaName: config
+                    tableName: parameter_overrides
+                    columnName: tenant_id
+
+          rollback:
+              - addColumn:
+                    schemaName: config
+                    tableName: parameter_overrides
+                    columns:
+                        - column:
+                              name: tenant_id
+                              type: integer
+                              constraints:
+                                  nullable: true
+              - addUniqueConstraint:
+                    schemaName: config
+                    tableName: parameter_overrides
+                    columnNames: parameter_id, tenant_id, django_user_id, django_group_id, session_key, function_name
+                    constraintName: uq_overrides_full_scope_v2
+              - createIndex:
+                    schemaName: config
+                    tableName: parameter_overrides
+                    indexName: ix_overrides_param_tenant
+                    columns:
+                        - column:
+                              name: parameter_id
+                        - column:
+                              name: tenant_id
