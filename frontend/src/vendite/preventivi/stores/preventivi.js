@@ -1,0 +1,200 @@
+// Store Pinia per la gestione preventivi vendita (lista, dettaglio, CRUD, azioni stato).
+
+import { defineStore } from 'pinia'
+import { ref } from 'vue'
+import {
+  listPreventivi, getPreventivo, createPreventivo, updatePreventivo,
+  cambiaStatoPreventivo, creaRevisione,
+  listRighe, createRiga, updateRiga, deleteRiga,
+  listIndirizzi, upsertIndirizzo,
+  pushCommessa, statoFatturazione, generaPratica, listPratiche,
+} from '../api/preventiviApi'
+import { useTabEvents } from '../../../core/composables/useTabEvents'
+import { useAuthStore } from '../../../stores/auth'
+
+export const usePreventiviStore = defineStore('vendite-preventivi', () => {
+  const { emitDataChanged } = useTabEvents()
+  const auth = useAuthStore()
+  const items = ref([])
+  const totalRecords = ref(0)
+  const loading = ref(false)
+  const hasSearched = ref(false)
+
+  // Default data_da: 1 gennaio anno corrente - 1
+  const defaultDataDa = `${new Date().getFullYear() - 1}-01-01`
+
+  const filters = ref({
+    search: '',
+    stato: null,
+    billing_account_id: null,
+    utility_id: null,
+    data_da: defaultDataDa,
+    data_a: null,
+    limit: 25,
+    offset: 0,
+    order_by: 'data',
+    order_dir: 'desc'
+  })
+
+  // Scopo: Carica lista paginata preventivi con filtri.
+  // Il backend usa page/page_size; il composable useSearchTable usa offset/limit.
+  async function fetchList() {
+    const f = filters.value
+    const searchTerm = (f.search || '').trim()
+    const hasFilters = f.stato != null || f.billing_account_id != null
+      || f.utility_id != null || f.data_a != null
+
+    // Search con meno di 3 caratteri e nessun filtro attivo → ignora
+    if (searchTerm.length > 0 && searchTerm.length < 3 && !hasFilters) return
+    if (!searchTerm && !hasFilters && !hasSearched.value) return
+    // Search svuotata senza filtri → torna a stato vuoto
+    if (!searchTerm && !hasFilters) {
+      items.value = []
+      totalRecords.value = 0
+      hasSearched.value = false
+      return
+    }
+
+    loading.value = true
+    try {
+      const params = {}
+      if (searchTerm.length >= 3) params.search = searchTerm
+      if (f.stato != null) params.stato = f.stato
+      if (f.billing_account_id != null) params.billing_account_id = f.billing_account_id
+      if (f.utility_id != null) params.utility_id = f.utility_id
+      if (f.data_da) params.data_da = f.data_da
+      if (f.data_a) params.data_al = f.data_a
+      // Conversione offset/limit → page/page_size per il backend
+      const pageSize = f.limit || 25
+      const page = Math.floor((f.offset || 0) / pageSize) + 1
+      params.page = page
+      params.page_size = pageSize
+      if (f.order_by) {
+        params.order_by = f.order_by
+        params.order_dir = f.order_dir || 'desc'
+      }
+      const res = await listPreventivi(params)
+      items.value = res.data.data.results
+      totalRecords.value = res.data.data.count
+      hasSearched.value = true
+    } finally {
+      loading.value = false
+    }
+  }
+
+  // Scopo: Dettaglio completo preventivo.
+  async function fetchDetail(id) {
+    const res = await getPreventivo(id)
+    return res.data.data
+  }
+
+  // Scopo: Crea nuovo preventivo.
+  async function create(payload) {
+    const res = await createPreventivo(payload)
+    emitDataChanged('preventivo', res.data.data.id)
+    return res.data.data
+  }
+
+  // Scopo: Aggiorna campi editabili del preventivo.
+  async function update(id, payload) {
+    const res = await updatePreventivo(id, payload)
+    emitDataChanged('preventivo', id)
+    return res.data.data
+  }
+
+  // Scopo: Cambia stato preventivo (BOZZA→EMESSO, EMESSO→ACCETTATO, ecc.).
+  async function cambiaStato(id, nuovoStato) {
+    const res = await cambiaStatoPreventivo(id, { nuovo_stato: nuovoStato })
+    emitDataChanged('preventivo', id)
+    return res.data.data
+  }
+
+  // Scopo: Crea nuova revisione del preventivo.
+  async function nuovaRevisione(id) {
+    const res = await creaRevisione(id)
+    emitDataChanged('preventivo', id)
+    return res.data.data
+  }
+
+  // --- Righe ---
+
+  // Scopo: Carica righe del preventivo.
+  async function loadRighe(preventivoId) {
+    const res = await listRighe(preventivoId)
+    return res.data.data
+  }
+
+  // Scopo: Aggiunge riga al preventivo.
+  async function addRiga(preventivoId, payload) {
+    const res = await createRiga(preventivoId, payload)
+    emitDataChanged('preventivo', preventivoId)
+    return res.data.data
+  }
+
+  // Scopo: Aggiorna riga preventivo.
+  async function aggiornaRiga(preventivoId, rigaId, payload) {
+    const res = await updateRiga(preventivoId, rigaId, payload)
+    emitDataChanged('preventivo', preventivoId)
+    return res.data.data
+  }
+
+  // Scopo: Elimina riga preventivo (soft delete).
+  async function eliminaRiga(preventivoId, rigaId) {
+    const res = await deleteRiga(preventivoId, rigaId)
+    emitDataChanged('preventivo', preventivoId)
+    return res.data.data
+  }
+
+  // --- Indirizzi ---
+
+  // Scopo: Carica indirizzi del preventivo.
+  async function loadIndirizzi(preventivoId) {
+    const res = await listIndirizzi(preventivoId)
+    return res.data.data
+  }
+
+  // Scopo: Upsert indirizzo preventivo.
+  async function salvaIndirizzo(preventivoId, payload) {
+    const res = await upsertIndirizzo(preventivoId, payload)
+    emitDataChanged('preventivo', preventivoId)
+    return res.data.data
+  }
+
+  // --- Integrazione ---
+
+  // Scopo: Push preventivo in commessa per fatturazione.
+  async function inviaACommessa(preventivoId) {
+    const res = await pushCommessa(preventivoId)
+    emitDataChanged('preventivo', preventivoId)
+    return res.data.data
+  }
+
+  // Scopo: Carica stato fatturazione del preventivo.
+  async function loadStatoFatturazione(preventivoId) {
+    const res = await statoFatturazione(preventivoId)
+    return res.data.data
+  }
+
+  // Scopo: Genera pratica esecutiva da preventivo.
+  async function creaPratica(preventivoId, payload) {
+    const res = await generaPratica(preventivoId, payload)
+    emitDataChanged('preventivo', preventivoId)
+    return res.data.data
+  }
+
+  // Scopo: Carica pratiche collegate al preventivo.
+  async function loadPratiche(preventivoId) {
+    const res = await listPratiche(preventivoId)
+    return res.data.data
+  }
+
+  return {
+    items, totalRecords, loading, hasSearched, filters,
+    fetchList, fetchDetail, create, update,
+    cambiaStato, nuovaRevisione,
+    loadRighe, addRiga, aggiornaRiga, eliminaRiga,
+    loadIndirizzi, salvaIndirizzo,
+    inviaACommessa, loadStatoFatturazione,
+    creaPratica, loadPratiche,
+  }
+})

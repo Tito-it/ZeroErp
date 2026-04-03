@@ -125,3 +125,125 @@ class CommessaPushLogRow(TypedDict):
     risultato: dict[str, Any] | None
     stato: str
     durata_ms: int | None
+
+
+# ── Preventivi vendita ──
+
+
+class PreventivoListRow(TypedDict):
+    id: int
+    uid: str
+    numero: str
+    rev: int
+    is_revision_attiva: bool
+    data: str
+    stato_doc_preventivo_id: int
+    stato_codice: str
+    stato_descrizione: str
+    billing_account_id: int | None
+    ba_utility_id: int | None
+    soggetto_id: str | None
+    cliente_denominazione: str | None
+    emittente_fiscale_id: int | None
+    utility_id: int
+    istanza_utility_id: int | None
+    totale_imponibile: str | None
+    totale_iva: str | None
+    totale_documento: str | None
+    valuta_id: int | None
+    valuta_codice: str | None
+    termine_pagamento_id: int | None
+    termine_pagamento_descrizione: str | None
+    validita_dal: str | None
+    validita_al: str | None
+    competenza_mese: str | None
+    fatturazione_immediata: bool
+    storicizza: bool
+    data_insert: str | None
+
+
+class PreventivoDetailRow(TypedDict):
+    id: int
+    uid: str
+    numero: str
+    rev: int
+    is_revision_attiva: bool
+    data: str
+    stato_doc_preventivo_id: int
+    stato_codice_interno: str
+    stato_codice: str
+    stato_descrizione: str
+    billing_account_id: int | None
+    cliente_denominazione: str | None
+    utility_id: int
+    utility_descrizione: str | None
+    istanza_utility_id: int | None
+    valuta_id: int | None
+    valuta_codice: str | None
+    termine_pagamento_id: int | None
+    termine_pagamento_descrizione: str | None
+    validita_dal: str | None
+    validita_al: str | None
+    competenza_mese: str | None
+    fatturazione_immediata: bool
+    totale_imponibile: str | None
+    totale_iva: str | None
+    totale_documento: str | None
+    storicizza: bool
+    meta: dict[str, Any]
+    data_insert: str | None
+    user_insert: str
+    data_update: str | None
+    user_update: str | None
+
+
+class PreventivoRigaRow(TypedDict):
+    id: int
+    preventivo_id: int
+    articolo_id: str
+    codice_articolo: str
+    descrizione_articolo: str
+    descrizione: str | None
+    quantita: str | None
+    qta_operativa: str | None
+    uom_operativa_id: int | None
+    codice_uom: str | None
+    factor_to_base: str | None
+    prezzo_unitario: str | None
+    sconto_percentuale: str | None
+    iva_id: int | None
+    codice_iva: str | None
+    aliquota_iva: str | None
+    ordine: int | None
+    attivo: bool
+    importo_riga: str | None
+    importo_iva_riga: str | None
+    meta: dict[str, Any]
+
+
+class PreventivoIndirizzoRow(TypedDict):
+    id: int
+    preventivo_id: int
+    tipo_indirizzo_id: int
+    tipo_indirizzo_descrizione: str | None
+    snapshot: dict[str, Any]
+    origine_indirizzo_id: int | None
+    origine_soggetto_ruolo_id: int | None
+
+
+class PreventivoStatoFatturazioneRow(TypedDict):
+    preventivo_id: int
+    preventivo_uid: str
+    righe_totali: int
+    righe_in_commessa: int
+    righe_emesse_af: int
+    righe_fatturate: int
+
+
+class PreventivoPraticaRow(TypedDict):
+    pratica_id: int
+    pratica_codice: str | None
+    pratica_descrizione: str | None
+    stato_codice: str
+    stato_descrizione: str
+    ruolo_link: str

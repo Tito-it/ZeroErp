@@ -62,3 +62,26 @@ export function searchStradarioGenerale(search, limit = 30) {
     params: { search, limit }
   })
 }
+
+// --- Parametri di sistema ---
+
+export function fetchParameterDefaults(codes) {
+  return api.get(`${BASE}/parameters/defaults/`, {
+    params: { codes: codes.join(',') }
+  })
+}
+
+export function fetchParameterSettings() {
+  return api.get(`${BASE}/parameters/settings/`)
+}
+
+export function upsertParameterOverride(parameterCode, value) {
+  return api.post(`${BASE}/parameters/settings/override/`, {
+    parameter_code: parameterCode,
+    value
+  })
+}
+
+export function deleteParameterOverride(overrideId) {
+  return api.delete(`${BASE}/parameters/settings/override/${overrideId}/`)
+}

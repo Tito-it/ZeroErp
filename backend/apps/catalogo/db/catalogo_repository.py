@@ -44,7 +44,7 @@ ARTICOLI_CREATE_COLUMNS: dict[str, str] = {
 
 ARTICOLI_UPDATE_COLUMNS: dict[str, str] = {
     key: value for key, value in ARTICOLI_CREATE_COLUMNS.items() if key != "codice"
-}
+} | {"attivo": "bool"}
 
 ARTICOLI_DETAIL_COLUMNS: tuple[str, ...] = (
     "a.id",

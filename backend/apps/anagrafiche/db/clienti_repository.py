@@ -33,16 +33,10 @@ class ClientiRepository:
 
     # Scopo: Restituisce l'id IVA di default da config.parameters (code='DEFAULT_IVA_ID').
     #        Usato come default per clienti creati senza iva_id esplicito.
+    #        Delega al building block core ParameterService.
     def get_default_iva_id(self) -> int:
-        sql = """
-            SELECT script.fn_get_parameter_full('DEFAULT_IVA_ID')
-        """
-        with connection.cursor() as cursor:
-            cursor.execute(sql)
-            row = cursor.fetchone()
-        if not row or row[0] is None:
-            raise ValueError("Parametro 'DEFAULT_IVA_ID' non trovato in config.parameters.")
-        return int(row[0])
+        from apps.core.services.parameter_service import ParameterService
+        return ParameterService().get_parameter_int("DEFAULT_IVA_ID")
 
     # Scopo: Verifica se l'utility ammette creazione manuale (richiede_pdp = false).
     def get_utility(self, utility_id: int) -> dict[str, Any] | None:
