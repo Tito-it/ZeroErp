@@ -55,6 +55,7 @@ export const DOMAIN_MENUS = {
     { key: 'unita-misura', icon: 'pi pi-arrows-h', to: '/catalogo/unita-misura' }
   ],
   'vendite': [
+    { key: 'preventivi', icon: 'pi pi-file', to: '/vendite/preventivi' },
     { key: 'listini', icon: 'pi pi-tag', to: '/vendite/listini' }
   ],
   'acquisti': [],
@@ -65,7 +66,8 @@ export const DOMAIN_MENUS = {
     { key: 'gestione', icon: 'pi pi-folder-open', to: '/pratiche' }
   ],
   'config': [
-    { key: 'tabelle', icon: 'pi pi-table', to: '/config/tabelle' }
+    { key: 'tabelle', icon: 'pi pi-table', to: '/config/tabelle' },
+    { key: 'impostazioni', icon: 'pi pi-sliders-h', to: '/config/impostazioni' }
   ]
 }
 

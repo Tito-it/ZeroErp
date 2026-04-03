@@ -90,6 +90,16 @@ export const STATO_FLUSSO = {
   ERRORE: 'ERRORE',
 }
 
+// Codici interni stati preventivo vendita (codice_interno da config.stati_doc_preventivi)
+export const STATO_PREVENTIVO = {
+  BOZZA: 'DRAFT',
+  EMESSO: 'EMESSO',
+  ACCETTATO: 'ACCETTATO',
+  RIFIUTATO: 'RIFIUTATO',
+  SCADUTO: 'SCADUTO',
+  ANNULLATO: 'ANNULLATO',
+}
+
 // Keyboard shortcuts
 export const SHORTCUTS = {
   SEARCH: { key: 'k', ctrl: true, shift: false },

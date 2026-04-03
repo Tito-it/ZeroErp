@@ -80,6 +80,17 @@ GET /api/v1/anagrafiche/stati/lookup/        → codice_iso2
 
 Suffisso `/lookup/` sulla risorsa, senza paginazione.
 
+**3. Parameters defaults** — per valori default di sistema con risoluzione override:
+
+```text
+GET /api/v1/core/parameters/defaults/?codes=DEFAULT_IVA_ID,DEFAULT_CURRENCY
+```
+
+Risolve N parametri da `config.parameters` + `config.parameter_overrides` applicando
+la catena di precedenza (user → group → tenant → session → function → default).
+Restituisce `{code: valore_risolto}`. Codici non trovati esclusi silenziosamente.
+Max 20 codici per chiamata.
+
 **Regola:** usare il lookup generico quando la tabella ha la struttura standard
 (`id, codice/codice_interno, descrizione`). Creare un lookup dedicato solo se
 servono colonne aggiuntive da JOIN o campi non standard.

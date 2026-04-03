@@ -146,6 +146,12 @@ const router = createRouter({
           component: () => import('../config/views/ConfigView.vue'),
           meta: { domain: 'config', menuKey: 'tabelle' }
         },
+        {
+          path: 'config/impostazioni',
+          name: 'config-impostazioni',
+          component: () => import('../config/views/ImpostazioniView.vue'),
+          meta: { domain: 'config', menuKey: 'impostazioni' }
+        },
 
         // --- Catalogo ---
         {
@@ -162,6 +168,12 @@ const router = createRouter({
         },
 
         // --- Vendite ---
+        {
+          path: 'vendite/preventivi',
+          name: 'vendite-preventivi',
+          component: () => import('../vendite/preventivi/views/PreventiviView.vue'),
+          meta: { domain: 'vendite', menuKey: 'preventivi' }
+        },
         {
           path: 'vendite/listini',
           name: 'vendite-listini',

@@ -41,6 +41,7 @@
 | `useIndirizzoSoggettoForm` | [useIndirizzoSoggettoForm.js](../../../../frontend/src/core/composables/useIndirizzoSoggettoForm.js) | Compone base + multi-tipo + indirizzo libero (nazionale/estero) |
 | `useSearchDetail` | [useSearchDetail.js](../../../../frontend/src/core/composables/useSearchDetail.js) | Caricamento lazy righe dettaglio per espansione ricerca |
 | `useAiAssistant` | [useAiAssistant.js](../../../../frontend/src/core/composables/useAiAssistant.js) | Conversazione assistente AI (messaggi, azioni, conferme) |
+| `useParameterDefaults` | [useParameterDefaults.js](../../../../frontend/src/core/composables/useParameterDefaults.js) | Carica default da `config.parameters` con override utente. Props: `codes[]`. Metodi: `load()` (con cache, error-safe). Restituisce `defaults` (mappa `{code: valore}`). |
 
 ---
 
@@ -90,6 +91,7 @@
 | `lookupSistemaCodici` | [apiCore.js](../../../../frontend/src/core/apiCore.js) | Config sequenza codici (auto/manuale) |
 | `searchComuni` | [apiCore.js](../../../../frontend/src/core/apiCore.js) | Ricerca comuni |
 | `searchStradario` / `searchStradarioGenerale` | [apiCore.js](../../../../frontend/src/core/apiCore.js) | Ricerca stradario locale/nazionale |
+| `fetchParameterDefaults` | [apiCore.js](../../../../frontend/src/core/apiCore.js) | Risolve N parametri di sistema con override utente (`GET /core/parameters/defaults/`) |
 
 ---
 

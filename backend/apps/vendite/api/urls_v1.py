@@ -15,6 +15,7 @@ from apps.vendite.api.views import (
 )
 
 urlpatterns = [
+    path("preventivi/", include("apps.vendite.api.preventivi_urls")),
     path("listini/", include("apps.vendite.api.urls_listini")),
     path("lotti/", ApiLottiList.as_view(), name="vendite-lotti-list"),
     path("pipeline/run/", ApiRunLottoPipeline.as_view(), name="vendite-run-lotto-pipeline"),

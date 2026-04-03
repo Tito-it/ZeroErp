@@ -792,98 +792,38 @@ Il lookup articoli e' cross-dominio (§5.1).
 
 ---
 
-### FASE 1 — DB: tabelle, viste, funzioni
+### FASE 1 — DB: tabelle, viste, funzioni — COMPLETATA
 
-> Prerequisito per tutto il resto. Le tabelle core (preventivi, righe, indirizzi, note, stati) esistono gia'.
-> Qui si creano gli oggetti DB mancanti per supportare backend e frontend.
+> Completata il 3 aprile 2026. Dettagli completi in [sviluppo-preventivi-fase1-db.md](sviluppo-preventivi-fase1-db.md).
 
-#### 1.1 Tabella ponte pratiche
+#### Decisioni architetturali prese in FASE 1
 
-- [ ] `[DB]` Creare tabella `pratiche.pratiche_sorgenti`
-  - Campi: `id` bigint PK, `pratica_id` FK pratiche.pratiche, `sorgente_tipo_id` FK config.sorgenti, `sorgente_uid` text NOT NULL, `sorgente_riga` bigint NULL, `ruolo_link` varchar default 'ROOT', `meta` jsonb default '{}', `storicizza` boolean default true, `tx_id` uuid, audit columns
-  - UNIQUE `(pratica_id, sorgente_tipo_id, sorgente_uid, ruolo_link)`
-  - Indice su `(sorgente_tipo_id, sorgente_uid)` per query bidirezionale
-  - Trigger audit generico `script.trgfn_audit_data_user_generic()`
-  - Trigger storicizzazione `script.trgfn_storico_generic('pratiche_sorgenti_id')`
-  - Trigger `trgfn_child_requires_active_parent` su `config.sorgenti`
+| # | Decisione | Impatto backend |
+|---|-----------|-----------------|
+| 1 | `config.sorgenti` usa `PREVENTIVO` esistente (id=2), non `PREVENTIVO_VENDITA` | Repository e service aggiornati per usare codice `PREVENTIVO` |
+| 2 | Matrice transizioni: nuova tabella `config.transizioni_stati_preventivi` | Le transizioni sono configurabili da DB, la funzione le valida |
+| 3 | Trigger AFTER ricalcolo totali su `preventivi_righe` | Il service non chiama piu' `ricalcola_totali()` manualmente |
+| 4 | Guard annullamento con commessa attiva: blocco duro | La funzione DB blocca, nessun warning soft |
+| 5 | `emittente_fiscale_id` nella vista lista (da `fn_get_emittente_fiscale_id`) | Scope emittente via campo vista, non funzione SQL nel WHERE |
+| 6 | Due viste fatturazione: righe dettaglio + aggregato | Backend usa la vista aggregata per badge UI |
+| 7 | Stato ANNULLATO aggiunto (id=9) | Allineato nel seed, transizioni attive |
+| 8 | Vista pratiche filtra per sorgente_tipo codice `PREVENTIVO` | Allineato al codice esistente in config.sorgenti |
 
-- [ ] `[DB]` Seed `config.sorgenti`: aggiungere record `PREVENTIVO_VENDITA`
-  - `codice_interno = 'PREVENTIVO_VENDITA'`, `codice = 'PREVENTIVO_VENDITA'`
-  - `categoria = 'DOCUMENTO'`
-  - `target_table = 'vendite.preventivi'::regclass`
-  - `key_selector = 'uid'`
-  - `scope` = valore appropriato (es. 'VENDITE')
+#### Oggetti DB creati
 
-#### 1.2 Viste per lista e dettaglio
-
-- [ ] `[DB]` Creare vista `vendite.vw_preventivi_list` — lista preventivi con JOIN
-  - JOIN: `config.stati_doc_preventivi` (codice, descrizione stato)
-  - JOIN: `anagrafiche.billing_account` → `anagrafiche.soggetti_ruoli` → `anagrafiche.soggetti` (denominazione cliente)
-  - JOIN: `config.valute` (codice valuta)
-  - JOIN: `config.termini_pagamento` (descrizione)
-  - Colonne esposte: id, uid, numero, rev, is_revision_attiva, data, stato (codice + descrizione), cliente (denominazione), BA id, utility_id, totale_imponibile, totale_iva, totale_documento, validita_dal, validita_al, competenza_mese, fatturazione_immediata, data_insert
-  - Ordinamento default: data DESC, numero DESC
-
-- [ ] `[DB]` Creare vista `vendite.vw_preventivi_righe_dettaglio` — righe con dati articolo e UoM
-  - JOIN: `catalogo.articoli` (codice, descrizione articolo)
-  - JOIN: `catalogo.unita_misura` (codice UoM operativa)
-  - JOIN: `config.iva` (codice, aliquota)
-  - Colonne esposte: tutti i campi riga + codice_articolo, descrizione_articolo, codice_uom, codice_iva, aliquota_iva
-  - Filtro: solo righe attive (o flag per incluere inattive)
-
-#### 1.3 Funzione transizione stato
-
-- [ ] `[DB]` Creare funzione `vendite.fn_cambia_stato_preventivo(p_preventivo_id, p_nuovo_stato_codice, p_user)`
-  - Legge stato corrente
-  - Valida transizione ammessa (matrice BOZZA→EMESSO→ACCETTATO, ecc. — vedi §2)
-  - Guard BOZZA→EMESSO: almeno una riga attiva, totale_documento > 0
-  - Guard →ANNULLATO con preventivo gia' in commessa: segnala warning (o blocca, da decidere)
-  - Esegue UPDATE `stato_doc_preventivo_id`
-  - Restituisce nuovo stato
-  - Errori via `script.fn_log_and_raise_error()`
-
-#### 1.4 Funzione creazione revisione
-
-- [ ] `[DB]` Creare funzione `vendite.fn_crea_revisione_preventivo(p_preventivo_id, p_user)`
-  - Guard: stato corrente EMESSO o ACCETTATO
-  - Guard: non esiste gia' una revisione BOZZA per lo stesso numero
-  - Disattiva revisione corrente (`is_revision_attiva = false`)
-  - INSERT nuova testata con `rev = max(rev) + 1`, `is_revision_attiva = true`, stato BOZZA
-  - Copia righe attive dalla revisione precedente
-  - Copia indirizzi
-  - Restituisce id nuova revisione
-
-#### 1.5 Funzione ricalcolo totali
-
-- [ ] `[DB]` Creare funzione `vendite.fn_ricalcola_totali_preventivo(p_preventivo_id)`
-  - Somma da righe attive: `SUM(quantita * prezzo_unitario * (1 - sconto_percentuale/100))` → imponibile
-  - Calcolo IVA per aliquota: `imponibile_riga * aliquota / 100`
-  - UPDATE testata: `totale_imponibile`, `totale_iva`, `totale_documento`
-  - Alternativa: trigger AFTER INSERT/UPDATE/DELETE su righe che chiama ricalcolo (da valutare se troppo costoso)
-
-#### 1.6 Vista stato fatturazione
-
-- [ ] `[DB]` Creare vista `vendite.vw_preventivi_stato_fatturazione` — monitoraggio pipeline downstream
-  - JOIN: `vendite.commesse_sorgenti` (link preventivo → commessa)
-  - JOIN: `vendite.commesse_attivita` (stato approvazione, stato emissione)
-  - JOIN: `vendite.attivita_fatturabili` (approvato, fatturato, fattura_riga_id)
-  - Raggruppamento per preventivo_uid con conteggi: righe totali, righe in commessa, righe emesse AF, righe fatturate
-  - Utile per badge "stato fatturazione" nel frontend
-
-#### 1.7 Vista pratiche collegate
-
-- [ ] `[DB]` Creare vista `vendite.vw_preventivi_pratiche` — pratiche collegate via pratiche_sorgenti
-  - JOIN: `pratiche.pratiche_sorgenti` (WHERE sorgente_tipo = PREVENTIVO_VENDITA)
-  - JOIN: `pratiche.pratiche` (codice, descrizione, stato)
-  - JOIN: `config.stati_pratiche` (codice, descrizione stato)
-  - Raggruppamento per preventivo_uid
-
-#### 1.8 Seed dati e test
-
-- [ ] `[DB]` Verificare seed `config.stati_doc_preventivi` — confermare che esistano: BOZZA, EMESSO, ACCETTATO, RIFIUTATO, SCADUTO, ANNULLATO
-- [ ] `[DB]` Test pgTAP per `fn_cambia_stato_preventivo`: transizioni valide, transizioni rifiutate, guard su righe vuote
-- [ ] `[DB]` Test pgTAP per `fn_crea_revisione_preventivo`: copia corretta, disattivazione precedente, guard su stato
-- [ ] `[DB]` Test pgTAP per `fn_ricalcola_totali_preventivo`: calcolo corretto con sconto e IVA
+- [x] `[DB]` Tabella `pratiche.pratiche_sorgenti` — tabella ponte pratiche ↔ sorgenti
+- [x] `[DB]` Tabella `config.transizioni_stati_preventivi` — matrice transizioni configurabile + seed 7 transizioni
+- [x] `[DB]` Seed `config.stati_doc_preventivi` — aggiunto ANNULLATO (id=9)
+- [x] `[DB]` Seed `config.messaggi_errore` — 8 codici `PREV_*` (id 350-357)
+- [x] `[DB]` Vista `vendite.vw_preventivi_list` — lista con JOIN + `emittente_fiscale_id`
+- [x] `[DB]` Vista `vendite.vw_preventivi_righe_dettaglio` — righe + importo_riga + importo_iva calcolati
+- [x] `[DB]` Funzione `vendite.fn_cambia_stato_preventivo()` — transizioni via matrice + guard EMESSO/ANNULLATO
+- [x] `[DB]` Funzione `vendite.fn_crea_revisione_preventivo()` — copia testata+righe+indirizzi, rev+1
+- [x] `[DB]` Funzione `vendite.fn_ricalcola_totali_preventivo()` — ricalcolo imponibile/IVA/totale
+- [x] `[DB]` Trigger `trg_preventivi_righe_z90_ricalcola_totali_ins_upd_dlt` — ricalcolo automatico su righe
+- [x] `[DB]` Vista `vendite.vw_preventivi_stato_fatturazione_righe` + `vw_preventivi_stato_fatturazione` — dettaglio + aggregato
+- [x] `[DB]` Vista `vendite.vw_preventivi_pratiche` — pratiche collegate via pratiche_sorgenti
+- [x] `[DB]` Test pgTAP: 9 test `fn_cambia_stato_preventivo` + 8 test `fn_crea_revisione` + 8 test `fn_ricalcola_totali` = **25 test OK**
 
 ---
 
@@ -893,63 +833,59 @@ Il lookup articoli e' cross-dominio (§5.1).
 
 #### 2.1 Repository
 
-- [ ] `[BE]` Creare `apps/vendite/db/preventivi_repository.py`
-  - READ: `fn_list_preventivi()` — query su `vw_preventivi_list` con filtri (stato, BA, utility, data_da/data_al, search), paginazione, scope emittente
-  - READ: `fn_get_preventivo()` — dettaglio singolo da vista + righe da `vw_preventivi_righe_dettaglio`
-  - READ: `fn_list_righe_preventivo()` — righe da vista
-  - READ: `fn_list_indirizzi_preventivo()` — indirizzi con tipo
-  - READ: `fn_stato_fatturazione_preventivo()` — da `vw_preventivi_stato_fatturazione`
-  - READ: `fn_list_pratiche_preventivo()` — da `vw_preventivi_pratiche`
-  - WRITE: `fn_create_preventivo()` — INSERT testata
-  - WRITE: `fn_update_preventivo()` — UPDATE campi modificabili
-  - WRITE: `fn_cambia_stato_preventivo()` — chiama funzione DB §1.3
-  - WRITE: `fn_crea_revisione()` — chiama funzione DB §1.4
-  - WRITE: `fn_create_riga_preventivo()` — INSERT riga + risoluzione prezzo da listino (`fn_resolve_prezzo_listino`)
-  - WRITE: `fn_update_riga_preventivo()` — UPDATE riga
-  - WRITE: `fn_delete_riga_preventivo()` — DELETE logica o fisica
-  - WRITE: `fn_ricalcola_totali()` — chiama funzione DB §1.5
-  - WRITE: `fn_upsert_indirizzo_preventivo()` — upsert con snapshot
-  - WRITE: `fn_push_preventivo_a_commessa()` — chiama `fn_list_preventivi_da_pushare` + `fn_get_or_create_commessa` + `fn_upsert_commessa_attivita`
+- [x] `[BE]` Creare `apps/vendite/db/preventivi_repository.py` — **FATTO + ALLINEATO DB**
+  - Lista via `vw_preventivi_list` (con `emittente_fiscale_id` per scope)
+  - Righe via `vw_preventivi_righe_dettaglio` (con `importo_riga`, `importo_iva_riga` calcolati)
+  - Stato fatturazione via `vw_preventivi_stato_fatturazione` (per `preventivo_id`)
+  - Pratiche via `vw_preventivi_pratiche` (per `preventivo_id`)
+  - Lookup config via `codice_interno` (immutabile), non `codice`
+  - Sorgente tipo: `PREVENTIVO` (config.sorgenti id=2), non `PREVENTIVO_VENDITA`
+  - Campi jsonb: `json.dumps()` + cast `%s::jsonb` (allineato a psycopg3/commesse_repository)
+  - Nomi tabelle corretti: `config.utilities`, `config.tipi_indirizzi`, `s.ragione_sociale_completa`
 
 #### 2.2 Service
 
-- [ ] `[BE]` Creare `apps/vendite/services/preventivi_service.py`
-  - Orchestrazione metodi: list, get, crea, aggiorna, cambia_stato, crea_revisione, gestisci_riga, elimina_riga, push_a_commessa, genera_pratica, stato_fatturazione (dettagli in §3.3)
-  - Validazione input nel service layer (pattern `_require_str`, `_optional_str`)
-  - Guard su stato modificabile per update/righe
-  - Guard su stato ACCETTATO per push commessa e genera pratica
-  - Genera pratica: crea pratica + record `pratiche_sorgenti` con contesto §1.4.2
+- [x] `[BE]` Creare `apps/vendite/services/preventivi_service.py` — **FATTO + ALLINEATO DB**
+  - Guard stato via `stato_codice_interno` (DRAFT, EMESSO, ACCETTATO)
+  - Ricalcolo totali rimosso (trigger AFTER DB lo gestisce)
+  - Genera pratica via BB `pratiche_service.crea_pratica` (cross-dominio)
+  - Paginazione via `paginated_envelope` core (no duplicazione)
 
 #### 2.3 API views + urls
 
-- [ ] `[BE]` Creare `apps/vendite/api/preventivi_views.py`
-  - `PreventiviListView(DomainAPIView)`: GET list + POST create
-  - `PreventiviDetailView(DomainAPIView)`: GET detail + PATCH update
-  - `PreventiviStatoView(DomainAPIView)`: POST cambio stato
-  - `PreventiviRevisioneView(DomainAPIView)`: POST nuova revisione
-  - `PreventiviRigheListView(DomainAPIView)`: GET list righe + POST add riga
-  - `PreventiviRigheDetailView(DomainAPIView)`: PATCH update riga + DELETE elimina riga
-  - `PreventiviIndirizziView(DomainAPIView)`: GET list + POST upsert
-  - `PreventiviPushCommessaView(DomainAPIView)`: POST push commessa
-  - `PreventiviStatoFatturazioneView(DomainAPIView)`: GET stato pipeline
-  - `PreventiviGeneraPraticaView(DomainAPIView)`: POST genera pratica
-  - `PreventiviPraticheView(DomainAPIView)`: GET pratiche collegate
-  - Tutte con `area_funzionale = "vendite"`, `@extend_schema`, `post_permission` dove necessario
-
-- [ ] `[BE]` Creare `apps/vendite/api/preventivi_urls.py`
-  - Route v1 per tutti gli endpoint (dettagli in §3.4)
-
-- [ ] `[BE]` Registrare urls in `apps/vendite/api/urls_v1.py`
+- [x] `[BE]` Creare `apps/vendite/api/preventivi_views.py` — **FATTO** (11 view classes con `@extend_schema`)
+- [x] `[BE]` Creare `apps/vendite/api/preventivi_urls.py` — **FATTO** (12 route)
+- [x] `[BE]` Registrare urls in `apps/vendite/api/urls_v1.py` — **FATTO**
 
 #### 2.4 Errori e permessi
 
-- [ ] `[BE]` Registrare codici errore in `error_policies.py` (dettagli in §6)
-- [ ] `[BE]` Definire azioni processo per permessi: `gestisci_preventivi`, `cambia_stato_preventivi`, `push_commessa_preventivi`, `genera_pratica_preventivi`
+- [x] `[BE]` Registrare codici errore in `error_policies.py` — **FATTO** (9 codici `E_PREV_*`)
+- [ ] `[BE]` Definire azioni processo per permessi: `cambia_stato_preventivi`, `push_commessa_preventivi`, `genera_pratica_preventivi` (seed DB necessario)
 
 #### 2.5 Test backend
 
-- [ ] `[BE]` Test service: `apps/vendite/tests/services/test_preventivi_service.py` (dettagli in §7.1)
-- [ ] `[BE]` Test API: `apps/vendite/tests/api/test_preventivi_api.py` (dettagli in §7.2)
+- [x] `[BE]` Test service: 17 test OK — **FATTO** (`test_preventivi_service.py`)
+- [x] `[BE]` Test API: 7 test OK — **FATTO** (`test_preventivi_api.py`)
+- [x] `[BE]` Suite completa: 1052 test OK, 0 regressioni
+
+#### 2.6 Documentazione e smoke test
+
+- [x] `[BE]` Documentazione API: `docs/it/backend/vendite/manual/api_preventivi.md` — **FATTO** (16 endpoint documentati)
+- [x] `[BE]` Smoke test bash: `scripts/tests/smoke-test-preventivi.sh` — **FATTO + VERIFICATO END-TO-END**
+- [x] `[BE]` Catalogo BB backend aggiornato — **FATTO**
+
+#### 2.7 Fix emersi dallo smoke test (allineamento DB → Backend)
+
+- [x] `codice` → `codice_interno` per lookup stato DRAFT (campo immutabile)
+- [x] `stato_codice` → `stato_codice_interno` per tutti i confronti applicativi
+- [x] `PREVENTIVO_VENDITA` → `PREVENTIVO` (config.sorgenti id=2 esistente)
+- [x] `config.utilita` → `config.utilities` (nome tabella corretto)
+- [x] `config.tipi_indirizzo` → `config.tipi_indirizzi` (nome tabella corretto)
+- [x] `s.denominazione` → `s.ragione_sociale_completa` (campo corretto soggetti)
+- [x] `meta or {}` → `json.dumps(meta or {})` + `%s::jsonb` (compatibilita' psycopg3)
+- [x] Gestione `dict` → jsonb anche in `update_preventivo` e `update_riga` (dynamic update)
+- [x] Rimosso `ricalcola_totali()` manuale dal service (trigger AFTER lo gestisce)
+- [x] `pratica_data_insert` → `data_apertura` nella vista pratiche
 
 ---
 

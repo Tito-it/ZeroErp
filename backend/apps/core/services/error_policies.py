@@ -734,6 +734,74 @@ class ErrorPolicyRegistry:
             ui_action="show_error_banner",
             user_message="Conflitto: commessa root gia' esistente per questa sorgente.",
         ),
+        # ── Preventivi vendita ──
+        "E_PREV_NOT_FOUND": ErrorPolicy(
+            code="E_PREV_NOT_FOUND",
+            http_status=404,
+            ui_action="show_empty_state",
+            user_message="Preventivo non trovato.",
+        ),
+        "E_PREV_VALIDAZIONE": ErrorPolicy(
+            code="E_PREV_VALIDAZIONE",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message="Parametri preventivo non validi.",
+        ),
+        "E_PREV_STATO_TRANSIZIONE": ErrorPolicy(
+            code="E_PREV_STATO_TRANSIZIONE",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Transizione di stato preventivo non ammessa.",
+        ),
+        "E_PREV_STATO_NON_MODIFICABILE": ErrorPolicy(
+            code="E_PREV_STATO_NON_MODIFICABILE",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Preventivo non modificabile nello stato corrente.",
+        ),
+        "E_PREV_RIGA_NOT_FOUND": ErrorPolicy(
+            code="E_PREV_RIGA_NOT_FOUND",
+            http_status=404,
+            ui_action="show_empty_state",
+            user_message="Riga preventivo non trovata.",
+        ),
+        "E_PREV_NESSUNA_RIGA": ErrorPolicy(
+            code="E_PREV_NESSUNA_RIGA",
+            http_status=400,
+            ui_action="show_error_banner",
+            user_message="Nessuna riga attiva nel preventivo.",
+        ),
+        "E_PREV_GIA_IN_COMMESSA": ErrorPolicy(
+            code="E_PREV_GIA_IN_COMMESSA",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Preventivo gia' inviato a fatturazione.",
+        ),
+        "E_PREV_REVISIONE_ATTIVA": ErrorPolicy(
+            code="E_PREV_REVISIONE_ATTIVA",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Esiste gia' una revisione attiva per questo preventivo.",
+        ),
+        "E_PREV_PRATICA_STATO": ErrorPolicy(
+            code="E_PREV_PRATICA_STATO",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Stato preventivo non ammette generazione pratica.",
+        ),
+        # ── Parametri di sistema ──
+        "E_PARAMETER_NOT_FOUND": ErrorPolicy(
+            code="E_PARAMETER_NOT_FOUND",
+            http_status=404,
+            ui_action="show_error_banner",
+            user_message="Parametro di sistema non trovato.",
+        ),
+        "E_PARAMETER_VALIDATION": ErrorPolicy(
+            code="E_PARAMETER_VALIDATION",
+            http_status=400,
+            ui_action="show_error_banner",
+            user_message="Valore parametro non valido.",
+        ),
     }
 
     # Scopo: Risolve la policy per un codice errore. Per codici applicativi

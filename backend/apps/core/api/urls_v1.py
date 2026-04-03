@@ -42,6 +42,12 @@ from apps.core.api.email_views import (
     EmailOutboxSendView,
     EmailPrepareView,
 )
+from apps.core.api.views_parameters import (
+    ParameterDefaultsView,
+    ParameterOverrideDeleteView,
+    ParameterOverrideView,
+    ParameterSettingsView,
+)
 from apps.core.api.views_tracciamento import (
     ApiAuditLog,
     ApiDominiTask,
@@ -196,4 +202,9 @@ urlpatterns = [
     path("email/allegati/<int:allegato_id>/", EmailAllegatoDeleteView.as_view(), name="core-email-allegato-delete"),
     path("email/allegati/<int:allegato_id>/download/", EmailAllegatoDownloadView.as_view(), name="core-email-allegato-download"),
     path("email/log/", EmailLogOperatoreListView.as_view(), name="core-email-log-list"),
+    # --- Parametri di sistema ---
+    path("parameters/defaults/", ParameterDefaultsView.as_view(), name="core-parameters-defaults"),
+    path("parameters/settings/", ParameterSettingsView.as_view(), name="core-parameters-settings"),
+    path("parameters/settings/override/", ParameterOverrideView.as_view(), name="core-parameters-override"),
+    path("parameters/settings/override/<int:override_id>/", ParameterOverrideDeleteView.as_view(), name="core-parameters-override-delete"),
 ]
