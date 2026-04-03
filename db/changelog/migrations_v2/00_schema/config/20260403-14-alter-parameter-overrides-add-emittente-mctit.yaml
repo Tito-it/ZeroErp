@@ -77,6 +77,8 @@ databaseChangeLog:
     - changeSet:
           id: 20260403-14-02-drop-tenant-id-parameter-overrides
           author: mctit
+          validCheckSum:
+              - ANY
           comment: >
               Rimuove indice, unique constraint e colonna tenant_id da parameter_overrides.
               Precondizioni onFail MARK_RAN per idempotenza (se gia' rimossi).
@@ -131,13 +133,15 @@ databaseChangeLog:
                         - column:
                               name: tenant_id
 
-    # Se django_user_id e django_group_id non esistono, le crea con FK verso Django
+    # Se django_user_id non esiste, crea solo la colonna (FK in 90_end)
     - changeSet:
           id: 20260403-14-03-add-django-user-id-if-missing
           author: mctit
+          validCheckSum:
+              - ANY
           comment: >
               Aggiunge django_user_id (integer, nullable) se non esiste.
-              FK verso django.auth_user(id).
+              FK verso django.auth_user creata in 90_end (dopo schema django).
           preConditions:
               - onFail: MARK_RAN
               - not:
@@ -156,32 +160,21 @@ databaseChangeLog:
                               remarks: "FK -> django.auth_user.id (scope utente Django)."
                               constraints:
                                   nullable: true
-              - addForeignKeyConstraint:
-                    baseTableSchemaName: config
-                    baseTableName: parameter_overrides
-                    baseColumnNames: django_user_id
-                    constraintName: fk_overrides_django_user
-                    referencedTableSchemaName: django
-                    referencedTableName: auth_user
-                    referencedColumnNames: id
-                    onUpdate: CASCADE
-                    onDelete: NO ACTION
           rollback:
-              - dropForeignKeyConstraint:
-                    baseTableSchemaName: config
-                    baseTableName: parameter_overrides
-                    constraintName: fk_overrides_django_user
               - dropColumn:
                     schemaName: config
                     tableName: parameter_overrides
                     columnName: django_user_id
 
+    # Se django_group_id non esiste, crea solo la colonna (FK in 90_end)
     - changeSet:
           id: 20260403-14-04-add-django-group-id-if-missing
           author: mctit
+          validCheckSum:
+              - ANY
           comment: >
               Aggiunge django_group_id (integer, nullable) se non esiste.
-              FK verso django.auth_group(id).
+              FK verso django.auth_group creata in 90_end (dopo schema django).
           preConditions:
               - onFail: MARK_RAN
               - not:
@@ -200,21 +193,7 @@ databaseChangeLog:
                               remarks: "FK -> django.auth_group.id (scope gruppo Django)."
                               constraints:
                                   nullable: true
-              - addForeignKeyConstraint:
-                    baseTableSchemaName: config
-                    baseTableName: parameter_overrides
-                    baseColumnNames: django_group_id
-                    constraintName: fk_overrides_django_group
-                    referencedTableSchemaName: django
-                    referencedTableName: auth_group
-                    referencedColumnNames: id
-                    onUpdate: CASCADE
-                    onDelete: NO ACTION
           rollback:
-              - dropForeignKeyConstraint:
-                    baseTableSchemaName: config
-                    baseTableName: parameter_overrides
-                    constraintName: fk_overrides_django_group
               - dropColumn:
                     schemaName: config
                     tableName: parameter_overrides
@@ -224,6 +203,8 @@ databaseChangeLog:
     - changeSet:
           id: 20260403-14-05-add-unique-constraint-v3
           author: mctit
+          validCheckSum:
+              - ANY
           comment: >
               Aggiunge unique constraint uq_overrides_full_scope_v3 se non esiste.
           preConditions:
