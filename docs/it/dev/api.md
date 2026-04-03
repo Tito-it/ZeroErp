@@ -80,16 +80,20 @@ GET /api/v1/anagrafiche/stati/lookup/        → codice_iso2
 
 Suffisso `/lookup/` sulla risorsa, senza paginazione.
 
-**3. Parameters defaults** — per valori default di sistema con risoluzione override:
+**3. Parameters** — per valori default e gestione override personali:
 
 ```text
-GET /api/v1/core/parameters/defaults/?codes=DEFAULT_IVA_ID,DEFAULT_CURRENCY
+GET  /api/v1/core/parameters/defaults/?codes=DEFAULT_IVA_ID,DEFAULT_CURRENCY
+GET  /api/v1/core/parameters/settings/
+POST /api/v1/core/parameters/settings/override/
+DELETE /api/v1/core/parameters/settings/override/{id}/
 ```
 
-Risolve N parametri da `config.parameters` + `config.parameter_overrides` applicando
-la catena di precedenza (user → group → tenant → session → function → default).
-Restituisce `{code: valore_risolto}`. Codici non trovati esclusi silenziosamente.
-Max 20 codici per chiamata.
+`defaults/` risolve N parametri con override (user → group → emittente → default).
+`settings/` lista completa con valori a ogni livello di scope.
+`override/` CRUD override personale utente (UPSERT + DELETE).
+Vedi: [api_parameter_settings.md](../backend/core/manual/api_parameter_settings.md) per dettagli completi.
+Max 20 codici per chiamata su `defaults/`.
 
 **Regola:** usare il lookup generico quando la tabella ha la struttura standard
 (`id, codice/codice_interno, descrizione`). Creare un lookup dedicato solo se
@@ -458,6 +462,7 @@ Per l'inventario completo degli endpoint attivi per dominio, consultare la docum
 * **Anagrafiche**: [api_soggetti.md](api_soggetti.md) | [api_indirizzi.md](api_indirizzi.md) | [api_geo_config.md](api_geo_config.md) | [api_fornitori.md](api_fornitori.md)
 * **Auth**: [api_token_cambio_password.md](/backend/core/manual/api_token_cambio_password) | [api_password_reset.md](/backend/core/manual/api_password_reset) | [api_invito_operatore.md](/backend/core/manual/api_invito_operatore)
 * **Email**: [api_email.md](/backend/core/manual/api_email)
+* **Parametri**: [api_parameter_settings.md](../backend/core/manual/api_parameter_settings.md)
 
 Per i building block backend riutilizzabili (helpers, services, repository), consultare il [Catalogo Building Block Backend](backend/catalogo-building-block-backend.md).
 
