@@ -1,0 +1,32 @@
+{% include-markdown "it/dbzero/vendite/manual/vw_preventivi_pratiche.md" %}
+# 🔍 View `vw_preventivi_pratiche`
+
+```sql
+CREATE OR REPLACE VIEW vendite.vw_preventivi_pratiche AS
+SELECT p.id AS preventivo_id,
+    p.uid AS preventivo_uid,
+    p.numero AS preventivo_numero,
+    ps.id AS sorgente_id,
+    ps.ruolo_link,
+    ps.sorgente_riga,
+    pr.id AS pratica_id,
+    pr.codice AS pratica_codice,
+    pr.descrizione AS pratica_descrizione,
+    sp.codice AS stato_codice,
+    sp.descrizione AS stato_descrizione,
+    tp.codice AS tipo_prestazione_codice,
+    tp.descrizione AS tipo_prestazione_descrizione,
+    pr.data_apertura,
+    pr.data_scadenza,
+    ps.meta AS sorgente_meta
+   FROM (((((vendite.preventivi p
+     JOIN config.sorgenti s ON ((((s.codice)::text = 'PREVENTIVO'::text) AND (s.attivo IS TRUE))))
+     JOIN pratiche.pratiche_sorgenti ps ON (((ps.sorgente_tipo_id = s.id) AND (ps.sorgente_uid = (p.uid)::text))))
+     JOIN pratiche.pratiche pr ON ((pr.id = ps.pratica_id)))
+     LEFT JOIN config.stati_pratiche sp ON ((sp.id = pr.stato_id)))
+     LEFT JOIN pratiche.tipi_prestazione tp ON ((tp.id = pr.tipo_prestazione_id)));
+```
+
+
+---
+{% include-markdown "signature-core.md" %}

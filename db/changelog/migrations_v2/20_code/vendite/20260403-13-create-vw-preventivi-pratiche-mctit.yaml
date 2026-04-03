@@ -1,0 +1,83 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Vista vendite.vw_preventivi_pratiche — pratiche collegate via pratiche_sorgenti
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260403-13-create-vw-preventivi-pratiche-mctit.yaml
+
+  - changeSet:
+      id: 20260403-13-create-vw-preventivi-pratiche
+      author: mctit
+      runOnChange: true
+      validCheckSum:
+        - ANY
+      comment: >
+        Vista pratiche collegate ai preventivi vendita via tabella ponte
+        pratiche.pratiche_sorgenti con sorgente_tipo PREVENTIVO.
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ==========================================================
+              -- Vista: vendite.vw_preventivi_pratiche
+              --
+              -- Scopo: elenco pratiche collegate a ciascun preventivo
+              --        vendita, con stato e tipo pratica.
+              --
+              -- JOIN principali:
+              --   - pratiche.pratiche_sorgenti  (WHERE sorgente_tipo = PREVENTIVO)
+              --   - pratiche.pratiche           (dati pratica)
+              --   - config.stati_pratiche       (codice e descrizione stato)
+              --   - pratiche.tipi_prestazione   (tipo pratica)
+              --
+              -- Note:
+              --   - il join su config.sorgenti filtra per codice = 'PREVENTIVO'
+              --   - sorgente_uid contiene il uid::text del preventivo
+              -- ==========================================================
+              CREATE OR REPLACE VIEW vendite.vw_preventivi_pratiche AS
+              SELECT
+                p.id                                       AS preventivo_id,
+                p.uid                                      AS preventivo_uid,
+                p.numero                                   AS preventivo_numero,
+                -- Collegamento
+                ps.id                                      AS sorgente_id,
+                ps.ruolo_link,
+                ps.sorgente_riga,
+                -- Pratica
+                pr.id                                      AS pratica_id,
+                pr.codice                                  AS pratica_codice,
+                pr.descrizione                             AS pratica_descrizione,
+                -- Stato pratica
+                sp.codice                                  AS stato_codice,
+                sp.descrizione                             AS stato_descrizione,
+                -- Tipo prestazione
+                tp.codice                                  AS tipo_prestazione_codice,
+                tp.descrizione                             AS tipo_prestazione_descrizione,
+                -- Date
+                pr.data_apertura,
+                pr.data_scadenza,
+                -- Meta collegamento
+                ps.meta                                    AS sorgente_meta
+              FROM vendite.preventivi p
+              -- Tabella ponte: da uid preventivo a pratica
+              JOIN config.sorgenti s
+                ON s.codice = 'PREVENTIVO'
+               AND s.attivo IS TRUE
+              JOIN pratiche.pratiche_sorgenti ps
+                ON ps.sorgente_tipo_id = s.id
+               AND ps.sorgente_uid = p.uid::text
+              -- Pratica collegata
+              JOIN pratiche.pratiche pr
+                ON pr.id = ps.pratica_id
+              -- Stato pratica
+              LEFT JOIN config.stati_pratiche sp
+                ON sp.id = pr.stato_id
+              -- Tipo prestazione
+              LEFT JOIN pratiche.tipi_prestazione tp
+                ON tp.id = pr.tipo_prestazione_id;
+
+              COMMENT ON VIEW vendite.vw_preventivi_pratiche
+              IS 'Pratiche collegate ai preventivi vendita via pratiche_sorgenti. Include stato pratica, tipo prestazione, date.';

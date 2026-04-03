@@ -1,0 +1,91 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Vista vendite.vw_preventivi_stato_fatturazione — monitoraggio pipeline downstream
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260403-12-create-vw-preventivi-stato-fatturazione-mctit.yaml
+
+  - changeSet:
+      id: 20260403-12-create-vw-preventivi-stato-fatturazione
+      author: mctit
+      runOnChange: true
+      validCheckSum:
+        - ANY
+      comment: >
+        Vista stato fatturazione preventivi: mostra per ogni preventivo/riga
+        lo stato nella pipeline commesse -> attivita_fatturabili -> fatture.
+        Due livelli: dettaglio per riga e aggregato per preventivo.
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ==========================================================
+              -- Vista: vendite.vw_preventivi_stato_fatturazione_righe
+              --
+              -- Scopo: dettaglio per riga — ogni riga preventivo con il suo
+              --        stato nella pipeline fatturazione.
+              --
+              -- JOIN principali:
+              --   - vendite.commesse_attivita  (via segment_key PREV:{uid}:R:{riga_id})
+              --   - vendite.attivita_fatturabili (via segment_key)
+              --
+              -- Note:
+              --   - segment_key e' deterministico: 'PREV:' || uid || ':R:' || riga_id
+              --   - in_commessa: true se esiste record in commesse_attivita
+              --   - emessa_af: true se stato_emissione = 'EMESSA'
+              --   - fatturata: true se fattura_riga_id IS NOT NULL in AF
+              -- ==========================================================
+              CREATE OR REPLACE VIEW vendite.vw_preventivi_stato_fatturazione_righe AS
+              SELECT
+                p.id                                       AS preventivo_id,
+                p.uid                                      AS preventivo_uid,
+                p.numero                                   AS preventivo_numero,
+                pr.id                                      AS riga_id,
+                pr.articolo_id,
+                pr.descrizione                             AS riga_descrizione,
+                -- Stato commessa
+                ca.id IS NOT NULL                          AS in_commessa,
+                ca.stato_approvazione,
+                ca.stato_emissione,
+                -- Stato attivita' fatturabili
+                af.id IS NOT NULL                          AS emessa_af,
+                af.fattura_riga_id IS NOT NULL             AS fatturata,
+                af.fattura_riga_id
+              FROM vendite.preventivi p
+              JOIN vendite.preventivi_righe pr
+                ON pr.preventivo_id = p.id
+               AND pr.attivo IS TRUE
+              -- Commessa attivita' (via segment_key)
+              LEFT JOIN vendite.commesse_attivita ca
+                ON ca.segment_key = 'PREV:' || p.uid::text || ':R:' || pr.id::text
+              -- Attivita' fatturabili (via segment_key, stessa chiave)
+              LEFT JOIN vendite.attivita_fatturabili af
+                ON af.sorgente_uid = p.uid
+               AND af.sorgente_riga = pr.id;
+
+              COMMENT ON VIEW vendite.vw_preventivi_stato_fatturazione_righe
+              IS 'Dettaglio per riga preventivo: stato nella pipeline fatturazione (commessa, AF, fatturata).';
+
+              -- ==========================================================
+              -- Vista: vendite.vw_preventivi_stato_fatturazione
+              --
+              -- Scopo: aggregato per preventivo — conteggi righe per stato
+              --        nella pipeline. Utile per badge UI.
+              -- ==========================================================
+              CREATE OR REPLACE VIEW vendite.vw_preventivi_stato_fatturazione AS
+              SELECT
+                preventivo_id,
+                preventivo_uid,
+                preventivo_numero,
+                COUNT(*)                                            AS righe_totali,
+                COUNT(*) FILTER (WHERE in_commessa)                 AS righe_in_commessa,
+                COUNT(*) FILTER (WHERE emessa_af)                   AS righe_emesse_af,
+                COUNT(*) FILTER (WHERE fatturata)                   AS righe_fatturate
+              FROM vendite.vw_preventivi_stato_fatturazione_righe
+              GROUP BY preventivo_id, preventivo_uid, preventivo_numero;
+
+              COMMENT ON VIEW vendite.vw_preventivi_stato_fatturazione
+              IS 'Aggregato per preventivo: conteggi righe in commessa, emesse AF, fatturate. Per badge UI.';

@@ -1,0 +1,127 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Trigger AFTER STATEMENT su preventivi_righe per ricalcolo totali testata
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260403-11-trg-preventivi-righe-ricalcola-totali-mctit.yaml
+
+  - changeSet:
+      id: 20260403-11-trg-preventivi-righe-ricalcola-totali
+      author: mctit
+      runOnChange: true
+      validCheckSum:
+        - ANY
+      comment: >
+        Trigger function FOR EACH STATEMENT con transition tables (PG 18)
+        su vendite.preventivi_righe. Ricalcola i totali testata una sola
+        volta per ogni preventivo coinvolto, anche in caso di bulk INSERT.
+        Usa EXECUTE per accedere alle transition tables in modo sicuro
+        (evita plan caching tra eventi diversi).
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ==========================================================
+              -- Trigger function: vendite.trgfn_preventivi_righe_ricalcola_totali
+              --
+              -- Scopo: invocare fn_ricalcola_totali_preventivo una sola volta
+              --        per ogni preventivo_id coinvolto dall'operazione DML.
+              --
+              -- Ottimizzazione PG 18:
+              --   - FOR EACH STATEMENT con transition tables
+              --   - ricalcolo per DISTINCT preventivo_id, non per singola riga
+              --   - per N righe bulk: 1 ricalcolo per preventivo vs N ricalcoli
+              --   - EXECUTE per accesso sicuro alle transition tables
+              --     (INSERT ha solo new_rows, DELETE solo old_rows,
+              --      UPDATE entrambe)
+              -- ==========================================================
+              CREATE OR REPLACE FUNCTION vendite.trgfn_preventivi_righe_ricalcola_totali()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_pid  vendite.preventivi_righe.preventivo_id%TYPE;
+                v_sql  text;
+              BEGIN
+                -- Costruisce la query in base all'evento DML:
+                -- INSERT -> solo new_rows (transition table disponibile)
+                -- DELETE -> solo old_rows
+                -- UPDATE -> UNION di entrambe (copre cambio preventivo_id)
+                IF TG_OP = 'INSERT' THEN
+                  v_sql := 'SELECT DISTINCT preventivo_id FROM new_rows';
+                ELSIF TG_OP = 'DELETE' THEN
+                  v_sql := 'SELECT DISTINCT preventivo_id FROM old_rows';
+                ELSE
+                  -- UPDATE: ricalcola sia per il vecchio che per il nuovo preventivo_id
+                  v_sql := 'SELECT DISTINCT preventivo_id FROM new_rows '
+                        || 'UNION '
+                        || 'SELECT DISTINCT preventivo_id FROM old_rows';
+                END IF;
+
+                -- Ricalcola una sola volta per ogni preventivo coinvolto
+                FOR v_pid IN EXECUTE v_sql
+                LOOP
+                  PERFORM vendite.fn_ricalcola_totali_preventivo(v_pid);
+                END LOOP;
+
+                RETURN NULL;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_preventivi_righe_ricalcola_totali()
+              IS 'Trigger function STATEMENT-level: ricalcola totali testata per ogni preventivo coinvolto. Usa EXECUTE + transition tables PG 18.';
+
+              -- Cleanup: rimuove vecchio trigger FOR EACH ROW se presente
+              DROP TRIGGER IF EXISTS trg_preventivi_righe_z90_ricalcola_totali_ins_upd_dlt
+                ON vendite.preventivi_righe;
+
+              -- ============================================================
+              -- Trigger INSERT: AFTER STATEMENT con REFERENCING NEW TABLE
+              -- ============================================================
+              DROP TRIGGER IF EXISTS trg_preventivi_righe_z90_ricalcola_totali_ins
+                ON vendite.preventivi_righe;
+
+              CREATE TRIGGER trg_preventivi_righe_z90_ricalcola_totali_ins
+                AFTER INSERT ON vendite.preventivi_righe
+                REFERENCING NEW TABLE AS new_rows
+                FOR EACH STATEMENT
+                EXECUTE FUNCTION vendite.trgfn_preventivi_righe_ricalcola_totali();
+
+              COMMENT ON TRIGGER trg_preventivi_righe_z90_ricalcola_totali_ins
+                ON vendite.preventivi_righe
+                IS 'Ricalcola totali testata dopo INSERT (statement-level, PG 18).';
+
+              -- ============================================================
+              -- Trigger UPDATE: AFTER STATEMENT con REFERENCING OLD + NEW
+              -- ============================================================
+              DROP TRIGGER IF EXISTS trg_preventivi_righe_z90_ricalcola_totali_upd
+                ON vendite.preventivi_righe;
+
+              CREATE TRIGGER trg_preventivi_righe_z90_ricalcola_totali_upd
+                AFTER UPDATE ON vendite.preventivi_righe
+                REFERENCING OLD TABLE AS old_rows NEW TABLE AS new_rows
+                FOR EACH STATEMENT
+                EXECUTE FUNCTION vendite.trgfn_preventivi_righe_ricalcola_totali();
+
+              COMMENT ON TRIGGER trg_preventivi_righe_z90_ricalcola_totali_upd
+                ON vendite.preventivi_righe
+                IS 'Ricalcola totali testata dopo UPDATE (statement-level, PG 18).';
+
+              -- ============================================================
+              -- Trigger DELETE: AFTER STATEMENT con REFERENCING OLD TABLE
+              -- ============================================================
+              DROP TRIGGER IF EXISTS trg_preventivi_righe_z90_ricalcola_totali_dlt
+                ON vendite.preventivi_righe;
+
+              CREATE TRIGGER trg_preventivi_righe_z90_ricalcola_totali_dlt
+                AFTER DELETE ON vendite.preventivi_righe
+                REFERENCING OLD TABLE AS old_rows
+                FOR EACH STATEMENT
+                EXECUTE FUNCTION vendite.trgfn_preventivi_righe_ricalcola_totali();
+
+              COMMENT ON TRIGGER trg_preventivi_righe_z90_ricalcola_totali_dlt
+                ON vendite.preventivi_righe
+                IS 'Ricalcola totali testata dopo DELETE (statement-level, PG 18).';
