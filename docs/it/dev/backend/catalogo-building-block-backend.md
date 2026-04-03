@@ -78,9 +78,13 @@
 | `validate_and_extract_token` | [auth_helpers.py](../../../../backend/apps/core/services/auth_helpers.py) | Valida token monouso senza consumo, estrae auth_user_id e meta |
 | `apply_new_password` | [auth_helpers.py](../../../../backend/apps/core/services/auth_helpers.py) | Set password + reset flag + blacklist JWT in transazione atomica |
 | `ComplexityValidator` | [password_validators.py](../../../../backend/apps/core/password_validators.py) | Validator password: maiuscola + minuscola + numero + carattere speciale |
-| `ParameterService.get_parameter` | [parameter_service.py](../../../../backend/apps/core/services/parameter_service.py) | Risolve parametro singolo con override utente (user → group → tenant → default). Lancia `E_PARAMETER_NOT_FOUND` se assente |
+| `ParameterService.get_parameter` | [parameter_service.py](../../../../backend/apps/core/services/parameter_service.py) | Risolve parametro singolo con override (user → group → emittente → default). Lancia `E_PARAMETER_NOT_FOUND` se assente |
 | `ParameterService.get_parameter_int` | [parameter_service.py](../../../../backend/apps/core/services/parameter_service.py) | Risolve parametro e converte a intero. Lancia `E_PARAMETER_VALIDATION` se non numerico |
 | `ParameterService.get_defaults` | [parameter_service.py](../../../../backend/apps/core/services/parameter_service.py) | Risolve N parametri in un colpo. Restituisce `{code: valore}`, codici assenti esclusi silenziosamente |
+| `ParameterService.list_parameters_for_user` | [parameter_service.py](../../../../backend/apps/core/services/parameter_service.py) | Lista completa parametri con valori a ogni livello di scope e valore risolto finale |
+| `ParameterService.upsert_user_override` | [parameter_service.py](../../../../backend/apps/core/services/parameter_service.py) | Crea/aggiorna override personale utente per un parametro (UPSERT) |
+| `ParameterService.delete_user_override` | [parameter_service.py](../../../../backend/apps/core/services/parameter_service.py) | Rimuove override personale utente con verifica ownership |
+| `ParameterService.get_emittente_fiscale_id_for_user` | [parameter_service.py](../../../../backend/apps/core/services/parameter_service.py) | Risolve emittente_fiscale_id dal bridge HR utente |
 
 ---
 
@@ -97,8 +101,12 @@
 | `SessionAuditRepository` | [session_audit_repository.py](../../../../backend/apps/core/db/session_audit_repository.py) | Insert/list eventi sessione |
 | `TokenRepository` | [token_repository.py](../../../../backend/apps/core/db/token_repository.py) | CRUD token monouso (create, find_valid, consume, invalidate) |
 | `EmailRepository` | [email_repository.py](../../../../backend/apps/core/db/email_repository.py) | Risoluzione template/account, log email, gestione bozze e allegati |
-| `ParameterRepository.get_parameter` | [parameter_repository.py](../../../../backend/apps/core/db/parameter_repository.py) | Risolve parametro singolo via `script.fn_get_parameter_full` con override utente/gruppo |
+| `ParameterRepository.get_parameter` | [parameter_repository.py](../../../../backend/apps/core/db/parameter_repository.py) | Risolve parametro singolo via `script.fn_get_parameter_full` con override user/group/emittente |
 | `ParameterRepository.get_parameters` | [parameter_repository.py](../../../../backend/apps/core/db/parameter_repository.py) | Risolve N parametri (max 20) in una sessione DB. Restituisce `{code: valore}` |
+| `ParameterRepository.list_for_user` | [parameter_repository.py](../../../../backend/apps/core/db/parameter_repository.py) | Lista parametri con valori per livello via `script.fn_list_parameters_for_user` |
+| `ParameterRepository.upsert_user_override` | [parameter_repository.py](../../../../backend/apps/core/db/parameter_repository.py) | UPSERT override personale utente su `config.parameter_overrides` |
+| `ParameterRepository.delete_user_override` | [parameter_repository.py](../../../../backend/apps/core/db/parameter_repository.py) | DELETE override con check ownership `django_user_id` |
+| `ParameterRepository.get_emittente_fiscale_id_for_user` | [parameter_repository.py](../../../../backend/apps/core/db/parameter_repository.py) | Risolve emittente_fiscale_id da bridge HR (risorse_umane_auth_user) |
 
 ---
 

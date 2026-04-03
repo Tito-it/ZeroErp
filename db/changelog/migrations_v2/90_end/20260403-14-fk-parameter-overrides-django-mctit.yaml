@@ -1,0 +1,80 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# FK django_user_id e django_group_id su config.parameter_overrides
+# Posizionato in 90_end perche' le tabelle django.auth_user/auth_group
+# vengono create dopo lo schema config (da Django migrate).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+    - logicalFilePath: migrations_v2/90_end/20260403-14-fk-parameter-overrides-django-mctit.yaml
+
+    - changeSet:
+          id: 20260403-14-06-fk-overrides-django-user
+          author: mctit
+          comment: "FK django_user_id -> django.auth_user (solo se auth_user esiste)"
+          preConditions:
+              - onFail: MARK_RAN
+              - and:
+                    - tableExists:
+                          schemaName: django
+                          tableName: auth_user
+                    - columnExists:
+                          schemaName: config
+                          tableName: parameter_overrides
+                          columnName: django_user_id
+                    - not:
+                          - foreignKeyConstraintExists:
+                                schemaName: config
+                                foreignKeyName: fk_overrides_django_user
+          changes:
+              - addForeignKeyConstraint:
+                    baseTableSchemaName: config
+                    baseTableName: parameter_overrides
+                    baseColumnNames: django_user_id
+                    constraintName: fk_overrides_django_user
+                    referencedTableSchemaName: django
+                    referencedTableName: auth_user
+                    referencedColumnNames: id
+                    onUpdate: CASCADE
+                    onDelete: NO ACTION
+          rollback:
+              - dropForeignKeyConstraint:
+                    baseTableSchemaName: config
+                    baseTableName: parameter_overrides
+                    constraintName: fk_overrides_django_user
+
+    - changeSet:
+          id: 20260403-14-07-fk-overrides-django-group
+          author: mctit
+          comment: "FK django_group_id -> django.auth_group (solo se auth_group esiste)"
+          preConditions:
+              - onFail: MARK_RAN
+              - and:
+                    - tableExists:
+                          schemaName: django
+                          tableName: auth_group
+                    - columnExists:
+                          schemaName: config
+                          tableName: parameter_overrides
+                          columnName: django_group_id
+                    - not:
+                          - foreignKeyConstraintExists:
+                                schemaName: config
+                                foreignKeyName: fk_overrides_django_group
+          changes:
+              - addForeignKeyConstraint:
+                    baseTableSchemaName: config
+                    baseTableName: parameter_overrides
+                    baseColumnNames: django_group_id
+                    constraintName: fk_overrides_django_group
+                    referencedTableSchemaName: django
+                    referencedTableName: auth_group
+                    referencedColumnNames: id
+                    onUpdate: CASCADE
+                    onDelete: NO ACTION
+          rollback:
+              - dropForeignKeyConstraint:
+                    baseTableSchemaName: config
+                    baseTableName: parameter_overrides
+                    constraintName: fk_overrides_django_group
