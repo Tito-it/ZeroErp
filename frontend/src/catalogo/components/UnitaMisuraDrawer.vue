@@ -10,6 +10,7 @@ import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import DrawerFooter from '../../core/components/DrawerFooter.vue'
 import Drawer from 'primevue/drawer'
 import InputText from 'primevue/inputtext'
+import ToggleSwitch from 'primevue/toggleswitch'
 
 const { t } = useI18n()
 const store = useUnitaMisuraStore()
@@ -24,10 +25,10 @@ const props = defineProps({
 const emit = defineEmits(['update:visible', 'saved', 'cancelled'])
 
 const isEdit = computed(() => props.mode === 'edit')
-const form = ref({ codice: '', descrizione: '', descrizione_fattura: '' })
+const form = ref({ codice: '', descrizione: '', descrizione_fattura: '', attivo: true })
 
 function resetForm() {
-  form.value = { codice: '', descrizione: '', descrizione_fattura: '' }
+  form.value = { codice: '', descrizione: '', descrizione_fattura: '', attivo: true }
 }
 
 async function loadDetail() {
@@ -37,7 +38,8 @@ async function loadDetail() {
   form.value = {
     codice: data.codice || '',
     descrizione: data.descrizione || '',
-    descrizione_fattura: data.descrizione_fattura || ''
+    descrizione_fattura: data.descrizione_fattura || '',
+    attivo: data.attivo ?? true
   }
 }
 
@@ -56,10 +58,11 @@ async function handleSave() {
   if (isEdit.value) {
     const payload = {
       descrizione: form.value.descrizione?.trim(),
-      descrizione_fattura: form.value.descrizione_fattura?.trim() || null
+      descrizione_fattura: form.value.descrizione_fattura?.trim() || null,
+      attivo: form.value.attivo,
     }
     const result = await execute(() => store.update(props.uomId, payload), { successMessage: t('catalogo.uom_salvata') })
-    if (result) emit('saved', result)
+    if (result !== null) { emit('saved', result); close() }
   } else {
     const payload = {
       codice: form.value.codice?.trim(),
@@ -67,7 +70,7 @@ async function handleSave() {
       descrizione_fattura: form.value.descrizione_fattura?.trim() || null
     }
     const result = await execute(() => store.create(payload), { successMessage: t('catalogo.uom_creata') })
-    if (result) emit('saved', result)
+    if (result !== null) { emit('saved', result); close() }
   }
 }
 
@@ -97,6 +100,10 @@ function close() {
         <div class="form-field">
           <label>{{ t('catalogo.field_desc_fattura') }}</label>
           <InputText v-model="form.descrizione_fattura" />
+        </div>
+        <div v-if="isEdit" class="form-field">
+          <label>{{ t('indirizzi.campo_attivo') }}</label>
+          <ToggleSwitch v-model="form.attivo" />
         </div>
       </div>
 

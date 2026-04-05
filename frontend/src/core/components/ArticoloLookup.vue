@@ -11,6 +11,7 @@ const { t } = useI18n()
 const props = defineProps({
   modelValue: { type: Object, default: null },
   voceUtility: { type: Boolean, default: undefined },
+  soloComponenti: { type: Boolean, default: undefined },
   soloAttivi: { type: Boolean, default: true },
   placeholder: { type: String, default: null },
   disabled: { type: Boolean, default: false }
@@ -21,8 +22,11 @@ const emit = defineEmits(['update:modelValue', 'select'])
 const ac = useServerAutocomplete(async (query) => {
   const params = { search: query, attivo: props.soloAttivi, limit: 20 }
   if (props.voceUtility !== undefined) params.voce_utility = props.voceUtility
-  const res = await lookupArticoli(params)
-  return (res.data.data.results ?? res.data.data ?? []).map(r => ({
+  if (props.soloComponenti !== undefined) params.is_solo_componente = props.soloComponenti
+  return await lookupArticoli(params)
+}, {
+  minLength: 3,
+  transform: (res) => (res.data.data.results ?? res.data.data ?? []).map(r => ({
     ...r,
     _display: `${r.codice} — ${r.descrizione}`
   }))
@@ -42,10 +46,10 @@ function onClear() {
   <AutoComplete
     :modelValue="modelValue"
     :suggestions="ac.suggestions.value"
-    @complete="ac.search"
+    @complete="ac.onSearch"
     @item-select="onSelect"
     @clear="onClear"
-    field="_display"
+    optionLabel="_display"
     :placeholder="placeholder || t('catalogo.search_placeholder')"
     :disabled="disabled"
     dropdown

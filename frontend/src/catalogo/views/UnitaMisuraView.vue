@@ -1,14 +1,22 @@
 <script setup>
 // Scopo: Vista principale gestione unita' di misura.
+//        Drawer UoM + sub-drawer conversioni apribile dalla lista.
+import { ref } from 'vue'
 import { useDrawerState } from '../../core/composables/useDrawerState'
 import { useReadonlyMode } from '../../core/composables/useReadonlyMode'
 import { useUnitaMisuraStore } from '../stores/unitaMisura'
 import UnitaMisuraSearchTable from '../components/UnitaMisuraSearchTable.vue'
 import UnitaMisuraDrawer from '../components/UnitaMisuraDrawer.vue'
+import UomConversioniDrawer from '../components/UomConversioniDrawer.vue'
 
 const drawer = useDrawerState()
 const store = useUnitaMisuraStore()
 useReadonlyMode('catalogo')
+
+// Sub-drawer conversioni
+const convDrawerVisible = ref(false)
+const convUomId = ref(null)
+const convUomCodice = ref('')
 
 async function onDrawerSaved(result) {
   store.filters.offset = 0
@@ -19,6 +27,12 @@ async function onDrawerSaved(result) {
     drawer.close()
   }
 }
+
+function onManageConversioni(data) {
+  convUomId.value = data.id
+  convUomCodice.value = data.codice || ''
+  convDrawerVisible.value = true
+}
 </script>
 
 <template>
@@ -26,6 +40,7 @@ async function onDrawerSaved(result) {
     <UnitaMisuraSearchTable
       @new="drawer.openCreate"
       @row-click="(data) => drawer.editRow(data, 'id')"
+      @manage-conversioni="onManageConversioni"
     />
 
     <UnitaMisuraDrawer
@@ -35,6 +50,13 @@ async function onDrawerSaved(result) {
       :uom-id="drawer.state.itemId"
       @saved="onDrawerSaved"
       @cancelled="drawer.close"
+    />
+
+    <UomConversioniDrawer
+      :visible="convDrawerVisible"
+      @update:visible="v => convDrawerVisible = v"
+      :uom-id="convUomId"
+      :uom-codice="convUomCodice"
     />
   </div>
 </template>

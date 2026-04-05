@@ -1,0 +1,239 @@
+<script setup>
+// Scopo: Sub-drawer per gestione conversioni UoM di una specifica unita' di misura.
+// Layout: lista conversioni sempre visibile in alto con fattore editabile inline,
+// form inserimento nuova conversione in basso (solo "A" selezionabile, "Da" e' la UoM corrente).
+
+import { ref, watch, computed } from 'vue'
+import { useI18n } from 'vue-i18n'
+import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
+import { useApiHandler } from '../../core/composables/useApiHandler'
+import { listConversioniUom, createConversioneUom, updateConversioneUom } from '../api/catalogo'
+import { toDateString } from '../../core/utils/date'
+import { DRAWER_WIDTH, DATE_FORMAT } from '../../core/constants'
+import { displayDate } from '../../core/utils/date'
+import LookupSelect from '../../core/components/LookupSelect.vue'
+import DrawerTitle from '../../core/components/DrawerTitle.vue'
+import Drawer from 'primevue/drawer'
+import DataTable from 'primevue/datatable'
+import Column from 'primevue/column'
+import Button from 'primevue/button'
+import InputNumber from 'primevue/inputnumber'
+import DatePicker from 'primevue/datepicker'
+
+const { t } = useI18n()
+const isReadonly = useInjectReadonly()
+const { execute, loading } = useApiHandler()
+
+const props = defineProps({
+  visible: { type: Boolean, default: false },
+  uomId: { type: [Number, null], default: null },
+  uomCodice: { type: String, default: '' },
+})
+const emit = defineEmits(['update:visible', 'saved'])
+
+const conversioniList = ref([])
+const listLoading = ref(false)
+const adding = ref(false)
+const form = ref({ uom_to_id: null, fattore: 1, valido_dal: new Date() })
+
+// Edit inline fattore
+const editingFattoreId = ref(null)
+const editingFattoreValue = ref(null)
+
+// Scopo: Carica conversioni filtrate per la UoM corrente.
+async function loadConversioni() {
+  if (!props.uomId) return
+  listLoading.value = true
+  try {
+    const res = await listConversioniUom({ uom_id: props.uomId })
+    const payload = res.data?.data
+    conversioniList.value = (Array.isArray(payload) ? payload : payload?.results || [])
+  } catch {
+    conversioniList.value = []
+  } finally {
+    listLoading.value = false
+  }
+}
+
+watch(() => props.visible, (val) => {
+  if (!val) return
+  adding.value = false
+  form.value = { uom_to_id: null, fattore: 1, valido_dal: new Date() }
+  editingFattoreId.value = null
+  loadConversioni()
+})
+
+// --- Inserimento nuova conversione ---
+
+function startAdd() {
+  form.value = { uom_to_id: null, fattore: 1, valido_dal: new Date() }
+  adding.value = true
+}
+
+function cancelAdd() {
+  adding.value = false
+  form.value = { uom_to_id: null, fattore: 1, valido_dal: new Date() }
+}
+
+const canSaveNew = computed(() => {
+  return form.value.uom_to_id != null && form.value.fattore > 0
+})
+
+// Scopo: Crea nuova conversione. Da = UoM corrente, A = selezionata.
+async function onSaveNew() {
+  const result = await execute(
+    () => createConversioneUom({
+      uom_from_id: props.uomId,
+      uom_to_id: form.value.uom_to_id,
+      fattore: form.value.fattore,
+      valido_dal: toDateString(form.value.valido_dal),
+    }),
+    { successMessage: t('catalogo.conversione_creata') }
+  )
+  if (result === null) return
+  adding.value = false
+  form.value = { uom_to_id: null, fattore: 1, valido_dal: new Date() }
+  await loadConversioni()
+  emit('saved')
+}
+
+// --- Edit inline fattore ---
+
+function startEditFattore(row) {
+  editingFattoreId.value = row.id
+  editingFattoreValue.value = row.fattore
+}
+
+async function confirmEditFattore(row) {
+  const result = await execute(
+    () => updateConversioneUom(row.id, { fattore: editingFattoreValue.value }),
+    { successMessage: t('catalogo.conversione_salvata') }
+  )
+  if (result === null) return
+  editingFattoreId.value = null
+  editingFattoreValue.value = null
+  await loadConversioni()
+  emit('saved')
+}
+
+function cancelEditFattore() {
+  editingFattoreId.value = null
+  editingFattoreValue.value = null
+}
+</script>
+
+<template>
+  <Drawer
+    :visible="visible"
+    @update:visible="emit('update:visible', $event)"
+    position="right"
+    :style="{ width: DRAWER_WIDTH.STANDARD }"
+  >
+    <template #header>
+      <DrawerTitle :action="t('catalogo.gestisci_conversioni')" :title="uomCodice" icon="pi pi-arrows-h" />
+    </template>
+
+    <div class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
+      <div v-if="listLoading" class="app-loading">
+        <i class="pi pi-spin pi-spinner" />
+      </div>
+
+      <template v-if="!listLoading">
+        <!-- Lista conversioni -->
+        <div v-if="conversioniList.length === 0 && !adding" class="app-empty-state">
+          <i class="pi pi-arrows-h" />
+          <p>{{ t('catalogo.nessuna_conversione') }}</p>
+        </div>
+
+        <DataTable v-if="conversioniList.length > 0" :value="conversioniList" class="app-datatable" striped-rows>
+          <Column :header="t('catalogo.col_uom_da')" style="width: 100px;">
+            <template #body="{ data }">
+              <strong>{{ data.uom_from_codice }}</strong>
+            </template>
+          </Column>
+          <Column :header="t('catalogo.col_uom_a')" style="width: 100px;">
+            <template #body="{ data }">
+              <strong>{{ data.uom_to_codice }}</strong>
+            </template>
+          </Column>
+          <Column :header="t('catalogo.col_fattore')" style="width: 150px;">
+            <template #body="{ data }">
+              <template v-if="editingFattoreId === data.id">
+                <div class="flex gap-1 align-items-center">
+                  <InputNumber v-model="editingFattoreValue" :min="0" :min-fraction-digits="2"
+                    :max-fraction-digits="10" style="width: 100px;" />
+                  <Button icon="pi pi-check" text rounded size="small" class="app-action-btn"
+                    @click="confirmEditFattore(data)" />
+                  <Button icon="pi pi-times" text rounded size="small"
+                    @click="cancelEditFattore" />
+                </div>
+              </template>
+              <template v-else>
+                <span v-if="!isReadonly" class="fattore-cell" @click="startEditFattore(data)">
+                  {{ data.fattore }}
+                  <i class="pi pi-pencil" style="font-size: 0.7rem; margin-left: 0.25rem; opacity: 0.5;" />
+                </span>
+                <span v-else>{{ data.fattore }}</span>
+              </template>
+            </template>
+          </Column>
+          <Column :header="t('catalogo.field_valido_al')" style="width: 100px;">
+            <template #body="{ data }">{{ displayDate(data.valido_al) || '—' }}</template>
+          </Column>
+        </DataTable>
+
+        <!-- Form inserimento nuova conversione -->
+        <template v-if="!isReadonly">
+          <div v-if="!adding" class="mt-05">
+            <Button
+              :label="t('catalogo.nuova_conversione_uom')"
+              icon="pi pi-plus"
+              text size="small"
+              class="app-action-btn"
+              @click="startAdd"
+            />
+          </div>
+
+          <template v-if="adding">
+            <div class="app-drawer-section">
+              <h4>{{ t('catalogo.nuova_conversione_uom') }}</h4>
+            </div>
+            <div class="form-grid-2col">
+              <div class="form-field">
+                <label>{{ t('catalogo.field_uom_a') }} *</label>
+                <LookupSelect v-model="form.uom_to_id" rel="catalogo.unita_misura"
+                  :placeholder="t('catalogo.select_uom_a')" />
+              </div>
+              <div class="form-field">
+                <label>{{ t('catalogo.col_fattore') }} *</label>
+                <InputNumber v-model="form.fattore" :min="0" :min-fraction-digits="2"
+                  :max-fraction-digits="10" class="w-full" />
+              </div>
+              <div class="form-field">
+                <label>{{ t('catalogo.field_valido_dal') }}</label>
+                <DatePicker v-model="form.valido_dal" :date-format="DATE_FORMAT"
+                  show-icon show-button-bar class="w-full" />
+              </div>
+            </div>
+            <div class="flex justify-end gap-2 mt-05">
+              <Button :label="t('common.cancel')" text @click="cancelAdd" />
+              <Button :label="t('common.save')" :loading="loading" :disabled="!canSaveNew" @click="onSaveNew" />
+            </div>
+          </template>
+        </template>
+      </template>
+    </div>
+  </Drawer>
+</template>
+
+<style scoped>
+.fattore-cell {
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  font-family: monospace;
+}
+.fattore-cell:hover {
+  color: var(--p-primary-color);
+}
+</style>

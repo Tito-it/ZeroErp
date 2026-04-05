@@ -701,7 +701,7 @@ class AmmSoftwareRepository:
             sql += "AND valid_from >= %s::timestamptz "
             params.append(data_da)
         if data_a:
-            sql += "AND valid_from <= %s::timestamptz "
+            sql += "AND valid_from < (%s::date + INTERVAL '1 day') "
             params.append(data_a)
 
         # Ordinamento sicuro (whitelist). Il frontend manda il nome campo
