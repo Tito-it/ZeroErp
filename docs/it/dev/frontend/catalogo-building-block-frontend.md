@@ -50,7 +50,7 @@
 | Store | File | Descrizione |
 |---|---|---|
 | `useAuthStore` | [auth.js](../../../../frontend/src/stores/auth.js) | Autenticazione e autorizzazione (token, profilo, permessi, login/logout) |
-| `useUiStore` | [ui.js](../../../../frontend/src/stores/ui.js) | Layout responsive e stato UI (sidebar, search drawer, AI drawer) |
+| `useUiStore` | [ui.js](../../../../frontend/src/stores/ui.js) | Layout responsive, stato UI (sidebar, search drawer, AI drawer), dark/light mode (`isDark`, `toggleDarkMode`) |
 | `useTabsStore` | [tabs.js](../../../../frontend/src/stores/tabs.js) | Content tabs tipo browser con split-view e dirty tracking |
 | `useNavigationStore` | [navigation.js](../../../../frontend/src/stores/navigation.js) | Stato sidebar dominio/menu e pagine preferite |
 | `useContextStore` | [context.js](../../../../frontend/src/stores/context.js) | Contesto globale ricerca (soggetto, tipo_ruolo, entità) |
@@ -111,6 +111,7 @@
 | `LIVELLO_ACCESSO` | Enum livelli accesso (TUTTO, LETTURA, BLOCCATO) |
 | `STATO_PRATICA` | Enum stati pratica (BOZZA, APERTA, SOSPESA, CHIUSA, ANNULLATA) |
 | `STATO_FLUSSO` | Enum stati flusso (DA_ESEGUIRE, IN_CORSO, COMPLETATO, ecc.) |
+| `MANAGE_ICONS` | Icone gestione riga centralizzate per dominio (CONTATTI, INDIRIZZI, CONTI_BANCARI, UOM, BOM, NOTE, CONVERSIONI) |
 | `SHORTCUTS` | Scorciatoie tastiera (Ctrl+K ricerca, Ctrl+Tab prossima tab, ecc.) |
 
 ---
@@ -144,11 +145,16 @@ I CSS globali sono organizzati in 3 file. Ogni classe è commentata nel sorgente
 | Login | `--app-login-card-*`, `--app-login-error-*` | Card e messaggi pagine auth |
 | Toolbar | `--app-toolbar-height`, `--app-toolbar-bg`, `--app-toolbar-tab-*` | Barra secondaria sotto topbar |
 | Icone | `--app-icon-color` | Colore standard icone informative |
-| Drawer | `--app-drawer-footer-border` | Bordo footer drawer |
+| Drawer | `--app-drawer-gap`, `--app-drawer-section-border`, `--app-drawer-footer-border` | Gap contenuto, bordo sezioni, bordo footer |
 | Transizioni | `--app-transition-fast`, `--app-transition-normal` | Durata animazioni |
 | Tipografia | `--app-font-size-sm`, `--app-font-size-base`, `--app-font-size-lg` | Dimensioni font app |
 | DataTable | `--app-table-font-size`, `--app-table-cell-padding`, `--app-table-stripe-bg`, `--app-table-hover-bg` | Stile tabelle compatte |
+| Pulsanti riga | `--app-btn-manage-*`, `--app-btn-edit-*`, `--app-btn-delete-*`, `--app-btn-disabled-color` | Colori pulsanti gestione/modifica/elimina nelle DataTable |
+| AI Assistant | `--app-ai-bg`, `--app-ai-border`, `--app-ai-header-bg`, `--app-ai-msg-*`, `--app-ai-shadow` | Widget AI: sfondo, bordi, messaggi, ombra |
 | Preview | `--app-preview-bg`, `--app-preview-border`, `--app-preview-radius` | Riquadri anteprima |
+
+**Dark/Light mode**: tutte le variabili sopra hanno un override in `:root:not(.p-dark)` per light mode.
+Il toggle e' gestito dallo store `useUiStore` (`isDark`, `toggleDarkMode`) e persistito in `localStorage`.
 
 ### Classi layout pagina (`main.css`)
 
@@ -176,7 +182,8 @@ I CSS globali sono organizzati in 3 file. Ogni classe è commentata nel sorgente
 
 | Classe | Descrizione |
 |---|---|
-| `app-drawer-content` | Layout standard contenuto drawer (gap, tipografia h4) |
+| `app-drawer-content` | Layout standard contenuto drawer (gap via `--app-drawer-gap`, tipografia h4) |
+| `app-drawer-section` | Separatore sezione nei drawer (bordo via `--app-drawer-section-border`) |
 | `app-drawer-footer` | Footer drawer con pulsanti allineati a destra |
 
 ### Classi DataTable (`main.css`)
@@ -188,10 +195,24 @@ I CSS globali sono organizzati in 3 file. Ogni classe è commentata nel sorgente
 
 ### Classi pulsanti (`main.css`)
 
-| Classe | Descrizione |
-|---|---|
-| `app-action-btn` | Pulsante azione form — icona verde, no sfondo, grigio se disabilitato |
-| `app-reload-btn` | Pulsante ricarica lista — icona verde coerente |
+| Classe | Descrizione | Uso |
+| --- | --- | --- |
+| `app-action-btn` | Pulsante azione form — icona verde (primary), no sfondo, grigio se disabilitato | "Aggiungi", pulsanti azione generici nei form |
+| `app-manage-btn` | Pulsante gestione riga — icona blu (info), hover su sfondo blue-50 | Pulsanti "Gestisci" nelle colonne azione DataTable (UoM, BoM, Note) |
+| `app-edit-btn` | Pulsante modifica riga — icona matita verde (primary), hover su sfondo primary-50 | Matita nelle DataTable e card liste |
+| `app-delete-btn` | Pulsante elimina riga — icona cestino rosso, hover su sfondo red-50 | Cestino nelle DataTable e card liste |
+| `app-reload-btn` | Pulsante ricarica lista — icona verde coerente | Refresh nelle toolbar lista |
+
+**Pattern standard per pulsanti riga:**
+
+```html
+<!-- Gestione (apre sub-drawer) -->
+<Button icon="pi pi-box" text rounded size="small" class="app-manage-btn" @click="onManage(data)" />
+<!-- Modifica -->
+<Button icon="pi pi-pencil" text rounded size="small" class="app-edit-btn" @click="onEdit(data)" />
+<!-- Elimina -->
+<Button icon="pi pi-trash" text rounded size="small" class="app-delete-btn" @click="onDelete(data)" />
+```
 
 ### Classi stato (`main.css`)
 
@@ -275,7 +296,7 @@ I CSS globali sono organizzati in 3 file. Ogni classe è commentata nel sorgente
 | Componente | File | Descrizione |
 |---|---|---|
 | `LookupSelect` | [LookupSelect.vue](../../../../frontend/src/core/components/LookupSelect.vue) | Select generico per tabelle lookup whitelisted (`id, codice, descrizione`). Prop `rel` mappa alla whitelist in `dbops_repository.py` (~45 tabelle). Sostituisce il pattern `useLookup(() => lookupCodici(...))` + `<Select>`. Props: `rel` (obbligatorio), `placeholder`, `label-field` (default `descrizione`), `value-field` (default `id`), `show-clear`, `filter` (default true), `disabled`. Emette `@change`. |
-| `ArticoloLookup` | [ArticoloLookup.vue](../../../../frontend/src/core/components/ArticoloLookup.vue) | Autocomplete articolo server-side cross-dominio. Props: `voce-utility`, `solo-attivi`, `placeholder`, `disabled`. Emette `@select`. Usato da: righe listino, distinta base, test resolver. |
+| `ArticoloLookup` | [ArticoloLookup.vue](../../../../frontend/src/core/components/ArticoloLookup.vue) | Autocomplete articolo server-side cross-dominio. Props: `voce-utility`, `solo-componenti`, `solo-attivi`, `placeholder`, `disabled`. Emette `@select`. Usa `optionLabel` PrimeVue 4, `minLength: 3`. Usato da: righe listino, distinta base, test resolver. |
 
 ### Ricerca
 
@@ -311,3 +332,16 @@ I CSS globali sono organizzati in 3 file. Ogni classe è commentata nel sorgente
 | `StatiDrawer` | [StatiDrawer.vue](../../../../frontend/src/core/components/StatiDrawer.vue) | Drawer stato/nazione |
 | `CodiciPostaliDrawer` | [CodiciPostaliDrawer.vue](../../../../frontend/src/core/components/CodiciPostaliDrawer.vue) | Drawer codice postale |
 | `ToponomasticaDrawer` | [ToponomasticaDrawer.vue](../../../../frontend/src/core/components/ToponomasticaDrawer.vue) | Drawer tipo strada |
+
+---
+
+## Componenti Dominio Catalogo (`src/catalogo/components/`)
+
+### Drawer articolo e sub-drawer
+
+| Componente | File | Descrizione |
+| --- | --- | --- |
+| `ArticoloDrawer` | [ArticoloDrawer.vue](../../../../frontend/src/catalogo/components/ArticoloDrawer.vue) | Drawer crea/modifica articolo. Combo conti contabili vendita/acquisto, auto-propose IVA da parameters. In edit: riepilogo UoM/BoM/Note con pulsante "Gestisci" che apre sub-drawer. Contenuto deferito (`@after-show`) per evitare rimbalzi. |
+| `ArticoloUomDrawer` | [ArticoloUomDrawer.vue](../../../../frontend/src/catalogo/components/ArticoloUomDrawer.vue) | Sub-drawer UoM operative. Pattern formMode (null=lista DataTable, 'new'=aggiungi, 'edit'=modifica). Props: `visible`, `articolo-id`. Emette `@saved`. |
+| `ArticoloBomDrawer` | [ArticoloBomDrawer.vue](../../../../frontend/src/catalogo/components/ArticoloBomDrawer.vue) | Sub-drawer distinta base. Lista componenti sempre visibile + form inserimento sotto. `valido_al` editabile inline nella DataTable. Lookup articoli via `ArticoloLookup`. Props: `visible`, `articolo-id`. Emette `@saved`. |
+| `ArticoloNoteDrawer` | [ArticoloNoteDrawer.vue](../../../../frontend/src/catalogo/components/ArticoloNoteDrawer.vue) | Sub-drawer note articolo. Pattern formMode con card layout. Stile nota via `LookupSelect rel="config.note_stili"`. Props: `visible`, `articolo-id`. Emette `@saved`. |

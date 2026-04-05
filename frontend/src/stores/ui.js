@@ -40,6 +40,26 @@ export const useUiStore = defineStore('ui', () => {
   const aiDrawerVisible = ref(false)
   const aiAvailable = ref(false)
 
+  // Dark/Light mode — persistito in localStorage, applicato su <html> class
+  const storedDarkMode = local.get(STORAGE_KEYS.DARK_MODE)
+  const isDark = ref(storedDarkMode !== null ? storedDarkMode === 'true' : true)
+
+  // Applica la classe al DOM all'inizializzazione
+  function _applyDarkMode() {
+    if (isDark.value) {
+      document.documentElement.classList.add('p-dark')
+    } else {
+      document.documentElement.classList.remove('p-dark')
+    }
+  }
+  _applyDarkMode()
+
+  function toggleDarkMode() {
+    isDark.value = !isDark.value
+    local.set(STORAGE_KEYS.DARK_MODE, isDark.value)
+    _applyDarkMode()
+  }
+
   function openAiDrawer() { aiDrawerVisible.value = true }
   function toggleAiDrawer() { aiDrawerVisible.value = !aiDrawerVisible.value }
 
@@ -80,6 +100,8 @@ export const useUiStore = defineStore('ui', () => {
     aiAvailable,
     openAiDrawer,
     toggleAiDrawer,
-    toggleSidebar
+    toggleSidebar,
+    isDark,
+    toggleDarkMode
   }
 })

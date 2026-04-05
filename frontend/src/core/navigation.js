@@ -52,7 +52,8 @@ export const DOMAIN_MENUS = {
   ],
   'catalogo': [
     { key: 'articoli', icon: 'pi pi-box', to: '/catalogo/articoli' },
-    { key: 'unita-misura', icon: 'pi pi-arrows-h', to: '/catalogo/unita-misura' }
+    { key: 'unita-misura', icon: 'pi pi-arrows-h', to: '/catalogo/unita-misura' },
+    { key: 'conversioni-uom', icon: 'pi pi-sync', to: '/catalogo/conversioni-uom' }
   ],
   'vendite': [
     { key: 'preventivi', icon: 'pi pi-file', to: '/vendite/preventivi' },

@@ -802,6 +802,13 @@ class ErrorPolicyRegistry:
             ui_action="show_error_banner",
             user_message="Valore parametro non valido.",
         ),
+        # ── Conversioni UoM ──
+        "E_CATALOGO_CONV_NOT_FOUND": ErrorPolicy(
+            code="E_CATALOGO_CONV_NOT_FOUND",
+            http_status=404,
+            ui_action="show_error_banner",
+            user_message="Conversione unita' di misura non trovata.",
+        ),
     }
 
     # Scopo: Risolve la policy per un codice errore. Per codici applicativi

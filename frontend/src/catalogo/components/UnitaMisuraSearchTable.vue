@@ -12,12 +12,13 @@ import Select from 'primevue/select'
 import Tag from 'primevue/tag'
 import Button from 'primevue/button'
 import NewButton from '../../core/components/NewButton.vue'
+import { MANAGE_ICONS } from '../../core/constants'
 
-const emit = defineEmits(['new', 'row-click'])
+const emit = defineEmits(['new', 'row-click', 'manage-conversioni'])
 const { t } = useI18n()
 const store = useUnitaMisuraStore()
 const { searchText, onPage, onSort, applyFilters, reload, paginatorProps } = useSearchTable(store, {
-  defaultSortField: 'codice'
+  defaultSortField: 'descrizione'
 })
 
 const attivoFilter = ref(true)
@@ -67,6 +68,14 @@ onMounted(() => store.fetchList())
       <Column field="attivo" :header="t('catalogo.col_attivo')" style="width: 90px;">
         <template #body="{ data }">
           <Tag :value="data.attivo ? t('common.active') : t('common.inactive')" :severity="data.attivo ? 'success' : 'warn'" />
+        </template>
+      </Column>
+      <Column style="width: 50px;">
+        <template #body="{ data }">
+          <div @click.stop>
+            <Button :icon="MANAGE_ICONS.CONVERSIONI" text rounded size="small" class="app-manage-btn"
+              v-tooltip.bottom="t('catalogo.gestisci_conversioni')" @click="emit('manage-conversioni', data)" />
+          </div>
         </template>
       </Column>
     </DataTable>

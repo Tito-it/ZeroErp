@@ -100,6 +100,20 @@ export const STATO_PREVENTIVO = {
   ANNULLATO: 'ANNULLATO',
 }
 
+// Icone gestione riga — centralizzate per coerenza cross-dominio.
+// Uso: <Button :icon="MANAGE_ICONS.CONTATTI" class="app-manage-btn" />
+export const MANAGE_ICONS = {
+  // Anagrafiche
+  CONTATTI: 'pi pi-id-card',
+  INDIRIZZI: 'pi pi-map-marker',
+  CONTI_BANCARI: 'pi pi-wallet',
+  // Catalogo
+  UOM: 'pi pi-box',
+  BOM: 'pi pi-sitemap',
+  NOTE: 'pi pi-file-edit',
+  CONVERSIONI: 'pi pi-sync',
+}
+
 // Keyboard shortcuts
 export const SHORTCUTS = {
   SEARCH: { key: 'k', ctrl: true, shift: false },

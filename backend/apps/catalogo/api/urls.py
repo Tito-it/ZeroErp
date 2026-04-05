@@ -10,6 +10,9 @@ from apps.catalogo.api.views import (
     ApiArticoloUomList,
     ApiArticoliList,
     ApiArticoliLookup,
+    ApiComponenteNoteList,
+    ApiConversioneDetail,
+    ApiConversioniList,
     ApiNotaDetail,
     ApiUnitaMisuraDetail,
     ApiUnitaMisuraDisattiva,
@@ -21,6 +24,7 @@ urlpatterns = [
     path("articoli/lookup/", ApiArticoliLookup.as_view(), name="catalogo-articoli-lookup"),
     path("articoli/<uuid:articolo_id>/uom/<int:uom_op_id>/", ApiArticoloUomDetail.as_view(), name="catalogo-articolo-uom-detail"),
     path("articoli/<uuid:articolo_id>/uom/", ApiArticoloUomList.as_view(), name="catalogo-articolo-uom-list"),
+    path("articoli/<uuid:articolo_id>/componenti/<uuid:comp_id>/note/", ApiComponenteNoteList.as_view(), name="catalogo-componente-note-list"),
     path("articoli/<uuid:articolo_id>/componenti/<uuid:comp_id>/", ApiArticoloComponenteDetail.as_view(), name="catalogo-articolo-componente-detail"),
     path("articoli/<uuid:articolo_id>/componenti/", ApiArticoloComponentiList.as_view(), name="catalogo-articolo-componenti-list"),
     path("articoli/<uuid:articolo_id>/note/", ApiArticoloNoteList.as_view(), name="catalogo-articolo-note-list"),
@@ -32,4 +36,7 @@ urlpatterns = [
     path("unita-misura/<int:uom_id>/disattiva/", ApiUnitaMisuraDisattiva.as_view(), name="catalogo-unita-misura-disattiva"),
     path("unita-misura/<int:uom_id>/", ApiUnitaMisuraDetail.as_view(), name="catalogo-unita-misura-detail"),
     path("unita-misura/", ApiUnitaMisuraList.as_view(), name="catalogo-unita-misura-list"),
+    # Conversioni UoM
+    path("conversioni-uom/<int:conv_id>/", ApiConversioneDetail.as_view(), name="catalogo-conversione-detail"),
+    path("conversioni-uom/", ApiConversioniList.as_view(), name="catalogo-conversioni-list"),
 ]

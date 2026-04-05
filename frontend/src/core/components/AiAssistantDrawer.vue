@@ -217,10 +217,10 @@ watch(() => messages.value.length, () => {
   max-height: 520px;
   display: flex;
   flex-direction: column;
-  border: 1px solid var(--p-surface-700);
+  border: 1px solid var(--app-ai-border);
   border-radius: 0.75rem;
-  background: var(--p-surface-900);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35), 0 2px 8px rgba(0, 0, 0, 0.25);
+  background: var(--app-ai-bg);
+  box-shadow: var(--app-ai-shadow);
   z-index: 1100;
   overflow: hidden;
 }
@@ -235,8 +235,8 @@ watch(() => messages.value.length, () => {
   align-items: center;
   justify-content: space-between;
   padding: 0.5rem 0.75rem;
-  border-bottom: 1px solid var(--p-surface-700);
-  background: var(--p-surface-800);
+  border-bottom: 1px solid var(--app-ai-border);
+  background: var(--app-ai-header-bg);
   cursor: pointer;
   user-select: none;
 }
@@ -277,7 +277,7 @@ watch(() => messages.value.length, () => {
 
 .ai-widget-header-btn:hover {
   color: var(--p-text-color);
-  background: var(--p-surface-700);
+  background: var(--app-ai-border);
 }
 
 /* Area messaggi */
@@ -337,12 +337,12 @@ watch(() => messages.value.length, () => {
 
 .ai-message-user .ai-message-avatar {
   color: var(--p-blue-400);
-  border: 1px solid var(--p-blue-800);
+  border: 1px solid var(--app-ai-avatar-user-border);
 }
 
 .ai-message-assistant .ai-message-avatar {
   color: var(--p-primary-color);
-  border: 1px solid var(--p-primary-800);
+  border: 1px solid var(--app-ai-avatar-assistant-border);
 }
 
 .ai-message-body {
@@ -354,12 +354,12 @@ watch(() => messages.value.length, () => {
 }
 
 .ai-message-user .ai-message-body {
-  border: 1px solid var(--p-blue-800);
+  border: 1px solid var(--app-ai-msg-user-border);
   color: var(--p-text-color);
 }
 
 .ai-message-assistant .ai-message-body {
-  border: 1px solid var(--p-surface-700);
+  border: 1px solid var(--app-ai-msg-assistant-border);
   color: var(--p-text-color);
 }
 
@@ -388,7 +388,7 @@ watch(() => messages.value.length, () => {
   gap: 0.2rem;
   margin-top: 0.4rem;
   padding-top: 0.4rem;
-  border-top: 1px solid var(--p-surface-700);
+  border-top: 1px solid var(--app-ai-border);
 }
 
 .ai-action-link {
@@ -436,7 +436,7 @@ watch(() => messages.value.length, () => {
   gap: 0.5rem;
   margin-top: 0.5rem;
   padding-top: 0.5rem;
-  border-top: 1px solid var(--p-surface-700);
+  border-top: 1px solid var(--app-ai-border);
 }
 
 /* Barra input */
@@ -445,7 +445,7 @@ watch(() => messages.value.length, () => {
   align-items: center;
   gap: 0.4rem;
   padding: 0.5rem 0.75rem;
-  border-top: 1px solid var(--p-surface-700);
+  border-top: 1px solid var(--app-ai-border);
 }
 
 .ai-input {

@@ -8,6 +8,7 @@ import { useSearchTable } from '../../core/composables/useSearchTable'
 import { useTabFreshness } from '../../core/composables/useTabFreshness'
 import { useLookup } from '../../core/composables/useLookup'
 import { listUtilitiesManual } from '../api/anagrafiche'
+import { MANAGE_ICONS } from '../../core/constants'
 import { displayDate } from '../../core/utils/date'
 import { statoClienteSeverity } from '../../core/utils/severity'
 import DataTable from 'primevue/datatable'
@@ -146,13 +147,13 @@ onMounted(() => {
       <Column :header="t('soggetti.col_azioni')" style="width: 80px;" :exportable="false">
         <template #body="{ data }">
           <div style="display: flex; gap: 0.25rem;">
-            <Button icon="pi pi-id-card" text rounded size="small" class="app-action-btn"
+            <Button :icon="MANAGE_ICONS.CONTATTI" text rounded size="small" class="app-manage-btn"
               v-tooltip.top="t('contatto.gestisci_contatti')"
               @click.stop="emit('contatti', data)" />
-            <Button icon="pi pi-map-marker" text rounded size="small" class="app-action-btn"
+            <Button :icon="MANAGE_ICONS.INDIRIZZI" text rounded size="small" class="app-manage-btn"
               v-tooltip.top="t('indirizzo_soggetto.gestisci_indirizzi')"
               @click.stop="emit('indirizzi', data)" />
-            <Button icon="pi pi-wallet" text rounded size="small" class="app-action-btn"
+            <Button :icon="MANAGE_ICONS.CONTI_BANCARI" text rounded size="small" class="app-manage-btn"
               v-tooltip.top="t('conti_bancari.gestisci_conti')"
               @click.stop="emit('conti-bancari', data)" />
           </div>

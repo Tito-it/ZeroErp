@@ -83,7 +83,7 @@ async function handleSave() {
       () => store.update(props.listinoId, payload),
       { successMessage: t('listini.listino_salvato') }
     )
-    if (result) emit('saved', result)
+    if (result !== null) { emit('saved', result); close() }
   } else {
     const payload = {
       codice: f.codice?.trim(),
@@ -94,7 +94,7 @@ async function handleSave() {
       () => store.create(payload),
       { successMessage: t('listini.listino_creato') }
     )
-    if (result) emit('saved', result)
+    if (result !== null) { emit('saved', result); close() }
   }
 }
 

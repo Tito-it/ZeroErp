@@ -441,6 +441,8 @@ class EmailRepository:
         ambito: str | None = None,
         unita_organizzativa_id: int | None = None,
         pratica_id: int | None = None,
+        data_da: str | None = None,
+        data_a: str | None = None,
         limit: int = 50,
         offset: int = 0,
     ) -> tuple[list[dict[str, Any]], int]:
@@ -459,6 +461,12 @@ class EmailRepository:
         if pratica_id is not None:
             conditions.append("el.pratica_id = %s")
             params.append(pratica_id)
+        if data_da:
+            conditions.append("el.data_insert >= %s::date")
+            params.append(data_da)
+        if data_a:
+            conditions.append("el.data_insert < (%s::date + INTERVAL '1 day')")
+            params.append(data_a)
         if search:
             conditions.append("(el.destinatario ILIKE %s OR el.oggetto ILIKE %s)")
             like = f"%{search}%"

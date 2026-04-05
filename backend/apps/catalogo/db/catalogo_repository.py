@@ -289,6 +289,7 @@ class CatalogoRepository:
         voce_utility: bool | None,
         attivo: bool | None,
         is_composito: bool | None,
+        is_solo_componente: bool | None = None,
         limit: int,
     ) -> list[dict[str, Any]]:
         safe_limit = max(1, min(int(limit), 50))
@@ -311,6 +312,9 @@ class CatalogoRepository:
         if is_composito is not None:
             conditions.append("a.is_composito = %s")
             params.append(is_composito)
+        if is_solo_componente is not None:
+            conditions.append("a.is_solo_componente = %s")
+            params.append(is_solo_componente)
 
         where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 
@@ -427,7 +431,7 @@ class CatalogoRepository:
     def update_unita_misura(self, uom_id: int, data: dict[str, Any]) -> bool:
         sets: list[str] = []
         params: list[Any] = []
-        for key in ("descrizione", "descrizione_fattura"):
+        for key in ("descrizione", "descrizione_fattura", "attivo"):
             if key in data:
                 sets.append(f"{key} = %s")
                 params.append(data[key])
@@ -437,6 +441,118 @@ class CatalogoRepository:
         with connection.cursor() as cursor:
             cursor.execute(
                 f"UPDATE catalogo.unita_misura SET {', '.join(sets)} WHERE id = %s",
+                params,
+            )
+            return cursor.rowcount > 0
+
+    # =================================================================
+    # Conversioni UoM (catalogo.unita_misura_conversioni)
+    # =================================================================
+
+    # Scopo: Lista paginata delle conversioni UoM con filtri e join UoM.
+    def list_conversioni(
+        self, *, search: str | None = None, attivo: bool | None = True,
+        uom_id: int | None = None,
+        limit: int = 25, offset: int = 0,
+        order_by: str = "uom_from_codice", order_dir: str = "asc",
+    ) -> tuple[list[dict[str, Any]], int]:
+        order_map = {
+            "uom_from_codice": "uf.codice",
+            "uom_to_codice": "ut.codice",
+            "fattore": "c.fattore",
+        }
+        order_column = order_map.get(order_by, "uf.codice")
+        safe_order_dir = "DESC" if order_dir.upper() == "DESC" else "ASC"
+        safe_limit = min(max(limit, 1), 200)
+        safe_offset = max(offset, 0)
+
+        conditions: list[str] = []
+        params: list[Any] = []
+        if attivo is not None:
+            conditions.append("c.attivo = %s")
+            params.append(attivo)
+        if uom_id is not None:
+            conditions.append("(c.uom_from_id = %s OR c.uom_to_id = %s)")
+            params.extend([uom_id, uom_id])
+        if search and search.strip():
+            conditions.append("(uf.codice ILIKE %s OR uf.descrizione ILIKE %s OR ut.codice ILIKE %s OR ut.descrizione ILIKE %s)")
+            p = f"%{search.strip()}%"
+            params.extend([p, p, p, p])
+        where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+
+        with connection.cursor() as cursor:
+            cursor.execute(f"SELECT COUNT(*) FROM catalogo.unita_misura_conversioni c JOIN catalogo.unita_misura uf ON uf.id = c.uom_from_id JOIN catalogo.unita_misura ut ON ut.id = c.uom_to_id {where_clause}", params)
+            row = cursor.fetchone()
+            assert row is not None
+            total_count = int(row[0])
+
+            cursor.execute(
+                f"""
+                SELECT c.id, c.uom_from_id, c.uom_to_id, c.fattore,
+                       c.valido_dal, c.valido_al, c.attivo,
+                       uf.codice AS uom_from_codice, uf.descrizione AS uom_from_descrizione,
+                       ut.codice AS uom_to_codice, ut.descrizione AS uom_to_descrizione
+                FROM catalogo.unita_misura_conversioni c
+                JOIN catalogo.unita_misura uf ON uf.id = c.uom_from_id
+                JOIN catalogo.unita_misura ut ON ut.id = c.uom_to_id
+                {where_clause}
+                ORDER BY {order_column} {safe_order_dir}, c.id ASC
+                LIMIT %s OFFSET %s
+                """,
+                params + [safe_limit, safe_offset],
+            )
+            results = rows_to_list(cursor)
+        return results, total_count
+
+    # Scopo: Restituisce singola conversione UoM per id.
+    def get_conversione(self, conv_id: int) -> dict[str, Any] | None:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT c.id, c.uom_from_id, c.uom_to_id, c.fattore,
+                       c.valido_dal, c.valido_al, c.attivo,
+                       uf.codice AS uom_from_codice, uf.descrizione AS uom_from_descrizione,
+                       ut.codice AS uom_to_codice, ut.descrizione AS uom_to_descrizione
+                FROM catalogo.unita_misura_conversioni c
+                JOIN catalogo.unita_misura uf ON uf.id = c.uom_from_id
+                JOIN catalogo.unita_misura ut ON ut.id = c.uom_to_id
+                WHERE c.id = %s
+                """,
+                [conv_id],
+            )
+            return row_to_dict(cursor)
+
+    # Scopo: Inserisce una nuova conversione UoM.
+    def create_conversione(self, data: dict[str, Any]) -> int:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO catalogo.unita_misura_conversioni
+                       (uom_from_id, uom_to_id, fattore, valido_dal, valido_al)
+                VALUES (%s, %s, %s, %s, %s)
+                RETURNING id
+                """,
+                [data["uom_from_id"], data["uom_to_id"], data["fattore"],
+                 data.get("valido_dal"), data.get("valido_al")],
+            )
+            row = cursor.fetchone()
+        assert row is not None
+        return int(row[0])
+
+    # Scopo: Aggiorna una conversione UoM esistente.
+    def update_conversione(self, conv_id: int, data: dict[str, Any]) -> bool:
+        sets: list[str] = []
+        params: list[Any] = []
+        for key in ("fattore", "valido_dal", "valido_al", "attivo"):
+            if key in data:
+                sets.append(f"{key} = %s")
+                params.append(data[key])
+        if not sets:
+            return False
+        params.append(conv_id)
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"UPDATE catalogo.unita_misura_conversioni SET {', '.join(sets)} WHERE id = %s",
                 params,
             )
             return cursor.rowcount > 0

@@ -1298,6 +1298,7 @@ def fn_lookup_articoli(
     voce_utility: bool | None = None,
     attivo: bool | None = True,
     is_composito: bool | None = None,
+    is_solo_componente: bool | None = None,
     limit: int = 20,
 ) -> dict[str, object]:
     _validate_lookup_limit(
@@ -1311,6 +1312,7 @@ def fn_lookup_articoli(
         voce_utility=voce_utility,
         attivo=attivo,
         is_composito=is_composito,
+        is_solo_componente=is_solo_componente,
         limit=limit,
     )
     return _build_results_response(results)
@@ -1513,10 +1515,32 @@ def fn_create_nota_articolo(articolo_id: UUID | str, payload: dict[str, Any]) ->
     data = _extract_nota_payload(payload, for_update=False, function_name=function_name)
     repository = CatalogoBomRepository()
     try:
-        nota_id = repository.create_nota_articolo(articolo_id, data)
+        nota_id = repository.create_nota("ARTICOLI", articolo_id, data)
     except IntegrityError as exc:
         _translate_nota_integrity_error(exc, function_name=function_name)
+        raise  # unreachable, per type checker
     result = repository.get_nota_articolo(articolo_id, nota_id)
+    assert result is not None
+    return result
+
+
+# Scopo: Lista le note di un componente articolo.
+def fn_list_note_componente(componente_id: UUID | str) -> dict[str, object]:
+    repository = CatalogoBomRepository()
+    return _build_results_response(repository.list_note_componente(componente_id))
+
+
+# Scopo: Crea una nota per un componente articolo.
+def fn_create_nota_componente(componente_id: UUID | str, payload: dict[str, Any]) -> dict[str, object]:
+    function_name = "catalogo.catalogo_service.fn_create_nota_componente"
+    data = _extract_nota_payload(payload, for_update=False, function_name=function_name)
+    repository = CatalogoBomRepository()
+    try:
+        nota_id = repository.create_nota("ARTICOLI_COMPONENTI", componente_id, data)
+    except IntegrityError as exc:
+        _translate_nota_integrity_error(exc, function_name=function_name)
+        raise  # unreachable, per type checker
+    result = repository.get_nota_componente(nota_id)
     assert result is not None
     return result
 
@@ -1669,7 +1693,7 @@ def fn_create_unita_misura(payload: dict[str, Any]) -> dict[str, object]:
 # Scopo: Aggiorna una unita' di misura.
 def fn_update_unita_misura(uom_id: int, payload: dict[str, Any]) -> dict[str, object]:
     function_name = "catalogo.catalogo_service.fn_update_unita_misura"
-    update_keys = frozenset({"descrizione", "descrizione_fattura"})
+    update_keys = frozenset({"descrizione", "descrizione_fattura", "attivo"})
     unknown = sorted(k for k in payload if k not in update_keys)
     ErrorManager.require(
         not unknown,
@@ -1687,6 +1711,9 @@ def fn_update_unita_misura(uom_id: int, payload: dict[str, Any]) -> dict[str, ob
     descrizione_fattura = _extract_string(payload, "descrizione_fattura", function_name=function_name, nullable=True)
     if descrizione_fattura is not _MISSING:
         data["descrizione_fattura"] = descrizione_fattura
+    attivo = _extract_present_bool(payload, "attivo", function_name=function_name, message="Payload UoM non valido.")
+    if attivo is not _MISSING:
+        data["attivo"] = attivo
 
     if data:
         repository = CatalogoRepository()
@@ -1729,3 +1756,194 @@ def fn_disattiva_unita_misura(uom_id: int) -> dict[str, object]:
         log_to_db=False,
     )
     return fn_get_unita_misura(uom_id)
+
+
+# =================================================================
+# Conversioni UoM (catalogo.unita_misura_conversioni)
+# =================================================================
+
+_CONV_CREATE_KEYS: frozenset[str] = frozenset({
+    "uom_from_id", "uom_to_id", "fattore", "valido_dal", "valido_al",
+})
+_CONV_UPDATE_KEYS: frozenset[str] = frozenset({
+    "fattore", "valido_dal", "valido_al", "attivo",
+})
+_CONV_ORDER_BY_VALIDI: frozenset[str] = frozenset({
+    "uom_from_codice", "uom_to_codice", "fattore",
+})
+
+
+# Scopo: Lista completa conversioni UoM (no paginazione — dataset piccolo).
+#        Restituisce tutte le conversioni con join UoM per display.
+def fn_list_conversioni(
+    *,
+    attivo: bool | None = None,
+    uom_id: int | None = None,
+) -> list[dict[str, object]]:
+    repository = CatalogoRepository()
+    results, _total = repository.list_conversioni(
+        attivo=attivo,
+        uom_id=uom_id,
+        limit=9999, offset=0,
+        order_by="uom_from_codice", order_dir="asc",
+    )
+    return results
+
+
+# Scopo: Dettaglio singola conversione UoM.
+def fn_get_conversione(conv_id: int) -> dict[str, object]:
+    function_name = "catalogo.catalogo_service.fn_get_conversione"
+    repository = CatalogoRepository()
+    result = repository.get_conversione(conv_id)
+    ErrorManager.require(
+        result is not None,
+        code="E_CATALOGO_CONV_NOT_FOUND",
+        message="Conversione UoM non trovata.",
+        detail=f"Nessuna conversione con id={conv_id}.",
+        context={"conv_id": conv_id},
+        function_name=function_name,
+        log_to_db=False,
+    )
+    assert result is not None
+    return result
+
+
+# Scopo: Crea una nuova conversione UoM (uom_from -> uom_to con fattore).
+def fn_create_conversione(payload: dict[str, Any]) -> dict[str, object]:
+    function_name = "catalogo.catalogo_service.fn_create_conversione"
+    _validate_payload_keys(payload, allowed_keys=_CONV_CREATE_KEYS, function_name=function_name, message="Payload conversione non valido.")
+
+    uom_from_id = _extract_nullable_int(payload, "uom_from_id", function_name=function_name, message="Payload conversione non valido.")
+    ErrorManager.require(
+        uom_from_id is not _MISSING and uom_from_id is not None,
+        code="E_CATALOGO_VALIDATION",
+        message="UoM Da obbligatorio.",
+        function_name=function_name,
+        log_to_db=True,
+    )
+    uom_to_id = _extract_nullable_int(payload, "uom_to_id", function_name=function_name, message="Payload conversione non valido.")
+    ErrorManager.require(
+        uom_to_id is not _MISSING and uom_to_id is not None,
+        code="E_CATALOGO_VALIDATION",
+        message="UoM A obbligatorio.",
+        function_name=function_name,
+        log_to_db=True,
+    )
+    ErrorManager.require(
+        uom_from_id != uom_to_id,
+        code="E_CATALOGO_VALIDATION",
+        message="UoM Da e UoM A devono essere diverse.",
+        detail=f"uom_from_id={uom_from_id}, uom_to_id={uom_to_id}",
+        function_name=function_name,
+        log_to_db=True,
+    )
+    fattore = _extract_decimal(payload, "fattore", function_name=function_name, nullable=False, min_value=Decimal("0.000001"), message="Payload conversione non valido.")
+    ErrorManager.require(
+        fattore is not _MISSING,
+        code="E_CATALOGO_VALIDATION",
+        message="Fattore obbligatorio.",
+        function_name=function_name,
+        log_to_db=True,
+    )
+    valido_dal = _extract_payload_date(payload, "valido_dal", function_name=function_name, nullable=True, message="Payload conversione non valido.")
+    valido_al = _extract_payload_date(payload, "valido_al", function_name=function_name, nullable=True, message="Payload conversione non valido.")
+    _validate_date_interval(valido_dal=valido_dal, valido_al=valido_al, function_name=function_name, payload_name="conversione")
+
+    data: dict[str, Any] = {
+        "uom_from_id": uom_from_id,
+        "uom_to_id": uom_to_id,
+        "fattore": fattore,
+    }
+    if valido_dal is not _MISSING:
+        data["valido_dal"] = valido_dal
+    if valido_al is not _MISSING:
+        data["valido_al"] = valido_al
+
+    repository = CatalogoRepository()
+    try:
+        new_id = repository.create_conversione(data)
+    except IntegrityError as exc:
+        _translate_conversione_integrity_error(exc, function_name=function_name)
+        raise
+    return fn_get_conversione(new_id)
+
+
+# Scopo: Aggiorna una conversione UoM (fattore, date validita', attivo).
+#        uom_from_id e uom_to_id sono immutabili dopo la creazione.
+def fn_update_conversione(conv_id: int, payload: dict[str, Any]) -> dict[str, object]:
+    function_name = "catalogo.catalogo_service.fn_update_conversione"
+    _validate_payload_keys(payload, allowed_keys=_CONV_UPDATE_KEYS, function_name=function_name, message="Payload conversione non valido.")
+
+    data: dict[str, Any] = {}
+    fattore = _extract_decimal(payload, "fattore", function_name=function_name, nullable=False, min_value=Decimal("0.000001"), message="Payload conversione non valido.")
+    if fattore is not _MISSING:
+        data["fattore"] = fattore
+    valido_dal = _extract_payload_date(payload, "valido_dal", function_name=function_name, nullable=True, message="Payload conversione non valido.")
+    if valido_dal is not _MISSING:
+        data["valido_dal"] = valido_dal
+    valido_al = _extract_payload_date(payload, "valido_al", function_name=function_name, nullable=True, message="Payload conversione non valido.")
+    if valido_al is not _MISSING:
+        data["valido_al"] = valido_al
+    _validate_date_interval(valido_dal=valido_dal, valido_al=valido_al, function_name=function_name, payload_name="conversione")
+    attivo = _extract_present_bool(payload, "attivo", function_name=function_name, message="Payload conversione non valido.")
+    if attivo is not _MISSING:
+        data["attivo"] = attivo
+
+    if data:
+        repository = CatalogoRepository()
+        try:
+            updated = repository.update_conversione(conv_id, data)
+        except IntegrityError as exc:
+            _translate_conversione_integrity_error(exc, function_name=function_name)
+            raise
+        ErrorManager.require(
+            updated,
+            code="E_CATALOGO_CONV_NOT_FOUND",
+            message="Conversione UoM non trovata.",
+            detail=f"Nessuna conversione con id={conv_id}.",
+            context={"conv_id": conv_id},
+            function_name=function_name,
+            log_to_db=False,
+        )
+    return fn_get_conversione(conv_id)
+
+
+# Scopo: Traduce errori di integrita' DB per conversioni in messaggi utente.
+def _translate_conversione_integrity_error(exc: IntegrityError, *, function_name: str) -> None:
+    msg = str(exc).lower()
+    if "overlap" in msg or "exclude" in msg:
+        ErrorManager.raise_error(
+            code="E_CATALOGO_VALIDATION",
+            message="Esiste gia' una conversione attiva per questa coppia UoM nel periodo indicato.",
+            detail=str(exc),
+            function_name=function_name,
+            log_to_db=True,
+            cause=exc,
+        )
+    if "self" in msg or ("uom_from" in msg and "uom_to" in msg and "check" in msg):
+        ErrorManager.raise_error(
+            code="E_CATALOGO_VALIDATION",
+            message="UoM Da e UoM A devono essere diverse.",
+            detail=str(exc),
+            function_name=function_name,
+            log_to_db=True,
+            cause=exc,
+        )
+    if "fk" in msg or "foreign" in msg:
+        ErrorManager.raise_error(
+            code="E_CATALOGO_VALIDATION",
+            message="Unita' di misura non trovata o non attiva.",
+            detail=str(exc),
+            function_name=function_name,
+            log_to_db=True,
+            cause=exc,
+        )
+    # Catch-all: qualsiasi altro vincolo DB non riconosciuto
+    ErrorManager.raise_error(
+        code="E_CATALOGO_VALIDATION",
+        message="Dati conversione non validi.",
+        detail=str(exc),
+        function_name=function_name,
+        log_to_db=True,
+        cause=exc,
+    )

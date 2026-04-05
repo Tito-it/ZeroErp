@@ -166,6 +166,12 @@ const router = createRouter({
           component: () => import('../catalogo/views/UnitaMisuraView.vue'),
           meta: { domain: 'catalogo', menuKey: 'unita-misura' }
         },
+        {
+          path: 'catalogo/conversioni-uom',
+          name: 'catalogo-conversioni-uom',
+          component: () => import('../catalogo/views/ConversioniUomView.vue'),
+          meta: { domain: 'catalogo', menuKey: 'conversioni-uom' }
+        },
 
         // --- Vendite ---
         {
