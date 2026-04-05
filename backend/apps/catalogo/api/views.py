@@ -38,6 +38,12 @@ from apps.catalogo.services.catalogo_service import (
     fn_update_articolo,
     fn_update_uom_operativa,
     fn_update_unita_misura,
+    fn_list_conversioni,
+    fn_get_conversione,
+    fn_create_conversione,
+    fn_update_conversione,
+    fn_list_note_componente,
+    fn_create_nota_componente,
 )
 from apps.core.api.base_views import DomainAPIView
 from apps.core.api.endpoint_helpers import handle_post_json
@@ -482,6 +488,33 @@ class ApiNotaDetail(DomainAPIView):
         return success_response(fn_delete_nota(nota_id))
 
 
+class ApiComponenteNoteList(DomainAPIView):
+    area_funzionale = "catalogo"
+
+    @extend_schema(
+        responses={200: inline_serializer(
+            name="CatalogoComponenteNoteListResponse",
+            fields={"data": serializers.DictField(), "meta": serializers.DictField(required=False)},
+        )},
+    )
+    # Scopo: Lista le note di un componente articolo.
+    def get(self, request: Request, articolo_id: UUID, comp_id: UUID) -> JsonResponse:
+        del request, articolo_id
+        return success_response(fn_list_note_componente(comp_id))
+
+    @extend_schema(
+        request=_NOTA_CREATE_REQUEST,
+        responses={200: inline_serializer(
+            name="CatalogoComponenteNotaCreateResponse",
+            fields={"data": serializers.DictField(), "meta": serializers.DictField(required=False)},
+        )},
+    )
+    # Scopo: Crea una nota per un componente articolo.
+    def post(self, request: Request, articolo_id: UUID, comp_id: UUID) -> JsonResponse:
+        del articolo_id
+        return handle_post_json(request, handler=lambda payload: fn_create_nota_componente(comp_id, payload))
+
+
 class ApiArticoliLookup(DomainAPIView):
     area_funzionale = "catalogo"
     is_search_endpoint = True
@@ -492,6 +525,7 @@ class ApiArticoliLookup(DomainAPIView):
             OpenApiParameter(name="voce_utility", type=bool, location=OpenApiParameter.QUERY, required=False),
             OpenApiParameter(name="attivo", type=bool, location=OpenApiParameter.QUERY, required=False),
             OpenApiParameter(name="is_composito", type=bool, location=OpenApiParameter.QUERY, required=False),
+            OpenApiParameter(name="is_solo_componente", type=bool, location=OpenApiParameter.QUERY, required=False),
             OpenApiParameter(name="limit", type=int, location=OpenApiParameter.QUERY, required=False),
         ],
         responses={
@@ -512,6 +546,7 @@ class ApiArticoliLookup(DomainAPIView):
             voce_utility=_optional_qp_bool(request, "voce_utility"),
             attivo=qp_bool(qp.get("attivo"), True),
             is_composito=_optional_qp_bool(request, "is_composito"),
+            is_solo_componente=_optional_qp_bool(request, "is_solo_componente"),
             limit=qp_int_strict(qp.get("limit"), "limit", 20),
         )
         return success_response(data)
@@ -594,6 +629,7 @@ class ApiUnitaMisuraDetail(DomainAPIView):
             fields={
                 "descrizione": serializers.CharField(required=False),
                 "descrizione_fattura": serializers.CharField(required=False, allow_blank=True, allow_null=True),
+                "attivo": serializers.BooleanField(required=False),
             },
         ),
         responses={200: inline_serializer(
@@ -619,3 +655,83 @@ class ApiUnitaMisuraDisattiva(DomainAPIView):
     # Scopo: Disattiva una unita' di misura.
     def post(self, request: Request, uom_id: int) -> JsonResponse:
         return handle_post_json(request, handler=lambda _payload: fn_disattiva_unita_misura(uom_id))
+
+
+# =================================================================
+# Conversioni UoM
+# =================================================================
+
+class ApiConversioniList(DomainAPIView):
+    area_funzionale = "catalogo"
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(name="attivo", type=bool, required=False, description="Filtro attivo (null=tutti)"),
+            OpenApiParameter(name="uom_id", type=int, required=False, description="Filtra conversioni per UoM (from o to)"),
+        ],
+        responses={200: inline_serializer(
+            name="CatalogoConversioniListResponse",
+            fields={"data": serializers.ListField(child=serializers.DictField()), "meta": serializers.DictField(required=False)},
+        )},
+    )
+    # Scopo: Lista completa conversioni UoM (dataset piccolo, no paginazione).
+    #        Filtro opzionale uom_id per mostrare conversioni di una specifica UoM.
+    def get(self, request: Request) -> JsonResponse:
+        uom_id_raw = request.query_params.get("uom_id")
+        uom_id = int(uom_id_raw) if uom_id_raw else None
+        result = fn_list_conversioni(uom_id=uom_id)
+        return success_response(result)
+
+    @extend_schema(
+        request=inline_serializer(
+            name="CatalogoConversioneCreateRequest",
+            fields={
+                "uom_from_id": serializers.IntegerField(required=True),
+                "uom_to_id": serializers.IntegerField(required=True),
+                "fattore": serializers.DecimalField(max_digits=18, decimal_places=6, required=True),
+                "valido_dal": serializers.DateField(required=False, allow_null=True),
+                "valido_al": serializers.DateField(required=False, allow_null=True),
+            },
+        ),
+        responses={200: inline_serializer(
+            name="CatalogoConversioneCreateResponse",
+            fields={"data": serializers.DictField(), "meta": serializers.DictField(required=False)},
+        )},
+    )
+    # Scopo: Crea una nuova conversione UoM.
+    def post(self, request: Request) -> JsonResponse:
+        return handle_post_json(request, handler=fn_create_conversione)
+
+
+class ApiConversioneDetail(DomainAPIView):
+    area_funzionale = "catalogo"
+
+    @extend_schema(
+        responses={200: inline_serializer(
+            name="CatalogoConversioneDetailResponse",
+            fields={"data": serializers.DictField(), "meta": serializers.DictField(required=False)},
+        )},
+    )
+    # Scopo: Restituisce dettaglio singola conversione UoM.
+    def get(self, request: Request, conv_id: int) -> JsonResponse:
+        del request
+        return success_response(fn_get_conversione(conv_id))
+
+    @extend_schema(
+        request=inline_serializer(
+            name="CatalogoConversionePatchRequest",
+            fields={
+                "fattore": serializers.DecimalField(max_digits=18, decimal_places=6, required=False),
+                "valido_dal": serializers.DateField(required=False, allow_null=True),
+                "valido_al": serializers.DateField(required=False, allow_null=True),
+                "attivo": serializers.BooleanField(required=False),
+            },
+        ),
+        responses={200: inline_serializer(
+            name="CatalogoConversioneUpdateResponse",
+            fields={"data": serializers.DictField(), "meta": serializers.DictField(required=False)},
+        )},
+    )
+    # Scopo: Aggiorna una conversione UoM.
+    def patch(self, request: Request, conv_id: int) -> JsonResponse:
+        return success_response(fn_update_conversione(conv_id, request.data))

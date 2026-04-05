@@ -97,7 +97,7 @@ a {
 .app-drawer-content {
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
+  gap: var(--app-drawer-gap);
   font-size: var(--app-font-size-base);
   line-height: 1.5;
 }
@@ -107,6 +107,19 @@ a {
   font-weight: 600;
   margin: 0;
   color: var(--app-icon-color);
+}
+
+/* Separatore di sezione nei drawer (es. "Nuova UoM", "Modifica Nota").
+ * Uso: <div class="app-drawer-section"><h4>Titolo</h4></div> */
+.app-drawer-section {
+  margin-top: 1rem;
+  padding-bottom: 0.25rem;
+  border-bottom: 1px solid var(--app-drawer-section-border);
+}
+.app-drawer-section h4 {
+  margin: 0;
+  font-size: 0.9rem;
+  font-weight: 600;
 }
 
 /* ===== Classe utility DataTable compatta =====
@@ -243,6 +256,48 @@ a {
 }
 .app-action-btn.p-button:disabled {
   color: var(--p-text-muted-color);
+}
+
+/* Pulsante modifica riga — icona matita.
+ * Colori via --app-btn-edit-* in theme.css.
+ * Uso: <Button icon="pi pi-pencil" text rounded size="small" class="app-edit-btn" /> */
+.app-edit-btn.p-button {
+  color: var(--app-btn-edit-color);
+}
+.app-edit-btn.p-button:hover:not(:disabled) {
+  color: var(--app-btn-edit-hover-color);
+  background: var(--app-btn-edit-hover-bg);
+}
+.app-edit-btn.p-button:disabled {
+  color: var(--app-btn-disabled-color);
+}
+
+/* Pulsante elimina riga — icona cestino.
+ * Colori via --app-btn-delete-* in theme.css.
+ * Uso: <Button icon="pi pi-trash" text rounded size="small" class="app-delete-btn" /> */
+.app-delete-btn.p-button {
+  color: var(--app-btn-delete-color);
+}
+.app-delete-btn.p-button:hover:not(:disabled) {
+  color: var(--app-btn-delete-hover-color);
+  background: var(--app-btn-delete-hover-bg);
+}
+.app-delete-btn.p-button:disabled {
+  color: var(--app-btn-disabled-color);
+}
+
+/* Pulsante gestione riga (UoM, BoM, Note, ecc.) — apre sub-drawer.
+ * Colori via --app-btn-manage-* in theme.css.
+ * Uso: <Button :icon="MANAGE_ICONS.UOM" text rounded size="small" class="app-manage-btn" /> */
+.app-manage-btn.p-button {
+  color: var(--app-btn-manage-color);
+}
+.app-manage-btn.p-button:hover:not(:disabled) {
+  color: var(--app-btn-manage-hover-color);
+  background: var(--app-btn-manage-hover-bg);
+}
+.app-manage-btn.p-button:disabled {
+  color: var(--app-btn-disabled-color);
 }
 
 /* Messaggio errore sotto campo form */

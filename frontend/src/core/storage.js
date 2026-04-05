@@ -5,7 +5,8 @@ export const STORAGE_KEYS = {
   ACCESS_TOKEN: 'access_token',
   REFRESH_TOKEN: 'refresh_token',
   SIDEBAR_COLLAPSED: 'sidebar_collapsed',
-  OPEN_TABS: 'open_tabs'
+  OPEN_TABS: 'open_tabs',
+  DARK_MODE: 'dark_mode'
 }
 
 export function domainFavoriteKey(domainKey) {

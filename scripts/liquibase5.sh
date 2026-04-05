@@ -1,9 +1,39 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-LB5_HOME="/opt/liquibase"
-LB5_BIN="/opt/liquibase"
 git_root="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+
+if [[ -n "${LIQUIBASE_BIN:-}" ]]; then
+  LB5_BIN="${LIQUIBASE_BIN}"
+elif [[ -n "$git_root" && -x "$git_root/tools/liquibase/current/liquibase" ]]; then
+  LB5_BIN="$git_root/tools/liquibase/current/liquibase"
+else
+  LB5_BIN="/opt/liquibase"
+fi
+
+LB5_HOME="$(dirname "$LB5_BIN")"
+LB5_EXTRA_ARGS=()
+
+# Se presente, aggancia automaticamente il driver JDBC PostgreSQL locale.
+# Non sovrascrive un --classpath esplicito passato dal chiamante.
+has_classpath_arg=0
+for a in "$@"; do
+  case "$a" in
+    --classpath|--classpath=*)
+      has_classpath_arg=1
+      break
+      ;;
+  esac
+done
+
+if [[ $has_classpath_arg -eq 0 && -n "$git_root" ]]; then
+  shopt -s nullglob
+  for pgjdbc in "$git_root"/tools/liquibase/jdbc/postgresql-*.jar; do
+    LB5_EXTRA_ARGS+=("--classpath=$pgjdbc")
+    break
+  done
+  shopt -u nullglob
+fi
 
 # comando liquibase (primo argomento non --*)
 cmd=""
@@ -62,4 +92,4 @@ if [[ $needs_changelog -eq 1 && $uses_master_v2 -eq 1 && -n "$git_root" ]]; then
   fi
 fi
 
-exec "${LB5_BIN}" "$@"
+exec "${LB5_BIN}" "${LB5_EXTRA_ARGS[@]}" "$@"

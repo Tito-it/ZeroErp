@@ -361,11 +361,31 @@ class CatalogoBomRepository:
             )
             return rows_to_list(cursor)
 
-    # Scopo: Inserisce una nota articolo nella partizione corretta.
-    def create_nota_articolo(self, articolo_id: UUID | str, data: dict[str, Any]) -> int:
+    # Scopo: Lista le note di un componente articolo con dati arricchiti.
+    def list_note_componente(self, componente_id: str | UUID) -> list[dict[str, Any]]:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT vn.nota_id, vn.nota_target_tipo, vn.nota_target_id,
+                       vn.nota_anchor_tipo, vn.nota_posizione, vn.nota_seq,
+                       vn.nota_testo, vn.nota_testo_md,
+                       vn.nota_visibile, vn.nota_solo_stampa, vn.nota_meta,
+                       vn.nota_data_insert, vn.nota_user_insert,
+                       vn.stile_id AS id_stile, vn.stile_codice, vn.stile_descrizione
+                FROM catalogo.vw_articoli_componenti_note vn
+                WHERE vn.articolo_componente_id = %s
+                ORDER BY vn.nota_anchor_tipo ASC, vn.nota_posizione ASC,
+                         vn.nota_seq ASC, vn.nota_id ASC
+                """,
+                [str(componente_id)],
+            )
+            return rows_to_list(cursor)
+
+    # Scopo: Inserisce una nota nella partizione indicata da target_tipo.
+    def create_nota(self, target_tipo: str, target_id: str | UUID, data: dict[str, Any]) -> int:
         fields = [
-            ("target_tipo", "ARTICOLI"),
-            ("target_id", articolo_id),
+            ("target_tipo", target_tipo),
+            ("target_id", str(target_id)),
             *[(key, value) for key, value in data.items() if key in NOTA_WRITE_COLUMNS],
         ]
 

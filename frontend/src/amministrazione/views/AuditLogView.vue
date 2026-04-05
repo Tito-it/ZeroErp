@@ -6,13 +6,15 @@ import { ref, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useReadonlyMode } from '../../core/composables/useReadonlyMode'
 import { getAuditLog } from '../api/amministrazione'
-import { displayTimestamp } from '../../core/utils/date'
+import { displayTimestamp, toDateString } from '../../core/utils/date'
 import { buildAuditTabellaOptions, getAuditOpSeverity } from '../constants'
-import { PAGINATION } from '../../core/constants'
+import { PAGINATION, DATE_FORMAT } from '../../core/constants'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Select from 'primevue/select'
+import DatePicker from 'primevue/datepicker'
 import Tag from 'primevue/tag'
+import Button from 'primevue/button'
 
 const { t } = useI18n()
 useReadonlyMode('amm_software')
@@ -31,11 +33,28 @@ const sortOrder = ref(-1)
 const tabellaFilter = ref(null)
 const tabellaOptions = buildAuditTabellaOptions(t)
 
+// Filtro data: default ultimo mese
+const defaultDa = new Date()
+defaultDa.setMonth(defaultDa.getMonth() - 1)
+const dataDaFilter = ref(defaultDa)
+const dataAFilter = ref(null)
+
+function onDataDaChange() {
+  first.value = 0
+  fetchData()
+}
+function onDataAChange() {
+  first.value = 0
+  fetchData()
+}
+
 async function fetchData() {
   const seq = ++fetchSeq
   loading.value = true
   try {
     const params = { limit: rows.value, offset: first.value }
+    if (dataDaFilter.value) params.data_da = toDateString(dataDaFilter.value)
+    if (dataAFilter.value) params.data_a = toDateString(dataAFilter.value)
     if (tabellaFilter.value) params.tabella = tabellaFilter.value
     if (sortField.value) {
       params.order_by = sortField.value
@@ -100,6 +119,27 @@ function snapshotSummary(snapshot) {
           :placeholder="t('amm.audit_col_tipo')"
           @change="applyFilters"
         />
+        <DatePicker
+          v-model="dataDaFilter"
+          :placeholder="t('common.data_da')"
+          :dateFormat="DATE_FORMAT"
+          showIcon showButtonBar
+          style="width: 150px;"
+          @date-select="onDataDaChange"
+          @clear-click="onDataDaChange"
+        />
+        <DatePicker
+          v-model="dataAFilter"
+          :placeholder="t('common.data_a')"
+          :dateFormat="DATE_FORMAT"
+          showIcon showButtonBar
+          style="width: 150px;"
+          @date-select="onDataAChange"
+          @clear-click="onDataAChange"
+        />
+      </div>
+      <div class="app-page-actions">
+        <Button icon="pi pi-refresh" text class="app-reload-btn" v-tooltip.bottom="t('common.reload_list')" @click="fetchData" />
       </div>
     </div>
 

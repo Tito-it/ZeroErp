@@ -106,3 +106,31 @@ export function disattivaUnitaMisura(id) {
 }
 
 // Nota: il lookup UoM usa l'endpoint generico lookupCodici('catalogo.unita_misura') da core/apiCore.js
+
+// --- Note componenti ---
+
+export function listComponenteNote(articoloId, compId) {
+  return api.get(`${BASE}/articoli/${articoloId}/componenti/${compId}/note/`)
+}
+
+export function createComponenteNota(articoloId, compId, payload) {
+  return api.post(`${BASE}/articoli/${articoloId}/componenti/${compId}/note/`, payload)
+}
+
+// --- Conversioni UoM ---
+
+export function listConversioniUom(params = {}) {
+  return api.get(`${BASE}/conversioni-uom/`, { params })
+}
+
+export function getConversioneUom(id) {
+  return api.get(`${BASE}/conversioni-uom/${id}/`)
+}
+
+export function createConversioneUom(payload) {
+  return api.post(`${BASE}/conversioni-uom/`, payload)
+}
+
+export function updateConversioneUom(id, payload) {
+  return api.patch(`${BASE}/conversioni-uom/${id}/`, payload)
+}

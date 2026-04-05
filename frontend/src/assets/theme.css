@@ -69,7 +69,19 @@
   --app-icon-color: var(--p-primary-color);
 
   /* ===== Drawer ===== */
+  --app-drawer-gap: 0.75rem;
+  --app-drawer-section-border: var(--p-surface-700);
   --app-drawer-footer-border: var(--p-surface-700);
+
+  /* ===== AI Assistant Widget ===== */
+  --app-ai-bg: var(--p-surface-900);
+  --app-ai-border: var(--p-surface-700);
+  --app-ai-header-bg: var(--p-surface-800);
+  --app-ai-msg-user-border: var(--p-blue-800);
+  --app-ai-msg-assistant-border: var(--p-surface-700);
+  --app-ai-avatar-user-border: var(--p-blue-800);
+  --app-ai-avatar-assistant-border: var(--p-primary-800);
+  --app-ai-shadow: 0 8px 32px rgba(0, 0, 0, 0.35), 0 2px 8px rgba(0, 0, 0, 0.25);
 
   /* ===== Context chip (topbar) ===== */
   --app-context-chip-bg: var(--p-surface-700);
@@ -92,6 +104,18 @@
   --app-table-stripe-bg: color-mix(in srgb, var(--p-surface-700) 30%, transparent);
   --app-table-hover-bg: color-mix(in srgb, var(--p-primary-color) 8%, transparent);
 
+  /* ===== Pulsanti azione riga (DataTable / card) ===== */
+  --app-btn-manage-color: var(--p-blue-500);
+  --app-btn-manage-hover-color: var(--p-blue-700);
+  --app-btn-manage-hover-bg: var(--p-blue-50);
+  --app-btn-edit-color: var(--p-primary-color);
+  --app-btn-edit-hover-color: var(--p-primary-700);
+  --app-btn-edit-hover-bg: var(--p-primary-50);
+  --app-btn-delete-color: var(--p-red-500);
+  --app-btn-delete-hover-color: var(--p-red-700);
+  --app-btn-delete-hover-bg: var(--p-red-50);
+  --app-btn-disabled-color: var(--p-text-muted-color);
+
   /* ===== Aree di contenuto/preview (editor, anteprima, code block) ===== */
   --app-preview-bg: var(--p-surface-900);
   --app-preview-border: var(--p-surface-700);
@@ -108,6 +132,65 @@
   /* Desktop: >= 1024px */
   /* Tablet: 768px - 1023px */
   /* Mobile: < 768px */
+}
+
+/* ===== Light mode — override variabili che cambiano tra dark e light =====
+ * PrimeVue cambia le --p-surface-* automaticamente, ma alcune combinazioni
+ * (sidebar scura, topbar scura) richiedono valori espliciti per light mode.
+ * Attivare light mode: rimuovere class="p-dark" da <html> in index.html. */
+:root:not(.p-dark) {
+  /* Sidebar: chiara in light mode */
+  --app-sidebar-bg: var(--p-surface-100);
+  --app-sidebar-border: var(--p-surface-200);
+  --app-sidebar-item-color: var(--p-text-color);
+  --app-sidebar-item-hover-bg: var(--p-surface-200);
+  --app-sidebar-item-hover-color: var(--p-text-color);
+
+  /* Topbar: chiara in light mode */
+  --app-topbar-bg: var(--p-surface-0);
+  --app-topbar-border: var(--p-surface-200);
+
+  /* Area contenuto: sfondo chiaro */
+  --app-content-bg: var(--p-surface-50);
+
+  /* Toolbar tabs */
+  --app-toolbar-bg: var(--p-surface-0);
+  --app-toolbar-border: var(--p-surface-200);
+  --app-toolbar-tab-hover-bg: var(--p-surface-100);
+
+  /* Card dominio (home) */
+  --app-card-bg: var(--p-surface-0);
+  --app-card-border: var(--p-surface-200);
+  --app-card-hover-bg: var(--p-surface-100);
+
+  /* Drawer */
+  --app-drawer-section-border: var(--p-surface-200);
+  --app-drawer-footer-border: var(--p-surface-200);
+
+  /* Context chip */
+  --app-context-chip-bg: var(--p-surface-100);
+
+  /* DataTable */
+  --app-table-stripe-bg: color-mix(in srgb, var(--p-surface-100) 60%, transparent);
+  --app-table-hover-bg: color-mix(in srgb, var(--p-primary-color) 6%, transparent);
+
+  /* Preview */
+  --app-preview-bg: var(--p-surface-50);
+  --app-preview-border: var(--p-surface-200);
+
+  /* Login */
+  --app-login-card-bg: var(--p-surface-0);
+  --app-login-card-border: var(--p-surface-200);
+
+  /* AI Assistant Widget */
+  --app-ai-bg: var(--p-surface-0);
+  --app-ai-border: var(--p-surface-200);
+  --app-ai-header-bg: var(--p-surface-50);
+  --app-ai-msg-user-border: var(--p-blue-200);
+  --app-ai-msg-assistant-border: var(--p-surface-200);
+  --app-ai-avatar-user-border: var(--p-blue-200);
+  --app-ai-avatar-assistant-border: var(--p-primary-200);
+  --app-ai-shadow: 0 8px 32px rgba(0, 0, 0, 0.1), 0 2px 8px rgba(0, 0, 0, 0.06);
 }
 
 /* Tablet: sidebar collassata piu' stretta */

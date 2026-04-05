@@ -301,6 +301,8 @@ class EmailLogListView(AdminAPIView):
             OpenApiParameter(name="stato", type=str, required=False),
             OpenApiParameter(name="ambito", type=str, required=False),
             OpenApiParameter(name="pratica_id", type=int, required=False),
+            OpenApiParameter(name="data_da", type=str, required=False, description="Data inizio (YYYY-MM-DD)"),
+            OpenApiParameter(name="data_a", type=str, required=False, description="Data fine (YYYY-MM-DD)"),
             OpenApiParameter(name="limit", type=int, required=False),
             OpenApiParameter(name="offset", type=int, required=False),
         ],
@@ -316,6 +318,8 @@ class EmailLogListView(AdminAPIView):
             ambito=qp.get("ambito") or None,
             unita_organizzativa_id=optional_int({"v": qp.get("unita_organizzativa_id")}, "v"),
             pratica_id=optional_int({"v": qp.get("pratica_id")}, "v"),
+            data_da=qp.get("data_da") or None,
+            data_a=qp.get("data_a") or None,
             limit=min(optional_int({"v": qp.get("limit")}, "v") or DEFAULT_LIMIT, MAX_LIMIT),
             offset=optional_int({"v": qp.get("offset")}, "v") or 0,
         )

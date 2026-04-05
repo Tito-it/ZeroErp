@@ -1,7 +1,8 @@
 <script setup>
 // Scopo: Sub-drawer per gestione distinta base (BoM) articolo.
-// Pattern: formMode state machine (null=lista DataTable, 'new'=aggiungi, 'edit'=modifica).
-// Edit mode: componente_id readonly, modificabili coeff_qta, date, flag.
+// Layout: lista componenti sempre visibile in alto + form inserimento in basso.
+// Modifica: valido_al editabile inline nella DataTable per disattivare un componente.
+// Lookup componenti filtrato per is_solo_componente=true.
 
 import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -9,13 +10,14 @@ import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import {
   listArticoloComponenti, createArticoloComponente,
-  updateArticoloComponente, deleteArticoloComponente
+  updateArticoloComponente, deleteArticoloComponente,
+  listComponenteNote, createComponenteNota,
 } from '../api/catalogo'
 import { DRAWER_WIDTH, DATE_FORMAT } from '../../core/constants'
 import { displayDate, toDateString } from '../../core/utils/date'
 import ArticoloLookup from '../../core/components/ArticoloLookup.vue'
+import CatalogoNoteDrawer from '../../core/components/CatalogoNoteDrawer.vue'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
-import DrawerFooter from '../../core/components/DrawerFooter.vue'
 import Drawer from 'primevue/drawer'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
@@ -37,10 +39,27 @@ const emit = defineEmits(['update:visible', 'saved'])
 
 const componentiList = ref([])
 const listLoading = ref(false)
-const formMode = ref(null)
-const editId = ref(null)
+
+// Form inserimento nuovo componente
 const form = ref({})
 const componenteObj = ref(null)
+const adding = ref(false)
+
+// Edit inline: traccia quale riga ha il DatePicker valido_al aperto
+const editingValidoAlId = ref(null)
+const editingValidoAlValue = ref(null)
+
+// Sub-drawer note per componente
+const noteDrawerVisible = ref(false)
+const noteCompId = ref(null)
+
+const noteListFn = computed(() => () => listComponenteNote(props.articoloId, noteCompId.value))
+const noteCreateFn = computed(() => (payload) => createComponenteNota(props.articoloId, noteCompId.value, payload))
+
+function openNoteDrawer(row) {
+  noteCompId.value = row.id
+  noteDrawerVisible.value = true
+}
 
 function defaultForm() {
   return {
@@ -49,7 +68,7 @@ function defaultForm() {
     partecipa_qta: true,
     obbligatorio: true,
     determina_qta_padre: false,
-    valido_dal: null,
+    valido_dal: new Date(),
     valido_al: null,
   }
 }
@@ -79,41 +98,12 @@ async function loadComponenti() {
 
 watch(() => props.visible, (val) => {
   if (!val) return
-  formMode.value = null
-  editId.value = null
   form.value = defaultForm()
   componenteObj.value = null
+  adding.value = false
+  editingValidoAlId.value = null
   loadComponenti()
 })
-
-function onStartNew() {
-  formMode.value = 'new'
-  editId.value = null
-  form.value = defaultForm()
-  componenteObj.value = null
-}
-
-function onStartEdit(row) {
-  formMode.value = 'edit'
-  editId.value = row.id
-  componenteObj.value = { id: row.componente_id, codice: row.componente_codice, descrizione: row.componente_descrizione }
-  form.value = {
-    componente_id: row.componente_id,
-    coeff_qta: row.coeff_qta ?? 1,
-    partecipa_qta: row.partecipa_qta ?? true,
-    obbligatorio: row.obbligatorio ?? true,
-    determina_qta_padre: row.determina_qta_padre ?? false,
-    valido_dal: parseDate(row.valido_dal),
-    valido_al: parseDate(row.valido_al),
-  }
-}
-
-function onCancelForm() {
-  formMode.value = null
-  editId.value = null
-  form.value = defaultForm()
-  componenteObj.value = null
-}
 
 // Scopo: Callback quando l'utente seleziona un articolo dal lookup.
 function onComponenteSelect(item) {
@@ -121,13 +111,26 @@ function onComponenteSelect(item) {
   form.value.componente_id = item?.id || null
 }
 
+function startAdd() {
+  form.value = defaultForm()
+  componenteObj.value = null
+  adding.value = true
+}
+
+function cancelAdd() {
+  adding.value = false
+  form.value = defaultForm()
+  componenteObj.value = null
+}
+
 const canSaveForm = computed(() => {
   return form.value.componente_id != null && form.value.coeff_qta > 0
 })
 
-// Scopo: Salva componente (create o update). Ricarica lista e notifica il parent.
-async function onSaveForm() {
+// Scopo: Inserisce nuovo componente. Ricarica lista e notifica il parent.
+async function onSaveNew() {
   const payload = {
+    componente_id: form.value.componente_id,
     coeff_qta: form.value.coeff_qta,
     partecipa_qta: form.value.partecipa_qta,
     obbligatorio: form.value.obbligatorio,
@@ -135,28 +138,42 @@ async function onSaveForm() {
     valido_dal: toDateString(form.value.valido_dal),
     valido_al: toDateString(form.value.valido_al),
   }
-
-  if (formMode.value === 'edit' && editId.value) {
-    const result = await execute(
-      () => updateArticoloComponente(props.articoloId, editId.value, payload),
-      { successMessage: t('catalogo.componente_salvato') }
-    )
-    if (result === null) return
-  } else {
-    payload.componente_id = form.value.componente_id
-    const result = await execute(
-      () => createArticoloComponente(props.articoloId, payload),
-      { successMessage: t('catalogo.componente_aggiunto') }
-    )
-    if (result === null) return
-  }
-
-  formMode.value = null
-  editId.value = null
+  const result = await execute(
+    () => createArticoloComponente(props.articoloId, payload),
+    { successMessage: t('catalogo.componente_aggiunto') }
+  )
+  if (result === null) return
+  adding.value = false
   form.value = defaultForm()
   componenteObj.value = null
   await loadComponenti()
   emit('saved')
+}
+
+// Scopo: Apre edit inline valido_al per una riga.
+function startEditValidoAl(row) {
+  editingValidoAlId.value = row.id
+  editingValidoAlValue.value = parseDate(row.valido_al)
+}
+
+// Scopo: Salva valido_al modificato inline.
+async function confirmEditValidoAl(row) {
+  const result = await execute(
+    () => updateArticoloComponente(props.articoloId, row.id, {
+      valido_al: toDateString(editingValidoAlValue.value),
+    }),
+    { successMessage: t('catalogo.componente_salvato') }
+  )
+  if (result === null) return
+  editingValidoAlId.value = null
+  editingValidoAlValue.value = null
+  await loadComponenti()
+  emit('saved')
+}
+
+function cancelEditValidoAl() {
+  editingValidoAlId.value = null
+  editingValidoAlValue.value = null
 }
 
 // Scopo: Elimina componente. Ricarica lista e notifica il parent.
@@ -177,7 +194,7 @@ async function onDelete(row) {
     :visible="visible"
     @update:visible="emit('update:visible', $event)"
     position="right"
-    :style="{ width: DRAWER_WIDTH.STANDARD }"
+    :style="{ width: DRAWER_WIDTH.COMPLEX }"
   >
     <template #header>
       <DrawerTitle :action="t('common.edit')" :title="t('catalogo.tab_bom')" icon="pi pi-sitemap" />
@@ -188,110 +205,131 @@ async function onDelete(row) {
         <i class="pi pi-spin pi-spinner" />
       </div>
 
-      <template v-if="!listLoading && !formMode">
-        <div v-if="componentiList.length === 0" class="app-empty-state">
+      <template v-if="!listLoading">
+        <!-- Lista componenti (sempre visibile) -->
+        <div v-if="componentiList.length === 0 && !adding" class="app-empty-state">
           <i class="pi pi-sitemap" />
           <p>{{ t('catalogo.nessun_componente') }}</p>
         </div>
 
-        <DataTable v-else :value="componentiList" class="app-datatable" striped-rows>
+        <DataTable v-if="componentiList.length > 0" :value="componentiList" class="app-datatable" striped-rows>
           <Column field="componente_codice" :header="t('catalogo.col_codice')" />
           <Column field="componente_descrizione" :header="t('catalogo.col_descrizione')" />
-          <Column field="coeff_qta" :header="t('catalogo.col_coeff_qta')" style="width: 80px;" />
-          <Column :header="t('catalogo.field_obbligatorio')" style="width: 60px;">
+          <Column field="coeff_qta" :header="t('catalogo.col_coeff_qta')" style="width: 70px;" />
+          <Column :header="t('catalogo.field_valido_al')" style="width: 120px;">
             <template #body="{ data }">
-              <Tag :value="data.obbligatorio ? 'S' : 'N'" :severity="data.obbligatorio ? 'success' : 'secondary'" />
+              <template v-if="editingValidoAlId === data.id">
+                <div class="flex gap-1 align-items-center">
+                  <DatePicker v-model="editingValidoAlValue" :date-format="DATE_FORMAT"
+                    show-icon show-button-bar style="width: 110px;" />
+                  <Button icon="pi pi-check" text rounded size="small" class="app-action-btn"
+                    @click="confirmEditValidoAl(data)" />
+                  <Button icon="pi pi-times" text rounded size="small"
+                    @click="cancelEditValidoAl" />
+                </div>
+              </template>
+              <template v-else>
+                <span v-if="!isReadonly" class="valido-al-cell" @click="startEditValidoAl(data)">
+                  {{ displayDate(data.valido_al) || '—' }}
+                  <i class="pi pi-pencil" style="font-size: 0.7rem; margin-left: 0.25rem; opacity: 0.5;" />
+                </span>
+                <span v-else>{{ displayDate(data.valido_al) || '—' }}</span>
+              </template>
             </template>
-          </Column>
-          <Column :header="t('catalogo.field_valido_dal')" style="width: 100px;">
-            <template #body="{ data }">{{ displayDate(data.valido_dal) }}</template>
           </Column>
           <Column v-if="!isReadonly" style="width: 80px;">
             <template #body="{ data }">
               <div class="flex gap-1">
-                <Button icon="pi pi-pencil" text rounded size="small"
-                  class="app-action-btn" @click="onStartEdit(data)" />
-                <Button icon="pi pi-trash" severity="danger"
-                  text rounded size="small" @click="onDelete(data)" />
+                <Button icon="pi pi-file-edit" text rounded size="small"
+                  v-tooltip.bottom="t('catalogo.gestisci_note')"
+                  class="app-action-btn" @click="openNoteDrawer(data)" />
+                <Button icon="pi pi-trash"
+                  text rounded size="small" class="app-delete-btn" @click="onDelete(data)" />
               </div>
             </template>
           </Column>
         </DataTable>
 
-        <div v-if="!isReadonly" class="mt-05">
-          <Button
-            :label="t('catalogo.aggiungi_componente')"
-            icon="pi pi-plus"
-            text size="small"
-            class="app-action-btn"
-            @click="onStartNew"
-          />
-        </div>
-      </template>
-
-      <template v-if="formMode">
-        <div class="app-drawer-section">
-          <h4>{{ formMode === 'edit' ? t('catalogo.modifica_componente') : t('catalogo.nuovo_componente') }}</h4>
-        </div>
-        <div class="form-grid">
-          <div class="form-field">
-            <label>{{ t('catalogo.field_componente') }} *</label>
-            <ArticoloLookup
-              :model-value="componenteObj"
-              :placeholder="t('catalogo.search_componente')"
-              :disabled="formMode === 'edit'"
-              @select="onComponenteSelect"
+        <!-- Form inserimento nuovo componente -->
+        <template v-if="!isReadonly">
+          <div v-if="!adding" class="mt-05">
+            <Button
+              :label="t('catalogo.aggiungi_componente')"
+              icon="pi pi-plus"
+              text size="small"
+              class="app-action-btn"
+              @click="startAdd"
             />
           </div>
-          <div class="form-field">
-            <label>{{ t('catalogo.field_coeff_qta') }} *</label>
-            <InputNumber v-model="form.coeff_qta" :min="0" :min-fraction-digits="2"
-              :max-fraction-digits="6" class="w-full" />
-          </div>
-        </div>
-        <div class="form-grid-2col mt-05">
-          <div class="form-field">
-            <label>{{ t('catalogo.field_valido_dal') }}</label>
-            <DatePicker v-model="form.valido_dal" :date-format="DATE_FORMAT"
-              show-icon show-button-bar class="w-full" />
-          </div>
-          <div class="form-field">
-            <label>{{ t('catalogo.field_valido_al') }}</label>
-            <DatePicker v-model="form.valido_al" :date-format="DATE_FORMAT"
-              show-icon show-button-bar class="w-full" />
-          </div>
-        </div>
-        <div class="form-grid-2col mt-05">
-          <div class="form-field">
-            <label>{{ t('catalogo.field_obbligatorio') }}</label>
-            <ToggleSwitch v-model="form.obbligatorio" />
-          </div>
-          <div class="form-field">
-            <label>{{ t('catalogo.field_partecipa_qta') }}</label>
-            <ToggleSwitch v-model="form.partecipa_qta" />
-          </div>
-        </div>
 
-        <DrawerFooter
-          :loading="loading"
-          :disabled="!canSaveForm"
-          @save="onSaveForm"
-          @cancel="onCancelForm"
-        />
+          <template v-if="adding">
+            <div class="app-drawer-section">
+              <h4>{{ t('catalogo.nuovo_componente') }}</h4>
+            </div>
+            <div class="form-grid">
+              <div class="form-field">
+                <label>{{ t('catalogo.field_componente') }} *</label>
+                <ArticoloLookup
+                  :model-value="componenteObj"
+                  :placeholder="t('catalogo.search_componente')"
+                  @select="onComponenteSelect"
+                />
+              </div>
+              <div class="form-field">
+                <label>{{ t('catalogo.field_coeff_qta') }} *</label>
+                <InputNumber v-model="form.coeff_qta" :min="0" :min-fraction-digits="2"
+                  :max-fraction-digits="6" class="w-full" />
+              </div>
+            </div>
+            <div class="form-grid-2col mt-05">
+              <div class="form-field">
+                <label>{{ t('catalogo.field_valido_dal') }}</label>
+                <DatePicker v-model="form.valido_dal" :date-format="DATE_FORMAT"
+                  show-icon show-button-bar class="w-full" />
+              </div>
+              <div class="form-field">
+                <label>{{ t('catalogo.field_valido_al') }}</label>
+                <DatePicker v-model="form.valido_al" :date-format="DATE_FORMAT"
+                  show-icon show-button-bar class="w-full" />
+              </div>
+            </div>
+            <div class="form-grid-2col mt-05">
+              <div class="form-field">
+                <label>{{ t('catalogo.field_obbligatorio') }}</label>
+                <ToggleSwitch v-model="form.obbligatorio" />
+              </div>
+              <div class="form-field">
+                <label>{{ t('catalogo.field_partecipa_qta') }}</label>
+                <ToggleSwitch v-model="form.partecipa_qta" />
+              </div>
+            </div>
+            <div class="flex justify-end gap-2 mt-05">
+              <Button :label="t('common.cancel')" text @click="cancelAdd" />
+              <Button :label="t('common.save')" :loading="loading" :disabled="!canSaveForm" @click="onSaveNew" />
+            </div>
+          </template>
+        </template>
       </template>
     </div>
   </Drawer>
+
+  <CatalogoNoteDrawer
+    :visible="noteDrawerVisible"
+    @update:visible="v => noteDrawerVisible = v"
+    :list-fn="noteListFn"
+    :create-fn="noteCreateFn"
+    :title="t('catalogo.tab_note')"
+    @saved="loadComponenti"
+  />
 </template>
 
 <style scoped>
-.app-drawer-section {
-  margin-top: 1rem;
-  padding-bottom: 0.25rem;
-  border-bottom: 1px solid var(--app-border-color, #e0e0e0);
+.valido-al-cell {
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
 }
-.app-drawer-section h4 {
-  margin: 0;
-  font-size: 0.9rem;
-  font-weight: 600;
+.valido-al-cell:hover {
+  color: var(--p-primary-color);
 }
 </style>

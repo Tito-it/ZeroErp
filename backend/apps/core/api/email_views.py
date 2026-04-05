@@ -321,6 +321,8 @@ class EmailLogOperatoreListView(DomainAPIView):
             OpenApiParameter(name="search", type=str, required=False),
             OpenApiParameter(name="stato", type=str, required=False),
             OpenApiParameter(name="pratica_id", type=int, required=False),
+            OpenApiParameter(name="data_da", type=str, required=False, description="Data inizio (YYYY-MM-DD)"),
+            OpenApiParameter(name="data_a", type=str, required=False, description="Data fine (YYYY-MM-DD)"),
             OpenApiParameter(name="limit", type=int, required=False),
             OpenApiParameter(name="offset", type=int, required=False),
         ],
@@ -334,6 +336,8 @@ class EmailLogOperatoreListView(DomainAPIView):
             search=qp.get("search") or None,
             stato=qp.get("stato") or None,
             pratica_id=optional_int({"v": qp.get("pratica_id")}, "v"),
+            data_da=qp.get("data_da") or None,
+            data_a=qp.get("data_a") or None,
             limit=min(optional_int({"v": qp.get("limit")}, "v") or DEFAULT_LIMIT, MAX_LIMIT),
             offset=optional_int({"v": qp.get("offset")}, "v") or 0,
         )

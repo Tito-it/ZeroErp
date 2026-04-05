@@ -113,6 +113,15 @@ onMounted(async () => {
         </template>
       </Chip>
 
+      <!-- Toggle dark/light mode -->
+      <button
+        class="topbar-icon-btn"
+        v-tooltip.bottom="ui.isDark ? t('common.light_mode') : t('common.dark_mode')"
+        @click="ui.toggleDarkMode()"
+      >
+        <i :class="ui.isDark ? 'pi pi-sun' : 'pi pi-moon'"></i>
+      </button>
+
       <!-- Pulsante ricerca universale -->
       <button
         class="topbar-icon-btn"

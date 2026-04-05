@@ -310,15 +310,4 @@ async function onDelete(c) {
   gap: 0.25rem;
   flex-shrink: 0;
 }
-
-.app-drawer-section {
-  margin-top: 1rem;
-  padding-bottom: 0.25rem;
-  border-bottom: 1px solid var(--app-border-color, #e0e0e0);
-}
-.app-drawer-section h4 {
-  margin: 0;
-  font-size: 0.9rem;
-  font-weight: 600;
-}
 </style>

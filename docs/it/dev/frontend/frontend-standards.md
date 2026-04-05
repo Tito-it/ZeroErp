@@ -731,8 +731,25 @@ I componenti usano **solo** `--app-*`. Mai `var(--p-*)` direttamente.
 
 ### `theme.css` — personalizzazione visiva
 
-Unico punto di personalizzazione: sidebar, topbar, contenuto, card, drawer, transizioni, tipografia.
+Unico punto di personalizzazione: sidebar, topbar, contenuto, card, drawer, AI widget, transizioni, tipografia.
 Importato prima di `main.css` in `main.js`.
+
+### Dark/Light mode
+
+Il tema supporta dark e light mode tramite la classe `.p-dark` su `<html>`.
+
+| Aspetto | Dettaglio |
+| --- | --- |
+| Selettore | `:root` = dark (default), `:root:not(.p-dark)` = light override |
+| Store | `useUiStore().isDark` (ref), `toggleDarkMode()` (toggle + persist) |
+| Persistenza | `localStorage` chiave `STORAGE_KEYS.DARK_MODE` |
+| Pulsante | Topbar — icona sole (dark) / luna (light), tooltip i18n |
+| Variabili | Tutte le `--app-*` in `theme.css` hanno override nel blocco `:root:not(.p-dark)` |
+
+**Regola**: nessun componente deve usare direttamente `--p-surface-700/800/900` per sfondi o bordi.
+Usare sempre le variabili `--app-*` corrispondenti che si adattano automaticamente al modo attivo.
+Per aggiungere un componente theme-aware: definire le variabili in `:root` (dark) e sovrascriverle
+in `:root:not(.p-dark)` (light).
 
 ### `main.css` — classi utility globali
 
@@ -743,12 +760,53 @@ Importato prima di `main.css` in `main.js`.
 | `app-page-filters`   | Gruppo filtri (flex, wrap, gap)                           |
 | `app-page-action`    | Pulsanti azione — responsive: solo icona su mobile        |
 | `app-datatable`      | DataTable compatta (font ridotto, padding, stripe, hover) |
-| `app-drawer-content` | Wrapper contenuto drawer (flex column, gap)               |
+| `app-drawer-content` | Wrapper contenuto drawer (gap via `--app-drawer-gap`)     |
+| `app-drawer-section` | Separatore sezione nei drawer (bordo da theme.css)        |
 | `app-drawer-footer`  | Footer drawer Annulla/Salva (flex, justify-end)           |
 | `form-grid`          | Contenitore campi form (flex column, gap)                 |
 | `form-field`         | Coppia label + input (flex column, gap ridotto)           |
 | `form-grid-2col`     | Griglia 2 colonne responsive (1 col < 480px)              |
 | `app-tab-content`    | Wrapper contenuto tab per flex height                     |
+
+### Centralizzazione stile pulsanti (`main.css`)
+
+Lo stile dei pulsanti azione e' centralizzato in `main.css` tramite classi `app-*-btn`.
+Nessun componente deve definire colori o hover per pulsanti riga — usare sempre le classi globali.
+
+| Classe | Colore | Scopo |
+| --- | --- | --- |
+| `app-action-btn` | Verde (primary) | Azioni generiche nei form ("Aggiungi", "Gestisci" nei drawer) |
+| `app-manage-btn` | Blu (info) | Pulsanti "Gestisci" nelle colonne DataTable (apre sub-drawer) |
+| `app-edit-btn` | Verde (primary) | Matita modifica riga (DataTable e card) |
+| `app-delete-btn` | Rosso | Cestino elimina riga (DataTable e card) |
+| `app-reload-btn` | Verde | Refresh lista nella toolbar |
+
+I pulsanti strutturali (Nuovo, Salva, Annulla) sono centralizzati tramite **componenti Vue**:
+
+| Componente | Scopo |
+| --- | --- |
+| `NewButton` | Pulsante "Nuovo" nelle toolbar lista — responsive, controllo permessi |
+| `DrawerFooter` | Footer Salva/Annulla nei drawer — Ctrl+S, readonly-aware |
+
+### Centralizzazione icone gestione riga (`constants.js`)
+
+Le icone dei pulsanti gestione nelle colonne DataTable sono centralizzate nella costante `MANAGE_ICONS`
+in `src/core/constants.js`. Ogni lista che ha pulsanti per aprire sub-drawer (contatti, indirizzi,
+conti bancari, UoM, BoM, note, conversioni) deve usare `:icon="MANAGE_ICONS.XXX"`, mai stringhe
+hardcoded. Tutte le icone gestione riga usano la classe `app-manage-btn` (blu) — il colore
+e' definito in un unico punto in `main.css`.
+
+```html
+<!-- Pattern standard -->
+<Button :icon="MANAGE_ICONS.CONTATTI" text rounded size="small" class="app-manage-btn"
+  v-tooltip.bottom="t('contatto.gestisci_contatti')" @click.stop="emit('contatti', data)" />
+```
+
+Per aggiungere una nuova icona gestione: inserire la chiave in `MANAGE_ICONS` e usarla nel componente.
+Per cambiare il colore di tutte le icone gestione: modificare `.app-manage-btn` in `main.css`.
+
+Per l'inventario completo di classi CSS, pulsanti e componenti, consultare il
+[Catalogo Building Block Frontend](catalogo-building-block-frontend.md).
 
 ### Regole CSS per i componenti
 
@@ -757,6 +815,7 @@ Importato prima di `main.css` in `main.js`.
 - **Nessun CSS scoped per layout form** — usare classi `main.css`
 - Se serve un nuovo pattern layout, aggiungerlo a `main.css` come classe globale
 - Mai hardcodare colori — usare variabili `--app-*`
+- **Pulsanti riga**: usare le classi `app-*-btn` centralizzate, mai `severity` inline per edit/delete
 
 ---
 
