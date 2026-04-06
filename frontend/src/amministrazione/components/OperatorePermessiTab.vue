@@ -1,7 +1,10 @@
 <script setup>
-// Scopo: tab permessi dentro il drawer modifica operatore.
+// Scopo: Componente permessi operatore riutilizzabile.
 // Sezioni: override aree, override azioni, emittenti scope.
-import { ref, onMounted, computed, nextTick } from 'vue'
+// Usato sia dentro il TabView di OperatoreDrawer sia dal
+// drawer dedicato OperatorePermessiDrawer (azione rapida dalla lista).
+// Reagisce automaticamente al cambio di authUserId.
+import { ref, computed, watch, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useOperatoriStore } from '../stores/operatori'
 import { useApiHandler } from '../../core/composables/useApiHandler'
@@ -30,21 +33,34 @@ const props = defineProps({
 
 const livelloOptions = buildLivelloOptions(t)
 
+// isAdmin deriva da currentOperatore nello store. Se il componente viene
+// montato senza che currentOperatore sia gia' caricato per questo authUserId,
+// loadAll() si occupa di farne il fetch (serve per mostrare il banner admin).
 const isAdmin = computed(() => store.currentOperatore?.ruolo_sistema === RUOLO_SISTEMA.ADMIN)
 
-// Aree override locali (editabili)
+// Stato locale editabile (mantenuto separato dallo store per permettere undo
+// logico tra un save e l'altro e per non mutare direttamente lo store).
 const localAree = ref([])
 const localAzioni = ref([])
 const localEmittentiIds = ref([])
 
-onMounted(async () => {
+// Scopo: Carica tutto lo stato necessario per il componente.
+//        Viene chiamato dal watch su authUserId (immediate) e garantisce
+//        che currentOperatore, overrideAree/azioni, emittentiScope siano
+//        coerenti con l'utente passato.
+async function loadAll(userId) {
+  if (!userId) return
+  const needDetail = store.currentOperatore?.auth_user_id !== userId
   await Promise.all([
-    store.fetchOverrideAree(props.authUserId),
-    store.fetchOverrideAzioni(props.authUserId),
-    store.fetchEmittentiScope(props.authUserId)
+    needDetail ? store.fetchDetail(userId) : Promise.resolve(),
+    store.fetchOverrideAree(userId),
+    store.fetchOverrideAzioni(userId),
+    store.fetchEmittentiScope(userId)
   ])
   syncLocal()
-})
+}
+
+watch(() => props.authUserId, loadAll, { immediate: true })
 
 function syncLocal() {
   localAree.value = store.overrideAree.map(a => ({ ...a }))

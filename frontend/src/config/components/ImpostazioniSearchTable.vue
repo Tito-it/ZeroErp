@@ -4,6 +4,7 @@
 import { onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useImpostazioniStore } from '../stores/impostazioni'
+import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { resolveParameterLevel, parameterLevelSeverity } from '../../core/utils/parameterLevel'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
@@ -14,6 +15,7 @@ import Button from 'primevue/button'
 const emit = defineEmits(['edit-override', 'remove-override'])
 const { t } = useI18n()
 const store = useImpostazioniStore()
+const isReadonly = useInjectReadonly()
 
 function levelLabel(level) {
   return t(`impostazioni.level_${level}`)
@@ -83,14 +85,14 @@ onMounted(() => store.fetchList())
           </span>
         </template>
       </Column>
-      <Column :header="t('impostazioni.col_actions')" style="width: 100px;" frozen alignFrozen="right">
+      <Column v-if="!isReadonly" :header="t('impostazioni.col_actions')" style="width: 100px;" frozen alignFrozen="right">
         <template #body="{ data }">
           <div class="app-row-actions">
-            <Button icon="pi pi-pencil" text rounded size="small"
+            <Button icon="pi pi-pencil" text rounded size="small" class="app-edit-btn"
               v-tooltip.bottom="t('impostazioni.edit_override')"
               @click="emit('edit-override', data)" />
             <Button v-if="data.user_override_id" icon="pi pi-trash" text rounded size="small"
-              severity="danger"
+              class="app-delete-btn"
               v-tooltip.bottom="t('impostazioni.remove_override')"
               @click="emit('remove-override', data)" />
           </div>

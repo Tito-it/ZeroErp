@@ -13,7 +13,7 @@ Questo documento descrive come gestire questa complessita senza rompere il model
 Riferimenti correlati:
 
 - `docs/it/dev/work-in-progress/gestione-commesse-v2.md`
-- `docs/it/dev/work-in-progress/gestione-listini.md`
+- `docs/it/dev/work-in-progress/sviluppo-listini.md`
 - `docs/it/dev/work-in-progress/pipeline-domini-engine.md`
 
 ---
@@ -384,7 +384,7 @@ Tutta l'infrastruttura a valle dell'handler e identica per commerciali e utiliti
 - Il ricalcolo di un consumo si ottiene rieseguendo l'handler sullo stesso consumo:
   i segment_key idempotenti producono UPSERT su `commesse_attivita`.
 - Per rettifiche post-fatturazione, usare il meccanismo delta gia previsto in
-  `gestione-listini.md` § rettifiche. Non creare percorsi paralleli.
+  `sviluppo-listini.md` § rettifiche. Non creare percorsi paralleli.
 - Un ricalcolo NON modifica righe con `stato_emissione = 'EMESSA'` e `fatturato = TRUE`
   (guard in `fn_upsert_commessa_attivita` e `fn_emit`).
 

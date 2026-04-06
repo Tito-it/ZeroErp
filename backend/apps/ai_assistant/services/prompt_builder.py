@@ -39,13 +39,29 @@ def build_system_prompt(user: Any, tools: list[AITool]) -> str:
     sections.append(
         "Sei l'assistente AI integrato in ZeroERP. Il tuo UNICO scopo e' aiutare "
         "gli operatori a lavorare dentro ZeroERP: cercare dati, consultare pratiche, "
-        "soggetti, operatori e navigare nel sistema. "
+        "soggetti, clienti, articoli a catalogo, operatori e navigare nel sistema. "
         "NON sei un assistente generico. Se l'utente chiede qualcosa che non riguarda "
         "ZeroERP (es. ricette, meteo, calcoli generici, domande personali, "
         "programmazione, cultura generale), rispondi SOLO: "
         "'Posso aiutarti solo con operazioni relative a ZeroERP. "
-        "Prova a chiedermi di cercare pratiche, soggetti o altre informazioni nel sistema.' "
+        "Prova a chiedermi di cercare pratiche, clienti, articoli o altre informazioni nel sistema.' "
         "Rispondi sempre in italiano, in modo conciso e operativo."
+    )
+
+    # Glossario di dominio: mappa la terminologia italiana sui tool tecnici.
+    sections.append(
+        "GLOSSARIO ZEROERP (terminologia italiana → tool da usare):\n"
+        "- 'cliente' / 'clienti' → in ZeroERP corrisponde al concetto di "
+        "BILLING ACCOUNT (BA). Quando l'utente dice 'cerca cliente Rossi', "
+        "'trova il cliente con PDP X', 'cliente ACEA' usa SEMPRE il tool "
+        "cerca_billing_account, NON cerca_soggetti. 'Cliente' e 'billing account' "
+        "sono sinonimi in italiano: l'utente non distingue.\n"
+        "- 'soggetto' / 'anagrafica' / 'persona' / 'azienda' → cerca_soggetti "
+        "(persone fisiche, giuridiche, enti — anagrafica generale).\n"
+        "- 'articolo' / 'prodotto' / 'voce' / 'merceologia' → cerca_articoli "
+        "(catalogo articoli, prodotti, servizi).\n"
+        "- 'pratica' / 'lavorazione' → cerca_pratiche.\n"
+        "- 'operatore' / 'utente' / 'collega' → cerca_operatori."
     )
 
     # Vincoli
@@ -97,7 +113,9 @@ def build_system_prompt(user: Any, tools: list[AITool]) -> str:
             f"quando puoi usare uno strumento per ottenere dati aggiornati.\n\n"
             f"COMBINAZIONE STRUMENTI: puoi usare piu' strumenti in sequenza "
             f"per rispondere a domande complesse. Esempi:\n"
-            f"- 'dettagli del cliente Titini' → cerca_soggetti → dettaglio_soggetto\n"
+            f"- 'dettagli del soggetto Titini' → cerca_soggetti → dettaglio_soggetto\n"
+            f"- 'cerca cliente Rossi' / 'trova billing account ACEA' → cerca_billing_account\n"
+            f"- 'cerca articolo energia' / 'trova prodotto ACQUA' → cerca_articoli\n"
             f"- 'pratiche aperte di Acea con i flussi' → cerca_pratiche → cerca_flussi_pratica\n"
             f"- 'chi segue la pratica X?' → dettaglio_pratica (leggi operatore)\n"
             f"Usa il risultato di uno strumento come input per il successivo."

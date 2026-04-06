@@ -1,5 +1,6 @@
 from django.urls import path
 
+from apps.anagrafiche.api.views_billing_account import BillingAccountLookupByIdView, BillingAccountLookupView
 from apps.anagrafiche.api.views_clienti import ClientiDetailView, ClientiView, UtilitiesManualLookupView
 from apps.anagrafiche.api.views_fornitori import FornitoriDetailView, FornitoriView
 from apps.anagrafiche.api.views_matrice_indirizzi import MatriceIndirizziDetailView, MatriceIndirizziView
@@ -45,6 +46,9 @@ urlpatterns = [
     path("matrice-indirizzi-ruolo/<int:regola_id>/", MatriceIndirizziDetailView.as_view(), name="anagrafiche-matrice-indirizzi-detail"),
     # Utility ammesse per creazione manuale
     path("utilities/manual-lookup/", UtilitiesManualLookupView.as_view(), name="anagrafiche-utilities-manual-lookup"),
+    # Billing account — lookup ricco per autocomplete cross-dominio
+    path("billing-account/lookup/", BillingAccountLookupView.as_view(), name="anagrafiche-billing-account-lookup"),
+    path("billing-account/<int:billing_account_id>/lookup/", BillingAccountLookupByIdView.as_view(), name="anagrafiche-billing-account-lookup-by-id"),
     # Contatti ruolo
     path("ruoli/<int:soggetto_ruolo_id>/contatti/", RuoloContattiView.as_view(), name="anagrafiche-ruoli-contatti"),
     path("ruoli/<int:soggetto_ruolo_id>/contatti/<int:contatto_id>/", RuoloContattiDetailView.as_view(), name="anagrafiche-ruoli-contatti-detail"),

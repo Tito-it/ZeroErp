@@ -11,6 +11,7 @@ import { DRAWER_WIDTH } from '../../core/constants'
 import ArticoloLookup from '../../core/components/ArticoloLookup.vue'
 import LookupSelect from '../../core/components/LookupSelect.vue'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
+import DrawerFooter from '../../core/components/DrawerFooter.vue'
 import Drawer from 'primevue/drawer'
 import Tag from 'primevue/tag'
 import DataTable from 'primevue/datatable'
@@ -36,7 +37,7 @@ const addForm = ref({})
 async function loadRighe() {
   if (!props.listinoId || !props.versione?.id) return
   const res = await listRighe(props.listinoId, props.versione.id)
-  righe.value = res.data.data.results ?? res.data.data ?? []
+  righe.value = res.data.data.results || []
 }
 
 watch(() => props.visible, (v) => {
@@ -94,31 +95,34 @@ const isBozza = computed(() => props.versione?.stato === 'BOZZA')
         </div>
       </div>
 
-      <h4 style="margin-top: 1rem;">{{ t('listini.tab_righe') }}</h4>
+      <div class="app-drawer-section"><h4>{{ t('listini.tab_righe') }}</h4></div>
 
-      <div v-if="isBozza" style="display: flex; justify-content: flex-end; margin-bottom: 0.5rem;">
-        <Button icon="pi pi-plus" :label="t('listini.aggiungi_riga')" size="small" @click="startAdd" :disabled="adding" />
+      <div v-if="isBozza && !adding" class="mt-05">
+        <Button icon="pi pi-plus" :label="t('listini.aggiungi_riga')" text size="small"
+          class="app-action-btn" @click="startAdd" />
       </div>
 
-      <div v-if="adding" class="form-grid-2col" style="margin-bottom: 1rem; padding: 0.75rem; border: 1px solid var(--app-card-border); border-radius: 6px;">
-        <div class="form-field" style="grid-column: span 2;">
-          <label>{{ t('listini.field_articolo') }}</label>
-          <ArticoloLookup v-model="addForm.articolo_obj" />
+      <template v-if="adding">
+        <div class="form-grid">
+          <div class="form-field">
+            <label>{{ t('listini.field_articolo') }} *</label>
+            <ArticoloLookup v-model="addForm.articolo_obj" />
+          </div>
         </div>
-        <div class="form-field">
-          <label>{{ t('listini.field_uom') }}</label>
-          <LookupSelect v-model="addForm.uom_id" rel="catalogo.unita_misura" :placeholder="t('catalogo.select_uom')" />
+        <div class="form-grid-2col">
+          <div class="form-field">
+            <label>{{ t('listini.field_uom') }} *</label>
+            <LookupSelect v-model="addForm.uom_id" rel="catalogo.unita_misura" :placeholder="t('catalogo.select_uom')" />
+          </div>
+          <div class="form-field">
+            <label>{{ t('listini.field_prezzo') }} *</label>
+            <InputNumber v-model="addForm.prezzo" :minFractionDigits="2" :maxFractionDigits="10" />
+          </div>
         </div>
-        <div class="form-field">
-          <label>{{ t('listini.field_prezzo') }}</label>
-          <InputNumber v-model="addForm.prezzo" :minFractionDigits="2" :maxFractionDigits="10" />
-        </div>
-        <div style="display: flex; gap: 0.5rem; align-items: flex-end;">
-          <Button icon="pi pi-check" size="small" @click="confirmAdd" :loading="loading"
-            :disabled="!addForm.articolo_obj?.id || !addForm.uom_id || addForm.prezzo == null" />
-          <Button icon="pi pi-times" size="small" severity="secondary" @click="adding = false" />
-        </div>
-      </div>
+      </template>
+      <DrawerFooter v-if="adding" :loading="loading"
+        :disabled="!addForm.articolo_obj?.id || !addForm.uom_id || addForm.prezzo == null"
+        @save="confirmAdd" @cancel="adding = false" />
 
       <DataTable :value="righe" :loading="loading" striped-rows class="app-datatable" data-key="id">
         <Column field="articolo_codice" :header="t('listini.col_articolo')" style="width: 130px;" />
@@ -132,7 +136,7 @@ const isBozza = computed(() => props.versione?.stato === 'BOZZA')
         <Column field="emittente_descrizione" :header="t('listini.col_emittente')" style="width: 150px;" />
         <Column v-if="isBozza" style="width: 50px;">
           <template #body="{ data }">
-            <Button icon="pi pi-trash" text rounded size="small" severity="danger" @click="removeRow(data)" />
+            <Button icon="pi pi-trash" text rounded size="small" class="app-delete-btn" @click="removeRow(data)" />
           </template>
         </Column>
       </DataTable>

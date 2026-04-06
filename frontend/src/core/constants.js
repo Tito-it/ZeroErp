@@ -112,6 +112,9 @@ export const MANAGE_ICONS = {
   BOM: 'pi pi-sitemap',
   NOTE: 'pi pi-file-edit',
   CONVERSIONI: 'pi pi-sync',
+  // Vendite
+  VERSIONI: 'pi pi-history',
+  ASSOCIAZIONI: 'pi pi-link',
 }
 
 // Keyboard shortcuts

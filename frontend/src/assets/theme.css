@@ -68,6 +68,18 @@
    * Le empty state usano opacity ridotta, non questo colore. */
   --app-icon-color: var(--p-primary-color);
 
+  /* ===== Testo (riferimenti centralizzati) ===== */
+  /* Colore testo standard e testo attenuato usati nei componenti.
+   * Evita di puntare direttamente a --p-text-* nei componenti. */
+  --app-text-color: var(--p-text-color);
+  --app-text-muted: var(--p-text-muted-color);
+
+  /* ===== Lookup dropdown multi-riga ===== */
+  /* Usato da BillingAccountLookup e futuri lookup ricchi (ClienteLookup, ecc.).
+   * Dropdown con 3 righe: primary (nome entita'), secondary (codice), meta (id fiscale / pdp). */
+  --app-lookup-option-gap: 0.125rem;
+  --app-lookup-option-padding: 0.25rem 0;
+
   /* ===== Drawer ===== */
   --app-drawer-gap: 0.75rem;
   --app-drawer-section-border: var(--p-surface-700);

@@ -1,8 +1,8 @@
 <script setup>
 // Scopo: componente logo ZeroERP riutilizzabile — usato in sidebar e login.
-// Usa il logo SVG centralizzato in assets/images/logo-zeroerp.svg.
+// Usa il logo PNG centralizzato in assets/images/logo-zeroerp.png.
 // Accetta prop size per varianti dimensionali.
-import logoSrc from '@/assets/images/logo-zeroerp.svg'
+import logoSrc from '@/assets/images/logo-zeroerp.png'
 
 defineProps({
   size: {
