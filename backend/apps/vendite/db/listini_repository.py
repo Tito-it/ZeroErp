@@ -572,7 +572,9 @@ class ListiniRepository:
             )
             return cursor.rowcount > 0
 
-    # Scopo: Restituisce le associazioni del listino con display fields di contesto.
+    # Scopo: Restituisce le associazioni del listino con display fields di contesto,
+    #        arricchiti per precaricare l'AutoComplete BA in modalita' edit
+    #        (id_fiscale + pdp) senza round-trip aggiuntivi.
     def list_associazioni(self, listino_id: int) -> list[dict[str, Any]]:
         with connection.cursor() as cursor:
             cursor.execute(
@@ -582,7 +584,13 @@ class ListiniRepository:
                     a.listino_id,
                     a.billing_account_id,
                     ba.codice AS billing_account_codice,
-                    srd_ba.ragione_sociale_completa AS billing_account_descrizione,
+                    ba.utility_id AS billing_account_utility_id,
+                    ba.parent_account_id AS billing_account_parent_id,
+                    ba_parent.codice AS billing_account_parent_codice,
+                    srd_ba.ragione_sociale_completa AS billing_account_ragione_sociale,
+                    srd_ba.id_fiscale_univoco_cf_piva AS billing_account_id_fiscale,
+                    p_ba.pdp AS billing_account_pdp,
+                    ba_u.codice AS billing_account_utility_codice,
                     a.utility_id,
                     cu.codice AS utility_codice,
                     cu.descrizione AS utility_descrizione,
@@ -600,6 +608,14 @@ class ListiniRepository:
                   FROM vendite.listini_associazioni a
                   LEFT JOIN anagrafiche.billing_account ba
                     ON ba.id = a.billing_account_id
+                  LEFT JOIN anagrafiche.billing_account ba_parent
+                    ON ba_parent.id = ba.parent_account_id
+                  LEFT JOIN config.utilities ba_u
+                    ON ba_u.id = ba.utility_id
+                  LEFT JOIN anagrafiche.istanze_utilities iu_ba
+                    ON iu_ba.id = ba.istanza_utility_id
+                  LEFT JOIN anagrafiche.pdp p_ba
+                    ON p_ba.id = iu_ba.pdp_id
                   LEFT JOIN anagrafiche.vw_soggetti_ruoli_dettaglio srd_ba
                     ON srd_ba.soggetto_ruolo_id = ba.soggetto_ruolo_id
                   LEFT JOIN config.utilities cu

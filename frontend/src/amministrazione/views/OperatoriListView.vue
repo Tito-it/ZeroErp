@@ -13,6 +13,7 @@ import { useLookup } from '../../core/composables/useLookup'
 import { listUnitaOrganizzative } from '../api/amministrazione'
 import { RUOLO_SISTEMA, buildRuoloOptions, getRuoloSeverity } from '../constants'
 import OperatoreDrawer from '../components/OperatoreDrawer.vue'
+import OperatorePermessiDrawer from '../components/OperatorePermessiDrawer.vue'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import InputText from 'primevue/inputtext'
@@ -27,7 +28,8 @@ const store = useOperatoriStore()
 const unitaOrg = useLookup(listUnitaOrganizzative, { immediate: true })
 const { searchText, onPage, onSort, applyFilters, reload, paginatorProps } = useSearchTable(store)
 const drawer = useDrawerState()
-useReadonlyMode('amm_software')
+const permessiDrawer = useDrawerState()
+const { isReadonly } = useReadonlyMode('amm_software')
 
 useTabFreshness(store, 'operatore')
 
@@ -56,6 +58,14 @@ function applyExtraFilters() {
 function onDrawerSaved() {
   drawer.close()
   store.fetchList()
+}
+
+// Scopo: apre il drawer permessi per la riga cliccata senza aprire il drawer
+//        completo di modifica operatore. Intercetta il click sul pulsante per
+//        evitare che il click propaghi alla riga (che aprirebbe il drawer edit).
+function openPermessi(row, event) {
+  event.stopPropagation()
+  permessiDrawer.editRow(row, 'auth_user_id')
 }
 
 const ruoloBadgeSeverity = getRuoloSeverity
@@ -147,6 +157,17 @@ function activeBadgeSeverity(active) {
       <Column field="valido_al" :header="t('amm.col_valido_al')" sortable>
         <template #body="{ data }">{{ displayDate(data.valido_al) }}</template>
       </Column>
+      <Column v-if="!isReadonly" :header="t('amm.col_actions')" style="width: 70px;" frozen alignFrozen="right">
+        <template #body="{ data }">
+          <Button
+            icon="pi pi-shield"
+            text rounded size="small"
+            class="app-manage-btn"
+            v-tooltip.bottom="t('amm.gestisci_permessi')"
+            @click="openPermessi(data, $event)"
+          />
+        </template>
+      </Column>
     </DataTable>
 
     <OperatoreDrawer
@@ -156,6 +177,12 @@ function activeBadgeSeverity(active) {
       :auth-user-id="drawer.state.itemId"
       @saved="onDrawerSaved"
       @cancelled="drawer.close"
+    />
+
+    <OperatorePermessiDrawer
+      :visible="permessiDrawer.state.visible"
+      @update:visible="v => permessiDrawer.state.visible = v"
+      :auth-user-id="permessiDrawer.state.itemId"
     />
   </div>
 </template>

@@ -56,3 +56,18 @@ export function toDateString(d) {
   // Se gia' stringa, ritorna cosi' com'e' (assume formato valido)
   return String(d)
 }
+
+/**
+ * Converte una stringa ISO 'YYYY-MM-DD' in Date locale senza shift di fuso.
+ * Usato per precaricare DatePicker da valori persistiti nel backend.
+ *
+ * @param {string|Date|null} s - Stringa ISO o Date
+ * @returns {Date|null} - Date locale a mezzanotte o null
+ */
+export function parseIsoDate(s) {
+  if (!s) return null
+  if (s instanceof Date) return s
+  const match = String(s).match(/^(\d{4})-(\d{2})-(\d{2})/)
+  if (!match) return null
+  return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]))
+}

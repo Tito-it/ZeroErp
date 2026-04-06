@@ -18,7 +18,7 @@ export const useListiniStore = defineStore('vendite-listini', () => {
     attivo: true,
     limit: 25,
     offset: 0,
-    order_by: 'codice',
+    order_by: 'descrizione',
     order_dir: 'asc'
   })
 

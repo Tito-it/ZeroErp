@@ -75,13 +75,36 @@ export function fetchParameterSettings() {
   return api.get(`${BASE}/parameters/settings/`)
 }
 
-export function upsertParameterOverride(parameterCode, value) {
+// Scope ammessi: 'user' (default, override personale) | 'emittente' (admin, override aziendale).
+// Il default 'user' e' definito anche in PARAMETER_SCOPE.USER (composables/useParameterSettings.js):
+// teniamo qui la stringa letterale solo come fallback difensivo, le chiamate dovrebbero
+// sempre passare un valore esplicito tramite il composable.
+export function upsertParameterOverride(parameterCode, value, scope = 'user') {
   return api.post(`${BASE}/parameters/settings/override/`, {
     parameter_code: parameterCode,
-    value
+    value,
+    scope
   })
 }
 
-export function deleteParameterOverride(overrideId) {
-  return api.delete(`${BASE}/parameters/settings/override/${overrideId}/`)
+export function deleteParameterOverride(overrideId, scope = 'user') {
+  return api.delete(`${BASE}/parameters/settings/override/${overrideId}/`, {
+    params: { scope }
+  })
+}
+
+// --- Billing account lookup (ricerca ricca cross-dominio) ---
+
+// Scopo: Cerca billing_account per autocomplete.
+//        Backend: GET /api/v1/anagrafiche/billing-account/lookup/
+//        Ricerca multi-campo (codice, ragione sociale, id fiscale, PDP).
+//        Filtro utility e scope emittente automatici lato backend.
+export function lookupBillingAccount(params = {}) {
+  return api.get('/anagrafiche/billing-account/lookup/', { params })
+}
+
+// Scopo: Restituisce un singolo BA arricchito per restore dell'AutoComplete in edit.
+//        Backend: GET /api/v1/anagrafiche/billing-account/{id}/lookup/
+export function getBillingAccountLookupById(id) {
+  return api.get(`/anagrafiche/billing-account/${id}/lookup/`)
 }

@@ -92,6 +92,8 @@
 | `searchComuni` | [apiCore.js](../../../../frontend/src/core/apiCore.js) | Ricerca comuni |
 | `searchStradario` / `searchStradarioGenerale` | [apiCore.js](../../../../frontend/src/core/apiCore.js) | Ricerca stradario locale/nazionale |
 | `fetchParameterDefaults` | [apiCore.js](../../../../frontend/src/core/apiCore.js) | Risolve N parametri di sistema con override utente (`GET /core/parameters/defaults/`) |
+| `lookupBillingAccount` | [apiCore.js](../../../../frontend/src/core/apiCore.js) | Ricerca BA per autocomplete cross-dominio (`GET /anagrafiche/billing-account/lookup/`). Scope emittente automatico |
+| `getBillingAccountLookupById` | [apiCore.js](../../../../frontend/src/core/apiCore.js) | Restore singolo BA arricchito per edit (`GET /anagrafiche/billing-account/{id}/lookup/`) |
 
 ---
 
@@ -224,6 +226,29 @@ Il toggle e' gestito dallo store `useUiStore` (`isDark`, `toggleDarkMode`) e per
 | `app-empty-state` | Stato vuoto con icona grande + messaggio |
 | `app-preview-box` | Riquadro anteprima (email, code, HTML) |
 
+### Classi lookup dropdown multi-riga (`main.css`)
+
+| Classe | Descrizione |
+|---|---|
+| `app-lookup-option` | Wrapper voce AutoComplete/Dropdown multi-riga. Layout column con gap via `--app-lookup-option-gap`, padding via `--app-lookup-option-padding` |
+| `app-lookup-option__primary` | Riga principale (nome entita'). Font bold, supporta tag/badge inline con `flex-wrap` |
+| `app-lookup-option__secondary` | Riga secondaria (codice, ruolo). Font 0.85rem |
+| `app-lookup-option__meta` | Riga meta (id fiscale, PDP). Font 0.8rem, colore `--app-text-muted`, separatore `·` automatico tra span multipli |
+| `app-lookup-hint` | Messaggio "affina la ricerca" sotto l'autocomplete quando `total > limit`. Border-top, colore muted |
+
+**Uso tipico** (`BillingAccountLookup` e futuri lookup ricchi):
+
+```html
+<div class="app-lookup-option">
+  <div class="app-lookup-option__primary">Rossi Mario <span class="p-tag">GAS</span></div>
+  <div class="app-lookup-option__secondary">BA-000123</div>
+  <div class="app-lookup-option__meta">
+    <span>RSSMRA80A01H501U</span>
+    <span>PDP: IT001E00012345</span>
+  </div>
+</div>
+```
+
 ### Classi spacing (`main.css`)
 
 | Classe | Descrizione |
@@ -297,6 +322,7 @@ Il toggle e' gestito dallo store `useUiStore` (`isDark`, `toggleDarkMode`) e per
 |---|---|---|
 | `LookupSelect` | [LookupSelect.vue](../../../../frontend/src/core/components/LookupSelect.vue) | Select generico per tabelle lookup whitelisted (`id, codice, descrizione`). Prop `rel` mappa alla whitelist in `dbops_repository.py` (~45 tabelle). Sostituisce il pattern `useLookup(() => lookupCodici(...))` + `<Select>`. Props: `rel` (obbligatorio), `placeholder`, `label-field` (default `descrizione`), `value-field` (default `id`), `show-clear`, `filter` (default true), `disabled`. Emette `@change`. |
 | `ArticoloLookup` | [ArticoloLookup.vue](../../../../frontend/src/core/components/ArticoloLookup.vue) | Autocomplete articolo server-side cross-dominio. Props: `voce-utility`, `solo-componenti`, `solo-attivi`, `placeholder`, `disabled`. Emette `@select`. Usa `optionLabel` PrimeVue 4, `minLength: 3`. Usato da: righe listino, distinta base, test resolver. |
+| `BillingAccountLookup` | [BillingAccountLookup.vue](../../../../frontend/src/core/components/BillingAccountLookup.vue) | Autocomplete BA server-side cross-dominio con ricerca ricca (codice, ragione sociale, id fiscale, PDP). Dropdown a 3 righe via classe `app-lookup-option`. Props: `utilityId`, `soloValidi` (default `true`), `validAt`, `placeholder`, `disabled`. Emette `@select`, `@clear`. Footer "affina la ricerca" quando `total > limit`. `minLength: 2`. Scope emittente automatico lato backend. Usato da: righe listino associazioni; esteso a preventivi/ordini/fatture/pratiche. |
 
 ### Ricerca
 

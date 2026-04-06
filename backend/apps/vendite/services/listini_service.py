@@ -14,7 +14,6 @@ from uuid import UUID
 
 from django.db import IntegrityError
 
-from apps.core.api.payload_validators import paginated_envelope
 from apps.core.services.error_manager import ErrorManager
 from apps.vendite.db.listini_repository import (
     ASSOCIAZIONE_CREATE_COLUMNS,

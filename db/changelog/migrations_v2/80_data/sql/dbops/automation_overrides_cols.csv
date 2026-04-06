@@ -1,1 +1,4 @@
 schema_name,table_name,col_role,col_name
+anagrafiche,clienti,STORICO_FK,cliente_id
+anagrafiche,soggetti,STORICO_FK,soggetto_id
+config,parameter_overrides,STORICO_FK,parameter_override_id
