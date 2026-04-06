@@ -129,9 +129,13 @@ def _get_disabled_tools() -> set[str]:
 def populate_registry() -> None:
     from apps.ai_assistant.tools.pratiche_tools import get_pratiche_tools
     from apps.ai_assistant.tools.anagrafiche_tools import get_anagrafiche_tools
+    from apps.ai_assistant.tools.billing_account_tools import get_billing_account_tools
+    from apps.ai_assistant.tools.catalogo_tools import get_catalogo_tools
     from apps.ai_assistant.tools.config_tools import get_config_tools
 
     register_tools(get_pratiche_tools())
     register_tools(get_anagrafiche_tools())
+    register_tools(get_billing_account_tools())
+    register_tools(get_catalogo_tools())
     register_tools(get_config_tools())
     logger.info("AI tool registry popolato: %d tool registrati", len(_REGISTRY))

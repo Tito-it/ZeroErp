@@ -127,6 +127,52 @@ class ParameterService:
         )
         return deleted
 
+    # Scopo: Crea o aggiorna un override a livello emittente per un parametro.
+    #        Riservato agli admin: il check di permesso e' a carico della view.
+    def upsert_emittente_override(
+        self,
+        parameter_code: str,
+        emittente_fiscale_id: int,
+        value: str,
+    ) -> int:
+        ErrorManager.require(
+            bool(parameter_code and parameter_code.strip()),
+            code="E_PARAMETER_VALIDATION",
+            message="Codice parametro obbligatorio.",
+        )
+        ErrorManager.require(
+            emittente_fiscale_id is not None and emittente_fiscale_id > 0,
+            code="E_PARAMETER_VALIDATION",
+            message="ID emittente fiscale obbligatorio.",
+        )
+        return self._repo.upsert_emittente_override(
+            parameter_code, emittente_fiscale_id, value,
+        )
+
+    # Scopo: Rimuove un override a livello emittente.
+    def delete_emittente_override(
+        self,
+        override_id: int,
+        emittente_fiscale_id: int,
+    ) -> bool:
+        ErrorManager.require(
+            override_id is not None and override_id > 0,
+            code="E_PARAMETER_VALIDATION",
+            message="ID override obbligatorio.",
+        )
+        ErrorManager.require(
+            emittente_fiscale_id is not None and emittente_fiscale_id > 0,
+            code="E_PARAMETER_VALIDATION",
+            message="ID emittente fiscale obbligatorio.",
+        )
+        deleted = self._repo.delete_emittente_override(override_id, emittente_fiscale_id)
+        ErrorManager.require(
+            deleted,
+            code="E_PARAMETER_NOT_FOUND",
+            message="Override emittente non trovato.",
+        )
+        return deleted
+
     # Scopo: Risolve l'emittente_fiscale_id dell'utente dal bridge HR.
     def get_emittente_fiscale_id_for_user(self, auth_user_id: int) -> int | None:
         return self._repo.get_emittente_fiscale_id_for_user(auth_user_id)

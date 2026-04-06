@@ -88,6 +88,23 @@
 
 ---
 
+## Anagrafiche — Billing Account (`apps/anagrafiche/`)
+
+| Building Block | File | Descrizione |
+|---|---|---|
+| `BillingAccountRepository.search_lookup` | [billing_account_repository.py](../../../../backend/apps/anagrafiche/db/billing_account_repository.py) | Ricerca ricca BA (codice, ragione sociale, id fiscale, PDP) con JOIN a `istanze_utilities/pdp`, `vw_soggetti_ruoli_dettaglio`, `config.utilities`. Filtri: `utility_id`, validita' temporale (`valid_at`), scope emittente via `emittenti_fiscali_billing_account`. Ordinamento alfabetico. Restituisce `(rows, total_count)` |
+| `BillingAccountRepository.get_lookup_by_id` | [billing_account_repository.py](../../../../backend/apps/anagrafiche/db/billing_account_repository.py) | Restore singolo BA arricchito per ricostruire `_obj` dell'AutoComplete in modalita' edit senza round-trip |
+| `BillingAccountService.search_lookup` | [billing_account_service.py](../../../../backend/apps/anagrafiche/services/billing_account_service.py) | Facade lookup BA: valida `q >= 2 char`, cap `limit` a 50 (default 20), delega a repository. Restituisce `{results, total_count, limit}` per gestione UI "affina la ricerca" |
+| `BillingAccountService.get_lookup_by_id` | [billing_account_service.py](../../../../backend/apps/anagrafiche/services/billing_account_service.py) | Facade restore BA per edit. Solleva `E_ANAG_NOT_FOUND` se inesistente |
+
+**Endpoint**:
+- `GET /api/v1/anagrafiche/billing-account/lookup/?q=<min2>&utility_id=&solo_validi=&valid_at=&limit=` — autocomplete
+- `GET /api/v1/anagrafiche/billing-account/<id>/lookup/` — restore per edit
+
+**Scope emittente**: applicato automaticamente dalla view via `PermissionResolver.get_emittenti_ids`. Un operatore vede solo i BA mappati al suo emittente fiscale + quelli caduti sull'emittente di default.
+
+---
+
 ## Database Helpers (`apps/core/db/`)
 
 | Building Block | File | Descrizione |

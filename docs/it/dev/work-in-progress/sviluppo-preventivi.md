@@ -18,8 +18,8 @@
 > Riferimenti:
 >
 > * [gestione-commesse-v2.md](gestione-commesse-v2.md) — architettura commesse e pipeline fatturazione
-> * [gestione-articoli-listini.md](gestione-articoli-listini.md) — backend+frontend articoli e listini
-> * [gestione-listini.md](gestione-listini.md) — decisioni architetturali pricing e resolver
+> * [../work-done/gestione-articoli.md](../work-done/gestione-articoli.md) — dominio catalogo completato (articoli, UoM, BoM, note)
+> * [sviluppo-listini.md](sviluppo-listini.md) — backend+frontend listini + architettura pricing + resolver
 > * [docs/it/guide/gestione-commesse.md](../../guide/gestione-commesse.md) — API commesse DB layer
 > * [docs/it/guide/fatturazione.md](../../guide/fatturazione.md) — pipeline fatturazione
 > * [docs/it/dev/api.md](../api.md) — linee guida API

@@ -383,7 +383,7 @@ sorgente_origine_tipo_id    FK → config.sorgenti   (nullable — sorgente busi
 Nota ownership:
 
 1. `attivita_fatturabili.prezzo_bloccato` e` requisito del dominio pricing/listini;
-2. viene introdotto nella roadmap `gestione-listini.md` (DB-L3), non in DB-1 core commesse.
+2. viene introdotto nella roadmap `sviluppo-listini.md` (DB-L3), non in DB-1 core commesse.
 
 I campi `sorgente_tipo_id / sorgente_uid / sorgente_riga` restano su AF come contratto
 idempotenza del pull e vengono valorizzati come `COMMESSA + segment_key`.
@@ -451,7 +451,7 @@ Funzioni dominio commessa (core DB-3) + riferimenti a funzioni pricing. Definizi
 | `fn_link_commessa_sorgente(...)`                | Collega la sorgente ROOT alla commessa                                                                                 |
 | `fn_upsert_commessa_attivita(...)`              | Inserisce/aggiorna riga operativa con idempotenza su `segment_key`                                                     |
 | `fn_emit_attivita_fatturabili_da_commessa(...)` | Pull commessa → `attivita_fatturabili` (step 0 pipeline)                                                               |
-| `fn_resolve_commessa_prezzi(lotto_id)`          | Individua righe con listino stantio nel perimetro lotto (ownership: roadmap pricing `gestione-listini.md`, step DB-L2) |
+| `fn_resolve_commessa_prezzi(lotto_id)`          | Individua righe con listino stantio nel perimetro lotto (ownership: roadmap pricing `sviluppo-listini.md`, step DB-L2) |
 | `fn_get_commessa_stato(commessa_id)`            | Stato + info commessa in un round-trip                                                                                 |
 
 Note per `fn_emit_attivita_fatturabili_da_commessa`:
@@ -468,7 +468,7 @@ Note per `fn_emit_attivita_fatturabili_da_commessa`:
 
 Nota ownership funzioni pricing:
 
-1. `fn_resolve_prezzo_listino(...)` e `fn_resolve_commessa_prezzi(lotto_id)` sono governate dalla roadmap pricing in `gestione-listini.md`.
+1. `fn_resolve_prezzo_listino(...)` e `fn_resolve_commessa_prezzi(lotto_id)` sono governate dalla roadmap pricing in `sviluppo-listini.md`.
 
 ---
 
@@ -785,8 +785,8 @@ Il modello v2 resta confermato:
 ### 18.9 Gate uscita DB-L3
 
 - [x] test pgTAP DB-L3 verdi
-- [x] WIP `gestione-listini.md` e `gestione-commesse-v2.md` allineati
-- [x] checklist 13.3 (`gestione-listini.md`) portata a completamento coerente
+- [x] WIP `sviluppo-listini.md` e `gestione-commesse-v2.md` allineati
+- [x] checklist 13.3 (`sviluppo-listini.md`) portata a completamento coerente
 
 ### 18.10 Stato transizione pipeline (COMMESSA_ONLY) — COMPLETATO
 
@@ -1795,7 +1795,7 @@ Le funzioni DB di L4 sono già presenti (team DB). Serve il layer Python.
 - [x] Import orfani — zero trovati (verifica automatica su tutto il package vendite)
 - [x] `ripresa-lavori-attivita-fatturabili.md` — marcato come superato con nota in testa
 - [x] §20.5 timing deprecazione — aggiornato con data completamento 26-02-2026
-- [ ] Allineare `gestione-listini.md` §13 — skip, dipende da FASE 4.5 (rettifiche non ancora sviluppate)
+- [ ] Allineare `sviluppo-listini.md` §13 — skip, dipende da FASE 4.5 (rettifiche non ancora sviluppate)
 
 ---
 

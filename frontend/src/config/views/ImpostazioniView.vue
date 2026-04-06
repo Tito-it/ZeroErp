@@ -27,11 +27,12 @@ async function onRemoveOverride(parameter) {
     () => store.removeOverride(parameter.user_override_id),
     { successMessage: t('impostazioni.override_removed') }
   )
-  if (result) await store.fetchList()
+  if (result !== null) await store.fetchList()
 }
 
-function onDrawerSaved() {
+async function onDrawerSaved() {
   drawerVisible.value = false
+  await store.fetchList()
 }
 </script>
 
