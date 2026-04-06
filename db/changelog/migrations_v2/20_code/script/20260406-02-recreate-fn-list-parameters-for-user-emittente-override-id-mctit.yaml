@@ -1,0 +1,119 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# RECREATE script.fn_list_parameters_for_user — espone emittente_override_id
+# ------------------------------------------------------------
+# Scopo: aggiungere la colonna emittente_override_id nella RETURNS TABLE
+# della funzione, per permettere alla UI di cancellare in modo mirato gli
+# override a livello emittente, allineando il comportamento a quanto gia'
+# previsto per user_override_id. La modifica cambia la firma della funzione
+# (RETURNS TABLE), quindi e' necessario un DROP esplicito prima della
+# CREATE OR REPLACE.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260406-02-recreate-fn-list-parameters-for-user-emittente-override-id-mctit.yaml
+
+  - changeSet:
+      id: 20260406-02-recreate-fn-list-parameters-for-user-emittente-override-id
+      author: mctit
+      comment: >
+        Ricrea script.fn_list_parameters_for_user aggiungendo la colonna
+        emittente_override_id nella RETURNS TABLE, per consentire DELETE
+        mirato degli override a livello emittente dalla UI. La firma cambia,
+        quindi la funzione viene droppata e ricreata. Priorita' di risoluzione
+        invariata: user > group > emittente > default.
+      preConditions:
+        - onFail: HALT
+        - tableExists: { schemaName: config, tableName: parameters }
+        - tableExists: { schemaName: config, tableName: parameter_overrides }
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Drop necessario: cambia la firma (RETURNS TABLE) della funzione
+              DROP FUNCTION IF EXISTS script.fn_list_parameters_for_user(integer, integer[], bigint);
+
+              -- Ricreazione con colonna aggiuntiva emittente_override_id
+              CREATE OR REPLACE FUNCTION script.fn_list_parameters_for_user(
+                  p_django_user_id        integer,
+                  p_group_ids             integer[]                                            DEFAULT NULL,
+                  p_emittente_fiscale_id  config.parameter_overrides.emittente_fiscale_id%TYPE DEFAULT NULL
+              )
+              RETURNS TABLE (
+                  code                  config.parameters.code%TYPE,
+                  description           config.parameters.description%TYPE,
+                  default_value         config.parameters.default_value%TYPE,
+                  emittente_value       config.parameter_overrides.overridden_value%TYPE,
+                  emittente_override_id config.parameter_overrides.id%TYPE,
+                  group_value           config.parameter_overrides.overridden_value%TYPE,
+                  user_value            config.parameter_overrides.overridden_value%TYPE,
+                  user_override_id      config.parameter_overrides.id%TYPE,
+                  resolved_value        config.parameter_overrides.overridden_value%TYPE
+              )
+              LANGUAGE plpgsql
+              STABLE
+              AS $function$
+              BEGIN
+                  -- Scopo: restituisce per ogni parametro il valore a ciascun livello di
+                  -- scope (emittente, gruppo, utente) e il valore risolto con priorita':
+                  --   user > group > emittente > default.
+                  -- Espone anche gli ID degli override emittente e utente per consentire
+                  -- la rimozione mirata dalla UI (DELETE puntuale sull'override attivo).
+                  RETURN QUERY
+                  SELECT
+                      p.code,
+                      p.description,
+                      p.default_value,
+                      po_em.overridden_value   AS emittente_value,
+                      po_em.id                 AS emittente_override_id,
+                      po_gr.overridden_value   AS group_value,
+                      po_us.overridden_value   AS user_value,
+                      po_us.id                 AS user_override_id,
+                      COALESCE(
+                          po_us.overridden_value,
+                          po_gr.overridden_value,
+                          po_em.overridden_value,
+                          p.default_value
+                      )                        AS resolved_value
+                  FROM config.parameters p
+
+                  -- Override a livello emittente puro (no user, no group).
+                  -- Se p_emittente_fiscale_id e' NULL il confronto non matcha nessuna riga:
+                  -- comportamento voluto per preservare semantica esistente.
+                  LEFT JOIN config.parameter_overrides po_em
+                    ON  po_em.parameter_id         = p.id
+                    AND po_em.emittente_fiscale_id = p_emittente_fiscale_id
+                    AND po_em.django_user_id       IS NULL
+                    AND po_em.django_group_id      IS NULL
+                    AND po_em.attivo               = true
+
+                  -- Override a livello gruppo (no user).
+                  -- Se l'utente appartiene a piu' gruppi, prende il primo override trovato
+                  -- ordinando per id stabile (tie-break deterministico).
+                  LEFT JOIN LATERAL (
+                      SELECT o.overridden_value
+                      FROM config.parameter_overrides o
+                      WHERE o.parameter_id    = p.id
+                        AND o.django_group_id = ANY(p_group_ids)
+                        AND o.django_user_id  IS NULL
+                        AND o.attivo          = true
+                      ORDER BY o.id
+                      LIMIT 1
+                  ) po_gr ON p_group_ids IS NOT NULL
+
+                  -- Override a livello utente (scope piu' specifico, vince sempre nella COALESCE).
+                  LEFT JOIN config.parameter_overrides po_us
+                    ON  po_us.parameter_id   = p.id
+                    AND po_us.django_user_id = p_django_user_id
+                    AND po_us.attivo         = true
+
+                  ORDER BY p.code;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_list_parameters_for_user(integer, integer[], bigint)
+                IS 'Lista tutti i parametri con override per emittente, gruppo e utente. '
+                   'Restituisce il valore risolto con priorita: user > group > emittente > default. '
+                   'Espone emittente_override_id e user_override_id per consentire DELETE mirato dalla UI.';
