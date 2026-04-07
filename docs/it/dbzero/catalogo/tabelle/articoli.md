@@ -8,7 +8,7 @@
 | codice | character varying | NO |  |
 | descrizione | character varying | NO |  |
 | descrizione_breve | character varying | YES |  |
-| uom_id | bigint | YES |  |
+| uom_id | bigint | NO |  |
 | tipo_voce_id | bigint | YES |  |
 | gruppo_voce_id | bigint | YES |  |
 | spesa_id | bigint | YES |  |
@@ -83,11 +83,13 @@
 | trg_articoli_a10_ordini_righe_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'ordini_righe', 'articolo_id', 'id')` |
 | trg_articoli_a10_preventivi_righe_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'preventivi_righe', 'articolo_id', 'id')` |
 | trg_articoli_a10_protect_codice_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('codice', 'CODICE_NON_MODIFICABILE')` |
+| trg_articoli_a10_protect_uom_id_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('uom_id', 'CODICE_NON_MODIFICABILE')` |
 | trg_articoli_a10_reservations_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('magazzino', 'reservations', 'articolo_id', 'id')` |
 | trg_articoli_a10_rettifiche_righe_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('magazzino', 'rettifiche_righe', 'articolo_id', 'id')` |
+| trg_articoli_a10_seed_uom_base_ins | AFTER | INSERT | `EXECUTE FUNCTION catalogo.trgfn_articoli_seed_uom_base()` |
 | trg_articoli_a10_trasferimenti_righe_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('magazzino', 'trasferimenti_righe', 'articolo_id', 'id')` |
-| trg_articoli_a10_unita_misura_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'unita_misura', 'attivo', 'uom_id')` |
 | trg_articoli_a10_unita_misura_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'unita_misura', 'attivo', 'uom_id')` |
+| trg_articoli_a10_unita_misura_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'unita_misura', 'attivo', 'uom_id')` |
 | trg_articoli_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_articoli_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_articoli_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |

@@ -1,0 +1,182 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20260407-09-create-guard-emittenti-fiscali-utilities-required-mctit.yaml
+
+  - changeSet:
+      id: 20260407-09-create-guard-emittenti-fiscali-utilities-required
+      author: mctit
+      runOnChange: true
+      comment: >
+        Rende obbligatoria almeno una configurazione utility attiva per ogni
+        emittente fiscale attivo.
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ==========================================================
+              -- fn_guard_emittente_fiscale_utilities_required
+              --
+              -- Scopo:
+              --   Verificare che ogni emittente fiscale attivo abbia almeno
+              --   una riga attiva nella matrice
+              --   anagrafiche.emittenti_fiscali_utilities.
+              --
+              -- Regole:
+              --   - se l'emittente non esiste o non e' attivo -> nessun vincolo
+              --   - se l'emittente e' attivo -> deve esistere almeno una utility
+              --     attiva in matrice
+              --   - controllo usato sia lato emittenti_fiscali sia lato
+              --     emittenti_fiscali_utilities, con trigger DEFERRABLE
+              -- ==========================================================
+              CREATE OR REPLACE FUNCTION anagrafiche.fn_guard_emittente_fiscale_utilities_required(
+                p_emittente_soggetto_ruolo_id anagrafiche.soggetti_ruoli.id%TYPE,
+                p_context text DEFAULT NULL
+              )
+              RETURNS void
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_emittente_attivo boolean := false;
+                v_has_utility boolean := false;
+              BEGIN
+                   -- ==========================================================
+                  -- fn_guard_emittente_fiscale_utilities_required
+                  --
+                  -- Scopo:
+                  --   Verificare che ogni emittente fiscale attivo abbia almeno
+                  --   una riga attiva nella matrice
+                  --   anagrafiche.emittenti_fiscali_utilities.
+                  --
+                  -- Regole:
+                  --   - se l'emittente non esiste o non e' attivo -> nessun vincolo
+                  --   - se l'emittente e' attivo -> deve esistere almeno una utility
+                  --     attiva in matrice
+                  --   - controllo usato sia lato emittenti_fiscali sia lato
+                  --     emittenti_fiscali_utilities, con trigger DEFERRABLE
+                  -- ==========================================================
+
+                IF p_emittente_soggetto_ruolo_id IS NULL OR p_emittente_soggetto_ruolo_id <= 0 THEN
+                  RETURN;
+                END IF;
+
+                SELECT ef.attivo
+                  INTO v_emittente_attivo
+                  FROM anagrafiche.emittenti_fiscali ef
+                 WHERE ef.soggetto_ruolo_id = p_emittente_soggetto_ruolo_id;
+
+                IF COALESCE(v_emittente_attivo, false) IS NOT TRUE THEN
+                  RETURN;
+                END IF;
+
+                SELECT EXISTS (
+                  SELECT 1
+                    FROM anagrafiche.emittenti_fiscali_utilities efu
+                   WHERE efu.emittente_soggetto_ruolo_id = p_emittente_soggetto_ruolo_id
+                     AND efu.attivo IS TRUE
+                )
+                  INTO v_has_utility;
+
+                IF NOT v_has_utility THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'anagrafiche',
+                    'fn_guard_emittente_fiscale_utilities_required',
+                    'E_CONFIG_MANCANTE',
+                    jsonb_build_object(
+                      'detail', 'Matrice utility obbligatoria mancante per emittente fiscale attivo',
+                      'emittente_soggetto_ruolo_id', p_emittente_soggetto_ruolo_id,
+                      'context', p_context
+                    ),
+                    NULL::uuid,
+                    concat(
+                      'Nessuna utility attiva configurata per emittente fiscale ',
+                      p_emittente_soggetto_ruolo_id::text
+                    )
+                  );
+                END IF;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.fn_guard_emittente_fiscale_utilities_required(
+                anagrafiche.soggetti_ruoli.id%TYPE,
+                text
+              )
+              IS 'Verifica che ogni emittente fiscale attivo abbia almeno una utility attiva configurata in anagrafiche.emittenti_fiscali_utilities. Errore: E_CONFIG_MANCANTE.';
+
+              -- ==========================================================
+              -- trgfn_emittenti_fiscali_guard_utilities_required
+              --
+              -- Scopo:
+              --   Trigger wrapper DEFERRABLE che applica il controllo sia
+              --   quando cambia l''emittente sia quando cambia la matrice
+              --   utility associata.
+              -- ==========================================================
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_emittenti_fiscali_guard_utilities_required()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              BEGIN
+                IF TG_TABLE_NAME = 'emittenti_fiscali' THEN
+                  IF TG_OP <> 'DELETE' THEN
+                    PERFORM anagrafiche.fn_guard_emittente_fiscale_utilities_required(
+                      NEW.soggetto_ruolo_id,
+                      concat(TG_TABLE_NAME, ':', TG_OP)
+                    );
+                  END IF;
+                ELSIF TG_TABLE_NAME = 'emittenti_fiscali_utilities' THEN
+                  PERFORM anagrafiche.fn_guard_emittente_fiscale_utilities_required(
+                    COALESCE(NEW.emittente_soggetto_ruolo_id, OLD.emittente_soggetto_ruolo_id),
+                    concat(TG_TABLE_NAME, ':', TG_OP, ':current')
+                  );
+
+                  IF TG_OP = 'UPDATE'
+                     AND OLD.emittente_soggetto_ruolo_id IS DISTINCT FROM NEW.emittente_soggetto_ruolo_id THEN
+                    PERFORM anagrafiche.fn_guard_emittente_fiscale_utilities_required(
+                      OLD.emittente_soggetto_ruolo_id,
+                      concat(TG_TABLE_NAME, ':', TG_OP, ':old')
+                    );
+                  END IF;
+                END IF;
+
+                IF TG_OP = 'DELETE' THEN
+                  RETURN OLD;
+                END IF;
+
+                RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.trgfn_emittenti_fiscali_guard_utilities_required()
+              IS 'Constraint trigger wrapper: garantisce che un emittente fiscale attivo abbia almeno una utility attiva configurata.';
+
+              DROP TRIGGER IF EXISTS trg_emittenti_fiscali_def_guard_utilities_required_ins_upd
+                ON anagrafiche.emittenti_fiscali;
+
+              CREATE CONSTRAINT TRIGGER trg_emittenti_fiscali_def_guard_utilities_required_ins_upd
+              AFTER INSERT OR UPDATE
+              ON anagrafiche.emittenti_fiscali
+              DEFERRABLE INITIALLY DEFERRED
+              FOR EACH ROW
+              EXECUTE FUNCTION anagrafiche.trgfn_emittenti_fiscali_guard_utilities_required();
+
+              COMMENT ON TRIGGER trg_emittenti_fiscali_def_guard_utilities_required_ins_upd
+                ON anagrafiche.emittenti_fiscali
+                IS 'Verifica a fine transazione che ogni emittente fiscale attivo abbia almeno una utility attiva configurata.';
+
+              DROP TRIGGER IF EXISTS trg_emittenti_fiscali_utilities_def_guard_required_ins_upd_dlt
+                ON anagrafiche.emittenti_fiscali_utilities;
+
+              CREATE CONSTRAINT TRIGGER trg_emittenti_fiscali_utilities_def_guard_required_ins_upd_dlt
+              AFTER INSERT OR UPDATE OR DELETE
+              ON anagrafiche.emittenti_fiscali_utilities
+              DEFERRABLE INITIALLY DEFERRED
+              FOR EACH ROW
+              EXECUTE FUNCTION anagrafiche.trgfn_emittenti_fiscali_guard_utilities_required();
+
+              COMMENT ON TRIGGER trg_emittenti_fiscali_utilities_def_guard_required_ins_upd_dlt
+                ON anagrafiche.emittenti_fiscali_utilities
+                IS 'Verifica a fine transazione che la matrice utility non lasci emittenti fiscali attivi senza alcuna utility attiva.';

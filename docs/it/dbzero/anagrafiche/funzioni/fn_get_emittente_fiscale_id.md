@@ -52,7 +52,7 @@ END
 $function$
 
 COMMENT ON FUNCTION anagrafiche.fn_get_emittente_fiscale_id(p_billing_account_id bigint)
-IS 'Restituisce l''emittente fiscale per billing_account; fallback su default globale.';
+IS 'ATTENZIONE: nonostante il nome, restituisce soggetto_ruolo_id (anagrafiche.soggetti_ruoli.id), NON emittenti_fiscali.id. Catena: 1) mapping specifico per billing_account, 2) fallback al gestore globale (is_default=true). Non filtra per attivo. Per ottenere la PK numerica reale di emittenti_fiscali usare fn_get_emittente_fiscale_pk. Usata da ~33 funzioni del dominio vendite che ragionano su soggetto_ruolo_id.';
 ```
 
 ---

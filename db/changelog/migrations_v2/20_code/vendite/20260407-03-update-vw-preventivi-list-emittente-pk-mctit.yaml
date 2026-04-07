@@ -1,0 +1,121 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# UPDATE vendite.vw_preventivi_list — usa fn_get_emittente_fiscale_pk
+# Sostituisce fn_get_emittente_fiscale_id (che ritornava soggetto_ruolo_id)
+# con fn_get_emittente_fiscale_pk (che ritorna la PK numerica reale).
+# Necessario per allineare la colonna emittente_fiscale_id alla FK
+# config.parameter_overrides.emittente_fiscale_id usata dal filtro permessi.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260407-03-update-vw-preventivi-list-emittente-pk-mctit.yaml
+
+  - changeSet:
+      id: 20260407-03-update-vw-preventivi-list-emittente-pk
+      author: mctit
+      runOnChange: true
+      validCheckSum:
+        - ANY
+      comment: >
+        Ricrea vendite.vw_preventivi_list usando fn_get_emittente_fiscale_pk
+        al posto di fn_get_emittente_fiscale_id. La colonna emittente_fiscale_id
+        ora espone la PK numerica reale di anagrafiche.emittenti_fiscali,
+        confrontabile con config.parameter_overrides.emittente_fiscale_id.
+      preConditions:
+        - onFail: HALT
+        - tableExists: { schemaName: vendite, tableName: preventivi }
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT COUNT(*)
+                FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'anagrafiche'
+                 AND p.proname = 'fn_get_emittente_fiscale_pk';
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ==========================================================
+              -- Vista: vendite.vw_preventivi_list
+              --
+              -- Scopo: esporre i preventivi vendita con dati denormalizzati
+              --        per la lista frontend e il filtro backend.
+              --
+              -- JOIN principali:
+              --   - config.stati_doc_preventivi   -> codice e descrizione stato
+              --   - anagrafiche.billing_account   -> BA del cliente
+              --   - anagrafiche.soggetti_ruoli    -> ruolo del soggetto
+              --   - anagrafiche.soggetti          -> denominazione cliente
+              --   - config.valute                 -> codice valuta
+              --   - config.termini_pagamento      -> descrizione termini
+              --
+              -- Note:
+              --   - emittente_fiscale_id derivato via fn_get_emittente_fiscale_pk
+              --     (PK numerica reale di emittenti_fiscali) per scope permessi
+              --   - ordinamento default: data DESC, numero DESC
+              -- ==========================================================
+              CREATE OR REPLACE VIEW vendite.vw_preventivi_list AS
+              SELECT
+                p.id,
+                p.uid,
+                p.numero,
+                p.rev,
+                p.is_revision_attiva,
+                p.data,
+                -- Stato
+                p.stato_doc_preventivo_id,
+                sdp.codice                                AS stato_codice,
+                sdp.descrizione                           AS stato_descrizione,
+                -- Controparte (cliente via BA)
+                p.billing_account_id,
+                ba.utility_id                             AS ba_utility_id,
+                s.id                                      AS soggetto_id,
+                s.ragione_sociale                         AS cliente_denominazione,
+                -- Emittente fiscale (PK numerica reale, per scope permessi)
+                anagrafiche.fn_get_emittente_fiscale_pk(p.billing_account_id)
+                                                          AS emittente_fiscale_id,
+                -- Contesto
+                p.utility_id,
+                p.istanza_utility_id,
+                -- Importi
+                p.totale_imponibile,
+                p.totale_iva,
+                p.totale_documento,
+                -- Condizioni
+                p.valuta_id,
+                v.codice                                  AS valuta_codice,
+                p.termine_pagamento_id,
+                tp.descrizione                            AS termine_pagamento_descrizione,
+                -- Validita' e competenza
+                p.validita_dal,
+                p.validita_al,
+                p.competenza_mese,
+                -- Flag
+                p.fatturazione_immediata,
+                p.storicizza,
+                -- Audit
+                p.data_insert
+              FROM vendite.preventivi p
+              -- Stato documento
+              JOIN config.stati_doc_preventivi sdp
+                ON sdp.id = p.stato_doc_preventivo_id
+              -- Billing account -> soggetto ruolo -> soggetto
+              LEFT JOIN anagrafiche.billing_account ba
+                ON ba.id = p.billing_account_id
+              LEFT JOIN anagrafiche.soggetti_ruoli sr
+                ON sr.id = ba.soggetto_ruolo_id
+              LEFT JOIN anagrafiche.soggetti s
+                ON s.id = sr.soggetto_id
+              -- Valuta
+              LEFT JOIN config.valute v
+                ON v.id = p.valuta_id
+              -- Termini pagamento
+              LEFT JOIN config.termini_pagamento tp
+                ON tp.id = p.termine_pagamento_id
+              ORDER BY p.data DESC, p.numero DESC;
+
+              COMMENT ON VIEW vendite.vw_preventivi_list
+              IS 'Lista preventivi vendita denormalizzata per frontend e filtro permessi backend. emittente_fiscale_id = PK numerica reale di emittenti_fiscali (via fn_get_emittente_fiscale_pk).';
