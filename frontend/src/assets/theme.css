@@ -80,6 +80,17 @@
   --app-lookup-option-gap: 0.125rem;
   --app-lookup-option-padding: 0.25rem 0;
 
+  /* ===== Row expansion (DataTable expansion riga) ===== */
+  /* Usato da ListiniSearchTable per evidenziare l'area espansa rispetto
+   * alla riga padre (striped rows). Bordo sinistro primary + tinta + indent. */
+  --app-row-expansion-bg: color-mix(in srgb, var(--p-primary-color) 6%, transparent);
+  --app-row-expansion-border-color: var(--p-primary-color);
+  --app-row-expansion-border-width: 4px;
+  --app-row-expansion-indent: 1.5rem;
+  --app-row-expansion-padding: 0.75rem 1rem 0.875rem 1rem;
+  --app-row-expansion-radius: 0 6px 6px 0;
+  --app-row-expansion-title-color: var(--p-primary-color);
+
   /* ===== Drawer ===== */
   --app-drawer-gap: 0.75rem;
   --app-drawer-section-border: var(--p-surface-700);
@@ -185,6 +196,10 @@
   /* DataTable */
   --app-table-stripe-bg: color-mix(in srgb, var(--p-surface-100) 60%, transparent);
   --app-table-hover-bg: color-mix(in srgb, var(--p-primary-color) 6%, transparent);
+
+  /* Row expansion: tinta primary piu' marcata in light mode (10% vs 6% dark)
+   * per superare il contrasto basso con striped rows chiare. */
+  --app-row-expansion-bg: color-mix(in srgb, var(--p-primary-color) 10%, var(--p-surface-0));
 
   /* Preview */
   --app-preview-bg: var(--p-surface-50);

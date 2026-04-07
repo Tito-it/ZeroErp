@@ -9,17 +9,20 @@ L'obiettivo e` ridurre la complessita` superflua mantenendo rigore su dati, rego
 
 ## Stato progetto
 
-> **Sviluppo attivo — backend e frontend operativi su domini core e catalogo/vendite.**
+> **Sviluppo attivo — backend e frontend operativi su domini core, catalogo, vendite, anagrafiche, pratiche.**
 >
 > DB e API backend operativi su 13 schemi. Frontend Vue operativo su: layout applicativo,
 > gestione soggetti (PF/PG/ENTE), gestione geografica (7 tab CRUD), pannello configurazione (67 tabelle),
-> amministrazione software (operatori, profili reparto, permessi, audit log),
+> amministrazione software (operatori, profili reparto, permessi, audit log,
+> drawer dedicato gestione permessi raggiungibile dalla riga lista),
 > gestione clienti/fornitori (drawer end-to-end con sotto-drawer),
-> gestione pratiche (dashboard, flussi, note, allegati, giornale),
-> catalogo articoli (CRUD, UoM, BoM, note), unita' di misura,
-> listini vendita (versioni, righe prezzo, associazioni, test resolver),
-> integrazione AI (9 tool, widget conversazionale),
+> gestione pratiche v2 (dashboard, flussi, note, allegati, giornale),
+> catalogo articoli (CRUD, UoM, BoM, note) **completato**,
+> listini vendita (versioni, righe prezzo, associazioni, test resolver) — backend+frontend da verificare su UI reale,
+> impostazioni parametri di sistema con override personali ed emittente (drawer admin con selettore scope),
+> integrazione AI (11 tool: pratiche, soggetti, clienti, articoli, operatori — widget conversazionale),
 > autenticazione completa (email, token, reset pw, invito operatore).
+> Rettifiche prezzi (DB-L4) estratte in WIP dedicato.
 > Non ancora rilasciato per produzione.
 
 ---
@@ -143,7 +146,7 @@ Il modello e` pensato per supportare processi non lineari e gestione multi-repar
 
 ## Stato dello Sviluppo
 
-Fotografia sintetica (3 aprile 2026):
+Fotografia sintetica (7 aprile 2026):
 
 - Database core: operativo (13 schemi, 200+ tabelle, trigger, funzioni, viste)
 - API backend: operativo (890+ test, 80+ endpoint)
@@ -152,21 +155,39 @@ Fotografia sintetica (3 aprile 2026):
   - Livello 1: area funzionale (TUTTO/LETTURA/BLOCCATO) — sidebar, route guard, CSS protect
   - Livello 2: azioni processo (abilitata/negata) — prop `action` su componenti, backend 403
 - Autenticazione: completa (JWT, email BB, token monouso, reset pw, invito, cambio pw obbligatorio)
-- Catalogo e Listini: operativi
+- Parametri di sistema: lista impostazioni con override multi-scope
+  - Default → Emittente → Gruppo → Utente con risoluzione deterministica
+  - Drawer admin con selettore scope (Personale/Emittente), check `IsAdminZeroERP`
+  - Fallback emittente "gestore di default" via `is_default = true`
+- Catalogo: **completato e testato**
   - Articoli CRUD con UoM operative, distinta base, note (19 endpoint, 49 test)
   - Unita' di misura CRUD (backend + frontend)
-  - Listini vendita: versioni, righe prezzo, associazioni, test resolver (18 endpoint, 29 test)
-- Integrazione AI v1: operativa (9 tool, widget flottante, 61 test)
+  - Documentazione consolidata in [work-done/gestione-articoli.md](./dev/work-done/gestione-articoli.md)
+- Listini vendita: backend + frontend implementati, **da testare su UI reale**
+  - Versioni, righe prezzo, associazioni, test resolver (18 endpoint, 29 test)
+  - Roadmap consolidata in [work-in-progress/sviluppo-listini.md](./dev/work-in-progress/sviluppo-listini.md)
+- Rettifiche prezzi (DB-L4): estratte in [work-in-progress/sviluppo-rettifiche.md](./dev/work-in-progress/sviluppo-rettifiche.md), **da implementare**
+- Integrazione AI v1: operativa, **11 tool** registrati
+  - Pratiche (cerca, dettaglio, flussi)
+  - Anagrafica soggetti (cerca soggetti, dettaglio soggetto)
+  - Anagrafica clienti / billing account (cerca\_billing\_account — sinonimo "cliente" in italiano)
+  - Catalogo articoli (cerca\_articoli)
+  - Operatori (cerca\_operatori)
+  - System prompt con glossario di dominio italiano (cliente=BA, articolo=catalogo)
+  - Widget flottante, contesto documentale statico, multi-tool chaining, 61 test
 - Frontend Vue: operativo su domini core, anagrafiche, catalogo, vendite, pratiche
   - Layout applicativo (sidebar morfica, content tabs, split view, breadcrumb, ricerca universale)
   - Amm. Software completa: operatori, profili reparto, permessi riepilogo, audit log, email
+    - Drawer dedicato gestione permessi richiamabile dalla riga lista (`OperatorePermessiTab` riusabile)
   - Gestione soggetti: PF/PG/ENTE end-to-end, ruoli, contatti, indirizzi, CF validator IT
   - Gestione geografica: 7 tab CRUD
   - Gestione clienti/fornitori: drawer con sotto-drawer contatti/indirizzi/conti
   - Gestione pratiche v2: dashboard, flussi, note, allegati, giornale
-  - Catalogo articoli: lista, drawer con 3 tab (UoM, BoM, note), ArticoloLookup BB
+  - Catalogo articoli: lista, drawer con 3 tab (UoM, BoM, note), `ArticoloLookup` BB cross-dominio
   - Listini: lista, drawer con versioni/associazioni, sub-drawer righe, test resolver
+  - Impostazioni parametri: lista multi-scope con drawer override (`PARAMETER_SCOPE` come unica fonte di verita')
   - Pannello configurazione: 67 tabelle CRUD generiche
+  - Logo brand: nuovo PNG ottimizzato 256x256 (frontend) + favicon PNG/ICO + master 512x512 in `docs/assets/images/`
   - Building block riutilizzabili: 25+ composable, 20+ componenti core, LookupSelect generico, CSS utility classes
 - Documentazione: frontend-standards, catalogo-building-block (frontend + backend), mappa concentrica
 
@@ -210,11 +231,14 @@ Struttura essenziale:
 8. ~~Gestione Clienti/Fornitori (CRUD, drawer, sotto-drawer)~~ — fatto, v2 pianificata
 9. ~~Gestione Pratiche v2 (dashboard, flussi, note, allegati, giornale)~~ — fatto, in test UI
 10. ~~Autenticazione completa (email, token, reset pw, invito)~~ — fatto, 2FA pianificato
-11. ~~Integrazione AI v1 (9 tool, widget conversazionale)~~ — fatto, v2 in corso
-12. ~~Catalogo articoli + UoM + listini vendita~~ — fatto, in test UI
-13. Test UI reali su articoli, listini, pratiche, clienti, fornitori — in corso
-14. Permessi v2 (livello oggetto) — pianificato
-15. Integrazione vendite/pratiche e moduli verticali
+11. ~~Integrazione AI v1 (11 tool, widget conversazionale, glossario IT)~~ — fatto, v2 in corso
+12. ~~Catalogo articoli + UoM + BoM + note~~ — **completato** (work-done)
+13. ~~Listini vendita (backend + frontend)~~ — fatto, in test UI
+14. ~~Parametri di sistema multi-scope (drawer admin con scope user/emittente)~~ — fatto
+15. Test UI reali su listini, pratiche, clienti, fornitori, parametri — in corso
+16. **Rettifiche prezzi DB-L4** (motore delta, canali manuale/automatico, audit) — pianificato in WIP dedicato
+17. Permessi v2 (livello oggetto) — pianificato
+18. Integrazione vendite/pratiche e moduli verticali
 
 ---
 

@@ -438,12 +438,14 @@ class PreventiviRepository:
     # ══════════════════════════════════════════════════════════
 
     # Scopo: Risolve contesto anagrafico dal preventivo per creazione pratica.
-    # Restituisce emittente_fiscale_id (default gestore), soggetto_id, soggetto_ruolo_id.
+    # Restituisce emittente_fiscale_id (PK numerica anagrafiche.emittenti_fiscali.id),
+    # soggetto_id e soggetto_ruolo_id ricavati dal billing_account del preventivo.
+    # L'emittente fiscale viene risolto via anagrafiche.fn_get_emittente_fiscale_pk
+    # (mapping specifico BA -> fallback gestore globale, errore esplicito se manca).
     def resolve_contesto_pratica(self, preventivo_id: int) -> dict[str, Any] | None:
         sql = """
             SELECT
-                (SELECT id FROM anagrafiche.emittenti_fiscali
-                 WHERE is_default = true AND attivo = true LIMIT 1)
+                anagrafiche.fn_get_emittente_fiscale_pk(p.billing_account_id)
                     AS emittente_fiscale_id,
                 sr.soggetto_id::text AS soggetto_id,
                 ba.soggetto_ruolo_id

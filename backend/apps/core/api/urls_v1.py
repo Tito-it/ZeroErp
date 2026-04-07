@@ -21,6 +21,7 @@ from apps.core.api.views_lookup import (
     LookupSistemaCodiciView,
     LookupTipiRuoliPerNaturaView,
     LookupTipiSoggettoDettaglioView,
+    LookupUtilitiesPerRuoloView,
     SearchStradarioGeneraleView,
     SearchStradarioView,
 )
@@ -103,6 +104,11 @@ urlpatterns = [
         "lookup/tipi-ruolo/<str:tipo_ruolo_codice>/indirizzi/",
         LookupMatriceIndirizziRuoloView.as_view(),
         name="core-lookup-matrice-indirizzi-ruolo",
+    ),
+    path(
+        "lookup/tipi-ruolo/<str:tipo_ruolo_codice>/utilities/",
+        LookupUtilitiesPerRuoloView.as_view(),
+        name="core-lookup-utilities-per-ruolo",
     ),
     path(
         "lookup/tipi-ruoli-natura/",

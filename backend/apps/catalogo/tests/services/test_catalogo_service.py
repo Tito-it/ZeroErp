@@ -17,9 +17,11 @@ Indice test eseguiti:
 9) CatalogoServiceTests.test_fn_lookup_unita_misura_invalid_limit
 10) CatalogoServiceTests.test_fn_create_articolo_ok
 11) CatalogoServiceTests.test_fn_create_articolo_missing_codice
+11b) CatalogoServiceTests.test_fn_create_articolo_missing_uom_id
 12) CatalogoServiceTests.test_fn_create_articolo_duplicate_codice
 13) CatalogoServiceTests.test_fn_update_articolo_ok
 14) CatalogoServiceTests.test_fn_update_articolo_codice_immutabile
+14b) CatalogoServiceTests.test_fn_update_articolo_uom_id_immutabile
 15) CatalogoServiceTests.test_fn_disattiva_articolo_ok
 16) CatalogoServiceTests.test_fn_disattiva_articolo_already_inactive
 17) CatalogoServiceTests.test_fn_create_articolo_unknown_key
@@ -162,11 +164,13 @@ class CatalogoServiceTests(TestCase):
         mock_bom_repo_cls.return_value.list_componenti.return_value = []
         mock_bom_repo_cls.return_value.list_note_articolo.return_value = []
 
-        result = fn_create_articolo({"codice": "ART-001", "descrizione": "Articolo demo"})
+        result = fn_create_articolo(
+            {"codice": "ART-001", "descrizione": "Articolo demo", "uom_id": 1}
+        )
 
         self.assertEqual(result["codice"], "ART-001")
         repo.create_articolo.assert_called_once_with(
-            {"codice": "ART-001", "descrizione": "Articolo demo"}
+            {"codice": "ART-001", "descrizione": "Articolo demo", "uom_id": 1}
         )
 
     # Scopo: codice mancante in create -> ServiceError validazione.
@@ -174,8 +178,17 @@ class CatalogoServiceTests(TestCase):
         from apps.catalogo.services.catalogo_service import fn_create_articolo
 
         with self.assertRaises(ServiceError) as ctx:
-            fn_create_articolo({"descrizione": "Articolo demo"})
+            fn_create_articolo({"descrizione": "Articolo demo", "uom_id": 1})
         self.assertEqual(ctx.exception.code, "E_CATALOGO_VALIDATION")
+
+    # Scopo: uom_id mancante in create -> ServiceError validazione (NOT NULL DDL).
+    def test_fn_create_articolo_missing_uom_id(self):
+        from apps.catalogo.services.catalogo_service import fn_create_articolo
+
+        with self.assertRaises(ServiceError) as ctx:
+            fn_create_articolo({"codice": "ART-001", "descrizione": "Articolo demo"})
+        self.assertEqual(ctx.exception.code, "E_CATALOGO_VALIDATION")
+        self.assertIn("uom_id", ctx.exception.detail or "")
 
     # Scopo: duplicate codice -> traduzione IntegrityError in validazione catalogo.
     @patch("apps.catalogo.services.catalogo_service.CatalogoRepository")
@@ -185,7 +198,9 @@ class CatalogoServiceTests(TestCase):
         mock_repo_cls.return_value.create_articolo.side_effect = IntegrityError("uq_articoli_codice")
 
         with self.assertRaises(ServiceError) as ctx:
-            fn_create_articolo({"codice": "ART-001", "descrizione": "Articolo demo"})
+            fn_create_articolo(
+                {"codice": "ART-001", "descrizione": "Articolo demo", "uom_id": 1}
+            )
         self.assertEqual(ctx.exception.code, "E_CATALOGO_VALIDATION")
         self.assertEqual(ctx.exception.message, "Codice articolo gia' esistente.")
 
@@ -226,6 +241,15 @@ class CatalogoServiceTests(TestCase):
         with self.assertRaises(ServiceError) as ctx:
             fn_update_articolo("019bbee2-5f6a-704f-bbd0-34ed84db252d", {"codice": "NEW"})
         self.assertEqual(ctx.exception.code, "E_CATALOGO_VALIDATION")
+
+    # Scopo: tentativo di update uom_id -> errore per immutabilita' (lock_columns DDL).
+    def test_fn_update_articolo_uom_id_immutabile(self):
+        from apps.catalogo.services.catalogo_service import fn_update_articolo
+
+        with self.assertRaises(ServiceError) as ctx:
+            fn_update_articolo("019bbee2-5f6a-704f-bbd0-34ed84db252d", {"uom_id": 99})
+        self.assertEqual(ctx.exception.code, "E_CATALOGO_VALIDATION")
+        self.assertIn("uom_id", ctx.exception.detail or "")
 
     # Scopo: disattiva articolo -> update attivo=false e dettaglio finale.
     @patch("apps.catalogo.services.catalogo_service.CatalogoBomRepository")

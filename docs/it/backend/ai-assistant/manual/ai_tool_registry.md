@@ -26,6 +26,26 @@ Ogni strumento AI (tool) wrappa un service/repository esistente di ZeroERP e lo 
 | `dettaglio_soggetto` | anagrafiche | `anagrafiche` | LETTURA | `SoggettiService.get_soggetto()` |
 | `cerca_operatori` | amm_software | `amm_software` | LETTURA | `AmmSoftwareService.list_operatori()` |
 
+### Fase 4 (scrittura con conferma)
+
+| Tool | Dominio | Area | Livello | Service wrappato |
+|---|---|---|---|---|
+| `crea_pratica` | pratiche | `pratiche` | TUTTO | `pratiche_service.crea_pratica()` |
+| `cambia_stato_pratica` | pratiche | `pratiche` | TUTTO | `pratiche_service.cambia_stato()` |
+| `aggiungi_nota_pratica` | pratiche | `pratiche` | TUTTO | `pratiche_service.aggiungi_nota()` |
+
+### Fase 5
+
+| Tool                    | Dominio     | Area           | Livello | Service wrappato                                |
+|-------------------------|-------------|----------------|---------|-------------------------------------------------|
+| `cerca_billing_account` | anagrafiche | `anagrafiche`  | LETTURA | `BillingAccountService.list_billing_account()`  |
+
+### Fase 6
+
+| Tool             | Dominio  | Area        | Livello | Service wrappato                  |
+|------------------|----------|-------------|---------|-----------------------------------|
+| `cerca_articoli` | catalogo | `catalogo`  | LETTURA | `CatalogoService.list_articoli()` |
+
 ## Input
 
 ### `get_tools_for_user(user)` — Tool disponibili per un utente
