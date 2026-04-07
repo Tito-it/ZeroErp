@@ -1,13 +1,19 @@
 <script setup>
 // Scopo: DataTable paginata listini con search, filtro dominio e attivo.
-// Pulsanti riga per accesso diretto a versioni e associazioni.
-import { ref, onMounted } from 'vue'
+// Row expansion: mostra le versioni del listino sotto la riga (default aperto).
+// Pulsanti riga listino: toggle versioni (chiude/apre expansion), associazioni.
+// Mini-tabella versioni nell'expansion: + nuova versione, transizioni stato,
+// gestione righe prezzo (apre VersioneDrawer dal parent).
+import { ref, onMounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useListiniStore } from '../stores/listini'
+import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useSearchTable } from '../../core/composables/useSearchTable'
 import { useTabFreshness } from '../../core/composables/useTabFreshness'
 import { MANAGE_ICONS } from '../../core/constants'
-import { dominioListinoSeverity } from '../../core/utils/severity'
+import { dominioListinoSeverity, statoVersioneListinoSeverity } from '../../core/utils/severity'
+import { displayDate } from '../../core/utils/date'
+import { changeVersioneStato } from '../api/listini'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import InputText from 'primevue/inputtext'
@@ -16,9 +22,18 @@ import Tag from 'primevue/tag'
 import Button from 'primevue/button'
 import NewButton from '../../core/components/NewButton.vue'
 
-const emit = defineEmits(['new', 'row-click', 'open-versioni', 'open-associazioni', 'test-resolver'])
+const emit = defineEmits([
+  'new',
+  'row-click',
+  'open-associazioni',
+  'open-righe',
+  'open-nuova-versione',
+  'test-resolver'
+])
+
 const { t } = useI18n()
 const store = useListiniStore()
+const { execute } = useApiHandler()
 const { searchText, onPage, onSort, applyFilters, reload, paginatorProps } = useSearchTable(store, {
   defaultSortField: 'descrizione'
 })
@@ -37,6 +52,11 @@ const boolOptions = [
   { value: false, label: t('common.no') }
 ]
 
+// Stato espansione righe (usato come v-model:expandedRows di PrimeVue).
+// Ogni volta che la lista listini viene ricaricata, espandiamo tutte le righe
+// e pre-carichiamo le versioni in parallelo.
+const expandedRows = ref({})
+
 function onDominioChange() {
   store.filters.dominio = dominioFilter.value
   applyFilters()
@@ -49,7 +69,49 @@ function onAttivoChange() {
 
 function onRowClick(event) { emit('row-click', event.data) }
 
+// Espande tutte le righe correntemente in lista. Il preload delle versioni
+// viene gia' fatto dallo store dentro fetchList; qui ci limitiamo a mappare
+// gli id correnti come "espansi" per il v-model:expandedRows di PrimeVue.
+function expandAllRows() {
+  const map = {}
+  store.items.forEach(it => { map[it.id] = true })
+  expandedRows.value = map
+}
+
+// Toggle expansion di una singola riga (usato dal pulsante "versioni" della riga).
+// Il fetch lazy serve per i casi in cui il preload del store e' fallito o
+// quando l'utente collassa-riapre senza cambiare pagina.
+async function toggleExpand(listino) {
+  const next = { ...expandedRows.value }
+  if (next[listino.id]) {
+    delete next[listino.id]
+    expandedRows.value = next
+  } else {
+    next[listino.id] = true
+    expandedRows.value = next
+    if (!store.versioniByListino[listino.id]) {
+      await store.fetchVersioniListino(listino.id)
+    }
+  }
+}
+
+// Transizioni stato versione direttamente dalla mini-tabella.
+async function onCambiaStato(versione, listinoId, nuovoStato) {
+  const result = await execute(
+    () => changeVersioneStato(listinoId, versione.id, { stato: nuovoStato }),
+    { successMessage: t('listini.stato_aggiornato') }
+  )
+  if (result !== null) {
+    await store.invalidateVersioniListino(listinoId)
+  }
+}
+
 useTabFreshness(store, 'listino')
+
+// Dopo ogni assegnazione di items (fetchList completato e preload versioni
+// gia' fatto dal store), aggiorna la mappa expandedRows per espandere tutto.
+watch(() => store.items, expandAllRows, { flush: 'post' })
+
 onMounted(() => store.fetchList())
 </script>
 
@@ -74,6 +136,7 @@ onMounted(() => store.fetchList())
     <DataTable
       :value="store.items"
       :loading="store.loading"
+      v-model:expandedRows="expandedRows"
       v-bind="paginatorProps"
       lazy removable-sort striped-rows scrollable scrollHeight="flex"
       class="app-datatable"
@@ -98,14 +161,77 @@ onMounted(() => store.fetchList())
         <template #body="{ data }">
           <div class="flex gap-1" @click.stop>
             <Button :icon="MANAGE_ICONS.VERSIONI" text rounded size="small"
-              class="app-manage-btn" v-tooltip.bottom="t('listini.tab_versioni')"
-              @click="emit('open-versioni', data)" />
+              class="app-manage-btn"
+              v-tooltip.bottom="expandedRows[data.id] ? t('listini.nascondi_versioni') : t('listini.mostra_versioni')"
+              @click="toggleExpand(data)" />
             <Button :icon="MANAGE_ICONS.ASSOCIAZIONI" text rounded size="small"
               class="app-manage-btn" v-tooltip.bottom="t('listini.tab_associazioni')"
               @click="emit('open-associazioni', data)" />
           </div>
         </template>
       </Column>
+
+      <template #expansion="{ data: listino }">
+        <div class="app-row-expansion">
+          <div class="app-row-expansion__header">
+            <span class="app-row-expansion__title">
+              <i class="pi pi-arrow-turn-down-right"></i>
+              <i :class="MANAGE_ICONS.VERSIONI"></i>
+              {{ t('listini.tab_versioni') }} ({{ store.versioniByListino[listino.id]?.length ?? 0 }})
+            </span>
+            <Button icon="pi pi-plus" :label="t('listini.nuova_versione')"
+              text size="small" class="app-action-btn"
+              @click.stop="emit('open-nuova-versione', listino)" />
+          </div>
+
+          <div v-if="!store.versioniByListino[listino.id]" class="app-loading">
+            <i class="pi pi-spin pi-spinner" />
+          </div>
+          <div v-else-if="store.versioniByListino[listino.id].length === 0" class="app-empty-state">
+            <i class="pi pi-history" />
+            <p>{{ t('listini.nessuna_versione_inline') }}</p>
+          </div>
+          <DataTable v-else
+            :value="store.versioniByListino[listino.id]"
+            class="app-datatable app-datatable--inner"
+            striped-rows data-key="id"
+          >
+            <Column :header="t('listini.col_stato')" style="width: 90px;">
+              <template #body="{ data: ver }">
+                <Tag :value="ver.stato" :severity="statoVersioneListinoSeverity(ver.stato)" />
+              </template>
+            </Column>
+            <Column field="codice_versione" :header="t('listini.col_codice_versione')" style="width: 140px;" />
+            <Column :header="t('listini.field_valido_dal')" style="width: 110px;">
+              <template #body="{ data: ver }">{{ displayDate(ver.valido_dal) }}</template>
+            </Column>
+            <Column :header="t('listini.field_valido_al')" style="width: 110px;">
+              <template #body="{ data: ver }">{{ displayDate(ver.valido_al) || '—' }}</template>
+            </Column>
+            <Column field="priorita" :header="t('listini.col_priorita')" style="width: 80px;" />
+            <Column field="righe_count" :header="t('listini.col_righe')" style="width: 80px;" />
+            <Column :header="t('listini.col_gestione')" style="width: 140px;" frozen alignFrozen="right">
+              <template #body="{ data: ver }">
+                <div class="flex gap-1" @click.stop>
+                  <Button v-if="ver.stato === 'BOZZA'" icon="pi pi-check-circle"
+                    text rounded size="small" class="app-action-btn"
+                    v-tooltip.bottom="t('listini.attiva')"
+                    @click="onCambiaStato(ver, listino.id, 'ATTIVA')" />
+                  <Button v-if="ver.stato === 'ATTIVA'" icon="pi pi-lock"
+                    text rounded size="small" severity="warn"
+                    v-tooltip.bottom="t('listini.chiudi')"
+                    @click="onCambiaStato(ver, listino.id, 'CHIUSA')" />
+                  <Button icon="pi pi-list" text rounded size="small"
+                    class="app-manage-btn"
+                    v-tooltip.bottom="t('listini.gestisci_righe')"
+                    @click="emit('open-righe', ver, listino)" />
+                </div>
+              </template>
+            </Column>
+          </DataTable>
+        </div>
+      </template>
     </DataTable>
   </div>
 </template>
+

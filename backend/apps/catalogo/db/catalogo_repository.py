@@ -42,8 +42,10 @@ ARTICOLI_CREATE_COLUMNS: dict[str, str] = {
     "meta": "jsonb",
 }
 
+# Scopo: Whitelist colonne UPDATE articolo. Esclude codice e uom_id che sono
+# entrambi immutabili (lock_columns DDL). Aggiunge attivo per disattivazione/riattivazione.
 ARTICOLI_UPDATE_COLUMNS: dict[str, str] = {
-    key: value for key, value in ARTICOLI_CREATE_COLUMNS.items() if key != "codice"
+    key: value for key, value in ARTICOLI_CREATE_COLUMNS.items() if key not in {"codice", "uom_id"}
 } | {"attivo": "bool"}
 
 ARTICOLI_DETAIL_COLUMNS: tuple[str, ...] = (

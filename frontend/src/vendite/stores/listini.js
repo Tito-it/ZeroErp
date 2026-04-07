@@ -1,7 +1,7 @@
 // Store Pinia per la gestione listini vendite.
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import { listListini, getListino, createListino, updateListino } from '../api/listini'
+import { listListini, getListino, createListino, updateListino, listVersioni } from '../api/listini'
 import { useTabEvents } from '../../core/composables/useTabEvents'
 
 export const useListiniStore = defineStore('vendite-listini', () => {
@@ -12,11 +12,15 @@ export const useListiniStore = defineStore('vendite-listini', () => {
   const loading = ref(false)
   const hasSearched = ref(false)
 
+  // Cache versioni per listino: { [listino_id]: [versione, ...] }.
+  // Popolata dopo fetchList o on-expand riga; invalidata su create/update versione.
+  const versioniByListino = ref({})
+
   const filters = ref({
     search: '',
     dominio: null,
     attivo: true,
-    limit: 25,
+    limit: 10,
     offset: 0,
     order_by: 'descrizione',
     order_dir: 'asc'
@@ -45,6 +49,10 @@ export const useListiniStore = defineStore('vendite-listini', () => {
       items.value = res.data.data.results
       totalRecords.value = res.data.data.count
       hasSearched.value = true
+      // Preload versioni per i listini correnti (expansion default-aperta).
+      // Esegue subito dopo l'aggiornamento di items, in parallelo. Eventuali
+      // errori del singolo listino sono gia' gestiti da fetchVersioniListino.
+      await preloadVersioniForCurrentItems()
     } finally {
       loading.value = false
     }
@@ -67,8 +75,55 @@ export const useListiniStore = defineStore('vendite-listini', () => {
     return res.data.data
   }
 
+  // Scopo: Carica le versioni di un listino e le mette in cache locale.
+  //        Restituisce sempre la lista (anche cached). Errore: lista vuota.
+  async function fetchVersioniListino(listinoId) {
+    if (!listinoId) return []
+    try {
+      const res = await listVersioni(listinoId)
+      const list = res.data.data.results || []
+      versioniByListino.value = { ...versioniByListino.value, [listinoId]: list }
+      return list
+    } catch {
+      versioniByListino.value = { ...versioniByListino.value, [listinoId]: [] }
+      return []
+    }
+  }
+
+  // Scopo: Pre-carica versioni per tutti i listini correntemente in lista
+  //        e fa il prune delle entry obsolete (listini non piu' in lista).
+  //        Usato in fetchList per supportare expansion default-aperta senza
+  //        memory leak su uso prolungato.
+  async function preloadVersioniForCurrentItems() {
+    const ids = items.value.map(i => i.id)
+    // Prune: tieni solo le entry dei listini correnti.
+    const currentIds = new Set(ids)
+    const pruned = {}
+    for (const k of Object.keys(versioniByListino.value)) {
+      if (currentIds.has(Number(k))) pruned[k] = versioniByListino.value[k]
+    }
+    versioniByListino.value = pruned
+
+    if (ids.length === 0) return
+    await Promise.all(ids.map(id => fetchVersioniListino(id)))
+  }
+
+  // Scopo: Invalida la cache versioni di un listino e (default) la ricarica.
+  async function invalidateVersioniListino(listinoId, { reload = true } = {}) {
+    if (!listinoId) return
+    if (reload) {
+      await fetchVersioniListino(listinoId)
+    } else {
+      const next = { ...versioniByListino.value }
+      delete next[listinoId]
+      versioniByListino.value = next
+    }
+  }
+
   return {
     items, totalRecords, loading, hasSearched, filters,
-    fetchList, fetchDetail, create, update
+    versioniByListino,
+    fetchList, fetchDetail, create, update,
+    fetchVersioniListino, preloadVersioniForCurrentItems, invalidateVersioniListino
   }
 })

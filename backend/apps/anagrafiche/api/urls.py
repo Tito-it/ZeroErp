@@ -2,6 +2,14 @@ from django.urls import path
 
 from apps.anagrafiche.api.views_billing_account import BillingAccountLookupByIdView, BillingAccountLookupView
 from apps.anagrafiche.api.views_clienti import ClientiDetailView, ClientiView, UtilitiesManualLookupView
+from apps.anagrafiche.api.views_emittenti_fiscali import (
+    EmittentiFiscaliBillingAccountDetailView,
+    EmittentiFiscaliBillingAccountView,
+    EmittentiFiscaliDetailView,
+    EmittentiFiscaliUtilitiesDetailView,
+    EmittentiFiscaliUtilitiesView,
+    EmittentiFiscaliView,
+)
 from apps.anagrafiche.api.views_fornitori import FornitoriDetailView, FornitoriView
 from apps.anagrafiche.api.views_matrice_indirizzi import MatriceIndirizziDetailView, MatriceIndirizziView
 from apps.anagrafiche.api.views_contatti_ruolo import RuoloContattiDetailView, RuoloContattiView
@@ -41,6 +49,15 @@ urlpatterns = [
     # Fornitori
     path("fornitori/", FornitoriView.as_view(), name="anagrafiche-fornitori-list"),
     path("fornitori/<int:fornitore_id>/", FornitoriDetailView.as_view(), name="anagrafiche-fornitori-detail"),
+    # Emittenti fiscali (admin only)
+    path("emittenti-fiscali/", EmittentiFiscaliView.as_view(), name="anagrafiche-emittenti-fiscali-list"),
+    path("emittenti-fiscali/<int:emittente_id>/", EmittentiFiscaliDetailView.as_view(), name="anagrafiche-emittenti-fiscali-detail"),
+    # Sub-resource: mapping BA -> emittente
+    path("emittenti-fiscali/<int:emittente_id>/billing-account/", EmittentiFiscaliBillingAccountView.as_view(), name="anagrafiche-emittenti-fiscali-ba-list"),
+    path("emittenti-fiscali/<int:emittente_id>/billing-account/<int:mapping_id>/", EmittentiFiscaliBillingAccountDetailView.as_view(), name="anagrafiche-emittenti-fiscali-ba-detail"),
+    # Sub-resource: utilities per emittente
+    path("emittenti-fiscali/<int:emittente_id>/utilities/", EmittentiFiscaliUtilitiesView.as_view(), name="anagrafiche-emittenti-fiscali-utilities-list"),
+    path("emittenti-fiscali/<int:emittente_id>/utilities/<int:record_id>/", EmittentiFiscaliUtilitiesDetailView.as_view(), name="anagrafiche-emittenti-fiscali-utilities-detail"),
     # Matrice indirizzi per ruolo
     path("matrice-indirizzi-ruolo/", MatriceIndirizziView.as_view(), name="anagrafiche-matrice-indirizzi-list"),
     path("matrice-indirizzi-ruolo/<int:regola_id>/", MatriceIndirizziDetailView.as_view(), name="anagrafiche-matrice-indirizzi-detail"),

@@ -1,0 +1,457 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+# Doc: Python
+# Scopo: Repository per gestione emittenti fiscali (ruolo EF).
+#        CRUD emittenti, lista paginata via JOIN soggetti_ruoli + soggetti.
+#        Accesso DB-first via cursor e funzione script.fn_get_or_create_soggetto_ruolo.
+# ------------------------------------------------------------
+
+from __future__ import annotations
+
+from typing import Any
+
+from django.db import connection
+
+from apps.anagrafiche.db._helpers import extract_paginated
+from apps.core.db._helpers import row_to_dict, rows_to_list
+
+
+_EMITTENTI_ORDER_COLS = {
+    "codice", "descrizione", "ragione_sociale_completa",
+    "attivo", "data_insert",
+}
+
+
+class EmittentiFiscaliRepository:
+    """Accesso DB per emittenti fiscali."""
+
+    # =================================================================
+    # Creazione
+    # =================================================================
+
+    # Scopo: Ottiene o crea il ruolo EMITTENTE FISCALE per un soggetto.
+    #        Delega alla funzione DB script.fn_get_or_create_soggetto_ruolo con codice 'EF'.
+    def get_or_create_ruolo_emittente(self, soggetto_id: str) -> int:
+        sql = "SELECT script.fn_get_or_create_soggetto_ruolo(%s, 'EF') AS ruolo_id"
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [soggetto_id])
+            row = cursor.fetchone()
+            assert row is not None
+            return row[0]
+
+    # Scopo: Crea record emittente fiscale.
+    #        I trigger DB gestiscono: guard ruolo EF, normalize, audit, tx_id, storicizzazione,
+    #        bootstrap del default mapping in emittenti_fiscali_billing_account (primo emittente).
+    #        Campi obbligatori (NOT NULL su tabella): soggetto_ruolo_id, codice, descrizione.
+    def create_emittente(self, **kwargs: Any) -> int:
+        # Colonne fisse obbligatorie
+        cols = ["soggetto_ruolo_id", "codice", "descrizione"]
+        vals: list[Any] = [
+            kwargs["soggetto_ruolo_id"],
+            kwargs["codice"],
+            kwargs["descrizione"],
+        ]
+        # Colonne opzionali: incluse solo se valorizzate (non None)
+        _OPTIONAL = [
+            "attivo",
+            "regime_fiscale_rf",
+            "esigibilita_iva_default",
+            "split_payment_default",
+            "bollo_auto",
+            "bollo_soglia",
+            "rounding_policy",
+            "valuta_id",
+        ]
+        for col in _OPTIONAL:
+            val = kwargs.get(col)
+            if val is not None:
+                cols.append(col)
+                vals.append(val)
+        placeholders = ["%s"] * len(cols)
+        sql = f"""
+            INSERT INTO anagrafiche.emittenti_fiscali ({", ".join(cols)})
+            VALUES ({", ".join(placeholders)})
+            RETURNING id
+        """  # noqa: S608
+        with connection.cursor() as cursor:
+            cursor.execute(sql, vals)
+            row = cursor.fetchone()
+            assert row is not None
+            return row[0]
+
+    # =================================================================
+    # Lista e dettaglio
+    # =================================================================
+
+    # Scopo: Lista paginata emittenti fiscali con search e filtro attivo.
+    #        Join con soggetti_ruoli e soggetti per display fields.
+    def list_emittenti_fiscali(
+        self, *,
+        search: str | None = None,
+        attivo: bool | None = None,
+        limit: int = 25,
+        offset: int = 0,
+        order_by: str = "descrizione",
+        order_dir: str = "asc",
+    ) -> tuple[list[dict[str, Any]], int]:
+        order_col = order_by if order_by in _EMITTENTI_ORDER_COLS else "descrizione"
+        direction = "DESC" if order_dir and order_dir.upper() == "DESC" else "ASC"
+        search_pattern = f"%{search.strip()}%" if search and search.strip() else None
+        sql = f"""
+            SELECT ef.id,
+                   ef.uid,
+                   ef.soggetto_ruolo_id,
+                   ef.codice,
+                   ef.descrizione,
+                   ef.attivo,
+                   ef.regime_fiscale_rf,
+                   ef.esigibilita_iva_default,
+                   ef.split_payment_default,
+                   ef.bollo_auto,
+                   ef.bollo_soglia,
+                   ef.rounding_policy,
+                   ef.valuta_id,
+                   v.iso_code AS valuta_iso,
+                   sr.soggetto_id,
+                   s.ragione_sociale_completa,
+                   s.codice_fiscale,
+                   s.partita_iva,
+                   ef.data_insert,
+                   ef.data_update,
+                   COUNT(*) OVER () AS total_count
+              FROM anagrafiche.emittenti_fiscali ef
+              JOIN anagrafiche.soggetti_ruoli sr ON sr.id = ef.soggetto_ruolo_id
+              JOIN anagrafiche.soggetti s        ON s.id  = sr.soggetto_id
+              LEFT JOIN config.valute v          ON v.id  = ef.valuta_id
+             WHERE (%s::text IS NULL OR (
+                       ef.codice ILIKE %s
+                    OR ef.descrizione ILIKE %s
+                    OR s.ragione_sociale_completa ILIKE %s
+                    OR s.codice_fiscale ILIKE %s
+                    OR s.partita_iva ILIKE %s
+                   ))
+               AND (%s::boolean IS NULL OR ef.attivo = %s)
+             ORDER BY {order_col} {direction}, ef.id
+             LIMIT %s OFFSET %s
+        """  # noqa: S608
+        params: list[Any] = [
+            search_pattern, search_pattern, search_pattern,
+            search_pattern, search_pattern, search_pattern,
+            attivo, attivo,
+            limit, offset,
+        ]
+        with connection.cursor() as cursor:
+            cursor.execute(sql, params)
+            return extract_paginated(cursor)
+
+    # Scopo: Dettaglio completo di un emittente fiscale con dati soggetto e valuta.
+    def get_emittente(self, emittente_id: int) -> dict[str, Any] | None:
+        sql = """
+            SELECT ef.id,
+                   ef.uid,
+                   ef.soggetto_ruolo_id,
+                   ef.codice,
+                   ef.descrizione,
+                   ef.attivo,
+                   ef.regime_fiscale_rf,
+                   ef.esigibilita_iva_default,
+                   ef.split_payment_default,
+                   ef.bollo_auto,
+                   ef.bollo_soglia,
+                   ef.rounding_policy,
+                   ef.valuta_id,
+                   v.iso_code             AS valuta_iso,
+                   v.descrizione          AS valuta_descrizione,
+                   ef.brand_meta,
+                   -- Soggetto
+                   sr.soggetto_id,
+                   s.ragione_sociale_completa,
+                   s.codice_fiscale,
+                   s.partita_iva,
+                   -- Audit
+                   ef.data_insert,
+                   ef.data_update
+              FROM anagrafiche.emittenti_fiscali ef
+              JOIN anagrafiche.soggetti_ruoli sr ON sr.id = ef.soggetto_ruolo_id
+              JOIN anagrafiche.soggetti s        ON s.id  = sr.soggetto_id
+              LEFT JOIN config.valute v          ON v.id  = ef.valuta_id
+             WHERE ef.id = %s
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [emittente_id])
+            return row_to_dict(cursor)
+
+    # =================================================================
+    # Aggiornamento
+    # =================================================================
+
+    # Campi editabili sull'emittente (codice escluso: bloccato dal trigger lock_columns).
+    _UPDATE_ALLOWED = {
+        "descrizione",
+        "attivo",
+        "regime_fiscale_rf",
+        "esigibilita_iva_default",
+        "split_payment_default",
+        "bollo_auto",
+        "bollo_soglia",
+        "rounding_policy",
+        "valuta_id",
+    }
+    _UPDATE_NULLABLE = {
+        "regime_fiscale_rf",
+        "esigibilita_iva_default",
+        "rounding_policy",
+        "bollo_soglia",
+        "valuta_id",
+    }
+
+    # Scopo: Aggiorna campi editabili di un emittente fiscale (delta update).
+    #        Il campo codice e' bloccato dal trigger DB (lock_columns) e va escluso.
+    def update_emittente(self, emittente_id: int, data: dict[str, Any]) -> bool:
+        # Normalizza stringhe vuote a None per campi nullable
+        for k in self._UPDATE_NULLABLE:
+            if k in data and isinstance(data[k], str) and not data[k].strip():
+                data[k] = None
+        fields = [(k, v) for k, v in data.items() if k in self._UPDATE_ALLOWED]
+        if not fields:
+            return False
+        set_clause = ", ".join(f"{f[0]} = %s" for f in fields)
+        values: list[Any] = [f[1] for f in fields]
+        values.append(emittente_id)
+        sql = f"UPDATE anagrafiche.emittenti_fiscali SET {set_clause} WHERE id = %s"  # noqa: S608
+        with connection.cursor() as cursor:
+            cursor.execute(sql, values)
+            return cursor.rowcount > 0
+
+    # =================================================================
+    # Risoluzione id <-> soggetto_ruolo_id
+    # =================================================================
+
+    # Scopo: Risolve soggetto_ruolo_id da emittente_id (per metodi sub-resource).
+    def get_soggetto_ruolo_id(self, emittente_id: int) -> int | None:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT soggetto_ruolo_id FROM anagrafiche.emittenti_fiscali WHERE id = %s",
+                [emittente_id],
+            )
+            row = cursor.fetchone()
+            return row[0] if row else None
+
+
+# =================================================================
+# Sotto-tabella: emittenti_fiscali_billing_account (mapping BA -> emittente)
+# =================================================================
+
+
+class EmittentiFiscaliBillingAccountRepository:
+    """Accesso DB per il mapping BA -> emittente fiscale.
+
+    Regole:
+      - Il default globale e' il record con billing_account_id IS NULL e is_default = true.
+      - Esiste al piu' UN default (UNIQUE INDEX su is_default WHERE is_default).
+      - Ogni BA puo' essere mappato a un solo emittente (UNIQUE su billing_account_id).
+      - is_default e billing_account_id sono vincolati da un CHECK: True+NULL oppure False+NOT NULL.
+    """
+
+    # Scopo: Lista mapping BA per un emittente, con join billing_account per display.
+    def list_by_emittente(self, emittente_soggetto_ruolo_id: int) -> list[dict[str, Any]]:
+        sql = """
+            SELECT m.id,
+                   m.billing_account_id,
+                   m.is_default,
+                   ba.codice            AS billing_account_codice,
+                   s.ragione_sociale_completa AS billing_account_ragione_sociale,
+                   m.data_insert,
+                   m.data_update
+              FROM anagrafiche.emittenti_fiscali_billing_account m
+              LEFT JOIN anagrafiche.billing_account ba ON ba.id = m.billing_account_id
+              LEFT JOIN anagrafiche.soggetti_ruoli sr  ON sr.id = ba.soggetto_ruolo_id
+              LEFT JOIN anagrafiche.soggetti s         ON s.id  = sr.soggetto_id
+             WHERE m.emittente_soggetto_ruolo_id = %s
+             ORDER BY m.is_default DESC, ba.codice NULLS FIRST
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [emittente_soggetto_ruolo_id])
+            return rows_to_list(cursor)
+
+    # Scopo: Inserisce un mapping BA per l'emittente.
+    #        Se billing_account_id e' None, crea il default globale (is_default=true).
+    #        Il CHECK constraint chk_emittenti_fiscali_ba_default garantisce coerenza.
+    def create_mapping(
+        self,
+        emittente_soggetto_ruolo_id: int,
+        billing_account_id: int | None,
+    ) -> int:
+        is_default = billing_account_id is None
+        sql = """
+            INSERT INTO anagrafiche.emittenti_fiscali_billing_account
+                   (emittente_soggetto_ruolo_id, billing_account_id, is_default)
+            VALUES (%s, %s, %s)
+            RETURNING id
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [emittente_soggetto_ruolo_id, billing_account_id, is_default])
+            row = cursor.fetchone()
+            assert row is not None
+            return row[0]
+
+    # Scopo: Elimina un mapping per id.
+    #        I trigger DB (default_guard) impediscono di rimuovere il default se necessario.
+    def delete_mapping(self, mapping_id: int) -> bool:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "DELETE FROM anagrafiche.emittenti_fiscali_billing_account WHERE id = %s",
+                [mapping_id],
+            )
+            return cursor.rowcount > 0
+
+    # Scopo: Verifica che un mapping appartenga all'emittente atteso (sicurezza sub-resource).
+    def belongs_to_emittente(self, mapping_id: int, emittente_soggetto_ruolo_id: int) -> bool:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT 1 FROM anagrafiche.emittenti_fiscali_billing_account
+                 WHERE id = %s AND emittente_soggetto_ruolo_id = %s
+                """,
+                [mapping_id, emittente_soggetto_ruolo_id],
+            )
+            return cursor.fetchone() is not None
+
+
+# =================================================================
+# Sotto-tabella: emittenti_fiscali_utilities (parametri per emittente+utility)
+# =================================================================
+
+
+_UTILITIES_UPDATE_ALLOWED = {
+    "minimo_soglia_min",
+    "minimo_soglia_max",
+    "arrotondamento_importi_dec",
+    "metodo_arrotondamento_importi",
+    "attivo",
+}
+_UTILITIES_UPDATE_NULLABLE = {
+    "minimo_soglia_min",
+    "minimo_soglia_max",
+}
+
+
+class EmittentiFiscaliUtilitiesRepository:
+    """Accesso DB per la matrice emittente_fiscale x utility (parametri fatturazione).
+
+    Vincoli:
+      - UNIQUE (emittente_soggetto_ruolo_id, utility_id)
+      - Trigger child_requires_active_parent: emittente padre deve essere attivo
+      - Trigger guard_utility_tipo_ruolo: la utility deve essere ammessa per il ruolo EF
+        (vedi config.utilities_tipi_ruolo, fail-open se la utility non ha matrice)
+    """
+
+    # Scopo: Lista i record utility per un emittente con join descrittivo della utility.
+    def list_by_emittente(self, emittente_soggetto_ruolo_id: int) -> list[dict[str, Any]]:
+        sql = """
+            SELECT u.id,
+                   u.utility_id,
+                   ut.codice           AS utility_codice,
+                   ut.descrizione      AS utility_descrizione,
+                   u.minimo_soglia_min,
+                   u.minimo_soglia_max,
+                   u.arrotondamento_importi_dec,
+                   u.metodo_arrotondamento_importi,
+                   u.attivo,
+                   u.data_insert,
+                   u.data_update
+              FROM anagrafiche.emittenti_fiscali_utilities u
+              JOIN config.utilities ut ON ut.id = u.utility_id
+             WHERE u.emittente_soggetto_ruolo_id = %s
+             ORDER BY ut.descrizione
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [emittente_soggetto_ruolo_id])
+            return rows_to_list(cursor)
+
+    # Scopo: Inserisce un record utility per l'emittente.
+    #        Tutti i campi NOT NULL devono essere forniti (arrotondamento_dec, metodo).
+    def create_record(
+        self,
+        *,
+        emittente_soggetto_ruolo_id: int,
+        utility_id: int,
+        arrotondamento_importi_dec: int,
+        metodo_arrotondamento_importi: str,
+        minimo_soglia_min: Any = None,
+        minimo_soglia_max: Any = None,
+        attivo: bool | None = None,
+    ) -> int:
+        cols = [
+            "emittente_soggetto_ruolo_id",
+            "utility_id",
+            "arrotondamento_importi_dec",
+            "metodo_arrotondamento_importi",
+        ]
+        vals: list[Any] = [
+            emittente_soggetto_ruolo_id,
+            utility_id,
+            arrotondamento_importi_dec,
+            metodo_arrotondamento_importi,
+        ]
+        if minimo_soglia_min is not None:
+            cols.append("minimo_soglia_min")
+            vals.append(minimo_soglia_min)
+        if minimo_soglia_max is not None:
+            cols.append("minimo_soglia_max")
+            vals.append(minimo_soglia_max)
+        if attivo is not None:
+            cols.append("attivo")
+            vals.append(attivo)
+        placeholders = ["%s"] * len(cols)
+        sql = f"""
+            INSERT INTO anagrafiche.emittenti_fiscali_utilities ({", ".join(cols)})
+            VALUES ({", ".join(placeholders)})
+            RETURNING id
+        """  # noqa: S608
+        with connection.cursor() as cursor:
+            cursor.execute(sql, vals)
+            row = cursor.fetchone()
+            assert row is not None
+            return row[0]
+
+    # Scopo: Aggiorna campi editabili (delta update). utility_id e' immutabile (PK logica).
+    def update_record(self, record_id: int, data: dict[str, Any]) -> bool:
+        clean = dict(data)
+        for k in _UTILITIES_UPDATE_NULLABLE:
+            if k in clean and isinstance(clean[k], str) and not clean[k].strip():
+                clean[k] = None
+        fields = [(k, v) for k, v in clean.items() if k in _UTILITIES_UPDATE_ALLOWED]
+        if not fields:
+            return False
+        set_clause = ", ".join(f"{f[0]} = %s" for f in fields)
+        values: list[Any] = [f[1] for f in fields]
+        values.append(record_id)
+        sql = f"UPDATE anagrafiche.emittenti_fiscali_utilities SET {set_clause} WHERE id = %s"  # noqa: S608
+        with connection.cursor() as cursor:
+            cursor.execute(sql, values)
+            return cursor.rowcount > 0
+
+    # Scopo: Elimina un record utility per id.
+    def delete_record(self, record_id: int) -> bool:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "DELETE FROM anagrafiche.emittenti_fiscali_utilities WHERE id = %s",
+                [record_id],
+            )
+            return cursor.rowcount > 0
+
+    # Scopo: Verifica appartenenza del record all'emittente atteso (sicurezza sub-resource).
+    def belongs_to_emittente(self, record_id: int, emittente_soggetto_ruolo_id: int) -> bool:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT 1 FROM anagrafiche.emittenti_fiscali_utilities
+                 WHERE id = %s AND emittente_soggetto_ruolo_id = %s
+                """,
+                [record_id, emittente_soggetto_ruolo_id],
+            )
+            return cursor.fetchone() is not None
+
+

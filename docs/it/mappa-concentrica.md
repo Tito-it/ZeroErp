@@ -4,7 +4,7 @@
 >
 > Riferimento metodologico: [sviluppo-concentrico.md](sviluppo-concentrico.md)
 
-*Ultimo aggiornamento: 3 aprile 2026*
+*Ultimo aggiornamento: 7 aprile 2026*
 
 ---
 
@@ -93,27 +93,31 @@ Stabile. Modifiche solo per correzioni o estensioni non-breaking (nuove policy, 
 
 > Entita' di riferimento condivise da tutti i processi. Vocabolario comune del sistema.
 
-| Componente       | Tipo       | DB        | Backend   | Frontend  | Descrizione                                                                            |
-| ---------------- | ---------- | --------- | --------- | --------- | -------------------------------------------------------------------------------------- |
-| `config`         | App Django | Operativo | Operativo | —         | Stati, nazioni, UO, termini pagamento, priorita', canali; policy operative trasversali |
-| `anagrafiche`    | App Django | Operativo | Operativo | Operativo | Soggetti, indirizzi, contatti, risorse umane, emittenti fiscali                        |
-| `catalogo`       | App Django | Operativo | Operativo | —         | Articoli, UoM, listini, distinte base                                                  |
-| `amm-software`   | App Django | Operativo | Operativo | Operativo | Gestione operatori, permessi riepilogo, profili reparto, audit log (solo ADMIN)          |
+| Componente     | Tipo       | DB        | Backend   | Frontend  | Descrizione                                                                                                                |
+| -------------- | ---------- | --------- | --------- | --------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `config`       | App Django | Operativo | Operativo | Operativo | Stati, nazioni, UO, termini pagamento, priorita', canali; policy operative trasversali; impostazioni parametri multi-scope |
+| `anagrafiche`  | App Django | Operativo | Operativo | Operativo | Soggetti, indirizzi, contatti, risorse umane, emittenti fiscali, billing account                                           |
+| `catalogo`     | App Django | Operativo | Operativo | Operativo | Articoli (CRUD, UoM, BoM, note) — **completato e testato** (work-done/gestione-articoli.md)                                |
+| `amm-software` | App Django | Operativo | Operativo | Operativo | Gestione operatori, permessi riepilogo, profili reparto, audit log (solo ADMIN), drawer dedicato gestione permessi         |
 
 ### Frontend Anello 1 — Stato dettagliato
 
-| Area                       | Stato     | Note                                                                          |
-| -------------------------- | --------- | ----------------------------------------------------------------------------- |
-| Gestione Geografica        | Operativo | 7 tab: indirizzi, toponomastica, comuni, CAP, province, regioni, stati — CRUD completo. UI da migliorare |
-| Gestione Soggetti          | In test UI | PF/PG/ENTE end-to-end, 3 building block, ruoli, CF validator IT con omocodia  |
-| Pannello Config            | Operativo | 67 tabelle CRUD generiche con drawer dinamico, metadata-driven               |
-| Building block soggetto    | Operativo | SoggettoForm, ContattoForm, IndirizzoSoggettoForm, DatiSocietariForm, ComuneAutocomplete, StradarioAutocomplete, StradarioGeneraleAutocomplete |
-| Modalita' sola lettura     | Operativo | Pattern protect CSS + provide/inject: tutti i drawer con app-readonly, 2 componenti core auto-hide (NewButton, DrawerFooter) |
-| Azioni processo (Livello 2)| Operativo | Prop `action` su NewButton/DrawerFooter, composable useActionPermission, mappa da /me/ |
-| Amm. Software — Operatori  | Operativo | Lista con filtri/sort, drawer crea/modifica unificato, tab permessi override, rename utenti→operatori |
-| Amm. Software — Profili    | Operativo | Lista reparti, drawer editor aree (Select livello) + azioni (ToggleSwitch), confirm save |
-| Amm. Software — Permessi   | Operativo | Matrice operatori × aree con Tag colorati, colonne dinamiche, filtri reparto/ruolo |
-| Amm. Software — Audit Log  | Operativo | Timeline globale 6 tabelle storico, paginazione lazy, sort server-side, filtro tipo |
+| Area                            | Stato      | Note                                                                                                                                                                    |
+| ------------------------------- | ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Gestione Geografica             | Operativo  | 7 tab: indirizzi, toponomastica, comuni, CAP, province, regioni, stati — CRUD completo. UI da migliorare                                                                |
+| Gestione Soggetti               | In test UI | PF/PG/ENTE end-to-end, 3 building block, ruoli, CF validator IT con omocodia                                                                                            |
+| Pannello Config                 | Operativo  | 67 tabelle CRUD generiche con drawer dinamico, metadata-driven                                                                                                          |
+| Building block soggetto         | Operativo  | SoggettoForm, ContattoForm, IndirizzoSoggettoForm, DatiSocietariForm, ComuneAutocomplete, StradarioAutocomplete, StradarioGeneraleAutocomplete                          |
+| Modalita' sola lettura          | Operativo  | Pattern protect CSS + provide/inject: tutti i drawer con app-readonly, 2 componenti core auto-hide (NewButton, DrawerFooter)                                            |
+| Azioni processo (Livello 2)     | Operativo  | Prop `action` su NewButton/DrawerFooter, composable useActionPermission, mappa da /me/                                                                                  |
+| Amm. Software — Operatori       | Operativo  | Lista con filtri/sort, drawer crea/modifica unificato, tab permessi override, rename utenti→operatori                                                                   |
+| Amm. Software — Profili         | Operativo  | Lista reparti, drawer editor aree (Select livello) + azioni (ToggleSwitch), confirm save                                                                                |
+| Amm. Software — Permessi        | Operativo  | Matrice operatori × aree con Tag colorati, colonne dinamiche, filtri reparto/ruolo                                                                                      |
+| Amm. Software — Audit Log       | Operativo  | Timeline globale 6 tabelle storico, paginazione lazy, sort server-side, filtro tipo                                                                                     |
+| Amm. Software — Drawer Permessi | Operativo  | Drawer dedicato gestione permessi richiamabile dalla riga lista operatori; `OperatorePermessiTab` riusabile reattivo a `authUserId`                                     |
+| Catalogo — Articoli             | Operativo  | Lista con 7 filtri, drawer 3 tab (UoM, BoM, note), `ArticoloLookup` BB cross-dominio. **Completato e testato**                                                          |
+| Catalogo — Unita' di Misura     | Operativo  | Lista, drawer CRUD, conversioni UoM, lookup generico whitelist                                                                                                          |
+| Impostazioni Parametri          | Operativo  | Lista multi-scope (default/emittente/gruppo/utente), drawer override con selettore scope (Personale/Emittente) per admin, `PARAMETER_SCOPE` come unica fonte di verita' |
 
 ### Cosa fornisce agli anelli esterni
 
@@ -391,15 +395,41 @@ Gli anelli esterni possono dipendere direttamente da anelli non adiacenti — ve
   - Severity centralizzate: `statoVersioneListinoSeverity`, `dominioListinoSeverity`
   - 77 test backend, build frontend OK
 
+### Completato (5-7 aprile 2026)
+
+- ~~Catalogo Articoli~~ — **COMPLETATO E TESTATO** (5 aprile 2026)
+  - Backend + frontend chiusi, 49 test verdi, doc consolidata in [work-done/gestione-articoli.md](dev/work-done/gestione-articoli.md)
+  - Building block prodotti: `ArticoloLookup.vue` cross-dominio + endpoint lookup
+- ~~Consolidamento WIP listini~~ — **FATTO** (6 aprile 2026)
+  - I due vecchi WIP `gestione-articoli-listini.md` + `gestione-listini.md` consolidati in [sviluppo-listini.md](dev/work-in-progress/sviluppo-listini.md)
+  - Estratte rettifiche prezzi (DB-L4) in [sviluppo-rettifiche.md](dev/work-in-progress/sviluppo-rettifiche.md)
+- ~~Drawer dedicato gestione permessi operatore~~ — **FATTO** (6 aprile 2026)
+  - `OperatorePermessiTab` reso riutilizzabile (watch su `authUserId`)
+  - Nuovo `OperatorePermessiDrawer.vue` richiamabile dalla riga lista operatori
+- ~~Parametri di sistema multi-scope~~ — **FATTO** (5-6 aprile 2026)
+  - Drawer override con selettore scope (Personale/Emittente) visibile solo agli admin
+  - Backend: `upsert_emittente_override` + check `IsAdminZeroERP`, fallback emittente "gestore di default"
+  - Fix constraint v3 (`uq_overrides_full_scope_v3`) e fn `get_emittente_fiscale_id_for_user` allineata a `script.fn_get_emittenti_scope`
+  - Costante condivisa `PARAMETER_SCOPE` come unica fonte di verita' frontend
+- ~~AI tool catalogo + billing account~~ — **FATTO** (7 aprile 2026)
+  - Nuovo `cerca_articoli` (dominio catalogo) — sblocca "cerca articolo X" via AI
+  - Nuovo `cerca_billing_account` (dominio anagrafiche) — wrappa la ricerca dedicata BA con scope emittente
+  - System prompt esteso con glossario di dominio italiano (cliente=BA, articolo=catalogo)
+  - Tool registrati totali: **11** (era 9)
+- ~~Logo brand ottimizzato~~ — **FATTO** (5 aprile 2026)
+  - Master 1640x1640 → versioni ottimizzate 512/256/32 px per frontend, favicon (PNG+ICO), docs
+
 ### In corso
 
 - **Gestione Soggetti**: backend + frontend completati — in fase di test UI
 - **Gestione Geografica**: operativo — UI da migliorare
 - **Gestione Clienti/Fornitori**: drawer end-to-end operativo, v2 (subentro/disdetta) pianificata
 - **Gestione Pratiche v2**: frontend operativo — in fase di test UI
+- **Listini vendita**: backend + frontend implementati — in fase di test UI
 - **Integrazione AI v2**: evoluzione con contesto dinamico e nuovi tool — WIP
 - **Autenticazione 2FA**: fase 4 TOTP — WIP
 - **Permessi v2**: livello oggetto e granularita' fine — pianificato
+- **Rettifiche prezzi (DB-L4)**: motore delta + canali manuale/automatico — pianificato in WIP dedicato
 
 ### Breve termine
 
@@ -435,4 +465,4 @@ Gli anelli esterni possono dipendere direttamente da anelli non adiacenti — ve
 
 ---
 
-*Mappa Concentrica — ZeroERP (3 aprile 2026)*
+*Mappa Concentrica — ZeroERP (7 aprile 2026)*

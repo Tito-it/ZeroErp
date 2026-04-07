@@ -115,6 +115,29 @@ class LookupMatriceIndirizziRuoloView(DomainAPIView):
         return success_response({"results": results})
 
 
+class LookupUtilitiesPerRuoloView(DomainAPIView):
+    """Utility ammesse per un tipo ruolo (codice_interno).
+
+    Filtraggio strict: restituisce solo utility con riga ATTIVA in
+    `config.utilities_tipi_ruolo` per il codice interno del ruolo.
+    Riusabile cross-dominio (EF, FO, CL, ...).
+    """
+    skip_area_check = True
+
+    @extend_schema(
+        responses={200: inline_serializer(
+            name="UtilitiesPerRuoloResponse",
+            fields={"data": serializers.ListField(child=serializers.DictField())},
+        )},
+    )
+    # Scopo: Restituisce le utility ammesse per il tipo ruolo passato in path,
+    # con filtro strict basato sulla matrice config.utilities_tipi_ruolo.
+    def get(self, request: Request, tipo_ruolo_codice: str) -> JsonResponse:
+        repo = LookupRepository()
+        results = repo.list_utilities_per_ruolo(tipo_ruolo_codice)
+        return success_response({"results": results})
+
+
 class LookupSistemaCodiciView(DomainAPIView):
     """GET verifica configurazione sistema codici per schema/tabella/colonna."""
     skip_area_check = True

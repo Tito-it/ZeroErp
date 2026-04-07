@@ -116,6 +116,30 @@ class LookupRepository:
 
     # Scopo: Restituisce la matrice indirizzi ammessi per un tipo ruolo (codice_interno).
     # Usa config.tipi_ruolo_tipi_indirizzo — validata dal trigger guard sul DB.
+    # Scopo: Lista utility ammesse per un tipo ruolo (es. EF, FO, CL).
+    #        Strict mode: ritorna SOLO utility con riga ATTIVA in
+    #        config.utilities_tipi_ruolo per tipo_ruolo_codice e periodo
+    #        di validita' corrente. Le utility senza alcuna riga in matrice
+    #        sono escluse, coerentemente con il trigger DB
+    #        script.fn_guard_utility_tipo_ruolo.
+    def list_utilities_per_ruolo(
+        self, tipo_ruolo_codice: str
+    ) -> list[dict[str, Any]]:
+        sql = """
+            SELECT u.id, u.codice, u.descrizione
+              FROM config.utilities u
+              JOIN config.utilities_tipi_ruolo utr ON utr.utility_id = u.id
+              JOIN config.tipi_ruoli tr            ON tr.id = utr.tipo_ruolo_id
+             WHERE COALESCE(tr.codice_interno, tr.codice) = %s
+               AND utr.attivo = true
+               AND (utr.valido_dal IS NULL OR utr.valido_dal <= CURRENT_DATE)
+               AND (utr.valido_al  IS NULL OR utr.valido_al  >= CURRENT_DATE)
+             ORDER BY u.descrizione
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [tipo_ruolo_codice])
+            return rows_to_list(cursor)
+
     def list_matrice_indirizzi_ruolo(
         self, tipo_ruolo_codice: str
     ) -> list[dict[str, Any]]:

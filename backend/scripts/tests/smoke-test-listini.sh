@@ -3,27 +3,34 @@
 # Smoke test locale per API Vendite Listini (Fase 5 backend)
 # Uso: ./scripts/tests/smoke-test-listini.sh [password]
 # ------------------------------------------------------------
-# Indice test (0..19):
+# Indice test (0..22):
 #  0) Autenticazione JWT + estrazione user_id
-#  1) Preflight permessi aree vendite/catalogo
+#  1) Preflight permessi aree vendite/catalogo + anagrafiche
 #  2) Seed articolo attivo + UoM da catalogo
 #  3) Crea listino
 #  4) Dettaglio listino creato
 #  5) PATCH listino
 #  6) PATCH codice listino non ammesso (400 atteso)
-#  7) Crea versione BOZZA
+#  7) Crea versione SENZA valido_dal (400 atteso)
+#  7b) Crea versione BOZZA con valido_dal
 #  8) Lista versioni
 #  9) PATCH versione
 # 10) Crea riga prezzo fallback
 # 11) Lista righe prezzo
 # 12) PATCH riga prezzo
-# 13) Crea associazione fallback
+# 13) Lookup BA con scope emittente (q < 2 char rifiutato)
+# 13b) Lookup BA con q valida (200 + struttura results)
+# 13c) Crea associazione fallback (senza BA)
 # 14) Lista associazioni
 # 15) PATCH associazione
 # 16) Attiva versione
 # 17) Test resolver prezzo
-# 18) DELETE riga prezzo
-# 19) DELETE associazione
+# 18) [F2] PATCH versione ATTIVA con valido_al ammesso (200 atteso)
+# 19) [F2] PATCH versione ATTIVA con codice_versione rifiutato (400 atteso)
+# 20) [F1] POST riga su versione ATTIVA rifiutato (400 atteso)
+# 21) [F1] PATCH riga su versione ATTIVA rifiutato (400 atteso)
+# 22) [F1] DELETE riga su versione ATTIVA rifiutato (400 atteso)
+# 23) DELETE associazione
 # ------------------------------------------------------------
 set -euo pipefail
 
@@ -261,9 +268,16 @@ do_curl PATCH "/api/v1/vendite/listini/${LISTINO_ID}/" "{\"codice\":\"${LISTINO_
 check "PATCH codice listino non ammesso" "400" ".error.code"
 log_info "Codice errore: ${EXTRACTED:-n/d}"
 
-# --- 7. Crea versione BOZZA ---
+# --- 7. Crea versione SENZA valido_dal (400 atteso) ---
 echo ""
-echo "-- 7. Crea versione BOZZA --"
+echo "-- 7. Crea versione SENZA valido_dal (atteso 400) --"
+do_curl POST "/api/v1/vendite/listini/${LISTINO_ID}/versioni/" "{\"codice_versione\":\"${VERSION_CODE}-NODATE\",\"priorita\":100}"
+check "Create versione senza valido_dal rifiutata" "400" ".error.code"
+log_info "Codice errore: ${EXTRACTED:-n/d}"
+
+# --- 7b. Crea versione BOZZA con valido_dal ---
+echo ""
+echo "-- 7b. Crea versione BOZZA con valido_dal --"
 do_curl POST "/api/v1/vendite/listini/${LISTINO_ID}/versioni/" "{\"codice_versione\":\"${VERSION_CODE}\",\"valido_dal\":\"${TODAY}\",\"priorita\":100}"
 check "Create versione BOZZA" "200" ".data.id"
 VERSIONE_ID="$EXTRACTED"
@@ -305,9 +319,32 @@ do_curl PATCH "/api/v1/vendite/listini/${LISTINO_ID}/versioni/${VERSIONE_ID}/rig
 check "PATCH riga prezzo" "200" ".data.prezzo"
 log_info "Prezzo riga aggiornato: ${EXTRACTED:-n/d}"
 
-# --- 13. Crea associazione fallback ---
+# --- 13. Lookup BA: query troppo corta (400 atteso) ---
 echo ""
-echo "-- 13. Crea associazione fallback --"
+echo "-- 13. Lookup BA q troppo corta --"
+do_curl GET "/api/v1/anagrafiche/billing-account/lookup/?q=A"
+check "Lookup BA q < 2 char rifiutato" "400" ".error.code"
+log_info "Codice errore: ${EXTRACTED:-n/d}"
+
+# --- 13b. Lookup BA con query valida ---
+echo ""
+echo "-- 13b. Lookup BA con q valida --"
+do_curl GET "/api/v1/anagrafiche/billing-account/lookup/?q=BA"
+check "Lookup BA q valida" "200" ".data.limit"
+LOOKUP_LIMIT="$EXTRACTED"
+LOOKUP_TOTAL=$(json_get "$LAST_BODY" ".data.total_count")
+LOOKUP_FIRST_ID=$(json_get "$LAST_BODY" ".data.results.0.id")
+log_info "Lookup BA: limit=${LOOKUP_LIMIT:-?} total=${LOOKUP_TOTAL:-?} first_id=${LOOKUP_FIRST_ID:-<vuoto>}"
+# Se c'e' almeno un BA, prova anche il restore by id
+if [[ -n "$LOOKUP_FIRST_ID" ]]; then
+    do_curl GET "/api/v1/anagrafiche/billing-account/${LOOKUP_FIRST_ID}/lookup/"
+    check "Lookup BA restore by id" "200" ".data.id"
+    log_info "Restore BA: id=${EXTRACTED:-?}"
+fi
+
+# --- 13c. Crea associazione fallback (senza BA per coerenza con seed) ---
+echo ""
+echo "-- 13c. Crea associazione fallback --"
 do_curl POST "/api/v1/vendite/listini/${LISTINO_ID}/associazioni/" "{\"priorita\":100,\"valido_dal\":\"${TODAY}\"}"
 check "Create associazione fallback" "200" ".data.id"
 ASSOC_ID="$EXTRACTED"
@@ -347,16 +384,62 @@ log_info "Prezzo risolto: ${EXTRACTED:-n/d}"
 MATCH_LEVEL=$(json_get "$LAST_BODY" ".data.match_level")
 log_info "Match level: ${MATCH_LEVEL:-n/d}"
 
-# --- 18. DELETE riga prezzo ---
+# --- 18. [F2] PATCH versione ATTIVA: valido_al ammesso ---
 echo ""
-echo "-- 18. DELETE riga prezzo --"
-do_curl DELETE "/api/v1/vendite/listini/${LISTINO_ID}/versioni/${VERSIONE_ID}/righe/${RIGA_ID}/"
-check "DELETE riga prezzo" "200" ".data.deleted"
-log_info "Riga rimossa: ${EXTRACTED:-n/d}"
+echo "-- 18. [F2] PATCH versione ATTIVA: valido_al ammesso --"
+FUTURE_DATE=$(date -d "+90 days" +%F 2>/dev/null || date -v+90d +%F)
+do_curl PATCH "/api/v1/vendite/listini/${LISTINO_ID}/versioni/${VERSIONE_ID}/" "{\"valido_al\":\"${FUTURE_DATE}\"}"
+check "PATCH valido_al su versione ATTIVA" "200" ".data.valido_al"
+log_info "valido_al aggiornato: ${EXTRACTED:-n/d}"
 
-# --- 19. DELETE associazione ---
+# --- 19. [F2] PATCH versione ATTIVA: codice_versione rifiutato ---
 echo ""
-echo "-- 19. DELETE associazione --"
+echo "-- 19. [F2] PATCH versione ATTIVA: codice_versione rifiutato --"
+do_curl PATCH "/api/v1/vendite/listini/${LISTINO_ID}/versioni/${VERSIONE_ID}/" "{\"codice_versione\":\"V999-NO\"}"
+check "PATCH codice_versione su versione ATTIVA" "400" ".error.code"
+if [[ "$EXTRACTED" == "E_VENDITE_VALIDATION" ]]; then
+    log_ok "Errore corretto: $EXTRACTED"
+else
+    log_fail "Codice errore inatteso: '${EXTRACTED:-<vuoto>}'"
+fi
+
+# --- 20. [F1] POST riga su versione ATTIVA rifiutato ---
+echo ""
+echo "-- 20. [F1] POST riga su versione ATTIVA rifiutato --"
+do_curl POST "/api/v1/vendite/listini/${LISTINO_ID}/versioni/${VERSIONE_ID}/righe/" \
+    "{\"articolo_id\":\"${ARTICOLO_ID}\",\"uom_id\":${UOM_ID},\"prezzo\":\"99.99\"}"
+check "POST riga su versione ATTIVA" "400" ".error.code"
+if [[ "$EXTRACTED" == "E_VENDITE_VALIDATION" ]]; then
+    log_ok "Errore corretto: $EXTRACTED"
+else
+    log_fail "Codice errore inatteso: '${EXTRACTED:-<vuoto>}'"
+fi
+
+# --- 21. [F1] PATCH riga su versione ATTIVA rifiutato ---
+echo ""
+echo "-- 21. [F1] PATCH riga su versione ATTIVA rifiutato --"
+do_curl PATCH "/api/v1/vendite/listini/${LISTINO_ID}/versioni/${VERSIONE_ID}/righe/${RIGA_ID}/" "{\"prezzo\":\"77.77\"}"
+check "PATCH riga su versione ATTIVA" "400" ".error.code"
+if [[ "$EXTRACTED" == "E_VENDITE_VALIDATION" ]]; then
+    log_ok "Errore corretto: $EXTRACTED"
+else
+    log_fail "Codice errore inatteso: '${EXTRACTED:-<vuoto>}'"
+fi
+
+# --- 22. [F1] DELETE riga su versione ATTIVA rifiutato ---
+echo ""
+echo "-- 22. [F1] DELETE riga su versione ATTIVA rifiutato --"
+do_curl DELETE "/api/v1/vendite/listini/${LISTINO_ID}/versioni/${VERSIONE_ID}/righe/${RIGA_ID}/"
+check "DELETE riga su versione ATTIVA" "400" ".error.code"
+if [[ "$EXTRACTED" == "E_VENDITE_VALIDATION" ]]; then
+    log_ok "Errore corretto: $EXTRACTED"
+else
+    log_fail "Codice errore inatteso: '${EXTRACTED:-<vuoto>}'"
+fi
+
+# --- 23. DELETE associazione ---
+echo ""
+echo "-- 23. DELETE associazione --"
 do_curl DELETE "/api/v1/vendite/listini/${LISTINO_ID}/associazioni/${ASSOC_ID}/"
 check "DELETE associazione" "200" ".data.deleted"
 log_info "Associazione rimossa: ${EXTRACTED:-n/d}"
@@ -365,6 +448,7 @@ echo ""
 echo "========================================="
 echo -e " Risultato: ${GREEN}$PASS OK${NC} / ${RED}$FAIL FAIL${NC}"
 echo "========================================="
-echo "Nota: lo smoke rimuove riga e associazione create, ma lascia listino e versione di test."
+echo "Nota: lo smoke rimuove l'associazione creata, ma lascia listino, versione e riga di test"
+echo "      (la riga non e' eliminabile dopo l'attivazione, vedi guard F1)."
 
 [[ "$FAIL" -eq 0 ]] && exit 0 || exit 1

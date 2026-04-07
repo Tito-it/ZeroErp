@@ -89,6 +89,12 @@ const router = createRouter({
           meta: { domain: 'amm-software', menuKey: 'permessi' }
         },
         {
+          path: 'amm-software/emittenti-fiscali',
+          name: 'amm-software-emittenti-fiscali',
+          component: () => import('../amministrazione/views/EmittentiFiscaliListView.vue'),
+          meta: { domain: 'amm-software', menuKey: 'emittenti-fiscali' }
+        },
+        {
           path: 'amm-software/audit-log',
           name: 'amm-software-audit-log',
           component: () => import('../amministrazione/views/AuditLogView.vue'),

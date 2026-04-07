@@ -3,13 +3,17 @@
 # Smoke test locale per API Catalogo CRUD articolo (Fase 2)
 # Uso: ./scripts/tests/smoke-test-catalogo-crud.sh [password]
 # ------------------------------------------------------------
-# Indice test (0..8):
+# Indice test (0..12):
 #  0) Autenticazione JWT + estrazione user_id
 #  1) Preflight permessi area catalogo (richiede TUTTO)
-#  2) Crea articolo minimale
+#  1b) Seed UoM dal catalogo (per create articolo con uom_id obbligatorio)
+#  2) Crea articolo SENZA uom_id (400 atteso — DDL NOT NULL)
+#  2b) Crea articolo con uom_id valido
+#  2c) Verifica seed automatico UoM operativa base (trigger DB)
 #  3) Dettaglio articolo creato
-#  4) PATCH campi editabili
+#  4) PATCH campi editabili (no codice no uom_id)
 #  5) PATCH codice immutabile (400 atteso)
+#  5b) PATCH uom_id immutabile (400 atteso — lock_columns DDL)
 #  6) POST duplicato stesso codice (400 atteso)
 #  7) Disattiva articolo
 #  8) Disattiva articolo gia' inattivo (idempotente)
@@ -172,13 +176,52 @@ ART_CODE="SMK-CAT-${TEST_SUFFIX}"
 ART_DESC="Smoke articolo CRUD ${TEST_SUFFIX}"
 ART_DESC_UPDATED="Smoke articolo CRUD aggiornato ${TEST_SUFFIX}"
 
-# --- 2. Create articolo ---
+# --- 1b. Seed UoM dal catalogo ---
 echo ""
-echo "-- 2. Create articolo --"
-do_curl POST "/api/v1/catalogo/articoli/" "{\"codice\":\"${ART_CODE}\",\"descrizione\":\"${ART_DESC}\"}"
-check "Create articolo minimale" "200" ".data.id"
+echo "-- 1b. Seed UoM dal catalogo --"
+do_curl GET "/api/v1/core/lookup/codici/?rel=catalogo.unita_misura&limit=1"
+check "Lookup UoM seed" "200" ".data.results.0.id"
+SEED_UOM_ID="$EXTRACTED"
+if [[ -z "$SEED_UOM_ID" ]]; then
+    echo -e "${RED}ERRORE:${NC} nessuna UoM disponibile nel catalogo per il seed."
+    exit 3
+fi
+log_info "UoM seed: id=${SEED_UOM_ID}"
+
+# --- 2. Create articolo SENZA uom_id (atteso 400, NOT NULL DDL) ---
+echo ""
+echo "-- 2. Create articolo SENZA uom_id (atteso 400) --"
+do_curl POST "/api/v1/catalogo/articoli/" "{\"codice\":\"${ART_CODE}-NOUOM\",\"descrizione\":\"Senza uom\"}"
+check "Create articolo senza uom_id rifiutato" "400" ".error.code"
+log_info "Codice errore: ${EXTRACTED:-n/d}"
+
+# --- 2b. Create articolo con uom_id valido ---
+echo ""
+echo "-- 2b. Create articolo con uom_id --"
+do_curl POST "/api/v1/catalogo/articoli/" "{\"codice\":\"${ART_CODE}\",\"descrizione\":\"${ART_DESC}\",\"uom_id\":${SEED_UOM_ID}}"
+check "Create articolo con uom_id valido" "200" ".data.id"
 ART_ID="$EXTRACTED"
-log_info "Articolo creato: id=${ART_ID} codice=${ART_CODE}"
+log_info "Articolo creato: id=${ART_ID} codice=${ART_CODE} uom_id=${SEED_UOM_ID}"
+
+# --- 2c. Verifica seed automatico UoM operativa base ---
+echo ""
+echo "-- 2c. Verifica seed automatico UoM operativa base --"
+do_curl GET "/api/v1/catalogo/articoli/${ART_ID}/uom/"
+check "Lista UoM operative articolo (post-seed trigger)" "200" ".data.results.0.uom_id"
+SEED_UOM_OPERATIVA=$(json_get "$LAST_BODY" ".data.results.0.uom_id")
+SEED_IS_BASE=$(json_get "$LAST_BODY" ".data.results.0.is_base")
+SEED_COUNT=$(json_get "$LAST_BODY" ".data.count")
+if [[ "$SEED_UOM_OPERATIVA" == "$SEED_UOM_ID" ]]; then
+    log_ok "UoM operativa base ha lo stesso uom_id dell'articolo (${SEED_UOM_OPERATIVA})"
+else
+    log_fail "UoM operativa base incoerente: atteso ${SEED_UOM_ID}, ricevuto '${SEED_UOM_OPERATIVA:-<vuoto>}'"
+fi
+if [[ "$SEED_IS_BASE" == "True" || "$SEED_IS_BASE" == "true" ]]; then
+    log_ok "is_base=true sulla riga seedata dal trigger DB"
+else
+    log_fail "is_base non true: ricevuto '${SEED_IS_BASE:-<vuoto>}'"
+fi
+log_info "Totale UoM operative dopo create: ${SEED_COUNT:-?}"
 
 # --- 3. Dettaglio articolo creato ---
 echo ""
@@ -209,10 +252,17 @@ do_curl PATCH "/api/v1/catalogo/articoli/${ART_ID}/" "{\"codice\":\"${ART_CODE}-
 check "PATCH codice immutabile" "400" ".error.code"
 log_info "Codice errore: ${EXTRACTED:-n/d}"
 
+# --- 5b. PATCH uom_id immutabile (rifiutato dal service prima del DDL trigger) ---
+echo ""
+echo "-- 5b. PATCH uom_id immutabile --"
+do_curl PATCH "/api/v1/catalogo/articoli/${ART_ID}/" "{\"uom_id\":${SEED_UOM_ID}}"
+check "PATCH uom_id immutabile" "400" ".error.code"
+log_info "Codice errore: ${EXTRACTED:-n/d}"
+
 # --- 6. Create duplicato stesso codice ---
 echo ""
 echo "-- 6. Create duplicato stesso codice --"
-do_curl POST "/api/v1/catalogo/articoli/" "{\"codice\":\"${ART_CODE}\",\"descrizione\":\"Duplicato smoke\"}"
+do_curl POST "/api/v1/catalogo/articoli/" "{\"codice\":\"${ART_CODE}\",\"descrizione\":\"Duplicato smoke\",\"uom_id\":${SEED_UOM_ID}}"
 check "Create duplicato stesso codice" "400" ".error.code"
 log_info "Codice errore: ${EXTRACTED:-n/d}"
 

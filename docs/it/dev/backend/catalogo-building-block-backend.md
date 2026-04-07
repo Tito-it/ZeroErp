@@ -114,7 +114,7 @@
 | `dynamic_update` | [_helpers.py](../../../../backend/apps/core/db/_helpers.py) | UPDATE generico con field builder None-safe |
 | `CoreRepository.get_user_profile` | [core_repository.py](../../../../backend/apps/core/db/core_repository.py) | Profilo utente completo via script.fn_get_user_profile |
 | `SearchRepository.search_soggetti` | [search_repository.py](../../../../backend/apps/core/db/search_repository.py) | Ricerca universale soggetti full-text |
-| `LookupRepository` | [lookup_repository.py](../../../../backend/apps/core/db/lookup_repository.py) | Lookup tipi soggetto, ruoli per natura, forme giuridiche, matrice indirizzi |
+| `LookupRepository` | [lookup_repository.py](../../../../backend/apps/core/db/lookup_repository.py) | Lookup tipi soggetto, ruoli per natura, forme giuridiche, matrice indirizzi, utility per ruolo (strict da `config.utilities_tipi_ruolo`) |
 | `SessionAuditRepository` | [session_audit_repository.py](../../../../backend/apps/core/db/session_audit_repository.py) | Insert/list eventi sessione |
 | `TokenRepository` | [token_repository.py](../../../../backend/apps/core/db/token_repository.py) | CRUD token monouso (create, find_valid, consume, invalidate) |
 | `EmailRepository` | [email_repository.py](../../../../backend/apps/core/db/email_repository.py) | Risoluzione template/account, log email, gestione bozze e allegati |

@@ -1039,6 +1039,75 @@ def _validate_riga_articolo_uom(articolo_id: UUID | str, uom_id: int, *, functio
     )
 
 
+# Scopo: Whitelist campi PATCH versione ammessi in base allo stato corrente.
+#        - BOZZA  : tutti i campi modificabili (allineato a _VERSIONE_UPDATE_ALLOWED_KEYS)
+#        - ATTIVA : solo valido_al e priorita (programmazione chiusura + tie-break)
+#        - CHIUSA : nessun campo (stato terminale, modifiche vietate)
+#        Risponde all'esigenza di immutabilita' delle versioni operative dopo
+#        l'attivazione, evitando drift tra listino e snapshot in commesse_attivita.
+#        Il set BOZZA e' derivato da _VERSIONE_UPDATE_ALLOWED_KEYS per evitare
+#        drift silenzioso quando si aggiungono nuove colonne a VERSIONE_UPDATE_COLUMNS.
+_VERSIONE_PATCH_ALLOWED_BY_STATE: dict[str, frozenset[str]] = {
+    "BOZZA": _VERSIONE_UPDATE_ALLOWED_KEYS,
+    "ATTIVA": frozenset({"valido_al", "priorita"}),
+    "CHIUSA": frozenset(),
+}
+
+
+def _assert_versione_patch_allowed(
+    versione: dict[str, Any],
+    data: dict[str, Any],
+    *,
+    function_name: str,
+) -> None:
+    stato = str(versione["stato"])
+    allowed = _VERSIONE_PATCH_ALLOWED_BY_STATE.get(stato, frozenset())
+    presenti = set(data.keys())
+    non_ammessi = sorted(presenti - allowed)
+    ErrorManager.require(
+        not non_ammessi,
+        code="E_VENDITE_VALIDATION",
+        message="Aggiornamento versione non consentito.",
+        detail=(
+            f"In stato {stato} sono modificabili solo: "
+            f"{sorted(allowed) if allowed else 'nessun campo'}. "
+            f"Campi non ammessi nel payload: {non_ammessi}."
+        ),
+        context={
+            "versione_id": versione["id"],
+            "stato": stato,
+            "campi_non_ammessi": non_ammessi,
+            "campi_ammessi": sorted(allowed),
+        },
+        function_name=function_name,
+        log_to_db=True,
+    )
+
+
+# Scopo: Guard fail-fast che impedisce CRUD righe su versioni non in stato BOZZA.
+#        Le righe di una versione ATTIVA sono immutabili (snapshot in commesse_attivita
+#        e attivita_fatturabili gia` propagati). Le righe di una versione CHIUSA sono
+#        congelate per audit storico. Solo BOZZA accetta create/update/delete righe.
+def _assert_versione_bozza_for_riga_op(
+    versione: dict[str, Any],
+    *,
+    function_name: str,
+) -> None:
+    stato = str(versione["stato"])
+    ErrorManager.require(
+        stato == "BOZZA",
+        code="E_VENDITE_VALIDATION",
+        message="Operazione su righe non consentita.",
+        detail=(
+            "Le righe sono modificabili solo su versioni in stato BOZZA. "
+            f"Stato corrente: {stato}."
+        ),
+        context={"versione_id": versione["id"], "stato": stato},
+        function_name=function_name,
+        log_to_db=True,
+    )
+
+
 # Scopo: Applica la guard di transizione stato versione in modo esplicito lato service.
 def _validate_versione_state_transition(
     versione: dict[str, Any],
@@ -1183,7 +1252,7 @@ def fn_create_versione(listino_id: int, payload: dict[str, Any]) -> dict[str, ob
 # Scopo: Aggiorna la versione sui soli campi modificabili e restituisce il dettaglio.
 def fn_update_versione(listino_id: int, versione_id: int, payload: dict[str, Any]) -> dict[str, object]:
     function_name = "vendite.listini_service.fn_update_versione"
-    _get_versione_or_raise(listino_id, versione_id, function_name=function_name)
+    versione = _get_versione_or_raise(listino_id, versione_id, function_name=function_name)
     data = _extract_versione_payload(payload, for_update=True, function_name=function_name)
     ErrorManager.require(
         bool(data),
@@ -1194,6 +1263,7 @@ def fn_update_versione(listino_id: int, versione_id: int, payload: dict[str, Any
         function_name=function_name,
         log_to_db=True,
     )
+    _assert_versione_patch_allowed(versione, data, function_name=function_name)
     repository = ListiniRepository()
     try:
         updated = repository.update_versione(listino_id, versione_id, data)
@@ -1287,7 +1357,8 @@ def fn_list_righe(listino_id: int, versione_id: int) -> dict[str, object]:
 # Scopo: Crea una nuova riga prezzo dopo validazione articolo/UoM e restituisce il dettaglio.
 def fn_create_riga(listino_id: int, versione_id: int, payload: dict[str, Any]) -> dict[str, object]:
     function_name = "vendite.listini_service.fn_create_riga"
-    _get_versione_or_raise(listino_id, versione_id, function_name=function_name)
+    versione = _get_versione_or_raise(listino_id, versione_id, function_name=function_name)
+    _assert_versione_bozza_for_riga_op(versione, function_name=function_name)
     data = _extract_riga_payload(payload, for_update=False, function_name=function_name)
     articolo_id = data["articolo_id"]
     uom_id = data["uom_id"]
@@ -1306,6 +1377,8 @@ def fn_create_riga(listino_id: int, versione_id: int, payload: dict[str, Any]) -
 # Scopo: Aggiorna una riga prezzo mantenendo coerenza articolo/UoM quando necessario.
 def fn_update_riga(listino_id: int, versione_id: int, riga_id: int, payload: dict[str, Any]) -> dict[str, object]:
     function_name = "vendite.listini_service.fn_update_riga"
+    versione = _get_versione_or_raise(listino_id, versione_id, function_name=function_name)
+    _assert_versione_bozza_for_riga_op(versione, function_name=function_name)
     current = _get_riga_or_raise(listino_id, versione_id, riga_id, function_name=function_name)
     data = _extract_riga_payload(payload, for_update=True, function_name=function_name)
     ErrorManager.require(
@@ -1340,6 +1413,8 @@ def fn_update_riga(listino_id: int, versione_id: int, riga_id: int, payload: dic
 # Scopo: Elimina una riga prezzo esistente restituendo esito uniforme.
 def fn_delete_riga(listino_id: int, versione_id: int, riga_id: int) -> dict[str, object]:
     function_name = "vendite.listini_service.fn_delete_riga"
+    versione = _get_versione_or_raise(listino_id, versione_id, function_name=function_name)
+    _assert_versione_bozza_for_riga_op(versione, function_name=function_name)
     _get_riga_or_raise(listino_id, versione_id, riga_id, function_name=function_name)
     repository = ListiniRepository()
     deleted = repository.delete_riga(listino_id, versione_id, riga_id)

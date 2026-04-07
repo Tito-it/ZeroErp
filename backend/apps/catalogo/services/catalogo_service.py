@@ -40,8 +40,9 @@ _ARTICOLO_FLAG_FIELDS: tuple[str, ...] = (
     "requires_serial",
     "voce_utility",
 )
+# Scopo: Campi int nullable di articolo (escluso uom_id che e' NOT NULL e immutabile).
+# Vedi DDL catalogo.articoli e trigger trg_articoli_a10_protect_uom_id_upd.
 _ARTICOLO_INT_FIELDS: tuple[str, ...] = (
-    "uom_id",
     "tipo_voce_id",
     "gruppo_voce_id",
     "spesa_id",
@@ -539,6 +540,7 @@ def _extract_articolo_payload(
     data: dict[str, Any] = {}
 
     if for_update:
+        # codice e uom_id sono entrambi immutabili (lock_columns DDL).
         ErrorManager.require(
             "codice" not in payload,
             code="E_CATALOGO_VALIDATION",
@@ -548,9 +550,18 @@ def _extract_articolo_payload(
             function_name=function_name,
             log_to_db=True,
         )
+        ErrorManager.require(
+            "uom_id" not in payload,
+            code="E_CATALOGO_VALIDATION",
+            message="Payload articolo non valido.",
+            detail="uom_id e' immutabile e non puo' essere aggiornato dopo la creazione.",
+            context={"field": "uom_id"},
+            function_name=function_name,
+            log_to_db=True,
+        )
         _validate_payload_keys(
             payload,
-            allowed_keys=_ARTICOLO_UPDATE_ALLOWED_KEYS | {"codice"},
+            allowed_keys=_ARTICOLO_UPDATE_ALLOWED_KEYS | {"codice", "uom_id"},
             function_name=function_name,
         )
         descrizione = _extract_string(
@@ -579,6 +590,22 @@ def _extract_articolo_payload(
             function_name=function_name,
             message="descrizione obbligatoria.",
         )
+        # uom_id e' NOT NULL a livello DDL: obbligatorio e > 0 in create.
+        uom_value = _extract_nullable_int(
+            payload,
+            "uom_id",
+            function_name=function_name,
+        )
+        ErrorManager.require(
+            isinstance(uom_value, int) and uom_value > 0,
+            code="E_CATALOGO_VALIDATION",
+            message="Payload articolo non valido.",
+            detail="uom_id obbligatorio.",
+            context={"field": "uom_id"},
+            function_name=function_name,
+            log_to_db=True,
+        )
+        data["uom_id"] = uom_value
 
     descrizione_breve = _extract_string(
         payload,

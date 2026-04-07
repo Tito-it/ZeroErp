@@ -41,6 +41,14 @@ export function lookupMatriceIndirizziRuolo(tipoRuoloCodice) {
   )
 }
 
+// Scopo: Lookup utility ammesse per un tipo ruolo (strict, da config.utilities_tipi_ruolo).
+// Usato dal componente riusabile UtilityPerRuoloSelect.
+export function lookupUtilitiesPerRuolo(tipoRuoloCodice) {
+  return api.get(
+    `${BASE}/lookup/tipi-ruolo/${tipoRuoloCodice}/utilities/`
+  )
+}
+
 // --- Sistema codici ---
 
 export function lookupSistemaCodici(schema, tabella, colonna = 'codice') {

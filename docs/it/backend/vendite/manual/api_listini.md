@@ -210,13 +210,29 @@ Restituisce:
 | **Metodo** | `PATCH` |
 | **URL** | `/api/v1/vendite/listini/{listino_id}/versioni/{ver_id}/` |
 
-Campi ammessi:
-- `codice_versione`
-- `valido_dal`
-- `valido_al`
-- `priorita`
-- `meta`
-- `attivo`
+#### Campi ammessi per stato (whitelist)
+
+I campi modificabili dipendono dallo **stato corrente** della versione. Il backend
+applica una whitelist fail-fast: qualsiasi campo non ammesso nel payload provoca
+un errore `400 E_VENDITE_VALIDATION` senza eseguire l'UPDATE.
+
+| Stato versione | Campi modificabili |
+|---|---|
+| `BOZZA` | `codice_versione`, `valido_dal`, `valido_al`, `priorita`, `meta`, `attivo` |
+| `ATTIVA` | `valido_al`, `priorita` (programmazione chiusura + tie-break) |
+| `CHIUSA` | nessun campo (stato terminale) |
+
+**Razionale**: una versione `ATTIVA` ha gia` propagato i prezzi negli snapshot di
+`commesse_attivita`/`attivita_fatturabili`. Modificare `codice_versione`, `valido_dal`
+o `meta` su una versione operativa creerebbe drift tra documenti emessi e stato
+listino. Solo `valido_al` (programmazione chiusura) e `priorita` (tie-break tra
+versioni) restano modificabili. Per cambiare prezzi su un periodo gia` attivo, si
+crea una nuova versione (clone + edit + activate).
+
+#### Errori tipici
+
+- `400` `E_VENDITE_VALIDATION` con `detail` che elenca i campi non ammessi e quelli consentiti
+- `404` `E_VENDITE_LISTINO_VERSIONE_NOT_FOUND`
 
 ### 3.5 Cambia stato versione
 
@@ -310,6 +326,13 @@ Campi ammessi:
 
 #### Regole specifiche
 
+- **Immutabilita` per stato versione (guard fail-fast)**: `POST`, `PATCH` e `DELETE`
+  riga sono ammessi **solo** se la versione padre e` in stato `BOZZA`. Su versioni
+  `ATTIVA` o `CHIUSA` il backend rifiuta con `400 E_VENDITE_VALIDATION` prima di
+  toccare il DB. Razionale: i prezzi delle versioni operative sono gia` snapshot
+  in `commesse_attivita`/`attivita_fatturabili` e ogni modifica creerebbe drift
+  con i documenti gia` emessi. Per cambiare prezzi su un periodo gia` attivo, si
+  crea una nuova versione (clone + edit + activate).
 - Il backend valida pre-flight:
   - articolo attivo
   - UoM attiva
