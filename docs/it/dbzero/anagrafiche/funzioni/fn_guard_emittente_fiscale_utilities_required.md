@@ -15,6 +15,22 @@ DECLARE
   v_emittente_attivo boolean := false;
   v_has_utility boolean := false;
 BEGIN
+     -- ==========================================================
+    -- fn_guard_emittente_fiscale_utilities_required
+    --
+    -- Scopo:
+    --   Verificare che ogni emittente fiscale attivo abbia almeno
+    --   una riga attiva nella matrice
+    --   anagrafiche.emittenti_fiscali_utilities.
+    --
+    -- Regole:
+    --   - se l'emittente non esiste o non e' attivo -> nessun vincolo
+    --   - se l'emittente e' attivo -> deve esistere almeno una utility
+    --     attiva in matrice
+    --   - controllo usato sia lato emittenti_fiscali sia lato
+    --     emittenti_fiscali_utilities, con trigger DEFERRABLE
+    -- ==========================================================
+
   IF p_emittente_soggetto_ruolo_id IS NULL OR p_emittente_soggetto_ruolo_id <= 0 THEN
     RETURN;
   END IF;
