@@ -1,0 +1,42 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# UPDATE COMMENT su anagrafiche.fn_get_emittente_fiscale_id
+# Esplicita che restituisce soggetto_ruolo_id (NON emittenti_fiscali.id)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20260407-02-update-comment-fn-get-emittente-fiscale-id-mctit.yaml
+
+  - changeSet:
+      id: 20260407-02-update-comment-fn-get-emittente-fiscale-id
+      author: mctit
+      runOnChange: true
+      validCheckSum:
+        - ANY
+      comment: >
+        Aggiorna il COMMENT di fn_get_emittente_fiscale_id per esplicitare
+        che restituisce soggetto_ruolo_id e NON emittenti_fiscali.id.
+        Il nome _id e' fuorviante. Per ottenere la PK numerica reale
+        usare anagrafiche.fn_get_emittente_fiscale_pk.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT COUNT(*)
+                FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'anagrafiche'
+                 AND p.proname = 'fn_get_emittente_fiscale_id';
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: true
+            sql: |
+              COMMENT ON FUNCTION anagrafiche.fn_get_emittente_fiscale_id(anagrafiche.billing_account.id%TYPE)
+              IS 'ATTENZIONE: nonostante il nome, restituisce soggetto_ruolo_id (anagrafiche.soggetti_ruoli.id), '
+                 'NON emittenti_fiscali.id. Catena: 1) mapping specifico per billing_account, '
+                 '2) fallback al gestore globale (is_default=true). Non filtra per attivo. '
+                 'Per ottenere la PK numerica reale di emittenti_fiscali usare fn_get_emittente_fiscale_pk. '
+                 'Usata da ~33 funzioni del dominio vendite che ragionano su soggetto_ruolo_id.';

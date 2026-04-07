@@ -62,15 +62,13 @@ BEGIN
     --   permessi per area funzionale, mappa azioni abilitate,
     --   e flag deve_cambiare_password.
     --
-    -- Parametri:
-    --   p_auth_user_id: ID dell'utente Django (auth_user.id)
-    --
-    -- Restituisce:
-    --   JSONB con chiavi: utente, ruolo_sistema, risorse_umane,
-    --   soggetto, emittente (null se non associato),
-    --   permessi_area (mappa {schema_db: livello}),
-    --   azioni_abilitate (mappa {codename: boolean}),
-    --   deve_cambiare_password (boolean).
+    -- Cascata di risoluzione emittente:
+    --   4a) Whitelist personale config.user_emittenti_fiscali
+    --       (primo emittente attivo associato all'utente)
+    --   4b) Fallback: gestore globale via
+    --       emittenti_fiscali_billing_account
+    --       (riga con BA NULL + is_default = true)
+    --   4c) Se nessuno dei due, v_emittente = NULL
     -- =========================================================
 
     -- Guard: parametro obbligatorio e valido
@@ -205,7 +203,7 @@ BEGIN
             jsonb_build_object('auth_user_id', p_auth_user_id,
                               'valido_dal', v_valido_dal),
             NULL::uuid,
-            v_valido_dal::text 
+            v_valido_dal::text
         );
     END IF;
 
@@ -247,9 +245,11 @@ BEGIN
 
     -- -------------------------------------------------------
     -- 4. Risolvere emittente fiscale
-    --    Strategia: primo dalla whitelist user_emittenti_fiscali
-    --    (ordine id, primo attivo). Se whitelist vuota e c'e'
-    --    un unico emittente attivo, usa quello come fallback.
+    --    Strategia (cascata):
+    --      4a) Whitelist personale config.user_emittenti_fiscali
+    --      4b) Fallback: gestore globale via
+    --          emittenti_fiscali_billing_account
+    --          (riga con BA NULL + is_default = true)
     -- -------------------------------------------------------
     v_emittente := NULL;
 
@@ -277,31 +277,40 @@ BEGIN
      ORDER BY uef.id
      LIMIT 1;
 
-    -- 4b. Fallback: emittente unico attivo (se whitelist vuota)
+    -- 4b. Fallback: gestore globale via emittenti_fiscali_billing_account
+    --     (riga con billing_account_id IS NULL AND is_default = true).
+    --     Sostituisce il vecchio fallback "emittente unico" che era ambiguo
+    --     per N>1 emittenti e richiedeva un SELECT COUNT(*) full scan.
+    --     Coerente con la convenzione default + allineato a
+    --     anagrafiche.fn_get_emittente_fiscale_pk.
     IF v_ef_id IS NULL THEN
-        IF (SELECT COUNT(*) FROM anagrafiche.emittenti_fiscali WHERE attivo = true) = 1 THEN
-            SELECT ef.id,
-                   ef.uid,
-                   ef.codice,
-                   ef.descrizione,
-                   ef.soggetto_ruolo_id,
-                   ef.regime_fiscale_rf,
-                   ef.valuta_id
-              INTO v_ef_id,
-                   v_ef_uid,
-                   v_ef_codice,
-                   v_ef_descrizione,
-                   v_ef_sr_id,
-                   v_ef_regime,
-                   v_ef_valuta_id
-              FROM anagrafiche.emittenti_fiscali ef
-             WHERE ef.attivo = true;
-        END IF;
-
-        v_uef_id := NULL;
+        SELECT ef.id,
+               ef.uid,
+               ef.codice,
+               ef.descrizione,
+               ef.soggetto_ruolo_id,
+               ef.regime_fiscale_rf,
+               ef.valuta_id
+          INTO v_ef_id,
+               v_ef_uid,
+               v_ef_codice,
+               v_ef_descrizione,
+               v_ef_sr_id,
+               v_ef_regime,
+               v_ef_valuta_id
+          FROM anagrafiche.emittenti_fiscali_billing_account efba
+          JOIN anagrafiche.emittenti_fiscali ef
+            ON ef.soggetto_ruolo_id = efba.emittente_soggetto_ruolo_id
+         WHERE efba.billing_account_id IS NULL
+           AND efba.is_default = true
+           AND ef.attivo = true
+         LIMIT 1;
+        -- Nessuna whitelist coinvolta: il blocco emittente riflette
+        -- il gestore globale, non un'associazione personale.
+        -- v_uef_id resta NULL (default delle DECLARE).
     END IF;
 
-    -- 4c. Se emittente trovato, comporre il blocco
+    -- 4c. Se emittente trovato (whitelist o gestore), comporre il blocco
     IF v_ef_id IS NOT NULL THEN
         DECLARE
             v_ef_soggetto jsonb;
@@ -343,7 +352,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_get_user_profile(p_auth_user_id integer)
-IS 'Profilo utente completo: JSONB con blocchi utente, ruolo_sistema, risorse_umane (qualifica, UO), soggetto, emittente fiscale, permessi_area, azioni_abilitate, deve_cambiare_password. Dipende da fn_get_soggetto_dati_by_ruolo, fn_get_user_permissions_map, fn_get_user_actions_map.';
+IS 'Profilo utente completo: JSONB con blocchi utente, ruolo_sistema, risorse_umane (qualifica, UO), soggetto, emittente fiscale, permessi_area, azioni_abilitate, deve_cambiare_password. Cascata emittente: 1) whitelist personale config.user_emittenti_fiscali, 2) fallback gestore globale via emittenti_fiscali_billing_account (BA NULL + is_default=true). Dipende da fn_get_soggetto_dati_by_ruolo, fn_get_user_permissions_map, fn_get_user_actions_map.';
 ```
 
 ---

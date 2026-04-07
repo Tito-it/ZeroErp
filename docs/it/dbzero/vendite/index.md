@@ -179,7 +179,7 @@
 - [trgfn_tipi_indirizzi_only_allowed](funzioni/trgfn_tipi_indirizzi_only_allowed.md)
 
 ## 🔍 Views
-- [vw_preventivi_list](views/vw_preventivi_list.md) — (latest review 03-04-2026) `vendite.vw_preventivi_list` e' la vista denormalizzata principale per la **lista preventivi vendita**. Espone tutti i dati necessari al frontend (tabella lista) e al backend (filtro permessi per scope emittente).
+- [vw_preventivi_list](views/vw_preventivi_list.md) — (latest review 07-04-2026)
 - [vw_preventivi_pratiche](views/vw_preventivi_pratiche.md) — (latest review 03-04-2026) `vendite.vw_preventivi_pratiche` espone le **pratiche collegate a ciascun preventivo vendita** tramite la tabella ponte `pratiche.pratiche_sorgenti` con `sorgente_tipo = 'PREVENTIVO'`.
 - [vw_preventivi_righe_dettaglio](views/vw_preventivi_righe_dettaglio.md) — (latest review 03-04-2026) `vendite.vw_preventivi_righe_dettaglio` arricchisce le righe preventivo con i dati denormalizzati di articolo, unita' di misura operativa e aliquota IVA. Include **importi calcolati** per evitare duplicazione della logica di calcolo nel backend/frontend.
 - [vw_preventivi_stato_fatturazione](views/vw_preventivi_stato_fatturazione.md) — (latest review 03-04-2026) Due viste complementari per il **monitoraggio della pipeline fatturazione** dei preventivi:

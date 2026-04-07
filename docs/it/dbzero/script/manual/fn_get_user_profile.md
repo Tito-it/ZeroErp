@@ -38,7 +38,7 @@ E' progettata come **unico punto di accesso** per l'endpoint `GET /api/v1/core/m
 
 * **Riuso di fn_get_soggetto_dati_by_ruolo**: i blocchi `soggetto` e `emittente` sono generati dalla stessa funzione, garantendo output uniforme con tutti gli ID e le descrizioni risolte.
 
-* **Risoluzione emittente intelligente**: prima cerca nella whitelist `user_emittenti_fiscali` (primo attivo), poi fallback su emittente unico attivo se la whitelist e' vuota.
+* **Risoluzione emittente intelligente**: prima cerca nella whitelist `user_emittenti_fiscali` (primo attivo), poi fallback sul **gestore globale** definito in `emittenti_fiscali_billing_account` (riga con `billing_account_id IS NULL` e `is_default = true`).
 
 ---
 
@@ -152,7 +152,7 @@ Se un emittente fiscale e' associato all'utente, il blocco contiene:
 | `emittente_codice`          | `VARCHAR` | `emittenti_fiscali.codice`                     |
 | `emittente_descrizione`     | `VARCHAR` | `emittenti_fiscali.descrizione`                |
 | `user_emittente_fiscale_id` | `BIGINT`  | `user_emittenti_fiscali.id` (null se fallback) |
-| `regime_fiscale_rf`         | `VARCHAR` | `emittenti_fiscali.regime_fiscale_rf`          |
+| `regime_fiscale_rf`         | `VARCHAR` | `emittenti_fiscali.regime_fiscale_rf` (codice RF del tracciato FE/SdI) |
 | `valuta_id`                 | `INTEGER` | `emittenti_fiscali.valuta_id`                  |
 
 **Campi soggetto emittente:** tutti i campi di `fn_get_soggetto_dati_by_ruolo(emittenti_fiscali.soggetto_ruolo_id)`, mergiati nello stesso oggetto JSON.
@@ -187,11 +187,13 @@ Catena di risoluzione per area (delegata a `fn_resolve_livello_area`):
 
 4. **Blocco soggetto**: chiamata a `fn_get_soggetto_dati_by_ruolo(soggetto_ruolo_id)` e conversione in JSONB.
 
-5. **Risoluzione emittente**:
-   - **Whitelist**: cerca il primo `user_emittenti_fiscali` attivo per l'utente (ordine id), con JOIN su `emittenti_fiscali` attivo.
-   - **Fallback**: se whitelist vuota, cerca un emittente unico attivo (`HAVING COUNT(*) = 1`). Se ci sono piu' emittenti attivi senza whitelist, nessuno viene selezionato (ambiguo).
+5. **Risoluzione emittente** (revisione 07-04-2026):
+   - **4a. Whitelist**: cerca il primo `user_emittenti_fiscali` attivo per l'utente (ordine `id`), con JOIN su `emittenti_fiscali` attivo. Imposta sia `v_ef_id` che `v_uef_id`.
+   - **4b. Fallback gestore globale**: se whitelist vuota, cerca la riga in `anagrafiche.emittenti_fiscali_billing_account` con `billing_account_id IS NULL AND is_default = true`, joinando su `emittenti_fiscali` per ottenere la PK reale (`ef.id`) filtrando per `attivo = true`. `v_uef_id` resta `NULL` (il blocco non riflette un'associazione personale).
    - Se trovato: lettura campi emittente + `fn_get_soggetto_dati_by_ruolo(ef.soggetto_ruolo_id)`, merge in unico oggetto JSONB.
    - Se non trovato: `emittente = null`.
+
+   > **Cambiamento rispetto alla versione precedente**: il vecchio fallback usava "emittente unico attivo" (`SELECT COUNT(*) WHERE attivo = true = 1`), che era ambiguo per installazioni multi-tenant con N>1 emittenti e richiedeva un full scan. Il nuovo fallback usa la convenzione del **gestore globale** (BA NULL + is_default=true), coerente con `anagrafiche.fn_get_emittente_fiscale_pk`.
 
 6. **Mappa permessi area**: chiamata a `fn_get_user_permissions_map(p_auth_user_id)` che risolve il livello per ogni area funzionale attiva.
 

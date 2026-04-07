@@ -12,22 +12,38 @@ Approfondimento tabelle:
 
 ---
 ### 🎯 Scopo Principale
-(latest review 03-04-2026)
+
+(latest review 07-04-2026)
+
 `vendite.vw_preventivi_list` e' la vista denormalizzata principale per la **lista preventivi
 vendita**. Espone tutti i dati necessari al frontend (tabella lista) e al backend (filtro
 permessi per scope emittente).
 
 ---
 
+> ### Nota sulla colonna `emittente_fiscale_id`
+>
+> Dalla revisione del **07-04-2026** la colonna espone la **PK numerica reale** di
+> `anagrafiche.emittenti_fiscali.id`, derivata via [`fn_get_emittente_fiscale_pk`](/dbzero/anagrafiche/funzioni/fn_get_emittente_fiscale_pk).
+>
+> **In precedenza** la vista usava `fn_get_emittente_fiscale_id` che, nonostante il nome,
+> restituisce un `soggetto_ruolo_id`: il valore esposto era quindi semanticamente
+> incompatibile con `config.parameter_overrides.emittente_fiscale_id` (FK reale a
+> `emittenti_fiscali.id`) usata dal filtro permessi backend.
+>
+> Il fix allinea i due valori e rende il filtro permessi corretto.
+
+---
+
 ### JOIN principali
 
-| Tabella | Dati esposti |
-|---------|-------------|
-| `config.stati_doc_preventivi` | Codice e descrizione stato |
-| `anagrafiche.billing_account` → `soggetti_ruoli` → `soggetti` | Denominazione cliente |
-| `config.valute` | Codice valuta |
-| `config.termini_pagamento` | Descrizione termini |
-| `anagrafiche.fn_get_emittente_fiscale_id()` | emittente_fiscale_id per scope permessi |
+| Tabella                                                       | Dati esposti                                         |
+|---------------------------------------------------------------|------------------------------------------------------|
+| `config.stati_doc_preventivi`                                 | Codice e descrizione stato                           |
+| `anagrafiche.billing_account` → `soggetti_ruoli` → `soggetti` | Denominazione cliente                                |
+| `config.valute`                                               | Codice valuta                                        |
+| `config.termini_pagamento`                                    | Descrizione termini                                  |
+| `anagrafiche.fn_get_emittente_fiscale_pk()`                   | `emittente_fiscale_id` per scope permessi (PK reale) |
 
 ---
 
