@@ -85,6 +85,7 @@
       "Bash(source ../.venv/bin/activate)",
       "Bash(grep -h RIS_UMANA /home/tid/apps/ZeroErp/db/changelog/migrations_v2/80_data/anagrafiche/*.yaml)",
       "Bash(. ~/.nvm/nvm.sh)",
+      "Bash(python3 -m json.tool /home/tid/software/ZeroErp/.claude/settings.json)"
       "Bash(bash -c 'source ~/.nvm/nvm.sh 2>/dev/null; ./node_modules/.bin/vite build 2>&1 | tail -40')",
       "Bash(bash -c 'source ~/.nvm/nvm.sh 2>/dev/null; ./node_modules/.bin/vite build 2>&1 | tail -5')",
       "Bash(bash -c 'source ~/.nvm/nvm.sh 2>/dev/null; ./node_modules/.bin/vite build 2>&1 | tail -3')"

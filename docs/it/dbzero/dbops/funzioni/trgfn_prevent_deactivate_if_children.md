@@ -13,13 +13,17 @@ CREATE OR REPLACE FUNCTION dbops.trgfn_prevent_deactivate_if_children()
  LANGUAGE plpgsql
 AS $function$
 DECLARE
-  v_child_schema text;
-  v_child_table  text;
-  v_fk_col       text;
-  v_pk_col       text;     -- opzionale, default 'id'
+  v_child_schema       text;
+  v_child_table        text;
+  v_fk_col             text;
+  v_ref_col            text;     -- colonna del padre referenziata dalla FK (default 'id')
+  v_parent_attivo_col  text;     -- colonna attivo del padre (rispetta override; default 'attivo')
 
-  v_parent_pk_val_text text;
-  v_fk_type            text;
+  v_parent_ref_val_text text;
+  v_fk_type             text;
+
+  v_old_attivo boolean;
+  v_new_attivo boolean;
 
   v_child_attivo_col text;
   v_child_has_attivo boolean;
@@ -27,7 +31,28 @@ DECLARE
   v_exists boolean;
   v_sql    text;
 BEGIN
-  -- Parametri: child_schema, child_table, fk_col [, pk_col]
+  /*
+    Scopo
+    -----
+    Trigger function (ATTIVO/BLOCK): impedisce la disattivazione
+    (attivo TRUE -> FALSE) del padre se esistono figli collegati.
+    Se il figlio ha colonna attivo, il blocco scatta solo se esistono
+    figli attivi.
+
+    Argomenti attesi (TG_ARGV)
+    --------------------------
+    [0] child_schema       - schema della tabella figlia
+    [1] child_table        - nome tabella figlia
+    [2] fk_col             - colonna FK sul figlio
+    [3] ref_col            - colonna del padre referenziata dalla FK
+                             (puo' essere UNIQUE diversa da PK).
+                             Se omesso, fallback 'id' (DEPRECATO).
+    [4] parent_attivo_col  - nome colonna attivo del padre
+                             (default 'attivo' se omesso, DEPRECATO).
+                             Necessario per supportare override
+                             via dbops.automation_overrides_cols.
+  */
+
   IF array_length(TG_ARGV, 1) < 3 THEN
     PERFORM script.fn_log_and_raise_error(
       'database',
@@ -36,10 +61,10 @@ BEGIN
       jsonb_build_object(
         'trigger', TG_NAME,
         'table',   TG_TABLE_SCHEMA||'.'||TG_TABLE_NAME,
-        'tg_argv',  TG_ARGV
+        'tg_argv', TG_ARGV
       ),
       NULL::uuid,
-      'Attesi: child_schema, child_table, fk_col [, pk_col]'
+      'Attesi: child_schema, child_table, fk_col [, ref_col, parent_attivo_col]'
     );
   END IF;
 
@@ -48,31 +73,65 @@ BEGIN
   v_fk_col       := TG_ARGV[2];
 
   IF array_length(TG_ARGV, 1) >= 4 AND TG_ARGV[3] IS NOT NULL THEN
-    v_pk_col := TG_ARGV[3];
+    v_ref_col := TG_ARGV[3];
   ELSE
-    v_pk_col := 'id';
+    v_ref_col := 'id';
     PERFORM script.fn_log_error_only(
+      'database',
       'trgfn_prevent_deactivate_if_children',
-      format('Usata PK di default ''id'' per %I.%I', TG_TABLE_SCHEMA, TG_TABLE_NAME),
-      'Passa pk_col come 4° parametro per evitare ambiguità'
+      'E_ATTIVO_BLOCK',
+      jsonb_build_object(
+        'parent_table', TG_TABLE_SCHEMA||'.'||TG_TABLE_NAME,
+        'ref_col',      v_ref_col,
+        'note',         'Usata colonna di default id'
+      ),
+      NULL::uuid,
+      'Passa ref_col come 4° parametro per evitare ambiguita'''
     );
   END IF;
 
-  -- Attivo hardcoded: controlliamo solo transizione TRUE -> FALSE
-  IF TG_OP = 'UPDATE'
-    AND COALESCE(OLD.attivo, FALSE) IS TRUE
-    AND COALESCE(NEW.attivo, FALSE) IS FALSE
-  THEN
-    -- Estrai valore PK dal record OLD in modo robusto
-    EXECUTE format('SELECT ($1).%I::text', v_pk_col)
-      INTO v_parent_pk_val_text
-      USING OLD;
+  -- 5° arg: nome colonna attivo del padre (rispetta override)
+  v_parent_attivo_col := COALESCE(TG_ARGV[4], 'attivo');
 
-    IF v_parent_pk_val_text IS NULL THEN
+  IF TG_ARGV[4] IS NULL THEN
+    PERFORM script.fn_log_error_only(
+      'database',
+      'trgfn_prevent_deactivate_if_children',
+      'E_ATTIVO_BLOCK',
+      jsonb_build_object(
+        'parent_table',      TG_TABLE_SCHEMA||'.'||TG_TABLE_NAME,
+        'parent_attivo_col', v_parent_attivo_col,
+        'note',              'Usata colonna attivo di default'
+      ),
+      NULL::uuid,
+      'Passa parent_attivo_col come 5° parametro per supportare override'
+    );
+  END IF;
+
+  -- Estrai dinamicamente OLD/NEW.parent_attivo_col via to_jsonb
+  -- (no EXECUTE per riga, supporta override del nome colonna)
+  v_old_attivo := (to_jsonb(OLD)->>v_parent_attivo_col)::boolean;
+  v_new_attivo := (to_jsonb(NEW)->>v_parent_attivo_col)::boolean;
+
+  -- Controlliamo solo transizione TRUE -> FALSE
+  IF TG_OP = 'UPDATE'
+    AND COALESCE(v_old_attivo, FALSE) IS TRUE
+    AND COALESCE(v_new_attivo, FALSE) IS FALSE
+  THEN
+    -- Estrai valore della colonna referenziata dal record OLD via to_jsonb
+    v_parent_ref_val_text := to_jsonb(OLD)->>v_ref_col;
+
+    IF v_parent_ref_val_text IS NULL THEN
       PERFORM script.fn_log_error_only(
+        'database',
         'trgfn_prevent_deactivate_if_children',
-        format('PK %I NULL su %I.%I: controllo figli saltato', v_pk_col, TG_TABLE_SCHEMA, TG_TABLE_NAME),
-        NULL
+        'E_ATTIVO_BLOCK',
+        jsonb_build_object(
+          'parent_table', TG_TABLE_SCHEMA||'.'||TG_TABLE_NAME,
+          'ref_col',      v_ref_col,
+          'note',         'Colonna referenziata NULL: controllo figli saltato'
+        ),
+        NULL::uuid
       );
       RETURN NEW;
     END IF;
@@ -81,8 +140,8 @@ BEGIN
     SELECT a.atttypid::regtype::text
       INTO v_fk_type
       FROM pg_attribute a
-      JOIN pg_class c      ON c.oid = a.attrelid
-      JOIN pg_namespace n  ON n.oid = c.relnamespace
+      JOIN pg_class c     ON c.oid = a.attrelid
+      JOIN pg_namespace n ON n.oid = c.relnamespace
     WHERE n.nspname = v_child_schema
       AND c.relname = v_child_table
       AND a.attname = v_fk_col
@@ -98,7 +157,7 @@ BEGIN
           'parent_table', TG_TABLE_SCHEMA||'.'||TG_TABLE_NAME,
           'child_table',  v_child_schema||'.'||v_child_table,
           'fk_col',       v_fk_col,
-          'pk_col',       v_pk_col
+          'ref_col',      v_ref_col
         ),
         NULL::uuid,
         'Colonna FK del figlio non trovata in catalogo',
@@ -122,7 +181,7 @@ BEGIN
       );
     END IF;
 
-    EXECUTE v_sql INTO v_exists USING v_parent_pk_val_text;
+    EXECUTE v_sql INTO v_exists USING v_parent_ref_val_text;
 
     IF v_exists THEN
       PERFORM script.fn_log_and_raise_error(
@@ -130,12 +189,12 @@ BEGIN
         TG_NAME,
         'E_ATTIVO_BLOCK_CHILDREN_EXIST',
         jsonb_build_object(
-          'parent_table', TG_TABLE_SCHEMA||'.'||TG_TABLE_NAME,
-          'child_table',  v_child_schema||'.'||v_child_table,
-          'pk_col',       v_pk_col,
-          'pk_val',       v_parent_pk_val_text,
-          'fk_col',       v_fk_col,
-          'fk_type',      v_fk_type,
+          'parent_table',     TG_TABLE_SCHEMA||'.'||TG_TABLE_NAME,
+          'child_table',      v_child_schema||'.'||v_child_table,
+          'ref_col',          v_ref_col,
+          'ref_val',          v_parent_ref_val_text,
+          'fk_col',           v_fk_col,
+          'fk_type',          v_fk_type,
           'child_attivo_col', v_child_attivo_col,
           'child_has_attivo', v_child_has_attivo
         ),
@@ -143,7 +202,7 @@ BEGIN
         'Non e'' possibile disattivare il padre: esistono righe figlio attive collegate',
         TG_TABLE_SCHEMA||'.'||TG_TABLE_NAME,
         v_child_schema||'.'||v_child_table,
-        v_pk_col, v_parent_pk_val_text,
+        v_ref_col, v_parent_ref_val_text,
         v_fk_col
       );
     END IF;
@@ -154,7 +213,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION dbops.trgfn_prevent_deactivate_if_children()
-IS 'Trigger function (ATTIVO/BLOCK): impedisce la disattivazione (attivo TRUE->FALSE) del padre se esistono figli collegati. Se la tabella figlia ha una colonna attivo, il blocco avviene solo se esistono figli attivi (attivo IS DISTINCT FROM FALSE).';
+IS 'Trigger function (ATTIVO/BLOCK): impedisce la disattivazione del padre se esistono figli collegati. TG_ARGV: child_schema, child_table, fk_col [, ref_col, parent_attivo_col]. Il 4° arg e'' la colonna del padre referenziata dalla FK (puo'' essere UNIQUE non-PK). Il 5° arg e'' la colonna attivo del padre (rispetta override via dbops.automation_overrides_cols).';
 ```
 
 ---

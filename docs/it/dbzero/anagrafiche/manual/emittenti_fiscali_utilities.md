@@ -29,16 +29,14 @@ specifici di fatturazione per **emittente fiscale** e **utility**:
 ### Regole principali
 
 * Unica riga per coppia **(emittente, utility)**.
-* Ogni **emittente fiscale attivo** deve avere almeno una riga attiva in questa
-  tabella.
 * Se entrambe le soglie sono valorizzate: `minimo_soglia_min <= minimo_soglia_max`.
 * Arrotondamento importi limitato a **max 2 decimali**.
 * Guard utility/ruolo applicata via trigger:
   * risolve il `tipo_ruolo_id` dall'`emittente_soggetto_ruolo_id`;
   * valida con `script.fn_guard_utility_tipo_ruolo(...)`;
   * semantica fail-open se la matrice `config.utilities_tipi_ruolo` non e configurata per la utility.
-* Un constraint trigger deferred impedisce che un emittente fiscale attivo resti
-  senza alcuna utility attiva configurata.
+* La tabella e` **opzionale**: si popola solo quando servono parametri dedicati
+  per una specifica coppia **(emittente, utility)**.
 
 ---
 

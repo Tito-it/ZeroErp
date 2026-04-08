@@ -1,0 +1,89 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# RECREATE dbops.fn_trigger_exists_block_by_args — aggiunge p_parent_ref_col
+# ------------------------------------------------------------
+# Scopo: la helper di esistenza per i trigger BLOCK deve riconoscere
+# l'invocazione della trgfn a 5 args (child_schema, child_table, fk_col,
+# parent_ref_col, parent_attivo_col). La versione precedente matchava
+# solo 3 args, quindi di fatto NON riconosceva mai i trigger esistenti
+# (bug latente). La signature cambia (2 parametri aggiuntivi), quindi
+# serve DROP + CREATE.
+# Usata solo da dbops.fn_run_automations_attivo (verificato via grep).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20260408-05-recreate-fn-trigger-exists-block-by-args-add-ref-col-mctit.yaml
+
+  - changeSet:
+      id: 20260408-05-recreate-fn-trigger-exists-block-by-args-add-ref-col
+      author: mctit
+      comment: >
+        Ricrea fn_trigger_exists_block_by_args con due parametri aggiuntivi
+        (p_parent_ref_col, p_parent_attivo_col) per matchare l'invocazione
+        a 5 args della trgfn BLOCK. La signature cambia, serve DROP + CREATE.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT CASE WHEN count(*) >= 1 THEN 1 ELSE 0 END
+              FROM pg_proc p
+              JOIN pg_namespace n ON n.oid = p.pronamespace
+              WHERE n.nspname='dbops' AND p.proname='fn_trigger_exists_block_by_args'
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Drop di TUTTI gli overload esistenti: in DB sono presenti
+              -- versioni storiche multiple (4 args originale + 5 args con
+              -- p_pk_col). Le droppiamo tutte prima di creare la nuova a 6 args.
+              DO $drop_overloads$
+              DECLARE
+                r record;
+              BEGIN
+                FOR r IN
+                  SELECT p.oid::regprocedure::text AS sig
+                  FROM pg_proc p
+                  JOIN pg_namespace n ON n.oid = p.pronamespace
+                  WHERE n.nspname='dbops'
+                    AND p.proname='fn_trigger_exists_block_by_args'
+                LOOP
+                  EXECUTE 'DROP FUNCTION ' || r.sig;
+                  RAISE NOTICE 'Dropped overload: %', r.sig;
+                END LOOP;
+              END$drop_overloads$;
+
+              CREATE OR REPLACE FUNCTION dbops.fn_trigger_exists_block_by_args(
+                  p_parent_rel        regclass,
+                  p_child_schema      text,
+                  p_child_table       text,
+                  p_fk_col            text,
+                  p_parent_ref_col    text,
+                  p_parent_attivo_col text
+              )
+              RETURNS boolean
+              LANGUAGE sql
+              STABLE
+              AS $function$
+                -- Scopo: rileva l'esistenza di un trigger BLOCK sul padre
+                -- con la signature a 5 args della trgfn. Confronta tutti gli
+                -- argomenti via pattern ILIKE su pg_get_triggerdef.
+                SELECT EXISTS (
+                  SELECT 1
+                  FROM pg_trigger t
+                  JOIN pg_proc p ON p.oid = t.tgfoid
+                  WHERE t.tgrelid = p_parent_rel
+                    AND NOT t.tgisinternal
+                    AND p.proname = 'trgfn_prevent_deactivate_if_children'
+                    AND pg_get_triggerdef(t.oid) ILIKE
+                        format(
+                          '%%EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children(''%s'',''%s'',''%s'',''%s'',''%s'')%%',
+                          p_child_schema, p_child_table, p_fk_col, p_parent_ref_col, p_parent_attivo_col
+                        )
+                );
+              $function$;
+
+              COMMENT ON FUNCTION dbops.fn_trigger_exists_block_by_args(regclass, text, text, text, text, text)
+                IS 'Verifica esistenza trigger BLOCK (trgfn_prevent_deactivate_if_children) su tabella padre matchando la signature a 5 args.';
