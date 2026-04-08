@@ -79,12 +79,15 @@
       "Bash(find /home/tid/software/ZeroErp/db/changelog/migrations_v2/20_code -name *log*error* -type f)",
       "Bash(find /home/tid/software/ZeroErp/db/changelog/migrations_v2/20_code -name *fn-log*raise* -o -name *fn_log*raise* -type f)",
       "Bash(find /home/tid/software/ZeroErp/docs/it/dbzero -name *.md -type f)",
-      "Bash(grep -r \"crea_auth_user\\\\|crea_soggetto_pf\\\\|crea_risorsa_umana\" /home/tid/software/ZeroErp --include=*.yaml --include=*.md)"
+      "Bash(grep -r \"crea_auth_user\\\\|crea_soggetto_pf\\\\|crea_risorsa_umana\" /home/tid/software/ZeroErp --include=*.yaml --include=*.md)",
       "Bash(grep -r \"def.*me\\\\|path.*me\" /home/tid/apps/ZeroErp/backend/apps/core/api/*.py)",
       "Bash(find /home/tid/apps/ZeroErp/docs/it -name *amministr* -o -name *utenti* -o -name *sprint*)",
       "Bash(source ../.venv/bin/activate)",
       "Bash(grep -h RIS_UMANA /home/tid/apps/ZeroErp/db/changelog/migrations_v2/80_data/anagrafiche/*.yaml)",
-      "Bash(. ~/.nvm/nvm.sh)"
+      "Bash(. ~/.nvm/nvm.sh)",
+      "Bash(bash -c 'source ~/.nvm/nvm.sh 2>/dev/null; ./node_modules/.bin/vite build 2>&1 | tail -40')",
+      "Bash(bash -c 'source ~/.nvm/nvm.sh 2>/dev/null; ./node_modules/.bin/vite build 2>&1 | tail -5')",
+      "Bash(bash -c 'source ~/.nvm/nvm.sh 2>/dev/null; ./node_modules/.bin/vite build 2>&1 | tail -3')"
     ],
     "additionalDirectories": [
       "/home/tid/apps/ZeroErp/docs/it/dev/work-in-progress"

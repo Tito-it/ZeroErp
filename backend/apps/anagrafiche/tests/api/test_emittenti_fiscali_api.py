@@ -330,14 +330,40 @@ class TestEmittentiFiscaliUtilitiesApi(SimpleTestCase):
     @patch(_PERM, return_value=True)
     @patch(_UT_SVC)
     def test_utilities_list(self, mock_svc_cls, _perm, _auth):
-        """GET /emittenti-fiscali/<id>/utilities/ — lista record."""
+        """GET /emittenti-fiscali/<id>/utilities/ — matrice slot/override.
+
+        Ritorna sempre tutte le utility ammesse per ruolo EF: alcune configurate
+        (record_id valorizzato), altre no (record_id null, campi override null).
+        """
         mock_svc_cls.return_value.list_records.return_value = [
-            {"id": 1, "utility_id": 1, "utility_codice": "EE", "attivo": True},
+            {
+                "utility_id": 1, "utility_codice": "EE", "utility_descrizione": "Energia",
+                "record_id": 100,
+                "minimo_soglia_min": 0.5, "minimo_soglia_max": None,
+                "arrotondamento_importi_dec": 2, "metodo_arrotondamento_importi": "HALF_UP",
+                "record_attivo": True,
+                "record_data_insert": None, "record_data_update": None,
+            },
+            {
+                "utility_id": 2, "utility_codice": "GAS", "utility_descrizione": "Gas",
+                "record_id": None,
+                "minimo_soglia_min": None, "minimo_soglia_max": None,
+                "arrotondamento_importi_dec": None, "metodo_arrotondamento_importi": None,
+                "record_attivo": None,
+                "record_data_insert": None, "record_data_update": None,
+            },
         ]
         resp = self.client.get("/api/v1/anagrafiche/emittenti-fiscali/1/utilities/")
         self.assertEqual(resp.status_code, 200)
         body = resp.json()
-        self.assertEqual(len(body["data"]["results"]), 1)
+        results = body["data"]["results"]
+        self.assertEqual(len(results), 2)
+        # Riga configurata
+        self.assertEqual(results[0]["record_id"], 100)
+        self.assertEqual(results[0]["metodo_arrotondamento_importi"], "HALF_UP")
+        # Riga non configurata (slot vuoto)
+        self.assertIsNone(results[1]["record_id"])
+        self.assertIsNone(results[1]["metodo_arrotondamento_importi"])
 
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(_PERM, return_value=True)

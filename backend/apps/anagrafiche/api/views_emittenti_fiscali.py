@@ -67,6 +67,7 @@ class EmittentiFiscaliView(AdminAPIView):
             "soggetto_id": serializers.UUIDField(help_text="UUID del soggetto: deve avere P.IVA valorizzata."),
             "codice": serializers.CharField(),
             "descrizione": serializers.CharField(),
+            "attivo": serializers.BooleanField(required=False, help_text="Default DB: true."),
             "regime_fiscale_rf": serializers.CharField(
                 required=False,
                 help_text="Codice regime fiscale RF del tracciato FE/SdI (es. RF01).",
@@ -85,9 +86,7 @@ class EmittentiFiscaliView(AdminAPIView):
             fields={"data": serializers.DictField()},
         )},
     )
-    # Scopo: Crea emittente fiscale (ruolo EF + insert). L'emittente nasce SEMPRE
-    # disattivato (vincolo guard DB su utility): l'attivazione e' manuale via PATCH
-    # dopo aver inserito almeno una utility.
+    # Scopo: Crea emittente fiscale (ruolo EF + insert in transazione atomica).
     def post(self, request: Request) -> JsonResponse:
         return handle_post_json(request, handler=EmittentiFiscaliService().crea_emittente)
 
@@ -115,10 +114,7 @@ class EmittentiFiscaliDetailView(AdminAPIView):
     @extend_schema(
         request=inline_serializer(name="EmittenteFiscaleUpdateReq", fields={
             "descrizione": serializers.CharField(required=False),
-            "attivo": serializers.BooleanField(
-                required=False,
-                help_text="Per attivare un emittente serve almeno una utility attiva (guard DB).",
-            ),
+            "attivo": serializers.BooleanField(required=False),
             "regime_fiscale_rf": serializers.CharField(required=False),
             "bollo_auto": serializers.BooleanField(required=False),
             "bollo_soglia": serializers.FloatField(required=False),

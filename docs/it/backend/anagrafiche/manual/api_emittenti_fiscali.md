@@ -84,7 +84,6 @@ riceve `403 Forbidden`.
 | `anagrafiche.trgfn_emittenti_fiscali_guard_ruolo_emi_fis` | Trigger | Coerenza ruolo `EF` |
 | `anagrafiche.trgfn_emittenti_fiscali_guard_attivo` | Trigger | Blocca disattivazione se esistono figli (BA mapping, utilities, parameter_overrides, user_emittenti_fiscali) |
 | `anagrafiche.trgfn_emittenti_fiscali_default_guard` | Trigger | Garantisce un solo default globale in `emittenti_fiscali_billing_account` |
-| `anagrafiche.fn_emittenti_fiscali_utilities_required` | Constraint trigger (DEFERRABLE INITIALLY DEFERRED) | Garantisce che ogni `emittente_fiscale` con `attivo = true` abbia almeno una riga attiva in `emittenti_fiscali_utilities`. Validato a `COMMIT`. |
 | `dbops.trgfn_child_requires_active_parent` | Trigger | Per `emittenti_fiscali_utilities` impedisce inserire/aggiornare un record figlio se il padre `emittenti_fiscali` non e' attivo |
 | `script.trgfn_lock_columns` | Trigger | Rende immutabile `codice` in UPDATE |
 | `script.trgfn_audit_data_user_generic` | Trigger | Popola `data_insert/update`, `user_insert/update` |
@@ -201,14 +200,12 @@ curl -X GET "https://api.example.com/api/v1/anagrafiche/emittenti-fiscali/1/" \
 | `soggetto_id` | uuid | Si | UUID di un `anagrafiche.soggetti` esistente con **P.IVA valorizzata** |
 | `codice` | string | Si | Univoco; **immutabile** dopo la creazione (lock_columns trigger) |
 | `descrizione` | string | Si | Etichetta visibile |
+| `attivo` | bool | No | Default DB `true` |
 | `regime_fiscale_rf` | string | No | Codice regime fiscale RF del tracciato FE/SdI (es. `RF01`) |
 | `bollo_auto` | bool | No | Calcolo bollo automatico |
 | `bollo_soglia` | numeric | No | Soglia per applicare il bollo |
 | `rounding_policy` | enum | No | Uno tra: `UP`, `DOWN`, `HALF_UP`, `HALF_DOWN` (allineato alla matrice utility) |
 | `valuta_id` | int | No | FK `config.valute` |
-
-> **Nota `attivo`**: il campo non e' accettato in POST. L'emittente nasce **sempre
-> disattivato** (`attivo = false`). Per l'attivazione vedi sezione 4.2.
 
 ### 3.2 Comportamento
 
@@ -218,11 +215,8 @@ curl -X GET "https://api.example.com/api/v1/anagrafiche/emittenti-fiscali/1/" \
 3. Apertura transazione atomica.
 4. Se il soggetto non ha ancora un ruolo `EF`, viene creato tramite
    `script.fn_get_or_create_soggetto_ruolo`.
-5. Insert nella tabella `anagrafiche.emittenti_fiscali` con `attivo = false` forzato
-   dal service (vedi guard DB `fn_emittenti_fiscali_utilities_required`: un emittente
-   attivo richiede almeno una utility attiva, e in questo flusso non si gestiscono
-   utility inline). I trigger DB gestiscono `audit`, `tx_id`, `normalize`,
-   `storicizzazione`.
+5. Insert nella tabella `anagrafiche.emittenti_fiscali`. I trigger DB gestiscono
+   `audit`, `tx_id`, `normalize`, `storicizzazione`.
 6. Alla creazione del **primo** emittente, il trigger `default_bootstrap`
    inserisce automaticamente il record di default in
    `emittenti_fiscali_billing_account` con `billing_account_id = NULL` e
@@ -286,11 +280,6 @@ curl -X POST "https://api.example.com/api/v1/anagrafiche/emittenti-fiscali/" \
   vuote che vengono normalizzate a `NULL`.
 - `rounding_policy` accetta solo i valori enum `UP`, `DOWN`, `HALF_UP`, `HALF_DOWN`
   (allineato ai metodi della matrice utility).
-- **Attivazione (`attivo = true`)**: la guard DB
-  `fn_emittenti_fiscali_utilities_required` (constraint trigger DEFERRABLE INITIALLY
-  DEFERRED) richiede almeno **una riga attiva** in `emittenti_fiscali_utilities` per
-  l'emittente. Tentare di attivare un emittente senza utility -> errore `E_DATABASE`
-  al commit.
 - **Disattivazione (`attivo = false`)**: rifiutata dal trigger DB se l'emittente ha
   record collegati in `emittenti_fiscali_billing_account`,
   `emittenti_fiscali_utilities`, `parameter_overrides` o `user_emittenti_fiscali`.
@@ -489,36 +478,59 @@ arrotondamento).
 > di validita' corrente. Coerente con il trigger DB `script.fn_guard_utility_tipo_ruolo`,
 > evitando errori `E_UTILITY_RUOLO_NON_AMMESSO` lato UI.
 
-### 6.1 Lista record utility
+### 6.1 Lista matrice utility per emittente
 
 | | |
 | --- | --- |
 | **Metodo** | `GET` |
 | **URL** | `/api/v1/anagrafiche/emittenti-fiscali/<emittente_id>/utilities/` |
 
-#### Risposta — lista record
+Pattern **slot/override**: ritorna SEMPRE tutte le utility ammesse per il ruolo `EF`
+(da `config.utilities_tipi_ruolo`), con sovrapposti i parametri specifici dell'emittente
+(da `anagrafiche.emittenti_fiscali_utilities`) **solo dove esistono**. Per le righe non
+configurate, i campi override sono `null` e `record_id` e' `null`. Implementato con
+LEFT JOIN dal building block `LookupRepository.list_entity_utility_matrix`.
+
+#### Risposta — matrice utility
 
 ```json
 {
   "data": {
     "results": [
       {
-        "id": 100,
         "utility_id": 1,
         "utility_codice": "EE",
         "utility_descrizione": "Energia Elettrica",
+        "record_id": 100,
         "minimo_soglia_min": 0.50,
         "minimo_soglia_max": null,
         "arrotondamento_importi_dec": 2,
         "metodo_arrotondamento_importi": "HALF_UP",
-        "attivo": true,
-        "data_insert": "2026-04-07T10:00:00Z",
-        "data_update": "2026-04-07T10:00:00Z"
+        "record_attivo": true,
+        "record_data_insert": "2026-04-07T10:00:00Z",
+        "record_data_update": "2026-04-07T10:00:00Z"
+      },
+      {
+        "utility_id": 2,
+        "utility_codice": "GAS",
+        "utility_descrizione": "Gas Naturale",
+        "record_id": null,
+        "minimo_soglia_min": null,
+        "minimo_soglia_max": null,
+        "arrotondamento_importi_dec": null,
+        "metodo_arrotondamento_importi": null,
+        "record_attivo": null,
+        "record_data_insert": null,
+        "record_data_update": null
       }
     ]
   }
 }
 ```
+
+> **Stato della riga**: `record_id != null` -> riga configurata (esiste override);
+> `record_id == null` -> riga ammessa ma non personalizzata (l'emittente usa i default
+> di sistema).
 
 ### 6.2 Crea record
 
