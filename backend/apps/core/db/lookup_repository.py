@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from apps.core.db._helpers import rows_to_list
 
-from typing import Any
+from typing import Any, ClassVar
 
 from django.db import connection
 
@@ -116,6 +116,73 @@ class LookupRepository:
 
     # Scopo: Restituisce la matrice indirizzi ammessi per un tipo ruolo (codice_interno).
     # Usa config.tipi_ruolo_tipi_indirizzo — validata dal trigger guard sul DB.
+    # Scopo: Matrice utility ammesse per un tipo ruolo + override specifici di
+    #        un'entita' figlia (es. emittente fiscale, fornitore, cliente). LEFT JOIN
+    #        tra config.utilities_tipi_ruolo (matrice base) e una tabella di override
+    #        del dominio chiamante. Ritorna SEMPRE tutte le utility ammesse per il
+    #        ruolo: per quelle non personalizzate dall'entita', i campi override sono
+    #        NULL.
+    #
+    #        Pattern slot/override generico cross-dominio. Whitelist statica delle
+    #        coppie (table, fk_col) ammesse per impedire SQL injection sui due
+    #        identificatori interpolati con f-string.
+    #
+    #        Esempio uso:
+    #          repo.list_entity_utility_matrix(
+    #              entity_soggetto_ruolo_id=50,
+    #              tipo_ruolo_codice='EF',
+    #              overrides_table='anagrafiche.emittenti_fiscali_utilities',
+    #              overrides_fk_column='emittente_soggetto_ruolo_id',
+    #          )
+    _ALLOWED_UTILITY_OVERRIDES: ClassVar[set[tuple[str, str]]] = {
+        ("anagrafiche.emittenti_fiscali_utilities", "emittente_soggetto_ruolo_id"),
+    }
+
+    def list_entity_utility_matrix(
+        self,
+        *,
+        entity_soggetto_ruolo_id: int,
+        tipo_ruolo_codice: str,
+        overrides_table: str,
+        overrides_fk_column: str,
+    ) -> list[dict[str, Any]]:
+        # Whitelist statica: protegge dall'iniezione SQL sui due identificatori
+        # (table + colonna FK) che vengono interpolati con f-string. Solo le coppie
+        # registrate qui sono ammesse.
+        if (overrides_table, overrides_fk_column) not in self._ALLOWED_UTILITY_OVERRIDES:
+            raise ValueError(
+                f"Coppia (table={overrides_table}, fk_col={overrides_fk_column}) "
+                "non ammessa per list_entity_utility_matrix."
+            )
+
+        sql = f"""
+            SELECT u.id                              AS utility_id,
+                   u.codice                          AS utility_codice,
+                   u.descrizione                     AS utility_descrizione,
+                   o.id                              AS record_id,
+                   o.minimo_soglia_min,
+                   o.minimo_soglia_max,
+                   o.arrotondamento_importi_dec,
+                   o.metodo_arrotondamento_importi,
+                   o.attivo                          AS record_attivo,
+                   o.data_insert                     AS record_data_insert,
+                   o.data_update                     AS record_data_update
+              FROM config.utilities u
+              JOIN config.utilities_tipi_ruolo utr ON utr.utility_id = u.id
+              JOIN config.tipi_ruoli tr            ON tr.id = utr.tipo_ruolo_id
+              LEFT JOIN {overrides_table} o
+                     ON o.utility_id = u.id
+                    AND o.{overrides_fk_column} = %s
+             WHERE COALESCE(tr.codice_interno, tr.codice) = %s
+               AND utr.attivo = true
+               AND (utr.valido_dal IS NULL OR utr.valido_dal <= CURRENT_DATE)
+               AND (utr.valido_al  IS NULL OR utr.valido_al  >= CURRENT_DATE)
+             ORDER BY u.descrizione
+        """  # noqa: S608
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [entity_soggetto_ruolo_id, tipo_ruolo_codice])
+            return rows_to_list(cursor)
+
     # Scopo: Lista utility ammesse per un tipo ruolo (es. EF, FO, CL).
     #        Strict mode: ritorna SOLO utility con riga ATTIVA in
     #        config.utilities_tipi_ruolo per tipo_ruolo_codice e periodo

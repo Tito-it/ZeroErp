@@ -20,6 +20,10 @@ Indice test eseguiti:
  9) test_search_stradario_with_results — ricerca vie con risultati
 10) test_search_stradario_empty — nessun risultato
 11) test_search_stradario_params — verifica parametri passati alla funzione DB
+12) test_list_entity_utility_matrix_ef — LEFT JOIN matrice ammesse + override per emittente
+13) test_list_entity_utility_matrix_unconfigured — riga ammessa ma senza override (record_id NULL)
+14) test_list_entity_utility_matrix_invalid_table — whitelist nega tabella non ammessa
+15) test_list_entity_utility_matrix_tipo_ruolo_parametrized — tipo_ruolo_codice e' parametro %s, no SQL injection
 """
 
 from unittest import TestCase
@@ -280,3 +284,131 @@ class TestSearchStradario(TestCase):
         self.assertEqual(params[0], 100)
         self.assertEqual(params[1], "ital")
         self.assertEqual(params[2], 15)
+
+
+class TestListEntityUtilityMatrix(TestCase):
+    """Test LookupRepository.list_entity_utility_matrix() — pattern slot/override."""
+
+    @patch("apps.core.db.lookup_repository.connection")
+    def test_list_entity_utility_matrix_ef(self, mock_conn):
+        """LEFT JOIN: matrice utility ammesse + override per emittente fiscale."""
+        cols = [
+            "utility_id", "utility_codice", "utility_descrizione",
+            "record_id",
+            "minimo_soglia_min", "minimo_soglia_max",
+            "arrotondamento_importi_dec", "metodo_arrotondamento_importi",
+            "record_attivo", "record_data_insert", "record_data_update",
+        ]
+        rows = [
+            # Riga configurata
+            (1, "EE", "Energia Elettrica", 100, 0.5, None, 2, "HALF_UP", True, None, None),
+            # Riga ammessa ma non configurata (record_id = NULL)
+            (2, "GAS", "Gas Naturale", None, None, None, None, None, None, None, None),
+        ]
+        mock_cursor = _mock_cursor_with_description(rows, cols)
+        _mock_connection(mock_conn, mock_cursor)
+
+        from apps.core.db.lookup_repository import LookupRepository
+
+        repo = LookupRepository()
+        results = repo.list_entity_utility_matrix(
+            entity_soggetto_ruolo_id=50,
+            tipo_ruolo_codice="EF",
+            overrides_table="anagrafiche.emittenti_fiscali_utilities",
+            overrides_fk_column="emittente_soggetto_ruolo_id",
+        )
+
+        mock_cursor.execute.assert_called_once()
+        sql, params = mock_cursor.execute.call_args[0]
+        self.assertIn("config.utilities_tipi_ruolo", sql)
+        self.assertIn("LEFT JOIN anagrafiche.emittenti_fiscali_utilities", sql)
+        self.assertIn("o.emittente_soggetto_ruolo_id = %s", sql)
+        # Filtro attivo solo su utilities_tipi_ruolo (matrice).
+        # NOTA: config.utilities NON ha colonna attivo, quindi non e' filtrabile lato u.
+        self.assertIn("utr.attivo = true", sql)
+        self.assertEqual(params, [50, "EF"])
+        self.assertEqual(len(results), 2)
+        # Riga configurata: record_id valorizzato
+        self.assertEqual(results[0]["record_id"], 100)
+        self.assertEqual(results[0]["metodo_arrotondamento_importi"], "HALF_UP")
+        # Riga non configurata: record_id NULL
+        self.assertIsNone(results[1]["record_id"])
+        self.assertIsNone(results[1]["metodo_arrotondamento_importi"])
+
+    @patch("apps.core.db.lookup_repository.connection")
+    def test_list_entity_utility_matrix_unconfigured(self, mock_conn):
+        """Tutte le utility ammesse ma nessun override per l'entita'."""
+        cols = [
+            "utility_id", "utility_codice", "utility_descrizione",
+            "record_id",
+            "minimo_soglia_min", "minimo_soglia_max",
+            "arrotondamento_importi_dec", "metodo_arrotondamento_importi",
+            "record_attivo", "record_data_insert", "record_data_update",
+        ]
+        rows = [
+            (1, "EE", "Energia Elettrica", None, None, None, None, None, None, None, None),
+            (2, "GAS", "Gas Naturale", None, None, None, None, None, None, None, None),
+        ]
+        mock_cursor = _mock_cursor_with_description(rows, cols)
+        _mock_connection(mock_conn, mock_cursor)
+
+        from apps.core.db.lookup_repository import LookupRepository
+
+        repo = LookupRepository()
+        results = repo.list_entity_utility_matrix(
+            entity_soggetto_ruolo_id=99,
+            tipo_ruolo_codice="EF",
+            overrides_table="anagrafiche.emittenti_fiscali_utilities",
+            overrides_fk_column="emittente_soggetto_ruolo_id",
+        )
+        self.assertEqual(len(results), 2)
+        self.assertTrue(all(r["record_id"] is None for r in results))
+
+    def test_list_entity_utility_matrix_invalid_table(self):
+        """Whitelist: tabella non ammessa solleva ValueError (no SQL injection)."""
+        from apps.core.db.lookup_repository import LookupRepository
+
+        repo = LookupRepository()
+        with self.assertRaises(ValueError) as ctx:
+            repo.list_entity_utility_matrix(
+                entity_soggetto_ruolo_id=1,
+                tipo_ruolo_codice="EF",
+                overrides_table="public.evil_table; DROP TABLE users;--",
+                overrides_fk_column="emittente_soggetto_ruolo_id",
+            )
+        self.assertIn("non ammessa", str(ctx.exception))
+
+    @patch("apps.core.db.lookup_repository.connection")
+    def test_list_entity_utility_matrix_tipo_ruolo_parametrized(self, mock_conn):
+        """SECURITY: tipo_ruolo_codice DEVE essere parametro %s, non interpolato.
+
+        Verifica che un payload con caratteri SQL non venga interpolato direttamente
+        nello SQL string ma venga passato come parametro al cursor (sicuro).
+        """
+        cols = [
+            "utility_id", "utility_codice", "utility_descrizione",
+            "record_id",
+            "minimo_soglia_min", "minimo_soglia_max",
+            "arrotondamento_importi_dec", "metodo_arrotondamento_importi",
+            "record_attivo", "record_data_insert", "record_data_update",
+        ]
+        mock_cursor = _mock_cursor_with_description([], cols)
+        _mock_connection(mock_conn, mock_cursor)
+
+        from apps.core.db.lookup_repository import LookupRepository
+
+        repo = LookupRepository()
+        attack = "EF'; DROP TABLE config.tipi_ruoli; --"
+        repo.list_entity_utility_matrix(
+            entity_soggetto_ruolo_id=1,
+            tipo_ruolo_codice=attack,
+            overrides_table="anagrafiche.emittenti_fiscali_utilities",
+            overrides_fk_column="emittente_soggetto_ruolo_id",
+        )
+
+        sql, params = mock_cursor.execute.call_args[0]
+        # Lo SQL non deve contenere il payload di attacco interpolato
+        self.assertNotIn("DROP TABLE", sql)
+        self.assertNotIn(attack, sql)
+        # Il payload deve essere stato passato come parametro %s al cursor
+        self.assertIn(attack, params)

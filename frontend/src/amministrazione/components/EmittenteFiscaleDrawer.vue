@@ -1,18 +1,18 @@
 <script setup>
-// Scopo: Drawer unificato creazione/modifica emittente fiscale (admin only).
-// Sezioni: Soggetto (resolver in crea, banner in modifica), Dati fiscali base.
-// TabView: Dati + Billing Account + Utilities (gli ultimi 2 disponibili solo in modifica).
-// Supporta apertura su tab specifico tramite prop initialTab (per pulsanti azioni riga).
+// Scopo: Drawer creazione/modifica anagrafica emittente fiscale (admin only).
+// Solo Dati fiscali base + Soggetto (resolver in crea, banner in modifica).
+// Billing Account e Utilities sono drawer dedicati separati (vedi
+// EmittenteFiscaleBillingAccountDrawer / EmittenteFiscaleUtilitiesDrawer),
+// richiamati dai pulsanti azione della lista.
 import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useEmittentiFiscaliStore } from '../stores/emittentiFiscali'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { DRAWER_WIDTH, TIPO_RUOLO } from '../../core/constants'
+import { ROUNDING_METHOD_VALUES } from '../constants'
 import SoggettoResolver from '../../core/components/SoggettoResolver.vue'
 import SoggettoMessageBanner from '../../core/components/SoggettoMessageBanner.vue'
-import EmittenteFiscaleBillingAccountTab from './EmittenteFiscaleBillingAccountTab.vue'
-import EmittenteFiscaleUtilitiesTab from './EmittenteFiscaleUtilitiesTab.vue'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import DrawerFooter from '../../core/components/DrawerFooter.vue'
 import Drawer from 'primevue/drawer'
@@ -21,13 +21,10 @@ import InputNumber from 'primevue/inputnumber'
 import ToggleSwitch from 'primevue/toggleswitch'
 import Select from 'primevue/select'
 import Message from 'primevue/message'
-import TabView from 'primevue/tabview'
-import TabPanel from 'primevue/tabpanel'
 import Button from 'primevue/button'
 
-// Valori ammessi dal CHECK constraint DB su anagrafiche.emittenti_fiscali.rounding_policy
-// (allineati ai metodi della matrice utility).
-const ROUNDING_POLICY_VALUES = ['HALF_UP', 'HALF_DOWN', 'UP', 'DOWN']
+// Valori del campo rounding_policy: stessa enum dei metodi arrotondamento utility
+// (CHECK constraint DB allineato). Centralizzato in amministrazione/constants.js.
 
 const { t } = useI18n()
 const store = useEmittentiFiscaliStore()
@@ -37,8 +34,7 @@ const isReadonly = useInjectReadonly()
 const props = defineProps({
   visible: Boolean,
   mode: { type: String, default: 'create' },
-  emittenteId: { type: Number, default: null },
-  initialTab: { type: Number, default: 0 }
+  emittenteId: { type: Number, default: null }
 })
 
 const emit = defineEmits(['update:visible', 'saved', 'cancelled'])
@@ -48,7 +44,16 @@ const isEdit = computed(() => props.mode === 'edit')
 // Dati dettaglio caricato dal backend (sostituisce store.currentEmittente per evitare
 // race condition tra drawer aperti consecutivamente).
 const detail = ref(null)
-const activeTabIndex = ref(0)
+
+// Titolo drawer: in modifica mostra "Modifica EF — <ragione sociale>".
+// Il codice tecnico e' visibile dentro al form (campo Codice), nel titolo
+// usiamo solo la ragione sociale per leggibilita'.
+const drawerTitle = computed(() => {
+  if (!isEdit.value) return t('amm_emittenti_fiscali.create_title')
+  const base = t('amm_emittenti_fiscali.edit_title')
+  const rs = detail.value?.ragione_sociale_completa
+  return rs ? `${base} — ${rs}` : base
+})
 
 // Resolver soggetto (solo creazione)
 const resolverVisible = ref(false)
@@ -57,7 +62,7 @@ const soggettoSelezionato = ref(null)
 const FORM_DEFAULT = {
   codice: '',
   descrizione: '',
-  attivo: false,
+  attivo: true,
   regime_fiscale_rf: '',
   bollo_auto: false,
   bollo_soglia: null,
@@ -99,7 +104,6 @@ const soggettoHasPartitaIva = computed(() => {
 // non un dato gia' unwrappato dallo store.
 watch(() => props.visible, async (val) => {
   if (!val) return
-  activeTabIndex.value = props.initialTab || 0
   if (isEdit.value && props.emittenteId) {
     try {
       const d = await store.fetchDetail(props.emittenteId)
@@ -120,6 +124,12 @@ function onSoggettoSelezionato(data) { soggettoSelezionato.value = data }
 function onSoggettoCreato(data) { soggettoSelezionato.value = data }
 function clearSoggetto() { soggettoSelezionato.value = null }
 
+// Vincolo bollo: se bollo automatico e' OFF, la soglia non e' applicabile
+// e viene azzerata a null. L'input UI viene anche disabilitato.
+watch(() => form.value.bollo_auto, (v) => {
+  if (!v) form.value.bollo_soglia = null
+})
+
 const canSave = computed(() => {
   if (isEdit.value) return form.value.descrizione.trim().length > 0
   return !!soggettoSelezionato.value
@@ -130,10 +140,9 @@ const canSave = computed(() => {
 
 async function save() {
   if (!canSave.value) return
-  // Payload comune (campi editabili). attivo NON e' incluso in create:
-  // l'emittente nasce sempre disattivato (guard DB su utility).
   const payload = {
     descrizione: form.value.descrizione.trim(),
+    attivo: form.value.attivo,
     regime_fiscale_rf: form.value.regime_fiscale_rf || null,
     bollo_auto: form.value.bollo_auto,
     bollo_soglia: form.value.bollo_soglia,
@@ -141,7 +150,6 @@ async function save() {
   }
   let result
   if (isEdit.value) {
-    payload.attivo = form.value.attivo
     result = await execute(
       () => store.update(props.emittenteId, payload),
       { successMessage: t('amm_emittenti_fiscali.updated') }
@@ -168,23 +176,16 @@ function close() {
     :visible="visible"
     @update:visible="v => emit('update:visible', v)"
     position="right"
-    :style="{ width: DRAWER_WIDTH.WIDE }"
+    :style="{ width: DRAWER_WIDTH.STANDARD }"
   >
     <template #header>
       <DrawerTitle
         :icon="isEdit ? 'pi pi-pencil' : 'pi pi-plus'"
-        :title="isEdit ? t('amm_emittenti_fiscali.edit_title') : t('amm_emittenti_fiscali.create_title')"
+        :title="drawerTitle"
       />
     </template>
 
     <div :class="{ 'app-readonly': isReadonly }">
-    <TabView v-model:activeIndex="activeTabIndex">
-      <TabPanel :header="t('amm_emittenti_fiscali.tab_dati')">
-        <!-- Avviso creazione: l'emittente nasce disattivato (guard DB su utility) -->
-        <Message v-if="!isEdit" severity="info" :closable="false" class="mb-3">
-          {{ t('amm_emittenti_fiscali.create_disabled_hint') }}
-        </Message>
-
         <div class="form-grid">
           <!-- Soggetto -->
           <h4>{{ t('amm_emittenti_fiscali.field_soggetto') }}</h4>
@@ -237,15 +238,6 @@ function close() {
               <InputText v-model="form.descrizione" maxlength="200" class="w-full" />
             </div>
 
-            <!-- Toggle attivo solo in edit: in create e' forzato false dal backend -->
-            <div v-if="isEdit" class="form-field">
-              <label>{{ t('amm_emittenti_fiscali.field_attivo') }}</label>
-              <ToggleSwitch v-model="form.attivo" />
-              <small class="block mt-1 text-color-secondary">
-                {{ t('amm_emittenti_fiscali.attivo_hint') }}
-              </small>
-            </div>
-
             <h4 class="mt-3">{{ t('amm_emittenti_fiscali.section_fiscale') }}</h4>
 
             <div class="form-field">
@@ -265,7 +257,13 @@ function close() {
               </div>
               <div class="form-field">
                 <label>{{ t('amm_emittenti_fiscali.field_bollo_soglia') }}</label>
-                <InputNumber v-model="form.bollo_soglia" :min-fraction-digits="2" :max-fraction-digits="2" class="w-full" />
+                <!-- Editabile solo se bollo_auto = true; altrimenti azzerata via watch. -->
+                <InputNumber
+                  v-model="form.bollo_soglia"
+                  :disabled="!form.bollo_auto"
+                  :min-fraction-digits="2" :max-fraction-digits="2"
+                  class="w-full"
+                />
               </div>
             </div>
 
@@ -273,16 +271,22 @@ function close() {
               <label>{{ t('amm_emittenti_fiscali.field_rounding_policy') }}</label>
               <Select
                 v-model="form.rounding_policy"
-                :options="ROUNDING_POLICY_VALUES"
+                :options="ROUNDING_METHOD_VALUES"
                 :placeholder="t('amm_emittenti_fiscali.field_rounding_policy')"
                 show-clear
                 class="w-full"
               />
             </div>
+
+            <!-- Attivo: ultimo elemento del form (richiesta UX) -->
+            <div class="form-field mt-3">
+              <label>{{ t('amm_emittenti_fiscali.field_attivo') }}</label>
+              <ToggleSwitch v-model="form.attivo" />
+            </div>
           </template>
         </div>
 
-        <!-- Footer Salva/Annulla dentro al pannello Dati (pattern OperatoreDrawer) -->
+        <!-- Footer Salva/Annulla -->
         <div class="flex justify-end mt-4">
           <DrawerFooter
             :loading="loading"
@@ -292,22 +296,6 @@ function close() {
             @cancel="close"
           />
         </div>
-      </TabPanel>
-
-      <TabPanel
-        v-if="isEdit"
-        :header="t('amm_emittenti_fiscali.tab_billing_account')"
-      >
-        <EmittenteFiscaleBillingAccountTab :emittente-id="emittenteId" />
-      </TabPanel>
-
-      <TabPanel
-        v-if="isEdit"
-        :header="t('amm_emittenti_fiscali.tab_utilities')"
-      >
-        <EmittenteFiscaleUtilitiesTab :emittente-id="emittenteId" />
-      </TabPanel>
-    </TabView>
     </div>
 
     <!-- Sotto-drawer SoggettoResolver (solo creazione) -->

@@ -57,9 +57,6 @@ class EmittentiFiscaliService:
     #        Obiettivo: associa il soggetto al ruolo EF e crea il record emittente.
     #        Perimetro: validazione soggetto_id (con P.IVA obbligatoria), codice e
     #        descrizione, get_or_create ruolo, insert emittente con campi opzionali.
-    #        L'emittente nasce SEMPRE disattivato (attivo=False) per soddisfare la
-    #        guard DB che richiede almeno una utility attiva per ogni emittente attivo:
-    #        l'utente deve aggiungere utility nel tab dedicato e attivare manualmente.
     #        Risultato: dict con id dell'emittente e soggetto_ruolo_id.
     #        Nota: il primo emittente creato attiva il trigger default_bootstrap che
     #        popola automaticamente il default mapping in emittenti_fiscali_billing_account.
@@ -86,12 +83,8 @@ class EmittentiFiscaliService:
         codice = require_str(payload, "codice", "Codice emittente obbligatorio.")
         descrizione = require_str(payload, "descrizione", "Descrizione emittente obbligatoria.")
 
-        # Campi opzionali
+        # Campi opzionali (incluso attivo se passato dal payload, default DB true)
         emittente_data = self._extract_emittente_data(payload)
-        # Forza attivo=False alla creazione: la guard DB richiede almeno una utility
-        # attiva per emittente attivo, ma in questo flusso non gestiamo utility inline.
-        # L'utente attivera' l'emittente da edit dopo aver popolato il tab utilities.
-        emittente_data["attivo"] = False
 
         # Atomic: ruolo EF e insert emittente devono essere consistenti — se fallisce
         # l'insert dopo aver creato il ruolo, il rollback evita ruoli orfani.

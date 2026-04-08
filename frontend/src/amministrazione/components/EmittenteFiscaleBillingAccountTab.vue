@@ -7,7 +7,6 @@
 import { ref, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useEmittentiFiscaliStore } from '../stores/emittentiFiscali'
-import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useNotify } from '../../core/composables/useNotify'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
@@ -20,7 +19,6 @@ import Message from 'primevue/message'
 
 const { t } = useI18n()
 const store = useEmittentiFiscaliStore()
-const { execute } = useApiHandler()
 const notify = useNotify()
 const { confirmAction } = useConfirmAction()
 const isReadonly = useInjectReadonly()
@@ -52,6 +50,10 @@ const hasDefault = computed(() =>
   store.billingAccountMappings.some(m => m.is_default)
 )
 
+// Pattern: store action gia' unwrappate -> chiamata diretta + try/catch.
+// useApiHandler.execute() e' SOLO per response axios (vedi
+// feedback_useapihandler_solo_axios). Errori reali notificati dall'interceptor
+// axios globale; qui solo il toast di successo.
 async function addSpecificMapping() {
   if (!selectedBA.value?.id) {
     notify.warn(t('amm_emittenti_fiscali.ba_select_required'))
@@ -59,11 +61,14 @@ async function addSpecificMapping() {
   }
   adding.value = true
   try {
-    const result = await execute(
-      () => store.addBillingAccountMapping(props.emittenteId, { billing_account_id: selectedBA.value.id }),
-      { successMessage: t('amm_emittenti_fiscali.ba_added') }
+    await store.addBillingAccountMapping(
+      props.emittenteId,
+      { billing_account_id: selectedBA.value.id }
     )
-    if (result !== null) selectedBA.value = null
+    notify.success(t('amm_emittenti_fiscali.ba_added'))
+    selectedBA.value = null
+  } catch {
+    // Errore gestito dall'interceptor axios globale.
   } finally {
     adding.value = false
   }
@@ -75,10 +80,12 @@ async function addDefaultMapping() {
     notify.warn(t('amm_emittenti_fiscali.ba_default_exists'))
     return
   }
-  await execute(
-    () => store.addBillingAccountMapping(props.emittenteId, {}),
-    { successMessage: t('amm_emittenti_fiscali.ba_default_added') }
-  )
+  try {
+    await store.addBillingAccountMapping(props.emittenteId, {})
+    notify.success(t('amm_emittenti_fiscali.ba_default_added'))
+  } catch {
+    // Errore gestito dall'interceptor axios globale.
+  }
 }
 
 // Elimina un mapping previa conferma. Il default e' protetto da un trigger DB.
@@ -89,11 +96,13 @@ function removeMapping(row) {
       ? t('amm_emittenti_fiscali.ba_remove_default_confirm')
       : t('amm_emittenti_fiscali.ba_remove_confirm', { codice: row.billing_account_codice || '-' }),
     danger: true,
-    onAccept: () => {
-      execute(
-        () => store.removeBillingAccountMapping(props.emittenteId, row.id),
-        { successMessage: t('amm_emittenti_fiscali.ba_removed') }
-      )
+    onAccept: async () => {
+      try {
+        await store.removeBillingAccountMapping(props.emittenteId, row.id)
+        notify.success(t('amm_emittenti_fiscali.ba_removed'))
+      } catch {
+        // Errore gestito dall'interceptor axios globale.
+      }
     }
   })
 }
