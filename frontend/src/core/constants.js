@@ -3,7 +3,8 @@ export const DRAWER_WIDTH = {
   SIMPLE: '480px',    // tabelle di lookup, config
   STANDARD: '640px',  // anagrafiche, catalogo
   COMPLEX: '800px',   // pratiche, contratti
-  WIDE: '960px'       // ricerca universale, liste con dettaglio
+  WIDE: '960px',      // ricerca universale, liste con dettaglio
+  XLARGE: '1360px'    // matrici parametri-per-entita' (utility, slot/override)
 }
 
 // Durata toast in millisecondi

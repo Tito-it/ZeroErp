@@ -1,7 +1,8 @@
 <script setup>
 // Scopo: pagina lista emittenti fiscali (admin only).
-// Click riga -> apre EmittenteFiscaleDrawer in modifica sul tab Dati.
-// Pulsanti riga BA/Utilities -> aprono il drawer principale gia' sul tab corretto.
+// Click riga -> apre EmittenteFiscaleDrawer (anagrafica) in modifica.
+// Pulsanti riga BA / Utilities -> aprono i drawer DEDICATI per la sotto-entita',
+// senza passare dal drawer dati.
 import { ref, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useEmittentiFiscaliStore } from '../stores/emittentiFiscali'
@@ -10,6 +11,8 @@ import { useDrawerState } from '../../core/composables/useDrawerState'
 import { useTabFreshness } from '../../core/composables/useTabFreshness'
 import { useReadonlyMode } from '../../core/composables/useReadonlyMode'
 import EmittenteFiscaleDrawer from '../components/EmittenteFiscaleDrawer.vue'
+import EmittenteFiscaleBillingAccountDrawer from '../components/EmittenteFiscaleBillingAccountDrawer.vue'
+import EmittenteFiscaleUtilitiesDrawer from '../components/EmittenteFiscaleUtilitiesDrawer.vue'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import InputText from 'primevue/inputtext'
@@ -18,14 +21,14 @@ import Button from 'primevue/button'
 import Badge from 'primevue/badge'
 import NewButton from '../../core/components/NewButton.vue'
 
-// Indici tab del drawer (sincronizzati con l'ordine TabPanel in EmittenteFiscaleDrawer).
-const TAB_INDEX = { DATI: 0, BILLING_ACCOUNT: 1, UTILITIES: 2 }
-
 const { t } = useI18n()
 const store = useEmittentiFiscaliStore()
 const { searchText, applyFilters, reload, paginatorProps, onPage, onSort } = useSearchTable(store)
+
+// Tre drawer indipendenti: anagrafica, BA mapping, utility matrix.
 const drawer = useDrawerState()
-const initialTab = ref(TAB_INDEX.DATI)
+const baDrawer = useDrawerState()
+const utDrawer = useDrawerState()
 
 // Provider readonly: livello LETTURA disabilita i pulsanti di scrittura nei drawer figli.
 const { isReadonly } = useReadonlyMode('amm_software')
@@ -52,25 +55,21 @@ function onDrawerSaved() {
 }
 
 function openCreate() {
-  initialTab.value = TAB_INDEX.DATI
   drawer.openCreate()
 }
 
 function openEdit(row) {
-  initialTab.value = TAB_INDEX.DATI
   drawer.editRow(row, 'id')
 }
 
-function openTabBA(row, event) {
+function openBA(row, event) {
   event.stopPropagation()
-  initialTab.value = TAB_INDEX.BILLING_ACCOUNT
-  drawer.editRow(row, 'id')
+  baDrawer.editRow(row, 'id')
 }
 
-function openTabUtilities(row, event) {
+function openUtilities(row, event) {
   event.stopPropagation()
-  initialTab.value = TAB_INDEX.UTILITIES
-  drawer.editRow(row, 'id')
+  utDrawer.editRow(row, 'id')
 }
 </script>
 
@@ -113,10 +112,9 @@ function openTabUtilities(row, event) {
       selection-mode="single"
       data-key="id"
     >
-      <Column field="codice" :header="t('amm_emittenti_fiscali.col_codice')" sortable style="width: 140px;" />
+      <Column field="codice" :header="t('amm_emittenti_fiscali.col_codice')" sortable style="width: 220px;" />
       <Column field="descrizione" :header="t('amm_emittenti_fiscali.col_descrizione')" sortable />
       <Column field="ragione_sociale_completa" :header="t('amm_emittenti_fiscali.col_ragione_sociale')" sortable />
-      <Column field="codice_fiscale" :header="t('amm_emittenti_fiscali.col_cf')" style="width: 160px;" />
       <Column field="partita_iva" :header="t('amm_emittenti_fiscali.col_piva')" style="width: 160px;" />
       <Column field="attivo" :header="t('amm_emittenti_fiscali.col_attivo')" sortable style="width: 110px;">
         <template #body="{ data }">
@@ -133,14 +131,14 @@ function openTabUtilities(row, event) {
             text rounded size="small"
             class="app-manage-btn"
             v-tooltip.bottom="t('amm_emittenti_fiscali.action_ba')"
-            @click="openTabBA(data, $event)"
+            @click="openBA(data, $event)"
           />
           <Button
             icon="pi pi-bolt"
             text rounded size="small"
             class="app-manage-btn"
             v-tooltip.bottom="t('amm_emittenti_fiscali.action_utilities')"
-            @click="openTabUtilities(data, $event)"
+            @click="openUtilities(data, $event)"
           />
         </template>
       </Column>
@@ -151,9 +149,27 @@ function openTabUtilities(row, event) {
       @update:visible="v => drawer.state.visible = v"
       :mode="drawer.state.mode"
       :emittente-id="drawer.state.itemId"
-      :initial-tab="initialTab"
       @saved="onDrawerSaved"
       @cancelled="drawer.close"
+    />
+
+    <EmittenteFiscaleBillingAccountDrawer
+      :visible="baDrawer.state.visible"
+      @update:visible="v => baDrawer.state.visible = v"
+      :emittente-id="baDrawer.state.itemId"
+      :emittente-codice="baDrawer.state.itemData?.codice || ''"
+      :emittente-ragione-sociale="baDrawer.state.itemData?.ragione_sociale_completa || ''"
+      @close="baDrawer.close"
+    />
+
+    <EmittenteFiscaleUtilitiesDrawer
+      :visible="utDrawer.state.visible"
+      @update:visible="v => utDrawer.state.visible = v"
+      :emittente-id="utDrawer.state.itemId"
+      :emittente-codice="utDrawer.state.itemData?.codice || ''"
+      :emittente-ragione-sociale="utDrawer.state.itemData?.ragione_sociale_completa || ''"
+      :emittente-attivo="utDrawer.state.itemData?.attivo ?? true"
+      @close="utDrawer.close"
     />
   </div>
 </template>

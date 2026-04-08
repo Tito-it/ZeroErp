@@ -345,6 +345,13 @@ _UTILITIES_UPDATE_NULLABLE = {
     "minimo_soglia_max",
 }
 
+# Identificatori della tabella override per il pattern slot/override.
+# Costanti modulo: usate sia da list_by_emittente (delega a LookupRepository) sia
+# implicitamente registrate nella whitelist di LookupRepository._ALLOWED_UTILITY_OVERRIDES.
+# Allinearle se la tabella o la colonna FK cambia nome.
+_UTILITIES_OVERRIDES_TABLE = "anagrafiche.emittenti_fiscali_utilities"
+_UTILITIES_OVERRIDES_FK_COLUMN = "emittente_soggetto_ruolo_id"
+
 
 class EmittentiFiscaliUtilitiesRepository:
     """Accesso DB per la matrice emittente_fiscale x utility (parametri fatturazione).
@@ -356,28 +363,18 @@ class EmittentiFiscaliUtilitiesRepository:
         (vedi config.utilities_tipi_ruolo, fail-open se la utility non ha matrice)
     """
 
-    # Scopo: Lista i record utility per un emittente con join descrittivo della utility.
+    # Scopo: Matrice utility ammesse per ruolo EF + override specifici dell'emittente.
+    #        Delega al metodo generico LookupRepository.list_entity_utility_matrix
+    #        (pattern slot/override). Ritorna SEMPRE tutte le utility ammesse: per
+    #        quelle non personalizzate, i campi override sono NULL e record_id e' NULL.
     def list_by_emittente(self, emittente_soggetto_ruolo_id: int) -> list[dict[str, Any]]:
-        sql = """
-            SELECT u.id,
-                   u.utility_id,
-                   ut.codice           AS utility_codice,
-                   ut.descrizione      AS utility_descrizione,
-                   u.minimo_soglia_min,
-                   u.minimo_soglia_max,
-                   u.arrotondamento_importi_dec,
-                   u.metodo_arrotondamento_importi,
-                   u.attivo,
-                   u.data_insert,
-                   u.data_update
-              FROM anagrafiche.emittenti_fiscali_utilities u
-              JOIN config.utilities ut ON ut.id = u.utility_id
-             WHERE u.emittente_soggetto_ruolo_id = %s
-             ORDER BY ut.descrizione
-        """
-        with connection.cursor() as cursor:
-            cursor.execute(sql, [emittente_soggetto_ruolo_id])
-            return rows_to_list(cursor)
+        from apps.core.db.lookup_repository import LookupRepository
+        return LookupRepository().list_entity_utility_matrix(
+            entity_soggetto_ruolo_id=emittente_soggetto_ruolo_id,
+            tipo_ruolo_codice="EF",
+            overrides_table=_UTILITIES_OVERRIDES_TABLE,
+            overrides_fk_column=_UTILITIES_OVERRIDES_FK_COLUMN,
+        )
 
     # Scopo: Inserisce un record utility per l'emittente.
     #        Tutti i campi NOT NULL devono essere forniti (arrotondamento_dec, metodo).
