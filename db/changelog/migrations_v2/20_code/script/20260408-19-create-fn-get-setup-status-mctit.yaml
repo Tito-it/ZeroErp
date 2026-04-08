@@ -12,8 +12,8 @@ databaseChangeLog:
       id: 20260408-19-create-fn-get-setup-status
       author: mctit
       runOnChange: true
-      validCheckSum:
-        - ANY
+      # validCheckSum:
+      #    - ANY
       comment: >
         Ritorna lo stato di setup operatore-emittente in un singolo jsonb:
         emittenti_attivi, operatori_totali, operatori_assegnati,
@@ -22,7 +22,8 @@ databaseChangeLog:
       preConditions:
         - onFail: HALT
         - tableExists: { schemaName: anagrafiche, tableName: emittenti_fiscali }
-        - tableExists: { schemaName: anagrafiche, tableName: risorse_umane_auth_user }
+        - tableExists:
+            { schemaName: anagrafiche, tableName: risorse_umane_auth_user }
         - tableExists: { schemaName: config, tableName: user_emittenti_fiscali }
       changes:
         - sql:

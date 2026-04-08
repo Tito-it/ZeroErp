@@ -36,5 +36,5 @@ databaseChangeLog:
               BEFORE UPDATE OF emittente_fiscale_id ON config.user_emittenti_fiscali
               FOR EACH ROW
               EXECUTE FUNCTION script.trgfn_lock_columns(
-                  'emittente_fiscale_id', 'EMITTENTE_NON_MODIFICABILE'
+                  'emittente_fiscale_id', 'E_EMITTENTE_NON_MODIFICABILE'
               );

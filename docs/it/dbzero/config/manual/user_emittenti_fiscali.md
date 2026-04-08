@@ -61,7 +61,7 @@ La tabella **`config.user_emittenti_fiscali`** definisce l'**ambito operativo** 
 
 ### Regole di immutabilità (refactor 2026-04-08)
 
-* **Nessuna modifica di `emittente_fiscale_id`** dopo l'inserimento (trigger `trg_user_emittenti_fiscali_a10_lock_emittente_upd` che riusa `script.trgfn_lock_columns`). Errore: `EMITTENTE_NON_MODIFICABILE`.
+* **Nessuna modifica di `emittente_fiscale_id`** dopo l'inserimento (trigger `trg_user_emittenti_fiscali_a10_lock_emittente_upd` che riusa `script.trgfn_lock_columns`). Errore: `E_EMITTENTE_NON_MODIFICABILE`.
 * **Nessuna eliminazione finché l'utente Django è attivo** (trigger `trg_user_emittenti_fiscali_a10_guard_delete_dlt`). La riga può essere cancellata solo se `django.auth_user.is_active = false` (cessazione utente). Errore: `E_USER_EMITTENTE_DELETE_VIETATO`.
 * Override di manutenzione (entrambi i trigger): `SET LOCAL zeroerp.allow_lock_columns_override = 'on'` / `SET LOCAL zeroerp.allow_user_emittente_delete_override = 'on'`.
 
