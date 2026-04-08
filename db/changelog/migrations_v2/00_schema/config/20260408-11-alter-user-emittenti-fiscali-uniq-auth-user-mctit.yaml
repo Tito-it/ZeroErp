@@ -1,0 +1,74 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ALTER config.user_emittenti_fiscali: vincolo 1-a-1 su auth_user_id
+# ------------------------------------------------------------
+# Refactor operatore <-> emittente fiscale (WIP refactor-operatore-emittenti):
+# ogni utente puo' avere AL PIU' una riga in user_emittenti_fiscali (1-a-1).
+# Sostituisce UNIQUE(auth_user_id, emittente_fiscale_id) con UNIQUE(auth_user_id).
+# Verifica preventiva (Q3) gia' eseguita: nessun utente con piu' di una riga.
+# Drop dell'indice ridondante ix_user_emittenti_fiscali_auth_user_id (il nuovo
+# UNIQUE crea gia' un indice equivalente).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20260408-11-alter-user-emittenti-fiscali-uniq-auth-user-mctit.yaml
+
+  - changeSet:
+      id: 20260408-11-alter-user-emittenti-fiscali-uniq-auth-user
+      author: mctit
+      runOnChange: false
+      validCheckSum:
+        - ANY
+      comment: >
+        Sostituisce UNIQUE(auth_user_id, emittente_fiscale_id) con UNIQUE(auth_user_id)
+        su config.user_emittenti_fiscali. Modello operatore-emittente 1-a-1.
+        Drop indice ridondante su (auth_user_id).
+      preConditions:
+        - onFail: HALT
+        - tableExists: { schemaName: config, tableName: user_emittenti_fiscali }
+        - sqlCheck:
+            expectedResult: 0
+            sql: >-
+              SELECT COUNT(*) FROM (
+                SELECT auth_user_id
+                  FROM config.user_emittenti_fiscali
+                 GROUP BY auth_user_id
+                HAVING COUNT(*) > 1
+              ) t
+      changes:
+        # 1) Drop UNIQUE composito esistente
+        - dropUniqueConstraint:
+            schemaName: config
+            tableName: user_emittenti_fiscali
+            constraintName: uq_user_emittenti_fiscali_user_emittente
+
+        # 2) Add UNIQUE su solo auth_user_id (regola 1-a-1)
+        - addUniqueConstraint:
+            schemaName: config
+            tableName: user_emittenti_fiscali
+            columnNames: auth_user_id
+            constraintName: uq_user_emittenti_fiscali_auth_user
+
+        # 3) Drop indice ridondante: il nuovo UNIQUE crea gia' un indice
+        #    equivalente su (auth_user_id).
+        - sql:
+            splitStatements: false
+            sql: |
+              DROP INDEX IF EXISTS config.ix_user_emittenti_fiscali_auth_user_id;
+
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              CREATE INDEX IF NOT EXISTS ix_user_emittenti_fiscali_auth_user_id
+                ON config.user_emittenti_fiscali USING btree (auth_user_id);
+        - dropUniqueConstraint:
+            schemaName: config
+            tableName: user_emittenti_fiscali
+            constraintName: uq_user_emittenti_fiscali_auth_user
+        - addUniqueConstraint:
+            schemaName: config
+            tableName: user_emittenti_fiscali
+            columnNames: auth_user_id, emittente_fiscale_id
+            constraintName: uq_user_emittenti_fiscali_user_emittente

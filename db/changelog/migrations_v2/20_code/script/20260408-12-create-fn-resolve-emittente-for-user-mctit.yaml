@@ -1,0 +1,81 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# CREATE script.fn_resolve_emittente_for_user
+# Resolver "emittente fiscale di un utente" usato dal modello operatore-emittente 1-a-1
+# Vive in schema script (cross-dominio: legge config + anagrafiche),
+# coerente col refactor permessi 08-03-2026.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260408-12-create-fn-resolve-emittente-for-user-mctit.yaml
+
+  - changeSet:
+      id: 20260408-12-create-fn-resolve-emittente-for-user
+      author: mctit
+      runOnChange: true
+      validCheckSum:
+        - ANY
+      comment: >
+        Risolve l'emittente fiscale (PK numerica anagrafiche.emittenti_fiscali.id)
+        associato a un auth_user. Modello 1-a-1 (UNIQUE auth_user_id).
+        - 1 riga in user_emittenti_fiscali -> ritorna l'emittente di quella riga
+        - 0 righe -> ritorna NULL (admin globale o istanza senza emittenti)
+        Il chiamante interpreta il NULL secondo la propria semantica.
+      preConditions:
+        - onFail: HALT
+        - tableExists: { schemaName: config, tableName: user_emittenti_fiscali }
+        - tableExists: { schemaName: anagrafiche, tableName: emittenti_fiscali }
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_resolve_emittente_for_user(
+                  p_auth_user_id integer
+              )
+              RETURNS anagrafiche.emittenti_fiscali.id%TYPE
+              LANGUAGE plpgsql
+              STABLE
+              AS $function$
+              DECLARE
+                  v_emittente_fiscale_id anagrafiche.emittenti_fiscali.id%TYPE;
+              BEGIN
+                  -- Guard input: p_auth_user_id obbligatorio e > 0
+                  IF p_auth_user_id IS NULL OR p_auth_user_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'script',
+                          'fn_resolve_emittente_for_user',
+                          'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object(
+                              'detail', 'p_auth_user_id obbligatorio e > 0',
+                              'auth_user_id', p_auth_user_id
+                          ),
+                          NULL::uuid,
+                          'p_auth_user_id obbligatorio e > 0'
+                      );
+                  END IF;
+
+                  -- Modello 1-a-1: dopo la migration UNIQUE(auth_user_id)
+                  -- esiste al massimo una riga per utente. LIMIT 1 difensivo.
+                  -- NB: nessun filtro su ef.attivo perche' per costruzione
+                  -- l'EF associato a un utente e' sempre attivo:
+                  --   - dbops.trgfn_child_requires_active_parent su
+                  --     user_emittenti_fiscali blocca INSERT/UPDATE su EF non attivo
+                  --   - dbops.trgfn_prevent_deactivate_if_children su
+                  --     emittenti_fiscali blocca la disattivazione di un EF
+                  --     con righe figlie in user_emittenti_fiscali
+                  -- Aggiungere il filtro qui creerebbe incoerenza con
+                  -- script.fn_check_user_can_create_ba (che non filtra).
+                  SELECT uef.emittente_fiscale_id
+                    INTO v_emittente_fiscale_id
+                    FROM config.user_emittenti_fiscali uef
+                   WHERE uef.auth_user_id = p_auth_user_id
+                   LIMIT 1;
+
+                  RETURN v_emittente_fiscale_id;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_resolve_emittente_for_user(integer)
+              IS 'Resolver operatore->emittente (modello 1-a-1). Ritorna anagrafiche.emittenti_fiscali.id (PK reale) o NULL se l''utente non ha riga in config.user_emittenti_fiscali (admin globale). Nessun filtro su ef.attivo: per costruzione l''EF associato a un utente e'' sempre attivo (trigger di guardia su entrambi i lati). NON solleva errore in caso di NULL: il chiamante decide la semantica.';

@@ -1,0 +1,108 @@
+{% include-markdown "it/dbzero/anagrafiche/manual/fn_lookup_utilities_per_ba.md" %}
+# ⚙️ Funzione `fn_lookup_utilities_per_ba`
+
+```sql
+CREATE FUNCTION fn_lookup_utilities_per_ba(p_billing_account_id bigint, p_ruolo_codice_soggetto text)
+```
+
+**Definizione completa:**
+
+```sql
+CREATE OR REPLACE FUNCTION anagrafiche.fn_lookup_utilities_per_ba(p_billing_account_id bigint, p_ruolo_codice_soggetto text)
+ RETURNS TABLE(utility_id bigint, codice text, descrizione text, is_personalizzata_per_ef boolean, minimo_soglia_min numeric, minimo_soglia_max numeric, arrotondamento_importi_dec smallint, metodo_arrotondamento_importi text)
+ LANGUAGE plpgsql
+ STABLE
+AS $function$
+DECLARE
+    v_emittente_pk        anagrafiche.emittenti_fiscali.id%TYPE;
+    v_emittente_sr_id     anagrafiche.emittenti_fiscali.soggetto_ruolo_id%TYPE;
+    v_today               date := current_date;
+BEGIN
+    -- Guard input
+    IF p_billing_account_id IS NULL OR p_billing_account_id <= 0 THEN
+        PERFORM script.fn_log_and_raise_error(
+            'anagrafiche',
+            'fn_lookup_utilities_per_ba',
+            'E_PARAMETRO_INVALIDO',
+            jsonb_build_object(
+                'detail', 'p_billing_account_id obbligatorio e > 0',
+                'billing_account_id', p_billing_account_id
+            ),
+            NULL::uuid,
+            'p_billing_account_id obbligatorio e > 0'
+        );
+    END IF;
+
+    IF p_ruolo_codice_soggetto IS NULL
+       OR length(btrim(p_ruolo_codice_soggetto)) = 0
+    THEN
+        PERFORM script.fn_log_and_raise_error(
+            'anagrafiche',
+            'fn_lookup_utilities_per_ba',
+            'E_PARAMETRO_INVALIDO',
+            jsonb_build_object(
+                'detail', 'p_ruolo_codice_soggetto obbligatorio',
+                'ruolo_codice_soggetto', p_ruolo_codice_soggetto
+            ),
+            NULL::uuid,
+            'p_ruolo_codice_soggetto obbligatorio'
+        );
+    END IF;
+
+    -- Risoluzione emittente del BA: catena specifico -> default globale.
+    -- Riusa fn_get_emittente_fiscale_pk (solleva E_EMITTENTE_DEFAULT_MISSING
+    -- se nessun emittente risolvibile, comportamento desiderato).
+    v_emittente_pk := anagrafiche.fn_get_emittente_fiscale_pk(p_billing_account_id);
+
+    -- Conversione PK -> soggetto_ruolo_id (la matrice utility usa SR_ID).
+    SELECT ef.soggetto_ruolo_id
+      INTO v_emittente_sr_id
+      FROM anagrafiche.emittenti_fiscali ef
+     WHERE ef.id = v_emittente_pk;
+
+    -- Query principale: intersezione (ruolo_soggetto AND ruolo EF) +
+    -- LEFT JOIN override per i parametri personalizzati per emittente.
+    RETURN QUERY
+    SELECT
+        u.id::bigint                                AS utility_id,
+        u.codice::text                              AS codice,
+        u.descrizione::text                         AS descrizione,
+        (efu.id IS NOT NULL)                        AS is_personalizzata_per_ef,
+        efu.minimo_soglia_min                       AS minimo_soglia_min,
+        efu.minimo_soglia_max                       AS minimo_soglia_max,
+        efu.arrotondamento_importi_dec              AS arrotondamento_importi_dec,
+        efu.metodo_arrotondamento_importi::text     AS metodo_arrotondamento_importi
+    FROM config.utilities u
+    -- ammessa per il ruolo del soggetto del BA
+    JOIN config.utilities_tipi_ruolo utr_sogg
+      ON utr_sogg.utility_id = u.id
+     AND utr_sogg.attivo = true
+     AND (utr_sogg.valido_dal IS NULL OR utr_sogg.valido_dal <= v_today)
+     AND (utr_sogg.valido_al  IS NULL OR utr_sogg.valido_al  >= v_today)
+    JOIN config.tipi_ruoli tr_sogg
+      ON tr_sogg.id = utr_sogg.tipo_ruolo_id
+     AND tr_sogg.codice = p_ruolo_codice_soggetto
+    -- ammessa per il ruolo EF (emittente fiscale)
+    JOIN config.utilities_tipi_ruolo utr_ef
+      ON utr_ef.utility_id = u.id
+     AND utr_ef.attivo = true
+     AND (utr_ef.valido_dal IS NULL OR utr_ef.valido_dal <= v_today)
+     AND (utr_ef.valido_al  IS NULL OR utr_ef.valido_al  >= v_today)
+    JOIN config.tipi_ruoli tr_ef
+      ON tr_ef.id = utr_ef.tipo_ruolo_id
+     AND tr_ef.codice = 'EF'
+    -- override parametri per emittente (politica ibrida: LEFT JOIN)
+    LEFT JOIN anagrafiche.emittenti_fiscali_utilities efu
+      ON efu.utility_id = u.id
+     AND efu.emittente_soggetto_ruolo_id = v_emittente_sr_id
+     AND efu.attivo = true
+    ORDER BY u.codice;
+END
+$function$
+
+COMMENT ON FUNCTION anagrafiche.fn_lookup_utilities_per_ba(p_billing_account_id bigint, p_ruolo_codice_soggetto text)
+IS 'Combo "utility per BA": ritorna le utility ammesse per il ruolo del soggetto del BA E per il ruolo EF dell''emittente collegato al BA, decorate con i parametri override di emittenti_fiscali_utilities (politica ibrida: utility non personalizzate restano visibili). Risolve l''emittente del BA via fn_get_emittente_fiscale_pk (mapping specifico -> default globale).';
+```
+
+---
+{% include-markdown "signature-core.md" %}

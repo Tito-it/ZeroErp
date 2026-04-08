@@ -115,13 +115,28 @@ Il valore e ereditato automaticamente sugli ordini tramite `vendite.trgfn_ordini
 
 ### Trigger e funzioni coinvolte
 
-| Trigger                                 | Scopo                                                               |
-| --------------------------------------- | ------------------------------------------------------------------- |
-| `trgfn_billing_account_gen_codice`      | Genera `codice` automaticamente se mancante                         |
-| `trgfn_billing_account_guard_normalize` | Guard di coerenza (validazioni, normalizzazione, protezione parent) |
-| `dbops.trgfn_tx_id_managed`             | Genera `tx_id` per tracciabilita transazionale                      |
-| `script.trgfn_audit_data_user_generic`  | Aggiorna campi audit                                                |
-| `script.trgfn_storico_generic`          | Snapshot storico su update/delete                                   |
+| Trigger                                     | Fase           | Scopo                                                                                  |
+| ------------------------------------------- | -------------- | -------------------------------------------------------------------------------------- |
+| `trgfn_billing_account_gen_codice`          | BEFORE INS/UPD | Genera `codice` automaticamente se mancante                                            |
+| `trgfn_billing_account_guard_admin_globale` | BEFORE INSERT  | Vieta agli admin globali di creare BA quando esistono emittenti (refactor 2026-04-08)  |
+| `trgfn_billing_account_guard_normalize`     | BEFORE INS/UPD | Guard di coerenza (validazioni, normalizzazione, protezione parent)                    |
+| `dbops.trgfn_tx_id_managed`                 | BEFORE INS/UPD | Genera `tx_id` per tracciabilita transazionale                                         |
+| `script.trgfn_audit_data_user_generic`      | BEFORE INS/UPD | Aggiorna campi audit                                                                   |
+| `trgfn_billing_account_link_ef`             | AFTER INSERT   | Auto-link BA → emittente fiscale dell'operatore corrente (refactor 2026-04-08)         |
+| `script.trgfn_storico_generic`              | BEFORE UPD/DEL | Snapshot storico su update/delete                                                      |
+
+#### Auto-link BA ↔ emittente fiscale (refactor 2026-04-08)
+
+Alla creazione di un BA, il trigger `trgfn_billing_account_link_ef` (fase `z90`) crea automaticamente la riga in `anagrafiche.emittenti_fiscali_billing_account` collegando il BA all'emittente dell'operatore corrente. La risoluzione passa per:
+
+1. Lettura GUC `app.current_user_id` (settato dal middleware Django).
+2. Resolver [`script.fn_resolve_emittente_for_user`](/dbzero/script/funzioni/fn_resolve_emittente_for_user).
+3. Lookup `emittenti_fiscali.soggetto_ruolo_id` (la tabella di mapping usa `soggetto_ruolo_id`, non la PK reale).
+4. INSERT mapping con `is_default = false` (mapping specifico, non default globale).
+
+Il trigger è **idempotente** (skip se la riga di mapping esiste già) e **fail‑open** in assenza di GUC (seed/bootstrap/job CLI senza utente autenticato).
+
+Il guard a monte [`trgfn_billing_account_guard_admin_globale`](/dbzero/anagrafiche/funzioni/trgfn_billing_account_guard_admin_globale) (fase `a10`) impedisce agli admin globali (utenti senza riga in `config.user_emittenti_fiscali`) di creare BA quando esistono emittenti fiscali attivi nel sistema. Errore: `E_BA_ADMIN_GLOBALE_VIETATO`.
 
 ---
 

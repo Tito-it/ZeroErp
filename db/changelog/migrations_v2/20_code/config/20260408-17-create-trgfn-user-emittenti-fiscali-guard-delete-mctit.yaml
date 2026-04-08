@@ -1,0 +1,85 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# CREATE config.trgfn_user_emittenti_fiscali_guard_delete + trigger
+# Refactor operatore-emittente: D3 - DELETE permessa solo se utente disattivato.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/config/20260408-17-create-trgfn-user-emittenti-fiscali-guard-delete-mctit.yaml
+
+  - changeSet:
+      id: 20260408-17-create-trgfn-user-emittenti-fiscali-guard-delete
+      author: mctit
+      runOnChange: true
+      validCheckSum:
+        - ANY
+      comment: >
+        Trigger BEFORE DELETE su config.user_emittenti_fiscali: ammette la
+        cancellazione solo se l'utente Django associato e' inattivo (is_active=false).
+        Pattern: cessazione di un dipendente per quell'emittente. Per "trasferire"
+        un operatore a un altro emittente, l'admin disattiva l'utente e crea
+        un nuovo account. Override manutenzione via GUC zeroerp.allow_user_emittente_delete_override.
+      preConditions:
+        - onFail: HALT
+        - tableExists: { schemaName: config, tableName: user_emittenti_fiscali }
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION config.trgfn_user_emittenti_fiscali_guard_delete()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_is_active boolean;
+              BEGIN
+                  -- Override manutenzione (es. cleanup manuale autorizzato)
+                  IF current_setting('zeroerp.allow_user_emittente_delete_override', true) = 'on' THEN
+                      RETURN OLD;
+                  END IF;
+
+                  -- Stato attivo dell'utente Django associato.
+                  SELECT au.is_active
+                    INTO v_is_active
+                    FROM django.auth_user au
+                   WHERE au.id = OLD.auth_user_id;
+
+                  -- Se l'utente non esiste piu' (DELETE in cascata) consentiamo
+                  -- la rimozione del child: la cessazione e' implicita.
+                  IF v_is_active IS NULL THEN
+                      RETURN OLD;
+                  END IF;
+
+                  -- Utente ancora attivo => DELETE vietata.
+                  IF v_is_active = true THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          TG_NAME,
+                          'E_USER_EMITTENTE_DELETE_VIETATO',
+                          jsonb_build_object(
+                              'detail', 'DELETE su user_emittenti_fiscali consentita solo se l''utente e'' disattivato',
+                              'auth_user_id', OLD.auth_user_id,
+                              'emittente_fiscale_id', OLD.emittente_fiscale_id
+                          ),
+                          NULL::uuid,
+                          OLD.auth_user_id::text
+                      );
+                  END IF;
+
+                  RETURN OLD;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION config.trgfn_user_emittenti_fiscali_guard_delete()
+              IS 'Guard BEFORE DELETE su config.user_emittenti_fiscali: ammette la cancellazione solo se django.auth_user.is_active=false (cessazione utente). Override via GUC zeroerp.allow_user_emittente_delete_override=''on''. Solleva E_USER_EMITTENTE_DELETE_VIETATO.';
+
+              -- Idempotente
+              DROP TRIGGER IF EXISTS trg_user_emittenti_fiscali_a10_guard_delete_dlt
+                ON config.user_emittenti_fiscali;
+
+              CREATE TRIGGER trg_user_emittenti_fiscali_a10_guard_delete_dlt
+              BEFORE DELETE ON config.user_emittenti_fiscali
+              FOR EACH ROW
+              EXECUTE FUNCTION config.trgfn_user_emittenti_fiscali_guard_delete();
