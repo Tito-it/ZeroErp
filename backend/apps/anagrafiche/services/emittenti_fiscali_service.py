@@ -55,8 +55,11 @@ class EmittentiFiscaliService:
 
     # Scopo: Crea un emittente fiscale completo in una transazione atomica.
     #        Obiettivo: associa il soggetto al ruolo EF e crea il record emittente.
-    #        Perimetro: validazione soggetto_id/codice/descrizione, get_or_create ruolo,
-    #        insert emittente con campi opzionali fiscali e di default.
+    #        Perimetro: validazione soggetto_id (con P.IVA obbligatoria), codice e
+    #        descrizione, get_or_create ruolo, insert emittente con campi opzionali.
+    #        L'emittente nasce SEMPRE disattivato (attivo=False) per soddisfare la
+    #        guard DB che richiede almeno una utility attiva per ogni emittente attivo:
+    #        l'utente deve aggiungere utility nel tab dedicato e attivare manualmente.
     #        Risultato: dict con id dell'emittente e soggetto_ruolo_id.
     #        Nota: il primo emittente creato attiva il trigger default_bootstrap che
     #        popola automaticamente il default mapping in emittenti_fiscali_billing_account.
@@ -70,12 +73,25 @@ class EmittentiFiscaliService:
         assert soggetto_id is not None
         soggetto_id = str(soggetto_id)
 
+        # Validazione P.IVA del soggetto: requisito legale per emissione fatture
+        # tramite SDI. Un soggetto privato (solo CF) non puo' essere emittente fiscale.
+        partita_iva = self._repo.get_soggetto_partita_iva(soggetto_id)
+        ErrorManager.require(
+            bool(partita_iva),
+            code=E_ANAG_VALIDAZIONE,
+            message="L'emittente fiscale richiede un soggetto con Partita IVA.",
+        )
+
         # Campi obbligatori dell'emittente
         codice = require_str(payload, "codice", "Codice emittente obbligatorio.")
         descrizione = require_str(payload, "descrizione", "Descrizione emittente obbligatoria.")
 
         # Campi opzionali
         emittente_data = self._extract_emittente_data(payload)
+        # Forza attivo=False alla creazione: la guard DB richiede almeno una utility
+        # attiva per emittente attivo, ma in questo flusso non gestiamo utility inline.
+        # L'utente attivera' l'emittente da edit dopo aver popolato il tab utilities.
+        emittente_data["attivo"] = False
 
         # Atomic: ruolo EF e insert emittente devono essere consistenti — se fallisce
         # l'insert dopo aver creato il ruolo, il rollback evita ruoli orfani.
@@ -107,12 +123,12 @@ class EmittentiFiscaliService:
                 data[key] = val
 
         # Boolean (None nel payload = "non fornito", lasciar usare il default DB)
-        for key in ["attivo", "split_payment_default", "bollo_auto"]:
+        for key in ["attivo", "bollo_auto"]:
             if key in payload and payload[key] is not None:
                 data[key] = optional_bool(payload, key)
 
         # Stringhe
-        for key in ["regime_fiscale_rf", "esigibilita_iva_default", "rounding_policy"]:
+        for key in ["regime_fiscale_rf", "rounding_policy"]:
             val = optional_str(payload, key)
             if val is not None:
                 data[key] = val

@@ -84,6 +84,7 @@ riceve `403 Forbidden`.
 | `anagrafiche.trgfn_emittenti_fiscali_guard_ruolo_emi_fis` | Trigger | Coerenza ruolo `EF` |
 | `anagrafiche.trgfn_emittenti_fiscali_guard_attivo` | Trigger | Blocca disattivazione se esistono figli (BA mapping, utilities, parameter_overrides, user_emittenti_fiscali) |
 | `anagrafiche.trgfn_emittenti_fiscali_default_guard` | Trigger | Garantisce un solo default globale in `emittenti_fiscali_billing_account` |
+| `anagrafiche.fn_emittenti_fiscali_utilities_required` | Constraint trigger (DEFERRABLE INITIALLY DEFERRED) | Garantisce che ogni `emittente_fiscale` con `attivo = true` abbia almeno una riga attiva in `emittenti_fiscali_utilities`. Validato a `COMMIT`. |
 | `dbops.trgfn_child_requires_active_parent` | Trigger | Per `emittenti_fiscali_utilities` impedisce inserire/aggiornare un record figlio se il padre `emittenti_fiscali` non e' attivo |
 | `script.trgfn_lock_columns` | Trigger | Rende immutabile `codice` in UPDATE |
 | `script.trgfn_audit_data_user_generic` | Trigger | Popola `data_insert/update`, `user_insert/update` |
@@ -197,27 +198,32 @@ curl -X GET "https://api.example.com/api/v1/anagrafiche/emittenti-fiscali/1/" \
 
 | Campo | Tipo | Obbligatorio | Note |
 | --- | --- | --- | --- |
-| `soggetto_id` | uuid | Si | UUID di un `anagrafiche.soggetti` esistente |
+| `soggetto_id` | uuid | Si | UUID di un `anagrafiche.soggetti` esistente con **P.IVA valorizzata** |
 | `codice` | string | Si | Univoco; **immutabile** dopo la creazione (lock_columns trigger) |
 | `descrizione` | string | Si | Etichetta visibile |
-| `attivo` | bool | No | Default `true` (DB) |
-| `regime_fiscale_rf` | string | No | Codice regime fiscale RF (FE) |
-| `esigibilita_iva_default` | char(1) | No | Esigibilita' IVA di default (`I`/`D`/`S`) |
-| `split_payment_default` | bool | No | Split payment default |
+| `regime_fiscale_rf` | string | No | Codice regime fiscale RF del tracciato FE/SdI (es. `RF01`) |
 | `bollo_auto` | bool | No | Calcolo bollo automatico |
 | `bollo_soglia` | numeric | No | Soglia per applicare il bollo |
-| `rounding_policy` | string | No | Policy di arrotondamento |
+| `rounding_policy` | enum | No | Uno tra: `UP`, `DOWN`, `HALF_UP`, `HALF_DOWN` (allineato alla matrice utility) |
 | `valuta_id` | int | No | FK `config.valute` |
+
+> **Nota `attivo`**: il campo non e' accettato in POST. L'emittente nasce **sempre
+> disattivato** (`attivo = false`). Per l'attivazione vedi sezione 4.2.
 
 ### 3.2 Comportamento
 
 1. Validazione campi obbligatori (`soggetto_id`, `codice`, `descrizione`).
-2. Apertura transazione atomica.
-3. Se il soggetto non ha ancora un ruolo `EF`, viene creato tramite
+2. Validazione **P.IVA del soggetto**: query su `anagrafiche.soggetti.partita_iva`;
+   se NULL/empty -> `E_ANAG_VALIDAZIONE 400`. Requisito legale per emissione fattura SDI.
+3. Apertura transazione atomica.
+4. Se il soggetto non ha ancora un ruolo `EF`, viene creato tramite
    `script.fn_get_or_create_soggetto_ruolo`.
-4. Insert nella tabella `anagrafiche.emittenti_fiscali` (i trigger DB gestiscono
-   `audit`, `tx_id`, `normalize`, `storicizzazione`).
-5. Alla creazione del **primo** emittente, il trigger `default_bootstrap`
+5. Insert nella tabella `anagrafiche.emittenti_fiscali` con `attivo = false` forzato
+   dal service (vedi guard DB `fn_emittenti_fiscali_utilities_required`: un emittente
+   attivo richiede almeno una utility attiva, e in questo flusso non si gestiscono
+   utility inline). I trigger DB gestiscono `audit`, `tx_id`, `normalize`,
+   `storicizzazione`.
+6. Alla creazione del **primo** emittente, il trigger `default_bootstrap`
    inserisce automaticamente il record di default in
    `emittenti_fiscali_billing_account` con `billing_account_id = NULL` e
    `is_default = true`.
@@ -253,7 +259,7 @@ curl -X POST "https://api.example.com/api/v1/anagrafiche/emittenti-fiscali/" \
 
 | Codice | HTTP | Descrizione |
 | --- | --- | --- |
-| `E_ANAG_VALIDAZIONE` | 400 | `soggetto_id`, `codice` o `descrizione` mancanti |
+| `E_ANAG_VALIDAZIONE` | 400 | `soggetto_id`, `codice` o `descrizione` mancanti, oppure soggetto senza P.IVA |
 | `E_ANAG_DUPLICATO` | 409 | Esiste gia' un emittente per questo soggetto o codice |
 
 ---
@@ -267,9 +273,8 @@ curl -X POST "https://api.example.com/api/v1/anagrafiche/emittenti-fiscali/" \
 
 ### 4.1 Campi editabili
 
-`descrizione`, `attivo`, `regime_fiscale_rf`, `esigibilita_iva_default`,
-`split_payment_default`, `bollo_auto`, `bollo_soglia`, `rounding_policy`,
-`valuta_id`.
+`descrizione`, `attivo`, `regime_fiscale_rf`, `bollo_auto`, `bollo_soglia`,
+`rounding_policy`, `valuta_id`.
 
 > **Nota:** il campo `codice` e' bloccato dal trigger DB `lock_columns` (errore
 > `CODICE_NON_MODIFICABILE`). Il backend lo ignora se incluso nel payload
@@ -279,8 +284,15 @@ curl -X POST "https://api.example.com/api/v1/anagrafiche/emittenti-fiscali/" \
 
 - I campi nullable (es. `regime_fiscale_rf`, `bollo_soglia`) accettano stringhe
   vuote che vengono normalizzate a `NULL`.
-- `attivo = false` viene rifiutato dal trigger DB se l'emittente ha record
-  collegati in `emittenti_fiscali_billing_account`,
+- `rounding_policy` accetta solo i valori enum `UP`, `DOWN`, `HALF_UP`, `HALF_DOWN`
+  (allineato ai metodi della matrice utility).
+- **Attivazione (`attivo = true`)**: la guard DB
+  `fn_emittenti_fiscali_utilities_required` (constraint trigger DEFERRABLE INITIALLY
+  DEFERRED) richiede almeno **una riga attiva** in `emittenti_fiscali_utilities` per
+  l'emittente. Tentare di attivare un emittente senza utility -> errore `E_DATABASE`
+  al commit.
+- **Disattivazione (`attivo = false`)**: rifiutata dal trigger DB se l'emittente ha
+  record collegati in `emittenti_fiscali_billing_account`,
   `emittenti_fiscali_utilities`, `parameter_overrides` o `user_emittenti_fiscali`.
 
 ### 4.3 Esempio cURL

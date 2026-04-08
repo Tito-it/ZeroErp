@@ -109,6 +109,9 @@ function removeRecord(row) {
     <Message severity="info" :closable="false" class="mb-3">
       {{ t('amm_emittenti_fiscali.ut_help') }}
     </Message>
+    <Message severity="warn" :closable="false" class="mb-3">
+      {{ t('amm_emittenti_fiscali.ut_guard_required') }}
+    </Message>
 
     <div v-if="!isReadonly" class="form-grid mb-3">
       <div class="form-grid-2col">
