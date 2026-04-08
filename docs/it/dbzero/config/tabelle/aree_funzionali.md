@@ -36,11 +36,11 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_aree_funzionali_a10_area_model_overrides_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('config', 'area_model_overrides', 'area_id', 'id')` |
-| trg_aree_funzionali_a10_azioni_processo_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('config', 'azioni_processo', 'area_id', 'id')` |
+| trg_aree_funzionali_a10_area_model_overrides_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('config', 'area_model_overrides', 'area_id', 'id', 'attivo')` |
+| trg_aree_funzionali_a10_azioni_processo_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('config', 'azioni_processo', 'area_id', 'id', 'attivo')` |
 | trg_aree_funzionali_a10_lock_columns_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('codice_interno', 'CODICE_NON_MODIFICABILE')` |
-| trg_aree_funzionali_a10_profili_reparto_aree_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('config', 'profili_reparto_aree', 'area_id', 'id')` |
-| trg_aree_funzionali_a10_user_override_aree_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('config', 'user_override_aree', 'area_id', 'id')` |
+| trg_aree_funzionali_a10_profili_reparto_aree_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('config', 'profili_reparto_aree', 'area_id', 'id', 'attivo')` |
+| trg_aree_funzionali_a10_user_override_aree_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('config', 'user_override_aree', 'area_id', 'id', 'attivo')` |
 | trg_aree_funzionali_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_aree_funzionali_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 

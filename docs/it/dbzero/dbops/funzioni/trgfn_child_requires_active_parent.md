@@ -17,21 +17,32 @@ DECLARE
   v_parent_table      text;
   v_parent_attivo_col text;
   v_fk_col            text;
-  v_parent_pk_col     text;        -- PK del padre (default 'id')
+  v_parent_ref_col    text;        -- colonna referenziata dalla FK (non sempre la PK)
   v_fk_val_text       text;        -- valore FK dal figlio (come text)
-  v_parent_pk_type    text;        -- tipo della PK del padre (per cast)
+  v_parent_ref_type   text;        -- tipo della colonna referenziata (per cast)
   v_sql               text;
   v_active            boolean;
   v_child_attivo_col  text;
   v_child_has_attivo  boolean;
 BEGIN
   /*
-    Trigger function (ATTIVO/REQUIRE): impedisce inserimenti/aggiornamenti sul figlio
-    se il padre collegato non e' attivo. Se il figlio ha la colonna attivo, il
+    Scopo
+    -----
+    Trigger function (ATTIVO/REQUIRE): impedisce INSERT/UPDATE sul figlio
+    se il padre collegato non e' attivo. Se il figlio ha colonna attivo, il
     controllo si applica solo quando il figlio e' attivo.
+
+    Argomenti attesi (TG_ARGV)
+    --------------------------
+    [0] parent_schema      - schema della tabella padre
+    [1] parent_table       - nome tabella padre
+    [2] parent_attivo_col  - nome colonna attivo del padre
+    [3] fk_col             - nome colonna FK sul figlio
+    [4] parent_ref_col     - colonna del padre referenziata dalla FK
+                             (puo' essere una UNIQUE diversa da PK).
+                             Se omesso, fallback 'id' (DEPRECATO).
   */
- 
-  -- Parametri: parent_schema, parent_table, parent_attivo_col, fk_col [, parent_pk_col]
+
   IF array_length(TG_ARGV, 1) < 4 THEN
     PERFORM script.fn_log_and_raise_error(
       'database',
@@ -40,10 +51,10 @@ BEGIN
       jsonb_build_object(
         'trigger', TG_NAME,
         'table',   TG_TABLE_SCHEMA||'.'||TG_TABLE_NAME,
-        'tg_argv',  TG_ARGV
+        'tg_argv', TG_ARGV
       ),
       NULL::uuid,
-      'Attesi: parent_schema, parent_table, parent_attivo_col, fk_col [, parent_pk_col]'
+      'Attesi: parent_schema, parent_table, parent_attivo_col, fk_col [, parent_ref_col]'
     );
   END IF;
 
@@ -51,8 +62,9 @@ BEGIN
   v_parent_table      := TG_ARGV[1];
   v_parent_attivo_col := TG_ARGV[2];
   v_fk_col            := TG_ARGV[3];
-  v_parent_pk_col     := COALESCE(TG_ARGV[4], 'id');
+  v_parent_ref_col    := COALESCE(TG_ARGV[4], 'id');
 
+  -- Avvisa se il chiamante non ha esplicitato la colonna referenziata
   IF TG_ARGV[4] IS NULL THEN
     PERFORM script.fn_log_error_only(
       'database',
@@ -60,11 +72,11 @@ BEGIN
       'E_ATTIVO_REQUIRE',
       jsonb_build_object(
         'parent_table', v_parent_schema||'.'||v_parent_table,
-        'pk_col', v_parent_pk_col,
-        'note', 'Usata PK di default id'
+        'ref_col',      v_parent_ref_col,
+        'note',         'Usata colonna di default id'
       ),
       NULL::uuid,
-      'Passa pk_col come 5° parametro per evitare ambiguita'''
+      'Passa parent_ref_col come 5° parametro per evitare ambiguita'''
     );
   END IF;
 
@@ -72,64 +84,56 @@ BEGIN
     RETURN NEW;
   END IF;
 
+  -- Se il figlio ha attivo e non e' attivo, nessun controllo
   v_child_attivo_col := dbops.fn_get_override_col(TG_TABLE_SCHEMA, TG_TABLE_NAME, 'ATTIVO_COL', 'attivo');
   v_child_has_attivo := dbops.fn_col_exists(TG_TABLE_SCHEMA, TG_TABLE_NAME, v_child_attivo_col);
 
-  -- Se il figlio ha attivo e non e' attivo, nessun controllo
   IF v_child_has_attivo THEN
-    DECLARE
-      v_child_attivo boolean;
-    BEGIN
-      EXECUTE format('SELECT ($1).%I::boolean', v_child_attivo_col)
-        INTO v_child_attivo
-        USING NEW;
-      IF COALESCE(v_child_attivo, FALSE) IS NOT TRUE THEN
-        RETURN NEW;
-      END IF;
-    END;
+    -- Accesso dinamico alla colonna del figlio via to_jsonb (no EXECUTE per riga)
+    IF COALESCE((to_jsonb(NEW)->>v_child_attivo_col)::boolean, FALSE) IS NOT TRUE THEN
+      RETURN NEW;
+    END IF;
   END IF;
 
-  -- Estrai in modo robusto il valore della FK dal record NEW
-  EXECUTE format('SELECT ($1).%I::text', v_fk_col)
-    INTO v_fk_val_text
-    USING NEW;
+  -- Estrai in modo robusto il valore della FK dal record NEW (via to_jsonb)
+  v_fk_val_text := to_jsonb(NEW)->>v_fk_col;
 
   -- FK NULL ammessa: se non valorizzata, non applicare il controllo sul padre
   IF v_fk_val_text IS NULL THEN
     RETURN NEW;
   END IF;
 
-  -- Ricava il tipo della PK del padre per cast corretto (uuid/bigint/...)
+  -- Ricava il tipo della colonna referenziata sul padre per cast corretto
   SELECT a.atttypid::regtype::text
-    INTO v_parent_pk_type
+    INTO v_parent_ref_type
     FROM pg_attribute a
-    JOIN pg_class c  ON c.oid = a.attrelid
+    JOIN pg_class c     ON c.oid = a.attrelid
     JOIN pg_namespace n ON n.oid = c.relnamespace
   WHERE n.nspname = v_parent_schema
     AND c.relname = v_parent_table
-    AND a.attname = v_parent_pk_col
+    AND a.attname = v_parent_ref_col
     AND a.attnum > 0
     AND NOT a.attisdropped;
 
-  IF v_parent_pk_type IS NULL THEN
+  IF v_parent_ref_type IS NULL THEN
     PERFORM script.fn_log_and_raise_error(
       'database',
       TG_NAME,
       'E_ATTIVO_REQUIRE',
       jsonb_build_object(
         'parent_table', v_parent_schema||'.'||v_parent_table,
-        'pk_col',       v_parent_pk_col
+        'ref_col',      v_parent_ref_col
       ),
       NULL::uuid,
-      'Colonna PK padre non trovata'
+      'Colonna referenziata padre non trovata'
     );
   END IF;
 
-  -- Verifica esistenza e stato del padre (cast del parametro al tipo PK)
+  -- Verifica esistenza e stato del padre (cast del parametro al tipo della colonna referenziata)
   v_sql := format(
     'SELECT %I FROM %I.%I WHERE %I = ($1)::%s',
     v_parent_attivo_col, v_parent_schema, v_parent_table,
-    v_parent_pk_col, v_parent_pk_type
+    v_parent_ref_col, v_parent_ref_type
   );
 
   BEGIN
@@ -142,8 +146,8 @@ BEGIN
         'E_ATTIVO_REQUIRE',
         jsonb_build_object(
           'parent_table', v_parent_schema||'.'||v_parent_table,
-          'pk_col',       v_parent_pk_col,
-          'pk_val',       v_fk_val_text
+          'ref_col',      v_parent_ref_col,
+          'ref_val',      v_fk_val_text
         ),
         NULL::uuid,
         'Padre non trovato per figlio attivo'
@@ -157,8 +161,8 @@ BEGIN
         'E_ATTIVO_REQUIRE',
         jsonb_build_object(
           'parent_table', v_parent_schema||'.'||v_parent_table,
-          'pk_col',       v_parent_pk_col,
-          'pk_val',       v_fk_val_text
+          'ref_col',      v_parent_ref_col,
+          'ref_val',      v_fk_val_text
         ),
         NULL::uuid,
         'Padre non attivo: figlio attivo non consentito'
@@ -185,7 +189,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION dbops.trgfn_child_requires_active_parent()
-IS 'Trigger function (ATTIVO/REQUIRE): impedisce INSERT/UPDATE sul figlio se il padre non e'' attivo. Se il figlio ha la colonna attivo, il controllo vale solo per figlio attivo.';
+IS 'Trigger function (ATTIVO/REQUIRE): impedisce INSERT/UPDATE sul figlio se il padre non e'' attivo. TG_ARGV: parent_schema, parent_table, parent_attivo_col, fk_col [, parent_ref_col]. Il 5° arg e'' la colonna del padre referenziata dalla FK (puo'' essere UNIQUE diversa dalla PK).';
 ```
 
 ---

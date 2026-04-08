@@ -5,26 +5,25 @@
 -- Test: emittenti fiscali + mapping billing_account + default
 --
 -- Elenco test:
--- 1) Setup minimo PG/utility disponibile
+-- 1) Setup minimo PG disponibile
 -- 2) Creato soggetto PG 1 di supporto
 -- 3) Creato soggetto PG 2 di supporto
 -- 4) Esiste il ruolo EF in config.tipi_ruoli
 -- 5) Creato/recuperato ruolo EF per soggetto 1
--- 6) Inserito emittente fiscale 1 con matrice utility
+-- 6) Inserito emittente fiscale 1
 -- 7) Esiste esattamente un emittente di default nel mapping
 -- 8) Esiste un billing_account senza mapping emittente
 -- 9) Fallback funzione emittente (default)
 -- 10) Creato/recuperato ruolo EF per soggetto 2
--- 11) Inserito emittente fiscale 2 con matrice utility
+-- 11) Inserito emittente fiscale 2
 -- 12) Inserito mapping BA -> emittente (override)
 -- 13) Override funzione emittente (mapping BA)
 -- 14) Blocco disattivazione emittente con mapping
--- 15) Blocco cancellazione ultima utility attiva dell'emittente
 -- ------------------------------------------------------------
 
 BEGIN;
 
-SELECT plan(15);
+SELECT plan(14);
 
 -- ============================================================
 -- 0) Costanti
@@ -117,22 +116,7 @@ SELECT
         (SELECT fg.id FROM config.forme_giuridiche fg ORDER BY fg.id LIMIT 1)
     ) AS forma_giuridica_id,
     (SELECT p.id FROM config.province p ORDER BY p.id LIMIT 1) AS provincia_id,
-    (SELECT s.id FROM config.stradario s ORDER BY s.id LIMIT 1) AS stradario_id,
-    COALESCE(
-        (
-            SELECT utr.utility_id
-            FROM config.utilities_tipi_ruolo utr
-            JOIN config.tipi_ruoli tr
-              ON tr.id = utr.tipo_ruolo_id
-             AND tr.codice_interno = 'EF'
-            WHERE utr.attivo = true
-              AND (utr.valido_dal IS NULL OR utr.valido_dal <= CURRENT_DATE)
-              AND (utr.valido_al IS NULL OR utr.valido_al >= CURRENT_DATE)
-            ORDER BY utr.utility_id
-            LIMIT 1
-        ),
-        (SELECT u.id FROM config.utilities u ORDER BY u.id LIMIT 1)
-    ) AS utility_id
+    (SELECT s.id FROM config.stradario s ORDER BY s.id LIMIT 1) AS stradario_id
 FROM config.tipi_soggetto_dettaglio tsd
 WHERE tsd.tipo_soggetto_id = 'PG'
   AND tsd.stato_iso2 = 'IT'
@@ -148,9 +132,8 @@ SELECT ok(
          AND forma_giuridica_id IS NOT NULL
          AND provincia_id IS NOT NULL
          AND stradario_id IS NOT NULL
-         AND utility_id IS NOT NULL
      FROM tmp_setup_ef),
-    'Setup minimo PG/utility disponibile'
+    'Setup minimo PG disponibile'
 );
 
 -- ============================================================
@@ -265,34 +248,6 @@ SELECT ok(
 );
 
 -- ============================================================
--- Setup tecnico: abilita la utility di test per il ruolo EF
--- nella transazione corrente se la matrice non la prevede gia'
--- ============================================================
-INSERT INTO config.utilities_tipi_ruolo (
-    utility_id,
-    tipo_ruolo_id,
-    attivo,
-    valido_dal,
-    meta
-)
-SELECT
-    s.utility_id,
-    r.tipo_ruolo_id,
-    true,
-    CURRENT_DATE,
-    jsonb_build_object('test_scope', k.test_scope)
-FROM tmp_setup_ef s,
-     tmp_ruolo_ef r,
-     tmp_costanti_ef k
-WHERE s.utility_id IS NOT NULL
-  AND NOT EXISTS (
-      SELECT 1
-      FROM config.utilities_tipi_ruolo utr
-      WHERE utr.utility_id = s.utility_id
-        AND utr.tipo_ruolo_id = r.tipo_ruolo_id
-  );
-
--- ============================================================
 -- 5) Ruolo EF per soggetto 1
 -- ============================================================
 CREATE TEMP TABLE tmp_ef_role_1 AS
@@ -308,7 +263,7 @@ SELECT ok(
 );
 
 -- ============================================================
--- 6) Inserimento emittente fiscale 1 + matrice utility
+-- 6) Inserimento emittente fiscale 1
 -- ============================================================
 CREATE TEMP TABLE tmp_emittente_1 AS
 WITH ins_emittente AS (
@@ -326,32 +281,13 @@ WITH ins_emittente AS (
     FROM tmp_ef_role_1 r,
          tmp_costanti_ef k
     RETURNING id, soggetto_ruolo_id
-),
-ins_utility AS (
-    INSERT INTO anagrafiche.emittenti_fiscali_utilities (
-        emittente_soggetto_ruolo_id,
-        utility_id,
-        arrotondamento_importi_dec,
-        metodo_arrotondamento_importi,
-        meta
-    )
-    SELECT
-        e.soggetto_ruolo_id,
-        u.utility_id,
-        2,
-        'HALF_UP',
-        jsonb_build_object('test_scope', k.test_scope)
-    FROM ins_emittente e,
-         tmp_setup_ef u,
-         tmp_costanti_ef k
-    RETURNING id
 )
 SELECT id FROM ins_emittente;
 
 SELECT is(
     (SELECT count(*)::int FROM tmp_emittente_1),
     1,
-    'Inserito emittente fiscale 1 con matrice utility'
+    'Inserito emittente fiscale 1'
 );
 
 -- ============================================================
@@ -415,7 +351,7 @@ SELECT ok(
 );
 
 -- ============================================================
--- 11) Inserimento emittente fiscale 2 + matrice utility
+-- 11) Inserimento emittente fiscale 2
 -- ============================================================
 CREATE TEMP TABLE tmp_emittente_2 AS
 WITH ins_emittente AS (
@@ -433,32 +369,13 @@ WITH ins_emittente AS (
     FROM tmp_ef_role_2 r,
          tmp_costanti_ef k
     RETURNING id, soggetto_ruolo_id
-),
-ins_utility AS (
-    INSERT INTO anagrafiche.emittenti_fiscali_utilities (
-        emittente_soggetto_ruolo_id,
-        utility_id,
-        arrotondamento_importi_dec,
-        metodo_arrotondamento_importi,
-        meta
-    )
-    SELECT
-        e.soggetto_ruolo_id,
-        u.utility_id,
-        2,
-        'HALF_UP',
-        jsonb_build_object('test_scope', k.test_scope)
-    FROM ins_emittente e,
-         tmp_setup_ef u,
-         tmp_costanti_ef k
-    RETURNING id
 )
 SELECT id FROM ins_emittente;
 
 SELECT is(
     (SELECT count(*)::int FROM tmp_emittente_2),
     1,
-    'Inserito emittente fiscale 2 con matrice utility'
+    'Inserito emittente fiscale 2'
 );
 
 -- ============================================================
@@ -511,23 +428,6 @@ SELECT throws_ok(
     'P0001',
     NULL,
     'Blocco disattivazione emittente con mapping BA'
-);
-
--- ============================================================
--- 15) Blocco cancellazione ultima utility attiva dell'emittente
--- ============================================================
-SELECT throws_ok(
-    format(
-        'DELETE FROM anagrafiche.emittenti_fiscali_utilities
-          WHERE emittente_soggetto_ruolo_id = %s
-            AND meta ->> ''test_scope'' = %L;
-         SET CONSTRAINTS ALL IMMEDIATE;',
-        (SELECT soggetto_ruolo_id FROM tmp_ef_role_2),
-        (SELECT test_scope FROM tmp_costanti_ef)
-    ),
-    'P0001',
-    NULL,
-    'Blocco cancellazione ultima utility attiva dell''emittente'
 );
 
 SELECT * FROM finish();

@@ -1,0 +1,132 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ONE-SHOT: cleanup trigger ATTIVO (BLOCK + REQUIRE) + rerun fn_run_automations_attivo
+# ------------------------------------------------------------
+# Scopo: dopo il fix di fn_run_automations_attivo (file 20260408-06),
+# i trigger ATTIVO gia' presenti in DB sono ancora generati con la
+# vecchia logica (PK del padre invece della colonna referenziata) e
+# non vengono rigenerati automaticamente perche' la fn salta i trigger
+# gia' esistenti per nome.
+#
+# Soluzione: drop massivo di TUTTI i trigger che usano le due trgfn
+# ATTIVO (sia auto-generati sia creati manualmente in passato), poi
+# rilancio di fn_run_automations_attivo per ricreare quelli coperti
+# da una rule attiva con la signature corretta.
+#
+# Nota: i trigger creati manualmente in vecchie migration (es. trigger
+# fornitori, articoli_componenti, attivita_fatturabili) erano stati
+# scritti perche' all'epoca non si ricordava del sistema automations.
+# Sono stati confermati come "errori di duplicazione" e vanno rimossi.
+# Verranno ricreati dal rerun se le rispettive FK rientrano nelle rule
+# di automation_rules_tbl, altrimenti restano fuori (corretto).
+#
+# Eseguito una sola volta nella sequenza Liquibase: changeSet senza
+# runOnChange, runAlways o checksum forzati.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20260408-07-cleanup-and-rerun-fn-run-automations-attivo-mctit.yaml
+
+  - changeSet:
+      id: 20260408-07-cleanup-and-rerun-fn-run-automations-attivo
+      author: mctit
+      comment: >
+        One-shot: droppa tutti i trigger ATTIVO esistenti (auto e manuali)
+        e rilancia fn_run_automations_attivo per ricrearli con la signature
+        corretta (parent_ref_col da confkey[1]).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_proc p
+              JOIN pg_namespace n ON n.oid = p.pronamespace
+              WHERE n.nspname='dbops' AND p.proname='fn_run_automations_attivo'
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Cleanup: droppa tutti i trigger che usano le trgfn ATTIVO
+              -- (sia auto-generati da fn_run_automations_attivo, sia creati
+              -- manualmente in vecchie migration). Le trgfn restano in DB.
+              DO $cleanup$
+              DECLARE
+                r           record;
+                v_dropped   integer := 0;
+                v_n_before  integer;
+                v_n_after   integer;
+                v_n_require integer;
+                v_n_block   integer;
+              BEGIN
+                -- Conteggio trigger ATTIVO presenti prima del cleanup
+                SELECT count(*) INTO v_n_before
+                FROM pg_trigger t
+                JOIN pg_proc p ON p.oid = t.tgfoid
+                WHERE NOT t.tgisinternal
+                  AND p.proname IN (
+                    'trgfn_child_requires_active_parent',
+                    'trgfn_prevent_deactivate_if_children'
+                  );
+                RAISE NOTICE 'Cleanup ATTIVO - trigger presenti prima: %', v_n_before;
+
+                FOR r IN
+                  SELECT
+                    n.nspname AS schema_name,
+                    c.relname AS table_name,
+                    t.tgname  AS trigger_name,
+                    p.proname AS func_name
+                  FROM pg_trigger t
+                  JOIN pg_class c     ON c.oid = t.tgrelid
+                  JOIN pg_namespace n ON n.oid = c.relnamespace
+                  JOIN pg_proc p      ON p.oid = t.tgfoid
+                  WHERE NOT t.tgisinternal
+                    AND p.proname IN (
+                      'trgfn_child_requires_active_parent',
+                      'trgfn_prevent_deactivate_if_children'
+                    )
+                  ORDER BY n.nspname, c.relname, t.tgname
+                LOOP
+                  EXECUTE format(
+                    'DROP TRIGGER IF EXISTS %I ON %I.%I',
+                    r.trigger_name, r.schema_name, r.table_name
+                  );
+                  v_dropped := v_dropped + 1;
+                  RAISE NOTICE 'Dropped trigger % on %.% (using %)',
+                    r.trigger_name, r.schema_name, r.table_name, r.func_name;
+                END LOOP;
+
+                RAISE NOTICE 'Cleanup completato: % trigger droppati', v_dropped;
+
+                -- Rerun: rilancia la generazione automazioni ATTIVO con la
+                -- fn corretta (file 20260408-06). Crea i trigger BLOCK e
+                -- REQUIRE per tutte le FK in scope rispetto alle rule attive
+                -- in dbops.automation_rules_tbl, usando parent_ref_col da
+                -- confkey[1] e parent_attivo_col dall'override.
+                PERFORM dbops.fn_run_automations_attivo('AUTO', NULL, false);
+
+                -- Audit: conteggio trigger ATTIVO ricreati dopo il rerun
+                SELECT
+                  count(*) FILTER (WHERE p.proname = 'trgfn_child_requires_active_parent'),
+                  count(*) FILTER (WHERE p.proname = 'trgfn_prevent_deactivate_if_children'),
+                  count(*)
+                INTO v_n_require, v_n_block, v_n_after
+                FROM pg_trigger t
+                JOIN pg_proc p ON p.oid = t.tgfoid
+                WHERE NOT t.tgisinternal
+                  AND p.proname IN (
+                    'trgfn_child_requires_active_parent',
+                    'trgfn_prevent_deactivate_if_children'
+                  );
+
+                RAISE NOTICE 'Rerun completato - trigger ATTIVO presenti dopo: % (REQUIRE=%, BLOCK=%)',
+                  v_n_after, v_n_require, v_n_block;
+
+                IF v_n_after = 0 AND v_n_before > 0 THEN
+                  RAISE WARNING 'Nessun trigger ATTIVO ricreato dopo rerun: verificare dbops.automation_rules_tbl';
+                ELSIF v_n_after < v_n_before THEN
+                  RAISE NOTICE 'Trigger ATTIVO diminuiti (% -> %): possibili cleanup di trigger manuali fuori scope rule',
+                    v_n_before, v_n_after;
+                END IF;
+              END$cleanup$;

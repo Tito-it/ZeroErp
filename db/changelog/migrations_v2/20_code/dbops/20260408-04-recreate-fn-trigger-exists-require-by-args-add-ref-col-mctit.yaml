@@ -1,0 +1,87 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# RECREATE dbops.fn_trigger_exists_require_by_args — aggiunge p_parent_ref_col
+# ------------------------------------------------------------
+# Scopo: la helper di esistenza per i trigger REQUIRE deve riconoscere
+# l'invocazione della trgfn a 5 args (parent_schema, parent_table,
+# parent_attivo_col, fk_col, parent_ref_col). La signature cambia
+# (parametro aggiuntivo), quindi serve DROP + CREATE.
+# Usata solo da dbops.fn_run_automations_attivo (verificato via grep).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20260408-04-recreate-fn-trigger-exists-require-by-args-add-ref-col-mctit.yaml
+
+  - changeSet:
+      id: 20260408-04-recreate-fn-trigger-exists-require-by-args-add-ref-col
+      author: mctit
+      runOnChange: true
+      comment: >
+        Ricrea fn_trigger_exists_require_by_args con parametro aggiuntivo
+        p_parent_ref_col per matchare l'invocazione a 5 args della trgfn
+        REQUIRE. La signature cambia, serve DROP + CREATE.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT CASE WHEN count(*) >= 1 THEN 1 ELSE 0 END
+              FROM pg_proc p
+              JOIN pg_namespace n ON n.oid = p.pronamespace
+              WHERE n.nspname='dbops' AND p.proname='fn_trigger_exists_require_by_args'
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Drop di TUTTI gli overload esistenti: cambia la signature
+              -- e potrebbero esserci versioni storiche con parametri diversi.
+              DO $drop_overloads$
+              DECLARE
+                r record;
+              BEGIN
+                FOR r IN
+                  SELECT p.oid::regprocedure::text AS sig
+                  FROM pg_proc p
+                  JOIN pg_namespace n ON n.oid = p.pronamespace
+                  WHERE n.nspname='dbops'
+                    AND p.proname='fn_trigger_exists_require_by_args'
+                LOOP
+                  EXECUTE 'DROP FUNCTION ' || r.sig;
+                  RAISE NOTICE 'Dropped overload: %', r.sig;
+                END LOOP;
+              END$drop_overloads$;
+
+              CREATE OR REPLACE FUNCTION dbops.fn_trigger_exists_require_by_args(
+                  p_child_rel         regclass,
+                  p_parent_schema     text,
+                  p_parent_table      text,
+                  p_parent_attivo_col text,
+                  p_fk_col            text,
+                  p_parent_ref_col    text
+              )
+              RETURNS boolean
+              LANGUAGE sql
+              STABLE
+              AS $function$
+                -- Scopo: rileva l'esistenza di un trigger REQUIRE sul figlio
+                -- con la signature a 5 args della trgfn. Confronta tutti gli
+                -- argomenti via pattern ILIKE su pg_get_triggerdef.
+                SELECT EXISTS (
+                  SELECT 1
+                  FROM pg_trigger t
+                  JOIN pg_proc p ON p.oid = t.tgfoid
+                  WHERE t.tgrelid = p_child_rel
+                    AND NOT t.tgisinternal
+                    AND p.proname = 'trgfn_child_requires_active_parent'
+                    AND pg_get_triggerdef(t.oid) ILIKE
+                        format(
+                          '%%EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent(''%s'',''%s'',''%s'',''%s'',''%s'')%%',
+                          p_parent_schema, p_parent_table, p_parent_attivo_col, p_fk_col, p_parent_ref_col
+                        )
+                );
+              $function$;
+
+              COMMENT ON FUNCTION dbops.fn_trigger_exists_require_by_args(regclass, text, text, text, text, text)
+                IS 'Verifica esistenza trigger REQUIRE (trgfn_child_requires_active_parent) su tabella figlio matchando la signature a 5 args.';

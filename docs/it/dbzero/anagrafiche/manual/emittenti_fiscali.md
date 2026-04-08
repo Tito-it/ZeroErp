@@ -61,8 +61,10 @@ avviene tramite la tabella di mapping `anagrafiche.emittenti_fiscali_billing_acc
 * Usare `rounding_policy` solo come policy generale del ruolo; i dettagli di
   arrotondamento per singola utility vanno configurati in
   `anagrafiche.emittenti_fiscali_utilities`.
-* Un emittente fiscale **attivo** deve avere almeno una utility attiva
-  configurata in `anagrafiche.emittenti_fiscali_utilities`.
+* La compatibilita` tra ruolo emittente fiscale e utility resta nel perimetro
+  della matrice `config.utilities_tipi_ruolo`; la tabella
+  `anagrafiche.emittenti_fiscali_utilities` e` opzionale e contiene solo
+  parametri specifici quando servono.
 
 ---
 

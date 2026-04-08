@@ -34,18 +34,18 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_stati_doc_fiscale_a10_fatturazione_lotti_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'fatturazione_lotti', 'stato_doc_fiscale_id', 'id')` |
-| trg_stati_doc_fiscale_a10_fatturazione_lotti_fatture_blo_e6dd7b | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'fatturazione_lotti_fatture', 'stato_doc_fiscale_id', 'id')` |
-| trg_stati_doc_fiscale_a10_fatturazione_lotti_log_block_d_726218 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'fatturazione_lotti_log', 'stato_doc_fiscale_id', 'id')` |
-| trg_stati_doc_fiscale_a10_fatturazione_lotti_task_runs_b_92a5a7 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'fatturazione_lotti_task_runs', 'stato_doc_fiscale_id', 'id')` |
-| trg_stati_doc_fiscale_a10_fatturazione_pipeline_block_de_2b314c | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'fatturazione_pipeline', 'stato_doc_fiscale_id', 'id')` |
-| trg_stati_doc_fiscale_a10_fatture_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'fatture', 'stato_doc_fiscale_id', 'id')` |
+| trg_stati_doc_fiscale_a10_fatturazione_lotti_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'fatturazione_lotti', 'stato_doc_fiscale_id', 'id', 'attivo')` |
+| trg_stati_doc_fiscale_a10_fatturazione_lotti_fatture_blo_e6dd7b | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'fatturazione_lotti_fatture', 'stato_doc_fiscale_id', 'id', 'attivo')` |
+| trg_stati_doc_fiscale_a10_fatturazione_lotti_log_block_d_726218 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'fatturazione_lotti_log', 'stato_doc_fiscale_id', 'id', 'attivo')` |
+| trg_stati_doc_fiscale_a10_fatturazione_lotti_task_runs_b_92a5a7 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'fatturazione_lotti_task_runs', 'stato_doc_fiscale_id', 'id', 'attivo')` |
+| trg_stati_doc_fiscale_a10_fatturazione_pipeline_block_de_2b314c | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'fatturazione_pipeline', 'stato_doc_fiscale_id', 'id', 'attivo')` |
+| trg_stati_doc_fiscale_a10_fatture_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'fatture', 'stato_doc_fiscale_id', 'id', 'attivo')` |
 | trg_stati_doc_fiscale_a10_lock_columns_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('codice_interno', 'CODICE_NON_MODIFICABILE')` |
-| trg_stati_doc_fiscale_a10_stati_doc_fiscale_transizioni__88be0f | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('config', 'stati_doc_fiscale_transizioni', 'stato_to_id', 'id')` |
-| trg_stati_doc_fiscale_a10_stati_doc_fiscale_transizioni__94ae32 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('config', 'stati_doc_fiscale_transizioni', 'stato_from_id', 'id')` |
-| trg_stati_doc_fiscale_chiude_lotto_guard_iud | AFTER | UPDATE | `EXECUTE FUNCTION config.trgfn_stati_doc_fiscale_chiude_lotto_guard()` |
-| trg_stati_doc_fiscale_chiude_lotto_guard_iud | AFTER | DELETE | `EXECUTE FUNCTION config.trgfn_stati_doc_fiscale_chiude_lotto_guard()` |
+| trg_stati_doc_fiscale_a10_stati_doc_fiscale_transizioni__88be0f | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('config', 'stati_doc_fiscale_transizioni', 'stato_to_id', 'id', 'attivo')` |
+| trg_stati_doc_fiscale_a10_stati_doc_fiscale_transizioni__94ae32 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('config', 'stati_doc_fiscale_transizioni', 'stato_from_id', 'id', 'attivo')` |
 | trg_stati_doc_fiscale_chiude_lotto_guard_iud | AFTER | INSERT | `EXECUTE FUNCTION config.trgfn_stati_doc_fiscale_chiude_lotto_guard()` |
+| trg_stati_doc_fiscale_chiude_lotto_guard_iud | AFTER | DELETE | `EXECUTE FUNCTION config.trgfn_stati_doc_fiscale_chiude_lotto_guard()` |
+| trg_stati_doc_fiscale_chiude_lotto_guard_iud | AFTER | UPDATE | `EXECUTE FUNCTION config.trgfn_stati_doc_fiscale_chiude_lotto_guard()` |
 
 ---
 {% include-markdown "signature-core.md" %}
