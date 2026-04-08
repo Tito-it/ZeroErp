@@ -56,8 +56,6 @@ class EmittentiFiscaliRepository:
         _OPTIONAL = [
             "attivo",
             "regime_fiscale_rf",
-            "esigibilita_iva_default",
-            "split_payment_default",
             "bollo_auto",
             "bollo_soglia",
             "rounding_policy",
@@ -106,8 +104,6 @@ class EmittentiFiscaliRepository:
                    ef.descrizione,
                    ef.attivo,
                    ef.regime_fiscale_rf,
-                   ef.esigibilita_iva_default,
-                   ef.split_payment_default,
                    ef.bollo_auto,
                    ef.bollo_soglia,
                    ef.rounding_policy,
@@ -155,8 +151,6 @@ class EmittentiFiscaliRepository:
                    ef.descrizione,
                    ef.attivo,
                    ef.regime_fiscale_rf,
-                   ef.esigibilita_iva_default,
-                   ef.split_payment_default,
                    ef.bollo_auto,
                    ef.bollo_soglia,
                    ef.rounding_policy,
@@ -191,8 +185,6 @@ class EmittentiFiscaliRepository:
         "descrizione",
         "attivo",
         "regime_fiscale_rf",
-        "esigibilita_iva_default",
-        "split_payment_default",
         "bollo_auto",
         "bollo_soglia",
         "rounding_policy",
@@ -200,7 +192,6 @@ class EmittentiFiscaliRepository:
     }
     _UPDATE_NULLABLE = {
         "regime_fiscale_rf",
-        "esigibilita_iva_default",
         "rounding_policy",
         "bollo_soglia",
         "valuta_id",
@@ -237,6 +228,24 @@ class EmittentiFiscaliRepository:
             )
             row = cursor.fetchone()
             return row[0] if row else None
+
+    # Scopo: Restituisce la P.IVA del soggetto base (None se non valorizzata).
+    #        Usato per validare che l'emittente fiscale sia legato a un soggetto
+    #        con P.IVA valida (requisito legale per emissione fattura SDI).
+    def get_soggetto_partita_iva(self, soggetto_id: str) -> str | None:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT partita_iva FROM anagrafiche.soggetti WHERE id = %s",
+                [soggetto_id],
+            )
+            row = cursor.fetchone()
+            if not row:
+                return None
+            piva = row[0]
+            if isinstance(piva, str):
+                piva = piva.strip()
+                return piva or None
+            return piva
 
 
 # =================================================================

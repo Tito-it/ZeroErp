@@ -13,7 +13,8 @@ Indice test eseguiti:
  1) test_get_emittenti_list — GET lista paginata
  2) test_get_emittente_detail — GET dettaglio
  3) test_get_emittente_not_found — GET dettaglio inesistente
- 4) test_post_emittente_ok — POST crea emittente
+ 4) test_post_emittente_ok — POST crea emittente (forza attivo=false)
+ 4b) test_post_emittente_soggetto_no_piva — POST con soggetto senza P.IVA -> 400
  5) test_post_emittente_missing_fields — POST senza campi obbligatori
  6) test_patch_emittente_ok — PATCH aggiorna campi editabili
  7) test_patch_emittente_not_found — PATCH emittente inesistente
@@ -117,6 +118,28 @@ class TestEmittentiFiscaliPostApi(SimpleTestCase):
         self.assertEqual(resp.status_code, 200)
         body = resp.json()
         self.assertEqual(body["data"]["id"], 1)
+
+    @patch(_AUTH, return_value=(Mock(), None))
+    @patch(_PERM, return_value=True)
+    @patch(_SVC)
+    def test_post_emittente_soggetto_no_piva(self, mock_svc_cls, _perm, _auth):
+        """POST con soggetto senza P.IVA → 400 E_ANAG_VALIDAZIONE."""
+        mock_svc_cls.return_value.crea_emittente.side_effect = ServiceError(
+            code="E_ANAG_VALIDAZIONE",
+            message="L'emittente fiscale richiede un soggetto con Partita IVA.",
+        )
+        resp = self.client.post(
+            "/api/v1/anagrafiche/emittenti-fiscali/",
+            data=json.dumps({
+                "soggetto_id": "019bac81-3f96-7ce8-a086-7e0bd0a2fec1",
+                "codice": "EF-002",
+                "descrizione": "Test no piva",
+            }),
+            content_type="application/json",
+        )
+        self.assertIn(resp.status_code, (400, 422))
+        body = resp.json()
+        self.assertEqual(body["error"]["code"], "E_ANAG_VALIDAZIONE")
 
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(_PERM, return_value=True)
