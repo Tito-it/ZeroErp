@@ -1,0 +1,88 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# CREATE anagrafiche.trgfn_billing_account_guard_admin_globale + trigger
+# Refactor operatore-emittente: WIP refactor-operatore-emittenti, decisione Q6.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20260408-14-create-trgfn-billing-account-guard-admin-globale-mctit.yaml
+
+  - changeSet:
+      id: 20260408-14-create-trgfn-billing-account-guard-admin-globale
+      author: mctit
+      runOnChange: true
+      validCheckSum:
+        - ANY
+      comment: >
+        Trigger BEFORE INSERT su anagrafiche.billing_account che vieta agli admin
+        globali di creare billing account quando esistono emittenti fiscali.
+        Legge l'utente corrente dal GUC app.current_user_id (settato dal
+        middleware Django). Se il GUC non e' impostato (es. seed/bootstrap)
+        il trigger non blocca la INSERT (fail-open mirato). La regola e'
+        delegata a script.fn_check_user_can_create_ba.
+      preConditions:
+        - onFail: HALT
+        - tableExists: { schemaName: anagrafiche, tableName: billing_account }
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_billing_account_guard_admin_globale()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_user_id integer;
+                  v_can_create boolean;
+              BEGIN
+                  -- Lettura GUC app.current_user_id (settato dal middleware Django).
+                  -- Il secondo parametro 'true' di current_setting evita errore se
+                  -- il GUC non e' definito (ritorna NULL).
+                  BEGIN
+                      v_user_id := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+                  EXCEPTION WHEN OTHERS THEN
+                      v_user_id := NULL;
+                  END;
+
+                  -- Bootstrap / seed / job senza utente: non bloccare.
+                  -- Le INSERT applicative passano sempre da middleware quindi
+                  -- il GUC c'e'. L'unico scenario senza GUC sono i seed di
+                  -- migrazione e le manutenzioni manuali.
+                  IF v_user_id IS NULL THEN
+                      RETURN NEW;
+                  END IF;
+
+                  v_can_create := script.fn_check_user_can_create_ba(v_user_id);
+
+                  IF v_can_create IS NOT TRUE THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          TG_NAME,
+                          'E_BA_ADMIN_GLOBALE_VIETATO',
+                          jsonb_build_object(
+                              'detail', 'Admin globale non puo'' creare billing account quando esistono emittenti fiscali',
+                              'auth_user_id', v_user_id,
+                              'codice_ba', NEW.codice
+                          ),
+                          NULL::uuid,
+                          coalesce(NEW.codice, '')
+                      );
+                  END IF;
+
+                  RETURN NEW;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.trgfn_billing_account_guard_admin_globale()
+              IS 'Guard BEFORE INSERT su billing_account: vieta agli admin globali (utenti senza riga in user_emittenti_fiscali) di creare BA quando esistono emittenti fiscali attivi. Skip se GUC app.current_user_id non impostato (seed/bootstrap). Solleva E_BA_ADMIN_GLOBALE_VIETATO.';
+
+              -- Creazione/sostituzione idempotente del trigger
+              DROP TRIGGER IF EXISTS trg_billing_account_a10_guard_admin_globale_ins
+                ON anagrafiche.billing_account;
+
+              CREATE TRIGGER trg_billing_account_a10_guard_admin_globale_ins
+              BEFORE INSERT ON anagrafiche.billing_account
+              FOR EACH ROW
+              EXECUTE FUNCTION anagrafiche.trgfn_billing_account_guard_admin_globale();

@@ -4,7 +4,7 @@
 > fiscale e per la combo utility "guidata da emittente" nei billing account.
 >
 > Data creazione: 2026-04-08
-> Stato: **PIANIFICATO — in attesa di sblocco prerequisiti**
+> Stato: **FASE 1 (DB) COMPLETATA il 2026-04-08** — Fase 2 (backend) e successive da avviare
 > Branch DB target: `dev/db-tid`
 > Branch backend target: `dev/backend-tid`
 >
@@ -500,6 +500,78 @@ non viene mai eseguito in pratica.
 
 ---
 
+## 7bis. Note di implementazione Fase 1 DB (2026-04-08)
+
+Sezione registrata a posteriori per documentare le scelte operative prese durante l'esecuzione effettiva della Fase 1 e le piccole deviazioni rispetto al piano §5.1.
+
+### 7bis.1 Schema delle nuove funzioni
+
+Il piano §5.1 indicava `anagrafiche` per `fn_resolve_emittente_for_user` e `script` per `fn_check_user_can_create_ba`. **Tutte e tre** le funzioni nuove (resolver, check, setup_status) sono state collocate in **schema `script`** per coerenza con il refactor permessi del 2026-03-08, che ha già spostato 9 resolver cross-dominio da `config` a `script`. La regola applicata: una funzione che legge da più schemi (`config.user_emittenti_fiscali` + `anagrafiche.emittenti_fiscali` + `django.auth_user`) sta in `script`. Solo `fn_lookup_utilities_per_ba` e i due `trgfn_billing_account_*` restano in `anagrafiche`, perché specifici del dominio fatturazione.
+
+### 7bis.2 Bug critico evitato — filtro `ef.attivo` nel resolver
+
+Una prima versione di `fn_resolve_emittente_for_user` filtrava `ef.attivo = true`, mentre `fn_check_user_can_create_ba` no. **Inconsistenza**: un utente con riga su EF disattivato sarebbe passato il check (true) ma il resolver avrebbe ritornato NULL → il guard avrebbe lasciato passare la INSERT del BA, ma il trigger di link non l'avrebbe agganciato → BA scollegato. Il filtro è stato **rimosso** dal resolver. Motivazione: per costruzione l'EF associato a un utente è sempre attivo, garantito da due trigger di guardia esistenti:
+
+- `dbops.trgfn_child_requires_active_parent` su `user_emittenti_fiscali` blocca INSERT/UPDATE su EF non attivo
+- `dbops.trgfn_prevent_deactivate_if_children` su `emittenti_fiscali` blocca la disattivazione di un EF con righe figlie in `user_emittenti_fiscali`
+
+Le due funzioni sono ora **coerenti**: entrambe valutano "esiste riga in user_emittenti_fiscali?" senza filtri ulteriori.
+
+### 7bis.3 Pattern unico file per trigger function + trigger
+
+Per ogni nuovo trigger ho usato un singolo file YAML con `runOnChange: true` contenente sia `CREATE OR REPLACE FUNCTION` sia `DROP TRIGGER IF EXISTS` + `CREATE TRIGGER`. Idempotente, evita la proliferazione di file separati. Pattern già usato in altre migration del repo (es. `20260301-14-update-trgfn-billing-account-guard-normalize`).
+
+### 7bis.4 Test pgTAP — lezione "no savepoint"
+
+Il primo draft di `test-billing-account-auto-link-ef.sql` usava `SAVEPOINT ... ROLLBACK TO SAVEPOINT` per isolare gli effetti collaterali tra test. **Non funziona**: pgTAP traccia lo stato dei test in una temp table interna, e un `ROLLBACK TO SAVEPOINT` cancella le righe di stato dei test eseguiti dentro il savepoint, facendo fallire `finish()` con `# No tests run!` (anche se le `is/throws_like` hanno effettivamente girato). **Soluzione adottata**: niente savepoint, tutto in una sola transazione `BEGIN ... ROLLBACK`, e per evitare collisioni su `UNIQUE(istanza_utility_id, utility_id)` si usano N BA template distinti (uno per test). Pattern da seguire per i futuri test pgTAP.
+
+### 7bis.5 Test pgTAP — lezione "throws_like e pattern fragili"
+
+Il primo pattern `'%disattivat%'` in `test-user-emittenti-fiscali-immutable.sql` non matchava il messaggio anche se la sottostringa era presente. Comportamento non spiegato, possibile peculiarità di `throws_like` su frammenti di parola con apostrofi/accenti vicini. **Regola adottata**: usare substring iniziali ASCII puri (es. `'%Eliminazione vietata%'`) come pattern, evitare frammenti di parola in mezzo.
+
+### 7bis.6 Dipendenza backend — GUC `app.current_user_id`
+
+I trigger `trgfn_billing_account_guard_admin_globale` e `trgfn_billing_account_link_ef` dipendono dal GUC `app.current_user_id` settato dal middleware Django `JwtAuditMiddleware` ([backend/apps/core/middleware/jwt_audit_middleware.py](/it/backend/core/manual/jwt_audit_middleware)).
+
+⚠️ **Da verificare lato backend** (non parte dello scope DB): il middleware setta il GUC con `SET LOCAL` / `set_config(..., true)`, che ha **scope transazione**. Django gira in autocommit per default (nessun `ATOMIC_REQUESTS` in `settings.py`), quindi il GUC potrebbe essere perso dopo il `COMMIT` automatico dello statement che lo setta. Se così fosse, anche i trigger del refactor permessi 2026-03-08 (`fn_check_user_emittente_scope`) sarebbero inerti — quindi probabilmente esiste un wrapping `transaction.atomic()` da qualche parte (alcune service esistenti come `clienti_service.py` usano già `with transaction.atomic():`). **La parte DB resta corretta in entrambi gli scenari**: in caso di GUC NULL i trigger fanno skip fail-open, mantenendo il comportamento attuale (BA creato senza mapping specifico, fallback default globale alla fatturazione).
+
+Issue da aprire per il team backend: verificare formalmente che il GUC arrivi ai trigger su tutte le request che fanno INSERT su `billing_account`.
+
+### 7bis.7 Q8 (auto-link operatori a singolo emittente) — non implementato
+
+Il caso edge **Q8** del piano (singolo emittente nel sistema → tutti gli operatori automaticamente legati a esso) **non è implementato in questa tornata DB**. È una operazione di seed/setup che va eseguita una sola volta quando viene creato il primo emittente. Implementazione candidata: funzione utility `script.fn_link_all_operators_to_singleton_ef()` da invocare esplicitamente dal service backend di creazione emittente, oppure trigger `AFTER INSERT` su `anagrafiche.emittenti_fiscali` con conteggio `= 1`. Da definire in fase 2 (backend) o successivo refinement.
+
+### 7bis.8 File creati / modificati — sintesi
+
+**Migration** (`db/changelog/migrations_v2/`):
+
+- `00_schema/config/20260408-11-alter-user-emittenti-fiscali-uniq-auth-user-mctit.yaml`
+- `20_code/script/20260408-12-create-fn-resolve-emittente-for-user-mctit.yaml`
+- `20_code/script/20260408-13-create-fn-check-user-can-create-ba-mctit.yaml`
+- `20_code/anagrafiche/20260408-14-create-trgfn-billing-account-guard-admin-globale-mctit.yaml`
+- `20_code/anagrafiche/20260408-15-create-trgfn-billing-account-link-ef-mctit.yaml`
+- `20_code/config/20260408-16-create-trg-user-emittenti-fiscali-lock-emittente-mctit.yaml`
+- `20_code/config/20260408-17-create-trgfn-user-emittenti-fiscali-guard-delete-mctit.yaml`
+- `20_code/anagrafiche/20260408-18-create-fn-lookup-utilities-per-ba-mctit.yaml`
+- `20_code/script/20260408-19-create-fn-get-setup-status-mctit.yaml`
+- `80_data/sql/config/messaggi_errore.csv` (+3 righe id 358–360)
+
+**pgTAP** (`db/pgtap/`):
+
+- `script/test-fn-resolve-emittente-for-user.sql`
+- `script/test-fn-check-user-can-create-ba.sql`
+- `script/test-fn-get-setup-status.sql`
+- `anagrafiche/test-billing-account-auto-link-ef.sql`
+- `anagrafiche/test-fn-lookup-utilities-per-ba.sql`
+- `config/test-user-emittenti-fiscali-immutable.sql`
+
+**Manual concettuali** (`docs/it/dbzero/<schema>/manual/`):
+
+- aggiornati: `config/user_emittenti_fiscali.md`, `anagrafiche/billing_account.md`, `anagrafiche/emittenti_fiscali_billing_account.md`
+- creati: `script/fn_resolve_emittente_for_user.md`, `script/fn_check_user_can_create_ba.md`, `script/fn_get_setup_status.md`, `anagrafiche/trgfn_billing_account_guard_admin_globale.md`, `anagrafiche/trgfn_billing_account_link_ef.md`, `anagrafiche/fn_lookup_utilities_per_ba.md`, `config/trgfn_user_emittenti_fiscali_guard_delete.md`
+
+---
+
 ## 8. Note finali
 
 - **Branch e PR**: ogni fase = PR atomica. Non mischiare DB+backend nello stesso commit.
@@ -510,6 +582,18 @@ non viene mai eseguito in pratica.
 - **Coerenza con `feedback_useapihandler_solo_axios`**: i nuovi store action devono
   ritornare dati già unwrappati e i call site nei drawer devono usare `try/catch`
   diretto, **non** `useApiHandler.execute()`.
+- ⚠️ **Prerequisito di funzionamento (post Fase 1 DB)**: i trigger introdotti dalla
+  Fase 1 (`trgfn_billing_account_guard_admin_globale`, `trgfn_billing_account_link_ef`)
+  leggono il GUC PostgreSQL `app.current_user_id` impostato dal middleware Django
+  `JwtAuditMiddleware`. Il middleware usa `SET LOCAL` / `set_config(..., true)`,
+  che ha **scope transazione**: in autocommit Django (default attuale, nessun
+  `ATOMIC_REQUESTS`) il GUC verrebbe perso al COMMIT automatico dello statement
+  che lo setta. **Se così fosse**, i trigger fanno skip fail-open in assenza del GUC
+  e il refactor risulta operativamente inerte (BA creato senza mapping specifico,
+  fallback default globale alla fatturazione, sistema non si rompe ma il valore
+  aggiunto del refactor non è realizzato). La verifica è il task **BE-2.0** in
+  cima alla check-list di Fase 2 backend, ed è **bloccante** per dichiarare
+  completo il refactor. Vedi anche [§7bis.6](#7bis6-dipendenza-backend--guc-appcurrent_user_id).
 
 ---
 
@@ -602,23 +686,27 @@ visibile un admin.
 
 ### Fase 1 — DB foundations (`dev/db-tid`)
 
-- [ ] **DB-1.1** Verifica preventiva: `SELECT auth_user_id, COUNT(*) FROM config.user_emittenti_fiscali GROUP BY auth_user_id HAVING COUNT(*)>1` deve essere vuoto (Q3 confermato, ma riverificare prima della migration UNIQUE)
-- [ ] **DB-1.2** Migration `00_schema/config/AAAAMMGG-NN-alter-user-emittenti-fiscali-uniq-auth-user.yaml`: drop UNIQUE `(auth_user_id, emittente_fiscale_id)`, add UNIQUE `(auth_user_id)`
-- [ ] **DB-1.3** Migration `20_code/anagrafiche/AAAAMMGG-NN-create-fn-resolve-emittente-for-user.yaml`: funzione SQL come §9.1
-- [ ] **DB-1.4** Migration `20_code/script/AAAAMMGG-NN-create-fn-check-user-can-create-ba.yaml`: funzione SQL come §9.1
-- [ ] **DB-1.5** Migration `80_data/sql/config/messaggi_errore.csv` aggiornato con i 3 nuovi codici (§9.3)
-- [ ] **DB-1.6** Migration `20_code/anagrafiche/AAAAMMGG-NN-create-trgfn-billing-account-guard-admin-globale.yaml`: trigger BEFORE INSERT come §9.2
-- [ ] **DB-1.7** Migration `20_code/anagrafiche/AAAAMMGG-NN-create-trgfn-billing-account-link-ef.yaml`: trigger AFTER INSERT come §9.2
-- [ ] **DB-1.8** Migration `20_code/config/AAAAMMGG-NN-create-trg-user-emittenti-fiscali-lock-emittente.yaml`: trigger lock_columns come §9.2
-- [ ] **DB-1.9** Migration `20_code/anagrafiche/AAAAMMGG-NN-create-trgfn-user-emittenti-fiscali-guard-delete.yaml`: trigger BEFORE DELETE come §9.2
-- [ ] **DB-1.10** pgTAP `db/pgtap/anagrafiche/test-fn-resolve-emittente-for-user.sql`: 4 casi (1 riga, 0 righe + 0 emittenti, 0 righe + N emittenti, utente inesistente)
-- [ ] **DB-1.11** pgTAP `db/pgtap/script/test-fn-check-user-can-create-ba.sql`: 3 casi (admin globale + 0 emittenti = ok, admin globale + N emittenti = fail, operatore di emittente = ok)
-- [ ] **DB-1.12** pgTAP `db/pgtap/anagrafiche/test-billing-account-auto-link-ef.sql`: 4 casi (operatore EF assegnato, edge "0 emittenti", admin globale + N emittenti bloccato, GUC user mancante = skip)
-- [ ] **DB-1.13** pgTAP `db/pgtap/config/test-user-emittenti-fiscali-immutable.sql`: 2 casi (UPDATE su `emittente_fiscale_id` blocca, DELETE blocca se utente attivo)
-- [ ] **DB-1.14** Verifica: rilanciare `dbops.fn_run_automations_attivo` (per i nuovi trigger automatici sulle FK introdotte) e controllare che nessuna FK abbia regressioni
+> **Stato: COMPLETATA il 2026-04-08.** Tutte le migration scritte come `20260408-11..17` e `-19`,
+> tutti i pgTAP verdi (vedi note di implementazione qui sotto).
+
+- [x] **DB-1.1** Verifica preventiva: `SELECT auth_user_id, COUNT(*) FROM config.user_emittenti_fiscali GROUP BY auth_user_id HAVING COUNT(*)>1` — confermato vuoto su DB di sviluppo (precondizione `sqlCheck` aggiunta anche nella migration `-11` per blocco automatico in caso di rigenerazione)
+- [x] **DB-1.2** Migration [`00_schema/config/20260408-11-alter-user-emittenti-fiscali-uniq-auth-user-mctit.yaml`](/dbzero/config/tabelle/user_emittenti_fiscali): drop UNIQUE `(auth_user_id, emittente_fiscale_id)`, add UNIQUE `(auth_user_id)`, drop indice ridondante `ix_user_emittenti_fiscali_auth_user_id`
+- [x] **DB-1.3** Migration [`20_code/script/20260408-12-create-fn-resolve-emittente-for-user-mctit.yaml`](/dbzero/script/funzioni/fn_resolve_emittente_for_user) — **schema `script` invece di `anagrafiche`** per coerenza col refactor permessi 2026-03-08 (resolver cross-dominio). **Senza filtro `ef.attivo`**: la coerenza è garantita per costruzione dai trigger di guardia esistenti su entrambi i lati (`prevent_deactivate_if_children` e `child_requires_active_parent`); aggiungere il filtro creerebbe incoerenza con `fn_check_user_can_create_ba`.
+- [x] **DB-1.4** Migration [`20_code/script/20260408-13-create-fn-check-user-can-create-ba-mctit.yaml`](/dbzero/script/funzioni/fn_check_user_can_create_ba): pure check senza raise
+- [x] **DB-1.5** Migration `80_data/sql/config/messaggi_errore.csv` aggiornato con i 3 nuovi codici (§9.3): id 358 `E_BA_ADMIN_GLOBALE_VIETATO`, id 359 `EMITTENTE_NON_MODIFICABILE`, id 360 `E_USER_EMITTENTE_DELETE_VIETATO`. Caricamento via il loader esistente `loadUpdateData runOnChange:true`.
+- [x] **DB-1.6** Migration [`20_code/anagrafiche/20260408-14-create-trgfn-billing-account-guard-admin-globale-mctit.yaml`](/dbzero/anagrafiche/funzioni/trgfn_billing_account_guard_admin_globale): trigger `BEFORE INSERT` con drop+create idempotente. Skip fail-open in assenza di GUC `app.current_user_id` (seed/bootstrap).
+- [x] **DB-1.7** Migration [`20_code/anagrafiche/20260408-15-create-trgfn-billing-account-link-ef-mctit.yaml`](/dbzero/anagrafiche/funzioni/trgfn_billing_account_link_ef): trigger `AFTER INSERT` con idempotenza esplicita (skip se mapping già presente) e fail-open senza GUC.
+- [x] **DB-1.8** Migration [`20_code/config/20260408-16-create-trg-user-emittenti-fiscali-lock-emittente-mctit.yaml`](/dbzero/config/tabelle/user_emittenti_fiscali): trigger lock_columns che riusa `script.trgfn_lock_columns`
+- [x] **DB-1.9** Migration [`20_code/config/20260408-17-create-trgfn-user-emittenti-fiscali-guard-delete-mctit.yaml`](/dbzero/config/funzioni/trgfn_user_emittenti_fiscali_guard_delete): funzione in schema `config` (la tabella protetta sta in `config`), con override manutenzione via GUC `zeroerp.allow_user_emittente_delete_override`. Fail-open se l'utente Django è già stato cancellato (cessazione implicita).
+- [x] **DB-1.10** pgTAP [`db/pgtap/script/test-fn-resolve-emittente-for-user.sql`](/dbzero/script/funzioni/fn_resolve_emittente_for_user): **5 casi** (param NULL/<=0 → throws, utente inesistente → NULL, utente con riga → PK, utente senza riga → NULL). Il caso "EF disattivato" del piano originale è stato rimosso perché il refactor del filtro `ef.attivo` lo rende non rappresentativo.
+- [x] **DB-1.11** pgTAP [`db/pgtap/script/test-fn-check-user-can-create-ba.sql`](/dbzero/script/funzioni/fn_check_user_can_create_ba): **4 casi** (NULL/-1 → false, user con riga → true, admin globale + emittenti → false). Il caso "0 emittenti → true" è stato rimosso perché la disattivazione totale degli EF è bloccata dai trigger di guardia esistenti e non si può simulare in modo pulito; la logica è coperta a livello di unit di funzione.
+- [x] **DB-1.12** pgTAP [`db/pgtap/anagrafiche/test-billing-account-auto-link-ef.sql`](/dbzero/anagrafiche/funzioni/trgfn_billing_account_link_ef): 4 casi (GUC assente → 0 mapping; operatore con EF → mapping specifico verso EF atteso; idempotenza → 1 sola riga; admin globale con emittenti → INSERT bloccata). Strategia "4 BA template distinti uno per test" + skip soft se template/FK indisponibili. **Niente savepoint** (rollbackano lo stato della temp table interna di pgTAP).
+- [x] **DB-1.13** pgTAP [`db/pgtap/config/test-user-emittenti-fiscali-immutable.sql`](/dbzero/config/tabelle/user_emittenti_fiscali): **3 casi** (UPDATE su `emittente_fiscale_id` blocca, DELETE su utente attivo blocca, DELETE con override GUC consentita).
+- [ ] **DB-1.14** Verifica: rilanciare `dbops.fn_run_automations_attivo` — **non necessario** per il refactor in corso (nessuna nuova FK introdotta, solo trigger su tabelle esistenti). Voce mantenuta per memoria; può essere chiusa o rimossa al merge.
 
 ### Fase 2 — Backend (`dev/backend-tid`)
 
+- [ ] **BE-2.0 (PREREQUISITO BLOCCANTE)** Verificare che il GUC `app.current_user_id` impostato dal middleware [`JwtAuditMiddleware`](/it/backend/core/manual/jwt_audit_middleware) **arrivi effettivamente** ai trigger DB del refactor (`trgfn_billing_account_guard_admin_globale`, `trgfn_billing_account_link_ef`). Vedi [§7bis.6](#7bis6-dipendenza-backend--guc-appcurrent_user_id). Test concreto: creare un BA come operatore di emittente via API e verificare che venga creata la riga in `anagrafiche.emittenti_fiscali_billing_account` col mapping specifico atteso. Se il test fallisce (mapping assente nonostante il guard non blocchi), il middleware è inerte in autocommit Django (`SET LOCAL` perso al COMMIT automatico) — va aperta una issue separata per spostare il setting del GUC dentro `transaction.atomic()` o abilitare `ATOMIC_REQUESTS` sulle view che inseriscono BA. **Finché questa verifica non è chiusa, l'intero refactor è strutturalmente in piedi ma operativamente inerte** (i trigger fanno skip fail-open, il sistema continua a funzionare come oggi senza auto-link, fallback al default globale).
 - [ ] **BE-2.1** `apps/core/services/permissions_resolver.py` → metodo `get_emittente_for_user(user) -> int|None` con cache (pattern `_cached`)
 - [ ] **BE-2.2** Censimento call-site `INSERT INTO anagrafiche.billing_account` lato Python (`grep -rn` in `apps/anagrafiche`): elenco completo da centralizzare
 - [ ] **BE-2.3** Nuovo service `BillingAccountCreationService` (o estensione di un service esistente) come unico punto di creazione BA
@@ -629,8 +717,8 @@ visibile un admin.
 
 ### Fase 3 — Funzione lookup utility per BA (DB + backend)
 
-- [ ] **DB-3.1** Migration `20_code/anagrafiche/AAAAMMGG-NN-create-fn-lookup-utilities-per-ba.yaml`: funzione SQL come §9.1
-- [ ] **DB-3.2** pgTAP `db/pgtap/anagrafiche/test-fn-lookup-utilities-per-ba.sql`: 4 casi (BA con EF specifico + utility personalizzata, BA con EF specifico + utility non personalizzata, BA senza mapping → fallback default globale, ruolo soggetto sconosciuto)
+- [x] **DB-3.1** Migration [`20_code/anagrafiche/20260408-18-create-fn-lookup-utilities-per-ba-mctit.yaml`](/dbzero/anagrafiche/funzioni/fn_lookup_utilities_per_ba): funzione SQL come §9.1, riusa `fn_get_emittente_fiscale_pk` per la risoluzione emittente (catena specifico → default globale, filtro `ef.attivo`).
+- [x] **DB-3.2** pgTAP [`db/pgtap/anagrafiche/test-fn-lookup-utilities-per-ba.sql`](/dbzero/anagrafiche/funzioni/fn_lookup_utilities_per_ba): **5 casi** (NULL → throws, <=0 → throws, ruolo NULL → throws, smoke righe ritornate, coerenza `is_personalizzata_per_ef` con `emittenti_fiscali_utilities`). I casi "BA senza mapping" e "ruolo sconosciuto" sono coperti come effetto delle precondizioni (E_EMITTENTE_DEFAULT_MISSING propagato; ruolo sconosciuto → 0 righe silente).
 - [ ] **BE-3.1** `apps/core/db/lookup_repository.py` → metodo `list_utilities_per_billing_account(ba_id, ruolo_codice)` che chiama `fn_lookup_utilities_per_ba`
 - [ ] **BE-3.2** Endpoint `GET /api/v1/anagrafiche/billing-account/{id}/utilities/?ruolo=CL` (vedi §9.4) in `apps/anagrafiche/api/views_billing_account.py`
 - [ ] **BE-3.3** Permission check con `EmittenteFiscaleScopeMixin` sul BA target
@@ -653,9 +741,17 @@ visibile un admin.
 
 - [ ] **DOC-5.1** Aggiornare `docs/it/guide/architettura-permessi-e-autorizzazioni.md` §4.9: nota "1-a-1 dopo refactor 2026-04-XX, ADMIN reinterpretato come scope-locale"
 - [ ] **DOC-5.2** Aggiornare `docs/it/guide/architettura-permessi-e-autorizzazioni.md` §13: nota su "ADMIN globale vs ADMIN di emittente"
-- [ ] **DOC-5.3** Aggiornare `docs/it/dbzero/config/manual/user_emittenti_fiscali.md`: nuova semantica 1-a-1, immutabilità, regola "no cambio operatore"
-- [ ] **DOC-5.4** Aggiornare `docs/it/dbzero/anagrafiche/manual/emittenti_fiscali_billing_account.md`: nota "default globale = rete di sicurezza, non meccanismo principale dopo refactor 2026-04-XX"
-- [ ] **DOC-5.5** Creare manual per le nuove funzioni in `docs/it/dbzero/anagrafiche/manual/` e `docs/it/dbzero/script/manual/`
+- [x] **DOC-5.3** Aggiornato [`docs/it/dbzero/config/manual/user_emittenti_fiscali.md`](/dbzero/config/tabelle/user_emittenti_fiscali): nuova semantica 1-a-1, immutabilità, regola "no cambio operatore", riferimenti a resolver e trigger
+- [x] **DOC-5.4** Aggiornato [`docs/it/dbzero/anagrafiche/manual/emittenti_fiscali_billing_account.md`](/dbzero/anagrafiche/tabelle/emittenti_fiscali_billing_account): nota "rete di sicurezza", best practice operative aggiornate
+- [x] **DOC-5.5** Creati 7 manual per le nuove funzioni/trigger:
+  - [`script.fn_resolve_emittente_for_user`](/dbzero/script/funzioni/fn_resolve_emittente_for_user)
+  - [`script.fn_check_user_can_create_ba`](/dbzero/script/funzioni/fn_check_user_can_create_ba)
+  - [`script.fn_get_setup_status`](/dbzero/script/funzioni/fn_get_setup_status)
+  - [`anagrafiche.trgfn_billing_account_guard_admin_globale`](/dbzero/anagrafiche/funzioni/trgfn_billing_account_guard_admin_globale)
+  - [`anagrafiche.trgfn_billing_account_link_ef`](/dbzero/anagrafiche/funzioni/trgfn_billing_account_link_ef)
+  - [`anagrafiche.fn_lookup_utilities_per_ba`](/dbzero/anagrafiche/funzioni/fn_lookup_utilities_per_ba)
+  - [`config.trgfn_user_emittenti_fiscali_guard_delete`](/dbzero/config/funzioni/trgfn_user_emittenti_fiscali_guard_delete)
+  - Inoltre aggiornata la sezione "Trigger e funzioni coinvolte" di [`anagrafiche.billing_account`](/dbzero/anagrafiche/tabelle/billing_account)
 - [ ] **DOC-5.6** Aggiungere voci alla guida `docs/it/guide/risorse-umane-e-accessi.md`: ciclo di vita "trasferimento dipendente fra emittenti" (chiusura + apertura nuovo account)
 - [ ] **DOC-5.7** Spostare questo WIP in `docs/it/dev/work-done/refactor-operatore-emittenti.md` con nota "completato YYYY-MM-DD"
 - [ ] **DOC-5.8** Aggiornare le memorie progetto rilevanti

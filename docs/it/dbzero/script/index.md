@@ -7,6 +7,7 @@
 - [fn_check_blocco_login](funzioni/fn_check_blocco_login.md)
 - [fn_check_indirizzo_duplicato](funzioni/fn_check_indirizzo_duplicato.md)
 - [fn_check_operatore_invitabile](funzioni/fn_check_operatore_invitabile.md)
+- [fn_check_user_can_create_ba](funzioni/fn_check_user_can_create_ba.md)
 - [fn_check_user_emittente_scope](funzioni/fn_check_user_emittente_scope.md) — (latest review 08-03-2026) La funzione **`script.fn_check_user_emittente_scope`** verifica se un utente ha accesso a uno specifico emittente fiscale. Pensata per i trigger defense-in-depth su tabelle operative (fatture, pagamenti).
 - [fn_clone_catasto_from_parent_by_istanza](funzioni/fn_clone_catasto_from_parent_by_istanza.md) — (latest review 15-12-25) La funzione **`script.fn_clone_catasto_from_parent_by_istanza(p_istanza_utilities_id)`** gestisce la **clonazione** di un record catastale (`anagrafiche.catasto_unita_immobiliari`) dalla **parent_istanza** verso l’istanza corrente, tipicamente nel flusso di **subentro**.
 - [fn_disdetta_cliente](funzioni/fn_disdetta_cliente.md)
@@ -33,6 +34,7 @@
 - [fn_get_record_id_as_of](funzioni/fn_get_record_id_as_of.md) — * **Recupero rapido dell’ID in uno snapshot**: ottenere solo l’identificativo del record (`id`) valido alla data/ora specificata, senza dover deserializzare tutto il JSON. * **Ottimizzazione delle query**: operazione leggera nel caso serva solo l’ID, utile per controlli o join condizionali su storico.
 - [fn_get_ruolo_sistema](funzioni/fn_get_ruolo_sistema.md) — (latest review 08-03-2026) La funzione **`script.fn_get_ruolo_sistema`** restituisce il `ruolo_sistema` (`ADMIN`, `OPERATIVO`, `DISABILITATO`) di un utente dalla tabella ponte `anagrafiche.risorse_umane_auth_user`.
 - [fn_get_search_detail](funzioni/fn_get_search_detail.md) — * **Dettaglio per tipo ruolo**: la funzione usa un `CASE` sul `codice_interno` del tipo ruolo (immutabile, protetto da `trgfn_lock_columns`) per costruire sezioni specifiche. Gestisce CL (cliente), FO (fornitore) con logica diretta, e delega tutti gli altri ruoli a `fn_get_entita_ruolo_detail`.
+- [fn_get_setup_status](funzioni/fn_get_setup_status.md)
 - [fn_get_snapshot_as_of](funzioni/fn_get_snapshot_as_of.md) — (latest review 02-02-26) * **Recupero storico/flessibile**: ottenere lo stato di un record in un preciso istante, combinando storicizzazione e serializzazione diretta. * **Robustezza**: ogni errore di query viene tracciato con contesto completo, e l'esecuzione viene interrotta per evitare inconsistenze.
 - [fn_get_soggetto_dati_by_ruolo](funzioni/fn_get_soggetto_dati_by_ruolo.md) — * **Aggregazione trasversale**: combina in un unico record le informazioni che altrimenti richiederebbero join multipli su 8 tabelle (soggetti_ruoli, soggetti, tipi_ruoli, tipi_soggetto_dettaglio, tipi_soggetto, titoli_cortesia, dati_societari, forme_giuridiche, province).
 - [fn_get_stato_cliente_by_istanza](funzioni/fn_get_stato_cliente_by_istanza.md) — Fornire lo **stato cliente** associato a una specifica **istanza di servizio**, restituendo:
@@ -52,6 +54,7 @@
 - [fn_norm_via](funzioni/fn_norm_via.md)
 - [fn_registra_tentativo_login](funzioni/fn_registra_tentativo_login.md)
 - [fn_resolve_codice_postale](funzioni/fn_resolve_codice_postale.md) — Risolve il `codice_postale_id` con logica di fallback a due livelli. Unica source of truth per la logica CAP (prima nel watcher Vue).
+- [fn_resolve_emittente_for_user](funzioni/fn_resolve_emittente_for_user.md)
 - [fn_resolve_livello_area](funzioni/fn_resolve_livello_area.md) — (latest review 08-03-2026) La funzione **`script.fn_resolve_livello_area`** risolve il livello di accesso effettivo di un utente per un'area funzionale, identificata tramite `schema_db`.
 - [fn_resolve_livello_oggetto](funzioni/fn_resolve_livello_oggetto.md) — (latest review 08-03-2026) La funzione **`script.fn_resolve_livello_oggetto`** risolve il livello di accesso per un singolo model Django (`app_label` + `model_name`).
 - [fn_search_soggetti_universale](funzioni/fn_search_soggetti_universale.md) — * **Ricerca per tipo ruolo**: il parametro `p_tipo_ruolo_id` e' obbligatorio. Il dropdown frontend mostra solo i ruoli accessibili all'utente corrente.
