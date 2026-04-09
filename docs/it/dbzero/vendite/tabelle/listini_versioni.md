@@ -9,7 +9,6 @@
 | codice_versione | character varying | NO |  |
 | valido_dal | date | NO |  |
 | valido_al | date | YES |  |
-| priorita | smallint | NO | 100 |
 | stato | character varying | NO | 'BOZZA'::character varying |
 | meta | jsonb | NO | '{}'::jsonb |
 | attivo | boolean | NO | true |
@@ -23,7 +22,6 @@
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | CHECK | chk_listini_versioni_date |  |
-| CHECK | chk_listini_versioni_priorita |  |
 | CHECK | chk_listini_versioni_stato |  |
 | FOREIGN KEY | fk_listini_versioni_listino | listino_id |
 | PRIMARY KEY | pk_listini_versioni | id |
