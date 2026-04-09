@@ -183,6 +183,40 @@ class LookupRepository:
             cursor.execute(sql, [entity_soggetto_ruolo_id, tipo_ruolo_codice])
             return rows_to_list(cursor)
 
+    # Scopo: Lista utility per un billing account "guidata da emittente"
+    #        (refactor operatore-emittenti, sez. 3 del WIP).
+    #        Wrapper Python su anagrafiche.fn_lookup_utilities_per_ba.
+    #        Politica ibrida (C):
+    #          - utility ammesse per il ruolo del soggetto del BA
+    #          - filtrate per intersezione con utility ammesse per ruolo EF
+    #            dell'emittente associato al BA (specifico → default globale)
+    #          - decorate con i parametri override di
+    #            emittenti_fiscali_utilities quando esistono per la coppia
+    #            (emittente, utility); is_personalizzata_per_ef=true
+    #          - le utility "ammesse ma non personalizzate" restano visibili
+    #            con i parametri default di sistema
+    #
+    #        Param p_ruolo_codice_soggetto: 'CL' / 'FO' / 'GE' (codice del
+    #        ruolo del soggetto del BA, lato cliente).
+    def list_utilities_per_billing_account(
+        self, *, billing_account_id: int, ruolo_codice_soggetto: str
+    ) -> list[dict[str, Any]]:
+        sql = """
+            SELECT utility_id,
+                   codice,
+                   descrizione,
+                   is_personalizzata_per_ef,
+                   minimo_soglia_min,
+                   minimo_soglia_max,
+                   arrotondamento_importi_dec,
+                   metodo_arrotondamento_importi
+              FROM anagrafiche.fn_lookup_utilities_per_ba(%s, %s)
+             ORDER BY descrizione
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [billing_account_id, ruolo_codice_soggetto])
+            return rows_to_list(cursor)
+
     # Scopo: Lista utility ammesse per un tipo ruolo (es. EF, FO, CL).
     #        Strict mode: ritorna SOLO utility con riga ATTIVA in
     #        config.utilities_tipi_ruolo per tipo_ruolo_codice e periodo

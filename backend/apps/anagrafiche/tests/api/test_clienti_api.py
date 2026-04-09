@@ -10,23 +10,27 @@
 Indice test eseguiti:
  1) test_patch_cliente_ok — PATCH aggiorna campi editabili
  2) test_patch_cliente_not_found — PATCH cliente inesistente
+ 3) test_get_clienti_propaga_scope_emittente — GET risolve scope via PermissionResolver
 """
 
 import json
 from unittest.mock import Mock, patch
 
 from django.test import Client, SimpleTestCase
+from apps.core.tests._helpers.jwt_mock import JwtMockedApiTest
 
 from apps.core.services.service_errors import ServiceError
 
 _AUTH = "rest_framework_simplejwt.authentication.JWTAuthentication.authenticate"
 _SVC = "apps.anagrafiche.api.views_clienti.ClientiService"
+_PERM = "apps.anagrafiche.api.views_clienti.PermissionResolver"
 
 
-class TestClientiPatchApi(SimpleTestCase):
+class TestClientiPatchApi(JwtMockedApiTest):
     """Test endpoint PATCH clienti."""
 
     def setUp(self) -> None:
+        super().setUp()
         self.client = Client()
 
     @patch(_AUTH, return_value=(Mock(), None))
@@ -42,6 +46,22 @@ class TestClientiPatchApi(SimpleTestCase):
         self.assertEqual(resp.status_code, 200)
         body = resp.json()
         self.assertTrue(body["data"]["updated"])
+
+    @patch(_AUTH, return_value=(Mock(), None))
+    @patch(_PERM)
+    @patch(_SVC)
+    def test_get_clienti_propaga_scope_emittente(
+        self, mock_svc_cls, mock_perm, _auth,
+    ):
+        """GET /anagrafiche/clienti/ risolve emittente_ids via
+        PermissionResolver e lo passa al service (refactor BE-3.5)."""
+        mock_perm.get_emittenti_ids.return_value = [11, 22]
+        mock_svc_cls.return_value.list_clienti.return_value = ([], 0)
+        resp = self.client.get("/api/v1/anagrafiche/clienti/")
+        self.assertEqual(resp.status_code, 200)
+        # Lo scope risolto dal PermissionResolver deve arrivare al service
+        kwargs = mock_svc_cls.return_value.list_clienti.call_args.kwargs
+        self.assertEqual(kwargs["emittente_ids"], [11, 22])
 
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(_SVC)

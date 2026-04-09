@@ -17,7 +17,12 @@ from django.db import IntegrityError, transaction
 
 from apps.anagrafiche.db.clienti_repository import ClientiRepository
 from apps.anagrafiche.db.soggetti_repository import SoggettiRepository
-from apps.anagrafiche.error_codes import E_ANAG_DUPLICATO, E_ANAG_NOT_FOUND, E_ANAG_VALIDAZIONE
+from apps.anagrafiche.error_codes import (
+    E_ANAG_DUPLICATO,
+    E_ANAG_NOT_FOUND,
+    E_ANAG_VALIDAZIONE,
+    E_BA_ADMIN_GLOBALE_VIETATO,
+)
 from apps.anagrafiche.services._validators import optional_str
 from apps.core.services.service_errors import ServiceError
 from apps.core.api.payload_validators import optional_int, optional_uuid
@@ -43,6 +48,12 @@ class ClientiService:
     # =================================================================
 
     # Scopo: Lista paginata clienti.
+    #        Param `emittente_ids` (lista bigint[] di soggetto_ruolo_id
+    #        emittente, oppure None) e' lo scope risolto dal chiamante
+    #        via PermissionResolver.get_emittenti_ids. None = bypass
+    #        (superuser/admin globale/0 emittenti). Refactor operatore-
+    #        emittenti, follow-up BE-3.5: senza questo filtro un operatore
+    #        di EF A vedrebbe i clienti di EF B nella lista.
     def list_clienti(self, **params: Any) -> tuple[list, int]:
         return self._repo.list_clienti(**params)
 
@@ -71,12 +82,40 @@ class ClientiService:
     # Creazione cliente (orchestratore riusabile)
     # =================================================================
 
+    # Scopo: Guard applicativo refactor operatore-emittenti (Q6).
+    #        Blocca la creazione BA per admin globale quando esistono
+    #        emittenti fiscali nel sistema. Difesa "early reject" per
+    #        dare un errore pulito (E_BA_ADMIN_GLOBALE_VIETATO, 403)
+    #        invece di un fallimento generico del trigger DB.
+    #        Defense-in-depth: il trigger
+    #        anagrafiche.trgfn_billing_account_guard_admin_globale
+    #        e' la difesa finale lato DB.
+    #        Skip se auth_user_id e' None (contesto di sistema, es.
+    #        test fixture o bootstrap non-API).
+    def _guard_can_create_ba(self, auth_user_id: int | None) -> None:
+        if auth_user_id is None:
+            return
+        if not self._repo.check_user_can_create_ba(auth_user_id):
+            raise ServiceError(
+                code=E_BA_ADMIN_GLOBALE_VIETATO,
+                message=(
+                    "Un amministratore globale non puo' creare billing "
+                    "account quando esistono emittenti fiscali. Operare "
+                    "come operatore di un emittente specifico."
+                ),
+            )
+
     # Scopo: Crea un cliente completo in una transazione atomica.
     #        Obiettivo: generare la catena istanza → BA → cliente.
     #        Perimetro: se istanza_utility_id/billing_account_id forniti,
     #        li valida e riusa; se NULL, li genera in trasparenza.
     #        Risultato: dict con id del cliente creato e delle entita' collegate.
-    def crea_cliente(self, payload: dict[str, Any]) -> dict[str, Any]:
+    #        Param auth_user_id: ID Django dell'utente chiamante (None per
+    #        contesti di sistema). Usato per il guard refactor operatore-
+    #        emittenti che blocca admin globale + emittenti presenti.
+    def crea_cliente(
+        self, payload: dict[str, Any], *, auth_user_id: int | None = None
+    ) -> dict[str, Any]:
         soggetto_id = optional_uuid(payload, "soggetto_id")
         ErrorManager.require(soggetto_id is not None, code=E_ANAG_VALIDAZIONE,
                              message="soggetto_id obbligatorio.")
@@ -91,6 +130,12 @@ class ClientiService:
         # Parametri opzionali: entita' pre-esistenti (da pratiche)
         istanza_utility_id = optional_int(payload, "istanza_utility_id")
         billing_account_id = optional_int(payload, "billing_account_id")
+
+        # Guard refactor operatore-emittenti (Q6): admin globale non puo'
+        # creare BA se ci sono emittenti. Solo se non c'e' un BA pre-esistente
+        # (perche' in quel caso si riusa, non si crea).
+        if billing_account_id is None:
+            self._guard_can_create_ba(auth_user_id)
 
         # Parametri opzionali
         indirizzo_dettaglio_id = optional_int(payload, "indirizzo_dettaglio_id")

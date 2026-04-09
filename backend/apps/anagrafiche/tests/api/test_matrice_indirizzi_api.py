@@ -19,6 +19,7 @@ import json
 from unittest.mock import Mock, patch
 
 from django.test import Client, SimpleTestCase
+from apps.core.tests._helpers.jwt_mock import JwtMockedApiTest
 
 from apps.core.services.service_errors import ServiceError
 
@@ -26,9 +27,10 @@ _AUTH = "rest_framework_simplejwt.authentication.JWTAuthentication.authenticate"
 _SVC = "apps.anagrafiche.api.views_matrice_indirizzi.MatriceIndirizziService"
 
 
-class TestMatriceIndirizziGetApi(SimpleTestCase):
+class TestMatriceIndirizziGetApi(JwtMockedApiTest):
 
     def setUp(self) -> None:
+        super().setUp()
         self.client = Client()
 
     @patch(_AUTH, return_value=(Mock(), None))
@@ -49,9 +51,10 @@ class TestMatriceIndirizziGetApi(SimpleTestCase):
         self.assertEqual(resp.status_code, 200)
 
 
-class TestMatriceIndirizziPostApi(SimpleTestCase):
+class TestMatriceIndirizziPostApi(JwtMockedApiTest):
 
     def setUp(self) -> None:
+        super().setUp()
         self.client = Client()
 
     @patch(_AUTH, return_value=(Mock(), None))
@@ -68,9 +71,10 @@ class TestMatriceIndirizziPostApi(SimpleTestCase):
         self.assertEqual(resp.json()["data"]["id"], 10)
 
 
-class TestMatriceIndirizziPatchApi(SimpleTestCase):
+class TestMatriceIndirizziPatchApi(JwtMockedApiTest):
 
     def setUp(self) -> None:
+        super().setUp()
         self.client = Client()
 
     @patch(_AUTH, return_value=(Mock(), None))

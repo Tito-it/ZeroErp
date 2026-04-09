@@ -13,7 +13,8 @@ import { useTabFreshness } from '../../core/composables/useTabFreshness'
 import { MANAGE_ICONS } from '../../core/constants'
 import { dominioListinoSeverity, statoVersioneListinoSeverity } from '../../core/utils/severity'
 import { displayDate } from '../../core/utils/date'
-import { changeVersioneStato } from '../api/listini'
+import { changeVersioneStato, deleteVersione, deleteListino } from '../api/listini'
+import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import InputText from 'primevue/inputtext'
@@ -21,6 +22,7 @@ import Select from 'primevue/select'
 import Tag from 'primevue/tag'
 import Button from 'primevue/button'
 import NewButton from '../../core/components/NewButton.vue'
+import AttivaVersioneDialog from './AttivaVersioneDialog.vue'
 
 const emit = defineEmits([
   'new',
@@ -28,12 +30,14 @@ const emit = defineEmits([
   'open-associazioni',
   'open-righe',
   'open-nuova-versione',
+  'open-clona-versione',
   'test-resolver'
 ])
 
 const { t } = useI18n()
 const store = useListiniStore()
 const { execute } = useApiHandler()
+const { confirmDelete } = useConfirmAction()
 const { searchText, onPage, onSort, applyFilters, reload, paginatorProps } = useSearchTable(store, {
   defaultSortField: 'descrizione'
 })
@@ -95,15 +99,62 @@ async function toggleExpand(listino) {
   }
 }
 
-// Transizioni stato versione direttamente dalla mini-tabella.
-async function onCambiaStato(versione, listinoId, nuovoStato) {
+// Stato dialog conferma attivazione (D3) — dichiarato prima delle funzioni
+// che lo referenziano per evitare TDZ in caso di chiamata sincrona durante setup.
+const attivaDialogVisible = ref(false)
+const attivaDialogVersione = ref(null)
+const attivaDialogListinoId = ref(null)
+
+// Transizione ATTIVA -> CHIUSA: nessun auto-close, esegue diretto.
+async function onChiudiVersione(versione, listinoId) {
   const result = await execute(
-    () => changeVersioneStato(listinoId, versione.id, { stato: nuovoStato }),
+    () => changeVersioneStato(listinoId, versione.id, { stato: 'CHIUSA' }),
     { successMessage: t('listini.stato_aggiornato') }
   )
   if (result !== null) {
     await store.invalidateVersioniListino(listinoId)
   }
+}
+
+// Transizione BOZZA -> ATTIVA: passa per dialog di conferma con preview
+// auto-close (D3). Il dialog chiama dry_run prima della conferma reale.
+function onAttivaVersione(versione, listinoId) {
+  attivaDialogVersione.value = versione
+  attivaDialogListinoId.value = listinoId
+  attivaDialogVisible.value = true
+}
+
+async function onAttivaConfirmed({ listinoId }) {
+  await store.invalidateVersioniListino(listinoId)
+}
+
+// O2: elimina una versione in stato BOZZA con conferma utente.
+function onEliminaVersione(versione, listino) {
+  confirmDelete(versione.codice_versione, async () => {
+    const result = await execute(
+      () => deleteVersione(listino.id, versione.id),
+      { successMessage: t('listini.versione_eliminata') },
+    )
+    if (result !== null) {
+      await store.invalidateVersioniListino(listino.id)
+      await store.fetchList()
+    }
+  })
+}
+
+// O3: elimina un listino mai usato (zero versioni, zero associazioni).
+// Il pulsante e' visibile solo se entrambi i counts sono 0; il guard backend
+// e' la fonte di verita' (un check FE serve solo a ridurre i click sbagliati).
+function onEliminaListino(listino) {
+  confirmDelete(listino.codice, async () => {
+    const result = await execute(
+      () => deleteListino(listino.id),
+      { successMessage: t('listini.listino_eliminato') },
+    )
+    if (result !== null) {
+      await store.fetchList()
+    }
+  })
 }
 
 useTabFreshness(store, 'listino')
@@ -157,7 +208,7 @@ onMounted(() => store.fetchList())
           <Tag :value="data.attivo ? t('common.active') : t('common.inactive')" :severity="data.attivo ? 'success' : 'warn'" />
         </template>
       </Column>
-      <Column :header="t('listini.col_gestione')" style="width: 100px;" frozen alignFrozen="right">
+      <Column :header="t('listini.col_gestione')" style="width: 130px;" frozen alignFrozen="right">
         <template #body="{ data }">
           <div class="flex gap-1" @click.stop>
             <Button :icon="MANAGE_ICONS.VERSIONI" text rounded size="small"
@@ -167,6 +218,10 @@ onMounted(() => store.fetchList())
             <Button :icon="MANAGE_ICONS.ASSOCIAZIONI" text rounded size="small"
               class="app-manage-btn" v-tooltip.bottom="t('listini.tab_associazioni')"
               @click="emit('open-associazioni', data)" />
+            <Button v-if="!data.versioni_count && !data.associazioni_count"
+              icon="pi pi-trash" text rounded size="small" class="app-delete-btn"
+              v-tooltip.bottom="t('listini.elimina_listino')"
+              @click="onEliminaListino(data)" />
           </div>
         </template>
       </Column>
@@ -208,7 +263,6 @@ onMounted(() => store.fetchList())
             <Column :header="t('listini.field_valido_al')" style="width: 110px;">
               <template #body="{ data: ver }">{{ displayDate(ver.valido_al) || '—' }}</template>
             </Column>
-            <Column field="priorita" :header="t('listini.col_priorita')" style="width: 80px;" />
             <Column field="righe_count" :header="t('listini.col_righe')" style="width: 80px;" />
             <Column :header="t('listini.col_gestione')" style="width: 140px;" frozen alignFrozen="right">
               <template #body="{ data: ver }">
@@ -216,15 +270,23 @@ onMounted(() => store.fetchList())
                   <Button v-if="ver.stato === 'BOZZA'" icon="pi pi-check-circle"
                     text rounded size="small" class="app-action-btn"
                     v-tooltip.bottom="t('listini.attiva')"
-                    @click="onCambiaStato(ver, listino.id, 'ATTIVA')" />
+                    @click="onAttivaVersione(ver, listino.id)" />
                   <Button v-if="ver.stato === 'ATTIVA'" icon="pi pi-lock"
                     text rounded size="small" severity="warn"
                     v-tooltip.bottom="t('listini.chiudi')"
-                    @click="onCambiaStato(ver, listino.id, 'CHIUSA')" />
+                    @click="onChiudiVersione(ver, listino.id)" />
+                  <Button icon="pi pi-copy" text rounded size="small"
+                    class="app-manage-btn"
+                    v-tooltip.bottom="t('listini.clona_versione')"
+                    @click="emit('open-clona-versione', ver, listino)" />
                   <Button icon="pi pi-list" text rounded size="small"
                     class="app-manage-btn"
                     v-tooltip.bottom="t('listini.gestisci_righe')"
                     @click="emit('open-righe', ver, listino)" />
+                  <Button v-if="ver.stato === 'BOZZA'" icon="pi pi-trash"
+                    text rounded size="small" class="app-delete-btn"
+                    v-tooltip.bottom="t('listini.elimina_versione')"
+                    @click="onEliminaVersione(ver, listino)" />
                 </div>
               </template>
             </Column>
@@ -232,6 +294,14 @@ onMounted(() => store.fetchList())
         </div>
       </template>
     </DataTable>
+
+    <AttivaVersioneDialog
+      :visible="attivaDialogVisible"
+      @update:visible="v => attivaDialogVisible = v"
+      :listino-id="attivaDialogListinoId"
+      :versione="attivaDialogVersione"
+      @confirmed="onAttivaConfirmed"
+    />
   </div>
 </template>
 

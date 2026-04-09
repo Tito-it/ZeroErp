@@ -31,6 +31,7 @@ import json
 from unittest.mock import Mock, patch
 
 from django.test import Client, SimpleTestCase
+from apps.core.tests._helpers.jwt_mock import JwtMockedApiTest
 
 from apps.core.services.service_errors import ServiceError
 
@@ -41,10 +42,11 @@ _SVC = "apps.config.api.views_utilities_tipi_ruolo.UtilitiesTipiRuoloService"
 _BASE = "/api/v1/config/utilities-tipi-ruolo/"
 
 
-class TestUtilitiesTipiRuoloGet(SimpleTestCase):
+class TestUtilitiesTipiRuoloGet(JwtMockedApiTest):
     """Test endpoint GET lista e dettaglio matrice."""
 
     def setUp(self) -> None:
+        super().setUp()
         self.client = Client()
 
     @patch(_AUTH, return_value=(Mock(), None))
@@ -112,10 +114,11 @@ class TestUtilitiesTipiRuoloGet(SimpleTestCase):
         self.assertEqual(body["error"]["code"], "E_CONFIG_MATRICE_NOT_FOUND")
 
 
-class TestUtilitiesTipiRuoloPost(SimpleTestCase):
+class TestUtilitiesTipiRuoloPost(JwtMockedApiTest):
     """Test endpoint POST creazione."""
 
     def setUp(self) -> None:
+        super().setUp()
         self.client = Client()
 
     @patch(_AUTH, return_value=(Mock(), None))
@@ -190,10 +193,11 @@ class TestUtilitiesTipiRuoloPost(SimpleTestCase):
         self.assertEqual(body["error"]["code"], "E_CONFIG_VALIDATION")
 
 
-class TestUtilitiesTipiRuoloPatch(SimpleTestCase):
+class TestUtilitiesTipiRuoloPatch(JwtMockedApiTest):
     """Test endpoint PATCH aggiornamento attivo."""
 
     def setUp(self) -> None:
+        super().setUp()
         self.client = Client()
 
     @patch(_AUTH, return_value=(Mock(), None))
@@ -248,10 +252,11 @@ class TestUtilitiesTipiRuoloPatch(SimpleTestCase):
         self.assertIn(resp.status_code, (400, 404, 422))
 
 
-class TestUtilitiesTipiRuoloUsage(SimpleTestCase):
+class TestUtilitiesTipiRuoloUsage(JwtMockedApiTest):
     """Test endpoint GET usage emittenti."""
 
     def setUp(self) -> None:
+        super().setUp()
         self.client = Client()
 
     @patch(_AUTH, return_value=(Mock(), None))
@@ -274,10 +279,11 @@ class TestUtilitiesTipiRuoloUsage(SimpleTestCase):
         self.assertEqual(body["data"]["results"][0]["emittente_codice"], "EF-001")
 
 
-class TestUtilitiesTipiRuoloAdminRequired(SimpleTestCase):
+class TestUtilitiesTipiRuoloAdminRequired(JwtMockedApiTest):
     """Verifica che tutti gli endpoint richiedano ruolo ADMIN."""
 
     def setUp(self) -> None:
+        super().setUp()
         self.client = Client()
 
     @patch(_AUTH, return_value=(Mock(), None))

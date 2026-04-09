@@ -1,7 +1,7 @@
 <script setup>
 // Scopo: Drawer compatto per creare una nuova versione di un listino.
 // Apertura: dal pulsante "+ Nuova versione" nell'expansion riga listino.
-// Campi: codice_versione (obbl.), valido_dal (obbl.), valido_al, priorita.
+// Campi: codice_versione (obbl.), valido_dal (obbl.), valido_al.
 // Lo stato iniziale e' BOZZA (gestito dal backend).
 import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -14,7 +14,6 @@ import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import DrawerFooter from '../../core/components/DrawerFooter.vue'
 import Drawer from 'primevue/drawer'
 import InputText from 'primevue/inputtext'
-import InputNumber from 'primevue/inputnumber'
 import DatePicker from 'primevue/datepicker'
 
 const { t } = useI18n()
@@ -34,7 +33,6 @@ function defaultForm() {
     codice_versione: '',
     valido_dal: new Date(),
     valido_al: null,
-    priorita: 100
   }
 }
 
@@ -44,8 +42,7 @@ watch(() => props.visible, (v) => {
 
 const canSave = computed(() =>
   !!form.value.codice_versione?.trim() &&
-  !!form.value.valido_dal &&
-  form.value.priorita > 0
+  !!form.value.valido_dal
 )
 
 async function handleSave() {
@@ -55,7 +52,6 @@ async function handleSave() {
     codice_versione: f.codice_versione.trim(),
     valido_dal: toDateString(f.valido_dal),
     valido_al: toDateString(f.valido_al),
-    priorita: f.priorita,
   }
   // execute() restituisce gia' body.data unwrappato (vedi useApiHandler).
   const result = await execute(
@@ -85,15 +81,9 @@ function close() {
         <h4>{{ t('listini.listino') }}: {{ listino.codice }} — {{ listino.descrizione }}</h4>
       </div>
 
-      <div class="form-grid-2col">
-        <div class="form-field">
-          <label>{{ t('listini.field_codice_versione') }} *</label>
-          <InputText v-model="form.codice_versione" />
-        </div>
-        <div class="form-field">
-          <label>{{ t('listini.field_priorita') }} *</label>
-          <InputNumber v-model="form.priorita" :min="1" />
-        </div>
+      <div class="form-field">
+        <label>{{ t('listini.field_codice_versione') }} *</label>
+        <InputText v-model="form.codice_versione" />
       </div>
       <div class="form-grid-2col">
         <div class="form-field">

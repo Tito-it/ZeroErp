@@ -28,6 +28,7 @@ from unittest.mock import Mock, patch
 
 from django.core.cache import cache
 from django.test import Client, SimpleTestCase
+from apps.core.tests._helpers.jwt_mock import JwtMockedApiTest
 
 
 _LOTTO_ROW = {
@@ -59,9 +60,10 @@ _LIST_RESPONSE = {
 }
 
 
-class VenditeLottiListApiTests(SimpleTestCase):
+class VenditeLottiListApiTests(JwtMockedApiTest):
     # Scopo: Prepara il contesto comune del test.
     def setUp(self) -> None:
+        super().setUp()
         cache.clear()
         self.client = Client()
 

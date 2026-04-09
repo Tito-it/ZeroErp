@@ -63,7 +63,11 @@ export const usePraticheStore = defineStore('pratiche', () => {
     loading.value = true
     try {
       const params = {}
-      const emittenteId = auth.user?.emittente?.emittente_fiscale_id
+      // Refactor operatore-emittenti: usa emittenteCorrente (1-a-1
+      // dell'operatore), NON `auth.user.emittente.emittente_fiscale_id`
+      // che per admin globale ritornerebbe il "gestore globale" via
+      // cascata 4b di fn_get_user_profile — semantica diversa.
+      const emittenteId = auth.emittenteCorrente?.id
       if (!emittenteId) {
         items.value = []
         totalRecords.value = 0
@@ -97,9 +101,11 @@ export const usePraticheStore = defineStore('pratiche', () => {
     return res.data.data
   }
 
-  // Scopo: Crea nuova pratica (aggiunge emittente_fiscale_id dal profilo utente).
+  // Scopo: Crea nuova pratica. emittente_fiscale_id viene dall'identita
+  // 1-a-1 dell'operatore corrente (refactor operatore-emittenti); per
+  // admin globali e' null e la creazione rimane bloccata lato backend.
   async function create(payload) {
-    const emittenteId = auth.user?.emittente?.emittente_fiscale_id
+    const emittenteId = auth.emittenteCorrente?.id
     const res = await createPratica({ ...payload, emittente_fiscale_id: emittenteId })
     emitDataChanged('pratica', res.data.data.id)
     return res.data.data
@@ -157,8 +163,9 @@ export const usePraticheStore = defineStore('pratiche', () => {
   const codaLoading = ref(false)
 
   // Scopo: Carica coda lavoro dell'operatore corrente su tre livelli.
+  // Usa emittenteCorrente (1-a-1) per coerenza col refactor.
   async function loadCodaLavoro() {
-    const emittenteId = auth.user?.emittente?.emittente_fiscale_id
+    const emittenteId = auth.emittenteCorrente?.id
     if (!emittenteId) { codaLavoro.value = []; return }
     codaLoading.value = true
     try {

@@ -19,12 +19,15 @@ from apps.core.api.search_validators import require_min_search_length
 from apps.core.api.success_responses import success_response
 from apps.vendite.services.listini_service import (
     fn_change_versione_state,
+    fn_clone_versione,
     fn_create_associazione,
     fn_create_listino,
     fn_create_riga,
     fn_create_versione,
     fn_delete_associazione,
+    fn_delete_listino,
     fn_delete_riga,
+    fn_delete_versione,
     fn_get_listino_dettaglio,
     fn_get_versione,
     fn_list_associazioni,
@@ -71,7 +74,6 @@ def _versione_write_fields() -> dict[str, serializers.Field]:
         "codice_versione": serializers.CharField(required=False),
         "valido_dal": serializers.DateField(required=False),
         "valido_al": serializers.DateField(required=False, allow_null=True),
-        "priorita": serializers.IntegerField(required=False),
         "meta": serializers.JSONField(required=False, allow_null=True),
         "attivo": serializers.BooleanField(required=False),
     }
@@ -102,7 +104,6 @@ def _associazione_write_fields() -> dict[str, serializers.Field]:
         "billing_account_id": serializers.IntegerField(required=False, allow_null=True),
         "utility_id": serializers.IntegerField(required=False, allow_null=True),
         "emittente_soggetto_ruolo_id": serializers.IntegerField(required=False, allow_null=True),
-        "priorita": serializers.IntegerField(required=False),
         "valido_dal": serializers.DateField(required=False),
         "valido_al": serializers.DateField(required=False, allow_null=True),
         "meta": serializers.JSONField(required=False, allow_null=True),
@@ -128,7 +129,18 @@ _VERSIONE_PATCH_REQUEST = inline_serializer(
 )
 _VERSIONE_STATO_REQUEST = inline_serializer(
     name="VenditeListinoVersioneStatoRequest",
-    fields={"stato": serializers.CharField(required=True)},
+    fields={
+        "stato": serializers.CharField(required=True),
+        "dry_run": serializers.BooleanField(required=False),
+    },
+)
+_VERSIONE_CLONA_REQUEST = inline_serializer(
+    name="VenditeListinoVersioneClonaRequest",
+    fields={
+        "codice_versione": serializers.CharField(required=True),
+        "valido_dal": serializers.DateField(required=True),
+        "valido_al": serializers.DateField(required=False, allow_null=True),
+    },
 )
 _RIGA_CREATE_REQUEST = inline_serializer(
     name="VenditeListinoRigaCreateRequest",
@@ -239,6 +251,19 @@ class ApiListinoDetail(DomainAPIView):
     def patch(self, request: Request, listino_id: int) -> JsonResponse:
         return success_response(fn_update_listino(listino_id, request.data))
 
+    @extend_schema(
+        responses={
+            200: inline_serializer(
+                name="VenditeListinoDeleteResponse",
+                fields={"data": serializers.DictField(), "meta": serializers.DictField(required=False)},
+            )
+        },
+    )
+    # Scopo: Elimina un listino mai usato (zero versioni e zero associazioni).
+    def delete(self, request: Request, listino_id: int) -> JsonResponse:
+        del request
+        return success_response(fn_delete_listino(listino_id))
+
 
 class ApiListinoVersioniList(DomainAPIView):
     area_funzionale = "vendite"
@@ -299,6 +324,19 @@ class ApiListinoVersioneDetail(DomainAPIView):
     def patch(self, request: Request, listino_id: int, ver_id: int) -> JsonResponse:
         return success_response(fn_update_versione(listino_id, ver_id, request.data))
 
+    @extend_schema(
+        responses={
+            200: inline_serializer(
+                name="VenditeListinoVersioneDeleteResponse",
+                fields={"data": serializers.DictField(), "meta": serializers.DictField(required=False)},
+            )
+        },
+    )
+    # Scopo: Elimina una versione in stato BOZZA con tutte le sue righe.
+    def delete(self, request: Request, listino_id: int, ver_id: int) -> JsonResponse:
+        del request
+        return success_response(fn_delete_versione(listino_id, ver_id))
+
 
 class ApiListinoVersioneStato(DomainAPIView):
     area_funzionale = "vendite"
@@ -317,6 +355,27 @@ class ApiListinoVersioneStato(DomainAPIView):
         return handle_post_json(
             request,
             handler=lambda payload: fn_change_versione_state(listino_id, ver_id, payload),
+        )
+
+
+class ApiListinoVersioneClona(DomainAPIView):
+    area_funzionale = "vendite"
+
+    @extend_schema(
+        request=_VERSIONE_CLONA_REQUEST,
+        responses={
+            200: inline_serializer(
+                name="VenditeListinoVersioneClonaResponse",
+                fields={"data": serializers.DictField(), "meta": serializers.DictField(required=False)},
+            )
+        },
+    )
+    # Scopo: Clona una versione esistente in una nuova versione BOZZA dello
+    #        stesso listino, copiando le righe attive. Workflow "cambio prezzi".
+    def post(self, request: Request, listino_id: int, src_ver_id: int) -> JsonResponse:
+        return handle_post_json(
+            request,
+            handler=lambda payload: fn_clone_versione(listino_id, src_ver_id, payload),
         )
 
 

@@ -29,6 +29,7 @@ from unittest.mock import Mock, patch
 
 from django.core.cache import cache
 from django.test import Client, SimpleTestCase
+from apps.core.tests._helpers.jwt_mock import JwtMockedApiTest
 
 
 _CODICE_ROW = {"id": 1, "codice": "SDI_OK", "descrizione": "Consegnato"}
@@ -44,9 +45,10 @@ _LIST_RESPONSE = {
 _URL = "/api/v1/core/lookup/codici/"
 
 
-class CoreLookupCodiciApiTests(SimpleTestCase):
+class CoreLookupCodiciApiTests(JwtMockedApiTest):
     # Scopo: Prepara il contesto comune del test.
     def setUp(self) -> None:
+        super().setUp()
         cache.clear()
         self.client = Client()
 

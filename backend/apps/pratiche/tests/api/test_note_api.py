@@ -20,6 +20,7 @@ import json
 from unittest.mock import Mock, patch
 
 from django.test import Client, SimpleTestCase
+from apps.core.tests._helpers.jwt_mock import JwtMockedApiTest
 
 _AUTH = "rest_framework_simplejwt.authentication.JWTAuthentication.authenticate"
 _VIEWS = "apps.pratiche.api.views"
@@ -35,9 +36,10 @@ def _mock_nota() -> dict:
     }
 
 
-class NoteApiTests(SimpleTestCase):
+class NoteApiTests(JwtMockedApiTest):
 
     def setUp(self) -> None:
+        super().setUp()
         self.client = Client()
 
     # Scopo: Verifica GET lista note pratica.

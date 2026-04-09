@@ -20,6 +20,7 @@ import json
 from unittest.mock import Mock, patch
 
 from django.test import Client, SimpleTestCase
+from apps.core.tests._helpers.jwt_mock import JwtMockedApiTest
 
 _AUTH = "rest_framework_simplejwt.authentication.JWTAuthentication.authenticate"
 _VIEWS = "apps.pratiche.api.views"
@@ -53,9 +54,10 @@ def _mock_coda_row():
 # ================================================================== #
 
 
-class CodaLavoroApiTests(SimpleTestCase):
+class CodaLavoroApiTests(JwtMockedApiTest):
 
     def setUp(self):
+        super().setUp()
         self.client = Client()
         self.url = "/api/v1/pratiche/coda-lavoro/"
 
@@ -82,9 +84,10 @@ class CodaLavoroApiTests(SimpleTestCase):
 # ================================================================== #
 
 
-class PrendiInCaricoApiTests(SimpleTestCase):
+class PrendiInCaricoApiTests(JwtMockedApiTest):
 
     def setUp(self):
+        super().setUp()
         self.client = Client()
         self.url = "/api/v1/pratiche/flussi/10/prendi-in-carico/"
 
@@ -108,9 +111,10 @@ class PrendiInCaricoApiTests(SimpleTestCase):
 # ================================================================== #
 
 
-class CompetenzeFlussiApiTests(SimpleTestCase):
+class CompetenzeFlussiApiTests(JwtMockedApiTest):
 
     def setUp(self):
+        super().setUp()
         self.client = Client()
         self.url_list = "/api/v1/pratiche/competenze-flussi/"
 

@@ -23,15 +23,17 @@ import json
 from unittest.mock import Mock, patch
 
 from django.test import Client, SimpleTestCase
+from apps.core.tests._helpers.jwt_mock import JwtMockedApiTest
 
 _AUTH = "rest_framework_simplejwt.authentication.JWTAuthentication.authenticate"
 _REPO = "apps.anagrafiche.api.views_indirizzi_ruolo._repo"
 
 
-class TestIndirizziRuoloCrudApi(SimpleTestCase):
+class TestIndirizziRuoloCrudApi(JwtMockedApiTest):
     """Test endpoint CRUD indirizzi ruolo (POST, PATCH, DELETE)."""
 
     def setUp(self) -> None:
+        super().setUp()
         self.client = Client()
 
     @patch(_AUTH, return_value=(Mock(), None))

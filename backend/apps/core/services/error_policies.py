@@ -353,6 +353,31 @@ class ErrorPolicyRegistry:
             ui_action="show_empty_state",
             user_message="Record non trovato.",
         ),
+        # ── Refactor operatore-emittenti (Q6 + D3) ──
+        "E_BA_ADMIN_GLOBALE_VIETATO": ErrorPolicy(
+            code="E_BA_ADMIN_GLOBALE_VIETATO",
+            http_status=403,
+            ui_action="show_error_banner",
+            user_message="Un amministratore globale non puo' creare billing "
+                         "account quando esistono emittenti fiscali. Operare "
+                         "come operatore di un emittente specifico.",
+        ),
+        "E_EMITTENTE_NON_MODIFICABILE": ErrorPolicy(
+            code="E_EMITTENTE_NON_MODIFICABILE",
+            http_status=400,
+            ui_action="show_error_banner",
+            user_message="L'emittente fiscale di un operatore e' immutabile. "
+                         "Per cambiare l'associazione disattivare l'utente e "
+                         "crearne uno nuovo per l'altro emittente.",
+        ),
+        "E_USER_EMITTENTE_DELETE_VIETATO": ErrorPolicy(
+            code="E_USER_EMITTENTE_DELETE_VIETATO",
+            http_status=400,
+            ui_action="show_error_banner",
+            user_message="Eliminazione vietata: l'associazione utente-emittente "
+                         "puo' essere rimossa solo come parte della "
+                         "disattivazione utente.",
+        ),
         # ── Anagrafiche / Soggetti e trigger ──
         "E_INDIRIZZO_OBBLIGATORIO_MANCANTE": ErrorPolicy(
             code="E_INDIRIZZO_OBBLIGATORIO_MANCANTE",

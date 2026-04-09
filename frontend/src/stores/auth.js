@@ -107,6 +107,27 @@ export const useAuthStore = defineStore('auth', () => {
   // Domini visibili per l'utente corrente (filtra adminOnly in base a ruolo_sistema)
   const isAdmin = computed(() => user.value?.ruolo_sistema === RUOLO_SISTEMA.ADMIN)
 
+  // Refactor operatore-emittenti (Q1): admin globale = ADMIN senza riga
+  // in user_emittenti_fiscali. Il flag e' calcolato lato backend dalla
+  // /core/me/ view. Per operatori e' sempre false.
+  const isAdminGlobale = computed(() => !!user.value?.is_admin_globale)
+
+  // Refactor operatore-emittenti: emittente fiscale 1-a-1 dell'utente
+  // corrente. Per admin globale ritorna null perche' il blocco `emittente`
+  // del profilo riflette il "gestore globale" (cascata fallback di
+  // fn_get_user_profile) e NON l'emittente personale dell'utente.
+  // Ritorna { id, codice, ragioneSociale } o null.
+  const emittenteCorrente = computed(() => {
+    if (isAdminGlobale.value) return null
+    const ef = user.value?.emittente
+    if (!ef) return null
+    return {
+      id: ef.emittente_fiscale_id ?? null,
+      codice: ef.emittente_codice ?? null,
+      ragioneSociale: ef.ragione_sociale_completa ?? ef.emittente_descrizione ?? null,
+    }
+  })
+
   // Scopo: Domini visibili: nasconde adminOnly per non-admin e BLOCCATO per tutti.
   // I domini adminOnly hanno gia' il loro guard — non applicare il check livello.
   const visibleDomains = computed(() => {
@@ -157,6 +178,8 @@ export const useAuthStore = defineStore('auth', () => {
     user,
     isAuthenticated,
     isAdmin,
+    isAdminGlobale,
+    emittenteCorrente,
     mustChangePassword,
     passwordChangeRequired,
     displayName,

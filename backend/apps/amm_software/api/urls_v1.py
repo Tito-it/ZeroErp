@@ -22,6 +22,8 @@ urlpatterns = [
     # Riepilogo permessi e audit
     path("permessi-riepilogo/", views.PermessiRiepilogoView.as_view(), name="amm-permessi-riepilogo"),
     path("audit-log/", views.AuditLogView.as_view(), name="amm-audit-log"),
+    # Setup status (refactor operatore-emittenti)
+    path("setup-status/", views.SetupStatusView.as_view(), name="amm-setup-status"),
     # Reparti e profili
     path("reparti/", views.RepartiListView.as_view(), name="amm-reparti-list"),
     path("reparti/<int:uo_id>/profilo/", views.RepartoProfiloView.as_view(), name="amm-reparto-profilo"),

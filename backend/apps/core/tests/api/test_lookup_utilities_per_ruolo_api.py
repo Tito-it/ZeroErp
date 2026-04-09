@@ -15,14 +15,16 @@ Indice test eseguiti:
 from unittest.mock import Mock, patch
 
 from django.test import Client, SimpleTestCase
+from apps.core.tests._helpers.jwt_mock import JwtMockedApiTest
 
 
 _AUTH = "rest_framework_simplejwt.authentication.JWTAuthentication.authenticate"
 _REPO = "apps.core.api.views_lookup.LookupRepository"
 
 
-class LookupUtilitiesPerRuoloApiTests(SimpleTestCase):
+class LookupUtilitiesPerRuoloApiTests(JwtMockedApiTest):
     def setUp(self) -> None:
+        super().setUp()
         self.client = Client()
 
     @patch(_AUTH, return_value=(Mock(), None))

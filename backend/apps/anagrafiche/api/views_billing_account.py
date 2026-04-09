@@ -135,3 +135,52 @@ class BillingAccountLookupByIdView(DomainAPIView):
         service = BillingAccountService()
         result = service.get_lookup_by_id(billing_account_id)
         return success_response(result)
+
+
+class BillingAccountUtilitiesView(DomainAPIView):
+    """GET utility "guidate da emittente" per un billing account.
+
+    Refactor operatore-emittenti, sez. 3 del WIP. Pattern slot/override:
+    elenca le utility ammesse per il ruolo del soggetto del BA, intersecate
+    con quelle ammesse per il ruolo EF dell'emittente associato al BA, e
+    decorate con i parametri override di emittenti_fiscali_utilities quando
+    presenti per la coppia (emittente, utility).
+
+    Permission: scope emittente sul BA target. Operatori vedono solo le
+    utility dei BA del proprio emittente; admin globale e superuser bypass.
+    """
+
+    area_funzionale = "anagrafiche"
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(
+                name="ruolo",
+                type=str,
+                required=True,
+                description="Codice ruolo soggetto del BA: CL (cliente), FO (fornitore), GE (gestore).",
+            ),
+        ],
+        responses={200: inline_serializer(
+            name="BillingAccountUtilitiesResp",
+            fields={
+                "data": serializers.DictField(),
+                "meta": serializers.DictField(required=False),
+            },
+        )},
+    )
+    # Scopo: GET utility per BA — risolve scope emittente e delega al service.
+    def get(self, request: Request, billing_account_id: int) -> JsonResponse:
+        ruolo = request.query_params.get("ruolo", "")
+        # user_emittente_id 1-a-1 (PK reale). None per admin globale,
+        # "0 emittenti" o utenti senza bridge HR.
+        user_emittente_id = PermissionResolver.get_emittente_for_user(request.user)
+        is_superuser = bool(getattr(request.user, "is_superuser", False))
+
+        result = BillingAccountService().list_utilities_for_ba(
+            billing_account_id=billing_account_id,
+            ruolo_codice_soggetto=ruolo,
+            user_emittente_id=user_emittente_id,
+            is_superuser=is_superuser,
+        )
+        return success_response(result)

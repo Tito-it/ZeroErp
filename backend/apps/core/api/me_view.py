@@ -28,9 +28,13 @@ class UserProfileView(DomainAPIView):
         description=(
             "Restituisce il profilo completo dell'utente autenticato: "
             "dati anagrafici (soggetto), risorse umane, ruolo_sistema, "
-            "dati emittente fiscale associato (se presente) e mappa "
-            "permessi per area funzionale. "
-            "Il payload e' prodotto dalla funzione DB script.fn_get_user_profile."
+            "dati emittente fiscale associato (se presente), flag "
+            "`is_admin_globale` derivato dalla regola Q1 del refactor "
+            "operatore-emittenti, e mappa permessi per area funzionale. "
+            "Il payload base e' prodotto dalla funzione DB "
+            "script.fn_get_user_profile; il flag `is_admin_globale` viene "
+            "calcolato in Python come "
+            "`ruolo_sistema=='ADMIN' AND user_emittente_fiscale_id IS NULL`."
         ),
         responses={
             200: inline_serializer(
@@ -56,6 +60,14 @@ class UserProfileView(DomainAPIView):
                                 allow_null=True,
                                 help_text="Dati emittente fiscale + soggetto ditta (null se non associato).",
                             ),
+                            "is_admin_globale": serializers.BooleanField(
+                                help_text=(
+                                    "True se l'utente e' admin globale (ruolo_sistema=ADMIN "
+                                    "+ nessuna riga in user_emittenti_fiscali). False per "
+                                    "operatori e admin di emittente. Refactor operatore-"
+                                    "emittenti, decisione Q1."
+                                ),
+                            ),
                             "permessi_area": serializers.DictField(
                                 help_text=(
                                     "Mappa livello accesso per area funzionale: "
@@ -71,8 +83,25 @@ class UserProfileView(DomainAPIView):
         },
     )
     # Scopo: Restituisce via GET il profilo completo dell'utente autenticato.
-    # Chiama script.fn_get_user_profile(auth_user_id) e restituisce il JSONB.
+    # Chiama script.fn_get_user_profile(auth_user_id) e arricchisce con
+    # is_admin_globale (refactor operatore-emittenti Q1: admin senza riga
+    # in user_emittenti_fiscali = admin globale; admin con riga = admin
+    # di emittente).
     def get(self, request: Request):
         repo = CoreRepository()
         profile = repo.get_user_profile(request.user.id)
+        profile["is_admin_globale"] = self._compute_is_admin_globale(profile)
         return success_response(profile)
+
+    # Scopo: Calcola il flag is_admin_globale dal profilo. Regola Q1 del
+    # refactor operatore-emittenti: ADMIN senza riga in user_emittenti_fiscali
+    # = admin globale (vede tutti gli emittenti). ADMIN con riga = admin di
+    # emittente (vede solo il suo). OPERATIVO non e' mai admin.
+    @staticmethod
+    def _compute_is_admin_globale(profile: dict) -> bool:
+        if profile.get("ruolo_sistema") != "ADMIN":
+            return False
+        emittente = profile.get("emittente") or {}
+        # user_emittente_fiscale_id valorizzato → admin di emittente
+        # (riga in config.user_emittenti_fiscali). NULL → admin globale.
+        return emittente.get("user_emittente_fiscale_id") is None

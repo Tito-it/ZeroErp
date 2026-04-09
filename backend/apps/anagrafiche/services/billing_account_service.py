@@ -13,11 +13,18 @@ from datetime import date
 from typing import Any
 
 from apps.anagrafiche.db.billing_account_repository import BillingAccountRepository
+from apps.core.db.lookup_repository import LookupRepository
 from apps.core.services.error_manager import ErrorManager
+from apps.core.services.service_errors import ServiceError
 
 _MIN_QUERY_LENGTH = 2
 _MAX_LIMIT = 50
 _DEFAULT_LIMIT = 20
+
+# Codici ruolo soggetto ammessi per l'endpoint utilities-per-BA.
+# Allineato con il dominio del param p_ruolo_codice_soggetto della
+# funzione SQL anagrafiche.fn_lookup_utilities_per_ba.
+_ALLOWED_RUOLI_BA = frozenset({"CL", "FO", "GE"})
 
 
 class BillingAccountService:
@@ -72,6 +79,72 @@ class BillingAccountService:
             "total_count": total_count,
             "limit": effective_limit,
         }
+
+    # Scopo: Lista utility "guidate da emittente" per un billing account
+    #        (refactor operatore-emittenti, sez. 3 del WIP).
+    #        Applica scope check sull'emittente fiscale del BA prima di
+    #        delegare al lookup repository:
+    #          - superuser → bypass scope
+    #          - user_emittente_id NULL (admin globale o "0 emittenti")
+    #            → no check, vede tutto
+    #          - operatore con emittente assegnato → BA deve appartenere
+    #            allo stesso emittente, altrimenti E_PERMESSO_NEGATO (403)
+    # Perimetro: sola lettura.
+    # Risultato: dict {results: [...]} pronto per success_response.
+    def list_utilities_for_ba(
+        self,
+        *,
+        billing_account_id: int,
+        ruolo_codice_soggetto: str,
+        user_emittente_id: int | None,
+        is_superuser: bool = False,
+    ) -> dict[str, Any]:
+        function_name = "anagrafiche.billing_account_service.list_utilities_for_ba"
+
+        # billing_account_id arriva sempre dall'URL converter <int:...>
+        # nelle view: nessuna validazione manuale qui.
+        # Validazione ruolo: whitelist a 3 valori, normalizzata upper.
+        cleaned_ruolo = (ruolo_codice_soggetto or "").strip().upper()
+        ErrorManager.require(
+            cleaned_ruolo in _ALLOWED_RUOLI_BA,
+            code="E_ANAG_VALIDAZIONE",
+            message="Ruolo soggetto non valido per BA utilities.",
+            detail=f"ruolo deve essere uno di {sorted(_ALLOWED_RUOLI_BA)}.",
+            context={"ruolo": ruolo_codice_soggetto},
+            function_name=function_name,
+            log_to_db=False,
+        )
+
+        repository = BillingAccountRepository()
+
+        # 404 esplicito su BA inesistente per non leakare 403 sugli id
+        # non validi (la fn_get_emittente_fiscale_pk farebbe fallback al
+        # default globale e maschererebbe l'errore).
+        if not repository.exists(billing_account_id):
+            raise ServiceError(
+                code="E_ANAG_NOT_FOUND",
+                message="Billing account non trovato.",
+                detail=f"Nessun billing_account con id={billing_account_id}.",
+            )
+
+        # Scope check sull'emittente del BA. Bypass per superuser e per
+        # admin globale / "0 emittenti" (user_emittente_id is None).
+        if not is_superuser and user_emittente_id is not None:
+            ba_emittente_id = repository.get_emittente_fiscale_id(billing_account_id)
+            if ba_emittente_id != user_emittente_id:
+                raise ServiceError(
+                    code="E_PERMESSO_NEGATO",
+                    message=(
+                        "Billing account fuori dallo scope emittente "
+                        "dell'utente corrente."
+                    ),
+                )
+
+        results = LookupRepository().list_utilities_per_billing_account(
+            billing_account_id=billing_account_id,
+            ruolo_codice_soggetto=cleaned_ruolo,
+        )
+        return {"results": results}
 
     # Scopo: Recupera un singolo billing_account per restore dell'AutoComplete
     #        in modalita' edit (evita round-trip aggiuntivi nel frontend).

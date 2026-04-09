@@ -40,7 +40,6 @@ VERSIONE_CREATE_COLUMNS: dict[str, str] = {
     "codice_versione": "text",
     "valido_dal": "date",
     "valido_al": "date",
-    "priorita": "int",
     "meta": "jsonb",
     "attivo": "bool",
 }
@@ -66,7 +65,6 @@ ASSOCIAZIONE_CREATE_COLUMNS: dict[str, str] = {
     "billing_account_id": "int",
     "utility_id": "int",
     "emittente_soggetto_ruolo_id": "int",
-    "priorita": "int",
     "valido_dal": "date",
     "valido_al": "date",
     "meta": "jsonb",
@@ -292,6 +290,16 @@ class ListiniRepository:
             )
             return cursor.rowcount > 0
 
+    # Scopo: Elimina un listino. Usato solo quando il listino non ha figli
+    #        (zero versioni e zero associazioni): il guard di counts e' nel service.
+    def delete_listino(self, listino_id: int) -> bool:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "DELETE FROM vendite.listini WHERE id = %s",
+                [listino_id],
+            )
+            return cursor.rowcount > 0
+
     # Scopo: Restituisce le versioni del listino con conteggio righe e ordinamento stabile.
     def list_versioni(self, listino_id: int) -> list[dict[str, Any]]:
         with connection.cursor() as cursor:
@@ -303,7 +311,6 @@ class ListiniRepository:
                     v.codice_versione,
                     v.valido_dal,
                     v.valido_al,
-                    v.priorita,
                     v.stato,
                     v.meta,
                     v.attivo,
@@ -335,7 +342,6 @@ class ListiniRepository:
                     v.codice_versione,
                     v.valido_dal,
                     v.valido_al,
-                    v.priorita,
                     v.stato,
                     v.meta,
                     v.attivo,
@@ -395,6 +401,148 @@ class ListiniRepository:
                    AND id = %s
                 """,
                 params,
+            )
+            return cursor.rowcount > 0
+
+    # Scopo: Clona una versione esistente in una nuova versione BOZZA dello stesso
+    #        listino, copiando tutte le righe attive della sorgente. La nuova versione
+    #        prende i dati di testata dal payload (codice_versione, valido_dal,
+    #        valido_al); meta e attivo derivano dai default DB. Restituisce
+    #        l'id della nuova versione. Esegue tutto in transazione gestita dal caller.
+    def clone_versione(
+        self,
+        listino_id: int,
+        src_versione_id: int,
+        target_data: dict[str, Any],
+    ) -> int:
+        # 1) INSERT testata nuova versione (forza stato BOZZA, ignora attivo/meta dal payload)
+        target_columns: dict[str, str] = {
+            key: value
+            for key, value in VERSIONE_CREATE_COLUMNS.items()
+            if key in {"codice_versione", "valido_dal", "valido_al"}
+        }
+        column_names, placeholders, params = _prepare_insert_parts(
+            base_fields=[("listino_id", listino_id)],
+            extra_data=target_data,
+            column_types=target_columns,
+        )
+
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                INSERT INTO vendite.listini_versioni ({", ".join(column_names)}, stato)
+                VALUES ({placeholders}, 'BOZZA')
+                RETURNING id
+                """,
+                params,
+            )
+            row = cursor.fetchone()
+            assert row is not None
+            target_versione_id = int(row[0])
+
+            # 2) Copy delle righe ATTIVE della sorgente nella nuova versione.
+            #    Manteniamo articolo, uom, contesto (BA/utility/emittente), prezzo, meta.
+            #    Forziamo attivo=TRUE sulla copia. user_insert/data_insert sono gestiti
+            #    dai default delle colonne audit.
+            cursor.execute(
+                """
+                INSERT INTO vendite.listini_righe (
+                    listino_versione_id,
+                    articolo_id,
+                    uom_id,
+                    billing_account_id,
+                    utility_id,
+                    emittente_soggetto_ruolo_id,
+                    prezzo,
+                    meta,
+                    attivo
+                )
+                SELECT
+                    %s,
+                    articolo_id,
+                    uom_id,
+                    billing_account_id,
+                    utility_id,
+                    emittente_soggetto_ruolo_id,
+                    prezzo,
+                    meta,
+                    TRUE
+                  FROM vendite.listini_righe
+                 WHERE listino_versione_id = %s
+                   AND attivo IS TRUE
+                """,
+                [target_versione_id, src_versione_id],
+            )
+
+        return target_versione_id
+
+    # Scopo: Elimina una versione e le sue righe in cascata. Usato solo per
+    #        versioni in stato BOZZA: il guard di stato e' nel service. La cascade
+    #        sulle righe e` esplicita perche' la FK puo' non avere ON DELETE CASCADE
+    #        (le righe ATTIVE non vanno mai cancellate, qui si parla solo di BOZZA).
+    def delete_versione(self, listino_id: int, versione_id: int) -> bool:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "DELETE FROM vendite.listini_righe WHERE listino_versione_id = %s",
+                [versione_id],
+            )
+            cursor.execute(
+                """
+                DELETE FROM vendite.listini_versioni
+                 WHERE listino_id = %s
+                   AND id = %s
+                """,
+                [listino_id, versione_id],
+            )
+            return cursor.rowcount > 0
+
+    # Scopo: Restituisce le versioni candidate all'auto-close quando si attiva
+    #        una nuova versione (decisione D3). Sono le versioni dello stesso
+    #        listino in stato ATTIVA + attivo, con valido_dal < nuova.valido_dal,
+    #        e con valido_al NULL oppure valido_al >= nuova.valido_dal (cioe' che
+    #        si sovrappongono al nuovo intervallo). La versione che si sta per
+    #        attivare viene esclusa per id.
+    def find_versioni_per_autoclose(
+        self,
+        listino_id: int,
+        exclude_versione_id: int,
+        nuova_valido_dal: date,
+    ) -> list[dict[str, Any]]:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT
+                    id,
+                    codice_versione,
+                    valido_dal,
+                    valido_al
+                  FROM vendite.listini_versioni
+                 WHERE listino_id = %s
+                   AND id <> %s
+                   AND stato = 'ATTIVA'
+                   AND attivo IS TRUE
+                   AND valido_dal < %s
+                   AND (valido_al IS NULL OR valido_al >= %s)
+                 ORDER BY valido_dal
+                """,
+                [listino_id, exclude_versione_id, nuova_valido_dal, nuova_valido_dal],
+            )
+            return rows_to_list(cursor)
+
+    # Scopo: Aggiorna solo il valido_al di una versione (usato dall'auto-close
+    #        all'attivazione: chiude la precedente al giorno prima della nuova
+    #        decorrenza). Operazione atomica usata dentro una transazione caller.
+    #        Filtra anche per listino_id come safety guard contro chiamate errate.
+    def set_versione_valido_al(self, *, listino_id: int, versione_id: int, valido_al: date) -> bool:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE vendite.listini_versioni
+                   SET valido_al = %s
+                 WHERE listino_id = %s
+                   AND id = %s
+                """,
+                [valido_al, listino_id, versione_id],
             )
             return cursor.rowcount > 0
 
@@ -596,7 +744,6 @@ class ListiniRepository:
                     cu.descrizione AS utility_descrizione,
                     a.emittente_soggetto_ruolo_id,
                     srd_em.ragione_sociale_completa AS emittente_descrizione,
-                    a.priorita,
                     a.valido_dal,
                     a.valido_al,
                     a.meta,
@@ -623,7 +770,7 @@ class ListiniRepository:
                   LEFT JOIN anagrafiche.vw_soggetti_ruoli_dettaglio srd_em
                     ON srd_em.soggetto_ruolo_id = a.emittente_soggetto_ruolo_id
                  WHERE a.listino_id = %s
-                 ORDER BY a.priorita ASC, a.valido_dal DESC, a.id ASC
+                 ORDER BY a.valido_dal DESC, a.id ASC
                 """,
                 [listino_id],
             )
@@ -640,7 +787,6 @@ class ListiniRepository:
                     a.billing_account_id,
                     a.utility_id,
                     a.emittente_soggetto_ruolo_id,
-                    a.priorita,
                     a.valido_dal,
                     a.valido_al,
                     a.meta,
