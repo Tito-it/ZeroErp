@@ -12,8 +12,8 @@ databaseChangeLog:
       id: 20260408-19-create-fn-get-setup-status
       author: mctit
       runOnChange: true
-      validCheckSum:
-        - ANY
+      # validCheckSum:
+      #    - ANY
       comment: >
         Ritorna lo stato di setup operatore-emittente in un singolo jsonb:
         emittenti_attivi, operatori_totali, operatori_assegnati,
@@ -22,24 +22,31 @@ databaseChangeLog:
       preConditions:
         - onFail: HALT
         - tableExists: { schemaName: anagrafiche, tableName: emittenti_fiscali }
-        - tableExists: { schemaName: anagrafiche, tableName: risorse_umane_auth_user }
+        - tableExists:
+            { schemaName: anagrafiche, tableName: risorse_umane_auth_user }
         - tableExists: { schemaName: config, tableName: user_emittenti_fiscali }
       changes:
         - sql:
             splitStatements: false
             stripComments: false
             sql: |
+              -- IMPORTANTE: LANGUAGE plpgsql (NON sql) per "deferred parsing".
+              -- In CI Liquibase gira prima di Django migrate, quindi
+              -- django.auth_user non esiste ancora al momento del CREATE.
+              -- LANGUAGE sql parsa subito e fallirebbe con
+              -- "relation django.auth_user does not exist". LANGUAGE plpgsql
+              -- risolve i riferimenti SQL embedded solo al primo invoke
+              -- (a quel punto Django ha gia' migrato).
+              -- La query interna resta invariata: una sola CTE single-scan
+              -- con FILTER aggregations, wrappata in BEGIN/END plpgsql.
               CREATE OR REPLACE FUNCTION script.fn_get_setup_status()
               RETURNS jsonb
-              LANGUAGE sql
+              LANGUAGE plpgsql
               STABLE
               AS $function$
-                  -- Single-query con FILTER aggregations:
-                  -- - sub_emittenti: conta gli EF attivi
-                  -- - sub_op: per ogni operatore (risorsa umana attiva + auth_user
-                  --   attivo + ruolo non DISABILITATO) calcola in colonne booleane
-                  --   "ha_assoc" e "is_admin_globale"; le COUNT FILTER aggregano.
-                  -- Ritorno: jsonb con le 5 chiavi attese.
+              DECLARE
+                  v_result jsonb;
+              BEGIN
                   WITH sub_emittenti AS (
                       SELECT COUNT(*)::bigint AS emittenti_attivi
                         FROM anagrafiche.emittenti_fiscali
@@ -72,7 +79,11 @@ databaseChangeLog:
                           sub_op.operatori_totali - sub_op.operatori_assegnati, 0
                       )
                   )
+                    INTO v_result
                     FROM sub_emittenti, sub_op;
+
+                  RETURN v_result;
+              END
               $function$;
 
               COMMENT ON FUNCTION script.fn_get_setup_status()

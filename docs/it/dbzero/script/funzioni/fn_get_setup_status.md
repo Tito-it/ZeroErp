@@ -10,15 +10,12 @@ CREATE FUNCTION fn_get_setup_status()
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_get_setup_status()
  RETURNS jsonb
- LANGUAGE sql
+ LANGUAGE plpgsql
  STABLE
 AS $function$
-    -- Single-query con FILTER aggregations:
-    -- - sub_emittenti: conta gli EF attivi
-    -- - sub_op: per ogni operatore (risorsa umana attiva + auth_user
-    --   attivo + ruolo non DISABILITATO) calcola in colonne booleane
-    --   "ha_assoc" e "is_admin_globale"; le COUNT FILTER aggregano.
-    -- Ritorno: jsonb con le 5 chiavi attese.
+DECLARE
+    v_result jsonb;
+BEGIN
     WITH sub_emittenti AS (
         SELECT COUNT(*)::bigint AS emittenti_attivi
           FROM anagrafiche.emittenti_fiscali
@@ -51,7 +48,11 @@ AS $function$
             sub_op.operatori_totali - sub_op.operatori_assegnati, 0
         )
     )
+      INTO v_result
       FROM sub_emittenti, sub_op;
+
+    RETURN v_result;
+END
 $function$
 
 COMMENT ON FUNCTION script.fn_get_setup_status()

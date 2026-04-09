@@ -626,7 +626,7 @@ Il caso edge **Q8** del piano (singolo emittente nel sistema → tutti gli opera
 
 | Trigger | Tabella | Fase | Eventi | Funzione | Argomenti TG_ARGV |
 | --- | --- | --- | --- | --- | --- |
-| `trg_user_emittenti_fiscali_a10_lock_emittente_upd` | `config.user_emittenti_fiscali` | `BEFORE` | `UPDATE OF emittente_fiscale_id` | `script.trgfn_lock_columns` | `'emittente_fiscale_id', 'EMITTENTE_NON_MODIFICABILE'` |
+| `trg_user_emittenti_fiscali_a10_lock_emittente_upd` | `config.user_emittenti_fiscali` | `BEFORE` | `UPDATE OF emittente_fiscale_id` | `script.trgfn_lock_columns` | `'emittente_fiscale_id', 'E_EMITTENTE_NON_MODIFICABILE'` |
 | `trg_user_emittenti_fiscali_a10_guard_delete_dlt` | `config.user_emittenti_fiscali` | `BEFORE` | `DELETE` | nuova `anagrafiche.trgfn_user_emittenti_fiscali_guard_delete` | nessuno |
 | `trg_billing_account_a10_guard_admin_globale_ins` | `anagrafiche.billing_account` | `BEFORE` | `INSERT` | nuova `anagrafiche.trgfn_billing_account_guard_admin_globale` | nessuno |
 | `trg_billing_account_z90_link_ef_ins` | `anagrafiche.billing_account` | `AFTER` | `INSERT` | nuova `anagrafiche.trgfn_billing_account_link_ef` | nessuno |
@@ -650,13 +650,13 @@ Aggiungere a `db/changelog/migrations_v2/80_data/sql/config/messaggi_errore.csv`
 | Codice | Lingua | Messaggio | HTTP suggerito | Hint |
 | --- | --- | --- | --- | --- |
 | `E_BA_ADMIN_GLOBALE_VIETATO` | `it` | Un amministratore globale non può creare billing account quando esistono emittenti fiscali. Operare come operatore di un emittente specifico. | `403` | `Crea un operatore di emittente o usa un account già assegnato.` |
-| `EMITTENTE_NON_MODIFICABILE` | `it` | L'emittente fiscale di un operatore è immutabile. Per cambiare l'associazione disattivare l'utente e crearne uno nuovo per l'altro emittente. | `400` | `Disattiva l'utente e crea un nuovo account.` |
+| `E_EMITTENTE_NON_MODIFICABILE` | `it` | L'emittente fiscale di un operatore è immutabile. Per cambiare l'associazione disattivare l'utente e crearne uno nuovo per l'altro emittente. | `400` | `Disattiva l'utente e crea un nuovo account.` |
 | `E_USER_EMITTENTE_DELETE_VIETATO` | `it` | Eliminazione vietata: l'associazione utente-emittente può essere rimossa solo come parte della disattivazione utente. | `400` | `Disattivare l'utente per rimuovere l'associazione.` |
 
 Codici già esistenti che vengono riutilizzati:
 
 - `E_LOCK_COLUMN` (generico, sollevato da `trgfn_lock_columns`) — eventualmente
-  arricchito con il context `EMITTENTE_NON_MODIFICABILE` come codice secondario.
+  arricchito con il context `E_EMITTENTE_NON_MODIFICABILE` come codice secondario.
 
 ### 9.4 Endpoint backend nuovi
 
@@ -693,7 +693,7 @@ visibile un admin.
 - [x] **DB-1.2** Migration [`00_schema/config/20260408-11-alter-user-emittenti-fiscali-uniq-auth-user-mctit.yaml`](/dbzero/config/tabelle/user_emittenti_fiscali): drop UNIQUE `(auth_user_id, emittente_fiscale_id)`, add UNIQUE `(auth_user_id)`, drop indice ridondante `ix_user_emittenti_fiscali_auth_user_id`
 - [x] **DB-1.3** Migration [`20_code/script/20260408-12-create-fn-resolve-emittente-for-user-mctit.yaml`](/dbzero/script/funzioni/fn_resolve_emittente_for_user) — **schema `script` invece di `anagrafiche`** per coerenza col refactor permessi 2026-03-08 (resolver cross-dominio). **Senza filtro `ef.attivo`**: la coerenza è garantita per costruzione dai trigger di guardia esistenti su entrambi i lati (`prevent_deactivate_if_children` e `child_requires_active_parent`); aggiungere il filtro creerebbe incoerenza con `fn_check_user_can_create_ba`.
 - [x] **DB-1.4** Migration [`20_code/script/20260408-13-create-fn-check-user-can-create-ba-mctit.yaml`](/dbzero/script/funzioni/fn_check_user_can_create_ba): pure check senza raise
-- [x] **DB-1.5** Migration `80_data/sql/config/messaggi_errore.csv` aggiornato con i 3 nuovi codici (§9.3): id 358 `E_BA_ADMIN_GLOBALE_VIETATO`, id 359 `EMITTENTE_NON_MODIFICABILE`, id 360 `E_USER_EMITTENTE_DELETE_VIETATO`. Caricamento via il loader esistente `loadUpdateData runOnChange:true`.
+- [x] **DB-1.5** Migration `80_data/sql/config/messaggi_errore.csv` aggiornato con i 3 nuovi codici (§9.3): id 358 `E_BA_ADMIN_GLOBALE_VIETATO`, id 359 `E_EMITTENTE_NON_MODIFICABILE`, id 360 `E_USER_EMITTENTE_DELETE_VIETATO`. Caricamento via il loader esistente `loadUpdateData runOnChange:true`.
 - [x] **DB-1.6** Migration [`20_code/anagrafiche/20260408-14-create-trgfn-billing-account-guard-admin-globale-mctit.yaml`](/dbzero/anagrafiche/funzioni/trgfn_billing_account_guard_admin_globale): trigger `BEFORE INSERT` con drop+create idempotente. Skip fail-open in assenza di GUC `app.current_user_id` (seed/bootstrap).
 - [x] **DB-1.7** Migration [`20_code/anagrafiche/20260408-15-create-trgfn-billing-account-link-ef-mctit.yaml`](/dbzero/anagrafiche/funzioni/trgfn_billing_account_link_ef): trigger `AFTER INSERT` con idempotenza esplicita (skip se mapping già presente) e fail-open senza GUC.
 - [x] **DB-1.8** Migration [`20_code/config/20260408-16-create-trg-user-emittenti-fiscali-lock-emittente-mctit.yaml`](/dbzero/config/tabelle/user_emittenti_fiscali): trigger lock_columns che riusa `script.trgfn_lock_columns`

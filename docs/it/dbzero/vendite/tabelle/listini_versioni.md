@@ -32,7 +32,7 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
-| ex_listini_versioni_no_overlap | `CREATE INDEX ex_listini_versioni_no_overlap ON vendite.listini_versioni USING gist (listino_id, daterange(valido_dal, COALESCE(valido_al, 'infinity'::date), '[]'::text)) WHERE (attivo IS TRUE)` |
+| ex_listini_versioni_no_overlap | `CREATE INDEX ex_listini_versioni_no_overlap ON vendite.listini_versioni USING gist (listino_id, daterange(valido_dal, COALESCE(valido_al, 'infinity'::date), '[]'::text)) WHERE ((attivo IS TRUE) AND ((stato)::text = 'ATTIVA'::text))` |
 | ix_listini_versioni_listino_valido_dal | `CREATE INDEX ix_listini_versioni_listino_valido_dal ON vendite.listini_versioni USING btree (listino_id, valido_dal)` |
 | pk_listini_versioni | `CREATE UNIQUE INDEX pk_listini_versioni ON vendite.listini_versioni USING btree (id)` |
 | uq_listini_versioni_listino_codice | `CREATE UNIQUE INDEX uq_listini_versioni_listino_codice ON vendite.listini_versioni USING btree (listino_id, codice_versione)` |

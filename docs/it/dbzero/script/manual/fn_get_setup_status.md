@@ -44,7 +44,8 @@ Esempio output:
 
 ## Caratteristiche
 
-* **STABLE**, **`LANGUAGE sql`**: implementata come singola query con CTE e `COUNT(*) FILTER` per minimizzare il numero di scan.
+* **STABLE**, **`LANGUAGE plpgsql`** (wrapper) + singola query CTE interna con `COUNT(*) FILTER` per minimizzare il numero di scan (2 scan totali: uno su `emittenti_fiscali`, uno sul join `risorse_umane_auth_user × django.auth_user × user_emittenti_fiscali`).
+* **Perché plpgsql e non sql**: in CI Liquibase gira prima di `python manage.py migrate`, quindi `django.auth_user` non esiste ancora al momento del CREATE. `LANGUAGE sql` parserebbe immediatamente e fallirebbe con `relation does not exist`. `LANGUAGE plpgsql` invece risolve i riferimenti SQL embedded solo al primo invoke (deferred parsing), quando Django ha già completato `migrate`. Il wrapper plpgsql aggiunge solo `BEGIN ... INTO v_result ... RETURN v_result ... END`, la query CTE interna è invariata.
 * **Read‑only**: nessun side effect.
 * **Reinterpretazione `ADMIN`**: il refactor distingue gli admin globali dagli admin di emittente in base alla **presenza/assenza** di una riga in `user_emittenti_fiscali`. Questa funzione conta solo gli admin globali (assenza di riga), perché sono i candidati naturali per la "promozione" a operatore di emittente.
 
