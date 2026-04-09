@@ -1,0 +1,104 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# FIX vincolo ex_listini_versioni_no_overlap su vendite.listini_versioni
+# ------------------------------------------------------------
+# Background:
+# Il vincolo originale (20260224-01-create-listini-core-mctit.yaml:232-238)
+# usava il filtro WHERE (attivo IS TRUE), che blocca anche le BOZZE perche'
+# il default di listini_versioni.attivo e' true. Conseguenza: il workflow
+# "creo BOZZA in anticipo, poi attivazione D3 con autoclose della precedente"
+# falliva sull'INSERT della BOZZA per overlap con la riga ATTIVA esistente.
+#
+# Inoltre il messaggio applicativo del translator backend dichiara
+# "Esiste gia' una versione attiva sovrapposta", semantica che il vincolo
+# non rispettava (catturava qualunque attivo=TRUE indipendentemente dallo
+# stato).
+#
+# Fix: filtro EXCLUDE ristretto a (attivo IS TRUE AND stato = 'ATTIVA').
+# Solo le ATTIVE non possono sovrapporsi tra loro. BOZZE e CHIUSE possono
+# coesistere liberamente; l'invariante "una sola ATTIVA per listino
+# sull'intervallo" e' rispettato perche' l'autoclose D3 gira nella stessa
+# transazione di attivazione.
+#
+# Il nuovo vincolo e' uno strict subset del vecchio, quindi nessun dato
+# preesistente puo' violarlo (se rispettava il vecchio rispetta anche il
+# nuovo). La precondition lo verifica esplicitamente.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260409-01-fix-listini-versioni-overlap-stato-mctit.yaml
+
+  - changeSet:
+      id: 20260409-01-fix-listini-versioni-overlap-stato
+      author: mctit
+      runOnChange: false
+      comment: >
+        Restringe il filtro WHERE del vincolo EXCLUDE ex_listini_versioni_no_overlap
+        a (attivo IS TRUE AND stato = 'ATTIVA') per consentire la coesistenza di
+        BOZZE temporanee con la versione ATTIVA durante il workflow di clone+publish.
+        Mantiene l'invariante "una sola ATTIVA per listino sull'intervallo".
+      preConditions:
+        - onFail: HALT
+        - tableExists: { schemaName: vendite, tableName: listini_versioni }
+        - sqlCheck:
+            expectedResult: 0
+            sql: >-
+              SELECT COUNT(*)
+                FROM (
+                    SELECT a.id
+                      FROM vendite.listini_versioni a
+                      JOIN vendite.listini_versioni b
+                        ON a.listino_id = b.listino_id
+                       AND a.id <> b.id
+                       AND a.attivo IS TRUE
+                       AND b.attivo IS TRUE
+                       AND a.stato = 'ATTIVA'
+                       AND b.stato = 'ATTIVA'
+                       AND daterange(
+                              a.valido_dal,
+                              COALESCE(a.valido_al, 'infinity'::date),
+                              '[]'
+                           )
+                        && daterange(
+                              b.valido_dal,
+                              COALESCE(b.valido_al, 'infinity'::date),
+                              '[]'
+                           )
+                ) overlap_check
+      changes:
+        # Drop del vincolo originale
+        - sql:
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.listini_versioni
+                DROP CONSTRAINT ex_listini_versioni_no_overlap;
+
+        # Recreate con filtro ristretto a (attivo IS TRUE AND stato = 'ATTIVA')
+        - sql:
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.listini_versioni
+                ADD CONSTRAINT ex_listini_versioni_no_overlap
+                EXCLUDE USING gist (
+                  listino_id WITH =,
+                  daterange(valido_dal, COALESCE(valido_al, 'infinity'::date), '[]') WITH &&
+                )
+                WHERE (attivo IS TRUE AND stato = 'ATTIVA');
+
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.listini_versioni
+                DROP CONSTRAINT ex_listini_versioni_no_overlap;
+        - sql:
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.listini_versioni
+                ADD CONSTRAINT ex_listini_versioni_no_overlap
+                EXCLUDE USING gist (
+                  listino_id WITH =,
+                  daterange(valido_dal, COALESCE(valido_al, 'infinity'::date), '[]') WITH &&
+                )
+                WHERE (attivo IS TRUE);

@@ -22,8 +22,36 @@ Ogni versione definisce una finestra di validita` e una priorita` operativa.
   * `CHIUSA`
 * `priorita > 0`;
 * `valido_al` maggiore di `valido_dal` se valorizzato;
-* no overlap temporale tra versioni attive dello stesso listino
-  (`ex_listini_versioni_no_overlap`).
+* no overlap temporale **tra versioni `stato = 'ATTIVA'`** dello stesso listino
+  (`ex_listini_versioni_no_overlap`). **BOZZE e CHIUSE possono coesistere**
+  con un'ATTIVA (e tra loro) anche su intervalli sovrapposti — vedi sezione
+  *Workflow clone + publish* qui sotto.
+
+---
+
+### Workflow clone + publish
+
+Una nuova versione viene tipicamente preparata **in anticipo** rispetto alla data
+di entrata in vigore:
+
+1. **Clone**: il backend crea una nuova riga con `stato = 'BOZZA'`,
+   `valido_dal` futura (es. oggi+30gg) e `valido_al` NULL. La BOZZA può
+   coesistere con la versione `'ATTIVA'` corrente perché il vincolo
+   `ex_listini_versioni_no_overlap` filtra solo `attivo IS TRUE AND stato = 'ATTIVA'`.
+2. **Edit**: l'utente modifica le righe della BOZZA finché non è pronta.
+3. **Publish (D3)**: nella stessa transazione il backend
+   * imposta `valido_al = nuova.valido_dal - 1` sulle versioni precedenti `'ATTIVA'`
+     (autoclose),
+   * cambia `stato = 'ATTIVA'` sulla nuova versione.
+   L'invariante "una sola `'ATTIVA'` per listino sull'intervallo" viene
+   garantito dall'EXCLUDE alla fine della transazione.
+
+> **Storia del vincolo**: in versioni precedenti il filtro era solo
+> `WHERE (attivo IS TRUE)`, e l'INSERT della BOZZA "in anticipo" falliva per
+> overlap con la riga ATTIVA. Il fix `20260409-01-fix-listini-versioni-overlap-stato`
+> ha ristretto il filtro a `(attivo IS TRUE AND stato = 'ATTIVA')`,
+> riallineando il vincolo DB al workflow applicativo e al messaggio del
+> translator backend ("Esiste già una versione attiva sovrapposta").
 
 ---
 
