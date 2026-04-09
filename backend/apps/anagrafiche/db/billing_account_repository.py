@@ -158,6 +158,27 @@ class BillingAccountRepository:
 
         return rows, total_count
 
+    # Scopo: Wrapper anagrafiche.fn_get_emittente_fiscale_pk. Ritorna la PK
+    #        reale (NON soggetto_ruolo_id, vedi memoria progetto
+    #        feedback_emittente_pk_vs_soggetto_ruolo). None se "0 emittenti".
+    def get_emittente_fiscale_id(self, billing_account_id: int) -> int | None:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT anagrafiche.fn_get_emittente_fiscale_pk(%s)",
+                [billing_account_id],
+            )
+            row = cursor.fetchone()
+        return int(row[0]) if row and row[0] is not None else None
+
+    # Scopo: Esistenza BA per check 404 prima di scope/lookup.
+    def exists(self, billing_account_id: int) -> bool:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT 1 FROM anagrafiche.billing_account WHERE id = %s LIMIT 1",
+                [billing_account_id],
+            )
+            return cursor.fetchone() is not None
+
     # Scopo: Restituisce il singolo billing_account arricchito per restore lato client.
     #        Usato in edit quando il form ha solo l'id e deve ricostruire il _obj
     #        dell'AutoComplete senza doppio round-trip.

@@ -17,8 +17,8 @@ from apps.core.services.error_policies import ErrorPolicyRegistry
 from apps.core.services.request_context import get_request_id
 from apps.core.services.service_errors import ServiceError
 
-# Pattern per estrarre codici errore applicativi dal messaggio DB.
-# Formato: E_<DOMINIO>_<DETTAGLIO> (es. E_UTENTE_DISABILITATO, E_ANAG_VALIDAZIONE)
+# Estrattore codici errore applicativi dai messaggi PG.
+# Convenzione: E_<DOMINIO>_<DETTAGLIO> (es. E_UTENTE_DISABILITATO, E_ANAG_VALIDAZIONE).
 _APP_ERROR_CODE_RE = re.compile(r"\bE_[A-Z][A-Z0-9_]+\b")
 
 # Translator centralizzato: converte errori Python/DB in payload API uniforme.

@@ -642,6 +642,167 @@ I contatti non sostituiscono le risorse umane, ma possono riferirle quando serve
 
 ---
 
+## Propagazione identita utente al database (GUC `app.*`)
+
+> Sezione aggiunta nello sprint 2026-04-XX a seguito del refactor operatore-emittenti.
+> Risolve il bug "audit JWT inerte" e abilita i trigger di scope a livello DB.
+
+### Il problema
+
+Alcuni trigger PostgreSQL hanno bisogno di sapere **chi** sta eseguendo la transazione corrente, per:
+
+1. **Audit trail JWT** — `script.trgfn_audit_data_user_generic` popola `user_insert` / `user_update`
+   con lo username JWT reale (non con il ruolo DB `zeroerp_app`/`titodb`).
+2. **Defense-in-depth scope emittente** — `anagrafiche.trgfn_billing_account_guard_admin_globale`,
+   `anagrafiche.trgfn_billing_account_link_ef`, `script.trgfn_guard_emittente_scope` leggono
+   l'utente corrente per applicare regole di sicurezza che il backend Python potrebbe aver dimenticato.
+
+L'identita utente viene propagata via due **GUC PostgreSQL** (Grand Unified Configuration parameters):
+
+| GUC | Valore | Letta da |
+| --- | --- | --- |
+| `app.jwt_user` | `str(user)` (username Django) | Trigger di audit |
+| `app.current_user_id` | `str(user.id)` (PK Django) | Trigger di scope |
+
+### Il timing problem
+
+Per i request `/api/*` JWT in produzione, l'autenticazione **non avviene nei middleware Django** ma
+nel **view dispatch DRF**: la classe `JWTAuthentication` (registrata in
+`REST_FRAMEWORK.DEFAULT_AUTHENTICATION_CLASSES`) gira dentro `APIView.initial()` →
+`perform_authentication()`. Questo accade **dopo** tutti i Django middleware `process_view`.
+
+Quindi:
+
+* Un middleware Django che provasse a settare le GUC in `process_view` vedrebbe
+  `request.user = AnonymousUser` per le request JWT (Django session middleware non vede
+  i bearer token) → le GUC non verrebbero mai impostate per le request JWT reali.
+* La GUC deve essere settata **dopo** che `JWTAuthentication.authenticate()` ha risolto l'utente,
+  ma **prima** che il view body inizi a fare INSERT/UPDATE (altrimenti i trigger non vedono nulla).
+
+### Soluzione adottata: hook nella DRF authentication class
+
+> **Pattern: subclass di `JWTAuthentication` che setta le GUC come side-effect di `authenticate()`**.
+
+File: `apps/core/api/jwt_audit_authentication.py` (classe `JwtAuditAuthentication`).
+
+Registrata in `settings.REST_FRAMEWORK["DEFAULT_AUTHENTICATION_CLASSES"]` al posto di
+`rest_framework_simplejwt.authentication.JWTAuthentication`. La classe:
+
+1. Chiama `super().authenticate(request)` (logica JWT invariata)
+2. Se l'autenticazione ha avuto successo, propaga `app.jwt_user` e `app.current_user_id` come
+   GUC **session-scoped** (`set_config(..., is_local=false)`) sulla connessione PostgreSQL
+3. Ritorna il risultato standard `(user, token)` come ogni `BaseAuthentication`
+4. Il **reset** delle GUC al termine della request e demandato a `JwtAuditMiddleware.process_response`,
+   che usa un flag `request._zeroerp_jwt_guc_set` per agire solo quando la auth class ha effettivamente
+   propagato l'identita
+
+**Perche session-scoped (`false`) e non `SET LOCAL` (`true`)**: a `authenticate()` time la
+connessione e in autocommit (il view body non ha ancora aperto la sua `transaction.atomic()`),
+quindi `SET LOCAL` verrebbe perso al COMMIT immediato dello statement.
+`set_config(..., false)` invece persiste sulla connessione fino al reset esplicito o alla
+chiusura connessione (`CONN_MAX_AGE=0` di default chiude a fine request).
+
+**Perche questo e il punto giusto**:
+
+* E **l'unico** punto del flusso DRF dove l'identita JWT e gia risolta E il view body non e
+  ancora partito → i trigger DB vedono la GUC quando le scritture avvengono.
+* Copre **tutti** gli endpoint JWT automaticamente: niente boilerplate nelle view, niente
+  base class da modificare, niente disciplina richiesta agli sviluppatori dei domini.
+* `JwtAuditMiddleware` esistente resta semplificato: si occupa solo di rifiuto early
+  `DISABILITATO` su `/api/`, pre-load cache permessi Redis L2 e reset GUC simmetrico.
+* Single Responsibility: chi conosce l'utente (la auth class) e chi popola la GUC sono lo
+  stesso punto.
+
+**Test isolation**: i test API che usano `SimpleTestCase` + Django test client mockano
+il side-effect via `JwtAuditAuthentication._set_gucs` (metodo separato e mockabile),
+attraverso una base class `JwtMockedApiTest` in `apps/core/tests/_helpers/jwt_mock.py`.
+La logica `super().authenticate()` resta mockabile come prima al livello
+`rest_framework_simplejwt.authentication.JWTAuthentication.authenticate`.
+
+### Pattern complementare per entry point non-HTTP (futuro)
+
+> **Pattern: helper `app_atomic(auth_user_id=...)` a livello service, alternativa a `transaction.atomic()`**.
+
+La soluzione adottata copre **tutte** le request HTTP JWT, ma per definizione non vede:
+
+* `manage.py` command (es. import batch, migration di dati)
+* Cron job / task pgAgent
+* Worker background / signal handlers
+* Test di integrazione che chiamano i service direttamente
+
+Per questi casi futuri, il pattern corretto e propagare l'identita **al livello del service**
+che apre la transazione, non al livello HTTP. Implementazione raccomandata:
+
+```python
+# apps/core/services/db_context.py (DA IMPLEMENTARE QUANDO SERVIRA)
+from contextlib import contextmanager
+from django.db import connection, transaction
+
+@contextmanager
+def app_atomic(*, auth_user_id: int | None = None, jwt_user: str | None = None):
+    """Apre transaction.atomic() e propaga l'identita utente come GUC PG
+    (`SET LOCAL` con scope transazione, autoreset al COMMIT/ROLLBACK).
+
+    Da usare nei service di scrittura quando l'entry point NON e HTTP/JWT
+    (CLI, cron, signal): in quei contesti JwtAuditAuthentication non gira
+    e le GUC devono essere propagate esplicitamente.
+
+    Per le request HTTP JWT NON serve: la propagazione e gia automatica
+    via JwtAuditAuthentication.
+    """
+    with transaction.atomic():
+        if auth_user_id is not None:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    "SELECT set_config('app.current_user_id', %s, true), "
+                    "       set_config('app.jwt_user',        %s, true)",
+                    [str(auth_user_id), jwt_user or str(auth_user_id)],
+                )
+        yield
+```
+
+Uso tipico in un management command:
+
+```python
+class Command(BaseCommand):
+    def handle(self, *args, **opts):
+        admin_user_id = opts["admin_user_id"]
+        for record in records_to_import:
+            with app_atomic(auth_user_id=admin_user_id):
+                ClientiService().crea_cliente(record, auth_user_id=admin_user_id)
+```
+
+**Quando implementarlo**: solo quando arriva il **primo** entry point non-HTTP che scrive
+entita audited (oggi non esiste). Non si fanno preventivamente helper inutilizzati
+(principio "non creare astrazioni per scenari ipotetici" — vedi `AGENTS.md`).
+
+### Sintesi delle due soluzioni
+
+| Aspetto | A — `JwtAuditAuthentication` (oggi) | P — `app_atomic` helper (futuro) |
+| --- | --- | --- |
+| Dove vive | DRF auth class, registrata in settings | Service layer, helper `apps/core/services/db_context.py` |
+| Quando girare | Automatico per ogni request `/api/*` JWT | Esplicito al call site del service |
+| Copre | HTTP/JWT (100% degli endpoint) | Qualsiasi entry point (CLI, cron, signal, test integration) |
+| Discipline richiesta | Nessuna (auto) | Service deve usare `app_atomic` invece di `transaction.atomic()` |
+| GUC scope | Session-scoped (`set_config(.., false)`) + reset in middleware | `SET LOCAL` (transazione del service, autoreset) |
+| Stato | **Implementato 2026-04-XX** (BE-2.0ter del refactor operatore-emittenti) | **Da implementare quando servira** |
+| Testing | Mock di `JwtAuditAuthentication._set_gucs` via base class `JwtMockedApiTest` | Mock di `app_atomic` (drop-in replacement di `transaction.atomic`) |
+
+I due pattern **non si sovrappongono**: A copre HTTP, P copre non-HTTP. Quando saranno entrambi
+attivi, P resta complementare ad A — un service chiamato sia da view HTTP che da CLI puo
+ricevere l'identita per due strade diverse senza conflitti (la GUC e idempotente).
+
+### Riferimenti
+
+* `apps/core/api/jwt_audit_authentication.py` — classe `JwtAuditAuthentication`
+* `apps/core/middleware/jwt_audit_middleware.py` — middleware semplificato (DISABILITATO + cleanup)
+* `apps/core/tests/_helpers/jwt_mock.py` — base class `JwtMockedApiTest` per i test API
+* [JwtAuditMiddleware (manual)](/backend/core/manual/jwt_audit_middleware) — dettaglio tecnico
+* [Architettura permessi e autorizzazioni](/guide/architettura-permessi-e-autorizzazioni) — quadro generale GUC
+* [Parametri Personalizzati GUC](/postgresql/parametri-personalizzati-(GUC)) — semantica session-scoped vs transaction-scoped
+
+---
+
 ## Best practice
 
 * Usa `risorse_umane` solo per descrivere **persone interne** (dipendenti, consulenti, collaboratori). I referenti esterni vanno su `contatti`.

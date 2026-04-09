@@ -706,36 +706,123 @@ visibile un admin.
 
 ### Fase 2 — Backend (`dev/backend-tid`)
 
-- [ ] **BE-2.0 (PREREQUISITO BLOCCANTE)** Verificare che il GUC `app.current_user_id` impostato dal middleware [`JwtAuditMiddleware`](/it/backend/core/manual/jwt_audit_middleware) **arrivi effettivamente** ai trigger DB del refactor (`trgfn_billing_account_guard_admin_globale`, `trgfn_billing_account_link_ef`). Vedi [§7bis.6](#7bis6-dipendenza-backend--guc-appcurrent_user_id). Test concreto: creare un BA come operatore di emittente via API e verificare che venga creata la riga in `anagrafiche.emittenti_fiscali_billing_account` col mapping specifico atteso. Se il test fallisce (mapping assente nonostante il guard non blocchi), il middleware è inerte in autocommit Django (`SET LOCAL` perso al COMMIT automatico) — va aperta una issue separata per spostare il setting del GUC dentro `transaction.atomic()` o abilitare `ATOMIC_REQUESTS` sulle view che inseriscono BA. **Finché questa verifica non è chiusa, l'intero refactor è strutturalmente in piedi ma operativamente inerte** (i trigger fanno skip fail-open, il sistema continua a funzionare come oggi senza auto-link, fallback al default globale).
-- [ ] **BE-2.1** `apps/core/services/permissions_resolver.py` → metodo `get_emittente_for_user(user) -> int|None` con cache (pattern `_cached`)
-- [ ] **BE-2.2** Censimento call-site `INSERT INTO anagrafiche.billing_account` lato Python (`grep -rn` in `apps/anagrafiche`): elenco completo da centralizzare
-- [ ] **BE-2.3** Nuovo service `BillingAccountCreationService` (o estensione di un service esistente) come unico punto di creazione BA
-- [ ] **BE-2.4** Refactor di `clienti_repository.create_billing_account` (e altri eventuali) per delegare al service centralizzato
-- [ ] **BE-2.5** Estendere `apps/core/services/error_policies.py` con i 3 nuovi codici errore (mapping HTTP)
-- [ ] **BE-2.6** Test mock-based: verifica che il service rifiuti la creazione per admin globale quando esistono emittenti
-- [ ] **BE-2.7** Test mock-based: verifica che il service trasmetta correttamente le eccezioni del trigger DB
+- [x] **BE-2.0 (PREREQUISITO BLOCCANTE)** ✅ **Bug confermato e fixato** (sessione 2026-04-XX). Verifica empirica via `manage-env.sh shell`: `set_config('app.x', val, true)` fuori da `transaction.atomic()` viene perso al COMMIT autocommit (`current_setting` ritorna `''` subito dopo). Conferma anche storica via query su `billing_account`: 100% dei record avevano `user_insert` = ruolo DB (`titodb`/`zeroerp_app`), mai uno username JWT — anche l'audit `trgfn_audit_data_user_generic` era inerte dal 2026-02-27. **Fix applicato (Opzione C, session-scoped + cleanup)** in [`apps/core/middleware/jwt_audit_middleware.py`](/backend/core/manual/jwt_audit_middleware): `process_view` usa `set_config('app.jwt_user', ..., false)` e `set_config('app.current_user_id', ..., false)` (session-scoped, no `SET LOCAL`); `process_response` resetta entrambe a stringa vuota come defense-in-depth contro futuri scenari `CONN_MAX_AGE > 0` o pgbouncer transaction-mode. Test unit aggiornati (9 test, tutti verdi). Verifica end-to-end runtime: `INSIDE atomic` legge `'mctit'` / `'42'`, `AFTER process_response` legge `''` / `''`. Nessun service va refactorato. Storico audit pre-fix non riscritto.
+- [x] **BE-2.1** [`apps/core/services/permissions_resolver.py`](/backend/core/manual/permissions_resolver) → metodo `get_emittente_for_user(user, *, cache=None) -> int|None` con `_cached`. Wrapper su `script.fn_resolve_emittente_for_user`. Test: 5 nuovi (`test_operatore_con_riga_ritorna_pk`, `test_admin_globale_ritorna_none`, `test_no_row_ritorna_none`, `test_emittente_for_user_correct_params`, `test_emittente_for_user_cache`). Suite resolver: 39/39 verdi.
+- [x] **BE-2.2** Censimento concluso: **un solo call-site reale** (`apps/anagrafiche/db/clienti_repository.py:97` dentro `create_billing_account`, chiamato da `clienti_service._execute_creazione`). Nessun altro punto in `apps/`. Conseguenza: la creazione del nuovo `BillingAccountCreationService` previsto da §10 era over-engineering — l'unicità è già strutturale. BE-2.3/2.4 reinterpretati come "guard applicativo nel service esistente".
+- [x] **BE-2.3** Guard applicativo `_guard_can_create_ba(auth_user_id)` aggiunto in [`apps/anagrafiche/services/clienti_service.py`](/backend/anagrafiche/manual/clienti_service): chiamato all'inizio di `crea_cliente()` solo se `billing_account_id is None` (cioè solo quando si CREA, non quando si RIUSA un BA pre-esistente da pratiche). Skip se `auth_user_id is None` (contesti di sistema). Solleva `ServiceError(E_BA_ADMIN_GLOBALE_VIETATO)` se il check fallisce. Helper repo `ClientiRepository.check_user_can_create_ba(auth_user_id)` wrappa `script.fn_check_user_can_create_ba`.
+- [x] **BE-2.4** View [`apps/anagrafiche/api/views_clienti.py`](/backend/anagrafiche/manual/api_clienti) `ClientiView.post`: estrae `request.user.id` (con fallback `None` per anonymous) e lo binda al service via lambda passata a `handle_post_json`. Pattern allineato a `views_config_crud.py` e `views_listini.py`.
+- [x] **BE-2.5** [`apps/core/services/error_policies.py`](/backend/core/manual/error_policies) esteso con `E_BA_ADMIN_GLOBALE_VIETATO` (403), `EMITTENTE_NON_MODIFICABILE` (400), `E_USER_EMITTENTE_DELETE_VIETATO` (400). Aggiunto in [`apps/anagrafiche/error_codes.py`](/backend/anagrafiche/manual/error_codes). **Bonus fix**: il regex `_APP_ERROR_CODE_RE` in [`apps/core/services/error_translator.py`](/backend/core/manual/error_translator) non catturava `EMITTENTE_NON_MODIFICABILE` (manca prefisso `E_` standard) → l'errore del trigger lock_columns sarebbe finito su `E_DATABASE` (500 generico) invece della policy registrata (400 con messaggio pulito). Esteso il regex con eccezione esplicita + TODO per rename DB futuro `EMITTENTE_NON_MODIFICABILE` → `E_EMITTENTE_NON_MODIFICABILE` (richiede migration su `messaggi_errore.csv` id 359 e arg trigger `lock_emittente`).
+- [x] **BE-2.6** Test `test_guard_admin_globale_blocca_creazione_ba` in `test_clienti_service.py`: setup `check_user_can_create_ba=False`, verifica `ServiceError(E_BA_ADMIN_GLOBALE_VIETATO)` e che `create_billing_account`/`create_istanza_fittizia`/`create_cliente` NON siano chiamati (early reject).
+- [x] **BE-2.7** Test `test_db_trigger_error_propaga_codice` in `test_clienti_service.py`: simula trigger DB che solleva eccezione con codice nel messaggio, verifica che il service la propaghi invariata (sarà `ApiExceptionMiddleware` + `ErrorTranslator` a tradurla via regex). Aggiunti anche `test_guard_skip_quando_auth_user_id_none`, `test_guard_skip_quando_ba_preesistente`, `test_guard_passa_per_operatore_di_emittente`. Suite clienti_service: 22/22 verdi (17 + 5 nuovi). Suite full apps.core+anagrafiche: 551/551 verdi.
+
+> **BE-2.0bis (extra critico, non in piano originale)**: durante la verifica BE-2.0 è emerso che `JwtAuditMiddleware` usava `SET LOCAL` / `set_config(..., true)` (transaction-scoped) in autocommit Django → la GUC `app.current_user_id` veniva persa al COMMIT autocommit e i trigger refactor (oltre all'audit `trgfn_audit_data_user_generic` esistente) erano operativamente inerti. Audit query empirica su `billing_account.user_insert`: 100% dei record popolati con ruolo DB (`titodb`/`zeroerp_app`), nessuno username JWT — l'audit JWT era rotto dal 2026-02-27. Fix Opzione C applicato in `apps/core/middleware/jwt_audit_middleware.py`: `process_view` usa `set_config(..., false)` (session-scoped), `process_response` resetta entrambe le GUC come defense-in-depth contro futuri `CONN_MAX_AGE > 0` o pgbouncer transaction-mode. Verifica end-to-end runtime OK. Test middleware: 9/9 verdi (7 esistenti + 2 nuovi). Doc [`jwt_audit_middleware.md`](/backend/core/manual/jwt_audit_middleware) aggiornata. **Nessun service refactorato** (la fix è al boundary HTTP, i service restano puliti).
 
 ### Fase 3 — Funzione lookup utility per BA (DB + backend)
 
 - [x] **DB-3.1** Migration [`20_code/anagrafiche/20260408-18-create-fn-lookup-utilities-per-ba-mctit.yaml`](/dbzero/anagrafiche/funzioni/fn_lookup_utilities_per_ba): funzione SQL come §9.1, riusa `fn_get_emittente_fiscale_pk` per la risoluzione emittente (catena specifico → default globale, filtro `ef.attivo`).
 - [x] **DB-3.2** pgTAP [`db/pgtap/anagrafiche/test-fn-lookup-utilities-per-ba.sql`](/dbzero/anagrafiche/funzioni/fn_lookup_utilities_per_ba): **5 casi** (NULL → throws, <=0 → throws, ruolo NULL → throws, smoke righe ritornate, coerenza `is_personalizzata_per_ef` con `emittenti_fiscali_utilities`). I casi "BA senza mapping" e "ruolo sconosciuto" sono coperti come effetto delle precondizioni (E_EMITTENTE_DEFAULT_MISSING propagato; ruolo sconosciuto → 0 righe silente).
-- [ ] **BE-3.1** `apps/core/db/lookup_repository.py` → metodo `list_utilities_per_billing_account(ba_id, ruolo_codice)` che chiama `fn_lookup_utilities_per_ba`
-- [ ] **BE-3.2** Endpoint `GET /api/v1/anagrafiche/billing-account/{id}/utilities/?ruolo=CL` (vedi §9.4) in `apps/anagrafiche/api/views_billing_account.py`
-- [ ] **BE-3.3** Permission check con `EmittenteFiscaleScopeMixin` sul BA target
-- [ ] **BE-3.4** Test API: utente con scope vede / utente senza scope ottiene 403
+- [x] **BE-3.1** [`apps/core/db/lookup_repository.py`](/backend/core/manual/lookup_repository) → metodo `list_utilities_per_billing_account(*, billing_account_id, ruolo_codice_soggetto)` che chiama `anagrafiche.fn_lookup_utilities_per_ba`. Mappa colonne: `utility_id, codice, descrizione, is_personalizzata_per_ef, minimo_soglia_min/max, arrotondamento_importi_dec, metodo_arrotondamento_importi`. Test: 3 nuovi (`test_list_utilities_per_ba_delegates_to_fn`, `test_list_utilities_per_ba_maps_columns`, `test_list_utilities_per_ba_empty`). Suite lookup_repository: 18/18 verdi.
+- [x] **BE-3.2** Endpoint `GET /api/v1/anagrafiche/billing-account/<int:billing_account_id>/utilities/?ruolo=CL` in [`apps/anagrafiche/api/views_billing_account.py`](/backend/anagrafiche/manual/api_billing_account) — nuova classe `BillingAccountUtilitiesView(DomainAPIView)`. Whitelist `ruolo ∈ {CL, FO, GE}` validata nel service. URL wirata in `urls.py` con name `anagrafiche-billing-account-utilities`. View sottile: estrae ruolo dal querystring, risolve `user_emittente_id` via `PermissionResolver.get_emittente_for_user()`, delega al service con `is_superuser`.
+- [x] **BE-3.3** Scope check **non** via `EmittenteFiscaleScopeMixin` (mixin ORM-based, ma `billing_account` usa raw SQL). Implementato come check applicativo in `BillingAccountService.list_utilities_for_ba()`: confronta `user_emittente_id` (PK 1-a-1) con `BillingAccountRepository.get_emittente_fiscale_id(ba_id)` (wrapper su `anagrafiche.fn_get_emittente_fiscale_pk`, catena mapping specifico → default globale). Logica: superuser bypass; `user_emittente_id is None` (admin globale o "0 emittenti") bypass; altrimenti BA deve appartenere allo stesso EF, altrimenti `ServiceError(E_PERMESSO_NEGATO)` → 403. BA inesistente → `E_ANAG_NOT_FOUND` (404) prima dello scope check per non leakare 403 su id non esistenti.
+- [x] **BE-3.4** Test mock-based in `apps/anagrafiche/tests/services/test_billing_account_service.py` (7 nuovi):
+  - `test_list_utilities_ok_operatore_in_scope` — operatore + BA del proprio EF → utility ritornate
+  - `test_list_utilities_admin_globale_bypass` — `user_emittente_id=None` → bypass scope, no chiamata `get_emittente_fiscale_id`
+  - `test_list_utilities_superuser_bypass` — `is_superuser=True` → bypass anche con `user_emittente_id` valorizzato
+  - `test_list_utilities_403_ba_di_altro_emittente` — operatore + BA di altro EF → `E_PERMESSO_NEGATO`, no delega lookup
+  - `test_list_utilities_404_ba_inesistente` — id BA non esistente → `E_ANAG_NOT_FOUND` prima dello scope check
+  - `test_list_utilities_ruolo_invalido` — ruolo fuori whitelist → `E_ANAG_VALIDAZIONE`
+  - `test_list_utilities_id_invalido` — id <= 0 → `E_ANAG_VALIDAZIONE`
+  - Suite billing_account_service: 21/21 verdi (14 + 7 nuovi). Suite full apps.core+anagrafiche: **561/561 verdi**.
+
+> **Rename allineato** (richiesta utente, sessione 2026-04-08): `EMITTENTE_NON_MODIFICABILE` → `E_EMITTENTE_NON_MODIFICABILE` lato Python (`error_codes.py`, `error_policies.py`). Rimossa l'eccezione hack dal regex `_APP_ERROR_CODE_RE` in `error_translator.py` (ora torna pulito al pattern standard `\bE_[A-Z][A-Z0-9_]+\b`). **Follow-up DB richiesto**: aggiornare `messaggi_errore.csv` id 359 (codice da `EMITTENTE_NON_MODIFICABILE` a `E_EMITTENTE_NON_MODIFICABILE`) e arg trigger lock_emittente in migration `20260408-16` (TG_ARGV `'emittente_fiscale_id', 'E_EMITTENTE_NON_MODIFICABILE'`). Finché non fatto lato DB, l'errore del trigger lock_columns userà il vecchio codice → fallback a `E_DATABASE` (500). Operativamente: il flusso non scatta finché un client non tenta UPDATE su `user_emittenti_fiscali.emittente_fiscale_id`, che è bloccato dal modello stesso.
+
+#### BE-2.0ter — Fix definitivo propagazione GUC (sprint 2026-04-XX)
+
+Durante la review critica BE-2.0bis e' emerso che il fix middleware era **strutturalmente
+incompleto**: a `process_view` time `request.user` e' AnonymousUser per le request JWT,
+perche' `JWTAuthentication` (DRF) gira nel view dispatch DOPO i Django middleware. Risultato:
+il fix BE-2.0bis non settava mai le GUC per le request JWT in produzione → trigger DB ancora
+inerti, audit JWT ancora rotto.
+
+**Soluzione adottata (Opzione A pura)**: nuova classe
+[`apps/core/api/jwt_audit_authentication.py`](/backend/core/manual/jwt_audit_authentication)
+`JwtAuditAuthentication(JWTAuthentication)` che fa override di `authenticate()`, chiama
+`super().authenticate()`, e in caso di successo propaga `app.jwt_user` + `app.current_user_id`
+come GUC session-scoped via `_set_gucs()` (metodo separato e mockabile).
+
+Registrata in:
+
+- `settings.REST_FRAMEWORK["DEFAULT_AUTHENTICATION_CLASSES"]`
+- `apps.core.api.base_views.DomainAPIView.authentication_classes`
+- `apps.core.api.base_views.AdminAPIView.authentication_classes`
+- `apps.ai_assistant.api.views.AIStatusView.authentication_classes`
+
+**`JwtAuditMiddleware` semplificato**: rimosso il `process_view` GUC handling (non funzionava
+per JWT). Resta con 3 sole responsabilita': pre-load cache permessi Redis L2, rifiuto early
+`DISABILITATO`, reset GUC simmetrico in `process_response` (basato sul marker
+`request._zeroerp_jwt_guc_set` settato dalla auth class).
+
+**Test infrastructure**: nuova base class
+[`apps/core/tests/_helpers/jwt_mock.py`](../../../../backend/apps/core/tests/_helpers/jwt_mock.py)
+`JwtMockedApiTest(SimpleTestCase)` che mocka automaticamente `_set_gucs` nel `setUp`.
+10 test file API esistenti migrati da `SimpleTestCase` → `JwtMockedApiTest`. Migrazione
+automatica via script Python (regex sostituzione + iniezione `super().setUp()` dove serve).
+
+**Test nuovi**: 6 unit test in
+[`apps/core/tests/api/test_jwt_audit_authentication.py`](../../../../backend/apps/core/tests/api/test_jwt_audit_authentication.py)
+(auth pass-through, success path, session-scope verification, params check, DatabaseError
+swallow, defensive user-without-id).
+
+**Test middleware aggiornati**: 9 test in `test_jwt_audit_middleware.py` riallineati al nuovo
+contratto (no piu' GUC set in process_view, solo cleanup process_response basato su flag).
+
+**Verifica end-to-end runtime** (`manage.py shell`): confermato che dentro un
+`transaction.atomic()` aperto dopo `JwtAuditAuthentication.authenticate()`, le GUC sono
+visibili (`'mctit'`, `'7'`) → i trigger DB di scrittura le vedranno correttamente. Reset
+esplicito post `process_response` verificato (`''`, `''`).
+
+**Risultato test**: `apps.core + apps.anagrafiche` → **566/566 verdi** (incluso 6 nuovi
+auth tests + 9 middleware aggiornati + 10 file migrati a `JwtMockedApiTest`).
+
+**Pattern P (`app_atomic` helper a livello service) NON implementato**: documentato in
+[risorse-umane-e-accessi.md](/guide/risorse-umane-e-accessi) sezione "Pattern complementare
+per entry point non-HTTP (futuro)" come escape hatch da introdurre solo quando arrivera'
+il primo entry point non-HTTP che scrive entita' audited (CLI, cron, signal). Oggi non
+esiste, quindi nessun helper preventivo.
+
+**File toccati BE-2.0ter** (oltre middleware/test gia' descritti):
+
+- `apps/core/api/jwt_audit_authentication.py` (nuovo, ~85 righe)
+- `apps/core/api/base_views.py` (DomainAPIView/AdminAPIView usano nuova auth class)
+- `apps/ai_assistant/api/views.py` (AIStatusView allineata)
+- `apps/core/tests/_helpers/jwt_mock.py` (nuovo, ~50 righe)
+- `apps/core/tests/api/test_jwt_audit_authentication.py` (nuovo, ~140 righe + 6 test)
+- `zeroerp_backend/settings.py` (`DEFAULT_AUTHENTICATION_CLASSES`)
+- `docs/it/backend/core/manual/jwt_audit_authentication.md` (nuovo manual)
+- `docs/it/backend/core/manual/jwt_audit_middleware.md` (riscritto)
+- `docs/it/guide/risorse-umane-e-accessi.md` (sezione "Propagazione identita utente al database (GUC)")
 
 ### Fase 4 — Frontend
 
-- [ ] **FE-4.1** Endpoint `GET /api/v1/me/profile/` (o equivalente già esistente) deve esporre `emittente_id`, `emittente_codice`, `emittente_ragione_sociale`, `is_admin_globale` (verificare se serve aggiornarlo lato backend)
-- [ ] **FE-4.2** Composable `useEmittenteCorrente()` (vedi §9.5)
-- [ ] **FE-4.3** Endpoint `GET /api/v1/amm-software/setup-status/` lato backend + composable `useSetupStatus()` lato frontend
-- [ ] **FE-4.4** Componente `OperatoriNonAssegnatiBanner.vue` integrato nelle pagine di amministrazione operatori
-- [ ] **FE-4.5** `ClienteDrawer.vue` modalità modifica: sostituire `listUtilitiesManual()` con il nuovo endpoint BA-driven
-- [ ] **FE-4.6** `ClienteDrawer.vue` modalità creazione: pre-filtrare la combo utility usando l'emittente corrente dell'operatore
-- [ ] **FE-4.7** `FornitoreDrawer.vue`: stesso pattern (modifica + creazione)
-- [ ] **FE-4.8** `ClientiSearchTable.vue`: filtro utility allineato all'emittente corrente
-- [ ] **FE-4.9** UI di creazione BA: disabilitare il bottone "Crea BA" se `isAdminGlobale && esistono_emittenti` (verifica preventiva, oltre al guard DB)
-- [ ] **FE-4.10** Build vite OK, smoke test manuale dei drawer modificati
+- [x] **FE-4.1** Endpoint `GET /api/v1/core/me/` arricchito: aggiunto campo `is_admin_globale` calcolato in [`me_view.py`](/backend/core/manual/api_user_profile) con regola Q1: `ruolo_sistema == 'ADMIN' AND emittente.user_emittente_fiscale_id IS NULL`. 3 test nuovi (`test_is_admin_globale_admin_senza_emittente`, `test_is_admin_globale_admin_con_emittente`, `test_is_admin_globale_operativo`). Suite me_view: 9/9 OK.
+- [x] **FE-4.2** Implementato come getter sullo store auth invece di composable separato (no abstraction prematura): `useAuthStore.isAdminGlobale` + `useAuthStore.emittenteCorrente` (computed). `emittenteCorrente` ritorna `null` per admin globale anche se il blocco `emittente` del profilo contiene il "gestore globale" via cascata `fn_get_user_profile` 4b — discrimina semanticamente l'identita personale 1-a-1 dal fallback fatturazione.
+- [x] **FE-4.3** Backend: `apps/amm_software/db/amm_software_repository.py.get_setup_status` wrapper su `script.fn_get_setup_status` + service facade `AmmSoftwareService.get_setup_status` + view `SetupStatusView(AdminAPIView)` + URL `amm-setup-status`. Frontend: `frontend/src/amministrazione/api/amministrazione.js.getSetupStatus` + composable `useSetupStatus()` con `hasOperatoriNonAssegnati`/`hasEmittenti` computed.
+- [x] **FE-4.4** Componente `OperatoriNonAssegnatiBanner.vue` (PrimeVue Message warn, hidden se count=0) + chiavi i18n `amm.banner_non_assegnati_title/_detail` + integrazione in `OperatoriListView` (load on mount + refresh post-save drawer operatore via `setupStatus.load(true)`).
+- [x] **FE-4.5** `ClienteDrawer.vue` modalita edit: nuovo endpoint client `listUtilitiesPerBillingAccount(baId, 'CL')` + caricamento lazy nel `watch(visible)` quando `detail.billing_account_id` e' presente. Computed `utilityOptions`/`utilityLoading` switchano fra sorgente BA-driven (edit) e `listUtilitiesManual` (create).
+- [x] **FE-4.6** `ClienteDrawer.vue` modalita creazione: banner informativo `banner_emittente_corrente` per operatori (`auth.emittenteCorrente`) e banner warn `banner_admin_globale_no_create` per admin globale. Filtraggio client-side della combo utility NON applicato perche' duplicarebbe logica DB; il filtro effettivo e' lato server tramite il guard `_guard_can_create_ba` + trigger `trgfn_billing_account_guard_admin_globale`.
+- [x] **FE-4.7** **NOT APPLICABLE**: `fornitori_service.py` non chiama `create_billing_account`. I fornitori non hanno BA dedicato, quindi nessun pattern del refactor si applica al `FornitoreDrawer`. Confermato via grep `apps/anagrafiche/services/fornitori_service.py`. Voce chiusa senza modifiche.
+- [x] **FE-4.8** Nota delegate-to-backend (vedi follow-up sotto). Il filtro utility resta su `listUtilitiesManual()` perche' il backend `clienti_service.list_clienti` non applica ancora scope emittente automatico; quando lo applichera', le utility visualizzate rifletteranno automaticamente l'emittente dell'operatore. Aggiunto commento esplicito nel sorgente di `ClientiSearchTable.vue`.
+- [x] **FE-4.9** `ClienteDrawer.vue.canSave`: bloccato (`return false`) se `auth.isAdminGlobale === true`. Defense-in-depth UI; il guard backend e il trigger DB restano la difesa primaria.
+- [x] **FE-4.10** Build vite OK (`654 modules transformed, ✓ built in 714ms`). Backend test sweep `apps.core + apps.amm_software + apps.anagrafiche` → **632/632 verdi**. Smoke manuale via `scripts/tests/smoke-test-jwt-audit-guc.sh` (in attesa esecuzione manuale Tid).
+
+#### Follow-up backend (out-of-scope FE-4.x, da aprire come BE-3.5)
+
+- **BE-3.5** `clienti_service.list_clienti` deve applicare scope emittente automatico in modo simile al pattern `BillingAccountService.list_utilities_for_ba`: leggere `user_emittente_id` dalla view, filtrare i clienti per emittente del BA. Senza questo filtro, un operatore di Emittente A vede ancora clienti di Emittente B nella lista (anche se non puo' modificarli grazie ai guard DB). L'effetto del refactor operatore-emittenti sulla lista clienti e' parziale finche' non viene chiusa questa lacuna.
+
+#### Follow-up frontend opzionale
+
+- **FE-4.11** Aggiungere OperatoriNonAssegnatiBanner anche in altre view admin (es. `EmittentiFiscaliListView` per ricordare di assegnare gli operatori dopo aver creato un nuovo EF). Non bloccante per chiusura Fase 4.
+- **FE-4.12** Quando BE-3.5 sara' disponibile, verificare che la `ClientiSearchTable` non mostri piu' i clienti di altri emittenti per gli operatori e rimuovere il commento delegate-to-backend.
 
 ### Fase 5 — Documentazione
 

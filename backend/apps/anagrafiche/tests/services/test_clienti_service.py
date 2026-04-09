@@ -26,6 +26,11 @@ Indice test eseguiti:
 15) test_update_cliente_ok — aggiorna campi editabili
 16) test_update_cliente_not_found — id inesistente → E_ANAG_NOT_FOUND
 17) test_update_cliente_no_fields — nessun campo valido → E_ANAG_NOT_FOUND
+18) test_guard_admin_globale_blocca_creazione_ba — admin globale + emittenti → E_BA_ADMIN_GLOBALE_VIETATO
+19) test_guard_skip_quando_auth_user_id_none — contesto sistema → no check
+20) test_guard_skip_quando_ba_preesistente — riuso BA → no check (no nuovo INSERT)
+21) test_guard_passa_per_operatore_di_emittente — operatore con emittente → ok
+22) test_db_trigger_error_propaga_codice — errore trigger DB propagato come ServiceError
 """
 
 from unittest import TestCase
@@ -79,6 +84,27 @@ class TestClientiListDetail(TestCase):
         results, total = ClientiService().list_clienti()
         self.assertEqual(total, 1)
         self.assertEqual(results[0]["codice"], "BA-001")
+
+    @patch(CLI_REPO)
+    def test_list_clienti_propaga_scope_emittente(self, mock_repo):
+        """Refactor operatore-emittenti BE-3.5: il param emittente_ids
+        passato al service deve raggiungere il repository senza
+        modifiche (lista bigint[] o None)."""
+        mock_repo.return_value.list_clienti.return_value = ([], 0)
+        from apps.anagrafiche.services.clienti_service import ClientiService
+        ClientiService().list_clienti(emittente_ids=[10, 20])
+        kwargs = mock_repo.return_value.list_clienti.call_args.kwargs
+        self.assertEqual(kwargs["emittente_ids"], [10, 20])
+
+    @patch(CLI_REPO)
+    def test_list_clienti_scope_none_bypass(self, mock_repo):
+        """Superuser/admin globale: emittente_ids=None passa intatto
+        e il repository non applica filtro scope."""
+        mock_repo.return_value.list_clienti.return_value = ([], 0)
+        from apps.anagrafiche.services.clienti_service import ClientiService
+        ClientiService().list_clienti(emittente_ids=None)
+        kwargs = mock_repo.return_value.list_clienti.call_args.kwargs
+        self.assertIsNone(kwargs["emittente_ids"])
 
     @patch(CLI_REPO)
     def test_get_cliente_ok(self, mock_repo):
@@ -328,3 +354,100 @@ class TestUpdateCliente(TestCase):
         with self.assertRaises(ServiceError) as ctx:
             ClientiService().update_cliente(1, {"campo_ignoto": "valore"})
         self.assertEqual(ctx.exception.code, "E_ANAG_NOT_FOUND")
+
+
+# =================================================================
+# Refactor operatore-emittenti — guard E_BA_ADMIN_GLOBALE_VIETATO
+# =================================================================
+
+class TestCreaClienteGuardEmittente(TestCase):
+    """Test guard refactor operatore-emittenti (Q6): admin globale
+    non puo' creare BA quando esistono emittenti fiscali."""
+
+    def _setup_repo(self, mock_repo, can_create_ba: bool = True):
+        repo = mock_repo.return_value
+        repo.get_utility.return_value = _utility_manifatturiero()
+        repo.get_or_create_ruolo_cliente.return_value = 50
+        repo.create_istanza_fittizia.return_value = 100
+        repo.create_billing_account.return_value = 200
+        repo.create_cliente.return_value = 1
+        repo.check_user_can_create_ba.return_value = can_create_ba
+        return repo
+
+    @patch(TX_ATOMIC)
+    @patch(CLI_REPO)
+    def test_guard_admin_globale_blocca_creazione_ba(self, mock_repo, _tx):
+        """Admin globale + emittenti presenti → E_BA_ADMIN_GLOBALE_VIETATO,
+        nessuna chiamata a create_billing_account."""
+        repo = self._setup_repo(mock_repo, can_create_ba=False)
+        from apps.anagrafiche.services.clienti_service import ClientiService
+        with self.assertRaises(ServiceError) as ctx:
+            ClientiService().crea_cliente(_base_payload(), auth_user_id=42)
+        self.assertEqual(ctx.exception.code, "E_BA_ADMIN_GLOBALE_VIETATO")
+        repo.check_user_can_create_ba.assert_called_once_with(42)
+        # Early reject: nessuna scrittura DB
+        repo.create_billing_account.assert_not_called()
+        repo.create_istanza_fittizia.assert_not_called()
+        repo.create_cliente.assert_not_called()
+
+    @patch(TX_ATOMIC)
+    @patch(CLI_REPO)
+    def test_guard_skip_quando_auth_user_id_none(self, mock_repo, _tx):
+        """Contesto di sistema (auth_user_id=None) → guard skippato,
+        creazione procede (defense-in-depth via trigger DB)."""
+        repo = self._setup_repo(mock_repo, can_create_ba=False)
+        from apps.anagrafiche.services.clienti_service import ClientiService
+        result = ClientiService().crea_cliente(_base_payload(), auth_user_id=None)
+        self.assertEqual(result["id"], 1)
+        repo.check_user_can_create_ba.assert_not_called()
+        repo.create_billing_account.assert_called_once()
+
+    @patch(TX_ATOMIC)
+    @patch(CLI_REPO)
+    def test_guard_skip_quando_ba_preesistente(self, mock_repo, _tx):
+        """Se billing_account_id e' fornito (riuso da pratiche),
+        non si crea un nuovo BA → niente guard."""
+        repo = self._setup_repo(mock_repo, can_create_ba=False)
+        repo.get_billing_account.return_value = _billing_account()
+        repo.get_istanza.return_value = _istanza()
+        from apps.anagrafiche.services.clienti_service import ClientiService
+        ClientiService().crea_cliente(
+            _base_payload(istanza_utility_id=100, billing_account_id=200),
+            auth_user_id=42,
+        )
+        # Guard NON deve essere chiamato perche' non si crea nuovo BA
+        repo.check_user_can_create_ba.assert_not_called()
+        # E nessun create_billing_account perche' si riusa quello fornito
+        repo.create_billing_account.assert_not_called()
+
+    @patch(TX_ATOMIC)
+    @patch(CLI_REPO)
+    def test_guard_passa_per_operatore_di_emittente(self, mock_repo, _tx):
+        """Operatore con riga in user_emittenti_fiscali → check_user_can_create_ba
+        ritorna True → creazione BA procede."""
+        repo = self._setup_repo(mock_repo, can_create_ba=True)
+        from apps.anagrafiche.services.clienti_service import ClientiService
+        result = ClientiService().crea_cliente(_base_payload(), auth_user_id=99)
+        self.assertEqual(result["id"], 1)
+        repo.check_user_can_create_ba.assert_called_once_with(99)
+        repo.create_billing_account.assert_called_once()
+
+    @patch(TX_ATOMIC)
+    @patch(CLI_REPO)
+    def test_db_trigger_error_propaga_codice(self, mock_repo, _tx):
+        """Se il trigger DB solleva un'eccezione (defense-in-depth oltre
+        il guard applicativo), la repository la propaga e il service
+        lascia salire al middleware (ApiExceptionMiddleware) che la
+        traduce via ErrorTranslator. Test: il side_effect del repo
+        viene rilanciato senza essere mascherato."""
+        repo = self._setup_repo(mock_repo, can_create_ba=True)
+        # Simula il trigger DB che blocca con un'eccezione applicativa
+        repo.create_billing_account.side_effect = RuntimeError(
+            "ERROR: E_BA_ADMIN_GLOBALE_VIETATO ..."
+        )
+        from apps.anagrafiche.services.clienti_service import ClientiService
+        with self.assertRaises(RuntimeError) as ctx:
+            ClientiService().crea_cliente(_base_payload(), auth_user_id=99)
+        # L'eccezione DB sale invariata; il middleware/translator la
+        # estrae come E_BA_ADMIN_GLOBALE_VIETATO via _APP_ERROR_CODE_RE.
+        self.assertIn("E_BA_ADMIN_GLOBALE_VIETATO", str(ctx.exception))

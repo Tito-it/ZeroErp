@@ -203,6 +203,13 @@ class AmmSoftwareService:
     def list_emittenti_fiscali(self) -> list:
         return self._repo.list_emittenti_fiscali()
 
+    # Scopo: Setup status del refactor operatore-emittenti.
+    # Conta emittenti attivi, operatori totali, assegnati, admin globali,
+    # non assegnati. Usato dal banner UI "operatori non assegnati" per
+    # avvisare l'admin durante la transizione (decisione D1 del WIP).
+    def get_setup_status(self) -> dict:
+        return self._repo.get_setup_status()
+
     # =================================================================
     # Profili reparto
     # =================================================================

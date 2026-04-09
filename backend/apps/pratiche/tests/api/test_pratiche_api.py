@@ -29,6 +29,7 @@ import json
 from unittest.mock import Mock, patch
 
 from django.test import Client, SimpleTestCase
+from apps.core.tests._helpers.jwt_mock import JwtMockedApiTest
 
 from apps.core.services.service_errors import ServiceError
 
@@ -70,10 +71,11 @@ def _mock_pratica_row(pratica_id: int = 1) -> dict:
     }
 
 
-class PraticheApiTests(SimpleTestCase):
+class PraticheApiTests(JwtMockedApiTest):
 
     # Scopo: Prepara il contesto comune del test.
     def setUp(self) -> None:
+        super().setUp()
         self.client = Client()
 
     # Scopo: Verifica GET lista pratiche con esito positivo.

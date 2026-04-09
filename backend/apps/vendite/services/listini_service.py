@@ -7,12 +7,12 @@
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation
 from typing import Any
 from uuid import UUID
 
-from django.db import IntegrityError
+from django.db import IntegrityError, transaction
 
 from apps.core.services.error_manager import ErrorManager
 from apps.vendite.db.listini_repository import (
@@ -530,14 +530,19 @@ def _translate_integrity_error(exc: IntegrityError, *, function_name: str, entit
             "stato deve essere BOZZA, ATTIVA o CHIUSA.",
         ),
         (
-            "chk_listini_versioni_priorita",
-            "Priorita versione non valida.",
-            "priorita deve essere > 0.",
-        ),
-        (
             "ex_listini_versioni_no_overlap",
             "Intervallo versione sovrapposto.",
-            "Esiste gia' una versione attiva sovrapposta per il listino.",
+            "Esiste gia' una versione ATTIVA sovrapposta per il listino. "
+            "Usa il pattern di sostituzione: chiudi la vecchia "
+            "(valido_al = nuova_valido_dal - 1) e poi attiva la nuova.",
+        ),
+        (
+            "ex_listini_associazioni_no_overlap",
+            "Associazione listino sovrapposta.",
+            "Esiste gia' un'associazione attiva sullo stesso scope "
+            "(BA/utility/emittente) con intervallo temporale sovrapposto. "
+            "Usa il pattern di sostituzione: chiudi la vecchia "
+            "(valido_al = nuova_valido_dal - 1) e poi inserisci la nuova.",
         ),
         (
             "chk_listini_versioni_date",
@@ -558,11 +563,6 @@ def _translate_integrity_error(exc: IntegrityError, *, function_name: str, entit
             "uq_listini_associazioni_key_attiva",
             "Associazione duplicata.",
             "Esiste gia' una associazione attiva con lo stesso perimetro e valido_dal.",
-        ),
-        (
-            "chk_listini_associazioni_priorita",
-            "Priorita associazione non valida.",
-            "priorita deve essere > 0.",
         ),
         (
             "chk_listini_associazioni_date",
@@ -743,33 +743,6 @@ def _extract_versione_payload(
     if valido_al is not _MISSING:
         data["valido_al"] = valido_al
 
-    priorita = _extract_nullable_int(
-        payload,
-        "priorita",
-        function_name=function_name,
-        message=message,
-    )
-    if priorita is not _MISSING:
-        ErrorManager.require(
-            priorita is None or priorita > 0,
-            code="E_VENDITE_VALIDATION",
-            message=message,
-            detail="priorita deve essere > 0.",
-            context={"field": "priorita", "value": priorita},
-            function_name=function_name,
-            log_to_db=True,
-        )
-        ErrorManager.require(
-            priorita is not None,
-            code="E_VENDITE_VALIDATION",
-            message=message,
-            detail="priorita non puo' essere null.",
-            context={"field": "priorita"},
-            function_name=function_name,
-            log_to_db=True,
-        )
-        data["priorita"] = priorita
-
     attivo = _extract_present_bool(
         payload,
         "attivo",
@@ -901,7 +874,7 @@ def _extract_riga_payload(
     return data
 
 
-# Scopo: Normalizza payload create/update associazione e impone priorita/date coerenti.
+# Scopo: Normalizza payload create/update associazione e impone date coerenti.
 def _extract_associazione_payload(
     payload: dict[str, Any],
     *,
@@ -927,33 +900,6 @@ def _extract_associazione_payload(
         )
         if field_value is not _MISSING:
             data[field_name] = field_value
-
-    priorita = _extract_nullable_int(
-        payload,
-        "priorita",
-        function_name=function_name,
-        message=message,
-    )
-    if priorita is not _MISSING:
-        ErrorManager.require(
-            priorita is not None,
-            code="E_VENDITE_VALIDATION",
-            message=message,
-            detail="priorita non puo' essere null.",
-            context={"field": "priorita"},
-            function_name=function_name,
-            log_to_db=True,
-        )
-        ErrorManager.require(
-            priorita > 0,
-            code="E_VENDITE_VALIDATION",
-            message=message,
-            detail="priorita deve essere > 0.",
-            context={"field": "priorita", "value": priorita},
-            function_name=function_name,
-            log_to_db=True,
-        )
-        data["priorita"] = priorita
 
     valido_dal = _extract_payload_date(
         payload,
@@ -1041,7 +987,7 @@ def _validate_riga_articolo_uom(articolo_id: UUID | str, uom_id: int, *, functio
 
 # Scopo: Whitelist campi PATCH versione ammessi in base allo stato corrente.
 #        - BOZZA  : tutti i campi modificabili (allineato a _VERSIONE_UPDATE_ALLOWED_KEYS)
-#        - ATTIVA : solo valido_al e priorita (programmazione chiusura + tie-break)
+#        - ATTIVA : solo valido_al (programmazione chiusura)
 #        - CHIUSA : nessun campo (stato terminale, modifiche vietate)
 #        Risponde all'esigenza di immutabilita' delle versioni operative dopo
 #        l'attivazione, evitando drift tra listino e snapshot in commesse_attivita.
@@ -1049,7 +995,7 @@ def _validate_riga_articolo_uom(articolo_id: UUID | str, uom_id: int, *, functio
 #        drift silenzioso quando si aggiungono nuove colonne a VERSIONE_UPDATE_COLUMNS.
 _VERSIONE_PATCH_ALLOWED_BY_STATE: dict[str, frozenset[str]] = {
     "BOZZA": _VERSIONE_UPDATE_ALLOWED_KEYS,
-    "ATTIVA": frozenset({"valido_al", "priorita"}),
+    "ATTIVA": frozenset({"valido_al"}),
     "CHIUSA": frozenset(),
 }
 
@@ -1222,6 +1168,48 @@ def fn_update_listino(listino_id: int, payload: dict[str, Any]) -> dict[str, obj
     return fn_get_listino_dettaglio(listino_id)
 
 
+# Scopo: Elimina un listino mai usato (zero versioni, zero associazioni).
+#        Decisione O3 (sviluppo-listini-v2): caso d'uso = listini di test creati
+#        per errore. Per disattivare un listino con figli, usare PATCH attivo=false.
+def fn_delete_listino(listino_id: int) -> dict[str, object]:
+    function_name = "vendite.listini_service.fn_delete_listino"
+    listino = _get_listino_or_raise(listino_id, function_name=function_name)
+    versioni_count = int(listino.get("versioni_count") or 0)
+    associazioni_count = int(listino.get("associazioni_count") or 0)
+    ErrorManager.require(
+        versioni_count == 0 and associazioni_count == 0,
+        code="E_VENDITE_VALIDATION",
+        message="Eliminazione listino non consentita.",
+        detail=(
+            "Solo i listini senza versioni e senza associazioni possono essere "
+            f"eliminati. Versioni: {versioni_count}, associazioni: {associazioni_count}. "
+            "Per disattivare un listino con figli, usa PATCH attivo=false."
+        ),
+        context={
+            "listino_id": listino_id,
+            "versioni_count": versioni_count,
+            "associazioni_count": associazioni_count,
+        },
+        function_name=function_name,
+        log_to_db=True,
+    )
+    repository = ListiniRepository()
+    try:
+        deleted = repository.delete_listino(listino_id)
+    except IntegrityError as exc:
+        _translate_integrity_error(exc, function_name=function_name, entity="listino")
+    ErrorManager.require(
+        deleted,
+        code="E_VENDITE_LISTINO_NOT_FOUND",
+        message="Listino non trovato.",
+        detail=f"Nessun listino con id={listino_id}.",
+        context={"listino_id": listino_id},
+        function_name=function_name,
+        log_to_db=False,
+    )
+    return {"deleted": True, "id": listino_id}
+
+
 # Scopo: Restituisce la lista versioni del listino con envelope uniforme.
 def fn_list_versioni(listino_id: int) -> dict[str, object]:
     function_name = "vendite.listini_service.fn_list_versioni"
@@ -1281,7 +1269,195 @@ def fn_update_versione(listino_id: int, versione_id: int, payload: dict[str, Any
     return fn_get_versione(listino_id, versione_id)
 
 
+# Scopo: Clona una versione esistente in una nuova versione BOZZA dello stesso listino.
+#        Workflow operativo "cambio prezzi": l'utente clona V001 in V002, modifica
+#        i prezzi che cambiano, attiva V002. La versione sorgente non viene toccata.
+#        Vincolo D2 (decisioni listini v2): la nuova versione puo' essere retroattiva
+#        ma valido_dal non puo' essere inferiore al valido_dal della sorgente. Le
+#        retroattive sui documenti gia` emessi richiedono il dominio rettifiche DB-L4.
+def fn_clone_versione(
+    listino_id: int,
+    src_versione_id: int,
+    payload: dict[str, Any],
+) -> dict[str, object]:
+    function_name = "vendite.listini_service.fn_clone_versione"
+    src_versione = _get_versione_or_raise(listino_id, src_versione_id, function_name=function_name)
+
+    # Riusa la pipeline di validazione per_create della versione: garantisce
+    # codice_versione+valido_dal obbligatori, valido_al > valido_dal.
+    # Filtra i campi a quelli effettivamente clonabili (esclude attivo/meta dal clone).
+    target_data = _extract_versione_payload(payload, for_update=False, function_name=function_name)
+    clonable_fields = {"codice_versione", "valido_dal", "valido_al"}
+    target_data = {key: value for key, value in target_data.items() if key in clonable_fields}
+
+    # Vincolo D2: la nuova decorrenza non puo' essere inferiore alla decorrenza
+    # della sorgente. Cio' protegge da cloni "indietro nel tempo" che precederebbero
+    # l'inizio della versione che si vuole sostituire.
+    src_valido_dal = src_versione.get("valido_dal")
+    target_valido_dal = target_data.get("valido_dal")
+    assert isinstance(src_valido_dal, date)
+    assert isinstance(target_valido_dal, date)
+    ErrorManager.require(
+        target_valido_dal >= src_valido_dal,
+        code="E_VENDITE_VALIDATION",
+        message="Data di decorrenza non valida.",
+        detail=(
+            f"valido_dal della nuova versione ({target_valido_dal.isoformat()}) "
+            f"non puo' essere inferiore alla decorrenza della versione sorgente "
+            f"({src_valido_dal.isoformat()})."
+        ),
+        context={
+            "src_versione_id": src_versione_id,
+            "src_valido_dal": src_valido_dal,
+            "target_valido_dal": target_valido_dal,
+        },
+        function_name=function_name,
+        log_to_db=True,
+    )
+
+    repository = ListiniRepository()
+    try:
+        with transaction.atomic():
+            target_versione_id = repository.clone_versione(
+                listino_id=listino_id,
+                src_versione_id=src_versione_id,
+                target_data=target_data,
+            )
+    except IntegrityError as exc:
+        _translate_integrity_error(exc, function_name=function_name, entity="versione")
+
+    return fn_get_versione(listino_id, target_versione_id)
+
+
+# Scopo: Elimina una versione in stato BOZZA con tutte le sue righe (cascata).
+#        Decisione O2 (sviluppo-listini-v2): solo BOZZA e' eliminabile, perche'
+#        non e' mai stata visibile al pricing e nessuno snapshot e' propagato.
+#        Versioni ATTIVA/CHIUSA sono storiche e immutabili.
+def fn_delete_versione(listino_id: int, versione_id: int) -> dict[str, object]:
+    function_name = "vendite.listini_service.fn_delete_versione"
+    versione = _get_versione_or_raise(listino_id, versione_id, function_name=function_name)
+    stato = str(versione["stato"])
+    ErrorManager.require(
+        stato == "BOZZA",
+        code="E_VENDITE_VALIDATION",
+        message="Eliminazione versione non consentita.",
+        detail=(
+            "Solo le versioni in stato BOZZA possono essere eliminate. "
+            f"Stato corrente: {stato}."
+        ),
+        context={"versione_id": versione_id, "stato": stato},
+        function_name=function_name,
+        log_to_db=True,
+    )
+    repository = ListiniRepository()
+    try:
+        with transaction.atomic():
+            deleted = repository.delete_versione(listino_id, versione_id)
+    except IntegrityError as exc:
+        _translate_integrity_error(exc, function_name=function_name, entity="versione")
+    ErrorManager.require(
+        deleted,
+        code="E_VENDITE_LISTINO_VERSIONE_NOT_FOUND",
+        message="Versione listino non trovata.",
+        detail=f"Nessuna versione id={versione_id} per listino id={listino_id}.",
+        context={"listino_id": listino_id, "versione_id": versione_id},
+        function_name=function_name,
+        log_to_db=False,
+    )
+    return {"deleted": True, "id": versione_id}
+
+
+# Scopo: Pianifica le conseguenze di una transizione di stato versione.
+#        Per BOZZA -> ATTIVA calcola l'elenco delle versioni precedenti da chiudere
+#        e la nuova valido_al. Per altre transizioni torna ([], None).
+#
+#        Guard critico (CHK constraint vendite.chk_listini_versioni_date richiede
+#        valido_al > valido_dal STRETTAMENTE): se una precedente ha
+#        valido_dal >= nuova.valido_dal - 1 (cioe' gap < 2 giorni), l'autoclose
+#        produrrebbe valido_al <= valido_dal e violerebbe il CHECK. Solleviamo
+#        un errore esplicito invece di lasciar scattare un IntegrityError generico.
+def _plan_versione_state_change(
+    *,
+    repository: "ListiniRepository",
+    versione: dict[str, Any],
+    nuovo_stato: str,
+    listino_id: int,
+    versione_id: int,
+    function_name: str,
+) -> tuple[list[dict[str, Any]], date | None]:
+    if nuovo_stato != "ATTIVA":
+        return [], None
+
+    ErrorManager.require(
+        bool(versione["attivo"]),
+        code="E_VENDITE_VALIDATION",
+        message="Transizione stato versione non valida.",
+        detail="Una versione inattiva non puo' essere attivata.",
+        context={"versione_id": versione_id},
+        function_name=function_name,
+        log_to_db=True,
+    )
+    righe_count = repository.count_active_righe_versione(versione_id)
+    ErrorManager.require(
+        righe_count > 0,
+        code="E_VENDITE_VALIDATION",
+        message="Transizione stato versione non valida.",
+        detail="Una versione BOZZA deve avere almeno una riga attiva prima di diventare ATTIVA.",
+        context={"versione_id": versione_id, "righe_count": righe_count},
+        function_name=function_name,
+        log_to_db=True,
+    )
+
+    nuova_valido_dal = versione.get("valido_dal")
+    assert isinstance(nuova_valido_dal, date)
+    candidates = repository.find_versioni_per_autoclose(
+        listino_id=listino_id,
+        exclude_versione_id=versione_id,
+        nuova_valido_dal=nuova_valido_dal,
+    )
+    nuova_valido_al = nuova_valido_dal - timedelta(days=1)
+
+    # Guard CHK: per ogni precedente, l'autoclose deve produrre valido_al > valido_dal.
+    # nuova_valido_al = nuova_valido_dal - 1, quindi serve precedente.valido_dal < nuova_valido_dal - 1.
+    for row in candidates:
+        prec_valido_dal = row.get("valido_dal")
+        assert isinstance(prec_valido_dal, date)
+        ErrorManager.require(
+            nuova_valido_al > prec_valido_dal,
+            code="E_VENDITE_VALIDATION",
+            message="Autoclose versione precedente non possibile.",
+            detail=(
+                f"La versione precedente '{row.get('codice_versione')}' inizia il "
+                f"{prec_valido_dal.isoformat()}: per chiuderla all'attivazione "
+                f"servirebbe valido_al={nuova_valido_al.isoformat()}, ma il vincolo "
+                f"valido_al > valido_dal lo impedisce. La nuova versione deve "
+                f"iniziare almeno 2 giorni dopo l'inizio della precedente "
+                f"(decorrenza minima ammessa: {(prec_valido_dal + timedelta(days=2)).isoformat()})."
+            ),
+            context={
+                "precedente_id": int(row["id"]),
+                "precedente_valido_dal": prec_valido_dal,
+                "nuova_valido_dal": nuova_valido_dal,
+            },
+            function_name=function_name,
+            log_to_db=True,
+        )
+
+    return candidates, nuova_valido_al
+
+
 # Scopo: Cambia stato versione con guard su transizioni e presenza righe in attivazione.
+#        Decisione D3 (sviluppo-listini-v2): la transizione BOZZA -> ATTIVA innesca
+#        l'auto-close delle versioni precedenti dello stesso listino (versioni in
+#        stato ATTIVA + attivo con valido_dal < nuova.valido_dal e che si sovrappongono
+#        al nuovo intervallo). La chiusura avviene nella stessa transazione DB:
+#        prima si imposta valido_al = nuova.valido_dal - 1 sulle precedenti, poi si
+#        attiva la nuova. Questo ordine e' necessario per non urtare il vincolo
+#        ex_listini_versioni_no_overlap (GIST exclusion).
+#
+#        Modalita` dry_run: se payload contiene `dry_run=true`, la funzione esegue
+#        tutte le validazioni e calcola le versioni che verrebbero auto-chiuse, ma
+#        NON tocca il DB. Restituisce un envelope di preview per il dialog UI.
 def fn_change_versione_state(listino_id: int, versione_id: int, payload: dict[str, Any]) -> dict[str, object]:
     function_name = "vendite.listini_service.fn_change_versione_state"
     versione = _get_versione_or_raise(listino_id, versione_id, function_name=function_name)
@@ -1303,35 +1479,60 @@ def fn_change_versione_state(listino_id: int, versione_id: int, payload: dict[st
         log_to_db=True,
     )
     assert isinstance(nuovo_stato, str)
+    # dry_run strict: accetta solo bool True esplicito (no stringhe truthy)
+    dry_run = payload.get("dry_run", False) is True
     _validate_versione_state_transition(versione, nuovo_stato, function_name=function_name)
 
     repository = ListiniRepository()
     if str(versione["stato"]) == nuovo_stato:
         return fn_get_versione(listino_id, versione_id)
 
-    if nuovo_stato == "ATTIVA":
-        ErrorManager.require(
-            bool(versione["attivo"]),
-            code="E_VENDITE_VALIDATION",
-            message="Transizione stato versione non valida.",
-            detail="Una versione inattiva non puo' essere attivata.",
-            context={"versione_id": versione_id},
-            function_name=function_name,
-            log_to_db=True,
-        )
-        righe_count = repository.count_active_righe_versione(versione_id)
-        ErrorManager.require(
-            righe_count > 0,
-            code="E_VENDITE_VALIDATION",
-            message="Transizione stato versione non valida.",
-            detail="Una versione BOZZA deve avere almeno una riga attiva prima di diventare ATTIVA.",
-            context={"versione_id": versione_id, "righe_count": righe_count},
-            function_name=function_name,
-            log_to_db=True,
-        )
+    # Pianificazione transizione: per BOZZA -> ATTIVA calcola anche l'autoclose
+    # delle precedenti. Restituisce (autoclose_candidates, nuova_valido_al).
+    # Per ATTIVA -> CHIUSA torna ([], None).
+    autoclose_candidates, nuova_valido_al = _plan_versione_state_change(
+        repository=repository,
+        versione=versione,
+        nuovo_stato=nuovo_stato,
+        listino_id=listino_id,
+        versione_id=versione_id,
+        function_name=function_name,
+    )
+
+    # Modalita` preview: niente UPDATE, restituisco la sintesi delle conseguenze.
+    if dry_run:
+        return {
+            "dry_run": True,
+            "versione_id": versione_id,
+            "nuovo_stato": nuovo_stato,
+            "auto_close": [
+                {
+                    "id": int(row["id"]),
+                    "codice_versione": row.get("codice_versione"),
+                    "valido_dal": row.get("valido_dal"),
+                    "valido_al_prima": row.get("valido_al"),
+                    "valido_al_dopo": nuova_valido_al,
+                }
+                for row in autoclose_candidates
+            ],
+        }
 
     try:
-        changed = repository.change_versione_state(listino_id, versione_id, nuovo_stato)
+        with transaction.atomic():
+            # 1) Auto-close precedenti PRIMA di attivare la nuova: il vincolo
+            #    GIST exclusion ex_listini_versioni_no_overlap viene verificato
+            #    al COMMIT, ma per chiarezza di intent eseguiamo gli UPDATE in
+            #    quest'ordine. Senza l'auto-close, l'UPDATE che attiva la nuova
+            #    fallirebbe per overlap con le precedenti aperte.
+            if autoclose_candidates and nuova_valido_al is not None:
+                for row in autoclose_candidates:
+                    repository.set_versione_valido_al(
+                        listino_id=listino_id,
+                        versione_id=int(row["id"]),
+                        valido_al=nuova_valido_al,
+                    )
+
+            changed = repository.change_versione_state(listino_id, versione_id, nuovo_stato)
     except IntegrityError as exc:
         _translate_integrity_error(exc, function_name=function_name, entity="versione")
     ErrorManager.require(

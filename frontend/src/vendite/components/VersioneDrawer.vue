@@ -50,9 +50,22 @@ async function loadRighe() {
   righe.value = res.data.data.results || []
 }
 
-watch(() => props.visible, (v) => {
-  if (v) loadRighe()
-})
+// Watch immediate + reattivo a versione.id: il componente viene montato dal
+// padre con `visible` gia' true (vedi ListiniView.onOpenRighe), quindi un watch
+// non-immediate non scatterebbe mai alla prima apertura. Ricarico anche se la
+// versione cambia mentre il drawer e' aperto. Pulisco le righe alla chiusura
+// per evitare flash di dati vecchi alla riapertura.
+watch(
+  () => [props.visible, props.versione?.id],
+  ([v, _vid]) => {
+    if (v) {
+      loadRighe()
+    } else {
+      righe.value = []
+    }
+  },
+  { immediate: true },
+)
 
 function startAdd() {
   adding.value = true
@@ -122,10 +135,6 @@ function uomLabel(uom) {
         <div class="form-field">
           <label>{{ t('listini.col_stato') }}</label>
           <Tag :value="versione?.stato" :severity="statoVersioneListinoSeverity(versione?.stato)" />
-        </div>
-        <div class="form-field">
-          <label>{{ t('listini.col_priorita') }}</label>
-          <span>{{ versione?.priorita }}</span>
         </div>
         <div class="form-field">
           <label>{{ t('listini.field_valido_dal') }}</label>

@@ -29,6 +29,11 @@ Indice test eseguiti:
 19) test_emittenti_no_row_none
 20) test_emittenti_con_righe_lista
 21) test_emittenti_correct_params
+21a) test_operatore_con_riga_ritorna_pk
+21b) test_admin_globale_ritorna_none
+21c) test_no_row_ritorna_none
+21d) test_emittente_for_user_correct_params
+21e) test_emittente_for_user_cache
 22) test_override_trovato
 23) test_override_non_trovato_fallback
 24) test_uo_trovata
@@ -279,6 +284,62 @@ class PermissionResolverEmittentiTests(TestCase):
         cursor.execute.assert_called_once_with(
             "SELECT script.fn_get_emittenti_scope(%s)", [99]
         )
+
+
+# ── Emittente 1-a-1 (refactor operatore-emittenti) ───────
+
+
+class PermissionResolverEmittenteForUserTests(TestCase):
+    """Test per get_emittente_for_user — delegata a
+    script.fn_resolve_emittente_for_user."""
+
+    # Scopo: Operatore con riga -> ritorna PK reale emittenti_fiscali.id.
+    @patch(_CONN)
+    def test_operatore_con_riga_ritorna_pk(self, mock_conn):
+        _setup_cursor(mock_conn, (42,))
+        result = PermissionResolver.get_emittente_for_user(_mock_user())
+        self.assertEqual(result, 42)
+        self.assertIsInstance(result, int)
+
+    # Scopo: Admin globale (0 righe) -> NULL dal DB -> None.
+    @patch(_CONN)
+    def test_admin_globale_ritorna_none(self, mock_conn):
+        _setup_cursor(mock_conn, (None,))
+        result = PermissionResolver.get_emittente_for_user(_mock_user())
+        self.assertIsNone(result)
+
+    # Scopo: Nessuna riga dalla funzione -> None.
+    @patch(_CONN)
+    def test_no_row_ritorna_none(self, mock_conn):
+        _setup_cursor(mock_conn, None)
+        result = PermissionResolver.get_emittente_for_user(_mock_user())
+        self.assertIsNone(result)
+
+    # Scopo: Verifica parametri SQL corretti.
+    @patch(_CONN)
+    def test_emittente_for_user_correct_params(self, mock_conn):
+        cursor = _setup_cursor(mock_conn, (7,))
+        PermissionResolver.get_emittente_for_user(_mock_user(123))
+        cursor.execute.assert_called_once_with(
+            "SELECT script.fn_resolve_emittente_for_user(%s)", [123]
+        )
+
+    # Scopo: La cache evita una seconda query per lo stesso user.
+    @patch(_CONN)
+    def test_emittente_for_user_cache(self, mock_conn):
+        cursor = _setup_cursor(mock_conn, (5,))
+        cache: dict = {}
+        first = PermissionResolver.get_emittente_for_user(
+            _mock_user(), cache=cache
+        )
+        second = PermissionResolver.get_emittente_for_user(
+            _mock_user(), cache=cache
+        )
+        self.assertEqual(first, 5)
+        self.assertEqual(second, 5)
+        # Una sola query nonostante 2 chiamate
+        self.assertEqual(cursor.execute.call_count, 1)
+        self.assertEqual(cache.get("emittente_for_user"), 5)
 
 
 # ── Area model override ──────────────────────────────────

@@ -18,10 +18,10 @@ from rest_framework import serializers
 from rest_framework.request import Request
 
 from rest_framework.views import APIView
-from rest_framework_simplejwt.authentication import JWTAuthentication
 from rest_framework.permissions import IsAuthenticated
 
 from apps.core.api.base_views import DomainAPIView
+from apps.core.api.jwt_audit_authentication import JwtAuditAuthentication
 from apps.core.api.endpoint_helpers import handle_post_json
 from apps.core.api.success_responses import success_response
 from apps.core.services.error_manager import ErrorManager
@@ -35,7 +35,7 @@ class AIStatusView(APIView):
     Il check permessi area avviene solo su /query/.
     """
 
-    authentication_classes = [JWTAuthentication]
+    authentication_classes = [JwtAuditAuthentication]
     permission_classes = [IsAuthenticated]
 
     @extend_schema(

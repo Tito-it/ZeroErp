@@ -12,6 +12,7 @@ import ListinoDrawer from '../components/ListinoDrawer.vue'
 import ListinoAssociazioniDrawer from '../components/ListinoAssociazioniDrawer.vue'
 import VersioneDrawer from '../components/VersioneDrawer.vue'
 import VersioneFormDrawer from '../components/VersioneFormDrawer.vue'
+import CloneVersioneDrawer from '../components/CloneVersioneDrawer.vue'
 import TestResolverDialog from '../components/TestResolverDialog.vue'
 
 const drawer = useDrawerState()
@@ -30,6 +31,11 @@ const versioneListinoId = ref(null)
 // Drawer create nuova versione (VersioneFormDrawer)
 const nuovaVersioneVisible = ref(false)
 const nuovaVersioneListino = ref(null)
+
+// Drawer clone versione (CloneVersioneDrawer)
+const cloneDrawerVisible = ref(false)
+const cloneSourceVersione = ref(null)
+const cloneSourceListino = ref(null)
 
 // Test resolver
 const resolverVisible = ref(false)
@@ -83,6 +89,21 @@ async function onNuovaVersioneSaved({ listinoId }) {
   }
   await store.fetchList()
 }
+
+function onOpenClonaVersione(versione, listino) {
+  cloneSourceVersione.value = versione
+  cloneSourceListino.value = listino
+  cloneDrawerVisible.value = true
+}
+
+async function onClonaVersioneSaved({ listinoId }) {
+  // Il clone aggiunge una nuova versione BOZZA: invalida cache versioni del
+  // listino e refresh della lista per aggiornare il versioni_count.
+  if (listinoId) {
+    await store.invalidateVersioniListino(listinoId)
+  }
+  await store.fetchList()
+}
 </script>
 
 <template>
@@ -93,6 +114,7 @@ async function onNuovaVersioneSaved({ listinoId }) {
       @open-associazioni="onOpenAssociazioni"
       @open-righe="onOpenRighe"
       @open-nuova-versione="onOpenNuovaVersione"
+      @open-clona-versione="onOpenClonaVersione"
       @test-resolver="resolverVisible = true"
     />
 
@@ -125,6 +147,14 @@ async function onNuovaVersioneSaved({ listinoId }) {
       @update:visible="v => nuovaVersioneVisible = v"
       :listino="nuovaVersioneListino"
       @saved="onNuovaVersioneSaved"
+    />
+
+    <CloneVersioneDrawer
+      :visible="cloneDrawerVisible"
+      @update:visible="v => cloneDrawerVisible = v"
+      :listino="cloneSourceListino"
+      :source-versione="cloneSourceVersione"
+      @cloned="onClonaVersioneSaved"
     />
 
     <TestResolverDialog v-if="resolverVisible"

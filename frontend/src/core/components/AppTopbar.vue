@@ -31,6 +31,12 @@ const areaTitle = computed(() => {
 })
 
 const companyName = computed(() => {
+  // Per operatori e admin di emittente: identita 1-a-1 dal nuovo getter.
+  // Per admin globali: leggiamo direttamente dal blocco emittente del
+  // profilo (cascata 4b: gestore globale) come display informativo.
+  if (auth.emittenteCorrente) {
+    return auth.emittenteCorrente.ragioneSociale || ''
+  }
   const em = auth.user?.emittente
   return em?.ragione_sociale_completa || em?.emittente_descrizione || ''
 })

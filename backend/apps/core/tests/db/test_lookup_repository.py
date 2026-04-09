@@ -24,6 +24,9 @@ Indice test eseguiti:
 13) test_list_entity_utility_matrix_unconfigured — riga ammessa ma senza override (record_id NULL)
 14) test_list_entity_utility_matrix_invalid_table — whitelist nega tabella non ammessa
 15) test_list_entity_utility_matrix_tipo_ruolo_parametrized — tipo_ruolo_codice e' parametro %s, no SQL injection
+16) test_list_utilities_per_ba_delegates_to_fn — wrapper su anagrafiche.fn_lookup_utilities_per_ba, params corretti
+17) test_list_utilities_per_ba_maps_columns — mappatura colonne is_personalizzata_per_ef e parametri override
+18) test_list_utilities_per_ba_empty — risultato vuoto se BA senza utility
 """
 
 from unittest import TestCase
@@ -412,3 +415,71 @@ class TestListEntityUtilityMatrix(TestCase):
         self.assertNotIn(attack, sql)
         # Il payload deve essere stato passato come parametro %s al cursor
         self.assertIn(attack, params)
+
+
+class TestListUtilitiesPerBillingAccount(TestCase):
+    """Test LookupRepository.list_utilities_per_billing_account() —
+    wrapper su anagrafiche.fn_lookup_utilities_per_ba (refactor
+    operatore-emittenti, sez. 3 del WIP)."""
+
+    _COLS = [
+        "utility_id", "codice", "descrizione", "is_personalizzata_per_ef",
+        "minimo_soglia_min", "minimo_soglia_max",
+        "arrotondamento_importi_dec", "metodo_arrotondamento_importi",
+    ]
+
+    @patch("apps.core.db.lookup_repository.connection")
+    def test_list_utilities_per_ba_delegates_to_fn(self, mock_conn):
+        """Verifica che il metodo chiami la funzione SQL corretta con
+        billing_account_id e ruolo_codice_soggetto come parametri."""
+        mock_cursor = _mock_cursor_with_description([], self._COLS)
+        _mock_connection(mock_conn, mock_cursor)
+
+        from apps.core.db.lookup_repository import LookupRepository
+
+        LookupRepository().list_utilities_per_billing_account(
+            billing_account_id=200, ruolo_codice_soggetto="CL"
+        )
+
+        mock_cursor.execute.assert_called_once()
+        sql, params = mock_cursor.execute.call_args[0]
+        self.assertIn("anagrafiche.fn_lookup_utilities_per_ba", sql)
+        self.assertEqual(params, [200, "CL"])
+
+    @patch("apps.core.db.lookup_repository.connection")
+    def test_list_utilities_per_ba_maps_columns(self, mock_conn):
+        """Verifica mappatura colonne: is_personalizzata_per_ef e
+        parametri override (soglie, arrotondamento)."""
+        rows = [
+            # Utility con override per EF (parametri custom)
+            (1, "EE", "Energia Elettrica", True, 0.5, 1000.0, 2, "HALF_UP"),
+            # Utility ammessa ma senza personalizzazione (parametri default)
+            (2, "GAS", "Gas Naturale", False, None, None, None, None),
+        ]
+        mock_cursor = _mock_cursor_with_description(rows, self._COLS)
+        _mock_connection(mock_conn, mock_cursor)
+
+        from apps.core.db.lookup_repository import LookupRepository
+
+        results = LookupRepository().list_utilities_per_billing_account(
+            billing_account_id=200, ruolo_codice_soggetto="CL"
+        )
+        self.assertEqual(len(results), 2)
+        self.assertTrue(results[0]["is_personalizzata_per_ef"])
+        self.assertEqual(results[0]["minimo_soglia_min"], 0.5)
+        self.assertEqual(results[0]["metodo_arrotondamento_importi"], "HALF_UP")
+        self.assertFalse(results[1]["is_personalizzata_per_ef"])
+        self.assertIsNone(results[1]["minimo_soglia_min"])
+
+    @patch("apps.core.db.lookup_repository.connection")
+    def test_list_utilities_per_ba_empty(self, mock_conn):
+        """Lista vuota: BA senza utility ammesse → ritorna []."""
+        mock_cursor = _mock_cursor_with_description([], self._COLS)
+        _mock_connection(mock_conn, mock_cursor)
+
+        from apps.core.db.lookup_repository import LookupRepository
+
+        results = LookupRepository().list_utilities_per_billing_account(
+            billing_account_id=999, ruolo_codice_soggetto="FO"
+        )
+        self.assertEqual(results, [])

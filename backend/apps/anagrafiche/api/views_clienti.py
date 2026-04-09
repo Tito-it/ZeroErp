@@ -18,6 +18,7 @@ from apps.core.api.base_views import DomainAPIView
 from apps.core.api.endpoint_helpers import handle_post_json
 from apps.core.api.payload_validators import optional_int, paginated_envelope, parse_list_params
 from apps.core.api.success_responses import success_response
+from apps.core.services.permissions_resolver import PermissionResolver
 from apps.anagrafiche.services.clienti_service import ClientiService
 
 
@@ -44,15 +45,22 @@ class ClientiView(DomainAPIView):
         responses={200: inline_serializer(name="ClientiListResp", fields={"data": serializers.DictField()})},
     )
     # Scopo: Lista paginata clienti con search e filtri utility/stato.
+    #        Applica scope emittente fiscale (refactor operatore-emittenti,
+    #        BE-3.5): un operatore vede solo i clienti dei BA del proprio
+    #        emittente; superuser/admin globale/"0 emittenti" bypassano
+    #        (emittente_ids = None).
     def get(self, request: Request) -> JsonResponse:
         p = parse_list_params(request.query_params, default_order="ragione_sociale_completa")
         utility_id = optional_int({"v": request.query_params.get("utility_id")}, "v")
         stato_id = optional_int({"v": request.query_params.get("stato_cliente_id")}, "v")
+        cache: dict = {}
+        emittente_ids = PermissionResolver.get_emittenti_ids(request.user, cache=cache)
         svc = ClientiService()
         results, total = svc.list_clienti(
             search=p["search"],
             utility_id=utility_id,
             stato_cliente_id=stato_id,
+            emittente_ids=emittente_ids,
             limit=p["limit"], offset=p["offset"],
             order_by=p["order_by"], order_dir=p["order_dir"],
         )
@@ -74,8 +82,18 @@ class ClientiView(DomainAPIView):
         responses={200: inline_serializer(name="ClienteCreateResp", fields={"data": serializers.DictField()})},
     )
     # Scopo: Crea cliente completo (istanza + BA + cliente in transazione atomica).
+    #        Passa auth_user_id al service per il guard refactor
+    #        operatore-emittenti (Q6: admin globale non crea BA).
     def post(self, request: Request) -> JsonResponse:
-        return handle_post_json(request, handler=ClientiService().crea_cliente)
+        # DomainAPIView garantisce richiesta autenticata via ZeroERPPermission.
+        auth_user_id = request.user.id
+        svc = ClientiService()
+        return handle_post_json(
+            request,
+            handler=lambda payload: svc.crea_cliente(
+                payload, auth_user_id=auth_user_id
+            ),
+        )
 
 
 # =================================================================

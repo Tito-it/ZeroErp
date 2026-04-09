@@ -27,6 +27,7 @@ import json
 from unittest.mock import Mock, patch
 
 from django.test import Client, SimpleTestCase
+from apps.core.tests._helpers.jwt_mock import JwtMockedApiTest
 
 from apps.core.services.service_errors import ServiceError
 
@@ -34,10 +35,11 @@ _AUTH = "rest_framework_simplejwt.authentication.JWTAuthentication.authenticate"
 _VIEWS = "apps.pratiche.api.views"
 
 
-class SospensioniApiTests(SimpleTestCase):
+class SospensioniApiTests(JwtMockedApiTest):
 
     # Scopo: Prepara il contesto comune del test.
     def setUp(self) -> None:
+        super().setUp()
         self.client = Client()
 
     # -- SOSPENDI PRATICA ------------------------------------------------

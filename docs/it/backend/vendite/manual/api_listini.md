@@ -163,6 +163,28 @@ Campi ammessi:
 - `404` `E_VENDITE_LISTINO_NOT_FOUND`
 - `400` `E_VENDITE_VALIDATION`
 
+### 1.5 Elimina listino mai usato
+
+| | |
+|---|---|
+| **Metodo** | `DELETE` |
+| **URL** | `/api/v1/vendite/listini/{listino_id}/` |
+
+Elimina un listino **solo se non ha figli**: `versioni_count == 0` AND
+`associazioni_count == 0`. Caso d'uso tipico: listini di test creati per
+errore. Per disattivare un listino con figli, usare `PATCH attivo=false`.
+
+Risposta (200):
+
+```json
+{ "data": { "deleted": true, "id": 10 } }
+```
+
+Errori tipici:
+
+- `400` `E_VENDITE_VALIDATION` se il listino ha versioni o associazioni
+- `404` `E_VENDITE_LISTINO_NOT_FOUND`
+
 ---
 
 ## 3. Versioni listino
@@ -234,7 +256,71 @@ crea una nuova versione (clone + edit + activate).
 - `400` `E_VENDITE_VALIDATION` con `detail` che elenca i campi non ammessi e quelli consentiti
 - `404` `E_VENDITE_LISTINO_VERSIONE_NOT_FOUND`
 
-### 3.5 Cambia stato versione
+### 3.5 Clona versione
+
+| | |
+|---|---|
+| **Metodo** | `POST` |
+| **URL** | `/api/v1/vendite/listini/{listino_id}/versioni/{src_ver_id}/clona/` |
+
+Crea una **nuova versione BOZZA** dello stesso listino copiando tutte le righe
+attive della versione sorgente. Workflow operativo "cambio prezzi": clona V001
+in V002 BOZZA, modifica i prezzi che cambiano, attiva V002. La sorgente non
+viene toccata.
+
+#### Body JSON
+
+| Campo | Tipo | Obbligatorio | Descrizione |
+|---|---|---|---|
+| `codice_versione` | string | Si | Codice univoco per il listino |
+| `valido_dal` | date | Si | Data inizio validita` (vedi vincolo D2 sotto) |
+| `valido_al` | date | No | Data fine validita`, NULL = aperta |
+| `priorita` | int | No | Priorita` (default DB `100`) |
+
+`meta` e `attivo` non sono ammessi nel payload del clone: la nuova versione
+nasce in stato BOZZA con `attivo=true` e `meta` vuoto. Le righe vengono copiate
+con `attivo=true` (le righe non attive della sorgente sono escluse).
+
+#### Vincolo D2 — `valido_dal` e retroattivita`
+
+`nuova.valido_dal` puo` essere retroattivo (precedente alla data odierna), ma
+**non puo` essere inferiore a `sorgente.valido_dal`**. Cio` protegge da cloni
+"prima dell'inizio" della versione che si vuole sostituire.
+
+Il clone retroattivo non modifica le fatturazioni gia` emesse nel periodo:
+queste continuano a basarsi sullo snapshot in `commesse_attivita` /
+`attivita_fatturabili`. Per correggerle e` necessaria una rettifica DB-L4
+(dominio separato, vedi `dev/work-in-progress/sviluppo-rettifiche.md`).
+
+#### Errori tipici
+
+- `400` `E_VENDITE_VALIDATION` se `nuova.valido_dal < sorgente.valido_dal` o se
+  manca un campo obbligatorio
+- `400` `E_VENDITE_VALIDATION` se `codice_versione` duplicato per il listino
+- `404` `E_VENDITE_LISTINO_VERSIONE_NOT_FOUND` se la sorgente non esiste
+
+### 3.6 Elimina versione
+
+| | |
+|---|---|
+| **Metodo** | `DELETE` |
+| **URL** | `/api/v1/vendite/listini/{listino_id}/versioni/{ver_id}/` |
+
+Elimina una versione **solo se in stato `BOZZA`**, con tutte le sue righe in
+cascata. Versioni `ATTIVA` o `CHIUSA` sono storiche e non eliminabili.
+
+Risposta (200):
+
+```json
+{ "data": { "deleted": true, "id": 101 } }
+```
+
+Errori tipici:
+
+- `400` `E_VENDITE_VALIDATION` se la versione non e` BOZZA
+- `404` `E_VENDITE_LISTINO_VERSIONE_NOT_FOUND`
+
+### 3.7 Cambia stato versione
 
 | | |
 |---|---|
@@ -245,9 +331,15 @@ crea una nuova versione (clone + edit + activate).
 
 ```json
 {
-  "stato": "ATTIVA"
+  "stato": "ATTIVA",
+  "dry_run": false
 }
 ```
+
+| Campo | Tipo | Obbligatorio | Descrizione |
+|---|---|---|---|
+| `stato` | string | Si | `ATTIVA` o `CHIUSA` (transizione di stato) |
+| `dry_run` | bool | No | Se `true`, esegue tutte le validazioni e calcola l'auto-close ma non scrive nulla. Restituisce un envelope di preview. Default `false`. |
 
 #### Regole specifiche
 
@@ -260,6 +352,46 @@ crea una nuova versione (clone + edit + activate).
   - `ATTIVA -> CHIUSA`
 - Per `BOZZA -> ATTIVA` deve esistere almeno una riga **attiva** nella versione.
 - Overlap temporali e unicita` restano governati dai vincoli DB su `vendite.listini_versioni`.
+
+#### Auto-close della versione precedente (decisione D3)
+
+Quando si esegue `BOZZA -> ATTIVA`, il backend cerca le altre versioni dello
+stesso listino in stato `ATTIVA + attivo` con `valido_dal < nuova.valido_dal`
+e che si **sovrappongono** al nuovo intervallo (`valido_al IS NULL` oppure
+`valido_al >= nuova.valido_dal`). Per ognuna, nella **stessa transazione DB**:
+
+1. Imposta `precedente.valido_al = nuova.valido_dal - 1`
+2. Attiva la nuova versione
+
+L'ordine e` necessario per non urtare il vincolo `ex_listini_versioni_no_overlap`
+(GIST exclusion). Senza l'auto-close, l'attivazione fallirebbe per overlap.
+
+#### Modalita` `dry_run` (preview UI)
+
+Con `dry_run: true`, la chiamata non scrive nel DB e restituisce:
+
+```json
+{
+  "data": {
+    "dry_run": true,
+    "versione_id": 202,
+    "nuovo_stato": "ATTIVA",
+    "auto_close": [
+      {
+        "id": 101,
+        "codice_versione": "V001",
+        "valido_dal": "2026-01-01",
+        "valido_al_prima": null,
+        "valido_al_dopo": "2026-03-31"
+      }
+    ]
+  }
+}
+```
+
+Il frontend usa questa preview per il dialog di conferma attivazione, mostrando
+all'operatore l'elenco delle versioni che verranno auto-chiuse e la nuova
+`valido_al` calcolata.
 
 #### Errori tipici
 

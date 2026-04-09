@@ -11,9 +11,12 @@ Indice test eseguiti:
 1) UserProfileViewTests.test_get_profile_success
 2) UserProfileViewTests.test_get_profile_includes_emittente_null
 3) UserProfileViewTests.test_get_profile_repository_error_propagates
-4) CoreRepositoryTests.test_get_user_profile_returns_jsonb
-5) CoreRepositoryTests.test_get_user_profile_null_result_raises_error
-6) CoreRepositoryTests.test_get_user_profile_no_row_raises_error
+4) UserProfileViewTests.test_is_admin_globale_admin_senza_emittente
+5) UserProfileViewTests.test_is_admin_globale_admin_con_emittente
+6) UserProfileViewTests.test_is_admin_globale_operativo
+7) CoreRepositoryTests.test_get_user_profile_returns_jsonb
+8) CoreRepositoryTests.test_get_user_profile_null_result_raises_error
+9) CoreRepositoryTests.test_get_user_profile_no_row_raises_error
 """
 
 from unittest import TestCase
@@ -64,6 +67,7 @@ _PROFILE_FULL = {
         "emittente_fiscale_id": 1,
         "emittente_codice": "EF01",
         "emittente_descrizione": "Emittente Principale",
+        "user_emittente_fiscale_id": None,
         "ragione_sociale_completa": "Azienda SRL",
         "partita_iva": "01234567890",
         "tipo_soggetto_id": "PG",
@@ -83,13 +87,15 @@ _REPO_PATH = "apps.core.api.me_view.CoreRepository"
 
 class UserProfileViewTests(TestCase):
 
-    # Scopo: Verifica che GET /me/ restituisca il profilo completo con envelope data.
+    # Scopo: Verifica che GET /me/ restituisca il profilo completo con envelope data
+    # e arricchito con is_admin_globale.
     @patch(_REPO_PATH)
     def test_get_profile_success(self, MockRepo):
         from apps.core.api.me_view import UserProfileView
 
+        # Copia per evitare contaminazione fra test (la view fa mutate)
         mock_repo = MagicMock()
-        mock_repo.get_user_profile.return_value = _PROFILE_FULL
+        mock_repo.get_user_profile.return_value = dict(_PROFILE_FULL)
         MockRepo.return_value = mock_repo
 
         request = MagicMock()
@@ -98,13 +104,14 @@ class UserProfileViewTests(TestCase):
         request.user.is_authenticated = True
 
         view = UserProfileView()
-        # Mock success_response per verificare che viene chiamato col profilo
         with patch("apps.core.api.me_view.success_response") as mock_resp:
             mock_resp.return_value = MagicMock(status_code=200)
             response = view.get(request)
 
         mock_repo.get_user_profile.assert_called_once_with(1)
-        mock_resp.assert_called_once_with(_PROFILE_FULL)
+        # success_response chiamata con profilo arricchito di is_admin_globale
+        profile_arg = mock_resp.call_args[0][0]
+        self.assertIn("is_admin_globale", profile_arg)
         self.assertEqual(response.status_code, 200)
 
     # Scopo: Verifica che il profilo senza emittente (null) funziona correttamente.
@@ -113,7 +120,7 @@ class UserProfileViewTests(TestCase):
         from apps.core.api.me_view import UserProfileView
 
         mock_repo = MagicMock()
-        mock_repo.get_user_profile.return_value = _PROFILE_NO_EMITTENTE
+        mock_repo.get_user_profile.return_value = dict(_PROFILE_NO_EMITTENTE)
         MockRepo.return_value = mock_repo
 
         request = MagicMock()
@@ -127,6 +134,65 @@ class UserProfileViewTests(TestCase):
 
         profile_arg = mock_resp.call_args[0][0]
         self.assertIsNone(profile_arg["emittente"])
+        self.assertIn("is_admin_globale", profile_arg)
+
+    # Scopo: ADMIN senza riga in user_emittenti_fiscali → is_admin_globale=True.
+    # Caso "admin globale" del refactor operatore-emittenti (Q1).
+    @patch(_REPO_PATH)
+    def test_is_admin_globale_admin_senza_emittente(self, MockRepo):
+        from apps.core.api.me_view import UserProfileView
+
+        # Profilo ADMIN con emittente del gestore globale (cascata 4b di
+        # fn_get_user_profile) ma user_emittente_fiscale_id NULL.
+        profile = dict(_PROFILE_FULL)
+        profile["ruolo_sistema"] = "ADMIN"
+        profile["emittente"] = {**profile["emittente"], "user_emittente_fiscale_id": None}
+        mock_repo = MagicMock()
+        mock_repo.get_user_profile.return_value = profile
+        MockRepo.return_value = mock_repo
+
+        request = MagicMock(); request.user = MagicMock(); request.user.id = 1
+        view = UserProfileView()
+        with patch("apps.core.api.me_view.success_response") as mock_resp:
+            view.get(request)
+        self.assertTrue(mock_resp.call_args[0][0]["is_admin_globale"])
+
+    # Scopo: ADMIN con riga in user_emittenti_fiscali → is_admin_globale=False.
+    # Caso "admin di emittente" del refactor.
+    @patch(_REPO_PATH)
+    def test_is_admin_globale_admin_con_emittente(self, MockRepo):
+        from apps.core.api.me_view import UserProfileView
+
+        profile = dict(_PROFILE_FULL)
+        profile["ruolo_sistema"] = "ADMIN"
+        profile["emittente"] = {**profile["emittente"], "user_emittente_fiscale_id": 42}
+        mock_repo = MagicMock()
+        mock_repo.get_user_profile.return_value = profile
+        MockRepo.return_value = mock_repo
+
+        request = MagicMock(); request.user = MagicMock(); request.user.id = 1
+        view = UserProfileView()
+        with patch("apps.core.api.me_view.success_response") as mock_resp:
+            view.get(request)
+        self.assertFalse(mock_resp.call_args[0][0]["is_admin_globale"])
+
+    # Scopo: OPERATIVO non e' mai admin (anche senza riga in user_emittenti_fiscali).
+    @patch(_REPO_PATH)
+    def test_is_admin_globale_operativo(self, MockRepo):
+        from apps.core.api.me_view import UserProfileView
+
+        profile = dict(_PROFILE_FULL)
+        profile["ruolo_sistema"] = "OPERATIVO"
+        profile["emittente"] = {**profile["emittente"], "user_emittente_fiscale_id": None}
+        mock_repo = MagicMock()
+        mock_repo.get_user_profile.return_value = profile
+        MockRepo.return_value = mock_repo
+
+        request = MagicMock(); request.user = MagicMock(); request.user.id = 1
+        view = UserProfileView()
+        with patch("apps.core.api.me_view.success_response") as mock_resp:
+            view.get(request)
+        self.assertFalse(mock_resp.call_args[0][0]["is_admin_globale"])
 
     # Scopo: Verifica che un errore dal repository si propaga correttamente.
     @patch(_REPO_PATH)

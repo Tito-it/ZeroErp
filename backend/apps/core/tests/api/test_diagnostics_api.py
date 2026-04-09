@@ -12,11 +12,13 @@ Indice test eseguiti:
 from unittest.mock import Mock, patch
 
 from django.test import Client, SimpleTestCase
+from apps.core.tests._helpers.jwt_mock import JwtMockedApiTest
 
 
-class CoreDiagnosticsApiTests(SimpleTestCase):
+class CoreDiagnosticsApiTests(JwtMockedApiTest):
     # Scopo: Prepara il contesto comune del test.
     def setUp(self) -> None:
+        super().setUp()
         self.client = Client()
 
     # Scopo: Verifica il caso `test_error_envelope_default`.

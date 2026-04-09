@@ -158,3 +158,12 @@ export function listAzioniProcesso() {
 export function listEmittentiFiscali() {
   return api.get(`${BASE}/lookup/emittenti-fiscali/`)
 }
+
+// --- Setup status (refactor operatore-emittenti) ---
+
+// Stato setup refactor: contatori EF/operatori per banner UI.
+// Restituisce { emittenti_attivi, operatori_totali, operatori_assegnati,
+// operatori_admin_globali, operatori_non_assegnati }.
+export function getSetupStatus() {
+  return api.get(`${BASE}/setup-status/`)
+}

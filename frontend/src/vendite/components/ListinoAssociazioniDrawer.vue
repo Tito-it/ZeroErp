@@ -20,7 +20,6 @@ import Drawer from 'primevue/drawer'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Button from 'primevue/button'
-import InputNumber from 'primevue/inputnumber'
 import DatePicker from 'primevue/datepicker'
 
 const { t } = useI18n()
@@ -48,7 +47,6 @@ function defaultForm() {
     utility_id: defaultUtility,
     billing_account_id: null,
     billing_account_obj: null,
-    priorita: 100,
     valido_dal: new Date(),
     valido_al: null
   }
@@ -86,7 +84,6 @@ function onStartEdit(row) {
     utility_id: row.utility_id || null,
     billing_account_id: row.billing_account_id || null,
     billing_account_obj: buildBaObjFromRow(row),
-    priorita: row.priorita ?? 100,
     valido_dal: parseIsoDate(row.valido_dal) || new Date(),
     valido_al: parseIsoDate(row.valido_al),
   }
@@ -123,7 +120,9 @@ function onCancelForm() {
   form.value = defaultForm()
 }
 
-const canSave = computed(() => form.value.priorita > 0)
+// Sempre salvabile: la backend valida i campi (valido_dal default a oggi se vuoto).
+// Lo scope (utility/BA) puo' essere tutto NULL per "associazione globale".
+const canSave = computed(() => true)
 
 function onBaSelect(ba) {
   // Sincronizza id + obj quando l'utente seleziona un BA dall'autocomplete.
@@ -141,7 +140,6 @@ async function onSaveForm() {
   const payload = {
     utility_id: f.utility_id || null,
     billing_account_id: f.billing_account_id || null,
-    priorita: f.priorita,
     valido_dal: toDateString(f.valido_dal) || toDateString(new Date()),
     valido_al: toDateString(f.valido_al),
   }
@@ -206,7 +204,6 @@ async function onDelete(row) {
           <Column field="emittente_descrizione" :header="t('listini.col_emittente')" style="width: 160px;">
             <template #body="{ data }">{{ data.emittente_descrizione || '—' }}</template>
           </Column>
-          <Column field="priorita" :header="t('listini.col_priorita')" style="width: 70px;" />
           <Column :header="t('listini.field_valido_dal')" style="width: 95px;">
             <template #body="{ data }">{{ displayDate(data.valido_dal) }}</template>
           </Column>
@@ -250,12 +247,6 @@ async function onDelete(row) {
               @select="onBaSelect"
               @clear="onBaClear"
             />
-          </div>
-        </div>
-        <div class="form-grid-2col">
-          <div class="form-field">
-            <label>{{ t('listini.field_priorita') }} *</label>
-            <InputNumber v-model="form.priorita" :min="1" />
           </div>
         </div>
         <div class="form-grid-2col">

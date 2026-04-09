@@ -38,6 +38,7 @@ import json
 from unittest.mock import Mock, patch
 
 from django.test import Client, SimpleTestCase
+from apps.core.tests._helpers.jwt_mock import JwtMockedApiTest
 
 from apps.core.services.service_errors import ServiceError
 
@@ -48,10 +49,11 @@ _BA_SVC = "apps.anagrafiche.api.views_emittenti_fiscali.EmittentiFiscaliBillingA
 _UT_SVC = "apps.anagrafiche.api.views_emittenti_fiscali.EmittentiFiscaliUtilitiesService"
 
 
-class TestEmittentiFiscaliGetApi(SimpleTestCase):
+class TestEmittentiFiscaliGetApi(JwtMockedApiTest):
     """Test endpoint GET emittenti fiscali."""
 
     def setUp(self) -> None:
+        super().setUp()
         self.client = Client()
 
     @patch(_AUTH, return_value=(Mock(), None))
@@ -92,10 +94,11 @@ class TestEmittentiFiscaliGetApi(SimpleTestCase):
         self.assertIn(resp.status_code, (400, 404, 422))
 
 
-class TestEmittentiFiscaliPostApi(SimpleTestCase):
+class TestEmittentiFiscaliPostApi(JwtMockedApiTest):
     """Test endpoint POST emittenti fiscali."""
 
     def setUp(self) -> None:
+        super().setUp()
         self.client = Client()
 
     @patch(_AUTH, return_value=(Mock(), None))
@@ -161,10 +164,11 @@ class TestEmittentiFiscaliPostApi(SimpleTestCase):
         self.assertEqual(body["error"]["code"], "E_ANAG_VALIDAZIONE")
 
 
-class TestEmittentiFiscaliPatchApi(SimpleTestCase):
+class TestEmittentiFiscaliPatchApi(JwtMockedApiTest):
     """Test endpoint PATCH emittenti fiscali."""
 
     def setUp(self) -> None:
+        super().setUp()
         self.client = Client()
 
     @patch(_AUTH, return_value=(Mock(), None))
@@ -200,10 +204,11 @@ class TestEmittentiFiscaliPatchApi(SimpleTestCase):
         self.assertEqual(body["error"]["code"], "E_ANAG_NOT_FOUND")
 
 
-class TestEmittentiFiscaliAdminRequired(SimpleTestCase):
+class TestEmittentiFiscaliAdminRequired(JwtMockedApiTest):
     """Verifica che gli endpoint richiedano effettivamente ruolo ADMIN."""
 
     def setUp(self) -> None:
+        super().setUp()
         self.client = Client()
 
     @patch(_AUTH, return_value=(Mock(), None))
@@ -243,10 +248,11 @@ class TestEmittentiFiscaliAdminRequired(SimpleTestCase):
         self.assertEqual(resp.status_code, 403)
 
 
-class TestEmittentiFiscaliBillingAccountApi(SimpleTestCase):
+class TestEmittentiFiscaliBillingAccountApi(JwtMockedApiTest):
     """Test sub-resource mapping BA -> emittente."""
 
     def setUp(self) -> None:
+        super().setUp()
         self.client = Client()
 
     @patch(_AUTH, return_value=(Mock(), None))
@@ -320,10 +326,11 @@ class TestEmittentiFiscaliBillingAccountApi(SimpleTestCase):
         self.assertIn(resp.status_code, (400, 404, 422))
 
 
-class TestEmittentiFiscaliUtilitiesApi(SimpleTestCase):
+class TestEmittentiFiscaliUtilitiesApi(JwtMockedApiTest):
     """Test sub-resource utilities per emittente."""
 
     def setUp(self) -> None:
+        super().setUp()
         self.client = Client()
 
     @patch(_AUTH, return_value=(Mock(), None))

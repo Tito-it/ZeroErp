@@ -2,8 +2,19 @@
 
 ## Scopo
 
-Middleware Django che propaga l'identita' dell'utente autenticato nella sessione PostgreSQL
-tramite GUC (`SET LOCAL`) e rifiuta anticipatamente gli utenti disabilitati sugli endpoint API.
+Middleware Django per le request `/api/*`. Tre responsabilita':
+
+1. Pre-load della cache permessi Redis L2 sulla request (riusata da `ZeroERPPermission`).
+2. Rifiuto early degli utenti `ruolo_sistema = DISABILITATO` con HTTP 403.
+3. Reset simmetrico delle GUC PG (`app.jwt_user`, `app.current_user_id`) settate
+   da `JwtAuditAuthentication` durante l'autenticazione DRF.
+
+> **Importante — la propagazione delle GUC NON avviene piu' qui.**
+> A partire dallo sprint BE-2.0ter (refactor operatore-emittenti), il setting
+> delle GUC e' demandato a [`JwtAuditAuthentication`](jwt_audit_authentication.md),
+> registrata in `REST_FRAMEWORK.DEFAULT_AUTHENTICATION_CLASSES`. Vedi guida
+> [Risorse umane e accessi](/guide/risorse-umane-e-accessi) sezione
+> "Propagazione identita utente al database (GUC)".
 
 ## Contesto
 
@@ -12,18 +23,7 @@ Registrata in `settings.MIDDLEWARE` dopo `AuthenticationMiddleware`.
 
 ## Funzionalita'
 
-### 1. Propagazione GUC PostgreSQL
-
-Per ogni richiesta di un utente autenticato, imposta due variabili di sessione PG:
-
-| GUC                    | Valore              | Uso                                            |
-|------------------------|---------------------|-------------------------------------------------|
-| `app.jwt_user`         | `str(user)`         | Audit trail nei trigger DB                     |
-| `app.current_user_id`  | `str(user.id)`      | Trigger guard defense-in-depth (ambito emittente)|
-
-Entrambe usano `SET LOCAL` (valide solo per la transazione corrente).
-
-### 2. Pre-caricamento cache permessi L2 (Redis)
+### 1. Pre-load cache permessi L2 (Redis)
 
 Per le richieste su path `/api/`, se `request._zeroerp_perms_cache` non esiste:
 
@@ -31,19 +31,37 @@ Per le richieste su path `/api/`, se `request._zeroerp_perms_cache` non esiste:
 - Crea `request._zeroerp_perms_cache` (dict) e `request._zeroerp_perms_cache_loaded_from_redis` (bool)
 - `ZeroERPPermission._get_cache()` riusa questa cache senza query aggiuntive
 
-### 3. Rifiuto anticipato DISABILITATO
+### 2. Rifiuto anticipato DISABILITATO
 
 Per le richieste su path `/api/`:
 
 - Legge `ruolo_sistema` via `PermissionResolver.get_ruolo_sistema()` con la cache per-request
 - Se `DISABILITATO` → logga warning di sicurezza e restituisce 403 JSON con codice `E_USER_DISABILITATO`
 
+### 3. Reset GUC simmetrico
+
+`process_response` resetta le GUC `app.jwt_user` e `app.current_user_id` a stringa
+vuota **se e solo se** `JwtAuditAuthentication` ha settato il marker
+`request._zeroerp_jwt_guc_set = True`. Una sola `cursor.execute` con
+`SELECT set_config('app.jwt_user', '', false), set_config('app.current_user_id', '', false)`.
+
+**Perche' condizionale**: i `SimpleTestCase` API girano con request anonime a livello
+middleware (la JWT auth gira nel view dispatch DRF, dopo i middleware), quindi senza
+il marker il reset farebbe `cursor.execute` su una connessione vietata da
+`DatabaseOperationForbidden`. Il marker garantisce simmetria perfetta: si resetta solo
+quando le GUC sono state davvero impostate.
+
+**Defense-in-depth**: oggi `CONN_MAX_AGE = 0` (default Django) chiude la connessione
+a fine request, quindi il reset e' superfluo. Resta come blindatura per futuri scenari
+con `CONN_MAX_AGE > 0` o pgbouncer transaction-mode dove le GUC potrebbero leak fra
+request sulla stessa connessione.
+
 ### 4. Utenti anonimi
 
-Per utenti non autenticati, il middleware non esegue alcuna operazione (nessun `SET LOCAL`,
-nessun check ruolo).
+Per utenti non autenticati o path non-API, il middleware non esegue alcuna operazione
+(nessuna cache, nessun check ruolo, nessun reset).
 
-## Formato risposta 403
+## Formato risposta 403 DISABILITATO
 
 ```json
 {
@@ -72,17 +90,18 @@ security.user_disabilitato user_id=<id> path=<path>
 ```text
 process_view(request, ...)
   │
-  ├── user non autenticato? → None (prosegui)
+  ├── path non /api/* o user anonimo → None (prosegui)
   │
-  ├── SET LOCAL app.jwt_user = str(user)
-  ├── SET LOCAL app.current_user_id = str(user.id)
+  ├── Pre-load cache L2 da Redis (load_user_cache)
+  ├── ruolo = PermissionResolver.get_ruolo_sistema(user, cache)
+  └── ruolo == DISABILITATO? → log warning + JsonResponse 403
+
+process_response(request, response)
   │
-  ├── path inizia con /api/?
-  │     ├── Pre-carica cache L2 da Redis (load_user_cache)
-  │     ├── ruolo = PermissionResolver.get_ruolo_sistema(user, cache)
-  │     └── ruolo == DISABILITATO? → log warning + JsonResponse 403
+  ├── request._zeroerp_jwt_guc_set non settato? → return response
   │
-  └── None (prosegui)
+  ├── set_config('app.jwt_user',        '', false)   ┐ una sola
+  └── set_config('app.current_user_id', '', false)   ┘ execute
 ```
 
 ## Dipendenze
@@ -91,15 +110,20 @@ process_view(request, ...)
 - `apps.core.services.permissions_cache` — `load_user_cache()` per pre-caricamento L2
 - `apps.core.services.permissions_resolver` — `PermissionResolver.get_ruolo_sistema()`
 - `apps.core.services.request_context` — `get_request_id()`, `get_idempotency_key()` per meta 403
+- `apps.core.api.jwt_audit_authentication.JwtAuditAuthentication` — setta il marker letto
+  da `process_response`
 
 ## Note
 
 - Il check `DISABILITATO` nel middleware e' **defense-in-depth**: `ZeroERPPermission` effettua
   lo stesso controllo a livello DRF. Il middleware agisce prima, evitando che la request
   raggiunga la view.
-- `app.current_user_id` e' pensato per essere usato dai trigger guard DB
-  (`script.fn_check_user_emittente_scope`) che verificano l'ambito emittente a livello di riga.
+- **Storico audit pre-fix**: tutti i record creati prima dello sprint BE-2.0bis (2026-04-XX)
+  hanno `user_insert`/`user_update` popolati con il ruolo DB (`zeroerp_app`/`titodb`)
+  anziche' lo username JWT, perche' la GUC `app.jwt_user` non veniva propagata correttamente.
+  Lo storico non viene riscritto. Dal fix BE-2.0ter in poi, l'audit JWT funziona
+  correttamente per tutte le request `/api/*` JWT.
 
 ## Test
 
-`apps/core/tests/middleware/test_jwt_audit_middleware.py` — 7 test unitari.
+`apps/core/tests/middleware/test_jwt_audit_middleware.py` — 9 test unitari.

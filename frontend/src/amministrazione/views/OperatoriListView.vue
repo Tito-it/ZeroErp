@@ -11,9 +11,11 @@ import { useDrawerState } from '../../core/composables/useDrawerState'
 import { useReadonlyMode } from '../../core/composables/useReadonlyMode'
 import { useLookup } from '../../core/composables/useLookup'
 import { listUnitaOrganizzative } from '../api/amministrazione'
+import { useSetupStatus } from '../composables/useSetupStatus'
 import { RUOLO_SISTEMA, buildRuoloOptions, getRuoloSeverity } from '../constants'
 import OperatoreDrawer from '../components/OperatoreDrawer.vue'
 import OperatorePermessiDrawer from '../components/OperatorePermessiDrawer.vue'
+import OperatoriNonAssegnatiBanner from '../components/OperatoriNonAssegnatiBanner.vue'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import InputText from 'primevue/inputtext'
@@ -30,6 +32,9 @@ const { searchText, onPage, onSort, applyFilters, reload, paginatorProps } = use
 const drawer = useDrawerState()
 const permessiDrawer = useDrawerState()
 const { isReadonly } = useReadonlyMode('amm_software')
+// Destruct: Vue auto-unwrap i ref destrutturati nel template, non nel
+// reactive object proxy. Pattern idiomatic.
+const { status: setupStatusData, load: loadSetupStatus, hasOperatoriNonAssegnati } = useSetupStatus()
 
 useTabFreshness(store, 'operatore')
 
@@ -46,18 +51,24 @@ const activeOptions = [
   { label: t('amm.stato_inattivo'), value: false }
 ]
 
-onMounted(() => { store.fetchList() })
+onMounted(() => {
+  store.fetchList()
+  loadSetupStatus()
+})
+
+// Refresh setup status quando si chiude il drawer (assignment puo' essere
+// cambiato dall'admin nel drawer operatore).
+function onDrawerSavedWithStatus() {
+  drawer.close()
+  store.fetchList()
+  loadSetupStatus(true)
+}
 
 function applyExtraFilters() {
   store.filters.ruolo_sistema = ruoloFilter.value
   store.filters.unita_organizzativa_id = uoFilter.value
   store.filters.is_active = activeFilter.value
   applyFilters()
-}
-
-function onDrawerSaved() {
-  drawer.close()
-  store.fetchList()
 }
 
 // Scopo: apre il drawer permessi per la riga cliccata senza aprire il drawer
@@ -77,6 +88,10 @@ function activeBadgeSeverity(active) {
 
 <template>
   <div class="app-page">
+    <OperatoriNonAssegnatiBanner
+      v-if="hasOperatoriNonAssegnati"
+      :count="setupStatusData.operatori_non_assegnati"
+    />
     <div class="app-page-toolbar">
       <div class="app-page-filters">
         <InputText
@@ -175,7 +190,7 @@ function activeBadgeSeverity(active) {
       @update:visible="v => drawer.state.visible = v"
       :mode="drawer.state.mode"
       :auth-user-id="drawer.state.itemId"
-      @saved="onDrawerSaved"
+      @saved="onDrawerSavedWithStatus"
       @cancelled="drawer.close"
     />
 

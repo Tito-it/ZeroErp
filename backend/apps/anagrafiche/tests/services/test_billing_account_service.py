@@ -22,6 +22,12 @@ Indice test eseguiti:
 12) test_get_lookup_by_id_not_found — BA inesistente solleva E_ANAG_NOT_FOUND
 13) test_get_lookup_by_id_invalid_id — id 0 o negativo rifiutato
 14) test_get_lookup_by_id_bool_rejected — bool rifiutato come id
+15) test_list_utilities_ok_operatore_in_scope — operatore con BA del proprio EF → utility ritornate
+16) test_list_utilities_admin_globale_bypass — user_emittente_id=None → no scope check
+17) test_list_utilities_superuser_bypass — is_superuser=True → no scope check anche se user_emittente_id valorizzato
+18) test_list_utilities_403_ba_di_altro_emittente — operatore + BA di altro EF → E_PERMESSO_NEGATO
+19) test_list_utilities_404_ba_inesistente — id BA non esistente → E_ANAG_NOT_FOUND prima dello scope
+20) test_list_utilities_ruolo_invalido — ruolo non in whitelist → E_ANAG_VALIDAZIONE
 """
 
 from unittest import TestCase
@@ -196,3 +202,129 @@ class TestBillingAccountGetLookupById(TestCase):
             BillingAccountService().get_lookup_by_id(True)  # type: ignore[arg-type]
         self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
         mock_repo.return_value.get_lookup_by_id.assert_not_called()
+
+
+# =================================================================
+# list_utilities_for_ba — refactor operatore-emittenti, BE-3
+# =================================================================
+
+_LOOKUP_REPO = "apps.anagrafiche.services.billing_account_service.LookupRepository"
+_FAKE_UTILITIES = [
+    {
+        "utility_id": 1, "codice": "EE", "descrizione": "Energia Elettrica",
+        "is_personalizzata_per_ef": True,
+        "minimo_soglia_min": 0.5, "minimo_soglia_max": 1000.0,
+        "arrotondamento_importi_dec": 2, "metodo_arrotondamento_importi": "HALF_UP",
+    },
+    {
+        "utility_id": 2, "codice": "GAS", "descrizione": "Gas Naturale",
+        "is_personalizzata_per_ef": False,
+        "minimo_soglia_min": None, "minimo_soglia_max": None,
+        "arrotondamento_importi_dec": None, "metodo_arrotondamento_importi": None,
+    },
+]
+
+
+class TestBillingAccountListUtilitiesForBa(TestCase):
+    """Test list_utilities_for_ba — scope emittente + delega lookup.
+
+    L'esistenza del BA viene controllata via BillingAccountRepository.exists()
+    (l'id positivo e' gia' garantito dall'URL converter <int:...>, quindi
+    nessun test di id <= 0 a livello di service).
+    """
+
+    @patch(_LOOKUP_REPO)
+    @patch(_REPO)
+    def test_list_utilities_ok_operatore_in_scope(self, mock_repo, mock_lookup):
+        """Operatore con BA del proprio emittente → utility ritornate."""
+        mock_repo.return_value.exists.return_value = True
+        mock_repo.return_value.get_emittente_fiscale_id.return_value = 7
+        mock_lookup.return_value.list_utilities_per_billing_account.return_value = _FAKE_UTILITIES
+        from apps.anagrafiche.services.billing_account_service import BillingAccountService
+        result = BillingAccountService().list_utilities_for_ba(
+            billing_account_id=200,
+            ruolo_codice_soggetto="CL",
+            user_emittente_id=7,
+        )
+        self.assertEqual(len(result["results"]), 2)
+        mock_repo.return_value.exists.assert_called_once_with(200)
+        mock_repo.return_value.get_emittente_fiscale_id.assert_called_once_with(200)
+        mock_lookup.return_value.list_utilities_per_billing_account.assert_called_once_with(
+            billing_account_id=200, ruolo_codice_soggetto="CL"
+        )
+
+    @patch(_LOOKUP_REPO)
+    @patch(_REPO)
+    def test_list_utilities_admin_globale_bypass(self, mock_repo, mock_lookup):
+        """Admin globale (user_emittente_id=None) → nessun scope check."""
+        mock_repo.return_value.exists.return_value = True
+        mock_lookup.return_value.list_utilities_per_billing_account.return_value = _FAKE_UTILITIES
+        from apps.anagrafiche.services.billing_account_service import BillingAccountService
+        result = BillingAccountService().list_utilities_for_ba(
+            billing_account_id=200,
+            ruolo_codice_soggetto="CL",
+            user_emittente_id=None,
+        )
+        self.assertEqual(len(result["results"]), 2)
+        mock_repo.return_value.get_emittente_fiscale_id.assert_not_called()
+
+    @patch(_LOOKUP_REPO)
+    @patch(_REPO)
+    def test_list_utilities_superuser_bypass(self, mock_repo, mock_lookup):
+        """is_superuser=True → bypass anche se user_emittente_id valorizzato."""
+        mock_repo.return_value.exists.return_value = True
+        mock_lookup.return_value.list_utilities_per_billing_account.return_value = []
+        from apps.anagrafiche.services.billing_account_service import BillingAccountService
+        BillingAccountService().list_utilities_for_ba(
+            billing_account_id=200,
+            ruolo_codice_soggetto="FO",
+            user_emittente_id=7,
+            is_superuser=True,
+        )
+        mock_repo.return_value.get_emittente_fiscale_id.assert_not_called()
+
+    @patch(_LOOKUP_REPO)
+    @patch(_REPO)
+    def test_list_utilities_403_ba_di_altro_emittente(self, mock_repo, mock_lookup):
+        """Operatore + BA di altro EF → E_PERMESSO_NEGATO, no lookup."""
+        mock_repo.return_value.exists.return_value = True
+        mock_repo.return_value.get_emittente_fiscale_id.return_value = 99
+        from apps.anagrafiche.services.billing_account_service import BillingAccountService
+        with self.assertRaises(ServiceError) as ctx:
+            BillingAccountService().list_utilities_for_ba(
+                billing_account_id=200,
+                ruolo_codice_soggetto="CL",
+                user_emittente_id=7,
+            )
+        self.assertEqual(ctx.exception.code, "E_PERMESSO_NEGATO")
+        mock_lookup.return_value.list_utilities_per_billing_account.assert_not_called()
+
+    @patch(_LOOKUP_REPO)
+    @patch(_REPO)
+    def test_list_utilities_404_ba_inesistente(self, mock_repo, mock_lookup):
+        """BA inesistente → E_ANAG_NOT_FOUND prima del check scope."""
+        mock_repo.return_value.exists.return_value = False
+        from apps.anagrafiche.services.billing_account_service import BillingAccountService
+        with self.assertRaises(ServiceError) as ctx:
+            BillingAccountService().list_utilities_for_ba(
+                billing_account_id=999,
+                ruolo_codice_soggetto="CL",
+                user_emittente_id=7,
+            )
+        self.assertEqual(ctx.exception.code, "E_ANAG_NOT_FOUND")
+        mock_repo.return_value.get_emittente_fiscale_id.assert_not_called()
+        mock_lookup.return_value.list_utilities_per_billing_account.assert_not_called()
+
+    @patch(_LOOKUP_REPO)
+    @patch(_REPO)
+    def test_list_utilities_ruolo_invalido(self, mock_repo, mock_lookup):
+        """Ruolo non in whitelist (es. 'XX') → E_ANAG_VALIDAZIONE."""
+        from apps.anagrafiche.services.billing_account_service import BillingAccountService
+        with self.assertRaises(ServiceError) as ctx:
+            BillingAccountService().list_utilities_for_ba(
+                billing_account_id=200,
+                ruolo_codice_soggetto="XX",
+                user_emittente_id=7,
+            )
+        self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
+        mock_lookup.return_value.list_utilities_per_billing_account.assert_not_called()

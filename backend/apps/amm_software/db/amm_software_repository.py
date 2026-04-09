@@ -857,3 +857,12 @@ class AmmSoftwareRepository:
                     ORDER BY s.ragione_sociale_completa, ef.descrizione"""
             )
             return rows_to_list(cursor)
+
+    # Scopo: Wrapper script.fn_get_setup_status. Refactor operatore-emittenti
+    # (decisione D1): conta emittenti attivi, operatori totali/assegnati/
+    # admin globali/non assegnati per il banner UI "operatori non assegnati".
+    def get_setup_status(self) -> dict[str, Any]:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT script.fn_get_setup_status()")
+            row = cursor.fetchone()
+        return row[0] if row else {}

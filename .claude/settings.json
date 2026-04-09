@@ -85,10 +85,19 @@
       "Bash(source ../.venv/bin/activate)",
       "Bash(grep -h RIS_UMANA /home/tid/apps/ZeroErp/db/changelog/migrations_v2/80_data/anagrafiche/*.yaml)",
       "Bash(. ~/.nvm/nvm.sh)",
-      "Bash(python3 -m json.tool /home/tid/software/ZeroErp/.claude/settings.json)"
+      "Bash(python3 -m json.tool /home/tid/software/ZeroErp/.claude/settings.json)",
       "Bash(bash -c 'source ~/.nvm/nvm.sh 2>/dev/null; ./node_modules/.bin/vite build 2>&1 | tail -40')",
       "Bash(bash -c 'source ~/.nvm/nvm.sh 2>/dev/null; ./node_modules/.bin/vite build 2>&1 | tail -5')",
-      "Bash(bash -c 'source ~/.nvm/nvm.sh 2>/dev/null; ./node_modules/.bin/vite build 2>&1 | tail -3')"
+      "Bash(bash -c 'source ~/.nvm/nvm.sh 2>/dev/null; ./node_modules/.bin/vite build 2>&1 | tail -3')",
+      "Bash(git -C /home/tid/apps/ZeroErp status --short)",
+      "Bash(git -C /home/tid/apps/ZeroErp log --oneline -10)",
+      "Bash(./manage-env.sh shell -c ':*)",
+      "Bash(.venv/bin/python -m py_compile apps/vendite/db/listini_repository.py apps/vendite/services/listini_service.py apps/vendite/api/views_listini.py apps/vendite/api/urls_listini.py)",
+      "Bash(grep -l '\"listini\"' src/locales/*.json)",
+      "Bash(bash -c 'source ~/.nvm/nvm.sh 2>/dev/null; ./node_modules/.bin/vite build 2>&1 | tail -25')",
+      "Bash(.venv/bin/python -m py_compile apps/vendite/services/listini_service.py apps/vendite/db/listini_repository.py apps/vendite/api/views_listini.py)",
+      "Bash(bash -c 'source ~/.nvm/nvm.sh 2>/dev/null; ./node_modules/.bin/vite build 2>&1 | tail -10')",
+      "Bash(bash -n /home/tid/apps/ZeroErp/backend/scripts/tests/smoke-test-listini.sh)"
     ],
     "additionalDirectories": [
       "/home/tid/apps/ZeroErp/docs/it/dev/work-in-progress"

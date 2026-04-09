@@ -36,6 +36,7 @@ from unittest.mock import Mock, patch
 
 from django.core.cache import cache
 from django.test import Client, SimpleTestCase
+from apps.core.tests._helpers.jwt_mock import JwtMockedApiTest
 
 
 _LISTINO_DETAIL = {
@@ -69,7 +70,6 @@ _VERSIONE_DETAIL = {
     "codice_versione": "2026-Q2",
     "valido_dal": "2026-04-01",
     "valido_al": None,
-    "priorita": 100,
     "stato": "BOZZA",
     "attivo": True,
     "righe_count": 1,
@@ -92,9 +92,10 @@ _RESOLVER_RESPONSE = {
 }
 
 
-class VenditeListiniApiTests(SimpleTestCase):
+class VenditeListiniApiTests(JwtMockedApiTest):
     # Scopo: Prepara contesto comune del test.
     def setUp(self) -> None:
+        super().setUp()
         cache.clear()
         self.client = Client()
         self._request_log_patcher = patch(
@@ -209,18 +210,18 @@ class VenditeListiniApiTests(SimpleTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["data"]["codice_versione"], "2026-Q2")
 
-    # Scopo: Verifica patch versione.
+    # Scopo: Verifica patch versione (PATCH valido_al ammesso anche su ATTIVA).
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
     @patch("apps.vendite.api.views_listini.fn_update_versione")
     def test_patch_versione_ok(self, mocked_update, _mock_auth):
-        mocked_update.return_value = {**_VERSIONE_DETAIL, "priorita": 50}
+        mocked_update.return_value = {**_VERSIONE_DETAIL, "valido_al": "2026-12-31"}
         response = self.client.patch(
             "/api/v1/vendite/listini/10/versioni/101/",
-            data=self._json({"priorita": 50}),
+            data=self._json({"valido_al": "2026-12-31"}),
             content_type="application/json",
         )
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["data"]["priorita"], 50)
+        self.assertEqual(response.json()["data"]["valido_al"], "2026-12-31")
 
     # Scopo: Verifica cambio stato versione.
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
@@ -298,27 +299,27 @@ class VenditeListiniApiTests(SimpleTestCase):
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
     @patch("apps.vendite.api.views_listini.fn_create_associazione")
     def test_create_associazione_ok(self, mocked_create, _mock_auth):
-        mocked_create.return_value = {"id": 3001, "priorita": 100}
+        mocked_create.return_value = {"id": 3001, "valido_dal": "2026-04-01"}
         response = self.client.post(
             "/api/v1/vendite/listini/10/associazioni/",
-            data=self._json({"utility_id": 5, "priorita": 100}),
+            data=self._json({"utility_id": 5, "valido_dal": "2026-04-01"}),
             content_type="application/json",
         )
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["data"]["id"], 3001)
 
-    # Scopo: Verifica patch associazione.
+    # Scopo: Verifica patch associazione (valido_al programmazione chiusura).
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
     @patch("apps.vendite.api.views_listini.fn_update_associazione")
     def test_patch_associazione_ok(self, mocked_update, _mock_auth):
-        mocked_update.return_value = {"id": 3001, "priorita": 50}
+        mocked_update.return_value = {"id": 3001, "valido_al": "2026-12-31"}
         response = self.client.patch(
             "/api/v1/vendite/listini/10/associazioni/3001/",
-            data=self._json({"priorita": 50}),
+            data=self._json({"valido_al": "2026-12-31"}),
             content_type="application/json",
         )
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["data"]["priorita"], 50)
+        self.assertEqual(response.json()["data"]["valido_al"], "2026-12-31")
 
     # Scopo: Verifica delete associazione.
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))

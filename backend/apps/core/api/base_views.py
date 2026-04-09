@@ -9,8 +9,8 @@
 # ------------------------------------------------------------
 
 from rest_framework.views import APIView
-from rest_framework_simplejwt.authentication import JWTAuthentication
 
+from apps.core.api.jwt_audit_authentication import JwtAuditAuthentication
 from apps.core.api.permissions import IsAdminZeroERP, ZeroERPPermission
 
 
@@ -19,8 +19,13 @@ class DomainAPIView(APIView):
 
     Ogni sottoclasse DEVE definire `area_funzionale`.
     Opzionalmente: `is_search_endpoint = True` per throttling ricerca.
+
+    Usa `JwtAuditAuthentication` (subclass di JWTAuthentication) per
+    propagare l'identita utente come GUC PG dopo authenticate().
+    Vedi guida risorse-umane-e-accessi.md sezione "Propagazione
+    identita utente al database (GUC)".
     """
-    authentication_classes = [JWTAuthentication]
+    authentication_classes = [JwtAuditAuthentication]
     permission_classes = [ZeroERPPermission]
 
 
@@ -29,7 +34,9 @@ class AdminAPIView(APIView):
 
     Check diretto ruolo_sistema = ADMIN. skip_area_check implicito
     perche' IsAdminZeroERP bypassa il resolver aree.
+
+    Usa `JwtAuditAuthentication` (vedi DomainAPIView).
     """
-    authentication_classes = [JWTAuthentication]
+    authentication_classes = [JwtAuditAuthentication]
     permission_classes = [IsAdminZeroERP]
     skip_area_check = True

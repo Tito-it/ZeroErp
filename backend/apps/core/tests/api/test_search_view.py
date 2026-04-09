@@ -34,6 +34,7 @@ from unittest.mock import Mock, patch
 
 from django.core.cache import cache
 from django.test import Client, SimpleTestCase
+from apps.core.tests._helpers.jwt_mock import JwtMockedApiTest
 
 
 _SEARCH_URL = "/api/v1/core/search/"
@@ -64,9 +65,10 @@ _DETAIL_RESULT = {
 }
 
 
-class SearchUniversaleApiTests(SimpleTestCase):
+class SearchUniversaleApiTests(JwtMockedApiTest):
     # Scopo: Prepara il contesto comune del test.
     def setUp(self) -> None:
+        super().setUp()
         cache.clear()
         self.client = Client()
 
@@ -197,9 +199,10 @@ class SearchUniversaleApiTests(SimpleTestCase):
         self.assertEqual(body["code"], "E_SEARCH_VALIDATION")
 
 
-class SearchDetailApiTests(SimpleTestCase):
+class SearchDetailApiTests(JwtMockedApiTest):
     # Scopo: Prepara il contesto comune del test.
     def setUp(self) -> None:
+        super().setUp()
         cache.clear()
         self.client = Client()
 
@@ -269,9 +272,10 @@ _TIPI_RUOLI_RESULT = [
 ]
 
 
-class LookupTipiRuoliApiTests(SimpleTestCase):
+class LookupTipiRuoliApiTests(JwtMockedApiTest):
     # Scopo: Prepara il contesto comune del test.
     def setUp(self) -> None:
+        super().setUp()
         cache.clear()
         self.client = Client()
 

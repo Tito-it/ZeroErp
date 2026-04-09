@@ -11,11 +11,13 @@ import json
 from unittest.mock import patch, Mock
 
 from django.test import Client, SimpleTestCase
+from apps.core.tests._helpers.jwt_mock import JwtMockedApiTest
 
 
-class VenditeResetLottoDraftApiTests(SimpleTestCase):
+class VenditeResetLottoDraftApiTests(JwtMockedApiTest):
     # Scopo: Prepara il contesto comune del test.
     def setUp(self) -> None:
+        super().setUp()
         self.client = Client()
 
     # Scopo: Verifica il caso `test_reset_lotto_draft_ok`.

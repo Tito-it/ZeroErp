@@ -1,6 +1,10 @@
 from django.urls import path
 
-from apps.anagrafiche.api.views_billing_account import BillingAccountLookupByIdView, BillingAccountLookupView
+from apps.anagrafiche.api.views_billing_account import (
+    BillingAccountLookupByIdView,
+    BillingAccountLookupView,
+    BillingAccountUtilitiesView,
+)
 from apps.anagrafiche.api.views_clienti import ClientiDetailView, ClientiView, UtilitiesManualLookupView
 from apps.anagrafiche.api.views_emittenti_fiscali import (
     EmittentiFiscaliBillingAccountDetailView,
@@ -66,6 +70,8 @@ urlpatterns = [
     # Billing account — lookup ricco per autocomplete cross-dominio
     path("billing-account/lookup/", BillingAccountLookupView.as_view(), name="anagrafiche-billing-account-lookup"),
     path("billing-account/<int:billing_account_id>/lookup/", BillingAccountLookupByIdView.as_view(), name="anagrafiche-billing-account-lookup-by-id"),
+    # Billing account — utility "guidate da emittente" (refactor operatore-emittenti)
+    path("billing-account/<int:billing_account_id>/utilities/", BillingAccountUtilitiesView.as_view(), name="anagrafiche-billing-account-utilities"),
     # Contatti ruolo
     path("ruoli/<int:soggetto_ruolo_id>/contatti/", RuoloContattiView.as_view(), name="anagrafiche-ruoli-contatti"),
     path("ruoli/<int:soggetto_ruolo_id>/contatti/<int:contatto_id>/", RuoloContattiDetailView.as_view(), name="anagrafiche-ruoli-contatti-detail"),

@@ -78,9 +78,23 @@ class ClientiRepository:
             assert row is not None
             return row[0]
 
+    # Scopo: Wrapper script.fn_check_user_can_create_ba. Vedi WIP refactor
+    #        operatore-emittenti Q6 (la motivazione di dominio sta nel service).
+    def check_user_can_create_ba(self, auth_user_id: int) -> bool:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT script.fn_check_user_can_create_ba(%s)",
+                [auth_user_id],
+            )
+            row = cursor.fetchone()
+        return bool(row[0]) if row else False
+
     # Scopo: Crea billing account per un'istanza e un ruolo soggetto.
     #        Il codice viene generato dal trigger trgfn_billing_account_gen_codice.
     #        Il default di fatturazione_ordini e' gestito dal DB (CONFERMATO).
+    #        L'auto-link BA -> emittente fiscale viene gestito dal trigger
+    #        z90 trgfn_billing_account_link_ef leggendo la GUC
+    #        app.current_user_id (settata da JwtAuditMiddleware).
     def create_billing_account(
         self, *, istanza_utility_id: int, soggetto_ruolo_id: int,
         utility_id: int, fatturazione_ordini: str | None = None,
@@ -177,10 +191,18 @@ class ClientiRepository:
 
     # Scopo: Lista paginata clienti con search e filtri.
     #        Join: clienti + istanza + BA + soggetto + utility + stato.
+    #        Scope emittente fiscale: filtra i clienti i cui BA appartengono
+    #        agli emittenti autorizzati per l'utente chiamante (refactor
+    #        operatore-emittenti, follow-up BE-3.5). `emittente_ids=None`
+    #        bypassa il filtro (superuser, admin globale, "0 emittenti");
+    #        lista vuota ⇒ nessun risultato. Allineato al pattern del
+    #        lookup BA: subquery EXISTS su `emittenti_fiscali_billing_account`
+    #        con `is_default = true` come fallback (gestore globale).
     def list_clienti(
         self, *, search: str | None = None,
         utility_id: int | None = None,
         stato_cliente_id: int | None = None,
+        emittente_ids: list[int] | None = None,
         limit: int = 25, offset: int = 0,
         order_by: str = "ragione_sociale_completa", order_dir: str = "asc",
     ) -> tuple[list[dict[str, Any]], int]:
@@ -221,6 +243,18 @@ class ClientiRepository:
                    ))
                AND (%s::integer IS NULL OR cl.utility_id = %s)
                AND (%s::integer IS NULL OR cl.stato_cliente_id = %s)
+               AND (
+                     %s::bigint[] IS NULL
+                  OR EXISTS (
+                       SELECT 1
+                         FROM anagrafiche.emittenti_fiscali_billing_account efba
+                        WHERE efba.emittente_soggetto_ruolo_id = ANY(%s::bigint[])
+                          AND (
+                                efba.billing_account_id = ba.id
+                             OR efba.is_default = true
+                              )
+                     )
+                   )
              ORDER BY {order_col} {direction}, cl.id
              LIMIT %s OFFSET %s
         """  # noqa: S608
@@ -229,6 +263,7 @@ class ClientiRepository:
             search_pattern, search_pattern, search_pattern,
             utility_id, utility_id,
             stato_cliente_id, stato_cliente_id,
+            emittente_ids, emittente_ids,
             limit, offset,
         ]
         with connection.cursor() as cursor:

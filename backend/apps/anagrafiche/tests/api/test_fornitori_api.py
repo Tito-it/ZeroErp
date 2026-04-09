@@ -21,6 +21,7 @@ import json
 from unittest.mock import Mock, patch
 
 from django.test import Client, SimpleTestCase
+from apps.core.tests._helpers.jwt_mock import JwtMockedApiTest
 
 from apps.core.services.service_errors import ServiceError
 
@@ -28,10 +29,11 @@ _AUTH = "rest_framework_simplejwt.authentication.JWTAuthentication.authenticate"
 _SVC = "apps.anagrafiche.api.views_fornitori.FornitoriService"
 
 
-class TestFornitoriGetApi(SimpleTestCase):
+class TestFornitoriGetApi(JwtMockedApiTest):
     """Test endpoint GET fornitori."""
 
     def setUp(self) -> None:
+        super().setUp()
         self.client = Client()
 
     @patch(_AUTH, return_value=(Mock(), None))
@@ -67,10 +69,11 @@ class TestFornitoriGetApi(SimpleTestCase):
         self.assertIn(resp.status_code, (400, 404, 422))
 
 
-class TestFornitoriPostApi(SimpleTestCase):
+class TestFornitoriPostApi(JwtMockedApiTest):
     """Test endpoint POST fornitori."""
 
     def setUp(self) -> None:
+        super().setUp()
         self.client = Client()
 
     @patch(_AUTH, return_value=(Mock(), None))
@@ -90,10 +93,11 @@ class TestFornitoriPostApi(SimpleTestCase):
         self.assertEqual(body["data"]["id"], 1)
 
 
-class TestFornitoriPatchApi(SimpleTestCase):
+class TestFornitoriPatchApi(JwtMockedApiTest):
     """Test endpoint PATCH fornitori."""
 
     def setUp(self) -> None:
+        super().setUp()
         self.client = Client()
 
     @patch(_AUTH, return_value=(Mock(), None))
