@@ -43,9 +43,9 @@
 - [fatture_sdi](tabelle/fatture_sdi.md) — (latest review 16-02-2026)   `vendite.fatture_sdi` rappresenta la **testata dei tentativi di invio SDI** per fattura.
 - [fatture_sdi_eventi](tabelle/fatture_sdi_eventi.md) — (latest review 16-02-2026)   `vendite.fatture_sdi_eventi` mantiene lo **storico cronologico eventi SDI** per ciascun tentativo (`fattura_sdi_id`).
 - [listini](tabelle/listini.md) — La tabella `vendite.listini` rappresenta la testata anagrafica dei listini prezzo del dominio vendite.
-- [listini_associazioni](tabelle/listini_associazioni.md) — La tabella `vendite.listini_associazioni` definisce quali listini sono candidati per un dato contesto operativo (BA, utility, emittente fiscale), con priorita` di tie-break tra listini concorrenti.
+- [listini_associazioni](tabelle/listini_associazioni.md) — (latest review 09-04-2026)
 - [listini_righe](tabelle/listini_righe.md) — La tabella `vendite.listini_righe` contiene i prezzi elementari per articolo/UOM, eventualmente specializzati per contesto (BA, utility, emittente fiscale).
-- [listini_versioni](tabelle/listini_versioni.md) — La tabella `vendite.listini_versioni` gestisce il versionamento temporale dei listini. Ogni versione definisce una finestra di validita` e una priorita` operativa.
+- [listini_versioni](tabelle/listini_versioni.md) — (latest review 09-04-2026)
 - [note](tabelle/note.md) — `vendite.note` gestisce **note testuali** ancorabili sia alla **testata** del documento sia alla **riga**, con controllo di posizionamento e ordinamento di rendering. È una tabella **partizionata per `target_tipo`** per garantire prestazioni e manutenzione più semplici, con **FK forti** verso le rispettive testate/righe nelle singole partizioni.
 - [note_attivita_fatturabili](tabelle/note_attivita_fatturabili.md) — `vendite.note_attivita_fatturabili` gestisce **note testuali**.  Vedi documento principale [vendite.note](/dbzero/vendite/tabelle/note)
 - [note_contratto](tabelle/note_contratto.md) — `vendite.note_contratto` gestisce **note testuali**.  Vedi documento principale [vendite.note](/dbzero/vendite/tabelle/note)

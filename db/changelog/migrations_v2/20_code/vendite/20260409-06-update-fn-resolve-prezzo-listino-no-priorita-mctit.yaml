@@ -1,0 +1,203 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+#
+# Update fn_resolve_prezzo_listino: rimuove dipendenze da priorita
+# (Fase 2 refactor listini, vedi WIP listini-commercio sezione 5).
+# ------------------------------------------------------------
+# Background:
+# Dopo il fix 20260409-03 (vincolo ex_listini_associazioni_no_overlap) e i drop
+# colonna priorita 20260409-04/-05, le colonne a.priorita e v.priorita non
+# esistono piu. Il resolver va aggiornato per:
+# 1) Rimuovere a.priorita e v.priorita dalla CTE candidati
+# 2) Rimuovere associazione_priorita e versione_priorita da ORDER BY e PARTITION BY
+# 3) Mantenere il guard tie_count > 1 come paranoid check (scenario impossibile
+#    per costruzione, ma protegge contro disabilitazione manuale di constraint
+#    o bug futuri).
+#
+# Comportamento funzionale invariato per il caller: con l'invariante univocita
+# stretta a livello DB, il resolver ritorna sempre al massimo una riga; il
+# tie-break su priorita non scattava mai per costruzione.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+    - logicalFilePath: migrations_v2/20_code/vendite/20260409-06-update-fn-resolve-prezzo-listino-no-priorita-mctit.yaml
+
+    - changeSet:
+          id: 20260409-06-update-fn-resolve-prezzo-listino-no-priorita
+          author: mctit
+          runOnChange: true
+          validCheckSum:
+              - ANY
+          comment: >
+              Aggiorna fn_resolve_prezzo_listino rimuovendo riferimenti alle colonne
+              priorita droppate in fase 2 (file 20260409-04/-05). Tie-break ora si
+              riduce al match_level di specificita; il guard tie_count > 1 resta
+              come paranoid check.
+          preConditions:
+              - onFail: HALT
+              - tableExists:
+                    { schemaName: vendite, tableName: listini_associazioni }
+              - tableExists:
+                    { schemaName: vendite, tableName: listini_versioni }
+              - tableExists: { schemaName: vendite, tableName: listini_righe }
+              # Verifica che la colonna priorita NON esista piu (drop 20260409-04/-05)
+              - not:
+                    - columnExists:
+                          schemaName: vendite
+                          tableName: listini_associazioni
+                          columnName: priorita
+              - not:
+                    - columnExists:
+                          schemaName: vendite
+                          tableName: listini_versioni
+                          columnName: priorita
+          changes:
+              - sql:
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+                        CREATE OR REPLACE FUNCTION vendite.fn_resolve_prezzo_listino(
+                            p_articolo_id                 catalogo.articoli.id%TYPE,
+                            p_uom_id                      catalogo.unita_misura.id%TYPE,
+                            p_data_riferimento            DATE,
+                            p_billing_account_id          anagrafiche.billing_account.id%TYPE DEFAULT NULL,
+                            p_utility_id                  config.utilities.id%TYPE DEFAULT NULL,
+                            p_emittente_soggetto_ruolo_id anagrafiche.soggetti_ruoli.id%TYPE DEFAULT NULL
+                        )
+                        RETURNS TABLE(
+                            listino_id              BIGINT,
+                            listino_versione_id     BIGINT,
+                            listino_riga_id         BIGINT,
+                            listino_associazione_id BIGINT,
+                            prezzo                  NUMERIC,
+                            match_level             SMALLINT
+                        )
+                        LANGUAGE plpgsql
+                        AS $function$
+                        DECLARE
+                            v_listino_id              vendite.listini.id%TYPE;
+                            v_listino_versione_id     vendite.listini_versioni.id%TYPE;
+                            v_listino_riga_id         vendite.listini_righe.id%TYPE;
+                            v_listino_associazione_id vendite.listini_associazioni.id%TYPE;
+                            v_prezzo                  vendite.listini_righe.prezzo%TYPE;
+                            v_match_level             SMALLINT;
+                            v_tie_count               INTEGER;
+                        BEGIN
+                            -- ============================================================
+                            -- Guard parametri (invariato rispetto a fix 20260331-24)
+                            -- ============================================================
+                            IF p_articolo_id IS NULL THEN
+                                PERFORM script.fn_log_and_raise_error('vendite', 'fn_resolve_prezzo_listino', 'E_PARAMETRO_INVALIDO',
+                                    jsonb_build_object('parametro', 'p_articolo_id', 'valore', NULL), NULL::uuid, 'p_articolo_id obbligatorio');
+                            END IF;
+                            IF p_uom_id IS NULL OR p_uom_id <= 0 THEN
+                                PERFORM script.fn_log_and_raise_error('vendite', 'fn_resolve_prezzo_listino', 'E_PARAMETRO_INVALIDO',
+                                    jsonb_build_object('parametro', 'p_uom_id', 'valore', p_uom_id), NULL::uuid, 'p_uom_id obbligatorio e > 0');
+                            END IF;
+                            IF p_data_riferimento IS NULL THEN
+                                PERFORM script.fn_log_and_raise_error('vendite', 'fn_resolve_prezzo_listino', 'E_PARAMETRO_INVALIDO',
+                                    jsonb_build_object('parametro', 'p_data_riferimento', 'valore', NULL), NULL::uuid, 'p_data_riferimento obbligatoria');
+                            END IF;
+                            IF p_billing_account_id IS NOT NULL AND p_billing_account_id <= 0 THEN
+                                PERFORM script.fn_log_and_raise_error('vendite', 'fn_resolve_prezzo_listino', 'E_PARAMETRO_INVALIDO',
+                                    jsonb_build_object('parametro', 'p_billing_account_id', 'valore', p_billing_account_id), NULL::uuid, 'p_billing_account_id se fornito deve essere > 0');
+                            END IF;
+                            IF p_utility_id IS NOT NULL AND p_utility_id <= 0 THEN
+                                PERFORM script.fn_log_and_raise_error('vendite', 'fn_resolve_prezzo_listino', 'E_PARAMETRO_INVALIDO',
+                                    jsonb_build_object('parametro', 'p_utility_id', 'valore', p_utility_id), NULL::uuid, 'p_utility_id se fornito deve essere > 0');
+                            END IF;
+                            IF p_emittente_soggetto_ruolo_id IS NOT NULL AND p_emittente_soggetto_ruolo_id <= 0 THEN
+                                PERFORM script.fn_log_and_raise_error('vendite', 'fn_resolve_prezzo_listino', 'E_PARAMETRO_INVALIDO',
+                                    jsonb_build_object('parametro', 'p_emittente_soggetto_ruolo_id', 'valore', p_emittente_soggetto_ruolo_id), NULL::uuid, 'p_emittente_soggetto_ruolo_id se fornito deve essere > 0');
+                            END IF;
+
+                            -- ============================================================
+                            -- CTE single-pass: candidati + match_rank + tie_count
+                            -- ============================================================
+                            -- Differenze rispetto al fix 20260331-24:
+                            --   - Rimossi a.priorita e v.priorita dalla CTE candidati
+                            --   - Rimossi c.associazione_priorita e c.versione_priorita
+                            --     da ORDER BY e PARTITION BY
+                            --   - L'invariante univocita stretta (ex_listini_associazioni_no_overlap
+                            --     + ex_listini_versioni_no_overlap + uq_listini_righe_key_attiva)
+                            --     garantisce che il match_rank seleziona al massimo una riga
+                            --   - Il guard tie_count > 1 resta come paranoid check
+                            WITH candidati AS (
+                                SELECT l.id AS listino_id, v.id AS listino_versione_id, r.id AS listino_riga_id,
+                                       a.id AS listino_associazione_id, r.prezzo,
+                                       v.valido_dal, v.valido_al,
+                                       CASE
+                                           WHEN p_billing_account_id IS NOT NULL AND p_utility_id IS NOT NULL AND p_emittente_soggetto_ruolo_id IS NOT NULL
+                                                AND r.billing_account_id = p_billing_account_id AND r.utility_id = p_utility_id AND r.emittente_soggetto_ruolo_id = p_emittente_soggetto_ruolo_id THEN 1
+                                           WHEN p_billing_account_id IS NOT NULL AND p_utility_id IS NOT NULL
+                                                AND r.billing_account_id = p_billing_account_id AND r.utility_id = p_utility_id AND r.emittente_soggetto_ruolo_id IS NULL THEN 2
+                                           WHEN p_billing_account_id IS NOT NULL AND p_utility_id IS NULL AND p_emittente_soggetto_ruolo_id IS NOT NULL
+                                                AND r.billing_account_id = p_billing_account_id AND r.utility_id IS NULL AND r.emittente_soggetto_ruolo_id = p_emittente_soggetto_ruolo_id THEN 3
+                                           WHEN p_billing_account_id IS NOT NULL AND p_utility_id IS NULL
+                                                AND r.billing_account_id = p_billing_account_id AND r.utility_id IS NULL AND r.emittente_soggetto_ruolo_id IS NULL THEN 4
+                                           WHEN p_utility_id IS NOT NULL AND p_emittente_soggetto_ruolo_id IS NOT NULL
+                                                AND r.billing_account_id IS NULL AND r.utility_id = p_utility_id AND r.emittente_soggetto_ruolo_id = p_emittente_soggetto_ruolo_id THEN 5
+                                           WHEN p_utility_id IS NOT NULL
+                                                AND r.billing_account_id IS NULL AND r.utility_id = p_utility_id AND r.emittente_soggetto_ruolo_id IS NULL THEN 6
+                                           WHEN r.billing_account_id IS NULL AND r.utility_id IS NULL AND r.emittente_soggetto_ruolo_id IS NULL THEN 7
+                                           ELSE NULL
+                                       END AS match_rank
+                                  FROM vendite.listini_associazioni a
+                                  JOIN vendite.listini l ON l.id = a.listino_id
+                                  JOIN vendite.listini_versioni v ON v.listino_id = l.id
+                                  JOIN vendite.listini_righe r ON r.listino_versione_id = v.id
+                                 WHERE a.attivo IS TRUE AND l.attivo IS TRUE AND v.attivo IS TRUE AND v.stato = 'ATTIVA' AND r.attivo IS TRUE
+                                   AND p_data_riferimento >= a.valido_dal AND (a.valido_al IS NULL OR p_data_riferimento <= a.valido_al)
+                                   AND p_data_riferimento >= v.valido_dal AND (v.valido_al IS NULL OR p_data_riferimento <= v.valido_al)
+                                   AND (a.billing_account_id IS NULL OR a.billing_account_id = p_billing_account_id)
+                                   AND (a.utility_id IS NULL OR a.utility_id = p_utility_id)
+                                   AND (a.emittente_soggetto_ruolo_id IS NULL OR a.emittente_soggetto_ruolo_id = p_emittente_soggetto_ruolo_id)
+                                   AND r.articolo_id = p_articolo_id AND r.uom_id = p_uom_id
+                                   AND (r.billing_account_id IS NULL OR r.billing_account_id = p_billing_account_id)
+                                   AND (r.utility_id IS NULL OR r.utility_id = p_utility_id)
+                                   AND (r.emittente_soggetto_ruolo_id IS NULL OR r.emittente_soggetto_ruolo_id = p_emittente_soggetto_ruolo_id)
+                            ), candidati_validi AS (
+                                SELECT * FROM candidati WHERE match_rank IS NOT NULL
+                            ), candidati_ranked AS (
+                                SELECT c.*,
+                                       row_number() OVER (
+                                           ORDER BY c.match_rank,
+                                                    c.valido_dal DESC, COALESCE(c.valido_al, 'infinity'::DATE) ASC,
+                                                    c.listino_id, c.listino_versione_id, c.listino_associazione_id, c.listino_riga_id
+                                       ) AS rn,
+                                       count(*) OVER (
+                                           PARTITION BY c.match_rank,
+                                                        c.valido_dal, COALESCE(c.valido_al, 'infinity'::DATE)
+                                       ) AS tie_count
+                                  FROM candidati_validi c
+                            )
+                            SELECT cr.listino_id, cr.listino_versione_id, cr.listino_riga_id,
+                                   cr.listino_associazione_id, cr.prezzo, cr.match_rank, cr.tie_count
+                              INTO v_listino_id, v_listino_versione_id, v_listino_riga_id,
+                                   v_listino_associazione_id, v_prezzo, v_match_level, v_tie_count
+                              FROM candidati_ranked cr WHERE cr.rn = 1;
+
+                            IF NOT FOUND THEN
+                                PERFORM script.fn_log_and_raise_error('vendite', 'fn_resolve_prezzo_listino', 'E_PREZZO_LISTINO_NON_TROVATO',
+                                    jsonb_build_object('articolo_id', p_articolo_id, 'uom_id', p_uom_id, 'data_riferimento', p_data_riferimento,
+                                        'billing_account_id', p_billing_account_id, 'utility_id', p_utility_id, 'emittente', p_emittente_soggetto_ruolo_id),
+                                    NULL::uuid, p_articolo_id::text);
+                            END IF;
+
+                            -- Paranoid check: l'invariante univocita stretta a livello DB rende
+                            -- impossibile che due righe arrivino qui con stesso match_rank e
+                            -- stesse date di validita. Se accade, e' segno di un constraint
+                            -- disabilitato manualmente o di un bug. Solleva esplicito.
+                            IF v_tie_count > 1 THEN
+                                PERFORM script.fn_log_and_raise_error('vendite', 'fn_resolve_prezzo_listino', 'E_PREZZO_LISTINO_AMBIGUO',
+                                    jsonb_build_object('articolo_id', p_articolo_id, 'uom_id', p_uom_id, 'match_level', v_match_level, 'tie_count', v_tie_count),
+                                    NULL::uuid, p_articolo_id::text, v_tie_count::text);
+                            END IF;
+
+                            RETURN QUERY SELECT v_listino_id, v_listino_versione_id, v_listino_riga_id, v_listino_associazione_id, v_prezzo, v_match_level;
+                        END;
+                        $function$;
+
+                        COMMENT ON FUNCTION vendite.fn_resolve_prezzo_listino(catalogo.articoli.id%TYPE, catalogo.unita_misura.id%TYPE, DATE, anagrafiche.billing_account.id%TYPE, config.utilities.id%TYPE, anagrafiche.soggetti_ruoli.id%TYPE)
+                        IS 'Resolver prezzo listino con precedenze per specificita dimensionale (match_level 1..7). Post fase 2 refactor 2026-04-09: niente piu tie-break su priorita (colonne droppate). L''invariante univocita stretta a livello DB garantisce un solo candidato per scope; il guard tie_count > 1 resta come paranoid check.';

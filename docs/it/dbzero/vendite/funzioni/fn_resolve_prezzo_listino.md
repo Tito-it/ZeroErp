@@ -21,7 +21,9 @@ DECLARE
     v_match_level             SMALLINT;
     v_tie_count               INTEGER;
 BEGIN
-    -- Guard: parametri obbligatori
+    -- ============================================================
+    -- Guard parametri (invariato rispetto a fix 20260331-24)
+    -- ============================================================
     IF p_articolo_id IS NULL THEN
         PERFORM script.fn_log_and_raise_error('vendite', 'fn_resolve_prezzo_listino', 'E_PARAMETRO_INVALIDO',
             jsonb_build_object('parametro', 'p_articolo_id', 'valore', NULL), NULL::uuid, 'p_articolo_id obbligatorio');
@@ -47,11 +49,20 @@ BEGIN
             jsonb_build_object('parametro', 'p_emittente_soggetto_ruolo_id', 'valore', p_emittente_soggetto_ruolo_id), NULL::uuid, 'p_emittente_soggetto_ruolo_id se fornito deve essere > 0');
     END IF;
 
-    -- CTE unica: candidati + ranking + tie_count in un solo pass
+    -- ============================================================
+    -- CTE single-pass: candidati + match_rank + tie_count
+    -- ============================================================
+    -- Differenze rispetto al fix 20260331-24:
+    --   - Rimossi a.priorita e v.priorita dalla CTE candidati
+    --   - Rimossi c.associazione_priorita e c.versione_priorita
+    --     da ORDER BY e PARTITION BY
+    --   - L'invariante univocita stretta (ex_listini_associazioni_no_overlap
+    --     + ex_listini_versioni_no_overlap + uq_listini_righe_key_attiva)
+    --     garantisce che il match_rank seleziona al massimo una riga
+    --   - Il guard tie_count > 1 resta come paranoid check
     WITH candidati AS (
         SELECT l.id AS listino_id, v.id AS listino_versione_id, r.id AS listino_riga_id,
                a.id AS listino_associazione_id, r.prezzo,
-               a.priorita AS associazione_priorita, v.priorita AS versione_priorita,
                v.valido_dal, v.valido_al,
                CASE
                    WHEN p_billing_account_id IS NOT NULL AND p_utility_id IS NOT NULL AND p_emittente_soggetto_ruolo_id IS NOT NULL
@@ -87,11 +98,15 @@ BEGIN
         SELECT * FROM candidati WHERE match_rank IS NOT NULL
     ), candidati_ranked AS (
         SELECT c.*,
-               row_number() OVER (ORDER BY c.match_rank, c.associazione_priorita, c.versione_priorita,
-                   c.valido_dal DESC, COALESCE(c.valido_al, 'infinity'::DATE) ASC,
-                   c.listino_id, c.listino_versione_id, c.listino_associazione_id, c.listino_riga_id) AS rn,
-               count(*) OVER (PARTITION BY c.match_rank, c.associazione_priorita, c.versione_priorita,
-                   c.valido_dal, COALESCE(c.valido_al, 'infinity'::DATE)) AS tie_count
+               row_number() OVER (
+                   ORDER BY c.match_rank,
+                            c.valido_dal DESC, COALESCE(c.valido_al, 'infinity'::DATE) ASC,
+                            c.listino_id, c.listino_versione_id, c.listino_associazione_id, c.listino_riga_id
+               ) AS rn,
+               count(*) OVER (
+                   PARTITION BY c.match_rank,
+                                c.valido_dal, COALESCE(c.valido_al, 'infinity'::DATE)
+               ) AS tie_count
           FROM candidati_validi c
     )
     SELECT cr.listino_id, cr.listino_versione_id, cr.listino_riga_id,
@@ -107,6 +122,10 @@ BEGIN
             NULL::uuid, p_articolo_id::text);
     END IF;
 
+    -- Paranoid check: l'invariante univocita stretta a livello DB rende
+    -- impossibile che due righe arrivino qui con stesso match_rank e
+    -- stesse date di validita. Se accade, e' segno di un constraint
+    -- disabilitato manualmente o di un bug. Solleva esplicito.
     IF v_tie_count > 1 THEN
         PERFORM script.fn_log_and_raise_error('vendite', 'fn_resolve_prezzo_listino', 'E_PREZZO_LISTINO_AMBIGUO',
             jsonb_build_object('articolo_id', p_articolo_id, 'uom_id', p_uom_id, 'match_level', v_match_level, 'tie_count', v_tie_count),
@@ -118,7 +137,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_resolve_prezzo_listino(p_articolo_id uuid, p_uom_id bigint, p_data_riferimento date, p_billing_account_id bigint, p_utility_id integer, p_emittente_soggetto_ruolo_id bigint)
-IS 'Resolver prezzo listino con precedenze utility/non-utility, tie-break e gestione ambiguita.';
+IS 'Resolver prezzo listino con precedenze per specificita dimensionale (match_level 1..7). Post fase 2 refactor 2026-04-09: niente piu tie-break su priorita (colonne droppate). L''invariante univocita stretta a livello DB garantisce un solo candidato per scope; il guard tie_count > 1 resta come paranoid check.';
 ```
 
 ---

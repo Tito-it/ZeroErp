@@ -1,0 +1,93 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# DROP colonna priorita su vendite.listini_associazioni (Fase 2 refactor listini)
+# ------------------------------------------------------------
+# Background:
+# Dopo il fix 20260409-03 (vincolo ex_listini_associazioni_no_overlap), il
+# campo priorita non discrimina piu nulla: l'invariante "una sola associazione
+# attiva per scope sull'intervallo" rende impossibile la coesistenza di due
+# righe in tie su (BA, utility, emittente, daterange).
+#
+# Vedi WIP listini-commercio sezione 5 (Fase 2) per il piano completo:
+# - drop priorita su listini_associazioni (questo file)
+# - drop priorita su listini_versioni (file -05)
+# - update fn_resolve_prezzo_listino senza priorita (20_code -04)
+# - adattamento test pgTAP test-listini-resolve-prezzo-v1.sql
+#
+# Operazioni:
+# 1) DROP CHECK CONSTRAINT chk_listini_associazioni_priorita
+# 2) DROP COLUMN priorita
+#
+# Rotture attese (intentional CI break):
+# - Backend Python: listini_service.py, listini_repository.py, views_listini.py,
+#   tests/services/test_listini_service.py - inserts/select/serializer ancora
+#   referenziano "priorita". Vanno puliti dal team backend in PR separata.
+# - Test pgTAP test-listini-resolve-prezzo-v1.sql: adattato nello stesso commit
+#   per rimuovere i test 11/12/13 (tie-break e pareggio totale) ora
+#   strutturalmente impossibili.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260409-04-drop-priorita-listini-associazioni-mctit.yaml
+
+  - changeSet:
+      id: 20260409-04-01-drop-chk-listini-associazioni-priorita
+      author: mctit
+      runOnChange: false
+      comment: >
+        Drop CHECK constraint chk_listini_associazioni_priorita prima del drop
+        colonna (necessario per evitare dipendenze residue).
+      preConditions:
+        - onFail: HALT
+        - tableExists: { schemaName: vendite, tableName: listini_associazioni }
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.listini_associazioni
+                DROP CONSTRAINT IF EXISTS chk_listini_associazioni_priorita;
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.listini_associazioni
+                ADD CONSTRAINT chk_listini_associazioni_priorita
+                CHECK (priorita > 0);
+
+  - changeSet:
+      id: 20260409-04-02-drop-column-listini-associazioni-priorita
+      author: mctit
+      runOnChange: false
+      comment: >
+        Drop colonna priorita da vendite.listini_associazioni. Diventa codice
+        morto post fix 20260409-03 (univocita stretta per scope). Vedi WIP
+        listini-commercio sezione 5.
+      preConditions:
+        - onFail: HALT
+        - columnExists:
+            schemaName: vendite
+            tableName: listini_associazioni
+            columnName: priorita
+      changes:
+        - dropColumn:
+            schemaName: vendite
+            tableName: listini_associazioni
+            columnName: priorita
+      rollback:
+        - addColumn:
+            schemaName: vendite
+            tableName: listini_associazioni
+            columns:
+              - column:
+                  name: priorita
+                  type: smallint
+                  defaultValueNumeric: 100
+                  constraints:
+                    nullable: false
+        - sql:
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.listini_associazioni
+                ADD CONSTRAINT chk_listini_associazioni_priorita
+                CHECK (priorita > 0);
