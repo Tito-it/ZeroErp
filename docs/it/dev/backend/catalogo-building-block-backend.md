@@ -39,6 +39,7 @@
 | `get_idempotency_key` | [retry_policies.py](../../../../backend/apps/core/api/retry_policies.py) | Estrae Idempotency-Key dagli header |
 | `apply_retry_headers` | [retry_policies.py](../../../../backend/apps/core/api/retry_policies.py) | Aggiunge header Retry-After se errore ritentabile |
 | `DEFAULT_LIMIT` / `MAX_LIMIT` | [constants.py](../../../../backend/apps/core/api/constants.py) | Costanti paginazione (50 / 200) |
+| `JwtAuditAuthentication` | [jwt_audit_authentication.py](../../../../backend/apps/core/api/jwt_audit_authentication.py) | **Subclass `JWTAuthentication`** che propaga `app.jwt_user` + `app.current_user_id` come GUC PG session-scoped subito dopo `authenticate()` di successo. E' il punto del flusso DRF in cui l'identita JWT e' gia risolta E il view body non e ancora partito → i trigger DB di audit/scope vedono le GUC durante le scritture. Registrata in `REST_FRAMEWORK.DEFAULT_AUTHENTICATION_CLASSES` + `DomainAPIView` + `AdminAPIView`. Setta marker `request._zeroerp_jwt_guc_set` letto da `JwtAuditMiddleware.process_response` per il reset simmetrico. Vedi guida `risorse-umane-e-accessi.md` sezione "Propagazione identita utente al database (GUC)" |
 
 ---
 
@@ -66,7 +67,8 @@
 | `PermissionResolver.get_ruolo_sistema` | [permissions_resolver.py](../../../../backend/apps/core/services/permissions_resolver.py) | Ruolo utente (ADMIN, OPERATIVO, DISABILITATO) |
 | `PermissionResolver.get_livello_area` | [permissions_resolver.py](../../../../backend/apps/core/services/permissions_resolver.py) | Livello accesso per area (TUTTO, LETTURA, BLOCCATO) |
 | `PermissionResolver.check_azione` | [permissions_resolver.py](../../../../backend/apps/core/services/permissions_resolver.py) | Verifica se azione processo è consentita |
-| `PermissionResolver.get_emittenti_ids` | [permissions_resolver.py](../../../../backend/apps/core/services/permissions_resolver.py) | ID emittenti fiscali autorizzati per l'utente |
+| `PermissionResolver.get_emittenti_ids` | [permissions_resolver.py](../../../../backend/apps/core/services/permissions_resolver.py) | Lista ID emittenti fiscali autorizzati per l'utente (whitelist legacy: `None` = vede tutto) |
+| `PermissionResolver.get_emittente_for_user` | [permissions_resolver.py](../../../../backend/apps/core/services/permissions_resolver.py) | **Refactor operatore-emittenti 1-a-1**: ritorna l'**unico** `emittenti_fiscali.id` (PK reale) assegnato all'utente via `script.fn_resolve_emittente_for_user`. `None` per admin globale o istanza "0 emittenti". Pattern `_cached`. **Diverso da `get_emittenti_ids`**: quello e' lista whitelist, questo e' single PK 1-a-1. **Vedi anche** `ParameterService.get_emittente_fiscale_id_for_user` (semantica simile ma fa fallback al gestore globale, ritorna sempre un id se sistema configurato) |
 | `load_user_cache` / `invalidate_user` / `invalidate_all` | [permissions_cache.py](../../../../backend/apps/core/services/permissions_cache.py) | Cache permessi Redis L2 (load, invalidate utente/reparto/tutti) |
 | `encrypt` / `decrypt` | [crypto_service.py](../../../../backend/apps/core/services/crypto_service.py) | Crittografia Fernet derivata da SECRET_KEY |
 | `IdempotencyStore.claim_or_replay` | [idempotency_store.py](../../../../backend/apps/core/services/idempotency_store.py) | Claim atomico chiave idempotency o replay risposta precedente |
@@ -94,14 +96,29 @@
 |---|---|---|
 | `BillingAccountRepository.search_lookup` | [billing_account_repository.py](../../../../backend/apps/anagrafiche/db/billing_account_repository.py) | Ricerca ricca BA (codice, ragione sociale, id fiscale, PDP) con JOIN a `istanze_utilities/pdp`, `vw_soggetti_ruoli_dettaglio`, `config.utilities`. Filtri: `utility_id`, validita' temporale (`valid_at`), scope emittente via `emittenti_fiscali_billing_account`. Ordinamento alfabetico. Restituisce `(rows, total_count)` |
 | `BillingAccountRepository.get_lookup_by_id` | [billing_account_repository.py](../../../../backend/apps/anagrafiche/db/billing_account_repository.py) | Restore singolo BA arricchito per ricostruire `_obj` dell'AutoComplete in modalita' edit senza round-trip |
+| `BillingAccountRepository.get_emittente_fiscale_id` | [billing_account_repository.py](../../../../backend/apps/anagrafiche/db/billing_account_repository.py) | Wrapper su `anagrafiche.fn_get_emittente_fiscale_pk`: ritorna la **PK reale** `emittenti_fiscali.id` (catena specifico → default globale, filtro `ef.attivo`). Usato per check di scope emittente su singolo BA. **Importante**: ritorna PK, non `soggetto_ruolo_id` (vedi memoria progetto `feedback_emittente_pk_vs_soggetto_ruolo`) |
+| `BillingAccountRepository.exists` | [billing_account_repository.py](../../../../backend/apps/anagrafiche/db/billing_account_repository.py) | Esistenza BA per check 404 prima di scope/lookup. Usato dal flusso `list_utilities_for_ba` per non leakare 403 su id non esistenti |
 | `BillingAccountService.search_lookup` | [billing_account_service.py](../../../../backend/apps/anagrafiche/services/billing_account_service.py) | Facade lookup BA: valida `q >= 2 char`, cap `limit` a 50 (default 20), delega a repository. Restituisce `{results, total_count, limit}` per gestione UI "affina la ricerca" |
 | `BillingAccountService.get_lookup_by_id` | [billing_account_service.py](../../../../backend/apps/anagrafiche/services/billing_account_service.py) | Facade restore BA per edit. Solleva `E_ANAG_NOT_FOUND` se inesistente |
+| `BillingAccountService.list_utilities_for_ba` | [billing_account_service.py](../../../../backend/apps/anagrafiche/services/billing_account_service.py) | Lista utility "guidate da emittente" per un BA (refactor operatore-emittenti, sez. 3 del WIP). Whitelist `ruolo ∈ {CL, FO, GE}`. Scope check applicativo confronta `user_emittente_id` con l'emittente del BA (bypass per superuser e admin globale `user_emittente_id is None`). Solleva `E_ANAG_NOT_FOUND`/`E_PERMESSO_NEGATO`. Delega lookup riga a `LookupRepository.list_utilities_per_billing_account`. Restituisce `{results: [...]}` |
 
 **Endpoint**:
 - `GET /api/v1/anagrafiche/billing-account/lookup/?q=<min2>&utility_id=&solo_validi=&valid_at=&limit=` — autocomplete
 - `GET /api/v1/anagrafiche/billing-account/<id>/lookup/` — restore per edit
+- `GET /api/v1/anagrafiche/billing-account/<id>/utilities/?ruolo=CL` — utility BA-driven (refactor operatore-emittenti)
 
-**Scope emittente**: applicato automaticamente dalla view via `PermissionResolver.get_emittenti_ids`. Un operatore vede solo i BA mappati al suo emittente fiscale + quelli caduti sull'emittente di default.
+**Scope emittente lookup**: applicato automaticamente dalla view via `PermissionResolver.get_emittenti_ids`. Un operatore vede solo i BA mappati al suo emittente fiscale + quelli caduti sull'emittente di default.
+
+**Scope emittente per `list_utilities_for_ba`**: usa il pattern 1-a-1 del refactor operatore-emittenti (`PermissionResolver.get_emittente_for_user` → PK reale, vedi sotto). Semantica diversa da `get_emittenti_ids`: il primo ritorna l'unico EF assegnato all'utente (o `None` per admin globale), il secondo ritorna la lista filtrata legacy.
+
+---
+
+## Anagrafiche — Clienti (`apps/anagrafiche/`)
+
+| Building Block | File | Descrizione |
+|---|---|---|
+| `ClientiRepository.check_user_can_create_ba` | [clienti_repository.py](../../../../backend/apps/anagrafiche/db/clienti_repository.py) | Wrapper `script.fn_check_user_can_create_ba`. Vedi WIP refactor operatore-emittenti Q6 (la motivazione di dominio sta nel service) |
+| `ClientiService.crea_cliente` (param `auth_user_id`) | [clienti_service.py](../../../../backend/apps/anagrafiche/services/clienti_service.py) | Orchestratore creazione cliente completa (istanza + BA + cliente in transazione atomica). **Refactor operatore-emittenti**: param `auth_user_id` opzionale; se valorizzato e si crea un nuovo BA (no `billing_account_id` in payload), chiama `_guard_can_create_ba` che blocca admin globale + emittenti con `ServiceError(E_BA_ADMIN_GLOBALE_VIETATO)`. Defense-in-depth: il trigger DB `trgfn_billing_account_guard_admin_globale` e' la difesa finale |
 
 ---
 
@@ -114,7 +131,8 @@
 | `dynamic_update` | [_helpers.py](../../../../backend/apps/core/db/_helpers.py) | UPDATE generico con field builder None-safe |
 | `CoreRepository.get_user_profile` | [core_repository.py](../../../../backend/apps/core/db/core_repository.py) | Profilo utente completo via script.fn_get_user_profile |
 | `SearchRepository.search_soggetti` | [search_repository.py](../../../../backend/apps/core/db/search_repository.py) | Ricerca universale soggetti full-text |
-| `LookupRepository` | [lookup_repository.py](../../../../backend/apps/core/db/lookup_repository.py) | Lookup tipi soggetto, ruoli per natura, forme giuridiche, matrice indirizzi |
+| `LookupRepository` | [lookup_repository.py](../../../../backend/apps/core/db/lookup_repository.py) | Lookup tipi soggetto, ruoli per natura, forme giuridiche, matrice indirizzi, utility per ruolo (strict da `config.utilities_tipi_ruolo`), **matrice utility per entita'** (`list_entity_utility_matrix`: LEFT JOIN matrice ruolo + override entita', pattern slot/override generico cross-dominio con whitelist statica tabelle ammesse) |
+| `LookupRepository.list_utilities_per_billing_account` | [lookup_repository.py](../../../../backend/apps/core/db/lookup_repository.py) | **Refactor operatore-emittenti**: utility "guidate da emittente" per un BA. Wrapper su `anagrafiche.fn_lookup_utilities_per_ba(ba_id, ruolo_codice_soggetto)`. Politica ibrida: utility ammesse per ruolo soggetto BA ∩ utility ammesse per ruolo EF dell'emittente associato, decorate con `is_personalizzata_per_ef` + parametri override (soglie, arrotondamento) quando esistono per la coppia (emittente, utility). Le utility ammesse-non-personalizzate restano visibili con default sistema |
 | `SessionAuditRepository` | [session_audit_repository.py](../../../../backend/apps/core/db/session_audit_repository.py) | Insert/list eventi sessione |
 | `TokenRepository` | [token_repository.py](../../../../backend/apps/core/db/token_repository.py) | CRUD token monouso (create, find_valid, consume, invalidate) |
 | `EmailRepository` | [email_repository.py](../../../../backend/apps/core/db/email_repository.py) | Risoluzione template/account, log email, gestione bozze e allegati |
@@ -133,6 +151,7 @@
 |---|---|---|
 | `ApiExceptionMiddleware` | [api_exception_middleware.py](../../../../backend/apps/core/middleware/api_exception_middleware.py) | Converte eccezioni in envelope errore JSON per /api/* |
 | `RequestContextMiddleware` | [request_context_middleware.py](../../../../backend/apps/core/middleware/request_context_middleware.py) | Assegna request_id e idempotency_key, aggiunge header risposta |
+| `JwtAuditMiddleware` | [jwt_audit_middleware.py](../../../../backend/apps/core/middleware/jwt_audit_middleware.py) | Pre-load cache permessi Redis L2, rifiuto early `DISABILITATO` con 403, **reset simmetrico** delle GUC `app.jwt_user`/`app.current_user_id` settate da `JwtAuditAuthentication` (vedi sotto). Il setting delle GUC NON avviene piu' qui dallo sprint BE-2.0ter |
 
 ---
 

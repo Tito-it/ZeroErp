@@ -202,6 +202,8 @@ Le risposte includono **azioni di navigazione** cliccabili che portano l'operato
 | `cerca_soggetti` | anagrafiche | Ricerca soggetti con ruoli (cliente, fornitore) |
 | `dettaglio_soggetto` | anagrafiche | Dati completi, contatti, indirizzi, ruoli |
 | `cerca_operatori` | amm_software | Ricerca operatori per nome, reparto, ruolo |
+| `cerca_billing_account` | anagrafiche | Ricerca clienti (billing account) per ragione sociale, codice fiscale, partita IVA |
+| `cerca_articoli` | catalogo | Ricerca articoli del catalogo per codice o descrizione |
 
 ### 6.2 Scrittura (con conferma)
 

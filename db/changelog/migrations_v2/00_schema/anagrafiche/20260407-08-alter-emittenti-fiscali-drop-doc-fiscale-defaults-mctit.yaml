@@ -1,0 +1,62 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/anagrafiche/20260407-08-alter-emittenti-fiscali-drop-doc-fiscale-defaults-mctit.yaml
+
+  - changeSet:
+      id: 20260407-08-alter-emittenti-fiscali-drop-doc-fiscale-defaults
+      author: mctit
+      comment: >
+        Rimuove da anagrafiche.emittenti_fiscali i default documentali
+        non propri del ruolo emittente e chiarisce i commenti delle
+        colonne regime_fiscale_rf e rounding_policy.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: anagrafiche
+            tableName: emittenti_fiscali
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ==========================================================
+              -- Scopo:
+              --   Riallineare anagrafiche.emittenti_fiscali al modello di
+              --   ruolo emittente fiscale.
+              --
+              -- Regole:
+              --   - esigibilita_iva_default e split_payment_default non
+              --     sono configurazioni proprie del ruolo emittente e
+              --     vengono rimosse;
+              --   - regime_fiscale_rf resta sul ruolo, ma con commento
+              --     esplicito sul codice RF del tracciato FE/SdI;
+              --   - rounding_policy resta sul ruolo come policy generale
+              --     da mantenere coerente con la matrice per utility.
+              -- ==========================================================
+
+              ALTER TABLE anagrafiche.emittenti_fiscali
+                DROP CONSTRAINT IF EXISTS chk_emittenti_fiscali_esigibilita;
+
+              ALTER TABLE anagrafiche.emittenti_fiscali
+                DROP CONSTRAINT IF EXISTS chk_emittenti_fiscali_rounding_policy;
+
+              ALTER TABLE anagrafiche.emittenti_fiscali
+                DROP COLUMN IF EXISTS esigibilita_iva_default,
+                DROP COLUMN IF EXISTS split_payment_default;
+
+              ALTER TABLE anagrafiche.emittenti_fiscali
+                ADD CONSTRAINT chk_emittenti_fiscali_rounding_policy
+                CHECK (
+                  rounding_policy IS NULL
+                  OR rounding_policy IN ('UP', 'DOWN', 'HALF_UP', 'HALF_DOWN')
+                );
+
+              COMMENT ON COLUMN anagrafiche.emittenti_fiscali.regime_fiscale_rf
+                IS 'Codice regime fiscale RF del tracciato fattura elettronica/SdI del soggetto emittente (es. RF01, RF19).';
+
+              COMMENT ON COLUMN anagrafiche.emittenti_fiscali.rounding_policy
+                IS 'Policy generale di arrotondamento dell''emittente fiscale. Valori ammessi: UP, DOWN, HALF_UP, HALF_DOWN. Mantenerla coerente con i parametri specifici per utility definiti in anagrafiche.emittenti_fiscali_utilities.';

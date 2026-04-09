@@ -242,6 +242,17 @@ export function listUtilitiesManual() {
   return api.get(`${BASE}/utilities/manual-lookup/`)
 }
 
+// Lista utility "guidate da emittente" per un BA esistente.
+// Refactor operatore-emittenti, sez. 3 del WIP. Ritorna utility ammesse
+// per il ruolo del soggetto del BA filtrate sull'emittente associato +
+// parametri override (is_personalizzata_per_ef, soglie, arrotondamento).
+// ruolo: 'CL' (cliente) | 'FO' (fornitore) | 'GE' (gestore).
+export function listUtilitiesPerBillingAccount(billingAccountId, ruolo) {
+  return api.get(`${BASE}/billing-account/${billingAccountId}/utilities/`, {
+    params: { ruolo },
+  })
+}
+
 // --- Fornitori ---
 
 export function listFornitori(params = {}) {

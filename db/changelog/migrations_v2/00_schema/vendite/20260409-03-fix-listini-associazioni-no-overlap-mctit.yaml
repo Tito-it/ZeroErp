@@ -1,0 +1,183 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# FIX vincolo univocita su vendite.listini_associazioni
+# ------------------------------------------------------------
+# Background:
+# Il vincolo originale (20260224-01-create-listini-core-mctit.yaml) era:
+#   uq_listini_associazioni_key_attiva UNIQUE
+#     (listino_id,
+#      COALESCE(billing_account_id, -1),
+#      COALESCE(utility_id, -1),
+#      COALESCE(emittente_soggetto_ruolo_id, -1),
+#      valido_dal)
+#     WHERE attivo IS TRUE
+#
+# Aveva due falle:
+#  1) listino_id nella key: due listini diversi potevano avere associazioni
+#     attive sullo stesso scope dimensionale (BA, utility, emittente) e nello
+#     stesso periodo. Modello "multi-listino concorrenti" che ha rotto lo
+#     smoke test pricing step 17 con 4 SMK-LST-* tutti con scope NULL,NULL,NULL.
+#  2) valido_dal scalare invece di range: due righe con stesso scope ma
+#     valido_dal differente passavano l'unique pur essendo entrambe attive
+#     il giorno dell'overlap temporale.
+#
+# Decisione architetturale (vedi WIP listini-commercio.md sezione 3):
+#   Adottiamo l'invariante B "univocita stretta per scope":
+#   per ogni triple (BA, utility, emittente) - con NULL come wildcard discreto -
+#   non possono esistere due righe attive con intervalli temporali sovrapposti
+#   su listini_associazioni, indipendentemente dal listino_id.
+#   Le sostituzioni avvengono via autoclose (set valido_al sulla vecchia,
+#   insert nuova) come gia' fatto per listini_versioni nel fix 20260409-01.
+#
+# Effetto sul resolver fn_resolve_prezzo_listino:
+#   l'ORDER BY associazione_priorita, versione_priorita diventa codice morto
+#   safe (non rompe nulla, semplicemente non scatta mai). Cleanup in fase 2
+#   (vedi WIP listini-commercio sezione 5).
+#
+# Effetto sui campi priorita di listini_associazioni e listini_versioni:
+#   diventano deprecati. In questo commit aggiorniamo solo i COMMENT ON COLUMN.
+#   Il drop fisico avviene in fase 2 dopo coordinamento con backend (cleanup
+#   service Python che ancora settano priorita).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260409-0-fix-listini-associazioni-no-overlap-mctit.yaml
+
+  - changeSet:
+      id: 20260409-03-01-drop-uq-listini-associazioni-key-attiva
+      author: mctit
+      runOnChange: false
+      comment: >
+        Drop del vecchio unique uq_listini_associazioni_key_attiva.
+        Subsumed dal nuovo EXCLUDE constraint del changeset successivo.
+      preConditions:
+        - onFail: HALT
+        - tableExists: { schemaName: vendite, tableName: listini_associazioni }
+        - indexExists:
+            schemaName: vendite
+            tableName: listini_associazioni
+            indexName: uq_listini_associazioni_key_attiva
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              DROP INDEX IF EXISTS vendite.uq_listini_associazioni_key_attiva;
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              CREATE UNIQUE INDEX IF NOT EXISTS uq_listini_associazioni_key_attiva
+                ON vendite.listini_associazioni (
+                  listino_id,
+                  COALESCE(billing_account_id, ('-1'::integer)::bigint),
+                  COALESCE(utility_id, '-1'::integer),
+                  COALESCE(emittente_soggetto_ruolo_id, ('-1'::integer)::bigint),
+                  valido_dal
+                )
+                WHERE (attivo IS TRUE);
+
+  - changeSet:
+      id: 20260409-03-02-create-ex-listini-associazioni-no-overlap
+      author: mctit
+      runOnChange: false
+      comment: >
+        Crea il nuovo vincolo EXCLUDE GIST ex_listini_associazioni_no_overlap
+        cross-listino con check temporale di overlap. Invariante:
+        per ogni triple (BA, utility, emittente) con NULL come wildcard discreto,
+        nessun overlap temporale tra righe attive. Riusa btree_gist (gia' presente,
+        usato da ex_listini_versioni_no_overlap).
+      preConditions:
+        - onFail: HALT
+        - tableExists: { schemaName: vendite, tableName: listini_associazioni }
+        # Verifica preventiva: 0 righe gia' in violazione del nuovo constraint.
+        # Self-join sulle associazioni attive con stesso scope normalizzato e
+        # range temporali sovrapposti. Su DB di sviluppo dopo cleanup smoke
+        # test deve essere 0. In CI il DB e' vergine, deve essere 0.
+        - sqlCheck:
+            expectedResult: 0
+            sql: >-
+              SELECT COUNT(*)
+                FROM (
+                    SELECT a.id
+                      FROM vendite.listini_associazioni a
+                      JOIN vendite.listini_associazioni b
+                        ON a.id <> b.id
+                       AND a.attivo IS TRUE
+                       AND b.attivo IS TRUE
+                       AND COALESCE(a.billing_account_id, -1::bigint)
+                         = COALESCE(b.billing_account_id, -1::bigint)
+                       AND COALESCE(a.utility_id, -1)
+                         = COALESCE(b.utility_id, -1)
+                       AND COALESCE(a.emittente_soggetto_ruolo_id, -1::bigint)
+                         = COALESCE(b.emittente_soggetto_ruolo_id, -1::bigint)
+                       AND daterange(
+                              a.valido_dal,
+                              COALESCE(a.valido_al, 'infinity'::date),
+                              '[]'
+                           )
+                        && daterange(
+                              b.valido_dal,
+                              COALESCE(b.valido_al, 'infinity'::date),
+                              '[]'
+                           )
+                ) overlap_check
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.listini_associazioni
+                ADD CONSTRAINT ex_listini_associazioni_no_overlap
+                EXCLUDE USING gist (
+                  COALESCE(billing_account_id, -1::bigint) WITH =,
+                  COALESCE(utility_id, -1) WITH =,
+                  COALESCE(emittente_soggetto_ruolo_id, -1::bigint) WITH =,
+                  daterange(valido_dal, COALESCE(valido_al, 'infinity'::date), '[]') WITH &&
+                )
+                WHERE (attivo IS TRUE);
+
+              COMMENT ON CONSTRAINT ex_listini_associazioni_no_overlap
+                ON vendite.listini_associazioni
+                IS 'Invariante univocita stretta (refactor 2026-04-09, vedi WIP listini-commercio): per ogni triple (BA, utility, emittente) con NULL come wildcard discreto, nessun overlap temporale tra righe attive. Cross-listino: blocca anche due listini diversi sullo stesso scope. Pattern di sostituzione: autoclose (set valido_al sulla vecchia, poi insert nuova) come per listini_versioni post-fix 20260409-01.';
+
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.listini_associazioni
+                DROP CONSTRAINT IF EXISTS ex_listini_associazioni_no_overlap;
+
+  - changeSet:
+      id: 20260409-03-03-deprecate-priorita-columns
+      author: mctit
+      runOnChange: true
+      comment: >
+        Marca come DEPRECATED le colonne priorita su listini_associazioni e
+        listini_versioni. Drop fisico rimandato a fase 2 dopo coordinamento
+        con backend (vedi WIP listini-commercio sezione 5). Solo COMMENT, niente
+        ALTER COLUMN, niente rotture immediate.
+      preConditions:
+        - onFail: HALT
+        - columnExists:
+            schemaName: vendite
+            tableName: listini_associazioni
+            columnName: priorita
+        - columnExists:
+            schemaName: vendite
+            tableName: listini_versioni
+            columnName: priorita
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              COMMENT ON COLUMN vendite.listini_associazioni.priorita IS
+                'DEPRECATED 2026-04-09: con l''invariante univocita stretta per scope (ex_listini_associazioni_no_overlap) non discrimina piu nulla. Default 100. Sara rimossa in fase 2 (vedi WIP listini-commercio) dopo cleanup resolver e backend.';
+
+              COMMENT ON COLUMN vendite.listini_versioni.priorita IS
+                'DEPRECATED 2026-04-09: con l''invariante univocita stretta per versioni ATTIVA (ex_listini_versioni_no_overlap, fix 20260409-01) non discrimina piu nulla. Sara rimossa in fase 2 (vedi WIP listini-commercio) dopo cleanup resolver e backend.';
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              COMMENT ON COLUMN vendite.listini_associazioni.priorita IS NULL;
+              COMMENT ON COLUMN vendite.listini_versioni.priorita IS NULL;

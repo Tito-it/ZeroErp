@@ -190,7 +190,7 @@ Non tutti i ruoli hanno una tabella dedicata. Solo quelli che richiedono dati ag
 | GESTORE (GE) | `anagrafiche.gestori` | dati operativi, codice software, valuta |
 | RISORSA UMANA (RIS_UMANA) | `anagrafiche.risorse_umane` | qualifica, unita organizzativa, periodo validita |
 | VETTORE (VT) | `anagrafiche.vettori` | codice, descrizione, stato attivo |
-| EMITTENTE FISCALE (EF) | `anagrafiche.emittenti_fiscali` | regime fiscale, esigibilita IVA, split payment, bollo |
+| EMITTENTE FISCALE (EF) | `anagrafiche.emittenti_fiscali` | regime fiscale RF, bollo, valuta, policy operative di emissione |
 | PSP (PSP) | `anagrafiche.psp` | codice, descrizione, stato attivo |
 
 I ruoli **REFERENTE** (RE), **VENDITORE** (VE), **DISTRIBUTORE** (DI) e **BANCA** (BANK) non hanno tabella specializzata: operano solo tramite il record in `soggetti_ruoli` e le tabelle trasversali (contatti, conti bancari).

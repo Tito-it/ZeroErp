@@ -15,8 +15,28 @@ Indice test eseguiti:
 6) ListiniServiceTests.test_change_versione_state_requires_rows
 7) ListiniServiceTests.test_create_riga_invalid_articolo_uom
 8) ListiniServiceTests.test_test_resolver_requires_uom
+9) ListiniServiceTests.test_create_riga_blocked_on_versione_attiva
+10) ListiniServiceTests.test_update_riga_blocked_on_versione_chiusa
+11) ListiniServiceTests.test_delete_riga_blocked_on_versione_attiva
+12) ListiniServiceTests.test_update_versione_attiva_rejects_codice_versione
+13) ListiniServiceTests.test_update_versione_attiva_allows_valido_al
+14) ListiniServiceTests.test_update_versione_chiusa_rejects_any_field
+15) ListiniServiceTests.test_clone_versione_rejects_valido_dal_before_source
+16) ListiniServiceTests.test_clone_versione_allows_retroattivo_within_source
+17) ListiniServiceTests.test_clone_versione_filters_meta_attivo_from_payload
+18) ListiniServiceTests.test_change_state_dry_run_no_db_writes
+19) ListiniServiceTests.test_change_state_attiva_autocloses_previous
+20) ListiniServiceTests.test_change_state_attiva_no_previous_skips_autoclose
+21) ListiniServiceTests.test_delete_versione_bozza_ok
+22) ListiniServiceTests.test_delete_versione_attiva_rejected
+23) ListiniServiceTests.test_delete_versione_chiusa_rejected
+24) ListiniServiceTests.test_delete_listino_orphan_ok
+25) ListiniServiceTests.test_delete_listino_with_versioni_rejected
+26) ListiniServiceTests.test_delete_listino_with_associazioni_rejected
+27) ListiniServiceTests.test_change_state_attiva_blocked_when_autoclose_violates_chk
 """
 
+from datetime import date
 from unittest import TestCase
 from unittest.mock import patch
 
@@ -113,7 +133,7 @@ class ListiniServiceTests(TestCase):
         from apps.vendite.services.listini_service import fn_create_riga
 
         repo = mock_repo_cls.return_value
-        repo.get_versione.return_value = {"id": 101, "listino_id": 10}
+        repo.get_versione.return_value = {"id": 101, "listino_id": 10, "stato": "BOZZA"}
         repo.get_articolo_uom_validation.return_value = {
             "articolo_attivo": True,
             "uom_attiva": True,
@@ -131,6 +151,458 @@ class ListiniServiceTests(TestCase):
                 },
             )
         self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
+
+    # Scopo: F1 - create_riga deve fallire se la versione non e' BOZZA.
+    @patch("apps.vendite.services.listini_service.ListiniRepository")
+    def test_create_riga_blocked_on_versione_attiva(self, mock_repo_cls):
+        from apps.vendite.services.listini_service import fn_create_riga
+
+        repo = mock_repo_cls.return_value
+        repo.get_versione.return_value = {"id": 101, "listino_id": 10, "stato": "ATTIVA"}
+
+        with self.assertRaises(ServiceError) as ctx:
+            fn_create_riga(
+                10,
+                101,
+                {
+                    "articolo_id": "019bbee2-5f6a-704f-bbd0-34ed84db252d",
+                    "uom_id": 1,
+                    "prezzo": "12.50",
+                },
+            )
+        self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
+        self.assertIn("BOZZA", ctx.exception.detail or "")
+        # Verifica che la guard scatti PRIMA di toccare create_riga
+        repo.create_riga.assert_not_called()
+
+    # Scopo: F1 - update_riga deve fallire se la versione e' CHIUSA.
+    @patch("apps.vendite.services.listini_service.ListiniRepository")
+    def test_update_riga_blocked_on_versione_chiusa(self, mock_repo_cls):
+        from apps.vendite.services.listini_service import fn_update_riga
+
+        repo = mock_repo_cls.return_value
+        repo.get_versione.return_value = {"id": 101, "listino_id": 10, "stato": "CHIUSA"}
+
+        with self.assertRaises(ServiceError) as ctx:
+            fn_update_riga(10, 101, 555, {"prezzo": "9.99"})
+        self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
+        self.assertIn("CHIUSA", ctx.exception.detail or "")
+        repo.update_riga.assert_not_called()
+
+    # Scopo: F1 - delete_riga deve fallire se la versione e' ATTIVA.
+    @patch("apps.vendite.services.listini_service.ListiniRepository")
+    def test_delete_riga_blocked_on_versione_attiva(self, mock_repo_cls):
+        from apps.vendite.services.listini_service import fn_delete_riga
+
+        repo = mock_repo_cls.return_value
+        repo.get_versione.return_value = {"id": 101, "listino_id": 10, "stato": "ATTIVA"}
+
+        with self.assertRaises(ServiceError) as ctx:
+            fn_delete_riga(10, 101, 555)
+        self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
+        repo.delete_riga.assert_not_called()
+
+    # Scopo: F2 - PATCH versione ATTIVA con codice_versione deve essere rifiutato.
+    @patch("apps.vendite.services.listini_service.ListiniRepository")
+    def test_update_versione_attiva_rejects_codice_versione(self, mock_repo_cls):
+        from apps.vendite.services.listini_service import fn_update_versione
+
+        repo = mock_repo_cls.return_value
+        repo.get_versione.return_value = {"id": 101, "listino_id": 10, "stato": "ATTIVA"}
+
+        with self.assertRaises(ServiceError) as ctx:
+            fn_update_versione(10, 101, {"codice_versione": "V001-bis"})
+        self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
+        self.assertIn("codice_versione", ctx.exception.detail or "")
+        repo.update_versione.assert_not_called()
+
+    # Scopo: F2 - PATCH versione ATTIVA con valido_al deve essere ammesso
+    # (programmazione chiusura). Post-deprecazione priorita: l'unico campo
+    # ammesso su versione ATTIVA e' valido_al.
+    @patch("apps.vendite.services.listini_service.ListiniRepository")
+    def test_update_versione_attiva_allows_valido_al(self, mock_repo_cls):
+        from apps.vendite.services.listini_service import fn_update_versione
+
+        repo = mock_repo_cls.return_value
+        # return_value univoco per essere robusti al numero di chiamate get_versione
+        repo.get_versione.return_value = {
+            "id": 101,
+            "listino_id": 10,
+            "stato": "ATTIVA",
+            "valido_al": "2026-12-31",
+        }
+        repo.update_versione.return_value = True
+
+        result = fn_update_versione(10, 101, {"valido_al": "2026-12-31"})
+
+        self.assertEqual(result["id"], 101)
+        repo.update_versione.assert_called_once()
+
+    # Scopo: F2 - PATCH versione CHIUSA deve essere rifiutato per qualsiasi campo.
+    @patch("apps.vendite.services.listini_service.ListiniRepository")
+    def test_update_versione_chiusa_rejects_any_field(self, mock_repo_cls):
+        from apps.vendite.services.listini_service import fn_update_versione
+
+        repo = mock_repo_cls.return_value
+        repo.get_versione.return_value = {"id": 101, "listino_id": 10, "stato": "CHIUSA"}
+
+        with self.assertRaises(ServiceError) as ctx:
+            fn_update_versione(10, 101, {"valido_al": "2026-12-31"})
+        self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
+        self.assertIn("CHIUSA", ctx.exception.detail or "")
+        repo.update_versione.assert_not_called()
+
+    # Scopo: O1/D2 - clone con valido_dal precedente alla sorgente deve fallire.
+    @patch("apps.vendite.services.listini_service.transaction.atomic")
+    @patch("apps.vendite.services.listini_service.ListiniRepository")
+    def test_clone_versione_rejects_valido_dal_before_source(self, mock_repo_cls, mock_atomic):
+        from apps.vendite.services.listini_service import fn_clone_versione
+
+        repo = mock_repo_cls.return_value
+        repo.get_versione.return_value = {
+            "id": 101,
+            "listino_id": 10,
+            "stato": "ATTIVA",
+            "valido_dal": date(2026, 4, 1),
+            "valido_al": None,
+        }
+
+        with self.assertRaises(ServiceError) as ctx:
+            fn_clone_versione(
+                10,
+                101,
+                {
+                    "codice_versione": "V002",
+                    "valido_dal": "2026-03-31",  # un giorno PRIMA della sorgente
+                },
+            )
+        self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
+        self.assertIn("decorrenza", (ctx.exception.detail or "").lower())
+        repo.clone_versione.assert_not_called()
+        mock_atomic.assert_not_called()
+
+    # Scopo: O1/D2 - clone retroattivo entro la decorrenza sorgente deve essere ammesso.
+    @patch("apps.vendite.services.listini_service.transaction.atomic")
+    @patch("apps.vendite.services.listini_service.ListiniRepository")
+    def test_clone_versione_allows_retroattivo_within_source(self, mock_repo_cls, mock_atomic):
+        from apps.vendite.services.listini_service import fn_clone_versione
+
+        repo = mock_repo_cls.return_value
+        # get_versione viene chiamata 2 volte: prima per sorgente, poi per dettaglio target
+        repo.get_versione.side_effect = [
+            {
+                "id": 101,
+                "listino_id": 10,
+                "stato": "ATTIVA",
+                "valido_dal": date(2026, 1, 1),
+                "valido_al": None,
+            },
+            {
+                "id": 202,
+                "listino_id": 10,
+                "stato": "BOZZA",
+                "codice_versione": "V002",
+                "valido_dal": date(2026, 2, 15),
+            },
+        ]
+        repo.clone_versione.return_value = 202
+
+        result = fn_clone_versione(
+            10,
+            101,
+            {
+                "codice_versione": "V002",
+                "valido_dal": "2026-02-15",  # retroattivo ma dentro src
+            },
+        )
+
+        self.assertEqual(result["id"], 202)
+        repo.clone_versione.assert_called_once()
+        mock_atomic.assert_called_once()
+        # Il payload passato al repository non deve contenere meta/attivo (filtrati)
+        call_kwargs = repo.clone_versione.call_args.kwargs
+        target_data = call_kwargs["target_data"]
+        self.assertNotIn("meta", target_data)
+        self.assertNotIn("attivo", target_data)
+        self.assertIn("codice_versione", target_data)
+
+    # Scopo: D3 - dry_run su transizione BOZZA->ATTIVA non deve scrivere nulla
+    #        e deve restituire la lista delle versioni che verrebbero auto-chiuse.
+    @patch("apps.vendite.services.listini_service.transaction.atomic")
+    @patch("apps.vendite.services.listini_service.ListiniRepository")
+    def test_change_state_dry_run_no_db_writes(self, mock_repo_cls, mock_atomic):
+        from apps.vendite.services.listini_service import fn_change_versione_state
+
+        repo = mock_repo_cls.return_value
+        repo.get_versione.return_value = {
+            "id": 202,
+            "listino_id": 10,
+            "stato": "BOZZA",
+            "attivo": True,
+            "valido_dal": date(2026, 4, 1),
+        }
+        repo.count_active_righe_versione.return_value = 5
+        repo.find_versioni_per_autoclose.return_value = [
+            {
+                "id": 101,
+                "codice_versione": "V001",
+                "valido_dal": date(2026, 1, 1),
+                "valido_al": None,
+            },
+        ]
+
+        result = fn_change_versione_state(10, 202, {"stato": "ATTIVA", "dry_run": True})
+
+        self.assertTrue(result["dry_run"])
+        self.assertEqual(result["nuovo_stato"], "ATTIVA")
+        self.assertEqual(len(result["auto_close"]), 1)
+        self.assertEqual(result["auto_close"][0]["id"], 101)
+        self.assertEqual(result["auto_close"][0]["valido_al_dopo"], date(2026, 3, 31))
+        # Niente scritture DB
+        repo.set_versione_valido_al.assert_not_called()
+        repo.change_versione_state.assert_not_called()
+        mock_atomic.assert_not_called()
+
+    # Scopo: D3 - attivazione reale chiude valido_al delle precedenti e poi attiva
+    #        la nuova, tutto nella stessa transazione.
+    @patch("apps.vendite.services.listini_service.transaction.atomic")
+    @patch("apps.vendite.services.listini_service.ListiniRepository")
+    def test_change_state_attiva_autocloses_previous(self, mock_repo_cls, mock_atomic):
+        from apps.vendite.services.listini_service import fn_change_versione_state
+
+        repo = mock_repo_cls.return_value
+        repo.get_versione.side_effect = [
+            {
+                "id": 202,
+                "listino_id": 10,
+                "stato": "BOZZA",
+                "attivo": True,
+                "valido_dal": date(2026, 4, 1),
+            },
+            {
+                "id": 202,
+                "listino_id": 10,
+                "stato": "ATTIVA",
+                "valido_dal": date(2026, 4, 1),
+            },
+        ]
+        repo.count_active_righe_versione.return_value = 5
+        repo.find_versioni_per_autoclose.return_value = [
+            {"id": 101, "codice_versione": "V001", "valido_dal": date(2026, 1, 1), "valido_al": None},
+            {"id": 150, "codice_versione": "V001b", "valido_dal": date(2026, 2, 1), "valido_al": date(2026, 6, 30)},
+        ]
+        repo.change_versione_state.return_value = True
+
+        result = fn_change_versione_state(10, 202, {"stato": "ATTIVA"})
+
+        self.assertEqual(result["id"], 202)
+        # Autoclose chiamato per entrambe le precedenti con valido_al = 2026-03-31
+        self.assertEqual(repo.set_versione_valido_al.call_count, 2)
+        repo.set_versione_valido_al.assert_any_call(
+            listino_id=10, versione_id=101, valido_al=date(2026, 3, 31),
+        )
+        repo.set_versione_valido_al.assert_any_call(
+            listino_id=10, versione_id=150, valido_al=date(2026, 3, 31),
+        )
+        repo.change_versione_state.assert_called_once_with(10, 202, "ATTIVA")
+        mock_atomic.assert_called_once()
+
+    # Scopo: D3 - attivazione senza precedenti attive non chiama set_versione_valido_al.
+    @patch("apps.vendite.services.listini_service.transaction.atomic")
+    @patch("apps.vendite.services.listini_service.ListiniRepository")
+    def test_change_state_attiva_no_previous_skips_autoclose(self, mock_repo_cls, mock_atomic):
+        del mock_atomic
+        from apps.vendite.services.listini_service import fn_change_versione_state
+
+        repo = mock_repo_cls.return_value
+        repo.get_versione.side_effect = [
+            {
+                "id": 202,
+                "listino_id": 10,
+                "stato": "BOZZA",
+                "attivo": True,
+                "valido_dal": date(2026, 4, 1),
+            },
+            {"id": 202, "listino_id": 10, "stato": "ATTIVA"},
+        ]
+        repo.count_active_righe_versione.return_value = 3
+        repo.find_versioni_per_autoclose.return_value = []
+        repo.change_versione_state.return_value = True
+
+        fn_change_versione_state(10, 202, {"stato": "ATTIVA"})
+
+        repo.set_versione_valido_al.assert_not_called()
+        repo.change_versione_state.assert_called_once_with(10, 202, "ATTIVA")
+
+    # Scopo: O1 - meta e attivo nel payload clone non devono finire nel target_data.
+    @patch("apps.vendite.services.listini_service.transaction.atomic")
+    @patch("apps.vendite.services.listini_service.ListiniRepository")
+    def test_clone_versione_filters_meta_attivo_from_payload(self, mock_repo_cls, mock_atomic):
+        del mock_atomic
+        from apps.vendite.services.listini_service import fn_clone_versione
+
+        repo = mock_repo_cls.return_value
+        repo.get_versione.side_effect = [
+            {
+                "id": 101,
+                "listino_id": 10,
+                "valido_dal": date(2026, 1, 1),
+            },
+            {"id": 303, "listino_id": 10, "stato": "BOZZA"},
+        ]
+        repo.clone_versione.return_value = 303
+
+        fn_clone_versione(
+            10,
+            101,
+            {
+                "codice_versione": "V003",
+                "valido_dal": "2026-06-01",
+                "meta": {"note": "should be ignored"},
+                "attivo": False,
+            },
+        )
+
+        target_data = repo.clone_versione.call_args.kwargs["target_data"]
+        self.assertEqual(set(target_data.keys()), {"codice_versione", "valido_dal"})
+
+    # Scopo: D3 - guard CHK constraint: se la precedente inizia il giorno prima
+    #        della nuova decorrenza, l'autoclose produrrebbe valido_al == valido_dal
+    #        (violazione chk_listini_versioni_date). Il service deve fail-fast con
+    #        messaggio chiaro invece di lasciar scattare un IntegrityError generico.
+    @patch("apps.vendite.services.listini_service.transaction.atomic")
+    @patch("apps.vendite.services.listini_service.ListiniRepository")
+    def test_change_state_attiva_blocked_when_autoclose_violates_chk(
+        self, mock_repo_cls, mock_atomic,
+    ):
+        from apps.vendite.services.listini_service import fn_change_versione_state
+
+        repo = mock_repo_cls.return_value
+        repo.get_versione.return_value = {
+            "id": 202,
+            "listino_id": 10,
+            "stato": "BOZZA",
+            "attivo": True,
+            "valido_dal": date(2026, 4, 1),
+        }
+        repo.count_active_righe_versione.return_value = 5
+        # Precedente inizia il giorno prima della nuova: gap di 1 giorno -> CHK fail
+        repo.find_versioni_per_autoclose.return_value = [
+            {
+                "id": 101,
+                "codice_versione": "V001-1day",
+                "valido_dal": date(2026, 3, 31),  # nuova_valido_dal - 1
+                "valido_al": None,
+            },
+        ]
+
+        with self.assertRaises(ServiceError) as ctx:
+            fn_change_versione_state(10, 202, {"stato": "ATTIVA"})
+        self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
+        self.assertIn("2 giorni", ctx.exception.detail or "")
+        # Niente scritture: ne` set_versione_valido_al ne` change_versione_state
+        repo.set_versione_valido_al.assert_not_called()
+        repo.change_versione_state.assert_not_called()
+        mock_atomic.assert_not_called()
+
+    # Scopo: O2 - DELETE versione BOZZA passa il guard ed elimina con cascade.
+    @patch("apps.vendite.services.listini_service.transaction.atomic")
+    @patch("apps.vendite.services.listini_service.ListiniRepository")
+    def test_delete_versione_bozza_ok(self, mock_repo_cls, mock_atomic):
+        del mock_atomic
+        from apps.vendite.services.listini_service import fn_delete_versione
+
+        repo = mock_repo_cls.return_value
+        repo.get_versione.return_value = {"id": 101, "listino_id": 10, "stato": "BOZZA"}
+        repo.delete_versione.return_value = True
+
+        result = fn_delete_versione(10, 101)
+
+        self.assertEqual(result, {"deleted": True, "id": 101})
+        repo.delete_versione.assert_called_once_with(10, 101)
+
+    # Scopo: O2 - DELETE versione ATTIVA viene rifiutato dal guard.
+    @patch("apps.vendite.services.listini_service.ListiniRepository")
+    def test_delete_versione_attiva_rejected(self, mock_repo_cls):
+        from apps.vendite.services.listini_service import fn_delete_versione
+
+        repo = mock_repo_cls.return_value
+        repo.get_versione.return_value = {"id": 101, "listino_id": 10, "stato": "ATTIVA"}
+
+        with self.assertRaises(ServiceError) as ctx:
+            fn_delete_versione(10, 101)
+        self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
+        self.assertIn("BOZZA", ctx.exception.detail or "")
+        repo.delete_versione.assert_not_called()
+
+    # Scopo: O2 - DELETE versione CHIUSA viene rifiutato dal guard.
+    @patch("apps.vendite.services.listini_service.ListiniRepository")
+    def test_delete_versione_chiusa_rejected(self, mock_repo_cls):
+        from apps.vendite.services.listini_service import fn_delete_versione
+
+        repo = mock_repo_cls.return_value
+        repo.get_versione.return_value = {"id": 101, "listino_id": 10, "stato": "CHIUSA"}
+
+        with self.assertRaises(ServiceError) as ctx:
+            fn_delete_versione(10, 101)
+        self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
+        repo.delete_versione.assert_not_called()
+
+    # Scopo: O3 - DELETE listino senza versioni e associazioni passa il guard.
+    @patch("apps.vendite.services.listini_service.ListiniRepository")
+    def test_delete_listino_orphan_ok(self, mock_repo_cls):
+        from apps.vendite.services.listini_service import fn_delete_listino
+
+        repo = mock_repo_cls.return_value
+        repo.get_listino.return_value = {
+            "id": 10,
+            "codice": "TEST",
+            "versioni_count": 0,
+            "associazioni_count": 0,
+        }
+        repo.delete_listino.return_value = True
+
+        result = fn_delete_listino(10)
+
+        self.assertEqual(result, {"deleted": True, "id": 10})
+        repo.delete_listino.assert_called_once_with(10)
+
+    # Scopo: O3 - DELETE listino con almeno una versione viene rifiutato.
+    @patch("apps.vendite.services.listini_service.ListiniRepository")
+    def test_delete_listino_with_versioni_rejected(self, mock_repo_cls):
+        from apps.vendite.services.listini_service import fn_delete_listino
+
+        repo = mock_repo_cls.return_value
+        repo.get_listino.return_value = {
+            "id": 10,
+            "codice": "TEST",
+            "versioni_count": 1,
+            "associazioni_count": 0,
+        }
+
+        with self.assertRaises(ServiceError) as ctx:
+            fn_delete_listino(10)
+        self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
+        self.assertIn("attivo=false", ctx.exception.detail or "")
+        repo.delete_listino.assert_not_called()
+
+    # Scopo: O3 - DELETE listino con associazioni viene rifiutato anche se versioni=0.
+    @patch("apps.vendite.services.listini_service.ListiniRepository")
+    def test_delete_listino_with_associazioni_rejected(self, mock_repo_cls):
+        from apps.vendite.services.listini_service import fn_delete_listino
+
+        repo = mock_repo_cls.return_value
+        repo.get_listino.return_value = {
+            "id": 10,
+            "codice": "TEST",
+            "versioni_count": 0,
+            "associazioni_count": 2,
+        }
+
+        with self.assertRaises(ServiceError) as ctx:
+            fn_delete_listino(10)
+        self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
+        repo.delete_listino.assert_not_called()
 
     # Scopo: Verifica obbligatorieta` uom nel test resolver.
     def test_test_resolver_requires_uom(self):

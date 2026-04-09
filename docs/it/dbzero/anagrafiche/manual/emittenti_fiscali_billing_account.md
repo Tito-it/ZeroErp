@@ -9,12 +9,15 @@
 > • [vendite.fatture](/dbzero/vendite/tabelle/fatture)    
 >
 ### 🎯 Scopo Principale
-(latest review 23-01-2026)
+(latest review 08-04-2026)
 La tabella `anagrafiche.emittenti_fiscali_billing_account` definisce l’associazione tra **billing account**
 e **emittente fiscale** (ruolo), garantendo che ogni documento abbia un emittente coerente e deterministico.
 
-Il modello prevede un **emittente di default globale** utilizzato quando non esiste una
-associazione specifica per il billing account.
+Il modello prevede un **emittente di default globale** che, dopo il refactor del 2026-04-08, agisce come
+**rete di sicurezza** per i casi residui (seed/bootstrap, scenari "0 emittenti"), mentre il caso normale
+prevede che ogni BA venga **auto‑collegato** all'emittente dell'operatore che lo crea, tramite il trigger
+[`trgfn_billing_account_link_ef`](/dbzero/anagrafiche/funzioni/trgfn_billing_account_link_ef) sulla tabella
+`billing_account`. Vedi [refactor operatore ↔ emittente](/dev/work-in-progress/refactor-operatore-emittenti).
 
 ---
 
@@ -40,8 +43,9 @@ associazione specifica per il billing account.
 
 ### Best practice operative
 
-* Inserire sempre un **emittente di default** appena si abilita il modulo fatturazione.
-* Creare mapping specifici per BA solo quando necessario (multi‑emittente).
+* Inserire sempre un **emittente di default** appena si abilita il modulo fatturazione (rete di sicurezza per BA non auto‑collegati).
+* Dopo il refactor 2026-04-08, i mapping specifici per BA vengono **creati automaticamente** alla creazione del BA dal trigger di auto‑link, basandosi sull'emittente dell'operatore corrente. Non serve più popolarli manualmente.
+* L'admin globale **non può** creare BA quando esistono emittenti fiscali attivi (vincolo a livello DB tramite [`trgfn_billing_account_guard_admin_globale`](/dbzero/anagrafiche/funzioni/trgfn_billing_account_guard_admin_globale)). Per creare un BA, occorre operare come operatore o admin di emittente.
 
 ---
 

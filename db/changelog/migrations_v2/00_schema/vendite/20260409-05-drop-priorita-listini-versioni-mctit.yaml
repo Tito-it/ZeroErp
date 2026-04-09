@@ -1,0 +1,82 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# DROP colonna priorita su vendite.listini_versioni (Fase 2 refactor listini)
+# ------------------------------------------------------------
+# Background:
+# Dopo il fix 20260409-01 (vincolo ex_listini_versioni_no_overlap con filtro
+# stato='ATTIVA'), il campo priorita su listini_versioni non discrimina piu
+# nulla: l'invariante "una sola versione ATTIVA per listino sull'intervallo"
+# rende impossibile la coesistenza di due versioni ATTIVA in tie temporale.
+#
+# Vedi WIP listini-commercio sezione 5 (Fase 2). File gemello di
+# 20260409-04-drop-priorita-listini-associazioni.
+#
+# Operazioni:
+# 1) DROP CHECK CONSTRAINT chk_listini_versioni_priorita
+# 2) DROP COLUMN priorita
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260409-05-drop-priorita-listini-versioni-mctit.yaml
+
+  - changeSet:
+      id: 20260409-05-01-drop-chk-listini-versioni-priorita
+      author: mctit
+      runOnChange: false
+      comment: >
+        Drop CHECK constraint chk_listini_versioni_priorita prima del drop
+        colonna.
+      preConditions:
+        - onFail: HALT
+        - tableExists: { schemaName: vendite, tableName: listini_versioni }
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.listini_versioni
+                DROP CONSTRAINT IF EXISTS chk_listini_versioni_priorita;
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.listini_versioni
+                ADD CONSTRAINT chk_listini_versioni_priorita
+                CHECK (priorita > 0);
+
+  - changeSet:
+      id: 20260409-05-02-drop-column-listini-versioni-priorita
+      author: mctit
+      runOnChange: false
+      comment: >
+        Drop colonna priorita da vendite.listini_versioni. Diventa codice morto
+        post fix 20260409-01 (univocita versione ATTIVA con filtro stato).
+        Vedi WIP listini-commercio sezione 5.
+      preConditions:
+        - onFail: HALT
+        - columnExists:
+            schemaName: vendite
+            tableName: listini_versioni
+            columnName: priorita
+      changes:
+        - dropColumn:
+            schemaName: vendite
+            tableName: listini_versioni
+            columnName: priorita
+      rollback:
+        - addColumn:
+            schemaName: vendite
+            tableName: listini_versioni
+            columns:
+              - column:
+                  name: priorita
+                  type: smallint
+                  defaultValueNumeric: 100
+                  constraints:
+                    nullable: false
+        - sql:
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.listini_versioni
+                ADD CONSTRAINT chk_listini_versioni_priorita
+                CHECK (priorita > 0);

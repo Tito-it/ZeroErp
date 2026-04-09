@@ -81,11 +81,13 @@ def _optional_qp_iso_date(request: Request, key: str):
 
 
 # Scopo: Definisce in un solo punto i campi write articolo per schema API.
-def _articolo_write_fields(*, include_codice: bool) -> dict[str, serializers.Field]:
+# for_create=True abilita codice e uom_id come obbligatori (NOT NULL DDL).
+# for_create=False (PATCH) li esclude entrambi: sono immutabili dopo create
+# (lock_columns DDL trg_articoli_a10_protect_codice_upd / _protect_uom_id_upd).
+def _articolo_write_fields(*, for_create: bool) -> dict[str, serializers.Field]:
     fields: dict[str, serializers.Field] = {
         "descrizione": serializers.CharField(required=False),
         "descrizione_breve": serializers.CharField(required=False, allow_blank=True, allow_null=True),
-        "uom_id": serializers.IntegerField(required=False, allow_null=True),
         "tipo_voce_id": serializers.IntegerField(required=False, allow_null=True),
         "gruppo_voce_id": serializers.IntegerField(required=False, allow_null=True),
         "spesa_id": serializers.IntegerField(required=False, allow_null=True),
@@ -98,8 +100,12 @@ def _articolo_write_fields(*, include_codice: bool) -> dict[str, serializers.Fie
         "voce_utility": serializers.BooleanField(required=False),
         "meta": serializers.JSONField(required=False, allow_null=True),
     }
-    if include_codice:
-        fields = {"codice": serializers.CharField(required=True), **fields}
+    if for_create:
+        fields = {
+            "codice": serializers.CharField(required=True),
+            "uom_id": serializers.IntegerField(required=True),
+            **fields,
+        }
     return fields
 
 
@@ -162,12 +168,12 @@ def _nota_write_fields() -> dict[str, serializers.Field]:
 
 _ARTICOLO_CREATE_REQUEST = inline_serializer(
     name="CatalogoArticoloCreateRequest",
-    fields=_articolo_write_fields(include_codice=True),
+    fields=_articolo_write_fields(for_create=True),
 )
 
 _ARTICOLO_PATCH_REQUEST = inline_serializer(
     name="CatalogoArticoloPatchRequest",
-    fields=_articolo_write_fields(include_codice=False),
+    fields=_articolo_write_fields(for_create=False),
 )
 
 _UOM_CREATE_REQUEST = inline_serializer(

@@ -16,6 +16,8 @@
 | cleanup_at | timestamp with time zone | YES |  |
 | data_insert | timestamp with time zone | NO | now() |
 | user_insert | text | NO | CURRENT_USER |
+| data_update | timestamp with time zone | NO | now() |
+| user_update | text | NO | CURRENT_USER |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -31,6 +33,14 @@
 | ix_sessioni_utente_data_insert | `CREATE INDEX ix_sessioni_utente_data_insert ON dbops.sessioni_utente USING btree (data_insert DESC)` |
 | ix_sessioni_utente_jti | `CREATE INDEX ix_sessioni_utente_jti ON dbops.sessioni_utente USING btree (jti)` |
 | pk_sessioni_utente | `CREATE UNIQUE INDEX pk_sessioni_utente ON dbops.sessioni_utente USING btree (id)` |
+
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_sessioni_utente_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_sessioni_utente_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_sessioni_utente_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_sessioni_utente_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 
 ---
 {% include-markdown "signature-core.md" %}

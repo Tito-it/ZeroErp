@@ -1,6 +1,6 @@
 # Guida – Gestione Listini Prezzo
 
-> (latest review 05-04-26)
+> (latest review 09-04-26 — refactor invariante univocita listini_associazioni Fase 1+2 completate, vedi [WIP listini-commercio](/dev/work-in-progress/listini-commercio))
 >
 > Destinatari: sviluppatori database, backend e analisti funzionali
 >
@@ -71,9 +71,10 @@ E la finestra temporale in cui un listino e valido. Ogni versione ha:
 
 * un intervallo di validita (`valido_dal`, `valido_al`)
 * uno stato che governa il ciclo di vita (`BOZZA` → `ATTIVA` → `CHIUSA`)
-* una priorita per il tie-break tra versioni dello stesso listino
 
-Le versioni attive dello stesso listino **non possono sovrapporsi** temporalmente (vincolo esclusione `ex_listini_versioni_no_overlap`).
+Le versioni con `stato = 'ATTIVA'` dello stesso listino **non possono sovrapporsi** temporalmente (vincolo esclusione `ex_listini_versioni_no_overlap`, fix `20260409-01`). Le BOZZE possono coesistere con la versione ATTIVA per supportare il workflow clone+publish.
+
+> Il campo `listini_versioni.priorita` e stato **rimosso il 2026-04-09 (Fase 2)** insieme al check constraint `chk_listini_versioni_priorita`. Con l'invariante univocita per versione `ATTIVA` (post-fix `20260409-01`) non discriminava piu nulla. Vedi [WIP listini-commercio §5](/dev/work-in-progress/listini-commercio).
 
 ### Riga prezzo
 
@@ -94,7 +95,6 @@ L'associazione non e un semplice collegamento — e il primo filtro che il resol
 
 * a quale listino si riferisce (obbligatorio)
 * per quale contesto vale (BA, utility, emittente — tutti opzionali)
-* con quale priorita in caso di competizione tra listini
 * in quale periodo e valida
 
 | Scenario | billing_account_id | utility_id | emittente_id | Significato |
@@ -104,7 +104,9 @@ L'associazione non e un semplice collegamento — e il primo filtro che il resol
 | Listino per cliente | 42 | NULL | NULL | Solo per BA 42 |
 | Listino dedicato | 42 | 3 | 1 | Solo per BA 42, utility gas, emittente 1 |
 
-La **priorita** (`priorita`, default 100) serve quando piu listini matchano lo stesso contesto: il listino con priorita numericamente piu bassa vince.
+> **Invariante 2026-04-09**: per ogni triple `(BA, utility, emittente)` — con `NULL` come wildcard discreto — esiste **al massimo una** associazione attiva sull'intervallo temporale, indipendentemente dal listino. Vincolo `ex_listini_associazioni_no_overlap` (EXCLUDE GIST). Le sostituzioni avvengono via *autoclose* (vedi sezione "Workflow di sostituzione" piu sotto).
+>
+> Il campo `listini_associazioni.priorita` e stato **rimosso il 2026-04-09 (Fase 2)** insieme al check constraint `chk_listini_associazioni_priorita`. Con l'invariante univocita stretta non discriminava piu nulla. Vedi [WIP listini-commercio §5](/dev/work-in-progress/listini-commercio).
 
 ---
 
@@ -205,13 +207,17 @@ Il resolver cerca le righe delle versioni candidate che matchano `articolo_id + 
 
 ### Fase 4 — Tie-break
 
-Se piu righe hanno lo stesso livello di specificita, il resolver applica una cascata di tie-break:
+Con l'invariante univocita stretta (refactor 2026-04-09) il caso "due righe con stesso match_level" e strutturalmente vietato dal database:
 
-1. **Priorita associazione** (`listini_associazioni.priorita`) — valore minore vince
-2. **Priorita versione** (`listini_versioni.priorita`) — valore minore vince
-3. **Validita piu specifica/recente** — data inizio validita piu recente
+* per ogni triple `(BA, utility, emittente)` esiste una sola associazione attiva sull'intervallo (`ex_listini_associazioni_no_overlap`)
+* per ogni listino esiste una sola versione `ATTIVA` sull'intervallo (`ex_listini_versioni_no_overlap`)
+* per ogni `(versione, articolo, uom, BA, utility, emittente)` esiste una sola riga attiva (`uq_listini_righe_key_attiva`)
 
-Se dopo tutti i tie-break restano righe equivalenti, il resolver genera l'errore `AMBIGUOUS_PRICE_MATCH`. Questo comportamento e intenzionale: nessun prezzo viene scelto in modo arbitrario.
+Quindi il resolver, dopo aver applicato il `match_level` di specificita (sezione precedente), restituisce **al massimo una riga**. Niente tie-break vero da applicare.
+
+Per **safety paranoid check**, se due righe arrivassero comunque con lo stesso `match_level` (scenario impossibile per costruzione, ma proteggiamo contro bug futuri o disabilitazione manuale di constraint), il resolver genera l'errore `E_PREZZO_LISTINO_AMBIGUO`. Nessun prezzo viene scelto in modo arbitrario.
+
+> **Storia**: prima del refactor 2026-04-09 il resolver applicava una cascata di tie-break su `listini_associazioni.priorita` e `listini_versioni.priorita`. La Fase 1 (`20260409-03`) ha introdotto l'invariante univocita stretta, rendendo quel codice no-op safe. La Fase 2 (`20260409-04/-05`) ha **droppato fisicamente** le colonne `priorita` ed e stato pubblicato un nuovo `fn_resolve_prezzo_listino` (`20260409-04` in `20_code/vendite`) senza piu riferimenti alle colonne. L'`ORDER BY` del resolver si e ridotto a `match_rank`, `valido_dal DESC`, `valido_al ASC` + tie-break tecnico su `id` per determinismo.
 
 ### Output
 
@@ -236,24 +242,38 @@ Non esiste fallback silenzioso: se il resolver non trova un prezzo univoco, l'er
 
 ---
 
-## Regole multi-listino
+## Regole univocita per scope (refactor 2026-04-09)
 
-Un concetto chiave del sistema e che la risoluzione opera **su tutti i listini candidati contemporaneamente**, non selezionando prima un listino vincente e poi cercando il prezzo al suo interno.
+L'invariante centrale del sistema dopo il refactor del 2026-04-09 e:
 
-In pratica:
+> **Per ogni triple `(BA, utility, emittente)`** — con `NULL` come valore wildcard discreto — **esiste al massimo una associazione attiva sull'intervallo temporale, indipendentemente dal listino.**
 
-1. Le associazioni determinano quali listini sono candidati per il contesto
-2. Le righe di **tutti** i listini candidati competono tra loro per specificita
-3. La priorita dell'associazione interviene **solo come tie-break** tra righe di pari specificita
+Questo significa che a una data data, per uno scope dato, **un solo listino e responsabile del prezzo**. Niente competizione, niente tie-break tra listini concorrenti, niente "il listino con priorita piu bassa vince".
 
-Questo significa che un listino con associazione a priorita alta (valore basso) non batte automaticamente un listino con priorita bassa ma con una riga piu specifica.
+Il vincolo `ex_listini_associazioni_no_overlap` (EXCLUDE GIST cross-listino) impedisce a livello DB qualsiasi configurazione che violi questa invariante. Se si tenta di inserire un'associazione con scope sovrapposto a una esistente, il database rifiuta l'INSERT con errore esplicito.
 
-**Esempio:**
+### Workflow di sostituzione (autoclose + insert)
 
-* Listino A: associazione priorita 10, riga con solo articolo+UoM (livello 7)
-* Listino B: associazione priorita 50, riga con BA+utility+emittente (livello 1)
+Per sostituire un'associazione esistente con una nuova (es. cambio listino di un cliente, cambio annuale, promo temporanea), il pattern operativo e:
 
-Vince il Listino B perche il match di livello 1 e piu specifico del livello 7, indipendentemente dalla priorita dell'associazione.
+1. **Autoclose** della vecchia: `UPDATE listini_associazioni SET valido_al = nuova.valido_dal - 1 WHERE id = vecchia_id`
+2. **Insert** della nuova: `INSERT INTO listini_associazioni (..., valido_dal, valido_al) VALUES (..., nuova_valido_dal, nuova_valido_al)`
+3. Tutto in **transazione atomica** (`with transaction.atomic()` lato backend)
+
+Stesso pattern gia' adottato per `listini_versioni` (publish di una nuova versione con autoclose della precedente).
+
+### Caso "promo temporanea" (override per periodo limitato)
+
+Per applicare un listino "promo" su un BA per un periodo limitato `[Pmin, Pmax]` senza perdere il listino base prima e dopo:
+
+```text
+1. UPDATE listini_associazioni base BA: valido_al = Pmin - 1
+2. INSERT listini_associazioni promo BA: scope=(BA), valido_dal=Pmin, valido_al=Pmax
+3. INSERT listini_associazioni base BA ripristino: scope=(BA), valido_dal=Pmax+1, valido_al=NULL
+Tutto in transazione atomica.
+```
+
+Questo workflow potra essere astratto in un endpoint backend dedicato `apply_temporary_pricing(BA, Pmin, Pmax, listino_id)` quando emerge il caso d'uso reale. Vedi [WIP listini-commercio §3.4](/dev/work-in-progress/listini-commercio).
 
 ---
 
@@ -312,17 +332,19 @@ La riduzione a 6 decimali avviene **solo** nel layer fatture. Nessuna funzione i
 
 ## Vincoli e regole di coerenza
 
-### No overlap versioni
+### No overlap versioni (per listino)
 
-Per ogni listino, le versioni con stato `ATTIVA` non possono avere intervalli temporali sovrapposti. Il vincolo e implementato con indice di esclusione GIST (`ex_listini_versioni_no_overlap`).
+Per ogni listino, le versioni con `stato = 'ATTIVA'` non possono avere intervalli temporali sovrapposti. Il vincolo e implementato con indice di esclusione GIST (`ex_listini_versioni_no_overlap`, fix `20260409-01`). Le BOZZE possono coesistere per supportare il workflow clone+publish.
 
 ### Unicita riga per combinazione dimensionale
 
 Per ogni versione, non puo esistere piu di una riga attiva con la stessa combinazione `(articolo, uom, BA, utility, emittente)`. Il vincolo `uq_listini_righe_key_attiva` usa `COALESCE` sulle dimensioni opzionali per gestire i NULL.
 
-### Unicita associazione
+### Univocita associazione cross-listino (refactor 2026-04-09)
 
-Per ogni listino, non puo esistere piu di un'associazione attiva con la stessa combinazione `(contesto + valido_dal)`. Vincolo: `uq_listini_associazioni_key_attiva`.
+**Per ogni triple `(BA, utility, emittente)`** — con `NULL` come wildcard discreto — **non possono esistere due righe attive con intervalli temporali sovrapposti, indipendentemente dal listino**. Vincolo: `ex_listini_associazioni_no_overlap` (EXCLUDE GIST con `daterange && daterange`, fix `20260409-02`).
+
+Questa e l'invariante che garantisce univocita del listino responsabile del prezzo per ogni scope dimensionale a ogni data. Vedi sezione "Regole univocita per scope" sopra.
 
 ### Coerenza attivazione/disattivazione
 

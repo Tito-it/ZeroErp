@@ -39,6 +39,8 @@ export const DOMAIN_MENUS = {
     { key: 'operatori', icon: 'pi pi-key', to: '/amm-software/operatori' },
     { key: 'profili-reparto', icon: 'pi pi-sitemap', to: '/amm-software/profili-reparto' },
     { key: 'permessi', icon: 'pi pi-shield', to: '/amm-software/permessi' },
+    { key: 'emittenti-fiscali', icon: 'pi pi-id-card', to: '/amm-software/emittenti-fiscali' },
+    { key: 'matrice-utilities-ruoli', icon: 'pi pi-table', to: '/amm-software/matrice-utilities-ruoli' },
     { key: 'audit-log', icon: 'pi pi-history', to: '/amm-software/audit-log' },
     { key: 'email-accounts', icon: 'pi pi-at', to: '/amm-software/email-accounts' },
     { key: 'email-templates', icon: 'pi pi-file-edit', to: '/amm-software/email-templates' },

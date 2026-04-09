@@ -175,11 +175,12 @@ class ParameterRepository:
             return cursor.rowcount > 0
 
     # Scopo: Risolve l'emittente_fiscale_id "corrente" per l'utente.
-    #        Catena di fallback (coerente con altri dominii):
+    #        Catena di fallback:
     #        1) script.fn_get_emittenti_scope -> primo emittente della whitelist
     #           personale (config.user_emittenti_fiscali);
-    #        2) emittente "gestore" di default del sistema
-    #           (anagrafiche.emittenti_fiscali con is_default = true).
+    #        2) gestore globale dal mapping anagrafiche.emittenti_fiscali_billing_account
+    #           (riga con billing_account_id IS NULL AND is_default = true), risolvendo
+    #           poi l'emittenti_fiscali.id via JOIN su soggetto_ruolo_id.
     #        Restituisce None solo se nessuno dei due e' disponibile (sistema
     #        non configurato).
     def get_emittente_fiscale_id_for_user(self, auth_user_id: int) -> int | None:
@@ -192,12 +193,19 @@ class ParameterRepository:
                 if emittenti:
                     return emittenti[0]
 
-            # 2) Fallback: emittente gestore di default
+            # 2) Fallback: gestore globale dal mapping emittenti_fiscali_billing_account.
+            #    La riga "gestore" ha billing_account_id IS NULL AND is_default = true.
+            #    JOIN su emittenti_fiscali per ottenere la PK numerica usata da
+            #    config.parameter_overrides.emittente_fiscale_id (FK -> emittenti_fiscali.id).
             cursor.execute(
                 """
-                SELECT id
-                  FROM anagrafiche.emittenti_fiscali
-                 WHERE is_default = true AND attivo = true
+                SELECT ef.id
+                  FROM anagrafiche.emittenti_fiscali_billing_account efba
+                  JOIN anagrafiche.emittenti_fiscali ef
+                    ON ef.soggetto_ruolo_id = efba.emittente_soggetto_ruolo_id
+                 WHERE efba.billing_account_id IS NULL
+                   AND efba.is_default = true
+                   AND ef.attivo = true
                  LIMIT 1
                 """
             )

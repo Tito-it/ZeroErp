@@ -5,12 +5,13 @@
 import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useClientiStore } from '../stores/clienti'
+import { useAuthStore } from '../../stores/auth'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useLookup } from '../../core/composables/useLookup'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useContattoForm } from '../../core/composables/useContattoForm'
 import { useIndirizzoSoggettoForm } from '../../core/composables/useIndirizzoSoggettoForm'
-import { listUtilitiesManual, listSoggettoIndirizzi } from '../api/anagrafiche'
+import { listUtilitiesManual, listUtilitiesPerBillingAccount, listSoggettoIndirizzi } from '../api/anagrafiche'
 import { DRAWER_WIDTH, TIPO_RUOLO } from '../../core/constants'
 import { displayDate } from '../../core/utils/date'
 import { statoClienteSeverity } from '../../core/utils/severity'
@@ -29,16 +30,19 @@ import InputNumber from 'primevue/inputnumber'
 import Checkbox from 'primevue/checkbox'
 import Tag from 'primevue/tag'
 import Button from 'primevue/button'
+import Message from 'primevue/message'
 
 const { t } = useI18n()
 const store = useClientiStore()
+const auth = useAuthStore()
 const { execute, loading } = useApiHandler()
 const isReadonly = useInjectReadonly()
 const contatto = useContattoForm()
 const contattoErrors = ref([])
 const indirizzo = useIndirizzoSoggettoForm()
 
-// Lookup
+// Lookup utility per modalita' creazione (sorgente globale).
+// In modalita' edit usiamo il nuovo endpoint BA-driven (vedi sotto).
 const utilities = useLookup(() => listUtilitiesManual(), { immediate: true })
 
 // Opzioni statiche (label tramite i18n)
@@ -66,6 +70,40 @@ const props = defineProps({
 const emit = defineEmits(['update:visible', 'saved', 'cancelled'])
 
 const isEdit = computed(() => props.mode === 'edit')
+
+// Lookup utility BA-driven (FE-4.5 refactor operatore-emittenti).
+// In modalita' edit il BA esiste gia': chiamiamo il nuovo endpoint che
+// restituisce utility ammesse per il ruolo CL del BA, intersecate con la
+// matrice slot/override dell'emittente associato. Sempre singola entry
+// (l'utility del BA e' immutabile) ma coerente con la semantica refactor.
+const utilitiesBaDriven = ref([])
+const utilitiesBaLoading = ref(false)
+async function loadUtilitiesBaDriven(billingAccountId) {
+  if (!billingAccountId) {
+    utilitiesBaDriven.value = []
+    return
+  }
+  utilitiesBaLoading.value = true
+  try {
+    const res = await listUtilitiesPerBillingAccount(billingAccountId, TIPO_RUOLO.CLIENTE)
+    const results = res.data.data?.results || []
+    utilitiesBaDriven.value = results.map(r => ({
+      id: r.utility_id,
+      codice: r.codice,
+      descrizione: r.descrizione,
+      is_personalizzata_per_ef: r.is_personalizzata_per_ef,
+    }))
+  } catch (err) {
+    utilitiesBaDriven.value = []
+    // eslint-disable-next-line no-console
+    console.warn('ClienteDrawer: loadUtilitiesBaDriven failed', err)
+  } finally {
+    utilitiesBaLoading.value = false
+  }
+}
+// Sorgente effettiva del Select utility: BA-driven in edit, manual in create.
+const utilityOptions = computed(() => isEdit.value ? utilitiesBaDriven.value : utilities.items.value)
+const utilityLoading = computed(() => isEdit.value ? utilitiesBaLoading.value : utilities.loading.value)
 
 // Form unificato (usato sia in create che in edit/view)
 const form = ref({})
@@ -98,6 +136,7 @@ function resetForm() {
   contatto.reset()
   contattoErrors.value = []
   indirizzo.reset()
+  utilitiesBaDriven.value = []
 }
 
 // Scopo: Popola form dai dati dettaglio (edit mode).
@@ -160,6 +199,11 @@ watch(() => props.visible, async (val) => {
     const d = await store.fetchDetail(props.clienteId)
     detail.value = d
     populateFormFromDetail(d)
+    // Refactor operatore-emittenti: in edit le utility vengono dal BA
+    // (filtrate per emittente associato + parametri override).
+    if (d.billing_account_id) {
+      loadUtilitiesBaDriven(d.billing_account_id)
+    }
   } else {
     resetForm()
     indirizzo.loadMatriceRuolo(TIPO_RUOLO.CLIENTE)
@@ -229,7 +273,14 @@ async function onSave() {
   }
 }
 
-const canSave = computed(() => !!soggettoSelezionato.value && !!form.value.utility_id)
+// canSave: in creazione richiede soggetto + utility, e non deve essere
+// admin globale (refactor operatore-emittenti Q6 — defense-in-depth UI:
+// il guard backend e il trigger DB sono comunque la difesa primaria).
+const canSave = computed(() => {
+  if (!soggettoSelezionato.value || !form.value.utility_id) return false
+  if (auth.isAdminGlobale) return false
+  return true
+})
 
 // Scopo: Calcola data sospensione/riattivazione da mostrare.
 const dataSospRiattDetail = computed(() => {
@@ -299,11 +350,18 @@ function onClose() {
 
         <!-- === Servizio === -->
         <h4 class="mt-3">{{ t('clienti.section_servizio') }}</h4>
+        <!-- Banner refactor operatore-emittenti (solo creazione) -->
+        <Message v-if="!isEdit && auth.isAdminGlobale" severity="warn" :closable="false" class="mt-05">
+          {{ t('clienti.banner_admin_globale_no_create') }}
+        </Message>
+        <Message v-else-if="!isEdit && auth.emittenteCorrente" severity="info" :closable="false" class="mt-05">
+          {{ t('clienti.banner_emittente_corrente', { codice: auth.emittenteCorrente.codice }) }}
+        </Message>
         <!-- Riga: utility + servizio_da_fatturare + stato (edit) -->
         <div class="cliente-servizio-row">
           <div class="form-field" style="flex: 2;">
             <label>{{ t('clienti.field_utility') }} <span v-if="!isEdit">*</span></label>
-            <Select v-model="form.utility_id" :options="utilities.items.value" :loading="utilities.loading.value"
+            <Select v-model="form.utility_id" :options="utilityOptions" :loading="utilityLoading"
               option-label="descrizione" option-value="id" class="w-full" :placeholder="t('clienti.select_utility')"
               :disabled="isEdit" />
           </div>

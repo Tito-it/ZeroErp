@@ -62,8 +62,50 @@
 * **Integrità referenziale**: tutte le FK sono `ON UPDATE CASCADE` / `ON DELETE NO ACTION` (salvo diversa policy su note).
 * **Note**: `note_target_tipo` è vincolato a `ARTICOLI` quando valorizzato.
 * **Solo componente**: se `is_solo_componente=true` l’articolo non può essere usato come prodotto in `articoli_componenti`.
+* **`uom_id` obbligatorio**: dalla revisione del 07-04-2026 la colonna è `NOT NULL`. L'unità di misura principale è anagrafica e necessaria per il seed automatico della UoM operativa base.
 
 > Consigliato: proteggere l’**immutabilità** del `codice` con un trigger `BEFORE UPDATE` dedicato (se è business‑key) e con GRANT mirati.
+
+---
+
+### Seed automatico UoM operativa base
+
+(introdotto 07-04-2026)
+
+Quando viene inserito un articolo, il trigger **`trg_articoli_a10_seed_uom_base_ins`**
+(funzione `catalogo.trgfn_articoli_seed_uom_base`) crea automaticamente una riga
+in `catalogo.articoli_uom_operativa` con:
+
+* `articolo_id` = `NEW.id`
+* `uom_id` = `NEW.uom_id` (la UoM anagrafica dell'articolo)
+* `is_base` = `true`
+* `factor_to_base` = `1`
+* `attivo` = `true`
+
+Questo garantisce che la **UoM principale** dell'articolo sia sempre disponibile come
+**UoM operativa base** senza richiedere uno step manuale dopo la creazione.
+
+**Caratteristiche del seed**:
+
+* Trigger `AFTER INSERT` per garantire che la riga padre in `articoli` esista già
+* Idempotente via `ON CONFLICT ON CONSTRAINT uq_artuomop_articolo_uom DO NOTHING`
+* Nessun backfill sugli articoli pre-esistenti: si applica solo ai nuovi `INSERT`
+
+---
+
+### Lock di `uom_id` su UPDATE
+
+Il campo `uom_id` di `catalogo.articoli` è bloccato in UPDATE dal trigger
+**`trg_articoli_a10_protect_uom_id_upd`** (riusa `script.trgfn_lock_columns`).
+La UoM principale è considerata **anagrafica** e non può essere cambiata dopo
+la creazione dell'articolo.
+
+* **Codice errore**: `CODICE_NON_MODIFICABILE` (messaggio generico parametrico sul nome colonna)
+* **Pattern**: identico a `trg_articoli_a10_protect_codice_upd` già presente sulla stessa tabella per `codice`
+* **Override manutenzione**: `SET LOCAL zeroerp.allow_lock_columns_override = 'on';` consente la modifica nei contesti di migrazione/manutenzione
+* **Per cambiare la UoM principale**: creare un nuovo articolo (l'articolo storico resta intatto)
+
+Il lock è registrato anche in `dbops.automation_lock_columns` per coerenza con l'inventario centrale dei lock attivi.
 
 ---
 

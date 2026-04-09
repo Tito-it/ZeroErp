@@ -141,6 +141,40 @@ class PermissionResolver:
         return _cached(cache, "emittenti_ids", _query)
 
     @classmethod
+    def get_emittente_for_user(
+        cls, user: Any, *, cache: dict[str, Any] | None = None
+    ) -> int | None:
+        """Scopo: Risolve l'emittente fiscale 1-a-1 dell'utente (refactor
+        operatore-emittenti). Wrapper Python su `script.fn_resolve_emittente_for_user`.
+
+        Ritorna `emittenti_fiscali.id` (PK reale) se l'utente ha esattamente
+        una riga in `config.user_emittenti_fiscali` (operatore o admin di
+        emittente), altrimenti `None`:
+          - admin globale (0 righe in `user_emittenti_fiscali`) → None
+          - istanza "0 emittenti" (gestore = emittente) → None
+
+        I chiamanti devono trattare il `None` in base al loro contesto.
+        Per la creazione BA, il check di legittimità "admin globale +
+        emittenti presenti" è demandato alla funzione SQL
+        `script.fn_check_user_can_create_ba` e al trigger
+        `anagrafiche.trgfn_billing_account_guard_admin_globale`.
+
+        Vedi memoria progetto `feedback_emittente_pk_vs_soggetto_ruolo`:
+        questa funzione ritorna **la PK reale `emittenti_fiscali.id`**,
+        NON `soggetto_ruolo_id`.
+        """
+        def _query() -> int | None:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    "SELECT script.fn_resolve_emittente_for_user(%s)",
+                    [user.id],
+                )
+                row = cursor.fetchone()
+            return int(row[0]) if row and row[0] is not None else None
+
+        return _cached(cache, "emittente_for_user", _query)
+
+    @classmethod
     def get_area_schema_db(cls, app_label: str, model_name: str) -> str:
         """Scopo: Determina lo schema_db dell'area per un model.
         1. Controlla override in area_model_overrides

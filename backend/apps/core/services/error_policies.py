@@ -246,6 +246,31 @@ class ErrorPolicyRegistry:
             ui_action="show_error_banner",
             user_message="Configurazione mancante nel sistema.",
         ),
+        # ── Config / Matrice utilities x tipi_ruolo ──
+        "E_CONFIG_VALIDATION": ErrorPolicy(
+            code="E_CONFIG_VALIDATION",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message="Parametri di configurazione non validi.",
+        ),
+        "E_CONFIG_MATRICE_NOT_FOUND": ErrorPolicy(
+            code="E_CONFIG_MATRICE_NOT_FOUND",
+            http_status=404,
+            ui_action="show_empty_state",
+            user_message="Riga matrice utilities/ruoli non trovata.",
+        ),
+        "E_CONFIG_MATRICE_DUPLICATA": ErrorPolicy(
+            code="E_CONFIG_MATRICE_DUPLICATA",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Esiste gia' una riga matrice per questa coppia utility/tipo ruolo.",
+        ),
+        "E_CONFIG_MATRICE_FK": ErrorPolicy(
+            code="E_CONFIG_MATRICE_FK",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message="Utility o tipo ruolo inesistente.",
+        ),
         "E_VALIDATION_INPUT": ErrorPolicy(
             code="E_VALIDATION_INPUT",
             http_status=400,
@@ -327,6 +352,31 @@ class ErrorPolicyRegistry:
             http_status=404,
             ui_action="show_empty_state",
             user_message="Record non trovato.",
+        ),
+        # ── Refactor operatore-emittenti (Q6 + D3) ──
+        "E_BA_ADMIN_GLOBALE_VIETATO": ErrorPolicy(
+            code="E_BA_ADMIN_GLOBALE_VIETATO",
+            http_status=403,
+            ui_action="show_error_banner",
+            user_message="Un amministratore globale non puo' creare billing "
+                         "account quando esistono emittenti fiscali. Operare "
+                         "come operatore di un emittente specifico.",
+        ),
+        "E_EMITTENTE_NON_MODIFICABILE": ErrorPolicy(
+            code="E_EMITTENTE_NON_MODIFICABILE",
+            http_status=400,
+            ui_action="show_error_banner",
+            user_message="L'emittente fiscale di un operatore e' immutabile. "
+                         "Per cambiare l'associazione disattivare l'utente e "
+                         "crearne uno nuovo per l'altro emittente.",
+        ),
+        "E_USER_EMITTENTE_DELETE_VIETATO": ErrorPolicy(
+            code="E_USER_EMITTENTE_DELETE_VIETATO",
+            http_status=400,
+            ui_action="show_error_banner",
+            user_message="Eliminazione vietata: l'associazione utente-emittente "
+                         "puo' essere rimossa solo come parte della "
+                         "disattivazione utente.",
         ),
         # ── Anagrafiche / Soggetti e trigger ──
         "E_INDIRIZZO_OBBLIGATORIO_MANCANTE": ErrorPolicy(

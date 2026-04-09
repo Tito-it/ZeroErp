@@ -1,9 +1,13 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
 -- pgTAP test per Zero ERP
--- Test: vendite.fn_resolve_prezzo_listino (changeset 20260224-02)
+-- Test: vendite.fn_resolve_prezzo_listino
+--       Refactor 2026-04-09 fase 2 (vedi WIP listini-commercio):
+--         - Univocita stretta per scope dimensionale (no piu multi-listino)
+--         - Drop colonne priorita su listini_associazioni e listini_versioni
+--         - Resolver senza tie-break su priorita
 -- ------------------------------------------------------------
--- Indice test (1..14):
+-- Indice test (1..11):
 -- 1) Funzione fn_resolve_prezzo_listino presente
 -- 2) Riferimenti minimi disponibili (articolo/uom/BA/utility/emittente)
 -- 3) p_data_riferimento NULL -> errore
@@ -14,14 +18,20 @@
 -- 8) Precedenza utility+articolo+uom (match_level=6)
 -- 9) Precedenza BA+utility+articolo+uom (match_level=2)
 -- 10) Precedenza BA+utility+emittente+articolo+uom (match_level=1)
--- 11) Tie-break multi-listino per priorita associazione
--- 12) Tie-break multi-listino per priorita versione
--- 13) Pareggio totale -> AMBIGUOUS_PRICE_MATCH (errore)
--- 14) Nessun match -> errore esplicito
+-- 11) Nessun match -> errore esplicito
+--
+-- Note refactor 2026-04-09:
+-- I test originali 11 (tie-break priorita associazione), 12 (tie-break
+-- priorita versione) e 13 (pareggio totale -> ambiguous) sono stati RIMOSSI
+-- perche' strutturalmente impossibili dopo l'introduzione di
+-- ex_listini_associazioni_no_overlap (fase 1) e il drop delle colonne
+-- priorita (fase 2). Il guard tie_count > 1 nel resolver resta come paranoid
+-- check ma non scatta mai per costruzione, quindi non e' testabile via
+-- INSERT applicativa.
 -- ------------------------------------------------------------
 
 BEGIN;
-SELECT plan(14);
+SELECT plan(11);
 
 SELECT ok(
   EXISTS (
@@ -89,15 +99,18 @@ SELECT ok(
 
 CREATE TEMP TABLE tmp_codes_lrp AS
 SELECT
-  ('PT_L_MAIN_' || substr(md5(clock_timestamp()::text), 1, 12))::varchar(64) AS c_main,
-  ('PT_L_A25_' || substr(md5((clock_timestamp() + interval '1 second')::text), 1, 12))::varchar(64) AS c_a25,
-  ('PT_L_B25_' || substr(md5((clock_timestamp() + interval '2 second')::text), 1, 12))::varchar(64) AS c_b25,
-  ('PT_L_A24_' || substr(md5((clock_timestamp() + interval '3 second')::text), 1, 12))::varchar(64) AS c_a24,
-  ('PT_L_B24_' || substr(md5((clock_timestamp() + interval '4 second')::text), 1, 12))::varchar(64) AS c_b24,
-  ('PT_L_A23_' || substr(md5((clock_timestamp() + interval '5 second')::text), 1, 12))::varchar(64) AS c_a23,
-  ('PT_L_B23_' || substr(md5((clock_timestamp() + interval '6 second')::text), 1, 12))::varchar(64) AS c_b23;
+  ('PT_L_MAIN_' || substr(md5(clock_timestamp()::text), 1, 12))::varchar(64) AS c_main;
 
--- Listino principale (2026): test precedenze livelli 1..7.
+-- ------------------------------------------------------------
+-- Listino principale 2026: copre i 7 livelli di match
+-- ------------------------------------------------------------
+-- Strategia: 1 listino + 1 versione ATTIVA + 6 righe con scope crescente.
+-- Le righe sono distinte per (BA, utility, emittente) quindi non violano
+-- uq_listini_righe_key_attiva. Il listino e l'unica associazione attiva
+-- per scope (NULL,NULL,NULL) sull'intervallo 2026-01-01..2026-12-31:
+-- non viola ex_listini_associazioni_no_overlap.
+-- ------------------------------------------------------------
+
 CREATE TEMP TABLE tmp_l_main_lrp AS
 WITH ins AS (
   INSERT INTO vendite.listini (codice, descrizione, dominio)
@@ -109,17 +122,18 @@ SELECT id FROM ins;
 
 CREATE TEMP TABLE tmp_v_main_lrp AS
 WITH ins AS (
-  INSERT INTO vendite.listini_versioni (listino_id, codice_versione, valido_dal, valido_al, priorita, stato)
-  SELECT l.id, 'V1', DATE '2026-01-01', DATE '2026-12-31', 100, 'ATTIVA'
+  INSERT INTO vendite.listini_versioni (listino_id, codice_versione, valido_dal, valido_al, stato)
+  SELECT l.id, 'V1', DATE '2026-01-01', DATE '2026-12-31', 'ATTIVA'
   FROM tmp_l_main_lrp l
   RETURNING id
 )
 SELECT id FROM ins;
 
-INSERT INTO vendite.listini_associazioni (listino_id, priorita, valido_dal, valido_al)
-SELECT l.id, 100, DATE '2026-01-01', DATE '2026-12-31'
+INSERT INTO vendite.listini_associazioni (listino_id, valido_dal, valido_al)
+SELECT l.id, DATE '2026-01-01', DATE '2026-12-31'
 FROM tmp_l_main_lrp l;
 
+-- 6 righe di prezzo con scope crescenti: il match_rank scegliera' il piu specifico
 INSERT INTO vendite.listini_righe (
   listino_versione_id, articolo_id, uom_id, billing_account_id, utility_id, emittente_soggetto_ruolo_id, prezzo
 )
@@ -162,171 +176,9 @@ SELECT v.id, r.articolo_id, r.uom_id, r.billing_account_id, r.utility_id, r.emit
 FROM tmp_v_main_lrp v
 CROSS JOIN tmp_refs_lrp r;
 
--- Set 2025: tie-break su priorita associazione.
-CREATE TEMP TABLE tmp_l_a25_lrp AS
-WITH ins AS (
-  INSERT INTO vendite.listini (codice, descrizione, dominio)
-  SELECT c.c_a25, 'pgTAP listino A 2025', 'COMMERCIO'
-  FROM tmp_codes_lrp c
-  RETURNING id
-)
-SELECT id FROM ins;
-
-CREATE TEMP TABLE tmp_l_b25_lrp AS
-WITH ins AS (
-  INSERT INTO vendite.listini (codice, descrizione, dominio)
-  SELECT c.c_b25, 'pgTAP listino B 2025', 'COMMERCIO'
-  FROM tmp_codes_lrp c
-  RETURNING id
-)
-SELECT id FROM ins;
-
-CREATE TEMP TABLE tmp_v_a25_lrp AS
-WITH ins AS (
-  INSERT INTO vendite.listini_versioni (listino_id, codice_versione, valido_dal, valido_al, priorita, stato)
-  SELECT l.id, 'V1', DATE '2025-01-01', DATE '2025-12-31', 100, 'ATTIVA'
-  FROM tmp_l_a25_lrp l
-  RETURNING id
-)
-SELECT id FROM ins;
-
-CREATE TEMP TABLE tmp_v_b25_lrp AS
-WITH ins AS (
-  INSERT INTO vendite.listini_versioni (listino_id, codice_versione, valido_dal, valido_al, priorita, stato)
-  SELECT l.id, 'V1', DATE '2025-01-01', DATE '2025-12-31', 100, 'ATTIVA'
-  FROM tmp_l_b25_lrp l
-  RETURNING id
-)
-SELECT id FROM ins;
-
-INSERT INTO vendite.listini_associazioni (listino_id, priorita, valido_dal, valido_al)
-SELECT l.id, 10, DATE '2025-01-01', DATE '2025-12-31'
-FROM tmp_l_a25_lrp l;
-
-INSERT INTO vendite.listini_associazioni (listino_id, priorita, valido_dal, valido_al)
-SELECT l.id, 20, DATE '2025-01-01', DATE '2025-12-31'
-FROM tmp_l_b25_lrp l;
-
-INSERT INTO vendite.listini_righe (listino_versione_id, articolo_id, uom_id, prezzo)
-SELECT v.id, r.articolo_id, r.uom_id, 15.1500000000
-FROM tmp_v_a25_lrp v
-CROSS JOIN tmp_refs_lrp r;
-
-INSERT INTO vendite.listini_righe (listino_versione_id, articolo_id, uom_id, prezzo)
-SELECT v.id, r.articolo_id, r.uom_id, 25.2500000000
-FROM tmp_v_b25_lrp v
-CROSS JOIN tmp_refs_lrp r;
-
--- Set 2024: tie-break su priorita versione.
-CREATE TEMP TABLE tmp_l_a24_lrp AS
-WITH ins AS (
-  INSERT INTO vendite.listini (codice, descrizione, dominio)
-  SELECT c.c_a24, 'pgTAP listino A 2024', 'COMMERCIO'
-  FROM tmp_codes_lrp c
-  RETURNING id
-)
-SELECT id FROM ins;
-
-CREATE TEMP TABLE tmp_l_b24_lrp AS
-WITH ins AS (
-  INSERT INTO vendite.listini (codice, descrizione, dominio)
-  SELECT c.c_b24, 'pgTAP listino B 2024', 'COMMERCIO'
-  FROM tmp_codes_lrp c
-  RETURNING id
-)
-SELECT id FROM ins;
-
-CREATE TEMP TABLE tmp_v_a24_lrp AS
-WITH ins AS (
-  INSERT INTO vendite.listini_versioni (listino_id, codice_versione, valido_dal, valido_al, priorita, stato)
-  SELECT l.id, 'V1', DATE '2024-01-01', DATE '2024-12-31', 5, 'ATTIVA'
-  FROM tmp_l_a24_lrp l
-  RETURNING id
-)
-SELECT id FROM ins;
-
-CREATE TEMP TABLE tmp_v_b24_lrp AS
-WITH ins AS (
-  INSERT INTO vendite.listini_versioni (listino_id, codice_versione, valido_dal, valido_al, priorita, stato)
-  SELECT l.id, 'V1', DATE '2024-01-01', DATE '2024-12-31', 50, 'ATTIVA'
-  FROM tmp_l_b24_lrp l
-  RETURNING id
-)
-SELECT id FROM ins;
-
-INSERT INTO vendite.listini_associazioni (listino_id, priorita, valido_dal, valido_al)
-SELECT l.id, 30, DATE '2024-01-01', DATE '2024-12-31'
-FROM tmp_l_a24_lrp l;
-
-INSERT INTO vendite.listini_associazioni (listino_id, priorita, valido_dal, valido_al)
-SELECT l.id, 30, DATE '2024-01-01', DATE '2024-12-31'
-FROM tmp_l_b24_lrp l;
-
-INSERT INTO vendite.listini_righe (listino_versione_id, articolo_id, uom_id, prezzo)
-SELECT v.id, r.articolo_id, r.uom_id, 35.3500000000
-FROM tmp_v_a24_lrp v
-CROSS JOIN tmp_refs_lrp r;
-
-INSERT INTO vendite.listini_righe (listino_versione_id, articolo_id, uom_id, prezzo)
-SELECT v.id, r.articolo_id, r.uom_id, 45.4500000000
-FROM tmp_v_b24_lrp v
-CROSS JOIN tmp_refs_lrp r;
-
--- Set 2023: pareggio totale per test ambiguita.
-CREATE TEMP TABLE tmp_l_a23_lrp AS
-WITH ins AS (
-  INSERT INTO vendite.listini (codice, descrizione, dominio)
-  SELECT c.c_a23, 'pgTAP listino A 2023', 'COMMERCIO'
-  FROM tmp_codes_lrp c
-  RETURNING id
-)
-SELECT id FROM ins;
-
-CREATE TEMP TABLE tmp_l_b23_lrp AS
-WITH ins AS (
-  INSERT INTO vendite.listini (codice, descrizione, dominio)
-  SELECT c.c_b23, 'pgTAP listino B 2023', 'COMMERCIO'
-  FROM tmp_codes_lrp c
-  RETURNING id
-)
-SELECT id FROM ins;
-
-CREATE TEMP TABLE tmp_v_a23_lrp AS
-WITH ins AS (
-  INSERT INTO vendite.listini_versioni (listino_id, codice_versione, valido_dal, valido_al, priorita, stato)
-  SELECT l.id, 'V1', DATE '2023-01-01', DATE '2023-12-31', 60, 'ATTIVA'
-  FROM tmp_l_a23_lrp l
-  RETURNING id
-)
-SELECT id FROM ins;
-
-CREATE TEMP TABLE tmp_v_b23_lrp AS
-WITH ins AS (
-  INSERT INTO vendite.listini_versioni (listino_id, codice_versione, valido_dal, valido_al, priorita, stato)
-  SELECT l.id, 'V1', DATE '2023-01-01', DATE '2023-12-31', 60, 'ATTIVA'
-  FROM tmp_l_b23_lrp l
-  RETURNING id
-)
-SELECT id FROM ins;
-
-INSERT INTO vendite.listini_associazioni (listino_id, priorita, valido_dal, valido_al)
-SELECT l.id, 40, DATE '2023-01-01', DATE '2023-12-31'
-FROM tmp_l_a23_lrp l;
-
-INSERT INTO vendite.listini_associazioni (listino_id, priorita, valido_dal, valido_al)
-SELECT l.id, 40, DATE '2023-01-01', DATE '2023-12-31'
-FROM tmp_l_b23_lrp l;
-
-INSERT INTO vendite.listini_righe (listino_versione_id, articolo_id, uom_id, prezzo)
-SELECT v.id, r.articolo_id, r.uom_id, 55.5500000000
-FROM tmp_v_a23_lrp v
-CROSS JOIN tmp_refs_lrp r;
-
-INSERT INTO vendite.listini_righe (listino_versione_id, articolo_id, uom_id, prezzo)
-SELECT v.id, r.articolo_id, r.uom_id, 65.6500000000
-FROM tmp_v_b23_lrp v
-CROSS JOIN tmp_refs_lrp r;
-
+-- ============================================================
+-- Test 3: p_data_riferimento NULL -> errore
+-- ============================================================
 SELECT throws_ok(
   $$
   SELECT *
@@ -344,6 +196,9 @@ SELECT throws_ok(
   'p_data_riferimento NULL -> errore'
 );
 
+-- ============================================================
+-- Test 4: p_uom_id non valido -> errore
+-- ============================================================
 SELECT throws_ok(
   $$
   SELECT *
@@ -361,6 +216,9 @@ SELECT throws_ok(
   'p_uom_id non valido -> errore'
 );
 
+-- ============================================================
+-- Test 5: match_level 7 (fallback articolo+uom)
+-- ============================================================
 SELECT ok(
   (
     SELECT match_level = 7
@@ -377,6 +235,9 @@ SELECT ok(
   'Precedenza fallback articolo+uom (match_level=7)'
 );
 
+-- ============================================================
+-- Test 6: match_level 4 (BA + articolo+uom non-utility)
+-- ============================================================
 SELECT ok(
   (
     SELECT match_level = 4
@@ -393,6 +254,9 @@ SELECT ok(
   'Precedenza BA+articolo+uom non-utility (match_level=4)'
 );
 
+-- ============================================================
+-- Test 7: match_level 3 (BA + emittente + articolo+uom)
+-- ============================================================
 SELECT ok(
   (
     SELECT match_level = 3
@@ -409,6 +273,9 @@ SELECT ok(
   'Precedenza BA+emittente+articolo+uom non-utility (match_level=3)'
 );
 
+-- ============================================================
+-- Test 8: match_level 6 (utility + articolo+uom)
+-- ============================================================
 SELECT ok(
   (
     SELECT match_level = 6
@@ -425,6 +292,9 @@ SELECT ok(
   'Precedenza utility+articolo+uom (match_level=6)'
 );
 
+-- ============================================================
+-- Test 9: match_level 2 (BA + utility + articolo+uom)
+-- ============================================================
 SELECT ok(
   (
     SELECT match_level = 2
@@ -441,6 +311,9 @@ SELECT ok(
   'Precedenza BA+utility+articolo+uom (match_level=2)'
 );
 
+-- ============================================================
+-- Test 10: match_level 1 (BA + utility + emittente + articolo+uom)
+-- ============================================================
 SELECT ok(
   (
     SELECT match_level = 1
@@ -457,53 +330,9 @@ SELECT ok(
   'Precedenza BA+utility+emittente+articolo+uom (match_level=1)'
 );
 
-SELECT ok(
-  (
-    SELECT prezzo = 15.1500000000::numeric
-    FROM vendite.fn_resolve_prezzo_listino(
-      p_articolo_id => (SELECT articolo_id FROM tmp_refs_lrp),
-      p_uom_id => (SELECT uom_id FROM tmp_refs_lrp),
-      p_data_riferimento => DATE '2025-06-15',
-      p_billing_account_id => NULL,
-      p_utility_id => NULL,
-      p_emittente_soggetto_ruolo_id => NULL
-    )
-  ),
-  'Tie-break multi-listino per priorita associazione'
-);
-
-SELECT ok(
-  (
-    SELECT prezzo = 35.3500000000::numeric
-    FROM vendite.fn_resolve_prezzo_listino(
-      p_articolo_id => (SELECT articolo_id FROM tmp_refs_lrp),
-      p_uom_id => (SELECT uom_id FROM tmp_refs_lrp),
-      p_data_riferimento => DATE '2024-06-15',
-      p_billing_account_id => NULL,
-      p_utility_id => NULL,
-      p_emittente_soggetto_ruolo_id => NULL
-    )
-  ),
-  'Tie-break multi-listino per priorita versione'
-);
-
-SELECT throws_ok(
-  $$
-  SELECT *
-  FROM vendite.fn_resolve_prezzo_listino(
-    p_articolo_id => (SELECT articolo_id FROM tmp_refs_lrp),
-    p_uom_id => (SELECT uom_id FROM tmp_refs_lrp),
-    p_data_riferimento => DATE '2023-06-15',
-    p_billing_account_id => NULL,
-    p_utility_id => NULL,
-    p_emittente_soggetto_ruolo_id => NULL
-  );
-  $$,
-  'P0001',
-  NULL,
-  'Pareggio totale -> AMBIGUOUS_PRICE_MATCH (errore)'
-);
-
+-- ============================================================
+-- Test 11: nessun match (data fuori intervallo) -> errore esplicito
+-- ============================================================
 SELECT throws_ok(
   $$
   SELECT *

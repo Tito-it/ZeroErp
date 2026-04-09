@@ -10,6 +10,7 @@ Indice test eseguiti:
 
 from django.http import Http404
 from django.test import Client, SimpleTestCase, override_settings
+from apps.core.tests._helpers.jwt_mock import JwtMockedApiTest
 from django.urls import path
 
 from apps.core.services.service_errors import ServiceError
@@ -54,9 +55,10 @@ urlpatterns = [
 
 
 @override_settings(ROOT_URLCONF=__name__, REQUEST_LOG_ENABLED=False)
-class ApiExceptionMiddlewareTests(SimpleTestCase):
+class ApiExceptionMiddlewareTests(JwtMockedApiTest):
     # Scopo: Prepara il contesto comune del test.
     def setUp(self) -> None:
+        super().setUp()
         self.client = Client(raise_request_exception=False)
 
     # Scopo: Verifica il caso `test_api_runtime_error_returns_error_envelope`.

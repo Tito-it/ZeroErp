@@ -1,5 +1,8 @@
 <script setup>
-// Scopo: Sub-drawer dettaglio versione listino con tab righe prezzo.
+// Scopo: Sub-drawer dettaglio versione listino con righe prezzo.
+// Aggiunta riga: select UoM dipendente dall'articolo selezionato — caricato
+// dinamicamente da catalogo.articoli_uom_operativa, con pre-selezione della
+// UoM base se presente. Evita di proporre UoM incompatibili con l'articolo.
 import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useApiHandler } from '../../core/composables/useApiHandler'
@@ -7,9 +10,9 @@ import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { displayDate } from '../../core/utils/date'
 import { statoVersioneListinoSeverity } from '../../core/utils/severity'
 import { listRighe, createRiga, deleteRiga } from '../api/listini'
+import { listArticoloUom } from '../../catalogo/api/catalogo'
 import { DRAWER_WIDTH } from '../../core/constants'
 import ArticoloLookup from '../../core/components/ArticoloLookup.vue'
-import LookupSelect from '../../core/components/LookupSelect.vue'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import DrawerFooter from '../../core/components/DrawerFooter.vue'
 import Drawer from 'primevue/drawer'
@@ -18,6 +21,7 @@ import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Button from 'primevue/button'
 import InputNumber from 'primevue/inputnumber'
+import Select from 'primevue/select'
 
 const { t } = useI18n()
 const { execute, loading } = useApiHandler()
@@ -34,19 +38,64 @@ const righe = ref([])
 const adding = ref(false)
 const addForm = ref({})
 
+// UoM operative dell'articolo corrente del form add. Caricate on-demand al
+// momento della selezione articolo. Ogni elemento ha {uom_id, uom_codice,
+// uom_descrizione, is_base, is_sell_uom, ...}.
+const uomOptions = ref([])
+const uomLoading = ref(false)
+
 async function loadRighe() {
   if (!props.listinoId || !props.versione?.id) return
   const res = await listRighe(props.listinoId, props.versione.id)
   righe.value = res.data.data.results || []
 }
 
-watch(() => props.visible, (v) => {
-  if (v) loadRighe()
-})
+// Watch immediate + reattivo a versione.id: il componente viene montato dal
+// padre con `visible` gia' true (vedi ListiniView.onOpenRighe), quindi un watch
+// non-immediate non scatterebbe mai alla prima apertura. Ricarico anche se la
+// versione cambia mentre il drawer e' aperto. Pulisco le righe alla chiusura
+// per evitare flash di dati vecchi alla riapertura.
+watch(
+  () => [props.visible, props.versione?.id],
+  ([v, _vid]) => {
+    if (v) {
+      loadRighe()
+    } else {
+      righe.value = []
+    }
+  },
+  { immediate: true },
+)
 
 function startAdd() {
   adding.value = true
   addForm.value = { articolo_obj: null, uom_id: null, prezzo: null }
+  uomOptions.value = []
+}
+
+// Quando l'utente seleziona un articolo: carica le UoM operative compatibili
+// e pre-seleziona quella base. Se l'articolo viene deselezionato, azzera tutto.
+async function onArticoloSelect(articolo) {
+  addForm.value.uom_id = null
+  uomOptions.value = []
+  if (!articolo?.id) return
+  uomLoading.value = true
+  try {
+    const res = await listArticoloUom(articolo.id)
+    const list = res.data.data.results || res.data.data || []
+    uomOptions.value = list
+    // Pre-seleziona la UoM base se presente, altrimenti la prima disponibile.
+    const base = list.find(u => u.is_base)
+    if (base) {
+      addForm.value.uom_id = base.uom_id
+    } else if (list.length === 1) {
+      addForm.value.uom_id = list[0].uom_id
+    }
+  } catch {
+    uomOptions.value = []
+  } finally {
+    uomLoading.value = false
+  }
 }
 
 async function confirmAdd() {
@@ -66,6 +115,12 @@ async function removeRow(row) {
 }
 
 const isBozza = computed(() => props.versione?.stato === 'BOZZA')
+
+// Etichetta UoM nel dropdown: "codice - descrizione (BASE)" se base.
+function uomLabel(uom) {
+  const base = uom.is_base ? ` ${t('listini.uom_base_suffix')}` : ''
+  return `${uom.uom_codice} — ${uom.uom_descrizione}${base}`
+}
 </script>
 
 <template>
@@ -80,10 +135,6 @@ const isBozza = computed(() => props.versione?.stato === 'BOZZA')
         <div class="form-field">
           <label>{{ t('listini.col_stato') }}</label>
           <Tag :value="versione?.stato" :severity="statoVersioneListinoSeverity(versione?.stato)" />
-        </div>
-        <div class="form-field">
-          <label>{{ t('listini.col_priorita') }}</label>
-          <span>{{ versione?.priorita }}</span>
         </div>
         <div class="form-field">
           <label>{{ t('listini.field_valido_dal') }}</label>
@@ -106,13 +157,20 @@ const isBozza = computed(() => props.versione?.stato === 'BOZZA')
         <div class="form-grid">
           <div class="form-field">
             <label>{{ t('listini.field_articolo') }} *</label>
-            <ArticoloLookup v-model="addForm.articolo_obj" />
+            <ArticoloLookup v-model="addForm.articolo_obj" @select="onArticoloSelect" />
           </div>
         </div>
         <div class="form-grid-2col">
           <div class="form-field">
             <label>{{ t('listini.field_uom') }} *</label>
-            <LookupSelect v-model="addForm.uom_id" rel="catalogo.unita_misura" :placeholder="t('catalogo.select_uom')" />
+            <Select v-model="addForm.uom_id"
+              :options="uomOptions"
+              option-value="uom_id"
+              :option-label="uomLabel"
+              :placeholder="addForm.articolo_obj?.id ? t('catalogo.select_uom') : t('listini.uom_select_articolo_first')"
+              :disabled="!addForm.articolo_obj?.id || uomLoading"
+              :loading="uomLoading"
+              :empty-message="t('listini.uom_no_operative')" />
           </div>
           <div class="form-field">
             <label>{{ t('listini.field_prezzo') }} *</label>

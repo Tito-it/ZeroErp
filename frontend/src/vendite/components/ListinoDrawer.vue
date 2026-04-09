@@ -31,7 +31,7 @@ const props = defineProps({
   mode: { type: String, default: 'create' },
   listinoId: { type: [Number, null], default: null }
 })
-const emit = defineEmits(['update:visible', 'saved', 'cancelled', 'open-versioni', 'open-associazioni'])
+const emit = defineEmits(['update:visible', 'saved', 'cancelled', 'open-associazioni'])
 
 const isEdit = computed(() => props.mode === 'edit')
 const form = ref({})
@@ -142,13 +142,10 @@ function close() {
           </div>
         </div>
 
-        <!-- Pulsanti gestione (edit mode) -->
+        <!-- Pulsante associazioni (edit mode). Le versioni si gestiscono dall'expansion in lista. -->
         <template v-if="isEdit && detail">
           <div class="app-drawer-section"><h4>{{ t('listini.section_gestione') }}</h4></div>
           <div class="flex gap-2 mt-05">
-            <Button :icon="MANAGE_ICONS.VERSIONI" :label="t('listini.tab_versioni')"
-              text size="small" class="app-manage-btn"
-              @click="emit('open-versioni', detail)" />
             <Button :icon="MANAGE_ICONS.ASSOCIAZIONI" :label="t('listini.tab_associazioni')"
               text size="small" class="app-manage-btn"
               @click="emit('open-associazioni', detail)" />

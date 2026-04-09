@@ -20,11 +20,13 @@ import unittest
 from unittest.mock import patch, MagicMock
 
 from django.test import SimpleTestCase
+from apps.core.tests._helpers.jwt_mock import JwtMockedApiTest
 
 
-class TestPreventiviApiViews(SimpleTestCase):
+class TestPreventiviApiViews(JwtMockedApiTest):
 
     def setUp(self):
+        super().setUp()
         # Scopo: Mock service layer per isolare i test API.
         self.svc_patcher = patch(
             "apps.vendite.api.preventivi_views.preventivi_service"

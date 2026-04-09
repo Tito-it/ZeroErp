@@ -1,0 +1,87 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Funzione + trigger AFTER INSERT su catalogo.articoli:
+# crea automaticamente la riga is_base=true in catalogo.articoli_uom_operativa
+# usando NEW.uom_id (anagrafica). Niente backfill su articoli esistenti.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/catalogo/20260407-05-trgfn-articoli-seed-uom-base-mctit.yaml
+
+  - changeSet:
+      id: 20260407-05-trgfn-articoli-seed-uom-base
+      author: mctit
+      runOnChange: true
+      validCheckSum:
+        - ANY
+      comment: >
+        Funzione catalogo.trgfn_articoli_seed_uom_base + trigger AFTER INSERT
+        su catalogo.articoli. Al primo INSERT crea la riga is_base=true in
+        articoli_uom_operativa con factor_to_base=1. Idempotente via
+        ON CONFLICT su uq_artuomop_articolo_uom.
+      preConditions:
+        - onFail: HALT
+        - tableExists: { schemaName: catalogo, tableName: articoli }
+        - tableExists: { schemaName: catalogo, tableName: articoli_uom_operativa }
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ==========================================================
+              -- Funzione: catalogo.trgfn_articoli_seed_uom_base
+              --
+              -- Scopo: al primo INSERT di un articolo, crea automaticamente
+              --        la riga corrispondente in articoli_uom_operativa con
+              --        is_base=true e factor_to_base=1. Cosi' la UoM principale
+              --        anagrafica e' sempre disponibile come UoM operativa
+              --        senza step manuale.
+              --
+              -- Regole:
+              --   - uom_id e' NOT NULL (vincolo DDL): no guard su NULL
+              --   - idempotente via ON CONFLICT su uq_artuomop_articolo_uom
+              --   - non sovrascrive eventuali righe is_base=true preesistenti
+              --     (in INSERT iniziale non possono esistere, garanzia schema)
+              --   - AFTER INSERT: la riga padre in articoli deve gia' esistere
+              --     per non rompere FK e child_requires_active_parent
+              -- ==========================================================
+              CREATE OR REPLACE FUNCTION catalogo.trgfn_articoli_seed_uom_base()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              BEGIN
+                  INSERT INTO catalogo.articoli_uom_operativa (
+                      articolo_id,
+                      uom_id,
+                      is_base,
+                      factor_to_base,
+                      attivo
+                  )
+                  VALUES (
+                      NEW.id,
+                      NEW.uom_id,
+                      TRUE,
+                      1,
+                      TRUE
+                  )
+                  ON CONFLICT ON CONSTRAINT uq_artuomop_articolo_uom DO NOTHING;
+
+                  RETURN NULL;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION catalogo.trgfn_articoli_seed_uom_base() IS
+                'Trigger AFTER INSERT su catalogo.articoli: crea automaticamente la riga is_base=true in articoli_uom_operativa con factor_to_base=1. Idempotente.';
+
+              -- ==========================================================
+              -- Trigger: trg_articoli_a10_seed_uom_base_ins
+              -- Fase _a10_ = early post-insert (seed automatico)
+              -- ==========================================================
+              DROP TRIGGER IF EXISTS trg_articoli_a10_seed_uom_base_ins
+                  ON catalogo.articoli;
+
+              CREATE TRIGGER trg_articoli_a10_seed_uom_base_ins
+                  AFTER INSERT ON catalogo.articoli
+                  FOR EACH ROW
+                  EXECUTE FUNCTION catalogo.trgfn_articoli_seed_uom_base();

@@ -7,6 +7,11 @@ import { useClientiStore } from '../stores/clienti'
 import { useSearchTable } from '../../core/composables/useSearchTable'
 import { useTabFreshness } from '../../core/composables/useTabFreshness'
 import { useLookup } from '../../core/composables/useLookup'
+// NOTE refactor operatore-emittenti FE-4.8: il filtro utility resta su
+// `listUtilitiesManual` (lista globale) perche' il backend list_clienti
+// non applica ancora scope emittente automatico (follow-up backend).
+// Quando il scope verra' applicato lato backend, le utility visualizzate
+// rifletteranno automaticamente l'emittente dell'operatore corrente.
 import { listUtilitiesManual } from '../api/anagrafiche'
 import { MANAGE_ICONS } from '../../core/constants'
 import { displayDate } from '../../core/utils/date'

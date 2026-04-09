@@ -102,6 +102,7 @@ urlpatterns = [
     path("api/v1/amm-software/", include("apps.amm_software.api.urls_v1")),
     path("api/v1/anagrafiche/", include("apps.anagrafiche.api.urls")),
     path("api/v1/catalogo/", include("apps.catalogo.api.urls")),
+    path("api/v1/config/", include("apps.config.api.urls")),
     path("", RedirectView.as_view(url="/admin/", permanent=False)),
 ]
 

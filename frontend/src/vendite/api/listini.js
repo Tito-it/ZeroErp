@@ -21,6 +21,12 @@ export function updateListino(id, payload) {
   return api.patch(`${BASE}/${id}/`, payload)
 }
 
+// Elimina un listino mai usato. Backend rifiuta con 400 se versioni_count > 0
+// o associazioni_count > 0 (suggerisce PATCH attivo=false per disattivare).
+export function deleteListino(id) {
+  return api.delete(`${BASE}/${id}/`)
+}
+
 // --- Versioni ---
 
 export function listVersioni(listinoId) {
@@ -39,8 +45,20 @@ export function updateVersione(listinoId, verId, payload) {
   return api.patch(`${BASE}/${listinoId}/versioni/${verId}/`, payload)
 }
 
+// Elimina una versione in stato BOZZA con tutte le sue righe (cascata).
+// Il backend rifiuta con 400 se la versione non e' BOZZA.
+export function deleteVersione(listinoId, verId) {
+  return api.delete(`${BASE}/${listinoId}/versioni/${verId}/`)
+}
+
 export function changeVersioneStato(listinoId, verId, payload) {
   return api.post(`${BASE}/${listinoId}/versioni/${verId}/stato/`, payload)
+}
+
+// Clona una versione esistente in una nuova versione BOZZA dello stesso listino,
+// copiando le righe attive. Vincolo D2: target.valido_dal >= src.valido_dal.
+export function cloneVersione(listinoId, srcVerId, payload) {
+  return api.post(`${BASE}/${listinoId}/versioni/${srcVerId}/clona/`, payload)
 }
 
 // --- Righe prezzo ---

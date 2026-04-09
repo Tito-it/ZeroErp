@@ -20,6 +20,14 @@ def qp_bool(raw: str | None, default: bool = True) -> bool:
     return raw.strip().lower() not in {"0", "false", "no", "n", "off"}
 
 
+# Scopo: Parametro booleano OPZIONALE da query string: None se assente.
+#        Per filtri lista che devono distinguere "non passato" da true/false.
+def qp_bool_optional(raw: str | None) -> bool | None:
+    if raw is None:
+        return None
+    return raw.strip().lower() in {"1", "true", "yes", "y", "on"}
+
+
 # Scopo: Normalizza parametro intero da query string con default configurabile.
 def qp_int(raw: str | None, default: int) -> int:
     if raw is None:

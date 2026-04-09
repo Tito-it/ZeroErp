@@ -29,6 +29,7 @@ import json
 from unittest.mock import Mock, patch
 
 from django.test import Client, SimpleTestCase
+from apps.core.tests._helpers.jwt_mock import JwtMockedApiTest
 
 _AUTH = "rest_framework_simplejwt.authentication.JWTAuthentication.authenticate"
 _VIEWS = "apps.pratiche.api.views"
@@ -53,10 +54,11 @@ def _mock_flusso_row(flusso_id: int = 1, *, pratica_id: int = 1, template_flusso
     }
 
 
-class FlussiApiTests(SimpleTestCase):
+class FlussiApiTests(JwtMockedApiTest):
 
     # Scopo: Prepara il contesto comune del test.
     def setUp(self) -> None:
+        super().setUp()
         self.client = Client()
 
     # Scopo: Verifica GET lista flussi per pratica.

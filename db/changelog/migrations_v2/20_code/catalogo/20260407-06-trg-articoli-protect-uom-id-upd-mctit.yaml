@@ -1,0 +1,61 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Trigger BEFORE UPDATE su catalogo.articoli.uom_id:
+# blocca qualsiasi modifica della UoM principale (anagrafica).
+# Usa script.trgfn_lock_columns con codice CODICE_NON_MODIFICABILE.
+# Override manutenzione: SET LOCAL zeroerp.allow_lock_columns_override = 'on';
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/catalogo/20260407-06-trg-articoli-protect-uom-id-upd-mctit.yaml
+
+  - changeSet:
+      id: 20260407-06-trg-articoli-protect-uom-id-upd
+      author: mctit
+      runOnChange: true
+      validCheckSum:
+        - ANY
+      comment: >
+        Trigger di lock su catalogo.articoli.uom_id (BEFORE UPDATE).
+        Pattern coerente con trg_articoli_a10_protect_codice_upd.
+        Riusa script.trgfn_lock_columns con codice CODICE_NON_MODIFICABILE
+        (messaggio generico parametrico sul nome colonna).
+      preConditions:
+        - onFail: HALT
+        - tableExists: { schemaName: catalogo, tableName: articoli }
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT COUNT(*)
+                FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script'
+                 AND p.proname = 'trgfn_lock_columns';
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ==========================================================
+              -- Trigger: trg_articoli_a10_protect_uom_id_upd
+              --
+              -- Scopo: blocca modifiche di catalogo.articoli.uom_id.
+              --        La UoM principale e' anagrafica e immutabile dopo
+              --        la creazione dell'articolo. Per cambiare la UoM
+              --        principale serve creare un nuovo articolo.
+              --
+              -- Pattern: identico a trg_articoli_a10_protect_codice_upd
+              --          gia' presente sulla stessa tabella per la colonna codice.
+              --
+              -- Override: SET LOCAL zeroerp.allow_lock_columns_override = 'on'
+              --           consente la modifica nei contesti di manutenzione.
+              -- ==========================================================
+              DROP TRIGGER IF EXISTS trg_articoli_a10_protect_uom_id_upd
+                  ON catalogo.articoli;
+
+              CREATE TRIGGER trg_articoli_a10_protect_uom_id_upd
+                  BEFORE UPDATE OF uom_id ON catalogo.articoli
+                  FOR EACH ROW
+                  WHEN (OLD.uom_id IS DISTINCT FROM NEW.uom_id)
+                  EXECUTE FUNCTION script.trgfn_lock_columns('uom_id', 'CODICE_NON_MODIFICABILE');

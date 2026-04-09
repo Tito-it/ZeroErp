@@ -35,6 +35,8 @@ specifici di fatturazione per **emittente fiscale** e **utility**:
   * risolve il `tipo_ruolo_id` dall'`emittente_soggetto_ruolo_id`;
   * valida con `script.fn_guard_utility_tipo_ruolo(...)`;
   * semantica fail-open se la matrice `config.utilities_tipi_ruolo` non e configurata per la utility.
+* La tabella e` **opzionale**: si popola solo quando servono parametri dedicati
+  per una specifica coppia **(emittente, utility)**.
 
 ---
 

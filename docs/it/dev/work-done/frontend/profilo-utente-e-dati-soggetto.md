@@ -80,7 +80,6 @@ auth_user (id, username, first_name, last_name, email)
                  |
                  +--[N:1]--> emittenti_fiscali (id, uid, soggetto_ruolo_id, codice)
                                 |  (descrizione, attivo, regime_fiscale_rf,
-                                |   esigibilita_iva_default, split_payment_default,
                                 |   bollo_auto, bollo_soglia, rounding_policy,
                                 |   brand_meta, valuta_id)
                                 |

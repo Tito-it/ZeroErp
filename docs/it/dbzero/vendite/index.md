@@ -43,9 +43,9 @@
 - [fatture_sdi](tabelle/fatture_sdi.md) — (latest review 16-02-2026)   `vendite.fatture_sdi` rappresenta la **testata dei tentativi di invio SDI** per fattura.
 - [fatture_sdi_eventi](tabelle/fatture_sdi_eventi.md) — (latest review 16-02-2026)   `vendite.fatture_sdi_eventi` mantiene lo **storico cronologico eventi SDI** per ciascun tentativo (`fattura_sdi_id`).
 - [listini](tabelle/listini.md) — La tabella `vendite.listini` rappresenta la testata anagrafica dei listini prezzo del dominio vendite.
-- [listini_associazioni](tabelle/listini_associazioni.md) — La tabella `vendite.listini_associazioni` definisce quali listini sono candidati per un dato contesto operativo (BA, utility, emittente fiscale), con priorita` di tie-break tra listini concorrenti.
+- [listini_associazioni](tabelle/listini_associazioni.md) — (latest review 09-04-2026)
 - [listini_righe](tabelle/listini_righe.md) — La tabella `vendite.listini_righe` contiene i prezzi elementari per articolo/UOM, eventualmente specializzati per contesto (BA, utility, emittente fiscale).
-- [listini_versioni](tabelle/listini_versioni.md) — La tabella `vendite.listini_versioni` gestisce il versionamento temporale dei listini. Ogni versione definisce una finestra di validita` e una priorita` operativa.
+- [listini_versioni](tabelle/listini_versioni.md) — (latest review 09-04-2026)
 - [note](tabelle/note.md) — `vendite.note` gestisce **note testuali** ancorabili sia alla **testata** del documento sia alla **riga**, con controllo di posizionamento e ordinamento di rendering. È una tabella **partizionata per `target_tipo`** per garantire prestazioni e manutenzione più semplici, con **FK forti** verso le rispettive testate/righe nelle singole partizioni.
 - [note_attivita_fatturabili](tabelle/note_attivita_fatturabili.md) — `vendite.note_attivita_fatturabili` gestisce **note testuali**.  Vedi documento principale [vendite.note](/dbzero/vendite/tabelle/note)
 - [note_contratto](tabelle/note_contratto.md) — `vendite.note_contratto` gestisce **note testuali**.  Vedi documento principale [vendite.note](/dbzero/vendite/tabelle/note)
@@ -179,7 +179,7 @@
 - [trgfn_tipi_indirizzi_only_allowed](funzioni/trgfn_tipi_indirizzi_only_allowed.md)
 
 ## 🔍 Views
-- [vw_preventivi_list](views/vw_preventivi_list.md) — (latest review 03-04-2026) `vendite.vw_preventivi_list` e' la vista denormalizzata principale per la **lista preventivi vendita**. Espone tutti i dati necessari al frontend (tabella lista) e al backend (filtro permessi per scope emittente).
+- [vw_preventivi_list](views/vw_preventivi_list.md) — (latest review 07-04-2026)
 - [vw_preventivi_pratiche](views/vw_preventivi_pratiche.md) — (latest review 03-04-2026) `vendite.vw_preventivi_pratiche` espone le **pratiche collegate a ciascun preventivo vendita** tramite la tabella ponte `pratiche.pratiche_sorgenti` con `sorgente_tipo = 'PREVENTIVO'`.
 - [vw_preventivi_righe_dettaglio](views/vw_preventivi_righe_dettaglio.md) — (latest review 03-04-2026) `vendite.vw_preventivi_righe_dettaglio` arricchisce le righe preventivo con i dati denormalizzati di articolo, unita' di misura operativa e aliquota IVA. Include **importi calcolati** per evitare duplicazione della logica di calcolo nel backend/frontend.
 - [vw_preventivi_stato_fatturazione](views/vw_preventivi_stato_fatturazione.md) — (latest review 03-04-2026) Due viste complementari per il **monitoraggio della pipeline fatturazione** dei preventivi:

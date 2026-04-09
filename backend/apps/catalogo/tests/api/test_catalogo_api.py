@@ -38,6 +38,7 @@ from unittest.mock import Mock, patch
 
 from django.core.cache import cache
 from django.test import Client, SimpleTestCase
+from apps.core.tests._helpers.jwt_mock import JwtMockedApiTest
 
 
 _LIST_RESULTS = [{"id": 1, "codice": "ART-001", "descrizione": "Articolo demo"}]
@@ -61,9 +62,10 @@ _LOOKUP_RESPONSE = {
 _COMPONENTE_UUID = "11111111-2222-3333-4444-555555555555"
 
 
-class CatalogoApiTests(SimpleTestCase):
+class CatalogoApiTests(JwtMockedApiTest):
     # Scopo: Prepara il contesto comune dei test API catalogo.
     def setUp(self) -> None:
+        super().setUp()
         cache.clear()
         self.client = Client()
         request_log_patcher = patch(

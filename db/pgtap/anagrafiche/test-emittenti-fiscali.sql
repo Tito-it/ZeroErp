@@ -5,83 +5,237 @@
 -- Test: emittenti fiscali + mapping billing_account + default
 --
 -- Elenco test:
--- 1) Esiste un gestore con soggetto_id candidabile
--- 2) Esiste un secondo soggetto candidabile
--- 3) Esiste il ruolo EF in config.tipi_ruoli
--- 4) Creato/recuperato ruolo EF per soggetto 1
--- 5) Inserito emittente fiscale 1
--- 6) Esiste esattamente un emittente di default nel mapping
--- 7) Esiste un billing_account senza mapping emittente
--- 8) Fallback funzione emittente (default)
--- 9) Creato/recuperato ruolo EF per soggetto 2
--- 10) Inserito emittente fiscale 2
--- 11) Inserito mapping BA -> emittente (override)
--- 12) Override funzione emittente (mapping BA)
--- 13) Blocco disattivazione emittente con mapping
+-- 1) Setup minimo PG disponibile
+-- 2) Creato soggetto PG 1 di supporto
+-- 3) Creato soggetto PG 2 di supporto
+-- 4) Esiste il ruolo EF in config.tipi_ruoli
+-- 5) Creato/recuperato ruolo EF per soggetto 1
+-- 6) Inserito emittente fiscale 1
+-- 7) Esiste esattamente un emittente di default nel mapping
+-- 8) Esiste un billing_account senza mapping emittente
+-- 9) Fallback funzione emittente (default)
+-- 10) Creato/recuperato ruolo EF per soggetto 2
+-- 11) Inserito emittente fiscale 2
+-- 12) Inserito mapping BA -> emittente (override)
+-- 13) Override funzione emittente (mapping BA)
+-- 14) Blocco disattivazione emittente con mapping
 -- ------------------------------------------------------------
 
-SELECT plan(13);
+BEGIN;
+
+SELECT plan(14);
 
 -- ============================================================
 -- 0) Costanti
 -- ============================================================
 CREATE TEMP TABLE tmp_costanti_ef AS
+WITH stamp AS (
+    SELECT to_char(clock_timestamp(), 'YYYYMMDDHH24MISSMS') AS ts
+),
+semi AS (
+    SELECT
+        ts,
+        right(ts, 10) AS seed_1,
+        lpad((((right(ts, 10))::numeric + 1) % 10000000000)::text, 10, '0') AS seed_2
+    FROM stamp
+),
+validi AS (
+    SELECT
+        ts,
+        seed_1 ||
+        (
+            (
+                10 - (
+                    SELECT SUM(
+                        CASE
+                            WHEN gs.i % 2 = 0 THEN
+                                CASE
+                                    WHEN ((substr(seed_1, gs.i, 1))::int * 2) > 9
+                                        THEN ((substr(seed_1, gs.i, 1))::int * 2) - 9
+                                    ELSE ((substr(seed_1, gs.i, 1))::int * 2)
+                                END
+                            ELSE (substr(seed_1, gs.i, 1))::int
+                        END
+                    )
+                    FROM generate_series(1, 10) AS gs(i)
+                ) % 10
+            ) % 10
+        )::text AS cf_piva_1,
+        seed_2 ||
+        (
+            (
+                10 - (
+                    SELECT SUM(
+                        CASE
+                            WHEN gs.i % 2 = 0 THEN
+                                CASE
+                                    WHEN ((substr(seed_2, gs.i, 1))::int * 2) > 9
+                                        THEN ((substr(seed_2, gs.i, 1))::int * 2) - 9
+                                    ELSE ((substr(seed_2, gs.i, 1))::int * 2)
+                                END
+                            ELSE (substr(seed_2, gs.i, 1))::int
+                        END
+                    )
+                    FROM generate_series(1, 10) AS gs(i)
+                ) % 10
+            ) % 10
+        )::text AS cf_piva_2
+    FROM semi
+)
 SELECT
     'pgtap_emittenti_fiscali'::text AS test_scope,
-    ('PGTAP-EF-' || to_char(clock_timestamp(), 'YYYYMMDDHH24MISSMS'))::text AS codice_ef1,
-    ('PGTAP-EF2-' || to_char(clock_timestamp(), 'YYYYMMDDHH24MISSMS'))::text AS codice_ef2;
+    ('PGTAP-EF-' || v.ts)::text AS codice_ef1,
+    ('PGTAP-EF2-' || v.ts)::text AS codice_ef2,
+    v.cf_piva_1,
+    v.cf_piva_2,
+    ('ef1_' || v.ts || '@test.local')::text AS email_1,
+    ('ef2_' || v.ts || '@test.local')::text AS email_2,
+    ('A' || right(v.ts, 6))::text AS rea_1,
+    ('B' || right(v.ts, 6))::text AS rea_2,
+    ('SDI' || right(v.ts, 4))::text AS sdi_1,
+    ('SDJ' || right(v.ts, 4))::text AS sdi_2
+FROM validi v;
 
 -- ============================================================
--- 1) Candidato: gestore senza emittente fiscale
+-- 1) Setup minimo autosufficiente per creare soggetti PG candidabili a EF
+-- ============================================================
+CREATE TEMP TABLE tmp_setup_ef AS
+SELECT
+    tsd.id AS tipo_soggetto_dettaglio_id,
+    COALESCE(
+        (
+            SELECT fgtsd.forma_giuridica_id
+            FROM config.forme_giuridiche_tipi_soggetto_dettaglio fgtsd
+            WHERE fgtsd.tipo_soggetto_dettaglio_id = tsd.id
+              AND fgtsd.attivo = true
+              AND (fgtsd.valido_dal IS NULL OR fgtsd.valido_dal <= CURRENT_DATE)
+              AND (fgtsd.valido_al IS NULL OR fgtsd.valido_al >= CURRENT_DATE)
+            ORDER BY fgtsd.forma_giuridica_id
+            LIMIT 1
+        ),
+        (SELECT fg.id FROM config.forme_giuridiche fg ORDER BY fg.id LIMIT 1)
+    ) AS forma_giuridica_id,
+    (SELECT p.id FROM config.province p ORDER BY p.id LIMIT 1) AS provincia_id,
+    (SELECT s.id FROM config.stradario s ORDER BY s.id LIMIT 1) AS stradario_id
+FROM config.tipi_soggetto_dettaglio tsd
+WHERE tsd.tipo_soggetto_id = 'PG'
+  AND tsd.stato_iso2 = 'IT'
+  AND tsd.formato_cf = 'NUM_11'
+  AND tsd.formato_piva = 'NUM_11'
+ORDER BY
+    CASE WHEN tsd.dati_societari_policy = 'REQUIRED' THEN 0 ELSE 1 END,
+    tsd.id
+LIMIT 1;
+
+SELECT ok(
+    (SELECT tipo_soggetto_dettaglio_id IS NOT NULL
+         AND forma_giuridica_id IS NOT NULL
+         AND provincia_id IS NOT NULL
+         AND stradario_id IS NOT NULL
+     FROM tmp_setup_ef),
+    'Setup minimo PG disponibile'
+);
+
+-- ============================================================
+-- 2) Crea soggetto PG 1 di supporto
 -- ============================================================
 CREATE TEMP TABLE tmp_soggetto_1 AS
-SELECT s.id AS soggetto_id
-FROM anagrafiche.gestori g
-JOIN anagrafiche.soggetti_ruoli sr_g ON sr_g.id = g.soggetto_ruolo_id
-JOIN anagrafiche.soggetti s ON s.id = sr_g.soggetto_id
-WHERE NOT EXISTS (
-    SELECT 1
-    FROM anagrafiche.soggetti_ruoli sr_ef
-    JOIN config.tipi_ruoli tr
-      ON tr.id = sr_ef.tipo_ruolo_id
-     AND tr.codice_interno = 'EF'
-    JOIN anagrafiche.emittenti_fiscali ef
-      ON ef.soggetto_ruolo_id = sr_ef.id
-    WHERE sr_ef.soggetto_id = s.id
+WITH sogg AS (
+    SELECT anagrafiche.fn_crea_soggetto_pg(
+        p_ragione_sociale := 'PGTAP Emittente Soggetto 1',
+        p_tipo_soggetto_dettaglio_id := (SELECT tipo_soggetto_dettaglio_id FROM tmp_setup_ef),
+        p_email := (SELECT email_1 FROM tmp_costanti_ef),
+        p_codice_fiscale := (SELECT cf_piva_1 FROM tmp_costanti_ef),
+        p_partita_iva := (SELECT cf_piva_1 FROM tmp_costanti_ef),
+        p_forma_giuridica_id := (SELECT forma_giuridica_id FROM tmp_setup_ef),
+        p_id_prov_iscri_rea := (SELECT provincia_id FROM tmp_setup_ef),
+        p_iscrizione_rea := (SELECT rea_1 FROM tmp_costanti_ef),
+        p_capitale_sociale := 10000.00,
+        p_destinatario_fe := 'C',
+        p_codice_sdi := (SELECT sdi_1 FROM tmp_costanti_ef)
+    ) AS soggetto_id
+),
+ind_det AS (
+    SELECT anagrafiche.fn_get_or_create_indirizzo_dettaglio(
+        p_stradario_id := (SELECT stradario_id FROM tmp_setup_ef),
+        p_civico := 9001
+    ) AS indirizzo_dettaglio_id
+),
+indirizzi AS (
+    SELECT anagrafiche.fn_crea_indirizzo_soggetto(
+        p_soggetto_id := s.soggetto_id,
+        p_tipo_indirizzo_codice := ti.codice_interno,
+        p_indirizzo_dettaglio_id := d.indirizzo_dettaglio_id
+    )
+    FROM sogg s
+    CROSS JOIN ind_det d
+    JOIN config.tipi_soggetto_dettaglio_tipi_indirizzo m
+      ON m.tipo_soggetto_dettaglio_id = (SELECT tipo_soggetto_dettaglio_id FROM tmp_setup_ef)
+    JOIN config.tipi_indirizzi ti
+      ON ti.id = m.tipo_indirizzo_id
+    WHERE m.obbligatorio = true
+      AND m.attivo = true
+      AND (m.valido_dal IS NULL OR m.valido_dal <= CURRENT_DATE)
+      AND (m.valido_al IS NULL OR m.valido_al >= CURRENT_DATE)
 )
-LIMIT 1;
+SELECT soggetto_id FROM sogg;
 
 SELECT ok(
-    (SELECT count(*) FROM tmp_soggetto_1) = 1,
-    'Esiste un gestore con soggetto_id candidabile'
+    (SELECT soggetto_id IS NOT NULL FROM tmp_soggetto_1),
+    'Creato soggetto PG 1 di supporto'
 );
 
 -- ============================================================
--- 2) Secondo soggetto candidabile
+-- 3) Crea soggetto PG 2 di supporto
 -- ============================================================
 CREATE TEMP TABLE tmp_soggetto_2 AS
-SELECT s.id AS soggetto_id
-FROM anagrafiche.soggetti s
-WHERE s.id <> (SELECT soggetto_id FROM tmp_soggetto_1)
-  AND NOT EXISTS (
-    SELECT 1
-    FROM anagrafiche.soggetti_ruoli sr_ef
-    JOIN config.tipi_ruoli tr
-      ON tr.id = sr_ef.tipo_ruolo_id
-     AND tr.codice_interno = 'EF'
-    JOIN anagrafiche.emittenti_fiscali ef
-      ON ef.soggetto_ruolo_id = sr_ef.id
-    WHERE sr_ef.soggetto_id = s.id
+WITH sogg AS (
+    SELECT anagrafiche.fn_crea_soggetto_pg(
+        p_ragione_sociale := 'PGTAP Emittente Soggetto 2',
+        p_tipo_soggetto_dettaglio_id := (SELECT tipo_soggetto_dettaglio_id FROM tmp_setup_ef),
+        p_email := (SELECT email_2 FROM tmp_costanti_ef),
+        p_codice_fiscale := (SELECT cf_piva_2 FROM tmp_costanti_ef),
+        p_partita_iva := (SELECT cf_piva_2 FROM tmp_costanti_ef),
+        p_forma_giuridica_id := (SELECT forma_giuridica_id FROM tmp_setup_ef),
+        p_id_prov_iscri_rea := (SELECT provincia_id FROM tmp_setup_ef),
+        p_iscrizione_rea := (SELECT rea_2 FROM tmp_costanti_ef),
+        p_capitale_sociale := 20000.00,
+        p_destinatario_fe := 'C',
+        p_codice_sdi := (SELECT sdi_2 FROM tmp_costanti_ef)
+    ) AS soggetto_id
+),
+ind_det AS (
+    SELECT anagrafiche.fn_get_or_create_indirizzo_dettaglio(
+        p_stradario_id := (SELECT stradario_id FROM tmp_setup_ef),
+        p_civico := 9002
+    ) AS indirizzo_dettaglio_id
+),
+indirizzi AS (
+    SELECT anagrafiche.fn_crea_indirizzo_soggetto(
+        p_soggetto_id := s.soggetto_id,
+        p_tipo_indirizzo_codice := ti.codice_interno,
+        p_indirizzo_dettaglio_id := d.indirizzo_dettaglio_id
+    )
+    FROM sogg s
+    CROSS JOIN ind_det d
+    JOIN config.tipi_soggetto_dettaglio_tipi_indirizzo m
+      ON m.tipo_soggetto_dettaglio_id = (SELECT tipo_soggetto_dettaglio_id FROM tmp_setup_ef)
+    JOIN config.tipi_indirizzi ti
+      ON ti.id = m.tipo_indirizzo_id
+    WHERE m.obbligatorio = true
+      AND m.attivo = true
+      AND (m.valido_dal IS NULL OR m.valido_dal <= CURRENT_DATE)
+      AND (m.valido_al IS NULL OR m.valido_al >= CURRENT_DATE)
 )
-LIMIT 1;
+SELECT soggetto_id FROM sogg;
 
 SELECT ok(
-    (SELECT count(*) FROM tmp_soggetto_2) = 1,
-    'Esiste un secondo soggetto candidabile'
+    (SELECT soggetto_id IS NOT NULL FROM tmp_soggetto_2),
+    'Creato soggetto PG 2 di supporto'
 );
 
 -- ============================================================
--- 3) Ruolo EF presente
+-- 4) Ruolo EF presente
 -- ============================================================
 CREATE TEMP TABLE tmp_ruolo_ef AS
 SELECT id AS tipo_ruolo_id
@@ -94,7 +248,7 @@ SELECT ok(
 );
 
 -- ============================================================
--- 4) Ruolo EF per soggetto 1
+-- 5) Ruolo EF per soggetto 1
 -- ============================================================
 CREATE TEMP TABLE tmp_ef_role_1 AS
 SELECT
@@ -109,10 +263,10 @@ SELECT ok(
 );
 
 -- ============================================================
--- 5) Inserimento emittente fiscale 1
+-- 6) Inserimento emittente fiscale 1
 -- ============================================================
 CREATE TEMP TABLE tmp_emittente_1 AS
-WITH ins AS (
+WITH ins_emittente AS (
     INSERT INTO anagrafiche.emittenti_fiscali (
         soggetto_ruolo_id,
         codice,
@@ -126,9 +280,9 @@ WITH ins AS (
         jsonb_build_object('test_scope', k.test_scope)
     FROM tmp_ef_role_1 r,
          tmp_costanti_ef k
-    RETURNING id
+    RETURNING id, soggetto_ruolo_id
 )
-SELECT id FROM ins;
+SELECT id FROM ins_emittente;
 
 SELECT is(
     (SELECT count(*)::int FROM tmp_emittente_1),
@@ -137,7 +291,7 @@ SELECT is(
 );
 
 -- ============================================================
--- 6) Verifica default mapping (1 solo)
+-- 7) Verifica default mapping (1 solo)
 -- ============================================================
 SELECT is(
     (SELECT count(*)::int
@@ -148,7 +302,7 @@ SELECT is(
 );
 
 -- ============================================================
--- 7) Billing account senza mapping
+-- 8) Billing account senza mapping
 -- ============================================================
 CREATE TEMP TABLE tmp_ba_no_map AS
 SELECT ba.id AS billing_account_id
@@ -165,17 +319,24 @@ SELECT ok(
     'Esiste un billing_account senza mapping emittente'
 );
 
+CREATE TEMP TABLE tmp_emittente_default AS
+SELECT m.emittente_soggetto_ruolo_id
+FROM anagrafiche.emittenti_fiscali_billing_account m
+WHERE m.is_default = true
+  AND m.billing_account_id IS NULL
+LIMIT 1;
+
 -- ============================================================
--- 8) Fallback funzione emittente (default)
+-- 9) Fallback funzione emittente (default)
 -- ============================================================
 SELECT is(
     anagrafiche.fn_get_emittente_fiscale_id((SELECT billing_account_id FROM tmp_ba_no_map)),
-    (SELECT soggetto_ruolo_id::bigint FROM tmp_ef_role_1),
+    (SELECT emittente_soggetto_ruolo_id::bigint FROM tmp_emittente_default),
     'Fallback funzione emittente (default)'
 );
 
 -- ============================================================
--- 9) Ruolo EF per soggetto 2
+-- 10) Ruolo EF per soggetto 2
 -- ============================================================
 CREATE TEMP TABLE tmp_ef_role_2 AS
 SELECT
@@ -190,10 +351,10 @@ SELECT ok(
 );
 
 -- ============================================================
--- 10) Inserimento emittente fiscale 2
+-- 11) Inserimento emittente fiscale 2
 -- ============================================================
 CREATE TEMP TABLE tmp_emittente_2 AS
-WITH ins AS (
+WITH ins_emittente AS (
     INSERT INTO anagrafiche.emittenti_fiscali (
         soggetto_ruolo_id,
         codice,
@@ -207,9 +368,9 @@ WITH ins AS (
         jsonb_build_object('test_scope', k.test_scope)
     FROM tmp_ef_role_2 r,
          tmp_costanti_ef k
-    RETURNING id
+    RETURNING id, soggetto_ruolo_id
 )
-SELECT id FROM ins;
+SELECT id FROM ins_emittente;
 
 SELECT is(
     (SELECT count(*)::int FROM tmp_emittente_2),
@@ -218,7 +379,7 @@ SELECT is(
 );
 
 -- ============================================================
--- 11) Inserimento mapping BA -> emittente (override)
+-- 12) Inserimento mapping BA -> emittente (override)
 -- ============================================================
 CREATE TEMP TABLE tmp_map_ba AS
 WITH ins AS (
@@ -247,7 +408,7 @@ SELECT is(
 );
 
 -- ============================================================
--- 12) Verifica override funzione emittente
+-- 13) Verifica override funzione emittente
 -- ============================================================
 SELECT is(
     anagrafiche.fn_get_emittente_fiscale_id((SELECT billing_account_id FROM tmp_ba_no_map)),
@@ -256,7 +417,7 @@ SELECT is(
 );
 
 -- ============================================================
--- 13) Blocco disattivazione emittente con mapping
+-- 14) Blocco disattivazione emittente con mapping
 -- ============================================================
 SELECT throws_ok(
     $$
@@ -269,34 +430,5 @@ SELECT throws_ok(
     'Blocco disattivazione emittente con mapping BA'
 );
 
--- Cleanup
-SELECT set_config('zeroerp.maintenance_ruoli_delete', 'on', false);
-
-
-DELETE FROM anagrafiche.emittenti_fiscali_billing_account
-WHERE meta ->> 'test_scope' = (SELECT test_scope FROM tmp_costanti_ef);
-DELETE FROM anagrafiche.emittenti_fiscali
-WHERE brand_meta ->> 'test_scope' = (SELECT test_scope FROM tmp_costanti_ef);
-
-DELETE FROM anagrafiche.soggetti_ruoli sr
-WHERE sr.id IN (
-    (SELECT soggetto_ruolo_id FROM tmp_ef_role_1),
-    (SELECT soggetto_ruolo_id FROM tmp_ef_role_2)
-)
-  AND NOT EXISTS (
-    SELECT 1
-    FROM anagrafiche.emittenti_fiscali ef
-    WHERE ef.soggetto_ruolo_id = sr.id
-  )
-  AND NOT EXISTS (
-    SELECT 1
-    FROM anagrafiche.emittenti_fiscali_billing_account m
-    WHERE m.emittente_soggetto_ruolo_id = sr.id
-  );
-
-
-DELETE FROM anagrafiche.emittenti_fiscali_billing_account m
-USING anagrafiche.emittenti_fiscali ef
-WHERE m.is_default = true
-  AND m.emittente_soggetto_ruolo_id = ef.soggetto_ruolo_id
-  AND ef.brand_meta ->> 'test_scope' = (SELECT test_scope FROM tmp_costanti_ef);
+SELECT * FROM finish();
+ROLLBACK;

@@ -20,6 +20,7 @@ from rest_framework.response import Response
 from rest_framework_simplejwt.exceptions import AuthenticationFailed, InvalidToken
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
+from apps.core.api.jwt_audit_authentication import set_jwt_gucs
 from apps.core.api.throttling import LoginRateThrottle
 from apps.core.db.auth_repository import AuthRepository
 from apps.core.services import session_audit_service
@@ -77,6 +78,20 @@ class AuditTokenObtainPairView(TokenObtainPairView):
                     response.data["password_change_required"] = True
 
             user_id, jti = self._extract_claims(response)
+            # Hotfix BE-2.0ter: il login NON passa dalla DRF auth chain
+            # (l'utente non e' ancora autenticato a authenticate() time),
+            # quindi JwtAuditAuthentication NON setta le GUC. Le settiamo
+            # qui manualmente, prima della scrittura di audit, cosi' i
+            # trigger DB di sessioni_utente popolano user_insert con lo
+            # username effettivo invece di 'zeroerp_app'. Il marker
+            # _zeroerp_jwt_guc_set fa partire il reset simmetrico nel
+            # JwtAuditMiddleware.process_response.
+            if user and user_id:
+                set_jwt_gucs(
+                    username=user.username,
+                    user_id=user_id,
+                    request=request._request if hasattr(request, "_request") else request,
+                )
             session_audit_service.record_login(
                 user_id=user_id,
                 request=request._request if hasattr(request, "_request") else request,
@@ -118,12 +133,38 @@ class AuditTokenRefreshView(TokenRefreshView):
         response = super().post(request, *args, **kwargs)
         if response.status_code == 200:
             user_id, jti = self._extract_claims(request)
+            # Hotfix BE-2.0ter: il refresh NON passa dalla DRF auth chain
+            # (la request porta solo il refresh token nel body, niente
+            # Authorization Bearer), quindi JwtAuditAuthentication NON
+            # setta le GUC. Le settiamo qui manualmente prima della
+            # scrittura di audit. Lo username viene risolto dal user_id
+            # estratto dal claim del refresh token (gia' validato dal
+            # parent SimpleJWT, quindi affidabile).
+            if user_id:
+                username = self._resolve_username(user_id)
+                if username:
+                    set_jwt_gucs(
+                        username=username,
+                        user_id=user_id,
+                        request=request._request if hasattr(request, "_request") else request,
+                    )
             session_audit_service.record_refresh(
                 user_id=user_id,
                 request=request._request if hasattr(request, "_request") else request,
                 jti=jti,
             )
         return response
+
+    @staticmethod
+    # Scopo: Risolve lo username da auth_user.id per la propagazione GUC.
+    # Best-effort: ritorna None se l'utente non esiste o la query fallisce
+    # (in quel caso le GUC non vengono settate, fail-open).
+    def _resolve_username(user_id: int) -> str | None:
+        try:
+            user = User.objects.filter(pk=user_id).only("username").first()
+        except Exception:
+            return None
+        return user.username if user else None
 
     @staticmethod
     # Scopo: Estrae user_id e sid dal refresh token nel body della request.

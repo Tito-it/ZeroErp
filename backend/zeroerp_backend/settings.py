@@ -104,7 +104,14 @@ REST_FRAMEWORK = {
     ],
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
     "DEFAULT_AUTHENTICATION_CLASSES": [
-        "rest_framework_simplejwt.authentication.JWTAuthentication",
+        # Subclass di JWTAuthentication che propaga l'identita utente
+        # come GUC PG (`app.jwt_user`, `app.current_user_id`) subito
+        # dopo authenticate(), prima del view body. E' il punto del
+        # flusso DRF in cui i trigger DB di audit/scope possono
+        # finalmente vedere "chi" sta facendo le scritture. Vedi
+        # docs/it/guide/risorse-umane-e-accessi.md "Propagazione
+        # identita utente al database (GUC)".
+        "apps.core.api.jwt_audit_authentication.JwtAuditAuthentication",
     ],
     "DEFAULT_PERMISSION_CLASSES": [
         "apps.core.api.permissions.ZeroERPPermission",

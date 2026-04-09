@@ -303,3 +303,29 @@ class LookupEmittentiView(AdminAPIView):
     @extend_schema(responses={200: inline_serializer(name="LookupEmittentiResp", fields={"data": serializers.DictField()})})
     def get(self, request: Request) -> JsonResponse:
         return success_response({"results": AmmSoftwareService().list_emittenti_fiscali()})
+
+
+
+# ================================================================== #
+# Setup status (refactor operatore-emittenti)                          #
+# ================================================================== #
+
+
+class SetupStatusView(AdminAPIView):
+    """GET stato setup refactor operatore-emittenti.
+
+    Conta emittenti attivi, operatori totali/assegnati/admin globali/non
+    assegnati. Usato dal banner UI "operatori non assegnati" che avvisa
+    l'admin durante la transizione (decisione D1 del WIP).
+    """
+
+    @extend_schema(
+        responses={200: inline_serializer(
+            name="SetupStatusResp",
+            fields={"data": serializers.DictField()},
+        )},
+    )
+    # Scopo: Restituisce i 5 contatori di setup status.
+    def get(self, request: Request) -> JsonResponse:
+        del request
+        return success_response(AmmSoftwareService().get_setup_status())

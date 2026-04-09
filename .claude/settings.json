@@ -79,12 +79,25 @@
       "Bash(find /home/tid/software/ZeroErp/db/changelog/migrations_v2/20_code -name *log*error* -type f)",
       "Bash(find /home/tid/software/ZeroErp/db/changelog/migrations_v2/20_code -name *fn-log*raise* -o -name *fn_log*raise* -type f)",
       "Bash(find /home/tid/software/ZeroErp/docs/it/dbzero -name *.md -type f)",
-      "Bash(grep -r \"crea_auth_user\\\\|crea_soggetto_pf\\\\|crea_risorsa_umana\" /home/tid/software/ZeroErp --include=*.yaml --include=*.md)"
+      "Bash(grep -r \"crea_auth_user\\\\|crea_soggetto_pf\\\\|crea_risorsa_umana\" /home/tid/software/ZeroErp --include=*.yaml --include=*.md)",
       "Bash(grep -r \"def.*me\\\\|path.*me\" /home/tid/apps/ZeroErp/backend/apps/core/api/*.py)",
       "Bash(find /home/tid/apps/ZeroErp/docs/it -name *amministr* -o -name *utenti* -o -name *sprint*)",
       "Bash(source ../.venv/bin/activate)",
       "Bash(grep -h RIS_UMANA /home/tid/apps/ZeroErp/db/changelog/migrations_v2/80_data/anagrafiche/*.yaml)",
-      "Bash(. ~/.nvm/nvm.sh)"
+      "Bash(. ~/.nvm/nvm.sh)",
+      "Bash(python3 -m json.tool /home/tid/software/ZeroErp/.claude/settings.json)",
+      "Bash(bash -c 'source ~/.nvm/nvm.sh 2>/dev/null; ./node_modules/.bin/vite build 2>&1 | tail -40')",
+      "Bash(bash -c 'source ~/.nvm/nvm.sh 2>/dev/null; ./node_modules/.bin/vite build 2>&1 | tail -5')",
+      "Bash(bash -c 'source ~/.nvm/nvm.sh 2>/dev/null; ./node_modules/.bin/vite build 2>&1 | tail -3')",
+      "Bash(git -C /home/tid/apps/ZeroErp status --short)",
+      "Bash(git -C /home/tid/apps/ZeroErp log --oneline -10)",
+      "Bash(./manage-env.sh shell -c ':*)",
+      "Bash(.venv/bin/python -m py_compile apps/vendite/db/listini_repository.py apps/vendite/services/listini_service.py apps/vendite/api/views_listini.py apps/vendite/api/urls_listini.py)",
+      "Bash(grep -l '\"listini\"' src/locales/*.json)",
+      "Bash(bash -c 'source ~/.nvm/nvm.sh 2>/dev/null; ./node_modules/.bin/vite build 2>&1 | tail -25')",
+      "Bash(.venv/bin/python -m py_compile apps/vendite/services/listini_service.py apps/vendite/db/listini_repository.py apps/vendite/api/views_listini.py)",
+      "Bash(bash -c 'source ~/.nvm/nvm.sh 2>/dev/null; ./node_modules/.bin/vite build 2>&1 | tail -10')",
+      "Bash(bash -n /home/tid/apps/ZeroErp/backend/scripts/tests/smoke-test-listini.sh)"
     ],
     "additionalDirectories": [
       "/home/tid/apps/ZeroErp/docs/it/dev/work-in-progress"

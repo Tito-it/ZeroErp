@@ -1,0 +1,45 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/dbops/20260409-02-add-audit-update-sessioni-utente-mctit.yaml
+
+  - changeSet:
+      id: 20260409-02-add-audit-update-sessioni-utente
+      author: mctit
+      comment: >
+        Aggiunge data_update e user_update a dbops.sessioni_utente
+        per allineare la tabella al pattern audit update e permettere
+        l'applicazione del trigger automatico.
+
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE dbops.sessioni_utente
+                ADD COLUMN IF NOT EXISTS data_update timestamp with time zone,
+                ADD COLUMN IF NOT EXISTS user_update text;
+
+              ALTER TABLE dbops.sessioni_utente
+                ALTER COLUMN data_update SET DEFAULT now(),
+                ALTER COLUMN user_update SET DEFAULT CURRENT_USER;
+
+              UPDATE dbops.sessioni_utente
+                 SET data_update = COALESCE(data_update, data_insert, now()),
+                     user_update = COALESCE(user_update, user_insert, CURRENT_USER)
+               WHERE data_update IS NULL
+                  OR user_update IS NULL;
+
+              ALTER TABLE dbops.sessioni_utente
+                ALTER COLUMN data_update SET NOT NULL,
+                ALTER COLUMN user_update SET NOT NULL;
+
+              COMMENT ON COLUMN dbops.sessioni_utente.data_update
+                IS 'Audit: timestamp aggiornamento.';
+
+              COMMENT ON COLUMN dbops.sessioni_utente.user_update
+                IS 'Audit: utente aggiornamento.';

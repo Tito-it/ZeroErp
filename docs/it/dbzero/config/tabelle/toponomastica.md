@@ -30,7 +30,7 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_toponomastica_a10_stradario_generale_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('config', 'stradario_generale', 'toponomastica_id', 'id')` |
+| trg_toponomastica_a10_stradario_generale_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('config', 'stradario_generale', 'toponomastica_id', 'id', 'attivo')` |
 | trg_toponomastica_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_toponomastica_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_toponomastica_bump_normalize_aft_upd | AFTER | UPDATE | `EXECUTE FUNCTION config.trgfn_toponomastica_bump_normalize()` |

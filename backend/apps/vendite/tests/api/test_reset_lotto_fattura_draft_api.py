@@ -18,11 +18,13 @@ import json
 from unittest.mock import Mock, patch
 
 from django.test import Client, SimpleTestCase
+from apps.core.tests._helpers.jwt_mock import JwtMockedApiTest
 
 
-class VenditeResetLottoFatturaDraftApiTests(SimpleTestCase):
+class VenditeResetLottoFatturaDraftApiTests(JwtMockedApiTest):
     # Scopo: Prepara il contesto comune del test.
     def setUp(self) -> None:
+        super().setUp()
         self.client = Client()
 
     # Scopo: Verifica il caso `test_reset_lotto_fattura_draft_ok`.

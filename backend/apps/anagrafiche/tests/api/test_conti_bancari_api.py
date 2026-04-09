@@ -25,6 +25,7 @@ import json
 from unittest.mock import Mock, patch
 
 from django.test import Client, SimpleTestCase
+from apps.core.tests._helpers.jwt_mock import JwtMockedApiTest
 
 from apps.core.services.service_errors import ServiceError
 
@@ -35,10 +36,11 @@ _FAKE_UUID = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
 _FAKE_IBAN = "IT60X0542811101000000123456"
 
 
-class TestContiBancariLookupApi(SimpleTestCase):
+class TestContiBancariLookupApi(JwtMockedApiTest):
     """Test endpoint lookup registro IBAN e filiali."""
 
     def setUp(self) -> None:
+        super().setUp()
         self.client = Client()
 
     @patch(_AUTH, return_value=(Mock(), None))
@@ -66,10 +68,11 @@ class TestContiBancariLookupApi(SimpleTestCase):
         self.assertEqual(len(body["data"]["results"]), 1)
 
 
-class TestContiBancariSoggettoApi(SimpleTestCase):
+class TestContiBancariSoggettoApi(JwtMockedApiTest):
     """Test endpoint CRUD conti bancari soggetto."""
 
     def setUp(self) -> None:
+        super().setUp()
         self.client = Client()
 
     @patch(_AUTH, return_value=(Mock(), None))
@@ -146,10 +149,11 @@ class TestContiBancariSoggettoApi(SimpleTestCase):
         self.assertTrue(body["data"]["deleted"])
 
 
-class TestContiBancariRuoloApi(SimpleTestCase):
+class TestContiBancariRuoloApi(JwtMockedApiTest):
     """Test endpoint CRUD conti bancari ruolo."""
 
     def setUp(self) -> None:
+        super().setUp()
         self.client = Client()
 
     @patch(_AUTH, return_value=(Mock(), None))

@@ -155,10 +155,10 @@ const canSave = computed(() => {
 async function handleSave() {
   const f = form.value
   if (isEdit.value) {
+    // uom_id e' immutabile dopo create (lock_columns DDL): non inviarlo mai in PATCH.
     const payload = {
       descrizione: f.descrizione?.trim() || '',
       descrizione_breve: f.descrizione_breve?.trim() || null,
-      uom_id: f.uom_id,
       tipo_voce_id: f.tipo_voce_id,
       gruppo_voce_id: f.gruppo_voce_id,
       spesa_id: f.spesa_id,
@@ -224,7 +224,8 @@ function close() {
           </div>
           <div class="form-field">
             <label>{{ t('catalogo.field_uom') }} *</label>
-            <LookupSelect v-model="form.uom_id" rel="catalogo.unita_misura" :placeholder="t('catalogo.select_uom')" />
+            <LookupSelect v-model="form.uom_id" rel="catalogo.unita_misura"
+              :placeholder="t('catalogo.select_uom')" :disabled="isEdit" />
           </div>
         </div>
 
