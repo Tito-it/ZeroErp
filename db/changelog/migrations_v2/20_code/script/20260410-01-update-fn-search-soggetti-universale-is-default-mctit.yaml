@@ -1,0 +1,385 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+#
+# Allinea il filtro scope emittente in fn_search_soggetti_universale
+# al pattern usato da clienti_repository.list_clienti:
+#   - Aggiunge fallback OR efba.is_default = true
+#   - Il gestore globale (efba con ba_id=NULL, is_default=true)
+#     puo' ora vedere tutti i clienti anche nella ricerca universale
+#
+# Prima: JOIN efba.billing_account_id = cl_scope.billing_account_id
+#         (non matchava il gestore globale con ba_id=NULL)
+# Dopo:  (efba.billing_account_id = cl_scope.billing_account_id
+#          OR efba.is_default = true)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260410-01-update-fn-search-soggetti-universale-is-default-mctit.yaml
+
+  - changeSet:
+      id: 20260410-01-01-create-fn-check-ba-visible-for-emittenti
+      author: mctit
+      runOnChange: true
+      validCheckSum:
+        - ANY
+      comment: >
+        Pure check (fn_check_*, boolean, no raise): verifica se un billing_account
+        e' visibile per un set di emittenti autorizzati. Logica a 3 livelli:
+        1) Mapping specifico BA -> emittente in emittenti_fiscali_billing_account
+        2) Fallback default: emittente autorizzato ha is_default=true E il BA
+           non ha alcun mapping specifico su nessun emittente
+        3) Altrimenti non visibile.
+        Schema script (cross-dominio, legge anagrafiche).
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            {
+              schemaName: anagrafiche,
+              tableName: emittenti_fiscali_billing_account,
+            }
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_check_ba_visible_for_emittenti(
+                  p_billing_account_id  anagrafiche.billing_account.id%TYPE,
+                  p_emittente_ids       bigint[]
+              )
+              RETURNS boolean
+              LANGUAGE plpgsql
+              STABLE PARALLEL SAFE
+              AS $function$
+              BEGIN
+                  -- Convenzione fn_check_*: pure boolean, nessun raise.
+                  -- Il chiamante gestisce il NULL di p_emittente_ids (= nessuna
+                  -- restrizione) PRIMA di invocare questa funzione.
+
+                  -- BA NULL = non visibile (no BA = no mapping possibile)
+                  IF p_billing_account_id IS NULL THEN
+                      RETURN false;
+                  END IF;
+
+                  -- Array vuoto o NULL = nessun emittente autorizzato = non visibile
+                  IF p_emittente_ids IS NULL OR array_length(p_emittente_ids, 1) IS NULL THEN
+                      RETURN false;
+                  END IF;
+
+                  -- 1) Mapping specifico: il BA ha una riga in
+                  --    emittenti_fiscali_billing_account collegata a uno degli
+                  --    emittenti autorizzati.
+                  IF EXISTS (
+                      SELECT 1
+                        FROM anagrafiche.emittenti_fiscali_billing_account efba
+                       WHERE efba.emittente_soggetto_ruolo_id = ANY(p_emittente_ids)
+                         AND efba.billing_account_id = p_billing_account_id
+                  ) THEN
+                      RETURN true;
+                  END IF;
+
+                  -- 2) Fallback default: un emittente autorizzato ha is_default=true
+                  --    (gestore globale) E il BA non ha nessun mapping specifico
+                  --    su nessun emittente. Il gestore globale "copre" i BA non
+                  --    ancora mappati esplicitamente.
+                  IF EXISTS (
+                      SELECT 1
+                        FROM anagrafiche.emittenti_fiscali_billing_account efba
+                       WHERE efba.emittente_soggetto_ruolo_id = ANY(p_emittente_ids)
+                         AND efba.is_default = true
+                  )
+                  AND NOT EXISTS (
+                      SELECT 1
+                        FROM anagrafiche.emittenti_fiscali_billing_account efba2
+                       WHERE efba2.billing_account_id = p_billing_account_id
+                  ) THEN
+                      RETURN true;
+                  END IF;
+
+                  -- 3) Ne' mapping specifico ne' fallback default: non visibile
+                  RETURN false;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_check_ba_visible_for_emittenti(anagrafiche.billing_account.id%TYPE, bigint[])
+              IS 'Pure check (fn_check_*, boolean, no raise): un billing_account e'' visibile per un set di emittenti autorizzati? Logica a 3 livelli: 1) mapping specifico BA->emittente, 2) fallback default (is_default=true) se BA non ha mapping, 3) non visibile. Usata da fn_search_soggetti_universale e fn_get_search_detail per il filtro scope emittente ramo CL.';
+
+  - changeSet:
+      id: 20260410-01-02-update-fn-search-soggetti-universale-is-default
+      author: mctit
+      comment: "Filtro scope emittente: aggiunge fallback is_default=true per gestore globale (allineamento a clienti_repository)"
+      runOnChange: true
+      failOnError: true
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+
+              -- Rimuove la vecchia firma.
+              DROP FUNCTION IF EXISTS script.fn_search_soggetti_universale(text, integer, bigint[], integer, integer, text, text);
+
+              -- ==========================================================
+              -- fn_search_soggetti_universale (aggiornamento is_default)
+              --   Ricerca universale soggetti per tipo ruolo (livello 1).
+              --   Cerca su:
+              --     - ragione_sociale_completa  (ILIKE, GIN trgm)
+              --     - id_fiscale_univoco_cf_piva (ILIKE, GIN trgm)
+              --     - codice soggetto           (ILIKE, GIN trgm)
+              --     - codice entita' dinamico   (EXISTS su tabella da
+              --       tipi_ruoli.entita_tabella con colonna da
+              --       entita_colonna_codice, default 'codice')
+              --
+              --   Filtro scope emittente (solo CL):
+              --     p_emittente_ids = soggetto_ruolo_id degli emittenti
+              --     autorizzati (da fn_get_emittenti_scope_sr_ids).
+              --     NULL = nessuna restrizione. Array = filtra via
+              --     emittenti_fiscali_billing_account.
+              --     Supporta il pattern gestore globale:
+              --       efba con billing_account_id IS NULL + is_default=true
+              --       → vede tutti i BA.
+              --
+              --   Ordinamento dinamico: p_order_by sceglie la colonna,
+              --   p_order_dir la direzione (ASC/DESC). Whitelist di
+              --   colonne ordinabili con guard E_PARAMETRO_INVALIDO.
+              --
+              --   Hard cap 10.000 righe filtrate. Paginazione LIMIT/OFFSET.
+              --   Utility aggregate per CL.
+              -- ==========================================================
+              CREATE OR REPLACE FUNCTION script.fn_search_soggetti_universale(
+                p_search_term    text,
+                p_tipo_ruolo_id  config.tipi_ruoli.id%TYPE,
+                p_emittente_ids  bigint[]   DEFAULT NULL,
+                p_limit          integer    DEFAULT 50,
+                p_offset         integer    DEFAULT 0,
+                p_order_by       text       DEFAULT NULL,
+                p_order_dir      text       DEFAULT 'ASC'
+              )
+               RETURNS TABLE(
+                 total_count             bigint,
+                 soggetto_id             anagrafiche.soggetti.id%TYPE,
+                 soggetto_ruolo_id       anagrafiche.soggetti_ruoli.id%TYPE,
+                 tipo_ruolo_id           config.tipi_ruoli.id%TYPE,
+                 soggetto_codice         text,
+                 ragione_sociale_completa text,
+                 id_fiscale_univoco      text,
+                 utility_list            text
+               )
+               LANGUAGE plpgsql
+               STABLE PARALLEL SAFE
+              AS $function$
+              DECLARE
+                -- Pattern ILIKE costruito dal termine di ricerca
+                v_search_pattern    text;
+                -- Limiti paginazione normalizzati
+                v_limit             integer := LEAST(COALESCE(p_limit, 50), 200);
+                v_offset            integer := GREATEST(COALESCE(p_offset, 0), 0);
+                -- Hard cap protegge da query troppo larghe
+                c_hard_cap          constant integer := 10000;
+                -- Riferimento tabella entita' da tipi_ruoli (nullable)
+                v_entita_tabella    config.tipi_ruoli.entita_tabella%TYPE;
+                -- Colonna codice nella tabella entita' (default 'codice')
+                v_entita_colonna    text;
+                -- Codice interno tipo ruolo (CL, FO, EF, ...)
+                v_tipo_ruolo_codice config.tipi_ruoli.codice_interno%TYPE;
+                -- Frammento SQL EXISTS dinamico (vuoto se nessuna tabella)
+                v_exists_clause     text := '';
+                -- Frammento SQL filtro emittente (vuoto se non CL o NULL)
+                v_emittente_clause  text := '';
+                -- Colonne ordinabili (whitelist)
+                c_allowed_order_cols constant text[] := ARRAY[
+                  'ragione_sociale_completa',
+                  'soggetto_codice',
+                  'id_fiscale_univoco',
+                  'utility_list'
+                ];
+                -- Colonna e direzione ordinamento effettivi
+                v_order_col         text;
+                v_order_dir         text;
+                -- Frammento ORDER BY dinamico
+                v_order_clause      text;
+              BEGIN
+                -- Guard: tipo ruolo obbligatorio e valido
+                IF p_tipo_ruolo_id IS NULL OR p_tipo_ruolo_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database',
+                    'script.fn_search_soggetti_universale',
+                    'E_PARAMETRO_INVALIDO',
+                    jsonb_build_object(
+                      'parametro', 'p_tipo_ruolo_id',
+                      'valore', p_tipo_ruolo_id
+                    ),
+                    NULL::uuid,
+                    'p_tipo_ruolo_id obbligatorio e > 0'
+                  );
+                END IF;
+
+                -- Guard: termine ricerca minimo 3 caratteri
+                IF p_search_term IS NULL OR length(btrim(p_search_term)) < 3 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database',
+                    'script.fn_search_soggetti_universale',
+                    'E_PARAMETRO_INVALIDO',
+                    jsonb_build_object(
+                      'parametro', 'p_search_term',
+                      'valore', p_search_term,
+                      'minimo_caratteri', 3
+                    ),
+                    NULL::uuid,
+                    'p_search_term obbligatorio (minimo 3 caratteri)'
+                  );
+                END IF;
+
+                -- Validazione e normalizzazione ordinamento.
+                -- p_order_by: se NULL usa default, se valorizzato deve essere
+                -- nella whitelist c_allowed_order_cols.
+                v_order_col := COALESCE(btrim(p_order_by), 'ragione_sociale_completa');
+
+                IF NOT (v_order_col = ANY(c_allowed_order_cols)) THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database',
+                    'script.fn_search_soggetti_universale',
+                    'E_PARAMETRO_INVALIDO',
+                    jsonb_build_object(
+                      'parametro', 'p_order_by',
+                      'valore', p_order_by,
+                      'colonne_ammesse', to_jsonb(c_allowed_order_cols)
+                    ),
+                    NULL::uuid,
+                    concat('p_order_by non valido: ', p_order_by)
+                  );
+                END IF;
+
+                -- p_order_dir: normalizza a ASC o DESC, default ASC
+                v_order_dir := CASE upper(btrim(COALESCE(p_order_dir, 'ASC')))
+                  WHEN 'DESC' THEN 'DESC'
+                  ELSE 'ASC'
+                END;
+
+                -- Costruisci frammento ORDER BY.
+                -- %I quota il nome colonna (safe), direzione validata sopra.
+                -- Tie-breaker su soggetto_ruolo_id per ordinamento stabile.
+                v_order_clause := format(
+                  'ORDER BY wu.%I %s, wu.soggetto_ruolo_id ASC',
+                  v_order_col, v_order_dir
+                );
+
+                -- Prepara pattern ILIKE con wildcards
+                v_search_pattern := '%' || btrim(p_search_term) || '%';
+
+                -- Recupera codice_interno e riferimento tabella entita'
+                -- per il tipo ruolo. codice_interno serve per sapere se
+                -- applicare il filtro emittente (solo CL).
+                SELECT tr.codice_interno,
+                       tr.entita_tabella,
+                       COALESCE(tr.entita_colonna_codice, 'codice')
+                  INTO v_tipo_ruolo_codice, v_entita_tabella, v_entita_colonna
+                FROM config.tipi_ruoli tr
+                WHERE tr.id = p_tipo_ruolo_id;
+
+                -- Costruisci frammento EXISTS dinamico per ricerca codice.
+                -- La tabella e' gia' validata dal trigger guard su tipi_ruoli
+                -- (regclass valido, ha soggetto_ruolo_id, ha colonna codice).
+                -- Usa %s per il nome tabella (validato) e %I per la colonna.
+                IF v_entita_tabella IS NOT NULL THEN
+                  v_exists_clause := format(
+                    'OR EXISTS (SELECT 1 FROM %s e WHERE e.soggetto_ruolo_id = sr.id AND e.%I ILIKE $2)',
+                    v_entita_tabella::regclass,
+                    v_entita_colonna
+                  );
+                END IF;
+
+                -- Costruisci frammento filtro scope emittente.
+                -- Si applica SOLO per tipo ruolo CL e SOLO se p_emittente_ids
+                -- non e' NULL. Delega la logica a 3 livelli (mapping specifico,
+                -- fallback default, non visibile) a
+                -- script.fn_check_ba_visible_for_emittenti per evitare
+                -- duplicazione con fn_get_search_detail.
+                -- $5 = p_emittente_ids (passato via USING)
+                IF v_tipo_ruolo_codice = 'CL' AND p_emittente_ids IS NOT NULL THEN
+                  v_emittente_clause := '
+                      AND EXISTS (
+                        SELECT 1
+                          FROM anagrafiche.clienti cl_scope
+                         WHERE cl_scope.soggetto_ruolo_id = sr.id
+                           AND script.fn_check_ba_visible_for_emittenti(
+                                 cl_scope.billing_account_id, $5
+                               )
+                      )';
+                END IF;
+
+                -- Query principale con paginazione e conteggio totale.
+                -- $1 = p_tipo_ruolo_id, $2 = v_search_pattern,
+                -- $3 = v_limit, $4 = v_offset, $5 = p_emittente_ids
+                RETURN QUERY EXECUTE format('
+                  WITH filtered AS (
+                    -- CTE 1: soggetti con ruolo richiesto e match sul termine.
+                    -- Cerca su ragione_sociale, id_fiscale, codice soggetto
+                    -- e codice entita'' (dinamico da tipi_ruoli.entita_tabella).
+                    -- Filtro scope emittente applicato solo per CL.
+                    SELECT
+                      s.id                             AS soggetto_id,
+                      sr.id                            AS soggetto_ruolo_id,
+                      sr.tipo_ruolo_id                 AS tipo_ruolo_id,
+                      s.codice                         AS soggetto_codice,
+                      s.ragione_sociale_completa       AS ragione_sociale_completa,
+                      s.id_fiscale_univoco_cf_piva     AS id_fiscale_univoco
+                    FROM anagrafiche.soggetti_ruoli sr
+                      JOIN anagrafiche.soggetti s
+                        ON s.id = sr.soggetto_id
+                    WHERE sr.tipo_ruolo_id = $1
+                      AND s.attivo = true
+                      AND (
+                        s.ragione_sociale_completa ILIKE $2
+                        OR s.id_fiscale_univoco_cf_piva ILIKE $2
+                        OR s.codice ILIKE $2
+                        %s
+                      )
+                      %s
+                    LIMIT %s
+                  ),
+                  with_utility AS (
+                    -- CTE 2: aggrega utility (codice_interno) per soggetti trovati.
+                    -- LEFT JOIN leggero, produce NULL per ruoli non-cliente.
+                    SELECT
+                      f.*,
+                      string_agg(DISTINCT u.codice_interno, '', '' ORDER BY u.codice_interno)
+                        AS utility_list
+                    FROM filtered f
+                      LEFT JOIN anagrafiche.clienti cl
+                        ON cl.soggetto_ruolo_id = f.soggetto_ruolo_id
+                      LEFT JOIN config.utilities u
+                        ON u.id = cl.utility_id
+                    GROUP BY
+                      f.soggetto_id, f.soggetto_ruolo_id, f.tipo_ruolo_id,
+                      f.soggetto_codice, f.ragione_sociale_completa,
+                      f.id_fiscale_univoco
+                  ),
+                  paged AS (
+                    -- CTE 3: paginazione con conteggio totale via window function.
+                    -- Ordinamento dinamico da v_order_clause.
+                    SELECT
+                      COUNT(*) OVER()  AS total_count,
+                      wu.*
+                    FROM with_utility wu
+                    %s
+                    LIMIT $3
+                    OFFSET $4
+                  )
+                  SELECT
+                    p.total_count,
+                    p.soggetto_id,
+                    p.soggetto_ruolo_id,
+                    p.tipo_ruolo_id,
+                    p.soggetto_codice,
+                    p.ragione_sociale_completa,
+                    p.id_fiscale_univoco,
+                    p.utility_list
+                  FROM paged p
+                ', v_exists_clause, v_emittente_clause, c_hard_cap, v_order_clause)
+                USING p_tipo_ruolo_id, v_search_pattern, v_limit, v_offset, p_emittente_ids;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_search_soggetti_universale(text, integer, bigint[], integer, integer, text, text) IS
+                'Ricerca universale soggetti per tipo ruolo (livello 1). Cerca su ragione_sociale_completa, id_fiscale_univoco_cf_piva, codice soggetto e codice entita'' dinamico. Filtro scope emittente (solo CL) via emittenti_fiscali_billing_account con fallback is_default=true (gestore globale). Ordinamento dinamico: p_order_by (whitelist), p_order_dir (ASC/DESC). Paginazione LIMIT/OFFSET + COUNT(*) OVER(). Hard cap 10.000.';

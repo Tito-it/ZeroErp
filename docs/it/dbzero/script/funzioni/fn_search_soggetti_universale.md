@@ -136,21 +136,20 @@ BEGIN
 
   -- Costruisci frammento filtro scope emittente.
   -- Si applica SOLO per tipo ruolo CL e SOLO se p_emittente_ids
-  -- non e' NULL. La catena e':
-  --   soggetti_ruoli.id → clienti.soggetto_ruolo_id
-  --   → clienti.billing_account_id
-  --   → emittenti_fiscali_billing_account.billing_account_id
-  --   → emittenti_fiscali_billing_account.emittente_soggetto_ruolo_id
+  -- non e' NULL. Delega la logica a 3 livelli (mapping specifico,
+  -- fallback default, non visibile) a
+  -- script.fn_check_ba_visible_for_emittenti per evitare
+  -- duplicazione con fn_get_search_detail.
   -- $5 = p_emittente_ids (passato via USING)
   IF v_tipo_ruolo_codice = 'CL' AND p_emittente_ids IS NOT NULL THEN
     v_emittente_clause := '
         AND EXISTS (
           SELECT 1
-          FROM anagrafiche.clienti cl_scope
-            JOIN anagrafiche.emittenti_fiscali_billing_account efba
-              ON efba.billing_account_id = cl_scope.billing_account_id
-          WHERE cl_scope.soggetto_ruolo_id = sr.id
-            AND efba.emittente_soggetto_ruolo_id = ANY($5)
+            FROM anagrafiche.clienti cl_scope
+           WHERE cl_scope.soggetto_ruolo_id = sr.id
+             AND script.fn_check_ba_visible_for_emittenti(
+                   cl_scope.billing_account_id, $5
+                 )
         )';
   END IF;
 
@@ -228,7 +227,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_search_soggetti_universale(p_search_term text, p_tipo_ruolo_id integer, p_emittente_ids bigint[], p_limit integer, p_offset integer, p_order_by text, p_order_dir text)
-IS 'Ricerca universale soggetti per tipo ruolo (livello 1). Cerca su ragione_sociale_completa, id_fiscale_univoco_cf_piva, codice soggetto e codice entita'' dinamico. Filtro scope emittente (solo CL) via emittenti_fiscali_billing_account. Ordinamento dinamico: p_order_by (whitelist), p_order_dir (ASC/DESC). Paginazione LIMIT/OFFSET + COUNT(*) OVER(). Hard cap 10.000.';
+IS 'Ricerca universale soggetti per tipo ruolo (livello 1). Cerca su ragione_sociale_completa, id_fiscale_univoco_cf_piva, codice soggetto e codice entita'' dinamico. Filtro scope emittente (solo CL) via emittenti_fiscali_billing_account con fallback is_default=true (gestore globale). Ordinamento dinamico: p_order_by (whitelist), p_order_dir (ASC/DESC). Paginazione LIMIT/OFFSET + COUNT(*) OVER(). Hard cap 10.000.';
 ```
 
 ---

@@ -14,32 +14,30 @@ CREATE OR REPLACE FUNCTION script.fn_get_user_permissions_map(p_auth_user_id int
  STABLE
 AS $function$
 DECLARE
-    v_result  jsonb := '{}'::jsonb;
-    v_area    RECORD;
+    v_ruolo  anagrafiche.risorse_umane_auth_user.ruolo_sistema%TYPE;
+    v_uo_id  anagrafiche.risorse_umane.unita_organizzativa_id%TYPE;
 BEGIN
     -- =========================================================
     -- Scopo:
     --   Restituisce la mappa livello accesso per tutte le aree
     --   funzionali attive, in un solo roundtrip DB.
-    --   Chiama fn_resolve_livello_area per ogni area.
     --
     -- Parametri:
     --   p_auth_user_id: ID utente Django (auth_user.id)
     --
     -- Ritorna:
     --   JSONB { "anagrafiche": "TUTTO", "vendite": "LETTURA", ... }
-    --   Una chiave per ogni area funzionale attiva.
-    --   Valore = livello accesso risolto (config.livello_accesso).
     --
-    -- Catena di risoluzione per area (delegata a fn_resolve_livello_area):
-    --   1. ruolo_sistema (ADMIN → TUTTO, DISABILITATO → BLOCCATO)
+    -- Catena:
+    --   1. ruolo_sistema (NULL/DISABILITATO -> BLOCCATO, ADMIN -> TUTTO)
     --   2. Override utente area (se presente e valido)
-    --   3. Profilo reparto (ereditato da UO)
-    --   4. Default → BLOCCATO
+    --   3. Profilo reparto (ereditato dalla UO)
+    --   4. Default -> BLOCCATO
     --
-    -- Performance:
-    --   ~10 aree attive = ~10 chiamate leggere a fn_resolve_livello_area.
-    --   Risultato cacheable lato Redis (permissions_cache.py).
+    -- Ottimizzazione:
+    --   Nessun loop PL/pgSQL per area. Ruolo e UO vengono letti
+    --   una sola volta, poi la mappa viene costruita in forma
+    --   set-based con LEFT JOIN su override e profilo reparto.
     -- =========================================================
 
     -- Guard: parametro obbligatorio
@@ -53,27 +51,50 @@ BEGIN
         );
     END IF;
 
-    -- Loop su tutte le aree funzionali attive
-    FOR v_area IN
-        SELECT af.schema_db
-          FROM config.aree_funzionali af
-         WHERE af.attivo = TRUE
-         ORDER BY af.ordinamento, af.schema_db
-    LOOP
-        v_result := v_result || jsonb_build_object(
-            v_area.schema_db,
-            script.fn_resolve_livello_area(
-                p_auth_user_id, v_area.schema_db
-            )::text
-        );
-    END LOOP;
+    -- Lettura contesto utente una sola volta
+    SELECT rau.ruolo_sistema,
+           ru.unita_organizzativa_id
+      INTO v_ruolo,
+           v_uo_id
+      FROM anagrafiche.risorse_umane_auth_user rau
+      LEFT JOIN anagrafiche.risorse_umane ru
+        ON ru.id = rau.risorsa_umana_id
+     WHERE rau.auth_user_id = p_auth_user_id;
 
-    RETURN v_result;
+    RETURN (
+        SELECT COALESCE(
+            jsonb_object_agg(
+                af.schema_db,
+                CASE
+                    WHEN v_ruolo IS NULL OR v_ruolo = 'DISABILITATO'
+                        THEN 'BLOCCATO'
+                    WHEN v_ruolo = 'ADMIN'
+                        THEN 'TUTTO'
+                    ELSE COALESCE(
+                        uoa.livello,
+                        pra.livello,
+                        'BLOCCATO'::config.livello_accesso
+                    )::text
+                END
+            ),
+            '{}'::jsonb
+        )
+          FROM config.aree_funzionali af
+          LEFT JOIN config.user_override_aree uoa
+            ON uoa.auth_user_id = p_auth_user_id
+           AND uoa.area_id = af.id
+           AND (uoa.valido_dal IS NULL OR uoa.valido_dal <= CURRENT_DATE)
+           AND (uoa.valido_al  IS NULL OR uoa.valido_al  >= CURRENT_DATE)
+          LEFT JOIN config.profili_reparto_aree pra
+            ON pra.unita_organizzativa_id = v_uo_id
+           AND pra.area_id = af.id
+         WHERE af.attivo = TRUE
+    );
 END;
 $function$
 
 COMMENT ON FUNCTION script.fn_get_user_permissions_map(p_auth_user_id integer)
-IS 'Mappa permessi utente: JSONB {schema_db: livello_accesso} per tutte le aree funzionali attive. Chiama fn_resolve_livello_area per ciascuna. STABLE, cacheable Redis.';
+IS 'Mappa permessi utente: JSONB {schema_db: livello_accesso} per tutte le aree funzionali attive. Refactor set-based: nessun loop PL/pgSQL, legge ruolo_sistema e UO una sola volta.';
 ```
 
 ---

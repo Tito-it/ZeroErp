@@ -9,6 +9,7 @@
 --   script.fn_get_ruolo_sistema
 --   script.fn_resolve_livello_area
 --   script.fn_resolve_livello_oggetto
+--   script.fn_get_user_object_permissions_map
 --   script.fn_check_azione_processo
 --   script.fn_get_emittenti_scope
 --   script.fn_check_user_emittente_scope
@@ -47,11 +48,15 @@
 -- 28) fn_get_emittenti_scope_sr_ids: OPERATIVO senza whitelist → NULL
 -- 29) fn_get_emittenti_scope_sr_ids: DISABILITATO → array vuoto
 -- 30) Seed: 3 nuovi codename azioni_processo esistono
+-- 31) fn_get_user_object_permissions_map: nessun override → {}
+-- 32) fn_get_user_object_permissions_map: override attivo → chiave presente
+-- 33) fn_get_user_object_permissions_map: override scaduto → escluso
+-- 34) fn_get_user_object_permissions_map: override futuro → escluso
 -- ------------------------------------------------------------
 
 BEGIN;
 
-SELECT plan(30);
+SELECT plan(34);
 
 -- ============================================================
 -- 0. Setup: raccolta riferimenti e forzatura OPERATIVO
@@ -98,8 +103,10 @@ DELETE FROM config.user_override_oggetti
 DELETE FROM config.user_override_azioni
  WHERE auth_user_id = (SELECT user_id FROM tmp_ctx);
 
+SET LOCAL zeroerp.allow_user_emittente_delete_override = 'on';
 DELETE FROM config.user_emittenti_fiscali
  WHERE auth_user_id = (SELECT user_id FROM tmp_ctx);
+SET LOCAL zeroerp.allow_user_emittente_delete_override = '';
 
 -- ============================================================
 -- A. fn_get_ruolo_sistema
@@ -512,8 +519,10 @@ UPDATE anagrafiche.risorse_umane_auth_user
  WHERE auth_user_id = (SELECT user_id FROM tmp_ctx);
 
 -- Rimuovi whitelist per test "senza whitelist"
+SET LOCAL zeroerp.allow_user_emittente_delete_override = 'on';
 DELETE FROM config.user_emittenti_fiscali
  WHERE auth_user_id = (SELECT user_id FROM tmp_ctx);
+SET LOCAL zeroerp.allow_user_emittente_delete_override = '';
 
 -- 28) OPERATIVO senza whitelist → NULL (nessuna restrizione)
 SELECT is(
@@ -558,6 +567,69 @@ SELECT is(
     ),
     3,
     'Seed: 3 nuovi codename azioni_processo presenti e attivi'
+);
+
+-- ============================================================
+-- J. fn_get_user_object_permissions_map
+-- ============================================================
+
+-- 31) Nessun override attivo → {}
+DELETE FROM config.user_override_oggetti
+ WHERE auth_user_id = (SELECT user_id FROM tmp_ctx);
+
+SELECT is(
+    script.fn_get_user_object_permissions_map(
+        (SELECT user_id FROM tmp_ctx)
+    ),
+    '{}'::jsonb,
+    'fn_get_user_object_permissions_map: nessun override → {}'
+);
+
+-- 32) Override attivo → chiave presente
+INSERT INTO config.user_override_oggetti
+    (auth_user_id, app_label, model_name, livello, meta)
+SELECT user_id, 'vendite', 'fattura', 'LETTURA'::config.livello_accesso,
+       '{"test_scope":"pgtap_funzioni_risoluzione"}'::jsonb
+FROM tmp_ctx;
+
+SELECT is(
+    script.fn_get_user_object_permissions_map(
+        (SELECT user_id FROM tmp_ctx)
+    ) ->> 'vendite.fattura',
+    'LETTURA',
+    'fn_get_user_object_permissions_map: override attivo → chiave presente'
+);
+
+-- 33) Override scaduto → escluso
+UPDATE config.user_override_oggetti
+   SET valido_dal = CURRENT_DATE - 30,
+       valido_al  = CURRENT_DATE - 1
+ WHERE auth_user_id = (SELECT user_id FROM tmp_ctx)
+   AND app_label = 'vendite'
+   AND model_name = 'fattura';
+
+SELECT is(
+    script.fn_get_user_object_permissions_map(
+        (SELECT user_id FROM tmp_ctx)
+    ),
+    '{}'::jsonb,
+    'fn_get_user_object_permissions_map: override scaduto → escluso'
+);
+
+-- 34) Override futuro → escluso
+UPDATE config.user_override_oggetti
+   SET valido_dal = CURRENT_DATE + 1,
+       valido_al  = CURRENT_DATE + 30
+ WHERE auth_user_id = (SELECT user_id FROM tmp_ctx)
+   AND app_label = 'vendite'
+   AND model_name = 'fattura';
+
+SELECT is(
+    script.fn_get_user_object_permissions_map(
+        (SELECT user_id FROM tmp_ctx)
+    ),
+    '{}'::jsonb,
+    'fn_get_user_object_permissions_map: override futuro → escluso'
 );
 
 SELECT * FROM finish();

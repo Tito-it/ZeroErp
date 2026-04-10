@@ -14,14 +14,13 @@ CREATE OR REPLACE FUNCTION script.fn_get_user_actions_map(p_auth_user_id integer
  STABLE
 AS $function$
 DECLARE
-    v_result  jsonb := '{}'::jsonb;
-    v_azione  RECORD;
+    v_ruolo  anagrafiche.risorse_umane_auth_user.ruolo_sistema%TYPE;
+    v_uo_id  anagrafiche.risorse_umane.unita_organizzativa_id%TYPE;
 BEGIN
     -- =========================================================
     -- Scopo:
     --   Ritorna la mappa completa delle azioni di processo
     --   abilitate/disabilitate per l'utente.
-    --   Gemella di fn_get_user_permissions_map (aree).
     --
     -- Parametri:
     --   p_auth_user_id: ID utente Django (auth_user.id)
@@ -30,11 +29,16 @@ BEGIN
     --   JSONB tipo {"genera_fatture_lotti": true,
     --              "reset_lotto_draft": false, ...}
     --
-    -- Catena di risoluzione (delegata a fn_check_azione_processo):
-    --   1. ruolo_sistema (DISABILITATO → false, ADMIN → true)
+    -- Catena:
+    --   1. ruolo_sistema (NULL/DISABILITATO -> false, ADMIN -> true)
     --   2. Override utente azione (se presente e valido)
-    --   3. Profilo reparto azione (ereditato dall'UO)
-    --   4. Default → false (negata)
+    --   3. Profilo reparto azione (ereditato dalla UO)
+    --   4. Default -> false
+    --
+    -- Ottimizzazione:
+    --   Nessun loop PL/pgSQL per azione. Ruolo e UO vengono
+    --   letti una sola volta, poi la mappa viene costruita in
+    --   forma set-based con LEFT JOIN su override e profilo.
     -- =========================================================
 
     -- Guard: parametro obbligatorio e valido
@@ -48,27 +52,50 @@ BEGIN
         );
     END IF;
 
-    -- Loop su tutte le azioni processo attive
-    FOR v_azione IN
-        SELECT ap.permission_codename
-          FROM config.azioni_processo ap
-         WHERE ap.attivo = TRUE
-         ORDER BY ap.permission_codename
-    LOOP
-        v_result := v_result || jsonb_build_object(
-            v_azione.permission_codename,
-            script.fn_check_azione_processo(
-                p_auth_user_id, v_azione.permission_codename
-            )
-        );
-    END LOOP;
+    -- Lettura contesto utente una sola volta
+    SELECT rau.ruolo_sistema,
+           ru.unita_organizzativa_id
+      INTO v_ruolo,
+           v_uo_id
+      FROM anagrafiche.risorse_umane_auth_user rau
+      LEFT JOIN anagrafiche.risorse_umane ru
+        ON ru.id = rau.risorsa_umana_id
+     WHERE rau.auth_user_id = p_auth_user_id;
 
-    RETURN v_result;
+    RETURN (
+        SELECT COALESCE(
+            jsonb_object_agg(
+                ap.permission_codename,
+                CASE
+                    WHEN v_ruolo IS NULL OR v_ruolo = 'DISABILITATO'
+                        THEN false
+                    WHEN v_ruolo = 'ADMIN'
+                        THEN true
+                    ELSE COALESCE(
+                        uoa.abilitata,
+                        pra.abilitata,
+                        false
+                    )
+                END
+            ),
+            '{}'::jsonb
+        )
+          FROM config.azioni_processo ap
+          LEFT JOIN config.user_override_azioni uoa
+            ON uoa.auth_user_id = p_auth_user_id
+           AND uoa.azione_id = ap.id
+           AND (uoa.valido_dal IS NULL OR uoa.valido_dal <= CURRENT_DATE)
+           AND (uoa.valido_al  IS NULL OR uoa.valido_al  >= CURRENT_DATE)
+          LEFT JOIN config.profili_reparto_azioni pra
+            ON pra.unita_organizzativa_id = v_uo_id
+           AND pra.azione_id = ap.id
+         WHERE ap.attivo = TRUE
+    );
 END;
 $function$
 
 COMMENT ON FUNCTION script.fn_get_user_actions_map(p_auth_user_id integer)
-IS 'Mappa azioni_processo abilitate per utente. Loop su config.azioni_processo attive, chiama fn_check_azione_processo per ognuna. Ritorna JSONB {codename: true/false}. Gemella di fn_get_user_permissions_map.';
+IS 'Mappa azioni_processo abilitate per utente. Refactor set-based: JSONB {codename: boolean} senza loop PL/pgSQL, legge ruolo_sistema e UO una sola volta.';
 ```
 
 ---

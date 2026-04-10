@@ -29,13 +29,14 @@
 -- 21) fn_get_user_profile: blocco soggetto contiene ragione_sociale_completa
 -- 22) fn_get_user_profile: blocco soggetto contiene tipo_ruolo_codice_interno
 -- 23) fn_get_user_profile: blocco emittente presente (o null se nessun emittente)
--- 24) fn_get_user_profile: auth_user_id inesistente → errore
--- 25) fn_get_user_profile: NULL → errore
+-- 24) fn_get_user_profile: chiave permessi_oggetto presente nel JSONB
+-- 25) fn_get_user_profile: auth_user_id inesistente → errore
+-- 26) fn_get_user_profile: NULL → errore
 -- ------------------------------------------------------------
 
 BEGIN;
 
-SELECT plan(25);
+SELECT plan(26);
 
 -- ============================================================
 -- 0. Setup: raccolta riferimenti da dati esistenti
@@ -297,23 +298,31 @@ SELECT ok(
     'fn_get_user_profile: chiave emittente presente nel JSONB'
 );
 
+-- 24) Chiave permessi_oggetto presente nel JSONB
+SELECT ok(
+    script.fn_get_user_profile(
+        (SELECT user_id FROM tmp_profile_ctx)
+    ) ? 'permessi_oggetto',
+    'fn_get_user_profile: chiave permessi_oggetto presente nel JSONB'
+);
+
 -- ============================================================
 -- E. fn_get_user_profile — casi errore
 -- ============================================================
 
--- 24) auth_user_id inesistente → errore P0002 (no_data_found)
+-- 25) auth_user_id inesistente → errore P0001 via fn_log_and_raise_error
 SELECT throws_ok(
     'SELECT script.fn_get_user_profile(99999999)',
-    'P0002',
-    'auth_user con id=99999999 non trovato',
+    'P0001',
+    'auth_user con id=99999999 non trovato..',
     'fn_get_user_profile: auth_user_id inesistente → errore'
 );
 
--- 25) NULL → errore 22023 (invalid_parameter_value)
+-- 26) NULL → errore P0001 via fn_log_and_raise_error
 SELECT throws_ok(
     'SELECT script.fn_get_user_profile(NULL::integer)',
-    '22023',
-    'p_auth_user_id obbligatorio e > 0 (ricevuto: NULL)',
+    'P0001',
+    'p_auth_user_id obbligatorio e > 0..',
     'fn_get_user_profile: NULL → errore'
 );
 
