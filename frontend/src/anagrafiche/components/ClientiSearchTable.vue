@@ -6,14 +6,7 @@ import { useI18n } from 'vue-i18n'
 import { useClientiStore } from '../stores/clienti'
 import { useSearchTable } from '../../core/composables/useSearchTable'
 import { useTabFreshness } from '../../core/composables/useTabFreshness'
-import { useLookup } from '../../core/composables/useLookup'
-// NOTE refactor operatore-emittenti FE-4.8: il filtro utility resta su
-// `listUtilitiesManual` (lista globale) perche' il backend list_clienti
-// non applica ancora scope emittente automatico (follow-up backend).
-// Quando il scope verra' applicato lato backend, le utility visualizzate
-// rifletteranno automaticamente l'emittente dell'operatore corrente.
-import { listUtilitiesManual } from '../api/anagrafiche'
-import { MANAGE_ICONS } from '../../core/constants'
+import { MANAGE_ICONS, TIPO_RUOLO } from '../../core/constants'
 import { displayDate } from '../../core/utils/date'
 import { statoClienteSeverity } from '../../core/utils/severity'
 import DataTable from 'primevue/datatable'
@@ -25,6 +18,7 @@ import Button from 'primevue/button'
 import NewButton from '../../core/components/NewButton.vue'
 import SearchHint from '../../core/components/SearchHint.vue'
 import LookupSelect from '../../core/components/LookupSelect.vue'
+import UtilityPerRuoloSelect from '../../core/components/UtilityPerRuoloSelect.vue'
 
 const emit = defineEmits(['new', 'row-click', 'contatti', 'indirizzi', 'conti-bancari'])
 const { t } = useI18n()
@@ -33,8 +27,7 @@ const { searchText, onPage, onSort, applyFilters, reload, paginatorProps } = use
   defaultSortField: 'ragione_sociale_completa'
 })
 
-// Lookup filtri
-const utilities = useLookup(() => listUtilitiesManual(), { immediate: true })
+// Filtri
 const utilityFilter = ref(null)
 const statoFilter = ref(null)
 
@@ -79,12 +72,9 @@ onMounted(() => {
           v-model="searchText"
           :placeholder="t('clienti.search_placeholder')"
         />
-        <Select
+        <UtilityPerRuoloSelect
           v-model="utilityFilter"
-          :options="utilities.items.value"
-          :loading="utilities.loading.value"
-          option-label="descrizione"
-          option-value="id"
+          :tipo-ruolo-codice="TIPO_RUOLO.CLIENTE"
           :placeholder="t('clienti.filtro_utility')"
           show-clear
           @change="onUtilityChange"

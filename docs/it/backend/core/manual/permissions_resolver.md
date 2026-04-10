@@ -71,10 +71,20 @@ Cache key: `"azione:{permission_codename}"`.
 
 ### `get_emittenti_ids(user, cache=None) → list[int] | None`
 
-Restituisce gli ID emittenti fiscali autorizzati per l'utente.
-`None` = nessuna restrizione (whitelist vuota = vede tutto).
+Restituisce le PK (`emittenti_fiscali.id`) autorizzate per l'utente.
+`None` = nessuna restrizione. **Usare solo per lookup diretti su `emittenti_fiscali`.**
 
 Cache key: `"emittenti_ids"`.
+
+### `get_emittenti_sr_ids(user, cache=None) → list[int] | None`
+
+Restituisce i `soggetto_ruolo_id` degli emittenti fiscali autorizzati, via
+`script.fn_get_emittenti_scope_sr_ids`. `None` = nessuna restrizione,
+`[]` = nessun accesso. **Usare per query che filtrano su
+`emittenti_fiscali_billing_account.emittente_soggetto_ruolo_id`** (ricerca
+universale, lista clienti, scope BA).
+
+Cache key: `"emittenti_sr_ids"`.
 
 ### `get_area_schema_db(app_label, model_name) → str`
 

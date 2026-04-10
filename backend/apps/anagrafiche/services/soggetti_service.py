@@ -47,14 +47,17 @@ class SoggettiService:
 
     # Scopo: Dettaglio soggetto con contatti, indirizzi, ruoli e dati societari.
     #        Obiettivo: restituire tutto il necessario per popolare il drawer.
-    def get_soggetto(self, soggetto_id: str) -> dict[str, Any]:
+    #        emittente_ids filtra i ruoli CL per scope emittente (None = nessun filtro).
+    def get_soggetto(
+        self, soggetto_id: str, emittente_ids: list[int] | None = None,
+    ) -> dict[str, Any]:
         soggetto = self._repo.get_soggetto(soggetto_id)
         ErrorManager.require(soggetto is not None, code=E_ANAG_NOT_FOUND,
                              message="Soggetto non trovato.")
         assert soggetto is not None
         soggetto["contatti"] = self._repo.get_soggetto_contatti(soggetto_id)
         soggetto["indirizzi"] = self._repo.get_soggetto_indirizzi(soggetto_id)
-        soggetto["ruoli"] = self._repo.get_soggetto_ruoli(soggetto_id)
+        soggetto["ruoli"] = self._repo.get_soggetto_ruoli(soggetto_id, emittente_ids)
         soggetto["dati_societari"] = self._repo.get_dati_societari(soggetto_id)
         soggetto["conti_bancari"] = self._conti.list_conti_soggetto(soggetto_id)
         return soggetto
@@ -189,10 +192,12 @@ class SoggettiService:
     # Ruoli
     # =================================================================
 
-    # Scopo: Lista ruoli di un soggetto.
-    def get_soggetto_ruoli(self, soggetto_id: str) -> list[dict[str, Any]]:
+    # Scopo: Lista ruoli di un soggetto con filtro scope emittente su CL.
+    def get_soggetto_ruoli(
+        self, soggetto_id: str, emittente_ids: list[int] | None = None,
+    ) -> list[dict[str, Any]]:
         self._require_soggetto_exists(soggetto_id)
-        return self._repo.get_soggetto_ruoli(soggetto_id)
+        return self._repo.get_soggetto_ruoli(soggetto_id, emittente_ids)
 
     # Scopo: Assegna ruolo a soggetto (idempotente).
     def assign_ruolo(self, soggetto_id: str, payload: dict[str, Any]) -> dict[str, Any]:

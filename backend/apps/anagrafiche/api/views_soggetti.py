@@ -18,6 +18,7 @@ from apps.core.api.endpoint_helpers import handle_post_json
 from apps.core.api.payload_validators import optional_int, paginated_envelope, parse_list_params
 from apps.core.api.success_responses import success_response
 from apps.anagrafiche.services.soggetti_service import SoggettiService
+from apps.core.services.permissions_resolver import PermissionResolver
 from apps.anagrafiche.services.cf_validator_it import genera_cf_it
 
 
@@ -28,6 +29,7 @@ from apps.anagrafiche.services.cf_validator_it import genera_cf_it
 class SoggettiView(DomainAPIView):
     """GET lista, POST crea soggetto completo."""
     area_funzionale = "anagrafiche"
+    model_permission = ("anagrafiche", "soggetto")
     is_search_endpoint = True
 
     @extend_schema(
@@ -42,12 +44,18 @@ class SoggettiView(DomainAPIView):
         responses={200: inline_serializer(name="SoggettiListResp", fields={"data": serializers.DictField()})},
     )
     # Scopo: Lista paginata soggetti con search e filtro tipo.
+    #        Scope emittente: filtra i badge ruolo CL in base all'emittente
+    #        dell'operatore (un operatore non vede il badge CL se il soggetto
+    #        ha clienti solo su altri emittenti).
     def get(self, request: Request) -> JsonResponse:
         p = parse_list_params(request.query_params, default_order="ragione_sociale_completa")
         tipo_id = optional_int({"v": request.query_params.get("tipo_soggetto_dettaglio_id")}, "v")
+        cache: dict = {}
+        emittente_ids = PermissionResolver.get_emittenti_sr_ids(request.user, cache=cache)
         svc = SoggettiService()
         results, total = svc.list_soggetti(
             search=p["search"], tipo_soggetto_dettaglio_id=tipo_id,
+            emittente_ids=emittente_ids,
             limit=p["limit"], offset=p["offset"],
             order_by=p["order_by"], order_dir=p["order_dir"],
         )
@@ -76,13 +84,17 @@ class SoggettiView(DomainAPIView):
 class SoggettiDetailView(DomainAPIView):
     """GET dettaglio, PATCH aggiorna soggetto."""
     area_funzionale = "anagrafiche"
+    model_permission = ("anagrafiche", "soggetto")
 
     @extend_schema(
         responses={200: inline_serializer(name="SoggettoDetailResp", fields={"data": serializers.DictField()})},
     )
     # Scopo: Dettaglio soggetto con contatti, indirizzi, ruoli.
+    #        Scope emittente: filtra ruoli CL per emittente operatore.
     def get(self, request: Request, soggetto_id: str) -> JsonResponse:
-        return success_response(SoggettiService().get_soggetto(soggetto_id))
+        cache: dict = {}
+        emittente_ids = PermissionResolver.get_emittenti_sr_ids(request.user, cache=cache)
+        return success_response(SoggettiService().get_soggetto(soggetto_id, emittente_ids))
 
     @extend_schema(
         request=inline_serializer(name="SoggettoUpdateReq", fields={
@@ -105,6 +117,7 @@ class SoggettiDetailView(DomainAPIView):
 class SoggettiContattiView(DomainAPIView):
     """GET lista contatti, POST crea contatto."""
     area_funzionale = "anagrafiche"
+    model_permission = ("anagrafiche", "soggetto")
 
     @extend_schema(
         responses={200: inline_serializer(name="SoggettoContattiResp", fields={"data": serializers.DictField()})},
@@ -136,6 +149,7 @@ class SoggettiContattiView(DomainAPIView):
 class SoggettiContattiDetailView(DomainAPIView):
     """PATCH aggiorna contatto."""
     area_funzionale = "anagrafiche"
+    model_permission = ("anagrafiche", "soggetto")
 
     @extend_schema(
         request=inline_serializer(name="ContattoUpdateReq", fields={
@@ -166,6 +180,7 @@ class SoggettiContattiDetailView(DomainAPIView):
 class SoggettiIndirizziView(DomainAPIView):
     """GET lista indirizzi, POST crea indirizzo soggetto."""
     area_funzionale = "anagrafiche"
+    model_permission = ("anagrafiche", "soggetto")
 
     @extend_schema(
         responses={200: inline_serializer(name="SoggettoIndirizziResp", fields={"data": serializers.DictField()})},
@@ -192,6 +207,7 @@ class SoggettiIndirizziView(DomainAPIView):
 class SoggettiIndirizziDetailView(DomainAPIView):
     """PUT sostituisce indirizzo (replace), DELETE elimina."""
     area_funzionale = "anagrafiche"
+    model_permission = ("anagrafiche", "soggetto")
 
     @extend_schema(
         request=inline_serializer(name="ReplaceIndirizzoReq", fields={
@@ -225,13 +241,16 @@ class SoggettiIndirizziDetailView(DomainAPIView):
 class SoggettiRuoliView(DomainAPIView):
     """GET lista ruoli, POST assegna ruolo."""
     area_funzionale = "anagrafiche"
+    model_permission = ("anagrafiche", "soggetto")
 
     @extend_schema(
         responses={200: inline_serializer(name="SoggettoRuoliResp", fields={"data": serializers.DictField()})},
     )
-    # Scopo: Lista ruoli assegnati al soggetto.
+    # Scopo: Lista ruoli assegnati al soggetto con scope emittente su CL.
     def get(self, request: Request, soggetto_id: str) -> JsonResponse:
-        return success_response({"results": SoggettiService().get_soggetto_ruoli(soggetto_id)})
+        cache: dict = {}
+        emittente_ids = PermissionResolver.get_emittenti_sr_ids(request.user, cache=cache)
+        return success_response({"results": SoggettiService().get_soggetto_ruoli(soggetto_id, emittente_ids)})
 
     @extend_schema(
         request=inline_serializer(name="RuoloAssignReq", fields={

@@ -3,7 +3,7 @@
 // termini pagamento, valuta, fatturazione immediata. Usato dentro PreventiviDrawer.
 import { useI18n } from 'vue-i18n'
 import { DATE_FORMAT } from '../../../core/constants'
-import LookupSelect from '../../../core/components/LookupSelect.vue'
+import UtilityPerRuoloSelect from '../../../core/components/UtilityPerRuoloSelect.vue'
 import DatePicker from 'primevue/datepicker'
 import InputNumber from 'primevue/inputnumber'
 import ToggleSwitch from 'primevue/toggleswitch'
@@ -22,7 +22,7 @@ const props = defineProps({
     <div class="form-grid-2col">
       <div class="form-field">
         <label>{{ t('preventivi.field_utility') }}</label>
-        <LookupSelect v-model="form.utility_id" rel="config.utilities"
+        <UtilityPerRuoloSelect v-model="form.utility_id"
           :placeholder="t('preventivi.field_utility')" :disabled="isEdit" />
       </div>
       <div class="form-field">

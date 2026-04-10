@@ -11,7 +11,7 @@ import UomConversioniDrawer from '../components/UomConversioniDrawer.vue'
 
 const drawer = useDrawerState()
 const store = useUnitaMisuraStore()
-useReadonlyMode('catalogo')
+useReadonlyMode('catalogo', 'unita_misura')
 
 // Sub-drawer conversioni
 const convDrawerVisible = ref(false)

@@ -29,6 +29,7 @@ from apps.anagrafiche.services.clienti_service import ClientiService
 class ClientiView(DomainAPIView):
     """GET lista paginata, POST crea cliente."""
     area_funzionale = "anagrafiche"
+    model_permission = ("anagrafiche", "cliente")
     is_search_endpoint = True
 
     @extend_schema(
@@ -53,8 +54,10 @@ class ClientiView(DomainAPIView):
         p = parse_list_params(request.query_params, default_order="ragione_sociale_completa")
         utility_id = optional_int({"v": request.query_params.get("utility_id")}, "v")
         stato_id = optional_int({"v": request.query_params.get("stato_cliente_id")}, "v")
+        # sr_ids perche' la query filtra su
+        # emittenti_fiscali_billing_account.emittente_soggetto_ruolo_id
         cache: dict = {}
-        emittente_ids = PermissionResolver.get_emittenti_ids(request.user, cache=cache)
+        emittente_ids = PermissionResolver.get_emittenti_sr_ids(request.user, cache=cache)
         svc = ClientiService()
         results, total = svc.list_clienti(
             search=p["search"],
@@ -103,6 +106,7 @@ class ClientiView(DomainAPIView):
 class ClientiDetailView(DomainAPIView):
     """GET dettaglio, PATCH aggiorna cliente."""
     area_funzionale = "anagrafiche"
+    model_permission = ("anagrafiche", "cliente")
 
     @extend_schema(
         responses={200: inline_serializer(name="ClienteDetailResp", fields={"data": serializers.DictField()})},

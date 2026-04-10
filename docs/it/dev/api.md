@@ -481,7 +481,22 @@ Per i building block backend riutilizzabili (helpers, services, repository), con
 | Ruolo DISABILITATO | Rifiuto immediato                                                            |
 | Azione processo    | Verificata se la view dichiara `post_permission` / `get_permission`          |
 | CRUD standard      | Livello area/oggetto (`TUTTO`, `LETTURA`, `BLOCCATO`)                        |
-| Scope emittente    | `get_scope_user_id(request)` filtra i dati per emittente fiscale autorizzato |
+| Scope emittente    | Filtra i dati per emittente fiscale autorizzato (vedi sotto)                 |
+
+### Scope emittente
+
+Due pattern disponibili in base al dominio:
+
+1. **Vendite** — `get_scope_user_id(request)` passa `auth_user_id` alle funzioni SQL
+   che risolvono lo scope internamente via `fn_get_emittenti_scope_sr_ids`.
+2. **Search / Anagrafiche** — `PermissionResolver.get_emittenti_sr_ids(request.user)`
+   risolve in Python i `soggetto_ruolo_id` degli emittenti autorizzati e li passa
+   come array `bigint[]` alle query SQL.
+
+Usare `get_emittenti_sr_ids` (non `get_emittenti_ids`) quando il SQL filtra su
+`emittenti_fiscali_billing_account.emittente_soggetto_ruolo_id`.
+`get_emittenti_ids` ritorna le PK di `emittenti_fiscali.id`, utili solo per
+lookup diretti sulla tabella emittenti.
 
 ---
 

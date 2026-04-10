@@ -188,8 +188,16 @@ class ZeroERPPermission(BasePermission):
                 self.message = "Non hai i permessi per questa operazione."
                 return False
 
-            # Risolvi livello (oggetto o area)
+            # Risolvi livello (oggetto o area).
+            # Fonti model: 1) queryset ORM, 2) attributo model_permission
+            # dichiarato sulla view (per DomainAPIView con raw SQL).
+            # Se presente, fn_resolve_livello_oggetto fa fallback
+            # automatico al livello area se non c'e' override.
             app_label, model_name = self._get_model_meta(view)
+            if not app_label:
+                mp = getattr(view, "model_permission", None)
+                if mp:
+                    app_label, model_name = mp
             if app_label and model_name:
                 livello = PermissionResolver.get_livello_oggetto(
                     user, app_label, model_name, area_schema_db, cache=cache

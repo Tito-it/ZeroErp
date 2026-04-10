@@ -1,0 +1,132 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+# Doc: Python
+# Scopo: API views admin per la matrice config.tipi_ruolo_tipi_indirizzo.
+#        Lista paginata + create, dettaglio + patch. Riservato admin.
+# ------------------------------------------------------------
+
+from __future__ import annotations
+
+from django.http import JsonResponse
+from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
+from rest_framework import serializers
+from rest_framework.request import Request
+
+from apps.config.services.tipi_ruolo_tipi_indirizzo_service import (
+    TipiRuoloTipiIndirizzoService,
+)
+from apps.core.api.base_views import AdminAPIView
+from apps.core.api.endpoint_helpers import handle_post_json
+from apps.core.api.payload_validators import (
+    paginated_envelope,
+    parse_list_params,
+    qp_bool_optional,
+    qp_int_strict,
+)
+from apps.core.api.success_responses import success_response
+
+
+# Scopo: Estrae un intero opzionale dai query params con validazione strict.
+def _optional_qp_int_strict(request: Request, key: str) -> int | None:
+    raw = request.query_params.get(key)
+    if raw is None or raw == "":
+        return None
+    return qp_int_strict(raw, key, 0)
+
+
+class TipiRuoloTipiIndirizzoView(AdminAPIView):
+    """GET lista paginata, POST crea riga matrice (admin only)."""
+
+    is_search_endpoint = True
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(name="search", type=str, required=False,
+                             description="Ricerca su codice/descrizione tipo ruolo e tipo indirizzo."),
+            OpenApiParameter(name="attivo", type=bool, required=False),
+            OpenApiParameter(name="tipo_ruolo_id", type=int, required=False),
+            OpenApiParameter(name="tipo_indirizzo_id", type=int, required=False),
+            OpenApiParameter(name="limit", type=int, required=False),
+            OpenApiParameter(name="offset", type=int, required=False),
+            OpenApiParameter(name="order_by", type=str, required=False),
+            OpenApiParameter(name="order_dir", type=str, required=False),
+        ],
+        responses={200: inline_serializer(
+            name="ConfigTipiRuoloTipiIndirizzoListResp",
+            fields={"data": serializers.DictField()},
+        )},
+    )
+    # Scopo: Lista paginata righe matrice tipi_ruolo x tipi_indirizzo.
+    def get(self, request: Request) -> JsonResponse:
+        p = parse_list_params(request.query_params, default_order="tipo_ruolo_descrizione")
+        svc = TipiRuoloTipiIndirizzoService()
+        results, total = svc.list_matrice(
+            search=p["search"],
+            attivo=qp_bool_optional(request.query_params.get("attivo")),
+            tipo_ruolo_id=_optional_qp_int_strict(request, "tipo_ruolo_id"),
+            tipo_indirizzo_id=_optional_qp_int_strict(request, "tipo_indirizzo_id"),
+            limit=p["limit"],
+            offset=p["offset"],
+            order_by=p["order_by"],
+            order_dir=p["order_dir"],
+        )
+        return success_response(paginated_envelope(results, total, p["page"], p["limit"]))
+
+    @extend_schema(
+        request=inline_serializer(
+            name="ConfigTipiRuoloTipiIndirizzoCreateReq",
+            fields={
+                "tipo_ruolo_id": serializers.IntegerField(),
+                "tipo_indirizzo_id": serializers.IntegerField(),
+                "obbligatorio": serializers.BooleanField(required=False),
+                "fallback_tipo_indirizzo_id": serializers.IntegerField(required=False),
+                "attivo": serializers.BooleanField(required=False),
+            },
+        ),
+        responses={200: inline_serializer(
+            name="ConfigTipiRuoloTipiIndirizzoCreateResp",
+            fields={"data": serializers.DictField()},
+        )},
+    )
+    # Scopo: Crea una nuova riga di matrice tipo_ruolo/tipo_indirizzo.
+    def post(self, request: Request) -> JsonResponse:
+        return handle_post_json(
+            request,
+            handler=TipiRuoloTipiIndirizzoService().create_matrice,
+        )
+
+
+class TipiRuoloTipiIndirizzoDetailView(AdminAPIView):
+    """GET dettaglio, PATCH aggiorna campi modificabili (admin only)."""
+
+    @extend_schema(
+        responses={200: inline_serializer(
+            name="ConfigTipiRuoloTipiIndirizzoDetailResp",
+            fields={"data": serializers.DictField()},
+        )},
+    )
+    # Scopo: Dettaglio singola riga matrice.
+    def get(self, request: Request, record_id: int) -> JsonResponse:
+        del request
+        svc = TipiRuoloTipiIndirizzoService()
+        return success_response(svc.get_matrice(record_id))
+
+    @extend_schema(
+        request=inline_serializer(
+            name="ConfigTipiRuoloTipiIndirizzoPatchReq",
+            fields={
+                "attivo": serializers.BooleanField(required=False),
+                "obbligatorio": serializers.BooleanField(required=False),
+                "fallback_tipo_indirizzo_id": serializers.IntegerField(required=False, allow_null=True),
+            },
+        ),
+        responses={200: inline_serializer(
+            name="ConfigTipiRuoloTipiIndirizzoPatchResp",
+            fields={"data": serializers.DictField()},
+        )},
+    )
+    # Scopo: Aggiorna campi modificabili (attivo, obbligatorio, fallback). FK immutabili.
+    def patch(self, request: Request, record_id: int) -> JsonResponse:
+        svc = TipiRuoloTipiIndirizzoService()
+        return success_response(svc.update_matrice(record_id, request.data))

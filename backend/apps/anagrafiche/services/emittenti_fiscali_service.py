@@ -200,10 +200,26 @@ class EmittentiFiscaliBillingAccountService:
         self._repo = EmittentiFiscaliBillingAccountRepository()
         self._parent = EmittentiFiscaliService()
 
-    # Scopo: Lista mapping BA per un emittente.
-    def list_mapping(self, emittente_id: int) -> list[dict[str, Any]]:
+    # Scopo: Lista paginata mapping BA per un emittente con search.
+    def list_mapping(
+        self,
+        emittente_id: int,
+        *,
+        search: str | None = None,
+        limit: int = 25,
+        offset: int = 0,
+        order_by: str = "billing_account_codice",
+        order_dir: str = "asc",
+    ) -> tuple[list[dict[str, Any]], int]:
         soggetto_ruolo_id = self._parent._resolve_soggetto_ruolo_id(emittente_id)
-        return self._repo.list_by_emittente(soggetto_ruolo_id)
+        return self._repo.list_by_emittente(
+            soggetto_ruolo_id,
+            search=search,
+            limit=limit,
+            offset=offset,
+            order_by=order_by,
+            order_dir=order_dir,
+        )
 
     # Scopo: Crea un nuovo mapping BA->emittente.
     #        Se billing_account_id e' None nel payload, viene creato il default globale

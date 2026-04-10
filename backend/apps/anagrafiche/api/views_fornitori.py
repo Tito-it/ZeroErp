@@ -28,6 +28,7 @@ from apps.anagrafiche.services.fornitori_service import FornitoriService
 class FornitoriView(DomainAPIView):
     """GET lista paginata, POST crea fornitore."""
     area_funzionale = "anagrafiche"
+    model_permission = ("anagrafiche", "fornitore")
     is_search_endpoint = True
 
     @extend_schema(
@@ -96,6 +97,7 @@ class FornitoriView(DomainAPIView):
 class FornitoriDetailView(DomainAPIView):
     """GET dettaglio, PATCH aggiorna fornitore."""
     area_funzionale = "anagrafiche"
+    model_permission = ("anagrafiche", "fornitore")
 
     @extend_schema(
         responses={200: inline_serializer(name="FornitoreDetailResp", fields={"data": serializers.DictField()})},

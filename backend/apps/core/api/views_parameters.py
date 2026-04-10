@@ -157,14 +157,22 @@ class ParameterSettingsView(DomainAPIView):
     )
     # Scopo: Restituisce la lista completa dei parametri con i valori a ogni
     #        livello di scope e il valore risolto finale per l'utente corrente.
+    #        Per la lista settings, risolve sempre django_user_id e
+    #        emittente_fiscale_id anche per superuser, altrimenti il LEFT JOIN
+    #        su emittente_fiscale_id = NULL non matcha mai (NULL = NULL e' false
+    #        in SQL) e gli override emittente non vengono mostrati.
     def get(self, request: Request) -> JsonResponse:
         svc = ParameterService()
         ctx = _get_user_context(request, svc)
 
+        # Fallback per superuser: risolve sempre user e emittente reali.
+        django_user_id = ctx["django_user_id"] or request.user.id
+        emittente_fiscale_id = ctx["emittente_fiscale_id"] or svc.get_emittente_fiscale_id_for_user(request.user.id)
+
         parameters = svc.list_parameters_for_user(
-            django_user_id=ctx["django_user_id"] or request.user.id,
+            django_user_id=django_user_id,
             group_ids=ctx["group_ids"],
-            emittente_fiscale_id=ctx["emittente_fiscale_id"],
+            emittente_fiscale_id=emittente_fiscale_id,
         )
         return success_response(parameters)
 

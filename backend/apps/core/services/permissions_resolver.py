@@ -141,6 +141,33 @@ class PermissionResolver:
         return _cached(cache, "emittenti_ids", _query)
 
     @classmethod
+    def get_emittenti_sr_ids(
+        cls, user: Any, *, cache: dict[str, Any] | None = None
+    ) -> list[int] | None:
+        """Scopo: Restituisce i soggetto_ruolo_id degli emittenti fiscali
+        autorizzati per l'utente. Wrapper su fn_get_emittenti_scope_sr_ids.
+
+        Le tabelle anagrafiche e vendite usano emittente_soggetto_ruolo_id
+        (FK a soggetti_ruoli), non emittenti_fiscali.id, quindi serve
+        questa mappatura. Usare questo metodo (NON get_emittenti_ids) per
+        filtrare su emittenti_fiscali_billing_account.emittente_soggetto_ruolo_id.
+
+        Semantica: None = nessuna restrizione, [] = nessun accesso."""
+        def _query() -> list[int] | None:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    "SELECT script.fn_get_emittenti_scope_sr_ids(%s)",
+                    [user.id],
+                )
+                row = cursor.fetchone()
+            # fn_get_emittenti_scope_sr_ids ritorna bigint[] o NULL
+            if row and row[0] is not None:
+                return list(row[0])
+            return None
+
+        return _cached(cache, "emittenti_sr_ids", _query)
+
+    @classmethod
     def get_emittente_for_user(
         cls, user: Any, *, cache: dict[str, Any] | None = None
     ) -> int | None:

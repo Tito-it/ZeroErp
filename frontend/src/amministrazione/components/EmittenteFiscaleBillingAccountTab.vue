@@ -1,24 +1,24 @@
 <script setup>
 // Scopo: Tab autonomo riusabile per la gestione del mapping BA -> emittente fiscale.
-// Mostra elenco mapping (default + specifici), consente add tramite BillingAccountLookup
-// e creazione del default globale (one-shot). Reagisce automaticamente al cambio
-// di emittenteId e puo' essere montato sia in TabView del drawer principale sia
-// in un drawer dedicato richiamato dalla riga della lista.
+// Lista paginata con search su ragione_sociale/codice BA/id_fiscale.
+// Pattern allineato a UtilitiesTipiRuoloSearchTable (useSearchTable + store dedicato).
 import { ref, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useEmittentiFiscaliStore } from '../stores/emittentiFiscali'
+import { useEmittentiFiscaliBAStore } from '../stores/emittentiFiscaliBA'
+import { useSearchTable } from '../../core/composables/useSearchTable'
 import { useNotify } from '../../core/composables/useNotify'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import BillingAccountLookup from '../../core/components/BillingAccountLookup.vue'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
+import InputText from 'primevue/inputtext'
 import Button from 'primevue/button'
 import Badge from 'primevue/badge'
 import Message from 'primevue/message'
 
 const { t } = useI18n()
-const store = useEmittentiFiscaliStore()
+const store = useEmittentiFiscaliBAStore()
 const notify = useNotify()
 const { confirmAction } = useConfirmAction()
 const isReadonly = useInjectReadonly()
@@ -30,30 +30,28 @@ const props = defineProps({
 const selectedBA = ref(null)
 const adding = ref(false)
 
-// Carica i mapping BA dell'emittente quando l'id cambia.
-// Le store action void vanno chiamate direttamente: useApiHandler.execute serve
-// solo dove serve l'unwrap envelope (POST/PATCH che restituiscono il dato salvato).
-watch(() => props.emittenteId, async (id) => {
+const { searchText, onPage, onSort, reload, paginatorProps } = useSearchTable(store, {
+  defaultSortField: 'billing_account_codice'
+})
+
+// Quando l'emittenteId cambia, aggiorna lo store e ricarica.
+watch(() => props.emittenteId, (id) => {
   if (!id) {
-    store.clearBillingAccountMappings()
+    store.reset()
     return
   }
-  try {
-    await store.fetchBillingAccountMappings(id)
-  } catch (e) {
-    store.clearBillingAccountMappings()
-  }
+  store.emittenteId = id
+  store.filters.offset = 0
+  store.filters.search = ''
+  searchText.value = ''
+  store.fetchList()
 }, { immediate: true })
 
 // Computed reattivo: il pulsante "default" si disabilita appena il default esiste.
 const hasDefault = computed(() =>
-  store.billingAccountMappings.some(m => m.is_default)
+  store.items.some(m => m.is_default)
 )
 
-// Pattern: store action gia' unwrappate -> chiamata diretta + try/catch.
-// useApiHandler.execute() e' SOLO per response axios (vedi
-// feedback_useapihandler_solo_axios). Errori reali notificati dall'interceptor
-// axios globale; qui solo il toast di successo.
 async function addSpecificMapping() {
   if (!selectedBA.value?.id) {
     notify.warn(t('amm_emittenti_fiscali.ba_select_required'))
@@ -61,10 +59,7 @@ async function addSpecificMapping() {
   }
   adding.value = true
   try {
-    await store.addBillingAccountMapping(
-      props.emittenteId,
-      { billing_account_id: selectedBA.value.id }
-    )
+    await store.addMapping({ billing_account_id: selectedBA.value.id })
     notify.success(t('amm_emittenti_fiscali.ba_added'))
     selectedBA.value = null
   } catch {
@@ -74,21 +69,19 @@ async function addSpecificMapping() {
   }
 }
 
-// Crea il default globale (record one-shot, billing_account_id = null).
 async function addDefaultMapping() {
   if (hasDefault.value) {
     notify.warn(t('amm_emittenti_fiscali.ba_default_exists'))
     return
   }
   try {
-    await store.addBillingAccountMapping(props.emittenteId, {})
+    await store.addMapping({})
     notify.success(t('amm_emittenti_fiscali.ba_default_added'))
   } catch {
     // Errore gestito dall'interceptor axios globale.
   }
 }
 
-// Elimina un mapping previa conferma. Il default e' protetto da un trigger DB.
 function removeMapping(row) {
   confirmAction({
     title: t('common.confirm'),
@@ -98,7 +91,7 @@ function removeMapping(row) {
     danger: true,
     onAccept: async () => {
       try {
-        await store.removeBillingAccountMapping(props.emittenteId, row.id)
+        await store.removeMapping(row.id)
         notify.success(t('amm_emittenti_fiscali.ba_removed'))
       } catch {
         // Errore gestito dall'interceptor axios globale.
@@ -137,20 +130,56 @@ function removeMapping(row) {
       </div>
     </div>
 
-    <DataTable :value="store.billingAccountMappings" striped-rows class="app-datatable">
+    <div class="app-page-toolbar">
+      <div class="app-page-filters">
+        <InputText
+          v-model="searchText"
+          :placeholder="t('amm_emittenti_fiscali.ba_filter_placeholder')"
+          style="width: 300px;"
+        />
+      </div>
+      <div class="app-page-actions">
+        <Button
+          icon="pi pi-refresh"
+          text
+          class="app-reload-btn"
+          v-tooltip.bottom="t('common.reload_list')"
+          @click="reload"
+        />
+      </div>
+    </div>
+
+    <DataTable
+      :value="store.items"
+      :loading="store.loading"
+      v-bind="paginatorProps"
+      lazy
+      removable-sort
+      striped-rows
+      scrollable
+      scrollHeight="flex"
+      class="app-datatable"
+      @page="onPage"
+      @sort="onSort"
+    >
       <Column :header="t('amm_emittenti_fiscali.ba_col_default')" style="width: 110px;">
         <template #body="{ data }">
           <Badge v-if="data.is_default" :value="t('common.default')" severity="info" />
         </template>
       </Column>
-      <Column field="billing_account_codice" :header="t('amm_emittenti_fiscali.ba_col_codice')">
+      <Column field="billing_account_codice" :header="t('amm_emittenti_fiscali.ba_col_codice')" sortable style="width: 180px;">
         <template #body="{ data }">
           {{ data.billing_account_codice || '—' }}
         </template>
       </Column>
-      <Column field="billing_account_ragione_sociale" :header="t('amm_emittenti_fiscali.ba_col_ragione_sociale')">
+      <Column field="billing_account_ragione_sociale" :header="t('amm_emittenti_fiscali.ba_col_ragione_sociale')" sortable>
         <template #body="{ data }">
           {{ data.billing_account_ragione_sociale || t('amm_emittenti_fiscali.ba_default_label') }}
+        </template>
+      </Column>
+      <Column field="id_fiscale_univoco" :header="t('amm_emittenti_fiscali.ba_col_id_fiscale')" sortable style="width: 200px;">
+        <template #body="{ data }">
+          {{ data.id_fiscale_univoco || '—' }}
         </template>
       </Column>
       <Column v-if="!isReadonly" :header="t('amm.col_actions')" style="width: 70px;" frozen alignFrozen="right">

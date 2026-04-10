@@ -21,6 +21,7 @@ from apps.core.api.views_lookup import (
     LookupSistemaCodiciView,
     LookupTipiRuoliPerNaturaView,
     LookupTipiSoggettoDettaglioView,
+    LookupUtilitiesPerEmittenteView,
     LookupUtilitiesPerRuoloView,
     SearchStradarioGeneraleView,
     SearchStradarioView,
@@ -109,6 +110,11 @@ urlpatterns = [
         "lookup/tipi-ruolo/<str:tipo_ruolo_codice>/utilities/",
         LookupUtilitiesPerRuoloView.as_view(),
         name="core-lookup-utilities-per-ruolo",
+    ),
+    path(
+        "lookup/utilities-per-emittente/",
+        LookupUtilitiesPerEmittenteView.as_view(),
+        name="core-lookup-utilities-per-emittente",
     ),
     path(
         "lookup/tipi-ruoli-natura/",

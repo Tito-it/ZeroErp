@@ -238,10 +238,6 @@ export function updateCliente(clienteId, payload) {
   return api.patch(`${BASE}/clienti/${clienteId}/`, payload)
 }
 
-export function listUtilitiesManual() {
-  return api.get(`${BASE}/utilities/manual-lookup/`)
-}
-
 // Lista utility "guidate da emittente" per un BA esistente.
 // Refactor operatore-emittenti, sez. 3 del WIP. Ritorna utility ammesse
 // per il ruolo del soggetto del BA filtrate sull'emittente associato +

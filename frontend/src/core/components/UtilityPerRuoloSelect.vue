@@ -1,21 +1,21 @@
 <script setup>
-// Scopo: Select riusabile per scegliere una utility ammessa per un dato tipo ruolo.
-// Filtraggio strict lato backend tramite config.utilities_tipi_ruolo: l'utente
-// vede solo utility configurate per il ruolo (EF, FO, CL, ...).
+// Scopo: Select riusabile per scegliere una utility configurata per l'emittente
+// dell'utente corrente, filtrata per tipo ruolo soggetto (CL, FO, ecc.).
+// Se tipoRuoloCodice non e' fornito, mostra tutte le utility EF dell'emittente.
 //
 // Uso:
-//   <UtilityPerRuoloSelect v-model="form.utility_id" :tipo-ruolo-codice="TIPO_RUOLO.EMITTENTE_FISCALE" />
-//   <UtilityPerRuoloSelect v-model="form.utility_id" tipo-ruolo-codice="FO" :placeholder="t(...)" />
+//   <UtilityPerRuoloSelect v-model="form.utility_id" :tipo-ruolo-codice="TIPO_RUOLO.CLIENTE" />
+//   <UtilityPerRuoloSelect v-model="form.utility_id" />  <!-- tutte le utility EF emittente -->
 //
-// Equivalente a LookupSelect ma per il caso specifico utility-per-ruolo,
-// dove il filtro NON e' supportato dall'endpoint generico /lookup/codici/.
+// Backend: GET /api/v1/core/lookup/utilities-per-emittente/?ruolo=CL
+// Filtra per: matrice utilities_tipi_ruolo + emittenti_fiscali_utilities per emittente utente.
 import { ref, watch } from 'vue'
-import { lookupUtilitiesPerRuolo } from '../apiCore'
+import { lookupUtilitiesPerEmittente } from '../apiCore'
 import Select from 'primevue/select'
 
 const props = defineProps({
   modelValue: { type: [Number, String, null], default: null },
-  tipoRuoloCodice: { type: String, required: true },
+  tipoRuoloCodice: { type: String, default: '' },
   placeholder: { type: String, default: '' },
   showClear: { type: Boolean, default: false },
   filter: { type: Boolean, default: true },
@@ -29,16 +29,12 @@ const emit = defineEmits(['update:modelValue', 'change'])
 const items = ref([])
 const loading = ref(false)
 
-// Scopo: Carica le utility ammesse per il tipo_ruolo corrente. Reagisce al cambio
-// di tipoRuoloCodice (es. uno stesso form che cambia ruolo target dinamicamente).
+// Scopo: Carica le utility configurate per l'emittente dell'utente corrente.
+// Se tipoRuoloCodice e' valorizzato, filtra per intersezione ruolo + EF.
 async function load() {
-  if (!props.tipoRuoloCodice) {
-    items.value = []
-    return
-  }
   loading.value = true
   try {
-    const res = await lookupUtilitiesPerRuolo(props.tipoRuoloCodice)
+    const res = await lookupUtilitiesPerEmittente(props.tipoRuoloCodice || undefined)
     items.value = res.data?.data?.results || []
   } catch (e) {
     items.value = []
