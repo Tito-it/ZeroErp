@@ -22,9 +22,12 @@ databaseChangeLog:
       runOnChange: true
       preConditions:
         - onFail: HALT
-        - tableExists:
-            schemaName: django
-            tableName: auth_user
+        # NB: NON aggiungere tableExists su django.auth_user.
+        # In CI Liquibase gira prima di Django migrate, le tabelle django.*
+        # non esistono ancora. La funzione e' plpgsql (deferred parsing):
+        # i riferimenti a django.auth_user nel body vengono risolti solo
+        # al primo invoke, non al CREATE. Vedi memoria progetto
+        # feedback_django_refs_in_liquibase.
         - tableExists:
             schemaName: anagrafiche
             tableName: risorse_umane_auth_user
