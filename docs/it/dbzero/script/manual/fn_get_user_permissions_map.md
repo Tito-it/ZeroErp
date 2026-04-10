@@ -1,101 +1,115 @@
 # fn_get_user_permissions_map
 
-### Scopo Principale
+## Scopo
 
 Restituisce la mappa completa dei livelli di accesso per tutte le aree
-funzionali attive, in un solo roundtrip DB. Evita N chiamate separate
-da Python a `fn_resolve_livello_area`.
+funzionali attive in un solo roundtrip DB.
+Evita chiamate ripetute dal backend e, dalla revisione `20260410-14`,
+non usa piu' un loop PL/pgSQL per area.
 
 ## Schema
 
-`script` (funzione cross-dominio)
+`script`
 
 ## Firma
 
 ```sql
 script.fn_get_user_permissions_map(
-    p_auth_user_id  integer
+    p_auth_user_id  anagrafiche.risorse_umane_auth_user.auth_user_id%TYPE
 ) RETURNS jsonb
 ```
 
 ## Parametri
 
-| Parametro | Tipo | Default | Descrizione |
-|-----------|------|---------|-------------|
-| `p_auth_user_id` | integer | - | ID utente Django (auth_user.id), obbligatorio |
+| Parametro | Tipo | Obbligatorio | Descrizione |
+|-----------|------|:------------:|-------------|
+| `p_auth_user_id` | `risorse_umane_auth_user.auth_user_id%TYPE` | Si | ID utente Django (`auth_user.id`) |
 
 ## Caratteristiche
 
 - **STABLE**: solo lettura
 - **SECURITY INVOKER**: esegue con i permessi del chiamante
-- Guard: `p_auth_user_id` obbligatorio e > 0
+- Guard: `p_auth_user_id` obbligatorio e `> 0`
 
-## Ritorno
+## Output
 
-JSONB con una chiave per ogni area funzionale attiva. Valore = livello accesso risolto.
+JSONB con una chiave per ogni area funzionale attiva e valore pari al
+livello effettivo risolto:
 
 ```json
 {
   "anagrafiche": "TUTTO",
   "vendite": "LETTURA",
   "acquisti": "BLOCCATO",
-  "contabilita": "SCRITTURA",
-  "magazzino": "LETTURA",
-  "config": "TUTTO"
+  "catalogo": "TUTTO",
+  "pagamenti": "BLOCCATO"
 }
 ```
 
-Valori possibili per ogni area (enum `config.livello_accesso`):
-- `TUTTO` — accesso completo
-- `SCRITTURA` — lettura + scrittura
-- `LETTURA` — solo lettura
-- `BLOCCATO` — nessun accesso
+Valori possibili (enum `config.livello_accesso`):
+
+- `TUTTO`
+- `LETTURA`
+- `BLOCCATO`
 
 ## Logica
 
-1. Guard: `p_auth_user_id` non NULL e > 0
-2. Loop su `config.aree_funzionali` WHERE `attiva = TRUE`, ordinato per `ordinamento`, `schema_db`
-3. Per ogni area: chiama `script.fn_resolve_livello_area(p_auth_user_id, schema_db)`
-4. Accumula risultato in JSONB
-5. Ritorna la mappa completa
+1. Valida `p_auth_user_id`
+2. Legge una sola volta il contesto utente:
+   `ruolo_sistema` + `unita_organizzativa_id`
+3. Esegue una query set-based su `config.aree_funzionali`
+4. Applica la catena di risoluzione con `LEFT JOIN` su:
+   `config.user_override_aree` e `config.profili_reparto_aree`
+5. Compone il risultato con `jsonb_object_agg`
 
-## Catena di risoluzione (delegata a fn_resolve_livello_area)
+## Catena di risoluzione
 
+```text
+1. ruolo_sistema:
+   - NULL / DISABILITATO -> BLOCCATO
+   - ADMIN -> TUTTO
+2. Override utente area (se presente e valido temporalmente)
+3. Profilo reparto area (ereditato dalla UO)
+4. Default -> BLOCCATO
 ```
-Per ogni area:
-  1. ruolo_sistema → ADMIN = TUTTO, DISABILITATO = BLOCCATO
-  2. Override utente area (config.user_override_aree) se presente e valido temporalmente
-  3. Profilo reparto (config.profili_reparto_aree) ereditato dalla UO
-  4. Default → BLOCCATO
-```
+
+## Ottimizzazione introdotta
+
+La versione iniziale iterava le aree attive e chiamava il resolver area
+una volta per ciascuna.
+
+La versione corrente:
+
+- legge `ruolo_sistema` una sola volta
+- legge `unita_organizzativa_id` una sola volta
+- evita il loop PL/pgSQL
+- costruisce la mappa completa in forma set-based
+
+Questo riduce il costo della funzione, soprattutto quando viene chiamata
+indirettamente da `fn_get_user_profile`.
 
 ## Dipendenze
 
-- `config.aree_funzionali` — elenco aree attive
-- `script.fn_resolve_livello_area` — risoluzione livello per singola area
-
-## Performance
-
-- ~10 aree attive = ~10 chiamate leggere a `fn_resolve_livello_area`
-- Risultato cacheable lato Redis (`permissions_cache.py`)
-- 1 roundtrip DB vs 10 chiamate separate da Python
+- `config.aree_funzionali`
+- `config.user_override_aree`
+- `config.profili_reparto_aree`
+- `anagrafiche.risorse_umane_auth_user`
+- `anagrafiche.risorse_umane`
 
 ## Integrazione con fn_get_user_profile
 
-Questa funzione viene chiamata da `fn_get_user_profile` per popolare
-la chiave `permessi_area` nel JSONB di risposta dell'endpoint `/api/v1/core/me/`.
+La funzione viene chiamata da `fn_get_user_profile` per popolare la chiave
+`permessi_area` del profilo utente.
 
 ## Esempi
 
 ```sql
--- Mappa permessi per utente con id=1
+-- Mappa completa aree
 SELECT script.fn_get_user_permissions_map(1);
 
--- Accesso a una singola area dal risultato
+-- Accesso a una singola area
 SELECT (script.fn_get_user_permissions_map(1))->>'vendite';
 
--- Uso nel profilo utente (chiamata interna)
--- fn_get_user_profile chiama internamente fn_get_user_permissions_map
+-- Uso indiretto nel profilo
 SELECT script.fn_get_user_profile(1);
--- → { ..., "permessi_area": {"anagrafiche": "TUTTO", ...} }
 ```

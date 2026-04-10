@@ -157,6 +157,27 @@ export const useAuthStore = defineStore('auth', () => {
     return getLivelloArea(schemaDb) === LIVELLO_ACCESSO.BLOCCATO
   }
 
+  // Mappa override oggetto: { 'anagrafiche.conto_bancario': 'BLOCCATO', ... }
+  // Popolata da /me/ campo permessi_oggetto (fn_get_user_object_permissions_map)
+  const permessiOggetto = computed(() => user.value?.permessi_oggetto || {})
+
+  // Scopo: Livello accesso per singolo model (override oggetto con fallback area).
+  function getLivelloOggetto(schemaDb, modelName) {
+    const key = `${schemaDb}.${modelName}`
+    if (permessiOggetto.value[key]) return permessiOggetto.value[key]
+    return getLivelloArea(schemaDb)
+  }
+
+  // Scopo: Model in sola lettura? (override LETTURA o fallback area LETTURA)
+  function isObjectReadonly(schemaDb, modelName) {
+    return getLivelloOggetto(schemaDb, modelName) === LIVELLO_ACCESSO.LETTURA
+  }
+
+  // Scopo: Model bloccato? (override BLOCCATO o fallback area BLOCCATO)
+  function isObjectBlocked(schemaDb, modelName) {
+    return getLivelloOggetto(schemaDb, modelName) === LIVELLO_ACCESSO.BLOCCATO
+  }
+
   // Mappa azioni abilitate: { genera_fatture_lotti: true, reset_lotto_draft: false, ... }
   // Popolata da /me/ campo azioni_abilitate (fn_get_user_actions_map)
   const azioniAbilitate = computed(() => user.value?.azioni_abilitate || {})
@@ -188,6 +209,10 @@ export const useAuthStore = defineStore('auth', () => {
     getLivelloArea,
     isAreaReadonly,
     isAreaBlocked,
+    permessiOggetto,
+    getLivelloOggetto,
+    isObjectReadonly,
+    isObjectBlocked,
     azioniAbilitate,
     isActionAllowed,
     setTokens,

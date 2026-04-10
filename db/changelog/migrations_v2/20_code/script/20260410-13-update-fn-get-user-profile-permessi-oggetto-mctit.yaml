@@ -1,0 +1,379 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Aggiorna fn_get_user_profile: aggiunge chiave 'permessi_oggetto'
+# al JSONB di ritorno, chiamando fn_get_user_object_permissions_map.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260410-13-update-fn-get-user-profile-permessi-oggetto-mctit.yaml
+
+  - changeSet:
+      id: 20260410-13-update-fn-get-user-profile-permessi-oggetto
+      author: mctit
+      comment: >
+        Aggiunge chiave permessi_oggetto al JSONB di fn_get_user_profile.
+        Chiama fn_get_user_object_permissions_map(p_auth_user_id).
+        Retrocompatibile: nuova chiave, nessuna rimossa.
+      runOnChange: true
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: anagrafiche
+            tableName: risorse_umane_auth_user
+        - tableExists:
+            schemaName: config
+            tableName: user_override_oggetti
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+
+              CREATE OR REPLACE FUNCTION script.fn_get_user_profile(
+                  p_auth_user_id  anagrafiche.risorse_umane_auth_user.auth_user_id%TYPE
+              )
+              RETURNS jsonb
+              LANGUAGE plpgsql
+              STABLE
+              AS $function$
+              DECLARE
+                  v_result           jsonb;
+                  -- Blocco utente
+                  v_utente           jsonb;
+                  -- Blocco risorse_umane
+                  v_rau_id           anagrafiche.risorse_umane_auth_user.id%TYPE;
+                  v_ruolo_sistema    anagrafiche.risorse_umane_auth_user.ruolo_sistema%TYPE;
+                  v_risorsa_umana_id anagrafiche.risorse_umane.id%TYPE;
+                  v_soggetto_ruolo_id anagrafiche.risorse_umane.soggetto_ruolo_id%TYPE;
+                  v_qualifica_id     anagrafiche.risorse_umane.qualifica_id%TYPE;
+                  v_uo_id            anagrafiche.risorse_umane.unita_organizzativa_id%TYPE;
+                  v_valido_dal       anagrafiche.risorse_umane.valido_dal%TYPE;
+                  v_valido_al        anagrafiche.risorse_umane.valido_al%TYPE;
+                  v_ru_attivo        anagrafiche.risorse_umane.attivo%TYPE;
+                  v_risorse_umane    jsonb;
+                  -- Flag autenticazione avanzata
+                  v_deve_cambiare_password  anagrafiche.risorse_umane_auth_user.deve_cambiare_password%TYPE;
+                  -- Blocco soggetto
+                  v_soggetto         jsonb;
+                  -- Blocco emittente
+                  v_emittente        jsonb;
+                  -- Variabili emittente lookup
+                  v_uef_id           config.user_emittenti_fiscali.id%TYPE;
+                  v_ef_id            anagrafiche.emittenti_fiscali.id%TYPE;
+                  v_ef_uid           anagrafiche.emittenti_fiscali.uid%TYPE;
+                  v_ef_codice        anagrafiche.emittenti_fiscali.codice%TYPE;
+                  v_ef_descrizione   anagrafiche.emittenti_fiscali.descrizione%TYPE;
+                  v_ef_sr_id         anagrafiche.emittenti_fiscali.soggetto_ruolo_id%TYPE;
+                  v_ef_regime        anagrafiche.emittenti_fiscali.regime_fiscale_rf%TYPE;
+                  v_ef_valuta_id     anagrafiche.emittenti_fiscali.valuta_id%TYPE;
+                  -- Qualifica e UO risolti
+                  v_qualifica_codice          config.qualifiche.codice%TYPE;
+                  v_qualifica_codice_interno  config.qualifiche.codice_interno%TYPE;
+                  v_qualifica_descrizione     config.qualifiche.descrizione%TYPE;
+                  v_uo_codice                 config.unita_organizzative.codice%TYPE;
+                  v_uo_codice_interno         config.unita_organizzative.codice_interno%TYPE;
+                  v_uo_descrizione            config.unita_organizzative.descrizione%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Dato un auth_user_id, restituisce un JSONB con il profilo
+                  --   completo dell'utente: dati auth_user, risorse umane
+                  --   (qualifica, UO), soggetto anagrafico con dati societari,
+                  --   emittente fiscale associato (se presente), mappa
+                  --   permessi per area funzionale, mappa azioni abilitate,
+                  --   mappa override oggetto attivi, e flag
+                  --   deve_cambiare_password.
+                  --
+                  -- Cascata di risoluzione emittente:
+                  --   4a) Whitelist personale config.user_emittenti_fiscali
+                  --       (primo emittente attivo associato all'utente)
+                  --   4b) Fallback: gestore globale via
+                  --       emittenti_fiscali_billing_account
+                  --       (riga con BA NULL + is_default = true)
+                  --   4c) Se nessuno dei due, v_emittente = NULL
+                  -- =========================================================
+
+                  -- Guard: parametro obbligatorio e valido
+                  IF p_auth_user_id IS NULL OR p_auth_user_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_get_user_profile',
+                          'E_ADMIN_VALIDAZIONE',
+                          jsonb_build_object('p_auth_user_id', p_auth_user_id),
+                          NULL::uuid,
+                          'p_auth_user_id obbligatorio e > 0.'
+                      );
+                  END IF;
+
+                  -- -------------------------------------------------------
+                  -- 1. Blocco utente da auth_user
+                  -- -------------------------------------------------------
+                  SELECT jsonb_build_object(
+                      'auth_user_id', au.id,
+                      'username',     au.username,
+                      'first_name',   au.first_name,
+                      'last_name',    au.last_name,
+                      'email',        au.email
+                  )
+                  INTO v_utente
+                  FROM django.auth_user au
+                  WHERE au.id = p_auth_user_id;
+
+                  IF v_utente IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_get_user_profile',
+                          'E_ADMIN_VALIDAZIONE',
+                          jsonb_build_object('p_auth_user_id', p_auth_user_id),
+                          NULL::uuid,
+                          'auth_user con id=' || p_auth_user_id || ' non trovato.'
+                      );
+                  END IF;
+
+                  -- -------------------------------------------------------
+                  -- 2. Risolvere risorse_umane_auth_user -> risorse_umane
+                  --    Incluso flag deve_cambiare_password
+                  -- -------------------------------------------------------
+                  SELECT rau.id,
+                         rau.ruolo_sistema,
+                         rau.risorsa_umana_id,
+                         rau.deve_cambiare_password
+                    INTO v_rau_id,
+                         v_ruolo_sistema,
+                         v_risorsa_umana_id,
+                         v_deve_cambiare_password
+                    FROM anagrafiche.risorse_umane_auth_user rau
+                   WHERE rau.auth_user_id = p_auth_user_id;
+
+                  IF v_rau_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_get_user_profile',
+                          'E_ADMIN_VALIDAZIONE',
+                          jsonb_build_object('p_auth_user_id', p_auth_user_id),
+                          NULL::uuid,
+                          'Nessun record risorse_umane_auth_user per auth_user_id=' || p_auth_user_id || '.'
+                      );
+                  END IF;
+
+                  -- Guard: ruolo sistema DISABILITATO blocca il login
+                  IF v_ruolo_sistema = 'DISABILITATO' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_get_user_profile',
+                          'E_UTENTE_DISABILITATO',
+                          jsonb_build_object('auth_user_id', p_auth_user_id,
+                                            'ruolo_sistema', v_ruolo_sistema::text),
+                          NULL::uuid,
+                          'Utente disabilitato: ruolo_sistema=DISABILITATO.'
+                      );
+                  END IF;
+
+                  -- Dati risorsa umana + qualifica + UO
+                  SELECT ru.soggetto_ruolo_id,
+                         ru.qualifica_id,
+                         ru.unita_organizzativa_id,
+                         ru.valido_dal,
+                         ru.valido_al,
+                         ru.attivo,
+                         q.codice,
+                         q.codice_interno,
+                         q.descrizione,
+                         uo.codice,
+                         uo.codice_interno,
+                         uo.descrizione
+                    INTO v_soggetto_ruolo_id,
+                         v_qualifica_id,
+                         v_uo_id,
+                         v_valido_dal,
+                         v_valido_al,
+                         v_ru_attivo,
+                         v_qualifica_codice,
+                         v_qualifica_codice_interno,
+                         v_qualifica_descrizione,
+                         v_uo_codice,
+                         v_uo_codice_interno,
+                         v_uo_descrizione
+                    FROM anagrafiche.risorse_umane ru
+                    LEFT JOIN config.qualifiche q           ON q.id = ru.qualifica_id
+                    LEFT JOIN config.unita_organizzative uo ON uo.id = ru.unita_organizzativa_id
+                   WHERE ru.id = v_risorsa_umana_id;
+
+                  IF v_soggetto_ruolo_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_get_user_profile',
+                          'E_ADMIN_VALIDAZIONE',
+                          jsonb_build_object('risorsa_umana_id', v_risorsa_umana_id),
+                          NULL::uuid,
+                          'Nessun record risorse_umane per id=' || v_risorsa_umana_id || '.'
+                      );
+                  END IF;
+
+                  -- Guard: risorsa umana disattivata
+                  IF v_ru_attivo = false THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_get_user_profile',
+                          'E_UTENTE_DISABILITATO',
+                          jsonb_build_object('auth_user_id', p_auth_user_id,
+                                            'risorsa_umana_id', v_risorsa_umana_id),
+                          NULL::uuid,
+                          v_risorsa_umana_id::text
+                      );
+                  END IF;
+
+                  -- Guard: risorsa umana non ancora valida
+                  IF v_valido_dal IS NOT NULL AND CURRENT_DATE < v_valido_dal THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_get_user_profile',
+                          'E_UTENTE_NON_ATTIVO',
+                          jsonb_build_object('auth_user_id', p_auth_user_id,
+                                            'valido_dal', v_valido_dal),
+                          NULL::uuid,
+                          v_valido_dal::text
+                      );
+                  END IF;
+
+                  -- Guard: risorsa umana scaduta
+                  IF v_valido_al IS NOT NULL AND CURRENT_DATE > v_valido_al THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_get_user_profile',
+                          'E_UTENTE_SCADUTO',
+                          jsonb_build_object('auth_user_id', p_auth_user_id,
+                                            'valido_al', v_valido_al),
+                          NULL::uuid,
+                          v_valido_al::text
+                      );
+                  END IF;
+
+                  v_risorse_umane := jsonb_build_object(
+                      'risorsa_umana_id',                v_risorsa_umana_id,
+                      'risorse_umane_auth_user_id',      v_rau_id,
+                      'soggetto_ruolo_id',               v_soggetto_ruolo_id,
+                      'qualifica_id',                    v_qualifica_id,
+                      'qualifica_codice',                v_qualifica_codice,
+                      'qualifica_codice_interno',        v_qualifica_codice_interno,
+                      'qualifica_descrizione',           v_qualifica_descrizione,
+                      'unita_organizzativa_id',          v_uo_id,
+                      'unita_organizzativa_codice',      v_uo_codice,
+                      'unita_organizzativa_codice_interno', v_uo_codice_interno,
+                      'unita_organizzativa_descrizione', v_uo_descrizione,
+                      'valido_dal',                      v_valido_dal,
+                      'valido_al',                       v_valido_al,
+                      'attivo',                          v_ru_attivo
+                  );
+
+                  -- -------------------------------------------------------
+                  -- 3. Blocco soggetto tramite fn_get_soggetto_dati_by_ruolo
+                  -- -------------------------------------------------------
+                  SELECT row_to_json(t.*)::jsonb
+                    INTO v_soggetto
+                    FROM script.fn_get_soggetto_dati_by_ruolo(v_soggetto_ruolo_id) t;
+
+                  -- -------------------------------------------------------
+                  -- 4. Risolvere emittente fiscale
+                  --    Strategia (cascata):
+                  --      4a) Whitelist personale config.user_emittenti_fiscali
+                  --      4b) Fallback: gestore globale via
+                  --          emittenti_fiscali_billing_account
+                  --          (riga con BA NULL + is_default = true)
+                  -- -------------------------------------------------------
+                  v_emittente := NULL;
+
+                  -- 4a. Whitelist: primo emittente attivo associato all'utente
+                  SELECT uef.id,
+                         ef.id,
+                         ef.uid,
+                         ef.codice,
+                         ef.descrizione,
+                         ef.soggetto_ruolo_id,
+                         ef.regime_fiscale_rf,
+                         ef.valuta_id
+                    INTO v_uef_id,
+                         v_ef_id,
+                         v_ef_uid,
+                         v_ef_codice,
+                         v_ef_descrizione,
+                         v_ef_sr_id,
+                         v_ef_regime,
+                         v_ef_valuta_id
+                    FROM config.user_emittenti_fiscali uef
+                    JOIN anagrafiche.emittenti_fiscali ef ON ef.id = uef.emittente_fiscale_id
+                   WHERE uef.auth_user_id = p_auth_user_id
+                     AND ef.attivo = true
+                   ORDER BY uef.id
+                   LIMIT 1;
+
+                  -- 4b. Fallback: gestore globale via emittenti_fiscali_billing_account
+                  --     (riga con billing_account_id IS NULL AND is_default = true).
+                  --     Sostituisce il vecchio fallback "emittente unico" che era ambiguo
+                  --     per N>1 emittenti e richiedeva un SELECT COUNT(*) full scan.
+                  --     Coerente con la convenzione default + allineato a
+                  --     anagrafiche.fn_get_emittente_fiscale_pk.
+                  IF v_ef_id IS NULL THEN
+                      SELECT ef.id,
+                             ef.uid,
+                             ef.codice,
+                             ef.descrizione,
+                             ef.soggetto_ruolo_id,
+                             ef.regime_fiscale_rf,
+                             ef.valuta_id
+                        INTO v_ef_id,
+                             v_ef_uid,
+                             v_ef_codice,
+                             v_ef_descrizione,
+                             v_ef_sr_id,
+                             v_ef_regime,
+                             v_ef_valuta_id
+                        FROM anagrafiche.emittenti_fiscali_billing_account efba
+                        JOIN anagrafiche.emittenti_fiscali ef
+                          ON ef.soggetto_ruolo_id = efba.emittente_soggetto_ruolo_id
+                       WHERE efba.billing_account_id IS NULL
+                         AND efba.is_default = true
+                         AND ef.attivo = true
+                       LIMIT 1;
+                      -- Nessuna whitelist coinvolta: il blocco emittente riflette
+                      -- il gestore globale, non un'associazione personale.
+                      -- v_uef_id resta NULL (default delle DECLARE).
+                  END IF;
+
+                  -- 4c. Se emittente trovato (whitelist o gestore), comporre il blocco
+                  IF v_ef_id IS NOT NULL THEN
+                      DECLARE
+                          v_ef_soggetto jsonb;
+                      BEGIN
+                          SELECT row_to_json(t.*)::jsonb
+                            INTO v_ef_soggetto
+                            FROM script.fn_get_soggetto_dati_by_ruolo(v_ef_sr_id) t;
+
+                          v_emittente := jsonb_build_object(
+                              'emittente_fiscale_id',      v_ef_id,
+                              'emittente_fiscale_uid',     v_ef_uid,
+                              'emittente_codice',          v_ef_codice,
+                              'emittente_descrizione',     v_ef_descrizione,
+                              'user_emittente_fiscale_id', v_uef_id,
+                              'regime_fiscale_rf',         v_ef_regime,
+                              'valuta_id',                 v_ef_valuta_id
+                          ) || COALESCE(v_ef_soggetto, '{}'::jsonb);
+                      END;
+                  END IF;
+
+                  -- -------------------------------------------------------
+                  -- 5. Comporre risultato finale
+                  --    Chiavi: permessi_area, azioni_abilitate,
+                  --    permessi_oggetto, deve_cambiare_password
+                  -- -------------------------------------------------------
+                  v_result := jsonb_build_object(
+                      'utente',                   v_utente,
+                      'ruolo_sistema',            v_ruolo_sistema,
+                      'risorse_umane',            v_risorse_umane,
+                      'soggetto',                 v_soggetto,
+                      'emittente',                v_emittente,
+                      'permessi_area',            script.fn_get_user_permissions_map(p_auth_user_id),
+                      'azioni_abilitate',         script.fn_get_user_actions_map(p_auth_user_id),
+                      'permessi_oggetto',         script.fn_get_user_object_permissions_map(p_auth_user_id),
+                      'deve_cambiare_password',   COALESCE(v_deve_cambiare_password, false)
+                  );
+
+                  RETURN v_result;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_get_user_profile(integer)
+                IS 'Profilo utente completo: JSONB con blocchi utente, ruolo_sistema, risorse_umane (qualifica, UO), soggetto, emittente fiscale, permessi_area, azioni_abilitate, permessi_oggetto, deve_cambiare_password. Cascata emittente: 1) whitelist personale config.user_emittenti_fiscali, 2) fallback gestore globale via emittenti_fiscali_billing_account (BA NULL + is_default=true). Dipende da fn_get_soggetto_dati_by_ruolo, fn_get_user_permissions_map, fn_get_user_actions_map, fn_get_user_object_permissions_map.';

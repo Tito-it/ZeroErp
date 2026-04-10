@@ -519,6 +519,66 @@ class AmmSoftwareRepository:
                 )
 
     # ================================================================== #
+    # Override oggetti per operatore (v2 permessi)                         #
+    # ================================================================== #
+
+    # Scopo: Restituisce gli override oggetto di un operatore con info model e area.
+    def get_override_oggetti(self, auth_user_id: int) -> list[dict[str, Any]]:
+        sql = """
+            SELECT uoo.id, uoo.app_label, uoo.model_name,
+                   uoo.livello::text,
+                   uoo.motivo,
+                   uoo.valido_dal::text, uoo.valido_al::text,
+                   amo.area_id,
+                   af.descrizione AS area_descrizione
+              FROM config.user_override_oggetti uoo
+              LEFT JOIN config.area_model_overrides amo
+                ON amo.app_label = uoo.app_label AND amo.model_name = uoo.model_name
+              LEFT JOIN config.aree_funzionali af ON af.id = amo.area_id
+             WHERE uoo.auth_user_id = %s
+             ORDER BY af.descrizione, uoo.app_label, uoo.model_name
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [auth_user_id])
+            return rows_to_list(cursor)
+
+    # Scopo: Sostituisce gli override oggetto di un operatore (replace semantics).
+    def put_override_oggetti(self, auth_user_id: int, items: list[dict[str, Any]]) -> None:
+        with transaction.atomic(), connection.cursor() as cursor:
+            cursor.execute(
+                "DELETE FROM config.user_override_oggetti WHERE auth_user_id = %s",
+                [auth_user_id],
+            )
+            for item in items:
+                cursor.execute(
+                    """INSERT INTO config.user_override_oggetti
+                       (auth_user_id, app_label, model_name, livello, motivo, valido_dal, valido_al)
+                       VALUES (%s, %s, %s, %s::config.livello_accesso, %s, %s::date, %s::date)""",
+                    [
+                        auth_user_id,
+                        item["app_label"],
+                        item["model_name"],
+                        item["livello"],
+                        item.get("motivo"),
+                        item.get("valido_dal"),
+                        item.get("valido_al"),
+                    ],
+                )
+
+    # Scopo: Lista model registrati in area_model_overrides (lookup per dropdown admin).
+    def list_model_overrides(self) -> list[dict[str, Any]]:
+        sql = """
+            SELECT amo.id, amo.app_label, amo.model_name,
+                   af.schema_db AS area_schema, af.descrizione AS area_descrizione
+              FROM config.area_model_overrides amo
+              JOIN config.aree_funzionali af ON af.id = amo.area_id
+             ORDER BY af.descrizione, amo.app_label, amo.model_name
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql)
+            return rows_to_list(cursor)
+
+    # ================================================================== #
     # Emittenti scope per operatore                                         #
     # ================================================================== #
 

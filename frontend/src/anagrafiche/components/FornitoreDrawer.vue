@@ -206,6 +206,7 @@ function onClose() {
     :visible="props.visible"
     position="right"
     :style="{ width: DRAWER_WIDTH.STANDARD }"
+    :dismissable="true"
     @update:visible="val => emit('update:visible', val)"
   >
     <template #header>
@@ -216,7 +217,7 @@ function onClose() {
       />
     </template>
 
-    <div :class="{ 'app-readonly': isReadonly }">
+    <div class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
       <div class="form-grid">
 
         <!-- === Soggetto === -->
@@ -409,10 +410,7 @@ function onClose() {
         :soggetto-ruolo-id="detail.soggetto_ruolo_id"
         :tipo-ruolo-codice="TIPO_RUOLO.FORNITORE" />
 
-      <!-- Footer salva/annulla -->
-      <div class="flex justify-end mt-4">
-        <DrawerFooter :loading="loading" :disabled="!canSave" @save="onSave" @cancel="onClose" />
-      </div>
+      <DrawerFooter :loading="loading" :disabled="!canSave" @save="onSave" @cancel="onClose" />
     </div>
 
     <!-- Sotto-drawer: SoggettoResolver (solo creazione) -->

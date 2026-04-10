@@ -16,14 +16,14 @@
 --  5) Colonna risorse_umane_auth_user.ruolo_sistema esiste
 --  6) Default ruolo_sistema = OPERATIVO
 --  7) Tabella config.aree_funzionali esiste
---  8) Seed aree_funzionali: 10 righe attive
---  9) Seed aree_funzionali: tutti i 10 codici attesi
+--  8) Seed aree_funzionali: 11 righe attive
+--  9) Seed aree_funzionali: tutti gli 11 codici attesi
 -- 10) Seed aree_funzionali: schema_db = codice per tutte
 -- 11) Seed aree_funzionali: ordinamento positivo
 -- 12) UQ codice: duplicato bloccato
 -- 13) UQ schema_db: duplicato bloccato
 -- 14) Tabella config.azioni_processo esiste
--- 15) Seed azioni_processo: 5 righe attive
+-- 15) Seed azioni_processo: 8 righe attive
 -- 16) Seed: genera_fatture_lotti marcata pericolosa
 -- 17) Seed: FK area_id tutte valide
 -- 18) UQ permission_codename: duplicato bloccato
@@ -32,11 +32,14 @@
 -- 21) area_model_overrides: INSERT valido accettato
 -- 22) UQ (app_label, model_name): duplicato bloccato
 -- 23) FK area_id: valore invalido bloccato
+-- 24) Seed area_model_overrides: 11 righe attese
+-- 25) Seed area_model_overrides: vendite.fattura → area_id 2
+-- 26) Seed area_model_overrides: pratiche.pratica → area_id 12
 -- ------------------------------------------------------------
 
 BEGIN;
 
-SELECT plan(23);
+SELECT plan(26);
 
 -- ============================================================
 -- 1. ENUM config.ruolo_sistema
@@ -139,8 +142,8 @@ SELECT ok(
 
 SELECT is(
     (SELECT count(*)::int FROM config.aree_funzionali WHERE attivo = true),
-    10,
-    'Seed aree_funzionali: 10 righe attive'
+    11,
+    'Seed aree_funzionali: 11 righe attive'
 );
 
 SELECT ok(
@@ -149,17 +152,17 @@ SELECT ok(
      WHERE codice IN (
          'anagrafiche', 'vendite', 'acquisti', 'catalogo',
          'contabilita', 'magazzino', 'pagamenti', 'storico',
-         'config', 'core'
+         'config', 'core', 'pratiche'
      )
-    ) = 10,
-    'Seed aree_funzionali: tutti i 10 codici attesi presenti'
+    ) = 11,
+    'Seed aree_funzionali: tutti gli 11 codici attesi presenti'
 );
 
 SELECT ok(
     (SELECT count(*)::int
      FROM config.aree_funzionali
      WHERE schema_db = codice
-    ) = 10,
+    ) = 11,
     'Seed aree_funzionali: schema_db = codice per tutte le righe'
 );
 
@@ -167,7 +170,7 @@ SELECT ok(
     (SELECT count(*)::int
      FROM config.aree_funzionali
      WHERE ordinamento > 0
-    ) = 10,
+    ) = 11,
     'Seed aree_funzionali: ordinamento positivo per tutte le righe'
 );
 
@@ -207,8 +210,8 @@ SELECT ok(
 
 SELECT is(
     (SELECT count(*)::int FROM config.azioni_processo WHERE attivo = true),
-    5,
-    'Seed azioni_processo: 5 righe attive'
+    8,
+    'Seed azioni_processo: 8 righe attive'
 );
 
 SELECT is(
@@ -293,6 +296,32 @@ SELECT throws_ok(
     '23503',
     NULL,
     'FK area_id: valore invalido bloccato'
+);
+
+SELECT is(
+    (SELECT count(*)::int
+       FROM config.area_model_overrides
+      WHERE app_label NOT LIKE 'pgtap_test_app%'),
+    11,
+    'Seed area_model_overrides: 11 righe attese'
+);
+
+SELECT is(
+    (SELECT area_id
+       FROM config.area_model_overrides
+      WHERE app_label = 'vendite'
+        AND model_name = 'fattura'),
+    2,
+    'Seed area_model_overrides: vendite.fattura → area_id 2'
+);
+
+SELECT is(
+    (SELECT area_id
+       FROM config.area_model_overrides
+      WHERE app_label = 'pratiche'
+        AND model_name = 'pratica'),
+    12,
+    'Seed area_model_overrides: pratiche.pratica → area_id 12'
 );
 
 SELECT * FROM finish();

@@ -263,26 +263,57 @@ class EmittentiFiscaliBillingAccountRepository:
       - is_default e billing_account_id sono vincolati da un CHECK: True+NULL oppure False+NOT NULL.
     """
 
-    # Scopo: Lista mapping BA per un emittente, con join billing_account per display.
-    def list_by_emittente(self, emittente_soggetto_ruolo_id: int) -> list[dict[str, Any]]:
-        sql = """
+    _ORDER_COLS = {
+        "billing_account_codice", "billing_account_ragione_sociale",
+        "id_fiscale_univoco", "is_default", "data_insert",
+    }
+
+    # Scopo: Lista paginata mapping BA per un emittente, con search su
+    #        ragione_sociale_completa, codice BA e id_fiscale_univoco_cf_piva.
+    def list_by_emittente(
+        self,
+        emittente_soggetto_ruolo_id: int,
+        *,
+        search: str | None = None,
+        limit: int = 25,
+        offset: int = 0,
+        order_by: str = "billing_account_codice",
+        order_dir: str = "asc",
+    ) -> tuple[list[dict[str, Any]], int]:
+        order_col = order_by if order_by in self._ORDER_COLS else "billing_account_codice"
+        direction = "DESC" if order_dir and order_dir.upper() == "DESC" else "ASC"
+        search_pattern = f"%{search.strip()}%" if search and search.strip() else None
+        sql = f"""
             SELECT m.id,
                    m.billing_account_id,
                    m.is_default,
-                   ba.codice            AS billing_account_codice,
-                   s.ragione_sociale_completa AS billing_account_ragione_sociale,
+                   ba.codice                   AS billing_account_codice,
+                   s.ragione_sociale_completa   AS billing_account_ragione_sociale,
+                   s.id_fiscale_univoco_cf_piva AS id_fiscale_univoco,
                    m.data_insert,
-                   m.data_update
+                   m.data_update,
+                   COUNT(*) OVER ()            AS total_count
               FROM anagrafiche.emittenti_fiscali_billing_account m
               LEFT JOIN anagrafiche.billing_account ba ON ba.id = m.billing_account_id
               LEFT JOIN anagrafiche.soggetti_ruoli sr  ON sr.id = ba.soggetto_ruolo_id
               LEFT JOIN anagrafiche.soggetti s         ON s.id  = sr.soggetto_id
              WHERE m.emittente_soggetto_ruolo_id = %s
-             ORDER BY m.is_default DESC, ba.codice NULLS FIRST
-        """
+               AND (%s::text IS NULL OR (
+                       ba.codice ILIKE %s
+                    OR s.ragione_sociale_completa ILIKE %s
+                    OR s.id_fiscale_univoco_cf_piva ILIKE %s
+                   ))
+             ORDER BY m.is_default DESC, {order_col} {direction} NULLS LAST, m.id
+             LIMIT %s OFFSET %s
+        """  # noqa: S608
+        params: list[Any] = [
+            emittente_soggetto_ruolo_id,
+            search_pattern, search_pattern, search_pattern, search_pattern,
+            limit, offset,
+        ]
         with connection.cursor() as cursor:
-            cursor.execute(sql, [emittente_soggetto_ruolo_id])
-            return rows_to_list(cursor)
+            cursor.execute(sql, params)
+            return extract_paginated(cursor)
 
     # Scopo: Inserisce un mapping BA per l'emittente.
     #        Se billing_account_id e' None, crea il default globale (is_default=true).

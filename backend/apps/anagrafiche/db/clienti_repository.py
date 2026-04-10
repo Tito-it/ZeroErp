@@ -246,13 +246,26 @@ class ClientiRepository:
                AND (
                      %s::bigint[] IS NULL
                   OR EXISTS (
+                       -- Mapping specifico: BA collegato a uno degli emittenti autorizzati
                        SELECT 1
                          FROM anagrafiche.emittenti_fiscali_billing_account efba
                         WHERE efba.emittente_soggetto_ruolo_id = ANY(%s::bigint[])
-                          AND (
-                                efba.billing_account_id = ba.id
-                             OR efba.is_default = true
-                              )
+                          AND efba.billing_account_id = ba.id
+                     )
+                  OR (
+                       -- Fallback default: emittente autorizzato ha is_default=true
+                       -- E il BA non ha nessun mapping specifico su nessun emittente
+                       EXISTS (
+                           SELECT 1
+                             FROM anagrafiche.emittenti_fiscali_billing_account efba
+                            WHERE efba.emittente_soggetto_ruolo_id = ANY(%s::bigint[])
+                              AND efba.is_default = true
+                       )
+                       AND NOT EXISTS (
+                           SELECT 1
+                             FROM anagrafiche.emittenti_fiscali_billing_account efba2
+                            WHERE efba2.billing_account_id = ba.id
+                       )
                      )
                    )
              ORDER BY {order_col} {direction}, cl.id
@@ -263,7 +276,7 @@ class ClientiRepository:
             search_pattern, search_pattern, search_pattern,
             utility_id, utility_id,
             stato_cliente_id, stato_cliente_id,
-            emittente_ids, emittente_ids,
+            emittente_ids, emittente_ids, emittente_ids,
             limit, offset,
         ]
         with connection.cursor() as cursor:

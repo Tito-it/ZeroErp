@@ -162,6 +162,8 @@ class FornitoriService:
     #        tramite SoggettiService (riuso logica esistente, zero duplicazione).
     #        Auto-clone: se un solo indirizzo e la matrice ha piu tipi obbligatori,
     #        clona l'indirizzo per i tipi mancanti (stesso pattern di SoggettoDrawer).
+    #        Skip duplicati: se il soggetto_ruolo ha gia' indirizzi con lo stesso
+    #        tipo_indirizzo_id, li salta (es. secondo cliente su ruolo CL esistente).
     def _create_indirizzi_ruolo(
         self, soggetto_ruolo_id: int, indirizzi_data: list[dict[str, Any]],
         tipo_ruolo_codice: str = "FO",
@@ -172,6 +174,9 @@ class FornitoriService:
 
         if not indirizzi_data:
             return
+
+        # Tipi indirizzo gia' presenti sul ruolo (skip duplicati)
+        existing_tipo_ids = self._sogg_repo.get_existing_tipo_indirizzo_ids(soggetto_ruolo_id)
 
         # Auto-clone: clona il primo indirizzo per i tipi obbligatori mancanti
         matrice = LookupRepository().list_matrice_indirizzi_ruolo(tipo_ruolo_codice)
@@ -213,6 +218,11 @@ class FornitoriService:
                 if resolved_det_id is None and indirizzo_dettaglio_id:
                     resolved_det_id = indirizzo_dettaglio_id
 
+            # Skip se il tipo indirizzo esiste gia' sul ruolo
+            # (es. secondo cliente creato sullo stesso soggetto_ruolo CL)
+            if tipo_indirizzo_id in existing_tipo_ids:
+                continue
+
             self._sogg_repo.crea_indirizzo_ruolo(
                 soggetto_ruolo_id,
                 tipo_indirizzo_id=tipo_indirizzo_id,
@@ -222,3 +232,5 @@ class FornitoriService:
                 comune_id=optional_int(ind, "comune_id"),
                 codice_postale_id=optional_int(ind, "codice_postale_id"),
             )
+            # Aggiorna set per evitare duplicati nell'auto-clone
+            existing_tipo_ids.add(tipo_indirizzo_id)

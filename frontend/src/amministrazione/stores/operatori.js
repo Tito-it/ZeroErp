@@ -15,6 +15,8 @@ import {
   putOverrideAree,
   getOverrideAzioni,
   putOverrideAzioni,
+  getOverrideOggetti,
+  putOverrideOggetti,
   getEmittentiScope,
   putEmittentiScope
 } from '../api/amministrazione'
@@ -47,6 +49,7 @@ export const useOperatoriStore = defineStore('amm-operatori', () => {
   // Override corrente
   const overrideAree = ref([])
   const overrideAzioni = ref([])
+  const overrideOggetti = ref([])
   const emittentiScope = ref([])
 
   async function fetchList() {
@@ -135,6 +138,18 @@ export const useOperatoriStore = defineStore('amm-operatori', () => {
     emitDataChanged('operatore', authUserId)
   }
 
+  // --- Override oggetti (v2 permessi) ---
+  async function fetchOverrideOggetti(authUserId) {
+    const res = await getOverrideOggetti(authUserId)
+    overrideOggetti.value = res.data.data.results
+  }
+
+  async function saveOverrideOggetti(authUserId, items) {
+    const res = await putOverrideOggetti(authUserId, items)
+    overrideOggetti.value = res.data.data.results
+    emitDataChanged('operatore', authUserId)
+  }
+
   // --- Emittenti scope ---
   async function fetchEmittentiScope(authUserId) {
     const res = await getEmittentiScope(authUserId)
@@ -169,11 +184,14 @@ export const useOperatoriStore = defineStore('amm-operatori', () => {
     // Override
     overrideAree,
     overrideAzioni,
+    overrideOggetti,
     emittentiScope,
     fetchOverrideAree,
     saveOverrideAree,
     fetchOverrideAzioni,
     saveOverrideAzioni,
+    fetchOverrideOggetti,
+    saveOverrideOggetti,
     fetchEmittentiScope,
     saveEmittentiScope
   }

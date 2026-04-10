@@ -154,9 +154,16 @@ La catena di join per il filtro:
 soggetti_ruoli.id
   → clienti.soggetto_ruolo_id
   → clienti.billing_account_id
-  → emittenti_fiscali_billing_account.billing_account_id
-  → emittenti_fiscali_billing_account.emittente_soggetto_ruolo_id = ANY(p_emittente_ids)
+  → script.fn_check_ba_visible_for_emittenti(ba_id, p_emittente_ids)
 ```
+
+> **Logica a 3 livelli (fix 2026-04-10)**: il filtro scope emittente e' delegato a [`script.fn_check_ba_visible_for_emittenti`](/dbzero/script/funzioni/fn_check_ba_visible_for_emittenti) che opera con precedenza:
+>
+> 1. **Mapping specifico**: il BA ha una riga in `emittenti_fiscali_billing_account` collegata a uno degli emittenti autorizzati → visibile.
+> 2. **Fallback default**: un emittente autorizzato ha `is_default = true` (gestore globale) **E** il BA non ha alcun mapping specifico → visibile.
+> 3. Altrimenti non visibile.
+>
+> Stessa funzione usata anche da `fn_get_search_detail`. Allineamento a `clienti_repository.list_clienti` lato Python.
 
 Per ruoli non-CL (FO, EF, VT, ...) il parametro viene ignorato.
 

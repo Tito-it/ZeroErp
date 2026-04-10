@@ -101,6 +101,12 @@ const router = createRouter({
           meta: { domain: 'amm-software', menuKey: 'matrice-utilities-ruoli' }
         },
         {
+          path: 'amm-software/matrice-indirizzi-ruoli',
+          name: 'amm-software-matrice-indirizzi-ruoli',
+          component: () => import('../amministrazione/views/TipiRuoloTipiIndirizzoListView.vue'),
+          meta: { domain: 'amm-software', menuKey: 'matrice-indirizzi-ruoli' }
+        },
+        {
           path: 'amm-software/audit-log',
           name: 'amm-software-audit-log',
           component: () => import('../amministrazione/views/AuditLogView.vue'),

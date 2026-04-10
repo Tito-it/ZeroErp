@@ -167,6 +167,33 @@ class OverrideAzioniView(AdminAPIView):
         return success_response({"results": results})
 
 
+class OverrideOggettiView(AdminAPIView):
+    """GET/PUT override oggetti (v2 permessi — livello model)."""
+
+    @extend_schema(responses={200: inline_serializer(name="OverrideOggettiGetResp", fields={"data": serializers.DictField()})})
+    # Scopo: Lista override oggetto per un operatore.
+    def get(self, request: Request, auth_user_id: int) -> JsonResponse:
+        return success_response({"results": AmmSoftwareService().get_override_oggetti(auth_user_id)})
+
+    @extend_schema(
+        request=inline_serializer(name="OverrideOggettiPutReq", fields={"items": serializers.ListField()}),
+        responses={200: inline_serializer(name="OverrideOggettiPutResp", fields={"data": serializers.DictField()})},
+    )
+    # Scopo: Sostituisce override oggetti di un operatore.
+    def put(self, request: Request, auth_user_id: int) -> JsonResponse:
+        results = AmmSoftwareService().put_override_oggetti(auth_user_id, request.data.get("items", []))
+        return success_response({"results": results})
+
+
+class ModelOverridesLookupView(AdminAPIView):
+    """GET lookup model registrati per dropdown override oggetti."""
+
+    @extend_schema(responses={200: inline_serializer(name="ModelOverridesLookupResp", fields={"data": serializers.DictField()})})
+    # Scopo: Lista model registrati in area_model_overrides.
+    def get(self, request: Request) -> JsonResponse:
+        return success_response({"results": AmmSoftwareService().list_model_overrides()})
+
+
 class EmittentiScopeView(AdminAPIView):
     """GET/PUT scope emittenti."""
 

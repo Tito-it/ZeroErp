@@ -118,6 +118,12 @@ const canSave = computed(() => {
   return form.value.utility_id != null && form.value.tipo_ruolo_id != null
 })
 
+// Scopo: Salva e delega la chiusura al parent (pattern PraticaDrawer).
+// Il drawer NON chiama close() qui per evitare il "rimbalzo" visivo: se il
+// drawer si auto-chiudesse in parallelo con l'await fetchList del parent,
+// l'animazione di chiusura del Drawer e il re-render della tabella sotto
+// causerebbero un jitter percepito. Unico punto di chiusura: il parent in
+// onDrawerSaved dopo await fetchList.
 async function handleSave() {
   if (isEdit.value) {
     const payload = { attivo: form.value.attivo }
@@ -125,7 +131,7 @@ async function handleSave() {
       () => store.update(props.recordId, payload),
       { successMessage: t('amministrazione.matrice_utilities_ruoli.saved') }
     )
-    if (result !== null) { emit('saved', result); close() }
+    if (result !== null) emit('saved', result)
   } else {
     const payload = {
       utility_id: form.value.utility_id,
@@ -136,7 +142,7 @@ async function handleSave() {
       () => store.create(payload),
       { successMessage: t('amministrazione.matrice_utilities_ruoli.created') }
     )
-    if (result !== null) { emit('saved', result); close() }
+    if (result !== null) emit('saved', result)
   }
 }
 

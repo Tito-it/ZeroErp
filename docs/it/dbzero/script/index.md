@@ -4,6 +4,7 @@
 
 ## ⚙️ Funzioni
 - [fn_check_azione_processo](funzioni/fn_check_azione_processo.md) — (latest review 08-03-2026) La funzione **`script.fn_check_azione_processo`** verifica se un'azione di processo (identificata da `permission_codename`) e abilitata per un utente.
+- [fn_check_ba_visible_for_emittenti](funzioni/fn_check_ba_visible_for_emittenti.md)
 - [fn_check_blocco_login](funzioni/fn_check_blocco_login.md)
 - [fn_check_indirizzo_duplicato](funzioni/fn_check_indirizzo_duplicato.md)
 - [fn_check_operatore_invitabile](funzioni/fn_check_operatore_invitabile.md)
@@ -41,8 +42,9 @@
 - [fn_get_stradario](funzioni/fn_get_stradario.md) — * **Ricerca locale per comune**   Se viene specificato `p_comune_id`, esegue una query filtrata sul comune indicato, restituendo tutte le vie e toponomastiche che contengono la stringa `p_indirizzo` nel loro nome.
 - [fn_get_tipo_contatto_id](funzioni/fn_get_tipo_contatto_id.md) — Recuperare l’ID del tipo di contatto corrispondente a un **codice interno** (`cod_int_tipo_contatto`), garantendo al contempo il logging e la tracciabilità tramite un `tx_id` di sessione.
 - [fn_get_user_actions_map](funzioni/fn_get_user_actions_map.md)
+- [fn_get_user_object_permissions_map](funzioni/fn_get_user_object_permissions_map.md)
 - [fn_get_user_permissions_map](funzioni/fn_get_user_permissions_map.md)
-- [fn_get_user_profile](funzioni/fn_get_user_profile.md) — * **Profilo utente completo in una chiamata**: evita al backend di orchestrare query multiple per comporre il profilo.
+- [fn_get_user_profile](funzioni/fn_get_user_profile.md)
 - [fn_get_vie_discendenti](funzioni/fn_get_vie_discendenti.md)
 - [fn_guard_soggetto_ruolo](funzioni/fn_guard_soggetto_ruolo.md) — (latest review 05-12-25) - **Verifica esistenza**     Controlla se esiste già un’associazione tra il soggetto e il codice interno del ruolo in `anagrafiche.soggetti_ruoli`.
 - [fn_guard_utility_tipo_ruolo](funzioni/fn_guard_utility_tipo_ruolo.md) — (latest review 16-02-2026) `script.fn_guard_utility_tipo_ruolo` valida la coerenza tra `utility_id` e `tipo_ruolo_id` con semantica:

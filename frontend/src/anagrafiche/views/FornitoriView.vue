@@ -18,7 +18,7 @@ const drawer = useDrawerState()
 const store = useFornitoriStore()
 const ctx = useContextStore()
 const route = useRoute()
-useReadonlyMode('anagrafiche')
+useReadonlyMode('anagrafiche', 'fornitore')
 
 watch(() => route.fullPath, () => {
   if (route.name === 'anagrafiche-fornitori' && ctx.entitaId) {

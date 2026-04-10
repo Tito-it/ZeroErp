@@ -16,9 +16,10 @@ Indice test eseguiti:
  2) ParameterDefaultsViewTests.test_get_defaults_empty_codes
  3) ParameterDefaultsViewTests.test_get_defaults_passes_emittente_context
  4) ParameterSettingsViewTests.test_list_settings_success
- 5) ParameterOverrideViewTests.test_upsert_override_success
- 6) ParameterOverrideDeleteViewTests.test_delete_override_success
- 7) ParameterOverrideDeleteViewTests.test_delete_override_not_found
+ 5) ParameterSettingsViewTests.test_list_settings_superuser_resolves_emittente
+ 6) ParameterOverrideViewTests.test_upsert_override_success
+ 7) ParameterOverrideDeleteViewTests.test_delete_override_success
+ 8) ParameterOverrideDeleteViewTests.test_delete_override_not_found
 """
 
 from unittest import TestCase
@@ -140,6 +141,32 @@ class ParameterSettingsViewTests(TestCase):
             django_user_id=1,
             group_ids=[10, 20],
             emittente_fiscale_id=3,
+        )
+
+    # Scopo: Verifica che un superuser riceva comunque l'emittente_fiscale_id
+    #        reale nella lista settings (fallback da get_emittente_fiscale_id_for_user),
+    #        altrimenti il LEFT JOIN su emittente_fiscale_id = NULL non matcha
+    #        mai e gli override emittente non vengono mostrati.
+    @patch(SVC_PATH)
+    def test_list_settings_superuser_resolves_emittente(self, mock_svc_cls):
+        from apps.core.api.views_parameters import ParameterSettingsView
+
+        mock_svc = MagicMock()
+        mock_svc_cls.return_value = mock_svc
+        mock_svc.get_emittente_fiscale_id_for_user.return_value = 7
+        mock_svc.list_parameters_for_user.return_value = []
+
+        view = ParameterSettingsView()
+        request = _make_request(user_id=1, is_superuser=True)
+        response = view.get(request)
+
+        self.assertEqual(response.status_code, 200)
+        # Superuser: _get_user_context restituisce emittente_fiscale_id=None,
+        # ma il fallback in ParameterSettingsView deve risolvere il valore reale.
+        mock_svc.list_parameters_for_user.assert_called_once_with(
+            django_user_id=1,
+            group_ids=None,
+            emittente_fiscale_id=7,
         )
 
 

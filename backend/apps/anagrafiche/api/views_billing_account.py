@@ -103,9 +103,10 @@ class BillingAccountLookupView(DomainAPIView):
         else:
             valid_at = None
 
-        # Scope emittente fiscale: None per superuser, lista bigint[] per operatori.
+        # Scope emittente fiscale: sr_ids perche' la query filtra su
+        # emittenti_fiscali_billing_account.emittente_soggetto_ruolo_id
         cache: dict = {}
-        emittente_ids = PermissionResolver.get_emittenti_ids(request.user, cache=cache)
+        emittente_ids = PermissionResolver.get_emittenti_sr_ids(request.user, cache=cache)
 
         service = BillingAccountService()
         result = service.search_lookup(

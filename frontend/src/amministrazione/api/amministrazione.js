@@ -59,6 +59,18 @@ export function putOverrideAzioni(authUserId, items) {
   return api.put(`${BASE}/operatori/${authUserId}/override-azioni/`, { items })
 }
 
+export function getOverrideOggetti(authUserId) {
+  return api.get(`${BASE}/operatori/${authUserId}/override-oggetti/`)
+}
+
+export function putOverrideOggetti(authUserId, items) {
+  return api.put(`${BASE}/operatori/${authUserId}/override-oggetti/`, { items })
+}
+
+export function getModelOverridesLookup() {
+  return api.get(`${BASE}/lookup/model-overrides/`)
+}
+
 export function getEmittentiScope(authUserId) {
   return api.get(`${BASE}/operatori/${authUserId}/emittenti-scope/`)
 }

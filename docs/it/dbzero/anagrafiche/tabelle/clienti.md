@@ -8,7 +8,7 @@
 | soggetto_ruolo_id | bigint | NO |  |
 | istanza_utility_id | bigint | NO |  |
 | tipo_gg_scadenza_ft | character | NO | 'N'::bpchar |
-| nr_giorni_scadenza | integer | NO | 0 |
+| nr_giorni_scadenza | integer | YES | 0 |
 | modalita_pagamento_id | integer | YES |  |
 | cliente_pa | character | NO | 'N'::bpchar |
 | codice_cig | character varying | YES |  |

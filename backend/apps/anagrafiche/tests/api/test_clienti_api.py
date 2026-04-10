@@ -55,7 +55,7 @@ class TestClientiPatchApi(JwtMockedApiTest):
     ):
         """GET /anagrafiche/clienti/ risolve emittente_ids via
         PermissionResolver e lo passa al service (refactor BE-3.5)."""
-        mock_perm.get_emittenti_ids.return_value = [11, 22]
+        mock_perm.get_emittenti_sr_ids.return_value = [11, 22]
         mock_svc_cls.return_value.list_clienti.return_value = ([], 0)
         resp = self.client.get("/api/v1/anagrafiche/clienti/")
         self.assertEqual(resp.status_code, 200)

@@ -13,6 +13,7 @@ import { listAssociazioni, createAssociazione, updateAssociazione, deleteAssocia
 import { displayDate, toDateString, parseIsoDate } from '../../core/utils/date'
 import { DRAWER_WIDTH, DATE_FORMAT } from '../../core/constants'
 import LookupSelect from '../../core/components/LookupSelect.vue'
+import UtilityPerRuoloSelect from '../../core/components/UtilityPerRuoloSelect.vue'
 import BillingAccountLookup from '../../core/components/BillingAccountLookup.vue'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import DrawerFooter from '../../core/components/DrawerFooter.vue'
@@ -235,7 +236,7 @@ async function onDelete(row) {
         <div class="form-grid-2col">
           <div class="form-field">
             <label>{{ t('listini.field_utility') }}</label>
-            <LookupSelect v-model="form.utility_id" rel="config.utilities"
+            <UtilityPerRuoloSelect v-model="form.utility_id"
               :placeholder="t('listini.select_utility')" show-clear />
           </div>
           <div class="form-field">

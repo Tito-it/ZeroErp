@@ -35,6 +35,7 @@ class SoggettiRepository:
     def list_soggetti(
         self, *, search: str | None = None,
         tipo_soggetto_dettaglio_id: int | None = None,
+        emittente_ids: list[int] | None = None,
         limit: int = 25, offset: int = 0,
         order_by: str = "ragione_sociale_completa", order_dir: str = "asc",
     ) -> tuple[list[dict[str, Any]], int]:
@@ -55,6 +56,44 @@ class SoggettiRepository:
                     FROM anagrafiche.soggetti_ruoli sr
                     JOIN config.tipi_ruoli tr ON tr.id = sr.tipo_ruolo_id
                    WHERE sr.soggetto_id = s.id
+                     AND (
+                       -- Nessun filtro emittente: mostra tutti i ruoli
+                       %s::bigint[] IS NULL
+                       -- Ruoli non-CL: sempre visibili
+                       OR COALESCE(tr.codice_interno, tr.codice) != 'CL'
+                       -- Ruolo CL: visibile solo se almeno un cliente
+                       -- del soggetto e' nello scope emittente dell'operatore
+                       OR EXISTS (
+                           SELECT 1
+                             FROM anagrafiche.clienti cl
+                             JOIN anagrafiche.billing_account ba
+                               ON ba.id = cl.billing_account_id
+                            WHERE cl.soggetto_ruolo_id = sr.id
+                              AND (
+                                    -- Mapping specifico
+                                    EXISTS (
+                                        SELECT 1
+                                          FROM anagrafiche.emittenti_fiscali_billing_account efba
+                                         WHERE efba.emittente_soggetto_ruolo_id = ANY(%s::bigint[])
+                                           AND efba.billing_account_id = ba.id
+                                    )
+                                 OR (
+                                      -- Fallback default, solo BA senza mapping specifico
+                                      EXISTS (
+                                          SELECT 1
+                                            FROM anagrafiche.emittenti_fiscali_billing_account efba
+                                           WHERE efba.emittente_soggetto_ruolo_id = ANY(%s::bigint[])
+                                             AND efba.is_default = true
+                                      )
+                                      AND NOT EXISTS (
+                                          SELECT 1
+                                            FROM anagrafiche.emittenti_fiscali_billing_account efba2
+                                           WHERE efba2.billing_account_id = ba.id
+                                      )
+                                    )
+                                  )
+                       )
+                     )
                    ) AS ruoli,
                    COUNT(*) OVER () AS total_count
               FROM anagrafiche.soggetti s
@@ -70,6 +109,7 @@ class SoggettiRepository:
              LIMIT %s OFFSET %s
         """  # noqa: S608
         params = [
+            emittente_ids, emittente_ids, emittente_ids,
             search_pattern, search_pattern, search_pattern, search_pattern,
             tipo_soggetto_dettaglio_id, tipo_soggetto_dettaglio_id,
             limit, offset,
@@ -421,6 +461,18 @@ class SoggettiRepository:
     # Indirizzi ruolo (anagrafiche.indirizzi — con istanza_utility_id)
     # =================================================================
 
+    # Scopo: Restituisce i tipo_indirizzo_id gia' presenti per un soggetto_ruolo.
+    #        Usato per evitare INSERT duplicati quando il ruolo esiste gia'.
+    def get_existing_tipo_indirizzo_ids(self, soggetto_ruolo_id: int) -> set[int]:
+        sql = """
+            SELECT tipo_indirizzo_id
+              FROM anagrafiche.indirizzi
+             WHERE soggetto_ruolo_id = %s
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [soggetto_ruolo_id])
+            return {row[0] for row in cursor.fetchall()}
+
     # Campi ammessi per update indirizzi ruolo.
     _IND_RUOLO_ALLOWED = {
         "tipo_indirizzo_id", "istanza_utility_id", "indirizzo_dettaglio_id",
@@ -514,8 +566,11 @@ class SoggettiRepository:
     # Ruoli
     # =================================================================
 
-    # Scopo: Lista ruoli assegnati a un soggetto.
-    def get_soggetto_ruoli(self, soggetto_id: str) -> list[dict[str, Any]]:
+    # Scopo: Lista ruoli assegnati a un soggetto, con filtro scope emittente
+    #        sul ruolo CL (stessa logica a 3 livelli di list_soggetti).
+    def get_soggetto_ruoli(
+        self, soggetto_id: str, emittente_ids: list[int] | None = None,
+    ) -> list[dict[str, Any]]:
         sql = """
             SELECT sr.id, sr.tipo_ruolo_id,
                    COALESCE(tr.codice_interno, tr.codice) AS ruolo_codice,
@@ -523,10 +578,42 @@ class SoggettiRepository:
               FROM anagrafiche.soggetti_ruoli sr
               JOIN config.tipi_ruoli tr ON tr.id = sr.tipo_ruolo_id
              WHERE sr.soggetto_id = %s::uuid
+               AND (
+                 %s::bigint[] IS NULL
+                 OR COALESCE(tr.codice_interno, tr.codice) != 'CL'
+                 OR EXISTS (
+                     SELECT 1
+                       FROM anagrafiche.clienti cl
+                       JOIN anagrafiche.billing_account ba
+                         ON ba.id = cl.billing_account_id
+                      WHERE cl.soggetto_ruolo_id = sr.id
+                        AND (
+                              EXISTS (
+                                  SELECT 1
+                                    FROM anagrafiche.emittenti_fiscali_billing_account efba
+                                   WHERE efba.emittente_soggetto_ruolo_id = ANY(%s::bigint[])
+                                     AND efba.billing_account_id = ba.id
+                              )
+                           OR (
+                                EXISTS (
+                                    SELECT 1
+                                      FROM anagrafiche.emittenti_fiscali_billing_account efba
+                                     WHERE efba.emittente_soggetto_ruolo_id = ANY(%s::bigint[])
+                                       AND efba.is_default = true
+                                )
+                                AND NOT EXISTS (
+                                    SELECT 1
+                                      FROM anagrafiche.emittenti_fiscali_billing_account efba2
+                                     WHERE efba2.billing_account_id = ba.id
+                                )
+                              )
+                            )
+                 )
+               )
              ORDER BY tr.descrizione
         """
         with connection.cursor() as cursor:
-            cursor.execute(sql, [soggetto_id])
+            cursor.execute(sql, [soggetto_id, emittente_ids, emittente_ids, emittente_ids])
             return rows_to_list(cursor)
 
     # Scopo: Verifica se un CF esiste gia' in anagrafica. Ritorna soggetto trovato o None.
