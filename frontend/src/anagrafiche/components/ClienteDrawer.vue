@@ -11,7 +11,9 @@ import { useLookup } from '../../core/composables/useLookup'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useContattoForm } from '../../core/composables/useContattoForm'
 import { useIndirizzoSoggettoForm } from '../../core/composables/useIndirizzoSoggettoForm'
-import { listUtilitiesManual, listUtilitiesPerBillingAccount, listSoggettoIndirizzi } from '../api/anagrafiche'
+import { useParameterDefaults } from '../../core/composables/useParameterDefaults'
+import { listUtilitiesPerBillingAccount, listSoggettoIndirizzi } from '../api/anagrafiche'
+import { lookupUtilitiesPerEmittente } from '../../core/apiCore'
 import { DRAWER_WIDTH, TIPO_RUOLO } from '../../core/constants'
 import { displayDate } from '../../core/utils/date'
 import { statoClienteSeverity } from '../../core/utils/severity'
@@ -40,10 +42,12 @@ const isReadonly = useInjectReadonly()
 const contatto = useContattoForm()
 const contattoErrors = ref([])
 const indirizzo = useIndirizzoSoggettoForm()
+const { defaults: paramDefaults, load: loadDefaults } = useParameterDefaults(['DEFAULT_IVA_ID', 'DEFAULT_UTILITY_ID'])
+loadDefaults()
 
-// Lookup utility per modalita' creazione (sorgente globale).
+// Lookup utility per creazione: filtrate per emittente dell'operatore + ruolo CL.
 // In modalita' edit usiamo il nuovo endpoint BA-driven (vedi sotto).
-const utilities = useLookup(() => listUtilitiesManual(), { immediate: true })
+const utilities = useLookup(() => lookupUtilitiesPerEmittente(TIPO_RUOLO.CLIENTE), { immediate: true })
 
 // Opzioni statiche (label tramite i18n)
 const tipoGgOptions = computed(() => [
@@ -206,6 +210,12 @@ watch(() => props.visible, async (val) => {
     }
   } else {
     resetForm()
+    if (paramDefaults.value.DEFAULT_IVA_ID) {
+      form.value.iva_id = Number(paramDefaults.value.DEFAULT_IVA_ID)
+    }
+    if (paramDefaults.value.DEFAULT_UTILITY_ID) {
+      form.value.utility_id = Number(paramDefaults.value.DEFAULT_UTILITY_ID)
+    }
     indirizzo.loadMatriceRuolo(TIPO_RUOLO.CLIENTE)
   }
 })
@@ -307,6 +317,7 @@ function onClose() {
     :visible="props.visible"
     position="right"
     :style="{ width: DRAWER_WIDTH.COMPLEX }"
+    :dismissable="true"
     @update:visible="val => emit('update:visible', val)"
   >
     <template #header>
@@ -317,7 +328,7 @@ function onClose() {
       />
     </template>
 
-    <div :class="{ 'app-readonly': isReadonly }">
+    <div class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
       <div class="form-grid">
 
         <!-- === Soggetto === -->
@@ -355,7 +366,7 @@ function onClose() {
           {{ t('clienti.banner_admin_globale_no_create') }}
         </Message>
         <Message v-else-if="!isEdit && auth.emittenteCorrente" severity="info" :closable="false" class="mt-05">
-          {{ t('clienti.banner_emittente_corrente', { codice: auth.emittenteCorrente.codice }) }}
+          {{ t('clienti.banner_emittente_corrente', { nome: auth.emittenteCorrente.ragioneSociale }) }}
         </Message>
         <!-- Riga: utility + servizio_da_fatturare + stato (edit) -->
         <div class="cliente-servizio-row">
@@ -535,10 +546,7 @@ function onClose() {
         :tipo-soggetto-dettaglio-id="detail.tipo_soggetto_dettaglio_id"
         :tipo-ruolo-codice="TIPO_RUOLO.CLIENTE" />
 
-      <!-- Footer salva/annulla -->
-      <div class="flex justify-end mt-4">
-        <DrawerFooter :loading="loading" :disabled="!isEdit && !canSave" @save="onSave" @cancel="onClose" />
-      </div>
+      <DrawerFooter :loading="loading" :disabled="!isEdit && !canSave" @save="onSave" @cancel="onClose" />
     </div>
 
     <!-- Sotto-drawer: SoggettoResolver (solo creazione) -->

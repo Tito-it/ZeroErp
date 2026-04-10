@@ -23,7 +23,7 @@
 | `useLookup` | [useLookup.js](../../../../frontend/src/core/composables/useLookup.js) | Cache dati lookup generico (caricamento immediato o lazy) |
 | `useServerAutocomplete` | [useServerAutocomplete.js](../../../../frontend/src/core/composables/useServerAutocomplete.js) | Autocomplete server-side con debounce |
 | `useCodiceField` | [useCodiceField.js](../../../../frontend/src/core/composables/useCodiceField.js) | Carica config sequenza codice (auto vs manuale, prefisso, separatore) |
-| `useReadonlyMode` | [useReadonlyMode.js](../../../../frontend/src/core/composables/useReadonlyMode.js) | Modalità sola lettura basata su permessi utente (provider/consumer) |
+| `useReadonlyMode` | [useReadonlyMode.js](../../../../frontend/src/core/composables/useReadonlyMode.js) | Modalità sola lettura basata su permessi utente (provider/consumer). Accetta `modelName` opzionale per granularita' oggetto v2: `useReadonlyMode('anagrafiche', 'conto_bancario')`. Senza model, fallback al livello area. |
 | `useActionPermission` | [useActionPermission.js](../../../../frontend/src/core/composables/useActionPermission.js) | Verifica permesso azione processo (computed reattivo) |
 | `useTabLabel` | [useTabLabel.js](../../../../frontend/src/core/composables/useTabLabel.js) | Aggiorna dinamicamente label della content tab |
 | `useTabEvents` | [useTabEvents.js](../../../../frontend/src/core/composables/useTabEvents.js) | Event bus inter-tab per invalidazione dati |
@@ -49,7 +49,7 @@
 
 | Store | File | Descrizione |
 |---|---|---|
-| `useAuthStore` | [auth.js](../../../../frontend/src/stores/auth.js) | Autenticazione e autorizzazione (token, profilo, permessi, login/logout) |
+| `useAuthStore` | [auth.js](../../../../frontend/src/stores/auth.js) | Autenticazione e autorizzazione (token, profilo, permessi, login/logout). Getter permessi: `getLivelloArea(schemaDb)`, `isAreaReadonly(schemaDb)`, `isAreaBlocked(schemaDb)`, `getLivelloOggetto(schemaDb, modelName)`, `isObjectReadonly(schemaDb, modelName)`, `isObjectBlocked(schemaDb, modelName)`, `isActionAllowed(codename)`. |
 | `useUiStore` | [ui.js](../../../../frontend/src/stores/ui.js) | Layout responsive, stato UI (sidebar, search drawer, AI drawer), dark/light mode (`isDark`, `toggleDarkMode`) |
 | `useTabsStore` | [tabs.js](../../../../frontend/src/stores/tabs.js) | Content tabs tipo browser con split-view e dirty tracking |
 | `useNavigationStore` | [navigation.js](../../../../frontend/src/stores/navigation.js) | Stato sidebar dominio/menu e pagine preferite |

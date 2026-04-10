@@ -8,7 +8,7 @@ import ConversioneUomDrawer from '../components/ConversioneUomDrawer.vue'
 
 const drawer = useDrawerState()
 const store = useConversioniUomStore()
-useReadonlyMode('catalogo')
+useReadonlyMode('catalogo', 'unita_misura')
 
 async function onDrawerSaved(result) {
   await store.fetchList()

@@ -7,9 +7,9 @@
 import { ref, computed, watch, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useOperatoriStore } from '../stores/operatori'
-import { useApiHandler } from '../../core/composables/useApiHandler'
+import { useNotify } from '../../core/composables/useNotify'
 import { useLookup } from '../../core/composables/useLookup'
-import { listAreeFunzionali, listAzioniProcesso, listEmittentiFiscali } from '../api/amministrazione'
+import { listAreeFunzionali, listAzioniProcesso, listEmittentiFiscali, getModelOverridesLookup } from '../api/amministrazione'
 import { RUOLO_SISTEMA, LIVELLO_ACCESSO, buildLivelloOptions } from '../constants'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
@@ -20,11 +20,12 @@ import Message from 'primevue/message'
 
 const { t } = useI18n()
 const store = useOperatoriStore()
-const { execute } = useApiHandler()
+const notify = useNotify()
 
 // Lookup via useLookup (non piu' dallo store)
 const areeFunzionali = useLookup(listAreeFunzionali, { immediate: true })
 const azioniProcesso = useLookup(listAzioniProcesso, { immediate: true })
+const modelOverrides = useLookup(getModelOverridesLookup, { immediate: true })
 const emittentiFiscali = useLookup(listEmittentiFiscali, { immediate: true })
 
 const props = defineProps({
@@ -42,6 +43,7 @@ const isAdmin = computed(() => store.currentOperatore?.ruolo_sistema === RUOLO_S
 // logico tra un save e l'altro e per non mutare direttamente lo store).
 const localAree = ref([])
 const localAzioni = ref([])
+const localOggetti = ref([])
 const localEmittentiIds = ref([])
 
 // Scopo: Carica tutto lo stato necessario per il componente.
@@ -55,6 +57,7 @@ async function loadAll(userId) {
     needDetail ? store.fetchDetail(userId) : Promise.resolve(),
     store.fetchOverrideAree(userId),
     store.fetchOverrideAzioni(userId),
+    store.fetchOverrideOggetti(userId),
     store.fetchEmittentiScope(userId)
   ])
   syncLocal()
@@ -65,9 +68,12 @@ watch(() => props.authUserId, loadAll, { immediate: true })
 function syncLocal() {
   localAree.value = store.overrideAree.map(a => ({ ...a }))
   localAzioni.value = store.overrideAzioni.map(a => ({ ...a }))
+  localOggetti.value = store.overrideOggetti.map(o => ({ ...o }))
   localEmittentiIds.value = store.emittentiScope.map(e => e.emittente_fiscale_id)
 }
 
+// Pattern: store action gia' unwrappate → chiamata diretta + try/catch.
+// useApiHandler.execute() e' SOLO per response axios (feedback_useapihandler_solo_axios).
 async function saveAree() {
   const items = localAree.value.map(a => ({
     area_id: a.area_id,
@@ -76,10 +82,12 @@ async function saveAree() {
     valido_dal: a.valido_dal || null,
     valido_al: a.valido_al || null
   }))
-  await execute(
-    () => store.saveOverrideAree(props.authUserId, items),
-    { successMessage: t('notifications.save_success') }
-  )
+  try {
+    await store.saveOverrideAree(props.authUserId, items)
+    notify.success(t('notifications.save_success'))
+  } catch {
+    // Errore gestito dall'interceptor axios globale.
+  }
 }
 
 async function saveAzioni() {
@@ -90,20 +98,21 @@ async function saveAzioni() {
     valido_dal: a.valido_dal || null,
     valido_al: a.valido_al || null
   }))
-  await execute(
-    () => store.saveOverrideAzioni(props.authUserId, items),
-    { successMessage: t('notifications.save_success') }
-  )
+  try {
+    await store.saveOverrideAzioni(props.authUserId, items)
+    notify.success(t('notifications.save_success'))
+  } catch {
+    // Errore gestito dall'interceptor axios globale.
+  }
 }
 
 async function saveEmittenti() {
-  const result = await execute(
-    () => store.saveEmittentiScope(props.authUserId, localEmittentiIds.value),
-    { successMessage: t('notifications.save_success') }
-  )
-  if (result !== null) {
-    // Aggiorna lista operatori dopo che execute ha completato (nextTick evita conflitto)
+  try {
+    await store.saveEmittentiScope(props.authUserId, localEmittentiIds.value)
+    notify.success(t('notifications.save_success'))
     nextTick(() => store.fetchList().catch(() => {}))
+  } catch {
+    // Errore gestito dall'interceptor axios globale.
   }
 }
 
@@ -125,6 +134,49 @@ function addAzioneOverride() {
 
 function removeAzioneOverride(index) {
   localAzioni.value.splice(index, 1)
+}
+
+// Scopo: Label per il dropdown model override (es. "anagrafiche.conto_bancario — Anagrafiche").
+const modelOverrideOptions = computed(() =>
+  modelOverrides.items.value.map(m => ({
+    ...m,
+    label: `${m.app_label}.${m.model_name} — ${m.area_descrizione}`
+  }))
+)
+
+async function saveOggetti() {
+  const items = localOggetti.value.map(o => ({
+    app_label: o.app_label,
+    model_name: o.model_name,
+    livello: o.livello,
+    motivo: o.motivo || null,
+    valido_dal: o.valido_dal || null,
+    valido_al: o.valido_al || null
+  }))
+  try {
+    await store.saveOverrideOggetti(props.authUserId, items)
+    notify.success(t('notifications.save_success'))
+  } catch {
+    // Errore gestito dall'interceptor axios globale.
+  }
+}
+
+function addOggettoOverride() {
+  localOggetti.value.push({
+    app_label: null, model_name: null, livello: LIVELLO_ACCESSO.BLOCCATO,
+    motivo: '', valido_dal: null, valido_al: null
+  })
+}
+
+function removeOggettoOverride(index) {
+  localOggetti.value.splice(index, 1)
+}
+
+function onModelSelect(item, row) {
+  if (item) {
+    row.app_label = item.app_label
+    row.model_name = item.model_name
+  }
 }
 </script>
 
@@ -183,6 +235,38 @@ function removeAzioneOverride(index) {
     <div class="flex justify-between mb-4">
       <Button :label="t('amm.add_override')" icon="pi pi-plus" text @click="addAzioneOverride" />
       <Button :label="t('common.save')" icon="pi pi-check" size="small" @click="saveAzioni" />
+    </div>
+
+    <!-- Override Oggetti (v2 permessi — livello model) -->
+    <h4>{{ t('amm.override_oggetti_title') }}</h4>
+    <DataTable :value="localOggetti" class="mb-2" size="small">
+      <Column :header="t('amm.col_model')">
+        <template #body="{ data }">
+          <Select
+            :modelValue="data.app_label && data.model_name ? modelOverrideOptions.find(m => m.app_label === data.app_label && m.model_name === data.model_name) : null"
+            :options="modelOverrideOptions"
+            option-label="label"
+            :placeholder="t('amm.select_model')"
+            class="w-full"
+            @update:modelValue="v => onModelSelect(v, data)"
+          />
+        </template>
+      </Column>
+      <Column :header="t('amm.col_livello')">
+        <template #body="{ data }">
+          <Select v-model="data.livello" :options="livelloOptions"
+            option-label="label" option-value="value" class="w-full" />
+        </template>
+      </Column>
+      <Column style="width: 3rem">
+        <template #body="{ index }">
+          <Button icon="pi pi-trash" severity="danger" text @click="removeOggettoOverride(index)" />
+        </template>
+      </Column>
+    </DataTable>
+    <div class="flex justify-between mb-4">
+      <Button :label="t('amm.add_override')" icon="pi pi-plus" text @click="addOggettoOverride" />
+      <Button :label="t('common.save')" icon="pi pi-check" size="small" @click="saveOggetti" />
     </div>
 
     <!-- Emittenti Scope -->

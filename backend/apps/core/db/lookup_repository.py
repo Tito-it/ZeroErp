@@ -241,6 +241,56 @@ class LookupRepository:
             cursor.execute(sql, [tipo_ruolo_codice])
             return rows_to_list(cursor)
 
+    # Scopo: Lista utility configurate per l'emittente specificato (PK).
+    #        Se ruolo_codice_soggetto e' fornito (es. 'CL'), applica la doppia
+    #        intersezione: ammessa per ruolo soggetto AND per ruolo EF.
+    #        Se ruolo_codice_soggetto e' None, filtra solo per ruolo EF
+    #        (tutte le utility che l'emittente gestisce).
+    #        In entrambi i casi, richiede configurazione in
+    #        emittenti_fiscali_utilities per l'emittente specifico.
+    #        Ritorna solo id/codice/descrizione (per combo filtro, non editing).
+    def list_utilities_per_emittente(
+        self, emittente_fiscale_id: int, ruolo_codice_soggetto: str | None = None
+    ) -> list[dict[str, Any]]:
+        # Base: utility ammessa per EF. LEFT JOIN su emittenti_fiscali_utilities
+        # perche' le utility senza override usano i default di sistema e devono
+        # comunque apparire nella combo (pattern slot/override).
+        sql = """
+            SELECT u.id, u.codice, u.descrizione
+              FROM config.utilities u
+              -- ammessa per il ruolo EF (emittente fiscale)
+              JOIN config.utilities_tipi_ruolo utr_ef
+                ON utr_ef.utility_id = u.id
+               AND utr_ef.attivo = true
+               AND (utr_ef.valido_dal IS NULL OR utr_ef.valido_dal <= CURRENT_DATE)
+               AND (utr_ef.valido_al  IS NULL OR utr_ef.valido_al  >= CURRENT_DATE)
+              JOIN config.tipi_ruoli tr_ef
+                ON tr_ef.id = utr_ef.tipo_ruolo_id
+               AND COALESCE(tr_ef.codice_interno, tr_ef.codice) = 'EF'
+        """
+        params: list = []
+
+        # Intersezione opzionale con ruolo soggetto (es. CL, FO)
+        if ruolo_codice_soggetto:
+            sql += """
+              -- ammessa anche per il ruolo del soggetto (es. CL)
+              JOIN config.utilities_tipi_ruolo utr_sogg
+                ON utr_sogg.utility_id = u.id
+               AND utr_sogg.attivo = true
+               AND (utr_sogg.valido_dal IS NULL OR utr_sogg.valido_dal <= CURRENT_DATE)
+               AND (utr_sogg.valido_al  IS NULL OR utr_sogg.valido_al  >= CURRENT_DATE)
+              JOIN config.tipi_ruoli tr_sogg
+                ON tr_sogg.id = utr_sogg.tipo_ruolo_id
+               AND COALESCE(tr_sogg.codice_interno, tr_sogg.codice) = %s
+            """
+            params.append(ruolo_codice_soggetto)
+
+        sql += " ORDER BY u.descrizione"
+
+        with connection.cursor() as cursor:
+            cursor.execute(sql, params)
+            return rows_to_list(cursor)
+
     def list_matrice_indirizzi_ruolo(
         self, tipo_ruolo_codice: str
     ) -> list[dict[str, Any]]:

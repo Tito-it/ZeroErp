@@ -18,6 +18,7 @@ urlpatterns = [
     # Override permessi operatore
     path("operatori/<int:auth_user_id>/override-aree/", views.OverrideAreeView.as_view(), name="amm-override-aree"),
     path("operatori/<int:auth_user_id>/override-azioni/", views.OverrideAzioniView.as_view(), name="amm-override-azioni"),
+    path("operatori/<int:auth_user_id>/override-oggetti/", views.OverrideOggettiView.as_view(), name="amm-override-oggetti"),
     path("operatori/<int:auth_user_id>/emittenti-scope/", views.EmittentiScopeView.as_view(), name="amm-emittenti-scope"),
     # Riepilogo permessi e audit
     path("permessi-riepilogo/", views.PermessiRiepilogoView.as_view(), name="amm-permessi-riepilogo"),
@@ -32,6 +33,7 @@ urlpatterns = [
     path("lookup/aree-funzionali/", views.LookupAreeView.as_view(), name="amm-aree-list"),
     path("lookup/azioni-processo/", views.LookupAzioniView.as_view(), name="amm-azioni-list"),
     path("lookup/emittenti-fiscali/", views.LookupEmittentiView.as_view(), name="amm-emittenti-list"),
+    path("lookup/model-overrides/", views.ModelOverridesLookupView.as_view(), name="amm-model-overrides"),
     # Invito operatore
     path("operatori/<int:auth_user_id>/invita/", invito_views.InvitaOperatoreView.as_view(), name="amm-operatori-invita"),
     path("operatori/<int:auth_user_id>/reinvia-invito/", invito_views.ReinviaInvitoView.as_view(), name="amm-operatori-reinvia-invito"),

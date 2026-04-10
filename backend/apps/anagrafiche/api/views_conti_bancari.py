@@ -27,6 +27,7 @@ from apps.anagrafiche.services.conti_bancari_service import ContiBancariService
 class ContiBancariLookupView(DomainAPIView):
     """GET ricerca IBAN nel registro per autocomplete."""
     area_funzionale = "anagrafiche"
+    model_permission = ("anagrafiche", "conto_bancario")
 
     @extend_schema(
         parameters=[
@@ -54,6 +55,7 @@ class ContiBancariLookupView(DomainAPIView):
 class BankBranchesLookupView(DomainAPIView):
     """GET ricerca filiali bancarie per autocomplete."""
     area_funzionale = "anagrafiche"
+    model_permission = ("anagrafiche", "conto_bancario")
 
     @extend_schema(
         parameters=[
@@ -81,6 +83,7 @@ class BankBranchesLookupView(DomainAPIView):
 class SoggettoContiBancariView(DomainAPIView):
     """GET lista conti soggetto, POST crea legame soggetto ↔ conto."""
     area_funzionale = "anagrafiche"
+    model_permission = ("anagrafiche", "conto_bancario")
 
     @extend_schema(
         responses={200: inline_serializer(
@@ -124,6 +127,7 @@ class SoggettoContiBancariView(DomainAPIView):
 class SoggettoContiBancariDetailView(DomainAPIView):
     """PATCH aggiorna, DELETE elimina legame soggetto ↔ conto."""
     area_funzionale = "anagrafiche"
+    model_permission = ("anagrafiche", "conto_bancario")
 
     @extend_schema(
         request=inline_serializer(name="SoggettoContoBancarioUpdateReq", fields={
@@ -165,6 +169,7 @@ class SoggettoContiBancariDetailView(DomainAPIView):
 class RuoloContiBancariView(DomainAPIView):
     """GET lista conti ruolo (+ ereditati), POST crea legame ruolo ↔ conto."""
     area_funzionale = "anagrafiche"
+    model_permission = ("anagrafiche", "conto_bancario")
 
     @extend_schema(
         parameters=[
@@ -213,6 +218,7 @@ class RuoloContiBancariView(DomainAPIView):
 class RuoloContiBancariDetailView(DomainAPIView):
     """PATCH aggiorna, DELETE elimina legame ruolo ↔ conto."""
     area_funzionale = "anagrafiche"
+    model_permission = ("anagrafiche", "conto_bancario")
 
     @extend_schema(
         request=inline_serializer(name="RuoloContoBancarioUpdateReq", fields={

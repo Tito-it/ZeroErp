@@ -27,6 +27,9 @@ Indice test eseguiti:
 18) test_log_warning_disabilitato
 19) test_log_warning_azione_negata
 20) test_log_warning_livello_insufficiente
+21) test_model_permission_uses_livello_oggetto
+22) test_model_permission_fallback_area
+23) test_no_model_permission_uses_area
 """
 
 from unittest import TestCase
@@ -53,7 +56,7 @@ def _mock_view(action: str | None = None, area: str | None = None, queryset: obj
     view.action = action
     view.area_funzionale = area
     view.queryset = queryset
-    # Rimuovi gli attributi *_permission per default
+    # Rimuovi gli attributi *_permission e model_permission per default
     del view.list_permission
     del view.retrieve_permission
     del view.create_permission
@@ -62,6 +65,7 @@ def _mock_view(action: str | None = None, area: str | None = None, queryset: obj
     del view.put_permission
     del view.patch_permission
     del view.delete_permission
+    del view.model_permission
     return view
 
 
@@ -296,3 +300,45 @@ class ZeroERPPermissionTests(TestCase):
         mock_logger.warning.assert_called_once()
         log_msg = mock_logger.warning.call_args[0][0]
         self.assertIn("livello_insufficiente", log_msg)
+
+    # --- model_permission v2 ---
+
+    # Scopo: View con model_permission usa get_livello_oggetto con override.
+    @patch("apps.core.api.permissions.PermissionResolver")
+    def test_model_permission_uses_livello_oggetto(self, mock_resolver):
+        mock_resolver.get_ruolo_sistema.return_value = "OPERATIVO"
+        mock_resolver.get_livello_oggetto.return_value = "LETTURA"
+
+        request = _mock_request(method="POST")
+        view = _mock_view(area="anagrafiche")
+        view.model_permission = ("anagrafiche", "conto_bancario")
+        self.assertFalse(self.perm.has_permission(request, view))
+        mock_resolver.get_livello_oggetto.assert_called_once_with(
+            request.user, "anagrafiche", "conto_bancario", "anagrafiche", cache=mock_resolver.get_livello_oggetto.call_args.kwargs.get("cache"),
+        )
+
+    # Scopo: View con model_permission senza override fa fallback al livello area
+    #        (fn_resolve_livello_oggetto ritorna il livello area se nessun override).
+    @patch("apps.core.api.permissions.PermissionResolver")
+    def test_model_permission_fallback_area(self, mock_resolver):
+        mock_resolver.get_ruolo_sistema.return_value = "OPERATIVO"
+        mock_resolver.get_livello_oggetto.return_value = "TUTTO"
+
+        request = _mock_request(method="POST")
+        view = _mock_view(area="anagrafiche")
+        view.model_permission = ("anagrafiche", "conto_bancario")
+        self.assertTrue(self.perm.has_permission(request, view))
+        # get_livello_area NON deve essere chiamato (scavalcato da get_livello_oggetto)
+        mock_resolver.get_livello_area.assert_not_called()
+
+    # Scopo: View senza model_permission continua a usare get_livello_area.
+    @patch("apps.core.api.permissions.PermissionResolver")
+    def test_no_model_permission_uses_area(self, mock_resolver):
+        mock_resolver.get_ruolo_sistema.return_value = "OPERATIVO"
+        mock_resolver.get_livello_area.return_value = "TUTTO"
+
+        request = _mock_request(method="GET")
+        view = _mock_view(area="anagrafiche")
+        self.assertTrue(self.perm.has_permission(request, view))
+        mock_resolver.get_livello_area.assert_called_once()
+        mock_resolver.get_livello_oggetto.assert_not_called()

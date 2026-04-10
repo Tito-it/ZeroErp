@@ -86,8 +86,9 @@ class ParameterRepository:
         return [dict(zip(columns, row)) for row in rows]
 
     # Scopo: Crea o aggiorna un override personale dell'utente per un parametro.
-    #        Usa UPSERT (INSERT ON CONFLICT UPDATE) sulla combinazione
-    #        parameter_id + django_user_id con tutti gli altri scope a NULL.
+    #        Usa CTE-based upsert con IS NULL esplicito per le colonne scope
+    #        nullable — il classico ON CONFLICT ON CONSTRAINT non funziona
+    #        perche' PostgreSQL tratta NULL != NULL nei UNIQUE constraint.
     def upsert_user_override(
         self,
         parameter_code: str,
@@ -95,19 +96,39 @@ class ParameterRepository:
         value: str,
     ) -> int:
         sql = """
-            INSERT INTO config.parameter_overrides
-                   (parameter_id, django_user_id, overridden_value)
-            VALUES (
-                (SELECT id FROM config.parameters WHERE code = %s),
-                %s, %s
+            WITH target AS (
+                SELECT id FROM config.parameter_overrides
+                 WHERE parameter_id = (SELECT id FROM config.parameters WHERE code = %s)
+                   AND django_user_id = %s
+                   AND emittente_fiscale_id IS NULL
+                   AND django_group_id      IS NULL
+                   AND session_key          IS NULL
+                   AND function_name        IS NULL
+            ),
+            updated AS (
+                UPDATE config.parameter_overrides po
+                   SET overridden_value = %s, data_update = now()
+                  FROM target t
+                 WHERE po.id = t.id
+                RETURNING po.id
+            ),
+            inserted AS (
+                INSERT INTO config.parameter_overrides
+                       (parameter_id, django_user_id, overridden_value)
+                SELECT (SELECT id FROM config.parameters WHERE code = %s),
+                       %s, %s
+                 WHERE NOT EXISTS (SELECT 1 FROM target)
+                RETURNING id
             )
-            ON CONFLICT ON CONSTRAINT uq_overrides_full_scope_v3
-            DO UPDATE SET overridden_value = EXCLUDED.overridden_value,
-                          data_update = now()
-            RETURNING id
+            SELECT id FROM updated
+            UNION ALL
+            SELECT id FROM inserted
         """
         with connection.cursor() as cursor:
-            cursor.execute(sql, [parameter_code, django_user_id, value])
+            cursor.execute(sql, [
+                parameter_code, django_user_id, value,
+                parameter_code, django_user_id, value,
+            ])
             row = cursor.fetchone()
             assert row is not None
             return row[0]
@@ -128,9 +149,11 @@ class ParameterRepository:
             return cursor.rowcount > 0
 
     # Scopo: Crea o aggiorna un override a livello emittente per un parametro.
-    #        UPSERT su (parameter_id, emittente_fiscale_id) con user/group/session
-    #        a NULL: vale per tutti gli utenti dell'emittente, salvo override
-    #        di gruppo o personali.
+    #        Usa CTE-based upsert con IS NULL esplicito per le colonne scope
+    #        nullable — il classico ON CONFLICT ON CONSTRAINT non funziona
+    #        perche' PostgreSQL tratta NULL != NULL nei UNIQUE constraint.
+    #        Vale per tutti gli utenti dell'emittente, salvo override di
+    #        gruppo o personali.
     def upsert_emittente_override(
         self,
         parameter_code: str,
@@ -138,19 +161,39 @@ class ParameterRepository:
         value: str,
     ) -> int:
         sql = """
-            INSERT INTO config.parameter_overrides
-                   (parameter_id, emittente_fiscale_id, overridden_value)
-            VALUES (
-                (SELECT id FROM config.parameters WHERE code = %s),
-                %s, %s
+            WITH target AS (
+                SELECT id FROM config.parameter_overrides
+                 WHERE parameter_id = (SELECT id FROM config.parameters WHERE code = %s)
+                   AND emittente_fiscale_id = %s
+                   AND django_user_id  IS NULL
+                   AND django_group_id IS NULL
+                   AND session_key     IS NULL
+                   AND function_name   IS NULL
+            ),
+            updated AS (
+                UPDATE config.parameter_overrides po
+                   SET overridden_value = %s, data_update = now()
+                  FROM target t
+                 WHERE po.id = t.id
+                RETURNING po.id
+            ),
+            inserted AS (
+                INSERT INTO config.parameter_overrides
+                       (parameter_id, emittente_fiscale_id, overridden_value)
+                SELECT (SELECT id FROM config.parameters WHERE code = %s),
+                       %s, %s
+                 WHERE NOT EXISTS (SELECT 1 FROM target)
+                RETURNING id
             )
-            ON CONFLICT ON CONSTRAINT uq_overrides_full_scope_v3
-            DO UPDATE SET overridden_value = EXCLUDED.overridden_value,
-                          data_update = now()
-            RETURNING id
+            SELECT id FROM updated
+            UNION ALL
+            SELECT id FROM inserted
         """
         with connection.cursor() as cursor:
-            cursor.execute(sql, [parameter_code, emittente_fiscale_id, value])
+            cursor.execute(sql, [
+                parameter_code, emittente_fiscale_id, value,
+                parameter_code, emittente_fiscale_id, value,
+            ])
             row = cursor.fetchone()
             assert row is not None
             return row[0]

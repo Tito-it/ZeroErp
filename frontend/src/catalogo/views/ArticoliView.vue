@@ -17,7 +17,7 @@ const drawer = useDrawerState()
 const store = useArticoliStore()
 const ctx = useContextStore()
 const route = useRoute()
-useReadonlyMode('catalogo')
+useReadonlyMode('catalogo', 'articolo')
 
 // Sub-drawer aperti dalla lista
 const uomDrawerVisible = ref(false)

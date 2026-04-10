@@ -15,7 +15,7 @@ import IndirizziSoggettoDrawer from '../../core/components/IndirizziSoggettoDraw
 import ContiBancariDrawer from '../../core/components/ContiBancariDrawer.vue'
 
 const drawer = useDrawerState()
-const { isReadonly } = useReadonlyMode('anagrafiche')
+const { isReadonly } = useReadonlyMode('anagrafiche', 'soggetto')
 const ctx = useContextStore()
 const route = useRoute()
 

@@ -138,6 +138,49 @@ class LookupUtilitiesPerRuoloView(DomainAPIView):
         return success_response({"results": results})
 
 
+class LookupUtilitiesPerEmittenteView(DomainAPIView):
+    """Utility configurate per l'emittente dell'utente corrente.
+
+    Se ?ruolo=CL (o FO, ecc.), applica doppia intersezione:
+    ammessa per ruolo soggetto AND per ruolo EF, configurata per emittente.
+    Se ruolo omesso, ritorna tutte le utility EF configurate per l'emittente
+    (usato da preventivi, listini, ecc. dove non c'e' ruolo soggetto).
+    """
+    skip_area_check = True
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(
+                name="ruolo",
+                type=str,
+                location=OpenApiParameter.QUERY,
+                description="Codice ruolo soggetto (es. CL, FO). Se omesso, ritorna tutte le utility EF dell'emittente.",
+                required=False,
+            ),
+        ],
+        responses={200: inline_serializer(
+            name="UtilitiesPerEmittenteResponse",
+            fields={"data": serializers.ListField(child=serializers.DictField())},
+        )},
+    )
+    # Scopo: Restituisce utility configurate per l'emittente dell'utente.
+    #        Se ruolo fornito, applica intersezione con ruolo soggetto.
+    def get(self, request: Request) -> JsonResponse:
+        from apps.core.services.parameter_service import ParameterService
+
+        ruolo = (request.query_params.get("ruolo") or "").strip().upper() or None
+
+        # Risolve emittente dell'utente corrente (stessa catena di parameter settings).
+        svc = ParameterService()
+        emittente_fiscale_id = svc.get_emittente_fiscale_id_for_user(request.user.id)
+        if not emittente_fiscale_id:
+            return success_response({"results": []})
+
+        repo = LookupRepository()
+        results = repo.list_utilities_per_emittente(emittente_fiscale_id, ruolo)
+        return success_response({"results": results})
+
+
 class LookupSistemaCodiciView(DomainAPIView):
     """GET verifica configurazione sistema codici per schema/tabella/colonna."""
     skip_area_check = True

@@ -131,7 +131,7 @@ Esempio per CLIENTE:
 
 - `q` obbligatorio, minimo 3 caratteri (validato da `require_min_search_length`)
 - `tipo_ruolo_id` obbligatorio, validato contro `ricerca_visibile = true` su `config.tipi_ruoli`
-- Scope emittente applicato: utenti OPERATIVO con whitelist emittenti vedono solo soggetti nel proprio scope (tramite `PermissionResolver.get_emittenti_ids`)
+- Scope emittente applicato: utenti OPERATIVO con whitelist emittenti vedono solo soggetti nel proprio scope (tramite `PermissionResolver.get_emittenti_sr_ids`, che ritorna `soggetto_ruolo_id`). Il filtro SQL supporta il pattern gestore globale (`is_default=true` in `emittenti_fiscali_billing_account`)
 - Throttling search attivo (`SearchBurstRateThrottle`, `is_search_endpoint = True`)
 - Hard cap 10.000 risultati nella funzione DB
 - Paginazione LIMIT/OFFSET + COUNT(*) OVER() in un solo round-trip

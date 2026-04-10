@@ -49,6 +49,13 @@ export function lookupUtilitiesPerRuolo(tipoRuoloCodice) {
   )
 }
 
+// Scopo: Lookup utility ammesse per un ruolo soggetto (es. CL), filtrate
+// per l'emittente dell'utente corrente (intersezione ruolo + EF + configurazione).
+// Usata dalle combo filtro nelle liste (clienti, fornitori, ecc.).
+export function lookupUtilitiesPerEmittente(ruolo) {
+  return api.get(`${BASE}/lookup/utilities-per-emittente/`, { params: { ruolo } })
+}
+
 // --- Sistema codici ---
 
 export function lookupSistemaCodici(schema, tabella, colonna = 'codice') {

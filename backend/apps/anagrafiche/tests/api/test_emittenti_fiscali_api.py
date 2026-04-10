@@ -260,14 +260,18 @@ class TestEmittentiFiscaliBillingAccountApi(JwtMockedApiTest):
     @patch(_BA_SVC)
     def test_ba_list(self, mock_svc_cls, _perm, _auth):
         """GET /emittenti-fiscali/<id>/billing-account/ — lista mapping."""
-        mock_svc_cls.return_value.list_mapping.return_value = [
-            {"id": 1, "billing_account_id": None, "is_default": True},
-            {"id": 2, "billing_account_id": 5, "is_default": False},
-        ]
+        mock_svc_cls.return_value.list_mapping.return_value = (
+            [
+                {"id": 1, "billing_account_id": None, "is_default": True},
+                {"id": 2, "billing_account_id": 5, "is_default": False},
+            ],
+            2,
+        )
         resp = self.client.get("/api/v1/anagrafiche/emittenti-fiscali/1/billing-account/")
         self.assertEqual(resp.status_code, 200)
         body = resp.json()
         self.assertEqual(len(body["data"]["results"]), 2)
+        self.assertEqual(body["data"]["count"], 2)
 
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(_PERM, return_value=True)

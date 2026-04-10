@@ -26,8 +26,8 @@ export function updateEmittenteFiscale(id, payload) {
 
 // --- Mapping Billing Account ---
 
-export function listEmittenteBillingAccount(emittenteId) {
-  return api.get(`${BASE}/${emittenteId}/billing-account/`)
+export function listEmittenteBillingAccount(emittenteId, params = {}) {
+  return api.get(`${BASE}/${emittenteId}/billing-account/`, { params })
 }
 
 export function createEmittenteBillingAccount(emittenteId, payload) {

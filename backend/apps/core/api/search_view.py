@@ -208,9 +208,10 @@ class SearchUniversaleView(DomainAPIView):
             qp_str(request.query_params.get("order_dir")),
         )
 
-        # Scope emittente
+        # Scope emittente — sr_ids perche' la funzione SQL filtra su
+        # emittenti_fiscali_billing_account.emittente_soggetto_ruolo_id
         cache: dict = {}
-        emittente_ids = PermissionResolver.get_emittenti_ids(
+        emittente_ids = PermissionResolver.get_emittenti_sr_ids(
             request.user, cache=cache
         )
 
@@ -272,9 +273,9 @@ class SearchDetailView(DomainAPIView):
         raw_utility = request.query_params.get("utility_id")
         utility_id = qp_int_strict(raw_utility, "utility_id", None) if raw_utility else None
 
-        # Scope emittente — stesso filtro della search list
+        # Scope emittente — sr_ids, stesso filtro della search list
         cache: dict = {}
-        emittente_ids = PermissionResolver.get_emittenti_ids(
+        emittente_ids = PermissionResolver.get_emittenti_sr_ids(
             request.user, cache=cache
         )
 

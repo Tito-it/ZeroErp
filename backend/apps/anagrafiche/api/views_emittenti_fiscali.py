@@ -146,16 +146,30 @@ class EmittentiFiscaliBillingAccountView(AdminAPIView):
     """GET lista mapping BA, POST crea mapping (admin only)."""
 
     @extend_schema(
+        parameters=[
+            OpenApiParameter(name="search", type=str, required=False,
+                             description="Ricerca su ragione_sociale, codice BA, id_fiscale"),
+            OpenApiParameter(name="limit", type=int, required=False),
+            OpenApiParameter(name="offset", type=int, required=False),
+            OpenApiParameter(name="order_by", type=str, required=False),
+            OpenApiParameter(name="order_dir", type=str, required=False),
+        ],
         responses={200: inline_serializer(
             name="EmittenteFiscaleBALListResp",
             fields={"data": serializers.DictField()},
         )},
     )
-    # Scopo: Lista i mapping BA per un emittente fiscale.
+    # Scopo: Lista paginata i mapping BA per un emittente fiscale con search.
     def get(self, request: Request, emittente_id: int) -> JsonResponse:
+        p = parse_list_params(request.query_params, default_order="billing_account_codice")
         svc = EmittentiFiscaliBillingAccountService()
-        results = svc.list_mapping(emittente_id)
-        return success_response({"results": results})
+        results, total = svc.list_mapping(
+            emittente_id,
+            search=p["search"],
+            limit=p["limit"], offset=p["offset"],
+            order_by=p["order_by"], order_dir=p["order_dir"],
+        )
+        return success_response(paginated_envelope(results, total, p["page"], p["limit"]))
 
     @extend_schema(
         request=inline_serializer(name="EmittenteFiscaleBACreateReq", fields={

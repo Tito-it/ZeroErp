@@ -19,7 +19,7 @@ const drawer = useDrawerState()
 const store = useClientiStore()
 const ctx = useContextStore()
 const route = useRoute()
-useReadonlyMode('anagrafiche')
+useReadonlyMode('anagrafiche', 'cliente')
 
 // Se la ricerca universale ha selezionato un cliente, apri il drawer in edit.
 // Il filtro lista viene applicato automaticamente da useSearchTable (legge ctx.searchTerm).

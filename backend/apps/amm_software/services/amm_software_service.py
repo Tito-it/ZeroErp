@@ -175,6 +175,34 @@ class AmmSoftwareService:
     def get_override_azioni(self, auth_user_id: int) -> list:
         return self._repo.get_override_azioni(auth_user_id)
 
+    # Scopo: Salva override oggetti e invalida cache.
+    #        Valida che ogni app_label+model_name esista nel catalogo
+    #        area_model_overrides prima di scrivere.
+    def put_override_oggetti(self, auth_user_id: int, items: list) -> list:
+        if items:
+            registered = {
+                (m["app_label"], m["model_name"])
+                for m in self._repo.list_model_overrides()
+            }
+            for item in items:
+                key = (item.get("app_label"), item.get("model_name"))
+                ErrorManager.require(
+                    key[0] and key[1] and key in registered,
+                    code="E_AMM_VALIDAZIONE",
+                    message=f"Model {key[0]}.{key[1]} non registrato nel catalogo override.",
+                )
+        self._repo.put_override_oggetti(auth_user_id, items)
+        invalidate_user(auth_user_id)
+        return self._repo.get_override_oggetti(auth_user_id)
+
+    # Scopo: Lista override oggetti.
+    def get_override_oggetti(self, auth_user_id: int) -> list:
+        return self._repo.get_override_oggetti(auth_user_id)
+
+    # Scopo: Lista model registrati per lookup admin.
+    def list_model_overrides(self) -> list:
+        return self._repo.list_model_overrides()
+
     # Scopo: Lista emittenti scope.
     def get_emittenti_scope(self, auth_user_id: int) -> list:
         return self._repo.get_emittenti_scope(auth_user_id)

@@ -209,6 +209,7 @@ _NOTA_PATCH_REQUEST = inline_serializer(
 
 class ApiArticoliList(DomainAPIView):
     area_funzionale = "catalogo"
+    model_permission = ("catalogo", "articolo")
     is_search_endpoint = True
 
     @extend_schema(
@@ -269,6 +270,7 @@ class ApiArticoliList(DomainAPIView):
 
 class ApiArticoloDetail(DomainAPIView):
     area_funzionale = "catalogo"
+    model_permission = ("catalogo", "articolo")
 
     @extend_schema(
         responses={
@@ -299,6 +301,7 @@ class ApiArticoloDetail(DomainAPIView):
 
 class ApiArticoloDisattiva(DomainAPIView):
     area_funzionale = "catalogo"
+    model_permission = ("catalogo", "articolo")
 
     @extend_schema(
         request=inline_serializer(name="CatalogoArticoloDisattivaRequest", fields={}),
@@ -316,6 +319,7 @@ class ApiArticoloDisattiva(DomainAPIView):
 
 class ApiArticoloUomList(DomainAPIView):
     area_funzionale = "catalogo"
+    model_permission = ("catalogo", "articolo")
 
     @extend_schema(
         responses={
@@ -346,6 +350,7 @@ class ApiArticoloUomList(DomainAPIView):
 
 class ApiArticoloUomDetail(DomainAPIView):
     area_funzionale = "catalogo"
+    model_permission = ("catalogo", "articolo")
 
     @extend_schema(
         request=_UOM_PATCH_REQUEST,
@@ -376,6 +381,7 @@ class ApiArticoloUomDetail(DomainAPIView):
 
 class ApiArticoloComponentiList(DomainAPIView):
     area_funzionale = "catalogo"
+    model_permission = ("catalogo", "articolo")
 
     @extend_schema(
         responses={
@@ -406,6 +412,7 @@ class ApiArticoloComponentiList(DomainAPIView):
 
 class ApiArticoloComponenteDetail(DomainAPIView):
     area_funzionale = "catalogo"
+    model_permission = ("catalogo", "articolo")
 
     @extend_schema(
         request=_COMPONENTE_PATCH_REQUEST,
@@ -436,6 +443,7 @@ class ApiArticoloComponenteDetail(DomainAPIView):
 
 class ApiArticoloNoteList(DomainAPIView):
     area_funzionale = "catalogo"
+    model_permission = ("catalogo", "articolo")
 
     @extend_schema(
         responses={
@@ -466,6 +474,7 @@ class ApiArticoloNoteList(DomainAPIView):
 
 class ApiNotaDetail(DomainAPIView):
     area_funzionale = "catalogo"
+    model_permission = ("catalogo", "articolo")
 
     @extend_schema(
         request=_NOTA_PATCH_REQUEST,
@@ -496,6 +505,7 @@ class ApiNotaDetail(DomainAPIView):
 
 class ApiComponenteNoteList(DomainAPIView):
     area_funzionale = "catalogo"
+    model_permission = ("catalogo", "articolo")
 
     @extend_schema(
         responses={200: inline_serializer(
@@ -523,6 +533,7 @@ class ApiComponenteNoteList(DomainAPIView):
 
 class ApiArticoliLookup(DomainAPIView):
     area_funzionale = "catalogo"
+    model_permission = ("catalogo", "articolo")
     is_search_endpoint = True
 
     @extend_schema(
@@ -566,6 +577,7 @@ class ApiArticoliLookup(DomainAPIView):
 
 class ApiUnitaMisuraList(DomainAPIView):
     area_funzionale = "catalogo"
+    model_permission = ("catalogo", "unita_misura")
     is_search_endpoint = True
 
     @extend_schema(
@@ -617,6 +629,7 @@ class ApiUnitaMisuraList(DomainAPIView):
 
 class ApiUnitaMisuraDetail(DomainAPIView):
     area_funzionale = "catalogo"
+    model_permission = ("catalogo", "unita_misura")
 
     @extend_schema(
         responses={200: inline_serializer(
@@ -650,6 +663,7 @@ class ApiUnitaMisuraDetail(DomainAPIView):
 
 class ApiUnitaMisuraDisattiva(DomainAPIView):
     area_funzionale = "catalogo"
+    model_permission = ("catalogo", "unita_misura")
 
     @extend_schema(
         request=inline_serializer(name="CatalogoUnitaMisuraDisattivaRequest", fields={}),
@@ -669,6 +683,7 @@ class ApiUnitaMisuraDisattiva(DomainAPIView):
 
 class ApiConversioniList(DomainAPIView):
     area_funzionale = "catalogo"
+    model_permission = ("catalogo", "unita_misura")
 
     @extend_schema(
         parameters=[
@@ -711,6 +726,7 @@ class ApiConversioniList(DomainAPIView):
 
 class ApiConversioneDetail(DomainAPIView):
     area_funzionale = "catalogo"
+    model_permission = ("catalogo", "unita_misura")
 
     @extend_schema(
         responses={200: inline_serializer(

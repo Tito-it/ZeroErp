@@ -5,6 +5,7 @@ import { useI18n } from 'vue-i18n'
 import { useImpostazioniStore } from '../stores/impostazioni'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useReadonlyMode } from '../../core/composables/useReadonlyMode'
+import { PARAMETER_SCOPE } from '../../core/composables/useParameterSettings'
 import ImpostazioniSearchTable from '../components/ImpostazioniSearchTable.vue'
 import ImpostazioniOverrideDrawer from '../components/ImpostazioniOverrideDrawer.vue'
 
@@ -30,6 +31,15 @@ async function onRemoveOverride(parameter) {
   if (result !== null) await store.fetchList()
 }
 
+async function onRemoveEmittenteOverride(parameter) {
+  if (!parameter.emittente_override_id) return
+  const result = await execute(
+    () => store.removeOverride(parameter.emittente_override_id, PARAMETER_SCOPE.EMITTENTE),
+    { successMessage: t('impostazioni.override_removed') }
+  )
+  if (result !== null) await store.fetchList()
+}
+
 async function onDrawerSaved() {
   drawerVisible.value = false
   await store.fetchList()
@@ -41,6 +51,7 @@ async function onDrawerSaved() {
     <ImpostazioniSearchTable
       @edit-override="onEditOverride"
       @remove-override="onRemoveOverride"
+      @remove-emittente-override="onRemoveEmittenteOverride"
     />
 
     <ImpostazioniOverrideDrawer

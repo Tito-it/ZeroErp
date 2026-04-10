@@ -14,7 +14,7 @@
 | `handle_post_json` | [endpoint_helpers.py](../../../../backend/apps/core/api/endpoint_helpers.py) | Handler unificato POST JSON con supporto idempotency |
 | `get_scope_user_id` | [endpoint_helpers.py](../../../../backend/apps/core/api/endpoint_helpers.py) | Restituisce auth_user_id per scope filtering (None per superuser) |
 | `get_risorsa_umana_id` | [endpoint_helpers.py](../../../../backend/apps/core/api/endpoint_helpers.py) | Risolve risorsa_umana_id dall'utente con cache per-request |
-| `DomainAPIView` | [base_views.py](../../../../backend/apps/core/api/base_views.py) | Base view per endpoint dominio con JWT + ZeroERPPermission |
+| `DomainAPIView` | [base_views.py](../../../../backend/apps/core/api/base_views.py) | Base view per endpoint dominio con JWT + ZeroERPPermission. Supporta `model_permission = ("app_label", "model_name")` per attivare livello oggetto (v2 permessi). |
 | `AdminAPIView` | [base_views.py](../../../../backend/apps/core/api/base_views.py) | Base view per endpoint admin-only |
 | `StandardPageNumberPagination` | [pagination.py](../../../../backend/apps/core/api/pagination.py) | Paginazione DRF standard (50 default, 200 max) |
 | `StandardCursorPagination` | [pagination.py](../../../../backend/apps/core/api/pagination.py) | Paginazione DRF a cursore per data_update |
@@ -66,8 +66,10 @@
 | `TokenService.consume` | [token_service.py](../../../../backend/apps/core/services/token_service.py) | Consuma token (marca come usato) |
 | `PermissionResolver.get_ruolo_sistema` | [permissions_resolver.py](../../../../backend/apps/core/services/permissions_resolver.py) | Ruolo utente (ADMIN, OPERATIVO, DISABILITATO) |
 | `PermissionResolver.get_livello_area` | [permissions_resolver.py](../../../../backend/apps/core/services/permissions_resolver.py) | Livello accesso per area (TUTTO, LETTURA, BLOCCATO) |
+| `PermissionResolver.get_livello_oggetto` | [permissions_resolver.py](../../../../backend/apps/core/services/permissions_resolver.py) | Livello accesso per singolo model (override oggetto con fallback area). Usato da `ZeroERPPermission` quando la view dichiara `model_permission` o ha queryset ORM. |
 | `PermissionResolver.check_azione` | [permissions_resolver.py](../../../../backend/apps/core/services/permissions_resolver.py) | Verifica se azione processo è consentita |
-| `PermissionResolver.get_emittenti_ids` | [permissions_resolver.py](../../../../backend/apps/core/services/permissions_resolver.py) | Lista ID emittenti fiscali autorizzati per l'utente (whitelist legacy: `None` = vede tutto) |
+| `PermissionResolver.get_emittenti_ids` | [permissions_resolver.py](../../../../backend/apps/core/services/permissions_resolver.py) | Lista PK `emittenti_fiscali.id` autorizzati per l'utente (`None` = vede tutto). **Usare solo per lookup diretti su emittenti_fiscali.** |
+| `PermissionResolver.get_emittenti_sr_ids` | [permissions_resolver.py](../../../../backend/apps/core/services/permissions_resolver.py) | Lista `soggetto_ruolo_id` degli emittenti autorizzati via `fn_get_emittenti_scope_sr_ids` (`None` = vede tutto). **Usare per query che filtrano su `emittente_soggetto_ruolo_id`** (search universale, lista clienti, efba). |
 | `PermissionResolver.get_emittente_for_user` | [permissions_resolver.py](../../../../backend/apps/core/services/permissions_resolver.py) | **Refactor operatore-emittenti 1-a-1**: ritorna l'**unico** `emittenti_fiscali.id` (PK reale) assegnato all'utente via `script.fn_resolve_emittente_for_user`. `None` per admin globale o istanza "0 emittenti". Pattern `_cached`. **Diverso da `get_emittenti_ids`**: quello e' lista whitelist, questo e' single PK 1-a-1. **Vedi anche** `ParameterService.get_emittente_fiscale_id_for_user` (semantica simile ma fa fallback al gestore globale, ritorna sempre un id se sistema configurato) |
 | `load_user_cache` / `invalidate_user` / `invalidate_all` | [permissions_cache.py](../../../../backend/apps/core/services/permissions_cache.py) | Cache permessi Redis L2 (load, invalidate utente/reparto/tutti) |
 | `encrypt` / `decrypt` | [crypto_service.py](../../../../backend/apps/core/services/crypto_service.py) | Crittografia Fernet derivata da SECRET_KEY |
@@ -107,9 +109,9 @@
 - `GET /api/v1/anagrafiche/billing-account/<id>/lookup/` — restore per edit
 - `GET /api/v1/anagrafiche/billing-account/<id>/utilities/?ruolo=CL` — utility BA-driven (refactor operatore-emittenti)
 
-**Scope emittente lookup**: applicato automaticamente dalla view via `PermissionResolver.get_emittenti_ids`. Un operatore vede solo i BA mappati al suo emittente fiscale + quelli caduti sull'emittente di default.
+**Scope emittente lookup**: applicato automaticamente dalla view via `PermissionResolver.get_emittenti_sr_ids` (ritorna `soggetto_ruolo_id`). Un operatore vede solo i BA mappati al suo emittente fiscale + quelli del gestore globale (`is_default=true` in `emittenti_fiscali_billing_account`).
 
-**Scope emittente per `list_utilities_for_ba`**: usa il pattern 1-a-1 del refactor operatore-emittenti (`PermissionResolver.get_emittente_for_user` → PK reale, vedi sotto). Semantica diversa da `get_emittenti_ids`: il primo ritorna l'unico EF assegnato all'utente (o `None` per admin globale), il secondo ritorna la lista filtrata legacy.
+**Scope emittente per `list_utilities_for_ba`**: usa il pattern 1-a-1 del refactor operatore-emittenti (`PermissionResolver.get_emittente_for_user` → PK reale, vedi sotto). Semantica diversa da `get_emittenti_sr_ids`: il primo ritorna l'unico EF assegnato all'utente (o `None` per admin globale), il secondo ritorna la lista `soggetto_ruolo_id` filtrata per scope.
 
 ---
 

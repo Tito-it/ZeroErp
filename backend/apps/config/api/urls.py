@@ -12,6 +12,10 @@ from apps.config.api.views_utilities_tipi_ruolo import (
     UtilitiesTipiRuoloUsageView,
     UtilitiesTipiRuoloView,
 )
+from apps.config.api.views_tipi_ruolo_tipi_indirizzo import (
+    TipiRuoloTipiIndirizzoDetailView,
+    TipiRuoloTipiIndirizzoView,
+)
 
 
 urlpatterns = [
@@ -30,5 +34,16 @@ urlpatterns = [
         "utilities-tipi-ruolo/",
         UtilitiesTipiRuoloView.as_view(),
         name="config-utilities-tipi-ruolo-list",
+    ),
+    # Matrice tipi_ruolo x tipi_indirizzo
+    path(
+        "tipi-ruolo-tipi-indirizzo/<int:record_id>/",
+        TipiRuoloTipiIndirizzoDetailView.as_view(),
+        name="config-tipi-ruolo-tipi-indirizzo-detail",
+    ),
+    path(
+        "tipi-ruolo-tipi-indirizzo/",
+        TipiRuoloTipiIndirizzoView.as_view(),
+        name="config-tipi-ruolo-tipi-indirizzo-list",
     ),
 ]

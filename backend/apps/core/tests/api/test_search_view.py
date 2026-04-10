@@ -73,7 +73,7 @@ class SearchUniversaleApiTests(JwtMockedApiTest):
         self.client = Client()
 
     # Scopo: Verifica ricerca con risultati OK.
-    @patch("apps.core.api.search_view.PermissionResolver.get_emittenti_ids", return_value=None)
+    @patch("apps.core.api.search_view.PermissionResolver.get_emittenti_sr_ids", return_value=None)
     @patch("apps.core.api.search_view.SearchRepository.is_tipo_ruolo_visibile", return_value=True)
     @patch("apps.core.api.search_view.SearchRepository.search_soggetti")
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
@@ -124,7 +124,7 @@ class SearchUniversaleApiTests(JwtMockedApiTest):
         self.assertEqual(body["code"], "E_SEARCH_VALIDATION")
 
     # Scopo: Verifica che page e page_size vengono passati correttamente.
-    @patch("apps.core.api.search_view.PermissionResolver.get_emittenti_ids", return_value=None)
+    @patch("apps.core.api.search_view.PermissionResolver.get_emittenti_sr_ids", return_value=None)
     @patch("apps.core.api.search_view.SearchRepository.is_tipo_ruolo_visibile", return_value=True)
     @patch("apps.core.api.search_view.SearchRepository.search_soggetti")
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
@@ -145,7 +145,7 @@ class SearchUniversaleApiTests(JwtMockedApiTest):
         self.assertEqual(body["code"], "E_SEARCH_VALIDATION")
 
     # Scopo: Verifica risultati vuoti → 200 con count=0.
-    @patch("apps.core.api.search_view.PermissionResolver.get_emittenti_ids", return_value=None)
+    @patch("apps.core.api.search_view.PermissionResolver.get_emittenti_sr_ids", return_value=None)
     @patch("apps.core.api.search_view.SearchRepository.is_tipo_ruolo_visibile", return_value=True)
     @patch("apps.core.api.search_view.SearchRepository.search_soggetti")
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
@@ -158,7 +158,7 @@ class SearchUniversaleApiTests(JwtMockedApiTest):
         self.assertEqual(data["results"], [])
 
     # Scopo: Verifica che emittente_ids viene passato al repository.
-    @patch("apps.core.api.search_view.PermissionResolver.get_emittenti_ids", return_value=[7, 12])
+    @patch("apps.core.api.search_view.PermissionResolver.get_emittenti_sr_ids", return_value=[7, 12])
     @patch("apps.core.api.search_view.SearchRepository.is_tipo_ruolo_visibile", return_value=True)
     @patch("apps.core.api.search_view.SearchRepository.search_soggetti")
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
@@ -169,7 +169,7 @@ class SearchUniversaleApiTests(JwtMockedApiTest):
         self.assertEqual(kwargs["emittente_ids"], [7, 12])
 
     # Scopo: Verifica che order_by e order_dir vengono passati al repository.
-    @patch("apps.core.api.search_view.PermissionResolver.get_emittenti_ids", return_value=None)
+    @patch("apps.core.api.search_view.PermissionResolver.get_emittenti_sr_ids", return_value=None)
     @patch("apps.core.api.search_view.SearchRepository.is_tipo_ruolo_visibile", return_value=True)
     @patch("apps.core.api.search_view.SearchRepository.search_soggetti")
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
@@ -207,7 +207,7 @@ class SearchDetailApiTests(JwtMockedApiTest):
         self.client = Client()
 
     # Scopo: Verifica dettaglio soggetto con risultato OK.
-    @patch("apps.core.api.search_view.PermissionResolver.get_emittenti_ids", return_value=None)
+    @patch("apps.core.api.search_view.PermissionResolver.get_emittenti_sr_ids", return_value=None)
     @patch("apps.core.api.search_view.SearchRepository.is_tipo_ruolo_visibile", return_value=True)
     @patch("apps.core.api.search_view.SearchRepository.get_search_detail")
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
@@ -242,7 +242,7 @@ class SearchDetailApiTests(JwtMockedApiTest):
         self.assertEqual(body["code"], "E_SEARCH_VALIDATION")
 
     # Scopo: Verifica che soggetto non trovato restituisce 404.
-    @patch("apps.core.api.search_view.PermissionResolver.get_emittenti_ids", return_value=None)
+    @patch("apps.core.api.search_view.PermissionResolver.get_emittenti_sr_ids", return_value=None)
     @patch("apps.core.api.search_view.SearchRepository.is_tipo_ruolo_visibile", return_value=True)
     @patch("apps.core.api.search_view.SearchRepository.get_search_detail", return_value=None)
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
@@ -253,7 +253,7 @@ class SearchDetailApiTests(JwtMockedApiTest):
         self.assertEqual(body["code"], "E_SEARCH_NOT_FOUND")
 
     # Scopo: Verifica che emittente_ids viene passato al repository nel dettaglio.
-    @patch("apps.core.api.search_view.PermissionResolver.get_emittenti_ids", return_value=[7, 12])
+    @patch("apps.core.api.search_view.PermissionResolver.get_emittenti_sr_ids", return_value=[7, 12])
     @patch("apps.core.api.search_view.SearchRepository.is_tipo_ruolo_visibile", return_value=True)
     @patch("apps.core.api.search_view.SearchRepository.get_search_detail")
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
