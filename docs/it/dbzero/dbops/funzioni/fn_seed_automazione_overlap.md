@@ -28,6 +28,7 @@ DECLARE
   v_cols_arr text[];
   v_constraint_name text;
   v_rel regclass;
+  v_range_col text;
 BEGIN
   v_schemas := dbops.fn_resolve_scope(p_schemas);
 
@@ -49,6 +50,7 @@ BEGIN
     v_key_cols := NULL;
     v_note := NULL;
     v_constraint_name := NULL;
+    v_range_col := NULL;
 
     IF dbops.fn_col_exists(rtab.schema_name, rtab.table_name, 'valido_dal')
        AND dbops.fn_col_exists(rtab.schema_name, rtab.table_name, 'valido_al') THEN
@@ -62,7 +64,18 @@ BEGIN
       CONTINUE;
     END IF;
 
-    -- 1) Esclude se esiste un vincolo EXCLUDE gia' definito
+    -- Detection colonna daterange/tstzrange nativa
+    -- Cerca 'validita' come nome standard per la colonna range nativa
+    SELECT a.attname
+      INTO v_range_col
+      FROM pg_attribute a
+      JOIN pg_type t ON t.oid = a.atttypid
+     WHERE a.attrelid = v_rel
+       AND a.attname = 'validita'
+       AND t.typname IN ('daterange', 'tstzrange')
+       AND NOT a.attisdropped;
+
+    -- 1) Esclude se esiste un vincolo EXCLUDE gia` definito
     SELECT con.conname AS conname,
            pg_get_constraintdef(con.oid) AS condef
       INTO v_con
@@ -181,6 +194,7 @@ BEGIN
       active,
       exec_mode,
       note,
+      range_col,
       data_insert,
       user_insert,
       data_update,
@@ -197,6 +211,7 @@ BEGIN
       v_active,
       'AUTO',
       v_note,
+      v_range_col,
       now(),
       CURRENT_USER,
       now(),
@@ -212,6 +227,7 @@ BEGIN
       active          = EXCLUDED.active,
       exec_mode       = EXCLUDED.exec_mode,
       note            = EXCLUDED.note,
+      range_col       = EXCLUDED.range_col,
       data_update     = now(),
       user_update     = CURRENT_USER;
   END LOOP;
@@ -219,7 +235,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION dbops.fn_seed_automazione_overlap(p_schemas text[])
-IS 'Popola dbops.automazione_overlap rilevando tabelle con valido_dal/valido_al o valid_from/valid_to.';
+IS 'Popola dbops.automazione_overlap rilevando tabelle con valido_dal/valido_al o valid_from/valid_to. Rileva anche la presenza di colonna daterange nativa (validita) e popola range_col.';
 ```
 
 ---

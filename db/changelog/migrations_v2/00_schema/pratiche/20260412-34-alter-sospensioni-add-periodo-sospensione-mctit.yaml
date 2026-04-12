@@ -1,0 +1,87 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+# Migrazione daterange Fase 3: pratiche.sospensioni.
+# Tipo tstzrange (colonne sorgente sono TIMESTAMPTZ).
+# Nome colonna: periodo_sospensione (semantica dominio-specifica).
+# Trigger specifico: colonne data_inizio/data_fine (non valido_dal/al).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/pratiche/20260412-34-alter-sospensioni-add-periodo-sospensione-mctit.yaml
+
+  - changeSet:
+      id: 20260412-34-alter-sospensioni-add-periodo-sospensione
+      author: mctit
+      comment: >
+        Migrazione tstzrange per pratiche.sospensioni.
+        data_inizio NOT NULL, data_fine nullable.
+        Trigger specifico (colonne non standard).
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            columnExists: { schemaName: pratiche, tableName: sospensioni, columnName: periodo_sospensione }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- 1. Aggiunge colonna tstzrange
+              ALTER TABLE pratiche.sospensioni
+                ADD COLUMN periodo_sospensione tstzrange;
+
+              COMMENT ON COLUMN pratiche.sospensioni.periodo_sospensione
+                IS 'Range temporale sospensione calcolato da data_inizio/data_fine. Bounds [). Non scrivere direttamente.';
+
+              -- 2. Trigger function specifica (colonne non standard)
+              CREATE OR REPLACE FUNCTION pratiche.trgfn_sospensioni_set_periodo()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $fn$
+              -- Scopo: sync periodo_sospensione tstzrange da data_inizio / data_fine.
+              -- Regole:
+              --   - data_inizio NOT NULL (sempre): periodo sempre valorizzato
+              --   - data_fine NULL = sospensione attiva (infinity)
+              --   - Bounds '[)' (standard PG per range continui)
+              BEGIN
+                  NEW.periodo_sospensione := tstzrange(
+                      NEW.data_inizio,
+                      COALESCE(NEW.data_fine, 'infinity'::timestamptz),
+                      '[)'
+                  );
+                  RETURN NEW;
+              END;
+              $fn$;
+
+              COMMENT ON FUNCTION pratiche.trgfn_sospensioni_set_periodo()
+              IS 'Sync periodo_sospensione tstzrange da data_inizio/data_fine. Migrazione daterange.';
+
+              -- 3. Trigger
+              DROP TRIGGER IF EXISTS trg_sospensioni_a20_set_periodo_ins_upd ON pratiche.sospensioni;
+              CREATE TRIGGER trg_sospensioni_a20_set_periodo_ins_upd
+                  BEFORE INSERT OR UPDATE OF data_inizio, data_fine
+                  ON pratiche.sospensioni
+                  FOR EACH ROW
+                  EXECUTE FUNCTION pratiche.trgfn_sospensioni_set_periodo();
+
+              -- 4. Backfill
+              UPDATE pratiche.sospensioni
+                 SET periodo_sospensione = tstzrange(
+                     data_inizio,
+                     COALESCE(data_fine, 'infinity'::timestamptz),
+                     '[)')
+               WHERE periodo_sospensione IS NULL;
+
+              -- 5. NOT NULL (data_inizio e` NOT NULL)
+              ALTER TABLE pratiche.sospensioni
+                ALTER COLUMN periodo_sospensione SET NOT NULL;
+
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_sospensioni_a20_set_periodo_ins_upd ON pratiche.sospensioni;
+              DROP FUNCTION IF EXISTS pratiche.trgfn_sospensioni_set_periodo();
+              ALTER TABLE pratiche.sospensioni DROP COLUMN IF EXISTS periodo_sospensione;

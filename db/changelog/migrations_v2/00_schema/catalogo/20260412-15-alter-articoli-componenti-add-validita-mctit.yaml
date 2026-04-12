@@ -1,0 +1,91 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+# Migrazione daterange: aggiunge colonna validita + trigger sync +
+# backfill + ricreazione GIST per catalogo.articoli_componenti.
+# Usa la funzione generica script.trgfn_set_validita().
+# Nota: la tabella ha un indice GIST duplicato
+# (ex_articoli_componenti_no_overlap + ix_articoli_componenti_no_overlap_gist);
+# entrambi vengono eliminati e sostituiti dal singolo vincolo su validita.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/catalogo/20260412-15-alter-articoli-componenti-add-validita-mctit.yaml
+
+  - changeSet:
+      id: 20260412-15-alter-articoli-componenti-add-validita
+      author: mctit
+      comment: >
+        Migrazione daterange completa per catalogo.articoli_componenti:
+        aggiunge colonna validita, trigger sync (funzione generica),
+        backfill, NOT NULL, drop dei due indici GIST duplicati (ex_ + ix_),
+        ricreazione vincolo GIST su colonna nativa.
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            columnExists: { schemaName: catalogo, tableName: articoli_componenti, columnName: validita }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- 1. Aggiunge colonna validita
+              ALTER TABLE catalogo.articoli_componenti
+                ADD COLUMN validita daterange;
+
+              COMMENT ON COLUMN catalogo.articoli_componenti.validita
+                IS 'Range di validita` calcolato dal trigger sync da valido_dal/valido_al. Non scrivere direttamente.';
+
+              -- 2. Crea trigger usando la funzione generica cross-schema
+              DROP TRIGGER IF EXISTS trg_articoli_componenti_a20_set_validita_ins_upd ON catalogo.articoli_componenti;
+
+              CREATE TRIGGER trg_articoli_componenti_a20_set_validita_ins_upd
+                  BEFORE INSERT OR UPDATE OF valido_dal, valido_al
+                  ON catalogo.articoli_componenti
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_set_validita();
+
+              -- 3. Backfill righe esistenti (SET esplicito)
+              UPDATE catalogo.articoli_componenti
+                 SET validita = daterange(valido_dal, COALESCE(valido_al, 'infinity'::date), '[]')
+               WHERE validita IS NULL;
+
+              -- 4. Set NOT NULL
+              ALTER TABLE catalogo.articoli_componenti
+                ALTER COLUMN validita SET NOT NULL;
+
+              -- 5. Drop vincolo EXCLUDE + indice GIST duplicato
+              ALTER TABLE catalogo.articoli_componenti
+                DROP CONSTRAINT IF EXISTS ex_articoli_componenti_no_overlap;
+              DROP INDEX IF EXISTS catalogo.ix_articoli_componenti_no_overlap_gist;
+
+              -- 6. Crea nuovo vincolo GIST su colonna nativa
+              ALTER TABLE catalogo.articoli_componenti
+                ADD CONSTRAINT ex_articoli_componenti_no_overlap
+                EXCLUDE USING gist (
+                  prodotto_id WITH =,
+                  componente_id WITH =,
+                  validita WITH &&
+                );
+
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              ALTER TABLE catalogo.articoli_componenti
+                DROP CONSTRAINT IF EXISTS ex_articoli_componenti_no_overlap;
+              DROP TRIGGER IF EXISTS trg_articoli_componenti_a20_set_validita_ins_upd ON catalogo.articoli_componenti;
+              ALTER TABLE catalogo.articoli_componenti
+                DROP COLUMN IF EXISTS validita;
+              ALTER TABLE catalogo.articoli_componenti
+                ADD CONSTRAINT ex_articoli_componenti_no_overlap
+                EXCLUDE USING gist (
+                  prodotto_id WITH =,
+                  componente_id WITH =,
+                  daterange(valido_dal, COALESCE(valido_al, 'infinity'::date), '[]') WITH &&
+                );
+              CREATE INDEX ix_articoli_componenti_no_overlap_gist
+                ON catalogo.articoli_componenti
+                USING gist (prodotto_id, componente_id, daterange(valido_dal, COALESCE(valido_al, 'infinity'::date), '[]'::text));

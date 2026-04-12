@@ -22,7 +22,7 @@ DECLARE
     v_tie_count               INTEGER;
 BEGIN
     -- ============================================================
-    -- Guard parametri (invariato rispetto a fix 20260331-24)
+    -- Guard parametri
     -- ============================================================
     IF p_articolo_id IS NULL THEN
         PERFORM script.fn_log_and_raise_error('vendite', 'fn_resolve_prezzo_listino', 'E_PARAMETRO_INVALIDO',
@@ -52,18 +52,18 @@ BEGIN
     -- ============================================================
     -- CTE single-pass: candidati + match_rank + tie_count
     -- ============================================================
-    -- Differenze rispetto al fix 20260331-24:
-    --   - Rimossi a.priorita e v.priorita dalla CTE candidati
-    --   - Rimossi c.associazione_priorita e c.versione_priorita
-    --     da ORDER BY e PARTITION BY
-    --   - L'invariante univocita stretta (ex_listini_associazioni_no_overlap
+    -- Migrazione daterange (20260412):
+    --   - Filtri temporali su associazioni e versioni usano l'operatore
+    --     containment (@>) sulla colonna validita nativa
+    --   - ORDER BY usa lower(v.validita) e upper(v.validita) al posto
+    --     di valido_dal e COALESCE(valido_al, 'infinity')
+    --   - L'invariante univocita` stretta (ex_listini_associazioni_no_overlap
     --     + ex_listini_versioni_no_overlap + uq_listini_righe_key_attiva)
     --     garantisce che il match_rank seleziona al massimo una riga
-    --   - Il guard tie_count > 1 resta come paranoid check
     WITH candidati AS (
         SELECT l.id AS listino_id, v.id AS listino_versione_id, r.id AS listino_riga_id,
                a.id AS listino_associazione_id, r.prezzo,
-               v.valido_dal, v.valido_al,
+               v.validita AS versione_validita,
                CASE
                    WHEN p_billing_account_id IS NOT NULL AND p_utility_id IS NOT NULL AND p_emittente_soggetto_ruolo_id IS NOT NULL
                         AND r.billing_account_id = p_billing_account_id AND r.utility_id = p_utility_id AND r.emittente_soggetto_ruolo_id = p_emittente_soggetto_ruolo_id THEN 1
@@ -85,8 +85,9 @@ BEGIN
           JOIN vendite.listini_versioni v ON v.listino_id = l.id
           JOIN vendite.listini_righe r ON r.listino_versione_id = v.id
          WHERE a.attivo IS TRUE AND l.attivo IS TRUE AND v.attivo IS TRUE AND v.stato = 'ATTIVA' AND r.attivo IS TRUE
-           AND p_data_riferimento >= a.valido_dal AND (a.valido_al IS NULL OR p_data_riferimento <= a.valido_al)
-           AND p_data_riferimento >= v.valido_dal AND (v.valido_al IS NULL OR p_data_riferimento <= v.valido_al)
+           -- Filtri temporali via colonna validita nativa (containment)
+           AND a.validita @> p_data_riferimento
+           AND v.validita @> p_data_riferimento
            AND (a.billing_account_id IS NULL OR a.billing_account_id = p_billing_account_id)
            AND (a.utility_id IS NULL OR a.utility_id = p_utility_id)
            AND (a.emittente_soggetto_ruolo_id IS NULL OR a.emittente_soggetto_ruolo_id = p_emittente_soggetto_ruolo_id)
@@ -99,13 +100,14 @@ BEGIN
     ), candidati_ranked AS (
         SELECT c.*,
                row_number() OVER (
+                   -- Tie-break usa lower/upper della colonna validita nativa
                    ORDER BY c.match_rank,
-                            c.valido_dal DESC, COALESCE(c.valido_al, 'infinity'::DATE) ASC,
+                            lower(c.versione_validita) DESC, upper(c.versione_validita) ASC,
                             c.listino_id, c.listino_versione_id, c.listino_associazione_id, c.listino_riga_id
                ) AS rn,
                count(*) OVER (
                    PARTITION BY c.match_rank,
-                                c.valido_dal, COALESCE(c.valido_al, 'infinity'::DATE)
+                                lower(c.versione_validita), upper(c.versione_validita)
                ) AS tie_count
           FROM candidati_validi c
     )
@@ -122,10 +124,10 @@ BEGIN
             NULL::uuid, p_articolo_id::text);
     END IF;
 
-    -- Paranoid check: l'invariante univocita stretta a livello DB rende
+    -- Paranoid check: l'invariante univocita` stretta a livello DB rende
     -- impossibile che due righe arrivino qui con stesso match_rank e
-    -- stesse date di validita. Se accade, e' segno di un constraint
-    -- disabilitato manualmente o di un bug. Solleva esplicito.
+    -- stesse date di validita`. Se accade, e` segno di un constraint
+    -- disabilitato manualmente o di un bug.
     IF v_tie_count > 1 THEN
         PERFORM script.fn_log_and_raise_error('vendite', 'fn_resolve_prezzo_listino', 'E_PREZZO_LISTINO_AMBIGUO',
             jsonb_build_object('articolo_id', p_articolo_id, 'uom_id', p_uom_id, 'match_level', v_match_level, 'tie_count', v_tie_count),
@@ -137,7 +139,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_resolve_prezzo_listino(p_articolo_id uuid, p_uom_id bigint, p_data_riferimento date, p_billing_account_id bigint, p_utility_id integer, p_emittente_soggetto_ruolo_id bigint)
-IS 'Resolver prezzo listino con precedenze per specificita dimensionale (match_level 1..7). Post fase 2 refactor 2026-04-09: niente piu tie-break su priorita (colonne droppate). L''invariante univocita stretta a livello DB garantisce un solo candidato per scope; il guard tie_count > 1 resta come paranoid check.';
+IS 'Resolver prezzo listino con precedenze per specificita` dimensionale (match_level 1..7). Migrazione daterange 2026-04-12: filtri temporali via colonna validita nativa (@>). L''invariante univocita` stretta a livello DB garantisce un solo candidato per scope.';
 ```
 
 ---

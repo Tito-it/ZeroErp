@@ -52,26 +52,49 @@ BEGIN
       CONTINUE;
     END IF;
 
-    IF NOT dbops.fn_col_exists(rconf.target_schema, rconf.target_table, rconf.valido_dal_col)
-       OR NOT dbops.fn_col_exists(rconf.target_schema, rconf.target_table, rconf.valido_al_col) THEN
-      PERFORM dbops.fn_audit_log_once(
-        p_function_name => 'dbops.fn_apply_automazione_overlap',
-        p_status        => v_skip_status,
-        p_rule_type     => 'OVERLAP',
-        p_exec_mode     => p_exec_mode,
-        p_parts         => ARRAY['OVERLAP'],
-        p_dry_run       => p_dry_run,
-        p_params        => jsonb_build_object(
-                            'table', rconf.target_schema||'.'||rconf.target_table,
-                            'valido_dal_col', rconf.valido_dal_col,
-                            'valido_al_col', rconf.valido_al_col,
-                            'reason', 'PERIOD_COLUMNS_MISSING'
-                          ),
-        p_message       => 'Skip: period columns missing'
-      );
-      CONTINUE;
+    -- Validazione colonne periodo: se range_col e` valorizzata verifica
+    -- che esista nella tabella, altrimenti verifica valido_dal_col/valido_al_col
+    IF rconf.range_col IS NOT NULL THEN
+      IF NOT dbops.fn_col_exists(rconf.target_schema, rconf.target_table, rconf.range_col) THEN
+        PERFORM dbops.fn_audit_log_once(
+          p_function_name => 'dbops.fn_apply_automazione_overlap',
+          p_status        => v_skip_status,
+          p_rule_type     => 'OVERLAP',
+          p_exec_mode     => p_exec_mode,
+          p_parts         => ARRAY['OVERLAP'],
+          p_dry_run       => p_dry_run,
+          p_params        => jsonb_build_object(
+                              'table', rconf.target_schema||'.'||rconf.target_table,
+                              'range_col', rconf.range_col,
+                              'reason', 'RANGE_COL_MISSING'
+                            ),
+          p_message       => 'Skip: range_col not found in table'
+        );
+        CONTINUE;
+      END IF;
+    ELSE
+      IF NOT dbops.fn_col_exists(rconf.target_schema, rconf.target_table, rconf.valido_dal_col)
+         OR NOT dbops.fn_col_exists(rconf.target_schema, rconf.target_table, rconf.valido_al_col) THEN
+        PERFORM dbops.fn_audit_log_once(
+          p_function_name => 'dbops.fn_apply_automazione_overlap',
+          p_status        => v_skip_status,
+          p_rule_type     => 'OVERLAP',
+          p_exec_mode     => p_exec_mode,
+          p_parts         => ARRAY['OVERLAP'],
+          p_dry_run       => p_dry_run,
+          p_params        => jsonb_build_object(
+                              'table', rconf.target_schema||'.'||rconf.target_table,
+                              'valido_dal_col', rconf.valido_dal_col,
+                              'valido_al_col', rconf.valido_al_col,
+                              'reason', 'PERIOD_COLUMNS_MISSING'
+                            ),
+          p_message       => 'Skip: period columns missing'
+        );
+        CONTINUE;
+      END IF;
     END IF;
 
+    -- Costruzione key expression
     v_cols := ARRAY[]::text[];
     FOREACH v_col IN ARRAY rconf.key_columns
     LOOP
@@ -98,20 +121,27 @@ BEGIN
       CONTINUE;
     END IF;
 
-    v_bounds := COALESCE(NULLIF(btrim(rconf.range_bounds), ''), '[]');
-    v_range_expr := format(
-      'daterange(%I, COALESCE(%I, ''infinity''::date), %L) WITH &&',
-      rconf.valido_dal_col,
-      rconf.valido_al_col,
-      v_bounds
-    );
+    -- Costruzione range expression: dual codepath
+    IF rconf.range_col IS NOT NULL THEN
+      -- Colonna daterange/tstzrange nativa: uso diretto
+      v_range_expr := format('%I WITH &&', rconf.range_col);
+    ELSE
+      -- Costruzione range al volo da colonne separate (retrocompatibile)
+      v_bounds := COALESCE(NULLIF(btrim(rconf.range_bounds), ''), '[]');
+      v_range_expr := format(
+        'daterange(%I, COALESCE(%I, ''infinity''::date), %L) WITH &&',
+        rconf.valido_dal_col,
+        rconf.valido_al_col,
+        v_bounds
+      );
+    END IF;
 
     v_key_expr := array_to_string(v_cols, ', ');
 
     v_constraint := COALESCE(rconf.constraint_name,
                      dbops.fn_name_from_template('ex_{table}_no_overlap', rconf.target_schema, rconf.target_table, NULL, NULL, NULL, NULL));
 
-    -- Se il nome e' gia' usato da un indice o altro oggetto, usa un suffisso
+    -- Se il nome e` gia` usato da un indice o altro oggetto, usa un suffisso
     IF EXISTS (
       SELECT 1
         FROM pg_class c
@@ -131,13 +161,15 @@ BEGIN
     )
     INTO v_constraint_exists;
 
+    -- Verifica se esiste gia` un vincolo EXCLUDE che referenzia le colonne periodo
+    -- Per range_col cerca il nome colonna, per le colonne separate cerca valido_dal_col
     SELECT EXISTS (
       SELECT 1
         FROM pg_constraint con
        WHERE con.conrelid = v_rel
          AND con.contype = 'x'
-         AND pg_get_constraintdef(con.oid) ILIKE '%' || rconf.valido_dal_col || '%'
-         AND pg_get_constraintdef(con.oid) ILIKE '%' || rconf.valido_al_col || '%'
+         AND pg_get_constraintdef(con.oid) ILIKE '%' ||
+             COALESCE(rconf.range_col, rconf.valido_dal_col) || '%'
     )
     INTO v_any_exclusion;
 
@@ -171,9 +203,10 @@ BEGIN
                             'table', rconf.target_schema||'.'||rconf.target_table,
                             'constraint', v_constraint,
                             'key_columns', rconf.key_columns,
+                            'range_col', rconf.range_col,
                             'valido_dal_col', rconf.valido_dal_col,
                             'valido_al_col', rconf.valido_al_col,
-                            'range_bounds', v_bounds,
+                            'range_bounds', COALESCE(rconf.range_bounds, '[]'),
                             'action', 'DRYRUN_CREATE_EXCLUDE'
                           ),
         p_message       => 'Exclude constraint would be created'
@@ -200,9 +233,10 @@ BEGIN
                           'table', rconf.target_schema||'.'||rconf.target_table,
                           'constraint', v_constraint,
                           'key_columns', rconf.key_columns,
+                          'range_col', rconf.range_col,
                           'valido_dal_col', rconf.valido_dal_col,
                           'valido_al_col', rconf.valido_al_col,
-                          'range_bounds', v_bounds,
+                          'range_bounds', COALESCE(rconf.range_bounds, '[]'),
                           'action', 'CREATE_EXCLUDE'
                         ),
       p_message       => 'Exclude constraint created'
@@ -212,7 +246,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION dbops.fn_apply_automazione_overlap(p_exec_mode text, p_dry_run boolean)
-IS 'Applica i vincoli EXCLUDE GiST in base a dbops.automazione_overlap.';
+IS 'Applica i vincoli EXCLUDE GiST in base a dbops.automazione_overlap. Supporta dual codepath: colonna daterange nativa (range_col) o espressione calcolata (valido_dal_col/valido_al_col).';
 ```
 
 ---

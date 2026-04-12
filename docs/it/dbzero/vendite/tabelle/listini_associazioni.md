@@ -18,6 +18,7 @@
 | data_update | timestamp with time zone | NO | now() |
 | user_update | text | NO | CURRENT_USER |
 | tx_id | uuid | YES |  |
+| validita | daterange | NO |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -32,16 +33,18 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
-| ex_listini_associazioni_no_overlap | `CREATE INDEX ex_listini_associazioni_no_overlap ON vendite.listini_associazioni USING gist (COALESCE(billing_account_id, (- (1)::bigint)), COALESCE(utility_id, '-1'::integer), COALESCE(emittente_soggetto_ruolo_id, (- (1)::bigint)), daterange(valido_dal, COALESCE(valido_al, 'infinity'::date), '[]'::text)) WHERE (attivo IS TRUE)` |
+| ex_listini_associazioni_no_overlap | `CREATE INDEX ex_listini_associazioni_no_overlap ON vendite.listini_associazioni USING gist (COALESCE(billing_account_id, (- (1)::bigint)), COALESCE(utility_id, (- 1)), COALESCE(emittente_soggetto_ruolo_id, (- (1)::bigint)), validita) WHERE (attivo IS TRUE)` |
 | pk_listini_associazioni | `CREATE UNIQUE INDEX pk_listini_associazioni ON vendite.listini_associazioni USING btree (id)` |
 
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_listini_associazioni_a10_listini_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'listini', 'attivo', 'listino_id', 'id')` |
 | trg_listini_associazioni_a10_listini_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'listini', 'attivo', 'listino_id', 'id')` |
-| trg_listini_associazioni_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_listini_associazioni_a10_listini_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'listini', 'attivo', 'listino_id', 'id')` |
+| trg_listini_associazioni_a20_set_validita_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_set_validita()` |
+| trg_listini_associazioni_a20_set_validita_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_set_validita()` |
 | trg_listini_associazioni_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_listini_associazioni_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_listini_associazioni_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_listini_associazioni_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 

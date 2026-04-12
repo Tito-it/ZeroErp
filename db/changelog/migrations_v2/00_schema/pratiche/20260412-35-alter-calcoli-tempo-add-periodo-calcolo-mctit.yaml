@@ -1,0 +1,87 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+# Migrazione daterange Fase 3: pratiche.calcoli_tempo.
+# Tipo tstzrange (colonne sorgente sono TIMESTAMPTZ).
+# Nome colonna: periodo_calcolo (semantica dominio-specifica).
+# Trigger specifico: colonne data_inizio_calcolo/data_fine_calcolo.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/pratiche/20260412-35-alter-calcoli-tempo-add-periodo-calcolo-mctit.yaml
+
+  - changeSet:
+      id: 20260412-35-alter-calcoli-tempo-add-periodo-calcolo
+      author: mctit
+      comment: >
+        Migrazione tstzrange per pratiche.calcoli_tempo.
+        data_inizio_calcolo NOT NULL, data_fine_calcolo nullable.
+        Trigger specifico (colonne non standard).
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            columnExists: { schemaName: pratiche, tableName: calcoli_tempo, columnName: periodo_calcolo }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- 1. Aggiunge colonna tstzrange
+              ALTER TABLE pratiche.calcoli_tempo
+                ADD COLUMN periodo_calcolo tstzrange;
+
+              COMMENT ON COLUMN pratiche.calcoli_tempo.periodo_calcolo
+                IS 'Range temporale calcolo da data_inizio_calcolo/data_fine_calcolo. Bounds [). Non scrivere direttamente.';
+
+              -- 2. Trigger function specifica (colonne non standard)
+              CREATE OR REPLACE FUNCTION pratiche.trgfn_calcoli_tempo_set_periodo()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $fn$
+              -- Scopo: sync periodo_calcolo tstzrange da data_inizio_calcolo / data_fine_calcolo.
+              -- Regole:
+              --   - data_inizio_calcolo NOT NULL (immutabile): periodo sempre valorizzato
+              --   - data_fine_calcolo NULL = calcolo in corso (infinity)
+              --   - Bounds '[)' (standard PG per range continui)
+              BEGIN
+                  NEW.periodo_calcolo := tstzrange(
+                      NEW.data_inizio_calcolo,
+                      COALESCE(NEW.data_fine_calcolo, 'infinity'::timestamptz),
+                      '[)'
+                  );
+                  RETURN NEW;
+              END;
+              $fn$;
+
+              COMMENT ON FUNCTION pratiche.trgfn_calcoli_tempo_set_periodo()
+              IS 'Sync periodo_calcolo tstzrange da data_inizio_calcolo/data_fine_calcolo. Migrazione daterange.';
+
+              -- 3. Trigger
+              DROP TRIGGER IF EXISTS trg_calcoli_tempo_a20_set_periodo_ins_upd ON pratiche.calcoli_tempo;
+              CREATE TRIGGER trg_calcoli_tempo_a20_set_periodo_ins_upd
+                  BEFORE INSERT OR UPDATE OF data_inizio_calcolo, data_fine_calcolo
+                  ON pratiche.calcoli_tempo
+                  FOR EACH ROW
+                  EXECUTE FUNCTION pratiche.trgfn_calcoli_tempo_set_periodo();
+
+              -- 4. Backfill
+              UPDATE pratiche.calcoli_tempo
+                 SET periodo_calcolo = tstzrange(
+                     data_inizio_calcolo,
+                     COALESCE(data_fine_calcolo, 'infinity'::timestamptz),
+                     '[)')
+               WHERE periodo_calcolo IS NULL;
+
+              -- 5. NOT NULL (data_inizio_calcolo e` NOT NULL)
+              ALTER TABLE pratiche.calcoli_tempo
+                ALTER COLUMN periodo_calcolo SET NOT NULL;
+
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_calcoli_tempo_a20_set_periodo_ins_upd ON pratiche.calcoli_tempo;
+              DROP FUNCTION IF EXISTS pratiche.trgfn_calcoli_tempo_set_periodo();
+              ALTER TABLE pratiche.calcoli_tempo DROP COLUMN IF EXISTS periodo_calcolo;

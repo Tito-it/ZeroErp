@@ -16,6 +16,7 @@
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
 | user_update | text | YES | CURRENT_USER |
+| validita | daterange | NO |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -30,7 +31,7 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
-| ex_uom_conv_no_overlap | `CREATE INDEX ex_uom_conv_no_overlap ON catalogo.unita_misura_conversioni USING gist (uom_from_id, uom_to_id, daterange(valido_dal, COALESCE(valido_al, 'infinity'::date), '[]'::text))` |
+| ex_uom_conv_no_overlap | `CREATE INDEX ex_uom_conv_no_overlap ON catalogo.unita_misura_conversioni USING gist (uom_from_id, uom_to_id, validita)` |
 | ix_uom_conv_from_to | `CREATE INDEX ix_uom_conv_from_to ON catalogo.unita_misura_conversioni USING btree (uom_from_id, uom_to_id, valido_dal, valido_al)` |
 | ix_uom_conv_to_from | `CREATE INDEX ix_uom_conv_to_from ON catalogo.unita_misura_conversioni USING btree (uom_to_id, uom_from_id, valido_dal, valido_al)` |
 | pk_unita_misura_conversioni | `CREATE UNIQUE INDEX pk_unita_misura_conversioni ON catalogo.unita_misura_conversioni USING btree (id)` |
@@ -44,6 +45,8 @@
 | trg_unita_misura_conversioni_a10_unita_misura_require_at_3ec9a9 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'unita_misura', 'attivo', 'uom_from_id', 'id')` |
 | trg_unita_misura_conversioni_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_unita_misura_conversioni_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_uom_conversioni_a20_set_validita_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_set_validita()` |
+| trg_uom_conversioni_a20_set_validita_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_set_validita()` |
 
 ---
 {% include-markdown "signature-core.md" %}

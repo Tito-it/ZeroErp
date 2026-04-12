@@ -1,0 +1,58 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+# Trigger function generica per sync colonna validita daterange
+# da valido_dal / valido_al. Analoga a script.trgfn_audit_data_user_generic():
+# una sola funzione cross-schema agganciabile a qualsiasi tabella
+# che abbia le tre colonne convenzionali.
+#
+# Prerequisito per tutte le migration daterange (Fase 1, 2, 3).
+# Vedi: docs/it/dev/work-in-progress/migrazione-daterange.md §4.3
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260412-05-create-trgfn-set-validita-mctit.yaml
+
+  - changeSet:
+      id: 20260412-05-create-trgfn-set-validita
+      author: mctit
+      runOnChange: true
+      comment: >
+        Trigger function generica cross-schema: calcola la colonna
+        validita (daterange) da valido_dal / valido_al.
+        Usa COALESCE con -infinity/infinity per gestire NULL:
+        validita e` sempre valorizzata, mai NULL.
+        Bounds '[]' — PG canonicalizza in '[)' per date.
+        Sovrascrive sempre validita, ignorando valori passati dall'utente.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.trgfn_set_validita()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $fn$
+              -- Scopo: sync colonna validita daterange da valido_dal / valido_al.
+              --   Funzione generica cross-schema, agganciabile a qualsiasi tabella
+              --   che abbia le colonne valido_dal (date), valido_al (date), validita (daterange).
+              -- Regole:
+              --   - validita = daterange(COALESCE(valido_dal, -infinity), COALESCE(valido_al, infinity), '[]')
+              --   - validita non e` mai NULL: -infinity e infinity coprono i casi di date aperte
+              --   - Sovrascrive sempre validita, ignorando eventuali valori passati
+              -- Invariante: validita e` funzione deterministica di valido_dal e valido_al
+              BEGIN
+                  NEW.validita := daterange(
+                      COALESCE(NEW.valido_dal, '-infinity'::date),
+                      COALESCE(NEW.valido_al, 'infinity'::date),
+                      '[]'
+                  );
+
+                  RETURN NEW;
+              END;
+              $fn$;
+
+              COMMENT ON FUNCTION script.trgfn_set_validita()
+              IS 'Sync validita daterange da valido_dal/valido_al. Generica cross-schema. Usa -infinity/infinity per NULL. validita mai NULL. Migrazione daterange.';

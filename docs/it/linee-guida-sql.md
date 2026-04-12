@@ -177,6 +177,56 @@ I trigger o constraint di sistema possono aggiornare `date_update/user_update` s
 
 ---
 
+### 7b. Validita` temporale (`daterange` nativo)
+
+Le tabelle con validita` temporale usano il pattern **colonne input + colonna range calcolata**:
+
+| Colonna | Tipo | Scopo |
+| --- | --- | --- |
+| `valido_dal` | `DATE` | Data inizio validita` (input utente/API) |
+| `valido_al` | `DATE` | Data fine validita` (input utente/API, NULL = aperto) |
+| `validita` | `daterange NOT NULL` | Range calcolato dal trigger, usato per query e vincoli |
+
+**Regole**:
+
+* La colonna `validita` e` **sempre** calcolata dal trigger `script.trgfn_set_validita()` — mai scritta direttamente
+* Il trigger usa `COALESCE(valido_dal, '-infinity')` e `COALESCE(valido_al, 'infinity')` con bounds `[]`
+  (PG canonicalizza in `[)` per date). `validita` non e` **mai** NULL
+* Per tabelle con colonne sorgente diverse (es. `data_inizio`/`data_fine`): trigger specifico nello schema di dominio
+* Per `TIMESTAMPTZ` usare `tstzrange` con bounds `[)` e trigger specifico
+
+**Naming**:
+
+| Contesto | Nome colonna range |
+| --- | --- |
+| Colonne `valido_dal`/`valido_al` | `validita` |
+| Colonne dominio-specifiche (es. `data_inizio`/`data_fine`) | Nome dominio (es. `periodo_sospensione`, `periodo_calcolo`) |
+
+**Query**:
+
+```sql
+-- Containment (data nel range)
+WHERE validita @> CURRENT_DATE
+
+-- Overlap (due range si sovrappongono)
+WHERE validita && other_range
+```
+
+**Vincoli anti-overlap**:
+
+```sql
+-- Su colonna nativa (preferito)
+ALTER TABLE schema.tabella
+  ADD CONSTRAINT ex_tabella_no_overlap
+  EXCLUDE USING gist (key_col WITH =, validita WITH &&);
+```
+
+Per l'automazione dei vincoli overlap vedi `dbops.automazione_overlap` e `dbops.fn_apply_automazione_overlap`.
+
+> Riferimento: [migrazione-daterange.md](/dev/work-in-progress/migrazione-daterange) per analisi completa e decisioni architetturali.
+
+---
+
 ### 8. Indici
 
 * **Naming**: `ix_<table>_<column>`

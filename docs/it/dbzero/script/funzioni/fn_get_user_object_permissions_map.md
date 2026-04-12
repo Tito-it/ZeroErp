@@ -19,9 +19,6 @@ BEGIN
     --   Restituisce la mappa completa degli override oggetto
     --   attivi per un utente, in un solo roundtrip DB.
     --
-    -- Parametri:
-    --   p_auth_user_id: ID utente Django (auth_user.id)
-    --
     -- Ritorna:
     --   JSONB { "anagrafiche.conto_bancario": "BLOCCATO",
     --           "vendite.fattura": "LETTURA", ... }
@@ -29,7 +26,6 @@ BEGIN
     -- Regole:
     --   - considera solo override attivi alla data corrente
     --   - nessun override attivo -> {}::jsonb
-    --   - funzione gemella delle mappe area / azioni
     -- =========================================================
 
     -- Guard: parametro obbligatorio e valido
@@ -53,14 +49,13 @@ BEGIN
         )
           FROM config.user_override_oggetti uo
          WHERE uo.auth_user_id = p_auth_user_id
-           AND (uo.valido_dal IS NULL OR uo.valido_dal <= CURRENT_DATE)
-           AND (uo.valido_al  IS NULL OR uo.valido_al  >= CURRENT_DATE)
+           AND uo.validita @> CURRENT_DATE
     );
 END;
 $function$
 
 COMMENT ON FUNCTION script.fn_get_user_object_permissions_map(p_auth_user_id integer)
-IS 'Mappa override oggetto attivi per utente: JSONB {app_label.model_name: livello_accesso}. Filtra valido_dal/valido_al. STABLE, cacheable.';
+IS 'Mappa override oggetti set-based. Migrazione daterange: filtro temporale via validita @>.';
 ```
 
 ---
