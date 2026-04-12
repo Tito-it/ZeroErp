@@ -299,11 +299,15 @@ Da aggiungere come guard early-fail in tutte e tre le funzioni.
 
 **Fix — whitelist per stato**:
 
-| Stato  | Campi PATCH ammessi                                                        |
-| ------ | -------------------------------------------------------------------------- |
-| BOZZA  | `codice_versione`, `valido_dal`, `valido_al`, `priorita`, `attivo`, `meta` |
-| ATTIVA | solo `valido_al` (programmazione chiusura)                                 |
-| CHIUSA | nessun campo — rifiuta con 400                                             |
+| Stato  | Campi PATCH ammessi                                                 |
+| ------ | ------------------------------------------------------------------- |
+| BOZZA  | `codice_versione`, `valido_dal`, `valido_al`, `attivo`, `meta`      |
+| ATTIVA | solo `valido_al` (programmazione chiusura)                          |
+| CHIUSA | nessun campo — rifiuta con 400                                      |
+
+> **Nota post-refactor 2026-04-09**: il campo `priorita` e` stato **droppato fisicamente**
+> (migration `20260409-04/-05`). Qualsiasi riferimento a `priorita` come campo PATCH ammesso
+> e` obsoleto.
 
 Implementazione: dopo `_get_versione_or_raise`, verificare `versione["stato"]` e validare i campi presenti nel payload contro la whitelist corrispondente.
 
@@ -425,6 +429,8 @@ che restituisce l'elenco dei listini a rischio. Il frontend mostra un badge di a
 
 **Raccomandazione**: implementare prima la versione API (costo basso, impatto alto), poi il job schedulato se il volume lo richiede.
 
+**[NUOVO v3 — nota daterange]**: la query di N2 filtra su `valido_al IS NOT NULL AND valido_al <= oggi + N giorni`. Quando la migrazione a `daterange` nativo sara` completata (N1), il filtro diventera` `upper(validita) IS NOT NULL AND upper(validita) <= oggi + N giorni`. Per facilitare la transizione, isolare il filtro temporale in un metodo dedicato del repository (`_filter_versioni_in_scadenza`) cosi` il refactor daterange tocca un solo punto.
+
 ---
 
 ### N3 — Flusso prezzo documento → commessa: gap definizione preventivo (Alta)
@@ -488,6 +494,12 @@ Comportamento:
 
 Questo non è il motore rettifiche completo (DB-L4), ma risolve il 90% dei casi operativi quotidiani con complessità minima.
 
+#### Caso critico: versione listino cambiata dopo lo snapshot originale
+
+Se tra il momento dello snapshot originale e il riallineamento la versione del listino e` cambiata (auto-close + nuova versione attivata), il resolver alla data originale dell'attivita` potrebbe restituire un prezzo diverso da quello atteso — oppure fallire con `E_PREZZO_LISTINO_NON_TROVATO` se la vecchia versione e` stata chiusa con `valido_al` anteriore alla data dell'attivita`.
+
+**Guard obbligatorio**: prima di eseguire il riallineamento, confrontare `listino_versione_id` salvato nello snapshot con la versione che il resolver risolve ora. Se sono diversi, restituire un warning esplicito nel response (`versione_cambiata: true`, `versione_originale_id`, `versione_attuale_id`) e richiedere conferma esplicita dell'operatore (`conferma_versione_diversa: true` nel payload). Senza conferma, rifiutare con `E_VENDITE_RIALLINEAMENTO_VERSIONE_CAMBIATA`.
+
 ---
 
 ### N6 — Rettifica controllata su riga ATTIVA non ancora propagata (Alta)
@@ -498,9 +510,19 @@ Questo non è il motore rettifiche completo (DB-L4), ma risolve il 90% dei casi 
 
 **Proposta**: ammettere la modifica di una riga in versione ATTIVA **solo se il prezzo non è ancora stato propagato** in nessuna commessa o attività fatturabile.
 
-#### Guard (doppio livello obbligatorio)
+#### Guard (triplo livello obbligatorio)
 
-Prima di consentire l'UPDATE sulla riga, il service esegue:
+**Livello 1 — Lock pessimistico nel service Python**:
+
+Prima di qualsiasi check, bloccare la riga con `FOR UPDATE` per prevenire race condition (una commessa creata in concorrenza che referenzia la stessa riga):
+
+```sql
+SELECT id FROM vendite.listini_righe
+WHERE id = %(riga_id)s
+FOR UPDATE;
+```
+
+**Livello 2 — Check non-propagazione nella stessa transazione**:
 
 ```sql
 SELECT COUNT(*) FROM vendite.commesse_attivita
@@ -513,7 +535,13 @@ WHERE listino_riga_id = %(riga_id)s;
 Se entrambi i conteggi sono zero → modifica ammessa.
 Se almeno uno è maggiore di zero → modifica bloccata con errore `E_VENDITE_RIGA_GIA_PROPAGATA`.
 
-Come defense-in-depth: aggiungere lo stesso controllo nel trigger DB `trgfn_listini_righe_guard_stato` già previsto da F1, estendendo la logica oltre al semplice check sullo stato.
+Il `FOR UPDATE` + check nella stessa transazione garantisce che nessuna commessa possa inserire un riferimento alla riga tra il check e l'UPDATE.
+
+**Livello 3 — Trigger DB defense-in-depth** (`trgfn_listini_righe_guard_stato`):
+
+Estendere il trigger gia` previsto da F1 con la stessa logica di non-propagazione. Il trigger e` il guard definitivo: protegge anche da UPDATE via `psql` diretto, migration errate, o future integrazioni che bypassano il service Python.
+
+**[NUOVO v3 — nota concentrica]**: il check di non-propagazione deve essere progettato per l'espansione concentrica del modello. Oggi le tabelle che referenziano `listino_riga_id` sono `commesse_attivita` e `attivita_fatturabili`. Nei cerchi successivi potrebbero arrivare altre tabelle (es. `preventivi_righe`, `ordini_righe`, integrazioni esterne). Il trigger DB deve essere strutturato in modo che l'aggiunta di una nuova tabella al check sia una modifica localizzata (aggiungere un `UNION ALL`), non un redesign. Documentare nel commento del trigger l'elenco esplicito delle tabelle controllate, cosi` l'aggiunta futura e` guidata.
 
 #### Audit obbligatorio
 
@@ -606,9 +634,41 @@ Payload: `{ "prezzo": 42.00, "motivo": "..." }`
 
 Endpoint dedicato e separato dal PATCH standard dell'attività, per rendere esplicita la natura eccezionale dell'operazione.
 
+#### Reversibilita`: sblocco `prezzo_bloccato`
+
+Nel design attuale `prezzo_bloccato = TRUE` e` irreversibile: se l'operatore sbaglia la variazione eccezionale, non c'e` modo di tornare al prezzo del resolver. Serve un'operazione complementare:
+
+`POST /api/v1/vendite/commesse/{id}/attivita/{att_id}/sblocca-prezzo/`
+
+Payload: `{ "motivo": "..." }`
+
+Comportamento:
+1. Guard: `prezzo_bloccato == TRUE` — rifiuta se gia` sbloccato
+2. Guard: `attivita_fatturabili.fattura_riga_id IS NULL` — rifiuta se gia` fatturata
+3. Esegue `fn_resolve_prezzo_listino` alla data originale dell'attivita`
+4. Aggiorna `prezzo_snapshot` con il prezzo ricalcolato
+5. Imposta `prezzo_bloccato = FALSE`
+6. Audit in `meta`:
+
+```json
+{
+  "sblocchi_prezzo": [
+    {
+      "data": "2026-04-16T09:00:00Z",
+      "operatore": "mario.rossi",
+      "prezzo_bloccato_precedente": "42.0000000000",
+      "prezzo_ricalcolato": "45.0000000000",
+      "motivo": "variazione eccezionale errata, ripristino prezzo da listino"
+    }
+  ]
+}
+```
+
+L'operazione di sblocco e` il complemento naturale della variazione eccezionale: senza di essa, un errore sulla variazione richiede interventi manuali sul DB.
+
 #### Nota autorizzativa
 
-In futuro — quando il sistema di permessi sarà maturo — questa operazione dovrebbe richiedere un permesso specifico (`vendite.variazione_prezzo_eccezionale`) distinto dal permesso ordinario di modifica commessa. Per v1 la traccia audit nel `meta` è il meccanismo di controllo sufficiente.
+In futuro — quando il sistema di permessi sara` maturo — sia la variazione eccezionale sia lo sblocco dovrebbero richiedere un permesso specifico (`vendite.variazione_prezzo_eccezionale`) distinto dal permesso ordinario di modifica commessa. Per v1 la traccia audit nel `meta` e` il meccanismo di controllo sufficiente.
 
 ---
 
@@ -662,7 +722,8 @@ Payload:
 {
   "variazione_percentuale": 3.0,
   "arrotondamento_decimali": 4,
-  "filtro_articoli": null
+  "filtro_articoli": null,
+  "dry_run": false
 }
 ```
 
@@ -670,11 +731,31 @@ Campi:
 
 | Campo                     | Tipo              | Note                                                                                      |
 | ------------------------- | ----------------- | ----------------------------------------------------------------------------------------- |
-| `variazione_percentuale`  | numeric           | Positivo = aumento, negativo = riduzione. Es. `3.0` = +3%, `-5.0` = -5%                   |
+| `variazione_percentuale`  | numeric           | Positivo = aumento, negativo = riduzione. Es. `3.0` = +3%, `-5.0` = -5%. **Range ammesso: -99.0 a +1000.0** (guard esplicito — rifiuta con 400 fuori range) |
 | `arrotondamento_decimali` | integer           | Decimali da mantenere dopo il calcolo. Default 4. Range 0-10                              |
 | `filtro_articoli`         | array uuid o null | Se valorizzato, applica solo agli articoli nell'elenco. Se null, applica a tutte le righe |
+| `dry_run`                 | boolean           | Se `true`, calcola e restituisce la preview senza applicare modifiche. Default `false`     |
 
-Comportamento:
+**Guard su percentuale**: il service rifiuta con 400 (`E_VENDITE_VALIDATION`) se `variazione_percentuale` produce prezzi negativi (`<= -100.0`) o e` fuori dal range ragionevole (`> 1000.0`). Questo previene errori umani (es. digitare `300` intendendo `3.0`).
+
+**Modalita` dry_run**: quando `dry_run = true`, il service esegue la query di calcolo senza UPDATE e restituisce un array di preview:
+
+```json
+{
+  "dry_run": true,
+  "righe_coinvolte": 500,
+  "preview": [
+    {"riga_id": "uuid", "articolo_codice": "ART001", "prezzo_attuale": "12.5000", "prezzo_calcolato": "12.8750"},
+    ...
+  ],
+  "variazione_percentuale": 3.0,
+  "arrotondamento_decimali": 4
+}
+```
+
+Il frontend usa il dry_run per mostrare la preview nel dialog prima della conferma. Il calcolo avviene lato DB (`ROUND(prezzo * (1 + pct / 100.0), decimali)`) per avere valori esatti coerenti con `numeric(22,10)`.
+
+Comportamento (quando `dry_run = false`):
 
 ```sql
 UPDATE vendite.listini_righe
@@ -701,7 +782,9 @@ Il flusso tipico è: applica variazione massa → rivedi le righe che escono fuo
 * Dominio utility: usare 10 (massima precisione, coerente con `numeric(22,10)`)
 * Dominio commercio: usare tipicamente 2 o 4 (prezzi leggibili in fattura)
 
-È l'operatore che decide al momento dell'applicazione. Il sistema non impone un default di dominio: la configurazione esplicita evita arrotondamenti silenziosi inattesi.
+E` l'operatore che decide al momento dell'applicazione. Il sistema non impone un default di dominio: la configurazione esplicita evita arrotondamenti silenziosi inattesi.
+
+**Nota arrotondamento composto**: ogni applicazione di variazione e` un'operazione atomica con arrotondamento immediato. Se si applicano due variazioni successive (+3% e poi +2%), il risultato finale dipende dall'arrotondamento intermedio e potrebbe differire da un'applicazione singola di +5.06%. Questo e` il comportamento atteso e corretto: ogni variazione e` un atto operativo distinto, non componibile matematicamente. Documentare questo comportamento nella guida operativa (N8b) per evitare aspettative errate.
 
 #### Frontend
 
@@ -727,7 +810,7 @@ Nuovi endpoint:
 
 | #      | Metodo   | Path                                                                     | Note                            |
 | ------ | -------- | ------------------------------------------------------------------------ | ------------------------------- |
-| **26** | **POST** | **`/api/v1/vendite/listini/{id}/versioni/{ver_id}/applica-variazione/`** | **[NUOVO v3 — N8a]** Solo BOZZA |
+| **27** | **POST** | **`/api/v1/vendite/listini/{id}/versioni/{ver_id}/applica-variazione/`** | **[NUOVO v3 — N8a]** Solo BOZZA |
 
 Nuovo componente frontend: `ApplicaVariazioneDialog.vue`
 
@@ -739,6 +822,8 @@ Test da aggiungere:
 | Variazione su versione ATTIVA → atteso 400                              | Unit service + API | B      |
 | Variazione con filtro articoli: verifica solo righe filtrate aggiornate | Unit service       | B      |
 | Variazione -100% → atteso 400 (prezzo non può diventare negativo)       | Unit service       | B      |
+| Variazione +1500% → atteso 400 (fuori range ammesso)                   | Unit service       | B      |
+| Variazione dry_run: verifica preview senza modifica dati               | Unit service + API | B      |
 
 ---
 
@@ -874,6 +959,7 @@ Il flag viene propagato da `commesse_attivita` a `attivita_fatturabili` tramite 
 | **23** | **PATCH**   | **`/api/v1/vendite/listini/{id}/versioni/{ver_id}/righe/{riga_id}/rettifica-controllata/`** | **[NUOVO v3 — N6]** |
 | **24** | **POST**    | **`/api/v1/vendite/commesse/{id}/attivita/{att_id}/riallinea-prezzo/`**                     | **[NUOVO v3 — N5]** |
 | **25** | **POST**    | **`/api/v1/vendite/commesse/{id}/attivita/{att_id}/variazione-prezzo-eccezionale/`**        | **[NUOVO v3 — N7]** |
+| **26** | **POST**    | **`/api/v1/vendite/commesse/{id}/attivita/{att_id}/sblocca-prezzo/`**                       | **[NUOVO v3 — N7 sblocco]** |
 
 ### 12.4 Errori applicativi
 
@@ -892,6 +978,8 @@ Codici esistenti in `error_policies.py`:
 * `E_VENDITE_LISTINO_HAS_CHILDREN` — tentativo DELETE listino con figli (O3)
 * `E_VENDITE_RIGA_GIA_PROPAGATA` — tentativo rettifica controllata su riga già usata in commessa o fatturabile (N6)
 * `E_VENDITE_VARIAZIONE_PREZZO_NON_AMMESSA` — tentativo variazione eccezionale su commessa in stato non consentito o su riga già fatturata (N7)
+* `E_VENDITE_SBLOCCO_PREZZO_NON_AMMESSO` — tentativo sblocco su riga non bloccata o già fatturata (N7 sblocco)
+* `E_VENDITE_RIALLINEAMENTO_VERSIONE_CAMBIATA` — riallineamento N5 su versione diversa da snapshot senza conferma esplicita
 
 ---
 
@@ -1006,6 +1094,13 @@ Stato attuale: **29 test verdi** (listini) + 49 (catalogo) = 78 test verdi compl
 | N7 — Variazione eccezionale su commessa CONFERMATO: ammessa                           | Unit service + API | B      |
 | N7 — Variazione eccezionale su riga già fatturata → atteso blocco sulla riga          | Unit service + API | B      |
 | N7 — Variazione eccezionale senza motivo → atteso 400                                 | Unit service       | B      |
+| N7 — Sblocco prezzo bloccato: verifica prezzo_bloccato=FALSE e ricalcolo              | Unit service + API | B      |
+| N7 — Sblocco prezzo su riga non bloccata → atteso 400                                 | Unit service       | B      |
+| N7 — Sblocco prezzo su riga gia` fatturata → atteso 400                               | Unit service       | B      |
+| N5 — Riallineamento con versione listino cambiata senza conferma → atteso 400         | Unit service       | B      |
+| N5 — Riallineamento con versione cambiata + conferma esplicita → ammesso              | Unit service       | B      |
+| N8a — Variazione +1500% → atteso 400 (fuori range ammesso)                            | Unit service       | B      |
+| N8a — Variazione dry_run: verifica preview senza modifica dati                        | Unit service + API | B      |
 
 ---
 
@@ -1015,30 +1110,41 @@ Stato attuale: **29 test verdi** (listini) + 49 (catalogo) = 78 test verdi compl
 
 Vedi dettaglio checklist in documento v2 §13.1-13.3.
 
-### Sprint A — Fix critici e completamento ciclo di vita
+### Sprint A — Fix critici e completamento ciclo di vita — COMPLETATO ✅ (2026-04-08)
 
-- [ ] **F1** — Guard stato versione su CRUD righe (service)
-- [ ] **F1 defense-in-depth** — **[NUOVO v3]** Trigger DB `trgfn_listini_righe_guard_stato`
-- [ ] **F2** — Whitelist PATCH versione per stato (service)
-- [ ] **F3** — Test unitari e smoke test per F1/F2
-- [ ] **N3** — **[NUOVO v3]** Definire e documentare lifecycle prezzo preventivo → commessa
+- [x] **F1** — Guard stato versione su CRUD righe (service): `_assert_versione_bozza_for_riga_op`
+- [x] **F2** — Whitelist PATCH versione per stato (service): `_VERSIONE_PATCH_ALLOWED_BY_STATE`
+- [x] **F3** — Test unitari e smoke test per F1/F2: 26 test unit + smoke 0..30
+- [ ] **F1 defense-in-depth** — **[NUOVO v3]** Trigger DB `trgfn_listini_righe_guard_stato` *(task cross-branch `dev/db-tid`)*
 - [ ] Test UI reale: permessi, readonly mode, drawer pattern, flussi completi
 - [ ] Documentazione `manual/listini_versioni.md` aggiornata con regole esplicite per stato
 
-### Sprint B — Operazioni di convenienza e completamento
+### Sprint A-DOC — Documentazione (separato da codice)
 
-- [ ] **O1** — Clone versione (backend + frontend + test)
-- [ ] **O2** — DELETE versione BOZZA (backend + frontend + test)
-- [ ] **O3** — DELETE listino mai usato (backend + frontend + test)
+- [ ] **N3** — **[NUOVO v3]** Definire e documentare lifecycle prezzo preventivo → commessa *(solo documentazione, nessun codice)*
+
+### Sprint B-base — Operazioni di convenienza — COMPLETATO ✅ (2026-04-08)
+
+- [x] **O1** — Clone versione (backend `clone_versione` + frontend `CloneVersioneDrawer.vue` + test)
+- [x] **O2** — DELETE versione BOZZA (backend `delete_versione` + frontend + test)
+- [x] **O3** — DELETE listino mai usato (backend `delete_listino` + frontend + test)
+- [x] **D3** — Auto-close attivazione con dry_run (`AttivaVersioneDialog.vue`)
+- [x] `CloneVersioneDrawer.vue` con warning retroattivo
+- [x] Documentazione API in `docs/it/backend/vendite/manual/api_listini.md`
+
+### Sprint B-v3 — Integrazioni critiche v3
+
 - [ ] **N2** — **[NUOVO v3]** Endpoint alert-scadenze + widget frontend
 - [ ] **N5** — **[NUOVO v3]** Operazione riallineamento prezzo (non-fatturato)
-- [ ] **N6** — **[NUOVO v3]** Rettifica controllata riga ATTIVA non propagata (backend + test)
+- [ ] **N6** — **[NUOVO v3]** Rettifica controllata riga ATTIVA non propagata (backend + trigger DB + test)
 - [ ] **N7** — **[NUOVO v3]** Variazione prezzo eccezionale su commessa LIBERO/CONFERMATO (backend + test)
-- [ ] **N8a** — **[NUOVO v3]** Variazione % massa su versione BOZZA (backend + frontend + test)
-- [ ] **N8b** — **[NUOVO v3]** Documentazione operativa "listino post-it" in `guide/gestione-listini.md`
+- [ ] **N7 sblocco** — **[NUOVO v3]** Sblocco `prezzo_bloccato` con ricalcolo resolver (backend + test)
+- [ ] **N8a** — **[NUOVO v3]** Variazione % massa su versione BOZZA con dry_run (backend + frontend + test)
 - [ ] Avviso UX su PATCH `valido_al` versione ATTIVA
-- [ ] `CloneVersioneDialog.vue` con warning retroattivo
-- [ ] Documentazione API in `docs/it/backend/vendite/manual/`
+
+### Sprint B-DOC — Documentazione v3
+
+- [ ] **N8b** — **[NUOVO v3]** Documentazione operativa "listino post-it" in `guide/gestione-listini.md`
 
 ### DB-L4 Rettifiche — DA SCHEDULARE
 
@@ -1072,6 +1178,7 @@ Prodotti da questa fase:
 | `/api/v1/vendite/listini/{id}/versioni/{ver_id}/righe/{riga_id}/rettifica-controllata/` | API REST **[NUOVO v3]**   | Correzione listino ATTIVO senza clone       |
 | `/api/v1/vendite/commesse/{id}/attivita/{att_id}/riallinea-prezzo/`                     | API REST **[NUOVO v3]**   | Riallineamento tecnico prezzo non fatturato |
 | `/api/v1/vendite/commesse/{id}/attivita/{att_id}/variazione-prezzo-eccezionale/`        | API REST **[NUOVO v3]**   | Override manuale tracciato su commessa      |
+| `/api/v1/vendite/commesse/{id}/attivita/{att_id}/sblocca-prezzo/`                      | API REST **[NUOVO v3]**   | Sblocco prezzo bloccato + ricalcolo resolver |
 | `/api/v1/vendite/listini/{id}/versioni/{ver_id}/applica-variazione/`                    | API REST **[NUOVO v3]**   | Variazione % massa su BOZZA                 |
 | `VersioneDrawer.vue`                                                                    | Componente                | Riusato da gestione pratiche se necessario  |
 | `AlertScadenzeWidget.vue`                                                               | Componente **[NUOVO v3]** | Dashboard vendite                           |

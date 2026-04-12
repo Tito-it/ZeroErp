@@ -18,7 +18,10 @@ from apps.core.api.payload_validators import paginated_envelope, parse_list_para
 from apps.core.api.search_validators import require_min_search_length
 from apps.core.api.success_responses import success_response
 from apps.vendite.services.listini_service import (
+    fn_alert_scadenze,
+    fn_applica_variazione_percentuale,
     fn_change_versione_state,
+    fn_rettifica_controllata_riga,
     fn_clone_versione,
     fn_create_associazione,
     fn_create_listino,
@@ -153,6 +156,22 @@ _RIGA_PATCH_REQUEST = inline_serializer(
 _ASSOCIAZIONE_CREATE_REQUEST = inline_serializer(
     name="VenditeListinoAssociazioneCreateRequest",
     fields=_associazione_write_fields(),
+)
+_RETTIFICA_CONTROLLATA_REQUEST = inline_serializer(
+    name="VenditeListinoRettificaControllataRequest",
+    fields={
+        "prezzo": serializers.DecimalField(required=True, max_digits=22, decimal_places=10),
+        "motivo": serializers.CharField(required=True),
+    },
+)
+_VARIAZIONE_PCT_REQUEST = inline_serializer(
+    name="VenditeListinoVariazionePercentualeRequest",
+    fields={
+        "variazione_percentuale": serializers.DecimalField(required=True, max_digits=10, decimal_places=4),
+        "arrotondamento_decimali": serializers.IntegerField(required=False),
+        "filtro_articoli": serializers.ListField(child=serializers.UUIDField(), required=False, allow_null=True),
+        "dry_run": serializers.BooleanField(required=False),
+    },
 )
 _ASSOCIAZIONE_PATCH_REQUEST = inline_serializer(
     name="VenditeListinoAssociazionePatchRequest",
@@ -517,3 +536,64 @@ class ApiListinoTestPrezzo(DomainAPIView):
     # Scopo: Esegue il test del resolver prezzo per uso UI/diagnostica.
     def post(self, request: Request) -> JsonResponse:
         return handle_post_json(request, handler=fn_test_resolver_prezzo)
+
+
+class ApiListinoVersioneRigaRettificaControllata(DomainAPIView):
+    area_funzionale = "vendite"
+
+    @extend_schema(
+        request=_RETTIFICA_CONTROLLATA_REQUEST,
+        responses={
+            200: inline_serializer(
+                name="VenditeListinoRettificaControllataResponse",
+                fields={"data": serializers.DictField(), "meta": serializers.DictField(required=False)},
+            )
+        },
+    )
+    # Scopo: Rettifica controllata su riga ATTIVA non propagata (N6).
+    #        Endpoint dedicato separato dal PATCH ordinario.
+    def patch(self, request: Request, listino_id: int, ver_id: int, riga_id: int) -> JsonResponse:
+        return success_response(
+            fn_rettifica_controllata_riga(listino_id, ver_id, riga_id, request.data)
+        )
+
+
+class ApiListiniAlertScadenze(DomainAPIView):
+    area_funzionale = "vendite"
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(name="giorni", type=int, required=False, description="Giorni di anticipo (default 15)"),
+        ],
+        responses={
+            200: inline_serializer(
+                name="VenditeListiniAlertScadenzeResponse",
+                fields={"data": serializers.DictField(), "meta": serializers.DictField(required=False)},
+            )
+        },
+    )
+    # Scopo: Restituisce versioni ATTIVE in scadenza senza successore.
+    def get(self, request: Request) -> JsonResponse:
+        giorni = qp_int_strict(request, "giorni", default=15)
+        return success_response(fn_alert_scadenze(giorni))
+
+
+class ApiListinoVersioneApplicaVariazione(DomainAPIView):
+    area_funzionale = "vendite"
+
+    @extend_schema(
+        request=_VARIAZIONE_PCT_REQUEST,
+        responses={
+            200: inline_serializer(
+                name="VenditeListinoVariazionePercentualeResponse",
+                fields={"data": serializers.DictField(), "meta": serializers.DictField(required=False)},
+            )
+        },
+    )
+    # Scopo: Applica variazione percentuale massa ai prezzi delle righe attive
+    #        di una versione BOZZA. Supporta dry_run per preview.
+    def post(self, request: Request, listino_id: int, ver_id: int) -> JsonResponse:
+        return handle_post_json(
+            request,
+            handler=lambda payload: fn_applica_variazione_percentuale(listino_id, ver_id, payload),
+        )

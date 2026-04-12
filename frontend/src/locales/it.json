@@ -2,6 +2,7 @@
   "common": {
     "save": "Salva",
     "cancel": "Annulla",
+    "back": "Indietro",
     "close": "Chiudi",
     "new": "Nuovo",
     "create": "Crea",
@@ -1071,7 +1072,18 @@
     "field_emittente": "Emittente",
     "select_ba": "Seleziona BA...",
     "select_utility": "Seleziona utility...",
-    "select_emittente": "Seleziona emittente..."
+    "select_emittente": "Seleziona emittente...",
+    "variazione_pct_titolo": "Variazione % prezzi",
+    "variazione_pct_campo": "Variazione percentuale",
+    "variazione_pct_arrotondamento": "Decimali arrotondamento",
+    "variazione_pct_filtro": "Limita ad articoli specifici",
+    "variazione_pct_preview": "Anteprima",
+    "variazione_pct_righe_coinvolte": "{count} righe coinvolte",
+    "variazione_pct_prezzo_attuale": "Prezzo attuale",
+    "variazione_pct_prezzo_nuovo": "Prezzo calcolato",
+    "variazione_pct_conferma": "Applica variazione",
+    "variazione_pct_successo": "Variazione applicata a {count} righe",
+    "variazione_pct_help": "Positivo = aumento, negativo = riduzione. Es. 3 = +3%, -5 = -5%. Solo su versioni BOZZA."
   },
   "preventivi": {
     "search_placeholder": "Cerca per numero, cliente, utility...",

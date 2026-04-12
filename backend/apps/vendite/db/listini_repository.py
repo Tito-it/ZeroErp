@@ -901,6 +901,173 @@ class ListiniRepository:
             "uom_compatibile": bool(row[2]),
         }
 
+    # Scopo: Blocca la riga con FOR UPDATE per prevenire race condition durante
+    #        la rettifica controllata N6. Restituisce True se la riga esiste.
+    def lock_riga_for_update(self, versione_id: int, riga_id: int) -> bool:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id FROM vendite.listini_righe
+                 WHERE id = %s AND listino_versione_id = %s
+                   FOR UPDATE
+                """,
+                [riga_id, versione_id],
+            )
+            return cursor.fetchone() is not None
+
+    # Scopo: Controlla se una riga listino e` stata propagata in commesse o
+    #        attivita` fatturabili. Tabelle controllate documentate per espansione
+    #        concentrica: commesse_attivita, attivita_fatturabili.
+    def check_riga_propagata(self, riga_id: int) -> bool:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT EXISTS (
+                    SELECT 1 FROM vendite.commesse_attivita
+                     WHERE listino_riga_id = %(riga_id)s
+                ) OR EXISTS (
+                    SELECT 1 FROM vendite.attivita_fatturabili
+                     WHERE listino_riga_id = %(riga_id)s
+                ) AS propagata
+                """,
+                {"riga_id": riga_id},
+            )
+            row = cursor.fetchone()
+            assert row is not None
+            return bool(row[0])
+
+    # Scopo: Aggiorna il prezzo di una riga per rettifica controllata N6.
+    #        Aggiorna anche meta con audit trail. Caller gestisce transazione.
+    def update_riga_prezzo_rettifica(
+        self,
+        riga_id: int,
+        nuovo_prezzo: str,
+        meta_aggiornata: dict[str, Any] | None,
+    ) -> bool:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE vendite.listini_righe
+                   SET prezzo = %(prezzo)s::numeric,
+                       meta = %(meta)s::jsonb,
+                       data_update = now()
+                 WHERE id = %(riga_id)s
+                """,
+                {
+                    "riga_id": riga_id,
+                    "prezzo": nuovo_prezzo,
+                    "meta": __import__("json").dumps(meta_aggiornata) if meta_aggiornata else None,
+                },
+            )
+            return cursor.rowcount > 0
+
+    # Scopo: Restituisce versioni ATTIVE in scadenza entro N giorni senza successore.
+    #        Filtro temporale isolato per facilitare futura migrazione daterange (N1).
+    def _filter_versioni_in_scadenza(self) -> str:
+        return (
+            "v.valido_al IS NOT NULL "
+            "AND v.valido_al <= CURRENT_DATE + %(giorni)s * INTERVAL '1 day'"
+        )
+
+    # Scopo: Lista versioni ATTIVE che scadono entro `giorni` e non hanno una
+    #        versione successiva (ATTIVA o BOZZA) con valido_dal > valido_al.
+    def listini_in_scadenza(self, giorni: int) -> list[dict[str, Any]]:
+        filtro_scadenza = self._filter_versioni_in_scadenza()
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                SELECT
+                    l.id AS listino_id,
+                    l.codice AS listino_codice,
+                    l.descrizione AS listino_descrizione,
+                    l.dominio,
+                    v.id AS versione_id,
+                    v.codice_versione,
+                    v.valido_dal,
+                    v.valido_al,
+                    v.valido_al - CURRENT_DATE AS giorni_rimanenti
+                  FROM vendite.listini_versioni v
+                  JOIN vendite.listini l ON l.id = v.listino_id
+                 WHERE v.stato = 'ATTIVA'
+                   AND v.attivo IS TRUE
+                   AND l.attivo IS TRUE
+                   AND {filtro_scadenza}
+                   AND NOT EXISTS (
+                       SELECT 1
+                         FROM vendite.listini_versioni succ
+                        WHERE succ.listino_id = v.listino_id
+                          AND succ.id != v.id
+                          AND succ.attivo IS TRUE
+                          AND succ.stato IN ('ATTIVA', 'BOZZA')
+                          AND succ.valido_dal > v.valido_al
+                   )
+                 ORDER BY v.valido_al ASC, l.codice
+                """,
+                {"giorni": giorni},
+            )
+            return rows_to_list(cursor)
+
+    # Scopo: Applica variazione percentuale massa ai prezzi delle righe attive
+    #        di una versione. Se dry_run=True restituisce la preview senza modificare.
+    #        Restituisce (righe_aggiornate, preview_rows).
+    def applica_variazione_percentuale(
+        self,
+        versione_id: int,
+        variazione_pct: str,
+        arrotondamento_decimali: int,
+        filtro_articoli: list[UUID] | None = None,
+        *,
+        dry_run: bool = False,
+    ) -> tuple[int, list[dict[str, Any]]]:
+        with connection.cursor() as cursor:
+            if dry_run:
+                # Scopo: calcola i prezzi senza modificare, per preview frontend.
+                cursor.execute(
+                    """
+                    SELECT
+                        r.id AS riga_id,
+                        a.codice AS articolo_codice,
+                        a.descrizione AS articolo_descrizione,
+                        r.prezzo AS prezzo_attuale,
+                        ROUND(r.prezzo * (1 + %(pct)s::numeric / 100.0), %(dec)s) AS prezzo_calcolato
+                      FROM vendite.listini_righe r
+                      JOIN catalogo.articoli a ON a.id = r.articolo_id
+                     WHERE r.listino_versione_id = %(ver_id)s
+                       AND r.attivo IS TRUE
+                       AND (%(filtro)s::uuid[] IS NULL
+                            OR r.articolo_id = ANY(%(filtro)s::uuid[]))
+                     ORDER BY a.codice, r.id
+                    """,
+                    {
+                        "ver_id": versione_id,
+                        "pct": variazione_pct,
+                        "dec": arrotondamento_decimali,
+                        "filtro": filtro_articoli,
+                    },
+                )
+                preview = rows_to_list(cursor)
+                return len(preview), preview
+
+            # Scopo: applica UPDATE reale sulle righe.
+            cursor.execute(
+                """
+                UPDATE vendite.listini_righe
+                   SET prezzo = ROUND(prezzo * (1 + %(pct)s::numeric / 100.0), %(dec)s),
+                       data_update = now()
+                 WHERE listino_versione_id = %(ver_id)s
+                   AND attivo IS TRUE
+                   AND (%(filtro)s::uuid[] IS NULL
+                        OR articolo_id = ANY(%(filtro)s::uuid[]))
+                """,
+                {
+                    "ver_id": versione_id,
+                    "pct": variazione_pct,
+                    "dec": arrotondamento_decimali,
+                    "filtro": filtro_articoli,
+                },
+            )
+            return cursor.rowcount, []
+
     # Scopo: Esegue il resolver prezzo listino e arricchisce l'output con codici listino/versione.
     def test_resolver(
         self,
