@@ -22,9 +22,6 @@ BEGIN
     --   Restituisce la mappa livello accesso per tutte le aree
     --   funzionali attive, in un solo roundtrip DB.
     --
-    -- Parametri:
-    --   p_auth_user_id: ID utente Django (auth_user.id)
-    --
     -- Ritorna:
     --   JSONB { "anagrafiche": "TUTTO", "vendite": "LETTURA", ... }
     --
@@ -33,11 +30,6 @@ BEGIN
     --   2. Override utente area (se presente e valido)
     --   3. Profilo reparto (ereditato dalla UO)
     --   4. Default -> BLOCCATO
-    --
-    -- Ottimizzazione:
-    --   Nessun loop PL/pgSQL per area. Ruolo e UO vengono letti
-    --   una sola volta, poi la mappa viene costruita in forma
-    --   set-based con LEFT JOIN su override e profilo reparto.
     -- =========================================================
 
     -- Guard: parametro obbligatorio
@@ -83,8 +75,7 @@ BEGIN
           LEFT JOIN config.user_override_aree uoa
             ON uoa.auth_user_id = p_auth_user_id
            AND uoa.area_id = af.id
-           AND (uoa.valido_dal IS NULL OR uoa.valido_dal <= CURRENT_DATE)
-           AND (uoa.valido_al  IS NULL OR uoa.valido_al  >= CURRENT_DATE)
+           AND uoa.validita @> CURRENT_DATE
           LEFT JOIN config.profili_reparto_aree pra
             ON pra.unita_organizzativa_id = v_uo_id
            AND pra.area_id = af.id
@@ -94,7 +85,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_get_user_permissions_map(p_auth_user_id integer)
-IS 'Mappa permessi utente: JSONB {schema_db: livello_accesso} per tutte le aree funzionali attive. Refactor set-based: nessun loop PL/pgSQL, legge ruolo_sistema e UO una sola volta.';
+IS 'Mappa permessi aree set-based. Migrazione daterange: filtro temporale via validita @>.';
 ```
 
 ---

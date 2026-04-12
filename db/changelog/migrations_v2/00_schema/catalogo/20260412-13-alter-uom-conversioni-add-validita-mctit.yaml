@@ -1,0 +1,83 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+# Migrazione daterange: aggiunge colonna validita + trigger sync +
+# backfill + ricreazione GIST per catalogo.unita_misura_conversioni.
+# Usa la funzione generica script.trgfn_set_validita().
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/catalogo/20260412-13-alter-uom-conversioni-add-validita-mctit.yaml
+
+  - changeSet:
+      id: 20260412-13-alter-uom-conversioni-add-validita
+      author: mctit
+      comment: >
+        Migrazione daterange completa per catalogo.unita_misura_conversioni:
+        aggiunge colonna validita, trigger sync (funzione generica),
+        backfill, NOT NULL, ricreazione vincolo GIST su colonna nativa.
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            columnExists: { schemaName: catalogo, tableName: unita_misura_conversioni, columnName: validita }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- 1. Aggiunge colonna validita
+              ALTER TABLE catalogo.unita_misura_conversioni
+                ADD COLUMN validita daterange;
+
+              COMMENT ON COLUMN catalogo.unita_misura_conversioni.validita
+                IS 'Range di validita` calcolato dal trigger sync da valido_dal/valido_al. Non scrivere direttamente.';
+
+              -- 2. Crea trigger usando la funzione generica cross-schema
+              DROP TRIGGER IF EXISTS trg_uom_conversioni_a20_set_validita_ins_upd ON catalogo.unita_misura_conversioni;
+
+              CREATE TRIGGER trg_uom_conversioni_a20_set_validita_ins_upd
+                  BEFORE INSERT OR UPDATE OF valido_dal, valido_al
+                  ON catalogo.unita_misura_conversioni
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_set_validita();
+
+              -- 3. Backfill righe esistenti (SET esplicito)
+              UPDATE catalogo.unita_misura_conversioni
+                 SET validita = daterange(valido_dal, COALESCE(valido_al, 'infinity'::date), '[]')
+               WHERE validita IS NULL;
+
+              -- 4. Set NOT NULL (valido_dal e` NOT NULL, tutte le righe hanno validita)
+              ALTER TABLE catalogo.unita_misura_conversioni
+                ALTER COLUMN validita SET NOT NULL;
+
+              -- 5. Drop vecchio vincolo EXCLUDE (il backing index viene eliminato automaticamente)
+              ALTER TABLE catalogo.unita_misura_conversioni
+                DROP CONSTRAINT IF EXISTS ex_uom_conv_no_overlap;
+
+              -- 6. Crea nuovo vincolo GIST su colonna nativa
+              ALTER TABLE catalogo.unita_misura_conversioni
+                ADD CONSTRAINT ex_uom_conv_no_overlap
+                EXCLUDE USING gist (
+                  uom_from_id WITH =,
+                  uom_to_id WITH =,
+                  validita WITH &&
+                );
+
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              ALTER TABLE catalogo.unita_misura_conversioni
+                DROP CONSTRAINT IF EXISTS ex_uom_conv_no_overlap;
+              DROP TRIGGER IF EXISTS trg_uom_conversioni_a20_set_validita_ins_upd ON catalogo.unita_misura_conversioni;
+              ALTER TABLE catalogo.unita_misura_conversioni
+                DROP COLUMN IF EXISTS validita;
+              ALTER TABLE catalogo.unita_misura_conversioni
+                ADD CONSTRAINT ex_uom_conv_no_overlap
+                EXCLUDE USING gist (
+                  uom_from_id WITH =,
+                  uom_to_id WITH =,
+                  daterange(valido_dal, COALESCE(valido_al, 'infinity'::date), '[]') WITH &&
+                );

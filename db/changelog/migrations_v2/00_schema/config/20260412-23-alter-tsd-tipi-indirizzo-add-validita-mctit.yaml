@@ -1,0 +1,61 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+# Migrazione daterange: config.tipi_soggetto_dettaglio_tipi_indirizzo.
+# valido_dal nullable → validita nullable.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20260412-23-alter-tsd-tipi-indirizzo-add-validita-mctit.yaml
+
+  - changeSet:
+      id: 20260412-23-alter-tsd-tipi-indirizzo-add-validita
+      author: mctit
+      runOnChange: true
+      comment: >
+        Migrazione daterange per config.tipi_soggetto_dettaglio_tipi_indirizzo.
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            columnExists:
+              {
+                schemaName: config,
+                tableName: tipi_soggetto_dettaglio_tipi_indirizzo,
+                columnName: validita,
+              }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE config.tipi_soggetto_dettaglio_tipi_indirizzo
+                ADD COLUMN validita daterange;
+
+              COMMENT ON COLUMN config.tipi_soggetto_dettaglio_tipi_indirizzo.validita
+                IS 'Range di validita` calcolato dal trigger sync da valido_dal/valido_al. Non scrivere direttamente.';
+
+              DROP TRIGGER IF EXISTS trg_tsd_tipi_indirizzo_a20_set_validita_ins_upd ON config.tipi_soggetto_dettaglio_tipi_indirizzo;
+              CREATE TRIGGER trg_tsd_tipi_indirizzo_a20_set_validita_ins_upd
+                  BEFORE INSERT OR UPDATE OF valido_dal, valido_al
+                  ON config.tipi_soggetto_dettaglio_tipi_indirizzo
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_set_validita();
+
+              UPDATE config.tipi_soggetto_dettaglio_tipi_indirizzo
+                 SET validita = daterange(
+                     COALESCE(valido_dal, '-infinity'::date),
+                     COALESCE(valido_al, 'infinity'::date),
+                     '[]')
+               WHERE validita IS NULL;
+
+              ALTER TABLE config.tipi_soggetto_dettaglio_tipi_indirizzo
+                ALTER COLUMN validita SET NOT NULL;
+
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_tsd_tipi_indirizzo_a20_set_validita_ins_upd ON config.tipi_soggetto_dettaglio_tipi_indirizzo;
+              ALTER TABLE config.tipi_soggetto_dettaglio_tipi_indirizzo DROP COLUMN IF EXISTS validita;

@@ -14,6 +14,7 @@
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
 | user_update | text | NO | CURRENT_USER |
+| validita | daterange | NO |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -31,6 +32,8 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
+| trg_resellers_ba_a20_set_validita_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_set_validita()` |
+| trg_resellers_ba_a20_set_validita_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_set_validita()` |
 | trg_resellers_billing_account_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_resellers_billing_account_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 

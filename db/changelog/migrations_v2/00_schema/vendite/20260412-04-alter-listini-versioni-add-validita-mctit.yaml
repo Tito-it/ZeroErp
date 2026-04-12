@@ -1,0 +1,39 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+# Migrazione daterange: aggiunge colonna validita a listini_versioni.
+# Vedi: docs/it/dev/work-in-progress/migrazione-daterange.md
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260412-04-alter-listini-versioni-add-validita-mctit.yaml
+
+  - changeSet:
+      id: 20260412-04-alter-listini-versioni-add-validita
+      author: mctit
+      comment: >
+        Aggiunge colonna validita daterange a vendite.listini_versioni.
+        Fase 1 migrazione daterange: la colonna viene popolata dal trigger
+        sync e dal successivo UPDATE di backfill.
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            columnExists: { schemaName: vendite, tableName: listini_versioni, columnName: validita }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.listini_versioni
+                ADD COLUMN validita daterange;
+
+              COMMENT ON COLUMN vendite.listini_versioni.validita
+                IS 'Range di validita` calcolato dal trigger sync da valido_dal/valido_al. Bounds [) (PG canonicalizza da []). Non scrivere direttamente.';
+
+      rollback:
+        - sql:
+            sql: |
+              ALTER TABLE vendite.listini_versioni
+                DROP COLUMN IF EXISTS validita;

@@ -1,0 +1,63 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+# Migrazione daterange: config.user_override_aree.
+# valido_dal nullable → validita nullable.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20260412-18-alter-user-override-aree-add-validita-mctit.yaml
+
+  - changeSet:
+      id: 20260412-18-alter-user-override-aree-add-validita
+      author: mctit
+      runOnChange: true
+      comment: >
+        Migrazione daterange per config.user_override_aree.
+        valido_dal nullable: validita resta nullable (NULL = valido da sempre).
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            columnExists:
+              {
+                schemaName: config,
+                tableName: user_override_aree,
+                columnName: validita,
+              }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE config.user_override_aree
+                ADD COLUMN validita daterange;
+
+              COMMENT ON COLUMN config.user_override_aree.validita
+                IS 'Range di validita` calcolato dal trigger sync da valido_dal/valido_al. Non scrivere direttamente.';
+
+              DROP TRIGGER IF EXISTS trg_user_override_aree_a20_set_validita_ins_upd ON config.user_override_aree;
+              CREATE TRIGGER trg_user_override_aree_a20_set_validita_ins_upd
+                  BEFORE INSERT OR UPDATE OF valido_dal, valido_al
+                  ON config.user_override_aree
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_set_validita();
+
+              -- Backfill: usa -infinity/infinity per gestire NULL
+              UPDATE config.user_override_aree
+                 SET validita = daterange(
+                     COALESCE(valido_dal, '-infinity'::date),
+                     COALESCE(valido_al, 'infinity'::date),
+                     '[]')
+               WHERE validita IS NULL;
+
+              ALTER TABLE config.user_override_aree
+                ALTER COLUMN validita SET NOT NULL;
+
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_user_override_aree_a20_set_validita_ins_upd ON config.user_override_aree;
+              ALTER TABLE config.user_override_aree DROP COLUMN IF EXISTS validita;

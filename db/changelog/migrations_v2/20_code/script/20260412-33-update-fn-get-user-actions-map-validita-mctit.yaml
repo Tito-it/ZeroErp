@@ -1,0 +1,102 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+# Migrazione daterange: aggiorna fn_get_user_actions_map.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260412-33-update-fn-get-user-actions-map-validita-mctit.yaml
+
+  - changeSet:
+      id: 20260412-33-update-fn-get-user-actions-map-validita
+      author: mctit
+      runOnChange: true
+      comment: >
+        Filtro temporale override azioni nella mappa azioni set-based:
+        da doppio confronto valido_dal/valido_al a validita @> CURRENT_DATE.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_get_user_actions_map(p_auth_user_id integer)
+               RETURNS jsonb
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              DECLARE
+                  v_ruolo  anagrafiche.risorse_umane_auth_user.ruolo_sistema%TYPE;
+                  v_uo_id  anagrafiche.risorse_umane.unita_organizzativa_id%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Ritorna la mappa completa delle azioni di processo
+                  --   abilitate/disabilitate per l'utente.
+                  --
+                  -- Ritorna:
+                  --   JSONB {"genera_fatture_lotti": true,
+                  --          "reset_lotto_draft": false, ...}
+                  --
+                  -- Catena:
+                  --   1. ruolo_sistema (NULL/DISABILITATO -> false, ADMIN -> true)
+                  --   2. Override utente azione (se presente e valido)
+                  --   3. Profilo reparto azione (ereditato dalla UO)
+                  --   4. Default -> false
+                  -- =========================================================
+
+                  -- Guard: parametro obbligatorio e valido
+                  IF p_auth_user_id IS NULL OR p_auth_user_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_get_user_actions_map',
+                          'E_ADMIN_VALIDAZIONE',
+                          jsonb_build_object('p_auth_user_id', p_auth_user_id),
+                          NULL::uuid,
+                          'p_auth_user_id obbligatorio e > 0.'
+                      );
+                  END IF;
+
+                  -- Lettura contesto utente una sola volta
+                  SELECT rau.ruolo_sistema,
+                         ru.unita_organizzativa_id
+                    INTO v_ruolo,
+                         v_uo_id
+                    FROM anagrafiche.risorse_umane_auth_user rau
+                    LEFT JOIN anagrafiche.risorse_umane ru
+                      ON ru.id = rau.risorsa_umana_id
+                   WHERE rau.auth_user_id = p_auth_user_id;
+
+                  RETURN (
+                      SELECT COALESCE(
+                          jsonb_object_agg(
+                              ap.permission_codename,
+                              CASE
+                                  WHEN v_ruolo IS NULL OR v_ruolo = 'DISABILITATO'
+                                      THEN false
+                                  WHEN v_ruolo = 'ADMIN'
+                                      THEN true
+                                  ELSE COALESCE(
+                                      uoa.abilitata,
+                                      pra.abilitata,
+                                      false
+                                  )
+                              END
+                          ),
+                          '{}'::jsonb
+                      )
+                        FROM config.azioni_processo ap
+                        LEFT JOIN config.user_override_azioni uoa
+                          ON uoa.auth_user_id = p_auth_user_id
+                         AND uoa.azione_id = ap.id
+                         AND uoa.validita @> CURRENT_DATE
+                        LEFT JOIN config.profili_reparto_azioni pra
+                          ON pra.unita_organizzativa_id = v_uo_id
+                         AND pra.azione_id = ap.id
+                       WHERE ap.attivo = TRUE
+                  );
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_get_user_actions_map(integer)
+              IS 'Mappa azioni processo set-based. Migrazione daterange: filtro temporale via validita @>.';

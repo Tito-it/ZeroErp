@@ -1,0 +1,43 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+# Aggiunge la colonna range_col a dbops.automazione_overlap.
+# Se valorizzata (es. 'validita'), fn_apply_automazione_overlap
+# usa direttamente la colonna daterange nativa invece di
+# ricostruire il range da valido_dal/valido_al.
+# Vedi: docs/it/dev/work-in-progress/migrazione-daterange.md §4.4
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/dbops/20260412-01-alter-automazione-overlap-add-range-col-mctit.yaml
+
+  - changeSet:
+      id: 20260412-01-alter-automazione-overlap-add-range-col
+      author: mctit
+      comment: >
+        Aggiunge colonna range_col a dbops.automazione_overlap per supportare
+        il dual codepath: se range_col IS NOT NULL la funzione
+        fn_apply_automazione_overlap usa la colonna daterange nativa direttamente,
+        altrimenti mantiene il comportamento attuale (espressione calcolata).
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            columnExists: { schemaName: dbops, tableName: automazione_overlap, columnName: range_col }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE dbops.automazione_overlap
+                ADD COLUMN range_col text DEFAULT NULL;
+
+              COMMENT ON COLUMN dbops.automazione_overlap.range_col
+                IS 'Nome colonna daterange nativa (es. validita). Se valorizzata, il vincolo EXCLUDE usa la colonna direttamente invece di ricostruire il range da valido_dal_col/valido_al_col.';
+
+      rollback:
+        - sql:
+            sql: |
+              ALTER TABLE dbops.automazione_overlap
+                DROP COLUMN IF EXISTS range_col;

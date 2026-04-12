@@ -1,0 +1,61 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+# Migrazione daterange: config.tipi_ruoli_nature_ammesse.
+# valido_dal nullable → validita nullable.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20260412-22-alter-tipi-ruoli-nature-ammesse-add-validita-mctit.yaml
+
+  - changeSet:
+      id: 20260412-22-alter-tipi-ruoli-nature-ammesse-add-validita
+      author: mctit
+      runOnChange: true
+      comment: >
+        Migrazione daterange per config.tipi_ruoli_nature_ammesse.
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            columnExists:
+              {
+                schemaName: config,
+                tableName: tipi_ruoli_nature_ammesse,
+                columnName: validita,
+              }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE config.tipi_ruoli_nature_ammesse
+                ADD COLUMN validita daterange;
+
+              COMMENT ON COLUMN config.tipi_ruoli_nature_ammesse.validita
+                IS 'Range di validita` calcolato dal trigger sync da valido_dal/valido_al. Non scrivere direttamente.';
+
+              DROP TRIGGER IF EXISTS trg_tipi_ruoli_nature_ammesse_a20_set_validita_ins_upd ON config.tipi_ruoli_nature_ammesse;
+              CREATE TRIGGER trg_tipi_ruoli_nature_ammesse_a20_set_validita_ins_upd
+                  BEFORE INSERT OR UPDATE OF valido_dal, valido_al
+                  ON config.tipi_ruoli_nature_ammesse
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_set_validita();
+
+              UPDATE config.tipi_ruoli_nature_ammesse
+                 SET validita = daterange(
+                     COALESCE(valido_dal, '-infinity'::date),
+                     COALESCE(valido_al, 'infinity'::date),
+                     '[]')
+               WHERE validita IS NULL;
+
+              ALTER TABLE config.tipi_ruoli_nature_ammesse
+                ALTER COLUMN validita SET NOT NULL;
+
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_tipi_ruoli_nature_ammesse_a20_set_validita_ins_upd ON config.tipi_ruoli_nature_ammesse;
+              ALTER TABLE config.tipi_ruoli_nature_ammesse DROP COLUMN IF EXISTS validita;

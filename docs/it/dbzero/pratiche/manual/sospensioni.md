@@ -28,6 +28,7 @@ Registra i periodi di fermo di una pratica o di un singolo flusso. Ogni riga e' 
 | `flusso_id`                  | FK a `pratiche.flussi`. NULL = sospensione intera pratica.           |
 | `data_inizio`                | Inizio sospensione (default `now()`).                                |
 | `data_fine`                  | Fine sospensione. NULL = ancora attiva.                              |
+| `periodo_sospensione`        | `tstzrange` calcolato dal trigger da `data_inizio`/`data_fine`. Bounds `[)`. Query: `@> ts`. |
 | `data_riattivazione_prevista`| DATE per riattivazione automatica via job pgAgent.                   |
 | `motivo`                     | Motivazione obbligatoria (TEXT NOT NULL).                            |
 

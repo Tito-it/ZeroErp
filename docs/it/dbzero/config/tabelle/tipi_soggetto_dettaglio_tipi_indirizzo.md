@@ -18,6 +18,7 @@
 | data_update | timestamp with time zone | NO | now() |
 | storicizza | boolean | NO | false |
 | fallback_tipo_indirizzo_id | integer | YES |  |
+| validita | daterange | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -45,6 +46,8 @@
 | trg_tipi_soggetto_dettaglio_tipi_indirizzo_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_tipi_soggetto_dettaglio_tipi_indirizzo_z90_storico_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_storico_generic('tipi_soggetto_dettaglio_tipi_indirizzo_id')` |
 | trg_tipi_soggetto_dettaglio_tipi_indirizzo_z90_storico_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_storico_generic('tipi_soggetto_dettaglio_tipi_indirizzo_id')` |
+| trg_tsd_tipi_indirizzo_a20_set_validita_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_set_validita()` |
+| trg_tsd_tipi_indirizzo_a20_set_validita_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_set_validita()` |
 
 ---
 {% include-markdown "signature-core.md" %}
