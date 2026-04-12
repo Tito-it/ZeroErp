@@ -14,6 +14,8 @@ import { DRAWER_WIDTH } from '../../core/constants'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import DrawerFooter from '../../core/components/DrawerFooter.vue'
 import LookupSelect from '../../core/components/LookupSelect.vue'
+import IvaSelect from '../../core/components/IvaSelect.vue'
+import ContoContabileSelect from '../../core/components/ContoContabileSelect.vue'
 import ArticoloUomDrawer from './ArticoloUomDrawer.vue'
 import ArticoloBomDrawer from './ArticoloBomDrawer.vue'
 import ArticoloNoteDrawer from './ArticoloNoteDrawer.vue'
@@ -255,18 +257,18 @@ function close() {
           </div>
           <div class="form-field">
             <label>{{ t('catalogo.field_iva') }}</label>
-            <LookupSelect v-model="form.iva_id" rel="config.iva" :placeholder="t('catalogo.select_iva')" show-clear />
+            <IvaSelect v-model="form.iva_id" />
           </div>
         </div>
 
         <div class="form-grid-2col">
           <div class="form-field">
             <label>{{ t('catalogo.field_conto_vendita') }}</label>
-            <LookupSelect v-model="form.conto_contabile_vendita_id" rel="config.conti_contabili" :placeholder="t('catalogo.select_conto')" show-clear />
+            <ContoContabileSelect v-model="form.conto_contabile_vendita_id" tipo="V" />
           </div>
           <div class="form-field">
             <label>{{ t('catalogo.field_conto_acquisto') }}</label>
-            <LookupSelect v-model="form.conto_contabile_acquisto_id" rel="config.conti_contabili" :placeholder="t('catalogo.select_conto')" show-clear />
+            <ContoContabileSelect v-model="form.conto_contabile_acquisto_id" tipo="A" />
           </div>
         </div>
 

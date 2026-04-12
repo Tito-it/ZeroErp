@@ -7,6 +7,7 @@ import { useApiHandler } from '../../../core/composables/useApiHandler'
 import { usePreventiviStore } from '../stores/preventivi'
 import ArticoloLookup from '../../../core/components/ArticoloLookup.vue'
 import LookupSelect from '../../../core/components/LookupSelect.vue'
+import IvaSelect from '../../../core/components/IvaSelect.vue'
 import InputNumber from 'primevue/inputnumber'
 import InputText from 'primevue/inputtext'
 import Button from 'primevue/button'
@@ -129,7 +130,7 @@ async function handleSave() {
       </div>
       <div class="form-field">
         <label>{{ t('preventivi.riga_iva') }}</label>
-        <LookupSelect v-model="form.iva_id" rel="config.iva"
+        <IvaSelect v-model="form.iva_id"
           :placeholder="t('preventivi.riga_iva')" :disabled="isEdit" />
       </div>
     </div>

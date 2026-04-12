@@ -181,6 +181,39 @@ class LookupUtilitiesPerEmittenteView(DomainAPIView):
         return success_response({"results": results})
 
 
+class LookupContiContabiliView(DomainAPIView):
+    """Lookup dedicato conti contabili con filtro tipo (A=Acquisto, V=Vendita).
+
+    Endpoint dedicato (non generico) perche' espone il campo `tipo_conto`
+    che il lookup generico `/core/lookup/codici/?rel=config.conti_contabili`
+    non restituisce. Usato dall'ArticoloDrawer per alimentare le combo
+    conto_contabile_vendita (tipo=V) e conto_contabile_acquisto (tipo=A).
+    """
+    skip_area_check = True
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(
+                name="tipo",
+                type=str,
+                location=OpenApiParameter.QUERY,
+                description="Filtro tipo conto: 'A' (acquisto) o 'V' (vendita). Omesso = tutti.",
+                required=False,
+            ),
+        ],
+        responses={200: inline_serializer(
+            name="ContiContabiliLookupResponse",
+            fields={"data": serializers.ListField(child=serializers.DictField())},
+        )},
+    )
+    # Scopo: Lista conti contabili filtrati per tipo (A/V) per le combo articolo.
+    def get(self, request: Request) -> JsonResponse:
+        tipo = (request.query_params.get("tipo") or "").strip().upper() or None
+        repo = LookupRepository()
+        results = repo.list_conti_contabili(tipo=tipo)
+        return success_response({"results": results})
+
+
 class LookupSistemaCodiciView(DomainAPIView):
     """GET verifica configurazione sistema codici per schema/tabella/colonna."""
     skip_area_check = True

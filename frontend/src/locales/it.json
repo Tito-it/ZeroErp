@@ -24,6 +24,8 @@
     "light_mode": "Modalita' chiara",
     "loading": "Caricamento...",
     "no_results": "Nessun risultato trovato",
+    "select_iva": "Seleziona IVA...",
+    "select_conto": "Seleziona conto contabile...",
     "data_da": "Dal",
     "data_a": "Al",
     "required_field": "Campo obbligatorio",
