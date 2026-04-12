@@ -1798,3 +1798,315 @@ def fn_test_resolver_prezzo(payload: dict[str, Any]) -> dict[str, object]:
             None if emittente_soggetto_ruolo_id is _MISSING else emittente_soggetto_ruolo_id
         ),
     )
+
+
+# --- N2: Alert scadenze versioni ---
+
+_ALERT_GIORNI_DEFAULT = 15
+_ALERT_GIORNI_MIN = 1
+_ALERT_GIORNI_MAX = 365
+
+
+# Scopo: Restituisce lista versioni ATTIVE in scadenza entro N giorni senza successore.
+def fn_alert_scadenze(giorni: int | None = None) -> dict[str, object]:
+    function_name = "vendite.listini_service.fn_alert_scadenze"
+    if giorni is None:
+        giorni = _ALERT_GIORNI_DEFAULT
+    ErrorManager.require(
+        _ALERT_GIORNI_MIN <= giorni <= _ALERT_GIORNI_MAX,
+        code="E_VENDITE_VALIDATION",
+        message="Parametro giorni non valido.",
+        detail=f"giorni deve essere tra {_ALERT_GIORNI_MIN} e {_ALERT_GIORNI_MAX}.",
+        context={"giorni": giorni},
+        function_name=function_name,
+        log_to_db=False,
+    )
+    repository = ListiniRepository()
+    results = repository.listini_in_scadenza(giorni)
+    return {"results": results, "count": len(results), "giorni": giorni}
+
+
+# --- N6: Rettifica controllata su riga ATTIVA non propagata ---
+
+
+# Scopo: Consente la modifica del prezzo di una riga in versione ATTIVA solo se
+#        la riga non e` mai stata propagata in commesse o attivita` fatturabili.
+#        Lock pessimistico FOR UPDATE + check non-propagazione nella stessa transazione.
+#        Motivo obbligatorio. Audit in meta.rettifiche_controllate[].
+def fn_rettifica_controllata_riga(
+    listino_id: int,
+    versione_id: int,
+    riga_id: int,
+    payload: dict[str, Any],
+) -> dict[str, object]:
+    function_name = "vendite.listini_service.fn_rettifica_controllata_riga"
+
+    # --- Guard: versione esiste e stato ATTIVA ---
+    versione = _get_versione_or_raise(listino_id, versione_id, function_name=function_name)
+    ErrorManager.require(
+        str(versione["stato"]) == "ATTIVA",
+        code="E_VENDITE_VALIDATION",
+        message="Rettifica controllata ammessa solo su versioni ATTIVE.",
+        detail=f"Stato corrente: {versione['stato']}. Per versioni BOZZA usare il PATCH ordinario.",
+        context={"versione_id": versione_id, "stato": versione["stato"]},
+        function_name=function_name,
+        log_to_db=True,
+    )
+
+    # --- Guard: riga esiste ---
+    riga = _get_riga_or_raise(listino_id, versione_id, riga_id, function_name=function_name)
+
+    # --- Parsing payload ---
+    raw_prezzo = payload.get("prezzo")
+    ErrorManager.require(
+        raw_prezzo is not None,
+        code="E_VENDITE_VALIDATION",
+        message="Parametro obbligatorio mancante.",
+        detail="prezzo e` obbligatorio.",
+        context={"field": "prezzo"},
+        function_name=function_name,
+        log_to_db=True,
+    )
+    try:
+        nuovo_prezzo = Decimal(str(raw_prezzo))
+    except (InvalidOperation, TypeError, ValueError):
+        ErrorManager.raise_error(
+            code="E_VENDITE_VALIDATION",
+            message="Prezzo non valido.",
+            detail=f"prezzo deve essere numerico, ricevuto: {raw_prezzo!r}.",
+            context={"field": "prezzo"},
+            function_name=function_name,
+            log_to_db=True,
+        )
+    assert isinstance(nuovo_prezzo, Decimal)
+
+    ErrorManager.require(
+        nuovo_prezzo > 0,
+        code="E_VENDITE_VALIDATION",
+        message="Prezzo non valido.",
+        detail="Il prezzo deve essere maggiore di zero.",
+        context={"prezzo": str(nuovo_prezzo)},
+        function_name=function_name,
+        log_to_db=True,
+    )
+
+    motivo = payload.get("motivo")
+    ErrorManager.require(
+        motivo and isinstance(motivo, str) and motivo.strip(),
+        code="E_VENDITE_VALIDATION",
+        message="Motivo obbligatorio.",
+        detail="Il campo motivo e` obbligatorio per la rettifica controllata.",
+        context={"field": "motivo"},
+        function_name=function_name,
+        log_to_db=True,
+    )
+    assert isinstance(motivo, str)
+    motivo = motivo.strip()
+
+    repository = ListiniRepository()
+
+    # --- Livello 1+2: lock pessimistico + check non-propagazione in transazione ---
+    with transaction.atomic():
+        locked = repository.lock_riga_for_update(versione_id, riga_id)
+        ErrorManager.require(
+            locked,
+            code="E_VENDITE_LISTINO_RIGA_NOT_FOUND",
+            message="Riga non trovata.",
+            detail=f"Riga id={riga_id} non trovata nella versione id={versione_id}.",
+            context={"riga_id": riga_id, "versione_id": versione_id},
+            function_name=function_name,
+            log_to_db=False,
+        )
+
+        propagata = repository.check_riga_propagata(riga_id)
+        ErrorManager.require(
+            not propagata,
+            code="E_VENDITE_RIGA_GIA_PROPAGATA",
+            message="Rettifica bloccata: riga gia` propagata.",
+            detail=(
+                "La riga e` stata usata in almeno una commessa o attivita` fatturabile. "
+                "Per correggere il prezzo, clonare la versione."
+            ),
+            context={"riga_id": riga_id},
+            function_name=function_name,
+            log_to_db=True,
+        )
+
+        # --- Audit in meta ---
+        import json
+        from datetime import datetime
+
+        meta_corrente = riga.get("meta") or {}
+        if isinstance(meta_corrente, str):
+            meta_corrente = json.loads(meta_corrente)
+        rettifiche = list(meta_corrente.get("rettifiche_controllate", []))
+        rettifiche.append({
+            "data": datetime.utcnow().isoformat() + "Z",
+            "prezzo_precedente": str(riga["prezzo"]),
+            "prezzo_nuovo": str(nuovo_prezzo),
+            "motivo": motivo,
+        })
+        meta_corrente["rettifiche_controllate"] = rettifiche
+
+        repository.update_riga_prezzo_rettifica(
+            riga_id=riga_id,
+            nuovo_prezzo=str(nuovo_prezzo),
+            meta_aggiornata=meta_corrente,
+        )
+
+    return {
+        "riga_id": riga_id,
+        "prezzo_precedente": str(riga["prezzo"]),
+        "prezzo_nuovo": str(nuovo_prezzo),
+        "motivo": motivo,
+    }
+
+
+# --- N8a: Variazione percentuale massa su versione BOZZA ---
+
+_VARIAZIONE_PCT_MIN = Decimal("-99")
+_VARIAZIONE_PCT_MAX = Decimal("1000")
+_ARROT_DECIMALI_MIN = 0
+_ARROT_DECIMALI_MAX = 10
+_ARROT_DECIMALI_DEFAULT = 4
+
+
+# Scopo: Applica una variazione percentuale ai prezzi delle righe attive di una versione
+#        BOZZA. Con dry_run=True restituisce la preview senza applicare modifiche.
+#        Guard: solo BOZZA, range percentuale ammesso, arrotondamento 0-10.
+def fn_applica_variazione_percentuale(
+    listino_id: int,
+    versione_id: int,
+    payload: dict[str, Any],
+) -> dict[str, object]:
+    function_name = "vendite.listini_service.fn_applica_variazione_percentuale"
+
+    # --- Guard: versione esiste e stato BOZZA ---
+    versione = _get_versione_or_raise(listino_id, versione_id, function_name=function_name)
+    _assert_versione_bozza_for_riga_op(versione, function_name=function_name)
+
+    # --- Parsing e validazione payload ---
+    raw_pct = payload.get("variazione_percentuale")
+    ErrorManager.require(
+        raw_pct is not None,
+        code="E_VENDITE_VALIDATION",
+        message="Parametro obbligatorio mancante.",
+        detail="variazione_percentuale e` obbligatoria.",
+        context={"field": "variazione_percentuale"},
+        function_name=function_name,
+        log_to_db=True,
+    )
+    try:
+        variazione_pct = Decimal(str(raw_pct))
+    except (InvalidOperation, TypeError, ValueError):
+        ErrorManager.raise_error(
+            code="E_VENDITE_VALIDATION",
+            message="Parametro non valido.",
+            detail=f"variazione_percentuale deve essere un numero, ricevuto: {raw_pct!r}.",
+            context={"field": "variazione_percentuale", "value": str(raw_pct)},
+            function_name=function_name,
+            log_to_db=True,
+        )
+    assert isinstance(variazione_pct, Decimal)
+
+    ErrorManager.require(
+        _VARIAZIONE_PCT_MIN <= variazione_pct <= _VARIAZIONE_PCT_MAX,
+        code="E_VENDITE_VALIDATION",
+        message="Variazione percentuale fuori dal range ammesso.",
+        detail=(
+            f"variazione_percentuale deve essere tra {_VARIAZIONE_PCT_MIN} e "
+            f"{_VARIAZIONE_PCT_MAX}. Ricevuto: {variazione_pct}."
+        ),
+        context={"variazione_percentuale": str(variazione_pct)},
+        function_name=function_name,
+        log_to_db=True,
+    )
+
+    raw_dec = payload.get("arrotondamento_decimali", _ARROT_DECIMALI_DEFAULT)
+    try:
+        arrotondamento_decimali = int(raw_dec)
+    except (TypeError, ValueError):
+        ErrorManager.raise_error(
+            code="E_VENDITE_VALIDATION",
+            message="Parametro non valido.",
+            detail=f"arrotondamento_decimali deve essere intero, ricevuto: {raw_dec!r}.",
+            context={"field": "arrotondamento_decimali", "value": str(raw_dec)},
+            function_name=function_name,
+            log_to_db=True,
+        )
+    assert isinstance(arrotondamento_decimali, int)
+
+    ErrorManager.require(
+        _ARROT_DECIMALI_MIN <= arrotondamento_decimali <= _ARROT_DECIMALI_MAX,
+        code="E_VENDITE_VALIDATION",
+        message="Arrotondamento decimali fuori dal range ammesso.",
+        detail=(
+            f"arrotondamento_decimali deve essere tra {_ARROT_DECIMALI_MIN} e "
+            f"{_ARROT_DECIMALI_MAX}. Ricevuto: {arrotondamento_decimali}."
+        ),
+        context={"arrotondamento_decimali": arrotondamento_decimali},
+        function_name=function_name,
+        log_to_db=True,
+    )
+
+    # --- Filtro articoli (opzionale) ---
+    raw_filtro = payload.get("filtro_articoli")
+    filtro_articoli: list[UUID] | None = None
+    if raw_filtro is not None:
+        ErrorManager.require(
+            isinstance(raw_filtro, list),
+            code="E_VENDITE_VALIDATION",
+            message="Parametro non valido.",
+            detail="filtro_articoli deve essere un array di UUID o null.",
+            context={"field": "filtro_articoli"},
+            function_name=function_name,
+            log_to_db=True,
+        )
+        assert isinstance(raw_filtro, list)
+        try:
+            filtro_articoli = [UUID(str(x)) for x in raw_filtro]
+        except (ValueError, TypeError):
+            ErrorManager.raise_error(
+                code="E_VENDITE_VALIDATION",
+                message="Parametro non valido.",
+                detail="filtro_articoli contiene valori non UUID.",
+                context={"field": "filtro_articoli"},
+                function_name=function_name,
+                log_to_db=True,
+            )
+
+    dry_run = bool(payload.get("dry_run", False))
+
+    # --- Esecuzione ---
+    repository = ListiniRepository()
+
+    if dry_run:
+        count, preview = repository.applica_variazione_percentuale(
+            versione_id=versione_id,
+            variazione_pct=str(variazione_pct),
+            arrotondamento_decimali=arrotondamento_decimali,
+            filtro_articoli=[str(a) for a in filtro_articoli] if filtro_articoli else None,
+            dry_run=True,
+        )
+        return {
+            "dry_run": True,
+            "righe_coinvolte": count,
+            "preview": preview,
+            "variazione_percentuale": str(variazione_pct),
+            "arrotondamento_decimali": arrotondamento_decimali,
+        }
+
+    with transaction.atomic():
+        count, _ = repository.applica_variazione_percentuale(
+            versione_id=versione_id,
+            variazione_pct=str(variazione_pct),
+            arrotondamento_decimali=arrotondamento_decimali,
+            filtro_articoli=[str(a) for a in filtro_articoli] if filtro_articoli else None,
+            dry_run=False,
+        )
+
+    return {
+        "righe_aggiornate": count,
+        "variazione_percentuale": str(variazione_pct),
+        "arrotondamento_decimali": arrotondamento_decimali,
+    }

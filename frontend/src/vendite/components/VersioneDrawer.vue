@@ -15,6 +15,7 @@ import { DRAWER_WIDTH } from '../../core/constants'
 import ArticoloLookup from '../../core/components/ArticoloLookup.vue'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import DrawerFooter from '../../core/components/DrawerFooter.vue'
+import ApplicaVariazioneDialog from './ApplicaVariazioneDialog.vue'
 import Drawer from 'primevue/drawer'
 import Tag from 'primevue/tag'
 import DataTable from 'primevue/datatable'
@@ -116,6 +117,12 @@ async function removeRow(row) {
 
 const isBozza = computed(() => props.versione?.stato === 'BOZZA')
 
+const showVariazioneDialog = ref(false)
+
+function onVariazioneApplied() {
+  loadRighe()
+}
+
 // Etichetta UoM nel dropdown: "codice - descrizione (BASE)" se base.
 function uomLabel(uom) {
   const base = uom.is_base ? ` ${t('listini.uom_base_suffix')}` : ''
@@ -148,9 +155,11 @@ function uomLabel(uom) {
 
       <div class="app-drawer-section"><h4>{{ t('listini.tab_righe') }}</h4></div>
 
-      <div v-if="isBozza && !adding" class="mt-05">
+      <div v-if="isBozza && !adding" class="mt-05 flex gap-2">
         <Button icon="pi pi-plus" :label="t('listini.aggiungi_riga')" text size="small"
           class="app-action-btn" @click="startAdd" />
+        <Button icon="pi pi-percentage" :label="t('listini.variazione_pct_titolo')" text size="small"
+          class="app-action-btn" @click="showVariazioneDialog = true" />
       </div>
 
       <template v-if="adding">
@@ -199,5 +208,12 @@ function uomLabel(uom) {
         </Column>
       </DataTable>
     </div>
+
+    <ApplicaVariazioneDialog
+      :visible="showVariazioneDialog"
+      @update:visible="v => showVariazioneDialog = v"
+      :listino-id="listinoId"
+      :versione-id="versione?.id"
+      @applied="onVariazioneApplied" />
   </Drawer>
 </template>

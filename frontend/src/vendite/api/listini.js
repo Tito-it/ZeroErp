@@ -61,6 +61,12 @@ export function cloneVersione(listinoId, srcVerId, payload) {
   return api.post(`${BASE}/${listinoId}/versioni/${srcVerId}/clona/`, payload)
 }
 
+// Applica variazione percentuale massa ai prezzi delle righe attive
+// di una versione BOZZA. Supporta dry_run per preview.
+export function applicaVariazionePercentuale(listinoId, verId, payload) {
+  return api.post(`${BASE}/${listinoId}/versioni/${verId}/applica-variazione/`, payload)
+}
+
 // --- Righe prezzo ---
 
 export function listRighe(listinoId, verId) {

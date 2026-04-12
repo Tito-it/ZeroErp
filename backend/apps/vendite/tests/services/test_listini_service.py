@@ -34,6 +34,21 @@ Indice test eseguiti:
 25) ListiniServiceTests.test_delete_listino_with_versioni_rejected
 26) ListiniServiceTests.test_delete_listino_with_associazioni_rejected
 27) ListiniServiceTests.test_change_state_attiva_blocked_when_autoclose_violates_chk
+28) ListiniServiceTests.test_variazione_pct_su_attiva_rifiutata
+29) ListiniServiceTests.test_variazione_pct_su_chiusa_rifiutata
+30) ListiniServiceTests.test_variazione_pct_fuori_range_alto_rifiutata
+31) ListiniServiceTests.test_variazione_pct_meno_100_rifiutata
+32) ListiniServiceTests.test_variazione_pct_dry_run_preview
+33) ListiniServiceTests.test_variazione_pct_applica_ok
+34) ListiniServiceTests.test_variazione_pct_con_filtro_articoli
+35) ListiniServiceTests.test_variazione_pct_campo_obbligatorio_mancante
+36) ListiniServiceTests.test_variazione_pct_arrotondamento_fuori_range
+37) ListiniServiceTests.test_alert_scadenze_default_giorni
+38) ListiniServiceTests.test_alert_scadenze_giorni_fuori_range
+39) ListiniServiceTests.test_rettifica_controllata_su_bozza_rifiutata
+40) ListiniServiceTests.test_rettifica_controllata_riga_propagata_rifiutata
+41) ListiniServiceTests.test_rettifica_controllata_ok_non_propagata
+42) ListiniServiceTests.test_rettifica_controllata_senza_motivo_rifiutata
 """
 
 from datetime import date
@@ -616,3 +631,317 @@ class ListiniServiceTests(TestCase):
                 }
             )
         self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
+
+    # --- N8a: Variazione percentuale massa ---
+
+    # Scopo: N8a - variazione su versione ATTIVA rifiutata (guard BOZZA).
+    @patch("apps.vendite.services.listini_service.ListiniRepository")
+    def test_variazione_pct_su_attiva_rifiutata(self, mock_repo_cls):
+        from apps.vendite.services.listini_service import fn_applica_variazione_percentuale
+
+        repo = mock_repo_cls.return_value
+        repo.get_versione.return_value = {
+            "id": 101,
+            "listino_id": 10,
+            "stato": "ATTIVA",
+        }
+
+        with self.assertRaises(ServiceError) as ctx:
+            fn_applica_variazione_percentuale(10, 101, {"variazione_percentuale": 3.0})
+        self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
+        self.assertIn("BOZZA", ctx.exception.detail or "")
+        repo.applica_variazione_percentuale.assert_not_called()
+
+    # Scopo: N8a - variazione su versione CHIUSA rifiutata.
+    @patch("apps.vendite.services.listini_service.ListiniRepository")
+    def test_variazione_pct_su_chiusa_rifiutata(self, mock_repo_cls):
+        from apps.vendite.services.listini_service import fn_applica_variazione_percentuale
+
+        repo = mock_repo_cls.return_value
+        repo.get_versione.return_value = {
+            "id": 101,
+            "listino_id": 10,
+            "stato": "CHIUSA",
+        }
+
+        with self.assertRaises(ServiceError) as ctx:
+            fn_applica_variazione_percentuale(10, 101, {"variazione_percentuale": 3.0})
+        self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
+
+    # Scopo: N8a - percentuale fuori range (+1500) rifiutata.
+    @patch("apps.vendite.services.listini_service.ListiniRepository")
+    def test_variazione_pct_fuori_range_alto_rifiutata(self, mock_repo_cls):
+        from apps.vendite.services.listini_service import fn_applica_variazione_percentuale
+
+        repo = mock_repo_cls.return_value
+        repo.get_versione.return_value = {
+            "id": 101,
+            "listino_id": 10,
+            "stato": "BOZZA",
+        }
+
+        with self.assertRaises(ServiceError) as ctx:
+            fn_applica_variazione_percentuale(10, 101, {"variazione_percentuale": 1500})
+        self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
+        self.assertIn("1000", ctx.exception.detail or "")
+
+    # Scopo: N8a - percentuale -100% rifiutata (produrrebbe prezzo zero).
+    @patch("apps.vendite.services.listini_service.ListiniRepository")
+    def test_variazione_pct_meno_100_rifiutata(self, mock_repo_cls):
+        from apps.vendite.services.listini_service import fn_applica_variazione_percentuale
+
+        repo = mock_repo_cls.return_value
+        repo.get_versione.return_value = {
+            "id": 101,
+            "listino_id": 10,
+            "stato": "BOZZA",
+        }
+
+        with self.assertRaises(ServiceError) as ctx:
+            fn_applica_variazione_percentuale(10, 101, {"variazione_percentuale": -100})
+        self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
+
+    # Scopo: N8a - dry_run restituisce preview senza modifiche.
+    @patch("apps.vendite.services.listini_service.ListiniRepository")
+    def test_variazione_pct_dry_run_preview(self, mock_repo_cls):
+        from apps.vendite.services.listini_service import fn_applica_variazione_percentuale
+
+        repo = mock_repo_cls.return_value
+        repo.get_versione.return_value = {
+            "id": 101,
+            "listino_id": 10,
+            "stato": "BOZZA",
+        }
+        repo.applica_variazione_percentuale.return_value = (
+            2,
+            [
+                {"riga_id": 1, "articolo_codice": "ART001", "prezzo_attuale": "12.50", "prezzo_calcolato": "12.88"},
+                {"riga_id": 2, "articolo_codice": "ART002", "prezzo_attuale": "100.00", "prezzo_calcolato": "103.00"},
+            ],
+        )
+
+        result = fn_applica_variazione_percentuale(
+            10, 101, {"variazione_percentuale": 3.0, "dry_run": True}
+        )
+
+        self.assertTrue(result["dry_run"])
+        self.assertEqual(result["righe_coinvolte"], 2)
+        self.assertEqual(len(result["preview"]), 2)
+        repo.applica_variazione_percentuale.assert_called_once()
+        # Verifica che dry_run=True sia passato al repository
+        call_kwargs = repo.applica_variazione_percentuale.call_args
+        self.assertTrue(call_kwargs.kwargs.get("dry_run", call_kwargs[1].get("dry_run")))
+
+    # Scopo: N8a - applicazione reale +3% su BOZZA eseguita con transaction.atomic.
+    @patch("apps.vendite.services.listini_service.transaction.atomic")
+    @patch("apps.vendite.services.listini_service.ListiniRepository")
+    def test_variazione_pct_applica_ok(self, mock_repo_cls, mock_atomic):
+        from apps.vendite.services.listini_service import fn_applica_variazione_percentuale
+
+        repo = mock_repo_cls.return_value
+        repo.get_versione.return_value = {
+            "id": 101,
+            "listino_id": 10,
+            "stato": "BOZZA",
+        }
+        repo.applica_variazione_percentuale.return_value = (500, [])
+
+        result = fn_applica_variazione_percentuale(
+            10, 101, {"variazione_percentuale": 3.0, "arrotondamento_decimali": 4}
+        )
+
+        self.assertEqual(result["righe_aggiornate"], 500)
+        self.assertEqual(result["variazione_percentuale"], "3.0")
+        self.assertEqual(result["arrotondamento_decimali"], 4)
+        mock_atomic.assert_called_once()
+
+    # Scopo: N8a - variazione con filtro articoli passa array al repository.
+    @patch("apps.vendite.services.listini_service.transaction.atomic")
+    @patch("apps.vendite.services.listini_service.ListiniRepository")
+    def test_variazione_pct_con_filtro_articoli(self, mock_repo_cls, mock_atomic):
+        from apps.vendite.services.listini_service import fn_applica_variazione_percentuale
+
+        repo = mock_repo_cls.return_value
+        repo.get_versione.return_value = {
+            "id": 101,
+            "listino_id": 10,
+            "stato": "BOZZA",
+        }
+        repo.applica_variazione_percentuale.return_value = (2, [])
+
+        uuid_1 = "019bbee2-5f6a-704f-bbd0-34ed84db252d"
+        uuid_2 = "019bbee2-5f6a-704f-bbd0-34ed84db253e"
+        result = fn_applica_variazione_percentuale(
+            10,
+            101,
+            {
+                "variazione_percentuale": -5.0,
+                "filtro_articoli": [uuid_1, uuid_2],
+            },
+        )
+
+        self.assertEqual(result["righe_aggiornate"], 2)
+        call_kwargs = repo.applica_variazione_percentuale.call_args
+        self.assertIsNotNone(call_kwargs.kwargs.get("filtro_articoli", call_kwargs[1].get("filtro_articoli")))
+
+    # Scopo: N8a - variazione_percentuale mancante rifiutata.
+    @patch("apps.vendite.services.listini_service.ListiniRepository")
+    def test_variazione_pct_campo_obbligatorio_mancante(self, mock_repo_cls):
+        from apps.vendite.services.listini_service import fn_applica_variazione_percentuale
+
+        repo = mock_repo_cls.return_value
+        repo.get_versione.return_value = {
+            "id": 101,
+            "listino_id": 10,
+            "stato": "BOZZA",
+        }
+
+        with self.assertRaises(ServiceError) as ctx:
+            fn_applica_variazione_percentuale(10, 101, {})
+        self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
+
+    # Scopo: N8a - arrotondamento fuori range (15) rifiutato.
+    @patch("apps.vendite.services.listini_service.ListiniRepository")
+    def test_variazione_pct_arrotondamento_fuori_range(self, mock_repo_cls):
+        from apps.vendite.services.listini_service import fn_applica_variazione_percentuale
+
+        repo = mock_repo_cls.return_value
+        repo.get_versione.return_value = {
+            "id": 101,
+            "listino_id": 10,
+            "stato": "BOZZA",
+        }
+
+        with self.assertRaises(ServiceError) as ctx:
+            fn_applica_variazione_percentuale(
+                10, 101, {"variazione_percentuale": 3.0, "arrotondamento_decimali": 15}
+            )
+        self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
+
+    # --- N2: Alert scadenze ---
+
+    # Scopo: N2 - alert scadenze con giorni default chiama il repository.
+    @patch("apps.vendite.services.listini_service.ListiniRepository")
+    def test_alert_scadenze_default_giorni(self, mock_repo_cls):
+        from apps.vendite.services.listini_service import fn_alert_scadenze
+
+        repo = mock_repo_cls.return_value
+        repo.listini_in_scadenza.return_value = [
+            {"listino_id": 10, "listino_codice": "LIST-01", "giorni_rimanenti": 5}
+        ]
+
+        result = fn_alert_scadenze()
+
+        self.assertEqual(result["count"], 1)
+        self.assertEqual(result["giorni"], 15)
+        repo.listini_in_scadenza.assert_called_once_with(15)
+
+    # Scopo: N2 - alert scadenze con giorni fuori range rifiutato.
+    def test_alert_scadenze_giorni_fuori_range(self):
+        from apps.vendite.services.listini_service import fn_alert_scadenze
+
+        with self.assertRaises(ServiceError) as ctx:
+            fn_alert_scadenze(giorni=0)
+        self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
+
+        with self.assertRaises(ServiceError) as ctx:
+            fn_alert_scadenze(giorni=400)
+        self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
+
+    # --- N6: Rettifica controllata ---
+
+    # Scopo: N6 - rettifica su versione BOZZA rifiutata (solo ATTIVA).
+    @patch("apps.vendite.services.listini_service.ListiniRepository")
+    def test_rettifica_controllata_su_bozza_rifiutata(self, mock_repo_cls):
+        from apps.vendite.services.listini_service import fn_rettifica_controllata_riga
+
+        repo = mock_repo_cls.return_value
+        repo.get_versione.return_value = {
+            "id": 101,
+            "listino_id": 10,
+            "stato": "BOZZA",
+        }
+
+        with self.assertRaises(ServiceError) as ctx:
+            fn_rettifica_controllata_riga(10, 101, 501, {"prezzo": 12.25, "motivo": "test"})
+        self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
+        self.assertIn("ATTIVE", ctx.exception.message or "")
+
+    # Scopo: N6 - rettifica su riga gia` propagata in commessa rifiutata.
+    @patch("apps.vendite.services.listini_service.transaction.atomic")
+    @patch("apps.vendite.services.listini_service.ListiniRepository")
+    def test_rettifica_controllata_riga_propagata_rifiutata(self, mock_repo_cls, mock_atomic):
+        from apps.vendite.services.listini_service import fn_rettifica_controllata_riga
+
+        repo = mock_repo_cls.return_value
+        repo.get_versione.return_value = {
+            "id": 101,
+            "listino_id": 10,
+            "stato": "ATTIVA",
+        }
+        repo.get_riga.return_value = {
+            "id": 501,
+            "prezzo": "12.5000000000",
+            "meta": None,
+        }
+        repo.lock_riga_for_update.return_value = True
+        repo.check_riga_propagata.return_value = True
+
+        with self.assertRaises(ServiceError) as ctx:
+            fn_rettifica_controllata_riga(10, 101, 501, {"prezzo": 12.25, "motivo": "errore battitura"})
+        self.assertEqual(ctx.exception.code, "E_VENDITE_RIGA_GIA_PROPAGATA")
+        repo.update_riga_prezzo_rettifica.assert_not_called()
+
+    # Scopo: N6 - rettifica ammessa se riga non propagata.
+    @patch("apps.vendite.services.listini_service.transaction.atomic")
+    @patch("apps.vendite.services.listini_service.ListiniRepository")
+    def test_rettifica_controllata_ok_non_propagata(self, mock_repo_cls, mock_atomic):
+        from apps.vendite.services.listini_service import fn_rettifica_controllata_riga
+
+        repo = mock_repo_cls.return_value
+        repo.get_versione.return_value = {
+            "id": 101,
+            "listino_id": 10,
+            "stato": "ATTIVA",
+        }
+        repo.get_riga.return_value = {
+            "id": 501,
+            "prezzo": "12.5000000000",
+            "meta": None,
+        }
+        repo.lock_riga_for_update.return_value = True
+        repo.check_riga_propagata.return_value = False
+        repo.update_riga_prezzo_rettifica.return_value = True
+
+        result = fn_rettifica_controllata_riga(
+            10, 101, 501, {"prezzo": "12.25", "motivo": "errore di battitura al caricamento"}
+        )
+
+        self.assertEqual(result["prezzo_precedente"], "12.5000000000")
+        self.assertEqual(result["prezzo_nuovo"], "12.25")
+        self.assertEqual(result["motivo"], "errore di battitura al caricamento")
+        repo.lock_riga_for_update.assert_called_once_with(101, 501)
+        repo.check_riga_propagata.assert_called_once_with(501)
+        repo.update_riga_prezzo_rettifica.assert_called_once()
+
+    # Scopo: N6 - rettifica senza motivo rifiutata.
+    @patch("apps.vendite.services.listini_service.ListiniRepository")
+    def test_rettifica_controllata_senza_motivo_rifiutata(self, mock_repo_cls):
+        from apps.vendite.services.listini_service import fn_rettifica_controllata_riga
+
+        repo = mock_repo_cls.return_value
+        repo.get_versione.return_value = {
+            "id": 101,
+            "listino_id": 10,
+            "stato": "ATTIVA",
+        }
+        repo.get_riga.return_value = {
+            "id": 501,
+            "prezzo": "12.5000000000",
+            "meta": None,
+        }
+
+        with self.assertRaises(ServiceError) as ctx:
+            fn_rettifica_controllata_riga(10, 101, 501, {"prezzo": 12.25, "motivo": ""})
+        self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
+        self.assertIn("motivo", (ctx.exception.detail or "").lower())
