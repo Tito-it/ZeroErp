@@ -404,6 +404,25 @@ class LookupRepository:
             cursor.execute(sql, [comune_id, search, limit])
             return rows_to_list(cursor)
 
+    # Scopo: Lista conti contabili filtrati per tipo (A=Acquisto, V=Vendita).
+    # Lookup dedicato: espone tipo_conto che il lookup generico non ritorna.
+    # Ordinamento per codice (codice contabile e' numerico-parlante).
+    # Whitelist del tipo per evitare SQL injection sul parametro.
+    def list_conti_contabili(self, *, tipo: str | None = None) -> list[dict[str, Any]]:
+        if tipo is not None and tipo not in {"A", "V"}:
+            raise ValueError(
+                f"tipo_conto '{tipo}' non valido. Ammessi: 'A' (acquisto), 'V' (vendita)."
+            )
+        sql = """
+            SELECT id, codice, descrizione, tipo_conto
+              FROM config.conti_contabili
+             WHERE (%s::char IS NULL OR tipo_conto = %s::char)
+             ORDER BY codice
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [tipo, tipo])
+            return rows_to_list(cursor)
+
     # Scopo: Ricerca vie su stradario_generale (senza comune/CAP) per autocomplete via nuova.
     # Chiama script.fn_search_stradario_generale(p_search, p_toponomastica_id, p_limit).
     # Restituisce stradario_generale_id, toponomastica_id, toponimo, denominazione, indirizzo_normalizzato.

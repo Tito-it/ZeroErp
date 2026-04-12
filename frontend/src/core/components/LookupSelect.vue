@@ -6,7 +6,8 @@
 // Uso:
 //   <LookupSelect v-model="form.iva_id" rel="config.iva" />
 //   <LookupSelect v-model="form.uom_id" rel="catalogo.unita_misura" :label-field="'codice'" />
-//   <LookupSelect v-model="form.tipo_voce_id" rel="vendite.articoli_tipologie" show-clear />
+//   <LookupSelect v-model="form.conto_id" rel="config.conti_contabili" show-code />
+import { computed } from 'vue'
 import { useLookup } from '../composables/useLookup'
 import { lookupCodici } from '../apiCore'
 import Select from 'primevue/select'
@@ -17,6 +18,9 @@ const props = defineProps({
   placeholder: { type: String, default: '' },
   labelField: { type: String, default: 'descrizione' },
   valueField: { type: String, default: 'id' },
+  // Se true, mostra "descrizione (codice)" sia nel display che nel dropdown.
+  // Utile per tabelle con codice significativo (es. conti contabili).
+  showCode: { type: Boolean, default: false },
   showClear: { type: Boolean, default: false },
   filter: { type: Boolean, default: true },
   disabled: { type: Boolean, default: false },
@@ -25,6 +29,23 @@ const props = defineProps({
 const emit = defineEmits(['update:modelValue', 'change'])
 
 const lookup = useLookup(() => lookupCodici(props.rel), { immediate: true })
+
+// Scopo: Compone l'etichetta visualizzata per una riga del lookup.
+// Se showCode e' true, ritorna "descrizione (codice)" — altrimenti
+// usa solo labelField (di default "descrizione").
+function formatOption(item) {
+  if (!item) return ''
+  const label = item[props.labelField] ?? ''
+  if (props.showCode && item.codice) {
+    return `${label} (${item.codice})`
+  }
+  return label
+}
+
+// Scopo: Trova la riga selezionata dal modelValue corrente (per lo slot #value).
+const selectedItem = computed(() =>
+  lookup.items.value.find(i => i[props.valueField] === props.modelValue) || null
+)
 
 function onChange(event) {
   emit('update:modelValue', event.value)
@@ -45,5 +66,13 @@ function onChange(event) {
     :filter="filter"
     :disabled="disabled"
     @change="onChange"
-  />
+  >
+    <template v-if="showCode" #option="{ option }">
+      {{ formatOption(option) }}
+    </template>
+    <template v-if="showCode" #value>
+      <span v-if="selectedItem">{{ formatOption(selectedItem) }}</span>
+      <span v-else class="text-color-secondary">{{ placeholder }}</span>
+    </template>
+  </Select>
 </template>

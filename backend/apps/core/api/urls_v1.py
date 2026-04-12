@@ -15,6 +15,7 @@ from apps.core.api.search_view import (
 )
 from apps.core.api.views_lookup import (
     LookupComuniView,
+    LookupContiContabiliView,
     LookupFormeGiuridicheView,
     LookupMatriceIndirizziView,
     LookupMatriceIndirizziRuoloView,
@@ -115,6 +116,11 @@ urlpatterns = [
         "lookup/utilities-per-emittente/",
         LookupUtilitiesPerEmittenteView.as_view(),
         name="core-lookup-utilities-per-emittente",
+    ),
+    path(
+        "lookup/conti-contabili/",
+        LookupContiContabiliView.as_view(),
+        name="core-lookup-conti-contabili",
     ),
     path(
         "lookup/tipi-ruoli-natura/",
