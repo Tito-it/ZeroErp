@@ -50,8 +50,8 @@ databaseChangeLog:
                   ('vendite', 'fattura',             2),
                   ('vendite', 'preventivo',          2),
                   ('vendite', 'listino',             2),
-                  -- pratiche (area_id = 11)
-                  ('pratiche', 'pratica',           11),
+                  -- pratiche (area_id = 12)
+                  ('pratiche', 'pratica',           12),
                   -- catalogo (area_id = 4)
                   ('catalogo', 'articolo',           4),
                   ('catalogo', 'unita_misura',       4)
