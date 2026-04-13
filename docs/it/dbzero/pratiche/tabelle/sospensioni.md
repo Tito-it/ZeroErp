@@ -17,6 +17,7 @@
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
 | user_update | text | NO | CURRENT_USER |
+| periodo_sospensione | tstzrange | NO |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -36,8 +37,10 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_sospensioni_a10_guard_coerenza_flusso_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION pratiche.trgfn_sospensioni_guard_coerenza_flusso()` |
 | trg_sospensioni_a10_guard_coerenza_flusso_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION pratiche.trgfn_sospensioni_guard_coerenza_flusso()` |
+| trg_sospensioni_a10_guard_coerenza_flusso_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION pratiche.trgfn_sospensioni_guard_coerenza_flusso()` |
+| trg_sospensioni_a20_set_periodo_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION pratiche.trgfn_sospensioni_set_periodo()` |
+| trg_sospensioni_a20_set_periodo_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION pratiche.trgfn_sospensioni_set_periodo()` |
 | trg_sospensioni_z90_giornale_ins | AFTER | INSERT | `EXECUTE FUNCTION pratiche.trgfn_sospensioni_giornale_ins()` |
 | trg_sospensioni_z90_giornale_riattivazione_upd | AFTER | UPDATE | `EXECUTE FUNCTION pratiche.trgfn_sospensioni_giornale_riattivazione()` |
 | trg_sospensioni_z90_propaga_riattivazione_upd | AFTER | UPDATE | `EXECUTE FUNCTION pratiche.trgfn_sospensioni_riattiva()` |

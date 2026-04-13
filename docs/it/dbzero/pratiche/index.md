@@ -31,6 +31,7 @@
 - [trgfn_allegati_flussi_giornale](funzioni/trgfn_allegati_flussi_giornale.md) — Registra l'azione **ALLEGATO_AGGIUNTO** nel giornale a livello flusso. Si attiva **AFTER INSERT** su `pratiche.allegati_flussi`.
 - [trgfn_allegati_pratiche_giornale](funzioni/trgfn_allegati_pratiche_giornale.md) — Registra l'azione **ALLEGATO_AGGIUNTO** nel giornale a livello pratica. Si attiva **AFTER INSERT** su `pratiche.allegati_pratiche`.
 - [trgfn_calcoli_tempo_guard_immutabili](funzioni/trgfn_calcoli_tempo_guard_immutabili.md) — Guard: blocca UPDATE sui campi di riferimento immutabili della tabella `pratiche.calcoli_tempo`.
+- [trgfn_calcoli_tempo_set_periodo](funzioni/trgfn_calcoli_tempo_set_periodo.md)
 - [trgfn_flussi_calcolo_tempo_completamento](funzioni/trgfn_flussi_calcolo_tempo_completamento.md) — Trigger function unica che gestisce il ciclo di vita dei calcoli tempo nel modello da/a. AFTER UPDATE OF `stato_id` su `pratiche.flussi`, scatta quando un flusso va COMPLETATO. Il flusso completato puo' essere referenziato come partenza (`flusso_da`) e/o come arrivo (`flusso_a`) in formule diverse.
 - [trgfn_flussi_generazione](funzioni/trgfn_flussi_generazione.md) — Trigger function per la **generazione automatica cross-pratica**. Si attiva **AFTER UPDATE OF stato_id** su `pratiche.flussi`. Quando un flusso passa allo stato COMPLETATO, cerca le regole di generazione automatica e invoca `fn_genera_pratica_da_flusso` per ciascuna regola matching.
 - [trgfn_flussi_giornale_ins](funzioni/trgfn_flussi_giornale_ins.md) — Registra l'azione **FLUSSO_CREATO** nel giornale. Si attiva **AFTER INSERT** su `pratiche.flussi`.
@@ -52,5 +53,6 @@
 - [trgfn_sospensioni_guard_coerenza_flusso](funzioni/trgfn_sospensioni_guard_coerenza_flusso.md) — Guard: verifica che `flusso_id` appartenga alla stessa `pratica_id` della sospensione. Se `flusso_id IS NULL` (sospensione pratica intera), nessun controllo.
 - [trgfn_sospensioni_propaga](funzioni/trgfn_sospensioni_propaga.md) — Propaga la sospensione a livello pratica ai flussi attivi. AFTER INSERT su `pratiche.sospensioni`: se `flusso_id IS NULL`, tutti i flussi con stato DA_ESEGUIRE o IN_CORSO passano a SOSPESO.
 - [trgfn_sospensioni_riattiva](funzioni/trgfn_sospensioni_riattiva.md) — Ripristina gli stati precedenti alla riattivazione. AFTER UPDATE OF `data_fine` su `pratiche.sospensioni`: quando la sospensione viene chiusa (data_fine passa da NULL a valorizzata), ripristina lo stato precedente dei flussi (dal giornale) e riporta la pratica ad APERTA.
+- [trgfn_sospensioni_set_periodo](funzioni/trgfn_sospensioni_set_periodo.md)
 
 ## 🔍 Views

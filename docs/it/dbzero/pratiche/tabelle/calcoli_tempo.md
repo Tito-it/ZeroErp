@@ -21,6 +21,7 @@
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
 | user_update | text | NO | CURRENT_USER |
+| periodo_calcolo | tstzrange | NO |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -45,6 +46,8 @@
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
 | trg_calcoli_tempo_a10_guard_immutabili_upd | BEFORE | UPDATE | `EXECUTE FUNCTION pratiche.trgfn_calcoli_tempo_guard_immutabili()` |
+| trg_calcoli_tempo_a20_set_periodo_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION pratiche.trgfn_calcoli_tempo_set_periodo()` |
+| trg_calcoli_tempo_a20_set_periodo_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION pratiche.trgfn_calcoli_tempo_set_periodo()` |
 
 ---
 {% include-markdown "signature-core.md" %}

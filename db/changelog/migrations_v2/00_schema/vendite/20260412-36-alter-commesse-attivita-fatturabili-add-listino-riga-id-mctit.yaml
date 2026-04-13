@@ -1,0 +1,54 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+# Aggiunge listino_riga_id a vendite.commesse_attivita e
+# vendite.attivita_fatturabili.
+#
+# commesse_attivita: traccia quale riga listino ha generato il
+# prezzo_snapshot al momento della risoluzione.
+#
+# attivita_fatturabili: propagato dalla commessa — serve al guard
+# "riga gia` propagata" e per sapere se la riga e` gia` in
+# pipeline fatturazione.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260412-36-alter-commesse-attivita-fatturabili-add-listino-riga-id-mctit.yaml
+
+  - changeSet:
+      id: 20260412-36-alter-commesse-attivita-fatturabili-add-listino-riga-id
+      author: mctit
+      comment: >
+        Aggiunge listino_riga_id (FK a vendite.listini_righe) a
+        vendite.commesse_attivita e vendite.attivita_fatturabili.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- commesse_attivita: riga listino che ha generato il prezzo_snapshot
+              ALTER TABLE vendite.commesse_attivita
+                ADD COLUMN IF NOT EXISTS listino_riga_id bigint
+                  REFERENCES vendite.listini_righe(id);
+
+              COMMENT ON COLUMN vendite.commesse_attivita.listino_riga_id
+                IS 'FK a vendite.listini_righe. Traccia quale riga listino ha generato prezzo_snapshot al momento della risoluzione.';
+
+              -- attivita_fatturabili: propagato dalla commessa
+              ALTER TABLE vendite.attivita_fatturabili
+                ADD COLUMN IF NOT EXISTS listino_riga_id bigint
+                  REFERENCES vendite.listini_righe(id);
+
+              COMMENT ON COLUMN vendite.attivita_fatturabili.listino_riga_id
+                IS 'FK a vendite.listini_righe. Propagato dalla commessa: guard riga gia` propagata e tracciamento pipeline fatturazione.';
+
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.attivita_fatturabili
+                DROP COLUMN IF EXISTS listino_riga_id;
+              ALTER TABLE vendite.commesse_attivita
+                DROP COLUMN IF EXISTS listino_riga_id;

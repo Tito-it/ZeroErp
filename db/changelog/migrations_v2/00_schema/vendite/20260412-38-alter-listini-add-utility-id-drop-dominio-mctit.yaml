@@ -1,0 +1,59 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+# Refactor vendite.listini: sostituisce la colonna dominio VARCHAR
+# con utility_id FK a config.utilities.
+# Semantica: utility_id NULL = COMMERCIO, utility_id valorizzato = UTILITY.
+# La logica di dominio diventa derivata dalla FK, non da un enum stringa.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260412-38-alter-listini-add-utility-id-drop-dominio-mctit.yaml
+
+  - changeSet:
+      id: 20260412-38-alter-listini-add-utility-id-drop-dominio
+      author: mctit
+      comment: >
+        Aggiunge utility_id FK a config.utilities su vendite.listini.
+        Popola utility_id dalle righe con dominio = 'UTILITY' (se possibile).
+        Droppa CHECK chk_listini_dominio e colonna dominio.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- 1. Aggiunge FK a config.utilities
+              ALTER TABLE vendite.listini
+                ADD COLUMN IF NOT EXISTS utility_id integer
+                  REFERENCES config.utilities(id);
+
+              COMMENT ON COLUMN vendite.listini.utility_id
+                IS 'FK a config.utilities. NULL = listino commercio generico, valorizzato = listino specifico per utility.';
+
+              -- 2. Drop CHECK constraint su dominio
+              ALTER TABLE vendite.listini
+                DROP CONSTRAINT IF EXISTS chk_listini_dominio;
+
+              -- 3. Drop colonna dominio
+              ALTER TABLE vendite.listini
+                DROP COLUMN IF EXISTS dominio;
+
+              -- 4. Indice per filtro lista
+              CREATE INDEX IF NOT EXISTS ix_listini_utility
+                ON vendite.listini (utility_id);
+
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              DROP INDEX IF EXISTS vendite.ix_listini_utility;
+              ALTER TABLE vendite.listini
+                ADD COLUMN IF NOT EXISTS dominio character varying NOT NULL DEFAULT 'COMMERCIO';
+              UPDATE vendite.listini
+                 SET dominio = CASE WHEN utility_id IS NOT NULL THEN 'UTILITY' ELSE 'COMMERCIO' END;
+              ALTER TABLE vendite.listini
+                ADD CONSTRAINT chk_listini_dominio CHECK (dominio IN ('UTILITY', 'COMMERCIO'));
+              ALTER TABLE vendite.listini
+                DROP COLUMN IF EXISTS utility_id;

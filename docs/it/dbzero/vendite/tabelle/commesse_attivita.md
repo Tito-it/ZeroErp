@@ -38,6 +38,7 @@
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
 | user_update | text | NO | CURRENT_USER |
+| listino_riga_id | bigint | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -51,6 +52,7 @@
 | CHECK | chk_commesse_attivita_sorgente_pair |  |
 | CHECK | chk_commesse_attivita_stato_approvazione |  |
 | CHECK | chk_commesse_attivita_stato_emissione |  |
+| FOREIGN KEY | commesse_attivita_listino_riga_id_fkey | listino_riga_id |
 | FOREIGN KEY | fk_commesse_attivita_area_geo | area_geografica_id |
 | FOREIGN KEY | fk_commesse_attivita_articolo | articolo_id |
 | FOREIGN KEY | fk_commesse_attivita_commessa | commessa_id |

@@ -7,7 +7,6 @@
 | id | bigint | NO |  |
 | codice | character varying | NO |  |
 | descrizione | character varying | NO |  |
-| dominio | character varying | NO |  |
 | meta | jsonb | NO | '{}'::jsonb |
 | attivo | boolean | NO | true |
 | data_insert | timestamp with time zone | NO | now() |
@@ -15,17 +14,19 @@
 | data_update | timestamp with time zone | NO | now() |
 | user_update | text | NO | CURRENT_USER |
 | tx_id | uuid | YES |  |
+| utility_id | integer | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
-| CHECK | chk_listini_dominio |  |
+| FOREIGN KEY | listini_utility_id_fkey | utility_id |
 | PRIMARY KEY | pk_listini | id |
 | UNIQUE | uq_listini_codice | codice |
 
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
+| ix_listini_utility | `CREATE INDEX ix_listini_utility ON vendite.listini USING btree (utility_id)` |
 | pk_listini | `CREATE UNIQUE INDEX pk_listini ON vendite.listini USING btree (id)` |
 | uq_listini_codice | `CREATE UNIQUE INDEX uq_listini_codice ON vendite.listini USING btree (codice)` |
 
