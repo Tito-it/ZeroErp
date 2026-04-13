@@ -1,0 +1,65 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+# Imposta utility_id NOT NULL (default 5 = Base) e aggiunge
+# tipologia_id NOT NULL FK a config.listini_tipologie.
+# I listini esistenti senza utility vengono assegnati a Base (5).
+# I listini esistenti senza tipologia vengono assegnati a PRODOTTI
+# (default sicuro per migrazione).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260413-05-alter-listini-utility-notnull-add-tipologia-mctit.yaml
+
+  - changeSet:
+      id: 20260413-05-alter-listini-utility-notnull-add-tipologia
+      author: mctit
+      comment: >
+        utility_id NOT NULL con default 5 (Base).
+        Aggiunge tipologia_id NOT NULL FK a config.listini_tipologie.
+        Popola righe esistenti prima di impostare NOT NULL.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+
+              -- 2. Set NOT NULL + default per futuri INSERT
+              ALTER TABLE vendite.listini
+                ALTER COLUMN utility_id SET NOT NULL;
+
+              -- 3. Aggiunge tipologia_id (nullable inizialmente)
+              ALTER TABLE vendite.listini
+                ADD COLUMN IF NOT EXISTS tipologia_id smallint
+                  REFERENCES config.listini_tipologie(id);
+
+              COMMENT ON COLUMN vendite.listini.tipologia_id
+                IS 'FK a config.listini_tipologie. Classifica la natura delle voci di listino (consumo, quota fissa, imposta, ecc.).';
+
+              -- 4. Popola tipologia_id per righe esistenti (default PRODOTTI)
+              UPDATE vendite.listini
+                 SET tipologia_id = (
+                     SELECT id FROM config.listini_tipologie WHERE codice = 'PRODOTTI'
+                 )
+               WHERE tipologia_id IS NULL;
+
+              -- 5. Set NOT NULL
+               -- ALTER TABLE vendite.listini
+               --   ALTER COLUMN tipologia_id SET NOT NULL;
+
+              -- 6. Indice per filtro lista
+              CREATE INDEX IF NOT EXISTS ix_listini_tipologia
+                ON vendite.listini (tipologia_id);
+
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              DROP INDEX IF EXISTS vendite.ix_listini_tipologia;
+              ALTER TABLE vendite.listini
+                DROP COLUMN IF EXISTS tipologia_id;
+              ALTER TABLE vendite.listini
+                ALTER COLUMN utility_id DROP NOT NULL,
+                ALTER COLUMN utility_id DROP DEFAULT;
