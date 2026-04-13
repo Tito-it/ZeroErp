@@ -14,11 +14,13 @@
 | data_update | timestamp with time zone | NO | now() |
 | user_update | text | NO | CURRENT_USER |
 | tx_id | uuid | YES |  |
-| utility_id | integer | YES |  |
+| utility_id | integer | NO |  |
+| tipologia_id | smallint | NO |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| FOREIGN KEY | listini_tipologia_id_fkey | tipologia_id |
 | FOREIGN KEY | listini_utility_id_fkey | utility_id |
 | PRIMARY KEY | pk_listini | id |
 | UNIQUE | uq_listini_codice | codice |
@@ -26,6 +28,7 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
+| ix_listini_tipologia | `CREATE INDEX ix_listini_tipologia ON vendite.listini USING btree (tipologia_id)` |
 | ix_listini_utility | `CREATE INDEX ix_listini_utility ON vendite.listini USING btree (utility_id)` |
 | pk_listini | `CREATE UNIQUE INDEX pk_listini ON vendite.listini USING btree (id)` |
 | uq_listini_codice | `CREATE UNIQUE INDEX uq_listini_codice ON vendite.listini USING btree (codice)` |
@@ -33,10 +36,12 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
+| trg_listini_a10_guard_tipologia_utility_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_listini_guard_tipologia_utility()` |
+| trg_listini_a10_guard_tipologia_utility_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_listini_guard_tipologia_utility()` |
 | trg_listini_a10_listini_associazioni_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'listini_associazioni', 'listino_id', 'id', 'attivo')` |
 | trg_listini_a10_listini_versioni_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'listini_versioni', 'listino_id', 'id', 'attivo')` |
-| trg_listini_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_listini_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_listini_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_listini_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_listini_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 

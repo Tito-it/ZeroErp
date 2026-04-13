@@ -1,0 +1,7 @@
+id,codice,descrizione,e_consumo,e_quota_fissa,e_imposta,e_onere,e_prodotto,e_servizio,ordinamento,attivo,meta,data_insert,user_insert,data_update,user_update
+1,CONSUMO,Consumi,t,f,f,f,f,f,10,t,{},2026-04-13 00:00:00+02,SEED,2026-04-13 00:00:00+02,SEED
+2,QUOTA_FISSA,Quote fisse,f,t,f,f,f,f,20,t,{},2026-04-13 00:00:00+02,SEED,2026-04-13 00:00:00+02,SEED
+3,IMPOSTA,Imposte e accise,f,f,t,f,f,f,30,t,{},2026-04-13 00:00:00+02,SEED,2026-04-13 00:00:00+02,SEED
+4,ONERE_SISTEMA,Oneri di sistema,f,f,f,t,f,f,40,t,{},2026-04-13 00:00:00+02,SEED,2026-04-13 00:00:00+02,SEED
+5,PRODOTTI,Prodotti e ricambi,f,f,f,f,t,f,50,t,{},2026-04-13 00:00:00+02,SEED,2026-04-13 00:00:00+02,SEED
+6,SERVIZI,Servizi e assistenza,f,f,f,f,f,t,60,t,{},2026-04-13 00:00:00+02,SEED,2026-04-13 00:00:00+02,SEED
