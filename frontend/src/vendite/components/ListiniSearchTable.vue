@@ -12,7 +12,6 @@ import { useSearchTable } from '../../core/composables/useSearchTable'
 import { useTabFreshness } from '../../core/composables/useTabFreshness'
 import { MANAGE_ICONS } from '../../core/constants'
 import { statoVersioneListinoSeverity } from '../../core/utils/severity'
-import { useLookup } from '../../core/composables/useLookup'
 import { displayDate } from '../../core/utils/date'
 import { changeVersioneStato, deleteVersione, deleteListino } from '../api/listini'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
@@ -23,6 +22,7 @@ import Select from 'primevue/select'
 import Tag from 'primevue/tag'
 import Button from 'primevue/button'
 import NewButton from '../../core/components/NewButton.vue'
+import UtilityPerRuoloSelect from '../../core/components/UtilityPerRuoloSelect.vue'
 import AlertScadenzeWidget from './AlertScadenzeWidget.vue'
 import AttivaVersioneDialog from './AttivaVersioneDialog.vue'
 import ProgrammaChiusuraDialog from './ProgrammaChiusuraDialog.vue'
@@ -46,7 +46,6 @@ const { searchText, onPage, onSort, applyFilters, reload, paginatorProps } = use
 })
 
 const utilityFilter = ref(null)
-const { items: utilityOptions } = useLookup('config.utilities')
 
 const attivoFilter = ref(true)
 const attivoOptions = [
@@ -185,8 +184,9 @@ onMounted(() => store.fetchList())
     <div class="app-page-toolbar">
       <div class="app-page-filters">
         <InputText v-model="searchText" :placeholder="t('listini.search_placeholder')" style="width: 320px;" />
-        <Select v-model="utilityFilter" :options="utilityOptions" option-label="descrizione" option-value="id"
-          :placeholder="t('listini.filtro_utility')" show-clear @change="onUtilityChange" style="width: 200px;" />
+        <UtilityPerRuoloSelect v-model="utilityFilter"
+          :placeholder="t('listini.filtro_utility')" :show-clear="true"
+          @change="onUtilityChange" style="width: 200px;" />
         <Select v-model="attivoFilter" :options="attivoOptions" option-label="label" option-value="value"
           :placeholder="t('listini.col_attivo')" @change="onAttivoChange" style="width: 120px;" />
       </div>

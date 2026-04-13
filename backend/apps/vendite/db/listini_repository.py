@@ -80,6 +80,7 @@ RIGHE_ORDER_COLUMNS: dict[str, str] = {
     "uom_codice": "u.codice",
     "prezzo": "r.prezzo",
     "billing_account_codice": "ba.codice",
+    "billing_account_descrizione": "srd_ba.ragione_sociale_completa",
     "utility_descrizione": "cu.descrizione",
 }
 
@@ -604,14 +605,14 @@ class ListiniRepository:
         billing_account_id: int | None = None,
         utility_id: int | None = None,
         attivo: bool | None = True,
-        order_by: str = "articolo_codice",
+        order_by: str = "articolo_descrizione",
         order_dir: str = "asc",
         limit: int = 25,
         offset: int = 0,
     ) -> tuple[list[dict[str, Any]], int]:
         safe_limit = max(1, min(int(limit), 200))
         safe_offset = max(0, int(offset))
-        order_column = RIGHE_ORDER_COLUMNS.get(order_by, "ad.codice")
+        order_column = RIGHE_ORDER_COLUMNS.get(order_by, "ad.descrizione")
         safe_order_dir = "DESC" if order_dir.lower() == "desc" else "ASC"
 
         conditions: list[str] = ["r.listino_versione_id = %s"]
