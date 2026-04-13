@@ -57,7 +57,7 @@ async function loadPreview() {
     })
   )
   if (res) {
-    const data = res.data?.data || res.data || res
+    const data = res.data.data
     preview.value = data.preview || []
     previewCount.value = data.righe_coinvolte || 0
     step.value = 'preview'
@@ -65,6 +65,7 @@ async function loadPreview() {
 }
 
 async function applyVariazione() {
+  if (loading.value) return
   const res = await execute(
     () => applicaVariazionePercentuale(props.listinoId, props.versioneId, {
       variazione_percentuale: variazionePct.value,
@@ -120,7 +121,7 @@ function backToInput() {
         {{ t('listini.variazione_pct_righe_coinvolte', { count: previewCount }) }}
       </Message>
 
-      <DataTable :value="preview" striped-rows class="app-datatable"
+      <DataTable :value="preview" :loading="loading" striped-rows class="app-datatable"
         scrollable scroll-height="300px" data-key="riga_id">
         <Column field="articolo_codice" :header="t('listini.col_articolo')" style="width: 130px;" />
         <Column field="articolo_descrizione" :header="t('catalogo.col_descrizione')" style="min-width: 180px;" />

@@ -17,6 +17,15 @@ Indice test eseguiti:
 8) CommesseServiceTests.test_fn_list_commessa_attivita_invalid_limit
 9) CommesseServiceTests.test_pr_run_commesse_push_invalid_source_types
 10) CommesseServiceTests.test_build_handlers_only_active_sources
+11) CommesseServiceTests.test_variazione_eccezionale_ok
+12) CommesseServiceTests.test_variazione_eccezionale_commessa_stato_bloccato
+13) CommesseServiceTests.test_variazione_eccezionale_riga_fatturata_bloccata
+14) CommesseServiceTests.test_variazione_eccezionale_senza_motivo
+15) CommesseServiceTests.test_sblocca_prezzo_ok
+16) CommesseServiceTests.test_sblocca_prezzo_non_bloccato
+17) CommesseServiceTests.test_riallinea_prezzo_ok
+18) CommesseServiceTests.test_riallinea_prezzo_bloccato
+19) CommesseServiceTests.test_riallinea_prezzo_versione_cambiata_senza_conferma
 """
 
 from unittest import TestCase
@@ -190,3 +199,176 @@ class CommesseServiceTests(TestCase):
         with self.assertRaises(ServiceError) as ctx:
             fn_list_commessa_attivita(commessa_id=1, limit=500, offset=0)
         self.assertEqual(ctx.exception.code, "E_COMMESSA_VALIDATION")
+
+    # --- N7: Variazione prezzo eccezionale ---
+
+    _ATT_BASE = {
+        "id": 501,
+        "commessa_id": 10,
+        "prezzo_snapshot": "45.0000000000",
+        "prezzo_bloccato": False,
+        "listino_versione_id": 101,
+        "listino_riga_id": 301,
+        "pricing_mode": "FIXED",
+        "prezzo_da_riallineare": False,
+        "articolo_id": "019bbee2-5f6a-704f-bbd0-34ed84db252d",
+        "uom_id": 1,
+        "data_attivita": "2026-04-01",
+        "meta": None,
+        "commessa_stato": "LIBERO",
+        "af_id": 601,
+        "af_prezzo_unitario": "45.0000000000",
+        "af_prezzo_bloccato": False,
+        "fattura_riga_id": None,
+    }
+
+    # Scopo: N7 - variazione eccezionale su commessa LIBERO OK.
+    @patch("apps.vendite.services.commesse_service.transaction.atomic")
+    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    def test_variazione_eccezionale_ok(self, mock_repo_cls, mock_atomic):
+        from apps.vendite.services.commesse_service import fn_variazione_prezzo_eccezionale
+
+        repo = mock_repo_cls.return_value
+        repo.get_attivita_pricing.return_value = dict(self._ATT_BASE)
+
+        result = fn_variazione_prezzo_eccezionale(10, 501, {"prezzo": "42.00", "motivo": "sconto annuale"})
+
+        self.assertEqual(result["prezzo_nuovo"], "42.00")
+        self.assertTrue(result["prezzo_bloccato"])
+        repo.update_attivita_prezzo.assert_called_once()
+        call_kwargs = repo.update_attivita_prezzo.call_args.kwargs
+        self.assertTrue(call_kwargs["prezzo_bloccato"])
+
+    # Scopo: N7 - commessa in stato non ammesso rifiutata.
+    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    def test_variazione_eccezionale_commessa_stato_bloccato(self, mock_repo_cls):
+        from apps.vendite.services.commesse_service import fn_variazione_prezzo_eccezionale
+
+        repo = mock_repo_cls.return_value
+        att = dict(self._ATT_BASE)
+        att["commessa_stato"] = "CHIUSO"
+        repo.get_attivita_pricing.return_value = att
+
+        with self.assertRaises(ServiceError) as ctx:
+            fn_variazione_prezzo_eccezionale(10, 501, {"prezzo": "42.00", "motivo": "test"})
+        self.assertEqual(ctx.exception.code, "E_VENDITE_VARIAZIONE_PREZZO_NON_AMMESSA")
+
+    # Scopo: N7 - riga gia` fatturata bloccata.
+    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    def test_variazione_eccezionale_riga_fatturata_bloccata(self, mock_repo_cls):
+        from apps.vendite.services.commesse_service import fn_variazione_prezzo_eccezionale
+
+        repo = mock_repo_cls.return_value
+        att = dict(self._ATT_BASE)
+        att["fattura_riga_id"] = 999
+        repo.get_attivita_pricing.return_value = att
+
+        with self.assertRaises(ServiceError) as ctx:
+            fn_variazione_prezzo_eccezionale(10, 501, {"prezzo": "42.00", "motivo": "test"})
+        self.assertEqual(ctx.exception.code, "E_VENDITE_VARIAZIONE_PREZZO_NON_AMMESSA")
+
+    # Scopo: N7 - senza motivo rifiutata.
+    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    def test_variazione_eccezionale_senza_motivo(self, mock_repo_cls):
+        from apps.vendite.services.commesse_service import fn_variazione_prezzo_eccezionale
+
+        repo = mock_repo_cls.return_value
+        repo.get_attivita_pricing.return_value = dict(self._ATT_BASE)
+
+        with self.assertRaises(ServiceError) as ctx:
+            fn_variazione_prezzo_eccezionale(10, 501, {"prezzo": "42.00", "motivo": ""})
+        self.assertEqual(ctx.exception.code, "E_COMMESSA_VALIDATION")
+
+    # --- N7 sblocco ---
+
+    # Scopo: N7 sblocco - sblocco prezzo bloccato OK.
+    @patch("apps.vendite.services.commesse_service.transaction.atomic")
+    @patch("apps.vendite.services.commesse_service.ListiniRepository")
+    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    def test_sblocca_prezzo_ok(self, mock_comm_repo, mock_list_repo, mock_atomic):
+        from apps.vendite.services.commesse_service import fn_sblocca_prezzo
+
+        repo = mock_comm_repo.return_value
+        att = dict(self._ATT_BASE)
+        att["prezzo_bloccato"] = True
+        repo.get_attivita_pricing.return_value = att
+
+        mock_list_repo.return_value.test_resolver.return_value = {
+            "prezzo": "45.0000000000",
+            "listino_versione_id": 101,
+        }
+
+        result = fn_sblocca_prezzo(10, 501, {"motivo": "errore variazione precedente"})
+
+        self.assertFalse(result["prezzo_bloccato"])
+        self.assertEqual(result["prezzo_ricalcolato"], "45.0000000000")
+
+    # Scopo: N7 sblocco - prezzo non bloccato rifiutato.
+    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    def test_sblocca_prezzo_non_bloccato(self, mock_repo_cls):
+        from apps.vendite.services.commesse_service import fn_sblocca_prezzo
+
+        repo = mock_repo_cls.return_value
+        repo.get_attivita_pricing.return_value = dict(self._ATT_BASE)  # prezzo_bloccato=False
+
+        with self.assertRaises(ServiceError) as ctx:
+            fn_sblocca_prezzo(10, 501, {"motivo": "test"})
+        self.assertEqual(ctx.exception.code, "E_VENDITE_SBLOCCO_PREZZO_NON_AMMESSO")
+
+    # --- N5: Riallineamento prezzo ---
+
+    # Scopo: N5 - riallineamento OK su prezzo non bloccato.
+    @patch("apps.vendite.services.commesse_service.transaction.atomic")
+    @patch("apps.vendite.services.commesse_service.ListiniRepository")
+    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    def test_riallinea_prezzo_ok(self, mock_comm_repo, mock_list_repo, mock_atomic):
+        from apps.vendite.services.commesse_service import fn_riallinea_prezzo
+
+        repo = mock_comm_repo.return_value
+        repo.get_attivita_pricing.return_value = dict(self._ATT_BASE)
+
+        mock_list_repo.return_value.test_resolver.return_value = {
+            "prezzo": "46.0000000000",
+            "listino_versione_id": 101,
+        }
+
+        result = fn_riallinea_prezzo(10, 501, {})
+
+        self.assertEqual(result["prezzo_nuovo"], "46.0000000000")
+        self.assertFalse(result["versione_cambiata"])
+
+    # Scopo: N5 - riallineamento su prezzo bloccato rifiutato.
+    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    def test_riallinea_prezzo_bloccato(self, mock_repo_cls):
+        from apps.vendite.services.commesse_service import fn_riallinea_prezzo
+
+        repo = mock_repo_cls.return_value
+        att = dict(self._ATT_BASE)
+        att["prezzo_bloccato"] = True
+        repo.get_attivita_pricing.return_value = att
+
+        with self.assertRaises(ServiceError) as ctx:
+            fn_riallinea_prezzo(10, 501, {})
+        self.assertEqual(ctx.exception.code, "E_COMMESSA_VALIDATION")
+
+    # Scopo: N5 - versione cambiata senza conferma restituisce warning.
+    @patch("apps.vendite.services.commesse_service.ListiniRepository")
+    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    def test_riallinea_prezzo_versione_cambiata_senza_conferma(self, mock_comm_repo, mock_list_repo):
+        from apps.vendite.services.commesse_service import fn_riallinea_prezzo
+
+        repo = mock_comm_repo.return_value
+        repo.get_attivita_pricing.return_value = dict(self._ATT_BASE)  # listino_versione_id=101
+
+        mock_list_repo.return_value.test_resolver.return_value = {
+            "prezzo": "48.0000000000",
+            "listino_versione_id": 202,  # diversa!
+        }
+
+        result = fn_riallinea_prezzo(10, 501, {})
+
+        self.assertTrue(result["versione_cambiata"])
+        self.assertTrue(result["richiede_conferma"])
+        self.assertEqual(result["versione_originale_id"], 101)
+        self.assertEqual(result["versione_attuale_id"], 202)
+        repo.update_attivita_prezzo.assert_not_called()

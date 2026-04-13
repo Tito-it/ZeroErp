@@ -778,7 +778,101 @@ class CommesseRepository:
             durata_ms=None if row[6] is None else int(row[6]),
         )
 
-    # --- Gruppo 5: Event log ---
+    # --- Gruppo 5: Pricing operations (N5, N7, N7-sblocco) ---
+
+    # Scopo: Blocca l'attivita` commessa con FOR UPDATE per prevenire race condition
+    #        durante operazioni pricing (N5, N7, N7-sblocco).
+    def lock_attivita_for_update(self, attivita_id: int) -> bool:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT id FROM vendite.commesse_attivita WHERE id = %s FOR UPDATE",
+                [attivita_id],
+            )
+            return cursor.fetchone() is not None
+
+    # Scopo: Restituisce l'attivita` di una commessa con dati pricing e stato fatturazione.
+    def get_attivita_pricing(self, commessa_id: int, attivita_id: int) -> dict[str, Any] | None:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT
+                    ca.id,
+                    ca.commessa_id,
+                    ca.prezzo_snapshot,
+                    ca.prezzo_bloccato,
+                    ca.listino_versione_id,
+                    ca.listino_riga_id,
+                    ca.pricing_mode,
+                    ca.prezzo_da_riallineare,
+                    ca.articolo_id,
+                    ca.uom_id,
+                    ca.data_attivita,
+                    ca.meta,
+                    c.stato AS commessa_stato,
+                    c.billing_account_id,
+                    c.utility_id,
+                    c.emittente_soggetto_ruolo_id,
+                    af.id AS af_id,
+                    af.prezzo_unitario AS af_prezzo_unitario,
+                    af.prezzo_bloccato AS af_prezzo_bloccato,
+                    af.fattura_riga_id
+                  FROM vendite.commesse_attivita ca
+                  JOIN vendite.commesse c ON c.id = ca.commessa_id
+                  LEFT JOIN vendite.attivita_fatturabili af
+                    ON af.commessa_attivita_id = ca.id
+                 WHERE ca.commessa_id = %s
+                   AND ca.id = %s
+                """,
+                [commessa_id, attivita_id],
+            )
+            from apps.core.db._helpers import row_to_dict
+            return row_to_dict(cursor)
+
+    # Scopo: Aggiorna prezzo snapshot su commessa_attivita + prezzo_unitario su
+    #        attivita_fatturabili. Caller gestisce transazione.
+    def update_attivita_prezzo(
+        self,
+        attivita_id: int,
+        prezzo: str,
+        prezzo_bloccato: bool,
+        meta: dict[str, Any] | None,
+    ) -> None:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE vendite.commesse_attivita
+                   SET prezzo_snapshot = %(prezzo)s::numeric,
+                       prezzo_bloccato = %(bloccato)s,
+                       prezzo_da_riallineare = FALSE,
+                       meta = %(meta)s::jsonb,
+                       data_update = now()
+                 WHERE id = %(att_id)s
+                """,
+                {
+                    "att_id": attivita_id,
+                    "prezzo": prezzo,
+                    "bloccato": prezzo_bloccato,
+                    "meta": json.dumps(meta) if meta else None,
+                },
+            )
+            # Propaga su attivita_fatturabili (se esiste la riga collegata)
+            cursor.execute(
+                """
+                UPDATE vendite.attivita_fatturabili
+                   SET prezzo_unitario = %(prezzo)s::numeric,
+                       prezzo_bloccato = %(bloccato)s,
+                       data_update = now()
+                 WHERE commessa_attivita_id = %(att_id)s
+                   AND fattura_riga_id IS NULL
+                """,
+                {
+                    "att_id": attivita_id,
+                    "prezzo": prezzo,
+                    "bloccato": prezzo_bloccato,
+                },
+            )
+
+    # --- Gruppo 6: Event log ---
 
     # Scopo: Scrive un evento su vendite.event_log tramite fn_log_event.
     def log_event(

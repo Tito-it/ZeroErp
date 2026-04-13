@@ -442,6 +442,14 @@ Queste non hanno GIST ma beneficiano comunque degli operatori nativi nelle query
 
 ## 5) Analisi di impatto — Modifiche Backend e Frontend
 
+> **Stato: COMPLETATO** (12 aprile 2026)
+>
+> Le ottimizzazioni backend sono state applicate:
+> * `lookup_repository.py`: 5 query semplificate con `validita @> CURRENT_DATE`
+> * `listini_repository.py`: autoclose filter con `validita &&`, alert scadenze con `upper(validita)`
+> * Zero pattern doppio confronto residui nel backend
+> * Frontend: nessuna modifica necessaria (approccio A, colonne originali restano)
+
 Questa sezione descrive le modifiche necessarie **solo per le tabelle che hanno codice applicativo sviluppato**.
 Le tabelle DB only non richiedono interventi in questa sezione.
 

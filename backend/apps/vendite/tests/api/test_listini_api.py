@@ -43,7 +43,7 @@ _LISTINO_DETAIL = {
     "id": 10,
     "codice": "LIST-UTILITY",
     "descrizione": "Listino Utility Base",
-    "dominio": "UTILITY",
+    "utility_id": 1,
     "attivo": True,
     "versioni_count": 1,
     "associazioni_count": 1,
@@ -56,7 +56,7 @@ _LIST_LISTINI_RESULTS = [
         "id": 10,
         "codice": "LIST-UTILITY",
         "descrizione": "Listino Utility Base",
-        "dominio": "UTILITY",
+        "utility_id": 1,
         "attivo": True,
         "versioni_count": 1,
         "associazioni_count": 1,
@@ -131,10 +131,10 @@ class VenditeListiniApiTests(JwtMockedApiTest):
     def test_list_listini_filters_and_pagination(self, mocked_list, _mock_auth):
         mocked_list.return_value = (_LIST_LISTINI_RESULTS, _LIST_LISTINI_TOTAL)
         self.client.get(
-            "/api/v1/vendite/listini/?dominio=UTILITY&attivo=true&search=lis&limit=10&offset=10&order_by=codice&order_dir=desc"
+            "/api/v1/vendite/listini/?utility_id=1&attivo=true&search=lis&limit=10&offset=10&order_by=codice&order_dir=desc"
         )
         kwargs = mocked_list.call_args.kwargs
-        self.assertEqual(kwargs["dominio"], "UTILITY")
+        self.assertEqual(kwargs["utility_id"], 1)
         self.assertTrue(kwargs["attivo"])
         self.assertEqual(kwargs["search"], "lis")
         self.assertEqual(kwargs["limit"], 10)
@@ -149,7 +149,7 @@ class VenditeListiniApiTests(JwtMockedApiTest):
         mocked_create.return_value = _LISTINO_DETAIL
         response = self.client.post(
             "/api/v1/vendite/listini/",
-            data=self._json({"codice": "LIST-UTILITY", "descrizione": "Listino Utility Base", "dominio": "UTILITY"}),
+            data=self._json({"codice": "LIST-UTILITY", "descrizione": "Listino Utility Base", "utility_id": 1}),
             content_type="application/json",
         )
         self.assertEqual(response.status_code, 200)
@@ -236,11 +236,11 @@ class VenditeListiniApiTests(JwtMockedApiTest):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["data"]["stato"], "ATTIVA")
 
-    # Scopo: Verifica lista righe.
+    # Scopo: Verifica lista righe paginata.
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
     @patch("apps.vendite.api.views_listini.fn_list_righe")
     def test_list_righe_ok(self, mocked_list, _mock_auth):
-        mocked_list.return_value = _COLLECTION_RESPONSE
+        mocked_list.return_value = ([{"id": 1}], 1)
         response = self.client.get("/api/v1/vendite/listini/10/versioni/101/righe/")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["data"]["count"], 1)

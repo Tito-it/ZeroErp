@@ -7,7 +7,8 @@
 
 from __future__ import annotations
 
-from datetime import date, timedelta
+import json
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 from typing import Any
 from uuid import UUID
@@ -23,16 +24,17 @@ from apps.vendite.db.listini_repository import (
     LISTINO_UPDATE_COLUMNS,
     RIGA_CREATE_COLUMNS,
     RIGA_UPDATE_COLUMNS,
+    RIGHE_ORDER_COLUMNS,
     VERSIONE_CREATE_COLUMNS,
     VERSIONE_UPDATE_COLUMNS,
     ListiniRepository,
 )
 
 _ORDER_BY_VALIDI: frozenset[str] = frozenset(LISTINI_ORDER_COLUMNS.keys())
+_RIGHE_ORDER_BY_VALIDI: frozenset[str] = frozenset(RIGHE_ORDER_COLUMNS.keys())
 _ORDER_DIR_VALIDI: frozenset[str] = frozenset({"asc", "desc"})
-_DOMINI_VALIDI: frozenset[str] = frozenset({"UTILITY", "COMMERCIO"})
 _STATI_VERSIONE_VALIDI: frozenset[str] = frozenset({"BOZZA", "ATTIVA", "CHIUSA"})
-_LISTINO_NULLABLE_FIELDS: frozenset[str] = frozenset({"meta"})
+_LISTINO_NULLABLE_FIELDS: frozenset[str] = frozenset({"utility_id", "meta"})
 _VERSIONE_NULLABLE_FIELDS: frozenset[str] = frozenset({"valido_al", "meta"})
 _RIGA_NULLABLE_FIELDS: frozenset[str] = frozenset(
     {"billing_account_id", "utility_id", "emittente_soggetto_ruolo_id", "meta"}
@@ -48,6 +50,15 @@ _RIGA_CREATE_ALLOWED_KEYS: frozenset[str] = frozenset(RIGA_CREATE_COLUMNS.keys()
 _RIGA_UPDATE_ALLOWED_KEYS: frozenset[str] = frozenset(RIGA_UPDATE_COLUMNS.keys())
 _ASSOCIAZIONE_CREATE_ALLOWED_KEYS: frozenset[str] = frozenset(ASSOCIAZIONE_CREATE_COLUMNS.keys())
 _ASSOCIAZIONE_UPDATE_ALLOWED_KEYS: frozenset[str] = frozenset(ASSOCIAZIONE_UPDATE_COLUMNS.keys())
+
+
+# Scopo: Normalizza il campo meta da stringa JSON o dict a dict.
+def _parse_meta_json(meta_raw: Any) -> dict[str, Any]:
+    if not meta_raw:
+        return {}
+    if isinstance(meta_raw, str):
+        return json.loads(meta_raw)
+    return meta_raw if isinstance(meta_raw, dict) else {}
 
 
 class _MissingType:
@@ -87,6 +98,29 @@ def _validate_order(order_by: str, order_dir: str, function_name: str) -> tuple[
         code="E_VENDITE_VALIDATION",
         message="Parametri ordinamento non validi.",
         detail="order_by deve essere uno tra: " + ", ".join(sorted(_ORDER_BY_VALIDI)),
+        context={"order_by": order_by},
+        function_name=function_name,
+        log_to_db=True,
+    )
+    ErrorManager.require(
+        order_dir in _ORDER_DIR_VALIDI,
+        code="E_VENDITE_VALIDATION",
+        message="Parametri ordinamento non validi.",
+        detail="order_dir deve essere 'asc' o 'desc'",
+        context={"order_dir": order_dir},
+        function_name=function_name,
+        log_to_db=True,
+    )
+    return order_by, order_dir
+
+
+# Scopo: Valida ordinamento lista righe listino contro whitelist locale.
+def _validate_righe_order(order_by: str, order_dir: str, function_name: str) -> tuple[str, str]:
+    ErrorManager.require(
+        order_by in _RIGHE_ORDER_BY_VALIDI,
+        code="E_VENDITE_VALIDATION",
+        message="Parametri ordinamento non validi.",
+        detail="order_by deve essere uno tra: " + ", ".join(sorted(_RIGHE_ORDER_BY_VALIDI)),
         context={"order_by": order_by},
         function_name=function_name,
         log_to_db=True,
@@ -517,7 +551,7 @@ def _get_associazione_or_raise(
 def _translate_integrity_error(exc: IntegrityError, *, function_name: str, entity: str) -> None:
     error_text = str(exc)
     constraint_map: tuple[tuple[str, str, str], ...] = (
-        ("chk_listini_dominio", "Dominio listino non valido.", "dominio deve essere UTILITY o COMMERCIO."),
+        ("fk_listini_utility", "Utility non valida.", "utility_id non corrisponde a nessuna utility in config.utilities."),
         ("uq_listini_codice", "Codice listino duplicato.", "Esiste gia' un listino con lo stesso codice."),
         (
             "uq_listini_versioni_listino_codice",
@@ -622,25 +656,12 @@ def _extract_listino_payload(
             function_name=function_name,
             message=message,
         )
-        dominio_required = _extract_enum_string(
-            payload,
-            "dominio",
-            function_name=function_name,
-            allowed_values=_DOMINI_VALIDI,
-            nullable=False,
-            message=message,
-        )
-        ErrorManager.require(
-            dominio_required is not _MISSING,
-            code="E_VENDITE_VALIDATION",
-            message=message,
-            detail="dominio obbligatorio.",
-            context={"field": "dominio"},
-            function_name=function_name,
-            log_to_db=True,
-        )
-        assert dominio_required is not _MISSING
-        data["dominio"] = dominio_required
+        # utility_id: nullable (NULL = commercio, valorizzato = utility specifica)
+        raw_utility_id = payload.get("utility_id")
+        if raw_utility_id is not None:
+            data["utility_id"] = int(raw_utility_id)
+        else:
+            data["utility_id"] = None
     else:
         descrizione = _extract_string(
             payload,
@@ -652,16 +673,9 @@ def _extract_listino_payload(
         if descrizione is not _MISSING:
             data["descrizione"] = descrizione
 
-        dominio = _extract_enum_string(
-            payload,
-            "dominio",
-            function_name=function_name,
-            allowed_values=_DOMINI_VALIDI,
-            nullable=False,
-            message=message,
-        )
-        if dominio is not _MISSING:
-            data["dominio"] = dominio
+        raw_utility_id = payload.get("utility_id", _MISSING)
+        if raw_utility_id is not _MISSING:
+            data["utility_id"] = int(raw_utility_id) if raw_utility_id is not None else None
 
     attivo = _extract_present_bool(
         payload,
@@ -1084,7 +1098,7 @@ def _validate_versione_state_transition(
 # Scopo: Restituisce lista listini paginata con filtri e ordinamento validati.
 def fn_list_listini(
     *,
-    dominio: str | None = None,
+    utility_id: int | None = None,
     attivo: bool | None = None,
     search: str | None = None,
     order_by: str = "codice",
@@ -1093,20 +1107,20 @@ def fn_list_listini(
     offset: int = 0,
 ) -> tuple[list[dict[str, object]], int]:
     function_name = "vendite.listini_service.fn_list_listini"
-    if dominio is not None:
+    if utility_id is not None:
         ErrorManager.require(
-            dominio in _DOMINI_VALIDI,
+            isinstance(utility_id, int) and utility_id > 0,
             code="E_VENDITE_VALIDATION",
-            message="Filtro dominio non valido.",
-            detail="dominio deve essere UTILITY o COMMERCIO.",
-            context={"dominio": dominio},
+            message="Filtro utility non valido.",
+            detail="utility_id deve essere un intero positivo.",
+            context={"utility_id": utility_id},
             function_name=function_name,
             log_to_db=True,
         )
     order_by, order_dir = _validate_order(order_by, order_dir, function_name)
     repository = ListiniRepository()
     return repository.list_listini(
-        dominio=dominio,
+        utility_id=utility_id,
         attivo=attivo,
         search=search,
         order_by=order_by,
@@ -1547,12 +1561,36 @@ def fn_change_versione_state(listino_id: int, versione_id: int, payload: dict[st
     return fn_get_versione(listino_id, versione_id)
 
 
-# Scopo: Restituisce la lista righe prezzo della versione con envelope uniforme.
-def fn_list_righe(listino_id: int, versione_id: int) -> dict[str, object]:
+# Scopo: Restituisce la lista paginata righe prezzo della versione con filtri opzionali.
+def fn_list_righe(
+    listino_id: int,
+    versione_id: int,
+    *,
+    search: str | None = None,
+    billing_account_id: int | None = None,
+    utility_id: int | None = None,
+    attivo: bool | None = True,
+    order_by: str = "articolo_codice",
+    order_dir: str = "asc",
+    limit: int = 25,
+    offset: int = 0,
+) -> tuple[list[dict[str, object]], int]:
     function_name = "vendite.listini_service.fn_list_righe"
     _get_versione_or_raise(listino_id, versione_id, function_name=function_name)
+    order_by, order_dir = _validate_righe_order(order_by, order_dir, function_name)
     repository = ListiniRepository()
-    return _build_results_response(repository.list_righe(listino_id, versione_id))
+    return repository.list_righe(
+        listino_id,
+        versione_id,
+        search=search,
+        billing_account_id=billing_account_id,
+        utility_id=utility_id,
+        attivo=attivo,
+        order_by=order_by,
+        order_dir=order_dir,
+        limit=limit,
+        offset=offset,
+    )
 
 
 # Scopo: Crea una nuova riga prezzo dopo validazione articolo/UoM e restituisce il dettaglio.
@@ -1902,6 +1940,15 @@ def fn_rettifica_controllata_riga(
     )
     assert isinstance(motivo, str)
     motivo = motivo.strip()
+    ErrorManager.require(
+        len(motivo) <= 500,
+        code="E_VENDITE_VALIDATION",
+        message="Motivo troppo lungo.",
+        detail="Massimo 500 caratteri.",
+        context={"field": "motivo", "length": len(motivo)},
+        function_name=function_name,
+        log_to_db=False,
+    )
 
     repository = ListiniRepository()
 
@@ -1933,15 +1980,10 @@ def fn_rettifica_controllata_riga(
         )
 
         # --- Audit in meta ---
-        import json
-        from datetime import datetime
-
-        meta_corrente = riga.get("meta") or {}
-        if isinstance(meta_corrente, str):
-            meta_corrente = json.loads(meta_corrente)
+        meta_corrente = _parse_meta_json(riga.get("meta"))
         rettifiche = list(meta_corrente.get("rettifiche_controllate", []))
         rettifiche.append({
-            "data": datetime.utcnow().isoformat() + "Z",
+            "data": datetime.now(timezone.utc).isoformat(),
             "prezzo_precedente": str(riga["prezzo"]),
             "prezzo_nuovo": str(nuovo_prezzo),
             "motivo": motivo,
@@ -2079,13 +2121,14 @@ def fn_applica_variazione_percentuale(
 
     # --- Esecuzione ---
     repository = ListiniRepository()
+    filtro_str = [str(a) for a in filtro_articoli] if filtro_articoli else None
 
     if dry_run:
         count, preview = repository.applica_variazione_percentuale(
             versione_id=versione_id,
             variazione_pct=str(variazione_pct),
             arrotondamento_decimali=arrotondamento_decimali,
-            filtro_articoli=[str(a) for a in filtro_articoli] if filtro_articoli else None,
+            filtro_articoli=filtro_str,
             dry_run=True,
         )
         return {
@@ -2101,8 +2144,24 @@ def fn_applica_variazione_percentuale(
             versione_id=versione_id,
             variazione_pct=str(variazione_pct),
             arrotondamento_decimali=arrotondamento_decimali,
-            filtro_articoli=[str(a) for a in filtro_articoli] if filtro_articoli else None,
+            filtro_articoli=filtro_str,
             dry_run=False,
+        )
+        # Audit sulla meta della versione
+        meta_versione = _parse_meta_json(versione.get("meta"))
+        variazioni_pct = list(meta_versione.get("variazioni_percentuali", []))
+        variazioni_pct.append({
+            "data": datetime.now(timezone.utc).isoformat(),
+            "variazione_percentuale": str(variazione_pct),
+            "arrotondamento_decimali": arrotondamento_decimali,
+            "righe_aggiornate": count,
+            "filtro_articoli": filtro_str,
+        })
+        meta_versione["variazioni_percentuali"] = variazioni_pct
+        repository.update_versione(
+            listino_id=listino_id,
+            versione_id=versione_id,
+            data={"meta": meta_versione},
         )
 
     return {

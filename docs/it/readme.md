@@ -13,17 +13,17 @@ L'obiettivo e` ridurre la complessita` superflua mantenendo rigore su dati, rego
 >
 > DB e API backend operativi su 13 schemi. Frontend Vue operativo su: layout applicativo,
 > gestione soggetti (PF/PG/ENTE), gestione geografica (7 tab CRUD), pannello configurazione (67 tabelle),
-> amministrazione software (operatori, profili reparto, permessi, audit log,
-> drawer dedicato gestione permessi raggiungibile dalla riga lista),
+> amministrazione software (operatori, profili reparto, permessi, audit log),
 > gestione clienti/fornitori (drawer end-to-end con sotto-drawer),
 > gestione pratiche v2 (dashboard, flussi, note, allegati, giornale),
 > catalogo articoli (CRUD, UoM, BoM, note) **completato**,
-> listini vendita (versioni, righe prezzo, associazioni, test resolver) — backend+frontend da verificare su UI reale,
-> impostazioni parametri di sistema con override personali ed emittente (drawer admin con selettore scope),
-> integrazione AI (11 tool: pratiche, soggetti, clienti, articoli, operatori — widget conversazionale),
+> listini vendita v3 **completato** (pricing completo, rettifica controllata, alert scadenze,
+> variazione % massa, riallineamento/variazione prezzo commessa),
+> migrazione `daterange` nativo PostgreSQL **completata** (18 tabelle, trigger generico, ottimizzazione backend),
+> impostazioni parametri di sistema con override personali ed emittente,
+> integrazione AI (11 tool: pratiche, soggetti, clienti, articoli, operatori),
 > autenticazione completa (email, token, reset pw, invito operatore).
-> Rettifiche prezzi (DB-L4) estratte in WIP dedicato.
-> Non ancora rilasciato per produzione.
+> 1231 test backend. Non ancora rilasciato per produzione.
 
 ---
 
@@ -146,10 +146,10 @@ Il modello e` pensato per supportare processi non lineari e gestione multi-repar
 
 ## Stato dello Sviluppo
 
-Fotografia sintetica (7 aprile 2026):
+Fotografia sintetica (12 aprile 2026):
 
-- Database core: operativo (13 schemi, 200+ tabelle, trigger, funzioni, viste)
-- API backend: operativo (890+ test, 80+ endpoint)
+- Database core: operativo (13 schemi, 200+ tabelle, trigger, funzioni, viste, **daterange nativo**)
+- API backend: operativo (1231 test, 90+ endpoint)
 - Motore pratiche: operativo (workflow, giornale, sospensioni, macchina a stati, note, allegati)
 - Sistema permessi: operativo a 2 livelli
   - Livello 1: area funzionale (TUTTO/LETTURA/BLOCCATO) — sidebar, route guard, CSS protect
@@ -163,9 +163,16 @@ Fotografia sintetica (7 aprile 2026):
   - Articoli CRUD con UoM operative, distinta base, note (19 endpoint, 49 test)
   - Unita' di misura CRUD (backend + frontend)
   - Documentazione consolidata in [work-done/gestione-articoli.md](./dev/work-done/gestione-articoli.md)
-- Listini vendita: backend + frontend implementati, **da testare su UI reale**
-  - Versioni, righe prezzo, associazioni, test resolver (18 endpoint, 29 test)
-  - Roadmap consolidata in [work-in-progress/sviluppo-listini.md](./dev/work-in-progress/sviluppo-listini.md)
+- Listini vendita v3: **completato** (Sprint B-v3 chiuso)
+  - Versioni, righe prezzo, associazioni, test resolver, clone, auto-close (25 endpoint, 42 test listini)
+  - Variazione % massa su BOZZA con dry_run, alert scadenze con widget, rettifica controllata con lock FOR UPDATE
+  - Pricing commesse: riallineamento prezzo, variazione eccezionale, sblocco (3 endpoint, 9 test commesse)
+  - Trigger DB defense-in-depth `trgfn_listini_righe_guard_stato`
+  - Documentazione: [sviluppo-listini-v3.md](./dev/work-in-progress/sviluppo-listini-v3.md), API: [api_listini.md](./backend/vendite/manual/api_listini.md), [api_commesse_pricing.md](./backend/vendite/manual/api_commesse_pricing.md)
+- Migrazione `daterange` nativo PostgreSQL: **completata**
+  - 18 tabelle migrate (Fase 0-3), infrastruttura `script.trgfn_set_validita()`, linee guida SQL §7b
+  - Backend ottimizzato: `validita @>` al posto dei doppi confronti `valido_dal`/`valido_al`
+  - Analisi: [migrazione-daterange.md](./dev/work-in-progress/migrazione-daterange.md)
 - Rettifiche prezzi (DB-L4): estratte in [work-in-progress/sviluppo-rettifiche.md](./dev/work-in-progress/sviluppo-rettifiche.md), **da implementare**
 - Integrazione AI v1: operativa, **11 tool** registrati
   - Pratiche (cerca, dettaglio, flussi)
@@ -184,7 +191,7 @@ Fotografia sintetica (7 aprile 2026):
   - Gestione clienti/fornitori: drawer con sotto-drawer contatti/indirizzi/conti
   - Gestione pratiche v2: dashboard, flussi, note, allegati, giornale
   - Catalogo articoli: lista, drawer con 3 tab (UoM, BoM, note), `ArticoloLookup` BB cross-dominio
-  - Listini: lista, drawer con versioni/associazioni, sub-drawer righe, test resolver
+  - Listini v3: lista, drawer con versioni/associazioni, sub-drawer righe, test resolver, dialog variazione %, widget alert scadenze, dialog programma chiusura
   - Impostazioni parametri: lista multi-scope con drawer override (`PARAMETER_SCOPE` come unica fonte di verita')
   - Pannello configurazione: 67 tabelle CRUD generiche
   - Logo brand: nuovo PNG ottimizzato 256x256 (frontend) + favicon PNG/ICO + master 512x512 in `docs/assets/images/`
@@ -233,12 +240,13 @@ Struttura essenziale:
 10. ~~Autenticazione completa (email, token, reset pw, invito)~~ — fatto, 2FA pianificato
 11. ~~Integrazione AI v1 (11 tool, widget conversazionale, glossario IT)~~ — fatto, v2 in corso
 12. ~~Catalogo articoli + UoM + BoM + note~~ — **completato** (work-done)
-13. ~~Listini vendita (backend + frontend)~~ — fatto, in test UI
-14. ~~Parametri di sistema multi-scope (drawer admin con scope user/emittente)~~ — fatto
-15. Test UI reali su listini, pratiche, clienti, fornitori, parametri — in corso
-16. **Rettifiche prezzi DB-L4** (motore delta, canali manuale/automatico, audit) — pianificato in WIP dedicato
-17. Permessi v2 (livello oggetto) — pianificato
-18. Integrazione vendite/pratiche e moduli verticali
+13. ~~Listini vendita v3 (pricing completo, rettifica, alert, variazione massa)~~ — **completato**
+14. ~~Migrazione `daterange` nativo PostgreSQL (18 tabelle, backend ottimizzato)~~ — **completato**
+15. ~~Parametri di sistema multi-scope (drawer admin con scope user/emittente)~~ — fatto
+16. Test UI reali su pratiche, clienti, fornitori, parametri — in corso
+17. **Rettifiche prezzi DB-L4** (motore delta, canali manuale/automatico, audit) — pianificato in WIP dedicato
+18. Permessi v2 (livello oggetto) — pianificato
+19. Integrazione vendite/pratiche e moduli verticali
 
 ---
 

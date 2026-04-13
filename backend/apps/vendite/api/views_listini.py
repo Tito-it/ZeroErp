@@ -62,7 +62,7 @@ def _optional_qp_bool_strict(request: Request, key: str) -> bool | None:
 def _listino_write_fields(*, include_codice: bool) -> dict[str, serializers.Field]:
     fields: dict[str, serializers.Field] = {
         "descrizione": serializers.CharField(required=False),
-        "dominio": serializers.CharField(required=False),
+        "utility_id": serializers.IntegerField(required=False, allow_null=True),
         "meta": serializers.JSONField(required=False, allow_null=True),
         "attivo": serializers.BooleanField(required=False),
     }
@@ -197,7 +197,7 @@ class ApiListiniList(DomainAPIView):
     @extend_schema(
         parameters=[
             OpenApiParameter(name="search", type=str, location=OpenApiParameter.QUERY, required=False),
-            OpenApiParameter(name="dominio", type=str, location=OpenApiParameter.QUERY, required=False),
+            OpenApiParameter(name="utility_id", type=int, location=OpenApiParameter.QUERY, required=False),
             OpenApiParameter(name="attivo", type=bool, location=OpenApiParameter.QUERY, required=False),
             OpenApiParameter(name="limit", type=int, location=OpenApiParameter.QUERY, required=False),
             OpenApiParameter(name="offset", type=int, location=OpenApiParameter.QUERY, required=False),
@@ -217,7 +217,7 @@ class ApiListiniList(DomainAPIView):
         p = parse_list_params(qp, default_order="codice")
         require_min_search_length(p["search"], field_name="search")
         results, total = fn_list_listini(
-            dominio=qp_str(qp.get("dominio")),
+            utility_id=qp_int_strict(qp.get("utility_id"), "utility_id", 0) if qp.get("utility_id") else None,
             attivo=_optional_qp_bool_strict(request, "attivo"),
             search=p["search"],
             order_by=p["order_by"],
@@ -400,8 +400,19 @@ class ApiListinoVersioneClona(DomainAPIView):
 
 class ApiListinoVersioneRigheList(DomainAPIView):
     area_funzionale = "vendite"
+    is_search_endpoint = True
 
     @extend_schema(
+        parameters=[
+            OpenApiParameter(name="search", type=str, location=OpenApiParameter.QUERY, required=False),
+            OpenApiParameter(name="billing_account_id", type=int, location=OpenApiParameter.QUERY, required=False),
+            OpenApiParameter(name="utility_id", type=int, location=OpenApiParameter.QUERY, required=False),
+            OpenApiParameter(name="attivo", type=bool, location=OpenApiParameter.QUERY, required=False),
+            OpenApiParameter(name="limit", type=int, location=OpenApiParameter.QUERY, required=False),
+            OpenApiParameter(name="offset", type=int, location=OpenApiParameter.QUERY, required=False),
+            OpenApiParameter(name="order_by", type=str, location=OpenApiParameter.QUERY, required=False),
+            OpenApiParameter(name="order_dir", type=str, location=OpenApiParameter.QUERY, required=False),
+        ],
         responses={
             200: inline_serializer(
                 name="VenditeListinoRigheListResponse",
@@ -409,10 +420,23 @@ class ApiListinoVersioneRigheList(DomainAPIView):
             )
         },
     )
-    # Scopo: Restituisce via GET la lista righe prezzo della versione.
+    # Scopo: Restituisce via GET la lista paginata righe prezzo della versione con filtri.
     def get(self, request: Request, listino_id: int, ver_id: int) -> JsonResponse:
-        del request
-        return success_response(fn_list_righe(listino_id, ver_id))
+        qp = request.query_params
+        p = parse_list_params(qp, default_order="articolo_codice")
+        results, total = fn_list_righe(
+            listino_id,
+            ver_id,
+            search=p["search"],
+            billing_account_id=qp_int_strict(qp.get("billing_account_id"), "billing_account_id", 0) if qp.get("billing_account_id") else None,
+            utility_id=qp_int_strict(qp.get("utility_id"), "utility_id", 0) if qp.get("utility_id") else None,
+            attivo=_optional_qp_bool_strict(request, "attivo"),
+            order_by=p["order_by"],
+            order_dir=p["order_dir"],
+            limit=p["limit"],
+            offset=p["offset"],
+        )
+        return success_response(paginated_envelope(results, total, p["page"], p["limit"]))
 
     @extend_schema(
         request=_RIGA_CREATE_REQUEST,

@@ -4,7 +4,7 @@
 >
 > Riferimento metodologico: [sviluppo-concentrico.md](sviluppo-concentrico.md)
 
-*Ultimo aggiornamento: 7 aprile 2026*
+*Ultimo aggiornamento: 12 aprile 2026*
 
 ---
 
@@ -53,8 +53,8 @@
 | Componente    | Tipo       | Stato     | Descrizione                                                                                                                              |
 | ------------- | ---------- | --------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
 | `core`        | App Django | Operativo | error_manager, middleware, permissions, endpoint_helpers, pagination, throttling, tracciamento processi/job, audit sessioni, request log |
-| `dbops`       | Schema DB  | Operativo | fn_run_automations, apply_fk_index_policy, registry task, vw_duplicate_indexes, audit_log, sessioni_utente, request_log                  |
-| `script`      | Schema DB  | Operativo | fn_log_and_raise_error, viste e funzioni riusabili                                                                                       |
+| `dbops`       | Schema DB  | Operativo | fn_run_automations, apply_fk_index_policy, registry task, vw_duplicate_indexes, audit_log, sessioni_utente, request_log, **automazione daterange** |
+| `script`      | Schema DB  | Operativo | fn_log_and_raise_error, viste e funzioni riusabili, **trgfn_set_validita** (trigger generico daterange)                                   |
 | `public`      | Schema DB  | Operativo | version_info                                                                                                                             |
 | `maintenance` | Schema DB  | Operativo | Job schedulati pgAgent, job_run_log                                                                                                      |
 
@@ -63,7 +63,7 @@
 - Error handling centralizzato (`ServiceError`, `ErrorManager.require`)
 - Middleware API (exception handling, JWT audit, request context, request log)
 - Pattern uniformi: `handle_post_json`, paginazione, throttling, search validators
-- Automazioni DB: audit fields, tx_id, storicizzazione, lock colonne, protezione attivo
+- Automazioni DB: audit fields, tx_id, storicizzazione, lock colonne, protezione attivo, **daterange nativo** (`script.trgfn_set_validita`)
 - **Tracciamento processi e job**: API per audit log, task registry multi-dominio, job run log (6 endpoint REST, 27 test)
 - **Audit sessioni**: login/refresh JWT tracciati in `dbops.sessioni_utente` con IP, user_agent, request_id (19 test)
 - **Request logging**: ogni request `/api/*` registrata in `dbops.request_log` con metodo, path, status, durata
@@ -217,7 +217,7 @@ Piano v1 (storico): [work-done/piano-gestione-pratiche.md](dev/work-done/piano-g
 
 | Componente    | Tipo       | DB        | Backend   | Descrizione                                                                            |
 | ------------- | ---------- | --------- | --------- | -------------------------------------------------------------------------------------- |
-| `vendite`     | App Django | Operativo | Operativo | Ciclo attivo: preventivi, ordini, DDT, fatture, pipeline fatturazione, lotti, commesse, **listini** |
+| `vendite`     | App Django | Operativo | Operativo | Ciclo attivo: preventivi, ordini, DDT, fatture, pipeline fatturazione, lotti, commesse, **listini v3** (pricing completo + rettifiche + alert) |
 | `acquisti`    | App Django | Operativo | Stub      | Ciclo passivo: richieste offerta, ordini, DDT, fatture                                 |
 | `magazzino`   | App Django | Operativo | Stub      | Movimenti, giacenze, lotti, seriali                                                    |
 | `pagamenti`   | App Django | Operativo | Stub      | Scadenze, riconciliazioni                                                              |
@@ -260,6 +260,8 @@ I processi **massivi** (lotto fatturazione, import batch) mantengono la propria 
 | Builder XML SDI                         | In corso (payload pronto, generazione XML da fare) |
 | Persistenza esito SDI                   | Da fare                                            |
 | Commesse (push, orchestrator, handlers) | Operativo                                          |
+| Listini v3 (N2/N5/N6/N7/N8a)           | Operativo — Sprint B-v3 completato (aprile 2026)   |
+| Pricing commesse (N5/N7/N7-sblocco)    | Operativo — riallineamento, variazione, sblocco    |
 
 ---
 
@@ -401,7 +403,7 @@ Gli anelli esterni possono dipendere direttamente da anelli non adiacenti — ve
   - Backend + frontend chiusi, 49 test verdi, doc consolidata in [work-done/gestione-articoli.md](dev/work-done/gestione-articoli.md)
   - Building block prodotti: `ArticoloLookup.vue` cross-dominio + endpoint lookup
 - ~~Consolidamento WIP listini~~ — **FATTO** (6 aprile 2026)
-  - I due vecchi WIP `gestione-articoli-listini.md` + `gestione-listini.md` consolidati in [sviluppo-listini.md](dev/work-in-progress/sviluppo-listini.md)
+  - I due vecchi WIP `gestione-articoli-listini.md` + `gestione-listini.md` consolidati in sviluppo-listini.md (ora in [work-done](dev/work-done/sviluppo-listini-v1.md), superseded da [sviluppo-listini-v3.md](dev/work-in-progress/sviluppo-listini-v3.md))
   - Estratte rettifiche prezzi (DB-L4) in [sviluppo-rettifiche.md](dev/work-in-progress/sviluppo-rettifiche.md)
 - ~~Drawer dedicato gestione permessi operatore~~ — **FATTO** (6 aprile 2026)
   - `OperatorePermessiTab` reso riutilizzabile (watch su `authUserId`)
@@ -419,28 +421,57 @@ Gli anelli esterni possono dipendere direttamente da anelli non adiacenti — ve
 - ~~Logo brand ottimizzato~~ — **FATTO** (5 aprile 2026)
   - Master 1640x1640 → versioni ottimizzate 512/256/32 px per frontend, favicon (PNG+ICO), docs
 
+### Completato (8-12 aprile 2026)
+
+- ~~Migrazione `daterange` nativo PostgreSQL~~ — **FATTO** (12 aprile 2026)
+  - Infrastruttura: `dbops.automazione_overlap` + `script.trgfn_set_validita()` (trigger generico riusabile)
+  - Fase 1: 5 tabelle con GIST migrate (listini_versioni, listini_associazioni, uom_conversioni, contratti, articoli_componenti) + `fn_resolve_prezzo_listino` aggiornata
+  - Fase 2: 11 tabelle config/anagrafiche migrate + 5 funzioni permessi semplificate con `@>`
+  - Fase 3: 2 tabelle pratiche con `tstzrange`
+  - Backend: ottimizzazione query repository (`validita @>` al posto dei doppi confronti)
+  - Linee guida SQL: sezione 7b aggiunta
+  - Analisi: [migrazione-daterange.md](dev/work-in-progress/migrazione-daterange.md)
+- ~~Listini v3 — Sprint B completo~~ — **FATTO** (12 aprile 2026)
+  - **N8a** Variazione % massa su BOZZA (backend + frontend dialog + 9 test)
+  - **N2** Alert scadenze versioni (backend + frontend widget badge + 2 test)
+  - **N6** Rettifica controllata riga ATTIVA non propagata (backend + trigger DB defense-in-depth + 4 test)
+  - **N5** Riallineamento prezzo commessa (backend + 3 test)
+  - **N7** Variazione prezzo eccezionale commessa + sblocco (backend + 6 test)
+  - Avviso UX programmazione chiusura versione ATTIVA (`ProgrammaChiusuraDialog.vue`)
+  - Documentazione: N3 lifecycle preventivo→commessa, N4 nota match_level 3, N8b guida "listino post-it"
+  - 2 doc API create/aggiornate, error policies registrate, 1231 test totali
+  - Analisi: [sviluppo-listini-v3.md](dev/work-in-progress/sviluppo-listini-v3.md)
+- ~~Emittenti fiscali CRUD + BA mapping + Utilities~~ — **FATTO** (8 aprile 2026)
+  - Admin CRUD + sub-resource mapping BA + matrice utilities slot/override
+  - BB `list_entity_utility_matrix` + `UtilityPerRuoloSelect`, validazione P.IVA
+- ~~Matrice utilities tipi ruolo~~ — **FATTO** (8 aprile 2026)
+  - CRUD admin `config.utilities_tipi_ruolo`, app config attivata, drawer tab usage
+- ~~Refactor operatore-emittenti 1-a-1~~ — **FATTO** (9 aprile 2026)
+  - `JwtAuditAuthentication` Option A pura, GUC session-scoped
+  - BE fasi 2-4 + FE completa + 7 fix critici review
+- ~~Refactor invariante univocita' listini~~ — **FATTO** (10 aprile 2026)
+  - Drop `priorita` da versioni e associazioni, constraint GIST cross-listino
+  - Permessi v2: 6 fasi, `model_permission` su 33 view, `IvaSelect`/`ContoContabileSelect`
+
 ### In corso
 
 - **Gestione Soggetti**: backend + frontend completati — in fase di test UI
 - **Gestione Geografica**: operativo — UI da migliorare
 - **Gestione Clienti/Fornitori**: drawer end-to-end operativo, v2 (subentro/disdetta) pianificata
 - **Gestione Pratiche v2**: frontend operativo — in fase di test UI
-- **Listini vendita**: backend + frontend implementati — in fase di test UI
 - **Integrazione AI v2**: evoluzione con contesto dinamico e nuovi tool — WIP
 - **Autenticazione 2FA**: fase 4 TOTP — WIP
-- **Permessi v2**: livello oggetto e granularita' fine — pianificato
+- **Permessi v2**: livello oggetto e granularita' fine — in corso (33 view gia' configurate)
 - **Rettifiche prezzi (DB-L4)**: motore delta + canali manuale/automatico — pianificato in WIP dedicato
 
 ### Breve termine
 
-- Test UI reali su Articoli, Listini, UoM, Pratiche, Soggetti, Clienti, Fornitori
+- Test UI reali su Articoli, UoM, Pratiche, Soggetti, Clienti, Fornitori
 - Seed azioni processo per nuovi domini (catalogo, vendite) + prop `action` sui componenti
 - Upload file allegati pratiche (storage filesystem/object storage)
-- Documentazione API per catalogo e vendite/listini
 
 ### Medio termine
 
-- Frontend listini: fase 6 (frontend) da testare su UI reale
 - Integrazione `vendite` → `pratiche`: eventi di vendita generano pratiche con giornale
 - Integrazione `anagrafiche` → `pratiche`: onboarding cliente/fornitore tracciato
 - Attivazione handler flusso per automazioni specifiche
@@ -465,4 +496,4 @@ Gli anelli esterni possono dipendere direttamente da anelli non adiacenti — ve
 
 ---
 
-*Mappa Concentrica — ZeroERP (7 aprile 2026)*
+*Mappa Concentrica — ZeroERP (12 aprile 2026)*

@@ -7,6 +7,7 @@ import { useI18n } from 'vue-i18n'
 import { useListiniStore } from '../stores/listini'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
+import { useLookup } from '../../core/composables/useLookup'
 import { DRAWER_WIDTH, MANAGE_ICONS } from '../../core/constants'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import DrawerFooter from '../../core/components/DrawerFooter.vue'
@@ -21,10 +22,7 @@ const store = useListiniStore()
 const { execute, loading } = useApiHandler()
 const isReadonly = useInjectReadonly()
 
-const dominioOptions = [
-  { value: 'UTILITY', label: t('listini.dominio_utility') },
-  { value: 'COMMERCIO', label: t('listini.dominio_commercio') }
-]
+const { items: utilityOptions } = useLookup('config.utilities')
 
 const props = defineProps({
   visible: Boolean,
@@ -42,7 +40,7 @@ const contentReady = ref(false)
 function onAfterShow() { contentReady.value = true }
 
 function defaultForm() {
-  return { codice: '', descrizione: '', dominio: 'UTILITY', attivo: true }
+  return { codice: '', descrizione: '', utility_id: null, attivo: true }
 }
 
 function resetForm() {
@@ -58,7 +56,7 @@ async function loadDetail() {
   form.value = {
     codice: data.codice || '',
     descrizione: data.descrizione || '',
-    dominio: data.dominio || 'UTILITY',
+    utility_id: data.utility_id ?? null,
     attivo: data.attivo ?? true
   }
 }
@@ -72,14 +70,14 @@ watch(() => props.visible, (v) => {
   }
 })
 
-const canSave = computed(() => form.value.codice?.trim() && form.value.descrizione?.trim() && form.value.dominio)
+const canSave = computed(() => form.value.codice?.trim() && form.value.descrizione?.trim())
 
 async function handleSave() {
   const f = form.value
   if (isEdit.value) {
     const payload = {
       descrizione: f.descrizione?.trim() || '',
-      dominio: f.dominio,
+      utility_id: f.utility_id,
       attivo: f.attivo,
     }
     const result = await execute(
@@ -91,7 +89,7 @@ async function handleSave() {
     const payload = {
       codice: f.codice?.trim(),
       descrizione: f.descrizione?.trim(),
-      dominio: f.dominio,
+      utility_id: f.utility_id,
     }
     const result = await execute(
       () => store.create(payload),
@@ -123,8 +121,9 @@ function close() {
             <InputText v-model="form.codice" :disabled="isEdit" />
           </div>
           <div class="form-field">
-            <label>{{ t('listini.field_dominio') }} *</label>
-            <Select v-model="form.dominio" :options="dominioOptions" option-label="label" option-value="value" />
+            <label>{{ t('listini.field_utility') }}</label>
+            <Select v-model="form.utility_id" :options="utilityOptions" option-label="descrizione" option-value="id"
+              :placeholder="t('listini.commercio')" show-clear />
           </div>
         </div>
 
