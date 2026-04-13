@@ -93,7 +93,7 @@ class ListiniServiceTests(TestCase):
 
         with self.assertRaises(ServiceError) as ctx:
             fn_create_listino(
-                {"codice": "LIST-UTILITY", "descrizione": "Listino Utility Base", "dominio": "UTILITY"}
+                {"codice": "LIST-UTILITY", "descrizione": "Listino Utility Base", "utility_id": 1}
             )
         self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
 

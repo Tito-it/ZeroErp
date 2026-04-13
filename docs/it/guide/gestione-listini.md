@@ -205,6 +205,12 @@ Il resolver cerca le righe delle versioni candidate che matchano `articolo_id + 
 
 **Vince la riga con livello piu basso** (piu specifica). Il resolver cerca il match piu stretto: se esiste un prezzo specifico per BA + utility + emittente, quello prevale sul prezzo generico.
 
+> **Nota sul livello 3 (BA + emittente senza utility):** questo livello e rilevante
+> esclusivamente in contesti multi-emittente (tipicamente utility) dove l'emittente
+> fiscale e un soggetto distinto dall'azienda erogante. In contesti commercio con
+> emittente unico, il livello 3 non produce mai un match differente dal livello 4
+> (BA da solo) e puo essere ignorato in fase di configurazione.
+
 ### Fase 4 — Tie-break
 
 Con l'invariante univocita stretta (refactor 2026-04-09) il caso "due righe con stesso match_level" e strutturalmente vietato dal database:
@@ -406,6 +412,48 @@ Cosa significa in pratica:
 * Se un vincolo viene violato (es. overlap date, riga duplicata), l'operazione viene annullata
 * **Non esistono stati parziali**: i constraint sono applicati atomicamente
 * Il resolver opera in lettura consistente: non puo vedere dati intermedi di una transazione in corso
+
+---
+
+## Guida operativa: il "listino post-it"
+
+Il termine "listino post-it" descrive l'uso di un secondo listino piccolo per correggere
+il prezzo di un singolo articolo senza toccare il listino base. Come un post-it attaccato
+sopra il cartellone grande.
+
+### Quando funziona
+
+Il listino post-it funziona quando il prezzo corretto vale per un **contesto specifico** —
+un cliente preciso, una utility precisa. In quel caso la riga nel listino post-it ha il BA
+valorizzato (match_level 4) o BA+utility (match_level 2). Il resolver la trova prima della
+riga generica del listino base, perche e piu specifica.
+
+### Quando NON funziona
+
+Il listino post-it **non funziona** quando il prezzo corretto deve valere per **tutti i
+clienti** (riga generica, match_level 7). Entrambi i listini avrebbero un'associazione
+generica (NULL, NULL, NULL) per lo stesso periodo, e il vincolo
+`ex_listini_associazioni_no_overlap` lo impedisce a livello DB: non possono esistere due
+associazioni con lo stesso scope nello stesso periodo.
+
+### Tabella delle soluzioni
+
+| Situazione | Soluzione corretta |
+|---|---|
+| Prezzo sbagliato per un cliente specifico, articolo non ancora fatturato | Rettifica controllata N6 sulla riga |
+| Prezzo sbagliato per un cliente specifico, articolo gia fatturato | Listino post-it con BA valorizzato sulla riga |
+| Prezzo sbagliato per tutti i clienti, articolo non ancora fatturato | Rettifica controllata N6 sulla riga |
+| Prezzo sbagliato per tutti i clienti, articolo gia fatturato | Clone listino + correggi la riga + attiva (O1) |
+| Aumento prezzi annuale su tutto il listino | Clone + variazione % massa (N8a) + attiva |
+
+### Operazioni disponibili
+
+| Operazione | Contesto | API |
+|---|---|---|
+| **Rettifica controllata (N6)** | Riga ATTIVA non propagata | `PATCH .../rettifica-controllata/` |
+| **Variazione % massa (N8a)** | Righe BOZZA (aumento/riduzione) | `POST .../applica-variazione/` |
+| **Clone versione (O1)** | Da qualsiasi stato | `POST .../clona/` |
+| **Programma chiusura** | Versione ATTIVA, imposta `valido_al` | `PATCH .../` con `valido_al` |
 
 ---
 

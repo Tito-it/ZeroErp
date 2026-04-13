@@ -12,6 +12,9 @@ from apps.vendite.services.commesse_service import (
     fn_get_commessa_stato,
     fn_get_commesse_push_log,
     fn_list_commessa_attivita,
+    fn_riallinea_prezzo,
+    fn_sblocca_prezzo,
+    fn_variazione_prezzo_eccezionale,
     pr_run_commesse_push,
 )
 from apps.vendite.services.pipeline_service import (
@@ -568,3 +571,82 @@ class ApiCommessaAttivita(DomainAPIView):
         return success_response(data)
 
 
+_VARIAZIONE_PREZZO_REQUEST = inline_serializer(
+    name="VenditeVariazionePrezzoRequest",
+    fields={
+        "prezzo": serializers.DecimalField(required=True, max_digits=22, decimal_places=10),
+        "motivo": serializers.CharField(required=True),
+    },
+)
+_RIALLINEA_PREZZO_REQUEST = inline_serializer(
+    name="VenditeRiallineaPrezzoRequest",
+    fields={
+        "conferma_versione_diversa": serializers.BooleanField(required=False),
+    },
+)
+_SBLOCCA_PREZZO_REQUEST = inline_serializer(
+    name="VenditeSbloccaPrezzoRequest",
+    fields={
+        "motivo": serializers.CharField(required=True),
+    },
+)
+
+
+class ApiCommessaAttivitaRiallineaPrezzo(DomainAPIView):
+    area_funzionale = "vendite"
+
+    @extend_schema(
+        request=_RIALLINEA_PREZZO_REQUEST,
+        responses={
+            200: inline_serializer(
+                name="VenditeRiallineaPrezzoResponse",
+                fields={"data": serializers.DictField(), "meta": serializers.DictField(required=False)},
+            )
+        },
+    )
+    # Scopo: N5 — Riallinea prezzo attivita` non fatturata dal resolver listino.
+    def post(self, request: Request, commessa_id: int, att_id: int) -> JsonResponse:
+        return handle_post_json(
+            request,
+            handler=lambda payload: fn_riallinea_prezzo(commessa_id, att_id, payload),
+        )
+
+
+class ApiCommessaAttivitaVariazionePrezzoEccezionale(DomainAPIView):
+    area_funzionale = "vendite"
+
+    @extend_schema(
+        request=_VARIAZIONE_PREZZO_REQUEST,
+        responses={
+            200: inline_serializer(
+                name="VenditeVariazionePrezzoEccezionaleResponse",
+                fields={"data": serializers.DictField(), "meta": serializers.DictField(required=False)},
+            )
+        },
+    )
+    # Scopo: N7 — Override manuale prezzo su attivita` commessa LIBERA/CONFERMATA.
+    def post(self, request: Request, commessa_id: int, att_id: int) -> JsonResponse:
+        return handle_post_json(
+            request,
+            handler=lambda payload: fn_variazione_prezzo_eccezionale(commessa_id, att_id, payload),
+        )
+
+
+class ApiCommessaAttivitaSbloccaPrezzo(DomainAPIView):
+    area_funzionale = "vendite"
+
+    @extend_schema(
+        request=_SBLOCCA_PREZZO_REQUEST,
+        responses={
+            200: inline_serializer(
+                name="VenditeSbloccaPrezzoResponse",
+                fields={"data": serializers.DictField(), "meta": serializers.DictField(required=False)},
+            )
+        },
+    )
+    # Scopo: N7 sblocco — Sblocca prezzo bloccato e ricalcola dal resolver.
+    def post(self, request: Request, commessa_id: int, att_id: int) -> JsonResponse:
+        return handle_post_json(
+            request,
+            handler=lambda payload: fn_sblocca_prezzo(commessa_id, att_id, payload),
+        )

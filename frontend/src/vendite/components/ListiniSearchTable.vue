@@ -1,5 +1,5 @@
 <script setup>
-// Scopo: DataTable paginata listini con search, filtro dominio e attivo.
+// Scopo: DataTable paginata listini con search, filtro utility e attivo.
 // Row expansion: mostra le versioni del listino sotto la riga (default aperto).
 // Pulsanti riga listino: toggle versioni (chiude/apre expansion), associazioni.
 // Mini-tabella versioni nell'expansion: + nuova versione, transizioni stato,
@@ -11,7 +11,8 @@ import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useSearchTable } from '../../core/composables/useSearchTable'
 import { useTabFreshness } from '../../core/composables/useTabFreshness'
 import { MANAGE_ICONS } from '../../core/constants'
-import { dominioListinoSeverity, statoVersioneListinoSeverity } from '../../core/utils/severity'
+import { statoVersioneListinoSeverity } from '../../core/utils/severity'
+import { useLookup } from '../../core/composables/useLookup'
 import { displayDate } from '../../core/utils/date'
 import { changeVersioneStato, deleteVersione, deleteListino } from '../api/listini'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
@@ -22,7 +23,9 @@ import Select from 'primevue/select'
 import Tag from 'primevue/tag'
 import Button from 'primevue/button'
 import NewButton from '../../core/components/NewButton.vue'
+import AlertScadenzeWidget from './AlertScadenzeWidget.vue'
 import AttivaVersioneDialog from './AttivaVersioneDialog.vue'
+import ProgrammaChiusuraDialog from './ProgrammaChiusuraDialog.vue'
 
 const emit = defineEmits([
   'new',
@@ -42,18 +45,14 @@ const { searchText, onPage, onSort, applyFilters, reload, paginatorProps } = use
   defaultSortField: 'descrizione'
 })
 
-const dominioFilter = ref(null)
-const dominioOptions = [
-  { value: null, label: t('common.all') },
-  { value: 'UTILITY', label: t('listini.dominio_utility') },
-  { value: 'COMMERCIO', label: t('listini.dominio_commercio') }
-]
+const utilityFilter = ref(null)
+const { items: utilityOptions } = useLookup('config.utilities')
 
 const attivoFilter = ref(true)
-const boolOptions = [
-  { value: null, label: t('common.all') },
-  { value: true, label: t('common.yes') },
-  { value: false, label: t('common.no') }
+const attivoOptions = [
+  { value: null, label: t('amm.stato_all') },
+  { value: true, label: t('amm.stato_attivo') },
+  { value: false, label: t('amm.stato_inattivo') }
 ]
 
 // Stato espansione righe (usato come v-model:expandedRows di PrimeVue).
@@ -61,8 +60,8 @@ const boolOptions = [
 // e pre-carichiamo le versioni in parallelo.
 const expandedRows = ref({})
 
-function onDominioChange() {
-  store.filters.dominio = dominioFilter.value
+function onUtilityChange() {
+  store.filters.utility_id = utilityFilter.value
   applyFilters()
 }
 
@@ -104,6 +103,21 @@ async function toggleExpand(listino) {
 const attivaDialogVisible = ref(false)
 const attivaDialogVersione = ref(null)
 const attivaDialogListinoId = ref(null)
+
+// Stato dialog programma chiusura (PATCH valido_al su ATTIVA)
+const chiusuraDialogVisible = ref(false)
+const chiusuraDialogVersione = ref(null)
+const chiusuraDialogListinoId = ref(null)
+
+function onProgrammaChiusura(versione, listinoId) {
+  chiusuraDialogVersione.value = versione
+  chiusuraDialogListinoId.value = listinoId
+  chiusuraDialogVisible.value = true
+}
+
+async function onChiusuraSaved({ listinoId }) {
+  await store.invalidateVersioniListino(listinoId)
+}
 
 // Transizione ATTIVA -> CHIUSA: nessun auto-close, esegue diretto.
 async function onChiudiVersione(versione, listinoId) {
@@ -170,13 +184,14 @@ onMounted(() => store.fetchList())
   <div class="app-tab-content">
     <div class="app-page-toolbar">
       <div class="app-page-filters">
-        <InputText v-model="searchText" :placeholder="t('listini.search_placeholder')" />
-        <Select v-model="dominioFilter" :options="dominioOptions" option-label="label" option-value="value"
-          :placeholder="t('listini.filtro_dominio')" @change="onDominioChange" style="width: 150px;" />
-        <Select v-model="attivoFilter" :options="boolOptions" option-label="label" option-value="value"
-          :placeholder="t('catalogo.filtro_attivo')" @change="onAttivoChange" style="width: 120px;" />
+        <InputText v-model="searchText" :placeholder="t('listini.search_placeholder')" style="width: 320px;" />
+        <Select v-model="utilityFilter" :options="utilityOptions" option-label="descrizione" option-value="id"
+          :placeholder="t('listini.filtro_utility')" show-clear @change="onUtilityChange" style="width: 200px;" />
+        <Select v-model="attivoFilter" :options="attivoOptions" option-label="label" option-value="value"
+          :placeholder="t('listini.col_attivo')" @change="onAttivoChange" style="width: 120px;" />
       </div>
       <div class="app-page-actions">
+        <AlertScadenzeWidget />
         <Button icon="pi pi-calculator" text severity="info"
           v-tooltip.bottom="t('listini.test_prezzo')" @click="emit('test-resolver')" />
         <Button icon="pi pi-refresh" text class="app-reload-btn" v-tooltip.bottom="t('common.reload_list')" @click="reload" />
@@ -196,9 +211,9 @@ onMounted(() => store.fetchList())
     >
       <Column field="codice" :header="t('listini.col_codice')" sortable style="width: 140px;" />
       <Column field="descrizione" :header="t('listini.col_descrizione')" sortable style="min-width: 200px;" />
-      <Column field="dominio" :header="t('listini.col_dominio')" sortable style="width: 120px;">
+      <Column field="utility_descrizione" :header="t('listini.col_utility')" sortable style="width: 150px;">
         <template #body="{ data }">
-          <Tag :value="data.dominio" :severity="dominioListinoSeverity(data.dominio)" />
+          <span>{{ data.utility_descrizione || t('listini.commercio') }}</span>
         </template>
       </Column>
       <Column field="versioni_count" :header="t('listini.col_versioni')" style="width: 80px;" />
@@ -269,8 +284,13 @@ onMounted(() => store.fetchList())
                 <div class="flex gap-1" @click.stop>
                   <Button v-if="ver.stato === 'BOZZA'" icon="pi pi-check-circle"
                     text rounded size="small" class="app-action-btn"
-                    v-tooltip.bottom="t('listini.attiva')"
+                    :disabled="!ver.righe_count"
+                    v-tooltip.bottom="ver.righe_count ? t('listini.attiva') : t('listini.attiva_no_righe')"
                     @click="onAttivaVersione(ver, listino.id)" />
+                  <Button v-if="ver.stato === 'ATTIVA'" icon="pi pi-calendar"
+                    text rounded size="small" class="app-action-btn"
+                    v-tooltip.bottom="t('listini.programma_chiusura')"
+                    @click="onProgrammaChiusura(ver, listino.id)" />
                   <Button v-if="ver.stato === 'ATTIVA'" icon="pi pi-lock"
                     text rounded size="small" severity="warn"
                     v-tooltip.bottom="t('listini.chiudi')"
@@ -301,6 +321,14 @@ onMounted(() => store.fetchList())
       :listino-id="attivaDialogListinoId"
       :versione="attivaDialogVersione"
       @confirmed="onAttivaConfirmed"
+    />
+
+    <ProgrammaChiusuraDialog
+      :visible="chiusuraDialogVisible"
+      @update:visible="v => chiusuraDialogVisible = v"
+      :listino-id="chiusuraDialogListinoId"
+      :versione="chiusuraDialogVersione"
+      @saved="onChiusuraSaved"
     />
   </div>
 </template>

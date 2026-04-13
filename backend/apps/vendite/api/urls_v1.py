@@ -2,6 +2,9 @@ from django.urls import include, path
 
 from apps.vendite.api.views import (
     ApiCommessaAttivita,
+    ApiCommessaAttivitaRiallineaPrezzo,
+    ApiCommessaAttivitaSbloccaPrezzo,
+    ApiCommessaAttivitaVariazionePrezzoEccezionale,
     ApiCommessePushLog,
     ApiCommessaStato,
     ApiLottiList,
@@ -59,6 +62,21 @@ urlpatterns = [
         "commesse/<int:commessa_id>/stato/",
         ApiCommessaStato.as_view(),
         name="vendite-commessa-stato",
+    ),
+    path(
+        "commesse/<int:commessa_id>/attivita/<int:att_id>/riallinea-prezzo/",
+        ApiCommessaAttivitaRiallineaPrezzo.as_view(),
+        name="vendite-commessa-attivita-riallinea-prezzo",
+    ),
+    path(
+        "commesse/<int:commessa_id>/attivita/<int:att_id>/variazione-prezzo-eccezionale/",
+        ApiCommessaAttivitaVariazionePrezzoEccezionale.as_view(),
+        name="vendite-commessa-attivita-variazione-prezzo",
+    ),
+    path(
+        "commesse/<int:commessa_id>/attivita/<int:att_id>/sblocca-prezzo/",
+        ApiCommessaAttivitaSbloccaPrezzo.as_view(),
+        name="vendite-commessa-attivita-sblocca-prezzo",
     ),
     path(
         "commesse/<int:commessa_id>/attivita/",

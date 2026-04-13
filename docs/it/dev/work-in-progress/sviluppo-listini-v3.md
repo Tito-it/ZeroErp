@@ -1,6 +1,6 @@
 # Sviluppo Listini — Pricing ZeroERP (WIP v3)
 
-> Stato: **BACKEND E FRONTEND IMPLEMENTATI, DA TESTARE SU UI REALE. FIX CRITICI IN SPRINT A.**
+> Stato: **SPRINT B-v3 COMPLETO** (12 aprile 2026). Backend + frontend + trigger DB + doc API + ottimizzazione daterange.
 >
 > Ultima revisione: aprile 2026 (v3 — consolidato da sviluppo-listini.md + sviluppo-listini-v2.md
 > + integrazioni critiche da analisi esterna)
@@ -198,22 +198,20 @@ Nessuna funzione intermedia introduce arrotondamenti anticipati.
 
 ## [NUOVO v3] 5.5 Considerazione architetturale: `daterange` nativo PostgreSQL (N1)
 
-> Tag: **N1** — Roadmap v2, non bloccante per v1.
+> Tag: **N1** — ~~Roadmap v2~~ **COMPLETATO lato DB** (2026-04-12).
 
-Le colonne `valido_dal date + valido_al date NULL` con `COALESCE(valido_al, 'infinity'::date)` funzionano correttamente. Tuttavia il pattern NULL-come-infinito si replica in ogni query che filtra per data: il resolver, i report, i job di monitoraggio devono tutti replicare la stessa logica di gestione NULL.
+La migrazione a `daterange` nativo PostgreSQL e` stata completata in 4 fasi:
 
-**Alternativa**: usare il tipo nativo `daterange` di PostgreSQL come colonna singola su `listini_versioni` e `listini_associazioni`.
+* **Fase 0**: infrastruttura `dbops` + funzione generica `script.trgfn_set_validita()`
+* **Fase 1**: 5 tabelle con GIST migrate + `fn_resolve_prezzo_listino` aggiornata con `validita @>`
+* **Fase 2**: 11 tabelle config/anagrafiche + 5 funzioni permessi semplificate
+* **Fase 3**: 2 tabelle pratiche con `tstzrange`
 
-Vantaggi concreti:
-* Il confronto `@>` gestisce l'infinito nativamente (`[2026-01-01,)` = open-ended, senza COALESCE)
-* L'indice GIST è più diretto; il codice dei vincoli di overlap diventa più leggibile
-* Elimina un'intera classe di bug potenziali su query con NULL
+Approccio **A** adottato: le colonne `valido_dal` / `valido_al` restano come input utente, il trigger `trgfn_set_validita` popola la colonna `validita` (daterange) ad ogni INSERT/UPDATE. I vincoli GIST ora puntano alla colonna nativa. Le linee guida SQL sono state aggiornate (§7b).
 
-Svantaggi:
-* Refactor DDL non banale su tabelle già in produzione
-* Il backend Django deve gestire la serializzazione/deserializzazione del tipo range
+**Lavoro residuo opzionale** (non bloccante): nel backend Python, le query dei repository che filtrano con `valido_dal <= x AND (valido_al IS NULL OR valido_al >= x)` possono essere semplificate con `validita @> x::date`. Con l'approccio A le query esistenti continuano a funzionare perche` le colonne originali restano.
 
-**Raccomandazione**: non blocca v1. Valutare obbligatoriamente prima di v2 (formule/scaglioni moltiplicano le query su range e amplificano il problema). Aprire ticket tecnico e inserire nella roadmap v2 come prerequisito architetturale.
+Analisi completa: [migrazione-daterange.md](migrazione-daterange.md).
 
 ---
 
@@ -488,7 +486,7 @@ Guard:
 
 Comportamento:
 * Esegue `fn_resolve_prezzo_listino` alla data originale dell'attività
-* Aggiorna `prezzo_snapshot` su `commesse_attivita` e `attivita_fatturabili`
+* Aggiorna `prezzo_snapshot` su `commesse_attivita` e `prezzo_unitario` su `attivita_fatturabili`
 * Azzera `prezzo_da_riallineare`
 * Audit in `meta` con prezzo precedente, prezzo nuovo, operatore, timestamp
 
@@ -595,7 +593,7 @@ Endpoint separato rispetto al PATCH standard della riga (che resta bloccato in A
 #### Comportamento
 
 1. L'operatore specifica il nuovo prezzo e un motivo obbligatorio
-2. Il service aggiorna `commesse_attivita.prezzo_snapshot` e `attivita_fatturabili.prezzo_snapshot`
+2. Il service aggiorna `commesse_attivita.prezzo_snapshot` e `attivita_fatturabili.prezzo_unitario`
 3. Imposta `prezzo_bloccato = TRUE` su entrambe le righe
 4. Registra l'audit in `commesse_attivita.meta`:
 
@@ -1065,7 +1063,7 @@ Predisposizione consigliata (non bloccante v1):
 
 ## 16) Test
 
-Stato attuale: **29 test verdi** (listini) + 49 (catalogo) = 78 test verdi complessivi.
+Stato attuale: **42 test verdi** (listini) + **19 test verdi** (commesse, +9 nuovi N5/N7/N7-sblocco) + 49 (catalogo). Suite totale progetto: 1231 test.
 
 | File                                                  | N   | Contenuto                                                |
 | ----------------------------------------------------- | --- | -------------------------------------------------------- |
@@ -1119,9 +1117,9 @@ Vedi dettaglio checklist in documento v2 §13.1-13.3.
 - [ ] Test UI reale: permessi, readonly mode, drawer pattern, flussi completi
 - [ ] Documentazione `manual/listini_versioni.md` aggiornata con regole esplicite per stato
 
-### Sprint A-DOC — Documentazione (separato da codice)
+### Sprint A-DOC — Documentazione (separato da codice) — COMPLETATO ✅ (2026-04-12)
 
-- [ ] **N3** — **[NUOVO v3]** Definire e documentare lifecycle prezzo preventivo → commessa *(solo documentazione, nessun codice)*
+- [x] **N3** — **[NUOVO v3]** Lifecycle prezzo preventivo → commessa documentato in `guide/gestione-commesse.md`
 
 ### Sprint B-base — Operazioni di convenienza — COMPLETATO ✅ (2026-04-08)
 
@@ -1134,17 +1132,17 @@ Vedi dettaglio checklist in documento v2 §13.1-13.3.
 
 ### Sprint B-v3 — Integrazioni critiche v3
 
-- [ ] **N2** — **[NUOVO v3]** Endpoint alert-scadenze + widget frontend
-- [ ] **N5** — **[NUOVO v3]** Operazione riallineamento prezzo (non-fatturato)
-- [ ] **N6** — **[NUOVO v3]** Rettifica controllata riga ATTIVA non propagata (backend + trigger DB + test)
-- [ ] **N7** — **[NUOVO v3]** Variazione prezzo eccezionale su commessa LIBERO/CONFERMATO (backend + test)
-- [ ] **N7 sblocco** — **[NUOVO v3]** Sblocco `prezzo_bloccato` con ricalcolo resolver (backend + test)
-- [ ] **N8a** — **[NUOVO v3]** Variazione % massa su versione BOZZA con dry_run (backend + frontend + test)
-- [ ] Avviso UX su PATCH `valido_al` versione ATTIVA
+- [x] **N2** — **[NUOVO v3]** Endpoint alert-scadenze + widget frontend *(completato 2026-04-12)*
+- [x] **N5** — **[NUOVO v3]** Operazione riallineamento prezzo (non-fatturato) *(completato 2026-04-12)*
+- [x] **N6** — **[NUOVO v3]** Rettifica controllata riga ATTIVA non propagata (backend + test) *(completato 2026-04-12, trigger DB da fare su dev/db-tid)*
+- [x] **N7** — **[NUOVO v3]** Variazione prezzo eccezionale su commessa LIBERO/CONFERMATO *(completato 2026-04-12)*
+- [x] **N7 sblocco** — **[NUOVO v3]** Sblocco `prezzo_bloccato` con ricalcolo resolver *(completato 2026-04-12)*
+- [x] **N8a** — **[NUOVO v3]** Variazione % massa su versione BOZZA con dry_run (backend + frontend + test) *(completato 2026-04-12)*
+- [x] Avviso UX su PATCH `valido_al` versione ATTIVA (`ProgrammaChiusuraDialog.vue`) *(completato 2026-04-12)*
 
-### Sprint B-DOC — Documentazione v3
+### Sprint B-DOC — Documentazione v3 — COMPLETATO ✅ (2026-04-12)
 
-- [ ] **N8b** — **[NUOVO v3]** Documentazione operativa "listino post-it" in `guide/gestione-listini.md`
+- [x] **N8b** — **[NUOVO v3]** Documentazione operativa "listino post-it" in `guide/gestione-listini.md`
 
 ### DB-L4 Rettifiche — DA SCHEDULARE
 
@@ -1153,7 +1151,8 @@ Vedi [sviluppo-rettifiche.md](sviluppo-rettifiche.md). Prerequisito: chiusura bl
 ### Roadmap v2 — APERTA
 
 - [ ] **N1** — **[NUOVO v3]** Ticket tecnico per valutazione `daterange` nativo PostgreSQL
-- [ ] **N4** — **[NUOVO v3]** Nota documentazione match_level 3 (solo DOC, nessun codice)
+- [x] **N1** — **[NUOVO v3]** Migrazione `daterange` nativo PostgreSQL — DB completato (Fase 0-3, 18 tabelle + infrastruttura `script.trgfn_set_validita` + linee guida SQL §7b). Ottimizzazione backend opzionale (`validita @>` nei repository) non bloccante — approccio A mantiene colonne originali. Vedi [migrazione-daterange.md](migrazione-daterange.md)
+- [x] **N4** — **[NUOVO v3]** Nota match_level 3 aggiunta in `guide/gestione-listini.md` *(completato 2026-04-12)*
 - [ ] Formule/scaglioni utilities
 
 ---

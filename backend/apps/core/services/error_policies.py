@@ -107,6 +107,12 @@ class ErrorPolicyRegistry:
             ui_action="show_empty_state",
             user_message="Associazione listino non trovata.",
         ),
+        "E_VENDITE_RIGA_GIA_PROPAGATA": ErrorPolicy(
+            code="E_VENDITE_RIGA_GIA_PROPAGATA",
+            http_status=409,
+            ui_action="show_toast_error",
+            user_message="Riga gia` propagata in commessa o fatturabile. Usare clone versione.",
+        ),
         "E_CATALOGO_VALIDATION": ErrorPolicy(
             code="E_CATALOGO_VALIDATION",
             http_status=400,
@@ -184,6 +190,30 @@ class ErrorPolicyRegistry:
             http_status=404,
             ui_action="show_empty_state",
             user_message="Push log commesse non trovato.",
+        ),
+        "E_COMMESSA_ATTIVITA_NOT_FOUND": ErrorPolicy(
+            code="E_COMMESSA_ATTIVITA_NOT_FOUND",
+            http_status=404,
+            ui_action="show_empty_state",
+            user_message="Attivita` commessa non trovata.",
+        ),
+        "E_VENDITE_VARIAZIONE_PREZZO_NON_AMMESSA": ErrorPolicy(
+            code="E_VENDITE_VARIAZIONE_PREZZO_NON_AMMESSA",
+            http_status=409,
+            ui_action="show_toast_error",
+            user_message="Operazione prezzo non ammessa sullo stato corrente.",
+        ),
+        "E_VENDITE_SBLOCCO_PREZZO_NON_AMMESSO": ErrorPolicy(
+            code="E_VENDITE_SBLOCCO_PREZZO_NON_AMMESSO",
+            http_status=409,
+            ui_action="show_toast_error",
+            user_message="Sblocco prezzo non ammesso: il prezzo non e` bloccato.",
+        ),
+        "E_VENDITE_RIALLINEAMENTO_VERSIONE_CAMBIATA": ErrorPolicy(
+            code="E_VENDITE_RIALLINEAMENTO_VERSIONE_CAMBIATA",
+            http_status=409,
+            ui_action="show_toast_error",
+            user_message="Riallineamento richiede conferma: la versione listino e` cambiata.",
         ),
         # ── Pratiche ──
         "E_PRATICA_VALIDATION": ErrorPolicy(

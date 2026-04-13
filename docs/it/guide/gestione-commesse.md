@@ -365,6 +365,77 @@ db.call_fn("vendite.fn_log_commessa_push_run",
 
 ---
 
+## Lifecycle prezzo: dal preventivo alla fattura
+
+Questa sezione documenta il flusso completo del prezzo dall'origine (preventivo o ordine) fino alla fattura, passando per la commessa.
+
+### Flusso standard
+
+```text
+1. Creazione preventivo
+   L'operatore inserisce righe con prezzo. Il prezzo puo venire da:
+   - Resolver listino (fn_resolve_prezzo_listino) alla data del documento
+   - Override manuale dell'operatore (prezzo digitato a mano)
+
+2. Push in commessa
+   Il push (handler PREVENTIVO) crea commesse_attivita con:
+   - prezzo_snapshot = prezzo risolto o manuale
+   - listino_versione_id = versione usata dal resolver (NULL se manuale)
+   - listino_riga_id = riga usata dal resolver (NULL se manuale)
+   - prezzo_bloccato = TRUE se override manuale, FALSE se da resolver
+   - pricing_mode = 'FIXED' (v1)
+
+3. Modifica preventivo post-push
+   Se il preventivo viene modificato dopo il push:
+   - commesse_attivita.prezzo_da_riallineare = TRUE (segnalazione, no update automatico)
+   - Il prezzo NON viene aggiornato silenziosamente
+   - L'operatore deve decidere se riallineare (N5) o ignorare
+
+4. Riallineamento su conferma esplicita (N5)
+   POST .../riallinea-prezzo/ ricalcola dal resolver alla data originale
+   - Se la versione listino e cambiata: richiede conferma esplicita
+   - Aggiorna prezzo_snapshot + prezzo_unitario su attivita_fatturabili
+   - Azzera prezzo_da_riallineare
+   - prezzo_bloccato resta FALSE
+
+5. Variazione eccezionale (N7) — alternativa a N5
+   POST .../variazione-prezzo-eccezionale/ con prezzo manuale + motivo
+   - Imposta prezzo_bloccato = TRUE (il resolver non ricalcolera piu)
+   - Il prezzo manuale prevale su qualsiasi listino
+
+6. Sblocco (N7-sblocco) — reversibilita di N7
+   POST .../sblocca-prezzo/ ricalcola dal resolver e sblocca
+   - Imposta prezzo_bloccato = FALSE
+
+7. Conversione in ordine
+   Se il preventivo non e stato riallineato (prezzo_da_riallineare = TRUE),
+   il flag persiste sulla commessa. L'ordine non lo azzera automaticamente.
+   L'operatore puo riallineare in qualsiasi momento prima della fatturazione.
+
+8. Emissione fattura
+   La pipeline fatturazione legge SOLO da attivita_fatturabili:
+   - prezzo_unitario (snapshot gia propagato)
+   - prezzo_bloccato (informativo)
+   - NON rilegge mai il listino
+```
+
+### Gerarchia prezzo (riassunto)
+
+| Priorita | Fonte | prezzo_bloccato dopo |
+|---|---|---|
+| 1 | Override manuale su documento (N7) | TRUE |
+| 2 | Prezzo da resolver listino (standard o N5) | FALSE |
+
+### Casi limite
+
+| Caso | Comportamento |
+|---|---|
+| Preventivo modificato, commessa non riallineata, fattura emessa | La fattura usa il prezzo dello snapshot originale. Il flag `prezzo_da_riallineare` resta TRUE come segnalazione storica |
+| Versione listino cambiata dopo lo snapshot | N5 detecta il cambio e richiede conferma. Senza conferma, non aggiorna |
+| Riga commessa gia fatturata | N5/N7/N7-sblocco rifiutano con 409. Per correggere serve NDC/NDD (DB-L4) |
+
+---
+
 ## Error handling
 
 Tutte le funzioni usano `script.fn_log_and_raise_error` con:

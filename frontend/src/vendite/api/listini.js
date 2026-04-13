@@ -67,10 +67,15 @@ export function applicaVariazionePercentuale(listinoId, verId, payload) {
   return api.post(`${BASE}/${listinoId}/versioni/${verId}/applica-variazione/`, payload)
 }
 
+// Versioni ATTIVE in scadenza senza successore.
+export function alertScadenze(giorni = 15) {
+  return api.get(`${BASE}/alert-scadenze/`, { params: { giorni } })
+}
+
 // --- Righe prezzo ---
 
-export function listRighe(listinoId, verId) {
-  return api.get(`${BASE}/${listinoId}/versioni/${verId}/righe/`)
+export function listRighe(listinoId, verId, params = {}) {
+  return api.get(`${BASE}/${listinoId}/versioni/${verId}/righe/`, { params })
 }
 
 export function createRiga(listinoId, verId, payload) {

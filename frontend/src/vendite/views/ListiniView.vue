@@ -60,9 +60,12 @@ async function onAssociazioniSaved() {
   await store.fetchList()
 }
 
+const versioneListinoDescrizione = ref('')
+
 function onOpenRighe(versione, listino) {
   versioneSelezionata.value = versione
   versioneListinoId.value = listino.id
+  versioneListinoDescrizione.value = listino.descrizione || listino.codice || ''
   versioneDrawerVisible.value = true
 }
 
@@ -139,6 +142,7 @@ async function onClonaVersioneSaved({ listinoId }) {
       :visible="versioneDrawerVisible"
       @update:visible="v => { if (!v) onRigheClose() }"
       :listino-id="versioneListinoId"
+      :listino-descrizione="versioneListinoDescrizione"
       :versione="versioneSelezionata"
     />
 
