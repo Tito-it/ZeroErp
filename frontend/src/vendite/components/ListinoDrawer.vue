@@ -7,13 +7,12 @@ import { useI18n } from 'vue-i18n'
 import { useListiniStore } from '../stores/listini'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
-import { useLookup } from '../../core/composables/useLookup'
 import { DRAWER_WIDTH, MANAGE_ICONS } from '../../core/constants'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import DrawerFooter from '../../core/components/DrawerFooter.vue'
+import UtilityPerRuoloSelect from '../../core/components/UtilityPerRuoloSelect.vue'
 import Drawer from 'primevue/drawer'
 import InputText from 'primevue/inputtext'
-import Select from 'primevue/select'
 import ToggleSwitch from 'primevue/toggleswitch'
 import Button from 'primevue/button'
 
@@ -22,7 +21,6 @@ const store = useListiniStore()
 const { execute, loading } = useApiHandler()
 const isReadonly = useInjectReadonly()
 
-const { items: utilityOptions } = useLookup('config.utilities')
 
 const props = defineProps({
   visible: Boolean,
@@ -122,8 +120,8 @@ function close() {
           </div>
           <div class="form-field">
             <label>{{ t('listini.field_utility') }}</label>
-            <Select v-model="form.utility_id" :options="utilityOptions" option-label="descrizione" option-value="id"
-              :placeholder="t('listini.commercio')" show-clear />
+            <UtilityPerRuoloSelect v-model="form.utility_id"
+              :placeholder="t('listini.commercio')" :show-clear="true" />
           </div>
         </div>
 

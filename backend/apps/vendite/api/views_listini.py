@@ -423,7 +423,7 @@ class ApiListinoVersioneRigheList(DomainAPIView):
     # Scopo: Restituisce via GET la lista paginata righe prezzo della versione con filtri.
     def get(self, request: Request, listino_id: int, ver_id: int) -> JsonResponse:
         qp = request.query_params
-        p = parse_list_params(qp, default_order="articolo_codice")
+        p = parse_list_params(qp, default_order="articolo_descrizione")
         results, total = fn_list_righe(
             listino_id,
             ver_id,

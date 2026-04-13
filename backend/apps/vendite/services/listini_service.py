@@ -1570,7 +1570,7 @@ def fn_list_righe(
     billing_account_id: int | None = None,
     utility_id: int | None = None,
     attivo: bool | None = True,
-    order_by: str = "articolo_codice",
+    order_by: str = "articolo_descrizione",
     order_dir: str = "asc",
     limit: int = 25,
     offset: int = 0,

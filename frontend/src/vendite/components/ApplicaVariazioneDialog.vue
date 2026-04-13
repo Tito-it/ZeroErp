@@ -56,10 +56,9 @@ async function loadPreview() {
       dry_run: true
     })
   )
-  if (res) {
-    const data = res.data.data
-    preview.value = data.preview || []
-    previewCount.value = data.righe_coinvolte || 0
+  if (res !== null) {
+    preview.value = res.preview || []
+    previewCount.value = res.righe_coinvolte || 0
     step.value = 'preview'
   }
 }
@@ -74,7 +73,7 @@ async function applyVariazione() {
     }),
     { successMessage: t('listini.variazione_pct_successo', { count: previewCount.value }) }
   )
-  if (res) {
+  if (res !== null) {
     emit('applied')
     onHide()
   }

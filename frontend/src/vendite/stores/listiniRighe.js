@@ -1,5 +1,5 @@
 // Store Pinia per la gestione righe prezzo di una versione listino.
-// Gestisce paginazione server-side, filtri (search articolo, billing_account, utility)
+// Gestisce paginazione server-side, filtri (search articolo, billing_account)
 // e reload post-operazione (create/delete riga, variazione %).
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
@@ -18,10 +18,9 @@ export const useListiniRigheStore = defineStore('vendite-listini-righe', () => {
   const filters = ref({
     search: '',
     billing_account_id: null,
-    utility_id: null,
     limit: PAGINATION.DEFAULT_ROWS,
     offset: 0,
-    order_by: 'articolo_codice',
+    order_by: 'articolo_descrizione',
     order_dir: 'asc'
   })
 
@@ -33,7 +32,6 @@ export const useListiniRigheStore = defineStore('vendite-listini-righe', () => {
     totalRecords.value = 0
     filters.value.search = ''
     filters.value.billing_account_id = null
-    filters.value.utility_id = null
     filters.value.offset = 0
   }
 
@@ -67,7 +65,6 @@ export const useListiniRigheStore = defineStore('vendite-listini-righe', () => {
       }
       if (searchTerm.length >= 3) params.search = searchTerm
       if (f.billing_account_id != null) params.billing_account_id = f.billing_account_id
-      if (f.utility_id != null) params.utility_id = f.utility_id
 
       const res = await listRighe(listinoId.value, versioneId.value, params)
       items.value = res.data.data.results

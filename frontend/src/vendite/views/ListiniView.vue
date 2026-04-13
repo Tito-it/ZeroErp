@@ -61,11 +61,13 @@ async function onAssociazioniSaved() {
 }
 
 const versioneListinoDescrizione = ref('')
+const versioneListinoUtilityId = ref(null)
 
 function onOpenRighe(versione, listino) {
   versioneSelezionata.value = versione
   versioneListinoId.value = listino.id
   versioneListinoDescrizione.value = listino.descrizione || listino.codice || ''
+  versioneListinoUtilityId.value = listino.utility_id ?? null
   versioneDrawerVisible.value = true
 }
 
@@ -143,6 +145,7 @@ async function onClonaVersioneSaved({ listinoId }) {
       @update:visible="v => { if (!v) onRigheClose() }"
       :listino-id="versioneListinoId"
       :listino-descrizione="versioneListinoDescrizione"
+      :listino-utility-id="versioneListinoUtilityId"
       :versione="versioneSelezionata"
     />
 
