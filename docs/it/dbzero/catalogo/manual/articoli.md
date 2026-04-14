@@ -41,6 +41,7 @@
 | FK → | `config.conti_contabili(id)` ← `conto_contabile_vendita_id`      | Conto vendite                |
 | FK → | `config.conti_contabili(id)` ← `conto_contabile_acquisto_id`     | Conto acquisti               |
 | FK → | `catalogo.note(target_tipo, id)` ← `(note_target_tipo, note_id)` | Nota associata all’articolo  |
+| FK → | `config.listini_tipologie(id)` ← `listino_tipologia_id`          | Tipologia listino v5         |
 
 ---
 
@@ -63,6 +64,7 @@
 * **Note**: `note_target_tipo` è vincolato a `ARTICOLI` quando valorizzato.
 * **Solo componente**: se `is_solo_componente=true` l’articolo non può essere usato come prodotto in `articoli_componenti`.
 * **`uom_id` obbligatorio**: dalla revisione del 07-04-2026 la colonna è `NOT NULL`. L'unità di misura principale è anagrafica e necessaria per il seed automatico della UoM operativa base.
+* **Tipologia listino (pricing v5, 14-04-2026)**: `listino_tipologia_id` nullable, FK a `config.listini_tipologie`. Un articolo senza tipologia non puo' essere inserito in un listino tipizzato (guard `trgfn_listini_righe_guard_tipologia`, codice errore `E_ARTICOLO_TIPOLOGIA_MANCANTE`). Un articolo con tipologia diversa dalla tipologia del listino genera `E_ARTICOLO_TIPOLOGIA_INCOMPATIBILE`. Backfill iniziale (14-04-2026): articoli con `voce_utility = false` mappati automaticamente a `PRODOTTI`; articoli voce utility lasciati NULL per mapping manuale alle 4 tipologie tecniche (`CONSUMO`, `QUOTA_FISSA`, `IMPOSTA`, `ONERE_SISTEMA`).
 
 > Consigliato: proteggere l’**immutabilità** del `codice` con un trigger `BEFORE UPDATE` dedicato (se è business‑key) e con GRANT mirati.
 

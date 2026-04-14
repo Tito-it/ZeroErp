@@ -1,0 +1,52 @@
+{% include-markdown "it/dbzero/vendite/manual/promo_articoli.md" %}
+# 📚 Tabella `promo_articoli`
+
+## 🗂️ Campi principali
+| Colonna | Tipo | Nullable | Default |
+|---------|------|----------|---------|
+| id | bigint | NO |  |
+| codice | character varying | NO |  |
+| descrizione | character varying | NO |  |
+| articolo_id | uuid | NO |  |
+| uom_id | bigint | NO |  |
+| tipo_variazione | character varying | NO |  |
+| valore_variazione | numeric | NO |  |
+| valido_dal | date | NO |  |
+| valido_al | date | NO |  |
+| validita | daterange | NO |  |
+| meta | jsonb | NO | '{}'::jsonb |
+| attivo | boolean | NO | true |
+| tx_id | uuid | YES |  |
+| data_insert | timestamp with time zone | NO | now() |
+| user_insert | text | NO | CURRENT_USER |
+| data_update | timestamp with time zone | NO | now() |
+| user_update | text | NO | CURRENT_USER |
+
+## 🔒 Vincoli
+| Tipo | Nome | Colonne |
+|------|------|---------|
+| CHECK | chk_promo_articoli_date |  |
+| CHECK | chk_promo_articoli_tipo_variazione |  |
+| CHECK | chk_promo_articoli_valore |  |
+| FOREIGN KEY | fk_promo_articoli_articolo | articolo_id |
+| FOREIGN KEY | fk_promo_articoli_uom | uom_id |
+| PRIMARY KEY | pk_promo_articoli | id |
+| UNIQUE | uq_promo_articoli_codice | codice |
+
+## 📑 Indici
+| Nome | Definizione |
+|------|-------------|
+| ex_promo_articoli_no_overlap | `CREATE INDEX ex_promo_articoli_no_overlap ON vendite.promo_articoli USING gist (articolo_id, uom_id, validita) WHERE (attivo IS TRUE)` |
+| ix_promo_articoli_attivo | `CREATE INDEX ix_promo_articoli_attivo ON vendite.promo_articoli USING btree (attivo)` |
+| ix_promo_articoli_validita_gist | `CREATE INDEX ix_promo_articoli_validita_gist ON vendite.promo_articoli USING gist (validita)` |
+| pk_promo_articoli | `CREATE UNIQUE INDEX pk_promo_articoli ON vendite.promo_articoli USING btree (id)` |
+| uq_promo_articoli_codice | `CREATE UNIQUE INDEX uq_promo_articoli_codice ON vendite.promo_articoli USING btree (codice)` |
+
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_promo_articoli_a20_set_validita_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_set_validita()` |
+| trg_promo_articoli_a20_set_validita_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_set_validita()` |
+
+---
+{% include-markdown "signature-core.md" %}

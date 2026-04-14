@@ -1,0 +1,138 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Trigger function: vendite.trgfn_contratti_utilities_guard_tipo_classe.
+# Guard di coerenza tipo_utenza_id / classe_utenza_id / utility sulla
+# tabella vendite.contratti_utilities.
+#
+# Regole:
+#   - utility con dimensione tipo/classe (tipi_utenze.utility_id presente):
+#     tipo_utenza_id e classe_utenza_id entrambi NOT NULL, e
+#     classi_utenze.tipo_utenza_id = NEW.tipo_utenza_id.
+#   - utility senza dimensione (es. Base / commercio):
+#     tipo_utenza_id e classe_utenza_id entrambi NULL.
+#
+# Pricing v5 - riferimento docs/it/dev/work-in-progress/sviluppo-listini-v5.md
+# sezione 5.2.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+    - logicalFilePath: /migrations_v2/20_code/vendite/20260414-11-create-trgfn-contratti-utilities-guard-tipo-classe-mctit.yaml
+
+    - changeSet:
+          id: 20260414-11-create-trgfn-contratti-utilities-guard-tipo-classe
+          author: mctit
+          runOnChange: true
+          changes:
+              - sql:
+                    dbms: postgresql
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+                        CREATE OR REPLACE FUNCTION vendite.trgfn_contratti_utilities_guard_tipo_classe()
+                            RETURNS trigger
+                            LANGUAGE plpgsql
+                        AS $$
+                        DECLARE
+                            v_utility_has_tipi    boolean;
+                            v_classe_tipo_utenza  config.classi_utenze.tipo_utenza_id%TYPE;
+                        BEGIN
+                            -- Ottimizzazione: un'unica CTE risolve sia il flag "utility con
+                            -- dimensione tipo/classe" (EXISTS in config.tipi_utenze) sia
+                            -- il tipo_utenza della classe dichiarata dal contratto.
+                            -- Se classe_utenza_id e' NULL, v_classe_tipo_utenza resta NULL
+                            -- e verra' segnalato dal guard piu' sotto.
+                            SELECT
+                                EXISTS (SELECT 1 FROM config.tipi_utenze tu
+                                         WHERE tu.utility_id = NEW.utility_id),
+                                (SELECT cl.tipo_utenza_id FROM config.classi_utenze cl
+                                  WHERE cl.id = NEW.classe_utenza_id)
+                              INTO v_utility_has_tipi, v_classe_tipo_utenza;
+
+                            IF v_utility_has_tipi THEN
+                                -- Utility con dimensione: tipo e classe obbligatori e coerenti.
+                                IF NEW.tipo_utenza_id IS NULL OR NEW.classe_utenza_id IS NULL THEN
+                                    PERFORM script.fn_log_and_raise_error(
+                                        'vendite',
+                                        TG_NAME,
+                                        'E_CONTRATTO_UTILITY_TIPO_CLASSE_OBBLIGATORI',
+                                        jsonb_build_object(
+                                            'detail', 'tipo_utenza_id e classe_utenza_id obbligatori per utility con dimensione',
+                                            'contratto_id', NEW.contratto_id,
+                                            'utility_id', NEW.utility_id,
+                                            'tipo_utenza_id', NEW.tipo_utenza_id,
+                                            'classe_utenza_id', NEW.classe_utenza_id
+                                        ),
+                                        NULL::uuid,
+                                        'tipo_utenza_id e classe_utenza_id obbligatori per la utility indicata'
+                                    );
+                                END IF;
+
+                                -- Coerenza: la classe deve appartenere al tipo dichiarato.
+                                IF v_classe_tipo_utenza IS DISTINCT FROM NEW.tipo_utenza_id THEN
+                                    PERFORM script.fn_log_and_raise_error(
+                                        'vendite',
+                                        TG_NAME,
+                                        'E_CONTRATTO_CLASSE_TIPO_INCOERENTE',
+                                        jsonb_build_object(
+                                            'detail', 'classe_utenza_id appartiene a un tipo_utenza_id diverso da quello dichiarato',
+                                            'contratto_id', NEW.contratto_id,
+                                            'utility_id', NEW.utility_id,
+                                            'tipo_utenza_id_atteso', NEW.tipo_utenza_id,
+                                            'tipo_utenza_id_classe', v_classe_tipo_utenza,
+                                            'classe_utenza_id', NEW.classe_utenza_id
+                                        ),
+                                        NULL::uuid,
+                                        'classe_utenza_id e tipo_utenza_id non sono coerenti'
+                                    );
+                                END IF;
+                            ELSE
+                                -- Utility senza dimensione (es. Base / commercio):
+                                -- entrambi i campi devono essere NULL.
+                                IF NEW.tipo_utenza_id IS NOT NULL OR NEW.classe_utenza_id IS NOT NULL THEN
+                                    PERFORM script.fn_log_and_raise_error(
+                                        'vendite',
+                                        TG_NAME,
+                                        'E_CONTRATTO_UTILITY_SENZA_DIMENSIONE_TIPO_CLASSE_VIETATI',
+                                        jsonb_build_object(
+                                            'detail', 'utility senza dimensione tipo/classe: i campi devono essere NULL',
+                                            'contratto_id', NEW.contratto_id,
+                                            'utility_id', NEW.utility_id,
+                                            'tipo_utenza_id', NEW.tipo_utenza_id,
+                                            'classe_utenza_id', NEW.classe_utenza_id
+                                        ),
+                                        NULL::uuid,
+                                        'utility Base/commercio: tipo_utenza_id e classe_utenza_id devono essere NULL'
+                                    );
+                                END IF;
+                            END IF;
+
+                            RETURN NEW;
+                        END
+                        $$;
+
+                        COMMENT ON FUNCTION vendite.trgfn_contratti_utilities_guard_tipo_classe() IS
+                            'Guard BEFORE INS/UPD su vendite.contratti_utilities: coerenza tipo_utenza_id, classe_utenza_id e utility. Pricing v5.';
+
+    - changeSet:
+          id: 20260414-11-trg-contratti-utilities-guard-tipo-classe
+          author: mctit
+          runOnChange: true
+          changes:
+              - sql:
+                    dbms: postgresql
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+                        DROP TRIGGER IF EXISTS trg_contratti_utilities_a10_guard_tipo_classe_ins_upd
+                            ON vendite.contratti_utilities;
+                        CREATE TRIGGER trg_contratti_utilities_a10_guard_tipo_classe_ins_upd
+                            BEFORE INSERT OR UPDATE OF tipo_utenza_id, classe_utenza_id, utility_id
+                            ON vendite.contratti_utilities
+                            FOR EACH ROW
+                            EXECUTE FUNCTION vendite.trgfn_contratti_utilities_guard_tipo_classe();

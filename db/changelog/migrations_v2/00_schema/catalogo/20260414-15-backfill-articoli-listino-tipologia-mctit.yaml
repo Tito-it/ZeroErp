@@ -1,0 +1,79 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+# Backfill catalogo.articoli.listino_tipologia_id dove derivabile in
+# modo sicuro.
+#
+# Regola conservativa (no produzione, fix manuale per i casi dubbi):
+#   - voce_utility = FALSE  ->  PRODOTTI (commercio/servizi generici).
+#     In assenza di piu' signal affidabili (gruppo_voce, tipo_voce) si
+#     mappa la scelta piu' comune; chi necessita SERVIZI puo' aggiornare
+#     dopo.
+#   - voce_utility = TRUE   ->  lasciato NULL. Le 4 tipologie
+#     (CONSUMO/QUOTA_FISSA/IMPOSTA/ONERE_SISTEMA) richiedono mapping
+#     manuale: non esiste un criterio deterministico per distinguerle.
+#
+# Questo step precede F1-DB-18 (trigger guard) per non bloccare insert
+# esistenti su listini tipizzati quando vengono riaperti.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: /migrations_v2/00_schema/catalogo/20260414-15-backfill-articoli-listino-tipologia-mctit.yaml
+
+  - changeSet:
+      id: 20260414-15-backfill-articoli-listino-tipologia
+      author: mctit
+      comment: >
+        Popola listino_tipologia_id dove derivabile: articoli con
+        voce_utility = false -> PRODOTTI. Articoli voce utility
+        restano NULL per mapping manuale.
+      preConditions:
+        - onFail: HALT
+        - columnExists:
+            schemaName: catalogo
+            tableName: articoli
+            columnName: listino_tipologia_id
+
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $BACKFILL$
+              DECLARE
+                  v_tipologia_prodotti_id  config.listini_tipologie.id%TYPE;
+                  v_updated                integer;
+              BEGIN
+                  -- Risolvi id tipologia PRODOTTI (seed stabile: codice 'PRODOTTI').
+                  SELECT id INTO v_tipologia_prodotti_id
+                    FROM config.listini_tipologie
+                   WHERE codice = 'PRODOTTI'
+                     AND attivo IS TRUE;
+
+                  IF v_tipologia_prodotti_id IS NULL THEN
+                      RAISE EXCEPTION
+                          'Backfill articoli.listino_tipologia_id: tipologia PRODOTTI non trovata in config.listini_tipologie'
+                          USING ERRCODE = 'P0001';
+                  END IF;
+
+                  -- Backfill: solo articoli non-utility senza tipologia gia' assegnata.
+                  UPDATE catalogo.articoli
+                     SET listino_tipologia_id = v_tipologia_prodotti_id
+                   WHERE listino_tipologia_id IS NULL
+                     AND voce_utility = FALSE;
+
+                  GET DIAGNOSTICS v_updated = ROW_COUNT;
+                  RAISE NOTICE 'Backfill articoli.listino_tipologia_id: % articoli non-utility -> PRODOTTI.', v_updated;
+              END
+              $BACKFILL$;
+
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              -- Rollback non distruttivo: il valore e' lecito anche senza
+              -- trigger guard. Il drop vero della colonna avviene in
+              -- 20260414-14.
+              SELECT 1;

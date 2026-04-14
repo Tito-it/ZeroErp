@@ -1,0 +1,227 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Guard "modalita' C" per vendite.contratti:
+# se contratto.listino_id IS NULL -> ogni riga in contratti_righe deve
+# avere prezzo_unitario NOT NULL. Il vincolo e' fail-fast all'attivazione
+# del contratto (passaggio a stato con codice_interno = 'ATTIVO'), e si
+# estende a insert/update di righe su contratti gia' attivi.
+#
+# Due trigger function:
+#   - vendite.trgfn_contratti_guard_modalita_c_activation:
+#       BEFORE UPDATE OF stato_doc_contratto_id su vendite.contratti
+#   - vendite.trgfn_contratti_righe_guard_modalita_c:
+#       BEFORE INSERT OR UPDATE su vendite.contratti_righe
+#
+# Pricing v5 - riferimento docs/it/dev/work-in-progress/sviluppo-listini-v5.md
+# sezione 5.3.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+    - logicalFilePath: /migrations_v2/20_code/vendite/20260414-12-create-trgfn-contratti-modalita-c-righe-complete-mctit.yaml
+
+    - changeSet:
+          id: 20260414-12-create-trgfn-contratti-guard-modalita-c-activation
+          author: mctit
+          runOnChange: true
+          changes:
+              - sql:
+                    dbms: postgresql
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+                        -- Guard modalita' C. Il guard DEVE scattare in due casi:
+                        --   a) transizione verso ATTIVO con listino_id NULL (INSERT/UPDATE);
+                        --   b) contratto gia' ATTIVO che passa a modalita' C
+                        --      (UPDATE listino_id: da NOT NULL a NULL).
+                        -- In entrambi i casi verifichiamo che esista almeno una riga
+                        -- attiva e che tutte abbiano prezzo_unitario NOT NULL.
+                        CREATE OR REPLACE FUNCTION vendite.trgfn_contratti_guard_modalita_c_activation()
+                            RETURNS trigger
+                            LANGUAGE plpgsql
+                        AS $$
+                        DECLARE
+                            v_new_codice_interno config.stati_doc_contratti.codice_interno%TYPE;
+                            v_righe_totali       integer;
+                            v_righe_senza_prezzo integer;
+                        BEGIN
+                            -- Short-circuit 1: se la NUOVA versione non e' (non sta diventando)
+                            -- modalita' C, il guard non si applica.
+                            IF NEW.listino_id IS NOT NULL THEN
+                                RETURN NEW;
+                            END IF;
+
+                            -- Risolvi il codice_interno dello stato NUOVO.
+                            SELECT s.codice_interno INTO v_new_codice_interno
+                              FROM config.stati_doc_contratti s
+                             WHERE s.id = NEW.stato_doc_contratto_id;
+
+                            -- Short-circuit 2: se il contratto non e' ATTIVO (ne' lo diventa),
+                            -- modalita' C senza righe complete e' ammissibile (DRAFT).
+                            IF v_new_codice_interno IS DISTINCT FROM 'ATTIVO' THEN
+                                RETURN NEW;
+                            END IF;
+
+                            -- Short-circuit 3: su UPDATE, se ne' stato ne' listino cambiano,
+                            -- nulla di rilevante e' mutato (ricontrollare sarebbe spreco).
+                            IF TG_OP = 'UPDATE'
+                               AND OLD.listino_id IS NULL
+                               AND OLD.stato_doc_contratto_id = NEW.stato_doc_contratto_id THEN
+                                RETURN NEW;
+                            END IF;
+
+                            -- Conteggio righe e righe con prezzo_unitario NULL.
+                            SELECT COUNT(*),
+                                   COUNT(*) FILTER (WHERE cr.prezzo_unitario IS NULL)
+                              INTO v_righe_totali, v_righe_senza_prezzo
+                              FROM vendite.contratti_righe cr
+                             WHERE cr.contratto_id = NEW.id
+                               AND COALESCE(cr.attivo, true) = true;
+
+                            IF v_righe_totali = 0 THEN
+                                PERFORM script.fn_log_and_raise_error(
+                                    'vendite',
+                                    TG_NAME,
+                                    'E_CONTRATTO_MODALITA_C_SENZA_RIGHE',
+                                    jsonb_build_object(
+                                        'detail', 'contratto modalita'' C senza righe attive: non attivabile',
+                                        'contratto_id', NEW.id
+                                    ),
+                                    NULL::uuid,
+                                    'Contratto modalita'' C senza righe attive: inserire righe con prezzo_unitario prima di attivare'
+                                );
+                            END IF;
+
+                            IF v_righe_senza_prezzo > 0 THEN
+                                PERFORM script.fn_log_and_raise_error(
+                                    'vendite',
+                                    TG_NAME,
+                                    'E_CONTRATTO_MODALITA_C_RIGHE_INCOMPLETE',
+                                    jsonb_build_object(
+                                        'detail', 'contratto modalita'' C con righe prive di prezzo_unitario',
+                                        'contratto_id', NEW.id,
+                                        'righe_totali', v_righe_totali,
+                                        'righe_senza_prezzo', v_righe_senza_prezzo
+                                    ),
+                                    NULL::uuid,
+                                    'Contratto modalita'' C: tutte le righe attive devono avere prezzo_unitario'
+                                );
+                            END IF;
+
+                            RETURN NEW;
+                        END
+                        $$;
+
+                        COMMENT ON FUNCTION vendite.trgfn_contratti_guard_modalita_c_activation() IS
+                            'Guard BEFORE INS/UPD (stato) su vendite.contratti: in transizione ad ATTIVO, se listino_id NULL (modalita'' C) tutte le righe attive devono avere prezzo_unitario NOT NULL. Pricing v5.';
+
+    - changeSet:
+          id: 20260414-12-trg-contratti-guard-modalita-c-activation
+          author: mctit
+          runOnChange: true
+          changes:
+              - sql:
+                    dbms: postgresql
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+                        DROP TRIGGER IF EXISTS trg_contratti_a10_guard_modalita_c_activation_ins_upd
+                            ON vendite.contratti;
+                        CREATE TRIGGER trg_contratti_a10_guard_modalita_c_activation_ins_upd
+                            BEFORE INSERT OR UPDATE OF stato_doc_contratto_id, listino_id
+                            ON vendite.contratti
+                            FOR EACH ROW
+                            EXECUTE FUNCTION vendite.trgfn_contratti_guard_modalita_c_activation();
+
+    - changeSet:
+          id: 20260414-12-create-trgfn-contratti-righe-guard-modalita-c
+          author: mctit
+          runOnChange: true
+          changes:
+              - sql:
+                    dbms: postgresql
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+                        -- Guard su contratti_righe: se il contratto e' gia' ATTIVO
+                        -- e in modalita' C (listino_id NULL), la riga (se attiva)
+                        -- deve avere prezzo_unitario NOT NULL.
+                        CREATE OR REPLACE FUNCTION vendite.trgfn_contratti_righe_guard_modalita_c()
+                            RETURNS trigger
+                            LANGUAGE plpgsql
+                        AS $$
+                        DECLARE
+                            v_contratto_listino_id vendite.contratti.listino_id%TYPE;
+                            v_codice_interno       config.stati_doc_contratti.codice_interno%TYPE;
+                        BEGIN
+                            -- Short-circuit 1: se la riga ha gia' prezzo_unitario,
+                            -- nessun guard serve (caso assolutamente piu' comune).
+                            -- Evita la query sul contratto per ogni INSERT/UPDATE conforme.
+                            IF NEW.prezzo_unitario IS NOT NULL THEN
+                                RETURN NEW;
+                            END IF;
+
+                            -- Short-circuit 2: righe inattive non contribuiscono al contratto.
+                            IF COALESCE(NEW.attivo, true) = false THEN
+                                RETURN NEW;
+                            END IF;
+
+                            SELECT c.listino_id, s.codice_interno
+                              INTO v_contratto_listino_id, v_codice_interno
+                              FROM vendite.contratti c
+                              JOIN config.stati_doc_contratti s
+                                ON s.id = c.stato_doc_contratto_id
+                             WHERE c.id = NEW.contratto_id;
+
+                            -- Guard attivo solo se contratto ATTIVO e modalita' C.
+                            IF v_codice_interno IS DISTINCT FROM 'ATTIVO'
+                               OR v_contratto_listino_id IS NOT NULL THEN
+                                RETURN NEW;
+                            END IF;
+
+                            -- A questo punto lo short-circuit iniziale garantisce
+                            -- NEW.prezzo_unitario IS NULL: contratto ATTIVO + modalita' C
+                            -- + riga attiva senza prezzo -> violazione.
+                            PERFORM script.fn_log_and_raise_error(
+                                'vendite',
+                                TG_NAME,
+                                'E_CONTRATTO_MODALITA_C_RIGA_SENZA_PREZZO',
+                                jsonb_build_object(
+                                    'detail', 'riga contratto modalita'' C (listino_id NULL) senza prezzo_unitario',
+                                    'contratto_id', NEW.contratto_id,
+                                    'riga_id', NEW.id,
+                                    'articolo_id', NEW.articolo_id
+                                ),
+                                NULL::uuid,
+                                'Riga contratto modalita'' C: prezzo_unitario obbligatorio'
+                            );
+
+                            RETURN NEW;
+                        END
+                        $$;
+
+                        COMMENT ON FUNCTION vendite.trgfn_contratti_righe_guard_modalita_c() IS
+                            'Guard BEFORE INS/UPD su vendite.contratti_righe: se contratto ATTIVO e modalita'' C, prezzo_unitario obbligatorio sulla riga attiva. Pricing v5.';
+
+    - changeSet:
+          id: 20260414-12-trg-contratti-righe-guard-modalita-c
+          author: mctit
+          runOnChange: true
+          changes:
+              - sql:
+                    dbms: postgresql
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+                        DROP TRIGGER IF EXISTS trg_contratti_righe_a10_guard_modalita_c_ins_upd
+                            ON vendite.contratti_righe;
+                        CREATE TRIGGER trg_contratti_righe_a10_guard_modalita_c_ins_upd
+                            BEFORE INSERT OR UPDATE OF prezzo_unitario, attivo, contratto_id
+                            ON vendite.contratti_righe
+                            FOR EACH ROW
+                            EXECUTE FUNCTION vendite.trgfn_contratti_righe_guard_modalita_c();

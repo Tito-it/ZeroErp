@@ -5,6 +5,8 @@
 - [billing_account](manual/billing_account.md) — (latest review 01-03-26)
 - [catasto_unita_immobiliari](manual/catasto_unita_immobiliari.md) — (latest review 10-12-25) La tabella `anagrafiche.catasto_unita_immobiliari` archivia i **dati catastali** associati a un `indirizzo_dettaglio` e a una specifica `istanza_utility`. Questo approccio:
 - [catasto_unita_immobiliari_indirizzi](manual/catasto_unita_immobiliari_indirizzi.md) — (latest review 16-12-25) La tabella `anagrafiche.catasto_unita_immobiliari_indirizzi` è una **tabella ponte** che esplicita la relazione tra:
+- [categorie_clienti](manual/categorie_clienti.md) — (latest review 14-04-26)
+- [categorie_clienti_listini](manual/categorie_clienti_listini.md) — (latest review 14-04-26)
 - [clienti](manual/clienti.md) — (latest review 15-02-26) La tabella `anagrafiche.clienti` memorizza le informazioni contrattuali e di fatturazione di un soggetto per una specifica *istanza* di servizio. Rappresenta la fase in cui un'attivazione (istanza) diventa un cliente ufficiale, includendo dettagli di scadenze, pagamento e classificazioni speciali (PA, split payment).
 - [contatti](manual/contatti.md) — (latest review 25-03-26) * **Centralizzare i contatti**   Un'unica tabella per tutti i numeri di telefono, email, PEC e nominativi, evitando duplicazioni e frammentazione.
 - [conti_bancari](manual/conti_bancari.md) — (latest review 02-12-25) `anagrafiche.conti_bancari` è l’**anagrafe unica degli IBAN**. Centralizza e **deduplica** i conti correnti, li **normalizza** (uppercase, senza spazi) e li rende riusabili da **qualsiasi soggetto** e **ruolo**. Questo disaccoppiamento:

@@ -21,6 +21,7 @@
 | fatturazione_ordini | character varying | NO | 'CONFERMATO'::character varying |
 | valuta_id | integer | YES |  |
 | validita | daterange | YES |  |
+| categoria_cliente_id | smallint | NO |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -28,6 +29,7 @@
 | CHECK | chk_billing_account_fatturazione_ordini |  |
 | CHECK | chk_billing_account_validita |  |
 | FOREIGN KEY | fk_billing_account_anagrafiche | parent_account_id |
+| FOREIGN KEY | fk_billing_account_categoria_cliente | categoria_cliente_id |
 | FOREIGN KEY | fk_billing_account_istanze_utilities | istanza_utility_id |
 | FOREIGN KEY | fk_soggetti_ruoli_anagrafiche | soggetto_ruolo_id |
 | FOREIGN KEY | fk_utilities_config | utility_id |
@@ -43,6 +45,7 @@
 | ix_anagrafiche_billing_account_parent_account_id | `CREATE INDEX ix_anagrafiche_billing_account_parent_account_id ON anagrafiche.billing_account USING btree (parent_account_id)` |
 | ix_anagrafiche_billing_account_soggetto_ruolo_id | `CREATE INDEX ix_anagrafiche_billing_account_soggetto_ruolo_id ON anagrafiche.billing_account USING btree (soggetto_ruolo_id)` |
 | ix_anagrafiche_billing_account_utility_id | `CREATE INDEX ix_anagrafiche_billing_account_utility_id ON anagrafiche.billing_account USING btree (utility_id)` |
+| ix_billing_account_categoria_cliente | `CREATE INDEX ix_billing_account_categoria_cliente ON anagrafiche.billing_account USING btree (categoria_cliente_id)` |
 | ix_billing_account_codice_trgm | `CREATE INDEX ix_billing_account_codice_trgm ON anagrafiche.billing_account USING gin (codice gin_trgm_ops)` |
 | pk_billing_account | `CREATE UNIQUE INDEX pk_billing_account ON anagrafiche.billing_account USING btree (id)` |
 | uq_billing_account_codice | `CREATE UNIQUE INDEX uq_billing_account_codice ON anagrafiche.billing_account USING btree (codice)` |

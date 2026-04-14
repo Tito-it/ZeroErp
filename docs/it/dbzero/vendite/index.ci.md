@@ -60,6 +60,7 @@
 - [preventivi](manual/preventivi.md) — La tabella **`vendite.preventivi`** rappresenta la **testata del preventivo commerciale**: raccoglie cliente/BA/utility, condizioni economiche, validita` e stato documento.
 - [preventivi_indirizzi](manual/preventivi_indirizzi.md) — `vendite.preventivi_indirizzi` memorizza lo **snapshot indirizzi** associato al preventivo (fatturazione/spedizione/altri tipi ammessi), mantenendo storico coerente anche se l’anagrafica origine cambia nel tempo.
 - [preventivi_righe](manual/preventivi_righe.md) — `vendite.preventivi_righe` contiene il dettaglio economico-tecnico del preventivo: articolo, quantita`, prezzo, sconto, IVA e snapshot UoM operativa.
+- [promo_articoli](manual/promo_articoli.md) — (latest review 14-04-26)
 - [registri_fatturazione](manual/registri_fatturazione.md) — (latest review 26-01-2026) `vendite.registri_fatturazione` definisce i **registri fiscali di emissione**: serie, regole di reset e collegamento all’emittente fiscale. Ogni fattura si aggancia a un registro, che governa numerazione e perimetro fiscale.
 - [registri_fatturazione_progressivi](manual/registri_fatturazione_progressivi.md) — (latest review 26-01-2026) `vendite.registri_fatturazione_progressivi` memorizza i **progressivi di numerazione** per ciascun registro, anno, mese e serie. E` la base per l’assegnazione del numero documento in fase di emissione.
 - [stati_commessa](manual/stati_commessa.md) — (latest review 26-02-2026)   `vendite.stati_commessa` e` la lookup centrale degli stati lifecycle della commessa.

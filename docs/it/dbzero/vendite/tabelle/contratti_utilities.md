@@ -17,6 +17,7 @@
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
 | user_update | text | YES | CURRENT_USER |
+| tipo_utenza_id | integer | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -25,6 +26,7 @@
 | FOREIGN KEY | fk_contratti_utilities_contratti | contratto_id |
 | FOREIGN KEY | fk_contratti_utilities_istanze_dati_precontrattuali | istanza_dati_precontrattuali_id |
 | FOREIGN KEY | fk_contratti_utilities_istanze_utilities | istanza_utility_id |
+| FOREIGN KEY | fk_contratti_utilities_tipo_utenza | tipo_utenza_id |
 | FOREIGN KEY | fk_contratti_utilities_utilities | utility_id |
 | PRIMARY KEY | pk_contratti_utilities | id |
 | UNIQUE | uq_contratti_utilities_contratto_id | contratto_id |
@@ -38,6 +40,8 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
+| trg_contratti_utilities_a10_guard_tipo_classe_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_contratti_utilities_guard_tipo_classe()` |
+| trg_contratti_utilities_a10_guard_tipo_classe_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_contratti_utilities_guard_tipo_classe()` |
 | trg_contratti_utilities_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_contratti_utilities_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 

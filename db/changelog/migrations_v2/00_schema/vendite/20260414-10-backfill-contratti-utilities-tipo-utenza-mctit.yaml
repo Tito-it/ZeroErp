@@ -1,0 +1,46 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+# Backfill vendite.contratti_utilities.tipo_utenza_id derivandolo da
+# config.classi_utenze.tipo_utenza_id quando classe_utenza_id e' valorizzata.
+# Per le righe con classe_utenza_id NULL (tipico utility Base/commercio)
+# tipo_utenza_id resta NULL.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: /migrations_v2/00_schema/vendite/20260414-10-backfill-contratti-utilities-tipo-utenza-mctit.yaml
+
+  - changeSet:
+      id: 20260414-10-backfill-contratti-utilities-tipo-utenza
+      author: mctit
+      comment: >
+        Popola tipo_utenza_id sulle righe esistenti in coerenza con
+        classe_utenza_id. Idempotente (aggiorna solo righe con
+        tipo_utenza_id IS NULL).
+      preConditions:
+        - onFail: HALT
+        - columnExists:
+            schemaName: vendite
+            tableName: contratti_utilities
+            columnName: tipo_utenza_id
+
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              UPDATE vendite.contratti_utilities cu
+                 SET tipo_utenza_id = cl.tipo_utenza_id
+                FROM config.classi_utenze cl
+               WHERE cu.tipo_utenza_id IS NULL
+                 AND cu.classe_utenza_id IS NOT NULL
+                 AND cl.id = cu.classe_utenza_id;
+
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              -- Rollback non distruttivo: lasciare i valori popolati.
+              SELECT 1;
