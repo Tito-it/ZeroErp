@@ -1,6 +1,8 @@
 # Area 'anagrafiche' (Backend)
 
 ## API
+- [api_categorie_clienti](manual/api_categorie_clienti.md) — Endpoint REST per la gestione delle **categorie cliente** (STANDARD, BASE, SILVER, GOLD, PLATINUM). Le categorie sono contenitori commerciali trasversali che segmentano i billing_account per politica di pricing.
+- [api_categorie_clienti_listini](manual/api_categorie_clienti_listini.md) — CRUD admin per la matrice di pricing **STADIO 2** del resolver listini v5: la combinazione categoria_cliente × utility × emittente_fiscale × classe_utenza? seleziona il listino_id attivo e, opzionalmente, una variazione…
 - [api_contatti_ruolo](manual/api_contatti_ruolo.md) — Endpoint REST per la gestione dei contatti a livello ruolo con supporto istanza. Implementa la cascata a 3 livelli: istanza specifica, ruolo generico, soggetto (fallback readonly).
 - [api_conti_bancari_ruolo](manual/api_conti_bancari_ruolo.md) — Endpoint REST per la gestione dei conti bancari a livello ruolo con supporto istanza. La lista implementa la cascata a 3 livelli: istanza specifica, ruolo generico, soggetto (fallback readonly).
 - [api_emittenti_fiscali](manual/api_emittenti_fiscali.md) — Endpoint REST per la gestione degli **emittenti fiscali**. L'emittente fiscale e' un ruolo specializzato del soggetto base (pattern soggetti -> soggetti_ruoli -> emittenti_fiscali, relazione 1:1 via soggetto_ruolo_id, c…

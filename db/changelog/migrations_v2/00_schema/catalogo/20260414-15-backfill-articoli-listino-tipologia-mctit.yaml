@@ -7,15 +7,17 @@
 #
 # Regola conservativa (no produzione, fix manuale per i casi dubbi):
 #   - voce_utility = FALSE  ->  PRODOTTI (commercio/servizi generici).
-#     In assenza di piu' signal affidabili (gruppo_voce, tipo_voce) si
-#     mappa la scelta piu' comune; chi necessita SERVIZI puo' aggiornare
-#     dopo.
-#   - voce_utility = TRUE   ->  lasciato NULL. Le 4 tipologie
-#     (CONSUMO/QUOTA_FISSA/IMPOSTA/ONERE_SISTEMA) richiedono mapping
-#     manuale: non esiste un criterio deterministico per distinguerle.
+#   - voce_utility = TRUE   ->  lasciato NULL (mapping manuale).
 #
-# Questo step precede F1-DB-18 (trigger guard) per non bloccare insert
-# esistenti su listini tipizzati quando vengono riaperti.
+# Comportamento CI-safe: se config.listini_tipologie e' vuota (il seed
+# 80_data non e' ancora stato applicato), il backfill viene saltato con
+# NOTICE. Il changeSet gemello in 80_data/changelog ri-esegue il backfill
+# dopo il seed. runOnChange=true permette a entrambi i passaggi di
+# aggiornare gli articoli successivamente inseriti.
+#
+# runOnChange + validCheckSum: ANY necessari perche' in istanze dev dove
+# il DO block precedente (con RAISE) era gia' stato applicato il checksum
+# sarebbe diverso.
 # ------------------------------------------------------------
 
 databaseChangeLog:
@@ -24,10 +26,13 @@ databaseChangeLog:
   - changeSet:
       id: 20260414-15-backfill-articoli-listino-tipologia
       author: mctit
+      runOnChange: true
+      validCheckSum:
+        - ANY
       comment: >
-        Popola listino_tipologia_id dove derivabile: articoli con
-        voce_utility = false -> PRODOTTI. Articoli voce utility
-        restano NULL per mapping manuale.
+        Popola listino_tipologia_id sugli articoli non-utility derivando
+        PRODOTTI dal seed di config.listini_tipologie. Skip silenzioso se
+        il seed non e' ancora presente (CI: 80_data gira dopo 00_schema).
       preConditions:
         - onFail: HALT
         - columnExists:
@@ -43,22 +48,23 @@ databaseChangeLog:
             sql: |
               DO $BACKFILL$
               DECLARE
-                  v_tipologia_prodotti_id  config.listini_tipologie.id%TYPE;
-                  v_updated                integer;
+                  v_tipologia_prodotti_id config.listini_tipologie.id%TYPE;
+                  v_updated               integer;
               BEGIN
-                  -- Risolvi id tipologia PRODOTTI (seed stabile: codice 'PRODOTTI').
+                  -- Lookup tipologia PRODOTTI dal seed.
                   SELECT id INTO v_tipologia_prodotti_id
                     FROM config.listini_tipologie
                    WHERE codice = 'PRODOTTI'
                      AND attivo IS TRUE;
 
                   IF v_tipologia_prodotti_id IS NULL THEN
-                      RAISE EXCEPTION
-                          'Backfill articoli.listino_tipologia_id: tipologia PRODOTTI non trovata in config.listini_tipologie'
-                          USING ERRCODE = 'P0001';
+                      -- Seed 80_data non ancora applicato: il backfill sara'
+                      -- completato dal changeSet gemello in 80_data (post-seed).
+                      RAISE NOTICE
+                          'Tipologia PRODOTTI non trovata: skip backfill (in CI il seed 80_data arriva dopo).';
+                      RETURN;
                   END IF;
 
-                  -- Backfill: solo articoli non-utility senza tipologia gia' assegnata.
                   UPDATE catalogo.articoli
                      SET listino_tipologia_id = v_tipologia_prodotti_id
                    WHERE listino_tipologia_id IS NULL
@@ -73,7 +79,4 @@ databaseChangeLog:
         - sql:
             splitStatements: false
             sql: |
-              -- Rollback non distruttivo: il valore e' lecito anche senza
-              -- trigger guard. Il drop vero della colonna avviene in
-              -- 20260414-14.
               SELECT 1;
