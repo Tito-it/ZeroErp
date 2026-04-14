@@ -1,0 +1,72 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+# Aggiunge anagrafiche.billing_account.categoria_cliente_id.
+# Nullable in questo step; backfill e SET NOT NULL nel changeSet 20260414-03.
+# Pricing v5 - riferimento docs/it/dev/work-in-progress/sviluppo-listini-v5.md
+# sezione 4.4.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: /migrations_v2/00_schema/anagrafiche/20260414-02-alter-billing-account-add-categoria-cliente-mctit.yaml
+
+  - changeSet:
+      id: 20260414-02-alter-billing-account-add-categoria-cliente
+      author: mctit
+      comment: >
+        Aggiunge colonna categoria_cliente_id (nullable) con FK verso
+        anagrafiche.categorie_clienti. Il backfill e il SET NOT NULL sono
+        demandati al changeSet successivo per evitare fallimento su BA esistenti.
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            columnExists:
+              schemaName: anagrafiche
+              tableName: billing_account
+              columnName: categoria_cliente_id
+
+      changes:
+        - addColumn:
+            schemaName: anagrafiche
+            tableName: billing_account
+            columns:
+              - column:
+                  name: categoria_cliente_id
+                  type: smallint
+                  remarks: "FK -> anagrafiche.categorie_clienti.id. Pricing v5 STADIO 2."
+                  constraints:
+                    nullable: true
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: anagrafiche
+            baseTableName: billing_account
+            baseColumnNames: categoria_cliente_id
+            constraintName: fk_billing_account_categoria_cliente
+            referencedTableSchemaName: anagrafiche
+            referencedTableName: categorie_clienti
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+
+        - createIndex:
+            schemaName: anagrafiche
+            tableName: billing_account
+            indexName: ix_billing_account_categoria_cliente
+            columns:
+              - column:
+                  name: categoria_cliente_id
+
+      rollback:
+        - dropForeignKeyConstraint:
+            baseTableSchemaName: anagrafiche
+            baseTableName: billing_account
+            constraintName: fk_billing_account_categoria_cliente
+        - dropIndex:
+            schemaName: anagrafiche
+            tableName: billing_account
+            indexName: ix_billing_account_categoria_cliente
+        - dropColumn:
+            schemaName: anagrafiche
+            tableName: billing_account
+            columnName: categoria_cliente_id

@@ -168,13 +168,13 @@ ALTER TABLE vendite.listini_righe
 
 `listini_righe` torna a essere: `(id, listino_versione_id, articolo_id, uom_id, prezzo, meta, attivo, audit)`. Niente dimensioni di contesto, niente `match_level` a 7 livelli: ogni riga è un prezzo per `(versione, articolo, uom)`. Eventuali differenze commerciali sono gestite da categoria o contratto.
 
-Unicità riga in versione:
+Unicità riga in versione (indice unico parziale per consentire soft-delete):
 ```sql
-ALTER TABLE vendite.listini_righe
-    ADD CONSTRAINT uq_listini_righe_key_attiva
-        UNIQUE (listino_versione_id, articolo_id, uom_id) DEFERRABLE;
+CREATE UNIQUE INDEX uq_listini_righe_key_attiva
+    ON vendite.listini_righe (listino_versione_id, articolo_id, uom_id)
+    WHERE attivo IS TRUE;
 ```
-(da creare come indice unico parziale `WHERE attivo = true` per consentire soft-delete).
+Nota: in PostgreSQL non è possibile esprimere un UNIQUE parziale come table constraint; serve `CREATE UNIQUE INDEX ... WHERE`. Questo esclude naturalmente le righe `attivo = false` (soft-delete / storicizzazione).
 
 ### 3.3 `vendite.listini_associazioni` — deprecata
 
@@ -268,13 +268,15 @@ CREATE TABLE anagrafiche.categorie_clienti_listini (
 No-overlap cross-scope (un solo listino attivo per quadrupla nel periodo):
 
 ```sql
+-- Prerequisito: estensione btree_gist attiva (CREATE EXTENSION IF NOT EXISTS btree_gist)
+-- Il sentinel -1 per classe_utenza_id è sicuro perché config.classi_utenze.id è serial (parte da 1).
 ALTER TABLE anagrafiche.categorie_clienti_listini
     ADD CONSTRAINT ex_categ_cli_listini_no_overlap
     EXCLUDE USING gist (
         categoria_cliente_id              WITH =,
         utility_id                        WITH =,
         emittente_soggetto_ruolo_id       WITH =,
-        COALESCE(classe_utenza_id, -1)    WITH =,
+        (COALESCE(classe_utenza_id, -1))  WITH =,
         validita                          WITH &&
     ) WHERE (attivo IS TRUE);
 ```
@@ -292,16 +294,29 @@ Per il dominio commercio (utility Base) il campo è **sempre NULL** — non esis
 
 ### 4.4 `anagrafiche.billing_account` — collegamento alla categoria
 
+Strategia (nessun dato di produzione): backfill massivo a `STANDARD` + `NOT NULL` finale, così il resolver ha sempre una categoria su cui cadere in STADIO 2.
+
 ```sql
+-- 1) aggiunta nullable
 ALTER TABLE anagrafiche.billing_account
     ADD COLUMN categoria_cliente_id smallint NULL
         REFERENCES anagrafiche.categorie_clienti(id);
 
 CREATE INDEX ix_billing_account_categoria_cliente
     ON anagrafiche.billing_account (categoria_cliente_id);
+
+-- 2) backfill (changeSet successivo, dopo seed categorie_clienti)
+UPDATE anagrafiche.billing_account ba
+   SET categoria_cliente_id = (SELECT id FROM anagrafiche.categorie_clienti
+                                WHERE codice = 'STANDARD')
+ WHERE ba.categoria_cliente_id IS NULL;
+
+-- 3) SET NOT NULL (changeSet successivo al backfill)
+ALTER TABLE anagrafiche.billing_account
+    ALTER COLUMN categoria_cliente_id SET NOT NULL;
 ```
 
-Nullable per permettere BA senza categoria assegnata durante il rollout. Un BA senza `categoria_cliente_id` non può risolvere un listino via STADIO 2 → deve avere un contratto (STADIO 1) oppure genera errore `E_PREZZO_LISTINO_NON_TROVATO`.
+Risultato: ogni BA ha sempre una categoria → STADIO 2 del resolver non incontra mai BA orfani. L'errore `E_PREZZO_LISTINO_NON_TROVATO` resta possibile solo se la matrice `categorie_clienti_listini` non ha una riga per la quadrupla richiesta (caso `E_CATEGORIA_LISTINO_NON_MAPPATA`).
 
 ---
 
@@ -368,6 +383,7 @@ Motivazione: il contratto **fotografa** tipo+classe al momento della stipula. An
 
 Vincolo cross-table via trigger `vendite.trgfn_contratti_modalita_c_righe_complete`:
 - se `contratto.listino_id IS NULL` (modalità C) → ogni riga in `contratti_righe` deve avere `prezzo_unitario IS NOT NULL`.
+- il guard è **fail-fast all'attivazione** del contratto. La tabella `config.stati_doc_contratti` esiste già con codici `DRAFT`, `ATTIVO`, `SOSPESO`, `CESSATO`; `vendite.contratti.stato_doc_contratto_id` è la FK. Il trigger scatta su `UPDATE OF stato_doc_contratto_id` quando il nuovo stato ha `codice_interno = 'ATTIVO'`, e su INSERT/UPDATE di `contratti_righe` se il contratto è già in stato `ATTIVO`. In stato `DRAFT` la mancanza di righe è ammessa; un contratto C senza righe non può transitare a `ATTIVO`. Nessuna nuova tabella stati necessaria.
 
 ### 5.4 Relazione contratto / listini_associazioni
 
@@ -845,8 +861,8 @@ L'ordine minimizza cascate di rifacimento. Le prime migrazioni sono additive e i
 | Step | Prereq. | Descrizione |
 |---|---|---|
 | F1-DB-16 | — | `ALTER TABLE catalogo.articoli ADD listino_tipologia_id smallint NULL` |
-| F1-DB-17 | F1-DB-16 | Trigger `trgfn_listini_righe_guard_tipologia` (articolo.tipologia = listino.tipologia; se articolo.tipologia NULL → blocca insert su listini tipizzati) |
-| F1-DB-18 | F1-DB-16 | Script popolamento `listino_tipologia_id` per articoli esistenti (dove derivabile da `voce_utility` o gruppo) |
+| F1-DB-17 | F1-DB-16 | Script popolamento `listino_tipologia_id` per articoli esistenti (derivato da `voce_utility` o gruppo). **Precede** l'attivazione del trigger per evitare blocchi su insert esistenti. |
+| F1-DB-18 | F1-DB-17 | Trigger `trgfn_listini_righe_guard_tipologia` (articolo.tipologia = listino.tipologia; se articolo.tipologia NULL → blocca insert su listini tipizzati). Ordine invertito rispetto a bozza precedente: popolamento prima del guard. |
 
 ### 1.7 BoM
 
@@ -875,20 +891,22 @@ L'ordine minimizza cascate di rifacimento. Le prime migrazioni sono additive e i
 | F1-DB-24 | F1-DB-07, F1-DB-09, F1-DB-22 | Audit callers di `listini_associazioni` e `listini_righe.billing_account_id/utility_id/emittente_soggetto_ruolo_id`: backend, view DB, pgtap |
 | F1-DB-25 | F1-DB-24 | `ALTER TABLE vendite.listini_righe DROP COLUMN` × 3 (dimensioni contesto) + ricrea unique attivo |
 | F1-DB-26 | F1-DB-24 | `DROP TABLE vendite.listini_associazioni` |
-| F1-DB-27 | F1-DB-22 | `DROP FUNCTION vendite.fn_resolve_prezzo_listino` (versione vecchia) + rename v2 → nome principale, oppure mantieni alias |
-| F1-DB-28 | F0-FE chiuso + grep `voce_utility` = 0 | `ALTER TABLE catalogo.articoli DROP COLUMN voce_utility` |
+| F1-DB-27 | F1-DB-22 | Riscrivere `vendite.fn_resolve_prezzo_listino` come **wrapper deprecato** che delega a `fn_resolve_prezzo_listino_v2` (stessa firma). Drop definitivo solo dopo F2 completata e `grep` pulito su backend + pgtap. |
+| F1-DB-28 | F0-FE chiuso + audit `voce_utility` = 0 su backend **e DB** (trigger, funzioni, view, seed in `db/changelog/migrations_v2/**`) | `ALTER TABLE catalogo.articoli DROP COLUMN voce_utility` |
 
-### 1.11 pgTAP Fase 1
+### 1.11 pgTAP — distribuiti per sotto-gruppo
 
-| Step | Prereq. | Descrizione |
-|---|---|---|
-| F1-DB-T1 | F1-DB-01..07 | Categoria + matrice: seed, flag, no-overlap, fallback classe_utenza |
-| F1-DB-T2 | F1-DB-09..13 | Contratti: modalità A/B/C, guard tipo/classe utenza, no-overlap esistente |
-| F1-DB-T3 | F1-DB-14 | Promo: no-overlap, calcolo variazione |
-| F1-DB-T4 | F1-DB-17 | Guard tipologia articolo/listino |
-| F1-DB-T5 | F1-DB-22 | Resolver 3 stadi: tutti gli scenari (STADIO 0/1/2, errori, fallback classe utenza) |
-| F1-DB-T6 | F1-DB-23 | Resolver BoM ibrido + espansione esposti |
-| F1-DB-T7 | F1-DB-25, F1-DB-26 | Smoke: nessun riferimento a entità droppate |
+I pgTAP vengono scritti **accanto** al gruppo di changeSet a cui si riferiscono, non tutti alla fine: così un errore emerge nel gruppo giusto, non a 27 migrazioni di distanza. L'esecuzione CI resta unica (`db/pgtap/`), ma i file di test si aggiungono incrementalmente.
+
+| Step | Posizione rispetto ai changeSet | Prereq. | Descrizione |
+| --- | --- | --- | --- |
+| F1-DB-T1 | dopo §1.3 (F1-DB-08) | F1-DB-01..08 | Categoria + matrice: seed, no-overlap, fallback `classe_utenza_id` NULL |
+| F1-DB-T2 | dopo §1.4 (F1-DB-13) | F1-DB-09..13 | Contratti: modalità A/B/C, guard tipo/classe utenza, no-overlap esistente, attivazione con righe incomplete (modalità C) |
+| F1-DB-T3 | dopo §1.5 (F1-DB-15) | F1-DB-14..15 | Promo: no-overlap, calcolo variazione per i 3 tipi |
+| F1-DB-T4 | dopo §1.6 (F1-DB-18) | F1-DB-18 | Guard tipologia articolo/listino + fallback NULL → blocco |
+| F1-DB-T5 | dopo §1.9 (F1-DB-22) | F1-DB-22 | Resolver 3 stadi: STADIO 0/1/2, errori, fallback classe utenza, determinismo |
+| F1-DB-T6 | dopo §1.9 (F1-DB-23) | F1-DB-23 | Resolver BoM ibrido + espansione componenti esposti |
+| F1-DB-T7 | dopo §1.10 (F1-DB-26) | F1-DB-25, F1-DB-26 | Smoke: zero riferimenti residui a entità droppate |
 
 **Gate passaggio a Fase 2**: tutti pgtap verdi, smoke DB verde, doc auto-generate rigenerate.
 
@@ -925,7 +943,7 @@ L'ordine minimizza cascate di rifacimento. Le prime migrazioni sono additive e i
 
 | Step | Prereq. | Descrizione |
 |---|---|---|
-| F2-BE-09 | F1-DB-22 | `pricing_service.resolve_prezzo(articolo, uom, data, ba, utility)` — wrapper Python per `fn_resolve_prezzo_listino_v2`, emittente derivato da GUC sessione |
+| F2-BE-09 | F1-DB-22 | `pricing_service.resolve_prezzo(articolo, uom, data, ba, utility)` — wrapper Python per `fn_resolve_prezzo_listino_v2`. Emittente derivato dal JWT (mapping operatore→emittente 1-a-1) e passato come parametro alla funzione DB. GUC di sessione opzionale in futuro (convenzione `zeroerp.<nome>` già usata nel progetto) se servirà a trigger; non introdotto ora perché non richiesto dal resolver. |
 | F2-BE-10 | F1-DB-23, F2-BE-09 | `pricing_service.resolve_prezzo_composito` |
 | F2-BE-11 | F2-BE-09 | Aggiornamento `CommessaAttivitaService` per salvare snapshot audit sulle nuove colonne |
 | F2-BE-12 | F2-BE-10, F2-BE-11 | Aggiornamento pipeline creazione attività composita → espansione righe in `commesse_attivita` quando esistono componenti esposti |
@@ -1004,12 +1022,16 @@ L'ordine minimizza cascate di rifacimento. Le prime migrazioni sono additive e i
 - [ ] Fase 0 — v4 BE + FE chiuso end-to-end
 
 ### Fase 1 — DB
-- [ ] Categoria cliente + BA.categoria (F1-DB-01..03)
-- [ ] Emittente su listino + matrice (F1-DB-04..08)
-- [ ] Contratti estesi (F1-DB-09..13)
-- [ ] Promo (F1-DB-14..15)
-- [ ] Tipologia articoli + guard (F1-DB-16..18)
-- [ ] BoM flag (F1-DB-19)
+
+**Avanzamento al 14-04-2026**: changeSet `20260414-01..17` prodotti e registrati. I passi F1-DB-01..19 sono stati tradotti in Liquibase (00_schema + 20_code) con doc manuale aggiornata e codici errore registrati in `config.messaggi_errore` (id 365..372). Da qui in avanti: snapshot commessa, resolver, pulizia, pgTAP.
+
+- [x] **Categoria cliente + BA.categoria (F1-DB-01..03)** — changeSet `20260414-01..03` + seed `80_data/anagrafiche/categorie_clienti.csv`; backfill STANDARD + `NOT NULL` su `billing_account.categoria_cliente_id`.
+- [x] **Emittente su listino (F1-DB-04..06)** — changeSet `20260414-04..06`; backfill CI-safe con guard `to_regclass('django.auth_user')`, fallback sul primo emittente attivo; `SET NOT NULL` + indice.
+- [x] **Matrice categoria → listino (F1-DB-07)** — changeSet `20260414-07`: CREATE TABLE `anagrafiche.categorie_clienti_listini` + 5 FK + 3 CHECK + `EXCLUDE USING gist` no-overlap con `COALESCE(classe_utenza_id, -1)` + trigger `set_validita`. (F1-DB-08 whitelist lookup = Fase 2 BE).
+- [x] **Contratti estesi (F1-DB-09..13)** — changeSet `20260414-08..10` (schema + backfill) e `20260414-11..12` (trigger). Guard modalità C copre anche transizione `listino_id NOT NULL → NULL` su contratto già ATTIVO; guard tipo/classe utenza dinamico basato su `config.tipi_utenze`.
+- [x] **Promo (F1-DB-14)** — changeSet `20260414-13`: CREATE TABLE `vendite.promo_articoli` + CHECK su `tipo_variazione` (ammesso `PREZZO_FISSO` solo qui) + `EXCLUDE` no-overlap per `(articolo, uom, validita)`. (F1-DB-15 whitelist lookup = Fase 2 BE).
+- [x] **Tipologia articoli + guard (F1-DB-16..18)** — changeSet `20260414-14..15` (schema + backfill a `PRODOTTI` per `voce_utility=FALSE`; voci utility restano NULL per mapping manuale), `20260414-16` (trigger `trgfn_listini_righe_guard_tipologia` con 2 codici errore distinti).
+- [x] **BoM flag (F1-DB-19)** — changeSet `20260414-17`: `esposto_in_fattura boolean NOT NULL DEFAULT false` su `catalogo.articoli_componenti`.
 - [ ] Snapshot commessa (F1-DB-20..21)
 - [ ] Resolver v2 + composito (F1-DB-22..23)
 - [ ] Drop listini_associazioni + colonne righe (F1-DB-24..27)

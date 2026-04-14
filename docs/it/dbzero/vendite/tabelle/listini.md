@@ -16,10 +16,12 @@
 | tx_id | uuid | YES |  |
 | utility_id | integer | NO |  |
 | tipologia_id | smallint | NO |  |
+| emittente_soggetto_ruolo_id | bigint | NO |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| FOREIGN KEY | fk_listini_emittente_soggetto_ruolo | emittente_soggetto_ruolo_id |
 | FOREIGN KEY | listini_tipologia_id_fkey | tipologia_id |
 | FOREIGN KEY | listini_utility_id_fkey | utility_id |
 | PRIMARY KEY | pk_listini | id |
@@ -28,6 +30,7 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
+| ix_listini_emittente_soggetto_ruolo | `CREATE INDEX ix_listini_emittente_soggetto_ruolo ON vendite.listini USING btree (emittente_soggetto_ruolo_id)` |
 | ix_listini_tipologia | `CREATE INDEX ix_listini_tipologia ON vendite.listini USING btree (tipologia_id)` |
 | ix_listini_utility | `CREATE INDEX ix_listini_utility ON vendite.listini USING btree (utility_id)` |
 | pk_listini | `CREATE UNIQUE INDEX pk_listini ON vendite.listini USING btree (id)` |

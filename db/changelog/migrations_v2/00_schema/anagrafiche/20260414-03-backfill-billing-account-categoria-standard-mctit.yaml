@@ -1,0 +1,65 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+# Seed minimo categoria STANDARD (con ON CONFLICT) + backfill di tutti i BA
+# senza categoria + SET NOT NULL finale.
+#
+# L'upsert completo delle 5 categorie (STANDARD, BASE, SILVER, GOLD, PLATINUM)
+# avviene in 80_data via CSV; qui inseriamo inline solo STANDARD perche'
+# 80_data viene eseguito DOPO 00_schema e il backfill deve poter risolvere
+# subito il codice STANDARD.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: /migrations_v2/00_schema/anagrafiche/20260414-03-backfill-billing-account-categoria-standard-mctit.yaml
+
+  - changeSet:
+      id: 20260414-03-backfill-billing-account-categoria-standard
+      author: mctit
+      comment: >
+        Garantisce presenza categoria STANDARD, effettua backfill BA e
+        imposta categoria_cliente_id NOT NULL. Senza produzione, il BA senza
+        contratto ricade sempre su STANDARD nello STADIO 2 del resolver.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: anagrafiche
+            tableName: categorie_clienti
+        - columnExists:
+            schemaName: anagrafiche
+            tableName: billing_account
+            columnName: categoria_cliente_id
+
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- 1) Seed minimo STANDARD (idempotente rispetto a successivo CSV 80_data)
+              INSERT INTO anagrafiche.categorie_clienti
+                     (codice, descrizione, partecipa_promo, ordinamento)
+              VALUES ('STANDARD', 'Cliente standard', false, 10)
+              ON CONFLICT (codice) DO NOTHING;
+
+              -- 2) Backfill BA senza categoria -> STANDARD
+              UPDATE anagrafiche.billing_account ba
+                 SET categoria_cliente_id = (
+                         SELECT id
+                           FROM anagrafiche.categorie_clienti
+                          WHERE codice = 'STANDARD'
+                     )
+               WHERE ba.categoria_cliente_id IS NULL;
+
+              -- 3) SET NOT NULL: nessun BA deve restare senza categoria
+              ALTER TABLE anagrafiche.billing_account
+                  ALTER COLUMN categoria_cliente_id SET NOT NULL;
+
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              ALTER TABLE anagrafiche.billing_account
+                  ALTER COLUMN categoria_cliente_id DROP NOT NULL;
+              -- Il backfill non viene annullato: lasciare STANDARD e' sicuro.

@@ -1,0 +1,71 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+# Upsert seed anagrafiche.categorie_clienti (STANDARD, BASE, SILVER,
+# GOLD, PLATINUM). La categoria STANDARD e' gia' stata inserita inline
+# in 00_schema/20260414-03 per permettere il backfill; qui facciamo
+# l'upsert completo delle 5 categorie e riallineiamo il sequence PK.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: /migrations_v2/80_data/changelog/20260414-01-upsert-categorie_clienti-mctit.yaml
+
+  - changeSet:
+      id: 20260414-01-upsert-categorie_clienti
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: anagrafiche
+            tableName: categorie_clienti
+      changes:
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/anagrafiche/categorie_clienti.csv
+            tableName: categorie_clienti
+            schemaName: anagrafiche
+            separator: ","
+            encoding: UTF-8
+            nullValue: ""
+            primaryKey: "id"
+            columns:
+              - column: { name: id, type: NUMERIC }
+              - column: { name: codice, type: STRING }
+              - column: { name: descrizione, type: STRING }
+              - column: { name: partecipa_promo, type: BOOLEAN }
+              - column: { name: ordinamento, type: NUMERIC }
+              - column:
+                  name: meta
+                  type: JSON
+                  defaultValue: "{}"
+              - column: { name: attivo, type: BOOLEAN }
+              - column: { name: data_insert, type: STRING }
+              - column: { name: user_insert, type: STRING }
+              - column:
+                  name: data_update
+                  type: STRING
+                  defaultValue: "NOW()"
+              - column: { name: user_update, type: STRING }
+
+        # Riallinea il sequence PK dopo insert con id espliciti
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              SELECT setval(
+                  pg_get_serial_sequence('anagrafiche.categorie_clienti', 'id'),
+                  COALESCE((SELECT MAX(id) FROM anagrafiche.categorie_clienti), 1),
+                  true
+              );
+
+  - changeSet:
+      id: 20260414-90-tag-categorie_clienti
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20260414-01-upsert-categorie_clienti

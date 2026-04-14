@@ -29,6 +29,7 @@
 | note_target_tipo | character varying | YES |  |
 | note_id | bigint | YES |  |
 | is_solo_componente | boolean | NO | false |
+| listino_tipologia_id | smallint | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -40,6 +41,7 @@
 | FOREIGN KEY | fk_articoli_conti_contabili_acquisto | conto_contabile_acquisto_id |
 | FOREIGN KEY | fk_articoli_conti_contabili_vendita | conto_contabile_vendita_id |
 | FOREIGN KEY | fk_articoli_iva | iva_id |
+| FOREIGN KEY | fk_articoli_listino_tipologia | listino_tipologia_id |
 | FOREIGN KEY | fk_articoli_note | note_target_tipo, note_id |
 | FOREIGN KEY | fk_articoli_note_1 | note_target_tipo, note_id |
 | FOREIGN KEY | fk_articoli_note_2 | note_target_tipo, note_id |
@@ -50,6 +52,7 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
+| ix_articoli_listino_tipologia | `CREATE INDEX ix_articoli_listino_tipologia ON catalogo.articoli USING btree (listino_tipologia_id)` |
 | ix_catalogo_articoli_descrizione | `CREATE INDEX ix_catalogo_articoli_descrizione ON catalogo.articoli USING btree (descrizione) WITH (fillfactor='100', deduplicate_items='true')` |
 | ix_catalogo_articoli_descrizione_trgm | `CREATE INDEX ix_catalogo_articoli_descrizione_trgm ON catalogo.articoli USING gin (descrizione gin_trgm_ops) WITH (fastupdate='true', gin_pending_list_limit='4194304')` |
 | pk_articoli | `CREATE UNIQUE INDEX pk_articoli ON catalogo.articoli USING btree (id)` |

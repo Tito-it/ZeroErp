@@ -24,6 +24,7 @@
 | note_id | bigint | YES |  |
 | determina_qta_padre | boolean | NO | false |
 | validita | daterange | NO |  |
+| esposto_in_fattura | boolean | NO | false |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |

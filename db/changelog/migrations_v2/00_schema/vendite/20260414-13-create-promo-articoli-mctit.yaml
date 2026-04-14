@@ -1,0 +1,258 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Creazione tabella vendite.promo_articoli.
+# Overlay promo temporale per coppia (articolo, uom): batte listini e
+# categoria nel resolver prezzi v5 (STADIO 0).
+# Ammette tipo_variazione PREZZO_FISSO (solo qui; vietato in listino
+# e matrice categoria).
+# Pricing v5 - riferimento docs/it/dev/work-in-progress/sviluppo-listini-v5.md
+# sezione 6.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: /migrations_v2/00_schema/vendite/20260414-13-create-promo-articoli-mctit.yaml
+
+  - changeSet:
+      id: 20260414-13-create-promo-articoli
+      author: mctit
+      comment: >
+        Crea vendite.promo_articoli con CHECK su tipo_variazione, trigger
+        set_validita e EXCLUDE no-overlap per (articolo, uom) sul periodo.
+
+      changes:
+        - createTable:
+            schemaName: vendite
+            tableName: promo_articoli
+            remarks: "Overlay promo temporale per (articolo, uom) - STADIO 0 del resolver prezzi v5."
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  remarks: "PK surrogata."
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_promo_articoli
+                    nullable: false
+
+              - column:
+                  name: codice
+                  type: varchar(64)
+                  remarks: "Codice univoco della promo."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: descrizione
+                  type: varchar(255)
+                  remarks: "Descrizione estesa della promo."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: articolo_id
+                  type: uuid
+                  remarks: "FK -> catalogo.articoli.id. Articolo oggetto della promo."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: uom_id
+                  type: bigint
+                  remarks: "FK -> catalogo.unita_misura.id. Unita' di misura di riferimento per il prezzo."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: tipo_variazione
+                  type: varchar(16)
+                  remarks: "PERCENTUALE | VALORE_FISSO | PREZZO_FISSO. PREZZO_FISSO ammesso solo qui."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: valore_variazione
+                  type: numeric(10,4)
+                  remarks: "Valore della variazione (sempre > 0 tranne il caso PREZZO_FISSO con valore assoluto)."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: valido_dal
+                  type: date
+                  remarks: "Inizio validita."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: valido_al
+                  type: date
+                  remarks: "Fine validita. Promo a scadenza obbligatoria (NOT NULL)."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: validita
+                  type: daterange
+                  remarks: "Range di validita sincronizzato dal trigger script.trgfn_set_validita()."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: meta
+                  type: jsonb
+                  defaultValueComputed: "'{}'::jsonb"
+                  remarks: "Metadati estensibili."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: attivo
+                  type: boolean
+                  defaultValueBoolean: true
+                  remarks: "Flag abilitazione."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: tx_id
+                  type: uuid
+                  remarks: "Transaction ID per correlazione audit."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: data_insert
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: user_insert
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: data_update
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: user_update
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  constraints:
+                    nullable: false
+
+        # Unicita del codice promo
+        - addUniqueConstraint:
+            schemaName: vendite
+            tableName: promo_articoli
+            columnNames: codice
+            constraintName: uq_promo_articoli_codice
+
+        # FK
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: promo_articoli
+            baseColumnNames: articolo_id
+            constraintName: fk_promo_articoli_articolo
+            referencedTableSchemaName: catalogo
+            referencedTableName: articoli
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: promo_articoli
+            baseColumnNames: uom_id
+            constraintName: fk_promo_articoli_uom
+            referencedTableSchemaName: catalogo
+            referencedTableName: unita_misura
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+
+        # CHECK + EXCLUDE + trigger set_validita + indici ausiliari
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- CHECK tipo_variazione ammesso.
+              ALTER TABLE vendite.promo_articoli
+                  ADD CONSTRAINT chk_promo_articoli_tipo_variazione
+                  CHECK (tipo_variazione IN ('PERCENTUALE', 'VALORE_FISSO', 'PREZZO_FISSO'));
+
+              -- Coerenza date.
+              ALTER TABLE vendite.promo_articoli
+                  ADD CONSTRAINT chk_promo_articoli_date
+                  CHECK (valido_al >= valido_dal);
+
+              -- Valore della variazione.
+              -- PERCENTUALE/VALORE_FISSO: sempre > 0 (sconti come percentuali positive,
+              -- maggiorazioni espresse con segno nel tipo dedicato a livello applicativo).
+              -- PREZZO_FISSO: ammette qualsiasi valore >= 0 (prezzo assoluto).
+              ALTER TABLE vendite.promo_articoli
+                  ADD CONSTRAINT chk_promo_articoli_valore
+                  CHECK (
+                      (tipo_variazione IN ('PERCENTUALE', 'VALORE_FISSO') AND valore_variazione > 0)
+                      OR
+                      (tipo_variazione = 'PREZZO_FISSO' AND valore_variazione >= 0)
+                  );
+
+              -- EXCLUDE no-overlap: al massimo una promo attiva per (articolo, uom) sul periodo.
+              -- btree_gist gia' attivo dalla baseline.
+              ALTER TABLE vendite.promo_articoli
+                  ADD CONSTRAINT ex_promo_articoli_no_overlap
+                  EXCLUDE USING gist (
+                      articolo_id  WITH =,
+                      uom_id       WITH =,
+                      validita     WITH &&
+                  ) WHERE (attivo IS TRUE);
+
+              -- Trigger set_validita: sincronizza validita da valido_dal/al.
+              DROP TRIGGER IF EXISTS trg_promo_articoli_a20_set_validita_ins_upd
+                  ON vendite.promo_articoli;
+              CREATE TRIGGER trg_promo_articoli_a20_set_validita_ins_upd
+                  BEFORE INSERT OR UPDATE OF valido_dal, valido_al
+                  ON vendite.promo_articoli
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_set_validita();
+
+              -- Indice GIST ausiliario su validita per query di lookup del resolver.
+              CREATE INDEX IF NOT EXISTS ix_promo_articoli_validita_gist
+                  ON vendite.promo_articoli
+                  USING gist (validita);
+
+        # Indice su attivo per filtri amministrativi
+        - createIndex:
+            schemaName: vendite
+            tableName: promo_articoli
+            indexName: ix_promo_articoli_attivo
+            columns:
+              - column:
+                  name: attivo
+
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_promo_articoli_a20_set_validita_ins_upd
+                  ON vendite.promo_articoli;
+        - dropTable:
+            schemaName: vendite
+            tableName: promo_articoli

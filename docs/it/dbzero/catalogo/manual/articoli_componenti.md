@@ -46,6 +46,7 @@ Supporta:
 * **Legame**: `prodotto_id UUID` (FK), `componente_id UUID` (FK)
 * **Versioning**: `valido_dal DATE` (**obbligatorio**), `valido_al DATE` *(NULL = infinito)*
 * **Quantità & logica**: `coeff_qta NUMERIC(18,6) ≥ 0`, `partecipa_qta BOOLEAN`, `determina_qta_padre BOOLEAN`, `obbligatorio BOOLEAN`
+* **Esposizione in fattura** (14-04-2026, pricing v5): `esposto_in_fattura BOOLEAN NOT NULL DEFAULT false`. Se `true`, il componente appare come riga separata in fattura con prezzo/IVA propri; gli articoli compositi con almeno un componente esposto vengono espansi in `commesse_attivita` alla creazione dell'attivita'.
 * **Note**: `note_target_tipo`, `note_id` (FK composita verso `catalogo.note`)
 * **Meta & Audit**: `meta JSONB`, `attivo`, `storicizza`, `tx_id`, `user_*`, `data_*`
 
