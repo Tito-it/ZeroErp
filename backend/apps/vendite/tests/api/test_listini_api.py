@@ -28,6 +28,9 @@ Indice test eseguiti:
 19) VenditeListiniApiTests.test_delete_associazione_ok
 20) VenditeListiniApiTests.test_test_resolver_ok
 21) VenditeListiniApiTests.test_list_listini_invalid_attivo
+22) VenditeListiniApiTests.test_list_listini_filter_tipologia_id
+23) VenditeListiniApiTests.test_tipologie_per_utility_ok
+24) VenditeListiniApiTests.test_tipologie_per_utility_missing_param
 """
 
 import json
@@ -353,4 +356,55 @@ class VenditeListiniApiTests(JwtMockedApiTest):
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
     def test_list_listini_invalid_attivo(self, _mock_auth):
         response = self.client.get("/api/v1/vendite/listini/?attivo=forse")
+        self.assertEqual(response.status_code, 400)
+
+    # Scopo: Verifica che il filtro tipologia_id sia propagato al service.
+    @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
+    @patch("apps.vendite.api.views_listini.fn_list_listini")
+    def test_list_listini_filter_tipologia_id(self, mocked_list, _mock_auth):
+        mocked_list.return_value = (_LIST_LISTINI_RESULTS, _LIST_LISTINI_TOTAL)
+        response = self.client.get("/api/v1/vendite/listini/?tipologia_id=3")
+        self.assertEqual(response.status_code, 200)
+        kwargs = mocked_list.call_args.kwargs
+        self.assertEqual(kwargs["tipologia_id"], 3)
+
+    # Scopo: Verifica che l'endpoint tipologie-per-utility restituisca le
+    #        tipologie in envelope standard success_response({"results": [...]}).
+    @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
+    @patch("apps.vendite.api.views_listini.fn_list_tipologie_per_utility")
+    def test_tipologie_per_utility_ok(self, mocked_list, _mock_auth):
+        mocked_list.return_value = [
+            {"id": 1, "codice": "CONSUMO", "descrizione": "Consumi"},
+            {"id": 2, "codice": "QUOTA_FISSA", "descrizione": "Quote fisse"},
+        ]
+        response = self.client.get(
+            "/api/v1/vendite/listini/tipologie-per-utility/?utility_id=1"
+        )
+        self.assertEqual(response.status_code, 200)
+        results = response.json()["data"]["results"]
+        self.assertEqual(len(results), 2)
+        self.assertEqual(results[0]["codice"], "CONSUMO")
+        mocked_list.assert_called_once_with(1)
+
+    # Scopo: Verifica che tipologie-per-utility rifiuti utility_id mancante
+    #        con codice errore semantico corretto (obbligatorio, non "positivo").
+    @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
+    def test_tipologie_per_utility_missing_param(self, _mock_auth):
+        response = self.client.get(
+            "/api/v1/vendite/listini/tipologie-per-utility/"
+        )
+        self.assertEqual(response.status_code, 400)
+        body = response.json()
+        # Envelope standard: {"error": {"code": ..., "message": ..., "detail": ...}}.
+        # Il detail deve riportare "obbligatorio", non "positivo".
+        err = body.get("error", {})
+        self.assertEqual(err.get("code"), "E_VENDITE_VALIDATION")
+        self.assertIn("obbligatorio", (err.get("detail") or "").lower())
+
+    # Scopo: Verifica che tipologie-per-utility rifiuti utility_id stringa vuota.
+    @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
+    def test_tipologie_per_utility_empty_param(self, _mock_auth):
+        response = self.client.get(
+            "/api/v1/vendite/listini/tipologie-per-utility/?utility_id="
+        )
         self.assertEqual(response.status_code, 400)

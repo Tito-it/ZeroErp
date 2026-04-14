@@ -11,6 +11,7 @@ import { DRAWER_WIDTH, MANAGE_ICONS } from '../../core/constants'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import DrawerFooter from '../../core/components/DrawerFooter.vue'
 import UtilityPerRuoloSelect from '../../core/components/UtilityPerRuoloSelect.vue'
+import TipologiaListinoSelect from './TipologiaListinoSelect.vue'
 import Drawer from 'primevue/drawer'
 import InputText from 'primevue/inputtext'
 import ToggleSwitch from 'primevue/toggleswitch'
@@ -37,8 +38,13 @@ const detail = ref(null)
 const contentReady = ref(false)
 function onAfterShow() { contentReady.value = true }
 
+// Flag di soppressione reset tipologia durante il caricamento iniziale in edit.
+// Evita che il watch su form.value.utility_id azzeri la tipologia che loadDetail
+// sta impostando contestualmente a utility_id.
+const isLoadingDetail = ref(false)
+
 function defaultForm() {
-  return { codice: '', descrizione: '', utility_id: null, attivo: true }
+  return { codice: '', descrizione: '', utility_id: null, tipologia_id: null, attivo: true }
 }
 
 function resetForm() {
@@ -48,14 +54,22 @@ function resetForm() {
 
 async function loadDetail() {
   if (!props.listinoId) return
-  const data = await store.fetchDetail(props.listinoId)
-  if (!data) return
-  detail.value = data
-  form.value = {
-    codice: data.codice || '',
-    descrizione: data.descrizione || '',
-    utility_id: data.utility_id ?? null,
-    attivo: data.attivo ?? true
+  isLoadingDetail.value = true
+  try {
+    const data = await store.fetchDetail(props.listinoId)
+    if (!data) return
+    detail.value = data
+    form.value = {
+      codice: data.codice || '',
+      descrizione: data.descrizione || '',
+      utility_id: data.utility_id ?? null,
+      tipologia_id: data.tipologia_id ?? null,
+      attivo: data.attivo ?? true
+    }
+  } finally {
+    // nextTick non serve: il watch e' flush:'post' di default e vedra'
+    // entrambe le assegnazioni nello stesso batch con isLoadingDetail true.
+    isLoadingDetail.value = false
   }
 }
 
@@ -68,7 +82,24 @@ watch(() => props.visible, (v) => {
   }
 })
 
-const canSave = computed(() => form.value.codice?.trim() && form.value.descrizione?.trim())
+// Scopo: Watch su utility_id — al cambio reale (non al caricamento iniziale),
+// azzera la tipologia selezionata. La matrice `config.listini_tipologie_utilities`
+// puo' cambiare le tipologie ammesse; un valore residuo porterebbe all'errore
+// del trigger DB. La guard `isLoadingDetail` sopprime il reset durante la
+// load di un listino esistente (dove utility_id e tipologia_id sono coerenti
+// per costruzione).
+watch(() => form.value.utility_id, (newVal, oldVal) => {
+  if (isLoadingDetail.value) return
+  if (newVal === oldVal) return
+  form.value.tipologia_id = null
+})
+
+const canSave = computed(() => (
+  !!form.value.codice?.trim()
+  && !!form.value.descrizione?.trim()
+  && !!form.value.utility_id
+  && !!form.value.tipologia_id
+))
 
 async function handleSave() {
   const f = form.value
@@ -76,6 +107,7 @@ async function handleSave() {
     const payload = {
       descrizione: f.descrizione?.trim() || '',
       utility_id: f.utility_id,
+      tipologia_id: f.tipologia_id,
       attivo: f.attivo,
     }
     const result = await execute(
@@ -88,6 +120,7 @@ async function handleSave() {
       codice: f.codice?.trim(),
       descrizione: f.descrizione?.trim(),
       utility_id: f.utility_id,
+      tipologia_id: f.tipologia_id,
     }
     const result = await execute(
       () => store.create(payload),
@@ -119,13 +152,18 @@ function close() {
             <InputText v-model="form.codice" :disabled="isEdit" />
           </div>
           <div class="form-field">
-            <label>{{ t('listini.field_utility') }}</label>
+            <label>{{ t('listini.field_utility') }} *</label>
             <UtilityPerRuoloSelect v-model="form.utility_id"
-              :placeholder="t('listini.commercio')" :show-clear="true" />
+              :placeholder="t('listini.field_utility')" />
           </div>
         </div>
 
-        <div class="form-grid">
+        <div class="form-grid-2col">
+          <div class="form-field">
+            <label>{{ t('listini.field_tipologia') }} *</label>
+            <TipologiaListinoSelect v-model="form.tipologia_id"
+              :utility-id="form.utility_id" />
+          </div>
           <div class="form-field">
             <label>{{ t('listini.field_descrizione') }} *</label>
             <InputText v-model="form.descrizione" />

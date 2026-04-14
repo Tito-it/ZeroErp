@@ -2,6 +2,7 @@ from django.urls import path
 
 from apps.vendite.api.views_listini import (
     ApiListiniAlertScadenze,
+    ApiListiniTipologiePerUtility,
     ApiListinoAssociazioneDetail,
     ApiListinoAssociazioniList,
     ApiListinoDetail,
@@ -19,6 +20,7 @@ from apps.vendite.api.views_listini import (
 
 urlpatterns = [
     path("alert-scadenze/", ApiListiniAlertScadenze.as_view(), name="vendite-listini-alert-scadenze"),
+    path("tipologie-per-utility/", ApiListiniTipologiePerUtility.as_view(), name="vendite-listini-tipologie-per-utility"),
     path("test-prezzo/", ApiListinoTestPrezzo.as_view(), name="vendite-listini-test-prezzo"),
     path("<int:listino_id>/versioni/<int:ver_id>/righe/<int:riga_id>/rettifica-controllata/", ApiListinoVersioneRigaRettificaControllata.as_view(), name="vendite-listino-versione-riga-rettifica-controllata"),
     path("<int:listino_id>/versioni/<int:ver_id>/righe/<int:riga_id>/", ApiListinoVersioneRigaDetail.as_view(), name="vendite-listino-versione-riga-detail"),

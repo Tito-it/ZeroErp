@@ -64,6 +64,12 @@ a {
   min-width: 0;
 }
 
+/* Filtro Select standard nella toolbar filtri — width uniforme per
+ * allineare i filtri delle SearchTable senza style inline. */
+.app-filter-select {
+  width: 200px;
+}
+
 /* Gruppo azioni toolbar (refresh + new) */
 .app-page-actions {
   display: flex;
