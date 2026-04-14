@@ -1032,11 +1032,32 @@ I pgTAP vengono scritti **accanto** al gruppo di changeSet a cui si riferiscono,
 - [x] **Promo (F1-DB-14)** — changeSet `20260414-13`: CREATE TABLE `vendite.promo_articoli` + CHECK su `tipo_variazione` (ammesso `PREZZO_FISSO` solo qui) + `EXCLUDE` no-overlap per `(articolo, uom, validita)`. (F1-DB-15 whitelist lookup = Fase 2 BE).
 - [x] **Tipologia articoli + guard (F1-DB-16..18)** — changeSet `20260414-14..15` (schema + backfill a `PRODOTTI` per `voce_utility=FALSE`; voci utility restano NULL per mapping manuale), `20260414-16` (trigger `trgfn_listini_righe_guard_tipologia` con 2 codici errore distinti).
 - [x] **BoM flag (F1-DB-19)** — changeSet `20260414-17`: `esposto_in_fattura boolean NOT NULL DEFAULT false` su `catalogo.articoli_componenti`.
-- [ ] Snapshot commessa (F1-DB-20..21)
-- [ ] Resolver v2 + composito (F1-DB-22..23)
-- [ ] Drop listini_associazioni + colonne righe (F1-DB-24..27)
-- [ ] Drop `voce_utility` (F1-DB-28)
-- [ ] pgTAP (F1-DB-T1..T7)
+- [x] **Snapshot commessa (F1-DB-20..21)** — changeSet `20260414-18` (commesse_attivita) + `20260414-19` (attivita_fatturabili): 8 colonne snapshot (`prezzo_base_snapshot`, `origine_prezzo`, `tipo/valore_variazione_applicata`, `promo_id`, `contratto_id`, `categoria_cliente_id_snapshot`, `classe_utenza_id_snapshot`) + 4 FK + 2 CHECK per tabella. Propagazione identica tra le due.
+- [x] **Resolver v2 + composito (F1-DB-22..23)** — changeSet `20260414-20` (`fn_resolve_prezzo_listino_v2` a 3 stadi) e `20260414-21` (`fn_resolve_prezzo_composito` BoM ibrido). Analisi critica con ottimizzazioni: `%TYPE` in DECLARE, short-circuit, `WHEN SQLSTATE 'P0001'` ristretto, fix guard modalità C che copriva solo la transizione ad ATTIVO. Allineati 11 codici errore in CSV con i placeholder `%s` (bug runtime "format insufficient args" risolto). Doc manuale in `vendite/manual/fn_resolve_prezzo_listino_v2.md` e `fn_resolve_prezzo_composito.md`.
+- [x] **Fix collaterali trovati durante i test** — changeSet `20260414-22` (drop CHECK `valido_al >= valido_dal` ridondanti su matrice e promo, il daterange costruttore rifiuta prima con 22000) e `20260414-23` (`trgfn_contratti_snapshot_precontrattuali` aggiornato per popolare `tipo_utenza_id` dalla classe — altrimenti il guard tipo/classe bloccava gli insert automatici di `contratti_utilities`).
+- [ ] Drop listini_associazioni + colonne righe (F1-DB-24..27) — **rinviato**: la vecchia `fn_resolve_prezzo_listino` è ancora chiamata dal BE. Il cleanup deve essere coordinato con F2-BE (audit callers + cutover). Vedi nota "Coordinamento cleanup" in fondo alla Fase 1.
+- [ ] Drop `voce_utility` (F1-DB-28) — **rinviato** stessa ragione (audit DB+BE da fare in F2).
+- [x] **pgTAP (F1-DB-T1..T6)** — 7 file in `db/pgtap/` (51 asserzioni totali):
+    - `anagrafiche/test-categorie-clienti-v1.sql` (T1.1 — 7 test)
+    - `anagrafiche/test-categorie-clienti-listini-v1.sql` (T1.2 — 10 test)
+    - `vendite/test-contratti-modalita-pricing-v1.sql` (T2.1 — 8 test)
+    - `vendite/test-contratti-utilities-guard-tipo-classe-v1.sql` (T2.2 — 7 test, seed tipo_utenza di appoggio in-TX)
+    - `vendite/test-promo-articoli-v1.sql` (T3 — 9 test)
+    - `vendite/test-listini-righe-guard-tipologia-v1.sql` (T4 — 4 test)
+    - `vendite/test-fn-resolve-prezzo-listino-v2-v1.sql` (T5 — 7 test, setup completo listino+matrice+contratto+promo)
+    - `vendite/test-fn-resolve-prezzo-composito-v1.sql` (T6 — 4 test, articolo composito sintetico con BoM in-TX)
+    - Tutti i test sono in `BEGIN;...ROLLBACK;` → idempotenti.
+- [ ] pgTAP smoke post-cleanup (F1-DB-T7) — rinviato con F1-DB-24..28.
+
+### Coordinamento cleanup (post F2)
+
+Gli step `F1-DB-24..28` (drop colonne obsolete su `listini_righe`, DROP `listini_associazioni`, wrapper deprecato `fn_resolve_prezzo_listino`, DROP `voce_utility`) **non** sono safe in isolamento DB: la vecchia `fn_resolve_prezzo_listino` è ancora invocata dal backend Django. Il cleanup segue questa sequenza coordinata:
+
+1. F2-BE-09 (pricing_service) migra i callers a `fn_resolve_prezzo_listino_v2`.
+2. F2-BE-13/14 (cleanup BE) rimuove i riferimenti a `listini_associazioni` e `articoli.voce_utility`.
+3. Ricreazione di `vw_articoli_dettaglio` senza `voce_utility` (4 versioni attuali in `20_code/catalogo/`).
+4. Applicazione F1-DB-24..28 come unico batch atomico.
+5. Rimozione pgTAP obsoleti (`test-listini-resolve-*`, `test-listini-integrita-v1`) e scrittura F1-DB-T7 come smoke.
 
 ### Fase 2 — Backend
 - [ ] Admin categorie + matrice + promo (F2-BE-01..03)

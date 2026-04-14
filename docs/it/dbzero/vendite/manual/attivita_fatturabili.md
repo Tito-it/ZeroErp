@@ -152,3 +152,22 @@ WHERE id = ANY(:ids);
 
 Questa tabella è il **cuore del ciclo di fatturazione**: tutte le voci da fatturare convergono qui, vengono qualificate per **quando** fatturare (competenza, posticipo, sospensione) e, una volta prelevate, diventano **dettaglio di fattura**.
 La qualità e la coerenza dei dati in `vendite.attivita_fatturabili` determinano direttamente **completezza, correttezza e ripetibilità** dei documenti emessi.
+
+---
+
+### Snapshot pricing (v5, 14-04-2026)
+
+Le 8 colonne snapshot pricing presenti su [`vendite.commesse_attivita`](/dbzero/vendite/tabelle/commesse_attivita) sono **propagate identiche** su questa tabella per mantenere la tracciabilita' fino al layer di fatturazione. La valorizzazione avviene durante `fn_emit_attivita_fatturabili_da_commessa` (copia diretta dei campi snapshot dall'attivita' sorgente).
+
+| Colonna                          | Tipo          | Note                                                                                    |
+| -------------------------------- | ------------- | --------------------------------------------------------------------------------------- |
+| `prezzo_base_snapshot`           | numeric(22,10)| Prezzo base listino prima della variazione                                              |
+| `origine_prezzo`                 | varchar(32)   | `PROMO` \| `CONTRATTO_OVERRIDE` \| `CONTRATTO_LISTINO` \| `CATEGORIA` \| `MANUALE`      |
+| `tipo_variazione_applicata`      | varchar(16)   | `PERCENTUALE` \| `VALORE_FISSO` \| `PREZZO_FISSO` \| `NESSUNA`                          |
+| `valore_variazione_applicata`    | numeric(10,4) | Valore della variazione effettivamente applicata                                        |
+| `promo_id`                       | bigint        | FK a `vendite.promo_articoli`                                                           |
+| `contratto_id`                   | bigint        | FK a `vendite.contratti`                                                                |
+| `categoria_cliente_id_snapshot`  | smallint      | FK a `anagrafiche.categorie_clienti`                                                    |
+| `classe_utenza_id_snapshot`      | integer       | FK a `config.classi_utenze`                                                             |
+
+CHECK sui domini di `origine_prezzo` e `tipo_variazione_applicata`. Indice dedicato su `origine_prezzo` per filtri dashboard.

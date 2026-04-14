@@ -1,0 +1,213 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+# Aggiunge a vendite.commesse_attivita le colonne di snapshot del
+# risolutore prezzi v5 (STADIO 0/1/2). Le colonne servono per:
+#   - report analitici e filtri dashboard su origine_prezzo
+#   - audit contrattuale via join diretto su promo_id / contratto_id
+#   - preservare categoria e classe utenza nel momento del calcolo
+#
+# Il campo jsonb `meta` resta per dettagli non strutturati (es. flag
+# particolari, deroghe). Queste colonne sono quelle strutturate che
+# servono per query dirette.
+# Pricing v5 - riferimento docs/it/dev/work-in-progress/sviluppo-listini-v5.md
+# sezione 10.1.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: /migrations_v2/00_schema/vendite/20260414-18-alter-commesse-attivita-add-snapshot-pricing-mctit.yaml
+
+  - changeSet:
+      id: 20260414-18-alter-commesse-attivita-add-snapshot-pricing
+      author: mctit
+      comment: >
+        Aggiunge 8 colonne snapshot pricing v5 + CHECK su origine_prezzo
+        + 4 FK + indici su promo_id / contratto_id / origine_prezzo.
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            columnExists:
+              schemaName: vendite
+              tableName: commesse_attivita
+              columnName: origine_prezzo
+
+      changes:
+        - addColumn:
+            schemaName: vendite
+            tableName: commesse_attivita
+            columns:
+              - column:
+                  name: prezzo_base_snapshot
+                  type: numeric(22,10)
+                  remarks: "Prezzo base risolto da listino prima di eventuale variazione applicata. Utile per ricostruire l'aritmetica pricing a posteriori."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: origine_prezzo
+                  type: varchar(32)
+                  remarks: "PROMO | CONTRATTO_OVERRIDE | CONTRATTO_LISTINO | CATEGORIA | MANUALE"
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: tipo_variazione_applicata
+                  type: varchar(16)
+                  remarks: "Tipo della variazione effettivamente applicata: PERCENTUALE | VALORE_FISSO | PREZZO_FISSO | NESSUNA."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: valore_variazione_applicata
+                  type: numeric(10,4)
+                  remarks: "Valore numerico della variazione applicata (coerente con tipo_variazione_applicata)."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: promo_id
+                  type: bigint
+                  remarks: "FK -> vendite.promo_articoli.id. Valorizzato se origine_prezzo = 'PROMO'."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: contratto_id
+                  type: bigint
+                  remarks: "FK -> vendite.contratti.id. Valorizzato se origine_prezzo in ('CONTRATTO_OVERRIDE','CONTRATTO_LISTINO')."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: categoria_cliente_id_snapshot
+                  type: smallint
+                  remarks: "FK -> anagrafiche.categorie_clienti.id. Snapshot della categoria cliente al momento del calcolo prezzo."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: classe_utenza_id_snapshot
+                  type: integer
+                  remarks: "FK -> config.classi_utenze.id. Snapshot della classe utenza al momento del calcolo prezzo."
+                  constraints:
+                    nullable: true
+
+        # FK
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: commesse_attivita
+            baseColumnNames: promo_id
+            constraintName: fk_commesse_attivita_promo
+            referencedTableSchemaName: vendite
+            referencedTableName: promo_articoli
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: commesse_attivita
+            baseColumnNames: contratto_id
+            constraintName: fk_commesse_attivita_contratto
+            referencedTableSchemaName: vendite
+            referencedTableName: contratti
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: commesse_attivita
+            baseColumnNames: categoria_cliente_id_snapshot
+            constraintName: fk_commesse_attivita_categoria_cliente_snapshot
+            referencedTableSchemaName: anagrafiche
+            referencedTableName: categorie_clienti
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: commesse_attivita
+            baseColumnNames: classe_utenza_id_snapshot
+            constraintName: fk_commesse_attivita_classe_utenza_snapshot
+            referencedTableSchemaName: config
+            referencedTableName: classi_utenze
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+
+        # CHECK origine_prezzo
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.commesse_attivita
+                  ADD CONSTRAINT chk_commesse_attivita_origine_prezzo
+                  CHECK (origine_prezzo IS NULL
+                         OR origine_prezzo IN (
+                             'PROMO',
+                             'CONTRATTO_OVERRIDE',
+                             'CONTRATTO_LISTINO',
+                             'CATEGORIA',
+                             'MANUALE'
+                         ));
+
+              ALTER TABLE vendite.commesse_attivita
+                  ADD CONSTRAINT chk_commesse_attivita_tipo_variazione_applicata
+                  CHECK (tipo_variazione_applicata IS NULL
+                         OR tipo_variazione_applicata IN (
+                             'PERCENTUALE',
+                             'VALORE_FISSO',
+                             'PREZZO_FISSO',
+                             'NESSUNA'
+                         ));
+
+        # Indici per dashboard e filtri frequenti
+        - createIndex:
+            schemaName: vendite
+            tableName: commesse_attivita
+            indexName: ix_commesse_attivita_origine_prezzo
+            columns:
+              - column:
+                  name: origine_prezzo
+
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.commesse_attivita
+                  DROP CONSTRAINT IF EXISTS chk_commesse_attivita_tipo_variazione_applicata;
+              ALTER TABLE vendite.commesse_attivita
+                  DROP CONSTRAINT IF EXISTS chk_commesse_attivita_origine_prezzo;
+              ALTER TABLE vendite.commesse_attivita
+                  DROP CONSTRAINT IF EXISTS fk_commesse_attivita_classe_utenza_snapshot;
+              ALTER TABLE vendite.commesse_attivita
+                  DROP CONSTRAINT IF EXISTS fk_commesse_attivita_categoria_cliente_snapshot;
+              ALTER TABLE vendite.commesse_attivita
+                  DROP CONSTRAINT IF EXISTS fk_commesse_attivita_contratto;
+              ALTER TABLE vendite.commesse_attivita
+                  DROP CONSTRAINT IF EXISTS fk_commesse_attivita_promo;
+              DROP INDEX IF EXISTS vendite.ix_commesse_attivita_origine_prezzo;
+        - dropColumn:
+            schemaName: vendite
+            tableName: commesse_attivita
+            columnNames:
+              - column:
+                  name: classe_utenza_id_snapshot
+              - column:
+                  name: categoria_cliente_id_snapshot
+              - column:
+                  name: contratto_id
+              - column:
+                  name: promo_id
+              - column:
+                  name: valore_variazione_applicata
+              - column:
+                  name: tipo_variazione_applicata
+              - column:
+                  name: origine_prezzo
+              - column:
+                  name: prezzo_base_snapshot

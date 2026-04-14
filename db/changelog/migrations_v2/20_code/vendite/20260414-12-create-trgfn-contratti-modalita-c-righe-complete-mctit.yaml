@@ -84,32 +84,32 @@ databaseChangeLog:
                                AND COALESCE(cr.attivo, true) = true;
 
                             IF v_righe_totali = 0 THEN
+                                -- %s: contratto_id.
                                 PERFORM script.fn_log_and_raise_error(
                                     'vendite',
                                     TG_NAME,
                                     'E_CONTRATTO_MODALITA_C_SENZA_RIGHE',
-                                    jsonb_build_object(
-                                        'detail', 'contratto modalita'' C senza righe attive: non attivabile',
-                                        'contratto_id', NEW.id
-                                    ),
+                                    jsonb_build_object('contratto_id', NEW.id),
                                     NULL::uuid,
-                                    'Contratto modalita'' C senza righe attive: inserire righe con prezzo_unitario prima di attivare'
+                                    NEW.id::text
                                 );
                             END IF;
 
                             IF v_righe_senza_prezzo > 0 THEN
+                                -- %s: contratto_id, righe_senza_prezzo, righe_totali.
                                 PERFORM script.fn_log_and_raise_error(
                                     'vendite',
                                     TG_NAME,
                                     'E_CONTRATTO_MODALITA_C_RIGHE_INCOMPLETE',
                                     jsonb_build_object(
-                                        'detail', 'contratto modalita'' C con righe prive di prezzo_unitario',
                                         'contratto_id', NEW.id,
                                         'righe_totali', v_righe_totali,
                                         'righe_senza_prezzo', v_righe_senza_prezzo
                                     ),
                                     NULL::uuid,
-                                    'Contratto modalita'' C: tutte le righe attive devono avere prezzo_unitario'
+                                    NEW.id::text,
+                                    v_righe_senza_prezzo::text,
+                                    v_righe_totali::text
                                 );
                             END IF;
 
@@ -187,18 +187,20 @@ databaseChangeLog:
                             -- A questo punto lo short-circuit iniziale garantisce
                             -- NEW.prezzo_unitario IS NULL: contratto ATTIVO + modalita' C
                             -- + riga attiva senza prezzo -> violazione.
+                            -- %s: contratto_id, riga_id, articolo_id.
                             PERFORM script.fn_log_and_raise_error(
                                 'vendite',
                                 TG_NAME,
                                 'E_CONTRATTO_MODALITA_C_RIGA_SENZA_PREZZO',
                                 jsonb_build_object(
-                                    'detail', 'riga contratto modalita'' C (listino_id NULL) senza prezzo_unitario',
                                     'contratto_id', NEW.contratto_id,
                                     'riga_id', NEW.id,
                                     'articolo_id', NEW.articolo_id
                                 ),
                                 NULL::uuid,
-                                'Riga contratto modalita'' C: prezzo_unitario obbligatorio'
+                                NEW.contratto_id::text,
+                                NEW.id::text,
+                                NEW.articolo_id::text
                             );
 
                             RETURN NEW;

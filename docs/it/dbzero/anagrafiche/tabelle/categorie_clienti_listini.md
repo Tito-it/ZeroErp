@@ -27,7 +27,6 @@
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | CHECK | chk_categ_cli_listini_tipo_variazione |  |
-| CHECK | chk_categ_cli_listini_valido_al_ge_dal |  |
 | CHECK | chk_categ_cli_listini_variazione_coerente |  |
 | FOREIGN KEY | fk_categ_cli_listini_categoria | categoria_cliente_id |
 | FOREIGN KEY | fk_categ_cli_listini_classe_utenza | classe_utenza_id |
@@ -47,8 +46,16 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
+| trg_categorie_clienti_listini_a10_categorie_clienti_requ_3a447d | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('anagrafiche', 'categorie_clienti', 'attivo', 'categoria_cliente_id', 'id')` |
+| trg_categorie_clienti_listini_a10_categorie_clienti_requ_3a447d | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('anagrafiche', 'categorie_clienti', 'attivo', 'categoria_cliente_id', 'id')` |
+| trg_categorie_clienti_listini_a10_listini_require_attivo_8048dc | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'listini', 'attivo', 'listino_id', 'id')` |
+| trg_categorie_clienti_listini_a10_listini_require_attivo_8048dc | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'listini', 'attivo', 'listino_id', 'id')` |
 | trg_categorie_clienti_listini_a20_set_validita_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_set_validita()` |
 | trg_categorie_clienti_listini_a20_set_validita_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_set_validita()` |
+| trg_categorie_clienti_listini_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_categorie_clienti_listini_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_categorie_clienti_listini_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_categorie_clienti_listini_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -25,5 +25,11 @@
 | ix_listini_tipologie_utilities_listini_tipologie_utilities_id_f | `CREATE INDEX ix_listini_tipologie_utilities_listini_tipologie_utilities_id_f ON storico.listini_tipologie_utilities USING btree (listini_tipologie_utilities_id)` |
 | pk_storico_listini_tipologie_utilities | `CREATE UNIQUE INDEX pk_storico_listini_tipologie_utilities ON storico.listini_tipologie_utilities USING btree (id)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_listini_tipologie_utilities_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_listini_tipologie_utilities_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+
 ---
 {% include-markdown "signature-core.md" %}
