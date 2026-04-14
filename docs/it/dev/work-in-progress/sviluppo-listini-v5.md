@@ -1060,7 +1060,18 @@ Gli step `F1-DB-24..28` (drop colonne obsolete su `listini_righe`, DROP `listini
 5. Rimozione pgTAP obsoleti (`test-listini-resolve-*`, `test-listini-integrita-v1`) e scrittura F1-DB-T7 come smoke.
 
 ### Fase 2 — Backend
-- [ ] Admin categorie + matrice + promo (F2-BE-01..03)
+
+**Avanzamento al 14-04-2026 (sera)**: F2-BE-01 chiuso end-to-end. CRUD admin
+`anagrafiche.categorie_clienti` (repository + service + views + urls + 43 test)
+con whitelist lookup centrale (F1-DB-03). Doc API creata in
+[api_categorie_clienti](../../backend/anagrafiche/manual/api_categorie_clienti).
+Review critica passata (B1+F3+F5+M1+F2+F4), debito F1 (helper payload condivisi)
+tracciato in `sviluppo-listini-v6.md` come V6-B1 per refactor trasversale.
+
+- [x] **F2-BE-01 Admin categorie_clienti + F1-DB-03 whitelist lookup** — 30 test service + 10 test API + 3 test boundary ordinamento + 6 test meta semantics + 5 test bool filter parsing. Endpoints: `GET/POST/PATCH /api/v1/anagrafiche/categorie-clienti/`, lookup via `GET /api/v1/core/lookup/codici/?rel=anagrafiche.categorie_clienti`.
+- [x] **F2-BE-02 matrice categorie_clienti_listini** — chiuso 2026-04-15. Repository con JOIN arricchito (codici/descrizioni categoria/utility/emittente/classe_utenza/listino), service con `PayloadValidator` + `map_integrity_error` (UNIQUE/FK + EXCLUDE → `E_ANAG_MATRICE_OVERLAP`), dimensioni immutabili in PATCH, coerenza `tipo_variazione`/`valore_variazione` e range date anticipata lato service. Endpoint `GET/POST/PATCH /api/v1/anagrafiche/categorie-clienti-listini/`. 32 test service + 10 test API. Doc: [api_categorie_clienti_listini.md](/backend/anagrafiche/manual/api_categorie_clienti_listini).
+- **F1-DB-08 whitelist lookup**: NON APPLICABILE. La tabella non espone `codice`/`descrizione` → non candidata per `/core/lookup/codici/`. Decisione formalizzata nel doc API.
+- [ ] F2-BE-03 promo_articoli (+ F1-DB-15 whitelist)
 - [ ] BA con categoria (F2-BE-04)
 - [ ] Contratti estesi (F2-BE-05..06)
 - [ ] Articoli + BoM (F2-BE-07..08)

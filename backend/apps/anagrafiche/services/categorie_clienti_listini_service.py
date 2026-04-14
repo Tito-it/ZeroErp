@@ -1,0 +1,497 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+# Doc: Python
+# Scopo: Service admin per la matrice anagrafiche.categorie_clienti_listini.
+#        Matrice pricing STADIO 2 del resolver v5: categoria x utility x
+#        emittente x classe_utenza (opz) -> listino con variazione opzionale
+#        (PERCENTUALE | VALORE_FISSO | NULL).
+#
+#        Validazione strict lato service:
+#        - FK positive int (categoria, utility, emittente, listino)
+#        - classe_utenza_id NULLABLE (sentinel fallback = NULL)
+#        - tipo_variazione enum {PERCENTUALE|VALORE_FISSO} o NULL
+#        - valore_variazione Decimal coerente con tipo_variazione
+#        - valido_dal date obbligatoria, valido_al date opzionale (>= dal)
+#
+#        Vincoli DB (anticipati con messaggi parlanti dove possibile):
+#        - ex_categ_cli_listini_no_overlap (EXCLUDE gist su quadrupla + range)
+#        - chk_categ_cli_listini_variazione_coerente (tipo+valore entrambi
+#          NULL o entrambi NOT NULL)
+#        - chk_categ_cli_listini_valido_al_ge_dal
+#
+#        Riferimento: sviluppo-listini-v5 §4.2.
+# ------------------------------------------------------------
+
+from __future__ import annotations
+
+from datetime import date
+from decimal import Decimal, InvalidOperation
+from typing import Any
+
+from django.db import IntegrityError
+
+from apps.anagrafiche.db.categorie_clienti_listini_repository import (
+    CategorieClientiListiniRepository,
+)
+from apps.core.services.error_manager import ErrorManager
+from apps.core.services.payload_helpers import (
+    PayloadValidator,
+    map_integrity_error,
+)
+
+
+# Codici errore (registrati in apps/core/services/error_policies.py)
+E_ANAG_VALIDAZIONE = "E_ANAG_VALIDAZIONE"
+E_ANAG_NOT_FOUND = "E_ANAG_NOT_FOUND"
+E_ANAG_DUPLICATO = "E_ANAG_DUPLICATO"
+E_ANAG_FK = "E_ANAG_FK"
+E_ANAG_MATRICE_OVERLAP = "E_ANAG_MATRICE_OVERLAP"
+
+
+# Whitelist colonne ORDER BY (riflette repository).
+_ORDER_BY_VALIDI: frozenset[str] = frozenset({
+    "categoria_codice",
+    "categoria_descrizione",
+    "utility_codice",
+    "utility_descrizione",
+    "listino_codice",
+    "listino_descrizione",
+    "valido_dal",
+    "valido_al",
+    "attivo",
+    "data_insert",
+    "data_update",
+})
+
+# Chiavi ammesse in create: tutte le dimensioni + listino + variazione + date.
+_CREATE_KEYS: frozenset[str] = frozenset({
+    "categoria_cliente_id",
+    "utility_id",
+    "emittente_soggetto_ruolo_id",
+    "classe_utenza_id",
+    "listino_id",
+    "tipo_variazione",
+    "valore_variazione",
+    "valido_dal",
+    "valido_al",
+    "meta",
+    "attivo",
+})
+
+# Chiavi ammesse in update: le 4+1 dimensioni sono IMMUTABILI (la riga
+# identifica semanticamente un match specifico categoria-utility-emittente-
+# classe; cambiarle vorrebbe dire rimpiazzare la riga, operazione esplicita).
+_UPDATE_KEYS: frozenset[str] = frozenset({
+    "listino_id",
+    "tipo_variazione",
+    "valore_variazione",
+    "valido_dal",
+    "valido_al",
+    "meta",
+    "attivo",
+})
+
+# FK dimensionali immutabili — rifiutate in PATCH con messaggio esplicito.
+_IMMUTABLE_DIMENSIONS: frozenset[str] = frozenset({
+    "categoria_cliente_id",
+    "utility_id",
+    "emittente_soggetto_ruolo_id",
+    "classe_utenza_id",
+})
+
+# Valori ammessi per tipo_variazione (coerenti con CHECK DB
+# chk_categ_cli_listini_tipo_variazione).
+_TIPI_VARIAZIONE: frozenset[str] = frozenset({"PERCENTUALE", "VALORE_FISSO"})
+
+# Limiti numerici per valore_variazione. Il DB e' numeric(10,4) -> max
+# |99999.9999|. Qui non restringiamo: lasciamo al DB il bound tecnico e
+# al UX una validazione di range business (es. percentuali in [-100, +100]).
+# valore_variazione e' Decimal ma accettiamo int/float/stringa numerica.
+
+
+_MESSAGE = "Payload matrice categoria/listino non valido."
+
+
+# Mapping vincoli DB -> codici errore applicativi.
+_UNIQUE_CONSTRAINTS: dict[str, tuple[str, str]] = {
+    # L'EXCLUDE si manifesta come ExclusionViolation, di norma loggata dal
+    # driver come "conflicting key value violates exclusion constraint".
+    # Matchiamo il nome del vincolo per dare un messaggio esplicito.
+    "ex_categ_cli_listini_no_overlap": (
+        E_ANAG_MATRICE_OVERLAP,
+        "Esiste gia' una riga attiva che si sovrappone per questa quadrupla "
+        "(categoria, utility, emittente, classe utenza) nel periodo indicato.",
+    ),
+}
+
+_FK_CONSTRAINTS: dict[str, tuple[str, str]] = {
+    "fk_categ_cli_listini_categoria": (
+        E_ANAG_FK,
+        "Categoria cliente inesistente.",
+    ),
+    "fk_categ_cli_listini_utility": (
+        E_ANAG_FK,
+        "Utility inesistente.",
+    ),
+    "fk_categ_cli_listini_emittente": (
+        E_ANAG_FK,
+        "Emittente (soggetto_ruolo) inesistente.",
+    ),
+    "fk_categ_cli_listini_classe_utenza": (
+        E_ANAG_FK,
+        "Classe utenza inesistente.",
+    ),
+    "fk_categ_cli_listini_listino": (
+        E_ANAG_FK,
+        "Listino inesistente.",
+    ),
+}
+
+
+class CategorieClientiListiniService:
+    """Service admin per la matrice categoria x listino (pricing STADIO 2)."""
+
+    def __init__(self) -> None:
+        self._repo = CategorieClientiListiniRepository()
+        self._v = PayloadValidator(validation_code=E_ANAG_VALIDAZIONE)
+
+    # =================================================================
+    # Lista e dettaglio
+    # =================================================================
+
+    # Scopo: Lista paginata della matrice con filtri dimensionali + validita'.
+    def list_matrice(
+        self,
+        *,
+        search: str | None = None,
+        attivo: bool | None = None,
+        categoria_cliente_id: int | None = None,
+        utility_id: int | None = None,
+        emittente_soggetto_ruolo_id: int | None = None,
+        listino_id: int | None = None,
+        valid_at: date | None = None,
+        limit: int = 25,
+        offset: int = 0,
+        order_by: str = "valido_dal",
+        order_dir: str = "desc",
+    ) -> tuple[list[dict[str, Any]], int]:
+        self._v.validate_order_by(order_by, allowed=_ORDER_BY_VALIDI)
+        return self._repo.list_matrice(
+            search=search,
+            attivo=attivo,
+            categoria_cliente_id=categoria_cliente_id,
+            utility_id=utility_id,
+            emittente_soggetto_ruolo_id=emittente_soggetto_ruolo_id,
+            listino_id=listino_id,
+            valid_at=valid_at,
+            limit=limit,
+            offset=offset,
+            order_by=order_by,
+            order_dir=order_dir,
+        )
+
+    # Scopo: Dettaglio singola riga matrice; solleva not found se assente.
+    def get_matrice(self, record_id: int) -> dict[str, Any]:
+        self._v.guard_positive_int(record_id, field="record_id")
+        result = self._repo.get_matrice(record_id)
+        ErrorManager.require(
+            result is not None,
+            code=E_ANAG_NOT_FOUND,
+            message="Riga matrice categoria/listino non trovata.",
+            context={"record_id": record_id},
+        )
+        assert result is not None
+        return result
+
+    # =================================================================
+    # Creazione
+    # =================================================================
+
+    # Scopo: Crea una nuova riga matrice. Valida FK, enum variazione,
+    #        coerenza tipo/valore, coerenza date. Mappa UNIQUE/FK/EXCLUDE
+    #        su codici errore parlanti.
+    def create_matrice(self, payload: dict[str, Any]) -> dict[str, Any]:
+        self._v.validate_allowed_keys(payload, allowed=_CREATE_KEYS, message=_MESSAGE)
+        data = self._build_create_data(payload)
+
+        try:
+            new_id = self._repo.create_matrice(data)
+        except IntegrityError as exc:
+            map_integrity_error(
+                exc,
+                unique_constraints=_UNIQUE_CONSTRAINTS,
+                fk_constraints=_FK_CONSTRAINTS,
+                fallback_code=E_ANAG_VALIDAZIONE,
+                fallback_message="Violazione vincolo DB su matrice categoria/listino.",
+                context={
+                    "categoria_cliente_id": data.get("categoria_cliente_id"),
+                    "utility_id": data.get("utility_id"),
+                    "emittente_soggetto_ruolo_id": data.get("emittente_soggetto_ruolo_id"),
+                },
+            )
+        return self.get_matrice(new_id)
+
+    # =================================================================
+    # Aggiornamento
+    # =================================================================
+
+    # Scopo: Aggiorna una riga matrice. Le 4+1 dimensioni sono immutabili:
+    #        tentativo rifiutato con messaggio esplicito. Campi mutabili:
+    #        listino, variazione (tipo+valore), validita, meta, attivo.
+    def update_matrice(self, record_id: int, payload: dict[str, Any]) -> dict[str, Any]:
+        self._v.guard_positive_int(record_id, field="record_id")
+        self._v.reject_keys(
+            payload,
+            forbidden=_IMMUTABLE_DIMENSIONS,
+            reason="Le dimensioni della matrice sono immutabili.",
+            detail_prefix=(
+                "Per cambiare categoria/utility/emittente/classe_utenza, "
+                "disattivare la riga corrente e crearne una nuova. Campi rifiutati"
+            ),
+            context_extra={"record_id": record_id},
+        )
+        self._v.validate_allowed_keys(payload, allowed=_UPDATE_KEYS, message=_MESSAGE)
+        data = self._build_update_data(payload)
+
+        ErrorManager.require(
+            bool(data),
+            code=E_ANAG_VALIDAZIONE,
+            message="Nessun campo aggiornabile presente nel payload.",
+            context={"allowed_keys": sorted(_UPDATE_KEYS)},
+        )
+
+        try:
+            updated = self._repo.update_matrice(record_id, data)
+        except IntegrityError as exc:
+            map_integrity_error(
+                exc,
+                unique_constraints=_UNIQUE_CONSTRAINTS,
+                fk_constraints=_FK_CONSTRAINTS,
+                fallback_code=E_ANAG_VALIDAZIONE,
+                fallback_message="Violazione vincolo DB su matrice categoria/listino.",
+                context={"record_id": record_id},
+            )
+        ErrorManager.require(
+            updated,
+            code=E_ANAG_NOT_FOUND,
+            message="Riga matrice categoria/listino non trovata.",
+            context={"record_id": record_id},
+        )
+        return self.get_matrice(record_id)
+
+    # =================================================================
+    # Helpers privati — composizione dict per repository
+    # =================================================================
+
+    # Scopo: Compone il dict per create validando ogni campo.
+    def _build_create_data(self, payload: dict[str, Any]) -> dict[str, Any]:
+        data: dict[str, Any] = {
+            "categoria_cliente_id": self._v.require_positive_int(
+                payload, "categoria_cliente_id"
+            ),
+            "utility_id": self._v.require_positive_int(payload, "utility_id"),
+            "emittente_soggetto_ruolo_id": self._v.require_positive_int(
+                payload, "emittente_soggetto_ruolo_id"
+            ),
+            "listino_id": self._v.require_positive_int(payload, "listino_id"),
+            "valido_dal": self._extract_date(payload, "valido_dal", nullable=False),
+        }
+        classe_utenza = self._v.optional_positive_int(payload, "classe_utenza_id")
+        # classe_utenza_id sempre inviata al repo: None = fallback generico
+        # (coerente con semantica "match valido per ogni classe").
+        data["classe_utenza_id"] = classe_utenza
+
+        valido_al = self._extract_date(payload, "valido_al", nullable=True)
+        if "valido_al" in payload:
+            data["valido_al"] = valido_al
+        # Coerenza range: se entrambe presenti, valido_al >= valido_dal.
+        # Il DB ha anche il check, ma anticipiamo il messaggio parlante.
+        if valido_al is not None:
+            ErrorManager.require(
+                valido_al >= data["valido_dal"],
+                code=E_ANAG_VALIDAZIONE,
+                message=_MESSAGE,
+                detail="valido_al deve essere >= valido_dal.",
+                context={"valido_dal": data["valido_dal"], "valido_al": valido_al},
+            )
+
+        tipo, valore = self._extract_variazione_pair(payload)
+        if tipo is not None or "tipo_variazione" in payload:
+            data["tipo_variazione"] = tipo
+        if valore is not None or "valore_variazione" in payload:
+            data["valore_variazione"] = valore
+
+        attivo = self._v.optional_bool(payload, "attivo")
+        if attivo is not None:
+            data["attivo"] = attivo
+        meta = self._v.optional_meta(payload)
+        if meta is not None:
+            data["meta"] = meta
+        return data
+
+    # Scopo: Compone il dict per update ignorando chiavi assenti. Valida
+    #        coerenza variazione quando almeno uno dei due campi arriva.
+    def _build_update_data(self, payload: dict[str, Any]) -> dict[str, Any]:
+        data: dict[str, Any] = {}
+        if "listino_id" in payload:
+            data["listino_id"] = self._v.require_positive_int(payload, "listino_id")
+        if "valido_dal" in payload:
+            data["valido_dal"] = self._extract_date(
+                payload, "valido_dal", nullable=False
+            )
+        if "valido_al" in payload:
+            data["valido_al"] = self._extract_date(
+                payload, "valido_al", nullable=True
+            )
+        # Coerenza date post-merge (best-effort: se la PATCH ne tocca solo
+        # una, l'altra resta a DB e il check lo fa il DB).
+        if "valido_dal" in data and data.get("valido_al") is not None:
+            ErrorManager.require(
+                data["valido_al"] >= data["valido_dal"],
+                code=E_ANAG_VALIDAZIONE,
+                message=_MESSAGE,
+                detail="valido_al deve essere >= valido_dal.",
+                context={"valido_dal": data["valido_dal"], "valido_al": data["valido_al"]},
+            )
+
+        if "tipo_variazione" in payload or "valore_variazione" in payload:
+            tipo, valore = self._extract_variazione_pair(payload)
+            data["tipo_variazione"] = tipo
+            data["valore_variazione"] = valore
+
+        if "attivo" in payload:
+            value = self._v.optional_bool(payload, "attivo")
+            ErrorManager.require(
+                value is not None,
+                code=E_ANAG_VALIDAZIONE,
+                message="Il campo 'attivo' non puo' essere NULL.",
+                context={"field": "attivo"},
+            )
+            data["attivo"] = value
+        if "meta" in payload:
+            meta = self._v.optional_meta(payload)
+            if meta is not None:
+                data["meta"] = meta
+        return data
+
+    # =================================================================
+    # Helpers privati — type coercion dominio-specifici
+    # =================================================================
+
+    # Scopo: Estrae una data ISO obbligatoria o opzionale. Accetta
+    #        datetime.date (gia' normalizzata) o stringa "YYYY-MM-DD".
+    def _extract_date(
+        self,
+        payload: dict[str, Any],
+        key: str,
+        *,
+        nullable: bool,
+    ) -> date | None:
+        if key not in payload:
+            if nullable:
+                return None
+            ErrorManager.raise_error(
+                code=E_ANAG_VALIDAZIONE,
+                message=_MESSAGE,
+                detail=f"Campo '{key}' obbligatorio.",
+                context={"field": key},
+            )
+            raise AssertionError("unreachable")  # pragma: no cover
+        raw = payload[key]
+        if raw is None:
+            ErrorManager.require(
+                nullable,
+                code=E_ANAG_VALIDAZIONE,
+                message=_MESSAGE,
+                detail=f"Campo '{key}' non puo' essere null.",
+                context={"field": key},
+            )
+            return None
+        if isinstance(raw, date):
+            return raw
+        if isinstance(raw, str):
+            try:
+                return date.fromisoformat(raw.strip())
+            except ValueError as exc:
+                ErrorManager.raise_error(
+                    code=E_ANAG_VALIDAZIONE,
+                    message=_MESSAGE,
+                    detail=f"Campo '{key}' deve essere una data ISO YYYY-MM-DD.",
+                    context={"field": key, "value": raw},
+                    cause=exc,
+                )
+                raise AssertionError("unreachable") from exc  # pragma: no cover
+        ErrorManager.raise_error(
+            code=E_ANAG_VALIDAZIONE,
+            message=_MESSAGE,
+            detail=f"Campo '{key}' deve essere una data o stringa ISO.",
+            context={"field": key, "type": type(raw).__name__},
+        )
+        raise AssertionError("unreachable")  # pragma: no cover
+
+    # Scopo: Estrae e valida la coppia (tipo_variazione, valore_variazione)
+    #        con coerenza semantica (entrambi NULL o entrambi valorizzati).
+    #        Il DB ha il check equivalente: qui anticipiamo per UX.
+    def _extract_variazione_pair(
+        self, payload: dict[str, Any]
+    ) -> tuple[str | None, Decimal | None]:
+        # Estrazione tipo_variazione: None o stringa enum.
+        tipo: str | None
+        if "tipo_variazione" not in payload or payload["tipo_variazione"] is None:
+            tipo = None
+        else:
+            raw = payload["tipo_variazione"]
+            ErrorManager.require(
+                isinstance(raw, str),
+                code=E_ANAG_VALIDAZIONE,
+                message=_MESSAGE,
+                detail="tipo_variazione deve essere una stringa.",
+                context={"field": "tipo_variazione", "value": raw},
+            )
+            tipo = raw.strip().upper()
+            ErrorManager.require(
+                tipo in _TIPI_VARIAZIONE,
+                code=E_ANAG_VALIDAZIONE,
+                message=_MESSAGE,
+                detail=f"tipo_variazione deve essere uno tra: {', '.join(sorted(_TIPI_VARIAZIONE))}.",
+                context={"tipo_variazione": tipo},
+            )
+
+        # Estrazione valore_variazione: None o Decimal.
+        valore: Decimal | None
+        if "valore_variazione" not in payload or payload["valore_variazione"] is None:
+            valore = None
+        else:
+            raw = payload["valore_variazione"]
+            ErrorManager.require(
+                not isinstance(raw, bool),
+                code=E_ANAG_VALIDAZIONE,
+                message=_MESSAGE,
+                detail="valore_variazione deve essere numerico.",
+                context={"field": "valore_variazione", "value": raw},
+            )
+            try:
+                valore = Decimal(str(raw).strip())
+            except (InvalidOperation, AttributeError) as exc:
+                ErrorManager.raise_error(
+                    code=E_ANAG_VALIDAZIONE,
+                    message=_MESSAGE,
+                    detail="valore_variazione non e' un numero valido.",
+                    context={"field": "valore_variazione", "value": raw},
+                    cause=exc,
+                )
+                raise AssertionError("unreachable") from exc  # pragma: no cover
+
+        # Coerenza: entrambi None o entrambi valorizzati.
+        ErrorManager.require(
+            (tipo is None) == (valore is None),
+            code=E_ANAG_VALIDAZIONE,
+            message=_MESSAGE,
+            detail=(
+                "tipo_variazione e valore_variazione devono essere entrambi "
+                "valorizzati oppure entrambi nulli."
+            ),
+            context={"tipo_variazione": tipo, "valore_variazione": valore},
+        )
+        return tipo, valore

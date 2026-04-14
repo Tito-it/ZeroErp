@@ -79,6 +79,8 @@ _REL_CONSENTITE: frozenset[str] = frozenset(
         "config.unita_organizzative",
         "config.utilities",
         "config.valute",
+        # --- anagrafiche ---
+        "anagrafiche.categorie_clienti",
         # --- catalogo ---
         "catalogo.unita_misura",
         # --- magazzino ---

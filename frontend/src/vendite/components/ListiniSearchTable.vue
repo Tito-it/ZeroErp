@@ -10,7 +10,7 @@ import { useListiniStore } from '../stores/listini'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useSearchTable } from '../../core/composables/useSearchTable'
 import { useTabFreshness } from '../../core/composables/useTabFreshness'
-import { useLookup } from '../../core/composables/useLookup'
+import { useGlobalLookup } from '../../core/composables/useGlobalLookup'
 import { lookupCodici } from '../../core/apiCore'
 import { MANAGE_ICONS } from '../../core/constants'
 import { statoVersioneListinoSeverity } from '../../core/utils/severity'
@@ -51,8 +51,10 @@ const utilityFilter = ref(null)
 const tipologiaFilter = ref(null)
 
 // Lookup tipologie listino per il filtro (non filtrato per utility: lista
-// completa delle tipologie attive). Cache on-demand via useLookup.
-const tipologiaLookup = useLookup(
+// completa delle tipologie attive). Cache globale condivisa: ogni re-mount
+// del componente (cambio tab, split-view) riusa la stessa fetch.
+const tipologiaLookup = useGlobalLookup(
+  'config.listini_tipologie',
   () => lookupCodici('config.listini_tipologie'),
   { immediate: true }
 )
