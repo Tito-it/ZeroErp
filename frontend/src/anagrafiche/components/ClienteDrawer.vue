@@ -25,6 +25,7 @@ import IndirizzoSoggettoForm from '../../core/components/IndirizzoSoggettoForm.v
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import DrawerFooter from '../../core/components/DrawerFooter.vue'
 import LookupSelect from '../../core/components/LookupSelect.vue'
+import IvaSelect from '../../core/components/IvaSelect.vue'
 import Drawer from 'primevue/drawer'
 import Select from 'primevue/select'
 import InputText from 'primevue/inputtext'
@@ -422,8 +423,7 @@ function onClose() {
         <h4 class="mt-3">{{ t('clienti.section_pagamento') }}</h4>
         <div class="form-field">
           <label>{{ t('clienti.field_iva') }}</label>
-          <LookupSelect v-model="form.iva_id" rel="config.iva" class="w-full"
-            :placeholder="t('clienti.select_iva')" show-clear />
+          <IvaSelect v-model="form.iva_id" />
         </div>
         <div class="form-grid-2col">
           <div class="form-field">

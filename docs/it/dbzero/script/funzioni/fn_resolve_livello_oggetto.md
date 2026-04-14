@@ -25,9 +25,9 @@ BEGIN
   --   risale alla catena area via fn_resolve_livello_area.
   --
   -- Catena:
-  --   1. ruolo_sistema (NULL/DISABILITATO → BLOCCATO, ADMIN → TUTTO)
+  --   1. ruolo_sistema (NULL/DISABILITATO -> BLOCCATO, ADMIN -> TUTTO)
   --   2. Override utente oggetto (se presente e valido)
-  --   3. Fallback → fn_resolve_livello_area
+  --   3. Fallback -> fn_resolve_livello_area
   -- =========================================================
 
   -- 1. Ruolo sistema
@@ -42,14 +42,14 @@ BEGIN
   END IF;
 
   -- 2. Override utente oggetto (OPERATIVO)
+  -- Filtro temporale via colonna validita nativa
   SELECT uoo.livello
     INTO v_livello
     FROM config.user_override_oggetti uoo
    WHERE uoo.auth_user_id = p_auth_user_id
      AND uoo.app_label    = p_app_label
      AND uoo.model_name   = p_model_name
-     AND (uoo.valido_dal IS NULL OR uoo.valido_dal <= CURRENT_DATE)
-     AND (uoo.valido_al  IS NULL OR uoo.valido_al  >= CURRENT_DATE);
+     AND uoo.validita @> CURRENT_DATE;
 
   IF FOUND THEN
     RETURN v_livello;
@@ -61,7 +61,7 @@ END
 $function$
 
 COMMENT ON FUNCTION script.fn_resolve_livello_oggetto(p_auth_user_id integer, p_app_label character varying, p_model_name character varying, p_area_schema_db character varying)
-IS 'Risolve livello accesso per model: override oggetto → catena area → BLOCCATO.';
+IS 'Risolve livello accesso oggetto per utente. Migrazione daterange: filtro temporale via validita @>.';
 ```
 
 ---

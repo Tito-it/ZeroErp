@@ -1,0 +1,55 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+# Imposta NOT NULL su vendite.listini.emittente_soggetto_ruolo_id
+# e crea l'indice di ricerca. Eseguibile solo dopo il backfill
+# 20260414-05 che garantisce zero residui NULL.
+# Pricing v5 - riferimento docs/it/dev/work-in-progress/sviluppo-listini-v5.md
+# sezione 3.1.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: /migrations_v2/00_schema/vendite/20260414-06-alter-listini-emittente-set-not-null-mctit.yaml
+
+  - changeSet:
+      id: 20260414-06-alter-listini-emittente-set-not-null
+      author: mctit
+      comment: >
+        SET NOT NULL su emittente_soggetto_ruolo_id + indice di ricerca.
+        L'emittente diventa dimensione obbligatoria del listino.
+      preConditions:
+        - onFail: HALT
+        - columnExists:
+            schemaName: vendite
+            tableName: listini
+            columnName: emittente_soggetto_ruolo_id
+        - sqlCheck:
+            expectedResult: "0"
+            sql: >-
+              SELECT COUNT(*) FROM vendite.listini
+              WHERE emittente_soggetto_ruolo_id IS NULL
+
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.listini
+                  ALTER COLUMN emittente_soggetto_ruolo_id SET NOT NULL;
+
+        - createIndex:
+            schemaName: vendite
+            tableName: listini
+            indexName: ix_listini_emittente_soggetto_ruolo
+            columns:
+              - column:
+                  name: emittente_soggetto_ruolo_id
+
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              DROP INDEX IF EXISTS vendite.ix_listini_emittente_soggetto_ruolo;
+              ALTER TABLE vendite.listini
+                  ALTER COLUMN emittente_soggetto_ruolo_id DROP NOT NULL;

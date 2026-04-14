@@ -147,7 +147,7 @@ def nome_metodo(self, ...):
 # Scopo: obiettivo, perimetro e risultato atteso dettagliati
 ```
 
-## Stato Attuale del Progetto (marzo 2026)
+## Stato Attuale del Progetto (aprile 2026)
 
 ### Completato ✅
 - Refactor permessi (08-03-2026): 9 funzioni risoluzione permessi spostate da `config` a `script` — migrations `20260308-01..12`, Python backend + pgTAP test + doc aggiornati
@@ -161,6 +161,9 @@ def nome_metodo(self, ...):
 - Payload SDI preparato (`fn_prepare_sdi_payload`)
 - Runtime task tracing: `vendite.fatturazione_pipeline_task_policy` + `vendite.fatturazione_lotti_task_runs`
 - Test pgtap runtime task + test Django pipeline runner
+- **Listini v3 completo** (12-04-2026): Sprint B-v3 — N8a variazione % massa, N2 alert scadenze, N6 rettifica controllata, N5 riallineamento prezzo, N7 variazione eccezionale + sblocco, trigger DB guard, 6 endpoint API, 24 test, doc API
+- **Migrazione daterange** (12-04-2026): 18 tabelle migrate a `daterange`/`tstzrange` nativo, `script.trgfn_set_validita()`, backend ottimizzato con `@>`, linee guida SQL §7b
+- **Pricing commesse** (12-04-2026): riallineamento prezzo, variazione eccezionale, sblocco — 3 endpoint API con lock FOR UPDATE e audit trail
 
 ### Aperto — Media priorità
 - **Registry runtime Python multi-dominio**: modello DB pronto, ma la mappa Python per tutti i domini non è completa

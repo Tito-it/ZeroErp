@@ -18,7 +18,8 @@ export const useListiniStore = defineStore('vendite-listini', () => {
 
   const filters = ref({
     search: '',
-    dominio: null,
+    utility_id: null,
+    tipologia_id: null,
     attivo: true,
     limit: 10,
     offset: 0,
@@ -42,7 +43,8 @@ export const useListiniStore = defineStore('vendite-listini', () => {
         params.order_dir = f.order_dir || 'asc'
       }
       if (searchTerm.length >= 3) params.search = searchTerm
-      if (f.dominio != null) params.dominio = f.dominio
+      if (f.utility_id != null) params.utility_id = f.utility_id
+      if (f.tipologia_id != null) params.tipologia_id = f.tipologia_id
       if (f.attivo != null) params.attivo = f.attivo
 
       const res = await listListini(params)

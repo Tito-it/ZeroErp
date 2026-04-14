@@ -1,0 +1,176 @@
+{% include-markdown "it/dbzero/vendite/manual/fn_resolve_prezzo_composito.md" %}
+# ⚙️ Funzione `fn_resolve_prezzo_composito`
+
+```sql
+CREATE FUNCTION fn_resolve_prezzo_composito(p_prodotto_id uuid, p_uom_id bigint, p_data_riferimento date, p_ba_id bigint, p_utility_id integer, p_emittente_soggetto_ruolo_id bigint, p_classe_utenza_id integer)
+```
+
+**Definizione completa:**
+
+```sql
+CREATE OR REPLACE FUNCTION vendite.fn_resolve_prezzo_composito(p_prodotto_id uuid, p_uom_id bigint, p_data_riferimento date, p_ba_id bigint, p_utility_id integer, p_emittente_soggetto_ruolo_id bigint, p_classe_utenza_id integer DEFAULT NULL::integer)
+ RETURNS TABLE(componente_id uuid, uom_id bigint, prezzo_unitario numeric, iva_id bigint, descrizione_fattura character varying, esposto_in_fattura boolean)
+ LANGUAGE plpgsql
+ STABLE
+AS $function$
+DECLARE
+    v_has_esposti     boolean;
+    v_prezzo_padre    vendite.listini_righe.prezzo%TYPE;
+    v_prezzo_totale   numeric := 0;
+    v_articolo_iva_id catalogo.articoli.iva_id%TYPE;
+    v_articolo_desc   catalogo.articoli.descrizione%TYPE;
+
+    -- Iterazione sui componenti e risultato chiamata resolver.
+    v_rec             record;
+    v_resolve         record;
+BEGIN
+    -- Guard essenziale: gli altri ID sono delegati al resolver sottostante.
+    IF p_prodotto_id IS NULL THEN
+        -- E_PARAMETRO_INVALIDO ha 1 %s (nome parametro).
+        PERFORM script.fn_log_and_raise_error(
+            'vendite',
+            'fn_resolve_prezzo_composito',
+            'E_PARAMETRO_INVALIDO',
+            jsonb_build_object('parametro', 'p_prodotto_id'),
+            NULL::uuid,
+            'p_prodotto_id obbligatorio'
+        );
+    END IF;
+
+    -- Metadati del prodotto padre (serviranno al caso "riga singola").
+    SELECT a.iva_id, a.descrizione
+      INTO v_articolo_iva_id, v_articolo_desc
+      FROM catalogo.articoli a
+     WHERE a.id = p_prodotto_id;
+
+    -- Esiste almeno un componente esposto in fattura attivo alla data?
+    SELECT EXISTS (
+        SELECT 1
+          FROM catalogo.articoli_componenti ac
+         WHERE ac.prodotto_id            = p_prodotto_id
+           AND ac.esposto_in_fattura     = TRUE
+           AND COALESCE(ac.attivo, TRUE) = TRUE
+           AND ac.valido_dal            <= p_data_riferimento
+           AND (ac.valido_al IS NULL OR ac.valido_al >= p_data_riferimento)
+    )
+    INTO v_has_esposti;
+
+    -- CASO A: almeno un componente esposto -> N righe, una per componente
+    -- obbligatorio attivo. Il flag esposto viene propagato dal BoM.
+    IF v_has_esposti THEN
+        FOR v_rec IN
+            SELECT ac.componente_id,
+                   ac.esposto_in_fattura,
+                   a.uom_id      AS componente_uom_id,
+                   a.iva_id      AS componente_iva_id,
+                   a.descrizione AS componente_descrizione
+              FROM catalogo.articoli_componenti ac
+              JOIN catalogo.articoli a
+                ON a.id = ac.componente_id
+             WHERE ac.prodotto_id            = p_prodotto_id
+               AND ac.obbligatorio           = TRUE
+               AND COALESCE(ac.attivo, TRUE) = TRUE
+               AND ac.valido_dal            <= p_data_riferimento
+               AND (ac.valido_al IS NULL OR ac.valido_al >= p_data_riferimento)
+        LOOP
+            SELECT *
+              INTO v_resolve
+              FROM vendite.fn_resolve_prezzo_listino_v2(
+                  v_rec.componente_id,
+                  v_rec.componente_uom_id,
+                  p_data_riferimento,
+                  p_ba_id,
+                  p_utility_id,
+                  p_emittente_soggetto_ruolo_id,
+                  p_classe_utenza_id
+              );
+
+            componente_id       := v_rec.componente_id;
+            uom_id              := v_rec.componente_uom_id;
+            prezzo_unitario     := v_resolve.prezzo_finale;
+            iva_id              := v_rec.componente_iva_id;
+            descrizione_fattura := v_rec.componente_descrizione;
+            esposto_in_fattura  := v_rec.esposto_in_fattura;
+            RETURN NEXT;
+        END LOOP;
+
+        RETURN;
+    END IF;
+
+    -- CASO B: nessun componente esposto. Tentativo prezzo diretto sul
+    -- composito; se la riga listino non esiste (SQLSTATE 'P0001' di
+    -- fn_log_and_raise_error), si cade su Sigma(componenti). Cattura
+    -- ristretta: ogni altro errore resta propagato.
+    BEGIN
+        SELECT *
+          INTO v_resolve
+          FROM vendite.fn_resolve_prezzo_listino_v2(
+              p_prodotto_id,
+              p_uom_id,
+              p_data_riferimento,
+              p_ba_id,
+              p_utility_id,
+              p_emittente_soggetto_ruolo_id,
+              p_classe_utenza_id
+          );
+        v_prezzo_padre := v_resolve.prezzo_finale;
+    EXCEPTION
+        WHEN SQLSTATE 'P0001' THEN
+            v_prezzo_padre := NULL;
+    END;
+
+    IF v_prezzo_padre IS NOT NULL THEN
+        componente_id       := p_prodotto_id;
+        uom_id              := p_uom_id;
+        prezzo_unitario     := v_prezzo_padre;
+        iva_id              := v_articolo_iva_id;
+        descrizione_fattura := v_articolo_desc;
+        esposto_in_fattura  := FALSE;
+        RETURN NEXT;
+        RETURN;
+    END IF;
+
+    -- Fallback Sigma: somma pesata dei componenti obbligatori attivi.
+    FOR v_rec IN
+        SELECT ac.componente_id,
+               ac.coeff_qta,
+               a.uom_id AS componente_uom_id
+          FROM catalogo.articoli_componenti ac
+          JOIN catalogo.articoli a
+            ON a.id = ac.componente_id
+         WHERE ac.prodotto_id            = p_prodotto_id
+           AND ac.obbligatorio           = TRUE
+           AND COALESCE(ac.attivo, TRUE) = TRUE
+           AND ac.valido_dal            <= p_data_riferimento
+           AND (ac.valido_al IS NULL OR ac.valido_al >= p_data_riferimento)
+    LOOP
+        SELECT *
+          INTO v_resolve
+          FROM vendite.fn_resolve_prezzo_listino_v2(
+              v_rec.componente_id,
+              v_rec.componente_uom_id,
+              p_data_riferimento,
+              p_ba_id,
+              p_utility_id,
+              p_emittente_soggetto_ruolo_id,
+              p_classe_utenza_id
+          );
+        v_prezzo_totale := v_prezzo_totale + v_resolve.prezzo_finale * v_rec.coeff_qta;
+    END LOOP;
+
+    componente_id       := p_prodotto_id;
+    uom_id              := p_uom_id;
+    prezzo_unitario     := v_prezzo_totale;
+    iva_id              := v_articolo_iva_id;
+    descrizione_fattura := v_articolo_desc;
+    esposto_in_fattura  := FALSE;
+    RETURN NEXT;
+END
+$function$
+
+COMMENT ON FUNCTION vendite.fn_resolve_prezzo_composito(p_prodotto_id uuid, p_uom_id bigint, p_data_riferimento date, p_ba_id bigint, p_utility_id integer, p_emittente_soggetto_ruolo_id bigint, p_classe_utenza_id integer)
+IS 'Resolver BoM ibrido pricing v5: N righe se composito ha componenti esposti, 1 riga altrimenti (prezzo diretto o Sigma pesata).';
+```
+
+---
+{% include-markdown "signature-core.md" %}

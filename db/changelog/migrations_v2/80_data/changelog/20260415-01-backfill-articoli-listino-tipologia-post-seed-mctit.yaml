@@ -1,0 +1,80 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+# Backfill gemello a 00_schema/catalogo/20260414-15: rigira dopo il seed
+# di config.listini_tipologie (applicato in 80_data/changelog/20260413-02).
+#
+# Why: in CI Liquibase applica 00_schema PRIMA di 80_data, quindi quando il
+# backfill originale cerca la tipologia PRODOTTI la tabella e' vuota. Qui in
+# 80_data/changelog il seed e' gia' stato applicato (ordine alfabetico del
+# path: 20260413 < 20260415) e il backfill puo' completarsi.
+#
+# runOnChange=true garantisce che le esecuzioni successive aggiornino anche
+# nuovi articoli inseriti tra un deploy e l'altro.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: /migrations_v2/80_data/changelog/20260415-01-backfill-articoli-listino-tipologia-post-seed-mctit.yaml
+
+  - changeSet:
+      id: 20260415-01-backfill-articoli-listino-tipologia-post-seed
+      author: mctit
+      runOnChange: true
+      validCheckSum:
+        - ANY
+      comment: >
+        Post-seed: popola listino_tipologia_id sugli articoli non-utility
+        ancora NULL, usando la tipologia PRODOTTI dal seed listini_tipologie.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: catalogo
+            tableName: articoli
+        - columnExists:
+            schemaName: catalogo
+            tableName: articoli
+            columnName: listino_tipologia_id
+        - tableExists:
+            schemaName: config
+            tableName: listini_tipologie
+
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $BACKFILL$
+              DECLARE
+                  v_tipologia_prodotti_id config.listini_tipologie.id%TYPE;
+                  v_updated               integer;
+              BEGIN
+                  SELECT id INTO v_tipologia_prodotti_id
+                    FROM config.listini_tipologie
+                   WHERE codice = 'PRODOTTI'
+                     AND attivo IS TRUE;
+
+                  IF v_tipologia_prodotti_id IS NULL THEN
+                      -- Non dovrebbe succedere: il seed 20260413-02 popola PRODOTTI.
+                      -- Se capita, falliamo visibilmente: il seed e' alterato.
+                      RAISE EXCEPTION
+                          'Backfill post-seed: tipologia PRODOTTI non trovata in config.listini_tipologie (seed mancante o alterato).'
+                          USING ERRCODE = 'P0001';
+                  END IF;
+
+                  UPDATE catalogo.articoli
+                     SET listino_tipologia_id = v_tipologia_prodotti_id
+                   WHERE listino_tipologia_id IS NULL
+                     AND voce_utility = FALSE;
+
+                  GET DIAGNOSTICS v_updated = ROW_COUNT;
+                  RAISE NOTICE 'Backfill post-seed articoli.listino_tipologia_id: % articoli -> PRODOTTI.', v_updated;
+              END
+              $BACKFILL$;
+
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              SELECT 1;

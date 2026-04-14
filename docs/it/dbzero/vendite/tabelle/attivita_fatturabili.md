@@ -46,6 +46,15 @@
 | commessa_id | bigint | NO |  |
 | commessa_attivita_id | bigint | NO |  |
 | sorgente_origine_tipo_id | bigint | YES |  |
+| listino_riga_id | bigint | YES |  |
+| prezzo_base_snapshot | numeric | YES |  |
+| origine_prezzo | character varying | YES |  |
+| tipo_variazione_applicata | character varying | YES |  |
+| valore_variazione_applicata | numeric | YES |  |
+| promo_id | bigint | YES |  |
+| contratto_id | bigint | YES |  |
+| categoria_cliente_id_snapshot | smallint | YES |  |
+| classe_utenza_id_snapshot | integer | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -53,13 +62,20 @@
 | CHECK | chk_attivita_competenza_dal_al |  |
 | CHECK | chk_attivita_competenza_mese_primo |  |
 | CHECK | chk_attivita_fatt_stato_esecuzione |  |
+| CHECK | chk_attivita_fatturabili_origine_prezzo |  |
+| CHECK | chk_attivita_fatturabili_tipo_variazione_applicata |  |
+| FOREIGN KEY | attivita_fatturabili_listino_riga_id_fkey | listino_riga_id |
 | FOREIGN KEY | fk_attivita_fatturabili_area_geografica | area_geografica_id |
 | FOREIGN KEY | fk_attivita_fatturabili_articoli | articolo_id |
 | FOREIGN KEY | fk_attivita_fatturabili_attivita_consumi | attivita_consumi_id |
 | FOREIGN KEY | fk_attivita_fatturabili_billing_account | billing_account_id |
+| FOREIGN KEY | fk_attivita_fatturabili_categoria_cliente_snapshot | categoria_cliente_id_snapshot |
+| FOREIGN KEY | fk_attivita_fatturabili_classe_utenza_snapshot | classe_utenza_id_snapshot |
 | FOREIGN KEY | fk_attivita_fatturabili_commessa | commessa_id |
 | FOREIGN KEY | fk_attivita_fatturabili_commessa_attivita | commessa_attivita_id |
+| FOREIGN KEY | fk_attivita_fatturabili_contratto | contratto_id |
 | FOREIGN KEY | fk_attivita_fatturabili_istanze_utilities | istanza_utility_id |
+| FOREIGN KEY | fk_attivita_fatturabili_promo | promo_id |
 | FOREIGN KEY | fk_attivita_fatturabili_sorgente_origine_tipo | sorgente_origine_tipo_id |
 | FOREIGN KEY | fk_attivita_fatturabili_sorgente_tipo | sorgente_tipo_id |
 | FOREIGN KEY | fk_attivita_fatturabili_tipo_doc_fiscale | tipo_doc_fiscale_id |
@@ -78,6 +94,7 @@
 | ix_attivita_fatturabili_commessa_id | `CREATE INDEX ix_attivita_fatturabili_commessa_id ON vendite.attivita_fatturabili USING btree (commessa_id)` |
 | ix_attivita_fatturabili_fattura_riga_id | `CREATE INDEX ix_attivita_fatturabili_fattura_riga_id ON vendite.attivita_fatturabili USING btree (fattura_riga_id)` |
 | ix_attivita_fatturabili_lock | `CREATE INDEX ix_attivita_fatturabili_lock ON vendite.attivita_fatturabili USING btree (lock_in_fatturazione, lock_batch_id)` |
+| ix_attivita_fatturabili_origine_prezzo | `CREATE INDEX ix_attivita_fatturabili_origine_prezzo ON vendite.attivita_fatturabili USING btree (origine_prezzo)` |
 | ix_attivita_fatturabili_posticipa_sospesa | `CREATE INDEX ix_attivita_fatturabili_posticipa_sospesa ON vendite.attivita_fatturabili USING btree (posticipa_al, sospesa)` |
 | ix_attivita_istanza_data | `CREATE INDEX ix_attivita_istanza_data ON vendite.attivita_fatturabili USING btree (istanza_utility_id, data_attivita)` |
 | pk_attivita_fatturabili | `CREATE UNIQUE INDEX pk_attivita_fatturabili ON vendite.attivita_fatturabili USING btree (id)` |
@@ -93,12 +110,14 @@
 | trg_attivita_fatturabili_a10_articoli_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'articoli', 'attivo', 'articolo_id', 'id')` |
 | trg_attivita_fatturabili_a10_guard_ba_coerenza_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_attivita_fatturabili_guard_ba_coerenza()` |
 | trg_attivita_fatturabili_a10_guard_ba_coerenza_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_attivita_fatturabili_guard_ba_coerenza()` |
-| trg_attivita_fatturabili_a10_guard_commessa_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_attivita_fatturabili_guard_commessa()` |
 | trg_attivita_fatturabili_a10_guard_commessa_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_attivita_fatturabili_guard_commessa()` |
+| trg_attivita_fatturabili_a10_guard_commessa_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_attivita_fatturabili_guard_commessa()` |
 | trg_attivita_fatturabili_a10_guard_fatturato_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION vendite.trgfn_attivita_fatturabili_guard_fatturato()` |
 | trg_attivita_fatturabili_a10_guard_fatturato_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_attivita_fatturabili_guard_fatturato()` |
-| trg_attivita_fatturabili_a10_sorgenti_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'sorgenti', 'attivo', 'sorgente_origine_tipo_id', 'id')` |
+| trg_attivita_fatturabili_a10_listini_righe_require_attiv_48a055 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'listini_righe', 'attivo', 'listino_riga_id', 'id')` |
+| trg_attivita_fatturabili_a10_listini_righe_require_attiv_48a055 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'listini_righe', 'attivo', 'listino_riga_id', 'id')` |
 | trg_attivita_fatturabili_a10_sorgenti_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'sorgenti', 'attivo', 'sorgente_origine_tipo_id', 'id')` |
+| trg_attivita_fatturabili_a10_sorgenti_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'sorgenti', 'attivo', 'sorgente_origine_tipo_id', 'id')` |
 | trg_attivita_fatturabili_a10_tipi_doc_fiscale_require_at_ecad50 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'tipi_doc_fiscale', 'attivo', 'tipo_doc_fiscale_id', 'id')` |
 | trg_attivita_fatturabili_a10_tipi_doc_fiscale_require_at_ecad50 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'tipi_doc_fiscale', 'attivo', 'tipo_doc_fiscale_id', 'id')` |
 | trg_attivita_fatturabili_a10_unita_misura_require_attivo_a573b4 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'unita_misura', 'attivo', 'uom_id', 'id')` |

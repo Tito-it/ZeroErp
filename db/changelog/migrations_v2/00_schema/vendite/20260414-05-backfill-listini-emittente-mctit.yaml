@@ -1,0 +1,109 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+# Backfill vendite.listini.emittente_soggetto_ruolo_id.
+#
+# Strategia (nessuna produzione): assegna a tutti i listini senza emittente
+# l'emittente fiscale risolto da user_insert tramite django.auth_user +
+# config.user_emittenti_fiscali; in mancanza ricade sul primo emittente
+# fiscale attivo.
+#
+# Sicurezza CI: Liquibase gira prima di "python manage.py migrate", quindi
+# django.auth_user potrebbe non esistere al momento dell'esecuzione.
+# Il DO block verifica to_regclass('django.auth_user') e salta il tentativo 1
+# se la tabella non e' ancora presente. In CI vuota vendite.listini non ha
+# righe: il backfill diventa no-op.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: /migrations_v2/00_schema/vendite/20260414-05-backfill-listini-emittente-mctit.yaml
+
+  - changeSet:
+      id: 20260414-05-backfill-listini-emittente
+      author: mctit
+      comment: >
+        Popola emittente_soggetto_ruolo_id sui listini esistenti.
+        Tentativo 1: risoluzione via user_insert -> django.auth_user ->
+        config.user_emittenti_fiscali -> anagrafiche.emittenti_fiscali.
+        Tentativo 2: fallback al primo emittente fiscale attivo.
+        Se vendite.listini e' vuoto (CI): no-op.
+
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $BACKFILL$
+              DECLARE
+                  v_fallback_soggetto_ruolo_id bigint;
+                  v_totale_listini             integer;
+                  v_residui                    integer;
+              BEGIN
+                  -- Short-circuit: se non ci sono listini da backfillare, esci.
+                  SELECT COUNT(*) INTO v_totale_listini FROM vendite.listini;
+                  IF v_totale_listini = 0 THEN
+                      RAISE NOTICE 'Backfill listini.emittente: zero righe in tabella, skip.';
+                      RETURN;
+                  END IF;
+
+                  -- Prepara il fallback: primo emittente fiscale attivo (soggetto_ruolo_id).
+                  SELECT ef.soggetto_ruolo_id
+                    INTO v_fallback_soggetto_ruolo_id
+                    FROM anagrafiche.emittenti_fiscali ef
+                   WHERE ef.attivo IS TRUE
+                   ORDER BY ef.id
+                   LIMIT 1;
+
+                  IF v_fallback_soggetto_ruolo_id IS NULL THEN
+                      RAISE EXCEPTION
+                          'Backfill listini.emittente_soggetto_ruolo_id: nessun emittente fiscale attivo disponibile come fallback'
+                          USING ERRCODE = 'P0001';
+                  END IF;
+
+                  -- Tentativo 1: risolvi via user_insert -> django.auth_user.username
+                  -- -> config.user_emittenti_fiscali -> emittenti_fiscali.soggetto_ruolo_id.
+                  -- Guard: django.auth_user esiste solo dopo "python manage.py migrate".
+                  -- In CI (Liquibase prima di Django) la tabella non esiste: saltiamo il passaggio.
+                  IF to_regclass('django.auth_user') IS NOT NULL THEN
+                      EXECUTE $DYN$
+                          UPDATE vendite.listini l
+                             SET emittente_soggetto_ruolo_id = ef.soggetto_ruolo_id
+                            FROM anagrafiche.emittenti_fiscali ef
+                            JOIN config.user_emittenti_fiscali uef
+                              ON uef.emittente_fiscale_id = ef.id
+                            JOIN django.auth_user au
+                              ON au.id = uef.auth_user_id
+                           WHERE l.emittente_soggetto_ruolo_id IS NULL
+                             AND au.username = l.user_insert
+                             AND ef.attivo IS TRUE
+                      $DYN$;
+                  END IF;
+
+                  -- Tentativo 2: fallback generico sui residui.
+                  UPDATE vendite.listini
+                     SET emittente_soggetto_ruolo_id = v_fallback_soggetto_ruolo_id
+                   WHERE emittente_soggetto_ruolo_id IS NULL;
+
+                  -- Verifica finale: zero residui.
+                  SELECT COUNT(*) INTO v_residui
+                    FROM vendite.listini
+                   WHERE emittente_soggetto_ruolo_id IS NULL;
+
+                  IF v_residui > 0 THEN
+                      RAISE EXCEPTION
+                          'Backfill listini.emittente_soggetto_ruolo_id: % righe residue NULL dopo backfill',
+                          v_residui
+                          USING ERRCODE = 'P0001';
+                  END IF;
+              END
+              $BACKFILL$;
+
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              -- Il backfill non viene annullato: il rollback reale avviene
+              -- droppando la colonna nel changeSet 20260414-04.
+              SELECT 1;

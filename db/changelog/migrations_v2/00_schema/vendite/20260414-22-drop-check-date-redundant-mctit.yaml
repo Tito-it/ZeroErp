@@ -1,0 +1,63 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+# Rimuove CHECK ridondanti su valido_al >= valido_dal introdotti nei
+# changeSet 20260414-07 (categorie_clienti_listini) e 20260414-13
+# (promo_articoli).
+#
+# Motivazione: il trigger script.trgfn_set_validita costruisce
+#   validita := daterange(valido_dal, valido_al, '[]')
+# che PostgreSQL rifiuta con SQLSTATE 22000 quando valido_al < valido_dal.
+# Il CHECK non viene mai raggiunto (il costruttore daterange scatta prima)
+# ed e' semplicemente codice morto, in piu' porta a SQLSTATE
+# incoerente nei test (22000 invece di 23514). Eliminato.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: /migrations_v2/00_schema/vendite/20260414-22-drop-check-date-redundant-mctit.yaml
+
+  - changeSet:
+      id: 20260414-22-drop-check-categ-cli-listini-date-redundant
+      author: mctit
+      comment: >
+        Drop CHECK ridondante chk_categ_cli_listini_valido_al_ge_dal:
+        la validazione daterange nel trigger set_validita scatta prima.
+
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE anagrafiche.categorie_clienti_listini
+                  DROP CONSTRAINT IF EXISTS chk_categ_cli_listini_valido_al_ge_dal;
+
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              ALTER TABLE anagrafiche.categorie_clienti_listini
+                  ADD CONSTRAINT chk_categ_cli_listini_valido_al_ge_dal
+                  CHECK (valido_al IS NULL OR valido_al >= valido_dal);
+
+  - changeSet:
+      id: 20260414-22-drop-check-promo-articoli-date-redundant
+      author: mctit
+      comment: >
+        Drop CHECK ridondante chk_promo_articoli_date: stessa motivazione.
+
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.promo_articoli
+                  DROP CONSTRAINT IF EXISTS chk_promo_articoli_date;
+
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.promo_articoli
+                  ADD CONSTRAINT chk_promo_articoli_date
+                  CHECK (valido_al >= valido_dal);

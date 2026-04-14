@@ -57,8 +57,7 @@ class LookupRepository:
                         WHERE m.tipo_ruolo_id = tr.id
                           AND m.tipo_soggetto_id = %s
                           AND m.attivo = true
-                          AND (m.valido_dal IS NULL OR m.valido_dal <= CURRENT_DATE)
-                          AND (m.valido_al IS NULL OR m.valido_al >= CURRENT_DATE)
+                          AND (m.validita IS NULL OR m.validita @> CURRENT_DATE)
                    ))
              ORDER BY tr.descrizione
         """
@@ -175,8 +174,7 @@ class LookupRepository:
                     AND o.{overrides_fk_column} = %s
              WHERE COALESCE(tr.codice_interno, tr.codice) = %s
                AND utr.attivo = true
-               AND (utr.valido_dal IS NULL OR utr.valido_dal <= CURRENT_DATE)
-               AND (utr.valido_al  IS NULL OR utr.valido_al  >= CURRENT_DATE)
+               AND (utr.validita IS NULL OR utr.validita @> CURRENT_DATE)
              ORDER BY u.descrizione
         """  # noqa: S608
         with connection.cursor() as cursor:
@@ -233,8 +231,7 @@ class LookupRepository:
               JOIN config.tipi_ruoli tr            ON tr.id = utr.tipo_ruolo_id
              WHERE COALESCE(tr.codice_interno, tr.codice) = %s
                AND utr.attivo = true
-               AND (utr.valido_dal IS NULL OR utr.valido_dal <= CURRENT_DATE)
-               AND (utr.valido_al  IS NULL OR utr.valido_al  >= CURRENT_DATE)
+               AND (utr.validita IS NULL OR utr.validita @> CURRENT_DATE)
              ORDER BY u.descrizione
         """
         with connection.cursor() as cursor:
@@ -262,8 +259,7 @@ class LookupRepository:
               JOIN config.utilities_tipi_ruolo utr_ef
                 ON utr_ef.utility_id = u.id
                AND utr_ef.attivo = true
-               AND (utr_ef.valido_dal IS NULL OR utr_ef.valido_dal <= CURRENT_DATE)
-               AND (utr_ef.valido_al  IS NULL OR utr_ef.valido_al  >= CURRENT_DATE)
+               AND (utr_ef.validita IS NULL OR utr_ef.validita @> CURRENT_DATE)
               JOIN config.tipi_ruoli tr_ef
                 ON tr_ef.id = utr_ef.tipo_ruolo_id
                AND COALESCE(tr_ef.codice_interno, tr_ef.codice) = 'EF'
@@ -277,8 +273,7 @@ class LookupRepository:
               JOIN config.utilities_tipi_ruolo utr_sogg
                 ON utr_sogg.utility_id = u.id
                AND utr_sogg.attivo = true
-               AND (utr_sogg.valido_dal IS NULL OR utr_sogg.valido_dal <= CURRENT_DATE)
-               AND (utr_sogg.valido_al  IS NULL OR utr_sogg.valido_al  >= CURRENT_DATE)
+               AND (utr_sogg.validita IS NULL OR utr_sogg.validita @> CURRENT_DATE)
               JOIN config.tipi_ruoli tr_sogg
                 ON tr_sogg.id = utr_sogg.tipo_ruolo_id
                AND COALESCE(tr_sogg.codice_interno, tr_sogg.codice) = %s
@@ -402,6 +397,25 @@ class LookupRepository:
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [comune_id, search, limit])
+            return rows_to_list(cursor)
+
+    # Scopo: Lista conti contabili filtrati per tipo (A=Acquisto, V=Vendita).
+    # Lookup dedicato: espone tipo_conto che il lookup generico non ritorna.
+    # Ordinamento per codice (codice contabile e' numerico-parlante).
+    # Whitelist del tipo per evitare SQL injection sul parametro.
+    def list_conti_contabili(self, *, tipo: str | None = None) -> list[dict[str, Any]]:
+        if tipo is not None and tipo not in {"A", "V"}:
+            raise ValueError(
+                f"tipo_conto '{tipo}' non valido. Ammessi: 'A' (acquisto), 'V' (vendita)."
+            )
+        sql = """
+            SELECT id, codice, descrizione, tipo_conto
+              FROM config.conti_contabili
+             WHERE (%s::char IS NULL OR tipo_conto = %s::char)
+             ORDER BY codice
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [tipo, tipo])
             return rows_to_list(cursor)
 
     # Scopo: Ricerca vie su stradario_generale (senza comune/CAP) per autocomplete via nuova.

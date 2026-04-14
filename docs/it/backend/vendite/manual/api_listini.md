@@ -49,12 +49,16 @@ Le API richiedono JWT (`Authorization: Bearer <token>`) e usano l'envelope stand
 | Parametro | Tipo | Obbligatorio | Descrizione |
 |---|---|---|---|
 | `search` | string | No | Ricerca su `codice` e `descrizione` |
-| `dominio` | string | No | `UTILITY` oppure `COMMERCIO` |
+| `utility_id` | int | No | Filtro per utility (FK `config.utilities`) |
+| `tipologia_id` | int | No | Filtro per tipologia listino (FK `config.listini_tipologie`) |
 | `attivo` | bool | No | Filtro attivo/disattivo; parsing rigoroso |
 | `page` | int | No | Numero pagina, default `1` |
 | `page_size` | int | No | Righe per pagina, default `25`, max `200` |
-| `order_by` | string | No | `codice`, `descrizione`, `dominio`, `data_insert`, `data_update` |
+| `order_by` | string | No | `codice`, `descrizione`, `utility_descrizione`, `tipologia_descrizione`, `data_insert`, `data_update` |
 | `order_dir` | string | No | `asc` oppure `desc` |
+
+I query param `utility_id` e `tipologia_id` sono normalizzati via `qp_str`:
+stringa vuota equivale a parametro assente (nessun filtro).
 
 #### Risposta (200)
 
@@ -68,9 +72,14 @@ Le API richiedono JWT (`Authorization: Bearer <token>`) e usano l'envelope stand
     "results": [
       {
         "id": 10,
-        "codice": "LIST-UTILITY",
-        "descrizione": "Listino Utility Base",
-        "dominio": "UTILITY",
+        "codice": "LIST-GAS-2026",
+        "descrizione": "Tariffe consumo gas 2026",
+        "utility_id": 1,
+        "utility_codice": "GAS",
+        "utility_descrizione": "Gas",
+        "tipologia_id": 1,
+        "tipologia_codice": "CONSUMO",
+        "tipologia_descrizione": "Consumi",
         "attivo": true,
         "versioni_count": 2,
         "associazioni_count": 1
@@ -91,9 +100,10 @@ Le API richiedono JWT (`Authorization: Bearer <token>`) e usano l'envelope stand
 
 | Campo | Tipo | Obbligatorio | Descrizione |
 |---|---|---|---|
-| `codice` | string | Si | Codice univoco listino |
+| `codice` | string | Si | Codice univoco listino (immutabile dopo create) |
 | `descrizione` | string | Si | Descrizione listino |
-| `dominio` | string | Si | `UTILITY` oppure `COMMERCIO` |
+| `utility_id` | int | Si | FK `config.utilities` — intero positivo (per il commercio usare la utility `Base`, id=5 nel seed standard) |
+| `tipologia_id` | int | Si | FK `config.listini_tipologie` — intero positivo; la coppia `(utility_id, tipologia_id)` deve esistere attiva in `config.listini_tipologie_utilities` (guard DB) |
 | `meta` | object | No | Metadati liberi |
 | `attivo` | bool | No | Default DB `true` |
 
@@ -104,8 +114,10 @@ Restituisce il dettaglio completo del listino creato, con array `versioni` e `as
 #### Errori tipici
 
 - `400` `E_VENDITE_VALIDATION`:
-  - dominio non valido
-  - codice duplicato
+  - `utility_id` o `tipologia_id` mancanti, nulli, non numerici, non positivi
+  - `utility_id` / `tipologia_id` non esistenti (FK violation)
+  - Combinazione `(utility_id, tipologia_id)` non ammessa dalla matrice `config.listini_tipologie_utilities`
+  - codice duplicato (`uq_listini_codice`)
   - payload JSON non coerente
 
 ---
@@ -125,9 +137,14 @@ Restituisce il dettaglio completo del listino creato, con array `versioni` e `as
 {
   "data": {
     "id": 10,
-    "codice": "LIST-UTILITY",
-    "descrizione": "Listino Utility Base",
-    "dominio": "UTILITY",
+    "codice": "LIST-GAS-2026",
+    "descrizione": "Tariffe consumo gas 2026",
+    "utility_id": 1,
+    "utility_codice": "GAS",
+    "utility_descrizione": "Gas",
+    "tipologia_id": 1,
+    "tipologia_codice": "CONSUMO",
+    "tipologia_descrizione": "Consumi",
     "attivo": true,
     "versioni_count": 2,
     "associazioni_count": 1,
@@ -146,22 +163,30 @@ Restituisce il dettaglio completo del listino creato, con array `versioni` e `as
 
 #### Body JSON
 
-Campi ammessi:
-- `descrizione`
-- `dominio`
-- `meta`
-- `attivo`
+Campi ammessi (tutti opzionali; almeno uno deve essere presente):
+
+| Campo | Tipo | Nullable | Descrizione |
+| --- | --- | --- | --- |
+| `descrizione` | string | No | Nuova descrizione |
+| `utility_id` | int | No | Nuova utility (se inviato, NOT NULL; guard matrice DB) |
+| `tipologia_id` | int | No | Nuova tipologia (se inviato, NOT NULL; guard matrice DB) |
+| `meta` | object | Si | Metadati liberi |
+| `attivo` | bool | No | Attivazione / disattivazione |
 
 #### Regole specifiche
 
-- `codice` e` immutabile a livello API.
+- `codice` è immutabile a livello API (trigger DB `trg_listini_a10_protect_codice_upd` lo conferma).
+- `utility_id` e `tipologia_id` non possono essere inviati a `null`: se presenti nel payload devono essere interi positivi. Il cambio coppia è validato dal trigger DB `trg_listini_a10_guard_tipologia_utility_ins_upd` contro la matrice `config.listini_tipologie_utilities`.
 - La `PATCH` usa il pattern standard `handle_post_json(...)`.
-- Se nessun campo supportato e` presente nel payload, restituisce `400`.
+- Se nessun campo supportato è presente nel payload, restituisce `400` `E_VENDITE_VALIDATION`.
 
 #### Errori tipici
 
 - `404` `E_VENDITE_LISTINO_NOT_FOUND`
-- `400` `E_VENDITE_VALIDATION`
+- `400` `E_VENDITE_VALIDATION`:
+  - `tipologia_id` inviato come `null`
+  - Combinazione `(utility_id, tipologia_id)` non ammessa dalla matrice
+  - Payload vuoto
 
 ### 1.5 Elimina listino mai usato
 
@@ -184,6 +209,85 @@ Errori tipici:
 
 - `400` `E_VENDITE_VALIDATION` se il listino ha versioni o associazioni
 - `404` `E_VENDITE_LISTINO_NOT_FOUND`
+
+---
+
+## 2bis. Tipologie ammesse per utility
+
+Endpoint di supporto per il frontend: dato un `utility_id`, restituisce le
+tipologie di listino ammesse dalla matrice
+`config.listini_tipologie_utilities` (solo righe attive). Usato dal
+`ListinoDrawer` per popolare il Select tipologia al cambio utility.
+
+### 2bis.1 Lista tipologie per utility
+
+| | |
+| --- | --- |
+| **Metodo** | `GET` |
+| **URL** | `/api/v1/vendite/listini/tipologie-per-utility/` |
+
+#### Query param
+
+| Parametro | Tipo | Obbligatorio | Descrizione |
+| --- | --- | --- | --- |
+| `utility_id` | int | Si | FK `config.utilities`, intero positivo |
+
+Se `utility_id` manca o è stringa vuota, la risposta è `400`
+`E_VENDITE_VALIDATION` con detail che riporta esplicitamente
+"utility_id è obbligatorio".
+
+#### Risposta (200)
+
+Envelope standard con chiave `results` (pattern lookup dedicati):
+
+```json
+{
+  "data": {
+    "results": [
+      {
+        "id": 1,
+        "codice": "CONSUMO",
+        "descrizione": "Consumi",
+        "e_consumo": true,
+        "e_quota_fissa": false,
+        "e_imposta": false,
+        "e_onere": false,
+        "e_prodotto": false,
+        "e_servizio": false,
+        "ordinamento": 10
+      },
+      {
+        "id": 2,
+        "codice": "QUOTA_FISSA",
+        "descrizione": "Quote fisse",
+        "e_consumo": false,
+        "e_quota_fissa": true,
+        "e_imposta": false,
+        "e_onere": false,
+        "e_prodotto": false,
+        "e_servizio": false,
+        "ordinamento": 20
+      }
+    ]
+  }
+}
+```
+
+L'ordinamento segue `ordinamento ASC, descrizione ASC`. Sono restituite
+solo le tipologie attive (`listini_tipologie.attivo = true`) e solo le
+righe della matrice attive (`listini_tipologie_utilities.attivo = true`).
+
+#### Errori tipici
+
+- `400` `E_VENDITE_VALIDATION`: `utility_id` mancante, vuoto o non positivo.
+
+#### Note
+
+- L'utility deve esistere per ottenere righe. Per `utility_id` inesistente
+  la risposta è `200` con `results: []` (no 404) — accettabile per un
+  endpoint lookup.
+- Non applica scope per emittente: `config.listini_tipologie` è tabella
+  globale.
 
 ---
 
@@ -214,7 +318,6 @@ Restituisce:
 | `codice_versione` | string | Si | Codice univoco per listino |
 | `valido_dal` | date | Si | Data inizio validita` |
 | `valido_al` | date | No | Data fine validita` |
-| `priorita` | int | No | Priorita` operativa, default DB `100` |
 | `meta` | object | No | Metadati liberi |
 | `attivo` | bool | No | Default DB `true` |
 
@@ -240,16 +343,16 @@ un errore `400 E_VENDITE_VALIDATION` senza eseguire l'UPDATE.
 
 | Stato versione | Campi modificabili |
 |---|---|
-| `BOZZA` | `codice_versione`, `valido_dal`, `valido_al`, `priorita`, `meta`, `attivo` |
-| `ATTIVA` | `valido_al`, `priorita` (programmazione chiusura + tie-break) |
+| `BOZZA` | `codice_versione`, `valido_dal`, `valido_al`, `meta`, `attivo` |
+| `ATTIVA` | solo `valido_al` (programmazione chiusura) |
 | `CHIUSA` | nessun campo (stato terminale) |
 
 **Razionale**: una versione `ATTIVA` ha gia` propagato i prezzi negli snapshot di
 `commesse_attivita`/`attivita_fatturabili`. Modificare `codice_versione`, `valido_dal`
 o `meta` su una versione operativa creerebbe drift tra documenti emessi e stato
-listino. Solo `valido_al` (programmazione chiusura) e `priorita` (tie-break tra
-versioni) restano modificabili. Per cambiare prezzi su un periodo gia` attivo, si
-crea una nuova versione (clone + edit + activate).
+listino. Solo `valido_al` (programmazione chiusura) resta modificabile. Per
+cambiare prezzi su un periodo gia` attivo, si crea una nuova versione (clone +
+edit + activate).
 
 #### Errori tipici
 
@@ -275,7 +378,6 @@ viene toccata.
 | `codice_versione` | string | Si | Codice univoco per il listino |
 | `valido_dal` | date | Si | Data inizio validita` (vedi vincolo D2 sotto) |
 | `valido_al` | date | No | Data fine validita`, NULL = aperta |
-| `priorita` | int | No | Priorita` (default DB `100`) |
 
 `meta` e `attivo` non sono ammessi nel payload del clone: la nuova versione
 nasce in stato BOZZA con `attivo=true` e `meta` vuoto. Le righe vengono copiate
@@ -493,7 +595,6 @@ Campi ammessi:
 
 | Campo | Tipo | Obbligatorio | Descrizione |
 |---|---|---|---|
-| `priorita` | int | No | Priorita` operativa, default DB `100` |
 | `valido_dal` | date | Si | Data inizio validita` associazione |
 | `valido_al` | date | No | Data fine validita` |
 | `billing_account_id` | int | No | Contesto BA |
@@ -518,7 +619,6 @@ Campi ammessi:
 
 #### Regole specifiche
 
-- `priorita` deve essere `> 0`
 - `valido_al`, se presente, deve essere maggiore di `valido_dal`
 - L'unicita` della combinazione attiva (`listino + contesto + valido_dal`) e` demandata al DB
 
@@ -571,17 +671,190 @@ Campi ammessi:
 
 ---
 
+## 7. Alert scadenze versioni (N2)
+
+| | |
+|---|---|
+| **Metodo** | `GET` |
+| **URL** | `/api/v1/vendite/listini/alert-scadenze/` |
+
+Restituisce le versioni ATTIVE in scadenza entro N giorni che non hanno una versione
+successiva (ATTIVA o BOZZA) con `valido_dal > valido_al`. Serve per monitorare
+listini a rischio "buco di copertura" in produzione.
+
+### Query param
+
+| Parametro | Tipo | Obbligatorio | Descrizione |
+|---|---|---|---|
+| `giorni` | int | No | Anticipo in giorni, default `15`, range 1-365 |
+
+### Risposta (200)
+
+```json
+{
+  "data": {
+    "results": [
+      {
+        "listino_id": 10,
+        "listino_codice": "LIST-UTILITY",
+        "listino_descrizione": "Listino Utility Base",
+        "dominio": "UTILITY",
+        "versione_id": 101,
+        "codice_versione": "V001",
+        "valido_dal": "2026-01-01",
+        "valido_al": "2026-04-30",
+        "giorni_rimanenti": 8
+      }
+    ],
+    "count": 1,
+    "giorni": 15
+  }
+}
+```
+
+### Regole specifiche
+
+- Filtro temporale isolato nel repository (`_filter_versioni_in_scadenza`) per facilitare
+  futura migrazione a `daterange` nativo PostgreSQL (N1).
+- `giorni_rimanenti` puo` essere negativo se la versione e` gia` scaduta.
+- Frontend: widget `AlertScadenzeWidget.vue` con badge nella toolbar listini.
+
+---
+
+## 8. Variazione percentuale massa (N8a)
+
+| | |
+|---|---|
+| **Metodo** | `POST` |
+| **URL** | `/api/v1/vendite/listini/{listino_id}/versioni/{ver_id}/applica-variazione/` |
+
+Applica una variazione percentuale ai prezzi di tutte le righe attive di una versione
+BOZZA. Supporta `dry_run` per preview e filtro opzionale per articoli.
+
+### Body JSON
+
+| Campo | Tipo | Obbligatorio | Descrizione |
+|---|---|---|---|
+| `variazione_percentuale` | decimal | Si | Positivo = aumento, negativo = riduzione. Range: -99 a +1000 |
+| `arrotondamento_decimali` | int | No | Decimali da mantenere. Default `4`, range 0-10 |
+| `filtro_articoli` | array uuid | No | Se valorizzato, applica solo a questi articoli |
+| `dry_run` | bool | No | Se `true`, calcola preview senza modificare. Default `false` |
+
+### Risposta dry_run (200)
+
+```json
+{
+  "data": {
+    "dry_run": true,
+    "righe_coinvolte": 500,
+    "preview": [
+      {
+        "riga_id": 1001,
+        "articolo_codice": "ART001",
+        "articolo_descrizione": "Articolo esempio",
+        "prezzo_attuale": "12.5000",
+        "prezzo_calcolato": "12.8750"
+      }
+    ],
+    "variazione_percentuale": "3.0",
+    "arrotondamento_decimali": 4
+  }
+}
+```
+
+### Risposta applicazione (200)
+
+```json
+{
+  "data": {
+    "righe_aggiornate": 500,
+    "variazione_percentuale": "3.0",
+    "arrotondamento_decimali": 4
+  }
+}
+```
+
+### Regole specifiche
+
+- Guard BOZZA: rifiuta con 400 su versioni ATTIVA o CHIUSA.
+- Guard range: `-99 <= variazione <= 1000`. Fuori range → 400.
+- **Arrotondamento composto**: ogni applicazione e` atomica con arrotondamento immediato.
+  Due variazioni successive (+3% poi +2%) producono risultati diversi da una singola +5.06%.
+- **Audit**: la variazione viene registrata in `versione.meta.variazioni_percentuali[]`
+  con data, percentuale, arrotondamento, righe aggiornate e filtro.
+- Frontend: `ApplicaVariazioneDialog.vue` (2 step: input → preview dry_run → conferma).
+
+### Errori tipici
+
+- `400` `E_VENDITE_VALIDATION`: versione non BOZZA, percentuale fuori range, arrotondamento fuori range
+
+---
+
+## 9. Rettifica controllata riga ATTIVA (N6)
+
+| | |
+|---|---|
+| **Metodo** | `PATCH` |
+| **URL** | `/api/v1/vendite/listini/{listino_id}/versioni/{ver_id}/righe/{riga_id}/rettifica-controllata/` |
+
+Consente la modifica del prezzo di una riga in versione **ATTIVA** solo se la riga
+**non e` mai stata propagata** in `commesse_attivita` o `attivita_fatturabili`.
+Caso d'uso: errore di battitura su riga non ancora usata da nessuna commessa.
+
+### Body JSON
+
+| Campo | Tipo | Obbligatorio | Descrizione |
+|---|---|---|---|
+| `prezzo` | decimal | Si | Nuovo prezzo, `> 0` |
+| `motivo` | string | Si | Motivazione obbligatoria, max 500 caratteri |
+
+### Risposta (200)
+
+```json
+{
+  "data": {
+    "riga_id": 1001,
+    "prezzo_precedente": "12.5000000000",
+    "prezzo_nuovo": "12.2500000000",
+    "motivo": "errore di battitura al caricamento"
+  }
+}
+```
+
+### Regole specifiche
+
+- **Endpoint dedicato** separato dal PATCH ordinario della riga. L'operazione
+  eccezionale deve essere esplicita, non mascherata dal PATCH standard.
+- **Guard triplo livello**:
+  1. Service Python: lock `FOR UPDATE` sulla riga + check non-propagazione nella stessa transazione
+  2. Trigger DB `trgfn_listini_righe_guard_stato` (defense-in-depth, da implementare su `dev/db-tid`)
+  3. Audit obbligatorio in `riga.meta.rettifiche_controllate[]`
+- **Tabelle controllate per propagazione** (espansione concentrica):
+  - `vendite.commesse_attivita` (`listino_riga_id`)
+  - `vendite.attivita_fatturabili` (`listino_riga_id`)
+- Se la riga e` stata propagata → errore `409 E_VENDITE_RIGA_GIA_PROPAGATA`.
+  Soluzione: clonare la versione (O1).
+
+### Errori tipici
+
+- `400` `E_VENDITE_VALIDATION`: versione non ATTIVA, prezzo non valido, motivo mancante o troppo lungo
+- `409` `E_VENDITE_RIGA_GIA_PROPAGATA`: riga usata in almeno una commessa/fatturabile
+
+---
+
 ## Regole trasversali
 
 - Tutti gli endpoint richiedono JWT.
 - Le view write (`POST`, `PATCH`) usano il pattern core `handle_post_json(...)`.
 - Gli endpoint `PATCH` accettano solo payload JSON.
 - Non e` richiesto `Idempotency-Key`: il sottodominio listini non e` ancora agganciato a write idempotenti dedicate.
-- I `404` applicativi sono centralizzati in `error_policies.py`:
-  - `E_VENDITE_LISTINO_NOT_FOUND`
-  - `E_VENDITE_LISTINO_VERSIONE_NOT_FOUND`
-  - `E_VENDITE_LISTINO_RIGA_NOT_FOUND`
-  - `E_VENDITE_LISTINO_ASSOCIAZIONE_NOT_FOUND`
+- I codici errore applicativi sono centralizzati in `error_policies.py`:
+  - `E_VENDITE_LISTINO_NOT_FOUND` (404)
+  - `E_VENDITE_LISTINO_VERSIONE_NOT_FOUND` (404)
+  - `E_VENDITE_LISTINO_RIGA_NOT_FOUND` (404)
+  - `E_VENDITE_LISTINO_ASSOCIAZIONE_NOT_FOUND` (404)
+  - `E_VENDITE_RIGA_GIA_PROPAGATA` (409) — rettifica controllata N6
+  - `E_VENDITE_VALIDATION` (400) — validazione generica
 
 ## Dipendenze DB
 
@@ -596,13 +869,28 @@ Campi ammessi:
   - `catalogo.articoli`
   - `catalogo.articoli_uom_operativa`
   - `config.utilities`
+  - `config.listini_tipologie`
+  - `config.listini_tipologie_utilities` (matrice ammissibilita` utility x tipologia)
   - `anagrafiche.billing_account`
   - `anagrafiche.vw_soggetti_ruoli_dettaglio`
 - Funzioni SQL:
   - `vendite.fn_resolve_prezzo_listino(...)`
+- Trigger DB di guard rilevanti per le API:
+  - `trg_listini_a10_guard_tipologia_utility_ins_upd` → `vendite.trgfn_listini_guard_tipologia_utility()`
+    valida la coppia `(utility_id, tipologia_id)` contro `config.listini_tipologie_utilities`
 
 ## Note di migrazione
 
 - Il backend non replica la logica pricing del DB: la consuma.
 - Overlap temporali, univocita` e buona parte delle guard di integrita` restano nel database.
-- Al momento non sono esposti endpoint `DELETE` per testata listino e versione: lo smoke test backend pulisce righe e associazioni, ma lascia listino/versione di sviluppo.
+- **Post-refactor 2026-04-09**: il campo `priorita` e` stato droppato da `listini_versioni` e
+  `listini_associazioni` (migration `20260409-04/-05`). Nessun endpoint lo accetta piu`.
+- **Sprint B-v3 (2026-04-12)**: aggiunti endpoint alert scadenze (N2), variazione % massa (N8a),
+  rettifica controllata (N6). La rettifica N6 attende trigger DB defense-in-depth (`dev/db-tid`).
+- **Sprint v4 (2026-04-13/14)**: rimosso il campo legacy `dominio` (enum UTILITY/COMMERCIO).
+  Ogni listino ha ora due colonne NOT NULL: `utility_id` (FK `config.utilities`; id=5
+  utility Base per il commercio) e `tipologia_id` (FK `config.listini_tipologie`).
+  Gli endpoint create/update richiedono entrambi i campi; la matrice di ammissibilita` e`
+  verificata da trigger DB. Nuovo endpoint di supporto per il drawer frontend:
+  GET /api/v1/vendite/listini/tipologie-per-utility/. Nuovo filtro `tipologia_id` sulla lista
+  listini e nuovi campi di ordinamento `utility_descrizione` e `tipologia_descrizione`.

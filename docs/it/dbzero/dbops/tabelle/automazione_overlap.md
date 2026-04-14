@@ -18,6 +18,7 @@
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
 | user_update | text | NO | CURRENT_USER |
+| range_col | text | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |

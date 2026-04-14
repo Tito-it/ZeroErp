@@ -61,10 +61,30 @@ export function cloneVersione(listinoId, srcVerId, payload) {
   return api.post(`${BASE}/${listinoId}/versioni/${srcVerId}/clona/`, payload)
 }
 
+// Applica variazione percentuale massa ai prezzi delle righe attive
+// di una versione BOZZA. Supporta dry_run per preview.
+export function applicaVariazionePercentuale(listinoId, verId, payload) {
+  return api.post(`${BASE}/${listinoId}/versioni/${verId}/applica-variazione/`, payload)
+}
+
+// Versioni ATTIVE in scadenza senza successore.
+export function alertScadenze(giorni = 15) {
+  return api.get(`${BASE}/alert-scadenze/`, { params: { giorni } })
+}
+
+// Tipologie listino ammesse per la utility indicata (matrice
+// config.listini_tipologie_utilities). Restituisce solo righe attive.
+// Risposta: {"data": {"results": [{id, codice, descrizione, ...}]}}.
+export function listTipologiePerUtility(utilityId) {
+  return api.get(`${BASE}/tipologie-per-utility/`, {
+    params: { utility_id: utilityId }
+  })
+}
+
 // --- Righe prezzo ---
 
-export function listRighe(listinoId, verId) {
-  return api.get(`${BASE}/${listinoId}/versioni/${verId}/righe/`)
+export function listRighe(listinoId, verId, params = {}) {
+  return api.get(`${BASE}/${listinoId}/versioni/${verId}/righe/`, { params })
 }
 
 export function createRiga(listinoId, verId, payload) {

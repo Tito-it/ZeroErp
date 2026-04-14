@@ -16,6 +16,7 @@
 | data_update | timestamp with time zone | NO | now() |
 | user_update | text | NO | CURRENT_USER |
 | storicizza | boolean | NO | false |
+| validita | daterange | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -37,6 +38,8 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
+| trg_tipi_ruoli_nature_ammesse_a20_set_validita_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_set_validita()` |
+| trg_tipi_ruoli_nature_ammesse_a20_set_validita_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_set_validita()` |
 | trg_tipi_ruoli_nature_ammesse_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_tipi_ruoli_nature_ammesse_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_tipi_ruoli_nature_ammesse_z90_storico_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_storico_generic('tipi_ruoli_nature_ammesse_id')` |

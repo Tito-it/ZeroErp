@@ -107,6 +107,12 @@ class ErrorPolicyRegistry:
             ui_action="show_empty_state",
             user_message="Associazione listino non trovata.",
         ),
+        "E_VENDITE_RIGA_GIA_PROPAGATA": ErrorPolicy(
+            code="E_VENDITE_RIGA_GIA_PROPAGATA",
+            http_status=409,
+            ui_action="show_toast_error",
+            user_message="Riga gia` propagata in commessa o fatturabile. Usare clone versione.",
+        ),
         "E_CATALOGO_VALIDATION": ErrorPolicy(
             code="E_CATALOGO_VALIDATION",
             http_status=400,
@@ -184,6 +190,30 @@ class ErrorPolicyRegistry:
             http_status=404,
             ui_action="show_empty_state",
             user_message="Push log commesse non trovato.",
+        ),
+        "E_COMMESSA_ATTIVITA_NOT_FOUND": ErrorPolicy(
+            code="E_COMMESSA_ATTIVITA_NOT_FOUND",
+            http_status=404,
+            ui_action="show_empty_state",
+            user_message="Attivita` commessa non trovata.",
+        ),
+        "E_VENDITE_VARIAZIONE_PREZZO_NON_AMMESSA": ErrorPolicy(
+            code="E_VENDITE_VARIAZIONE_PREZZO_NON_AMMESSA",
+            http_status=409,
+            ui_action="show_toast_error",
+            user_message="Operazione prezzo non ammessa sullo stato corrente.",
+        ),
+        "E_VENDITE_SBLOCCO_PREZZO_NON_AMMESSO": ErrorPolicy(
+            code="E_VENDITE_SBLOCCO_PREZZO_NON_AMMESSO",
+            http_status=409,
+            ui_action="show_toast_error",
+            user_message="Sblocco prezzo non ammesso: il prezzo non e` bloccato.",
+        ),
+        "E_VENDITE_RIALLINEAMENTO_VERSIONE_CAMBIATA": ErrorPolicy(
+            code="E_VENDITE_RIALLINEAMENTO_VERSIONE_CAMBIATA",
+            http_status=409,
+            ui_action="show_toast_error",
+            user_message="Riallineamento richiede conferma: la versione listino e` cambiata.",
         ),
         # ── Pratiche ──
         "E_PRATICA_VALIDATION": ErrorPolicy(
@@ -352,6 +382,20 @@ class ErrorPolicyRegistry:
             http_status=404,
             ui_action="show_empty_state",
             user_message="Record non trovato.",
+        ),
+        # ── Matrice categorie_clienti_listini (sviluppo-listini v5 §4.2) ──
+        "E_ANAG_FK": ErrorPolicy(
+            code="E_ANAG_FK",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message="Riferimento non valido: l'entita' indicata non esiste.",
+        ),
+        "E_ANAG_MATRICE_OVERLAP": ErrorPolicy(
+            code="E_ANAG_MATRICE_OVERLAP",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Esiste gia' una riga attiva che si sovrappone per "
+                         "questa combinazione di dimensioni nel periodo indicato.",
         ),
         # ── Refactor operatore-emittenti (Q6 + D3) ──
         "E_BA_ADMIN_GLOBALE_VIETATO": ErrorPolicy(

@@ -23,10 +23,10 @@ BEGIN
   --   per un'area funzionale identificata da schema_db.
   --
   -- Catena di risoluzione:
-  --   1. ruolo_sistema (NULL/DISABILITATO → BLOCCATO, ADMIN → TUTTO)
+  --   1. ruolo_sistema (NULL/DISABILITATO -> BLOCCATO, ADMIN -> TUTTO)
   --   2. Override utente area (se presente e valido temporalmente)
-  --   3. Profilo reparto (ereditato dall'unita organizzativa)
-  --   4. Default → BLOCCATO
+  --   3. Profilo reparto (ereditato dalla UO)
+  --   4. Default -> BLOCCATO
   -- =========================================================
 
   -- 1. Ruolo sistema
@@ -41,14 +41,14 @@ BEGIN
   END IF;
 
   -- 2. Override utente area (OPERATIVO)
+  -- Filtro temporale via colonna validita nativa (containment)
   SELECT uoa.livello
     INTO v_livello
     FROM config.user_override_aree uoa
     JOIN config.aree_funzionali af ON af.id = uoa.area_id
    WHERE uoa.auth_user_id = p_auth_user_id
      AND af.schema_db = p_area_schema_db
-     AND (uoa.valido_dal IS NULL OR uoa.valido_dal <= CURRENT_DATE)
-     AND (uoa.valido_al  IS NULL OR uoa.valido_al  >= CURRENT_DATE);
+     AND uoa.validita @> CURRENT_DATE;
 
   IF FOUND THEN
     RETURN v_livello;
@@ -76,7 +76,7 @@ END
 $function$
 
 COMMENT ON FUNCTION script.fn_resolve_livello_area(p_auth_user_id integer, p_area_schema_db character varying)
-IS 'Risolve livello accesso utente per area: override → profilo reparto → BLOCCATO.';
+IS 'Risolve livello accesso area per utente. Migrazione daterange: filtro temporale via validita @>.';
 ```
 
 ---

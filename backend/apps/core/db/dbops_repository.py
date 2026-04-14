@@ -41,6 +41,7 @@ _REL_CONSENTITE: frozenset[str] = frozenset(
         "config.iva_assoggettamenti",
         "config.iva_natura",
         "config.lingue",
+        "config.listini_tipologie",
         "config.modalita_addebito_trasporto",
         "config.modalita_pagamento",
         "config.note_stili",
@@ -78,6 +79,8 @@ _REL_CONSENTITE: frozenset[str] = frozenset(
         "config.unita_organizzative",
         "config.utilities",
         "config.valute",
+        # --- anagrafiche ---
+        "anagrafiche.categorie_clienti",
         # --- catalogo ---
         "catalogo.unita_misura",
         # --- magazzino ---

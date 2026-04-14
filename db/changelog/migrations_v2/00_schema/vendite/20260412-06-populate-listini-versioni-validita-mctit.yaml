@@ -1,0 +1,39 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+# Migrazione daterange: popola validita per righe esistenti
+# e imposta NOT NULL su vendite.listini_versioni.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260412-06-populate-listini-versioni-validita-mctit.yaml
+
+  - changeSet:
+      id: 20260412-06-populate-listini-versioni-validita
+      author: mctit
+      comment: >
+        Backfill colonna validita per le righe esistenti e set NOT NULL.
+        valido_dal e` NOT NULL in questa tabella, quindi tutte le righe
+        avranno validita valorizzata dopo l'UPDATE.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Backfill: popola validita per le righe esistenti
+              -- SET esplicito, indipendente dall'ordine di attivazione del trigger
+              UPDATE vendite.listini_versioni
+                 SET validita = daterange(valido_dal, COALESCE(valido_al, 'infinity'::date), '[]')
+               WHERE validita IS NULL;
+
+              -- Ora che tutte le righe hanno validita, imposta NOT NULL
+              ALTER TABLE vendite.listini_versioni
+                ALTER COLUMN validita SET NOT NULL;
+
+      rollback:
+        - sql:
+            sql: |
+              ALTER TABLE vendite.listini_versioni
+                ALTER COLUMN validita DROP NOT NULL;

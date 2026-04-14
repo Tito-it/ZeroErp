@@ -7,7 +7,8 @@
 
 from __future__ import annotations
 
-from datetime import date, timedelta
+import json
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 from typing import Any
 from uuid import UUID
@@ -15,6 +16,7 @@ from uuid import UUID
 from django.db import IntegrityError, transaction
 
 from apps.core.services.error_manager import ErrorManager
+from apps.core.services.payload_helpers import PayloadValidator
 from apps.vendite.db.listini_repository import (
     ASSOCIAZIONE_CREATE_COLUMNS,
     ASSOCIAZIONE_UPDATE_COLUMNS,
@@ -23,14 +25,15 @@ from apps.vendite.db.listini_repository import (
     LISTINO_UPDATE_COLUMNS,
     RIGA_CREATE_COLUMNS,
     RIGA_UPDATE_COLUMNS,
+    RIGHE_ORDER_COLUMNS,
     VERSIONE_CREATE_COLUMNS,
     VERSIONE_UPDATE_COLUMNS,
     ListiniRepository,
 )
 
 _ORDER_BY_VALIDI: frozenset[str] = frozenset(LISTINI_ORDER_COLUMNS.keys())
+_RIGHE_ORDER_BY_VALIDI: frozenset[str] = frozenset(RIGHE_ORDER_COLUMNS.keys())
 _ORDER_DIR_VALIDI: frozenset[str] = frozenset({"asc", "desc"})
-_DOMINI_VALIDI: frozenset[str] = frozenset({"UTILITY", "COMMERCIO"})
 _STATI_VERSIONE_VALIDI: frozenset[str] = frozenset({"BOZZA", "ATTIVA", "CHIUSA"})
 _LISTINO_NULLABLE_FIELDS: frozenset[str] = frozenset({"meta"})
 _VERSIONE_NULLABLE_FIELDS: frozenset[str] = frozenset({"valido_al", "meta"})
@@ -48,6 +51,47 @@ _RIGA_CREATE_ALLOWED_KEYS: frozenset[str] = frozenset(RIGA_CREATE_COLUMNS.keys()
 _RIGA_UPDATE_ALLOWED_KEYS: frozenset[str] = frozenset(RIGA_UPDATE_COLUMNS.keys())
 _ASSOCIAZIONE_CREATE_ALLOWED_KEYS: frozenset[str] = frozenset(ASSOCIAZIONE_CREATE_COLUMNS.keys())
 _ASSOCIAZIONE_UPDATE_ALLOWED_KEYS: frozenset[str] = frozenset(ASSOCIAZIONE_UPDATE_COLUMNS.keys())
+
+# Validator modulo-level: log_to_db=True per telemetria pipeline vendite,
+# function_name override per-chiamata (riflette il metodo service specifico).
+# Ref: apps/core/services/payload_helpers.py (V6-B1/V6-B2).
+_V = PayloadValidator(
+    validation_code="E_VENDITE_VALIDATION",
+    log_to_db=True,
+)
+
+
+# Scopo: Normalizza il campo meta da stringa JSON o dict a dict. Stringa
+#        JSON non valida o non-oggetto -> ServiceError E_VENDITE_VALIDATION
+#        (review: prima bubble-ava ValueError non mappato -> 500).
+def _parse_meta_json(meta_raw: Any) -> dict[str, Any]:
+    if not meta_raw:
+        return {}
+    if isinstance(meta_raw, dict):
+        return meta_raw
+    if isinstance(meta_raw, str):
+        try:
+            parsed = json.loads(meta_raw)
+        except (ValueError, TypeError) as exc:
+            ErrorManager.raise_error(
+                code="E_VENDITE_VALIDATION",
+                message="Il campo 'meta' contiene JSON non valido.",
+                context={"meta_raw": meta_raw},
+                log_to_db=True,
+                function_name="listini_service._parse_meta_json",
+                cause=exc,
+            )
+            raise AssertionError("unreachable") from exc  # pragma: no cover
+        if isinstance(parsed, dict):
+            return parsed
+    ErrorManager.raise_error(
+        code="E_VENDITE_VALIDATION",
+        message="Il campo 'meta' deve essere un oggetto JSON.",
+        context={"meta_type": type(meta_raw).__name__},
+        log_to_db=True,
+        function_name="listini_service._parse_meta_json",
+    )
+    raise AssertionError("unreachable")  # pragma: no cover
 
 
 class _MissingType:
@@ -103,12 +147,37 @@ def _validate_order(order_by: str, order_dir: str, function_name: str) -> tuple[
     return order_by, order_dir
 
 
+# Scopo: Valida ordinamento lista righe listino contro whitelist locale.
+def _validate_righe_order(order_by: str, order_dir: str, function_name: str) -> tuple[str, str]:
+    ErrorManager.require(
+        order_by in _RIGHE_ORDER_BY_VALIDI,
+        code="E_VENDITE_VALIDATION",
+        message="Parametri ordinamento non validi.",
+        detail="order_by deve essere uno tra: " + ", ".join(sorted(_RIGHE_ORDER_BY_VALIDI)),
+        context={"order_by": order_by},
+        function_name=function_name,
+        log_to_db=True,
+    )
+    ErrorManager.require(
+        order_dir in _ORDER_DIR_VALIDI,
+        code="E_VENDITE_VALIDATION",
+        message="Parametri ordinamento non validi.",
+        detail="order_dir deve essere 'asc' o 'desc'",
+        context={"order_dir": order_dir},
+        function_name=function_name,
+        log_to_db=True,
+    )
+    return order_by, order_dir
+
+
 # Scopo: Costruisce envelope uniforme count/results per collezioni figlie non paginate.
 def _build_results_response(results: list[dict[str, object]]) -> dict[str, object]:
     return {"count": len(results), "results": results}
 
 
-# Scopo: Blocca chiavi non supportate nel payload per evitare typo silenziosi lato client.
+# Scopo: Delega a `PayloadValidator.validate_allowed_keys` del core. Mantiene
+#        la firma storica (allowed_keys, function_name, message) per non
+#        toccare i call site; V6-B2 ha centralizzato la logica.
 def _validate_payload_keys(
     payload: dict[str, Any],
     *,
@@ -116,19 +185,17 @@ def _validate_payload_keys(
     function_name: str,
     message: str,
 ) -> None:
-    unknown_keys = sorted(key for key in payload.keys() if key not in allowed_keys)
-    ErrorManager.require(
-        not unknown_keys,
-        code="E_VENDITE_VALIDATION",
+    _V.validate_allowed_keys(
+        payload,
+        allowed=allowed_keys,
         message=message,
-        detail=f"Campi non supportati: {', '.join(unknown_keys)}",
-        context={"unknown_keys": unknown_keys, "allowed_keys": sorted(allowed_keys)},
         function_name=function_name,
-        log_to_db=True,
     )
 
 
-# Scopo: Estrae stringa obbligatoria non vuota dal payload.
+# Scopo: Delega a `PayloadValidator.require_string` (max_len=None: il bound
+#        di lunghezza lo decide la colonna DB; qui si valida solo presenza
+#        e non-vuotezza post-trim).
 def _require_string(
     payload: dict[str, Any],
     key: str,
@@ -136,18 +203,12 @@ def _require_string(
     function_name: str,
     message: str,
 ) -> str:
-    value = payload.get(key)
-    cleaned = value.strip() if isinstance(value, str) else ""
-    ErrorManager.require(
-        bool(cleaned),
-        code="E_VENDITE_VALIDATION",
+    return _V.require_string(
+        payload,
+        key,
         message=message,
-        detail=f"{key} obbligatorio e non vuoto.",
-        context={"field": key},
         function_name=function_name,
-        log_to_db=True,
     )
-    return cleaned
 
 
 # Scopo: Estrae stringa presente nel payload; supporta NULL esplicito se consentito.
@@ -246,6 +307,44 @@ def _extract_nullable_int(
         log_to_db=True,
     )
     return normalized
+
+
+# Scopo: Delega a `PayloadValidator.require_positive_int`. Complementare a
+#        `_extract_nullable_int` per campi NOT NULL (es. utility_id, tipologia_id).
+def _require_positive_int(
+    payload: dict[str, Any],
+    key: str,
+    *,
+    function_name: str,
+    message: str,
+) -> int:
+    return _V.require_positive_int(
+        payload,
+        key,
+        message=message,
+        function_name=function_name,
+    )
+
+
+# Scopo: Estrae un intero positivo opzionale (ammette assenza) ma se presente
+#        deve essere intero positivo e NOT NULL. Usato su PATCH per campi
+#        come utility_id/tipologia_id che in DB sono NOT NULL ma facoltativi
+#        nel payload di update.
+def _extract_required_int_if_present(
+    payload: dict[str, Any],
+    key: str,
+    *,
+    function_name: str,
+    message: str,
+) -> int | _MissingType:
+    if key not in payload:
+        return _MISSING
+    return _require_positive_int(
+        payload,
+        key,
+        function_name=function_name,
+        message=message,
+    )
 
 
 # Scopo: Estrae booleano presente nel payload senza inventare default impliciti.
@@ -517,7 +616,15 @@ def _get_associazione_or_raise(
 def _translate_integrity_error(exc: IntegrityError, *, function_name: str, entity: str) -> None:
     error_text = str(exc)
     constraint_map: tuple[tuple[str, str, str], ...] = (
-        ("chk_listini_dominio", "Dominio listino non valido.", "dominio deve essere UTILITY o COMMERCIO."),
+        ("fk_listini_utility", "Utility non valida.", "utility_id non corrisponde a nessuna utility in config.utilities."),
+        (
+            # Nome generato da PostgreSQL (pattern <table>_<col>_fkey) dalla
+            # migration 20260413-05 che usa ADD COLUMN ... REFERENCES senza
+            # CONSTRAINT esplicito. Se la migration viene rinominata, aggiornare.
+            "listini_tipologia_id_fkey",
+            "Tipologia listino non valida.",
+            "tipologia_id non corrisponde a nessuna tipologia in config.listini_tipologie.",
+        ),
         ("uq_listini_codice", "Codice listino duplicato.", "Esiste gia' un listino con lo stesso codice."),
         (
             "uq_listini_versioni_listino_codice",
@@ -622,25 +729,20 @@ def _extract_listino_payload(
             function_name=function_name,
             message=message,
         )
-        dominio_required = _extract_enum_string(
+        # utility_id: NOT NULL (ogni listino appartiene a una utility; Base id=5 per commercio).
+        data["utility_id"] = _require_positive_int(
             payload,
-            "dominio",
+            "utility_id",
             function_name=function_name,
-            allowed_values=_DOMINI_VALIDI,
-            nullable=False,
             message=message,
         )
-        ErrorManager.require(
-            dominio_required is not _MISSING,
-            code="E_VENDITE_VALIDATION",
-            message=message,
-            detail="dominio obbligatorio.",
-            context={"field": "dominio"},
+        # tipologia_id: NOT NULL (ogni listino ha una tipologia esplicita).
+        data["tipologia_id"] = _require_positive_int(
+            payload,
+            "tipologia_id",
             function_name=function_name,
-            log_to_db=True,
+            message=message,
         )
-        assert dominio_required is not _MISSING
-        data["dominio"] = dominio_required
     else:
         descrizione = _extract_string(
             payload,
@@ -652,16 +754,25 @@ def _extract_listino_payload(
         if descrizione is not _MISSING:
             data["descrizione"] = descrizione
 
-        dominio = _extract_enum_string(
+        # utility_id: ammesso in update ma NOT NULL (trigger DB valida matrice).
+        utility_id_val = _extract_required_int_if_present(
             payload,
-            "dominio",
+            "utility_id",
             function_name=function_name,
-            allowed_values=_DOMINI_VALIDI,
-            nullable=False,
             message=message,
         )
-        if dominio is not _MISSING:
-            data["dominio"] = dominio
+        if utility_id_val is not _MISSING:
+            data["utility_id"] = utility_id_val
+
+        # tipologia_id: ammesso in update ma NOT NULL (trigger DB valida matrice).
+        tipologia_id_val = _extract_required_int_if_present(
+            payload,
+            "tipologia_id",
+            function_name=function_name,
+            message=message,
+        )
+        if tipologia_id_val is not _MISSING:
+            data["tipologia_id"] = tipologia_id_val
 
     attivo = _extract_present_bool(
         payload,
@@ -1084,7 +1195,8 @@ def _validate_versione_state_transition(
 # Scopo: Restituisce lista listini paginata con filtri e ordinamento validati.
 def fn_list_listini(
     *,
-    dominio: str | None = None,
+    utility_id: int | None = None,
+    tipologia_id: int | None = None,
     attivo: bool | None = None,
     search: str | None = None,
     order_by: str = "codice",
@@ -1093,20 +1205,31 @@ def fn_list_listini(
     offset: int = 0,
 ) -> tuple[list[dict[str, object]], int]:
     function_name = "vendite.listini_service.fn_list_listini"
-    if dominio is not None:
+    if utility_id is not None:
         ErrorManager.require(
-            dominio in _DOMINI_VALIDI,
+            isinstance(utility_id, int) and utility_id > 0,
             code="E_VENDITE_VALIDATION",
-            message="Filtro dominio non valido.",
-            detail="dominio deve essere UTILITY o COMMERCIO.",
-            context={"dominio": dominio},
+            message="Filtro utility non valido.",
+            detail="utility_id deve essere un intero positivo.",
+            context={"utility_id": utility_id},
+            function_name=function_name,
+            log_to_db=True,
+        )
+    if tipologia_id is not None:
+        ErrorManager.require(
+            isinstance(tipologia_id, int) and tipologia_id > 0,
+            code="E_VENDITE_VALIDATION",
+            message="Filtro tipologia non valido.",
+            detail="tipologia_id deve essere un intero positivo.",
+            context={"tipologia_id": tipologia_id},
             function_name=function_name,
             log_to_db=True,
         )
     order_by, order_dir = _validate_order(order_by, order_dir, function_name)
     repository = ListiniRepository()
     return repository.list_listini(
-        dominio=dominio,
+        utility_id=utility_id,
+        tipologia_id=tipologia_id,
         attivo=attivo,
         search=search,
         order_by=order_by,
@@ -1114,6 +1237,24 @@ def fn_list_listini(
         limit=limit,
         offset=offset,
     )
+
+
+# Scopo: Restituisce le tipologie listino ammesse per una utility dalla matrice
+#        config.listini_tipologie_utilities. Usato dal drawer per popolare il
+#        Select tipologia al cambio utility.
+def fn_list_tipologie_per_utility(utility_id: int) -> list[dict[str, object]]:
+    function_name = "vendite.listini_service.fn_list_tipologie_per_utility"
+    ErrorManager.require(
+        isinstance(utility_id, int) and utility_id > 0,
+        code="E_VENDITE_VALIDATION",
+        message="Parametro utility non valido.",
+        detail="utility_id deve essere un intero positivo.",
+        context={"utility_id": utility_id},
+        function_name=function_name,
+        log_to_db=True,
+    )
+    repository = ListiniRepository()
+    return repository.list_tipologie_per_utility(utility_id)
 
 
 # Scopo: Restituisce il dettaglio completo del listino con versioni e associazioni nidificate.
@@ -1547,12 +1688,36 @@ def fn_change_versione_state(listino_id: int, versione_id: int, payload: dict[st
     return fn_get_versione(listino_id, versione_id)
 
 
-# Scopo: Restituisce la lista righe prezzo della versione con envelope uniforme.
-def fn_list_righe(listino_id: int, versione_id: int) -> dict[str, object]:
+# Scopo: Restituisce la lista paginata righe prezzo della versione con filtri opzionali.
+def fn_list_righe(
+    listino_id: int,
+    versione_id: int,
+    *,
+    search: str | None = None,
+    billing_account_id: int | None = None,
+    utility_id: int | None = None,
+    attivo: bool | None = True,
+    order_by: str = "articolo_descrizione",
+    order_dir: str = "asc",
+    limit: int = 25,
+    offset: int = 0,
+) -> tuple[list[dict[str, object]], int]:
     function_name = "vendite.listini_service.fn_list_righe"
     _get_versione_or_raise(listino_id, versione_id, function_name=function_name)
+    order_by, order_dir = _validate_righe_order(order_by, order_dir, function_name)
     repository = ListiniRepository()
-    return _build_results_response(repository.list_righe(listino_id, versione_id))
+    return repository.list_righe(
+        listino_id,
+        versione_id,
+        search=search,
+        billing_account_id=billing_account_id,
+        utility_id=utility_id,
+        attivo=attivo,
+        order_by=order_by,
+        order_dir=order_dir,
+        limit=limit,
+        offset=offset,
+    )
 
 
 # Scopo: Crea una nuova riga prezzo dopo validazione articolo/UoM e restituisce il dettaglio.
@@ -1798,3 +1963,336 @@ def fn_test_resolver_prezzo(payload: dict[str, Any]) -> dict[str, object]:
             None if emittente_soggetto_ruolo_id is _MISSING else emittente_soggetto_ruolo_id
         ),
     )
+
+
+# --- N2: Alert scadenze versioni ---
+
+_ALERT_GIORNI_DEFAULT = 15
+_ALERT_GIORNI_MIN = 1
+_ALERT_GIORNI_MAX = 365
+
+
+# Scopo: Restituisce lista versioni ATTIVE in scadenza entro N giorni senza successore.
+def fn_alert_scadenze(giorni: int | None = None) -> dict[str, object]:
+    function_name = "vendite.listini_service.fn_alert_scadenze"
+    if giorni is None:
+        giorni = _ALERT_GIORNI_DEFAULT
+    ErrorManager.require(
+        _ALERT_GIORNI_MIN <= giorni <= _ALERT_GIORNI_MAX,
+        code="E_VENDITE_VALIDATION",
+        message="Parametro giorni non valido.",
+        detail=f"giorni deve essere tra {_ALERT_GIORNI_MIN} e {_ALERT_GIORNI_MAX}.",
+        context={"giorni": giorni},
+        function_name=function_name,
+        log_to_db=False,
+    )
+    repository = ListiniRepository()
+    results = repository.listini_in_scadenza(giorni)
+    return {"results": results, "count": len(results), "giorni": giorni}
+
+
+# --- N6: Rettifica controllata su riga ATTIVA non propagata ---
+
+
+# Scopo: Consente la modifica del prezzo di una riga in versione ATTIVA solo se
+#        la riga non e` mai stata propagata in commesse o attivita` fatturabili.
+#        Lock pessimistico FOR UPDATE + check non-propagazione nella stessa transazione.
+#        Motivo obbligatorio. Audit in meta.rettifiche_controllate[].
+def fn_rettifica_controllata_riga(
+    listino_id: int,
+    versione_id: int,
+    riga_id: int,
+    payload: dict[str, Any],
+) -> dict[str, object]:
+    function_name = "vendite.listini_service.fn_rettifica_controllata_riga"
+
+    # --- Guard: versione esiste e stato ATTIVA ---
+    versione = _get_versione_or_raise(listino_id, versione_id, function_name=function_name)
+    ErrorManager.require(
+        str(versione["stato"]) == "ATTIVA",
+        code="E_VENDITE_VALIDATION",
+        message="Rettifica controllata ammessa solo su versioni ATTIVE.",
+        detail=f"Stato corrente: {versione['stato']}. Per versioni BOZZA usare il PATCH ordinario.",
+        context={"versione_id": versione_id, "stato": versione["stato"]},
+        function_name=function_name,
+        log_to_db=True,
+    )
+
+    # --- Guard: riga esiste ---
+    riga = _get_riga_or_raise(listino_id, versione_id, riga_id, function_name=function_name)
+
+    # --- Parsing payload ---
+    raw_prezzo = payload.get("prezzo")
+    ErrorManager.require(
+        raw_prezzo is not None,
+        code="E_VENDITE_VALIDATION",
+        message="Parametro obbligatorio mancante.",
+        detail="prezzo e` obbligatorio.",
+        context={"field": "prezzo"},
+        function_name=function_name,
+        log_to_db=True,
+    )
+    try:
+        nuovo_prezzo = Decimal(str(raw_prezzo))
+    except (InvalidOperation, TypeError, ValueError):
+        ErrorManager.raise_error(
+            code="E_VENDITE_VALIDATION",
+            message="Prezzo non valido.",
+            detail=f"prezzo deve essere numerico, ricevuto: {raw_prezzo!r}.",
+            context={"field": "prezzo"},
+            function_name=function_name,
+            log_to_db=True,
+        )
+    assert isinstance(nuovo_prezzo, Decimal)
+
+    ErrorManager.require(
+        nuovo_prezzo > 0,
+        code="E_VENDITE_VALIDATION",
+        message="Prezzo non valido.",
+        detail="Il prezzo deve essere maggiore di zero.",
+        context={"prezzo": str(nuovo_prezzo)},
+        function_name=function_name,
+        log_to_db=True,
+    )
+
+    motivo = payload.get("motivo")
+    ErrorManager.require(
+        motivo and isinstance(motivo, str) and motivo.strip(),
+        code="E_VENDITE_VALIDATION",
+        message="Motivo obbligatorio.",
+        detail="Il campo motivo e` obbligatorio per la rettifica controllata.",
+        context={"field": "motivo"},
+        function_name=function_name,
+        log_to_db=True,
+    )
+    assert isinstance(motivo, str)
+    motivo = motivo.strip()
+    ErrorManager.require(
+        len(motivo) <= 500,
+        code="E_VENDITE_VALIDATION",
+        message="Motivo troppo lungo.",
+        detail="Massimo 500 caratteri.",
+        context={"field": "motivo", "length": len(motivo)},
+        function_name=function_name,
+        log_to_db=False,
+    )
+
+    repository = ListiniRepository()
+
+    # --- Livello 1+2: lock pessimistico + check non-propagazione in transazione ---
+    with transaction.atomic():
+        locked = repository.lock_riga_for_update(versione_id, riga_id)
+        ErrorManager.require(
+            locked,
+            code="E_VENDITE_LISTINO_RIGA_NOT_FOUND",
+            message="Riga non trovata.",
+            detail=f"Riga id={riga_id} non trovata nella versione id={versione_id}.",
+            context={"riga_id": riga_id, "versione_id": versione_id},
+            function_name=function_name,
+            log_to_db=False,
+        )
+
+        propagata = repository.check_riga_propagata(riga_id)
+        ErrorManager.require(
+            not propagata,
+            code="E_VENDITE_RIGA_GIA_PROPAGATA",
+            message="Rettifica bloccata: riga gia` propagata.",
+            detail=(
+                "La riga e` stata usata in almeno una commessa o attivita` fatturabile. "
+                "Per correggere il prezzo, clonare la versione."
+            ),
+            context={"riga_id": riga_id},
+            function_name=function_name,
+            log_to_db=True,
+        )
+
+        # --- Audit in meta ---
+        meta_corrente = _parse_meta_json(riga.get("meta"))
+        rettifiche = list(meta_corrente.get("rettifiche_controllate", []))
+        rettifiche.append({
+            "data": datetime.now(timezone.utc).isoformat(),
+            "prezzo_precedente": str(riga["prezzo"]),
+            "prezzo_nuovo": str(nuovo_prezzo),
+            "motivo": motivo,
+        })
+        meta_corrente["rettifiche_controllate"] = rettifiche
+
+        repository.update_riga_prezzo_rettifica(
+            riga_id=riga_id,
+            nuovo_prezzo=str(nuovo_prezzo),
+            meta_aggiornata=meta_corrente,
+        )
+
+    return {
+        "riga_id": riga_id,
+        "prezzo_precedente": str(riga["prezzo"]),
+        "prezzo_nuovo": str(nuovo_prezzo),
+        "motivo": motivo,
+    }
+
+
+# --- N8a: Variazione percentuale massa su versione BOZZA ---
+
+_VARIAZIONE_PCT_MIN = Decimal("-99")
+_VARIAZIONE_PCT_MAX = Decimal("1000")
+_ARROT_DECIMALI_MIN = 0
+_ARROT_DECIMALI_MAX = 10
+_ARROT_DECIMALI_DEFAULT = 4
+
+
+# Scopo: Applica una variazione percentuale ai prezzi delle righe attive di una versione
+#        BOZZA. Con dry_run=True restituisce la preview senza applicare modifiche.
+#        Guard: solo BOZZA, range percentuale ammesso, arrotondamento 0-10.
+def fn_applica_variazione_percentuale(
+    listino_id: int,
+    versione_id: int,
+    payload: dict[str, Any],
+) -> dict[str, object]:
+    function_name = "vendite.listini_service.fn_applica_variazione_percentuale"
+
+    # --- Guard: versione esiste e stato BOZZA ---
+    versione = _get_versione_or_raise(listino_id, versione_id, function_name=function_name)
+    _assert_versione_bozza_for_riga_op(versione, function_name=function_name)
+
+    # --- Parsing e validazione payload ---
+    raw_pct = payload.get("variazione_percentuale")
+    ErrorManager.require(
+        raw_pct is not None,
+        code="E_VENDITE_VALIDATION",
+        message="Parametro obbligatorio mancante.",
+        detail="variazione_percentuale e` obbligatoria.",
+        context={"field": "variazione_percentuale"},
+        function_name=function_name,
+        log_to_db=True,
+    )
+    try:
+        variazione_pct = Decimal(str(raw_pct))
+    except (InvalidOperation, TypeError, ValueError):
+        ErrorManager.raise_error(
+            code="E_VENDITE_VALIDATION",
+            message="Parametro non valido.",
+            detail=f"variazione_percentuale deve essere un numero, ricevuto: {raw_pct!r}.",
+            context={"field": "variazione_percentuale", "value": str(raw_pct)},
+            function_name=function_name,
+            log_to_db=True,
+        )
+    assert isinstance(variazione_pct, Decimal)
+
+    ErrorManager.require(
+        _VARIAZIONE_PCT_MIN <= variazione_pct <= _VARIAZIONE_PCT_MAX,
+        code="E_VENDITE_VALIDATION",
+        message="Variazione percentuale fuori dal range ammesso.",
+        detail=(
+            f"variazione_percentuale deve essere tra {_VARIAZIONE_PCT_MIN} e "
+            f"{_VARIAZIONE_PCT_MAX}. Ricevuto: {variazione_pct}."
+        ),
+        context={"variazione_percentuale": str(variazione_pct)},
+        function_name=function_name,
+        log_to_db=True,
+    )
+
+    raw_dec = payload.get("arrotondamento_decimali", _ARROT_DECIMALI_DEFAULT)
+    try:
+        arrotondamento_decimali = int(raw_dec)
+    except (TypeError, ValueError):
+        ErrorManager.raise_error(
+            code="E_VENDITE_VALIDATION",
+            message="Parametro non valido.",
+            detail=f"arrotondamento_decimali deve essere intero, ricevuto: {raw_dec!r}.",
+            context={"field": "arrotondamento_decimali", "value": str(raw_dec)},
+            function_name=function_name,
+            log_to_db=True,
+        )
+    assert isinstance(arrotondamento_decimali, int)
+
+    ErrorManager.require(
+        _ARROT_DECIMALI_MIN <= arrotondamento_decimali <= _ARROT_DECIMALI_MAX,
+        code="E_VENDITE_VALIDATION",
+        message="Arrotondamento decimali fuori dal range ammesso.",
+        detail=(
+            f"arrotondamento_decimali deve essere tra {_ARROT_DECIMALI_MIN} e "
+            f"{_ARROT_DECIMALI_MAX}. Ricevuto: {arrotondamento_decimali}."
+        ),
+        context={"arrotondamento_decimali": arrotondamento_decimali},
+        function_name=function_name,
+        log_to_db=True,
+    )
+
+    # --- Filtro articoli (opzionale) ---
+    raw_filtro = payload.get("filtro_articoli")
+    filtro_articoli: list[UUID] | None = None
+    if raw_filtro is not None:
+        ErrorManager.require(
+            isinstance(raw_filtro, list),
+            code="E_VENDITE_VALIDATION",
+            message="Parametro non valido.",
+            detail="filtro_articoli deve essere un array di UUID o null.",
+            context={"field": "filtro_articoli"},
+            function_name=function_name,
+            log_to_db=True,
+        )
+        assert isinstance(raw_filtro, list)
+        try:
+            filtro_articoli = [UUID(str(x)) for x in raw_filtro]
+        except (ValueError, TypeError):
+            ErrorManager.raise_error(
+                code="E_VENDITE_VALIDATION",
+                message="Parametro non valido.",
+                detail="filtro_articoli contiene valori non UUID.",
+                context={"field": "filtro_articoli"},
+                function_name=function_name,
+                log_to_db=True,
+            )
+
+    dry_run = bool(payload.get("dry_run", False))
+
+    # --- Esecuzione ---
+    repository = ListiniRepository()
+    filtro_str = [str(a) for a in filtro_articoli] if filtro_articoli else None
+
+    if dry_run:
+        count, preview = repository.applica_variazione_percentuale(
+            versione_id=versione_id,
+            variazione_pct=str(variazione_pct),
+            arrotondamento_decimali=arrotondamento_decimali,
+            filtro_articoli=filtro_str,
+            dry_run=True,
+        )
+        return {
+            "dry_run": True,
+            "righe_coinvolte": count,
+            "preview": preview,
+            "variazione_percentuale": str(variazione_pct),
+            "arrotondamento_decimali": arrotondamento_decimali,
+        }
+
+    with transaction.atomic():
+        count, _ = repository.applica_variazione_percentuale(
+            versione_id=versione_id,
+            variazione_pct=str(variazione_pct),
+            arrotondamento_decimali=arrotondamento_decimali,
+            filtro_articoli=filtro_str,
+            dry_run=False,
+        )
+        # Audit sulla meta della versione
+        meta_versione = _parse_meta_json(versione.get("meta"))
+        variazioni_pct = list(meta_versione.get("variazioni_percentuali", []))
+        variazioni_pct.append({
+            "data": datetime.now(timezone.utc).isoformat(),
+            "variazione_percentuale": str(variazione_pct),
+            "arrotondamento_decimali": arrotondamento_decimali,
+            "righe_aggiornate": count,
+            "filtro_articoli": filtro_str,
+        })
+        meta_versione["variazioni_percentuali"] = variazioni_pct
+        repository.update_versione(
+            listino_id=listino_id,
+            versione_id=versione_id,
+            data={"meta": meta_versione},
+        )
+
+    return {
+        "righe_aggiornate": count,
+        "variazione_percentuale": str(variazione_pct),
+        "arrotondamento_decimali": arrotondamento_decimali,
+    }

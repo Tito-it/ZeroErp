@@ -1,0 +1,82 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+# Backfill catalogo.articoli.listino_tipologia_id dove derivabile in
+# modo sicuro.
+#
+# Regola conservativa (no produzione, fix manuale per i casi dubbi):
+#   - voce_utility = FALSE  ->  PRODOTTI (commercio/servizi generici).
+#   - voce_utility = TRUE   ->  lasciato NULL (mapping manuale).
+#
+# Comportamento CI-safe: se config.listini_tipologie e' vuota (il seed
+# 80_data non e' ancora stato applicato), il backfill viene saltato con
+# NOTICE. Il changeSet gemello in 80_data/changelog ri-esegue il backfill
+# dopo il seed. runOnChange=true permette a entrambi i passaggi di
+# aggiornare gli articoli successivamente inseriti.
+#
+# runOnChange + validCheckSum: ANY necessari perche' in istanze dev dove
+# il DO block precedente (con RAISE) era gia' stato applicato il checksum
+# sarebbe diverso.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: /migrations_v2/00_schema/catalogo/20260414-15-backfill-articoli-listino-tipologia-mctit.yaml
+
+  - changeSet:
+      id: 20260414-15-backfill-articoli-listino-tipologia
+      author: mctit
+      runOnChange: true
+      validCheckSum:
+        - ANY
+      comment: >
+        Popola listino_tipologia_id sugli articoli non-utility derivando
+        PRODOTTI dal seed di config.listini_tipologie. Skip silenzioso se
+        il seed non e' ancora presente (CI: 80_data gira dopo 00_schema).
+      preConditions:
+        - onFail: HALT
+        - columnExists:
+            schemaName: catalogo
+            tableName: articoli
+            columnName: listino_tipologia_id
+
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $BACKFILL$
+              DECLARE
+                  v_tipologia_prodotti_id config.listini_tipologie.id%TYPE;
+                  v_updated               integer;
+              BEGIN
+                  -- Lookup tipologia PRODOTTI dal seed.
+                  SELECT id INTO v_tipologia_prodotti_id
+                    FROM config.listini_tipologie
+                   WHERE codice = 'PRODOTTI'
+                     AND attivo IS TRUE;
+
+                  IF v_tipologia_prodotti_id IS NULL THEN
+                      -- Seed 80_data non ancora applicato: il backfill sara'
+                      -- completato dal changeSet gemello in 80_data (post-seed).
+                      RAISE NOTICE
+                          'Tipologia PRODOTTI non trovata: skip backfill (in CI il seed 80_data arriva dopo).';
+                      RETURN;
+                  END IF;
+
+                  UPDATE catalogo.articoli
+                     SET listino_tipologia_id = v_tipologia_prodotti_id
+                   WHERE listino_tipologia_id IS NULL
+                     AND voce_utility = FALSE;
+
+                  GET DIAGNOSTICS v_updated = ROW_COUNT;
+                  RAISE NOTICE 'Backfill articoli.listino_tipologia_id: % articoli non-utility -> PRODOTTI.', v_updated;
+              END
+              $BACKFILL$;
+
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              SELECT 1;

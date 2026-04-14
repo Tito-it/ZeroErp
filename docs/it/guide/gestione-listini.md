@@ -22,7 +22,7 @@
 
 In Zero ERP il **listino** non e un semplice elenco prezzi: e un sistema multi-livello che risponde alla domanda *"quanto costa questo articolo, per questo contesto, in questa data?"* tenendo conto di chi compra, quale utility eroga il servizio e chi emette la fattura.
 
-Questa guida spiega **come funziona il sistema listini** — quali entita lo compongono, come si relazionano, come il resolver determina il prezzo e quali regole governano il processo. La logica e la stessa sia per il dominio utility (gas, energia, idrico) sia per il dominio commercio (servizi, manifatturiero).
+Questa guida spiega **come funziona il sistema listini** — quali entita lo compongono, come si relazionano, come il resolver determina il prezzo e quali regole governano il processo. La logica e la stessa sia per l'ambito utility (gas, energia, idrico) sia per l'ambito commercio (servizi, manifatturiero).
 
 **Cosa troverai in questa guida:**
 
@@ -35,12 +35,14 @@ Questa guida spiega **come funziona il sistema listini** — quali entita lo com
 
 ### Il modello e generico, non solo per le utility
 
-La struttura listini funziona per qualsiasi tipo di azienda. Il campo `dominio` sul listino (`UTILITY` o `COMMERCIO`) classifica il perimetro, ma l'architettura sottostante — versioni, righe, associazioni, resolver — e identica in entrambi i casi.
+La struttura listini funziona per qualsiasi tipo di azienda. Il campo `utility_id` sul listino (FK a `config.utilities`, NOT NULL) classifica il servizio erogante: gas, energia, idrico, teleriscaldamento oppure "Base" per i listini di puro commercio. L'architettura sottostante — versioni, righe, associazioni, resolver — e identica in tutti i casi.
 
 In pratica:
 
-* **Azienda utility**: listini con dimensioni BA + utility + emittente, prezzi ad alta precisione per consumi minimi
-* **Azienda non-utility**: listini con dimensioni BA (o senza contesto), pricing standard per servizi/prodotti
+* **Azienda utility**: listini con `utility_id` specifico (Gas, Energia, Idrico), dimensioni righe BA + utility + emittente, prezzi ad alta precisione per consumi minimi
+* **Azienda non-utility**: listini con `utility_id = 5` (Base), dimensioni BA (o senza contesto), pricing standard per servizi/prodotti
+
+> **Refactor 2026-04-12**: il vecchio campo `dominio` (enum UTILITY/COMMERCIO) e` stato sostituito dalla FK `utility_id NOT NULL` verso `config.utilities`. La utility "Base" (id=5 nel seed standard) copre i listini commerciali.
 
 ---
 
@@ -61,7 +63,7 @@ In pratica:
 
 ### Listino (testata)
 
-E il contenitore principale. Identifica un listino con un codice univoco, una descrizione e un dominio (`UTILITY` o `COMMERCIO`). Non contiene ne date ne prezzi: questi sono delegati alle entita figlie.
+E il contenitore principale. Identifica un listino con un codice univoco, una descrizione e una utility (`utility_id` NOT NULL, FK a `config.utilities`). Non contiene ne date ne prezzi: questi sono delegati alle entita figlie.
 
 Il listino e pensato come entita stabile nel tempo. Quello che cambia sono le sue versioni e le sue righe prezzo.
 
@@ -114,7 +116,7 @@ L'associazione non e un semplice collegamento — e il primo filtro che il resol
 
 ### Creazione
 
-Un listino nasce con codice, descrizione e dominio. E subito attivo (`attivo=true`) ma non ancora operativo: servono almeno una versione e delle righe prezzo.
+Un listino nasce con codice, descrizione e utility. E subito attivo (`attivo=true`) ma non ancora operativo: servono almeno una versione e delle righe prezzo.
 
 ### Pubblicazione di una versione
 
@@ -204,6 +206,12 @@ Il resolver cerca le righe delle versioni candidate che matchano `articolo_id + 
 | 7 | articolo + uom (fallback) | Prezzo base senza contesto |
 
 **Vince la riga con livello piu basso** (piu specifica). Il resolver cerca il match piu stretto: se esiste un prezzo specifico per BA + utility + emittente, quello prevale sul prezzo generico.
+
+> **Nota sul livello 3 (BA + emittente senza utility):** questo livello e rilevante
+> esclusivamente in contesti multi-emittente (tipicamente utility) dove l'emittente
+> fiscale e un soggetto distinto dall'azienda erogante. In contesti commercio con
+> emittente unico, il livello 3 non produce mai un match differente dal livello 4
+> (BA da solo) e puo essere ignorato in fase di configurazione.
 
 ### Fase 4 — Tie-break
 
@@ -409,6 +417,48 @@ Cosa significa in pratica:
 
 ---
 
+## Guida operativa: il "listino post-it"
+
+Il termine "listino post-it" descrive l'uso di un secondo listino piccolo per correggere
+il prezzo di un singolo articolo senza toccare il listino base. Come un post-it attaccato
+sopra il cartellone grande.
+
+### Quando funziona
+
+Il listino post-it funziona quando il prezzo corretto vale per un **contesto specifico** —
+un cliente preciso, una utility precisa. In quel caso la riga nel listino post-it ha il BA
+valorizzato (match_level 4) o BA+utility (match_level 2). Il resolver la trova prima della
+riga generica del listino base, perche e piu specifica.
+
+### Quando NON funziona
+
+Il listino post-it **non funziona** quando il prezzo corretto deve valere per **tutti i
+clienti** (riga generica, match_level 7). Entrambi i listini avrebbero un'associazione
+generica (NULL, NULL, NULL) per lo stesso periodo, e il vincolo
+`ex_listini_associazioni_no_overlap` lo impedisce a livello DB: non possono esistere due
+associazioni con lo stesso scope nello stesso periodo.
+
+### Tabella delle soluzioni
+
+| Situazione | Soluzione corretta |
+|---|---|
+| Prezzo sbagliato per un cliente specifico, articolo non ancora fatturato | Rettifica controllata N6 sulla riga |
+| Prezzo sbagliato per un cliente specifico, articolo gia fatturato | Listino post-it con BA valorizzato sulla riga |
+| Prezzo sbagliato per tutti i clienti, articolo non ancora fatturato | Rettifica controllata N6 sulla riga |
+| Prezzo sbagliato per tutti i clienti, articolo gia fatturato | Clone listino + correggi la riga + attiva (O1) |
+| Aumento prezzi annuale su tutto il listino | Clone + variazione % massa (N8a) + attiva |
+
+### Operazioni disponibili
+
+| Operazione | Contesto | API |
+|---|---|---|
+| **Rettifica controllata (N6)** | Riga ATTIVA non propagata | `PATCH .../rettifica-controllata/` |
+| **Variazione % massa (N8a)** | Righe BOZZA (aumento/riduzione) | `POST .../applica-variazione/` |
+| **Clone versione (O1)** | Da qualsiasi stato | `POST .../clona/` |
+| **Programma chiusura** | Versione ATTIVA, imposta `valido_al` | `PATCH .../` con `valido_al` |
+
+---
+
 ## Rettifiche prezzi (previste, non ancora implementate)
 
 Il sistema prevede un meccanismo di rettifica per gestire modifiche retroattive ai prezzi senza riscrivere le fatture emesse.
@@ -442,6 +492,7 @@ erDiagram
     listini                ||--o{ listini_associazioni    : visibile_per
     listini_versioni       ||--o{ listini_righe           : contiene_prezzi
 
+    utilities              ||--o{ listini                 : classifica_testata
     articoli               ||--o{ listini_righe           : prezzato_in
     unita_misura           ||--o{ listini_righe           : unita_di
 

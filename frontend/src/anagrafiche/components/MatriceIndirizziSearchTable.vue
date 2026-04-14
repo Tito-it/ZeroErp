@@ -5,7 +5,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useSearchTable } from '../../core/composables/useSearchTable'
 import { useTabFreshness } from '../../core/composables/useTabFreshness'
-import { useLookup } from '../../core/composables/useLookup'
+import { useGlobalLookup } from '../../core/composables/useGlobalLookup'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { lookupCodici } from '../../core/apiCore'
 import LookupSelect from '../../core/components/LookupSelect.vue'
@@ -68,7 +68,11 @@ const { searchText, onPage, onSort, applyFilters, reload, paginatorProps } = use
 })
 
 // Lookup filtri
-const tipiIndirizzi = useLookup(() => lookupCodici('config.tipi_indirizzi'), { immediate: true })
+const tipiIndirizzi = useGlobalLookup(
+  'config.tipi_indirizzi',
+  () => lookupCodici('config.tipi_indirizzi'),
+  { immediate: true }
+)
 
 const ruoloFilter = ref(null)
 

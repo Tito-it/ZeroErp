@@ -1,0 +1,294 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+# Creazione tabella anagrafiche.categorie_clienti_listini.
+# Matrice categoria x utility x emittente x classe_utenza -> listino
+# con variazione opzionale (PERCENTUALE o VALORE_FISSO). E' la chiave
+# primaria di lookup dello STADIO 2 del resolver prezzi v5.
+# Pricing v5 - riferimento docs/it/dev/work-in-progress/sviluppo-listini-v5.md
+# sezione 4.2.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: /migrations_v2/00_schema/anagrafiche/20260414-07-create-categorie-clienti-listini-mctit.yaml
+
+  - changeSet:
+      id: 20260414-07-create-categorie-clienti-listini
+      author: mctit
+      comment: >
+        Crea anagrafiche.categorie_clienti_listini con FK, CHECK coerenza
+        variazione, trigger set_validita e EXCLUDE no-overlap (btree_gist).
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: anagrafiche
+            tableName: categorie_clienti
+
+      changes:
+        - createTable:
+            schemaName: anagrafiche
+            tableName: categorie_clienti_listini
+            remarks: "Matrice categoria cliente x utility x emittente x classe_utenza -> listino con variazione opzionale."
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  remarks: "PK surrogata."
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_categorie_clienti_listini
+                    nullable: false
+
+              - column:
+                  name: categoria_cliente_id
+                  type: smallint
+                  remarks: "FK -> anagrafiche.categorie_clienti.id."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: utility_id
+                  type: integer
+                  remarks: "FK -> config.utilities.id."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: emittente_soggetto_ruolo_id
+                  type: bigint
+                  remarks: "FK -> anagrafiche.soggetti_ruoli.id. Emittente fiscale del contesto di pricing."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: classe_utenza_id
+                  type: integer
+                  remarks: "FK -> config.classi_utenze.id. NULL = fallback valido per ogni classe della quadrupla (cat, utility, emittente)."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: listino_id
+                  type: bigint
+                  remarks: "FK -> vendite.listini.id. Listino attivo per il match."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: tipo_variazione
+                  type: varchar(16)
+                  remarks: "Tipo variazione opzionale: PERCENTUALE | VALORE_FISSO. NULL = prezzo base tal quale."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: valore_variazione
+                  type: numeric(10,4)
+                  remarks: "Valore della variazione (coerente con tipo_variazione). NULL se tipo_variazione NULL."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: valido_dal
+                  type: date
+                  remarks: "Inizio validita (estremo inferiore del daterange)."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: valido_al
+                  type: date
+                  remarks: "Fine validita (NULL = validita aperta verso +infinity)."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: validita
+                  type: daterange
+                  remarks: "Range di validita calcolato da script.trgfn_set_validita(). Non scrivere direttamente."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: meta
+                  type: jsonb
+                  defaultValueComputed: "'{}'::jsonb"
+                  remarks: "Metadati estensibili."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: attivo
+                  type: boolean
+                  defaultValueBoolean: true
+                  remarks: "Flag abilitazione."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: tx_id
+                  type: uuid
+                  remarks: "Transaction ID per correlazione audit."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: data_insert
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: user_insert
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: data_update
+                  type: timestamp with time zone
+                  defaultValueComputed: "now()"
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: user_update
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  constraints:
+                    nullable: false
+
+        # FK
+        - addForeignKeyConstraint:
+            baseTableSchemaName: anagrafiche
+            baseTableName: categorie_clienti_listini
+            baseColumnNames: categoria_cliente_id
+            constraintName: fk_categ_cli_listini_categoria
+            referencedTableSchemaName: anagrafiche
+            referencedTableName: categorie_clienti
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: anagrafiche
+            baseTableName: categorie_clienti_listini
+            baseColumnNames: utility_id
+            constraintName: fk_categ_cli_listini_utility
+            referencedTableSchemaName: config
+            referencedTableName: utilities
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: anagrafiche
+            baseTableName: categorie_clienti_listini
+            baseColumnNames: emittente_soggetto_ruolo_id
+            constraintName: fk_categ_cli_listini_emittente
+            referencedTableSchemaName: anagrafiche
+            referencedTableName: soggetti_ruoli
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: anagrafiche
+            baseTableName: categorie_clienti_listini
+            baseColumnNames: classe_utenza_id
+            constraintName: fk_categ_cli_listini_classe_utenza
+            referencedTableSchemaName: config
+            referencedTableName: classi_utenze
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: anagrafiche
+            baseTableName: categorie_clienti_listini
+            baseColumnNames: listino_id
+            constraintName: fk_categ_cli_listini_listino
+            referencedTableSchemaName: vendite
+            referencedTableName: listini
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+
+        # CHECK tipo_variazione ammesso
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE anagrafiche.categorie_clienti_listini
+                  ADD CONSTRAINT chk_categ_cli_listini_tipo_variazione
+                  CHECK (tipo_variazione IS NULL
+                         OR tipo_variazione IN ('PERCENTUALE', 'VALORE_FISSO'));
+
+              ALTER TABLE anagrafiche.categorie_clienti_listini
+                  ADD CONSTRAINT chk_categ_cli_listini_variazione_coerente
+                  CHECK (
+                      (tipo_variazione IS NULL AND valore_variazione IS NULL)
+                      OR
+                      (tipo_variazione IS NOT NULL AND valore_variazione IS NOT NULL)
+                  );
+
+              ALTER TABLE anagrafiche.categorie_clienti_listini
+                  ADD CONSTRAINT chk_categ_cli_listini_valido_al_ge_dal
+                  CHECK (valido_al IS NULL OR valido_al >= valido_dal);
+
+              -- EXCLUDE no-overlap: una sola riga attiva per
+              -- (categoria, utility, emittente, classe_utenza/NULL) sul periodo.
+              -- btree_gist e' gia' attivo (baseline 001-01-create-extensions).
+              -- Il sentinel -1 per classe_utenza_id e' sicuro perche'
+              -- config.classi_utenze.id e' serial (parte da 1).
+              ALTER TABLE anagrafiche.categorie_clienti_listini
+                  ADD CONSTRAINT ex_categ_cli_listini_no_overlap
+                  EXCLUDE USING gist (
+                      categoria_cliente_id              WITH =,
+                      utility_id                        WITH =,
+                      emittente_soggetto_ruolo_id       WITH =,
+                      (COALESCE(classe_utenza_id, -1))  WITH =,
+                      validita                          WITH &&
+                  ) WHERE (attivo IS TRUE);
+
+              -- Trigger set_validita: sincronizza validita da valido_dal/al.
+              DROP TRIGGER IF EXISTS trg_categorie_clienti_listini_a20_set_validita_ins_upd
+                  ON anagrafiche.categorie_clienti_listini;
+              CREATE TRIGGER trg_categorie_clienti_listini_a20_set_validita_ins_upd
+                  BEFORE INSERT OR UPDATE OF valido_dal, valido_al
+                  ON anagrafiche.categorie_clienti_listini
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_set_validita();
+
+        # Indici di ricerca (le FK sono coperte dalla policy fk_index_policy)
+        - createIndex:
+            schemaName: anagrafiche
+            tableName: categorie_clienti_listini
+            indexName: ix_categ_cli_listini_attivo
+            columns:
+              - column:
+                  name: attivo
+
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              CREATE INDEX IF NOT EXISTS ix_categ_cli_listini_validita_gist
+                  ON anagrafiche.categorie_clienti_listini
+                  USING gist (validita);
+
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_categorie_clienti_listini_a20_set_validita_ins_upd
+                  ON anagrafiche.categorie_clienti_listini;
+        - dropTable:
+            schemaName: anagrafiche
+            tableName: categorie_clienti_listini

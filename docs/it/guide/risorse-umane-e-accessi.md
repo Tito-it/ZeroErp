@@ -803,6 +803,163 @@ ricevere l'identita per due strade diverse senza conflitti (la GUC e idempotente
 
 ---
 
+## Ottimizzazione connessioni database in produzione
+
+> Questa sezione spiega come funzionano le connessioni tra Django e PostgreSQL,
+> cosa succede quando ci sono molti operatori collegati, e come preparare il sistema
+> per la produzione. Il linguaggio e volutamente semplice e operativo.
+
+### Come funziona oggi (sviluppo)
+
+Ogni volta che un operatore fa una qualsiasi azione nell'interfaccia (aprire una lista,
+salvare un form, cercare un soggetto), il browser invia una richiesta HTTP al backend Django.
+Per ogni richiesta, Django:
+
+1. **Apre una nuova connessione** a PostgreSQL
+2. Imposta le variabili GUC (`app.jwt_user`, `app.current_user_id`) per identificare l'operatore
+3. Esegue le query necessarie
+4. Resetta le variabili GUC
+5. **Chiude la connessione**
+
+Questo comportamento e determinato dal parametro Django `CONN_MAX_AGE = 0` (valore di default).
+In sviluppo funziona perfettamente, ma in produzione con molti operatori attivi diventa
+uno spreco: aprire e chiudere una connessione TCP ha un costo (handshake di rete,
+autenticazione PostgreSQL, allocazione memoria sul server DB).
+
+### Primo passo: riutilizzo connessioni (`CONN_MAX_AGE`)
+
+Il parametro `CONN_MAX_AGE` dice a Django: "dopo aver finito con questa richiesta,
+**non chiudere** la connessione — tienila aperta per le prossime richieste".
+
+```python
+# settings.py
+DATABASES = {
+    'default': {
+        ...
+        'CONN_MAX_AGE': 600,  # 10 minuti
+    }
+}
+```
+
+**Cosa cambia in pratica:**
+
+* Con `CONN_MAX_AGE = 0`: 100 richieste = 100 connessioni aperte e chiuse
+* Con `CONN_MAX_AGE = 600`: 100 richieste in 10 minuti = poche connessioni riutilizzate
+
+**Perche e sicuro nel nostro caso:** il middleware `JwtAuditMiddleware` gia resetta le GUC
+a fine richiesta (vedi sezione precedente). Questo significa che quando la stessa connessione
+viene riutilizzata da un altro operatore, le variabili dell'operatore precedente sono gia
+state cancellate. Il codice era stato scritto fin dall'inizio per supportare questo scenario.
+
+**Limiti:** ogni processo (worker) Gunicorn tiene aperta la sua connessione. Con 4 worker
+= massimo 4 connessioni permanenti verso PostgreSQL. Per un team di 5-15 operatori
+e piu che sufficiente.
+
+**Quando non basta piu:** quando il numero di worker Gunicorn cresce (perche servono
+piu operatori simultanei), le connessioni permanenti verso PostgreSQL aumentano in modo
+proporzionale. A quel punto serve un **pool di connessioni dedicato**.
+
+### Secondo passo: pgbouncer (pool di connessioni)
+
+pgbouncer e un software leggero che si posiziona **tra Django e PostgreSQL** e gestisce
+un pool condiviso di connessioni. Invece di avere ogni worker con la sua connessione
+diretta, tutti i worker condividono un numero limitato di connessioni reali.
+
+```text
+Senza pgbouncer:
+  Worker 1 ──────────── PostgreSQL (connessione 1)
+  Worker 2 ──────────── PostgreSQL (connessione 2)
+  Worker 3 ──────────── PostgreSQL (connessione 3)
+  Worker 4 ──────────── PostgreSQL (connessione 4)
+
+Con pgbouncer (transaction mode):
+  Worker 1 ─┐
+  Worker 2 ─┤── pgbouncer ─── PostgreSQL (2-3 connessioni reali)
+  Worker 3 ─┤
+  Worker 4 ─┘
+```
+
+**Come funziona (transaction mode):**
+
+1. Un worker chiede una connessione a pgbouncer
+2. pgbouncer gli assegna una connessione dal pool
+3. Il worker esegue la sua transazione (query, INSERT, UPDATE)
+4. Appena la transazione finisce, pgbouncer **rimette la connessione nel pool**
+5. Un altro worker puo usare la stessa connessione
+
+Il vantaggio e che PostgreSQL vede solo poche connessioni (es. 10), anche se ci sono
+50 worker o 100 operatori collegati. PostgreSQL gestisce ogni connessione con un processo
+dedicato, quindi meno connessioni = meno memoria e CPU sul server DB.
+
+**Regola importante:** quando si usa pgbouncer, `CONN_MAX_AGE` va **riportato a 0**.
+Il motivo e semplice: se Django tiene la connessione aperta (`CONN_MAX_AGE > 0`),
+sta occupando uno slot nel pool di pgbouncer anche quando non sta facendo nulla.
+Questo vanifica il vantaggio del pool. Con `CONN_MAX_AGE = 0`, Django rilascia
+la connessione subito e pgbouncer la ricicla per altri worker.
+
+```text
+Scenario                    │ CONN_MAX_AGE │ Perche
+────────────────────────────┼──────────────┼──────────────────────────
+Django → PostgreSQL diretto │ 600          │ Evita overhead apertura/chiusura
+Django → pgbouncer          │ 0            │ Lascia pgbouncer gestire il pool
+```
+
+**Perche e sicuro nel nostro caso:** il reset delle GUC nel middleware funziona in entrambi
+gli scenari. La difesa e stata progettata fin dall'inizio proprio per supportare sia
+connessioni dirette che connessioni pooled.
+
+### Quando serve pgbouncer?
+
+Non serve subito. Ecco una guida orientativa:
+
+| Situazione | Soluzione |
+| --- | --- |
+| 1-15 operatori, 2-4 worker Gunicorn | `CONN_MAX_AGE = 600` e sufficiente |
+| 15-50 operatori, 8+ worker Gunicorn | Valutare pgbouncer |
+| 50+ operatori o microservizi multipli | pgbouncer e raccomandato |
+
+Il segnale che serve pgbouncer e quando PostgreSQL mostra molte connessioni aperte
+(`SELECT count(*) FROM pg_stat_activity`) rispetto al lavoro effettivo, o quando
+i tempi di connessione diventano visibili nelle metriche.
+
+### Configurazione tipica pgbouncer (riferimento)
+
+Questa e una configurazione di riferimento per quando si decidera di adottare pgbouncer.
+Non va applicata adesso — serve come base quando il momento arrivera.
+
+```ini
+; /etc/pgbouncer/pgbouncer.ini (esempio)
+[databases]
+zeroerp = host=<db_host> port=5432 dbname=zeroerp
+
+[pgbouncer]
+listen_addr = 127.0.0.1
+listen_port = 6432
+; transaction mode: connessione condivisa, rilasciata a fine transazione
+pool_mode = transaction
+; connessioni reali verso PostgreSQL (regolare in base al carico)
+default_pool_size = 20
+; connessioni extra per picchi temporanei
+reserve_pool_size = 5
+; massimo connessioni client (worker Django + listener + management command)
+max_client_conn = 100
+```
+
+Con pgbouncer attivo, Django si connette a `127.0.0.1:6432` invece che direttamente
+al server PostgreSQL. Basta cambiare `DB_HOST` e `DB_PORT` nelle variabili d'ambiente
+e riportare `CONN_MAX_AGE = 0`.
+
+### Nota sul listener LISTEN/NOTIFY
+
+Il `CambioRepartoListener` (descritto nella sezione cambio reparto) usa una connessione
+psycopg3 **dedicata e persistente** per ascoltare le notifiche PostgreSQL. Questa
+connessione **non deve passare per pgbouncer** in transaction mode, perche LISTEN
+richiede una connessione stabile che non viene mai rilasciata. In produzione con pgbouncer,
+il listener va configurato per connettersi **direttamente** a PostgreSQL, bypassando
+il pool.
+
+---
+
 ## Best practice
 
 * Usa `risorse_umane` solo per descrivere **persone interne** (dipendenti, consulenti, collaboratori). I referenti esterni vanno su `contatti`.

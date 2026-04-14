@@ -41,6 +41,7 @@ Caratteristiche principali:
 | `soggetto_ruolo_id`  | `anagrafiche.soggetti_ruoli(id)`    | ON UPDATE CASCADE, ON DELETE RESTRICT |
 | `utility_id`         | `config.utilities(id)`              | ON UPDATE CASCADE, ON DELETE RESTRICT |
 | `parent_account_id`  | `anagrafiche.billing_account(id)`   | ON UPDATE CASCADE, ON DELETE SET NULL |
+| `categoria_cliente_id` | `anagrafiche.categorie_clienti(id)` | ON UPDATE CASCADE, ON DELETE NO ACTION |
 
 Nota naming: sia `anagrafiche.billing_account` sia `anagrafiche.pdp` usano `utility_id`, entrambi puntano a `config.utilities.id`. Il naming e uniforme anche nelle query/join.
 
@@ -96,6 +97,18 @@ Flusso in dettaglio:
 4. `trgfn_fatture_righe_guard_normalize`: fallback — se `dest_billing_account_id` e NULL, eredita da `fatture.billing_account_id`
 
 La risoluzione al padre e **incondizionata**: se `parent_account_id` e valorizzato, la fattura va al padre. Se non si vuole aggregare un figlio al padre, la soluzione e **non impostare `parent_account_id`** (non serve un flag separato).
+
+---
+
+### Categoria cliente per pricing (v5, 14-04-26)
+
+Il BA e' sempre associato a una **categoria commerciale** (`categoria_cliente_id` NOT NULL, FK verso [`anagrafiche.categorie_clienti`](/dbzero/anagrafiche/tabelle/categorie_clienti)). La categoria e' la dimensione su cui si appoggia lo STADIO 2 del resolver prezzi v5:
+
+* Un BA **senza contratto individuale** risolve il prezzo tramite la matrice `anagrafiche.categorie_clienti_listini` filtrata per `(categoria_cliente_id, utility_id, emittente, classe_utenza)`.
+* Un BA **con contratto** salta la categoria: STADIO 1 (contratto) batte STADIO 2.
+* La **partecipazione alla promo** (STADIO 0) e' decisa a livello di categoria (`categorie_clienti.partecipa_promo`), non di singolo BA.
+
+Strategia di rollout: al primo deploy tutti i BA esistenti vengono backfillati alla categoria `STANDARD` (non partecipa alle promo); la colonna e' `NOT NULL` dal changeSet `20260414-03`. Nessun BA puo' restare orfano di categoria, quindi il resolver non incontra mai la condizione `BA senza categoria`.
 
 ---
 

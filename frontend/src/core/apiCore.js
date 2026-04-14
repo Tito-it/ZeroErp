@@ -56,6 +56,13 @@ export function lookupUtilitiesPerEmittente(ruolo) {
   return api.get(`${BASE}/lookup/utilities-per-emittente/`, { params: { ruolo } })
 }
 
+// Scopo: Lookup dedicato conti contabili con filtro tipo (A=Acquisto, V=Vendita).
+// Espone tipo_conto che il lookup generico config.conti_contabili non ritorna.
+export function lookupContiContabili(tipo) {
+  const params = tipo ? { tipo } : {}
+  return api.get(`${BASE}/lookup/conti-contabili/`, { params })
+}
+
 // --- Sistema codici ---
 
 export function lookupSistemaCodici(schema, tabella, colonna = 'codice') {

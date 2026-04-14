@@ -51,7 +51,21 @@ Lo snapshot viene eseguito **solo alla creazione del contratto**:
 * `contratto_id` → aggancio al contratto.
 * `istanza_dati_precontrattuali_id` → riferimento al record sorgente.
 * `classe_utenza_id` → snapshot della classe utenza.
+* `tipo_utenza_id` → snapshot del tipo utenza (dal 14-04-2026, pricing v5).
 * `param_1_num`, `param_2_txt`, `meta` → parametri tecnici snapshot.
+
+---
+
+### Coerenza `tipo_utenza_id` / `classe_utenza_id` (pricing v5, 14-04-2026)
+
+Il contratto "fotografa" `tipo_utenza_id` e `classe_utenza_id` al momento della stipula: anche se derivabili dall'istanza precontrattuale, vengono congelati esplicitamente per consistenza storica e per query dirette nel resolver prezzi v5.
+
+Regole applicate dal trigger `trg_contratti_utilities_a10_guard_tipo_classe_ins_upd` -> [`vendite.trgfn_contratti_utilities_guard_tipo_classe`](/dbzero/vendite/funzioni/trgfn_contratti_utilities_guard_tipo_classe):
+
+* **Utility con dimensione tipo/classe** (esiste almeno un `config.tipi_utenze` con `utility_id = NEW.utility_id`): `tipo_utenza_id` e `classe_utenza_id` entrambi NOT NULL, con `classi_utenze.tipo_utenza_id = NEW.tipo_utenza_id`. Errori: `E_CONTRATTO_UTILITY_TIPO_CLASSE_OBBLIGATORI`, `E_CONTRATTO_CLASSE_TIPO_INCOERENTE`.
+* **Utility senza dimensione** (commercio / `Base`): `tipo_utenza_id` e `classe_utenza_id` entrambi NULL. Errore: `E_CONTRATTO_UTILITY_SENZA_DIMENSIONE_TIPO_CLASSE_VIETATI`.
+
+Backfill al primo deploy: `tipo_utenza_id` derivato da `classi_utenze.tipo_utenza_id` dove `classe_utenza_id` e' valorizzata (changeSet `20260414-10`).
 
 ---
 

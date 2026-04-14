@@ -18,7 +18,10 @@ from apps.core.api.payload_validators import paginated_envelope, parse_list_para
 from apps.core.api.search_validators import require_min_search_length
 from apps.core.api.success_responses import success_response
 from apps.vendite.services.listini_service import (
+    fn_alert_scadenze,
+    fn_applica_variazione_percentuale,
     fn_change_versione_state,
+    fn_rettifica_controllata_riga,
     fn_clone_versione,
     fn_create_associazione,
     fn_create_listino,
@@ -33,6 +36,7 @@ from apps.vendite.services.listini_service import (
     fn_list_associazioni,
     fn_list_listini,
     fn_list_righe,
+    fn_list_tipologie_per_utility,
     fn_list_versioni,
     fn_test_resolver_prezzo,
     fn_update_associazione,
@@ -55,17 +59,30 @@ def _optional_qp_bool_strict(request: Request, key: str) -> bool | None:
     raise ValueError(f"{key}_invalid")
 
 
-# Scopo: Definisce in un solo punto i campi write listino per schema API.
-def _listino_write_fields(*, include_codice: bool) -> dict[str, serializers.Field]:
-    fields: dict[str, serializers.Field] = {
-        "descrizione": serializers.CharField(required=False),
-        "dominio": serializers.CharField(required=False),
+# Scopo: Definisce i campi write listino per lo schema OpenAPI.
+#        Schemi separati per create/patch: in create `utility_id` e
+#        `tipologia_id` sono obbligatori (la colonna DB e' NOT NULL); in patch
+#        sono opzionali ma se inviati non-nullable. La validazione applicativa
+#        resta nel service.
+def _listino_write_fields_create() -> dict[str, serializers.Field]:
+    return {
+        "codice": serializers.CharField(required=True),
+        "descrizione": serializers.CharField(required=True),
+        "utility_id": serializers.IntegerField(required=True),
+        "tipologia_id": serializers.IntegerField(required=True),
         "meta": serializers.JSONField(required=False, allow_null=True),
         "attivo": serializers.BooleanField(required=False),
     }
-    if include_codice:
-        fields = {"codice": serializers.CharField(required=True), **fields}
-    return fields
+
+
+def _listino_write_fields_patch() -> dict[str, serializers.Field]:
+    return {
+        "descrizione": serializers.CharField(required=False),
+        "utility_id": serializers.IntegerField(required=False),
+        "tipologia_id": serializers.IntegerField(required=False),
+        "meta": serializers.JSONField(required=False, allow_null=True),
+        "attivo": serializers.BooleanField(required=False),
+    }
 
 
 # Scopo: Definisce i campi write versione listino per schema API.
@@ -113,11 +130,11 @@ def _associazione_write_fields() -> dict[str, serializers.Field]:
 
 _LISTINO_CREATE_REQUEST = inline_serializer(
     name="VenditeListinoCreateRequest",
-    fields=_listino_write_fields(include_codice=True),
+    fields=_listino_write_fields_create(),
 )
 _LISTINO_PATCH_REQUEST = inline_serializer(
     name="VenditeListinoPatchRequest",
-    fields=_listino_write_fields(include_codice=False),
+    fields=_listino_write_fields_patch(),
 )
 _VERSIONE_CREATE_REQUEST = inline_serializer(
     name="VenditeListinoVersioneCreateRequest",
@@ -154,6 +171,22 @@ _ASSOCIAZIONE_CREATE_REQUEST = inline_serializer(
     name="VenditeListinoAssociazioneCreateRequest",
     fields=_associazione_write_fields(),
 )
+_RETTIFICA_CONTROLLATA_REQUEST = inline_serializer(
+    name="VenditeListinoRettificaControllataRequest",
+    fields={
+        "prezzo": serializers.DecimalField(required=True, max_digits=22, decimal_places=10),
+        "motivo": serializers.CharField(required=True),
+    },
+)
+_VARIAZIONE_PCT_REQUEST = inline_serializer(
+    name="VenditeListinoVariazionePercentualeRequest",
+    fields={
+        "variazione_percentuale": serializers.DecimalField(required=True, max_digits=10, decimal_places=4),
+        "arrotondamento_decimali": serializers.IntegerField(required=False),
+        "filtro_articoli": serializers.ListField(child=serializers.UUIDField(), required=False, allow_null=True),
+        "dry_run": serializers.BooleanField(required=False),
+    },
+)
 _ASSOCIAZIONE_PATCH_REQUEST = inline_serializer(
     name="VenditeListinoAssociazionePatchRequest",
     fields=_associazione_write_fields(),
@@ -178,7 +211,8 @@ class ApiListiniList(DomainAPIView):
     @extend_schema(
         parameters=[
             OpenApiParameter(name="search", type=str, location=OpenApiParameter.QUERY, required=False),
-            OpenApiParameter(name="dominio", type=str, location=OpenApiParameter.QUERY, required=False),
+            OpenApiParameter(name="utility_id", type=int, location=OpenApiParameter.QUERY, required=False),
+            OpenApiParameter(name="tipologia_id", type=int, location=OpenApiParameter.QUERY, required=False),
             OpenApiParameter(name="attivo", type=bool, location=OpenApiParameter.QUERY, required=False),
             OpenApiParameter(name="limit", type=int, location=OpenApiParameter.QUERY, required=False),
             OpenApiParameter(name="offset", type=int, location=OpenApiParameter.QUERY, required=False),
@@ -193,12 +227,18 @@ class ApiListiniList(DomainAPIView):
         },
     )
     # Scopo: Restituisce via GET la lista paginata dei listini.
+    #        I filtri utility_id/tipologia_id sono normalizzati via qp_str per
+    #        trattare stringa vuota come "assente" ed evitare che il filtro
+    #        venga ignorato silenziosamente.
     def get(self, request: Request) -> JsonResponse:
         qp = request.query_params
         p = parse_list_params(qp, default_order="codice")
         require_min_search_length(p["search"], field_name="search")
+        raw_utility_id = qp_str(qp.get("utility_id"))
+        raw_tipologia_id = qp_str(qp.get("tipologia_id"))
         results, total = fn_list_listini(
-            dominio=qp_str(qp.get("dominio")),
+            utility_id=qp_int_strict(raw_utility_id, "utility_id", 0) if raw_utility_id else None,
+            tipologia_id=qp_int_strict(raw_tipologia_id, "tipologia_id", 0) if raw_tipologia_id else None,
             attivo=_optional_qp_bool_strict(request, "attivo"),
             search=p["search"],
             order_by=p["order_by"],
@@ -381,8 +421,19 @@ class ApiListinoVersioneClona(DomainAPIView):
 
 class ApiListinoVersioneRigheList(DomainAPIView):
     area_funzionale = "vendite"
+    is_search_endpoint = True
 
     @extend_schema(
+        parameters=[
+            OpenApiParameter(name="search", type=str, location=OpenApiParameter.QUERY, required=False),
+            OpenApiParameter(name="billing_account_id", type=int, location=OpenApiParameter.QUERY, required=False),
+            OpenApiParameter(name="utility_id", type=int, location=OpenApiParameter.QUERY, required=False),
+            OpenApiParameter(name="attivo", type=bool, location=OpenApiParameter.QUERY, required=False),
+            OpenApiParameter(name="limit", type=int, location=OpenApiParameter.QUERY, required=False),
+            OpenApiParameter(name="offset", type=int, location=OpenApiParameter.QUERY, required=False),
+            OpenApiParameter(name="order_by", type=str, location=OpenApiParameter.QUERY, required=False),
+            OpenApiParameter(name="order_dir", type=str, location=OpenApiParameter.QUERY, required=False),
+        ],
         responses={
             200: inline_serializer(
                 name="VenditeListinoRigheListResponse",
@@ -390,10 +441,23 @@ class ApiListinoVersioneRigheList(DomainAPIView):
             )
         },
     )
-    # Scopo: Restituisce via GET la lista righe prezzo della versione.
+    # Scopo: Restituisce via GET la lista paginata righe prezzo della versione con filtri.
     def get(self, request: Request, listino_id: int, ver_id: int) -> JsonResponse:
-        del request
-        return success_response(fn_list_righe(listino_id, ver_id))
+        qp = request.query_params
+        p = parse_list_params(qp, default_order="articolo_descrizione")
+        results, total = fn_list_righe(
+            listino_id,
+            ver_id,
+            search=p["search"],
+            billing_account_id=qp_int_strict(qp.get("billing_account_id"), "billing_account_id", 0) if qp.get("billing_account_id") else None,
+            utility_id=qp_int_strict(qp.get("utility_id"), "utility_id", 0) if qp.get("utility_id") else None,
+            attivo=_optional_qp_bool_strict(request, "attivo"),
+            order_by=p["order_by"],
+            order_dir=p["order_dir"],
+            limit=p["limit"],
+            offset=p["offset"],
+        )
+        return success_response(paginated_envelope(results, total, p["page"], p["limit"]))
 
     @extend_schema(
         request=_RIGA_CREATE_REQUEST,
@@ -517,3 +581,101 @@ class ApiListinoTestPrezzo(DomainAPIView):
     # Scopo: Esegue il test del resolver prezzo per uso UI/diagnostica.
     def post(self, request: Request) -> JsonResponse:
         return handle_post_json(request, handler=fn_test_resolver_prezzo)
+
+
+class ApiListinoVersioneRigaRettificaControllata(DomainAPIView):
+    area_funzionale = "vendite"
+
+    @extend_schema(
+        request=_RETTIFICA_CONTROLLATA_REQUEST,
+        responses={
+            200: inline_serializer(
+                name="VenditeListinoRettificaControllataResponse",
+                fields={"data": serializers.DictField(), "meta": serializers.DictField(required=False)},
+            )
+        },
+    )
+    # Scopo: Rettifica controllata su riga ATTIVA non propagata (N6).
+    #        Endpoint dedicato separato dal PATCH ordinario.
+    def patch(self, request: Request, listino_id: int, ver_id: int, riga_id: int) -> JsonResponse:
+        return success_response(
+            fn_rettifica_controllata_riga(listino_id, ver_id, riga_id, request.data)
+        )
+
+
+class ApiListiniAlertScadenze(DomainAPIView):
+    area_funzionale = "vendite"
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(name="giorni", type=int, required=False, description="Giorni di anticipo (default 15)"),
+        ],
+        responses={
+            200: inline_serializer(
+                name="VenditeListiniAlertScadenzeResponse",
+                fields={"data": serializers.DictField(), "meta": serializers.DictField(required=False)},
+            )
+        },
+    )
+    # Scopo: Restituisce versioni ATTIVE in scadenza senza successore.
+    def get(self, request: Request) -> JsonResponse:
+        giorni = qp_int_strict(request, "giorni", default=15)
+        return success_response(fn_alert_scadenze(giorni))
+
+
+class ApiListinoVersioneApplicaVariazione(DomainAPIView):
+    area_funzionale = "vendite"
+
+    @extend_schema(
+        request=_VARIAZIONE_PCT_REQUEST,
+        responses={
+            200: inline_serializer(
+                name="VenditeListinoVariazionePercentualeResponse",
+                fields={"data": serializers.DictField(), "meta": serializers.DictField(required=False)},
+            )
+        },
+    )
+    # Scopo: Applica variazione percentuale massa ai prezzi delle righe attive
+    #        di una versione BOZZA. Supporta dry_run per preview.
+    def post(self, request: Request, listino_id: int, ver_id: int) -> JsonResponse:
+        return handle_post_json(
+            request,
+            handler=lambda payload: fn_applica_variazione_percentuale(listino_id, ver_id, payload),
+        )
+
+
+class ApiListiniTipologiePerUtility(DomainAPIView):
+    area_funzionale = "vendite"
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(name="utility_id", type=int, location=OpenApiParameter.QUERY, required=True),
+        ],
+        responses={
+            200: inline_serializer(
+                name="VenditeListiniTipologiePerUtilityResponse",
+                fields={"data": serializers.ListField(child=serializers.DictField()), "meta": serializers.DictField(required=False)},
+            )
+        },
+    )
+    # Scopo: Restituisce le tipologie listino ammesse per una utility dalla
+    #        matrice config.listini_tipologie_utilities. Usato dal drawer listino
+    #        per popolare il Select tipologia al cambio utility.
+    #        Nota: config.listini_tipologie e' tabella globale, non filtrata per
+    #        emittente (no scope check). Envelope allineato ai lookup dedicati:
+    #        success_response aggiunge il wrap "data" automaticamente.
+    def get(self, request: Request) -> JsonResponse:
+        raw_utility_id = qp_str(request.query_params.get("utility_id"))
+        if raw_utility_id is None:
+            from apps.core.services.error_manager import ErrorManager
+
+            ErrorManager.raise_error(
+                code="E_VENDITE_VALIDATION",
+                message="Parametro utility non valido.",
+                detail="utility_id e' obbligatorio.",
+                context={"field": "utility_id"},
+                function_name="vendite.api.ApiListiniTipologiePerUtility.get",
+                log_to_db=True,
+            )
+        utility_id = qp_int_strict(raw_utility_id, "utility_id", 0)
+        return success_response({"results": fn_list_tipologie_per_utility(utility_id)})

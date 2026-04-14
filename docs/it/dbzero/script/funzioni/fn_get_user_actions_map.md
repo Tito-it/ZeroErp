@@ -22,23 +22,15 @@ BEGIN
     --   Ritorna la mappa completa delle azioni di processo
     --   abilitate/disabilitate per l'utente.
     --
-    -- Parametri:
-    --   p_auth_user_id: ID utente Django (auth_user.id)
-    --
     -- Ritorna:
-    --   JSONB tipo {"genera_fatture_lotti": true,
-    --              "reset_lotto_draft": false, ...}
+    --   JSONB {"genera_fatture_lotti": true,
+    --          "reset_lotto_draft": false, ...}
     --
     -- Catena:
     --   1. ruolo_sistema (NULL/DISABILITATO -> false, ADMIN -> true)
     --   2. Override utente azione (se presente e valido)
     --   3. Profilo reparto azione (ereditato dalla UO)
     --   4. Default -> false
-    --
-    -- Ottimizzazione:
-    --   Nessun loop PL/pgSQL per azione. Ruolo e UO vengono
-    --   letti una sola volta, poi la mappa viene costruita in
-    --   forma set-based con LEFT JOIN su override e profilo.
     -- =========================================================
 
     -- Guard: parametro obbligatorio e valido
@@ -84,8 +76,7 @@ BEGIN
           LEFT JOIN config.user_override_azioni uoa
             ON uoa.auth_user_id = p_auth_user_id
            AND uoa.azione_id = ap.id
-           AND (uoa.valido_dal IS NULL OR uoa.valido_dal <= CURRENT_DATE)
-           AND (uoa.valido_al  IS NULL OR uoa.valido_al  >= CURRENT_DATE)
+           AND uoa.validita @> CURRENT_DATE
           LEFT JOIN config.profili_reparto_azioni pra
             ON pra.unita_organizzativa_id = v_uo_id
            AND pra.azione_id = ap.id
@@ -95,7 +86,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_get_user_actions_map(p_auth_user_id integer)
-IS 'Mappa azioni_processo abilitate per utente. Refactor set-based: JSONB {codename: boolean} senza loop PL/pgSQL, legge ruolo_sistema e UO una sola volta.';
+IS 'Mappa azioni processo set-based. Migrazione daterange: filtro temporale via validita @>.';
 ```
 
 ---

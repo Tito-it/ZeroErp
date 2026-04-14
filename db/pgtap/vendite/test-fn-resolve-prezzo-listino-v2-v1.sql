@@ -1,0 +1,259 @@
+-- ------------------------------------------------------------
+-- SPDX-License-Identifier: GPL-3.0-or-later
+-- pgTAP test per Zero ERP
+--
+-- Test F1-DB-T5: vendite.fn_resolve_prezzo_listino_v2 (resolver pricing v5).
+-- Verifica i 3 stadi e la gestione errori.
+--
+-- Elenco test (1..7):
+--   1) Precondizione: esiste listino attivo coerente con utility/tipologia
+--   2) STADIO 2 CATEGORIA: match con classe specifica + variazione PERCENTUALE
+--   3) STADIO 2 CATEGORIA: fallback classe NULL
+--   4) STADIO 1 CONTRATTO_OVERRIDE: prezzo_unitario su riga contratto batte listino
+--   5) STADIO 0 PROMO: overlay PREZZO_FISSO sovrascrive origine e prezzo_finale
+--   6) Errore E_CATEGORIA_LISTINO_NON_MAPPATA: nessun match in matrice
+--   7) Errore E_PARAMETRO_INVALIDO: BA inesistente
+-- ------------------------------------------------------------
+
+BEGIN;
+SELECT plan(7);
+
+-- Precondizioni condivise.
+-- Il BA deve essere su utility SENZA dimensione tipo/classe: il trigger
+-- di snapshot contratti_utilities scatterebbe il guard tipo/classe se la
+-- utility avesse tipi_utenze popolata.
+CREATE TEMP TABLE tmp_ctx AS
+SELECT
+    ba.id                       AS ba_id,
+    ba.categoria_cliente_id     AS categoria_id,
+    ba.istanza_utility_id       AS istanza_utility_id,
+    ba.utility_id               AS utility_id,
+    (SELECT soggetto_ruolo_id FROM anagrafiche.emittenti_fiscali
+       WHERE attivo IS TRUE ORDER BY id LIMIT 1) AS emittente_srid,
+    a.id                        AS articolo_id,
+    a.uom_id                    AS uom_id,
+    a.listino_tipologia_id      AS tipologia_id
+  FROM anagrafiche.billing_account ba
+  JOIN catalogo.articoli a
+    ON a.attivo IS TRUE
+   AND a.listino_tipologia_id IS NOT NULL
+ WHERE ba.categoria_cliente_id IS NOT NULL
+   AND NOT EXISTS (
+       SELECT 1 FROM config.tipi_utenze tu WHERE tu.utility_id = ba.utility_id
+   )
+ ORDER BY ba.id, a.id
+ LIMIT 1;
+
+-- Listino di test: richiede solo tipologia coerente con l'articolo (il guard
+-- trgfn_listini_righe_guard_tipologia verifica articolo.listino_tipologia_id =
+-- listino.tipologia_id, non l'utility). L'utility del listino puo' essere
+-- qualsiasi: nella matrice categorie_clienti_listini il listino e' un
+-- "ponte" selezionato per (categoria, utility-del-BA, emittente, classe).
+CREATE TEMP TABLE tmp_ctx_listino AS
+SELECT l.id AS listino_id
+  FROM vendite.listini l, tmp_ctx t
+ WHERE l.tipologia_id = t.tipologia_id
+   AND l.attivo       = TRUE
+ ORDER BY l.id
+ LIMIT 1;
+
+-- Se non esiste un listino coerente, creiamo condizioni minime (non facciamo
+-- insert su listini in questo test: richiede FK a emittente + tipologia +
+-- utility, si tratta di dato master; assumiamo disponibile in dev). In mancanza,
+-- i test falliranno in modo diagnosticabile.
+SELECT isnt(
+    (SELECT COUNT(*)::int FROM tmp_ctx_listino),
+    0,
+    '(precondizione) esiste almeno un listino attivo coerente con utility/tipologia dell''articolo di test'
+);
+
+-- Riduce a 1 test + 5 da qui; aggiorno plan a posteriori nei commenti se mancano setup.
+-- Creo la versione attiva del listino (se non c'e' gia' una che copre oggi).
+INSERT INTO vendite.listini_versioni(listino_id, codice_versione, valido_dal, valido_al, stato, attivo)
+SELECT l.listino_id, 'PGTAP_V5_VER', CURRENT_DATE, CURRENT_DATE + 365, 'ATTIVA', TRUE
+  FROM tmp_ctx_listino l
+WHERE NOT EXISTS (
+    SELECT 1 FROM vendite.listini_versioni lv
+     WHERE lv.listino_id = l.listino_id
+       AND lv.attivo = TRUE
+       AND lv.validita @> CURRENT_DATE
+)
+ON CONFLICT DO NOTHING;
+
+CREATE TEMP TABLE tmp_ctx_versione AS
+SELECT lv.id AS versione_id, lv.listino_id
+  FROM vendite.listini_versioni lv, tmp_ctx_listino l
+ WHERE lv.listino_id = l.listino_id
+   AND lv.attivo IS TRUE
+   AND lv.validita @> CURRENT_DATE
+ ORDER BY lv.id DESC
+ LIMIT 1;
+
+-- Riga listino con prezzo base 100.
+INSERT INTO vendite.listini_righe(listino_versione_id, articolo_id, uom_id, prezzo)
+SELECT v.versione_id, t.articolo_id, t.uom_id, 100
+  FROM tmp_ctx_versione v, tmp_ctx t
+ON CONFLICT DO NOTHING;
+
+-- Matrice categoria -> listino: classe specifica + variazione PERCENTUALE -10%
+INSERT INTO anagrafiche.categorie_clienti_listini(
+    categoria_cliente_id, utility_id, emittente_soggetto_ruolo_id,
+    classe_utenza_id, listino_id,
+    tipo_variazione, valore_variazione,
+    valido_dal, valido_al)
+SELECT t.categoria_id, t.utility_id, t.emittente_srid,
+       (SELECT id FROM config.classi_utenze ORDER BY id LIMIT 1),
+       v.listino_id,
+       'PERCENTUALE', -10,
+       CURRENT_DATE, CURRENT_DATE + 365
+  FROM tmp_ctx t, tmp_ctx_versione v;
+
+-- Seconda riga matrice: fallback classe NULL + variazione VALORE_FISSO -5
+INSERT INTO anagrafiche.categorie_clienti_listini(
+    categoria_cliente_id, utility_id, emittente_soggetto_ruolo_id,
+    classe_utenza_id, listino_id,
+    tipo_variazione, valore_variazione,
+    valido_dal, valido_al)
+SELECT t.categoria_id, t.utility_id, t.emittente_srid,
+       NULL,
+       v.listino_id,
+       'VALORE_FISSO', -5,
+       CURRENT_DATE, CURRENT_DATE + 365
+  FROM tmp_ctx t, tmp_ctx_versione v;
+
+-- 1) STADIO 2 CATEGORIA: match con classe specifica -> prezzo = 100 * (1 + (-10)/100) = 90
+SELECT is(
+    (SELECT prezzo_finale FROM vendite.fn_resolve_prezzo_listino_v2(
+        (SELECT articolo_id FROM tmp_ctx),
+        (SELECT uom_id FROM tmp_ctx),
+        CURRENT_DATE,
+        (SELECT ba_id FROM tmp_ctx),
+        (SELECT utility_id FROM tmp_ctx),
+        (SELECT emittente_srid FROM tmp_ctx),
+        (SELECT id FROM config.classi_utenze ORDER BY id LIMIT 1)
+    )),
+    90::numeric,
+    'STADIO 2 CATEGORIA con classe specifica + PERCENTUALE -10%: prezzo_finale = 90'
+);
+
+-- 2) STADIO 2 CATEGORIA: classe diversa -> fallback classe NULL -> 100 + (-5) = 95
+-- Cerco una classe DIVERSA da quella mappata sopra (se esiste).
+SELECT is(
+    (SELECT prezzo_finale FROM vendite.fn_resolve_prezzo_listino_v2(
+        (SELECT articolo_id FROM tmp_ctx),
+        (SELECT uom_id FROM tmp_ctx),
+        CURRENT_DATE,
+        (SELECT ba_id FROM tmp_ctx),
+        (SELECT utility_id FROM tmp_ctx),
+        (SELECT emittente_srid FROM tmp_ctx),
+        (SELECT id FROM config.classi_utenze
+          WHERE id <> (SELECT id FROM config.classi_utenze ORDER BY id LIMIT 1)
+          ORDER BY id LIMIT 1)
+    )),
+    95::numeric,
+    'STADIO 2 CATEGORIA fallback classe NULL + VALORE_FISSO -5: prezzo_finale = 95'
+);
+
+-- 3) STADIO 1 CONTRATTO_OVERRIDE: creo contratto ATTIVO con riga prezzo_unitario = 42
+INSERT INTO vendite.contratti(
+    numero, billing_account_id, istanza_utility_id, utility_id, stato_doc_contratto_id,
+    valido_dal, listino_id, tipo_variazione_globale, valore_variazione_globale)
+SELECT 'PGTAP_V5_CONTR', t.ba_id, t.istanza_utility_id, t.utility_id,
+       (SELECT id FROM config.stati_doc_contratti WHERE codice_interno = 'ATTIVO'),
+       CURRENT_DATE, v.listino_id, NULL, NULL
+  FROM tmp_ctx t, tmp_ctx_versione v;
+
+INSERT INTO vendite.contratti_righe(contratto_id, articolo_id, prezzo_unitario, attivo, qta_operativa)
+SELECT c.id, t.articolo_id, 42, TRUE, 1
+  FROM vendite.contratti c, tmp_ctx t
+ WHERE c.numero = 'PGTAP_V5_CONTR';
+
+SELECT is(
+    (SELECT origine FROM vendite.fn_resolve_prezzo_listino_v2(
+        (SELECT articolo_id FROM tmp_ctx),
+        (SELECT uom_id FROM tmp_ctx),
+        CURRENT_DATE,
+        (SELECT ba_id FROM tmp_ctx),
+        (SELECT utility_id FROM tmp_ctx),
+        (SELECT emittente_srid FROM tmp_ctx),
+        NULL
+    )),
+    'CONTRATTO_OVERRIDE'::varchar,
+    'STADIO 1 CONTRATTO_OVERRIDE: riga con prezzo_unitario batte listino'
+);
+
+-- 4) STADIO 0 PROMO: overlay PREZZO_FISSO sovrascrive origine (la categoria deve partecipare)
+-- Controllo: la categoria del BA deve avere partecipa_promo = true (cambio flag se serve).
+UPDATE anagrafiche.categorie_clienti
+   SET partecipa_promo = TRUE
+ WHERE id = (SELECT categoria_id FROM tmp_ctx);
+
+INSERT INTO vendite.promo_articoli(codice, descrizione, articolo_id, uom_id,
+    tipo_variazione, valore_variazione, valido_dal, valido_al)
+SELECT 'PGTAP_V5_PROMO', 'Promo test', t.articolo_id, t.uom_id,
+       'PREZZO_FISSO', 12.5,
+       CURRENT_DATE, CURRENT_DATE + 365
+  FROM tmp_ctx t;
+
+-- Rimuovo il contratto per non far vincere STADIO 1 (la promo va comunque testata
+-- ma l'assert piu' semplice e' su categoria+promo: cancello contratto).
+DELETE FROM vendite.contratti_righe
+ WHERE contratto_id = (SELECT id FROM vendite.contratti WHERE numero = 'PGTAP_V5_CONTR');
+DELETE FROM vendite.contratti WHERE numero = 'PGTAP_V5_CONTR';
+
+SELECT is(
+    (SELECT origine FROM vendite.fn_resolve_prezzo_listino_v2(
+        (SELECT articolo_id FROM tmp_ctx),
+        (SELECT uom_id FROM tmp_ctx),
+        CURRENT_DATE,
+        (SELECT ba_id FROM tmp_ctx),
+        (SELECT utility_id FROM tmp_ctx),
+        (SELECT emittente_srid FROM tmp_ctx),
+        (SELECT id FROM config.classi_utenze ORDER BY id LIMIT 1)
+    )),
+    'PROMO'::varchar,
+    'STADIO 0 PROMO: overlay sovrascrive origine (PREZZO_FISSO applicato sul prezzo base)'
+);
+
+-- 5) E_CATEGORIA_LISTINO_NON_MAPPATA: rimuovo le righe matrice e riprovo senza contratto
+DELETE FROM anagrafiche.categorie_clienti_listini
+ WHERE categoria_cliente_id = (SELECT categoria_id FROM tmp_ctx);
+
+-- Rimuovo anche la promo per evitare che STADIO 0 mascheri l'errore
+-- (la promo si applica DOPO la risoluzione del prezzo base, quindi un fallimento
+-- in STADIO 2 risale al resolver comunque -> la promo non "salva" nulla).
+DELETE FROM vendite.promo_articoli WHERE codice = 'PGTAP_V5_PROMO';
+
+SELECT throws_ok(
+    $$SELECT * FROM vendite.fn_resolve_prezzo_listino_v2(
+        (SELECT articolo_id FROM tmp_ctx),
+        (SELECT uom_id FROM tmp_ctx),
+        CURRENT_DATE,
+        (SELECT ba_id FROM tmp_ctx),
+        (SELECT utility_id FROM tmp_ctx),
+        (SELECT emittente_srid FROM tmp_ctx),
+        NULL
+    )$$,
+    'P0001',
+    NULL,
+    'Nessun match in matrice -> E_CATEGORIA_LISTINO_NON_MAPPATA'
+);
+
+-- 6) BA inesistente -> E_PARAMETRO_INVALIDO
+SELECT throws_ok(
+    $$SELECT * FROM vendite.fn_resolve_prezzo_listino_v2(
+        (SELECT articolo_id FROM tmp_ctx),
+        (SELECT uom_id FROM tmp_ctx),
+        CURRENT_DATE,
+        999999999,
+        (SELECT utility_id FROM tmp_ctx),
+        (SELECT emittente_srid FROM tmp_ctx),
+        NULL
+    )$$,
+    'P0001',
+    NULL,
+    'BA inesistente -> E_PARAMETRO_INVALIDO'
+);
+
+SELECT * FROM finish();
+ROLLBACK;

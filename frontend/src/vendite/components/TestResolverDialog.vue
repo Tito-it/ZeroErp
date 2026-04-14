@@ -6,6 +6,7 @@ import { useApiHandler } from '../../core/composables/useApiHandler'
 import { extractApiError } from '../../core/utils/apiError'
 import { testResolverPrezzo } from '../api/listini'
 import ArticoloLookup from '../../core/components/ArticoloLookup.vue'
+import BillingAccountLookup from '../../core/components/BillingAccountLookup.vue'
 import LookupSelect from '../../core/components/LookupSelect.vue'
 import Dialog from 'primevue/dialog'
 import DatePicker from 'primevue/datepicker'
@@ -24,9 +25,7 @@ const form = ref({
   articolo_obj: null,
   uom_id: null,
   data_riferimento: new Date(),
-  billing_account_id: null,
-  utility_id: null,
-  emittente_soggetto_ruolo_id: null,
+  ba_obj: null,
 })
 const result = ref(null)
 const errorMsg = ref(null)
@@ -50,9 +49,7 @@ async function doTest() {
     articolo_id: form.value.articolo_obj.id,
     uom_id: form.value.uom_id,
     data_riferimento: toDateString(form.value.data_riferimento),
-    billing_account_id: form.value.billing_account_id,
-    utility_id: form.value.utility_id,
-    emittente_soggetto_ruolo_id: form.value.emittente_soggetto_ruolo_id,
+    billing_account_id: form.value.ba_obj?.id || null,
   }
   try {
     const apiRes = await testResolverPrezzo(payload)
@@ -72,9 +69,13 @@ function close() {
     :header="t('listini.test_prezzo')" modal :style="{ width: DRAWER_WIDTH.STANDARD }">
 
     <div class="form-grid-2col">
-      <div class="form-field" style="grid-column: span 2;">
+      <div class="form-field">
         <label>{{ t('listini.field_articolo') }}</label>
         <ArticoloLookup v-model="form.articolo_obj" />
+      </div>
+      <div class="form-field">
+        <label>{{ t('listini.field_ba') }}</label>
+        <BillingAccountLookup v-model="form.ba_obj" :placeholder="t('listini.select_ba')" />
       </div>
       <div class="form-field">
         <label>{{ t('listini.field_uom') }}</label>

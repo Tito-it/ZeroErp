@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import json
 from datetime import date
 from typing import Any
 from uuid import UUID
@@ -19,7 +20,8 @@ from apps.core.db.sql_write_helpers import sql_placeholder, to_write_param
 LISTINI_ORDER_COLUMNS: dict[str, str] = {
     "codice": "l.codice",
     "descrizione": "l.descrizione",
-    "dominio": "l.dominio",
+    "utility_descrizione": "u.descrizione",
+    "tipologia_descrizione": "lt.descrizione",
     "data_insert": "l.data_insert",
     "data_update": "l.data_update",
 }
@@ -27,7 +29,8 @@ LISTINI_ORDER_COLUMNS: dict[str, str] = {
 LISTINO_CREATE_COLUMNS: dict[str, str] = {
     "codice": "text",
     "descrizione": "text",
-    "dominio": "text",
+    "utility_id": "int",
+    "tipologia_id": "int",
     "meta": "jsonb",
     "attivo": "bool",
 }
@@ -72,6 +75,16 @@ ASSOCIAZIONE_CREATE_COLUMNS: dict[str, str] = {
 }
 
 ASSOCIAZIONE_UPDATE_COLUMNS: dict[str, str] = dict(ASSOCIAZIONE_CREATE_COLUMNS)
+
+RIGHE_ORDER_COLUMNS: dict[str, str] = {
+    "articolo_codice": "ad.codice",
+    "articolo_descrizione": "ad.descrizione",
+    "uom_codice": "u.codice",
+    "prezzo": "r.prezzo",
+    "billing_account_codice": "ba.codice",
+    "billing_account_descrizione": "srd_ba.ragione_sociale_completa",
+    "utility_descrizione": "cu.descrizione",
+}
 
 
 # Scopo: Aggiunge condizione ILIKE parametrica su due colonne testuali.
@@ -138,7 +151,8 @@ class ListiniRepository:
     def list_listini(
         self,
         *,
-        dominio: str | None,
+        utility_id: int | None,
+        tipologia_id: int | None,
         attivo: bool | None,
         search: str | None,
         order_by: str,
@@ -154,9 +168,12 @@ class ListiniRepository:
         conditions: list[str] = []
         params: list[Any] = []
 
-        if dominio is not None:
-            conditions.append("l.dominio = %s")
-            params.append(dominio)
+        if utility_id is not None:
+            conditions.append("l.utility_id = %s")
+            params.append(utility_id)
+        if tipologia_id is not None:
+            conditions.append("l.tipologia_id = %s")
+            params.append(tipologia_id)
         if attivo is not None:
             conditions.append("l.attivo = %s")
             params.append(attivo)
@@ -172,6 +189,8 @@ class ListiniRepository:
         count_sql = f"""
             SELECT COUNT(*)
               FROM vendite.listini l
+              LEFT JOIN config.utilities u ON u.id = l.utility_id
+              LEFT JOIN config.listini_tipologie lt ON lt.id = l.tipologia_id
             {where_clause}
         """
         data_sql = f"""
@@ -179,7 +198,12 @@ class ListiniRepository:
                 l.id,
                 l.codice,
                 l.descrizione,
-                l.dominio,
+                l.utility_id,
+                u.codice AS utility_codice,
+                u.descrizione AS utility_descrizione,
+                l.tipologia_id,
+                lt.codice AS tipologia_codice,
+                lt.descrizione AS tipologia_descrizione,
                 l.meta,
                 l.attivo,
                 l.data_insert,
@@ -197,6 +221,8 @@ class ListiniRepository:
                      WHERE a.listino_id = l.id
                 ) AS associazioni_count
               FROM vendite.listini l
+              LEFT JOIN config.utilities u ON u.id = l.utility_id
+              LEFT JOIN config.listini_tipologie lt ON lt.id = l.tipologia_id
             {where_clause}
              ORDER BY {order_column} {safe_order_dir}, l.id ASC
              LIMIT %s OFFSET %s
@@ -222,7 +248,12 @@ class ListiniRepository:
                     l.id,
                     l.codice,
                     l.descrizione,
-                    l.dominio,
+                    l.utility_id,
+                    u.codice AS utility_codice,
+                    u.descrizione AS utility_descrizione,
+                    l.tipologia_id,
+                    lt.codice AS tipologia_codice,
+                    lt.descrizione AS tipologia_descrizione,
                     l.meta,
                     l.attivo,
                     l.data_insert,
@@ -240,6 +271,8 @@ class ListiniRepository:
                          WHERE a.listino_id = l.id
                     ) AS associazioni_count
                   FROM vendite.listini l
+                  LEFT JOIN config.utilities u ON u.id = l.utility_id
+                  LEFT JOIN config.listini_tipologie lt ON lt.id = l.tipologia_id
                  WHERE l.id = %s
                 """,
                 [listino_id],
@@ -522,7 +555,7 @@ class ListiniRepository:
                    AND stato = 'ATTIVA'
                    AND attivo IS TRUE
                    AND valido_dal < %s
-                   AND (valido_al IS NULL OR valido_al >= %s)
+                   AND validita && daterange(%s, NULL, '[)')
                  ORDER BY valido_dal
                 """,
                 [listino_id, exclude_versione_id, nuova_valido_dal, nuova_valido_dal],
@@ -576,57 +609,117 @@ class ListiniRepository:
         assert row is not None
         return int(row[0])
 
-    # Scopo: Restituisce le righe prezzo della versione con display fields articolo/UoM e contesto.
-    def list_righe(self, listino_id: int, versione_id: int) -> list[dict[str, Any]]:
+    # Scopo: Restituisce le righe prezzo della versione con display fields articolo/UoM e contesto,
+    #        paginazione server-side e filtri opzionali (search articolo, billing_account, utility).
+    def list_righe(
+        self,
+        listino_id: int,
+        versione_id: int,
+        *,
+        search: str | None = None,
+        billing_account_id: int | None = None,
+        utility_id: int | None = None,
+        attivo: bool | None = True,
+        order_by: str = "articolo_descrizione",
+        order_dir: str = "asc",
+        limit: int = 25,
+        offset: int = 0,
+    ) -> tuple[list[dict[str, Any]], int]:
+        safe_limit = max(1, min(int(limit), 200))
+        safe_offset = max(0, int(offset))
+        order_column = RIGHE_ORDER_COLUMNS.get(order_by, "ad.descrizione")
+        safe_order_dir = "DESC" if order_dir.lower() == "desc" else "ASC"
+
+        conditions: list[str] = ["r.listino_versione_id = %s"]
+        params: list[Any] = [versione_id]
+
+        # Join guard: la versione deve appartenere al listino richiesto.
+        join_guard_params: list[Any] = [listino_id]
+
+        if billing_account_id is not None:
+            conditions.append("r.billing_account_id = %s")
+            params.append(billing_account_id)
+        if utility_id is not None:
+            conditions.append("r.utility_id = %s")
+            params.append(utility_id)
+        if attivo is not None:
+            conditions.append("r.attivo = %s")
+            params.append(attivo)
+        _append_ilike_search(
+            conditions=conditions,
+            params=params,
+            left_column="ad.codice",
+            right_column="ad.descrizione",
+            search=search,
+        )
+
+        where_clause = "WHERE " + " AND ".join(conditions)
+
+        from_clause = """
+              FROM vendite.listini_righe r
+              JOIN vendite.listini_versioni v
+                ON v.id = r.listino_versione_id
+               AND v.listino_id = %s
+              LEFT JOIN catalogo.vw_articoli_dettaglio ad
+                ON ad.id = r.articolo_id
+              LEFT JOIN catalogo.unita_misura u
+                ON u.id = r.uom_id
+              LEFT JOIN anagrafiche.billing_account ba
+                ON ba.id = r.billing_account_id
+              LEFT JOIN anagrafiche.vw_soggetti_ruoli_dettaglio srd_ba
+                ON srd_ba.soggetto_ruolo_id = ba.soggetto_ruolo_id
+              LEFT JOIN config.utilities cu
+                ON cu.id = r.utility_id
+              LEFT JOIN anagrafiche.vw_soggetti_ruoli_dettaglio srd_em
+                ON srd_em.soggetto_ruolo_id = r.emittente_soggetto_ruolo_id
+        """
+
+        count_sql = f"SELECT COUNT(*) {from_clause} {where_clause}"
+        data_sql = f"""
+            SELECT
+                r.id,
+                r.listino_versione_id,
+                r.articolo_id,
+                ad.codice AS articolo_codice,
+                ad.descrizione AS articolo_descrizione,
+                r.uom_id,
+                u.codice AS uom_codice,
+                u.descrizione AS uom_descrizione,
+                r.billing_account_id,
+                ba.codice AS billing_account_codice,
+                srd_ba.ragione_sociale_completa AS billing_account_descrizione,
+                r.utility_id,
+                cu.codice AS utility_codice,
+                cu.descrizione AS utility_descrizione,
+                r.emittente_soggetto_ruolo_id,
+                srd_em.ragione_sociale_completa AS emittente_descrizione,
+                r.prezzo,
+                r.meta,
+                r.attivo,
+                r.data_insert,
+                r.user_insert,
+                r.data_update,
+                r.user_update
+            {from_clause}
+            {where_clause}
+             ORDER BY {order_column} {safe_order_dir} NULLS LAST, r.id ASC
+             LIMIT %s OFFSET %s
+        """
+
+        # Parametri: join_guard (listino_id) + where params, duplicati per count e data.
+        count_params = join_guard_params + params
+        data_params = join_guard_params + params + [safe_limit, safe_offset]
+
         with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT
-                    r.id,
-                    r.listino_versione_id,
-                    r.articolo_id,
-                    ad.codice AS articolo_codice,
-                    ad.descrizione AS articolo_descrizione,
-                    r.uom_id,
-                    u.codice AS uom_codice,
-                    u.descrizione AS uom_descrizione,
-                    r.billing_account_id,
-                    ba.codice AS billing_account_codice,
-                    srd_ba.ragione_sociale_completa AS billing_account_descrizione,
-                    r.utility_id,
-                    cu.codice AS utility_codice,
-                    cu.descrizione AS utility_descrizione,
-                    r.emittente_soggetto_ruolo_id,
-                    srd_em.ragione_sociale_completa AS emittente_descrizione,
-                    r.prezzo,
-                    r.meta,
-                    r.attivo,
-                    r.data_insert,
-                    r.user_insert,
-                    r.data_update,
-                    r.user_update
-                  FROM vendite.listini_righe r
-                  JOIN vendite.listini_versioni v
-                    ON v.id = r.listino_versione_id
-                   AND v.listino_id = %s
-                  LEFT JOIN catalogo.vw_articoli_dettaglio ad
-                    ON ad.id = r.articolo_id
-                  LEFT JOIN catalogo.unita_misura u
-                    ON u.id = r.uom_id
-                  LEFT JOIN anagrafiche.billing_account ba
-                    ON ba.id = r.billing_account_id
-                  LEFT JOIN anagrafiche.vw_soggetti_ruoli_dettaglio srd_ba
-                    ON srd_ba.soggetto_ruolo_id = ba.soggetto_ruolo_id
-                  LEFT JOIN config.utilities cu
-                    ON cu.id = r.utility_id
-                  LEFT JOIN anagrafiche.vw_soggetti_ruoli_dettaglio srd_em
-                    ON srd_em.soggetto_ruolo_id = r.emittente_soggetto_ruolo_id
-                 WHERE r.listino_versione_id = %s
-                 ORDER BY ad.codice ASC NULLS LAST, u.codice ASC NULLS LAST, r.id ASC
-                """,
-                [listino_id, versione_id],
-            )
-            return rows_to_list(cursor)
+            cursor.execute(count_sql, count_params)
+            row = cursor.fetchone()
+            assert row is not None
+            total_count = int(row[0])
+
+            cursor.execute(data_sql, data_params)
+            results = rows_to_list(cursor)
+
+        return results, total_count
 
     # Scopo: Restituisce il dettaglio singolo della riga prezzo in perimetro listino/versione.
     def get_riga(self, listino_id: int, versione_id: int, riga_id: int) -> dict[str, Any] | None:
@@ -901,6 +994,175 @@ class ListiniRepository:
             "uom_compatibile": bool(row[2]),
         }
 
+    # Scopo: Blocca la riga con FOR UPDATE per prevenire race condition durante
+    #        la rettifica controllata N6. Restituisce True se la riga esiste.
+    def lock_riga_for_update(self, versione_id: int, riga_id: int) -> bool:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id FROM vendite.listini_righe
+                 WHERE id = %s AND listino_versione_id = %s
+                   FOR UPDATE
+                """,
+                [riga_id, versione_id],
+            )
+            return cursor.fetchone() is not None
+
+    # Scopo: Controlla se una riga listino e` stata propagata in commesse o
+    #        attivita` fatturabili. Tabelle controllate documentate per espansione
+    #        concentrica: commesse_attivita, attivita_fatturabili.
+    def check_riga_propagata(self, riga_id: int) -> bool:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT EXISTS (
+                    SELECT 1 FROM vendite.commesse_attivita
+                     WHERE listino_riga_id = %(riga_id)s
+                ) OR EXISTS (
+                    SELECT 1 FROM vendite.attivita_fatturabili
+                     WHERE listino_riga_id = %(riga_id)s
+                ) AS propagata
+                """,
+                {"riga_id": riga_id},
+            )
+            row = cursor.fetchone()
+            assert row is not None
+            return bool(row[0])
+
+    # Scopo: Aggiorna il prezzo di una riga per rettifica controllata N6.
+    #        Aggiorna anche meta con audit trail. Caller gestisce transazione.
+    def update_riga_prezzo_rettifica(
+        self,
+        riga_id: int,
+        nuovo_prezzo: str,
+        meta_aggiornata: dict[str, Any] | None,
+    ) -> bool:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE vendite.listini_righe
+                   SET prezzo = %(prezzo)s::numeric,
+                       meta = %(meta)s::jsonb,
+                       data_update = now()
+                 WHERE id = %(riga_id)s
+                """,
+                {
+                    "riga_id": riga_id,
+                    "prezzo": nuovo_prezzo,
+                    "meta": json.dumps(meta_aggiornata) if meta_aggiornata else None,
+                },
+            )
+            return cursor.rowcount > 0
+
+    # Scopo: Restituisce versioni ATTIVE in scadenza entro N giorni senza successore.
+    #        Filtro temporale isolato per facilitare futura migrazione daterange (N1).
+    def _filter_versioni_in_scadenza(self) -> str:
+        return (
+            "upper(v.validita) IS NOT NULL "
+            "AND upper(v.validita) <= CURRENT_DATE + %(giorni)s * INTERVAL '1 day'"
+        )
+
+    # Scopo: Lista versioni ATTIVE che scadono entro `giorni` e non hanno una
+    #        versione successiva (ATTIVA o BOZZA) con valido_dal > valido_al.
+    def listini_in_scadenza(self, giorni: int) -> list[dict[str, Any]]:
+        filtro_scadenza = self._filter_versioni_in_scadenza()
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                SELECT
+                    l.id AS listino_id,
+                    l.codice AS listino_codice,
+                    l.descrizione AS listino_descrizione,
+                    l.utility_id,
+                    u.descrizione AS utility_descrizione,
+                    v.id AS versione_id,
+                    v.codice_versione,
+                    v.valido_dal,
+                    upper(v.validita) AS valido_al,
+                    upper(v.validita) - CURRENT_DATE AS giorni_rimanenti
+                  FROM vendite.listini_versioni v
+                  JOIN vendite.listini l ON l.id = v.listino_id
+                  LEFT JOIN config.utilities u ON u.id = l.utility_id
+                 WHERE v.stato = 'ATTIVA'
+                   AND v.attivo IS TRUE
+                   AND l.attivo IS TRUE
+                   AND {filtro_scadenza}
+                   AND NOT EXISTS (
+                       SELECT 1
+                         FROM vendite.listini_versioni succ
+                        WHERE succ.listino_id = v.listino_id
+                          AND succ.id != v.id
+                          AND succ.attivo IS TRUE
+                          AND succ.stato IN ('ATTIVA', 'BOZZA')
+                          AND succ.valido_dal > upper(v.validita)
+                   )
+                 ORDER BY v.valido_al ASC, l.codice
+                """,
+                {"giorni": giorni},
+            )
+            return rows_to_list(cursor)
+
+    # Scopo: Applica variazione percentuale massa ai prezzi delle righe attive
+    #        di una versione. Se dry_run=True restituisce la preview senza modificare.
+    #        Restituisce (righe_aggiornate, preview_rows).
+    def applica_variazione_percentuale(
+        self,
+        versione_id: int,
+        variazione_pct: str,
+        arrotondamento_decimali: int,
+        filtro_articoli: list[str] | None = None,
+        *,
+        dry_run: bool = False,
+    ) -> tuple[int, list[dict[str, Any]]]:
+        with connection.cursor() as cursor:
+            if dry_run:
+                # Scopo: calcola i prezzi senza modificare, per preview frontend.
+                cursor.execute(
+                    """
+                    SELECT
+                        r.id AS riga_id,
+                        a.codice AS articolo_codice,
+                        a.descrizione AS articolo_descrizione,
+                        r.prezzo AS prezzo_attuale,
+                        ROUND(r.prezzo * (1 + %(pct)s::numeric / 100.0), %(dec)s) AS prezzo_calcolato
+                      FROM vendite.listini_righe r
+                      JOIN catalogo.articoli a ON a.id = r.articolo_id
+                     WHERE r.listino_versione_id = %(ver_id)s
+                       AND r.attivo IS TRUE
+                       AND (%(filtro)s::uuid[] IS NULL
+                            OR r.articolo_id = ANY(%(filtro)s::uuid[]))
+                     ORDER BY a.codice, r.id
+                    """,
+                    {
+                        "ver_id": versione_id,
+                        "pct": variazione_pct,
+                        "dec": arrotondamento_decimali,
+                        "filtro": filtro_articoli,
+                    },
+                )
+                preview = rows_to_list(cursor)
+                return len(preview), preview
+
+            # Scopo: applica UPDATE reale sulle righe.
+            cursor.execute(
+                """
+                UPDATE vendite.listini_righe
+                   SET prezzo = ROUND(prezzo * (1 + %(pct)s::numeric / 100.0), %(dec)s),
+                       data_update = now()
+                 WHERE listino_versione_id = %(ver_id)s
+                   AND attivo IS TRUE
+                   AND (%(filtro)s::uuid[] IS NULL
+                        OR articolo_id = ANY(%(filtro)s::uuid[]))
+                """,
+                {
+                    "ver_id": versione_id,
+                    "pct": variazione_pct,
+                    "dec": arrotondamento_decimali,
+                    "filtro": filtro_articoli,
+                },
+            )
+            return cursor.rowcount, []
+
     # Scopo: Esegue il resolver prezzo listino e arricchisce l'output con codici listino/versione.
     def test_resolver(
         self,
@@ -945,3 +1207,32 @@ class ListiniRepository:
 
         assert result is not None
         return result
+
+    # Scopo: Restituisce le tipologie listino ammesse per una utility, leggendo
+    #        la matrice config.listini_tipologie_utilities (solo righe attive).
+    def list_tipologie_per_utility(self, utility_id: int) -> list[dict[str, Any]]:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT
+                    lt.id,
+                    lt.codice,
+                    lt.descrizione,
+                    lt.e_consumo,
+                    lt.e_quota_fissa,
+                    lt.e_imposta,
+                    lt.e_onere,
+                    lt.e_prodotto,
+                    lt.e_servizio,
+                    lt.ordinamento
+                  FROM config.listini_tipologie lt
+                  JOIN config.listini_tipologie_utilities m
+                    ON m.tipologia_id = lt.id
+                 WHERE m.utility_id = %s
+                   AND m.attivo = true
+                   AND lt.attivo = true
+                 ORDER BY lt.ordinamento, lt.descrizione
+                """,
+                [utility_id],
+            )
+            return rows_to_list(cursor)

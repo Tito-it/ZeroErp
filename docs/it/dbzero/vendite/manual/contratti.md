@@ -86,6 +86,39 @@ Per attivita **non‑utilities** o servizi eterogenei, i dati precontrattuali po
 
 ---
 
+### Pricing v5 — modalita' A / B / C (14-04-2026)
+
+Il contratto e' il **ponte commerciale** tra billing account e listino (STADIO 1 del resolver prezzi v5). Tre modalita' di pricing coesistono sulla stessa tabella:
+
+| Modalita' | `listino_id` | `tipo_variazione_globale` | Righe `contratti_righe` | Esempio |
+| --- | --- | --- | --- | --- |
+| **A** — listino + variazione globale | NOT NULL | NOT NULL | vuoto o solo override mirati | "Listino gas 2026 −10%" |
+| **B** — listino con override | NOT NULL | NULL o NOT NULL | righe con `prezzo_unitario` per articoli specifici | "Listino gas 2026, art X a €50 fisso" |
+| **C** — interamente negoziato | NULL | NULL | tutte le righe attive con `prezzo_unitario` NOT NULL | Grande cliente con condizioni 100% su misura |
+
+Campi introdotti:
+
+| Colonna | Tipo | Nullable | Note |
+| --- | --- | --- | --- |
+| `listino_id` | bigint | YES | FK a `vendite.listini(id)`. NULL = modalita' C |
+| `tipo_variazione_globale` | varchar(16) | YES | `PERCENTUALE` \| `VALORE_FISSO` |
+| `valore_variazione_globale` | numeric(10,4) | YES | Coerente con `tipo_variazione_globale` |
+
+Vincoli CHECK:
+
+* `chk_contratti_tipo_variazione_globale`: solo `PERCENTUALE`/`VALORE_FISSO` o NULL.
+* `chk_contratti_variazione_globale_coerente`: tipo e valore sono entrambi NULL o entrambi NOT NULL.
+* `chk_contratti_modalita_pricing`: se `listino_id IS NULL`, variazione globale = NULL (nessun punto di applicazione).
+
+Vincoli trigger (fail-fast all'attivazione):
+
+* `trg_contratti_a10_guard_modalita_c_activation_ins_upd` -> [`vendite.trgfn_contratti_guard_modalita_c_activation`](/dbzero/vendite/funzioni/trgfn_contratti_guard_modalita_c_activation): scatta sia nella transizione verso stato `codice_interno = 'ATTIVO'` con `listino_id NULL`, sia quando un contratto gia' ATTIVO passa a modalita' C (UPDATE `listino_id` da NOT NULL a NULL). In entrambi i casi blocca se non esiste almeno una riga attiva o se qualche riga attiva ha `prezzo_unitario NULL`.
+* `trg_contratti_righe_a10_guard_modalita_c_ins_upd` su `contratti_righe` -> [`vendite.trgfn_contratti_righe_guard_modalita_c`](/dbzero/vendite/funzioni/trgfn_contratti_righe_guard_modalita_c): su contratto gia' ATTIVO in modalita' C, la riga attiva deve avere `prezzo_unitario NOT NULL`.
+
+In stato `DRAFT` le righe incomplete sono ammesse: il contratto modalita' C non e' attivabile finche' le righe non sono complete.
+
+---
+
 ### Meta, rinnovi e storicizzazione
 
 * **`meta jsonb`**: contenitore estendibile per condizioni specifiche (SLA, clausole, parametri di calcolo).

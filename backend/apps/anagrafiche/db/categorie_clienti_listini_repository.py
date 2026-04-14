@@ -1,0 +1,258 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+# Doc: Python
+# Scopo: Repository per anagrafiche.categorie_clienti_listini (CRUD admin).
+#        Matrice pricing STADIO 2 del resolver v5: categoria x utility x
+#        emittente x classe_utenza (opz) -> listino con variazione opzionale.
+#        Lista arricchita con codici/descrizioni dalle tabelle riferite per
+#        display diretto in UI (no lookup client-side).
+# ------------------------------------------------------------
+
+from __future__ import annotations
+
+from decimal import Decimal
+from datetime import date
+from typing import Any
+
+from django.db import connection
+
+from apps.core.db._helpers import row_to_dict, rows_to_list
+
+
+# Whitelist colonne ammesse per ORDER BY: protegge da SQL injection sul
+# parametro order_by ricevuto dal frontend. Gli alias mappano a espressioni
+# sicure lato DB.
+_ORDER_COLS: dict[str, str] = {
+    "categoria_codice": "cc.codice",
+    "categoria_descrizione": "cc.descrizione",
+    "utility_codice": "u.codice",
+    "utility_descrizione": "u.descrizione",
+    "listino_codice": "l.codice",
+    "listino_descrizione": "l.descrizione",
+    "valido_dal": "m.valido_dal",
+    "valido_al": "m.valido_al",
+    "attivo": "m.attivo",
+    "data_insert": "m.data_insert",
+    "data_update": "m.data_update",
+}
+
+
+# Colonne proiettate in lista/dettaglio. La colonna `validita` daterange e'
+# generata da trigger e non viene esposta in API: il contratto espone
+# valido_dal/valido_al che sono semanticamente equivalenti per gli admin.
+_SELECT_COLS = """
+    m.id,
+    m.categoria_cliente_id,
+    cc.codice AS categoria_codice,
+    cc.descrizione AS categoria_descrizione,
+    m.utility_id,
+    u.codice AS utility_codice,
+    u.descrizione AS utility_descrizione,
+    m.emittente_soggetto_ruolo_id,
+    sr.codice_ruolo AS emittente_codice_ruolo,
+    s.ragione_sociale AS emittente_ragione_sociale,
+    m.classe_utenza_id,
+    clu.codice AS classe_utenza_codice,
+    clu.descrizione AS classe_utenza_descrizione,
+    m.listino_id,
+    l.codice AS listino_codice,
+    l.descrizione AS listino_descrizione,
+    m.tipo_variazione,
+    m.valore_variazione,
+    m.valido_dal,
+    m.valido_al,
+    m.meta,
+    m.attivo,
+    m.data_insert,
+    m.user_insert,
+    m.data_update,
+    m.user_update
+"""
+
+
+_FROM_JOINS = """
+    FROM anagrafiche.categorie_clienti_listini m
+    JOIN anagrafiche.categorie_clienti cc ON cc.id = m.categoria_cliente_id
+    JOIN config.utilities u ON u.id = m.utility_id
+    JOIN anagrafiche.soggetti_ruoli sr ON sr.id = m.emittente_soggetto_ruolo_id
+    JOIN anagrafiche.soggetti s ON s.id = sr.soggetto_id
+    LEFT JOIN config.classi_utenze clu ON clu.id = m.classe_utenza_id
+    JOIN vendite.listini l ON l.id = m.listino_id
+"""
+
+
+class CategorieClientiListiniRepository:
+    """Accesso DB alla matrice `anagrafiche.categorie_clienti_listini`."""
+
+    # =================================================================
+    # Lista e dettaglio
+    # =================================================================
+
+    # Scopo: Lista paginata della matrice con filtri opzionali sulle
+    #        dimensioni (categoria, utility, emittente, listino) e stato.
+    #        Restituisce (results, total_count) per envelope paginato.
+    def list_matrice(
+        self,
+        *,
+        search: str | None = None,
+        attivo: bool | None = None,
+        categoria_cliente_id: int | None = None,
+        utility_id: int | None = None,
+        emittente_soggetto_ruolo_id: int | None = None,
+        listino_id: int | None = None,
+        valid_at: date | None = None,
+        limit: int = 25,
+        offset: int = 0,
+        order_by: str = "valido_dal",
+        order_dir: str = "desc",
+    ) -> tuple[list[dict[str, Any]], int]:
+        order_column = _ORDER_COLS.get(order_by, _ORDER_COLS["valido_dal"])
+        direction = "DESC" if order_dir and order_dir.lower() == "desc" else "ASC"
+        safe_limit = max(1, min(int(limit), 200))
+        safe_offset = max(0, int(offset))
+
+        conditions: list[str] = []
+        params: list[Any] = []
+
+        if attivo is not None:
+            conditions.append("m.attivo = %s")
+            params.append(attivo)
+        if categoria_cliente_id is not None:
+            conditions.append("m.categoria_cliente_id = %s")
+            params.append(categoria_cliente_id)
+        if utility_id is not None:
+            conditions.append("m.utility_id = %s")
+            params.append(utility_id)
+        if emittente_soggetto_ruolo_id is not None:
+            conditions.append("m.emittente_soggetto_ruolo_id = %s")
+            params.append(emittente_soggetto_ruolo_id)
+        if listino_id is not None:
+            conditions.append("m.listino_id = %s")
+            params.append(listino_id)
+        if valid_at is not None:
+            # La colonna validita e' daterange calcolata da trigger.
+            conditions.append("m.validita @> %s::date")
+            params.append(valid_at)
+        if search:
+            conditions.append(
+                "(cc.codice ILIKE %s OR cc.descrizione ILIKE %s "
+                "OR l.codice ILIKE %s OR l.descrizione ILIKE %s)"
+            )
+            like = f"%{search.strip()}%"
+            params.extend([like, like, like, like])
+
+        where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                SELECT COUNT(*)
+                  {_FROM_JOINS}
+                {where_clause}
+                """,  # noqa: S608
+                params,
+            )
+            row = cursor.fetchone()
+            assert row is not None
+            total_count = int(row[0])
+
+            # Tiebreaker su id per paginazione deterministica.
+            cursor.execute(
+                f"""
+                SELECT {_SELECT_COLS}
+                  {_FROM_JOINS}
+                {where_clause}
+                 ORDER BY {order_column} {direction}, m.id ASC
+                 LIMIT %s OFFSET %s
+                """,  # noqa: S608
+                params + [safe_limit, safe_offset],
+            )
+            results = rows_to_list(cursor)
+
+        return results, total_count
+
+    # Scopo: Dettaglio singola riga matrice con tutti i display joinati.
+    def get_matrice(self, record_id: int) -> dict[str, Any] | None:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                SELECT {_SELECT_COLS}
+                  {_FROM_JOINS}
+                 WHERE m.id = %s
+                """,  # noqa: S608
+                [record_id],
+            )
+            return row_to_dict(cursor)
+
+    # =================================================================
+    # Mutazioni
+    # =================================================================
+
+    # Scopo: Inserisce una nuova riga di matrice usando solo colonne
+    #        whitelisted. `validita` NON e' scrivibile: il trigger
+    #        `trg_categorie_clienti_listini_a20_set_validita_ins_upd`
+    #        la calcola automaticamente da valido_dal/valido_al.
+    def create_matrice(self, data: dict[str, Any]) -> int:
+        write_cols = (
+            "categoria_cliente_id",
+            "utility_id",
+            "emittente_soggetto_ruolo_id",
+            "classe_utenza_id",
+            "listino_id",
+            "tipo_variazione",
+            "valore_variazione",
+            "valido_dal",
+            "valido_al",
+            "meta",
+            "attivo",
+        )
+        cols: list[str] = []
+        vals: list[Any] = []
+        for col in write_cols:
+            if col in data:
+                cols.append(col)
+                vals.append(data[col])
+        placeholders = ["%s"] * len(cols)
+        sql = f"""
+            INSERT INTO anagrafiche.categorie_clienti_listini ({", ".join(cols)})
+            VALUES ({", ".join(placeholders)})
+            RETURNING id
+        """  # noqa: S608
+        with connection.cursor() as cursor:
+            cursor.execute(sql, vals)
+            row = cursor.fetchone()
+            assert row is not None
+            return int(row[0])
+
+    # Scopo: Aggiorna una riga matrice sui soli campi forniti. Le 4+1 FK
+    #        dimensionali (categoria, utility, emittente, classe_utenza)
+    #        sono immutabili lato service (non arrivano nel payload di
+    #        update). Qui il repository accetta qualsiasi whitelisted.
+    def update_matrice(self, record_id: int, data: dict[str, Any]) -> bool:
+        write_cols = (
+            "listino_id",
+            "tipo_variazione",
+            "valore_variazione",
+            "valido_dal",
+            "valido_al",
+            "meta",
+            "attivo",
+        )
+        set_parts: list[str] = []
+        vals: list[Any] = []
+        for col in write_cols:
+            if col in data:
+                set_parts.append(f"{col} = %s")
+                vals.append(data[col])
+        if not set_parts:
+            return False
+        vals.append(record_id)
+        sql = f"""
+            UPDATE anagrafiche.categorie_clienti_listini
+               SET {", ".join(set_parts)}
+             WHERE id = %s
+        """  # noqa: S608
+        with connection.cursor() as cursor:
+            cursor.execute(sql, vals)
+            return cursor.rowcount > 0

@@ -16,6 +16,8 @@
     "no": "No",
     "loading": "Loading...",
     "no_results": "No results found",
+    "select_iva": "Select VAT...",
+    "select_conto": "Select accounting account...",
     "data_da": "From",
     "data_a": "To",
     "required_field": "Required field",

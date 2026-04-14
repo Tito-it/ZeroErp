@@ -1,0 +1,205 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+# Propagazione delle 8 colonne snapshot pricing v5 su
+# vendite.attivita_fatturabili, mantenendo la tracciabilita' fino
+# al layer di fatturazione. Schema identico a vendite.commesse_attivita.
+# La valorizzazione avviene in fase di passaggio attivita' ->
+# attivita_fatturabili (gestita dai service Django in Fase 2).
+# Pricing v5 - riferimento docs/it/dev/work-in-progress/sviluppo-listini-v5.md
+# sezione 10.2.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: /migrations_v2/00_schema/vendite/20260414-19-alter-attivita-fatturabili-add-snapshot-pricing-mctit.yaml
+
+  - changeSet:
+      id: 20260414-19-alter-attivita-fatturabili-add-snapshot-pricing
+      author: mctit
+      comment: >
+        Propaga le 8 colonne snapshot pricing v5 su attivita_fatturabili.
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            columnExists:
+              schemaName: vendite
+              tableName: attivita_fatturabili
+              columnName: origine_prezzo
+
+      changes:
+        - addColumn:
+            schemaName: vendite
+            tableName: attivita_fatturabili
+            columns:
+              - column:
+                  name: prezzo_base_snapshot
+                  type: numeric(22,10)
+                  remarks: "Prezzo base risolto da listino prima di eventuale variazione applicata."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: origine_prezzo
+                  type: varchar(32)
+                  remarks: "PROMO | CONTRATTO_OVERRIDE | CONTRATTO_LISTINO | CATEGORIA | MANUALE"
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: tipo_variazione_applicata
+                  type: varchar(16)
+                  remarks: "Tipo della variazione effettivamente applicata."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: valore_variazione_applicata
+                  type: numeric(10,4)
+                  remarks: "Valore numerico della variazione applicata."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: promo_id
+                  type: bigint
+                  remarks: "FK -> vendite.promo_articoli.id. Valorizzato se origine_prezzo = 'PROMO'."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: contratto_id
+                  type: bigint
+                  remarks: "FK -> vendite.contratti.id. Valorizzato se origine_prezzo CONTRATTO_*."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: categoria_cliente_id_snapshot
+                  type: smallint
+                  remarks: "FK -> anagrafiche.categorie_clienti.id. Snapshot categoria cliente."
+                  constraints:
+                    nullable: true
+
+              - column:
+                  name: classe_utenza_id_snapshot
+                  type: integer
+                  remarks: "FK -> config.classi_utenze.id. Snapshot classe utenza."
+                  constraints:
+                    nullable: true
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: attivita_fatturabili
+            baseColumnNames: promo_id
+            constraintName: fk_attivita_fatturabili_promo
+            referencedTableSchemaName: vendite
+            referencedTableName: promo_articoli
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: attivita_fatturabili
+            baseColumnNames: contratto_id
+            constraintName: fk_attivita_fatturabili_contratto
+            referencedTableSchemaName: vendite
+            referencedTableName: contratti
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: attivita_fatturabili
+            baseColumnNames: categoria_cliente_id_snapshot
+            constraintName: fk_attivita_fatturabili_categoria_cliente_snapshot
+            referencedTableSchemaName: anagrafiche
+            referencedTableName: categorie_clienti
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: vendite
+            baseTableName: attivita_fatturabili
+            baseColumnNames: classe_utenza_id_snapshot
+            constraintName: fk_attivita_fatturabili_classe_utenza_snapshot
+            referencedTableSchemaName: config
+            referencedTableName: classi_utenze
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.attivita_fatturabili
+                  ADD CONSTRAINT chk_attivita_fatturabili_origine_prezzo
+                  CHECK (origine_prezzo IS NULL
+                         OR origine_prezzo IN (
+                             'PROMO',
+                             'CONTRATTO_OVERRIDE',
+                             'CONTRATTO_LISTINO',
+                             'CATEGORIA',
+                             'MANUALE'
+                         ));
+
+              ALTER TABLE vendite.attivita_fatturabili
+                  ADD CONSTRAINT chk_attivita_fatturabili_tipo_variazione_applicata
+                  CHECK (tipo_variazione_applicata IS NULL
+                         OR tipo_variazione_applicata IN (
+                             'PERCENTUALE',
+                             'VALORE_FISSO',
+                             'PREZZO_FISSO',
+                             'NESSUNA'
+                         ));
+
+        - createIndex:
+            schemaName: vendite
+            tableName: attivita_fatturabili
+            indexName: ix_attivita_fatturabili_origine_prezzo
+            columns:
+              - column:
+                  name: origine_prezzo
+
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.attivita_fatturabili
+                  DROP CONSTRAINT IF EXISTS chk_attivita_fatturabili_tipo_variazione_applicata;
+              ALTER TABLE vendite.attivita_fatturabili
+                  DROP CONSTRAINT IF EXISTS chk_attivita_fatturabili_origine_prezzo;
+              ALTER TABLE vendite.attivita_fatturabili
+                  DROP CONSTRAINT IF EXISTS fk_attivita_fatturabili_classe_utenza_snapshot;
+              ALTER TABLE vendite.attivita_fatturabili
+                  DROP CONSTRAINT IF EXISTS fk_attivita_fatturabili_categoria_cliente_snapshot;
+              ALTER TABLE vendite.attivita_fatturabili
+                  DROP CONSTRAINT IF EXISTS fk_attivita_fatturabili_contratto;
+              ALTER TABLE vendite.attivita_fatturabili
+                  DROP CONSTRAINT IF EXISTS fk_attivita_fatturabili_promo;
+              DROP INDEX IF EXISTS vendite.ix_attivita_fatturabili_origine_prezzo;
+        - dropColumn:
+            schemaName: vendite
+            tableName: attivita_fatturabili
+            columnNames:
+              - column:
+                  name: classe_utenza_id_snapshot
+              - column:
+                  name: categoria_cliente_id_snapshot
+              - column:
+                  name: contratto_id
+              - column:
+                  name: promo_id
+              - column:
+                  name: valore_variazione_applicata
+              - column:
+                  name: tipo_variazione_applicata
+              - column:
+                  name: origine_prezzo
+              - column:
+                  name: prezzo_base_snapshot

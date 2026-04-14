@@ -1,0 +1,74 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+# Aggiunge catalogo.articoli.listino_tipologia_id (nullable) + FK a
+# config.listini_tipologie. Il campo serve a imporre coerenza semantica
+# fra articolo e riga listino (guard in 20260414-16).
+# Pricing v5 - riferimento docs/it/dev/work-in-progress/sviluppo-listini-v5.md
+# sezione 7.1.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: /migrations_v2/00_schema/catalogo/20260414-14-alter-articoli-add-listino-tipologia-mctit.yaml
+
+  - changeSet:
+      id: 20260414-14-alter-articoli-add-listino-tipologia
+      author: mctit
+      comment: >
+        Aggiunge listino_tipologia_id (nullable) con FK a
+        config.listini_tipologie. Nullable perche' il popolamento e'
+        progressivo (backfill parziale + mapping manuale per le voci
+        utility).
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            columnExists:
+              schemaName: catalogo
+              tableName: articoli
+              columnName: listino_tipologia_id
+
+      changes:
+        - addColumn:
+            schemaName: catalogo
+            tableName: articoli
+            columns:
+              - column:
+                  name: listino_tipologia_id
+                  type: smallint
+                  remarks: "FK -> config.listini_tipologie.id. Nullable: articolo senza tipologia non puo' entrare in listini tipizzati."
+                  constraints:
+                    nullable: true
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: catalogo
+            baseTableName: articoli
+            baseColumnNames: listino_tipologia_id
+            constraintName: fk_articoli_listino_tipologia
+            referencedTableSchemaName: config
+            referencedTableName: listini_tipologie
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+
+        - createIndex:
+            schemaName: catalogo
+            tableName: articoli
+            indexName: ix_articoli_listino_tipologia
+            columns:
+              - column:
+                  name: listino_tipologia_id
+
+      rollback:
+        - dropForeignKeyConstraint:
+            baseTableSchemaName: catalogo
+            baseTableName: articoli
+            constraintName: fk_articoli_listino_tipologia
+        - dropIndex:
+            schemaName: catalogo
+            tableName: articoli
+            indexName: ix_articoli_listino_tipologia
+        - dropColumn:
+            schemaName: catalogo
+            tableName: articoli
+            columnName: listino_tipologia_id

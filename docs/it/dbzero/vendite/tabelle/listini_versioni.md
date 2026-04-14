@@ -17,6 +17,7 @@
 | data_update | timestamp with time zone | NO | now() |
 | user_update | text | NO | CURRENT_USER |
 | tx_id | uuid | YES |  |
+| validita | daterange | NO |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -30,7 +31,7 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
-| ex_listini_versioni_no_overlap | `CREATE INDEX ex_listini_versioni_no_overlap ON vendite.listini_versioni USING gist (listino_id, daterange(valido_dal, COALESCE(valido_al, 'infinity'::date), '[]'::text)) WHERE ((attivo IS TRUE) AND ((stato)::text = 'ATTIVA'::text))` |
+| ex_listini_versioni_no_overlap | `CREATE INDEX ex_listini_versioni_no_overlap ON vendite.listini_versioni USING gist (listino_id, validita) WHERE ((attivo IS TRUE) AND ((stato)::text = 'ATTIVA'::text))` |
 | ix_listini_versioni_listino_valido_dal | `CREATE INDEX ix_listini_versioni_listino_valido_dal ON vendite.listini_versioni USING btree (listino_id, valido_dal)` |
 | pk_listini_versioni | `CREATE UNIQUE INDEX pk_listini_versioni ON vendite.listini_versioni USING btree (id)` |
 | uq_listini_versioni_listino_codice | `CREATE UNIQUE INDEX uq_listini_versioni_listino_codice ON vendite.listini_versioni USING btree (listino_id, codice_versione)` |
@@ -42,6 +43,8 @@
 | trg_listini_versioni_a10_listini_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'listini', 'attivo', 'listino_id', 'id')` |
 | trg_listini_versioni_a10_listini_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'listini', 'attivo', 'listino_id', 'id')` |
 | trg_listini_versioni_a10_listini_righe_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'listini_righe', 'listino_versione_id', 'id', 'attivo')` |
+| trg_listini_versioni_a20_set_validita_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_set_validita()` |
+| trg_listini_versioni_a20_set_validita_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_set_validita()` |
 | trg_listini_versioni_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_listini_versioni_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_listini_versioni_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |

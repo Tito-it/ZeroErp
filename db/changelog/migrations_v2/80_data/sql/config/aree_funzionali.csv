@@ -9,3 +9,4 @@ id,codice,codice_interno,descrizione,schema_db,attivo,ordinamento,meta,data_inse
 8,storico,storico,Storico,storico,t,80,{},2026-02-28 00:00:00+01,postgres,2026-02-28 00:00:00+01,postgres
 9,config,config,Configurazione,config,t,90,{},2026-02-28 00:00:00+01,postgres,2026-02-28 00:00:00+01,postgres
 10,core,core,Core,core,t,100,{},2026-02-28 00:00:00+01,postgres,2026-02-28 00:00:00+01,postgres
+12,pratiche,pratiche,Pratiche,pratiche,t,110,{},2026-04-10 00:00:00+02,postgres,2026-04-10 00:00:00+02,postgres

@@ -1,0 +1,53 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+# Migrazione daterange: anagrafiche.risorse_umane.
+# valido_dal NOT NULL → validita NOT NULL.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/anagrafiche/20260412-27-alter-risorse-umane-add-validita-mctit.yaml
+
+  - changeSet:
+      id: 20260412-27-alter-risorse-umane-add-validita
+      author: mctit
+      comment: >
+        Migrazione daterange per anagrafiche.risorse_umane.
+        valido_dal NOT NULL: validita diventa NOT NULL dopo backfill.
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            columnExists: { schemaName: anagrafiche, tableName: risorse_umane, columnName: validita }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE anagrafiche.risorse_umane
+                ADD COLUMN validita daterange;
+
+              COMMENT ON COLUMN anagrafiche.risorse_umane.validita
+                IS 'Range di validita` calcolato dal trigger sync da valido_dal/valido_al. Non scrivere direttamente.';
+
+              DROP TRIGGER IF EXISTS trg_risorse_umane_a20_set_validita_ins_upd ON anagrafiche.risorse_umane;
+              CREATE TRIGGER trg_risorse_umane_a20_set_validita_ins_upd
+                  BEFORE INSERT OR UPDATE OF valido_dal, valido_al
+                  ON anagrafiche.risorse_umane
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_set_validita();
+
+              UPDATE anagrafiche.risorse_umane
+                 SET validita = daterange(valido_dal, COALESCE(valido_al, 'infinity'::date), '[]')
+               WHERE validita IS NULL;
+
+              ALTER TABLE anagrafiche.risorse_umane
+                ALTER COLUMN validita SET NOT NULL;
+
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_risorse_umane_a20_set_validita_ins_upd ON anagrafiche.risorse_umane;
+              ALTER TABLE anagrafiche.risorse_umane DROP COLUMN IF EXISTS validita;

@@ -1,0 +1,274 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+# Doc: Python
+# Scopo: Service admin per anagrafiche.categorie_clienti.
+#        CRUD con validazione payload, normalizzazione campi opzionali,
+#        mapping IntegrityError (UNIQUE codice) su codici errore parlanti.
+#        Riferimento: sviluppo-listini-v5 §4.1 (la categoria e' contenitore
+#        commerciale: la politica di pricing vive altrove, qui solo anagrafica).
+#        Helper payload delegati a apps.core.services.payload_helpers
+#        (V6-B1, sviluppo-listini-v6 §2.2).
+# ------------------------------------------------------------
+
+from __future__ import annotations
+
+from typing import Any
+
+from django.db import IntegrityError
+
+from apps.anagrafiche.db.categorie_clienti_repository import (
+    CategorieClientiRepository,
+)
+from apps.core.services.error_manager import ErrorManager
+from apps.core.services.payload_helpers import (
+    PayloadValidator,
+    map_integrity_error,
+)
+
+
+# Codici errore (registrati in apps/core/services/error_policies.py)
+E_ANAG_VALIDAZIONE = "E_ANAG_VALIDAZIONE"
+E_ANAG_DUPLICATO = "E_ANAG_DUPLICATO"
+E_ANAG_NOT_FOUND = "E_ANAG_NOT_FOUND"
+
+# Whitelist colonne ammesse per ORDER BY (riflette repository).
+_ORDER_BY_VALIDI: frozenset[str] = frozenset({
+    "codice",
+    "descrizione",
+    "ordinamento",
+    "partecipa_promo",
+    "attivo",
+    "data_insert",
+    "data_update",
+})
+
+# Chiavi ammesse in payload create (anagrafica completa).
+_CREATE_KEYS: frozenset[str] = frozenset({
+    "codice",
+    "descrizione",
+    "partecipa_promo",
+    "ordinamento",
+    "meta",
+    "attivo",
+})
+
+# Chiavi ammesse in payload update: `codice` e' immutabile (vincolo progetto:
+# il codice e' identificatore business che non si rinomina, coerentemente con
+# listini, articoli e altre anagrafiche).
+_UPDATE_KEYS: frozenset[str] = frozenset({
+    "descrizione",
+    "partecipa_promo",
+    "ordinamento",
+    "meta",
+    "attivo",
+})
+
+
+# Limite di lunghezza descrittivo; il DB ha varchar senza bound esplicito ma
+# il contratto UI resta ragionevole.
+_MAX_CODICE_LEN = 32
+_MAX_DESCRIZIONE_LEN = 255
+
+
+# Mapping vincoli DB -> codici errore applicativi.
+_UNIQUE_CONSTRAINTS: dict[str, tuple[str, str]] = {
+    "uq_categorie_clienti_codice": (
+        E_ANAG_DUPLICATO,
+        "Esiste gia' una categoria cliente con questo codice.",
+    ),
+}
+
+
+class CategorieClientiService:
+    """Service admin per anagrafiche.categorie_clienti."""
+
+    def __init__(self) -> None:
+        self._repo = CategorieClientiRepository()
+        # Validator condiviso per tutti i payload di questo service.
+        self._v = PayloadValidator(validation_code=E_ANAG_VALIDAZIONE)
+
+    # =================================================================
+    # Lista e dettaglio
+    # =================================================================
+
+    # Scopo: Lista paginata con validazione order_by.
+    def list_categorie(
+        self,
+        *,
+        search: str | None = None,
+        attivo: bool | None = None,
+        partecipa_promo: bool | None = None,
+        limit: int = 25,
+        offset: int = 0,
+        order_by: str = "ordinamento",
+        order_dir: str = "asc",
+    ) -> tuple[list[dict[str, Any]], int]:
+        self._v.validate_order_by(order_by, allowed=_ORDER_BY_VALIDI)
+        return self._repo.list_categorie(
+            search=search,
+            attivo=attivo,
+            partecipa_promo=partecipa_promo,
+            limit=limit,
+            offset=offset,
+            order_by=order_by,
+            order_dir=order_dir,
+        )
+
+    # Scopo: Dettaglio singola categoria; solleva not found se assente.
+    def get_categoria(self, record_id: int) -> dict[str, Any]:
+        self._v.guard_positive_int(record_id, field="record_id")
+        result = self._repo.get_categoria(record_id)
+        ErrorManager.require(
+            result is not None,
+            code=E_ANAG_NOT_FOUND,
+            message="Categoria cliente non trovata.",
+            context={"record_id": record_id},
+        )
+        assert result is not None
+        return result
+
+    # =================================================================
+    # Creazione
+    # =================================================================
+
+    # Scopo: Crea una nuova categoria cliente. codice e descrizione obbligatori,
+    #        altri campi opzionali con default DB.
+    def create_categoria(self, payload: dict[str, Any]) -> dict[str, Any]:
+        self._v.validate_allowed_keys(
+            payload,
+            allowed=_CREATE_KEYS,
+            message="Payload categoria cliente non valido.",
+        )
+        data = self._build_create_data(payload)
+
+        try:
+            new_id = self._repo.create_categoria(data)
+        except IntegrityError as exc:
+            map_integrity_error(
+                exc,
+                unique_constraints=_UNIQUE_CONSTRAINTS,
+                fallback_code=E_ANAG_VALIDAZIONE,
+                fallback_message="Violazione vincolo DB su categoria cliente.",
+                context={"codice": data.get("codice")},
+            )
+        return self.get_categoria(new_id)
+
+    # =================================================================
+    # Aggiornamento
+    # =================================================================
+
+    # Scopo: Aggiorna una categoria sui soli campi modificabili. codice
+    #        immutabile: tentativo rifiutato con VALIDAZIONE.
+    def update_categoria(self, record_id: int, payload: dict[str, Any]) -> dict[str, Any]:
+        self._v.guard_positive_int(record_id, field="record_id")
+        # codice immutabile: rifiuta prima di qualsiasi altra validazione.
+        if "codice" in payload:
+            ErrorManager.raise_error(
+                code=E_ANAG_VALIDAZIONE,
+                message="Il codice della categoria e' immutabile.",
+                detail="Per rinominare una categoria disattivare la vecchia e crearne una nuova.",
+                context={"record_id": record_id},
+            )
+        self._v.validate_allowed_keys(
+            payload,
+            allowed=_UPDATE_KEYS,
+            message="Payload categoria cliente non valido.",
+        )
+        data = self._build_update_data(payload)
+
+        ErrorManager.require(
+            bool(data),
+            code=E_ANAG_VALIDAZIONE,
+            message="Nessun campo aggiornabile presente nel payload.",
+            context={"allowed_keys": sorted(_UPDATE_KEYS)},
+        )
+
+        try:
+            updated = self._repo.update_categoria(record_id, data)
+        except IntegrityError as exc:
+            map_integrity_error(
+                exc,
+                unique_constraints=_UNIQUE_CONSTRAINTS,
+                fallback_code=E_ANAG_VALIDAZIONE,
+                fallback_message="Violazione vincolo DB su categoria cliente.",
+                context={"record_id": record_id},
+            )
+        ErrorManager.require(
+            updated,
+            code=E_ANAG_NOT_FOUND,
+            message="Categoria cliente non trovata.",
+            context={"record_id": record_id},
+        )
+        return self.get_categoria(record_id)
+
+    # =================================================================
+    # Helpers privati — composizione dict per repository
+    # =================================================================
+
+    # Scopo: Compone il dict da passare al repository per create, validando
+    #        ogni campo. codice e descrizione obbligatori; flag/ordinamento/meta
+    #        opzionali con default DB quando non presenti.
+    def _build_create_data(self, payload: dict[str, Any]) -> dict[str, Any]:
+        data: dict[str, Any] = {}
+        data["codice"] = self._v.require_string(
+            payload, "codice", max_len=_MAX_CODICE_LEN
+        )
+        data["descrizione"] = self._v.require_string(
+            payload, "descrizione", max_len=_MAX_DESCRIZIONE_LEN
+        )
+        partecipa = self._v.optional_bool(payload, "partecipa_promo")
+        if partecipa is not None:
+            data["partecipa_promo"] = partecipa
+        ordinamento = self._v.optional_smallint(payload, "ordinamento")
+        if ordinamento is not None:
+            data["ordinamento"] = ordinamento
+        attivo = self._v.optional_bool(payload, "attivo")
+        if attivo is not None:
+            data["attivo"] = attivo
+        meta = self._v.optional_meta(payload)
+        if meta is not None:
+            data["meta"] = meta
+        return data
+
+    # Scopo: Compone il dict per update ignorando chiavi assenti.
+    def _build_update_data(self, payload: dict[str, Any]) -> dict[str, Any]:
+        data: dict[str, Any] = {}
+        if "descrizione" in payload:
+            data["descrizione"] = self._v.require_string(
+                payload, "descrizione", max_len=_MAX_DESCRIZIONE_LEN
+            )
+        if "partecipa_promo" in payload:
+            value = self._v.optional_bool(payload, "partecipa_promo")
+            ErrorManager.require(
+                value is not None,
+                code=E_ANAG_VALIDAZIONE,
+                message="Il campo 'partecipa_promo' non puo' essere NULL.",
+                context={"field": "partecipa_promo"},
+            )
+            data["partecipa_promo"] = value
+        if "ordinamento" in payload:
+            value = self._v.optional_smallint(payload, "ordinamento")
+            ErrorManager.require(
+                value is not None,
+                code=E_ANAG_VALIDAZIONE,
+                message="Il campo 'ordinamento' non puo' essere NULL.",
+                context={"field": "ordinamento"},
+            )
+            data["ordinamento"] = value
+        if "attivo" in payload:
+            value = self._v.optional_bool(payload, "attivo")
+            ErrorManager.require(
+                value is not None,
+                code=E_ANAG_VALIDAZIONE,
+                message="Il campo 'attivo' non puo' essere NULL.",
+                context={"field": "attivo"},
+            )
+            data["attivo"] = value
+        if "meta" in payload:
+            meta = self._v.optional_meta(payload)
+            # meta assente nel payload: non aggiorna; meta esplicitamente {}
+            # (o dict valido) aggiorna.
+            if meta is not None:
+                data["meta"] = meta
+        return data

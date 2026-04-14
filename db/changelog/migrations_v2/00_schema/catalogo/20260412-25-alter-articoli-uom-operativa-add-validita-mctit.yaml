@@ -1,0 +1,61 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+# Migrazione daterange: catalogo.articoli_uom_operativa.
+# valido_dal nullable → validita nullable.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/catalogo/20260412-25-alter-articoli-uom-operativa-add-validita-mctit.yaml
+
+  - changeSet:
+      id: 20260412-25-alter-articoli-uom-operativa-add-validita
+      author: mctit
+      runOnChange: true
+      comment: >
+        Migrazione daterange per catalogo.articoli_uom_operativa.
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            columnExists:
+              {
+                schemaName: catalogo,
+                tableName: articoli_uom_operativa,
+                columnName: validita,
+              }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE catalogo.articoli_uom_operativa
+                ADD COLUMN validita daterange;
+
+              COMMENT ON COLUMN catalogo.articoli_uom_operativa.validita
+                IS 'Range di validita` calcolato dal trigger sync da valido_dal/valido_al. Non scrivere direttamente.';
+
+              DROP TRIGGER IF EXISTS trg_articoli_uom_operativa_a20_set_validita_ins_upd ON catalogo.articoli_uom_operativa;
+              CREATE TRIGGER trg_articoli_uom_operativa_a20_set_validita_ins_upd
+                  BEFORE INSERT OR UPDATE OF valido_dal, valido_al
+                  ON catalogo.articoli_uom_operativa
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_set_validita();
+
+              UPDATE catalogo.articoli_uom_operativa
+                 SET validita = daterange(
+                     COALESCE(valido_dal, '-infinity'::date),
+                     COALESCE(valido_al, 'infinity'::date),
+                     '[]')
+               WHERE validita IS NULL;
+
+              ALTER TABLE catalogo.articoli_uom_operativa
+                ALTER COLUMN validita SET NOT NULL;
+
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_articoli_uom_operativa_a20_set_validita_ins_upd ON catalogo.articoli_uom_operativa;
+              ALTER TABLE catalogo.articoli_uom_operativa DROP COLUMN IF EXISTS validita;

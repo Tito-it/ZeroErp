@@ -1,0 +1,72 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+# Guard: verifica che la coppia (utility_id, tipologia_id) su
+# vendite.listini sia ammessa dalla matrice
+# config.listini_tipologie_utilities.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260413-06-create-trgfn-listini-guard-tipologia-utility-mctit.yaml
+
+  - changeSet:
+      id: 20260413-06-create-trgfn-listini-guard-tipologia-utility
+      author: mctit
+      runOnChange: true
+      comment: >
+        Guard defense-in-depth: verifica ammissibilita` della coppia
+        (utility_id, tipologia_id) nella matrice config. Scatta solo
+        su INSERT e UPDATE delle colonne interessate.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_listini_guard_tipologia_utility()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $fn$
+              -- Scopo: verifica che la coppia (utility_id, tipologia_id) sia ammessa
+              --   dalla matrice config.listini_tipologie_utilities con attivo = true.
+              -- Regole:
+              --   - Se la coppia non esiste o non e` attiva → errore E_LISTINO_TIPOLOGIA_UTILITY
+              --   - Scatta solo su INSERT e UPDATE OF utility_id, tipologia_id
+              BEGIN
+                  IF NOT EXISTS (
+                      SELECT 1
+                        FROM config.listini_tipologie_utilities ltu
+                       WHERE ltu.utility_id = NEW.utility_id
+                         AND ltu.tipologia_id = NEW.tipologia_id
+                         AND ltu.attivo = true
+                  ) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite',
+                          'vendite.trgfn_listini_guard_tipologia_utility',
+                          'E_LISTINO_TIPOLOGIA_UTILITY',
+                          jsonb_build_object(
+                              'listino_id', NEW.id,
+                              'utility_id', NEW.utility_id,
+                              'tipologia_id', NEW.tipologia_id
+                          ),
+                          NEW.tx_id,
+                          NEW.utility_id::text, NEW.tipologia_id::text
+                      );
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $fn$;
+
+              COMMENT ON FUNCTION vendite.trgfn_listini_guard_tipologia_utility()
+              IS 'Guard: verifica ammissibilita` coppia (utility_id, tipologia_id) nella matrice config.listini_tipologie_utilities.';
+
+              -- Trigger fase _a10_ (guard) su INSERT e UPDATE delle colonne FK
+              DROP TRIGGER IF EXISTS trg_listini_a10_guard_tipologia_utility_ins_upd ON vendite.listini;
+
+              CREATE TRIGGER trg_listini_a10_guard_tipologia_utility_ins_upd
+                  BEFORE INSERT OR UPDATE OF utility_id, tipologia_id
+                  ON vendite.listini
+                  FOR EACH ROW
+                  EXECUTE FUNCTION vendite.trgfn_listini_guard_tipologia_utility();

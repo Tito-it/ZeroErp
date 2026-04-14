@@ -30,6 +30,7 @@ Tabella di calcolo persistente: misura il tempo impiegato per transitare dal com
 | `formula_tempo_id`    | FK a `pratiche.formule_tempo` — snapshot formula — **immutabile**.    |
 | `data_inizio_calcolo` | `data_fine` del flusso_da — **immutabile**.                           |
 | `data_fine_calcolo`   | `data_fine` del flusso_a. NULL = calcolo in corso.                    |
+| `periodo_calcolo`     | `tstzrange` calcolato dal trigger da `data_inizio_calcolo`/`data_fine_calcolo`. Bounds `[)`. Query: `@> ts`. |
 | `giorni_lordi`        | Giorni calendario totali. NULL mentre in corso.                       |
 | `giorni_sospensione`  | Giorni di sospensione nel periodo. NULL mentre in corso.              |
 | `giorni_netti`        | `giorni_lordi - giorni_sospensione`. NULL mentre in corso.            |

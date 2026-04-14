@@ -1,0 +1,61 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+# Migrazione daterange: config.user_override_azioni.
+# valido_dal nullable → validita nullable.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20260412-20-alter-user-override-azioni-add-validita-mctit.yaml
+
+  - changeSet:
+      id: 20260412-20-alter-user-override-azioni-add-validita
+      author: mctit
+      runOnChange: true
+      comment: >
+        Migrazione daterange per config.user_override_azioni.
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            columnExists:
+              {
+                schemaName: config,
+                tableName: user_override_azioni,
+                columnName: validita,
+              }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE config.user_override_azioni
+                ADD COLUMN validita daterange;
+
+              COMMENT ON COLUMN config.user_override_azioni.validita
+                IS 'Range di validita` calcolato dal trigger sync da valido_dal/valido_al. Non scrivere direttamente.';
+
+              DROP TRIGGER IF EXISTS trg_user_override_azioni_a20_set_validita_ins_upd ON config.user_override_azioni;
+              CREATE TRIGGER trg_user_override_azioni_a20_set_validita_ins_upd
+                  BEFORE INSERT OR UPDATE OF valido_dal, valido_al
+                  ON config.user_override_azioni
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_set_validita();
+
+              UPDATE config.user_override_azioni
+                 SET validita = daterange(
+                     COALESCE(valido_dal, '-infinity'::date),
+                     COALESCE(valido_al, 'infinity'::date),
+                     '[]')
+               WHERE validita IS NULL;
+
+              ALTER TABLE config.user_override_azioni
+                ALTER COLUMN validita SET NOT NULL;
+
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_user_override_azioni_a20_set_validita_ins_upd ON config.user_override_azioni;
+              ALTER TABLE config.user_override_azioni DROP COLUMN IF EXISTS validita;
