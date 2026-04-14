@@ -18,6 +18,10 @@ from apps.config.db.utilities_tipi_ruolo_repository import (
     UtilitiesTipiRuoloRepository,
 )
 from apps.core.services.error_manager import ErrorManager
+from apps.core.services.payload_helpers import (
+    PayloadValidator,
+    map_integrity_error,
+)
 
 
 # Codici errore (registrati in apps/core/services/error_policies.py)
@@ -25,6 +29,26 @@ E_CONFIG_VALIDATION = "E_CONFIG_VALIDATION"
 E_CONFIG_MATRICE_NOT_FOUND = "E_CONFIG_MATRICE_NOT_FOUND"
 E_CONFIG_MATRICE_DUPLICATA = "E_CONFIG_MATRICE_DUPLICATA"
 E_CONFIG_MATRICE_FK = "E_CONFIG_MATRICE_FK"
+
+# Mapping vincoli DB -> codici errore applicativi. Nomi completi
+# (review V6-B1): il match e' word-boundary, prefissi generici non
+# matchano piu' i nomi estesi.
+_UNIQUE_CONSTRAINTS: dict[str, tuple[str, str]] = {
+    "uq_utilities_tipi_ruolo_utility_tipo_ruolo": (
+        E_CONFIG_MATRICE_DUPLICATA,
+        "Esiste gia' una riga matrice per questa coppia utility/tipo ruolo.",
+    ),
+}
+_FK_CONSTRAINTS: dict[str, tuple[str, str]] = {
+    "fk_utilities_tipi_ruolo_utility": (
+        E_CONFIG_MATRICE_FK,
+        "Utility inesistente.",
+    ),
+    "fk_utilities_tipi_ruolo_tipo_ruolo": (
+        E_CONFIG_MATRICE_FK,
+        "Tipo ruolo inesistente.",
+    ),
+}
 
 # Whitelist colonne ammesse per ORDER BY (riflette repository).
 _ORDER_BY_VALIDI: frozenset[str] = frozenset({
@@ -49,6 +73,7 @@ class UtilitiesTipiRuoloService:
 
     def __init__(self) -> None:
         self._repo = UtilitiesTipiRuoloRepository()
+        self._v = PayloadValidator(validation_code=E_CONFIG_VALIDATION)
 
     # =================================================================
     # Lista e dettaglio
@@ -67,13 +92,7 @@ class UtilitiesTipiRuoloService:
         order_by: str = "utility_descrizione",
         order_dir: str = "asc",
     ) -> tuple[list[dict[str, Any]], int]:
-        ErrorManager.require(
-            order_by in _ORDER_BY_VALIDI,
-            code=E_CONFIG_VALIDATION,
-            message="Parametri ordinamento non validi.",
-            detail=f"order_by deve essere uno tra: {', '.join(sorted(_ORDER_BY_VALIDI))}",
-            context={"order_by": order_by},
-        )
+        self._v.validate_order_by(order_by, allowed=_ORDER_BY_VALIDI)
         return self._repo.list_matrice(
             search=search,
             attivo=attivo,
@@ -87,7 +106,7 @@ class UtilitiesTipiRuoloService:
 
     # Scopo: Dettaglio singola riga matrice; solleva not found se assente.
     def get_matrice(self, record_id: int) -> dict[str, Any]:
-        self._guard_id(record_id, field="record_id")
+        self._v.guard_positive_int(record_id, field="record_id")
         result = self._repo.get_matrice(record_id)
         ErrorManager.require(
             result is not None,
@@ -105,11 +124,13 @@ class UtilitiesTipiRuoloService:
     # Scopo: Crea una nuova riga di matrice. Valida le FK come interi positivi
     #        e mappa eventuali violazioni UNIQUE/FK su codici errore parlanti.
     def create_matrice(self, payload: dict[str, Any]) -> dict[str, Any]:
-        self._validate_keys(payload, allowed=_CREATE_KEYS)
+        self._v.validate_allowed_keys(
+            payload, allowed=_CREATE_KEYS, message="Payload matrice non valido."
+        )
 
-        utility_id = self._extract_required_id(payload, "utility_id")
-        tipo_ruolo_id = self._extract_required_id(payload, "tipo_ruolo_id")
-        attivo = self._extract_optional_bool(payload, "attivo")
+        utility_id = self._v.require_positive_int(payload, "utility_id")
+        tipo_ruolo_id = self._v.require_positive_int(payload, "tipo_ruolo_id")
+        attivo = self._v.optional_bool(payload, "attivo")
 
         try:
             new_id = self._repo.create_matrice(
@@ -118,14 +139,17 @@ class UtilitiesTipiRuoloService:
                 attivo=attivo,
             )
         except IntegrityError as exc:
-            self._raise_integrity_error(
+            map_integrity_error(
                 exc,
+                unique_constraints=_UNIQUE_CONSTRAINTS,
+                fk_constraints=_FK_CONSTRAINTS,
+                fallback_code=E_CONFIG_VALIDATION,
+                fallback_message="Violazione vincolo DB su matrice utilities/ruoli.",
                 context={
                     "utility_id": utility_id,
                     "tipo_ruolo_id": tipo_ruolo_id,
                 },
             )
-            raise  # pragma: no cover — _raise_integrity_error sempre solleva
         # Rumoroso se la riga appena inserita non viene trovata: solleva
         # E_CONFIG_MATRICE_NOT_FOUND invece di nascondere il bug con un dict
         # parziale.
@@ -139,19 +163,18 @@ class UtilitiesTipiRuoloService:
     #        immutabili: tentativi di modificarle vengono rifiutati con
     #        E_CONFIG_VALIDATION.
     def update_matrice(self, record_id: int, payload: dict[str, Any]) -> dict[str, Any]:
-        self._guard_id(record_id, field="record_id")
-        # Rifiuta tentativi di modifica delle FK (immutabili)
-        forbidden = sorted(k for k in payload if k in {"utility_id", "tipo_ruolo_id"})
-        ErrorManager.require(
-            not forbidden,
-            code=E_CONFIG_VALIDATION,
-            message="Le colonne utility_id e tipo_ruolo_id sono immutabili.",
-            detail=f"Campi non modificabili: {', '.join(forbidden)}",
-            context={"forbidden_keys": forbidden, "record_id": record_id},
+        self._v.guard_positive_int(record_id, field="record_id")
+        self._v.reject_keys(
+            payload,
+            forbidden=frozenset({"utility_id", "tipo_ruolo_id"}),
+            reason="Le colonne utility_id e tipo_ruolo_id sono immutabili.",
+            context_extra={"record_id": record_id},
         )
-        self._validate_keys(payload, allowed=_UPDATE_KEYS)
+        self._v.validate_allowed_keys(
+            payload, allowed=_UPDATE_KEYS, message="Payload matrice non valido."
+        )
 
-        attivo = self._extract_optional_bool(payload, "attivo")
+        attivo = self._v.optional_bool(payload, "attivo")
         ErrorManager.require(
             attivo is not None,
             code=E_CONFIG_VALIDATION,
@@ -188,109 +211,3 @@ class UtilitiesTipiRuoloService:
         self.get_matrice(record_id)
         return self._repo.list_emittenti_usage(record_id, limit=limit, offset=offset)
 
-    # =================================================================
-    # Helpers privati
-    # =================================================================
-
-    # Scopo: Verifica che le chiavi del payload siano nella whitelist consentita.
-    @staticmethod
-    def _validate_keys(payload: dict[str, Any], *, allowed: frozenset[str]) -> None:
-        unknown = sorted(k for k in payload if k not in allowed)
-        ErrorManager.require(
-            not unknown,
-            code=E_CONFIG_VALIDATION,
-            message="Payload matrice non valido.",
-            detail=f"Campi non supportati: {', '.join(unknown)}",
-            context={"unknown_keys": unknown},
-        )
-
-    # Scopo: Verifica che un id sia int positivo, altrimenti solleva validation.
-    @staticmethod
-    def _guard_id(value: Any, *, field: str) -> None:
-        ErrorManager.require(
-            isinstance(value, int) and not isinstance(value, bool) and value > 0,
-            code=E_CONFIG_VALIDATION,
-            message=f"Identificatore '{field}' non valido.",
-            context={field: value},
-        )
-
-    # Scopo: Estrae un id obbligatorio dal payload come int positivo.
-    @staticmethod
-    def _extract_required_id(payload: dict[str, Any], key: str) -> int:
-        raw = payload.get(key)
-        ErrorManager.require(
-            raw is not None,
-            code=E_CONFIG_VALIDATION,
-            message=f"Campo '{key}' obbligatorio.",
-            context={key: raw},
-        )
-        # Accetta int o stringa numerica; rifiuta bool e altri tipi.
-        if isinstance(raw, bool):
-            ErrorManager.raise_error(
-                code=E_CONFIG_VALIDATION,
-                message=f"Campo '{key}' deve essere un intero.",
-                context={key: raw},
-            )
-        if isinstance(raw, int):
-            value = raw
-        elif isinstance(raw, str) and raw.strip().isdigit():
-            value = int(raw.strip())
-        else:
-            ErrorManager.raise_error(
-                code=E_CONFIG_VALIDATION,
-                message=f"Campo '{key}' deve essere un intero positivo.",
-                context={key: raw},
-            )
-            raise AssertionError("unreachable")  # pragma: no cover
-        ErrorManager.require(
-            value > 0,
-            code=E_CONFIG_VALIDATION,
-            message=f"Campo '{key}' deve essere un intero positivo.",
-            context={key: value},
-        )
-        return value
-
-    # Scopo: Estrae un bool opzionale dal payload (None se assente).
-    @staticmethod
-    def _extract_optional_bool(payload: dict[str, Any], key: str) -> bool | None:
-        if key not in payload or payload[key] is None:
-            return None
-        value = payload[key]
-        if isinstance(value, bool):
-            return value
-        # Accetta solo bool stretti per evitare ambiguita' tipo "0"/"false".
-        ErrorManager.raise_error(
-            code=E_CONFIG_VALIDATION,
-            message=f"Campo '{key}' deve essere booleano.",
-            context={key: value},
-        )
-        raise AssertionError("unreachable")  # pragma: no cover
-
-    # Scopo: Mappa un IntegrityError su un codice errore parlante.
-    #        UNIQUE → DUPLICATA, FK → FK, altrimenti VALIDATION.
-    @staticmethod
-    def _raise_integrity_error(exc: IntegrityError, *, context: dict[str, Any]) -> None:
-        msg = str(exc).lower()
-        if "uq_utilities_tipi_ruolo" in msg or "unique" in msg:
-            ErrorManager.raise_error(
-                code=E_CONFIG_MATRICE_DUPLICATA,
-                message="Esiste gia' una riga matrice per questa coppia utility/tipo ruolo.",
-                detail=str(exc),
-                context=context,
-                cause=exc,
-            )
-        if "foreign key" in msg or "fk_utilities_tipi_ruolo" in msg:
-            ErrorManager.raise_error(
-                code=E_CONFIG_MATRICE_FK,
-                message="Utility o tipo ruolo inesistente.",
-                detail=str(exc),
-                context=context,
-                cause=exc,
-            )
-        ErrorManager.raise_error(
-            code=E_CONFIG_VALIDATION,
-            message="Violazione vincolo DB su matrice utilities/ruoli.",
-            detail=str(exc),
-            context=context,
-            cause=exc,
-        )

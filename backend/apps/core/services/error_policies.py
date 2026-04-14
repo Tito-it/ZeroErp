@@ -383,6 +383,20 @@ class ErrorPolicyRegistry:
             ui_action="show_empty_state",
             user_message="Record non trovato.",
         ),
+        # ── Matrice categorie_clienti_listini (sviluppo-listini v5 §4.2) ──
+        "E_ANAG_FK": ErrorPolicy(
+            code="E_ANAG_FK",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message="Riferimento non valido: l'entita' indicata non esiste.",
+        ),
+        "E_ANAG_MATRICE_OVERLAP": ErrorPolicy(
+            code="E_ANAG_MATRICE_OVERLAP",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Esiste gia' una riga attiva che si sovrappone per "
+                         "questa combinazione di dimensioni nel periodo indicato.",
+        ),
         # ── Refactor operatore-emittenti (Q6 + D3) ──
         "E_BA_ADMIN_GLOBALE_VIETATO": ErrorPolicy(
             code="E_BA_ADMIN_GLOBALE_VIETATO",

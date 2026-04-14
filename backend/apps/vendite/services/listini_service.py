@@ -16,6 +16,7 @@ from uuid import UUID
 from django.db import IntegrityError, transaction
 
 from apps.core.services.error_manager import ErrorManager
+from apps.core.services.payload_helpers import PayloadValidator
 from apps.vendite.db.listini_repository import (
     ASSOCIAZIONE_CREATE_COLUMNS,
     ASSOCIAZIONE_UPDATE_COLUMNS,
@@ -51,14 +52,46 @@ _RIGA_UPDATE_ALLOWED_KEYS: frozenset[str] = frozenset(RIGA_UPDATE_COLUMNS.keys()
 _ASSOCIAZIONE_CREATE_ALLOWED_KEYS: frozenset[str] = frozenset(ASSOCIAZIONE_CREATE_COLUMNS.keys())
 _ASSOCIAZIONE_UPDATE_ALLOWED_KEYS: frozenset[str] = frozenset(ASSOCIAZIONE_UPDATE_COLUMNS.keys())
 
+# Validator modulo-level: log_to_db=True per telemetria pipeline vendite,
+# function_name override per-chiamata (riflette il metodo service specifico).
+# Ref: apps/core/services/payload_helpers.py (V6-B1/V6-B2).
+_V = PayloadValidator(
+    validation_code="E_VENDITE_VALIDATION",
+    log_to_db=True,
+)
 
-# Scopo: Normalizza il campo meta da stringa JSON o dict a dict.
+
+# Scopo: Normalizza il campo meta da stringa JSON o dict a dict. Stringa
+#        JSON non valida o non-oggetto -> ServiceError E_VENDITE_VALIDATION
+#        (review: prima bubble-ava ValueError non mappato -> 500).
 def _parse_meta_json(meta_raw: Any) -> dict[str, Any]:
     if not meta_raw:
         return {}
+    if isinstance(meta_raw, dict):
+        return meta_raw
     if isinstance(meta_raw, str):
-        return json.loads(meta_raw)
-    return meta_raw if isinstance(meta_raw, dict) else {}
+        try:
+            parsed = json.loads(meta_raw)
+        except (ValueError, TypeError) as exc:
+            ErrorManager.raise_error(
+                code="E_VENDITE_VALIDATION",
+                message="Il campo 'meta' contiene JSON non valido.",
+                context={"meta_raw": meta_raw},
+                log_to_db=True,
+                function_name="listini_service._parse_meta_json",
+                cause=exc,
+            )
+            raise AssertionError("unreachable") from exc  # pragma: no cover
+        if isinstance(parsed, dict):
+            return parsed
+    ErrorManager.raise_error(
+        code="E_VENDITE_VALIDATION",
+        message="Il campo 'meta' deve essere un oggetto JSON.",
+        context={"meta_type": type(meta_raw).__name__},
+        log_to_db=True,
+        function_name="listini_service._parse_meta_json",
+    )
+    raise AssertionError("unreachable")  # pragma: no cover
 
 
 class _MissingType:
@@ -142,7 +175,9 @@ def _build_results_response(results: list[dict[str, object]]) -> dict[str, objec
     return {"count": len(results), "results": results}
 
 
-# Scopo: Blocca chiavi non supportate nel payload per evitare typo silenziosi lato client.
+# Scopo: Delega a `PayloadValidator.validate_allowed_keys` del core. Mantiene
+#        la firma storica (allowed_keys, function_name, message) per non
+#        toccare i call site; V6-B2 ha centralizzato la logica.
 def _validate_payload_keys(
     payload: dict[str, Any],
     *,
@@ -150,19 +185,17 @@ def _validate_payload_keys(
     function_name: str,
     message: str,
 ) -> None:
-    unknown_keys = sorted(key for key in payload.keys() if key not in allowed_keys)
-    ErrorManager.require(
-        not unknown_keys,
-        code="E_VENDITE_VALIDATION",
+    _V.validate_allowed_keys(
+        payload,
+        allowed=allowed_keys,
         message=message,
-        detail=f"Campi non supportati: {', '.join(unknown_keys)}",
-        context={"unknown_keys": unknown_keys, "allowed_keys": sorted(allowed_keys)},
         function_name=function_name,
-        log_to_db=True,
     )
 
 
-# Scopo: Estrae stringa obbligatoria non vuota dal payload.
+# Scopo: Delega a `PayloadValidator.require_string` (max_len=None: il bound
+#        di lunghezza lo decide la colonna DB; qui si valida solo presenza
+#        e non-vuotezza post-trim).
 def _require_string(
     payload: dict[str, Any],
     key: str,
@@ -170,18 +203,12 @@ def _require_string(
     function_name: str,
     message: str,
 ) -> str:
-    value = payload.get(key)
-    cleaned = value.strip() if isinstance(value, str) else ""
-    ErrorManager.require(
-        bool(cleaned),
-        code="E_VENDITE_VALIDATION",
+    return _V.require_string(
+        payload,
+        key,
         message=message,
-        detail=f"{key} obbligatorio e non vuoto.",
-        context={"field": key},
         function_name=function_name,
-        log_to_db=True,
     )
-    return cleaned
 
 
 # Scopo: Estrae stringa presente nel payload; supporta NULL esplicito se consentito.
@@ -282,10 +309,8 @@ def _extract_nullable_int(
     return normalized
 
 
-# Scopo: Estrae un intero positivo obbligatorio dal payload normalizzando tipi
-#        diversi (int, stringa numerica). Solleva ServiceError E_VENDITE_VALIDATION
-#        se assente, None, non convertibile o non positivo. Complementare a
-#        _extract_nullable_int per campi NOT NULL (es. utility_id, tipologia_id).
+# Scopo: Delega a `PayloadValidator.require_positive_int`. Complementare a
+#        `_extract_nullable_int` per campi NOT NULL (es. utility_id, tipologia_id).
 def _require_positive_int(
     payload: dict[str, Any],
     key: str,
@@ -293,61 +318,12 @@ def _require_positive_int(
     function_name: str,
     message: str,
 ) -> int:
-    raw = payload.get(key)
-    ErrorManager.require(
-        raw is not None,
-        code="E_VENDITE_VALIDATION",
+    return _V.require_positive_int(
+        payload,
+        key,
         message=message,
-        detail=f"{key} e' obbligatorio.",
-        context={"field": key},
         function_name=function_name,
-        log_to_db=True,
     )
-    ErrorManager.require(
-        not isinstance(raw, (bool, float)),
-        code="E_VENDITE_VALIDATION",
-        message=message,
-        detail=f"{key} deve essere un intero positivo.",
-        context={"field": key},
-        function_name=function_name,
-        log_to_db=True,
-    )
-    normalized: int
-    if isinstance(raw, int):
-        normalized = raw
-    else:
-        raw_str = str(raw).strip()
-        ErrorManager.require(
-            raw_str != "",
-            code="E_VENDITE_VALIDATION",
-            message=message,
-            detail=f"{key} e' obbligatorio.",
-            context={"field": key},
-            function_name=function_name,
-            log_to_db=True,
-        )
-        try:
-            normalized = int(raw_str)
-        except (TypeError, ValueError) as exc:
-            ErrorManager.raise_error(
-                code="E_VENDITE_VALIDATION",
-                message=message,
-                detail=f"{key} deve essere un intero positivo.",
-                context={"field": key, "value": raw},
-                function_name=function_name,
-                log_to_db=True,
-            )
-            raise AssertionError("unreachable") from exc
-    ErrorManager.require(
-        normalized > 0,
-        code="E_VENDITE_VALIDATION",
-        message=message,
-        detail=f"{key} deve essere un intero positivo.",
-        context={"field": key, "value": normalized},
-        function_name=function_name,
-        log_to_db=True,
-    )
-    return normalized
 
 
 # Scopo: Estrae un intero positivo opzionale (ammette assenza) ma se presente

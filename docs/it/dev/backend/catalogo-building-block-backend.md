@@ -89,6 +89,8 @@
 | `ParameterService.upsert_user_override` | [parameter_service.py](../../../../backend/apps/core/services/parameter_service.py) | Crea/aggiorna override personale utente per un parametro (UPSERT) |
 | `ParameterService.delete_user_override` | [parameter_service.py](../../../../backend/apps/core/services/parameter_service.py) | Rimuove override personale utente con verifica ownership |
 | `ParameterService.get_emittente_fiscale_id_for_user` | [parameter_service.py](../../../../backend/apps/core/services/parameter_service.py) | Risolve emittente_fiscale_id dal bridge HR utente |
+| `PayloadValidator` | [payload_helpers.py](../../../../backend/apps/core/services/payload_helpers.py) | Validator parametrizzato per `validation_code` di dominio. Metodi: `validate_allowed_keys`, `guard_positive_int`, `require_string`, `require_positive_int`, `optional_positive_int`, `optional_smallint`, `optional_bool`, `optional_meta`. Rigore tipi (bool != int, int != float, stringhe numeriche ammesse solo per id), nessun default implicito. Usato dai service CRUD admin (categorie_clienti, utilities_tipi_ruolo, tipi_ruolo_tipi_indirizzo) |
+| `map_integrity_error` | [payload_helpers.py](../../../../backend/apps/core/services/payload_helpers.py) | Traduce `IntegrityError` in `ServiceError` via mappe `unique_constraints`/`fk_constraints` (frammento nome vincolo DB -> `(error_code, message)`). Match case-insensitive. Fallback configurabile con `fallback_code`/`fallback_message` |
 
 ---
 

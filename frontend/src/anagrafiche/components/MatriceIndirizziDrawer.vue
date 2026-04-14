@@ -5,7 +5,7 @@
 import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useApiHandler } from '../../core/composables/useApiHandler'
-import { useLookup } from '../../core/composables/useLookup'
+import { useGlobalLookup } from '../../core/composables/useGlobalLookup'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { lookupCodici } from '../../core/apiCore'
 import { createMatriceIndirizzo, updateMatriceIndirizzo } from '../api/anagrafiche'
@@ -27,7 +27,11 @@ const isReadonly = useInjectReadonly()
 const { emitDataChanged } = useTabEvents()
 
 // Lookup
-const tipiIndirizzi = useLookup(() => lookupCodici('config.tipi_indirizzi'), { immediate: true })
+const tipiIndirizzi = useGlobalLookup(
+  'config.tipi_indirizzi',
+  () => lookupCodici('config.tipi_indirizzi'),
+  { immediate: true }
+)
 
 const props = defineProps({
   visible: Boolean,

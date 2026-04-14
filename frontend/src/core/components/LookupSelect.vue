@@ -8,12 +8,14 @@
 //   <LookupSelect v-model="form.uom_id" rel="catalogo.unita_misura" :label-field="'codice'" />
 //   <LookupSelect v-model="form.conto_id" rel="config.conti_contabili" show-code />
 import { computed } from 'vue'
-import { useLookup } from '../composables/useLookup'
+import { useGlobalLookup } from '../composables/useGlobalLookup'
 import { lookupCodici } from '../apiCore'
 import Select from 'primevue/select'
 
 const props = defineProps({
-  modelValue: { type: [Number, String, null], default: null },
+  // `null` non e' un costruttore valido in defineProps: tipi supportati
+  // [Number, String] + default null copre il caso "nessun valore".
+  modelValue: { type: [Number, String], default: null },
   rel: { type: String, required: true },
   placeholder: { type: String, default: '' },
   labelField: { type: String, default: 'descrizione' },
@@ -28,7 +30,14 @@ const props = defineProps({
 
 const emit = defineEmits(['update:modelValue', 'change'])
 
-const lookup = useLookup(() => lookupCodici(props.rel), { immediate: true })
+// Cache globale per-rel: tutte le istanze di LookupSelect con lo stesso rel
+// condividono la stessa fetch (evita N chiamate duplicate nei form con
+// piu' dropdown su tabelle config).
+const lookup = useGlobalLookup(
+  props.rel,
+  () => lookupCodici(props.rel),
+  { immediate: true }
+)
 
 // Scopo: Compone l'etichetta visualizzata per una riga del lookup.
 // Se showCode e' true, ritorna "descrizione (codice)" — altrimenti

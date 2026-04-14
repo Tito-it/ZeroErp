@@ -147,9 +147,14 @@ emittenti per ruoli diversi da Emittente Fiscale).
 | `E_CONFIG_VALIDATION` | 400 | Payload non valido (chiavi sconosciute, FK negative, attivo non bool, tentativo modifica FK) |
 | `E_CONFIG_MATRICE_NOT_FOUND` | 404 | Riga matrice inesistente (get/patch/usage) |
 | `E_CONFIG_MATRICE_DUPLICATA` | 409 | Coppia gia' presente (UNIQUE) |
-| `E_CONFIG_MATRICE_FK` | 400 | `utility_id` o `tipo_ruolo_id` non esistente |
+| `E_CONFIG_MATRICE_FK` | 400 | `utility_id` o `tipo_ruolo_id` non esistente. Messaggio distingue la FK violata (mapping per nome vincolo DB via `map_integrity_error`). |
 
 Codici registrati in `apps.core.services.error_policies.ErrorPolicyRegistry`.
+
+Validazione payload e traduzione vincoli DB delegate al building block
+`apps.core.services.payload_helpers` (`PayloadValidator`,
+`map_integrity_error`). Vedi
+[catalogo-building-block-backend.md](/dev/backend/catalogo-building-block-backend).
 
 ## Dipendenze DB
 
