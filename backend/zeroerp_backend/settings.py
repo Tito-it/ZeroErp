@@ -208,6 +208,7 @@ DATABASES = {
         "OPTIONS": {
             "options": "-c search_path=django,public,config,dbops,script,anagrafiche"
         },
+        "CONN_MAX_AGE": int(env("CONN_MAX_AGE", "600")),
     }
 }
 

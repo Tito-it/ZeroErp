@@ -22,7 +22,7 @@
 
 In Zero ERP il **listino** non e un semplice elenco prezzi: e un sistema multi-livello che risponde alla domanda *"quanto costa questo articolo, per questo contesto, in questa data?"* tenendo conto di chi compra, quale utility eroga il servizio e chi emette la fattura.
 
-Questa guida spiega **come funziona il sistema listini** — quali entita lo compongono, come si relazionano, come il resolver determina il prezzo e quali regole governano il processo. La logica e la stessa sia per il dominio utility (gas, energia, idrico) sia per il dominio commercio (servizi, manifatturiero).
+Questa guida spiega **come funziona il sistema listini** — quali entita lo compongono, come si relazionano, come il resolver determina il prezzo e quali regole governano il processo. La logica e la stessa sia per l'ambito utility (gas, energia, idrico) sia per l'ambito commercio (servizi, manifatturiero).
 
 **Cosa troverai in questa guida:**
 
@@ -35,12 +35,14 @@ Questa guida spiega **come funziona il sistema listini** — quali entita lo com
 
 ### Il modello e generico, non solo per le utility
 
-La struttura listini funziona per qualsiasi tipo di azienda. Il campo `dominio` sul listino (`UTILITY` o `COMMERCIO`) classifica il perimetro, ma l'architettura sottostante — versioni, righe, associazioni, resolver — e identica in entrambi i casi.
+La struttura listini funziona per qualsiasi tipo di azienda. Il campo `utility_id` sul listino (FK a `config.utilities`, NOT NULL) classifica il servizio erogante: gas, energia, idrico, teleriscaldamento oppure "Base" per i listini di puro commercio. L'architettura sottostante — versioni, righe, associazioni, resolver — e identica in tutti i casi.
 
 In pratica:
 
-* **Azienda utility**: listini con dimensioni BA + utility + emittente, prezzi ad alta precisione per consumi minimi
-* **Azienda non-utility**: listini con dimensioni BA (o senza contesto), pricing standard per servizi/prodotti
+* **Azienda utility**: listini con `utility_id` specifico (Gas, Energia, Idrico), dimensioni righe BA + utility + emittente, prezzi ad alta precisione per consumi minimi
+* **Azienda non-utility**: listini con `utility_id = 5` (Base), dimensioni BA (o senza contesto), pricing standard per servizi/prodotti
+
+> **Refactor 2026-04-12**: il vecchio campo `dominio` (enum UTILITY/COMMERCIO) e` stato sostituito dalla FK `utility_id NOT NULL` verso `config.utilities`. La utility "Base" (id=5 nel seed standard) copre i listini commerciali.
 
 ---
 
@@ -61,7 +63,7 @@ In pratica:
 
 ### Listino (testata)
 
-E il contenitore principale. Identifica un listino con un codice univoco, una descrizione e un dominio (`UTILITY` o `COMMERCIO`). Non contiene ne date ne prezzi: questi sono delegati alle entita figlie.
+E il contenitore principale. Identifica un listino con un codice univoco, una descrizione e una utility (`utility_id` NOT NULL, FK a `config.utilities`). Non contiene ne date ne prezzi: questi sono delegati alle entita figlie.
 
 Il listino e pensato come entita stabile nel tempo. Quello che cambia sono le sue versioni e le sue righe prezzo.
 
@@ -114,7 +116,7 @@ L'associazione non e un semplice collegamento — e il primo filtro che il resol
 
 ### Creazione
 
-Un listino nasce con codice, descrizione e dominio. E subito attivo (`attivo=true`) ma non ancora operativo: servono almeno una versione e delle righe prezzo.
+Un listino nasce con codice, descrizione e utility. E subito attivo (`attivo=true`) ma non ancora operativo: servono almeno una versione e delle righe prezzo.
 
 ### Pubblicazione di una versione
 
@@ -490,6 +492,7 @@ erDiagram
     listini                ||--o{ listini_associazioni    : visibile_per
     listini_versioni       ||--o{ listini_righe           : contiene_prezzi
 
+    utilities              ||--o{ listini                 : classifica_testata
     articoli               ||--o{ listini_righe           : prezzato_in
     unita_misura           ||--o{ listini_righe           : unita_di
 
