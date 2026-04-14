@@ -35,25 +35,24 @@ BEGIN
                 TG_NAME,
                 'E_CONTRATTO_UTILITY_TIPO_CLASSE_OBBLIGATORI',
                 jsonb_build_object(
-                    'detail', 'tipo_utenza_id e classe_utenza_id obbligatori per utility con dimensione',
                     'contratto_id', NEW.contratto_id,
                     'utility_id', NEW.utility_id,
                     'tipo_utenza_id', NEW.tipo_utenza_id,
                     'classe_utenza_id', NEW.classe_utenza_id
                 ),
                 NULL::uuid,
-                'tipo_utenza_id e classe_utenza_id obbligatori per la utility indicata'
+                NEW.utility_id::text
             );
         END IF;
 
         -- Coerenza: la classe deve appartenere al tipo dichiarato.
         IF v_classe_tipo_utenza IS DISTINCT FROM NEW.tipo_utenza_id THEN
+            -- Valori per %s: classe_utenza_id, classe.tipo_utenza_id, contratto.tipo_utenza_id.
             PERFORM script.fn_log_and_raise_error(
                 'vendite',
                 TG_NAME,
                 'E_CONTRATTO_CLASSE_TIPO_INCOERENTE',
                 jsonb_build_object(
-                    'detail', 'classe_utenza_id appartiene a un tipo_utenza_id diverso da quello dichiarato',
                     'contratto_id', NEW.contratto_id,
                     'utility_id', NEW.utility_id,
                     'tipo_utenza_id_atteso', NEW.tipo_utenza_id,
@@ -61,7 +60,9 @@ BEGIN
                     'classe_utenza_id', NEW.classe_utenza_id
                 ),
                 NULL::uuid,
-                'classe_utenza_id e tipo_utenza_id non sono coerenti'
+                NEW.classe_utenza_id::text,
+                v_classe_tipo_utenza::text,
+                NEW.tipo_utenza_id::text
             );
         END IF;
     ELSE
@@ -73,14 +74,13 @@ BEGIN
                 TG_NAME,
                 'E_CONTRATTO_UTILITY_SENZA_DIMENSIONE_TIPO_CLASSE_VIETATI',
                 jsonb_build_object(
-                    'detail', 'utility senza dimensione tipo/classe: i campi devono essere NULL',
                     'contratto_id', NEW.contratto_id,
                     'utility_id', NEW.utility_id,
                     'tipo_utenza_id', NEW.tipo_utenza_id,
                     'classe_utenza_id', NEW.classe_utenza_id
                 ),
                 NULL::uuid,
-                'utility Base/commercio: tipo_utenza_id e classe_utenza_id devono essere NULL'
+                NEW.utility_id::text
             );
         END IF;
     END IF;

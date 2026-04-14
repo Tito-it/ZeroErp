@@ -30,5 +30,15 @@
 | pk_categorie_clienti | `CREATE UNIQUE INDEX pk_categorie_clienti ON anagrafiche.categorie_clienti USING btree (id)` |
 | uq_categorie_clienti_codice | `CREATE UNIQUE INDEX uq_categorie_clienti_codice ON anagrafiche.categorie_clienti USING btree (codice)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_categorie_clienti_a10_billing_account_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('anagrafiche', 'billing_account', 'categoria_cliente_id', 'id', 'attivo')` |
+| trg_categorie_clienti_a10_categorie_clienti_listini_bloc_a0b560 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('anagrafiche', 'categorie_clienti_listini', 'categoria_cliente_id', 'id', 'attivo')` |
+| trg_categorie_clienti_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_categorie_clienti_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_categorie_clienti_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_categorie_clienti_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+
 ---
 {% include-markdown "signature-core.md" %}

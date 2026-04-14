@@ -25,5 +25,11 @@
 | ix_listini_tipologie_listini_tipologie_id_fk | `CREATE INDEX ix_listini_tipologie_listini_tipologie_id_fk ON storico.listini_tipologie USING btree (listini_tipologie_id)` |
 | pk_storico_listini_tipologie | `CREATE UNIQUE INDEX pk_storico_listini_tipologie ON storico.listini_tipologie USING btree (id)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_listini_tipologie_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_listini_tipologie_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+
 ---
 {% include-markdown "signature-core.md" %}

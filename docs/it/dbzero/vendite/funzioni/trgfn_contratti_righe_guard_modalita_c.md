@@ -43,18 +43,20 @@ BEGIN
     -- A questo punto lo short-circuit iniziale garantisce
     -- NEW.prezzo_unitario IS NULL: contratto ATTIVO + modalita' C
     -- + riga attiva senza prezzo -> violazione.
+    -- %s: contratto_id, riga_id, articolo_id.
     PERFORM script.fn_log_and_raise_error(
         'vendite',
         TG_NAME,
         'E_CONTRATTO_MODALITA_C_RIGA_SENZA_PREZZO',
         jsonb_build_object(
-            'detail', 'riga contratto modalita'' C (listino_id NULL) senza prezzo_unitario',
             'contratto_id', NEW.contratto_id,
             'riga_id', NEW.id,
             'articolo_id', NEW.articolo_id
         ),
         NULL::uuid,
-        'Riga contratto modalita'' C: prezzo_unitario obbligatorio'
+        NEW.contratto_id::text,
+        NEW.id::text,
+        NEW.articolo_id::text
     );
 
     RETURN NEW;
