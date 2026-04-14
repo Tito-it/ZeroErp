@@ -21,6 +21,7 @@ LISTINI_ORDER_COLUMNS: dict[str, str] = {
     "codice": "l.codice",
     "descrizione": "l.descrizione",
     "utility_descrizione": "u.descrizione",
+    "tipologia_descrizione": "lt.descrizione",
     "data_insert": "l.data_insert",
     "data_update": "l.data_update",
 }
@@ -29,6 +30,7 @@ LISTINO_CREATE_COLUMNS: dict[str, str] = {
     "codice": "text",
     "descrizione": "text",
     "utility_id": "int",
+    "tipologia_id": "int",
     "meta": "jsonb",
     "attivo": "bool",
 }
@@ -150,6 +152,7 @@ class ListiniRepository:
         self,
         *,
         utility_id: int | None,
+        tipologia_id: int | None,
         attivo: bool | None,
         search: str | None,
         order_by: str,
@@ -168,6 +171,9 @@ class ListiniRepository:
         if utility_id is not None:
             conditions.append("l.utility_id = %s")
             params.append(utility_id)
+        if tipologia_id is not None:
+            conditions.append("l.tipologia_id = %s")
+            params.append(tipologia_id)
         if attivo is not None:
             conditions.append("l.attivo = %s")
             params.append(attivo)
@@ -184,6 +190,7 @@ class ListiniRepository:
             SELECT COUNT(*)
               FROM vendite.listini l
               LEFT JOIN config.utilities u ON u.id = l.utility_id
+              LEFT JOIN config.listini_tipologie lt ON lt.id = l.tipologia_id
             {where_clause}
         """
         data_sql = f"""
@@ -194,6 +201,9 @@ class ListiniRepository:
                 l.utility_id,
                 u.codice AS utility_codice,
                 u.descrizione AS utility_descrizione,
+                l.tipologia_id,
+                lt.codice AS tipologia_codice,
+                lt.descrizione AS tipologia_descrizione,
                 l.meta,
                 l.attivo,
                 l.data_insert,
@@ -212,6 +222,7 @@ class ListiniRepository:
                 ) AS associazioni_count
               FROM vendite.listini l
               LEFT JOIN config.utilities u ON u.id = l.utility_id
+              LEFT JOIN config.listini_tipologie lt ON lt.id = l.tipologia_id
             {where_clause}
              ORDER BY {order_column} {safe_order_dir}, l.id ASC
              LIMIT %s OFFSET %s
@@ -240,6 +251,9 @@ class ListiniRepository:
                     l.utility_id,
                     u.codice AS utility_codice,
                     u.descrizione AS utility_descrizione,
+                    l.tipologia_id,
+                    lt.codice AS tipologia_codice,
+                    lt.descrizione AS tipologia_descrizione,
                     l.meta,
                     l.attivo,
                     l.data_insert,
@@ -258,6 +272,7 @@ class ListiniRepository:
                     ) AS associazioni_count
                   FROM vendite.listini l
                   LEFT JOIN config.utilities u ON u.id = l.utility_id
+                  LEFT JOIN config.listini_tipologie lt ON lt.id = l.tipologia_id
                  WHERE l.id = %s
                 """,
                 [listino_id],
@@ -1192,3 +1207,32 @@ class ListiniRepository:
 
         assert result is not None
         return result
+
+    # Scopo: Restituisce le tipologie listino ammesse per una utility, leggendo
+    #        la matrice config.listini_tipologie_utilities (solo righe attive).
+    def list_tipologie_per_utility(self, utility_id: int) -> list[dict[str, Any]]:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT
+                    lt.id,
+                    lt.codice,
+                    lt.descrizione,
+                    lt.e_consumo,
+                    lt.e_quota_fissa,
+                    lt.e_imposta,
+                    lt.e_onere,
+                    lt.e_prodotto,
+                    lt.e_servizio,
+                    lt.ordinamento
+                  FROM config.listini_tipologie lt
+                  JOIN config.listini_tipologie_utilities m
+                    ON m.tipologia_id = lt.id
+                 WHERE m.utility_id = %s
+                   AND m.attivo = true
+                   AND lt.attivo = true
+                 ORDER BY lt.ordinamento, lt.descrizione
+                """,
+                [utility_id],
+            )
+            return rows_to_list(cursor)

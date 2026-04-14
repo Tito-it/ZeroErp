@@ -34,7 +34,7 @@ _ORDER_BY_VALIDI: frozenset[str] = frozenset(LISTINI_ORDER_COLUMNS.keys())
 _RIGHE_ORDER_BY_VALIDI: frozenset[str] = frozenset(RIGHE_ORDER_COLUMNS.keys())
 _ORDER_DIR_VALIDI: frozenset[str] = frozenset({"asc", "desc"})
 _STATI_VERSIONE_VALIDI: frozenset[str] = frozenset({"BOZZA", "ATTIVA", "CHIUSA"})
-_LISTINO_NULLABLE_FIELDS: frozenset[str] = frozenset({"utility_id", "meta"})
+_LISTINO_NULLABLE_FIELDS: frozenset[str] = frozenset({"meta"})
 _VERSIONE_NULLABLE_FIELDS: frozenset[str] = frozenset({"valido_al", "meta"})
 _RIGA_NULLABLE_FIELDS: frozenset[str] = frozenset(
     {"billing_account_id", "utility_id", "emittente_soggetto_ruolo_id", "meta"}
@@ -280,6 +280,95 @@ def _extract_nullable_int(
         log_to_db=True,
     )
     return normalized
+
+
+# Scopo: Estrae un intero positivo obbligatorio dal payload normalizzando tipi
+#        diversi (int, stringa numerica). Solleva ServiceError E_VENDITE_VALIDATION
+#        se assente, None, non convertibile o non positivo. Complementare a
+#        _extract_nullable_int per campi NOT NULL (es. utility_id, tipologia_id).
+def _require_positive_int(
+    payload: dict[str, Any],
+    key: str,
+    *,
+    function_name: str,
+    message: str,
+) -> int:
+    raw = payload.get(key)
+    ErrorManager.require(
+        raw is not None,
+        code="E_VENDITE_VALIDATION",
+        message=message,
+        detail=f"{key} e' obbligatorio.",
+        context={"field": key},
+        function_name=function_name,
+        log_to_db=True,
+    )
+    ErrorManager.require(
+        not isinstance(raw, (bool, float)),
+        code="E_VENDITE_VALIDATION",
+        message=message,
+        detail=f"{key} deve essere un intero positivo.",
+        context={"field": key},
+        function_name=function_name,
+        log_to_db=True,
+    )
+    normalized: int
+    if isinstance(raw, int):
+        normalized = raw
+    else:
+        raw_str = str(raw).strip()
+        ErrorManager.require(
+            raw_str != "",
+            code="E_VENDITE_VALIDATION",
+            message=message,
+            detail=f"{key} e' obbligatorio.",
+            context={"field": key},
+            function_name=function_name,
+            log_to_db=True,
+        )
+        try:
+            normalized = int(raw_str)
+        except (TypeError, ValueError) as exc:
+            ErrorManager.raise_error(
+                code="E_VENDITE_VALIDATION",
+                message=message,
+                detail=f"{key} deve essere un intero positivo.",
+                context={"field": key, "value": raw},
+                function_name=function_name,
+                log_to_db=True,
+            )
+            raise AssertionError("unreachable") from exc
+    ErrorManager.require(
+        normalized > 0,
+        code="E_VENDITE_VALIDATION",
+        message=message,
+        detail=f"{key} deve essere un intero positivo.",
+        context={"field": key, "value": normalized},
+        function_name=function_name,
+        log_to_db=True,
+    )
+    return normalized
+
+
+# Scopo: Estrae un intero positivo opzionale (ammette assenza) ma se presente
+#        deve essere intero positivo e NOT NULL. Usato su PATCH per campi
+#        come utility_id/tipologia_id che in DB sono NOT NULL ma facoltativi
+#        nel payload di update.
+def _extract_required_int_if_present(
+    payload: dict[str, Any],
+    key: str,
+    *,
+    function_name: str,
+    message: str,
+) -> int | _MissingType:
+    if key not in payload:
+        return _MISSING
+    return _require_positive_int(
+        payload,
+        key,
+        function_name=function_name,
+        message=message,
+    )
 
 
 # Scopo: Estrae booleano presente nel payload senza inventare default impliciti.
@@ -552,6 +641,14 @@ def _translate_integrity_error(exc: IntegrityError, *, function_name: str, entit
     error_text = str(exc)
     constraint_map: tuple[tuple[str, str, str], ...] = (
         ("fk_listini_utility", "Utility non valida.", "utility_id non corrisponde a nessuna utility in config.utilities."),
+        (
+            # Nome generato da PostgreSQL (pattern <table>_<col>_fkey) dalla
+            # migration 20260413-05 che usa ADD COLUMN ... REFERENCES senza
+            # CONSTRAINT esplicito. Se la migration viene rinominata, aggiornare.
+            "listini_tipologia_id_fkey",
+            "Tipologia listino non valida.",
+            "tipologia_id non corrisponde a nessuna tipologia in config.listini_tipologie.",
+        ),
         ("uq_listini_codice", "Codice listino duplicato.", "Esiste gia' un listino con lo stesso codice."),
         (
             "uq_listini_versioni_listino_codice",
@@ -656,12 +753,20 @@ def _extract_listino_payload(
             function_name=function_name,
             message=message,
         )
-        # utility_id: nullable (NULL = commercio, valorizzato = utility specifica)
-        raw_utility_id = payload.get("utility_id")
-        if raw_utility_id is not None:
-            data["utility_id"] = int(raw_utility_id)
-        else:
-            data["utility_id"] = None
+        # utility_id: NOT NULL (ogni listino appartiene a una utility; Base id=5 per commercio).
+        data["utility_id"] = _require_positive_int(
+            payload,
+            "utility_id",
+            function_name=function_name,
+            message=message,
+        )
+        # tipologia_id: NOT NULL (ogni listino ha una tipologia esplicita).
+        data["tipologia_id"] = _require_positive_int(
+            payload,
+            "tipologia_id",
+            function_name=function_name,
+            message=message,
+        )
     else:
         descrizione = _extract_string(
             payload,
@@ -673,9 +778,25 @@ def _extract_listino_payload(
         if descrizione is not _MISSING:
             data["descrizione"] = descrizione
 
-        raw_utility_id = payload.get("utility_id", _MISSING)
-        if raw_utility_id is not _MISSING:
-            data["utility_id"] = int(raw_utility_id) if raw_utility_id is not None else None
+        # utility_id: ammesso in update ma NOT NULL (trigger DB valida matrice).
+        utility_id_val = _extract_required_int_if_present(
+            payload,
+            "utility_id",
+            function_name=function_name,
+            message=message,
+        )
+        if utility_id_val is not _MISSING:
+            data["utility_id"] = utility_id_val
+
+        # tipologia_id: ammesso in update ma NOT NULL (trigger DB valida matrice).
+        tipologia_id_val = _extract_required_int_if_present(
+            payload,
+            "tipologia_id",
+            function_name=function_name,
+            message=message,
+        )
+        if tipologia_id_val is not _MISSING:
+            data["tipologia_id"] = tipologia_id_val
 
     attivo = _extract_present_bool(
         payload,
@@ -1099,6 +1220,7 @@ def _validate_versione_state_transition(
 def fn_list_listini(
     *,
     utility_id: int | None = None,
+    tipologia_id: int | None = None,
     attivo: bool | None = None,
     search: str | None = None,
     order_by: str = "codice",
@@ -1117,10 +1239,21 @@ def fn_list_listini(
             function_name=function_name,
             log_to_db=True,
         )
+    if tipologia_id is not None:
+        ErrorManager.require(
+            isinstance(tipologia_id, int) and tipologia_id > 0,
+            code="E_VENDITE_VALIDATION",
+            message="Filtro tipologia non valido.",
+            detail="tipologia_id deve essere un intero positivo.",
+            context={"tipologia_id": tipologia_id},
+            function_name=function_name,
+            log_to_db=True,
+        )
     order_by, order_dir = _validate_order(order_by, order_dir, function_name)
     repository = ListiniRepository()
     return repository.list_listini(
         utility_id=utility_id,
+        tipologia_id=tipologia_id,
         attivo=attivo,
         search=search,
         order_by=order_by,
@@ -1128,6 +1261,24 @@ def fn_list_listini(
         limit=limit,
         offset=offset,
     )
+
+
+# Scopo: Restituisce le tipologie listino ammesse per una utility dalla matrice
+#        config.listini_tipologie_utilities. Usato dal drawer per popolare il
+#        Select tipologia al cambio utility.
+def fn_list_tipologie_per_utility(utility_id: int) -> list[dict[str, object]]:
+    function_name = "vendite.listini_service.fn_list_tipologie_per_utility"
+    ErrorManager.require(
+        isinstance(utility_id, int) and utility_id > 0,
+        code="E_VENDITE_VALIDATION",
+        message="Parametro utility non valido.",
+        detail="utility_id deve essere un intero positivo.",
+        context={"utility_id": utility_id},
+        function_name=function_name,
+        log_to_db=True,
+    )
+    repository = ListiniRepository()
+    return repository.list_tipologie_per_utility(utility_id)
 
 
 # Scopo: Restituisce il dettaglio completo del listino con versioni e associazioni nidificate.

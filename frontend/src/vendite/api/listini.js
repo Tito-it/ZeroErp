@@ -72,6 +72,15 @@ export function alertScadenze(giorni = 15) {
   return api.get(`${BASE}/alert-scadenze/`, { params: { giorni } })
 }
 
+// Tipologie listino ammesse per la utility indicata (matrice
+// config.listini_tipologie_utilities). Restituisce solo righe attive.
+// Risposta: {"data": {"results": [{id, codice, descrizione, ...}]}}.
+export function listTipologiePerUtility(utilityId) {
+  return api.get(`${BASE}/tipologie-per-utility/`, {
+    params: { utility_id: utilityId }
+  })
+}
+
 // --- Righe prezzo ---
 
 export function listRighe(listinoId, verId, params = {}) {

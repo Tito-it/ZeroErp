@@ -49,12 +49,16 @@ Le API richiedono JWT (`Authorization: Bearer <token>`) e usano l'envelope stand
 | Parametro | Tipo | Obbligatorio | Descrizione |
 |---|---|---|---|
 | `search` | string | No | Ricerca su `codice` e `descrizione` |
-| `dominio` | string | No | `UTILITY` oppure `COMMERCIO` |
+| `utility_id` | int | No | Filtro per utility (FK `config.utilities`) |
+| `tipologia_id` | int | No | Filtro per tipologia listino (FK `config.listini_tipologie`) |
 | `attivo` | bool | No | Filtro attivo/disattivo; parsing rigoroso |
 | `page` | int | No | Numero pagina, default `1` |
 | `page_size` | int | No | Righe per pagina, default `25`, max `200` |
-| `order_by` | string | No | `codice`, `descrizione`, `dominio`, `data_insert`, `data_update` |
+| `order_by` | string | No | `codice`, `descrizione`, `utility_descrizione`, `tipologia_descrizione`, `data_insert`, `data_update` |
 | `order_dir` | string | No | `asc` oppure `desc` |
+
+I query param `utility_id` e `tipologia_id` sono normalizzati via `qp_str`:
+stringa vuota equivale a parametro assente (nessun filtro).
 
 #### Risposta (200)
 
@@ -68,9 +72,14 @@ Le API richiedono JWT (`Authorization: Bearer <token>`) e usano l'envelope stand
     "results": [
       {
         "id": 10,
-        "codice": "LIST-UTILITY",
-        "descrizione": "Listino Utility Base",
-        "dominio": "UTILITY",
+        "codice": "LIST-GAS-2026",
+        "descrizione": "Tariffe consumo gas 2026",
+        "utility_id": 1,
+        "utility_codice": "GAS",
+        "utility_descrizione": "Gas",
+        "tipologia_id": 1,
+        "tipologia_codice": "CONSUMO",
+        "tipologia_descrizione": "Consumi",
         "attivo": true,
         "versioni_count": 2,
         "associazioni_count": 1
@@ -91,9 +100,10 @@ Le API richiedono JWT (`Authorization: Bearer <token>`) e usano l'envelope stand
 
 | Campo | Tipo | Obbligatorio | Descrizione |
 |---|---|---|---|
-| `codice` | string | Si | Codice univoco listino |
+| `codice` | string | Si | Codice univoco listino (immutabile dopo create) |
 | `descrizione` | string | Si | Descrizione listino |
-| `dominio` | string | Si | `UTILITY` oppure `COMMERCIO` |
+| `utility_id` | int | Si | FK `config.utilities` — intero positivo (per il commercio usare la utility `Base`, id=5 nel seed standard) |
+| `tipologia_id` | int | Si | FK `config.listini_tipologie` — intero positivo; la coppia `(utility_id, tipologia_id)` deve esistere attiva in `config.listini_tipologie_utilities` (guard DB) |
 | `meta` | object | No | Metadati liberi |
 | `attivo` | bool | No | Default DB `true` |
 
@@ -104,8 +114,10 @@ Restituisce il dettaglio completo del listino creato, con array `versioni` e `as
 #### Errori tipici
 
 - `400` `E_VENDITE_VALIDATION`:
-  - dominio non valido
-  - codice duplicato
+  - `utility_id` o `tipologia_id` mancanti, nulli, non numerici, non positivi
+  - `utility_id` / `tipologia_id` non esistenti (FK violation)
+  - Combinazione `(utility_id, tipologia_id)` non ammessa dalla matrice `config.listini_tipologie_utilities`
+  - codice duplicato (`uq_listini_codice`)
   - payload JSON non coerente
 
 ---
@@ -125,9 +137,14 @@ Restituisce il dettaglio completo del listino creato, con array `versioni` e `as
 {
   "data": {
     "id": 10,
-    "codice": "LIST-UTILITY",
-    "descrizione": "Listino Utility Base",
-    "dominio": "UTILITY",
+    "codice": "LIST-GAS-2026",
+    "descrizione": "Tariffe consumo gas 2026",
+    "utility_id": 1,
+    "utility_codice": "GAS",
+    "utility_descrizione": "Gas",
+    "tipologia_id": 1,
+    "tipologia_codice": "CONSUMO",
+    "tipologia_descrizione": "Consumi",
     "attivo": true,
     "versioni_count": 2,
     "associazioni_count": 1,
@@ -146,22 +163,30 @@ Restituisce il dettaglio completo del listino creato, con array `versioni` e `as
 
 #### Body JSON
 
-Campi ammessi:
-- `descrizione`
-- `dominio`
-- `meta`
-- `attivo`
+Campi ammessi (tutti opzionali; almeno uno deve essere presente):
+
+| Campo | Tipo | Nullable | Descrizione |
+| --- | --- | --- | --- |
+| `descrizione` | string | No | Nuova descrizione |
+| `utility_id` | int | No | Nuova utility (se inviato, NOT NULL; guard matrice DB) |
+| `tipologia_id` | int | No | Nuova tipologia (se inviato, NOT NULL; guard matrice DB) |
+| `meta` | object | Si | Metadati liberi |
+| `attivo` | bool | No | Attivazione / disattivazione |
 
 #### Regole specifiche
 
-- `codice` e` immutabile a livello API.
+- `codice` è immutabile a livello API (trigger DB `trg_listini_a10_protect_codice_upd` lo conferma).
+- `utility_id` e `tipologia_id` non possono essere inviati a `null`: se presenti nel payload devono essere interi positivi. Il cambio coppia è validato dal trigger DB `trg_listini_a10_guard_tipologia_utility_ins_upd` contro la matrice `config.listini_tipologie_utilities`.
 - La `PATCH` usa il pattern standard `handle_post_json(...)`.
-- Se nessun campo supportato e` presente nel payload, restituisce `400`.
+- Se nessun campo supportato è presente nel payload, restituisce `400` `E_VENDITE_VALIDATION`.
 
 #### Errori tipici
 
 - `404` `E_VENDITE_LISTINO_NOT_FOUND`
-- `400` `E_VENDITE_VALIDATION`
+- `400` `E_VENDITE_VALIDATION`:
+  - `tipologia_id` inviato come `null`
+  - Combinazione `(utility_id, tipologia_id)` non ammessa dalla matrice
+  - Payload vuoto
 
 ### 1.5 Elimina listino mai usato
 
@@ -184,6 +209,85 @@ Errori tipici:
 
 - `400` `E_VENDITE_VALIDATION` se il listino ha versioni o associazioni
 - `404` `E_VENDITE_LISTINO_NOT_FOUND`
+
+---
+
+## 2bis. Tipologie ammesse per utility
+
+Endpoint di supporto per il frontend: dato un `utility_id`, restituisce le
+tipologie di listino ammesse dalla matrice
+`config.listini_tipologie_utilities` (solo righe attive). Usato dal
+`ListinoDrawer` per popolare il Select tipologia al cambio utility.
+
+### 2bis.1 Lista tipologie per utility
+
+| | |
+| --- | --- |
+| **Metodo** | `GET` |
+| **URL** | `/api/v1/vendite/listini/tipologie-per-utility/` |
+
+#### Query param
+
+| Parametro | Tipo | Obbligatorio | Descrizione |
+| --- | --- | --- | --- |
+| `utility_id` | int | Si | FK `config.utilities`, intero positivo |
+
+Se `utility_id` manca o è stringa vuota, la risposta è `400`
+`E_VENDITE_VALIDATION` con detail che riporta esplicitamente
+"utility_id è obbligatorio".
+
+#### Risposta (200)
+
+Envelope standard con chiave `results` (pattern lookup dedicati):
+
+```json
+{
+  "data": {
+    "results": [
+      {
+        "id": 1,
+        "codice": "CONSUMO",
+        "descrizione": "Consumi",
+        "e_consumo": true,
+        "e_quota_fissa": false,
+        "e_imposta": false,
+        "e_onere": false,
+        "e_prodotto": false,
+        "e_servizio": false,
+        "ordinamento": 10
+      },
+      {
+        "id": 2,
+        "codice": "QUOTA_FISSA",
+        "descrizione": "Quote fisse",
+        "e_consumo": false,
+        "e_quota_fissa": true,
+        "e_imposta": false,
+        "e_onere": false,
+        "e_prodotto": false,
+        "e_servizio": false,
+        "ordinamento": 20
+      }
+    ]
+  }
+}
+```
+
+L'ordinamento segue `ordinamento ASC, descrizione ASC`. Sono restituite
+solo le tipologie attive (`listini_tipologie.attivo = true`) e solo le
+righe della matrice attive (`listini_tipologie_utilities.attivo = true`).
+
+#### Errori tipici
+
+- `400` `E_VENDITE_VALIDATION`: `utility_id` mancante, vuoto o non positivo.
+
+#### Note
+
+- L'utility deve esistere per ottenere righe. Per `utility_id` inesistente
+  la risposta è `200` con `results: []` (no 404) — accettabile per un
+  endpoint lookup.
+- Non applica scope per emittente: `config.listini_tipologie` è tabella
+  globale.
 
 ---
 
@@ -765,10 +869,15 @@ Caso d'uso: errore di battitura su riga non ancora usata da nessuna commessa.
   - `catalogo.articoli`
   - `catalogo.articoli_uom_operativa`
   - `config.utilities`
+  - `config.listini_tipologie`
+  - `config.listini_tipologie_utilities` (matrice ammissibilita` utility x tipologia)
   - `anagrafiche.billing_account`
   - `anagrafiche.vw_soggetti_ruoli_dettaglio`
 - Funzioni SQL:
   - `vendite.fn_resolve_prezzo_listino(...)`
+- Trigger DB di guard rilevanti per le API:
+  - `trg_listini_a10_guard_tipologia_utility_ins_upd` → `vendite.trgfn_listini_guard_tipologia_utility()`
+    valida la coppia `(utility_id, tipologia_id)` contro `config.listini_tipologie_utilities`
 
 ## Note di migrazione
 
@@ -778,3 +887,10 @@ Caso d'uso: errore di battitura su riga non ancora usata da nessuna commessa.
   `listini_associazioni` (migration `20260409-04/-05`). Nessun endpoint lo accetta piu`.
 - **Sprint B-v3 (2026-04-12)**: aggiunti endpoint alert scadenze (N2), variazione % massa (N8a),
   rettifica controllata (N6). La rettifica N6 attende trigger DB defense-in-depth (`dev/db-tid`).
+- **Sprint v4 (2026-04-13/14)**: rimosso il campo legacy `dominio` (enum UTILITY/COMMERCIO).
+  Ogni listino ha ora due colonne NOT NULL: `utility_id` (FK `config.utilities`; id=5
+  utility Base per il commercio) e `tipologia_id` (FK `config.listini_tipologie`).
+  Gli endpoint create/update richiedono entrambi i campi; la matrice di ammissibilita` e`
+  verificata da trigger DB. Nuovo endpoint di supporto per il drawer frontend:
+  GET /api/v1/vendite/listini/tipologie-per-utility/. Nuovo filtro `tipologia_id` sulla lista
+  listini e nuovi campi di ordinamento `utility_descrizione` e `tipologia_descrizione`.

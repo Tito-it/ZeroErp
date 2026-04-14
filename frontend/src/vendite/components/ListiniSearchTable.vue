@@ -10,6 +10,8 @@ import { useListiniStore } from '../stores/listini'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useSearchTable } from '../../core/composables/useSearchTable'
 import { useTabFreshness } from '../../core/composables/useTabFreshness'
+import { useLookup } from '../../core/composables/useLookup'
+import { lookupCodici } from '../../core/apiCore'
 import { MANAGE_ICONS } from '../../core/constants'
 import { statoVersioneListinoSeverity } from '../../core/utils/severity'
 import { displayDate } from '../../core/utils/date'
@@ -46,6 +48,14 @@ const { searchText, onPage, onSort, applyFilters, reload, paginatorProps } = use
 })
 
 const utilityFilter = ref(null)
+const tipologiaFilter = ref(null)
+
+// Lookup tipologie listino per il filtro (non filtrato per utility: lista
+// completa delle tipologie attive). Cache on-demand via useLookup.
+const tipologiaLookup = useLookup(
+  () => lookupCodici('config.listini_tipologie'),
+  { immediate: true }
+)
 
 const attivoFilter = ref(true)
 const attivoOptions = [
@@ -61,6 +71,11 @@ const expandedRows = ref({})
 
 function onUtilityChange() {
   store.filters.utility_id = utilityFilter.value
+  applyFilters()
+}
+
+function onTipologiaChange() {
+  store.filters.tipologia_id = tipologiaFilter.value
   applyFilters()
 }
 
@@ -187,6 +202,11 @@ onMounted(() => store.fetchList())
         <UtilityPerRuoloSelect v-model="utilityFilter"
           :placeholder="t('listini.filtro_utility')" :show-clear="true"
           @change="onUtilityChange" style="width: 200px;" />
+        <Select v-model="tipologiaFilter" :options="tipologiaLookup.items.value"
+          option-label="descrizione" option-value="id"
+          :placeholder="t('listini.filtro_tipologia')" :show-clear="true"
+          :loading="tipologiaLookup.loading.value"
+          @change="onTipologiaChange" class="app-filter-select" />
         <Select v-model="attivoFilter" :options="attivoOptions" option-label="label" option-value="value"
           :placeholder="t('listini.col_attivo')" @change="onAttivoChange" style="width: 120px;" />
       </div>
@@ -214,6 +234,11 @@ onMounted(() => store.fetchList())
       <Column field="utility_descrizione" :header="t('listini.col_utility')" sortable style="width: 150px;">
         <template #body="{ data }">
           <span>{{ data.utility_descrizione || t('listini.commercio') }}</span>
+        </template>
+      </Column>
+      <Column field="tipologia_descrizione" :header="t('listini.col_tipologia')" sortable style="width: 150px;">
+        <template #body="{ data }">
+          <span>{{ data.tipologia_descrizione || '—' }}</span>
         </template>
       </Column>
       <Column field="versioni_count" :header="t('listini.col_versioni')" style="width: 80px;" />
