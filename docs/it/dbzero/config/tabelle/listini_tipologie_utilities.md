@@ -30,5 +30,15 @@
 | pk_listini_tipologie_utilities | `CREATE UNIQUE INDEX pk_listini_tipologie_utilities ON config.listini_tipologie_utilities USING btree (id)` |
 | uq_listini_tipologie_utilities | `CREATE UNIQUE INDEX uq_listini_tipologie_utilities ON config.listini_tipologie_utilities USING btree (utility_id, tipologia_id)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_listini_tipologie_utilities_a10_listini_tipologie_re_3c42df | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'listini_tipologie', 'attivo', 'tipologia_id', 'id')` |
+| trg_listini_tipologie_utilities_a10_listini_tipologie_re_3c42df | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'listini_tipologie', 'attivo', 'tipologia_id', 'id')` |
+| trg_listini_tipologie_utilities_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_listini_tipologie_utilities_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_listini_tipologie_utilities_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_listini_tipologie_utilities_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+
 ---
 {% include-markdown "signature-core.md" %}

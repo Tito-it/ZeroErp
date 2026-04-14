@@ -43,6 +43,8 @@
 - [istanze_dati_precontrattuali](tabelle/istanze_dati_precontrattuali.md)
 - [iva](tabelle/iva.md)
 - [iva_assoggettamenti](tabelle/iva_assoggettamenti.md)
+- [listini_tipologie](tabelle/listini_tipologie.md)
+- [listini_tipologie_utilities](tabelle/listini_tipologie_utilities.md)
 - [magazzini](tabelle/magazzini.md)
 - [movimenti](tabelle/movimenti.md)
 - [note_stili](tabelle/note_stili.md)
