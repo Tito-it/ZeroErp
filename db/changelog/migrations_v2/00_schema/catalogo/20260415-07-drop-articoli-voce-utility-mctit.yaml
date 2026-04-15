@@ -1,0 +1,39 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+# Drop catalogo.articoli.voce_utility.
+#
+# Sostituito nel pricing v5 da:
+#   - articoli.listino_tipologia_id (FK a config.listini_tipologie)
+#
+# La tipologia 'PRODOTTI' rappresenta gli ex articoli commerciali
+# (voce_utility=FALSE), le 4 tipologie tecniche
+# (CONSUMO/QUOTA_FISSA/IMPOSTA/ONERE_SISTEMA) gli ex utility.
+#
+# Backend, frontend e vw_articoli_dettaglio (ricreata in 20260415-06)
+# non leggono piu' voce_utility. Il backfill gemello in
+# 80_data/20260415-01 e' stato ripulito dal filtro.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: /migrations_v2/00_schema/catalogo/20260415-07-drop-articoli-voce-utility-mctit.yaml
+
+  - changeSet:
+      id: 20260415-07-drop-articoli-voce-utility
+      author: mctit
+      comment: Drop catalogo.articoli.voce_utility (cleanup pricing v5).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE catalogo.articoli
+                  DROP COLUMN IF EXISTS voce_utility;
+
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              ALTER TABLE catalogo.articoli
+                  ADD COLUMN voce_utility boolean NOT NULL DEFAULT false;

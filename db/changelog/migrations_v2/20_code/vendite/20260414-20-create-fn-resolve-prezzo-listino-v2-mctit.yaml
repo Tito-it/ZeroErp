@@ -17,8 +17,7 @@
 #   PERCENTUALE:  base * (1 + valore/100)     (negativo = sconto)
 #   VALORE_FISSO: base + valore               (negativo = sconto)
 #   PREZZO_FISSO: valore                      (prezzo assoluto)
-# La promo ha CHECK > 0 lato DB: la convenzione business va confermata
-# prima di aprire la UI operatore.
+# Convenzione segno: gestita lato UI/business, nessun CHECK DB.
 #
 # Pricing v5 - riferimento docs/it/dev/work-in-progress/sviluppo-listini-v5.md
 # sezione 9.

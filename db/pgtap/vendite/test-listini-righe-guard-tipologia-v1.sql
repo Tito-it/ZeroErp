@@ -5,17 +5,22 @@
 -- Test F1-DB-T4: guard coerenza articolo/listino tipologia su
 -- vendite.listini_righe (pricing v5).
 --
--- Elenco test (1..4):
---   1) Backfill: articoli con voce_utility=FALSE mappati a PRODOTTI
---   2) Articolo senza listino_tipologia_id in listino tipizzato ->
+-- Elenco test (1..3):
+--   1) Articolo senza listino_tipologia_id in listino tipizzato ->
 --      E_ARTICOLO_TIPOLOGIA_MANCANTE
---   3) Articolo con tipologia diversa da quella del listino ->
+--   2) Articolo con tipologia diversa da quella del listino ->
 --      E_ARTICOLO_TIPOLOGIA_INCOMPATIBILE
---   4) Articolo con tipologia coerente: insert ammesso
+--   3) Articolo con tipologia coerente: insert ammesso
+--
+-- Nota: non esiste un test d'invariante "tutti gli articoli hanno
+-- listino_tipologia_id valorizzato". Il backfill assegna PRODOTTI di
+-- default ma gli articoli inseriti manualmente senza tipologia sono
+-- ammissibili a livello DB (la colonna e' nullable); e' il guard su
+-- listini_righe a bloccare l'insert in un listino tipizzato.
 -- ------------------------------------------------------------
 
 BEGIN;
-SELECT plan(4);
+SELECT plan(3);
 
 -- Precondizioni: serve un listino tipizzato con versione attiva + 2 articoli
 -- (uno con tipologia allineata, uno senza/diversa). Usiamo i seed esistenti
@@ -26,15 +31,6 @@ SELECT id AS tipologia_id FROM config.listini_tipologie WHERE codice = 'PRODOTTI
 
 CREATE TEMP TABLE tmp_tipologia_servizi AS
 SELECT id AS tipologia_id FROM config.listini_tipologie WHERE codice = 'SERVIZI';
-
--- 1) Backfill verificato: percentuale articoli non-utility con listino_tipologia_id
--- deve essere uguale al totale (tutti backfillati a PRODOTTI).
-SELECT is(
-    (SELECT COUNT(*)::int FROM catalogo.articoli
-      WHERE voce_utility = FALSE AND listino_tipologia_id IS NULL),
-    0,
-    'Backfill: tutti gli articoli non-utility hanno listino_tipologia_id valorizzato'
-);
 
 -- Seleziona un listino di tipologia PRODOTTI con versione attiva (qualsiasi).
 -- Se non esiste, i test 2/3/4 finiscono in skip_unless equivalente via NOT FOUND.
@@ -59,16 +55,16 @@ SELECT id AS articolo_id, uom_id
 
 -- Articolo "di comodo" per i test negativi: creiamo un articolo senza tipologia
 -- e uno con tipologia diversa dentro la transazione, cosi' il ROLLBACK pulisce.
-INSERT INTO catalogo.articoli(codice, descrizione, uom_id, listino_tipologia_id, voce_utility, attivo)
+INSERT INTO catalogo.articoli(codice, descrizione, uom_id, listino_tipologia_id, attivo)
 SELECT 'PGTAP_ART_NO_TIP', 'Articolo senza tipologia pgtap',
-       (SELECT uom_id FROM tmp_art_prod), NULL, FALSE, TRUE;
+       (SELECT uom_id FROM tmp_art_prod), NULL, TRUE;
 
-INSERT INTO catalogo.articoli(codice, descrizione, uom_id, listino_tipologia_id, voce_utility, attivo)
+INSERT INTO catalogo.articoli(codice, descrizione, uom_id, listino_tipologia_id, attivo)
 SELECT 'PGTAP_ART_SERV', 'Articolo SERVIZI pgtap',
        (SELECT uom_id FROM tmp_art_prod),
-       (SELECT tipologia_id FROM tmp_tipologia_servizi), FALSE, TRUE;
+       (SELECT tipologia_id FROM tmp_tipologia_servizi), TRUE;
 
--- 2) articolo senza listino_tipologia_id -> E_ARTICOLO_TIPOLOGIA_MANCANTE
+-- 1) articolo senza listino_tipologia_id -> E_ARTICOLO_TIPOLOGIA_MANCANTE
 -- fn_log_and_raise_error solleva con SQLSTATE P0001.
 SELECT throws_ok(
     $$INSERT INTO vendite.listini_righe(listino_versione_id, articolo_id, uom_id, prezzo)
@@ -82,7 +78,7 @@ SELECT throws_ok(
     'Articolo senza listino_tipologia_id -> guard lo blocca (E_ARTICOLO_TIPOLOGIA_MANCANTE)'
 );
 
--- 3) articolo con tipologia diversa (SERVIZI) vs listino PRODOTTI ->
+-- 2) articolo con tipologia diversa (SERVIZI) vs listino PRODOTTI ->
 -- E_ARTICOLO_TIPOLOGIA_INCOMPATIBILE
 SELECT throws_ok(
     $$INSERT INTO vendite.listini_righe(listino_versione_id, articolo_id, uom_id, prezzo)
@@ -96,7 +92,7 @@ SELECT throws_ok(
     'Tipologia articolo diversa dal listino -> guard lo blocca (E_ARTICOLO_TIPOLOGIA_INCOMPATIBILE)'
 );
 
--- 4) articolo con tipologia coerente: insert ammesso
+-- 3) articolo con tipologia coerente: insert ammesso
 SELECT lives_ok(
     $$INSERT INTO vendite.listini_righe(listino_versione_id, articolo_id, uom_id, prezzo)
       SELECT lv.listino_versione_id, ap.articolo_id, ap.uom_id, 200

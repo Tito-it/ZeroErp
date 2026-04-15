@@ -6,8 +6,13 @@
 # modo sicuro.
 #
 # Regola conservativa (no produzione, fix manuale per i casi dubbi):
-#   - voce_utility = FALSE  ->  PRODOTTI (commercio/servizi generici).
-#   - voce_utility = TRUE   ->  lasciato NULL (mapping manuale).
+#   - tutti gli articoli senza listino_tipologia_id -> PRODOTTI come
+#     default. Le voci utility (CONSUMO/QUOTA_FISSA/IMPOSTA/ONERE) vanno
+#     mappate manualmente; il guard trgfn_listini_righe_guard_tipologia
+#     impedisce comunque insert in listini di tipologia incompatibile.
+#
+# Storico: prima del cleanup pricing v5 il backfill filtrava anche
+# voce_utility = FALSE; la colonna e' stata droppata in 20260415-07.
 #
 # Comportamento CI-safe: se config.listini_tipologie e' vuota (il seed
 # 80_data non e' ancora stato applicato), il backfill viene saltato con
@@ -67,8 +72,7 @@ databaseChangeLog:
 
                   UPDATE catalogo.articoli
                      SET listino_tipologia_id = v_tipologia_prodotti_id
-                   WHERE listino_tipologia_id IS NULL
-                     AND voce_utility = FALSE;
+                   WHERE listino_tipologia_id IS NULL;
 
                   GET DIAGNOSTICS v_updated = ROW_COUNT;
                   RAISE NOTICE 'Backfill articoli.listino_tipologia_id: % articoli non-utility -> PRODOTTI.', v_updated;

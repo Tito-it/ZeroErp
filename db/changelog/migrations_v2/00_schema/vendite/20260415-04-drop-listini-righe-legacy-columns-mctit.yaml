@@ -1,0 +1,54 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+# Drop colonne legacy su vendite.listini_righe e creazione del nuovo
+# UNIQUE INDEX parziale uq_listini_righe_key_attiva.
+#
+# Le 3 colonne (billing_account_id, utility_id, emittente_soggetto_ruolo_id)
+# erano dimensioni di scope del vecchio resolver a 7 livelli. Nel modello
+# pricing v5 il listino e' "puro" (versione + articolo + uom + prezzo) e le
+# variazioni vivono in matrice categoria o nei contratti.
+#
+# La unique parziale (WHERE attivo IS TRUE) garantisce una sola riga
+# attiva per (versione, articolo, uom) consentendo soft-delete.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: /migrations_v2/00_schema/vendite/20260415-04-drop-listini-righe-legacy-columns-mctit.yaml
+
+  - changeSet:
+      id: 20260415-04-drop-listini-righe-legacy-columns
+      author: mctit
+      comment: >
+        Drop billing_account_id/utility_id/emittente_soggetto_ruolo_id su
+        listini_righe + creazione UNIQUE INDEX parziale.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Drop FK + colonne in un colpo (CASCADE per pulire eventuali index/FK).
+              ALTER TABLE vendite.listini_righe
+                  DROP COLUMN IF EXISTS billing_account_id          CASCADE,
+                  DROP COLUMN IF EXISTS utility_id                  CASCADE,
+                  DROP COLUMN IF EXISTS emittente_soggetto_ruolo_id CASCADE;
+
+              -- UNIQUE parziale: una sola riga attiva per (versione, articolo, uom).
+              -- PG non ammette UNIQUE parziale come table constraint, quindi
+              -- usiamo CREATE UNIQUE INDEX.
+              CREATE UNIQUE INDEX IF NOT EXISTS uq_listini_righe_key_attiva
+                  ON vendite.listini_righe (listino_versione_id, articolo_id, uom_id)
+                  WHERE attivo IS TRUE;
+
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              DROP INDEX IF EXISTS vendite.uq_listini_righe_key_attiva;
+              -- Le colonne droppate non vengono ricreate: erano riempite
+              -- dal modello pre-v5 e i dati sono andati persi.
+              ALTER TABLE vendite.listini_righe
+                  ADD COLUMN IF NOT EXISTS billing_account_id          bigint,
+                  ADD COLUMN IF NOT EXISTS utility_id                  integer,
+                  ADD COLUMN IF NOT EXISTS emittente_soggetto_ruolo_id bigint;

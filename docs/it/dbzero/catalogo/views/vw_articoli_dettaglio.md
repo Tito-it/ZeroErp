@@ -17,7 +17,7 @@ SELECT a.id,
     a.is_composito,
     a.is_solo_componente,
     a.requires_serial,
-    a.voce_utility,
+    a.listino_tipologia_id,
     a.meta,
     a.user_insert,
     a.user_update,
@@ -43,13 +43,16 @@ SELECT a.id,
     i.id AS iva_ref_id,
     i.codice AS iva_codice,
     i.descrizione AS iva_descrizione,
-    i.aliquota_iva AS iva_aliquota_iva
-   FROM (((((catalogo.articoli a
+    i.aliquota_iva AS iva_aliquota_iva,
+    lt.codice AS tipologia_listino_codice,
+    lt.descrizione AS tipologia_listino_descrizione
+   FROM ((((((catalogo.articoli a
      LEFT JOIN catalogo.unita_misura u ON ((u.id = a.uom_id)))
      LEFT JOIN vendite.articoli_tipologie t ON ((t.id = a.tipo_voce_id)))
      LEFT JOIN vendite.articoli_gruppi g ON ((g.id = a.gruppo_voce_id)))
      LEFT JOIN vendite.articoli_spesa s ON ((s.id = a.spesa_id)))
-     LEFT JOIN config.iva i ON ((i.id = a.iva_id)));
+     LEFT JOIN config.iva i ON ((i.id = a.iva_id)))
+     LEFT JOIN config.listini_tipologie lt ON ((lt.id = a.listino_tipologia_id)));
 ```
 
 

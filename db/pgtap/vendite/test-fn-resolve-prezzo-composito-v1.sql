@@ -42,19 +42,17 @@ SELECT
 
 -- Articoli di test (ROLLBACK pulisce).
 INSERT INTO catalogo.articoli(codice, descrizione, uom_id, listino_tipologia_id,
-                              is_composito, voce_utility, attivo)
+                              is_composito, attivo)
 SELECT 'PGTAP_BOM_PADRE', 'Composito padre pgtap', t.uom_id, t.tipologia_prodotti,
-       TRUE, FALSE, TRUE
+       TRUE, TRUE
   FROM tmp_ctx t;
 
-INSERT INTO catalogo.articoli(codice, descrizione, uom_id, listino_tipologia_id,
-                              voce_utility, attivo)
-SELECT 'PGTAP_BOM_A', 'Componente A pgtap', t.uom_id, t.tipologia_prodotti, FALSE, TRUE
+INSERT INTO catalogo.articoli(codice, descrizione, uom_id, listino_tipologia_id, attivo)
+SELECT 'PGTAP_BOM_A', 'Componente A pgtap', t.uom_id, t.tipologia_prodotti, TRUE
   FROM tmp_ctx t;
 
-INSERT INTO catalogo.articoli(codice, descrizione, uom_id, listino_tipologia_id,
-                              voce_utility, attivo)
-SELECT 'PGTAP_BOM_B', 'Componente B pgtap', t.uom_id, t.tipologia_prodotti, FALSE, TRUE
+INSERT INTO catalogo.articoli(codice, descrizione, uom_id, listino_tipologia_id, attivo)
+SELECT 'PGTAP_BOM_B', 'Componente B pgtap', t.uom_id, t.tipologia_prodotti, TRUE
   FROM tmp_ctx t;
 
 -- BoM: padre = A + B (entrambi obbligatori, esposto default FALSE).
