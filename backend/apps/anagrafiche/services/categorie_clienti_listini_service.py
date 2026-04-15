@@ -295,14 +295,14 @@ class CategorieClientiListiniService:
                 payload, "emittente_soggetto_ruolo_id"
             ),
             "listino_id": self._v.require_positive_int(payload, "listino_id"),
-            "valido_dal": self._extract_date(payload, "valido_dal", nullable=False),
+            "valido_dal": self._v.require_date(payload, "valido_dal", message=_MESSAGE),
         }
         classe_utenza = self._v.optional_positive_int(payload, "classe_utenza_id")
         # classe_utenza_id sempre inviata al repo: None = fallback generico
         # (coerente con semantica "match valido per ogni classe").
         data["classe_utenza_id"] = classe_utenza
 
-        valido_al = self._extract_date(payload, "valido_al", nullable=True)
+        valido_al = self._v.optional_date(payload, "valido_al", message=_MESSAGE)
         if "valido_al" in payload:
             data["valido_al"] = valido_al
         # Coerenza range: se entrambe presenti, valido_al >= valido_dal.
@@ -337,12 +337,12 @@ class CategorieClientiListiniService:
         if "listino_id" in payload:
             data["listino_id"] = self._v.require_positive_int(payload, "listino_id")
         if "valido_dal" in payload:
-            data["valido_dal"] = self._extract_date(
-                payload, "valido_dal", nullable=False
+            data["valido_dal"] = self._v.require_date(
+                payload, "valido_dal", message=_MESSAGE
             )
         if "valido_al" in payload:
-            data["valido_al"] = self._extract_date(
-                payload, "valido_al", nullable=True
+            data["valido_al"] = self._v.optional_date(
+                payload, "valido_al", message=_MESSAGE
             )
         # Coerenza date post-merge (best-effort: se la PATCH ne tocca solo
         # una, l'altra resta a DB e il check lo fa il DB).
@@ -378,57 +378,6 @@ class CategorieClientiListiniService:
     # =================================================================
     # Helpers privati — type coercion dominio-specifici
     # =================================================================
-
-    # Scopo: Estrae una data ISO obbligatoria o opzionale. Accetta
-    #        datetime.date (gia' normalizzata) o stringa "YYYY-MM-DD".
-    def _extract_date(
-        self,
-        payload: dict[str, Any],
-        key: str,
-        *,
-        nullable: bool,
-    ) -> date | None:
-        if key not in payload:
-            if nullable:
-                return None
-            ErrorManager.raise_error(
-                code=E_ANAG_VALIDAZIONE,
-                message=_MESSAGE,
-                detail=f"Campo '{key}' obbligatorio.",
-                context={"field": key},
-            )
-            raise AssertionError("unreachable")  # pragma: no cover
-        raw = payload[key]
-        if raw is None:
-            ErrorManager.require(
-                nullable,
-                code=E_ANAG_VALIDAZIONE,
-                message=_MESSAGE,
-                detail=f"Campo '{key}' non puo' essere null.",
-                context={"field": key},
-            )
-            return None
-        if isinstance(raw, date):
-            return raw
-        if isinstance(raw, str):
-            try:
-                return date.fromisoformat(raw.strip())
-            except ValueError as exc:
-                ErrorManager.raise_error(
-                    code=E_ANAG_VALIDAZIONE,
-                    message=_MESSAGE,
-                    detail=f"Campo '{key}' deve essere una data ISO YYYY-MM-DD.",
-                    context={"field": key, "value": raw},
-                    cause=exc,
-                )
-                raise AssertionError("unreachable") from exc  # pragma: no cover
-        ErrorManager.raise_error(
-            code=E_ANAG_VALIDAZIONE,
-            message=_MESSAGE,
-            detail=f"Campo '{key}' deve essere una data o stringa ISO.",
-            context={"field": key, "type": type(raw).__name__},
-        )
-        raise AssertionError("unreachable")  # pragma: no cover
 
     # Scopo: Estrae e valida la coppia (tipo_variazione, valore_variazione)
     #        con coerenza semantica (entrambi NULL o entrambi valorizzati).

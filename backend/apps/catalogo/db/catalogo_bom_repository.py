@@ -24,6 +24,7 @@ COMPONENTE_WRITE_COLUMNS: dict[str, str] = {
     "valido_dal": "date",
     "valido_al": "date",
     "attivo": "bool",
+    "esposto_in_fattura": "bool",
     "meta": "jsonb",
 }
 
@@ -37,6 +38,7 @@ COMPONENTE_DETAIL_COLUMNS: tuple[str, ...] = (
     "ac.obbligatorio",
     "ac.valido_dal",
     "ac.valido_al",
+    "ac.esposto_in_fattura",
     "ac.meta",
     "ac.user_insert",
     "ac.user_update",

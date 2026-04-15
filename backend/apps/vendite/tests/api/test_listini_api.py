@@ -49,9 +49,7 @@ _LISTINO_DETAIL = {
     "utility_id": 1,
     "attivo": True,
     "versioni_count": 1,
-    "associazioni_count": 1,
     "versioni": [],
-    "associazioni": [],
 }
 
 _LIST_LISTINI_RESULTS = [
@@ -62,7 +60,6 @@ _LIST_LISTINI_RESULTS = [
         "utility_id": 1,
         "attivo": True,
         "versioni_count": 1,
-        "associazioni_count": 1,
     }
 ]
 _LIST_LISTINI_TOTAL = 1
@@ -82,18 +79,6 @@ _COLLECTION_RESPONSE = {
     "count": 1,
     "results": [{"id": 1}],
 }
-
-_RESOLVER_RESPONSE = {
-    "listino_id": 10,
-    "listino_codice": "LIST-UTILITY",
-    "listino_versione_id": 101,
-    "codice_versione": "2026-Q2",
-    "listino_riga_id": 1001,
-    "listino_associazione_id": 3001,
-    "prezzo": "12.5000000000",
-    "match_level": 6,
-}
-
 
 class VenditeListiniApiTests(JwtMockedApiTest):
     # Scopo: Prepara contesto comune del test.
@@ -289,68 +274,9 @@ class VenditeListiniApiTests(JwtMockedApiTest):
         self.assertEqual(response.status_code, 200)
         self.assertTrue(response.json()["data"]["deleted"])
 
-    # Scopo: Verifica lista associazioni.
-    @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
-    @patch("apps.vendite.api.views_listini.fn_list_associazioni")
-    def test_list_associazioni_ok(self, mocked_list, _mock_auth):
-        mocked_list.return_value = _COLLECTION_RESPONSE
-        response = self.client.get("/api/v1/vendite/listini/10/associazioni/")
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["data"]["count"], 1)
-
-    # Scopo: Verifica create associazione.
-    @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
-    @patch("apps.vendite.api.views_listini.fn_create_associazione")
-    def test_create_associazione_ok(self, mocked_create, _mock_auth):
-        mocked_create.return_value = {"id": 3001, "valido_dal": "2026-04-01"}
-        response = self.client.post(
-            "/api/v1/vendite/listini/10/associazioni/",
-            data=self._json({"utility_id": 5, "valido_dal": "2026-04-01"}),
-            content_type="application/json",
-        )
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["data"]["id"], 3001)
-
-    # Scopo: Verifica patch associazione (valido_al programmazione chiusura).
-    @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
-    @patch("apps.vendite.api.views_listini.fn_update_associazione")
-    def test_patch_associazione_ok(self, mocked_update, _mock_auth):
-        mocked_update.return_value = {"id": 3001, "valido_al": "2026-12-31"}
-        response = self.client.patch(
-            "/api/v1/vendite/listini/10/associazioni/3001/",
-            data=self._json({"valido_al": "2026-12-31"}),
-            content_type="application/json",
-        )
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["data"]["valido_al"], "2026-12-31")
-
-    # Scopo: Verifica delete associazione.
-    @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
-    @patch("apps.vendite.api.views_listini.fn_delete_associazione")
-    def test_delete_associazione_ok(self, mocked_delete, _mock_auth):
-        mocked_delete.return_value = {"deleted": True, "id": 3001}
-        response = self.client.delete("/api/v1/vendite/listini/10/associazioni/3001/")
-        self.assertEqual(response.status_code, 200)
-        self.assertTrue(response.json()["data"]["deleted"])
-
-    # Scopo: Verifica test resolver prezzo.
-    @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
-    @patch("apps.vendite.api.views_listini.fn_test_resolver_prezzo")
-    def test_test_resolver_ok(self, mocked_test, _mock_auth):
-        mocked_test.return_value = _RESOLVER_RESPONSE
-        response = self.client.post(
-            "/api/v1/vendite/listini/test-prezzo/",
-            data=self._json(
-                {
-                    "articolo_id": "019bbee2-5f6a-704f-bbd0-34ed84db252d",
-                    "uom_id": 1,
-                    "data_riferimento": date(2026, 4, 2).isoformat(),
-                }
-            ),
-            content_type="application/json",
-        )
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["data"]["listino_id"], 10)
+    # F2-BE-13: rimossi test associazioni e test-prezzo (endpoint eliminati).
+    # Associazioni: modello v5 non usa piu' `listini_associazioni`.
+    # Test resolver prezzo: ora via `PricingService.resolve_prezzo`.
 
     # Scopo: Verifica validazione rigorosa del filtro bool `attivo`.
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))

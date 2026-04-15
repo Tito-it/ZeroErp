@@ -2,7 +2,9 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2026 Tid (Michele Carlo Titini)
 # Doc: Python
-# Scopo: API view vendite/listini per CRUD listini, versioni, righe, associazioni e test resolver.
+# Scopo: API view vendite/listini per CRUD listini, versioni, righe.
+#        F2-BE-13: rimossi endpoint `associazioni` e `test-prezzo` (resolver
+#        vecchio sostituito da `fn_resolve_prezzo_listino_v2` in pricing_service).
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -23,23 +25,18 @@ from apps.vendite.services.listini_service import (
     fn_change_versione_state,
     fn_rettifica_controllata_riga,
     fn_clone_versione,
-    fn_create_associazione,
     fn_create_listino,
     fn_create_riga,
     fn_create_versione,
-    fn_delete_associazione,
     fn_delete_listino,
     fn_delete_riga,
     fn_delete_versione,
     fn_get_listino_dettaglio,
     fn_get_versione,
-    fn_list_associazioni,
     fn_list_listini,
     fn_list_righe,
     fn_list_tipologie_per_utility,
     fn_list_versioni,
-    fn_test_resolver_prezzo,
-    fn_update_associazione,
     fn_update_listino,
     fn_update_riga,
     fn_update_versione,
@@ -115,19 +112,6 @@ def _riga_write_fields(*, include_identity: bool) -> dict[str, serializers.Field
     return fields
 
 
-# Scopo: Definisce i campi write associazione listino per schema API.
-def _associazione_write_fields() -> dict[str, serializers.Field]:
-    return {
-        "billing_account_id": serializers.IntegerField(required=False, allow_null=True),
-        "utility_id": serializers.IntegerField(required=False, allow_null=True),
-        "emittente_soggetto_ruolo_id": serializers.IntegerField(required=False, allow_null=True),
-        "valido_dal": serializers.DateField(required=False),
-        "valido_al": serializers.DateField(required=False, allow_null=True),
-        "meta": serializers.JSONField(required=False, allow_null=True),
-        "attivo": serializers.BooleanField(required=False),
-    }
-
-
 _LISTINO_CREATE_REQUEST = inline_serializer(
     name="VenditeListinoCreateRequest",
     fields=_listino_write_fields_create(),
@@ -167,10 +151,6 @@ _RIGA_PATCH_REQUEST = inline_serializer(
     name="VenditeListinoRigaPatchRequest",
     fields=_riga_write_fields(include_identity=False),
 )
-_ASSOCIAZIONE_CREATE_REQUEST = inline_serializer(
-    name="VenditeListinoAssociazioneCreateRequest",
-    fields=_associazione_write_fields(),
-)
 _RETTIFICA_CONTROLLATA_REQUEST = inline_serializer(
     name="VenditeListinoRettificaControllataRequest",
     fields={
@@ -186,10 +166,6 @@ _VARIAZIONE_PCT_REQUEST = inline_serializer(
         "filtro_articoli": serializers.ListField(child=serializers.UUIDField(), required=False, allow_null=True),
         "dry_run": serializers.BooleanField(required=False),
     },
-)
-_ASSOCIAZIONE_PATCH_REQUEST = inline_serializer(
-    name="VenditeListinoAssociazionePatchRequest",
-    fields=_associazione_write_fields(),
 )
 _RESOLVER_TEST_REQUEST = inline_serializer(
     name="VenditeListinoResolverTestRequest",
@@ -273,7 +249,7 @@ class ApiListinoDetail(DomainAPIView):
             )
         },
     )
-    # Scopo: Restituisce il dettaglio del listino con versioni e associazioni.
+    # Scopo: Restituisce il dettaglio del listino con versioni.
     def get(self, request: Request, listino_id: int) -> JsonResponse:
         del request
         return success_response(fn_get_listino_dettaglio(listino_id))
@@ -299,7 +275,7 @@ class ApiListinoDetail(DomainAPIView):
             )
         },
     )
-    # Scopo: Elimina un listino mai usato (zero versioni e zero associazioni).
+    # Scopo: Elimina un listino mai usato (zero versioni).
     def delete(self, request: Request, listino_id: int) -> JsonResponse:
         del request
         return success_response(fn_delete_listino(listino_id))
@@ -501,86 +477,6 @@ class ApiListinoVersioneRigaDetail(DomainAPIView):
     def delete(self, request: Request, listino_id: int, ver_id: int, riga_id: int) -> JsonResponse:
         del request
         return success_response(fn_delete_riga(listino_id, ver_id, riga_id))
-
-
-class ApiListinoAssociazioniList(DomainAPIView):
-    area_funzionale = "vendite"
-
-    @extend_schema(
-        responses={
-            200: inline_serializer(
-                name="VenditeListinoAssociazioniListResponse",
-                fields={"data": serializers.DictField(), "meta": serializers.DictField(required=False)},
-            )
-        },
-    )
-    # Scopo: Restituisce via GET la lista associazioni del listino.
-    def get(self, request: Request, listino_id: int) -> JsonResponse:
-        del request
-        return success_response(fn_list_associazioni(listino_id))
-
-    @extend_schema(
-        request=_ASSOCIAZIONE_CREATE_REQUEST,
-        responses={
-            200: inline_serializer(
-                name="VenditeListinoAssociazioneCreateResponse",
-                fields={"data": serializers.DictField(), "meta": serializers.DictField(required=False)},
-            )
-        },
-    )
-    # Scopo: Crea una nuova associazione del listino.
-    def post(self, request: Request, listino_id: int) -> JsonResponse:
-        return handle_post_json(
-            request,
-            handler=lambda payload: fn_create_associazione(listino_id, payload),
-        )
-
-
-class ApiListinoAssociazioneDetail(DomainAPIView):
-    area_funzionale = "vendite"
-
-    @extend_schema(
-        request=_ASSOCIAZIONE_PATCH_REQUEST,
-        responses={
-            200: inline_serializer(
-                name="VenditeListinoAssociazionePatchResponse",
-                fields={"data": serializers.DictField(), "meta": serializers.DictField(required=False)},
-            )
-        },
-    )
-    # Scopo: Aggiorna una associazione listino.
-    def patch(self, request: Request, listino_id: int, assoc_id: int) -> JsonResponse:
-        return success_response(fn_update_associazione(listino_id, assoc_id, request.data))
-
-    @extend_schema(
-        responses={
-            200: inline_serializer(
-                name="VenditeListinoAssociazioneDeleteResponse",
-                fields={"data": serializers.DictField(), "meta": serializers.DictField(required=False)},
-            )
-        },
-    )
-    # Scopo: Elimina una associazione listino.
-    def delete(self, request: Request, listino_id: int, assoc_id: int) -> JsonResponse:
-        del request
-        return success_response(fn_delete_associazione(listino_id, assoc_id))
-
-
-class ApiListinoTestPrezzo(DomainAPIView):
-    area_funzionale = "vendite"
-
-    @extend_schema(
-        request=_RESOLVER_TEST_REQUEST,
-        responses={
-            200: inline_serializer(
-                name="VenditeListinoResolverTestResponse",
-                fields={"data": serializers.DictField(), "meta": serializers.DictField(required=False)},
-            )
-        },
-    )
-    # Scopo: Esegue il test del resolver prezzo per uso UI/diagnostica.
-    def post(self, request: Request) -> JsonResponse:
-        return handle_post_json(request, handler=fn_test_resolver_prezzo)
 
 
 class ApiListinoVersioneRigaRettificaControllata(DomainAPIView):

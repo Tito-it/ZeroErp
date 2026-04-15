@@ -18,8 +18,6 @@ from django.db import IntegrityError, transaction
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.payload_helpers import PayloadValidator
 from apps.vendite.db.listini_repository import (
-    ASSOCIAZIONE_CREATE_COLUMNS,
-    ASSOCIAZIONE_UPDATE_COLUMNS,
     LISTINI_ORDER_COLUMNS,
     LISTINO_CREATE_COLUMNS,
     LISTINO_UPDATE_COLUMNS,
@@ -40,17 +38,12 @@ _VERSIONE_NULLABLE_FIELDS: frozenset[str] = frozenset({"valido_al", "meta"})
 _RIGA_NULLABLE_FIELDS: frozenset[str] = frozenset(
     {"billing_account_id", "utility_id", "emittente_soggetto_ruolo_id", "meta"}
 )
-_ASSOCIAZIONE_NULLABLE_FIELDS: frozenset[str] = frozenset(
-    {"billing_account_id", "utility_id", "emittente_soggetto_ruolo_id", "valido_al", "meta"}
-)
 _LISTINO_CREATE_ALLOWED_KEYS: frozenset[str] = frozenset(LISTINO_CREATE_COLUMNS.keys())
 _LISTINO_UPDATE_ALLOWED_KEYS: frozenset[str] = frozenset(LISTINO_UPDATE_COLUMNS.keys())
 _VERSIONE_CREATE_ALLOWED_KEYS: frozenset[str] = frozenset(VERSIONE_CREATE_COLUMNS.keys())
 _VERSIONE_UPDATE_ALLOWED_KEYS: frozenset[str] = frozenset(VERSIONE_UPDATE_COLUMNS.keys())
 _RIGA_CREATE_ALLOWED_KEYS: frozenset[str] = frozenset(RIGA_CREATE_COLUMNS.keys())
 _RIGA_UPDATE_ALLOWED_KEYS: frozenset[str] = frozenset(RIGA_UPDATE_COLUMNS.keys())
-_ASSOCIAZIONE_CREATE_ALLOWED_KEYS: frozenset[str] = frozenset(ASSOCIAZIONE_CREATE_COLUMNS.keys())
-_ASSOCIAZIONE_UPDATE_ALLOWED_KEYS: frozenset[str] = frozenset(ASSOCIAZIONE_UPDATE_COLUMNS.keys())
 
 # Validator modulo-level: log_to_db=True per telemetria pipeline vendite,
 # function_name override per-chiamata (riflette il metodo service specifico).
@@ -590,28 +583,6 @@ def _get_riga_or_raise(
     return result
 
 
-# Scopo: Restituisce l'associazione esistente nel perimetro listino o solleva not-found.
-def _get_associazione_or_raise(
-    listino_id: int,
-    associazione_id: int,
-    *,
-    function_name: str,
-) -> dict[str, Any]:
-    repository = ListiniRepository()
-    result = repository.get_associazione(listino_id, associazione_id)
-    ErrorManager.require(
-        result is not None,
-        code="E_VENDITE_LISTINO_ASSOCIAZIONE_NOT_FOUND",
-        message="Associazione listino non trovata.",
-        detail=f"Nessuna associazione id={associazione_id} per listino id={listino_id}.",
-        context={"listino_id": listino_id, "associazione_id": associazione_id},
-        function_name=function_name,
-        log_to_db=False,
-    )
-    assert result is not None
-    return result
-
-
 # Scopo: Traduce i vincoli DB piu' comuni del sottodominio listini in errori applicativi leggibili.
 def _translate_integrity_error(exc: IntegrityError, *, function_name: str, entity: str) -> None:
     error_text = str(exc)
@@ -644,14 +615,6 @@ def _translate_integrity_error(exc: IntegrityError, *, function_name: str, entit
             "(valido_al = nuova_valido_dal - 1) e poi attiva la nuova.",
         ),
         (
-            "ex_listini_associazioni_no_overlap",
-            "Associazione listino sovrapposta.",
-            "Esiste gia' un'associazione attiva sullo stesso scope "
-            "(BA/utility/emittente) con intervallo temporale sovrapposto. "
-            "Usa il pattern di sostituzione: chiudi la vecchia "
-            "(valido_al = nuova_valido_dal - 1) e poi inserisci la nuova.",
-        ),
-        (
             "chk_listini_versioni_date",
             "Intervallo versione non valido.",
             "valido_al deve essere maggiore di valido_dal.",
@@ -665,16 +628,6 @@ def _translate_integrity_error(exc: IntegrityError, *, function_name: str, entit
             "chk_listini_righe_prezzo",
             "Prezzo riga non valido.",
             "prezzo deve essere >= 0.",
-        ),
-        (
-            "uq_listini_associazioni_key_attiva",
-            "Associazione duplicata.",
-            "Esiste gia' una associazione attiva con lo stesso perimetro e valido_dal.",
-        ),
-        (
-            "chk_listini_associazioni_date",
-            "Intervallo associazione non valido.",
-            "valido_al deve essere maggiore di valido_dal.",
         ),
     )
     for constraint_name, message, detail in constraint_map:
@@ -985,84 +938,6 @@ def _extract_riga_payload(
     return data
 
 
-# Scopo: Normalizza payload create/update associazione e impone date coerenti.
-def _extract_associazione_payload(
-    payload: dict[str, Any],
-    *,
-    for_update: bool,
-    function_name: str,
-) -> dict[str, Any]:
-    message = "Payload associazione listino non valido."
-    allowed_keys = _ASSOCIAZIONE_UPDATE_ALLOWED_KEYS if for_update else _ASSOCIAZIONE_CREATE_ALLOWED_KEYS
-    _validate_payload_keys(
-        payload,
-        allowed_keys=allowed_keys,
-        function_name=function_name,
-        message=message,
-    )
-    data: dict[str, Any] = {}
-
-    for field_name in ("billing_account_id", "utility_id", "emittente_soggetto_ruolo_id"):
-        field_value = _extract_nullable_int(
-            payload,
-            field_name,
-            function_name=function_name,
-            message=message,
-        )
-        if field_value is not _MISSING:
-            data[field_name] = field_value
-
-    valido_dal = _extract_payload_date(
-        payload,
-        "valido_dal",
-        function_name=function_name,
-        nullable=False,
-        message=message,
-    )
-    if valido_dal is not _MISSING:
-        data["valido_dal"] = valido_dal
-
-    valido_al = _extract_payload_date(
-        payload,
-        "valido_al",
-        function_name=function_name,
-        nullable=True,
-        message=message,
-    )
-    if valido_al is not _MISSING:
-        data["valido_al"] = valido_al
-
-    attivo = _extract_present_bool(
-        payload,
-        "attivo",
-        function_name=function_name,
-        message=message,
-    )
-    if attivo is not _MISSING:
-        data["attivo"] = attivo
-
-    meta = _extract_meta(payload, function_name=function_name, message=message)
-    if meta is not _MISSING:
-        data["meta"] = meta
-
-    effective_valido_dal = data.get("valido_dal")
-    effective_valido_al = data.get("valido_al")
-    if effective_valido_dal is not None and effective_valido_al is not None:
-        assert isinstance(effective_valido_dal, date)
-        assert isinstance(effective_valido_al, date)
-        ErrorManager.require(
-            effective_valido_al > effective_valido_dal,
-            code="E_VENDITE_VALIDATION",
-            message=message,
-            detail="valido_al deve essere maggiore di valido_dal.",
-            context={"valido_dal": effective_valido_dal, "valido_al": effective_valido_al},
-            function_name=function_name,
-            log_to_db=True,
-        )
-
-    return data
-
-
 # Scopo: Valida la coerenza articolo/UoM prima di creare o aggiornare righe prezzo.
 def _validate_riga_articolo_uom(articolo_id: UUID | str, uom_id: int, *, function_name: str) -> None:
     repository = ListiniRepository()
@@ -1257,13 +1132,16 @@ def fn_list_tipologie_per_utility(utility_id: int) -> list[dict[str, object]]:
     return repository.list_tipologie_per_utility(utility_id)
 
 
-# Scopo: Restituisce il dettaglio completo del listino con versioni e associazioni nidificate.
+# Scopo: Restituisce il dettaglio completo del listino con versioni nidificate.
+#        Il concetto di "associazioni" (tabella `listini_associazioni`) e'
+#        stato rimosso in F2-BE-13: nel modello v5 il listino e' selezionato
+#        dalla matrice `categorie_clienti_listini` o dal contratto, non piu'
+#        da una tabella di associazione dedicata.
 def fn_get_listino_dettaglio(listino_id: int) -> dict[str, object]:
     function_name = "vendite.listini_service.fn_get_listino_dettaglio"
     repository = ListiniRepository()
     listino = _get_listino_or_raise(listino_id, function_name=function_name)
     listino["versioni"] = repository.list_versioni(listino_id)
-    listino["associazioni"] = repository.list_associazioni(listino_id)
     return listino
 
 
@@ -1309,27 +1187,26 @@ def fn_update_listino(listino_id: int, payload: dict[str, Any]) -> dict[str, obj
     return fn_get_listino_dettaglio(listino_id)
 
 
-# Scopo: Elimina un listino mai usato (zero versioni, zero associazioni).
+# Scopo: Elimina un listino mai usato (zero versioni).
 #        Decisione O3 (sviluppo-listini-v2): caso d'uso = listini di test creati
 #        per errore. Per disattivare un listino con figli, usare PATCH attivo=false.
+#        F2-BE-13: rimosso il check su `associazioni_count` (tabella eliminata).
 def fn_delete_listino(listino_id: int) -> dict[str, object]:
     function_name = "vendite.listini_service.fn_delete_listino"
     listino = _get_listino_or_raise(listino_id, function_name=function_name)
     versioni_count = int(listino.get("versioni_count") or 0)
-    associazioni_count = int(listino.get("associazioni_count") or 0)
     ErrorManager.require(
-        versioni_count == 0 and associazioni_count == 0,
+        versioni_count == 0,
         code="E_VENDITE_VALIDATION",
         message="Eliminazione listino non consentita.",
         detail=(
-            "Solo i listini senza versioni e senza associazioni possono essere "
-            f"eliminati. Versioni: {versioni_count}, associazioni: {associazioni_count}. "
+            "Solo i listini senza versioni possono essere eliminati. "
+            f"Versioni: {versioni_count}. "
             "Per disattivare un listino con figli, usa PATCH attivo=false."
         ),
         context={
             "listino_id": listino_id,
             "versioni_count": versioni_count,
-            "associazioni_count": associazioni_count,
         },
         function_name=function_name,
         log_to_db=True,
@@ -1794,175 +1671,6 @@ def fn_delete_riga(listino_id: int, versione_id: int, riga_id: int) -> dict[str,
         log_to_db=False,
     )
     return {"deleted": True, "id": riga_id}
-
-
-# Scopo: Restituisce la lista associazioni del listino con envelope uniforme.
-def fn_list_associazioni(listino_id: int) -> dict[str, object]:
-    function_name = "vendite.listini_service.fn_list_associazioni"
-    _get_listino_or_raise(listino_id, function_name=function_name)
-    repository = ListiniRepository()
-    return _build_results_response(repository.list_associazioni(listino_id))
-
-
-# Scopo: Crea una nuova associazione listino e restituisce il dettaglio.
-def fn_create_associazione(listino_id: int, payload: dict[str, Any]) -> dict[str, object]:
-    function_name = "vendite.listini_service.fn_create_associazione"
-    _get_listino_or_raise(listino_id, function_name=function_name)
-    data = _extract_associazione_payload(payload, for_update=False, function_name=function_name)
-    repository = ListiniRepository()
-    try:
-        associazione_id = repository.create_associazione(listino_id, data)
-    except IntegrityError as exc:
-        _translate_integrity_error(exc, function_name=function_name, entity="associazione")
-    return _get_associazione_or_raise(listino_id, associazione_id, function_name=function_name)
-
-
-# Scopo: Aggiorna una associazione listino e restituisce il dettaglio.
-def fn_update_associazione(listino_id: int, associazione_id: int, payload: dict[str, Any]) -> dict[str, object]:
-    function_name = "vendite.listini_service.fn_update_associazione"
-    _get_associazione_or_raise(listino_id, associazione_id, function_name=function_name)
-    data = _extract_associazione_payload(payload, for_update=True, function_name=function_name)
-    ErrorManager.require(
-        bool(data),
-        code="E_VENDITE_VALIDATION",
-        message="Payload associazione listino non valido.",
-        detail="Nessun campo aggiornabile presente nel payload.",
-        context={"allowed_nullable_fields": sorted(_ASSOCIAZIONE_NULLABLE_FIELDS)},
-        function_name=function_name,
-        log_to_db=True,
-    )
-    repository = ListiniRepository()
-    try:
-        updated = repository.update_associazione(listino_id, associazione_id, data)
-    except IntegrityError as exc:
-        _translate_integrity_error(exc, function_name=function_name, entity="associazione")
-    ErrorManager.require(
-        updated,
-        code="E_VENDITE_LISTINO_ASSOCIAZIONE_NOT_FOUND",
-        message="Associazione listino non trovata.",
-        detail=f"Nessuna associazione id={associazione_id} per listino id={listino_id}.",
-        context={"listino_id": listino_id, "associazione_id": associazione_id},
-        function_name=function_name,
-        log_to_db=False,
-    )
-    return _get_associazione_or_raise(listino_id, associazione_id, function_name=function_name)
-
-
-# Scopo: Elimina una associazione listino esistente restituendo esito uniforme.
-def fn_delete_associazione(listino_id: int, associazione_id: int) -> dict[str, object]:
-    function_name = "vendite.listini_service.fn_delete_associazione"
-    _get_associazione_or_raise(listino_id, associazione_id, function_name=function_name)
-    repository = ListiniRepository()
-    deleted = repository.delete_associazione(listino_id, associazione_id)
-    ErrorManager.require(
-        deleted,
-        code="E_VENDITE_LISTINO_ASSOCIAZIONE_NOT_FOUND",
-        message="Associazione listino non trovata.",
-        detail=f"Nessuna associazione id={associazione_id} per listino id={listino_id}.",
-        context={"listino_id": listino_id, "associazione_id": associazione_id},
-        function_name=function_name,
-        log_to_db=False,
-    )
-    return {"deleted": True, "id": associazione_id}
-
-
-# Scopo: Esegue il test resolver prezzo con validazione minima parametri obbligatori.
-def fn_test_resolver_prezzo(payload: dict[str, Any]) -> dict[str, object]:
-    function_name = "vendite.listini_service.fn_test_resolver_prezzo"
-    message = "Payload test resolver non valido."
-    _validate_payload_keys(
-        payload,
-        allowed_keys=frozenset(
-            {
-                "articolo_id",
-                "uom_id",
-                "data_riferimento",
-                "billing_account_id",
-                "utility_id",
-                "emittente_soggetto_ruolo_id",
-            }
-        ),
-        function_name=function_name,
-        message=message,
-    )
-    articolo_id = _extract_payload_uuid(
-        payload,
-        "articolo_id",
-        function_name=function_name,
-        message=message,
-    )
-    uom_id = _extract_nullable_int(
-        payload,
-        "uom_id",
-        function_name=function_name,
-        message=message,
-    )
-    data_riferimento = _extract_payload_date(
-        payload,
-        "data_riferimento",
-        function_name=function_name,
-        nullable=False,
-        message=message,
-    )
-    billing_account_id = _extract_nullable_int(
-        payload,
-        "billing_account_id",
-        function_name=function_name,
-        message=message,
-    )
-    utility_id = _extract_nullable_int(
-        payload,
-        "utility_id",
-        function_name=function_name,
-        message=message,
-    )
-    emittente_soggetto_ruolo_id = _extract_nullable_int(
-        payload,
-        "emittente_soggetto_ruolo_id",
-        function_name=function_name,
-        message=message,
-    )
-    ErrorManager.require(
-        articolo_id is not _MISSING,
-        code="E_VENDITE_VALIDATION",
-        message=message,
-        detail="articolo_id obbligatorio.",
-        context={"field": "articolo_id"},
-        function_name=function_name,
-        log_to_db=True,
-    )
-    ErrorManager.require(
-        uom_id is not _MISSING and uom_id is not None,
-        code="E_VENDITE_VALIDATION",
-        message=message,
-        detail="uom_id obbligatorio.",
-        context={"field": "uom_id"},
-        function_name=function_name,
-        log_to_db=True,
-    )
-    ErrorManager.require(
-        data_riferimento not in {_MISSING, None},
-        code="E_VENDITE_VALIDATION",
-        message=message,
-        detail="data_riferimento obbligatoria.",
-        context={"field": "data_riferimento"},
-        function_name=function_name,
-        log_to_db=True,
-    )
-    assert isinstance(articolo_id, str)
-    assert isinstance(uom_id, int)
-    assert isinstance(data_riferimento, date)
-    repository = ListiniRepository()
-    return repository.test_resolver(
-        articolo_id=articolo_id,
-        uom_id=uom_id,
-        data_riferimento=data_riferimento,
-        billing_account_id=None if billing_account_id is _MISSING else billing_account_id,
-        utility_id=None if utility_id is _MISSING else utility_id,
-        emittente_soggetto_ruolo_id=(
-            None if emittente_soggetto_ruolo_id is _MISSING else emittente_soggetto_ruolo_id
-        ),
-    )
 
 
 # --- N2: Alert scadenze versioni ---
