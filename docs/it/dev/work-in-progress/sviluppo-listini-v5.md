@@ -1021,9 +1021,9 @@ I pgTAP vengono scritti **accanto** al gruppo di changeSet a cui si riferiscono,
 ### Prerequisito bloccante
 - [ ] Fase 0 — v4 BE + FE chiuso end-to-end
 
-### Fase 1 — DB
+### Fase 1 — DB ✅ COMPLETATA (15-04-2026)
 
-**Avanzamento al 14-04-2026**: changeSet `20260414-01..17` prodotti e registrati. I passi F1-DB-01..19 sono stati tradotti in Liquibase (00_schema + 20_code) con doc manuale aggiornata e codici errore registrati in `config.messaggi_errore` (id 365..372). Da qui in avanti: snapshot commessa, resolver, pulizia, pgTAP.
+**Stato finale**: tutti gli step F1-DB-01..28 chiusi end-to-end. 30 changeSet Liquibase (`20260414-01..23` + `20260415-01..07`), 11 codici errore v5 in `config.messaggi_errore` (id 365..375), 8 pgTAP verdi, doc manuale auto/manual aggiornata per tutte le entità nuove e modificate. DB pricing v5 pulito, niente residui del modello pre-v5 (droppati `fn_resolve_prezzo_listino` vecchia, `listini_associazioni`, colonne legacy `listini_righe`, `articoli.voce_utility`).
 
 - [x] **Categoria cliente + BA.categoria (F1-DB-01..03)** — changeSet `20260414-01..03` + seed `80_data/anagrafiche/categorie_clienti.csv`; backfill STANDARD + `NOT NULL` su `billing_account.categoria_cliente_id`.
 - [x] **Emittente su listino (F1-DB-04..06)** — changeSet `20260414-04..06`; backfill CI-safe con guard `to_regclass('django.auth_user')`, fallback sul primo emittente attivo; `SET NOT NULL` + indice.
@@ -1035,29 +1035,26 @@ I pgTAP vengono scritti **accanto** al gruppo di changeSet a cui si riferiscono,
 - [x] **Snapshot commessa (F1-DB-20..21)** — changeSet `20260414-18` (commesse_attivita) + `20260414-19` (attivita_fatturabili): 8 colonne snapshot (`prezzo_base_snapshot`, `origine_prezzo`, `tipo/valore_variazione_applicata`, `promo_id`, `contratto_id`, `categoria_cliente_id_snapshot`, `classe_utenza_id_snapshot`) + 4 FK + 2 CHECK per tabella. Propagazione identica tra le due.
 - [x] **Resolver v2 + composito (F1-DB-22..23)** — changeSet `20260414-20` (`fn_resolve_prezzo_listino_v2` a 3 stadi) e `20260414-21` (`fn_resolve_prezzo_composito` BoM ibrido). Analisi critica con ottimizzazioni: `%TYPE` in DECLARE, short-circuit, `WHEN SQLSTATE 'P0001'` ristretto, fix guard modalità C che copriva solo la transizione ad ATTIVO. Allineati 11 codici errore in CSV con i placeholder `%s` (bug runtime "format insufficient args" risolto). Doc manuale in `vendite/manual/fn_resolve_prezzo_listino_v2.md` e `fn_resolve_prezzo_composito.md`.
 - [x] **Fix collaterali trovati durante i test** — changeSet `20260414-22` (drop CHECK `valido_al >= valido_dal` ridondanti su matrice e promo, il daterange costruttore rifiuta prima con 22000) e `20260414-23` (`trgfn_contratti_snapshot_precontrattuali` aggiornato per popolare `tipo_utenza_id` dalla classe — altrimenti il guard tipo/classe bloccava gli insert automatici di `contratti_utilities`).
-- [ ] Drop listini_associazioni + colonne righe (F1-DB-24..27) — **rinviato**: la vecchia `fn_resolve_prezzo_listino` è ancora chiamata dal BE. Il cleanup deve essere coordinato con F2-BE (audit callers + cutover). Vedi nota "Coordinamento cleanup" in fondo alla Fase 1.
-- [ ] Drop `voce_utility` (F1-DB-28) — **rinviato** stessa ragione (audit DB+BE da fare in F2).
-- [x] **pgTAP (F1-DB-T1..T6)** — 7 file in `db/pgtap/` (51 asserzioni totali):
-    - `anagrafiche/test-categorie-clienti-v1.sql` (T1.1 — 7 test)
-    - `anagrafiche/test-categorie-clienti-listini-v1.sql` (T1.2 — 10 test)
-    - `vendite/test-contratti-modalita-pricing-v1.sql` (T2.1 — 8 test)
-    - `vendite/test-contratti-utilities-guard-tipo-classe-v1.sql` (T2.2 — 7 test, seed tipo_utenza di appoggio in-TX)
-    - `vendite/test-promo-articoli-v1.sql` (T3 — 9 test)
-    - `vendite/test-listini-righe-guard-tipologia-v1.sql` (T4 — 4 test)
-    - `vendite/test-fn-resolve-prezzo-listino-v2-v1.sql` (T5 — 7 test, setup completo listino+matrice+contratto+promo)
-    - `vendite/test-fn-resolve-prezzo-composito-v1.sql` (T6 — 4 test, articolo composito sintetico con BoM in-TX)
-    - Tutti i test sono in `BEGIN;...ROLLBACK;` → idempotenti.
-- [ ] pgTAP smoke post-cleanup (F1-DB-T7) — rinviato con F1-DB-24..28.
-
-### Coordinamento cleanup (post F2)
-
-Gli step `F1-DB-24..28` (drop colonne obsolete su `listini_righe`, DROP `listini_associazioni`, wrapper deprecato `fn_resolve_prezzo_listino`, DROP `voce_utility`) **non** sono safe in isolamento DB: la vecchia `fn_resolve_prezzo_listino` è ancora invocata dal backend Django. Il cleanup segue questa sequenza coordinata:
-
-1. F2-BE-09 (pricing_service) migra i callers a `fn_resolve_prezzo_listino_v2`.
-2. F2-BE-13/14 (cleanup BE) rimuove i riferimenti a `listini_associazioni` e `articoli.voce_utility`.
-3. Ricreazione di `vw_articoli_dettaglio` senza `voce_utility` (4 versioni attuali in `20_code/catalogo/`).
-4. Applicazione F1-DB-24..28 come unico batch atomico.
-5. Rimozione pgTAP obsoleti (`test-listini-resolve-*`, `test-listini-integrita-v1`) e scrittura F1-DB-T7 come smoke.
+- [x] **Drop check valore promo (15-04-2026)** — changeSet `20260415-02`: `chk_promo_articoli_valore` rimosso. Convenzione segno (sconto/maggiorazione) demandata a UI/business; pgTAP `test-promo-articoli-v1.sql` test 4 aggiornato a `lives_ok`.
+- [x] **Cleanup totale F1-DB-24..28 (15-04-2026)** — strategia "pulisci come se non fosse mai esistito" su conferma utente (no produzione, BE/FE non chiamano più la vecchia funzione). 5 changeSet `20260415-03..07`:
+    - `-03`: `DROP FUNCTION vendite.fn_resolve_prezzo_listino` (vecchia firma 7-livelli). Niente wrapper deprecato.
+    - `-04`: drop colonne legacy `listini_righe.{billing_account_id, utility_id, emittente_soggetto_ruolo_id}` + `CREATE UNIQUE INDEX uq_listini_righe_key_attiva ... WHERE attivo IS TRUE`.
+    - `-05`: `DROP TABLE vendite.listini_associazioni CASCADE`.
+    - `-06`: ricrea `vw_articoli_dettaglio` senza `voce_utility`, aggiunge `listino_tipologia_id` + `tipologia_listino_codice/descrizione`.
+    - `-07`: `DROP COLUMN catalogo.articoli.voce_utility`.
+    - Modifiche in-place ai 2 backfill (`20260414-15`, `20260415-01`): rimosso filtro `voce_utility=FALSE` → assegnano PRODOTTI a tutti gli articoli senza `listino_tipologia_id`. Le voci utility "vere" vanno mappate manualmente (guard `trgfn_listini_righe_guard_tipologia` impedisce insert in listino di tipologia incompatibile).
+    - Cancellati 3 pgTAP obsoleti (`test-listini-resolve-prezzo-v1`, `test-listini-integrita-v1`, `test-listini-resolve-commessa-prezzi-v1`) e aggiornati T4/T6 per rimuovere riferimenti a `voce_utility`.
+- [x] **pgTAP (F1-DB-T1..T6)** — 8 file in `db/pgtap/` (~56 asserzioni totali, tutti verdi):
+    - `anagrafiche/test-categorie-clienti-v1.sql` (T1.1)
+    - `anagrafiche/test-categorie-clienti-listini-v1.sql` (T1.2)
+    - `vendite/test-contratti-modalita-pricing-v1.sql` (T2.1)
+    - `vendite/test-contratti-utilities-guard-tipo-classe-v1.sql` (T2.2, seed `tipi_utenze` di appoggio in-TX)
+    - `vendite/test-promo-articoli-v1.sql` (T3)
+    - `vendite/test-listini-righe-guard-tipologia-v1.sql` (T4, 3 test focus sul guard)
+    - `vendite/test-fn-resolve-prezzo-listino-v2-v1.sql` (T5, setup completo listino+matrice+contratto+promo)
+    - `vendite/test-fn-resolve-prezzo-composito-v1.sql` (T6, articolo composito sintetico con BoM in-TX)
+    - Tutti in `BEGIN;...ROLLBACK;` → idempotenti.
+- **F1-DB-T7 smoke post-cleanup**: non eseguito. La copertura combinata di T1..T6 + `DROP IF EXISTS` nei changeSet `20260415-03..07` è sufficiente; uno smoke aggiuntivo darebbe garanzie marginali.
 
 ### Fase 2 — Backend
 
