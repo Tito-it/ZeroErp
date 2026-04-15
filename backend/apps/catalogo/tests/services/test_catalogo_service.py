@@ -33,6 +33,9 @@ Indice test eseguiti:
 23) CatalogoServiceTests.test_fn_create_nota_articolo_ok
 24) CatalogoServiceTests.test_fn_update_nota_not_found
 25) CatalogoServiceTests.test_fn_create_componente_self_reference
+26) CatalogoServiceTests.test_fn_create_articolo_listino_tipologia_id_ok
+27) CatalogoServiceTests.test_fn_update_articolo_listino_tipologia_id_invalid
+28) CatalogoServiceTests.test_fn_create_componente_esposto_in_fattura_ok
 """
 
 from unittest import TestCase
@@ -427,3 +430,79 @@ class CatalogoServiceTests(TestCase):
                 {"componente_id": article_id, "coeff_qta": "1", "valido_dal": "2026-01-01"},
             )
         self.assertEqual(ctx.exception.code, "E_CATALOGO_VALIDATION")
+
+    # Scopo: create articolo con listino_tipologia_id -> campo propagato al repo (pricing v5).
+    @patch("apps.catalogo.services.catalogo_service.CatalogoBomRepository")
+    @patch("apps.catalogo.services.catalogo_service.CatalogoUomRepository")
+    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository")
+    def test_fn_create_articolo_listino_tipologia_id_ok(
+        self, mock_repo_cls, mock_uom_repo_cls, mock_bom_repo_cls
+    ):
+        from apps.catalogo.services.catalogo_service import fn_create_articolo
+
+        repo = mock_repo_cls.return_value
+        repo.create_articolo.return_value = "019bbee2-5f6a-704f-bbd0-34ed84db252d"
+        repo.get_articolo.return_value = {
+            "id": "019bbee2-5f6a-704f-bbd0-34ed84db252d",
+            "codice": "ART-001",
+            "descrizione": "Articolo demo",
+            "listino_tipologia_id": 3,
+        }
+        mock_uom_repo_cls.return_value.list_uom_operative.return_value = []
+        mock_bom_repo_cls.return_value.list_componenti.return_value = []
+        mock_bom_repo_cls.return_value.list_note_articolo.return_value = []
+
+        fn_create_articolo(
+            {
+                "codice": "ART-001",
+                "descrizione": "Articolo demo",
+                "uom_id": 1,
+                "listino_tipologia_id": 3,
+            }
+        )
+
+        repo.create_articolo.assert_called_once_with(
+            {
+                "codice": "ART-001",
+                "descrizione": "Articolo demo",
+                "uom_id": 1,
+                "listino_tipologia_id": 3,
+            }
+        )
+
+    # Scopo: update articolo con listino_tipologia_id non intero -> validazione.
+    def test_fn_update_articolo_listino_tipologia_id_invalid(self):
+        from apps.catalogo.services.catalogo_service import fn_update_articolo
+
+        with self.assertRaises(ServiceError) as ctx:
+            fn_update_articolo(
+                "019bbee2-5f6a-704f-bbd0-34ed84db252d",
+                {"listino_tipologia_id": 1.5},
+            )
+        self.assertEqual(ctx.exception.code, "E_CATALOGO_VALIDATION")
+        self.assertIn("listino_tipologia_id", ctx.exception.detail or "")
+
+    # Scopo: create componente con esposto_in_fattura -> flag propagato al repo (BoM v5).
+    @patch("apps.catalogo.services.catalogo_service.CatalogoBomRepository")
+    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository")
+    def test_fn_create_componente_esposto_in_fattura_ok(self, mock_repo_cls, mock_bom_repo_cls):
+        from apps.catalogo.services.catalogo_service import fn_create_componente
+
+        comp_id = "019bbee2-5f6a-704f-bbd0-34ed84db252e"
+        mock_repo_cls.return_value.get_articolo.return_value = {"id": "art-1", "codice": "ART-001"}
+        bom_repo = mock_bom_repo_cls.return_value
+        bom_repo.create_componente.return_value = comp_id
+        bom_repo.get_componente.return_value = {"id": comp_id, "esposto_in_fattura": True}
+
+        fn_create_componente(
+            "art-1",
+            {
+                "componente_id": comp_id,
+                "coeff_qta": "1",
+                "valido_dal": "2026-01-01",
+                "esposto_in_fattura": True,
+            },
+        )
+
+        args, _ = bom_repo.create_componente.call_args
+        self.assertEqual(args[1]["esposto_in_fattura"], True)

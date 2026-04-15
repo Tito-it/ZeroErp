@@ -31,6 +31,12 @@ Indice test eseguiti:
 20) test_guard_skip_quando_ba_preesistente — riuso BA → no check (no nuovo INSERT)
 21) test_guard_passa_per_operatore_di_emittente — operatore con emittente → ok
 22) test_db_trigger_error_propaga_codice — errore trigger DB propagato come ServiceError
+23) test_crea_cliente_con_ba_categoria — F2-BE-04: ba_categoria_cliente_id passato al repo
+24) test_crea_cliente_senza_ba_categoria_default — F2-BE-04: omesso -> None (repo defaulta STANDARD)
+25) test_update_cliente_solo_categoria — F2-BE-04: PATCH solo ba_categoria_cliente_id -> update BA
+26) test_update_cliente_categoria_e_campi — F2-BE-04: PATCH misto BA + cliente
+27) test_update_cliente_categoria_invalida_zero — F2-BE-04: ba_categoria_cliente_id=0 -> VALIDAZIONE
+28) test_update_cliente_categoria_invalida_bool — F2-BE-04: ba_categoria_cliente_id=True -> VALIDAZIONE
 """
 
 from unittest import TestCase
@@ -354,6 +360,109 @@ class TestUpdateCliente(TestCase):
         with self.assertRaises(ServiceError) as ctx:
             ClientiService().update_cliente(1, {"campo_ignoto": "valore"})
         self.assertEqual(ctx.exception.code, "E_ANAG_NOT_FOUND")
+
+
+# =================================================================
+# F2-BE-04 — ba_categoria_cliente_id (pricing v5 STADIO 2)
+# =================================================================
+
+
+class TestBaCategoriaF2BE04(TestCase):
+
+    def _setup_crea(self, mock_repo):
+        repo = mock_repo.return_value
+        repo.get_utility.return_value = _utility_manifatturiero()
+        repo.get_or_create_ruolo_cliente.return_value = 50
+        repo.create_istanza_fittizia.return_value = 100
+        repo.create_billing_account.return_value = 200
+        repo.create_cliente.return_value = 1
+        return repo
+
+    @patch(TX_ATOMIC)
+    @patch(CLI_REPO)
+    def test_crea_cliente_con_ba_categoria(self, mock_repo, _tx):
+        """F2-BE-04: ba_categoria_cliente_id del payload passato al repo."""
+        repo = self._setup_crea(mock_repo)
+        from apps.anagrafiche.services.clienti_service import ClientiService
+        ClientiService().crea_cliente(_base_payload(ba_categoria_cliente_id=7))
+        kwargs = repo.create_billing_account.call_args.kwargs
+        self.assertEqual(kwargs["categoria_cliente_id"], 7)
+
+    @patch(TX_ATOMIC)
+    @patch(CLI_REPO)
+    def test_crea_cliente_senza_ba_categoria_default(self, mock_repo, _tx):
+        """Omesso dal payload -> service risolve STANDARD via repo e lo passa."""
+        repo = self._setup_crea(mock_repo)
+        # B1 review 2026-04-15: il service risolve STANDARD esplicitamente.
+        repo.get_categoria_cliente_id_by_codice.return_value = 99
+        from apps.anagrafiche.services.clienti_service import ClientiService
+        ClientiService().crea_cliente(_base_payload())
+        repo.get_categoria_cliente_id_by_codice.assert_called_once_with("STANDARD")
+        kwargs = repo.create_billing_account.call_args.kwargs
+        self.assertEqual(kwargs["categoria_cliente_id"], 99)
+
+    @patch(TX_ATOMIC)
+    @patch(CLI_REPO)
+    def test_crea_cliente_standard_seed_mancante(self, mock_repo, _tx):
+        """B1 review: se STANDARD non esiste -> ServiceError parlante (no IntegrityError opaco)."""
+        repo = self._setup_crea(mock_repo)
+        repo.get_categoria_cliente_id_by_codice.return_value = None
+        from apps.anagrafiche.services.clienti_service import ClientiService
+        with self.assertRaises(ServiceError) as ctx:
+            ClientiService().crea_cliente(_base_payload())
+        self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
+        self.assertIn("STANDARD", ctx.exception.message)
+
+    @patch(CLI_REPO)
+    def test_update_cliente_solo_categoria(self, mock_repo):
+        """PATCH con solo ba_categoria_cliente_id -> update BA, nessun update cliente."""
+        repo = mock_repo.return_value
+        repo.get_cliente.return_value = {"id": 1, "billing_account_id": 200}
+        repo.update_ba_categoria.return_value = True
+        from apps.anagrafiche.services.clienti_service import ClientiService
+        result = ClientiService().update_cliente(1, {"ba_categoria_cliente_id": 9})
+        self.assertTrue(result["updated"])
+        repo.update_ba_categoria.assert_called_once_with(200, 9)
+        repo.update_cliente.assert_not_called()
+
+    @patch(CLI_REPO)
+    def test_update_cliente_categoria_e_campi(self, mock_repo):
+        """PATCH misto: categoria su BA + campi su cliente entrambi eseguiti."""
+        repo = mock_repo.return_value
+        repo.get_cliente.return_value = {"id": 1, "billing_account_id": 200}
+        repo.update_ba_categoria.return_value = True
+        repo.update_cliente.return_value = True
+        from apps.anagrafiche.services.clienti_service import ClientiService
+        ClientiService().update_cliente(1, {
+            "ba_categoria_cliente_id": 9,
+            "iva_id": 5,
+        })
+        repo.update_ba_categoria.assert_called_once_with(200, 9)
+        repo.update_cliente.assert_called_once()
+        # ba_categoria_cliente_id NON deve finire nel payload passato a update_cliente.
+        passed_payload = repo.update_cliente.call_args.args[1]
+        self.assertNotIn("ba_categoria_cliente_id", passed_payload)
+        self.assertEqual(passed_payload["iva_id"], 5)
+
+    @patch(CLI_REPO)
+    def test_update_cliente_categoria_invalida_zero(self, mock_repo):
+        """ba_categoria_cliente_id=0 -> E_ANAG_VALIDAZIONE."""
+        repo = mock_repo.return_value
+        repo.get_cliente.return_value = {"id": 1, "billing_account_id": 200}
+        from apps.anagrafiche.services.clienti_service import ClientiService
+        with self.assertRaises(ServiceError) as ctx:
+            ClientiService().update_cliente(1, {"ba_categoria_cliente_id": 0})
+        self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
+
+    @patch(CLI_REPO)
+    def test_update_cliente_categoria_invalida_bool(self, mock_repo):
+        """ba_categoria_cliente_id=True rifiutato (bool trap)."""
+        repo = mock_repo.return_value
+        repo.get_cliente.return_value = {"id": 1, "billing_account_id": 200}
+        from apps.anagrafiche.services.clienti_service import ClientiService
+        with self.assertRaises(ServiceError) as ctx:
+            ClientiService().update_cliente(1, {"ba_categoria_cliente_id": True})
+        self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
 
 
 # =================================================================

@@ -160,6 +160,22 @@
 
 ---
 
+## Vendite — Pricing v5 (`apps/vendite/`)
+
+| Building Block | File | Descrizione |
+|---|---|---|
+| `PricingRepository.resolve_prezzo_listino_v2` | [pricing_repository.py](../../../../backend/apps/vendite/db/pricing_repository.py) | Wrapper `vendite.fn_resolve_prezzo_listino_v2(uuid,bigint,date,bigint,integer,bigint,integer)`. Resolver a 3 stadi (promo → contratto → categoria). Ritorna 1 riga con prezzo + metadati snapshot. |
+| `PricingRepository.resolve_prezzo_composito` | [pricing_repository.py](../../../../backend/apps/vendite/db/pricing_repository.py) | Wrapper `vendite.fn_resolve_prezzo_composito(...)`. BoM ibrido A/B1/B2: ritorna N righe (CASO A) o 1 riga (B1/B2) secondo esposizione in fattura dei componenti. |
+| `PricingService.resolve_prezzo` | [pricing_service.py](../../../../backend/apps/vendite/services/pricing_service.py) | Facade `fn_resolve_prezzo_listino_v2`: valida input (UUID, int > 0, date), delega al repo, traduce `DatabaseError` P0001 in `ServiceError` con codice preservato quando MESSAGE matcha un marker noto (`E_PREZZO_LISTINO_NON_TROVATO`, `E_CATEGORIA_LISTINO_NON_MAPPATA`, `E_PREZZO_LISTINO_RIGA_NON_TROVATA`, `E_ARTICOLO_NON_NEGOZIATO_SU_CONTRATTO_C`). Fallback `E_VENDITE_PRICING_FAILED`. `emittente_soggetto_ruolo_id` deve essere gia' risolto dal caller (derivato dal JWT). |
+| `PricingService.resolve_prezzo_composito` | [pricing_service.py](../../../../backend/apps/vendite/services/pricing_service.py) | Facade `fn_resolve_prezzo_composito`: stessa policy di validazione e traduzione errori. Caller tipico: pipeline di espansione attivita' commessa (F2-BE-12). |
+| `PromoArticoliRepository` | [promo_articoli_repository.py](../../../../backend/apps/vendite/db/promo_articoli_repository.py) | CRUD su `vendite.promo_articoli` (STADIO 0 resolver). Lista arricchita con JOIN articolo/uom. |
+| `PromoArticoliService` | [promo_articoli_service.py](../../../../backend/apps/vendite/services/promo_articoli_service.py) | Service admin promo. `PayloadValidator` + `map_integrity_error`. Ammette `tipo_variazione=PREZZO_FISSO` (vietato in listini e matrice categoria). Coerenza tipo/valore anticipata lato service. |
+| `CatalogoRepository.ARTICOLI_CREATE_COLUMNS.listino_tipologia_id` | [catalogo_repository.py](../../../../backend/apps/catalogo/db/catalogo_repository.py) | Colonna smallint nullable (FK `config.listini_tipologie`). Ereditata da `ARTICOLI_UPDATE_COLUMNS` e proiettata in `ARTICOLI_DETAIL_COLUMNS` insieme ai decode `tipologia_listino_codice`/`tipologia_listino_descrizione` via `vw_articoli_dettaglio`. Coerenza articolo↔riga listino imposta dal trigger DB `trgfn_listini_righe_guard_tipologia` (§7.2 v5). |
+| `CatalogoRepository.list_articoli(listino_tipologia_id=)` | [catalogo_repository.py](../../../../backend/apps/catalogo/db/catalogo_repository.py) | Filtro opzionale sulla lista articoli. Esposto via query param `listino_tipologia_id` su `GET /api/v1/catalogo/articoli/`. |
+| `CatalogoBomRepository.COMPONENTE_WRITE_COLUMNS.esposto_in_fattura` | [catalogo_bom_repository.py](../../../../backend/apps/catalogo/db/catalogo_bom_repository.py) | Flag bool (DDL default `false`) che decide la modalita' A/B1/B2 del `fn_resolve_prezzo_composito` (§8 v5): se almeno un componente ha `esposto_in_fattura=true`, il resolver emette N righe (una per componente) e la pipeline di creazione attivita' espande in `commesse_attivita`. |
+
+---
+
 ## Preventivi vendita (`apps/vendite/`)
 
 | Building Block | File | Descrizione |

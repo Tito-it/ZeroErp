@@ -38,7 +38,6 @@ _ARTICOLO_FLAG_FIELDS: tuple[str, ...] = (
     "is_composito",
     "is_solo_componente",
     "requires_serial",
-    "voce_utility",
 )
 # Scopo: Campi int nullable di articolo (escluso uom_id che e' NOT NULL e immutabile).
 # Vedi DDL catalogo.articoli e trigger trg_articoli_a10_protect_uom_id_upd.
@@ -49,6 +48,7 @@ _ARTICOLO_INT_FIELDS: tuple[str, ...] = (
     "iva_id",
     "conto_contabile_vendita_id",
     "conto_contabile_acquisto_id",
+    "listino_tipologia_id",
 )
 _ARTICOLO_NULLABLE_FIELDS: frozenset[str] = frozenset({
     "descrizione_breve",
@@ -962,7 +962,13 @@ def _extract_componente_payload(
         payload_name="componente",
     )
 
-    for field_name in ("partecipa_qta", "determina_qta_padre", "obbligatorio", "attivo"):
+    for field_name in (
+        "partecipa_qta",
+        "determina_qta_padre",
+        "obbligatorio",
+        "attivo",
+        "esposto_in_fattura",
+    ):
         field_value = _extract_present_bool(
             payload,
             field_name,
@@ -1192,9 +1198,9 @@ def fn_list_articoli(
     *,
     attivo: bool | None = None,
     is_composito: bool | None = None,
-    voce_utility: bool | None = None,
     tipo_voce_id: int | None = None,
     gruppo_voce_id: int | None = None,
+    listino_tipologia_id: int | None = None,
     search: str | None = None,
     data_da: date | None = None,
     data_a: date | None = None,
@@ -1210,9 +1216,9 @@ def fn_list_articoli(
     return repository.list_articoli(
         attivo=attivo,
         is_composito=is_composito,
-        voce_utility=voce_utility,
         tipo_voce_id=tipo_voce_id,
         gruppo_voce_id=gruppo_voce_id,
+        listino_tipologia_id=listino_tipologia_id,
         search=search,
         data_da=data_da,
         data_a=data_a,
@@ -1322,7 +1328,6 @@ def fn_disattiva_articolo(articolo_id: UUID | str) -> dict[str, object]:
 def fn_lookup_articoli(
     *,
     search: str | None = None,
-    voce_utility: bool | None = None,
     attivo: bool | None = True,
     is_composito: bool | None = None,
     is_solo_componente: bool | None = None,
@@ -1336,7 +1341,6 @@ def fn_lookup_articoli(
     repository = CatalogoRepository()
     results = repository.lookup_articoli(
         search=search,
-        voce_utility=voce_utility,
         attivo=attivo,
         is_composito=is_composito,
         is_solo_componente=is_solo_componente,

@@ -97,7 +97,6 @@ def _articolo_write_fields(*, for_create: bool) -> dict[str, serializers.Field]:
         "is_composito": serializers.BooleanField(required=False),
         "is_solo_componente": serializers.BooleanField(required=False),
         "requires_serial": serializers.BooleanField(required=False),
-        "voce_utility": serializers.BooleanField(required=False),
         "meta": serializers.JSONField(required=False, allow_null=True),
     }
     if for_create:
@@ -217,9 +216,9 @@ class ApiArticoliList(DomainAPIView):
             OpenApiParameter(name="search", type=str, location=OpenApiParameter.QUERY, required=False),
             OpenApiParameter(name="attivo", type=bool, location=OpenApiParameter.QUERY, required=False),
             OpenApiParameter(name="is_composito", type=bool, location=OpenApiParameter.QUERY, required=False),
-            OpenApiParameter(name="voce_utility", type=bool, location=OpenApiParameter.QUERY, required=False),
             OpenApiParameter(name="tipo_voce_id", type=int, location=OpenApiParameter.QUERY, required=False),
             OpenApiParameter(name="gruppo_voce_id", type=int, location=OpenApiParameter.QUERY, required=False),
+            OpenApiParameter(name="listino_tipologia_id", type=int, location=OpenApiParameter.QUERY, required=False),
             OpenApiParameter(name="data_da", type=str, location=OpenApiParameter.QUERY, required=False),
             OpenApiParameter(name="data_a", type=str, location=OpenApiParameter.QUERY, required=False),
             OpenApiParameter(name="limit", type=int, location=OpenApiParameter.QUERY, required=False),
@@ -241,9 +240,9 @@ class ApiArticoliList(DomainAPIView):
         results, total = fn_list_articoli(
             attivo=_optional_qp_bool(request, "attivo"),
             is_composito=_optional_qp_bool(request, "is_composito"),
-            voce_utility=_optional_qp_bool(request, "voce_utility"),
             tipo_voce_id=_optional_qp_int_strict(request, "tipo_voce_id"),
             gruppo_voce_id=_optional_qp_int_strict(request, "gruppo_voce_id"),
+            listino_tipologia_id=_optional_qp_int_strict(request, "listino_tipologia_id"),
             search=p["search"],
             data_da=_optional_qp_iso_date(request, "data_da"),
             data_a=_optional_qp_iso_date(request, "data_a"),
@@ -539,7 +538,6 @@ class ApiArticoliLookup(DomainAPIView):
     @extend_schema(
         parameters=[
             OpenApiParameter(name="search", type=str, location=OpenApiParameter.QUERY, required=False),
-            OpenApiParameter(name="voce_utility", type=bool, location=OpenApiParameter.QUERY, required=False),
             OpenApiParameter(name="attivo", type=bool, location=OpenApiParameter.QUERY, required=False),
             OpenApiParameter(name="is_composito", type=bool, location=OpenApiParameter.QUERY, required=False),
             OpenApiParameter(name="is_solo_componente", type=bool, location=OpenApiParameter.QUERY, required=False),
@@ -560,7 +558,6 @@ class ApiArticoliLookup(DomainAPIView):
 
         data = fn_lookup_articoli(
             search=search,
-            voce_utility=_optional_qp_bool(request, "voce_utility"),
             attivo=qp_bool(qp.get("attivo"), True),
             is_composito=_optional_qp_bool(request, "is_composito"),
             is_solo_componente=_optional_qp_bool(request, "is_solo_componente"),

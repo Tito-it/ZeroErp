@@ -16,10 +16,19 @@ from apps.vendite.api.views import (
     ApiRunCommessePush,
     ApiRunLottoPipeline,
 )
+from apps.vendite.api.views_promo_articoli import (
+    PromoArticoliDetailView,
+    PromoArticoliView,
+)
 
 urlpatterns = [
     path("preventivi/", include("apps.vendite.api.preventivi_urls")),
     path("listini/", include("apps.vendite.api.urls_listini")),
+    # Promo articoli (STADIO 0 resolver v5). Matrice CRUD admin.
+    # Non esposta via /core/lookup/codici/: ha codice ma non e'
+    # candidata come tabella config lookup (semantica temporale).
+    path("promo-articoli/", PromoArticoliView.as_view(), name="vendite-promo-articoli-list"),
+    path("promo-articoli/<int:record_id>/", PromoArticoliDetailView.as_view(), name="vendite-promo-articoli-detail"),
     path("lotti/", ApiLottiList.as_view(), name="vendite-lotti-list"),
     path("pipeline/run/", ApiRunLottoPipeline.as_view(), name="vendite-run-lotto-pipeline"),
     path(
