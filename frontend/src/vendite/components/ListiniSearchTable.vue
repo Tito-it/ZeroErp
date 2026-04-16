@@ -32,7 +32,6 @@ import ProgrammaChiusuraDialog from './ProgrammaChiusuraDialog.vue'
 const emit = defineEmits([
   'new',
   'row-click',
-  'open-associazioni',
   'open-righe',
   'open-nuova-versione',
   'open-clona-versione',
@@ -172,8 +171,8 @@ function onEliminaVersione(versione, listino) {
   })
 }
 
-// O3: elimina un listino mai usato (zero versioni, zero associazioni).
-// Il pulsante e' visibile solo se entrambi i counts sono 0; il guard backend
+// O3: elimina un listino mai usato (zero versioni).
+// Il pulsante e' visibile solo se versioni_count=0; il guard backend
 // e' la fonte di verita' (un check FE serve solo a ridurre i click sbagliati).
 function onEliminaListino(listino) {
   confirmDelete(listino.codice, async () => {
@@ -244,7 +243,6 @@ onMounted(() => store.fetchList())
         </template>
       </Column>
       <Column field="versioni_count" :header="t('listini.col_versioni')" style="width: 80px;" />
-      <Column field="associazioni_count" :header="t('listini.col_associazioni')" style="width: 90px;" />
       <Column field="attivo" :header="t('listini.col_attivo')" style="width: 80px;">
         <template #body="{ data }">
           <Tag :value="data.attivo ? t('common.active') : t('common.inactive')" :severity="data.attivo ? 'success' : 'warn'" />
@@ -257,10 +255,7 @@ onMounted(() => store.fetchList())
               class="app-manage-btn"
               v-tooltip.bottom="expandedRows[data.id] ? t('listini.nascondi_versioni') : t('listini.mostra_versioni')"
               @click="toggleExpand(data)" />
-            <Button :icon="MANAGE_ICONS.ASSOCIAZIONI" text rounded size="small"
-              class="app-manage-btn" v-tooltip.bottom="t('listini.tab_associazioni')"
-              @click="emit('open-associazioni', data)" />
-            <Button v-if="!data.versioni_count && !data.associazioni_count"
+            <Button v-if="!data.versioni_count"
               icon="pi pi-trash" text rounded size="small" class="app-delete-btn"
               v-tooltip.bottom="t('listini.elimina_listino')"
               @click="onEliminaListino(data)" />

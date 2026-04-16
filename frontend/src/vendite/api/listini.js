@@ -22,7 +22,7 @@ export function updateListino(id, payload) {
 }
 
 // Elimina un listino mai usato. Backend rifiuta con 400 se versioni_count > 0
-// o associazioni_count > 0 (suggerisce PATCH attivo=false per disattivare).
+// (suggerisce PATCH attivo=false per disattivare).
 export function deleteListino(id) {
   return api.delete(`${BASE}/${id}/`)
 }
@@ -97,24 +97,6 @@ export function updateRiga(listinoId, verId, rigaId, payload) {
 
 export function deleteRiga(listinoId, verId, rigaId) {
   return api.delete(`${BASE}/${listinoId}/versioni/${verId}/righe/${rigaId}/`)
-}
-
-// --- Associazioni ---
-
-export function listAssociazioni(listinoId) {
-  return api.get(`${BASE}/${listinoId}/associazioni/`)
-}
-
-export function createAssociazione(listinoId, payload) {
-  return api.post(`${BASE}/${listinoId}/associazioni/`, payload)
-}
-
-export function updateAssociazione(listinoId, assocId, payload) {
-  return api.patch(`${BASE}/${listinoId}/associazioni/${assocId}/`, payload)
-}
-
-export function deleteAssociazione(listinoId, assocId) {
-  return api.delete(`${BASE}/${listinoId}/associazioni/${assocId}/`)
 }
 
 // --- Test resolver ---

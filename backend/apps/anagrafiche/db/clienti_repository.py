@@ -233,6 +233,7 @@ class ClientiRepository:
         search_pattern = f"%{search.strip()}%" if search and search.strip() else None
         sql = f"""
             SELECT cl.id,
+                   cl.billing_account_id,
                    cl.istanza_utility_id,
                    cl.soggetto_ruolo_id,
                    s.id AS soggetto_id,

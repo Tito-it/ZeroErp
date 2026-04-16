@@ -107,6 +107,18 @@ const router = createRouter({
           meta: { domain: 'amm-software', menuKey: 'matrice-indirizzi-ruoli' }
         },
         {
+          path: 'amm-software/categorie-clienti',
+          name: 'amm-software-categorie-clienti',
+          component: () => import('../amministrazione/views/CategorieClientiListView.vue'),
+          meta: { domain: 'amm-software', menuKey: 'categorie-clienti' }
+        },
+        {
+          path: 'amm-software/matrice-categorie-listini',
+          name: 'amm-software-matrice-categorie-listini',
+          component: () => import('../amministrazione/views/CategorieClientiListiniListView.vue'),
+          meta: { domain: 'amm-software', menuKey: 'matrice-categorie-listini' }
+        },
+        {
           path: 'amm-software/audit-log',
           name: 'amm-software-audit-log',
           component: () => import('../amministrazione/views/AuditLogView.vue'),
@@ -203,6 +215,18 @@ const router = createRouter({
           name: 'vendite-listini',
           component: () => import('../vendite/views/ListiniView.vue'),
           meta: { domain: 'vendite', menuKey: 'listini' }
+        },
+        {
+          path: 'vendite/contratti',
+          name: 'vendite-contratti',
+          component: () => import('../vendite/views/ContrattiListView.vue'),
+          meta: { domain: 'vendite', menuKey: 'contratti' }
+        },
+        {
+          path: 'vendite/promo-articoli',
+          name: 'vendite-promo-articoli',
+          component: () => import('../vendite/views/PromoArticoliListView.vue'),
+          meta: { domain: 'vendite', menuKey: 'promo-articoli' }
         },
 
         // --- Pratiche ---

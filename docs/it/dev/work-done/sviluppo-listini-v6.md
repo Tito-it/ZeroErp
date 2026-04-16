@@ -1,8 +1,8 @@
 # Sviluppo Listini — Pricing ZeroERP (WIP v6)
 
-> Stato: **RACCOLTA DEBITI TECNICI — addendum a v5.**
+> Stato: **CHIUSO-- RACCOLTA DEBITI TECNICI — addendum a v5.**
 >
-> Creato: 14 aprile 2026
+> Creato: 14 aprile 2026  - completat 15 04 2026
 >
 > Questo documento raccoglie interventi di ottimizzazione e refactor
 > trasversali emersi durante lo sviluppo di v5 e rimandati a una fase
@@ -133,12 +133,12 @@ categorizzato come **F1** nel report di review del 14 aprile 2026.
 I service admin CRUD ripetono gli stessi helper di validazione payload in
 ogni file. Alla 4ª copia il debito diventa esplicito:
 
-| Service | File |
-|---|---|
-| `UtilitiesTipiRuoloService` | `apps/config/services/utilities_tipi_ruolo_service.py` |
+| Service                         | File                                                        |
+| ------------------------------- | ----------------------------------------------------------- |
+| `UtilitiesTipiRuoloService`     | `apps/config/services/utilities_tipi_ruolo_service.py`      |
 | `TipiRuoloTipiIndirizzoService` | `apps/config/services/tipi_ruolo_tipi_indirizzo_service.py` |
-| `ListiniService` | `apps/vendite/services/listini_service.py` |
-| `CategorieClientiService` | `apps/anagrafiche/services/categorie_clienti_service.py` |
+| `ListiniService`                | `apps/vendite/services/listini_service.py`                  |
+| `CategorieClientiService`       | `apps/anagrafiche/services/categorie_clienti_service.py`    |
 
 Gli helper duplicati (con piccole varianti nei codici errore):
 
@@ -219,11 +219,11 @@ sprint inline.
 
 ## 3) Tracking
 
-| ID    | Descrizione                                                      | Area     | Priorita`    | Stato    |
-| ----- | ---------------------------------------------------------------- | -------- | ------------ | -------- |
-| V6-F1 | `useGlobalLookup` modulo-level per SearchTable/Drawer            | Frontend | Media        | **Chiuso** 2026-04-14 |
-| V6-B1 | `apps/core/services/payload_helpers.py` — validazione condivisa | Backend  | Media-alta   | **Chiuso** 2026-04-14 |
-| V6-B2 | Estensione `PayloadValidator` con `log_to_db`/`function_name` + migrazione listini_service | Backend | Bassa | **Chiuso** 2026-04-15 |
+| ID    | Descrizione                                                                                | Area     | Priorita`  | Stato                 |
+| ----- | ------------------------------------------------------------------------------------------ | -------- | ---------- | --------------------- |
+| V6-F1 | `useGlobalLookup` modulo-level per SearchTable/Drawer                                      | Frontend | Media      | **Chiuso** 2026-04-14 |
+| V6-B1 | `apps/core/services/payload_helpers.py` — validazione condivisa                            | Backend  | Media-alta | **Chiuso** 2026-04-14 |
+| V6-B2 | Estensione `PayloadValidator` con `log_to_db`/`function_name` + migrazione listini_service | Backend  | Bassa      | **Chiuso** 2026-04-15 |
 
 **Stato v6**: tutti i debiti tecnici rilevati durante v5 sono stati chiusi.
 v6 e' completato end-to-end.

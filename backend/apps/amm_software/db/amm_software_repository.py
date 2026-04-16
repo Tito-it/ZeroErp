@@ -909,6 +909,7 @@ class AmmSoftwareRepository:
         with connection.cursor() as cursor:
             cursor.execute(
                 """SELECT ef.id, ef.codice, ef.descrizione,
+                          ef.soggetto_ruolo_id,
                           s.ragione_sociale_completa AS ragione_sociale
                      FROM anagrafiche.emittenti_fiscali ef
                      LEFT JOIN anagrafiche.soggetti_ruoli sr ON sr.id = ef.soggetto_ruolo_id

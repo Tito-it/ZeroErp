@@ -20,7 +20,8 @@ Indice test eseguiti:
  9) test_create_percentuale_ok                 — PERCENTUALE con valore > 0 OK
 10) test_create_prezzo_fisso_ok                — PREZZO_FISSO con valore 0 ammesso
 11) test_create_prezzo_fisso_negativo_ko       — PREZZO_FISSO < 0 -> VALIDATION
-12) test_create_percentuale_zero_ko            — PERCENTUALE = 0 -> VALIDATION (deve essere > 0)
+12) test_create_percentuale_zero_ko            — PERCENTUALE = 0 -> VALIDATION (no-op)
+12b) test_create_percentuale_negativo_ok       — PERCENTUALE = -10 -> OK (sconto, regressione fix v5)
 13) test_create_tipo_invalido                  — enum errato -> VALIDATION
 14) test_create_missing_codice                 — codice mancante -> VALIDATION
 15) test_create_missing_articolo               — articolo_id mancante -> VALIDATION
@@ -176,6 +177,18 @@ class TestCreate(TestCase):
                 valore_variazione="0",
             ))
         self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
+
+    # REGRESSIONE fix v5 2026-04-15: PERCENTUALE negativa = sconto, ammessa.
+    # Il vincolo pre-v5 `> 0` bloccava gli sconti promo, incoerente col
+    # resolver DB che applica `base * (1 + valore/100)`.
+    @patch(_REPO)
+    def test_create_percentuale_negativo_ok(self, mock_repo):
+        mock_repo.return_value.create_promo.return_value = 1
+        mock_repo.return_value.get_promo.return_value = {"id": 1}
+        result = PromoArticoliService().create_promo(_base_payload(
+            valore_variazione="-10",
+        ))
+        self.assertEqual(result["id"], 1)
 
     @patch(_REPO)
     def test_create_tipo_invalido(self, mock_repo):

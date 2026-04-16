@@ -55,8 +55,12 @@ const props = defineProps({
           option-value="id"
           :placeholder="t('contatto.select_tipo_contatto')"
           :disabled="disabled || tipoDisabled"
+          :invalid="errors.includes('tipo_contatto')"
           class="w-full"
         />
+        <small v-if="errors.includes('tipo_contatto')" class="app-field-error">
+          {{ t('validation.campo_obbligatorio') }}
+        </small>
       </div>
       <div v-if="showUO && unitaOrganizzative" class="form-field">
         <label>{{ t('contatto.unita_organizzativa') }}</label>
@@ -76,7 +80,11 @@ const props = defineProps({
 
     <div class="form-field">
       <label>{{ t('contatto.nominativo') }} *</label>
-      <InputText v-model="form.nominativo" :disabled="disabled" class="w-full" />
+      <InputText v-model="form.nominativo" :disabled="disabled" class="w-full"
+        :invalid="errors.includes('nominativo')" />
+      <small v-if="errors.includes('nominativo')" class="app-field-error">
+        {{ t('validation.campo_obbligatorio') }}
+      </small>
     </div>
 
     <div class="form-grid-2col">

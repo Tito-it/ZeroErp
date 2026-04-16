@@ -7,6 +7,7 @@ import { useI18n } from 'vue-i18n'
 import { useClientiStore } from '../stores/clienti'
 import { useAuthStore } from '../../stores/auth'
 import { useApiHandler } from '../../core/composables/useApiHandler'
+import { useNotify } from '../../core/composables/useNotify'
 import { useLookup } from '../../core/composables/useLookup'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useContattoForm } from '../../core/composables/useContattoForm'
@@ -39,16 +40,20 @@ const { t } = useI18n()
 const store = useClientiStore()
 const auth = useAuthStore()
 const { execute, loading } = useApiHandler()
+const { warn } = useNotify()
 const isReadonly = useInjectReadonly()
 const contatto = useContattoForm()
 const contattoErrors = ref([])
 const indirizzo = useIndirizzoSoggettoForm()
+// Defer: il load parte quando il drawer si apre (in watch(visible)), non
+// al mount del parent. Evita fetch premature che causano flash di UI
+// quando il drawer viene renderizzato ma non ancora aperto.
 const { defaults: paramDefaults, load: loadDefaults } = useParameterDefaults(['DEFAULT_IVA_ID', 'DEFAULT_UTILITY_ID'])
-loadDefaults()
 
 // Lookup utility per creazione: filtrate per emittente dell'operatore + ruolo CL.
 // In modalita' edit usiamo il nuovo endpoint BA-driven (vedi sotto).
-const utilities = useLookup(() => lookupUtilitiesPerEmittente(TIPO_RUOLO.CLIENTE), { immediate: true })
+// Lazy: load() viene chiamato in watch(visible) solo quando il drawer apre in create.
+const utilities = useLookup(() => lookupUtilitiesPerEmittente(TIPO_RUOLO.CLIENTE))
 
 // Opzioni statiche (label tramite i18n)
 const tipoGgOptions = computed(() => [
@@ -123,6 +128,7 @@ const indirizziSoggetto = ref([])
 function defaultForm() {
   return {
     utility_id: null, indirizzo_dettaglio_id: null,
+    ba_categoria_cliente_id: null,
     iva_id: null, modalita_pagamento_id: null, termine_pagamento_id: null,
     tipo_gg_scadenza_ft: 'N', nr_giorni_scadenza: 0,
     cliente_pa: 'N', split_payment: 'N',
@@ -149,6 +155,10 @@ function populateFormFromDetail(d) {
   form.value = {
     utility_id: d.utility_id,
     indirizzo_dettaglio_id: d.istanza_indirizzo_dettaglio_id,
+    // Categoria cliente in sola lettura: mostrata ma NON modificabile (F3-FE-04).
+    // In edit la categoria non finisce nel payload PATCH; le modifiche passano
+    // per contratto (F3-FE-05) o azione dedicata con storicizzazione.
+    ba_categoria_cliente_id: d.ba_categoria_cliente_id,
     iva_id: d.iva_id,
     modalita_pagamento_id: d.modalita_pagamento_id,
     termine_pagamento_id: d.termine_pagamento_id,
@@ -197,20 +207,63 @@ function clearSoggetto() {
   indirizziSoggetto.value = []
 }
 
+// Versione per invalidare risposte async stantie: se il drawer si chiude
+// (o si riapre) prima che fetchDetail/loadUtilities atterrino, la risposta
+// vecchia viene scartata invece di popolare il form attuale.
+let fgVersion = 0
+
+// Gate rendering: il contenuto del drawer appare solo quando i dati chiave
+// sono pronti. Evita il "flash" di sezioni vuote che si popolano a tempi
+// diversi durante l'animazione di apertura.
+const ready = ref(false)
+
 // Carica dati
 watch(() => props.visible, async (val) => {
-  if (!val) return
+  if (!val) { fgVersion++; ready.value = false; return }
+  const v = ++fgVersion
+  ready.value = false
+
+  // Lazy load dei lookup: partono solo all'apertura effettiva del drawer,
+  // non al mount del parent. Cache interna (loaded flag) evita rifetch.
+  loadDefaults()
+  if (!isEdit.value) {
+    utilities.load()
+  }
   if (isEdit.value && props.clienteId) {
     const d = await store.fetchDetail(props.clienteId)
+    if (v !== fgVersion) return
     detail.value = d
-    populateFormFromDetail(d)
     // Refactor operatore-emittenti: in edit le utility vengono dal BA
-    // (filtrate per emittente associato + parametri override).
+    // (filtrate per emittente associato + parametri override). Attendiamo
+    // il caricamento delle options PRIMA di popolare il form: altrimenti
+    // PrimeVue Select riceve v-model con valore non presente in options
+    // e non lo riconcilia quando le options arrivano.
     if (d.billing_account_id) {
-      loadUtilitiesBaDriven(d.billing_account_id)
+      await loadUtilitiesBaDriven(d.billing_account_id)
+      if (v !== fgVersion) return
     }
+    // Difensivo: se la matrice BA-driven non include l'utility corrente del
+    // BA (matrice/emittente variati dopo la creazione, oppure endpoint che
+    // filtra piu' stretto), iniettiamo una entry dal dettaglio per garantire
+    // che il Select visualizzi comunque il valore corrente. Il Select e'
+    // disabled in edit, quindi non crea side-effect di selezione.
+    if (d.utility_id && !utilitiesBaDriven.value.some(u => u.id === d.utility_id)) {
+      utilitiesBaDriven.value = [
+        {
+          id: d.utility_id,
+          codice: d.utility_codice || '',
+          descrizione: d.utility_descrizione || '',
+        },
+        ...utilitiesBaDriven.value,
+      ]
+    }
+    populateFormFromDetail(d)
   } else {
     resetForm()
+    // Attendiamo i paramDefaults cosi' IVA/Utility default sono gia'
+    // presenti al primo render → niente flash da null a valore.
+    await loadDefaults()
+    if (v !== fgVersion) return
     if (paramDefaults.value.DEFAULT_IVA_ID) {
       form.value.iva_id = Number(paramDefaults.value.DEFAULT_IVA_ID)
     }
@@ -219,6 +272,7 @@ watch(() => props.visible, async (val) => {
     }
     indirizzo.loadMatriceRuolo(TIPO_RUOLO.CLIENTE)
   }
+  ready.value = true
 })
 
 // Scopo: Costruisce il payload dei campi editabili (condiviso tra create e update).
@@ -252,11 +306,24 @@ async function onSave() {
     )
     if (result !== null) emit('saved', result)
   } else {
-    // Validazione contatto inline (solo se compilato)
-    const hasContatto = (contatto.form.nominativo || '').trim()
-    if (hasContatto) {
+    // Validazione contatto inline: se anche un solo campo del contatto e'
+    // compilato, tutti i campi obbligatori del contatto devono esserlo.
+    // Questo evita il silent-fail quando l'utente seleziona solo tipo_contatto
+    // senza nominativo (o viceversa).
+    const hasAnyContatto = !!(
+      (contatto.form.nominativo || '').trim() ||
+      contatto.form.tipo_contatto_id ||
+      (contatto.form.email || '').trim() ||
+      (contatto.form.telefono || '').trim() ||
+      (contatto.form.cellulare || '').trim() ||
+      (contatto.form.pec || '').trim()
+    )
+    if (hasAnyContatto) {
       contattoErrors.value = contatto.validate()
-      if (contattoErrors.value.length > 0) return
+      if (contattoErrors.value.length > 0) {
+        warn(t('clienti.contatto_campi_obbligatori'))
+        return
+      }
     } else {
       contattoErrors.value = []
     }
@@ -268,9 +335,10 @@ async function onSave() {
       soggetto_id: sogg.id,
       utility_id: form.value.utility_id,
       indirizzo_dettaglio_id: form.value.indirizzo_dettaglio_id || null,
+      ba_categoria_cliente_id: form.value.ba_categoria_cliente_id,
       ...buildEditablePayload(),
     }
-    if (hasContatto) {
+    if (hasAnyContatto) {
       payload.contatto = { ...contatto.form }
     }
     if (indirizzo.hasIndirizzi.value) {
@@ -289,6 +357,8 @@ async function onSave() {
 // il guard backend e il trigger DB sono comunque la difesa primaria).
 const canSave = computed(() => {
   if (!soggettoSelezionato.value || !form.value.utility_id) return false
+  // F3-FE-04: categoria cliente obbligatoria in creazione (no default implicito).
+  if (!isEdit.value && !form.value.ba_categoria_cliente_id) return false
   if (auth.isAdminGlobale) return false
   return true
 })
@@ -329,8 +399,10 @@ function onClose() {
       />
     </template>
 
-    <div class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
-      <div class="form-grid">
+    <div v-if="!ready" class="app-loading">
+      <i class="pi pi-spin pi-spinner" style="font-size: 1.5rem;"></i>
+    </div>
+    <div v-show="ready" class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
 
         <!-- === Soggetto === -->
         <h4>{{ t('clienti.section_soggetto') }}</h4>
@@ -421,9 +493,21 @@ function onClose() {
 
         <!-- === Pagamento === -->
         <h4 class="mt-3">{{ t('clienti.section_pagamento') }}</h4>
-        <div class="form-field">
-          <label>{{ t('clienti.field_iva') }}</label>
-          <IvaSelect v-model="form.iva_id" />
+        <div class="form-grid-2col">
+          <div class="form-field">
+            <label>{{ t('clienti.field_iva') }}</label>
+            <IvaSelect v-model="form.iva_id" />
+          </div>
+          <div class="form-field">
+            <label>
+              {{ t('clienti.field_categoria_cliente') }}
+              <span v-if="!isEdit">*</span>
+            </label>
+            <LookupSelect v-model="form.ba_categoria_cliente_id"
+              rel="anagrafiche.categorie_clienti" class="w-full"
+              :placeholder="t('clienti.select_categoria_cliente')"
+              :disabled="isEdit" />
+          </div>
         </div>
         <div class="form-grid-2col">
           <div class="form-field">
@@ -531,8 +615,6 @@ function onClose() {
         </template>
 
         </template><!-- fine v-if="isEdit || soggettoSelezionato" -->
-
-      </div>
 
       <!-- Badge indirizzi/contatti/conti — creazione: readonly preview, edit: editabile -->
       <SoggettoPreviewBadges v-if="!isEdit && previewRuoloId"

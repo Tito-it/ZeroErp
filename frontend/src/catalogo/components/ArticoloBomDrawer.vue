@@ -68,6 +68,7 @@ function defaultForm() {
     partecipa_qta: true,
     obbligatorio: true,
     determina_qta_padre: false,
+    esposto_in_fattura: false,
     valido_dal: new Date(),
     valido_al: null,
   }
@@ -135,6 +136,7 @@ async function onSaveNew() {
     partecipa_qta: form.value.partecipa_qta,
     obbligatorio: form.value.obbligatorio,
     determina_qta_padre: form.value.determina_qta_padre,
+    esposto_in_fattura: form.value.esposto_in_fattura,
     valido_dal: toDateString(form.value.valido_dal),
     valido_al: toDateString(form.value.valido_al),
   }
@@ -216,6 +218,11 @@ async function onDelete(row) {
           <Column field="componente_codice" :header="t('catalogo.col_codice')" />
           <Column field="componente_descrizione" :header="t('catalogo.col_descrizione')" />
           <Column field="coeff_qta" :header="t('catalogo.col_coeff_qta')" style="width: 70px;" />
+          <Column field="esposto_in_fattura" :header="t('catalogo.col_esposto_fattura')" style="width: 80px;">
+            <template #body="{ data }">
+              <i :class="data.esposto_in_fattura ? 'pi pi-check text-green-500' : 'pi pi-minus text-color-secondary'" />
+            </template>
+          </Column>
           <Column :header="t('catalogo.field_valido_al')" style="width: 120px;">
             <template #body="{ data }">
               <template v-if="editingValidoAlId === data.id">
@@ -301,6 +308,12 @@ async function onDelete(row) {
               <div class="form-field">
                 <label>{{ t('catalogo.field_partecipa_qta') }}</label>
                 <ToggleSwitch v-model="form.partecipa_qta" />
+              </div>
+            </div>
+            <div class="form-grid-2col mt-05">
+              <div class="form-field">
+                <label>{{ t('catalogo.field_esposto_fattura') }}</label>
+                <ToggleSwitch v-model="form.esposto_in_fattura" />
               </div>
             </div>
             <div class="flex justify-end gap-2 mt-05">

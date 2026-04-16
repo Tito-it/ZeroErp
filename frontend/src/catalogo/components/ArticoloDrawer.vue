@@ -63,10 +63,11 @@ function defaultForm() {
   return {
     codice: '', descrizione: '', descrizione_breve: '',
     uom_id: null, tipo_voce_id: null, gruppo_voce_id: null,
+    listino_tipologia_id: null,
     spesa_id: null, iva_id: null,
     conto_contabile_vendita_id: null, conto_contabile_acquisto_id: null,
     is_composito: false, is_solo_componente: false,
-    requires_serial: false, voce_utility: false,
+    requires_serial: false,
     attivo: true
   }
 }
@@ -121,6 +122,7 @@ async function loadDetail() {
     uom_id: data.uom_id,
     tipo_voce_id: data.tipo_voce_id,
     gruppo_voce_id: data.gruppo_voce_id,
+    listino_tipologia_id: data.listino_tipologia_id,
     spesa_id: data.spesa_id,
     iva_id: data.iva_id,
     conto_contabile_vendita_id: data.conto_contabile_vendita_id,
@@ -128,7 +130,6 @@ async function loadDetail() {
     is_composito: data.is_composito || false,
     is_solo_componente: data.is_solo_componente || false,
     requires_serial: data.requires_serial || false,
-    voce_utility: data.voce_utility || false,
     attivo: data.attivo ?? true
   }
   // Carica riepilogo in parallelo
@@ -163,6 +164,7 @@ async function handleSave() {
       descrizione_breve: f.descrizione_breve?.trim() || null,
       tipo_voce_id: f.tipo_voce_id,
       gruppo_voce_id: f.gruppo_voce_id,
+      listino_tipologia_id: f.listino_tipologia_id,
       spesa_id: f.spesa_id,
       iva_id: f.iva_id,
       conto_contabile_vendita_id: f.conto_contabile_vendita_id,
@@ -170,7 +172,6 @@ async function handleSave() {
       is_composito: f.is_composito,
       is_solo_componente: f.is_solo_componente,
       requires_serial: f.requires_serial,
-      voce_utility: f.voce_utility,
       attivo: f.attivo,
     }
     const result = await execute(
@@ -186,6 +187,7 @@ async function handleSave() {
       uom_id: f.uom_id,
       tipo_voce_id: f.tipo_voce_id,
       gruppo_voce_id: f.gruppo_voce_id,
+      listino_tipologia_id: f.listino_tipologia_id,
       spesa_id: f.spesa_id,
       iva_id: f.iva_id,
       conto_contabile_vendita_id: f.conto_contabile_vendita_id,
@@ -193,7 +195,6 @@ async function handleSave() {
       is_composito: f.is_composito,
       is_solo_componente: f.is_solo_componente,
       requires_serial: f.requires_serial,
-      voce_utility: f.voce_utility,
     }
     const result = await execute(
       () => store.create(payload),
@@ -240,6 +241,10 @@ function close() {
             <label>{{ t('catalogo.field_descrizione_breve') }}</label>
             <InputText v-model="form.descrizione_breve" />
           </div>
+          <div class="form-field">
+            <label>{{ t('catalogo.field_iva') }}</label>
+            <IvaSelect v-model="form.iva_id" />
+          </div>
         </div>
 
         <div class="form-grid-2col">
@@ -252,12 +257,13 @@ function close() {
             <LookupSelect v-model="form.gruppo_voce_id" rel="vendite.articoli_gruppi" :placeholder="t('catalogo.select_gruppo')" show-clear />
           </div>
           <div class="form-field">
-            <label>{{ t('catalogo.field_spesa') }}</label>
-            <LookupSelect v-model="form.spesa_id" rel="vendite.articoli_spesa" :placeholder="t('catalogo.select_spesa')" show-clear />
+            <label>{{ t('catalogo.field_listino_tipologia') }}</label>
+            <LookupSelect v-model="form.listino_tipologia_id" rel="config.listini_tipologie" :placeholder="t('catalogo.select_listino_tipologia')" show-clear />
+            <small class="text-color-secondary mt-025">{{ t('catalogo.hint_listino_tipologia') }}</small>
           </div>
           <div class="form-field">
-            <label>{{ t('catalogo.field_iva') }}</label>
-            <IvaSelect v-model="form.iva_id" />
+            <label>{{ t('catalogo.field_spesa') }}</label>
+            <LookupSelect v-model="form.spesa_id" rel="vendite.articoli_spesa" :placeholder="t('catalogo.select_spesa')" show-clear />
           </div>
         </div>
 
@@ -272,7 +278,7 @@ function close() {
           </div>
         </div>
 
-        <div class="form-grid-2col">
+        <div class="form-grid-3col">
           <div class="form-field">
             <label>{{ t('catalogo.field_composito') }}</label>
             <ToggleSwitch v-model="form.is_composito" />
@@ -282,14 +288,12 @@ function close() {
             <ToggleSwitch v-model="form.is_solo_componente" />
           </div>
           <div class="form-field">
-            <label>{{ t('catalogo.field_voce_utility') }}</label>
-            <ToggleSwitch v-model="form.voce_utility" />
-          </div>
-          <div class="form-field">
             <label>{{ t('catalogo.field_requires_serial') }}</label>
             <ToggleSwitch v-model="form.requires_serial" />
           </div>
-          <div v-if="isEdit" class="form-field">
+        </div>
+        <div v-if="isEdit" class="form-grid-2col">
+          <div class="form-field">
             <label>{{ t('indirizzi.campo_attivo') }}</label>
             <ToggleSwitch v-model="form.attivo" />
           </div>
