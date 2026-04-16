@@ -7,7 +7,7 @@ import { useI18n } from 'vue-i18n'
 import { useListiniStore } from '../stores/listini'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
-import { DRAWER_WIDTH, MANAGE_ICONS } from '../../core/constants'
+import { DRAWER_WIDTH } from '../../core/constants'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import DrawerFooter from '../../core/components/DrawerFooter.vue'
 import UtilityPerRuoloSelect from '../../core/components/UtilityPerRuoloSelect.vue'
@@ -28,7 +28,7 @@ const props = defineProps({
   mode: { type: String, default: 'create' },
   listinoId: { type: [Number, null], default: null }
 })
-const emit = defineEmits(['update:visible', 'saved', 'cancelled', 'open-associazioni'])
+const emit = defineEmits(['update:visible', 'saved', 'cancelled'])
 
 const isEdit = computed(() => props.mode === 'edit')
 const form = ref({})
@@ -177,15 +177,6 @@ function close() {
           </div>
         </div>
 
-        <!-- Pulsante associazioni (edit mode). Le versioni si gestiscono dall'expansion in lista. -->
-        <template v-if="isEdit && detail">
-          <div class="app-drawer-section"><h4>{{ t('listini.section_gestione') }}</h4></div>
-          <div class="flex gap-2 mt-05">
-            <Button :icon="MANAGE_ICONS.ASSOCIAZIONI" :label="t('listini.tab_associazioni')"
-              text size="small" class="app-manage-btn"
-              @click="emit('open-associazioni', detail)" />
-          </div>
-        </template>
       </template>
 
       <div v-else class="app-loading">

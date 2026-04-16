@@ -167,3 +167,15 @@ export const DOMINIO_LISTINO_MAP = {
 export function dominioListinoSeverity(codice) {
   return resolveSeverity(DOMINIO_LISTINO_MAP, codice)
 }
+
+// --- Mappa stati contratto (v5) ---
+// DRAFT=grigio, ATTIVO=verde, SOSPESO=arancio, CESSATO=rosso
+export const STATO_CONTRATTO_MAP = {
+  DRAFT: 'secondary',
+  ATTIVO: 'success',
+  SOSPESO: 'warn',
+  CESSATO: 'danger',
+}
+export function statoContrattoSeverity(codice) {
+  return resolveSeverity(STATO_CONTRATTO_MAP, codice)
+}

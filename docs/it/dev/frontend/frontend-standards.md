@@ -426,6 +426,67 @@ Stesso principio dei subfile AS/400 dove il RRN nascosto garantiva la posizione 
 
 ---
 
+## Pattern Master-Detail inline (gestione righe in drawer)
+
+Per le sub-entita' che richiedono inserimento/modifica riga (righe contratto, righe ordine,
+componenti BoM, ecc.) si usa un **drawer master-detail inline**: lista paginata sopra,
+form dettaglio sotto — tutto nello stesso drawer, zero drawer annidati.
+
+```
+┌─────────────────────────────────────────────────────────┐
+│ DrawerTitle: "Contratto - Righe"                        │
+├─────────────────────────────────────────────────────────┤
+│                                           [BOZZA]  (dx) │
+│ Numero              │ Cliente                            │
+│ CNT0000001          │ Rossi Mario SRL                    │
+│ Valido dal          │ Valido al                          │
+│ 16/04/2026          │ 31/12/2026                         │
+├─────────────────────────────────────────────────────────┤
+│                                          [+ Nuovo]       │
+│ [◀ 1/3 ▶  10/pag]                                       │
+│ Articolo │ UoM │ Prezzo │ Qta │ Tipo   │ 🗑             │
+│ ART-001  │ kWh │ 25.50  │ 1   │ CANONE │ 🗑  ← sel.    │
+│ ART-002  │ mc  │ 12.00  │ 1   │ CONSUMO│ 🗑             │
+├─────────────────────────────────────────────────────────┤
+│ ═══════ Modifica riga ═══════                           │
+│ Articolo: [ART-001 ...] (disabled)                      │
+│ UoM: [kWh ▼]         Tipo: [CANONE ▼]                   │
+│ Prezzo: [25.50]       Qta: [1]                           │
+│ Ordine: [10]                                             │
+│                            [Annulla]  [Salva]            │
+├─────────────────────────────────────────────────────────┤
+│                                          [Chiudi]        │
+└─────────────────────────────────────────────────────────┘
+```
+
+### Regole del pattern
+
+1. **Drawer largo**: usare `DRAWER_WIDTH.WIDE` (960px) per dare spazio alla lista + form
+2. **Intestazione contesto**: in alto mostrare sempre i dati del parent (numero, cliente, stato, date). L'operatore deve sapere dove si trova senza tornare indietro. Tag stato allineato a destra
+3. **Paginazione**: `paginator` con `rows="10"` e `rows-per-page-options="[10, 25]"`, `paginator-position="top"`, `data-key="id"`
+4. **Pulsante Nuovo**: usare `NewButton` (componente standard), posizionato in alto a destra sopra la tabella come nelle liste principali
+5. **Selezione riga**: `selection-mode="single"` + `v-model:selection`. Click riga popola il form in edit mode con `@row-select`
+6. **Form dettaglio**: visibile SOLO quando attivo (Nuovo o click riga). Nascosto di default. Titolo "Nuova riga" o "Modifica riga"
+7. **Articolo**: in create editabile (autocomplete), in edit disabled (immutabile)
+8. **UoM**: filtrate per articolo via `listArticoloUom(articoloId)`, pre-seleziona la UoM base. Placeholder "Seleziona prima l'articolo" se nessun articolo scelto
+9. **Salva/Annulla**: sempre in basso dopo il form. Salva crea o aggiorna, chiude form, emette `changed`. Annulla chiude form e deseleziona riga
+10. **Elimina**: icona cestino sulla riga (`@click.stop` per non triggerare selezione). Se stavo editando quella riga, chiude il form
+11. **`formMode`**: ref con 3 stati: `null` (nessun form), `'create'`, `'edit'`. Governa visibilita' e comportamento
+
+### Riferimento implementativo
+
+Primo caso: `ContrattoRigheDrawer.vue` (righe contratto pricing v5).
+
+### Come applicare a una nuova sub-entita'
+
+1. Copiare la struttura di `ContrattoRigheDrawer.vue` come base
+2. Adattare le colonne DataTable e i campi del form
+3. Passare le props contesto dal parent (numero/codice, cliente, stato, date)
+4. Collegare le API CRUD (add/update/delete) allo store o direttamente
+5. Mantenere `data-key="id"` + paginazione a 10 + `NewButton` + `@click.stop` sul cestino
+
+---
+
 ## Pattern Tab-View (viste multi-sezione)
 
 Quando una pagina contiene piu' sezioni correlate (es. Gestione Geografica con 6 tab):

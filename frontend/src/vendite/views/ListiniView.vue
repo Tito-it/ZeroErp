@@ -1,7 +1,7 @@
 <script setup>
 // Scopo: Vista principale gestione listini vendite.
 // Orchestra: lista listini con expansion versioni inline + drawer testata listino,
-// drawer associazioni, drawer righe prezzo (VersioneDrawer), drawer create versione,
+// drawer righe prezzo (VersioneDrawer), drawer create versione,
 // dialog test resolver prezzo. Cache versioni invalidata sui salvataggi.
 import { ref } from 'vue'
 import { useDrawerState } from '../../core/composables/useDrawerState'
@@ -9,7 +9,6 @@ import { useReadonlyMode } from '../../core/composables/useReadonlyMode'
 import { useListiniStore } from '../stores/listini'
 import ListiniSearchTable from '../components/ListiniSearchTable.vue'
 import ListinoDrawer from '../components/ListinoDrawer.vue'
-import ListinoAssociazioniDrawer from '../components/ListinoAssociazioniDrawer.vue'
 import VersioneDrawer from '../components/VersioneDrawer.vue'
 import VersioneFormDrawer from '../components/VersioneFormDrawer.vue'
 import CloneVersioneDrawer from '../components/CloneVersioneDrawer.vue'
@@ -18,10 +17,6 @@ import TestResolverDialog from '../components/TestResolverDialog.vue'
 const drawer = useDrawerState()
 const store = useListiniStore()
 useReadonlyMode('vendite')
-
-// Drawer associazioni
-const associazioniVisible = ref(false)
-const associazioniListinoId = ref(null)
 
 // Drawer righe prezzo (VersioneDrawer)
 const versioneDrawerVisible = ref(false)
@@ -48,16 +43,6 @@ async function onDrawerSaved(result) {
   } else {
     drawer.close()
   }
-}
-
-function onOpenAssociazioni(data) {
-  associazioniListinoId.value = data.id
-  associazioniVisible.value = true
-}
-
-async function onAssociazioniSaved() {
-  // Refresh lista per aggiornare il count associazioni nella riga.
-  await store.fetchList()
 }
 
 const versioneListinoDescrizione = ref('')
@@ -116,7 +101,6 @@ async function onClonaVersioneSaved({ listinoId }) {
     <ListiniSearchTable
       @new="drawer.openCreate"
       @row-click="(data) => drawer.editRow(data, 'id')"
-      @open-associazioni="onOpenAssociazioni"
       @open-righe="onOpenRighe"
       @open-nuova-versione="onOpenNuovaVersione"
       @open-clona-versione="onOpenClonaVersione"
@@ -130,14 +114,6 @@ async function onClonaVersioneSaved({ listinoId }) {
       :listino-id="drawer.state.itemId"
       @saved="onDrawerSaved"
       @cancelled="drawer.close"
-      @open-associazioni="onOpenAssociazioni"
-    />
-
-    <ListinoAssociazioniDrawer
-      :visible="associazioniVisible"
-      @update:visible="v => associazioniVisible = v"
-      :listino-id="associazioniListinoId"
-      @saved="onAssociazioniSaved"
     />
 
     <VersioneDrawer v-if="versioneSelezionata"

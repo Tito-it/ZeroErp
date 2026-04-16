@@ -172,9 +172,18 @@ class ClientiService:
         indirizzo_dettaglio_id = optional_int(payload, "indirizzo_dettaglio_id")
         ba_fatturazione_ordini = optional_str(payload, "ba_fatturazione_ordini")
         ba_parent_account_id = optional_int(payload, "ba_parent_account_id")
-        # Pricing v5 STADIO 2: categoria_cliente_id opzionale; se assente il
-        # repository defaulta a 'STANDARD'. La FK e' validata dal DB.
+        # Pricing v5 STADIO 2: categoria_cliente_id obbligatoria quando si crea
+        # un nuovo BA (no default implicito). Scelta voluta: la categoria e'
+        # dimensione commerciale rilevante per il pricing, non deve essere
+        # assegnata implicitamente. Se il BA e' pre-esistente la categoria e'
+        # gia' sul BA e il valore qui e' ignorato.
         ba_categoria_cliente_id = optional_int(payload, "ba_categoria_cliente_id")
+        if billing_account_id is None:
+            ErrorManager.require(
+                ba_categoria_cliente_id is not None,
+                code=E_ANAG_VALIDAZIONE,
+                message="ba_categoria_cliente_id obbligatorio per creare un nuovo BA.",
+            )
 
         # Dati cliente (passati direttamente al repository)
         cliente_data: dict[str, Any] = {}
@@ -265,32 +274,17 @@ class ClientiService:
             billing_account_id = self._validate_billing_account(
                 billing_account_id, istanza_utility_id)
         else:
-            # Pricing v5 STADIO 2: categoria_cliente_id e' NOT NULL in DB. Se il
-            # chiamante non la passa, risolviamo esplicitamente STANDARD e
-            # falliamo con messaggio parlante se il seed manca (B1 review
-            # 2026-04-15: evita IntegrityError opaco da subquery NULL).
-            effective_categoria_id = ba_categoria_cliente_id
-            if effective_categoria_id is None:
-                effective_categoria_id = self._repo.get_categoria_cliente_id_by_codice(
-                    "STANDARD"
-                )
-                ErrorManager.require(
-                    effective_categoria_id is not None,
-                    code=E_ANAG_VALIDAZIONE,
-                    message="Categoria cliente 'STANDARD' non configurata.",
-                    detail=(
-                        "Seed anagrafiche.categorie_clienti mancante: il "
-                        "backfill F1-DB-03 deve essere applicato oppure la "
-                        "categoria di default deve essere fornita esplicitamente."
-                    ),
-                )
+            # Pricing v5 STADIO 2: categoria_cliente_id e' obbligatoria; la
+            # validazione e' gia' stata effettuata in crea_cliente (no default
+            # implicito). La FK e' validata dal DB.
+            assert ba_categoria_cliente_id is not None
             billing_account_id = self._repo.create_billing_account(
                 istanza_utility_id=istanza_utility_id,
                 soggetto_ruolo_id=soggetto_ruolo_id,
                 utility_id=utility_id,
                 fatturazione_ordini=ba_fatturazione_ordini,
                 parent_account_id=ba_parent_account_id,
-                categoria_cliente_id=effective_categoria_id)
+                categoria_cliente_id=ba_categoria_cliente_id)
 
         # Step 4: Cliente — passa dati obbligatori + opzionali dal payload
         try:

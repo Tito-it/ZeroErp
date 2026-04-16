@@ -116,6 +116,7 @@ export const MANAGE_ICONS = {
   // Vendite
   VERSIONI: 'pi pi-history',
   ASSOCIAZIONI: 'pi pi-link',
+  CONTRATTI: 'pi pi-file-edit',
 }
 
 // Keyboard shortcuts

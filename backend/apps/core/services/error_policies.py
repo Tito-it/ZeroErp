@@ -109,6 +109,52 @@ class ErrorPolicyRegistry:
             user_message="Esiste gia' una promo attiva per questo "
                          "(articolo, unita' di misura) nel periodo indicato.",
         ),
+        # ── Contratti v5 (F2-BE-05/06) ──
+        # Codici sollevati dai trigger DB trgfn_contratti_guard_modalita_c_*
+        # e trgfn_contratti_utilities_guard_tipo_classe.
+        "E_VENDITE_CONTRATTO_OVERLAP": ErrorPolicy(
+            code="E_VENDITE_CONTRATTO_OVERLAP",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Esiste gia' un contratto sovrapposto per questo "
+                         "cliente/istanza/utility/ambito nel periodo indicato.",
+        ),
+        "E_CONTRATTO_MODALITA_C_SENZA_RIGHE": ErrorPolicy(
+            code="E_CONTRATTO_MODALITA_C_SENZA_RIGHE",
+            http_status=400,
+            ui_action="show_error_banner",
+            user_message="Contratto in modalita' C senza righe: aggiungere almeno una riga prima di attivare.",
+        ),
+        "E_CONTRATTO_MODALITA_C_RIGHE_INCOMPLETE": ErrorPolicy(
+            code="E_CONTRATTO_MODALITA_C_RIGHE_INCOMPLETE",
+            http_status=400,
+            ui_action="show_error_banner",
+            user_message="Contratto in modalita' C: ogni riga deve avere un prezzo unitario prima di attivare.",
+        ),
+        "E_CONTRATTO_MODALITA_C_RIGA_SENZA_PREZZO": ErrorPolicy(
+            code="E_CONTRATTO_MODALITA_C_RIGA_SENZA_PREZZO",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message="Su contratto attivo in modalita' C la riga deve avere prezzo unitario.",
+        ),
+        "E_CONTRATTO_UTILITY_TIPO_CLASSE_OBBLIGATORI": ErrorPolicy(
+            code="E_CONTRATTO_UTILITY_TIPO_CLASSE_OBBLIGATORI",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message="Per questa utility tipo e classe utenza sono obbligatori.",
+        ),
+        "E_CONTRATTO_CLASSE_TIPO_INCOERENTE": ErrorPolicy(
+            code="E_CONTRATTO_CLASSE_TIPO_INCOERENTE",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message="La classe utenza scelta non appartiene al tipo utenza indicato.",
+        ),
+        "E_CONTRATTO_UTILITY_SENZA_DIMENSIONE_TIPO_CLASSE_VIETATI": ErrorPolicy(
+            code="E_CONTRATTO_UTILITY_SENZA_DIMENSIONE_TIPO_CLASSE_VIETATI",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message="Per questa utility tipo e classe utenza non vanno valorizzati.",
+        ),
         # ── Pricing v5 resolver (F2-BE-09/10) ──
         # Codici di dominio sollevati dal DB via script.fn_log_and_raise_error.
         # Policy UI: operatore/admin vede messaggio business-safe; detail tecnico

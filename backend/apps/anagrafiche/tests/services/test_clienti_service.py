@@ -32,7 +32,7 @@ Indice test eseguiti:
 21) test_guard_passa_per_operatore_di_emittente — operatore con emittente → ok
 22) test_db_trigger_error_propaga_codice — errore trigger DB propagato come ServiceError
 23) test_crea_cliente_con_ba_categoria — F2-BE-04: ba_categoria_cliente_id passato al repo
-24) test_crea_cliente_senza_ba_categoria_default — F2-BE-04: omesso -> None (repo defaulta STANDARD)
+24) test_crea_cliente_senza_ba_categoria_errore — F3-FE-04: categoria obbligatoria, no default
 25) test_update_cliente_solo_categoria — F2-BE-04: PATCH solo ba_categoria_cliente_id -> update BA
 26) test_update_cliente_categoria_e_campi — F2-BE-04: PATCH misto BA + cliente
 27) test_update_cliente_categoria_invalida_zero — F2-BE-04: ba_categoria_cliente_id=0 -> VALIDAZIONE
@@ -69,7 +69,14 @@ def _billing_account(istanza_utility_id=100):
             "soggetto_ruolo_id": 50, "utility_id": 10, "codice": "BA-001"}
 
 def _base_payload(**overrides):
-    payload = {"soggetto_id": FAKE_UUID, "utility_id": 10}
+    # F3-FE-04: ba_categoria_cliente_id obbligatorio quando si crea un nuovo
+    # BA (no default implicito). Le fixture includono un valore fittizio;
+    # i test che riusano un BA pre-esistente possono ometterlo via override.
+    payload = {
+        "soggetto_id": FAKE_UUID,
+        "utility_id": 10,
+        "ba_categoria_cliente_id": 1,
+    }
     payload.update(overrides)
     return payload
 
@@ -390,28 +397,17 @@ class TestBaCategoriaF2BE04(TestCase):
 
     @patch(TX_ATOMIC)
     @patch(CLI_REPO)
-    def test_crea_cliente_senza_ba_categoria_default(self, mock_repo, _tx):
-        """Omesso dal payload -> service risolve STANDARD via repo e lo passa."""
-        repo = self._setup_crea(mock_repo)
-        # B1 review 2026-04-15: il service risolve STANDARD esplicitamente.
-        repo.get_categoria_cliente_id_by_codice.return_value = 99
+    def test_crea_cliente_senza_ba_categoria_errore(self, mock_repo, _tx):
+        """F3-FE-04: ba_categoria_cliente_id omesso -> E_ANAG_VALIDAZIONE.
+        Nessun default implicito: la categoria cliente e' dimensione
+        commerciale e deve essere scelta esplicitamente."""
+        self._setup_crea(mock_repo)
         from apps.anagrafiche.services.clienti_service import ClientiService
-        ClientiService().crea_cliente(_base_payload())
-        repo.get_categoria_cliente_id_by_codice.assert_called_once_with("STANDARD")
-        kwargs = repo.create_billing_account.call_args.kwargs
-        self.assertEqual(kwargs["categoria_cliente_id"], 99)
-
-    @patch(TX_ATOMIC)
-    @patch(CLI_REPO)
-    def test_crea_cliente_standard_seed_mancante(self, mock_repo, _tx):
-        """B1 review: se STANDARD non esiste -> ServiceError parlante (no IntegrityError opaco)."""
-        repo = self._setup_crea(mock_repo)
-        repo.get_categoria_cliente_id_by_codice.return_value = None
-        from apps.anagrafiche.services.clienti_service import ClientiService
+        payload = {"soggetto_id": FAKE_UUID, "utility_id": 10}
         with self.assertRaises(ServiceError) as ctx:
-            ClientiService().crea_cliente(_base_payload())
+            ClientiService().crea_cliente(payload)
         self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
-        self.assertIn("STANDARD", ctx.exception.message)
+        self.assertIn("ba_categoria_cliente_id", ctx.exception.message)
 
     @patch(CLI_REPO)
     def test_update_cliente_solo_categoria(self, mock_repo):

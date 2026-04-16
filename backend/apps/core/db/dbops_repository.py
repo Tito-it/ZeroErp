@@ -102,6 +102,7 @@ _REL_CONSENTITE: frozenset[str] = frozenset(
         "vendite.articoli_gruppi",
         "vendite.articoli_spesa",
         "vendite.articoli_tipologie",
+        "vendite.listini",
         "vendite.stati_commessa",
         "vendite.tipi_fondi_fattura",
     }

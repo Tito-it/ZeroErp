@@ -24,6 +24,7 @@ from apps.vendite.api.views_promo_articoli import (
 urlpatterns = [
     path("preventivi/", include("apps.vendite.api.preventivi_urls")),
     path("listini/", include("apps.vendite.api.urls_listini")),
+    path("contratti/", include("apps.vendite.api.urls_contratti")),
     # Promo articoli (STADIO 0 resolver v5). Matrice CRUD admin.
     # Non esposta via /core/lookup/codici/: ha codice ma non e'
     # candidata come tabella config lookup (semantica temporale).

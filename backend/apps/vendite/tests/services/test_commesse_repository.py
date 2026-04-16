@@ -31,6 +31,8 @@ Indice test eseguiti:
 22) CommesseRepositoryUnitTests.test_list_active_push_sources
 23) CommesseRepositoryUnitTests.test_batch_upsert_attivita_maps_result
 24) CommesseRepositoryUnitTests.test_batch_upsert_attivita_empty_list
+25) CommesseRepositoryUnitTests.test_upsert_attivita_passes_snapshot_v5_params
+26) CommesseRepositoryUnitTests.test_inp_to_jsonb_row_includes_snapshot_v5_keys
 """
 
 from datetime import date, datetime, timezone
@@ -462,3 +464,69 @@ class CommesseRepositoryUnitTests(TestCase):
         self.assertEqual(result.updated, 0)
         self.assertEqual(result.errors, [])
         mock_cursor_factory.return_value.execute.assert_not_called()
+
+    # Scopo: F2-BE-11 — upsert_attivita passa i 7 parametri snapshot pricing v5
+    #        alla fn DB (posizionali nell'ordine della firma).
+    @patch("apps.vendite.db.commesse_repository.connection.cursor")
+    def test_upsert_attivita_passes_snapshot_v5_params(self, mock_cursor_factory):
+        mock_cursor_factory.return_value = _mock_cursor(fetchone=(55, True))
+        repo = CommesseRepository()
+        inp = CommessaAttivitaInput(
+            commessa_id=1,
+            segment_key="seg",
+            quantita=Decimal("1"),
+            competenza_mese=date(2026, 6, 1),
+            articolo_id=None,
+            prezzo_snapshot=Decimal("30"),
+            prezzo_base_snapshot=Decimal("25"),
+            origine_prezzo="CONTRATTO_LISTINO",
+            tipo_variazione_applicata="PERCENTUALE",
+            valore_variazione_applicata=Decimal("20"),
+            promo_id=None,
+            contratto_id=99,
+            categoria_cliente_id_snapshot=3,
+            classe_utenza_id_snapshot=None,
+        )
+        repo.upsert_attivita(inp)
+        sql, params = mock_cursor_factory.return_value.execute.call_args[0]
+        self.assertIn("p_prezzo_base_snapshot", sql)
+        self.assertIn("p_origine_prezzo", sql)
+        self.assertIn("p_tipo_variazione_applicata", sql)
+        self.assertIn("p_valore_variazione_applicata", sql)
+        self.assertIn("p_promo_id", sql)
+        self.assertIn("p_contratto_id", sql)
+        self.assertIn("p_categoria_cliente_id_snapshot", sql)
+        self.assertIn("p_classe_utenza_id_snapshot", sql)
+        self.assertIn(Decimal("25"), params)
+        self.assertIn("CONTRATTO_LISTINO", params)
+        self.assertIn(99, params)
+        self.assertIn(3, params)
+
+    # Scopo: F2-BE-11 — _inp_to_jsonb_row serializza le 8 chiavi snapshot
+    #        pricing v5 (dipendenza: wrapper batch DB deve estrarle).
+    def test_inp_to_jsonb_row_includes_snapshot_v5_keys(self):
+        inp = CommessaAttivitaInput(
+            commessa_id=1,
+            segment_key="seg",
+            quantita=Decimal("1"),
+            competenza_mese=date(2026, 6, 1),
+            articolo_id=None,
+            prezzo_snapshot=Decimal("30"),
+            prezzo_base_snapshot=Decimal("25.0000"),
+            origine_prezzo="PROMO",
+            tipo_variazione_applicata="VALORE_FISSO",
+            valore_variazione_applicata=Decimal("5"),
+            promo_id=7,
+            contratto_id=None,
+            categoria_cliente_id_snapshot=None,
+            classe_utenza_id_snapshot=4,
+        )
+        row = CommesseRepository._inp_to_jsonb_row(inp)
+        self.assertEqual(row["prezzo_base_snapshot"], "25.0000")
+        self.assertEqual(row["origine_prezzo"], "PROMO")
+        self.assertEqual(row["tipo_variazione_applicata"], "VALORE_FISSO")
+        self.assertEqual(row["valore_variazione_applicata"], "5")
+        self.assertEqual(row["promo_id"], 7)
+        self.assertIsNone(row["contratto_id"])
+        self.assertIsNone(row["categoria_cliente_id_snapshot"])
+        self.assertEqual(row["classe_utenza_id_snapshot"], 4)

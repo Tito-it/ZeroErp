@@ -595,6 +595,8 @@
     "nuovo_cliente": "New Client",
     "cliente": "Client",
     "cliente_creato": "Client created",
+    "cliente_salvato": "Client saved",
+    "contatto_campi_obbligatori": "Fill required contact fields or leave it empty.",
     "col_cd_soggetto": "Subject Code",
     "col_ba_codice": "Account Code",
     "col_ragione_sociale": "Business Name",
@@ -627,6 +629,8 @@
     "section_garanzia": "Guarantee",
     "section_gestione": "Management",
     "field_iva": "VAT",
+    "field_categoria_cliente": "Customer category",
+    "select_categoria_cliente": "Select category...",
     "field_modalita_pagamento": "Payment Method",
     "field_termine_pagamento": "Payment Term",
     "field_tipo_gg_scadenza": "Due Days Type",
@@ -763,7 +767,8 @@
     "iban_formato_errore": "Invalid IBAN: must contain 15 to 34 alphanumeric characters"
   },
   "validation": {
-    "email_format": "Invalid email format"
+    "email_format": "Invalid email format",
+    "campo_obbligatorio": "Required field"
   },
   "pratiche": {
     "search_placeholder": "Search by code, description, subject...",
@@ -867,6 +872,9 @@
     "confirm_success": "Operation completed"
   },
   "catalogo": {
+    "field_listino_tipologia": "Pricelist type",
+    "select_listino_tipologia": "Select pricelist type...",
+    "hint_listino_tipologia": "Determines which pricelists the item can be inserted in",
     "select_conto": "Select account...",
     "field_conto_vendita": "Sales Account",
     "field_conto_acquisto": "Purchase Account",

@@ -428,16 +428,22 @@ class PromoArticoliService:
             )
             raise AssertionError("unreachable") from exc  # pragma: no cover
 
-        # Coerenza con tipo (anticipiamo chk_promo_articoli_valore).
+        # Coerenza con tipo. Convenzione firmata coerente col resolver DB
+        # fn_resolve_prezzo_listino_v2: `base * (1 + valore/100)` e
+        # `base + valore` -> negativo = sconto, positivo = aumento.
+        # Il vincolo pre-v5 era `> 0` (bug storico): bloccava gli sconti
+        # promo. Ora ammettiamo negativi; rifiutiamo solo il valore 0 che
+        # sarebbe una promo no-op.
         if tipo in ("PERCENTUALE", "VALORE_FISSO"):
             ErrorManager.require(
-                value > 0,
+                value != 0,
                 code=E_VENDITE_VALIDATION,
                 message=_MESSAGE,
-                detail=f"Per tipo_variazione={tipo} il valore_variazione deve essere > 0.",
+                detail=f"Per tipo_variazione={tipo} il valore_variazione deve essere != 0.",
                 context={"tipo_variazione": tipo, "valore_variazione": str(value)},
             )
         elif tipo == "PREZZO_FISSO":
+            # PREZZO_FISSO = prezzo assoluto sostitutivo, sempre >= 0.
             ErrorManager.require(
                 value >= 0,
                 code=E_VENDITE_VALIDATION,
