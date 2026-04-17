@@ -947,6 +947,15 @@ class ErrorPolicyRegistry:
             ui_action="highlight_form_fields",
             user_message="Parametri preventivo non validi.",
         ),
+        "E_PREV_OVERRIDE_NON_AUTORIZZATO": ErrorPolicy(
+            code="E_PREV_OVERRIDE_NON_AUTORIZZATO",
+            http_status=403,
+            ui_action="show_error_banner",
+            user_message=(
+                "Modifica manuale del prezzo non autorizzata. Usa il prezzo "
+                "suggerito dal listino o richiedi l'autorizzazione al responsabile."
+            ),
+        ),
         "E_PREV_STATO_TRANSIZIONE": ErrorPolicy(
             code="E_PREV_STATO_TRANSIZIONE",
             http_status=409,

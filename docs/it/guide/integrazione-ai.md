@@ -204,6 +204,8 @@ Le risposte includono **azioni di navigazione** cliccabili che portano l'operato
 | `cerca_operatori` | amm_software | Ricerca operatori per nome, reparto, ruolo |
 | `cerca_billing_account` | anagrafiche | Ricerca clienti (billing account) per ragione sociale, codice fiscale, partita IVA |
 | `cerca_articoli` | catalogo | Ricerca articoli del catalogo per codice o descrizione |
+| `cerca_contratti` | vendite | Ricerca contratti commerciali per stato, utility, ambito, cliente, scadenza |
+| `dettaglio_contratto` | vendite | Dati completi di un contratto: testata, utility 1:1, righe con prezzi |
 
 ### 6.2 Scrittura (con conferma)
 

@@ -10,6 +10,7 @@ import { useNotify } from '../../core/composables/useNotify'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import BillingAccountLookup from '../../core/components/BillingAccountLookup.vue'
+import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import InputText from 'primevue/inputtext'
@@ -99,6 +100,19 @@ function removeMapping(row) {
     }
   })
 }
+
+// Scopo: azioni di riga mapping BA (rimozione con conferma), nascoste in readonly.
+function buildRowActions(data) {
+  return [
+    {
+      key: 'rimuovi-mapping',
+      label: t('common.delete'),
+      icon: 'pi pi-trash',
+      severity: 'danger',
+      command: () => removeMapping(data),
+    },
+  ]
+}
 </script>
 
 <template>
@@ -182,15 +196,9 @@ function removeMapping(row) {
           {{ data.id_fiscale_univoco || '—' }}
         </template>
       </Column>
-      <Column v-if="!isReadonly" :header="t('amm.col_actions')" style="width: 70px;" frozen alignFrozen="right">
+      <Column v-if="!isReadonly" :header="t('common.col_azioni')" class="app-col-actions" :exportable="false" frozen alignFrozen="right">
         <template #body="{ data }">
-          <Button
-            icon="pi pi-trash"
-            text rounded size="small"
-            severity="danger"
-            v-tooltip.bottom="t('common.delete')"
-            @click="removeMapping(data)"
-          />
+          <RowActionsMenu :actions="buildRowActions(data)" />
         </template>
       </Column>
       <template #empty>

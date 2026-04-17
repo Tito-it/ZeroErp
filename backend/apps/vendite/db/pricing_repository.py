@@ -53,7 +53,9 @@ class PricingRepository:
                     listino_riga_id,
                     contratto_id,
                     promo_id,
-                    categoria_cliente_listino_id
+                    categoria_cliente_listino_id,
+                    categoria_cliente_id_snapshot,
+                    classe_utenza_id_snapshot
                   FROM vendite.fn_resolve_prezzo_listino_v2(
                            %s::uuid, %s, %s, %s, %s, %s, %s
                        )

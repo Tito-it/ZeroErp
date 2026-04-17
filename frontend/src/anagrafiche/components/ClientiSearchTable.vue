@@ -19,6 +19,7 @@ import NewButton from '../../core/components/NewButton.vue'
 import SearchHint from '../../core/components/SearchHint.vue'
 import LookupSelect from '../../core/components/LookupSelect.vue'
 import UtilityPerRuoloSelect from '../../core/components/UtilityPerRuoloSelect.vue'
+import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
 
 const emit = defineEmits(['new', 'row-click', 'contatti', 'indirizzi', 'conti-bancari', 'contratti'])
 const { t } = useI18n()
@@ -42,6 +43,36 @@ function onStatoChange() {
 }
 
 function onRowClick(event) { emit('row-click', event.data) }
+
+// Scopo: azioni di riga del cliente (sub-drawer anagrafici + contratti).
+function buildRowActions(data) {
+  return [
+    {
+      key: 'contatti',
+      label: t('contatto.gestisci_contatti'),
+      icon: MANAGE_ICONS.CONTATTI,
+      command: () => emit('contatti', data),
+    },
+    {
+      key: 'indirizzi',
+      label: t('indirizzo_soggetto.gestisci_indirizzi'),
+      icon: MANAGE_ICONS.INDIRIZZI,
+      command: () => emit('indirizzi', data),
+    },
+    {
+      key: 'conti-bancari',
+      label: t('conti_bancari.gestisci_conti'),
+      icon: MANAGE_ICONS.CONTI_BANCARI,
+      command: () => emit('conti-bancari', data),
+    },
+    {
+      key: 'contratti',
+      label: t('contratti.gestisci_contratti'),
+      icon: MANAGE_ICONS.CONTRATTI,
+      command: () => emit('contratti', data),
+    },
+  ]
+}
 
 // Scopo: Mostra data sospensione o riattivazione (l'ultima in ordine cronologico).
 function dataSospRiatt(row) {
@@ -140,22 +171,9 @@ onMounted(() => {
           <Tag :value="data.stato_descrizione" :severity="statoClienteSeverity(data.stato_codice)" />
         </template>
       </Column>
-      <Column :header="t('soggetti.col_azioni')" style="width: 80px;" :exportable="false">
+      <Column :header="t('common.col_azioni')" class="app-col-actions" :exportable="false">
         <template #body="{ data }">
-          <div style="display: flex; gap: 0.25rem;">
-            <Button :icon="MANAGE_ICONS.CONTATTI" text rounded size="small" class="app-manage-btn"
-              v-tooltip.top="t('contatto.gestisci_contatti')"
-              @click.stop="emit('contatti', data)" />
-            <Button :icon="MANAGE_ICONS.INDIRIZZI" text rounded size="small" class="app-manage-btn"
-              v-tooltip.top="t('indirizzo_soggetto.gestisci_indirizzi')"
-              @click.stop="emit('indirizzi', data)" />
-            <Button :icon="MANAGE_ICONS.CONTI_BANCARI" text rounded size="small" class="app-manage-btn"
-              v-tooltip.top="t('conti_bancari.gestisci_conti')"
-              @click.stop="emit('conti-bancari', data)" />
-            <Button :icon="MANAGE_ICONS.CONTRATTI" text rounded size="small" class="app-manage-btn"
-              v-tooltip.top="t('contratti.gestisci_contratti')"
-              @click.stop="emit('contratti', data)" />
-          </div>
+          <RowActionsMenu :actions="buildRowActions(data)" />
         </template>
       </Column>
     </DataTable>

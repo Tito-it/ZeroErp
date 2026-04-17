@@ -31,6 +31,7 @@ LISTINO_CREATE_COLUMNS: dict[str, str] = {
     "descrizione": "text",
     "utility_id": "int",
     "tipologia_id": "int",
+    "emittente_soggetto_ruolo_id": "int",
     "meta": "jsonb",
     "attivo": "bool",
 }
@@ -52,9 +53,6 @@ VERSIONE_UPDATE_COLUMNS: dict[str, str] = dict(VERSIONE_CREATE_COLUMNS)
 RIGA_CREATE_COLUMNS: dict[str, str] = {
     "articolo_id": "uuid",
     "uom_id": "int",
-    "billing_account_id": "int",
-    "utility_id": "int",
-    "emittente_soggetto_ruolo_id": "int",
     "prezzo": "numeric",
     "meta": "jsonb",
     "attivo": "bool",
@@ -452,18 +450,16 @@ class ListiniRepository:
             target_versione_id = int(row[0])
 
             # 2) Copy delle righe ATTIVE della sorgente nella nuova versione.
-            #    Manteniamo articolo, uom, contesto (BA/utility/emittente), prezzo, meta.
-            #    Forziamo attivo=TRUE sulla copia. user_insert/data_insert sono gestiti
-            #    dai default delle colonne audit.
+            #    Pricing v5: le dimensioni contesto (BA/utility/emittente)
+            #    sono state droppate da listini_righe (F1-DB-25). La riga
+            #    e' (articolo, uom, prezzo, meta). Forziamo attivo=TRUE sulla
+            #    copia. user_insert/data_insert sono gestiti dai default audit.
             cursor.execute(
                 """
                 INSERT INTO vendite.listini_righe (
                     listino_versione_id,
                     articolo_id,
                     uom_id,
-                    billing_account_id,
-                    utility_id,
-                    emittente_soggetto_ruolo_id,
                     prezzo,
                     meta,
                     attivo
@@ -472,9 +468,6 @@ class ListiniRepository:
                     %s,
                     articolo_id,
                     uom_id,
-                    billing_account_id,
-                    utility_id,
-                    emittente_soggetto_ruolo_id,
                     prezzo,
                     meta,
                     TRUE
@@ -614,12 +607,13 @@ class ListiniRepository:
         # Join guard: la versione deve appartenere al listino richiesto.
         join_guard_params: list[Any] = [listino_id]
 
-        if billing_account_id is not None:
-            conditions.append("r.billing_account_id = %s")
-            params.append(billing_account_id)
-        if utility_id is not None:
-            conditions.append("r.utility_id = %s")
-            params.append(utility_id)
+        # billing_account_id / utility_id / emittente_soggetto_ruolo_id sono
+        # stati droppati da listini_righe nel cleanup v5 (F1-DB-25): le
+        # dimensioni di contesto vivono ora sul listino o sul contratto.
+        # I parametri restano nella firma per retrocompatibilita' chiamanti
+        # ma sono ignorati.
+        _ = billing_account_id
+        _ = utility_id
         if attivo is not None:
             conditions.append("r.attivo = %s")
             params.append(attivo)
@@ -642,14 +636,6 @@ class ListiniRepository:
                 ON ad.id = r.articolo_id
               LEFT JOIN catalogo.unita_misura u
                 ON u.id = r.uom_id
-              LEFT JOIN anagrafiche.billing_account ba
-                ON ba.id = r.billing_account_id
-              LEFT JOIN anagrafiche.vw_soggetti_ruoli_dettaglio srd_ba
-                ON srd_ba.soggetto_ruolo_id = ba.soggetto_ruolo_id
-              LEFT JOIN config.utilities cu
-                ON cu.id = r.utility_id
-              LEFT JOIN anagrafiche.vw_soggetti_ruoli_dettaglio srd_em
-                ON srd_em.soggetto_ruolo_id = r.emittente_soggetto_ruolo_id
         """
 
         count_sql = f"SELECT COUNT(*) {from_clause} {where_clause}"
@@ -663,14 +649,6 @@ class ListiniRepository:
                 r.uom_id,
                 u.codice AS uom_codice,
                 u.descrizione AS uom_descrizione,
-                r.billing_account_id,
-                ba.codice AS billing_account_codice,
-                srd_ba.ragione_sociale_completa AS billing_account_descrizione,
-                r.utility_id,
-                cu.codice AS utility_codice,
-                cu.descrizione AS utility_descrizione,
-                r.emittente_soggetto_ruolo_id,
-                srd_em.ragione_sociale_completa AS emittente_descrizione,
                 r.prezzo,
                 r.meta,
                 r.attivo,
@@ -709,9 +687,6 @@ class ListiniRepository:
                     r.listino_versione_id,
                     r.articolo_id,
                     r.uom_id,
-                    r.billing_account_id,
-                    r.utility_id,
-                    r.emittente_soggetto_ruolo_id,
                     r.prezzo,
                     r.meta,
                     r.attivo,

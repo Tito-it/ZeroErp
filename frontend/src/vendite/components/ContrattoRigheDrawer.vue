@@ -27,6 +27,7 @@ import Button from 'primevue/button'
 import Tag from 'primevue/tag'
 import Message from 'primevue/message'
 import NewButton from '../../core/components/NewButton.vue'
+import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
 
 const { t } = useI18n()
 const store = useContrattiStore()
@@ -220,6 +221,20 @@ function onDelete(r) {
 function onClose() {
   emit('update:visible', false)
 }
+
+// Scopo: azioni di riga per il master-detail righe contratto (elimina; nascosta in readonly).
+function buildRigaActions(data) {
+  return [
+    {
+      key: 'elimina-riga',
+      label: t('common.delete'),
+      icon: 'pi pi-trash',
+      severity: 'danger',
+      visible: !isReadonly.value,
+      command: () => onDelete(data),
+    },
+  ]
+}
 </script>
 
 <template>
@@ -297,10 +312,9 @@ function onClose() {
         </Column>
         <Column field="qta_operativa" :header="t('contratti.col_qta')" style="width: 70px;" />
         <Column field="tipo_erogazione" :header="t('contratti.col_tipo_erogazione')" style="width: 100px;" />
-        <Column :exportable="false" style="width: 50px;">
+        <Column :header="t('common.col_azioni')" class="app-col-actions" :exportable="false">
           <template #body="{ data }">
-            <Button v-if="!isReadonly" icon="pi pi-trash" text rounded size="small" class="app-delete-btn"
-              @click.stop="onDelete(data)" />
+            <RowActionsMenu :actions="buildRigaActions(data)" />
           </template>
         </Column>
       </DataTable>

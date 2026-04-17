@@ -47,6 +47,7 @@ _ORDER_COLS_CONTRATTI: dict[str, str] = {
     "valido_al": "c.valido_al",
     "ba_ragione_sociale": "ba.ragione_sociale",
     "stato_codice": "sd.codice_interno",
+    "categoria_cliente_snapshot_codice": "cc_snap.codice",
     "data_insert": "c.data_insert",
     "data_update": "c.data_update",
 }
@@ -76,6 +77,9 @@ _SELECT_COLS_CONTRATTO = """
     l.descrizione AS listino_descrizione,
     c.tipo_variazione_globale,
     c.valore_variazione_globale,
+    c.categoria_cliente_id_snapshot,
+    cc_snap.codice AS categoria_cliente_snapshot_codice,
+    cc_snap.descrizione AS categoria_cliente_snapshot_descrizione,
     c.meta,
     c.data_insert,
     c.user_insert,
@@ -91,6 +95,7 @@ _FROM_JOINS_CONTRATTO = """
     JOIN config.utilities u ON u.id = c.utility_id
     JOIN config.stati_doc_contratti sd ON sd.id = c.stato_doc_contratto_id
     LEFT JOIN vendite.listini l ON l.id = c.listino_id
+    LEFT JOIN anagrafiche.categorie_clienti cc_snap ON cc_snap.id = c.categoria_cliente_id_snapshot
 """
 
 
@@ -304,6 +309,7 @@ class ContrattiRepository:
             "listino_id",
             "tipo_variazione_globale",
             "valore_variazione_globale",
+            "categoria_cliente_id_snapshot",
             "meta",
         )
         cols: list[str] = []
@@ -339,6 +345,7 @@ class ContrattiRepository:
             "listino_id",
             "tipo_variazione_globale",
             "valore_variazione_globale",
+            "categoria_cliente_id_snapshot",
             "meta",
         )
         set_parts: list[str] = []

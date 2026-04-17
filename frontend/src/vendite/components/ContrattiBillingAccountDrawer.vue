@@ -3,6 +3,7 @@
 //        Accessibile dalla lista Clienti. Permette nuovo contratto con BA
 //        pre-compilato, apertura dettaglio in edit, e gestione righe diretta.
 import { ref, computed, watch } from 'vue'
+import LookupSelect from '../../core/components/LookupSelect.vue'
 import { useI18n } from 'vue-i18n'
 import { useDrawerState } from '../../core/composables/useDrawerState'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
@@ -14,6 +15,7 @@ import { statoContrattoSeverity } from '../../core/utils/severity'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import DrawerFooter from '../../core/components/DrawerFooter.vue'
 import NewButton from '../../core/components/NewButton.vue'
+import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
 import ContrattoDrawer from './ContrattoDrawer.vue'
 import ContrattoRigheDrawer from './ContrattoRigheDrawer.vue'
 import Drawer from 'primevue/drawer'
@@ -39,6 +41,12 @@ const emit = defineEmits(['update:visible'])
 
 const items = ref([])
 const loading = ref(false)
+const statoFilter = ref(null)
+
+const filteredItems = computed(() => {
+  if (!statoFilter.value) return items.value
+  return items.value.filter(i => i.stato_doc_contratto_id === statoFilter.value)
+})
 
 const nestedDrawer = useDrawerState()
 
@@ -79,7 +87,7 @@ async function fetchList() {
 }
 
 watch(() => props.visible, (val) => {
-  if (!val) { fgVersion++; items.value = []; return }
+  if (!val) { fgVersion++; items.value = []; statoFilter.value = null; return }
   fetchList()
 })
 
@@ -95,6 +103,18 @@ function onNew() {
 async function onNestedSaved() {
   nestedDrawer.close()
   await fetchList()
+}
+
+// Scopo: azioni di riga nel drawer contratti del BA (solo "gestisci righe").
+function buildRowActions(data) {
+  return [
+    {
+      key: 'gestisci-righe',
+      label: t('contratti.gestisci_righe'),
+      icon: MANAGE_ICONS.CONTRATTI,
+      command: () => onOpenRighe(data),
+    },
+  ]
 }
 
 // Gestione righe — carica dettaglio per avere righe + contesto
@@ -157,7 +177,14 @@ function onClose() {
       </div>
 
       <div class="app-page-toolbar">
-        <div class="app-page-filters"></div>
+        <div class="app-page-filters">
+          <LookupSelect
+            v-model="statoFilter"
+            rel="config.stati_doc_contratti"
+            :placeholder="t('contratti.filtro_stato')"
+            show-clear
+          />
+        </div>
         <div class="app-page-actions">
           <Button icon="pi pi-refresh" text class="app-reload-btn"
             v-tooltip.bottom="t('common.reload_list')" @click="fetchList" />
@@ -173,7 +200,7 @@ function onClose() {
       </Message>
 
       <DataTable
-        :value="items"
+        :value="filteredItems"
         :loading="loading"
         striped-rows
         class="app-datatable"
@@ -195,6 +222,9 @@ function onClose() {
         </template>
         <Column field="numero" :header="t('contratti.col_numero')" sortable style="width: 130px;" />
         <Column field="ambito" :header="t('contratti.col_ambito')" sortable style="width: 110px;" />
+        <Column field="categoria_cliente_snapshot_codice" :header="t('contratti.col_categoria_cliente')" sortable style="width: 100px;">
+          <template #body="{ data }">{{ data.categoria_cliente_snapshot_codice || '—' }}</template>
+        </Column>
         <Column field="listino_codice" :header="t('contratti.col_listino')" sortable style="width: 150px;">
           <template #body="{ data }">{{ data.listino_codice || '—' }}</template>
         </Column>
@@ -209,11 +239,9 @@ function onClose() {
             <Tag :value="data.stato_descrizione" :severity="statoContrattoSeverity(data.stato_codice)" />
           </template>
         </Column>
-        <Column :header="t('contratti.col_azioni')" style="width: 60px;" :exportable="false">
+        <Column :header="t('common.col_azioni')" class="app-col-actions" :exportable="false">
           <template #body="{ data }">
-            <Button :icon="MANAGE_ICONS.CONTRATTI" text rounded size="small" class="app-manage-btn"
-              v-tooltip.top="t('contratti.gestisci_righe')"
-              @click.stop="onOpenRighe(data)" />
+            <RowActionsMenu :actions="buildRowActions(data)" />
           </template>
         </Column>
       </DataTable>

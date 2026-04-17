@@ -14,6 +14,7 @@ import Button from 'primevue/button'
 import NewButton from '../../core/components/NewButton.vue'
 import SearchHint from '../../core/components/SearchHint.vue'
 import LookupSelect from '../../core/components/LookupSelect.vue'
+import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
 import { MANAGE_ICONS } from '../../core/constants'
 
 const emit = defineEmits(['new', 'row-click', 'manage-uom', 'manage-bom', 'manage-note'])
@@ -61,6 +62,32 @@ function onGruppoChange() {
 }
 
 function onRowClick(event) { emit('row-click', event.data) }
+
+// Scopo: azioni di riga dell'articolo (sub-drawer gestionali).
+// BoM disabilitato su articoli non compositi (guard gia' presente nel drawer).
+function buildRowActions(data) {
+  return [
+    {
+      key: 'manage-uom',
+      label: t('catalogo.gestisci_uom'),
+      icon: MANAGE_ICONS.UOM,
+      command: () => emit('manage-uom', data),
+    },
+    {
+      key: 'manage-bom',
+      label: t('catalogo.gestisci_bom'),
+      icon: MANAGE_ICONS.BOM,
+      disabled: !data.is_composito,
+      command: () => emit('manage-bom', data),
+    },
+    {
+      key: 'manage-note',
+      label: t('catalogo.gestisci_note'),
+      icon: MANAGE_ICONS.NOTE,
+      command: () => emit('manage-note', data),
+    },
+  ]
+}
 
 useTabFreshness(store, 'articolo')
 onMounted(() => {
@@ -130,17 +157,9 @@ onMounted(() => {
           <Tag :value="data.attivo ? t('common.active') : t('common.inactive')" :severity="data.attivo ? 'success' : 'warn'" />
         </template>
       </Column>
-      <Column :header="t('catalogo.col_gestione')" style="width: 110px;">
+      <Column :header="t('common.col_azioni')" class="app-col-actions" :exportable="false">
         <template #body="{ data }">
-          <div class="flex gap-1" @click.stop>
-            <Button :icon="MANAGE_ICONS.UOM" text rounded size="small" class="app-manage-btn"
-              v-tooltip.bottom="t('catalogo.gestisci_uom')" @click="emit('manage-uom', data)" />
-            <Button :icon="MANAGE_ICONS.BOM" text rounded size="small" class="app-manage-btn"
-              v-tooltip.bottom="t('catalogo.gestisci_bom')" :disabled="!data.is_composito"
-              @click="emit('manage-bom', data)" />
-            <Button :icon="MANAGE_ICONS.NOTE" text rounded size="small" class="app-manage-btn"
-              v-tooltip.bottom="t('catalogo.gestisci_note')" @click="emit('manage-note', data)" />
-          </div>
+          <RowActionsMenu :actions="buildRowActions(data)" />
         </template>
       </Column>
     </DataTable>

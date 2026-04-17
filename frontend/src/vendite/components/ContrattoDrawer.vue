@@ -36,7 +36,7 @@ const { t } = useI18n()
 const store = useContrattiStore()
 const { execute, loading } = useApiHandler()
 const isReadonly = useInjectReadonly()
-const confirmAction = useConfirmAction()
+const { confirmAction } = useConfirmAction()
 
 const props = defineProps({
   visible: Boolean,
@@ -93,6 +93,8 @@ function defaultForm() {
     data: new Date().toISOString().slice(0, 10),
     parent_contratto_id: null,
     meta_note: '',
+    // Categoria cliente snapshot
+    categoria_cliente_id_snapshot: null,
     // Pricing
     modalita: 'A',
     listino_id: null,
@@ -129,6 +131,7 @@ function populateFromDetail(d) {
     data: d.data,
     parent_contratto_id: d.parent_contratto_id,
     meta_note: d.meta?.note || '',
+    categoria_cliente_id_snapshot: d.categoria_cliente_id_snapshot || null,
     modalita,
     listino_id: d.listino_id,
     tipo_variazione_globale: d.tipo_variazione_globale,
@@ -201,12 +204,15 @@ function onBaSelected(item) {
     form.value.billing_account_obj = null
     form.value.istanza_utility_id = null
     form.value.utility_id = null
+    form.value.categoria_cliente_id_snapshot = null
     return
   }
   form.value.billing_account_id = item.id
   form.value.billing_account_obj = item
   form.value.istanza_utility_id = item.istanza_utility_id || null
   form.value.utility_id = item.utility_id || null
+  // Pre-compila la categoria dal BA; l'operatore puo' cambiarla.
+  form.value.categoria_cliente_id_snapshot = item.categoria_cliente_id || null
 }
 
 // Validazione FE
@@ -231,6 +237,7 @@ function buildPayload() {
     valido_al: toIsoDate(f.valido_al),
     data: toIsoDate(f.data),
     parent_contratto_id: f.parent_contratto_id || null,
+    categoria_cliente_id_snapshot: f.categoria_cliente_id_snapshot || null,
   }
   if (f.meta_note) payload.meta = { note: f.meta_note }
   // Modalita' pricing
@@ -381,6 +388,21 @@ function onClose() {
           <label>{{ t('contratti.field_ambito') }} <span v-if="!isEdit">*</span></label>
           <Select v-model="form.ambito" :options="ambitoOptions" option-label="label" option-value="value"
             class="w-full" :disabled="isEdit" />
+        </div>
+      </div>
+      <!-- Categoria cliente snapshot: editabile in create e in DRAFT,
+           bloccata dopo attivazione (trigger DB enforced) -->
+      <div class="form-grid-2col mt-1">
+        <div class="form-field">
+          <label>{{ t('contratti.field_categoria_cliente_snapshot') }}</label>
+          <LookupSelect
+            v-model="form.categoria_cliente_id_snapshot"
+            rel="anagrafiche.categorie_clienti"
+            class="w-full"
+            :placeholder="t('contratti.select_categoria_cliente')"
+            show-clear
+            :disabled="isEdit && detail?.stato_codice !== 'DRAFT'"
+          />
         </div>
       </div>
 

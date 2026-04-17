@@ -20,6 +20,7 @@ import Select from 'primevue/select'
 import Button from 'primevue/button'
 import Badge from 'primevue/badge'
 import NewButton from '../../core/components/NewButton.vue'
+import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
 
 const { t } = useI18n()
 const store = useEmittentiFiscaliStore()
@@ -70,6 +71,24 @@ function openBA(row, event) {
 function openUtilities(row, event) {
   event.stopPropagation()
   utDrawer.editRow(row, 'id')
+}
+
+// Scopo: azioni di riga emittente fiscale (sub-drawer BA + utilities).
+function buildRowActions(data) {
+  return [
+    {
+      key: 'ba',
+      label: t('amm_emittenti_fiscali.action_ba'),
+      icon: 'pi pi-credit-card',
+      command: () => baDrawer.editRow(data, 'id'),
+    },
+    {
+      key: 'utilities',
+      label: t('amm_emittenti_fiscali.action_utilities'),
+      icon: 'pi pi-bolt',
+      command: () => utDrawer.editRow(data, 'id'),
+    },
+  ]
 }
 </script>
 
@@ -124,22 +143,9 @@ function openUtilities(row, event) {
           />
         </template>
       </Column>
-      <Column v-if="!isReadonly" :header="t('amm.col_actions')" style="width: 110px;" frozen alignFrozen="right">
+      <Column v-if="!isReadonly" :header="t('common.col_azioni')" class="app-col-actions" :exportable="false" frozen alignFrozen="right">
         <template #body="{ data }">
-          <Button
-            icon="pi pi-credit-card"
-            text rounded size="small"
-            class="app-manage-btn"
-            v-tooltip.bottom="t('amm_emittenti_fiscali.action_ba')"
-            @click="openBA(data, $event)"
-          />
-          <Button
-            icon="pi pi-bolt"
-            text rounded size="small"
-            class="app-manage-btn"
-            v-tooltip.bottom="t('amm_emittenti_fiscali.action_utilities')"
-            @click="openUtilities(data, $event)"
-          />
+          <RowActionsMenu :actions="buildRowActions(data)" />
         </template>
       </Column>
     </DataTable>

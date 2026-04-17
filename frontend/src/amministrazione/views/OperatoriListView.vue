@@ -21,6 +21,7 @@ import Column from 'primevue/column'
 import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
 import NewButton from '../../core/components/NewButton.vue'
+import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
 import Button from 'primevue/button'
 import Badge from 'primevue/badge'
 import { displayDate } from '../../core/utils/date'
@@ -83,6 +84,18 @@ const ruoloBadgeSeverity = getRuoloSeverity
 
 function activeBadgeSeverity(active) {
   return active ? 'success' : 'danger'
+}
+
+// Scopo: azioni di riga operatore (apertura drawer permessi), nascoste in readonly.
+function buildRowActions(data) {
+  return [
+    {
+      key: 'gestisci-permessi',
+      label: t('amm.gestisci_permessi'),
+      icon: 'pi pi-shield',
+      command: () => permessiDrawer.editRow(data, 'auth_user_id'),
+    },
+  ]
 }
 </script>
 
@@ -172,15 +185,9 @@ function activeBadgeSeverity(active) {
       <Column field="valido_al" :header="t('amm.col_valido_al')" sortable>
         <template #body="{ data }">{{ displayDate(data.valido_al) }}</template>
       </Column>
-      <Column v-if="!isReadonly" :header="t('amm.col_actions')" style="width: 70px;" frozen alignFrozen="right">
+      <Column v-if="!isReadonly" :header="t('common.col_azioni')" class="app-col-actions" :exportable="false" frozen alignFrozen="right">
         <template #body="{ data }">
-          <Button
-            icon="pi pi-shield"
-            text rounded size="small"
-            class="app-manage-btn"
-            v-tooltip.bottom="t('amm.gestisci_permessi')"
-            @click="openPermessi(data, $event)"
-          />
+          <RowActionsMenu :actions="buildRowActions(data)" />
         </template>
       </Column>
     </DataTable>

@@ -12,6 +12,7 @@ import Column from 'primevue/column'
 import InputText from 'primevue/inputtext'
 import Tag from 'primevue/tag'
 import Button from 'primevue/button'
+import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
 
 const emit = defineEmits(['edit-override', 'remove-override', 'remove-emittente-override'])
 const { t } = useI18n()
@@ -21,6 +22,36 @@ const isReadonly = useInjectReadonly()
 
 function levelLabel(level) {
   return t(`impostazioni.level_${level}`)
+}
+
+// Scopo: click riga = modifica override (pattern standard liste).
+function onRowClick(event) {
+  if (isReadonly.value) return
+  emit('edit-override', event.data)
+}
+
+// Scopo: azioni secondarie di riga — rimozione override (admin/utente),
+// condizionate alla presenza dell'override corrispondente. La modifica e'
+// sul click riga, non in questo menu.
+function buildRowActions(data) {
+  return [
+    {
+      key: 'remove-emittente-override',
+      label: t('impostazioni.remove_emittente_override'),
+      icon: 'pi pi-building',
+      severity: 'danger',
+      visible: auth.isAdmin && !!data.emittente_override_id,
+      command: () => emit('remove-emittente-override', data),
+    },
+    {
+      key: 'remove-override',
+      label: t('impostazioni.remove_override'),
+      icon: 'pi pi-trash',
+      severity: 'danger',
+      visible: !!data.user_override_id,
+      command: () => emit('remove-override', data),
+    },
+  ]
 }
 
 onMounted(() => store.fetchList())
@@ -44,6 +75,8 @@ onMounted(() => store.fetchList())
       striped-rows scrollable scrollHeight="flex"
       class="app-datatable"
       data-key="code"
+      @row-click="onRowClick"
+      selection-mode="single"
     >
       <template #empty>
         <div class="app-empty-state">{{ t('impostazioni.empty_state') }}</div>
@@ -87,21 +120,9 @@ onMounted(() => store.fetchList())
           </span>
         </template>
       </Column>
-      <Column v-if="!isReadonly" :header="t('impostazioni.col_actions')" style="width: 100px;" frozen alignFrozen="right">
+      <Column v-if="!isReadonly" :header="t('common.col_azioni')" class="app-col-actions" :exportable="false" frozen alignFrozen="right">
         <template #body="{ data }">
-          <div class="app-row-actions">
-            <Button icon="pi pi-pencil" text rounded size="small" class="app-edit-btn"
-              v-tooltip.bottom="t('impostazioni.edit_override')"
-              @click="emit('edit-override', data)" />
-            <Button v-if="auth.isAdmin && data.emittente_override_id" icon="pi pi-building" text rounded size="small"
-              class="app-delete-btn"
-              v-tooltip.bottom="t('impostazioni.remove_emittente_override')"
-              @click="emit('remove-emittente-override', data)" />
-            <Button v-if="data.user_override_id" icon="pi pi-trash" text rounded size="small"
-              class="app-delete-btn"
-              v-tooltip.bottom="t('impostazioni.remove_override')"
-              @click="emit('remove-override', data)" />
-          </div>
+          <RowActionsMenu :actions="buildRowActions(data)" />
         </template>
       </Column>
     </DataTable>

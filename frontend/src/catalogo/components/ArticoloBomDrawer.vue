@@ -13,11 +13,12 @@ import {
   updateArticoloComponente, deleteArticoloComponente,
   listComponenteNote, createComponenteNota,
 } from '../api/catalogo'
-import { DRAWER_WIDTH, DATE_FORMAT } from '../../core/constants'
+import { DRAWER_WIDTH, DATE_FORMAT, MANAGE_ICONS } from '../../core/constants'
 import { displayDate, toDateString } from '../../core/utils/date'
 import ArticoloLookup from '../../core/components/ArticoloLookup.vue'
 import CatalogoNoteDrawer from '../../core/components/CatalogoNoteDrawer.vue'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
+import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
 import Drawer from 'primevue/drawer'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
@@ -189,6 +190,25 @@ async function onDelete(row) {
     emit('saved')
   }
 }
+
+// Scopo: azioni di riga del componente BoM (note + elimina), nascoste in readonly.
+function buildRigaActions(row) {
+  return [
+    {
+      key: 'gestisci-note',
+      label: t('catalogo.gestisci_note'),
+      icon: MANAGE_ICONS.NOTE,
+      command: () => openNoteDrawer(row),
+    },
+    {
+      key: 'elimina-componente',
+      label: t('common.delete'),
+      icon: 'pi pi-trash',
+      severity: 'danger',
+      command: () => onDelete(row),
+    },
+  ]
+}
 </script>
 
 <template>
@@ -244,15 +264,9 @@ async function onDelete(row) {
               </template>
             </template>
           </Column>
-          <Column v-if="!isReadonly" style="width: 80px;">
+          <Column v-if="!isReadonly" :header="t('common.col_azioni')" class="app-col-actions" :exportable="false">
             <template #body="{ data }">
-              <div class="flex gap-1">
-                <Button icon="pi pi-file-edit" text rounded size="small"
-                  v-tooltip.bottom="t('catalogo.gestisci_note')"
-                  class="app-action-btn" @click="openNoteDrawer(data)" />
-                <Button icon="pi pi-trash"
-                  text rounded size="small" class="app-delete-btn" @click="onDelete(data)" />
-              </div>
+              <RowActionsMenu :actions="buildRigaActions(data)" />
             </template>
           </Column>
         </DataTable>

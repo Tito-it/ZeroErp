@@ -117,6 +117,8 @@ export const MANAGE_ICONS = {
   VERSIONI: 'pi pi-history',
   ASSOCIAZIONI: 'pi pi-link',
   CONTRATTI: 'pi pi-file-edit',
+  // Trasversali
+  KEBAB: 'pi pi-ellipsis-v',
 }
 
 // Keyboard shortcuts

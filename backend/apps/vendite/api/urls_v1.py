@@ -16,6 +16,7 @@ from apps.vendite.api.views import (
     ApiRunCommessePush,
     ApiRunLottoPipeline,
 )
+from apps.vendite.api.views_pricing import PricingResolveView
 from apps.vendite.api.views_promo_articoli import (
     PromoArticoliDetailView,
     PromoArticoliView,
@@ -25,6 +26,8 @@ urlpatterns = [
     path("preventivi/", include("apps.vendite.api.preventivi_urls")),
     path("listini/", include("apps.vendite.api.urls_listini")),
     path("contratti/", include("apps.vendite.api.urls_contratti")),
+    # Pricing v5 diagnostico: resolver 3 stadi (PROMO/CONTRATTO/CATEGORIA).
+    path("pricing/resolve/", PricingResolveView.as_view(), name="vendite-pricing-resolve"),
     # Promo articoli (STADIO 0 resolver v5). Matrice CRUD admin.
     # Non esposta via /core/lookup/codici/: ha codice ma non e'
     # candidata come tabella config lookup (semantica temporale).

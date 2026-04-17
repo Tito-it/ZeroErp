@@ -74,7 +74,8 @@ class TestFase3ToolRegistration(unittest.TestCase):
         # Fase 4: crea_pratica, cambia_stato_pratica, aggiungi_nota_pratica (3)
         # Fase 5: cerca_billing_account (1)
         # Fase 6: cerca_articoli (1)
-        self.assertEqual(len(all_tools), 11)
+        # Fase 7: cerca_contratti, dettaglio_contratto (2)
+        self.assertEqual(len(all_tools), 13)
 
     # Scopo: cerca_soggetti deve avere search nello schema.
     def test_cerca_soggetti_schema_has_search(self):

@@ -22,6 +22,7 @@ import ToggleSwitch from 'primevue/toggleswitch'
 import Button from 'primevue/button'
 import Tag from 'primevue/tag'
 import Message from 'primevue/message'
+import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
 
 const { t } = useI18n()
 const store = useEmittentiFiscaliStore()
@@ -138,6 +139,39 @@ function removeConfig(row) {
       }
     }
   })
+}
+
+// Scopo: azioni di riga matrice utility — non in modalita' edit (che usa
+// pulsanti inline form Salva/Annulla). Azioni differenti per stato:
+//   - riga configurata: Modifica + Rimuovi (danger)
+//   - riga non configurata: Configura (primary)
+function buildRowActions(row) {
+  const configured = isConfigured(row)
+  return [
+    {
+      key: 'modifica',
+      label: t('amm_emittenti_fiscali.ut_action_modifica'),
+      icon: 'pi pi-pencil',
+      visible: configured,
+      command: () => startEdit(row),
+    },
+    {
+      key: 'rimuovi',
+      label: t('amm_emittenti_fiscali.ut_action_rimuovi_config'),
+      icon: 'pi pi-trash',
+      severity: 'danger',
+      visible: configured,
+      command: () => removeConfig(row),
+    },
+    {
+      key: 'configura',
+      label: t('amm_emittenti_fiscali.ut_action_configura'),
+      icon: 'pi pi-plus',
+      severity: 'primary',
+      visible: !configured,
+      command: () => startEdit(row),
+    },
+  ]
 }
 
 // Carica matrice quando l'id dell'emittente cambia.
@@ -276,13 +310,15 @@ watch(() => props.emittenteId, async (id) => {
 
       <Column
         v-if="!isReadonly"
-        :header="t('amm.col_actions')"
-        style="width: 130px; min-width: 130px;"
+        :header="t('common.col_azioni')"
+        class="app-col-actions"
+        :exportable="false"
         frozen
         alignFrozen="right"
       >
         <template #body="{ data }">
-          <!-- Editing in corso: Salva + Annulla -->
+          <!-- Editing in corso: Salva + Annulla restano inline (form affordance,
+               non azioni di riga). Devono essere sempre visibili su ogni device. -->
           <template v-if="isEditing(data)">
             <Button
               icon="pi pi-check"
@@ -300,33 +336,8 @@ watch(() => props.emittenteId, async (id) => {
               @click="cancelEdit(data)"
             />
           </template>
-          <!-- Riga configurata: Modifica + Rimuovi -->
-          <template v-else-if="isConfigured(data)">
-            <Button
-              icon="pi pi-pencil"
-              text rounded size="small"
-              class="app-edit-btn"
-              v-tooltip.bottom="t('amm_emittenti_fiscali.ut_action_modifica')"
-              @click="startEdit(data)"
-            />
-            <Button
-              icon="pi pi-trash"
-              text rounded size="small"
-              class="app-delete-btn"
-              v-tooltip.bottom="t('amm_emittenti_fiscali.ut_action_rimuovi_config')"
-              @click="removeConfig(data)"
-            />
-          </template>
-          <!-- Riga non configurata: Configura -->
-          <template v-else>
-            <Button
-              icon="pi pi-plus"
-              text rounded size="small"
-              class="app-action-btn"
-              v-tooltip.bottom="t('amm_emittenti_fiscali.ut_action_configura')"
-              @click="startEdit(data)"
-            />
-          </template>
+          <!-- Stato normale: azioni standard via RowActionsMenu. -->
+          <RowActionsMenu v-else :actions="buildRowActions(data)" />
         </template>
       </Column>
 
