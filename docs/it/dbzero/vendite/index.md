@@ -125,7 +125,7 @@
 - [fn_resolve_lotto_utility_emittente](funzioni/fn_resolve_lotto_utility_emittente.md) — (latest review 22-02-2026) Helper condiviso per risolvere e validare `utility_id` ed `emittente_soggetto_ruolo_id` nei flussi lotto (`fatturazione_lotti` e `attivita_fatturabili_lotti`).
 - [fn_resolve_prezzo_composito](funzioni/fn_resolve_prezzo_composito.md) — (latest review 14-04-2026)
 - [fn_resolve_prezzo_listino](funzioni/fn_resolve_prezzo_listino.md) — La funzione `vendite.fn_resolve_prezzo_listino` risolve in modo deterministico il prezzo da applicare per `articolo + uom + data_riferimento`, considerando contesto BA/utility/emittente e priorita` multi-listino.
-- [fn_resolve_prezzo_listino_v2](funzioni/fn_resolve_prezzo_listino_v2.md) — (latest review 14-04-2026)
+- [fn_resolve_prezzo_listino_v2](funzioni/fn_resolve_prezzo_listino_v2.md) — (latest review 15-04-2026)
 - [fn_resolve_stato_esecuzione](funzioni/fn_resolve_stato_esecuzione.md) — (latest review 22-02-2026) Helper condiviso per risolvere in modo uniforme il valore di `stato_esecuzione` nei flussi `fatturazione_lotti` e `attivita_fatturabili`.
 - [fn_resolve_termini_pagamento](funzioni/fn_resolve_termini_pagamento.md)
 - [fn_ricalcola_fattura](funzioni/fn_ricalcola_fattura.md) — La funzione **`vendite.fn_ricalcola_fattura()`** e` un wrapper che esegue, **in sequenza**:
@@ -157,6 +157,7 @@
 - [trgfn_contratti_guard_modalita_c_activation](funzioni/trgfn_contratti_guard_modalita_c_activation.md)
 - [trgfn_contratti_normalize](funzioni/trgfn_contratti_normalize.md) — La trigger function `vendite.trgfn_contratti_normalize()` completa i dati minimi del contratto in insert quando il numero documento e` presente.
 - [trgfn_contratti_righe_guard_modalita_c](funzioni/trgfn_contratti_righe_guard_modalita_c.md)
+- [trgfn_contratti_set_categoria_cliente_snapshot](funzioni/trgfn_contratti_set_categoria_cliente_snapshot.md)
 - [trgfn_contratti_snapshot_precontrattuali](funzioni/trgfn_contratti_snapshot_precontrattuali.md) — (latest review 20/01/26) La funzione `vendite.trgfn_contratti_snapshot_precontrattuali()` crea lo **snapshot** dei dati precontrattuali **solo alla creazione del contratto**.   La scelta progettuale e` deliberata: il contratto diventa la **fonte stabile** per i dati tecnici/commerciali e le eventuali correzioni richiedono **un nuovo contratto**.
 - [trgfn_contratti_utilities_guard_tipo_classe](funzioni/trgfn_contratti_utilities_guard_tipo_classe.md)
 - [trgfn_ddt_gen_codice](funzioni/trgfn_ddt_gen_codice.md) — La trigger function `vendite.trgfn_ddt_gen_codice()` genera automaticamente `numero` DDT quando il valore non viene fornito in inserimento.
