@@ -21,7 +21,9 @@ from __future__ import annotations
 
 import json
 import re
+from datetime import date
 from typing import Any, NoReturn
+from uuid import UUID
 
 from django.db import IntegrityError
 
@@ -404,6 +406,161 @@ class PayloadValidator:
             **self._em_kwargs(log_to_db=log_to_db, function_name=function_name),
         )
         raise AssertionError("unreachable")  # pragma: no cover
+
+    # =================================================================
+    # Estrazione UUID
+    # =================================================================
+
+    # Scopo: Coerce di un UUID da stringa o oggetto UUID. Solleva errore
+    #        strutturato se il valore non e' convertibile. Helper interno
+    #        usato da require_uuid/optional_uuid.
+    def _coerce_uuid(
+        self,
+        value: Any,
+        *,
+        field: str,
+        message: str | None,
+        em: dict[str, Any],
+    ) -> str:
+        if isinstance(value, UUID):
+            return str(value)
+        if isinstance(value, str):
+            try:
+                return str(UUID(value.strip()))
+            except ValueError as exc:
+                ErrorManager.raise_error(
+                    code=self._code,
+                    message=message or f"Campo '{field}' deve essere un UUID valido.",
+                    detail=f"{field} non e' un UUID valido." if message else None,
+                    context={"field": field, "value": value},
+                    cause=exc,
+                    **em,
+                )
+                raise AssertionError("unreachable") from exc  # pragma: no cover
+        ErrorManager.raise_error(
+            code=self._code,
+            message=message or f"Campo '{field}' deve essere un UUID (stringa o oggetto).",
+            detail=f"{field} ha tipo non supportato." if message else None,
+            context={"field": field, "type": type(value).__name__},
+            **em,
+        )
+        raise AssertionError("unreachable")  # pragma: no cover
+
+    # Scopo: Estrae un UUID obbligatorio dal payload. Accetta stringa ISO o
+    #        oggetto uuid.UUID; normalizza a stringa lower-case canonica.
+    def require_uuid(
+        self,
+        payload: dict[str, Any],
+        key: str,
+        *,
+        message: str | None = None,
+        log_to_db: bool | None = None,
+        function_name: str | None = None,
+    ) -> str:
+        em = self._em_kwargs(log_to_db=log_to_db, function_name=function_name)
+        raw = payload.get(key)
+        ErrorManager.require(
+            raw is not None,
+            code=self._code,
+            message=message or f"Campo '{key}' obbligatorio.",
+            detail=f"{key} obbligatorio." if message else None,
+            context={"field": key},
+            **em,
+        )
+        return self._coerce_uuid(raw, field=key, message=message, em=em)
+
+    # Scopo: Estrae un UUID opzionale (None se chiave assente o valore None).
+    def optional_uuid(
+        self,
+        payload: dict[str, Any],
+        key: str,
+        *,
+        message: str | None = None,
+        log_to_db: bool | None = None,
+        function_name: str | None = None,
+    ) -> str | None:
+        raw = payload.get(key)
+        if raw is None:
+            return None
+        em = self._em_kwargs(log_to_db=log_to_db, function_name=function_name)
+        return self._coerce_uuid(raw, field=key, message=message, em=em)
+
+    # =================================================================
+    # Estrazione date ISO
+    # =================================================================
+
+    # Scopo: Coerce di una data da `datetime.date` o stringa ISO YYYY-MM-DD.
+    #        Helper interno usato da require_date/optional_date.
+    def _coerce_date(
+        self,
+        value: Any,
+        *,
+        field: str,
+        message: str | None,
+        em: dict[str, Any],
+    ) -> date:
+        if isinstance(value, date):
+            return value
+        if isinstance(value, str):
+            try:
+                return date.fromisoformat(value.strip())
+            except ValueError as exc:
+                ErrorManager.raise_error(
+                    code=self._code,
+                    message=message or f"Campo '{field}' deve essere una data ISO YYYY-MM-DD.",
+                    detail=f"{field} deve essere una data ISO YYYY-MM-DD." if message else None,
+                    context={"field": field, "value": value},
+                    cause=exc,
+                    **em,
+                )
+                raise AssertionError("unreachable") from exc  # pragma: no cover
+        ErrorManager.raise_error(
+            code=self._code,
+            message=message or f"Campo '{field}' deve essere una data o stringa ISO.",
+            detail=f"{field} ha tipo non supportato." if message else None,
+            context={"field": field, "type": type(value).__name__},
+            **em,
+        )
+        raise AssertionError("unreachable")  # pragma: no cover
+
+    # Scopo: Estrae una data obbligatoria dal payload. Rifiuta None esplicito
+    #        e chiave assente.
+    def require_date(
+        self,
+        payload: dict[str, Any],
+        key: str,
+        *,
+        message: str | None = None,
+        log_to_db: bool | None = None,
+        function_name: str | None = None,
+    ) -> date:
+        em = self._em_kwargs(log_to_db=log_to_db, function_name=function_name)
+        if key not in payload or payload[key] is None:
+            ErrorManager.raise_error(
+                code=self._code,
+                message=message or f"Campo '{key}' obbligatorio.",
+                detail=f"{key} obbligatorio." if message else None,
+                context={"field": key},
+                **em,
+            )
+            raise AssertionError("unreachable")  # pragma: no cover
+        return self._coerce_date(payload[key], field=key, message=message, em=em)
+
+    # Scopo: Estrae una data opzionale. Ritorna None se chiave assente o
+    #        valore None esplicito; coerce se presente.
+    def optional_date(
+        self,
+        payload: dict[str, Any],
+        key: str,
+        *,
+        message: str | None = None,
+        log_to_db: bool | None = None,
+        function_name: str | None = None,
+    ) -> date | None:
+        if key not in payload or payload[key] is None:
+            return None
+        em = self._em_kwargs(log_to_db=log_to_db, function_name=function_name)
+        return self._coerce_date(payload[key], field=key, message=message, em=em)
 
     # =================================================================
     # Estrazione meta (JSONB)

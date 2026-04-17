@@ -143,13 +143,33 @@ Le tabelle DB esistono gia' (`vendite.preventivi`, `preventivi_righe`, `preventi
   - `articolo_id` (uuid string, **obbligatorio**)
   - `descrizione` (string, opzionale — override descrizione articolo)
   - `quantita` (decimal, opzionale)
-  - `prezzo_unitario` (decimal, opzionale — proposto da listino nel frontend)
+  - `prezzo_unitario` (decimal, opzionale — **auto-fill dal resolver pricing v5 se omesso**)
   - `sconto_percentuale` (decimal, opzionale, default 0)
   - `iva_id` (int, opzionale)
   - `uom_operativa_id` (int, opzionale)
   - `ordine` (int, opzionale)
-- Regole: ammesso solo in stato BOZZA, ricalcolo totali automatico dopo insert
-- Errori: `E_PREV_VALIDAZIONE` (400), `E_PREV_STATO_NON_MODIFICABILE` (409)
+- Regole:
+  - Ammesso solo in stato BOZZA
+  - **Auto-fill prezzo**: se `prezzo_unitario` non e' nel payload e la testata ha BA+utility+data validi, il service chiama `PricingService.resolve_prezzo` e popola il prezzo dal resolver v5 (3 stadi: promo/contratto/categoria)
+  - **L1 override**: se `prezzo_unitario` e' passato e differisce dal resolver, serve l'azione di processo `prezzo_override_manuale`; altrimenti `E_PREV_OVERRIDE_NON_AUTORIZZATO` (403). Superuser bypassato
+  - **Meta audit**: popolato sempre con `origine_prezzo` (PROMO/CONTRATTO_OVERRIDE/CONTRATTO_LISTINO/CATEGORIA/MANUALE) + `prezzo_resolver_context` (listino/contratto/promo + variazione). Se override manuale: anche `prezzo_base_resolver`, `delta_override`, `delta_override_pct`, `override_user_id`
+  - Ricalcolo totali automatico dopo insert (trigger DB)
+- Errori: `E_PREV_VALIDAZIONE` (400), `E_PREV_STATO_NON_MODIFICABILE` (409), `E_PREV_OVERRIDE_NON_AUTORIZZATO` (403)
+
+---
+
+### 8b. Suggerisci prezzo riga
+
+- Metodo: `POST`
+- Path: `/api/v1/vendite/preventivi/{id}/righe/suggerisci-prezzo/`
+- Body JSON:
+  - `articolo_id` (uuid string, **obbligatorio**)
+  - `uom_id` (int, **obbligatorio**)
+- Scopo: calcola il prezzo suggerito dal resolver v5 senza creare la riga. Usato dal FE per pre-compilare il campo prezzo all'apertura del drawer. Nessun side-effect
+- Output `200`: `{ "data": { "prezzo_finale": "50.00", "prezzo_base_snapshot": "52.50", "origine": "CATEGORIA", "listino_id": 100, "contratto_id": null, "promo_id": null, "tipo_variazione_applicata": "PERCENTUALE", "valore_variazione_applicata": "-5.00" } }`
+- Contesto derivato: BA, utility, data dalla testata preventivo; emittente dal JWT operatore
+- Area: `vendite` livello LETTURA sufficiente (pura lettura)
+- Errori: `E_PREV_NOT_FOUND` (404), `E_PREV_VALIDAZIONE` (400 — testata senza BA/utility/data o utente senza emittenti autorizzati), errori applicativi del resolver (`E_PREZZO_LISTINO_NON_TROVATO`, `E_CATEGORIA_LISTINO_NON_MAPPATA`, ...)
 
 ---
 
@@ -157,9 +177,10 @@ Le tabelle DB esistono gia' (`vendite.preventivi`, `preventivi_righe`, `preventi
 
 - Metodo: `PATCH`
 - Path: `/api/v1/vendite/preventivi/{id}/righe/{rid}/`
-- Body JSON: campi modificabili (quantita, prezzo_unitario, sconto_percentuale, descrizione, uom_operativa_id, iva_id, ordine)
+- Body JSON: campi modificabili (`quantita`, `prezzo_unitario`, `sconto_percentuale`, `descrizione`, `uom_operativa_id`, `iva_id`, `ordine`)
 - Regole: ammesso solo in stato BOZZA, ricalcolo totali dopo update
-- Errori: `E_PREV_RIGA_NOT_FOUND` (404), `E_PREV_STATO_NON_MODIFICABILE` (409)
+- **L1 override su PATCH**: se il payload tocca `prezzo_unitario`, scatta lo stesso check dell'insert (autorizzazione + audit meta). L'articolo/UoM della riga esistente sono usati come contesto resolver
+- Errori: `E_PREV_RIGA_NOT_FOUND` (404), `E_PREV_STATO_NON_MODIFICABILE` (409), `E_PREV_OVERRIDE_NON_AUTORIZZATO` (403)
 
 ---
 
@@ -292,3 +313,16 @@ Le tabelle DB esistono gia' (`vendite.preventivi`, `preventivi_righe`, `preventi
 | `E_PREV_GIA_IN_COMMESSA` | 409 | Gia' inviato a fatturazione |
 | `E_PREV_REVISIONE_ATTIVA` | 409 | Revisione attiva esistente |
 | `E_PREV_PRATICA_STATO` | 409 | Stato non ammette generazione pratica |
+| `E_PREV_OVERRIDE_NON_AUTORIZZATO` | 403 | Modifica manuale del prezzo riga non autorizzata (serve azione `prezzo_override_manuale`). L1 del sistema autorizzazioni prezzi — vedi [sviluppo-autorizzazioni-prezzi](../../../dev/work-in-progress/sviluppo-autorizzazioni-prezzi) |
+
+## Integrazione pricing v5
+
+Le righe preventivo usano il building block centralizzato `PricingService.resolve_prezzo` ([catalogo backend §Vendite Pricing v5](../../../dev/backend/catalogo-building-block-backend)) per:
+
+- **Auto-fill** del prezzo quando il payload lo omette (endpoint 8) — resolver 3 stadi: PROMO → CONTRATTO → CATEGORIA
+- **Suggerimento diagnostico** pre-compilazione (endpoint 8b) — nessun side-effect
+- **Audit override** (endpoint 8/9) — meta JSONB popolato con origine del prezzo, contesto resolver e delta override manuale
+
+Il resolver risolve il prezzo usando BA, utility, data della testata preventivo + emittente derivato dal JWT operatore. Se la testata manca di uno di questi campi (caso legacy), il wiring e' skippato: il prezzo passa come da payload senza check ne' audit.
+
+Per la roadmap L2 (limite sconto via parametri) e L3 (approvazione out-of-policy via pratiche), vedi [sviluppo-autorizzazioni-prezzi](../../../dev/work-in-progress/sviluppo-autorizzazioni-prezzi).

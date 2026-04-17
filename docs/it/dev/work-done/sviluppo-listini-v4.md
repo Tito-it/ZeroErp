@@ -1,6 +1,6 @@
 # Sviluppo Listini — Pricing ZeroERP (WIP v4)
 
-> Stato: **IN ANALISI — decisioni da integrare nel modello prima dello sviluppo.**
+> Stato: **STATO CHIUSO 15-04-2026. Questo documento è stato inglobato nel documento sviluppo-listini-v5.**
 >
 > Ultima revisione: 13 aprile 2026
 >
@@ -105,11 +105,11 @@ VALUES
 | Flag            | Significato operativo                             | Contesto tipico          |
 | --------------- | ------------------------------------------------- | ------------------------ |
 | `e_consumo`     | Voce di consumo misurabile (mc, kWh, mc acqua)    | Gas, energia, idrico     |
-| `e_quota_fissa` | Canone o quota periodica indipendente dal consumo  | Gas, energia, idrico     |
-| `e_imposta`     | Imposta, accisa, componente fiscale                | Gas, energia, idrico     |
-| `e_onere`       | Onere di sistema (es. componenti Arera)            | Energia elettrica        |
-| `e_prodotto`    | Articolo fisico, ricambio, materiale               | Commercio, ricambi       |
-| `e_servizio`    | Prestazione, intervento tecnico, assistenza        | Assistenza, manutenzione |
+| `e_quota_fissa` | Canone o quota periodica indipendente dal consumo | Gas, energia, idrico     |
+| `e_imposta`     | Imposta, accisa, componente fiscale               | Gas, energia, idrico     |
+| `e_onere`       | Onere di sistema (es. componenti Arera)           | Energia elettrica        |
+| `e_prodotto`    | Articolo fisico, ricambio, materiale              | Commercio, ricambi       |
+| `e_servizio`    | Prestazione, intervento tecnico, assistenza       | Assistenza, manutenzione |
 
 Il constraint `chk_listini_tipologie_flag_esclusivi` garantisce che ogni
 tipologia abbia **esattamente un flag** a true.
@@ -144,13 +144,13 @@ CREATE TABLE config.listini_tipologie_utilities (
 
 ### 3.3 Seed iniziale
 
-| Utility (id) | Tipologie ammesse |
-|---|---|
-| Gas (1) | CONSUMO, QUOTA_FISSA, IMPOSTA, ONERE_SISTEMA |
-| Energia (2) | CONSUMO, QUOTA_FISSA, IMPOSTA, ONERE_SISTEMA |
-| Idrico (3) | CONSUMO, QUOTA_FISSA, IMPOSTA |
-| Teleriscaldamento (4) | CONSUMO, QUOTA_FISSA, IMPOSTA |
-| Base (5) | PRODOTTI, SERVIZI |
+| Utility (id)          | Tipologie ammesse                            |
+| --------------------- | -------------------------------------------- |
+| Gas (1)               | CONSUMO, QUOTA_FISSA, IMPOSTA, ONERE_SISTEMA |
+| Energia (2)           | CONSUMO, QUOTA_FISSA, IMPOSTA, ONERE_SISTEMA |
+| Idrico (3)            | CONSUMO, QUOTA_FISSA, IMPOSTA                |
+| Teleriscaldamento (4) | CONSUMO, QUOTA_FISSA, IMPOSTA                |
+| Base (5)              | PRODOTTI, SERVIZI                            |
 
 > **Nota**: gli ID utility e l'elenco sopra sono indicativi e dipendono dal seed
 > `config.utilities` dell'installazione. Il pattern e` lo stesso di
@@ -188,22 +188,22 @@ Pattern: stesso di `UtilityPerRuoloSelect` — un endpoint che filtra per FK.
 
 ### 4.1 Struttura risultante
 
-| Campo          | Tipo              | Note                                               |
-| -------------- | ----------------- | -------------------------------------------------- |
-| `id`           | bigint PK         |                                                    |
-| `codice`       | varchar UNIQUE     | Immutabile dopo create                             |
-| `descrizione`  | varchar            |                                                    |
-| `utility_id`   | integer NOT NULL   | FK `config.utilities` — id=5 (Base) per commercio |
-| `tipologia_id` | smallint NOT NULL  | FK `config.listini_tipologie`                      |
-| `attivo`       | boolean            |                                                    |
-| `meta`         | jsonb              |                                                    |
+| Campo          | Tipo              | Note                                              |
+| -------------- | ----------------- | ------------------------------------------------- |
+| `id`           | bigint PK         |                                                   |
+| `codice`       | varchar UNIQUE    | Immutabile dopo create                            |
+| `descrizione`  | varchar           |                                                   |
+| `utility_id`   | integer NOT NULL  | FK `config.utilities` — id=5 (Base) per commercio |
+| `tipologia_id` | smallint NOT NULL | FK `config.listini_tipologie`                     |
+| `attivo`       | boolean           |                                                   |
+| `meta`         | jsonb             |                                                   |
 
 `dominio` rimosso. `utility_id` NOT NULL (gia` fatto). `tipologia_id` da aggiungere.
 
 ### 4.2 Combinazioni operative tipiche
 
 | Utility | Tipologia     | Esempio listino                |
-|---------|---------------|--------------------------------|
+| ------- | ------------- | ------------------------------ |
 | Gas     | CONSUMO       | "Tariffe consumo gas 2026"     |
 | Gas     | QUOTA_FISSA   | "Quote fisse gas 2026"         |
 | Gas     | IMPOSTA       | "Imposte gas 2026"             |
@@ -231,54 +231,54 @@ avviene gia` tramite le dimensioni sulle righe/associazioni.
 
 ### Fase DB (branch `dev/db-tid`)
 
-| # | Task | Dipendenze |
-|---|---|---|
-| D1 | `CREATE TABLE config.listini_tipologie` + seed 6 tipologie | — |
-| D2 | `CREATE TABLE config.listini_tipologie_utilities` + seed matrice | D1 |
-| D3 | `ALTER TABLE vendite.listini ADD COLUMN tipologia_id` + migrazione dati esistenti | D1 |
-| D4 | `ALTER TABLE vendite.listini ALTER COLUMN utility_id SET NOT NULL` (se non gia` fatto) | — |
-| D5 | Trigger guard coerenza matrice su `vendite.listini` INSERT/UPDATE | D2, D3 |
-| D6 | Aggiungere `config.listini_tipologie` alla whitelist lookup generico | D1 |
-| D7 | Test pgTAP: constraint flag esclusivi, matrice ammissibilita`, trigger guard | D5 |
+| #   | Task                                                                                   | Dipendenze |
+| --- | -------------------------------------------------------------------------------------- | ---------- |
+| D1  | `CREATE TABLE config.listini_tipologie` + seed 6 tipologie                             | —          |
+| D2  | `CREATE TABLE config.listini_tipologie_utilities` + seed matrice                       | D1         |
+| D3  | `ALTER TABLE vendite.listini ADD COLUMN tipologia_id` + migrazione dati esistenti      | D1         |
+| D4  | `ALTER TABLE vendite.listini ALTER COLUMN utility_id SET NOT NULL` (se non gia` fatto) | —          |
+| D5  | Trigger guard coerenza matrice su `vendite.listini` INSERT/UPDATE                      | D2, D3     |
+| D6  | Aggiungere `config.listini_tipologie` alla whitelist lookup generico                   | D1         |
+| D7  | Test pgTAP: constraint flag esclusivi, matrice ammissibilita`, trigger guard           | D5         |
 
 ### Fase Backend (branch `dev/backend-tid`)
 
-| # | Task | Dipendenze DB |
-|---|---|---|
-| B1 | `listini_repository.py`: JOIN `config.listini_tipologie` in `list_listini` e `get_listino`, filtro `tipologia_id` | D3 |
-| B2 | `listini_service.py`: `tipologia_id` obbligatorio in create, ammesso in update | D3 |
-| B3 | `listini_service.py`: rimuovere `utility_id` da `_LISTINO_NULLABLE_FIELDS` (ora NOT NULL) | D4 |
-| B4 | Endpoint lookup: `GET /api/v1/core/lookup/codici/?rel=config.listini_tipologie` (whitelist gia` gestita da D6) | D6 |
-| B5 | Endpoint dedicato: `GET /api/v1/vendite/listini/tipologie-per-utility/?utility_id=X` — restituisce tipologie ammesse dalla matrice per l'utility | D2 |
-| B6 | `views_listini.py`: aggiungere `tipologia_id` nel query param lista e nel serializer create/update | B1 |
-| B7 | Test unitari service + API | B2, B6 |
+| #   | Task                                                                                                                                             | Dipendenze DB |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ------------- |
+| B1  | `listini_repository.py`: JOIN `config.listini_tipologie` in `list_listini` e `get_listino`, filtro `tipologia_id`                                | D3            |
+| B2  | `listini_service.py`: `tipologia_id` obbligatorio in create, ammesso in update                                                                   | D3            |
+| B3  | `listini_service.py`: rimuovere `utility_id` da `_LISTINO_NULLABLE_FIELDS` (ora NOT NULL)                                                        | D4            |
+| B4  | Endpoint lookup: `GET /api/v1/core/lookup/codici/?rel=config.listini_tipologie` (whitelist gia` gestita da D6)                                   | D6            |
+| B5  | Endpoint dedicato: `GET /api/v1/vendite/listini/tipologie-per-utility/?utility_id=X` — restituisce tipologie ammesse dalla matrice per l'utility | D2            |
+| B6  | `views_listini.py`: aggiungere `tipologia_id` nel query param lista e nel serializer create/update                                               | B1            |
+| B7  | Test unitari service + API                                                                                                                       | B2, B6        |
 
 ### Fase Frontend (branch `dev/backend-tid`)
 
-| # | Task | Dipendenze BE |
-|---|---|---|
-| F1 | `ListinoDrawer.vue`: aggiungere Select tipologia, filtrato per utility selezionata. Al cambio utility → reset e ricarica tipologie ammesse | B5 |
-| F2 | `ListiniSearchTable.vue`: aggiungere filtro tipologia (Select da lookup generico) e colonna "Tipologia" | B4 |
-| F3 | `ListinoDrawer.vue`: `utility_id` non piu` nullable — rimuovere `show-clear`, rendere obbligatorio | B3 |
-| F4 | i18n: chiavi per tipologie | — |
-| F5 | Build + test UI | F1-F4 |
+| #   | Task                                                                                                                                       | Dipendenze BE |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------ | ------------- |
+| F1  | `ListinoDrawer.vue`: aggiungere Select tipologia, filtrato per utility selezionata. Al cambio utility → reset e ricarica tipologie ammesse | B5            |
+| F2  | `ListiniSearchTable.vue`: aggiungere filtro tipologia (Select da lookup generico) e colonna "Tipologia"                                    | B4            |
+| F3  | `ListinoDrawer.vue`: `utility_id` non piu` nullable — rimuovere `show-clear`, rendere obbligatorio                                         | B3            |
+| F4  | i18n: chiavi per tipologie                                                                                                                 | —             |
+| F5  | Build + test UI                                                                                                                            | F1-F4         |
 
 ---
 
 ## 7) Test da aggiungere
 
-| Test | Tipo | Fase |
-|---|---|---|
-| Creazione listino senza `tipologia_id` → atteso 400 | Unit service + API | B7 |
-| Creazione listino senza `utility_id` → atteso 400 | Unit service + API | B7 |
-| Creazione listino con coppia utility/tipologia non ammessa → atteso errore | Unit service + pgTAP | B7 + D7 |
-| Lista listini filtrata per `tipologia_id` | Unit API | B7 |
-| Tipologie per utility: verifica che restituisca solo le ammesse | Unit API | B7 |
-| Seed tipologie: verifica constraint flag esclusivi su ogni riga | pgTAP | D7 |
-| Tentativo INSERT tipologia con due flag a true → atteso errore DB | pgTAP | D7 |
-| Tentativo INSERT tipologia con zero flag a true → atteso errore DB | pgTAP | D7 |
-| Tentativo INSERT listino con coppia non in matrice → trigger rifiuta | pgTAP | D7 |
-| Cambio utility su listino esistente con tipologia non ammessa → trigger rifiuta | pgTAP | D7 |
+| Test                                                                            | Tipo                 | Fase    |
+| ------------------------------------------------------------------------------- | -------------------- | ------- |
+| Creazione listino senza `tipologia_id` → atteso 400                             | Unit service + API   | B7      |
+| Creazione listino senza `utility_id` → atteso 400                               | Unit service + API   | B7      |
+| Creazione listino con coppia utility/tipologia non ammessa → atteso errore      | Unit service + pgTAP | B7 + D7 |
+| Lista listini filtrata per `tipologia_id`                                       | Unit API             | B7      |
+| Tipologie per utility: verifica che restituisca solo le ammesse                 | Unit API             | B7      |
+| Seed tipologie: verifica constraint flag esclusivi su ogni riga                 | pgTAP                | D7      |
+| Tentativo INSERT tipologia con due flag a true → atteso errore DB               | pgTAP                | D7      |
+| Tentativo INSERT tipologia con zero flag a true → atteso errore DB              | pgTAP                | D7      |
+| Tentativo INSERT listino con coppia non in matrice → trigger rifiuta            | pgTAP                | D7      |
+| Cambio utility su listino esistente con tipologia non ammessa → trigger rifiuta | pgTAP                | D7      |
 
 ---
 

@@ -12,6 +12,7 @@ import Select from 'primevue/select'
 import Tag from 'primevue/tag'
 import Button from 'primevue/button'
 import NewButton from '../../core/components/NewButton.vue'
+import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
 import { MANAGE_ICONS } from '../../core/constants'
 
 const emit = defineEmits(['new', 'row-click', 'manage-conversioni'])
@@ -34,6 +35,18 @@ function onAttivoChange() {
 }
 
 function onRowClick(event) { emit('row-click', event.data) }
+
+// Scopo: azioni di riga UoM (apre sub-drawer conversioni).
+function buildRowActions(data) {
+  return [
+    {
+      key: 'manage-conversioni',
+      label: t('catalogo.gestisci_conversioni'),
+      icon: MANAGE_ICONS.CONVERSIONI,
+      command: () => emit('manage-conversioni', data),
+    },
+  ]
+}
 
 useTabFreshness(store, 'unita_misura')
 onMounted(() => store.fetchList())
@@ -70,12 +83,9 @@ onMounted(() => store.fetchList())
           <Tag :value="data.attivo ? t('common.active') : t('common.inactive')" :severity="data.attivo ? 'success' : 'warn'" />
         </template>
       </Column>
-      <Column style="width: 50px;">
+      <Column :header="t('common.col_azioni')" class="app-col-actions" :exportable="false">
         <template #body="{ data }">
-          <div @click.stop>
-            <Button :icon="MANAGE_ICONS.CONVERSIONI" text rounded size="small" class="app-manage-btn"
-              v-tooltip.bottom="t('catalogo.gestisci_conversioni')" @click="emit('manage-conversioni', data)" />
-          </div>
+          <RowActionsMenu :actions="buildRowActions(data)" />
         </template>
       </Column>
     </DataTable>

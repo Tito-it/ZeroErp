@@ -4,6 +4,7 @@
 // Sotto-drawer indirizzi e conti bancari dalla lista (come SoggettiView).
 import { ref, watch, nextTick } from 'vue'
 import { useRoute } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import { useDrawerState } from '../../core/composables/useDrawerState'
 import { useReadonlyMode } from '../../core/composables/useReadonlyMode'
 import { useContextStore } from '../../stores/context'
@@ -13,8 +14,10 @@ import ClienteDrawer from '../components/ClienteDrawer.vue'
 import ContattiSoggettoDrawer from '../../core/components/ContattiSoggettoDrawer.vue'
 import IndirizziSoggettoDrawer from '../../core/components/IndirizziSoggettoDrawer.vue'
 import ContiBancariDrawer from '../../core/components/ContiBancariDrawer.vue'
+import ContrattiBillingAccountDrawer from '../../vendite/components/ContrattiBillingAccountDrawer.vue'
 import { TIPO_RUOLO } from '../../core/constants'
 
+const { t } = useI18n()
 const drawer = useDrawerState()
 const store = useClientiStore()
 const ctx = useContextStore()
@@ -33,6 +36,14 @@ watch(() => route.fullPath, () => {
 const contattiDrawer = ref({ visible: false, ruoloId: null, istanzaUtilityId: null })
 const indirizziDrawer = ref({ visible: false, ruoloId: null, istanzaUtilityId: null })
 const contiBancariDrawer = ref({ visible: false, ruoloId: null, ownerName: '', istanzaUtilityId: null })
+const contrattiDrawer = ref({
+  visible: false,
+  billingAccountId: null,
+  billingAccountLabel: '',
+  billingAccountUtility: '',
+  canCreate: true,
+  disabledReason: '',
+})
 
 function onContatti(data) {
   contattiDrawer.value = { visible: true, ruoloId: data.soggetto_ruolo_id, istanzaUtilityId: data.istanza_utility_id }
@@ -48,6 +59,28 @@ function onContiBancari(data) {
     ruoloId: data.soggetto_ruolo_id,
     ownerName: data.ragione_sociale_completa || '',
     istanzaUtilityId: data.istanza_utility_id,
+  }
+}
+
+// Scopo: Determina se il BA ammette la creazione di nuovi contratti.
+// Regola attuale: blocca su stato CESSATO/CHIUSO (estendibile).
+function resolveCanCreateContratto(cliente) {
+  const stato = (cliente?.stato_codice || '').toUpperCase()
+  if (stato === 'CESSATO' || stato === 'CHIUSO') {
+    return { canCreate: false, reason: t('clienti.ba_chiuso_no_contratti') }
+  }
+  return { canCreate: true, reason: '' }
+}
+
+function onContratti(data) {
+  const { canCreate, reason } = resolveCanCreateContratto(data)
+  contrattiDrawer.value = {
+    visible: true,
+    billingAccountId: data.billing_account_id,
+    billingAccountLabel: data.ragione_sociale_completa || data.ba_codice || '',
+    billingAccountUtility: data.utility_descrizione || '',
+    canCreate,
+    disabledReason: reason,
   }
 }
 
@@ -71,6 +104,7 @@ async function onDrawerSaved(result) {
       @contatti="onContatti"
       @indirizzi="onIndirizzi"
       @conti-bancari="onContiBancari"
+      @contratti="onContratti"
     />
 
     <ClienteDrawer
@@ -106,6 +140,16 @@ async function onDrawerSaved(result) {
       :owner-name="contiBancariDrawer.ownerName"
       :istanza-utility-id="contiBancariDrawer.istanzaUtilityId"
       context="ruolo"
+    />
+
+    <ContrattiBillingAccountDrawer
+      :visible="contrattiDrawer.visible"
+      @update:visible="v => contrattiDrawer.visible = v"
+      :billing-account-id="contrattiDrawer.billingAccountId"
+      :billing-account-label="contrattiDrawer.billingAccountLabel"
+      :billing-account-utility="contrattiDrawer.billingAccountUtility"
+      :can-create="contrattiDrawer.canCreate"
+      :disabled-create-reason="contrattiDrawer.disabledReason"
     />
   </div>
 </template>

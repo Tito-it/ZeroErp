@@ -83,6 +83,112 @@ class ErrorPolicyRegistry:
             ui_action="highlight_form_fields",
             user_message="Parametri non validi.",
         ),
+        # ── Vendite / promo articoli (F2-BE-03) ──
+        "E_VENDITE_NOT_FOUND": ErrorPolicy(
+            code="E_VENDITE_NOT_FOUND",
+            http_status=404,
+            ui_action="show_empty_state",
+            user_message="Record vendite non trovato.",
+        ),
+        "E_VENDITE_DUPLICATO": ErrorPolicy(
+            code="E_VENDITE_DUPLICATO",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Record gia' esistente (violato vincolo di univocita').",
+        ),
+        "E_VENDITE_FK": ErrorPolicy(
+            code="E_VENDITE_FK",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message="Riferimento non valido: l'entita' indicata non esiste.",
+        ),
+        "E_VENDITE_PROMO_OVERLAP": ErrorPolicy(
+            code="E_VENDITE_PROMO_OVERLAP",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Esiste gia' una promo attiva per questo "
+                         "(articolo, unita' di misura) nel periodo indicato.",
+        ),
+        # ── Contratti v5 (F2-BE-05/06) ──
+        # Codici sollevati dai trigger DB trgfn_contratti_guard_modalita_c_*
+        # e trgfn_contratti_utilities_guard_tipo_classe.
+        "E_VENDITE_CONTRATTO_OVERLAP": ErrorPolicy(
+            code="E_VENDITE_CONTRATTO_OVERLAP",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Esiste gia' un contratto sovrapposto per questo "
+                         "cliente/istanza/utility/ambito nel periodo indicato.",
+        ),
+        "E_CONTRATTO_MODALITA_C_SENZA_RIGHE": ErrorPolicy(
+            code="E_CONTRATTO_MODALITA_C_SENZA_RIGHE",
+            http_status=400,
+            ui_action="show_error_banner",
+            user_message="Contratto in modalita' C senza righe: aggiungere almeno una riga prima di attivare.",
+        ),
+        "E_CONTRATTO_MODALITA_C_RIGHE_INCOMPLETE": ErrorPolicy(
+            code="E_CONTRATTO_MODALITA_C_RIGHE_INCOMPLETE",
+            http_status=400,
+            ui_action="show_error_banner",
+            user_message="Contratto in modalita' C: ogni riga deve avere un prezzo unitario prima di attivare.",
+        ),
+        "E_CONTRATTO_MODALITA_C_RIGA_SENZA_PREZZO": ErrorPolicy(
+            code="E_CONTRATTO_MODALITA_C_RIGA_SENZA_PREZZO",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message="Su contratto attivo in modalita' C la riga deve avere prezzo unitario.",
+        ),
+        "E_CONTRATTO_UTILITY_TIPO_CLASSE_OBBLIGATORI": ErrorPolicy(
+            code="E_CONTRATTO_UTILITY_TIPO_CLASSE_OBBLIGATORI",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message="Per questa utility tipo e classe utenza sono obbligatori.",
+        ),
+        "E_CONTRATTO_CLASSE_TIPO_INCOERENTE": ErrorPolicy(
+            code="E_CONTRATTO_CLASSE_TIPO_INCOERENTE",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message="La classe utenza scelta non appartiene al tipo utenza indicato.",
+        ),
+        "E_CONTRATTO_UTILITY_SENZA_DIMENSIONE_TIPO_CLASSE_VIETATI": ErrorPolicy(
+            code="E_CONTRATTO_UTILITY_SENZA_DIMENSIONE_TIPO_CLASSE_VIETATI",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message="Per questa utility tipo e classe utenza non vanno valorizzati.",
+        ),
+        # ── Pricing v5 resolver (F2-BE-09/10) ──
+        # Codici di dominio sollevati dal DB via script.fn_log_and_raise_error.
+        # Policy UI: operatore/admin vede messaggio business-safe; detail tecnico
+        # nel payload solo se DJANGO_API_EXPOSE_TECHNICAL_DETAILS=1.
+        "E_VENDITE_PRICING_FAILED": ErrorPolicy(
+            code="E_VENDITE_PRICING_FAILED",
+            http_status=400,
+            ui_action="show_error_banner",
+            user_message="Impossibile risolvere il prezzo listino.",
+        ),
+        "E_PREZZO_LISTINO_NON_TROVATO": ErrorPolicy(
+            code="E_PREZZO_LISTINO_NON_TROVATO",
+            http_status=404,
+            ui_action="show_empty_state",
+            user_message="Nessun prezzo listino risolto per l'articolo richiesto.",
+        ),
+        "E_PREZZO_LISTINO_RIGA_NON_TROVATA": ErrorPolicy(
+            code="E_PREZZO_LISTINO_RIGA_NON_TROVATA",
+            http_status=404,
+            ui_action="show_empty_state",
+            user_message="Riga listino non trovata per articolo/uom alla data.",
+        ),
+        "E_CATEGORIA_LISTINO_NON_MAPPATA": ErrorPolicy(
+            code="E_CATEGORIA_LISTINO_NON_MAPPATA",
+            http_status=404,
+            ui_action="show_empty_state",
+            user_message="Categoria cliente non mappata a listino per la quadrupla indicata.",
+        ),
+        "E_ARTICOLO_NON_NEGOZIATO_SU_CONTRATTO_C": ErrorPolicy(
+            code="E_ARTICOLO_NON_NEGOZIATO_SU_CONTRATTO_C",
+            http_status=400,
+            ui_action="show_error_banner",
+            user_message="Articolo non negoziato sul contratto in modalita' C.",
+        ),
         "E_VENDITE_LISTINO_NOT_FOUND": ErrorPolicy(
             code="E_VENDITE_LISTINO_NOT_FOUND",
             http_status=404,
@@ -840,6 +946,15 @@ class ErrorPolicyRegistry:
             http_status=400,
             ui_action="highlight_form_fields",
             user_message="Parametri preventivo non validi.",
+        ),
+        "E_PREV_OVERRIDE_NON_AUTORIZZATO": ErrorPolicy(
+            code="E_PREV_OVERRIDE_NON_AUTORIZZATO",
+            http_status=403,
+            ui_action="show_error_banner",
+            user_message=(
+                "Modifica manuale del prezzo non autorizzata. Usa il prezzo "
+                "suggerito dal listino o richiedi l'autorizzazione al responsabile."
+            ),
         ),
         "E_PREV_STATO_TRANSIZIONE": ErrorPolicy(
             code="E_PREV_STATO_TRANSIZIONE",

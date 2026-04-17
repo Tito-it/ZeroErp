@@ -50,7 +50,7 @@ _SELECT_COLS = """
     u.codice AS utility_codice,
     u.descrizione AS utility_descrizione,
     m.emittente_soggetto_ruolo_id,
-    sr.codice_ruolo AS emittente_codice_ruolo,
+    COALESCE(tr.codice_interno, tr.codice) AS emittente_codice_ruolo,
     s.ragione_sociale AS emittente_ragione_sociale,
     m.classe_utenza_id,
     clu.codice AS classe_utenza_codice,
@@ -76,6 +76,7 @@ _FROM_JOINS = """
     JOIN anagrafiche.categorie_clienti cc ON cc.id = m.categoria_cliente_id
     JOIN config.utilities u ON u.id = m.utility_id
     JOIN anagrafiche.soggetti_ruoli sr ON sr.id = m.emittente_soggetto_ruolo_id
+    JOIN config.tipi_ruoli tr ON tr.id = sr.tipo_ruolo_id
     JOIN anagrafiche.soggetti s ON s.id = sr.soggetto_id
     LEFT JOIN config.classi_utenze clu ON clu.id = m.classe_utenza_id
     JOIN vendite.listini l ON l.id = m.listino_id

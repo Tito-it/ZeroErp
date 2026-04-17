@@ -16,6 +16,7 @@ from apps.vendite.api.preventivi_views import (
     ApiPreventivoPushCommessa,
     ApiPreventivoRevisione,
     ApiPreventivoRigaDetail,
+    ApiPreventivoRigaSuggerisciPrezzo,
     ApiPreventivoRigheList,
     ApiPreventivoStato,
     ApiPreventivoStatoFatturazione,
@@ -53,6 +54,12 @@ urlpatterns = [
         "<int:preventivo_id>/righe/<int:riga_id>/",
         ApiPreventivoRigaDetail.as_view(),
         name="vendite-preventivi-righe-detail",
+    ),
+    # Righe: suggerimento prezzo via pricing resolver v5
+    path(
+        "<int:preventivo_id>/righe/suggerisci-prezzo/",
+        ApiPreventivoRigaSuggerisciPrezzo.as_view(),
+        name="vendite-preventivi-righe-suggerisci-prezzo",
     ),
     # Indirizzi
     path(

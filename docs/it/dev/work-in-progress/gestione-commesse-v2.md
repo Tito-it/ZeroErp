@@ -2116,3 +2116,45 @@ Append-only, nessun UPDATE/DELETE. Costa poco, risolve audit, debug e compliance
 In sintesi: le critiche 1 e 2 sono valide come tendenze da monitorare, ma il progetto sta gia' evolvendo nella direzione giusta. La critica 3 e' un'azione concreta da pianificare — un event store unificato e' il pezzo mancante piu' impattante.
 
 Zona grigia: pr_run_lotto_pipeline (legacy SQL( questa credo sia deprecata , rimasta ma da eliminare non credi ?
+
+---
+
+## 28) Frontend — Audit pricing in CommessaAttivitaDrawer
+
+> **Nota**: questo step proviene da `sviluppo-listini-v5.md` (F3-FE-08).
+> E' stato spostato qui perche' richiede il `CommessaAttivitaDrawer` che
+> appartiene al dominio commesse, non ai listini. Il backend (F2-BE-11)
+> e' gia' completato: i campi snapshot sono scritti nelle colonne di
+> `vendite.commesse_attivita` ad ogni upsert.
+
+### 28.1 Prerequisiti
+
+- CommessaAttivitaDrawer frontend esistente (CRUD commessa/attivita')
+- F2-BE-11 chiuso: `CommessaAttivitaInput` + upsert con 8 campi snapshot pricing v5
+
+### 28.2 Descrizione
+
+Aggiungere un tab o sezione **"Audit pricing"** nel `CommessaAttivitaDrawer` (edit mode)
+che mostri in sola lettura i campi snapshot pricing v5:
+
+| Campo | Descrizione |
+|---|---|
+| `origine_prezzo` | Sorgente prezzo: `PROMO`, `CONTRATTO_OVERRIDE`, `CONTRATTO_LISTINO`, `CATEGORIA`, `MANUALE` |
+| `prezzo_base_snapshot` | Prezzo base prima della variazione |
+| `tipo_variazione_applicata` | `PERCENTUALE` o `VALORE_FISSO` |
+| `valore_variazione_applicata` | Valore numerico della variazione |
+| `promo_id` | Link alla promo applicata (se `origine_prezzo = PROMO`) |
+| `contratto_id` | Link al contratto applicato (se `origine_prezzo = CONTRATTO_*`) |
+| `categoria_cliente_id_snapshot` | Categoria cliente al momento del calcolo |
+| `classe_utenza_id_snapshot` | Classe utenza al momento del calcolo |
+
+### 28.3 UX suggerita
+
+- Sezione collassabile o tab dedicato, visibile solo se `origine_prezzo` e' valorizzato.
+- Campi tutti disabled/readonly.
+- Link cliccabili su `promo_id` e `contratto_id` (aprono il drawer corrispondente).
+- Tag colorato su `origine_prezzo` per identificazione visiva rapida.
+
+### 28.4 Riferimento originale
+
+Step: `sviluppo-listini-v5.md` → FASE 3 — Frontend → §3.4 → F3-FE-08

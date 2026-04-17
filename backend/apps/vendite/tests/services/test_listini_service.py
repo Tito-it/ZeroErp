@@ -83,7 +83,8 @@ class ListiniServiceTests(TestCase):
             fn_list_listini(order_by="invalid")
         self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
 
-    # Scopo: Verifica che il dettaglio listino includa versioni e associazioni.
+    # Scopo: Verifica che il dettaglio listino includa versioni nidificate.
+    #        F2-BE-13: rimosso il campo `associazioni` (tabella eliminata).
     @patch("apps.vendite.services.listini_service.ListiniRepository")
     def test_get_listino_dettaglio_nests_children(self, mock_repo_cls):
         from apps.vendite.services.listini_service import fn_get_listino_dettaglio
@@ -91,12 +92,11 @@ class ListiniServiceTests(TestCase):
         repo = mock_repo_cls.return_value
         repo.get_listino.return_value = {"id": 10, "codice": "LIST-UTILITY"}
         repo.list_versioni.return_value = [{"id": 101}]
-        repo.list_associazioni.return_value = [{"id": 301}]
 
         result = fn_get_listino_dettaglio(10)
 
         self.assertEqual(result["versioni"], [{"id": 101}])
-        self.assertEqual(result["associazioni"], [{"id": 301}])
+        self.assertNotIn("associazioni", result)
 
     # Scopo: Verifica traduzione duplicate code su create listino.
     @patch("apps.vendite.services.listini_service.ListiniRepository")
@@ -301,6 +301,7 @@ class ListiniServiceTests(TestCase):
                     "descrizione": "X",
                     "utility_id": 1,
                     "tipologia_id": 999,
+                    "emittente_soggetto_ruolo_id": 1,
                 }
             )
         self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
@@ -782,7 +783,6 @@ class ListiniServiceTests(TestCase):
             "id": 10,
             "codice": "TEST",
             "versioni_count": 0,
-            "associazioni_count": 0,
         }
         repo.delete_listino.return_value = True
 
@@ -801,7 +801,6 @@ class ListiniServiceTests(TestCase):
             "id": 10,
             "codice": "TEST",
             "versioni_count": 1,
-            "associazioni_count": 0,
         }
 
         with self.assertRaises(ServiceError) as ctx:
@@ -810,36 +809,10 @@ class ListiniServiceTests(TestCase):
         self.assertIn("attivo=false", ctx.exception.detail or "")
         repo.delete_listino.assert_not_called()
 
-    # Scopo: O3 - DELETE listino con associazioni viene rifiutato anche se versioni=0.
-    @patch("apps.vendite.services.listini_service.ListiniRepository")
-    def test_delete_listino_with_associazioni_rejected(self, mock_repo_cls):
-        from apps.vendite.services.listini_service import fn_delete_listino
-
-        repo = mock_repo_cls.return_value
-        repo.get_listino.return_value = {
-            "id": 10,
-            "codice": "TEST",
-            "versioni_count": 0,
-            "associazioni_count": 2,
-        }
-
-        with self.assertRaises(ServiceError) as ctx:
-            fn_delete_listino(10)
-        self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
-        repo.delete_listino.assert_not_called()
-
-    # Scopo: Verifica obbligatorieta` uom nel test resolver.
-    def test_test_resolver_requires_uom(self):
-        from apps.vendite.services.listini_service import fn_test_resolver_prezzo
-
-        with self.assertRaises(ServiceError) as ctx:
-            fn_test_resolver_prezzo(
-                {
-                    "articolo_id": "019bbee2-5f6a-704f-bbd0-34ed84db252d",
-                    "data_riferimento": "2026-04-02",
-                }
-            )
-        self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
+    # F2-BE-13: rimossi test `test_delete_listino_with_associazioni_rejected`
+    # (tabella eliminata, solo `versioni_count` e' il check residuo) e
+    # `test_test_resolver_requires_uom` (endpoint deprecato sostituito da
+    # PricingService.resolve_prezzo in apps/vendite/services/pricing_service.py).
 
     # --- N8a: Variazione percentuale massa ---
 

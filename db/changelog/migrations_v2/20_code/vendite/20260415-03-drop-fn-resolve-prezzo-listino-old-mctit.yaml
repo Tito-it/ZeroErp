@@ -1,0 +1,36 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# ------------------------------------------------------------
+# Drop vecchia vendite.fn_resolve_prezzo_listino (modello 7-livelli con
+# listini_associazioni). Sostituita da vendite.fn_resolve_prezzo_listino_v2
+# (pricing v5, changeSet 20260414-20). Backend e frontend non la chiamano
+# piu' (cleanup totale, niente wrapper).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: /migrations_v2/20_code/vendite/20260415-03-drop-fn-resolve-prezzo-listino-old-mctit.yaml
+
+  - changeSet:
+      id: 20260415-03-drop-fn-resolve-prezzo-listino-old
+      author: mctit
+      comment: >
+        Drop vecchia fn_resolve_prezzo_listino (firma con
+        listino_associazione_id/match_level). Cleanup pricing v5.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS vendite.fn_resolve_prezzo_listino(
+                  uuid, bigint, date, bigint, integer, bigint
+              );
+
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              -- Rollback non disponibile: la funzione vecchia dipende da
+              -- listini_associazioni e da colonne droppate; per ripristinare
+              -- bisognerebbe riapplicare l'intera storia pre-v5.
+              SELECT 1;

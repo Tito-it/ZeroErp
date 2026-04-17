@@ -38,7 +38,7 @@ ARTICOLI_CREATE_COLUMNS: dict[str, str] = {
     "is_composito": "bool",
     "is_solo_componente": "bool",
     "requires_serial": "bool",
-    "voce_utility": "bool",
+    "listino_tipologia_id": "int",
     "meta": "jsonb",
 }
 
@@ -63,7 +63,7 @@ ARTICOLI_DETAIL_COLUMNS: tuple[str, ...] = (
     "a.is_composito",
     "a.is_solo_componente",
     "a.requires_serial",
-    "a.voce_utility",
+    "a.listino_tipologia_id",
     "a.meta",
     "a.user_insert",
     "a.user_update",
@@ -90,6 +90,8 @@ ARTICOLI_DETAIL_COLUMNS: tuple[str, ...] = (
     "a.iva_codice",
     "a.iva_descrizione",
     "a.iva_aliquota_iva",
+    "a.tipologia_listino_codice",
+    "a.tipologia_listino_descrizione",
 )
 
 
@@ -122,9 +124,9 @@ class CatalogoRepository:
         *,
         attivo: bool | None,
         is_composito: bool | None,
-        voce_utility: bool | None,
         tipo_voce_id: int | None,
         gruppo_voce_id: int | None,
+        listino_tipologia_id: int | None,
         search: str | None,
         data_da: date | None,
         data_a: date | None,
@@ -148,15 +150,15 @@ class CatalogoRepository:
         if is_composito is not None:
             conditions.append("a.is_composito = %s")
             params.append(is_composito)
-        if voce_utility is not None:
-            conditions.append("a.voce_utility = %s")
-            params.append(voce_utility)
         if tipo_voce_id is not None:
             conditions.append("a.tipo_voce_id = %s")
             params.append(tipo_voce_id)
         if gruppo_voce_id is not None:
             conditions.append("a.gruppo_voce_id = %s")
             params.append(gruppo_voce_id)
+        if listino_tipologia_id is not None:
+            conditions.append("a.listino_tipologia_id = %s")
+            params.append(listino_tipologia_id)
         _append_ilike_search(
             conditions=conditions,
             params=params,
@@ -288,7 +290,6 @@ class CatalogoRepository:
         self,
         *,
         search: str | None,
-        voce_utility: bool | None,
         attivo: bool | None,
         is_composito: bool | None,
         is_solo_componente: bool | None = None,
@@ -305,9 +306,6 @@ class CatalogoRepository:
             right_column="a.descrizione",
             search=search,
         )
-        if voce_utility is not None:
-            conditions.append("a.voce_utility = %s")
-            params.append(voce_utility)
         if attivo is not None:
             conditions.append("a.attivo = %s")
             params.append(attivo)
@@ -330,7 +328,6 @@ class CatalogoRepository:
                     a.uom_codice,
                     a.uom_descrizione,
                     a.is_composito,
-                    a.voce_utility,
                     a.attivo
                 FROM catalogo.vw_articoli_dettaglio a
                 {where_clause}

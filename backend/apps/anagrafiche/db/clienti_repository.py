@@ -99,10 +99,20 @@ class ClientiRepository:
         self, *, istanza_utility_id: int, soggetto_ruolo_id: int,
         utility_id: int, fatturazione_ordini: str | None = None,
         parent_account_id: int | None = None,
+        categoria_cliente_id: int,
     ) -> int:
-        # Costruzione dinamica: include fatturazione_ordini solo se esplicitamente fornito
-        cols = ["istanza_utility_id", "soggetto_ruolo_id", "utility_id", "parent_account_id"]
-        vals = [istanza_utility_id, soggetto_ruolo_id, utility_id, parent_account_id]
+        # categoria_cliente_id e' obbligatorio: il service deve averlo gia'
+        # risolto (default via `get_categoria_cliente_id_by_codice('STANDARD')`).
+        # La colonna DB e' NOT NULL post-backfill F1-DB-03; la FK e' validata
+        # dal trigger `fk_billing_account_categoria_cliente`.
+        cols = [
+            "istanza_utility_id", "soggetto_ruolo_id", "utility_id",
+            "parent_account_id", "categoria_cliente_id",
+        ]
+        vals: list[Any] = [
+            istanza_utility_id, soggetto_ruolo_id, utility_id,
+            parent_account_id, categoria_cliente_id,
+        ]
         if fatturazione_ordini is not None:
             cols.append("fatturazione_ordini")
             vals.append(fatturazione_ordini)
@@ -117,6 +127,18 @@ class ClientiRepository:
             row = cursor.fetchone()
             assert row is not None
             return row[0]
+
+    # Scopo: Risolve l'id di una categoria cliente dal codice. Ritorna None se
+    #        la categoria non esiste: il service deve decidere se e' errore
+    #        (`STANDARD` seed mancante) o fallback applicativo.
+    def get_categoria_cliente_id_by_codice(self, codice: str) -> int | None:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT id FROM anagrafiche.categorie_clienti WHERE codice = %s",
+                [codice],
+            )
+            row = cursor.fetchone()
+            return int(row[0]) if row else None
 
     # Scopo: Crea record cliente con stato ATTIVO.
     #        I trigger DB gestiscono: sync_utility, set_periodo, sync_pdp, guard.
@@ -211,6 +233,7 @@ class ClientiRepository:
         search_pattern = f"%{search.strip()}%" if search and search.strip() else None
         sql = f"""
             SELECT cl.id,
+                   cl.billing_account_id,
                    cl.istanza_utility_id,
                    cl.soggetto_ruolo_id,
                    s.id AS soggetto_id,
@@ -336,6 +359,10 @@ class ClientiRepository:
                    ba.parent_account_id AS ba_parent_account_id,
                    ba.valido_dal AS ba_valido_dal,
                    ba.valido_al AS ba_valido_al,
+                   -- Categoria cliente (pricing v5 STADIO 2)
+                   ba.categoria_cliente_id AS ba_categoria_cliente_id,
+                   cc.codice AS ba_categoria_codice,
+                   cc.descrizione AS ba_categoria_descrizione,
                    -- Istanza
                    iu.fittizia AS istanza_fittizia,
                    iu.indirizzo_dettaglio_id AS istanza_indirizzo_dettaglio_id,
@@ -356,6 +383,7 @@ class ClientiRepository:
               LEFT JOIN config.iva iva ON iva.id = cl.iva_id
               LEFT JOIN config.modalita_pagamento mp ON mp.id = cl.modalita_pagamento_id
               LEFT JOIN config.termini_pagamento tp ON tp.id = cl.termine_pagamento_id
+              LEFT JOIN anagrafiche.categorie_clienti cc ON cc.id = ba.categoria_cliente_id
              WHERE cl.id = %s
         """
         with connection.cursor() as cursor:
@@ -375,6 +403,25 @@ class ClientiRepository:
         "iva_id", "modalita_pagamento_id", "termine_pagamento_id",
         "codice_cig", "codice_cup", "codice_commessa",
     }
+
+    # Scopo: Aggiorna la categoria cliente sul BA indicato.
+    #        Pricing v5 STADIO 2: la colonna e' NOT NULL, il service deve
+    #        sempre passare un id valido. La FK e' validata dal DB
+    #        (fk_billing_account_categoria_cliente). Ritorna True se la
+    #        riga aggiornata esiste.
+    def update_ba_categoria(
+        self, billing_account_id: int, categoria_cliente_id: int
+    ) -> bool:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE anagrafiche.billing_account
+                   SET categoria_cliente_id = %s
+                 WHERE id = %s
+                """,
+                [categoria_cliente_id, billing_account_id],
+            )
+            return cursor.rowcount > 0
 
     # Scopo: Aggiorna campi editabili di un cliente (delta update).
     def update_cliente(self, cliente_id: int, data: dict[str, Any]) -> bool:

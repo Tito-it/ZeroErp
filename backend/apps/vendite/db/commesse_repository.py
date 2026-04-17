@@ -134,6 +134,21 @@ class CommessaAttivitaInput:
     sorgente_uid: str | None = None
     meta: dict[str, Any] | None = None
 
+    # === Snapshot pricing v5 (F2-BE-11) ===
+    # Firma fn_upsert_commessa_attivita li dichiara obbligatori: vanno passati
+    # sempre, anche come NULL esplicito quando la dimensione non si applica
+    # (es. classe_utenza per utility commercio, contratto per origine CATEGORIA).
+    # La popolazione effettiva e' a carico di F2-BE-12 (wiring pricing_service
+    # nei source handlers); per ora i caller passano None.
+    prezzo_base_snapshot: Decimal | None = None
+    origine_prezzo: str | None = None  # PROMO|CONTRATTO_OVERRIDE|CONTRATTO_LISTINO|CATEGORIA|MANUALE
+    tipo_variazione_applicata: str | None = None  # PERCENTUALE|VALORE_FISSO|PREZZO_FISSO|NESSUNA
+    valore_variazione_applicata: Decimal | None = None
+    promo_id: int | None = None
+    contratto_id: int | None = None
+    categoria_cliente_id_snapshot: int | None = None
+    classe_utenza_id_snapshot: int | None = None
+
 
 @dataclass(frozen=True)
 class PushableRow:
@@ -442,6 +457,14 @@ class CommesseRepository:
                     p_competenza_dal => %s,
                     p_competenza_al => %s,
                     p_prezzo_snapshot => %s,
+                    p_prezzo_base_snapshot => %s,
+                    p_origine_prezzo => %s,
+                    p_tipo_variazione_applicata => %s,
+                    p_valore_variazione_applicata => %s,
+                    p_promo_id => %s,
+                    p_contratto_id => %s,
+                    p_categoria_cliente_id_snapshot => %s,
+                    p_classe_utenza_id_snapshot => %s,
                     p_qta_operativa => %s,
                     p_uom_operativa_id => %s,
                     p_factor_to_base => %s,
@@ -474,6 +497,14 @@ class CommesseRepository:
                     inp.competenza_dal,
                     inp.competenza_al,
                     inp.prezzo_snapshot,
+                    inp.prezzo_base_snapshot,
+                    inp.origine_prezzo,
+                    inp.tipo_variazione_applicata,
+                    inp.valore_variazione_applicata,
+                    inp.promo_id,
+                    inp.contratto_id,
+                    inp.categoria_cliente_id_snapshot,
+                    inp.classe_utenza_id_snapshot,
                     inp.qta_operativa,
                     inp.uom_operativa_id,
                     inp.factor_to_base,
@@ -539,6 +570,17 @@ class CommesseRepository:
             "tipo_movimento": inp.tipo_movimento,
             "tipo_consumo": inp.tipo_consumo,
             "meta": inp.meta or {},
+            # Snapshot pricing v5 (F2-BE-11). Il wrapper batch DB deve
+            # estrarre queste chiavi e passarle a fn_upsert_commessa_attivita
+            # (dipendenza DB: estensione `fn_batch_upsert_commessa_attivita`).
+            "prezzo_base_snapshot": _decimal(inp.prezzo_base_snapshot),
+            "origine_prezzo": inp.origine_prezzo,
+            "tipo_variazione_applicata": inp.tipo_variazione_applicata,
+            "valore_variazione_applicata": _decimal(inp.valore_variazione_applicata),
+            "promo_id": inp.promo_id,
+            "contratto_id": inp.contratto_id,
+            "categoria_cliente_id_snapshot": inp.categoria_cliente_id_snapshot,
+            "classe_utenza_id_snapshot": inp.classe_utenza_id_snapshot,
         }
 
     def batch_upsert_attivita(self, inputs: list[CommessaAttivitaInput]) -> BatchUpsertResult:

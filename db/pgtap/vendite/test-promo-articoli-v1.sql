@@ -9,7 +9,7 @@
 --   1) tipo_variazione = 'PERCENTUALE' con valore > 0 ammesso
 --   2) tipo_variazione = 'VALORE_FISSO' con valore > 0 ammesso
 --   3) tipo_variazione = 'PREZZO_FISSO' con valore = 0 ammesso (prezzo assoluto)
---   4) tipo_variazione = 'PERCENTUALE' con valore = 0 vietato (chk_promo_articoli_valore)
+--   4) tipo_variazione = 'PERCENTUALE' con valore = 0 ammesso (chk_promo_articoli_valore rimosso 15-04-2026)
 --   5) tipo_variazione fuori dominio (es. 'SCONTO') -> fallisce
 --   6) valido_al < valido_dal -> costruttore daterange fallisce (22000)
 --   7) codice UNIQUE: insert duplicato fallisce
@@ -58,16 +58,15 @@ SELECT lives_ok(
     'Promo PREZZO_FISSO con valore 0 ammessa (chk_promo_articoli_valore: PREZZO_FISSO >= 0)'
 );
 
--- 4) PERCENTUALE con valore = 0 vietato (chk > 0 per variazioni relative)
-SELECT throws_ok(
+-- 4) PERCENTUALE con valore = 0 ora ammesso (CHECK chk_promo_articoli_valore
+-- rimosso il 15-04-2026: la convenzione di segno e' demandata a UI/business).
+SELECT lives_ok(
     $$INSERT INTO vendite.promo_articoli(codice, descrizione, articolo_id, uom_id,
           tipo_variazione, valore_variazione, valido_dal, valido_al)
       SELECT 'PGTAP_PROMO_PERC_ZERO', 'Test PERC zero', a.articolo_id, a.uom_id,
              'PERCENTUALE', 0, '2030-10-01', '2030-12-31'
         FROM tmp_ctx_articolo a$$,
-    '23514',
-    NULL,
-    'PERCENTUALE con valore = 0 viola chk_promo_articoli_valore'
+    'PERCENTUALE con valore = 0 ora ammesso (nessun vincolo DB sul segno)'
 );
 
 -- 5) tipo_variazione fuori dominio

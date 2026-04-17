@@ -23,8 +23,8 @@ class CercaArticoliTool(AITool):
             description=(
                 "Cerca articoli nel catalogo per codice o descrizione. "
                 "Restituisce codice, descrizione, unita' di misura base e flag "
-                "(attivo, composito, voce_utility). Usare quando l'utente chiede "
-                "di trovare un prodotto, un servizio o una voce merceologica "
+                "(attivo, composito). Usare quando l'utente chiede di trovare "
+                "un prodotto, un servizio o una voce merceologica "
                 "(es. 'cerca articolo energia', 'trova prodotto ACQUA')."
             ),
             input_schema={
@@ -33,10 +33,6 @@ class CercaArticoliTool(AITool):
                     "search": {
                         "type": "string",
                         "description": "Ricerca libera su codice e descrizione articolo (min 2 caratteri).",
-                    },
-                    "voce_utility": {
-                        "type": "boolean",
-                        "description": "Se true, filtra solo articoli di tipo voce utility (gas/energia/idrico). Omettere per vedere tutti gli articoli.",
                     },
                     "solo_attivi": {
                         "type": "boolean",
@@ -67,7 +63,6 @@ class CercaArticoliTool(AITool):
 
         response = catalogo_service.fn_lookup_articoli(
             search=params.get("search"),
-            voce_utility=params.get("voce_utility"),
             attivo=attivo,
             limit=self.safe_page_size(params),
         )
@@ -84,7 +79,6 @@ class CercaArticoliTool(AITool):
             "uom_descrizione": "uom_descrizione",
             "attivo": "attivo",
             "is_composito": "is_composito",
-            "voce_utility": "voce_utility",
         }
         simplified = self.simplify_results(items, _FIELD_MAP)
         return {"count": total, "results": simplified}

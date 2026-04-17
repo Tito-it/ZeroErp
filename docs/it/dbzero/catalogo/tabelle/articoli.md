@@ -17,7 +17,6 @@
 | conto_contabile_acquisto_id | bigint | YES |  |
 | is_composito | boolean | NO | false |
 | requires_serial | boolean | NO | false |
-| voce_utility | boolean | NO | false |
 | meta | jsonb | YES | '{}'::jsonb |
 | user_insert | text | NO | CURRENT_USER |
 | user_update | text | YES | CURRENT_USER |

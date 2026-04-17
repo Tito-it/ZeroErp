@@ -12,7 +12,10 @@
 from datetime import date
 from typing import Any
 
+from django.contrib.auth import get_user_model
+
 from apps.core.services.error_manager import ErrorManager
+from apps.core.services.permissions_resolver import PermissionResolver
 from apps.core.services.value_normalizer import empty_to_none
 from apps.vendite.db.preventivi_repository import PreventiviRepository
 from apps.core.api.payload_validators import paginated_envelope
@@ -221,7 +224,18 @@ def crea_revisione(preventivo_id: int) -> dict[str, Any]:
 
 
 # Scopo: Aggiunge riga al preventivo con guard su stato + ricalcolo totali.
-def gestisci_riga(preventivo_id: int, payload: dict[str, Any]) -> dict[str, Any]:
+#        Auto-fill prezzo da resolver v5 (Sprint 2 B+L1): se il payload non
+#        specifica `prezzo_unitario`, viene risolto automaticamente tramite
+#        `PricingService.resolve_prezzo`. Se il caller passa un prezzo
+#        diverso dal suggerito, serve il permesso di azione processo
+#        `prezzo_override_manuale`; altrimenti `E_PREV_OVERRIDE_NON_AUTORIZZATO`.
+#        Tracciamento sempre in `meta.prezzo_resolver_context`.
+def gestisci_riga(
+    preventivo_id: int,
+    payload: dict[str, Any],
+    *,
+    auth_user_id: int | None = None,
+) -> dict[str, Any]:
     repo = PreventiviRepository()
     testata = repo.get_preventivo(preventivo_id)
     ErrorManager.require(
@@ -247,27 +261,52 @@ def gestisci_riga(preventivo_id: int, payload: dict[str, Any]) -> dict[str, Any]
         function_name=f"{_FN}.gestisci_riga",
     )
 
+    uom_id = payload.get("uom_operativa_id")
+    payload_prezzo = payload.get("prezzo_unitario")
+    prezzo_finale, prezzo_meta = _resolve_or_check_override_prezzo(
+        testata=testata,
+        articolo_id=articolo_id,
+        uom_id=uom_id,
+        payload_prezzo=payload_prezzo,
+        auth_user_id=auth_user_id,
+        function_name=f"{_FN}.gestisci_riga",
+    )
+
+    # Merge meta esistente del payload con audit prezzo.
+    merged_meta = dict(payload.get("meta") or {})
+    if prezzo_meta is not None:
+        merged_meta.update(prezzo_meta)
+
     result = repo.create_riga(
         preventivo_id=preventivo_id,
         articolo_id=articolo_id,
         descrizione=payload.get("descrizione"),
         quantita=payload.get("quantita"),
         qta_operativa=payload.get("qta_operativa"),
-        uom_operativa_id=payload.get("uom_operativa_id"),
+        uom_operativa_id=uom_id,
         factor_to_base=payload.get("factor_to_base"),
-        prezzo_unitario=payload.get("prezzo_unitario"),
+        prezzo_unitario=prezzo_finale,
         sconto_percentuale=payload.get("sconto_percentuale"),
         iva_id=payload.get("iva_id"),
         ordine=payload.get("ordine"),
-        meta=payload.get("meta"),
+        meta=merged_meta or None,
     )
     # Ricalcolo totali gestito da trigger DB AFTER su preventivi_righe
     return result
 
 
 # Scopo: Aggiorna riga esistente con guard su stato + ricalcolo totali.
+#        L1 override prezzo: se il payload modifica `prezzo_unitario`,
+#        verifica che il valore passato sia il prezzo resolver o che
+#        l'operatore abbia permesso di override (azione
+#        `prezzo_override_manuale`). La verifica viene fatta solo se
+#        `prezzo_unitario` e' esplicitamente nel payload (campo modificato).
 def aggiorna_riga(
-    preventivo_id: int, riga_id: int, payload: dict[str, Any]
+    preventivo_id: int,
+    riga_id: int,
+    payload: dict[str, Any],
+    *,
+    auth_user_id: int | None = None,
 ) -> dict[str, Any]:
     repo = PreventiviRepository()
     testata = repo.get_preventivo(preventivo_id)
@@ -294,6 +333,35 @@ def aggiorna_riga(
         if key in payload:
             update_fields[key] = payload[key]
 
+    # L1 check + audit meta se prezzo toccato esplicitamente. Serve contesto
+    # riga esistente per articolo_id/uom_id non sempre presenti nel payload.
+    if "prezzo_unitario" in update_fields:
+        righe = repo.list_righe(preventivo_id)
+        riga_esistente = next((r for r in righe if r.get("id") == riga_id), None)
+        ErrorManager.require(
+            riga_esistente is not None,
+            code="E_PREV_RIGA_NOT_FOUND",
+            message="Riga preventivo non trovata.",
+            detail=f"riga_id={riga_id}",
+            function_name=f"{_FN}.aggiorna_riga",
+        )
+        assert riga_esistente is not None
+        articolo_id = riga_esistente["articolo_id"]
+        uom_id = update_fields.get("uom_operativa_id") or riga_esistente.get("uom_operativa_id")
+        prezzo_finale, prezzo_meta = _resolve_or_check_override_prezzo(
+            testata=testata,
+            articolo_id=articolo_id,
+            uom_id=uom_id,
+            payload_prezzo=update_fields["prezzo_unitario"],
+            auth_user_id=auth_user_id,
+            function_name=f"{_FN}.aggiorna_riga",
+        )
+        update_fields["prezzo_unitario"] = prezzo_finale
+        if prezzo_meta is not None:
+            merged_meta = dict(update_fields.get("meta") or riga_esistente.get("meta") or {})
+            merged_meta.update(prezzo_meta)
+            update_fields["meta"] = merged_meta
+
     if update_fields:
         updated = repo.update_riga(riga_id, **update_fields)
         ErrorManager.require(
@@ -306,6 +374,281 @@ def aggiorna_riga(
         # Ricalcolo totali gestito da trigger DB AFTER su preventivi_righe
 
     return {"status": "ok", "riga_id": riga_id}
+
+
+# Scopo: Helper condiviso gestisci_riga / aggiorna_riga per la risoluzione
+#        del prezzo via resolver v5 + check L1 override + costruzione meta
+#        audit. Vive qui per evitare duplicazione tra create e update.
+#
+#        Comportamento:
+#        - se payload_prezzo e' None -> auto-fill dal resolver, origine
+#          = valore del resolver (PROMO/CONTRATTO_*/CATEGORIA)
+#        - se payload_prezzo == resolver_prezzo -> OK, origine resolver
+#        - se payload_prezzo != resolver_prezzo -> check azione
+#          prezzo_override_manuale; se negato E_PREV_OVERRIDE_NON_AUTORIZZATO
+#        - meta audit sempre popolato con prezzo_resolver_context
+#
+#        Ritorna (prezzo_finale: Decimal|str, meta_patch: dict|None).
+#        Se articolo_id/uom_id mancano, salta il resolver e ritorna il
+#        prezzo del payload (retrocompatibilita': non tutti i preventivi
+#        hanno UoM configurata — il resolver e' best-effort).
+def _resolve_or_check_override_prezzo(
+    *,
+    testata: dict[str, Any],
+    articolo_id: Any,
+    uom_id: Any,
+    payload_prezzo: Any,
+    auth_user_id: int | None,
+    function_name: str,
+) -> tuple[Any, dict[str, Any] | None]:
+    from decimal import Decimal
+
+    # Requisiti minimi per invocare il resolver. Se mancano (payload
+    # semplificato, BA/utility non impostati sul preventivo), skippiamo
+    # il wiring e ritorniamo il prezzo del payload senza meta audit.
+    missing_resolver_ctx = (
+        not articolo_id
+        or not uom_id
+        or testata.get("billing_account_id") is None
+        or testata.get("utility_id") is None
+        or testata.get("data") is None
+    )
+    if missing_resolver_ctx:
+        return payload_prezzo, None
+
+    # Resolver best-effort: se qualunque errore applicativo (es.
+    # E_CATEGORIA_LISTINO_NON_MAPPATA) accettiamo il prezzo manuale.
+    # L'override non e' controllato perche' non c'e' nulla da confrontare.
+    prezzo_resolver: Decimal | None = None
+    resolver_context: dict[str, Any] | None = None
+    try:
+        resolver_result = suggerisci_prezzo_riga(
+            int(testata["id"]),
+            articolo_id=str(articolo_id),
+            uom_id=int(uom_id),
+            auth_user_id=auth_user_id,
+        )
+        if resolver_result.get("prezzo_finale") is not None:
+            prezzo_resolver = Decimal(str(resolver_result["prezzo_finale"]))
+            resolver_context = {
+                "origine": resolver_result.get("origine"),
+                "listino_id": resolver_result.get("listino_id"),
+                "contratto_id": resolver_result.get("contratto_id"),
+                "promo_id": resolver_result.get("promo_id"),
+                "tipo_variazione": resolver_result.get("tipo_variazione_applicata"),
+                "valore_variazione": resolver_result.get("valore_variazione_applicata"),
+            }
+    except Exception:
+        # Best-effort: se il resolver non trova prezzo, accettiamo il
+        # payload manuale (se presente). Se payload_prezzo e' None in
+        # questo ramo, il DB dara' NOT NULL sulla colonna oppure il
+        # default del trigger — non e' responsabilita' di questo helper.
+        return payload_prezzo, None
+
+    # Auto-fill: payload senza prezzo -> uso il resolver.
+    if payload_prezzo is None:
+        return prezzo_resolver, {
+            "origine_prezzo": resolver_context.get("origine") if resolver_context else None,
+            "prezzo_resolver_context": resolver_context,
+        }
+
+    # Confronto: stesso prezzo -> nessun override, meta = resolver.
+    try:
+        payload_decimal = Decimal(str(payload_prezzo))
+    except Exception:
+        ErrorManager.raise_error(
+            code="E_PREV_VALIDAZIONE",
+            message="Prezzo unitario non numerico.",
+            detail=f"prezzo_unitario={payload_prezzo!r}",
+            function_name=function_name,
+        )
+        raise AssertionError("unreachable")  # pragma: no cover
+
+    if prezzo_resolver is not None and payload_decimal == prezzo_resolver:
+        return payload_decimal, {
+            "origine_prezzo": resolver_context.get("origine") if resolver_context else None,
+            "prezzo_resolver_context": resolver_context,
+        }
+
+    # Override: richiesta azione processo prezzo_override_manuale.
+    _check_permesso_override_prezzo(auth_user_id, function_name=function_name)
+
+    meta_patch: dict[str, Any] = {
+        "origine_prezzo": "MANUALE",
+        "prezzo_resolver_context": resolver_context,
+        "prezzo_applicato": str(payload_decimal),
+        "override_user_id": auth_user_id,
+    }
+    if prezzo_resolver is not None:
+        delta = payload_decimal - prezzo_resolver
+        meta_patch["prezzo_base_resolver"] = str(prezzo_resolver)
+        meta_patch["delta_override"] = str(delta)
+        if prezzo_resolver != 0:
+            meta_patch["delta_override_pct"] = str((delta / prezzo_resolver) * Decimal("100"))
+    return payload_decimal, meta_patch
+
+
+# Scopo: Verifica che l'operatore abbia l'azione processo per override
+#        manuale del prezzo (livello L1 del sistema autorizzazioni prezzi).
+#        Bypass per superuser. Se auth_user_id None (chiamata non
+#        autenticata, es. script interni) -> blocca conservativamente.
+def _check_permesso_override_prezzo(
+    auth_user_id: int | None, *, function_name: str
+) -> None:
+    ErrorManager.require(
+        auth_user_id is not None,
+        code="E_PREV_OVERRIDE_NON_AUTORIZZATO",
+        message="Override prezzo non autorizzato.",
+        detail="Chiamata senza contesto utente — override bloccato conservativamente.",
+        function_name=function_name,
+    )
+    user_model = get_user_model()
+    try:
+        user = user_model.objects.get(pk=auth_user_id)
+    except user_model.DoesNotExist:
+        ErrorManager.raise_error(
+            code="E_PREV_OVERRIDE_NON_AUTORIZZATO",
+            message="Override prezzo non autorizzato.",
+            detail="Utente non trovato.",
+            function_name=function_name,
+        )
+    if getattr(user, "is_superuser", False):
+        return
+    abilitato = PermissionResolver.check_azione(user, "prezzo_override_manuale")
+    ErrorManager.require(
+        abilitato,
+        code="E_PREV_OVERRIDE_NON_AUTORIZZATO",
+        message="Modifica manuale del prezzo non autorizzata.",
+        detail=(
+            "Usa il prezzo suggerito dal listino o richiedi l'autorizzazione "
+            "'prezzo_override_manuale' al tuo responsabile."
+        ),
+        function_name=function_name,
+    )
+
+
+# Scopo: Suggerisce il prezzo della riga preventivo delegando al resolver
+#        pricing v5. Non modifica nulla: solo lettura. L'operatore ottiene
+#        il prezzo "di default" dal listino/contratto/categoria del BA
+#        associato al preventivo, alla data del preventivo, per l'utility
+#        del preventivo. L'emittente_soggetto_ruolo_id e' derivato dal JWT
+#        operatore via PermissionResolver.
+#
+#        Uso tipico: chiamata FE all'apertura del drawer riga per
+#        pre-compilare il campo prezzo. L'operatore puo' accettare il
+#        suggerito o fornire un override (controllato da permesso L1 in
+#        gestisci_riga).
+#
+#        Riferimento: docs/it/dev/work-in-progress/sviluppo-autorizzazioni-prezzi.md
+def suggerisci_prezzo_riga(
+    preventivo_id: int,
+    *,
+    articolo_id: str,
+    uom_id: int,
+    auth_user_id: int | None,
+) -> dict[str, Any]:
+    from apps.vendite.services.pricing_service import PricingService
+
+    function_name = f"{_FN}.suggerisci_prezzo_riga"
+
+    ErrorManager.require(
+        articolo_id is not None and str(articolo_id).strip() != "",
+        code="E_PREV_VALIDAZIONE",
+        message="articolo_id obbligatorio.",
+        function_name=function_name,
+    )
+    ErrorManager.require(
+        uom_id is not None and isinstance(uom_id, int) and uom_id > 0,
+        code="E_PREV_VALIDAZIONE",
+        message="uom_id obbligatorio (intero positivo).",
+        function_name=function_name,
+    )
+    ErrorManager.require(
+        auth_user_id is not None,
+        code="E_PREV_VALIDAZIONE",
+        message="auth_user_id obbligatorio per risolvere l'emittente.",
+        function_name=function_name,
+    )
+
+    repo = PreventiviRepository()
+    testata = repo.get_preventivo(preventivo_id)
+    ErrorManager.require(
+        testata is not None,
+        code="E_PREV_NOT_FOUND",
+        message="Preventivo non trovato.",
+        function_name=function_name,
+    )
+    assert testata is not None
+    ErrorManager.require(
+        testata.get("billing_account_id") is not None,
+        code="E_PREV_VALIDAZIONE",
+        message="Preventivo senza billing_account: impossibile risolvere il prezzo.",
+        function_name=function_name,
+    )
+    ErrorManager.require(
+        testata.get("utility_id") is not None,
+        code="E_PREV_VALIDAZIONE",
+        message="Preventivo senza utility: impossibile risolvere il prezzo.",
+        function_name=function_name,
+    )
+
+    # Emittente dell'operatore: PermissionResolver ritorna lista (o None=admin).
+    # Prendiamo il primo disponibile: per operatori 1-a-1 e' sempre univoco.
+    user_model = get_user_model()
+    try:
+        user = user_model.objects.get(pk=auth_user_id)
+    except user_model.DoesNotExist:
+        ErrorManager.raise_error(
+            code="E_PREV_VALIDAZIONE",
+            message="Utente non trovato.",
+            detail=f"auth_user_id={auth_user_id}",
+            function_name=function_name,
+        )
+    emittenti_sr = PermissionResolver.get_emittenti_sr_ids(user) or []
+    ErrorManager.require(
+        len(emittenti_sr) > 0,
+        code="E_PREV_VALIDAZIONE",
+        message="Impossibile risolvere l'emittente fiscale dell'operatore.",
+        detail="L'operatore non ha emittenti autorizzati.",
+        function_name=function_name,
+    )
+    emittente_sr_id = int(emittenti_sr[0])
+
+    # Data di riferimento: data del preventivo (il resolver la usa per
+    # selezionare la versione listino attiva, il contratto nel periodo
+    # corretto e le promo in vigore).
+    data_riferimento_str = testata.get("data")
+    ErrorManager.require(
+        data_riferimento_str is not None,
+        code="E_PREV_VALIDAZIONE",
+        message="Preventivo senza data: impossibile risolvere il prezzo.",
+        function_name=function_name,
+    )
+    assert data_riferimento_str is not None
+    data_riferimento = date.fromisoformat(str(data_riferimento_str))
+
+    # Delega al building block centrale. Gli errori di dominio
+    # (E_PREZZO_LISTINO_NON_TROVATO ecc.) sono tradotti dal service
+    # e propagati al chiamante come ServiceError.
+    result = PricingService().resolve_prezzo(
+        articolo_id=articolo_id,
+        uom_id=int(uom_id),
+        data_riferimento=data_riferimento,
+        ba_id=int(testata["billing_account_id"]),
+        utility_id=int(testata["utility_id"]),
+        emittente_soggetto_ruolo_id=emittente_sr_id,
+    )
+
+    # Normalizzazione valori Decimal/date in stringhe per stabilita' JSON.
+    from decimal import Decimal
+    def _normalize(v: Any) -> Any:
+        if isinstance(v, Decimal):
+            return str(v)
+        if isinstance(v, date):
+            return v.isoformat()
+        return v
+
+    return {k: _normalize(v) for k, v in result.items()}
 
 
 # Scopo: Elimina riga (soft delete) con guard su stato + ricalcolo totali.

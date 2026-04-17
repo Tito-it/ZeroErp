@@ -395,6 +395,89 @@ class TestRejectKeys(_Base):
         self.assertIn("utility_id", ctx.exception.context["forbidden_keys"])
 
 
+class TestRequireUuid(_Base):
+    """D1 review 2026-04-15: helper UUID estratto in PayloadValidator."""
+
+    _VALID = "019bac81-3f96-7ce8-a086-7e0bd0a2fec1"
+
+    def test_require_uuid_str_ok(self):
+        from uuid import UUID
+
+        result = self.v.require_uuid({"id": self._VALID}, "id")
+        self.assertEqual(UUID(result), UUID(self._VALID))
+
+    def test_require_uuid_obj_ok(self):
+        from uuid import UUID
+
+        result = self.v.require_uuid({"id": UUID(self._VALID)}, "id")
+        self.assertEqual(UUID(result), UUID(self._VALID))
+
+    def test_require_uuid_missing(self):
+        with self.assertRaisesValidation():
+            self.v.require_uuid({}, "id")
+        with self.assertRaisesValidation():
+            self.v.require_uuid({"id": None}, "id")
+
+    def test_require_uuid_invalido(self):
+        with self.assertRaisesValidation():
+            self.v.require_uuid({"id": "not-uuid"}, "id")
+        with self.assertRaisesValidation():
+            self.v.require_uuid({"id": 123}, "id")
+
+    def test_optional_uuid_absent(self):
+        self.assertIsNone(self.v.optional_uuid({}, "id"))
+        self.assertIsNone(self.v.optional_uuid({"id": None}, "id"))
+
+    def test_optional_uuid_ok(self):
+        result = self.v.optional_uuid({"id": self._VALID}, "id")
+        self.assertIsNotNone(result)
+
+
+class TestRequireDate(_Base):
+    """D2 review 2026-04-15: helper date estratto in PayloadValidator."""
+
+    def test_require_date_iso_string(self):
+        from datetime import date
+
+        result = self.v.require_date({"d": "2026-06-01"}, "d")
+        self.assertEqual(result, date(2026, 6, 1))
+
+    def test_require_date_date_obj(self):
+        from datetime import date
+
+        expected = date(2026, 6, 1)
+        result = self.v.require_date({"d": expected}, "d")
+        self.assertIs(result, expected)
+
+    def test_require_date_missing(self):
+        with self.assertRaisesValidation():
+            self.v.require_date({}, "d")
+        with self.assertRaisesValidation():
+            self.v.require_date({"d": None}, "d")
+
+    def test_require_date_invalid_format(self):
+        with self.assertRaisesValidation():
+            self.v.require_date({"d": "2026/06/01"}, "d")
+        with self.assertRaisesValidation():
+            self.v.require_date({"d": "not-a-date"}, "d")
+
+    def test_require_date_wrong_type(self):
+        with self.assertRaisesValidation():
+            self.v.require_date({"d": 12345}, "d")
+
+    def test_optional_date_absent(self):
+        self.assertIsNone(self.v.optional_date({}, "d"))
+        self.assertIsNone(self.v.optional_date({"d": None}, "d"))
+
+    def test_optional_date_ok(self):
+        from datetime import date
+
+        self.assertEqual(
+            self.v.optional_date({"d": "2026-06-01"}, "d"),
+            date(2026, 6, 1),
+        )
+
+
 class TestMapIntegrityError(TestCase):
     def test_map_integrity_error_unique_match(self):
         exc = IntegrityError(

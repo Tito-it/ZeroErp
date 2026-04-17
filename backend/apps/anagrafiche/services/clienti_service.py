@@ -71,11 +71,42 @@ class ClientiService:
 
     # Scopo: Aggiorna campi editabili di un cliente (pagamento, PA, garanzia, servizio).
     def update_cliente(self, cliente_id: int, payload: dict[str, Any]) -> dict[str, Any]:
-        # Verifica che il cliente esista
-        self.get_cliente(cliente_id)
-        updated = self._repo.update_cliente(cliente_id, payload)
-        ErrorManager.require(updated, code=E_ANAG_NOT_FOUND,
-                             message="Cliente non trovato o nessun campo modificato.")
+        # Verifica che il cliente esista.
+        cliente = self.get_cliente(cliente_id)
+
+        # Pricing v5 STADIO 2: la categoria vive sul BA, non sul cliente.
+        # Se presente nel payload, la estrae e la scrive separatamente sul BA
+        # prima di passare i restanti campi al repo cliente. FK validata dal DB.
+        #
+        # Importante (B2 review 2026-04-15): estraiamo senza mutare il dict
+        # del caller; il view/chiamante potrebbe usarlo per audit/logging.
+        ba_categoria = payload.get("ba_categoria_cliente_id") if isinstance(payload, dict) else None
+        ba_categoria_changed = False
+        if ba_categoria is not None:
+            ErrorManager.require(
+                isinstance(ba_categoria, int)
+                and not isinstance(ba_categoria, bool)
+                and ba_categoria > 0,
+                code=E_ANAG_VALIDAZIONE,
+                message="ba_categoria_cliente_id deve essere un intero positivo.",
+                context={"ba_categoria_cliente_id": ba_categoria},
+            )
+            ba_id = cliente["billing_account_id"]
+            self._repo.update_ba_categoria(ba_id, ba_categoria)
+            ba_categoria_changed = True
+
+        # Costruisce payload filtrato per il repo cliente (no mutation sul caller).
+        cliente_payload = (
+            {k: v for k, v in payload.items() if k != "ba_categoria_cliente_id"}
+            if isinstance(payload, dict)
+            else payload
+        )
+        updated = self._repo.update_cliente(cliente_id, cliente_payload) if cliente_payload else False
+        ErrorManager.require(
+            updated or ba_categoria_changed,
+            code=E_ANAG_NOT_FOUND,
+            message="Cliente non trovato o nessun campo modificato.",
+        )
         return {"updated": True}
 
     # =================================================================
@@ -141,6 +172,18 @@ class ClientiService:
         indirizzo_dettaglio_id = optional_int(payload, "indirizzo_dettaglio_id")
         ba_fatturazione_ordini = optional_str(payload, "ba_fatturazione_ordini")
         ba_parent_account_id = optional_int(payload, "ba_parent_account_id")
+        # Pricing v5 STADIO 2: categoria_cliente_id obbligatoria quando si crea
+        # un nuovo BA (no default implicito). Scelta voluta: la categoria e'
+        # dimensione commerciale rilevante per il pricing, non deve essere
+        # assegnata implicitamente. Se il BA e' pre-esistente la categoria e'
+        # gia' sul BA e il valore qui e' ignorato.
+        ba_categoria_cliente_id = optional_int(payload, "ba_categoria_cliente_id")
+        if billing_account_id is None:
+            ErrorManager.require(
+                ba_categoria_cliente_id is not None,
+                code=E_ANAG_VALIDAZIONE,
+                message="ba_categoria_cliente_id obbligatorio per creare un nuovo BA.",
+            )
 
         # Dati cliente (passati direttamente al repository)
         cliente_data: dict[str, Any] = {}
@@ -192,6 +235,7 @@ class ClientiService:
                 indirizzo_dettaglio_id=indirizzo_dettaglio_id,
                 ba_fatturazione_ordini=ba_fatturazione_ordini,
                 ba_parent_account_id=ba_parent_account_id,
+                ba_categoria_cliente_id=ba_categoria_cliente_id,
                 cliente_data=cliente_data,
                 contatto_data=contatto_data,
                 indirizzi_data=indirizzi_data,
@@ -208,6 +252,7 @@ class ClientiService:
         indirizzo_dettaglio_id: int | None,
         ba_fatturazione_ordini: str | None,
         ba_parent_account_id: int | None,
+        ba_categoria_cliente_id: int | None = None,
         cliente_data: dict[str, Any],
         contatto_data: dict[str, Any] | None = None,
         indirizzi_data: list[dict[str, Any]] | None = None,
@@ -229,12 +274,17 @@ class ClientiService:
             billing_account_id = self._validate_billing_account(
                 billing_account_id, istanza_utility_id)
         else:
+            # Pricing v5 STADIO 2: categoria_cliente_id e' obbligatoria; la
+            # validazione e' gia' stata effettuata in crea_cliente (no default
+            # implicito). La FK e' validata dal DB.
+            assert ba_categoria_cliente_id is not None
             billing_account_id = self._repo.create_billing_account(
                 istanza_utility_id=istanza_utility_id,
                 soggetto_ruolo_id=soggetto_ruolo_id,
                 utility_id=utility_id,
                 fatturazione_ordini=ba_fatturazione_ordini,
-                parent_account_id=ba_parent_account_id)
+                parent_account_id=ba_parent_account_id,
+                categoria_cliente_id=ba_categoria_cliente_id)
 
         # Step 4: Cliente — passa dati obbligatori + opzionali dal payload
         try:

@@ -48,7 +48,7 @@ Caratteristiche principali:
 | `articolo_id`       | uuid          | NO       | Articolo oggetto della promo                                             |
 | `uom_id`            | bigint        | NO       | Unita' di misura del prezzo                                              |
 | `tipo_variazione`   | varchar(16)   | NO       | `PERCENTUALE` \| `VALORE_FISSO` \| `PREZZO_FISSO`                        |
-| `valore_variazione` | numeric(10,4) | NO       | Valore (sempre > 0 per PERCENTUALE/VALORE_FISSO; >= 0 per PREZZO_FISSO)  |
+| `valore_variazione` | numeric(10,4) | NO       | Valore libero (segno gestito da UI/business)                             |
 | `valido_dal`        | date          | NO       | Inizio validita                                                          |
 | `valido_al`         | date          | NO       | Fine validita (obbligatoria: promo e' per definizione temporale)         |
 | `validita`          | daterange     | NO       | Calcolato dal trigger `script.trgfn_set_validita()`                      |
@@ -59,8 +59,8 @@ Caratteristiche principali:
 ### Regole di validazione
 
 * **`chk_promo_articoli_tipo_variazione`**: `tipo_variazione` ∈ {`PERCENTUALE`, `VALORE_FISSO`, `PREZZO_FISSO`}.
-* **`chk_promo_articoli_date`**: `valido_al >= valido_dal`.
-* **`chk_promo_articoli_valore`**: coerenza tra `tipo_variazione` e segno di `valore_variazione` (> 0 per le variazioni relative, >= 0 per il prezzo assoluto).
+* **Range di validita'**: il trigger `script.trgfn_set_validita` costruisce `daterange(valido_dal, valido_al, '[]')`; l'inversione delle date e' rifiutata dal costruttore con SQLSTATE 22000 senza bisogno di un CHECK applicativo.
+* **Valore variazione**: nessun vincolo sul segno (il CHECK `chk_promo_articoli_valore` rimosso il 15-04-2026 perche' restringeva inutilmente la semantica algebrica del resolver: negativo=sconto, positivo=maggiorazione).
 * **`ex_promo_articoli_no_overlap`**: nessuna sovrapposizione temporale per la stessa coppia `(articolo_id, uom_id)` quando `attivo IS TRUE`. Implementato come `EXCLUDE USING gist` (richiede `btree_gist`, gia' attivo dalla baseline).
 
 ---

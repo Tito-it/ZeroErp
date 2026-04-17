@@ -42,6 +42,8 @@ export const DOMAIN_MENUS = {
     { key: 'emittenti-fiscali', icon: 'pi pi-id-card', to: '/amm-software/emittenti-fiscali' },
     { key: 'matrice-utilities-ruoli', icon: 'pi pi-table', to: '/amm-software/matrice-utilities-ruoli' },
     { key: 'matrice-indirizzi-ruoli', icon: 'pi pi-map', to: '/amm-software/matrice-indirizzi-ruoli' },
+    { key: 'categorie-clienti', icon: 'pi pi-tags', to: '/amm-software/categorie-clienti' },
+    { key: 'matrice-categorie-listini', icon: 'pi pi-th-large', to: '/amm-software/matrice-categorie-listini' },
     { key: 'audit-log', icon: 'pi pi-history', to: '/amm-software/audit-log' },
     { key: 'email-accounts', icon: 'pi pi-at', to: '/amm-software/email-accounts' },
     { key: 'email-templates', icon: 'pi pi-file-edit', to: '/amm-software/email-templates' },
@@ -60,7 +62,9 @@ export const DOMAIN_MENUS = {
   ],
   'vendite': [
     { key: 'preventivi', icon: 'pi pi-file', to: '/vendite/preventivi' },
-    { key: 'listini', icon: 'pi pi-tag', to: '/vendite/listini' }
+    { key: 'listini', icon: 'pi pi-tag', to: '/vendite/listini' },
+    { key: 'contratti', icon: 'pi pi-file-edit', to: '/vendite/contratti' },
+    { key: 'promo-articoli', icon: 'pi pi-percentage', to: '/vendite/promo-articoli' }
   ],
   'acquisti': [],
   'magazzino': [],

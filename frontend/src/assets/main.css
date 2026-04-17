@@ -306,6 +306,63 @@ a {
   color: var(--app-btn-disabled-color);
 }
 
+/* Colonna azioni standard nelle liste (usata da RowActionsMenu).
+ * Desktop: larghezza auto (cresce con N azioni inline).
+ * Tablet/touch: larghezza compatta 60px (solo kebab ⋮).
+ * Lo switch e' allineato al breakpoint di .app-row-actions-* (vedi sotto).
+ * Allineamento sempre a destra: header e contenuto stanno al termine della riga,
+ * cosi' le azioni sono visivamente "in fondo" (pattern standard gestionale).
+ * Uso: <Column class="app-col-actions" :exportable="false"> */
+.app-col-actions,
+.p-datatable-table .app-col-actions {
+  text-align: right;
+}
+.app-col-actions .p-datatable-column-header-content {
+  justify-content: flex-end;
+}
+
+/* RowActionsMenu — variante desktop (pulsanti inline icon-only).
+ * Visibile solo su dispositivi con hover e viewport >=1024px. */
+.app-row-actions-inline {
+  display: inline-flex;
+  gap: 0.25rem;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+/* RowActionsMenu — variante compact (kebab + menu popup).
+ * Visibile su dispositivi touch OPPURE viewport <1024px. */
+.app-row-actions-compact {
+  display: none;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+@media (hover: none), (max-width: 1024px) {
+  .app-row-actions-inline { display: none; }
+  .app-row-actions-compact { display: inline-flex; }
+  .app-col-actions,
+  .p-datatable-table .app-col-actions {
+    width: 60px;
+    min-width: 60px;
+    max-width: 60px;
+  }
+}
+
+/* Voce menu con azione distruttiva (es. elimina, disattiva).
+ * Colori via --app-btn-delete-* in theme.css.
+ * Uso: passare severity: 'danger' nelle actions di RowActionsMenu. */
+.app-menu-item-danger .p-menuitem-link {
+  color: var(--app-btn-delete-color);
+}
+.app-menu-item-danger .p-menuitem-link:hover {
+  color: var(--app-btn-delete-hover-color);
+  background: var(--app-btn-delete-hover-bg);
+}
+.app-menu-item-danger .p-menuitem-icon {
+  color: inherit;
+}
+
 /* Messaggio errore sotto campo form */
 .app-field-error {
   color: var(--p-red-500);
@@ -644,4 +701,10 @@ a {
   .app-page-action {
     padding: 0.5rem;
   }
+}
+
+/* ConfirmDialog sopra il Drawer (PrimeVue Drawer ha z-index ~1100,
+   il dialog mask deve stare sopra per essere cliccabile). */
+.p-confirmdialog-mask {
+  z-index: 2000 !important;
 }

@@ -65,8 +65,7 @@ databaseChangeLog:
 
                   UPDATE catalogo.articoli
                      SET listino_tipologia_id = v_tipologia_prodotti_id
-                   WHERE listino_tipologia_id IS NULL
-                     AND voce_utility = FALSE;
+                   WHERE listino_tipologia_id IS NULL;
 
                   GET DIAGNOSTICS v_updated = ROW_COUNT;
                   RAISE NOTICE 'Backfill post-seed articoli.listino_tipologia_id: % articoli -> PRODOTTI.', v_updated;

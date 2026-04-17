@@ -1,0 +1,42 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+# Doc: Python
+# Scopo: URL routing per CRUD contratti v5 (F2-BE-06).
+# ------------------------------------------------------------
+
+from django.urls import path
+
+from apps.vendite.api.views_contratti import (
+    ApiContrattiList,
+    ApiContrattoCambiaStato,
+    ApiContrattoDetail,
+    ApiContrattoRigaDetail,
+    ApiContrattoRigheList,
+    ApiContrattoUtility,
+)
+
+urlpatterns = [
+    path("", ApiContrattiList.as_view(), name="vendite-contratti-list"),
+    path("<int:contratto_id>/", ApiContrattoDetail.as_view(), name="vendite-contratto-detail"),
+    path(
+        "<int:contratto_id>/cambia-stato/",
+        ApiContrattoCambiaStato.as_view(),
+        name="vendite-contratto-cambia-stato",
+    ),
+    path(
+        "<int:contratto_id>/righe/",
+        ApiContrattoRigheList.as_view(),
+        name="vendite-contratto-righe-list",
+    ),
+    path(
+        "<int:contratto_id>/righe/<int:riga_id>/",
+        ApiContrattoRigaDetail.as_view(),
+        name="vendite-contratto-riga-detail",
+    ),
+    path(
+        "<int:contratto_id>/utility/",
+        ApiContrattoUtility.as_view(),
+        name="vendite-contratto-utility",
+    ),
+]
