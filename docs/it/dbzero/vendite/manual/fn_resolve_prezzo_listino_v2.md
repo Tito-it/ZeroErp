@@ -26,7 +26,7 @@
 ---
 
 ### 🎯 Scopo Principale
-(latest review 14-04-2026)
+(latest review 15-04-2026)
 
 `vendite.fn_resolve_prezzo_listino_v2` e' il **resolver prezzi pricing v5**. Riceve le dimensioni di calcolo (articolo, uom, data, BA, utility, emittente, classe utenza opzionale) e restituisce **una sola riga** con il prezzo risolto, il prezzo base pre-variazione e tutti i metadati necessari per lo snapshot in `commesse_attivita` / `attivita_fatturabili`.
 
@@ -45,19 +45,21 @@ La risoluzione avviene in **3 stadi deterministici** (nessun tie-break): la prim
 
 Implementazione: il codice calcola **prima** STADIO 1/2 (prezzo base), poi la PROMO **sovrascrive** come overlay se la categoria del BA ha `partecipa_promo = TRUE`. Risultato identico all'ordine logico del doc v5 con una sola passata.
 
+Il lookup matrice in STADIO 2 (classe specifica + fallback NULL) e' eseguito in **1 sola query** con `ORDER BY classe_utenza_id IS NULL LIMIT 1`: il match specifico (FALSE) precede il fallback (TRUE) nel sort. L'EXCLUDE no-overlap garantisce al piu' 1 riga per ciascun scenario.
+
 ---
 
 ### Firma
 
 ```sql
 vendite.fn_resolve_prezzo_listino_v2(
-    p_articolo_id                 uuid,
-    p_uom_id                      bigint,
+    p_articolo_id                 catalogo.articoli.id%TYPE,
+    p_uom_id                      catalogo.unita_misura.id%TYPE,
     p_data_riferimento            date,
-    p_ba_id                       bigint,
-    p_utility_id                  integer,
-    p_emittente_soggetto_ruolo_id bigint,
-    p_classe_utenza_id            integer DEFAULT NULL
+    p_ba_id                       anagrafiche.billing_account.id%TYPE,
+    p_utility_id                  config.utilities.id%TYPE,
+    p_emittente_soggetto_ruolo_id anagrafiche.soggetti_ruoli.id%TYPE,
+    p_classe_utenza_id            config.classi_utenze.id%TYPE DEFAULT NULL
 )
 RETURNS TABLE (
     prezzo_finale                  numeric,
@@ -70,7 +72,9 @@ RETURNS TABLE (
     listino_riga_id                bigint,
     contratto_id                   bigint,
     promo_id                       bigint,
-    categoria_cliente_listino_id   bigint
+    categoria_cliente_listino_id   bigint,
+    categoria_cliente_id_snapshot  smallint,
+    classe_utenza_id_snapshot      integer
 )
 ```
 
@@ -92,19 +96,21 @@ RETURNS TABLE (
 
 ### Output
 
-| Campo                         | Tipo          | Semantica                                                                     |
-| ----------------------------- | ------------- | ----------------------------------------------------------------------------- |
-| `prezzo_finale`               | numeric       | Prezzo effettivo dopo applicazione variazione                                 |
-| `prezzo_base_snapshot`        | numeric       | Prezzo base pre-variazione (utile per ricostruire l'aritmetica)               |
-| `tipo_variazione_applicata`   | varchar       | `PERCENTUALE` \| `VALORE_FISSO` \| `PREZZO_FISSO` \| `NESSUNA`                |
-| `valore_variazione_applicata` | numeric       | Valore della variazione (NULL se `NESSUNA`)                                   |
-| `origine`                     | varchar       | `PROMO` \| `CONTRATTO_OVERRIDE` \| `CONTRATTO_LISTINO` \| `CATEGORIA`         |
-| `listino_id`                  | bigint        | Listino risolto (NULL se `CONTRATTO_OVERRIDE` modalita' C)                    |
-| `listino_versione_id`         | bigint        | Versione attiva del listino usata                                             |
-| `listino_riga_id`             | bigint        | Riga listino usata (NULL se override)                                         |
-| `contratto_id`                | bigint        | Contratto coinvolto se origine `CONTRATTO_*`                                  |
-| `promo_id`                    | bigint        | Promo applicata se origine `PROMO`                                            |
-| `categoria_cliente_listino_id`| bigint        | Riga matrice usata se origine `CATEGORIA`                                     |
+| Campo | Tipo | Semantica |
+| --- | --- | --- |
+| `prezzo_finale` | numeric | Prezzo effettivo dopo applicazione variazione |
+| `prezzo_base_snapshot` | numeric | Prezzo base pre-variazione (utile per ricostruire l'aritmetica) |
+| `tipo_variazione_applicata` | varchar | `PERCENTUALE` \| `VALORE_FISSO` \| `PREZZO_FISSO` \| `NESSUNA` |
+| `valore_variazione_applicata` | numeric | Valore della variazione (NULL se `NESSUNA`) |
+| `origine` | varchar | `PROMO` \| `CONTRATTO_OVERRIDE` \| `CONTRATTO_LISTINO` \| `CATEGORIA` |
+| `listino_id` | bigint | Listino risolto (NULL se `CONTRATTO_OVERRIDE` modalita' C) |
+| `listino_versione_id` | bigint | Versione attiva del listino usata |
+| `listino_riga_id` | bigint | Riga listino usata (NULL se override) |
+| `contratto_id` | bigint | Contratto coinvolto se origine `CONTRATTO_*` |
+| `promo_id` | bigint | Promo applicata se origine `PROMO` |
+| `categoria_cliente_listino_id` | bigint | Riga matrice usata se origine `CATEGORIA` |
+| `categoria_cliente_id_snapshot` | smallint | Categoria cliente al momento del calcolo: dal contratto (STADIO 1, congelata alla creazione) oppure dal BA (STADIO 2). Fallback al BA se il contratto pre-v5 ha il campo ancora NULL. |
+| `classe_utenza_id_snapshot` | integer | Classe utenza al momento del calcolo: valore `p_classe_utenza_id` fornito dal caller. NULL per utility senza dimensione. |
 
 ---
 

@@ -103,6 +103,7 @@ Campi introdotti:
 | `listino_id` | bigint | YES | FK a `vendite.listini(id)`. NULL = modalita' C |
 | `tipo_variazione_globale` | varchar(16) | YES | `PERCENTUALE` \| `VALORE_FISSO` |
 | `valore_variazione_globale` | numeric(10,4) | YES | Coerente con `tipo_variazione_globale` |
+| `categoria_cliente_id_snapshot` | smallint | YES | FK a `anagrafiche.categorie_clienti`. Snapshot della categoria commerciale del BA. Auto-populate da BA su INSERT. Modificabile in stato DRAFT; congelato (immutabile) fuori da DRAFT. |
 
 Vincoli CHECK:
 

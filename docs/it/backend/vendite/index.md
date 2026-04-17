@@ -5,6 +5,7 @@
 - [api_commessa_stato](manual/api_commessa_stato.md) — Esporre via HTTP lo stato e i contatori aggregati di una singola commessa, per dashboard e monitoraggio avanzamento.
 - [api_commesse_pricing](manual/api_commesse_pricing.md) — Esporre via HTTP le operazioni di gestione prezzo su attivita` di commessa: riallineamento da listino (N5), variazione eccezionale manuale (N7) e sblocco prezzo bloccato (N7-sblocco).
 - [api_commesse_push_log](manual/api_commesse_push_log.md) — Esporre via HTTP il dettaglio di un singolo push log commesse, per consultazione operativa e diagnostica delle esecuzioni push.
+- [api_contratti](manual/api_contratti.md) — CRUD operativo dei contratti commerciali cliente-listino, con sub-entita' **righe** (vendite.contratti_righe) e **utility 1:1** (vendite.contratti_utilities). E' il ponte tra il cliente (BA) e il listino, e veicola le t…
 - [api_listini](manual/api_listini.md) — Esporre via HTTP la gestione completa dei listini vendite: anagrafica listino, versioni temporali, righe prezzo, associazioni di contesto e test del resolver prezzo.
 - [api_lotti_list](manual/api_lotti_list.md) — Esporre via HTTP l'elenco paginato dei lotti di fatturazione con filtri opzionali e decodifica delle FK.
 - [api_lotto_fatture_list](manual/api_lotto_fatture_list.md) — Esporre via HTTP l'elenco paginato delle fatture appartenenti a un lotto, con decodifiche FK, filtri opzionali e ordinamento configurabile.
