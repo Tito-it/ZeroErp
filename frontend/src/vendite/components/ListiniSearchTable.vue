@@ -24,6 +24,7 @@ import Select from 'primevue/select'
 import Tag from 'primevue/tag'
 import Button from 'primevue/button'
 import NewButton from '../../core/components/NewButton.vue'
+import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
 import UtilityPerRuoloSelect from '../../core/components/UtilityPerRuoloSelect.vue'
 import AlertScadenzeWidget from './AlertScadenzeWidget.vue'
 import AttivaVersioneDialog from './AttivaVersioneDialog.vue'
@@ -186,6 +187,79 @@ function onEliminaListino(listino) {
   })
 }
 
+// Scopo: azioni di riga del listino (toggle expansion + elimina conditional).
+function buildListinoActions(data) {
+  return [
+    {
+      key: 'toggle-versioni',
+      label: expandedRows.value[data.id] ? t('listini.nascondi_versioni') : t('listini.mostra_versioni'),
+      icon: MANAGE_ICONS.VERSIONI,
+      command: () => toggleExpand(data),
+    },
+    {
+      key: 'elimina-listino',
+      label: t('listini.elimina_listino'),
+      icon: 'pi pi-trash',
+      severity: 'danger',
+      visible: !data.versioni_count,
+      command: () => onEliminaListino(data),
+    },
+  ]
+}
+
+// Scopo: azioni di riga della versione listino nell'expansion (fino a 6, filtrate per stato).
+function buildVersioneActions(ver, listino) {
+  const isBozza = ver.stato === 'BOZZA'
+  const isAttiva = ver.stato === 'ATTIVA'
+  return [
+    {
+      key: 'attiva',
+      label: ver.righe_count ? t('listini.attiva') : t('listini.attiva_no_righe'),
+      icon: 'pi pi-check-circle',
+      severity: 'primary',
+      visible: isBozza,
+      disabled: !ver.righe_count,
+      command: () => onAttivaVersione(ver, listino.id),
+    },
+    {
+      key: 'programma-chiusura',
+      label: t('listini.programma_chiusura'),
+      icon: 'pi pi-calendar',
+      severity: 'primary',
+      visible: isAttiva,
+      command: () => onProgrammaChiusura(ver, listino.id),
+    },
+    {
+      key: 'chiudi',
+      label: t('listini.chiudi'),
+      icon: 'pi pi-lock',
+      severity: 'warn',
+      visible: isAttiva,
+      command: () => onChiudiVersione(ver, listino.id),
+    },
+    {
+      key: 'clona',
+      label: t('listini.clona_versione'),
+      icon: 'pi pi-copy',
+      command: () => emit('open-clona-versione', ver, listino),
+    },
+    {
+      key: 'gestisci-righe',
+      label: t('listini.gestisci_righe'),
+      icon: 'pi pi-list',
+      command: () => emit('open-righe', ver, listino),
+    },
+    {
+      key: 'elimina-versione',
+      label: t('listini.elimina_versione'),
+      icon: 'pi pi-trash',
+      severity: 'danger',
+      visible: isBozza,
+      command: () => onEliminaVersione(ver, listino),
+    },
+  ]
+}
+
 useTabFreshness(store, 'listino')
 
 // Dopo ogni assegnazione di items (fetchList completato e preload versioni
@@ -248,18 +322,9 @@ onMounted(() => store.fetchList())
           <Tag :value="data.attivo ? t('common.active') : t('common.inactive')" :severity="data.attivo ? 'success' : 'warn'" />
         </template>
       </Column>
-      <Column :header="t('listini.col_gestione')" style="width: 130px;" frozen alignFrozen="right">
+      <Column :header="t('common.col_azioni')" class="app-col-actions" :exportable="false" frozen alignFrozen="right">
         <template #body="{ data }">
-          <div class="flex gap-1" @click.stop>
-            <Button :icon="MANAGE_ICONS.VERSIONI" text rounded size="small"
-              class="app-manage-btn"
-              v-tooltip.bottom="expandedRows[data.id] ? t('listini.nascondi_versioni') : t('listini.mostra_versioni')"
-              @click="toggleExpand(data)" />
-            <Button v-if="!data.versioni_count"
-              icon="pi pi-trash" text rounded size="small" class="app-delete-btn"
-              v-tooltip.bottom="t('listini.elimina_listino')"
-              @click="onEliminaListino(data)" />
-          </div>
+          <RowActionsMenu :actions="buildListinoActions(data)" />
         </template>
       </Column>
 
@@ -288,11 +353,6 @@ onMounted(() => store.fetchList())
             class="app-datatable app-datatable--inner"
             striped-rows data-key="id"
           >
-            <Column :header="t('listini.col_stato')" style="width: 90px;">
-              <template #body="{ data: ver }">
-                <Tag :value="ver.stato" :severity="statoVersioneListinoSeverity(ver.stato)" />
-              </template>
-            </Column>
             <Column field="codice_versione" :header="t('listini.col_codice_versione')" style="width: 140px;" />
             <Column :header="t('listini.field_valido_dal')" style="width: 110px;">
               <template #body="{ data: ver }">{{ displayDate(ver.valido_dal) }}</template>
@@ -301,35 +361,14 @@ onMounted(() => store.fetchList())
               <template #body="{ data: ver }">{{ displayDate(ver.valido_al) || '—' }}</template>
             </Column>
             <Column field="righe_count" :header="t('listini.col_righe')" style="width: 80px;" />
-            <Column :header="t('listini.col_gestione')" style="width: 140px;" frozen alignFrozen="right">
+            <Column :header="t('listini.col_stato')" style="width: 90px;">
               <template #body="{ data: ver }">
-                <div class="flex gap-1" @click.stop>
-                  <Button v-if="ver.stato === 'BOZZA'" icon="pi pi-check-circle"
-                    text rounded size="small" class="app-action-btn"
-                    :disabled="!ver.righe_count"
-                    v-tooltip.bottom="ver.righe_count ? t('listini.attiva') : t('listini.attiva_no_righe')"
-                    @click="onAttivaVersione(ver, listino.id)" />
-                  <Button v-if="ver.stato === 'ATTIVA'" icon="pi pi-calendar"
-                    text rounded size="small" class="app-action-btn"
-                    v-tooltip.bottom="t('listini.programma_chiusura')"
-                    @click="onProgrammaChiusura(ver, listino.id)" />
-                  <Button v-if="ver.stato === 'ATTIVA'" icon="pi pi-lock"
-                    text rounded size="small" severity="warn"
-                    v-tooltip.bottom="t('listini.chiudi')"
-                    @click="onChiudiVersione(ver, listino.id)" />
-                  <Button icon="pi pi-copy" text rounded size="small"
-                    class="app-manage-btn"
-                    v-tooltip.bottom="t('listini.clona_versione')"
-                    @click="emit('open-clona-versione', ver, listino)" />
-                  <Button icon="pi pi-list" text rounded size="small"
-                    class="app-manage-btn"
-                    v-tooltip.bottom="t('listini.gestisci_righe')"
-                    @click="emit('open-righe', ver, listino)" />
-                  <Button v-if="ver.stato === 'BOZZA'" icon="pi pi-trash"
-                    text rounded size="small" class="app-delete-btn"
-                    v-tooltip.bottom="t('listini.elimina_versione')"
-                    @click="onEliminaVersione(ver, listino)" />
-                </div>
+                <Tag :value="ver.stato" :severity="statoVersioneListinoSeverity(ver.stato)" />
+              </template>
+            </Column>
+            <Column :header="t('common.col_azioni')" class="app-col-actions" :exportable="false" frozen alignFrozen="right">
+              <template #body="{ data: ver }">
+                <RowActionsMenu :actions="buildVersioneActions(ver, listino)" />
               </template>
             </Column>
           </DataTable>

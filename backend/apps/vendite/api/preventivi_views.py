@@ -220,9 +220,15 @@ class ApiPreventivoRigheList(DomainAPIView):
         )},
     )
     # Scopo: Aggiunge riga al preventivo via POST.
+    #        Auto-fill prezzo da resolver v5 + check L1 override: vedi
+    #        sviluppo-autorizzazioni-prezzi.md §3. auth_user_id e' passato
+    #        al service per risolvere emittente + verificare permesso.
     def post(self, request: Request, preventivo_id: int) -> JsonResponse:
+        auth_user_id = request.user.id if request.user and request.user.is_authenticated else None
         def _handler(payload: dict[str, object]) -> dict[str, object]:
-            return preventivi_service.gestisci_riga(preventivo_id, payload)
+            return preventivi_service.gestisci_riga(
+                preventivo_id, payload, auth_user_id=auth_user_id,
+            )
         return handle_post_json(request, handler=_handler)
 
 
@@ -250,8 +256,13 @@ class ApiPreventivoRigaDetail(DomainAPIView):
         )},
     )
     # Scopo: Aggiorna riga preventivo via PATCH.
+    #        Se il payload tocca `prezzo_unitario`, scatta il check L1
+    #        (permesso prezzo_override_manuale se diverso dal resolver).
     def patch(self, request: Request, preventivo_id: int, riga_id: int) -> JsonResponse:
-        result = preventivi_service.aggiorna_riga(preventivo_id, riga_id, request.data)
+        auth_user_id = request.user.id if request.user and request.user.is_authenticated else None
+        result = preventivi_service.aggiorna_riga(
+            preventivo_id, riga_id, request.data, auth_user_id=auth_user_id,
+        )
         return success_response(result)
 
     @extend_schema(
@@ -267,6 +278,63 @@ class ApiPreventivoRigaDetail(DomainAPIView):
     def delete(self, request: Request, preventivo_id: int, riga_id: int) -> JsonResponse:
         result = preventivi_service.elimina_riga(preventivo_id, riga_id)
         return success_response(result)
+
+
+# ── Suggerimento prezzo riga via pricing resolver v5 ──
+
+
+class ApiPreventivoRigaSuggerisciPrezzo(DomainAPIView):
+    """POST /api/v1/vendite/preventivi/<id>/righe/suggerisci-prezzo/
+
+    Wrappa `preventivi_service.suggerisci_prezzo_riga`. Non modifica nulla:
+    legge testata preventivo (BA, utility, data) + articolo + UoM dal
+    payload, deriva emittente dal JWT operatore, delega al pricing
+    resolver v5. Usato dal FE per pre-compilare il campo prezzo
+    all'apertura del drawer riga.
+
+    Area `vendite` livello LETTURA sufficiente (no scrittura).
+    Vedi docs/it/dev/work-in-progress/sviluppo-autorizzazioni-prezzi.md.
+    """
+
+    area_funzionale = "vendite"
+
+    @extend_schema(
+        request=inline_serializer(
+            name="PreventivoRigaSuggerisciPrezzoRequest",
+            fields={
+                "articolo_id": serializers.UUIDField(),
+                "uom_id": serializers.IntegerField(),
+            },
+        ),
+        responses={200: inline_serializer(
+            name="PreventivoRigaSuggerisciPrezzoResponse",
+            fields={"data": inline_serializer(
+                name="PreventivoRigaSuggerisciPrezzoData",
+                fields={
+                    "prezzo_finale": serializers.DecimalField(max_digits=22, decimal_places=10),
+                    "prezzo_base_snapshot": serializers.DecimalField(max_digits=22, decimal_places=10, allow_null=True),
+                    "origine": serializers.CharField(),
+                    "listino_id": serializers.IntegerField(allow_null=True),
+                    "contratto_id": serializers.IntegerField(allow_null=True),
+                    "promo_id": serializers.IntegerField(allow_null=True),
+                    "tipo_variazione_applicata": serializers.CharField(allow_null=True),
+                    "valore_variazione_applicata": serializers.DecimalField(max_digits=10, decimal_places=4, allow_null=True),
+                },
+            )},
+        )},
+    )
+    def post(self, request: Request, preventivo_id: int) -> JsonResponse:
+        def _handler(payload: dict[str, object]) -> dict[str, object]:
+            articolo_id = payload.get("articolo_id")
+            uom_id = payload.get("uom_id")
+            auth_user_id = request.user.id if request.user and request.user.is_authenticated else None
+            return preventivi_service.suggerisci_prezzo_riga(
+                preventivo_id,
+                articolo_id=str(articolo_id) if articolo_id else None,
+                uom_id=int(uom_id) if uom_id is not None else None,
+                auth_user_id=auth_user_id,
+            )
+        return handle_post_json(request, handler=_handler)
 
 
 # ── Indirizzi ──

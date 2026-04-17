@@ -62,6 +62,8 @@ _LOOKUP_FROM = """
         ON srd.soggetto_ruolo_id = ba.soggetto_ruolo_id
       LEFT JOIN anagrafiche.billing_account parent
         ON parent.id = ba.parent_account_id
+      LEFT JOIN anagrafiche.categorie_clienti cc
+        ON cc.id = ba.categoria_cliente_id
 """
 
 # Scopo: Proiezione SELECT condivisa tra search_lookup (lista) e get_lookup_by_id (restore).
@@ -81,7 +83,10 @@ _LOOKUP_SELECT_COLUMNS = """
     iu.fittizia AS istanza_fittizia,
     p.pdp AS pdp,
     ba.valido_dal,
-    ba.valido_al
+    ba.valido_al,
+    ba.categoria_cliente_id,
+    cc.codice AS categoria_cliente_codice,
+    cc.descrizione AS categoria_cliente_descrizione
 """
 
 

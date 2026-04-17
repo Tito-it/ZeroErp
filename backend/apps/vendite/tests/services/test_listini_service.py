@@ -301,6 +301,7 @@ class ListiniServiceTests(TestCase):
                     "descrizione": "X",
                     "utility_id": 1,
                     "tipologia_id": 999,
+                    "emittente_soggetto_ruolo_id": 1,
                 }
             )
         self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")

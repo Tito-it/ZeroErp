@@ -36,7 +36,7 @@ _STATI_VERSIONE_VALIDI: frozenset[str] = frozenset({"BOZZA", "ATTIVA", "CHIUSA"}
 _LISTINO_NULLABLE_FIELDS: frozenset[str] = frozenset({"meta"})
 _VERSIONE_NULLABLE_FIELDS: frozenset[str] = frozenset({"valido_al", "meta"})
 _RIGA_NULLABLE_FIELDS: frozenset[str] = frozenset(
-    {"billing_account_id", "utility_id", "emittente_soggetto_ruolo_id", "meta"}
+    {"meta"}
 )
 _LISTINO_CREATE_ALLOWED_KEYS: frozenset[str] = frozenset(LISTINO_CREATE_COLUMNS.keys())
 _LISTINO_UPDATE_ALLOWED_KEYS: frozenset[str] = frozenset(LISTINO_UPDATE_COLUMNS.keys())
@@ -696,6 +696,14 @@ def _extract_listino_payload(
             function_name=function_name,
             message=message,
         )
+        # emittente_soggetto_ruolo_id: NOT NULL (pricing v5 §3.1 — dimensione
+        # del listino). Un listino vale per un solo emittente fiscale.
+        data["emittente_soggetto_ruolo_id"] = _require_positive_int(
+            payload,
+            "emittente_soggetto_ruolo_id",
+            function_name=function_name,
+            message=message,
+        )
     else:
         descrizione = _extract_string(
             payload,
@@ -726,6 +734,16 @@ def _extract_listino_payload(
         )
         if tipologia_id_val is not _MISSING:
             data["tipologia_id"] = tipologia_id_val
+
+        # emittente_soggetto_ruolo_id: ammesso in update ma NOT NULL.
+        emittente_val = _extract_required_int_if_present(
+            payload,
+            "emittente_soggetto_ruolo_id",
+            function_name=function_name,
+            message=message,
+        )
+        if emittente_val is not _MISSING:
+            data["emittente_soggetto_ruolo_id"] = emittente_val
 
     attivo = _extract_present_bool(
         payload,
@@ -892,15 +910,9 @@ def _extract_riga_payload(
         assert uom_id is not _MISSING
         data["uom_id"] = uom_id
 
-    for field_name in ("billing_account_id", "utility_id", "emittente_soggetto_ruolo_id"):
-        field_value = _extract_nullable_int(
-            payload,
-            field_name,
-            function_name=function_name,
-            message=message,
-        )
-        if field_value is not _MISSING:
-            data[field_name] = field_value
+    # Pricing v5: BA/utility/emittente sono droppati da listini_righe
+    # (F1-DB-25). Eventuali valori residui nel payload sono ignorati
+    # silenziosamente (retrocompatibilita' chiamanti pre-v5).
 
     prezzo = _extract_decimal(
         payload,

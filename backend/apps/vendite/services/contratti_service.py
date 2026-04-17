@@ -57,6 +57,7 @@ _ORDER_BY_CONTRATTI: frozenset[str] = frozenset({
     "valido_al",
     "ba_ragione_sociale",
     "stato_codice",
+    "categoria_cliente_snapshot_codice",
     "data_insert",
     "data_update",
 })
@@ -81,6 +82,9 @@ _CREATE_KEYS_TESTATA: frozenset[str] = frozenset({
     "listino_id",
     "tipo_variazione_globale",
     "valore_variazione_globale",
+    # Snapshot categoria cliente: opzionale. Se fornito, congela il valore
+    # scelto dall'operatore; se omesso, il trigger DB lo popola dal BA.
+    "categoria_cliente_id_snapshot",
     "meta",
     # Sub-entita' opzionale: se presente crea la riga utility 1:1 nella
     # stessa transazione. Il service NON permette payload utility senza
@@ -97,6 +101,7 @@ _UPDATE_KEYS_TESTATA: frozenset[str] = frozenset({
     "listino_id",
     "tipo_variazione_globale",
     "valore_variazione_globale",
+    "categoria_cliente_id_snapshot",
     "meta",
 })
 
@@ -230,6 +235,16 @@ _FK_CONSTRAINTS: dict[str, tuple[str, str]] = {
         "Istanza dati precontrattuali inesistente.",
     ),
     "fk_contratti_utilities_contratti": (E_VENDITE_FK, "Contratto inesistente."),
+    # FK creata con REFERENCES inline: PG auto-genera il nome. Mappiamo sia
+    # la convenzione progetto (fk_*) sia il formato PG ({table}_{col}_fkey).
+    "fk_contratti_categoria_cliente_snapshot": (
+        E_VENDITE_FK,
+        "Categoria cliente (snapshot) inesistente.",
+    ),
+    "contratti_categoria_cliente_id_snapshot_fkey": (
+        E_VENDITE_FK,
+        "Categoria cliente (snapshot) inesistente.",
+    ),
 }
 
 
@@ -473,6 +488,15 @@ class ContrattiService:
             context={"contratto_id": contratto_id},
         )
         assert existing is not None
+
+        # categoria_cliente_id_snapshot modificabile solo in DRAFT.
+        if "categoria_cliente_id_snapshot" in payload and existing.get("stato_codice") != "DRAFT":
+            ErrorManager.raise_error(
+                code=E_VENDITE_VALIDATION,
+                message=_MESSAGE,
+                detail="categoria_cliente_id_snapshot modificabile solo in stato DRAFT.",
+                context={"contratto_id": contratto_id, "stato_codice": existing.get("stato_codice")},
+            )
 
         data = self._build_update_data_testata(payload, existing=existing)
 
@@ -742,6 +766,18 @@ class ContrattiService:
         )
         self._apply_variazione_globale(payload, data)
         self._validate_modalita_coerente(data, existing=None)
+        # Snapshot categoria cliente: opzionale, nullable. Se fornito
+        # congela il valore scelto dall'operatore; se omesso il trigger
+        # DB lo popola dal BA.
+        self._apply_optional_positive_int(
+            payload, data, "categoria_cliente_id_snapshot", message=_MESSAGE,
+        )
+        # Snapshot categoria cliente: opzionale, nullable. Se fornito
+        # congela il valore scelto dall'operatore; se omesso il trigger
+        # DB lo popola dal BA.
+        self._apply_optional_positive_int(
+            payload, data, "categoria_cliente_id_snapshot", message=_MESSAGE,
+        )
         if "meta" in payload:
             meta = self._v.optional_meta(payload)
             if meta is not None:
@@ -793,6 +829,10 @@ class ContrattiService:
             or "valore_variazione_globale" in data
         ):
             self._validate_modalita_coerente(data, existing=existing)
+        # Categoria snapshot: ammessa in PATCH solo in DRAFT (guard gia' sopra).
+        self._apply_optional_positive_int(
+            payload, data, "categoria_cliente_id_snapshot", message=_MESSAGE,
+        )
         if "meta" in payload:
             meta = self._v.optional_meta(payload)
             if meta is not None:

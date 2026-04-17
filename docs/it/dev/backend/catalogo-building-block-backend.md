@@ -173,6 +173,19 @@
 | `CatalogoRepository.ARTICOLI_CREATE_COLUMNS.listino_tipologia_id` | [catalogo_repository.py](../../../../backend/apps/catalogo/db/catalogo_repository.py) | Colonna smallint nullable (FK `config.listini_tipologie`). Ereditata da `ARTICOLI_UPDATE_COLUMNS` e proiettata in `ARTICOLI_DETAIL_COLUMNS` insieme ai decode `tipologia_listino_codice`/`tipologia_listino_descrizione` via `vw_articoli_dettaglio`. Coerenza articolo↔riga listino imposta dal trigger DB `trgfn_listini_righe_guard_tipologia` (§7.2 v5). |
 | `CatalogoRepository.list_articoli(listino_tipologia_id=)` | [catalogo_repository.py](../../../../backend/apps/catalogo/db/catalogo_repository.py) | Filtro opzionale sulla lista articoli. Esposto via query param `listino_tipologia_id` su `GET /api/v1/catalogo/articoli/`. |
 | `CatalogoBomRepository.COMPONENTE_WRITE_COLUMNS.esposto_in_fattura` | [catalogo_bom_repository.py](../../../../backend/apps/catalogo/db/catalogo_bom_repository.py) | Flag bool (DDL default `false`) che decide la modalita' A/B1/B2 del `fn_resolve_prezzo_composito` (§8 v5): se almeno un componente ha `esposto_in_fattura=true`, il resolver emette N righe (una per componente) e la pipeline di creazione attivita' espande in `commesse_attivita`. |
+| `PricingResolveView` | [views_pricing.py](../../../../backend/apps/vendite/api/views_pricing.py) | Endpoint `POST /api/v1/vendite/pricing/resolve/`. Esposizione REST di `PricingService.resolve_prezzo` per UI di debug, smoke test e supporto operativo. `emittente_soggetto_ruolo_id` derivato automaticamente dal JWT operatore (override opzionale nel payload per diagnostica). Area `vendite` livello `LETTURA`. Nessun side-effect: solo lettura. |
+
+**Consumer previsti** — `PricingService.resolve_prezzo` e' il building block centrale per **qualsiasi calcolo prezzo** in domini downstream. Al posto di duplicare logica (lookup listino / matrice / contratto) chiamare sempre il service:
+
+| Consumer | Stato | Dove chiamarlo |
+|---|---|---|
+| `commesse_attivita` (snapshot audit) | **Done** (F2-BE-11) | Il DB `fn_upsert_commessa_attivita` popola gia' le 8 colonne snapshot |
+| `preventivi_service.calcola_prezzo_riga` | **Da integrare** | Al momento della creazione/modifica riga preventivo, sostituire lookup manuale con `PricingService.resolve_prezzo` |
+| `ordini_vendita` (riga ordine) | **Da integrare** | Stesso pattern preventivi |
+| `pipeline fatturazione compositi` (F2-BE-12) | **Bloccato** | Scope separato, usera' `resolve_prezzo_composito` |
+| Endpoint diagnostico `/pricing/resolve/` | **Done** | Vedi `PricingResolveView` |
+
+Regola pratica: **mai** leggere direttamente `listini_righe.prezzo` o `categorie_clienti_listini` in un service di dominio. Sempre passare per `PricingService`: garantisce i 3 stadi del resolver, la traduzione errori uniforme e lo snapshot dei metadati (origine, listino, contratto, promo, categoria).
 
 ---
 

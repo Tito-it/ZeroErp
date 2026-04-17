@@ -24,6 +24,10 @@ Indice test eseguiti:
 15) test_genera_pratica_ba_mancante — guard billing_account_id obbligatorio
 16) test_get_preventivo_not_found — preventivo inesistente
 17) test_list_preventivi_paginazione_invalida — page < 1
+18) test_gestisci_riga_auto_fill_da_resolver — prezzo popolato da resolver se assente
+19) test_gestisci_riga_prezzo_uguale_resolver_ok — payload = resolver ok senza permesso
+20) test_gestisci_riga_override_non_autorizzato — L1 blocca override senza permesso
+21) test_gestisci_riga_override_superuser_ok — superuser bypassa L1, meta MANUALE
 """
 
 import unittest
@@ -272,3 +276,136 @@ class TestPreventiviService(unittest.TestCase):
         with self.assertRaises(ServiceError) as ctx:
             list_preventivi(page=0, page_size=50)
         self.assertEqual(ctx.exception.code, "E_PREV_VALIDAZIONE")
+
+    # ── Sprint 2: wiring pricing v5 + L1 override ──
+
+    # Helper: testata completa (BA+utility+data) per attivare il resolver.
+    def _testata_completa(self):
+        return {
+            "id": 1,
+            "stato_codice_interno": "DRAFT",
+            "uid": "abc",
+            "billing_account_id": 10,
+            "utility_id": 3,
+            "data": "2026-04-17",
+        }
+
+    # Scopo: Auto-fill prezzo dal resolver quando payload non specifica
+    #        prezzo_unitario e testata ha BA+utility+data validi.
+    @patch("apps.vendite.services.preventivi_service.suggerisci_prezzo_riga")
+    def test_gestisci_riga_auto_fill_da_resolver(self, mock_suggerisci):
+        from apps.vendite.services.preventivi_service import gestisci_riga
+
+        self.mock_repo.get_preventivo.return_value = self._testata_completa()
+        self.mock_repo.create_riga.return_value = {"id": 11}
+        mock_suggerisci.return_value = {
+            "prezzo_finale": "50.00", "origine": "CATEGORIA",
+            "listino_id": 100, "contratto_id": None, "promo_id": None,
+            "tipo_variazione_applicata": "PERCENTUALE",
+            "valore_variazione_applicata": "-5.00",
+        }
+
+        gestisci_riga(
+            1,
+            {"articolo_id": "uuid-art-1", "uom_operativa_id": 1},
+            auth_user_id=42,
+        )
+
+        call = self.mock_repo.create_riga.call_args.kwargs
+        # Prezzo popolato dal resolver
+        self.assertIsNotNone(call["prezzo_unitario"])
+        # Meta audit con origine = valore resolver
+        self.assertEqual(call["meta"]["origine_prezzo"], "CATEGORIA")
+        self.assertEqual(call["meta"]["prezzo_resolver_context"]["listino_id"], 100)
+
+    # Scopo: Override prezzo ammesso se payload == resolver (no check permesso).
+    @patch("apps.vendite.services.preventivi_service.suggerisci_prezzo_riga")
+    def test_gestisci_riga_prezzo_uguale_resolver_ok(self, mock_suggerisci):
+        from apps.vendite.services.preventivi_service import gestisci_riga
+
+        self.mock_repo.get_preventivo.return_value = self._testata_completa()
+        self.mock_repo.create_riga.return_value = {"id": 12}
+        mock_suggerisci.return_value = {
+            "prezzo_finale": "50.00", "origine": "CATEGORIA",
+            "listino_id": 100, "contratto_id": None, "promo_id": None,
+            "tipo_variazione_applicata": None,
+            "valore_variazione_applicata": None,
+        }
+
+        # Prezzo passato uguale a quello del resolver -> accettato
+        gestisci_riga(
+            1,
+            {"articolo_id": "uuid-art-1", "uom_operativa_id": 1, "prezzo_unitario": "50.00"},
+            auth_user_id=42,
+        )
+
+        call = self.mock_repo.create_riga.call_args.kwargs
+        self.assertEqual(str(call["prezzo_unitario"]), "50.00")
+        # Origine = resolver (non MANUALE)
+        self.assertEqual(call["meta"]["origine_prezzo"], "CATEGORIA")
+
+    # Scopo: L1 — override prezzo (payload != resolver) bloccato se l'utente
+    #        non ha permesso azione prezzo_override_manuale.
+    @patch("apps.vendite.services.preventivi_service.get_user_model")
+    @patch("apps.vendite.services.preventivi_service.PermissionResolver")
+    @patch("apps.vendite.services.preventivi_service.suggerisci_prezzo_riga")
+    def test_gestisci_riga_override_non_autorizzato(
+        self, mock_suggerisci, mock_perm, mock_user_model
+    ):
+        from apps.vendite.services.preventivi_service import gestisci_riga
+
+        self.mock_repo.get_preventivo.return_value = self._testata_completa()
+        mock_suggerisci.return_value = {
+            "prezzo_finale": "50.00", "origine": "CATEGORIA",
+            "listino_id": 100, "contratto_id": None, "promo_id": None,
+            "tipo_variazione_applicata": None,
+            "valore_variazione_applicata": None,
+        }
+        # User non superuser, azione NON abilitata
+        mock_user = MagicMock()
+        mock_user.is_superuser = False
+        mock_user_model.return_value.objects.get.return_value = mock_user
+        mock_perm.check_azione.return_value = False
+
+        with self.assertRaises(ServiceError) as ctx:
+            gestisci_riga(
+                1,
+                {"articolo_id": "uuid-art-1", "uom_operativa_id": 1, "prezzo_unitario": "45.00"},
+                auth_user_id=42,
+            )
+        self.assertEqual(ctx.exception.code, "E_PREV_OVERRIDE_NON_AUTORIZZATO")
+        self.mock_repo.create_riga.assert_not_called()
+
+    # Scopo: L1 — override prezzo ammesso per superuser (bypass).
+    @patch("apps.vendite.services.preventivi_service.get_user_model")
+    @patch("apps.vendite.services.preventivi_service.suggerisci_prezzo_riga")
+    def test_gestisci_riga_override_superuser_ok(
+        self, mock_suggerisci, mock_user_model
+    ):
+        from apps.vendite.services.preventivi_service import gestisci_riga
+
+        self.mock_repo.get_preventivo.return_value = self._testata_completa()
+        self.mock_repo.create_riga.return_value = {"id": 13}
+        mock_suggerisci.return_value = {
+            "prezzo_finale": "50.00", "origine": "CATEGORIA",
+            "listino_id": 100, "contratto_id": None, "promo_id": None,
+            "tipo_variazione_applicata": None,
+            "valore_variazione_applicata": None,
+        }
+        # Superuser bypassa il check
+        mock_user = MagicMock()
+        mock_user.is_superuser = True
+        mock_user_model.return_value.objects.get.return_value = mock_user
+
+        gestisci_riga(
+            1,
+            {"articolo_id": "uuid-art-1", "uom_operativa_id": 1, "prezzo_unitario": "45.00"},
+            auth_user_id=42,
+        )
+
+        call = self.mock_repo.create_riga.call_args.kwargs
+        self.assertEqual(str(call["prezzo_unitario"]), "45.00")
+        # Meta audit con origine MANUALE + delta tracciato
+        self.assertEqual(call["meta"]["origine_prezzo"], "MANUALE")
+        self.assertEqual(call["meta"]["prezzo_base_resolver"], "50.00")
+        self.assertEqual(call["meta"]["delta_override"], "-5.00")

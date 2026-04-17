@@ -49,7 +49,7 @@ Riferimento concettuale: [sviluppo-listini-v5.md](/dev/work-in-progress/sviluppo
 | `data_a` | ISO date | Filtro su `validita` daterange |
 | `limit` | int | Default 25, max 200 |
 | `offset` | int | Default 0 |
-| `order_by` | string | `numero` `data` `valido_dal` `valido_al` `ba_ragione_sociale` `stato_codice` `data_insert` `data_update` |
+| `order_by` | string | `numero` `data` `valido_dal` `valido_al` `ba_ragione_sociale` `stato_codice` `categoria_cliente_snapshot_codice` `data_insert` `data_update` |
 | `order_dir` | string | `asc` (default) o `desc` |
 
 ### Create testata `POST /api/v1/vendite/contratti/`
@@ -91,8 +91,10 @@ Note:
 
 Solo campi mutabili: `ambito`, `valido_dal`, `valido_al`,
 `parent_contratto_id`, `data`, `listino_id`, `tipo_variazione_globale`,
-`valore_variazione_globale`, `meta`. Identificativi (numero, BA,
-istanza, utility, stato) sono immutabili.
+`valore_variazione_globale`, `categoria_cliente_id_snapshot`, `meta`.
+Identificativi (numero, BA, istanza, utility, stato) sono immutabili.
+`categoria_cliente_id_snapshot` e' modificabile **solo in stato DRAFT**;
+in altri stati il service lo rifiuta con `E_VENDITE_VALIDATION`.
 
 ### Cambio stato `POST /api/v1/vendite/contratti/<id>/cambia-stato/`
 
@@ -159,6 +161,9 @@ Il dettaglio (`GET /<id>/`) include:
     "stato_codice": "DRAFT", "stato_descrizione": "Bozza",
     "listino_id": 100, "listino_codice": "LST-GAS-2026",
     "tipo_variazione_globale": "PERCENTUALE", "valore_variazione_globale": "10",
+    "categoria_cliente_id_snapshot": 3,
+    "categoria_cliente_snapshot_codice": "GOLD",
+    "categoria_cliente_snapshot_descrizione": "Cliente gold",
     "valido_dal": "2026-01-01", "valido_al": "2026-12-31",
     "utility": {"id": 5, "tipo_utenza_codice": "DOM", ...},
     "righe": [{"id": 99, "articolo_codice": "ART-001", "prezzo_unitario": "25.50"}, ...]
@@ -181,6 +186,12 @@ Il dettaglio (`GET /<id>/`) include:
    imposta dal trigger DB.
 6. EXCLUDE no-overlap: un solo contratto attivo per
    `(BA, istanza_utility, utility, ambito)` su validita' sovrapposta.
+7. `categoria_cliente_id_snapshot` e' congelato alla creazione del
+   contratto (dal trigger DB, che lo popola dal BA). Rappresenta la
+   categoria commerciale del cliente al momento della stipula. Non e'
+   modificabile in update. In risposta vengono esposti anche
+   `categoria_cliente_snapshot_codice` e
+   `categoria_cliente_snapshot_descrizione` (JOIN display).
 
 ## Codici errore
 
@@ -189,7 +200,7 @@ Il dettaglio (`GET /<id>/`) include:
 | `E_VENDITE_VALIDATION` | 400 | Service (struttura/coerenza modalita') | — |
 | `E_VENDITE_NOT_FOUND` | 404 | Service | — |
 | `E_VENDITE_DUPLICATO` | 400 | UNIQUE `uq_contratti_numero` o `uq_contratti_utilities_contratto_id` | — |
-| `E_VENDITE_FK` | 400 | FK su BA/istanza/utility/listino/parent/stato/articolo/UoM/tipo/classe utenza | — |
+| `E_VENDITE_FK` | 400 | FK su BA/istanza/utility/listino/parent/stato/articolo/UoM/tipo/classe utenza/categoria cliente snapshot | — |
 | `E_VENDITE_CONTRATTO_OVERLAP` | 409 | EXCLUDE `ex_contratti_no_overlap` | — |
 | `E_CONTRATTO_MODALITA_C_SENZA_RIGHE` | 400 | DB P0001 | `trgfn_contratti_guard_modalita_c_activation` |
 | `E_CONTRATTO_MODALITA_C_RIGHE_INCOMPLETE` | 400 | DB P0001 | `trgfn_contratti_guard_modalita_c_activation` |

@@ -17,6 +17,7 @@ import Button from 'primevue/button'
 import LookupSelect from '../../core/components/LookupSelect.vue'
 import UtilityPerRuoloSelect from '../../core/components/UtilityPerRuoloSelect.vue'
 import NewButton from '../../core/components/NewButton.vue'
+import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
 import { TIPO_RUOLO, MANAGE_ICONS } from '../../core/constants'
 
 const emit = defineEmits(['new', 'row-click', 'open-righe'])
@@ -70,6 +71,19 @@ function onScadenzaMeseChange(val) {
 }
 
 function onRowClick(event) { emit('row-click', event.data) }
+
+// Scopo: costruisce le azioni contestuali di riga per il menu kebab.
+// La modifica del contratto e' gia' disponibile cliccando la riga.
+function buildRowActions(data) {
+  return [
+    {
+      key: 'gestisci-righe',
+      label: t('contratti.gestisci_righe'),
+      icon: MANAGE_ICONS.CONTRATTI,
+      command: () => emit('open-righe', data),
+    },
+  ]
+}
 
 useTabFreshness(store, 'contratto')
 // data_da ha sempre un valore default (anno-1): la lista si carica subito,
@@ -144,6 +158,9 @@ onMounted(() => {
       <Column field="ba_ragione_sociale" :header="t('contratti.col_ba')" sortable style="width: 220px;" />
       <Column field="utility_codice" :header="t('contratti.col_utility')" sortable style="width: 100px;" />
       <Column field="ambito" :header="t('contratti.col_ambito')" sortable style="width: 120px;" />
+      <Column field="categoria_cliente_snapshot_codice" :header="t('contratti.col_categoria_cliente')" sortable style="width: 120px;">
+        <template #body="{ data }">{{ data.categoria_cliente_snapshot_codice || '—' }}</template>
+      </Column>
       <Column field="listino_codice" :header="t('contratti.col_listino')" sortable style="width: 160px;">
         <template #body="{ data }">{{ data.listino_codice || '—' }}</template>
       </Column>
@@ -161,11 +178,9 @@ onMounted(() => {
           <Tag :value="data.stato_descrizione" :severity="statoContrattoSeverity(data.stato_codice)" />
         </template>
       </Column>
-      <Column :header="t('contratti.col_azioni')" style="width: 60px;" :exportable="false">
+      <Column :header="t('common.col_azioni')" class="app-col-actions" :exportable="false">
         <template #body="{ data }">
-          <Button :icon="MANAGE_ICONS.CONTRATTI" text rounded size="small" class="app-manage-btn"
-            v-tooltip.top="t('contratti.gestisci_righe')"
-            @click.stop="emit('open-righe', data)" />
+          <RowActionsMenu :actions="buildRowActions(data)" />
         </template>
       </Column>
     </DataTable>

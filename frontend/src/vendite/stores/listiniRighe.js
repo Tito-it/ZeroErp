@@ -4,7 +4,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { listRighe } from '../api/listini'
-import { PAGINATION } from '../../core/constants'
 
 export const useListiniRigheStore = defineStore('vendite-listini-righe', () => {
   const items = ref([])
@@ -18,7 +17,9 @@ export const useListiniRigheStore = defineStore('vendite-listini-righe', () => {
   const filters = ref({
     search: '',
     billing_account_id: null,
-    limit: PAGINATION.DEFAULT_ROWS,
+    // Default 10 righe/pagina coerente col pattern master-detail inline
+    // (frontend-standards: 10 righe + rows-per-page-options [10, 25]).
+    limit: 10,
     offset: 0,
     order_by: 'articolo_descrizione',
     order_dir: 'asc'

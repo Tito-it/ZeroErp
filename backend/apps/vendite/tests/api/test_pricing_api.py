@@ -1,0 +1,180 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+# Doc: Python
+# Scopo: Test API endpoint diagnostico pricing v5
+#        (POST /api/v1/vendite/pricing/resolve/).
+#        Mock PricingService + JWT mockata. Nessun DB.
+# ------------------------------------------------------------
+
+"""
+Indice test eseguiti:
+ 1) test_resolve_ok_deriva_emittente_da_jwt
+ 2) test_resolve_ok_override_emittente
+ 3) test_resolve_requires_jwt
+ 4) test_resolve_payload_invalido_400
+ 5) test_resolve_senza_emittente_user_404
+ 6) test_resolve_propaga_service_error
+"""
+
+import json
+from decimal import Decimal
+from unittest.mock import Mock, patch
+
+from django.core.cache import cache
+from django.test import Client
+
+from apps.core.services.service_errors import ServiceError
+from apps.core.tests._helpers.jwt_mock import JwtMockedApiTest
+
+
+_AUTH = "rest_framework_simplejwt.authentication.JWTAuthentication.authenticate"
+_SVC = "apps.vendite.api.views_pricing.PricingService"
+_PERM = "apps.vendite.api.views_pricing.PermissionResolver"
+_BASE = "/api/v1/vendite/pricing/resolve/"
+
+
+class _BaseApiTest(JwtMockedApiTest):
+    def setUp(self) -> None:
+        super().setUp()
+        cache.clear()
+        self.client = Client()
+        self._req_log_patcher = patch(
+            "apps.core.middleware.request_log_middleware.RequestLogMiddleware._insert_log",
+            return_value=None,
+        )
+        self._req_log_patcher.start()
+        self.addCleanup(self._req_log_patcher.stop)
+
+    def _payload(self, **overrides):
+        base = {
+            "articolo_id": "11111111-2222-3333-4444-555555555555",
+            "uom_id": 1,
+            "data_riferimento": "2026-04-15",
+            "ba_id": 10,
+            "utility_id": 3,
+        }
+        base.update(overrides)
+        return base
+
+    def _mock_resolve_result(self):
+        # Valori rappresentativi coerenti con la firma del resolver v2.
+        return {
+            "prezzo_finale": Decimal("45.00"),
+            "prezzo_base_snapshot": Decimal("50.00"),
+            "tipo_variazione_applicata": "PERCENTUALE",
+            "valore_variazione_applicata": Decimal("-10.00"),
+            "origine": "CATEGORIA",
+            "listino_id": 100,
+            "listino_versione_id": 10,
+            "listino_riga_id": 1000,
+            "contratto_id": None,
+            "promo_id": None,
+            "categoria_cliente_listino_id": 5,
+            "categoria_cliente_id_snapshot": 3,
+            "classe_utenza_id_snapshot": None,
+        }
+
+
+class TestResolve(_BaseApiTest):
+    # Scopo: risoluzione con emittente derivato dal JWT operatore.
+    @patch(_AUTH, return_value=(Mock(), None))
+    @patch(_PERM)
+    @patch(_SVC)
+    def test_resolve_ok_deriva_emittente_da_jwt(self, svc_cls, perm, _auth):
+        perm.get_emittenti_sr_ids.return_value = [42]
+        svc_cls.return_value.resolve_prezzo.return_value = self._mock_resolve_result()
+
+        resp = self.client.post(
+            _BASE,
+            data=json.dumps(self._payload()),
+            content_type="application/json",
+        )
+
+        self.assertEqual(resp.status_code, 200)
+        body = resp.json()["data"]
+        self.assertEqual(body["origine"], "CATEGORIA")
+        # Il service deve essere stato chiamato con emittente derivato (42).
+        kwargs = svc_cls.return_value.resolve_prezzo.call_args.kwargs
+        self.assertEqual(kwargs["emittente_soggetto_ruolo_id"], 42)
+        self.assertEqual(kwargs["ba_id"], 10)
+
+    # Scopo: override esplicito ha priorita' sulla derivazione da JWT.
+    @patch(_AUTH, return_value=(Mock(), None))
+    @patch(_PERM)
+    @patch(_SVC)
+    def test_resolve_ok_override_emittente(self, svc_cls, perm, _auth):
+        perm.get_emittenti_sr_ids.return_value = [42]  # ignorato
+        svc_cls.return_value.resolve_prezzo.return_value = self._mock_resolve_result()
+
+        resp = self.client.post(
+            _BASE,
+            data=json.dumps(self._payload(emittente_soggetto_ruolo_id=99)),
+            content_type="application/json",
+        )
+
+        self.assertEqual(resp.status_code, 200)
+        kwargs = svc_cls.return_value.resolve_prezzo.call_args.kwargs
+        self.assertEqual(kwargs["emittente_soggetto_ruolo_id"], 99)
+
+    # Scopo: senza JWT ritorna 401.
+    def test_resolve_requires_jwt(self):
+        resp = self.client.post(
+            _BASE,
+            data=json.dumps(self._payload()),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 401)
+
+    # Scopo: payload malformato (articolo_id mancante) ritorna 400.
+    @patch(_AUTH, return_value=(Mock(), None))
+    @patch(_PERM)
+    def test_resolve_payload_invalido_400(self, perm, _auth):
+        perm.get_emittenti_sr_ids.return_value = [42]
+        payload = self._payload()
+        del payload["articolo_id"]
+
+        resp = self.client.post(
+            _BASE,
+            data=json.dumps(payload),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 400)
+
+    # Scopo: user senza emittenti autorizzati e senza override -> 400 parlante.
+    @patch(_AUTH, return_value=(Mock(), None))
+    @patch(_PERM)
+    def test_resolve_senza_emittente_user_400(self, perm, _auth):
+        perm.get_emittenti_sr_ids.return_value = []
+
+        resp = self.client.post(
+            _BASE,
+            data=json.dumps(self._payload()),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 400)
+        body = resp.json()
+        self.assertEqual(body["error"]["code"], "E_VENDITE_VALIDATION")
+
+    # Scopo: ServiceError del service (es. E_CATEGORIA_LISTINO_NON_MAPPATA)
+    #        propagato dal middleware come error envelope col codice originale.
+    @patch(_AUTH, return_value=(Mock(), None))
+    @patch(_PERM)
+    @patch(_SVC)
+    def test_resolve_propaga_service_error(self, svc_cls, perm, _auth):
+        perm.get_emittenti_sr_ids.return_value = [42]
+        svc_cls.return_value.resolve_prezzo.side_effect = ServiceError(
+            code="E_CATEGORIA_LISTINO_NON_MAPPATA",
+            message="Nessuna mappa categoria -> listino per utility",
+        )
+
+        resp = self.client.post(
+            _BASE,
+            data=json.dumps(self._payload()),
+            content_type="application/json",
+        )
+        # Il mapping codice->status dipende da error_policies; qui ci basta
+        # verificare che il codice dominio arrivi intatto al client.
+        self.assertIn(resp.status_code, (400, 404, 409, 500))
+        body = resp.json()
+        self.assertEqual(body["error"]["code"], "E_CATEGORIA_LISTINO_NON_MAPPATA")

@@ -20,6 +20,7 @@ Indice test eseguiti:
 11) create_contratto_overlap_exclude_mappato
 12) create_contratto_genera_numero_e_stato_draft
 13) update_contratto_rifiuta_identificativi_immutabili
+13b) update_contratto_rifiuta_categoria_snapshot_non_draft
 14) update_contratto_campi_vuoto_fallisce
 15) update_contratto_ok_variazione
 16) cambia_stato_codice_sconosciuto
@@ -275,6 +276,25 @@ class ContrattiServiceTests(TestCase):
         with self.assertRaises(ServiceError) as ctx:
             ContrattiService().update_contratto(1, {"numero": "CNT9999999"})
         self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
+
+    # Scopo: categoria_cliente_id_snapshot modificabile solo in DRAFT.
+    #        Se il contratto e' in stato diverso (es. ATTIVO), il service
+    #        rifiuta la modifica.
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    def test_update_contratto_rifiuta_categoria_snapshot_non_draft(self, repo_cls):
+        from apps.vendite.services.contratti_service import ContrattiService
+
+        repo = repo_cls.return_value
+        repo.get_contratto.return_value = {
+            **_testata_default(),
+            "stato_codice": "ATTIVO",
+            "categoria_cliente_id_snapshot": 1,
+        }
+
+        with self.assertRaises(ServiceError) as ctx:
+            ContrattiService().update_contratto(1, {"categoria_cliente_id_snapshot": 5})
+        self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
+        self.assertIn("DRAFT", ctx.exception.detail)
 
     @patch("apps.vendite.services.contratti_service.ContrattiRepository")
     def test_update_contratto_campi_vuoto_fallisce(self, repo_cls):

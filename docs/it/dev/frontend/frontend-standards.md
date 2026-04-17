@@ -155,11 +155,120 @@ Ogni schermata di elenco segue questo schema fisso:
 - **Indicatore pagina**: `1/5` con JumpToPageDropdown per salto diretto
 - **Font compatto** sul paginator (`0.8rem`)
 - **Pulsante Nuovo**: componente `NewButton` — label fisso `$t('common.new')`, tooltip contestuale
-- **Click riga** → apre drawer in edit (no colonna azioni con icone)
-- **Nessuna colonna azioni** — l'interazione e' tramite click riga
+- **Click riga** → apre drawer in edit (modifica = interazione principale)
+- **Colonna azioni** riservata alle **azioni secondarie** (apri sub-drawer, disattiva, ecc.) — mai mettere la modifica tra le azioni: e' il click riga. Vedi sotto "Colonna azioni di riga".
 - **Filtri** sopra la tabella nella toolbar, flex-wrap per responsive
 - **Ricerca** con debounce 400ms (gestito da `useSearchTable`)
 - **DataTable** sempre con: `lazy`, `removable-sort`, `striped-rows`, `scrollable`, `scrollHeight="flex"`
+
+### Colonna azioni di riga — `RowActionsMenu` (responsive)
+
+Le azioni secondarie su una riga (apri sub-drawer, disattiva, clona, ecc.) vanno
+sempre renderizzate tramite il building block **`RowActionsMenu`**
+(`src/core/components/RowActionsMenu.vue`). La modifica del record NON va tra le azioni:
+e' gestita dal click sulla riga del DataTable.
+
+**Comportamento responsive (CSS-first, nessun JS di detection):**
+
+| Contesto | Variante | Dettaglio |
+| --- | --- | --- |
+| Desktop `hover` + viewport `>=1024px` | Inline | Pulsanti icon-only con tooltip, un click = una azione |
+| Tablet / touch / viewport `<1024px` | Compact | Kebab `⋮` che apre un menu popup con label esplicite |
+
+Lo switch e' realizzato da `@media (hover: none), (max-width: 1024px)` in `main.css`
+sulle classi `.app-row-actions-inline` / `.app-row-actions-compact`. Il componente
+renderizza entrambe le varianti, il CSS ne mostra una sola. Il breakpoint `hover: none`
+intercetta esplicitamente i dispositivi touch (es. iPad Pro) indipendentemente dalla
+larghezza del viewport.
+
+**Perche':** su touch i tooltip non funzionano; con 3-4 azioni inline la colonna
+ruba larghezza; sul desktop c'e' spazio e il mouse hover — l'inline resta piu' veloce.
+La soluzione responsive combina il meglio di entrambe senza compromessi.
+
+**Pattern di uso nella SearchTable:**
+
+```vue
+<script setup>
+import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
+import { MANAGE_ICONS } from '../../core/constants'
+
+// Costruttore azioni contestualizzato alla riga (dati, stato, permessi).
+function buildRowActions(data) {
+  return [
+    {
+      key: 'gestisci-righe',
+      label: t('dominio.gestisci_righe'),
+      icon: MANAGE_ICONS.CONTRATTI,
+      command: () => emit('open-righe', data),
+    },
+    {
+      key: 'disattiva',
+      label: t('common.disattiva'),
+      icon: 'pi pi-ban',
+      severity: 'danger',
+      visible: data.attivo === true,
+      command: () => onDisattiva(data),
+    },
+  ]
+}
+</script>
+
+<template>
+  <Column :header="t('common.col_azioni')" class="app-col-actions" :exportable="false">
+    <template #body="{ data }">
+      <RowActionsMenu :actions="buildRowActions(data)" />
+    </template>
+  </Column>
+</template>
+```
+
+**Formato azione:**
+
+```js
+{
+  key: string,              // identificatore univoco
+  label: string,            // testo (tradotto, visibile nel popup + tooltip inline)
+  icon: string,             // classe PrimeIcons (es. 'pi pi-ban' o MANAGE_ICONS.X)
+  severity?: 'primary' | 'warn' | 'danger', // opzionale (vedi tabella sotto)
+  visible?: boolean,        // default true — azioni non applicabili si nascondono
+  disabled?: boolean,       // default false — azione grigia ma presente
+  command: () => void,      // handler click
+}
+```
+
+**Severity — colore inline e popup:**
+
+| Severity | Inline (desktop) | Popup (tablet/touch) | Uso tipico |
+| --- | --- | --- | --- |
+| `undefined` | Blu (`app-manage-btn`) | Neutro | Default: apri sub-drawer, clona, gestisci |
+| `'primary'` | Verde (`app-action-btn`) | Neutro | State transition positiva (attiva, approva) |
+| `'warn'` | Arancio (PrimeVue `severity="warn"`) | Neutro | Cautela (chiudi, blocca, scade) |
+| `'danger'` | Rosso (`app-delete-btn`) | Rosso (`app-menu-item-danger`) | Distruttivo (elimina, disattiva) |
+
+Solo `danger` differenzia anche nel popup: per le altre severity la label + icona bastano a distinguere l'azione.
+
+**Convenzioni centralizzate (niente valori hardcoded nelle liste):**
+
+| Cosa | Dove |
+| --- | --- |
+| Icona kebab | `MANAGE_ICONS.KEBAB` in `src/core/constants.js` |
+| Stile bottone standard | `.app-manage-btn` in `main.css` |
+| Stile bottone distruttivo | `.app-delete-btn` in `main.css` |
+| Larghezza colonna (auto / 60px) | `.app-col-actions` in `main.css` (media query) |
+| Voce menu distruttiva | `.app-menu-item-danger` in `main.css` (eredita `--app-btn-delete-*`) |
+| Tooltip fallback kebab | `common.altre_azioni` ("Altre azioni") in `it.json` |
+| Header colonna azioni | `common.col_azioni` ("Azioni") in `it.json` — sempre questa chiave, mai domain-specific |
+
+**Regole fisse:**
+
+- La modifica record NON e' mai un'azione del menu: si apre via click riga.
+- Ogni azione deve avere `label` tradotta (i18n) — l'inline la mostra come tooltip,
+  il popup come voce.
+- Usare `visible: false` (non `disabled`) per azioni non applicabili — il popup
+  resta corto, la UX piu' leggibile.
+- `severity: 'danger'` per azioni irreversibili (elimina, disattiva), mai inline
+  `class="..."`.
+- La colonna va sempre `class="app-col-actions"` + `:exportable="false"`.
 
 ### Empty state — liste che partono vuote (standard)
 
@@ -338,13 +447,17 @@ Usato da: `DrawerFooter` (Ctrl+S salva).
 
 ### Classi CSS standard
 
-| Classe             | Dove applicare                    | Scopo                                         |
-| ------------------ | --------------------------------- | --------------------------------------------- |
-| `app-page`         | Div root della view               | Flex column, riempie altezza                  |
-| `app-page-toolbar` | Contenitore filtri + azione       | Flex row, space-between                       |
-| `app-page-filters` | Gruppo filtri                     | Flex wrap                                     |
-| `app-datatable`    | DataTable                         | Font compatto, padding ridotto, stripe, hover |
-| `app-page-action`  | Pulsanti azione (via `NewButton`) | Responsive: solo icona su mobile              |
+| Classe                     | Dove applicare                    | Scopo                                                                      |
+| -------------------------- | --------------------------------- | -------------------------------------------------------------------------- |
+| `app-page`                 | Div root della view               | Flex column, riempie altezza                                               |
+| `app-page-toolbar`         | Contenitore filtri + azione       | Flex row, space-between                                                    |
+| `app-page-filters`         | Gruppo filtri                     | Flex wrap                                                                  |
+| `app-datatable`            | DataTable                         | Font compatto, padding ridotto, stripe, hover                              |
+| `app-page-action`          | Pulsanti azione (via `NewButton`) | Responsive: solo icona su mobile                                           |
+| `app-col-actions`          | `<Column>` azioni di riga         | Larghezza auto su desktop, 60px su tablet/touch (media query `<=1024px`)   |
+| `app-row-actions-inline`   | Interno `RowActionsMenu`          | Wrapper pulsanti inline — visibile solo con hover + viewport `>=1024px`    |
+| `app-row-actions-compact`  | Interno `RowActionsMenu`          | Wrapper kebab + menu popup — visibile su touch o viewport `<1024px`        |
+| `app-menu-item-danger`     | Voce `Menu` PrimeVue              | Colore rosso per azioni distruttive — applicato via `severity: 'danger'`   |
 
 ### Composable `useSearchTable(store)`
 
@@ -702,14 +815,18 @@ Le mappe sono centralizzate in `core/utils/severity.js` — un solo punto di mod
 
 ## Responsive
 
-| Breakpoint | Dispositivo | Comportamento                                            |
-| ---------- | ----------- | -------------------------------------------------------- |
-| >= 1024px  | Desktop     | Layout completo: sidebar inline, tutti i filtri visibili |
-| 768-1023px | Tablet      | Pulsanti azione solo icona + tooltip, filtri flex-wrap   |
-| < 768px    | Mobile      | Sidebar overlay, padding ridotto                         |
+| Breakpoint | Dispositivo | Comportamento                                                                       |
+| ---------- | ----------- | ----------------------------------------------------------------------------------- |
+| >= 1024px  | Desktop     | Layout completo: sidebar inline, tutti i filtri visibili, azioni di riga inline     |
+| 768-1023px | Tablet      | Pulsanti azione solo icona + tooltip, filtri flex-wrap, azioni di riga in kebab `⋮` |
+| < 768px    | Mobile      | Sidebar overlay, padding ridotto, azioni di riga in kebab `⋮`                       |
 
 Le classi responsive sono in `main.css` — nessun `@media` nei componenti scoped.
 Il breakpoint mobile e' gestito dallo store `ui.js` (`isMobile`, `isTablet`).
+
+Le azioni di riga (`RowActionsMenu`) usano in aggiunta `@media (hover: none)` per
+intercettare i dispositivi touch indipendentemente dalla larghezza del viewport
+(es. iPad Pro in landscape rende comunque il kebab perche' manca l'hover).
 
 ---
 
@@ -865,6 +982,12 @@ e' definito in un unico punto in `main.css`.
 
 Per aggiungere una nuova icona gestione: inserire la chiave in `MANAGE_ICONS` e usarla nel componente.
 Per cambiare il colore di tutte le icone gestione: modificare `.app-manage-btn` in `main.css`.
+
+**Colonna azioni di riga** (pattern standard): i pulsanti `app-manage-btn` non si mettono piu'
+direttamente in un `<template #body>` del `<Column>`. Usare sempre il building block
+`RowActionsMenu` — gestisce automaticamente lo switch desktop inline / tablet kebab
+tramite CSS, e accetta un array di azioni dichiarativo. Vedi sezione "Colonna azioni di riga"
+nel pattern lista per l'API completa.
 
 Per l'inventario completo di classi CSS, pulsanti e componenti, consultare il
 [Catalogo Building Block Frontend](catalogo-building-block-frontend.md).
@@ -1094,6 +1217,7 @@ const { isAllowed } = useActionPermission('genera_fatture_lotti')
 | `DrawerTitle` | Titolo standard drawer: azione sx + entita' centrata | `action`, `title` | Tutti i drawer |
 | `DrawerFooter` | Footer drawer con Annulla/Salva, auto-hide in readonly | `loading`, `disabled` | Tutti i drawer |
 | `NewButton` | Pulsante "Nuovo" nella toolbar, auto-hide in readonly | `tooltip` | Tutte le SearchTable |
+| `RowActionsMenu` | Azioni di riga responsive: pulsanti inline su desktop, kebab `⋮` su tablet/touch | `actions`, `tooltip`, `disabled` | Tutte le SearchTable con azioni secondarie |
 | `PaginationInfo` | Info paginazione (es. "1-50 di 1234") | `pagination` | SearchTable |
 | `TagList` | Lista tag con overflow +N e tooltip | `items`, `labelField`, `maxVisible`, `severity` | Ruoli in lista soggetti |
 | `AppDrawer` | Drawer generico con header + footer + slot body | `title`, `width` | Utility wrapper |

@@ -15,6 +15,7 @@ import { DRAWER_WIDTH, DATE_FORMAT } from '../../core/constants'
 import LookupSelect from '../../core/components/LookupSelect.vue'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import DrawerFooter from '../../core/components/DrawerFooter.vue'
+import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
 import Drawer from 'primevue/drawer'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
@@ -193,6 +194,26 @@ async function onDelete(row) {
     emit('saved')
   }
 }
+
+// Scopo: azioni di riga UoM operativa (modifica + elimina; delete nascosta per is_base).
+function buildRigaActions(row) {
+  return [
+    {
+      key: 'modifica-uom',
+      label: t('common.edit'),
+      icon: 'pi pi-pencil',
+      command: () => onStartEdit(row),
+    },
+    {
+      key: 'elimina-uom',
+      label: t('common.delete'),
+      icon: 'pi pi-trash',
+      severity: 'danger',
+      visible: !row.is_base,
+      command: () => onDelete(row),
+    },
+  ]
+}
 </script>
 
 <template>
@@ -250,14 +271,9 @@ async function onDelete(row) {
               <Tag :value="data.attivo ? t('common.active') : t('common.inactive')" :severity="data.attivo ? 'success' : 'warn'" />
             </template>
           </Column>
-          <Column v-if="!isReadonly" style="width: 80px;">
+          <Column v-if="!isReadonly" :header="t('common.col_azioni')" class="app-col-actions" :exportable="false">
             <template #body="{ data }">
-              <div class="flex gap-1">
-                <Button icon="pi pi-pencil" text rounded size="small"
-                  class="app-edit-btn" @click="onStartEdit(data)" />
-                <Button v-if="!data.is_base" icon="pi pi-trash"
-                  text rounded size="small" class="app-delete-btn" @click="onDelete(data)" />
-              </div>
+              <RowActionsMenu :actions="buildRigaActions(data)" />
             </template>
           </Column>
         </DataTable>
