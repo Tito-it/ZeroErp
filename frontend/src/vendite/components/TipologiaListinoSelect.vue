@@ -64,9 +64,14 @@ function onChange(event) {
   emit('change', event.value)
 }
 
-// Scopo: placeholder dinamico. Durante il fetch mostra "Caricamento..." per
-// evitare il flash di "vuoto" quando options arriva dopo modelValue in edit.
+// Scopo: placeholder dinamico.
+//   - senza utilityId: guida l'utente ("Seleziona prima l'utility"),
+//     altrimenti il Select disabilitato sembra un campo protetto
+//   - durante il fetch: "Caricamento..." per evitare flash di "vuoto" in edit
+//   - altrimenti: placeholder custom o default
 function resolvedPlaceholder() {
+  const uid = Number(props.utilityId)
+  if (!uid || uid <= 0) return t('listini.tipologia_utility_first')
   if (loading.value) return t('common.loading')
   return props.placeholder || t('listini.tipologia_placeholder')
 }

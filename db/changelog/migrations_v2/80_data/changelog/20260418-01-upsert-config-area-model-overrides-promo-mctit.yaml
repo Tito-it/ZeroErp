@@ -1,0 +1,54 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Registra 'promo_articolo' in config.area_model_overrides.
+# Cosi' l'admin puo' creare override per model su promo (v2 permessi),
+# dopo il passaggio API da AdminAPIView a DomainAPIView.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - changeSet:
+      id: 20260418-01-upsert-config-area-model-overrides-promo
+      logicalFilePath: migrations_v2/80_data/changelog/20260418-01-upsert-config-area-model-overrides-promo-mctit.yaml
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: config
+            tableName: area_model_overrides
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- =========================================================
+              -- Scopo:
+              --   Registra il model 'promo_articolo' (app_label 'vendite')
+              --   in config.area_model_overrides per abilitare override
+              --   per operatore tramite UI permessi v2.
+              --
+              -- Contesto:
+              --   Le promo articoli erano CRUD admin-only (AdminAPIView).
+              --   Migrate a DomainAPIView con model_permission esplicito
+              --   (("vendite", "promo_articolo")), per coerenza con
+              --   listino/preventivo/fattura. La registrazione qui permette
+              --   all'admin di assegnare override per-operatore senza
+              --   toccare il livello dell'area.
+              --
+              -- Regole:
+              --   - area_id = 2 (vendite)
+              --   - inserimento idempotente via ON CONFLICT
+              -- =========================================================
+
+              INSERT INTO config.area_model_overrides (
+                  app_label,
+                  model_name,
+                  area_id
+              )
+              VALUES
+                  ('vendite', 'promo_articolo', 2)
+              ON CONFLICT (app_label, model_name) DO NOTHING;

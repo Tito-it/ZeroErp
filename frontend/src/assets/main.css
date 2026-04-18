@@ -239,6 +239,14 @@ a {
   grid-template-columns: 1fr 1fr;
   gap: 0.75rem;
 }
+/* Fix overflow classico CSS Grid: i figli hanno min-width: auto di default e
+ * se un child ha contenuto intrinseco > 1fr (es. Select con label lunga,
+ * lookup con panel largo) la colonna si espande e taglia il lato sinistro
+ * dentro dialog/drawer. Forziamo min-width: 0 per farli rispettare il 1fr. */
+.form-grid-2col > *,
+.form-grid-3col > * {
+  min-width: 0;
+}
 
 /* Input con bottone azione affiancato (es. genera CF) */
 .app-input-with-action {

@@ -8,6 +8,34 @@
 
 ---
 
+> **Evoluzione in corso — Multi-Face Auth (aprile 2026)**
+>
+> L'architettura descritta qui si applica al **dipendente interno**. E' in corso
+> di sviluppo un'estensione per abilitare **portali clienti/fornitori** e
+> **shop online**. I cambiamenti principali previsti:
+>
+> * `profili_reparto_aree` diventa `profili_accesso_aree` dentro un framework
+>   generalizzato (`config.profili_accesso` con tipo REPARTO / PORTALE / AD_HOC)
+> * Nuova tabella `config.profili_accesso_bindings` che lega un profilo a un
+>   reparto, a una singola identita' o a un ruolo applicativo
+> * `user_emittenti_fiscali` diventa un caso particolare di una nuova
+>   `config.scope_policy` (EF_WHITELIST, BA_OWNERSHIP, FORNITORE_OWNERSHIP,
+>   SELF_OWNERSHIP)
+> * **Row Level Security** PostgreSQL come livello standard di difesa scope,
+>   alimentata dai GUC `app.current_identita_id`, `app.ruolo_applicativo`,
+>   `app.soggetto_ruolo_id`
+> * Namespace API separati: `/api/admin/*`, `/api/portale/*`, `/api/shop/*`
+>
+> Questa guida resta **autoritativa per il codice in produzione**. Il contenuto
+> verra' aggiornato fase per fase man mano che le migrazioni DB vengono applicate.
+>
+> Dettagli:
+>
+> * Guida architetturale: [architettura-multi-face-auth](/guide/architettura-multi-face-auth)
+> * Piano di sviluppo: [sviluppo-multi-face-auth](/dev/work-in-progress/sviluppo-multi-face-auth)
+
+---
+
 ## 1. Obiettivo
 
 Definire un sistema di permessi per Zero ERP che sia:
