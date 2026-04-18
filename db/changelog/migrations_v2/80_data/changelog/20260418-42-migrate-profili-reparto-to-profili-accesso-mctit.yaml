@@ -1,0 +1,172 @@
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260418-42-migrate-profili-reparto-to-profili-accesso-mctit.yaml
+
+  - changeSet:
+      id: 20260418-42-migrate-profili-reparto-to-profili-accesso
+      author: mctit
+      runOnChange: true
+      validCheckSum: [ANY]
+      failOnError: true
+      comment: >
+        Migrazione one-shot non distruttiva dei dati esistenti da
+        config.profili_reparto_aree / config.profili_reparto_azioni alla
+        nuova struttura config.profili_accesso + profili_accesso_aree +
+        profili_accesso_azioni + profili_accesso_bindings (§4.3.5-4.3.6 WIP
+        multi-face-auth).
+
+        Per ogni unita_organizzativa con permessi configurati:
+          1. Crea un profilo config.profili_accesso con tipo='REPARTO',
+             codice='REPARTO_'||uo.codice_interno. Idempotente: ON CONFLICT
+             (uq_profili_accesso_codice) DO NOTHING.
+          2. Copia righe da profili_reparto_aree in profili_accesso_aree.
+             Idempotente: WHERE NOT EXISTS.
+          3. Copia righe da profili_reparto_azioni in profili_accesso_azioni.
+          4. Crea il binding REPARTO per collegare uo -> profilo nuovo.
+
+        La struttura legacy (profili_reparto_aree / profili_reparto_azioni)
+        resta intatta fino al cutover di fn_resolve_livello_* (§4.8).
+      preConditions:
+        - onFail: HALT
+        - and:
+          - tableExists: { schemaName: config, tableName: profili_accesso }
+          - tableExists: { schemaName: config, tableName: profili_accesso_aree }
+          - tableExists: { schemaName: config, tableName: profili_accesso_azioni }
+          - tableExists: { schemaName: config, tableName: profili_accesso_bindings }
+          - tableExists: { schemaName: config, tableName: profili_reparto_aree }
+          - tableExists: { schemaName: config, tableName: profili_reparto_azioni }
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ----------------------------------------------------------------
+              -- Migrazione profili REPARTO: legacy -> nuovo modello.
+              -- Tutto dentro un DO block PL/pgSQL per garantire idempotenza
+              -- runOnChange (nessun errore se eseguito piu' volte).
+              -- ----------------------------------------------------------------
+              DO $$
+              BEGIN
+                  -- 1) Creo un profilo REPARTO per ogni unita organizzativa con
+                  --    permessi configurati (aree OR azioni). Un solo profilo
+                  --    per reparto, codice univoco derivato da codice_interno.
+                  INSERT INTO config.profili_accesso (
+                      tipo,
+                      codice,
+                      descrizione,
+                      attivo
+                  )
+                  SELECT
+                      'REPARTO'::config.tipo_profilo_accesso,
+                      'REPARTO_' || uo.codice_interno       AS codice,
+                      'Profilo reparto ' || uo.descrizione  AS descrizione,
+                      uo.attivo
+                  FROM config.unita_organizzative uo
+                  WHERE EXISTS (
+                      SELECT 1
+                        FROM config.profili_reparto_aree pra
+                       WHERE pra.unita_organizzativa_id = uo.id
+                  )
+                     OR EXISTS (
+                      SELECT 1
+                        FROM config.profili_reparto_azioni praz
+                       WHERE praz.unita_organizzativa_id = uo.id
+                  )
+                  ON CONFLICT ON CONSTRAINT uq_profili_accesso_codice DO NOTHING;
+
+                  -- 2) Copia aree dai profili reparto legacy. Il join con
+                  --    profili_accesso risolve il nuovo profilo_accesso_id.
+                  --    ON CONFLICT sul UNIQUE uq_profili_accesso_aree_profilo_area
+                  --    garantisce idempotenza senza subquery NOT EXISTS.
+                  INSERT INTO config.profili_accesso_aree (
+                      profilo_accesso_id,
+                      area_id,
+                      livello,
+                      meta
+                  )
+                  SELECT
+                      pa.id,
+                      pra.area_id,
+                      pra.livello,
+                      pra.meta
+                  FROM config.profili_reparto_aree pra
+                  JOIN config.unita_organizzative uo
+                       ON uo.id = pra.unita_organizzativa_id
+                  JOIN config.profili_accesso pa
+                       ON pa.codice = 'REPARTO_' || uo.codice_interno
+                  ON CONFLICT ON CONSTRAINT uq_profili_accesso_aree_profilo_area DO NOTHING;
+
+                  -- 3) Copia azioni dai profili reparto legacy.
+                  --    ON CONFLICT sul UNIQUE uq_profili_accesso_azioni_profilo_azione
+                  --    per idempotenza.
+                  INSERT INTO config.profili_accesso_azioni (
+                      profilo_accesso_id,
+                      azione_id,
+                      abilitata,
+                      meta
+                  )
+                  SELECT
+                      pa.id,
+                      praz.azione_id,
+                      praz.abilitata,
+                      praz.meta
+                  FROM config.profili_reparto_azioni praz
+                  JOIN config.unita_organizzative uo
+                       ON uo.id = praz.unita_organizzativa_id
+                  JOIN config.profili_accesso pa
+                       ON pa.codice = 'REPARTO_' || uo.codice_interno
+                  ON CONFLICT ON CONSTRAINT uq_profili_accesso_azioni_profilo_azione DO NOTHING;
+
+                  -- 4) Binding reparto -> profilo nuovo. L'indice parziale
+                  --    UNIQUE uq_profili_accesso_bindings_uo copre esattamente
+                  --    le righe con unita_organizzativa_id NOT NULL (che qui
+                  --    e' sempre il caso). Specificare il predicato del partial
+                  --    index nell'ON CONFLICT per permettere a PostgreSQL di
+                  --    inferire correttamente l'indice di arbitro.
+                  INSERT INTO config.profili_accesso_bindings (
+                      profilo_accesso_id,
+                      unita_organizzativa_id,
+                      identita_digitale_id,
+                      ruolo_applicativo,
+                      attivo
+                  )
+                  SELECT
+                      pa.id,
+                      uo.id,
+                      NULL::bigint,
+                      NULL::config.ruolo_applicativo,
+                      true
+                  FROM config.unita_organizzative uo
+                  JOIN config.profili_accesso pa
+                       ON pa.codice = 'REPARTO_' || uo.codice_interno
+                  WHERE pa.tipo = 'REPARTO'
+                  ON CONFLICT (unita_organizzativa_id)
+                      WHERE unita_organizzativa_id IS NOT NULL
+                      DO NOTHING;
+
+                  RAISE NOTICE 'Migrazione profili REPARTO completata (idempotente).';
+              END
+              $$;
+      rollback:
+        - sql:
+            sql: |
+              -- Rollback non distruttivo sui legacy: cancella solo i profili
+              -- REPARTO creati dalla migrazione (identificati dal codice prefix).
+              -- I cascade su aree/azioni/bindings funzionano via FK? No: non
+              -- c'e' ON DELETE CASCADE. Cancelliamo in ordine inverso.
+              DELETE FROM config.profili_accesso_bindings
+               WHERE profilo_accesso_id IN (
+                   SELECT id FROM config.profili_accesso
+                    WHERE tipo = 'REPARTO' AND codice LIKE 'REPARTO_%'
+               );
+              DELETE FROM config.profili_accesso_aree
+               WHERE profilo_accesso_id IN (
+                   SELECT id FROM config.profili_accesso
+                    WHERE tipo = 'REPARTO' AND codice LIKE 'REPARTO_%'
+               );
+              DELETE FROM config.profili_accesso_azioni
+               WHERE profilo_accesso_id IN (
+                   SELECT id FROM config.profili_accesso
+                    WHERE tipo = 'REPARTO' AND codice LIKE 'REPARTO_%'
+               );
+              DELETE FROM config.profili_accesso
+               WHERE tipo = 'REPARTO' AND codice LIKE 'REPARTO_%';

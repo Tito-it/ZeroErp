@@ -1,0 +1,4 @@
+id,codice,descrizione,funzione_db,attivo,meta,data_insert,user_insert,data_update,user_update
+1,EF_WHITELIST,Whitelist emittenti fiscali: l'identita vede solo le righe degli emittenti autorizzati via config.user_emittenti_fiscali (whitelist vuota = accesso globale).,script.fn_scope_ef_whitelist,t,{},2026-04-18 00:00:00+02,postgres,2026-04-18 00:00:00+02,postgres
+2,BA_OWNERSHIP,Ownership billing_account: l'identita cliente (CLIENTE_PORTALE o SHOP_CUSTOMER) vede solo i billing_account il cui soggetto_ruolo coincide con quello dell'identita.,script.fn_scope_ba_ownership,t,{},2026-04-18 00:00:00+02,postgres,2026-04-18 00:00:00+02,postgres
+3,FORNITORE_OWNERSHIP,Ownership fornitore: l'identita FORNITORE_PORTALE vede solo i dati riferiti al proprio soggetto_ruolo di tipo fornitore.,script.fn_scope_fornitore_ownership,t,{},2026-04-18 00:00:00+02,postgres,2026-04-18 00:00:00+02,postgres

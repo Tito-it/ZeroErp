@@ -1,0 +1,7 @@
+id,profilo_accesso_id,area_id,livello,meta,data_insert,user_insert,data_update,user_update
+9001,9001,2,LETTURA,{},2026-04-18 00:00:00+02,postgres,2026-04-18 00:00:00+02,postgres
+9002,9001,7,LETTURA,{},2026-04-18 00:00:00+02,postgres,2026-04-18 00:00:00+02,postgres
+9003,9002,3,LETTURA,{},2026-04-18 00:00:00+02,postgres,2026-04-18 00:00:00+02,postgres
+9004,9002,7,LETTURA,{},2026-04-18 00:00:00+02,postgres,2026-04-18 00:00:00+02,postgres
+9005,9003,2,LETTURA,{},2026-04-18 00:00:00+02,postgres,2026-04-18 00:00:00+02,postgres
+9006,9003,7,LETTURA,{},2026-04-18 00:00:00+02,postgres,2026-04-18 00:00:00+02,postgres

@@ -2,113 +2,184 @@
 # ⚙️ Funzione `fn_sync_auth_user_is_active`
 
 ```sql
-CREATE FUNCTION fn_sync_auth_user_is_active(p_risorsa_umana_id bigint)
+CREATE FUNCTION fn_sync_auth_user_is_active(p_auth_user_id integer)
 ```
 
 **Definizione completa:**
 
 ```sql
-CREATE OR REPLACE FUNCTION anagrafiche.fn_sync_auth_user_is_active(p_risorsa_umana_id bigint)
+CREATE OR REPLACE FUNCTION anagrafiche.fn_sync_auth_user_is_active(p_auth_user_id integer)
  RETURNS boolean
  LANGUAGE plpgsql
 AS $function$
 DECLARE
-    v_auth_user_id   anagrafiche.risorse_umane_auth_user.auth_user_id%TYPE;
-    v_bridge_attivo  anagrafiche.risorse_umane_auth_user.attivo%TYPE;
-    v_risorsa_attivo anagrafiche.risorse_umane.attivo%TYPE;
-    v_valido_dal     anagrafiche.risorse_umane.valido_dal%TYPE;
-    v_valido_al      anagrafiche.risorse_umane.valido_al%TYPE;
-    v_should_active  boolean;
-    v_current_active boolean;
-    v_rows_updated   integer := 0;
+    -- Variabili locali tipizzate con %TYPE (policy ZeroErp).
+    -- Dati nuovo bridge (anagrafiche.identita_digitali)
+    v_identita_id       anagrafiche.identita_digitali.id%TYPE;
+    v_ruolo_appl        anagrafiche.identita_digitali.ruolo_applicativo%TYPE;
+    v_id_attivo         anagrafiche.identita_digitali.attivo%TYPE;
+    v_id_valido_dal     anagrafiche.identita_digitali.valido_dal%TYPE;
+    v_id_valido_al      anagrafiche.identita_digitali.valido_al%TYPE;
+    v_soggetto_ruolo_id anagrafiche.identita_digitali.soggetto_ruolo_id%TYPE;
+    v_soggetto_attivo   anagrafiche.soggetti.attivo%TYPE;
+    -- Dati bridge legacy (fallback transitorio)
+    v_bridge_attivo     anagrafiche.risorse_umane_auth_user.attivo%TYPE;
+    v_ru_attivo         anagrafiche.risorse_umane.attivo%TYPE;
+    v_ru_valido_dal     anagrafiche.risorse_umane.valido_dal%TYPE;
+    v_ru_valido_al      anagrafiche.risorse_umane.valido_al%TYPE;
+    v_found_identita    boolean := false;
+    -- Output
+    v_should_active     boolean;
+    v_current_active    boolean;
+    v_rows_updated      integer := 0;
 BEGIN
--- ------------------------------------------------------------
--- Funzione: anagrafiche.fn_sync_auth_user_is_active
---
--- Scopo:
---   Sincronizza django.auth_user.is_active in base allo stato
---   della risorsa umana collegata.
---   Valuta tre condizioni (AND logico):
---     1. risorse_umane.attivo = true
---     2. risorse_umane_auth_user.attivo = true
---     3. CURRENT_DATE dentro finestra [valido_dal, valido_al]
---   Se una qualsiasi condizione non e' soddisfatta -> is_active = false.
---   Aggiorna solo se il valore e' diverso (evita UPDATE inutili).
---
--- Parametri:
---   p_risorsa_umana_id -> ID della risorsa umana (NOT NULL, > 0)
---
--- Ritorna:
---   true se ha modificato auth_user, false altrimenti
--- ------------------------------------------------------------
+    -- ------------------------------------------------------------
+    -- Funzione: anagrafiche.fn_sync_auth_user_is_active (v2)
+    -- Scopo:
+    --   Sincronizza django.auth_user.is_active in base allo
+    --   stato del bridge auth associato. Parte da auth_user_id
+    --   (nuova firma), gestisce identita_digitali (priorita')
+    --   e fallback legacy su risorse_umane_auth_user.
+    -- ------------------------------------------------------------
 
-    ----------------------------------------------------------------
-    -- 1) Guard: parametro non nullo e valido
-    ----------------------------------------------------------------
-    IF p_risorsa_umana_id IS NULL OR p_risorsa_umana_id <= 0 THEN
+    -- 1) Guard parametro: NOT NULL e > 0 (auth_user.id e' integer
+    --    sequenziale, valori negativi o zero sono invalidi).
+    IF p_auth_user_id IS NULL OR p_auth_user_id <= 0 THEN
         PERFORM script.fn_log_and_raise_error(
             'database',
             'anagrafiche.fn_sync_auth_user_is_active',
             'E_PARAMETRO_INVALIDO',
             jsonb_build_object(
-                'parametro', 'p_risorsa_umana_id',
-                'valore', p_risorsa_umana_id
+                'parametro', 'p_auth_user_id',
+                'valore', p_auth_user_id
             ),
             NULL::uuid,
-            'p_risorsa_umana_id deve essere NOT NULL e > 0'
+            'p_auth_user_id deve essere NOT NULL e > 0'
         );
     END IF;
 
-    ----------------------------------------------------------------
-    -- 2) Recupero dati bridge (se esiste)
-    ----------------------------------------------------------------
-    SELECT rau.auth_user_id, rau.attivo
-      INTO v_auth_user_id, v_bridge_attivo
-      FROM anagrafiche.risorse_umane_auth_user rau
-     WHERE rau.risorsa_umana_id = p_risorsa_umana_id;
+    -- 2) Priorita': cerca identita attiva nel nuovo bridge.
+    --    UNIQUE (auth_user_id) su identita_digitali garantisce
+    --    al piu' 1 riga, ma ORDER BY id DESC + LIMIT 1 e'
+    --    difensivo in caso di edge case transitori.
+    SELECT id.id,
+           id.ruolo_applicativo,
+           id.attivo,
+           id.valido_dal,
+           id.valido_al,
+           id.soggetto_ruolo_id
+      INTO v_identita_id,
+           v_ruolo_appl,
+           v_id_attivo,
+           v_id_valido_dal,
+           v_id_valido_al,
+           v_soggetto_ruolo_id
+      FROM anagrafiche.identita_digitali id
+     WHERE id.auth_user_id = p_auth_user_id
+     ORDER BY id.id DESC
+     LIMIT 1;
 
-    -- Se la risorsa non ha un collegamento auth_user, nulla da fare
-    IF v_auth_user_id IS NULL THEN
-        RETURN false;
+    v_found_identita := FOUND;
+
+    IF v_found_identita THEN
+        -- 3) Logica sul nuovo modello.
+        IF v_ruolo_appl = 'DISABILITATO' THEN
+            -- Ruolo applicativo di disattivazione: fail-closed
+            -- immediato, salta qualsiasi altra verifica.
+            v_should_active := false;
+        ELSE
+            -- 3.a) Identita attiva + finestra temporale valida
+            v_should_active :=
+                v_id_attivo
+                AND CURRENT_DATE >= v_id_valido_dal
+                AND (v_id_valido_al IS NULL
+                     OR CURRENT_DATE <= v_id_valido_al);
+
+            -- 3.b) Soggetto parent deve essere attivo. Risale
+            --      da soggetto_ruolo_id al soggetto via JOIN.
+            IF v_should_active THEN
+                SELECT s.attivo
+                  INTO v_soggetto_attivo
+                  FROM anagrafiche.soggetti_ruoli sr
+                  JOIN anagrafiche.soggetti s
+                    ON s.id = sr.soggetto_id
+                 WHERE sr.id = v_soggetto_ruolo_id;
+
+                v_should_active := COALESCE(v_soggetto_attivo, false);
+            END IF;
+
+            -- 3.c) Doppia verifica OPERATORE: finche' il cutover
+            --      §4.6 non rende risorse_umane_auth_user una
+            --      vista su identita_digitali, il vincolo legacy
+            --      su risorse_umane.attivo resta attivo. Evita
+            --      regressione del trigger trgfn_risorse_umane_
+            --      sync_auth_user_active.
+            IF v_should_active AND v_ruolo_appl = 'OPERATORE' THEN
+                SELECT ru.attivo, ru.valido_dal, ru.valido_al
+                  INTO v_ru_attivo, v_ru_valido_dal, v_ru_valido_al
+                  FROM anagrafiche.risorse_umane ru
+                 WHERE ru.soggetto_ruolo_id = v_soggetto_ruolo_id;
+
+                IF FOUND THEN
+                    v_should_active :=
+                        v_ru_attivo
+                        AND CURRENT_DATE >= v_ru_valido_dal
+                        AND (v_ru_valido_al IS NULL
+                             OR CURRENT_DATE <= v_ru_valido_al);
+                END IF;
+                -- Se nessuna risorsa_umana associata (edge case
+                -- durante migrazione), lascio v_should_active
+                -- al valore calcolato da identita (permissivo,
+                -- ma trigger esterni correggeranno lo stato).
+            END IF;
+        END IF;
+    ELSE
+        -- 4) Fallback legacy: bridge risorse_umane_auth_user.
+        --    Serve durante la transizione §4.5 -> §4.6 quando
+        --    identita_digitali e' ancora vuota. Comportamento
+        --    identico alla versione precedente della funzione,
+        --    ma indicizzato su auth_user_id (fix §3.2.b).
+        --    Post cutover §4.6: ramo dead code, rimuovibile.
+        SELECT rau.attivo, ru.attivo, ru.valido_dal, ru.valido_al
+          INTO v_bridge_attivo, v_ru_attivo,
+               v_ru_valido_dal, v_ru_valido_al
+          FROM anagrafiche.risorse_umane_auth_user rau
+          JOIN anagrafiche.risorse_umane ru
+            ON ru.id = rau.risorsa_umana_id
+         WHERE rau.auth_user_id = p_auth_user_id;
+
+        IF NOT FOUND THEN
+            -- Utente "orfano": nessun bridge in entrambi i
+            -- modelli. Niente da sincronizzare, exit silente.
+            RETURN false;
+        END IF;
+
+        v_should_active :=
+            v_bridge_attivo
+            AND v_ru_attivo
+            AND CURRENT_DATE >= v_ru_valido_dal
+            AND (v_ru_valido_al IS NULL
+                 OR CURRENT_DATE <= v_ru_valido_al);
     END IF;
 
-    ----------------------------------------------------------------
-    -- 3) Recupero stato risorsa umana
-    ----------------------------------------------------------------
-    SELECT ru.attivo, ru.valido_dal, ru.valido_al
-      INTO v_risorsa_attivo, v_valido_dal, v_valido_al
-      FROM anagrafiche.risorse_umane ru
-     WHERE ru.id = p_risorsa_umana_id;
-
-    ----------------------------------------------------------------
-    -- 4) Calcolo stato atteso (AND logico)
-    ----------------------------------------------------------------
-    v_should_active :=
-        v_risorsa_attivo
-        AND v_bridge_attivo
-        AND CURRENT_DATE >= v_valido_dal
-        AND (v_valido_al IS NULL OR CURRENT_DATE <= v_valido_al);
-
-    ----------------------------------------------------------------
-    -- 5) Recupero stato corrente auth_user
-    ----------------------------------------------------------------
-    -- In ambienti CI senza schema django, non fare nulla.
+    -- 5) In ambienti CI senza schema django, la tabella
+    --    auth_user non esiste: no-op silente.
     IF to_regclass('django.auth_user') IS NULL THEN
         RETURN false;
     END IF;
 
+    -- 6) Recupero stato corrente di auth_user.is_active.
     EXECUTE 'SELECT is_active FROM django.auth_user WHERE id = $1'
        INTO v_current_active
-      USING v_auth_user_id;
+      USING p_auth_user_id;
 
-    ----------------------------------------------------------------
-    -- 6) Aggiorna solo se diverso
-    ----------------------------------------------------------------
+    -- 7) UPDATE solo se lo stato cambia (evita storicizzazioni
+    --    inutili e i trigger a catena che ne derivano).
     IF v_current_active IS DISTINCT FROM v_should_active THEN
         EXECUTE 'UPDATE django.auth_user
                     SET is_active = $1
                   WHERE id = $2'
-           USING v_should_active, v_auth_user_id;
+           USING v_should_active, p_auth_user_id;
 
         GET DIAGNOSTICS v_rows_updated = ROW_COUNT;
         RETURN (v_rows_updated > 0);
@@ -118,10 +189,8 @@ BEGIN
 END;
 $function$
 
-COMMENT ON FUNCTION anagrafiche.fn_sync_auth_user_is_active(p_risorsa_umana_id bigint)
-IS 'Sincronizza auth_user.is_active con lo stato della risorsa umana.
-Valuta: risorse_umane.attivo, finestra temporale, bridge attivo.
-Aggiorna solo se il valore cambia. Ritorna true se ha modificato auth_user.';
+COMMENT ON FUNCTION anagrafiche.fn_sync_auth_user_is_active(p_auth_user_id integer)
+IS 'Sincronizza django.auth_user.is_active partendo da auth_user_id. Priorita'' al nuovo bridge anagrafiche.identita_digitali; fallback legacy su risorse_umane_auth_user durante la transizione §4.5 -> §4.6. Per OPERATORE doppia verifica su risorse_umane.attivo (rimovibile post cutover §4.6). Ritorna true se ha modificato auth_user.';
 ```
 
 ---

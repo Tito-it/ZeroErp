@@ -1,0 +1,4 @@
+id,profilo_accesso_id,unita_organizzativa_id,identita_digitale_id,ruolo_applicativo,attivo,meta,data_insert,user_insert,data_update,user_update
+9001,9001,,,CLIENTE_PORTALE,t,{},2026-04-18 00:00:00+02,postgres,2026-04-18 00:00:00+02,postgres
+9002,9002,,,FORNITORE_PORTALE,t,{},2026-04-18 00:00:00+02,postgres,2026-04-18 00:00:00+02,postgres
+9003,9003,,,SHOP_CUSTOMER,t,{},2026-04-18 00:00:00+02,postgres,2026-04-18 00:00:00+02,postgres

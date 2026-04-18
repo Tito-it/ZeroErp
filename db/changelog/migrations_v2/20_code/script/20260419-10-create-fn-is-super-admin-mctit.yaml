@@ -1,0 +1,94 @@
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260419-10-create-fn-is-super-admin-mctit.yaml
+
+  - changeSet:
+      id: 20260419-10-create-fn-is-super-admin
+      author: mctit
+      runOnChange: true
+      validCheckSum: [ANY]
+      comment: >
+        Crea script.fn_is_super_admin(p_auth_user_id integer) RETURNS boolean
+        (§4.6.B.1 WIP multi-face-auth). Sostituisce il check
+        risorse_umane_auth_user.ruolo_sistema = 'ADMIN' con una verifica
+        basata sul nuovo modello "ADMIN come profilo":
+          - Esiste identita_digitali attiva e nella finestra temporale
+          - Esiste binding attivo a profili_accesso con tipo = SUPER_ADMIN
+          - Il profilo stesso e' attivo
+        LANGUAGE sql STABLE: inlineable, cache-friendly, nessun effetto
+        collaterale. Fail-closed: se manca anche una sola condizione,
+        ritorna false. Usata dalle funzioni fn_resolve_* e fn_check_* al
+        posto del vecchio fn_get_ruolo_sistema='ADMIN'. La finestra
+        temporale e' valutata a CURRENT_DATE per coerenza con le altre
+        finestre anagrafiche (risorse_umane, profili_accesso_bindings).
+      preConditions:
+        - onFail: HALT
+        - and:
+          - tableExists:
+              schemaName: anagrafiche
+              tableName: identita_digitali
+          - tableExists:
+              schemaName: config
+              tableName: profili_accesso
+          - tableExists:
+              schemaName: config
+              tableName: profili_accesso_bindings
+          - sqlCheck:
+              expectedResult: 1
+              sql: |
+                SELECT COUNT(*)
+                  FROM pg_enum e
+                  JOIN pg_type t ON t.oid = e.enumtypid
+                  JOIN pg_namespace n ON n.oid = t.typnamespace
+                 WHERE n.nspname = 'config'
+                   AND t.typname = 'tipo_profilo_accesso'
+                   AND e.enumlabel = 'SUPER_ADMIN';
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Funzione helper: true se l'utente ha binding attivo a un
+              -- profilo di tipo SUPER_ADMIN. Cross-ruolo: oggi solo
+              -- OPERATORE e' interessato (migrazione ADMIN legacy), ma la
+              -- firma e la logica permettono di concedere SUPER_ADMIN a
+              -- qualsiasi identita (es. futuro CLIENTE_ADMIN_PORTALE).
+              CREATE OR REPLACE FUNCTION script.fn_is_super_admin(p_auth_user_id integer)
+              RETURNS boolean
+              LANGUAGE sql
+              STABLE
+              AS $function$
+                  -- EXISTS su JOIN identita_digitali + profili_accesso_bindings
+                  -- + profili_accesso. Filtri:
+                  --   - identita attiva, in finestra temporale, non
+                  --     DISABILITATO
+                  --   - binding attivo
+                  --   - profilo attivo, tipo SUPER_ADMIN
+                  -- Fail-closed se p_auth_user_id e' NULL (la EXISTS
+                  -- restituisce false).
+                  SELECT EXISTS (
+                      SELECT 1
+                        FROM anagrafiche.identita_digitali id
+                        JOIN config.profili_accesso_bindings pab
+                          ON pab.identita_digitale_id = id.id
+                        JOIN config.profili_accesso pa
+                          ON pa.id = pab.profilo_accesso_id
+                       WHERE id.auth_user_id = p_auth_user_id
+                         AND id.attivo = true
+                         AND id.ruolo_applicativo <> 'DISABILITATO'
+                         AND (id.valido_dal IS NULL OR id.valido_dal <= CURRENT_DATE)
+                         AND (id.valido_al  IS NULL OR id.valido_al  >= CURRENT_DATE)
+                         AND pab.attivo = true
+                         AND pa.attivo  = true
+                         AND pa.tipo    = 'SUPER_ADMIN'::config.tipo_profilo_accesso
+                  );
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_is_super_admin(p_auth_user_id integer) IS
+                  'Verifica se l''utente ha privilegio SUPER_ADMIN (bypass totale '
+                  'permessi) tramite binding attivo a profilo con tipo SUPER_ADMIN '
+                  'su identita digitale attiva e nella finestra temporale. Sostituisce '
+                  'il check ruolo_sistema=ADMIN legacy (§4.6 WIP multi-face-auth). '
+                  'LANGUAGE sql STABLE: inlineable, cache-friendly, fail-closed.';
+      rollback:
+        - sql:
+            sql: DROP FUNCTION IF EXISTS script.fn_is_super_admin(integer);

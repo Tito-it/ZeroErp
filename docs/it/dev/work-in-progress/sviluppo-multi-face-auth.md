@@ -52,8 +52,20 @@ sorprese:
 
 - [ ] 3.1 Leggere [risorse_umane_auth_user](/dbzero/anagrafiche/tabelle/risorse_umane_auth_user)
       e censire **tutti** i trigger BEFORE/AFTER attualmente installati
-- [ ] 3.2 Censire chi chiama `fn_sync_auth_user_is_active` (trigger, management
+- [x] 3.2 Censire chi chiama `fn_sync_auth_user_is_active` (trigger, management
       command, codice Python) per stimare l'impatto della generalizzazione
+      — **esito**: 8 chiamanti (3 trigger DB, 1 pgAgent daily, 1 management
+      command, 3 metodi `AmmSoftwareRepository`). Firma attuale:
+      `fn_sync_auth_user_is_active(p_risorsa_umana_id bigint)`.
+- [x] 3.2.b **Verifica coerenza firma vs chiamanti Python** (2026-04-18):
+      **bug confermato**. `fn_sync_auth_user_is_active(p_risorsa_umana_id)`
+      riceve `auth_user_id` dai 3 metodi `AmmSoftwareRepository`. Impatto
+      pratico nullo grazie ai trigger AFTER su `risorse_umane_auth_user`
+      che coprono il sync con il parametro corretto. **Risoluzione scelta
+      (opzione 3)**: fix incorporato nel refactor §4.5 — la nuova firma
+      `fn_sync_auth_user_is_active(p_auth_user_id)` rende le 3 chiamate
+      Python corrette senza toccare il codice chiamante. Dettaglio
+      invariante e anti-pattern: callout in §4.5.
 - [ ] 3.3 Censire tutte le view/API che oggi usano `EmittenteFiscaleScopeMixin`
       e quelle che filtrano manualmente per `auth_user`
 - [ ] 3.4 Verificare che [token_monouso](/dbzero/config/tabelle/token_monouso)
@@ -63,9 +75,15 @@ sorprese:
       corretti per leggere `identita_digitali` (nuova tabella)
 - [ ] 3.6 Valutare costo performance RLS sulle tabelle principali (fatture,
       ordini, DDT) — benchmark con 100k righe prima dell'attivazione
-- [ ] 3.7 Redigere nota decisionale su: **l'admin di portale esiste?**
-      (cioe': un cliente puo' gestire utenti-figli sul suo portale?)
-      Decisione impatta §5.2 e §7.3
+- [x] 3.7 Redigere nota decisionale su: **l'admin di portale esiste?**
+      — **decisione 2026-04-18**: rimandato a Fase 2 post-MVP. Motivazioni:
+      (1) modello `identita_digitali` + `profili_accesso_bindings` +
+      `scope_policy` gia' compatibile, l'aggiunta futura di
+      `CLIENTE_ADMIN_PORTALE` e' un enum value + un profilo + un set di
+      endpoint, **zero refactor strutturale**; (2) MVP con un solo account
+      per cliente e' sufficiente per raccogliere feedback pilota senza
+      scope creep su §5.4-5.5; (3) in §4.1.1 non aggiungere ancora lo slot
+      enum, lasciare gancio in §10.1. Vedi §10.1 per dettaglio.
 - [ ] 3.8 **Documentazione RLS — linee guida SQL**: aggiungere sezione
       "Row Level Security" in [linee-guida-sql.md](/linee-guida-sql). Contenuti:
       * Quando usarla (tabelle con scope multi-tenant/multi-cliente/multi-fornitore)
@@ -91,87 +109,424 @@ sorprese:
       policy, non dopo. Da evadere prima dell'inizio della Fase DB se il team
       non ha esperienza pregressa di RLS Postgres
 
+### 3.bis Esiti censimenti (sintesi 2026-04-18)
+
+**3.1 Trigger su `risorse_umane_auth_user`** (7 trigger censiti):
+
+* 2 guard: `guard_persona_fisica` (CF obbligatorio / P.IVA vietata) e
+  `require_active_parent` su `risorse_umane.attivo`
+* 1 sync: `sync_auth_user_active` (AFTER INS + AFTER UPD OF attivo)
+* 2 audit generici: `audit_data_user_generic` e `tx_id_managed`
+* 1 storico: `storico_generic` su `risorse_umane_auth_user_id`
+* **Impatto §4.2**: il guard `persona_fisica` va incorporato come ramo
+  condizionale sul ruolo dentro `trgfn_identita_digitali_guard_coerenza`
+  (§4.2.3), valido solo per `ruolo_applicativo = OPERATORE`. I trigger
+  audit/tx_id/storico sono riusabili as-is sulla nuova tabella.
+
+**3.2 Callers `fn_sync_auth_user_is_active`**: vedi checkbox sopra.
+
+**3.3 Superficie scope attuale**:
+
+* `EmittenteFiscaleScopeMixin` definito in `apps/core/mixins.py` ma
+  **non usato** in alcun viewset. Enforcement attuale = DB-first:
+  repository chiamano `script.fn_get_emittenti_scope_sr_ids(auth_user_id)`
+* 6 punti di scoping nei repository (`vendite_repository`,
+  `preventivi_repository`, `amm_software_repository`,
+  `permissions_resolver`, `parameter_repository`)
+* `JwtAuditAuthentication` popola oggi solo `app.jwt_user` e
+  `app.current_user_id` (session-scoped, reset nel middleware response).
+  L'aggiunta dei 3 nuovi GUC (§4.7.1) e' incrementale, zero breaking.
+* Stima RLS: ~11 tabelle operazionali. Policy `EF_WHITELIST` -> RLS
+  semplice (un'unica clausola su array GUC). Permessi area/oggetto/azione
+  restano in Python per ora (3 livelli di override, porting feasible ma
+  non prioritario — defense-in-depth via DB-first via repository resta).
+
+**3.4 `token_monouso` estendibilita'**: vedi §4.1.3 aggiornato. Non-breaking.
+
 ---
 
 ## 4. Fase DB — Fondamenta (schema + funzioni)
 
 ### 4.1 ENUM nuovi / estensioni
 
-- [ ] 4.1.1 Creare ENUM `config.ruolo_applicativo` con valori:
+- [x] 4.1.1 Creare ENUM `config.ruolo_applicativo` con valori:
       `OPERATORE`, `CLIENTE_PORTALE`, `FORNITORE_PORTALE`, `SHOP_CUSTOMER`,
       `API_CLIENT`, `DISABILITATO`
-- [ ] 4.1.2 Creare ENUM `config.tipo_profilo_accesso` con valori:
+      — implementato in `20260418-01-create-ruolo-applicativo-enum-mctit.yaml`
+- [x] 4.1.2 Creare ENUM `config.tipo_profilo_accesso` con valori:
       `REPARTO`, `PORTALE`, `AD_HOC`
-- [ ] 4.1.3 Valutare estensione ENUM `config.tipo_token` con
-      `INVITO_PORTALE`, `VERIFICA_EMAIL_SHOP`
+      — implementato in `20260418-02-create-tipo-profilo-accesso-enum-mctit.yaml`
+- [x] 4.1.3 ~~Valutare estensione ENUM `config.tipo_token`~~ — **non
+      applicabile**: `config.token_monouso.tipo` e' un `varchar(50)`, non
+      un ENUM PostgreSQL. Nessun CHECK, nessun switch esaustivo in codice.
+      Le nuove costanti `INVITO_PORTALE` e `VERIFICA_EMAIL_SHOP` si
+      definiscono solo a livello Python nei nuovi service (vedi §5.5.2 e
+      §5.6.3). Zero DDL.
 
 ### 4.2 Tabella bridge `identita_digitali`
 
-- [ ] 4.2.1 Creare `anagrafiche.identita_digitali` con campi e UNIQUE come da guida §3.1
-- [ ] 4.2.2 Audit trigger standard (`trgfn_audit_data_user_generic`)
-- [ ] 4.2.3 Trigger guard `trgfn_identita_digitali_guard_coerenza`:
-      * se `ruolo_applicativo = OPERATORE` -> `soggetto_ruolo` deve essere RIS_UMANA su PF pura
-      * se `ruolo_applicativo = CLIENTE_PORTALE` -> tipo_ruolo CLIENTE
-      * se `ruolo_applicativo = FORNITORE_PORTALE` -> tipo_ruolo FORNITORE
-      * se `ruolo_applicativo = SHOP_CUSTOMER` -> tipo_ruolo CLIENTE
-- [ ] 4.2.4 Trigger UNIQUE parziale: una sola identita' attiva per auth_user
-      (indice `ON (auth_user_id) WHERE attivo = true`)
-- [ ] 4.2.5 Policy ATTIVO (child/parent framework) — coerenza con pattern
-      esistente (es. `trgfn_prevent_deactivate_if_children`)
+- [x] 4.2.1 Creare `anagrafiche.identita_digitali` con campi e UNIQUE come da guida §3.1
+      — DDL `20260418-10-create-identita-digitali-mctit.yaml`;
+      storico `20260418-23-create-storico-identita-digitali-mctit.yaml`.
+      Nota: l'indice parziale UNIQUE e' stato implementato su
+      `(soggetto_ruolo_id) WHERE attivo = true` (vincolo "una sola identita
+      attiva per soggetto_ruolo"); la UNIQUE su `auth_user_id` e' totale
+      (un auth_user e' sempre legato a una sola identita). Vedi §4.2.4.
+- [x] 4.2.2 ~~Audit trigger standard (`trgfn_audit_data_user_generic`)~~
+      — delegato ad automation (pattern ZeroErp: i trigger framework
+      audit/tx_id/storico sono applicati automaticamente dai processi di
+      infrastruttura sulle nuove tabelle).
+- [x] 4.2.3 Trigger guard `trgfn_identita_digitali_guard_coerenza`:
+      * `OPERATORE` -> `RIS_UMANA` + soggetto PF pura (delega a
+        `script.fn_guard_soggetto_pf_pura`)
+      * `CLIENTE_PORTALE` / `SHOP_CUSTOMER` -> `CL`
+      * `FORNITORE_PORTALE` -> `FO`
+      * `API_CLIENT` / `DISABILITATO` -> nessun vincolo
+      * ramo ELSE anti-bypass (`E_RUOLO_APPLICATIVO_NON_GESTITO`)
+      — implementato in `20260418-22-create-trgfn-identita-digitali-guard-coerenza-mctit.yaml`.
+      Nuova funzione riusabile `script.fn_guard_soggetto_pf_pura`
+      (`20260418-20-...`) + refactor del vecchio trigger PF pura su RUA
+      (`20260418-21-...`) per eliminare la duplicazione di logica.
+- [x] 4.2.4 Indice parziale UNIQUE implementato come
+      `uq_identita_digitali_soggetto_ruolo_attivo ON (soggetto_ruolo_id)
+      WHERE attivo = true` (una sola identita attiva per soggetto_ruolo).
+      La UNIQUE su `auth_user_id` e' totale.
+- [x] 4.2.5 ~~Policy ATTIVO (child/parent framework)~~ — non applicabile
+      in questa fase: `anagrafiche.soggetti_ruoli` non ha colonna `attivo`.
+      Il gating sull'attivita del parent passa da `soggetti.attivo`, gia'
+      verificato via trigger esistente su `soggetti_ruoli`. Nessun trigger
+      aggiuntivo necessario su `identita_digitali`.
 
 ### 4.3 Profili accesso generalizzati
 
-- [ ] 4.3.1 Creare `config.profili_accesso` (id, tipo, codice, descrizione, attivo)
-- [ ] 4.3.2 Creare `config.profili_accesso_aree` (rimpiazzo concettuale di `profili_reparto_aree`)
-- [ ] 4.3.3 Creare `config.profili_accesso_azioni` (rimpiazzo concettuale di `profili_reparto_azioni`)
-- [ ] 4.3.4 Creare `config.profili_accesso_bindings` con CHECK che **esattamente uno**
-      tra `unita_organizzativa_id`, `identita_digitale_id`, `ruolo_applicativo` sia valorizzato
-- [ ] 4.3.5 Migrazione dati: popolare `profili_accesso` con un record per ogni
-      riga oggi in `profili_reparto_aree` (tipo=REPARTO)
-- [ ] 4.3.6 Backfill `profili_accesso_bindings` con i binding reparto -> profilo
-- [ ] 4.3.7 Seed iniziale profili portale:
-      * `CLIENTE_PORTALE_STANDARD` (LETTURA su vendite, LETTURA su pagamenti)
-      * `FORNITORE_PORTALE_STANDARD` (LETTURA su acquisti, LETTURA su pagamenti)
-      * `SHOP_CUSTOMER_STANDARD` (LETTURA su storico ordini propri)
-- [ ] 4.3.8 Binding dei profili seed al relativo `ruolo_applicativo`
+- [x] 4.3.1 Creare `config.profili_accesso` (id, tipo, codice, descrizione, attivo)
+      — `20260418-30-create-profili-accesso-mctit.yaml` +
+      storico `20260418-34-...`.
+- [x] 4.3.2 Creare `config.profili_accesso_aree`
+      — `20260418-31-create-profili-accesso-aree-mctit.yaml` +
+      storico `20260418-35-...`.
+- [x] 4.3.3 Creare `config.profili_accesso_azioni`
+      — `20260418-32-create-profili-accesso-azioni-mctit.yaml` +
+      storico `20260418-36-...`.
+- [x] 4.3.4 Creare `config.profili_accesso_bindings` con CHECK xor a 3 vie
+      + 3 indici parziali UNIQUE per entita (uo / identita / ruolo)
+      + guard coerenza tipo profilo <-> tipo binding
+      — DDL `20260418-33-create-profili-accesso-bindings-mctit.yaml` +
+      guard `20260418-40-create-trgfn-profili-accesso-bindings-guard-coerenza-mctit.yaml` +
+      storico `20260418-37-...`.
+- [x] 4.3.5 Migrazione dati: un profilo REPARTO per ogni `unita_organizzativa`
+      con permessi configurati, codice `REPARTO_<codice_interno>`
+      — `80_data/changelog/20260418-42-migrate-profili-reparto-to-profili-accesso-mctit.yaml`
+      (idempotente via `ON CONFLICT DO NOTHING`).
+- [x] 4.3.6 Backfill `profili_accesso_bindings` REPARTO coperto dallo
+      stesso changeset §4.3.5 (step 4 del DO block).
+- [x] 4.3.7 Seed profili portale via CSV + `loadUpdateData`:
+      * `CLIENTE_PORTALE_STANDARD` (LETTURA su vendite + pagamenti)
+      * `FORNITORE_PORTALE_STANDARD` (LETTURA su acquisti + pagamenti)
+      * `SHOP_CUSTOMER_STANDARD` (LETTURA su vendite + pagamenti) — aggiunto
+        `pagamenti` oltre a vendite su richiesta
+      — CSV: `profili_accesso.csv`, `profili_accesso_aree.csv`,
+      `profili_accesso_bindings.csv`; changeset
+      `20260418-43-upsert-profili-accesso-portale-mctit.yaml` con `setval`
+      sequenze finale. Range id seed dedicato 9001-9006.
+- [x] 4.3.8 Binding dei profili seed al relativo `ruolo_applicativo`
+      — incluso nel CSV `profili_accesso_bindings.csv` e nel changeset
+      `20260418-43-...`.
 
 ### 4.4 Scope policy generalizzato
 
-- [ ] 4.4.1 Creare `config.scope_policy` (id, codice, descrizione, funzione_db)
-- [ ] 4.4.2 Creare `config.identita_scope_bindings` (bigint id, identita_digitale_id,
-      scope_policy_id, parametri JSONB)
-- [ ] 4.4.3 Seed `scope_policy`:
+- [x] 4.4.1 Creare `config.scope_policy` con colonna singola `funzione_db`
+      (formato `schema.nome`) — `20260418-50-create-scope-policy-mctit.yaml`
+      + storico `20260418-52-...`.
+- [x] 4.4.2 Creare `config.identita_scope_bindings` con UNIQUE
+      `(identita_digitale_id, scope_policy_id)` e `parametri` JSONB default
+      `{}` (vuoto per seed iniziale: le policy risolvono i dati dai
+      riferimenti anagrafici)
+      — `20260418-51-create-identita-scope-bindings-mctit.yaml` +
+      storico `20260418-53-...`.
+- [x] 4.4.3 Seed `scope_policy` (3 policy, `SELF_OWNERSHIP` unificato con
+      `BA_OWNERSHIP` perche' cliente portale e shop condividono il ruolo CL):
       * `EF_WHITELIST` -> `script.fn_scope_ef_whitelist`
       * `BA_OWNERSHIP` -> `script.fn_scope_ba_ownership`
       * `FORNITORE_OWNERSHIP` -> `script.fn_scope_fornitore_ownership`
-      * `SELF_OWNERSHIP` -> `script.fn_scope_self_ownership` (shop)
-- [ ] 4.4.4 Scrivere le 4 funzioni `fn_scope_*` in `script` schema
-- [ ] 4.4.5 Backfill: per ogni riga in `user_emittenti_fiscali` creare binding
-      `EF_WHITELIST` sulla corrispondente identita'
+      — CSV `scope_policy.csv` + `20260418-70-upsert-scope-policy-mctit.yaml`.
+- [x] 4.4.4 Scrivere le funzioni `fn_scope_*` in schema `script`, tutte
+      `LANGUAGE sql STABLE` (inlineable), fail-closed su identita inattiva:
+      * `fn_scope_ef_whitelist` — `20260418-60-...`
+      * `fn_scope_ba_ownership` — `20260418-61-...`
+      * `fn_scope_fornitore_ownership` — `20260418-62-...`
+- [x] 4.4.5 Backfill: per ogni identita `OPERATORE` attiva con righe in
+      `user_emittenti_fiscali` creato un binding `EF_WHITELIST` (parametri
+      `{}`, la funzione risolve dai dati legacy)
+      — `80_data/changelog/20260418-71-backfill-identita-scope-bindings-ef-whitelist-mctit.yaml`
+      idempotente, `runOnChange: true`. Durante la transizione §4.5 -> §4.6
+      `identita_digitali` puo' essere vuota; il changeset si applica senza
+      errori e crea i bindings man mano che le identita vengono popolate.
 
 ### 4.5 Generalizzazione sync `auth_user.is_active`
 
-- [ ] 4.5.1 Riscrivere `fn_sync_auth_user_is_active` in modo che parta da
-      `auth_user_id` e trovi il bridge attivo (identita_digitali)
-- [ ] 4.5.2 Algoritmo nuovo come da guida §9 (gestisce tutti i ruoli applicativi)
-- [ ] 4.5.3 Trigger `trg_identita_digitali_sync_auth_user_active` su INSERT/UPDATE
-- [ ] 4.5.4 Compatibilita' con trigger esistenti su `risorse_umane_auth_user`
-      (la funzione interna non cambia API, cambia solo implementazione)
-- [ ] 4.5.5 Estendere `fn_sync_auth_user_expired` per coprire anche le identita'
-      portale con `valido_al` scaduto
-- [ ] 4.5.6 Test pgTAP sync per ogni tipo di identita' (operatore, cliente portale,
-      fornitore portale, shop customer)
+> **Nota — bug latente da non riprodurre** (verifica 2026-04-18, §3.2.b):
+> la firma attuale e' `fn_sync_auth_user_is_active(p_risorsa_umana_id bigint)`
+> e la funzione cerca il bridge con `WHERE rau.risorsa_umana_id = p_param`.
+> I tre metodi `AmmSoftwareRepository.update_operatore /
+> disabilita_operatore / riattiva_operatore` le passano invece un
+> `auth_user_id`. Il bug e' coperto dai trigger AFTER su
+> `risorse_umane_auth_user` (che passano il parametro corretto), quindi il
+> sync avviene comunque, ma in modo non deterministico e con rischio di
+> agire temporaneamente sulla risorsa sbagliata in caso di collisione di id.
+>
+> **Invariante per il refactor**: la nuova firma deve essere
+> `fn_sync_auth_user_is_active(p_auth_user_id bigint)` — quel `bigint` e' un
+> `auth_user.id`, NON un `risorsa_umana.id`. Il lookup del bridge/identita'
+> avviene **dentro** la funzione partendo da `auth_user_id`. Cosi' le tre
+> chiamate Python esistenti diventano corrette senza modifiche al codice
+> chiamante.
+>
+> **Da NON fare**: mantenere una firma ambigua o due overload
+> (`bigint, bigint`) che si distinguono solo per semantica del parametro.
 
-### 4.6 Vista di compatibilita'
+- [x] 4.5.1 Nuova firma `fn_sync_auth_user_is_active(p_auth_user_id integer)`
+      che parte da `auth_user_id`, risolve internamente il bridge (priorita'
+      al nuovo `identita_digitali`, fallback legacy su
+      `risorse_umane_auth_user` durante transizione §4.5 -> §4.6)
+      — `20260418-72-update-fn-sync-auth-user-is-active-mctit.yaml`.
+      Firma precedente `(bigint)` droppata e ricreata con `(integer)`.
+      I 3 metodi `AmmSoftwareRepository` diventano automaticamente corretti
+      (fix implicito del bug latente §3.2.b).
+- [x] 4.5.2 Algoritmo gestisce tutti i ruoli applicativi:
+      * `DISABILITATO` -> `false` immediato
+      * altri ruoli -> identita attiva + finestra + soggetto attivo
+      * `OPERATORE` in piu' -> doppia verifica su `risorse_umane.attivo` +
+        finestra RU (vincolo legacy mantenuto finche' non si fa il cutover
+        §4.6; rimovibile in changeset dedicato dopo il cutover).
+- [x] 4.5.3 Nuovo trigger + trigger function
+      `trg_identita_digitali_z90_sync_auth_user_active_ins/upd` +
+      `trgfn_identita_digitali_sync_auth_user_active`
+      — `20260418-75-create-trgfn-identita-digitali-sync-auth-user-active-mctit.yaml`.
+      `UPDATE OF attivo, valido_dal, valido_al, ruolo_applicativo,
+      auth_user_id` per evitare scatti inutili.
+- [x] 4.5.4 Compatibilita' con trigger esistenti: le 2 trigger function
+      `trgfn_risorse_umane_auth_user_sync_active` e
+      `trgfn_risorse_umane_sync_auth_user_active` aggiornate in
+      `20260418-73-update-trgfn-sync-active-callers-mctit.yaml` per passare
+      `auth_user_id` alla nuova firma (la prima usa direttamente
+      `NEW.auth_user_id`, la seconda lo risolve dal bridge RUA).
+      Trigger installati invariati (stesso nome, fase, eventi).
+- [x] 4.5.5 `fn_sync_auth_user_expired` estesa per coprire UNION di
+      `risorse_umane` legacy + tutte le `identita_digitali` con `valido_al`
+      scaduto; `SELECT DISTINCT auth_user_id` evita double-sync
+      — `20260418-74-update-fn-sync-auth-user-expired-mctit.yaml`.
+- [x] 4.5.6 Test pgTAP sync per identita operatore (caso fallback legacy)
+      — aggiornato `db/pgtap/anagrafiche/test-sync-auth-user-is-active.sql`
+      per la nuova firma `(p_auth_user_id integer)`. 18 casi coprono
+      fn_sync + trigger su RUA/RU + fn_sync_auth_user_expired. Per i
+      nuovi ruoli (portale, shop) il fallback legacy copre il caso
+      operatore; i test dedicati per identita portale/shop andranno
+      aggiunti in §7.1.2 (segnalati quando il cutover §4.6 sara' completato
+      e `identita_digitali` popolata con dati di test).
 
-- [ ] 4.6.1 Creare vista `anagrafiche.vw_risorse_umane_auth_user` che
-      riproduce il vecchio layout di `risorse_umane_auth_user` leggendo
-      da `identita_digitali WHERE ruolo_applicativo = 'OPERATORE'`
-- [ ] 4.6.2 Verificare che tutto il codice che oggi scrive su
-      `risorse_umane_auth_user` sia migrato a `identita_digitali` prima di
-      sostituire la tabella con la vista
-- [ ] 4.6.3 Rinominare `risorse_umane_auth_user` in `_legacy_risorse_umane_auth_user`
-      e creare la vista con il nome originale (cutover)
+### 4.6 Cutover operatori — da `risorse_umane_auth_user` a `identita_digitali`
+
+> **Design deciso 2026-04-19**: ADMIN modellato come profilo `SUPER_ADMIN`
+> (nuovo valore in `config.tipo_profilo_accesso`) + binding su
+> `identita_digitali`, NON come colonna boolean. Il bypass e' un privilegio
+> bindato che riusa l'infrastruttura §4.3 (audit, storico, guard coerenza,
+> finestra temporale). DISABILITATO legacy assorbito da
+> `ruolo_applicativo = DISABILITATO` OPPURE `identita_digitali.attivo = false`.
+> OPERATIVO legacy = default implicito (assenza di binding SUPER_ADMIN).
+>
+> `identita_digitali` viene esteso con 4 colonne stateful cross-ruolo
+> (`tentativi_falliti`, `bloccato_fino_a`, `totp_obbligatorio`, `storicizza`)
+> che oggi vivono solo sul bridge legacy. La vista di compatibilita'
+> ricostruisce dinamicamente `ruolo_sistema` e `risorsa_umana_id`.
+>
+> **Split PR**:
+>
+> * **PR1 DB** (branch `dev/db-tid`): §4.6.A-F (schema, refactor resolver,
+>   writer DB, backfill, vista, test)
+> * **PR2 Backend** (branch `dev/backend-tid`, **FUORI scope di questa fase
+>   DB**): §4.6.G (PermissionResolver, repository, UI). Non verra' iniziato
+>   finche' PR1 non e' mergiata su `Tito-dev`.
+> * **PR3 Cutover** (branch `dev/db-tid`, dopo che PR2 gira stabile): §4.6.H
+>   (rinomina tabella legacy + promozione vista).
+
+#### 4.6.A — Estensione modello (PR1 DB)
+
+- [x] 4.6.A.1 `ALTER TABLE identita_digitali` aggiungere 4 colonne stateful:
+      `tentativi_falliti` (smallint, default 0), `bloccato_fino_a`
+      (timestamptz, nullable), `totp_obbligatorio` (boolean, default false),
+      `storicizza` (boolean, default true — gia' presente, idempotente)
+      — `20260419-01-alter-identita-digitali-add-stateful-cols-mctit.yaml`
+- [x] 4.6.A.2 `ALTER TYPE config.tipo_profilo_accesso ADD VALUE 'SUPER_ADMIN'`
+      — `20260419-02-alter-tipo-profilo-accesso-add-super-admin-mctit.yaml`
+- [x] 4.6.A.3 Update `trgfn_profili_accesso_bindings_guard_coerenza` per
+      gestire `tipo = SUPER_ADMIN`: bindable **solo** su
+      `identita_digitale_id` (privilegio personale, non di reparto ne' di
+      ruolo applicativo)
+      — `20260419-03-update-trgfn-profili-accesso-bindings-guard-coerenza-mctit.yaml`
+- [x] 4.6.A.4 Seed profilo `SUPER_ADMIN` (id 9100) via INSERT
+      idempotente + setval sequenza. No righe in `profili_accesso_aree`:
+      il bypass e' totale, risolto nel resolver. Nota limite: l'indice
+      `uq_profili_accesso_bindings_identita` impone **un solo binding
+      diretto per identita**, quindi SUPER_ADMIN e AD_HOC sono
+      mutualmente esclusivi per la stessa identita (SUPER_ADMIN comunque
+      bypassa AD_HOC, quindi semanticamente coerente).
+      — `20260419-04-seed-profilo-super-admin-mctit.yaml`
+
+#### 4.6.B — Funzioni resolver (PR1 DB)
+
+- [x] 4.6.B.0 Creare helper DRY
+      `script.fn_has_identita_attiva(auth_user_id, ruolo_applicativo)`
+      `RETURNS boolean LANGUAGE sql STABLE`. Incapsula il check
+      "identita attiva nella finestra temporale" riusato da 7+ funzioni.
+      Parametrizzato sul ruolo_applicativo per riuso futuro §4.8
+      (resolver generalizzato su profili_accesso).
+      — `20260419-09-create-fn-has-identita-attiva-mctit.yaml`
+- [x] 4.6.B.1 Creare `script.fn_is_super_admin(p_auth_user_id integer)`
+      — `20260419-10-create-fn-is-super-admin-mctit.yaml`
+- [x] 4.6.B.2 Update `fn_resolve_livello_area`
+      — `20260419-11-update-fn-resolve-livello-area-mctit.yaml`
+- [x] 4.6.B.3 Update `fn_resolve_livello_oggetto`
+      — `20260419-12-update-fn-resolve-livello-oggetto-mctit.yaml`
+- [x] 4.6.B.4 Update `fn_check_azione_processo`
+      — `20260419-13-update-fn-check-azione-processo-mctit.yaml`
+- [x] 4.6.B.5 Update `fn_check_user_emittente_scope`
+      — `20260419-14-update-fn-check-user-emittente-scope-mctit.yaml`
+- [x] 4.6.B.6 Update `fn_get_emittenti_scope_sr_ids`
+      — `20260419-15-update-fn-get-emittenti-scope-sr-ids-mctit.yaml`
+- [x] 4.6.B.7 Update `fn_get_emittenti_scope` (firma slegata da RUA)
+      — `20260419-16-update-fn-get-emittenti-scope-mctit.yaml`
+- [x] 4.6.B.8 Update `fn_get_user_permissions_map` (JOIN diretto)
+      — `20260419-17-update-fn-get-user-permissions-map-mctit.yaml`
+- [x] 4.6.B.9 Update `fn_get_user_actions_map`
+      — `20260419-18-update-fn-get-user-actions-map-mctit.yaml`
+- [x] 4.6.B.10 Update `fn_check_operatore_invitabile` + `fn_get_setup_status`
+      (entrambe leggevano `ruolo_sistema` via JOIN diretto)
+      — `20260419-19-update-fn-check-operatore-invitabile-mctit.yaml`
+      + `20260419-20-update-fn-get-setup-status-mctit.yaml`
+- [x] 4.6.B.11 Update `fn_get_user_profile` (refactor query iniziale su
+      identita_digitali + aggiunta output `is_super_admin`, `ruolo_applicativo`)
+      — `20260419-21-update-fn-get-user-profile-mctit.yaml`
+
+#### 4.6.C — Wrapper deprecato (PR1 DB)
+
+- [x] 4.6.C.1 Update `script.fn_get_ruolo_sistema` come wrapper
+      retrocompatibile. Firma e tipo di ritorno invariati.
+      — `20260419-22-update-fn-get-ruolo-sistema-wrapper-mctit.yaml`
+
+#### 4.6.D — Writer DB (PR1 DB)
+
+- [x] 4.6.D.1 Update `script.fn_registra_tentativo_login`: scrive su
+      `identita_digitali` (fonte primaria) + doppio UPDATE su
+      `risorse_umane_auth_user` durante transizione expand-align-contract.
+      — `20260419-23-update-fn-registra-tentativo-login-mctit.yaml`
+- [x] 4.6.D.2 Update `script.fn_check_blocco_login`: legge da
+      `identita_digitali`; auto-unlock su entrambe durante transizione.
+      — `20260419-24-update-fn-check-blocco-login-mctit.yaml`
+- [x] 4.6.D.3 Update `anagrafiche.fn_crea_risorsa_umana`: doppio INSERT
+      (RUA legacy + identita_digitali OPERATORE). Traduce
+      `p_ruolo_sistema`: ADMIN -> binding SUPER_ADMIN (profilo 9100);
+      DISABILITATO -> identita inattiva; OPERATIVO -> default. Firma
+      esterna invariata (fn_crea_operatore / amm_software_repository
+      non cambiano).
+      — `20260419-25-update-fn-crea-risorsa-umana-mctit.yaml`
+
+#### 4.6.E — Backfill dati (PR1 DB)
+
+- [x] 4.6.E.1 Backfill identita OPERATORE per ogni RUA esistente.
+      Idempotente via NOT EXISTS (niente ON CONFLICT: il constraint
+      `uq_identita_digitali_auth_user` e' totale ma NOT EXISTS e'
+      equivalente e piu' leggibile).
+      — `20260419-80-backfill-identita-digitali-operatori-mctit.yaml`
+- [x] 4.6.E.2 Backfill bindings SUPER_ADMIN per operatori con
+      `ruolo_sistema='ADMIN'` legacy. Idempotente via NOT EXISTS.
+      — `20260419-81-backfill-bindings-super-admin-mctit.yaml`
+
+Aggiunta 2026-04-19 **§4.6.D.4 — Trigger-ponte temporaneo** (non
+previsto nel piano iniziale ma necessario per transizione expand-align-
+contract senza rompere test esistenti + backend legacy pre-PR2):
+
+- [x] 4.6.D.4 `trgfn_risorse_umane_auth_user_sync_identita`: AFTER
+      INSERT/UPDATE su RUA propaga stato a `identita_digitali` OPERATORE
+      (UPSERT) e sincronizza binding SUPER_ADMIN col ruolo_sistema.
+      Rimovibile al cutover §4.6.H.3.
+      — `20260419-26-create-trgfn-rua-sync-identita-digitale-mctit.yaml`
+
+#### 4.6.F — Vista compatibilita' (PR1 DB, corrisponde al vecchio §4.6.1)
+
+- [x] 4.6.F.1 Vista `anagrafiche.vw_risorse_umane_auth_user` creata con
+      prefisso vw_ per convivere con la tabella omonima fino al cutover
+      §4.6.H.2. Colonna `ruolo_sistema` ricostruita via CASE dinamico;
+      `risorsa_umana_id` via JOIN `soggetti_ruoli -> risorse_umane`.
+      Read-only.
+      — `20260419-30-create-vw-risorse-umane-auth-user-mctit.yaml`
+
+#### 4.6.G — Backend Python + UI (PR2 — **FUORI scope fase DB**)
+
+> Branch `dev/backend-tid`. Non iniziare finche' PR1 non e' mergiata.
+
+- [ ] 4.6.G.1 `PermissionResolver.get_ruolo_sistema` -> rinomina in
+      `is_super_admin(user)` + wrapper temporaneo retrocompatibile.
+      Aggiungere `is_disabilitato(user)` se serve esplicito.
+- [ ] 4.6.G.2 `auth_repository.set_invito_inviato_at` e
+      `set_deve_cambiare_password` -> switch scrittura su
+      `identita_digitali` (colonne gia' esistenti dal 2026-04-18).
+- [ ] 4.6.G.3 `amm_software_repository.update_operatore` -> input cambia
+      da `ruolo_sistema: str` a `is_super_admin: bool`. Traduce in
+      INSERT/UPDATE del binding SUPER_ADMIN via API di gestione profili.
+- [ ] 4.6.G.4 `amm_software_repository.disabilita_operatore` /
+      `riattiva_operatore` -> toccano solo `identita_digitali.attivo`
+      (oltre al parent `risorse_umane.attivo` come oggi). Niente piu'
+      UPDATE diretta del bridge legacy.
+- [ ] 4.6.G.5 UI `OperatoreDrawer.vue`: radio ADMIN/OPERATIVO/DISABILITATO
+      -> toggle "Concedi accesso SUPER ADMIN" (binding) +
+      toggle/pulsante separato "Disabilita accesso".
+- [ ] 4.6.G.6 Test Django: aggiornare `test_permissions.py`,
+      `test_emittente_fiscale_scope.py`, `test_me_view.py`,
+      `test_permissions_audit.py` per mockare `is_super_admin` invece di
+      `ruolo_sistema`.
+
+#### 4.6.H — Cutover fisico (PR3, dopo PR2 stabile)
+
+> Branch `dev/db-tid`, solo quando tutti i writer Python sono migrati su
+> `identita_digitali`.
+
+- [ ] 4.6.H.1 Verificare assenza di writer residui su
+      `risorse_umane_auth_user` (corrisponde al vecchio §4.6.2). Grep su
+      backend Python + DB functions + trigger. Report di check-list in
+      PR description.
+- [ ] 4.6.H.2 Rinominare `risorse_umane_auth_user` in
+      `_legacy_risorse_umane_auth_user` (corrisponde al vecchio §4.6.3).
+      Promuovere la vista `vw_risorse_umane_auth_user` al nome
+      originale `risorse_umane_auth_user` (DROP vista vecchia, CREATE
+      vista col nome originale).
+- [ ] 4.6.H.3 Changeset dedicato: rimuovere la doppia verifica OPERATORE
+      in `fn_sync_auth_user_is_active` (vincolo legacy §4.5.2 ora
+      ridondante, il sync gira su `identita_digitali`).
+- [ ] 4.6.H.4 Changeset dedicato: rimuovere fallback legacy su
+      `risorse_umane_auth_user` in `fn_sync_auth_user_is_active` (§4.5.1
+      dead code post-cutover).
+
+#### 4.6.I — Test pgTAP (distribuiti tra PR1 e PR3)
+
+- [x] 4.6.I.1 Test `test-fn-is-super-admin.sql` (8 casi): NULL, utente
+      inesistente, binding attivo/inattivo, identita inattiva, profilo
+      inattivo, finestra scaduta
+      — `db/pgtap/script/test-fn-is-super-admin.sql`
+- [x] 4.6.I.2 Test `test-vw-risorse-umane-auth-user.sql` (5 casi):
+      ricostruzione ruolo_sistema OPERATIVO/ADMIN/DISABILITATO +
+      verifica trigger-ponte §4.6.D.4
+      — `db/pgtap/anagrafiche/test-vw-risorse-umane-auth-user.sql`
+- [ ] 4.6.I.3 ~~Aggiornare ~25 fixture nei test esistenti~~ **rimandato**:
+      il trigger-ponte §4.6.D.4 mantiene i test legacy funzionanti
+      (INSERT/UPDATE RUA si propaga automaticamente a identita_digitali).
+      Aggiornamento esplicito rinviato a post-PR2, quando il backend
+      cesserà di usare RUA e il trigger-ponte potrà essere rimosso (§4.6.H.3).
+- [ ] 4.6.I.4 Test regression: operatore non-ADMIN mantiene esattamente
+      lo stesso livello_area / livello_oggetto / azione_processo prima
+      e dopo il refactor (fixture legacy + nuova per confronto). **Coperto
+      implicitamente** dal trigger-ponte durante PR1; test esplicito
+      rinviato a PR3 (pre-cutover) come smoke regression.
 
 ### 4.7 GUC e propagazione identita'
 
@@ -388,14 +743,42 @@ Primo set di endpoint sufficienti per un MVP del portale cliente:
 
 ### 7.1 Test DB
 
-- [ ] 7.1.1 pgTAP: trigger `trgfn_identita_digitali_guard_coerenza` (8 casi)
+- [x] 7.1.1 pgTAP: trigger `trgfn_identita_digitali_guard_coerenza` (10 casi)
+      — `db/pgtap/anagrafiche/test-identita-digitali-guard-coerenza.sql`:
+      dispatch CASE completo (OPERATORE ok/ko, CLIENTE_PORTALE ok/ko,
+      SHOP_CUSTOMER, FORNITORE_PORTALE ok/ko, API_CLIENT early-exit) +
+      guard riusabile `fn_guard_soggetto_pf_pura` coperto da
+      `db/pgtap/script/test-fn-guard-soggetto-pf-pura.sql` (8 casi).
 - [ ] 7.1.2 pgTAP: sync is_active per 4 tipi di identita'
-- [ ] 7.1.3 pgTAP: scope policy EF_WHITELIST (regression rispetto a oggi)
-- [ ] 7.1.4 pgTAP: scope policy BA_OWNERSHIP (con dati di test multi-cliente)
-- [ ] 7.1.5 pgTAP: scope policy FORNITORE_OWNERSHIP
-- [ ] 7.1.6 pgTAP: scope policy SELF_OWNERSHIP (shop)
+      — parziale: test legacy (operatore via RUA) coperto da
+      `test-sync-auth-user-is-active.sql` aggiornato (18 casi).
+      Dedicati per CLIENTE_PORTALE / FORNITORE_PORTALE / SHOP_CUSTOMER
+      aperti (vanno scritti post cutover §4.6 con dati di test
+      identita_digitali popolati).
+- [x] 7.1.3 pgTAP: scope policy EF_WHITELIST (8 casi)
+      — `db/pgtap/script/test-fn-scope-ef-whitelist.sql`: identita
+      inesistente/inattiva/attiva senza whitelist/con whitelist e target
+      dentro/fuori. Regression sul comportamento legacy verificata.
+- [x] 7.1.4 pgTAP: scope policy BA_OWNERSHIP (6 casi incluso leak test)
+      — `db/pgtap/script/test-fn-scope-ba-ownership.sql`: identita
+      cliente A non vede BA di cliente B + fail-closed su identita
+      inattiva/inesistente.
+- [x] 7.1.5 pgTAP: scope policy FORNITORE_OWNERSHIP (7 casi)
+      — `db/pgtap/script/test-fn-scope-fornitore-ownership.sql`: match,
+      leak test, check ruolo applicativo (defense-in-depth), fail-closed
+      su inattivo.
+- [x] 7.1.6 ~~pgTAP: scope policy SELF_OWNERSHIP (shop)~~ — **non applicabile**:
+      SELF_OWNERSHIP unificato con BA_OWNERSHIP in §4.4 (CLIENTE_PORTALE
+      e SHOP_CUSTOMER condividono il ruolo anagrafico CL). Copertura in
+      §7.1.4.
+- [x] 7.1.9 pgTAP: CHECK xor + guard coerenza
+      `trgfn_profili_accesso_bindings_guard_coerenza` (9 casi)
+      — `db/pgtap/config/test-profili-accesso-bindings-guard-coerenza.sql`:
+      xor violato (0/2 colonne), ogni combinazione tipo profilo ↔ tipo
+      binding (REPARTO/PORTALE coerenti e incoerenti).
 - [ ] 7.1.7 pgTAP: RLS policy su fatture (cliente A non vede cliente B)
-- [ ] 7.1.8 pgTAP: RLS bypass per operatore interno
+      — rimandato a §4.9 (RLS non ancora attivate).
+- [ ] 7.1.8 pgTAP: RLS bypass per operatore interno — rimandato a §4.9.
 
 ### 7.2 Test Backend
 
@@ -472,9 +855,11 @@ inferiore e' completo e testato.
 
 ## 10. Decisioni aperte da discutere
 
-- [ ] 10.1 **Admin di portale?** Un cliente azienda con piu' referenti vuole
-      un "amministratore" che gestisca gli utenti secondari? Se si', serve
-      un sotto-modello `CLIENTE_ADMIN_PORTALE` + capability di invito
+- [x] 10.1 **Admin di portale?** — *Decisione 2026-04-18*: rimandato a
+      Fase 2 post-MVP. Il modello architetturale supporta nativamente
+      l'aggiunta futura del ruolo `CLIENTE_ADMIN_PORTALE` (enum value +
+      profilo standard + endpoint `POST /api/portale/utenti/invita`)
+      senza refactor strutturali. MVP: un solo account per cliente.
 - [ ] 10.2 **Frontend separato o unico?** Un bundle unico con guard vs tre build
       separati. Impatto su deploy e autenticazione cross-domain
 - [ ] 10.3 **Multi-lingua portale?** I clienti esteri vedono in inglese? Se si',
@@ -505,6 +890,37 @@ inferiore e' completo e testato.
 
 * **2026-04-18**: Documento creato dopo analisi architetturale.
   Guida di riferimento: [architettura-multi-face-auth](/guide/architettura-multi-face-auth).
+* **2026-04-18 (stesso giorno, sessione implementativa)**: completate le
+  prime 5 sotto-fasi DB.
+  * **§4.1 ENUM** (2 file): `ruolo_applicativo`, `tipo_profilo_accesso`.
+    `config.tipo_token` risulta varchar, nessun DDL necessario.
+  * **§4.2 Bridge `identita_digitali`** (7 file): tabella + storico +
+    guard coerenza ruolo + nuova funzione riusabile
+    `script.fn_guard_soggetto_pf_pura` + refactor del vecchio trigger
+    guard su RUA per delegare alla funzione riusabile.
+  * **§4.3 Profili accesso** (15 file): 4 tabelle nuove +
+    4 storiche + guard tipo profilo <-> tipo binding + migrazione dati
+    REPARTO idempotente + seed 3 profili PORTALE via CSV +
+    loadUpdateData + aggiornamento `messaggi_errore.csv` (2 nuovi codici).
+  * **§4.4 Scope policy** (10 file): 2 tabelle + 2 storiche + 3 funzioni
+    `fn_scope_*` (`LANGUAGE sql STABLE`, fail-closed) + seed CSV +
+    backfill EF_WHITELIST. `SELF_OWNERSHIP` unificato con `BA_OWNERSHIP`
+    (cliente portale e shop condividono il ruolo CL).
+  * **§4.5 Generalizzazione sync** (4 file): nuova firma
+    `fn_sync_auth_user_is_active(p_auth_user_id integer)` con algoritmo
+    expand-align-contract (priorita identita nuova, fallback legacy) +
+    fix implicito del bug latente §3.2.b + doppia verifica OPERATORE
+    temporanea + aggiornamento 2 trigger function esistenti + nuovo
+    trigger su `identita_digitali` + estensione `fn_sync_auth_user_expired`
+    a UNION di RU legacy + identita nuove.
+  * **Doc concettuale**: 19 nuovi manual + 4 manual esistenti aggiornati
+    (sync auth_user family).
+  * **pgTAP §7.1 (recupero debito)**: 1 file aggiornato + 6 nuovi file,
+    totale ~50 casi di test. Coperture: guard coerenza identita, guard
+    bindings, funzione riusabile PF pura, 3 scope policy. Aperti: sync
+    per identita portale/shop (post cutover §4.6) e RLS (§4.9).
+  * **Aperto**: §4.6 vista compatibilita, §4.7 GUC, §4.8 resolve_livello_*,
+    §4.9 RLS.
 
 ---
 

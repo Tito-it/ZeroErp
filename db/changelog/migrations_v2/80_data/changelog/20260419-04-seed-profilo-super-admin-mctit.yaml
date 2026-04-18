@@ -1,0 +1,84 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - changeSet:
+      id: 20260419-04-seed-profilo-super-admin
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Seed del profilo SUPER_ADMIN (§4.6.A.4 WIP multi-face-auth).
+        Profilo singolo che rappresenta il bypass totale dei permessi,
+        sostituisce risorse_umane_auth_user.ruolo_sistema='ADMIN'.
+        Nessuna area specifica: il bypass e' totale e viene risolto nel
+        resolver via script.fn_is_super_admin (§4.6.B.1), non tramite
+        righe in profili_accesso_aree.
+        Range id seed dedicato 9100 (oltre i profili PORTALE 9001-9006).
+        Idempotente via ON CONFLICT DO NOTHING sulla PK + setval finale
+        per allineare la sequenza autoincrement.
+      preConditions:
+        - onFail: HALT
+        - and:
+          - tableExists:
+              schemaName: config
+              tableName: profili_accesso
+          - sqlCheck:
+              expectedResult: 1
+              sql: |
+                SELECT COUNT(*)
+                  FROM pg_enum e
+                  JOIN pg_type t ON t.oid = e.enumtypid
+                  JOIN pg_namespace n ON n.oid = t.typnamespace
+                 WHERE n.nspname = 'config'
+                   AND t.typname = 'tipo_profilo_accesso'
+                   AND e.enumlabel = 'SUPER_ADMIN';
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Inserimento idempotente del profilo SUPER_ADMIN.
+              -- ON CONFLICT DO NOTHING rende il changeset sicuro anche
+              -- se eseguito piu' volte (runOnChange: true).
+              INSERT INTO config.profili_accesso (
+                  id,
+                  tipo,
+                  codice,
+                  descrizione,
+                  attivo,
+                  meta
+              ) VALUES (
+                  9100,
+                  'SUPER_ADMIN'::config.tipo_profilo_accesso,
+                  'SUPER_ADMIN',
+                  'Profilo SUPER_ADMIN: bypass totale dei permessi (sostituisce ruolo_sistema=ADMIN legacy). Bindabile solo per identita (privilegio personale).',
+                  true,
+                  '{}'::jsonb
+              )
+              ON CONFLICT (id) DO NOTHING;
+
+              -- Allineamento sequenza autoincrement: dopo i seed 9001-9003
+              -- (portale) e 9100 (super admin), la sequenza deve puntare
+              -- oltre per evitare collisione con futuri INSERT automatici.
+              SELECT setval(
+                  pg_get_serial_sequence('config.profili_accesso', 'id'),
+                  GREATEST(COALESCE(MAX(id), 0), 1),
+                  true
+              ) FROM config.profili_accesso;
+
+      rollback:
+        - sql:
+            sql: |
+              -- Rollback: rimuove il profilo SUPER_ADMIN.
+              -- Pre-condizione implicita: tutti i bindings SUPER_ADMIN
+              -- devono essere stati rimossi (FK ON DELETE RESTRICT).
+              DELETE FROM config.profili_accesso WHERE id = 9100;

@@ -1,0 +1,182 @@
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20260419-26-create-trgfn-rua-sync-identita-digitale-mctit.yaml
+
+  - changeSet:
+      id: 20260419-26-create-trgfn-rua-sync-identita-digitale
+      author: mctit
+      runOnChange: true
+      validCheckSum: [ANY]
+      comment: >
+        Trigger-ponte TEMPORANEO (§4.6.D.4 WIP, aggiunta 2026-04-19):
+        a ogni INSERT/UPDATE su risorse_umane_auth_user propaga lo stato
+        nella controparte anagrafiche.identita_digitali (OPERATORE) e
+        aggiorna i bindings SUPER_ADMIN coerentemente al cambio
+        ruolo_sistema. Serve per:
+          (1) mantenere funzionanti i test pgTAP esistenti che fanno
+              INSERT/UPDATE diretti su RUA come fixture
+          (2) mantenere coerente il backend Python legacy (amm_software_
+              repository scrive RUA) tra merge PR1 e merge PR2
+
+        Logica:
+          - Se identita OPERATORE non esiste: INSERT (copia stateful)
+          - Se esiste: UPDATE stateful cols + attivo + finestra
+          - ruolo_sistema='ADMIN'        -> INSERT/KEEP binding 9100
+          - ruolo_sistema<>'ADMIN'       -> DELETE eventuale binding 9100
+
+        Fase z80 (prima di z90 sync auth_user). Rimuovibile al
+        cutover §4.6.H.3 quando il bridge legacy verra' eliminato.
+      preConditions:
+        - onFail: HALT
+        - and:
+          - tableExists:
+              schemaName: anagrafiche
+              tableName: risorse_umane_auth_user
+          - tableExists:
+              schemaName: anagrafiche
+              tableName: identita_digitali
+          - tableExists:
+              schemaName: config
+              tableName: profili_accesso_bindings
+        # NOTA: il profilo seed SUPER_ADMIN (id 9100) viene creato in
+        # 80_data (file 20260419-04), processato DOPO 20_code nel master
+        # changelog. La dipendenza del trigger sul profilo 9100 e' solo
+        # a runtime (quando il trigger scatta su INSERT/UPDATE RUA con
+        # ruolo_sistema='ADMIN'): al momento di quella scatta, 80_data
+        # e' gia' stato applicato. Per questo NON mettiamo sqlCheck sul
+        # profilo qui (fallirebbe per ordering).
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_risorse_umane_auth_user_sync_identita()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_soggetto_ruolo_id anagrafiche.risorse_umane.soggetto_ruolo_id%TYPE;
+                  v_valido_dal        anagrafiche.risorse_umane.valido_dal%TYPE;
+                  v_valido_al         anagrafiche.risorse_umane.valido_al%TYPE;
+                  v_identita_id       anagrafiche.identita_digitali.id%TYPE;
+                  v_identita_attiva   boolean;
+              BEGIN
+                  -- ------------------------------------------------------------
+                  -- Trigger-ponte temporaneo (§4.6.D.4 WIP multi-face-auth)
+                  -- Propaga RUA -> identita_digitali (OPERATORE).
+                  -- ------------------------------------------------------------
+
+                  -- Risolvo soggetto_ruolo_id e finestra dal record RU parent.
+                  -- NOTA: RUA.risorsa_umana_id -> RU.soggetto_ruolo_id.
+                  SELECT ru.soggetto_ruolo_id, ru.valido_dal, ru.valido_al
+                    INTO v_soggetto_ruolo_id, v_valido_dal, v_valido_al
+                    FROM anagrafiche.risorse_umane ru
+                   WHERE ru.id = NEW.risorsa_umana_id;
+
+                  -- Stato attivo identita: composto (RUA.attivo AND ruolo!=DISABILITATO).
+                  v_identita_attiva := (NEW.attivo AND NEW.ruolo_sistema <> 'DISABILITATO'::config.ruolo_sistema);
+
+                  -- UPSERT identita_digitali OPERATORE.
+                  -- ON CONFLICT su UNIQUE auth_user_id (indice totale).
+                  INSERT INTO anagrafiche.identita_digitali (
+                      soggetto_ruolo_id,
+                      auth_user_id,
+                      ruolo_applicativo,
+                      attivo,
+                      valido_dal,
+                      valido_al,
+                      deve_cambiare_password,
+                      invito_inviato_at,
+                      tentativi_falliti,
+                      bloccato_fino_a,
+                      totp_obbligatorio,
+                      storicizza
+                  )
+                  VALUES (
+                      v_soggetto_ruolo_id,
+                      NEW.auth_user_id,
+                      'OPERATORE'::config.ruolo_applicativo,
+                      v_identita_attiva,
+                      COALESCE(v_valido_dal, CURRENT_DATE),
+                      v_valido_al,
+                      COALESCE(NEW.deve_cambiare_password, false),
+                      NEW.invito_inviato_at,
+                      COALESCE(NEW.tentativi_falliti, 0),
+                      NEW.bloccato_fino_a,
+                      COALESCE(NEW.totp_obbligatorio, false),
+                      COALESCE(NEW.storicizza, true)
+                  )
+                  ON CONFLICT (auth_user_id) DO UPDATE
+                     SET soggetto_ruolo_id      = EXCLUDED.soggetto_ruolo_id,
+                         attivo                 = EXCLUDED.attivo,
+                         valido_dal             = EXCLUDED.valido_dal,
+                         valido_al              = EXCLUDED.valido_al,
+                         deve_cambiare_password = EXCLUDED.deve_cambiare_password,
+                         invito_inviato_at      = EXCLUDED.invito_inviato_at,
+                         tentativi_falliti      = EXCLUDED.tentativi_falliti,
+                         bloccato_fino_a        = EXCLUDED.bloccato_fino_a,
+                         totp_obbligatorio      = EXCLUDED.totp_obbligatorio,
+                         storicizza             = EXCLUDED.storicizza
+                  RETURNING id INTO v_identita_id;
+
+                  -- Sync binding SUPER_ADMIN col ruolo_sistema.
+                  IF NEW.ruolo_sistema = 'ADMIN'::config.ruolo_sistema THEN
+                      -- INSERT se non esiste (NOT EXISTS per gestire l'indice
+                      -- parziale UNIQUE su identita_digitale_id).
+                      INSERT INTO config.profili_accesso_bindings (
+                          profilo_accesso_id, identita_digitale_id, attivo
+                      )
+                      SELECT 9100, v_identita_id, true
+                       WHERE NOT EXISTS (
+                           SELECT 1 FROM config.profili_accesso_bindings pab
+                            WHERE pab.identita_digitale_id = v_identita_id
+                       );
+
+                      -- Riattiva binding se esisteva ma era inattivo.
+                      UPDATE config.profili_accesso_bindings
+                         SET attivo = true
+                       WHERE identita_digitale_id = v_identita_id
+                         AND profilo_accesso_id = 9100
+                         AND attivo = false;
+                  ELSE
+                      -- DELETE binding SUPER_ADMIN se esistente (l'utente
+                      -- ha perso il privilegio di bypass).
+                      DELETE FROM config.profili_accesso_bindings
+                       WHERE identita_digitale_id = v_identita_id
+                         AND profilo_accesso_id = 9100;
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.trgfn_risorse_umane_auth_user_sync_identita() IS
+                  'Trigger-ponte temporaneo (§4.6.D.4 WIP): propaga INSERT/UPDATE '
+                  'RUA -> identita_digitali OPERATORE e sincronizza binding '
+                  'SUPER_ADMIN (9100) col ruolo_sistema. Rimovibile al cutover '
+                  '§4.6.H.3 quando il bridge legacy viene eliminato.';
+
+              -- Installazione trigger (fase z80: post-guard, pre-sync auth_user).
+              DROP TRIGGER IF EXISTS trg_risorse_umane_auth_user_z80_sync_identita_ins_upd
+                  ON anagrafiche.risorse_umane_auth_user;
+
+              CREATE TRIGGER trg_risorse_umane_auth_user_z80_sync_identita_ins_upd
+                  AFTER INSERT
+                       OR UPDATE OF attivo,
+                                    ruolo_sistema,
+                                    tentativi_falliti,
+                                    bloccato_fino_a,
+                                    deve_cambiare_password,
+                                    invito_inviato_at,
+                                    totp_obbligatorio,
+                                    storicizza,
+                                    risorsa_umana_id,
+                                    auth_user_id
+                  ON anagrafiche.risorse_umane_auth_user
+                  FOR EACH ROW
+                  EXECUTE FUNCTION anagrafiche.trgfn_risorse_umane_auth_user_sync_identita();
+      rollback:
+        - sql:
+            sql: |
+              DROP TRIGGER IF EXISTS trg_risorse_umane_auth_user_z80_sync_identita_ins_upd
+                  ON anagrafiche.risorse_umane_auth_user;
+              DROP FUNCTION IF EXISTS anagrafiche.trgfn_risorse_umane_auth_user_sync_identita();

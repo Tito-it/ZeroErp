@@ -1,0 +1,126 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - changeSet:
+      id: 20260419-80-backfill-identita-digitali-operatori
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Backfill §4.6.E.1 WIP multi-face-auth: crea una riga
+        anagrafiche.identita_digitali per ogni record esistente in
+        risorse_umane_auth_user, copiando le colonne stateful dal bridge
+        legacy. Idempotente via NOT EXISTS (non inserisce duplicati se
+        eseguito piu' volte, es. a seguito di runOnChange).
+
+        Mappatura campi:
+          rau.auth_user_id             -> id.auth_user_id
+          ru.soggetto_ruolo_id         -> id.soggetto_ruolo_id
+          'OPERATORE'                  -> id.ruolo_applicativo (tutte le
+                                           RUA sono operatori per definizione)
+          rau.attivo AND ruolo<>DISABILITATO -> id.attivo (DISABILITATO
+                                           legacy si traduce in soft-off
+                                           dell'identita)
+          ru.valido_dal, ru.valido_al  -> finestra temporale
+          rau.deve_cambiare_password   -> id.deve_cambiare_password
+          rau.invito_inviato_at        -> id.invito_inviato_at
+          rau.tentativi_falliti        -> id.tentativi_falliti
+          rau.bloccato_fino_a          -> id.bloccato_fino_a
+          rau.totp_obbligatorio        -> id.totp_obbligatorio
+          rau.storicizza               -> id.storicizza
+
+        Prereq: colonne stateful su identita_digitali create
+        (20260419-01), enum e seed SUPER_ADMIN presenti (servono al
+        backfill bindings §4.6.E.2, file successivo). Il guard coerenza
+        trgfn_identita_digitali_guard_coerenza accettera' questi record
+        OPERATORE solo se il soggetto_ruolo e' RIS_UMANA PF pura (gia'
+        garantito dal guard omologo su RUA).
+      preConditions:
+        - onFail: HALT
+        - and:
+          - tableExists:
+              schemaName: anagrafiche
+              tableName: identita_digitali
+          - columnExists:
+              schemaName: anagrafiche
+              tableName: identita_digitali
+              columnName: tentativi_falliti
+          - tableExists:
+              schemaName: anagrafiche
+              tableName: risorse_umane_auth_user
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Backfill idempotente: solo righe senza controparte
+              -- in identita_digitali OPERATORE. I trigger framework
+              -- (audit, tx_id, storico) popolano automaticamente
+              -- data_insert / user_insert / tx_id.
+              INSERT INTO anagrafiche.identita_digitali (
+                  soggetto_ruolo_id,
+                  auth_user_id,
+                  ruolo_applicativo,
+                  attivo,
+                  valido_dal,
+                  valido_al,
+                  deve_cambiare_password,
+                  invito_inviato_at,
+                  tentativi_falliti,
+                  bloccato_fino_a,
+                  totp_obbligatorio,
+                  storicizza
+              )
+              SELECT ru.soggetto_ruolo_id,
+                     rau.auth_user_id,
+                     'OPERATORE'::config.ruolo_applicativo,
+                     (rau.attivo AND rau.ruolo_sistema <> 'DISABILITATO'::config.ruolo_sistema) AS attivo,
+                     COALESCE(ru.valido_dal, CURRENT_DATE),
+                     ru.valido_al,
+                     COALESCE(rau.deve_cambiare_password, false),
+                     rau.invito_inviato_at,
+                     COALESCE(rau.tentativi_falliti, 0),
+                     rau.bloccato_fino_a,
+                     COALESCE(rau.totp_obbligatorio, false),
+                     COALESCE(rau.storicizza, true)
+                FROM anagrafiche.risorse_umane_auth_user rau
+                JOIN anagrafiche.risorse_umane ru
+                  ON ru.id = rau.risorsa_umana_id
+               WHERE NOT EXISTS (
+                   SELECT 1
+                     FROM anagrafiche.identita_digitali id
+                    WHERE id.auth_user_id = rau.auth_user_id
+                      AND id.ruolo_applicativo = 'OPERATORE'
+               );
+
+              -- Allineamento sequenza autoincrement (protezione da
+              -- collisioni se successivi INSERT usano autoincrement).
+              SELECT setval(
+                  pg_get_serial_sequence('anagrafiche.identita_digitali', 'id'),
+                  GREATEST(COALESCE(MAX(id), 0), 1),
+                  true
+              ) FROM anagrafiche.identita_digitali;
+
+      rollback:
+        - sql:
+            sql: |
+              -- Rollback: rimuove le identita OPERATORE create dal backfill
+              -- (solo quelle con auth_user_id presente anche in RUA,
+              -- altrimenti si rischia di cancellare identita create da
+              -- altri flussi). Attenzione: eventuali bindings SUPER_ADMIN
+              -- creati da 20260419-81 vanno rimossi prima (FK restrict).
+              DELETE FROM anagrafiche.identita_digitali id
+               WHERE id.ruolo_applicativo = 'OPERATORE'
+                 AND EXISTS (
+                     SELECT 1 FROM anagrafiche.risorse_umane_auth_user rau
+                      WHERE rau.auth_user_id = id.auth_user_id
+                 );

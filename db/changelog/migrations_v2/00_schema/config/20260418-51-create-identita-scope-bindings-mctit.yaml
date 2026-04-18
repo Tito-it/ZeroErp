@@ -1,0 +1,134 @@
+databaseChangeLog:
+  - logicalFilePath: /migrations_v2/00_schema/config/20260418-51-create-identita-scope-bindings-mctit.yaml
+
+  - changeSet:
+      id: 20260418-51-create-identita-scope-bindings
+      author: mctit
+      comment: >
+        Tabella di binding identita_digitali <-> scope_policy (§4.4 WIP
+        multi-face-auth). Ogni riga attiva una policy di scope per una
+        specifica identita, con payload parametrico JSONB libero (tipicamente
+        vuoto in questa fase: le policy di default risolvono i dati dai
+        riferimenti anagrafici).
+        UNIQUE (identita_digitale_id, scope_policy_id) garantisce una
+        sola associazione per coppia. Trigger framework via automation.
+      preConditions:
+        - onFail: HALT
+        - and:
+          - tableExists:
+              schemaName: config
+              tableName: scope_policy
+          - tableExists:
+              schemaName: anagrafiche
+              tableName: identita_digitali
+      changes:
+        - createTable:
+            schemaName: config
+            tableName: identita_scope_bindings
+            remarks: >-
+              Associa un'identita digitale a una scope_policy con eventuali
+              parametri di configurazione. Durante una chiamata di check di
+              scope, la funzione_db della policy riceve identita e target e
+              ritorna boolean.
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_identita_scope_bindings
+                    nullable: false
+              - column:
+                  name: identita_digitale_id
+                  type: bigint
+                  remarks: "FK all'identita digitale (anagrafiche.identita_digitali)."
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_identita_scope_bindings_identita
+                    referencedTableSchemaName: anagrafiche
+                    referencedTableName: identita_digitali
+                    referencedColumnNames: id
+              - column:
+                  name: scope_policy_id
+                  type: integer
+                  remarks: "FK alla policy di scope applicata."
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_identita_scope_bindings_policy
+                    referencedTableSchemaName: config
+                    referencedTableName: scope_policy
+                    referencedColumnNames: id
+              - column:
+                  name: parametri
+                  type: jsonb
+                  defaultValueComputed: "'{}'::jsonb"
+                  remarks: "Payload parametrico libero. Default {} vuoto: la maggior parte delle policy risolve dai dati anagrafici."
+                  constraints:
+                    nullable: false
+              - column:
+                  name: attivo
+                  type: boolean
+                  defaultValueBoolean: true
+                  remarks: "Soft flag. Se false, il binding non partecipa alla risoluzione di scope."
+                  constraints:
+                    nullable: false
+              - column:
+                  name: meta
+                  type: jsonb
+                  defaultValueComputed: "'{}'::jsonb"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: storicizza
+                  type: boolean
+                  defaultValueBoolean: true
+                  constraints:
+                    nullable: false
+              - column:
+                  name: tx_id
+                  type: uuid
+              - column:
+                  name: data_insert
+                  type: "timestamp with time zone"
+                  defaultValueComputed: "now()"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: user_insert
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: data_update
+                  type: "timestamp with time zone"
+                  defaultValueComputed: "now()"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: user_update
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  constraints:
+                    nullable: false
+
+        - addUniqueConstraint:
+            schemaName: config
+            tableName: identita_scope_bindings
+            columnNames: identita_digitale_id, scope_policy_id
+            constraintName: uq_identita_scope_bindings_identita_policy
+
+        - sql:
+            sql: |
+              COMMENT ON TABLE config.identita_scope_bindings IS
+                  'Binding identita_digitale <-> scope_policy (§4.4 WIP multi-face-auth). '
+                  'Un''identita puo avere piu policy concorrenti. UNIQUE garantisce '
+                  'una sola riga per coppia (identita, policy). La logica di '
+                  'risoluzione e'' nelle funzioni script.fn_scope_* puntate da '
+                  'scope_policy.funzione_db.';
+      rollback:
+        - dropTable:
+            schemaName: config
+            tableName: identita_scope_bindings

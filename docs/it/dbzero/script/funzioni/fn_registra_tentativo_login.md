@@ -15,32 +15,18 @@ AS $function$
 DECLARE
     v_max_tentativi    integer;
     v_blocco_minuti    integer;
-    v_tentativi        anagrafiche.risorse_umane_auth_user.tentativi_falliti%TYPE;
+    v_tentativi        smallint;
     v_bloccato         boolean := false;
-    v_bloccato_fino_a  anagrafiche.risorse_umane_auth_user.bloccato_fino_a%TYPE;
+    v_bloccato_fino_a  timestamptz;
 BEGIN
     -- =========================================================
-    -- Scopo:
-    --   Registra l'esito di un tentativo di login.
-    --   Se p_successo = true: reset tentativi a 0.
-    --   Se p_successo = false: incrementa contatore.
-    --     Se contatore >= max (da config.parameters):
-    --     imposta blocco temporaneo (durata da config.parameters).
-    --   Da chiamare DOPO la verifica credenziali.
-    --
-    -- Parametri:
-    --   p_auth_user_id: ID utente Django
-    --   p_successo: true = login riuscito, false = fallito
-    --
-    -- Ritorna:
-    --   JSONB { bloccato, minuti_rimanenti, tentativi }
-    --
-    -- Config.parameters usati:
-    --   login_max_tentativi_falliti (default 5)
-    --   login_blocco_minuti (default 15)
+    -- Scopo (refactor §4.6.D.1):
+    --   Registra l'esito di un tentativo di login sul nuovo
+    --   bridge identita_digitali (OPERATORE). Doppio UPDATE
+    --   su risorse_umane_auth_user mantenuto finche' la
+    --   vista §4.6.F non sostituisce il legacy (§4.6.H).
     -- =========================================================
 
-    -- Guard
     IF p_auth_user_id IS NULL OR p_auth_user_id <= 0 THEN
         RETURN jsonb_build_object(
             'bloccato', false,
@@ -49,10 +35,11 @@ BEGIN
         );
     END IF;
 
-    -- Verifica che il record ponte esista
+    -- Verifica identita OPERATORE esistente (fonte primaria)
     IF NOT EXISTS (
-        SELECT 1 FROM anagrafiche.risorse_umane_auth_user
+        SELECT 1 FROM anagrafiche.identita_digitali
          WHERE auth_user_id = p_auth_user_id
+           AND ruolo_applicativo = 'OPERATORE'
     ) THEN
         RETURN jsonb_build_object(
             'bloccato', false,
@@ -62,10 +49,16 @@ BEGIN
     END IF;
 
     IF p_successo THEN
-        -- Login riuscito: reset contatore
+        -- Login riuscito: reset contatore su entrambe
+        UPDATE anagrafiche.identita_digitali
+           SET tentativi_falliti = 0,
+               bloccato_fino_a   = NULL
+         WHERE auth_user_id = p_auth_user_id
+           AND ruolo_applicativo = 'OPERATORE';
+
         UPDATE anagrafiche.risorse_umane_auth_user
            SET tentativi_falliti = 0,
-               bloccato_fino_a  = NULL
+               bloccato_fino_a   = NULL
          WHERE auth_user_id = p_auth_user_id;
 
         RETURN jsonb_build_object(
@@ -90,16 +83,27 @@ BEGIN
         15
     );
 
-    -- Incrementa contatore
-    UPDATE anagrafiche.risorse_umane_auth_user
+    -- Incrementa su identita_digitali (fonte primaria)
+    UPDATE anagrafiche.identita_digitali
        SET tentativi_falliti = tentativi_falliti + 1
      WHERE auth_user_id = p_auth_user_id
+       AND ruolo_applicativo = 'OPERATORE'
     RETURNING tentativi_falliti INTO v_tentativi;
+
+    -- Sync legacy RUA (rimovibile al cutover §4.6.H)
+    UPDATE anagrafiche.risorse_umane_auth_user
+       SET tentativi_falliti = v_tentativi
+     WHERE auth_user_id = p_auth_user_id;
 
     -- Verifica soglia
     IF v_tentativi >= v_max_tentativi THEN
         v_bloccato_fino_a := NOW() + (v_blocco_minuti || ' minutes')::interval;
         v_bloccato := true;
+
+        UPDATE anagrafiche.identita_digitali
+           SET bloccato_fino_a = v_bloccato_fino_a
+         WHERE auth_user_id = p_auth_user_id
+           AND ruolo_applicativo = 'OPERATORE';
 
         UPDATE anagrafiche.risorse_umane_auth_user
            SET bloccato_fino_a = v_bloccato_fino_a
@@ -115,7 +119,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_registra_tentativo_login(p_auth_user_id integer, p_successo boolean)
-IS 'Registra esito tentativo login. Successo: reset contatore. Fallimento: incrementa, se >= max blocca per N minuti. Max e durata da config.parameters (login_max_tentativi_falliti, login_blocco_minuti). Ritorna JSONB {bloccato, minuti_rimanenti, tentativi}.';
+IS 'Registra esito tentativo login. Refactor §4.6.D.1: source of truth = identita_digitali OPERATORE; doppio UPDATE su RUA legacy mantenuto fino a cutover §4.6.H. Successo: reset. Fallimento: incrementa, se >= max blocca per N minuti.';
 ```
 
 ---

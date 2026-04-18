@@ -1,0 +1,178 @@
+databaseChangeLog:
+  - logicalFilePath: /migrations_v2/00_schema/config/20260418-33-create-profili-accesso-bindings-mctit.yaml
+
+  - changeSet:
+      id: 20260418-33-create-profili-accesso-bindings
+      author: mctit
+      comment: >
+        Tabella di binding config.profili_accesso_bindings (§4.3.4 WIP
+        multi-face-auth). Collega un profilo a UNA sola entita di dominio
+        (reparto / identita digitale / ruolo applicativo). CHECK a 3 vie
+        garantisce che esattamente una colonna tra unita_organizzativa_id,
+        identita_digitale_id, ruolo_applicativo sia valorizzata. Tre indici
+        parziali UNIQUE impongono "un solo profilo per entita" (nessun binding
+        duplicato). La coerenza tipo_profilo <-> tipo_binding e' delegata al
+        guard trgfn_profili_accesso_bindings_guard_coerenza (file 40).
+        Trigger framework via automation.
+      preConditions:
+        - onFail: HALT
+        - and:
+          - tableExists:
+              schemaName: config
+              tableName: profili_accesso
+          - tableExists:
+              schemaName: anagrafiche
+              tableName: identita_digitali
+          - sqlCheck:
+              expectedResult: 1
+              sql: |
+                SELECT COUNT(*) FROM pg_type t
+                  JOIN pg_namespace n ON n.oid = t.typnamespace
+                 WHERE n.nspname = 'config'
+                   AND t.typname = 'ruolo_applicativo';
+      changes:
+        - createTable:
+            schemaName: config
+            tableName: profili_accesso_bindings
+            remarks: >-
+              Ogni riga assegna un profilo di accesso a esattamente UNA entita:
+              un reparto (unita_organizzativa_id), una singola identita
+              digitale (identita_digitale_id) o tutti gli utenti di un ruolo
+              applicativo (ruolo_applicativo).
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_profili_accesso_bindings
+                    nullable: false
+              - column:
+                  name: profilo_accesso_id
+                  type: integer
+                  remarks: "FK al profilo header da applicare."
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_profili_accesso_bindings_profilo
+                    referencedTableSchemaName: config
+                    referencedTableName: profili_accesso
+                    referencedColumnNames: id
+              - column:
+                  name: unita_organizzativa_id
+                  type: integer
+                  remarks: "Se valorizzato, il profilo si applica a tutti gli operatori di questo reparto."
+                  constraints:
+                    foreignKeyName: fk_profili_accesso_bindings_uo
+                    referencedTableSchemaName: config
+                    referencedTableName: unita_organizzative
+                    referencedColumnNames: id
+              - column:
+                  name: identita_digitale_id
+                  type: bigint
+                  remarks: "Se valorizzato, il profilo si applica solo a questa identita (override ad-hoc)."
+                  constraints:
+                    foreignKeyName: fk_profili_accesso_bindings_identita
+                    referencedTableSchemaName: anagrafiche
+                    referencedTableName: identita_digitali
+                    referencedColumnNames: id
+              - column:
+                  name: ruolo_applicativo
+                  type: "config.ruolo_applicativo"
+                  remarks: "Se valorizzato, il profilo si applica a tutti gli utenti di questo ruolo (fallback di default per portali/shop)."
+              - column:
+                  name: attivo
+                  type: boolean
+                  defaultValueBoolean: true
+                  remarks: "Se false, il binding non applica il profilo. Permette di sospendere un binding senza eliminarlo."
+                  constraints:
+                    nullable: false
+              - column:
+                  name: meta
+                  type: jsonb
+                  defaultValueComputed: "'{}'::jsonb"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: storicizza
+                  type: boolean
+                  defaultValueBoolean: true
+                  constraints:
+                    nullable: false
+              - column:
+                  name: tx_id
+                  type: uuid
+              - column:
+                  name: data_insert
+                  type: "timestamp with time zone"
+                  defaultValueComputed: "now()"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: user_insert
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: data_update
+                  type: "timestamp with time zone"
+                  defaultValueComputed: "now()"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: user_update
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  constraints:
+                    nullable: false
+
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- CHECK a 3 vie: esattamente UNA colonna tra uo/identita/ruolo
+              -- deve essere valorizzata. Espresso come somma di boolean castati
+              -- a int (pattern idiomatico in PostgreSQL).
+              ALTER TABLE config.profili_accesso_bindings
+                  ADD CONSTRAINT chk_profili_accesso_bindings_xor
+                  CHECK (
+                      (unita_organizzativa_id IS NOT NULL)::int
+                    + (identita_digitale_id   IS NOT NULL)::int
+                    + (ruolo_applicativo      IS NOT NULL)::int
+                    = 1
+                  );
+
+              -- Indici parziali UNIQUE: un solo profilo per entita.
+              -- Ogni indice copre un tipo di binding distinto (mutualmente
+              -- esclusivi grazie al CHECK xor), quindi non si sovrappongono.
+              CREATE UNIQUE INDEX uq_profili_accesso_bindings_uo
+                  ON config.profili_accesso_bindings (unita_organizzativa_id)
+                  WHERE unita_organizzativa_id IS NOT NULL;
+
+              CREATE UNIQUE INDEX uq_profili_accesso_bindings_identita
+                  ON config.profili_accesso_bindings (identita_digitale_id)
+                  WHERE identita_digitale_id IS NOT NULL;
+
+              CREATE UNIQUE INDEX uq_profili_accesso_bindings_ruolo
+                  ON config.profili_accesso_bindings (ruolo_applicativo)
+                  WHERE ruolo_applicativo IS NOT NULL;
+
+              COMMENT ON TABLE config.profili_accesso_bindings IS
+                  'Associa un profilo di accesso a UNA entita di dominio '
+                  '(reparto / identita / ruolo applicativo). CHECK xor +3 '
+                  'indici parziali UNIQUE garantiscono esattamente un binding '
+                  'per entita. La coerenza tipo_profilo <-> tipo_binding '
+                  'e'' delegata al guard trgfn_profili_accesso_bindings_guard_coerenza.';
+      rollback:
+        - sql:
+            sql: |
+              DROP INDEX IF EXISTS config.uq_profili_accesso_bindings_uo;
+              DROP INDEX IF EXISTS config.uq_profili_accesso_bindings_identita;
+              DROP INDEX IF EXISTS config.uq_profili_accesso_bindings_ruolo;
+              ALTER TABLE config.profili_accesso_bindings
+                  DROP CONSTRAINT IF EXISTS chk_profili_accesso_bindings_xor;
+        - dropTable:
+            schemaName: config
+            tableName: profili_accesso_bindings

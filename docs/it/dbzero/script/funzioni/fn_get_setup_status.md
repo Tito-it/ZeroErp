@@ -16,6 +16,17 @@ AS $function$
 DECLARE
     v_result jsonb;
 BEGIN
+    -- =========================================================
+    -- Scopo:
+    --   Stato di setup operatore-emittente per il banner di
+    --   amministrazione (pattern advise, don't enforce).
+    --
+    -- Refactor §4.6.B.10:
+    --   Source of truth operatori = identita_digitali
+    --   (ruolo_applicativo=OPERATORE, attivo, in finestra).
+    --   Admin = fn_is_super_admin anziche' ruolo_sistema='ADMIN'.
+    -- =========================================================
+
     WITH sub_emittenti AS (
         SELECT COUNT(*)::bigint AS emittenti_attivi
           FROM anagrafiche.emittenti_fiscali
@@ -28,15 +39,17 @@ BEGIN
                 AS operatori_assegnati,
             COUNT(*) FILTER (
                 WHERE uef.auth_user_id IS NULL
-                  AND rau.ruolo_sistema = 'ADMIN'::config.ruolo_sistema
+                  AND script.fn_is_super_admin(id.auth_user_id)
             )::bigint AS operatori_admin_globali
-          FROM anagrafiche.risorse_umane_auth_user rau
+          FROM anagrafiche.identita_digitali id
           JOIN django.auth_user au
-            ON au.id = rau.auth_user_id
+            ON au.id = id.auth_user_id
           LEFT JOIN config.user_emittenti_fiscali uef
-            ON uef.auth_user_id = rau.auth_user_id
-         WHERE rau.attivo = true
-           AND rau.ruolo_sistema <> 'DISABILITATO'::config.ruolo_sistema
+            ON uef.auth_user_id = id.auth_user_id
+         WHERE id.ruolo_applicativo = 'OPERATORE'
+           AND id.attivo = true
+           AND (id.valido_dal IS NULL OR id.valido_dal <= CURRENT_DATE)
+           AND (id.valido_al  IS NULL OR id.valido_al  >= CURRENT_DATE)
            AND au.is_active = true
     )
     SELECT jsonb_build_object(
@@ -56,7 +69,7 @@ END
 $function$
 
 COMMENT ON FUNCTION script.fn_get_setup_status()
-IS 'Stato di setup operatore-emittente in un singolo jsonb (emittenti_attivi, operatori_totali, operatori_assegnati, operatori_admin_globali, operatori_non_assegnati). Aiuto informativo per il banner di amministrazione operatori (pattern advise, don''t enforce).';
+IS 'Stato di setup operatore-emittente in un singolo jsonb. Refactor §4.6.B.10: source of truth operatori = identita_digitali (OPERATORE attiva); admin = fn_is_super_admin.';
 ```
 
 ---

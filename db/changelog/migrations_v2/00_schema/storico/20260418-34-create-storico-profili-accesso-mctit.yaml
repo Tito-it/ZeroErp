@@ -1,0 +1,64 @@
+databaseChangeLog:
+  - logicalFilePath: /migrations_v2/00_schema/storico/20260418-34-create-storico-profili-accesso-mctit.yaml
+
+  - changeSet:
+      id: 20260418-34-create-storico-profili-accesso
+      author: mctit
+      comment: >
+        Tabella storica per config.profili_accesso (pattern identico a
+        storico.risorse_umane_auth_user). Popolata automaticamente dal
+        trigger script.trgfn_storico_generic via automation
+        (TG_ARGV[0] = 'profili_accesso_id').
+      preConditions:
+        - onFail: HALT
+        - and:
+          - tableExists:
+              schemaName: config
+              tableName: profili_accesso
+          - sqlCheck:
+              expectedResult: 0
+              sql: |
+                SELECT COUNT(*) FROM pg_tables
+                 WHERE schemaname = 'storico' AND tablename = 'profili_accesso';
+      changes:
+        - createSequence:
+            schemaName: storico
+            sequenceName: profili_accesso_id_seq
+            startValue: 1
+            incrementBy: 1
+        - createTable:
+            schemaName: storico
+            tableName: profili_accesso
+            remarks: "Storico di config.profili_accesso."
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  defaultValueComputed: "nextval('storico.profili_accesso_id_seq'::regclass)"
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_storico_profili_accesso
+                    nullable: false
+              - column:
+                  name: profili_accesso_id
+                  type: integer
+                  remarks: "FK logica verso config.profili_accesso.id."
+                  constraints:
+                    nullable: false
+              - column: { name: change_type, type: "char(1)", defaultValue: A }
+              - column: { name: tipo_operazione, type: smallint, remarks: "2=UPDATE, 3=DELETE" }
+              - column: { name: snapshot, type: jsonb }
+              - column: { name: user_insert, type: text, defaultValueComputed: "CURRENT_USER" }
+              - column: { name: data_insert, type: "timestamp with time zone", defaultValueComputed: "now()" }
+              - column: { name: tx_id, type: uuid }
+              - column: { name: valid_from, type: "timestamp with time zone", defaultValueComputed: "now()" }
+              - column: { name: valid_to, type: "timestamp with time zone" }
+        - createIndex:
+            schemaName: storico
+            indexName: ix_profili_accesso_profili_accesso_id_fk
+            tableName: profili_accesso
+            columns:
+              - column: { name: profili_accesso_id }
+      rollback:
+        - dropTable: { schemaName: storico, tableName: profili_accesso }
+        - dropSequence: { schemaName: storico, sequenceName: profili_accesso_id_seq }

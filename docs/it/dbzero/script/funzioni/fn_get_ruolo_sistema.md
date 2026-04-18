@@ -13,31 +13,41 @@ CREATE OR REPLACE FUNCTION script.fn_get_ruolo_sistema(p_auth_user_id integer)
  LANGUAGE plpgsql
  STABLE
 AS $function$
-DECLARE
-  v_ruolo anagrafiche.risorse_umane_auth_user.ruolo_sistema%TYPE;
 BEGIN
-  -- =========================================================
-  -- Scopo:
-  --   Restituisce il ruolo_sistema di un utente dalla tabella
-  --   ponte anagrafiche.risorse_umane_auth_user.
-  --   NULL se l'utente non ha record ponte.
-  --
-  -- Blocco base riusato da tutte le funzioni di risoluzione
-  -- permessi (fn_resolve_livello_area, fn_check_azione_processo,
-  -- fn_check_user_emittente_scope).
-  -- =========================================================
+    -- =========================================================
+    -- DEPRECATO (§4.6.C.1). Wrapper retrocompatibile che
+    -- ricostruisce ruolo_sistema dal nuovo modello:
+    --   - Nessuna identita OPERATORE usabile -> DISABILITATO
+    --   - SUPER_ADMIN binding attivo        -> ADMIN
+    --   - Altrimenti                         -> OPERATIVO
+    -- Mantenere fino a PR2 (refactor Python PermissionResolver
+    -- + test). Rimuovere in §4.6.H.3 o successivo.
+    -- =========================================================
 
-  SELECT rau.ruolo_sistema
-    INTO v_ruolo
-    FROM anagrafiche.risorse_umane_auth_user rau
-   WHERE rau.auth_user_id = p_auth_user_id;
+    IF p_auth_user_id IS NULL THEN
+        RETURN NULL;
+    END IF;
 
-  RETURN v_ruolo;
+    -- Copre sia "nessun record" sia "ruolo DISABILITATO"
+    -- sia "finestra scaduta": tutto si traduce in
+    -- DISABILITATO per retrocompat semantica.
+    -- Helper DRY §4.6.B.0.
+    IF NOT script.fn_has_identita_attiva(
+               p_auth_user_id,
+               'OPERATORE'::config.ruolo_applicativo) THEN
+        RETURN 'DISABILITATO'::config.ruolo_sistema;
+    END IF;
+
+    IF script.fn_is_super_admin(p_auth_user_id) THEN
+        RETURN 'ADMIN'::config.ruolo_sistema;
+    END IF;
+
+    RETURN 'OPERATIVO'::config.ruolo_sistema;
 END
 $function$
 
 COMMENT ON FUNCTION script.fn_get_ruolo_sistema(p_auth_user_id integer)
-IS 'Restituisce il ruolo_sistema di un utente (NULL se nessun record ponte).';
+IS 'DEPRECATO §4.6.C.1: wrapper retrocompatibile che ricostruisce ruolo_sistema dal nuovo modello (identita_digitali + binding SUPER_ADMIN). Mantenuto fino a PR2 backend. Nuovi chiamanti: usare fn_is_super_admin + check identita.';
 ```
 
 ---

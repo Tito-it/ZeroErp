@@ -1,0 +1,72 @@
+databaseChangeLog:
+  - logicalFilePath: /migrations_v2/00_schema/config/20260419-02-alter-tipo-profilo-accesso-add-super-admin-mctit.yaml
+
+  - changeSet:
+      id: 20260419-02-alter-tipo-profilo-accesso-add-super-admin
+      author: mctit
+      comment: >
+        Estende ENUM config.tipo_profilo_accesso con valore SUPER_ADMIN
+        (§4.6.A.2 WIP multi-face-auth). SUPER_ADMIN modella il privilegio
+        di bypass totale oggi rappresentato da
+        risorse_umane_auth_user.ruolo_sistema='ADMIN'. Diventa un profilo
+        bindato via config.profili_accesso_bindings, non piu' una colonna
+        speciale sul bridge legacy. Scelta architetturale (2026-04-19):
+        ricicla l'infrastruttura §4.3 (audit, storico, guard coerenza,
+        finestra temporale) invece di introdurre una colonna boolean
+        dedicata. Permette multi-admin futuri differenziati (es.
+        SUPER_ADMIN_TECH vs SUPER_ADMIN_DATI) e bypass cross-ruolo
+        (futuro CLIENTE_ADMIN_PORTALE) senza refactor strutturali.
+        ADD VALUE IF NOT EXISTS: idempotente anche su DB che hanno gia'
+        il valore (es. ripetuto apply in dev).
+      preConditions:
+        - onFail: MARK_RAN
+        - and:
+          - sqlCheck:
+              expectedResult: 1
+              sql: |
+                SELECT COUNT(*)
+                  FROM pg_type t
+                  JOIN pg_namespace n ON n.oid = t.typnamespace
+                 WHERE n.nspname = 'config'
+                   AND t.typname = 'tipo_profilo_accesso';
+          - sqlCheck:
+              expectedResult: 0
+              sql: |
+                SELECT COUNT(*)
+                  FROM pg_enum e
+                  JOIN pg_type t ON t.oid = e.enumtypid
+                  JOIN pg_namespace n ON n.oid = t.typnamespace
+                 WHERE n.nspname = 'config'
+                   AND t.typname = 'tipo_profilo_accesso'
+                   AND e.enumlabel = 'SUPER_ADMIN';
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ALTER TYPE ADD VALUE in PG 12+ non puo' essere usato nella
+              -- stessa transazione in cui si aggiunge (serve COMMIT tra
+              -- ADD VALUE e USO). Liquibase esegue ogni changeset in una
+              -- transazione separata, quindi questo file puo' essere
+              -- seguito da altri che usano il nuovo valore SUPER_ADMIN.
+              ALTER TYPE config.tipo_profilo_accesso ADD VALUE IF NOT EXISTS 'SUPER_ADMIN';
+
+              COMMENT ON TYPE config.tipo_profilo_accesso IS
+                  'Tipologia di un profilo di accesso (config.profili_accesso): '
+                  'REPARTO = legato a unita organizzativa (operatore interno); '
+                  'PORTALE = preset per ruolo applicativo di portale/shop; '
+                  'AD_HOC = profilo speciale assegnato a singola identita digitale; '
+                  'SUPER_ADMIN = bypass totale dei permessi, bindato per identita '
+                  '(§4.6 WIP multi-face-auth, sostituisce ruolo_sistema=ADMIN legacy).';
+
+      rollback:
+        - sql:
+            sql: |
+              -- PostgreSQL non supporta la rimozione di un valore ENUM in uso.
+              -- Il rollback di questo changeset richiederebbe di:
+              --   1. eliminare i bindings SUPER_ADMIN esistenti
+              --   2. ricreare l'enum senza il valore
+              --   3. riassegnare le colonne dipendenti
+              -- Lasciamo rollback esplicitamente non supportato per evitare
+              -- data loss silenzioso. Se serve rollback, vedi docs/it/guide.
+              SELECT 1;
