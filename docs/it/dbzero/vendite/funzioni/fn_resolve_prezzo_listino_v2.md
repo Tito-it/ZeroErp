@@ -14,7 +14,7 @@ CREATE OR REPLACE FUNCTION vendite.fn_resolve_prezzo_listino_v2(p_articolo_id uu
  STABLE
 AS $function$
 DECLARE
-    -- Accumulatori del risultato (%TYPE dove riflettono colonne).
+    -- Accumulatori del risultato.
     v_prezzo_finale            vendite.listini_righe.prezzo%TYPE;
     v_prezzo_base              vendite.listini_righe.prezzo%TYPE;
     v_tipo_var                 anagrafiche.categorie_clienti_listini.tipo_variazione%TYPE;
@@ -27,7 +27,7 @@ DECLARE
     v_promo_id                 vendite.promo_articoli.id%TYPE;
     v_categoria_cli_listino_id anagrafiche.categorie_clienti_listini.id%TYPE;
 
-    -- Snapshot output: categoria e classe congelate al momento del calcolo.
+    -- Snapshot output.
     v_snapshot_categoria       anagrafiche.billing_account.categoria_cliente_id%TYPE;
     v_snapshot_classe          config.classi_utenze.id%TYPE;
 
@@ -42,6 +42,7 @@ DECLARE
     v_contr_valore_var         vendite.contratti.valore_variazione_globale%TYPE;
     v_contr_riga_prezzo        vendite.contratti_righe.prezzo_unitario%TYPE;
     v_contr_cat_snapshot       vendite.contratti.categoria_cliente_id_snapshot%TYPE;
+    v_contr_classe_utenza      config.classi_utenze.id%TYPE;
 
     -- Buffer PROMO.
     v_promo_tipo_var           vendite.promo_articoli.tipo_variazione%TYPE;
@@ -78,7 +79,7 @@ BEGIN
         );
     END IF;
 
-    -- Dimensioni BA: categoria + partecipa_promo.
+    -- Dimensioni BA.
     SELECT ba.categoria_cliente_id,
            cc.partecipa_promo,
            TRUE
@@ -101,13 +102,12 @@ BEGIN
         );
     END IF;
 
-    -- Classe utenza snapshot: e' sempre il valore fornito dal
-    -- caller (rappresenta la classe del punto fornitura al
-    -- momento del calcolo).
+    -- Default snapshot classe: input del caller.
+    -- In STADIO 1 (contratto trovato) verra' sovrascritto dal
+    -- valore contrattualizzato se presente.
     v_snapshot_classe := p_classe_utenza_id;
 
     -- STADIO 1: contratto attivo per (ba, utility, data).
-    -- Estraggo anche categoria_cliente_id_snapshot dal contratto.
     SELECT c.id,
            c.listino_id,
            c.tipo_variazione_globale,
@@ -128,10 +128,20 @@ BEGIN
      LIMIT 1;
 
     IF v_contratto_id IS NOT NULL THEN
-        -- Categoria snapshot dal contratto (congelata alla
-        -- creazione). Fallback al BA se il contratto pre-D1
-        -- ha il campo ancora NULL.
+        -- Categoria snapshot dal contratto (fallback BA se pre-D1).
         v_snapshot_categoria := COALESCE(v_contr_cat_snapshot, v_categoria_cliente_id);
+
+        -- Classe utenza snapshot dal contratto.
+        -- contratti_utilities ha UNIQUE(contratto_id): al massimo 1 riga.
+        -- Fallback al parametro input se la riga manca o ha classe NULL
+        -- (utility senza dimensione).
+        SELECT cu.classe_utenza_id
+          INTO v_contr_classe_utenza
+          FROM vendite.contratti_utilities cu
+         WHERE cu.contratto_id = v_contratto_id
+         LIMIT 1;
+
+        v_snapshot_classe := COALESCE(v_contr_classe_utenza, p_classe_utenza_id);
 
         -- Stadio 1a: override riga.
         SELECT cr.prezzo_unitario
@@ -221,7 +231,7 @@ BEGIN
         END IF;
 
     ELSE
-        -- STADIO 2: CATEGORIA. Snapshot dal BA direttamente.
+        -- STADIO 2: CATEGORIA. Snapshot dal BA; classe resta input.
         v_snapshot_categoria := v_categoria_cliente_id;
 
         IF v_categoria_cliente_id IS NULL THEN
@@ -238,11 +248,8 @@ BEGIN
             );
         END IF;
 
-        -- Lookup matrice in singola query: tenta match con classe
-        -- specifica (se fornita) e fallback NULL nello stesso scan.
-        -- ORDER BY classe_utenza_id IS NULL privilegia il match
-        -- specifico (FALSE < TRUE). L'EXCLUDE no-overlap garantisce
-        -- al piu' 1 riga per ciascuno dei due scenari.
+        -- Lookup matrice in singola query (classe specifica + fallback NULL).
+        -- ORDER BY classe_utenza_id IS NULL privilegia match specifico.
         SELECT ccl.id, ccl.listino_id, ccl.tipo_variazione, ccl.valore_variazione
           INTO v_categoria_cli_listino_id,
                v_matrice_listino_id,
@@ -356,18 +363,17 @@ BEGIN
     END IF;
 
     -- Proiezione finale sui campi OUT.
-    prezzo_finale                := v_prezzo_finale;
-    prezzo_base_snapshot         := v_prezzo_base;
-    tipo_variazione_applicata    := v_tipo_var;
-    valore_variazione_applicata  := v_valore_var;
-    origine                      := v_origine;
-    listino_id                   := v_listino_id;
-    listino_versione_id          := v_listino_versione_id;
-    listino_riga_id              := v_listino_riga_id;
-    contratto_id                 := v_contratto_id;
-    promo_id                     := v_promo_id;
-    categoria_cliente_listino_id := v_categoria_cli_listino_id;
-    -- Nuovi snapshot.
+    prezzo_finale                 := v_prezzo_finale;
+    prezzo_base_snapshot          := v_prezzo_base;
+    tipo_variazione_applicata     := v_tipo_var;
+    valore_variazione_applicata   := v_valore_var;
+    origine                       := v_origine;
+    listino_id                    := v_listino_id;
+    listino_versione_id           := v_listino_versione_id;
+    listino_riga_id               := v_listino_riga_id;
+    contratto_id                  := v_contratto_id;
+    promo_id                      := v_promo_id;
+    categoria_cliente_listino_id  := v_categoria_cli_listino_id;
     categoria_cliente_id_snapshot := v_snapshot_categoria;
     classe_utenza_id_snapshot     := v_snapshot_classe;
 
@@ -376,7 +382,7 @@ END
 $function$
 
 COMMENT ON FUNCTION vendite.fn_resolve_prezzo_listino_v2(p_articolo_id uuid, p_uom_id bigint, p_data_riferimento date, p_ba_id bigint, p_utility_id integer, p_emittente_soggetto_ruolo_id bigint, p_classe_utenza_id integer)
-IS 'Resolver prezzi pricing v5 a 3 stadi. Output: 13 colonne inclusi categoria_cliente_id_snapshot (dal contratto se STADIO 1, dal BA se STADIO 2) e classe_utenza_id_snapshot (input p_classe_utenza_id).';
+IS 'Resolver prezzi pricing v5 a 3 stadi. classe_utenza_id_snapshot: letto da contratti_utilities se esiste contratto attivo (STADIO 1), altrimenti p_classe_utenza_id input.';
 ```
 
 ---
