@@ -110,7 +110,7 @@ RETURNS TABLE (
 | `promo_id` | bigint | Promo applicata se origine `PROMO` |
 | `categoria_cliente_listino_id` | bigint | Riga matrice usata se origine `CATEGORIA` |
 | `categoria_cliente_id_snapshot` | smallint | Categoria cliente al momento del calcolo: dal contratto (STADIO 1, congelata alla creazione) oppure dal BA (STADIO 2). Fallback al BA se il contratto pre-v5 ha il campo ancora NULL. |
-| `classe_utenza_id_snapshot` | integer | Classe utenza al momento del calcolo: valore `p_classe_utenza_id` fornito dal caller. NULL per utility senza dimensione. |
+| `classe_utenza_id_snapshot` | integer | Classe utenza al momento del calcolo. STADIO 1: letta da `contratti_utilities.classe_utenza_id` del contratto attivo (fallback a `p_classe_utenza_id` se la riga manca o ha classe NULL). STADIO 2: `p_classe_utenza_id` input. |
 
 ---
 
