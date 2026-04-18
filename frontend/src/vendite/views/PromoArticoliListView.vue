@@ -10,9 +10,10 @@ import PromoArticoloDrawer from '../components/PromoArticoloDrawer.vue'
 const drawer = useDrawerState()
 const store = usePromoArticoliStore()
 
-// Provider readonly del dominio vendite: i drawer figli ereditano lo stato
-// (se l'operatore non ha grant sul dominio -> tutto in sola lettura).
-useReadonlyMode('vendite')
+// Provider readonly con override per model 'promo_articolo' (v2 permessi):
+// default = livello area 'vendite', ma admin puo' impostare un override
+// specifico sulle promo senza toccare il resto dell'area.
+useReadonlyMode('vendite', 'promo_articolo')
 
 async function onDrawerSaved() {
   store.filters.offset = 0
