@@ -1,0 +1,130 @@
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20260418-75-create-trgfn-identita-digitali-sync-auth-user-active-mctit.yaml
+
+  - changeSet:
+      id: 20260418-75-create-trgfn-identita-digitali-sync-auth-user-active
+      author: mctit
+      runOnChange: true
+      validCheckSum: [ANY]
+      failOnError: true
+      comment: >
+        Trigger function + trigger AFTER INSERT / AFTER UPDATE OF ... su
+        anagrafiche.identita_digitali che sincronizza auth_user.is_active
+        tramite fn_sync_auth_user_is_active (§4.5.3 WIP multi-face-auth).
+        Simmetrico al trigger esistente su risorse_umane_auth_user ma copre
+        tutti i ruoli applicativi (operatore, portale clienti/fornitori,
+        shop customer, api_client, disabilitato).
+
+        Eventi UPDATE mirati (UPDATE OF): il trigger scatta solo se cambia
+        una delle colonne che impattano lo stato di login calcolato:
+          - attivo            (soft disable/enable)
+          - valido_dal, valido_al (finestra temporale)
+          - ruolo_applicativo (es. passaggio a DISABILITATO)
+          - auth_user_id       (cambio del bridge, caso raro)
+        Evita scatti inutili su modifiche di meta, audit, ecc.
+      preConditions:
+        - onFail: HALT
+        - and:
+          - tableExists:
+              schemaName: anagrafiche
+              tableName: identita_digitali
+          - sqlCheck:
+              expectedResult: 1
+              sql: |
+                SELECT COUNT(*) FROM pg_proc p
+                  JOIN pg_namespace n ON n.oid = p.pronamespace
+                 WHERE n.nspname = 'anagrafiche'
+                   AND p.proname = 'fn_sync_auth_user_is_active'
+                   AND pg_get_function_arguments(p.oid) ILIKE '%auth_user_id%';
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Trigger function: al cambio di stato/finestra/ruolo su
+              -- identita_digitali, sincronizza auth_user.is_active.
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_identita_digitali_sync_auth_user_active()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  -- %TYPE per coerenza automatica con la colonna sorgente.
+                  v_auth_user_id anagrafiche.identita_digitali.auth_user_id%TYPE;
+              BEGIN
+                  -- ------------------------------------------------------------
+                  -- Trigger function: trgfn_identita_digitali_sync_auth_user_active
+                  --
+                  -- Scopo:
+                  --   A seguito di INSERT o UPDATE di colonne rilevanti su
+                  --   identita_digitali, propaga lo stato a django.auth_user
+                  --   invocando la funzione sync centralizzata.
+                  --
+                  -- Evento: AFTER INSERT / AFTER UPDATE OF attivo, valido_dal,
+                  --         valido_al, ruolo_applicativo, auth_user_id
+                  -- Tabella: anagrafiche.identita_digitali
+                  --
+                  -- Scelta di passare NEW.auth_user_id in entrambi i casi
+                  -- (INSERT e UPDATE). Sul DELETE non scattiamo: il caso
+                  -- "eliminazione identita" e' atipico (preferiamo disattivare
+                  -- via attivo=false). Se necessario, aggiungere un trigger
+                  -- AFTER DELETE dedicato che chiami con OLD.auth_user_id.
+                  -- ------------------------------------------------------------
+
+                  v_auth_user_id := NEW.auth_user_id;
+
+                  -- La funzione sync gestisce internamente i casi edge
+                  -- (ruolo DISABILITATO, finestra scaduta, ecc.) e aggiorna
+                  -- auth_user.is_active solo se cambia.
+                  PERFORM anagrafiche.fn_sync_auth_user_is_active(v_auth_user_id);
+
+                  RETURN NULL; -- AFTER trigger: ritorno ignorato
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.trgfn_identita_digitali_sync_auth_user_active() IS
+                  'Trigger function: sincronizza auth_user.is_active al cambio '
+                  'stato/finestra/ruolo su anagrafiche.identita_digitali. Delega '
+                  'a fn_sync_auth_user_is_active(auth_user_id). Simmetrico al '
+                  'trigger esistente su risorse_umane_auth_user, ma copre tutti '
+                  'i ruoli applicativi (§4.5.3 WIP multi-face-auth).';
+
+              -- ----------------------------------------------------------------
+              -- Installazione trigger: fase z90 (final/deferrable per pattern
+              -- ZeroErp), eventi AFTER INSERT + AFTER UPDATE OF colonne rilevanti.
+              -- ----------------------------------------------------------------
+              DROP TRIGGER IF EXISTS trg_identita_digitali_z90_sync_auth_user_active_ins
+                  ON anagrafiche.identita_digitali;
+
+              DROP TRIGGER IF EXISTS trg_identita_digitali_z90_sync_auth_user_active_upd
+                  ON anagrafiche.identita_digitali;
+
+              -- Trigger INSERT: nuova identita' creata -> sync iniziale di
+              -- auth_user.is_active (tipicamente l'identita nasce con
+              -- attivo=true e valido_dal=CURRENT_DATE, quindi l'auth_user
+              -- viene impostato a true).
+              CREATE TRIGGER trg_identita_digitali_z90_sync_auth_user_active_ins
+                  AFTER INSERT
+                  ON anagrafiche.identita_digitali
+                  FOR EACH ROW
+                  EXECUTE FUNCTION anagrafiche.trgfn_identita_digitali_sync_auth_user_active();
+
+              -- Trigger UPDATE: reagisce solo a modifiche delle colonne che
+              -- impattano lo stato di login (UPDATE OF mirato, evita scatti
+              -- su meta/audit).
+              CREATE TRIGGER trg_identita_digitali_z90_sync_auth_user_active_upd
+                  AFTER UPDATE OF attivo,
+                                  valido_dal,
+                                  valido_al,
+                                  ruolo_applicativo,
+                                  auth_user_id
+                  ON anagrafiche.identita_digitali
+                  FOR EACH ROW
+                  EXECUTE FUNCTION anagrafiche.trgfn_identita_digitali_sync_auth_user_active();
+      rollback:
+        - sql:
+            sql: |
+              DROP TRIGGER IF EXISTS trg_identita_digitali_z90_sync_auth_user_active_ins
+                  ON anagrafiche.identita_digitali;
+              DROP TRIGGER IF EXISTS trg_identita_digitali_z90_sync_auth_user_active_upd
+                  ON anagrafiche.identita_digitali;
+              DROP FUNCTION IF EXISTS anagrafiche.trgfn_identita_digitali_sync_auth_user_active();

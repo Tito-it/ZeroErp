@@ -14,69 +14,75 @@ CREATE OR REPLACE FUNCTION script.fn_resolve_livello_area(p_auth_user_id integer
  STABLE
 AS $function$
 DECLARE
-  v_ruolo   anagrafiche.risorse_umane_auth_user.ruolo_sistema%TYPE;
-  v_livello config.user_override_aree.livello%TYPE;
+    v_livello config.user_override_aree.livello%TYPE;
 BEGIN
-  -- =========================================================
-  -- Scopo:
-  --   Risolve il livello di accesso effettivo di un utente
-  --   per un'area funzionale identificata da schema_db.
-  --
-  -- Catena di risoluzione:
-  --   1. ruolo_sistema (NULL/DISABILITATO -> BLOCCATO, ADMIN -> TUTTO)
-  --   2. Override utente area (se presente e valido temporalmente)
-  --   3. Profilo reparto (ereditato dalla UO)
-  --   4. Default -> BLOCCATO
-  -- =========================================================
+    -- =========================================================
+    -- Scopo:
+    --   Risolve il livello di accesso effettivo di un utente
+    --   per un'area funzionale identificata da schema_db.
+    --
+    -- Catena (refactor §4.6.B.2 WIP multi-face-auth):
+    --   1. Assenza di identita OPERATORE attiva -> BLOCCATO
+    --      (copre il vecchio ruolo_sistema NULL/DISABILITATO)
+    --   2. fn_is_super_admin -> TUTTO
+    --      (copre il vecchio ruolo_sistema = ADMIN)
+    --   3. Override utente area (se valido temporalmente)
+    --   4. Profilo reparto (ereditato dalla UO, via RUA)
+    --   5. Default -> BLOCCATO
+    -- =========================================================
 
-  -- 1. Ruolo sistema
-  v_ruolo := script.fn_get_ruolo_sistema(p_auth_user_id);
+    -- 1. Identita OPERATORE attiva (helper DRY §4.6.B.0).
+    --    Fail-closed: utente senza identita -> BLOCCATO.
+    IF NOT script.fn_has_identita_attiva(
+               p_auth_user_id,
+               'OPERATORE'::config.ruolo_applicativo) THEN
+        RETURN 'BLOCCATO'::config.livello_accesso;
+    END IF;
 
-  IF v_ruolo IS NULL OR v_ruolo = 'DISABILITATO' THEN
+    -- 2. Super admin? Bypass totale.
+    IF script.fn_is_super_admin(p_auth_user_id) THEN
+        RETURN 'TUTTO'::config.livello_accesso;
+    END IF;
+
+    -- 3. Override utente area (OPERATIVO)
+    SELECT uoa.livello
+      INTO v_livello
+      FROM config.user_override_aree uoa
+      JOIN config.aree_funzionali af ON af.id = uoa.area_id
+     WHERE uoa.auth_user_id = p_auth_user_id
+       AND af.schema_db = p_area_schema_db
+       AND uoa.validita @> CURRENT_DATE;
+
+    IF FOUND THEN
+        RETURN v_livello;
+    END IF;
+
+    -- 4. Profilo reparto (catena legacy via RUA).
+    --    NOTA: resta sul bridge legacy finche' §4.8 non
+    --    generalizza il resolver su profili_accesso. La vista
+    --    di compatibilita' §4.6.F la render'a trasparente.
+    SELECT pra.livello
+      INTO v_livello
+      FROM config.profili_reparto_aree pra
+      JOIN config.aree_funzionali af ON af.id = pra.area_id
+      JOIN anagrafiche.risorse_umane_auth_user rau
+        ON rau.auth_user_id = p_auth_user_id
+      JOIN anagrafiche.risorse_umane ru
+        ON ru.id = rau.risorsa_umana_id
+     WHERE ru.unita_organizzativa_id = pra.unita_organizzativa_id
+       AND af.schema_db = p_area_schema_db;
+
+    IF FOUND THEN
+        RETURN v_livello;
+    END IF;
+
+    -- 5. Default sicuro
     RETURN 'BLOCCATO'::config.livello_accesso;
-  END IF;
-
-  IF v_ruolo = 'ADMIN' THEN
-    RETURN 'TUTTO'::config.livello_accesso;
-  END IF;
-
-  -- 2. Override utente area (OPERATIVO)
-  -- Filtro temporale via colonna validita nativa (containment)
-  SELECT uoa.livello
-    INTO v_livello
-    FROM config.user_override_aree uoa
-    JOIN config.aree_funzionali af ON af.id = uoa.area_id
-   WHERE uoa.auth_user_id = p_auth_user_id
-     AND af.schema_db = p_area_schema_db
-     AND uoa.validita @> CURRENT_DATE;
-
-  IF FOUND THEN
-    RETURN v_livello;
-  END IF;
-
-  -- 3. Profilo reparto
-  SELECT pra.livello
-    INTO v_livello
-    FROM config.profili_reparto_aree pra
-    JOIN config.aree_funzionali af ON af.id = pra.area_id
-    JOIN anagrafiche.risorse_umane_auth_user rau
-      ON rau.auth_user_id = p_auth_user_id
-    JOIN anagrafiche.risorse_umane ru
-      ON ru.id = rau.risorsa_umana_id
-   WHERE ru.unita_organizzativa_id = pra.unita_organizzativa_id
-     AND af.schema_db = p_area_schema_db;
-
-  IF FOUND THEN
-    RETURN v_livello;
-  END IF;
-
-  -- 4. Default sicuro
-  RETURN 'BLOCCATO'::config.livello_accesso;
 END
 $function$
 
 COMMENT ON FUNCTION script.fn_resolve_livello_area(p_auth_user_id integer, p_area_schema_db character varying)
-IS 'Risolve livello accesso area per utente. Migrazione daterange: filtro temporale via validita @>.';
+IS 'Risolve livello accesso area per utente. Refactor §4.6.B.2: ramo ADMIN -> fn_is_super_admin; ramo DISABILITATO -> check identita OPERATORE attiva. Catena override+reparto invariata.';
 ```
 
 ---

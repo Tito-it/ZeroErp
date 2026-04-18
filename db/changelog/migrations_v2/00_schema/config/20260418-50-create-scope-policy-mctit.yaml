@@ -1,0 +1,123 @@
+databaseChangeLog:
+  - logicalFilePath: /migrations_v2/00_schema/config/20260418-50-create-scope-policy-mctit.yaml
+
+  - changeSet:
+      id: 20260418-50-create-scope-policy
+      author: mctit
+      comment: >
+        Registro delle policy di scope disponibili per la nuova architettura
+        multi-face auth (§4.4 WIP). Ogni riga rappresenta una strategia di
+        scoping implementata da una funzione PL/pgSQL (colonna funzione_db
+        = 'schema.nome'). Le policy sono il meccanismo unificato per limitare
+        cosa vede un'identita nelle query (e, in futuro, per alimentare le
+        Row Level Security sulle tabelle dati sensibili).
+        I trigger framework (audit, tx_id, storico) sono applicati via automation.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 0
+            sql: |
+              SELECT COUNT(*) FROM pg_tables
+               WHERE schemaname = 'config' AND tablename = 'scope_policy';
+      changes:
+        - createTable:
+            schemaName: config
+            tableName: scope_policy
+            remarks: >-
+              Registro delle policy di scope. Ciascuna policy e' implementata
+              da una funzione PL/pgSQL indicata in funzione_db (formato
+              'schema.nome_funzione'). La funzione deve accettare due
+              parametri (p_identita_id BIGINT, p_target_id BIGINT) e
+              restituire BOOLEAN.
+            columns:
+              - column:
+                  name: id
+                  type: integer
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_scope_policy
+                    nullable: false
+              - column:
+                  name: codice
+                  type: "varchar(60)"
+                  remarks: "Codice univoco della policy (es. EF_WHITELIST, BA_OWNERSHIP, FORNITORE_OWNERSHIP)."
+                  constraints:
+                    nullable: false
+              - column:
+                  name: descrizione
+                  type: text
+                  remarks: "Descrizione human-readable del comportamento della policy."
+                  constraints:
+                    nullable: false
+              - column:
+                  name: funzione_db
+                  type: "varchar(150)"
+                  remarks: "Riferimento alla funzione PL/pgSQL che implementa la policy, formato 'schema.nome_funzione'."
+                  constraints:
+                    nullable: false
+              - column:
+                  name: attivo
+                  type: boolean
+                  defaultValueBoolean: true
+                  remarks: "Se false, la policy non e' piu' applicata nelle risoluzioni di scope."
+                  constraints:
+                    nullable: false
+              - column:
+                  name: meta
+                  type: jsonb
+                  defaultValueComputed: "'{}'::jsonb"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: storicizza
+                  type: boolean
+                  defaultValueBoolean: true
+                  constraints:
+                    nullable: false
+              - column:
+                  name: tx_id
+                  type: uuid
+              - column:
+                  name: data_insert
+                  type: "timestamp with time zone"
+                  defaultValueComputed: "now()"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: user_insert
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: data_update
+                  type: "timestamp with time zone"
+                  defaultValueComputed: "now()"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: user_update
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  constraints:
+                    nullable: false
+
+        - addUniqueConstraint:
+            schemaName: config
+            tableName: scope_policy
+            columnNames: codice
+            constraintName: uq_scope_policy_codice
+
+        - sql:
+            sql: |
+              COMMENT ON TABLE config.scope_policy IS
+                  'Registro delle policy di scope usate dal modello multi-face '
+                  'auth. funzione_db = schema.nome della funzione (firma fissa: '
+                  'p_identita_id BIGINT, p_target_id BIGINT) RETURNS BOOLEAN. '
+                  'L''associazione identita <-> policy e'' in config.identita_scope_bindings.';
+      rollback:
+        - dropTable:
+            schemaName: config
+            tableName: scope_policy

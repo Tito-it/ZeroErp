@@ -1,0 +1,121 @@
+databaseChangeLog:
+  - logicalFilePath: /migrations_v2/00_schema/config/20260418-31-create-profili-accesso-aree-mctit.yaml
+
+  - changeSet:
+      id: 20260418-31-create-profili-accesso-aree
+      author: mctit
+      comment: >
+        Tabella dettaglio config.profili_accesso_aree (§4.3.2 WIP
+        multi-face-auth). Rimpiazzo concettuale di config.profili_reparto_aree:
+        collega un profilo (non piu' un reparto direttamente) a un set di
+        aree funzionali con il rispettivo livello (TUTTO / LETTURA / BLOCCATO).
+        Trigger framework via automation.
+      preConditions:
+        - onFail: HALT
+        - and:
+          - tableExists:
+              schemaName: config
+              tableName: profili_accesso
+          - tableExists:
+              schemaName: config
+              tableName: aree_funzionali
+      changes:
+        - createTable:
+            schemaName: config
+            tableName: profili_accesso_aree
+            remarks: >-
+              Righe di dettaglio per il profilo di accesso: una riga per area
+              funzionale, con il livello consentito dal profilo su quell'area.
+            columns:
+              - column:
+                  name: id
+                  type: integer
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_profili_accesso_aree
+                    nullable: false
+              - column:
+                  name: profilo_accesso_id
+                  type: integer
+                  remarks: "FK al profilo header."
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_profili_accesso_aree_profilo
+                    referencedTableSchemaName: config
+                    referencedTableName: profili_accesso
+                    referencedColumnNames: id
+              - column:
+                  name: area_id
+                  type: integer
+                  remarks: "FK all'area funzionale (config.aree_funzionali)."
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_profili_accesso_aree_area
+                    referencedTableSchemaName: config
+                    referencedTableName: aree_funzionali
+                    referencedColumnNames: id
+              - column:
+                  name: livello
+                  type: "config.livello_accesso"
+                  defaultValue: "BLOCCATO"
+                  remarks: "TUTTO / LETTURA / BLOCCATO. Default BLOCCATO = chiude per default."
+                  constraints:
+                    nullable: false
+              - column:
+                  name: meta
+                  type: jsonb
+                  defaultValueComputed: "'{}'::jsonb"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: storicizza
+                  type: boolean
+                  defaultValueBoolean: true
+                  constraints:
+                    nullable: false
+              - column:
+                  name: tx_id
+                  type: uuid
+              - column:
+                  name: data_insert
+                  type: "timestamp with time zone"
+                  defaultValueComputed: "now()"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: user_insert
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: data_update
+                  type: "timestamp with time zone"
+                  defaultValueComputed: "now()"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: user_update
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  constraints:
+                    nullable: false
+
+        - addUniqueConstraint:
+            schemaName: config
+            tableName: profili_accesso_aree
+            columnNames: profilo_accesso_id, area_id
+            constraintName: uq_profili_accesso_aree_profilo_area
+
+        - sql:
+            sql: |
+              COMMENT ON TABLE config.profili_accesso_aree IS
+                  'Dettaglio delle aree funzionali coperte da un profilo di '
+                  'accesso con il rispettivo livello. Rimpiazza concettualmente '
+                  'profili_reparto_aree generalizzando il padre da reparto a profilo.';
+      rollback:
+        - dropTable:
+            schemaName: config
+            tableName: profili_accesso_aree

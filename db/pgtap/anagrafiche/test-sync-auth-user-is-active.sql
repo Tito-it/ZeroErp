@@ -2,7 +2,9 @@
 -- SPDX-License-Identifier: GPL-3.0-or-later
 -- pgTAP test per Zero ERP
 --
--- Test sync auth_user.is_active:
+-- Test sync auth_user.is_active (aggiornato 2026-04-18 per §4.5 WIP
+-- multi-face-auth: firma fn_sync_auth_user_is_active cambiata da
+-- (p_risorsa_umana_id bigint) a (p_auth_user_id integer)).
 --
 --   Funzione fn_sync_auth_user_is_active:
 --     1. Precondizione: qualifica DIPENDENTE esiste
@@ -14,7 +16,7 @@
 --     7. fn_sync riattivazione risorsa -> is_active = true
 --     8. fn_sync con bridge disattivato -> is_active = false
 --     9. fn_sync riattivazione bridge -> is_active = true
---    10. fn_sync risorsa senza bridge -> return false (noop)
+--    10. fn_sync auth_user senza bridge -> return false (noop)
 --
 --   Trigger sync (1.2, 1.3):
 --    11. UPDATE risorse_umane_auth_user.attivo = false -> auth_user.is_active = false
@@ -37,8 +39,15 @@
 --   se il padre non e' attivo.
 --   I test rispettano questi vincoli: disattivazione child-first,
 --   riattivazione parent-first.
+--
+-- Nota firma nuova:
+--   La funzione parte da auth_user_id; durante la transizione §4.5 -> §4.6
+--   il caso "operatore legacy" (RU bridge presente, identita_digitali
+--   vuota) e' gestito dal fallback legacy interno. Questi test coprono
+--   il fallback legacy (niente identita_digitali).
 -- ------------------------------------------------------------
 
+BEGIN;
 SELECT plan(18);
 
 -- =========================================================
@@ -56,19 +65,35 @@ SELECT ok(
 );
 
 -- =========================================================
--- 2) Precondizione: soggetto gestore esiste
+-- 2) Setup: soggetto PF pura dedicato per il test
 -- =========================================================
+-- Serve un soggetto PF pura (CF valorizzato, P.IVA NULL) perche' il
+-- trigger guard sul bridge RUA richiede persona fisica pura per il
+-- collegamento ad auth_user (vincolo R4, ora delegato a
+-- script.fn_guard_soggetto_pf_pura). Non usiamo il soggetto "gestore"
+-- che tipicamente e' PG con P.IVA e non puo' essere operatore.
+CREATE TEMP TABLE _t_comune AS
+SELECT id AS comune_id FROM config.comuni ORDER BY id LIMIT 1;
+
+-- CF fisso valido (validato da script.fn_valida_codice_fiscale).
+-- pgTAP rollbacca la transazione a fine file, quindi il CF non
+-- persiste e non crea conflitti tra run successivi.
 CREATE TEMP TABLE _t_soggetto_gestore AS
-SELECT sr.soggetto_id
-  FROM anagrafiche.gestori g
-  JOIN anagrafiche.soggetti_ruoli sr
-    ON sr.id = g.soggetto_ruolo_id
- ORDER BY sr.soggetto_id
- LIMIT 1;
+SELECT anagrafiche.fn_crea_soggetto_pf(
+    p_cognome           := 'PnzTestSync',
+    p_nome              := 'Fdn',
+    p_codice_fiscale    := 'PNZFDN78A01L219Y',
+    p_email             := 'pgtap_sync_' || substring(md5(clock_timestamp()::text) from 1 for 8) || '@test.local',
+    p_data_nascita      := DATE '1978-01-01',
+    p_sesso             := 'M',
+    p_stato_iso2        := 'IT',
+    p_comune_nascita_id := (SELECT comune_id FROM _t_comune),
+    p_tipo_contatto_id  := NULL
+) AS soggetto_id;
 
 SELECT ok(
     (SELECT count(*) FROM _t_soggetto_gestore) = 1,
-    '2. Trovato soggetto gestore per test'
+    '2. Setup: creato soggetto PF pura dedicato per test sync'
 );
 
 -- =========================================================
@@ -194,7 +219,7 @@ SELECT ok(
 -- =========================================================
 -- 5) fn_sync: risorsa attiva + bridge attivo -> is_active true
 -- =========================================================
-SELECT anagrafiche.fn_sync_auth_user_is_active((SELECT id FROM _t_risorsa));
+SELECT anagrafiche.fn_sync_auth_user_is_active((SELECT auth_user_id FROM _t_auth_user));
 
 SELECT ok(
     (SELECT is_active FROM django.auth_user WHERE id = (SELECT auth_user_id FROM _t_auth_user)) = true,
@@ -219,7 +244,7 @@ UPDATE django.auth_user
    SET is_active = true
  WHERE id = (SELECT auth_user_id FROM _t_auth_user);
 
-SELECT anagrafiche.fn_sync_auth_user_is_active((SELECT id FROM _t_risorsa));
+SELECT anagrafiche.fn_sync_auth_user_is_active((SELECT auth_user_id FROM _t_auth_user));
 
 SELECT ok(
     (SELECT is_active FROM django.auth_user WHERE id = (SELECT auth_user_id FROM _t_auth_user)) = false,
@@ -239,7 +264,7 @@ UPDATE anagrafiche.risorse_umane_auth_user
    SET attivo = true
  WHERE risorsa_umana_id = (SELECT id FROM _t_risorsa);
 
-SELECT anagrafiche.fn_sync_auth_user_is_active((SELECT id FROM _t_risorsa));
+SELECT anagrafiche.fn_sync_auth_user_is_active((SELECT auth_user_id FROM _t_auth_user));
 
 SELECT ok(
     (SELECT is_active FROM django.auth_user WHERE id = (SELECT auth_user_id FROM _t_auth_user)) = true,
@@ -256,7 +281,7 @@ UPDATE anagrafiche.risorse_umane_auth_user
 -- Riporto is_active a true per testare la funzione pura
 UPDATE django.auth_user SET is_active = true WHERE id = (SELECT auth_user_id FROM _t_auth_user);
 
-SELECT anagrafiche.fn_sync_auth_user_is_active((SELECT id FROM _t_risorsa));
+SELECT anagrafiche.fn_sync_auth_user_is_active((SELECT auth_user_id FROM _t_auth_user));
 
 SELECT ok(
     (SELECT is_active FROM django.auth_user WHERE id = (SELECT auth_user_id FROM _t_auth_user)) = false,
@@ -270,7 +295,7 @@ UPDATE anagrafiche.risorse_umane_auth_user
    SET attivo = true
  WHERE risorsa_umana_id = (SELECT id FROM _t_risorsa);
 
-SELECT anagrafiche.fn_sync_auth_user_is_active((SELECT id FROM _t_risorsa));
+SELECT anagrafiche.fn_sync_auth_user_is_active((SELECT auth_user_id FROM _t_auth_user));
 
 SELECT ok(
     (SELECT is_active FROM django.auth_user WHERE id = (SELECT auth_user_id FROM _t_auth_user)) = true,
@@ -278,14 +303,15 @@ SELECT ok(
 );
 
 -- =========================================================
--- 10) fn_sync: risorsa senza bridge -> noop (return false)
+-- 10) fn_sync: auth_user senza bridge -> noop (return false)
 -- =========================================================
--- Uso un ID fittizio di risorsa che non ha bridge
+-- Uso un ID fittizio di auth_user che non ha ne' identita_digitali
+-- ne' bridge RUA. La funzione ritorna false senza effetti.
 SELECT ok(
     anagrafiche.fn_sync_auth_user_is_active(
-        (SELECT COALESCE(MAX(id), 0) + 99999 FROM anagrafiche.risorse_umane)
+        (SELECT COALESCE(MAX(id), 0) + 99999 FROM django.auth_user)
     ) = false,
-    '10. fn_sync: risorsa senza bridge -> return false'
+    '10. fn_sync: auth_user senza bridge -> return false'
 );
 
 -- =========================================================

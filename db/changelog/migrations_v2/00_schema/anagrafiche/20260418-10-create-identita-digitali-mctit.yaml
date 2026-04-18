@@ -1,0 +1,199 @@
+databaseChangeLog:
+  - logicalFilePath: /migrations_v2/00_schema/anagrafiche/20260418-10-create-identita-digitali-mctit.yaml
+
+  - changeSet:
+      id: 20260418-10-create-identita-digitali
+      author: mctit
+      comment: >
+        Crea il nuovo bridge generico anagrafiche.identita_digitali tra
+        soggetti_ruoli e django.auth_user (§4.2 WIP multi-face-auth).
+        Generalizza il ruolo di risorse_umane_auth_user (oggi limitato agli
+        operatori interni) supportando clienti portale, fornitori portale,
+        shop customer e api client. Un soggetto_ruolo puo avere piu identita
+        nel tempo, ma una sola attiva (indice parziale UNIQUE). Un auth_user
+        e legato a una e una sola identita (UNIQUE). I trigger framework
+        (audit, tx_id, storico) sono applicati via automation; il guard di
+        coerenza ruolo_applicativo <-> soggetto_ruolo e in file dedicato.
+      preConditions:
+        - onFail: HALT
+        - and:
+          - sqlCheck:
+              expectedResult: 1
+              sql: |
+                SELECT COUNT(*) FROM pg_type t
+                  JOIN pg_namespace n ON n.oid = t.typnamespace
+                 WHERE n.nspname = 'config' AND t.typname = 'ruolo_applicativo';
+          - tableExists:
+              schemaName: anagrafiche
+              tableName: soggetti_ruoli
+      changes:
+        - createTable:
+            schemaName: anagrafiche
+            tableName: identita_digitali
+            remarks: >-
+              Bridge generico tra soggetti_ruoli e django.auth_user. Un record
+              rappresenta una veste con cui un soggetto_ruolo si logga nel
+              sistema (operatore, cliente portale, fornitore portale, shop,
+              api client). Sostituisce progressivamente risorse_umane_auth_user.
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  remarks: "PK surrogata."
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_identita_digitali
+                    nullable: false
+              - column:
+                  name: soggetto_ruolo_id
+                  type: bigint
+                  remarks: "FK al ruolo del soggetto che si logga. Un soggetto_ruolo puo avere piu identita nel tempo."
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_identita_digitali_soggetti_ruoli
+                    referencedTableSchemaName: anagrafiche
+                    referencedTableName: soggetti_ruoli
+                    referencedColumnNames: id
+              - column:
+                  name: auth_user_id
+                  type: integer
+                  remarks: "FK a django.auth_user. Mapping 1:1 (vedi UNIQUE)."
+                  constraints:
+                    nullable: false
+              - column:
+                  name: ruolo_applicativo
+                  type: "config.ruolo_applicativo"
+                  remarks: "Veste con cui l'utente si logga. Determina namespace API, scope, profilo capability."
+                  constraints:
+                    nullable: false
+              - column:
+                  name: attivo
+                  type: boolean
+                  defaultValueBoolean: true
+                  remarks: "Soft flag. Se false, l'identita non puo essere usata per il login (concorre alla sync di auth_user.is_active)."
+                  constraints:
+                    nullable: false
+              - column:
+                  name: valido_dal
+                  type: date
+                  defaultValueComputed: CURRENT_DATE
+                  remarks: "Inizio validita (input utente/API). Default oggi."
+                  constraints:
+                    nullable: false
+              - column:
+                  name: valido_al
+                  type: date
+                  remarks: "Fine validita (input utente/API). NULL = aperto."
+              - column:
+                  name: deve_cambiare_password
+                  type: boolean
+                  defaultValueBoolean: false
+                  remarks: "Flag letto dal middleware di Django per forzare il cambio password al prossimo login."
+                  constraints:
+                    nullable: false
+              - column:
+                  name: invito_inviato_at
+                  type: "timestamp with time zone"
+                  remarks: "Timestamp di invio dell'ultimo invito/token di attivazione (null se mai inviato)."
+              - column:
+                  name: meta
+                  type: jsonb
+                  defaultValueComputed: "'{}'::jsonb"
+                  remarks: "Payload estensibile (preferenze, flag specifici per ruolo)."
+                  constraints:
+                    nullable: false
+              - column:
+                  name: storicizza
+                  type: boolean
+                  defaultValueBoolean: true
+                  remarks: "Flag per il trigger script.trgfn_storico_generic (storicizzazione snapshot)."
+                  constraints:
+                    nullable: false
+              - column:
+                  name: tx_id
+                  type: uuid
+                  remarks: "Transaction id di sessione (popolato da dbops.trgfn_tx_id_managed via automation)."
+              - column:
+                  name: data_insert
+                  type: "timestamp with time zone"
+                  defaultValueComputed: "now()"
+                  remarks: "Audit - popolato/aggiornato via automation."
+                  constraints:
+                    nullable: false
+              - column:
+                  name: user_insert
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  remarks: "Audit - popolato via automation."
+                  constraints:
+                    nullable: false
+              - column:
+                  name: data_update
+                  type: "timestamp with time zone"
+                  defaultValueComputed: "now()"
+                  remarks: "Audit - aggiornato via automation."
+                  constraints:
+                    nullable: false
+              - column:
+                  name: user_update
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  remarks: "Audit - aggiornato via automation."
+                  constraints:
+                    nullable: false
+
+        - addUniqueConstraint:
+            schemaName: anagrafiche
+            tableName: identita_digitali
+            columnNames: auth_user_id
+            constraintName: uq_identita_digitali_auth_user
+
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- FK verso django.auth_user: creata solo se lo schema django
+              -- esiste, per non bloccare ambienti CI che non caricano Django.
+              DO $$
+              BEGIN
+                  IF to_regclass('django.auth_user') IS NOT NULL THEN
+                      ALTER TABLE anagrafiche.identita_digitali
+                          ADD CONSTRAINT fk_identita_digitali_auth_user
+                          FOREIGN KEY (auth_user_id)
+                          REFERENCES django.auth_user(id)
+                          ON DELETE RESTRICT;
+                  END IF;
+              END
+              $$;
+
+              -- Indice parziale UNIQUE: una sola identita attiva per
+              -- soggetto_ruolo. Permette invece piu identita storicizzate
+              -- (es. cessazione e riassunzione dello stesso soggetto_ruolo).
+              CREATE UNIQUE INDEX uq_identita_digitali_soggetto_ruolo_attivo
+                  ON anagrafiche.identita_digitali (soggetto_ruolo_id)
+                  WHERE attivo = true;
+
+              -- Vincolo coerenza temporale: valido_al, se presente, deve essere
+              -- >= valido_dal (coerente col pattern di risorse_umane.chk_risorse_umane_date).
+              ALTER TABLE anagrafiche.identita_digitali
+                  ADD CONSTRAINT chk_identita_digitali_date
+                  CHECK (valido_al IS NULL OR valido_al >= valido_dal);
+
+              COMMENT ON TABLE anagrafiche.identita_digitali IS
+                  'Bridge generico soggetto_ruolo <-> auth_user per il modello '
+                  'multi-face auth. Un soggetto_ruolo puo avere piu identita nel '
+                  'tempo (una sola attiva); ogni auth_user e legato a una sola '
+                  'identita. Il ruolo_applicativo determina namespace API, scope '
+                  'dati e profilo capability.';
+
+      rollback:
+        - sql:
+            sql: |
+              DROP INDEX IF EXISTS anagrafiche.uq_identita_digitali_soggetto_ruolo_attivo;
+              ALTER TABLE anagrafiche.identita_digitali
+                  DROP CONSTRAINT IF EXISTS fk_identita_digitali_auth_user;
+        - dropTable:
+            schemaName: anagrafiche
+            tableName: identita_digitali

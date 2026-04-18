@@ -1,0 +1,47 @@
+databaseChangeLog:
+  - logicalFilePath: /migrations_v2/00_schema/config/20260418-01-create-ruolo-applicativo-enum-mctit.yaml
+
+  - changeSet:
+      id: 20260418-01-create-ruolo-applicativo-enum
+      author: mctit
+      comment: >
+        Crea ENUM config.ruolo_applicativo con i 6 ruoli applicativi del
+        modello multi-face auth (operatori interni, clienti/fornitori portale,
+        shop customer, api client, disabilitato). Prerequisito per la nuova
+        tabella anagrafiche.identita_digitali (§4.2 WIP multi-face-auth).
+      preConditions:
+        - onFail: MARK_RAN
+        - sqlCheck:
+            expectedResult: 0
+            sql: |
+              SELECT COUNT(*)
+                FROM pg_type t
+                JOIN pg_namespace n ON n.oid = t.typnamespace
+               WHERE n.nspname = 'config'
+                 AND t.typname = 'ruolo_applicativo';
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Ruoli applicativi supportati dal modello multi-face auth.
+              -- Ogni valore identifica una veste con cui un'identita_digitale
+              -- accede al sistema; determina namespace API, scope dati e
+              -- profili di permessi (config.profili_accesso).
+              CREATE TYPE config.ruolo_applicativo AS ENUM (
+                  'OPERATORE',          -- dipendente interno (bridge storico: risorse_umane_auth_user)
+                  'CLIENTE_PORTALE',    -- cliente B2B che accede al portale clienti
+                  'FORNITORE_PORTALE',  -- fornitore che accede al portale fornitori
+                  'SHOP_CUSTOMER',      -- cliente del negozio online (self-service)
+                  'API_CLIENT',         -- sistema terzo che integra via API con identita propria
+                  'DISABILITATO'        -- identita disattivata (blocca is_active su auth_user)
+              );
+
+              COMMENT ON TYPE config.ruolo_applicativo IS
+                  'Ruolo applicativo di una identita_digitale: determina la veste '
+                  'con cui l''utente si logga (namespace API, scope dati, profilo '
+                  'capability). Valori: OPERATORE, CLIENTE_PORTALE, FORNITORE_PORTALE, '
+                  'SHOP_CUSTOMER, API_CLIENT, DISABILITATO.';
+      rollback:
+        - sql:
+            sql: DROP TYPE IF EXISTS config.ruolo_applicativo;

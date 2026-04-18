@@ -1,0 +1,41 @@
+databaseChangeLog:
+  - logicalFilePath: /migrations_v2/00_schema/config/20260418-02-create-tipo-profilo-accesso-enum-mctit.yaml
+
+  - changeSet:
+      id: 20260418-02-create-tipo-profilo-accesso-enum
+      author: mctit
+      comment: >
+        Crea ENUM config.tipo_profilo_accesso per la nuova tabella
+        config.profili_accesso (§4.3 WIP multi-face-auth): distingue profili
+        legati a reparto (dipendenti), portale (clienti/fornitori/shop) e
+        ad-hoc (override per singola identita).
+      preConditions:
+        - onFail: MARK_RAN
+        - sqlCheck:
+            expectedResult: 0
+            sql: |
+              SELECT COUNT(*)
+                FROM pg_type t
+                JOIN pg_namespace n ON n.oid = t.typnamespace
+               WHERE n.nspname = 'config'
+                 AND t.typname = 'tipo_profilo_accesso';
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Classifica la tipologia di un profilo di accesso.
+              CREATE TYPE config.tipo_profilo_accesso AS ENUM (
+                  'REPARTO',   -- profilo legato a unita_organizzativa (operatore interno)
+                  'PORTALE',   -- profilo standard per un ruolo_applicativo di portale
+                  'AD_HOC'     -- profilo specifico per singola identita_digitale
+              );
+
+              COMMENT ON TYPE config.tipo_profilo_accesso IS
+                  'Tipologia di un profilo di accesso (config.profili_accesso): '
+                  'REPARTO = legato a unita organizzativa; PORTALE = preset per '
+                  'ruolo applicativo di portale/shop; AD_HOC = profilo speciale '
+                  'assegnato a una singola identita digitale.';
+      rollback:
+        - sql:
+            sql: DROP TYPE IF EXISTS config.tipo_profilo_accesso;

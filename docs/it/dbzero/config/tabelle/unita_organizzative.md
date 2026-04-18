@@ -42,6 +42,7 @@
 | trg_unita_organizzative_a10_email_outbox_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('config', 'email_outbox', 'unita_organizzativa_id', 'id', 'attivo')` |
 | trg_unita_organizzative_a10_email_template_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('config', 'email_template', 'unita_organizzativa_id', 'id', 'attivo')` |
 | trg_unita_organizzative_a10_lock_columns_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('codice_interno', 'CODICE_NON_MODIFICABILE')` |
+| trg_unita_organizzative_a10_profili_accesso_bindings_blo_9fc29b | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('config', 'profili_accesso_bindings', 'unita_organizzativa_id', 'id', 'attivo')` |
 | trg_unita_organizzative_a10_profili_reparto_aree_block_d_56a311 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('config', 'profili_reparto_aree', 'unita_organizzativa_id', 'id', 'attivo')` |
 | trg_unita_organizzative_a10_profili_reparto_azioni_block_9ed4cf | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('config', 'profili_reparto_azioni', 'unita_organizzativa_id', 'id', 'attivo')` |
 | trg_unita_organizzative_a10_risorse_umane_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('anagrafiche', 'risorse_umane', 'unita_organizzativa_id', 'id', 'attivo')` |

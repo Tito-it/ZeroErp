@@ -1,0 +1,129 @@
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20260418-73-update-trgfn-sync-active-callers-mctit.yaml
+
+  - changeSet:
+      id: 20260418-73-update-trgfn-sync-active-callers
+      author: mctit
+      runOnChange: true
+      validCheckSum: [ANY]
+      failOnError: true
+      comment: >
+        Aggiorna le 2 trigger function chiamanti di
+        anagrafiche.fn_sync_auth_user_is_active dopo il cambio firma
+        (§4.5 F1): entrambe devono passare auth_user_id invece di
+        risorsa_umana_id.
+
+          - trgfn_risorse_umane_auth_user_sync_active: passa NEW.auth_user_id
+            (gia' disponibile sul bridge).
+          - trgfn_risorse_umane_sync_auth_user_active: risolve auth_user_id
+            dal bridge risorse_umane_auth_user prima di chiamare la funzione.
+
+        I trigger installati sulle tabelle non cambiano (stessi nomi, stessi
+        eventi, stessa fase z90). Cambia solo il body delle trigger function.
+      preConditions:
+        - onFail: HALT
+        - and:
+          - sqlCheck:
+              expectedResult: 1
+              sql: |
+                SELECT COUNT(*) FROM pg_proc p
+                  JOIN pg_namespace n ON n.oid = p.pronamespace
+                 WHERE n.nspname = 'anagrafiche'
+                   AND p.proname = 'fn_sync_auth_user_is_active'
+                   AND pg_get_function_arguments(p.oid) ILIKE '%auth_user_id%';
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ----------------------------------------------------------------
+              -- 1) trgfn_risorse_umane_auth_user_sync_active
+              --    Trigger AFTER INSERT / AFTER UPDATE OF attivo sul bridge RUA.
+              --    Passa direttamente NEW.auth_user_id alla funzione sync.
+              -- ----------------------------------------------------------------
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_risorse_umane_auth_user_sync_active()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              BEGIN
+                  -- Alla modifica di attivo sul bridge RUA (o all'inserimento
+                  -- di un nuovo collegamento), sincronizza auth_user.is_active
+                  -- usando la nuova firma (auth_user_id invece di
+                  -- risorsa_umana_id).
+                  PERFORM anagrafiche.fn_sync_auth_user_is_active(NEW.auth_user_id);
+                  RETURN NULL; -- AFTER trigger: ritorno ignorato
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.trgfn_risorse_umane_auth_user_sync_active() IS
+                  'Trigger function: sincronizza auth_user.is_active al cambio '
+                  'stato del bridge RUA o al nuovo collegamento. Passa '
+                  'NEW.auth_user_id alla funzione sync (§4.5 WIP multi-face-auth).';
+
+              -- ----------------------------------------------------------------
+              -- 2) trgfn_risorse_umane_sync_auth_user_active
+              --    Trigger AFTER UPDATE OF attivo/valido_dal/valido_al su
+              --    anagrafiche.risorse_umane. Serve risolvere auth_user_id
+              --    dal bridge (la risorsa potrebbe non avere un bridge).
+              -- ----------------------------------------------------------------
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_risorse_umane_sync_auth_user_active()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  -- %TYPE sulle colonne sorgente (policy ZeroErp).
+                  v_auth_user_id anagrafiche.risorse_umane_auth_user.auth_user_id%TYPE;
+              BEGIN
+                  -- Risolve l'auth_user_id dal bridge. Se la risorsa non ha
+                  -- collegamento, il LIMIT 1 + FOUND salta il sync (nessun
+                  -- auth_user da aggiornare).
+                  SELECT rau.auth_user_id
+                    INTO v_auth_user_id
+                    FROM anagrafiche.risorse_umane_auth_user rau
+                   WHERE rau.risorsa_umana_id = NEW.id
+                   LIMIT 1;
+
+                  IF FOUND THEN
+                      PERFORM anagrafiche.fn_sync_auth_user_is_active(v_auth_user_id);
+                  END IF;
+
+                  RETURN NULL; -- AFTER trigger: ritorno ignorato
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.trgfn_risorse_umane_sync_auth_user_active() IS
+                  'Trigger function: sincronizza auth_user.is_active al cambio '
+                  'stato/finestra di risorse_umane. Risolve auth_user_id dal '
+                  'bridge RUA e delega a fn_sync_auth_user_is_active. (§4.5 WIP).';
+      rollback:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Rollback: ripristino dei due trgfn_* alla versione precedente
+              -- che passava NEW.risorsa_umana_id (o NEW.id) alla vecchia firma
+              -- bigint di fn_sync_auth_user_is_active.
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_risorse_umane_auth_user_sync_active()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              BEGIN
+                  PERFORM anagrafiche.fn_sync_auth_user_is_active(NEW.risorsa_umana_id);
+                  RETURN NULL;
+              END;
+              $function$;
+
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_risorse_umane_sync_auth_user_active()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              BEGIN
+                  IF EXISTS (
+                      SELECT 1 FROM anagrafiche.risorse_umane_auth_user rau
+                       WHERE rau.risorsa_umana_id = NEW.id
+                  ) THEN
+                      PERFORM anagrafiche.fn_sync_auth_user_is_active(NEW.id);
+                  END IF;
+                  RETURN NULL;
+              END;
+              $function$;

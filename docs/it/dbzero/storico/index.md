@@ -35,6 +35,8 @@
 - [fatture_scadenze](tabelle/fatture_scadenze.md)
 - [forme_giuridiche](tabelle/forme_giuridiche.md)
 - [fornitori](tabelle/fornitori.md)
+- [identita_digitali](tabelle/identita_digitali.md)
+- [identita_scope_bindings](tabelle/identita_scope_bindings.md)
 - [indirizzi](tabelle/indirizzi.md) — * **Versionamento degli indirizzi**     Ogni operazione su `anagrafiche.indirizzi` (INSERT, UPDATE, DELETE) genera un record nello storico che ne conserva lo stato precedente o iniziale.
 - [indirizzi_dettaglio](tabelle/indirizzi_dettaglio.md) — * **Audit Trail**: tracciare ogni modifica ai dettagli degli indirizzi consentendo la ricostruzione dello stato storico. * **Versioning temporale**: supportare query basate su periodi di validità tramite `valid_from` e `valid_to`. * **Schema futuro‑proof**: salvare l’intero stato del record in JSONB senza richiedere aggiornamenti di schema a ogni nuova colonna.
 - [indirizzi_soggetti](tabelle/indirizzi_soggetti.md)
@@ -55,6 +57,10 @@
 - [parameters](tabelle/parameters.md) — * **Versionamento dei parametri**   Registrare ogni modifica (INSERT, UPDATE, DELETE) sui parametri definiti in `config.parameters`, abilitando rollback e analisi storica. * **Audit e compliance**   Documentare chi (`user_insert`) e quando (`data_insert`) hanno effettuato le modifiche, mantenendo un registro immutabile.
 - [pdp](tabelle/pdp.md) — `storico.pdp` conserva la **timeline** dei Punti di Prelievo: per ogni modifica allo stato corrente (`anagrafiche.pdp`) registra uno **snapshot JSONB**, la **tipologia di operazione** (`I`,`U`,`D`), il **tx_id** e la **finestra di validità** (`valid_from`, `valid_to`). È di fatto una **SCD Type 2** (Slowly Changing Dimension) specializzata per i PDP.
 - [preventivi](tabelle/preventivi.md)
+- [profili_accesso](tabelle/profili_accesso.md)
+- [profili_accesso_aree](tabelle/profili_accesso_aree.md)
+- [profili_accesso_azioni](tabelle/profili_accesso_azioni.md)
+- [profili_accesso_bindings](tabelle/profili_accesso_bindings.md)
 - [profili_reparto_aree](tabelle/profili_reparto_aree.md)
 - [profili_reparto_azioni](tabelle/profili_reparto_azioni.md)
 - [psp](tabelle/psp.md)
@@ -66,6 +72,7 @@
 - [rettifiche_righe](tabelle/rettifiche_righe.md)
 - [risorse_umane](tabelle/risorse_umane.md)
 - [risorse_umane_auth_user](tabelle/risorse_umane_auth_user.md)
+- [scope_policy](tabelle/scope_policy.md)
 - [sepa_mandati](tabelle/sepa_mandati.md)
 - [soggetti](tabelle/soggetti.md) — * **Versionamento dei soggetti**   Ogni modifica (INSERT, UPDATE, DELETE) su `anagrafiche.soggetti` genera un record in storico con lo stato precedente, il tipo di operazione e i metadati di audit.
 - [soggetti_conti_bancari](tabelle/soggetti_conti_bancari.md)

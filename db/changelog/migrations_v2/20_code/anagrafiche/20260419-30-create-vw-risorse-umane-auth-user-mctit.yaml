@@ -1,0 +1,118 @@
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20260419-30-create-vw-risorse-umane-auth-user-mctit.yaml
+
+  - changeSet:
+      id: 20260419-30-create-vw-risorse-umane-auth-user
+      author: mctit
+      runOnChange: true
+      validCheckSum: [ANY]
+      comment: >
+        Crea vista anagrafiche.vw_risorse_umane_auth_user (§4.6.F.1 WIP
+        multi-face-auth). Riproduce il layout della tabella legacy
+        risorse_umane_auth_user leggendo da identita_digitali
+        (ruolo_applicativo = OPERATORE) + JOIN a risorse_umane via
+        soggetto_ruolo_id.
+
+        Ricostruzione campi calcolati (ruolo_sistema):
+          - NOT attivo
+            OR ruolo_applicativo = DISABILITATO
+            OR fuori finestra temporale (valido_dal/al)
+              -> 'DISABILITATO'
+          - binding SUPER_ADMIN attivo su identita
+              -> 'ADMIN'
+          - altrimenti
+              -> 'OPERATIVO'
+
+        Performance: il bypass SUPER_ADMIN viene risolto con un LEFT JOIN
+        a sub-query pre-aggregata sui bindings (vs chiamata per riga a
+        fn_is_super_admin). Elimina N+1 su dataset di operatori: un solo
+        piano di query, indici FK sufficienti.
+
+        La vista ha nome 'vw_risorse_umane_auth_user' (prefisso vw_) per
+        convivere con la tabella omonima senza prefisso fino al cutover
+        §4.6.H.2, dove:
+          - la tabella verra' rinominata in _legacy_risorse_umane_auth_user
+          - questa vista verra' rinominata in risorse_umane_auth_user
+        Read-only: tutti i writer saranno migrati a identita_digitali in
+        §4.6.D (DB) e §4.6.G (backend).
+      preConditions:
+        - onFail: HALT
+        - and:
+          - tableExists:
+              schemaName: anagrafiche
+              tableName: identita_digitali
+          - tableExists:
+              schemaName: config
+              tableName: profili_accesso_bindings
+          - tableExists:
+              schemaName: config
+              tableName: profili_accesso
+        # NOTA: la vista non chiama script.fn_is_super_admin — usa una
+        # sub-query LEFT JOIN pre-aggregata sui bindings SUPER_ADMIN.
+        # Nessuna dipendenza da funzioni script/ che potrebbero essere
+        # processate dopo anagrafiche/ nell'ordine Liquibase per directory.
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW anagrafiche.vw_risorse_umane_auth_user AS
+              SELECT
+                  id.id                    AS id,
+                  ru.id                    AS risorsa_umana_id,
+                  id.auth_user_id          AS auth_user_id,
+                  id.attivo                AS attivo,
+                  id.meta                  AS meta,
+                  id.data_insert           AS data_insert,
+                  id.user_insert           AS user_insert,
+                  id.data_update           AS data_update,
+                  id.user_update           AS user_update,
+                  CASE
+                      WHEN NOT id.attivo
+                        OR id.ruolo_applicativo = 'DISABILITATO'::config.ruolo_applicativo
+                        OR (id.valido_dal IS NOT NULL AND id.valido_dal > CURRENT_DATE)
+                        OR (id.valido_al  IS NOT NULL AND id.valido_al  < CURRENT_DATE)
+                          THEN 'DISABILITATO'::config.ruolo_sistema
+                      WHEN sa.identita_digitale_id IS NOT NULL
+                          THEN 'ADMIN'::config.ruolo_sistema
+                      ELSE 'OPERATIVO'::config.ruolo_sistema
+                  END                      AS ruolo_sistema,
+                  id.storicizza            AS storicizza,
+                  id.tx_id                 AS tx_id,
+                  id.tentativi_falliti     AS tentativi_falliti,
+                  id.bloccato_fino_a       AS bloccato_fino_a,
+                  id.deve_cambiare_password AS deve_cambiare_password,
+                  id.invito_inviato_at     AS invito_inviato_at,
+                  id.totp_obbligatorio     AS totp_obbligatorio
+              FROM anagrafiche.identita_digitali id
+              LEFT JOIN anagrafiche.risorse_umane ru
+                ON ru.soggetto_ruolo_id = id.soggetto_ruolo_id
+              -- Sub-query super-admin pre-aggregata: un solo piano di query
+              -- invece di N chiamate a fn_is_super_admin. L'indice parziale
+              -- UNIQUE uq_profili_accesso_bindings_identita garantisce al
+              -- piu' una riga per identita (no DISTINCT necessario).
+              LEFT JOIN (
+                  SELECT pab.identita_digitale_id
+                    FROM config.profili_accesso_bindings pab
+                    JOIN config.profili_accesso pa
+                      ON pa.id = pab.profilo_accesso_id
+                   WHERE pab.attivo = true
+                     AND pa.attivo  = true
+                     AND pa.tipo    = 'SUPER_ADMIN'::config.tipo_profilo_accesso
+                     AND pab.identita_digitale_id IS NOT NULL
+              ) sa
+                ON sa.identita_digitale_id = id.id
+              WHERE id.ruolo_applicativo = 'OPERATORE'::config.ruolo_applicativo;
+
+              COMMENT ON VIEW anagrafiche.vw_risorse_umane_auth_user IS
+                  'Vista di compatibilita (§4.6.F WIP multi-face-auth): '
+                  'riproduce il layout della tabella legacy '
+                  'risorse_umane_auth_user leggendo da identita_digitali '
+                  '(OPERATORE). ruolo_sistema ricostruito dinamicamente '
+                  'via fn_is_super_admin. Read-only. Al cutover §4.6.H.2 '
+                  'la vista verra'' rinominata al nome canonico della '
+                  'tabella legacy (che diventera'' _legacy_...).';
+      rollback:
+        - sql:
+            sql: |
+              DROP VIEW IF EXISTS anagrafiche.vw_risorse_umane_auth_user;

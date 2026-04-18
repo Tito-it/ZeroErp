@@ -1,0 +1,95 @@
+## Documentazione Concettuale – Funzione `script.fn_scope_fornitore_ownership`
+
+> **Vedi anche**
+>
+Architettura di riferimento:
+>
+[Architettura Multi-Face Auth](/guide/architettura-multi-face-auth)
+> [Linee guida SQL — sezione 10 RLS](/linee-guida-sql#10-row-level-security-rls)
+>
+**Tabelle correlate:**
+>
+[anagrafiche.identita_digitali](/dbzero/anagrafiche/tabelle/identita_digitali)
+> [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)
+> [config.scope_policy](/dbzero/config/tabelle/scope_policy)
+
+---
+### 🎯 Scopo Principale
+(latest review 18-04-2026)
+
+La funzione **`script.fn_scope_fornitore_ownership`** implementa la policy
+di scope `FORNITORE_OWNERSHIP`: verifica che un'identità `FORNITORE_PORTALE`
+possa vedere dati riferiti a un `soggetto_ruolo` di tipo fornitore.
+
+Regola: il fornitore target coincide con il `soggetto_ruolo` dell'identità,
+e l'identità stessa è in veste `FORNITORE_PORTALE` attiva.
+
+---
+
+### Parametri di input
+
+| Parametro | Tipo | Descrizione |
+|-----------|------|-------------|
+| `p_identita_id` | `anagrafiche.identita_digitali.id%TYPE` | Identità corrente. |
+| `p_fornitore_sr_id` | `anagrafiche.soggetti_ruoli.id%TYPE` | `soggetto_ruolo_id` del fornitore target. |
+
+---
+
+### Output
+
+`BOOLEAN` — `true` se il fornitore target è quello dell'identità, `false` altrimenti.
+
+---
+
+### Semantica (fail-closed)
+
+| Caso | Risultato |
+|------|-----------|
+| Identità inesistente / non attiva | `false` |
+| Identità con `ruolo_applicativo ≠ FORNITORE_PORTALE` | `false` |
+| Target `soggetto_ruolo_id` diverso da quello dell'identità | `false` |
+| Tutte le condizioni soddisfatte | `true` |
+
+---
+
+### Regole implementative
+
+* `LANGUAGE sql`, `STABLE`: inlineable dal planner.
+* `%TYPE` su firma per allineamento alle colonne sorgente.
+* 4 filtri AND nel WHERE, tutti su colonne indicizzate (PK + FK con indice di policy).
+* Single `EXISTS` su singola tabella (`identita_digitali`): lookup index-only
+  possibile, query a latenza minima.
+
+---
+
+### Check `ruolo_applicativo = 'FORNITORE_PORTALE'` — ridondanza difensiva
+
+Il filtro sul ruolo applicativo è **tecnicamente ridondante** se il binding
+`FORNITORE_OWNERSHIP` viene creato solo per identità `FORNITORE_PORTALE`
+(come prescrive il workflow). Tuttavia è mantenuto come **defense-in-depth**:
+
+* Se per errore amministrativo un binding `FORNITORE_OWNERSHIP` fosse creato
+  su un'identità di altro ruolo, la policy non aprirebbe dati sbagliati.
+* Rende la funzione self-contained: leggibile e verificabile senza conoscere
+  il workflow di assegnazione dei binding.
+
+---
+
+### Uso tipico
+
+Policy RLS su tabelle acquisti (ordini ricevuti, pagamenti verso fornitore):
+
+```sql
+CREATE POLICY rls_acquisti_ordini_fornitore_ownership ON acquisti.ordini
+    FOR SELECT
+    USING (
+        script.fn_scope_fornitore_ownership(
+            NULLIF(current_setting('app.current_identita_id', true), '')::bigint,
+            fornitore_soggetto_ruolo_id
+        )
+    );
+```
+
+---
+
+{% include-markdown "signature-core.md" %}

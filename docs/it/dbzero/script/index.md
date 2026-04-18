@@ -46,8 +46,11 @@
 - [fn_get_user_permissions_map](funzioni/fn_get_user_permissions_map.md)
 - [fn_get_user_profile](funzioni/fn_get_user_profile.md)
 - [fn_get_vie_discendenti](funzioni/fn_get_vie_discendenti.md)
+- [fn_guard_soggetto_pf_pura](funzioni/fn_guard_soggetto_pf_pura.md) — (latest review 18-04-2026)
 - [fn_guard_soggetto_ruolo](funzioni/fn_guard_soggetto_ruolo.md) — (latest review 05-12-25) - **Verifica esistenza**     Controlla se esiste già un’associazione tra il soggetto e il codice interno del ruolo in `anagrafiche.soggetti_ruoli`.
 - [fn_guard_utility_tipo_ruolo](funzioni/fn_guard_utility_tipo_ruolo.md) — (latest review 16-02-2026) `script.fn_guard_utility_tipo_ruolo` valida la coerenza tra `utility_id` e `tipo_ruolo_id` con semantica:
+- [fn_has_identita_attiva](funzioni/fn_has_identita_attiva.md)
+- [fn_is_super_admin](funzioni/fn_is_super_admin.md)
 - [fn_list_parameters_for_user](funzioni/fn_list_parameters_for_user.md)
 - [fn_log](funzioni/fn_log.md)
 - [fn_log_and_raise_error](funzioni/fn_log_and_raise_error.md) — (last review 28-12-25) * **Entrypoint unificato** per error handling: evita duplicazioni di log e raise in trigger, procedure e funzioni. * **Logging remoto sicuro**: usa `dblink_exec` su connessione permanente fornita da `script.fn_ensure_logconn()`, per isolare il log dall’eventuale rollback della sessione principale. * **Escalation immediata**: rialza l’eccezione con `DETAIL` e `HINT` recuperati dalla tabella dei messaggi.
@@ -59,6 +62,9 @@
 - [fn_resolve_emittente_for_user](funzioni/fn_resolve_emittente_for_user.md)
 - [fn_resolve_livello_area](funzioni/fn_resolve_livello_area.md) — (latest review 08-03-2026) La funzione **`script.fn_resolve_livello_area`** risolve il livello di accesso effettivo di un utente per un'area funzionale, identificata tramite `schema_db`.
 - [fn_resolve_livello_oggetto](funzioni/fn_resolve_livello_oggetto.md) — (latest review 08-03-2026) La funzione **`script.fn_resolve_livello_oggetto`** risolve il livello di accesso per un singolo model Django (`app_label` + `model_name`).
+- [fn_scope_ba_ownership](funzioni/fn_scope_ba_ownership.md) — (latest review 18-04-2026)
+- [fn_scope_ef_whitelist](funzioni/fn_scope_ef_whitelist.md) — (latest review 18-04-2026)
+- [fn_scope_fornitore_ownership](funzioni/fn_scope_fornitore_ownership.md) — (latest review 18-04-2026)
 - [fn_search_soggetti_universale](funzioni/fn_search_soggetti_universale.md) — * **Ricerca per tipo ruolo**: il parametro `p_tipo_ruolo_id` e' obbligatorio. Il dropdown frontend mostra solo i ruoli accessibili all'utente corrente.
 - [fn_search_stradario](funzioni/fn_search_stradario.md) — (latest review 13-03-2026) Ricerca vie (stradario) per autocomplete frontend. L'utente seleziona un comune e cerca una via nel comune selezionato.
 - [fn_search_stradario_generale](funzioni/fn_search_stradario_generale.md) — Ricerca vie su `config.stradario_generale` (senza comune/CAP). Serve per autocomplete "via nuova": l'utente cerca una via in tutta Italia, poi sceglie comune e CAP separatamente.

@@ -1,0 +1,87 @@
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260419-22-update-fn-get-ruolo-sistema-wrapper-mctit.yaml
+
+  - changeSet:
+      id: 20260419-22-update-fn-get-ruolo-sistema-wrapper
+      author: mctit
+      runOnChange: true
+      validCheckSum: [ANY]
+      comment: >
+        Deprecazione script.fn_get_ruolo_sistema (§4.6.C.1 WIP multi-face-auth).
+        Mantiene firma e tipo di ritorno esatti (config.ruolo_sistema) per
+        non rompere i chiamanti Python residui fino a PR2 backend. Source
+        of truth spostata da risorse_umane_auth_user.ruolo_sistema al
+        nuovo modello:
+          - Nessuna identita OPERATORE attiva / in finestra / NON
+            DISABILITATO -> 'DISABILITATO'
+          - fn_is_super_admin = true -> 'ADMIN'
+          - Altrimenti -> 'OPERATIVO'
+        Dopo §4.6.H (cutover) e la rimozione dei chiamanti Python in PR2,
+        questa funzione puo' essere rimossa con changeset dedicato.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT COUNT(*) FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script'
+                 AND p.proname = 'fn_is_super_admin';
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_get_ruolo_sistema(
+                  p_auth_user_id integer
+              )
+              RETURNS config.ruolo_sistema
+              LANGUAGE plpgsql
+              STABLE
+              AS $function$
+              BEGIN
+                  -- =========================================================
+                  -- DEPRECATO (§4.6.C.1). Wrapper retrocompatibile che
+                  -- ricostruisce ruolo_sistema dal nuovo modello:
+                  --   - Nessuna identita OPERATORE usabile -> DISABILITATO
+                  --   - SUPER_ADMIN binding attivo        -> ADMIN
+                  --   - Altrimenti                         -> OPERATIVO
+                  -- Mantenere fino a PR2 (refactor Python PermissionResolver
+                  -- + test). Rimuovere in §4.6.H.3 o successivo.
+                  -- =========================================================
+
+                  IF p_auth_user_id IS NULL THEN
+                      RETURN NULL;
+                  END IF;
+
+                  -- Copre sia "nessun record" sia "ruolo DISABILITATO"
+                  -- sia "finestra scaduta": tutto si traduce in
+                  -- DISABILITATO per retrocompat semantica.
+                  -- Helper DRY §4.6.B.0.
+                  IF NOT script.fn_has_identita_attiva(
+                             p_auth_user_id,
+                             'OPERATORE'::config.ruolo_applicativo) THEN
+                      RETURN 'DISABILITATO'::config.ruolo_sistema;
+                  END IF;
+
+                  IF script.fn_is_super_admin(p_auth_user_id) THEN
+                      RETURN 'ADMIN'::config.ruolo_sistema;
+                  END IF;
+
+                  RETURN 'OPERATIVO'::config.ruolo_sistema;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_get_ruolo_sistema(integer) IS
+                  'DEPRECATO §4.6.C.1: wrapper retrocompatibile che ricostruisce '
+                  'ruolo_sistema dal nuovo modello (identita_digitali + '
+                  'binding SUPER_ADMIN). Mantenuto fino a PR2 backend. '
+                  'Nuovi chiamanti: usare fn_is_super_admin + check identita.';
+      rollback:
+        - sql:
+            sql: |
+              -- Rollback: il changeset originale (20260308-01-create-fn-get-ruolo-sistema)
+              -- e' runOnChange, quindi verrebbe ri-eseguito al prossimo apply.
+              -- Qui solo DROP per simmetria; il ripristino della versione
+              -- legacy avviene al ri-apply della migration originale.
+              DROP FUNCTION IF EXISTS script.fn_get_ruolo_sistema(integer);

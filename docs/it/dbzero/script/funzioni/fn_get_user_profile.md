@@ -15,11 +15,16 @@ CREATE OR REPLACE FUNCTION script.fn_get_user_profile(p_auth_user_id integer)
 AS $function$
 DECLARE
     v_result            jsonb;
-    -- Blocco utente
     v_utente            jsonb;
+    -- Blocco identita (sostituisce blocco RUA legacy)
+    v_identita_id       anagrafiche.identita_digitali.id%TYPE;
+    v_ruolo_applicativo anagrafiche.identita_digitali.ruolo_applicativo%TYPE;
+    v_identita_attiva   anagrafiche.identita_digitali.attivo%TYPE;
+    v_identita_val_dal  anagrafiche.identita_digitali.valido_dal%TYPE;
+    v_identita_val_al   anagrafiche.identita_digitali.valido_al%TYPE;
+    v_is_super_admin    boolean;
+    v_ruolo_sistema_out text;
     -- Blocco risorse_umane
-    v_rau_id            anagrafiche.risorse_umane_auth_user.id%TYPE;
-    v_ruolo_sistema     anagrafiche.risorse_umane_auth_user.ruolo_sistema%TYPE;
     v_risorsa_umana_id  anagrafiche.risorse_umane.id%TYPE;
     v_soggetto_ruolo_id anagrafiche.risorse_umane.soggetto_ruolo_id%TYPE;
     v_qualifica_id      anagrafiche.risorse_umane.qualifica_id%TYPE;
@@ -29,7 +34,7 @@ DECLARE
     v_ru_attivo         anagrafiche.risorse_umane.attivo%TYPE;
     v_risorse_umane     jsonb;
     -- Flag autenticazione avanzata
-    v_deve_cambiare_password  anagrafiche.risorse_umane_auth_user.deve_cambiare_password%TYPE;
+    v_deve_cambiare_password  anagrafiche.identita_digitali.deve_cambiare_password%TYPE;
     -- Blocco soggetto
     v_soggetto          jsonb;
     -- Blocco emittente
@@ -52,23 +57,9 @@ DECLARE
     v_uo_descrizione            config.unita_organizzative.descrizione%TYPE;
 BEGIN
     -- =========================================================
-    -- Scopo:
-    --   Dato un auth_user_id, restituisce un JSONB con il profilo
-    --   completo dell'utente: dati auth_user, risorse umane
-    --   (qualifica, UO), soggetto anagrafico con dati societari,
-    --   emittente fiscale associato (se presente), mappa
-    --   permessi per area funzionale, mappa azioni abilitate,
-    --   mappa override oggetto attivi, e flag
-    --   deve_cambiare_password.
-    --
-    -- Ottimizzazioni:
-    --   - auth_user + rau + ru + lookup qualifica/UO letti
-    --     in una sola SELECT
-    --   - emittente risolto con un solo blocco SQL prioritizzato
-    --     (whitelist personale -> fallback gestore globale)
+    -- Scopo: vedi COMMENT ON FUNCTION (refactor §4.6.B.11).
     -- =========================================================
 
-    -- Guard: parametro obbligatorio e valido
     IF p_auth_user_id IS NULL OR p_auth_user_id <= 0 THEN
         PERFORM script.fn_log_and_raise_error(
             'database', 'script.fn_get_user_profile',
@@ -80,9 +71,9 @@ BEGIN
     END IF;
 
     -- -------------------------------------------------------
-    -- 1. Caricare in un solo passaggio:
-    --    auth_user + risorse_umane_auth_user + risorse_umane
-    --    + lookup qualifica/UO
+    -- 1. Query accorpata: auth_user + identita_digitali
+    --    (ruolo OPERATORE) + risorse_umane (via soggetto_ruolo)
+    --    + qualifica + UO.
     -- -------------------------------------------------------
     SELECT jsonb_build_object(
                'auth_user_id', au.id,
@@ -91,10 +82,13 @@ BEGIN
                'last_name',    au.last_name,
                'email',        au.email
            ),
-           rau.id,
-           rau.ruolo_sistema,
-           rau.risorsa_umana_id,
-           rau.deve_cambiare_password,
+           id.id,
+           id.ruolo_applicativo,
+           id.attivo,
+           id.valido_dal,
+           id.valido_al,
+           id.deve_cambiare_password,
+           ru.id,
            ru.soggetto_ruolo_id,
            ru.qualifica_id,
            ru.unita_organizzativa_id,
@@ -108,10 +102,13 @@ BEGIN
            uo.codice_interno,
            uo.descrizione
       INTO v_utente,
-           v_rau_id,
-           v_ruolo_sistema,
-           v_risorsa_umana_id,
+           v_identita_id,
+           v_ruolo_applicativo,
+           v_identita_attiva,
+           v_identita_val_dal,
+           v_identita_val_al,
            v_deve_cambiare_password,
+           v_risorsa_umana_id,
            v_soggetto_ruolo_id,
            v_qualifica_id,
            v_uo_id,
@@ -125,10 +122,11 @@ BEGIN
            v_uo_codice_interno,
            v_uo_descrizione
       FROM django.auth_user au
-      LEFT JOIN anagrafiche.risorse_umane_auth_user rau
-        ON rau.auth_user_id = au.id
+      LEFT JOIN anagrafiche.identita_digitali id
+        ON id.auth_user_id = au.id
+       AND id.ruolo_applicativo = 'OPERATORE'
       LEFT JOIN anagrafiche.risorse_umane ru
-        ON ru.id = rau.risorsa_umana_id
+        ON ru.soggetto_ruolo_id = id.soggetto_ruolo_id
       LEFT JOIN config.qualifiche q
         ON q.id = ru.qualifica_id
       LEFT JOIN config.unita_organizzative uo
@@ -145,25 +143,51 @@ BEGIN
         );
     END IF;
 
-    IF v_rau_id IS NULL THEN
+    IF v_identita_id IS NULL THEN
         PERFORM script.fn_log_and_raise_error(
             'database', 'script.fn_get_user_profile',
             'E_ADMIN_VALIDAZIONE',
             jsonb_build_object('p_auth_user_id', p_auth_user_id),
             NULL::uuid,
-            'Nessun record risorse_umane_auth_user per auth_user_id=' || p_auth_user_id || '.'
+            'Nessuna identita OPERATORE per auth_user_id=' || p_auth_user_id || '.'
         );
     END IF;
 
-    -- Guard: ruolo sistema DISABILITATO blocca il login
-    IF v_ruolo_sistema = 'DISABILITATO' THEN
+    -- Guard: identita disabilitata / ruolo DISABILITATO / inattiva.
+    -- Sostituisce il vecchio check ruolo_sistema='DISABILITATO'.
+    IF v_identita_attiva = false OR v_ruolo_applicativo = 'DISABILITATO' THEN
         PERFORM script.fn_log_and_raise_error(
             'database', 'script.fn_get_user_profile',
             'E_UTENTE_DISABILITATO',
-            jsonb_build_object('auth_user_id', p_auth_user_id,
-                              'ruolo_sistema', v_ruolo_sistema::text),
+            jsonb_build_object(
+                'auth_user_id', p_auth_user_id,
+                'ruolo_applicativo', v_ruolo_applicativo::text,
+                'identita_attiva', v_identita_attiva
+            ),
             NULL::uuid,
-            'Utente disabilitato: ruolo_sistema=DISABILITATO.'
+            'Utente disabilitato: identita non attiva o ruolo DISABILITATO.'
+        );
+    END IF;
+
+    -- Guard: identita fuori finestra temporale
+    IF v_identita_val_dal IS NOT NULL AND CURRENT_DATE < v_identita_val_dal THEN
+        PERFORM script.fn_log_and_raise_error(
+            'database', 'script.fn_get_user_profile',
+            'E_UTENTE_NON_ATTIVO',
+            jsonb_build_object('auth_user_id', p_auth_user_id,
+                               'valido_dal', v_identita_val_dal),
+            NULL::uuid,
+            v_identita_val_dal::text
+        );
+    END IF;
+    IF v_identita_val_al IS NOT NULL AND CURRENT_DATE > v_identita_val_al THEN
+        PERFORM script.fn_log_and_raise_error(
+            'database', 'script.fn_get_user_profile',
+            'E_UTENTE_SCADUTO',
+            jsonb_build_object('auth_user_id', p_auth_user_id,
+                               'valido_al', v_identita_val_al),
+            NULL::uuid,
+            v_identita_val_al::text
         );
     END IF;
 
@@ -171,51 +195,53 @@ BEGIN
         PERFORM script.fn_log_and_raise_error(
             'database', 'script.fn_get_user_profile',
             'E_ADMIN_VALIDAZIONE',
-            jsonb_build_object('risorsa_umana_id', v_risorsa_umana_id),
+            jsonb_build_object('identita_id', v_identita_id),
             NULL::uuid,
-            'Nessun record risorse_umane per id=' || v_risorsa_umana_id || '.'
+            'Nessun record risorse_umane per identita id=' || v_identita_id || '.'
         );
     END IF;
 
-    -- Guard: risorsa umana disattivata
+    -- Guard: risorsa umana disattivata / fuori finestra
     IF v_ru_attivo = false THEN
         PERFORM script.fn_log_and_raise_error(
             'database', 'script.fn_get_user_profile',
             'E_UTENTE_DISABILITATO',
             jsonb_build_object('auth_user_id', p_auth_user_id,
-                              'risorsa_umana_id', v_risorsa_umana_id),
+                               'risorsa_umana_id', v_risorsa_umana_id),
             NULL::uuid,
             v_risorsa_umana_id::text
         );
     END IF;
-
-    -- Guard: risorsa umana non ancora valida
     IF v_valido_dal IS NOT NULL AND CURRENT_DATE < v_valido_dal THEN
         PERFORM script.fn_log_and_raise_error(
             'database', 'script.fn_get_user_profile',
             'E_UTENTE_NON_ATTIVO',
             jsonb_build_object('auth_user_id', p_auth_user_id,
-                              'valido_dal', v_valido_dal),
+                               'valido_dal', v_valido_dal),
             NULL::uuid,
             v_valido_dal::text
         );
     END IF;
-
-    -- Guard: risorsa umana scaduta
     IF v_valido_al IS NOT NULL AND CURRENT_DATE > v_valido_al THEN
         PERFORM script.fn_log_and_raise_error(
             'database', 'script.fn_get_user_profile',
             'E_UTENTE_SCADUTO',
             jsonb_build_object('auth_user_id', p_auth_user_id,
-                              'valido_al', v_valido_al),
+                               'valido_al', v_valido_al),
             NULL::uuid,
             v_valido_al::text
         );
     END IF;
 
+    -- Ruolo sistema ricostruito per retrocompatibilita' output:
+    -- ADMIN = super admin; OPERATIVO = altrimenti (DISABILITATO
+    -- e' gia' stato filtrato dai guard precedenti).
+    v_is_super_admin := script.fn_is_super_admin(p_auth_user_id);
+    v_ruolo_sistema_out := CASE WHEN v_is_super_admin THEN 'ADMIN' ELSE 'OPERATIVO' END;
+
     v_risorse_umane := jsonb_build_object(
         'risorsa_umana_id',                v_risorsa_umana_id,
-        'risorse_umane_auth_user_id',      v_rau_id,
+        'risorse_umane_auth_user_id',      v_identita_id,
         'soggetto_ruolo_id',               v_soggetto_ruolo_id,
         'qualifica_id',                    v_qualifica_id,
         'qualifica_codice',                v_qualifica_codice,
@@ -231,16 +257,14 @@ BEGIN
     );
 
     -- -------------------------------------------------------
-    -- 2. Blocco soggetto tramite fn_get_soggetto_dati_by_ruolo
+    -- 2. Blocco soggetto via fn_get_soggetto_dati_by_ruolo
     -- -------------------------------------------------------
     SELECT row_to_json(t.*)::jsonb
       INTO v_soggetto
       FROM script.fn_get_soggetto_dati_by_ruolo(v_soggetto_ruolo_id) t;
 
     -- -------------------------------------------------------
-    -- 3. Risolvere emittente fiscale con un solo blocco SQL:
-    --    priorita' 1 = whitelist personale
-    --    priorita' 2 = fallback gestore globale
+    -- 3. Risolve emittente fiscale (priorita' whitelist -> gestore)
     -- -------------------------------------------------------
     v_emittente := NULL;
 
@@ -327,11 +351,13 @@ BEGIN
     END IF;
 
     -- -------------------------------------------------------
-    -- 4. Comporre risultato finale
+    -- 4. Risultato finale (aggiunta is_super_admin)
     -- -------------------------------------------------------
     v_result := jsonb_build_object(
         'utente',                   v_utente,
-        'ruolo_sistema',            v_ruolo_sistema,
+        'ruolo_sistema',            v_ruolo_sistema_out,
+        'is_super_admin',           v_is_super_admin,
+        'ruolo_applicativo',        v_ruolo_applicativo::text,
         'risorse_umane',            v_risorse_umane,
         'soggetto',                 v_soggetto,
         'emittente',                v_emittente,
@@ -346,7 +372,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_get_user_profile(p_auth_user_id integer)
-IS 'Profilo utente completo: JSONB con blocchi utente, ruolo_sistema, risorse_umane (qualifica, UO), soggetto, emittente fiscale, permessi_area, azioni_abilitate, permessi_oggetto, deve_cambiare_password. Refactor ottimizzato: query iniziale accorpata e risoluzione emittente con blocco SQL prioritizzato.';
+IS 'Profilo utente completo (JSONB). Refactor §4.6.B.11: source of truth = identita_digitali (OPERATORE) + risorse_umane via soggetto_ruolo. Aggiunti campi output is_super_admin, ruolo_applicativo. Campo ruolo_sistema ricostruito via fn_is_super_admin per retrocompat output.';
 ```
 
 ---
