@@ -588,17 +588,67 @@ modello.
 
 ### 4.9 Row Level Security (RLS) — prima ondata
 
-> **Nota:** attivare RLS solo dopo che backend e frontend sono pronti a
-> popolare i GUC per ogni tipo di utente. Altrimenti le query esistenti si bloccano.
+> **Nota:** attivare RLS (ENABLE + FORCE) solo dopo che backend e
+> frontend sono pronti a popolare i GUC per ogni tipo di utente.
+> Altrimenti le query esistenti si bloccano.
 
-- [ ] 4.9.1 Abilitare RLS su `vendite.fatture` con policy `BA_OWNERSHIP` per CLIENTE_PORTALE
-- [ ] 4.9.2 Abilitare RLS su `vendite.ordini` con stessa policy
-- [ ] 4.9.3 Abilitare RLS su `pagamenti.scadenze` con stessa policy
-- [ ] 4.9.4 Abilitare RLS su `acquisti.ordini` con policy `FORNITORE_OWNERSHIP`
-- [ ] 4.9.5 Abilitare RLS su `acquisti.ddt_ingresso` con stessa policy
-- [ ] 4.9.6 Abilitare RLS su `anagrafiche.billing_account` (CLIENTE_PORTALE vede solo i propri)
-- [ ] 4.9.7 Esenzione policy per ruolo DB `zeroerp_admin` / superuser (bypass RLS)
-- [ ] 4.9.8 Benchmark performance pre/post su query chiave (list fatture, list ordini)
+**Stato 19-04-2026 — Fase DRY-RUN completata.** Le policy sono state
+create (CREATE POLICY) su tutte le 6 tabelle target ma la tabella
+**non** ha `ENABLE ROW LEVEL SECURITY`: le policy restano dormienti.
+Obiettivo del dry-run: far emergere buchi nelle `fn_scope_*` prima del
+cutover e rendere stabile il contratto GUC verso il backend.
+
+Mappatura tabelle reali vs nomi storici del WIP originale:
+
+| WIP originale | Tabella reale | Colonna scope | Funzione scope |
+| --- | --- | --- | --- |
+| `vendite.fatture` | `vendite.fatture` | `billing_account_id` (NOT NULL) + `emittente_soggetto_ruolo_id` | `fn_scope_ba_ownership` + `fn_scope_ef_whitelist` (dual policy) |
+| `vendite.ordini` | `vendite.ordini` | `soggetto_ruolo_id` (NOT NULL — BA nullable by design) | `fn_scope_cliente_ownership` **(nuova)** |
+| `pagamenti.scadenze` | `vendite.fatture_scadenze` (rinominato) | `fattura_id` | `fn_scope_ba_ownership_via_fattura` **(nuova)** |
+| `acquisti.ordini` | `acquisti.ordini` | `soggetto_ruolo_id` | `fn_scope_fornitore_ownership` |
+| `acquisti.ddt_ingresso` | `acquisti.ddt` (rinominato) | `mittente_soggetto_ruolo_id` | `fn_scope_fornitore_ownership` |
+| `anagrafiche.billing_account` | `anagrafiche.billing_account` | `id` (self) | `fn_scope_ba_ownership` |
+
+**Pattern dual-policy (solo su `vendite.fatture`):** due policy
+PERMISSIVE combinate in OR, gated sul GUC `app.ruolo_applicativo`. Una
+ammette `CLIENTE_PORTALE`/`SHOP_CUSTOMER` via BA, l'altra ammette
+`OPERATORE` via EF_WHITELIST. Le altre tabelle hanno una sola policy
+(portale o fornitore) perché non c'è scope operatore applicabile
+(ordini/DDT non hanno `emittente_soggetto_ruolo_id`).
+
+**Checklist DRY-RUN (4.9.1..4.9.6):**
+
+- [x] 4.9.1 `vendite.fatture` — 2 policy dual dry-run
+      (`rls_fatture_ba_ownership` + `rls_fatture_ef_whitelist`)
+      — `20260419-62-create-policy-rls-fatture-mctit.yaml`
+- [x] 4.9.2 `vendite.ordini` — `rls_ordini_cliente_ownership` dry-run
+      via `fn_scope_cliente_ownership` (nuova,
+      `20260419-60-create-fn-scope-cliente-ownership`)
+      — `20260419-63-create-policy-rls-ordini-mctit.yaml`
+- [x] 4.9.3 `vendite.fatture_scadenze` — `rls_fatture_scadenze_ba_ownership`
+      dry-run via `fn_scope_ba_ownership_via_fattura` (nuova,
+      `20260419-61-create-fn-scope-ba-ownership-via-fattura`)
+      — `20260419-64-create-policy-rls-fatture-scadenze-mctit.yaml`
+- [x] 4.9.4 `acquisti.ordini` — `rls_acquisti_ordini_fornitore_ownership`
+      dry-run — `20260419-65-create-policy-rls-ordini-mctit.yaml`
+- [x] 4.9.5 `acquisti.ddt` — `rls_acquisti_ddt_fornitore_ownership`
+      dry-run — `20260419-66-create-policy-rls-ddt-mctit.yaml`
+- [x] 4.9.6 `anagrafiche.billing_account` — `rls_billing_account_self_ownership`
+      dry-run — `20260419-67-create-policy-rls-billing-account-mctit.yaml`
+
+**Checklist CUTOVER (4.9.7..4.9.8) — richiede PR2 backend stabile:**
+
+- [ ] 4.9.7 Migration dedicata: `ALTER TABLE ... ENABLE ROW LEVEL
+      SECURITY` + `FORCE ROW LEVEL SECURITY` sulle 6 tabelle sopra.
+      Concessioni `BYPASSRLS` ai ruoli tecnici `zeroerp_admin` /
+      `zeroerp_migration` (via `ALTER ROLE`). Verifica preventiva che
+      `zeroerp_app` sia `NOBYPASSRLS`.
+- [ ] 4.9.8 Benchmark performance pre/post su query chiave (list
+      fatture, list ordini) con `EXPLAIN (ANALYZE, BUFFERS)`.
+      Tolleranza regressione ≤ 10% (linee-guida-sql §10.9).
+- [ ] 4.9.9 pgTAP per ciascuna policy attivata: utente visibile,
+      utente non autorizzato, senza GUC (fail-closed), bypass ruolo
+      tecnico. File in `db/pgtap/rls/<schema>_<tabella>_rls.sql`.
 
 ---
 
@@ -1020,6 +1070,61 @@ inferiore e' completo e testato.
     backend PR2), §4.6.H cutover (rinomina tabella legacy + rimozione
     trigger-ponte, richiede PR2 stabile), rimozione doppia verifica
     OPERATORE in `fn_sync_auth_user_is_active` (post cutover).
+* **2026-04-19 (sessione implementativa — PR1.5 DB: RLS dry-run +
+  anti-lockout + helper UO)**: lavoro DB indipendente da PR2 backend,
+  eseguibile in parallelo al suo sviluppo.
+  * **§4.9 RLS Fase DRY-RUN** (8 file): 2 nuove `fn_scope_*` in
+    `script` + 6 `CREATE POLICY` dormienti (nessun `ENABLE ROW LEVEL
+    SECURITY`).
+    * `fn_scope_cliente_ownership(identita_id, cliente_sr_id)` —
+      simmetrica a `fn_scope_fornitore_ownership` ma per i ruoli CL
+      (CLIENTE_PORTALE + SHOP_CUSTOMER). Usata su `vendite.ordini`
+      perche' la tabella ha `soggetto_ruolo_id` NOT NULL direttamente
+      (BA nullable by design).
+    * `fn_scope_ba_ownership_via_fattura(identita_id, fattura_id)` —
+      wrapper che risolve BA via JOIN a `vendite.fatture` e delega a
+      `fn_scope_ba_ownership`. Evita subquery inline nelle policy
+      (linee-guida-sql §10.3). Usata su `vendite.fatture_scadenze`.
+    * 6 tabelle coperte (vedi §4.9 per checklist). `vendite.fatture`
+      ha dual-policy (PERMISSIVE in OR) per distinguere portale/shop
+      da operatore senza moltiplicare funzioni di scope. Le altre
+      tabelle hanno policy singola.
+    * **Non** sono state abilitate `ALTER TABLE ... ENABLE ROW LEVEL
+      SECURITY` ne' `FORCE`: le policy restano inerti fino alla
+      migration dedicata post-PR2 (§4.9.7).
+  * **Anti-lockout SUPER_ADMIN** (3 file + CSV errori): task 13.3.6
+    proposto dal team backend come prerequisito di sicurezza per
+    l'attivazione RLS.
+    * `script.fn_check_almeno_un_super_admin_attivo()` — helper puro
+      boolean, fonte di verita' unica consumata da entrambi i
+      trigger guard sotto.
+    * `config.trgfn_profili_accesso_bindings_guard_ultimo_super_admin`
+      e trigger `trg_..._a10_guard_ultimo_super_admin_upd_dlt` su
+      UPDATE/DELETE di `profili_accesso_bindings`.
+    * `anagrafiche.trgfn_identita_digitali_guard_ultimo_super_admin`
+      e trigger `trg_..._a10_guard_ultimo_super_admin_upd` su UPDATE
+      OF `attivo` di `identita_digitali`.
+    * Codice errore id 384 `E_PROFILO_ULTIMO_SUPER_ADMIN` in
+      `messaggi_errore.csv`.
+  * **Helper UO** (1 file): `script.fn_get_uo_id_for_user(auth_user_id)`
+    (task 13.3.7) — risolve la catena `auth_user -> identita_digitali
+    (OPERATORE) -> risorse_umane -> unita_organizzativa_id` in una
+    singola query `STABLE`. Fail-soft (NULL su tutti i casi non
+    risolvibili). Consolidatore per resolver futuri e potenziale
+    base per RLS per UO.
+  * **pgTAP**: 4 nuovi file (~20 casi totali). Coperture: nuove
+    `fn_scope_*` (cliente-ownership, via-fattura), anti-lockout
+    (scenario sano, lockout binding, lockout identita), helper UO (4
+    casi). Test RLS policy attivate rimandati a post-cutover.
+  * **Doc concettuale**: 6 nuovi manual (2 fn_scope + fn_check +
+    2 trgfn + fn_get_uo).
+  * **Sequenza Liquibase**: file datati 20260419 numeri 60-71.
+    Ordine CI: `YYYYMMDD-XX` indipendente dalla cartella, quindi
+    le `fn_scope_*` (60-61) sono caricate prima delle policy (62-67)
+    che le referenziano.
+  * **Pendenze residue post-PR1.5**: §4.6.H cutover + §4.9
+    attivazione (ENABLE + FORCE + BYPASSRLS) + §4.9.8 benchmark +
+    §4.9.9 pgTAP policy attive — tutte richiedono PR2 backend stabile.
 
 ---
 

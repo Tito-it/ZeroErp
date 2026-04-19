@@ -14,27 +14,26 @@ CREATE OR REPLACE FUNCTION script.fn_get_user_actions_map(p_auth_user_id integer
  STABLE
 AS $function$
 DECLARE
-    v_has_identita  boolean;
-    v_is_super      boolean;
-    v_uo_id         anagrafiche.risorse_umane.unita_organizzativa_id%TYPE;
+    v_has_identita boolean;
+    v_is_super     boolean;
 BEGIN
     -- =========================================================
     -- Scopo:
-    --   Ritorna la mappa completa delle azioni di processo
-    --   abilitate/disabilitate per l'utente.
+    --   Mappa azioni_processo abilitate/disabilitate per l'utente.
     --
     -- Ritorna:
-    --   JSONB {"genera_fatture_lotti": true,
-    --          "reset_lotto_draft": false, ...}
+    --   JSONB { "genera_fatture_lotti": true, "reset_lotto_draft": false, ... }
     --
-    -- Catena (refactor §4.6.B.9):
-    --   1. Assenza identita OPERATORE attiva -> tutte false
-    --   2. fn_is_super_admin -> tutte true
-    --   3. Override utente azione + profilo reparto (legacy)
-    --   4. Default -> false
+    -- Catena (refactor §4.6.B.9 + §4.8.5):
+    --   1. Guard parametro obbligatorio
+    --   2. Pre-calcolo v_has_identita (helper DRY §4.6.B.0)
+    --   3. Pre-calcolo v_is_super
+    --   4. CTE best_per_azione su profili_accesso_azioni via helper
+    --   5. jsonb_object_agg con CASE su (has_identita, super,
+    --      user_override_azione, best_per_azione, default false)
     -- =========================================================
 
-    -- Guard: parametro obbligatorio e valido
+    -- 1. Guard parametro obbligatorio
     IF p_auth_user_id IS NULL OR p_auth_user_id <= 0 THEN
         PERFORM script.fn_log_and_raise_error(
             'database', 'script.fn_get_user_actions_map',
@@ -45,24 +44,32 @@ BEGIN
         );
     END IF;
 
-    -- 1. Identita OPERATORE attiva (helper DRY §4.6.B.0).
-    --    Pre-calcolata per uso nel CASE della jsonb_object_agg.
+    -- 2-3. Pre-calcolo flag identita + super
     v_has_identita := script.fn_has_identita_attiva(
                           p_auth_user_id,
                           'OPERATORE'::config.ruolo_applicativo);
-
-    -- 2. Super admin flag
     v_is_super := script.fn_is_super_admin(p_auth_user_id);
 
-    -- 3. UO per la catena profili_reparto (legacy RUA)
-    SELECT ru.unita_organizzativa_id
-      INTO v_uo_id
-      FROM anagrafiche.risorse_umane_auth_user rau
-      JOIN anagrafiche.risorse_umane ru
-        ON ru.id = rau.risorsa_umana_id
-     WHERE rau.auth_user_id = p_auth_user_id;
-
+    -- 4-5. CTE best_per_azione + aggregazione jsonb
     RETURN (
+        WITH abilitazioni_user AS (
+            SELECT paz.azione_id,
+                   paz.abilitata,
+                   h.priorita
+              FROM script.fn_get_profili_accesso_applicabili(p_auth_user_id) h
+              JOIN config.profili_accesso_azioni paz
+                ON paz.profilo_accesso_id = h.profilo_accesso_id
+        ),
+        best_per_azione AS (
+            -- DISTINCT ON prende la prima riga per azione_id
+            -- ordinata per priorita: AD_HOC (1) vince su
+            -- REPARTO/PORTALE (2).
+            SELECT DISTINCT ON (azione_id)
+                   azione_id,
+                   abilitata
+              FROM abilitazioni_user
+             ORDER BY azione_id, priorita
+        )
         SELECT COALESCE(
             jsonb_object_agg(
                 ap.permission_codename,
@@ -73,7 +80,7 @@ BEGIN
                         THEN true
                     ELSE COALESCE(
                         uoa.abilitata,
-                        pra.abilitata,
+                        bpaz.abilitata,
                         false
                     )
                 END
@@ -85,16 +92,15 @@ BEGIN
             ON uoa.auth_user_id = p_auth_user_id
            AND uoa.azione_id = ap.id
            AND uoa.validita @> CURRENT_DATE
-          LEFT JOIN config.profili_reparto_azioni pra
-            ON pra.unita_organizzativa_id = v_uo_id
-           AND pra.azione_id = ap.id
+          LEFT JOIN best_per_azione bpaz
+            ON bpaz.azione_id = ap.id
          WHERE ap.attivo = TRUE
     );
 END;
 $function$
 
 COMMENT ON FUNCTION script.fn_get_user_actions_map(p_auth_user_id integer)
-IS 'Mappa azioni processo set-based. Refactor §4.6.B.9: gate identita OPERATORE attiva, bypass fn_is_super_admin, catena override+reparto legacy invariata (rinvio §4.8).';
+IS 'Mappa azioni processo set-based. Refactor §4.6.B.9 + §4.8.5: gate identita OPERATORE, bypass fn_is_super_admin, catena abilitazioni via helper fn_get_profili_accesso_applicabili (AD_HOC > REPARTO/PORTALE). Override utente azione invariato.';
 ```
 
 ---

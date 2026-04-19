@@ -45,13 +45,14 @@
 |------|--------|--------|--------|
 | trg_identita_digitali_a10_guard_coerenza_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_identita_digitali_guard_coerenza()` |
 | trg_identita_digitali_a10_guard_coerenza_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_identita_digitali_guard_coerenza()` |
+| trg_identita_digitali_a10_guard_ultimo_super_admin_upd | AFTER | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_identita_digitali_guard_ultimo_super_admin()` |
 | trg_identita_digitali_a10_profili_accesso_bindings_block_788e47 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('config', 'profili_accesso_bindings', 'identita_digitale_id', 'id', 'attivo')` |
 | trg_identita_digitali_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_identita_digitali_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
-| trg_identita_digitali_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_identita_digitali_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
-| trg_identita_digitali_z90_storico_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_storico_generic('identita_digitali_id')` |
+| trg_identita_digitali_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_identita_digitali_z90_storico_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_storico_generic('identita_digitali_id')` |
+| trg_identita_digitali_z90_storico_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_storico_generic('identita_digitali_id')` |
 | trg_identita_digitali_z90_sync_auth_user_active_ins | AFTER | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_identita_digitali_sync_auth_user_active()` |
 | trg_identita_digitali_z90_sync_auth_user_active_upd | AFTER | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_identita_digitali_sync_auth_user_active()` |
 

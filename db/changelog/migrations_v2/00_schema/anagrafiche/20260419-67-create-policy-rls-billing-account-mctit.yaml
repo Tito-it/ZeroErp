@@ -1,0 +1,54 @@
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/anagrafiche/20260419-67-create-policy-rls-billing-account-mctit.yaml
+
+  - changeSet:
+      id: 20260419-67-create-policy-rls-billing-account
+      author: mctit
+      comment: >
+        RLS prima ondata §4.9.6 — DRY RUN: crea policy PERMISSIVE su
+        anagrafiche.billing_account per cliente portale / shop. Policy
+        self: passa direttamente id a fn_scope_ba_ownership (che verifica
+        che il BA appartenga al soggetto_ruolo dell'identita). Gate
+        ruolo_applicativo IN (CLIENTE_PORTALE, SHOP_CUSTOMER). Nessun
+        ENABLE / FORCE.
+      preConditions:
+        - onFail: HALT
+        - and:
+          - tableExists: { schemaName: anagrafiche, tableName: billing_account }
+          - sqlCheck:
+              expectedResult: "1"
+              sql: |
+                SELECT COUNT(*)
+                  FROM pg_proc p
+                  JOIN pg_namespace n ON n.oid = p.pronamespace
+                 WHERE n.nspname = 'script'
+                   AND p.proname = 'fn_scope_ba_ownership';
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP POLICY IF EXISTS rls_billing_account_self_ownership
+                  ON anagrafiche.billing_account;
+
+              CREATE POLICY rls_billing_account_self_ownership
+                  ON anagrafiche.billing_account
+                  AS PERMISSIVE
+                  FOR SELECT
+                  USING (
+                      current_setting('app.ruolo_applicativo', true)
+                          IN ('CLIENTE_PORTALE', 'SHOP_CUSTOMER')
+                      AND script.fn_scope_ba_ownership(
+                          NULLIF(current_setting('app.current_identita_id', true), '')::bigint,
+                          id
+                      )
+                  );
+
+              COMMENT ON POLICY rls_billing_account_self_ownership
+                  ON anagrafiche.billing_account IS
+                  'RLS §4.9.6 dry-run: cliente portale/shop vede solo i billing_account il cui soggetto_ruolo_id = proprio SR (self-ownership via fn_scope_ba_ownership con id della riga come parametro BA).';
+      rollback:
+        - sql:
+            sql: |
+              DROP POLICY IF EXISTS rls_billing_account_self_ownership
+                  ON anagrafiche.billing_account;

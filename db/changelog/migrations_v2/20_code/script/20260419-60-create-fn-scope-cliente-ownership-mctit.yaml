@@ -1,0 +1,67 @@
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260419-60-create-fn-scope-cliente-ownership-mctit.yaml
+
+  - changeSet:
+      id: 20260419-60-create-fn-scope-cliente-ownership
+      author: mctit
+      runOnChange: true
+      validCheckSum: [ANY]
+      comment: >
+        Scope policy CLIENTE_OWNERSHIP: un'identita cliente (CLIENTE_PORTALE o
+        SHOP_CUSTOMER) puo vedere solo i dati (ordini, preventivi) riferiti al
+        proprio soggetto_ruolo. Simmetrica a fn_scope_fornitore_ownership ma
+        ammette entrambi i ruoli applicativi che condividono il ruolo
+        anagrafico CL. Utile dove il target ha soggetto_ruolo_id NOT NULL
+        direttamente (es. vendite.ordini) e non dipende da billing_account
+        (che su ordini e' nullable by design). LANGUAGE sql STABLE per favorire
+        l'inlining nelle RLS.
+      preConditions:
+        - onFail: HALT
+        - and:
+          - tableExists: { schemaName: anagrafiche, tableName: identita_digitali }
+          - tableExists: { schemaName: anagrafiche, tableName: soggetti_ruoli }
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Firma con %TYPE sui parametri:
+              --   p_identita_id   = anagrafiche.identita_digitali.id
+              --   p_cliente_sr_id = anagrafiche.soggetti_ruoli.id
+              --                     (soggetto_ruolo del cliente target)
+              CREATE OR REPLACE FUNCTION script.fn_scope_cliente_ownership(
+                  p_identita_id   anagrafiche.identita_digitali.id%TYPE,
+                  p_cliente_sr_id anagrafiche.soggetti_ruoli.id%TYPE
+              )
+              RETURNS boolean
+              LANGUAGE sql
+              STABLE
+              AS $function$
+                  -- Match diretto: il target soggetto_ruolo e' quello
+                  -- dell'identita, e l'identita e' in veste CLIENTE_PORTALE
+                  -- oppure SHOP_CUSTOMER (i due ruoli applicativi che
+                  -- condividono il ruolo anagrafico CL). Evita false positive
+                  -- su altre identita collegate allo stesso SR con veste
+                  -- diversa (es. FORNITORE_PORTALE su SR misto CL/FO).
+                  SELECT EXISTS (
+                      SELECT 1
+                        FROM anagrafiche.identita_digitali id
+                       WHERE id.id                = p_identita_id
+                         AND id.soggetto_ruolo_id = p_cliente_sr_id
+                         AND id.ruolo_applicativo IN ('CLIENTE_PORTALE', 'SHOP_CUSTOMER')
+                         AND id.attivo            = true
+                  );
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_scope_cliente_ownership(
+                  anagrafiche.identita_digitali.id%TYPE,
+                  anagrafiche.soggetti_ruoli.id%TYPE
+              ) IS
+                  'Scope policy CLIENTE_OWNERSHIP: ritorna true se il '
+                  'soggetto_ruolo cliente target coincide con il '
+                  'soggetto_ruolo dell''identita e l''identita e'' in veste '
+                  'CLIENTE_PORTALE o SHOP_CUSTOMER attiva. STABLE, inlineable.';
+      rollback:
+        - sql:
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_scope_cliente_ownership(bigint, bigint);
