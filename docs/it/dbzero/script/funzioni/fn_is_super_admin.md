@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/script/manual/fn_is_super_admin.md" %}
 # ⚙️ Funzione `fn_is_super_admin`
 
 ```sql

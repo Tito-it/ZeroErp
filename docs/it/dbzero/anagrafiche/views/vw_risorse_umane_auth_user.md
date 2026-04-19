@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/anagrafiche/manual/vw_risorse_umane_auth_user.md" %}
 # 🔍 View `vw_risorse_umane_auth_user`
 
 ```sql

@@ -1,0 +1,128 @@
+-- ------------------------------------------------------------
+-- SPDX-License-Identifier: GPL-3.0-or-later
+-- pgTAP test per Zero ERP
+--
+-- Test: script.fn_current_identita_context
+-- Riferimento: §4.7.2 WIP multi-face-auth.
+--
+-- Semantica attesa:
+--   - Nessun GUC settato -> tutte le colonne NULL (fail-soft)
+--   - GUC settati -> valori tipizzati e correttamente parseati
+--   - GUC parzialmente settati -> le colonne mancanti restano NULL
+--   - Stringhe vuote -> NULL (NULLIF attivo)
+--
+-- Indice test (1..6):
+--    1. Nessun GUC settato -> 3 NULL
+--    2. Tutti e 3 i GUC settati -> valori corretti
+--    3. Solo current_identita_id settato -> solo quel campo valorizzato
+--    4. Solo ruolo_applicativo settato -> solo quel campo valorizzato
+--    5. Valori vuoti -> NULL (NULLIF comportamento atteso)
+--    6. Cast tipo enum fallirebbe con valore invalido (skip: comportamento
+--       atteso documentato, non testato qui)
+--
+-- NOTA: SET LOCAL + rollback implicito a fine transazione. NON serve
+-- RESET esplicito: il ROLLBACK finale resetta tutti i SET LOCAL.
+--
+-- BEGIN; + rollback implicito a fine file.
+-- ------------------------------------------------------------
+BEGIN;
+SELECT plan(7);
+-- =========================================================
+-- 1) Nessun GUC settato -> 3 NULL
+-- =========================================================
+-- Assumiamo che i 3 GUC non siano mai stati settati in questa sessione.
+-- current_setting con missing_ok=true ritorna ''; NULLIF('','') = NULL.
+SELECT ok(
+        (
+            SELECT current_identita_id IS NULL
+                AND ruolo_applicativo IS NULL
+                AND soggetto_ruolo_id IS NULL
+            FROM script.fn_current_identita_context()
+        ),
+        '1. Nessun GUC settato -> tutte le colonne NULL (fail-soft)'
+    );
+-- =========================================================
+-- 2) Tutti e 3 i GUC settati -> valori correttamente tipizzati
+-- =========================================================
+SET LOCAL app.current_identita_id = '42';
+SET LOCAL app.ruolo_applicativo = 'OPERATORE';
+SET LOCAL app.soggetto_ruolo_id = '123';
+SELECT is(
+        (
+            SELECT current_identita_id
+            FROM script.fn_current_identita_context()
+        ),
+        42::bigint,
+        '2a. current_identita_id = 42 (bigint)'
+    );
+SELECT ok(
+        (
+            SELECT ruolo_applicativo = 'OPERATORE'::config.ruolo_applicativo
+            FROM script.fn_current_identita_context()
+        ),
+        '2b. ruolo_applicativo = OPERATORE (config.ruolo_applicativo)'
+    );
+-- =========================================================
+-- 3) Solo current_identita_id settato -> solo quel campo valorizzato
+-- =========================================================
+-- Reset parziale: il SET LOCAL precedente resta attivo nella transazione.
+-- Per simulare "solo 1 GUC" uso SET LOCAL a stringa vuota (simula unset).
+SET LOCAL app.ruolo_applicativo = '';
+SET LOCAL app.soggetto_ruolo_id = '';
+SELECT ok(
+        (
+            SELECT current_identita_id = 42::bigint
+                AND ruolo_applicativo IS NULL
+                AND soggetto_ruolo_id IS NULL
+            FROM script.fn_current_identita_context()
+        ),
+        '3. Solo current_identita_id settato, gli altri (vuoti) -> NULL'
+    );
+-- =========================================================
+-- 4) Solo ruolo_applicativo settato
+-- =========================================================
+SET LOCAL app.current_identita_id = '';
+SET LOCAL app.ruolo_applicativo = 'CLIENTE_PORTALE';
+SET LOCAL app.soggetto_ruolo_id = '';
+SELECT ok(
+        (
+            SELECT current_identita_id IS NULL
+                AND ruolo_applicativo = 'CLIENTE_PORTALE'::config.ruolo_applicativo
+                AND soggetto_ruolo_id IS NULL
+            FROM script.fn_current_identita_context()
+        ),
+        '4. Solo ruolo_applicativo settato -> altri NULL'
+    );
+-- =========================================================
+-- 5) Stringhe vuote su tutti -> 3 NULL (consolida NULLIF)
+-- =========================================================
+SET LOCAL app.current_identita_id = '';
+SET LOCAL app.ruolo_applicativo = '';
+SET LOCAL app.soggetto_ruolo_id = '';
+SELECT ok(
+        (
+            SELECT current_identita_id IS NULL
+                AND ruolo_applicativo IS NULL
+                AND soggetto_ruolo_id IS NULL
+            FROM script.fn_current_identita_context()
+        ),
+        '5. GUC tutti a stringa vuota -> NULLIF consolida a NULL'
+    );
+-- =========================================================
+-- 6) Valori bigint parseabili + enum valido insieme
+-- =========================================================
+SET LOCAL app.current_identita_id = '9999';
+SET LOCAL app.ruolo_applicativo = 'FORNITORE_PORTALE';
+SET LOCAL app.soggetto_ruolo_id = '777';
+SELECT ok(
+        (
+            SELECT current_identita_id = 9999::bigint
+                AND ruolo_applicativo = 'FORNITORE_PORTALE'::config.ruolo_applicativo
+                AND soggetto_ruolo_id = 777::bigint
+            FROM script.fn_current_identita_context()
+        ),
+        '6. Tutti i 3 GUC settati con valori diversi -> tipizzati correttamente'
+    );
+SELECT *
+FROM finish();
+ROLLBACK;

@@ -1,0 +1,69 @@
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260419-40-create-fn-current-identita-context-mctit.yaml
+
+  - changeSet:
+      id: 20260419-40-create-fn-current-identita-context
+      author: mctit
+      runOnChange: true
+      validCheckSum: [ANY]
+      comment: >
+        Crea script.fn_current_identita_context() RETURNS TABLE
+        (§4.7.2 WIP multi-face-auth). Helper di convenienza che legge
+        in un colpo solo i tre GUC di sessione del contesto identita
+        popolati dal middleware JwtAuditAuthentication:
+          - app.current_identita_id  -> anagrafiche.identita_digitali.id
+          - app.ruolo_applicativo    -> config.ruolo_applicativo
+          - app.soggetto_ruolo_id    -> anagrafiche.soggetti_ruoli.id
+
+        Uso tipico: policy RLS, funzioni fn_scope_*, trigger di audit,
+        funzioni diagnostiche. Il pattern
+        NULLIF(current_setting(name, true), '')::tipo applica:
+          - missing_ok = true     (no errore se GUC non settato)
+          - empty string -> NULL  (coerenza con stati "non loggato")
+          - cast al tipo target   (tipizzazione sicura)
+
+        LANGUAGE sql STABLE: inlineable dal planner, cache-friendly
+        nella stessa statement, nessun side effect.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT COUNT(*) FROM pg_type t
+                JOIN pg_namespace n ON n.oid = t.typnamespace
+               WHERE n.nspname = 'config'
+                 AND t.typname = 'ruolo_applicativo';
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_current_identita_context()
+              RETURNS TABLE (
+                  current_identita_id  bigint,
+                  ruolo_applicativo    config.ruolo_applicativo,
+                  soggetto_ruolo_id    bigint
+              )
+              LANGUAGE sql
+              STABLE
+              AS $function$
+                  -- Lettura tipizzata dei tre GUC di sessione del contesto
+                  -- identita (§4.7 WIP multi-face-auth). Fail-soft: ogni
+                  -- campo ritorna NULL se il GUC non e' settato o e' vuoto.
+                  -- Invariante "tutto o niente": il middleware deve
+                  -- popolare i tre GUC insieme. Se UNO e' NULL le policy
+                  -- fn_scope_* falliscono fail-closed.
+                  SELECT
+                      NULLIF(current_setting('app.current_identita_id', true), '')::bigint,
+                      NULLIF(current_setting('app.ruolo_applicativo',   true), '')::config.ruolo_applicativo,
+                      NULLIF(current_setting('app.soggetto_ruolo_id',   true), '')::bigint;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_current_identita_context() IS
+                  'Restituisce il contesto identita della sessione corrente '
+                  '(app.current_identita_id, app.ruolo_applicativo, '
+                  'app.soggetto_ruolo_id) come record tipato. Fail-soft su '
+                  'GUC mancanti (NULL). §4.7 WIP multi-face-auth.';
+      rollback:
+        - sql:
+            sql: DROP FUNCTION IF EXISTS script.fn_current_identita_context();

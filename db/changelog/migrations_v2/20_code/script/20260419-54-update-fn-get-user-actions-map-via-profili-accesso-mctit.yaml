@@ -1,0 +1,143 @@
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260419-54-update-fn-get-user-actions-map-via-profili-accesso-mctit.yaml
+
+  - changeSet:
+      id: 20260419-54-update-fn-get-user-actions-map-via-profili-accesso
+      author: mctit
+      runOnChange: true
+      validCheckSum: [ANY]
+      comment: >
+        Aggiornamento successivo di script.fn_get_user_actions_map (§4.8.5
+        WIP multi-face-auth). Simmetrico a 20260419-53: sostituisce
+        LEFT JOIN su config.profili_reparto_azioni con CTE
+        best_per_azione su fn_get_profili_accesso_applicabili.
+
+        File successivo a 20260419-18 sullo stesso branch non-mergiato.
+        Liquibase esegue runOnChange in ordine alfabetico -> -54 produce
+        la versione finale.
+      preConditions:
+        - onFail: HALT
+        - and:
+          - sqlCheck:
+              expectedResult: 1
+              sql: |
+                SELECT COUNT(*) FROM pg_proc p
+                  JOIN pg_namespace n ON n.oid = p.pronamespace
+                 WHERE n.nspname = 'script'
+                   AND p.proname = 'fn_is_super_admin';
+          - sqlCheck:
+              expectedResult: 1
+              sql: |
+                SELECT COUNT(*) FROM pg_proc p
+                  JOIN pg_namespace n ON n.oid = p.pronamespace
+                 WHERE n.nspname = 'script'
+                   AND p.proname = 'fn_get_profili_accesso_applicabili';
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_get_user_actions_map(
+                  p_auth_user_id integer
+              )
+              RETURNS jsonb
+              LANGUAGE plpgsql
+              STABLE
+              AS $function$
+              DECLARE
+                  v_has_identita boolean;
+                  v_is_super     boolean;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Mappa azioni_processo abilitate/disabilitate per l'utente.
+                  --
+                  -- Ritorna:
+                  --   JSONB { "genera_fatture_lotti": true, "reset_lotto_draft": false, ... }
+                  --
+                  -- Catena (refactor §4.6.B.9 + §4.8.5):
+                  --   1. Guard parametro obbligatorio
+                  --   2. Pre-calcolo v_has_identita (helper DRY §4.6.B.0)
+                  --   3. Pre-calcolo v_is_super
+                  --   4. CTE best_per_azione su profili_accesso_azioni via helper
+                  --   5. jsonb_object_agg con CASE su (has_identita, super,
+                  --      user_override_azione, best_per_azione, default false)
+                  -- =========================================================
+
+                  -- 1. Guard parametro obbligatorio
+                  IF p_auth_user_id IS NULL OR p_auth_user_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_get_user_actions_map',
+                          'E_ADMIN_VALIDAZIONE',
+                          jsonb_build_object('p_auth_user_id', p_auth_user_id),
+                          NULL::uuid,
+                          'p_auth_user_id obbligatorio e > 0.'
+                      );
+                  END IF;
+
+                  -- 2-3. Pre-calcolo flag identita + super
+                  v_has_identita := script.fn_has_identita_attiva(
+                                        p_auth_user_id,
+                                        'OPERATORE'::config.ruolo_applicativo);
+                  v_is_super := script.fn_is_super_admin(p_auth_user_id);
+
+                  -- 4-5. CTE best_per_azione + aggregazione jsonb
+                  RETURN (
+                      WITH abilitazioni_user AS (
+                          SELECT paz.azione_id,
+                                 paz.abilitata,
+                                 h.priorita
+                            FROM script.fn_get_profili_accesso_applicabili(p_auth_user_id) h
+                            JOIN config.profili_accesso_azioni paz
+                              ON paz.profilo_accesso_id = h.profilo_accesso_id
+                      ),
+                      best_per_azione AS (
+                          -- DISTINCT ON prende la prima riga per azione_id
+                          -- ordinata per priorita: AD_HOC (1) vince su
+                          -- REPARTO/PORTALE (2).
+                          SELECT DISTINCT ON (azione_id)
+                                 azione_id,
+                                 abilitata
+                            FROM abilitazioni_user
+                           ORDER BY azione_id, priorita
+                      )
+                      SELECT COALESCE(
+                          jsonb_object_agg(
+                              ap.permission_codename,
+                              CASE
+                                  WHEN NOT v_has_identita
+                                      THEN false
+                                  WHEN v_is_super
+                                      THEN true
+                                  ELSE COALESCE(
+                                      uoa.abilitata,
+                                      bpaz.abilitata,
+                                      false
+                                  )
+                              END
+                          ),
+                          '{}'::jsonb
+                      )
+                        FROM config.azioni_processo ap
+                        LEFT JOIN config.user_override_azioni uoa
+                          ON uoa.auth_user_id = p_auth_user_id
+                         AND uoa.azione_id = ap.id
+                         AND uoa.validita @> CURRENT_DATE
+                        LEFT JOIN best_per_azione bpaz
+                          ON bpaz.azione_id = ap.id
+                       WHERE ap.attivo = TRUE
+                  );
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_get_user_actions_map(integer) IS
+                  'Mappa azioni processo set-based. Refactor §4.6.B.9 + §4.8.5: '
+                  'gate identita OPERATORE, bypass fn_is_super_admin, catena '
+                  'abilitazioni via helper fn_get_profili_accesso_applicabili '
+                  '(AD_HOC > REPARTO/PORTALE). Override utente azione invariato.';
+      rollback:
+        - sql:
+            sql: |
+              -- Rollback: Liquibase riesegue 20260419-18 (runOnChange)
+              -- al prossimo apply, ripristinando la versione precedente.
+              SELECT 1;

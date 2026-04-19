@@ -90,6 +90,66 @@ SET myapp.user_language = 'en';
 
 ---
 
+### GUC di sessione `app.*` (contesto identità multi-face-auth)
+
+Il prefisso **`app.`** è riservato alle GUC **session-scoped** popolate dal
+middleware `JwtAuditAuthentication` al momento dell'autenticazione HTTP e
+resettate in `process_response`. Descrivono il **contesto identità** della
+richiesta corrente e sono lette da:
+
+* funzioni resolver (`fn_resolve_*`, `fn_check_*`, `fn_scope_*`),
+* policy RLS (§4.9 WIP multi-face-auth),
+* trigger di audit/log che collegano operazioni DB → identità utente.
+
+Tutte sono impostate via `set_config('app.<nome>', <valore>, is_local := false)`
+a livello di sessione dalla connessione del pool (reset a fine request).
+
+#### Set base (pre-esistente)
+
+* **`app.jwt_user`** — username stringa dell'utente Django autenticato.
+* **`app.current_user_id`** — `auth_user.id` come stringa.
+
+#### Set multi-face-auth (§4.7 WIP, introdotti 2026-04-19)
+
+Tre GUC aggiuntive descrivono la **veste** con cui l'utente accede in questa
+sessione (operatore interno vs cliente portale vs fornitore vs shop vs api
+client), usate dalle policy di scope / RLS per filtrare i dati in modo
+coerente col ruolo applicativo:
+
+* **`app.current_identita_id`** — `anagrafiche.identita_digitali.id` della
+  veste attiva per questa sessione. Lettura tipica: `NULLIF(current_setting('app.current_identita_id', true), '')::bigint`.
+* **`app.ruolo_applicativo`** — valore dell'enum `config.ruolo_applicativo`
+  dell'identità corrente. Usato dalle policy che vincolano l'accesso per
+  dimensione "chi sei" (es. i `CLIENTE_PORTALE` non vedono l'area acquisti).
+* **`app.soggetto_ruolo_id`** — `anagrafiche.soggetti_ruoli.id` dell'identità
+  corrente. Usato da policy **BA_OWNERSHIP** / **FORNITORE_OWNERSHIP** per
+  mappare l'utente al soggetto anagrafico proprietario dei dati.
+
+#### Helper `script.fn_current_identita_context()`
+
+Per leggere tutte e tre le GUC in un colpo solo e ottenere un record
+tipato, usare la funzione di convenienza
+[`script.fn_current_identita_context`](/dbzero/script/funzioni/fn_current_identita_context):
+
+```sql
+SELECT * FROM script.fn_current_identita_context();
+--  current_identita_id | ruolo_applicativo | soggetto_ruolo_id
+-- ---------------------+-------------------+-------------------
+--                   42 | OPERATORE         |               123
+```
+
+La funzione fa il parsing dei tre GUC (fail-soft: restituisce `NULL` per i
+campi non impostati) e applica i cast ai tipi corretti.
+
+#### Invariante "tutto o niente"
+
+Il middleware **deve** popolare tutti e tre i GUC contemporaneamente (oppure
+nessuno, per i percorsi non autenticati): dati parziali producono stati
+incoerenti nelle policy RLS. Se una sola delle tre è `NULL`, le policy
+applicate via `fn_scope_*` falliscono in modo **fail-closed**.
+
+---
+
 ### Differenza GUC vs Parametri Tabellari
 
 | Caratteristica       | GUC (`myapp.*`, `dbops.*`)                        | Tabelle (`config.parameters` + overrides)                  |

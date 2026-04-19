@@ -643,6 +643,27 @@ mantiene la funzione pura e testabile con input espliciti.
 `current_setting('app.xxx', true)` ritorna stringa vuota se il GUC non e' settato.
 Gestire il fallback con `NULLIF(..., '')::bigint` o un guard esplicito nel caller.
 
+**Helper `script.fn_current_identita_context()`** — per leggere i tre GUC multi-face-auth
+(`app.current_identita_id`, `app.ruolo_applicativo`, `app.soggetto_ruolo_id`) in un unico
+`SELECT` tipato, usare il wrapper
+[`script.fn_current_identita_context`](/dbzero/script/funzioni/fn_current_identita_context).
+Utile dentro funzioni PL/pgSQL che necessitano piu' di un campo di contesto:
+
+```sql
+DECLARE
+    v_ctx   record;
+BEGIN
+    SELECT * INTO v_ctx FROM script.fn_current_identita_context();
+    IF v_ctx.current_identita_id IS NULL THEN
+        RETURN false;  -- fail-closed: sessione senza identita
+    END IF;
+    -- ... usa v_ctx.current_identita_id, v_ctx.ruolo_applicativo, ecc.
+END;
+```
+
+Dentro una policy RLS e' comunque preferibile leggere **solo** il GUC effettivamente usato
+(es. `app.current_identita_id`) per evitare chiamata funzione non necessaria.
+
 #### 10.5 Bypass per ruoli DB di manutenzione
 
 Alcuni ruoli DB devono poter bypassare le policy per eseguire migrazioni, analisi e

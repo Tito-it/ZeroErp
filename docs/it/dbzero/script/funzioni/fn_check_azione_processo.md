@@ -21,11 +21,12 @@ BEGIN
     --   Verifica se un'azione di processo e' abilitata per
     --   un utente. Funzione fn_check_*: puro boolean, no raise.
     --
-    -- Catena (refactor §4.6.B.4):
+    -- Catena (refactor §4.6.B.4 + §4.8):
     --   1. Assenza identita OPERATORE attiva -> false
     --   2. fn_is_super_admin -> true
     --   3. Override utente azione (se valido)
-    --   4. Profilo reparto azione (via UO/RUA legacy)
+    --   4. Azione via fn_get_profili_accesso_applicabili
+    --      (AD_HOC prio 1 > REPARTO/PORTALE prio 2)
     --   5. Default -> false (negata)
     -- =========================================================
 
@@ -41,7 +42,7 @@ BEGIN
         RETURN true;
     END IF;
 
-    -- 3. Override utente azione (OPERATIVO)
+    -- 3. Override utente azione (invariato)
     SELECT uoa.abilitata
       INTO v_abilitata
       FROM config.user_override_azioni uoa
@@ -55,17 +56,17 @@ BEGIN
         RETURN v_abilitata;
     END IF;
 
-    -- 4. Profilo reparto azione (catena legacy via RUA)
-    SELECT pra.abilitata
+    -- 4. Azione via bindings (§4.8 nuovo modello).
+    SELECT paz.abilitata
       INTO v_abilitata
-      FROM config.profili_reparto_azioni pra
-      JOIN config.azioni_processo ap ON ap.id = pra.azione_id
-      JOIN anagrafiche.risorse_umane_auth_user rau
-        ON rau.auth_user_id = p_auth_user_id
-      JOIN anagrafiche.risorse_umane ru
-        ON ru.id = rau.risorsa_umana_id
-     WHERE ru.unita_organizzativa_id = pra.unita_organizzativa_id
-       AND ap.permission_codename = p_permission_codename;
+      FROM script.fn_get_profili_accesso_applicabili(p_auth_user_id) h
+      JOIN config.profili_accesso_azioni paz
+        ON paz.profilo_accesso_id = h.profilo_accesso_id
+      JOIN config.azioni_processo ap
+        ON ap.id = paz.azione_id
+     WHERE ap.permission_codename = p_permission_codename
+     ORDER BY h.priorita
+     LIMIT 1;
 
     IF FOUND THEN
         RETURN v_abilitata;
@@ -77,7 +78,7 @@ END
 $function$
 
 COMMENT ON FUNCTION script.fn_check_azione_processo(p_auth_user_id integer, p_permission_codename character varying)
-IS 'Verifica se azione e'' abilitata per l''utente. Refactor §4.6.B.4: ramo ADMIN -> fn_is_super_admin; ramo DISABILITATO -> check identita OPERATORE attiva. Catena override+reparto invariata.';
+IS 'Verifica se azione e'' abilitata per l''utente. Refactor §4.6.B.4 + §4.8: ramo ADMIN -> fn_is_super_admin; ramo DISABILITATO -> check identita OPERATORE attiva; azione via bindings generalizzato (fn_get_profili_accesso_applicabili, AD_HOC > REPARTO/PORTALE).';
 ```
 
 ---

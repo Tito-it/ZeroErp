@@ -84,30 +84,21 @@ sorprese:
       per cliente e' sufficiente per raccogliere feedback pilota senza
       scope creep su §5.4-5.5; (3) in §4.1.1 non aggiungere ancora lo slot
       enum, lasciare gancio in §10.1. Vedi §10.1 per dettaglio.
-- [ ] 3.8 **Documentazione RLS — linee guida SQL**: aggiungere sezione
-      "Row Level Security" in [linee-guida-sql.md](/linee-guida-sql). Contenuti:
-      * Quando usarla (tabelle con scope multi-tenant/multi-cliente/multi-fornitore)
-      * Naming policy: `rls_<tabella>_<scope>` (es. `rls_fatture_ba_ownership`)
-      * Obbligo di logica in funzioni `script.fn_scope_*` (testabilita' pgTAP)
-      * Bypass esplicito per ruoli DB di manutenzione (`zeroerp_admin`, `zeroerp_migration`)
-      * Uso di `USING` vs `WITH CHECK`
-      * Defense-in-depth: RLS si **somma** al filtro applicativo, non lo sostituisce
-      * Riferimento obbligatorio ai GUC `app.*` come input
-- [ ] 3.9 **Documentazione RLS — scheda PostgreSQL**: creare
-      `docs/it/postgresql/row-level-security.md` con:
-      * Sintassi `ENABLE ROW LEVEL SECURITY`, `FORCE ROW LEVEL SECURITY`, `CREATE POLICY`
-      * Differenza comportamentale `USING` vs `WITH CHECK`
-      * Interazione con i GUC `app.*` (link a
-        [parametri-personalizzati-(GUC)](/postgresql/parametri-personalizzati-(GUC)))
-      * Troubleshooting: policy "silent" che nasconde righe senza errore,
-        pattern di debugging (`SET ROLE` di test, `row_security = off` per superuser)
-      * Performance: indici funzionali su colonne usate nella policy,
-        impatto su `EXPLAIN`, `pg_stat_statements`
-      * Convivenza con viste e funzioni `SECURITY DEFINER`
-- [ ] 3.10 Le due schede §3.8 e §3.9 sono **prerequisito** per §4.9
-      (attivazione RLS) — servono come riferimento quando si scrivono le prime
-      policy, non dopo. Da evadere prima dell'inizio della Fase DB se il team
-      non ha esperienza pregressa di RLS Postgres
+- [x] 3.8 **Documentazione RLS — linee guida SQL**: sezione 10 "Row Level
+      Security (RLS)" in [linee-guida-sql.md](/linee-guida-sql), suddivisa
+      in sotto-sezioni 10.1-10.9 (quando usarla, naming policy, funzioni
+      `fn_scope_*`, GUC, bypass ruoli, USING vs WITH CHECK, defense-in-depth,
+      test, checklist). Riferimento helper `fn_current_identita_context`
+      aggiunto in §10.4 (2026-04-19).
+- [x] 3.9 **Documentazione RLS — scheda PostgreSQL**: file
+      [row-level-security.md](/postgresql/row-level-security) completo con
+      sintassi, USING/WITH CHECK, PERMISSIVE/RESTRICTIVE, interazione GUC,
+      ruoli `BYPASSRLS` e `FORCE`, troubleshooting, performance
+      (funzioni STABLE, indici, EXPLAIN, pg_stat_statements), convivenza
+      con viste `security_invoker` e `SECURITY DEFINER`. Riferimento a
+      `fn_current_identita_context` aggiunto (2026-04-19).
+- [x] 3.10 Le due schede sono disponibili come riferimento per §4.9
+      (attivazione RLS) — prerequisito soddisfatto.
 
 ### 3.bis Esiti censimenti (sintesi 2026-04-18)
 
@@ -530,21 +521,70 @@ contract senza rompere test esistenti + backend legacy pre-PR2):
 
 ### 4.7 GUC e propagazione identita'
 
-- [ ] 4.7.1 Documentare i nuovi GUC in [docs/it/postgresql/parametri-personalizzati-(GUC).md](/postgresql/parametri-personalizzati-(GUC))
-      * `app.current_identita_id`
-      * `app.ruolo_applicativo`
-      * `app.soggetto_ruolo_id`
-- [ ] 4.7.2 Funzione di convenienza `script.fn_current_identita_context()`
-      che legge tutti i GUC e restituisce un record composito
+- [x] 4.7.1 Documentati i 3 nuovi GUC `app.current_identita_id`,
+      `app.ruolo_applicativo`, `app.soggetto_ruolo_id` in
+      [parametri-personalizzati-(GUC).md](/postgresql/parametri-personalizzati-(GUC))
+      (nuova sezione "GUC di sessione `app.*`") + riga aggiunta in
+      [guc_reference.md](/postgresql/guc_reference).
+      Invariante "tutto o niente": il middleware popola tutti e 3 insieme
+      o nessuno.
+- [x] 4.7.2 Creata `script.fn_current_identita_context()` `RETURNS TABLE`
+      (LANGUAGE sql STABLE): lettura tipizzata dei 3 GUC con pattern
+      `NULLIF(current_setting(name, true), '')::<tipo>` (fail-soft su
+      GUC mancanti). Manual + 6 test pgTAP.
+      — `20260419-40-create-fn-current-identita-context-mctit.yaml`
+      + [fn_current_identita_context.md](/dbzero/script/funzioni/fn_current_identita_context)
+      + `db/pgtap/script/test-fn-current-identita-context.sql`
 
 ### 4.8 Funzioni risoluzione permessi
 
-- [ ] 4.8.1 Generalizzare `fn_resolve_livello_area` per usare `profili_accesso`
-      invece di `profili_reparto_aree` — mantenere la stessa firma esterna
-- [ ] 4.8.2 Generalizzare `fn_resolve_livello_oggetto` stessa logica
-- [ ] 4.8.3 Generalizzare `fn_check_azione_processo`
-- [ ] 4.8.4 Test pgTAP: verificare che gli operatori esistenti mantengano lo
-      stesso risultato (regression test)
+> **Nota implementativa (2026-04-19)**: le funzioni refactorate
+> `fn_resolve_livello_area` (20260419-11) e `fn_check_azione_processo`
+> (20260419-13) sono gia' state pushate come parte della PR1 §4.6.B.
+> Gli update §4.8 qui sotto sono **nuovi changeset successivi** (-51, -52)
+> sullo stesso branch `dev/db-tid`, per non violare la regola "mai
+> modificare changelog pushati". Liquibase esegue in ordine alfabetico:
+> la versione finale della funzione e' quella del file piu' recente.
+
+- [x] 4.8.0 Helper `script.fn_get_profili_accesso_applicabili(auth_user_id)`
+      `RETURNS TABLE (profilo_accesso_id, priorita)`: risolve i profili
+      applicabili via identita + bindings (AD_HOC prio 1, PORTALE/REPARTO
+      prio 2). `LANGUAGE sql STABLE` inlineable.
+      — `20260419-50-create-fn-get-profili-accesso-applicabili-mctit.yaml`
+      + manual + test pgTAP (5 casi)
+- [x] 4.8.1 Update `fn_resolve_livello_area`: ramo 4 "profilo reparto"
+      via `profili_reparto_aree` sostituito con lookup su
+      `profili_accesso_aree` via helper.
+      — `20260419-51-update-fn-resolve-livello-area-via-profili-accesso-mctit.yaml`
+- [x] 4.8.2 `fn_resolve_livello_oggetto` non tocca `profili_reparto_*`
+      direttamente; fa fallback a `fn_resolve_livello_area` che ora usa
+      il nuovo modello. **Generalizzato implicitamente** — nessun nuovo
+      file necessario.
+- [x] 4.8.3 Update `fn_check_azione_processo`: ramo 4 "profilo reparto
+      azione" sostituito con lookup su `profili_accesso_azioni` via helper.
+      — `20260419-52-update-fn-check-azione-processo-via-profili-accesso-mctit.yaml`
+- [x] 4.8.4 Test pgTAP regression end-to-end operatore (11 asserzioni):
+      seed 'tid' spostato temporaneamente in UO test + profilo REPARTO
+      dedicato con 2 aree (LETTURA/TUTTO) + 1 azione abilitata. Verifica
+      che `fn_resolve_livello_area`, `fn_check_azione_processo`,
+      `fn_get_user_permissions_map` e `fn_get_user_actions_map`
+      restituiscano i livelli configurati. ROLLBACK finale ripristina
+      stato iniziale. Skip graceful se seed 'tid' assente (CI minimale).
+      — `db/pgtap/script/test-fn-resolve-regression-operatore.sql`
+
+**Pendenza coordinamento backend**: il backend amministrativo scrive
+ancora su `profili_reparto_aree`/`profili_reparto_azioni`. Il backfill
+§4.3.5 (`runOnChange: true`) ri-sincronizza al deploy successivo. Non
+real-time ma accettabile in dev. PR2 backend spostera' i writer sul nuovo
+modello.
+
+- [x] 4.8.5 Update `fn_get_user_permissions_map` e `fn_get_user_actions_map`
+      per coerenza: CTE `best_per_area` / `best_per_azione` su
+      `fn_get_profili_accesso_applicabili` invece di JOIN diretto a
+      `profili_reparto_*`. Rimossa variabile `v_uo_id` non piu' necessaria
+      (il helper incapsula il lookup UO).
+      — `20260419-53-update-fn-get-user-permissions-map-via-profili-accesso-mctit.yaml`
+      + `20260419-54-update-fn-get-user-actions-map-via-profili-accesso-mctit.yaml`
 
 ### 4.9 Row Level Security (RLS) — prima ondata
 
@@ -921,6 +961,65 @@ inferiore e' completo e testato.
     per identita portale/shop (post cutover §4.6) e RLS (§4.9).
   * **Aperto**: §4.6 vista compatibilita, §4.7 GUC, §4.8 resolve_livello_*,
     §4.9 RLS.
+* **2026-04-19 (sessione implementativa — PR1 DB estesa)**: completate
+  §4.6, §4.7, §4.8 DB-side. Backend PR2 ora puo' partire in parallelo.
+  * **§4.6 Cutover operatori** (25 file): decisione di design "ADMIN come
+    profilo SUPER_ADMIN" (non boolean). Estensione `identita_digitali`
+    con 4 colonne stateful (tentativi_falliti, bloccato_fino_a,
+    totp_obbligatorio, storicizza). Nuovo tipo ENUM `SUPER_ADMIN` +
+    seed profilo 9100 + guard bindings aggiornato. Helper DRY
+    `fn_has_identita_attiva(auth_user_id, ruolo_applicativo)` e
+    `fn_is_super_admin(auth_user_id)`. Refactor 11 funzioni resolver
+    (fn_resolve_livello_*, fn_check_*, fn_get_emittenti_*,
+    fn_get_user_profile, fn_check_operatore_invitabile, fn_get_setup_status),
+    wrapper retrocompatibile `fn_get_ruolo_sistema`. Writer DB:
+    fn_registra_tentativo_login, fn_check_blocco_login, fn_crea_risorsa_umana
+    aggiornate. Trigger-ponte TEMPORANEO
+    `trgfn_risorse_umane_auth_user_sync_identita` (rimovibile al cutover
+    §4.6.H.3). Backfill 80_data (identita OPERATORE per RUA esistenti +
+    bindings SUPER_ADMIN per ADMIN legacy). Vista di compatibilita'
+    `anagrafiche.vw_risorse_umane_auth_user` (prefisso `vw_` fino al
+    rename §4.6.H.2) con sub-query pre-aggregata LEFT JOIN per
+    evitare N+1 su fn_is_super_admin.
+  * **§4.7 GUC e propagazione identita** (2 file): documentati i 3 GUC
+    di sessione `app.current_identita_id`, `app.ruolo_applicativo`,
+    `app.soggetto_ruolo_id` in parametri-personalizzati-(GUC).md +
+    guc_reference.md. Creato helper
+    `script.fn_current_identita_context()` RETURNS TABLE (lettura
+    tipizzata fail-soft con `NULLIF(current_setting(..., true), '')::tipo`).
+    Manual + test pgTAP (6 casi).
+  * **§3.8 + §3.9 docs RLS**: verificati e completati. Aggiunto
+    riferimento a `fn_current_identita_context` in entrambi i file.
+  * **§4.8 Resolver generalizzato su `profili_accesso`** (5 file):
+    nuovo helper `fn_get_profili_accesso_applicabili(auth_user_id)`
+    che risolve i profili applicabili via 3 UNION (AD_HOC prio 1,
+    PORTALE prio 2, REPARTO prio 2). Update fn_resolve_livello_area
+    (-51), fn_check_azione_processo (-52), fn_get_user_permissions_map
+    (-53), fn_get_user_actions_map (-54) per leggere dal nuovo modello
+    via helper. fn_resolve_livello_oggetto generalizzato
+    implicitamente (fallback area). Manual helper + test pgTAP helper
+    (5 casi) + test regression end-to-end operatore (11 casi con seed
+    'tid' spostato temporaneamente in UO test).
+  * **Criticita' gestite in-session**:
+    * Bug `fn_crea_risorsa_umana` doppio INSERT conflittante col
+      trigger-ponte -> rimosso doppio INSERT, delegato al trigger.
+    * Performance vista `vw_risorse_umane_auth_user` N+1 su
+      fn_is_super_admin -> sostituito con LEFT JOIN sub-query
+      pre-aggregata.
+    * Violazione DRY (7 funzioni duplicavano lo stesso EXISTS identita)
+      -> introdotto helper `fn_has_identita_attiva` parametrizzato,
+      refactor 8 funzioni.
+    * Ordering preCondition Liquibase (sqlCheck su risorse create in
+      file processati dopo) -> rimossi check runtime, documentata
+      dipendenza semantica.
+    * Tentativa di modifica in-place di file Liquibase gia' pushati
+      (fn_resolve_livello_area -11, fn_check_azione_processo -13) ->
+      ripristino con git restore + creazione nuovi file successivi
+      (-51, -52) con CREATE OR REPLACE.
+  * **Pendenze residue DB**: §4.9 RLS (richiede GUC popolati da
+    backend PR2), §4.6.H cutover (rinomina tabella legacy + rimozione
+    trigger-ponte, richiede PR2 stabile), rimozione doppia verifica
+    OPERATORE in `fn_sync_auth_user_is_active` (post cutover).
 
 ---
 

@@ -21,18 +21,16 @@ BEGIN
     --   Risolve il livello di accesso effettivo di un utente
     --   per un'area funzionale identificata da schema_db.
     --
-    -- Catena (refactor §4.6.B.2 WIP multi-face-auth):
+    -- Catena (refactor §4.6.B.2 + §4.8 WIP multi-face-auth):
     --   1. Assenza di identita OPERATORE attiva -> BLOCCATO
-    --      (copre il vecchio ruolo_sistema NULL/DISABILITATO)
     --   2. fn_is_super_admin -> TUTTO
-    --      (copre il vecchio ruolo_sistema = ADMIN)
     --   3. Override utente area (se valido temporalmente)
-    --   4. Profilo reparto (ereditato dalla UO, via RUA)
+    --   4. Profilo via fn_get_profili_accesso_applicabili
+    --      (AD_HOC prio 1 > REPARTO/PORTALE prio 2)
     --   5. Default -> BLOCCATO
     -- =========================================================
 
     -- 1. Identita OPERATORE attiva (helper DRY §4.6.B.0).
-    --    Fail-closed: utente senza identita -> BLOCCATO.
     IF NOT script.fn_has_identita_attiva(
                p_auth_user_id,
                'OPERATORE'::config.ruolo_applicativo) THEN
@@ -44,7 +42,7 @@ BEGIN
         RETURN 'TUTTO'::config.livello_accesso;
     END IF;
 
-    -- 3. Override utente area (OPERATIVO)
+    -- 3. Override utente area (invariato)
     SELECT uoa.livello
       INTO v_livello
       FROM config.user_override_aree uoa
@@ -57,20 +55,21 @@ BEGIN
         RETURN v_livello;
     END IF;
 
-    -- 4. Profilo reparto (catena legacy via RUA).
-    --    NOTA: resta sul bridge legacy finche' §4.8 non
-    --    generalizza il resolver su profili_accesso. La vista
-    --    di compatibilita' §4.6.F la render'a trasparente.
-    SELECT pra.livello
+    -- 4. Profilo via bindings (§4.8 nuovo modello).
+    --    Helper ritorna i profili applicabili con priorita;
+    --    JOIN a profili_accesso_aree per il livello sull'area
+    --    richiesta; ORDER BY priorita LIMIT 1 per scegliere
+    --    il piu' specifico (AD_HOC > REPARTO/PORTALE).
+    SELECT paa.livello
       INTO v_livello
-      FROM config.profili_reparto_aree pra
-      JOIN config.aree_funzionali af ON af.id = pra.area_id
-      JOIN anagrafiche.risorse_umane_auth_user rau
-        ON rau.auth_user_id = p_auth_user_id
-      JOIN anagrafiche.risorse_umane ru
-        ON ru.id = rau.risorsa_umana_id
-     WHERE ru.unita_organizzativa_id = pra.unita_organizzativa_id
-       AND af.schema_db = p_area_schema_db;
+      FROM script.fn_get_profili_accesso_applicabili(p_auth_user_id) h
+      JOIN config.profili_accesso_aree paa
+        ON paa.profilo_accesso_id = h.profilo_accesso_id
+      JOIN config.aree_funzionali af
+        ON af.id = paa.area_id
+     WHERE af.schema_db = p_area_schema_db
+     ORDER BY h.priorita
+     LIMIT 1;
 
     IF FOUND THEN
         RETURN v_livello;
@@ -82,7 +81,7 @@ END
 $function$
 
 COMMENT ON FUNCTION script.fn_resolve_livello_area(p_auth_user_id integer, p_area_schema_db character varying)
-IS 'Risolve livello accesso area per utente. Refactor §4.6.B.2: ramo ADMIN -> fn_is_super_admin; ramo DISABILITATO -> check identita OPERATORE attiva. Catena override+reparto invariata.';
+IS 'Risolve livello accesso area per utente. Refactor §4.6.B.2 + §4.8: ramo ADMIN -> fn_is_super_admin; ramo DISABILITATO -> check identita OPERATORE attiva; profilo via bindings generalizzato (fn_get_profili_accesso_applicabili, AD_HOC > REPARTO/PORTALE).';
 ```
 
 ---
