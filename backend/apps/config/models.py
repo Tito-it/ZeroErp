@@ -283,3 +283,212 @@ class UserEmittenteFiscale(models.Model):
                 name="uq_user_emittenti_fiscali_user_emittente",
             )
         ]
+
+
+# ── Profili accesso generalizzati (multi-face auth) ────────
+
+
+class ProfiloAccesso(models.Model):
+    """Profilo accesso generalizzato (REPARTO | PORTALE | AD_HOC | SUPER_ADMIN).
+
+    Rimpiazza concettualmente `ProfiloRepartoArea` (che resta solo per
+    reader legacy). Nuovo backend scrive su `ProfiloAccessoArea` /
+    `ProfiloAccessoAzione` / `ProfiloAccessoBinding`.
+    """
+
+    TIPO_CHOICES = [
+        ("REPARTO", "Reparto"),
+        ("PORTALE", "Portale"),
+        ("AD_HOC", "Ad hoc"),
+        ("SUPER_ADMIN", "Super admin"),
+    ]
+
+    id = models.IntegerField(primary_key=True)
+    tipo = models.CharField(max_length=15, choices=TIPO_CHOICES)
+    codice = models.CharField(max_length=100, unique=True)
+    descrizione = models.CharField(max_length=200)
+    attivo = models.BooleanField(default=True)
+    meta = models.JSONField(default=dict)
+    data_insert = models.DateTimeField(auto_now_add=True)
+    user_insert = models.TextField(default="")
+    data_update = models.DateTimeField(auto_now=True)
+    user_update = models.TextField(default="")
+
+    class Meta:
+        managed = False
+        db_table = 'config"."profili_accesso'
+
+    def __str__(self) -> str:
+        return self.codice
+
+
+class ProfiloAccessoArea(models.Model):
+    """Livello accesso per area dentro un profilo accesso."""
+
+    LIVELLO_CHOICES = [
+        ("TUTTO", "Tutto"),
+        ("LETTURA", "Lettura"),
+        ("BLOCCATO", "Bloccato"),
+    ]
+
+    id = models.IntegerField(primary_key=True)
+    profilo_accesso = models.ForeignKey(
+        ProfiloAccesso,
+        on_delete=models.DO_NOTHING,
+        db_column="profilo_accesso_id",
+        related_name="aree",
+    )
+    area = models.ForeignKey(
+        AreaFunzionale,
+        on_delete=models.DO_NOTHING,
+        db_column="area_id",
+        related_name="profili_accesso",
+    )
+    livello = models.CharField(
+        max_length=10, choices=LIVELLO_CHOICES, default="BLOCCATO"
+    )
+    meta = models.JSONField(default=dict)
+    data_insert = models.DateTimeField(auto_now_add=True)
+    user_insert = models.TextField(default="")
+    data_update = models.DateTimeField(auto_now=True)
+    user_update = models.TextField(default="")
+
+    class Meta:
+        managed = False
+        db_table = 'config"."profili_accesso_aree'
+        constraints = [
+            models.UniqueConstraint(
+                fields=["profilo_accesso", "area"],
+                name="uq_profili_accesso_aree_profilo_area",
+            )
+        ]
+
+
+class ProfiloAccessoAzione(models.Model):
+    """Azione di processo abilitata dentro un profilo accesso."""
+
+    id = models.IntegerField(primary_key=True)
+    profilo_accesso = models.ForeignKey(
+        ProfiloAccesso,
+        on_delete=models.DO_NOTHING,
+        db_column="profilo_accesso_id",
+        related_name="azioni",
+    )
+    azione = models.ForeignKey(
+        AzioneProcesso,
+        on_delete=models.DO_NOTHING,
+        db_column="azione_id",
+        related_name="profili_accesso",
+    )
+    abilitata = models.BooleanField(default=False)
+    meta = models.JSONField(default=dict)
+    data_insert = models.DateTimeField(auto_now_add=True)
+    user_insert = models.TextField(default="")
+    data_update = models.DateTimeField(auto_now=True)
+    user_update = models.TextField(default="")
+
+    class Meta:
+        managed = False
+        db_table = 'config"."profili_accesso_azioni'
+        constraints = [
+            models.UniqueConstraint(
+                fields=["profilo_accesso", "azione"],
+                name="uq_profili_accesso_azioni_profilo_azione",
+            )
+        ]
+
+
+class ProfiloAccessoBinding(models.Model):
+    """Assegnazione profilo a reparto OR identita OR ruolo applicativo (xor 3-vie)."""
+
+    RUOLO_APPLICATIVO_CHOICES = [
+        ("OPERATORE", "Operatore"),
+        ("CLIENTE_PORTALE", "Cliente portale"),
+        ("FORNITORE_PORTALE", "Fornitore portale"),
+        ("SHOP_CUSTOMER", "Shop customer"),
+        ("API_CLIENT", "API client"),
+        ("DISABILITATO", "Disabilitato"),
+    ]
+
+    id = models.BigAutoField(primary_key=True)
+    profilo_accesso = models.ForeignKey(
+        ProfiloAccesso,
+        on_delete=models.DO_NOTHING,
+        db_column="profilo_accesso_id",
+        related_name="bindings",
+    )
+    unita_organizzativa_id = models.IntegerField(null=True, blank=True)
+    identita_digitale_id = models.BigIntegerField(null=True, blank=True)
+    ruolo_applicativo = models.CharField(
+        max_length=20,
+        choices=RUOLO_APPLICATIVO_CHOICES,
+        null=True,
+        blank=True,
+    )
+    meta = models.JSONField(default=dict)
+    data_insert = models.DateTimeField(auto_now_add=True)
+    user_insert = models.TextField(default="")
+    data_update = models.DateTimeField(auto_now=True)
+    user_update = models.TextField(default="")
+
+    class Meta:
+        managed = False
+        db_table = 'config"."profili_accesso_bindings'
+
+
+# ── Scope policy (multi-face auth) ─────────────────────────
+
+
+class ScopePolicy(models.Model):
+    """Policy di scope dati per identita (EF_WHITELIST, BA_OWNERSHIP, ...).
+
+    La logica concreta e' implementata dalla funzione SQL indicata in
+    `funzione_db` (es. `script.fn_scope_ba_ownership`).
+    """
+
+    id = models.IntegerField(primary_key=True)
+    codice = models.CharField(max_length=50, unique=True)
+    descrizione = models.CharField(max_length=200)
+    funzione_db = models.CharField(max_length=100)
+    attivo = models.BooleanField(default=True)
+    meta = models.JSONField(default=dict)
+    data_insert = models.DateTimeField(auto_now_add=True)
+    user_insert = models.TextField(default="")
+    data_update = models.DateTimeField(auto_now=True)
+    user_update = models.TextField(default="")
+
+    class Meta:
+        managed = False
+        db_table = 'config"."scope_policy'
+
+    def __str__(self) -> str:
+        return self.codice
+
+
+class IdentitaScopeBinding(models.Model):
+    """Associazione identita <-> scope policy (con parametri opzionali)."""
+
+    id = models.BigAutoField(primary_key=True)
+    identita_digitale_id = models.BigIntegerField()
+    scope_policy = models.ForeignKey(
+        ScopePolicy,
+        on_delete=models.DO_NOTHING,
+        db_column="scope_policy_id",
+        related_name="bindings",
+    )
+    parametri = models.JSONField(default=dict)
+    meta = models.JSONField(default=dict)
+    data_insert = models.DateTimeField(auto_now_add=True)
+    user_insert = models.TextField(default="")
+    data_update = models.DateTimeField(auto_now=True)
+    user_update = models.TextField(default="")
+
+    class Meta:
+        managed = False
+        db_table = 'config"."identita_scope_bindings'
+        constraints = [
+            models.UniqueConstraint(
+                fields=["identita_digitale_id", "scope_policy"],
+                name="uq_identita_scope_bindings_identita_policy",
+            )
+        ]
