@@ -218,7 +218,9 @@ class ApiPermessiEffettivi(DomainAPIView):
             livello = PermissionResolver.get_livello_area(
                 target_user, area.schema_db, cache=target_cache
             )
-            has_profilo = PermissionResolver.has_profilo_reparto_area(
+            # Field name output `has_profilo_reparto` mantenuto per
+            # retrocompat frontend (Stage B lo rinominera' coerente).
+            has_profilo = PermissionResolver.has_profilo_applicabile_per_area(
                 target_user, area.schema_db, cache=target_cache
             )
             aree_result.append({

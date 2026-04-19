@@ -1072,6 +1072,50 @@ Questi task sono §4.6.H.1-H.4 risequenziati.
       `manual/trgfn_risorse_umane_auth_user_sync_identita.md` (trigger
       droppato). Auto-generati (`views/vw_...md`, `index*.md`) si
       rigenereranno al prossimo build docs.
+      Coperti dal trigger-ponte durante PR1: ora vanno azzerati.
+      Atteso: 0 INSERT/UPDATE/DELETE su RUA in codice Python.
+      (Corrisponde a §4.6.H.1)
+- [ ] 13.3.2 Changeset Liquibase: `ALTER TABLE anagrafiche.risorse_umane_auth_user
+      RENAME TO _legacy_risorse_umane_auth_user;` + `DROP VIEW IF EXISTS
+      anagrafiche.vw_risorse_umane_auth_user; CREATE VIEW
+      anagrafiche.risorse_umane_auth_user AS ...` (stesso corpo della
+      vista §4.6.F.1). Mantenere `security_invoker = on` per le RLS
+      future. (§4.6.H.2)
+- [ ] 13.3.3 Changeset Liquibase: `DROP TRIGGER
+      trg_risorse_umane_auth_user_z90_sync_identita` e trigger function
+      associata. Non piu' necessario: il backend scrive direttamente
+      su identita_digitali, la vista espone sempre lo stato aggiornato.
+      (Non previsto esplicitamente — sostituisce §4.6.D.4)
+- [ ] 13.3.4 Changeset Liquibase: rimuovere la doppia verifica
+      OPERATORE in `fn_sync_auth_user_is_active` + fallback legacy.
+      La funzione legge solo da `identita_digitali`. (§4.6.H.3 + §4.6.H.4
+      consolidati)
+- [ ] 13.3.5 Aggiornare `db/pgtap/anagrafiche/test-vw-risorse-umane-auth-user.sql`
+      -> rinominare in `test-risorse-umane-auth-user-view.sql` e
+      rimuovere riferimenti a `vw_` nei SELECT. Test pgTAP regression
+      operatore (§4.6.I.4) esplicito pre-cutover.
+- [x] 13.3.6 (Q5) Trigger guard
+      `trgfn_profili_accesso_bindings_guard_ultimo_super_admin`
+      installato dal DB (2026-04-19). Helper
+      `script.fn_check_almeno_un_super_admin_attivo` aggiunto a supporto.
+      Errore `E_PROFILO_ULTIMO_SUPER_ADMIN` registrato. Short-circuit
+      su OLD non-SUPER_ADMIN per minimizzare overhead.
+      Doc: `dbzero/config/funzioni/trgfn_profili_accesso_bindings_guard_ultimo_super_admin.md`.
+- [x] 13.3.7 (Q2) Helper DB `script.fn_get_uo_id_for_user(p_auth_user_id integer)`
+      installato dal DB (2026-04-19). `LANGUAGE sql STABLE`. Catena
+      `identita_digitali (OPERATORE) → soggetti_ruoli → risorse_umane`
+      con `ORDER BY ru.valido_dal DESC LIMIT 1` per determinismo in
+      caso di piu' RU attive storicamente.
+      Doc: `dbzero/script/funzioni/fn_get_uo_id_for_user.md`.
+
+> **Nota stato Stage 0 (2026-04-19)**: il DB ha rilasciato solo i 2
+> task **additivi** (§13.3.6, §13.3.7). I task di **cutover**
+> distruttivo restano in attesa di coordinamento col backend: §13.3.2
+> (promozione vista), §13.3.3 (drop trigger-ponte), §13.3.4 (cleanup
+> `fn_sync_auth_user_is_active`). Saranno eseguiti quando PR-A Stage
+> A+B sara' mergiata su `Tito-dev` e il backend non fara' piu' scritture
+> su RUA legacy. §13.4.5 e' sbloccato da §13.3.7; §13.4.15-18 restano
+> in attesa di §13.3.2.
 
 ### 13.4 Stage A — Backend foundation (PR-A, branch `dev/backend-tid`)
 
