@@ -16,7 +16,7 @@ Tabelle correlate:
 
 ---
 ### 🎯 Scopo Principale
-(latest revision 18-04-2026)
+(latest revision 19-04-2026)
 
 La tabella **`anagrafiche.identita_digitali`** è il **bridge generico** tra un
 `soggetti_ruoli` e l'utente software Django (`django.auth_user`). Generalizza
@@ -70,6 +70,30 @@ Un soggetto può avere più identità nel tempo, ma una sola attiva.
 | `valido_al` | NULL | Fine validità (NULL = aperto). Scaduto → identità non utilizzabile. |
 | `deve_cambiare_password` | `false` | Se `true`, il middleware Django forza il cambio password al prossimo login. |
 | `invito_inviato_at` | NULL | Timestamp dell'ultimo invito di attivazione inviato (token monouso `INVITO_PORTALE`). |
+| `tentativi_falliti` | `0` | Contatore tentativi login KO consecutivi. Reset a 0 al login riuscito o allo scadere del blocco (§4.6.A.1). |
+| `bloccato_fino_a` | NULL | Timestamp fino al quale l'identità è bloccata per troppi falliti. `fn_check_blocco_login` effettua auto-unlock quando `bloccato_fino_a < now()` (§4.6.A.1). |
+| `totp_obbligatorio` | `false` | Flag MFA: se `true`, il login richiede TOTP. Generalizzato cross-ruolo (§4.6.A.1). |
+| `storicizza` | `true` | Flag opt-out per lo snapshot storico automatico (`trgfn_storico_generic`). |
+
+---
+
+### Super admin via binding profilo
+
+A partire da §4.6.A-B WIP multi-face-auth (decisione 2026-04-19) il
+privilegio di **bypass totale dei permessi** (equivalente al vecchio
+`risorse_umane_auth_user.ruolo_sistema = 'ADMIN'`) non è più una colonna
+speciale ma un **binding** tra l'identità e un profilo con
+`tipo = 'SUPER_ADMIN'` (seed id `9100`).
+
+* Il check viene fatto da [script.fn_is_super_admin](/dbzero/script/funzioni/fn_is_super_admin).
+* Il binding è gestito via [config.profili_accesso_bindings](/dbzero/config/tabelle/profili_accesso_bindings).
+* Durante la transizione, il trigger-ponte
+  [trgfn_risorse_umane_auth_user_sync_identita](/dbzero/anagrafiche/funzioni/trgfn_risorse_umane_auth_user_sync_identita)
+  crea/rimuove automaticamente il binding in base al valore di
+  `ruolo_sistema` sul bridge legacy.
+* La vista di compatibilità
+  [vw_risorse_umane_auth_user](/dbzero/anagrafiche/viste/vw_risorse_umane_auth_user)
+  ricostruisce dinamicamente la stringa `ruolo_sistema` dal nuovo modello.
 
 ---
 

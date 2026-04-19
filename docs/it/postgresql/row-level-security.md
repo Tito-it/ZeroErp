@@ -143,6 +143,14 @@ vuota. `NULLIF(..., '')::bigint` la converte in `NULL`.
 ricevono i valori come parametri. Questo le rende pure, testabili con pgTAP, e
 riutilizzabili anche fuori dalle policy.
 
+**Helper `script.fn_current_identita_context`**: per funzioni PL/pgSQL che hanno bisogno
+di piu' di un GUC insieme (es. policy RLS composta, audit), esiste il wrapper
+[`script.fn_current_identita_context`](/dbzero/script/funzioni/fn_current_identita_context)
+che restituisce `current_identita_id` + `ruolo_applicativo` + `soggetto_ruolo_id` in
+un unico SELECT tipato, gestendo internamente il pattern `NULLIF(current_setting(...), '')::tipo`.
+Dentro una policy RLS "mono-scope" e' preferibile leggere solo il GUC direttamente
+(meno overhead del chiamare una funzione).
+
 ---
 
 ### Ruoli DB: `BYPASSRLS` e `FORCE ROW LEVEL SECURITY`

@@ -1,0 +1,139 @@
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260419-50-create-fn-get-profili-accesso-applicabili-mctit.yaml
+
+  - changeSet:
+      id: 20260419-50-create-fn-get-profili-accesso-applicabili
+      author: mctit
+      runOnChange: true
+      validCheckSum: [ANY]
+      comment: >
+        Crea script.fn_get_profili_accesso_applicabili(p_auth_user_id)
+        RETURNS TABLE (profilo_accesso_id, priorita) (§4.8 WIP
+        multi-face-auth). Helper che risolve la lista di profili
+        di accesso applicabili a un utente sulla base del nuovo modello
+        generalizzato profili_accesso + profili_accesso_bindings.
+
+        Risolve TRE tipi di binding:
+          * AD_HOC  (priorita 1): binding diretto su identita_digitale_id
+            dell'utente. Override personale, ha priorita su tutti.
+          * PORTALE (priorita 2): binding su ruolo_applicativo uguale
+            a quello dell'identita utente. Default per portali/shop.
+          * REPARTO (priorita 2): binding su unita_organizzativa_id,
+            risolta per OPERATORE via risorse_umane.soggetto_ruolo_id.
+
+        Le funzioni fn_resolve_livello_* e fn_check_azione_processo
+        usano questo helper + un ORDER BY priorita LIMIT 1 (per singola
+        area/azione) per sostituire il vecchio lookup su
+        profili_reparto_aree/azioni. Vantaggi:
+          - Generalizza a portali/shop/fornitori senza rami dedicati
+          - Mantiene priorita override personale > default di gruppo
+          - Testabile in isolamento (pgTAP dedicato)
+
+        Coerenza col legacy: il backfill §4.3.5 (runOnChange) ha
+        popolato profili_accesso REPARTO equivalenti ai profili_reparto
+        legacy. Per operatori il risolver nuovo = identico a legacy.
+        In attesa di PR2 (backend che scrive direttamente sul nuovo
+        modello), il runOnChange mantiene allineamento.
+
+        LANGUAGE sql STABLE: inlineable, cache-friendly.
+      preConditions:
+        - onFail: HALT
+        - and:
+          - tableExists:
+              schemaName: anagrafiche
+              tableName: identita_digitali
+          - tableExists:
+              schemaName: config
+              tableName: profili_accesso
+          - tableExists:
+              schemaName: config
+              tableName: profili_accesso_bindings
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_get_profili_accesso_applicabili(
+                  p_auth_user_id integer
+              )
+              RETURNS TABLE (
+                  profilo_accesso_id integer,
+                  priorita           smallint
+              )
+              LANGUAGE sql
+              STABLE
+              AS $function$
+                  -- 1) AD_HOC: binding diretto sull'identita
+                  --    (override personale, priorita 1).
+                  SELECT DISTINCT
+                         pab.profilo_accesso_id,
+                         1::smallint AS priorita
+                    FROM anagrafiche.identita_digitali id
+                    JOIN config.profili_accesso_bindings pab
+                      ON pab.identita_digitale_id = id.id
+                    JOIN config.profili_accesso pa
+                      ON pa.id = pab.profilo_accesso_id
+                   WHERE id.auth_user_id = p_auth_user_id
+                     AND id.attivo = true
+                     AND id.ruolo_applicativo <> 'DISABILITATO'
+                     AND (id.valido_dal IS NULL OR id.valido_dal <= CURRENT_DATE)
+                     AND (id.valido_al  IS NULL OR id.valido_al  >= CURRENT_DATE)
+                     AND pab.attivo = true
+                     AND pa.attivo = true
+                     AND pa.tipo = 'AD_HOC'::config.tipo_profilo_accesso
+
+                  UNION ALL
+
+                  -- 2) PORTALE: binding per ruolo_applicativo dell'identita
+                  --    (default per CLIENTE_PORTALE / FORNITORE_PORTALE /
+                  --    SHOP_CUSTOMER, priorita 2).
+                  SELECT DISTINCT
+                         pab.profilo_accesso_id,
+                         2::smallint AS priorita
+                    FROM anagrafiche.identita_digitali id
+                    JOIN config.profili_accesso_bindings pab
+                      ON pab.ruolo_applicativo = id.ruolo_applicativo
+                    JOIN config.profili_accesso pa
+                      ON pa.id = pab.profilo_accesso_id
+                   WHERE id.auth_user_id = p_auth_user_id
+                     AND id.attivo = true
+                     AND id.ruolo_applicativo <> 'DISABILITATO'
+                     AND (id.valido_dal IS NULL OR id.valido_dal <= CURRENT_DATE)
+                     AND (id.valido_al  IS NULL OR id.valido_al  >= CURRENT_DATE)
+                     AND pab.attivo = true
+                     AND pa.attivo = true
+                     AND pa.tipo = 'PORTALE'::config.tipo_profilo_accesso
+
+                  UNION ALL
+
+                  -- 3) REPARTO: binding per unita_organizzativa dell'operatore
+                  --    (default per OPERATORE, risolta via risorse_umane,
+                  --    priorita 2).
+                  SELECT DISTINCT
+                         pab.profilo_accesso_id,
+                         2::smallint AS priorita
+                    FROM anagrafiche.identita_digitali id
+                    JOIN anagrafiche.risorse_umane ru
+                      ON ru.soggetto_ruolo_id = id.soggetto_ruolo_id
+                    JOIN config.profili_accesso_bindings pab
+                      ON pab.unita_organizzativa_id = ru.unita_organizzativa_id
+                    JOIN config.profili_accesso pa
+                      ON pa.id = pab.profilo_accesso_id
+                   WHERE id.auth_user_id = p_auth_user_id
+                     AND id.attivo = true
+                     AND id.ruolo_applicativo = 'OPERATORE'::config.ruolo_applicativo
+                     AND (id.valido_dal IS NULL OR id.valido_dal <= CURRENT_DATE)
+                     AND (id.valido_al  IS NULL OR id.valido_al  >= CURRENT_DATE)
+                     AND ru.attivo = true
+                     AND pab.attivo = true
+                     AND pa.attivo = true
+                     AND pa.tipo = 'REPARTO'::config.tipo_profilo_accesso;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_get_profili_accesso_applicabili(integer) IS
+                  'Risolve i profili di accesso applicabili a un utente via '
+                  'identita digitali + bindings (AD_HOC prio 1, PORTALE/REPARTO '
+                  'prio 2). Usata dai resolver generalizzati §4.8 WIP multi-face-auth.';
+      rollback:
+        - sql:
+            sql: DROP FUNCTION IF EXISTS script.fn_get_profili_accesso_applicabili(integer);

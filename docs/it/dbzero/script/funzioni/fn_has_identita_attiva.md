@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/script/manual/fn_has_identita_attiva.md" %}
 # ⚙️ Funzione `fn_has_identita_attiva`
 
 ```sql
