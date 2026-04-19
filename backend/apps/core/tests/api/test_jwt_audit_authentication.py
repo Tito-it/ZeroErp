@@ -94,8 +94,8 @@ class JwtAuditAuthenticationTests(TestCase):
         # No SET LOCAL: persi al COMMIT autocommit
         self.assertNotIn("SET LOCAL", sql)
 
-    # Scopo: Params nell'ordine corretto: prima username (str user),
-    # poi user_id (str id).
+    # Scopo: Params nell'ordine corretto. Post multi-face: 3 params
+    # (user_id per CTE identita, jwt_user, user_id per app.current_user_id).
     @patch(_CONN)
     @patch(_PARENT_AUTH)
     def test_set_gucs_passes_str_user_and_user_id(self, mock_parent, mock_conn):
@@ -107,7 +107,7 @@ class JwtAuditAuthenticationTests(TestCase):
         self.auth.authenticate(_mock_request())
 
         params = mock_cursor.execute.call_args[0][1]
-        self.assertEqual(params, ["alice", "99"])
+        self.assertEqual(params, ["99", "alice", "99"])
 
     # Scopo: DatabaseError dal cursor.execute non deve propagare —
     # cleanup best-effort + log warning. Il flag NON viene settato

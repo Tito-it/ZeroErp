@@ -23,6 +23,7 @@ from django.db import DatabaseError, connection
 from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.utils.deprecation import MiddlewareMixin
 
+from apps.core.services.auth_constants import RUOLO_APPLICATIVO_DISABILITATO
 from apps.core.services.permissions_cache import load_user_cache
 from apps.core.services.permissions_resolver import PermissionResolver
 from apps.core.services.request_context import get_idempotency_key, get_request_id
@@ -38,7 +39,7 @@ class JwtAuditMiddleware(MiddlewareMixin):
     1. Pre-carica la cache permessi da Redis L2 su
        ``request._zeroerp_perms_cache``, riusata da
        ``ZeroERPPermission._get_cache()`` senza query aggiuntive.
-    2. Rifiuta immediatamente gli utenti con ``ruolo_sistema = DISABILITATO``
+    2. Rifiuta immediatamente gli utenti con ``ruolo_applicativo = DISABILITATO``
        restituendo 403, prima che la request raggiunga la view.
 
     Per tutte le request:
@@ -82,10 +83,12 @@ class JwtAuditMiddleware(MiddlewareMixin):
             request._zeroerp_perms_cache_loaded_from_redis = redis_data is not None  # type: ignore[attr-defined]
 
         # Scopo: Rifiuto early DISABILITATO con 403 strutturato.
-        ruolo = PermissionResolver.get_ruolo_sistema(
+        # Check diretto su ruolo_applicativo (GUC-first, vedi
+        # PermissionResolver.get_ruolo_applicativo).
+        ruolo_app = PermissionResolver.get_ruolo_applicativo(
             user, cache=request._zeroerp_perms_cache  # type: ignore[attr-defined]
         )
-        if ruolo != "DISABILITATO":
+        if ruolo_app != RUOLO_APPLICATIVO_DISABILITATO:
             return None
 
         logger.warning(
@@ -121,9 +124,14 @@ class JwtAuditMiddleware(MiddlewareMixin):
             return response
         try:
             with connection.cursor() as cursor:
+                # Scopo: Reset simmetrico dei 5 GUC settati da
+                # set_jwt_gucs — mantenere l'elenco allineato.
                 cursor.execute(
-                    "SELECT set_config('app.jwt_user', '', false), "
-                    "       set_config('app.current_user_id', '', false)"
+                    "SELECT set_config('app.jwt_user',            '', false), "
+                    "       set_config('app.current_user_id',     '', false), "
+                    "       set_config('app.current_identita_id', '', false), "
+                    "       set_config('app.ruolo_applicativo',   '', false), "
+                    "       set_config('app.soggetto_ruolo_id',   '', false)"
                 )
         except DatabaseError:
             # Cleanup best-effort: DB irraggiungibile non deve rompere

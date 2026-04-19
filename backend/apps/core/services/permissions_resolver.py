@@ -41,20 +41,66 @@ class PermissionResolver:
     # ── Metodi pubblici ────────────────────────────────────
 
     @classmethod
-    def get_ruolo_sistema(
+    def is_super_admin(
         cls, user: Any, cache: dict[str, Any] | None = None
-    ) -> str | None:
-        """Scopo: Restituisce il ruolo_sistema dell'utente dalla tabella ponte.
-        Ritorna None se l'utente non ha un record in risorse_umane_auth_user."""
-        def _query() -> str | None:
+    ) -> bool:
+        """Scopo: Verifica se l'utente ha il binding SUPER_ADMIN attivo.
+
+        Delega a `script.fn_is_super_admin` (PR1 §4.6.B.1). Ritorna
+        False per utenti senza binding, con identita inattiva o
+        finestra temporale scaduta (fail-closed). Sostituisce il check
+        legacy `get_ruolo_sistema(user) == "ADMIN"` nei caller.
+        """
+        def _query() -> bool:
             with connection.cursor() as cursor:
                 cursor.execute(
-                    "SELECT script.fn_get_ruolo_sistema(%s)", [user.id]
+                    "SELECT script.fn_is_super_admin(%s)", [user.id]
                 )
                 row = cursor.fetchone()
-            return row[0] if row else None
+            return bool(row[0]) if row else False
 
-        return _cached(cache, "ruolo_sistema", _query)
+        return _cached(cache, "is_super_admin", _query)
+
+    @classmethod
+    def get_ruolo_applicativo(
+        cls, user: Any, cache: dict[str, Any] | None = None
+    ) -> str | None:
+        """Scopo: Restituisce il ruolo_applicativo dell'identita attiva.
+
+        Strategia GUC-first (Q1): se `app.ruolo_applicativo` e'
+        popolato (JwtAuditAuthentication lo ha gia' propagato per la
+        request corrente), ritorna quel valore senza query DB. In
+        assenza di GUC (scenari di test che non passano dalla auth
+        class, management command, chiamate non-HTTP), fallback a
+        query su `anagrafiche.identita_digitali` filtrata sull'identita
+        attiva.
+
+        Ritorna None se l'utente non ha alcuna identita attiva.
+        """
+        def _query() -> str | None:
+            with connection.cursor() as cursor:
+                # Scopo: tenta GUC prima — zero round-trip DB se popolato.
+                cursor.execute(
+                    "SELECT NULLIF(current_setting('app.ruolo_applicativo', true), '')"
+                )
+                row = cursor.fetchone()
+                if row and row[0]:
+                    return str(row[0])
+                # Scopo: fallback query diretta su identita_digitali.
+                cursor.execute(
+                    """
+                    SELECT ruolo_applicativo
+                      FROM anagrafiche.identita_digitali
+                     WHERE auth_user_id = %s
+                       AND attivo = true
+                     LIMIT 1
+                    """,
+                    [user.id],
+                )
+                row = cursor.fetchone()
+            return str(row[0]) if row and row[0] else None
+
+        return _cached(cache, "ruolo_applicativo", _query)
 
     @classmethod
     def get_livello_area(

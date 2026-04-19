@@ -926,6 +926,487 @@ inferiore e' completo e testato.
 
 ---
 
+## 13. Piano ottimizzato PR2/PR3/PR4 (modalita' no-production)
+
+> Aggiunto 2026-04-19 dopo completamento PR1 DB.
+>
+> **Contesto:** ZeroErp non e' ancora in produzione. Questo permette un
+> refactor aggressivo senza compatibilita' storica. Il piano originale
+> §5-§6 assume expand-align-contract con doppia scrittura, feature flag e
+> cutover graduale; qui lo collassiamo in una sequenza **rename-and-cut**.
+
+### 13.1 Principi no-production
+
+1. **Salta l'expand-align-contract.** Il trigger-ponte §4.6.D.4 serve
+   solo durante PR1 per non rompere test esistenti. In PR2 il backend
+   smette di scrivere su RUA legacy; il trigger-ponte viene disattivato
+   o invertito (solo direzione identita -> RUA finche' la vista non e'
+   promossa).
+2. **Promuovi la vista subito.** §4.6.H.2 (rename tabella legacy + drop
+   prefisso `vw_`) va fatto come **primo** changeset di PR2, non come
+   PR3 successiva. Cosi' il backend e i test leggono da
+   `risorse_umane_auth_user` (vista) fin dall'inizio, e il nome resta
+   invariato.
+3. **Niente wrapper retrocompatibili lato Python.** Rinomina
+   `PermissionResolver.get_ruolo_sistema` -> `is_super_admin` **senza**
+   alias. Tocca i ~30 call-site in un colpo solo (grep + codemod).
+4. **Niente doppia scrittura.** I writer Python passano direttamente a
+   `identita_digitali`. Il trigger-ponte invertito (identita -> RUA)
+   resta finche' la vista non e' promossa. Post-promozione (Stage 0),
+   anche il trigger-ponte sparisce.
+5. **Niente feature flag** `ENABLE_MULTI_FACE_AUTH`. Deploy diretto su
+   `Tito-dev` -> `main`. Test automatizzati sono il gate.
+6. **Consolidamento PR.** Le 3 PR originariamente previste (PR2 backend,
+   PR3 cutover, PR4 portali) diventano 4 PR piu' snelle ma lineari:
+   PR-A (cutover DB+BE), PR-B (API portali+admin UI), PR-C (shop+RLS),
+   PR-D (hardening+docs).
+
+### 13.2 Mappa PR ottimizzata
+
+| PR | Branch | Stage | Contenuto | Checkbox WIP coinvolte |
+| --- | --- | --- | --- | --- |
+| **PR-A** | `dev/db-tid` + `dev/backend-tid` | Stage 0+A | Promozione vista + cutover PermissionResolver + JWT GUC + operatore repo/UI | §4.6.H.1-H.4 + §5.1-§5.3 + §4.6.G.1-G.6 + §13.8 |
+| **PR-B** | `dev/backend-tid` | Stage B+C | Namespace `/api/admin`+`/api/portale`, profili accesso admin UI, invito portale cliente+fornitore, API portale MVP (fatture, scadenze, ordini-ricevuti) | §5.4 + §5.5 + §5.7 + §5.8 + §5.10.1-10.3 + §6.1-§6.5 |
+| **PR-C** | `dev/backend-tid` + `dev/db-tid` | Stage D | Shop (registrazione + catalogo + checkout) + attivazione RLS su 6 tabelle sensibili | §5.6 + §5.9 + §5.10.4-10.5 + §6.6 + §4.9 + §7.1.7/7.1.8 |
+| **PR-D** | mixed | Stage E | Pgtap identita portale/shop, test Django regression, smoke test, aggiornamento 4 guide, deprecazione building block obsoleti | §7 + §4.6.I.3/I.4 + §8.1-§8.4 + §7.4 |
+
+### 13.3 Stage 0 — Cutover DB (primo changeset di PR-A, branch `dev/db-tid`)
+
+Questi task sono §4.6.H.1-H.4 risequenziati.
+
+- [ ] 13.3.1 Grep su `backend/apps/` + `db/changelog/` + pgtap di
+      **ogni** writer residuo verso `anagrafiche.risorse_umane_auth_user`.
+      Coperti dal trigger-ponte durante PR1: ora vanno azzerati.
+      Atteso: 0 INSERT/UPDATE/DELETE su RUA in codice Python.
+      (Corrisponde a §4.6.H.1)
+- [ ] 13.3.2 Changeset Liquibase: `ALTER TABLE anagrafiche.risorse_umane_auth_user
+      RENAME TO _legacy_risorse_umane_auth_user;` + `DROP VIEW IF EXISTS
+      anagrafiche.vw_risorse_umane_auth_user; CREATE VIEW
+      anagrafiche.risorse_umane_auth_user AS ...` (stesso corpo della
+      vista §4.6.F.1). Mantenere `security_invoker = on` per le RLS
+      future. (§4.6.H.2)
+- [ ] 13.3.3 Changeset Liquibase: `DROP TRIGGER
+      trg_risorse_umane_auth_user_z90_sync_identita` e trigger function
+      associata. Non piu' necessario: il backend scrive direttamente
+      su identita_digitali, la vista espone sempre lo stato aggiornato.
+      (Non previsto esplicitamente — sostituisce §4.6.D.4)
+- [ ] 13.3.4 Changeset Liquibase: rimuovere la doppia verifica
+      OPERATORE in `fn_sync_auth_user_is_active` + fallback legacy.
+      La funzione legge solo da `identita_digitali`. (§4.6.H.3 + §4.6.H.4
+      consolidati)
+- [ ] 13.3.5 Aggiornare `db/pgtap/anagrafiche/test-vw-risorse-umane-auth-user.sql`
+      -> rinominare in `test-risorse-umane-auth-user-view.sql` e
+      rimuovere riferimenti a `vw_` nei SELECT. Test pgTAP regression
+      operatore (§4.6.I.4) esplicito pre-cutover.
+- [ ] 13.3.6 (Q5) Trigger guard
+      `trgfn_profili_accesso_bindings_guard_ultimo_super_admin`:
+      blocca DELETE/UPDATE che lascerebbe zero binding `SUPER_ADMIN`
+      attivi su zero identita attive (lockout prevention). Errore
+      `E_PROFILO_ULTIMO_SUPER_ADMIN`. Aggiungere a `messaggi_errore.csv`.
+      Test pgTAP minimo: 3 casi (delete ultimo binding, deactivate
+      ultima identita con SUPER_ADMIN, scenario sano con piu' admin).
+- [ ] 13.3.7 (Q2) Helper DB `script.fn_get_uo_id_for_user(p_auth_user_id integer)`
+      `RETURNS integer LANGUAGE sql STABLE`. Risolve la catena
+      `identita_digitali -> soggetti_ruoli -> risorse_umane` in un
+      unico query. Test pgTAP minimo: 4 casi (utente operatore con UO,
+      utente operatore senza UO, utente non-operatore, utente
+      inesistente). Manual standard.
+
+### 13.4 Stage A — Backend foundation (PR-A, branch `dev/backend-tid`)
+
+Sequenza: model ORM -> PermissionResolver -> JWT -> permission class ->
+operatore repository -> views -> test. **Un solo sprint**. Non separare
+in sotto-PR: i layer si rompono a vicenda.
+
+**Model ORM** (§5.1 compresso):
+
+- [ ] 13.4.1 `apps/anagrafiche/models.py`: aggiungere `IdentitaDigitale`
+      (managed=False). **Rimuovere** `RisorseUmaneAuthUser` (vista ora:
+      crea un modello `managed=False, db_table='risorse_umane_auth_user'`
+      ma deprecalo subito con docstring). Aggiungere
+      `ProfiloAccesso`, `ProfiloAccessoArea`, `ProfiloAccessoAzione`,
+      `ProfiloAccessoBinding`, `ScopePolicy`, `IdentitaScopeBinding`
+      dentro `apps/config/models.py`.
+- [ ] 13.4.2 `backend/apps/core/constants.py` (o nuovo `auth_constants.py`):
+      aggiungere `RUOLO_APPLICATIVO = {'OPERATORE', 'CLIENTE_PORTALE',
+      'FORNITORE_PORTALE', 'SHOP_CUSTOMER', 'API_CLIENT', 'DISABILITATO'}`
+      e `TIPO_PROFILO_ACCESSO = {'REPARTO', 'PORTALE', 'AD_HOC',
+      'SUPER_ADMIN'}`. Niente enum legacy `RUOLO_SISTEMA`: rimuovere o
+      spostare in `_deprecated.py`.
+
+**PermissionResolver refactor** (§5.2 compresso, files `backend/apps/core/services/permissions_resolver.py`):
+
+- [ ] 13.4.3 Rename `get_ruolo_sistema` -> `is_super_admin` (firma
+      `(cls, user, cache=None) -> bool`). La query passa a
+      `SELECT script.fn_is_super_admin(%s)`. Cache key `is_super_admin`.
+- [ ] 13.4.4 Aggiungere `get_ruolo_applicativo(user, cache)` che legge
+      da `identita_digitali.ruolo_applicativo` via `SELECT
+      ruolo_applicativo FROM anagrafiche.identita_digitali WHERE
+      auth_user_id = %s AND attivo = true` (oppure tramite
+      `fn_current_identita_context` se si vuole derivarlo dai GUC —
+      da decidere Q1 sotto).
+- [ ] 13.4.5 `get_unita_organizzativa_id`: sostituire raw SQL
+      `risorse_umane_auth_user -> risorse_umane` con SQL via
+      `identita_digitali -> soggetti_ruoli -> risorse_umane` (la RUA
+      e' ora una vista, il JOIN funziona ma ha un round-trip in piu').
+      Alternativa: aggiungere helper DB `script.fn_get_uo_id_for_user`.
+      Decidere Q2.
+- [ ] 13.4.6 `has_profilo_reparto_area`: rimuovere. La catena `reparto
+      -> profilo_accesso` e' ora dentro
+      `fn_get_profili_accesso_applicabili`. L'unico consumer
+      (`PermissionsAuditRepository`) deve migrare alla nuova funzione.
+- [ ] 13.4.7 Aggiornare TUTTI i call-site di `get_ruolo_sistema`:
+      grep + codemod. Elenco atteso (da verificare):
+      `apps/core/middleware/jwt_audit_middleware.py`,
+      `apps/core/api/permissions.py`, `apps/core/api/me_view.py`,
+      `apps/amm_software/services/amm_software_service.py`,
+      `apps/amm_software/api/views.py`, `apps/core/api/base_views.py`,
+      `apps/core/api/endpoint_helpers.py`,
+      `apps/core/mixins.py`,
+      `apps/core/api/views.py`, piu' ~12 file test.
+
+**JWT GUC extension** (§5.3 compresso):
+
+- [ ] 13.4.8 `apps/core/api/jwt_audit_authentication.py` — estendere
+      `set_jwt_gucs()` per propagare 5 GUC invece di 2. Lettura
+      identita via `SELECT id, ruolo_applicativo, soggetto_ruolo_id
+      FROM anagrafiche.identita_digitali WHERE auth_user_id = %s AND
+      attivo = true`. Invariante "tutto o niente": se l'identita non
+      esiste o non e' attiva, le 3 GUC nuove restano vuote (i trigger
+      DB hanno fail-open gia' documentato).
+- [ ] 13.4.9 `apps/core/middleware/jwt_audit_middleware.py` —
+      `process_response`: estendere il `set_config` di reset per
+      svuotare **anche** le 3 GUC nuove. Simmetrico.
+- [ ] 13.4.10 `process_view`: il rifiuto DISABILITATO diventa check su
+      `ruolo_applicativo = 'DISABILITATO'` via
+      `PermissionResolver.get_ruolo_applicativo(user)` (no piu'
+      `get_ruolo_sistema`). Nessun cambio di codice errore: resta
+      `E_USER_DISABILITATO`.
+- [ ] 13.4.11 `apps/core/tests/_helpers/jwt_mock.py` — aggiornare
+      `JwtMockedApiTest` per mockare i 3 nuovi GUC.
+
+**Permission class** (§5.2.3-5.2.4 + §4.6.G.1 consolidati):
+
+- [ ] 13.4.12 `apps/core/api/permissions.py` — `IsAdminZeroERP.has_permission`:
+      da `ruolo == "ADMIN"` a
+      `PermissionResolver.is_super_admin(user, cache=...)`.
+      Nome classe invariato (mantieni `IsAdminZeroERP` per non toccare
+      ogni `AdminAPIView`). `ZeroERPPermission.has_permission`:
+      sostituisci i check `ruolo_sistema == DISABILITATO/ADMIN` con
+      `get_ruolo_applicativo()` e `is_super_admin()`.
+- [ ] 13.4.13 Aggiungere **nuova** permission class
+      `PortaleBasePermission` (richiede
+      `ruolo_applicativo IN ('CLIENTE_PORTALE','FORNITORE_PORTALE')`)
+      e `ShopBasePermission` (`SHOP_CUSTOMER` o anonimo). Non registrate
+      globalmente: le view portale/shop le dichiareranno esplicitamente.
+- [ ] 13.4.14 Aggiungere `PortaleAPIView` e `ShopAPIView` in
+      `apps/core/api/base_views.py` sullo stesso pattern di
+      `DomainAPIView`/`AdminAPIView`. Doc in `api.md` aggiornata in
+      Stage E.
+
+**Operatore repository refactor** (§4.6.G.2-G.4 compresso):
+
+- [ ] 13.4.15 `apps/amm_software/db/amm_software_repository.py` —
+      censire **tutti** gli SQL che leggono/scrivono
+      `risorse_umane_auth_user` (ora vista). Le SELECT continuano a
+      funzionare (la vista e' leggibile). Le INSERT/UPDATE/DELETE
+      **vanno spostate** su `anagrafiche.identita_digitali` +
+      `config.profili_accesso_bindings` per il binding SUPER_ADMIN.
+      Attenzione al metodo `update_operatore`: parametro cambia da
+      `ruolo_sistema: str` a `is_super_admin: bool`.
+- [ ] 13.4.16 `disabilita_operatore` / `riattiva_operatore`: writer
+      su `identita_digitali.attivo` diretto (niente RUA).
+- [ ] 13.4.17 `set_invito_inviato_at` e `set_deve_cambiare_password`:
+      writer su `identita_digitali` (colonne gia' esistenti dal
+      2026-04-18).
+- [ ] 13.4.18 Creare method wrapper
+      `AmmSoftwareRepository.set_super_admin(auth_user_id, enabled)`
+      che fa UPSERT/DELETE del binding `SUPER_ADMIN` (profilo 9100)
+      su `profili_accesso_bindings`.
+
+**API endpoints affected** (impact analysis):
+
+- [ ] 13.4.19 `apps/core/api/me_view.py` — output JSON `ruolo_sistema`
+      rinominato in `ruolo_applicativo` + aggiunto `is_super_admin:
+      bool`. Il campo `ruolo_sistema` eliminato. Il frontend legge
+      dal nuovo campo (aggiornamento coordinato §13.5.2).
+
+**Test Django gate** (§7.2 parziale + §4.6.I regression):
+
+- [ ] 13.4.20 Aggiornare fixtures in ~12 file test che creano
+      `RisorseUmaneAuthUser`. Lo scripting e': `INSERT INTO
+      identita_digitali` -> propagato dal trigger-ponte durante PR1,
+      ora NON piu' propagato (Stage 0.3 ha droppato il trigger).
+      Quindi le fixture vanno **riscritte** per INSERT diretto su
+      `identita_digitali`.
+- [ ] 13.4.21 Aggiornare
+      `backend/apps/core/tests/services/test_permissions_resolver.py`:
+      mockare `is_super_admin` invece di `get_ruolo_sistema`,
+      aggiungere casi `get_ruolo_applicativo` per i 5 ruoli.
+- [ ] 13.4.22 Aggiornare
+      `backend/apps/core/tests/api/test_permissions.py`,
+      `test_admin_permission.py`, `test_me_view.py`,
+      `test_permissions_audit.py`. Regression attesa: zero.
+- [ ] 13.4.23 Aggiornare
+      `backend/apps/amm_software/tests/api/test_operatori_views.py`,
+      `test_crea_operatore.py`, `test_override_permessi.py`,
+      `test_profili_reparto.py`. I test che mockano field
+      `ruolo_sistema` ora usano `is_super_admin: bool`.
+
+**Gate PR-A**: `./manage-test.sh -v 2` verde + pgTAP verde + smoke test
+login/logout/cambio-password verde.
+
+### 13.5 Stage B — Frontend foundation (PR-A o PR-B presto)
+
+Decisione Q3 in §13.8: fare Stage B dentro PR-A (monolite pilota) o
+in PR-B separata. Se PR-A: meno friction di review ma PR grande.
+
+**Auth store** (`frontend/src/stores/auth.js`):
+
+- [ ] 13.5.1 Rimuovere `RUOLO_SISTEMA` da import. Aggiungere
+      `RUOLO_APPLICATIVO` e `TIPO_PROFILO_ACCESSO` in
+      `frontend/src/core/constants.js`.
+- [ ] 13.5.2 `isAdmin` -> `isSuperAdmin` basato su
+      `user.value?.is_super_admin === true`. `isAdminGlobale` resta
+      invariato (e' un concetto ortogonale, dipende da
+      `user_emittenti_fiscali`).
+- [ ] 13.5.3 Aggiungere getter `ruoloApplicativo` basato su
+      `user.value?.ruolo_applicativo`. Rimuovere ogni riferimento a
+      `ruolo_sistema` dal profilo.
+- [ ] 13.5.4 Aggiungere helpers ortogonali:
+      `isOperatoreInterno` (= `ruoloApplicativo === OPERATORE`),
+      `isClientePortale`, `isFornitorePortale`, `isShopCustomer`.
+      `visibleDomains` filtra su `isOperatoreInterno` invece che
+      `isAdmin` per i domini non-adminOnly (i portali non vedono
+      domini admin).
+
+**Constants + i18n**:
+
+- [ ] 13.5.5 `frontend/src/core/constants.js` — rimuovere
+      `RUOLO_SISTEMA`. Aggiungere `RUOLO_APPLICATIVO` e
+      `TIPO_PROFILO_ACCESSO`.
+- [ ] 13.5.6 `frontend/src/amministrazione/constants.js` —
+      `buildRuoloOptions()` oggi mappa ADMIN/OPERATIVO/DISABILITATO.
+      Sostituire con `buildTipoProfiloOptions()` oppure eliminare
+      del tutto se il drawer usa toggle (vedi §13.5.8).
+- [ ] 13.5.7 `frontend/src/locales/it.json` — rimuovere chiavi
+      legacy `amm.ruolo_admin/operativo/disabilitato`. Aggiungere
+      chiavi: `auth.ruolo_applicativo.*` (6 valori),
+      `amm.is_super_admin.label/help`,
+      `amm.tipo_profilo_accesso.*` (4 valori),
+      `portale.welcome`, `portale.nav.*` (per Stage C),
+      `shop.*` (per Stage D).
+
+**OperatoreDrawer refactor** (§4.6.G.5 compresso):
+
+- [ ] 13.5.8 `frontend/src/amministrazione/components/OperatoreDrawer.vue` —
+      sostituire radio `ruolo_sistema` con:
+      * toggle/switch **"Accesso SUPER ADMIN"** (boolean, mappa sul
+        binding profilo 9100)
+      * toggle separato **"Disabilita accesso"** (mappa su
+        `identita_digitali.attivo = false`)
+      * il ruolo_applicativo resta `OPERATORE` implicito per questo
+        drawer (non modificabile da admin)
+      Sulla save PATCH payload: `{ is_super_admin: bool, attivo: bool,
+      ... }` invece di `{ ruolo_sistema: "ADMIN|OPERATIVO|DISABILITATO"
+      }`. Il backend `update_operatore` accetta gia' la nuova forma
+      post §13.4.15.
+- [ ] 13.5.9 `frontend/src/amministrazione/views/OperatoriListView.vue` —
+      colonna "Ruolo" oggi mostra `ruolo_sistema`. Sostituire con
+      badge "SUPER_ADMIN" (condizionale) + badge `ruolo_applicativo`.
+- [ ] 13.5.10 `frontend/src/amministrazione/views/AuditLogView.vue` —
+      filter/display ruolo legge dal nuovo campo audit
+      `ruolo_applicativo` (update §5.10.4).
+- [ ] 13.5.11 `frontend/src/core/components/AppTopbar.vue` — badge
+      profilo utente: sostituire etichetta `ADMIN/OPERATIVO` con
+      icona SUPER_ADMIN condizionale. Il layout resta identico.
+
+**Gate PR-A (se include Stage B)**: login da frontend + navigation +
+operatore drawer in create/edit/disabilita + check `./node_modules/.bin/vite build`
+OK.
+
+### 13.6 Stage C — Portali MVP (PR-B, branch `dev/backend-tid`)
+
+Tutti i task §5.4-§5.8 + §6.1-§6.5 consolidati. Gia' dettagliati come
+checkbox nelle sezioni originali: qui si definisce solo l'ordine e i
+gate.
+
+**Ordine esecuzione:**
+
+1. §5.4 namespace API (base views + routing separato)
+2. §5.5 invito portale cliente+fornitore (service + email template +
+   endpoint admin + endpoint attivazione)
+3. §5.7 API portale cliente (MVP: me, BA, fatture, scadenze)
+4. §5.8 API portale fornitore (MVP: ordini-ricevuti, pagamenti)
+5. §5.10.1-10.3 hardening login portale + email sicurezza
+
+**Frontend in parallelo:**
+
+1. §6.1 **Decisione frontend mono/multi-build**: da prendere prima di
+   Stage C. Raccomandazione: **mono-build unico** con router guard
+   per ruolo applicativo. Motivo: JWT auth condiviso, auth store
+   condiviso, i18n condiviso, meno infra CI. I portali vivono in
+   `frontend/src/portale/*` con router namespace `/portale/`.
+2. §6.2 tab "Accesso Portale" nei drawer ClienteDrawer + FornitoreDrawer
+3. §6.3 UI gestione profili accesso sotto Amm. Software
+4. §6.4 portale cliente (layout + dashboard + fatture + scadenze)
+5. §6.5 portale fornitore (layout riusato + ordini-ricevuti + pagamenti)
+6. §6.7.1-7.2 login unificato + pagina attivazione invito
+
+**Gate PR-B:**
+
+- Test Django §7.2.3/7.2.4/7.2.7 verdi
+- Smoke manuale: admin invita cliente di test -> arriva email ->
+  cliente attiva -> login -> vede SUE fatture e NON quelle di altro
+  cliente (leak check lato Python: RLS non ancora attiva, il
+  controllo avviene via `script.fn_scope_ba_ownership` chiamato
+  dai repository — da verificare esplicitamente)
+- Build frontend verde
+
+### 13.7 Stage D — Shop online + RLS (PR-C)
+
+§5.6 + §5.9 + §6.6 + §4.9 consolidati. RLS attivata **dopo** il portale
+cliente perche' gia' si e' verificato che i GUC sono popolati
+correttamente per identita' non-OPERATORE.
+
+**Ordine esecuzione:**
+
+1. §5.6 service registrazione shop (transazione atomica soggetto +
+   ruolo + cliente + BA + auth_user + identita)
+2. §5.9 API shop (catalogo pubblico + carrello + checkout + ordini)
+3. §6.6 UI shop pubblica (catalogo + carrello + registrazione)
+4. §4.9.1-9.7 **attivazione RLS** su 6 tabelle (fatture, ordini,
+   scadenze, acquisti_ordini, acquisti_ddt_ingresso, billing_account).
+   Bypass per ruolo DB `zeroerp_admin`.
+5. §4.9.8 benchmark performance pre/post
+6. §5.10.4-10.5 audit sessioni `ruolo_applicativo` + headers di
+   sicurezza
+
+**Gate PR-C:**
+
+- Test pgTAP RLS (§7.1.7 + §7.1.8) verdi
+- Smoke: registrazione shop end-to-end (§7.3.4), leak test shop
+  cross-user (§7.3.5) — con RLS ora deve dare ZERO righe, non 403
+- Benchmark: nessuna query degrada > 10%
+- Build verde
+
+### 13.8 Stage E — Test, docs, hardening (PR-D)
+
+§7 + §4.6.I.3/I.4 + §8.1-§8.4 + aggiornamento guide consolidato.
+
+- Test mancanti: §7.1.2 sync per identita portale/shop (ora fattibile,
+  identita_digitali popolata), §7.2.2/7.2.5/7.2.6/7.2.8
+- Smoke test `smoke-test-multi-face-auth.sh` (§7.3)
+- Aggiornamento guide: §7.4.1-7.4.3 (3 guide esistenti gia' con box
+  "evoluzione in corso" → riscrivere con il modello finale); §7.4.4-7.4.6
+  (3 nuove guide Portale Cliente / Portale Fornitore / Shop Online)
+- §7.4.7 GUC gia' documentati in §4.7.1 — aggiornare se servono rifiniture
+- §7.4.8 api.md: aggiungere namespace `/api/portale/*`, `/api/shop/*`,
+  aggiornare sezione "Autenticazione e autorizzazione" (rimuovere
+  riferimento a `ruolo_sistema`, introdurre `ruolo_applicativo` +
+  `is_super_admin`)
+- Aggiornare catalogo BB backend: `PermissionResolver.is_super_admin`,
+  nuove permission class, nuove base view
+- Aggiornare catalogo BB frontend: nuovi constants, nuovi composable
+  (se introdotti per portale), nuovi componenti
+- Rimuovere `dbops_repository` whitelist la riga `risorse_umane_auth_user`
+  se era presente (oggi e' vista, non piu' tabella scrivibile)
+- Deprecazione formale building block legacy:
+  `PermissionResolver.get_ruolo_sistema` rimosso gia' in Stage A,
+  basta rinfrescare i manual
+
+**Gate PR-D (e finale del refactor):**
+
+- Tutti i test verdi (Django + pgTAP + smoke)
+- 4 guide aggiornate, 3 nuove create
+- Nessun warning `ruolo_sistema` in grep backend + frontend
+- Catalogo BB aggiornati
+
+### 13.9 Decisioni rapide chiuse 2026-04-19
+
+Confermate dall'utente le raccomandazioni proposte. Sintesi vincolante
+per PR-A.
+
+- [x] **Q1 — Fonte di `ruolo_applicativo` lato Python**: **GUC**
+      `current_setting('app.ruolo_applicativo', true)` con cache
+      per-request. Zero round-trip DB; propagazione gia' fatta da
+      `JwtAuditAuthentication` (§13.4.8). Per scenari rari di
+      read-your-writes (cambio ruolo mid-request) forzare refresh
+      invalidando la cache.
+- [x] **Q2 — `get_unita_organizzativa_id`**: **helper DB dedicato**
+      `script.fn_get_uo_id_for_user(p_auth_user_id)` `RETURNS integer
+      LANGUAGE sql STABLE`. Incapsula la catena `identita_digitali ->
+      soggetti_ruoli -> risorse_umane` in un punto unico. Coerente
+      con il pattern §4.8 (`fn_get_profili_accesso_applicabili`). Il
+      changeset DB va aggiunto in PR-A Stage 0 prima del refactor
+      Python §13.4.5.
+- [x] **Q3 — Stage B dentro PR-A**: **mono**. Stage A (backend) e
+      Stage B (frontend) coabitano nella stessa PR-A. Senza produzione
+      il "rollback indipendente" non vale; atomicita' FE+BE elimina
+      bug da disallineamento contract `/me/` (rimozione
+      `ruolo_sistema` dal profilo + lettura nuovi campi nel frontend
+      avvengono insieme).
+- [x] **Q4 — Frontend mono-build**: **un'unica build Vite** con
+      namespace di routing `/portale/*` e `/shop/*` accanto a
+      `/admin/*`. Stack condiviso (auth store, i18n, core composables,
+      tema CSS variabile). Layout portale/shop = 95% riuso di
+      `core/` + 5% di personalizzazione tema (gia' coperta da
+      variabili `--app-*`). Niente CI/CD aggiuntiva.
+      Conferma definitiva di §6.1.1.
+- [x] **Q5 — Bootstrap SUPER_ADMIN**: il binding SUPER_ADMIN sui
+      primi admin esistenti e' gia' coperto dal backfill §4.6.E.2.
+      I toggle `OperatoreDrawer.vue` (§13.5.8) servono solo per
+      operatori successivi. **Guard DB obbligatorio**: trigger
+      `trgfn_profili_accesso_bindings_guard_ultimo_super_admin` che
+      blocca DELETE/UPDATE del binding SUPER_ADMIN se rimarrebbe
+      zero binding attivi su zero identita attive (lockout
+      prevention). Aggiungere come task DB in Stage 0.
+- [x] **Q6 — Timing promozione vista**: **prima del refactor Python**.
+      §13.3.2 va eseguito come **primo** changeset di PR-A Stage 0,
+      prima di toccare `PermissionResolver`/`amm_software_repository`.
+      I test Stage A non vedono mai il prefisso `vw_` (non
+      idiomatico) e l'output di `\d+ risorse_umane_auth_user` resta
+      uguale a oggi (vista al posto della tabella, ma il nome del
+      backend e' invariato).
+
+**Conseguenze sul piano §13.3-§13.4** (recap modifiche implicite):
+
+* Stage 0 acquisisce un changeset extra (Q5): trigger guard
+  `ultimo_super_admin`. Inseribile come §13.3.6.
+* Stage 0 acquisisce un changeset extra (Q2): helper DB
+  `fn_get_uo_id_for_user`. Inseribile come §13.3.7.
+* §13.4.4 (Python `get_ruolo_applicativo`) implementato come lettura
+  GUC con `current_setting('app.ruolo_applicativo', true)`, fallback
+  query DB solo per request senza GUC popolato (es. scenari di test
+  che non passano da `JwtAuditAuthentication`).
+* §13.4.5 (`get_unita_organizzativa_id`) diventa wrapper su
+  `script.fn_get_uo_id_for_user(%s)`, niente piu' raw SQL JOIN.
+* §13.5.x mantenuti dentro PR-A (no PR-B Stage B separato).
+* §6.1.1 dichiarato chiuso: nessuna scelta da prendere.
+
+### 13.10 Riassunto effort stimato
+
+| PR | Stage | Effort DB | Effort BE | Effort FE | Gate |
+| --- | --- | --- | --- | --- | --- |
+| PR-A | 0+A(+B?) | S | L | M (se include B) | tests green + smoke login |
+| PR-B | B+C | — | L | L | tests + smoke portale |
+| PR-C | D | M (RLS) | M | M | benchmark + leak test |
+| PR-D | E | S (cleanup) | S | S | docs + deprecazione |
+
+S=Small (<1 giorno), M=Medium (1-3 giorni), L=Large (3-5 giorni).
+Stime per Tid come unico contributor.
+
+### 13.11 Rischi specifici del piano ottimizzato
+
+| Rischio | Mitigazione |
+| --- | --- |
+| Stage 0 rompe test pgTAP che ancora scrivono su RUA | Grep pgtap per `INSERT INTO risorse_umane_auth_user` prima di Stage 0.2. Se trovati: aggiornare fixture in batch (rientra in §13.4.20) |
+| Rimuovere `ruolo_sistema` dal profilo /me/ rompe frontend prima che Stage B lo recepisca | Se Q3=mono (raccomandato), zero gap. Se Q3=separato, tenere campo `ruolo_sistema` nel profilo come alias temporaneo di `is_super_admin ? "ADMIN" : (ruolo_applicativo === "DISABILITATO" ? "DISABILITATO" : "OPERATIVO")` e rimuoverlo in PR-B |
+| Trigger-ponte droppato causa discrepanze storico/audit | Il trigger-ponte non popolava audit, solo sincronizzava stato. Lo storico continua a funzionare (la vista riflette identita_digitali) |
+| RLS bloccata su operatori interni che consultano dati cross-cliente | Bypass per ruolo DB `zeroerp_admin` (§4.9.7) + policy operatore che vede tutto se `ruolo_applicativo = OPERATORE` (clausola esplicita `USING` che ritorna true per OPERATORE, filtra per CLIENTE_PORTALE/FORNITORE_PORTALE/SHOP_CUSTOMER) |
+
+---
+
 ## 12. Storico modifiche
 
 * **2026-04-18**: Documento creato dopo analisi architetturale.
@@ -1020,6 +1501,22 @@ inferiore e' completo e testato.
     backend PR2), §4.6.H cutover (rinomina tabella legacy + rimozione
     trigger-ponte, richiede PR2 stabile), rimozione doppia verifica
     OPERATORE in `fn_sync_auth_user_is_active` (post cutover).
+* **2026-04-19 (sessione pianificazione PR2/PR3)**: post-completamento
+  PR1 DB, definito **§13 Piano ottimizzato no-production**: 4 PR
+  lineari (A=cutover DB+BE+FE, B=portali MVP, C=shop+RLS, D=test+docs)
+  invece di expand-align-contract con feature flag e rollout graduale.
+  Stage 0 promuove subito la vista (`risorse_umane_auth_user` rename,
+  drop del prefisso `vw_`), elimina trigger-ponte e doppia scrittura.
+  Stage A rinomina `PermissionResolver.get_ruolo_sistema` ->
+  `is_super_admin` senza wrapper retrocompat, estende `JwtAuditAuthentication`
+  ai 5 GUC totali, refactor writer operatore su `identita_digitali`
+  diretto. Stage B coabita con A per atomicita' contract `/me/`.
+  6 decisioni rapide chiuse: GUC come fonte (Q1), helper DB
+  `fn_get_uo_id_for_user` (Q2), Stage A+B mono-PR (Q3), frontend
+  mono-build con namespace `/portale/*` `/shop/*` (Q4), guard DB
+  ultimo SUPER_ADMIN (Q5), promozione vista prima del refactor
+  Python (Q6). Aggiunti task §13.3.6 (guard ultimo super_admin) +
+  §13.3.7 (helper DB UO).
 
 ---
 

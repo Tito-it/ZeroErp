@@ -15,7 +15,9 @@
 | `get_scope_user_id` | [endpoint_helpers.py](../../../../backend/apps/core/api/endpoint_helpers.py) | Restituisce auth_user_id per scope filtering (None per superuser) |
 | `get_risorsa_umana_id` | [endpoint_helpers.py](../../../../backend/apps/core/api/endpoint_helpers.py) | Risolve risorsa_umana_id dall'utente con cache per-request |
 | `DomainAPIView` | [base_views.py](../../../../backend/apps/core/api/base_views.py) | Base view per endpoint dominio con JWT + ZeroERPPermission. Supporta `model_permission = ("app_label", "model_name")` per attivare livello oggetto (v2 permessi). |
-| `AdminAPIView` | [base_views.py](../../../../backend/apps/core/api/base_views.py) | Base view per endpoint admin-only |
+| `AdminAPIView` | [base_views.py](../../../../backend/apps/core/api/base_views.py) | Base view per endpoint admin-only (check binding `SUPER_ADMIN` via `PermissionResolver.is_super_admin`). Post multi-face auth sostituisce il vecchio check `ruolo_sistema = ADMIN`. |
+| `PortaleAPIView` | [base_views.py](../../../../backend/apps/core/api/base_views.py) | Base view per `/api/portale/*` (clienti + fornitori). JWT + `PortaleBasePermission` (`ruolo_applicativo ∈ {CLIENTE_PORTALE, FORNITORE_PORTALE}`). `skip_area_check = True` implicito (scope dati applicato via RLS). |
+| `ShopAPIView` | [base_views.py](../../../../backend/apps/core/api/base_views.py) | Base view per `/api/shop/*` (negozio online). JWT opzionale + `ShopBasePermission` (anonimo o `SHOP_CUSTOMER`). Le view che richiedono autenticazione (checkout, ordini) devono verificare `request.user.is_authenticated`. |
 | `StandardPageNumberPagination` | [pagination.py](../../../../backend/apps/core/api/pagination.py) | Paginazione DRF standard (50 default, 200 max) |
 | `StandardCursorPagination` | [pagination.py](../../../../backend/apps/core/api/pagination.py) | Paginazione DRF a cursore per data_update |
 | `parse_list_params` | [payload_validators.py](../../../../backend/apps/core/api/payload_validators.py) | Parsing standard parametri lista (page, page_size, order, search) |
@@ -31,15 +33,17 @@
 | `invalid_json_response` / `invalid_payload_response` | [error_responses.py](../../../../backend/apps/core/api/error_responses.py) | Risposte errore 400 standard |
 | `exception_to_error_response` | [error_responses.py](../../../../backend/apps/core/api/error_responses.py) | Conversione eccezione in envelope errore unificata |
 | `drf_exception_handler` | [error_responses.py](../../../../backend/apps/core/api/error_responses.py) | Handler eccezioni DRF con mapping unificato |
-| `IsAdminZeroERP` | [permissions.py](../../../../backend/apps/core/api/permissions.py) | Permission check per ruolo ADMIN |
-| `ZeroERPPermission` | [permissions.py](../../../../backend/apps/core/api/permissions.py) | Permission resolver centrale con area/action/livello |
+| `IsAdminZeroERP` | [permissions.py](../../../../backend/apps/core/api/permissions.py) | Permission check per binding `SUPER_ADMIN` (via `PermissionResolver.is_super_admin`). Nome invariato per retrocompat con `AdminAPIView`; la semantica e' passata da "ruolo_sistema=ADMIN" a "binding SUPER_ADMIN attivo". |
+| `ZeroERPPermission` | [permissions.py](../../../../backend/apps/core/api/permissions.py) | Permission resolver centrale con area/action/livello. Multi-face: check `ruolo_applicativo=DISABILITATO` -> 403 immediato; poi `is_super_admin` -> bypass; altrimenti catena livello area/oggetto/azione. |
+| `PortaleBasePermission` | [permissions.py](../../../../backend/apps/core/api/permissions.py) | Permission class per `/api/portale/*`. Richiede `ruolo_applicativo ∈ {CLIENTE_PORTALE, FORNITORE_PORTALE}`. Non verifica livello area (set endpoint portale ristretto). Usata da `PortaleAPIView`. |
+| `ShopBasePermission` | [permissions.py](../../../../backend/apps/core/api/permissions.py) | Permission class per `/api/shop/*`. Ammette anonimo (catalogo pubblico) o `SHOP_CUSTOMER` autenticato. Altri ruoli (OPERATORE, CLIENTE_PORTALE, ...) respinti con 403. Usata da `ShopAPIView`. |
 | `LoginRateThrottle` | [throttling.py](../../../../backend/apps/core/api/throttling.py) | Rate limit login (5/5min) |
 | `PasswordResetRateThrottle` | [throttling.py](../../../../backend/apps/core/api/throttling.py) | Rate limit reset password (3/15min) |
 | `SearchBurstRateThrottle` | [throttling.py](../../../../backend/apps/core/api/throttling.py) | Rate limit endpoint search |
 | `get_idempotency_key` | [retry_policies.py](../../../../backend/apps/core/api/retry_policies.py) | Estrae Idempotency-Key dagli header |
 | `apply_retry_headers` | [retry_policies.py](../../../../backend/apps/core/api/retry_policies.py) | Aggiunge header Retry-After se errore ritentabile |
 | `DEFAULT_LIMIT` / `MAX_LIMIT` | [constants.py](../../../../backend/apps/core/api/constants.py) | Costanti paginazione (50 / 200) |
-| `JwtAuditAuthentication` | [jwt_audit_authentication.py](../../../../backend/apps/core/api/jwt_audit_authentication.py) | **Subclass `JWTAuthentication`** che propaga `app.jwt_user` + `app.current_user_id` come GUC PG session-scoped subito dopo `authenticate()` di successo. E' il punto del flusso DRF in cui l'identita JWT e' gia risolta E il view body non e ancora partito → i trigger DB di audit/scope vedono le GUC durante le scritture. Registrata in `REST_FRAMEWORK.DEFAULT_AUTHENTICATION_CLASSES` + `DomainAPIView` + `AdminAPIView`. Setta marker `request._zeroerp_jwt_guc_set` letto da `JwtAuditMiddleware.process_response` per il reset simmetrico. Vedi guida `risorse-umane-e-accessi.md` sezione "Propagazione identita utente al database (GUC)" |
+| `JwtAuditAuthentication` | [jwt_audit_authentication.py](../../../../backend/apps/core/api/jwt_audit_authentication.py) | **Subclass `JWTAuthentication`** che propaga **5 GUC** di sessione PG subito dopo `authenticate()` di successo: `app.jwt_user`, `app.current_user_id` (sempre), `app.current_identita_id`, `app.ruolo_applicativo`, `app.soggetto_ruolo_id` (solo se identita attiva, altrimenti stringa vuota — fail-open documentato). Single round-trip via CTE che risolve `identita_digitali` attiva. Registrata in `REST_FRAMEWORK.DEFAULT_AUTHENTICATION_CLASSES` + tutte le base view (`DomainAPIView`, `AdminAPIView`, `PortaleAPIView`, `ShopAPIView`). Setta marker `request._zeroerp_jwt_guc_set` letto da `JwtAuditMiddleware.process_response` per il reset simmetrico dei 5 GUC. Vedi guida `risorse-umane-e-accessi.md` sezione "Propagazione identita utente al database (GUC)" e `architettura-multi-face-auth.md`. |
 
 ---
 
@@ -64,7 +68,8 @@
 | `TokenService.create` | [token_service.py](../../../../backend/apps/core/services/token_service.py) | Crea token monouso (restituisce testo in chiaro una sola volta) |
 | `TokenService.validate` | [token_service.py](../../../../backend/apps/core/services/token_service.py) | Valida token senza consumarlo |
 | `TokenService.consume` | [token_service.py](../../../../backend/apps/core/services/token_service.py) | Consuma token (marca come usato) |
-| `PermissionResolver.get_ruolo_sistema` | [permissions_resolver.py](../../../../backend/apps/core/services/permissions_resolver.py) | Ruolo utente (ADMIN, OPERATIVO, DISABILITATO) |
+| `PermissionResolver.is_super_admin` | [permissions_resolver.py](../../../../backend/apps/core/services/permissions_resolver.py) | Verifica binding `SUPER_ADMIN` attivo per l'utente (bypass totale). Delega a `script.fn_is_super_admin`. Sostituisce il vecchio `get_ruolo_sistema() == "ADMIN"`. |
+| `PermissionResolver.get_ruolo_applicativo` | [permissions_resolver.py](../../../../backend/apps/core/services/permissions_resolver.py) | Ritorna `ruolo_applicativo` dell'identita attiva (`OPERATORE`, `CLIENTE_PORTALE`, `FORNITORE_PORTALE`, `SHOP_CUSTOMER`, `API_CLIENT`, `DISABILITATO`). GUC-first (`app.ruolo_applicativo`) con fallback query su `anagrafiche.identita_digitali`. Sostituisce il vecchio `get_ruolo_sistema`. |
 | `PermissionResolver.get_livello_area` | [permissions_resolver.py](../../../../backend/apps/core/services/permissions_resolver.py) | Livello accesso per area (TUTTO, LETTURA, BLOCCATO) |
 | `PermissionResolver.get_livello_oggetto` | [permissions_resolver.py](../../../../backend/apps/core/services/permissions_resolver.py) | Livello accesso per singolo model (override oggetto con fallback area). Usato da `ZeroERPPermission` quando la view dichiara `model_permission` o ha queryset ORM. |
 | `PermissionResolver.check_azione` | [permissions_resolver.py](../../../../backend/apps/core/services/permissions_resolver.py) | Verifica se azione processo è consentita |
@@ -150,13 +155,26 @@
 
 ---
 
+## Multi-Face Auth — Costanti e Modelli (`apps/core/services/`, `apps/anagrafiche/`, `apps/config/`)
+
+| Building Block | File | Descrizione |
+|---|---|---|
+| `RUOLO_APPLICATIVO`, `RUOLI_PORTALE`, `RUOLI_SHOP` | [auth_constants.py](../../../../backend/apps/core/services/auth_constants.py) | Enum dei ruoli applicativi (`OPERATORE`, `CLIENTE_PORTALE`, `FORNITORE_PORTALE`, `SHOP_CUSTOMER`, `API_CLIENT`, `DISABILITATO`) + subset per i namespace portale/shop. Fonte unica lato Python; equivalente DB: `config.ruolo_applicativo`. |
+| `TIPO_PROFILO_ACCESSO`, `SUPER_ADMIN_PROFILO_CODICE` | [auth_constants.py](../../../../backend/apps/core/services/auth_constants.py) | Enum tipo profilo (`REPARTO`, `PORTALE`, `AD_HOC`, `SUPER_ADMIN`) + codice riservato del profilo di bypass totale (seed id 9100). |
+| `IdentitaDigitale` | [anagrafiche/models.py](../../../../backend/apps/anagrafiche/models.py) | Model ORM (`managed=False`) del bridge generico `soggetti_ruoli <-> auth_user`. Campi stateful: `ruolo_applicativo`, `attivo`, `valido_dal/al`, `deve_cambiare_password`, `invito_inviato_at`, `tentativi_falliti`, `bloccato_fino_a`, `totp_obbligatorio`, `storicizza`. Sostituisce `RisorseUmaneAuthUser` (ora vista in transizione). |
+| `ProfiloAccesso`, `ProfiloAccessoArea`, `ProfiloAccessoAzione`, `ProfiloAccessoBinding` | [config/models.py](../../../../backend/apps/config/models.py) | Model ORM dei profili accesso generalizzati (tipo REPARTO / PORTALE / AD_HOC / SUPER_ADMIN). I bindings supportano xor 3-vie: reparto, identita' singola, ruolo applicativo. Sostituiscono `ProfiloRepartoArea/Azione` (kept per lettura legacy). |
+| `ScopePolicy`, `IdentitaScopeBinding` | [config/models.py](../../../../backend/apps/config/models.py) | Model ORM per le policy di scope dati (EF_WHITELIST, BA_OWNERSHIP, FORNITORE_OWNERSHIP). La funzione SQL di check e' indicata in `funzione_db`. Bindings opzionali con `parametri JSONB`. |
+| `RisorseUmaneAuthUser` | [anagrafiche/models.py](../../../../backend/apps/anagrafiche/models.py) | **DEPRECATO** post-cutover §4.6.H.2: ora read-only (vista su `identita_digitali`). I writer passano a `IdentitaDigitale`. |
+
+---
+
 ## Middleware (`apps/core/middleware/`)
 
 | Building Block | File | Descrizione |
 |---|---|---|
 | `ApiExceptionMiddleware` | [api_exception_middleware.py](../../../../backend/apps/core/middleware/api_exception_middleware.py) | Converte eccezioni in envelope errore JSON per /api/* |
 | `RequestContextMiddleware` | [request_context_middleware.py](../../../../backend/apps/core/middleware/request_context_middleware.py) | Assegna request_id e idempotency_key, aggiunge header risposta |
-| `JwtAuditMiddleware` | [jwt_audit_middleware.py](../../../../backend/apps/core/middleware/jwt_audit_middleware.py) | Pre-load cache permessi Redis L2, rifiuto early `DISABILITATO` con 403, **reset simmetrico** delle GUC `app.jwt_user`/`app.current_user_id` settate da `JwtAuditAuthentication` (vedi sotto). Il setting delle GUC NON avviene piu' qui dallo sprint BE-2.0ter |
+| `JwtAuditMiddleware` | [jwt_audit_middleware.py](../../../../backend/apps/core/middleware/jwt_audit_middleware.py) | Pre-load cache permessi Redis L2, rifiuto early `ruolo_applicativo=DISABILITATO` con 403 (via `PermissionResolver.get_ruolo_applicativo`), **reset simmetrico** dei 5 GUC settati da `JwtAuditAuthentication` (`app.jwt_user`, `app.current_user_id`, `app.current_identita_id`, `app.ruolo_applicativo`, `app.soggetto_ruolo_id`). Il setting delle GUC NON avviene piu' qui dallo sprint BE-2.0ter. |
 
 ---
 

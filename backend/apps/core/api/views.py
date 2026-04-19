@@ -163,14 +163,15 @@ class ApiPermessiEffettivi(DomainAPIView):
         user = request.user
         cache: dict = {}
 
-        # Solo ADMIN/superuser possono vedere permessi di altri utenti
-        ruolo_richiedente = PermissionResolver.get_ruolo_sistema(user, cache=cache)
+        # Solo SUPER_ADMIN/superuser possono vedere permessi di altri utenti
         if user_id != user.id:
-            if not user.is_superuser and ruolo_richiedente != "ADMIN":
+            if not user.is_superuser and not PermissionResolver.is_super_admin(
+                user, cache=cache
+            ):
                 raise ServiceError(
                     code="E_PERMESSO_NEGATO",
                     message="Non hai i permessi per questa operazione.",
-                    detail="Solo ADMIN possono consultare permessi di altri utenti.",
+                    detail="Solo SUPER_ADMIN possono consultare permessi di altri utenti.",
                 )
 
         # Carica l'utente target
@@ -184,9 +185,24 @@ class ApiPermessiEffettivi(DomainAPIView):
                 detail=f"Nessun utente con id={user_id}.",
             )
 
-        # Risolvi permessi per target
+        # Risolvi permessi per target. Il campo di output `ruolo_sistema`
+        # resta per retrocompat del frontend (Stage B cambiera' contract
+        # a `ruolo_applicativo` + `is_super_admin`). Ricostruzione: se e'
+        # SUPER_ADMIN -> "ADMIN"; se ruolo_applicativo=DISABILITATO ->
+        # "DISABILITATO"; altrimenti -> "OPERATIVO".
         target_cache: dict = {}
-        ruolo = PermissionResolver.get_ruolo_sistema(target_user, cache=target_cache)
+        is_super = PermissionResolver.is_super_admin(target_user, cache=target_cache)
+        ruolo_app = PermissionResolver.get_ruolo_applicativo(
+            target_user, cache=target_cache
+        )
+        if is_super:
+            ruolo = "ADMIN"
+        elif ruolo_app == "DISABILITATO":
+            ruolo = "DISABILITATO"
+        elif ruolo_app is None:
+            ruolo = None
+        else:
+            ruolo = "OPERATIVO"
         uo_id = PermissionResolver.get_unita_organizzativa_id(
             target_user, cache=target_cache
         )
@@ -268,13 +284,14 @@ class ApiPermessiAudit(DomainAPIView):
         cache: dict = {}
 
         # Scopo: Verifica autorizzazione — stessa policy di permessi-effettivi.
-        ruolo_richiedente = PermissionResolver.get_ruolo_sistema(user, cache=cache)
         if user_id != user.id:
-            if not user.is_superuser and ruolo_richiedente != "ADMIN":
+            if not user.is_superuser and not PermissionResolver.is_super_admin(
+                user, cache=cache
+            ):
                 raise ServiceError(
                     code="E_PERMESSO_NEGATO",
                     message="Non hai i permessi per questa operazione.",
-                    detail="Solo ADMIN possono consultare audit permessi di altri utenti.",
+                    detail="Solo SUPER_ADMIN possono consultare audit permessi di altri utenti.",
                 )
 
         # Scopo: Verifica che l'utente target esista.
