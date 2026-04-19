@@ -839,12 +839,15 @@ Primo set di endpoint sufficienti per un MVP del portale cliente:
       SHOP_CUSTOMER, FORNITORE_PORTALE ok/ko, API_CLIENT early-exit) +
       guard riusabile `fn_guard_soggetto_pf_pura` coperto da
       `db/pgtap/script/test-fn-guard-soggetto-pf-pura.sql` (8 casi).
-- [ ] 7.1.2 pgTAP: sync is_active per 4 tipi di identita'
-      — parziale: test legacy (operatore via RUA) coperto da
-      `test-sync-auth-user-is-active.sql` aggiornato (18 casi).
-      Dedicati per CLIENTE_PORTALE / FORNITORE_PORTALE / SHOP_CUSTOMER
-      aperti (vanno scritti post cutover §4.6 con dati di test
-      identita_digitali popolati).
+- [x] 7.1.2 pgTAP: sync is_active per 4 tipi di identita'
+      — OPERATORE regression coperto da
+      `test-sync-auth-user-is-active.sql` (18 casi, pre-cutover).
+      CLIENTE_PORTALE / FORNITORE_PORTALE / SHOP_CUSTOMER /
+      DISABILITATO + edge-case (guard NULL/zero, utente orfano,
+      fuori finestra, riattivazione) coperti da
+      `test-sync-auth-user-is-active-multi-role.sql` (10 casi).
+      Il file multi-role scrive direttamente su `identita_digitali`
+      (post-cutover §13.3.2): non dipende piu' da RUA/trigger-ponte.
 - [x] 7.1.3 pgTAP: scope policy EF_WHITELIST (8 casi)
       — `db/pgtap/script/test-fn-scope-ef-whitelist.sql`: identita
       inesistente/inattiva/attiva senza whitelist/con whitelist e target
