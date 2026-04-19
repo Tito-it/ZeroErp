@@ -87,12 +87,13 @@ speciale ma un **binding** tra l'identità e un profilo con
 
 * Il check viene fatto da [script.fn_is_super_admin](/dbzero/script/funzioni/fn_is_super_admin).
 * Il binding è gestito via [config.profili_accesso_bindings](/dbzero/config/tabelle/profili_accesso_bindings).
-* Durante la transizione, il trigger-ponte
-  [trgfn_risorse_umane_auth_user_sync_identita](/dbzero/anagrafiche/funzioni/trgfn_risorse_umane_auth_user_sync_identita)
-  crea/rimuove automaticamente il binding in base al valore di
-  `ruolo_sistema` sul bridge legacy.
-* La vista di compatibilità
-  [vw_risorse_umane_auth_user](/dbzero/anagrafiche/viste/vw_risorse_umane_auth_user)
+* Post-cutover §13.3.2 (2026-04-19): la ex tabella bridge
+  `risorse_umane_auth_user` è ora una vista read-only su
+  `identita_digitali`; il binding `SUPER_ADMIN` viene creato/eliminato
+  esplicitamente dai caller (`fn_crea_risorsa_umana`,
+  `amm_software_repository`) su `config.profili_accesso_bindings`.
+* La vista
+  [risorse_umane_auth_user](/dbzero/anagrafiche/tabelle/risorse_umane_auth_user)
   ricostruisce dinamicamente la stringa `ruolo_sistema` dal nuovo modello.
 
 ---

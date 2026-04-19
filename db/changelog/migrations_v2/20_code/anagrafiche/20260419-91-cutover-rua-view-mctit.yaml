@@ -1,0 +1,141 @@
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20260419-91-cutover-rua-view-mctit.yaml
+
+  - changeSet:
+      id: 20260419-91-cutover-rua-view
+      author: mctit
+      comment: >
+        Cutover §13.3.2 + §13.3.3 WIP multi-face-auth (atomico):
+        promozione vista risorse_umane_auth_user al nome canonico e
+        drop del trigger-ponte RUA -> identita_digitali. I 3 sub-step
+        sono semanticamente atomici:
+          1. DROP trigger-ponte `trg_risorse_umane_auth_user_z80_sync_identita_ins_upd`
+             + trigger function `trgfn_risorse_umane_auth_user_sync_identita`
+             (non piu' necessario: fn_crea_risorsa_umana ora scrive direttamente
+             su identita_digitali — vedi migration -90).
+          2. ALTER TABLE risorse_umane_auth_user RENAME TO _legacy_risorse_umane_auth_user
+             (tutti gli altri 6 trigger seguono la tabella e restano inerti: nessuno
+             scrive piu' sulla tabella legacy).
+          3. DROP VIEW vw_risorse_umane_auth_user + CREATE VIEW
+             risorse_umane_auth_user WITH (security_invoker = true) AS SELECT ...
+             (stesso corpo della vista vw_ promossa, con security_invoker attivo
+             per RLS future §4.9).
+        Prerequisito hard: writer Python su RUA azzerati (confermato dal
+        team backend 2026-04-19) e migration -90 applicata (fn_crea scrive
+        direttamente su identita_digitali).
+        NON rollback-able in automatico: il rollback ricrea la tabella
+        vuota senza i dati del _legacy_, quindi da usare solo in dev.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: anagrafiche
+            tableName: risorse_umane_auth_user
+        # NOTA: la doppia sanity-check (tabella di tipo r, vista vw_
+        # esistente) via sqlCheck e' stata rimossa perche' causava
+        # "ResultSet multipli" col driver PostgreSQL 18 + Liquibase 5.
+        # Se lo stato atteso non c'e', il DDL atomico del changeSet
+        # fallisce con errore esplicito (ALTER TABLE rename fallisce se
+        # RUA non e' tabella; DROP VIEW IF EXISTS e' idempotente).
+      changes:
+        # Step 1: drop trigger-ponte + trigger function
+        - sql:
+            splitStatements: true
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_risorse_umane_auth_user_z80_sync_identita_ins_upd
+                  ON anagrafiche.risorse_umane_auth_user;
+
+              DROP FUNCTION IF EXISTS anagrafiche.trgfn_risorse_umane_auth_user_sync_identita();
+        # Step 2: rename tabella legacy
+        - sql:
+            splitStatements: true
+            stripComments: false
+            sql: |
+              ALTER TABLE anagrafiche.risorse_umane_auth_user
+                  RENAME TO _legacy_risorse_umane_auth_user;
+
+              COMMENT ON TABLE anagrafiche._legacy_risorse_umane_auth_user IS
+                  'Tabella legacy archiviata dal cutover §13.3.2 WIP multi-face-auth (2026-04-19). '
+                  'Sostituita dalla vista anagrafiche.risorse_umane_auth_user leggente da '
+                  'identita_digitali. Mantenuta per eventuale consultazione storica dei dati '
+                  'pre-cutover; non scrivere qui.';
+        # Step 3: drop vista vw_ e create vista canonica (stesso corpo)
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP VIEW IF EXISTS anagrafiche.vw_risorse_umane_auth_user;
+
+              CREATE VIEW anagrafiche.risorse_umane_auth_user
+                  WITH (security_invoker = true)
+                  AS
+                  SELECT
+                      id.id                     AS id,
+                      ru.id                     AS risorsa_umana_id,
+                      id.auth_user_id           AS auth_user_id,
+                      id.attivo                 AS attivo,
+                      id.meta                   AS meta,
+                      id.data_insert            AS data_insert,
+                      id.user_insert            AS user_insert,
+                      id.data_update            AS data_update,
+                      id.user_update            AS user_update,
+                      CASE
+                          WHEN NOT id.attivo
+                            OR id.ruolo_applicativo = 'DISABILITATO'::config.ruolo_applicativo
+                            OR (id.valido_dal IS NOT NULL AND id.valido_dal > CURRENT_DATE)
+                            OR (id.valido_al  IS NOT NULL AND id.valido_al  < CURRENT_DATE)
+                              THEN 'DISABILITATO'::config.ruolo_sistema
+                          WHEN sa.identita_digitale_id IS NOT NULL
+                              THEN 'ADMIN'::config.ruolo_sistema
+                          ELSE 'OPERATIVO'::config.ruolo_sistema
+                      END                       AS ruolo_sistema,
+                      id.storicizza             AS storicizza,
+                      id.tx_id                  AS tx_id,
+                      id.tentativi_falliti      AS tentativi_falliti,
+                      id.bloccato_fino_a        AS bloccato_fino_a,
+                      id.deve_cambiare_password AS deve_cambiare_password,
+                      id.invito_inviato_at      AS invito_inviato_at,
+                      id.totp_obbligatorio      AS totp_obbligatorio
+                  FROM anagrafiche.identita_digitali id
+                  LEFT JOIN anagrafiche.risorse_umane ru
+                    ON ru.soggetto_ruolo_id = id.soggetto_ruolo_id
+                  -- Sub-query super-admin pre-aggregata (stesso pattern della
+                  -- vista vw_): un solo piano di query invece di N chiamate
+                  -- a fn_is_super_admin.
+                  LEFT JOIN (
+                      SELECT pab.identita_digitale_id
+                        FROM config.profili_accesso_bindings pab
+                        JOIN config.profili_accesso pa
+                          ON pa.id = pab.profilo_accesso_id
+                       WHERE pab.attivo = true
+                         AND pa.attivo  = true
+                         AND pa.tipo    = 'SUPER_ADMIN'::config.tipo_profilo_accesso
+                         AND pab.identita_digitale_id IS NOT NULL
+                  ) sa
+                    ON sa.identita_digitale_id = id.id
+                  WHERE id.ruolo_applicativo = 'OPERATORE'::config.ruolo_applicativo;
+
+              COMMENT ON VIEW anagrafiche.risorse_umane_auth_user IS
+                  'Vista post-cutover §13.3.2 (2026-04-19): nome canonico della '
+                  'ex tabella bridge legacy (ora _legacy_risorse_umane_auth_user). '
+                  'Legge da identita_digitali (OPERATORE) + JOIN risorse_umane '
+                  'via soggetto_ruolo_id. security_invoker=on per compatibilita '
+                  'RLS future (§4.9). Read-only: tutti i writer scrivono ora '
+                  'direttamente su identita_digitali.';
+      rollback:
+        - sql:
+            splitStatements: true
+            stripComments: false
+            sql: |
+              -- Rollback manuale: solo per ambiente dev. La vista canonica
+              -- e' droppata, la tabella legacy riprende il nome originale,
+              -- la vista vw_ viene ricreata. Il trigger-ponte va ricreato
+              -- a mano (non incluso qui per evitare duplicazione con la
+              -- definizione della migration 20260419-26).
+              DROP VIEW IF EXISTS anagrafiche.risorse_umane_auth_user;
+
+              ALTER TABLE anagrafiche._legacy_risorse_umane_auth_user
+                  RENAME TO risorse_umane_auth_user;
+
+              -- vw_risorse_umane_auth_user va ricreata a mano applicando
+              -- di nuovo la migration 20260419-30 (runOnChange: true).

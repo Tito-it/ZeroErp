@@ -1,6 +1,7 @@
 # Schema `anagrafiche`
 
 ## 📚 Tabelle
+- [_legacy_risorse_umane_auth_user](tabelle/_legacy_risorse_umane_auth_user.md)
 - [bank_branches](tabelle/bank_branches.md) — (latest review 02-12-25) La tabella **`anagrafiche.bank_branches`** rappresenta le **filiali di istituti di credito** (branch bancarie) collegate a un determinato **ruolo di soggetto** di tipo *ISTITUTO_CREDITO* (`anagrafiche.soggetti_ruoli`).
 - [billing_account](tabelle/billing_account.md) — (latest review 01-03-26)
 - [catasto_unita_immobiliari](tabelle/catasto_unita_immobiliari.md) — (latest review 10-12-25) La tabella `anagrafiche.catasto_unita_immobiliari` archivia i **dati catastali** associati a un `indirizzo_dettaglio` e a una specifica `istanza_utility`. Questo approccio:
@@ -28,7 +29,7 @@
 - [resellers](tabelle/resellers.md) — (latest review 26-01-2026) `anagrafiche.resellers` rappresenta l’anagrafica dei **reseller** disponibili nel sistema. Ogni reseller e` un ruolo (`soggetti_ruoli`) che puo` essere collegato a uno o piu` **billing_account** tramite la tabella di mapping dedicata.
 - [resellers_billing_account](tabelle/resellers_billing_account.md) — (latest review 26-01-2026) La tabella **`anagrafiche.resellers_billing_account`** gestisce l’associazione tra **billing_account** e **reseller** (ruolo), con validita` temporale. Non prevede un emittente “di default”: il legame e` sempre esplicito.
 - [risorse_umane](tabelle/risorse_umane.md) — (latest review 06-01-26) La tabella **`anagrafiche.risorse_umane`** rappresenta le persone (dipendenti, consulenti, collaboratori) associate a un soggetto tramite un ruolo di tipo **`RISORSA_UMANA`**. Consente di collegare ogni risorsa a una **qualifica** e, opzionalmente, a una **unita organizzativa**.
-- [risorse_umane_auth_user](tabelle/risorse_umane_auth_user.md) — (latest revision 06-01-26) La tabella **`anagrafiche.risorse_umane_auth_user`** gestisce il collegamento **1:1** tra una risorsa umana e l'utente software Django.
+- [risorse_umane_auth_user](tabelle/risorse_umane_auth_user.md) — (latest review 19-04-2026, post-cutover §13.3.2)
 - [soggetti](tabelle/soggetti.md) — (latest review 10-01-26) - **Coerenza dei dati**     Garantire che ogni soggetto—persona fisica, giuridica o fisica forzata—sia identificato in modo univoco e validato secondo le regole aziendali.
 - [soggetti_conti_bancari](tabelle/soggetti_conti_bancari.md) — (latest review 10-01-26) `anagrafiche.soggetti_conti_bancari` gestisce l’**associazione tra un Soggetto** (persona/azienda) e uno o più **conti bancari (IBAN)**, distinguendo l’**uso** del conto: `INCASSO`, `PAGAMENTO`, `RIMBORSO`, `GENERICO`.
 - [soggetti_ruoli](tabelle/soggetti_ruoli.md) — (latest review 15-02-26) * **Associazione molti-a-molti**: stabilisce una relazione N\:N tra la tabella `anagrafiche.soggetti` e `config.tipi_ruoli`, consentendo a ogni soggetto di rivestire più ruoli (es. cliente, fornitore, gestore) e a ogni ruolo di essere assegnato a molti soggetti. * **Estensione semantica**: il campo `meta` (JSONB) offre la possibilità di collegare metadati aggiuntivi per la singola associazione soggetto-ruolo (ad esempio, parametri contrattuali specifici se il ruolo è “fornitore” o date di attivazione per il ruolo “cliente”). * **Tracciatura delle modifiche**: grazie ai campi di audit (`user_insert`, `data_insert`, `user_update`, `data_update`) aggiornati automaticamente, la tabella conserva la cronologia di creazione e aggiornamento di ciascuna associazione.
@@ -102,7 +103,7 @@
 - [trgfn_resellers_normalize](funzioni/trgfn_resellers_normalize.md) — (latest review 10-03-2026) La trigger function **`anagrafiche.trgfn_resellers_normalize()`** e' oggi una **no-op**: non modifica il record `NEW` e ritorna semplicemente il contenuto ricevuto dal trigger.
 - [trgfn_risorse_umane_auth_user_guard_persona_fisica](funzioni/trgfn_risorse_umane_auth_user_guard_persona_fisica.md) — (latest review 18-04-2026) La trigger function **`anagrafiche.trgfn_risorse_umane_auth_user_guard_persona_fisica()`** impedisce di collegare un account Django (`auth_user`) a una risorsa umana che non corrisponde a una **persona fisica pura**.
 - [trgfn_risorse_umane_auth_user_sync_active](funzioni/trgfn_risorse_umane_auth_user_sync_active.md) — (latest review 18-04-2026) La trigger function **`anagrafiche.trgfn_risorse_umane_auth_user_sync_active()`** sincronizza lo stato `django.auth_user.is_active` quando cambia il **bridge** `anagrafiche.risorse_umane_auth_user`.
-- [trgfn_risorse_umane_auth_user_sync_identita](funzioni/trgfn_risorse_umane_auth_user_sync_identita.md) — (latest review 19-04-2026)
+- [trgfn_risorse_umane_auth_user_sync_identita](funzioni/trgfn_risorse_umane_auth_user_sync_identita.md)
 - [trgfn_risorse_umane_guard_ruolo](funzioni/trgfn_risorse_umane_guard_ruolo.md) — (latest review 10-03-2026) La trigger function **`anagrafiche.trgfn_risorse_umane_guard_ruolo()`** garantisce che ogni riga di `anagrafiche.risorse_umane` sia collegata a un `soggetto_ruolo_id` di tipo **RIS_UMANA** e che tale ruolo punti allo stesso `soggetto_id` presente nel record della risorsa umana.
 - [trgfn_risorse_umane_notify_cambio_reparto](funzioni/trgfn_risorse_umane_notify_cambio_reparto.md) — (latest review 10-03-2026) La trigger function **`anagrafiche.trgfn_risorse_umane_notify_cambio_reparto()`** emette una notifica PostgreSQL quando una risorsa umana cambia `unita_organizzativa_id`.
 - [trgfn_risorse_umane_sync_auth_user_active](funzioni/trgfn_risorse_umane_sync_auth_user_active.md) — (latest review 18-04-2026) La trigger function **`anagrafiche.trgfn_risorse_umane_sync_auth_user_active()`** sincronizza `django.auth_user.is_active` quando cambiano gli attributi di stato della tabella `anagrafiche.risorse_umane`.
@@ -122,6 +123,7 @@
 - [trgfn_vettori_normalize](funzioni/trgfn_vettori_normalize.md)
 
 ## 🔍 Views
+- [risorse_umane_auth_user](views/risorse_umane_auth_user.md) — (latest review 19-04-2026, post-cutover §13.3.2)
 - [vw_clienti_codice_ba](views/vw_clienti_codice_ba.md)
 - [vw_conti_bancari_per_ruolo](views/vw_conti_bancari_per_ruolo.md) — (latest review 25-03-26)
 - [vw_dati_societari](views/vw_dati_societari.md) — (latest review 23-12-25) La vista **`anagrafiche.vw_dati_societari`** offre una lettura unificata dei dati societari con:
@@ -134,6 +136,6 @@
 - [vw_istanze_dati_precontrattuali_dettaglio](views/vw_istanze_dati_precontrattuali_dettaglio.md) — (latest review 09-01-26)  La vista **`anagrafiche.vw_istanze_dati_precontrattuali_dettaglio`** unisce i dati pre‑contrattuali con i dettagli dell’istanza utility e le decodifiche di **classe** e **tipo utenza**. Il **tipo utenza** è derivato dalla classe (`config.classi_utenze.tipo_utenza_id`).
 - [vw_istanze_utilities_dettaglio](views/vw_istanze_utilities_dettaglio.md) — (latest review 15-02-26) La vista **`anagrafiche.vw_istanze_utilities_dettaglio`** aggrega le informazioni di un'istanza utility con:
 - [vw_pdp](views/vw_pdp.md)
-- [vw_risorse_umane_auth_user](views/vw_risorse_umane_auth_user.md) — (latest review 19-04-2026)
+- [vw_risorse_umane_auth_user](views/vw_risorse_umane_auth_user.md)
 - [vw_risorse_umane_dettaglio](views/vw_risorse_umane_dettaglio.md) — (latest review 07-01-26) La vista **`anagrafiche.vw_risorse_umane_dettaglio`** fornisce una lettura unificata delle risorse umane con:
 - [vw_soggetti_ruoli_dettaglio](views/vw_soggetti_ruoli_dettaglio.md) — (latest review 20-02-26) La vista **`anagrafiche.vw_soggetti_ruoli_dettaglio`** fornisce una lettura generale dei ruoli soggetto, partendo da `soggetto_ruolo_id` e includendo:
