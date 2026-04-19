@@ -71,48 +71,53 @@ class AuthRepository:
                 return {"bloccato": False, "minuti_rimanenti": 0, "tentativi": 0}
             return json.loads(row[0]) if isinstance(row[0], str) else row[0]
 
-    # Scopo: Legge il flag deve_cambiare_password per un auth_user.
+    # Scopo: Legge il flag deve_cambiare_password dell'identita digitale
+    # attiva dell'utente (post multi-face §13.4.17).
     def get_deve_cambiare_password(self, auth_user_id: int) -> bool:
         sql = """
             SELECT deve_cambiare_password
-              FROM anagrafiche.risorse_umane_auth_user
+              FROM anagrafiche.identita_digitali
              WHERE auth_user_id = %s
+               AND attivo = true
+             LIMIT 1
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [auth_user_id])
             row = cursor.fetchone()
             return bool(row[0]) if row else False
 
-    # Scopo: Recupera unita_organizzativa_id dell'operatore dal bridge HR.
+    # Scopo: Recupera unita_organizzativa_id dell'operatore via helper DB
+    # script.fn_get_uo_id_for_user (post multi-face §13.3.7).
     def get_unita_organizzativa_id(self, auth_user_id: int) -> int | None:
-        sql = """
-            SELECT ru.unita_organizzativa_id
-              FROM anagrafiche.risorse_umane_auth_user rau
-              JOIN anagrafiche.risorse_umane ru ON ru.id = rau.risorsa_umana_id
-             WHERE rau.auth_user_id = %s
-        """
         with connection.cursor() as cursor:
-            cursor.execute(sql, [auth_user_id])
+            cursor.execute(
+                "SELECT script.fn_get_uo_id_for_user(%s)",
+                [auth_user_id],
+            )
             row = cursor.fetchone()
-            return row[0] if row else None
+            return row[0] if row and row[0] is not None else None
 
-    # Scopo: Aggiorna invito_inviato_at su risorse_umane_auth_user.
+    # Scopo: Aggiorna invito_inviato_at sull'identita digitale attiva
+    # dell'utente (post multi-face §13.4.17).
     def set_invito_inviato_at(self, auth_user_id: int) -> bool:
         sql = """
-            UPDATE anagrafiche.risorse_umane_auth_user
+            UPDATE anagrafiche.identita_digitali
                SET invito_inviato_at = now(), data_update = now()
              WHERE auth_user_id = %s
+               AND attivo = true
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [auth_user_id])
             return cursor.rowcount > 0
 
-    # Scopo: Imposta il flag deve_cambiare_password per un auth_user.
+    # Scopo: Imposta il flag deve_cambiare_password sull'identita
+    # digitale attiva dell'utente (post multi-face §13.4.17).
     def set_deve_cambiare_password(self, auth_user_id: int, valore: bool) -> bool:
         sql = """
-            UPDATE anagrafiche.risorse_umane_auth_user
+            UPDATE anagrafiche.identita_digitali
                SET deve_cambiare_password = %s, data_update = now()
              WHERE auth_user_id = %s
+               AND attivo = true
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [valore, auth_user_id])

@@ -394,18 +394,28 @@ class PermissionResolverAreaModelOverrideTests(TestCase):
 
 
 class PermissionResolverUnitaOrganizzativaTests(TestCase):
-    """Test per get_unita_organizzativa_id — query SQL diretta."""
+    """Test per get_unita_organizzativa_id — delegata a script.fn_get_uo_id_for_user."""
 
     # Scopo: UO trovata restituisce l'id.
     @patch(_CONN)
     def test_uo_trovata(self, mock_conn):
-        _setup_cursor(mock_conn, (10,))
+        cursor = _setup_cursor(mock_conn, (10,))
         result = PermissionResolver.get_unita_organizzativa_id(_mock_user())
         self.assertEqual(result, 10)
+        cursor.execute.assert_called_once_with(
+            "SELECT script.fn_get_uo_id_for_user(%s)", [1]
+        )
 
-    # Scopo: UO non trovata -> None.
+    # Scopo: UO non trovata (fn ritorna NULL) -> None.
     @patch(_CONN)
     def test_uo_non_trovata(self, mock_conn):
+        _setup_cursor(mock_conn, (None,))
+        result = PermissionResolver.get_unita_organizzativa_id(_mock_user())
+        self.assertIsNone(result)
+
+    # Scopo: Nessuna riga dalla funzione -> None.
+    @patch(_CONN)
+    def test_uo_no_row(self, mock_conn):
         _setup_cursor(mock_conn, None)
         result = PermissionResolver.get_unita_organizzativa_id(_mock_user())
         self.assertIsNone(result)
@@ -415,27 +425,38 @@ class PermissionResolverUnitaOrganizzativaTests(TestCase):
 
 
 class PermissionResolverHasProfiloTests(TestCase):
-    """Test per has_profilo_reparto_area — query SQL EXISTS."""
+    """Test per has_profilo_applicabile_per_area — EXISTS su
+    fn_get_profili_accesso_applicabili intersecato con profili_accesso_aree."""
 
-    # Scopo: Reparto con profilo -> True.
+    # Scopo: Esiste un profilo applicabile per l'area -> True.
     @patch(_CONN)
     def test_has_profilo_true(self, mock_conn):
-        _setup_cursor(mock_conn, (True,))
-        result = PermissionResolver.has_profilo_reparto_area(_mock_user(), "vendite")
+        cursor = _setup_cursor(mock_conn, (True,))
+        result = PermissionResolver.has_profilo_applicabile_per_area(
+            _mock_user(), "vendite"
+        )
         self.assertTrue(result)
+        # Verifica che la query referenzi la nuova funzione + tabella.
+        sql = cursor.execute.call_args[0][0]
+        self.assertIn("fn_get_profili_accesso_applicabili", sql)
+        self.assertIn("profili_accesso_aree", sql)
 
-    # Scopo: Reparto senza profilo -> False.
+    # Scopo: Nessun profilo applicabile per l'area -> False.
     @patch(_CONN)
     def test_has_profilo_false(self, mock_conn):
         _setup_cursor(mock_conn, (False,))
-        result = PermissionResolver.has_profilo_reparto_area(_mock_user(), "vendite")
+        result = PermissionResolver.has_profilo_applicabile_per_area(
+            _mock_user(), "vendite"
+        )
         self.assertFalse(result)
 
-    # Scopo: Nessuna riga -> False.
+    # Scopo: Nessuna riga dalla funzione -> False (fail-closed).
     @patch(_CONN)
     def test_has_profilo_no_row(self, mock_conn):
         _setup_cursor(mock_conn, None)
-        result = PermissionResolver.has_profilo_reparto_area(_mock_user(), "vendite")
+        result = PermissionResolver.has_profilo_applicabile_per_area(
+            _mock_user(), "vendite"
+        )
         self.assertFalse(result)
 
 

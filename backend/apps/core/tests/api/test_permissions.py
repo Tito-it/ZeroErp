@@ -228,7 +228,7 @@ class ZeroERPPermissionTests(TestCase):
         mock_resolver.get_ruolo_applicativo.return_value = "OPERATORE"
         mock_resolver.get_livello_area.return_value = "BLOCCATO"
         mock_resolver.get_area_schema_db.return_value = "vendite"
-        mock_resolver.has_profilo_reparto_area.return_value = False
+        mock_resolver.has_profilo_applicabile_per_area.return_value = False
 
         request = _mock_request(method="GET")
         view = _mock_view(area="vendite")
@@ -241,7 +241,7 @@ class ZeroERPPermissionTests(TestCase):
         mock_resolver.is_super_admin.return_value = False
         mock_resolver.get_livello_area.return_value = "BLOCCATO"
         mock_resolver.get_area_schema_db.return_value = "vendite"
-        mock_resolver.has_profilo_reparto_area.return_value = True
+        mock_resolver.has_profilo_applicabile_per_area.return_value = True
 
         request = _mock_request(method="GET")
         view = _mock_view(area="vendite")
