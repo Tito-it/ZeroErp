@@ -242,7 +242,7 @@ class ZeroERPPermission(BasePermission):
     ) -> None:
         from apps.core.services.auth_constants import RUOLO_APPLICATIVO_OPERATORE
 
-        if ruolo_app == RUOLO_APPLICATIVO_OPERATORE and not PermissionResolver.has_profilo_reparto_area(
+        if ruolo_app == RUOLO_APPLICATIVO_OPERATORE and not PermissionResolver.has_profilo_applicabile_per_area(
             user, area_schema_db, cache=cache
         ):
             self.message = (

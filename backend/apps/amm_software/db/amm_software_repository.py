@@ -33,7 +33,9 @@ class AmmSoftwareRepository:
     """Accesso DB per amministrazione operatori e reparti."""
 
     # Scopo: Restituisce la lista paginata degli operatori con filtri opzionali.
-    # JOIN: auth_user + risorse_umane_auth_user + risorse_umane + unita_organizzative.
+    # JOIN: auth_user + identita_digitali (OPERATORE) + soggetti_ruoli +
+    # risorse_umane + unita_organizzative. Il ruolo legacy (ADMIN /
+    # OPERATIVO / DISABILITATO) e' ricostruito via script.fn_get_ruolo_sistema.
     # Risultato: (lista righe, conteggio totale).
     def list_operatori(
         self,
@@ -66,7 +68,12 @@ class AmmSoftwareRepository:
             params.extend([like_term] * 5)
 
         if ruolo_sistema:
-            conditions.append("rua.ruolo_sistema = %s::config.ruolo_sistema")
+            # Filtro su ruolo legacy ricostruito dal wrapper DB. Il
+            # filtro e' semantico (ADMIN / OPERATIVO / DISABILITATO),
+            # indipendente dalla tabella sottostante.
+            conditions.append(
+                "script.fn_get_ruolo_sistema(au.id) = %s::config.ruolo_sistema"
+            )
             params.append(ruolo_sistema)
 
         if unita_organizzativa_id is not None:
@@ -94,7 +101,7 @@ class AmmSoftwareRepository:
                    au.last_name,
                    COALESCE(s.cognome, au.last_name) AS soggetto_cognome,
                    COALESCE(s.nome, au.first_name) AS soggetto_nome,
-                   rua.ruolo_sistema::text,
+                   script.fn_get_ruolo_sistema(au.id)::text AS ruolo_sistema,
                    au.is_active,
                    ru.unita_organizzativa_id,
                    uo.descrizione AS unita_organizzativa_nome,
@@ -112,12 +119,13 @@ class AmmSoftwareRepository:
                    ) AS emittenti_descrizione,
                    COUNT(*) OVER() AS total_count
               FROM auth_user au
-              LEFT JOIN anagrafiche.risorse_umane_auth_user rua
-                ON rua.auth_user_id = au.id
-              LEFT JOIN anagrafiche.risorse_umane ru
-                ON ru.id = rua.risorsa_umana_id
+              LEFT JOIN anagrafiche.identita_digitali id
+                ON id.auth_user_id = au.id
+               AND id.ruolo_applicativo = 'OPERATORE'
               LEFT JOIN anagrafiche.soggetti_ruoli sr
-                ON sr.id = ru.soggetto_ruolo_id
+                ON sr.id = id.soggetto_ruolo_id
+              LEFT JOIN anagrafiche.risorse_umane ru
+                ON ru.soggetto_ruolo_id = sr.id
               LEFT JOIN anagrafiche.soggetti s
                 ON s.id = sr.soggetto_id
               LEFT JOIN config.unita_organizzative uo
@@ -160,7 +168,7 @@ class AmmSoftwareRepository:
                    s.id AS soggetto_id,
                    s.ragione_sociale_completa,
                    s.codice_fiscale,
-                   rua.ruolo_sistema::text,
+                   script.fn_get_ruolo_sistema(au.id)::text AS ruolo_sistema,
                    au.is_active,
                    ru.unita_organizzativa_id,
                    uo.descrizione AS unita_organizzativa_nome,
@@ -183,15 +191,16 @@ class AmmSoftwareRepository:
                      WHERE uef.auth_user_id = au.id
                    ) AS emittenti_descrizione,
                    au.last_login,
-                   rua.invito_inviato_at,
-                   rua.deve_cambiare_password
+                   id.invito_inviato_at,
+                   id.deve_cambiare_password
               FROM auth_user au
-              LEFT JOIN anagrafiche.risorse_umane_auth_user rua
-                ON rua.auth_user_id = au.id
-              LEFT JOIN anagrafiche.risorse_umane ru
-                ON ru.id = rua.risorsa_umana_id
+              LEFT JOIN anagrafiche.identita_digitali id
+                ON id.auth_user_id = au.id
+               AND id.ruolo_applicativo = 'OPERATORE'
               LEFT JOIN anagrafiche.soggetti_ruoli sr
-                ON sr.id = ru.soggetto_ruolo_id
+                ON sr.id = id.soggetto_ruolo_id
+              LEFT JOIN anagrafiche.risorse_umane ru
+                ON ru.soggetto_ruolo_id = sr.id
               LEFT JOIN anagrafiche.soggetti s
                 ON s.id = sr.soggetto_id
               LEFT JOIN config.unita_organizzative uo
@@ -210,8 +219,84 @@ class AmmSoftwareRepository:
 
         return dict(zip(cols, row))  # type: ignore[return-value]
 
-    # Scopo: Aggiorna i campi modificabili di un operatore (auth_user + risorse_umane).
+    # Scopo: Aggiorna stato identita_digitali (attivo, ruolo_applicativo) per
+    # l'utente. Helper privato per orchestrare le 3 write path dei writer
+    # (update/disabilita/riattiva). La UNIQUE su auth_user_id garantisce
+    # una sola identita per utente.
+    def _set_identita_state(
+        self,
+        auth_user_id: int,
+        *,
+        attivo: bool | None = None,
+        ruolo_applicativo: str | None = None,
+    ) -> None:
+        fields: list[str] = []
+        params: list[Any] = []
+        if attivo is not None:
+            fields.append("attivo = %s")
+            params.append(attivo)
+        if ruolo_applicativo is not None:
+            fields.append("ruolo_applicativo = %s::config.ruolo_applicativo")
+            params.append(ruolo_applicativo)
+        if not fields:
+            return
+        params.append(auth_user_id)
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"UPDATE anagrafiche.identita_digitali "
+                f"SET {', '.join(fields)} "
+                f"WHERE auth_user_id = %s",
+                params,
+            )
+
+    # Scopo: Aggiunge o rimuove il binding SUPER_ADMIN sull'identita
+    # digitale dell'utente. INSERT idempotente (ON CONFLICT DO NOTHING)
+    # per enabled=True; DELETE mirato per enabled=False. Il guard DB
+    # `trgfn_profili_accesso_bindings_guard_ultimo_super_admin` blocca
+    # la rimozione dell'ultimo binding attivo (lockout prevention).
+    def _set_super_admin_binding(
+        self, auth_user_id: int, *, enabled: bool
+    ) -> None:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT id FROM anagrafiche.identita_digitali "
+                "WHERE auth_user_id = %s",
+                [auth_user_id],
+            )
+            row = cursor.fetchone()
+            if not row:
+                return  # utente senza identita (raro post-cutover)
+            identita_id = row[0]
+
+            if enabled:
+                cursor.execute(
+                    """INSERT INTO config.profili_accesso_bindings
+                          (profilo_accesso_id, identita_digitale_id)
+                       SELECT id, %s
+                         FROM config.profili_accesso
+                        WHERE codice = 'SUPER_ADMIN'
+                       ON CONFLICT DO NOTHING""",
+                    [identita_id],
+                )
+            else:
+                cursor.execute(
+                    """DELETE FROM config.profili_accesso_bindings
+                        WHERE identita_digitale_id = %s
+                          AND profilo_accesso_id IN (
+                              SELECT id FROM config.profili_accesso
+                               WHERE codice = 'SUPER_ADMIN'
+                          )""",
+                    [identita_id],
+                )
+
+    # Scopo: Aggiorna i campi modificabili di un operatore (auth_user +
+    # identita_digitali + bindings SUPER_ADMIN + risorse_umane).
     # Dopo la modifica, il chiamante deve invalidare la cache permessi.
+    #
+    # Traduzione ruolo_sistema -> nuovo modello (retrocompat API):
+    #   - ADMIN        -> identita attiva, ruolo=OPERATORE, binding SUPER_ADMIN UPSERT
+    #   - OPERATIVO    -> identita attiva, ruolo=OPERATORE, binding SUPER_ADMIN DELETE
+    #   - DISABILITATO -> identita inattiva (binding non toccato)
     def update_operatore(
         self,
         auth_user_id: int,
@@ -224,7 +309,7 @@ class AmmSoftwareRepository:
         attivo: bool | None = None,
         valido_al: str | None = None,
     ) -> None:
-        # Aggiorna auth_user
+        # 1) Aggiorna auth_user (name/email)
         auth_fields: list[str] = []
         auth_params: list[Any] = []
         if email is not None:
@@ -245,17 +330,25 @@ class AmmSoftwareRepository:
                     auth_params,
                 )
 
-        # Aggiorna ruolo_sistema nel bridge
-        if ruolo_sistema is not None:
-            with connection.cursor() as cursor:
-                cursor.execute(
-                    """UPDATE anagrafiche.risorse_umane_auth_user
-                          SET ruolo_sistema = %s::config.ruolo_sistema
-                        WHERE auth_user_id = %s""",
-                    [ruolo_sistema, auth_user_id],
-                )
+        # 2) Traduci ruolo_sistema in stato identita + binding SUPER_ADMIN
+        if ruolo_sistema == RUOLO_ADMIN:
+            self._set_identita_state(
+                auth_user_id, attivo=True, ruolo_applicativo="OPERATORE"
+            )
+            self._set_super_admin_binding(auth_user_id, enabled=True)
+        elif ruolo_sistema == RUOLO_OPERATIVO:
+            self._set_identita_state(
+                auth_user_id, attivo=True, ruolo_applicativo="OPERATORE"
+            )
+            self._set_super_admin_binding(auth_user_id, enabled=False)
+        elif ruolo_sistema == RUOLO_DISABILITATO:
+            self._set_identita_state(auth_user_id, attivo=False)
 
-        # Aggiorna risorse_umane
+        # 3) Override esplicito di attivo (prevale sulla traduzione ruolo)
+        if attivo is not None:
+            self._set_identita_state(auth_user_id, attivo=attivo)
+
+        # 4) Aggiorna risorse_umane via catena identita -> soggetto_ruolo
         ru_fields: list[str] = []
         ru_params: list[Any] = []
         if attivo is not None:
@@ -273,13 +366,13 @@ class AmmSoftwareRepository:
                 cursor.execute(
                     f"""UPDATE anagrafiche.risorse_umane ru
                            SET {', '.join(ru_fields)}
-                          FROM anagrafiche.risorse_umane_auth_user rua
-                         WHERE rua.risorsa_umana_id = ru.id
-                           AND rua.auth_user_id = %s""",
+                          FROM anagrafiche.identita_digitali id
+                         WHERE id.auth_user_id = %s
+                           AND id.soggetto_ruolo_id = ru.soggetto_ruolo_id""",
                     ru_params + [auth_user_id],
                 )
 
-        # Se ruolo_sistema o attivo cambiati, sync is_active via funzione DB
+        # 5) Sync auth_user.is_active se stato o ruolo cambiati
         if ruolo_sistema is not None or attivo is not None:
             with connection.cursor() as cursor:
                 cursor.execute(
@@ -287,38 +380,47 @@ class AmmSoftwareRepository:
                     [auth_user_id],
                 )
 
-    # Scopo: Conta operatori con ruolo_sistema ADMIN e attivo = true.
+    # Scopo: Conta operatori con binding SUPER_ADMIN attivo.
+    # Usato dal service per impedire la disabilitazione dell'ultimo admin
+    # (guard a livello servizio; il guard DB equivalente e' il trigger
+    # `trgfn_profili_accesso_bindings_guard_ultimo_super_admin`).
     def count_admin_attivi(self) -> int:
         with connection.cursor() as cursor:
             cursor.execute(
                 """SELECT COUNT(*)
-                     FROM anagrafiche.risorse_umane_auth_user
-                    WHERE ruolo_sistema = %s::config.ruolo_sistema
-                      AND attivo = true""",
-                [RUOLO_ADMIN],
+                     FROM config.profili_accesso_bindings pab
+                     JOIN config.profili_accesso pa
+                       ON pa.id = pab.profilo_accesso_id
+                     JOIN anagrafiche.identita_digitali id
+                       ON id.id = pab.identita_digitale_id
+                    WHERE pa.codice = 'SUPER_ADMIN'
+                      AND pa.attivo = true
+                      AND id.attivo = true
+                      AND id.ruolo_applicativo <> 'DISABILITATO'""",
             )
             return cursor.fetchone()[0]
 
-    # Scopo: Disabilita un operatore impostando ruolo_sistema=DISABILITATO e attivo=false.
-    # Chiama fn_sync_auth_user_is_active per sincronizzare auth_user.is_active.
+    # Scopo: Disabilita un operatore. Post-cutover (§13.3.2) il framework
+    # ATTIVO su risorse_umane valuta RUA.attivo come vista derivata da
+    # identita_digitali.attivo, quindi l'ordine figlio→padre funziona
+    # scrivendo su identita prima di RU.
     def disabilita_operatore(self, auth_user_id: int) -> None:
         with connection.cursor() as cursor:
-            # 1. Disattiva figlio (risorse_umane_auth_user) PRIMA del padre
+            # 1. Disattiva identita_digitali (figlio logico)
             cursor.execute(
-                """UPDATE anagrafiche.risorse_umane_auth_user
-                      SET ruolo_sistema = %s::config.ruolo_sistema,
-                          attivo = false
+                """UPDATE anagrafiche.identita_digitali
+                      SET attivo = false
                     WHERE auth_user_id = %s""",
-                [RUOLO_DISABILITATO, auth_user_id],
+                [auth_user_id],
             )
-            # 2. Disattiva padre (risorse_umane) + imposta valido_al = oggi
+            # 2. Disattiva risorse_umane (padre) + imposta valido_al = oggi
             cursor.execute(
                 """UPDATE anagrafiche.risorse_umane ru
                       SET attivo = false,
                           valido_al = CURRENT_DATE
-                     FROM anagrafiche.risorse_umane_auth_user rua
-                    WHERE rua.risorsa_umana_id = ru.id
-                      AND rua.auth_user_id = %s""",
+                     FROM anagrafiche.identita_digitali id
+                    WHERE id.auth_user_id = %s
+                      AND id.soggetto_ruolo_id = ru.soggetto_ruolo_id""",
                 [auth_user_id],
             )
             # 3. Sync auth_user.is_active
@@ -327,28 +429,30 @@ class AmmSoftwareRepository:
                 [auth_user_id],
             )
 
-    # Scopo: Riattiva un operatore precedentemente disabilitato.
-    # Imposta ruolo_sistema = OPERATIVO, attivo = true, e sincronizza auth_user.is_active.
+    # Scopo: Riattiva un operatore precedentemente disabilitato. Ordine
+    # inverso: padre→figlio per rispettare il framework ATTIVO
+    # (un figlio attivo richiede padre attivo).
     def riattiva_operatore(self, auth_user_id: int) -> None:
         with connection.cursor() as cursor:
-            # 1. Riattiva padre (risorse_umane) + aggiorna valido_dal = oggi, rimuove valido_al
+            # 1. Riattiva risorse_umane (padre) + valido_dal=oggi, valido_al=NULL
             cursor.execute(
                 """UPDATE anagrafiche.risorse_umane ru
                       SET attivo = true,
                           valido_dal = CURRENT_DATE,
                           valido_al = NULL
-                     FROM anagrafiche.risorse_umane_auth_user rua
-                    WHERE rua.risorsa_umana_id = ru.id
-                      AND rua.auth_user_id = %s""",
+                     FROM anagrafiche.identita_digitali id
+                    WHERE id.auth_user_id = %s
+                      AND id.soggetto_ruolo_id = ru.soggetto_ruolo_id""",
                 [auth_user_id],
             )
-            # 2. Riattiva figlio (risorse_umane_auth_user)
+            # 2. Riattiva identita_digitali + ripristina ruolo_applicativo=OPERATORE
+            #    (utente era DISABILITATO o inattivo)
             cursor.execute(
-                """UPDATE anagrafiche.risorse_umane_auth_user
-                      SET ruolo_sistema = %s::config.ruolo_sistema,
-                          attivo = true
+                """UPDATE anagrafiche.identita_digitali
+                      SET attivo = true,
+                          ruolo_applicativo = 'OPERATORE'::config.ruolo_applicativo
                     WHERE auth_user_id = %s""",
-                [RUOLO_OPERATIVO, auth_user_id],
+                [auth_user_id],
             )
             # 3. Sync auth_user.is_active
             cursor.execute(
@@ -823,7 +927,9 @@ class AmmSoftwareRepository:
             params.append(unita_organizzativa_id)
 
         if ruolo_sistema:
-            conditions.append("rua.ruolo_sistema = %s::config.ruolo_sistema")
+            conditions.append(
+                "script.fn_get_ruolo_sistema(au.id) = %s::config.ruolo_sistema"
+            )
             params.append(ruolo_sistema)
 
         if emittente_fiscale_id is not None:
@@ -850,16 +956,17 @@ class AmmSoftwareRepository:
                    au.username,
                    COALESCE(s.cognome, au.last_name) AS cognome,
                    COALESCE(s.nome, au.first_name) AS nome,
-                   rua.ruolo_sistema::text,
+                   script.fn_get_ruolo_sistema(au.id)::text AS ruolo_sistema,
                    uo.descrizione AS reparto,
                    {area_columns}
               FROM auth_user au
-              LEFT JOIN anagrafiche.risorse_umane_auth_user rua
-                ON rua.auth_user_id = au.id
-              LEFT JOIN anagrafiche.risorse_umane ru
-                ON ru.id = rua.risorsa_umana_id
+              LEFT JOIN anagrafiche.identita_digitali id
+                ON id.auth_user_id = au.id
+               AND id.ruolo_applicativo = 'OPERATORE'
               LEFT JOIN anagrafiche.soggetti_ruoli sr
-                ON sr.id = ru.soggetto_ruolo_id
+                ON sr.id = id.soggetto_ruolo_id
+              LEFT JOIN anagrafiche.risorse_umane ru
+                ON ru.soggetto_ruolo_id = sr.id
               LEFT JOIN anagrafiche.soggetti s
                 ON s.id = sr.soggetto_id
               LEFT JOIN config.unita_organizzative uo
