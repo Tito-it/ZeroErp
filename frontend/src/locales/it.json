@@ -219,6 +219,29 @@
       ]
     }
   },
+  "portale": {
+    "accesso_portale_title": "Accesso portale",
+    "accesso_portale_help": "Invia al cliente/fornitore un link di attivazione account portale via email. Il destinatario sceglierà autonomamente la password al primo accesso.",
+    "email_destinatario": "Email destinatario",
+    "email_placeholder": "es. mario.rossi@azienda.it",
+    "email_non_valida": "Email destinatario non valida.",
+    "btn_invia_invito": "Invia invito portale",
+    "btn_reinvia_invito": "Reinvia invito",
+    "invio_confirm_title": "Conferma invio invito portale",
+    "invio_confirm_msg": "Verrà inviata un'email di attivazione a {email}.",
+    "reinvio_confirm_title": "Conferma reinvio invito",
+    "reinvio_confirm_msg": "Il token precedente verrà invalidato. Verrà inviata una nuova email a {email}.",
+    "invito_inviato": "Invito portale inviato",
+    "invito_reinviato": "Invito portale reinviato",
+    "invito_errore": "Errore durante l'invio dell'invito",
+    "invito_confermato": "Invito inviato a {email}",
+    "nuovo_utente_creato": "nuovo account creato",
+    "activation_title": "Attivazione account portale",
+    "activation_welcome": "Imposta la tua password per completare l'attivazione dell'account portale.",
+    "activation_success": "Account portale attivato. Reindirizzamento al login...",
+    "activation_token_invalid": "Il link non è valido o è scaduto. Contatta l'amministratore per richiedere un nuovo invito.",
+    "activate_btn": "Attiva account"
+  },
   "auth": {
     "username": "Username",
     "password": "Password",
