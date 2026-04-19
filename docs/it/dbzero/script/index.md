@@ -3,6 +3,7 @@
 ## 📚 Tabelle
 
 ## ⚙️ Funzioni
+- [fn_check_almeno_un_super_admin_attivo](funzioni/fn_check_almeno_un_super_admin_attivo.md) — (latest review 19-04-2026)
 - [fn_check_azione_processo](funzioni/fn_check_azione_processo.md) — (latest review 08-03-2026) La funzione **`script.fn_check_azione_processo`** verifica se un'azione di processo (identificata da `permission_codename`) e abilitata per un utente.
 - [fn_check_ba_visible_for_emittenti](funzioni/fn_check_ba_visible_for_emittenti.md)
 - [fn_check_blocco_login](funzioni/fn_check_blocco_login.md)
@@ -43,6 +44,7 @@
 - [fn_get_stato_cliente_by_istanza](funzioni/fn_get_stato_cliente_by_istanza.md) — Fornire lo **stato cliente** associato a una specifica **istanza di servizio**, restituendo:
 - [fn_get_stradario](funzioni/fn_get_stradario.md) — * **Ricerca locale per comune**   Se viene specificato `p_comune_id`, esegue una query filtrata sul comune indicato, restituendo tutte le vie e toponomastiche che contengono la stringa `p_indirizzo` nel loro nome.
 - [fn_get_tipo_contatto_id](funzioni/fn_get_tipo_contatto_id.md) — Recuperare l’ID del tipo di contatto corrispondente a un **codice interno** (`cod_int_tipo_contatto`), garantendo al contempo il logging e la tracciabilità tramite un `tx_id` di sessione.
+- [fn_get_uo_id_for_user](funzioni/fn_get_uo_id_for_user.md) — (latest review 19-04-2026)
 - [fn_get_user_actions_map](funzioni/fn_get_user_actions_map.md)
 - [fn_get_user_object_permissions_map](funzioni/fn_get_user_object_permissions_map.md)
 - [fn_get_user_permissions_map](funzioni/fn_get_user_permissions_map.md)
@@ -65,6 +67,8 @@
 - [fn_resolve_livello_area](funzioni/fn_resolve_livello_area.md) — (latest review 08-03-2026) La funzione **`script.fn_resolve_livello_area`** risolve il livello di accesso effettivo di un utente per un'area funzionale, identificata tramite `schema_db`.
 - [fn_resolve_livello_oggetto](funzioni/fn_resolve_livello_oggetto.md) — (latest review 08-03-2026) La funzione **`script.fn_resolve_livello_oggetto`** risolve il livello di accesso per un singolo model Django (`app_label` + `model_name`).
 - [fn_scope_ba_ownership](funzioni/fn_scope_ba_ownership.md) — (latest review 18-04-2026)
+- [fn_scope_ba_ownership_via_fattura](funzioni/fn_scope_ba_ownership_via_fattura.md) — (latest review 19-04-2026)
+- [fn_scope_cliente_ownership](funzioni/fn_scope_cliente_ownership.md) — (latest review 19-04-2026)
 - [fn_scope_ef_whitelist](funzioni/fn_scope_ef_whitelist.md) — (latest review 18-04-2026)
 - [fn_scope_fornitore_ownership](funzioni/fn_scope_fornitore_ownership.md) — (latest review 18-04-2026)
 - [fn_search_soggetti_universale](funzioni/fn_search_soggetti_universale.md) — * **Ricerca per tipo ruolo**: il parametro `p_tipo_ruolo_id` e' obbligatorio. Il dropdown frontend mostra solo i ruoli accessibili all'utente corrente.

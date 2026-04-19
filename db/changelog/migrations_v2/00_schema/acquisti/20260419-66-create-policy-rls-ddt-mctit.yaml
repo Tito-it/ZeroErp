@@ -1,0 +1,54 @@
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/acquisti/20260419-66-create-policy-rls-ddt-mctit.yaml
+
+  - changeSet:
+      id: 20260419-66-create-policy-rls-acquisti-ddt
+      author: mctit
+      comment: >
+        RLS prima ondata §4.9.5 — DRY RUN: crea policy PERMISSIVE su
+        acquisti.ddt per fornitore portale. Usa fn_scope_fornitore_ownership
+        su mittente_soggetto_ruolo_id (NOT NULL = fornitore mittente del
+        DDT). Nessun ENABLE / FORCE.
+        NB: nel WIP §4.9.5 il riferimento e' ''acquisti.ddt_ingresso'' —
+        nome storico; la tabella reale e' acquisti.ddt.
+      preConditions:
+        - onFail: HALT
+        - and:
+          - tableExists: { schemaName: acquisti, tableName: ddt }
+          - sqlCheck:
+              expectedResult: "1"
+              sql: |
+                SELECT COUNT(*)
+                  FROM pg_proc p
+                  JOIN pg_namespace n ON n.oid = p.pronamespace
+                 WHERE n.nspname = 'script'
+                   AND p.proname = 'fn_scope_fornitore_ownership';
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP POLICY IF EXISTS rls_acquisti_ddt_fornitore_ownership
+                  ON acquisti.ddt;
+
+              CREATE POLICY rls_acquisti_ddt_fornitore_ownership
+                  ON acquisti.ddt
+                  AS PERMISSIVE
+                  FOR SELECT
+                  USING (
+                      current_setting('app.ruolo_applicativo', true)
+                          = 'FORNITORE_PORTALE'
+                      AND script.fn_scope_fornitore_ownership(
+                          NULLIF(current_setting('app.current_identita_id', true), '')::bigint,
+                          mittente_soggetto_ruolo_id
+                      )
+                  );
+
+              COMMENT ON POLICY rls_acquisti_ddt_fornitore_ownership
+                  ON acquisti.ddt IS
+                  'RLS §4.9.5 dry-run: fornitore portale vede solo DDT con mittente_soggetto_ruolo_id = proprio SR.';
+      rollback:
+        - sql:
+            sql: |
+              DROP POLICY IF EXISTS rls_acquisti_ddt_fornitore_ownership
+                  ON acquisti.ddt;

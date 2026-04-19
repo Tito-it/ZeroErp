@@ -1,0 +1,57 @@
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260419-64-create-policy-rls-fatture-scadenze-mctit.yaml
+
+  - changeSet:
+      id: 20260419-64-create-policy-rls-fatture-scadenze
+      author: mctit
+      comment: >
+        RLS prima ondata §4.9.3 — DRY RUN: crea policy PERMISSIVE su
+        vendite.fatture_scadenze per cliente portale / shop. La tabella
+        non ha billing_account_id diretto (ha solo fattura_id NOT NULL),
+        quindi si usa fn_scope_ba_ownership_via_fattura che risolve il BA
+        della fattura e delega a fn_scope_ba_ownership. Nessuna policy
+        per OPERATORE (visibilita' operatore affidata a filtro applicativo
+        sulle fatture parent). Nessun ENABLE / FORCE.
+        NB: nel WIP §4.9.3 il riferimento e' ''pagamenti.scadenze'' — nome
+        storico; la tabella reale e' vendite.fatture_scadenze.
+      preConditions:
+        - onFail: HALT
+        - and:
+          - tableExists: { schemaName: vendite, tableName: fatture_scadenze }
+          - sqlCheck:
+              expectedResult: "1"
+              sql: |
+                SELECT COUNT(*)
+                  FROM pg_proc p
+                  JOIN pg_namespace n ON n.oid = p.pronamespace
+                 WHERE n.nspname = 'script'
+                   AND p.proname = 'fn_scope_ba_ownership_via_fattura';
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP POLICY IF EXISTS rls_fatture_scadenze_ba_ownership
+                  ON vendite.fatture_scadenze;
+
+              CREATE POLICY rls_fatture_scadenze_ba_ownership
+                  ON vendite.fatture_scadenze
+                  AS PERMISSIVE
+                  FOR SELECT
+                  USING (
+                      current_setting('app.ruolo_applicativo', true)
+                          IN ('CLIENTE_PORTALE', 'SHOP_CUSTOMER')
+                      AND script.fn_scope_ba_ownership_via_fattura(
+                          NULLIF(current_setting('app.current_identita_id', true), '')::bigint,
+                          fattura_id
+                      )
+                  );
+
+              COMMENT ON POLICY rls_fatture_scadenze_ba_ownership
+                  ON vendite.fatture_scadenze IS
+                  'RLS §4.9.3 dry-run: cliente portale/shop vede solo scadenze di fatture il cui BA appartiene al proprio soggetto_ruolo. Delega a fn_scope_ba_ownership_via_fattura.';
+      rollback:
+        - sql:
+            sql: |
+              DROP POLICY IF EXISTS rls_fatture_scadenze_ba_ownership
+                  ON vendite.fatture_scadenze;

@@ -1,0 +1,53 @@
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/acquisti/20260419-65-create-policy-rls-ordini-mctit.yaml
+
+  - changeSet:
+      id: 20260419-65-create-policy-rls-acquisti-ordini
+      author: mctit
+      comment: >
+        RLS prima ondata §4.9.4 — DRY RUN: crea policy PERMISSIVE su
+        acquisti.ordini per fornitore portale. Usa
+        fn_scope_fornitore_ownership su soggetto_ruolo_id (NOT NULL =
+        fornitore destinatario dell'ordine). Gate ruolo_applicativo =
+        FORNITORE_PORTALE. Nessun ENABLE / FORCE.
+      preConditions:
+        - onFail: HALT
+        - and:
+          - tableExists: { schemaName: acquisti, tableName: ordini }
+          - sqlCheck:
+              expectedResult: "1"
+              sql: |
+                SELECT COUNT(*)
+                  FROM pg_proc p
+                  JOIN pg_namespace n ON n.oid = p.pronamespace
+                 WHERE n.nspname = 'script'
+                   AND p.proname = 'fn_scope_fornitore_ownership';
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP POLICY IF EXISTS rls_acquisti_ordini_fornitore_ownership
+                  ON acquisti.ordini;
+
+              CREATE POLICY rls_acquisti_ordini_fornitore_ownership
+                  ON acquisti.ordini
+                  AS PERMISSIVE
+                  FOR SELECT
+                  USING (
+                      current_setting('app.ruolo_applicativo', true)
+                          = 'FORNITORE_PORTALE'
+                      AND script.fn_scope_fornitore_ownership(
+                          NULLIF(current_setting('app.current_identita_id', true), '')::bigint,
+                          soggetto_ruolo_id
+                      )
+                  );
+
+              COMMENT ON POLICY rls_acquisti_ordini_fornitore_ownership
+                  ON acquisti.ordini IS
+                  'RLS §4.9.4 dry-run: fornitore portale vede solo ordini di acquisto a lui destinati (soggetto_ruolo_id = proprio SR).';
+      rollback:
+        - sql:
+            sql: |
+              DROP POLICY IF EXISTS rls_acquisti_ordini_fornitore_ownership
+                  ON acquisti.ordini;

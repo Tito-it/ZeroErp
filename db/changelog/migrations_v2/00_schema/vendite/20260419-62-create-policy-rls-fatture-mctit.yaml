@@ -1,0 +1,92 @@
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260419-62-create-policy-rls-fatture-mctit.yaml
+
+  - changeSet:
+      id: 20260419-62-create-policy-rls-fatture
+      author: mctit
+      comment: >
+        RLS prima ondata §4.9.1 — DRY RUN: crea 2 policy PERMISSIVE su
+        vendite.fatture (combinazione OR per SELECT):
+        1) rls_fatture_ba_ownership: gate ruolo_applicativo IN
+           (CLIENTE_PORTALE, SHOP_CUSTOMER) + fn_scope_ba_ownership su
+           billing_account_id.
+        2) rls_fatture_ef_whitelist: gate ruolo_applicativo = OPERATORE +
+           fn_scope_ef_whitelist su emittente_soggetto_ruolo_id (replica
+           logica legacy config.user_emittenti_fiscali: whitelist vuota =
+           accesso globale, consistente con ADMIN legacy).
+        NON abilita RLS sulla tabella (no ENABLE / FORCE): le policy
+        restano dormienti fino alla migration separata post-PR2 backend
+        che attivera' ENABLE ROW LEVEL SECURITY + FORCE. Dry-run usato per
+        far emergere in anticipo eventuali buchi nelle fn_scope_* e per
+        rendere il contratto GUC stabile lato backend.
+      preConditions:
+        - onFail: HALT
+        - and:
+          - tableExists: { schemaName: vendite, tableName: fatture }
+          - sqlCheck:
+              expectedResult: "1"
+              sql: |
+                SELECT COUNT(*)
+                  FROM pg_proc p
+                  JOIN pg_namespace n ON n.oid = p.pronamespace
+                 WHERE n.nspname = 'script'
+                   AND p.proname = 'fn_scope_ba_ownership';
+          - sqlCheck:
+              expectedResult: "1"
+              sql: |
+                SELECT COUNT(*)
+                  FROM pg_proc p
+                  JOIN pg_namespace n ON n.oid = p.pronamespace
+                 WHERE n.nspname = 'script'
+                   AND p.proname = 'fn_scope_ef_whitelist';
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Idempotenza: drop preventivo per permettere ri-applicazione
+              -- se il changeSet viene annullato e rilanciato in sviluppo.
+              DROP POLICY IF EXISTS rls_fatture_ba_ownership  ON vendite.fatture;
+              DROP POLICY IF EXISTS rls_fatture_ef_whitelist  ON vendite.fatture;
+
+              -- Policy cliente portale / shop: visibilita' sulle fatture
+              -- il cui billing_account appartiene al soggetto_ruolo
+              -- dell'identita. Gate ruolo_applicativo fail-closed: se il
+              -- GUC app.ruolo_applicativo non e' settato, current_setting
+              -- ritorna '' e il confronto IN fallisce -> policy non ammette.
+              CREATE POLICY rls_fatture_ba_ownership ON vendite.fatture
+                  AS PERMISSIVE
+                  FOR SELECT
+                  USING (
+                      current_setting('app.ruolo_applicativo', true)
+                          IN ('CLIENTE_PORTALE', 'SHOP_CUSTOMER')
+                      AND script.fn_scope_ba_ownership(
+                          NULLIF(current_setting('app.current_identita_id', true), '')::bigint,
+                          billing_account_id
+                      )
+                  );
+
+              -- Policy operatore: visibilita' sulle fatture secondo la
+              -- whitelist emittenti legacy (config.user_emittenti_fiscali).
+              -- Whitelist vuota per l'utente = accesso globale (replica il
+              -- comportamento pre-RLS; ADMIN senza voci vede tutto).
+              CREATE POLICY rls_fatture_ef_whitelist ON vendite.fatture
+                  AS PERMISSIVE
+                  FOR SELECT
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist(
+                          NULLIF(current_setting('app.current_identita_id', true), '')::bigint,
+                          emittente_soggetto_ruolo_id
+                      )
+                  );
+
+              COMMENT ON POLICY rls_fatture_ba_ownership  ON vendite.fatture IS
+                  'RLS §4.9.1 dry-run: cliente portale/shop vede solo fatture del proprio soggetto_ruolo via BA. Non attiva finche ALTER TABLE ... ENABLE ROW LEVEL SECURITY non viene applicato.';
+              COMMENT ON POLICY rls_fatture_ef_whitelist  ON vendite.fatture IS
+                  'RLS §4.9.1 dry-run: operatore vede solo fatture con emittente in whitelist user_emittenti_fiscali (whitelist vuota = tutti). Non attiva finche non viene eseguita ALTER TABLE ... ENABLE ROW LEVEL SECURITY.';
+      rollback:
+        - sql:
+            sql: |
+              DROP POLICY IF EXISTS rls_fatture_ba_ownership  ON vendite.fatture;
+              DROP POLICY IF EXISTS rls_fatture_ef_whitelist  ON vendite.fatture;

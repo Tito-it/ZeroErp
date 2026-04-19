@@ -1,0 +1,64 @@
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260419-71-create-fn-get-uo-id-for-user-mctit.yaml
+
+  - changeSet:
+      id: 20260419-71-create-fn-get-uo-id-for-user
+      author: mctit
+      runOnChange: true
+      validCheckSum: [ANY]
+      comment: >
+        Helper (13.3.7 WIP multi-face-auth): risolve l'unita organizzativa
+        dell'operatore autenticato in una sola query. Catena:
+        auth_user_id -> anagrafiche.identita_digitali (OPERATORE attivo) ->
+        anagrafiche.soggetti_ruoli -> anagrafiche.risorse_umane ->
+        unita_organizzativa_id. Ritorna NULL se l'utente non e' operatore,
+        non ha risorsa umana attiva, non ha UO assegnata o non esiste.
+        LANGUAGE sql STABLE per favorire l'inlining nei callers (resolver
+        permessi, futuri scope policy per UO).
+      preConditions:
+        - onFail: HALT
+        - and:
+          - tableExists: { schemaName: anagrafiche, tableName: identita_digitali }
+          - tableExists: { schemaName: anagrafiche, tableName: risorse_umane }
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Firma con %TYPE sul parametro:
+              --   p_auth_user_id = anagrafiche.identita_digitali.auth_user_id
+              --                    (Django auth_user.id propagato al bridge)
+              CREATE OR REPLACE FUNCTION script.fn_get_uo_id_for_user(
+                  p_auth_user_id anagrafiche.identita_digitali.auth_user_id%TYPE
+              )
+              RETURNS integer
+              LANGUAGE sql
+              STABLE
+              AS $function$
+                  -- Catena di risoluzione:
+                  --   1) identita_digitali attiva per auth_user_id, ruolo
+                  --      OPERATORE (solo gli operatori hanno una RU con UO)
+                  --   2) risorse_umane attiva con stesso soggetto_ruolo
+                  --   3) ritorna ru.unita_organizzativa_id (puo' essere NULL)
+                  -- ORDER BY + LIMIT 1: determinismo in caso raro di piu' RU
+                  -- attive storicamente (prende la piu' recente per valido_dal).
+                  SELECT ru.unita_organizzativa_id
+                    FROM anagrafiche.identita_digitali id
+                    JOIN anagrafiche.risorse_umane     ru
+                      ON ru.soggetto_ruolo_id = id.soggetto_ruolo_id
+                   WHERE id.auth_user_id      = p_auth_user_id
+                     AND id.ruolo_applicativo = 'OPERATORE'
+                     AND id.attivo            = true
+                     AND ru.attivo            = true
+                   ORDER BY ru.valido_dal DESC
+                   LIMIT 1;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_get_uo_id_for_user(
+                  anagrafiche.identita_digitali.auth_user_id%TYPE
+              ) IS
+                  'Ritorna unita_organizzativa_id dell''operatore autenticato o NULL se non operatore / senza RU attiva / senza UO / inesistente. Catena: auth_user -> identita_digitali (OPERATORE) -> risorse_umane. STABLE, inlineable.';
+      rollback:
+        - sql:
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_get_uo_id_for_user(integer);

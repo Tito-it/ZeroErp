@@ -1,0 +1,59 @@
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260419-68-create-fn-check-almeno-un-super-admin-attivo-mctit.yaml
+
+  - changeSet:
+      id: 20260419-68-create-fn-check-almeno-un-super-admin-attivo
+      author: mctit
+      runOnChange: true
+      validCheckSum: [ANY]
+      comment: >
+        Helper anti-lockout SUPER_ADMIN (13.3.6 WIP multi-face-auth):
+        ritorna true se esiste almeno un'identita ATTIVA con un binding
+        ATTIVO verso un profilo_accesso di codice 'SUPER_ADMIN'.
+        Usato dai trigger guard su config.profili_accesso_bindings e
+        anagrafiche.identita_digitali per prevenire lockout totale del
+        sistema (zero amministratori). fn_check pura: ritorna boolean,
+        non solleva errori (la logica di raise sta nel trigger).
+      preConditions:
+        - onFail: HALT
+        - and:
+          - tableExists: { schemaName: config,      tableName: profili_accesso }
+          - tableExists: { schemaName: config,      tableName: profili_accesso_bindings }
+          - tableExists: { schemaName: anagrafiche, tableName: identita_digitali }
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_check_almeno_un_super_admin_attivo()
+              RETURNS boolean
+              LANGUAGE sql
+              STABLE
+              AS $function$
+                  -- Condizione di sicurezza: il sistema mantiene almeno un
+                  -- amministratore raggiungibile. Tre livelli AND obbligatori:
+                  --   1) profilo_accesso.codice = 'SUPER_ADMIN' (+ attivo)
+                  --   2) binding attivo verso quel profilo, di tipo AD_HOC
+                  --      (identita_digitale_id valorizzato)
+                  --   3) identita_digitali attiva
+                  -- Un unico EXISTS short-circuita: sufficiente trovare uno.
+                  SELECT EXISTS (
+                      SELECT 1
+                        FROM config.profili_accesso           pa
+                        JOIN config.profili_accesso_bindings  pab
+                          ON pab.profilo_accesso_id = pa.id
+                        JOIN anagrafiche.identita_digitali    id
+                          ON id.id = pab.identita_digitale_id
+                       WHERE pa.codice = 'SUPER_ADMIN'
+                         AND pa.attivo = true
+                         AND pab.attivo = true
+                         AND id.attivo  = true
+                  );
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_check_almeno_un_super_admin_attivo() IS
+                  'Ritorna true se esiste almeno un''identita attiva con binding attivo verso un profilo SUPER_ADMIN. Usato dai guard anti-lockout su profili_accesso_bindings e identita_digitali. STABLE, fail-closed nessun raise.';
+      rollback:
+        - sql:
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_check_almeno_un_super_admin_attivo();

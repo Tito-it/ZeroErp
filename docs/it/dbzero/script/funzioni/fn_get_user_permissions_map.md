@@ -14,26 +14,27 @@ CREATE OR REPLACE FUNCTION script.fn_get_user_permissions_map(p_auth_user_id int
  STABLE
 AS $function$
 DECLARE
-    v_has_identita  boolean;
-    v_is_super      boolean;
-    v_uo_id         anagrafiche.risorse_umane.unita_organizzativa_id%TYPE;
+    v_has_identita boolean;
+    v_is_super     boolean;
 BEGIN
     -- =========================================================
     -- Scopo:
-    --   Restituisce la mappa livello accesso per tutte le aree
-    --   funzionali attive, in un solo roundtrip DB.
+    --   Mappa livello accesso per tutte le aree funzionali
+    --   attive, in un singolo roundtrip DB.
     --
     -- Ritorna:
     --   JSONB { "anagrafiche": "TUTTO", "vendite": "LETTURA", ... }
     --
-    -- Catena (refactor §4.6.B.8):
-    --   1. Assenza identita OPERATORE attiva -> tutte BLOCCATO
-    --   2. fn_is_super_admin -> tutte TUTTO
-    --   3. Override utente area + profilo reparto (legacy)
-    --   4. Default -> BLOCCATO
+    -- Catena (refactor §4.6.B.8 + §4.8.5):
+    --   1. Guard parametro obbligatorio
+    --   2. Pre-calcolo v_has_identita (helper DRY §4.6.B.0)
+    --   3. Pre-calcolo v_is_super
+    --   4. CTE best_per_area su profili_accesso via helper
+    --   5. jsonb_object_agg con CASE su (has_identita, super,
+    --      user_override_area, best_per_area, default BLOCCATO)
     -- =========================================================
 
-    -- Guard: parametro obbligatorio
+    -- 1. Guard parametro obbligatorio
     IF p_auth_user_id IS NULL OR p_auth_user_id <= 0 THEN
         PERFORM script.fn_log_and_raise_error(
             'database', 'script.fn_get_user_permissions_map',
@@ -44,28 +45,32 @@ BEGIN
         );
     END IF;
 
-    -- 1. Identita OPERATORE attiva (helper DRY §4.6.B.0).
-    --    Pre-calcolata per uso nel CASE della jsonb_object_agg
-    --    (una sola chiamata invece di una per riga).
+    -- 2-3. Pre-calcolo flag identita + super (usati nel CASE)
     v_has_identita := script.fn_has_identita_attiva(
                           p_auth_user_id,
                           'OPERATORE'::config.ruolo_applicativo);
-
-    -- 2. Super admin flag (pre-calcolato per uso nel CASE)
     v_is_super := script.fn_is_super_admin(p_auth_user_id);
 
-    -- 3. UO per la catena profili_reparto (legacy RUA).
-    --    Nota §4.8: quando generalizziamo il resolver su
-    --    profili_accesso, questa JOIN diventera' lookup su
-    --    bindings identita -> profili REPARTO.
-    SELECT ru.unita_organizzativa_id
-      INTO v_uo_id
-      FROM anagrafiche.risorse_umane_auth_user rau
-      JOIN anagrafiche.risorse_umane ru
-        ON ru.id = rau.risorsa_umana_id
-     WHERE rau.auth_user_id = p_auth_user_id;
-
+    -- 4-5. CTE best_per_area + aggregazione jsonb
     RETURN (
+        WITH livelli_user AS (
+            SELECT paa.area_id,
+                   paa.livello,
+                   h.priorita
+              FROM script.fn_get_profili_accesso_applicabili(p_auth_user_id) h
+              JOIN config.profili_accesso_aree paa
+                ON paa.profilo_accesso_id = h.profilo_accesso_id
+        ),
+        best_per_area AS (
+            -- DISTINCT ON prende la prima riga per area_id
+            -- ordinata per priorita: AD_HOC (1) vince su
+            -- REPARTO/PORTALE (2).
+            SELECT DISTINCT ON (area_id)
+                   area_id,
+                   livello
+              FROM livelli_user
+             ORDER BY area_id, priorita
+        )
         SELECT COALESCE(
             jsonb_object_agg(
                 af.schema_db,
@@ -76,7 +81,7 @@ BEGIN
                         THEN 'TUTTO'
                     ELSE COALESCE(
                         uoa.livello,
-                        pra.livello,
+                        bpa.livello,
                         'BLOCCATO'::config.livello_accesso
                     )::text
                 END
@@ -88,16 +93,15 @@ BEGIN
             ON uoa.auth_user_id = p_auth_user_id
            AND uoa.area_id = af.id
            AND uoa.validita @> CURRENT_DATE
-          LEFT JOIN config.profili_reparto_aree pra
-            ON pra.unita_organizzativa_id = v_uo_id
-           AND pra.area_id = af.id
+          LEFT JOIN best_per_area bpa
+            ON bpa.area_id = af.id
          WHERE af.attivo = TRUE
     );
 END;
 $function$
 
 COMMENT ON FUNCTION script.fn_get_user_permissions_map(p_auth_user_id integer)
-IS 'Mappa permessi aree set-based. Refactor §4.6.B.8: gate identita OPERATORE attiva, bypass fn_is_super_admin, catena override+reparto legacy invariata (rinvio §4.8).';
+IS 'Mappa permessi aree set-based. Refactor §4.6.B.8 + §4.8.5: gate identita OPERATORE, bypass fn_is_super_admin, catena profili via helper fn_get_profili_accesso_applicabili (AD_HOC > REPARTO/PORTALE). Override utente area invariato.';
 ```
 
 ---
