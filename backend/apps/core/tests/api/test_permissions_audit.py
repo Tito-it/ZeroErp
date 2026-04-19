@@ -192,7 +192,7 @@ class ApiPermessiAuditViewTests(TestCase):
     def test_admin_can_view_other_user(self, mock_conn, mock_get_user, mock_resolver):
         from apps.core.api.views import ApiPermessiAudit
 
-        mock_resolver.get_ruolo_sistema.return_value = "ADMIN"
+        mock_resolver.is_super_admin.return_value = True
         mock_resolver.get_unita_organizzativa_id.return_value = 10
 
         target = MagicMock()
@@ -217,7 +217,7 @@ class ApiPermessiAuditViewTests(TestCase):
     def test_operativo_can_view_self(self, mock_conn, mock_get_user, mock_resolver):
         from apps.core.api.views import ApiPermessiAudit
 
-        mock_resolver.get_ruolo_sistema.return_value = "OPERATIVO"
+        mock_resolver.is_super_admin.return_value = False
         mock_resolver.get_unita_organizzativa_id.return_value = None
 
         target = MagicMock()
@@ -241,7 +241,7 @@ class ApiPermessiAuditViewTests(TestCase):
         from apps.core.api.views import ApiPermessiAudit
         from apps.core.services.service_errors import ServiceError
 
-        mock_resolver.get_ruolo_sistema.return_value = "OPERATIVO"
+        mock_resolver.is_super_admin.return_value = False
 
         request = _mock_request(user_id=5)
         view = ApiPermessiAudit()
@@ -258,7 +258,7 @@ class ApiPermessiAuditViewTests(TestCase):
         from apps.core.api.views import ApiPermessiAudit
         from apps.core.services.service_errors import ServiceError
 
-        mock_resolver.get_ruolo_sistema.return_value = "ADMIN"
+        mock_resolver.is_super_admin.return_value = True
 
         target = MagicMock()
         target.id = 5
@@ -279,7 +279,7 @@ class ApiPermessiAuditViewTests(TestCase):
     def test_page_size_capped_at_200(self, mock_conn, mock_get_user, mock_resolver):
         from apps.core.api.views import ApiPermessiAudit
 
-        mock_resolver.get_ruolo_sistema.return_value = "ADMIN"
+        mock_resolver.is_super_admin.return_value = True
         mock_resolver.get_unita_organizzativa_id.return_value = None
 
         target = MagicMock()

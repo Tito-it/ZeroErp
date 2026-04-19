@@ -143,7 +143,7 @@ class TestOperatoriListView(TestCase):
 
     @patch("apps.core.api.permissions.save_user_cache")
     @patch("apps.core.api.permissions.load_user_cache", return_value=None)
-    @patch("apps.core.api.permissions.PermissionResolver.get_ruolo_sistema", return_value="OPERATIVO")
+    @patch("apps.core.api.permissions.PermissionResolver.is_super_admin", return_value=False)
     def test_list_operatori_permission_denied(
         self, mock_ruolo: MagicMock, _mock_load: MagicMock, _mock_save: MagicMock,
     ) -> None:

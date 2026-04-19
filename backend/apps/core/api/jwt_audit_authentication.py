@@ -25,25 +25,32 @@ from rest_framework_simplejwt.authentication import JWTAuthentication
 logger = logging.getLogger(__name__)
 
 
-# Scopo: Imposta `app.jwt_user` e `app.current_user_id` come GUC
-#        session-scoped sulla connessione PostgreSQL corrente. Helper
-#        riusabile sia da `JwtAuditAuthentication.authenticate()` (caso
-#        standard: endpoint authenticated con Bearer access token) sia
-#        dalle view di auth (login/refresh) che NON passano dalla
-#        DRF authentication chain ma conoscono comunque l'identita
-#        utente subito dopo il successo dell'operazione (refactor
-#        operatore-emittenti, hotfix smoke test BE-2.0ter).
+# Scopo: Imposta i 5 GUC di sessione che identificano l'utente corrente
+#        sulla connessione PostgreSQL. Helper riusabile sia da
+#        `JwtAuditAuthentication.authenticate()` (caso standard:
+#        endpoint authenticated con Bearer access token) sia dalle view
+#        di auth (login/refresh) che NON passano dalla DRF
+#        authentication chain ma conoscono comunque l'identita utente
+#        subito dopo il successo dell'operazione.
 #
-#        Best-effort: se `set_config` fallisce a livello DB, logga
-#        e prosegue. I trigger DB di audit faranno fail-open senza
-#        GUC (comportamento documentato).
+#        I 5 GUC propagati (single round-trip via CTE):
+#          - app.jwt_user           -> username Django
+#          - app.current_user_id    -> auth_user.id
+#          - app.current_identita_id-> identita_digitali.id (vuoto se orfano)
+#          - app.ruolo_applicativo  -> ruolo_applicativo dell'identita attiva
+#          - app.soggetto_ruolo_id  -> soggetti_ruoli.id dell'identita
 #
-#        Se `request` e' fornito, marca il flag
-#        `_zeroerp_jwt_guc_set` per il reset simmetrico operato dal
+#        Invariante "tutto o niente": i 3 GUC di identita sono popolati
+#        insieme o restano vuoti tutti (fail-open documentato, i trigger
+#        DB di scope/RLS trattano GUC vuoto come "nessuna identita").
+#
+#        Best-effort: se `set_config` fallisce a livello DB, logga e
+#        prosegue. I trigger DB di audit/scope sono fail-open.
+#
+#        Se `request` e' fornito, marca `_zeroerp_jwt_guc_set` per il
+#        reset simmetrico operato dal
 #        `JwtAuditMiddleware.process_response`. Senza marker, le GUC
-#        resterebbero sulla connessione fino alla chiusura
-#        (CONN_MAX_AGE=0 di default le chiude a fine request, ma il
-#        reset esplicito e' la difesa pulita).
+#        resterebbero sulla connessione fino alla chiusura.
 def set_jwt_gucs(
     *,
     username: str,
@@ -52,10 +59,26 @@ def set_jwt_gucs(
 ) -> None:
     try:
         with connection.cursor() as cursor:
+            # Scopo: Un'unica query con CTE risolve l'identita attiva
+            # e setta i 5 GUC. Se l'utente non ha identita attiva
+            # (caso orfano), i 3 GUC di identita restano stringhe
+            # vuote — i trigger DB leggono vuoto come "non impostato".
             cursor.execute(
-                "SELECT set_config('app.jwt_user', %s, false), "
-                "       set_config('app.current_user_id', %s, false)",
-                [str(username), str(user_id)],
+                """
+                WITH id_row AS (
+                    SELECT id, ruolo_applicativo, soggetto_ruolo_id
+                      FROM anagrafiche.identita_digitali
+                     WHERE auth_user_id = %s AND attivo = true
+                     LIMIT 1
+                )
+                SELECT
+                    set_config('app.jwt_user',            %s,                         false),
+                    set_config('app.current_user_id',     %s,                         false),
+                    set_config('app.current_identita_id', COALESCE((SELECT id::text           FROM id_row), ''), false),
+                    set_config('app.ruolo_applicativo',   COALESCE((SELECT ruolo_applicativo FROM id_row), ''), false),
+                    set_config('app.soggetto_ruolo_id',   COALESCE((SELECT soggetto_ruolo_id::text FROM id_row), ''), false)
+                """,
+                [str(user_id), str(username), str(user_id)],
             )
     except DatabaseError:
         logger.warning(

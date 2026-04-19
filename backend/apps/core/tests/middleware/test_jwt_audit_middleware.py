@@ -52,7 +52,7 @@ class JwtAuditMiddlewareTests(TestCase):
 
     # Scopo: Utente DISABILITATO su path /api/ deve ricevere 403.
     @patch(_LOAD_CACHE, return_value=None)
-    @patch(f"{_RESOLVER}.get_ruolo_sistema", return_value="DISABILITATO")
+    @patch(f"{_RESOLVER}.get_ruolo_applicativo", return_value="DISABILITATO")
     def test_disabilitato_returns_403_on_api(self, _mock_ruolo, _mock_load):
         request = _mock_request(path="/api/v1/vendite/lotti/")
         result = self.middleware.process_view(request, None, (), {})
@@ -64,7 +64,7 @@ class JwtAuditMiddlewareTests(TestCase):
             self.assertEqual(body["error"]["code"], "E_USER_DISABILITATO")
 
     # Scopo: Utente DISABILITATO su path non-API non viene rifiutato.
-    @patch(f"{_RESOLVER}.get_ruolo_sistema", return_value="DISABILITATO")
+    @patch(f"{_RESOLVER}.get_ruolo_applicativo", return_value="DISABILITATO")
     def test_disabilitato_no_reject_on_non_api(self, _mock_ruolo):
         request = _mock_request(path="/admin/")
         result = self.middleware.process_view(request, None, (), {})
@@ -81,7 +81,7 @@ class JwtAuditMiddlewareTests(TestCase):
 
     # Scopo: Utente OPERATIVO passa senza blocco.
     @patch(_LOAD_CACHE, return_value=None)
-    @patch(f"{_RESOLVER}.get_ruolo_sistema", return_value="OPERATIVO")
+    @patch(f"{_RESOLVER}.get_ruolo_applicativo", return_value="OPERATORE")
     def test_operativo_passes_through(self, _mock_ruolo, _mock_load):
         request = _mock_request()
         result = self.middleware.process_view(request, None, (), {})
@@ -89,7 +89,7 @@ class JwtAuditMiddlewareTests(TestCase):
 
     # Scopo: Il middleware inizializza _zeroerp_perms_cache sulla request (Redis miss).
     @patch(_LOAD_CACHE, return_value=None)
-    @patch(f"{_RESOLVER}.get_ruolo_sistema", return_value="OPERATIVO")
+    @patch(f"{_RESOLVER}.get_ruolo_applicativo", return_value="OPERATORE")
     def test_middleware_seeds_perms_cache(self, _mock_ruolo, _mock_load):
         request = _mock_request()
         self.middleware.process_view(request, None, (), {})
@@ -99,7 +99,7 @@ class JwtAuditMiddlewareTests(TestCase):
 
     # Scopo: Il middleware carica cache L2 da Redis quando disponibile.
     @patch(_LOAD_CACHE, return_value={"ruolo_sistema": "OPERATIVO"})
-    @patch(f"{_RESOLVER}.get_ruolo_sistema", return_value="OPERATIVO")
+    @patch(f"{_RESOLVER}.get_ruolo_applicativo", return_value="OPERATORE")
     def test_middleware_seeds_perms_cache_from_redis(self, _mock_ruolo, _mock_load):
         request = _mock_request()
         self.middleware.process_view(request, None, (), {})
@@ -110,7 +110,7 @@ class JwtAuditMiddlewareTests(TestCase):
     # da JwtAuditAuthentication, non qui). Verifica regressione.
     @patch(_LOAD_CACHE, return_value=None)
     @patch("apps.core.middleware.jwt_audit_middleware.connection")
-    @patch(f"{_RESOLVER}.get_ruolo_sistema", return_value="OPERATIVO")
+    @patch(f"{_RESOLVER}.get_ruolo_applicativo", return_value="OPERATORE")
     def test_process_view_does_not_touch_db(self, _mock_ruolo, mock_conn, _mock_load):
         request = _mock_request()
         self.middleware.process_view(request, None, (), {})
@@ -133,8 +133,12 @@ class JwtAuditMiddlewareTests(TestCase):
         self.assertEqual(mock_cursor.execute.call_count, 1)
         sql = mock_cursor.execute.call_args[0][0]
         self.assertIn("set_config", sql)
+        # Reset simmetrico dei 5 GUC settati da JwtAuditAuthentication.
         self.assertIn("app.jwt_user", sql)
         self.assertIn("app.current_user_id", sql)
+        self.assertIn("app.current_identita_id", sql)
+        self.assertIn("app.ruolo_applicativo", sql)
+        self.assertIn("app.soggetto_ruolo_id", sql)
         self.assertIn("''", sql)
         self.assertIn("false", sql)
 
