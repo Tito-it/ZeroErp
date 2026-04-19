@@ -531,6 +531,226 @@ Per maggiori dettagli e implementazione, consulta la guida **(è fondamentale la
 
 ---
 
+### 10. Row Level Security (RLS)
+
+> **Scheda tecnica PostgreSQL**: [row-level-security](/postgresql/row-level-security) — sintassi,
+> troubleshooting, performance, interazione con viste e funzioni `SECURITY DEFINER`.
+
+Le policy RLS sono il meccanismo nativo PostgreSQL per filtrare **quali righe** un utente vede
+o puo' modificare. In ZeroErp sono lo strumento **di difesa in profondita'** sullo scope dati
+multi-utente (operatori, clienti portale, fornitori portale, shop customer).
+
+#### 10.1 Quando usarla
+
+Abilitare RLS **solo** su tabelle con scope multi-soggetto, ovvero tabelle le cui righe
+appartengono a piu' entita' distinte che non devono vedersi tra loro:
+
+* **Multi-tenant / multi-emittente**: tabelle con `emittente_soggetto_ruolo_id` o simili,
+  dove un operatore e' limitato dalla whitelist `config.user_emittenti_fiscali`.
+* **Multi-cliente**: tabelle operazionali (fatture, scadenze, DDT) dove un
+  `CLIENTE_PORTALE` deve vedere solo i propri billing account.
+* **Multi-fornitore**: ordini ricevuti, pagamenti verso il fornitore.
+* **Self-ownership**: tabelle shop dove uno `SHOP_CUSTOMER` vede solo i propri dati.
+
+**Non** abilitare RLS su:
+
+* Tabelle di configurazione lette da tutti (parametri, lookup, enum).
+* Tabelle di sola scrittura tecnica (`dbops.*`, log, storico gia' filtrato a monte).
+* Tabelle che non hanno una relazione diretta e verificabile con l'utente corrente.
+
+Se una tabella non ha uno scope evidente, probabilmente **non va messa in RLS**: aggiungere
+policy "preventive" genera falsa sicurezza e costo di manutenzione.
+
+#### 10.2 Naming policy
+
+```
+rls_<tabella>_<nome_scope>
+```
+
+Esempi:
+
+* `rls_fatture_ba_ownership` — cliente portale vede solo fatture dei propri billing account
+* `rls_ordini_fornitore_ownership` — fornitore vede solo ordini a lui destinati
+* `rls_fatture_ef_whitelist` — operatore vede solo emittenti della propria whitelist
+* `rls_ordini_shop_self_ownership` — shop customer vede solo ordini propri
+
+**Regole**:
+
+* Una tabella puo' avere **piu'** policy concorrenti (una per scope). PostgreSQL le combina in
+  OR per evento `SELECT/UPDATE/DELETE` (piu' permissivo vince).
+* Se servono semantiche diverse su `SELECT` vs `UPDATE`, creare policy distinte con
+  `FOR SELECT` / `FOR UPDATE` esplicito, **mai** policy `FOR ALL` generiche.
+* Il nome deve rendere leggibile la combinazione tabella + regola di scope.
+
+#### 10.3 Logica di scope in funzioni `script.fn_scope_*`
+
+**Regola tassativa**: la condizione della policy deve invocare una funzione del pattern
+`script.fn_scope_<nome_scope>(...)` che ritorna `boolean`. **Non** scrivere logica inline
+nella policy.
+
+Motivazioni:
+
+* **Testabilita' pgTAP**: la funzione e' chiamabile singolarmente con dati sintetici,
+  quindi copribile con test isolati senza ricorrere a `SET ROLE` di simulazione.
+* **Riuso**: la stessa funzione puo' essere usata in viste di supporto, controlli applicativi
+  e altre policy.
+* **Leggibilita'**: la policy resta leggera e auto-documentante.
+
+Firma consigliata:
+
+```sql
+CREATE FUNCTION script.fn_scope_ba_ownership(
+    p_identita_id          BIGINT,
+    p_billing_account_id   BIGINT
+) RETURNS BOOLEAN
+LANGUAGE sql
+STABLE
+AS $$ ... $$;
+```
+
+Policy che la usa:
+
+```sql
+CREATE POLICY rls_fatture_ba_ownership ON vendite.fatture
+    FOR SELECT
+    USING (
+        script.fn_scope_ba_ownership(
+            current_setting('app.current_identita_id', true)::bigint,
+            billing_account_id
+        )
+    );
+```
+
+#### 10.4 Input: sempre dai GUC `app.*`
+
+Le funzioni `fn_scope_*` non devono mai dedurre l'utente corrente da `session_user` o
+`current_user` del DB. L'utente "applicativo" non coincide con il ruolo DB: il backend si
+connette al DB con un ruolo tecnico (`zeroerp_app`) e propaga l'identita' applicativa
+tramite GUC (vedi [parametri-personalizzati-GUC](/postgresql/parametri-personalizzati-(GUC))).
+
+GUC di riferimento:
+
+| GUC | Significato |
+| --- | --- |
+| `app.current_user_id` | `auth_user.id` Django dell'utente autenticato |
+| `app.current_identita_id` | id del record attivo in `anagrafiche.identita_digitali` |
+| `app.ruolo_applicativo` | ruolo applicativo corrente (OPERATORE, CLIENTE_PORTALE, ...) |
+| `app.soggetto_ruolo_id` | `soggetti_ruoli.id` dell'identita' corrente |
+
+La policy chiama la funzione passando i GUC, **mai** leggendoli dentro la funzione — questo
+mantiene la funzione pura e testabile con input espliciti.
+
+`current_setting('app.xxx', true)` ritorna stringa vuota se il GUC non e' settato.
+Gestire il fallback con `NULLIF(..., '')::bigint` o un guard esplicito nel caller.
+
+**Helper `script.fn_current_identita_context()`** — per leggere i tre GUC multi-face-auth
+(`app.current_identita_id`, `app.ruolo_applicativo`, `app.soggetto_ruolo_id`) in un unico
+`SELECT` tipato, usare il wrapper
+[`script.fn_current_identita_context`](/dbzero/script/funzioni/fn_current_identita_context).
+Utile dentro funzioni PL/pgSQL che necessitano piu' di un campo di contesto:
+
+```sql
+DECLARE
+    v_ctx   record;
+BEGIN
+    SELECT * INTO v_ctx FROM script.fn_current_identita_context();
+    IF v_ctx.current_identita_id IS NULL THEN
+        RETURN false;  -- fail-closed: sessione senza identita
+    END IF;
+    -- ... usa v_ctx.current_identita_id, v_ctx.ruolo_applicativo, ecc.
+END;
+```
+
+Dentro una policy RLS e' comunque preferibile leggere **solo** il GUC effettivamente usato
+(es. `app.current_identita_id`) per evitare chiamata funzione non necessaria.
+
+#### 10.5 Bypass per ruoli DB di manutenzione
+
+Alcuni ruoli DB devono poter bypassare le policy per eseguire migrazioni, analisi e
+riparazioni dati. Due strategie complementari:
+
+1. **`BYPASSRLS` sul ruolo** (preferito per ruoli tecnici dedicati):
+
+   ```sql
+   ALTER ROLE zeroerp_admin      BYPASSRLS;
+   ALTER ROLE zeroerp_migration  BYPASSRLS;
+   ```
+
+   Il ruolo ignora tutte le policy. Superuser ha `BYPASSRLS` per default.
+
+2. **`FORCE ROW LEVEL SECURITY`** sulla tabella per **estendere** RLS anche al proprietario
+   della tabella (altrimenti esentato):
+
+   ```sql
+   ALTER TABLE vendite.fatture FORCE ROW LEVEL SECURITY;
+   ```
+
+   Usare **sempre** `FORCE` quando la tabella e' di proprieta' di un ruolo applicativo
+   (`zeroerp_app`): altrimenti l'owner non vede le policy e la RLS e' aggirata per sbaglio.
+
+3. **`zeroerp_app` NON deve avere `BYPASSRLS`**: e' il ruolo con cui il backend si
+   connette, deve essere soggetto a tutte le policy.
+
+#### 10.6 `USING` vs `WITH CHECK`
+
+Due clausole distinte, con semantica diversa:
+
+| Clausola | Quando | Cosa verifica |
+| --- | --- | --- |
+| `USING` | SELECT, UPDATE, DELETE | Righe **esistenti** visibili al comando |
+| `WITH CHECK` | INSERT, UPDATE | Righe **nuove / modificate** ammesse a scriversi |
+
+**Regole pratiche**:
+
+* Su `FOR SELECT` basta `USING`.
+* Su `FOR INSERT` serve solo `WITH CHECK` (non si selezionano righe "esistenti").
+* Su `FOR UPDATE` servono **entrambe**: `USING` controlla cosa l'utente puo' toccare,
+  `WITH CHECK` impedisce di "spostare" una riga fuori dal proprio scope
+  (es. un cliente che modifica `billing_account_id` per rubare una fattura).
+* Se `WITH CHECK` e' omesso su UPDATE, PostgreSQL usa `USING` anche per la verifica post-update
+  — spesso non e' quello che serve. **Esplicitare sempre** `WITH CHECK` per evitare ambiguita'.
+
+#### 10.7 Defense-in-depth, non sostituzione
+
+Le policy RLS **si sommano** ai filtri applicativi esistenti (`EmittenteFiscaleScopeMixin`,
+filtri repository, `ZeroERPPermission`), **non li rimpiazzano**.
+
+| Livello | Cosa controlla | Dove |
+| --- | --- | --- |
+| Permission | Se l'utente puo' chiamare l'endpoint | Django DRF |
+| Filtro queryset | Filtri di business (stato, periodo, tipo) | Repository/service |
+| **RLS** | **Righe effettivamente visibili** | **PostgreSQL** |
+
+Regola: **se un filtro applicativo si dimentica, la RLS salva. Se la RLS e' troppo
+restrittiva, il bug e' evidente subito.** Mai il contrario.
+
+#### 10.8 Test pgTAP obbligatori
+
+Per ogni policy RLS pushata in produzione devono esistere test pgTAP che coprono:
+
+1. **Utente autorizzato vede le sue righe** (GUC settato su identita' proprietaria).
+2. **Utente non autorizzato non vede righe altrui** (GUC settato su altra identita').
+3. **Senza GUC** la policy deve fallire "chiusa" (nessuna riga) oppure esplicitamente aperta
+   solo per ruoli bypass.
+4. **Ruolo `BYPASSRLS` vede tutto** (regression).
+5. **`WITH CHECK` blocca** update/insert fuori scope (se applicabile).
+
+Naming file test: `db/pgtap/rls/<schema>_<tabella>_rls.sql`.
+
+#### 10.9 Checklist migrazione
+
+Prima di attivare RLS su una tabella esistente:
+
+* Funzione `script.fn_scope_*` scritta e coperta da pgTAP
+* Backend popola tutti i GUC necessari in tutte le auth class
+* Benchmark `EXPLAIN` su query principali pre/post attivazione
+* Indici funzionali su colonne usate nella policy, se `EXPLAIN` lo richiede
+* Ruolo `zeroerp_migration` ha `BYPASSRLS`
+* `FORCE ROW LEVEL SECURITY` se la tabella e' owned da `zeroerp_app`
+* Policy testata in staging con dati realistici prima del merge
+
+---
+
 *Documento riassuntivo delle best practice SQL per lo sviluppo e la manutenzione di Zero ERP.*
 
 ---

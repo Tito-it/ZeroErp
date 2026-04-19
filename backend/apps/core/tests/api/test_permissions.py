@@ -91,7 +91,7 @@ class ZeroERPPermissionTests(TestCase):
     # Scopo: Utente DISABILITATO deve essere negato.
     @patch("apps.core.api.permissions.PermissionResolver")
     def test_disabilitato_denied(self, mock_resolver):
-        mock_resolver.get_ruolo_sistema.return_value = "DISABILITATO"
+        mock_resolver.get_ruolo_applicativo.return_value = "DISABILITATO"
         request = _mock_request()
         view = _mock_view(area="vendite")
         self.assertFalse(self.perm.has_permission(request, view))
@@ -99,7 +99,7 @@ class ZeroERPPermissionTests(TestCase):
     # Scopo: Utente con ruolo_sistema ADMIN deve essere ammesso.
     @patch("apps.core.api.permissions.PermissionResolver")
     def test_admin_ruolo_allowed(self, mock_resolver):
-        mock_resolver.get_ruolo_sistema.return_value = "ADMIN"
+        mock_resolver.is_super_admin.return_value = True
         request = _mock_request()
         view = _mock_view(area="vendite")
         self.assertTrue(self.perm.has_permission(request, view))
@@ -107,7 +107,7 @@ class ZeroERPPermissionTests(TestCase):
     # Scopo: OPERATIVO con TUTTO su area puo' fare GET.
     @patch("apps.core.api.permissions.PermissionResolver")
     def test_operativo_area_tutto_get_allowed(self, mock_resolver):
-        mock_resolver.get_ruolo_sistema.return_value = "OPERATIVO"
+        mock_resolver.is_super_admin.return_value = False
         mock_resolver.get_livello_area.return_value = "TUTTO"
         mock_resolver.get_area_schema_db.return_value = "vendite"
 
@@ -118,7 +118,7 @@ class ZeroERPPermissionTests(TestCase):
     # Scopo: OPERATIVO con LETTURA su area non puo' fare POST.
     @patch("apps.core.api.permissions.PermissionResolver")
     def test_operativo_area_lettura_post_denied(self, mock_resolver):
-        mock_resolver.get_ruolo_sistema.return_value = "OPERATIVO"
+        mock_resolver.is_super_admin.return_value = False
         mock_resolver.get_livello_area.return_value = "LETTURA"
         mock_resolver.get_area_schema_db.return_value = "vendite"
 
@@ -129,7 +129,7 @@ class ZeroERPPermissionTests(TestCase):
     # Scopo: OPERATIVO con LETTURA su area puo' fare GET.
     @patch("apps.core.api.permissions.PermissionResolver")
     def test_operativo_area_lettura_get_allowed(self, mock_resolver):
-        mock_resolver.get_ruolo_sistema.return_value = "OPERATIVO"
+        mock_resolver.is_super_admin.return_value = False
         mock_resolver.get_livello_area.return_value = "LETTURA"
         mock_resolver.get_area_schema_db.return_value = "vendite"
 
@@ -140,7 +140,7 @@ class ZeroERPPermissionTests(TestCase):
     # Scopo: OPERATIVO con BLOCCATO su area viene negato sempre.
     @patch("apps.core.api.permissions.PermissionResolver")
     def test_operativo_area_bloccato_denied(self, mock_resolver):
-        mock_resolver.get_ruolo_sistema.return_value = "OPERATIVO"
+        mock_resolver.is_super_admin.return_value = False
         mock_resolver.get_livello_area.return_value = "BLOCCATO"
         mock_resolver.get_area_schema_db.return_value = "vendite"
 
@@ -151,7 +151,7 @@ class ZeroERPPermissionTests(TestCase):
     # Scopo: ViewSet con action e *_permission usa check_azione.
     @patch("apps.core.api.permissions.PermissionResolver")
     def test_action_permission_checked(self, mock_resolver):
-        mock_resolver.get_ruolo_sistema.return_value = "OPERATIVO"
+        mock_resolver.is_super_admin.return_value = False
         mock_resolver.check_azione.return_value = True
 
         request = _mock_request(method="POST")
@@ -163,7 +163,7 @@ class ZeroERPPermissionTests(TestCase):
     # Scopo: APIView con post_permission usa check_azione.
     @patch("apps.core.api.permissions.PermissionResolver")
     def test_post_permission_on_apiview(self, mock_resolver):
-        mock_resolver.get_ruolo_sistema.return_value = "OPERATIVO"
+        mock_resolver.is_super_admin.return_value = False
         mock_resolver.check_azione.return_value = False
 
         request = _mock_request(method="POST")
@@ -174,7 +174,7 @@ class ZeroERPPermissionTests(TestCase):
     # Scopo: View senza area_funzionale e senza skip_area_check viene negata (fail-closed).
     @patch("apps.core.api.permissions.PermissionResolver")
     def test_no_area_without_skip_denied(self, mock_resolver):
-        mock_resolver.get_ruolo_sistema.return_value = "OPERATIVO"
+        mock_resolver.is_super_admin.return_value = False
 
         request = _mock_request(method="GET")
         request.path = "/api/v1/test/"
@@ -186,7 +186,7 @@ class ZeroERPPermissionTests(TestCase):
     # Scopo: View senza area_funzionale ma con skip_area_check=True e' ammessa.
     @patch("apps.core.api.permissions.PermissionResolver")
     def test_no_area_with_skip_allowed(self, mock_resolver):
-        mock_resolver.get_ruolo_sistema.return_value = "OPERATIVO"
+        mock_resolver.is_super_admin.return_value = False
 
         request = _mock_request(method="GET")
         view = _mock_view()
@@ -198,7 +198,7 @@ class ZeroERPPermissionTests(TestCase):
     @patch("apps.core.api.permissions.logger")
     @patch("apps.core.api.permissions.PermissionResolver")
     def test_no_area_denied_logs_warning(self, mock_resolver, mock_logger):
-        mock_resolver.get_ruolo_sistema.return_value = "OPERATIVO"
+        mock_resolver.is_super_admin.return_value = False
 
         request = _mock_request(method="GET")
         request.path = "/api/v1/test/"
@@ -213,19 +213,22 @@ class ZeroERPPermissionTests(TestCase):
     # Scopo: DISABILITATO produce messaggio specifico.
     @patch("apps.core.api.permissions.PermissionResolver")
     def test_disabilitato_message(self, mock_resolver):
-        mock_resolver.get_ruolo_sistema.return_value = "DISABILITATO"
+        mock_resolver.get_ruolo_applicativo.return_value = "DISABILITATO"
         request = _mock_request()
         view = _mock_view(area="vendite")
         self.perm.has_permission(request, view)
         self.assertIn("disabilitato", self.perm.message.lower())
 
     # Scopo: BLOCCATO senza profilo reparto produce messaggio specifico.
+    # Si applica solo agli OPERATORI interni (il messaggio e' legato al
+    # reparto; utenti portale/shop ricevono il messaggio generico).
     @patch("apps.core.api.permissions.PermissionResolver")
     def test_bloccato_senza_profilo_message(self, mock_resolver):
-        mock_resolver.get_ruolo_sistema.return_value = "OPERATIVO"
+        mock_resolver.is_super_admin.return_value = False
+        mock_resolver.get_ruolo_applicativo.return_value = "OPERATORE"
         mock_resolver.get_livello_area.return_value = "BLOCCATO"
         mock_resolver.get_area_schema_db.return_value = "vendite"
-        mock_resolver.has_profilo_reparto_area.return_value = False
+        mock_resolver.has_profilo_applicabile_per_area.return_value = False
 
         request = _mock_request(method="GET")
         view = _mock_view(area="vendite")
@@ -235,10 +238,10 @@ class ZeroERPPermissionTests(TestCase):
     # Scopo: BLOCCATO con profilo reparto produce messaggio generico.
     @patch("apps.core.api.permissions.PermissionResolver")
     def test_bloccato_con_profilo_message(self, mock_resolver):
-        mock_resolver.get_ruolo_sistema.return_value = "OPERATIVO"
+        mock_resolver.is_super_admin.return_value = False
         mock_resolver.get_livello_area.return_value = "BLOCCATO"
         mock_resolver.get_area_schema_db.return_value = "vendite"
-        mock_resolver.has_profilo_reparto_area.return_value = True
+        mock_resolver.has_profilo_applicabile_per_area.return_value = True
 
         request = _mock_request(method="GET")
         view = _mock_view(area="vendite")
@@ -249,7 +252,7 @@ class ZeroERPPermissionTests(TestCase):
     # Scopo: Azione negata produce messaggio generico permessi.
     @patch("apps.core.api.permissions.PermissionResolver")
     def test_azione_negata_message(self, mock_resolver):
-        mock_resolver.get_ruolo_sistema.return_value = "OPERATIVO"
+        mock_resolver.is_super_admin.return_value = False
         mock_resolver.check_azione.return_value = False
 
         request = _mock_request(method="POST")
@@ -262,7 +265,7 @@ class ZeroERPPermissionTests(TestCase):
     @patch("apps.core.api.permissions.logger")
     @patch("apps.core.api.permissions.PermissionResolver")
     def test_log_warning_disabilitato(self, mock_resolver, mock_logger):
-        mock_resolver.get_ruolo_sistema.return_value = "DISABILITATO"
+        mock_resolver.get_ruolo_applicativo.return_value = "DISABILITATO"
         request = _mock_request()
         request.path = "/api/v1/vendite/lotti/"
         view = _mock_view(area="vendite")
@@ -275,7 +278,7 @@ class ZeroERPPermissionTests(TestCase):
     @patch("apps.core.api.permissions.logger")
     @patch("apps.core.api.permissions.PermissionResolver")
     def test_log_warning_azione_negata(self, mock_resolver, mock_logger):
-        mock_resolver.get_ruolo_sistema.return_value = "OPERATIVO"
+        mock_resolver.is_super_admin.return_value = False
         mock_resolver.check_azione.return_value = False
         request = _mock_request(method="POST")
         request.path = "/api/v1/vendite/lotti/123/reset-draft/"
@@ -290,7 +293,7 @@ class ZeroERPPermissionTests(TestCase):
     @patch("apps.core.api.permissions.logger")
     @patch("apps.core.api.permissions.PermissionResolver")
     def test_log_warning_livello_insufficiente(self, mock_resolver, mock_logger):
-        mock_resolver.get_ruolo_sistema.return_value = "OPERATIVO"
+        mock_resolver.is_super_admin.return_value = False
         mock_resolver.get_livello_area.return_value = "LETTURA"
         mock_resolver.get_area_schema_db.return_value = "vendite"
         request = _mock_request(method="POST")
@@ -306,7 +309,7 @@ class ZeroERPPermissionTests(TestCase):
     # Scopo: View con model_permission usa get_livello_oggetto con override.
     @patch("apps.core.api.permissions.PermissionResolver")
     def test_model_permission_uses_livello_oggetto(self, mock_resolver):
-        mock_resolver.get_ruolo_sistema.return_value = "OPERATIVO"
+        mock_resolver.is_super_admin.return_value = False
         mock_resolver.get_livello_oggetto.return_value = "LETTURA"
 
         request = _mock_request(method="POST")
@@ -321,7 +324,7 @@ class ZeroERPPermissionTests(TestCase):
     #        (fn_resolve_livello_oggetto ritorna il livello area se nessun override).
     @patch("apps.core.api.permissions.PermissionResolver")
     def test_model_permission_fallback_area(self, mock_resolver):
-        mock_resolver.get_ruolo_sistema.return_value = "OPERATIVO"
+        mock_resolver.is_super_admin.return_value = False
         mock_resolver.get_livello_oggetto.return_value = "TUTTO"
 
         request = _mock_request(method="POST")
@@ -334,7 +337,7 @@ class ZeroERPPermissionTests(TestCase):
     # Scopo: View senza model_permission continua a usare get_livello_area.
     @patch("apps.core.api.permissions.PermissionResolver")
     def test_no_model_permission_uses_area(self, mock_resolver):
-        mock_resolver.get_ruolo_sistema.return_value = "OPERATIVO"
+        mock_resolver.is_super_admin.return_value = False
         mock_resolver.get_livello_area.return_value = "TUTTO"
 
         request = _mock_request(method="GET")

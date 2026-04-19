@@ -1,0 +1,160 @@
+{% include-markdown "it/dbzero/config/manual/trgfn_profili_accesso_bindings_guard_coerenza.md" %}
+# ⚙️ Funzione `trgfn_profili_accesso_bindings_guard_coerenza`
+
+```sql
+CREATE FUNCTION trgfn_profili_accesso_bindings_guard_coerenza()
+```
+
+**Definizione completa:**
+
+```sql
+CREATE OR REPLACE FUNCTION config.trgfn_profili_accesso_bindings_guard_coerenza()
+ RETURNS trigger
+ LANGUAGE plpgsql
+AS $function$
+DECLARE
+    -- %TYPE sulle colonne sorgente (policy ZeroErp).
+    v_tipo_profilo config.profili_accesso.tipo%TYPE;
+BEGIN
+    -- ------------------------------------------------------------
+    -- Trigger function: guard coerenza tipo_profilo <-> tipo_binding
+    -- su config.profili_accesso_bindings (fase a10, BEFORE INSERT/UPDATE).
+    --
+    -- Pre-condizioni:
+    --   - Il CHECK chk_profili_accesso_bindings_xor garantisce
+    --     che esattamente una tra (uo, identita, ruolo) sia NOT NULL
+    --     prima che il trigger venga eseguito.
+    --
+    -- Logica:
+    --   1. Recupera tipo del profilo referenziato.
+    --   2. Verifica che la colonna valorizzata corrisponda al tipo:
+    --      REPARTO      => unita_organizzativa_id
+    --      PORTALE      => ruolo_applicativo
+    --      AD_HOC       => identita_digitale_id
+    --      SUPER_ADMIN  => identita_digitale_id (§4.6.A.3)
+    -- ------------------------------------------------------------
+
+    -- 1) Recupero tipo del profilo header.
+    SELECT pa.tipo
+      INTO v_tipo_profilo
+      FROM config.profili_accesso pa
+     WHERE pa.id = NEW.profilo_accesso_id;
+
+    IF NOT FOUND THEN
+        -- Caso limite: la FK lo impedirebbe, fail-fast esplicito.
+        PERFORM script.fn_log_and_raise_error(
+            'database',
+            TG_NAME,
+            'E_PARAMETRO_INVALIDO',
+            jsonb_build_object(
+                'table', TG_TABLE_NAME,
+                'profilo_accesso_id', NEW.profilo_accesso_id,
+                'nota', 'profilo_accesso_id non trovato in config.profili_accesso'
+            ),
+            NULL::uuid,
+            NEW.profilo_accesso_id::text
+        );
+    END IF;
+
+    -- 2) Dispatch per tipo profilo.
+    CASE v_tipo_profilo
+        WHEN 'REPARTO' THEN
+            IF NEW.unita_organizzativa_id IS NULL THEN
+                PERFORM script.fn_log_and_raise_error(
+                    'database',
+                    TG_NAME,
+                    'E_PROFILO_ACCESSO_BINDING_INCOERENTE',
+                    jsonb_build_object(
+                        'table', TG_TABLE_NAME,
+                        'profilo_accesso_id', NEW.profilo_accesso_id,
+                        'tipo_profilo', v_tipo_profilo,
+                        'nota', 'Profilo REPARTO richiede unita_organizzativa_id'
+                    ),
+                    NULL::uuid,
+                    NEW.profilo_accesso_id::text
+                );
+            END IF;
+
+        WHEN 'PORTALE' THEN
+            IF NEW.ruolo_applicativo IS NULL THEN
+                PERFORM script.fn_log_and_raise_error(
+                    'database',
+                    TG_NAME,
+                    'E_PROFILO_ACCESSO_BINDING_INCOERENTE',
+                    jsonb_build_object(
+                        'table', TG_TABLE_NAME,
+                        'profilo_accesso_id', NEW.profilo_accesso_id,
+                        'tipo_profilo', v_tipo_profilo,
+                        'nota', 'Profilo PORTALE richiede ruolo_applicativo'
+                    ),
+                    NULL::uuid,
+                    NEW.profilo_accesso_id::text
+                );
+            END IF;
+
+        WHEN 'AD_HOC' THEN
+            IF NEW.identita_digitale_id IS NULL THEN
+                PERFORM script.fn_log_and_raise_error(
+                    'database',
+                    TG_NAME,
+                    'E_PROFILO_ACCESSO_BINDING_INCOERENTE',
+                    jsonb_build_object(
+                        'table', TG_TABLE_NAME,
+                        'profilo_accesso_id', NEW.profilo_accesso_id,
+                        'tipo_profilo', v_tipo_profilo,
+                        'nota', 'Profilo AD_HOC richiede identita_digitale_id'
+                    ),
+                    NULL::uuid,
+                    NEW.profilo_accesso_id::text
+                );
+            END IF;
+
+        WHEN 'SUPER_ADMIN' THEN
+            -- SUPER_ADMIN e' un privilegio personale: sempre
+            -- bindato a una singola identita, mai a reparto
+            -- ne' a ruolo applicativo. Questo garantisce
+            -- tracciabilita' individuale del bypass permessi.
+            IF NEW.identita_digitale_id IS NULL THEN
+                PERFORM script.fn_log_and_raise_error(
+                    'database',
+                    TG_NAME,
+                    'E_PROFILO_ACCESSO_BINDING_INCOERENTE',
+                    jsonb_build_object(
+                        'table', TG_TABLE_NAME,
+                        'profilo_accesso_id', NEW.profilo_accesso_id,
+                        'tipo_profilo', v_tipo_profilo,
+                        'nota', 'Profilo SUPER_ADMIN richiede identita_digitale_id (privilegio personale)'
+                    ),
+                    NULL::uuid,
+                    NEW.profilo_accesso_id::text
+                );
+            END IF;
+
+        ELSE
+            -- Nuovo valore dell'enum tipo_profilo_accesso senza
+            -- regola qui: fail-fast esplicito (anti-bypass).
+            PERFORM script.fn_log_and_raise_error(
+                'database',
+                TG_NAME,
+                'E_PROFILO_ACCESSO_TIPO_NON_GESTITO',
+                jsonb_build_object(
+                    'table', TG_TABLE_NAME,
+                    'profilo_accesso_id', NEW.profilo_accesso_id,
+                    'tipo_profilo', v_tipo_profilo,
+                    'nota', 'Tipo profilo sconosciuto al guard di coerenza bindings'
+                ),
+                NULL::uuid,
+                v_tipo_profilo::text
+            );
+    END CASE;
+
+    RETURN NEW;
+END;
+$function$
+
+COMMENT ON FUNCTION config.trgfn_profili_accesso_bindings_guard_coerenza()
+IS 'Guard a10 BEFORE INSERT/UPDATE su config.profili_accesso_bindings: verifica coerenza tra tipo del profilo e tipo del binding (REPARTO/PORTALE/AD_HOC/SUPER_ADMIN). Si somma al CHECK chk_profili_accesso_bindings_xor che impone una sola colonna NOT NULL.';
+```
+
+---
+{% include-markdown "signature-core.md" %}

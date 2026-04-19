@@ -41,20 +41,66 @@ class PermissionResolver:
     # ── Metodi pubblici ────────────────────────────────────
 
     @classmethod
-    def get_ruolo_sistema(
+    def is_super_admin(
         cls, user: Any, cache: dict[str, Any] | None = None
-    ) -> str | None:
-        """Scopo: Restituisce il ruolo_sistema dell'utente dalla tabella ponte.
-        Ritorna None se l'utente non ha un record in risorse_umane_auth_user."""
-        def _query() -> str | None:
+    ) -> bool:
+        """Scopo: Verifica se l'utente ha il binding SUPER_ADMIN attivo.
+
+        Delega a `script.fn_is_super_admin` (PR1 §4.6.B.1). Ritorna
+        False per utenti senza binding, con identita inattiva o
+        finestra temporale scaduta (fail-closed). Sostituisce il check
+        legacy `get_ruolo_sistema(user) == "ADMIN"` nei caller.
+        """
+        def _query() -> bool:
             with connection.cursor() as cursor:
                 cursor.execute(
-                    "SELECT script.fn_get_ruolo_sistema(%s)", [user.id]
+                    "SELECT script.fn_is_super_admin(%s)", [user.id]
                 )
                 row = cursor.fetchone()
-            return row[0] if row else None
+            return bool(row[0]) if row else False
 
-        return _cached(cache, "ruolo_sistema", _query)
+        return _cached(cache, "is_super_admin", _query)
+
+    @classmethod
+    def get_ruolo_applicativo(
+        cls, user: Any, cache: dict[str, Any] | None = None
+    ) -> str | None:
+        """Scopo: Restituisce il ruolo_applicativo dell'identita attiva.
+
+        Strategia GUC-first (Q1): se `app.ruolo_applicativo` e'
+        popolato (JwtAuditAuthentication lo ha gia' propagato per la
+        request corrente), ritorna quel valore senza query DB. In
+        assenza di GUC (scenari di test che non passano dalla auth
+        class, management command, chiamate non-HTTP), fallback a
+        query su `anagrafiche.identita_digitali` filtrata sull'identita
+        attiva.
+
+        Ritorna None se l'utente non ha alcuna identita attiva.
+        """
+        def _query() -> str | None:
+            with connection.cursor() as cursor:
+                # Scopo: tenta GUC prima — zero round-trip DB se popolato.
+                cursor.execute(
+                    "SELECT NULLIF(current_setting('app.ruolo_applicativo', true), '')"
+                )
+                row = cursor.fetchone()
+                if row and row[0]:
+                    return str(row[0])
+                # Scopo: fallback query diretta su identita_digitali.
+                cursor.execute(
+                    """
+                    SELECT ruolo_applicativo
+                      FROM anagrafiche.identita_digitali
+                     WHERE auth_user_id = %s
+                       AND attivo = true
+                     LIMIT 1
+                    """,
+                    [user.id],
+                )
+                row = cursor.fetchone()
+            return str(row[0]) if row and row[0] else None
+
+        return _cached(cache, "ruolo_applicativo", _query)
 
     @classmethod
     def get_livello_area(
@@ -223,49 +269,65 @@ class PermissionResolver:
     def get_unita_organizzativa_id(
         cls, user: Any, cache: dict[str, Any] | None = None
     ) -> int | None:
-        """Scopo: Risale alla unita' organizzativa dell'utente
-        via bridge risorse_umane_auth_user -> risorse_umane."""
+        """Scopo: Risale alla unita' organizzativa dell'utente.
+
+        Delega a `script.fn_get_uo_id_for_user` (PR1 §13.3.7). La
+        catena `identita_digitali (OPERATORE) -> soggetti_ruoli ->
+        risorse_umane` e' incapsulata nella funzione SQL, determinismo
+        garantito via `ORDER BY ru.valido_dal DESC LIMIT 1`. Ritorna
+        None per utenti non-operatore, senza RU attiva o inesistenti.
+        """
         def _query() -> int | None:
             with connection.cursor() as cursor:
                 cursor.execute(
-                    """
-                    SELECT ru.unita_organizzativa_id
-                      FROM anagrafiche.risorse_umane_auth_user rau
-                      JOIN anagrafiche.risorse_umane ru
-                        ON ru.id = rau.risorsa_umana_id
-                     WHERE rau.auth_user_id = %s
-                    """,
+                    "SELECT script.fn_get_uo_id_for_user(%s)",
                     [user.id],
                 )
                 row = cursor.fetchone()
-            return row[0] if row else None
+            return row[0] if row and row[0] is not None else None
 
         return _cached(cache, "uo_id", _query)
 
     @classmethod
-    def has_profilo_reparto_area(
+    def has_profilo_applicabile_per_area(
         cls,
         user: Any,
         area_schema_db: str,
         *,
         cache: dict[str, Any] | None = None,
     ) -> bool:
-        """Scopo: Verifica se il reparto dell'utente ha un profilo per l'area.
-        Usato per distinguere 'BLOCCATO da profilo' da 'nessun profilo configurato'."""
+        """Scopo: Verifica se l'utente ha almeno un profilo applicabile
+        con una configurazione esplicita per l'area (qualsiasi livello,
+        incluso BLOCCATO).
+
+        Usato per distinguere due casi di diniego nei messaggi di
+        errore:
+          * True  -> "BLOCCATO intenzionale" (profilo configurato ma
+            nega la richiesta)
+          * False -> "nessun profilo configurato" (manca anche solo
+            una riga del profilo per quell'area — configurazione
+            incompleta)
+
+        Delega a `script.fn_get_profili_accesso_applicabili` che
+        incapsula la catena multi-face (AD_HOC prio 1, PORTALE /
+        REPARTO prio 2). La join con `profili_accesso_aree` verifica
+        che almeno uno dei profili applicabili copra l'area
+        richiesta. Sostituisce la vecchia
+        `has_profilo_reparto_area` (SQL su `profili_reparto_aree` +
+        `risorse_umane_auth_user`).
+        """
         def _query() -> bool:
             with connection.cursor() as cursor:
                 cursor.execute(
                     """
                     SELECT EXISTS(
                         SELECT 1
-                          FROM config.profili_reparto_aree pra
-                          JOIN config.aree_funzionali af ON af.id = pra.area_id
-                          JOIN anagrafiche.risorse_umane_auth_user rau
-                            ON rau.auth_user_id = %s
-                          JOIN anagrafiche.risorse_umane ru
-                            ON ru.id = rau.risorsa_umana_id
-                         WHERE ru.unita_organizzativa_id = pra.unita_organizzativa_id
-                           AND af.schema_db = %s
+                          FROM script.fn_get_profili_accesso_applicabili(%s) prof
+                          JOIN config.profili_accesso_aree paa
+                            ON paa.profilo_accesso_id = prof.profilo_accesso_id
+                          JOIN config.aree_funzionali af
+                            ON af.id = paa.area_id
+                         WHERE af.schema_db = %s
                     )
                     """,
                     [user.id, area_schema_db],

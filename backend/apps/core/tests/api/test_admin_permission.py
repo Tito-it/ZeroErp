@@ -52,19 +52,19 @@ class TestIsAdminZeroERP(TestCase):
 
     @patch("apps.core.api.permissions.save_user_cache")
     @patch("apps.core.api.permissions.load_user_cache", return_value=None)
-    @patch("apps.core.api.permissions.PermissionResolver.get_ruolo_sistema", return_value="ADMIN")
-    def test_admin_user_allowed(self, mock_ruolo: MagicMock, _mock_load: MagicMock, _mock_save: MagicMock) -> None:
-        """Scopo: Un utente con ruolo ADMIN deve avere accesso."""
+    @patch("apps.core.api.permissions.PermissionResolver.is_super_admin", return_value=True)
+    def test_admin_user_allowed(self, mock_check: MagicMock, _mock_load: MagicMock, _mock_save: MagicMock) -> None:
+        """Scopo: Un utente con binding SUPER_ADMIN deve avere accesso."""
         request = _mock_request()
         result = self.perm.has_permission(request, _mock_view())
         self.assertTrue(result)
-        mock_ruolo.assert_called_once()
+        mock_check.assert_called_once()
 
     @patch("apps.core.api.permissions.save_user_cache")
     @patch("apps.core.api.permissions.load_user_cache", return_value=None)
-    @patch("apps.core.api.permissions.PermissionResolver.get_ruolo_sistema", return_value="OPERATIVO")
-    def test_operativo_denied(self, mock_ruolo: MagicMock, _mock_load: MagicMock, _mock_save: MagicMock) -> None:
-        """Scopo: Un utente OPERATIVO non deve avere accesso agli endpoint admin."""
+    @patch("apps.core.api.permissions.PermissionResolver.is_super_admin", return_value=False)
+    def test_operativo_denied(self, mock_check: MagicMock, _mock_load: MagicMock, _mock_save: MagicMock) -> None:
+        """Scopo: Un operatore non SUPER_ADMIN non deve avere accesso agli endpoint admin."""
         request = _mock_request()
         result = self.perm.has_permission(request, _mock_view())
         self.assertFalse(result)
@@ -72,24 +72,24 @@ class TestIsAdminZeroERP(TestCase):
 
     @patch("apps.core.api.permissions.save_user_cache")
     @patch("apps.core.api.permissions.load_user_cache", return_value=None)
-    @patch("apps.core.api.permissions.PermissionResolver.get_ruolo_sistema", return_value="DISABILITATO")
-    def test_disabilitato_denied(self, mock_ruolo: MagicMock, _mock_load: MagicMock, _mock_save: MagicMock) -> None:
-        """Scopo: Un utente DISABILITATO non deve avere accesso."""
+    @patch("apps.core.api.permissions.PermissionResolver.is_super_admin", return_value=False)
+    def test_disabilitato_denied(self, mock_check: MagicMock, _mock_load: MagicMock, _mock_save: MagicMock) -> None:
+        """Scopo: Un utente disabilitato (non SUPER_ADMIN) non deve avere accesso."""
         request = _mock_request()
         result = self.perm.has_permission(request, _mock_view())
         self.assertFalse(result)
 
     @patch("apps.core.api.permissions.save_user_cache")
     @patch("apps.core.api.permissions.load_user_cache", return_value=None)
-    @patch("apps.core.api.permissions.PermissionResolver.get_ruolo_sistema", return_value=None)
-    def test_no_bridge_denied(self, mock_ruolo: MagicMock, _mock_load: MagicMock, _mock_save: MagicMock) -> None:
-        """Scopo: Un utente senza bridge risorse_umane_auth_user (ruolo None) non ha accesso."""
+    @patch("apps.core.api.permissions.PermissionResolver.is_super_admin", return_value=False)
+    def test_no_bridge_denied(self, mock_check: MagicMock, _mock_load: MagicMock, _mock_save: MagicMock) -> None:
+        """Scopo: Un utente senza identita digitale attiva (is_super_admin=False) non ha accesso."""
         request = _mock_request()
         result = self.perm.has_permission(request, _mock_view())
         self.assertFalse(result)
 
     def test_superuser_bypass(self) -> None:
-        """Scopo: Un superuser Django bypassa il check ruolo_sistema."""
+        """Scopo: Un superuser Django bypassa il check SUPER_ADMIN."""
         request = _mock_request(is_superuser=True)
         result = self.perm.has_permission(request, _mock_view())
         self.assertTrue(result)

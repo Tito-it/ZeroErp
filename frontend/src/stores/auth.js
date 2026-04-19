@@ -116,13 +116,24 @@ export const useAuthStore = defineStore('auth', () => {
   // corrente. Per admin globale ritorna null perche' il blocco `emittente`
   // del profilo riflette il "gestore globale" (cascata fallback di
   // fn_get_user_profile) e NON l'emittente personale dell'utente.
-  // Ritorna { id, codice, ragioneSociale } o null.
+  //
+  // Esposte DUE chiavi FK distinte perche' il modello le differenzia:
+  //   - id                → anagrafiche.emittenti_fiscali.id (PK reale, usato
+  //     ad es. da pratiche.emittente_fiscale_id)
+  //   - soggettoRuoloId   → anagrafiche.soggetti_ruoli.id (usato ad es. da
+  //     vendite.listini.emittente_soggetto_ruolo_id)
+  // La differenza non e' ovvia dal nome e va rispettata. Vedi
+  // feedback_emittente_pk_vs_soggetto_ruolo.md.
   const emittenteCorrente = computed(() => {
     if (isAdminGlobale.value) return null
     const ef = user.value?.emittente
     if (!ef) return null
     return {
       id: ef.emittente_fiscale_id ?? null,
+      // Il blocco `emittente` e' il merge tra i campi `emittente_*` e l'output
+      // di fn_get_soggetto_dati_by_ruolo, che espone il ruolo come
+      // `soggetto_ruolo_id` (senza prefisso). E' la PK verso soggetti_ruoli.
+      soggettoRuoloId: ef.soggetto_ruolo_id ?? null,
       codice: ef.emittente_codice ?? null,
       ragioneSociale: ef.ragione_sociale_completa ?? ef.emittente_descrizione ?? null,
     }

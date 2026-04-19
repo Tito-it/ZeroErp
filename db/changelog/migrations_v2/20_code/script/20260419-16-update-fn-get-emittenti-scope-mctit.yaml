@@ -1,0 +1,65 @@
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260419-16-update-fn-get-emittenti-scope-mctit.yaml
+
+  - changeSet:
+      id: 20260419-16-update-fn-get-emittenti-scope
+      author: mctit
+      runOnChange: true
+      validCheckSum: [ANY]
+      comment: >
+        Refactor minimale di script.fn_get_emittenti_scope (§4.6.B.7 WIP).
+        La funzione oggi non filtra per ruolo_sistema (il gate DISABILITATO/
+        ADMIN e' applicato a monte da ZeroERPPermission e da
+        fn_check_user_emittente_scope). Cambio unico:
+          - Rimuove il riferimento %TYPE a risorse_umane_auth_user.auth_user_id
+            (la tabella verra' sostituita da vista in §4.6.H.2). Sostituito
+            con integer diretto per rompere la dipendenza dal bridge legacy.
+        La logica semantica resta identica: whitelist vuota -> NULL
+        (nessuna restrizione), altrimenti array di ID autorizzati.
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_get_emittenti_scope(
+                  p_auth_user_id integer
+              )
+              RETURNS bigint[]
+              LANGUAGE plpgsql
+              STABLE
+              AS $function$
+              DECLARE
+                  v_ids bigint[];
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Restituisce gli ID emittenti fiscali autorizzati
+                  --   per un utente dalla whitelist user_emittenti_fiscali.
+                  --
+                  -- Semantica:
+                  --   NULL  = nessuna restrizione (whitelist vuota, vede tutto)
+                  --   array = limitato agli emittenti elencati
+                  --
+                  -- Nota §4.6.B.7: il gate DISABILITATO/ADMIN non e'
+                  -- applicato qui. ZeroERPPermission blocca DISABILITATO
+                  -- prima della chiamata; SUPER_ADMIN bypassa via NULL
+                  -- (whitelist vuota = vede tutto).
+                  -- =========================================================
+
+                  SELECT array_agg(uef.emittente_fiscale_id)
+                    INTO v_ids
+                    FROM config.user_emittenti_fiscali uef
+                   WHERE uef.auth_user_id = p_auth_user_id;
+
+                  -- Nessuna riga -> array_agg ritorna NULL -> nessuna restrizione
+                  RETURN v_ids;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_get_emittenti_scope(integer) IS
+                  'Restituisce ID emittenti autorizzati per utente '
+                  '(NULL = nessuna restrizione). Refactor §4.6.B.7: firma '
+                  'slegata dal bridge legacy risorse_umane_auth_user.';
+      rollback:
+        - sql:
+            sql: DROP FUNCTION IF EXISTS script.fn_get_emittenti_scope(integer);

@@ -7,6 +7,7 @@ import { useI18n } from 'vue-i18n'
 import { useListiniStore } from '../stores/listini'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
+import { useAuthStore } from '../../stores/auth'
 import { DRAWER_WIDTH } from '../../core/constants'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import DrawerFooter from '../../core/components/DrawerFooter.vue'
@@ -16,11 +17,13 @@ import Drawer from 'primevue/drawer'
 import InputText from 'primevue/inputtext'
 import ToggleSwitch from 'primevue/toggleswitch'
 import Button from 'primevue/button'
+import Message from 'primevue/message'
 
 const { t } = useI18n()
 const store = useListiniStore()
 const { execute, loading } = useApiHandler()
 const isReadonly = useInjectReadonly()
+const auth = useAuthStore()
 
 
 const props = defineProps({
@@ -94,12 +97,20 @@ watch(() => form.value.utility_id, (newVal, oldVal) => {
   form.value.tipologia_id = null
 })
 
-const canSave = computed(() => (
-  !!form.value.codice?.trim()
-  && !!form.value.descrizione?.trim()
-  && !!form.value.utility_id
-  && !!form.value.tipologia_id
-))
+// Scopo: in create l'emittente fiscale e' quello dell'operatore corrente
+// (refactor operatore-emittenti: relazione 1-a-1). Gli admin globali non hanno
+// un emittente personale e quindi non possono creare listini da questa UI.
+// Nota: per listini serve soggettoRuoloId (FK verso soggetti_ruoli),
+// NON l'id emittente fiscale (FK diverso).
+const canSave = computed(() => {
+  const base = !!form.value.codice?.trim()
+    && !!form.value.descrizione?.trim()
+    && !!form.value.utility_id
+    && !!form.value.tipologia_id
+  if (!base) return false
+  if (isEdit.value) return true
+  return !!auth.emittenteCorrente?.soggettoRuoloId
+})
 
 async function handleSave() {
   const f = form.value
@@ -116,11 +127,15 @@ async function handleSave() {
     )
     if (result !== null) { emit('saved', result); close() }
   } else {
+    // emittente_soggetto_ruolo_id: pricing v5 §3.1 — dimensione NOT NULL del
+    // listino. FK verso soggetti_ruoli (NON emittenti_fiscali): usare
+    // soggettoRuoloId dal profilo operatore, non id.
     const payload = {
       codice: f.codice?.trim(),
       descrizione: f.descrizione?.trim(),
       utility_id: f.utility_id,
       tipologia_id: f.tipologia_id,
+      emittente_soggetto_ruolo_id: auth.emittenteCorrente?.soggettoRuoloId ?? null,
     }
     const result = await execute(
       () => store.create(payload),
@@ -146,6 +161,13 @@ function close() {
 
     <div class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
       <template v-if="contentReady">
+        <!-- Banner refactor operatore-emittenti (solo creazione) -->
+        <Message v-if="!isEdit && auth.isAdminGlobale" severity="warn" :closable="false" class="mb-05">
+          {{ t('listini.banner_admin_globale_no_create') }}
+        </Message>
+        <Message v-else-if="!isEdit && auth.emittenteCorrente" severity="info" :closable="false" class="mb-05">
+          {{ t('listini.banner_emittente_corrente', { nome: auth.emittenteCorrente.ragioneSociale }) }}
+        </Message>
         <div class="form-grid-2col">
           <div class="form-field">
             <label>{{ t('listini.field_codice') }} *</label>

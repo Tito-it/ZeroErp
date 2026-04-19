@@ -1,0 +1,53 @@
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260419-63-create-policy-rls-ordini-mctit.yaml
+
+  - changeSet:
+      id: 20260419-63-create-policy-rls-ordini
+      author: mctit
+      comment: >
+        RLS prima ondata §4.9.2 — DRY RUN: crea policy PERMISSIVE su
+        vendite.ordini per cliente portale / shop customer. Usa
+        fn_scope_cliente_ownership su soggetto_ruolo_id (NOT NULL) invece
+        di billing_account_id (nullable by design: il BA puo' essere
+        selezionato dopo, tramite trgfn_ordini_normalize). Non e' prevista
+        policy per OPERATORE: vendite.ordini non ha emittente_sr_id e lo
+        scope whitelist non si applica; la visibilita' operatore resta
+        affidata al filtro applicativo. Nessun ENABLE / FORCE: policy
+        dormiente.
+      preConditions:
+        - onFail: HALT
+        - and:
+          - tableExists: { schemaName: vendite, tableName: ordini }
+          - sqlCheck:
+              expectedResult: "1"
+              sql: |
+                SELECT COUNT(*)
+                  FROM pg_proc p
+                  JOIN pg_namespace n ON n.oid = p.pronamespace
+                 WHERE n.nspname = 'script'
+                   AND p.proname = 'fn_scope_cliente_ownership';
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP POLICY IF EXISTS rls_ordini_cliente_ownership ON vendite.ordini;
+
+              CREATE POLICY rls_ordini_cliente_ownership ON vendite.ordini
+                  AS PERMISSIVE
+                  FOR SELECT
+                  USING (
+                      current_setting('app.ruolo_applicativo', true)
+                          IN ('CLIENTE_PORTALE', 'SHOP_CUSTOMER')
+                      AND script.fn_scope_cliente_ownership(
+                          NULLIF(current_setting('app.current_identita_id', true), '')::bigint,
+                          soggetto_ruolo_id
+                      )
+                  );
+
+              COMMENT ON POLICY rls_ordini_cliente_ownership ON vendite.ordini IS
+                  'RLS §4.9.2 dry-run: cliente portale/shop vede solo ordini con soggetto_ruolo_id = proprio SR. Policy gated su ruolo_applicativo IN (CLIENTE_PORTALE, SHOP_CUSTOMER).';
+      rollback:
+        - sql:
+            sql: |
+              DROP POLICY IF EXISTS rls_ordini_cliente_ownership ON vendite.ordini;

@@ -13,51 +13,48 @@ CREATE OR REPLACE FUNCTION script.fn_check_blocco_login(p_auth_user_id integer)
  LANGUAGE plpgsql
 AS $function$
 DECLARE
-    v_bloccato_fino_a  anagrafiche.risorse_umane_auth_user.bloccato_fino_a%TYPE;
+    v_bloccato_fino_a  timestamptz;
     v_minuti_rimanenti integer;
 BEGIN
     -- =========================================================
-    -- Scopo:
-    --   Verifica se l'utente e' bloccato per tentativi falliti.
-    --   Se bloccato_fino_a e' scaduto, resetta automaticamente
-    --   (tentativi_falliti = 0, bloccato_fino_a = NULL).
-    --   Se blocco ancora attivo, lancia errore con minuti
-    --   rimanenti.
-    --   Da chiamare PRIMA di verificare le credenziali.
-    --
-    -- Parametri:
-    --   p_auth_user_id: ID utente Django (auth_user.id)
-    --
-    -- Errori:
-    --   E_UTENTE_BLOCCATO: blocco attivo
+    -- Scopo (refactor §4.6.D.2):
+    --   Verifica blocco temporaneo login su identita_digitali
+    --   (OPERATORE). Se scaduto: auto-unlock su entrambe le
+    --   tabelle. Se attivo: raise E_UTENTE_BLOCCATO.
     -- =========================================================
 
-    -- Guard
     IF p_auth_user_id IS NULL OR p_auth_user_id <= 0 THEN
         RETURN;
     END IF;
 
-    -- Leggi stato blocco
-    SELECT rau.bloccato_fino_a
+    -- Leggi stato blocco da identita (fonte primaria)
+    SELECT id.bloccato_fino_a
       INTO v_bloccato_fino_a
-      FROM anagrafiche.risorse_umane_auth_user rau
-     WHERE rau.auth_user_id = p_auth_user_id;
+      FROM anagrafiche.identita_digitali id
+     WHERE id.auth_user_id = p_auth_user_id
+       AND id.ruolo_applicativo = 'OPERATORE';
 
-    -- Nessun record ponte o nessun blocco
+    -- Nessun record identita o nessun blocco
     IF v_bloccato_fino_a IS NULL THEN
         RETURN;
     END IF;
 
-    -- Blocco scaduto: reset automatico
+    -- Blocco scaduto: auto-unlock su entrambe
     IF v_bloccato_fino_a <= NOW() THEN
+        UPDATE anagrafiche.identita_digitali
+           SET tentativi_falliti = 0,
+               bloccato_fino_a   = NULL
+         WHERE auth_user_id = p_auth_user_id
+           AND ruolo_applicativo = 'OPERATORE';
+
         UPDATE anagrafiche.risorse_umane_auth_user
            SET tentativi_falliti = 0,
-               bloccato_fino_a  = NULL
+               bloccato_fino_a   = NULL
          WHERE auth_user_id = p_auth_user_id;
         RETURN;
     END IF;
 
-    -- Blocco attivo: calcola minuti rimanenti e lancia errore
+    -- Blocco attivo: calcola minuti rimanenti e raise
     v_minuti_rimanenti := GREATEST(1,
         CEIL(EXTRACT(EPOCH FROM (v_bloccato_fino_a - NOW())) / 60)::integer
     );
@@ -66,8 +63,8 @@ BEGIN
         'database', 'script.fn_check_blocco_login',
         'E_UTENTE_BLOCCATO',
         jsonb_build_object('auth_user_id', p_auth_user_id,
-                          'bloccato_fino_a', v_bloccato_fino_a,
-                          'minuti_rimanenti', v_minuti_rimanenti),
+                           'bloccato_fino_a', v_bloccato_fino_a,
+                           'minuti_rimanenti', v_minuti_rimanenti),
         NULL::uuid,
         'Utente temporaneamente bloccato. Riprovare tra ' || v_minuti_rimanenti || ' minuti.'
     );
@@ -75,7 +72,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_check_blocco_login(p_auth_user_id integer)
-IS 'Verifica blocco temporaneo login. Se scaduto resetta. Se attivo lancia E_UTENTE_BLOCCATO con minuti rimanenti. Chiamare PRIMA della verifica credenziali.';
+IS 'Verifica blocco temporaneo login. Refactor §4.6.D.2: lettura da identita_digitali OPERATORE; auto-unlock su identita + RUA durante transizione. Se attivo: raise E_UTENTE_BLOCCATO.';
 ```
 
 ---

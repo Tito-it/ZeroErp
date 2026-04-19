@@ -1,0 +1,98 @@
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260419-20-update-fn-get-setup-status-mctit.yaml
+
+  - changeSet:
+      id: 20260419-20-update-fn-get-setup-status
+      author: mctit
+      runOnChange: true
+      validCheckSum: [ANY]
+      comment: >
+        Refactor script.fn_get_setup_status per usare il nuovo modello
+        multi-face auth (§4.6.B.10 WIP). Sostituisce il conteggio operatori
+        ADMIN globali da:
+          COUNT WHERE rau.ruolo_sistema = 'ADMIN' AND uef.auth_user_id IS NULL
+        a:
+          COUNT WHERE fn_is_super_admin(auth_user_id) AND uef IS NULL
+        Sostituisce il filtro "attivi non disabilitati" da RUA a
+        identita_digitali OPERATORE attiva. Output JSON invariato.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT COUNT(*) FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script'
+                 AND p.proname = 'fn_is_super_admin';
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_get_setup_status()
+              RETURNS jsonb
+              LANGUAGE plpgsql
+              STABLE
+              AS $function$
+              DECLARE
+                  v_result jsonb;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Stato di setup operatore-emittente per il banner di
+                  --   amministrazione (pattern advise, don't enforce).
+                  --
+                  -- Refactor §4.6.B.10:
+                  --   Source of truth operatori = identita_digitali
+                  --   (ruolo_applicativo=OPERATORE, attivo, in finestra).
+                  --   Admin = fn_is_super_admin anziche' ruolo_sistema='ADMIN'.
+                  -- =========================================================
+
+                  WITH sub_emittenti AS (
+                      SELECT COUNT(*)::bigint AS emittenti_attivi
+                        FROM anagrafiche.emittenti_fiscali
+                       WHERE attivo = true
+                  ),
+                  sub_op AS (
+                      SELECT
+                          COUNT(*)::bigint AS operatori_totali,
+                          COUNT(*) FILTER (WHERE uef.auth_user_id IS NOT NULL)::bigint
+                              AS operatori_assegnati,
+                          COUNT(*) FILTER (
+                              WHERE uef.auth_user_id IS NULL
+                                AND script.fn_is_super_admin(id.auth_user_id)
+                          )::bigint AS operatori_admin_globali
+                        FROM anagrafiche.identita_digitali id
+                        JOIN django.auth_user au
+                          ON au.id = id.auth_user_id
+                        LEFT JOIN config.user_emittenti_fiscali uef
+                          ON uef.auth_user_id = id.auth_user_id
+                       WHERE id.ruolo_applicativo = 'OPERATORE'
+                         AND id.attivo = true
+                         AND (id.valido_dal IS NULL OR id.valido_dal <= CURRENT_DATE)
+                         AND (id.valido_al  IS NULL OR id.valido_al  >= CURRENT_DATE)
+                         AND au.is_active = true
+                  )
+                  SELECT jsonb_build_object(
+                      'emittenti_attivi',         sub_emittenti.emittenti_attivi,
+                      'operatori_totali',         sub_op.operatori_totali,
+                      'operatori_assegnati',      sub_op.operatori_assegnati,
+                      'operatori_admin_globali',  sub_op.operatori_admin_globali,
+                      'operatori_non_assegnati',  greatest(
+                          sub_op.operatori_totali - sub_op.operatori_assegnati, 0
+                      )
+                  )
+                    INTO v_result
+                    FROM sub_emittenti, sub_op;
+
+                  RETURN v_result;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_get_setup_status() IS
+                  'Stato di setup operatore-emittente in un singolo jsonb. '
+                  'Refactor §4.6.B.10: source of truth operatori = '
+                  'identita_digitali (OPERATORE attiva); admin = fn_is_super_admin.';
+      rollback:
+        - sql:
+            sql: DROP FUNCTION IF EXISTS script.fn_get_setup_status();

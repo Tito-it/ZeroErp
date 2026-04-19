@@ -13,10 +13,10 @@ import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { DRAWER_WIDTH } from '../../core/constants'
 import { isoToLocalDate, localDateToIso } from '../../core/utils/dateHelpers'
+import { listArticoloUom } from '../../catalogo/api/catalogo'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import DrawerFooter from '../../core/components/DrawerFooter.vue'
 import ArticoloLookup from '../../core/components/ArticoloLookup.vue'
-import LookupSelect from '../../core/components/LookupSelect.vue'
 import Drawer from 'primevue/drawer'
 import InputText from 'primevue/inputtext'
 import InputNumber from 'primevue/inputnumber'
@@ -71,6 +71,38 @@ function resetForm() {
     valido_al: null,
     attivo: true
   }
+  uomOptions.value = []
+}
+
+// UoM operative dell'articolo selezionato (pattern VersioneDrawer/ContrattoRigheDrawer):
+// l'articolo definisce quali UoM sono ammesse per le sue righe/promo; una combo
+// globale su catalogo.unita_misura porterebbe FK invalide.
+const uomOptions = ref([])
+const uomLoading = ref(false)
+
+function uomLabel(uom) {
+  const base = uom.is_base ? ` ${t('listini.uom_base_suffix')}` : ''
+  return `${uom.uom_codice} — ${uom.uom_descrizione}${base}`
+}
+
+// Scopo: carica le UoM operative dell'articolo; in create pre-seleziona la base.
+async function loadUomPerArticolo(articoloId) {
+  uomOptions.value = []
+  if (!articoloId) return
+  uomLoading.value = true
+  try {
+    const res = await listArticoloUom(articoloId)
+    const list = res.data.data?.results || res.data.data || []
+    uomOptions.value = list
+    if (!isEdit.value && !form.value.uom_id) {
+      const base = list.find(u => u.is_base)
+      form.value.uom_id = base ? base.uom_id : (list.length === 1 ? list[0].uom_id : null)
+    }
+  } catch {
+    uomOptions.value = []
+  } finally {
+    uomLoading.value = false
+  }
 }
 
 async function loadDetail() {
@@ -96,6 +128,9 @@ async function loadDetail() {
     valido_al: isoToLocalDate(data.valido_al),
     attivo: data.attivo ?? true
   }
+  // In edit carichiamo comunque l'elenco UoM dell'articolo per mostrare label
+  // coerente nel Select (anche se il campo e' disabilitato).
+  if (data.articolo_id) await loadUomPerArticolo(data.articolo_id)
 }
 
 watch(
@@ -107,6 +142,19 @@ watch(
     } else {
       resetForm()
     }
+  }
+)
+
+// In create: al cambio articolo ricarica le UoM operative. Cambio articolo
+// dopo che una UoM era gia' selezionata ⇒ azzera, altrimenti resta il valore
+// precedente e puo' appartenere a un articolo diverso.
+watch(
+  () => form.value.articolo_obj?.id,
+  (newId, oldId) => {
+    if (isEdit.value) return
+    if (newId === oldId) return
+    form.value.uom_id = null
+    loadUomPerArticolo(newId)
   }
 )
 
@@ -207,11 +255,16 @@ function close() {
         </div>
         <div class="form-field">
           <label>{{ t('vendite.promo_articoli.field_uom') }} <span v-if="!isEdit">*</span></label>
-          <LookupSelect
+          <Select
             v-model="form.uom_id"
-            rel="catalogo.unita_misura"
-            :placeholder="t('vendite.promo_articoli.field_uom_placeholder')"
-            :disabled="isEdit || isReadOnlyEffective"
+            :options="uomOptions"
+            :option-label="uomLabel"
+            option-value="uom_id"
+            :loading="uomLoading"
+            :placeholder="!form.articolo_obj?.id
+              ? t('vendite.promo_articoli.field_uom_articolo_first')
+              : t('vendite.promo_articoli.field_uom_placeholder')"
+            :disabled="isEdit || isReadOnlyEffective || !form.articolo_obj?.id"
           />
         </div>
 

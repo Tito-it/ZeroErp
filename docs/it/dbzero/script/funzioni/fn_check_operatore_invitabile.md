@@ -14,35 +14,30 @@ CREATE OR REPLACE FUNCTION script.fn_check_operatore_invitabile(p_auth_user_id i
  STABLE
 AS $function$
 DECLARE
-    -- Tipi espliciti per colonne django.auth_user:
-    -- %TYPE non utilizzabile perche' la tabella django.auth_user
-    -- viene creata da Django migrate DOPO Liquibase.
-    v_is_active     BOOLEAN;
-    v_email         VARCHAR(254);
-    v_last_login    TIMESTAMPTZ;
-    v_ruolo_sistema anagrafiche.risorse_umane_auth_user.ruolo_sistema%TYPE;
-    v_rau_attivo    anagrafiche.risorse_umane_auth_user.attivo%TYPE;
+    v_is_active        BOOLEAN;
+    v_email            VARCHAR(254);
+    v_last_login       TIMESTAMPTZ;
+    v_identita_attiva  BOOLEAN;
+    v_ruolo_applicativo config.ruolo_applicativo;
+    v_identita_in_finestra BOOLEAN;
 BEGIN
     -- =========================================================
     -- Scopo:
     --   Verifica se un operatore puo' ricevere un invito email
     --   per il primo accesso al sistema.
     --
-    -- Condizioni per essere invitabile:
+    -- Condizioni (refactor §4.6.B.10):
     --   1. auth_user esiste e is_active = true
-    --   2. risorse_umane_auth_user esiste e attivo = true
-    --   3. ruolo_sistema <> 'DISABILITATO'
-    --   4. auth_user ha un indirizzo email
-    --   5. auth_user.last_login IS NULL (mai loggato)
+    --   2. identita_digitali OPERATORE attiva esiste
+    --   3. ruolo_applicativo <> 'DISABILITATO'
+    --   4. identita nella finestra temporale
+    --   5. auth_user ha un indirizzo email
+    --   6. auth_user.last_login IS NULL (mai loggato)
     --
-    -- Parametri:
-    --   p_auth_user_id: ID utente Django
-    --
-    -- Restituisce:
+    -- Ritorna:
     --   JSONB: {invitabile: bool, motivo: text, email: text}
     -- =========================================================
 
-    -- Guard: parametro obbligatorio
     IF p_auth_user_id IS NULL OR p_auth_user_id <= 0 THEN
         RETURN jsonb_build_object(
             'invitabile', false,
@@ -51,18 +46,26 @@ BEGIN
         );
     END IF;
 
-    -- Recupera dati auth_user + risorse_umane_auth_user
-    -- in una sola query per avere il quadro completo
-    -- e dare il motivo piu' specifico.
-    -- NB: rau.attivo=false causa is_active=false via trigger
-    -- sync, quindi rau.attivo va verificato per primo.
-    SELECT au.is_active, au.email, au.last_login,
-           rau.ruolo_sistema::text, rau.attivo
+    -- Recupera dati auth_user + identita OPERATORE in una
+    -- sola query. LEFT JOIN: la riga identita puo' mancare
+    -- (caso iniziale prima del backfill §4.6.E).
+    SELECT au.is_active,
+           au.email,
+           au.last_login,
+           id.attivo,
+           id.ruolo_applicativo,
+           CASE
+               WHEN id.id IS NULL THEN NULL
+               ELSE (id.valido_dal IS NULL OR id.valido_dal <= CURRENT_DATE)
+                AND (id.valido_al  IS NULL OR id.valido_al  >= CURRENT_DATE)
+           END
       INTO v_is_active, v_email, v_last_login,
-           v_ruolo_sistema, v_rau_attivo
+           v_identita_attiva, v_ruolo_applicativo,
+           v_identita_in_finestra
       FROM django.auth_user au
-      LEFT JOIN anagrafiche.risorse_umane_auth_user rau
-        ON rau.auth_user_id = au.id
+      LEFT JOIN anagrafiche.identita_digitali id
+        ON id.auth_user_id = au.id
+       AND id.ruolo_applicativo = 'OPERATORE'
      WHERE au.id = p_auth_user_id;
 
     IF v_is_active IS NULL THEN
@@ -73,35 +76,43 @@ BEGIN
         );
     END IF;
 
-    -- Verifica rau PRIMA di is_active: rau.attivo=false
-    -- causa is_active=false via trigger sync, il motivo
-    -- primario e' rau non attivo.
-    IF v_ruolo_sistema IS NULL THEN
+    -- Verifica identita PRIMA di is_active: identita attivo=false
+    -- causa is_active=false via trigger sync, il motivo primario
+    -- e' identita non attiva.
+    IF v_identita_attiva IS NULL THEN
         RETURN jsonb_build_object(
             'invitabile', false,
-            'motivo', 'Nessun record risorse_umane_auth_user',
+            'motivo', 'Nessuna identita OPERATORE',
             'email', v_email
         );
     END IF;
 
-    IF v_rau_attivo = false THEN
+    IF v_identita_attiva = false THEN
         RETURN jsonb_build_object(
             'invitabile', false,
-            'motivo', 'Record risorse_umane_auth_user non attivo',
+            'motivo', 'Identita OPERATORE non attiva',
             'email', v_email
         );
     END IF;
 
-    IF v_ruolo_sistema = 'DISABILITATO' THEN
+    IF v_ruolo_applicativo = 'DISABILITATO' THEN
         RETURN jsonb_build_object(
             'invitabile', false,
-            'motivo', 'Ruolo sistema DISABILITATO',
+            'motivo', 'Ruolo applicativo DISABILITATO',
             'email', v_email
         );
     END IF;
 
-    -- is_active=false senza rau.attivo=false: disattivazione
-    -- diretta su auth_user (non causata dal trigger sync)
+    IF NOT v_identita_in_finestra THEN
+        RETURN jsonb_build_object(
+            'invitabile', false,
+            'motivo', 'Identita fuori finestra temporale',
+            'email', v_email
+        );
+    END IF;
+
+    -- is_active=false senza identita inattiva: disattivazione
+    -- diretta su auth_user (non causata dal trigger sync).
     IF v_is_active = false THEN
         RETURN jsonb_build_object(
             'invitabile', false,
@@ -126,7 +137,6 @@ BEGIN
         );
     END IF;
 
-    -- Tutte le condizioni soddisfatte
     RETURN jsonb_build_object(
         'invitabile', true,
         'motivo', NULL,
@@ -136,7 +146,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_check_operatore_invitabile(p_auth_user_id integer)
-IS 'Verifica se operatore e'' invitabile: attivo, con email, mai loggato. Ritorna JSONB {invitabile, motivo, email}.';
+IS 'Verifica se operatore e'' invitabile. Refactor §4.6.B.10: source of truth = identita_digitali (ruolo_applicativo=OPERATORE) invece del bridge legacy.';
 ```
 
 ---

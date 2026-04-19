@@ -14,69 +14,71 @@ CREATE OR REPLACE FUNCTION script.fn_check_azione_processo(p_auth_user_id intege
  STABLE
 AS $function$
 DECLARE
-  v_ruolo     anagrafiche.risorse_umane_auth_user.ruolo_sistema%TYPE;
-  v_abilitata config.user_override_azioni.abilitata%TYPE;
+    v_abilitata config.user_override_azioni.abilitata%TYPE;
 BEGIN
-  -- =========================================================
-  -- Scopo:
-  --   Verifica se un'azione di processo e' abilitata per
-  --   un utente. Funzione fn_check_*: puro boolean, no raise.
-  --
-  -- Catena:
-  --   1. ruolo_sistema (NULL/DISABILITATO → false, ADMIN → true)
-  --   2. Override utente azione (se presente e valido)
-  --   3. Profilo reparto azione (ereditato dall'UO)
-  --   4. Default → false (negata)
-  -- =========================================================
+    -- =========================================================
+    -- Scopo:
+    --   Verifica se un'azione di processo e' abilitata per
+    --   un utente. Funzione fn_check_*: puro boolean, no raise.
+    --
+    -- Catena (refactor §4.6.B.4 + §4.8):
+    --   1. Assenza identita OPERATORE attiva -> false
+    --   2. fn_is_super_admin -> true
+    --   3. Override utente azione (se valido)
+    --   4. Azione via fn_get_profili_accesso_applicabili
+    --      (AD_HOC prio 1 > REPARTO/PORTALE prio 2)
+    --   5. Default -> false (negata)
+    -- =========================================================
 
-  -- 1. Ruolo sistema
-  v_ruolo := script.fn_get_ruolo_sistema(p_auth_user_id);
+    -- 1. Identita OPERATORE attiva (helper DRY §4.6.B.0).
+    IF NOT script.fn_has_identita_attiva(
+               p_auth_user_id,
+               'OPERATORE'::config.ruolo_applicativo) THEN
+        RETURN false;
+    END IF;
 
-  IF v_ruolo IS NULL OR v_ruolo = 'DISABILITATO' THEN
+    -- 2. Super admin? Bypass totale.
+    IF script.fn_is_super_admin(p_auth_user_id) THEN
+        RETURN true;
+    END IF;
+
+    -- 3. Override utente azione (invariato)
+    SELECT uoa.abilitata
+      INTO v_abilitata
+      FROM config.user_override_azioni uoa
+      JOIN config.azioni_processo ap ON ap.id = uoa.azione_id
+     WHERE uoa.auth_user_id = p_auth_user_id
+       AND ap.permission_codename = p_permission_codename
+       AND (uoa.valido_dal IS NULL OR uoa.valido_dal <= CURRENT_DATE)
+       AND (uoa.valido_al  IS NULL OR uoa.valido_al  >= CURRENT_DATE);
+
+    IF FOUND THEN
+        RETURN v_abilitata;
+    END IF;
+
+    -- 4. Azione via bindings (§4.8 nuovo modello).
+    SELECT paz.abilitata
+      INTO v_abilitata
+      FROM script.fn_get_profili_accesso_applicabili(p_auth_user_id) h
+      JOIN config.profili_accesso_azioni paz
+        ON paz.profilo_accesso_id = h.profilo_accesso_id
+      JOIN config.azioni_processo ap
+        ON ap.id = paz.azione_id
+     WHERE ap.permission_codename = p_permission_codename
+     ORDER BY h.priorita
+     LIMIT 1;
+
+    IF FOUND THEN
+        RETURN v_abilitata;
+    END IF;
+
+    -- 5. Default sicuro
     RETURN false;
-  END IF;
-
-  IF v_ruolo = 'ADMIN' THEN
-    RETURN true;
-  END IF;
-
-  -- 2. Override utente azione (OPERATIVO)
-  SELECT uoa.abilitata
-    INTO v_abilitata
-    FROM config.user_override_azioni uoa
-    JOIN config.azioni_processo ap ON ap.id = uoa.azione_id
-   WHERE uoa.auth_user_id = p_auth_user_id
-     AND ap.permission_codename = p_permission_codename
-     AND (uoa.valido_dal IS NULL OR uoa.valido_dal <= CURRENT_DATE)
-     AND (uoa.valido_al  IS NULL OR uoa.valido_al  >= CURRENT_DATE);
-
-  IF FOUND THEN
-    RETURN v_abilitata;
-  END IF;
-
-  -- 3. Profilo reparto azione
-  SELECT pra.abilitata
-    INTO v_abilitata
-    FROM config.profili_reparto_azioni pra
-    JOIN config.azioni_processo ap ON ap.id = pra.azione_id
-    JOIN anagrafiche.risorse_umane_auth_user rau
-      ON rau.auth_user_id = p_auth_user_id
-    JOIN anagrafiche.risorse_umane ru
-      ON ru.id = rau.risorsa_umana_id
-   WHERE ru.unita_organizzativa_id = pra.unita_organizzativa_id
-     AND ap.permission_codename = p_permission_codename;
-
-  IF FOUND THEN
-    RETURN v_abilitata;
-  END IF;
-
-  -- 4. Default sicuro
-  RETURN false;
 END
 $function$
 
 COMMENT ON FUNCTION script.fn_check_azione_processo(p_auth_user_id integer, p_permission_codename character varying)
-IS 'Verifica se azione e'' abilitata: override utente → profilo reparto → negata.';
+IS 'Verifica se azione e'' abilitata per l''utente. Refactor §4.6.B.4 + §4.8: ramo ADMIN -> fn_is_super_admin; ramo DISABILITATO -> check identita OPERATORE attiva; azione via bindings generalizzato (fn_get_profili_accesso_applicabili, AD_HOC > REPARTO/PORTALE).';
 ```
 
 ---

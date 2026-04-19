@@ -13,6 +13,32 @@
 
 ---
 
+> **Evoluzione in corso — Multi-Face Auth (aprile 2026)**
+>
+> Questa guida descrive il modello attuale, centrato sul **dipendente interno**.
+> E' in corso di sviluppo un'estensione che generalizza il bridge verso `auth_user`
+> per supportare anche **clienti portale**, **fornitori portale** e **utenti del
+> negozio online**. I cambiamenti principali previsti:
+>
+> * Nuovo bridge generico `anagrafiche.identita_digitali` accanto a
+>   `risorse_umane_auth_user` (che diventera' un caso particolare)
+> * Regola **R4** ridisegnata: il vincolo "persona fisica pura" si sposta
+>   sul ruolo RIS_UMANA, non sul bridge
+> * Sync `auth_user.is_active` generalizzata per tutti i tipi di identita'
+> * Nuovi GUC PostgreSQL `app.current_identita_id`, `app.ruolo_applicativo`,
+>   `app.soggetto_ruolo_id`
+>
+> Questa guida resta **autoritativa per il codice in produzione**. I riferimenti
+> al nuovo modello verranno integrati fase per fase, man mano che le migrazioni
+> DB vengono applicate.
+>
+> Dettagli:
+>
+> * Guida architetturale: [architettura-multi-face-auth](/guide/architettura-multi-face-auth)
+> * Piano di sviluppo: [sviluppo-multi-face-auth](/dev/work-in-progress/sviluppo-multi-face-auth)
+
+---
+
 ## Introduzione
 
 In Zero ERP una **risorsa umana** e la rappresentazione di una persona che lavora per l'azienda: un dipendente, un consulente, un collaboratore. Non e un semplice record anagrafico — e l'identita operativa della persona all'interno del sistema.

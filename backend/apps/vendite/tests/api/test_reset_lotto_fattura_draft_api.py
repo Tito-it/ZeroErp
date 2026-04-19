@@ -74,11 +74,12 @@ class VenditeResetLottoFatturaDraftApiTests(JwtMockedApiTest):
     @patch("apps.core.api.permissions.save_user_cache")
     @patch("apps.core.api.permissions.load_user_cache", return_value=None)
     @patch("apps.core.services.permissions_resolver.PermissionResolver.check_azione", return_value=True)
-    @patch("apps.core.services.permissions_resolver.PermissionResolver.get_ruolo_sistema", return_value="OPERATIVO")
+    @patch("apps.core.services.permissions_resolver.PermissionResolver.get_ruolo_applicativo", return_value="OPERATORE")
+    @patch("apps.core.services.permissions_resolver.PermissionResolver.is_super_admin", return_value=False)
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate")
     @patch("apps.vendite.api.views.fn_reset_lotto_fattura_draft")
     def test_reset_lotto_fattura_draft_post_permission_allowed(
-        self, mocked_service, mock_auth, _mock_ruolo, mock_azione, _mock_load, _mock_save
+        self, mocked_service, mock_auth, _mock_ruolo, _mock_app, mock_azione, _mock_load, _mock_save
     ):
         user = Mock()
         user.id = 42
@@ -102,10 +103,11 @@ class VenditeResetLottoFatturaDraftApiTests(JwtMockedApiTest):
     @patch("apps.core.api.permissions.save_user_cache")
     @patch("apps.core.api.permissions.load_user_cache", return_value=None)
     @patch("apps.core.services.permissions_resolver.PermissionResolver.check_azione", return_value=False)
-    @patch("apps.core.services.permissions_resolver.PermissionResolver.get_ruolo_sistema", return_value="OPERATIVO")
+    @patch("apps.core.services.permissions_resolver.PermissionResolver.get_ruolo_applicativo", return_value="OPERATORE")
+    @patch("apps.core.services.permissions_resolver.PermissionResolver.is_super_admin", return_value=False)
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate")
     def test_reset_lotto_fattura_draft_post_permission_denied(
-        self, mock_auth, _mock_ruolo, mock_azione, _mock_load, _mock_save
+        self, mock_auth, _mock_ruolo, _mock_app, mock_azione, _mock_load, _mock_save
     ):
         user = Mock()
         user.id = 42

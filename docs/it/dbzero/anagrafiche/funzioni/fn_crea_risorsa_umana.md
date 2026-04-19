@@ -17,39 +17,18 @@ DECLARE
     v_ru_id  anagrafiche.risorse_umane.id%TYPE;
 BEGIN
     -- =========================================================
-    -- Scopo:
-    --   Crea una risorsa umana con bridge auth_user opzionale.
-    --   Crea/recupera automaticamente il ruolo RIS_UMANA
-    --   via fn_get_or_create_soggetto_ruolo.
+    -- Scopo (refactor §4.6.D.3):
+    --   Crea risorsa_umana + bridge legacy RUA. Il trigger
+    --   trgfn_risorse_umane_auth_user_sync_identita (§4.6.D.4)
+    --   scatta AFTER INSERT su RUA e propaga a
+    --   identita_digitali OPERATORE + binding SUPER_ADMIN
+    --   (se ruolo_sistema='ADMIN'). Al cutover §4.6.H la
+    --   propagazione verra' fatta direttamente qui.
     --
-    -- Parametri obbligatori:
-    --   p_soggetto_id:  UUID del soggetto (deve esistere)
-    --   p_qualifica_id: qualifica (deve essere attiva)
-    --
-    -- Parametri opzionali:
-    --   p_unita_organizzativa_id: UO (se fornita, deve
-    --     essere attiva)
-    --   p_valido_dal:    inizio validita' (default oggi)
-    --   p_valido_al:     fine validita' (default NULL)
-    --   p_auth_user_id:  se fornito, crea bridge
-    --     risorse_umane_auth_user (trigger guard PF)
-    --   p_ruolo_sistema: ruolo (default OPERATIVO)
-    --
-    -- Restituisce:
-    --   risorse_umane.id della risorsa creata
-    --
-    -- Trigger coinvolti:
-    --   trgfn_risorse_umane_guard_ruolo (verifica RIS_UMANA)
-    --   trgfn_risorse_umane_auth_user_guard_persona_fisica
-    --     (CF NOT NULL, PIVA IS NULL)
-    --   trgfn_risorse_umane_auth_user_sync_active
-    --     (sincronizza auth_user.is_active)
+    -- Parametri (invariati): vedi COMMENT.
     -- =========================================================
 
-    -- =============================================================
     -- Validazione parametri obbligatori
-    -- =============================================================
-
     IF p_soggetto_id IS NULL THEN
         PERFORM script.fn_log_and_raise_error(
             'database', 'anagrafiche.fn_crea_risorsa_umana',
@@ -68,11 +47,7 @@ BEGIN
         );
     END IF;
 
-    -- =============================================================
     -- Guard prerequisiti
-    -- =============================================================
-
-    -- Qualifica attiva
     IF NOT EXISTS (
         SELECT 1 FROM config.qualifiche
          WHERE id = p_qualifica_id AND attivo = true
@@ -85,7 +60,6 @@ BEGIN
         );
     END IF;
 
-    -- UO attiva (se fornita)
     IF p_unita_organizzativa_id IS NOT NULL THEN
         IF NOT EXISTS (
             SELECT 1 FROM config.unita_organizzative
@@ -101,7 +75,6 @@ BEGIN
         END IF;
     END IF;
 
-    -- Auth user valido (se fornito)
     IF p_auth_user_id IS NOT NULL THEN
         IF NOT EXISTS (
             SELECT 1 FROM django.auth_user WHERE id = p_auth_user_id
@@ -115,22 +88,12 @@ BEGIN
         END IF;
     END IF;
 
-    -- =============================================================
-    -- Step 1: Crea/recupera soggetto_ruolo RIS_UMANA
-    -- fn_get_or_create_soggetto_ruolo gestisce concorrenza
-    -- e validazione del soggetto.
-    -- =============================================================
-
+    -- Step 1: soggetto_ruolo RIS_UMANA
     SELECT script.fn_get_or_create_soggetto_ruolo(
         p_soggetto_id, 'RIS_UMANA'
     ) INTO v_sr_id;
 
-    -- =============================================================
-    -- Step 2: Creazione risorsa umana
-    -- Trigger trgfn_risorse_umane_guard_ruolo verifica
-    -- coerenza soggetto_ruolo / tipo ruolo.
-    -- =============================================================
-
+    -- Step 2: risorsa umana
     INSERT INTO anagrafiche.risorse_umane (
         soggetto_ruolo_id, soggetto_id, qualifica_id,
         unita_organizzativa_id, valido_dal, valido_al, attivo
@@ -141,14 +104,13 @@ BEGIN
     )
     RETURNING id INTO v_ru_id;
 
-    -- =============================================================
-    -- Step 3: Bridge auth_user (opzionale)
-    -- Solo se p_auth_user_id fornito.
-    -- Trigger trgfn_risorse_umane_auth_user_guard_persona_fisica
-    -- verifica: CF NOT NULL e PIVA IS NULL.
-    -- Trigger sync_active imposta auth_user.is_active.
-    -- =============================================================
-
+    -- Step 3: Bridge legacy RUA. Il trigger-ponte §4.6.D.4
+    -- (trgfn_risorse_umane_auth_user_sync_identita) propaga
+    -- AFTER INSERT su identita_digitali OPERATORE (UPSERT)
+    -- e crea il binding SUPER_ADMIN se p_ruolo_sistema='ADMIN'.
+    -- NOTA: questo evita la collisione UNIQUE
+    -- uq_identita_digitali_auth_user che si avrebbe con
+    -- doppio INSERT esplicito + trigger-ponte.
     IF p_auth_user_id IS NOT NULL THEN
         INSERT INTO anagrafiche.risorse_umane_auth_user (
             risorsa_umana_id, auth_user_id, ruolo_sistema, attivo
@@ -161,7 +123,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION anagrafiche.fn_crea_risorsa_umana(p_soggetto_id uuid, p_qualifica_id integer, p_unita_organizzativa_id integer, p_valido_dal date, p_valido_al date, p_auth_user_id integer, p_ruolo_sistema config.ruolo_sistema)
-IS 'Building block: crea risorsa_umana + bridge auth_user (opzionale). Usa fn_get_or_create_soggetto_ruolo(RIS_UMANA). Obbligatori: p_soggetto_id, p_qualifica_id (DEFAULT NULL, guard nel body). Se p_auth_user_id fornito, crea bridge con trigger guard PF e sync is_active. Riusabile da orchestratori.';
+IS 'Building block: crea risorsa_umana + bridge legacy RUA. Refactor §4.6.D.3: la propagazione a identita_digitali + binding SUPER_ADMIN avviene via trigger-ponte §4.6.D.4. Firma esterna invariata. Al cutover §4.6.H la funzione tornera'' a scrivere direttamente su identita_digitali.';
 ```
 
 ---

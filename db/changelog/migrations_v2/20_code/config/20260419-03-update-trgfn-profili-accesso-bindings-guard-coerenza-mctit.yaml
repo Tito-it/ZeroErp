@@ -1,0 +1,201 @@
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/config/20260419-03-update-trgfn-profili-accesso-bindings-guard-coerenza-mctit.yaml
+
+  - changeSet:
+      id: 20260419-03-update-trgfn-profili-accesso-bindings-guard-coerenza
+      author: mctit
+      runOnChange: true
+      validCheckSum: [ANY]
+      comment: >
+        Aggiorna guard trgfn_profili_accesso_bindings_guard_coerenza per
+        gestire il nuovo tipo di profilo SUPER_ADMIN (§4.6.A.3 WIP
+        multi-face-auth). Regola: SUPER_ADMIN bindable **solo** su
+        identita_digitale_id (privilegio personale, mai di reparto ne'
+        di ruolo applicativo). Logica simmetrica a AD_HOC ma distinta per
+        tracciabilita' degli errori (messaggio specifico). L'identita deve
+        esistere e questo e' gia' garantito dalla FK
+        fk_profili_accesso_bindings_identita.
+        Questo changeset NON cambia indici ne' CHECK: la XOR esistente su
+        (uo, identita, ruolo) continua a imporre "una sola colonna NOT NULL";
+        il guard tipo_profilo<->colonna si allarga semplicemente a SUPER_ADMIN.
+      preConditions:
+        - onFail: HALT
+        - and:
+          - tableExists:
+              schemaName: config
+              tableName: profili_accesso_bindings
+          - sqlCheck:
+              expectedResult: 1
+              sql: |
+                SELECT COUNT(*)
+                  FROM pg_enum e
+                  JOIN pg_type t ON t.oid = e.enumtypid
+                  JOIN pg_namespace n ON n.oid = t.typnamespace
+                 WHERE n.nspname = 'config'
+                   AND t.typname = 'tipo_profilo_accesso'
+                   AND e.enumlabel = 'SUPER_ADMIN';
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Trigger function aggiornata per dispatch SUPER_ADMIN.
+              -- SUPER_ADMIN segue la stessa regola di AD_HOC
+              -- (richiede identita_digitale_id) ma con messaggio errore
+              -- dedicato per diagnostica chiara.
+              CREATE OR REPLACE FUNCTION config.trgfn_profili_accesso_bindings_guard_coerenza()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  -- %TYPE sulle colonne sorgente (policy ZeroErp).
+                  v_tipo_profilo config.profili_accesso.tipo%TYPE;
+              BEGIN
+                  -- ------------------------------------------------------------
+                  -- Trigger function: guard coerenza tipo_profilo <-> tipo_binding
+                  -- su config.profili_accesso_bindings (fase a10, BEFORE INSERT/UPDATE).
+                  --
+                  -- Pre-condizioni:
+                  --   - Il CHECK chk_profili_accesso_bindings_xor garantisce
+                  --     che esattamente una tra (uo, identita, ruolo) sia NOT NULL
+                  --     prima che il trigger venga eseguito.
+                  --
+                  -- Logica:
+                  --   1. Recupera tipo del profilo referenziato.
+                  --   2. Verifica che la colonna valorizzata corrisponda al tipo:
+                  --      REPARTO      => unita_organizzativa_id
+                  --      PORTALE      => ruolo_applicativo
+                  --      AD_HOC       => identita_digitale_id
+                  --      SUPER_ADMIN  => identita_digitale_id (§4.6.A.3)
+                  -- ------------------------------------------------------------
+
+                  -- 1) Recupero tipo del profilo header.
+                  SELECT pa.tipo
+                    INTO v_tipo_profilo
+                    FROM config.profili_accesso pa
+                   WHERE pa.id = NEW.profilo_accesso_id;
+
+                  IF NOT FOUND THEN
+                      -- Caso limite: la FK lo impedirebbe, fail-fast esplicito.
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          TG_NAME,
+                          'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object(
+                              'table', TG_TABLE_NAME,
+                              'profilo_accesso_id', NEW.profilo_accesso_id,
+                              'nota', 'profilo_accesso_id non trovato in config.profili_accesso'
+                          ),
+                          NULL::uuid,
+                          NEW.profilo_accesso_id::text
+                      );
+                  END IF;
+
+                  -- 2) Dispatch per tipo profilo.
+                  CASE v_tipo_profilo
+                      WHEN 'REPARTO' THEN
+                          IF NEW.unita_organizzativa_id IS NULL THEN
+                              PERFORM script.fn_log_and_raise_error(
+                                  'database',
+                                  TG_NAME,
+                                  'E_PROFILO_ACCESSO_BINDING_INCOERENTE',
+                                  jsonb_build_object(
+                                      'table', TG_TABLE_NAME,
+                                      'profilo_accesso_id', NEW.profilo_accesso_id,
+                                      'tipo_profilo', v_tipo_profilo,
+                                      'nota', 'Profilo REPARTO richiede unita_organizzativa_id'
+                                  ),
+                                  NULL::uuid,
+                                  NEW.profilo_accesso_id::text
+                              );
+                          END IF;
+
+                      WHEN 'PORTALE' THEN
+                          IF NEW.ruolo_applicativo IS NULL THEN
+                              PERFORM script.fn_log_and_raise_error(
+                                  'database',
+                                  TG_NAME,
+                                  'E_PROFILO_ACCESSO_BINDING_INCOERENTE',
+                                  jsonb_build_object(
+                                      'table', TG_TABLE_NAME,
+                                      'profilo_accesso_id', NEW.profilo_accesso_id,
+                                      'tipo_profilo', v_tipo_profilo,
+                                      'nota', 'Profilo PORTALE richiede ruolo_applicativo'
+                                  ),
+                                  NULL::uuid,
+                                  NEW.profilo_accesso_id::text
+                              );
+                          END IF;
+
+                      WHEN 'AD_HOC' THEN
+                          IF NEW.identita_digitale_id IS NULL THEN
+                              PERFORM script.fn_log_and_raise_error(
+                                  'database',
+                                  TG_NAME,
+                                  'E_PROFILO_ACCESSO_BINDING_INCOERENTE',
+                                  jsonb_build_object(
+                                      'table', TG_TABLE_NAME,
+                                      'profilo_accesso_id', NEW.profilo_accesso_id,
+                                      'tipo_profilo', v_tipo_profilo,
+                                      'nota', 'Profilo AD_HOC richiede identita_digitale_id'
+                                  ),
+                                  NULL::uuid,
+                                  NEW.profilo_accesso_id::text
+                              );
+                          END IF;
+
+                      WHEN 'SUPER_ADMIN' THEN
+                          -- SUPER_ADMIN e' un privilegio personale: sempre
+                          -- bindato a una singola identita, mai a reparto
+                          -- ne' a ruolo applicativo. Questo garantisce
+                          -- tracciabilita' individuale del bypass permessi.
+                          IF NEW.identita_digitale_id IS NULL THEN
+                              PERFORM script.fn_log_and_raise_error(
+                                  'database',
+                                  TG_NAME,
+                                  'E_PROFILO_ACCESSO_BINDING_INCOERENTE',
+                                  jsonb_build_object(
+                                      'table', TG_TABLE_NAME,
+                                      'profilo_accesso_id', NEW.profilo_accesso_id,
+                                      'tipo_profilo', v_tipo_profilo,
+                                      'nota', 'Profilo SUPER_ADMIN richiede identita_digitale_id (privilegio personale)'
+                                  ),
+                                  NULL::uuid,
+                                  NEW.profilo_accesso_id::text
+                              );
+                          END IF;
+
+                      ELSE
+                          -- Nuovo valore dell'enum tipo_profilo_accesso senza
+                          -- regola qui: fail-fast esplicito (anti-bypass).
+                          PERFORM script.fn_log_and_raise_error(
+                              'database',
+                              TG_NAME,
+                              'E_PROFILO_ACCESSO_TIPO_NON_GESTITO',
+                              jsonb_build_object(
+                                  'table', TG_TABLE_NAME,
+                                  'profilo_accesso_id', NEW.profilo_accesso_id,
+                                  'tipo_profilo', v_tipo_profilo,
+                                  'nota', 'Tipo profilo sconosciuto al guard di coerenza bindings'
+                              ),
+                              NULL::uuid,
+                              v_tipo_profilo::text
+                          );
+                  END CASE;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION config.trgfn_profili_accesso_bindings_guard_coerenza() IS
+                  'Guard a10 BEFORE INSERT/UPDATE su config.profili_accesso_bindings: '
+                  'verifica coerenza tra tipo del profilo e tipo del binding '
+                  '(REPARTO/PORTALE/AD_HOC/SUPER_ADMIN). Si somma al CHECK '
+                  'chk_profili_accesso_bindings_xor che impone una sola colonna NOT NULL.';
+      rollback:
+        - sql:
+            sql: |
+              -- Rollback: ripristina la versione precedente del guard
+              -- (senza dispatch SUPER_ADMIN). Richiede ri-esecuzione del
+              -- changeset 20260418-40 successiva a questo rollback.
+              DROP FUNCTION IF EXISTS config.trgfn_profili_accesso_bindings_guard_coerenza() CASCADE;

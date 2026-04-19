@@ -1,0 +1,89 @@
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260419-15-update-fn-get-emittenti-scope-sr-ids-mctit.yaml
+
+  - changeSet:
+      id: 20260419-15-update-fn-get-emittenti-scope-sr-ids
+      author: mctit
+      runOnChange: true
+      validCheckSum: [ANY]
+      comment: >
+        Refactor script.fn_get_emittenti_scope_sr_ids per usare il nuovo
+        modello multi-face auth (§4.6.B.6 WIP). Ramo ADMIN -> fn_is_super_admin
+        (return NULL = nessuna restrizione); ramo DISABILITATO -> check
+        identita OPERATORE attiva (return array vuoto = no access).
+        Mantiene semantica (NULL=tutto, []=nessuno, array=whitelist).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT COUNT(*) FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script'
+                 AND p.proname = 'fn_is_super_admin';
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_get_emittenti_scope_sr_ids(
+                  p_auth_user_id integer
+              )
+              RETURNS bigint[]
+              LANGUAGE plpgsql
+              STABLE
+              AS $function$
+              DECLARE
+                  v_ids bigint[];
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Restituisce i soggetto_ruolo_id degli emittenti fiscali
+                  --   autorizzati per un utente. Le tabelle vendite usano
+                  --   emittente_soggetto_ruolo_id (FK a soggetti_ruoli),
+                  --   non emittente_fiscale_id: serve questa mappatura.
+                  --
+                  -- Semantica:
+                  --   NULL             = nessuna restrizione (vede tutto)
+                  --   '{}'::bigint[]   = nessun accesso
+                  --   array di ID      = limitato
+                  --
+                  -- Catena (refactor §4.6.B.6):
+                  --   1. Assenza identita OPERATORE attiva -> '{}' (no access)
+                  --   2. fn_is_super_admin -> NULL (nessuna restrizione)
+                  --   3. OPERATIVO: whitelist (NULL se vuota = all)
+                  -- =========================================================
+
+                  -- 1. Identita OPERATORE attiva (helper DRY §4.6.B.0).
+                  IF NOT script.fn_has_identita_attiva(
+                             p_auth_user_id,
+                             'OPERATORE'::config.ruolo_applicativo) THEN
+                      RETURN '{}'::bigint[];
+                  END IF;
+
+                  -- 2. Super admin? Nessuna restrizione.
+                  IF script.fn_is_super_admin(p_auth_user_id) THEN
+                      RETURN NULL;
+                  END IF;
+
+                  -- 3. OPERATIVO: mappa whitelist a soggetto_ruolo_id
+                  SELECT array_agg(ef.soggetto_ruolo_id)
+                    INTO v_ids
+                    FROM config.user_emittenti_fiscali uef
+                    JOIN anagrafiche.emittenti_fiscali ef
+                      ON ef.id = uef.emittente_fiscale_id
+                   WHERE uef.auth_user_id = p_auth_user_id;
+
+                  -- NULL (whitelist vuota) = nessuna restrizione
+                  RETURN v_ids;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_get_emittenti_scope_sr_ids(integer) IS
+                  'Mappa emittenti autorizzati a soggetto_ruolo_id per query vendite. '
+                  'Refactor §4.6.B.6: identita OPERATORE mancante -> [] (no access); '
+                  'SUPER_ADMIN -> NULL (nessuna restrizione); altrimenti whitelist '
+                  '(NULL se vuota).';
+      rollback:
+        - sql:
+            sql: DROP FUNCTION IF EXISTS script.fn_get_emittenti_scope_sr_ids(integer);

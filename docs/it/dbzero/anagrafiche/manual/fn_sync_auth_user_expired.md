@@ -2,9 +2,14 @@
 
 > 👀 **Vedi anche**
 >
+Architettura di riferimento:
+>
+[Architettura Multi-Face Auth](/guide/architettura-multi-face-auth)
+>
 **Approfondimento tabelle:**
 >
-[anagrafiche.risorse_umane](/dbzero/anagrafiche/tabelle/risorse_umane)
+[anagrafiche.identita_digitali](/dbzero/anagrafiche/tabelle/identita_digitali)
+> [anagrafiche.risorse_umane](/dbzero/anagrafiche/tabelle/risorse_umane)
 > [anagrafiche.risorse_umane_auth_user](/dbzero/anagrafiche/tabelle/risorse_umane_auth_user)
 >
 **Approfondimento funzioni:**
@@ -13,34 +18,69 @@
 
 ---
 ### 🎯 Scopo Principale
-(latest review 10-03-2026)
-La funzione **`anagrafiche.fn_sync_auth_user_expired()`** esegue una
-sincronizzazione batch degli utenti Django collegati a risorse umane con
-finestra di validita' scaduta.
+(latest review 18-04-2026)
 
-Serve a coprire il caso in cui una risorsa diventi non valida per semplice
-decorrenza della data, senza che avvenga un `UPDATE` esplicito sulla tabella.
+La funzione **`anagrafiche.fn_sync_auth_user_expired()`** esegue una
+sincronizzazione batch degli utenti Django collegati a bridge auth con
+finestra di validità scaduta.
+
+Copre il caso in cui un'identità (o una risorsa umana) diventi non valida
+per semplice decorrenza della data, senza che avvenga un `UPDATE` esplicito
+che triggeri i trigger reattivi.
+
+---
+
+### Estensione §4.5 multi-face-auth
+
+Con la generalizzazione del modello (§4.5.5 WIP multi-face-auth), la
+funzione ora copre **entrambi i modelli**:
+
+* **Ramo legacy** (`risorse_umane`): risorse umane con `valido_al <
+  CURRENT_DATE` che hanno un collegamento in `risorse_umane_auth_user`.
+* **Ramo nuovo** (`identita_digitali`): qualsiasi identità attiva (tutti i
+  ruoli applicativi: operatori, clienti portale, fornitori portale, shop
+  customer, api_client) con `valido_al < CURRENT_DATE`.
+
+Le due sorgenti sono combinate via `UNION` e poi filtrate con
+`SELECT DISTINCT auth_user_id` per evitare double-sync quando lo stesso
+utente è presente in entrambi i modelli durante la transizione.
 
 ---
 
 ### Regole applicate
 
-* Cerca le righe di `anagrafiche.risorse_umane` con `valido_al < CURRENT_DATE`.
-* Considera solo le risorse che hanno un collegamento in
-  `anagrafiche.risorse_umane_auth_user`.
-* Considera solo gli `auth_user` ancora attivi.
-* Per ogni risorsa trovata chiama
-  `anagrafiche.fn_sync_auth_user_is_active(risorsa_umana_id)`.
-* Ritorna il numero di utenti effettivamente aggiornati.
-* In ambienti senza schema `django`, non esegue nulla e ritorna `0`.
+* La query interna seleziona solo `auth_user` ancora `is_active = true`
+  (gli utenti già disattivati non serve re-sincronizzarli).
+* Per ogni `auth_user_id` trovato chiama
+  `anagrafiche.fn_sync_auth_user_is_active(auth_user_id)` che applica la
+  logica fail-closed (fuori finestra → `false`).
+* Incrementa il contatore solo se la funzione ritorna `true` (ovvero se
+  `auth_user.is_active` è stato effettivamente modificato).
+* In ambienti CI senza schema `django`, la funzione esce subito con `0`.
+
+---
+
+### Output
+
+Ritorna `integer` — numero di utenti effettivamente disattivati.
+
+---
+
+### Uso previsto
+
+* **pgAgent**: job giornaliero schedulato (tipicamente alle prime ore del
+  mattino) via `db/changelog/migrations_v2/85_pgagent/`.
+* **Management command Django**: `python manage.py sync_auth_user_active`
+  per esecuzioni manuali o invocate da pipeline di manutenzione.
 
 ---
 
 ### Ruolo nel processo
 
-La funzione e' pensata come job periodico di riallineamento. Non sostituisce i
-trigger reattivi, ma li completa per il caso di scadenza "overnight" della
-validita' temporale della risorsa umana.
+La funzione completa il sistema di propagazione dello stato di login: i
+trigger reattivi gestiscono i cambi espliciti, questa funzione gestisce i
+cambi temporali impliciti (scadenza overnight). Con l'estensione del ramo
+`identita_digitali`, copre ora anche portali clienti/fornitori e shop.
 
 ---
 

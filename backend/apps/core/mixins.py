@@ -28,8 +28,8 @@ class EmittenteFiscaleScopeMixin:
     emittente_field: str | None = None
 
     # Scopo: Filtra il queryset base per scope emittente fiscale.
-    # Superuser e ADMIN non vengono filtrati. Se l'utente non ha
-    # righe in user_emittenti_fiscali, vede tutto.
+    # Superuser e SUPER_ADMIN non vengono filtrati. Se l'utente non
+    # ha righe in user_emittenti_fiscali, vede tutto.
     def get_queryset(self) -> QuerySet[Any]:
         qs: QuerySet[Any] = super().get_queryset()  # type: ignore[misc]
         user = self.request.user  # type: ignore[attr-defined]
@@ -37,12 +37,11 @@ class EmittenteFiscaleScopeMixin:
         if user.is_superuser or self.emittente_field is None:
             return qs
 
-        # ADMIN ruolo_sistema: nessun filtro scope
+        # SUPER_ADMIN bypass: nessun filtro scope
         cache: dict[str, Any] = getattr(
             self.request, "_zeroerp_perms_cache", {}  # type: ignore[attr-defined]
         )
-        ruolo = PermissionResolver.get_ruolo_sistema(user, cache=cache)
-        if ruolo == "ADMIN":
+        if PermissionResolver.is_super_admin(user, cache=cache):
             return qs
 
         emittenti_ids = PermissionResolver.get_emittenti_ids(user, cache=cache)

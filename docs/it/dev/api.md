@@ -145,10 +145,15 @@ apps/<dominio>/
 
 ## Base classes per view
 
-Due base class in `apps/core/api/base_views.py` eliminano il boilerplate auth/permission:
+Quattro base class in `apps/core/api/base_views.py` eliminano il boilerplate auth/permission:
 
 ```python
-from apps.core.api.base_views import DomainAPIView, AdminAPIView
+from apps.core.api.base_views import (
+    AdminAPIView,
+    DomainAPIView,
+    PortaleAPIView,
+    ShopAPIView,
+)
 
 # Per endpoint di dominio (anagrafiche, vendite, pratiche...)
 class ToponomasticaView(DomainAPIView):
@@ -164,12 +169,22 @@ class UtentiListView(AdminAPIView):
 
     def get(self, request): ...
     def post(self, request): ...
+
+# Per endpoint del portale clienti/fornitori (/api/portale/*)
+class PortaleFattureListView(PortaleAPIView):
+    def get(self, request): ...
+
+# Per endpoint del negozio online (/api/shop/*, anche pubblici)
+class ShopCatalogoView(ShopAPIView):
+    def get(self, request): ...
 ```
 
 | Base class | Auth | Permessi | Uso |
 | --- | --- | --- | --- |
 | `DomainAPIView` | JWT | `ZeroERPPermission` + `area_funzionale` | Endpoint di dominio |
-| `AdminAPIView` | JWT | `IsAdminZeroERP` (check diretto ruolo_sistema) | Amm. Software |
+| `AdminAPIView` | JWT | `IsAdminZeroERP` (check binding `SUPER_ADMIN`) | Amm. Software |
+| `PortaleAPIView` | JWT | `PortaleBasePermission` (`ruolo_applicativo ∈ {CLIENTE_PORTALE, FORNITORE_PORTALE}`) | Portale clienti/fornitori |
+| `ShopAPIView` | JWT opzionale | `ShopBasePermission` (anonimo oppure `SHOP_CUSTOMER`) | Negozio online |
 
 ### Attributi di classe
 
@@ -180,10 +195,16 @@ class UtentiListView(AdminAPIView):
 | `post_permission` | Codename azione di processo (per comandi specifici) | No |
 | `skip_area_check` | Salta il check area — ammesso solo per endpoint cross-dominio (profilo, sessioni, lookup) | No |
 
+`PortaleAPIView` e `ShopAPIView` dichiarano `skip_area_check = True`
+implicitamente: il set di endpoint portale/shop e' ristretto e non passa
+per la catena livello area. Lo scope dati e' applicato a livello DB via
+`scope_policy` + RLS (vedi `docs/it/guide/architettura-multi-face-auth.md`).
+
 ### Pattern Dual-Class (ELIMINATO)
 
 Il pattern Base + V1 e' stato eliminato il 15 marzo 2026.
-Tutti i moduli usano ora `DomainAPIView` o `AdminAPIView` direttamente:
+Tutti i moduli usano ora `DomainAPIView`, `AdminAPIView`, `PortaleAPIView`
+o `ShopAPIView` direttamente:
 
 ```python
 class ApiRunLottoPipeline(DomainAPIView):
@@ -195,7 +216,7 @@ class ApiRunLottoPipeline(DomainAPIView):
 
 Non creare classi V1 per nuovi endpoint.
 
-La risoluzione permessi segue la catena: superuser bypass → ruolo_sistema → azione processo → livello area/oggetto CRUD. Vedi `apps/core/api/permissions.py`.
+La risoluzione permessi segue la catena: superuser bypass → `ruolo_applicativo = DISABILITATO` → bypass `SUPER_ADMIN` → azione processo → livello area/oggetto CRUD. Vedi `apps/core/api/permissions.py`.
 
 ---
 
@@ -440,6 +461,22 @@ Endpoint schema:
 Tutte le API canoniche sotto `/api/v1/*`. Le route legacy sono disabilitate di default
 (`DJANGO_API_LEGACY_ROUTES_ENABLED=0`).
 
+### Namespace per tipo di utente (multi-face auth)
+
+Il refactor multi-face auth (WIP `sviluppo-multi-face-auth.md`) introduce
+la distinzione formale tra namespace per tipo di consumatore:
+
+| Namespace | Base view | Chi accede | Stato |
+| --- | --- | --- | --- |
+| `/api/v1/<dominio>/` | `DomainAPIView` / `AdminAPIView` | Operatori interni (dipendenti, ruolo_applicativo=OPERATORE) | **Attivo** |
+| `/api/v1/portale/` | `PortaleAPIView` | Clienti e fornitori del portale | **In sviluppo** (Stage C) |
+| `/api/v1/shop/` | `ShopAPIView` | Negozio online (pubblico + SHOP_CUSTOMER) | **In sviluppo** (Stage D) |
+
+Le base class `PortaleAPIView` / `ShopAPIView` sono gia' disponibili in
+`apps/core/api/base_views.py`. Il routing effettivo dei due namespace
+verra' aggiunto in PR-B (portale) e PR-C (shop). Vedi
+[architettura-multi-face-auth](/guide/architettura-multi-face-auth).
+
 ### Convenzione URL
 
 | Tipo              | Pattern                                              | Esempio                                    |
@@ -477,11 +514,45 @@ Per i building block backend riutilizzabili (helpers, services, repository), con
 | Refresh            | `POST /api/v1/auth/token/refresh/` — rinnovo                                 |
 | Permission class   | `ZeroERPPermission` — risoluzione centralizzata                              |
 | Superuser          | Bypass totale                                                                |
-| Ruolo ADMIN        | Bypass dopo check `ruolo_sistema`                                            |
-| Ruolo DISABILITATO | Rifiuto immediato                                                            |
+| SUPER_ADMIN        | Bypass dopo check binding profilo 9100 via `script.fn_is_super_admin`        |
+| DISABILITATO       | Rifiuto immediato su `ruolo_applicativo = DISABILITATO`                      |
 | Azione processo    | Verificata se la view dichiara `post_permission` / `get_permission`          |
 | CRUD standard      | Livello area/oggetto (`TUTTO`, `LETTURA`, `BLOCCATO`)                        |
 | Scope emittente    | Filtra i dati per emittente fiscale autorizzato (vedi sotto)                 |
+
+### Identita utente: `ruolo_applicativo` e `SUPER_ADMIN`
+
+Il vecchio enum `ruolo_sistema` (ADMIN / OPERATIVO / DISABILITATO) e'
+stato sostituito dal refactor multi-face auth con:
+
+* `ruolo_applicativo` — categoria dell'identita' digitale
+  (`OPERATORE`, `CLIENTE_PORTALE`, `FORNITORE_PORTALE`, `SHOP_CUSTOMER`,
+  `API_CLIENT`, `DISABILITATO`). Letto via
+  `PermissionResolver.get_ruolo_applicativo(user)` (GUC-first).
+* `SUPER_ADMIN` — privilegio di bypass totale, bindato sulla singola
+  identita' via `config.profili_accesso_bindings` (profilo id 9100).
+  Letto via `PermissionResolver.is_super_admin(user)`.
+
+La mapping legacy ricostruito da `/permessi-effettivi/`:
+`SUPER_ADMIN -> "ADMIN"`; `ruolo_applicativo=DISABILITATO -> "DISABILITATO"`;
+altrimenti `-> "OPERATIVO"`.
+
+### Propagazione identita' al DB (GUC)
+
+Al login e su ogni request JWT, `JwtAuditAuthentication` propaga
+5 GUC di sessione PostgreSQL per audit e RLS:
+
+| GUC | Valore |
+| --- | --- |
+| `app.jwt_user` | username Django |
+| `app.current_user_id` | `auth_user.id` |
+| `app.current_identita_id` | `identita_digitali.id` dell'identita attiva |
+| `app.ruolo_applicativo` | `OPERATORE` / `CLIENTE_PORTALE` / ... |
+| `app.soggetto_ruolo_id` | `soggetti_ruoli.id` dell'identita' |
+
+Invariante "tutto o niente": i 3 GUC di identita' sono popolati insieme
+o restano stringa vuota. Vedi
+`docs/it/guide/risorse-umane-e-accessi.md` sezione GUC.
 
 ### Scope emittente
 

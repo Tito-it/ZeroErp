@@ -1,0 +1,102 @@
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260419-14-update-fn-check-user-emittente-scope-mctit.yaml
+
+  - changeSet:
+      id: 20260419-14-update-fn-check-user-emittente-scope
+      author: mctit
+      runOnChange: true
+      validCheckSum: [ANY]
+      comment: >
+        Refactor script.fn_check_user_emittente_scope per usare il nuovo
+        modello multi-face auth (§4.6.B.5 WIP). Regole aggiornate:
+          - p_auth_user_id NULL -> true (job batch, nessun filtro)
+          - fn_is_super_admin -> true (vede tutto)
+          - Assenza identita OPERATORE attiva -> false (utente disabilitato
+             o non piu' operatore: non puo' accedere a emittenti)
+          - Whitelist vuota -> true (nessuna restrizione)
+          - Whitelist popolata -> match specifico
+        Mantiene firma e tipo boolean.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT COUNT(*) FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script'
+                 AND p.proname = 'fn_is_super_admin';
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_check_user_emittente_scope(
+                  p_auth_user_id          integer,
+                  p_emittente_fiscale_id  bigint
+              )
+              RETURNS boolean
+              LANGUAGE plpgsql
+              STABLE
+              AS $function$
+              DECLARE
+                  v_cnt integer;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Verifica se un utente ha accesso a uno specifico
+                  --   emittente fiscale. Usata in trigger defense-in-depth
+                  --   su tabelle operative (fatture, ordini, pagamenti).
+                  --
+                  -- Regole (refactor §4.6.B.5):
+                  --   1. p_auth_user_id NULL -> true (job batch)
+                  --   2. fn_is_super_admin -> true (vede tutto)
+                  --   3. Assenza identita OPERATORE attiva -> false
+                  --      (defensive: utente disabilitato non accede)
+                  --   4. Whitelist vuota -> true (nessuna restrizione)
+                  --   5. Whitelist popolata -> EXISTS match
+                  -- =========================================================
+
+                  -- 1. Job batch (nessun utente)
+                  IF p_auth_user_id IS NULL THEN
+                      RETURN true;
+                  END IF;
+
+                  -- 2. Super admin? Bypass totale.
+                  IF script.fn_is_super_admin(p_auth_user_id) THEN
+                      RETURN true;
+                  END IF;
+
+                  -- 3. Identita OPERATORE attiva (helper DRY §4.6.B.0).
+                  IF NOT script.fn_has_identita_attiva(
+                             p_auth_user_id,
+                             'OPERATORE'::config.ruolo_applicativo) THEN
+                      RETURN false;
+                  END IF;
+
+                  -- 4. Conta righe whitelist
+                  SELECT count(*)
+                    INTO v_cnt
+                    FROM config.user_emittenti_fiscali uef
+                   WHERE uef.auth_user_id = p_auth_user_id;
+
+                  IF v_cnt = 0 THEN
+                      RETURN true;  -- nessuna restrizione
+                  END IF;
+
+                  -- 5. Verifica match specifico
+                  RETURN EXISTS (
+                      SELECT 1
+                        FROM config.user_emittenti_fiscali uef
+                       WHERE uef.auth_user_id         = p_auth_user_id
+                         AND uef.emittente_fiscale_id = p_emittente_fiscale_id
+                  );
+              END
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_check_user_emittente_scope(integer, bigint) IS
+                  'Verifica accesso utente a emittente fiscale. Refactor §4.6.B.5: '
+                  'NULL user/SUPER_ADMIN -> true; identita OPERATORE mancante -> false; '
+                  'whitelist vuota -> true; altrimenti match EXISTS.';
+      rollback:
+        - sql:
+            sql: DROP FUNCTION IF EXISTS script.fn_check_user_emittente_scope(integer, bigint);

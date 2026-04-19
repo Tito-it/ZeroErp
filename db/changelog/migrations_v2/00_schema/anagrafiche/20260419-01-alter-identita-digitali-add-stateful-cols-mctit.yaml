@@ -1,0 +1,75 @@
+databaseChangeLog:
+  - logicalFilePath: /migrations_v2/00_schema/anagrafiche/20260419-01-alter-identita-digitali-add-stateful-cols-mctit.yaml
+
+  - changeSet:
+      id: 20260419-01-alter-identita-digitali-add-stateful-cols
+      author: mctit
+      comment: >
+        Estende anagrafiche.identita_digitali con 4 colonne stateful di
+        autenticazione presenti sul bridge legacy risorse_umane_auth_user:
+          - tentativi_falliti  (smallint)      : contatore tentativi login KO
+          - bloccato_fino_a    (timestamptz)   : lock temporale post-N falliti
+          - totp_obbligatorio  (boolean)       : flag MFA per l'identita
+          - storicizza         (boolean)       : opt-out snapshot storico
+        Prerequisito §4.6 WIP multi-face-auth: queste colonne sono necessarie
+        perche' la catena di autenticazione (fn_registra_tentativo_login,
+        fn_check_blocco_login) e i reader Python verranno spostati da
+        risorse_umane_auth_user a identita_digitali. Default sensibili:
+        contatore 0, lock NULL, totp false, storicizza true (coerente col
+        default della tabella legacy). Semantica cross-ruolo: lockout, MFA e
+        storicizzazione hanno senso per ogni ruolo_applicativo (operatore,
+        cliente portale, fornitore portale, shop customer, api_client,
+        disabilitato), non solo per l'operatore interno.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: anagrafiche
+                tableName: identita_digitali
+            - not:
+                - columnExists:
+                    schemaName: anagrafiche
+                    tableName: identita_digitali
+                    columnName: tentativi_falliti
+      changes:
+        - addColumn:
+            schemaName: anagrafiche
+            tableName: identita_digitali
+            columns:
+              - column:
+                  name: tentativi_falliti
+                  type: smallint
+                  defaultValueNumeric: 0
+                  remarks: "Contatore tentativi login falliti consecutivi. Reset a 0 al login
+                    riuscito o allo scadere del blocco. Simmetrico a
+                    risorse_umane_auth_user.tentativi_falliti."
+                  constraints:
+                    nullable: false
+              - column:
+                  name: bloccato_fino_a
+                  type: "timestamp with time zone"
+                  remarks: "Timestamp fino al quale l'identita e' bloccata per troppi tentativi
+                    falliti. NULL = non bloccata. fn_check_blocco_login effettua
+                    auto-unlock quando bloccato_fino_a < now()."
+              - column:
+                  name: totp_obbligatorio
+                  type: boolean
+                  defaultValueBoolean: false
+                  remarks: "Flag MFA: se true, l'identita richiede TOTP al login. Generalizzato
+                    cross-ruolo (non solo operatore interno)."
+                  constraints:
+                    nullable: false
+
+      rollback:
+        - dropColumn:
+            schemaName: anagrafiche
+            tableName: identita_digitali
+            columnName: tentativi_falliti
+        - dropColumn:
+            schemaName: anagrafiche
+            tableName: identita_digitali
+            columnName: bloccato_fino_a
+        - dropColumn:
+            schemaName: anagrafiche
+            tableName: identita_digitali
+            columnName: totp_obbligatorio

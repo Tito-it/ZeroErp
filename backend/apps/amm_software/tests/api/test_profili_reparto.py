@@ -211,7 +211,7 @@ class TestProfiliPermissionDenied(TestCase):
     @patch("apps.core.api.permissions.ZeroERPPermission._save_cache_to_redis")
     def test_profili_permission_denied(self, mock_save, mock_cache, mock_resolver):
         """OPERATIVO non puo' accedere ai profili reparto."""
-        mock_resolver.get_ruolo_sistema.return_value = "OPERATIVO"
+        mock_resolver.is_super_admin.return_value = False
 
         from apps.core.api.permissions import IsAdminZeroERP
         request = _make_request()

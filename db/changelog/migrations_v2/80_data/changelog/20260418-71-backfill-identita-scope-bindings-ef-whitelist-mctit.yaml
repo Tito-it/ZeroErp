@@ -1,0 +1,74 @@
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260418-71-backfill-identita-scope-bindings-ef-whitelist-mctit.yaml
+
+  - changeSet:
+      id: 20260418-71-backfill-identita-scope-bindings-ef-whitelist
+      author: mctit
+      runOnChange: true
+      validCheckSum: [ANY]
+      failOnError: true
+      comment: >
+        Backfill idempotente dei binding EF_WHITELIST (§4.4.5 WIP multi-face-auth):
+        crea una riga in config.identita_scope_bindings per ogni identita
+        OPERATORE attiva che ha righe in config.user_emittenti_fiscali.
+        Il binding ha parametri vuoti (la funzione fn_scope_ef_whitelist
+        risolve i dati direttamente da user_emittenti_fiscali, nessuna
+        duplicazione).
+
+        Nota: la tabella anagrafiche.identita_digitali e' vuota finche' §4.6
+        del WIP non completa la migrazione degli operatori da
+        risorse_umane_auth_user. Finche' cio' non avviene questo changeset
+        non inserisce righe ma passa comunque (senza errori). Essendo
+        runOnChange, verra' riapplicato e creera' i bindings mancanti
+        quando identita_digitali sara' popolata.
+      preConditions:
+        - onFail: HALT
+        - and:
+          - tableExists: { schemaName: anagrafiche, tableName: identita_digitali }
+          - tableExists: { schemaName: config,      tableName: user_emittenti_fiscali }
+          - tableExists: { schemaName: config,      tableName: identita_scope_bindings }
+          - tableExists: { schemaName: config,      tableName: scope_policy }
+          - sqlCheck:
+              expectedResult: 1
+              sql: |
+                SELECT COUNT(*) FROM config.scope_policy
+                 WHERE codice = 'EF_WHITELIST';
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Backfill: un binding EF_WHITELIST per ogni identita OPERATORE
+              -- attiva che ha righe in user_emittenti_fiscali.
+              -- DISTINCT: un'identita con N righe in user_emittenti_fiscali
+              --          deve avere UN solo binding (non N).
+              -- ON CONFLICT: idempotenza su (identita_digitale_id, scope_policy_id).
+              INSERT INTO config.identita_scope_bindings (
+                  identita_digitale_id,
+                  scope_policy_id,
+                  parametri,
+                  attivo
+              )
+              SELECT DISTINCT
+                  id.id,
+                  sp.id,
+                  '{}'::jsonb,
+                  true
+              FROM anagrafiche.identita_digitali id
+              JOIN config.user_emittenti_fiscali uef
+                ON uef.auth_user_id = id.auth_user_id
+              JOIN config.scope_policy sp
+                ON sp.codice = 'EF_WHITELIST'
+              WHERE id.ruolo_applicativo = 'OPERATORE'
+                AND id.attivo            = true
+              ON CONFLICT ON CONSTRAINT uq_identita_scope_bindings_identita_policy
+                  DO NOTHING;
+      rollback:
+        - sql:
+            sql: |
+              -- Rollback: rimuovi solo i binding EF_WHITELIST creati dal backfill.
+              -- Gli altri binding (BA_OWNERSHIP, FORNITORE_OWNERSHIP) restano.
+              DELETE FROM config.identita_scope_bindings isb
+               USING config.scope_policy sp
+               WHERE isb.scope_policy_id = sp.id
+                 AND sp.codice = 'EF_WHITELIST';

@@ -8,11 +8,12 @@
 
 """
 Indice test eseguiti:
- 1) test_ruolo_operativo
- 2) test_ruolo_admin
- 3) test_ruolo_disabilitato
- 4) test_ruolo_none_senza_bridge
- 5) test_ruolo_none_no_row
+ 1) test_super_admin_true
+ 2) test_super_admin_false
+ 3) test_super_admin_no_row_false
+ 4) test_ruolo_applicativo_da_guc
+ 5) test_ruolo_applicativo_fallback_query
+ 5a) test_ruolo_applicativo_no_identita
  6) test_area_tutto
  7) test_area_lettura
  8) test_area_bloccato
@@ -77,49 +78,75 @@ def _setup_cursor(mock_conn: MagicMock, fetchone_value: tuple | None) -> MagicMo
     return mock_cursor
 
 
-# ── Ruolo sistema ─────────────────────────────────────────
+# ── Super admin ───────────────────────────────────────────
 
 
-class PermissionResolverRuoloSistemaTests(TestCase):
-    """Test per get_ruolo_sistema — delegata a script.fn_get_ruolo_sistema."""
+class PermissionResolverIsSuperAdminTests(TestCase):
+    """Test per is_super_admin — delegata a script.fn_is_super_admin."""
 
-    # Scopo: Ruolo OPERATIVO restituito correttamente.
+    # Scopo: is_super_admin True quando il binding e' attivo.
     @patch(_CONN)
-    def test_ruolo_operativo(self, mock_conn):
-        cursor = _setup_cursor(mock_conn, ("OPERATIVO",))
+    def test_super_admin_true(self, mock_conn):
+        cursor = _setup_cursor(mock_conn, (True,))
         user = _mock_user()
-        result = PermissionResolver.get_ruolo_sistema(user)
-        self.assertEqual(result, "OPERATIVO")
+        result = PermissionResolver.is_super_admin(user)
+        self.assertTrue(result)
         cursor.execute.assert_called_once_with(
-            "SELECT script.fn_get_ruolo_sistema(%s)", [1]
+            "SELECT script.fn_is_super_admin(%s)", [1]
         )
 
-    # Scopo: Ruolo ADMIN restituito correttamente.
+    # Scopo: is_super_admin False quando il binding non e' attivo.
     @patch(_CONN)
-    def test_ruolo_admin(self, mock_conn):
-        _setup_cursor(mock_conn, ("ADMIN",))
-        result = PermissionResolver.get_ruolo_sistema(_mock_user())
-        self.assertEqual(result, "ADMIN")
+    def test_super_admin_false(self, mock_conn):
+        _setup_cursor(mock_conn, (False,))
+        result = PermissionResolver.is_super_admin(_mock_user())
+        self.assertFalse(result)
 
-    # Scopo: Ruolo DISABILITATO restituito correttamente.
+    # Scopo: Nessuna riga dalla funzione -> False (fail-closed).
     @patch(_CONN)
-    def test_ruolo_disabilitato(self, mock_conn):
-        _setup_cursor(mock_conn, ("DISABILITATO",))
-        result = PermissionResolver.get_ruolo_sistema(_mock_user())
-        self.assertEqual(result, "DISABILITATO")
-
-    # Scopo: Utente senza bridge (fn ritorna NULL) -> None.
-    @patch(_CONN)
-    def test_ruolo_none_senza_bridge(self, mock_conn):
-        _setup_cursor(mock_conn, (None,))
-        result = PermissionResolver.get_ruolo_sistema(_mock_user())
-        self.assertIsNone(result)
-
-    # Scopo: Nessuna riga dalla funzione -> None.
-    @patch(_CONN)
-    def test_ruolo_none_no_row(self, mock_conn):
+    def test_super_admin_no_row_false(self, mock_conn):
         _setup_cursor(mock_conn, None)
-        result = PermissionResolver.get_ruolo_sistema(_mock_user())
+        result = PermissionResolver.is_super_admin(_mock_user())
+        self.assertFalse(result)
+
+
+# ── Ruolo applicativo ─────────────────────────────────────
+
+
+class PermissionResolverRuoloApplicativoTests(TestCase):
+    """Test per get_ruolo_applicativo — GUC-first con fallback query."""
+
+    # Scopo: GUC popolato ritorna il valore senza query identita.
+    @patch(_CONN)
+    def test_ruolo_applicativo_da_guc(self, mock_conn):
+        cursor = _setup_cursor(mock_conn, ("OPERATORE",))
+        result = PermissionResolver.get_ruolo_applicativo(_mock_user())
+        self.assertEqual(result, "OPERATORE")
+        # Prima esecuzione: SELECT NULLIF(current_setting(...)); ritorna
+        # il valore gia' popolato, fallback non eseguito.
+        self.assertEqual(cursor.execute.call_count, 1)
+
+    # Scopo: GUC vuoto -> fallback query identita_digitali.
+    @patch(_CONN)
+    def test_ruolo_applicativo_fallback_query(self, mock_conn):
+        cursor = MagicMock()
+        # Sequenza: primo fetchone restituisce ('',) GUC vuoto;
+        # secondo fetchone la riga identita.
+        cursor.fetchone.side_effect = [(None,), ("CLIENTE_PORTALE",)]
+        mock_conn.cursor.return_value.__enter__ = MagicMock(return_value=cursor)
+        mock_conn.cursor.return_value.__exit__ = MagicMock(return_value=False)
+        result = PermissionResolver.get_ruolo_applicativo(_mock_user())
+        self.assertEqual(result, "CLIENTE_PORTALE")
+        self.assertEqual(cursor.execute.call_count, 2)
+
+    # Scopo: Nessuna identita -> None.
+    @patch(_CONN)
+    def test_ruolo_applicativo_no_identita(self, mock_conn):
+        cursor = MagicMock()
+        cursor.fetchone.side_effect = [(None,), None]
+        mock_conn.cursor.return_value.__enter__ = MagicMock(return_value=cursor)
+        mock_conn.cursor.return_value.__exit__ = MagicMock(return_value=False)
+        result = PermissionResolver.get_ruolo_applicativo(_mock_user())
         self.assertIsNone(result)
 
 
@@ -367,18 +394,28 @@ class PermissionResolverAreaModelOverrideTests(TestCase):
 
 
 class PermissionResolverUnitaOrganizzativaTests(TestCase):
-    """Test per get_unita_organizzativa_id — query SQL diretta."""
+    """Test per get_unita_organizzativa_id — delegata a script.fn_get_uo_id_for_user."""
 
     # Scopo: UO trovata restituisce l'id.
     @patch(_CONN)
     def test_uo_trovata(self, mock_conn):
-        _setup_cursor(mock_conn, (10,))
+        cursor = _setup_cursor(mock_conn, (10,))
         result = PermissionResolver.get_unita_organizzativa_id(_mock_user())
         self.assertEqual(result, 10)
+        cursor.execute.assert_called_once_with(
+            "SELECT script.fn_get_uo_id_for_user(%s)", [1]
+        )
 
-    # Scopo: UO non trovata -> None.
+    # Scopo: UO non trovata (fn ritorna NULL) -> None.
     @patch(_CONN)
     def test_uo_non_trovata(self, mock_conn):
+        _setup_cursor(mock_conn, (None,))
+        result = PermissionResolver.get_unita_organizzativa_id(_mock_user())
+        self.assertIsNone(result)
+
+    # Scopo: Nessuna riga dalla funzione -> None.
+    @patch(_CONN)
+    def test_uo_no_row(self, mock_conn):
         _setup_cursor(mock_conn, None)
         result = PermissionResolver.get_unita_organizzativa_id(_mock_user())
         self.assertIsNone(result)
@@ -388,27 +425,38 @@ class PermissionResolverUnitaOrganizzativaTests(TestCase):
 
 
 class PermissionResolverHasProfiloTests(TestCase):
-    """Test per has_profilo_reparto_area — query SQL EXISTS."""
+    """Test per has_profilo_applicabile_per_area — EXISTS su
+    fn_get_profili_accesso_applicabili intersecato con profili_accesso_aree."""
 
-    # Scopo: Reparto con profilo -> True.
+    # Scopo: Esiste un profilo applicabile per l'area -> True.
     @patch(_CONN)
     def test_has_profilo_true(self, mock_conn):
-        _setup_cursor(mock_conn, (True,))
-        result = PermissionResolver.has_profilo_reparto_area(_mock_user(), "vendite")
+        cursor = _setup_cursor(mock_conn, (True,))
+        result = PermissionResolver.has_profilo_applicabile_per_area(
+            _mock_user(), "vendite"
+        )
         self.assertTrue(result)
+        # Verifica che la query referenzi la nuova funzione + tabella.
+        sql = cursor.execute.call_args[0][0]
+        self.assertIn("fn_get_profili_accesso_applicabili", sql)
+        self.assertIn("profili_accesso_aree", sql)
 
-    # Scopo: Reparto senza profilo -> False.
+    # Scopo: Nessun profilo applicabile per l'area -> False.
     @patch(_CONN)
     def test_has_profilo_false(self, mock_conn):
         _setup_cursor(mock_conn, (False,))
-        result = PermissionResolver.has_profilo_reparto_area(_mock_user(), "vendite")
+        result = PermissionResolver.has_profilo_applicabile_per_area(
+            _mock_user(), "vendite"
+        )
         self.assertFalse(result)
 
-    # Scopo: Nessuna riga -> False.
+    # Scopo: Nessuna riga dalla funzione -> False (fail-closed).
     @patch(_CONN)
     def test_has_profilo_no_row(self, mock_conn):
         _setup_cursor(mock_conn, None)
-        result = PermissionResolver.has_profilo_reparto_area(_mock_user(), "vendite")
+        result = PermissionResolver.has_profilo_applicabile_per_area(
+            _mock_user(), "vendite"
+        )
         self.assertFalse(result)
 
 
@@ -418,19 +466,19 @@ class PermissionResolverHasProfiloTests(TestCase):
 class PermissionResolverCacheTests(TestCase):
     """Test per comportamento cache per-request."""
 
-    # Scopo: La cache evita query duplicate per lo stesso ruolo.
+    # Scopo: La cache evita query duplicate per lo stesso check.
     @patch(_CONN)
     def test_cache_evita_query_duplicate(self, mock_conn):
-        cursor = _setup_cursor(mock_conn, ("OPERATIVO",))
+        cursor = _setup_cursor(mock_conn, (True,))
         user = _mock_user()
         cache: dict = {}
 
-        r1 = PermissionResolver.get_ruolo_sistema(user, cache=cache)
-        self.assertEqual(r1, "OPERATIVO")
+        r1 = PermissionResolver.is_super_admin(user, cache=cache)
+        self.assertTrue(r1)
         self.assertEqual(cursor.execute.call_count, 1)
 
-        r2 = PermissionResolver.get_ruolo_sistema(user, cache=cache)
-        self.assertEqual(r2, "OPERATIVO")
+        r2 = PermissionResolver.is_super_admin(user, cache=cache)
+        self.assertTrue(r2)
         self.assertEqual(cursor.execute.call_count, 1)  # nessuna query aggiuntiva
 
     # Scopo: Chiavi cache diverse non interferiscono.
@@ -447,11 +495,11 @@ class PermissionResolverCacheTests(TestCase):
     # Scopo: Senza cache dict, ogni chiamata riesegue la query.
     @patch(_CONN)
     def test_cache_none_non_memorizza(self, mock_conn):
-        cursor = _setup_cursor(mock_conn, ("ADMIN",))
+        cursor = _setup_cursor(mock_conn, (True,))
         user = _mock_user()
 
-        PermissionResolver.get_ruolo_sistema(user, cache=None)
-        PermissionResolver.get_ruolo_sistema(user, cache=None)
+        PermissionResolver.is_super_admin(user, cache=None)
+        PermissionResolver.is_super_admin(user, cache=None)
         self.assertEqual(cursor.execute.call_count, 2)
 
 

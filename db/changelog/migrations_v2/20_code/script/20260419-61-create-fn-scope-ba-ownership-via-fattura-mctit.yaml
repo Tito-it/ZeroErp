@@ -1,0 +1,65 @@
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260419-61-create-fn-scope-ba-ownership-via-fattura-mctit.yaml
+
+  - changeSet:
+      id: 20260419-61-create-fn-scope-ba-ownership-via-fattura
+      author: mctit
+      runOnChange: true
+      validCheckSum: [ANY]
+      comment: >
+        Helper BA_OWNERSHIP_VIA_FATTURA: wrapper che risolve il
+        billing_account_id della fattura tramite JOIN a vendite.fatture e
+        delega a fn_scope_ba_ownership. Necessario per tabelle collegate a
+        vendite.fatture che non hanno billing_account_id diretto (es.
+        vendite.fatture_scadenze). Evita subquery inline nelle policy RLS
+        (§10.3 linee-guida-sql). LANGUAGE sql STABLE per inlining.
+      preConditions:
+        - onFail: HALT
+        - and:
+          - tableExists: { schemaName: anagrafiche, tableName: identita_digitali }
+          - tableExists: { schemaName: vendite,     tableName: fatture }
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Firma con %TYPE sui parametri:
+              --   p_identita_id = anagrafiche.identita_digitali.id
+              --   p_fattura_id  = vendite.fatture.id
+              CREATE OR REPLACE FUNCTION script.fn_scope_ba_ownership_via_fattura(
+                  p_identita_id anagrafiche.identita_digitali.id%TYPE,
+                  p_fattura_id  vendite.fatture.id%TYPE
+              )
+              RETURNS boolean
+              LANGUAGE sql
+              STABLE
+              AS $function$
+                  -- Join fattura -> billing_account -> identita: il cliente
+                  -- dell'identita e quello del BA della fattura devono
+                  -- coincidere. Fattura inesistente -> false (fail-closed).
+                  SELECT EXISTS (
+                      SELECT 1
+                        FROM vendite.fatture              f
+                        JOIN anagrafiche.billing_account  ba
+                          ON ba.id = f.billing_account_id
+                        JOIN anagrafiche.identita_digitali id
+                          ON id.soggetto_ruolo_id = ba.soggetto_ruolo_id
+                       WHERE f.id      = p_fattura_id
+                         AND id.id     = p_identita_id
+                         AND id.attivo = true
+                  );
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_scope_ba_ownership_via_fattura(
+                  anagrafiche.identita_digitali.id%TYPE,
+                  vendite.fatture.id%TYPE
+              ) IS
+                  'Scope policy BA_OWNERSHIP via fattura: ritorna true se il '
+                  'billing_account della fattura target appartiene al '
+                  'soggetto_ruolo dell''identita (via BA.soggetto_ruolo_id). '
+                  'Wrapper per tabelle figlie senza billing_account_id diretto '
+                  '(es. vendite.fatture_scadenze). STABLE, inlineable.';
+      rollback:
+        - sql:
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_scope_ba_ownership_via_fattura(bigint, bigint);

@@ -1,0 +1,84 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - changeSet:
+      id: 20260418-70-upsert-scope-policy
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Seed delle 3 policy di scope standard per il modello multi-face auth
+        (§4.4 WIP):
+          - EF_WHITELIST         -> script.fn_scope_ef_whitelist
+          - BA_OWNERSHIP         -> script.fn_scope_ba_ownership
+          - FORNITORE_OWNERSHIP  -> script.fn_scope_fornitore_ownership
+        Idempotente via loadUpdateData su PK id.
+      preConditions:
+        - onFail: HALT
+        - and:
+          - tableExists:
+              schemaName: config
+              tableName: scope_policy
+          - sqlCheck:
+              expectedResult: 1
+              sql: |
+                SELECT COUNT(*) FROM pg_proc p
+                  JOIN pg_namespace n ON n.oid = p.pronamespace
+                 WHERE n.nspname = 'script'
+                   AND p.proname = 'fn_scope_ef_whitelist';
+          - sqlCheck:
+              expectedResult: 1
+              sql: |
+                SELECT COUNT(*) FROM pg_proc p
+                  JOIN pg_namespace n ON n.oid = p.pronamespace
+                 WHERE n.nspname = 'script'
+                   AND p.proname = 'fn_scope_ba_ownership';
+          - sqlCheck:
+              expectedResult: 1
+              sql: |
+                SELECT COUNT(*) FROM pg_proc p
+                  JOIN pg_namespace n ON n.oid = p.pronamespace
+                 WHERE n.nspname = 'script'
+                   AND p.proname = 'fn_scope_fornitore_ownership';
+      changes:
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/config/scope_policy.csv
+            tableName: scope_policy
+            schemaName: config
+            separator: ","
+            encoding: UTF-8
+            nullValue: ""
+            primaryKey: id
+            columns:
+              - column: { name: id,           type: NUMERIC }
+              - column: { name: codice,       type: STRING }
+              - column: { name: descrizione,  type: STRING }
+              - column: { name: funzione_db,  type: STRING }
+              - column: { name: attivo,       type: BOOLEAN }
+              - column: { name: meta,         type: STRING }
+              - column: { name: data_insert,  type: STRING }
+              - column: { name: user_insert,  type: STRING }
+              - column: { name: data_update,  type: STRING }
+              - column: { name: user_update,  type: STRING }
+
+        # Allineamento sequenza: dopo il seed, la sequenza deve ripartire
+        # da max(id) + 1 per evitare collisioni con futuri INSERT automatici.
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              SELECT setval(
+                  pg_get_serial_sequence('config.scope_policy', 'id'),
+                  GREATEST(COALESCE(MAX(id), 0), 1),
+                  true
+              ) FROM config.scope_policy;

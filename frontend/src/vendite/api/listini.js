@@ -99,8 +99,10 @@ export function deleteRiga(listinoId, verId, rigaId) {
   return api.delete(`${BASE}/${listinoId}/versioni/${verId}/righe/${rigaId}/`)
 }
 
-// --- Test resolver ---
-
-export function testResolverPrezzo(payload) {
-  return api.post(`${BASE}/test-prezzo/`, payload)
+// --- Test resolver prezzi v5 ---
+// Endpoint diagnostico del resolver pricing v5: risolve il prezzo attraverso
+// i 3 stadi (PROMO/CONTRATTO/CATEGORIA). Richiede tutti i parametri positivi
+// (no null). L'emittente e' derivato dal JWT se non specificato.
+export function resolvePrezzoV5(payload) {
+  return api.post('/vendite/pricing/resolve/', payload)
 }

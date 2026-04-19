@@ -1,0 +1,62 @@
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260418-62-create-fn-scope-fornitore-ownership-mctit.yaml
+
+  - changeSet:
+      id: 20260418-62-create-fn-scope-fornitore-ownership
+      author: mctit
+      runOnChange: true
+      validCheckSum: [ANY]
+      comment: >
+        Scope policy FORNITORE_OWNERSHIP: un'identita FORNITORE_PORTALE puo
+        vedere solo i dati (ordini, pagamenti) riferiti al proprio
+        soggetto_ruolo di tipo fornitore. Il target e' un soggetto_ruolo_id
+        di un fornitore (tipo CL/FO); la policy verifica che corrisponda al
+        soggetto_ruolo dell'identita e che il ruolo_applicativo sia
+        FORNITORE_PORTALE. LANGUAGE sql STABLE per favorire l'inlining.
+      preConditions:
+        - onFail: HALT
+        - and:
+          - tableExists: { schemaName: anagrafiche, tableName: identita_digitali }
+          - tableExists: { schemaName: anagrafiche, tableName: soggetti_ruoli }
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Firma con %TYPE sui parametri:
+              --   p_identita_id            = anagrafiche.identita_digitali.id
+              --   p_fornitore_sr_id        = anagrafiche.soggetti_ruoli.id
+              --                              (soggetto_ruolo del fornitore target)
+              CREATE OR REPLACE FUNCTION script.fn_scope_fornitore_ownership(
+                  p_identita_id     anagrafiche.identita_digitali.id%TYPE,
+                  p_fornitore_sr_id anagrafiche.soggetti_ruoli.id%TYPE
+              )
+              RETURNS boolean
+              LANGUAGE sql
+              STABLE
+              AS $function$
+                  -- Match diretto: il target soggetto_ruolo e' quello dell'identita,
+                  -- e l'identita stessa e' in veste FORNITORE_PORTALE. Evita
+                  -- false positive su altre identita (es. cliente con stesso sr).
+                  SELECT EXISTS (
+                      SELECT 1
+                        FROM anagrafiche.identita_digitali id
+                       WHERE id.id                = p_identita_id
+                         AND id.soggetto_ruolo_id = p_fornitore_sr_id
+                         AND id.ruolo_applicativo = 'FORNITORE_PORTALE'
+                         AND id.attivo            = true
+                  );
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_scope_fornitore_ownership(
+                  anagrafiche.identita_digitali.id%TYPE,
+                  anagrafiche.soggetti_ruoli.id%TYPE
+              ) IS
+                  'Scope policy FORNITORE_OWNERSHIP: ritorna true se il '
+                  'soggetto_ruolo del fornitore target coincide con il '
+                  'soggetto_ruolo dell''identita e l''identita e'' in veste '
+                  'FORNITORE_PORTALE attiva. STABLE, inlineable.';
+      rollback:
+        - sql:
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_scope_fornitore_ownership(bigint, bigint);

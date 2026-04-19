@@ -15,6 +15,11 @@ from typing import Any
 from rest_framework.permissions import BasePermission
 from rest_framework.request import Request
 
+from apps.core.services.auth_constants import (
+    RUOLI_PORTALE,
+    RUOLI_SHOP,
+    RUOLO_APPLICATIVO_DISABILITATO,
+)
 from apps.core.services.permissions_cache import load_user_cache, save_user_cache
 from apps.core.services.permissions_resolver import LIVELLO_MAP, PermissionResolver
 
@@ -24,11 +29,14 @@ logger = logging.getLogger(__name__)
 class IsAdminZeroERP(BasePermission):
     """Permission class per endpoint riservati agli amministratori.
 
-    Verifica che l'utente abbia ruolo_sistema = ADMIN.
-    Non passa dal sistema profili/override (check diretto).
+    Verifica che l'utente abbia il binding SUPER_ADMIN attivo
+    (`script.fn_is_super_admin`). Non passa dal sistema profili area /
+    override (check diretto). Nome classe invariato per retrocompatibilita'
+    con le view esistenti; la semantica "ADMIN" diventa "SUPER_ADMIN".
     """
 
-    # Scopo: Verifica che l'utente sia ADMIN. Bypass per superuser (coerenza con ZeroERPPermission).
+    # Scopo: Verifica che l'utente sia SUPER_ADMIN. Bypass per
+    # superuser Django (coerenza con ZeroERPPermission).
     def has_permission(self, request: Request, view: Any) -> bool:
         user = request.user
         if not user or not user.is_authenticated:
@@ -39,13 +47,12 @@ class IsAdminZeroERP(BasePermission):
 
         cache = ZeroERPPermission._get_cache(request)
         try:
-            ruolo = PermissionResolver.get_ruolo_sistema(user, cache=cache)
-            if ruolo == "ADMIN":
+            if PermissionResolver.is_super_admin(user, cache=cache):
                 return True
 
             logger.warning(
-                "security.admin_denied user_id=%s ruolo=%s path=%s",
-                user.id, ruolo, request.path,
+                "security.admin_denied user_id=%s path=%s",
+                user.id, request.path,
             )
             self.message = "Accesso riservato agli amministratori."
             return False
@@ -106,16 +113,17 @@ class ZeroERPPermission(BasePermission):
         cache = self._get_cache(request)
 
         try:
-            # Check ruolo_sistema
-            ruolo = PermissionResolver.get_ruolo_sistema(user, cache=cache)
-            if ruolo == "DISABILITATO":
+            # Check ruolo applicativo (DISABILITATO => 403 immediato)
+            ruolo_app = PermissionResolver.get_ruolo_applicativo(user, cache=cache)
+            if ruolo_app == RUOLO_APPLICATIVO_DISABILITATO:
                 logger.warning(
                     "security.permission_denied user_id=%s reason=DISABILITATO path=%s",
                     user.id, request.path,
                 )
                 self.message = "Utente disabilitato. Contattare l'amministratore."
                 return False
-            if ruolo == "ADMIN":
+            # SUPER_ADMIN bypass (sostituisce il vecchio check ruolo_sistema = ADMIN)
+            if PermissionResolver.is_super_admin(user, cache=cache):
                 return True
 
             # Determina l'azione richiesta
@@ -214,7 +222,7 @@ class ZeroERPPermission(BasePermission):
                     "area=%s livello=%s required=%s path=%s",
                     user.id, area_schema_db, livello, required, request.path,
                 )
-                self._set_deny_message(user, ruolo, area_schema_db, cache)
+                self._set_deny_message(user, ruolo_app, area_schema_db, cache)
                 return False
             return True
         finally:
@@ -222,14 +230,19 @@ class ZeroERPPermission(BasePermission):
 
     # Scopo: Imposta il messaggio di errore specifico per il diniego.
     # Distingue tra reparto senza profilo e permesso negato generico.
+    # Il messaggio "reparto senza profilo" si applica solo agli OPERATORI
+    # interni (utenti portale/shop hanno profili bindati sul ruolo
+    # applicativo, non sul reparto).
     def _set_deny_message(
         self,
         user: Any,
-        ruolo: str | None,
+        ruolo_app: str | None,
         area_schema_db: str,
         cache: dict[str, Any],
     ) -> None:
-        if ruolo == "OPERATIVO" and not PermissionResolver.has_profilo_reparto_area(
+        from apps.core.services.auth_constants import RUOLO_APPLICATIVO_OPERATORE
+
+        if ruolo_app == RUOLO_APPLICATIVO_OPERATORE and not PermissionResolver.has_profilo_applicabile_per_area(
             user, area_schema_db, cache=cache
         ):
             self.message = (
@@ -285,3 +298,77 @@ class ZeroERPPermission(BasePermission):
 
         # Fallback: attributo esplicito sulla view
         return getattr(view, "area_funzionale", None)
+
+
+class PortaleBasePermission(BasePermission):
+    """Permission class per endpoint `/api/portale/*` (clienti + fornitori).
+
+    Richiede autenticazione JWT. Il ruolo applicativo dell'identita
+    deve appartenere a `RUOLI_PORTALE`. Gli operatori interni e shop
+    customer sono respinti con 403.
+
+    Non applica scope dati (RLS + `script.fn_scope_*` lato DB sono i
+    guardiani autorevoli). Non verifica livello area: il set di
+    endpoint portale e' deliberatamente ristretto.
+    """
+
+    # Scopo: Verifica autenticazione + ruolo applicativo portale.
+    def has_permission(self, request: Request, view: Any) -> bool:
+        user = request.user
+        if not user or not user.is_authenticated:
+            return False
+
+        cache = ZeroERPPermission._get_cache(request)
+        try:
+            ruolo = PermissionResolver.get_ruolo_applicativo(user, cache=cache)
+            if ruolo in RUOLI_PORTALE:
+                return True
+
+            logger.warning(
+                "security.portale_denied user_id=%s ruolo=%s path=%s",
+                user.id, ruolo, request.path,
+            )
+            self.message = "Accesso riservato agli utenti portale."
+            return False
+        finally:
+            ZeroERPPermission._save_cache_to_redis(request)
+
+
+class ShopBasePermission(BasePermission):
+    """Permission class per endpoint `/api/shop/*` (negozio online).
+
+    Ammette utenti anonimi (catalogo pubblico) e utenti autenticati
+    con ruolo applicativo `SHOP_CUSTOMER`. Altri ruoli applicativi
+    autenticati vengono respinti per evitare che un operatore o un
+    cliente portale usi per errore gli endpoint shop.
+
+    Le singole view che richiedono autenticazione obbligatoria (es.
+    checkout, storico ordini) devono comunque verificare
+    `request.user.is_authenticated` esplicitamente.
+    """
+
+    # Scopo: Ammette anonimo OR SHOP_CUSTOMER. Altri ruoli -> 403.
+    def has_permission(self, request: Request, view: Any) -> bool:
+        user = request.user
+        if not user or not user.is_authenticated:
+            # Scopo: Endpoint pubblici (catalogo) ammettono anonimo.
+            return True
+
+        cache = ZeroERPPermission._get_cache(request)
+        try:
+            ruolo = PermissionResolver.get_ruolo_applicativo(user, cache=cache)
+            if ruolo in RUOLI_SHOP:
+                return True
+
+            if ruolo == RUOLO_APPLICATIVO_DISABILITATO:
+                self.message = "Utente disabilitato."
+                return False
+
+            logger.warning(
+                "security.shop_denied user_id=%s ruolo=%s path=%s",
+                user.id, ruolo, request.path,
+            )
+            self.message = "Accesso riservato ai clienti shop."
+            return False
+        finally:
+            ZeroERPPermission._save_cache_to_redis(request)

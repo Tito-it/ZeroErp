@@ -1,0 +1,71 @@
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260419-09-create-fn-has-identita-attiva-mctit.yaml
+
+  - changeSet:
+      id: 20260419-09-create-fn-has-identita-attiva
+      author: mctit
+      runOnChange: true
+      validCheckSum: [ANY]
+      comment: >
+        Crea helper script.fn_has_identita_attiva(auth_user_id, ruolo_applicativo)
+        RETURNS boolean (§4.6.B.0 WIP multi-face-auth). Incapsula il check
+        "identita attiva nella finestra temporale per un dato ruolo
+        applicativo" riusato da 7+ funzioni (fn_resolve_livello_*,
+        fn_check_*, fn_get_*_map, fn_get_ruolo_sistema).
+
+        Parametrizzato sul ruolo_applicativo per poter essere riusato
+        anche dal refactor futuro §4.8 (generalizzazione resolver su
+        profili_accesso) che deve valutare identita CLIENTE_PORTALE /
+        FORNITORE_PORTALE / SHOP_CUSTOMER.
+
+        LANGUAGE sql STABLE: inlineable dal planner (zero overhead vs
+        implementazione inline), cache-friendly per query ripetute,
+        fail-closed su NULL.
+      preConditions:
+        - onFail: HALT
+        - and:
+          - tableExists:
+              schemaName: anagrafiche
+              tableName: identita_digitali
+          - sqlCheck:
+              expectedResult: 1
+              sql: |
+                SELECT COUNT(*) FROM pg_type t
+                  JOIN pg_namespace n ON n.oid = t.typnamespace
+                 WHERE n.nspname = 'config'
+                   AND t.typname = 'ruolo_applicativo';
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_has_identita_attiva(
+                  p_auth_user_id        integer,
+                  p_ruolo_applicativo   config.ruolo_applicativo
+              )
+              RETURNS boolean
+              LANGUAGE sql
+              STABLE
+              AS $function$
+                  -- Verifica esistenza identita_digitali attiva, nella finestra
+                  -- temporale, con ruolo_applicativo dato. Fail-closed su NULL
+                  -- auth_user_id (EXISTS restituisce false).
+                  SELECT EXISTS (
+                      SELECT 1
+                        FROM anagrafiche.identita_digitali id
+                       WHERE id.auth_user_id = p_auth_user_id
+                         AND id.ruolo_applicativo = p_ruolo_applicativo
+                         AND id.attivo = true
+                         AND (id.valido_dal IS NULL OR id.valido_dal <= CURRENT_DATE)
+                         AND (id.valido_al  IS NULL OR id.valido_al  >= CURRENT_DATE)
+                  );
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_has_identita_attiva(integer, config.ruolo_applicativo) IS
+                  'Verifica se esiste un''identita attiva nella finestra temporale '
+                  'per un auth_user_id e ruolo_applicativo dati. Helper DRY per le '
+                  'funzioni di risoluzione permessi/scope (§4.6.B.0 WIP multi-face-auth). '
+                  'LANGUAGE sql STABLE: inlineable, fail-closed su NULL.';
+      rollback:
+        - sql:
+            sql: DROP FUNCTION IF EXISTS script.fn_has_identita_attiva(integer, config.ruolo_applicativo);

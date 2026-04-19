@@ -1,0 +1,121 @@
+databaseChangeLog:
+  - logicalFilePath: /migrations_v2/00_schema/config/20260418-32-create-profili-accesso-azioni-mctit.yaml
+
+  - changeSet:
+      id: 20260418-32-create-profili-accesso-azioni
+      author: mctit
+      comment: >
+        Tabella dettaglio config.profili_accesso_azioni (§4.3.3 WIP
+        multi-face-auth). Rimpiazzo concettuale di
+        config.profili_reparto_azioni: collega un profilo a un set di azioni
+        di processo abilitate/disabilitate. Trigger framework via automation.
+      preConditions:
+        - onFail: HALT
+        - and:
+          - tableExists:
+              schemaName: config
+              tableName: profili_accesso
+          - tableExists:
+              schemaName: config
+              tableName: azioni_processo
+      changes:
+        - createTable:
+            schemaName: config
+            tableName: profili_accesso_azioni
+            remarks: >-
+              Righe di dettaglio per il profilo: una per azione di processo,
+              con flag abilitata. Default false = azione non consentita dal
+              profilo; va esplicitamente abilitata.
+            columns:
+              - column:
+                  name: id
+                  type: integer
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_profili_accesso_azioni
+                    nullable: false
+              - column:
+                  name: profilo_accesso_id
+                  type: integer
+                  remarks: "FK al profilo header."
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_profili_accesso_azioni_profilo
+                    referencedTableSchemaName: config
+                    referencedTableName: profili_accesso
+                    referencedColumnNames: id
+              - column:
+                  name: azione_id
+                  type: integer
+                  remarks: "FK all'azione (config.azioni_processo)."
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_profili_accesso_azioni_azione
+                    referencedTableSchemaName: config
+                    referencedTableName: azioni_processo
+                    referencedColumnNames: id
+              - column:
+                  name: abilitata
+                  type: boolean
+                  defaultValueBoolean: false
+                  remarks: "true = azione consentita dal profilo; false = non consentita (default chiuso)."
+                  constraints:
+                    nullable: false
+              - column:
+                  name: meta
+                  type: jsonb
+                  defaultValueComputed: "'{}'::jsonb"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: storicizza
+                  type: boolean
+                  defaultValueBoolean: true
+                  constraints:
+                    nullable: false
+              - column:
+                  name: tx_id
+                  type: uuid
+              - column:
+                  name: data_insert
+                  type: "timestamp with time zone"
+                  defaultValueComputed: "now()"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: user_insert
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: data_update
+                  type: "timestamp with time zone"
+                  defaultValueComputed: "now()"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: user_update
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  constraints:
+                    nullable: false
+
+        - addUniqueConstraint:
+            schemaName: config
+            tableName: profili_accesso_azioni
+            columnNames: profilo_accesso_id, azione_id
+            constraintName: uq_profili_accesso_azioni_profilo_azione
+
+        - sql:
+            sql: |
+              COMMENT ON TABLE config.profili_accesso_azioni IS
+                  'Dettaglio delle azioni di processo abilitate/disabilitate da '
+                  'un profilo di accesso. Rimpiazza concettualmente '
+                  'profili_reparto_azioni generalizzando il padre da reparto a profilo.';
+      rollback:
+        - dropTable:
+            schemaName: config
+            tableName: profili_accesso_azioni

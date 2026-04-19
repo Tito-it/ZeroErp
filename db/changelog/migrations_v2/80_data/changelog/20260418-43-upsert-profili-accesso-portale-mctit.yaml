@@ -1,0 +1,133 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - changeSet:
+      id: 20260418-43-upsert-profili-accesso-portale
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Seed dei 3 profili di accesso PORTALE standard e relativi bindings
+        (§4.3.7-4.3.8 WIP multi-face-auth):
+          - CLIENTE_PORTALE_STANDARD  -> aree vendite + pagamenti (LETTURA)
+          - FORNITORE_PORTALE_STANDARD -> aree acquisti + pagamenti (LETTURA)
+          - SHOP_CUSTOMER_STANDARD    -> aree vendite + pagamenti (LETTURA)
+        Ogni profilo e' collegato al rispettivo ruolo_applicativo tramite
+        config.profili_accesso_bindings. Range id seed dedicato: 9001-9006
+        per evitare collisioni con gli id REPARTO (assegnati dalla migrazione
+        dati con autoincrement partendo da 1).
+        I CSV vengono caricati via loadUpdateData (idempotente su PK id).
+      preConditions:
+        - onFail: HALT
+        - and:
+          - tableExists:
+              schemaName: config
+              tableName: profili_accesso
+          - tableExists:
+              schemaName: config
+              tableName: profili_accesso_aree
+          - tableExists:
+              schemaName: config
+              tableName: profili_accesso_bindings
+      changes:
+        # 1) Profili header (3 righe PORTALE).
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/config/profili_accesso.csv
+            tableName: profili_accesso
+            schemaName: config
+            separator: ","
+            encoding: UTF-8
+            nullValue: ""
+            primaryKey: id
+            columns:
+              - column: { name: id,           type: NUMERIC }
+              - column: { name: tipo,         type: STRING }
+              - column: { name: codice,       type: STRING }
+              - column: { name: descrizione,  type: STRING }
+              - column: { name: attivo,       type: BOOLEAN }
+              - column: { name: meta,         type: STRING }
+              - column: { name: data_insert,  type: STRING }
+              - column: { name: user_insert,  type: STRING }
+              - column: { name: data_update,  type: STRING }
+              - column: { name: user_update,  type: STRING }
+
+        # 2) Profili_accesso_aree (6 righe: 2 per ogni profilo portale).
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/config/profili_accesso_aree.csv
+            tableName: profili_accesso_aree
+            schemaName: config
+            separator: ","
+            encoding: UTF-8
+            nullValue: ""
+            primaryKey: id
+            columns:
+              - column: { name: id,                 type: NUMERIC }
+              - column: { name: profilo_accesso_id, type: NUMERIC }
+              - column: { name: area_id,            type: NUMERIC }
+              - column: { name: livello,            type: STRING }
+              - column: { name: meta,               type: STRING }
+              - column: { name: data_insert,        type: STRING }
+              - column: { name: user_insert,        type: STRING }
+              - column: { name: data_update,        type: STRING }
+              - column: { name: user_update,        type: STRING }
+
+        # 3) Profili_accesso_bindings (3 righe: ogni profilo portale -> ruolo_applicativo).
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/config/profili_accesso_bindings.csv
+            tableName: profili_accesso_bindings
+            schemaName: config
+            separator: ","
+            encoding: UTF-8
+            nullValue: ""
+            primaryKey: id
+            columns:
+              - column: { name: id,                      type: NUMERIC }
+              - column: { name: profilo_accesso_id,      type: NUMERIC }
+              - column: { name: unita_organizzativa_id,  type: NUMERIC }
+              - column: { name: identita_digitale_id,    type: NUMERIC }
+              - column: { name: ruolo_applicativo,       type: STRING }
+              - column: { name: attivo,                  type: BOOLEAN }
+              - column: { name: meta,                    type: STRING }
+              - column: { name: data_insert,             type: STRING }
+              - column: { name: user_insert,             type: STRING }
+              - column: { name: data_update,             type: STRING }
+              - column: { name: user_update,             type: STRING }
+
+        # 4) Allineamento sequenze: la sequenza autoincrement di ogni tabella
+        #    deve puntare oltre il range seed (9001+) per evitare che futuri
+        #    INSERT automatici tentino di usare id gia' occupati dai seed.
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Allinea le sequenze al max(id) corrente (tiene conto sia dei
+              -- seed portali 9001+ sia degli id REPARTO inseriti dalla migrazione).
+              SELECT setval(
+                  pg_get_serial_sequence('config.profili_accesso', 'id'),
+                  GREATEST(COALESCE(MAX(id), 0), 1),
+                  true
+              ) FROM config.profili_accesso;
+
+              SELECT setval(
+                  pg_get_serial_sequence('config.profili_accesso_aree', 'id'),
+                  GREATEST(COALESCE(MAX(id), 0), 1),
+                  true
+              ) FROM config.profili_accesso_aree;
+
+              SELECT setval(
+                  pg_get_serial_sequence('config.profili_accesso_bindings', 'id'),
+                  GREATEST(COALESCE(MAX(id), 0), 1),
+                  true
+              ) FROM config.profili_accesso_bindings;

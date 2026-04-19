@@ -16,6 +16,31 @@
 
 ---
 
+> **Evoluzione in corso — Multi-Face Auth (aprile 2026)**
+>
+> Il modello soggetti/ruoli resta il **perno anagrafico** di ZeroErp e non
+> cambia. In sviluppo e' un'estensione che aggiunge un nuovo bridge verso
+> `auth_user` per i ruoli commerciali (CLIENTE, FORNITORE) oltre a RIS_UMANA:
+>
+> * Nuova tabella `anagrafiche.identita_digitali` che collega un generico
+>   `soggetti_ruoli` a un `auth_user` (oggi esiste solo
+>   `risorse_umane_auth_user` per i dipendenti)
+> * Un soggetto PG (cliente azienda, fornitore azienda) potra' avere un account
+>   di accesso a un portale: il vincolo "persona fisica pura" si sposta sul
+>   solo ruolo RIS_UMANA
+> * Nessuna modifica a `soggetti`, `soggetti_ruoli`, `tipi_ruoli` o alle
+>   tabelle specializzate (clienti, fornitori, ecc.)
+>
+> Questa guida resta **autoritativa** per il modello anagrafico. Il nuovo
+> bridge viene descritto separatamente.
+>
+> Dettagli:
+>
+> * Guida architetturale: [architettura-multi-face-auth](/guide/architettura-multi-face-auth)
+> * Piano di sviluppo: [sviluppo-multi-face-auth](/dev/work-in-progress/sviluppo-multi-face-auth)
+
+---
+
 ## Introduzione
 
 In Zero ERP l'anagrafica si basa su un principio semplice: **una persona (o azienda) puo avere piu ruoli**. Mario Rossi puo essere contemporaneamente cliente, fornitore e referente. ACME S.r.l. puo essere cliente e fornitore allo stesso tempo.

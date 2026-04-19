@@ -86,10 +86,10 @@ class EmittenteFiscaleScopeMixinTests(TestCase):
         self.assertIs(result, qs)
         qs.filter.assert_not_called()
 
-    # Scopo: Utente ADMIN non viene filtrato.
+    # Scopo: Utente SUPER_ADMIN non viene filtrato.
     @patch(_RESOLVER)
     def test_admin_nessun_filtro(self, mock_resolver):
-        mock_resolver.get_ruolo_sistema.return_value = "ADMIN"
+        mock_resolver.is_super_admin.return_value = True
 
         qs = MagicMock()
         request = _mock_request()
@@ -101,10 +101,10 @@ class EmittenteFiscaleScopeMixinTests(TestCase):
         self.assertIs(result, qs)
         qs.filter.assert_not_called()
 
-    # Scopo: OPERATIVO senza righe emittenti vede tutto (None = nessuna restrizione).
+    # Scopo: OPERATORE senza righe emittenti vede tutto (None = nessuna restrizione).
     @patch(_RESOLVER)
     def test_operativo_senza_righe_nessun_filtro(self, mock_resolver):
-        mock_resolver.get_ruolo_sistema.return_value = "OPERATIVO"
+        mock_resolver.is_super_admin.return_value = False
         mock_resolver.get_emittenti_ids.return_value = None
 
         qs = MagicMock()
@@ -117,10 +117,10 @@ class EmittenteFiscaleScopeMixinTests(TestCase):
         self.assertIs(result, qs)
         qs.filter.assert_not_called()
 
-    # Scopo: OPERATIVO con righe emittenti filtra il queryset.
+    # Scopo: OPERATORE con righe emittenti filtra il queryset.
     @patch(_RESOLVER)
     def test_operativo_con_righe_filtra_queryset(self, mock_resolver):
-        mock_resolver.get_ruolo_sistema.return_value = "OPERATIVO"
+        mock_resolver.is_super_admin.return_value = False
         mock_resolver.get_emittenti_ids.return_value = [1, 3, 5]
 
         qs = MagicMock()
@@ -139,7 +139,7 @@ class EmittenteFiscaleScopeMixinTests(TestCase):
     # Scopo: Il filtro usa il campo personalizzato (path con lookup).
     @patch(_RESOLVER)
     def test_filtro_usa_campo_personalizzato(self, mock_resolver):
-        mock_resolver.get_ruolo_sistema.return_value = "OPERATIVO"
+        mock_resolver.is_super_admin.return_value = False
         mock_resolver.get_emittenti_ids.return_value = [2, 4]
 
         qs = MagicMock()
@@ -159,13 +159,13 @@ class EmittenteFiscaleScopeMixinTests(TestCase):
     # Scopo: La cache su request viene riutilizzata se presente.
     @patch(_RESOLVER)
     def test_cache_request_riutilizzata(self, mock_resolver):
-        mock_resolver.get_ruolo_sistema.return_value = "OPERATIVO"
+        mock_resolver.is_super_admin.return_value = False
         mock_resolver.get_emittenti_ids.return_value = [10]
 
         qs = MagicMock()
         qs.filter.return_value = MagicMock()
 
-        cache = {"ruolo_sistema": "OPERATIVO"}
+        cache = {"is_super_admin": False}
         request = _mock_request(cache=cache)
         view = _ViewWithMixin(qs, request)
         view.emittente_field = "emittente_fiscale_id"
@@ -173,6 +173,6 @@ class EmittenteFiscaleScopeMixinTests(TestCase):
         view.get_queryset()
 
         # Verifica che il resolver riceva il dict cache dalla request
-        mock_resolver.get_ruolo_sistema.assert_called_once()
-        call_kwargs = mock_resolver.get_ruolo_sistema.call_args
+        mock_resolver.is_super_admin.assert_called_once()
+        call_kwargs = mock_resolver.is_super_admin.call_args
         self.assertIs(call_kwargs[1]["cache"], cache)

@@ -2,9 +2,11 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2026 Tid (Michele Carlo Titini)
 # Doc: Python
-# Scopo: API views admin per vendite.promo_articoli.
-#        CRUD admin. STADIO 0 del resolver prezzi v5: (articolo, uom) in un
-#        periodo valido vince su listino e matrice categoria.
+# Scopo: API views per vendite.promo_articoli.
+#        CRUD governato dal permesso area 'vendite' con possibilita' di
+#        override per model 'promo_articolo' (pattern v2 permessi). STADIO 0
+#        del resolver prezzi v5: (articolo, uom) in un periodo valido vince
+#        su listino e matrice categoria.
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -16,7 +18,7 @@ from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serial
 from rest_framework import serializers
 from rest_framework.request import Request
 
-from apps.core.api.base_views import AdminAPIView
+from apps.core.api.base_views import DomainAPIView
 from apps.core.api.endpoint_helpers import handle_post_json
 from apps.core.api.payload_validators import (
     paginated_envelope,
@@ -44,10 +46,16 @@ def _qp_int_optional(raw: str | None, name: str) -> int | None:
 # =================================================================
 
 
-class PromoArticoliView(AdminAPIView):
-    """GET lista paginata, POST crea promo (admin only)."""
+class PromoArticoliView(DomainAPIView):
+    """GET lista paginata, POST crea promo.
+
+    Permesso area 'vendite' con override per model 'promo_articolo':
+    admin puo' concedere/restringere l'accesso alle promo senza toccare
+    il resto dell'area (pattern v2 permessi).
+    """
 
     area_funzionale = "vendite"
+    model_permission = ("vendite", "promo_articolo")
     is_search_endpoint = True
 
     @extend_schema(
@@ -132,10 +140,14 @@ class PromoArticoliView(AdminAPIView):
 # =================================================================
 
 
-class PromoArticoliDetailView(AdminAPIView):
-    """GET dettaglio, PATCH aggiorna (codice/articolo/uom immutabili)."""
+class PromoArticoliDetailView(DomainAPIView):
+    """GET dettaglio, PATCH aggiorna (codice/articolo/uom immutabili).
+
+    Permesso area 'vendite' con override per model 'promo_articolo'.
+    """
 
     area_funzionale = "vendite"
+    model_permission = ("vendite", "promo_articolo")
 
     @extend_schema(
         responses={200: inline_serializer(

@@ -13,25 +13,17 @@ CREATE OR REPLACE FUNCTION anagrafiche.trgfn_risorse_umane_auth_user_sync_active
  LANGUAGE plpgsql
 AS $function$
 BEGIN
--- ------------------------------------------------------------
--- Trigger function: trgfn_risorse_umane_auth_user_sync_active
---
--- Scopo:
---   Alla modifica di attivo su risorse_umane_auth_user o
---   all'inserimento di un nuovo bridge, sincronizza
---   auth_user.is_active tramite fn_sync_auth_user_is_active.
---
--- Evento: AFTER INSERT / AFTER UPDATE OF attivo
--- Tabella: anagrafiche.risorse_umane_auth_user
--- ------------------------------------------------------------
-
-    PERFORM anagrafiche.fn_sync_auth_user_is_active(NEW.risorsa_umana_id);
-    RETURN NULL; -- AFTER trigger, ritorno ignorato
+    -- Alla modifica di attivo sul bridge RUA (o all'inserimento
+    -- di un nuovo collegamento), sincronizza auth_user.is_active
+    -- usando la nuova firma (auth_user_id invece di
+    -- risorsa_umana_id).
+    PERFORM anagrafiche.fn_sync_auth_user_is_active(NEW.auth_user_id);
+    RETURN NULL; -- AFTER trigger: ritorno ignorato
 END;
 $function$
 
 COMMENT ON FUNCTION anagrafiche.trgfn_risorse_umane_auth_user_sync_active()
-IS 'Trigger function: sincronizza auth_user.is_active al cambio stato bridge o nuovo collegamento.';
+IS 'Trigger function: sincronizza auth_user.is_active al cambio stato del bridge RUA o al nuovo collegamento. Passa NEW.auth_user_id alla funzione sync (§4.5 WIP multi-face-auth).';
 ```
 
 ---
