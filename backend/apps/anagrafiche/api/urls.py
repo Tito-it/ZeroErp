@@ -14,6 +14,10 @@ from apps.anagrafiche.api.views_categorie_clienti_listini import (
     CategorieClientiListiniView,
 )
 from apps.anagrafiche.api.views_clienti import ClientiDetailView, ClientiView, UtilitiesManualLookupView
+from apps.anagrafiche.api.views_invito_portale import (
+    ClientiInvitaPortaleView,
+    FornitoriInvitaPortaleView,
+)
 from apps.anagrafiche.api.views_emittenti_fiscali import (
     EmittentiFiscaliBillingAccountDetailView,
     EmittentiFiscaliBillingAccountView,
@@ -58,9 +62,19 @@ urlpatterns = [
     # Clienti
     path("clienti/", ClientiView.as_view(), name="anagrafiche-clienti-list"),
     path("clienti/<int:cliente_id>/", ClientiDetailView.as_view(), name="anagrafiche-clienti-detail"),
+    path(
+        "clienti/<int:cliente_id>/invita-portale/",
+        ClientiInvitaPortaleView.as_view(),
+        name="anagrafiche-clienti-invita-portale",
+    ),
     # Fornitori
     path("fornitori/", FornitoriView.as_view(), name="anagrafiche-fornitori-list"),
     path("fornitori/<int:fornitore_id>/", FornitoriDetailView.as_view(), name="anagrafiche-fornitori-detail"),
+    path(
+        "fornitori/<int:fornitore_id>/invita-portale/",
+        FornitoriInvitaPortaleView.as_view(),
+        name="anagrafiche-fornitori-invita-portale",
+    ),
     # Emittenti fiscali (admin only)
     path("emittenti-fiscali/", EmittentiFiscaliView.as_view(), name="anagrafiche-emittenti-fiscali-list"),
     path("emittenti-fiscali/<int:emittente_id>/", EmittentiFiscaliDetailView.as_view(), name="anagrafiche-emittenti-fiscali-detail"),

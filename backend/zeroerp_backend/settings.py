@@ -91,6 +91,7 @@ INSTALLED_APPS = [
     'apps.vendite',
     'apps.pratiche',
     'apps.amm_software',
+    'apps.portale',
     'rest_framework_simplejwt.token_blacklist',
 ] + (['apps.ai_assistant'] if AI_ENABLED else [])
 

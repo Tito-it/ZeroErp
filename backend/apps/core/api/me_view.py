@@ -115,12 +115,19 @@ class UserProfileView(DomainAPIView):
         profile = repo.get_user_profile(request.user.id)
         profile["is_admin_globale"] = self._compute_is_admin_globale(profile)
         # Multi-face auth Stage B: espone i campi nativi (is_super_admin +
-        # ruolo_applicativo) in affiancamento al legacy ruolo_sistema. I
-        # consumer FE ne leggono direttamente senza ricostruzione.
-        profile["is_super_admin"] = PermissionResolver.is_super_admin(request.user)
-        profile["ruolo_applicativo"] = PermissionResolver.get_ruolo_applicativo(
-            request.user
-        )
+        # ruolo_applicativo) in affiancamento al legacy ruolo_sistema.
+        # `fn_get_user_profile` gia' li popola: calcoliamo via resolver solo
+        # come fallback difensivo se mancanti (scenari pre-migration o
+        # funzioni DB di versioni piu' vecchie). Lazy check per evitare
+        # roundtrip DB inutili nel caso comune.
+        if "is_super_admin" not in profile:
+            profile["is_super_admin"] = PermissionResolver.is_super_admin(
+                request.user
+            )
+        if "ruolo_applicativo" not in profile:
+            profile["ruolo_applicativo"] = PermissionResolver.get_ruolo_applicativo(
+                request.user
+            )
         return success_response(profile)
 
     # Scopo: Calcola il flag is_admin_globale dal profilo. Regola Q1 del
