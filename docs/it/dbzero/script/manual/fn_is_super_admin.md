@@ -142,12 +142,13 @@ CREATE POLICY rls_fatture_bypass_admin ON vendite.fatture
 ### Evoluzione attesa
 
 Quando il backend (PR2) e il frontend (PR2) verranno migrati, l'esperienza
-di "concedere ADMIN" passerà dal radio `ruolo_sistema` nel drawer
+di "concedere ADMIN" passa dal radio `ruolo_sistema` nel drawer
 operatore a un toggle "Concedi accesso SUPER ADMIN" che crea/rimuove un
-binding verso il profilo 9100. Al cutover §4.6.H il bridge legacy
-`risorse_umane_auth_user` verrà sostituito dalla vista
-`vw_risorse_umane_auth_user`, che usa questa funzione (via LEFT JOIN
-pre-aggregato) per ricostruire il campo `ruolo_sistema` output.
+binding verso il profilo 9100. Post-cutover §13.3.2 (19-04-2026) il
+bridge legacy `risorse_umane_auth_user` è stato sostituito dalla vista
+omonima (tabella rinominata `_legacy_...`); la vista ricostruisce il
+campo `ruolo_sistema` output via LEFT JOIN pre-aggregato, quindi non
+chiama direttamente questa funzione.
 
 ---
 

@@ -1024,43 +1024,54 @@ inferiore e' completo e testato.
 
 Questi task sono §4.6.H.1-H.4 risequenziati.
 
-- [ ] 13.3.1 Grep su `backend/apps/` + `db/changelog/` + pgtap di
+- [x] 13.3.1 Grep su `backend/apps/` + `db/changelog/` + pgtap di
       **ogni** writer residuo verso `anagrafiche.risorse_umane_auth_user`.
-      Coperti dal trigger-ponte durante PR1: ora vanno azzerati.
-      Atteso: 0 INSERT/UPDATE/DELETE su RUA in codice Python.
-      (Corrisponde a §4.6.H.1)
-- [ ] 13.3.2 Changeset Liquibase: `ALTER TABLE anagrafiche.risorse_umane_auth_user
-      RENAME TO _legacy_risorse_umane_auth_user;` + `DROP VIEW IF EXISTS
-      anagrafiche.vw_risorse_umane_auth_user; CREATE VIEW
-      anagrafiche.risorse_umane_auth_user AS ...` (stesso corpo della
-      vista §4.6.F.1). Mantenere `security_invoker = on` per le RLS
-      future. (§4.6.H.2)
-- [ ] 13.3.3 Changeset Liquibase: `DROP TRIGGER
-      trg_risorse_umane_auth_user_z90_sync_identita` e trigger function
-      associata. Non piu' necessario: il backend scrive direttamente
-      su identita_digitali, la vista espone sempre lo stato aggiornato.
-      (Non previsto esplicitamente — sostituisce §4.6.D.4)
-- [ ] 13.3.4 Changeset Liquibase: rimuovere la doppia verifica
-      OPERATORE in `fn_sync_auth_user_is_active` + fallback legacy.
-      La funzione legge solo da `identita_digitali`. (§4.6.H.3 + §4.6.H.4
-      consolidati)
-- [ ] 13.3.5 Aggiornare `db/pgtap/anagrafiche/test-vw-risorse-umane-auth-user.sql`
-      -> rinominare in `test-risorse-umane-auth-user-view.sql` e
-      rimuovere riferimenti a `vw_` nei SELECT. Test pgTAP regression
-      operatore (§4.6.I.4) esplicito pre-cutover.
-- [ ] 13.3.6 (Q5) Trigger guard
-      `trgfn_profili_accesso_bindings_guard_ultimo_super_admin`:
-      blocca DELETE/UPDATE che lascerebbe zero binding `SUPER_ADMIN`
-      attivi su zero identita attive (lockout prevention). Errore
-      `E_PROFILO_ULTIMO_SUPER_ADMIN`. Aggiungere a `messaggi_errore.csv`.
-      Test pgTAP minimo: 3 casi (delete ultimo binding, deactivate
-      ultima identita con SUPER_ADMIN, scenario sano con piu' admin).
-- [ ] 13.3.7 (Q2) Helper DB `script.fn_get_uo_id_for_user(p_auth_user_id integer)`
-      `RETURNS integer LANGUAGE sql STABLE`. Risolve la catena
-      `identita_digitali -> soggetti_ruoli -> risorse_umane` in un
-      unico query. Test pgTAP minimo: 4 casi (utente operatore con UO,
-      utente operatore senza UO, utente non-operatore, utente
-      inesistente). Manual standard.
+      Backend ha confermato 2026-04-19: zero writer Python residui
+      (`amm_software_repository` riscritto per scrivere su
+      `identita_digitali` + bindings via helper `_set_identita_state`
+      / `_set_super_admin_binding`). Unico writer residuo era
+      `fn_crea_risorsa_umana` DB, gestito in 13.3.2.bis sotto.
+- [x] 13.3.2 Changeset Liquibase 20260419-91-cutover-rua-view:
+      `DROP TRIGGER trg_..._z80_sync_identita + DROP FUNCTION`
+      (sub-step 1), `ALTER TABLE ... RENAME TO _legacy_...` (sub-step
+      2), `DROP VIEW vw_...` + `CREATE VIEW risorse_umane_auth_user
+      WITH (security_invoker = true)` con stesso corpo della vista
+      vw_ (sub-step 3). 3 sub-step atomici in un solo changeSet per
+      evitare stati intermedi invalidi.
+- [x] 13.3.2.bis Pre-requisito §13.3.2: changeSet 20260419-90
+      `update-fn-crea-risorsa-umana-post-cutover`. Rimuove l'INSERT
+      sul bridge legacy (che post-cutover fallirebbe: vista read-only)
+      e scrive direttamente su `identita_digitali` + eventuale binding
+      SUPER_ADMIN. Firma esterna invariata.
+- [x] 13.3.3 Trigger-ponte droppato dentro 20260419-91 sub-step 1
+      (trigger real name: `trg_..._z80_sync_identita_ins_upd`; il
+      messaggio dal backend diceva `z90`, corretto a z80 dopo
+      verifica su pg_trigger).
+- [x] 13.3.4 Changeset 20260419-92-update-fn-sync-auth-user-is-active-post-cutover:
+      rimosso il blocco "fallback legacy su risorse_umane_auth_user"
+      e la "doppia verifica OPERATORE su risorse_umane.attivo".
+      Ora la funzione legge solo da identita_digitali; utente orfano
+      -> return false (exit silente).
+- [x] 13.3.5 Rinominato `test-vw-risorse-umane-auth-user.sql` ->
+      `test-risorse-umane-auth-user-view.sql`, aggiornato i SELECT
+      da `vw_risorse_umane_auth_user` al nome canonico, rimosso il
+      caso 5 (test sul trigger-ponte, ora obsoleto). plan(5) -> plan(4).
+- [x] 13.3.6 (Q5) Trigger guard
+      `trgfn_profili_accesso_bindings_guard_ultimo_super_admin`
+      + `trgfn_identita_digitali_guard_ultimo_super_admin` (simmetrico
+      sulla deattivazione identita) implementati in PR1.5 DB
+      (migrations 20260419-68/69/70). Codice errore 384
+      E_PROFILO_ULTIMO_SUPER_ADMIN aggiunto a messaggi_errore.csv.
+      pgTAP 3 casi verdi.
+- [x] 13.3.7 (Q2) `script.fn_get_uo_id_for_user` implementato in PR1.5
+      DB (migration 20260419-71). Backend ha gia' migrato
+      `get_unita_organizzativa_id` al wrapper. pgTAP 4 casi verdi.
+- [ ] 13.3.8 **Doc manual**: aggiornata post-cutover. `manual/risorse_umane_auth_user.md`
+      riscritto come doc della vista (ex doc tabella). Eliminati
+      `manual/vw_risorse_umane_auth_user.md` (duplicato) e
+      `manual/trgfn_risorse_umane_auth_user_sync_identita.md` (trigger
+      droppato). Auto-generati (`views/vw_...md`, `index*.md`) si
+      rigenereranno al prossimo build docs.
 
 ### 13.4 Stage A — Backend foundation (PR-A, branch `dev/backend-tid`)
 
@@ -1622,6 +1633,52 @@ Stime per Tid come unico contributor.
   ultimo SUPER_ADMIN (Q5), promozione vista prima del refactor
   Python (Q6). Aggiunti task §13.3.6 (guard ultimo super_admin) +
   §13.3.7 (helper DB UO).
+* **2026-04-19 (sessione implementativa — PR-A DB cutover §13.3.2-5)**:
+  eseguito il cutover DB-side dopo segnale verde dal team backend
+  (writer Python su RUA azzerati). 3 migration + rename file test +
+  consolidamento doc.
+  * **20260419-90** `update fn_crea_risorsa_umana post-cutover`:
+    rimuove l'INSERT su `risorse_umane_auth_user` (che post-cutover
+    fallirebbe) e scrive direttamente su `identita_digitali` +
+    binding SUPER_ADMIN se `p_ruolo_sistema='ADMIN'`. Firma esterna
+    invariata. **Pre-requisito** per il cutover atomico (-91).
+  * **20260419-91** `cutover-rua-view` (changeSet atomico in 3 sub-step):
+    (1) DROP trigger-ponte `trg_...z80_sync_identita_ins_upd` + trigger
+    function; (2) `ALTER TABLE risorse_umane_auth_user RENAME TO
+    _legacy_risorse_umane_auth_user` (gli altri 6 trigger seguono la
+    tabella e restano inerti); (3) DROP `vw_risorse_umane_auth_user` +
+    `CREATE VIEW risorse_umane_auth_user WITH (security_invoker = true)`
+    con lo stesso corpo della vista `vw_`. Pre-condizioni sqlCheck
+    verificano che RUA sia tabella (r) e `vw_` sia vista (v) prima di
+    applicare.
+  * **20260419-92** `update fn_sync_auth_user_is_active post-cutover`:
+    rimosso il blocco "fallback legacy bridge risorse_umane_auth_user"
+    e la "doppia verifica OPERATORE su risorse_umane.attivo". La
+    funzione ora legge solo da `identita_digitali`; utente orfano
+    (nessuna identita) -> return false (exit silente).
+  * **pgTAP**: `test-vw-risorse-umane-auth-user.sql` rinominato
+    `test-risorse-umane-auth-user-view.sql` via `git mv`; aggiornati
+    i SELECT al nome canonico; rimosso il caso 5 (testava il
+    trigger-ponte ora droppato), plan(5) -> plan(4).
+  * **Doc consolidata**: `manual/risorse_umane_auth_user.md` riscritto
+    come documentazione della vista (ex doc tabella legacy); eliminati
+    `manual/vw_risorse_umane_auth_user.md` (duplicato) e
+    `manual/trgfn_risorse_umane_auth_user_sync_identita.md` (trigger
+    droppato). Cross-ref aggiornati in `manual/identita_digitali.md`
+    e `script/manual/fn_is_super_admin.md` (rimossi riferimenti a
+    `vw_...`). Auto-generati (`views/vw_...md`, `index*.md`) si
+    rigenereranno al prossimo build docs.
+  * **Correzione nome trigger**: il messaggio dal backend citava
+    `trg_...z90_sync_identita` (errato); il trigger reale era in
+    fase `_z80_`. Verificato su doc auto-gen `risorse_umane_auth_user.md`
+    prima del DROP.
+  * **Merge proposto**: atomico PR-A backend + questa PR DB su
+    `Tito-dev`. Post-merge smoke test congiunto (login admin, crea/
+    disabilita/riattiva operatore, cambio password, invito portale).
+  * **Pendenze residue post-cutover**: PR-B portali MVP (§5.4-§5.8 +
+    §6.1-§6.5); PR-C shop + attivazione RLS §4.9.7-9 (`ENABLE`,
+    `FORCE`, `BYPASSRLS`, benchmark, pgTAP policy attive); PR-D
+    test/docs/hardening.
 
 ---
 

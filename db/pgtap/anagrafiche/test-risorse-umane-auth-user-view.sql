@@ -2,170 +2,126 @@
 -- SPDX-License-Identifier: GPL-3.0-or-later
 -- pgTAP test per Zero ERP
 --
--- Test: vista anagrafiche.vw_risorse_umane_auth_user (§4.6.F.1 WIP).
+-- Test: vista anagrafiche.risorse_umane_auth_user (§13.3.2 WIP).
 --
--- Semantica attesa:
---   - La vista espone il layout di risorse_umane_auth_user leggendo da
---     identita_digitali (OPERATORE).
---   - ruolo_sistema e' ricostruito via CASE:
---       * identita inattiva / ruolo_applicativo=DISABILITATO -> 'DISABILITATO'
---       * fn_is_super_admin=true -> 'ADMIN'
---       * altrimenti -> 'OPERATIVO'
---   - Il trigger-ponte trgfn_rua_sync_identita propaga gli INSERT/UPDATE
---     su RUA alla vista (via identita_digitali); questo test lo verifica
---     scrivendo su RUA e leggendo dalla vista.
+-- Post-cutover §13.3.2 (2026-04-19): la vista ha preso il nome
+-- canonico (la tabella legacy e' stata rinominata _legacy_...).
+-- Il trigger-ponte RUA -> identita_digitali e' stato droppato
+-- (migration 20260419-91): ogni scrittura ora passa da
+-- fn_crea_risorsa_umana / amm_software_repository direttamente su
+-- identita_digitali + bindings. Questo test verifica solo la
+-- semantica di lettura della vista.
 --
--- Pattern: sfrutta il seed operatore 'tid' (username fisso) se presente,
--- altrimenti skip. In alternativa, setup manuale con soggetto PF pura.
+-- Strategia: il test usa un'identita OPERATORE "vergine" (senza
+-- binding SUPER_ADMIN pre-esistente) come soggetto. Cosi' tutte le
+-- modifiche del test riguardano solo quella identita e NON scattano
+-- il guard anti-lockout ultimo SUPER_ADMIN (i binding SA dei
+-- preesistenti, es. operatore 'tid', restano attivi).
 --
--- Indice test (1..5):
---    1. Setup: crea operatore via fn_crea_operatore (o seed tid)
---    2. Vista legge record con ruolo_sistema='OPERATIVO' (no binding)
---    3. Aggiungendo binding SUPER_ADMIN -> ruolo_sistema='ADMIN'
---    4. Identita inattiva -> ruolo_sistema='DISABILITATO'
---    5. Trigger-ponte: UPDATE RUA.ruolo_sistema='ADMIN' -> vista=ADMIN
+-- Semantica attesa (ricostruzione ruolo_sistema):
+--   * identita inattiva / ruolo_applicativo=DISABILITATO / fuori
+--     finestra temporale -> 'DISABILITATO'
+--   * binding SUPER_ADMIN attivo -> 'ADMIN'
+--   * altrimenti -> 'OPERATIVO'
 --
--- BEGIN; + rollback implicito a fine file.
+-- Indice test (1..4):
+--    1. Setup: identifica un'identita OPERATORE vergine (skip se assente)
+--    2. Vista: identita vergine senza binding -> ruolo_sistema=OPERATIVO
+--    3. Vista: aggiungendo binding SUPER_ADMIN -> ruolo_sistema=ADMIN
+--    4. Vista: disattivando binding + identita -> ruolo_sistema=DISABILITATO
+--
+-- BEGIN; + ROLLBACK a fine file.
 -- ------------------------------------------------------------
 
 BEGIN;
-SELECT plan(5);
+SELECT plan(4);
 
 -- =========================================================
--- 1) Setup: usa l'operatore seed 'tid' se esiste, altrimenti skip dei test
+-- 1) Setup: identita OPERATORE vergine (senza alcun binding)
 -- =========================================================
--- L'operatore 'tid' viene seedato da 20260309-01. Se assente
--- (es. CI minimal), gli step restanti skippano.
+-- Il vincolo UNIQUE parziale uq_profili_accesso_bindings_identita
+-- permette al piu' un binding per identita. Scelgo una identita con
+-- nessun binding per poter aggiungere quello SUPER_ADMIN senza
+-- conflitti, e cosi' isolare gli effetti dai preesistenti.
 CREATE TEMP TABLE _t_op AS
-SELECT au.id AS auth_user_id
-  FROM django.auth_user au
- WHERE au.username = 'tid'
+SELECT id.auth_user_id,
+       id.id AS identita_id
+  FROM anagrafiche.identita_digitali id
+ WHERE id.ruolo_applicativo = 'OPERATORE'
+   AND id.attivo = true
+   AND NOT EXISTS (
+       SELECT 1 FROM config.profili_accesso_bindings pab
+        WHERE pab.identita_digitale_id = id.id
+   )
+ ORDER BY id.id
  LIMIT 1;
 
 SELECT ok(
     (SELECT count(*) FROM _t_op) >= 0,
-    '1. Setup: tabella _t_op creata (operatore seed tid se presente)'
+    '1. Setup: tabella _t_op creata (identita OPERATORE vergine se presente)'
 );
 
 -- =========================================================
--- 2) La vista legge OPERATIVO per un operatore senza binding SUPER_ADMIN
+-- 2) Identita vergine senza binding -> ruolo_sistema=OPERATIVO
 -- =========================================================
--- Rimuovo eventuale binding SUPER_ADMIN preesistente per l'operatore tid.
--- (Il seed tid e' ADMIN via RUA legacy; il trigger-ponte lo ha propagato
--- a binding SUPER_ADMIN. Per questo test lo rimuovo temporaneamente.)
-WITH id_op AS (
-    SELECT id.id AS identita_id
-      FROM anagrafiche.identita_digitali id
-      JOIN _t_op op ON op.auth_user_id = id.auth_user_id
-     WHERE id.ruolo_applicativo = 'OPERATORE'
-     LIMIT 1
-)
-DELETE FROM config.profili_accesso_bindings pab
- USING id_op
- WHERE pab.identita_digitale_id = id_op.identita_id
-   AND pab.profilo_accesso_id = 9100;
-
-SELECT ok(
-    CASE
-        WHEN (SELECT count(*) FROM _t_op) = 0 THEN true  -- skip se no seed
-        ELSE (SELECT ruolo_sistema::text FROM anagrafiche.vw_risorse_umane_auth_user v
-                JOIN _t_op op ON op.auth_user_id = v.auth_user_id) = 'OPERATIVO'
-    END,
-    '2. Vista: operatore senza binding SUPER_ADMIN -> ruolo_sistema=OPERATIVO'
-);
+SELECT CASE
+    WHEN (SELECT count(*) FROM _t_op) = 0
+    THEN skip('Nessuna identita OPERATORE vergine disponibile: test 2 skippato', 1)
+    ELSE ok(
+        (SELECT ruolo_sistema::text
+           FROM anagrafiche.risorse_umane_auth_user v
+           JOIN _t_op op ON op.auth_user_id = v.auth_user_id) = 'OPERATIVO',
+        '2. Vista: identita senza binding SUPER_ADMIN -> ruolo_sistema=OPERATIVO'
+    )
+END;
 
 -- =========================================================
--- 3) Aggiunta binding SUPER_ADMIN -> vista mostra ADMIN
+-- 3) Aggiunto binding SUPER_ADMIN -> vista mostra ADMIN
 -- =========================================================
-WITH id_op AS (
-    SELECT id.id AS identita_id
-      FROM anagrafiche.identita_digitali id
-      JOIN _t_op op ON op.auth_user_id = id.auth_user_id
-     WHERE id.ruolo_applicativo = 'OPERATORE'
-     LIMIT 1
-)
 INSERT INTO config.profili_accesso_bindings
     (profilo_accesso_id, identita_digitale_id, attivo)
-SELECT 9100, identita_id, true FROM id_op;
+SELECT 9100, identita_id, true
+  FROM _t_op;
 
-SELECT ok(
-    CASE
-        WHEN (SELECT count(*) FROM _t_op) = 0 THEN true
-        ELSE (SELECT ruolo_sistema::text FROM anagrafiche.vw_risorse_umane_auth_user v
-                JOIN _t_op op ON op.auth_user_id = v.auth_user_id) = 'ADMIN'
-    END,
-    '3. Vista: binding SUPER_ADMIN attivo -> ruolo_sistema=ADMIN'
-);
+SELECT CASE
+    WHEN (SELECT count(*) FROM _t_op) = 0
+    THEN skip('Setup non completato: test 3 skippato', 1)
+    ELSE ok(
+        (SELECT ruolo_sistema::text
+           FROM anagrafiche.risorse_umane_auth_user v
+           JOIN _t_op op ON op.auth_user_id = v.auth_user_id) = 'ADMIN',
+        '3. Vista: binding SUPER_ADMIN attivo -> ruolo_sistema=ADMIN'
+    )
+END;
 
 -- =========================================================
--- 4) Identita con attivo=false -> vista mostra DISABILITATO
+-- 4) Disattivo binding + identita -> vista mostra DISABILITATO
 -- =========================================================
--- NOTA: il trigger framework dbops.trgfn_prevent_deactivate_if_children
--- blocca la disattivazione del padre se ci sono bindings figli attivi
--- (il caso 3 ha creato un binding SUPER_ADMIN). Strategia: disattivare
--- PRIMA il binding (attivo=false), POI l'identita. Questo e' anche il
--- pattern realistico di produzione: il trigger-ponte §4.6.D.4 quando
--- vede RUA.ruolo_sistema='DISABILITATO' imposta identita.attivo=false
--- dopo aver rimosso il binding SUPER_ADMIN.
+-- Questo NON scatta il guard anti-lockout: i binding SA preesistenti
+-- (seed 80_data, es. tid) restano attivi, quindi non siamo mai
+-- sull'ultimo SUPER_ADMIN.
+-- Ordine: prima binding (child), poi identita (parent).
 UPDATE config.profili_accesso_bindings pab
    SET attivo = false
-  FROM anagrafiche.identita_digitali id, _t_op op
- WHERE pab.identita_digitale_id = id.id
-   AND id.auth_user_id = op.auth_user_id
-   AND id.ruolo_applicativo = 'OPERATORE'
+  FROM _t_op op
+ WHERE pab.identita_digitale_id = op.identita_id
    AND pab.profilo_accesso_id = 9100;
 
 UPDATE anagrafiche.identita_digitali id
    SET attivo = false
   FROM _t_op op
- WHERE id.auth_user_id = op.auth_user_id
-   AND id.ruolo_applicativo = 'OPERATORE';
+ WHERE id.id = op.identita_id;
 
-SELECT ok(
-    CASE
-        WHEN (SELECT count(*) FROM _t_op) = 0 THEN true
-        ELSE (SELECT ruolo_sistema::text FROM anagrafiche.vw_risorse_umane_auth_user v
-                JOIN _t_op op ON op.auth_user_id = v.auth_user_id) = 'DISABILITATO'
-    END,
-    '4. Vista: identita attivo=false -> ruolo_sistema=DISABILITATO'
-);
-
--- Ripristino per caso 5: riattivo identita + binding.
--- Nota ordine inverso: prima riattivo il padre (identita), poi il figlio
--- (binding). Non c'e' trigger che blocca l'attivazione, solo la
--- disattivazione, quindi l'ordine qui e' per coerenza logica.
-UPDATE anagrafiche.identita_digitali id
-   SET attivo = true
-  FROM _t_op op
- WHERE id.auth_user_id = op.auth_user_id
-   AND id.ruolo_applicativo = 'OPERATORE';
-
-UPDATE config.profili_accesso_bindings pab
-   SET attivo = true
-  FROM anagrafiche.identita_digitali id, _t_op op
- WHERE pab.identita_digitale_id = id.id
-   AND id.auth_user_id = op.auth_user_id
-   AND id.ruolo_applicativo = 'OPERATORE'
-   AND pab.profilo_accesso_id = 9100;
-
--- =========================================================
--- 5) Trigger-ponte: UPDATE RUA.ruolo_sistema='OPERATIVO' -> vista=OPERATIVO
---    (il trigger trgfn_rua_sync_identita rimuove il binding SUPER_ADMIN
---     quando il ruolo_sistema passa da ADMIN a OPERATIVO)
--- =========================================================
-UPDATE anagrafiche.risorse_umane_auth_user rau
-   SET ruolo_sistema = 'OPERATIVO'::config.ruolo_sistema
-  FROM _t_op op
- WHERE rau.auth_user_id = op.auth_user_id;
-
-SELECT ok(
-    CASE
-        WHEN (SELECT count(*) FROM _t_op) = 0 THEN true
-        ELSE (SELECT ruolo_sistema::text FROM anagrafiche.vw_risorse_umane_auth_user v
-                JOIN _t_op op ON op.auth_user_id = v.auth_user_id) = 'OPERATIVO'
-    END,
-    '5. Trigger-ponte: UPDATE RUA a OPERATIVO -> vista torna a OPERATIVO'
-);
+SELECT CASE
+    WHEN (SELECT count(*) FROM _t_op) = 0
+    THEN skip('Setup non completato: test 4 skippato', 1)
+    ELSE ok(
+        (SELECT ruolo_sistema::text
+           FROM anagrafiche.risorse_umane_auth_user v
+           JOIN _t_op op ON op.auth_user_id = v.auth_user_id) = 'DISABILITATO',
+        '4. Vista: identita attivo=false -> ruolo_sistema=DISABILITATO'
+    )
+END;
 
 SELECT * FROM finish();
 ROLLBACK;
