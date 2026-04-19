@@ -10,7 +10,7 @@ import { useOperatoriStore } from '../stores/operatori'
 import { useNotify } from '../../core/composables/useNotify'
 import { useLookup } from '../../core/composables/useLookup'
 import { listAreeFunzionali, listAzioniProcesso, listEmittentiFiscali, getModelOverridesLookup } from '../api/amministrazione'
-import { RUOLO_SISTEMA, LIVELLO_ACCESSO, buildLivelloOptions } from '../constants'
+import { LIVELLO_ACCESSO, buildLivelloOptions } from '../constants'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Select from 'primevue/select'
@@ -34,10 +34,10 @@ const props = defineProps({
 
 const livelloOptions = buildLivelloOptions(t)
 
-// isAdmin deriva da currentOperatore nello store. Se il componente viene
-// montato senza che currentOperatore sia gia' caricato per questo authUserId,
-// loadAll() si occupa di farne il fetch (serve per mostrare il banner admin).
-const isAdmin = computed(() => store.currentOperatore?.ruolo_sistema === RUOLO_SISTEMA.ADMIN)
+// Multi-face auth: flag SUPER_ADMIN dal detail dell'operatore gestito
+// (non dal user corrente auth). Se il detail non e' ancora caricato,
+// loadAll() lo fetcha. Banner "admin ha accesso totale" guidato da qui.
+const isSuperAdmin = computed(() => store.currentOperatore?.is_super_admin === true)
 
 // Stato locale editabile (mantenuto separato dallo store per permettere undo
 // logico tra un save e l'altro e per non mutare direttamente lo store).
@@ -182,7 +182,7 @@ function onModelSelect(item, row) {
 
 <template>
   <div class="permessi-tab">
-    <Message v-if="isAdmin" severity="info" :closable="false" class="mb-3">
+    <Message v-if="isSuperAdmin" severity="info" :closable="false" class="mb-3">
       {{ t('amm.admin_full_access') }}
     </Message>
 

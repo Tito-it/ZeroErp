@@ -14,9 +14,10 @@ Indice test eseguiti:
 4) UserProfileViewTests.test_is_admin_globale_admin_senza_emittente
 5) UserProfileViewTests.test_is_admin_globale_admin_con_emittente
 6) UserProfileViewTests.test_is_admin_globale_operativo
-7) CoreRepositoryTests.test_get_user_profile_returns_jsonb
-8) CoreRepositoryTests.test_get_user_profile_null_result_raises_error
-9) CoreRepositoryTests.test_get_user_profile_no_row_raises_error
+7) UserProfileViewTests.test_profile_include_is_super_admin_e_ruolo_applicativo
+8) CoreRepositoryTests.test_get_user_profile_returns_jsonb
+9) CoreRepositoryTests.test_get_user_profile_null_result_raises_error
+10) CoreRepositoryTests.test_get_user_profile_no_row_raises_error
 """
 
 from unittest import TestCase
@@ -193,6 +194,37 @@ class UserProfileViewTests(TestCase):
         with patch("apps.core.api.me_view.success_response") as mock_resp:
             view.get(request)
         self.assertFalse(mock_resp.call_args[0][0]["is_admin_globale"])
+
+    # Scopo: Verifica che il profilo espone i campi nativi multi-face
+    # (is_super_admin + ruolo_applicativo) risolti via PermissionResolver.
+    # Copre il contract Stage B: il FE legge direttamente questi campi
+    # senza ricostruire ruolo_sistema legacy.
+    @patch("apps.core.api.me_view.PermissionResolver")
+    @patch(_REPO_PATH)
+    def test_profile_include_is_super_admin_e_ruolo_applicativo(
+        self, MockRepo, MockResolver
+    ):
+        from apps.core.api.me_view import UserProfileView
+
+        mock_repo = MagicMock()
+        mock_repo.get_user_profile.return_value = dict(_PROFILE_FULL)
+        MockRepo.return_value = mock_repo
+        MockResolver.is_super_admin.return_value = True
+        MockResolver.get_ruolo_applicativo.return_value = "OPERATORE"
+
+        request = MagicMock()
+        request.user = MagicMock()
+        request.user.id = 1
+
+        view = UserProfileView()
+        with patch("apps.core.api.me_view.success_response") as mock_resp:
+            view.get(request)
+
+        profile_arg = mock_resp.call_args[0][0]
+        self.assertTrue(profile_arg["is_super_admin"])
+        self.assertEqual(profile_arg["ruolo_applicativo"], "OPERATORE")
+        MockResolver.is_super_admin.assert_called_once_with(request.user)
+        MockResolver.get_ruolo_applicativo.assert_called_once_with(request.user)
 
     # Scopo: Verifica che un errore dal repository si propaga correttamente.
     @patch(_REPO_PATH)

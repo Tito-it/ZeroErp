@@ -20,6 +20,8 @@ class OperatoreRow(TypedDict):
     soggetto_cognome: str | None
     soggetto_nome: str | None
     ruolo_sistema: str | None
+    is_super_admin: bool
+    ruolo_applicativo: str | None
     is_active: bool
     unita_organizzativa_id: int | None
     unita_organizzativa_nome: str | None

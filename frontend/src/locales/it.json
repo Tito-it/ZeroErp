@@ -224,6 +224,15 @@
     "password": "Password",
     "login": "Accedi",
     "logout": "Esci",
+    "super_admin_badge": "Super Admin",
+    "ruolo_applicativo": {
+      "OPERATORE": "Operatore",
+      "CLIENTE_PORTALE": "Cliente (portale)",
+      "FORNITORE_PORTALE": "Fornitore (portale)",
+      "SHOP_CUSTOMER": "Cliente shop",
+      "API_CLIENT": "Client API",
+      "DISABILITATO": "Disabilitato"
+    },
     "login_error": "Credenziali non valide",
     "account_disabled": "Account disabilitato — contattare l'amministratore",
     "account_not_active": "Account non ancora attivo",
@@ -559,12 +568,25 @@
     "banner_non_assegnati_detail": "Dopo l'introduzione del vincolo 1-a-1 operatore-emittente, gli operatori esistenti sono rimasti come admin globali. Aprire il drawer di ogni operatore e assegnarlo all'emittente corretto. Finché non assegnati, gli operatori non possono creare billing account quando esistono emittenti fiscali nel sistema.",
     "search_placeholder": "Cerca operatore...",
     "filter_ruolo": "Ruolo",
+    "filter_super_admin": "Super Admin",
+    "filter_super_admin_tutti": "Tutti",
+    "filter_super_admin_si": "Solo Super Admin",
+    "filter_super_admin_no": "Esclude Super Admin",
     "filter_reparto": "Reparto",
     "filter_stato": "Stato",
     "ruolo_all": "Tutti i ruoli",
     "ruolo_admin": "Amministratore",
     "ruolo_operativo": "Operativo",
     "ruolo_disabilitato": "Disabilitato",
+    "is_super_admin": {
+      "label": "Accesso Super Admin",
+      "help": "Bypass totale dei permessi di area e azione. Da attivare solo per gli amministratori del sistema.",
+      "badge": "Super Admin"
+    },
+    "accesso_attivo": {
+      "label": "Accesso attivo",
+      "help": "Se disattivato, l'operatore non può più effettuare il login."
+    },
     "stato_all": "Tutti",
     "stato_attivo": "Attivo",
     "stato_inattivo": "Inattivo",

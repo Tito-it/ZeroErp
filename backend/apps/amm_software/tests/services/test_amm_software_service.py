@@ -17,6 +17,8 @@ Indice test eseguiti:
  7) test_get_operatore_not_found — id inesistente
  8) test_update_operatore_ok — aggiorna e invalida cache
  9) test_update_operatore_not_found — id inesistente
+ 9a) test_update_operatore_contract_nuovo_super_attivo — traduzione contract multi-face
+ 9b) test_update_operatore_contract_legacy — retrocompat ruolo_sistema
 10) test_disabilita_operatore_ok — disabilita e invalida cache + blacklist
 11) test_disabilita_operatore_not_found — id inesistente
 12) test_put_override_aree_invalidates_cache — invalida cache dopo save
@@ -145,6 +147,64 @@ class TestUpdateOperatore(TestCase):
         from apps.amm_software.services.amm_software_service import AmmSoftwareService
         with self.assertRaises(ServiceError):
             AmmSoftwareService().update_operatore(999, {"email": "x"})
+
+    # Scopo: Contract nuovo multi-face: payload {is_super_admin, attivo}
+    # viene tradotto in ruolo_sistema legacy per il repository. Copre i 4
+    # casi della matrice (ADMIN / OPERATIVO / DISABILITATO / NO-OP).
+    @patch(INVALIDATE_USER)
+    @patch(REPO)
+    def test_update_operatore_contract_nuovo_super_attivo(
+        self, mock_repo_cls, _mock_invalidate
+    ):
+        mock_repo = mock_repo_cls.return_value
+        mock_repo.get_operatore_detail.return_value = {"auth_user_id": 1}
+        from apps.amm_software.services.amm_software_service import AmmSoftwareService
+
+        # Caso 1: super=true, attivo=true  -> ADMIN
+        AmmSoftwareService().update_operatore(
+            1, {"is_super_admin": True, "attivo": True}
+        )
+        self.assertEqual(
+            mock_repo.update_operatore.call_args.kwargs["ruolo_sistema"], "ADMIN"
+        )
+        self.assertTrue(mock_repo.update_operatore.call_args.kwargs["attivo"])
+
+        # Caso 2: super=false, attivo=true -> OPERATIVO
+        AmmSoftwareService().update_operatore(
+            1, {"is_super_admin": False, "attivo": True}
+        )
+        self.assertEqual(
+            mock_repo.update_operatore.call_args.kwargs["ruolo_sistema"], "OPERATIVO"
+        )
+
+        # Caso 3: super=*, attivo=false -> DISABILITATO
+        AmmSoftwareService().update_operatore(
+            1, {"is_super_admin": True, "attivo": False}
+        )
+        self.assertEqual(
+            mock_repo.update_operatore.call_args.kwargs["ruolo_sistema"],
+            "DISABILITATO",
+        )
+
+        # Caso 4: super=true, attivo=None -> NO-OP (ruolo_sistema None)
+        # Guard contro side-effect: riattivazione silenziosa.
+        AmmSoftwareService().update_operatore(1, {"is_super_admin": True})
+        self.assertIsNone(
+            mock_repo.update_operatore.call_args.kwargs["ruolo_sistema"]
+        )
+
+    # Scopo: Se il payload usa ruolo_sistema legacy, passa through senza
+    # traduzione. Retrocompat con FE pre-Stage B.
+    @patch(INVALIDATE_USER)
+    @patch(REPO)
+    def test_update_operatore_contract_legacy(self, mock_repo_cls, _mock_invalidate):
+        mock_repo = mock_repo_cls.return_value
+        mock_repo.get_operatore_detail.return_value = {"auth_user_id": 1}
+        from apps.amm_software.services.amm_software_service import AmmSoftwareService
+        AmmSoftwareService().update_operatore(1, {"ruolo_sistema": "ADMIN"})
+        self.assertEqual(
+            mock_repo.update_operatore.call_args.kwargs["ruolo_sistema"], "ADMIN"
+        )
 
 
 class TestDisabilitaOperatore(TestCase):

@@ -34,9 +34,12 @@ export const useOperatoriStore = defineStore('amm-operatori', () => {
   const currentOperatore = ref(null)
   const loadingDetail = ref(false)
 
-  // Filtri attivi (sincronizzati con la toolbar)
+  // Filtri attivi (sincronizzati con la toolbar).
+  // Multi-face auth Stage B: is_super_admin e' il filtro nativo. ruolo_sistema
+  // rimane supportato per retrocompat (BE traduce automaticamente).
   const filters = ref({
     search: '',
+    is_super_admin: null,
     ruolo_sistema: null,
     unita_organizzativa_id: null,
     is_active: null,
@@ -58,6 +61,7 @@ export const useOperatoriStore = defineStore('amm-operatori', () => {
       const params = {}
       const f = filters.value
       if (f.search) params.search = f.search
+      if (f.is_super_admin != null) params.is_super_admin = f.is_super_admin
       if (f.ruolo_sistema) params.ruolo_sistema = f.ruolo_sistema
       if (f.unita_organizzativa_id != null) params.unita_organizzativa_id = f.unita_organizzativa_id
       if (f.is_active != null) params.is_active = f.is_active
