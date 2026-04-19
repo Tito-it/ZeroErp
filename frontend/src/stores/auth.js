@@ -3,7 +3,7 @@ import { ref, computed } from 'vue'
 import api from '../core/api'
 import { DOMAINS } from '../core/navigation'
 import { local, STORAGE_KEYS } from '../core/storage'
-import { RUOLO_SISTEMA, LIVELLO_ACCESSO } from '../core/constants'
+import { RUOLO_APPLICATIVO, LIVELLO_ACCESSO } from '../core/constants'
 import { useNavigationStore } from './navigation'
 import { useTabsStore } from './tabs'
 
@@ -12,7 +12,9 @@ export const useAuthStore = defineStore('auth', () => {
   const refreshToken = ref(local.get(STORAGE_KEYS.REFRESH_TOKEN))
 
   // Profilo utente caricato dall'endpoint /me/
-  // Struttura JSONB: { utente, ruolo_sistema, risorse_umane, soggetto, emittente, permessi_area, azioni_abilitate, deve_cambiare_password }
+  // Struttura JSONB: { utente, is_super_admin, ruolo_applicativo, ruolo_sistema (legacy),
+  // risorse_umane, soggetto, emittente, permessi_area, azioni_abilitate,
+  // deve_cambiare_password, is_admin_globale }
   const user = ref(null)
 
   // Flag cambio password obbligatorio (impostato al login se deve_cambiare_password = true)
@@ -104,8 +106,33 @@ export const useAuthStore = defineStore('auth', () => {
     clearTokens()
   }
 
-  // Domini visibili per l'utente corrente (filtra adminOnly in base a ruolo_sistema)
-  const isAdmin = computed(() => user.value?.ruolo_sistema === RUOLO_SISTEMA.ADMIN)
+  // Multi-face auth Stage B: i nuovi campi nativi di /me/.
+  // - isSuperAdmin: true se l'utente ha binding al profilo SUPER_ADMIN
+  //   (profilo id 9100). Sostituisce il legacy `isAdmin` mantenuto come
+  //   alias per retrocompat.
+  // - ruoloApplicativo: categoria dell'identita' attiva
+  //   (OPERATORE | CLIENTE_PORTALE | FORNITORE_PORTALE | SHOP_CUSTOMER |
+  //    API_CLIENT | DISABILITATO | null).
+  const isSuperAdmin = computed(() => user.value?.is_super_admin === true)
+  const ruoloApplicativo = computed(() => user.value?.ruolo_applicativo || null)
+
+  // Alias legacy. Nuovi consumer usino isSuperAdmin direttamente.
+  const isAdmin = isSuperAdmin
+
+  // Helpers ortogonali per namespace multi-face. Utili per router guard,
+  // navigazione condizionale e feature flag lato UI.
+  const isOperatoreInterno = computed(
+    () => ruoloApplicativo.value === RUOLO_APPLICATIVO.OPERATORE
+  )
+  const isClientePortale = computed(
+    () => ruoloApplicativo.value === RUOLO_APPLICATIVO.CLIENTE_PORTALE
+  )
+  const isFornitorePortale = computed(
+    () => ruoloApplicativo.value === RUOLO_APPLICATIVO.FORNITORE_PORTALE
+  )
+  const isShopCustomer = computed(
+    () => ruoloApplicativo.value === RUOLO_APPLICATIVO.SHOP_CUSTOMER
+  )
 
   // Refactor operatore-emittenti (Q1): admin globale = ADMIN senza riga
   // in user_emittenti_fiscali. Il flag e' calcolato lato backend dalla
@@ -139,11 +166,17 @@ export const useAuthStore = defineStore('auth', () => {
     }
   })
 
-  // Scopo: Domini visibili: nasconde adminOnly per non-admin e BLOCCATO per tutti.
-  // I domini adminOnly hanno gia' il loro guard — non applicare il check livello.
+  // Scopo: Domini visibili. Filtri applicati:
+  //   - adminOnly: solo SUPER_ADMIN (es. Amm. Software).
+  //   - non adminOnly: solo operatori interni (OPERATORE). I portali e lo
+  //     shop hanno namespace dedicati /portale/ e /shop/ e non vedono i
+  //     domini operativi.
+  //   - BLOCCATO: nascosto a tutti (tranne SUPER_ADMIN via bypass DB).
+  // I domini adminOnly hanno il loro guard — non applicare il check livello.
   const visibleDomains = computed(() => {
     return DOMAINS.filter(d => {
-      if (d.adminOnly) return isAdmin.value
+      if (d.adminOnly) return isSuperAdmin.value
+      if (!isOperatoreInterno.value) return false
       if (d.schemaDb && isAreaBlocked(d.schemaDb)) return false
       return true
     })
@@ -193,9 +226,9 @@ export const useAuthStore = defineStore('auth', () => {
   // Popolata da /me/ campo azioni_abilitate (fn_get_user_actions_map)
   const azioniAbilitate = computed(() => user.value?.azioni_abilitate || {})
 
-  // Scopo: Azione di processo abilitata? ADMIN ha tutto, default false.
+  // Scopo: Azione di processo abilitata? SUPER_ADMIN ha bypass totale, default false.
   function isActionAllowed(codename) {
-    if (isAdmin.value) return true
+    if (isSuperAdmin.value) return true
     return azioniAbilitate.value[codename] === true
   }
 
@@ -209,7 +242,13 @@ export const useAuthStore = defineStore('auth', () => {
     refreshToken,
     user,
     isAuthenticated,
-    isAdmin,
+    isSuperAdmin,
+    isAdmin,  // alias legacy di isSuperAdmin
+    ruoloApplicativo,
+    isOperatoreInterno,
+    isClientePortale,
+    isFornitorePortale,
+    isShopCustomer,
     isAdminGlobale,
     emittenteCorrente,
     mustChangePassword,

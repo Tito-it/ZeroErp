@@ -2,7 +2,7 @@
 // Enum: re-export da core/constants (fonte unica di verita').
 // Builder opzioni per Select centralizzati (zero duplicazione).
 
-// Re-export enum da core — usati anche da stores/auth.js
+// Re-export enum da core — usati anche da stores/auth.js e test.
 export { RUOLO_SISTEMA, LIVELLO_ACCESSO } from '../core/constants'
 import { RUOLO_SISTEMA, LIVELLO_ACCESSO } from '../core/constants'
 
@@ -11,8 +11,10 @@ export const TIPO_RUOLO_CODICE = {
   RIS_UMANA: 'RIS_UMANA'
 }
 
-// Scopo: Costruisce le opzioni ruolo per Select.
-// includeAll: aggiunge "Tutti" (per filtri lista) e "Disabilitato" (sola lettura).
+// Scopo: Costruisce le opzioni ruolo LEGACY per Select.
+// Usato ancora da PermessiRiepilogoView (legacy). Nuovi consumer operatori
+// usino buildFilterSuperAdminOptions + buildFilterStatoOptions.
+// includeAll: aggiunge "Tutti" (per filtri lista) e "Disabilitato".
 export function buildRuoloOptions(t, { includeAll = false } = {}) {
   const opts = [
     { label: t('amm.ruolo_admin'), value: RUOLO_SISTEMA.ADMIN },
@@ -23,6 +25,27 @@ export function buildRuoloOptions(t, { includeAll = false } = {}) {
     opts.push({ label: t('amm.ruolo_disabilitato'), value: RUOLO_SISTEMA.DISABILITATO })
   }
   return opts
+}
+
+// Scopo: Opzioni filtro SUPER_ADMIN per toolbar lista operatori.
+// Valori tri-state: null = tutti, true = solo SUPER_ADMIN, false = escludi.
+// Il BE accetta il param is_super_admin come bool opzionale.
+export function buildFilterSuperAdminOptions(t) {
+  return [
+    { label: t('amm.filter_super_admin_tutti'), value: null },
+    { label: t('amm.filter_super_admin_si'), value: true },
+    { label: t('amm.filter_super_admin_no'), value: false }
+  ]
+}
+
+// Scopo: Opzioni filtro stato operatore per toolbar. Tri-state
+// null/true/false mappato direttamente su is_active del BE.
+export function buildFilterStatoOptions(t) {
+  return [
+    { label: t('amm.stato_all'), value: null },
+    { label: t('amm.stato_attivo'), value: true },
+    { label: t('amm.stato_inattivo'), value: false }
+  ]
 }
 
 // Scopo: Costruisce le opzioni livello accesso per Select.

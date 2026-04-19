@@ -22,6 +22,15 @@ from apps.core.api.success_responses import success_response
 from apps.amm_software.services.amm_software_service import AmmSoftwareService
 
 
+# Scopo: Decodifica query param a bool opzionale. Valori True: 1|true|yes|on
+# (case-insensitive). Valori False: qualsiasi altra stringa non vuota. None
+# se il param non e' presente. Usato per filtri di lista.
+def _parse_optional_bool(raw: str | None) -> bool | None:
+    if raw is None:
+        return None
+    return raw.lower() in ("1", "true", "yes", "on")
+
+
 # ================================================================== #
 # Operatori                                                            #
 # ================================================================== #
@@ -35,6 +44,7 @@ class OperatoriListView(AdminAPIView):
         parameters=[
             OpenApiParameter(name="search", type=str, required=False),
             OpenApiParameter(name="ruolo_sistema", type=str, required=False),
+            OpenApiParameter(name="is_super_admin", type=bool, required=False),
             OpenApiParameter(name="unita_organizzativa_id", type=int, required=False),
             OpenApiParameter(name="is_active", type=bool, required=False),
             OpenApiParameter(name="limit", type=int, required=False),
@@ -47,15 +57,14 @@ class OperatoriListView(AdminAPIView):
     # Scopo: Lista paginata operatori con filtri.
     def get(self, request: Request) -> JsonResponse:
         qp = request.query_params
-        raw_active = qp.get("is_active")
-        is_active = None
-        if raw_active is not None:
-            is_active = raw_active.lower() in ("1", "true", "yes")
+        is_active = _parse_optional_bool(qp.get("is_active"))
+        is_super_admin = _parse_optional_bool(qp.get("is_super_admin"))
 
         repo = AmmSoftwareService()
         results, total_count = repo.list_operatori(
             search=qp.get("search") or None,
             ruolo_sistema=qp.get("ruolo_sistema") or None,
+            is_super_admin=is_super_admin,
             unita_organizzativa_id=optional_int({"v": qp.get("unita_organizzativa_id")}, "v"),
             is_active=is_active,
             limit=min(optional_int({"v": qp.get("limit")}, "v") or DEFAULT_LIMIT, MAX_LIMIT),

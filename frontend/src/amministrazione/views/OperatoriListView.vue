@@ -12,7 +12,8 @@ import { useReadonlyMode } from '../../core/composables/useReadonlyMode'
 import { useLookup } from '../../core/composables/useLookup'
 import { listUnitaOrganizzative } from '../api/amministrazione'
 import { useSetupStatus } from '../composables/useSetupStatus'
-import { RUOLO_SISTEMA, buildRuoloOptions, getRuoloSeverity } from '../constants'
+import { buildFilterSuperAdminOptions, buildFilterStatoOptions } from '../constants'
+import { RUOLO_APPLICATIVO } from '../../core/constants'
 import OperatoreDrawer from '../components/OperatoreDrawer.vue'
 import OperatorePermessiDrawer from '../components/OperatorePermessiDrawer.vue'
 import OperatoriNonAssegnatiBanner from '../components/OperatoriNonAssegnatiBanner.vue'
@@ -39,18 +40,17 @@ const { status: setupStatusData, load: loadSetupStatus, hasOperatoriNonAssegnati
 
 useTabFreshness(store, 'operatore')
 
-// Filtri locali (extra rispetto a search)
-const ruoloFilter = ref(null)
+// Filtri locali (extra rispetto a search).
+// Multi-face auth Stage B: il vecchio filtro ruolo_sistema (ADMIN/OPERATIVO/
+// DISABILITATO) e' scomposto in:
+//   - superAdminFilter: toggle Sì/No/Tutti sul binding SUPER_ADMIN
+//   - activeFilter: stato attivo identita' (ex "DISABILITATO")
+const superAdminFilter = ref(null)
 const uoFilter = ref(null)
 const activeFilter = ref(null)
 
-const ruoloOptions = buildRuoloOptions(t, { includeAll: true })
-
-const activeOptions = [
-  { label: t('amm.stato_all'), value: null },
-  { label: t('amm.stato_attivo'), value: true },
-  { label: t('amm.stato_inattivo'), value: false }
-]
+const superAdminOptions = buildFilterSuperAdminOptions(t)
+const activeOptions = buildFilterStatoOptions(t)
 
 onMounted(() => {
   store.fetchList()
@@ -66,7 +66,7 @@ function onDrawerSavedWithStatus() {
 }
 
 function applyExtraFilters() {
-  store.filters.ruolo_sistema = ruoloFilter.value
+  store.filters.is_super_admin = superAdminFilter.value
   store.filters.unita_organizzativa_id = uoFilter.value
   store.filters.is_active = activeFilter.value
   applyFilters()
@@ -80,10 +80,17 @@ function openPermessi(row, event) {
   permessiDrawer.editRow(row, 'auth_user_id')
 }
 
-const ruoloBadgeSeverity = getRuoloSeverity
-
 function activeBadgeSeverity(active) {
   return active ? 'success' : 'danger'
+}
+
+// i18n label per ruolo applicativo: chiave auth.ruolo_applicativo.<VALORE>
+// con fallback sul valore grezzo.
+function ruoloAppLabel(ruoloApp) {
+  if (!ruoloApp) return '—'
+  const key = `auth.ruolo_applicativo.${ruoloApp}`
+  const translated = t(key)
+  return translated === key ? ruoloApp : translated
 }
 
 // Scopo: azioni di riga operatore (apertura drawer permessi), nascoste in readonly.
@@ -112,11 +119,11 @@ function buildRowActions(data) {
           :placeholder="t('amm.search_placeholder')"
         />
         <Select
-          v-model="ruoloFilter"
-          :options="ruoloOptions"
+          v-model="superAdminFilter"
+          :options="superAdminOptions"
           option-label="label"
           option-value="value"
-          :placeholder="t('amm.filter_ruolo')"
+          :placeholder="t('amm.filter_super_admin')"
           @change="applyExtraFilters"
         />
         <Select
@@ -166,9 +173,14 @@ function buildRowActions(data) {
       <Column field="username" :header="t('amm.col_username')" sortable />
       <Column field="unita_organizzativa_nome" :header="t('amm.col_reparto')" sortable />
       <Column field="emittenti_descrizione" :header="t('amm.field_emittente')" />
-      <Column field="ruolo_sistema" :header="t('amm.col_ruolo')" sortable>
+      <Column :header="t('amm.col_ruolo')">
         <template #body="{ data }">
-          <Badge :value="data.ruolo_sistema" :severity="ruoloBadgeSeverity(data.ruolo_sistema)" />
+          <div class="operatore-ruolo-badges">
+            <Badge v-if="data.is_super_admin"
+              :value="t('amm.is_super_admin.badge')" severity="warn" />
+            <Badge :value="ruoloAppLabel(data.ruolo_applicativo)"
+              :severity="data.ruolo_applicativo === RUOLO_APPLICATIVO.DISABILITATO ? 'danger' : 'info'" />
+          </div>
         </template>
       </Column>
       <Column field="is_active" :header="t('amm.col_stato')" sortable>
@@ -208,3 +220,11 @@ function buildRowActions(data) {
     />
   </div>
 </template>
+
+<style scoped>
+.operatore-ruolo-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+</style>

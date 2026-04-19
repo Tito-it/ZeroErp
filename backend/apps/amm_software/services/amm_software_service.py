@@ -17,11 +17,37 @@ from apps.core.api.payload_validators import optional_int
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.service_errors import ServiceError
 from apps.core.services.permissions_cache import invalidate_department, invalidate_user
-from apps.amm_software.constants import DEFAULT_RUOLO_SISTEMA, DEFAULT_SESSO, RUOLO_ADMIN
+from apps.amm_software.constants import (
+    DEFAULT_RUOLO_SISTEMA,
+    DEFAULT_SESSO,
+    RUOLO_ADMIN,
+    RUOLO_DISABILITATO,
+    RUOLO_OPERATIVO,
+)
 from apps.amm_software.db.amm_software_repository import AmmSoftwareRepository
 
 E_AMM_VALIDAZIONE = "E_AMM_VALIDAZIONE"
 E_AMM_NOT_FOUND = "E_AMM_OPERATORE_NOT_FOUND"
+
+
+# Scopo: Traduce il nuovo contract multi-face (is_super_admin + attivo) nel
+# legacy ruolo_sistema accettato dal repository. Regola:
+#   - attivo=False               -> DISABILITATO (a prescindere da super)
+#   - attivo=True,  super=True   -> ADMIN
+#   - attivo=True,  super=False  -> OPERATIVO
+# Ritorna None (NO-OP) quando almeno uno dei due flag e' None: il repo
+# vedra' ruolo=None e non tocchera' lo stato dell'identita'. Cosi' evitiamo
+# side-effect come riattivare silenziosamente un disabilitato quando il FE
+# invia solo is_super_admin. Il chiamante passa i flag `attivo` raw al repo:
+# lo stato viene aggiornato solo se fornito esplicitamente.
+def _ruolo_sistema_from_contract_nuovo(
+    is_super_admin: bool | None, attivo: bool | None
+) -> str | None:
+    if attivo is False:
+        return RUOLO_DISABILITATO
+    if is_super_admin is None or attivo is None:
+        return None
+    return RUOLO_ADMIN if is_super_admin else RUOLO_OPERATIVO
 
 
 class AmmSoftwareService:
@@ -103,16 +129,28 @@ class AmmSoftwareService:
         return operatore
 
     # Scopo: Aggiorna operatore e invalida cache permessi.
+    # Accetta DUE contract equivalenti (transizione Stage B multi-face):
+    #   - legacy: {ruolo_sistema: 'ADMIN|OPERATIVO|DISABILITATO', attivo: bool}
+    #   - nuovo:  {is_super_admin: bool, attivo: bool}
+    # Se il payload contiene is_super_admin o attivo (bool), viene tradotto
+    # in ruolo_sistema legacy e passato al repo. Il contract legacy resta
+    # supportato per retrocompat (FE non ancora migrati).
     def update_operatore(self, auth_user_id: int, payload: dict) -> dict[str, Any]:
         self.get_operatore(auth_user_id)  # verifica esistenza
+        ruolo_sistema = payload.get("ruolo_sistema")
+        attivo = payload.get("attivo")
+        if ruolo_sistema is None and "is_super_admin" in payload:
+            ruolo_sistema = _ruolo_sistema_from_contract_nuovo(
+                payload.get("is_super_admin"), attivo
+            )
         self._repo.update_operatore(
             auth_user_id,
             email=payload.get("email"),
             first_name=payload.get("first_name"),
             last_name=payload.get("last_name"),
-            ruolo_sistema=payload.get("ruolo_sistema"),
+            ruolo_sistema=ruolo_sistema,
             unita_organizzativa_id=payload.get("unita_organizzativa_id"),
-            attivo=payload.get("attivo"),
+            attivo=attivo,
             valido_al=payload.get("valido_al"),
         )
         invalidate_user(auth_user_id)

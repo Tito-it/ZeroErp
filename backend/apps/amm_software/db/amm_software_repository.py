@@ -42,6 +42,7 @@ class AmmSoftwareRepository:
         *,
         search: str | None = None,
         ruolo_sistema: str | None = None,
+        is_super_admin: bool | None = None,
         unita_organizzativa_id: int | None = None,
         is_active: bool | None = None,
         limit: int = DEFAULT_LIMIT,
@@ -76,6 +77,13 @@ class AmmSoftwareRepository:
             )
             params.append(ruolo_sistema)
 
+        if is_super_admin is not None:
+            # Multi-face auth: filtro binario sul binding SUPER_ADMIN.
+            # Ortogonale a ruolo_sistema (che include anche "attivo") e a
+            # is_active. Delega a script.fn_is_super_admin.
+            conditions.append("script.fn_is_super_admin(au.id) = %s")
+            params.append(is_super_admin)
+
         if unita_organizzativa_id is not None:
             conditions.append("ru.unita_organizzativa_id = %s")
             params.append(unita_organizzativa_id)
@@ -102,6 +110,8 @@ class AmmSoftwareRepository:
                    COALESCE(s.cognome, au.last_name) AS soggetto_cognome,
                    COALESCE(s.nome, au.first_name) AS soggetto_nome,
                    script.fn_get_ruolo_sistema(au.id)::text AS ruolo_sistema,
+                   script.fn_is_super_admin(au.id) AS is_super_admin,
+                   id.ruolo_applicativo::text AS ruolo_applicativo,
                    au.is_active,
                    ru.unita_organizzativa_id,
                    uo.descrizione AS unita_organizzativa_nome,
@@ -169,6 +179,8 @@ class AmmSoftwareRepository:
                    s.ragione_sociale_completa,
                    s.codice_fiscale,
                    script.fn_get_ruolo_sistema(au.id)::text AS ruolo_sistema,
+                   script.fn_is_super_admin(au.id) AS is_super_admin,
+                   id.ruolo_applicativo::text AS ruolo_applicativo,
                    au.is_active,
                    ru.unita_organizzativa_id,
                    uo.descrizione AS unita_organizzativa_nome,

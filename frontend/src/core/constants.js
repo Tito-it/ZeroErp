@@ -58,11 +58,36 @@ export const FIELD_LENGTH = {
   IBAN_MAX: 34  // ISO 13616: max 34 caratteri alfanumerici
 }
 
-// Enum ruolo sistema (allineato a config.ruolo_sistema nel DB)
+// Enum ruolo sistema LEGACY (allineato a config.ruolo_sistema nel DB).
+// Mantenuto per retrocompat FE non ancora migrati al nuovo modello
+// multi-face auth. Nuovi consumer usino RUOLO_APPLICATIVO + is_super_admin
+// letti dal profilo /me/.
 export const RUOLO_SISTEMA = {
   ADMIN: 'ADMIN',
   OPERATIVO: 'OPERATIVO',
   DISABILITATO: 'DISABILITATO'
+}
+
+// Enum ruolo applicativo (allineato a config.ruolo_applicativo nel DB).
+// Categoria dell'identita' digitale dell'utente. Letto da
+// anagrafiche.identita_digitali.ruolo_applicativo via GUC app.ruolo_applicativo
+// e ricostruito a Python da PermissionResolver.get_ruolo_applicativo.
+export const RUOLO_APPLICATIVO = {
+  OPERATORE: 'OPERATORE',
+  CLIENTE_PORTALE: 'CLIENTE_PORTALE',
+  FORNITORE_PORTALE: 'FORNITORE_PORTALE',
+  SHOP_CUSTOMER: 'SHOP_CUSTOMER',
+  API_CLIENT: 'API_CLIENT',
+  DISABILITATO: 'DISABILITATO'
+}
+
+// Enum tipo profilo accesso (allineato a config.tipo_profilo_accesso nel DB).
+// Usato dai profili accesso generalizzati (sostituiscono i vecchi profili reparto).
+export const TIPO_PROFILO_ACCESSO = {
+  REPARTO: 'REPARTO',
+  PORTALE: 'PORTALE',
+  AD_HOC: 'AD_HOC',
+  SUPER_ADMIN: 'SUPER_ADMIN'
 }
 
 // Enum livello accesso (allineato a config.livello_accesso nel DB)

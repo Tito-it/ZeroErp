@@ -10,8 +10,8 @@ import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useAuthUser } from '../../core/composables/useAuthUser'
 import { useLookup } from '../../core/composables/useLookup'
 import { listUnitaOrganizzative, invitaOperatore, reinviaInvito } from '../api/amministrazione'
-import { RUOLO_SISTEMA, TIPO_RUOLO_CODICE, buildRuoloOptions } from '../constants'
-import { DRAWER_WIDTH } from '../../core/constants'
+import { TIPO_RUOLO_CODICE } from '../constants'
+import { DRAWER_WIDTH, RUOLO_SISTEMA } from '../../core/constants'
 import { displayDate } from '../../core/utils/date'
 import { capitalizeWords } from '../../core/utils/string'
 import { isEmailValid } from '../../core/utils/validators'
@@ -27,6 +27,7 @@ import LookupSelect from '../../core/components/LookupSelect.vue'
 import Drawer from 'primevue/drawer'
 import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
+import ToggleSwitch from 'primevue/toggleswitch'
 import TabView from 'primevue/tabview'
 import TabPanel from 'primevue/tabpanel'
 import Button from 'primevue/button'
@@ -67,41 +68,34 @@ const canInvite = computed(() => {
 })
 const hasBeenInvited = computed(() => !!store.currentOperatore?.invito_inviato_at)
 
-const ruoloOptions = buildRuoloOptions(t)
-
-// Form unico per entrambe le modalita'
-const form = ref({
+// Multi-face auth Stage B: il vecchio radio ruolo_sistema (ADMIN/OPERATIVO/
+// DISABILITATO) e' sostituito da due toggle indipendenti:
+//   - is_super_admin: binding al profilo SUPER_ADMIN (id 9100)
+//   - attivo:         stato operativo dell'identita' digitale
+// Il ruolo applicativo resta implicito = OPERATORE per questo drawer
+// (operatori interni). Portali e shop useranno drawer dedicati.
+const INITIAL_FORM = Object.freeze({
   cognome: '',
   nome: '',
   email: '',
-  ruolo_sistema: RUOLO_SISTEMA.OPERATIVO,
+  is_super_admin: false,
+  attivo: true,
   qualifica_id: null,
   unita_organizzativa_id: null,
   valido_dal: null,
   valido_al: null,
-  // Dati soggetto associato (sola lettura)
   soggetto_id: null,
   ragione_sociale: null,
   codice_fiscale: null
 })
 
+const form = ref({ ...INITIAL_FORM })
+
 // Scopo: Reset form a valori iniziali.
 function resetForm() {
   soggettoSelezionato.value = null
   auth.reset()
-  form.value = {
-    cognome: '',
-    nome: '',
-    email: '',
-    ruolo_sistema: RUOLO_SISTEMA.OPERATIVO,
-    qualifica_id: null,
-    unita_organizzativa_id: null,
-    valido_dal: null,
-    valido_al: null,
-    soggetto_id: null,
-    ragione_sociale: null,
-    codice_fiscale: null
-  }
+  form.value = { ...INITIAL_FORM }
 }
 
 // Carica dati quando il drawer si apre
@@ -118,7 +112,11 @@ watch(() => props.visible, async (val) => {
         cognome: u.soggetto_cognome || u.last_name || '',
         nome: u.soggetto_nome || u.first_name || '',
         email: u.email || '',
-        ruolo_sistema: u.ruolo_sistema || RUOLO_SISTEMA.OPERATIVO,
+        // Multi-face auth: i flag nativi vengono dal BE (is_super_admin +
+        // attivo del detail). Fallback difensivo su is_active per setup
+        // vecchi che non hanno ancora aggiornato la proiezione.
+        is_super_admin: u.is_super_admin === true,
+        attivo: u.attivo !== undefined ? !!u.attivo : !!u.is_active,
         qualifica_id: null,
         unita_organizzativa_id: u.unita_organizzativa_id,
         valido_dal: u.valido_dal || null,
@@ -156,13 +154,17 @@ function clearSoggetto() {
 }
 
 // Scopo: Salva operatore (crea o aggiorna).
+// Contract nuovo multi-face: {is_super_admin, attivo, ...}. Il backend
+// (amm_software_service.update_operatore) traduce internamente in
+// ruolo_sistema legacy e gestisce binding SUPER_ADMIN + stato identita.
 async function onSave() {
   if (isEdit.value) {
     const payload = {
       email: form.value.email,
       first_name: form.value.nome,
       last_name: form.value.cognome,
-      ruolo_sistema: form.value.ruolo_sistema,
+      is_super_admin: form.value.is_super_admin,
+      attivo: form.value.attivo,
       unita_organizzativa_id: form.value.unita_organizzativa_id
     }
     const result = await execute(
@@ -182,6 +184,10 @@ async function onSave() {
     }
 
     const sogg = soggettoSelezionato.value
+    // In creazione: SUPER_ADMIN di default false, attivo=true.
+    // Il service create_operatore traduce ruolo_sistema legacy; usiamo
+    // la forma legacy per non toccare anche crea_operatore in questo
+    // giro (il contract nuovo su create e' §13.4.18 — fase successiva).
     const payload = {
       soggetto_id: sogg?.id || null,
       cognome: sogg?.cognome || null,
@@ -189,7 +195,7 @@ async function onSave() {
       email: auth.form.email,
       username: auth.form.username,
       password: auth.form.password,
-      ruolo_sistema: form.value.ruolo_sistema,
+      ruolo_sistema: form.value.is_super_admin ? RUOLO_SISTEMA.ADMIN : RUOLO_SISTEMA.OPERATIVO,
       qualifica_id: form.value.qualifica_id,
       unita_organizzativa_id: form.value.unita_organizzativa_id
     }
@@ -206,8 +212,6 @@ async function onSave() {
 // Scopo: forza remount TabView dopo apertura drawer per ink bar
 const tabViewKey = ref(0)
 
-const isDisabilitato = computed(() => form.value.ruolo_sistema === RUOLO_SISTEMA.DISABILITATO)
-
 // Computed: form creazione completo
 const canSaveCreate = computed(() =>
   !!soggettoSelezionato.value
@@ -221,39 +225,9 @@ const canSaveCreate = computed(() =>
 // Computed: form modifica completo
 const canSaveEdit = computed(() =>
   isEmailValid(form.value.email)
-  && !!form.value.ruolo_sistema
 )
 
 const canSave = computed(() => isEdit.value ? canSaveEdit.value : canSaveCreate.value)
-
-async function eseguiToggleStato() {
-  if (isDisabilitato.value) {
-    const result = await execute(
-      () => store.riattiva(props.authUserId),
-      { successMessage: t('amm.operatore_riattivato') }
-    )
-    if (result !== null) {
-      emit('saved')
-    }
-  } else {
-    const result = await execute(
-      () => store.disabilita(props.authUserId),
-      { successMessage: t('amm.operatore_disabilitato') }
-    )
-    if (result !== null) {
-      emit('saved')
-    }
-  }
-}
-
-function onToggleStato() {
-  confirmAction({
-    title: isDisabilitato.value ? t('amm.riattiva_title') : t('amm.disabilita_title'),
-    message: isDisabilitato.value ? t('amm.riattiva_confirm') : t('amm.disabilita_confirm'),
-    danger: !isDisabilitato.value,
-    onAccept: eseguiToggleStato
-  })
-}
 
 // Scopo: Invia o reinvia invito operatore con conferma.
 function onInvita() {
@@ -374,10 +348,37 @@ function onClose() {
             </div>
           </template>
 
-          <div class="form-field">
-            <label>{{ t('amm.field_ruolo') }}</label>
-            <Select v-model="form.ruolo_sistema" :options="ruoloOptions"
-              option-label="label" option-value="value" class="w-full" />
+          <!-- Stato operatore (solo modifica): 2 toggle indipendenti -->
+          <template v-if="isEdit">
+            <div class="form-field">
+              <div class="operatore-toggle-row">
+                <ToggleSwitch v-model="form.is_super_admin" input-id="tg-super-admin" />
+                <label for="tg-super-admin" class="operatore-toggle-label">
+                  <span>{{ t('amm.is_super_admin.label') }}</span>
+                  <small class="operatore-toggle-help">{{ t('amm.is_super_admin.help') }}</small>
+                </label>
+              </div>
+            </div>
+            <div class="form-field">
+              <div class="operatore-toggle-row">
+                <ToggleSwitch v-model="form.attivo" input-id="tg-attivo" />
+                <label for="tg-attivo" class="operatore-toggle-label">
+                  <span>{{ t('amm.accesso_attivo.label') }}</span>
+                  <small class="operatore-toggle-help">{{ t('amm.accesso_attivo.help') }}</small>
+                </label>
+              </div>
+            </div>
+          </template>
+
+          <!-- Creazione: toggle SUPER_ADMIN (attivo implicito=true) -->
+          <div v-if="!isEdit" class="form-field">
+            <div class="operatore-toggle-row">
+              <ToggleSwitch v-model="form.is_super_admin" input-id="tg-super-admin-new" />
+              <label for="tg-super-admin-new" class="operatore-toggle-label">
+                <span>{{ t('amm.is_super_admin.label') }}</span>
+                <small class="operatore-toggle-help">{{ t('amm.is_super_admin.help') }}</small>
+              </label>
+            </div>
           </div>
 
           <!-- Qualifica: solo creazione -->
@@ -397,32 +398,16 @@ function onClose() {
               class="w-full" :placeholder="t('amm.select_reparto')" />
           </div>
 
-          <!-- Valido dal + Disabilita / Valido al + Riattiva (solo modifica) -->
+          <!-- Validita' (solo modifica, sola lettura informativa) -->
           <template v-if="isEdit">
-            <div class="form-grid-2col" style="align-items: flex-end;">
+            <div class="form-grid-2col">
               <div class="form-field">
                 <label>{{ t('amm.field_valido_dal') }}</label>
                 <InputText :model-value="form.valido_dal ? displayDate(form.valido_dal) : '—'" disabled class="w-full" />
               </div>
-              <div v-if="!isDisabilitato" class="form-field">
-                <Button
-                  :label="t('amm.disabilita_operatore')"
-                  severity="danger" icon="pi pi-ban"
-                  outlined size="small"
-                  @click="onToggleStato" />
-              </div>
-            </div>
-            <div class="form-grid-2col" style="align-items: flex-end;">
               <div class="form-field">
                 <label>{{ t('amm.field_valido_al') }}</label>
                 <InputText :model-value="form.valido_al ? displayDate(form.valido_al) : t('amm.valido_al_illimitato')" disabled class="w-full" />
-              </div>
-              <div v-if="isDisabilitato" class="form-field">
-                <Button
-                  :label="t('amm.riattiva_operatore')"
-                  severity="success" icon="pi pi-check-circle"
-                  outlined size="small"
-                  @click="onToggleStato" />
               </div>
             </div>
           </template>
@@ -463,5 +448,24 @@ function onClose() {
     />
   </Drawer>
 </template>
+
+<style scoped>
+/* Toggle stato operatore: switch + label con riga helper */
+.operatore-toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+.operatore-toggle-label {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.2;
+  cursor: pointer;
+}
+.operatore-toggle-help {
+  font-size: 0.78rem;
+  color: var(--app-text-muted, var(--p-text-muted-color));
+}
+</style>
 
 <!-- Stili .form-grid e .form-field definiti in main.css -->
