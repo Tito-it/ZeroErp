@@ -19,6 +19,7 @@ from apps.core.services.auth_constants import (
     RUOLI_PORTALE,
     RUOLI_SHOP,
     RUOLO_APPLICATIVO_DISABILITATO,
+    RUOLO_APPLICATIVO_OPERATORE,
 )
 from apps.core.services.permissions_cache import load_user_cache, save_user_cache
 from apps.core.services.permissions_resolver import LIVELLO_MAP, PermissionResolver
@@ -240,8 +241,6 @@ class ZeroERPPermission(BasePermission):
         area_schema_db: str,
         cache: dict[str, Any],
     ) -> None:
-        from apps.core.services.auth_constants import RUOLO_APPLICATIVO_OPERATORE
-
         if ruolo_app == RUOLO_APPLICATIVO_OPERATORE and not PermissionResolver.has_profilo_applicabile_per_area(
             user, area_schema_db, cache=cache
         ):

@@ -250,53 +250,48 @@ class AmmSoftwareRepository:
             )
 
     # Scopo: Aggiunge o rimuove il binding SUPER_ADMIN sull'identita
-    # digitale dell'utente. INSERT idempotente (ON CONFLICT DO NOTHING)
-    # per enabled=True; DELETE mirato per enabled=False. Il guard DB
+    # digitale dell'utente. Singola query atomica (no race SELECT+WRITE,
+    # no-op se l'utente non ha identita). Il guard DB
     # `trgfn_profili_accesso_bindings_guard_ultimo_super_admin` blocca
     # la rimozione dell'ultimo binding attivo (lockout prevention).
     def _set_super_admin_binding(
         self, auth_user_id: int, *, enabled: bool
     ) -> None:
         with connection.cursor() as cursor:
-            cursor.execute(
-                "SELECT id FROM anagrafiche.identita_digitali "
-                "WHERE auth_user_id = %s",
-                [auth_user_id],
-            )
-            row = cursor.fetchone()
-            if not row:
-                return  # utente senza identita (raro post-cutover)
-            identita_id = row[0]
-
             if enabled:
                 cursor.execute(
                     """INSERT INTO config.profili_accesso_bindings
                           (profilo_accesso_id, identita_digitale_id)
-                       SELECT id, %s
-                         FROM config.profili_accesso
-                        WHERE codice = 'SUPER_ADMIN'
+                       SELECT pa.id, id.id
+                         FROM config.profili_accesso pa
+                        CROSS JOIN anagrafiche.identita_digitali id
+                        WHERE pa.codice = 'SUPER_ADMIN'
+                          AND id.auth_user_id = %s
                        ON CONFLICT DO NOTHING""",
-                    [identita_id],
+                    [auth_user_id],
                 )
             else:
                 cursor.execute(
-                    """DELETE FROM config.profili_accesso_bindings
-                        WHERE identita_digitale_id = %s
-                          AND profilo_accesso_id IN (
-                              SELECT id FROM config.profili_accesso
-                               WHERE codice = 'SUPER_ADMIN'
-                          )""",
-                    [identita_id],
+                    """DELETE FROM config.profili_accesso_bindings pab
+                        USING anagrafiche.identita_digitali id,
+                              config.profili_accesso pa
+                        WHERE pab.identita_digitale_id = id.id
+                          AND pab.profilo_accesso_id  = pa.id
+                          AND pa.codice = 'SUPER_ADMIN'
+                          AND id.auth_user_id = %s""",
+                    [auth_user_id],
                 )
 
     # Scopo: Aggiorna i campi modificabili di un operatore (auth_user +
     # identita_digitali + bindings SUPER_ADMIN + risorse_umane).
     # Dopo la modifica, il chiamante deve invalidare la cache permessi.
+    # Transazione atomica: i 4-5 step devono succedere insieme o
+    # nessuno (nessuno stato parziale inconsistente).
     #
     # Traduzione ruolo_sistema -> nuovo modello (retrocompat API):
-    #   - ADMIN        -> identita attiva, ruolo=OPERATORE, binding SUPER_ADMIN UPSERT
-    #   - OPERATIVO    -> identita attiva, ruolo=OPERATORE, binding SUPER_ADMIN DELETE
-    #   - DISABILITATO -> identita inattiva (binding non toccato)
+    #   - ADMIN        -> identita attiva, ruolo_appl=OPERATORE, binding SUPER_ADMIN UPSERT
+    #   - OPERATIVO    -> identita attiva, ruolo_appl=OPERATORE, binding SUPER_ADMIN DELETE
+    #   - DISABILITATO -> identita inattiva, ruolo_appl=DISABILITATO
     def update_operatore(
         self,
         auth_user_id: int,
@@ -309,76 +304,81 @@ class AmmSoftwareRepository:
         attivo: bool | None = None,
         valido_al: str | None = None,
     ) -> None:
-        # 1) Aggiorna auth_user (name/email)
-        auth_fields: list[str] = []
-        auth_params: list[Any] = []
-        if email is not None:
-            auth_fields.append("email = %s")
-            auth_params.append(email)
-        if first_name is not None:
-            auth_fields.append("first_name = %s")
-            auth_params.append(first_name)
-        if last_name is not None:
-            auth_fields.append("last_name = %s")
-            auth_params.append(last_name)
+        with transaction.atomic():
+            # 1) Aggiorna auth_user (name/email)
+            auth_fields: list[str] = []
+            auth_params: list[Any] = []
+            if email is not None:
+                auth_fields.append("email = %s")
+                auth_params.append(email)
+            if first_name is not None:
+                auth_fields.append("first_name = %s")
+                auth_params.append(first_name)
+            if last_name is not None:
+                auth_fields.append("last_name = %s")
+                auth_params.append(last_name)
 
-        if auth_fields:
-            auth_params.append(auth_user_id)
-            with connection.cursor() as cursor:
-                cursor.execute(
-                    f"UPDATE auth_user SET {', '.join(auth_fields)} WHERE id = %s",
-                    auth_params,
+            if auth_fields:
+                auth_params.append(auth_user_id)
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        f"UPDATE auth_user SET {', '.join(auth_fields)} WHERE id = %s",
+                        auth_params,
+                    )
+
+            # 2) Traduci ruolo_sistema in stato identita + binding SUPER_ADMIN
+            if ruolo_sistema == RUOLO_ADMIN:
+                self._set_identita_state(
+                    auth_user_id, attivo=True, ruolo_applicativo="OPERATORE"
+                )
+                self._set_super_admin_binding(auth_user_id, enabled=True)
+            elif ruolo_sistema == RUOLO_OPERATIVO:
+                self._set_identita_state(
+                    auth_user_id, attivo=True, ruolo_applicativo="OPERATORE"
+                )
+                self._set_super_admin_binding(auth_user_id, enabled=False)
+            elif ruolo_sistema == RUOLO_DISABILITATO:
+                self._set_identita_state(
+                    auth_user_id,
+                    attivo=False,
+                    ruolo_applicativo="DISABILITATO",
                 )
 
-        # 2) Traduci ruolo_sistema in stato identita + binding SUPER_ADMIN
-        if ruolo_sistema == RUOLO_ADMIN:
-            self._set_identita_state(
-                auth_user_id, attivo=True, ruolo_applicativo="OPERATORE"
-            )
-            self._set_super_admin_binding(auth_user_id, enabled=True)
-        elif ruolo_sistema == RUOLO_OPERATIVO:
-            self._set_identita_state(
-                auth_user_id, attivo=True, ruolo_applicativo="OPERATORE"
-            )
-            self._set_super_admin_binding(auth_user_id, enabled=False)
-        elif ruolo_sistema == RUOLO_DISABILITATO:
-            self._set_identita_state(auth_user_id, attivo=False)
+            # 3) Override esplicito di attivo (prevale sulla traduzione ruolo)
+            if attivo is not None:
+                self._set_identita_state(auth_user_id, attivo=attivo)
 
-        # 3) Override esplicito di attivo (prevale sulla traduzione ruolo)
-        if attivo is not None:
-            self._set_identita_state(auth_user_id, attivo=attivo)
+            # 4) Aggiorna risorse_umane via catena identita -> soggetto_ruolo
+            ru_fields: list[str] = []
+            ru_params: list[Any] = []
+            if attivo is not None:
+                ru_fields.append("attivo = %s")
+                ru_params.append(attivo)
+            if unita_organizzativa_id is not None:
+                ru_fields.append("unita_organizzativa_id = %s")
+                ru_params.append(unita_organizzativa_id)
+            if valido_al is not None:
+                ru_fields.append("valido_al = %s::date")
+                ru_params.append(valido_al)
 
-        # 4) Aggiorna risorse_umane via catena identita -> soggetto_ruolo
-        ru_fields: list[str] = []
-        ru_params: list[Any] = []
-        if attivo is not None:
-            ru_fields.append("attivo = %s")
-            ru_params.append(attivo)
-        if unita_organizzativa_id is not None:
-            ru_fields.append("unita_organizzativa_id = %s")
-            ru_params.append(unita_organizzativa_id)
-        if valido_al is not None:
-            ru_fields.append("valido_al = %s::date")
-            ru_params.append(valido_al)
+            if ru_fields:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        f"""UPDATE anagrafiche.risorse_umane ru
+                               SET {', '.join(ru_fields)}
+                              FROM anagrafiche.identita_digitali id
+                             WHERE id.auth_user_id = %s
+                               AND id.soggetto_ruolo_id = ru.soggetto_ruolo_id""",
+                        ru_params + [auth_user_id],
+                    )
 
-        if ru_fields:
-            with connection.cursor() as cursor:
-                cursor.execute(
-                    f"""UPDATE anagrafiche.risorse_umane ru
-                           SET {', '.join(ru_fields)}
-                          FROM anagrafiche.identita_digitali id
-                         WHERE id.auth_user_id = %s
-                           AND id.soggetto_ruolo_id = ru.soggetto_ruolo_id""",
-                    ru_params + [auth_user_id],
-                )
-
-        # 5) Sync auth_user.is_active se stato o ruolo cambiati
-        if ruolo_sistema is not None or attivo is not None:
-            with connection.cursor() as cursor:
-                cursor.execute(
-                    "SELECT anagrafiche.fn_sync_auth_user_is_active(%s)",
-                    [auth_user_id],
-                )
+            # 5) Sync auth_user.is_active se stato o ruolo cambiati
+            if ruolo_sistema is not None or attivo is not None:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        "SELECT anagrafiche.fn_sync_auth_user_is_active(%s)",
+                        [auth_user_id],
+                    )
 
     # Scopo: Conta operatori con binding SUPER_ADMIN attivo.
     # Usato dal service per impedire la disabilitazione dell'ultimo admin
@@ -403,13 +403,16 @@ class AmmSoftwareRepository:
     # Scopo: Disabilita un operatore. Post-cutover (§13.3.2) il framework
     # ATTIVO su risorse_umane valuta RUA.attivo come vista derivata da
     # identita_digitali.attivo, quindi l'ordine figlio→padre funziona
-    # scrivendo su identita prima di RU.
+    # scrivendo su identita prima di RU. Transazione atomica per evitare
+    # stato inconsistente se uno dei 3 step fallisce.
     def disabilita_operatore(self, auth_user_id: int) -> None:
-        with connection.cursor() as cursor:
-            # 1. Disattiva identita_digitali (figlio logico)
+        with transaction.atomic(), connection.cursor() as cursor:
+            # 1. Disattiva identita_digitali + marca ruolo_applicativo
+            #    DISABILITATO (signal esplicito, simmetrico a riattiva).
             cursor.execute(
                 """UPDATE anagrafiche.identita_digitali
-                      SET attivo = false
+                      SET attivo = false,
+                          ruolo_applicativo = 'DISABILITATO'::config.ruolo_applicativo
                     WHERE auth_user_id = %s""",
                 [auth_user_id],
             )
@@ -431,9 +434,9 @@ class AmmSoftwareRepository:
 
     # Scopo: Riattiva un operatore precedentemente disabilitato. Ordine
     # inverso: padre→figlio per rispettare il framework ATTIVO
-    # (un figlio attivo richiede padre attivo).
+    # (un figlio attivo richiede padre attivo). Transazione atomica.
     def riattiva_operatore(self, auth_user_id: int) -> None:
-        with connection.cursor() as cursor:
+        with transaction.atomic(), connection.cursor() as cursor:
             # 1. Riattiva risorse_umane (padre) + valido_dal=oggi, valido_al=NULL
             cursor.execute(
                 """UPDATE anagrafiche.risorse_umane ru
