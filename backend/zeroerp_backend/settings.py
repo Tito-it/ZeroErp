@@ -312,3 +312,61 @@ else:
     CSRF_TRUSTED_ORIGINS = [
             "https://backend-dev.tailXXXX.ts.net",
         ]
+
+
+# --- Logging applicativo ---
+# File leggibili dall'utente che avvia gunicorn (non richiede journalctl/sudo).
+# Override dir via env LOG_DIR; default: backend/logs/.
+_log_dir_env = env("LOG_DIR")
+LOG_DIR = Path(_log_dir_env) if _log_dir_env else (BASE_DIR / "logs")
+LOG_DIR.mkdir(parents=True, exist_ok=True)
+LOG_FILE = LOG_DIR / "app.log"
+
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "verbose": {
+            "format": "%(asctime)s %(levelname)s %(name)s [%(process)d] %(message)s",
+        },
+    },
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+            "formatter": "verbose",
+        },
+        "app_file": {
+            "class": "logging.handlers.RotatingFileHandler",
+            "filename": str(LOG_FILE),
+            "maxBytes": 10 * 1024 * 1024,
+            "backupCount": 5,
+            "formatter": "verbose",
+        },
+    },
+    "root": {
+        "handlers": ["console", "app_file"],
+        "level": "INFO",
+    },
+    "loggers": {
+        "django.request": {
+            "handlers": ["console", "app_file"],
+            "level": "ERROR",
+            "propagate": False,
+        },
+        "apps": {  # apps.anagrafiche, apps.portale, apps.core, ...
+            "handlers": ["console", "app_file"],
+            "level": "INFO",
+            "propagate": False,
+        },
+        "security": {
+            "handlers": ["console", "app_file"],
+            "level": "INFO",
+            "propagate": False,
+        },
+        "api.exception": {
+            "handlers": ["console", "app_file"],
+            "level": "INFO",
+            "propagate": False,
+        },
+    },
+}

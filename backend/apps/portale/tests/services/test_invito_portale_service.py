@@ -86,7 +86,7 @@ class InvitoPortaleTests(TestCase):
         svc._get_display_name_of = MagicMock(return_value="Admin Tid")
 
         result = svc.invia_invito_cliente(
-            billing_account_id=42,
+            cliente_id=42,
             email="admin@acme.test",
             invitato_da_user_id=1,
         )
@@ -109,7 +109,7 @@ class InvitoPortaleTests(TestCase):
         from apps.portale.services.invito_portale_service import InvitoPortaleService
         with self.assertRaises(ServiceError) as ctx:
             InvitoPortaleService().invia_invito_cliente(
-                billing_account_id=999,
+                cliente_id=999,
                 email="a@b.it",
                 invitato_da_user_id=1,
             )
@@ -178,7 +178,7 @@ class InvitoPortaleTests(TestCase):
         from apps.portale.services.invito_portale_service import InvitoPortaleService
         with self.assertRaises(ServiceError) as ctx:
             InvitoPortaleService().invia_invito_cliente(
-                billing_account_id=1, email="", invitato_da_user_id=1,
+                cliente_id=1, email="", invitato_da_user_id=1,
             )
         self.assertEqual(ctx.exception.code, "E_INVITO_PORTALE")
 
@@ -221,7 +221,7 @@ class InvitoPortaleTests(TestCase):
         svc._get_display_name_of = MagicMock(return_value="Admin")
 
         svc.reinvia_invito_cliente(
-            billing_account_id=42,
+            cliente_id=42,
             email="admin@acme.test",
             invitato_da_user_id=1,
         )
@@ -263,7 +263,7 @@ class InvitoPortaleTests(TestCase):
         svc._get_display_name_of = MagicMock(return_value="Admin")
 
         result = svc.invia_invito_cliente(
-            billing_account_id=42,
+            cliente_id=42,
             email="existing@acme.test",
             invitato_da_user_id=1,
         )

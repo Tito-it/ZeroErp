@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING
 
 from django.http import JsonResponse
@@ -7,6 +8,8 @@ from django.http import JsonResponse
 from apps.core.api.retry_policies import apply_retry_headers
 from apps.core.services.request_context import get_idempotency_key, get_request_id
 from apps.core.services.error_translator import ErrorTranslator
+
+logger = logging.getLogger("api.exception")
 
 if TYPE_CHECKING:
     from rest_framework.response import Response
@@ -33,9 +36,21 @@ def invalid_payload_response() -> JsonResponse:
 
 
 # Scopo: Gestisce `exception_to_error_response` nel flusso applicativo del modulo.
+# Prima di mascherare i dettagli tecnici per il client, registra l'eccezione
+# completa (stack + request_id) sul logger "api.exception" cosi' il dev puo'
+# risalire dal request_id mostrato all'utente al problema reale.
 def exception_to_error_response(exc: Exception) -> JsonResponse:
     api_error = ErrorTranslator.to_api_error(exc)
     status_code = ErrorTranslator.get_http_status(api_error)
+    request_id = get_request_id() or "-"
+    logger.exception(
+        "api_exception request_id=%s code=%s http=%s message=%s",
+        request_id,
+        api_error.code,
+        status_code,
+        api_error.message,
+        exc_info=exc,
+    )
     payload = {"error": api_error.to_dict()}
     meta = _build_meta()
     if meta:

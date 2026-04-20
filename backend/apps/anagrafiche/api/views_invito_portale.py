@@ -62,7 +62,7 @@ class ClientiInvitaPortaleView(DomainAPIView):
                 else service.invia_invito_cliente
             )
             return fn(
-                billing_account_id=cliente_id,
+                cliente_id=cliente_id,
                 email=email,
                 invitato_da_user_id=request.user.id,
             )

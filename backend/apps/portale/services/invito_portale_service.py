@@ -50,22 +50,23 @@ class InvitoPortaleService:
         self._email_service = EmailDispatchService()
 
     # Scopo: Invia invito portale cliente. Se l'identita CLIENTE_PORTALE
-    # non esiste ancora per il soggetto_ruolo del billing_account, la crea
+    # non esiste ancora per il soggetto_ruolo del cliente, la crea
     # (auth_user nuovo o riusato per email). Riattiva invece un'identita
     # esistente disattivata generando nuovo token e rinviando email.
+    # cliente_id = PK di anagrafiche.clienti (coerente con ClientiDetailView).
     def invia_invito_cliente(
         self,
         *,
-        billing_account_id: int,
+        cliente_id: int,
         email: str,
         invitato_da_user_id: int,
     ) -> dict[str, Any]:
         email_clean = self._clean_email(email)
-        info = self._repo.get_cliente_info(billing_account_id)
+        info = self._repo.get_cliente_info(cliente_id)
         ErrorManager.require(
             info is not None,
             code=E_INVITO_PORTALE,
-            message=f"Cliente {billing_account_id} non trovato.",
+            message=f"Cliente {cliente_id} non trovato.",
         )
         assert info is not None
         return self._invia_invito_common(
@@ -73,7 +74,7 @@ class InvitoPortaleService:
             ruolo_applicativo=RUOLO_APPLICATIVO_CLIENTE_PORTALE,
             email=email_clean,
             nome_destinatario=self._build_display_name(info),
-            entita_label=f"Cliente {info.get('ba_codice') or billing_account_id}",
+            entita_label=f"Cliente {info.get('ba_codice') or cliente_id}",
             invitato_da_user_id=invitato_da_user_id,
         )
 
@@ -110,22 +111,22 @@ class InvitoPortaleService:
     def reinvia_invito_cliente(
         self,
         *,
-        billing_account_id: int,
+        cliente_id: int,
         email: str,
         invitato_da_user_id: int,
     ) -> dict[str, Any]:
-        info = self._repo.get_cliente_info(billing_account_id)
+        info = self._repo.get_cliente_info(cliente_id)
         ErrorManager.require(
             info is not None,
             code=E_INVITO_PORTALE,
-            message=f"Cliente {billing_account_id} non trovato.",
+            message=f"Cliente {cliente_id} non trovato.",
         )
         assert info is not None
         self._invalidate_existing_token(
             int(info["soggetto_ruolo_id"]), RUOLO_APPLICATIVO_CLIENTE_PORTALE
         )
         return self.invia_invito_cliente(
-            billing_account_id=billing_account_id,
+            cliente_id=cliente_id,
             email=email,
             invitato_da_user_id=invitato_da_user_id,
         )

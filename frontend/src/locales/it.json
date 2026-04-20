@@ -223,7 +223,7 @@
     "accesso_portale_title": "Accesso portale",
     "accesso_portale_help": "Invia al cliente/fornitore un link di attivazione account portale via email. Il destinatario sceglierà autonomamente la password al primo accesso.",
     "email_destinatario": "Email destinatario",
-    "email_placeholder": "es. mario.rossi@azienda.it",
+    "email_placeholder": "es. mario.rossi{'@'}azienda.it",
     "email_non_valida": "Email destinatario non valida.",
     "btn_invia_invito": "Invia invito portale",
     "btn_reinvia_invito": "Reinvia invito",

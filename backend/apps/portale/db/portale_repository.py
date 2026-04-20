@@ -20,13 +20,14 @@ from django.db import connection
 class PortaleRepository:
     """Accesso DB per invito portale + creazione identita portale."""
 
-    # Scopo: Risolve soggetto_ruolo_id + dati anagrafici di un cliente
-    # (= billing_account). Serve al service invito per costruire variabili
-    # email e per valorizzare identita_digitali.soggetto_ruolo_id.
-    # Ritorna None se il BA non esiste.
-    def get_cliente_info(self, billing_account_id: int) -> dict[str, Any] | None:
+    # Scopo: Risolve soggetto_ruolo_id + dati anagrafici di un cliente.
+    # Il parametro e' cliente_id = PK di anagrafiche.clienti (coerente con
+    # ClientiDetailView); risale al billing_account e al soggetto tramite join.
+    # Ritorna None se il cliente non esiste.
+    def get_cliente_info(self, cliente_id: int) -> dict[str, Any] | None:
         sql = """
-            SELECT ba.id                        AS billing_account_id,
+            SELECT cl.id                        AS cliente_id,
+                   ba.id                        AS billing_account_id,
                    ba.codice                    AS ba_codice,
                    sr.id                        AS soggetto_ruolo_id,
                    s.id                         AS soggetto_id,
@@ -34,13 +35,14 @@ class PortaleRepository:
                    s.cognome                    AS cognome,
                    s.nome                       AS nome,
                    s.codice_fiscale             AS codice_fiscale
-              FROM anagrafiche.billing_account ba
-              JOIN anagrafiche.soggetti_ruoli sr ON sr.id = ba.soggetto_ruolo_id
-              JOIN anagrafiche.soggetti s        ON s.id = sr.soggetto_id
-             WHERE ba.id = %s
+              FROM anagrafiche.clienti cl
+              JOIN anagrafiche.billing_account ba ON ba.id = cl.billing_account_id
+              JOIN anagrafiche.soggetti_ruoli sr  ON sr.id = ba.soggetto_ruolo_id
+              JOIN anagrafiche.soggetti s         ON s.id = sr.soggetto_id
+             WHERE cl.id = %s
         """
         with connection.cursor() as cursor:
-            cursor.execute(sql, [billing_account_id])
+            cursor.execute(sql, [cliente_id])
             row = cursor.fetchone()
             if not row:
                 return None
