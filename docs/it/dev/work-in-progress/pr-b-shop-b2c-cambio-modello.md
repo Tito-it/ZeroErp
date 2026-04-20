@@ -623,4 +623,197 @@ Non rivelare quali vesti esistono (security — enumerazione).
 
 ---
 
+## 8. Piano sprint BE/FE — decisioni operative (20-04-2026)
+
+> Aggiunto dopo la chiusura del piano DB (migration `20260420-01..11`
+> mergiate su `Tito-dev`). Traduce §3 e §4 in un'esecuzione ordinata
+> e spezzata in sub-PR per limitare il blast radius.
+
+### 8.1 Decisioni Q1–Q4 chiuse
+
+| Domanda | Scelta | Motivo |
+| --- | --- | --- |
+| **Q1 — Grace period JWT** | 0 giorni | Ambiente dev, nessun costo di rollover; codice pulito da subito, no rami compat. |
+| **Q2 — Rename endpoint login** | `/api/v1/auth/token/` → `/api/v1/admin/token/` (breaking, no alias) | Coerenza con `/portale/` e `/shop/`, debito tecnico zero. |
+| **Q3 — Ordine BE/FE** | Sequenziale (BE prima, FE dopo) | Solo developer (Tid) — meno context switching, contract BE stabile prima di toccare UI. |
+| **Q4 — Spezzare PR-B** | Sì, 4 sub-PR | Blast radius contenuto, rollback chirurgico, smoke isolato per feature. |
+
+### 8.2 Prerequisito soddisfatto
+
+DB migration `20260420-01..11` applicate e mergiate su `Tito-dev`. Il
+backend puo' iniziare lo sviluppo del nuovo modello 1:N.
+
+### 8.3 PR-B1 — BE foundation auth multi-veste (breaking)
+
+**Obiettivo:** adeguare l'infrastruttura di autenticazione al modello 1:N
+user↔identita. Niente feature business qui — solo fondamenta.
+
+**File da toccare:**
+
+* `backend/zeroerp_backend/urls.py` — rename `auth/token/` → `admin/token/`, aggiunta `portale/token/` e `shop/token/`
+* `backend/apps/core/api/auth_views.py` — split `AuditTokenObtainPairView` in 3 subclass namespace-discriminate; serializer `MultiVesteTokenSerializer` con claim `identita_id`
+* `backend/apps/core/api/jwt_audit_authentication.py` — legge `identita_id` dal JWT, popola 3 GUC atomicamente, fail 401 su tripla incoerente
+* `backend/apps/core/api/me_view.py` — ritorna solo identita del JWT corrente (filtra per `identita_id`)
+* `backend/apps/core/services/permissions_resolver.py` — `is_super_admin` filtra su `ruolo_applicativo='OPERATORE'`, `get_ruolo_applicativo` legge da GUC (gia' fatto Stage B), verifica coerenza
+* `backend/apps/amm_software/db/amm_software_repository.py` — query che filtrano identita: aggiungere `ruolo_applicativo='OPERATORE'` esplicito
+* `backend/apps/portale/db/portale_repository.py` — verifica che `find_identita_portale` filtri gia' per ruolo (fatto)
+* Test: codemod su ~15 test che mockano `auth_user.identita` 1:1 → filter `ruolo_applicativo=X`
+
+**Task list:**
+
+* [ ] 8.3.1 Rename `/api/v1/auth/token/` → `/api/v1/admin/token/` + update smoke + grep FE (breaking, zero alias)
+* [ ] 8.3.2 Nuovo serializer `MultiVesteTokenSerializer`: post-autenticazione cerca identita per `ruolo_applicativo` del namespace, aggiunge claim `identita_id` + `ruolo_applicativo` al JWT
+* [ ] 8.3.3 Nuove view `AdminTokenView`, `PortaleTokenView`, `ShopTokenView` (stub): filtrano identita per `ruolo_applicativo IN (...)`, 403 `E_VESTE_NON_ATTIVA` se assente
+* [ ] 8.3.4 `JwtAuditAuthentication.authenticate()`: legge `identita_id` dal token, verifica identita attiva, popola 3 GUC in singola query CTE, fail 401 su step mancante
+* [ ] 8.3.5 Refresh token preserva claim custom (verificare SimpleJWT config)
+* [ ] 8.3.6 `/me/` restituisce solo identita del JWT corrente
+* [ ] 8.3.7 `PermissionResolver.is_super_admin` aggiunge filtro `ruolo_applicativo='OPERATORE'` in query
+* [ ] 8.3.8 Grep test `identita_digitali` — aggiornare assumption 1:1
+* [ ] 8.3.9 Run `./manage-test.sh` verde (1533 baseline + aggiornamenti mirati)
+
+**Gate uscita:**
+
+* Login admin con tid funziona via `/api/v1/admin/token/`
+* JWT decodificato contiene `identita_id` + `ruolo_applicativo`
+* `/me/` risponde con una sola identita
+* Grep `auth_user\.identita[^_]` = 0 match nei test attivi
+
+**Stima:** 1-2 giornate. Commit target: `pr-b1-be-foundation-auth`.
+
+### 8.4 PR-B2 — BE feature invito portale cross-veste + stub shop
+
+**Obiettivo:** aggiornare il servizio invito portale al nuovo modello 1:N
+e preparare gli stub endpoint shop che verranno riempiti in PR-C.
+
+**File da toccare:**
+
+* `backend/apps/portale/services/invito_portale_service.py` — branching email nuova / esistente, token types
+* `backend/apps/portale/db/portale_repository.py` — helper per creazione identita `attivo=false`
+* `backend/apps/portale/api/views.py` — endpoint attivazione supporta 2 token types
+* `backend/apps/portale/api/urls.py` — 3 nuovi stub endpoint
+* `backend/apps/core/services/error_policies.py` — codici errore nuovi: `E_VESTE_NON_ATTIVA`, `E_JWT_SENZA_IDENTITA`, `E_IDENTITA_NON_ATTIVA`
+
+**Task list:**
+
+* [ ] 8.4.1 `InvitoPortaleService._ensure_auth_user` distingue email nuova (crea user + identita attivo=true + token `INVITO_PORTALE`) da esistente (SOLO identita attivo=false + token `ATTIVAZIONE_PORTALE_CROSS`, niente password)
+* [ ] 8.4.2 Endpoint `AttivazionePortaleView` gestisce 2 token types: `INVITO_PORTALE` (setta password + attiva) vs `ATTIVAZIONE_PORTALE_CROSS` (solo attiva identita, no password)
+* [ ] 8.4.3 Stub `POST /api/v1/portale/profile/activate-shop/` (restituisce 501 Not Implemented con hint PR-C)
+* [ ] 8.4.4 Stub `GET /api/v1/shop/activate/<token>/` (501)
+* [ ] 8.4.5 Stub `POST /api/v1/shop/register/check-email/` (501)
+* [ ] 8.4.6 Registrazione errori `E_VESTE_NON_ATTIVA`, `E_JWT_SENZA_IDENTITA`, `E_IDENTITA_NON_ATTIVA` in `error_policies.py`
+* [ ] 8.4.7 Test: caso email esistente (no auth_user nuovo, identita `attivo=false`, token CROSS), caso email nuova (invariato), caso attivazione cross
+
+**Gate uscita:**
+
+* Invitare a portale un email gia' presente come operatore: crea 2a identita `CLIENTE_PORTALE` `attivo=false` + token CROSS
+* Attivazione con token CROSS attiva identita senza toccare password
+* Curl `POST /api/v1/portale/profile/activate-shop/` → 501 coerente
+
+**Stima:** 1 giornata. Commit target: `pr-b2-be-invito-cross-stub-shop`.
+
+### 8.5 PR-B3 — FE foundation login + store + guard
+
+**Obiettivo:** UI pronta a gestire il modello 1:N — login per canale,
+store Pinia con identita, router guard per namespace.
+
+**File da toccare:**
+
+* `frontend/src/core/views/LoginView.vue` — aggiunta switch canale (radio 3 opzioni)
+* `frontend/src/stores/auth.js` — salva `identita_id` + `ruolo_applicativo` dal `/me/`; `login()` accetta canale
+* `frontend/src/core/api.js` — endpoint chiamato dipende dal canale
+* `frontend/src/router/index.js` — guard `/portale/*` rifiuta OPERATORE, root admin rifiuta non-OPERATORE, stub routing `/shop/*`
+* `frontend/src/locales/it.json` — chiavi login switch, errore veste non attiva
+
+**Task list:**
+
+* [ ] 8.5.1 `LoginView`: radio button Admin / Portale / Shop (default Admin per retrocompat operatore)
+* [ ] 8.5.2 Store `auth.login(username, password, canale)` chiama endpoint corretto (`/admin/token/` | `/portale/token/` | `/shop/token/`)
+* [ ] 8.5.3 Store salva `identita_id` + `ruolo_applicativo` (gia' fatto Stage B per ruolo_applicativo, aggiungi identita_id)
+* [ ] 8.5.4 Router guard nuovo: se `/portale/*` e `ruolo_applicativo !== 'CLIENTE_PORTALE' && !== 'FORNITORE_PORTALE'` → redirect `/forbidden`
+* [ ] 8.5.5 Router guard: se admin root e `ruolo_applicativo !== 'OPERATORE'` → redirect `/forbidden` (grace path: /portale per clienti)
+* [ ] 8.5.6 Stub route `/shop/*` → pagina placeholder "Shop in arrivo"
+* [ ] 8.5.7 Gestione errore 403 `E_VESTE_NON_ATTIVA`: messaggio generico "Non hai accesso a questo canale" (no enumeration)
+* [ ] 8.5.8 vite build OK + smoke login admin via UI
+
+**Gate uscita:**
+
+* Login admin funziona via switch canale Admin
+* Login portale funziona (con utente portale creato in PR-B2)
+* Un portale user che tenta `/admin/...` viene redirezzato
+* 403 `E_VESTE_NON_ATTIVA` mostra messaggio generico
+
+**Stima:** 1-2 giornate. Commit target: `pr-b3-fe-login-multi-canale`.
+
+### 8.6 PR-B4 — FE pulsante activate-shop + stub routing shop
+
+**Obiettivo:** completare l'UI PR-B con il pulsante "Attiva accesso shop"
+nel profilo portale + stub routing per canale shop.
+
+**File da toccare:**
+
+* `frontend/src/portale/views/ProfileView.vue` — nuova view profilo portale
+* `frontend/src/portale/components/AttivaAccessoShopButton.vue` — componente pulsante
+* `frontend/src/portale/api/portaleProfileApi.js` — chiamata `activate-shop`
+* `frontend/src/router/index.js` — route `/portale/profile`
+* `frontend/src/locales/it.json` — chiavi `portale.profile.*`
+
+**Task list:**
+
+* [ ] 8.6.1 Crea `ProfileView` portale con card "Il tuo profilo" + 2 toggle stato (portale attivo, shop non ancora)
+* [ ] 8.6.2 Pulsante "Attiva accesso shop" chiama `POST /portale/profile/activate-shop/` (oggi 501), gestisce errore con messaggio "funzione in arrivo"
+* [ ] 8.6.3 Route `/portale/profile` registrata, accessibile solo da portale user
+* [ ] 8.6.4 Stub pagina `/shop/attivazione/:token` (vuoto, dice "Attivazione shop — PR-C")
+* [ ] 8.6.5 vite build OK + smoke manuale (pulsante cliccabile, 501 gestito)
+
+**Gate uscita PR-B (finale):**
+
+* Checklist §7 completa
+* Smoke e2e: invito portale cross-veste funziona (admin invita email gia' operatore → email con link → attivazione SENZA cambio password → login portale OK)
+* Tutti i test BE verdi
+* Vite build verde
+
+**Stima:** 0.5 giornate. Commit target: `pr-b4-fe-profilo-shop-stub`.
+
+### 8.7 Dipendenze tra sub-PR
+
+```text
+DB 20260420-01..11 (merged)
+       │
+       ▼
+  PR-B1 BE foundation ──────┐
+       │                    │
+       ▼                    │
+  PR-B2 BE features ────────┤
+       │                    │ (FE non parte senza contract BE stabile)
+       ▼                    │
+  PR-B3 FE foundation ◄─────┘
+       │
+       ▼
+  PR-B4 FE features
+       │
+       ▼
+  Gate finale (§7) → merge PR-B su Tito-dev
+       │
+       ▼
+  PR-C Shop MVP (fuori scope PR-B)
+```
+
+### 8.8 Rischi specifici sprint
+
+| Rischio | Mitigazione |
+| --- | --- |
+| Rename `/auth/token/` → `/admin/token/` rompe smoke bash esistenti | Grep `backend/scripts/` + aggiornare tutti gli smoke-test-*.sh prima del commit PR-B1 |
+| Test Django fixture con identita 1:1 rompono in blocco | PR-B1 8.3.8 codemod sistematico, non lasciare test rossi tra sub-PR |
+| FE store `auth.js` post-rename perde sessioni correnti | Accettabile: dev-only, tutti fanno logout/login dopo merge PR-B1 |
+| Stub 501 portale/shop confonde lo smoke e2e | Documentare chiaramente in `api.md` quali endpoint sono ancora in PR-C |
+
+### 8.9 Changelog sprint (da aggiornare incrementalmente)
+
+* **[ ] PR-B1** — BE foundation (commit `...`, data `...`)
+* **[ ] PR-B2** — BE features invito + stub shop (commit `...`, data `...`)
+* **[ ] PR-B3** — FE login multi-canale (commit `...`, data `...`)
+* **[ ] PR-B4** — FE profilo + stub routing (commit `...`, data `...`)
+
+---
+
 {% include-markdown "signature-core.md" %}
