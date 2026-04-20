@@ -16,6 +16,7 @@ from apps.core.api.base_views import DomainAPIView
 
 from apps.core.api.success_responses import success_response
 from apps.core.db.core_repository import CoreRepository
+from apps.core.services.permissions_resolver import PermissionResolver
 
 
 class UserProfileView(DomainAPIView):
@@ -48,7 +49,29 @@ class UserProfileView(DomainAPIView):
                             ),
                             "ruolo_sistema": serializers.CharField(
                                 allow_null=True,
-                                help_text="ADMIN | OPERATIVO | DISABILITATO | null.",
+                                help_text=(
+                                    "ADMIN | OPERATIVO | DISABILITATO | null. "
+                                    "Legacy — ricostruito da is_super_admin + "
+                                    "ruolo_applicativo. Nuovi consumer usino "
+                                    "direttamente is_super_admin + ruolo_applicativo."
+                                ),
+                            ),
+                            "is_super_admin": serializers.BooleanField(
+                                help_text=(
+                                    "True se l'utente ha binding attivo al "
+                                    "profilo SUPER_ADMIN (id 9100). Letto via "
+                                    "PermissionResolver.is_super_admin."
+                                ),
+                            ),
+                            "ruolo_applicativo": serializers.CharField(
+                                allow_null=True,
+                                help_text=(
+                                    "Ruolo applicativo dell'identita' attiva: "
+                                    "OPERATORE | CLIENTE_PORTALE | "
+                                    "FORNITORE_PORTALE | SHOP_CUSTOMER | "
+                                    "API_CLIENT | DISABILITATO | null. "
+                                    "Letto via PermissionResolver.get_ruolo_applicativo."
+                                ),
                             ),
                             "risorse_umane": serializers.DictField(
                                 help_text="Dati risorsa umana: qualifica, UO, validita'."
@@ -91,6 +114,13 @@ class UserProfileView(DomainAPIView):
         repo = CoreRepository()
         profile = repo.get_user_profile(request.user.id)
         profile["is_admin_globale"] = self._compute_is_admin_globale(profile)
+        # Multi-face auth Stage B: espone i campi nativi (is_super_admin +
+        # ruolo_applicativo) in affiancamento al legacy ruolo_sistema. I
+        # consumer FE ne leggono direttamente senza ricostruzione.
+        profile["is_super_admin"] = PermissionResolver.is_super_admin(request.user)
+        profile["ruolo_applicativo"] = PermissionResolver.get_ruolo_applicativo(
+            request.user
+        )
         return success_response(profile)
 
     # Scopo: Calcola il flag is_admin_globale dal profilo. Regola Q1 del

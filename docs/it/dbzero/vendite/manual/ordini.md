@@ -30,6 +30,27 @@ Obiettivi principali:
 
 ---
 
+### Canale di origine (post 20-04-2026)
+
+Colonna `canale_origine` di tipo `config.canale_origine` (ENUM
+`ADMIN` / `PORTALE` / `SHOP`), `NOT NULL DEFAULT 'ADMIN'`. Discrimina il
+canale di creazione dell'ordine.
+
+* **Immutabile post-INSERT** via trigger
+  `trg_vendite_ordini_a10_canale_origine_immutable_upd` (codice errore
+  `E_CANALE_ORIGINE_IMMUTABILE` id 385).
+* Usato dalla **policy RLS `rls_ordini_shop`** per filtrare gli ordini
+  visibili al canale shop (solo `canale_origine = 'SHOP'`). La policy
+  portale B2B (`rls_ordini_cliente_ownership`) non filtra canale: il
+  cliente B2B vede tutti gli ordini del proprio SR (caso 2 §5.1 guida
+  multi-face).
+* Default `ADMIN` su ordini pre-refactor e ordini creati da back-office.
+  Rif. guida: [Architettura Multi-Face Auth §6.4](/guide/architettura-multi-face-auth)
+  e [anagrafiche.billing_account](/dbzero/anagrafiche/tabelle/billing_account)
+  per la semantica completa del canale.
+
+---
+
 ### Collocazione nel flusso documentale
 
 1. **Creazione ordine** – avvio processo commerciale; definizione di cliente, condizioni economiche e pagamento.  

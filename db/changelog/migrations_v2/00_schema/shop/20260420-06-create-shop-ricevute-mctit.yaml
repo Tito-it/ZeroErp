@@ -1,0 +1,221 @@
+databaseChangeLog:
+  - logicalFilePath: /migrations_v2/00_schema/shop/20260420-06-create-shop-ricevute-mctit.yaml
+
+  - changeSet:
+      id: 20260420-06-create-shop-ricevute
+      author: mctit
+      comment: >
+        Crea shop.ricevute — tabella delle ricevute consumer emesse dal
+        canale shop B2C. Separata da vendite.fatture (che resta B2B fiscale
+        con emittente/SdI/XML). Le ricevute shop sono documenti leggeri:
+        numerazione dedicata, niente fattura elettronica, pagamento
+        immediato (carta/contanti), nessun legame con emittenti_fiscali.
+        Il BA collegato deve essere un BA con canale_origine='SHOP'
+        (verifica applicativa lato service; guard DB rinviato a migration
+        successiva). L'ordine shop opzionale (ordine_shop_id) e'
+        referenziato su vendite.ordini filtrando canale_origine='SHOP'.
+        Include canale_origine NOT NULL DEFAULT 'SHOP' + CHECK (='SHOP')
+        per autoconferma che la tabella contiene solo dati shop.
+        I trigger framework (audit data_user, tx_id, storico) sono
+        applicati dall'automation post-creazione.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*) FROM pg_namespace WHERE nspname = 'shop';
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*)
+                    FROM pg_type t
+                    JOIN pg_namespace n ON n.oid = t.typnamespace
+                   WHERE n.nspname = 'config'
+                     AND t.typname = 'canale_origine';
+            - tableExists:
+                schemaName: anagrafiche
+                tableName: billing_account
+            - tableExists:
+                schemaName: anagrafiche
+                tableName: soggetti_ruoli
+            - tableExists:
+                schemaName: vendite
+                tableName: ordini
+      changes:
+        - createTable:
+            schemaName: shop
+            tableName: ricevute
+            remarks: >-
+              Ricevute consumer emesse dal canale shop B2C. Documento fiscale
+              leggero (no fattura elettronica). Un record per ogni vendita
+              shop conclusa con pagamento immediato.
+            columns:
+              - column:
+                  name: id
+                  type: uuid
+                  defaultValueComputed: "uuidv7()"
+                  remarks: "PK UUID v7 (time-ordered)."
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_shop_ricevute
+                    nullable: false
+              - column:
+                  name: numero
+                  type: varchar(40)
+                  remarks: "Numero ricevuta (formato es. '2026-00001'). Unico globale. Generazione sequenziale lato service shop."
+                  constraints:
+                    nullable: false
+              - column:
+                  name: data_emissione
+                  type: date
+                  defaultValueComputed: "CURRENT_DATE"
+                  remarks: "Data emissione ricevuta. Coincide con data del pagamento per shop (no flussi differiti)."
+                  constraints:
+                    nullable: false
+              - column:
+                  name: soggetto_ruolo_id
+                  type: bigint
+                  remarks: "FK al SR-CL del cliente shop. Match con identita SHOP_CUSTOMER per RLS."
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_shop_ricevute_soggetti_ruoli
+                    referencedTableSchemaName: anagrafiche
+                    referencedTableName: soggetti_ruoli
+                    referencedColumnNames: id
+              - column:
+                  name: billing_account_id
+                  type: bigint
+                  remarks: "FK al BA shop del cliente (BA con canale_origine='SHOP'). Coerenza verificata lato service."
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_shop_ricevute_billing_account
+                    referencedTableSchemaName: anagrafiche
+                    referencedTableName: billing_account
+                    referencedColumnNames: id
+              - column:
+                  name: ordine_shop_id
+                  type: bigint
+                  remarks: "FK opzionale a vendite.ordini (canale_origine='SHOP'). Puo essere NULL per ricevute estemporanee senza ordine formale."
+                  constraints:
+                    foreignKeyName: fk_shop_ricevute_ordini
+                    referencedTableSchemaName: vendite
+                    referencedTableName: ordini
+                    referencedColumnNames: id
+              - column:
+                  name: totale_lordo
+                  type: "numeric(15, 2)"
+                  remarks: "Totale lordo della ricevuta (IVA inclusa)."
+                  constraints:
+                    nullable: false
+              - column:
+                  name: totale_iva
+                  type: "numeric(15, 2)"
+                  defaultValueNumeric: 0
+                  remarks: "IVA totale della ricevuta. 0 ammesso per transazioni fuori campo IVA."
+                  constraints:
+                    nullable: false
+              - column:
+                  name: pagamento_metodo
+                  type: varchar(40)
+                  remarks: "Metodo di pagamento (es. CARTA, PAYPAL, CONTANTI, BONIFICO). Enum libero gestito lato service."
+                  constraints:
+                    nullable: false
+              - column:
+                  name: pagamento_esito
+                  type: varchar(20)
+                  defaultValue: "PENDING"
+                  remarks: "Stato del pagamento: PENDING, OK, KO, RIMBORSATO."
+                  constraints:
+                    nullable: false
+              - column:
+                  name: canale_origine
+                  type: "config.canale_origine"
+                  defaultValue: "SHOP"
+                  remarks: "Canale di origine: sempre SHOP per questa tabella (CHECK constraint lo forza). Coerenza con altre tabelle transazionali."
+                  constraints:
+                    nullable: false
+              - column:
+                  name: meta
+                  type: jsonb
+                  defaultValueComputed: "'{}'::jsonb"
+                  remarks: "Payload estensibile (ID transazione PSP, dati di spedizione, note)."
+                  constraints:
+                    nullable: false
+              - column:
+                  name: storicizza
+                  type: boolean
+                  defaultValueBoolean: true
+                  remarks: "Flag per trigger storicizzazione (script.trgfn_storico_generic)."
+                  constraints:
+                    nullable: false
+              - column:
+                  name: tx_id
+                  type: uuid
+                  remarks: "Transaction id di sessione (popolato via automation dbops.trgfn_tx_id_managed)."
+              - column:
+                  name: data_insert
+                  type: "timestamp with time zone"
+                  defaultValueComputed: "now()"
+                  remarks: "Audit - popolato/aggiornato via automation."
+                  constraints:
+                    nullable: false
+              - column:
+                  name: user_insert
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  remarks: "Audit - popolato via automation."
+                  constraints:
+                    nullable: false
+              - column:
+                  name: data_update
+                  type: "timestamp with time zone"
+                  defaultValueComputed: "now()"
+                  remarks: "Audit - aggiornato via automation."
+                  constraints:
+                    nullable: false
+              - column:
+                  name: user_update
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  remarks: "Audit - aggiornato via automation."
+                  constraints:
+                    nullable: false
+
+        - addUniqueConstraint:
+            schemaName: shop
+            tableName: ricevute
+            columnNames: numero
+            constraintName: uq_shop_ricevute_numero
+
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- CHECK: canale_origine deve essere SHOP (autoconferma di
+              -- appartenenza al canale shop; allineamento con trigger
+              -- immutabilita' su canale_origine se applicato in futuro).
+              ALTER TABLE shop.ricevute
+                  ADD CONSTRAINT chk_shop_ricevute_canale_shop
+                  CHECK (canale_origine = 'SHOP');
+
+              -- CHECK coerenza totali.
+              ALTER TABLE shop.ricevute
+                  ADD CONSTRAINT chk_shop_ricevute_totali_non_neg
+                  CHECK (totale_lordo >= 0 AND totale_iva >= 0 AND totale_iva <= totale_lordo);
+
+              -- CHECK esito pagamento tra valori ammessi.
+              ALTER TABLE shop.ricevute
+                  ADD CONSTRAINT chk_shop_ricevute_pagamento_esito
+                  CHECK (pagamento_esito IN ('PENDING', 'OK', 'KO', 'RIMBORSATO'));
+
+              COMMENT ON TABLE shop.ricevute IS
+                  'Ricevute consumer emesse dal canale shop B2C. Documento fiscale '
+                  'leggero (no SdI, no XML, no partita IVA emittente sul doc). '
+                  'Decisione dominio 20-04-2026: shop e'' canale B2C autonomo. BA '
+                  'collegato deve avere canale_origine=SHOP (verifica service-side). '
+                  'Numerazione dedicata, generata lato service shop.';
+      rollback:
+        - dropTable:
+            schemaName: shop
+            tableName: ricevute

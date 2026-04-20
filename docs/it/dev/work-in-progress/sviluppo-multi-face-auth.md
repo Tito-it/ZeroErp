@@ -839,12 +839,15 @@ Primo set di endpoint sufficienti per un MVP del portale cliente:
       SHOP_CUSTOMER, FORNITORE_PORTALE ok/ko, API_CLIENT early-exit) +
       guard riusabile `fn_guard_soggetto_pf_pura` coperto da
       `db/pgtap/script/test-fn-guard-soggetto-pf-pura.sql` (8 casi).
-- [ ] 7.1.2 pgTAP: sync is_active per 4 tipi di identita'
-      — parziale: test legacy (operatore via RUA) coperto da
-      `test-sync-auth-user-is-active.sql` aggiornato (18 casi).
-      Dedicati per CLIENTE_PORTALE / FORNITORE_PORTALE / SHOP_CUSTOMER
-      aperti (vanno scritti post cutover §4.6 con dati di test
-      identita_digitali popolati).
+- [x] 7.1.2 pgTAP: sync is_active per 4 tipi di identita'
+      — OPERATORE regression coperto da
+      `test-sync-auth-user-is-active.sql` (18 casi, pre-cutover).
+      CLIENTE_PORTALE / FORNITORE_PORTALE / SHOP_CUSTOMER /
+      DISABILITATO + edge-case (guard NULL/zero, utente orfano,
+      fuori finestra, riattivazione) coperti da
+      `test-sync-auth-user-is-active-multi-role.sql` (10 casi).
+      Il file multi-role scrive direttamente su `identita_digitali`
+      (post-cutover §13.3.2): non dipende piu' da RUA/trigger-ponte.
 - [x] 7.1.3 pgTAP: scope policy EF_WHITELIST (8 casi)
       — `db/pgtap/script/test-fn-scope-ef-whitelist.sql`: identita
       inesistente/inattiva/attiva senza whitelist/con whitelist e target
@@ -866,9 +869,17 @@ Primo set di endpoint sufficienti per un MVP del portale cliente:
       — `db/pgtap/config/test-profili-accesso-bindings-guard-coerenza.sql`:
       xor violato (0/2 colonne), ogni combinazione tipo profilo ↔ tipo
       binding (REPARTO/PORTALE coerenti e incoerenti).
-- [ ] 7.1.7 pgTAP: RLS policy su fatture (cliente A non vede cliente B)
-      — rimandato a §4.9 (RLS non ancora attivate).
-- [ ] 7.1.8 pgTAP: RLS bypass per operatore interno — rimandato a §4.9.
+- [x] 7.1.7 / 7.1.8 pgTAP: struttura RLS policy (28 casi su 7 policy:
+      vendite.fatture dual, vendite.ordini, vendite.fatture_scadenze,
+      acquisti.ordini, acquisti.ddt, anagrafiche.billing_account).
+      — `db/pgtap/rls/test-rls-policies-structure.sql`: verifica che
+      ogni policy esista con comando/permissive corretti e che l'USING
+      expression binding la `fn_scope_*` attesa + gate
+      `ruolo_applicativo` atteso. La correttezza funzionale delle
+      `fn_scope_*` e' gia' coperta da §7.1.3-5. I test runtime
+      end-to-end (utente A vede, utente B no, bypass tecnico) saranno
+      scritti dopo l'attivazione RLS in PR-C, quando sara' disponibile
+      un ruolo DB non-BYPASSRLS utilizzabile nei test.
 
 ### 7.2 Test Backend
 
@@ -897,11 +908,30 @@ Primo set di endpoint sufficienti per un MVP del portale cliente:
 
 ### 7.4 Documentazione
 
-- [ ] 7.4.1 Aggiornare [soggetti-e-ruoli-anagrafici](/guide/soggetti-e-ruoli-anagrafici)
-      con riferimento al nuovo bridge
-- [ ] 7.4.2 Aggiornare [architettura-permessi-e-autorizzazioni](/guide/architettura-permessi-e-autorizzazioni)
-      con `profili_accesso` generalizzato
-- [ ] 7.4.3 Aggiornare [risorse-umane-e-accessi](/guide/risorse-umane-e-accessi) con R4 ridisegnato
+- [x] 7.4.1 Aggiornato [soggetti-e-ruoli-anagrafici](/guide/soggetti-e-ruoli-anagrafici):
+      box "Evoluzione in corso" sostituito da box "Multi-Face Auth —
+      stato post-cutover" che chiarisce che il bridge e' stato
+      generalizzato via `identita_digitali`. Modello soggetti/ruoli
+      invariato (resta autoritativo).
+- [x] 7.4.2 Aggiornato [architettura-permessi-e-autorizzazioni](/guide/architettura-permessi-e-autorizzazioni):
+      prerequisite `risorse_umane_auth_user` -> `identita_digitali`,
+      stato "v3.0 post-cutover", box esteso che documenta bridge
+      generalizzato, profili accesso generalizzati (REPARTO/PORTALE/AD_HOC/
+      SUPER_ADMIN), scope policy (`fn_scope_*` inlineable), RLS
+      dry-run sulle 6 tabelle + anti-lockout SUPER_ADMIN, namespace
+      API separati. Il corpo della guida (sezioni sul resolver
+      legacy) resta leggibile tramite le mappature del box; riscrittura
+      approfondita rinviata a PR-D.
+- [x] 7.4.3 Aggiornato [risorse-umane-e-accessi](/guide/risorse-umane-e-accessi):
+      header a `19-04-2026 post-cutover`, box esteso con tabella di
+      mappatura `ruolo_sistema` legacy → nuovo modello (SUPER_ADMIN
+      binding, `identita_digitali.ruolo_applicativo`, guard PF pura
+      sul ruolo OPERATORE). Il corpo della guida (sezioni operative
+      su attivazione/disattivazione/blocco login) va letto con la
+      tabella di mappatura del box: gli `UPDATE risorse_umane_auth_user`
+      descritti sono ora operazioni sul bridge `identita_digitali`
+      (la vista omonima e' read-only). Riscrittura completa rinviata
+      a PR-D.
 - [ ] 7.4.4 Creare nuova guida "Portale Clienti — Uso e Onboarding"
 - [ ] 7.4.5 Creare nuova guida "Portale Fornitori — Uso e Onboarding"
 - [ ] 7.4.6 Creare nuova guida "Shop Online — Registrazione e Acquisti"
@@ -1024,8 +1054,54 @@ inferiore e' completo e testato.
 
 Questi task sono §4.6.H.1-H.4 risequenziati.
 
-- [ ] 13.3.1 Grep su `backend/apps/` + `db/changelog/` + pgtap di
+- [x] 13.3.1 Grep su `backend/apps/` + `db/changelog/` + pgtap di
       **ogni** writer residuo verso `anagrafiche.risorse_umane_auth_user`.
+      Backend ha confermato 2026-04-19: zero writer Python residui
+      (`amm_software_repository` riscritto per scrivere su
+      `identita_digitali` + bindings via helper `_set_identita_state`
+      / `_set_super_admin_binding`). Unico writer residuo era
+      `fn_crea_risorsa_umana` DB, gestito in 13.3.2.bis sotto.
+- [x] 13.3.2 Changeset Liquibase 20260419-91-cutover-rua-view:
+      `DROP TRIGGER trg_..._z80_sync_identita + DROP FUNCTION`
+      (sub-step 1), `ALTER TABLE ... RENAME TO _legacy_...` (sub-step
+      2), `DROP VIEW vw_...` + `CREATE VIEW risorse_umane_auth_user
+      WITH (security_invoker = true)` con stesso corpo della vista
+      vw_ (sub-step 3). 3 sub-step atomici in un solo changeSet per
+      evitare stati intermedi invalidi.
+- [x] 13.3.2.bis Pre-requisito §13.3.2: changeSet 20260419-90
+      `update-fn-crea-risorsa-umana-post-cutover`. Rimuove l'INSERT
+      sul bridge legacy (che post-cutover fallirebbe: vista read-only)
+      e scrive direttamente su `identita_digitali` + eventuale binding
+      SUPER_ADMIN. Firma esterna invariata.
+- [x] 13.3.3 Trigger-ponte droppato dentro 20260419-91 sub-step 1
+      (trigger real name: `trg_..._z80_sync_identita_ins_upd`; il
+      messaggio dal backend diceva `z90`, corretto a z80 dopo
+      verifica su pg_trigger).
+- [x] 13.3.4 Changeset 20260419-92-update-fn-sync-auth-user-is-active-post-cutover:
+      rimosso il blocco "fallback legacy su risorse_umane_auth_user"
+      e la "doppia verifica OPERATORE su risorse_umane.attivo".
+      Ora la funzione legge solo da identita_digitali; utente orfano
+      -> return false (exit silente).
+- [x] 13.3.5 Rinominato `test-vw-risorse-umane-auth-user.sql` ->
+      `test-risorse-umane-auth-user-view.sql`, aggiornato i SELECT
+      da `vw_risorse_umane_auth_user` al nome canonico, rimosso il
+      caso 5 (test sul trigger-ponte, ora obsoleto). plan(5) -> plan(4).
+- [x] 13.3.6 (Q5) Trigger guard
+      `trgfn_profili_accesso_bindings_guard_ultimo_super_admin`
+      + `trgfn_identita_digitali_guard_ultimo_super_admin` (simmetrico
+      sulla deattivazione identita) implementati in PR1.5 DB
+      (migrations 20260419-68/69/70). Codice errore 384
+      E_PROFILO_ULTIMO_SUPER_ADMIN aggiunto a messaggi_errore.csv.
+      pgTAP 3 casi verdi.
+- [x] 13.3.7 (Q2) `script.fn_get_uo_id_for_user` implementato in PR1.5
+      DB (migration 20260419-71). Backend ha gia' migrato
+      `get_unita_organizzativa_id` al wrapper. pgTAP 4 casi verdi.
+- [ ] 13.3.8 **Doc manual**: aggiornata post-cutover. `manual/risorse_umane_auth_user.md`
+      riscritto come doc della vista (ex doc tabella). Eliminati
+      `manual/vw_risorse_umane_auth_user.md` (duplicato) e
+      `manual/trgfn_risorse_umane_auth_user_sync_identita.md` (trigger
+      droppato). Auto-generati (`views/vw_...md`, `index*.md`) si
+      rigenereranno al prossimo build docs.
       Coperti dal trigger-ponte durante PR1: ora vanno azzerati.
       Atteso: 0 INSERT/UPDATE/DELETE su RUA in codice Python.
       (Corrisponde a §4.6.H.1)
@@ -1631,6 +1707,177 @@ Stime per Tid come unico contributor.
   ultimo SUPER_ADMIN (Q5), promozione vista prima del refactor
   Python (Q6). Aggiunti task §13.3.6 (guard ultimo super_admin) +
   §13.3.7 (helper DB UO).
+* **2026-04-19 (sessione implementativa — PR-A DB cutover §13.3.2-5)**:
+  eseguito il cutover DB-side dopo segnale verde dal team backend
+  (writer Python su RUA azzerati). 3 migration + rename file test +
+  consolidamento doc.
+  * **20260419-90** `update fn_crea_risorsa_umana post-cutover`:
+    rimuove l'INSERT su `risorse_umane_auth_user` (che post-cutover
+    fallirebbe) e scrive direttamente su `identita_digitali` +
+    binding SUPER_ADMIN se `p_ruolo_sistema='ADMIN'`. Firma esterna
+    invariata. **Pre-requisito** per il cutover atomico (-91).
+  * **20260419-91** `cutover-rua-view` (changeSet atomico in 3 sub-step):
+    (1) DROP trigger-ponte `trg_...z80_sync_identita_ins_upd` + trigger
+    function; (2) `ALTER TABLE risorse_umane_auth_user RENAME TO
+    _legacy_risorse_umane_auth_user` (gli altri 6 trigger seguono la
+    tabella e restano inerti); (3) DROP `vw_risorse_umane_auth_user` +
+    `CREATE VIEW risorse_umane_auth_user WITH (security_invoker = true)`
+    con lo stesso corpo della vista `vw_`. Pre-condizioni sqlCheck
+    verificano che RUA sia tabella (r) e `vw_` sia vista (v) prima di
+    applicare.
+  * **20260419-92** `update fn_sync_auth_user_is_active post-cutover`:
+    rimosso il blocco "fallback legacy bridge risorse_umane_auth_user"
+    e la "doppia verifica OPERATORE su risorse_umane.attivo". La
+    funzione ora legge solo da `identita_digitali`; utente orfano
+    (nessuna identita) -> return false (exit silente).
+  * **pgTAP**: `test-vw-risorse-umane-auth-user.sql` rinominato
+    `test-risorse-umane-auth-user-view.sql` via `git mv`; aggiornati
+    i SELECT al nome canonico; rimosso il caso 5 (testava il
+    trigger-ponte ora droppato), plan(5) -> plan(4).
+  * **Doc consolidata**: `manual/risorse_umane_auth_user.md` riscritto
+    come documentazione della vista (ex doc tabella legacy); eliminati
+    `manual/vw_risorse_umane_auth_user.md` (duplicato) e
+    `manual/trgfn_risorse_umane_auth_user_sync_identita.md` (trigger
+    droppato). Cross-ref aggiornati in `manual/identita_digitali.md`
+    e `script/manual/fn_is_super_admin.md` (rimossi riferimenti a
+    `vw_...`). Auto-generati (`views/vw_...md`, `index*.md`) si
+    rigenereranno al prossimo build docs.
+  * **Correzione nome trigger**: il messaggio dal backend citava
+    `trg_...z90_sync_identita` (errato); il trigger reale era in
+    fase `_z80_`. Verificato su doc auto-gen `risorse_umane_auth_user.md`
+    prima del DROP.
+  * **Merge proposto**: atomico PR-A backend + questa PR DB su
+    `Tito-dev`. Post-merge smoke test congiunto (login admin, crea/
+    disabilita/riattiva operatore, cambio password, invito portale).
+  * **Pendenze residue post-cutover**: PR-B portali MVP (§5.4-§5.8 +
+    §6.1-§6.5); PR-C shop + attivazione RLS §4.9.7-9 (`ENABLE`,
+    `FORCE`, `BYPASSRLS`, benchmark, pgTAP policy attive); PR-D
+    test/docs/hardening.
+* **2026-04-19 (hotfix post-cutover — bug dimenticato nel cutover §13.3)**:
+  il backend Stage B ha segnalato che il login operatore era rotto
+  post-merge PR-A. Diagnosi: due funzioni ancillari del login
+  (`script.fn_registra_tentativo_login` -23, `script.fn_check_blocco_login`
+  -24) facevano doppio UPDATE su `risorse_umane_auth_user` con
+  commento "rimovibile al cutover §4.6.H"; il cutover DB-side aveva
+  dimenticato di aggiornarle. Post-cutover RUA e' vista read-only:
+  qualsiasi UPDATE falliva -> login bloccato.
+  * **20260419-93**: `update fn_registra_tentativo_login post-cutover`
+    — rimossi i 3 UPDATE su RUA (reset su successo, incremento
+    tentativi, set bloccato_fino_a). Scrive solo su
+    `identita_digitali` OPERATORE. Firma invariata.
+  * **20260419-94**: `update fn_check_blocco_login post-cutover` —
+    rimosso l'UPDATE su RUA nell'auto-unlock post-scadenza. Scrive
+    solo su `identita_digitali` OPERATORE. Firma invariata.
+  * **Lezione appresa**: i commenti "rimovibile al cutover" vanno
+    censiti via grep esplicito durante il cutover. La precondizione
+    backend (zero writer Python su RUA) non copriva i writer DB
+    interni alle stored function.
+  * **20260419-95** `seed-operatore-tid-post-cutover`: sostituto del
+    seed `20260309-01` (parte operatore) che post-cutover falliva su
+    INSERT sulla vista RUA. Il nuovo seed e' idempotente: MARK_RAN in
+    DB gia' popolati via backfill `-80`; su CI vergine crea catena
+    soggetto -> SR RIS_UMANA -> RU -> identita OPERATORE -> binding
+    SUPER_ADMIN (profilo 9100). Preserva la convenzione "auth_user
+    id=1 (tid) = super-admin dev".
+
+* **2026-04-20 (sessione cambio modello: SSO multi-veste + Shop B2C autonomo)**:
+  applicate 4 decisioni di dominio che invertono l'ipotesi iniziale
+  "un account per veste" (§2.1 guida v1.0) e introducono il canale
+  shop B2C come contesto autonomo. 11 migration `20260420-01..11`
+  applicate su branch `dev/db-tid`. Guida architetturale riscritta
+  **v2.0**: [architettura-multi-face-auth](/guide/architettura-multi-face-auth).
+  * **Decisioni chiave**:
+    * Shop = canale B2C autonomo (non vetrina del portale B2B)
+    * Un `auth_user`, N identita attive (una per `ruolo_applicativo`):
+      email + password unici globali, veste scelta dal canale di login
+    * Portale B2B vede tutto il rapporto (caso 2 §5.1), shop vede solo
+      `canale_origine='SHOP'` (silo completo)
+    * Shop emette solo ricevute consumer (no FE). Tabella dedicata
+      `shop.ricevute`. BA separati per canale
+  * **Invarianti nuovi**: max 1 identita attiva per `(auth_user,
+    ruolo_applicativo)` e per `(soggetto_ruolo, ruolo_applicativo)`;
+    `auth_user.is_active` = OR sulle N identita; `canale_origine`
+    immutabile post-INSERT; GUC `app.*` tutto-o-niente.
+  * **Migration DB (11 file + 2 codici errore)**:
+    * `20260420-01` rilassamento UNIQUE `identita_digitali` (drop
+      `uq_auth_user`, create `uq_(auth_user, ruolo)_attivo` + swap
+      `uq_(sr, ruolo)_attivo`)
+    * `20260420-02` ENUM `config.canale_origine` (ADMIN/PORTALE/SHOP)
+    * `20260420-03` ADD COLUMN `canale_origine` su BA, vendite.ordini,
+      vendite.fatture (default ADMIN, NOT NULL)
+    * `20260420-04` trigger function generica
+      `script.trgfn_canale_origine_immutable` + 3 trigger BEFORE
+      UPDATE OF canale_origine. Codice errore
+      `E_CANALE_ORIGINE_IMMUTABILE` (id 385).
+    * `20260420-05` schema `shop`
+    * `20260420-06` `shop.ricevute` (ricevute consumer B2C, CHECK
+      `canale_origine='SHOP'`). Codice errore
+      `E_SHOP_RICEVUTA_BA_CANALE_INVALIDO` (id 386, trigger guard BA
+      rinviato a migration successiva).
+    * `20260420-07` 3 policy RLS shop DRY-RUN: `rls_shop_ricevute`,
+      `rls_billing_account_shop`, `rls_ordini_shop` con gate
+      `SHOP_CUSTOMER` + filtro `canale_origine='SHOP'`
+    * `20260420-08` split 4 policy portale esistenti per escludere
+      SHOP_CUSTOMER dal gate (caso 2 asimmetrico): `rls_fatture_ba`,
+      `rls_ordini_cliente`, `rls_billing_account_self`,
+      `rls_fatture_scadenze_ba` — solo CLIENTE_PORTALE
+    * `20260420-09` `fn_scope_ba_ownership` ruolo-aware: filtra
+      internamente `ruolo_applicativo IN ('CLIENTE_PORTALE',
+      'SHOP_CUSTOMER')` (difesa-in-profondita' §V sviluppo-concentrico)
+    * `20260420-10` `fn_sync_auth_user_is_active` semantica OR su N
+      identita (singola query EXISTS aggregata, rimosso fallback
+      legacy RUA e doppia verifica OPERATORE)
+    * `20260420-11` `fn_is_super_admin` filtro esplicito OPERATORE
+      (evita bypass in contesto portale su user multi-veste) +
+      `fn_get_profili_accesso_applicabili` param opzionale
+      `p_ruolo_applicativo` (DEFAULT NULL, backward compatible)
+  * **pgTAP (6 nuovi + 1 aggiornato, ~56 casi)**:
+    * `test-identita-digitali-unique-multi-veste` — 8 casi nuovi UNIQUE
+    * `test-canale-origine-immutable` — 5 casi immutabilita'
+    * `test-fn-sync-auth-user-is-active-or` — 6 casi semantica OR
+    * `test-fn-scope-ba-ownership-ruolo-aware` — 5 casi filtro ruolo
+    * `test-fn-is-super-admin-operatore-only` — 4 casi filtro OPERATORE
+    * `test-rls-policies-20260420-structure` — 28 casi structural
+    * `test-rls-policies-structure` (PR1.5, aggiornato) — split test 4
+      e 28 per riflettere rimozione SHOP_CUSTOMER dal gate portale
+    * Pattern fixture sicura documentato in memoria:
+      CTE+DISTINCT sr_id per evitare duplicati da `clienti` non-UNIQUE,
+      skip resiliente con `CASE WHEN THEN ELSE skip END`, cast ENUM
+      esplicito in `INSERT ... SELECT`.
+  * **Documentazione**:
+    * Guida architettura-multi-face-auth v2.0 (riscritti §2.1, §3.1,
+      §5.1, §8.2, §9, §12, §14; nuove §6.4 canale_origine e §7.4 login
+      discriminato per namespace)
+    * [Architettura permessi e autorizzazioni](/guide/architettura-permessi-e-autorizzazioni):
+      corpo riscritto §6 (3 permission class, tripla GUC), §9.2
+      diagramma ER post-cutover con `identita_digitali` come bridge
+      N:M, §10 riepilogo, §13 sostituita la classificazione
+      `tipo_utente` ENUM con mappatura legacy→modello corrente
+    * Nuova guida [contratto-guc-app](/guide/contratto-guc-app) come
+      PRD normativo per BE
+    * Mappa concentrica aggiornata (20-04-2026)
+    * 2 doc manual nuove (`shop.ricevute`, `trgfn_canale_origine_immutable`),
+      8 doc manual aggiornate (identita_digitali, billing_account,
+      vendite.ordini/fatture, fn_scope_ba_ownership, fn_is_super_admin,
+      fn_get_profili_accesso_applicabili, fn_sync_auth_user_is_active)
+  * **Handoff PR-B**: [pr-b-shop-b2c-cambio-modello](pr-b-shop-b2c-cambio-modello.md)
+    documento unico con §0 "Changes a colpo d'occhio" (scan rapido per
+    BE/FE), piano DB, contratti BE (3 endpoint token namespace,
+    JWT claim `identita_id`, GUC atomic SET, `/me/` identita-specifico,
+    `InvitoPortaleService` no-dup user su email esistente, stub
+    `check-email`/`activate-shop`), contratti FE (login con switch
+    canale, store Pinia identita-aware, routing guard per namespace,
+    pulsante "Attiva shop" nel profilo portale).
+  * **Aperto (post-merge PR-B, non-blocking)**:
+    * 4 resolver (`fn_resolve_livello_area`, `fn_check_azione_processo`,
+      `fn_get_user_permissions_map`, `fn_get_user_actions_map`) da
+      aggiornare per passare `app.ruolo_applicativo` via GUC al
+      helper. Oggi backward-compat (comportamento legacy).
+    * Trigger guard DB su `shop.ricevute.billing_account_id` canale
+      SHOP (oggi verifica service-side).
+    * Attivazione RLS (ENABLE + FORCE + BYPASSRLS ruoli tecnici) +
+      benchmark + pgTAP runtime (leak cross-tenant) — rinviati a
+      migration post-PR-B stabile.
 
 ---
 

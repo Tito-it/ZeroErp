@@ -25,7 +25,7 @@ Architettura di riferimento:
 
 ---
 ### 🎯 Scopo Principale
-(latest review 19-04-2026)
+(latest review 20-04-2026 — parametro opzionale `p_ruolo_applicativo`)
 
 La funzione **`script.fn_get_profili_accesso_applicabili`** risolve la lista
 di **profili di accesso applicabili** a un utente, basandosi sul nuovo modello
@@ -52,6 +52,7 @@ Usata da (§4.8):
 | Parametro | Tipo | Descrizione |
 |-----------|------|-------------|
 | `p_auth_user_id` | `integer` | ID utente Django. Fail-closed su `NULL`. |
+| `p_ruolo_applicativo` | `config.ruolo_applicativo` | **Opzionale** (DEFAULT `NULL`). Se `NULL` → comportamento legacy (tutti i profili di tutte le vesti dell'user). Se valorizzato → filtra solo le identita con quella specifica veste. Post 20-04-2026 per modello SSO multi-veste. |
 
 ---
 
@@ -101,6 +102,42 @@ Binding per `unita_organizzativa_id` dell'operatore interno, risolta via
 Filtri aggiuntivi:
 - `ruolo_applicativo = 'OPERATORE'` (solo operatori)
 - `risorse_umane.attivo = true`
+
+---
+
+### Parametro `p_ruolo_applicativo` (post 20-04-2026)
+
+Nel modello SSO multi-veste un `auth_user` puo' avere N identita attive
+(una per `ruolo_applicativo`). Senza filtro, la fn restituirebbe tutti i
+profili applicabili a tutte le vesti dell'user, mischiando capability
+operatore e portale. Il parametro opzionale discrimina:
+
+* `NULL` (default, backward compatible) — comportamento legacy: tutti i
+  profili di tutte le vesti attive dell'user.
+* `'OPERATORE'` — solo profili applicabili all'identita OPERATORE.
+* `'CLIENTE_PORTALE'` — solo profili preset portale del cliente.
+* `'SHOP_CUSTOMER'` — solo profili preset shop.
+* ecc. per le altre vesti.
+
+**Uso tipico nei resolver (follow-up post PR-B):** il resolver dovrebbe
+leggere la veste corrente dal GUC `app.ruolo_applicativo` (popolato dal
+middleware `JwtAuditAuthentication`) e passarla alla fn:
+
+```sql
+SELECT script.fn_get_profili_accesso_applicabili(
+    p_auth_user_id,
+    NULLIF(current_setting('app.ruolo_applicativo', true), '')::config.ruolo_applicativo
+);
+```
+
+**Stato corrente (20-04-2026):** i 4 resolver chiamanti
+(`fn_resolve_livello_area`, `fn_check_azione_processo`,
+`fn_get_user_permissions_map`, `fn_get_user_actions_map`) **NON** passano
+ancora il parametro — continuano a funzionare in modalita' legacy. Migration
+dedicata rinviata al momento in cui il BE PR-B tocca i chiamanti, per
+evitare cambio comportamento globale senza coordinamento. Fino a quel
+momento l'isolamento veste e' garantito da (a) permission class per
+namespace, (b) `fn_is_super_admin` filtrato OPERATORE.
 
 ---
 

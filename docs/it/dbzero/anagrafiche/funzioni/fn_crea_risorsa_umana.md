@@ -13,19 +13,16 @@ CREATE OR REPLACE FUNCTION anagrafiche.fn_crea_risorsa_umana(p_soggetto_id uuid 
  LANGUAGE plpgsql
 AS $function$
 DECLARE
-    v_sr_id  anagrafiche.soggetti_ruoli.id%TYPE;
-    v_ru_id  anagrafiche.risorse_umane.id%TYPE;
+    v_sr_id        anagrafiche.soggetti_ruoli.id%TYPE;
+    v_ru_id        anagrafiche.risorse_umane.id%TYPE;
+    v_identita_id  anagrafiche.identita_digitali.id%TYPE;
 BEGIN
     -- =========================================================
-    -- Scopo (refactor §4.6.D.3):
-    --   Crea risorsa_umana + bridge legacy RUA. Il trigger
-    --   trgfn_risorse_umane_auth_user_sync_identita (§4.6.D.4)
-    --   scatta AFTER INSERT su RUA e propaga a
-    --   identita_digitali OPERATORE + binding SUPER_ADMIN
-    --   (se ruolo_sistema='ADMIN'). Al cutover §4.6.H la
-    --   propagazione verra' fatta direttamente qui.
-    --
-    -- Parametri (invariati): vedi COMMENT.
+    -- Scopo (post-cutover §13.3 WIP):
+    --   Crea risorsa_umana + identita_digitali OPERATORE
+    --   (+ binding SUPER_ADMIN se p_ruolo_sistema = 'ADMIN').
+    --   Nessun INSERT su risorse_umane_auth_user: ora e' una
+    --   vista read-only (rename §13.3.2).
     -- =========================================================
 
     -- Validazione parametri obbligatori
@@ -104,18 +101,44 @@ BEGIN
     )
     RETURNING id INTO v_ru_id;
 
-    -- Step 3: Bridge legacy RUA. Il trigger-ponte §4.6.D.4
-    -- (trgfn_risorse_umane_auth_user_sync_identita) propaga
-    -- AFTER INSERT su identita_digitali OPERATORE (UPSERT)
-    -- e crea il binding SUPER_ADMIN se p_ruolo_sistema='ADMIN'.
-    -- NOTA: questo evita la collisione UNIQUE
-    -- uq_identita_digitali_auth_user che si avrebbe con
-    -- doppio INSERT esplicito + trigger-ponte.
+    -- Step 3: identita_digitali OPERATORE (scrittura diretta).
+    -- Nessun trigger-ponte: post-cutover §13.3 la propagazione
+    -- e' esplicita qui. La firma esterna ricevuta dal caller
+    -- (ruolo_sistema) non ha piu' un contenitore legacy dove
+    -- persisterla: viene decomposta in (a) OPERATORE sempre,
+    -- (b) binding SUPER_ADMIN se p_ruolo_sistema='ADMIN'.
     IF p_auth_user_id IS NOT NULL THEN
-        INSERT INTO anagrafiche.risorse_umane_auth_user (
-            risorsa_umana_id, auth_user_id, ruolo_sistema, attivo
+        INSERT INTO anagrafiche.identita_digitali (
+            soggetto_ruolo_id,
+            auth_user_id,
+            ruolo_applicativo,
+            attivo,
+            valido_dal,
+            valido_al
         )
-        VALUES (v_ru_id, p_auth_user_id, p_ruolo_sistema, true);
+        VALUES (
+            v_sr_id,
+            p_auth_user_id,
+            'OPERATORE'::config.ruolo_applicativo,
+            true,
+            COALESCE(p_valido_dal, CURRENT_DATE),
+            p_valido_al
+        )
+        RETURNING id INTO v_identita_id;
+
+        -- Step 4: binding SUPER_ADMIN se ruolo ADMIN legacy.
+        IF p_ruolo_sistema = 'ADMIN'::config.ruolo_sistema THEN
+            INSERT INTO config.profili_accesso_bindings (
+                profilo_accesso_id,
+                identita_digitale_id,
+                attivo
+            )
+            VALUES (
+                9100,
+                v_identita_id,
+                true
+            );
+        END IF;
     END IF;
 
     RETURN v_ru_id;
@@ -123,7 +146,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION anagrafiche.fn_crea_risorsa_umana(p_soggetto_id uuid, p_qualifica_id integer, p_unita_organizzativa_id integer, p_valido_dal date, p_valido_al date, p_auth_user_id integer, p_ruolo_sistema config.ruolo_sistema)
-IS 'Building block: crea risorsa_umana + bridge legacy RUA. Refactor §4.6.D.3: la propagazione a identita_digitali + binding SUPER_ADMIN avviene via trigger-ponte §4.6.D.4. Firma esterna invariata. Al cutover §4.6.H la funzione tornera'' a scrivere direttamente su identita_digitali.';
+IS 'Building block (post-cutover §13.3): crea risorsa_umana + identita_digitali OPERATORE + (se p_ruolo_sistema=''ADMIN'') binding SUPER_ADMIN. Nessuna scrittura su risorse_umane_auth_user (ora vista read-only). Firma esterna invariata rispetto alle versioni pre-cutover.';
 ```
 
 ---

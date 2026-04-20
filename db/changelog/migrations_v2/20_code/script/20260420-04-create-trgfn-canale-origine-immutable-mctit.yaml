@@ -1,0 +1,232 @@
+databaseChangeLog:
+  - logicalFilePath: /migrations_v2/20_code/script/20260420-04-create-trgfn-canale-origine-immutable-mctit.yaml
+
+  # ---------------------------------------------------------------------------
+  # Trigger di immutabilita' della colonna canale_origine sulle 3 tabelle
+  # transazionali (billing_account, vendite.ordini, vendite.fatture).
+  # La colonna traccia il canale di creazione del record e non deve essere
+  # modificata post-INSERT: una modifica retroattiva invaliderebbe la storia
+  # e le decisioni RLS gia' prese sul record.
+  #
+  # La funzione e' generica in schema script (riusabile cross-schema) e i
+  # trigger sono applicati con UPDATE OF canale_origine per performance
+  # (scatta solo se la colonna cambia davvero).
+  #
+  # 4 changeSet in sequenza (sub-progressivi 04-01..04-04):
+  #   04-01 funzione trgfn_canale_origine_immutable
+  #   04-02 trigger su anagrafiche.billing_account
+  #   04-03 trigger su vendite.ordini
+  #   04-04 trigger su vendite.fatture
+  #
+  # Codice errore: E_CANALE_ORIGINE_IMMUTABILE (id 385, aggiunto 20-04-2026).
+  # ---------------------------------------------------------------------------
+
+  - changeSet:
+      id: 20260420-04-01-create-trgfn-canale-origine-immutable
+      author: mctit
+      runOnChange: true
+      validCheckSum: [ANY]
+      comment: >
+        Crea funzione trigger generica script.trgfn_canale_origine_immutable.
+        Usa UPDATE OF canale_origine: scatta solo se la colonna e' nel
+        SET dell'UPDATE. Solleva E_CANALE_ORIGINE_IMMUTABILE se NEW
+        diverge da OLD. TG_TABLE_SCHEMA/NAME sono passati come argomenti
+        al messaggio di errore per tracciabilita'.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT COUNT(*)
+                FROM pg_type t
+                JOIN pg_namespace n ON n.oid = t.typnamespace
+               WHERE n.nspname = 'config'
+                 AND t.typname = 'canale_origine';
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.trgfn_canale_origine_immutable()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Impedire modifiche alla colonna canale_origine di una
+                  --   tabella transazionale. La colonna traccia l'origine
+                  --   del record (ADMIN/PORTALE/SHOP) e deve essere
+                  --   immutabile: alterazioni retroattive invaliderebbero
+                  --   la storia e le decisioni RLS basate sul canale.
+                  --
+                  -- Regole:
+                  --   1. Scatta solo se NEW.canale_origine != OLD.canale_origine.
+                  --      IS DISTINCT FROM per sicurezza (NULL non previsti ma
+                  --      gestiti).
+                  --   2. Raise E_CANALE_ORIGINE_IMMUTABILE con context di
+                  --      schema/tabella per debug.
+                  -- =========================================================
+
+                  IF NEW.canale_origine IS DISTINCT FROM OLD.canale_origine THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          TG_TABLE_SCHEMA,
+                          TG_NAME,
+                          'E_CANALE_ORIGINE_IMMUTABILE',
+                          jsonb_build_object(
+                              'op', TG_OP,
+                              'schema', TG_TABLE_SCHEMA,
+                              'tabella', TG_TABLE_NAME,
+                              'old_canale', OLD.canale_origine,
+                              'new_canale', NEW.canale_origine
+                          ),
+                          NULL::uuid,
+                          format(
+                              'Modifica canale_origine vietata su %s.%s (%s -> %s)',
+                              TG_TABLE_SCHEMA, TG_TABLE_NAME,
+                              OLD.canale_origine, NEW.canale_origine
+                          )
+                      );
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.trgfn_canale_origine_immutable() IS
+                  'Trigger function generica: blocca UPDATE che modifica la '
+                  'colonna canale_origine. Applicata via UPDATE OF canale_origine '
+                  'su billing_account, vendite.ordini, vendite.fatture. Codice '
+                  'errore E_CANALE_ORIGINE_IMMUTABILE.';
+      rollback:
+        - sql:
+            sql: DROP FUNCTION IF EXISTS script.trgfn_canale_origine_immutable();
+
+  - changeSet:
+      id: 20260420-04-02-create-trg-billing-account-canale-immutable
+      author: mctit
+      runOnChange: true
+      validCheckSum: [ANY]
+      comment: >
+        Trigger BEFORE UPDATE OF canale_origine su anagrafiche.billing_account.
+        Fase _a10_ (guard/block). Nome non prefissato con schema perche'
+        billing_account e' unica nel DB.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: anagrafiche
+                tableName: billing_account
+                columnName: canale_origine
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*)
+                    FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'script'
+                     AND p.proname = 'trgfn_canale_origine_immutable';
+      changes:
+        - sql:
+            splitStatements: true
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_billing_account_a10_canale_origine_immutable_upd
+                  ON anagrafiche.billing_account;
+
+              CREATE TRIGGER trg_billing_account_a10_canale_origine_immutable_upd
+                  BEFORE UPDATE OF canale_origine
+                  ON anagrafiche.billing_account
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_canale_origine_immutable();
+      rollback:
+        - sql:
+            sql: |
+              DROP TRIGGER IF EXISTS trg_billing_account_a10_canale_origine_immutable_upd
+                  ON anagrafiche.billing_account;
+
+  - changeSet:
+      id: 20260420-04-03-create-trg-vendite-ordini-canale-immutable
+      author: mctit
+      runOnChange: true
+      validCheckSum: [ANY]
+      comment: >
+        Trigger BEFORE UPDATE OF canale_origine su vendite.ordini. Nome
+        prefissato con schema 'vendite' per distinguerlo da acquisti.ordini
+        (convenzione linee-guida-trigger §naming).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: vendite
+                tableName: ordini
+                columnName: canale_origine
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*)
+                    FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'script'
+                     AND p.proname = 'trgfn_canale_origine_immutable';
+      changes:
+        - sql:
+            splitStatements: true
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_vendite_ordini_a10_canale_origine_immutable_upd
+                  ON vendite.ordini;
+
+              CREATE TRIGGER trg_vendite_ordini_a10_canale_origine_immutable_upd
+                  BEFORE UPDATE OF canale_origine
+                  ON vendite.ordini
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_canale_origine_immutable();
+      rollback:
+        - sql:
+            sql: |
+              DROP TRIGGER IF EXISTS trg_vendite_ordini_a10_canale_origine_immutable_upd
+                  ON vendite.ordini;
+
+  - changeSet:
+      id: 20260420-04-04-create-trg-vendite-fatture-canale-immutable
+      author: mctit
+      runOnChange: true
+      validCheckSum: [ANY]
+      comment: >
+        Trigger BEFORE UPDATE OF canale_origine su vendite.fatture. Nome
+        prefissato con schema 'vendite' (convenzione per tabelle con nome
+        omonimo su piu' schemi).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: vendite
+                tableName: fatture
+                columnName: canale_origine
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*)
+                    FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'script'
+                     AND p.proname = 'trgfn_canale_origine_immutable';
+      changes:
+        - sql:
+            splitStatements: true
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_vendite_fatture_a10_canale_origine_immutable_upd
+                  ON vendite.fatture;
+
+              CREATE TRIGGER trg_vendite_fatture_a10_canale_origine_immutable_upd
+                  BEFORE UPDATE OF canale_origine
+                  ON vendite.fatture
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_canale_origine_immutable();
+      rollback:
+        - sql:
+            sql: |
+              DROP TRIGGER IF EXISTS trg_vendite_fatture_a10_canale_origine_immutable_upd
+                  ON vendite.fatture;

@@ -20,7 +20,7 @@ Architettura di riferimento:
 
 ---
 ### 🎯 Scopo Principale
-(latest review 19-04-2026)
+(latest review 20-04-2026 — filtro OPERATORE)
 
 La funzione **`script.fn_is_super_admin`** verifica se un utente ha il
 privilegio di **bypass totale dei permessi** (equivalente al vecchio
@@ -53,7 +53,7 @@ Ritorna `true` se e solo se esiste (JOIN su 3 tabelle):
 1. Un'identità `anagrafiche.identita_digitali` con:
    * `auth_user_id = p_auth_user_id`
    * `attivo = true`
-   * `ruolo_applicativo <> 'DISABILITATO'`
+   * **`ruolo_applicativo = 'OPERATORE'`** (post 20-04-2026 — filtro esplicito)
    * In finestra temporale (`valido_dal <= today <= valido_al`)
 2. Un binding attivo su quella identità (`profili_accesso_bindings.attivo = true`)
 3. Il profilo bindato è attivo (`profili_accesso.attivo = true`) e ha
@@ -63,18 +63,25 @@ Fail-closed: se una sola condizione non è verificata, ritorna `false`.
 
 ---
 
-### Cross-ruolo by design
+### Filtro OPERATORE (post 20-04-2026)
 
-Il check non restringe `ruolo_applicativo = 'OPERATORE'`: un binding
-SUPER_ADMIN su un'identità `CLIENTE_PORTALE` viene riconosciuto e
-restituisce `true`. Questo è **intenzionale**: in Fase 2 post-MVP il
-modello supporterà `CLIENTE_ADMIN_PORTALE` come binding SUPER_ADMIN su
-identità `CLIENTE_PORTALE` (o variante limitata al solo portale) **senza
-refactor** di questa funzione.
+Post modello SSO multi-veste, la fn filtra esplicitamente
+`ruolo_applicativo = 'OPERATORE'`. Motivazione:
 
-Il solo filtro su `ruolo_applicativo` è `<> 'DISABILITATO'` per
-coerenza fail-closed: un'identità disattivata (anche se con binding
-attivo residuo) non deve bypassare i permessi.
+* Un `auth_user` puo' avere contemporaneamente identita OPERATORE+SUPER_ADMIN
+  e identita CLIENTE_PORTALE. Senza filtro, la fn restituirebbe `true` anche
+  quando l'utente e' loggato in contesto portale → bypass permessi
+  indesiderato.
+* SUPER_ADMIN e' privilege di **operatore interno** per design: un cliente
+  B2B che ha anche credenziali amministrative entra da `/api/admin/*` con
+  la veste OPERATORE, non dal portale con la veste CLIENTE_PORTALE.
+* Il caso `CLIENTE_ADMIN_PORTALE` (admin di portale B2B multi-utente) sara'
+  gestito in Fase 2 con una chiamata dedicata (es. `fn_is_cliente_admin`)
+  con semantica propria, non estendendo `fn_is_super_admin`.
+
+Un binding SUPER_ADMIN patologico su identita non-OPERATORE (caso che
+tecnicamente il modello ammette ma non e' intenzionale) viene **ignorato**
+dalla fn.
 
 ---
 
@@ -142,12 +149,13 @@ CREATE POLICY rls_fatture_bypass_admin ON vendite.fatture
 ### Evoluzione attesa
 
 Quando il backend (PR2) e il frontend (PR2) verranno migrati, l'esperienza
-di "concedere ADMIN" passerà dal radio `ruolo_sistema` nel drawer
+di "concedere ADMIN" passa dal radio `ruolo_sistema` nel drawer
 operatore a un toggle "Concedi accesso SUPER ADMIN" che crea/rimuove un
-binding verso il profilo 9100. Al cutover §4.6.H il bridge legacy
-`risorse_umane_auth_user` verrà sostituito dalla vista
-`vw_risorse_umane_auth_user`, che usa questa funzione (via LEFT JOIN
-pre-aggregato) per ricostruire il campo `ruolo_sistema` output.
+binding verso il profilo 9100. Post-cutover §13.3.2 (19-04-2026) il
+bridge legacy `risorse_umane_auth_user` è stato sostituito dalla vista
+omonima (tabella rinominata `_legacy_...`); la vista ricostruisce il
+campo `ruolo_sistema` output via LEFT JOIN pre-aggregato, quindi non
+chiama direttamente questa funzione.
 
 ---
 

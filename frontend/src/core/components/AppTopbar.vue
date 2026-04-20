@@ -147,11 +147,11 @@ onMounted(async () => {
         <i class="pi pi-microchip-ai"></i>
       </button>
 
-      <!-- Badge admin o iniziali utente -->
-      <Chip v-if="auth.isAdmin" class="admin-chip" v-tooltip.bottom="auth.displayName">
+      <!-- Badge SUPER_ADMIN o iniziali utente -->
+      <Chip v-if="auth.isSuperAdmin" class="admin-chip" v-tooltip.bottom="auth.displayName">
         <template #default>
           <i class="pi pi-shield admin-chip-icon" />
-          <span class="admin-chip-label">Admin</span>
+          <span class="admin-chip-label">{{ t('auth.super_admin_badge') }}</span>
         </template>
       </Chip>
       <span v-else class="user-initials-badge" v-tooltip.bottom="auth.displayName">

@@ -29,5 +29,16 @@
 | pk_scope_policy | `CREATE UNIQUE INDEX pk_scope_policy ON config.scope_policy USING btree (id)` |
 | uq_scope_policy_codice | `CREATE UNIQUE INDEX uq_scope_policy_codice ON config.scope_policy USING btree (codice)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_scope_policy_a10_identita_scope_bindings_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('config', 'identita_scope_bindings', 'scope_policy_id', 'id', 'attivo')` |
+| trg_scope_policy_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_scope_policy_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_scope_policy_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_scope_policy_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_scope_policy_z90_storico_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_storico_generic('scope_policy_id')` |
+| trg_scope_policy_z90_storico_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_storico_generic('scope_policy_id')` |
+
 ---
 {% include-markdown "signature-core.md" %}

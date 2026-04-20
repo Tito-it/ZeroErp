@@ -20,7 +20,7 @@ Approfondimento funzioni:
 
 ---
 ### 🎯 Scopo Principale
-(latest review 01-03-26)
+(latest review 20-04-2026 — aggiunta colonna `canale_origine`)
 
 Il **billing account** (BA) e l'account di fatturazione associato a un'istanza utility. In termini semplici: e il "contenitore" che identifica **a chi fatturare** e **con quale codice** per un determinato servizio (gas, energia, ecc.).
 
@@ -30,6 +30,7 @@ Caratteristiche principali:
 * Ogni BA e legato a una sola istanza e a una sola utility
 * Il BA supporta una **gerarchia padre/figlio** per aggregare la fatturazione di piu utenze
 * Il BA resta attivo anche dopo la chiusura del cliente, per consentire fatture finali e conguagli
+* **BA separati per canale self-service** (post 20-04-2026): un SR-CL puo avere piu BA, uno per ogni `canale_origine` (`ADMIN`, `PORTALE`, `SHOP`). I BA portale e shop sono concettualmente distinti — portale gestisce fatture B2B con partita IVA, shop gestisce ricevute consumer.
 
 ---
 
@@ -52,6 +53,47 @@ Nota naming: sia `anagrafiche.billing_account` sia `anagrafiche.pdp` usano `util
 * **Unicita account**: `codice` deve essere univoco (`uq_billing_account_codice`)
 * **Unicita per istanza+utility**: non possono esistere due BA con la stessa coppia (`istanza_utility_id`, `utility_id`)
 * **Range di validita**: `valido_dal` e obbligatorio se `parent_account_id` non e NULL; `valido_al`, se presente, deve essere >= `valido_dal`
+* **`canale_origine` immutabile post-INSERT**: trigger `trg_billing_account_a10_canale_origine_immutable_upd` impedisce modifiche alla colonna. Codice errore `E_CANALE_ORIGINE_IMMUTABILE` (id 385).
+
+---
+
+### Canale di origine
+
+Colonna `canale_origine` di tipo `config.canale_origine` (ENUM `ADMIN` /
+`PORTALE` / `SHOP`), `NOT NULL DEFAULT 'ADMIN'`. Introdotta con migration
+20260420-03 per il modello SSO multi-canale (§6.4 guida multi-face-auth).
+
+**Semantica:**
+
+* `ADMIN` — BA creato da operatore interno (back-office, pipeline
+  fatturazione, migrazioni). Caso comune per i BA pre-refactor.
+* `PORTALE` — BA creato da cliente B2B via portale self-service (fase di
+  onboarding guidata). Supporta fatturazione elettronica, partita IVA
+  fatturante, split payment.
+* `SHOP` — BA creato da shop customer B2C via registrazione shop. Usato
+  solo per ricevute consumer (niente fattura elettronica, pagamento
+  immediato).
+
+**Implicazioni RLS:**
+
+* La policy **`rls_billing_account_self_ownership`** (portale B2B) ammette
+  solo `CLIENTE_PORTALE` e non filtra su `canale_origine`: un cliente B2B
+  vede tutti i propri BA (caso 2 §5.1 guida multi-face — portale consolida
+  la vista del rapporto).
+* La policy **`rls_billing_account_shop`** (shop B2C) ammette solo
+  `SHOP_CUSTOMER` e filtra `canale_origine = 'SHOP'`: un consumer vede
+  solo i propri BA shop, non quelli portale della stessa azienda.
+
+**Coesistenza sullo stesso SR-CL:** un'azienda che ha sia accesso portale
+B2B sia un account shop B2C puo' avere contemporaneamente:
+
+* BA `ADMIN` / `PORTALE` per la fatturazione B2B (partita IVA, fattura
+  elettronica, pipeline fatturabili)
+* BA `SHOP` per acquisti consumer occasionali (ricevute, pagamento
+  immediato)
+
+I due BA sono fisicamente distinti e non si mescolano nelle pipeline di
+fatturazione.
 
 ---
 

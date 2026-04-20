@@ -4,7 +4,7 @@
 >
 > **Prerequisiti:** [Guida Soggetti & Ruoli](/guide/soggetti-e-ruoli-anagrafici), [Architettura Permessi e Autorizzazioni](/guide/architettura-permessi-e-autorizzazioni), [Risorse Umane e Accessi](/guide/risorse-umane-e-accessi)
 >
-> **Stato:** Proposta architetturale – v1.0
+> **Stato:** Architettura consolidata – v2.0 (20-04-2026 — modello SSO: un auth_user, piu' vesti applicative; shop B2C canale autonomo con `canale_origine` tracciabile)
 
 ---
 
@@ -45,23 +45,49 @@ Tenerle separate permette di combinarle liberamente. Un cliente portale ha
 un'**identita'** diversa da un dipendente, un **set di capability** molto piu' ristretto
 e uno **scope** che e' "i miei billing account, non altri".
 
-### 2.1 Perche' lo stesso `auth_user` non va condiviso tra contesti
+### 2.1 Un solo `auth_user`, piu' vesti applicative
 
 Mario Rossi puo' essere contemporaneamente:
 
-- dipendente della mia azienda (identita' interna)
-- titolare di un'azienda fornitrice che io pago (identita' fornitore)
-- cliente privato di un mio negozio online (identita' shop)
+- dipendente della mia azienda (veste interna `OPERATORE`)
+- titolare di un'azienda fornitrice che io pago (veste `FORNITORE_PORTALE`)
+- cliente B2B che acquista per la sua societa' (veste `CLIENTE_PORTALE`)
+- consumer occasionale del mio negozio online (veste `SHOP_CUSTOMER`)
 
-Sono **tre relazioni diverse** con la mia azienda. Non ha senso che condividano
-lo stesso account: ognuna ha la sua password, il suo flusso di login, la sua
-interfaccia. In ZeroErp un `auth_user` rappresenta **un'identita' in un contesto**,
-non una persona fisica. Se Mario ha tre cappelli, ha tre account.
+Sono **relazioni diverse** con la mia azienda, ma **un'unica identita' di
+autenticazione**: una sola email, una sola password, un ciclo di vita credenziali
+unificato. Quello che cambia tra le vesti e' **cosa si puo' fare e cosa si vede**,
+non chi si e'. In ZeroErp un `auth_user` rappresenta **una persona autenticabile**;
+le vesti applicative (`ruolo_applicativo`) vivono sul bridge `identita_digitali`,
+ciascuna con il proprio `soggetti_ruoli` di aggancio.
 
-Questo non e' un compromesso — e' il modello corretto. Lo dice chiaramente anche
-la [guida soggetti e ruoli](/guide/soggetti-e-ruoli-anagrafici): il soggetto e'
-l'identita' stabile, il ruolo e' la funzione nel sistema. Un `auth_user` nasce
-dal ruolo, non dal soggetto.
+Questo modello e' coerente con la [guida soggetti e ruoli](/guide/soggetti-e-ruoli-anagrafici):
+il soggetto e' l'identita' stabile, il ruolo anagrafico e' la funzione civilistica
+nel sistema, il `ruolo_applicativo` e' la veste con cui accedo al software. Mario
+puo' avere piu' vesti attive contemporaneamente sullo stesso `auth_user`: il
+**canale di login** (admin, portale, shop) determina quale veste viene usata in
+ciascuna sessione.
+
+**Invariante di dominio:** al massimo **una** identita attiva per ogni
+combinazione `(auth_user, ruolo_applicativo)`. E al massimo **una** identita
+attiva per ogni combinazione `(soggetto_ruolo, ruolo_applicativo)`. Due vesti
+diverse sullo stesso `auth_user` richiedono scelta esplicita del canale al login.
+
+**Perche' non account separati:** la scelta "un account per veste" (separazione
+credenziali) e' il modello silo classico. ZeroErp adotta invece il modello SSO
+moderno (un'autenticazione unica, molte vesti applicative) per tre ragioni:
+
+1. **UX naturale**: un dipendente che e' anche cliente non deve gestire due
+   password. Un reset password vale per tutte le vesti.
+2. **Sicurezza centralizzata**: lockout, TOTP, policy password sono applicati
+   una sola volta, non N volte. Riduce la superficie di attacco.
+3. **Coerenza civilistica**: Mario Rossi e' una persona fisica sola. Il suo
+   soggetto anagrafico e' uno. Le sue vesti nel sistema sono molte. Il livello
+   auth rispecchia la persona, non la veste.
+
+La **discriminazione tra vesti** avviene al login (canale/namespace), nel JWT
+token (identita specifica) e nei GUC DB (identita attiva della sessione) — non
+nell'account.
 
 ---
 
@@ -78,25 +104,41 @@ nasce `anagrafiche.identita_digitali`, il bridge generico che collega qualunque
 anagrafiche.identita_digitali
     id                    BIGINT PK
     soggetto_ruolo_id     BIGINT FK  (a anagrafiche.soggetti_ruoli)
-    auth_user_id          INT  FK UNIQUE  (a django.auth_user)
-    ruolo_applicativo     ENUM      (OPERATORE | CLIENTE_PORTALE | FORNITORE_PORTALE |
-                                     SHOP_CUSTOMER | API_CLIENT | DISABILITATO)
+    auth_user_id          INT  FK    (a django.auth_user)
+    ruolo_applicativo     ENUM       (OPERATORE | CLIENTE_PORTALE | FORNITORE_PORTALE |
+                                      SHOP_CUSTOMER | API_CLIENT | DISABILITATO)
     attivo                BOOLEAN
     valido_dal            DATE
-    valido_al             DATE      NULLABLE
+    valido_al             DATE       NULLABLE
     deve_cambiare_password BOOLEAN
     invito_inviato_at     TIMESTAMPTZ NULLABLE
+    tentativi_falliti     SMALLINT   (lockout per veste)
+    bloccato_fino_a       TIMESTAMPTZ NULLABLE
+    totp_obbligatorio     BOOLEAN
+    storicizza            BOOLEAN
     date_insert/update, user_insert/update   (audit standard)
-    UNIQUE (auth_user_id)
-    UNIQUE (soggetto_ruolo_id) WHERE attivo = true
+    UNIQUE (auth_user_id, ruolo_applicativo) WHERE attivo = true
+    UNIQUE (soggetto_ruolo_id, ruolo_applicativo) WHERE attivo = true
 ```
 
 **Regole di dominio:**
 
-- Un `auth_user` ha **una sola** identita' digitale attiva alla volta
-- Un `soggetti_ruoli` puo' avere piu' identita' nel tempo (cessazione e rientro),
-  ma una sola attiva
-- `ruolo_applicativo` dice **in quale veste** l'utente si logga
+- Un `auth_user` puo' avere **piu' identita attive contemporaneamente**, ciascuna
+  con un `ruolo_applicativo` diverso (es. `OPERATORE` + `CLIENTE_PORTALE` se
+  un dipendente e' anche cliente B2B della stessa azienda).
+- Al massimo **una** identita attiva per ogni coppia `(auth_user, ruolo_applicativo)`:
+  non e' possibile avere due `OPERATORE` attivi sullo stesso utente.
+- Un `soggetti_ruoli` puo' avere **piu' identita attive contemporaneamente**,
+  ciascuna con un `ruolo_applicativo` diverso. Es. un SR-CL puo' avere un'identita
+  `CLIENTE_PORTALE` (login B2B) e un'identita `SHOP_CUSTOMER` (login B2C) allo
+  stesso tempo, riferite allo stesso `auth_user` o a `auth_user` diversi.
+- `ruolo_applicativo` dice **in quale veste** l'utente si logga; la veste e'
+  scelta dal canale/namespace di login, non da un toggle runtime.
+- Lo **stato di lockout** (`tentativi_falliti`, `bloccato_fino_a`) e' per-identita:
+  un lockout sul portale non blocca lo shop dello stesso user, perche' i flussi
+  di login sono indipendenti.
+- **TOTP** e' per-identita: un dipendente puo' avere TOTP obbligatorio come
+  `OPERATORE` e non come `SHOP_CUSTOMER`.
 
 ### 3.2 Il vincolo "persona fisica pura" si sposta
 
@@ -185,12 +227,28 @@ esistenti) — ma non sono la norma.
 ### 5.1 Il problema
 
 Un operatore interno e' limitato dagli **emittenti fiscali** ([user_emittenti_fiscali](/dbzero/config/tabelle/user_emittenti_fiscali)).
-Un cliente portale deve vedere solo i **propri billing account**, mai quelli di altri clienti.
-Un fornitore vede solo i **propri ordini ricevuti**.
-Un cliente shop vede solo le **proprie transazioni personali**.
+Un cliente portale B2B deve vedere **tutto** il proprio rapporto con l'azienda —
+fatture, scadenze, ordini — **indipendentemente dal canale** di origine (portale
+o shop). E' il canale consolidato del rapporto B2B.
+Un fornitore vede solo i **propri ordini ricevuti** e i DDT associati.
+Un cliente shop B2C vede solo le **proprie transazioni originate dal canale shop**,
+anche se il soggetto sottostante ha anche attivita' portale B2B.
 
 Quattro regole di scope, tutte diverse. La whitelist EF esistente va bene per il
 primo caso, ma non si estende.
+
+**Asimmetria di visibilita' portale vs shop.** ZeroErp modella portale e shop
+come canali self-service distinti, con regole diverse:
+
+| Canale | Vede | Motivazione |
+| --- | --- | --- |
+| `CLIENTE_PORTALE` | Tutti gli ordini, fatture, scadenze del proprio `soggetto_ruolo`, su **qualunque canale** | Il portale B2B e' la voce consolidata del cliente: l'utente si aspetta di vedere l'intero rapporto col fornitore |
+| `SHOP_CUSTOMER` | Solo i dati con `canale_origine = 'SHOP'` del proprio `soggetto_ruolo` | Lo shop e' un canale B2C autonomo: il consumer non deve vedere gli acquisti B2B della propria azienda |
+| `FORNITORE_PORTALE` | Ordini ricevuti + DDT associati, indipendentemente dal canale | Simmetrico al portale cliente sul versante passivo |
+
+L'asimmetria e' intenzionale e **reversibile a basso costo**: un predicato nella
+USING clause delle policy RLS. Il caso portale e' "silo aperto" (nessun filtro
+canale), il caso shop e' "silo chiuso" (filtro `canale_origine = 'SHOP'`).
 
 ### 5.2 Generalizzazione
 
@@ -283,6 +341,67 @@ non si sovrappongono:
 | Se l'utente puo' eseguire quell'azione | Django (capability dal profilo) |
 | Quali righe vede nelle query | DB (RLS policy) |
 
+### 6.4 Tracciabilita' canale sui dati transazionali
+
+Per distinguere portale B2B da shop B2C servono due cose: (a) **BA separati per
+canale**, (b) **metadato canale sulle righe transazionali**. La prima e' una scelta
+di dominio (cfr. [Risorse umane — BA shop](/guide/risorse-umane-e-accessi)); la
+seconda e' una colonna `canale_origine` introdotta sulle tabelle coinvolte:
+
+- `anagrafiche.billing_account` — su quale canale vive questo BA
+- `vendite.ordini` — canale di origine dell'ordine
+- `vendite.fatture` — canale di origine della fattura B2B (le ricevute shop
+  vivono su tabella dedicata, vedi sotto)
+- `vendite.fatture_scadenze` — eredita dal padre `fatture_id`
+- (acquisti non hanno canale — sono tutti ADMIN perche' generati internamente)
+
+**ENUM dei valori:**
+
+```text
+config.canale_origine
+    ADMIN     -- creato da operatore interno
+    PORTALE   -- creato da cliente/fornitore portale self-service
+    SHOP      -- creato da shop customer self-service
+```
+
+**Default:** `ADMIN`. La colonna si popola in INSERT dal service/trigger sul
+canale d'origine. Non e' aggiornabile dopo la creazione (trigger guard).
+
+**Ricevute shop su tabella dedicata.** Lo shop emette **solo ricevute consumer**,
+mai fatture elettroniche. Le ricevute vivono su `shop.ricevute` (schema nuovo),
+non su `vendite.fatture`. Vantaggi:
+
+- `vendite.fatture` resta la tabella B2B fiscale (emittente/SdI/XML)
+- RLS di portale B2B su `vendite.fatture` non deve distinguere tipo documento
+- EF_WHITELIST operatore non incrocia mai ricevute shop
+- Lo shop ha il suo silo RLS completo (schema dedicato, policy dedicate)
+
+**Immutabilita' del canale.** Una volta creato, un ordine/fattura/BA non cambia
+canale. Se un ordine PORTALE viene modificato da un operatore admin, resta
+`canale_origine = 'PORTALE'`: la colonna racconta l'origine, non l'ultimo editor.
+L'informazione "ultimo editor" e' gia' tracciata da `user_update` e dal giornale
+pratiche.
+
+**Uso nelle policy RLS:** il caso 2 portale ignora `canale_origine` nella USING
+clause. Il caso shop lo filtra esplicitamente:
+
+```sql
+-- Policy shop su ordini: silo completo
+CREATE POLICY rls_ordini_shop_silo ON vendite.ordini
+    FOR SELECT
+    USING (
+        current_setting('app.ruolo_applicativo', true) = 'SHOP_CUSTOMER'
+        AND canale_origine = 'SHOP'
+        AND script.fn_scope_cliente_ownership(
+                NULLIF(current_setting('app.current_identita_id', true), '')::bigint,
+                soggetto_ruolo_id
+            )
+    );
+```
+
+Il passaggio a "portale vede solo portale" (silo simmetrico) costa una sola
+riga: aggiungere `AND canale_origine = 'PORTALE'` alla policy portale.
+
 ---
 
 ## 7. Namespace API separati
@@ -320,6 +439,47 @@ vede solo le sue fatture.
 
 Zero duplicazione di logica di business.
 
+### 7.4 Login discriminato per canale
+
+Un `auth_user` puo' avere N identita attive (fino a una per `ruolo_applicativo`).
+Al login serve scegliere **quale identita** attivare. La scelta e' fatta dal
+**namespace dell'endpoint di login**, non da un parametro di richiesta:
+
+| Endpoint | Identita cercata | Comportamento se assente |
+| --- | --- | --- |
+| `/api/admin/token/` | `ruolo_applicativo = OPERATORE` | 403 "veste operatore non attiva" |
+| `/api/portale/token/` | `ruolo_applicativo IN (CLIENTE_PORTALE, FORNITORE_PORTALE)` | 403 "veste portale non attiva" |
+| `/api/shop/token/` | `ruolo_applicativo = SHOP_CUSTOMER` | 403 "veste shop non attiva" |
+
+**Contenuto del JWT:** oltre ai claim standard (`user_id`, `exp`, ecc.), il JWT
+contiene il claim custom `identita_id` che punta alla riga specifica in
+`identita_digitali`. Questo e' **il dato autoritativo** per la sessione — non
+si ricava a runtime da `(auth_user, ruolo_applicativo)`, si legge dal token.
+
+**GUC derivati:** il middleware `JwtAuditAuthentication` popola i GUC a partire
+da `identita_id` del JWT:
+
+```text
+app.current_identita_id  -> identita_id dal JWT
+app.ruolo_applicativo    -> identita_digitali.ruolo_applicativo
+app.soggetto_ruolo_id    -> identita_digitali.soggetto_ruolo_id
+```
+
+**Invariante "tutto o niente":** i 3 GUC sono popolati insieme o non popolati
+affatto. Un'identita senza GUC e' un'anomalia; le policy RLS devono essere
+fail-closed quando almeno uno e' `NULL`. Helper di lettura:
+`script.fn_current_identita_context()` restituisce NULL-tuple se la tripla non
+e' coerente.
+
+**Impatto sul refresh token:** il refresh include `identita_id` dal token di
+origine. Il refresh non cambia identita — se un user vuole loggare con altra
+veste, deve fare nuovo login sul namespace corrispondente.
+
+**Impatto sul logout:** il logout invalida il refresh token della veste corrente
+(via `token_blacklist` SimpleJWT). Le altre identita dello stesso `auth_user`
+restano loggate nei rispettivi canali (se hanno JWT attivi in altre sessioni
+browser/device).
+
 ---
 
 ## 8. Onboarding dei portali
@@ -340,15 +500,59 @@ middleware `PasswordChangeRequiredMiddleware`.
 
 ### 8.2 Self-service (shop)
 
-Per il negozio online il flusso e' autonomo:
+Per il negozio online il flusso e' autonomo, ma si divide in due scenari in base
+alla presenza di un `auth_user` con la stessa email.
+
+#### 8.2.1 Email nuova (caso standard B2C)
 
 1. Visitatore compila form registrazione (nome, cognome, email, password)
-2. Il sistema crea in transazione: `soggetti(PF, PR)` + `soggetti_ruoli(CLIENTE)` + `clienti` + `billing_account` minimal + `auth_user` (is_active=false) + `identita_digitali(SHOP_CUSTOMER, attiva=false)` + token VERIFICA_EMAIL
-3. Email di verifica
-4. Al click sul link: `auth_user.is_active=true`, identita' attiva, primo login consentito
+2. Sistema verifica: nessun `auth_user` con quell'email → prosegue
+3. Transazione: `soggetti(PF, PR)` + `soggetti_ruoli(CL)` + `clienti` +
+   `billing_account(canale_origine='SHOP')` minimal + `auth_user(is_active=false)` +
+   `identita_digitali(SHOP_CUSTOMER, attiva=false)` + token `VERIFICA_EMAIL`
+4. Email di verifica
+5. Al click sul link: `auth_user.is_active=true`, identita attiva, primo login
+   consentito su `/api/shop/token/`
 
-Tutto il sistema anagrafico esistente regge — si aggiunge solo un endpoint
-pubblico `/api/shop/register/` con throttle aggressivo per prevenire spam.
+#### 8.2.2 Email gia' registrata (caso cross-canale)
+
+Se l'email corrisponde a un `auth_user` esistente (perche' l'utente ha gia'
+un'identita `OPERATORE`, `CLIENTE_PORTALE` o `FORNITORE_PORTALE`):
+
+1. Sistema rifiuta la registrazione shop con messaggio esplicito:
+   *"Questa email e' gia' registrata. Accedi con la tua password esistente e
+   attiva l'account shop dal tuo profilo."*
+2. L'utente logga con le credenziali esistenti sul namespace pertinente
+   (`/api/portale/token/` o `/api/admin/token/`)
+3. Nel profilo utente trova il pulsante **"Attiva accesso shop"**
+4. Click genera un token monouso `ATTIVAZIONE_SHOP` inviato alla sua email
+5. Al click sul link: il sistema crea `identita_digitali(SHOP_CUSTOMER, attiva=true)`
+   sullo stesso `auth_user`. Il `soggetto_ruolo` di aggancio puo' essere:
+   - lo stesso SR-CL esistente (se l'utente e' gia' cliente B2B → shop si collega)
+   - un nuovo SR-CL sullo stesso soggetto (se l'utente era solo operatore o
+     fornitore, serve creare il ruolo anagrafico cliente)
+6. Se serve un nuovo `billing_account(canale_origine='SHOP')`, viene creato
+   contestualmente con dati minimali
+
+**Perche' non aggiunta silenziosa.** Rifiutare la registrazione e forzare il
+flusso "logga e attiva" invece di aggiungere l'identita shop senza consenso e'
+una scelta di sicurezza: chi conosce l'email di un utente esistente non deve
+poter creare per lui una veste aggiuntiva. La conferma via login + email
+monouso chiude il vettore.
+
+**Flusso simmetrico portale.** Se un utente nato come `SHOP_CUSTOMER` puro
+vuole poi diventare cliente B2B (portale), il flusso e' speculare: l'admin
+apre il cliente in anagrafica, popola dati fiscali completi (partita IVA,
+indirizzo fatturazione), preme "Abilita accesso portale" e l'invito aggiunge
+un'identita `CLIENTE_PORTALE` allo stesso `auth_user`.
+
+#### 8.2.3 Endpoint coinvolti
+
+- `POST /api/shop/register/` — registrazione shop email nuova, throttle aggressivo
+- `POST /api/shop/register/check-email/` — pre-check email esistente (feedback UI)
+- `POST /api/portale/profile/activate-shop/` — da profilo portale, attiva shop
+- `POST /api/admin/profile/activate-shop/` — da profilo operatore, attiva shop
+- `GET  /api/shop/activate/<token>/` — attivazione finale via link email
 
 ### 8.3 Recupero password
 
@@ -360,20 +564,36 @@ il **template email** per ruolo, cosi' un cliente non riceve un'email "operatore
 
 ## 9. Sync `auth_user.is_active` generalizzata
 
-La funzione `fn_sync_auth_user_is_active` oggi parte da `risorse_umane_id`.
-Nel nuovo modello parte da `auth_user_id` e:
+Con un `auth_user` che puo' avere N identita attive (una per `ruolo_applicativo`),
+la semantica di `auth_user.is_active` diventa **OR** sulle identita:
 
-1. Trova l'identita' digitale attiva per quel `auth_user`
-2. Se `ruolo_applicativo = DISABILITATO` -> `is_active = false`
-3. Se identita' non attiva o finestra validita' scaduta -> `is_active = false`
-4. Se OPERATORE: applica anche la logica esistente su `risorse_umane.attivo`
-5. Se CLIENTE_PORTALE / FORNITORE_PORTALE / SHOP: verifica lo stato del
-   soggetto_ruolo sottostante (es. cliente non disabilitato)
-6. Altrimenti -> `is_active = true`
+> `auth_user.is_active = true` se e solo se esiste **almeno una** identita
+> digitale attiva per quell'user, con `ruolo_applicativo != DISABILITATO` e
+> finestra di validita' corrente.
 
-I trigger che oggi la invocano continuano a farlo. Nasce un nuovo trigger
-`trg_identita_digitali_sync_auth_user_active` simmetrico a quello esistente
-sul bridge risorse umane.
+Motivazione: `auth_user.is_active` e' il flag Django di autorizzazione al
+login. Se Mario ha 3 vesti e ne disattivo 2, deve potersi ancora loggare con
+la terza. La veste disattivata e' bloccata dalla policy RLS + guard namespace,
+non dal flag `is_active`.
+
+La funzione `fn_sync_auth_user_is_active(p_auth_user_id integer)`:
+
+1. Calcola `bool_or` di: `id.attivo AND id.ruolo_applicativo != 'DISABILITATO'
+   AND CURRENT_DATE BETWEEN id.valido_dal AND COALESCE(id.valido_al, CURRENT_DATE)`
+   per tutte le identita dell'user
+2. Per le identita `OPERATORE`: aggiunge il vincolo legacy su `risorse_umane.attivo`
+   (gia' integrato post-cutover §13.3.4)
+3. Se il bool_or e' `true` → `auth_user.is_active = true`
+4. Se e' `false` (nessuna identita utilizzabile) → `auth_user.is_active = false`
+
+**Effetto collaterale sul logout forzato:** se disattivo l'ultima identita
+utilizzabile di un user, il sync mette `is_active = false` e i JWT correnti
+falliranno alla prossima request (Django verifica `is_active`).
+
+**Trigger di sync.** Un trigger `trg_identita_digitali_z90_sync_auth_user_active`
+invoca `fn_sync_auth_user_is_active` dopo ogni INSERT/UPDATE su
+`identita_digitali`. Cosi' un `UPDATE identita_digitali SET attivo = false` di
+una qualunque veste ricalcola automaticamente l'OR.
 
 Il management command `sync_auth_user_active` e il job pgAgent giornaliero
 non cambiano chiamante — cambiano solo query interne.
@@ -509,15 +729,16 @@ erDiagram
 
 | Cosa resta | Cosa si generalizza | Cosa nasce |
 | --- | --- | --- |
-| `auth_user` Django | — | `identita_digitali` (bridge generico) |
-| `soggetti`, `soggetti_ruoli` | — | ENUM `ruolo_applicativo` |
-| `risorse_umane` | Vista di compatibilita' su `identita_digitali` | — |
-| Token monouso, sync is_active, middleware JWT | Funzioni generalizzate per identita' | Nuovi GUC PG |
-| `user_emittenti_fiscali` | Diventa caso particolare di scope_policy | `scope_policy` + `identita_scope_bindings` |
-| `profili_reparto_aree` | Diventa `profili_accesso_aree` | `profili_accesso_bindings` (multi-tipo) |
+| `auth_user` Django (un account per persona) | Ora supporta N identita attive | `identita_digitali` (bridge N:M user/ruolo) |
+| `soggetti`, `soggetti_ruoli` | SR puo' avere N identita attive (1 per ruolo) | ENUM `ruolo_applicativo`, ENUM `canale_origine` |
+| `risorse_umane_auth_user` | Vista compat su `identita_digitali` | — |
+| Token monouso, sync is_active, middleware JWT | Sync is_active diventa OR su identita | 3 nuovi GUC (`current_identita_id`, `ruolo_applicativo`, `soggetto_ruolo_id`); JWT claim `identita_id` |
+| `user_emittenti_fiscali` | Caso particolare di `scope_policy` (EF_WHITELIST) | `scope_policy` + `identita_scope_bindings` |
+| `profili_reparto_aree` | Diventa `profili_accesso_aree` | `profili_accesso_bindings` (tri-way: reparto / ruolo_applicativo / identita) |
 | `user_override_*` | Invariati | — |
-| Audit trigger | Invariati | RLS policy sulle tabelle dati |
-| Permission class Django | Generalizzate | `PortaleAPIView`, `ShopAPIView` |
+| Audit trigger | Invariati | RLS policy sulle tabelle dati, colonna `canale_origine` su ordini/fatture/BA |
+| Permission class Django | Generalizzate, discriminate per namespace | `PortaleAPIView`, `ShopAPIView`, token endpoint split admin/portale/shop |
+| Fatture elettroniche B2B su `vendite.fatture` | — | `shop.ricevute` (tabella nuova per ricevute consumer B2C) |
 
 ---
 
@@ -538,15 +759,31 @@ erDiagram
 
 ## 14. Evoluzioni future
 
+- **Utente multi-cappello come caso paradigmatico**: il modello "un account,
+  molte vesti" rende naturale lo scenario "dipendente che e' anche cliente",
+  "fornitore che diventa cliente", "consumer che diventa cliente B2B". Ogni
+  transizione si risolve aggiungendo un'identita al bridge, senza duplicare
+  auth_user.
 - **SSO OAuth/OIDC per i portali**: un fornitore puo' loggarsi con l'IdP della
-  sua azienda. Il bridge `identita_digitali` lo supporta nativamente
+  sua azienda. Il bridge `identita_digitali` lo supporta nativamente; il claim
+  `identita_id` puo' essere mappato da un claim esterno via provider-specific
+  logic.
 - **Multi-tenant per gestori separati**: se un giorno ZeroErp servira' piu'
   aziende sullo stesso DB, il modello scope policy e' gia' pronto per
-  discriminare anche per tenant
+  discriminare anche per tenant. Un nuovo GUC `app.tenant_id` si aggiunge alla
+  tripla esistente senza romperla.
 - **API client programmatici**: ruolo `API_CLIENT` gia' previsto, con
-  autenticazione via token lungo (non password) e scope aziendale
+  autenticazione via token lungo (non password) e scope aziendale. Un `auth_user`
+  puo' avere identita `API_CLIENT` aggiuntiva alle vesti umane.
 - **Ruolo AGENTE / VENDITORE**: un venditore esterno vede solo i propri clienti,
-  una policy scope `AGENTE_OWNERSHIP` lo risolve senza codice nuovo
+  una policy scope `AGENTE_OWNERSHIP` lo risolve senza codice nuovo.
+- **Convergenza canale portale/shop (caso 1 silo puro)**: se in futuro si
+  volesse che anche il portale veda solo dati `canale_origine = 'PORTALE'`,
+  basta aggiungere il predicato alle policy portale. Una riga SQL per tabella.
+- **Admin di portale (CLIENTE_ADMIN_PORTALE)**: un cliente B2B grande puo'
+  avere piu' utenti sotto lo stesso BA, con un admin che gestisce i permessi
+  dei colleghi. Si risolve aggiungendo un enum value + un profilo accesso +
+  permission class, senza toccare il bridge.
 
 ---
 
