@@ -2,36 +2,49 @@
 
 > **Destinatari:** sviluppatori database, backend e analisti funzionali
 >
-> **Prerequisiti:** [Guida Soggetti & Ruoli](/guide/soggetti-e-ruoli-anagrafici), [risorse_umane_auth_user](/dbzero/anagrafiche/tabelle/risorse_umane_auth_user)
+> **Prerequisiti:** [Guida Soggetti & Ruoli](/guide/soggetti-e-ruoli-anagrafici), [identita_digitali](/dbzero/anagrafiche/tabelle/identita_digitali)
 >
-> **Stato:** Proposta architetturale – v2.0
+> **Stato:** Architettura in produzione – v3.0 post-cutover multi-face-auth
 
 ---
 
-> **Evoluzione in corso — Multi-Face Auth (aprile 2026)**
+> **Multi-Face Auth — stato post-cutover (aprile 2026)**
 >
-> L'architettura descritta qui si applica al **dipendente interno**. E' in corso
-> di sviluppo un'estensione per abilitare **portali clienti/fornitori** e
-> **shop online**. I cambiamenti principali previsti:
+> L'architettura e' stata estesa per supportare **portali clienti/fornitori**
+> e **shop online** oltre agli **operatori interni**. Componenti chiave
+> (tutti attivi in produzione dal 19-04-2026, PR-A completata):
 >
-> * `profili_reparto_aree` diventa `profili_accesso_aree` dentro un framework
->   generalizzato (`config.profili_accesso` con tipo REPARTO / PORTALE / AD_HOC)
-> * Nuova tabella `config.profili_accesso_bindings` che lega un profilo a un
->   reparto, a una singola identita' o a un ruolo applicativo
-> * `user_emittenti_fiscali` diventa un caso particolare di una nuova
->   `config.scope_policy` (EF_WHITELIST, BA_OWNERSHIP, FORNITORE_OWNERSHIP,
->   SELF_OWNERSHIP)
-> * **Row Level Security** PostgreSQL come livello standard di difesa scope,
->   alimentata dai GUC `app.current_identita_id`, `app.ruolo_applicativo`,
->   `app.soggetto_ruolo_id`
-> * Namespace API separati: `/api/admin/*`, `/api/portale/*`, `/api/shop/*`
+> * **Bridge generalizzato** — la tabella
+>   [anagrafiche.identita_digitali](/dbzero/anagrafiche/tabelle/identita_digitali)
+>   collega `soggetti_ruoli` a `auth_user` per 5 ruoli applicativi
+>   (`OPERATORE`, `CLIENTE_PORTALE`, `FORNITORE_PORTALE`, `SHOP_CUSTOMER`,
+>   `API_CLIENT`) + stato `DISABILITATO`. La ex tabella bridge
+>   `risorse_umane_auth_user` e' ora una vista read-only di compatibilita'.
+> * **Profili accesso generalizzati** — `config.profili_accesso` con tipo
+>   `REPARTO` / `PORTALE` / `AD_HOC` / `SUPER_ADMIN`, binding via
+>   `config.profili_accesso_bindings` verso reparto, identita o ruolo.
+> * **Scope policy** — `config.scope_policy` (EF_WHITELIST,
+>   BA_OWNERSHIP, FORNITORE_OWNERSHIP) + `identita_scope_bindings`.
+>   Le tre funzioni `script.fn_scope_*` (`ba_ownership`,
+>   `fornitore_ownership`, `ef_whitelist`) sono `LANGUAGE sql STABLE`
+>   inlineable. `SELF_OWNERSHIP` unificato con `BA_OWNERSHIP` (il
+>   ruolo anagrafico CL e' condiviso tra CLIENTE_PORTALE e SHOP_CUSTOMER).
+> * **Row Level Security** — policy create (dry-run) sulle 6 tabelle
+>   sensibili (fatture, ordini, fatture_scadenze, acquisti.ordini,
+>   acquisti.ddt, billing_account). Attivazione (`ENABLE ROW LEVEL
+>   SECURITY + FORCE`) rinviata a PR-C per sincronia col backend
+>   portali. GUC `app.current_identita_id`, `app.ruolo_applicativo`,
+>   `app.soggetto_ruolo_id` popolati da `JwtAuditAuthentication`.
+> * **SUPER_ADMIN** — profilo dedicato id=9100 (ex `ruolo_sistema=ADMIN`)
+>   bindato via `profili_accesso_bindings` AD_HOC a singole identita.
+>   Guard anti-lockout (`trgfn_..._guard_ultimo_super_admin`) impedisce
+>   di lasciare il sistema senza amministratori raggiungibili.
+> * **Namespace API separati**: `/api/admin/*`, `/api/portale/*`,
+>   `/api/shop/*` (Stage C PR-B in sviluppo).
 >
-> Questa guida resta **autoritativa per il codice in produzione**. Il contenuto
-> verra' aggiornato fase per fase man mano che le migrazioni DB vengono applicate.
+> Dettagli architetturali completi:
 >
-> Dettagli:
->
-> * Guida architetturale: [architettura-multi-face-auth](/guide/architettura-multi-face-auth)
+> * [architettura-multi-face-auth](/guide/architettura-multi-face-auth)
 > * Piano di sviluppo: [sviluppo-multi-face-auth](/dev/work-in-progress/sviluppo-multi-face-auth)
 
 ---
@@ -132,33 +145,32 @@ Questo significa che:
 ## 3. Regola di risoluzione permessi
 
 Quando un operatore tenta un'azione, il sistema risolve i permessi
-seguendo questa catena di priorita':
+seguendo una catena di priorita' a cascata. La regola generale e'
+che il **livello piu' specifico prevale sempre su quello piu'
+generale**, e in assenza di configurazione il default e' restrittivo.
 
-```
-1. Override utente su SINGOLO OGGETTO?
-   -> SI': applica il livello dell'override
-   -> NO: continua
+Per l'accesso a un'area o a un singolo oggetto la catena e':
 
-2. Override utente su AREA?
-   -> SI': applica il livello dell'override
-   -> NO: continua
+1. **Override individuale su singolo oggetto/model** — se esiste, il
+   suo livello (`TUTTO`, `LETTURA` o `BLOCCATO`) vale e la risoluzione
+   si ferma qui. E' la forma piu' fine ma anche la piu' rara, usata
+   solo per eccezioni puntuali.
+2. **Override individuale sull'area** — in assenza di override sul
+   singolo oggetto, si applica l'eventuale override sull'area.
+3. **Profilo del reparto** — se nemmeno l'area ha un override
+   individuale, si applica il livello che il reparto di appartenenza
+   ha per quell'area.
+4. **Default sicuro** — se nessuna delle regole precedenti applica,
+   l'accesso e' `BLOCCATO`.
 
-3. Profilo del reparto per quell'area?
-   -> SI': applica il livello del reparto
-   -> NO: BLOCCATO (default sicuro)
-```
+Per le **azioni di processo** la risoluzione segue lo stesso principio
+ma e' binaria (l'azione puo' essere solo concessa o negata):
 
-Per le **azioni di processo** la risoluzione e' separata e binaria:
-
-```
-1. Override utente sull'azione? (GRANT/DENY)
-   -> SI': applica
-   -> NO: continua
-
-2. Azione abilitata nel profilo reparto?
-   -> SI': concessa
-   -> NO: negata
-```
+1. **Override individuale sull'azione** — se esiste, il suo valore
+   (grant o deny) vale.
+2. **Profilo del reparto** — altrimenti si applica l'abilitazione
+   dichiarata a livello di reparto.
+3. **Default** — in assenza di configurazioni, l'azione e' negata.
 
 > Il default e' sempre il piu' restrittivo: se non c'e' configurazione,
 > l'accesso e' negato.
@@ -178,14 +190,10 @@ a un'area logica con codice, descrizione e ordinamento per l'interfaccia.
 Quando si aggiunge un nuovo schema al sistema, basta inserire una riga qui
 perche' l'area diventi configurabile nei profili reparto e negli override utente.
 
-**Esempio — verifica aree attive:**
-
-```sql
-SELECT codice, descrizione, schema_db
-FROM config.aree_funzionali
-WHERE attivo = TRUE
-ORDER BY ordinamento;
-```
+**Esempio di uso:** per ottenere l'elenco delle aree attive utilizzabili
+nell'interfaccia di configurazione, si filtra per quelle contrassegnate come
+attive e si ordina in base al campo di ordinamento per mantenere la
+presentazione coerente fra maschere e menu.
 
 ### 4.2 Tabella `config.azioni_processo`
 
@@ -199,15 +207,11 @@ Django corrispondente (`auth_permission`).
 nel codice Django (`Meta.permissions`). Il flag `pericolosa` segnala le azioni
 che richiedono conferma aggiuntiva (es. generazione massiva fatture).
 
-**Esempio — elenco azioni pericolose per area:**
-
-```sql
-SELECT af.descrizione AS area, ap.descrizione AS azione
-FROM config.azioni_processo ap
-JOIN config.aree_funzionali af ON af.id = ap.area_id
-WHERE ap.pericolosa = TRUE AND ap.attivo = TRUE
-ORDER BY af.ordinamento, ap.descrizione;
-```
+**Esempio di uso:** per popolare una maschera di sole azioni pericolose
+raggruppate per area, si interroga la tabella incrociata con
+`aree_funzionali` e si filtra sul flag di pericolosita' oltre a quello
+di attivazione. Il risultato tipico e' una lista ordinata per area e poi
+per descrizione dell'azione.
 
 ### 4.3 Tabella `config.area_model_overrides`
 
@@ -217,16 +221,12 @@ Override opzionale per riassegnare un model Django a un'area diversa dal suo
 schema DB. Uso raro — serve solo quando la convenzione automatica
 (schema = area) non e' corretta per un model specifico.
 
-**Esempio — riassegnare un model:**
-
-Se il model `core.parametri_globali` deve essere gestito sotto l'area
-Configurazione anziche' Core:
-
-```sql
-INSERT INTO config.area_model_overrides (app_label, model_name, area_id)
-VALUES ('core', 'parametri_globali',
-        (SELECT id FROM config.aree_funzionali WHERE codice = 'config'));
-```
+**Esempio di uso:** si supponga che il model `core.parametri_globali`,
+per convenzione automatica mappato sull'area Core, debba essere
+amministrato sotto l'area Configurazione. Si registra un override
+indicando app label, nome del model e area di destinazione scelta dal
+catalogo delle aree funzionali. Da quel momento la risoluzione permessi
+per quel model usera' la nuova area.
 
 ### 4.4 Tabella `config.profili_reparto_aree`
 
@@ -236,25 +236,18 @@ Cuore dell'ereditarieta': definisce il livello di accesso (`TUTTO`, `LETTURA`,
 `BLOCCATO`) che ogni reparto ha su ciascuna area funzionale.
 Tutti gli operatori del reparto ereditano questo profilo automaticamente.
 
-**Esempio — configurare il profilo del reparto Amministrazione:**
+**Esempio di uso:** per il reparto Amministrazione, la configurazione
+tipica prevede livello `TUTTO` sull'area Vendite (gli amministrativi
+emettono fatture) e livello `LETTURA` sull'area Acquisti (possono
+consultare ordini e DDT di ingresso ma non modificarli). La riga per
+ciascuna coppia reparto/area viene registrata come profilo, e tutti gli
+operatori del reparto ereditano automaticamente questi livelli senza
+ulteriori configurazioni.
 
-```sql
--- Il reparto Amministrazione (id=1) ha accesso TUTTO su vendite, LETTURA su acquisti
-INSERT INTO config.profili_reparto_aree (unita_organizzativa_id, area_id, livello)
-VALUES
-    (1, (SELECT id FROM config.aree_funzionali WHERE codice = 'vendite'),   'TUTTO'),
-    (1, (SELECT id FROM config.aree_funzionali WHERE codice = 'acquisti'),  'LETTURA');
-```
-
-**Esempio — verifica profilo completo di un reparto:**
-
-```sql
-SELECT af.descrizione AS area, pra.livello
-FROM config.profili_reparto_aree pra
-JOIN config.aree_funzionali af ON af.id = pra.area_id
-WHERE pra.unita_organizzativa_id = 1
-ORDER BY af.ordinamento;
-```
+Quando serve rivedere il profilo completo di un reparto, si consulta
+questa tabella filtrata per reparto e ordinata per area: il risultato
+e' la "scheda permessi" del reparto, pronta per essere mostrata in
+interfaccia o esportata in audit.
 
 ### 4.5 Tabella `config.profili_reparto_azioni`
 
@@ -264,13 +257,12 @@ Azioni di processo abilitate a livello di reparto. Funziona in coppia con
 `profili_reparto_aree`: il livello area controlla il CRUD, questa tabella
 controlla le azioni puntuali.
 
-**Esempio — abilitare la generazione fatture per il reparto Amministrazione:**
-
-```sql
-INSERT INTO config.profili_reparto_azioni (unita_organizzativa_id, azione_id, abilitata)
-VALUES (1, (SELECT id FROM config.azioni_processo
-            WHERE permission_codename = 'genera_fattura'), TRUE);
-```
+**Esempio di uso:** per abilitare la generazione fatture al reparto
+Amministrazione, si registra il profilo con riferimento al reparto,
+all'azione identificata dal suo codename Django (es. `genera_fattura`)
+e al flag di abilitazione. Da quel momento tutti gli operatori del
+reparto vedranno il pulsante di generazione attivo senza ulteriori
+override individuali.
 
 ### 4.6 Tabella `config.user_override_aree`
 
@@ -280,16 +272,13 @@ Override individuale per utente su un'area funzionale. Sovrascrive il profilo
 ereditato dal reparto. Supporta validita' temporale (`valido_dal`, `valido_al`)
 per deleghe o restrizioni temporanee.
 
-**Esempio — delega temporanea: utente 42 puo' operare su acquisti per un mese:**
-
-```sql
-INSERT INTO config.user_override_aree (auth_user_id, area_id, livello, motivo, valido_dal, valido_al)
-VALUES (42,
-        (SELECT id FROM config.aree_funzionali WHERE codice = 'acquisti'),
-        'TUTTO',
-        'Delega sostituzione ferie responsabile acquisti',
-        '2026-03-01', '2026-03-31');
-```
+**Esempio di uso:** una delega temporanea per sostituire il responsabile
+acquisti in ferie si registra come override individuale sull'area
+Acquisti, livello `TUTTO`, con motivo esplicito (es. "Delega
+sostituzione ferie responsabile acquisti") e validita' limitata al
+periodo di assenza (es. dall'1 al 31 marzo). Superata la data di fine,
+l'override decade automaticamente e l'utente torna al livello ereditato
+dal reparto.
 
 ### 4.7 Tabella `config.user_override_oggetti`
 
@@ -299,14 +288,13 @@ Override individuale per utente su un singolo model/oggetto. Sovrascrive sia
 il profilo del reparto che l'override su area, offrendo il massimo livello
 di granularita'.
 
-**Esempio — utente ha TUTTO su anagrafiche ma solo LETTURA su clienti:**
-
-```sql
-INSERT INTO config.user_override_oggetti
-    (auth_user_id, app_label, model_name, livello, motivo)
-VALUES (42, 'anagrafiche', 'clienti', 'LETTURA',
-        'Operatore junior: puo'' vedere i clienti ma non modificarli');
-```
+**Esempio di uso:** un operatore junior dell'area Anagrafiche con
+livello `TUTTO` generale, ma che non deve poter modificare i clienti,
+riceve un override individuale sul model specifico `anagrafiche.clienti`
+a livello `LETTURA`, con motivo descrittivo (es. "Operatore junior:
+puo' vedere i clienti ma non modificarli"). L'override vale solo per
+quel model: tutti gli altri model dell'area restano con il livello del
+profilo del reparto.
 
 ### 4.8 Tabella `config.user_override_azioni`
 
@@ -316,16 +304,12 @@ Override individuale per azioni di processo. Sovrascrive l'abilitazione
 ereditata dal reparto. Utile per concedere o negare azioni specifiche
 a singoli operatori.
 
-**Esempio — concedere l'approvazione fattura a un utente specifico:**
-
-```sql
-INSERT INTO config.user_override_azioni (auth_user_id, azione_id, abilitata, motivo)
-VALUES (42,
-        (SELECT id FROM config.azioni_processo
-         WHERE permission_codename = 'approva_fattura'),
-        TRUE,
-        'Autorizzato dal responsabile vendite');
-```
+**Esempio di uso:** se un operatore di un reparto a cui l'azione non e'
+stata abilitata deve comunque poter approvare fatture, si registra un
+override individuale sull'azione (identificata dal suo codename Django),
+con abilitazione positiva e motivo (es. "Autorizzato dal responsabile
+vendite"). Il motivo e' obbligatorio per audit: consente di tracciare
+perche' e da chi l'eccezione e' stata concessa.
 
 ### 4.9 Tabella `config.user_emittenti_fiscali`
 
@@ -335,23 +319,18 @@ Ambito operativo: whitelist opzionale degli emittenti fiscali su cui l'utente
 puo' operare. Se l'utente non ha righe in questa tabella, puo' operare su
 **tutti** gli emittenti. Se ha almeno una riga, e' limitato a quelli elencati.
 
-**Esempio — limitare un utente a due emittenti:**
+**Esempio di uso:** per limitare un operatore a due specifiche aziende
+fatturanti (es. emittenti con id 1 e 3), si registrano due righe nella
+whitelist con l'auth_user_id dell'operatore. Dal momento in cui compare
+almeno una riga, il sistema presume che l'operatore sia "ristretto":
+qualsiasi tentativo di operare su un emittente non in lista viene
+bloccato a livello di policy e, per difesa in profondita', anche dai
+trigger DB.
 
-```sql
-INSERT INTO config.user_emittenti_fiscali (auth_user_id, emittente_fiscale_id)
-VALUES (42, 1), (42, 3);
--- L'utente 42 puo' operare solo sugli emittenti 1 e 3
-```
-
-**Esempio — verificare l'ambito di un utente:**
-
-```sql
-SELECT ef.denominazione
-FROM config.user_emittenti_fiscali uef
-JOIN anagrafiche.emittenti_fiscali ef ON ef.id = uef.emittente_fiscale_id
-WHERE uef.auth_user_id = 42;
--- Se nessuna riga: l'utente opera su tutti gli emittenti
-```
+Per verificare l'ambito di un operatore, si consulta la whitelist
+incrociata con l'anagrafica emittenti fiscali: se il risultato e'
+vuoto, l'operatore puo' operare su tutti gli emittenti; se contiene
+righe, solo su quelli elencati.
 
 ---
 
@@ -363,327 +342,223 @@ WHERE uef.auth_user_id = 42;
 | **DB (config/script)** | Source of truth per profili, aree, override, ambito emittente      | Tabelle config, ENUM, funzioni script |
 | **DB (trigger)**       | Defense-in-depth: vincoli di coerenza, guard su ambito emittente   | Trigger sulle tabelle operative       |
 
-Il flusso di una richiesta:
+Il flusso di una richiesta attraversa, nell'ordine, cinque passaggi:
 
-```
-Request
-  -> DRF Authentication
-    -> ZeroERPPermission (risolve livello accesso: reparto -> override area -> override oggetto)
-      -> ZeroERPActionPermission (per azioni di processo: reparto -> override azione)
-        -> EmittenteFiscaleScopeMixin (filtra queryset per emittente)
-          -> View/Serializer
-            -> DB Trigger (defense-in-depth su perimetro emittente)
-```
+1. **Autenticazione DRF** — validazione del token JWT e identificazione
+   dell'utente.
+2. **Permission class principale** — risolve il livello di accesso
+   sull'area/oggetto richiesto consultando nell'ordine profilo del
+   reparto, override sull'area e override sull'oggetto specifico.
+3. **Permission class delle azioni** — per le azioni di processo,
+   verifica l'abilitazione considerando reparto ed eventuali override
+   individuali.
+4. **Mixin di ambito emittente** — applica il filtro sul queryset in
+   base alla whitelist `user_emittenti_fiscali`.
+5. **View/Serializer** — esegue la logica applicativa; ogni eventuale
+   tentativo di operare fuori perimetro viene intercettato come
+   ulteriore difesa dai trigger DB al momento di INSERT/UPDATE.
 
 ---
 
 ## 6. Enforcement Django
 
+> **Nota (20-04-2026):** dopo il refactor multi-face auth, l'enforcement
+> Django non piu' assume "un utente = un operatore interno". Il sistema
+> riconosce cinque vesti applicative (operatore, cliente portale,
+> fornitore portale, cliente shop, api client) e determina la veste
+> corrente dalla **sessione JWT** (claim `identita_id`). La risoluzione
+> dei permessi e' la stessa per tutte le vesti, ma la **sorgente** del
+> profilo di accesso cambia (reparto per operatori, profilo preset per
+> portale/shop). Riferimento: [Architettura Multi-Face Auth](/guide/architettura-multi-face-auth).
+
 ### 6.1 Funzione di risoluzione permessi (cuore del sistema)
 
-Il `PermissionResolver` implementa la catena di risoluzione (sez. 3)
-interrogando le tabelle config in ordine di priorita'.
+Il `PermissionResolver` e' il componente centrale lato backend che, dato
+un utente autenticato (con identita attiva) e una richiesta, calcola il
+livello di accesso effettivo seguendo la catena descritta in sezione 3.
 
-```python
-# core/permissions_resolver.py
+**Ingressi del resolver:**
 
-from django.utils import timezone
-from django.db.models import Q
+* `auth_user_id` (dalla richiesta autenticata)
+* `identita_id` (dal JWT claim custom `identita_id`)
+* `ruolo_applicativo` (dalla riga `identita_digitali` corrente)
+* `area` o `azione` oggetto della verifica
 
+La tripla `(auth_user_id, identita_id, ruolo_applicativo)` e' necessaria
+perche' un `auth_user` puo' avere piu' identita attive in vesti diverse:
+il resolver deve sapere per conto di **quale veste** si sta risolvendo.
 
-class PermissionResolver:
-    """
-    Risolve il livello di accesso effettivo per un utente,
-    seguendo la catena: override oggetto -> override area -> profilo reparto.
-    """
+**Cosa fa, in pratica:**
 
-    LIVELLO_MAP = {
-        'TUTTO': {'view', 'add', 'change', 'delete'},
-        'LETTURA': {'view'},
-        'BLOCCATO': set(),
-    }
+* **Mappa livello → verbi HTTP.** `TUTTO` ammette view/add/change/delete;
+  `LETTURA` ammette solo view; `BLOCCATO` non ammette nulla. E' il
+  traduttore fra la terminologia di business (livello di accesso) e i
+  permessi tecnici Django.
+* **Risoluzione del profilo di accesso.** Il resolver interroga l'helper
+  DB `script.fn_get_profili_accesso_applicabili(auth_user_id)` che
+  restituisce l'elenco dei `profili_accesso` applicabili, uniti da tre
+  sorgenti in ordine di priorita':
+  1. **Binding AD_HOC**: un profilo agganciato direttamente alla
+     specifica `identita_digitale` (override massima priorita')
+  2. **Binding per ruolo applicativo**: profilo preset standard per la
+     veste (es. `CLIENTE_PORTALE`, `FORNITORE_PORTALE`, `SHOP_CUSTOMER`)
+  3. **Binding per reparto**: profilo ereditato dall'unita' organizzativa
+     (solo per OPERATORE; richiede catena `identita → risorsa_umana → UO`)
+* **Risoluzione livello su area.** Prende il livello dal profilo piu'
+  specifico applicabile (tabella `profili_accesso_aree`). Se esistono
+  override individuali sull'area (`user_override_aree`), questi prevalgono
+  rispettando la finestra temporale `valido_dal`/`valido_al`. Default
+  sicuro: `BLOCCATO`.
+* **Risoluzione livello su oggetto (model).** L'override sul singolo
+  model (`user_override_oggetti`) prevale su quello sull'area: un
+  operatore puo' avere `TUTTO` sull'area Anagrafiche ma `LETTURA` solo
+  sul model `clienti`. Se non esiste override sul model, delega alla
+  risoluzione sull'area.
+* **Verifica azione di processo.** Prima gli override individuali
+  sull'azione (`user_override_azioni`), poi la configurazione dal
+  profilo (`profili_accesso_azioni`); in assenza di entrambi l'azione
+  e' negata.
+* **SUPER_ADMIN bypass.** Se l'identita dell'utente ha un binding al
+  profilo `SUPER_ADMIN` (id 9100), la risoluzione restituisce `TUTTO`
+  su ogni area e ogni azione senza consultare il resto della catena.
+  L'helper `script.fn_is_super_admin(auth_user_id)` espone il check in
+  un'unica query STABLE.
 
-    @classmethod
-    def get_livello_area(cls, user, area_codice):
-        """
-        Restituisce il livello effettivo per un'area funzionale.
-        Catena: override utente area -> profilo reparto -> BLOCCATO.
-        """
-        today = timezone.now().date()
+**Punti di attenzione:**
 
-        # 1. Override utente su area
-        from config.models import UserOverrideArea
-        override = UserOverrideArea.objects.filter(
-            auth_user=user,
-            area__codice=area_codice,
-            valido_dal__lte=today,
-        ).filter(
-            Q(valido_al__isnull=True) | Q(valido_al__gte=today)
-        ).first()
-
-        if override:
-            return override.livello
-
-        # 2. Profilo reparto
-        livello = cls._get_livello_reparto(user, area_codice)
-        if livello:
-            return livello
-
-        # 3. Default sicuro
-        return 'BLOCCATO'
-
-    @classmethod
-    def get_livello_oggetto(cls, user, app_label, model_name, area_codice):
-        """
-        Restituisce il livello effettivo per un singolo model.
-        Catena: override oggetto -> override area -> profilo reparto -> BLOCCATO.
-        """
-        today = timezone.now().date()
-
-        # 1. Override utente su oggetto
-        from config.models import UserOverrideOggetto
-        override = UserOverrideOggetto.objects.filter(
-            auth_user=user,
-            app_label=app_label,
-            model_name=model_name,
-            valido_dal__lte=today,
-        ).filter(
-            Q(valido_al__isnull=True) | Q(valido_al__gte=today)
-        ).first()
-
-        if override:
-            return override.livello
-
-        # 2. Risale alla catena area
-        return cls.get_livello_area(user, area_codice)
-
-    @classmethod
-    def check_azione(cls, user, permission_codename):
-        """
-        Verifica se un'azione di processo e' abilitata.
-        Catena: override utente -> profilo reparto -> negata.
-        """
-        today = timezone.now().date()
-
-        # 1. Override utente su azione
-        from config.models import UserOverrideAzione
-        override = UserOverrideAzione.objects.filter(
-            auth_user=user,
-            azione__permission_codename=permission_codename,
-            valido_dal__lte=today,
-        ).filter(
-            Q(valido_al__isnull=True) | Q(valido_al__gte=today)
-        ).first()
-
-        if override:
-            return override.abilitata
-
-        # 2. Profilo reparto
-        return cls._check_azione_reparto(user, permission_codename)
-
-    @classmethod
-    def _get_livello_reparto(cls, user, area_codice):
-        """Recupera il livello dal profilo del reparto dell'utente."""
-        from config.models import ProfiloRepartoArea
-
-        # Risale: auth_user -> risorse_umane_auth_user -> risorse_umane -> unita_organizzativa
-        try:
-            from anagrafiche.models import RisorseUmaneAuthUser
-            bridge = RisorseUmaneAuthUser.objects.select_related(
-                'risorsa_umana'
-            ).get(auth_user=user)
-
-            uo_id = bridge.risorsa_umana.unita_organizzativa_id
-            if uo_id is None:
-                return None
-
-            profilo = ProfiloRepartoArea.objects.filter(
-                unita_organizzativa_id=uo_id,
-                area__codice=area_codice,
-            ).first()
-
-            return profilo.livello if profilo else None
-
-        except RisorseUmaneAuthUser.DoesNotExist:
-            return None
-
-    @classmethod
-    def _check_azione_reparto(cls, user, permission_codename):
-        """Verifica l'azione dal profilo del reparto."""
-        from config.models import ProfiloRepartoAzione
-
-        try:
-            from anagrafiche.models import RisorseUmaneAuthUser
-            bridge = RisorseUmaneAuthUser.objects.select_related(
-                'risorsa_umana'
-            ).get(auth_user=user)
-
-            uo_id = bridge.risorsa_umana.unita_organizzativa_id
-            if uo_id is None:
-                return False
-
-            profilo = ProfiloRepartoAzione.objects.filter(
-                unita_organizzativa_id=uo_id,
-                azione__permission_codename=permission_codename,
-            ).first()
-
-            return profilo.abilitata if profilo else False
-
-        except RisorseUmaneAuthUser.DoesNotExist:
-            return False
-```
+* Il resolver non distingue fra vesti nel meccanismo: la catena "override →
+  profilo → default" e' identica per operatore e portale. Cio' che cambia
+  e' la **sorgente del profilo** (reparto vs preset per ruolo applicativo
+  vs ad-hoc).
+* Ogni lettura rispetta la finestra temporale degli override: un
+  override scaduto non viene applicato, e un override futuro non ha
+  effetto fino alla sua data di inizio.
+* Il resolver e' di sola lettura: non modifica mai le tabelle config.
+  E' invocato ad ogni richiesta API; per questo le query sono ottimizzate
+  con indici mirati, l'helper `fn_get_profili_accesso_applicabili`
+  restituisce un set unificato, e la mappa finale permessi viene
+  calcolata una sola volta per richiesta (cache per-request).
 
 ### 6.2 Permission class DRF
 
-```python
-# core/permissions.py
+Sono previste tre permission class, una per ciascun namespace API, tutte
+delegate allo stesso `PermissionResolver`:
 
-from rest_framework.permissions import BasePermission
-from core.permissions_resolver import PermissionResolver
+* **`ZeroERPPermission`** — per `/api/admin/*` (operatori interni)
+* **`PortaleBasePermission`** — per `/api/portale/*` (clienti, fornitori)
+* **`ShopPermission`** — per `/api/shop/*` (shop customer + endpoint pubblici)
 
+Nessuna contiene logica di business: delegano tutto al resolver e si
+occupano solo di:
 
-class ZeroERPPermission(BasePermission):
-    """
-    Permission class centrale di Zero ERP.
+1. verificare che la **veste corrente** sia compatibile col namespace
+   (es. `PortaleBasePermission` rifiuta un JWT con `ruolo_applicativo =
+   OPERATORE`)
+2. tradurre l'azione DRF in una richiesta di verifica area/azione
 
-    Risolve automaticamente l'area funzionale dallo schema del model
-    e verifica il livello di accesso tramite PermissionResolver.
-    """
+**Come funziona (comune a tutte e tre):**
 
-    # Mapping azione DRF -> tipo di accesso richiesto
-    ACTION_REQUIRES = {
-        'list': 'view',
-        'retrieve': 'view',
-        'create': 'add',
-        'update': 'change',
-        'partial_update': 'change',
-        'destroy': 'delete',
-    }
+* **Mapping azione DRF → verbo.** `list` e `retrieve` richiedono `view`,
+  `create` richiede `add`, `update` e `partial_update` richiedono
+  `change`, `destroy` richiede `delete`. Questo tipo di accesso e' poi
+  confrontato con i verbi ammessi dal livello (TUTTO/LETTURA/BLOCCATO).
+* **Superuser Django.** Se l'utente e' superuser Django (`is_superuser =
+  true`), viene ammesso direttamente senza consultare le tabelle config.
+  Comportamento di sicurezza a monte, usato in pratica solo per
+  amministrazione tecnica. **Nota:** `is_superuser` e' il flag Django,
+  non il profilo `SUPER_ADMIN` di ZeroErp — sono concetti distinti.
+* **Azioni custom.** Se la view dichiara un permesso esplicito per
+  l'azione (es. route "genera-fatture" con `genera_fatture_permission
+  = 'genera_fattura'`), la permission class chiama direttamente la
+  verifica azione di processo.
+* **Azioni CRUD standard.** Per le azioni CRUD si risale al model del
+  queryset, si determina l'area funzionale (tramite `app_label`/
+  `model_name`) e si consulta il livello effettivo. Il livello viene
+  quindi tradotto in insieme dei verbi ammessi: se il verbo richiesto
+  non e' nell'insieme, l'accesso e' negato.
 
-    def has_permission(self, request, view):
-        user = request.user
-        if not user or not user.is_authenticated:
-            return False
-        if user.is_superuser:
-            return True
+**Determinazione dell'area di un model.** Per default, l'area coincide
+con lo schema DB (uguale a `app_label` Django). Se per quel model
+esiste un override in `area_model_overrides`, si usa l'area dichiarata
+dall'override; questo copre i rari casi in cui la convenzione
+automatica non e' corretta.
 
-        # Determina il model e l'azione
-        action = getattr(view, 'action', None)
-        if action is None:
-            return True
+### 6.3 Ambito dati: whitelist EF per operatori, RLS per portale/shop
 
-        # Azione custom con permesso esplicito
-        action_perm = getattr(view, f'{action}_permission', None)
-        if action_perm:
-            return PermissionResolver.check_azione(user, action_perm)
+Il filtro "quali righe l'utente vede tra quelle dell'area" e' implementato
+in modo **diverso per veste**, ma tramite un meccanismo unificato (scope
+policy):
 
-        # CRUD standard
-        required = self.ACTION_REQUIRES.get(action)
-        if required is None:
-            return True
+**Operatori interni.** `EmittenteFiscaleScopeMixin` applica la scope
+policy `EF_WHITELIST` al queryset: la view dichiara il percorso del campo
+emittente (es. `billing_account__emittente_fiscale`), il mixin legge
+`user_emittenti_fiscali` e filtra. Se la whitelist e' vuota, nessun
+filtro (accesso su tutti gli emittenti). Pattern invariato dall'originale.
 
-        model = getattr(view, 'queryset', None)
-        if model is None:
-            return True
-        model = model.model
+**Clienti portale.** Applica la scope policy `BA_OWNERSHIP` (il cliente
+vede solo i propri billing account) oppure `CLIENTE_OWNERSHIP` (per dati
+legati al SR-CL direttamente). Il filtro non e' nel mixin: e' **nel DB
+tramite Row Level Security** (cfr. §7.1 e §7.2 per la difesa DB e [Multi-Face
+Auth §6](/guide/architettura-multi-face-auth#6-row-level-security-la-difesa-al-livello-giusto)
+per il dettaglio). Il backend non filtra a mano: la policy RLS lo fa per
+tutte le query.
 
-        app_label = model._meta.app_label
-        model_name = model._meta.model_name
-        area_codice = self._get_area_codice(app_label, model_name)
+**Fornitori portale.** Scope policy `FORNITORE_OWNERSHIP`, stesso
+meccanismo RLS.
 
-        livello = PermissionResolver.get_livello_oggetto(
-            user, app_label, model_name, area_codice
-        )
-        allowed_actions = PermissionResolver.LIVELLO_MAP.get(livello, set())
-        return required in allowed_actions
+**Shop customer.** Scope policy `CLIENTE_OWNERSHIP` + filtro aggiuntivo
+`canale_origine = 'SHOP'` dentro la policy RLS, cosi' il consumer B2C
+non vede gli acquisti B2B della sua azienda.
 
-    def _get_area_codice(self, app_label, model_name):
-        """
-        Determina l'area funzionale di un model.
-        1. Controlla override in config.area_model_overrides
-        2. Altrimenti usa app_label (che corrisponde allo schema)
-        """
-        from config.models import AreaModelOverride
-        override = AreaModelOverride.objects.filter(
-            app_label=app_label,
-            model_name=model_name,
-        ).select_related('area').first()
+**Superuser Django.** Non filtrato: vede sempre tutto, a tutela della
+manutenzione tecnica.
 
-        if override:
-            return override.area.codice
+L'effetto e' trasparente: la view non deve sapere dello scope — gli
+basta (per operatori) dichiarare il campo emittente, e per portale/shop
+non deve fare **nulla**, la RLS applica i filtri automaticamente a
+ogni SELECT.
 
-        return app_label
-```
+### 6.4 Propagazione identita al DB: JWT + GUC
 
-### 6.3 Mixin per ambito emittente fiscale
+Il middleware `JwtAuditAuthentication` propaga l'identita della sessione
+JWT ai parametri di sessione PostgreSQL (GUC), in modo che i trigger DB
+e le policy RLS possano sapere per conto di chi stanno eseguendo
+un'operazione. Il middleware e' la "spia" che rende possibile
+l'enforcement al livello piu' basso dello stack.
 
-```python
-# core/mixins.py
+**GUC propagati (tripla post multi-face auth):**
 
-class EmittenteFiscaleScopeMixin:
-    """
-    Filtra il queryset in base agli emittenti fiscali dell'utente.
-    Se l'utente non ha righe in user_emittenti_fiscali, vede tutto.
-    Se ha almeno una riga, vede solo gli emittenti autorizzati.
+| GUC | Popolato da | Usato da |
+| --- | --- | --- |
+| `app.current_user_id` | `auth_user.id` del JWT | Trigger audit, retrocompatibilita' |
+| `app.current_identita_id` | Claim JWT `identita_id` | Policy RLS, scope policy |
+| `app.ruolo_applicativo` | `identita_digitali.ruolo_applicativo` della riga | Gate policy RLS, discriminazione portale/shop |
+| `app.soggetto_ruolo_id` | `identita_digitali.soggetto_ruolo_id` della riga | Helper scope (quando serve il SR dell'utente) |
+| `app.jwt_user` | Username Django | Audit log legacy |
 
-    Uso: impostare `emittente_field` nella view con il path
-    al campo emittente (es. 'emittente_fiscale',
-    'billing_account__emittente_fiscale').
-    """
+**Invariante tutto-o-niente.** I 3 GUC del multi-face
+(`current_identita_id`, `ruolo_applicativo`, `soggetto_ruolo_id`) sono
+popolati insieme o **nessuno**. Il middleware fail-closed con 401 se la
+lettura da `identita_digitali` tramite `identita_id` del JWT fallisce.
+Le policy RLS assumono tripla coerente o fail-closed. L'helper
+`script.fn_current_identita_context()` esegue lettura fail-soft con
+`NULLIF(current_setting(..., true), '')::tipo` e restituisce NULL-tuple
+se la tripla non e' coerente.
 
-    emittente_field = None
+**Come funziona, in pratica:**
 
-    def get_queryset(self):
-        qs = super().get_queryset()
-        user = self.request.user
-
-        if user.is_superuser or self.emittente_field is None:
-            return qs
-
-        from config.models import UserEmittenteFiscale
-        user_emittenti = UserEmittenteFiscale.objects.filter(
-            auth_user=user
-        ).values_list('emittente_fiscale_id', flat=True)
-
-        if not user_emittenti.exists():
-            return qs
-
-        filter_kwarg = {f'{self.emittente_field}__in': user_emittenti}
-        return qs.filter(**filter_kwarg)
-```
-
-### 6.4 Middleware sessione PostgreSQL
-
-Il middleware `PgSessionMiddleware` propaga l'identita' dell'utente Django
-nella sessione PostgreSQL tramite GUC `app.current_user_id`, consentendo
-ai trigger DB di verificare l'ambito emittente (defense-in-depth).
-
-```python
-# core/middleware.py
-
-class PgSessionMiddleware:
-    """
-    Imposta variabili di sessione PostgreSQL per consentire
-    al DB di conoscere l'utente corrente (defense-in-depth).
-    """
-
-    def __init__(self, get_response):
-        self.get_response = get_response
-
-    def __call__(self, request):
-        response = self.get_response(request)
-        return response
-
-    def process_view(self, request, view_func, view_args, view_kwargs):
-        if request.user and request.user.is_authenticated:
-            from django.db import connection
-            with connection.cursor() as cursor:
-                cursor.execute(
-                    "SELECT set_config('app.current_user_id', %s, true)",
-                    [str(request.user.id)]
-                )
-        return None
-```
+* Ad ogni richiesta autenticata, prima dell'esecuzione della view, il
+  middleware: (1) valida il JWT, (2) legge `identita_id` dal claim custom,
+  (3) interroga `identita_digitali` per ricavare `ruolo_applicativo` e
+  `soggetto_ruolo_id`, (4) imposta i 4 GUC sulla connessione corrente.
+  Gli `SET LOCAL` sono scoperati a fine transazione — no pool pollution.
+* Il JWT legacy (pre multi-face) senza claim `identita_id` e' tollerato
+  per una grace window post-deploy: il middleware lo riconosce e deriva
+  l'identita da `auth_user_id` 1:1 (caso operatore unico). Scade con il
+  refresh del token.
+* I trigger DB e le policy RLS leggono i GUC per risalire all'utente,
+  alla sua veste e al suo SR. Il contratto dei GUC e' centralizzato in
+  una scheda dedicata: [Contratto GUC app.*](/guide/contratto-guc-app).
 
 ---
 
@@ -702,12 +577,12 @@ Segue la logica whitelist: se l'utente non ha righe in `user_emittenti_fiscali`,
 restituisce `TRUE` (nessun vincolo); altrimenti verifica che l'emittente sia
 nella lista.
 
-**Esempio d'uso in una query:**
-
-```sql
--- Verifica se l'utente 42 puo' operare sull'emittente 3
-SELECT script.fn_check_user_emittente_scope(42, 3);
-```
+**Esempio di uso:** chiamando la funzione con l'identificativo
+dell'utente e quello dell'emittente, si ottiene `TRUE` se l'utente
+puo' operare su quell'emittente (o perche' non ha whitelist configurata
+o perche' l'emittente e' nella sua lista), altrimenti `FALSE`. Questo
+check e' riutilizzabile da viste, report e altre funzioni DB che
+devono filtrare dati in base all'ambito dell'utente corrente.
 
 ### 7.2 Trigger guard per ambito emittente
 
@@ -715,19 +590,26 @@ SELECT script.fn_check_user_emittente_scope(42, 3);
 
 I trigger guard sulle tabelle operative (es. fatture, ordini) utilizzano
 la funzione di verifica per impedire operazioni su emittenti non autorizzati.
-Il trigger legge l'`auth_user_id` dalla GUC di sessione (`app.current_user_id`,
-impostata dal middleware Django) e blocca l'operazione se l'utente non e'
-nell'ambito.
+Il trigger legge l'identificativo dell'utente corrente dal parametro di
+sessione impostato dal middleware Django e blocca l'operazione se
+l'utente non e' nell'ambito consentito.
 
-**Esempio — cosa succede in pratica:**
+**Esempio di uso — cosa succede in pratica:**
 
-```
-1. Utente 42 (limitato agli emittenti 1, 3) tenta INSERT su fattura con emittente 5
-2. Il middleware Django ha gia' impostato: SET app.current_user_id = '42'
-3. Il trigger BEFORE INSERT legge la GUC e chiama script.fn_check_user_emittente_scope(42, 5)
-4. La funzione restituisce FALSE -> il trigger blocca con RAISE EXCEPTION
-5. Risultato: operazione negata anche se il backend avesse un bug
-```
+Si immagini un utente limitato agli emittenti 1 e 3 che tenti di
+inserire una fattura per l'emittente 5, aggirando per errore il filtro
+applicativo. Al momento della scrittura su `vendite.fatture`:
+
+1. Il middleware Django ha gia' propagato nella sessione PostgreSQL
+   l'identificativo dell'utente.
+2. Il trigger guard `BEFORE INSERT` sulla tabella fatture legge quel
+   parametro di sessione e chiama la funzione di verifica emittente
+   con l'utente corrente e l'emittente richiesto.
+3. La funzione risponde "non autorizzato".
+4. Il trigger solleva un errore di autorizzazione e annulla la scrittura.
+
+L'operazione viene quindi negata anche se il backend avesse un bug che
+l'ha lasciata passare ai livelli superiori.
 
 ### 7.3 Funzioni di risoluzione permessi lato DB
 
@@ -741,17 +623,15 @@ risoluzione:
 
 > [fn_check_azione_processo](/dbzero/script/funzioni/fn_check_azione_processo) — verifica se un'azione di processo e' abilitata per un utente
 
-**Esempio — verifica permessi da SQL:**
-
-```sql
--- Quale livello ha l'utente 42 sull'area vendite?
-SELECT script.fn_resolve_livello_area(42, 'vendite');
--- Risultato: 'TUTTO', 'LETTURA' o 'BLOCCATO'
-
--- Puo' l'utente 42 approvare fatture?
-SELECT script.fn_check_azione_processo(42, 'approva_fattura');
--- Risultato: TRUE o FALSE
-```
+**Esempio di uso:** le funzioni si invocano passando l'identificativo
+dell'utente e l'area o il codename dell'azione. La prima restituisce
+la stringa del livello effettivo (`TUTTO`, `LETTURA`, `BLOCCATO`),
+utile per stampe di audit o decisioni condizionali in altre
+funzioni/trigger; la seconda restituisce un booleano per verificare
+l'abilitazione di un'azione di processo. Entrambe applicano la stessa
+catena del backend (override individuale → profilo reparto → default
+sicuro), cosi' la regola resta unica indipendentemente dal livello
+che la consulta.
 
 ---
 
@@ -759,83 +639,60 @@ SELECT script.fn_check_azione_processo(42, 'approva_fattura');
 
 ### 8.1 Configurazione reparto
 
-```
-+==============================================================+
-|  Profilo reparto: Amministrazione (AMM)                      |
-|  Operatori associati: 5                                      |
-+==============================================================+
-|                                                              |
-|  AREE FUNZIONALI                                             |
-|  +------------------+--------+----------+----------+         |
-|  | Area             | TUTTO  | LETTURA  | BLOCCATO |         |
-|  +------------------+--------+----------+----------+         |
-|  | Anagrafiche      |   *    |          |          |         |
-|  | Vendite          |   *    |          |          |         |
-|  | Acquisti         |        |    *     |          |         |
-|  | Catalogo         |        |    *     |          |         |
-|  | Configurazione   |        |          |    *     |         |
-|  | Contabilita'     |        |    *     |          |         |
-|  | Magazzino        |        |          |    *     |         |
-|  | Pagamenti        |   *    |          |          |         |
-|  | Storico          |        |    *     |          |         |
-|  | Core             |        |          |    *     |         |
-|  +------------------+--------+----------+----------+         |
-|                                                              |
-|  AZIONI DI PROCESSO                                          |
-|  +----------------------------------+--------+               |
-|  | Azione                           | Abilit.|               |
-|  +----------------------------------+--------+               |
-|  | ! Genera fatture da lotti        |   no   |               |
-|  | Genera singola fattura           |   si   |               |
-|  | Approva fattura                  |   no   |               |
-|  | Emetti fattura                   |   si   |               |
-|  | Approva rimessa                  |   no   |               |
-|  +----------------------------------+--------+               |
-|                                                              |
-|  [Salva]  ! Impatta 5 operatori                             |
-+==============================================================+
-```
+La schermata di configurazione di un reparto mostra in un'unica
+maschera tutto cio' che gli operatori del reparto erediteranno.
+
+L'intestazione indica il reparto (es. "Amministrazione") e il numero
+di operatori attualmente associati, cosi' l'amministratore sa in
+partenza l'impatto di ogni modifica.
+
+Nella prima sezione viene mostrata la matrice **Aree funzionali x
+Livello**: per ogni area (Anagrafiche, Vendite, Acquisti, Catalogo,
+Configurazione, Contabilita', Magazzino, Pagamenti, Storico, Core)
+l'amministratore seleziona uno tra `TUTTO`, `LETTURA` o `BLOCCATO`.
+Una configurazione tipica del reparto Amministrazione puo' essere
+`TUTTO` su Anagrafiche, Vendite e Pagamenti; `LETTURA` su Acquisti,
+Catalogo, Contabilita' e Storico; `BLOCCATO` su Configurazione,
+Magazzino e Core.
+
+Nella seconda sezione compare l'elenco delle **Azioni di processo**
+disponibili, ciascuna con un flag di abilitazione. Le azioni marcate
+come pericolose (es. "Genera fatture da lotti") sono evidenziate
+graficamente perche' meritano attenzione specifica: tipicamente
+restano disabilitate a livello di reparto e vengono concesse solo
+puntualmente come override a singoli operatori.
+
+Al salvataggio viene mostrato esplicitamente il numero di operatori
+che subiranno l'effetto della modifica (es. "Impatta 5 operatori"),
+cosi' l'amministratore conferma consapevolmente una variazione che
+ridistribuisce permessi a piu' persone.
 
 ### 8.2 Configurazione utente
 
-```
-+==============================================================+
-|  Utente: Mario Rossi                                         |
-|  Reparto: Amministrazione (AMM)                              |
-|  Emittenti: ACME S.r.l., Beta S.r.l.                        |
-+==============================================================+
-|                                                              |
-|  AREE (ereditato dal reparto, override con [o])              |
-|  +------------------+--------+----------+----------+---+    |
-|  | Area             | TUTTO  | LETTURA  | BLOCCATO |   |    |
-|  +------------------+--------+----------+----------+---+    |
-|  | Anagrafiche      |   *    |          |          |[o]|    |
-|  | Vendite          |   *    |          |          |   |    |
-|  | Acquisti         |        |    *     |          |   |    |
-|  | Pagamenti        |   *    |          |          |   |    |
-|  | ...              |        |          |          |   |    |
-|  +------------------+--------+----------+----------+---+    |
-|                   * = ereditato  * = override utente         |
-|                                                              |
-|  ECCEZIONI OGGETTO (opzionale)                 [+ Aggiungi] |
-|  +----------------------------+--------+----------+--------+ |
-|  | Oggetto                    | TUTTO  | LETTURA  |BLOCCATO| |
-|  +----------------------------+--------+----------+--------+ |
-|  | anagrafiche.clienti        |        |    *     |        | |
-|  +----------------------------+--------+----------+--------+ |
-|                                                              |
-|  AZIONI (ereditato dal reparto, override con [o])            |
-|  +----------------------------------+--------+---+          |
-|  | Azione                           | Abilit.|   |          |
-|  +----------------------------------+--------+---+          |
-|  | Genera singola fattura           |   si   |   |          |
-|  | Emetti fattura                   |   si   |   |          |
-|  | Approva fattura                  |   si   |[o]| override |
-|  +----------------------------------+--------+---+          |
-|                                                              |
-|  [Salva]                                                     |
-+==============================================================+
-```
+La schermata di configurazione di un singolo operatore mostra sia cio'
+che **eredita** dal reparto sia cio' che il reparto ha modificato
+specificamente per lui.
+
+L'intestazione riporta nome dell'utente, reparto di appartenenza e
+ambito degli emittenti fiscali su cui puo' operare (es. "ACME S.r.l.,
+Beta S.r.l." oppure "tutti" se la whitelist e' vuota).
+
+La prima sezione e' la matrice **Aree x Livello**, identica per forma
+a quella di reparto, ma con una distinzione visiva tra livello
+ereditato e livello forzato da override. Ogni riga ha un pulsante
+"override" che, attivato, consente di alzare o abbassare il livello
+solo per quell'utente.
+
+La sezione **Eccezioni oggetto** (opzionale) elenca gli override
+individuali su singoli model. E' la forma di controllo piu' fine:
+puo' lasciare un operatore con `TUTTO` sull'area Anagrafiche ma
+riportarlo a `LETTURA` solo sul model `clienti`. Questa lista resta
+vuota di default e cresce solo per casi giustificati.
+
+La sezione **Azioni** ricalca la stessa logica: mostra le azioni
+abilitate dal profilo del reparto e consente all'amministratore di
+forzare eccezioni puntuali con pulsante "override" e motivo
+descrittivo (obbligatorio per tracciabilita' audit).
 
 ---
 
@@ -891,24 +748,46 @@ erDiagram
     aree_funzionali ||--o{ azioni_processo : "contiene"
 ```
 
-### 9.2 Catena identita' e override utente
+### 9.2 Catena identita' e profilo di accesso (post multi-face auth)
 
-Collega l'utente Django alla risorsa umana (e quindi al reparto)
-tramite il bridge `risorse_umane_auth_user`. Le tabelle di override
-permettono eccezioni individuali che sovrascrivono il profilo ereditato.
+Post refactor multi-face auth (19-20 aprile 2026), `auth_user` e' collegato
+al resto del modello tramite il bridge **generico** `identita_digitali`:
+un `auth_user` puo' avere N identita attive, una per `ruolo_applicativo`.
+Ogni identita si aggancia a un `soggetti_ruoli` (dipendente, cliente,
+fornitore, shop customer). Il profilo di accesso si ottiene tramite
+`profili_accesso_bindings`, che ammette tre modalita' di aggancio:
+diretta all'identita (AD_HOC), per ruolo applicativo (preset portale/shop),
+per unita' organizzativa (ereditarieta' reparto per operatori).
+
+La tabella legacy `risorse_umane_auth_user` non esiste piu' come tabella:
+e' una **vista read-only** costruita sopra `identita_digitali` filtrando
+`ruolo_applicativo = 'OPERATORE'`, mantenuta per retrocompatibilita' del
+codice Python che non e' ancora stato migrato.
 
 ```mermaid
 erDiagram
     auth_user {
         int id PK
         varchar username
+        varchar email
         boolean is_superuser
+        boolean is_active
     }
 
-    risorse_umane_auth_user {
+    identita_digitali {
         bigint id PK
-        bigint risorsa_umana_id FK
+        bigint soggetto_ruolo_id FK
         int auth_user_id FK
+        enum ruolo_applicativo
+        boolean attivo
+        date valido_dal
+        date valido_al
+    }
+
+    soggetti_ruoli {
+        bigint id PK
+        uuid soggetto_id FK
+        int tipo_ruolo_id FK
     }
 
     risorse_umane {
@@ -921,6 +800,20 @@ erDiagram
     unita_organizzative {
         int id PK
         varchar codice
+    }
+
+    profili_accesso {
+        int id PK
+        enum tipo
+        varchar codice
+    }
+
+    profili_accesso_bindings {
+        bigint id PK
+        int profilo_accesso_id FK
+        int unita_organizzativa_id FK
+        bigint identita_digitale_id FK
+        enum ruolo_applicativo
     }
 
     user_override_aree {
@@ -947,18 +840,34 @@ erDiagram
         boolean abilitata
     }
 
-    auth_user ||--|| risorse_umane_auth_user : "collegato"
-    risorse_umane ||--|| risorse_umane_auth_user : "collegata"
+    auth_user ||--o{ identita_digitali : "ha N vesti"
+    soggetti_ruoli ||--o{ identita_digitali : "veste su SR"
+    soggetti_ruoli ||--o| risorse_umane : "se ruolo RIS_UMANA"
     risorse_umane }o--|| unita_organizzative : "appartiene a"
+
+    profili_accesso ||--o{ profili_accesso_bindings : "assegnato da"
+    identita_digitali ||--o{ profili_accesso_bindings : "binding AD_HOC"
+    unita_organizzative ||--o{ profili_accesso_bindings : "binding reparto"
 
     auth_user ||--o{ user_override_aree : "override area"
     auth_user ||--o{ user_override_oggetti : "override oggetto"
     auth_user ||--o{ user_override_azioni : "override azione"
 ```
 
-> **Lettura:** `auth_user` -> `risorse_umane_auth_user` -> `risorse_umane` ->
-> `unita_organizzative` — da qui il sistema risale al profilo reparto
-> (diagramma 9.1). Se esistono override, hanno sempre priorita'.
+> **Lettura.** Per un operatore: `auth_user` → `identita_digitali(OPERATORE)`
+> → `soggetti_ruoli(RIS_UMANA)` → `risorse_umane` → `unita_organizzative` →
+> `profili_accesso_bindings(per UO)` → profilo reparto (diagramma 9.1). Se
+> esistono override individuali sull'`auth_user`, hanno priorita' massima.
+>
+> Per un cliente portale: `auth_user` → `identita_digitali(CLIENTE_PORTALE)`
+> → `profili_accesso_bindings(per ruolo_applicativo=CLIENTE_PORTALE)` →
+> profilo preset `CLIENTE_PORTALE`. Nessuna catena verso `risorse_umane` ne'
+> `unita_organizzative`: il portale non ha reparto.
+>
+> Per SUPER_ADMIN: `auth_user` → `identita_digitali(OPERATORE)` →
+> `profili_accesso_bindings(AD_HOC, identita_digitale_id=X, profilo=9100)`.
+> La presenza di questo binding scatena il bypass totale nel resolver
+> (cfr. §6.1, helper `script.fn_is_super_admin`).
 
 ### 9.3 Ambito emittente fiscale e override model
 
@@ -1011,19 +920,36 @@ erDiagram
 
 ## 10. Riepilogo architettura
 
-| Cosa                        | Dove                                                       | Come                                        |
-| --------------------------- | ---------------------------------------------------------- | ------------------------------------------- |
-| **Aree funzionali**         | `config.aree_funzionali`                                   | Schema DB = area (automatico)               |
-| **Livello accesso area**    | `config.profili_reparto_aree`                              | TUTTO / LETTURA / BLOCCATO per reparto      |
-| **Azioni di processo**      | `config.azioni_processo` + `config.profili_reparto_azioni` | Abilitate per reparto                       |
-| **Ereditarieta'**           | Via `risorse_umane.unita_organizzativa_id`                 | User -> risorsa umana -> reparto -> profilo  |
-| **Override utente area**    | `config.user_override_aree`                                | Sovrascrive reparto, con validita' temporale |
-| **Override utente oggetto** | `config.user_override_oggetti`                             | Sovrascrive area, per singolo model         |
-| **Override utente azione**  | `config.user_override_azioni`                              | Sovrascrive reparto, per singola azione     |
-| **Ambito emittente**        | `config.user_emittenti_fiscali`                            | Whitelist opzionale                         |
-| **Enforcement API**         | `ZeroERPPermission`                                        | DRF permission class                        |
-| **Ambito queryset**         | `EmittenteFiscaleScopeMixin`                               | Mixin su ViewSet                            |
-| **Defense-in-depth**        | Trigger + `script.fn_check_user_emittente_scope`           | Setting sessione PG                         |
+**Modello capability:**
+
+* **Aree funzionali** → `config.aree_funzionali` (schema DB = area, automatico)
+* **Profili di accesso** → `config.profili_accesso` (tipo REPARTO / PORTALE / AD_HOC), contenitore capability generalizzato
+* **Livello accesso area** → `config.profili_accesso_aree` (TUTTO / LETTURA / BLOCCATO per profilo)
+* **Azioni di processo** → `config.azioni_processo` + `config.profili_accesso_azioni` (abilitate per profilo)
+* **Assegnazione profilo** → `config.profili_accesso_bindings` con tre modalita' (AD_HOC / ruolo_applicativo / unita_organizzativa), priorita' AD_HOC > ruolo_applicativo > reparto
+
+**Modello identita:**
+
+* **Bridge identita** → `anagrafiche.identita_digitali` (1 auth_user ↔ N vesti attive), con `ruolo_applicativo` per ogni identita
+* **Bypass SUPER_ADMIN** → binding AD_HOC al profilo `SUPER_ADMIN` (id 9100) + helper `script.fn_is_super_admin`; il resolver ritorna TUTTO su ogni area/azione
+* **Propagazione identita** → `JwtAuditAuthentication` + JWT claim `identita_id`; popola GUC `app.current_identita_id`, `app.ruolo_applicativo`, `app.soggetto_ruolo_id` (tripla tutto-o-niente)
+
+**Override individuali (invariati):**
+
+* **Override utente area** → `config.user_override_aree`, sovrascrive profilo con validita' temporale
+* **Override utente oggetto** → `config.user_override_oggetti`, sovrascrive area per singolo model
+* **Override utente azione** → `config.user_override_azioni`, sovrascrive profilo per singola azione
+
+**Scope dati:**
+
+* **Ambito operatore** → `config.user_emittenti_fiscali` + scope policy `EF_WHITELIST` (whitelist opzionale)
+* **Ambito portale/shop** → `config.scope_policy` + policy `BA_OWNERSHIP` / `CLIENTE_OWNERSHIP` / `FORNITORE_OWNERSHIP` (RLS nativa PostgreSQL, no filtro manuale lato BE)
+
+**Enforcement:**
+
+* **Permission class API** → `ZeroERPPermission` (admin) / `PortaleBasePermission` (portale) / `ShopPermission` (shop), una per namespace
+* **Ambito queryset operatore** → `EmittenteFiscaleScopeMixin` (mixin su ViewSet, applica EF_WHITELIST)
+* **Defense-in-depth** → trigger DB + RLS policy + scope functions `script.fn_scope_*`; fail-closed su tripla GUC incoerente
 
 ---
 
@@ -1059,39 +985,72 @@ coerente con la filosofia di Zero ERP.
 
 ---
 
-## 13. Classificazione utente (`tipo_utente`)
+## 13. Classificazione utente — evoluzione post multi-face auth
 
-Per gestire correttamente l'onboarding — specialmente nelle PMI dove chi attiva
-un utente non e' un sistemista — serve una classificazione a livello di bridge
-[risorse_umane_auth_user](/dbzero/anagrafiche/tabelle/risorse_umane_auth_user)
-che determini il **comportamento di risoluzione**, non i permessi stessi.
+> **Nota (20-04-2026):** questa sezione documentava un ENUM
+> `config.tipo_utente` (ADMIN / OPERATIVO / DISABILITATO) modellato come
+> colonna sul bridge `risorse_umane_auth_user`. Il refactor multi-face
+> auth **ha superato quell'ENUM**: le tre classificazioni sono ora tre
+> meccanismi distinti, ciascuno al livello architettonico corretto.
 
-La colonna `tipo_utente` (ENUM `config.tipo_utente`) definisce tre
-classificazioni:
+### 13.1 Mappatura legacy → modello corrente
 
-| Tipo           | Comportamento                                                                   | Caso d'uso                    |
-| -------------- | ------------------------------------------------------------------------------- | ----------------------------- |
-| `ADMIN`        | Bypass completo della catena permessi                                           | Titolare, responsabile IT     |
-| `OPERATIVO`    | Eredita dal reparto + override individuali. Se reparto senza profilo -> BLOCCATO | Dipendente standard           |
-| `DISABILITATO` | Nessun accesso, nemmeno login                                                   | Ex-dipendente, utente sospeso |
+| Classificazione legacy | Come si realizza oggi | Dove vive |
+| --- | --- | --- |
+| `ADMIN` | Binding al profilo **`SUPER_ADMIN`** (id 9100) sull'identita | `config.profili_accesso_bindings (tipo=AD_HOC, profilo_accesso_id=9100)` |
+| `OPERATIVO` | Identita con `ruolo_applicativo = 'OPERATORE'` e risoluzione standard della catena | `anagrafiche.identita_digitali.ruolo_applicativo` + `profili_accesso_bindings` per UO |
+| `DISABILITATO` | Identita con `ruolo_applicativo = 'DISABILITATO'` oppure `attivo = false` | `anagrafiche.identita_digitali.ruolo_applicativo` / `attivo` |
 
-La catena di risoluzione diventa:
+La differenza non e' cosmetica:
 
-```text
-1. tipo_utente = DISABILITATO?  -> accesso negato, stop
-2. tipo_utente = ADMIN?         -> accesso completo, stop
-3. tipo_utente = OPERATIVO?     -> catena standard:
-   3a. Override utente su oggetto
-   3b. Override utente su area
-   3c. Profilo reparto
-   3d. Default -> BLOCCATO
-```
+* **Meccanismi al livello giusto.** SUPER_ADMIN e' un **profilo**
+  (non un flag): riusa l'infrastruttura `profili_accesso` + bindings, ed
+  e' coerente con il resto del modello permessi. DISABILITATO e' una
+  **veste** applicativa fail-closed, non una colonna trasversale.
+* **Piu' vesti coesistenti.** Un `auth_user` puo' avere
+  contemporaneamente identita `OPERATORE` attiva e `CLIENTE_PORTALE`
+  attiva (es. un dipendente che e' anche cliente B2B della sua azienda).
+  Con l'ENUM vecchio questo scenario era impossibile.
+* **Anti-lockout ultimo SUPER_ADMIN.** Un trigger DB
+  (`trgfn_profili_accesso_bindings_guard_ultimo_super_admin`) impedisce
+  di disattivare/eliminare l'ultimo binding SUPER_ADMIN attivo; errore
+  `E_PROFILO_ULTIMO_SUPER_ADMIN`. Difesa non presente con l'ENUM vecchio.
 
-> **Nota diagnostica:** quando un OPERATIVO risulta BLOCCATO perche' il reparto
-> non ha profili configurati, il sistema deve restituire un messaggio chiaro
-> (es. *"Il reparto X non ha ancora un profilo permessi configurato"*).
-> Un endpoint diagnostico `/api/users/{id}/permessi-effettivi/` e' previsto
-> per rendere trasparente la risoluzione completa.
+### 13.2 Catena di risoluzione effettiva
+
+La catena di risoluzione e' adesso coerente per ogni veste (vedi §6.1):
+
+1. **Identita non attiva o `ruolo_applicativo = DISABILITATO`** → accesso
+   negato al login, il flag `auth_user.is_active` risulta `false` se non
+   esiste alcun'altra identita utilizzabile (OR).
+2. **Identita con binding SUPER_ADMIN attivo** → bypass totale
+   (`script.fn_is_super_admin(auth_user_id)` restituisce `true`).
+3. **Altrimenti** — applicazione catena standard: override individuali
+   (oggetto/area/azione) → profilo applicabile dalla catena AD_HOC /
+   ruolo_applicativo / reparto → default sicuro `BLOCCATO`.
+
+### 13.3 Diagnostica invariate
+
+L'endpoint diagnostico `/api/users/{id}/permessi-effettivi/` resta
+previsto. Va esteso per mostrare, oltre alla risoluzione permessi
+standard, anche: (a) l'elenco delle identita dell'user, (b) quale
+identita e' attiva nella sessione corrente (lettura GUC
+`app.current_identita_id`), (c) se l'identita ha binding SUPER_ADMIN.
+Utile quando un operatore risulta BLOCCATO e serve capire se e' per
+profilo mancante, ruolo applicativo non coerente, o identita non
+attivata.
+
+### 13.4 Riferimenti di riga auto-gen
+
+Per i dettagli operativi sulla tabella e sui trigger coinvolti:
+
+* [anagrafiche.identita_digitali](/dbzero/anagrafiche/tabelle/identita_digitali) — il bridge multi-veste
+* [config.profili_accesso](/dbzero/config/tabelle/profili_accesso) — profili generalizzati
+* [config.profili_accesso_bindings](/dbzero/config/tabelle/profili_accesso_bindings) — tre modalita' di aggancio
+* [script.fn_is_super_admin](/dbzero/script/funzioni/fn_is_super_admin) — check bypass SUPER_ADMIN
+* [script.fn_get_profili_accesso_applicabili](/dbzero/script/funzioni/fn_get_profili_accesso_applicabili) — helper resolver
+
+Guida tecnica complessiva: [Architettura Multi-Face Auth](/guide/architettura-multi-face-auth).
 
 ---
 

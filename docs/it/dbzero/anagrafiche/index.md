@@ -3,7 +3,7 @@
 ## 📚 Tabelle
 - [_legacy_risorse_umane_auth_user](tabelle/_legacy_risorse_umane_auth_user.md)
 - [bank_branches](tabelle/bank_branches.md) — (latest review 02-12-25) La tabella **`anagrafiche.bank_branches`** rappresenta le **filiali di istituti di credito** (branch bancarie) collegate a un determinato **ruolo di soggetto** di tipo *ISTITUTO_CREDITO* (`anagrafiche.soggetti_ruoli`).
-- [billing_account](tabelle/billing_account.md) — (latest review 01-03-26)
+- [billing_account](tabelle/billing_account.md) — (latest review 20-04-2026 — aggiunta colonna `canale_origine`)
 - [catasto_unita_immobiliari](tabelle/catasto_unita_immobiliari.md) — (latest review 10-12-25) La tabella `anagrafiche.catasto_unita_immobiliari` archivia i **dati catastali** associati a un `indirizzo_dettaglio` e a una specifica `istanza_utility`. Questo approccio:
 - [catasto_unita_immobiliari_indirizzi](tabelle/catasto_unita_immobiliari_indirizzi.md) — (latest review 16-12-25) La tabella `anagrafiche.catasto_unita_immobiliari_indirizzi` è una **tabella ponte** che esplicita la relazione tra:
 - [categorie_clienti](tabelle/categorie_clienti.md) — (latest review 14-04-26)
@@ -18,7 +18,7 @@
 - [fornitori](tabelle/fornitori.md) — `anagrafiche.fornitori` è la **tabella master del ruolo FORNITORE** (relazione **1:1** con `anagrafiche.soggetti_ruoli`). Contiene le **impostazioni fiscali/operative** necessarie per la gestione dei fornitori, le **preferenze di pagamento** (valuta, modalità e termini), parametri di **qualifica/valutazione** e l’**audit**.
 - [gestori](tabelle/gestori.md) — (latest update 05-12-25) - **Identificare il gestore del sistema**     Memorizzare la riga unica che corrisponde all’azienda proprietaria o amministratrice di Zero ERP, distinguendola da tutti gli altri soggetti (clienti, fornitori, partner, ecc.).
 - [gestori_utilities](tabelle/gestori_utilities.md) — La tabella `anagrafiche.gestori_utilities` gestisce l'associazione tra i gestori e le utilities disponibili nel sistema Zero ERP. Ogni gestore, identificato dal suo ruolo, può gestire una o più utilities specifiche.
-- [identita_digitali](tabelle/identita_digitali.md) — (latest revision 19-04-2026)
+- [identita_digitali](tabelle/identita_digitali.md) — (latest revision 20-04-2026 — modello SSO multi-veste)
 - [indirizzi](tabelle/indirizzi.md) — (latest review 25-03-26) * **Associazione soggetto/ruolo/istanza → indirizzo**   Ogni soggetto può avere più indirizzi distinti in base al ruolo (es. cliente, fornitore), al tipo di indirizzo (es. sede legale, spedizione, residenza) e all'istanza di servizio (es. GAS Corridonia vs GAS Civitanova).
 - [indirizzi_dettaglio](tabelle/indirizzi_dettaglio.md) — (latest review 10-01-26) * **Dettagliare lo stradario**     Associare a ciascuna via (memorizzata in `config.stradario`) le singole unità civiche (numeri civici, estensioni, palazzine, interni, piani), ottenendo così l’indirizzo completo e navigabile.   * **Geolocalizzazione precisa**     Il campo `civic_geoloc` memorizza il punto geografico corrispondente al singolo civico, mentre `street_geoloc` rappresenta la posizione media della via. Questi dati consentono ricerche spaziali e visualizzazioni GIS a livello di civico.     Per le ricerche spaziali sul civico e' previsto un indice **GiST** su `civic_geoloc`.   * **Indirizzo normalizzato**     Il campo calcolato `indirizzo_normalizzato` combina via, civico, palazzina, scala, piano e interno in un’unica stringa formattata in modo coerente, facilitando confronti testuali e ricerche full-text.
 - [indirizzi_soggetti](tabelle/indirizzi_soggetti.md) — (latest review 16-12-25) * **Associazione soggetto → indirizzo**   Ogni soggetto può avere uno o più indirizzi, distinti per **tipo indirizzo** (RES, DOMFISC, SEDELEG, …), indipendentemente dai ruoli operativi che assumerà nel sistema.
@@ -54,7 +54,7 @@
 - [fn_notify_cambio_reparto](funzioni/fn_notify_cambio_reparto.md) — (latest review 10-03-2026) La funzione **`anagrafiche.fn_notify_cambio_reparto()`** emette una notifica PostgreSQL sul canale `cambio_reparto` quando una risorsa umana viene spostata da un'unita' organizzativa a un'altra.
 - [fn_search_indirizzi_dettaglio](funzioni/fn_search_indirizzi_dettaglio.md) — (latest review 28-11-25) La funzione **`anagrafiche.fn_search_indirizzi_dettaglio`** fornisce un **punto unico di ingresso** per la ricerca degli indirizzi di dettaglio normalizzati, appoggiandosi alla vista:
 - [fn_sync_auth_user_expired](funzioni/fn_sync_auth_user_expired.md) — (latest review 18-04-2026)
-- [fn_sync_auth_user_is_active](funzioni/fn_sync_auth_user_is_active.md) — (latest review 18-04-2026)
+- [fn_sync_auth_user_is_active](funzioni/fn_sync_auth_user_is_active.md) — (latest review 20-04-2026 — semantica OR multi-veste)
 - [trgfn_bank_guard_ruolo_bank_branches](funzioni/trgfn_bank_guard_ruolo_bank_branches.md) — (latest review 05-12-25) - **Centralizzare l’assegnazione del ruolo “bank_branches”**     Delegare a `script.fn_guard_soggetto_ruolo ` la logica di inserimento o verifica del linking table, evitando duplicazioni di codice.
 - [trgfn_billing_account_gen_codice](funzioni/trgfn_billing_account_gen_codice.md)
 - [trgfn_billing_account_guard_admin_globale](funzioni/trgfn_billing_account_guard_admin_globale.md)

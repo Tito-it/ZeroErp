@@ -34,7 +34,7 @@
 - [fn_get_or_create_soggetto_ruolo](funzioni/fn_get_or_create_soggetto_ruolo.md) — (latest review 09-12-25) La funzione **`script.fn_get_or_create_soggetto_ruolo`** è una **factory di dominio** per garantire l’esistenza di un legame tra:
 - [fn_get_override_scaduti](funzioni/fn_get_override_scaduti.md) — (latest review 08-03-2026) La funzione **`script.fn_get_override_scaduti`** restituisce tutti gli override utente la cui data `valido_al` e scaduta. Unisce le 3 tabelle override (aree, oggetti, azioni) in un unico risultato.
 - [fn_get_parameter_full](funzioni/fn_get_parameter_full.md)
-- [fn_get_profili_accesso_applicabili](funzioni/fn_get_profili_accesso_applicabili.md) — (latest review 19-04-2026)
+- [fn_get_profili_accesso_applicabili](funzioni/fn_get_profili_accesso_applicabili.md) — (latest review 20-04-2026 — parametro opzionale `p_ruolo_applicativo`)
 - [fn_get_record_id_as_of](funzioni/fn_get_record_id_as_of.md) — * **Recupero rapido dell’ID in uno snapshot**: ottenere solo l’identificativo del record (`id`) valido alla data/ora specificata, senza dover deserializzare tutto il JSON. * **Ottimizzazione delle query**: operazione leggera nel caso serva solo l’ID, utile per controlli o join condizionali su storico.
 - [fn_get_ruolo_sistema](funzioni/fn_get_ruolo_sistema.md) — (latest review 08-03-2026) La funzione **`script.fn_get_ruolo_sistema`** restituisce il `ruolo_sistema` (`ADMIN`, `OPERATIVO`, `DISABILITATO`) di un utente dalla tabella ponte `anagrafiche.risorse_umane_auth_user`.
 - [fn_get_search_detail](funzioni/fn_get_search_detail.md) — * **Dettaglio per tipo ruolo**: la funzione usa un `CASE` sul `codice_interno` del tipo ruolo (immutabile, protetto da `trgfn_lock_columns`) per costruire sezioni specifiche. Gestisce CL (cliente), FO (fornitore) con logica diretta, e delega tutti gli altri ruoli a `fn_get_entita_ruolo_detail`.
@@ -54,7 +54,7 @@
 - [fn_guard_soggetto_ruolo](funzioni/fn_guard_soggetto_ruolo.md) — (latest review 05-12-25) - **Verifica esistenza**     Controlla se esiste già un’associazione tra il soggetto e il codice interno del ruolo in `anagrafiche.soggetti_ruoli`.
 - [fn_guard_utility_tipo_ruolo](funzioni/fn_guard_utility_tipo_ruolo.md) — (latest review 16-02-2026) `script.fn_guard_utility_tipo_ruolo` valida la coerenza tra `utility_id` e `tipo_ruolo_id` con semantica:
 - [fn_has_identita_attiva](funzioni/fn_has_identita_attiva.md) — (latest review 19-04-2026)
-- [fn_is_super_admin](funzioni/fn_is_super_admin.md) — (latest review 19-04-2026)
+- [fn_is_super_admin](funzioni/fn_is_super_admin.md) — (latest review 20-04-2026 — filtro OPERATORE)
 - [fn_list_parameters_for_user](funzioni/fn_list_parameters_for_user.md)
 - [fn_log](funzioni/fn_log.md)
 - [fn_log_and_raise_error](funzioni/fn_log_and_raise_error.md) — (last review 28-12-25) * **Entrypoint unificato** per error handling: evita duplicazioni di log e raise in trigger, procedure e funzioni. * **Logging remoto sicuro**: usa `dblink_exec` su connessione permanente fornita da `script.fn_ensure_logconn()`, per isolare il log dall’eventuale rollback della sessione principale. * **Escalation immediata**: rialza l’eccezione con `DETAIL` e `HINT` recuperati dalla tabella dei messaggi.
@@ -66,7 +66,7 @@
 - [fn_resolve_emittente_for_user](funzioni/fn_resolve_emittente_for_user.md)
 - [fn_resolve_livello_area](funzioni/fn_resolve_livello_area.md) — (latest review 08-03-2026) La funzione **`script.fn_resolve_livello_area`** risolve il livello di accesso effettivo di un utente per un'area funzionale, identificata tramite `schema_db`.
 - [fn_resolve_livello_oggetto](funzioni/fn_resolve_livello_oggetto.md) — (latest review 08-03-2026) La funzione **`script.fn_resolve_livello_oggetto`** risolve il livello di accesso per un singolo model Django (`app_label` + `model_name`).
-- [fn_scope_ba_ownership](funzioni/fn_scope_ba_ownership.md) — (latest review 18-04-2026)
+- [fn_scope_ba_ownership](funzioni/fn_scope_ba_ownership.md) — (latest review 20-04-2026 — ruolo-aware)
 - [fn_scope_ba_ownership_via_fattura](funzioni/fn_scope_ba_ownership_via_fattura.md) — (latest review 19-04-2026)
 - [fn_scope_cliente_ownership](funzioni/fn_scope_cliente_ownership.md) — (latest review 19-04-2026)
 - [fn_scope_ef_whitelist](funzioni/fn_scope_ef_whitelist.md) — (latest review 18-04-2026)
@@ -80,6 +80,7 @@
 - [fn_validate_cf_piva_it](funzioni/fn_validate_cf_piva_it.md) — * **Centralizzazione Validazioni**: Unico punto per verificare CF e P.IVA in accordo ai formati configurati. * **Dinamicità**: I formati (alfanumerico, numerico, lunghezza) sono letti da `config.tipi_soggetto_dettaglio` e possono variare per Stato. * **Estendibilità**: Aggiunta futura di funzioni con suffissi di Stato, es. `_FR`, `_DE`, `_UK`.
 - [log](funzioni/log.md)
 - [trgfn_audit_data_user_generic](funzioni/trgfn_audit_data_user_generic.md) — * **Audit automatico su INSERT e UPDATE**   Assicura che ogni inserimento e modifica sia registrato con timestamp (`data_update`) e utente reale (`user_update` / `user_insert`). * **Centralizzare la logica di audit**   Un'unica trigger function per tutte le tabelle, evitando duplicazione di logica. * **Tracciare l'utente reale (JWT)**   Utilizza la GUC `app.jwt_user` impostata dal middleware Django per registrare   l'utente che ha effettuato la chiamata API, non il ruolo DB della connessione.
+- [trgfn_canale_origine_immutable](funzioni/trgfn_canale_origine_immutable.md) — (latest review 20-04-2026)
 - [trgfn_config_sistema_codici_sync_gen_codice](funzioni/trgfn_config_sistema_codici_sync_gen_codice.md) — La funzione `script.trgfn_config_sistema_codici_sync_gen_codice()` mantiene **sincronizzati** trigger e trigger function per la **generazione automatica dei codici/numero** in base a `config.sistema_codici`.
 - [trgfn_delete_block_by_guc](funzioni/trgfn_delete_block_by_guc.md) — (latest review 23-01-2026) La funzione `script.trgfn_delete_block_by_guc()` e` una **trigger function generica** che blocca le DELETE, consentendo il bypass tramite una **GUC** di manutenzione.
 - [trgfn_guard_emittente_scope](funzioni/trgfn_guard_emittente_scope.md) — (latest review 08-03-2026) La trigger function **`script.trgfn_guard_emittente_scope`** implementa il defense-in-depth: blocca INSERT/UPDATE se l'utente corrente non ha visibilità sull'emittente fiscale della riga.

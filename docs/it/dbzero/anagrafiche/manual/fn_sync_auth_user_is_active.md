@@ -19,16 +19,16 @@ Architettura di riferimento:
 
 ---
 ### 🎯 Scopo Principale
-(latest review 18-04-2026)
+(latest review 20-04-2026 — semantica OR multi-veste)
 
 La funzione **`anagrafiche.fn_sync_auth_user_is_active()`** allinea il campo
-`django.auth_user.is_active` allo stato effettivo del bridge auth associato.
+`django.auth_user.is_active` allo stato effettivo delle identita digitali
+dell'utente.
 
-Con la generalizzazione §4.5 del modello multi-face auth la funzione ha
-cambiato firma: parte da `auth_user_id` invece che da `risorsa_umana_id`,
-risolve internamente il bridge (nuovo o legacy) e gestisce tutti i ruoli
-applicativi (operatore, portale clienti, portale fornitori, shop customer,
-api_client, disabilitato).
+Post 20-04-2026 (modello SSO multi-veste) la funzione ha una logica **OR
+su N identita**: `auth_user.is_active = true` se e solo se esiste almeno
+un'identita utilizzabile per l'utente (cioe' attiva, con ruolo applicativo
+diverso da DISABILITATO, in finestra temporale, con soggetto parent attivo).
 
 ---
 
@@ -52,25 +52,35 @@ assente).
 
 ---
 
-### Algoritmo (expand-align-contract)
+### Algoritmo (OR multi-veste post 20-04-2026)
 
 1. **Guard parametro** — `p_auth_user_id IS NULL OR <= 0` → `E_PARAMETRO_INVALIDO`.
-2. **Priorità: nuovo bridge** — cerca identità attiva in
-   `anagrafiche.identita_digitali` per `auth_user_id`. Se trovata, procede al
-   calcolo basato su `identita_digitali`.
-3. **Fallback legacy** — se nessuna identità, cerca bridge in
-   `risorse_umane_auth_user`. Necessario durante la transizione §4.5 → §4.6
-   quando `identita_digitali` è ancora vuota. Post cutover §4.6 il ramo
-   legacy diventa dead code.
-4. **Calcolo `is_active` atteso**:
-   * `DISABILITATO` → `false`
-   * altri ruoli → AND di: identità attiva, finestra `[valido_dal, valido_al]`
-     valida, `soggetti.attivo = true`
-   * **OPERATORE in più**: AND con `risorse_umane.attivo` + finestra RU
-     (vincolo legacy mantenuto durante transizione, rimuovibile post §4.6)
-5. **UPDATE auth_user.is_active** solo se il valore cambia (short-circuit
-   se lo stato è già corretto). Gestione difensiva dell'assenza schema Django
-   (ambienti CI senza Django: no-op silente).
+2. **Calcolo OR** — singola query `EXISTS (...)` sulle N identita
+   digitali dell'utente. `is_active = true` se esiste almeno un'identita
+   che soddisfa tutti i criteri:
+   * `id.attivo = true`
+   * `id.ruolo_applicativo <> 'DISABILITATO'` (fail-closed per convenzione)
+   * `CURRENT_DATE BETWEEN id.valido_dal AND COALESCE(id.valido_al, CURRENT_DATE)`
+   * Soggetto parent attivo (via `soggetti_ruoli` → `soggetti.attivo = true`)
+3. **No-op ambiente CI** — se schema Django assente, `RETURN false`
+   silente (CI senza Django non ha auth_user da sincronizzare).
+4. **UPDATE** — `auth_user.is_active = <OR>` solo se diverso dal valore
+   corrente. Se l'auth_user non esiste (orfano), `RETURN false`.
+
+**Motivazione OR:** Django `is_active` e' il flag globale di autorizzazione
+al login. Se l'utente ha 3 vesti e ne vengono disattivate 2, deve
+comunque poter loggare con la terza. Il blocco della singola veste
+disattivata e' applicato dalla policy RLS + permission class namespace,
+non dal flag `is_active`.
+
+**Rimossi rispetto a versioni pre-20-04:**
+
+* Fallback legacy su `risorse_umane_auth_user` (ora vista post cutover
+  19-04-2026, gia' rimosso in migration 20260419-92).
+* Doppia verifica per OPERATORE su `risorse_umane.attivo` (vincolo legacy
+  transitorio gia' rimosso in 20260419-92).
+* Assunzione 1:1 user→identita (sostituita da query aggregata sul set
+  delle identita).
 
 ---
 

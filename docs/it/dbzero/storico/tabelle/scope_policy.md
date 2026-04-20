@@ -25,5 +25,11 @@
 | ix_scope_policy_scope_policy_id_fk | `CREATE INDEX ix_scope_policy_scope_policy_id_fk ON storico.scope_policy USING btree (scope_policy_id)` |
 | pk_storico_scope_policy | `CREATE UNIQUE INDEX pk_storico_scope_policy ON storico.scope_policy USING btree (id)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_scope_policy_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_scope_policy_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+
 ---
 {% include-markdown "signature-core.md" %}

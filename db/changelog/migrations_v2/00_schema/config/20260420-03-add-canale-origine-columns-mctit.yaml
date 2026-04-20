@@ -1,0 +1,141 @@
+databaseChangeLog:
+  - logicalFilePath: /migrations_v2/00_schema/config/20260420-03-add-canale-origine-columns-mctit.yaml
+
+  # ---------------------------------------------------------------------------
+  # Aggiunge la colonna canale_origine (config.canale_origine) a 3 tabelle
+  # transazionali chiave: billing_account, vendite.ordini, vendite.fatture.
+  # Default 'ADMIN' perche' tutte le righe pre-refactor sono state create
+  # da operatori interni / pipeline back-office.
+  #
+  # L'immutabilita' post-INSERT e' applicata da un trigger dedicato in
+  # migration 20260420-04.
+  #
+  # Nota: non e' necessario aggiungere canale_origine a vendite.fatture_scadenze
+  # ne a tabelle acquisti.*: le scadenze ereditano dal padre fattura, gli acquisti
+  # sono sempre creati da operatori (no canale fornitore che emette fatture
+  # passive al fornitore stesso).
+  #
+  # 3 changeSet in sequenza (sub-progressivi 03-01..03-03).
+  # ---------------------------------------------------------------------------
+
+  - changeSet:
+      id: 20260420-03-01-add-canale-origine-billing-account
+      author: mctit
+      comment: >
+        Aggiunge canale_origine a anagrafiche.billing_account. Decisione
+        20-04-2026: BA separati per canale. Un SR-CL puo' avere 1 BA
+        PORTALE (B2B con P.IVA, fatturazione elettronica) + 1 BA SHOP
+        (B2C con ricevute). Default ADMIN per BA esistenti (tutti creati
+        da operatore).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: anagrafiche
+                tableName: billing_account
+            - not:
+                - columnExists:
+                    schemaName: anagrafiche
+                    tableName: billing_account
+                    columnName: canale_origine
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*)
+                    FROM pg_type t
+                    JOIN pg_namespace n ON n.oid = t.typnamespace
+                   WHERE n.nspname = 'config'
+                     AND t.typname = 'canale_origine';
+      changes:
+        - addColumn:
+            schemaName: anagrafiche
+            tableName: billing_account
+            columns:
+              - column:
+                  name: canale_origine
+                  type: "config.canale_origine"
+                  defaultValue: "ADMIN"
+                  remarks: "Canale di creazione del BA. Immutabile post-INSERT (trigger 20260420-04). Default ADMIN su righe pre-refactor."
+                  constraints:
+                    nullable: false
+      rollback:
+        - dropColumn:
+            schemaName: anagrafiche
+            tableName: billing_account
+            columnName: canale_origine
+
+  - changeSet:
+      id: 20260420-03-02-add-canale-origine-vendite-ordini
+      author: mctit
+      comment: >
+        Aggiunge canale_origine a vendite.ordini. Discrimina ordini
+        portale B2B, shop B2C e admin. Usato nelle policy RLS shop
+        per filtrare (canale_origine='SHOP'); non usato nelle policy
+        portale (caso 2: portale vede tutto). Default ADMIN per ordini
+        esistenti.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: ordini
+            - not:
+                - columnExists:
+                    schemaName: vendite
+                    tableName: ordini
+                    columnName: canale_origine
+      changes:
+        - addColumn:
+            schemaName: vendite
+            tableName: ordini
+            columns:
+              - column:
+                  name: canale_origine
+                  type: "config.canale_origine"
+                  defaultValue: "ADMIN"
+                  remarks: "Canale di creazione dell'ordine. Immutabile post-INSERT. Usato dalla policy RLS shop per filtro visibilita'."
+                  constraints:
+                    nullable: false
+      rollback:
+        - dropColumn:
+            schemaName: vendite
+            tableName: ordini
+            columnName: canale_origine
+
+  - changeSet:
+      id: 20260420-03-03-add-canale-origine-vendite-fatture
+      author: mctit
+      comment: >
+        Aggiunge canale_origine a vendite.fatture. Le ricevute shop
+        (B2C, non fatture elettroniche) vivono su shop.ricevute (schema
+        dedicato, migration 20260420-06): vendite.fatture resta la
+        tabella B2B fiscale. Default ADMIN per fatture esistenti.
+        La policy RLS portale B2B non filtra su canale_origine (caso 2).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: fatture
+            - not:
+                - columnExists:
+                    schemaName: vendite
+                    tableName: fatture
+                    columnName: canale_origine
+      changes:
+        - addColumn:
+            schemaName: vendite
+            tableName: fatture
+            columns:
+              - column:
+                  name: canale_origine
+                  type: "config.canale_origine"
+                  defaultValue: "ADMIN"
+                  remarks: "Canale di creazione della fattura B2B. Immutabile post-INSERT. Default ADMIN su righe pre-refactor (tutte generate da pipeline interna)."
+                  constraints:
+                    nullable: false
+      rollback:
+        - dropColumn:
+            schemaName: vendite
+            tableName: fatture
+            columnName: canale_origine

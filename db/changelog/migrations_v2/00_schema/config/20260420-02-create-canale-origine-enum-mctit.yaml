@@ -1,0 +1,48 @@
+databaseChangeLog:
+  - logicalFilePath: /migrations_v2/00_schema/config/20260420-02-create-canale-origine-enum-mctit.yaml
+
+  - changeSet:
+      id: 20260420-02-create-canale-origine-enum
+      author: mctit
+      comment: >
+        Crea ENUM config.canale_origine per tracciare il canale di
+        origine dei dati transazionali (BA, ordini, fatture, ricevute).
+        Tre valori:
+          ADMIN   - creato da operatore interno (back-office)
+          PORTALE - creato da cliente/fornitore via portale self-service
+          SHOP    - creato da shop customer via shop self-service
+        Rif. guida architettura-multi-face-auth v2.0 §6.4, handoff PR-B §2.2.
+        La colonna che adotta questo ENUM e' immutabile post-INSERT
+        (trigger dedicato, migration 20260420-04).
+      preConditions:
+        - onFail: MARK_RAN
+        - sqlCheck:
+            expectedResult: 0
+            sql: |
+              SELECT COUNT(*)
+                FROM pg_type t
+                JOIN pg_namespace n ON n.oid = t.typnamespace
+               WHERE n.nspname = 'config'
+                 AND t.typname = 'canale_origine';
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Discriminante del canale di creazione di un record
+              -- transazionale. Usato per: (a) tracciabilita'/analytics,
+              -- (b) discriminazione visibilita' RLS (shop vede solo SHOP,
+              -- portale vede tutto caso 2 §5.1 guida multi-face).
+              CREATE TYPE config.canale_origine AS ENUM (
+                  'ADMIN',    -- operatore interno / back-office
+                  'PORTALE',  -- cliente B2B portale / fornitore portale
+                  'SHOP'      -- shop customer B2C
+              );
+
+              COMMENT ON TYPE config.canale_origine IS
+                  'Canale di origine di un dato transazionale (billing_account, '
+                  'vendite.ordini, vendite.fatture, shop.ricevute). Immutabile '
+                  'post-INSERT via trigger. Default ADMIN. Guida multi-face §6.4.';
+      rollback:
+        - sql:
+            sql: DROP TYPE IF EXISTS config.canale_origine;

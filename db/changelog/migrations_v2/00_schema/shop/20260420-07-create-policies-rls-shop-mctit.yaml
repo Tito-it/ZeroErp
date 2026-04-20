@@ -1,0 +1,173 @@
+databaseChangeLog:
+  - logicalFilePath: /migrations_v2/00_schema/shop/20260420-07-create-policies-rls-shop-mctit.yaml
+
+  # ---------------------------------------------------------------------------
+  # Policy RLS DRY-RUN per il canale shop. Tutte PERMISSIVE, in stato
+  # dormiente (no ENABLE / FORCE). L'attivazione e' rinviata a migration
+  # post-PR-B stabile (cfr. §4.9.7-9 WIP multi-face).
+  #
+  # Pattern comune: gate 'SHOP_CUSTOMER' + scope SR (via fn_scope_cliente_ownership)
+  # + filtro canale_origine = 'SHOP'. Lo shop e' silo completo: non vede dati
+  # creati dal portale B2B anche se sullo stesso cliente anagrafico.
+  #
+  # 3 changeSet in sequenza (sub-progressivi 07-01..07-03):
+  #   07-01 rls_shop_ricevute_self_ownership  (shop.ricevute — gia' SHOP by table)
+  #   07-02 rls_billing_account_shop          (BA filtrati canale_origine=SHOP)
+  #   07-03 rls_ordini_shop                   (ordini filtrati canale_origine=SHOP)
+  #
+  # Rif. guida multi-face v2.0 §5.1 (asimmetria portale/shop) e §6.4
+  # (canale_origine come filtro RLS).
+  # ---------------------------------------------------------------------------
+
+  - changeSet:
+      id: 20260420-07-01-create-policy-rls-shop-ricevute
+      author: mctit
+      comment: >
+        Policy PERMISSIVE su shop.ricevute: SHOP_CUSTOMER vede solo le
+        proprie ricevute (match via soggetto_ruolo_id con identita
+        attiva). La tabella shop.ricevute ha gia' CHECK canale_origine=SHOP,
+        quindi non serve filtro canale nella USING clause.
+        DRY-RUN: no ENABLE/FORCE.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: shop
+                tableName: ricevute
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*)
+                    FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'script'
+                     AND p.proname = 'fn_scope_cliente_ownership';
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP POLICY IF EXISTS rls_shop_ricevute_self_ownership
+                  ON shop.ricevute;
+
+              CREATE POLICY rls_shop_ricevute_self_ownership
+                  ON shop.ricevute
+                  AS PERMISSIVE
+                  FOR SELECT
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'SHOP_CUSTOMER'
+                      AND script.fn_scope_cliente_ownership(
+                              NULLIF(current_setting('app.current_identita_id', true), '')::bigint,
+                              soggetto_ruolo_id
+                          )
+                  );
+
+              COMMENT ON POLICY rls_shop_ricevute_self_ownership
+                  ON shop.ricevute IS
+                  'RLS dry-run: lo shop customer vede solo le proprie ricevute '
+                  '(match SR tramite identita attiva). Gate ruolo SHOP_CUSTOMER. '
+                  'Filtro canale_origine implicito (CHECK di tabella forza SHOP).';
+      rollback:
+        - sql:
+            sql: |
+              DROP POLICY IF EXISTS rls_shop_ricevute_self_ownership
+                  ON shop.ricevute;
+
+  - changeSet:
+      id: 20260420-07-02-create-policy-rls-billing-account-shop
+      author: mctit
+      comment: >
+        Policy PERMISSIVE su anagrafiche.billing_account specifica per
+        SHOP_CUSTOMER: vede solo BA con canale_origine='SHOP' del proprio
+        SR. Si somma alla policy rls_billing_account_self_ownership
+        esistente (che e' OR-composta da Postgres per PERMISSIVE). La
+        policy portale esistente verra' splittata nel file 08 per
+        escludere SHOP_CUSTOMER dal suo predicato.
+        DRY-RUN: no ENABLE/FORCE.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: anagrafiche
+                tableName: billing_account
+                columnName: canale_origine
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP POLICY IF EXISTS rls_billing_account_shop
+                  ON anagrafiche.billing_account;
+
+              CREATE POLICY rls_billing_account_shop
+                  ON anagrafiche.billing_account
+                  AS PERMISSIVE
+                  FOR SELECT
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'SHOP_CUSTOMER'
+                      AND canale_origine = 'SHOP'
+                      AND script.fn_scope_ba_ownership(
+                              NULLIF(current_setting('app.current_identita_id', true), '')::bigint,
+                              id
+                          )
+                  );
+
+              COMMENT ON POLICY rls_billing_account_shop
+                  ON anagrafiche.billing_account IS
+                  'RLS dry-run: SHOP_CUSTOMER vede solo i BA con canale_origine=SHOP '
+                  'del proprio soggetto_ruolo. Silo shop: non vede BA portale (B2B) '
+                  'anche se sullo stesso cliente anagrafico.';
+      rollback:
+        - sql:
+            sql: |
+              DROP POLICY IF EXISTS rls_billing_account_shop
+                  ON anagrafiche.billing_account;
+
+  - changeSet:
+      id: 20260420-07-03-create-policy-rls-ordini-shop
+      author: mctit
+      comment: >
+        Policy PERMISSIVE su vendite.ordini specifica per SHOP_CUSTOMER:
+        vede solo ordini con canale_origine='SHOP' del proprio SR. Si somma
+        alla policy rls_ordini_cliente_ownership esistente (gate portale).
+        La policy portale verra' splittata nel file 08 per escludere
+        SHOP_CUSTOMER dal suo predicato.
+        DRY-RUN: no ENABLE/FORCE.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: vendite
+                tableName: ordini
+                columnName: canale_origine
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP POLICY IF EXISTS rls_ordini_shop
+                  ON vendite.ordini;
+
+              CREATE POLICY rls_ordini_shop
+                  ON vendite.ordini
+                  AS PERMISSIVE
+                  FOR SELECT
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'SHOP_CUSTOMER'
+                      AND canale_origine = 'SHOP'
+                      AND script.fn_scope_cliente_ownership(
+                              NULLIF(current_setting('app.current_identita_id', true), '')::bigint,
+                              soggetto_ruolo_id
+                          )
+                  );
+
+              COMMENT ON POLICY rls_ordini_shop
+                  ON vendite.ordini IS
+                  'RLS dry-run: SHOP_CUSTOMER vede solo ordini con canale_origine=SHOP '
+                  'del proprio soggetto_ruolo. Silo shop: non vede ordini portale (B2B) '
+                  'anche se sullo stesso cliente anagrafico.';
+      rollback:
+        - sql:
+            sql: |
+              DROP POLICY IF EXISTS rls_ordini_shop
+                  ON vendite.ordini;

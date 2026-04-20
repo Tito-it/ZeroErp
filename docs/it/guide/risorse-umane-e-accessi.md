@@ -1,6 +1,6 @@
 # Guida – Risorse Umane e Accessi al Software
 
-> (latest review 31-03-2026)
+> (latest review 19-04-2026, post-cutover multi-face-auth)
 >
 > Destinatari: sviluppatori database, backend, integratori e analisti funzionali
 >
@@ -9,28 +9,41 @@
 > * [Guida Soggetti & Ruoli](/guide/soggetti-e-ruoli-anagrafici)
 > * [Gestione dei contatti](/guide/gestione-dei-contatti)
 > * [Architettura Permessi e Autorizzazioni](/guide/architettura-permessi-e-autorizzazioni)
+> * [Architettura Multi-Face Auth](/guide/architettura-multi-face-auth)
 > * [Guida Gestione Mail](/guide/gestione-mail)
 
 ---
 
-> **Evoluzione in corso — Multi-Face Auth (aprile 2026)**
+> **Multi-Face Auth — modello post-cutover (aprile 2026)**
 >
-> Questa guida descrive il modello attuale, centrato sul **dipendente interno**.
-> E' in corso di sviluppo un'estensione che generalizza il bridge verso `auth_user`
-> per supportare anche **clienti portale**, **fornitori portale** e **utenti del
-> negozio online**. I cambiamenti principali previsti:
+> Il bridge verso `auth_user` e' stato generalizzato (cutover
+> §13.3.2 del 19-04-2026). I riferimenti nel corpo di questa guida a
+> `risorse_umane_auth_user` come **tabella** vanno riletti come **vista
+> read-only di compatibilita'** che legge da `identita_digitali`
+> filtrando `ruolo_applicativo = 'OPERATORE'`. La ex tabella e'
+> archiviata come `_legacy_risorse_umane_auth_user`.
 >
-> * Nuovo bridge generico `anagrafiche.identita_digitali` accanto a
->   `risorse_umane_auth_user` (che diventera' un caso particolare)
-> * Regola **R4** ridisegnata: il vincolo "persona fisica pura" si sposta
->   sul ruolo RIS_UMANA, non sul bridge
-> * Sync `auth_user.is_active` generalizzata per tutti i tipi di identita'
-> * Nuovi GUC PostgreSQL `app.current_identita_id`, `app.ruolo_applicativo`,
->   `app.soggetto_ruolo_id`
+> **Mappature chiave** (legacy → nuovo modello):
 >
-> Questa guida resta **autoritativa per il codice in produzione**. I riferimenti
-> al nuovo modello verranno integrati fase per fase, man mano che le migrazioni
-> DB vengono applicate.
+> | Concetto legacy | Post-cutover |
+> | --- | --- |
+> | `risorse_umane_auth_user` (tabella writable) | Vista read-only; writer passano da `identita_digitali` |
+> | `ruolo_sistema = 'ADMIN'` | Binding `SUPER_ADMIN` (profilo id=9100) su `profili_accesso_bindings` AD_HOC |
+> | `ruolo_sistema = 'DISABILITATO'` | `identita_digitali.ruolo_applicativo = 'DISABILITATO'` oppure `attivo = false` |
+> | `ruolo_sistema = 'OPERATIVO'` | `ruolo_applicativo = 'OPERATORE'` + `attivo = true` + nessun binding SUPER_ADMIN |
+> | `trgfn_risorse_umane_auth_user_sync_active` (legacy) | `fn_sync_auth_user_is_active(auth_user_id)` letta solo da `identita_digitali` |
+> | Vincolo R4 sul bridge (PF pura) | Guard `fn_guard_soggetto_pf_pura` su `identita_digitali` quando `ruolo_applicativo='OPERATORE'` (portali/shop non hanno il vincolo) |
+>
+> **Nuovi elementi** introdotti dal refactor:
+>
+> * [anagrafiche.identita_digitali](/dbzero/anagrafiche/tabelle/identita_digitali)
+>   — bridge generalizzato per 5 ruoli applicativi
+> * GUC PostgreSQL `app.current_identita_id`, `app.ruolo_applicativo`,
+>   `app.soggetto_ruolo_id` propagati da `JwtAuditAuthentication`
+> * Scope policy generalizzato (`BA_OWNERSHIP`, `FORNITORE_OWNERSHIP`,
+>   `EF_WHITELIST`) con fn `script.fn_scope_*` inlineable
+> * Policy RLS dormienti su 6 tabelle sensibili (dry-run, attivazione
+>   in PR-C)
 >
 > Dettagli:
 >

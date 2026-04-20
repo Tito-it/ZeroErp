@@ -1,0 +1,101 @@
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260419-94-update-fn-check-blocco-login-post-cutover-mctit.yaml
+
+  - changeSet:
+      id: 20260419-94-update-fn-check-blocco-login-post-cutover
+      author: mctit
+      runOnChange: true
+      validCheckSum: [ANY]
+      comment: >
+        FIX post-cutover §13.3 (bug dimenticato): la migration -24
+        faceva auto-unlock con doppio UPDATE (identita_digitali + RUA)
+        con commento "rimovibile al cutover §4.6.H", ma il cutover
+        §13.3.2-4 ha dimenticato di aggiornare questa funzione.
+        Post-cutover RUA e' una vista read-only: l'auto-unlock falliva
+        e il ramo blocco-scaduto del login restava orfano.
+        Questa migration rimuove l'UPDATE su RUA: l'auto-unlock ora
+        scrive solo su identita_digitali. Firma esterna invariata.
+      preConditions:
+        - onFail: HALT
+        - and:
+          - tableExists: { schemaName: anagrafiche, tableName: identita_digitali }
+          - columnExists:
+              schemaName: anagrafiche
+              tableName: identita_digitali
+              columnName: bloccato_fino_a
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_check_blocco_login(
+                  p_auth_user_id integer
+              )
+              RETURNS void
+              LANGUAGE plpgsql
+              VOLATILE
+              AS $function$
+              DECLARE
+                  v_bloccato_fino_a  timestamptz;
+                  v_minuti_rimanenti integer;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo (post-cutover §13.3):
+                  --   Verifica blocco temporaneo login su
+                  --   anagrafiche.identita_digitali (OPERATORE).
+                  --   Se scaduto: auto-unlock su identita_digitali
+                  --   (unica fonte di verita'). Se attivo: raise
+                  --   E_UTENTE_BLOCCATO.
+                  -- =========================================================
+
+                  IF p_auth_user_id IS NULL OR p_auth_user_id <= 0 THEN
+                      RETURN;
+                  END IF;
+
+                  -- Leggi stato blocco da identita
+                  SELECT id.bloccato_fino_a
+                    INTO v_bloccato_fino_a
+                    FROM anagrafiche.identita_digitali id
+                   WHERE id.auth_user_id = p_auth_user_id
+                     AND id.ruolo_applicativo = 'OPERATORE';
+
+                  -- Nessun record identita o nessun blocco
+                  IF v_bloccato_fino_a IS NULL THEN
+                      RETURN;
+                  END IF;
+
+                  -- Blocco scaduto: auto-unlock su identita_digitali
+                  IF v_bloccato_fino_a <= NOW() THEN
+                      UPDATE anagrafiche.identita_digitali
+                         SET tentativi_falliti = 0,
+                             bloccato_fino_a   = NULL
+                       WHERE auth_user_id = p_auth_user_id
+                         AND ruolo_applicativo = 'OPERATORE';
+                      RETURN;
+                  END IF;
+
+                  -- Blocco attivo: calcola minuti rimanenti e raise
+                  v_minuti_rimanenti := GREATEST(1,
+                      CEIL(EXTRACT(EPOCH FROM (v_bloccato_fino_a - NOW())) / 60)::integer
+                  );
+
+                  PERFORM script.fn_log_and_raise_error(
+                      'database', 'script.fn_check_blocco_login',
+                      'E_UTENTE_BLOCCATO',
+                      jsonb_build_object('auth_user_id', p_auth_user_id,
+                                         'bloccato_fino_a', v_bloccato_fino_a,
+                                         'minuti_rimanenti', v_minuti_rimanenti),
+                      NULL::uuid,
+                      'Utente temporaneamente bloccato. Riprovare tra ' || v_minuti_rimanenti || ' minuti.'
+                  );
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_check_blocco_login(integer) IS
+                  'Verifica blocco temporaneo login su anagrafiche.identita_digitali '
+                  '(post-cutover §13.3, unica fonte di verita'': RUA e'' ora vista '
+                  'read-only). Auto-unlock solo su identita se il blocco e'' scaduto. '
+                  'Se attivo: raise E_UTENTE_BLOCCATO.';
+      rollback:
+        - sql:
+            sql: DROP FUNCTION IF EXISTS script.fn_check_blocco_login(integer);

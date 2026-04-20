@@ -1,0 +1,285 @@
+databaseChangeLog:
+  - logicalFilePath: /migrations_v2/00_schema/anagrafiche/20260420-08-split-policies-portale-exclude-shop-mctit.yaml
+
+  # ---------------------------------------------------------------------------
+  # Split delle policy RLS portale esistenti per escludere SHOP_CUSTOMER
+  # dal loro predicato. Motivazione:
+  #   - le policy shop dedicate (migration 07) hanno filtro canale_origine=SHOP
+  #   - le policy portale oggi ammettono IN ('CLIENTE_PORTALE', 'SHOP_CUSTOMER')
+  #     senza filtro canale → uno SHOP_CUSTOMER vedrebbe tutto (B2B incluso)
+  #   - asimmetria voluta §5.1 guida multi-face v2.0: portale vede tutto
+  #     (caso 2), shop vede solo shop (silo)
+  # Il risultato finale e' che:
+  #   - CLIENTE_PORTALE passa la sola policy portale (nessun filtro canale)
+  #   - SHOP_CUSTOMER passa SOLO le policy shop (con canale_origine=SHOP)
+  #
+  # 4 changeSet in sequenza (sub-progressivi 08-01..08-04):
+  #   08-01 rls_billing_account_self_ownership → solo CLIENTE_PORTALE
+  #   08-02 rls_ordini_cliente_ownership       → solo CLIENTE_PORTALE
+  #   08-03 rls_fatture_ba_ownership           → solo CLIENTE_PORTALE
+  #   08-04 rls_fatture_scadenze_ba_ownership  → solo CLIENTE_PORTALE
+  # ---------------------------------------------------------------------------
+
+  - changeSet:
+      id: 20260420-08-01-split-policy-billing-account-portale
+      author: mctit
+      comment: >
+        Ricrea rls_billing_account_self_ownership limitata a
+        CLIENTE_PORTALE (rimuove SHOP_CUSTOMER dal gate). SHOP_CUSTOMER
+        accede via policy rls_billing_account_shop creata in 07-02.
+        DRY-RUN: no ENABLE/FORCE.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: anagrafiche
+                tableName: billing_account
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*)
+                    FROM pg_policies
+                   WHERE schemaname = 'anagrafiche'
+                     AND tablename  = 'billing_account'
+                     AND policyname = 'rls_billing_account_self_ownership';
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP POLICY IF EXISTS rls_billing_account_self_ownership
+                  ON anagrafiche.billing_account;
+
+              CREATE POLICY rls_billing_account_self_ownership
+                  ON anagrafiche.billing_account
+                  AS PERMISSIVE
+                  FOR SELECT
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'CLIENTE_PORTALE'
+                      AND script.fn_scope_ba_ownership(
+                              NULLIF(current_setting('app.current_identita_id', true), '')::bigint,
+                              id
+                          )
+                  );
+
+              COMMENT ON POLICY rls_billing_account_self_ownership
+                  ON anagrafiche.billing_account IS
+                  'RLS dry-run: CLIENTE_PORTALE vede tutti i BA del proprio SR '
+                  '(nessun filtro canale — caso 2 §5.1 guida multi-face). '
+                  'SHOP_CUSTOMER passa invece via rls_billing_account_shop.';
+      rollback:
+        - sql:
+            sql: |
+              DROP POLICY IF EXISTS rls_billing_account_self_ownership
+                  ON anagrafiche.billing_account;
+
+              CREATE POLICY rls_billing_account_self_ownership
+                  ON anagrafiche.billing_account
+                  AS PERMISSIVE
+                  FOR SELECT
+                  USING (
+                      current_setting('app.ruolo_applicativo', true)
+                          IN ('CLIENTE_PORTALE', 'SHOP_CUSTOMER')
+                      AND script.fn_scope_ba_ownership(
+                              NULLIF(current_setting('app.current_identita_id', true), '')::bigint,
+                              id
+                          )
+                  );
+
+  - changeSet:
+      id: 20260420-08-02-split-policy-ordini-cliente-portale
+      author: mctit
+      comment: >
+        Ricrea rls_ordini_cliente_ownership limitata a CLIENTE_PORTALE.
+        SHOP_CUSTOMER accede via policy rls_ordini_shop creata in 07-03
+        (con filtro canale_origine=SHOP).
+        DRY-RUN: no ENABLE/FORCE.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: ordini
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*)
+                    FROM pg_policies
+                   WHERE schemaname = 'vendite'
+                     AND tablename  = 'ordini'
+                     AND policyname = 'rls_ordini_cliente_ownership';
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP POLICY IF EXISTS rls_ordini_cliente_ownership
+                  ON vendite.ordini;
+
+              CREATE POLICY rls_ordini_cliente_ownership
+                  ON vendite.ordini
+                  AS PERMISSIVE
+                  FOR SELECT
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'CLIENTE_PORTALE'
+                      AND script.fn_scope_cliente_ownership(
+                              NULLIF(current_setting('app.current_identita_id', true), '')::bigint,
+                              soggetto_ruolo_id
+                          )
+                  );
+
+              COMMENT ON POLICY rls_ordini_cliente_ownership
+                  ON vendite.ordini IS
+                  'RLS dry-run: CLIENTE_PORTALE vede tutti gli ordini del proprio SR '
+                  '(nessun filtro canale — caso 2 guida multi-face). SHOP_CUSTOMER '
+                  'passa via rls_ordini_shop con filtro canale_origine=SHOP.';
+      rollback:
+        - sql:
+            sql: |
+              DROP POLICY IF EXISTS rls_ordini_cliente_ownership
+                  ON vendite.ordini;
+
+              CREATE POLICY rls_ordini_cliente_ownership
+                  ON vendite.ordini
+                  AS PERMISSIVE
+                  FOR SELECT
+                  USING (
+                      current_setting('app.ruolo_applicativo', true)
+                          IN ('CLIENTE_PORTALE', 'SHOP_CUSTOMER')
+                      AND script.fn_scope_cliente_ownership(
+                              NULLIF(current_setting('app.current_identita_id', true), '')::bigint,
+                              soggetto_ruolo_id
+                          )
+                  );
+
+  - changeSet:
+      id: 20260420-08-03-split-policy-fatture-ba-ownership-portale
+      author: mctit
+      comment: >
+        Ricrea rls_fatture_ba_ownership limitata a CLIENTE_PORTALE.
+        SHOP_CUSTOMER non deve mai vedere fatture B2B (vede solo
+        shop.ricevute). Rimuove quindi SHOP_CUSTOMER dal gate.
+        DRY-RUN: no ENABLE/FORCE.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: fatture
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*)
+                    FROM pg_policies
+                   WHERE schemaname = 'vendite'
+                     AND tablename  = 'fatture'
+                     AND policyname = 'rls_fatture_ba_ownership';
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP POLICY IF EXISTS rls_fatture_ba_ownership
+                  ON vendite.fatture;
+
+              CREATE POLICY rls_fatture_ba_ownership
+                  ON vendite.fatture
+                  AS PERMISSIVE
+                  FOR SELECT
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'CLIENTE_PORTALE'
+                      AND script.fn_scope_ba_ownership(
+                              NULLIF(current_setting('app.current_identita_id', true), '')::bigint,
+                              billing_account_id
+                          )
+                  );
+
+              COMMENT ON POLICY rls_fatture_ba_ownership
+                  ON vendite.fatture IS
+                  'RLS dry-run: CLIENTE_PORTALE vede le fatture B2B dei propri BA '
+                  '(nessun filtro canale). SHOP_CUSTOMER non vede mai vendite.fatture '
+                  '(per lui ci sono solo shop.ricevute).';
+      rollback:
+        - sql:
+            sql: |
+              DROP POLICY IF EXISTS rls_fatture_ba_ownership
+                  ON vendite.fatture;
+
+              CREATE POLICY rls_fatture_ba_ownership
+                  ON vendite.fatture
+                  AS PERMISSIVE
+                  FOR SELECT
+                  USING (
+                      current_setting('app.ruolo_applicativo', true)
+                          IN ('CLIENTE_PORTALE', 'SHOP_CUSTOMER')
+                      AND script.fn_scope_ba_ownership(
+                              NULLIF(current_setting('app.current_identita_id', true), '')::bigint,
+                              billing_account_id
+                          )
+                  );
+
+  - changeSet:
+      id: 20260420-08-04-split-policy-fatture-scadenze-ba-ownership-portale
+      author: mctit
+      comment: >
+        Ricrea rls_fatture_scadenze_ba_ownership limitata a CLIENTE_PORTALE.
+        Le scadenze fatture ereditano il perimetro B2B delle fatture:
+        SHOP_CUSTOMER non deve vederle.
+        DRY-RUN: no ENABLE/FORCE.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: fatture_scadenze
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*)
+                    FROM pg_policies
+                   WHERE schemaname = 'vendite'
+                     AND tablename  = 'fatture_scadenze'
+                     AND policyname = 'rls_fatture_scadenze_ba_ownership';
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP POLICY IF EXISTS rls_fatture_scadenze_ba_ownership
+                  ON vendite.fatture_scadenze;
+
+              CREATE POLICY rls_fatture_scadenze_ba_ownership
+                  ON vendite.fatture_scadenze
+                  AS PERMISSIVE
+                  FOR SELECT
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'CLIENTE_PORTALE'
+                      AND script.fn_scope_ba_ownership_via_fattura(
+                              NULLIF(current_setting('app.current_identita_id', true), '')::bigint,
+                              fattura_id
+                          )
+                  );
+
+              COMMENT ON POLICY rls_fatture_scadenze_ba_ownership
+                  ON vendite.fatture_scadenze IS
+                  'RLS dry-run: CLIENTE_PORTALE vede le scadenze delle proprie '
+                  'fatture B2B (via fn_scope_ba_ownership_via_fattura). '
+                  'SHOP_CUSTOMER non vede mai scadenze (solo ricevute shop).';
+      rollback:
+        - sql:
+            sql: |
+              DROP POLICY IF EXISTS rls_fatture_scadenze_ba_ownership
+                  ON vendite.fatture_scadenze;
+
+              CREATE POLICY rls_fatture_scadenze_ba_ownership
+                  ON vendite.fatture_scadenze
+                  AS PERMISSIVE
+                  FOR SELECT
+                  USING (
+                      current_setting('app.ruolo_applicativo', true)
+                          IN ('CLIENTE_PORTALE', 'SHOP_CUSTOMER')
+                      AND script.fn_scope_ba_ownership_via_fattura(
+                              NULLIF(current_setting('app.current_identita_id', true), '')::bigint,
+                              fattura_id
+                          )
+                  );
