@@ -223,15 +223,15 @@ Schema futuro: `shop.ordini` (o riuso di `vendite.ordini` con
 
 Le 6 policy dormienti di PR1.5 vanno adeguate al nuovo modello:
 
-| # | Policy | Cambio |
-| --- | --- | --- |
-| 10 | `rls_fatture_ba_ownership` | nessun cambio USING — portale vede tutto (caso 2) |
-| 11 | `rls_fatture_ef_whitelist` | nessun cambio |
-| 12 | `rls_ordini_cliente_ownership` | split in 2: `rls_ordini_portale` (no filtro canale) + `rls_ordini_shop` (filtro `canale_origine='SHOP'`) |
-| 13 | `rls_fatture_scadenze_ba_ownership` | nessun cambio |
-| 14 | `rls_acquisti_ordini_fornitore_ownership` | nessun cambio |
-| 15 | `rls_acquisti_ddt_fornitore_ownership` | nessun cambio |
-| 16 | `rls_billing_account_self_ownership` | split in 2: `rls_ba_portale` (no filtro canale) + `rls_ba_shop` (filtro `canale_origine='SHOP'`) |
+| #   | Policy                                    | Cambio                                                                                                   |
+| --- | ----------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| 10  | `rls_fatture_ba_ownership`                | nessun cambio USING — portale vede tutto (caso 2)                                                        |
+| 11  | `rls_fatture_ef_whitelist`                | nessun cambio                                                                                            |
+| 12  | `rls_ordini_cliente_ownership`            | split in 2: `rls_ordini_portale` (no filtro canale) + `rls_ordini_shop` (filtro `canale_origine='SHOP'`) |
+| 13  | `rls_fatture_scadenze_ba_ownership`       | nessun cambio                                                                                            |
+| 14  | `rls_acquisti_ordini_fornitore_ownership` | nessun cambio                                                                                            |
+| 15  | `rls_acquisti_ddt_fornitore_ownership`    | nessun cambio                                                                                            |
+| 16  | `rls_billing_account_self_ownership`      | split in 2: `rls_ba_portale` (no filtro canale) + `rls_ba_shop` (filtro `canale_origine='SHOP'`)         |
 
 **Nuova policy per `shop.ricevute`** (`20260420-17`):
 
@@ -583,43 +583,37 @@ Non rivelare quali vesti esistono (security — enumerazione).
 
 ## 6. Rischi identificati
 
-| Rischio | Probabilita' | Mitigazione |
-| --- | --- | --- |
-| JWT esistenti senza claim `identita_id` dopo deploy | Media | Grace period: authentication class tollera JWT legacy per N giorni, popola identita da `auth_user_id` 1:1 (dato pre-cambio). Scade con il refresh. |
-| Test BE che assumono 1:1 user↔identita falliscono | Alta | Grep dei test prima di merge, aggiornare fixture |
-| Login operatore regredisce dopo split namespace | Alta | Smoke test `/api/admin/token/` in CI |
-| RLS policy dormienti non coprono `shop.ricevute` | Bassa | Policy creata dry-run nella stessa migration della tabella |
-| `fn_is_super_admin(auth_user_id)` si confonde se user ha piu' vesti | Alta | Aggiungere filtro `ruolo_applicativo='OPERATORE'` esplicito nella fn |
-| Popolamento GUC fallisce silenziosamente | Media | Middleware verifica tripla popolata con `SHOW app.*`; fail 401 se incompleta |
+| Rischio                                                             | Probabilita' | Mitigazione                                                                                                                                        |
+| ------------------------------------------------------------------- | ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| JWT esistenti senza claim `identita_id` dopo deploy                 | Media        | Grace period: authentication class tollera JWT legacy per N giorni, popola identita da `auth_user_id` 1:1 (dato pre-cambio). Scade con il refresh. |
+| Test BE che assumono 1:1 user↔identita falliscono                   | Alta         | Grep dei test prima di merge, aggiornare fixture                                                                                                   |
+| Login operatore regredisce dopo split namespace                     | Alta         | Smoke test `/api/admin/token/` in CI                                                                                                               |
+| RLS policy dormienti non coprono `shop.ricevute`                    | Bassa        | Policy creata dry-run nella stessa migration della tabella                                                                                         |
+| `fn_is_super_admin(auth_user_id)` si confonde se user ha piu' vesti | Alta         | Aggiungere filtro `ruolo_applicativo='OPERATORE'` esplicito nella fn                                                                               |
+| Popolamento GUC fallisce silenziosamente                            | Media        | Middleware verifica tripla popolata con `SHOW app.*`; fail 401 se incompleta                                                                       |
 
 ---
 
-## 7. Checklist pre-merge
+## 7. Checklist pre-merge DB
+
+> Le checklist BE/FE sono consolidate nel §8 come task list per sub-PR
+> (§8.3 PR-B1, §8.4 PR-B2, §8.5 PR-B3, §8.6 PR-B4) + changelog in §8.9.
 
 ### 7.1 DB
 
-* [ ] 11 migration numerate correttamente (`20260420-01..50`)
-* [ ] pgTAP aggiornato per nuovi vincoli (almeno 5 casi: unicita', immutabilita' canale, OR sync, ruolo-aware scope, fail-closed GUC)
-* [ ] Doc manual aggiornata per `identita_digitali`, `billing_account`, `shop.ricevute`, `fn_scope_ba_ownership`, `fn_sync_auth_user_is_active`
-* [ ] WIP `sviluppo-multi-face-auth.md` aggiornato con stato fasi
+* [x] 11 migration numerate correttamente (`20260420-01..11`)
+* [x] pgTAP aggiornato per nuovi vincoli (almeno 5 casi: unicita', immutabilita' canale, OR sync, ruolo-aware scope, fail-closed GUC)
+* [x] Doc manual aggiornata per `identita_digitali`, `billing_account`, `shop.ricevute`, `fn_scope_ba_ownership`, `fn_sync_auth_user_is_active`
+* [x] WIP `sviluppo-multi-face-auth.md` aggiornato con stato fasi
 
-### 7.2 Backend
-
-* [ ] 3 endpoint token namespace-discriminati operativi
-* [ ] JWT contiene claim `identita_id`
-* [ ] `JwtAuditAuthentication` popola tripla GUC con invariante tutto-o-niente
-* [ ] `/me/` restituisce solo identita del JWT corrente
-* [ ] `InvitoPortaleService` gestisce caso email esistente (no duplicazione auth_user)
-* [ ] Stub endpoint `activate-shop` e `check-email` creati
-* [ ] Test BE aggiornati per modello 1:N user/identita
-
-### 7.3 Frontend
-
-* [ ] Login con switch canale 3 opzioni
-* [ ] Store Pinia gestisce `identita_id` + `ruolo_applicativo`
-* [ ] Routing guard su namespace corretti
-* [ ] Pulsante "Attiva accesso shop" nel profilo portale
-* [ ] Gestione errore 403 `E_VESTE_NON_ATTIVA` generico (no enum)
+Aggiunte
+2 codici errore aggiunti a messaggi_errore.csv (E_CANALE_ORIGINE_IMMUTABILE 385, E_SHOP_RICEVUTA_BA_CANALE_INVALIDO 386)
+Guide aggiornate (potrebbero essere in §7.2/§7.3, ma oggi non c'è una voce dedicata):
+architettura-multi-face-auth v2.0
+architettura-permessi-e-autorizzazioni §6/§9.2/§10/§13
+Nuova contratto-guc-app.md (PRD GUC per BE — dovrebbe essere in §7.2 checklist BE perché è il contratto che il BE implementa)
+pgTAP aggiornato PR1.5 test-rls-policies-structure.sql (test 4 e 28 post-split)
+Mappa concentrica aggiornata (non la terrei in §7.1, più logica come cross-tutte)
 
 ---
 
@@ -631,12 +625,12 @@ Non rivelare quali vesti esistono (security — enumerazione).
 
 ### 8.1 Decisioni Q1–Q4 chiuse
 
-| Domanda | Scelta | Motivo |
-| --- | --- | --- |
-| **Q1 — Grace period JWT** | 0 giorni | Ambiente dev, nessun costo di rollover; codice pulito da subito, no rami compat. |
-| **Q2 — Rename endpoint login** | `/api/v1/auth/token/` → `/api/v1/admin/token/` (breaking, no alias) | Coerenza con `/portale/` e `/shop/`, debito tecnico zero. |
-| **Q3 — Ordine BE/FE** | Sequenziale (BE prima, FE dopo) | Solo developer (Tid) — meno context switching, contract BE stabile prima di toccare UI. |
-| **Q4 — Spezzare PR-B** | Sì, 4 sub-PR | Blast radius contenuto, rollback chirurgico, smoke isolato per feature. |
+| Domanda                        | Scelta                                                              | Motivo                                                                                  |
+| ------------------------------ | ------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| **Q1 — Grace period JWT**      | 0 giorni                                                            | Ambiente dev, nessun costo di rollover; codice pulito da subito, no rami compat.        |
+| **Q2 — Rename endpoint login** | `/api/v1/auth/token/` → `/api/v1/admin/token/` (breaking, no alias) | Coerenza con `/portale/` e `/shop/`, debito tecnico zero.                               |
+| **Q3 — Ordine BE/FE**          | Sequenziale (BE prima, FE dopo)                                     | Solo developer (Tid) — meno context switching, contract BE stabile prima di toccare UI. |
+| **Q4 — Spezzare PR-B**         | Sì, 4 sub-PR                                                        | Blast radius contenuto, rollback chirurgico, smoke isolato per feature.                 |
 
 ### 8.2 Prerequisito soddisfatto
 
@@ -800,12 +794,12 @@ DB 20260420-01..11 (merged)
 
 ### 8.8 Rischi specifici sprint
 
-| Rischio | Mitigazione |
-| --- | --- |
+| Rischio                                                            | Mitigazione                                                                           |
+| ------------------------------------------------------------------ | ------------------------------------------------------------------------------------- |
 | Rename `/auth/token/` → `/admin/token/` rompe smoke bash esistenti | Grep `backend/scripts/` + aggiornare tutti gli smoke-test-*.sh prima del commit PR-B1 |
-| Test Django fixture con identita 1:1 rompono in blocco | PR-B1 8.3.8 codemod sistematico, non lasciare test rossi tra sub-PR |
-| FE store `auth.js` post-rename perde sessioni correnti | Accettabile: dev-only, tutti fanno logout/login dopo merge PR-B1 |
-| Stub 501 portale/shop confonde lo smoke e2e | Documentare chiaramente in `api.md` quali endpoint sono ancora in PR-C |
+| Test Django fixture con identita 1:1 rompono in blocco             | PR-B1 8.3.8 codemod sistematico, non lasciare test rossi tra sub-PR                   |
+| FE store `auth.js` post-rename perde sessioni correnti             | Accettabile: dev-only, tutti fanno logout/login dopo merge PR-B1                      |
+| Stub 501 portale/shop confonde lo smoke e2e                        | Documentare chiaramente in `api.md` quali endpoint sono ancora in PR-C                |
 
 ### 8.9 Changelog sprint (da aggiornare incrementalmente)
 
