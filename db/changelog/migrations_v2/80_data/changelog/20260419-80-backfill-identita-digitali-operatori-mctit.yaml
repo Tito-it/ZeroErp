@@ -54,9 +54,16 @@ databaseChangeLog:
               schemaName: anagrafiche
               tableName: identita_digitali
               columnName: tentativi_falliti
+          # Post-cutover §13.3.2 (migration -91 in 20_code): la tabella RUA
+          # e' stata rinominata in _legacy_risorse_umane_auth_user e il
+          # nome originale risorse_umane_auth_user e' ora una VIEW. Questo
+          # backfill legge direttamente dalla tabella legacy (source of
+          # truth dei dati pre-cutover). L'ordine globale master-v2 applica
+          # 20_code prima di 80_data, quindi in CI vergine _legacy_
+          # esiste gia' come TABLE con 0 righe (backfill = no-op).
           - tableExists:
               schemaName: anagrafiche
-              tableName: risorse_umane_auth_user
+              tableName: _legacy_risorse_umane_auth_user
       changes:
         - sql:
             splitStatements: false
@@ -92,7 +99,7 @@ databaseChangeLog:
                      rau.bloccato_fino_a,
                      COALESCE(rau.totp_obbligatorio, false),
                      COALESCE(rau.storicizza, true)
-                FROM anagrafiche.risorse_umane_auth_user rau
+                FROM anagrafiche._legacy_risorse_umane_auth_user rau
                 JOIN anagrafiche.risorse_umane ru
                   ON ru.id = rau.risorsa_umana_id
                WHERE NOT EXISTS (
@@ -121,6 +128,6 @@ databaseChangeLog:
               DELETE FROM anagrafiche.identita_digitali id
                WHERE id.ruolo_applicativo = 'OPERATORE'
                  AND EXISTS (
-                     SELECT 1 FROM anagrafiche.risorse_umane_auth_user rau
+                     SELECT 1 FROM anagrafiche._legacy_risorse_umane_auth_user rau
                       WHERE rau.auth_user_id = id.auth_user_id
                  );
