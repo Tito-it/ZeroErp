@@ -655,14 +655,19 @@ user↔identita. Niente feature business qui — solo fondamenta.
 
 **Task list:**
 
-* [ ] 8.3.1 Rename `/api/v1/auth/token/` → `/api/v1/admin/token/` + update smoke + grep FE (breaking, zero alias)
-* [ ] 8.3.2 Nuovo serializer `MultiVesteTokenSerializer`: post-autenticazione cerca identita per `ruolo_applicativo` del namespace, aggiunge claim `identita_id` + `ruolo_applicativo` al JWT
-* [ ] 8.3.3 Nuove view `AdminTokenView`, `PortaleTokenView`, `ShopTokenView` (stub): filtrano identita per `ruolo_applicativo IN (...)`, 403 `E_VESTE_NON_ATTIVA` se assente
-* [ ] 8.3.4 `JwtAuditAuthentication.authenticate()`: legge `identita_id` dal token, verifica identita attiva, popola 3 GUC in singola query CTE, fail 401 su step mancante
-* [ ] 8.3.5 Refresh token preserva claim custom (verificare SimpleJWT config)
-* [ ] 8.3.6 `/me/` restituisce solo identita del JWT corrente
-* [ ] 8.3.7 `PermissionResolver.is_super_admin` aggiunge filtro `ruolo_applicativo='OPERATORE'` in query
-* [ ] 8.3.8 Grep test `identita_digitali` — aggiornare assumption 1:1
+* [x] 8.3.1 Rename `/api/v1/auth/token/` → `/api/v1/admin/token/` + update smoke + grep FE (breaking, zero alias)
+* [x] 8.3.2 Nuovo serializer `MultiVesteTokenSerializer`: post-autenticazione cerca identita per `ruolo_applicativo` del namespace, aggiunge claim `identita_id` + `ruolo_applicativo` al JWT
+* [x] 8.3.3 Nuove view `AdminTokenView`, `PortaleTokenView`, `ShopTokenView` (stub): filtrano identita per `ruolo_applicativo IN (...)`, 403 `E_VESTE_NON_ATTIVA` se assente
+* [x] 8.3.4 `JwtAuditAuthentication.authenticate()`: legge `identita_id` dal token, verifica identita attiva, popola 3 GUC in singola query CTE, fail 401 su step mancante
+* [x] 8.3.5 Refresh token preserva claim custom (verificare SimpleJWT config).
+  Sub-task: aggiungere guard opzionale sulla view refresh che verifica che
+  il `ruolo_applicativo` nel refresh token sia coerente con il namespace
+  del path (oggi tutte e 3 le route refresh puntano allo stesso
+  `AuditTokenRefreshView` senza check — non c'e' escalation perche' il
+  claim veste viene dal token stesso, ma e' rumore semantico da chiudere).
+* [x] 8.3.6 `/me/` restituisce solo identita del JWT corrente
+* [x] 8.3.7 `PermissionResolver.is_super_admin` aggiunge filtro `ruolo_applicativo='OPERATORE'` in query
+* [x] 8.3.8 Grep test `identita_digitali` — aggiornare assumption 1:1
 * [ ] 8.3.9 Run `./manage-test.sh` verde (1533 baseline + aggiornamenti mirati)
 
 **Gate uscita:**
@@ -689,7 +694,16 @@ e preparare gli stub endpoint shop che verranno riempiti in PR-C.
 
 **Task list:**
 
-* [ ] 8.4.1 `InvitoPortaleService._ensure_auth_user` distingue email nuova (crea user + identita attivo=true + token `INVITO_PORTALE`) da esistente (SOLO identita attivo=false + token `ATTIVAZIONE_PORTALE_CROSS`, niente password)
+* [ ] 8.4.1 `InvitoPortaleService._ensure_auth_user` distingue email nuova (crea user + identita attivo=true + token `INVITO_PORTALE`) da esistente (SOLO identita attivo=false + token `ATTIVAZIONE_PORTALE_CROSS`, niente password).
+  Sub-task debito 1:1 (emerso da §8.3.8): quando si tocca il service,
+  aggiornare anche `AuthRepository.get_deve_cambiare_password`,
+  `set_invito_inviato_at`, `set_deve_cambiare_password` — oggi fanno
+  query `WHERE auth_user_id=%s AND attivo=true LIMIT 1` (assumption
+  1:1) e col modello 1:N restituiscono/aggiornano un'identita
+  arbitraria. Non critico (flag UX), ma va aggiunto parametro
+  `identita_id` per puntare la veste specifica del flusso corrente
+  (pattern gia' usato in `set_jwt_gucs` §8.3.4 e
+  `get_identita_dettaglio` §8.3.6).
 * [ ] 8.4.2 Endpoint `AttivazionePortaleView` gestisce 2 token types: `INVITO_PORTALE` (setta password + attiva) vs `ATTIVAZIONE_PORTALE_CROSS` (solo attiva identita, no password)
 * [ ] 8.4.3 Stub `POST /api/v1/portale/profile/activate-shop/` (restituisce 501 Not Implemented con hint PR-C)
 * [ ] 8.4.4 Stub `GET /api/v1/shop/activate/<token>/` (501)

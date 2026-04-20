@@ -20,7 +20,14 @@ from django.urls import include, path
 from django.views.generic import RedirectView
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 from rest_framework.permissions import AllowAny
-from apps.core.api.auth_views import AuditTokenObtainPairView, AuditTokenRefreshView
+from apps.core.api.auth_views import (
+    AdminTokenRefreshView,
+    AdminTokenView,
+    PortaleTokenRefreshView,
+    PortaleTokenView,
+    ShopTokenRefreshView,
+    ShopTokenView,
+)
 from apps.core.api.change_password_view import ChangePasswordView
 from apps.core.api.logout_view import LogoutView
 from apps.core.api.attivazione_view import AttivazioneValidateView, AttivazioneView
@@ -52,14 +59,34 @@ urlpatterns = [
         name="api-docs",
     ),
     path(
-        "api/v1/auth/token/",
-        AuditTokenObtainPairView.as_view(permission_classes=[AllowAny]),
-        name="token-obtain-pair",
+        "api/v1/admin/token/",
+        AdminTokenView.as_view(permission_classes=[AllowAny]),
+        name="admin-token-obtain-pair",
     ),
     path(
-        "api/v1/auth/token/refresh/",
-        AuditTokenRefreshView.as_view(permission_classes=[AllowAny]),
-        name="token-refresh",
+        "api/v1/admin/token/refresh/",
+        AdminTokenRefreshView.as_view(permission_classes=[AllowAny]),
+        name="admin-token-refresh",
+    ),
+    path(
+        "api/v1/portale/token/",
+        PortaleTokenView.as_view(permission_classes=[AllowAny]),
+        name="portale-token-obtain-pair",
+    ),
+    path(
+        "api/v1/portale/token/refresh/",
+        PortaleTokenRefreshView.as_view(permission_classes=[AllowAny]),
+        name="portale-token-refresh",
+    ),
+    path(
+        "api/v1/shop/token/",
+        ShopTokenView.as_view(permission_classes=[AllowAny]),
+        name="shop-token-obtain-pair",
+    ),
+    path(
+        "api/v1/shop/token/refresh/",
+        ShopTokenRefreshView.as_view(permission_classes=[AllowAny]),
+        name="shop-token-refresh",
     ),
     path(
         "api/v1/auth/logout/",

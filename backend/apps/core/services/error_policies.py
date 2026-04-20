@@ -451,6 +451,24 @@ class ErrorPolicyRegistry:
             ui_action="show_error_banner",
             user_message="Il reparto non ha ancora un profilo permessi configurato.",
         ),
+        "E_VESTE_NON_ATTIVA": ErrorPolicy(
+            code="E_VESTE_NON_ATTIVA",
+            http_status=403,
+            ui_action="show_error_banner",
+            user_message="Non hai accesso a questo canale.",
+        ),
+        "E_JWT_SENZA_IDENTITA": ErrorPolicy(
+            code="E_JWT_SENZA_IDENTITA",
+            http_status=401,
+            ui_action="redirect_login",
+            user_message="Sessione scaduta: effettua nuovamente l'accesso.",
+        ),
+        "E_IDENTITA_NON_ATTIVA": ErrorPolicy(
+            code="E_IDENTITA_NON_ATTIVA",
+            http_status=401,
+            ui_action="redirect_login",
+            user_message="Sessione non piu' valida: effettua nuovamente l'accesso.",
+        ),
         # ── Sessioni utente ──
         "E_LOGOUT_NO_TOKEN": ErrorPolicy(
             code="E_LOGOUT_NO_TOKEN",

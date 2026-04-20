@@ -34,7 +34,7 @@
       "Bash(DJANGO_SETTINGS_MODULE=zeroerp_backend.settings python -c \"import django; django.setup\\(\\); import unittest; loader = unittest.TestLoader\\(\\); suite = loader.loadTestsFromName\\(''apps.core.tests.services.test_session_audit_service''\\); runner = unittest.TextTestRunner\\(verbosity=2\\); result = runner.run\\(suite\\); exit\\(0 if result.wasSuccessful\\(\\) else 1\\)\")",
       "Bash(python -m django test apps.core.tests.api.test_sessioni_view -v 2 --settings=zeroerp_backend.settings)",
       "Bash(DJANGO_SETTINGS_MODULE=zeroerp_backend.settings DB_NAME=test DB_USER=test DB_PASSWORD=test DB_HOST=localhost DB_PORT=5432 SECRET_KEY=test-secret-key python -m unittest apps.core.tests.api.test_sessioni_view -v)",
-      "Bash(curl -s http://localhost:8000/api/v1/auth/token/ -H \"Content-Type: application/json\" -d '{\"\"username\"\":\"\"tid\"\",\"\"password\"\":\"\"tid\"\"}')",
+      "Bash(curl -s http://localhost:8000/api/v1/admin/token/ -H \"Content-Type: application/json\" -d '{\"\"username\"\":\"\"tid\"\",\"\"password\"\":\"\"tid\"\"}')",
       "Bash(find /home/tid/software/ZeroErp/docs/it/dbzero/anagrafiche -name *vw_* -o -name *vista*)",
       "Bash(grep -l \"fn_log_and_raise_error\\\\|fn_log_error_only\" /home/tid/software/ZeroErp/db/changelog/migrations_v2/20_code/pratiche/*.yaml)",
       "Bash(find /home/tid/apps/ZeroErp/db/changelog -name *tipi* -o -name *ruoli*)",

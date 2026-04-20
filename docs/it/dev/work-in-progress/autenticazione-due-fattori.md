@@ -87,14 +87,14 @@ Responsabilita':
 
 - [ ] 4.5 — Modificare flusso login (login a due step):
 
-Step 1 — `POST /api/v1/auth/token/` (esistente, modificato):
+Step 1 — `POST /api/v1/admin/token/` (esistente, modificato):
   - Login username+password come ora
   - Se 2FA abilitato → NON rilascia token JWT definitivo
   - Risposta: `{ two_factor_required: true, two_factor_token: "<token_temporaneo>" }`
   - Il `two_factor_token` e' un token firmato (Django signing) con scadenza 5 minuti
     contenente `auth_user_id` — NON e' un JWT
 
-Step 2 — `POST /api/v1/auth/token/2fa-verify/` (nuovo):
+Step 2 — `POST /api/v1/admin/token/2fa-verify/` (nuovo):
   - Input: `{ two_factor_token, code }`
   - Verifica firma e scadenza del token temporaneo
   - Verifica codice TOTP via `TotpService.verify()`

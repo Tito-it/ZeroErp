@@ -131,22 +131,22 @@ class AuthViewTests(TestCase):
     @patch(f"{_AUTH_REPO}.registra_tentativo_login", return_value={"bloccato": False})
     @patch(f"{_AUTH_REPO}.check_blocco_login")
     def test_login_adds_password_change_flag(self, mock_blocco, mock_tentativo, mock_flag):
-        from apps.core.api.auth_views import AuditTokenObtainPairView
+        from apps.core.api.auth_views import AdminTokenView
 
-        view = AuditTokenObtainPairView()
+        view = AdminTokenView()
         # Simula response di successo dal parent
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.data = {"access": "xxx", "refresh": "yyy"}
 
-        with patch.object(AuditTokenObtainPairView, '_find_user') as mock_find:
+        with patch.object(AdminTokenView, '_find_user') as mock_find:
             mock_user = MagicMock()
             mock_user.id = 42
             mock_find.return_value = mock_user
 
             with patch('apps.core.api.auth_views.TokenObtainPairView.post', return_value=mock_response):
                 with patch('apps.core.api.auth_views.session_audit_service'):
-                    with patch.object(AuditTokenObtainPairView, '_extract_claims', return_value=(42, "sid-123")):
+                    with patch.object(AdminTokenView, '_extract_claims', return_value=(42, "sid-123")):
                         request = MagicMock()
                         request.data = {"username": "test"}
                         result = view.post(request)
@@ -158,21 +158,21 @@ class AuthViewTests(TestCase):
     @patch(f"{_AUTH_REPO}.registra_tentativo_login", return_value={"bloccato": False})
     @patch(f"{_AUTH_REPO}.check_blocco_login")
     def test_login_no_flag_when_not_required(self, mock_blocco, mock_tentativo, mock_flag):
-        from apps.core.api.auth_views import AuditTokenObtainPairView
+        from apps.core.api.auth_views import AdminTokenView
 
-        view = AuditTokenObtainPairView()
+        view = AdminTokenView()
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.data = {"access": "xxx", "refresh": "yyy"}
 
-        with patch.object(AuditTokenObtainPairView, '_find_user') as mock_find:
+        with patch.object(AdminTokenView, '_find_user') as mock_find:
             mock_user = MagicMock()
             mock_user.id = 42
             mock_find.return_value = mock_user
 
             with patch('apps.core.api.auth_views.TokenObtainPairView.post', return_value=mock_response):
                 with patch('apps.core.api.auth_views.session_audit_service'):
-                    with patch.object(AuditTokenObtainPairView, '_extract_claims', return_value=(42, "sid-123")):
+                    with patch.object(AdminTokenView, '_extract_claims', return_value=(42, "sid-123")):
                         request = MagicMock()
                         request.data = {"username": "test"}
                         result = view.post(request)

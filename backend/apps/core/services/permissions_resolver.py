@@ -50,6 +50,18 @@ class PermissionResolver:
         False per utenti senza binding, con identita inattiva o
         finestra temporale scaduta (fail-closed). Sostituisce il check
         legacy `get_ruolo_sistema(user) == "ADMIN"` nei caller.
+
+        §8.3.7 multi-face: la fn DB filtra esplicitamente per
+        `ruolo_applicativo = 'OPERATORE'` (post migration 20260420-*).
+        Un utente con identita CLIENTE_PORTALE / FORNITORE_PORTALE /
+        SHOP_CUSTOMER + binding SUPER_ADMIN sulla stessa auth_user
+        NON attiva il bypass: il privilegio e' legato alla "veste"
+        OPERATORE, non all'auth_user. Enforcement centralizzato lato
+        DB — il wrapper Python non duplica la logica. Il contratto
+        cross-veste e' verificato da pgTAP su
+        `db/pgtap/script/fn_is_super_admin*.sql` (single source of
+        truth): un mock Python non puo' darne prova, ritorna solo
+        quello che gli si passa.
         """
         def _query() -> bool:
             with connection.cursor() as cursor:
@@ -318,11 +330,22 @@ class PermissionResolver:
         """
         def _query() -> bool:
             with connection.cursor() as cursor:
+                # Workaround ambiguita' overload §8.3 (debito DB):
+                # la migration 20260420-11 crea sia la fn a 1 param sia
+                # quella a 2 param con `DEFAULT NULL` per ruolo_applicativo.
+                # Postgres con 1 arg matcha entrambe -> `function is not unique`.
+                # Passiamo esplicitamente 2 arg con NULL::config.ruolo_applicativo
+                # per agganciare univocamente la signature multi-veste
+                # (comportamento identico al legacy: NULL = no filtro veste).
+                # TODO(DB dev/db-tid): droppare la fn a 1 param e rimuovere
+                # questo workaround.
                 cursor.execute(
                     """
                     SELECT EXISTS(
                         SELECT 1
-                          FROM script.fn_get_profili_accesso_applicabili(%s) prof
+                          FROM script.fn_get_profili_accesso_applicabili(
+                                   %s, NULL::config.ruolo_applicativo
+                               ) prof
                           JOIN config.profili_accesso_aree paa
                             ON paa.profilo_accesso_id = prof.profilo_accesso_id
                           JOIN config.aree_funzionali af

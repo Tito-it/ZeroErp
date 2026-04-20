@@ -13,6 +13,8 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Sequence
+from typing import Any
 
 from django.db import connection
 
@@ -109,6 +111,83 @@ class AuthRepository:
         with connection.cursor() as cursor:
             cursor.execute(sql, [auth_user_id])
             return cursor.rowcount > 0
+
+    # Scopo: Risolve la prima identita digitale attiva dell'utente il cui
+    # ruolo_applicativo rientra nei ruoli ammessi dal namespace chiamante
+    # (es. ("OPERATORE",) per /admin/token/, ("CLIENTE_PORTALE",
+    # "FORNITORE_PORTALE") per /portale/token/).
+    # Post modello 1:N: un auth_user puo' avere piu' identita attive con
+    # ruoli_applicativi diversi; questo helper scopre quale "veste" il
+    # namespace sta richiedendo e ritorna solo quella.
+    # Ritorna None se l'utente non ha alcuna identita attiva per i ruoli
+    # richiesti (la view tradurra' in 403 E_VESTE_NON_ATTIVA).
+    #
+    # Invariante: per un singolo (auth_user_id, namespace) il risultato e'
+    # atteso UNIVOCO. Il modello multi-face assegna un auth_user dedicato
+    # per ogni identita, quindi la probabilita' di collisione e' bassa.
+    # `ORDER BY id LIMIT 1` garantisce deterministicita' (la piu' vecchia)
+    # se dovessero comunque coesistere piu' identita attive con ruoli in
+    # `ruoli_applicativi` diversi — stato da considerarsi anomalo.
+    def find_identita_attiva_for_ruoli(
+        self,
+        auth_user_id: int,
+        ruoli_applicativi: Sequence[str],
+    ) -> dict[str, Any] | None:
+        # Short-circuit: senza ruoli ammessi non esiste veste valida;
+        # ritorna None senza toccare il DB (evita anche `ANY(ARRAY[]::text[])`
+        # che richiederebbe cast esplicito sull'enum Postgres).
+        if not ruoli_applicativi:
+            return None
+        sql = """
+            SELECT id,
+                   soggetto_ruolo_id,
+                   ruolo_applicativo::text AS ruolo_applicativo
+              FROM anagrafiche.identita_digitali
+             WHERE auth_user_id = %s
+               AND attivo = true
+               AND ruolo_applicativo::text = ANY(%s)
+             ORDER BY id
+             LIMIT 1
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [auth_user_id, list(ruoli_applicativi)])
+            row = cursor.fetchone()
+            if not row:
+                return None
+            cols = [c.name for c in cursor.description or []]
+            return dict(zip(cols, row))
+
+    # Scopo: Ritorna i dettagli di una singola identita digitale per
+    # l'auth_user specificato. Post modello 1:N: /me/ (§8.3.6) usa questo
+    # helper per esporre solo la "veste" del JWT corrente invece di
+    # risolvere ambiguamente una delle N identita attive dell'utente.
+    # Il filtro auth_user_id e' guard anti-tampering (defense-in-depth):
+    # se un client passasse un identita_id altrui (non ha senso con JWT
+    # firmato, ma comunque) non riceverebbe dati di altri utenti.
+    def get_identita_dettaglio(
+        self, identita_id: int, auth_user_id: int
+    ) -> dict[str, Any] | None:
+        # NB: auth_user_id non viene ritornato nel dict (e' gia' esposto
+        # altrove nel /me/ via `profile.utente.auth_user_id`); filtra
+        # solo come guard anti-tampering.
+        sql = """
+            SELECT id,
+                   soggetto_ruolo_id,
+                   ruolo_applicativo::text AS ruolo_applicativo,
+                   attivo,
+                   valido_dal,
+                   valido_al,
+                   invito_inviato_at
+              FROM anagrafiche.identita_digitali
+             WHERE id = %s AND auth_user_id = %s
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [identita_id, auth_user_id])
+            row = cursor.fetchone()
+            if not row:
+                return None
+            cols = [c.name for c in cursor.description or []]
+            return dict(zip(cols, row))
 
     # Scopo: Imposta il flag deve_cambiare_password sull'identita
     # digitale attiva dell'utente (post multi-face §13.4.17).

@@ -92,7 +92,7 @@ class ErrorTranslator:
     def _apply_policy(api_error: ApiError) -> ApiError:
         policy = ErrorPolicyRegistry.resolve(api_error.code)
         expose_technical = getattr(settings, "API_EXPOSE_TECHNICAL_DETAILS", False)
-        is_technical = ErrorTranslator._is_technical_code(api_error.code)
+        is_technical = ErrorTranslator.is_technical_code(api_error.code)
         detail = ErrorTranslator._sanitize_public_detail(api_error)
         # `message` resta sempre business/safe per stabilita` client/UI.
         public_message = policy.user_message if is_technical else (api_error.message or policy.user_message)
@@ -118,7 +118,7 @@ class ErrorTranslator:
     def _sanitize_public_detail(api_error: ApiError) -> str | None:
         # Per errori tecnici non esporre stack SQL/PLpgSQL al client, anche in debug:
         # in debug il dettaglio tecnico va in `technical_message`.
-        if ErrorTranslator._is_technical_code(api_error.code):
+        if ErrorTranslator.is_technical_code(api_error.code):
             request_id = get_request_id()
             if request_id:
                 return f"Dettaglio tecnico non esposto. Usa request_id={request_id} per supporto."
@@ -128,7 +128,7 @@ class ErrorTranslator:
 
     # Scopo: Determina se il codice errore appartiene alla categoria tecnica/non funzionale.
     @staticmethod
-    def _is_technical_code(code: str) -> bool:
+    def is_technical_code(code: str) -> bool:
         return code in {"E_PIPELINE", "E_DATABASE", "E_GENERICO"}
 
     # Scopo: Converte eccezioni DB in ApiError coerente con il contratto errori core.

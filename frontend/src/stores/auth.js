@@ -68,7 +68,7 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   async function login(username, password) {
-    const response = await api.post('/auth/token/', { username, password })
+    const response = await api.post('/admin/token/', { username, password })
     setTokens(response.data.access, response.data.refresh)
     // Controlla flag cambio password dal backend
     passwordChangeRequired.value = !!response.data.password_change_required
@@ -83,7 +83,7 @@ export const useAuthStore = defineStore('auth', () => {
   async function tryRefreshToken() {
     if (!refreshToken.value) return false
     try {
-      const response = await api.post('/auth/token/refresh/', {
+      const response = await api.post('/admin/token/refresh/', {
         refresh: refreshToken.value
       })
       setTokens(response.data.access, refreshToken.value)

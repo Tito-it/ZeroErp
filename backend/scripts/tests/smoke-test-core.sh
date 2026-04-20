@@ -114,7 +114,7 @@ fi
 curl -s -w '\n%{http_code}' \
     -H "Content-Type: application/json" \
     -d "{\"username\":\"$USERNAME\",\"password\":\"$PASSWORD\"}" \
-    "${BASE_URL}/api/v1/auth/token/" > "$TMPFILE" 2>/dev/null
+    "${BASE_URL}/api/v1/admin/token/" > "$TMPFILE" 2>/dev/null
 
 AUTH_STATUS=$(tail -1 "$TMPFILE")
 AUTH_BODY=$(sed '$d' "$TMPFILE")
@@ -150,7 +150,7 @@ REFRESH=$(json_get "$AUTH_BODY" ".refresh")
 curl -s -w '\n%{http_code}' \
     -H "Content-Type: application/json" \
     -d "{\"refresh\":\"$REFRESH\"}" \
-    "${BASE_URL}/api/v1/auth/token/refresh/" > "$TMPFILE" 2>/dev/null
+    "${BASE_URL}/api/v1/admin/token/refresh/" > "$TMPFILE" 2>/dev/null
 LAST_STATUS=$(tail -1 "$TMPFILE")
 LAST_BODY=$(sed '$d' "$TMPFILE")
 check "POST token refresh" 200
@@ -331,7 +331,7 @@ echo "-- 11. Logout --"
 curl -s -w '\n%{http_code}' \
     -H "Content-Type: application/json" \
     -d "{\"username\":\"$USERNAME\",\"password\":\"$PASSWORD\"}" \
-    "${BASE_URL}/api/v1/auth/token/" > "$TMPFILE" 2>/dev/null
+    "${BASE_URL}/api/v1/admin/token/" > "$TMPFILE" 2>/dev/null
 LOGOUT_STATUS=$(tail -1 "$TMPFILE")
 LOGOUT_BODY=$(sed '$d' "$TMPFILE")
 

@@ -22,7 +22,11 @@ class PortaleRepository:
 
     # Scopo: Risolve soggetto_ruolo_id + dati anagrafici di un cliente.
     # Il parametro e' cliente_id = PK di anagrafiche.clienti (coerente con
-    # ClientiDetailView); risale al billing_account e al soggetto tramite join.
+    # ClientiDetailView). Il soggetto_ruolo_id deriva direttamente da
+    # clienti.soggetto_ruolo_id (ruolo CL del cliente, coerente con
+    # il trigger guard_coerenza che pretende tipo CL per CLIENTE_PORTALE):
+    # non si passa da billing_account.soggetto_ruolo_id per non dipendere
+    # dal FK del BA, che semanticamente e' il holder e potrebbe divergere.
     # Ritorna None se il cliente non esiste.
     def get_cliente_info(self, cliente_id: int) -> dict[str, Any] | None:
         sql = """
@@ -36,8 +40,8 @@ class PortaleRepository:
                    s.nome                       AS nome,
                    s.codice_fiscale             AS codice_fiscale
               FROM anagrafiche.clienti cl
+              JOIN anagrafiche.soggetti_ruoli sr  ON sr.id = cl.soggetto_ruolo_id
               JOIN anagrafiche.billing_account ba ON ba.id = cl.billing_account_id
-              JOIN anagrafiche.soggetti_ruoli sr  ON sr.id = ba.soggetto_ruolo_id
               JOIN anagrafiche.soggetti s         ON s.id = sr.soggetto_id
              WHERE cl.id = %s
         """

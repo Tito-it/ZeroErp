@@ -20,6 +20,9 @@ api.interceptors.request.use(config => {
 })
 
 // Interceptor response — token refresh automatico + redirect login
+// Esclude login/refresh per admin|portale|shop: un 401 su queste rotte
+// NON deve riprovare un refresh (loop). Lista estensibile in un unico posto.
+const TOKEN_ENDPOINTS_RE = /\/(admin|portale|shop)\/token\//
 let isRefreshing = false
 let pendingRequests = []
 
@@ -42,7 +45,7 @@ api.interceptors.response.use(
     if (
       error.response?.status !== 401 ||
       originalRequest._retry ||
-      originalRequest.url?.includes('/auth/token/')
+      TOKEN_ENDPOINTS_RE.test(originalRequest.url ?? '')
     ) {
       return Promise.reject(error)
     }
@@ -70,7 +73,7 @@ api.interceptors.response.use(
 
     try {
       const response = await axios.post(
-        `${api.defaults.baseURL}/auth/token/refresh/`,
+        `${api.defaults.baseURL}/admin/token/refresh/`,
         { refresh: refreshToken },
         { headers: { 'Content-Type': 'application/json' } }
       )
