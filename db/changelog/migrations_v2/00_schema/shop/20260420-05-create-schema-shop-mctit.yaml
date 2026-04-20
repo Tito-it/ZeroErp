@@ -1,0 +1,31 @@
+databaseChangeLog:
+  - logicalFilePath: /migrations_v2/00_schema/shop/20260420-05-create-schema-shop-mctit.yaml
+
+  - changeSet:
+      id: 20260420-05-create-schema-shop
+      author: mctit
+      comment: >
+        Crea lo schema shop per il canale B2C self-service autonomo
+        (decisione di dominio 20-04-2026: shop e' canale B2C autonomo,
+        non vetrina del portale B2B). Ospita le entita' specifiche dello
+        shop che non appartengono ne' al dominio vendite (ciclo B2B con
+        fatturazione elettronica) ne' ad anagrafiche (identita/soggetti
+        condivisi con portale).
+        Inizialmente contiene solo shop.ricevute (migration 20260420-06);
+        in futuro potrebbe ospitare shop.ordini_shop, shop.carrelli, ecc.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              CREATE SCHEMA IF NOT EXISTS shop;
+
+              COMMENT ON SCHEMA shop IS
+                  'Canale self-service B2C autonomo (shop online). Ospita '
+                  'ricevute consumer (no fatture elettroniche), ordini shop, '
+                  'carrelli e entita specifiche del canale retail. Separato da '
+                  'vendite (B2B fiscale) e anagrafiche (identita/soggetti '
+                  'condivisi). Decisione 20-04-2026 — guida multi-face §6.4.';
+      rollback:
+        - sql:
+            sql: DROP SCHEMA IF EXISTS shop CASCADE;

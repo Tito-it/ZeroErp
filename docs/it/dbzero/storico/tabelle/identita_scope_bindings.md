@@ -25,5 +25,11 @@
 | ix_identita_scope_bindings_identita_scope_bindings_id_fk | `CREATE INDEX ix_identita_scope_bindings_identita_scope_bindings_id_fk ON storico.identita_scope_bindings USING btree (identita_scope_bindings_id)` |
 | pk_storico_identita_scope_bindings | `CREATE UNIQUE INDEX pk_storico_identita_scope_bindings ON storico.identita_scope_bindings USING btree (id)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_identita_scope_bindings_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_identita_scope_bindings_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+
 ---
 {% include-markdown "signature-core.md" %}

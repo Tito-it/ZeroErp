@@ -22,6 +22,7 @@
 | valuta_id | integer | YES |  |
 | validita | daterange | YES |  |
 | categoria_cliente_id | smallint | NO |  |
+| canale_origine | USER-DEFINED | NO | 'ADMIN'::config.canale_origine |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -55,6 +56,7 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
+| trg_billing_account_a10_canale_origine_immutable_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_canale_origine_immutable()` |
 | trg_billing_account_a10_categorie_clienti_require_attivo_566444 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('anagrafiche', 'categorie_clienti', 'attivo', 'categoria_cliente_id', 'id')` |
 | trg_billing_account_a10_categorie_clienti_require_attivo_566444 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('anagrafiche', 'categorie_clienti', 'attivo', 'categoria_cliente_id', 'id')` |
 | trg_billing_account_a10_gen_codice_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_billing_account_gen_codice()` |
@@ -70,8 +72,8 @@
 | trg_billing_account_guard_normalize_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_billing_account_guard_normalize()` |
 | trg_billing_account_guard_normalize_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_billing_account_guard_normalize()` |
 | trg_billing_account_z90_link_ef_ins | AFTER | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_billing_account_link_ef()` |
-| trg_billing_account_z90_storico_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_storico_generic('billing_account_id')` |
 | trg_billing_account_z90_storico_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_storico_generic('billing_account_id')` |
+| trg_billing_account_z90_storico_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_storico_generic('billing_account_id')` |
 
 ---
 {% include-markdown "signature-core.md" %}

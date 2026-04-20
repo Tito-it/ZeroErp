@@ -16,28 +16,33 @@
 
 ---
 
-> **Evoluzione in corso — Multi-Face Auth (aprile 2026)**
+> **Multi-Face Auth — stato post-cutover (aprile 2026)**
 >
-> Il modello soggetti/ruoli resta il **perno anagrafico** di ZeroErp e non
-> cambia. In sviluppo e' un'estensione che aggiunge un nuovo bridge verso
-> `auth_user` per i ruoli commerciali (CLIENTE, FORNITORE) oltre a RIS_UMANA:
+> Il modello soggetti/ruoli resta il **perno anagrafico** di ZeroErp e
+> non e' cambiato. Dal 19-04-2026 il bridge verso `auth_user` e' stato
+> generalizzato via la nuova tabella
+> [anagrafiche.identita_digitali](/dbzero/anagrafiche/tabelle/identita_digitali),
+> che collega un generico `soggetti_ruoli` a un `auth_user` per 5 ruoli
+> applicativi (OPERATORE, CLIENTE_PORTALE, FORNITORE_PORTALE,
+> SHOP_CUSTOMER, API_CLIENT, piu' lo stato DISABILITATO).
 >
-> * Nuova tabella `anagrafiche.identita_digitali` che collega un generico
->   `soggetti_ruoli` a un `auth_user` (oggi esiste solo
->   `risorse_umane_auth_user` per i dipendenti)
-> * Un soggetto PG (cliente azienda, fornitore azienda) potra' avere un account
->   di accesso a un portale: il vincolo "persona fisica pura" si sposta sul
->   solo ruolo RIS_UMANA
-> * Nessuna modifica a `soggetti`, `soggetti_ruoli`, `tipi_ruoli` o alle
->   tabelle specializzate (clienti, fornitori, ecc.)
+> * Un soggetto PG (cliente azienda, fornitore azienda) puo' avere
+>   un account di accesso ad un portale: il vincolo "persona fisica
+>   pura" si applica solo al ruolo applicativo OPERATORE.
+> * La ex tabella bridge `risorse_umane_auth_user` e' ora una **vista
+>   read-only** di compatibilita' che legge da `identita_digitali`
+>   filtrando `ruolo_applicativo = 'OPERATORE'` (cutover §13.3.2).
+>   La tabella originale e' stata archiviata come
+>   `_legacy_risorse_umane_auth_user`.
+> * Nessuna modifica a `soggetti`, `soggetti_ruoli`, `tipi_ruoli` o
+>   alle tabelle specializzate (clienti, fornitori, ecc.).
 >
-> Questa guida resta **autoritativa** per il modello anagrafico. Il nuovo
-> bridge viene descritto separatamente.
->
-> Dettagli:
+> Questa guida resta **autoritativa** per il modello anagrafico.
+> Per il modello auth multi-veste, i profili di accesso generalizzati
+> e le scope policy (portali + shop):
 >
 > * Guida architetturale: [architettura-multi-face-auth](/guide/architettura-multi-face-auth)
-> * Piano di sviluppo: [sviluppo-multi-face-auth](/dev/work-in-progress/sviluppo-multi-face-auth)
+> * Piano di sviluppo storico: [sviluppo-multi-face-auth](/dev/work-in-progress/sviluppo-multi-face-auth)
 
 ---
 

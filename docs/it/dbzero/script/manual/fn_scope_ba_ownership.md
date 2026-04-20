@@ -15,16 +15,17 @@ Architettura di riferimento:
 
 ---
 ### 🎯 Scopo Principale
-(latest review 18-04-2026)
+(latest review 20-04-2026 — ruolo-aware)
 
 La funzione **`script.fn_scope_ba_ownership`** implementa la policy di scope
 `BA_OWNERSHIP`: verifica che un'identità digitale di tipo cliente possa
 vedere uno specifico `billing_account`.
 
-Regola: il BA appartiene all'identità se e solo se condividono il
-**soggetto_ruolo** (ovvero il cliente). La stessa policy copre sia
-`CLIENTE_PORTALE` (portale B2B) sia `SHOP_CUSTOMER` (shop online) perché
-condividono il ruolo anagrafico `CL`.
+Regola: il BA appartiene all'identità se e solo se (1) condividono il
+**soggetto_ruolo** (ovvero il cliente) e (2) l'identità è in veste cliente
+(`ruolo_applicativo IN ('CLIENTE_PORTALE', 'SHOP_CUSTOMER')`). Il filtro
+veste fa parte del contratto della scope function — non è delegato alle
+policy RLS (difesa-in-profondità §V sviluppo-concentrico).
 
 ---
 
@@ -48,9 +49,10 @@ condividono il ruolo anagrafico `CL`.
 | Caso | Risultato |
 |------|-----------|
 | Identità inesistente / non attiva | `false` |
+| Identità in veste non-cliente (es. OPERATORE, FORNITORE_PORTALE, DISABILITATO) | `false` |
 | BA inesistente | `false` |
 | BA appartiene a un altro `soggetto_ruolo` | `false` |
-| BA appartiene al `soggetto_ruolo` dell'identità | `true` |
+| Identità CLIENTE_PORTALE o SHOP_CUSTOMER attiva + BA con stesso SR | `true` |
 
 ---
 
@@ -69,8 +71,9 @@ condividono il ruolo anagrafico `CL`.
 identita_digitali.soggetto_ruolo_id
     = billing_account.soggetto_ruolo_id  (join diretto)
 AND identita_digitali.id = p_identita_id
-AND billing_account.id   = p_billing_account_id
 AND identita_digitali.attivo = true
+AND identita_digitali.ruolo_applicativo IN ('CLIENTE_PORTALE', 'SHOP_CUSTOMER')
+AND billing_account.id = p_billing_account_id
 ```
 
 `billing_account` ha FK diretta a `soggetti_ruoli` (colonna

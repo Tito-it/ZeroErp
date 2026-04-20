@@ -1,0 +1,163 @@
+databaseChangeLog:
+  - logicalFilePath: /migrations_v2/00_schema/anagrafiche/20260420-01-alter-identita-digitali-multi-veste-mctit.yaml
+
+  # ---------------------------------------------------------------------------
+  # Rilassamento vincoli UNIQUE di anagrafiche.identita_digitali per il
+  # modello SSO multi-veste (20-04-2026). Cambio di dominio:
+  #   - PRIMA: un auth_user ha una sola identita attiva, un soggetto_ruolo
+  #     ha una sola identita attiva (1:1).
+  #   - DOPO:  un auth_user puo avere N identita attive (una per ogni
+  #     ruolo_applicativo), un soggetto_ruolo puo avere N identita attive
+  #     (una per ogni ruolo_applicativo). Consente es. CLIENTE_PORTALE +
+  #     SHOP_CUSTOMER coesistenti sullo stesso SR-CL.
+  #
+  # Rif. guida architettura-multi-face-auth v2.0 §3.1, handoff PR-B §2.1.
+  #
+  # Safety: su dati esistenti il vecchio UNIQUE garantisce gia' unicita'
+  # per singolo (auth_user) e singolo (soggetto_ruolo, attivo=true), quindi
+  # l'unicita' per (X, ruolo_applicativo) WHERE attivo e' automaticamente
+  # rispettata. Nessun dato viola i nuovi vincoli.
+  #
+  # 4 changeSet in sequenza (sub-progressivi 01-01..01-04).
+  # ---------------------------------------------------------------------------
+
+  - changeSet:
+      id: 20260420-01-01-drop-uq-identita-digitali-auth-user
+      author: mctit
+      comment: >
+        Rimuove il CONSTRAINT UNIQUE su (auth_user_id) che imponeva 1:1
+        tra auth_user e identita_digitali. Post-refactor il rapporto e'
+        1:N: un auth_user puo' avere N identita attive, una per ogni
+        ruolo_applicativo. Il nuovo vincolo di unicita' viene creato nel
+        changeSet 01-02.
+      preConditions:
+        - onFail: MARK_RAN
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT COUNT(*)
+                FROM pg_constraint c
+                JOIN pg_class t ON t.oid = c.conrelid
+                JOIN pg_namespace n ON n.oid = t.relnamespace
+               WHERE n.nspname = 'anagrafiche'
+                 AND t.relname = 'identita_digitali'
+                 AND c.conname = 'uq_identita_digitali_auth_user';
+      changes:
+        - dropUniqueConstraint:
+            schemaName: anagrafiche
+            tableName: identita_digitali
+            constraintName: uq_identita_digitali_auth_user
+      rollback:
+        - addUniqueConstraint:
+            schemaName: anagrafiche
+            tableName: identita_digitali
+            columnNames: auth_user_id
+            constraintName: uq_identita_digitali_auth_user
+
+  - changeSet:
+      id: 20260420-01-02-create-uq-identita-digitali-auth-user-ruolo-attivo
+      author: mctit
+      comment: >
+        Crea indice parziale UNIQUE (auth_user_id, ruolo_applicativo)
+        WHERE attivo = true: al massimo una identita attiva per coppia
+        utente+veste. Evita che lo stesso auth_user abbia due
+        CLIENTE_PORTALE attivi contemporanei, ma permette
+        CLIENTE_PORTALE + SHOP_CUSTOMER + OPERATORE coesistenti.
+        Permette inoltre piu identita storicizzate (attivo=false) per
+        la stessa veste (es. riattivazione post-sospensione).
+      preConditions:
+        - onFail: MARK_RAN
+        - sqlCheck:
+            expectedResult: 0
+            sql: |
+              SELECT COUNT(*)
+                FROM pg_indexes
+               WHERE schemaname = 'anagrafiche'
+                 AND indexname  = 'uq_identita_digitali_auth_user_ruolo_attivo';
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Un solo auth_user puo' avere una sola identita attiva per
+              -- ogni ruolo_applicativo. Storicizzate (attivo=false) multiple.
+              CREATE UNIQUE INDEX uq_identita_digitali_auth_user_ruolo_attivo
+                  ON anagrafiche.identita_digitali (auth_user_id, ruolo_applicativo)
+                  WHERE attivo = true;
+
+              COMMENT ON INDEX anagrafiche.uq_identita_digitali_auth_user_ruolo_attivo IS
+                  'Invariante SSO multi-veste: un auth_user puo avere al massimo '
+                  'una identita attiva per ruolo_applicativo (modello post 20-04-2026). '
+                  'Permette cappelli multipli (OPERATORE + CLIENTE_PORTALE + SHOP_CUSTOMER) '
+                  'sullo stesso account.';
+      rollback:
+        - sql:
+            sql: DROP INDEX IF EXISTS anagrafiche.uq_identita_digitali_auth_user_ruolo_attivo;
+
+  - changeSet:
+      id: 20260420-01-03-drop-uq-identita-digitali-soggetto-ruolo-attivo
+      author: mctit
+      comment: >
+        Rimuove indice parziale UNIQUE (soggetto_ruolo_id) WHERE attivo
+        (creato da 20260418-10). Post-refactor il vincolo e' per
+        (soggetto_ruolo, ruolo_applicativo) — creato nel changeSet 01-04.
+        Motivazione: un SR-CL puo' avere CLIENTE_PORTALE + SHOP_CUSTOMER
+        attivi contemporaneamente (canali self-service distinti).
+      preConditions:
+        - onFail: MARK_RAN
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT COUNT(*)
+                FROM pg_indexes
+               WHERE schemaname = 'anagrafiche'
+                 AND indexname  = 'uq_identita_digitali_soggetto_ruolo_attivo';
+      changes:
+        - sql:
+            splitStatements: false
+            sql: DROP INDEX anagrafiche.uq_identita_digitali_soggetto_ruolo_attivo;
+      rollback:
+        - sql:
+            sql: |
+              CREATE UNIQUE INDEX uq_identita_digitali_soggetto_ruolo_attivo
+                  ON anagrafiche.identita_digitali (soggetto_ruolo_id)
+                  WHERE attivo = true;
+
+  - changeSet:
+      id: 20260420-01-04-create-uq-identita-digitali-sr-ruolo-attivo
+      author: mctit
+      comment: >
+        Crea indice parziale UNIQUE (soggetto_ruolo_id, ruolo_applicativo)
+        WHERE attivo = true: al massimo una identita attiva per coppia
+        SR+veste. Abilita scenari multi-canale sullo stesso cliente
+        anagrafico (CL → CLIENTE_PORTALE + SHOP_CUSTOMER coesistenti).
+        Mantiene unicita' intra-veste (no due CLIENTE_PORTALE attivi sullo
+        stesso SR).
+      preConditions:
+        - onFail: MARK_RAN
+        - sqlCheck:
+            expectedResult: 0
+            sql: |
+              SELECT COUNT(*)
+                FROM pg_indexes
+               WHERE schemaname = 'anagrafiche'
+                 AND indexname  = 'uq_identita_digitali_sr_ruolo_attivo';
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Un SR puo' avere al massimo una identita attiva per
+              -- ciascun ruolo_applicativo. Consente SSO multi-canale.
+              CREATE UNIQUE INDEX uq_identita_digitali_sr_ruolo_attivo
+                  ON anagrafiche.identita_digitali (soggetto_ruolo_id, ruolo_applicativo)
+                  WHERE attivo = true;
+
+              COMMENT ON INDEX anagrafiche.uq_identita_digitali_sr_ruolo_attivo IS
+                  'Invariante SSO multi-veste: un soggetto_ruolo puo avere al '
+                  'massimo una identita attiva per ruolo_applicativo. Abilita '
+                  'scenari multi-canale (es. SR-CL con CLIENTE_PORTALE + '
+                  'SHOP_CUSTOMER coesistenti).';
+      rollback:
+        - sql:
+            sql: DROP INDEX IF EXISTS anagrafiche.uq_identita_digitali_sr_ruolo_attivo;

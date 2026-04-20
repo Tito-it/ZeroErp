@@ -1,0 +1,315 @@
+databaseChangeLog:
+  - logicalFilePath: /migrations_v2/20_code/script/20260420-11-update-fn-resolver-multi-veste-mctit.yaml
+
+  # ---------------------------------------------------------------------------
+  # Aggiornamento delle funzioni resolver chiave per il modello SSO
+  # multi-veste (20-04-2026). Due changeSet:
+  #
+  # 11-01 fn_is_super_admin: aggiunge filtro ruolo_applicativo='OPERATORE'.
+  #       Prima del fix, un auth_user con identita OPERATORE+SUPER_ADMIN
+  #       attiva + identita CLIENTE_PORTALE attiva passava il check anche
+  #       quando loggato in contesto portale (falso positivo bypass).
+  #       Post-fix la fn e' intrinsecamente "operatore-only" (SUPER_ADMIN
+  #       e' privilege di operatore by design).
+  #
+  # 11-02 fn_get_profili_accesso_applicabili: aggiunge parametro
+  #       opzionale p_ruolo_applicativo (DEFAULT NULL). Se NULL mantiene
+  #       il comportamento attuale (tutti i profili dell'user); se
+  #       valorizzato filtra solo i profili applicabili alla veste
+  #       specifica. Backward compatible per i chiamanti esistenti.
+  #
+  # Nota follow-up (non in questa migration): i 4 resolver che chiamano
+  # fn_get_profili_accesso_applicabili (fn_resolve_livello_area,
+  # fn_check_azione_processo, fn_get_user_permissions_map,
+  # fn_get_user_actions_map) andranno aggiornati per passare
+  # app.ruolo_applicativo letto da GUC. Questa operazione e' rinviata
+  # al momento in cui il BE PR-B tocca i chiamanti (evita cambio
+  # comportamento globale senza coordinamento). Fino a quel momento:
+  # l'isolamento contesto resta garantito da (a) permission class per
+  # namespace, (b) fn_is_super_admin filtrata OPERATORE (11-01), (c)
+  # 3 nuove policy RLS shop (migration 07-08).
+  # ---------------------------------------------------------------------------
+
+  - changeSet:
+      id: 20260420-11-01-update-fn-is-super-admin-operatore-only
+      author: mctit
+      runOnChange: true
+      validCheckSum: [ANY]
+      comment: >
+        Filtra la fn_is_super_admin su ruolo_applicativo='OPERATORE'.
+        Motivazione: nel modello multi-veste un auth_user puo' avere
+        (OPERATORE SUPER_ADMIN) + (CLIENTE_PORTALE) contemporanee. Senza
+        filtro, il check ritorna true anche in contesto portale — falso
+        positivo. Il profilo SUPER_ADMIN e' privilege di operatore by
+        design: applicare il filtro rende la fn coerente col modello.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT COUNT(*)
+                FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script'
+                 AND p.proname = 'fn_is_super_admin';
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_is_super_admin(
+                  p_auth_user_id integer
+              )
+              RETURNS boolean
+              LANGUAGE sql
+              STABLE
+              AS $function$
+                  -- =========================================================
+                  -- Verifica SUPER_ADMIN operatore: ritorna true se esiste
+                  -- un'identita OPERATORE attiva per l'auth_user con un
+                  -- binding attivo a un profilo SUPER_ADMIN attivo.
+                  -- Post 20-04-2026 il filtro ruolo_applicativo=OPERATORE
+                  -- rende la fn coerente col modello multi-veste: un
+                  -- user con OPERATORE+SUPER_ADMIN + CLIENTE_PORTALE non
+                  -- eredita il bypass in contesto portale.
+                  -- Fail-closed: NULL o identita inesistente/inattiva
+                  -- -> false.
+                  -- =========================================================
+                  SELECT EXISTS (
+                      SELECT 1
+                        FROM anagrafiche.identita_digitali id
+                        JOIN config.profili_accesso_bindings pab
+                          ON pab.identita_digitale_id = id.id
+                        JOIN config.profili_accesso pa
+                          ON pa.id = pab.profilo_accesso_id
+                       WHERE id.auth_user_id      = p_auth_user_id
+                         AND id.attivo            = true
+                         AND id.ruolo_applicativo = 'OPERATORE'::config.ruolo_applicativo
+                         AND (id.valido_dal IS NULL OR id.valido_dal <= CURRENT_DATE)
+                         AND (id.valido_al  IS NULL OR id.valido_al  >= CURRENT_DATE)
+                         AND pab.attivo = true
+                         AND pa.attivo  = true
+                         AND pa.tipo    = 'SUPER_ADMIN'::config.tipo_profilo_accesso
+                  );
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_is_super_admin(integer) IS
+                  'SUPER_ADMIN check ristretto a identita OPERATORE (post 20-04-2026). '
+                  'Ritorna true se l''auth_user ha un''identita OPERATORE attiva nella '
+                  'finestra temporale con binding a profilo tipo SUPER_ADMIN attivo. '
+                  'Coerente con modello SSO multi-veste: il bypass non si attiva in '
+                  'contesti non-operatore. STABLE, inlineable, fail-closed.';
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              -- Rollback alla versione pre-multi-veste (senza filtro OPERATORE)
+              CREATE OR REPLACE FUNCTION script.fn_is_super_admin(
+                  p_auth_user_id integer
+              )
+              RETURNS boolean
+              LANGUAGE sql
+              STABLE
+              AS $function$
+                  SELECT EXISTS (
+                      SELECT 1
+                        FROM anagrafiche.identita_digitali id
+                        JOIN config.profili_accesso_bindings pab
+                          ON pab.identita_digitale_id = id.id
+                        JOIN config.profili_accesso pa
+                          ON pa.id = pab.profilo_accesso_id
+                       WHERE id.auth_user_id      = p_auth_user_id
+                         AND id.attivo            = true
+                         AND id.ruolo_applicativo <> 'DISABILITATO'
+                         AND (id.valido_dal IS NULL OR id.valido_dal <= CURRENT_DATE)
+                         AND (id.valido_al  IS NULL OR id.valido_al  >= CURRENT_DATE)
+                         AND pab.attivo = true
+                         AND pa.attivo  = true
+                         AND pa.tipo    = 'SUPER_ADMIN'::config.tipo_profilo_accesso
+                  );
+              $function$;
+
+  - changeSet:
+      id: 20260420-11-02-update-fn-get-profili-accesso-applicabili-veste-aware
+      author: mctit
+      runOnChange: true
+      validCheckSum: [ANY]
+      comment: >
+        Aggiunge parametro opzionale p_ruolo_applicativo (DEFAULT NULL) a
+        script.fn_get_profili_accesso_applicabili. Se NULL: comportamento
+        attuale (tutti i profili applicabili all'auth_user). Se
+        valorizzato: restituisce solo i profili applicabili all'identita
+        con quel ruolo_applicativo specifico.
+        Backward compatible: i chiamanti esistenti (4 resolver
+        fn_resolve_livello_area / fn_check_azione_processo /
+        fn_get_user_permissions_map / fn_get_user_actions_map) non
+        vengono toccati in questa migration — continuano a ricevere
+        "tutti i profili" e la loro evoluzione e' rinviata al momento
+        in cui il BE PR-B tocca i chiamanti.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT COUNT(*)
+                FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script'
+                 AND p.proname = 'fn_get_profili_accesso_applicabili';
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_get_profili_accesso_applicabili(
+                  p_auth_user_id      integer,
+                  p_ruolo_applicativo config.ruolo_applicativo DEFAULT NULL
+              )
+              RETURNS TABLE(profilo_accesso_id integer, priorita smallint)
+              LANGUAGE sql
+              STABLE
+              AS $function$
+                  -- =========================================================
+                  -- Risolve i profili di accesso applicabili a un utente
+                  -- via bindings (AD_HOC prio 1, PORTALE/REPARTO prio 2).
+                  --
+                  -- Post 20-04-2026 accetta p_ruolo_applicativo opzionale:
+                  --   NULL -> tutti i profili applicabili all'user
+                  --           (comportamento legacy, backward compat)
+                  --   non NULL -> filtra solo le identita dell'user con
+                  --               quel ruolo_applicativo (veste corrente)
+                  --
+                  -- Le 3 subquery condividono il predicato
+                  --   AND (p_ruolo_applicativo IS NULL OR
+                  --        id.ruolo_applicativo = p_ruolo_applicativo)
+                  -- che e' idempotente quando p_ruolo_applicativo e' NULL.
+                  -- =========================================================
+
+                  -- 1) AD_HOC: binding diretto sull'identita
+                  SELECT DISTINCT
+                         pab.profilo_accesso_id,
+                         1::smallint AS priorita
+                    FROM anagrafiche.identita_digitali id
+                    JOIN config.profili_accesso_bindings pab
+                      ON pab.identita_digitale_id = id.id
+                    JOIN config.profili_accesso pa
+                      ON pa.id = pab.profilo_accesso_id
+                   WHERE id.auth_user_id      = p_auth_user_id
+                     AND id.attivo            = true
+                     AND id.ruolo_applicativo <> 'DISABILITATO'
+                     AND (p_ruolo_applicativo IS NULL
+                          OR id.ruolo_applicativo = p_ruolo_applicativo)
+                     AND (id.valido_dal IS NULL OR id.valido_dal <= CURRENT_DATE)
+                     AND (id.valido_al  IS NULL OR id.valido_al  >= CURRENT_DATE)
+                     AND pab.attivo = true
+                     AND pa.attivo  = true
+                     AND pa.tipo    = 'AD_HOC'::config.tipo_profilo_accesso
+
+                  UNION ALL
+
+                  -- 2) PORTALE: binding per ruolo_applicativo dell'identita
+                  SELECT DISTINCT
+                         pab.profilo_accesso_id,
+                         2::smallint AS priorita
+                    FROM anagrafiche.identita_digitali id
+                    JOIN config.profili_accesso_bindings pab
+                      ON pab.ruolo_applicativo = id.ruolo_applicativo
+                    JOIN config.profili_accesso pa
+                      ON pa.id = pab.profilo_accesso_id
+                   WHERE id.auth_user_id      = p_auth_user_id
+                     AND id.attivo            = true
+                     AND id.ruolo_applicativo <> 'DISABILITATO'
+                     AND (p_ruolo_applicativo IS NULL
+                          OR id.ruolo_applicativo = p_ruolo_applicativo)
+                     AND (id.valido_dal IS NULL OR id.valido_dal <= CURRENT_DATE)
+                     AND (id.valido_al  IS NULL OR id.valido_al  >= CURRENT_DATE)
+                     AND pab.attivo = true
+                     AND pa.attivo  = true
+                     AND pa.tipo    = 'PORTALE'::config.tipo_profilo_accesso
+
+                  UNION ALL
+
+                  -- 3) REPARTO: binding per UO (solo identita OPERATORE)
+                  SELECT DISTINCT
+                         pab.profilo_accesso_id,
+                         2::smallint AS priorita
+                    FROM anagrafiche.identita_digitali id
+                    JOIN anagrafiche.risorse_umane ru
+                      ON ru.soggetto_ruolo_id = id.soggetto_ruolo_id
+                    JOIN config.profili_accesso_bindings pab
+                      ON pab.unita_organizzativa_id = ru.unita_organizzativa_id
+                    JOIN config.profili_accesso pa
+                      ON pa.id = pab.profilo_accesso_id
+                   WHERE id.auth_user_id      = p_auth_user_id
+                     AND id.attivo            = true
+                     AND id.ruolo_applicativo = 'OPERATORE'::config.ruolo_applicativo
+                     AND (p_ruolo_applicativo IS NULL
+                          OR p_ruolo_applicativo = 'OPERATORE'::config.ruolo_applicativo)
+                     AND (id.valido_dal IS NULL OR id.valido_dal <= CURRENT_DATE)
+                     AND (id.valido_al  IS NULL OR id.valido_al  >= CURRENT_DATE)
+                     AND ru.attivo  = true
+                     AND pab.attivo = true
+                     AND pa.attivo  = true
+                     AND pa.tipo    = 'REPARTO'::config.tipo_profilo_accesso;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_get_profili_accesso_applicabili(
+                  integer, config.ruolo_applicativo
+              ) IS
+                  'Profili applicabili a un auth_user (AD_HOC prio 1, PORTALE/REPARTO '
+                  'prio 2). Parametro p_ruolo_applicativo opzionale (post 20-04-2026): '
+                  'se NULL comportamento legacy (tutte le vesti), se valorizzato '
+                  'filtra la veste corrente. Usato dai resolver generalizzati.';
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              -- Rollback: rimuove il parametro DEFAULT e ripristina firma 1-arg.
+              DROP FUNCTION IF EXISTS script.fn_get_profili_accesso_applicabili(
+                  integer, config.ruolo_applicativo
+              );
+
+              CREATE OR REPLACE FUNCTION script.fn_get_profili_accesso_applicabili(
+                  p_auth_user_id integer
+              )
+              RETURNS TABLE(profilo_accesso_id integer, priorita smallint)
+              LANGUAGE sql
+              STABLE
+              AS $function$
+                  SELECT DISTINCT pab.profilo_accesso_id, 1::smallint AS priorita
+                    FROM anagrafiche.identita_digitali id
+                    JOIN config.profili_accesso_bindings pab ON pab.identita_digitale_id = id.id
+                    JOIN config.profili_accesso pa ON pa.id = pab.profilo_accesso_id
+                   WHERE id.auth_user_id = p_auth_user_id
+                     AND id.attivo = true
+                     AND id.ruolo_applicativo <> 'DISABILITATO'
+                     AND (id.valido_dal IS NULL OR id.valido_dal <= CURRENT_DATE)
+                     AND (id.valido_al  IS NULL OR id.valido_al  >= CURRENT_DATE)
+                     AND pab.attivo = true AND pa.attivo = true
+                     AND pa.tipo = 'AD_HOC'::config.tipo_profilo_accesso
+                  UNION ALL
+                  SELECT DISTINCT pab.profilo_accesso_id, 2::smallint AS priorita
+                    FROM anagrafiche.identita_digitali id
+                    JOIN config.profili_accesso_bindings pab ON pab.ruolo_applicativo = id.ruolo_applicativo
+                    JOIN config.profili_accesso pa ON pa.id = pab.profilo_accesso_id
+                   WHERE id.auth_user_id = p_auth_user_id
+                     AND id.attivo = true
+                     AND id.ruolo_applicativo <> 'DISABILITATO'
+                     AND (id.valido_dal IS NULL OR id.valido_dal <= CURRENT_DATE)
+                     AND (id.valido_al  IS NULL OR id.valido_al  >= CURRENT_DATE)
+                     AND pab.attivo = true AND pa.attivo = true
+                     AND pa.tipo = 'PORTALE'::config.tipo_profilo_accesso
+                  UNION ALL
+                  SELECT DISTINCT pab.profilo_accesso_id, 2::smallint AS priorita
+                    FROM anagrafiche.identita_digitali id
+                    JOIN anagrafiche.risorse_umane ru ON ru.soggetto_ruolo_id = id.soggetto_ruolo_id
+                    JOIN config.profili_accesso_bindings pab ON pab.unita_organizzativa_id = ru.unita_organizzativa_id
+                    JOIN config.profili_accesso pa ON pa.id = pab.profilo_accesso_id
+                   WHERE id.auth_user_id = p_auth_user_id
+                     AND id.attivo = true
+                     AND id.ruolo_applicativo = 'OPERATORE'::config.ruolo_applicativo
+                     AND (id.valido_dal IS NULL OR id.valido_dal <= CURRENT_DATE)
+                     AND (id.valido_al  IS NULL OR id.valido_al  >= CURRENT_DATE)
+                     AND ru.attivo = true AND pab.attivo = true AND pa.attivo = true
+                     AND pa.tipo = 'REPARTO'::config.tipo_profilo_accesso;
+              $function$;

@@ -30,6 +30,28 @@ Obiettivi principali:
 
 ---
 
+### Canale di origine (post 20-04-2026)
+
+Colonna `canale_origine` di tipo `config.canale_origine` (ENUM
+`ADMIN` / `PORTALE` / `SHOP`), `NOT NULL DEFAULT 'ADMIN'`. Nella pratica
+`vendite.fatture` accetta solo `ADMIN` o `PORTALE` — lo shop emette
+**ricevute** (non fatture elettroniche) su tabella dedicata
+[shop.ricevute](/dbzero/shop/tabelle/ricevute).
+
+* **Immutabile post-INSERT** via trigger
+  `trg_vendite_fatture_a10_canale_origine_immutable_upd` (codice errore
+  `E_CANALE_ORIGINE_IMMUTABILE` id 385).
+* Usato dalla **policy RLS `rls_fatture_ba_ownership`**: ammette solo
+  `CLIENTE_PORTALE` (non `SHOP_CUSTOMER`). Lo shop customer non vede mai
+  fatture B2B, anche se il soggetto sottostante ha anche veste portale.
+* Default `ADMIN` su fatture pre-refactor (tutte generate da pipeline
+  interna).
+* Rif. guida: [Architettura Multi-Face Auth §6.4](/guide/architettura-multi-face-auth)
+  e [anagrafiche.billing_account](/dbzero/anagrafiche/tabelle/billing_account)
+  per la semantica completa del canale.
+
+---
+
 ### Collocazione nel flusso documentale
 
 1. **Pre‑emissione**: creazione testata (bozza), valorizzazione di BA, emittente, valuta, termini pagamento.

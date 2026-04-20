@@ -17,17 +17,19 @@ DECLARE
     v_minuti_rimanenti integer;
 BEGIN
     -- =========================================================
-    -- Scopo (refactor §4.6.D.2):
-    --   Verifica blocco temporaneo login su identita_digitali
-    --   (OPERATORE). Se scaduto: auto-unlock su entrambe le
-    --   tabelle. Se attivo: raise E_UTENTE_BLOCCATO.
+    -- Scopo (post-cutover §13.3):
+    --   Verifica blocco temporaneo login su
+    --   anagrafiche.identita_digitali (OPERATORE).
+    --   Se scaduto: auto-unlock su identita_digitali
+    --   (unica fonte di verita'). Se attivo: raise
+    --   E_UTENTE_BLOCCATO.
     -- =========================================================
 
     IF p_auth_user_id IS NULL OR p_auth_user_id <= 0 THEN
         RETURN;
     END IF;
 
-    -- Leggi stato blocco da identita (fonte primaria)
+    -- Leggi stato blocco da identita
     SELECT id.bloccato_fino_a
       INTO v_bloccato_fino_a
       FROM anagrafiche.identita_digitali id
@@ -39,18 +41,13 @@ BEGIN
         RETURN;
     END IF;
 
-    -- Blocco scaduto: auto-unlock su entrambe
+    -- Blocco scaduto: auto-unlock su identita_digitali
     IF v_bloccato_fino_a <= NOW() THEN
         UPDATE anagrafiche.identita_digitali
            SET tentativi_falliti = 0,
                bloccato_fino_a   = NULL
          WHERE auth_user_id = p_auth_user_id
            AND ruolo_applicativo = 'OPERATORE';
-
-        UPDATE anagrafiche.risorse_umane_auth_user
-           SET tentativi_falliti = 0,
-               bloccato_fino_a   = NULL
-         WHERE auth_user_id = p_auth_user_id;
         RETURN;
     END IF;
 
@@ -72,7 +69,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_check_blocco_login(p_auth_user_id integer)
-IS 'Verifica blocco temporaneo login. Refactor §4.6.D.2: lettura da identita_digitali OPERATORE; auto-unlock su identita + RUA durante transizione. Se attivo: raise E_UTENTE_BLOCCATO.';
+IS 'Verifica blocco temporaneo login su anagrafiche.identita_digitali (post-cutover §13.3, unica fonte di verita'': RUA e'' ora vista read-only). Auto-unlock solo su identita se il blocco e'' scaduto. Se attivo: raise E_UTENTE_BLOCCATO.';
 ```
 
 ---

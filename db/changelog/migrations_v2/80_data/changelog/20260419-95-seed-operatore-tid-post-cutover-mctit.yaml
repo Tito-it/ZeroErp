@@ -1,0 +1,222 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+#
+# Seed post-cutover §13.3: sostituisce la parte "crea bridge operatore"
+# del vecchio seed 20260309-01, che post-cutover fallisce perche' scrive
+# su risorse_umane_auth_user (ora vista read-only).
+#
+# Crea in modo idempotente la catena per l'utente tid (auth_user id=1):
+#   soggetto → soggetto_ruolo RIS_UMANA → risorse_umane →
+#   identita_digitali OPERATORE → binding SUPER_ADMIN → user_emittenti_fiscali
+#
+# Ambito applicazione:
+#   - DB esistenti (prod/staging): il backfill -80 ha gia' creato
+#     identita OPERATORE per tid -> preCondition fallisce -> MARK_RAN.
+#   - CI vergine / dev: auth_user id=1 potrebbe esistere ma non avere
+#     ancora identita OPERATORE (seed -01 fallito su INSERT vista) ->
+#     preCondition passa -> seed crea tutto.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260419-95-seed-operatore-tid-post-cutover-mctit.yaml
+
+  - changeSet:
+      id: 20260419-95-seed-operatore-tid-post-cutover
+      author: mctit
+      runOnChange: false
+      failOnError: false
+      comment: >
+        Sostituto post-cutover del seed 20260309-01 (parte operatore).
+        Popola identita_digitali OPERATORE + binding SUPER_ADMIN per
+        auth_user id=1, preservando la convenzione "tid = super-admin
+        di dev". In DB gia' popolati (via backfill -80) il seed e'
+        MARK_RAN tramite preCondition composta.
+      preConditions:
+        - onFail: MARK_RAN
+        # Check composto in UN SOLO sqlCheck (Liquibase 5 + PG 18 ha
+        # problema di ResultSet multipli con and: di piu' sqlCheck).
+        # ExpectedResult = 1 -> seed esegue. Ritorna 0 se:
+        #   - auth_user id=1 non esiste (CI minimale)
+        #   - identita OPERATORE per auth_user 1 gia' esiste (DB popolato)
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT CASE
+                WHEN EXISTS(SELECT 1 FROM django.auth_user WHERE id = 1)
+                 AND NOT EXISTS(
+                     SELECT 1 FROM anagrafiche.identita_digitali
+                      WHERE auth_user_id = 1
+                        AND ruolo_applicativo = 'OPERATORE'
+                 )
+                THEN 1 ELSE 0 END;
+        - tableExists: { schemaName: anagrafiche, tableName: identita_digitali }
+        - tableExists: { schemaName: config,      tableName: profili_accesso_bindings }
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $$
+              DECLARE
+                v_auth_user_id   CONSTANT integer := 1;
+                v_emittente_id   CONSTANT bigint  := 32;
+                v_tipo_ruolo_id  CONSTANT integer := 14;  -- RIS_UMANA
+                v_qualifica_id   CONSTANT integer := 1;   -- AMMINISTRATORE
+                v_stato_id       CONSTANT integer := 1;   -- Italia
+                v_profilo_sa_id  CONSTANT integer := 9100; -- profilo SUPER_ADMIN
+
+                v_username       text;
+                v_first_name     text;
+                v_last_name      text;
+                v_soggetto_id    uuid;
+                v_sr_id          bigint;
+                v_ru_id          bigint;
+                v_identita_id    bigint;
+              BEGIN
+                -- ---------------------------------------------------
+                -- 0. Recupero dati auth_user
+                -- ---------------------------------------------------
+                SELECT au.username, au.first_name, au.last_name
+                  INTO v_username, v_first_name, v_last_name
+                  FROM django.auth_user au
+                 WHERE au.id = v_auth_user_id;
+
+                IF v_username IS NULL THEN
+                  RAISE EXCEPTION 'auth_user id=% non trovato', v_auth_user_id;
+                END IF;
+
+                -- ---------------------------------------------------
+                -- 1. Soggetto PF (crea solo se non esiste gia' un SR
+                --    RIS_UMANA riconducibile al nome/cognome tid)
+                -- ---------------------------------------------------
+                -- Heuristic: cerca SR RIS_UMANA esistente con RU attiva
+                -- orfana (senza identita collegata via SR); se trovato,
+                -- riusa. Altrimenti crea catena da zero.
+                SELECT ru.soggetto_ruolo_id, ru.id, ru.soggetto_id
+                  INTO v_sr_id, v_ru_id, v_soggetto_id
+                  FROM anagrafiche.risorse_umane ru
+                  JOIN anagrafiche.soggetti_ruoli sr
+                    ON sr.id = ru.soggetto_ruolo_id
+                 WHERE sr.tipo_ruolo_id = v_tipo_ruolo_id
+                   AND ru.attivo = true
+                   AND NOT EXISTS (
+                       SELECT 1 FROM anagrafiche.identita_digitali id
+                        WHERE id.soggetto_ruolo_id = sr.id
+                          AND id.attivo = true
+                   )
+                 ORDER BY ru.id DESC
+                 LIMIT 1;
+
+                IF v_sr_id IS NULL THEN
+                  -- Nessun SR riusabile: crea catena da zero.
+                  INSERT INTO anagrafiche.soggetti (
+                    cognome, nome, ragione_sociale_completa, stato_id, attivo
+                  )
+                  VALUES (
+                    COALESCE(NULLIF(v_last_name, ''), v_username),
+                    COALESCE(NULLIF(v_first_name, ''), v_username),
+                    TRIM(
+                      COALESCE(NULLIF(v_last_name, ''), v_username) || ' ' ||
+                      COALESCE(NULLIF(v_first_name, ''), v_username)
+                    ),
+                    v_stato_id,
+                    true
+                  )
+                  RETURNING id INTO v_soggetto_id;
+
+                  RAISE NOTICE 'Creato soggetto id=% per utente %',
+                               v_soggetto_id, v_username;
+
+                  INSERT INTO anagrafiche.soggetti_ruoli (
+                    soggetto_id, tipo_ruolo_id
+                  )
+                  VALUES (v_soggetto_id, v_tipo_ruolo_id)
+                  RETURNING id INTO v_sr_id;
+
+                  RAISE NOTICE 'Creato soggetto_ruolo id=% (RIS_UMANA)', v_sr_id;
+
+                  INSERT INTO anagrafiche.risorse_umane (
+                    soggetto_ruolo_id, soggetto_id, qualifica_id,
+                    valido_dal, attivo
+                  )
+                  VALUES (
+                    v_sr_id, v_soggetto_id, v_qualifica_id,
+                    CURRENT_DATE, true
+                  )
+                  RETURNING id INTO v_ru_id;
+
+                  RAISE NOTICE 'Creato risorse_umane id=% (qualifica AMMINISTRATORE)', v_ru_id;
+                ELSE
+                  RAISE NOTICE 'Riusato SR id=% / RU id=% esistenti', v_sr_id, v_ru_id;
+                END IF;
+
+                -- ---------------------------------------------------
+                -- 2. identita_digitali OPERATORE
+                -- ---------------------------------------------------
+                INSERT INTO anagrafiche.identita_digitali (
+                  soggetto_ruolo_id,
+                  auth_user_id,
+                  ruolo_applicativo,
+                  attivo,
+                  valido_dal
+                )
+                VALUES (
+                  v_sr_id,
+                  v_auth_user_id,
+                  'OPERATORE'::config.ruolo_applicativo,
+                  true,
+                  CURRENT_DATE
+                )
+                RETURNING id INTO v_identita_id;
+
+                RAISE NOTICE 'Creata identita_digitali id=% OPERATORE per auth_user_id=%',
+                             v_identita_id, v_auth_user_id;
+
+                -- ---------------------------------------------------
+                -- 3. binding SUPER_ADMIN (profilo 9100) AD_HOC
+                -- ---------------------------------------------------
+                INSERT INTO config.profili_accesso_bindings (
+                  profilo_accesso_id, identita_digitale_id, attivo
+                )
+                VALUES (v_profilo_sa_id, v_identita_id, true);
+
+                RAISE NOTICE 'Creato binding SUPER_ADMIN per identita id=%', v_identita_id;
+
+                -- ---------------------------------------------------
+                -- 4. Associazione emittente_fiscale (se config presente)
+                -- ---------------------------------------------------
+                IF EXISTS (
+                  SELECT 1 FROM anagrafiche.emittenti_fiscali
+                   WHERE id = v_emittente_id AND attivo = true
+                ) THEN
+                  INSERT INTO config.user_emittenti_fiscali (
+                    auth_user_id, emittente_fiscale_id
+                  )
+                  VALUES (v_auth_user_id, v_emittente_id)
+                  ON CONFLICT (auth_user_id, emittente_fiscale_id) DO NOTHING;
+
+                  RAISE NOTICE 'Associato auth_user_id=% a emittente_fiscale_id=%',
+                               v_auth_user_id, v_emittente_id;
+                ELSE
+                  RAISE NOTICE 'emittente_fiscale_id=% non attivo: skip user_emittenti_fiscali',
+                               v_emittente_id;
+                END IF;
+              END
+              $$;
+
+      rollback:
+        - sql:
+            sql: |
+              -- Rollback: rimuovi binding + identita per auth_user id=1
+              -- (lascia soggetto/SR/RU: potrebbero servire ad altro).
+              DELETE FROM config.profili_accesso_bindings pab
+                USING anagrafiche.identita_digitali id
+               WHERE pab.identita_digitale_id = id.id
+                 AND id.auth_user_id = 1
+                 AND id.ruolo_applicativo = 'OPERATORE'
+                 AND pab.profilo_accesso_id = 9100;
+
+              DELETE FROM anagrafiche.identita_digitali
+               WHERE auth_user_id = 1
+                 AND ruolo_applicativo = 'OPERATORE';

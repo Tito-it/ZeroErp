@@ -16,7 +16,7 @@ Tabelle correlate:
 
 ---
 ### 🎯 Scopo Principale
-(latest revision 19-04-2026)
+(latest revision 20-04-2026 — modello SSO multi-veste)
 
 La tabella **`anagrafiche.identita_digitali`** è il **bridge generico** tra un
 `soggetti_ruoli` e l'utente software Django (`django.auth_user`). Generalizza
@@ -31,24 +31,39 @@ estendendolo a:
 * **Identità disattivate** (`DISABILITATO`)
 
 Ogni record rappresenta **una veste** con cui un soggetto si logga nel sistema.
-Un soggetto può avere più identità nel tempo, ma una sola attiva.
+Post 20-04-2026 (modello SSO multi-veste) un `auth_user` puo' avere **piu'
+identita attive contemporaneamente**, una per ogni `ruolo_applicativo`, e
+simmetricamente un `soggetto_ruolo` puo' avere **piu' identita attive**, una
+per ogni canale self-service (es. un SR-CL puo' avere `CLIENTE_PORTALE` attivo
+per il portale B2B + `SHOP_CUSTOMER` attivo per il canale shop B2C).
 
 ---
 
 ### Collegamenti principali
 
 * `soggetto_ruolo_id` → `anagrafiche.soggetti_ruoli(id)` – ruolo del soggetto che si logga
-* `auth_user_id` → `django.auth_user(id)` – utente Django associato (1:1)
+* `auth_user_id` → `django.auth_user(id)` – utente Django associato (1:N —
+  un auth_user puo' avere N identita, una per ruolo_applicativo)
 
 ---
 
 ### Regole di dominio
 
-* **Un solo auth_user per identità** (`UNIQUE auth_user_id`). Un utente Django
-  rappresenta un'identità in uno specifico contesto, non una persona fisica.
-* **Una sola identità attiva per soggetto_ruolo**: indice parziale
-  `uq_identita_digitali_soggetto_ruolo_attivo` su `(soggetto_ruolo_id) WHERE attivo = true`.
-  Ammesse identità storicizzate multiple (cessazione e riassunzione).
+* **Modello SSO multi-veste** (post 20-04-2026): un `auth_user` rappresenta
+  una persona autenticabile (email + password unici). Le sue vesti
+  applicative vivono su N record di `identita_digitali`, ciascuno con il
+  proprio `ruolo_applicativo`.
+* **Unicita' (auth_user, ruolo_applicativo)**: indice parziale
+  `uq_identita_digitali_auth_user_ruolo_attivo` su
+  `(auth_user_id, ruolo_applicativo) WHERE attivo = true`. Un solo
+  `CLIENTE_PORTALE` attivo per user, un solo `OPERATORE` attivo per user,
+  eccetera. Storicizzate (`attivo = false`) multiple.
+* **Unicita' (soggetto_ruolo, ruolo_applicativo)**: indice parziale
+  `uq_identita_digitali_sr_ruolo_attivo` su
+  `(soggetto_ruolo_id, ruolo_applicativo) WHERE attivo = true`. Abilita
+  scenari multi-canale (es. lo stesso SR-CL ha al massimo un
+  `CLIENTE_PORTALE` attivo + un `SHOP_CUSTOMER` attivo, ma nessun doppione
+  per ruolo).
 * **Finestra temporale**: `valido_dal` obbligatorio (default oggi), `valido_al`
   opzionale. CHECK `valido_al >= valido_dal` se entrambi valorizzati.
 * **Coerenza ruolo_applicativo ↔ soggetto_ruolo** garantita dal guard
@@ -58,6 +73,12 @@ Un soggetto può avere più identità nel tempo, ma una sola attiva.
   * `CLIENTE_PORTALE` / `SHOP_CUSTOMER` → tipo `CL` (cliente)
   * `FORNITORE_PORTALE` → tipo `FO` (fornitore)
   * `API_CLIENT` / `DISABILITATO` → nessun vincolo specifico
+* **Stato di lockout e MFA per-identita**: `tentativi_falliti`,
+  `bloccato_fino_a` e `totp_obbligatorio` sono per-record (per-veste), non
+  per-user: un lockout sul portale non blocca lo shop dello stesso user.
+* **`auth_user.is_active` = OR sulle identita**: l'utente Django resta
+  globalmente attivo se esiste almeno un'identita utilizzabile (cfr.
+  [fn_sync_auth_user_is_active](/dbzero/anagrafiche/funzioni/fn_sync_auth_user_is_active)).
 
 ---
 
@@ -98,18 +119,14 @@ speciale ma un **binding** tra l'identità e un profilo con
 
 ---
 
-### Relazione con la tabella storica `risorse_umane_auth_user`
+### Relazione con la vista `risorse_umane_auth_user`
 
-Durante la migrazione del modello multi-face auth i due bridge convivono:
-
-* `risorse_umane_auth_user` resta il bridge **per gli operatori interni**,
-  con la logica storica (guard PF pura) e i trigger sync esistenti.
-* `identita_digitali` copre **tutti i nuovi ruoli applicativi**.
-
-Al cutover finale (`§4.6` del WIP multi-face-auth), `risorse_umane_auth_user`
-diventa una vista letta costruita su `identita_digitali WHERE ruolo_applicativo = 'OPERATORE'`
-per compatibilità con il codice legacy; la sorgente dati unica diventa
-`identita_digitali`.
+**Post-cutover 19-04-2026**: la ex tabella bridge `risorse_umane_auth_user`
+e' stata rinominata `_legacy_risorse_umane_auth_user` e sostituita da una
+vista read-only con `security_invoker = true` costruita su
+`identita_digitali WHERE ruolo_applicativo = 'OPERATORE'`. La sorgente dati
+unica e' `identita_digitali`; la vista serve solo per retrocompatibilita'
+con codice legacy non ancora migrato.
 
 ---
 
