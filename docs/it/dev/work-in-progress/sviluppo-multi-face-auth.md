@@ -990,6 +990,37 @@ inferiore e' completo e testato.
       una fase successiva?
 - [ ] 10.6 **Notifiche in-app nel portale?** (nuova fattura emessa, scadenza
       in arrivo). Se si', richiede canale dedicato
+- [ ] 10.7 **Collegamento `identita_digitali` → `anagrafiche.contatti`?**
+      *Questione emersa 2026-04-20.* Oggi l'identita si aggancia al
+      `soggetto_ruolo` ma NON a un contatto specifico del cliente.
+      L'email di login vive su `auth_user.email` (Django), indipendente
+      dalle email in `anagrafiche.contatti` del soggetto.
+      **Scenario scoperto:** un cliente B2B con N referenti (admin,
+      commerciale, tecnico) che accedono al portale — oggi non si sa
+      dal DB quale contatto anagrafico corrisponde a ciascuna identita
+      (audit debole, revoca selettiva fragile perche' si passa solo per
+      email auth_user).
+      **Perche' non e' stato risolto in PR-B:**
+      (a) il modello attuale supporta l'MVP single-user-per-cliente
+      senza bisogno di FK al contatto;
+      (b) lo shop B2C auto-service non ha contatti anagrafici al
+      momento della registrazione — una FK obbligatoria creerebbe
+      contatti fittizi;
+      (c) la separazione auth/anagrafica e' concettualmente sana
+      (un fornitore puo' loggare con email personale diversa
+      dall'email ufficiale aziendale).
+      **Quando rivedere:** al momento di introdurre
+      `CLIENTE_ADMIN_PORTALE` (§10.1) — un cliente admin che invita
+      N colleghi al proprio portale richiede logicamente un collegamento
+      a contatto referente per UX (selettore in form invito) + audit +
+      revoca. Proposta concreta: aggiungere
+      `identita_digitali.contatto_id bigint NULL` (FK opzionale). NULL
+      per identita shop o ad-hoc (consulenti esterni senza contatto
+      aziendale); valorizzata per invito portale B2B dalla UI admin
+      del cliente.
+      **Impatto se rinviato ulteriormente:** crescita numerica delle
+      identita portale senza tracciamento anagrafico → backfill
+      retroattivo sempre piu' difficile. Non urgente ma non eterno.
 
 ---
 
