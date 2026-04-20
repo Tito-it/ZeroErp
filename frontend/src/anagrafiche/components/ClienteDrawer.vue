@@ -21,6 +21,7 @@ import { statoClienteSeverity } from '../../core/utils/severity'
 import SoggettoResolver from '../../core/components/SoggettoResolver.vue'
 import SoggettoMessageBanner from '../../core/components/SoggettoMessageBanner.vue'
 import SoggettoPreviewBadges from '../../core/components/SoggettoPreviewBadges.vue'
+import PortaleAccessoPanel from '../../portale/components/PortaleAccessoPanel.vue'
 import ContattoForm from '../../core/components/ContattoForm.vue'
 import IndirizzoSoggettoForm from '../../core/components/IndirizzoSoggettoForm.vue'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
@@ -627,6 +628,17 @@ function onClose() {
         :istanza-utility-id="detail.istanza_utility_id"
         :tipo-soggetto-dettaglio-id="detail.tipo_soggetto_dettaglio_id"
         :tipo-ruolo-codice="TIPO_RUOLO.CLIENTE" />
+
+      <!-- Accesso portale cliente: visibile solo in edit (richiede BA
+           persistito). La prop `emailIniziale` attinge dal soggetto se
+           disponibile; l'admin puo' comunque modificarla prima di inviare. -->
+      <PortaleAccessoPanel
+        v-if="isEdit && props.clienteId"
+        entita-tipo="cliente"
+        :entita-id="props.clienteId"
+        :email-iniziale="detail?.soggetto_email || ''"
+        :readonly="isReadonly"
+      />
 
       <DrawerFooter :loading="loading" :disabled="!isEdit && !canSave" @save="onSave" @cancel="onClose" />
     </div>

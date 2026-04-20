@@ -785,6 +785,18 @@ class ErrorPolicyRegistry:
             ui_action="show_error_banner",
             user_message="Errore attivazione account.",
         ),
+        "E_INVITO_PORTALE": ErrorPolicy(
+            code="E_INVITO_PORTALE",
+            http_status=400,
+            ui_action="show_error_banner",
+            user_message="Invito portale non inviabile.",
+        ),
+        "E_ATTIVAZIONE_PORTALE": ErrorPolicy(
+            code="E_ATTIVAZIONE_PORTALE",
+            http_status=400,
+            ui_action="show_error_banner",
+            user_message="Errore attivazione account portale.",
+        ),
         # ── Codici cross-schema da refactor E_GENERICO (31 marzo 2026) ──
         # --- Validazione parametri (400) ---
         "E_PARAMETRO_INVALIDO": ErrorPolicy(

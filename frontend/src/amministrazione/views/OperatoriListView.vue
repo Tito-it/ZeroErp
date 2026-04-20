@@ -183,6 +183,12 @@ function buildRowActions(data) {
           </div>
         </template>
       </Column>
+      <Column field="valido_dal" :header="t('amm.col_valido_dal')" sortable>
+        <template #body="{ data }">{{ displayDate(data.valido_dal) }}</template>
+      </Column>
+      <Column field="valido_al" :header="t('amm.col_valido_al')" sortable>
+        <template #body="{ data }">{{ displayDate(data.valido_al) }}</template>
+      </Column>
       <Column field="is_active" :header="t('amm.col_stato')" sortable>
         <template #body="{ data }">
           <Badge
@@ -190,12 +196,6 @@ function buildRowActions(data) {
             :severity="activeBadgeSeverity(data.is_active)"
           />
         </template>
-      </Column>
-      <Column field="valido_dal" :header="t('amm.col_valido_dal')" sortable>
-        <template #body="{ data }">{{ displayDate(data.valido_dal) }}</template>
-      </Column>
-      <Column field="valido_al" :header="t('amm.col_valido_al')" sortable>
-        <template #body="{ data }">{{ displayDate(data.valido_al) }}</template>
       </Column>
       <Column v-if="!isReadonly" :header="t('common.col_azioni')" class="app-col-actions" :exportable="false" frozen alignFrozen="right">
         <template #body="{ data }">

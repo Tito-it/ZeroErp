@@ -56,6 +56,12 @@ const router = createRouter({
       component: () => import('../core/views/AttivazioneView.vue'),
       meta: { public: true }
     },
+    {
+      path: '/attivazione-portale/:token',
+      name: 'attivazione-portale',
+      component: () => import('../portale/views/AttivazionePortaleView.vue'),
+      meta: { public: true }
+    },
 
     // Rotte autenticate — con layout principale
     {
