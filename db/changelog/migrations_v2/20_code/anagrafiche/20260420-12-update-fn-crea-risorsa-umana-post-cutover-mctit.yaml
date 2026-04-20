@@ -23,13 +23,13 @@ databaseChangeLog:
         - and:
           - tableExists: { schemaName: anagrafiche, tableName: identita_digitali }
           - tableExists: { schemaName: config,      tableName: profili_accesso_bindings }
-          - sqlCheck:
-              expectedResult: "1"
-              sql: |
-                SELECT COUNT(*)
-                  FROM config.profili_accesso
-                 WHERE codice = 'SUPER_ADMIN'
-                   AND id = 9100;
+        # Nota: il check di esistenza del profilo SUPER_ADMIN (id 9100) e'
+        # stato rimosso perche' strutturalmente non soddisfabile: le
+        # migration 20_code vengono applicate prima di 80_data dove sta il
+        # seed (20260419-04-seed-profilo-super-admin). CREATE OR REPLACE
+        # FUNCTION non risolve i riferimenti nel body, quindi il profilo
+        # serve solo a runtime, garantito dall'ordine master-v2 (80_data
+        # applicato prima della prima invocazione effettiva).
       changes:
         - sql:
             splitStatements: false
