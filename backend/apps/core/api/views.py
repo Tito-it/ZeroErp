@@ -213,6 +213,9 @@ class ApiPermessiEffettivi(DomainAPIView):
         # Itera tutte le aree funzionali attive
         from apps.config.models import AreaFunzionale
 
+        # Carica una volta sola il catalogo model configurabili, raggruppati per area.
+        model_map = PermissionResolver.list_model_overrides_grouped()
+
         aree_result = []
         for area in AreaFunzionale.objects.filter(attivo=True):
             livello = PermissionResolver.get_livello_area(
@@ -223,6 +226,21 @@ class ApiPermessiEffettivi(DomainAPIView):
             has_profilo = PermissionResolver.has_profilo_applicabile_per_area(
                 target_user, area.schema_db, cache=target_cache
             )
+            # Livello oggetto per ogni model registrato nell'area.
+            modelli = []
+            for m in model_map.get(area.schema_db, []):
+                livello_obj = PermissionResolver.get_livello_oggetto(
+                    target_user,
+                    m["app_label"],
+                    m["model_name"],
+                    area.schema_db,
+                    cache=target_cache,
+                )
+                modelli.append({
+                    "app_label": m["app_label"],
+                    "model_name": m["model_name"],
+                    "livello": livello_obj,
+                })
             aree_result.append({
                 "codice": area.codice,
                 "schema_db": area.schema_db,
@@ -230,6 +248,7 @@ class ApiPermessiEffettivi(DomainAPIView):
                 "livello": livello,
                 "azioni_consentite": sorted(LIVELLO_MAP.get(livello, frozenset())),
                 "has_profilo_reparto": has_profilo,
+                "modelli": modelli,
             })
 
         data = {

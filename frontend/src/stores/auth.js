@@ -229,8 +229,10 @@ export const useAuthStore = defineStore('auth', () => {
   // Popolata da /me/ campo permessi_area (fn_get_user_permissions_map)
   const permessiArea = computed(() => user.value?.permessi_area || {})
 
-  // Livello accesso per area funzionale (TUTTO | LETTURA | BLOCCATO)
+  // Livello accesso per area funzionale (TUTTO | LETTURA | BLOCCATO).
+  // SUPER_ADMIN ha bypass totale su tutte le aree (pattern identico a isActionAllowed).
   function getLivelloArea(schemaDb) {
+    if (isSuperAdmin.value) return LIVELLO_ACCESSO.TUTTO
     return permessiArea.value[schemaDb] || LIVELLO_ACCESSO.BLOCCATO
   }
 

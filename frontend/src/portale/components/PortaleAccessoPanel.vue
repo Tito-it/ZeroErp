@@ -49,8 +49,8 @@ const props = defineProps({
 const emit = defineEmits(['stato-cambiato'])
 
 const email = ref(props.emailIniziale)
-const statoPortale = ref({ stato: 'NESSUNO', invito_inviato_at: null, token_scade_at: null })
-const statoShop = ref({ stato: 'NESSUNO', invito_inviato_at: null, token_scade_at: null })
+const statoPortale = ref({ stato: 'NESSUNO', invito_inviato_at: null, token_scade_at: null, username: null, email: null })
+const statoShop = ref({ stato: 'NESSUNO', invito_inviato_at: null, token_scade_at: null, username: null, email: null })
 
 const showShopActions = computed(() => props.entitaTipo === 'cliente')
 const canInvia = computed(
@@ -191,6 +191,18 @@ const onDisattivaShop = () => _confirmDisattiva({ namespace: 'shop', apiFn: disa
       {{ t('portale.accesso_portale_help') }}
     </p>
 
+    <!-- Utente collegato: visibile quando esiste un auth_user collegato
+         (stato != NESSUNO). Mostra username + email per il troubleshooting. -->
+    <div v-if="statoPortale.username" class="portale-accesso-user-info">
+      <span class="portale-accesso-user-label">{{ t('portale.accessi_web.user') }}</span>
+      <span class="portale-accesso-user-value">
+        {{ statoPortale.username }}
+        <span v-if="statoPortale.email" class="portale-accesso-user-email">
+          ({{ statoPortale.email }})
+        </span>
+      </span>
+    </div>
+
     <div class="form-field">
       <label for="portale-email">{{ t('portale.email_destinatario') }}</label>
       <InputText
@@ -257,6 +269,15 @@ const onDisattivaShop = () => _confirmDisattiva({ namespace: 'shop', apiFn: disa
       <p class="portale-accesso-help">
         {{ t('shop.accesso_shop_help') }}
       </p>
+      <div v-if="statoShop.username" class="portale-accesso-user-info">
+        <span class="portale-accesso-user-label">{{ t('portale.accessi_web.user') }}</span>
+        <span class="portale-accesso-user-value">
+          {{ statoShop.username }}
+          <span v-if="statoShop.email" class="portale-accesso-user-email">
+            ({{ statoShop.email }})
+          </span>
+        </span>
+      </div>
       <div class="portale-accesso-actions">
         <Button
           v-if="statoShop.stato === 'NESSUNO' || statoShop.stato === 'DISATTIVO'"
@@ -329,5 +350,21 @@ const onDisattivaShop = () => _confirmDisattiva({ namespace: 'shop', apiFn: disa
   margin-left: 0.5rem;
   vertical-align: middle;
   font-size: 0.75rem;
+}
+.portale-accesso-user-info {
+  font-size: 0.85rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.portale-accesso-user-label {
+  color: var(--app-text-muted, var(--p-text-muted-color));
+}
+.portale-accesso-user-value {
+  font-weight: 600;
+}
+.portale-accesso-user-email {
+  font-weight: 400;
+  color: var(--app-text-muted, var(--p-text-muted-color));
 }
 </style>

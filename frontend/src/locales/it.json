@@ -13,6 +13,9 @@
     "view": "Visualizza",
     "search": "Cerca",
     "reload_list": "Ricarica lista (F5)",
+    "accesso_negato_elenco": "Accesso a questo elenco non consentito",
+    "accesso_negato_hint": "Contatta l'amministratore se pensi sia un errore.",
+    "modalita_consultazione": "Sola lettura",
     "altre_azioni": "Altre azioni",
     "col_azioni": "Azioni",
     "eseguire_ricerca": "Eseguire una ricerca per visualizzare i risultati",
@@ -265,6 +268,12 @@
     "disattivato_ok": "Accesso portale disattivato",
     "disattivato_errore": "Errore durante la disattivazione dell'accesso portale",
     "stato_load_error": "Impossibile caricare lo stato degli accessi",
+    "accessi_web": {
+      "title": "Accessi web",
+      "drawer_action": "Gestione",
+      "badge_label": "Web",
+      "user": "Utente:"
+    },
     "stato": {
       "NESSUNO": "Non invitato",
       "PENDING": "Invito inviato",

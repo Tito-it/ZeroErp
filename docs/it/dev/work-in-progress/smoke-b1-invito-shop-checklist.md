@@ -75,18 +75,18 @@ file `pr-b-shop-b2c-cambio-modello.md` (righe 1018-1024, `[~]` → `[x]`).
 
 Tempo: **8-10 min**. Admin invita → email nuova → attiva → login.
 
-* [ ] **B1. Crea (o scegli) un cliente di test** con email **mai vista**
+* [X] **B1. Crea (o scegli) un cliente di test** con email **mai vista**
   nel DB (es. `shop-test-001@example.com`). Da UI admin: `Anagrafiche
   → Clienti → Nuovo` oppure pick cliente esistente + aggiorna email del
   soggetto con un'email garantita-nuova.
-* [ ] **B2. Drawer cliente → sezione "Accesso shop" → click "Invia
+* [X] **B2. Drawer cliente → sezione "Accesso shop" → click "Invia
   invito shop"**. Dialog conferma: `Verrà inviata un'email di attivazione
   shop a shop-test-001@example.com` → Accetta.
   * Response atteso: toast success "Invito shop inviato".
   * Log BE (`tail -f /var/log/zeroerp/gunicorn.log` o simile):
     `security.invito_portale_inviato user_id=<NEW> ruolo=SHOP_CUSTOMER
     ... created_user=True is_cross=False identita_id=<N>`.
-* [ ] **B3. Verifica DB**:
+* [X] **B3. Verifica DB**:
   ```sql
   SELECT id, ruolo_applicativo, attivo, valido_dal FROM anagrafiche.identita_digitali
    WHERE auth_user_id = (SELECT id FROM django.auth_user WHERE email='shop-test-001@example.com');
@@ -99,22 +99,22 @@ Tempo: **8-10 min**. Admin invita → email nuova → attiva → login.
    ORDER BY id DESC LIMIT 1;
   ```
   Atteso: 1 riga `tipo='INVITO_SHOP'`, `utilizzato=false`, `scadenza ≈ now() + 72h`.
-* [ ] **B4. Recupera il token** (log BE oppure DB: il link completo non
+* [X] **B4. Recupera il token** (log BE oppure DB: il link completo non
   si trova in chiaro, solo `token_hash`; per il test recupera il link
   dall'email inviata oppure inserisci un breakpoint temporaneo). In
   alternativa usa il token visibile sul log gunicorn in formato
   `link=http://localhost:5173/attivazione-shop/<TOKEN>`.
-* [ ] **B5. Apri browser su `http://localhost:5173/attivazione-shop/<TOKEN>`**.
+* [X] **B5. Apri browser su `http://localhost:5173/attivazione-shop/<TOKEN>`**.
   Atteso: pagina "Attivazione account shop", form password (flow INVITO,
   `token_type=INVITO_SHOP`, `requires_password=true`).
-* [ ] **B6. Imposta password (rispetta policy complessita): `Strong#Pass1`**
+* [X] **B6. Imposta password (rispetta policy complessita): `Strong#Pass1`**
   → submit. Atteso: success "Account shop attivato", redirect a `/login`
   dopo 2s.
-* [ ] **B7. Login canale SHOP** con email+password appena scelta.
+* [X] **B7. Login canale SHOP** con email+password appena scelta.
   Atteso: redirect post-login (oggi probabilmente `/` senza layout shop
   dedicato, ma ritorna 200 con JWT valido). Verifica `/me/` in DevTools:
   `ruolo_applicativo: "SHOP_CUSTOMER"`.
-* [ ] **B8. Verifica token consumato**:
+* [X] **B8. Verifica token consumato**:
   ```sql
   SELECT utilizzato, utilizzato_at, ip_utilizzo FROM config.token_monouso
    WHERE tipo='INVITO_SHOP'

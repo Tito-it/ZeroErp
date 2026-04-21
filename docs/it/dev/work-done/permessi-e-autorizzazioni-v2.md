@@ -2,8 +2,8 @@
 
 > Documento di pianificazione per l'estensione del sistema permessi.
 > Data creazione: 2026-04-02
-> Ultimo aggiornamento: 2026-04-10
-> Stato: **FASI 1-5 COMPLETATE (sessione 2026-04-10)** — Fase 6 (attivazione incrementale) da fare per dominio
+> Ultimo aggiornamento: 2026-04-21
+> Stato: **COMPLETATO** — tutte le fasi chiuse (2026-04-22). Diagnostica 3.1+3.2 chiuse. 1615 test OK. Vedi v3 per evoluzione sotto-oggetti e UX gerarchica.
 > Prerequisito: v1 completata (in work-done/permessi-e-autorizzazioni.md)
 > Guida architetturale: `docs/it/guide/architettura-permessi-e-autorizzazioni.md`
 
@@ -148,8 +148,8 @@ Le view che corrispondono a un model con override devono rispettare il livello:
 
 ## 3. Diagnostica
 
-- [ ] 3.1 — Estendere endpoint `permessi-effettivi` con livello oggetto per ogni model registrato
-- [ ] 3.2 — Estendere endpoint `permessi-audit` con storico override oggetti
+- [x] 3.1 — Estendere endpoint `permessi-effettivi` con livello oggetto per ogni model registrato ✅ (2026-04-22, chiave `modelli` per area, `list_model_overrides_grouped` in resolver, 6 test)
+- [x] 3.2 — Estendere endpoint `permessi-audit` con storico override oggetti ✅ (2026-04-22, `storico.user_override_oggetti` già in `_USER_TABLES`, 3 test copertura esplicita)
 
 ---
 
@@ -158,8 +158,9 @@ Le view che corrispondono a un model con override devono rispettare il livello:
 - [x] 4.1 — Test Django: `fn_resolve_livello_oggetto` con override presente → usa override ✅ (`test_model_permission_uses_livello_oggetto`)
 - [x] 4.2 — Test Django: `fn_resolve_livello_oggetto` senza override → fallback a livello area ✅ (`test_model_permission_fallback_area`)
 - [x] 4.3 — Test Django: `ZeroERPPermission` con `model_permission` dichiarato ✅ (`test_no_model_permission_uses_area`)
-- [ ] 4.4 — Test Django: API CRUD override oggetti (da aggiungere)
-- [ ] 4.5 — Test pgTAP: `fn_resolve_livello_oggetto` (da aggiungere)
+- [x] 4.4 — Test Django: API CRUD override oggetti + lookup catalogo ✅ (2026-04-21, 6 test in `test_override_permessi.py`: GET/PUT/invalidate/valida_catalogo/empty_skippa_validazione + lookup)
+- [x] 4.5 — Test pgTAP: `fn_resolve_livello_oggetto` + `fn_get_user_object_permissions_map` ✅ (gia' coperti in `db/pgtap/script/test-permessi-funzioni-risoluzione.sql` test 7-9 e 31-34)
+- [x] 4.6 — Smoke test bash CRUD admin override oggetti ✅ (2026-04-21, `backend/scripts/tests/smoke-test-permessi-oggetto.sh`, 11 step idempotente con ripristino stato iniziale)
 
 ---
 
@@ -178,6 +179,18 @@ Il livello oggetto va attivato **per dominio** man mano che le API dei domini ve
 **Non serve attivare tutto insieme.** Si aggiunge `model_permission` alle singole view
 quando il business lo richiede, e il sistema fa fallback trasparente al livello area
 per le view che non lo dichiarano.
+
+### Stato attivazione Fase 6 (aggiornato 2026-04-21)
+
+`model_permission` dichiarato su **37 endpoint** in 3 domini, catalogo `area_model_overrides` allineato:
+
+| Dominio | Model attivati | File view |
+|---------|---------------|-----------|
+| anagrafiche | `soggetto`, `cliente`, `fornitore`, `conto_bancario` | `views_soggetti.py`, `views_clienti.py`, `views_fornitori.py`, `views_conti_bancari.py` |
+| catalogo | `articolo`, `unita_misura` | `catalogo/api/views.py` |
+| vendite | `promo_articolo` | `views_promo_articoli.py` |
+
+Mancano (quando le API saranno pronte/serviranno): `anagrafiche.billing_account` (catalogato ma non ancora usato su view), `vendite.fattura`, `vendite.preventivo`, `vendite.listino`, `pratiche.pratica`.
 
 ---
 

@@ -96,9 +96,12 @@ const router = createRouter({
     // Branching INVITO (form password) vs CROSS (one-click) deciso
     // dal BE via /shop/attivazione/validate/<token>/. Pubblica (no JWT)
     // perche' il consumer del link email non e' ancora autenticato.
+    // Path coerente con /attivazione-portale/:token (single pattern
+    // delle pagine public di attivazione, link emesso dal BE con
+    // `link_path='/attivazione-shop'` in InvitoPortaleService).
     {
-      path: '/shop/attivazione/:token',
-      name: 'shop-attivazione',
+      path: '/attivazione-shop/:token',
+      name: 'attivazione-shop',
       component: () => import('../shop/views/AttivazioneShopView.vue'),
       meta: { public: true, domain: 'shop', menuKey: 'attivazione' }
     },

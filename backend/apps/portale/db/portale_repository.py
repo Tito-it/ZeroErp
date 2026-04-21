@@ -257,9 +257,11 @@ class PortaleRepository:
                    AND t.scadenza > now()
             )
             SELECT r.id, r.auth_user_id, r.attivo, r.invito_inviato_at,
-                   tk.token_scade_at
+                   tk.token_scade_at,
+                   u.username, u.email
               FROM id_row r
               LEFT JOIN tk ON true
+              LEFT JOIN django.auth_user u ON u.id = r.auth_user_id
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [soggetto_ruolo_id, ruolo_applicativo, list(token_tipi)])
@@ -270,11 +272,13 @@ class PortaleRepository:
                 "stato": "NESSUNO",
                 "identita_id": None,
                 "auth_user_id": None,
+                "username": None,
+                "email": None,
                 "invito_inviato_at": None,
                 "token_scade_at": None,
             }
 
-        identita_id, auth_user_id, attivo, invito_at, token_scade_at = row
+        identita_id, auth_user_id, attivo, invito_at, token_scade_at, username, email = row
         if attivo:
             stato = "ATTIVO"
         elif token_scade_at is not None:
@@ -285,6 +289,8 @@ class PortaleRepository:
             "stato": stato,
             "identita_id": int(identita_id),
             "auth_user_id": int(auth_user_id) if auth_user_id is not None else None,
+            "username": username,
+            "email": email,
             "invito_inviato_at": invito_at,
             "token_scade_at": token_scade_at,
         }

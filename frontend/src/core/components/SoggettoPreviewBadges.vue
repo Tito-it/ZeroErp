@@ -17,6 +17,8 @@ import {
 import ContattiSoggettoDrawer from './ContattiSoggettoDrawer.vue'
 import IndirizziSoggettoDrawer from './IndirizziSoggettoDrawer.vue'
 import ContiBancariDrawer from './ContiBancariDrawer.vue'
+import WebAccessiDrawer from '../../portale/components/WebAccessiDrawer.vue'
+import { getStatoAccessiCliente, getStatoAccessiFornitore } from '../../portale/api/portaleAdminApi'
 import Button from 'primevue/button'
 
 const { t } = useI18n()
@@ -31,6 +33,17 @@ const props = defineProps({
   istanzaUtilityId: { type: Number, default: null },
   tipoRuoloCodice: { type: String, default: null },
   preview: { type: Boolean, default: false },
+  // §1.6: pulsante Web (accessi portale/shop) opzionale, richiede
+  // entitaTipo+entitaId per aprire WebAccessiDrawer. Se entitaTipo non
+  // e' valorizzato il pulsante non compare (retrocompat: SoggettoPreviewBadges
+  // resta usabile in contesti dove Web non si applica).
+  entitaTipoWeb: {
+    type: String,
+    default: null,
+    validator: v => v === null || ['cliente', 'fornitore'].includes(v),
+  },
+  entitaIdWeb: { type: [Number, String], default: null },
+  emailInizialeWeb: { type: String, default: '' },
 })
 
 // Scopo: determina il context in base alle prop valorizzate.
@@ -38,9 +51,34 @@ const isRuolo = computed(() => !!props.soggettoRuoloId)
 const ownerId = computed(() => props.soggettoRuoloId || props.soggettoId)
 const drawerContext = computed(() => isRuolo.value ? 'ruolo' : 'soggetto')
 
-const counts = ref({ indirizzi: 0, contatti: 0, conti: 0 })
+const counts = ref({ indirizzi: 0, contatti: 0, conti: 0, accessi: 0 })
 const loading = ref(false)
-const activeDrawer = ref(null) // 'contatti' | 'indirizzi' | 'conti' | null
+const activeDrawer = ref(null) // 'contatti' | 'indirizzi' | 'conti' | 'web' | null
+
+// Scopo: mostra il pulsante Web solo se entitaTipo+entitaId sono
+// valorizzati (caller ha attivato esplicitamente la feature per cliente/fornitore).
+const showWeb = computed(() => !!props.entitaTipoWeb && !!props.entitaIdWeb)
+
+// Scopo: carica count degli accessi web (portale+shop) se la feature
+// e' abilitata. Un accesso e' "attivo" se stato = ATTIVO (PENDING non
+// conta perche' l'invito e' solo in volo, l'utente non ha ancora
+// completato l'attivazione).
+async function fetchAccessiCount() {
+  if (!showWeb.value) return 0
+  try {
+    const fn = props.entitaTipoWeb === 'cliente'
+      ? getStatoAccessiCliente
+      : getStatoAccessiFornitore
+    const res = await fn(props.entitaIdWeb)
+    const data = res?.data?.data || {}
+    let n = 0
+    if (data.portale?.stato === 'ATTIVO') n++
+    if (data.shop?.stato === 'ATTIVO') n++
+    return n
+  } catch {
+    return 0
+  }
+}
 
 // Scopo: carica conteggi da API ruolo o soggetto in base al context.
 async function fetchCounts() {
@@ -49,10 +87,11 @@ async function fetchCounts() {
   try {
     if (isRuolo.value) {
       const params = props.istanzaUtilityId ? { istanza_utility_id: props.istanzaUtilityId } : {}
-      const [cont, ind, conti] = await Promise.all([
+      const [cont, ind, conti, accessi] = await Promise.all([
         listRuoloContatti(props.soggettoRuoloId, params),
         listRuoloIndirizzi(props.soggettoRuoloId, params),
         listRuoloContiBancari(props.soggettoRuoloId, params),
+        fetchAccessiCount(),
       ])
       const contData = cont.data?.data || {}
       const indData = ind.data?.data || {}
@@ -61,21 +100,24 @@ async function fetchCounts() {
         contatti: (contData.contatti_ruolo?.length || 0) + (contData.contatti_soggetto?.length || 0),
         indirizzi: (indData.indirizzi_ruolo?.length || 0) + (indData.indirizzi_soggetto?.length || 0),
         conti: (contiData.conti_ruolo?.length || 0) + (contiData.conti_ereditati?.length || 0),
+        accessi,
       }
     } else {
-      const [cont, ind, conti] = await Promise.all([
+      const [cont, ind, conti, accessi] = await Promise.all([
         listSoggettoContatti(props.soggettoId),
         listSoggettoIndirizzi(props.soggettoId),
         listSoggettoContiBancari(props.soggettoId),
+        fetchAccessiCount(),
       ])
       counts.value = {
         contatti: cont.data?.data?.results?.length || cont.data?.data?.length || 0,
         indirizzi: ind.data?.data?.results?.length || ind.data?.data?.length || 0,
         conti: conti.data?.data?.results?.length || conti.data?.data?.length || 0,
+        accessi,
       }
     }
   } catch {
-    counts.value = { indirizzi: 0, contatti: 0, conti: 0 }
+    counts.value = { indirizzi: 0, contatti: 0, conti: 0, accessi: 0 }
   } finally {
     loading.value = false
   }
@@ -115,6 +157,17 @@ watch(activeDrawer, (newVal, oldVal) => {
       class="preview-badge-btn"
       @click="activeDrawer = 'contatti'"
     />
+    <!-- §1.6 accessi web: pulsante visibile solo per cliente/fornitore
+         (showWeb). Count = vesti ATTIVE (portale + shop per cliente, solo
+         portale per fornitore). -->
+    <Button
+      v-if="showWeb"
+      outlined icon="pi pi-globe"
+      :label="`${counts.accessi} ${t('portale.accessi_web.badge_label')}`"
+      :loading="loading"
+      class="preview-badge-btn"
+      @click="activeDrawer = 'web'"
+    />
 
     <!-- Drawer: readonly se preview=true, editabile se preview=false -->
     <ContattiSoggettoDrawer
@@ -139,6 +192,15 @@ watch(activeDrawer, (newVal, oldVal) => {
       :owner-id="ownerId"
       :istanza-utility-id="istanzaUtilityId"
       :context="drawerContext"
+    />
+    <WebAccessiDrawer
+      v-if="showWeb"
+      :visible="activeDrawer === 'web'"
+      @update:visible="v => { if (!v) { activeDrawer = null; fetchCounts() } }"
+      :entita-tipo="entitaTipoWeb"
+      :entita-id="entitaIdWeb"
+      :email-iniziale="emailInizialeWeb"
+      :readonly="preview"
     />
   </div>
 </template>

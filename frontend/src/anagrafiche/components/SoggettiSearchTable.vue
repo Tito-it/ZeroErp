@@ -17,11 +17,17 @@ import TagList from '../../core/components/TagList.vue'
 import NewButton from '../../core/components/NewButton.vue'
 import SearchHint from '../../core/components/SearchHint.vue'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
-import Button from 'primevue/button'
+import ReloadButton from '../../core/components/ReloadButton.vue'
+import ReadonlyBadge from '../../core/components/ReadonlyBadge.vue'
+import AccessoBloccatoPanel from '../../core/components/AccessoBloccatoPanel.vue'
+import { useInjectBlocked } from '../../core/composables/useReadonlyMode'
+import { useAuthStore } from '../../stores/auth'
 
 const emit = defineEmits(['new', 'row-click', 'contatti', 'indirizzi', 'conti-bancari'])
 const { t } = useI18n()
 const store = useSoggettiStore()
+const auth = useAuthStore()
+const isBlocked = useInjectBlocked()
 const { searchText, onPage, onSort, applyFilters, reload, paginatorProps } = useSearchTable(store, {
   defaultSortField: 'ragione_sociale_completa'
 })
@@ -38,6 +44,7 @@ function onRowClick(event) { emit('row-click', event.data) }
 
 // Scopo: azioni di riga del soggetto (sub-drawer anagrafici).
 function buildRowActions(data) {
+  const contiBlocked = auth.isObjectBlocked('anagrafiche', 'conto_bancario')
   return [
     {
       key: 'contatti',
@@ -55,6 +62,7 @@ function buildRowActions(data) {
       key: 'conti-bancari',
       label: t('conti_bancari.gestisci_conti'),
       icon: MANAGE_ICONS.CONTI_BANCARI,
+      disabled: contiBlocked,
       command: () => emit('conti-bancari', data),
     },
   ]
@@ -71,6 +79,9 @@ onMounted(() => {
 
 <template>
   <div class="app-tab-content">
+    <AccessoBloccatoPanel v-if="isBlocked" />
+
+    <template v-else>
     <div class="app-page-toolbar">
       <div class="app-page-filters">
         <InputText
@@ -89,7 +100,8 @@ onMounted(() => {
         />
       </div>
       <div class="app-page-actions">
-        <Button icon="pi pi-refresh" text class="app-reload-btn" v-tooltip.bottom="t('common.reload_list')" @click="reload" />
+        <ReadonlyBadge />
+        <ReloadButton @click="reload" />
         <NewButton :tooltip="t('soggetti.nuovo_soggetto')" @click="emit('new')" />
       </div>
     </div>
@@ -129,5 +141,6 @@ onMounted(() => {
         </template>
       </Column>
     </DataTable>
+    </template>
   </div>
 </template>

@@ -18,6 +18,9 @@ Indice test eseguiti:
  9) test_filter_tabella
 10) test_pagination
 11) test_dept_tables_excluded_without_uo
+12) test_override_oggetti_incluso_senza_filtro   (3.2 v2)
+13) test_filtro_tabella_override_oggetti         (3.2 v2)
+14) test_whitelist_include_user_override_oggetti (3.2 v2)
 """
 
 import math
@@ -180,6 +183,51 @@ class PermissionsAuditRepositoryTests(TestCase):
         self.assertEqual(result["page_size"], 10)
         self.assertEqual(result["count"], 25)
         self.assertEqual(result["total_pages"], math.ceil(25 / 10))
+
+
+class PermissionsAuditRepositoryOggettiTests(TestCase):
+    """Test che verificano la copertura di user_override_oggetti (task 3.2 v2)."""
+
+    def setUp(self) -> None:
+        self.repo = PermissionsAuditRepository()
+
+    # Scopo: Senza filtro tabella, la query include user_override_oggetti nel UNION ALL.
+    @patch("apps.core.db.permissions_audit_repository.connection")
+    def test_override_oggetti_incluso_senza_filtro(self, mock_conn):
+        mock_cursor = MagicMock()
+        mock_cursor.fetchall.return_value = []
+        mock_conn.cursor.return_value.__enter__ = MagicMock(return_value=mock_cursor)
+        mock_conn.cursor.return_value.__exit__ = MagicMock(return_value=False)
+
+        self.repo.list_audit_events(auth_user_id=5, uo_id=None)
+
+        sql = mock_cursor.execute.call_args[0][0]
+        self.assertIn("user_override_oggetti", sql)
+
+    # Scopo: Filtro tabella=user_override_oggetti esclude tutte le altre tabelle.
+    @patch("apps.core.db.permissions_audit_repository.connection")
+    def test_filtro_tabella_override_oggetti(self, mock_conn):
+        mock_cursor = MagicMock()
+        mock_cursor.fetchall.return_value = []
+        mock_conn.cursor.return_value.__enter__ = MagicMock(return_value=mock_cursor)
+        mock_conn.cursor.return_value.__exit__ = MagicMock(return_value=False)
+
+        self.repo.list_audit_events(
+            auth_user_id=5, uo_id=None, tabella="user_override_oggetti"
+        )
+
+        sql = mock_cursor.execute.call_args[0][0]
+        self.assertIn("user_override_oggetti", sql)
+        self.assertNotIn("user_override_aree", sql)
+        self.assertNotIn("user_override_azioni", sql)
+        self.assertNotIn("user_emittenti_fiscali", sql)
+
+    # Scopo: La whitelist accetta user_override_oggetti come valore valido per il filtro.
+    def test_whitelist_include_user_override_oggetti(self):
+        self.assertIn(
+            "user_override_oggetti",
+            PermissionsAuditRepository._VALID_TABLE_NAMES,
+        )
 
 
 class ApiPermessiAuditViewTests(TestCase):

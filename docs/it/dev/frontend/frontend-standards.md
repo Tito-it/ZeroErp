@@ -1045,15 +1045,48 @@ const status = await execute(() => api.get('/status/'), { silent: true })
 
 ---
 
-## Modalita' sola lettura (pattern "protect")
+## Modalita' sola lettura e accesso — pattern "protect"
 
 ### Principio
 
-Le autorizzazioni utente prevedono la **sola lettura** come livello di accesso. Tutti i form e le view devono essere progettati per supportare nativamente la modalita' read-only, senza duplicare componenti o creare varianti separate.
+Le autorizzazioni utente prevedono tre livelli di accesso (`TUTTO`, `LETTURA`, `BLOCCATO`) su tre granularita' diverse. Tutti i form e le view devono supportare nativamente le modalita' ridotte senza duplicare componenti o creare varianti separate.
+
+### Piramide permessi
+
+| Livello | Cosa controlla | Trigger FE | Enforcement BE |
+| --- | --- | --- | --- |
+| **Area** (schema DB) | Accesso all'intero dominio | `useReadonlyMode(schemaDb)` + route guard su `BLOCCATO` | `ZeroERPPermission` via `area_funzionale` |
+| **Azione processo** | Singola operazione (es. "genera fatture") | prop `action` su `NewButton` / `DrawerFooter` | `permission_codename` sulla view |
+| **Oggetto / model** (v2) | Singola entita' dentro un'area | `useReadonlyMode(schemaDb, modelName)` | `model_permission = (app_label, model_name)` sulla view |
+
+### Composable `useReadonlyMode(schemaDb, modelName?)`
+
+Il provider va chiamato nella View (parent della SearchTable e dei drawer). I figli iniettano con `useInjectReadonly()` / `useInjectBlocked()`.
+
+```js
+// Livello area (classico)
+useReadonlyMode('anagrafiche')
+
+// Livello oggetto (permessi v2) — richiede model_permission sulla view BE
+useReadonlyMode('anagrafiche', 'cliente')
+```
+
+Semantica di `isReadonly` / `isBlocked` dopo la risoluzione:
+
+| Contesto | Livello risolto | `isReadonly` | `isBlocked` |
+| --- | --- | --- | --- |
+| Area | TUTTO | `false` | `false` |
+| Area | LETTURA | `true` | `false` |
+| Area | BLOCCATO | — (route guard interviene prima) | — |
+| Oggetto | TUTTO | `false` | `false` |
+| Oggetto | LETTURA | `true` | `false` |
+| Oggetto | BLOCCATO | `true` | `true` |
+
+A livello oggetto `BLOCCATO` implica anche `isReadonly` (l'utente non deve poter attivare form o inviare POST).
 
 ### Tecnica CSS "pannello protect"
 
-Ispirata al formato protect AS/400: un unico overlay CSS blocca ogni interazione sulla view, senza toccare i componenti interni. Non si creano componenti `*ReadOnly.vue` separati.
+Ispirata al formato protect AS/400: un unico overlay CSS blocca ogni interazione sul contenuto, senza toccare i componenti interni. Non si creano componenti `*ReadOnly.vue` separati.
 
 ```css
 .app-readonly {
@@ -1063,9 +1096,7 @@ Ispirata al formato protect AS/400: un unico overlay CSS blocca ogni interazione
 }
 ```
 
-### Come applicare
-
-Ogni view/drawer che supporta la sola lettura wrappa il contenuto con la classe condizionale:
+Wrap del contenuto:
 
 ```vue
 <div :class="{ 'app-readonly': isReadonly }">
@@ -1073,7 +1104,183 @@ Ogni view/drawer che supporta la sola lettura wrappa il contenuto con la classe 
 </div>
 ```
 
-Il flag `isReadonly` viene derivato dalle autorizzazioni utente (permesso di scrittura assente sul dominio/entita').
+### Pattern LISTA — template standard
+
+Ogni SearchTable con permessi livello oggetto segue questo schema:
+
+```vue
+<script setup>
+import ReadonlyBadge from '@/core/components/ReadonlyBadge.vue'
+import ReloadButton from '@/core/components/ReloadButton.vue'
+import NewButton from '@/core/components/NewButton.vue'
+import AccessoBloccatoPanel from '@/core/components/AccessoBloccatoPanel.vue'
+import { useInjectBlocked } from '@/core/composables/useReadonlyMode'
+
+const isBlocked = useInjectBlocked()
+</script>
+
+<template>
+  <div class="app-tab-content">
+    <!-- BLOCCATO: pannello sostitutivo, niente toolbar ne' tabella -->
+    <AccessoBloccatoPanel v-if="isBlocked" />
+
+    <template v-else>
+      <div class="app-page-toolbar">
+        <div class="app-page-filters">
+          <!-- input search, filtri -->
+        </div>
+        <div class="app-page-actions">
+          <ReadonlyBadge />
+          <ReloadButton @click="reload" />
+          <NewButton :tooltip="..." @click="emit('new')" />
+        </div>
+      </div>
+      <DataTable ... />
+    </template>
+  </div>
+</template>
+```
+
+**Regole operative liste**:
+
+- ❌ **mai** `<Button icon="pi pi-refresh" ...>` inline — sempre `<ReloadButton @click="reload" />`
+- ❌ **mai** badge testuale "Sola lettura" custom — sempre `<ReadonlyBadge />`
+- ✅ Ordine fisso in `app-page-actions`: `ReadonlyBadge → ReloadButton → NewButton`
+- ✅ `AccessoBloccatoPanel` sostituisce toolbar + DataTable (variante A, schermata protect). **Non** tenere toolbar visibile disabilitata.
+- ✅ `ReloadButton` si nasconde solo su `isBlocked` (serve anche in LETTURA); `NewButton` si nasconde su `isReadonly`; `ReadonlyBadge` si mostra solo su `isReadonly && !isBlocked`
+
+### Stato permessi → UI della lista
+
+Tabella riassuntiva di cosa vede l'operatore in base al livello risolto:
+
+| Livello | Toolbar | Filtri | ReloadButton | NewButton | ReadonlyBadge | Corpo lista |
+| --- | --- | --- | --- | --- | --- | --- |
+| TUTTO | visibile | attivi | visibile | visibile | nascosto | DataTable normale, Nuovo + modifica OK |
+| LETTURA | visibile | attivi | visibile | nascosto | visibile | DataTable, riga apre drawer in consultazione |
+| BLOCCATO (area) | — | — | — | — | — | l'utente non arriva alla pagina (route guard blocca + sidebar nasconde la voce) |
+| BLOCCATO (oggetto) | nascosta | — | nascosto | nascosto | nascosto | `AccessoBloccatoPanel` — icona 🔒 + messaggio, niente DataTable |
+
+### Modalita' BLOCCATA — dettaglio per liste (livello oggetto)
+
+A differenza del BLOCCATO di area (dove il route guard impedisce la navigazione), il BLOCCATO di **livello oggetto** lascia raggiungere la pagina: l'operatore potrebbe avere `anagrafiche = TUTTO` ma `anagrafiche.cliente = BLOCCATO`. La view deve quindi auto-rilevare lo stato e mostrare la schermata sostitutiva.
+
+**Comportamento atteso**:
+
+- Non tentare alcuna fetch all'apertura: lasciare la store non inizializzata
+- Non mostrare toolbar, filtri o tabella: sostituisci con `<AccessoBloccatoPanel />`
+- Non mostrare badge `ReadonlyBadge`: il pannello comunica gia' piu' forte
+- Nessun sub-drawer attivabile: l'utente non puo' cliccare righe (non esistono)
+- Messaggio i18n standard: `common.accesso_negato_elenco` + `common.accesso_negato_hint`
+
+**Implementazione minima** (gia' nel template standard sopra):
+
+```vue
+<template>
+  <div class="app-tab-content">
+    <AccessoBloccatoPanel v-if="isBlocked" />
+    <template v-else>
+      <!-- toolbar + DataTable normali -->
+    </template>
+  </div>
+</template>
+```
+
+**Cosa NON fare**:
+
+- ❌ Non lasciare la toolbar visibile "grigia/disabilitata" sotto il pannello (variante B scartata: semanticamente ambigua)
+- ❌ Non chiamare `store.fetchList()` sotto `onMounted` senza guard su `isBlocked`
+- ❌ Non mostrare empty state generico (`SearchHint`) — il pannello bloccato e' piu' specifico
+- ❌ Non usare banner inline + tabella vuota — la separazione toolbar/pannello rompe il pattern AS/400
+
+### Pattern DRAWER — template standard
+
+`DrawerTitle` include **automaticamente** il badge readonly via inject. Zero codice aggiuntivo per lo sviluppatore:
+
+```vue
+<Drawer :visible="visible" @update:visible="...">
+  <template #header>
+    <DrawerTitle
+      :action="isEdit ? t('common.edit') : t('common.new')"
+      :title="t('...')"
+      icon="pi pi-briefcase"
+    />
+    <!-- badge "Sola lettura" appare a destra automaticamente se readonly -->
+  </template>
+
+  <div class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
+    <!-- form normale, disabled si propaga via .app-readonly -->
+  </div>
+
+  <DrawerFooter @save="onSave" @cancel="onCancel" />
+  <!-- pulsante Salva nascosto automaticamente se readonly -->
+</Drawer>
+```
+
+**Regole operative drawer**:
+
+- ✅ Ogni drawer admin DEVE esporre prop `readonly` + leggere `useInjectReadonly()` con effetto cumulativo (`computed isReadOnlyEffective = props.readonly || isReadonly.value`)
+- ✅ Usare sempre `DrawerTitle` nel `#header` — il badge si propaga automaticamente
+- ❌ Non creare varianti `*ReadOnly.vue` separate
+- ✅ Wrap del contenuto con `:class="{ 'app-readonly': isReadonly }"` per l'effetto protect
+- ✅ `DrawerFooter` nasconde Salva in readonly; tasti di chiusura (X drawer, `.app-escape`) restano attivi
+
+### Drawer autonomo vs drawer figlio puro
+
+Un drawer puo' comportarsi in due modi rispetto ai permessi livello oggetto:
+
+| Tipo | Dichiara scope proprio | Quando usare | Esempio |
+| --- | --- | --- | --- |
+| **Autonomo** | `useReadonlyMode('schema', 'model')` al setup | Il model e' catalogato in `config.area_model_overrides` (l'admin puo' bloccarlo singolarmente) | `ContiBancariDrawer` → `('anagrafiche', 'conto_bancario')` |
+| **Figlio puro** | solo `useInjectReadonly()` | Il model non e' nel catalogo, si eredita il readonly del parent | `IndirizzoDrawer`, `ContoBancarioForm` |
+
+**Drawer autonomo — template**:
+
+```js
+// ContiBancariDrawer.vue
+import { useReadonlyMode, useInjectBlocked } from '@/core/composables/useReadonlyMode'
+
+// Dichiara scope proprio (l'OR interno rispetta anche eredita' dal parent)
+const { isReadonly } = useReadonlyMode('anagrafiche', 'conto_bancario')
+const isBlocked = useInjectBlocked()
+```
+
+```vue
+<Drawer ...>
+  <template #header>
+    <DrawerTitle ... />  <!-- badge readonly automatico -->
+  </template>
+
+  <!-- Safety net: pannello se raggiunto bypassando l'azione di riga -->
+  <AccessoBloccatoPanel v-if="isBlocked" />
+  <div v-else class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
+    <!-- contenuto normale -->
+  </div>
+
+  <DrawerFooter v-if="!isBlocked" @save="..." @cancel="..." />
+</Drawer>
+```
+
+**Azione di riga che apre un drawer autonomo** — disabilita se oggetto bloccato (evita 403):
+
+```js
+import { useAuthStore } from '@/stores/auth'
+const auth = useAuthStore()
+
+function buildRowActions(data) {
+  return [
+    {
+      key: 'conti-bancari',
+      label: t('conti_bancari.gestisci_conti'),
+      icon: MANAGE_ICONS.CONTI_BANCARI,
+      disabled: auth.isObjectBlocked('anagrafiche', 'conto_bancario'),
+      command: () => emit('conti-bancari', data),
+    },
+  ]
+}
+```
+
+**Cosa succede se sbagli e metti `useReadonlyMode` su un drawer figlio puro?**
+Nulla di rotto: `fn_resolve_livello_oggetto` fa fallback al livello area se il model non e' catalogato. Ma e' codice inutile che suggerisce una granularita' che non esiste — lascialo solo sui drawer veramente autonomi.
 
 ### Tasti di uscita
 
@@ -1093,17 +1300,22 @@ Regola: in sola lettura **si puo' solo chiudere/uscire**, mai aprire/creare/modi
 ### Impatto sui componenti
 
 - **Non creare varianti read-only** di componenti esistenti — usare la classe `.app-readonly` sul container
-- **DrawerFooter**: in sola lettura il footer (Annulla/Salva) non viene renderizzato (`v-if="!isReadonly"`)
-- **NewButton**: in sola lettura non viene renderizzato (`v-if="!isReadonly"`)
-- **DataTable row-click**: in sola lettura apre il drawer in modalita' consultazione (protect attivo)
+- `DrawerTitle`: auto-include `ReadonlyBadge` a destra del titolo
+- `DrawerFooter`: Salva nascosto se readonly (`v-if="!isReadonly"`)
+- `NewButton`: si nasconde se readonly
+- `ReloadButton`: si nasconde solo se bloccato (livello oggetto)
+- `ReadonlyBadge`: visibile solo se readonly e non bloccato
+- `AccessoBloccatoPanel`: sostituisce il contenuto lista se bloccato (livello oggetto)
+- `DataTable` row-click: in sola lettura apre il drawer in modalita' consultazione (protect attivo)
 - **Copia testo**: `user-select: text` garantisce che l'operatore possa sempre copiare dati con Ctrl+C
 
 ### Dove si usa
 
 | Contesto | Trigger |
 | --- | --- |
-| Autorizzazioni utente | Permesso di scrittura assente sul dominio |
-| Split view (futuro) | Pannello secondario affiancato sempre in sola lettura |
+| Autorizzazioni utente area | LETTURA sull'area funzionale (schema DB) |
+| Autorizzazioni utente oggetto (v2) | Override `config.user_override_oggetti` su `app_label.model_name` |
+| Split view | Pannello secondario affiancato sempre in sola lettura (readonly propagato via provide) |
 
 ---
 
@@ -1113,7 +1325,7 @@ Regola: in sola lettura **si puo' solo chiudere/uscire**, mai aprire/creare/modi
 
 Le azioni di processo controllano **singole operazioni** (es. "crea soggetto", "genera fatture") dentro un'area a cui l'operatore ha gia' accesso. Sono il livello di granularita' sotto TUTTO/LETTURA/BLOCCATO.
 
-### Piramide permessi
+### Collocazione nel modello permessi
 
 ```
 Livello 1: Area (TUTTO / LETTURA / BLOCCATO)  → sidebar + route guard + .app-readonly
@@ -1214,9 +1426,12 @@ const { isAllowed } = useActionPermission('genera_fatture_lotti')
 
 | Componente | Scopo | Props chiave | Usato da |
 | --- | --- | --- | --- |
-| `DrawerTitle` | Titolo standard drawer: azione sx + entita' centrata | `action`, `title` | Tutti i drawer |
-| `DrawerFooter` | Footer drawer con Annulla/Salva, auto-hide in readonly | `loading`, `disabled` | Tutti i drawer |
-| `NewButton` | Pulsante "Nuovo" nella toolbar, auto-hide in readonly | `tooltip` | Tutte le SearchTable |
+| `DrawerTitle` | Titolo standard drawer: azione sx + entita' centrata + badge readonly auto | `action`, `title`, `icon` | Tutti i drawer |
+| `DrawerFooter` | Footer drawer con Annulla/Salva, auto-hide Salva in readonly | `loading`, `disabled`, `action`, `closeOnly` | Tutti i drawer |
+| `NewButton` | Pulsante "Nuovo" toolbar, auto-hide in readonly | `tooltip`, `action` | Tutte le SearchTable |
+| `ReloadButton` | Pulsante refresh toolbar, auto-hide solo se `isBlocked` (livello oggetto) | — | Tutte le SearchTable |
+| `ReadonlyBadge` | Badge grigio "Sola lettura", auto-visibile se `isReadonly && !isBlocked`, responsive (icona-only su mobile) | — | Toolbar liste + `DrawerTitle` |
+| `AccessoBloccatoPanel` | Pannello sostitutivo "Accesso negato a questo elenco" per BLOCCATO oggetto | — | SearchTable con `v-if="isBlocked"` |
 | `RowActionsMenu` | Azioni di riga responsive: pulsanti inline su desktop, kebab `⋮` su tablet/touch | `actions`, `tooltip`, `disabled` | Tutte le SearchTable con azioni secondarie |
 | `PaginationInfo` | Info paginazione (es. "1-50 di 1234") | `pagination` | SearchTable |
 | `TagList` | Lista tag con overflow +N e tooltip | `items`, `labelField`, `maxVisible`, `severity` | Ruoli in lista soggetti |

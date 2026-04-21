@@ -26,6 +26,10 @@ import Button from 'primevue/button'
 import NewButton from '../../core/components/NewButton.vue'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
 import UtilityPerRuoloSelect from '../../core/components/UtilityPerRuoloSelect.vue'
+import ReloadButton from '../../core/components/ReloadButton.vue'
+import ReadonlyBadge from '../../core/components/ReadonlyBadge.vue'
+import AccessoBloccatoPanel from '../../core/components/AccessoBloccatoPanel.vue'
+import { useInjectBlocked } from '../../core/composables/useReadonlyMode'
 import AlertScadenzeWidget from './AlertScadenzeWidget.vue'
 import AttivaVersioneDialog from './AttivaVersioneDialog.vue'
 import ProgrammaChiusuraDialog from './ProgrammaChiusuraDialog.vue'
@@ -42,6 +46,7 @@ const emit = defineEmits([
 const { t } = useI18n()
 const store = useListiniStore()
 const { execute } = useApiHandler()
+const isBlocked = useInjectBlocked()
 const { confirmDelete } = useConfirmAction()
 const { searchText, onPage, onSort, applyFilters, reload, paginatorProps } = useSearchTable(store, {
   defaultSortField: 'descrizione'
@@ -271,6 +276,9 @@ onMounted(() => store.fetchList())
 
 <template>
   <div class="app-tab-content">
+    <AccessoBloccatoPanel v-if="isBlocked" />
+
+    <template v-else>
     <div class="app-page-toolbar">
       <div class="app-page-filters">
         <InputText v-model="searchText" :placeholder="t('listini.search_placeholder')" style="width: 320px;" />
@@ -289,7 +297,8 @@ onMounted(() => store.fetchList())
         <AlertScadenzeWidget />
         <Button icon="pi pi-calculator" text severity="info"
           v-tooltip.bottom="t('listini.test_prezzo')" @click="emit('test-resolver')" />
-        <Button icon="pi pi-refresh" text class="app-reload-btn" v-tooltip.bottom="t('common.reload_list')" @click="reload" />
+        <ReadonlyBadge />
+        <ReloadButton @click="reload" />
         <NewButton :tooltip="t('listini.nuovo_listino')" @click="emit('new')" />
       </div>
     </div>
@@ -391,6 +400,7 @@ onMounted(() => store.fetchList())
       :versione="chiusuraDialogVersione"
       @saved="onChiusuraSaved"
     />
+    </template>
   </div>
 </template>
 

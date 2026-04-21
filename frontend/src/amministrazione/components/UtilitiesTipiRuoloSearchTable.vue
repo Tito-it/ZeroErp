@@ -6,20 +6,23 @@ import { useI18n } from 'vue-i18n'
 import { useUtilitiesTipiRuoloStore } from '../stores/utilitiesTipiRuolo'
 import { useSearchTable } from '../../core/composables/useSearchTable'
 import { useTabFreshness } from '../../core/composables/useTabFreshness'
-import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
+import { useInjectReadonly, useInjectBlocked } from '../../core/composables/useReadonlyMode'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
 import Tag from 'primevue/tag'
-import Button from 'primevue/button'
 import LookupSelect from '../../core/components/LookupSelect.vue'
 import NewButton from '../../core/components/NewButton.vue'
+import ReloadButton from '../../core/components/ReloadButton.vue'
+import ReadonlyBadge from '../../core/components/ReadonlyBadge.vue'
+import AccessoBloccatoPanel from '../../core/components/AccessoBloccatoPanel.vue'
 
 const emit = defineEmits(['new', 'row-click'])
 const { t } = useI18n()
 const store = useUtilitiesTipiRuoloStore()
 const isReadonly = useInjectReadonly()
+const isBlocked = useInjectBlocked()
 const { searchText, onPage, onSort, applyFilters, reload, paginatorProps } = useSearchTable(store, {
   defaultSortField: 'utility_descrizione'
 })
@@ -59,6 +62,9 @@ onMounted(() => store.fetchList())
 
 <template>
   <div class="app-tab-content">
+    <AccessoBloccatoPanel v-if="isBlocked" />
+
+    <template v-else>
     <div class="app-page-toolbar">
       <div class="app-page-filters">
         <InputText
@@ -92,13 +98,8 @@ onMounted(() => store.fetchList())
         />
       </div>
       <div class="app-page-actions">
-        <Button
-          icon="pi pi-refresh"
-          text
-          class="app-reload-btn"
-          v-tooltip.bottom="t('common.reload_list')"
-          @click="reload"
-        />
+        <ReadonlyBadge />
+        <ReloadButton @click="reload" />
         <NewButton
           v-if="!isReadonly"
           :tooltip="t('amministrazione.matrice_utilities_ruoli.new_row')"
@@ -161,5 +162,6 @@ onMounted(() => store.fetchList())
         </template>
       </Column>
     </DataTable>
+    </template>
   </div>
 </template>

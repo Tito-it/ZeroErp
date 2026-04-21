@@ -1,6 +1,6 @@
 <script setup>
 // Scopo: Pagina pubblica attivazione account shop customer (B1 §13.7).
-// Token via link email (/shop/attivazione/:token). Simmetrica ad
+// Token via link email (/attivazione-shop/:token). Simmetrica ad
 // AttivazionePortaleView con due flow:
 // - INVITO (token_type=INVITO_SHOP, requires_password=true): form
 //   con scelta password (primo accesso shop di un utente email-nuovo).

@@ -9,14 +9,18 @@ import ComuneAutocomplete from '../../core/components/ComuneAutocomplete.vue'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import InputText from 'primevue/inputtext'
+import Tag from 'primevue/tag'
 import NewButton from '../../core/components/NewButton.vue'
 import SearchHint from '../../core/components/SearchHint.vue'
-import Button from 'primevue/button'
-import Tag from 'primevue/tag'
+import ReloadButton from '../../core/components/ReloadButton.vue'
+import ReadonlyBadge from '../../core/components/ReadonlyBadge.vue'
+import AccessoBloccatoPanel from '../../core/components/AccessoBloccatoPanel.vue'
+import { useInjectBlocked } from '../../core/composables/useReadonlyMode'
 
 const emit = defineEmits(['row-click', 'new'])
 const { t } = useI18n()
 const store = useIndirizziStore()
+const isBlocked = useInjectBlocked()
 const { searchText, onPage, onSort, applyFilters, reload, paginatorProps } = useSearchTable(store, { defaultSortField: 'indirizzo_normalizzato' })
 
 const comuneFilter = ref(null)
@@ -42,6 +46,9 @@ function onRowClick(event) {
 
 <template>
   <div class="app-tab-content">
+    <AccessoBloccatoPanel v-if="isBlocked" />
+
+    <template v-else>
     <div class="app-page-toolbar">
       <div class="app-page-filters">
         <InputText
@@ -54,7 +61,8 @@ function onRowClick(event) {
         />
       </div>
       <div class="app-page-actions">
-        <Button icon="pi pi-refresh" text class="app-reload-btn" v-tooltip.bottom="t('common.reload_list')" @click="reload" />
+        <ReadonlyBadge />
+        <ReloadButton @click="reload" />
         <NewButton :tooltip="t('indirizzi.nuovo_indirizzo')" @click="emit('new')" />
       </div>
     </div>
@@ -92,5 +100,6 @@ function onRowClick(event) {
         </template>
       </Column>
     </DataTable>
+    </template>
   </div>
 </template>

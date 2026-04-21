@@ -10,12 +10,16 @@ import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import InputText from 'primevue/inputtext'
 import Tag from 'primevue/tag'
-import Button from 'primevue/button'
 import NewButton from '../../core/components/NewButton.vue'
+import ReloadButton from '../../core/components/ReloadButton.vue'
+import ReadonlyBadge from '../../core/components/ReadonlyBadge.vue'
+import AccessoBloccatoPanel from '../../core/components/AccessoBloccatoPanel.vue'
+import { useInjectBlocked } from '../../core/composables/useReadonlyMode'
 
 const emit = defineEmits(['new', 'row-click'])
 const { t } = useI18n()
 const store = useConversioniUomStore()
+const isBlocked = useInjectBlocked()
 const { searchText, onPage, onSort, reload, paginatorProps } = useSearchTable(store, {
   defaultSortField: 'uom_from_descrizione'
 })
@@ -28,12 +32,16 @@ onMounted(() => store.fetchList())
 
 <template>
   <div class="app-tab-content">
+    <AccessoBloccatoPanel v-if="isBlocked" />
+
+    <template v-else>
     <div class="app-page-toolbar">
       <div class="app-page-filters">
         <InputText v-model="searchText" :placeholder="t('catalogo.conv_search_placeholder')" />
       </div>
       <div class="app-page-actions">
-        <Button icon="pi pi-refresh" text class="app-reload-btn" v-tooltip.bottom="t('common.reload_list')" @click="reload" />
+        <ReadonlyBadge />
+        <ReloadButton @click="reload" />
         <NewButton :tooltip="t('catalogo.nuova_conversione')" @click="emit('new')" />
       </div>
     </div>
@@ -62,6 +70,7 @@ onMounted(() => store.fetchList())
         </template>
       </Column>
     </DataTable>
+    </template>
   </div>
 </template>
 

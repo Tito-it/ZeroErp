@@ -18,6 +18,12 @@ Indice test eseguiti:
  8) test_put_emittenti_scope — PUT emittenti scope sostituisce e ritorna lista
  9) test_put_emittenti_scope_invalidates_cache — PUT invalida cache utente
 10) test_override_permission_denied — OPERATIVO non puo' accedere
+11) test_get_override_oggetti — GET override oggetti ritorna lista
+12) test_put_override_oggetti — PUT override oggetti sostituisce e ritorna lista
+13) test_put_override_oggetti_invalidates_cache — PUT invalida cache utente
+14) test_put_override_oggetti_valida_catalogo — model non registrato -> E_AMM_VALIDAZIONE
+15) test_put_override_oggetti_empty_skippa_validazione — lista vuota non chiama lookup
+16) test_get_model_overrides_lookup — lookup catalogo model
 """
 
 import json
@@ -26,9 +32,12 @@ from unittest.mock import MagicMock, patch
 
 from apps.amm_software.api.views import (
     EmittentiScopeView,
+    ModelOverridesLookupView,
     OverrideAreeView,
     OverrideAzioniView,
+    OverrideOggettiView,
 )
+from apps.core.services.error_manager import ServiceError
 
 
 SAMPLE_OVERRIDE_AREA = {
@@ -46,6 +55,18 @@ SAMPLE_OVERRIDE_AZIONE = {
 SAMPLE_EMITTENTE = {
     "id": 1, "emittente_fiscale_id": 10,
     "emittente_denominazione": "Azienda Test", "emittente_piva": "12345678901",
+}
+
+SAMPLE_OVERRIDE_OGGETTO = {
+    "id": 1, "app_label": "anagrafiche", "model_name": "conto_bancario",
+    "livello": "BLOCCATO", "motivo": "riservato",
+    "valido_dal": "2026-04-10", "valido_al": None,
+    "area_id": 1, "area_descrizione": "Anagrafiche",
+}
+
+SAMPLE_MODEL_OVERRIDE = {
+    "id": 1, "app_label": "anagrafiche", "model_name": "conto_bancario",
+    "area_schema": "anagrafiche", "area_descrizione": "Anagrafiche",
 }
 
 
@@ -192,6 +213,115 @@ class TestEmittentiScopeView(TestCase):
         view.put(_make_request("PUT", {"emittente_ids": []}), auth_user_id=5)
 
         mock_invalidate.assert_called_once_with(5)
+
+
+class TestOverrideOggettiView(TestCase):
+    """Override oggetti v2: CRUD admin + validazione catalogo."""
+
+    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
+    def test_get_override_oggetti(self, mock_repo_cls):
+        """GET override oggetti ritorna lista con info model+area."""
+        mock_repo = MagicMock()
+        mock_repo.get_override_oggetti.return_value = [SAMPLE_OVERRIDE_OGGETTO]
+        mock_repo_cls.return_value = mock_repo
+
+        view = OverrideOggettiView()
+        response = view.get(_make_request(), auth_user_id=1)
+
+        data = json.loads(response.content)
+        self.assertEqual(len(data["data"]["results"]), 1)
+        self.assertEqual(data["data"]["results"][0]["app_label"], "anagrafiche")
+        self.assertEqual(data["data"]["results"][0]["model_name"], "conto_bancario")
+        self.assertEqual(data["data"]["results"][0]["livello"], "BLOCCATO")
+
+    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
+    @patch("apps.amm_software.services.amm_software_service.invalidate_user")
+    def test_put_override_oggetti(self, mock_invalidate, mock_repo_cls):
+        """PUT override oggetti sostituisce e ritorna lista aggiornata."""
+        mock_repo = MagicMock()
+        mock_repo.list_model_overrides.return_value = [SAMPLE_MODEL_OVERRIDE]
+        mock_repo.get_override_oggetti.return_value = [SAMPLE_OVERRIDE_OGGETTO]
+        mock_repo_cls.return_value = mock_repo
+
+        items = [{
+            "app_label": "anagrafiche", "model_name": "conto_bancario",
+            "livello": "BLOCCATO", "motivo": "test",
+        }]
+        request = _make_request("PUT", {"items": items})
+        view = OverrideOggettiView()
+        response = view.put(request, auth_user_id=1)
+
+        mock_repo.put_override_oggetti.assert_called_once_with(1, items)
+        data = json.loads(response.content)
+        self.assertEqual(len(data["data"]["results"]), 1)
+
+    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
+    @patch("apps.amm_software.services.amm_software_service.invalidate_user")
+    def test_put_override_oggetti_invalidates_cache(self, mock_invalidate, mock_repo_cls):
+        """PUT invalida cache utente dopo modifica."""
+        mock_repo = MagicMock()
+        mock_repo.list_model_overrides.return_value = [SAMPLE_MODEL_OVERRIDE]
+        mock_repo.get_override_oggetti.return_value = []
+        mock_repo_cls.return_value = mock_repo
+
+        view = OverrideOggettiView()
+        view.put(_make_request("PUT", {"items": []}), auth_user_id=99)
+
+        mock_invalidate.assert_called_once_with(99)
+
+    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
+    @patch("apps.amm_software.services.amm_software_service.invalidate_user")
+    def test_put_override_oggetti_valida_catalogo(self, mock_invalidate, mock_repo_cls):
+        """PUT con model non registrato -> E_AMM_VALIDAZIONE, nessuna scrittura."""
+        mock_repo = MagicMock()
+        mock_repo.list_model_overrides.return_value = [SAMPLE_MODEL_OVERRIDE]
+        mock_repo_cls.return_value = mock_repo
+
+        items = [{
+            "app_label": "fantasma", "model_name": "inesistente",
+            "livello": "BLOCCATO",
+        }]
+        request = _make_request("PUT", {"items": items})
+        view = OverrideOggettiView()
+
+        with self.assertRaises(ServiceError) as ctx:
+            view.put(request, auth_user_id=1)
+        self.assertEqual(ctx.exception.code, "E_AMM_VALIDAZIONE")
+        mock_repo.put_override_oggetti.assert_not_called()
+        mock_invalidate.assert_not_called()
+
+    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
+    @patch("apps.amm_software.services.amm_software_service.invalidate_user")
+    def test_put_override_oggetti_empty_skippa_validazione(self, mock_invalidate, mock_repo_cls):
+        """PUT con lista vuota non interroga il catalogo (cancellazione pura)."""
+        mock_repo = MagicMock()
+        mock_repo.get_override_oggetti.return_value = []
+        mock_repo_cls.return_value = mock_repo
+
+        view = OverrideOggettiView()
+        view.put(_make_request("PUT", {"items": []}), auth_user_id=1)
+
+        mock_repo.list_model_overrides.assert_not_called()
+        mock_repo.put_override_oggetti.assert_called_once_with(1, [])
+
+
+class TestModelOverridesLookupView(TestCase):
+    """Lookup catalogo model registrati (dropdown admin)."""
+
+    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
+    def test_get_model_overrides_lookup(self, mock_repo_cls):
+        """GET lookup ritorna catalogo con schema area."""
+        mock_repo = MagicMock()
+        mock_repo.list_model_overrides.return_value = [SAMPLE_MODEL_OVERRIDE]
+        mock_repo_cls.return_value = mock_repo
+
+        view = ModelOverridesLookupView()
+        response = view.get(_make_request())
+
+        data = json.loads(response.content)
+        self.assertEqual(len(data["data"]["results"]), 1)
+        self.assertEqual(data["data"]["results"][0]["app_label"], "anagrafiche")
+        self.assertEqual(data["data"]["results"][0]["area_schema"], "anagrafiche")
 
 
 class TestOverridePermissionDenied(TestCase):

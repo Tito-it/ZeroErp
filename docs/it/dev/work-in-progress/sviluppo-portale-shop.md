@@ -145,6 +145,49 @@ gia' attivo (B1 §13.7); la registrazione self-service resta da fare.
 - [ ] 1.5.4 Layout shop pubblico (catalogo, carrello, checkout — §6.6)
 - [ ] 1.5.5 Form registrazione shop (collegato a §1.4)
 
+### 1.6 Admin UI — gestione accessi web (drawer dedicato)
+
+Sostituisce il pannello `PortaleAccessoPanel` inline dentro
+`ClienteDrawer` / `FornitoreDrawer` con un **drawer autonomo**
+`WebAccessiDrawer.vue` aperto via pulsante toolbar `pi-globe` accanto
+a Contatti / Indirizzi / Conti.
+
+- [x] 1.6.1 ~~BE endpoint dedicato `/portale/admin/accessi/`~~ — non
+      necessario: esteso invece `PortaleRepository.get_stato_identita`
+      con JOIN `django.auth_user` per includere `username` + `email`
+      nella response. L'endpoint esistente `GET /api/v1/anagrafiche/
+      {clienti|fornitori}/<id>/stato-accessi/` risponde ora con
+      `{stato, identita_id, auth_user_id, username, email,
+      invito_inviato_at, token_scade_at}` per ogni veste. 1600 test OK.
+- [x] 1.6.2 FE `WebAccessiDrawer.vue` generico
+      (`entitaTipo: 'cliente' | 'fornitore'`), wrapper autonomo che
+      incapsula `PortaleAccessoPanel` (portale + shop sezioni). Il
+      pannello e' stato aggiornato per mostrare username + email
+      dell'auth_user collegato sotto ogni sezione (no tab dedicata
+      "utenti", l'info sta nelle card di stato).
+- [x] 1.6.3 Pulsante `pi-globe` "Web" aggiunto in
+      `SoggettoPreviewBadges.vue` (gated da prop `entitaTipoWeb` +
+      `entitaIdWeb`), affiancato ai pulsanti Indirizzi/Contatti/Conti.
+      Badge count = vesti ATTIVE (0-2 per cliente, 0-1 per fornitore).
+- [x] 1.6.4 Rimozione `PortaleAccessoPanel` inline da `ClienteDrawer`
+      e `FornitoreDrawer`. Il componente resta usato dentro
+      `WebAccessiDrawer`. Vite build 982ms, full suite BE 1600 OK.
+- [ ] 1.6.5 **Forza logout / invalida session utente** — NON in questo
+      scope. Deferred: operazione distruttiva che richiede policy
+      (admin-only? solo super_admin? audit dedicato?). Da pianificare
+      con `dbops.sessioni_utente` + SimpleJWT blacklist bulk. Nota
+      parcheggiata qui per memoria, sprint dedicato dopo §1.6.1-4.
+- [ ] 1.6.6 **i18n en.json** — chiavi `portale.accessi_web.*` aggiunte
+      solo in `it.json`; `en.json` ha sezione `portale` incompleta
+      (fallback a `it`). Da completare in sprint i18n dedicato (scope
+      cross-feature, non blocker).
+- [ ] 1.6.7 **Riuso da lista** — il `WebAccessiDrawer` e' gia' pronto
+      per essere invocato da `ClientiListView` / `FornitoriListView`
+      via row-action menu (passa `entitaTipo` + `entitaId` +
+      `emailIniziale`, zero dipendenze dal drawer padre). Da integrare
+      nei row-action delle due liste per consentire gestione accessi
+      senza aprire il drawer completo.
+
 ---
 
 ## 2. Residuo hardening (security)

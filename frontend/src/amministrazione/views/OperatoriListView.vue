@@ -23,7 +23,9 @@ import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
 import NewButton from '../../core/components/NewButton.vue'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
-import Button from 'primevue/button'
+import ReloadButton from '../../core/components/ReloadButton.vue'
+import ReadonlyBadge from '../../core/components/ReadonlyBadge.vue'
+import AccessoBloccatoPanel from '../../core/components/AccessoBloccatoPanel.vue'
 import Badge from 'primevue/badge'
 import { displayDate } from '../../core/utils/date'
 
@@ -33,7 +35,7 @@ const unitaOrg = useLookup(listUnitaOrganizzative, { immediate: true })
 const { searchText, onPage, onSort, applyFilters, reload, paginatorProps } = useSearchTable(store)
 const drawer = useDrawerState()
 const permessiDrawer = useDrawerState()
-const { isReadonly } = useReadonlyMode('amm_software')
+const { isReadonly, isBlocked } = useReadonlyMode('amm_software')
 // Destruct: Vue auto-unwrap i ref destrutturati nel template, non nel
 // reactive object proxy. Pattern idiomatic.
 const { status: setupStatusData, load: loadSetupStatus, hasOperatoriNonAssegnati } = useSetupStatus()
@@ -112,6 +114,10 @@ function buildRowActions(data) {
       v-if="hasOperatoriNonAssegnati"
       :count="setupStatusData.operatori_non_assegnati"
     />
+
+    <AccessoBloccatoPanel v-if="isBlocked" />
+
+    <template v-else>
     <div class="app-page-toolbar">
       <div class="app-page-filters">
         <InputText
@@ -144,7 +150,8 @@ function buildRowActions(data) {
         />
       </div>
       <div class="app-page-actions">
-        <Button icon="pi pi-refresh" text class="app-reload-btn" v-tooltip.bottom="t('common.reload_list')" @click="reload" />
+        <ReadonlyBadge />
+        <ReloadButton @click="reload" />
         <NewButton :tooltip="t('amm.nuovo_operatore')" @click="drawer.openCreate" />
       </div>
     </div>
@@ -203,6 +210,7 @@ function buildRowActions(data) {
         </template>
       </Column>
     </DataTable>
+    </template>
 
     <OperatoreDrawer
       :visible="drawer.state.visible"

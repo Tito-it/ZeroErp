@@ -260,6 +260,27 @@ class PermissionResolver:
         return _cached(cache, "emittente_for_user", _query)
 
     @classmethod
+    def list_model_overrides_grouped(cls) -> dict[str, list[dict[str, str]]]:
+        """Scopo: Restituisce tutti i model configurabili raggruppati per schema_db.
+        Usato da permessi-effettivi per mostrare il livello oggetto per area."""
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT af.schema_db, amo.app_label, amo.model_name
+                  FROM config.area_model_overrides amo
+                  JOIN config.aree_funzionali af ON af.id = amo.area_id
+                 ORDER BY af.schema_db, amo.model_name
+                """
+            )
+            rows = cursor.fetchall()
+        result: dict[str, list[dict[str, str]]] = {}
+        for schema_db, app_label, model_name in rows:
+            result.setdefault(schema_db, []).append(
+                {"app_label": app_label, "model_name": model_name}
+            )
+        return result
+
+    @classmethod
     def get_area_schema_db(cls, app_label: str, model_name: str) -> str:
         """Scopo: Determina lo schema_db dell'area per un model.
         1. Controlla override in area_model_overrides
