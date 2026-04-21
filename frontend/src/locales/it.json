@@ -185,6 +185,29 @@
     "wip_title": "Area in costruzione",
     "wip_message": "Le funzionalità sono in fase di sviluppo.",
     "coming_soon": "Prossimamente",
+    "portale_home": {
+      "title": "Portale clienti/fornitori",
+      "features": [
+        "Il portale self-service arrivera' con la prossima release.",
+        "Potrai consultare fatture, scadenze e ordini dalla tua area riservata.",
+        "Nel frattempo contatta il tuo referente commerciale per qualsiasi informazione."
+      ]
+    },
+    "shop_home": {
+      "title": "Shop",
+      "features": [
+        "Il negozio online e' in arrivo con la release PR-C.",
+        "Catalogo pubblico, checkout e area cliente saranno disponibili a breve."
+      ]
+    },
+    "shop_attivazione": {
+      "title": "Attivazione account shop",
+      "features": [
+        "L'attivazione dell'account shop sara' disponibile con PR-C.",
+        "Hai ricevuto questo link via email ma il flusso non e' ancora attivo.",
+        "Salva il link: potrai usarlo non appena la funzione sara' disponibile."
+      ]
+    },
     "amm_software_operatori": {
       "title": "Gestione Operatori",
       "features": [
@@ -240,7 +263,28 @@
     "activation_welcome": "Imposta la tua password per completare l'attivazione dell'account portale.",
     "activation_success": "Account portale attivato. Reindirizzamento al login...",
     "activation_token_invalid": "Il link non è valido o è scaduto. Contatta l'amministratore per richiedere un nuovo invito.",
-    "activate_btn": "Attiva account"
+    "activate_btn": "Attiva account",
+    "activation_cross_welcome": "Stai per attivare l'accesso al portale con le tue credenziali esistenti. Non è richiesta una nuova password: potrai accedere con le stesse credenziali che usi già.",
+    "activate_cross_btn": "Attiva accesso portale",
+    "activation_cross_success": "Accesso portale attivato. Effettua il login con le tue credenziali esistenti.",
+    "profile": {
+      "title": "Il tuo profilo",
+      "anagrafica_title": "Dati anagrafici",
+      "nome": "Nome",
+      "username": "Username",
+      "email": "Email",
+      "ruolo": "Ruolo",
+      "accessi_title": "Accessi",
+      "accesso_portale": "Accesso portale",
+      "accesso_shop": "Accesso shop",
+      "stato_attivo": "Attivo",
+      "stato_non_attivo": "Non attivo",
+      "activate_shop_btn": "Attiva accesso shop",
+      "activate_shop_hint": "Con lo stesso account potrai accedere anche al negozio online.",
+      "activate_shop_success": "Attivazione shop avviata. Controlla la tua email.",
+      "activate_shop_coming_soon": "Funzione in arrivo con la prossima release.",
+      "activate_shop_error": "Impossibile attivare l'accesso shop. Riprova più tardi."
+    }
   },
   "auth": {
     "username": "Username",
@@ -248,6 +292,13 @@
     "login": "Accedi",
     "logout": "Esci",
     "super_admin_badge": "Super Admin",
+    "canale": {
+      "label": "Canale di accesso",
+      "admin": "Operatore",
+      "portale": "Portale clienti/fornitori",
+      "shop": "Shop"
+    },
+    "veste_non_attiva": "L'utente non ha accesso a questo canale.",
     "ruolo_applicativo": {
       "OPERATORE": "Operatore",
       "CLIENTE_PORTALE": "Cliente (portale)",

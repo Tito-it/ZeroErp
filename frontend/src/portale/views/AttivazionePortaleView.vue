@@ -1,8 +1,13 @@
 <script setup>
 // Scopo: Pagina pubblica attivazione account portale. Il token arriva via
 // link email (/attivazione-portale/:token). Layout simmetrico ad
-// AttivazioneView per operatore, differente solo per endpoint e testi.
-import { ref, onMounted } from 'vue'
+// AttivazioneView per operatore, ma con branching §8.4.2 per due flow:
+// - INVITO (token_type=INVITO_PORTALE, requires_password=true): form
+//   con scelta password (primo accesso di un utente email-nuovo).
+// - CROSS (token_type=ATTIVAZIONE_PORTALE_CROSS, requires_password=false):
+//   conferma one-click — l'utente ha gia' una password sulla veste
+//   operatore o altra veste portale, qui attiva solo la nuova veste.
+import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { usePasswordValidation } from '../../core/composables/usePasswordValidation'
@@ -25,6 +30,15 @@ const successMessage = ref('')
 const loading = ref(false)
 const tokenValid = ref(null) // null = loading, true = ok, false = invalid
 
+// §8.4.2 contract: `token_type` + `requires_password` letti da validate.
+// `requires_password=true` → INVITO (form password), `false` → CROSS
+// (one-click). Fallback conservativo a `true` in assenza del campo
+// (BE pre-§8.4.2): mantiene il comportamento storico.
+const tokenType = ref(null)
+const requiresPassword = ref(true)
+
+const isCrossFlow = computed(() => !requiresPassword.value)
+
 onMounted(async () => {
   if (!token.value) {
     tokenValid.value = false
@@ -32,7 +46,12 @@ onMounted(async () => {
   }
   try {
     const res = await validateInvitoPortaleToken(token.value)
-    tokenValid.value = res.data?.data?.valid === true
+    const data = res.data?.data || {}
+    tokenValid.value = data.valid === true
+    tokenType.value = data.token_type ?? null
+    // Se il BE risponde senza `requires_password` (es. BE legacy),
+    // assumiamo true per sicurezza — mostriamo comunque il form.
+    requiresPassword.value = data.requires_password !== false
   } catch {
     tokenValid.value = false
   }
@@ -42,20 +61,29 @@ async function handleActivation() {
   errorMessage.value = ''
   successMessage.value = ''
 
-  const pwError = validateNewPassword(newPassword.value, confirmPassword.value)
-  if (pwError) {
-    errorMessage.value = t(pwError)
-    return
+  // Valida la password solo nel flow INVITO.
+  if (requiresPassword.value) {
+    const pwError = validateNewPassword(newPassword.value, confirmPassword.value)
+    if (pwError) {
+      errorMessage.value = t(pwError)
+      return
+    }
   }
 
   loading.value = true
   try {
     await attivaPortale({
       token: token.value,
-      newPassword: newPassword.value,
-      newPasswordConfirm: confirmPassword.value,
+      // In flow CROSS `newPassword` e' vuoto: `attivaPortale` omette
+      // i campi password dal payload (no rumore semantico BE-side).
+      newPassword: requiresPassword.value ? newPassword.value : '',
+      newPasswordConfirm: requiresPassword.value ? confirmPassword.value : '',
     })
-    successMessage.value = t('portale.activation_success')
+    successMessage.value = t(
+      isCrossFlow.value
+        ? 'portale.activation_cross_success'
+        : 'portale.activation_success'
+    )
     setTimeout(() => router.push('/login'), 2000)
   } catch (err) {
     const code = extractApiErrorCode(err)
@@ -94,7 +122,26 @@ async function handleActivation() {
         </router-link>
       </div>
 
-      <!-- Form attivazione -->
+      <!-- Flow CROSS: one-click, no password -->
+      <form
+        v-else-if="isCrossFlow"
+        @submit.prevent="handleActivation"
+        class="login-form"
+      >
+        <p class="login-subtitle">{{ t('portale.activation_cross_welcome') }}</p>
+
+        <div v-if="errorMessage" class="login-error">{{ errorMessage }}</div>
+        <div v-if="successMessage" class="login-success">{{ successMessage }}</div>
+
+        <Button
+          type="submit"
+          :label="t('portale.activate_cross_btn')"
+          :loading="loading"
+          class="auth-submit-btn"
+        />
+      </form>
+
+      <!-- Flow INVITO: form scelta password -->
       <form v-else @submit.prevent="handleActivation" class="login-form">
         <p class="login-subtitle">{{ t('portale.activation_welcome') }}</p>
 

@@ -497,7 +497,7 @@ Per l'inventario completo degli endpoint attivi per dominio, consultare la docum
 * **Pratiche**: [api_pratiche_list.md](/backend/pratiche/manual/api_pratiche_list) | [api_pratiche_generate.md](/backend/pratiche/manual/api_pratiche_generate) | [api_pratiche_note.md](/backend/pratiche/manual/api_pratiche_note) | [api_pratiche_allegati.md](/backend/pratiche/manual/api_pratiche_allegati)
 * **Amm. Software**: [api_amm_software.md](api_amm_software.md)
 * **Anagrafiche**: [api_soggetti.md](api_soggetti.md) | [api_indirizzi.md](api_indirizzi.md) | [api_geo_config.md](api_geo_config.md) | [api_fornitori.md](api_fornitori.md)
-* **Auth**: [api_token_cambio_password.md](/backend/core/manual/api_token_cambio_password) | [api_password_reset.md](/backend/core/manual/api_password_reset) | [api_invito_operatore.md](/backend/core/manual/api_invito_operatore)
+* **Auth**: [api_multi_veste_token.md](/backend/core/manual/api_multi_veste_token) | [auth_views_audit.md](/backend/core/manual/auth_views_audit) | [api_user_profile.md](/backend/core/manual/api_user_profile) | [api_token_cambio_password.md](/backend/core/manual/api_token_cambio_password) | [api_password_reset.md](/backend/core/manual/api_password_reset) | [api_invito_operatore.md](/backend/core/manual/api_invito_operatore) | [api_logout.md](/backend/core/manual/api_logout)
 * **Email**: [api_email.md](/backend/core/manual/api_email)
 * **Parametri**: [api_parameter_settings.md](../backend/core/manual/api_parameter_settings.md)
 
@@ -510,15 +510,33 @@ Per i building block backend riutilizzabili (helpers, services, repository), con
 | Aspetto            | Dettaglio                                                                    |
 | ------------------ | ---------------------------------------------------------------------------- |
 | Protocollo         | JWT Bearer su tutti gli endpoint `/api/v1/*`                                 |
-| Token              | `POST /api/v1/auth/token/` — emissione                                       |
-| Refresh            | `POST /api/v1/auth/token/refresh/` — rinnovo                                 |
+| Token login        | 3 endpoint namespace-specific (admin/portale/shop), vedi sezione sotto       |
+| Token refresh      | 3 endpoint namespace-specific con guard cross-veste                          |
+| JWT claim custom   | `identita_id` + `ruolo_applicativo` + `sid` (session id stabile)             |
 | Permission class   | `ZeroERPPermission` — risoluzione centralizzata                              |
 | Superuser          | Bypass totale                                                                |
-| SUPER_ADMIN        | Bypass dopo check binding profilo 9100 via `script.fn_is_super_admin`        |
+| SUPER_ADMIN        | Bypass via `script.fn_is_super_admin` (filtro veste OPERATORE, §8.3.7)       |
 | DISABILITATO       | Rifiuto immediato su `ruolo_applicativo = DISABILITATO`                      |
 | Azione processo    | Verificata se la view dichiara `post_permission` / `get_permission`          |
 | CRUD standard      | Livello area/oggetto (`TUTTO`, `LETTURA`, `BLOCCATO`)                        |
 | Scope emittente    | Filtra i dati per emittente fiscale autorizzato (vedi sotto)                 |
+
+### Endpoint login/refresh multi-veste (§8.3 PR-B1)
+
+Post refactor multi-face auth, ogni namespace ha i propri endpoint di login
+e refresh che ammettono solo il subset di vesti che gli compete:
+
+| Path login | Path refresh | Vesti ammesse |
+| --- | --- | --- |
+| `POST /api/v1/admin/token/` | `POST /api/v1/admin/token/refresh/` | `OPERATORE` |
+| `POST /api/v1/portale/token/` | `POST /api/v1/portale/token/refresh/` | `CLIENTE_PORTALE`, `FORNITORE_PORTALE` |
+| `POST /api/v1/shop/token/` | `POST /api/v1/shop/token/refresh/` | `SHOP_CUSTOMER` |
+
+Il vecchio path unificato `/api/v1/auth/token/` e' stato **rimosso senza
+alias** (breaking, grace 0). Client pre-refactor devono aggiornarsi.
+
+Contratto HTTP completo, claim JWT, codici errore e guard cross-namespace:
+[api_multi_veste_token.md](../backend/core/manual/api_multi_veste_token.md).
 
 ### Identita utente: `ruolo_applicativo` e `SUPER_ADMIN`
 
@@ -616,6 +634,17 @@ in `error_policies.py` prima dell'uso. Il suffisso determina la categoria:
 | `_NOT_FOUND` | 404 | `E_PRATICA_NOT_FOUND` |
 | `_DUPLICATO` / `_IN_ESECUZIONE` | 409 | `E_ANAG_DUPLICATO` |
 | `_NEGATO` / `_DENIED` | 403 | `E_PERMESSO_NEGATO` |
+
+#### Codici auth multi-veste (§8.3 PR-B1)
+
+| Codice | HTTP | UI action | Quando |
+| --- | --- | --- | --- |
+| `E_VESTE_NON_ATTIVA` | 403 | show_error_banner | Login o refresh su un namespace senza identita con la veste richiesta |
+| `E_JWT_SENZA_IDENTITA` | 401 | redirect_login | JWT senza claim `identita_id` (token pre-refactor multi-face) |
+| `E_IDENTITA_NON_ATTIVA` | 401 | redirect_login | Claim `identita_id` non corrisponde a identita attiva (revocata dopo emissione) |
+
+Vedi [api_multi_veste_token.md](../backend/core/manual/api_multi_veste_token.md)
+per il contratto completo.
 
 ### Test
 

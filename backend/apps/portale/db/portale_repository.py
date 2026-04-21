@@ -22,7 +22,11 @@ class PortaleRepository:
 
     # Scopo: Risolve soggetto_ruolo_id + dati anagrafici di un cliente.
     # Il parametro e' cliente_id = PK di anagrafiche.clienti (coerente con
-    # ClientiDetailView); risale al billing_account e al soggetto tramite join.
+    # ClientiDetailView). Il soggetto_ruolo_id deriva direttamente da
+    # clienti.soggetto_ruolo_id (ruolo CL del cliente, coerente con
+    # il trigger guard_coerenza che pretende tipo CL per CLIENTE_PORTALE):
+    # non si passa da billing_account.soggetto_ruolo_id per non dipendere
+    # dal FK del BA, che semanticamente e' il holder e potrebbe divergere.
     # Ritorna None se il cliente non esiste.
     def get_cliente_info(self, cliente_id: int) -> dict[str, Any] | None:
         sql = """
@@ -36,8 +40,8 @@ class PortaleRepository:
                    s.nome                       AS nome,
                    s.codice_fiscale             AS codice_fiscale
               FROM anagrafiche.clienti cl
+              JOIN anagrafiche.soggetti_ruoli sr  ON sr.id = cl.soggetto_ruolo_id
               JOIN anagrafiche.billing_account ba ON ba.id = cl.billing_account_id
-              JOIN anagrafiche.soggetti_ruoli sr  ON sr.id = ba.soggetto_ruolo_id
               JOIN anagrafiche.soggetti s         ON s.id = sr.soggetto_id
              WHERE cl.id = %s
         """
@@ -144,31 +148,62 @@ class PortaleRepository:
 
     # Scopo: Crea l'identita_digitali del portale user. Il trigger DB
     # `trgfn_identita_digitali_guard_coerenza` (§7.1.1) verifica coerenza
-    # ruolo_applicativo x tipo soggetto: qui passiamo i campi minimi
-    # (attivo=true, niente invito_inviato_at che verra' settato dal service
-    # dopo l'invio email).
+    # ruolo_applicativo x tipo soggetto.
+    # Parametri `attivo` + `deve_cambiare_password` OBBLIGATORI kw-only
+    # (no default, §8.4.1 FRAG9): i 2 flow hanno valori diversi e
+    # un default implicito sarebbe security-risky (un futuro caller che
+    # dimentica i kwargs creerebbe accidentalmente identita attiva).
+    # - Flow INVITO (email nuova, auth_user appena creato):
+    #   `attivo=True, deve_cambiare_password=True`. L'utente entra subito
+    #   dopo aver settato la password definitiva.
+    # - Flow CROSS (email gia' esistente come operatore o altra veste):
+    #   `attivo=False, deve_cambiare_password=False`. L'utente attivera'
+    #   la nuova veste con il token `ATTIVAZIONE_PORTALE_CROSS`.
     def create_identita_portale(
         self,
         *,
         auth_user_id: int,
         soggetto_ruolo_id: int,
         ruolo_applicativo: str,
+        attivo: bool,
+        deve_cambiare_password: bool,
     ) -> int:
         sql = """
             INSERT INTO anagrafiche.identita_digitali
                    (auth_user_id, soggetto_ruolo_id, ruolo_applicativo,
                     attivo, deve_cambiare_password, storicizza)
             VALUES (%s, %s, %s::config.ruolo_applicativo,
-                    true, true, true)
+                    %s, %s, true)
             RETURNING id
         """
         with connection.cursor() as cursor:
             cursor.execute(
-                sql, [auth_user_id, soggetto_ruolo_id, ruolo_applicativo]
+                sql,
+                [
+                    auth_user_id,
+                    soggetto_ruolo_id,
+                    ruolo_applicativo,
+                    attivo,
+                    deve_cambiare_password,
+                ],
             )
             row = cursor.fetchone()
             assert row is not None
             return int(row[0])
+
+    # Scopo: Riattiva un'identita portale disattivata (es. invito scaduto
+    # poi ri-inviato dal flow INVITO §8.4.1). Estratta dal service per
+    # rispettare il pattern 3-layer: l'accesso DB sta nel repository, il
+    # service non emette SQL diretto.
+    def riattiva_identita(self, identita_id: int) -> bool:
+        sql = """
+            UPDATE anagrafiche.identita_digitali
+               SET attivo = true, data_update = now()
+             WHERE id = %s
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [identita_id])
+            return cursor.rowcount > 0
 
     # Scopo: Genera uno username unico a partire dall'email.
     # Strategia: prefisso email + suffisso _2/_3... se il base esiste.

@@ -92,7 +92,7 @@ fi
 curl -s -w '\n%{http_code}' \
     -H "Content-Type: application/json" \
     -d "{\"username\":\"$USERNAME\",\"password\":\"$PASSWORD\"}" \
-    "${BASE_URL}/api/v1/auth/token/" > "$TMPFILE"
+    "${BASE_URL}/api/v1/admin/token/" > "$TMPFILE"
 
 AUTH_STATUS=$(tail -1 "$TMPFILE")
 AUTH_BODY=$(sed '$d' "$TMPFILE")
@@ -191,7 +191,7 @@ REFRESH=$(json_get "$AUTH_BODY" ".refresh")
 curl -s -o /dev/null \
     -H "Content-Type: application/json" \
     -d "{\"refresh\":\"$REFRESH\"}" \
-    "${BASE_URL}/api/v1/auth/token/refresh/"
+    "${BASE_URL}/api/v1/admin/token/refresh/"
 
 sleep 0.3
 

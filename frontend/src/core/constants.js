@@ -81,6 +81,99 @@ export const RUOLO_APPLICATIVO = {
   DISABILITATO: 'DISABILITATO'
 }
 
+// Canali di login (§8.5.1 multi-face auth). Il login dell'utente e' per
+// "canale": a seconda del canale scelto il BE emette il JWT con la veste
+// `ruolo_applicativo` corretta (OPERATORE / CLIENTE_PORTALE+FORNITORE_PORTALE /
+// SHOP_CUSTOMER) e il FE naviga sul namespace appropriato.
+//
+// Ogni canale espone:
+//   - `key`       identificativo interno (usato come valore v-model del radio)
+//   - `tokenPath` path dell'endpoint token REST (`/admin/token/`, ...)
+//   - `i18n`      chiave i18n per la label radio
+//
+// Il default del LoginView e' ADMIN per retrocompat (operatore interno).
+// Consumer tipici: `ChannelSelector` + `useAuthStore.login(..., canale)`.
+export const CANALE_LOGIN = {
+  ADMIN: {
+    key: 'ADMIN',
+    tokenPath: '/admin/token/',
+    refreshPath: '/admin/token/refresh/',
+    i18n: 'auth.canale.admin'
+  },
+  PORTALE: {
+    key: 'PORTALE',
+    tokenPath: '/portale/token/',
+    refreshPath: '/portale/token/refresh/',
+    i18n: 'auth.canale.portale'
+  },
+  SHOP: {
+    key: 'SHOP',
+    tokenPath: '/shop/token/',
+    refreshPath: '/shop/token/refresh/',
+    i18n: 'auth.canale.shop'
+  }
+}
+
+// Lista ordinata dei canali (ordine di visualizzazione nel radio).
+// Il default del LoginView corrisponde al primo elemento.
+export const CANALE_LOGIN_LIST = [
+  CANALE_LOGIN.ADMIN,
+  CANALE_LOGIN.PORTALE,
+  CANALE_LOGIN.SHOP
+]
+
+// Scopo: Risolve un canale dalla sua key (es. 'ADMIN'). Ritorna il canale
+// ADMIN come fallback se la key e' sconosciuta — scelta conservativa:
+// un valore non riconosciuto non deve rompere il login, ridirige sul
+// namespace operatore (piu' restrittivo a livello di permessi DB).
+export function resolveCanaleLogin(key) {
+  return CANALE_LOGIN[key] || CANALE_LOGIN.ADMIN
+}
+
+// Namespace FE per il routing multi-canale (§8.5.4/§8.5.5). Identifica
+// il "canale di navigazione" di una rotta FE, distinto (ma allineato)
+// ai namespace API BE (`/api/v1/{admin,portale,shop}/*`).
+export const FE_NAMESPACE = {
+  ADMIN: 'admin',
+  PORTALE: 'portale',
+  SHOP: 'shop'
+}
+
+// Mapping `ruolo_applicativo → config FE namespace`. Single source of
+// truth usato dal router guard per determinare:
+//   - quale namespace il ruolo puo' navigare (`namespace`)
+//   - dove ridirigere il ruolo se approda su un namespace estraneo
+//     (`homePath` + opzionale `homeRouteName` per evitare child-path
+//     non gia' risolti come route name).
+// Aggiungendo un ruolo qui, il guard del router lo supporta automaticamente
+// senza toccare la logica di navigazione.
+export const RUOLO_FE_NAMESPACE = {
+  [RUOLO_APPLICATIVO.OPERATORE]: {
+    namespace: FE_NAMESPACE.ADMIN,
+    homePath: '/',
+    homeRouteName: 'home'
+  },
+  [RUOLO_APPLICATIVO.CLIENTE_PORTALE]: {
+    namespace: FE_NAMESPACE.PORTALE,
+    homePath: '/portale'
+  },
+  [RUOLO_APPLICATIVO.FORNITORE_PORTALE]: {
+    namespace: FE_NAMESPACE.PORTALE,
+    homePath: '/portale'
+  },
+  [RUOLO_APPLICATIVO.SHOP_CUSTOMER]: {
+    namespace: FE_NAMESPACE.SHOP,
+    homePath: '/shop'
+  }
+}
+
+// Scopo: Config FE namespace della veste corrente. Ritorna null per le
+// vesti senza namespace FE (API_CLIENT, DISABILITATO, assente): il caller
+// tipicamente traduce in `forbidden`.
+export function resolveRuoloFeConfig(ruoloApplicativo) {
+  return RUOLO_FE_NAMESPACE[ruoloApplicativo] || null
+}
+
 // Enum tipo profilo accesso (allineato a config.tipo_profilo_accesso nel DB).
 // Usato dai profili accesso generalizzati (sostituiscono i vecchi profili reparto).
 export const TIPO_PROFILO_ACCESSO = {

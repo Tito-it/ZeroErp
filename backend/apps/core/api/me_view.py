@@ -15,7 +15,9 @@ from rest_framework.request import Request
 from apps.core.api.base_views import DomainAPIView
 
 from apps.core.api.success_responses import success_response
+from apps.core.db.auth_repository import AuthRepository
 from apps.core.db.core_repository import CoreRepository
+from apps.core.services.auth_constants import JWT_CLAIM_IDENTITA_ID
 from apps.core.services.permissions_resolver import PermissionResolver
 
 
@@ -98,6 +100,18 @@ class UserProfileView(DomainAPIView):
                                     "Prodotta da script.fn_get_user_permissions_map."
                                 ),
                             ),
+                            "identita": serializers.DictField(
+                                allow_null=True,
+                                help_text=(
+                                    "§8.3.6: dettaglio dell'identita digitale "
+                                    "specifica del JWT corrente (id, "
+                                    "soggetto_ruolo_id, ruolo_applicativo, "
+                                    "attivo, valido_dal/al, invito_inviato_at). "
+                                    "None per token pre-refactor (difensivo). "
+                                    "Il FE usa identita.id per mostrare la veste "
+                                    "attiva all'utente con piu' identita."
+                                ),
+                            ),
                         },
                     ),
                     "meta": serializers.DictField(required=False),
@@ -107,9 +121,9 @@ class UserProfileView(DomainAPIView):
     )
     # Scopo: Restituisce via GET il profilo completo dell'utente autenticato.
     # Chiama script.fn_get_user_profile(auth_user_id) e arricchisce con
-    # is_admin_globale (refactor operatore-emittenti Q1: admin senza riga
-    # in user_emittenti_fiscali = admin globale; admin con riga = admin
-    # di emittente).
+    # is_admin_globale (refactor operatore-emittenti Q1) + dati identita
+    # specifica del JWT (§8.3.6 multi-face: il JWT indica QUALE "veste"
+    # sta usando l'utente tra le N attive possibili).
     def get(self, request: Request):
         repo = CoreRepository()
         profile = repo.get_user_profile(request.user.id)
@@ -128,7 +142,32 @@ class UserProfileView(DomainAPIView):
             profile["ruolo_applicativo"] = PermissionResolver.get_ruolo_applicativo(
                 request.user
             )
+        # §8.3.6: arricchisce con il blocco identita del JWT corrente.
+        # Non tutti gli auth_user hanno una singola identita (modello 1:N):
+        # il JWT porta l'identita_id preciso iniettato al login, e /me/
+        # deve riflettere ESATTAMENTE quella veste (non una delle N).
+        profile["identita"] = self._identita_del_jwt(request)
         return success_response(profile)
+
+    # Scopo: Legge identita_id dal JWT validato e ritorna il dettaglio
+    # dell'identita, oppure None se il JWT non ha il claim (token
+    # pre-refactor — in teoria gia' rifiutato da JwtAuditAuthentication
+    # §8.3.4, quindi caso difensivo) o l'identita non appartiene
+    # all'auth_user del JWT (guard anti-tampering in repo).
+    @staticmethod
+    def _identita_del_jwt(request: Request) -> dict | None:
+        token = request.auth
+        if token is None:
+            return None
+        identita_id = token.get(JWT_CLAIM_IDENTITA_ID) if hasattr(
+            token, "get"
+        ) else None
+        if identita_id is None:
+            return None
+        return AuthRepository().get_identita_dettaglio(
+            identita_id=int(identita_id),
+            auth_user_id=int(request.user.id),
+        )
 
     # Scopo: Calcola il flag is_admin_globale dal profilo. Regola Q1 del
     # refactor operatore-emittenti: ADMIN senza riga in user_emittenti_fiscali

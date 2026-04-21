@@ -3,7 +3,9 @@ import { ref } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useAuthStore } from '../../stores/auth'
+import { CANALE_LOGIN } from '../constants'
 import LogoBrand from '../components/LogoBrand.vue'
+import ChannelSelector from '../components/ChannelSelector.vue'
 import InputText from 'primevue/inputtext'
 import Password from 'primevue/password'
 import Button from 'primevue/button'
@@ -15,14 +17,23 @@ const auth = useAuthStore()
 
 const username = ref('')
 const password = ref('')
+// §8.5.1: default ADMIN per retrocompat (operatore interno). Se l'utente
+// si era gia' loggato in passato su un altro canale, la store espone
+// `loginChannel` restored da localStorage: pre-selezioniamo quella scelta
+// per risparmiare click in logout/login ripetuti sullo stesso canale.
+const canale = ref(auth.loginChannel || CANALE_LOGIN.ADMIN.key)
 const errorMessage = ref('')
 const loading = ref(false)
 
-// Mappa codici errore DB → chiavi i18n per messaggi login specifici
+// Mappa codici errore DB → chiavi i18n per messaggi login specifici.
+// `E_VESTE_NON_ATTIVA` (§8.3.2) e' il caso "account valido ma senza
+// accesso al canale richiesto": mostriamo un messaggio dedicato e
+// generico (niente enumeration di quali canali sono attivi).
 const ERROR_CODE_MAP = {
   E_UTENTE_DISABILITATO: 'auth.account_disabled',
   E_UTENTE_NON_ATTIVO: 'auth.account_not_active',
-  E_UTENTE_SCADUTO: 'auth.account_expired'
+  E_UTENTE_SCADUTO: 'auth.account_expired',
+  E_VESTE_NON_ATTIVA: 'auth.veste_non_attiva'
 }
 
 function resolveLoginError(err) {
@@ -47,7 +58,9 @@ async function handleLogin() {
   errorMessage.value = ''
   loading.value = true
   try {
-    await auth.login(username.value, password.value)
+    // §8.5.2: la store usa `canale` per scegliere l'endpoint token
+    // (/admin/token/ | /portale/token/ | /shop/token/). Default ADMIN.
+    await auth.login(username.value, password.value, canale.value)
     // Se deve cambiare password, redirect forzato
     if (auth.mustChangePassword) {
       router.push('/change-password')
@@ -76,6 +89,8 @@ async function handleLogin() {
       </div>
 
       <form @submit.prevent="handleLogin" class="login-form">
+        <ChannelSelector v-model="canale" :disabled="loading" />
+
         <div class="field">
           <label for="username">{{ t('auth.username') }}</label>
           <InputText

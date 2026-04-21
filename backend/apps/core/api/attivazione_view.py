@@ -26,7 +26,11 @@ from apps.core.api.endpoint_helpers import handle_post_json
 from apps.core.api.success_responses import success_response
 from apps.core.api.throttling import PasswordResetRateThrottle
 from apps.core.db.auth_repository import AuthRepository
-from apps.core.services.auth_helpers import apply_new_password, validate_and_extract_token
+from apps.core.services.auth_helpers import (
+    apply_new_password,
+    extract_identita_id_from_token_meta,
+    validate_and_extract_token,
+)
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.request_context import get_client_ip
 from apps.core.services.token_service import TokenService
@@ -80,7 +84,7 @@ class AttivazioneView(APIView):
             )
 
             # Valida token SENZA consumarlo
-            auth_user_id, _ = validate_and_extract_token(
+            auth_user_id, meta = validate_and_extract_token(
                 token, _INVITO_TOKEN_TIPO, E_ATTIVAZIONE, _token_service,
             )
 
@@ -95,11 +99,22 @@ class AttivazioneView(APIView):
             except DjangoValidationError as exc:
                 ErrorManager.require(False, code=E_ATTIVAZIONE, message=" ".join(exc.messages))
 
+            # identita_id dal meta del token (iniettato da
+            # InvitoOperatoreService §8.4.1): punta la veste OPERATORE,
+            # non una veste arbitraria.
+            identita_id = extract_identita_id_from_token_meta(meta)
+
             # Consuma token + applica password + reset flag (atomico, senza blacklist)
             ip = get_client_ip(request._request if hasattr(request, "_request") else request)
             with transaction.atomic():
                 _token_service.consume(token, _INVITO_TOKEN_TIPO, ip=ip)
-                apply_new_password(user, new_password, blacklist_tokens=False, auth_repo=_auth_repo)
+                apply_new_password(
+                    user,
+                    new_password,
+                    identita_id=identita_id,
+                    blacklist_tokens=False,
+                    auth_repo=_auth_repo,
+                )
 
             logger.info("security.account_attivato user_id=%s", auth_user_id)
             return {"message": "Account attivato con successo. Effettua il login con la nuova password."}

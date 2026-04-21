@@ -234,6 +234,29 @@
     "wip_title": "Under construction",
     "wip_message": "Features are currently being developed.",
     "coming_soon": "Coming soon",
+    "portale_home": {
+      "title": "Customer/Supplier portal",
+      "features": [
+        "The self-service portal will be available with the next release.",
+        "You will be able to access invoices, due dates and orders from your private area.",
+        "In the meantime, contact your sales representative for any information."
+      ]
+    },
+    "shop_home": {
+      "title": "Shop",
+      "features": [
+        "The online store is coming with release PR-C.",
+        "Public catalog, checkout and customer area will be available soon."
+      ]
+    },
+    "shop_attivazione": {
+      "title": "Shop account activation",
+      "features": [
+        "Shop account activation will be available with PR-C.",
+        "You received this link via email but the flow is not yet active.",
+        "Keep the link: you will be able to use it as soon as the feature is available."
+      ]
+    },
     "amm_software_operatori": {
       "title": "Operator Management",
       "features": [
@@ -273,6 +296,13 @@
     "password": "Password",
     "login": "Login",
     "logout": "Logout",
+    "canale": {
+      "label": "Access channel",
+      "admin": "Operator",
+      "portale": "Customer/Supplier portal",
+      "shop": "Shop"
+    },
+    "veste_non_attiva": "This user has no access to this channel.",
     "login_error": "Invalid credentials",
     "account_disabled": "Account disabled — contact the administrator",
     "account_not_active": "Account not yet active",

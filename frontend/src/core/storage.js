@@ -4,6 +4,10 @@
 export const STORAGE_KEYS = {
   ACCESS_TOKEN: 'access_token',
   REFRESH_TOKEN: 'refresh_token',
+  // §8.5.2: key del canale di login corrente (CANALE_LOGIN.{ADMIN,PORTALE,SHOP}).
+  // Persistita per consentire al refresh token di usare l'endpoint giusto
+  // dopo un page reload, senza dover decodificare il JWT lato client.
+  LOGIN_CHANNEL: 'login_channel',
   SIDEBAR_COLLAPSED: 'sidebar_collapsed',
   OPEN_TABS: 'open_tabs',
   DARK_MODE: 'dark_mode'

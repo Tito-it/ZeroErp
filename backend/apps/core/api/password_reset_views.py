@@ -166,11 +166,22 @@ class PasswordResetConfirmView(APIView):
             except DjangoValidationError as exc:
                 ErrorManager.require(False, code=E_RESET, message=" ".join(exc.messages))
 
-            # Consuma token + applica password + reset flag + blacklist (atomico)
+            # Consuma token + applica password + reset flag + blacklist (atomico).
+            # Password reset self-service: `identita_id=None` — semantica
+            # globale (reset flag su tutte le vesti attive dell'utente).
+            # L'utente ha dimenticato la password a livello auth_user,
+            # quindi dopo reset puo' rientrare su tutte le sue vesti
+            # senza vedersi richiedere un altro cambio password.
             ip = get_client_ip(request._request if hasattr(request, "_request") else request)
             with transaction.atomic():
                 _token_service.consume(token, _RESET_TOKEN_TIPO, ip=ip)
-                apply_new_password(user, new_password, blacklist_tokens=True, auth_repo=_auth_repo)
+                apply_new_password(
+                    user,
+                    new_password,
+                    identita_id=None,
+                    blacklist_tokens=True,
+                    auth_repo=_auth_repo,
+                )
 
             # Invia email conferma
             uo_id = _auth_repo.get_unita_organizzativa_id(auth_user_id)

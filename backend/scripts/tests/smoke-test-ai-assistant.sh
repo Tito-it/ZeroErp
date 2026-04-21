@@ -69,7 +69,7 @@ if [[ -z "$PASSWORD" ]]; then
   exit 1
 fi
 
-do_post "$BASE_URL/api/v1/auth/token/" \
+do_post "$BASE_URL/api/v1/admin/token/" \
   "{\"username\":\"$USERNAME\",\"password\":\"$PASSWORD\"}"
 if [[ "$LAST_STATUS" == "200" ]]; then
   TOKEN=$(extract "['access']")

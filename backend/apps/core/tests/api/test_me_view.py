@@ -8,16 +8,20 @@
 
 """
 Indice test eseguiti:
-1) UserProfileViewTests.test_get_profile_success
-2) UserProfileViewTests.test_get_profile_includes_emittente_null
-3) UserProfileViewTests.test_get_profile_repository_error_propagates
-4) UserProfileViewTests.test_is_admin_globale_admin_senza_emittente
-5) UserProfileViewTests.test_is_admin_globale_admin_con_emittente
-6) UserProfileViewTests.test_is_admin_globale_operativo
-7) UserProfileViewTests.test_profile_include_is_super_admin_e_ruolo_applicativo
-8) CoreRepositoryTests.test_get_user_profile_returns_jsonb
-9) CoreRepositoryTests.test_get_user_profile_null_result_raises_error
+ 1) UserProfileViewTests.test_get_profile_success
+ 2) UserProfileViewTests.test_get_profile_includes_emittente_null
+ 3) UserProfileViewTests.test_get_profile_repository_error_propagates
+ 4) UserProfileViewTests.test_is_admin_globale_admin_senza_emittente
+ 5) UserProfileViewTests.test_is_admin_globale_admin_con_emittente
+ 6) UserProfileViewTests.test_is_admin_globale_operativo
+ 7) UserProfileViewTests.test_profile_include_is_super_admin_e_ruolo_applicativo
+ 8) CoreRepositoryTests.test_get_user_profile_returns_jsonb
+ 9) CoreRepositoryTests.test_get_user_profile_null_result_raises_error
 10) CoreRepositoryTests.test_get_user_profile_no_row_raises_error
+11) IdentitaDelJwtTests.test_token_none_ritorna_none
+12) IdentitaDelJwtTests.test_claim_assente_ritorna_none
+13) IdentitaDelJwtTests.test_claim_presente_delega_al_repo
+14) IdentitaDelJwtTests.test_profile_contiene_blocco_identita
 """
 
 from unittest import TestCase
@@ -103,6 +107,7 @@ class UserProfileViewTests(TestCase):
         request.user = MagicMock()
         request.user.id = 1
         request.user.is_authenticated = True
+        request.auth = None  # §8.3.6: test-only, skip identita del JWT
 
         view = UserProfileView()
         with patch("apps.core.api.me_view.success_response") as mock_resp:
@@ -127,6 +132,7 @@ class UserProfileViewTests(TestCase):
         request = MagicMock()
         request.user = MagicMock()
         request.user.id = 2
+        request.auth = None
 
         view = UserProfileView()
         with patch("apps.core.api.me_view.success_response") as mock_resp:
@@ -152,7 +158,7 @@ class UserProfileViewTests(TestCase):
         mock_repo.get_user_profile.return_value = profile
         MockRepo.return_value = mock_repo
 
-        request = MagicMock(); request.user = MagicMock(); request.user.id = 1
+        request = MagicMock(); request.user = MagicMock(); request.user.id = 1; request.auth = None
         view = UserProfileView()
         with patch("apps.core.api.me_view.success_response") as mock_resp:
             view.get(request)
@@ -171,7 +177,7 @@ class UserProfileViewTests(TestCase):
         mock_repo.get_user_profile.return_value = profile
         MockRepo.return_value = mock_repo
 
-        request = MagicMock(); request.user = MagicMock(); request.user.id = 1
+        request = MagicMock(); request.user = MagicMock(); request.user.id = 1; request.auth = None
         view = UserProfileView()
         with patch("apps.core.api.me_view.success_response") as mock_resp:
             view.get(request)
@@ -189,7 +195,7 @@ class UserProfileViewTests(TestCase):
         mock_repo.get_user_profile.return_value = profile
         MockRepo.return_value = mock_repo
 
-        request = MagicMock(); request.user = MagicMock(); request.user.id = 1
+        request = MagicMock(); request.user = MagicMock(); request.user.id = 1; request.auth = None
         view = UserProfileView()
         with patch("apps.core.api.me_view.success_response") as mock_resp:
             view.get(request)
@@ -215,6 +221,7 @@ class UserProfileViewTests(TestCase):
         request = MagicMock()
         request.user = MagicMock()
         request.user.id = 1
+        request.auth = None
 
         view = UserProfileView()
         with patch("apps.core.api.me_view.success_response") as mock_resp:
@@ -241,12 +248,92 @@ class UserProfileViewTests(TestCase):
         request = MagicMock()
         request.user = MagicMock()
         request.user.id = 999
+        request.auth = None
 
         view = UserProfileView()
         with self.assertRaises(ServiceError) as ctx:
             view.get(request)
 
         self.assertEqual(ctx.exception.code, "E_CORE_PROFILE_NOT_FOUND")
+
+
+class IdentitaDelJwtTests(TestCase):
+    """§8.3.6: /me/ espone il blocco `identita` del JWT corrente
+    (non una delle N identita attive scelta a caso)."""
+
+    def test_token_none_ritorna_none(self):
+        """Senza token (es. test legacy con request.auth=None): None."""
+        from apps.core.api.me_view import UserProfileView
+        request = MagicMock()
+        request.auth = None
+        self.assertIsNone(UserProfileView._identita_del_jwt(request))
+
+    def test_claim_assente_ritorna_none(self):
+        """Token presente ma senza claim identita_id: None (difensivo —
+        in produzione JwtAuditAuthentication §8.3.4 rifiuta gia' questi
+        token con 401 E_JWT_SENZA_IDENTITA prima di arrivare qui)."""
+        from apps.core.api.me_view import UserProfileView
+        token = MagicMock()
+        token.get = MagicMock(return_value=None)
+        request = MagicMock()
+        request.auth = token
+        self.assertIsNone(UserProfileView._identita_del_jwt(request))
+
+    @patch("apps.core.api.me_view.AuthRepository")
+    def test_claim_presente_delega_al_repo(self, MockRepo):
+        """Claim presente -> chiama get_identita_dettaglio con le
+        credenziali del JWT (guard anti-tampering: filtra anche
+        auth_user_id oltre a identita_id)."""
+        from apps.core.api.me_view import UserProfileView
+        mock_repo = MagicMock()
+        mock_repo.get_identita_dettaglio.return_value = {
+            "id": 7, "ruolo_applicativo": "OPERATORE",
+        }
+        MockRepo.return_value = mock_repo
+
+        token = MagicMock()
+        token.get = MagicMock(return_value=7)
+        request = MagicMock()
+        request.auth = token
+        request.user = MagicMock(id=42)
+
+        result = UserProfileView._identita_del_jwt(request)
+
+        self.assertEqual(result, {"id": 7, "ruolo_applicativo": "OPERATORE"})
+        mock_repo.get_identita_dettaglio.assert_called_once_with(
+            identita_id=7, auth_user_id=42,
+        )
+
+    @patch(_REPO_PATH)
+    @patch("apps.core.api.me_view.AuthRepository")
+    def test_profile_contiene_blocco_identita(self, MockAuth, MockRepo):
+        """End-to-end della view: il profilo ritornato contiene la chiave
+        `identita` popolata dal repo auth."""
+        from apps.core.api.me_view import UserProfileView
+
+        mock_repo = MagicMock()
+        mock_repo.get_user_profile.return_value = dict(_PROFILE_FULL)
+        MockRepo.return_value = mock_repo
+
+        mock_auth = MagicMock()
+        mock_auth.get_identita_dettaglio.return_value = {
+            "id": 7, "ruolo_applicativo": "OPERATORE", "attivo": True,
+        }
+        MockAuth.return_value = mock_auth
+
+        token = MagicMock()
+        token.get = MagicMock(return_value=7)
+        request = MagicMock()
+        request.auth = token
+        request.user = MagicMock(id=42)
+
+        view = UserProfileView()
+        with patch("apps.core.api.me_view.success_response") as mock_resp:
+            view.get(request)
+
+        profile_arg = mock_resp.call_args[0][0]
+        self.assertEqual(profile_arg["identita"]["id"], 7)
+        self.assertEqual(profile_arg["identita"]["ruolo_applicativo"], "OPERATORE")
 
 
 class CoreRepositoryTests(TestCase):

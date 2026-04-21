@@ -79,7 +79,7 @@ SESS_BEFORE=$(db_query "SELECT count(*) FROM dbops.sessioni_utente WHERE evento=
 curl -s -w '\n%{http_code}' \
     -H "Content-Type: application/json" \
     -d "{\"username\":\"$USERNAME\",\"password\":\"$PASSWORD\"}" \
-    "${BASE_URL}/api/v1/auth/token/" > "$TMPFILE" 2>/dev/null
+    "${BASE_URL}/api/v1/admin/token/" > "$TMPFILE" 2>/dev/null
 
 AUTH_STATUS=$(tail -1 "$TMPFILE")
 AUTH_BODY=$(sed '$d' "$TMPFILE")
@@ -120,7 +120,7 @@ SESS_BEFORE_R=$(db_query "SELECT count(*) FROM dbops.sessioni_utente WHERE event
 curl -s -w '\n%{http_code}' \
     -H "Content-Type: application/json" \
     -d "{\"refresh\":\"$REFRESH\"}" \
-    "${BASE_URL}/api/v1/auth/token/refresh/" > "$TMPFILE" 2>/dev/null
+    "${BASE_URL}/api/v1/admin/token/refresh/" > "$TMPFILE" 2>/dev/null
 LAST_STATUS=$(tail -1 "$TMPFILE")
 LAST_BODY=$(sed '$d' "$TMPFILE")
 
@@ -180,7 +180,7 @@ if [[ -n "$NEW_REFRESH" ]]; then
     curl -s -w '\n%{http_code}' \
         -H "Content-Type: application/json" \
         -d "{\"refresh\":\"$REFRESH\"}" \
-        "${BASE_URL}/api/v1/auth/token/refresh/" > "$TMPFILE" 2>/dev/null
+        "${BASE_URL}/api/v1/admin/token/refresh/" > "$TMPFILE" 2>/dev/null
     LAST_STATUS=$(tail -1 "$TMPFILE")
 
     if [[ "$LAST_STATUS" == "401" ]]; then
@@ -201,7 +201,7 @@ SESS_BEFORE_F=$(db_query "SELECT count(*) FROM dbops.sessioni_utente" | tail -1)
 curl -s -w '\n%{http_code}' \
     -H "Content-Type: application/json" \
     -d "{\"username\":\"$USERNAME\",\"password\":\"password_errata_12345\"}" \
-    "${BASE_URL}/api/v1/auth/token/" > "$TMPFILE" 2>/dev/null
+    "${BASE_URL}/api/v1/admin/token/" > "$TMPFILE" 2>/dev/null
 LAST_STATUS=$(tail -1 "$TMPFILE")
 
 if [[ "$LAST_STATUS" == "401" ]]; then

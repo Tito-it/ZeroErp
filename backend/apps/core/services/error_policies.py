@@ -451,6 +451,24 @@ class ErrorPolicyRegistry:
             ui_action="show_error_banner",
             user_message="Il reparto non ha ancora un profilo permessi configurato.",
         ),
+        "E_VESTE_NON_ATTIVA": ErrorPolicy(
+            code="E_VESTE_NON_ATTIVA",
+            http_status=403,
+            ui_action="show_error_banner",
+            user_message="Non hai accesso a questo canale.",
+        ),
+        "E_JWT_SENZA_IDENTITA": ErrorPolicy(
+            code="E_JWT_SENZA_IDENTITA",
+            http_status=401,
+            ui_action="redirect_login",
+            user_message="Sessione scaduta: effettua nuovamente l'accesso.",
+        ),
+        "E_IDENTITA_NON_ATTIVA": ErrorPolicy(
+            code="E_IDENTITA_NON_ATTIVA",
+            http_status=401,
+            ui_action="redirect_login",
+            user_message="Sessione non piu' valida: effettua nuovamente l'accesso.",
+        ),
         # ── Sessioni utente ──
         "E_LOGOUT_NO_TOKEN": ErrorPolicy(
             code="E_LOGOUT_NO_TOKEN",
@@ -723,6 +741,16 @@ class ErrorPolicyRegistry:
             http_status=400,
             ui_action="highlight_form_fields",
             user_message="Il messaggio supera la lunghezza massima consentita.",
+        ),
+        # ── Shop B2C (stub PR-C) ──
+        # §8.4.3/§8.4.4/§8.4.5: endpoint shop rispondono 501 finche' PR-C
+        # non porta il MVP. Codice dedicato (non E_TASK_NOT_IMPLEMENTED
+        # che e' del dominio pipeline fatturazione).
+        "E_SHOP_NON_DISPONIBILE": ErrorPolicy(
+            code="E_SHOP_NON_DISPONIBILE",
+            http_status=501,
+            ui_action="show_info_banner",
+            user_message="Shop non ancora disponibile. In arrivo con PR-C.",
         ),
         "E_AI_TOOL_NOT_FOUND": ErrorPolicy(
             code="E_AI_TOOL_NOT_FOUND",

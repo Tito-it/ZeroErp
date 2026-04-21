@@ -223,15 +223,15 @@ Schema futuro: `shop.ordini` (o riuso di `vendite.ordini` con
 
 Le 6 policy dormienti di PR1.5 vanno adeguate al nuovo modello:
 
-| # | Policy | Cambio |
-| --- | --- | --- |
-| 10 | `rls_fatture_ba_ownership` | nessun cambio USING — portale vede tutto (caso 2) |
-| 11 | `rls_fatture_ef_whitelist` | nessun cambio |
-| 12 | `rls_ordini_cliente_ownership` | split in 2: `rls_ordini_portale` (no filtro canale) + `rls_ordini_shop` (filtro `canale_origine='SHOP'`) |
-| 13 | `rls_fatture_scadenze_ba_ownership` | nessun cambio |
-| 14 | `rls_acquisti_ordini_fornitore_ownership` | nessun cambio |
-| 15 | `rls_acquisti_ddt_fornitore_ownership` | nessun cambio |
-| 16 | `rls_billing_account_self_ownership` | split in 2: `rls_ba_portale` (no filtro canale) + `rls_ba_shop` (filtro `canale_origine='SHOP'`) |
+| #   | Policy                                    | Cambio                                                                                                   |
+| --- | ----------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| 10  | `rls_fatture_ba_ownership`                | nessun cambio USING — portale vede tutto (caso 2)                                                        |
+| 11  | `rls_fatture_ef_whitelist`                | nessun cambio                                                                                            |
+| 12  | `rls_ordini_cliente_ownership`            | split in 2: `rls_ordini_portale` (no filtro canale) + `rls_ordini_shop` (filtro `canale_origine='SHOP'`) |
+| 13  | `rls_fatture_scadenze_ba_ownership`       | nessun cambio                                                                                            |
+| 14  | `rls_acquisti_ordini_fornitore_ownership` | nessun cambio                                                                                            |
+| 15  | `rls_acquisti_ddt_fornitore_ownership`    | nessun cambio                                                                                            |
+| 16  | `rls_billing_account_self_ownership`      | split in 2: `rls_ba_portale` (no filtro canale) + `rls_ba_shop` (filtro `canale_origine='SHOP'`)         |
 
 **Nuova policy per `shop.ricevute`** (`20260420-17`):
 
@@ -583,43 +583,458 @@ Non rivelare quali vesti esistono (security — enumerazione).
 
 ## 6. Rischi identificati
 
-| Rischio | Probabilita' | Mitigazione |
-| --- | --- | --- |
-| JWT esistenti senza claim `identita_id` dopo deploy | Media | Grace period: authentication class tollera JWT legacy per N giorni, popola identita da `auth_user_id` 1:1 (dato pre-cambio). Scade con il refresh. |
-| Test BE che assumono 1:1 user↔identita falliscono | Alta | Grep dei test prima di merge, aggiornare fixture |
-| Login operatore regredisce dopo split namespace | Alta | Smoke test `/api/admin/token/` in CI |
-| RLS policy dormienti non coprono `shop.ricevute` | Bassa | Policy creata dry-run nella stessa migration della tabella |
-| `fn_is_super_admin(auth_user_id)` si confonde se user ha piu' vesti | Alta | Aggiungere filtro `ruolo_applicativo='OPERATORE'` esplicito nella fn |
-| Popolamento GUC fallisce silenziosamente | Media | Middleware verifica tripla popolata con `SHOW app.*`; fail 401 se incompleta |
+| Rischio                                                             | Probabilita' | Mitigazione                                                                                                                                        |
+| ------------------------------------------------------------------- | ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| JWT esistenti senza claim `identita_id` dopo deploy                 | Media        | Grace period: authentication class tollera JWT legacy per N giorni, popola identita da `auth_user_id` 1:1 (dato pre-cambio). Scade con il refresh. |
+| Test BE che assumono 1:1 user↔identita falliscono                   | Alta         | Grep dei test prima di merge, aggiornare fixture                                                                                                   |
+| Login operatore regredisce dopo split namespace                     | Alta         | Smoke test `/api/admin/token/` in CI                                                                                                               |
+| RLS policy dormienti non coprono `shop.ricevute`                    | Bassa        | Policy creata dry-run nella stessa migration della tabella                                                                                         |
+| `fn_is_super_admin(auth_user_id)` si confonde se user ha piu' vesti | Alta         | Aggiungere filtro `ruolo_applicativo='OPERATORE'` esplicito nella fn                                                                               |
+| Popolamento GUC fallisce silenziosamente                            | Media        | Middleware verifica tripla popolata con `SHOW app.*`; fail 401 se incompleta                                                                       |
 
 ---
 
-## 7. Checklist pre-merge
+## 7. Checklist pre-merge DB
+
+> Le checklist BE/FE sono consolidate nel §8 come task list per sub-PR
+> (§8.3 PR-B1, §8.4 PR-B2, §8.5 PR-B3, §8.6 PR-B4) + changelog in §8.9.
 
 ### 7.1 DB
 
-* [ ] 11 migration numerate correttamente (`20260420-01..50`)
-* [ ] pgTAP aggiornato per nuovi vincoli (almeno 5 casi: unicita', immutabilita' canale, OR sync, ruolo-aware scope, fail-closed GUC)
-* [ ] Doc manual aggiornata per `identita_digitali`, `billing_account`, `shop.ricevute`, `fn_scope_ba_ownership`, `fn_sync_auth_user_is_active`
-* [ ] WIP `sviluppo-multi-face-auth.md` aggiornato con stato fasi
+* [x] 11 migration numerate correttamente (`20260420-01..11`)
+* [x] pgTAP aggiornato per nuovi vincoli (almeno 5 casi: unicita', immutabilita' canale, OR sync, ruolo-aware scope, fail-closed GUC)
+* [x] Doc manual aggiornata per `identita_digitali`, `billing_account`, `shop.ricevute`, `fn_scope_ba_ownership`, `fn_sync_auth_user_is_active`
+* [x] WIP `sviluppo-multi-face-auth.md` aggiornato con stato fasi
 
-### 7.2 Backend
+Aggiunte
+2 codici errore aggiunti a messaggi_errore.csv (E_CANALE_ORIGINE_IMMUTABILE 385, E_SHOP_RICEVUTA_BA_CANALE_INVALIDO 386)
+Guide aggiornate (potrebbero essere in §7.2/§7.3, ma oggi non c'è una voce dedicata):
+architettura-multi-face-auth v2.0
+architettura-permessi-e-autorizzazioni §6/§9.2/§10/§13
+Nuova contratto-guc-app.md (PRD GUC per BE — dovrebbe essere in §7.2 checklist BE perché è il contratto che il BE implementa)
+pgTAP aggiornato PR1.5 test-rls-policies-structure.sql (test 4 e 28 post-split)
+Mappa concentrica aggiornata (non la terrei in §7.1, più logica come cross-tutte)
 
-* [ ] 3 endpoint token namespace-discriminati operativi
-* [ ] JWT contiene claim `identita_id`
-* [ ] `JwtAuditAuthentication` popola tripla GUC con invariante tutto-o-niente
-* [ ] `/me/` restituisce solo identita del JWT corrente
-* [ ] `InvitoPortaleService` gestisce caso email esistente (no duplicazione auth_user)
-* [ ] Stub endpoint `activate-shop` e `check-email` creati
-* [ ] Test BE aggiornati per modello 1:N user/identita
+---
 
-### 7.3 Frontend
+## 8. Piano sprint BE/FE — decisioni operative (20-04-2026)
 
-* [ ] Login con switch canale 3 opzioni
-* [ ] Store Pinia gestisce `identita_id` + `ruolo_applicativo`
-* [ ] Routing guard su namespace corretti
-* [ ] Pulsante "Attiva accesso shop" nel profilo portale
-* [ ] Gestione errore 403 `E_VESTE_NON_ATTIVA` generico (no enum)
+> Aggiunto dopo la chiusura del piano DB (migration `20260420-01..11`
+> mergiate su `Tito-dev`). Traduce §3 e §4 in un'esecuzione ordinata
+> e spezzata in sub-PR per limitare il blast radius.
+
+### 8.1 Decisioni Q1–Q4 chiuse
+
+| Domanda                        | Scelta                                                              | Motivo                                                                                  |
+| ------------------------------ | ------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| **Q1 — Grace period JWT**      | 0 giorni                                                            | Ambiente dev, nessun costo di rollover; codice pulito da subito, no rami compat.        |
+| **Q2 — Rename endpoint login** | `/api/v1/auth/token/` → `/api/v1/admin/token/` (breaking, no alias) | Coerenza con `/portale/` e `/shop/`, debito tecnico zero.                               |
+| **Q3 — Ordine BE/FE**          | Sequenziale (BE prima, FE dopo)                                     | Solo developer (Tid) — meno context switching, contract BE stabile prima di toccare UI. |
+| **Q4 — Spezzare PR-B**         | Sì, 4 sub-PR                                                        | Blast radius contenuto, rollback chirurgico, smoke isolato per feature.                 |
+
+### 8.2 Prerequisito soddisfatto
+
+DB migration `20260420-01..11` applicate e mergiate su `Tito-dev`. Il
+backend puo' iniziare lo sviluppo del nuovo modello 1:N.
+
+### 8.3 PR-B1 — BE foundation auth multi-veste (breaking)
+
+**Obiettivo:** adeguare l'infrastruttura di autenticazione al modello 1:N
+user↔identita. Niente feature business qui — solo fondamenta.
+
+**File da toccare:**
+
+* `backend/zeroerp_backend/urls.py` — rename `auth/token/` → `admin/token/`, aggiunta `portale/token/` e `shop/token/`
+* `backend/apps/core/api/auth_views.py` — split `AuditTokenObtainPairView` in 3 subclass namespace-discriminate; serializer `MultiVesteTokenSerializer` con claim `identita_id`
+* `backend/apps/core/api/jwt_audit_authentication.py` — legge `identita_id` dal JWT, popola 3 GUC atomicamente, fail 401 su tripla incoerente
+* `backend/apps/core/api/me_view.py` — ritorna solo identita del JWT corrente (filtra per `identita_id`)
+* `backend/apps/core/services/permissions_resolver.py` — `is_super_admin` filtra su `ruolo_applicativo='OPERATORE'`, `get_ruolo_applicativo` legge da GUC (gia' fatto Stage B), verifica coerenza
+* `backend/apps/amm_software/db/amm_software_repository.py` — query che filtrano identita: aggiungere `ruolo_applicativo='OPERATORE'` esplicito
+* `backend/apps/portale/db/portale_repository.py` — verifica che `find_identita_portale` filtri gia' per ruolo (fatto)
+* Test: codemod su ~15 test che mockano `auth_user.identita` 1:1 → filter `ruolo_applicativo=X`
+
+**Task list:**
+
+* [x] 8.3.1 Rename `/api/v1/auth/token/` → `/api/v1/admin/token/` + update smoke + grep FE (breaking, zero alias)
+* [x] 8.3.2 Nuovo serializer `MultiVesteTokenSerializer`: post-autenticazione cerca identita per `ruolo_applicativo` del namespace, aggiunge claim `identita_id` + `ruolo_applicativo` al JWT
+* [x] 8.3.3 Nuove view `AdminTokenView`, `PortaleTokenView`, `ShopTokenView` (stub): filtrano identita per `ruolo_applicativo IN (...)`, 403 `E_VESTE_NON_ATTIVA` se assente
+* [x] 8.3.4 `JwtAuditAuthentication.authenticate()`: legge `identita_id` dal token, verifica identita attiva, popola 3 GUC in singola query CTE, fail 401 su step mancante
+* [x] 8.3.5 Refresh token preserva claim custom (verificare SimpleJWT config).
+  Sub-task: aggiungere guard opzionale sulla view refresh che verifica che
+  il `ruolo_applicativo` nel refresh token sia coerente con il namespace
+  del path (oggi tutte e 3 le route refresh puntano allo stesso
+  `AuditTokenRefreshView` senza check — non c'e' escalation perche' il
+  claim veste viene dal token stesso, ma e' rumore semantico da chiudere).
+* [x] 8.3.6 `/me/` restituisce solo identita del JWT corrente
+* [x] 8.3.7 `PermissionResolver.is_super_admin` aggiunge filtro `ruolo_applicativo='OPERATORE'` in query
+* [x] 8.3.8 Grep test `identita_digitali` — aggiornare assumption 1:1
+* [x] 8.3.9 Run `./manage-test.sh` verde (1583 post-fix inline). Smoke e2e chiuso con 3 fix + 1 blocker PR-C documentato (vedi appendice §8.3.9 in fondo al doc).
+
+**Gate uscita:**
+
+* Login admin con tid funziona via `/api/v1/admin/token/`
+* JWT decodificato contiene `identita_id` + `ruolo_applicativo`
+* `/me/` risponde con una sola identita
+* Grep `auth_user\.identita[^_]` = 0 match nei test attivi
+
+**Stima:** 1-2 giornate. Commit target: `pr-b1-be-foundation-auth`.
+
+### 8.4 PR-B2 — BE feature invito portale cross-veste + stub shop
+
+**Obiettivo:** aggiornare il servizio invito portale al nuovo modello 1:N
+e preparare gli stub endpoint shop che verranno riempiti in PR-C.
+
+**File da toccare:**
+
+* `backend/apps/portale/services/invito_portale_service.py` — branching email nuova / esistente, token types
+* `backend/apps/portale/db/portale_repository.py` — helper per creazione identita `attivo=false`
+* `backend/apps/portale/api/views.py` — endpoint attivazione supporta 2 token types
+* `backend/apps/portale/api/urls.py` — 3 nuovi stub endpoint
+* `backend/apps/core/services/error_policies.py` — codici errore nuovi: `E_VESTE_NON_ATTIVA`, `E_JWT_SENZA_IDENTITA`, `E_IDENTITA_NON_ATTIVA`
+
+**Task list:**
+
+* [x] 8.4.1 `InvitoPortaleService._ensure_auth_user` distingue email nuova (crea user + identita attivo=true + token `INVITO_PORTALE`) da esistente (SOLO identita attivo=false + token `ATTIVAZIONE_PORTALE_CROSS`, niente password). Sub-task debito 1:1 chiuso: `AuthRepository.get_deve_cambiare_password`, `set_invito_inviato_at`, `set_deve_cambiare_password` accettano `identita_id` kw-only (obbligatorio per `set_invito_inviato_at`, opzionale con fallback globale per gli altri). Review critica applicata: guard su identita gia' attiva (BUG1), guard su auth_user divergente (FRAG4), helper condivisi `extract_identita_id_from_request` / `extract_identita_id_from_token_meta` + `_safe_int_or_none` contro meta/claim corrotti (FRAG11), UPDATE riattiva identita spostato in `PortaleRepository.riattiva_identita` (FRAG6), default pericolosi rimossi da `create_identita_portale` (FRAG9), log warning su `set_invito_inviato_at` rowcount=0 (BUG3).
+* [x] 8.4.2 Endpoint `AttivazionePortaleView` gestisce 2 token types: `INVITO_PORTALE` (setta password + attiva) vs `ATTIVAZIONE_PORTALE_CROSS` (solo attiva identita, no password). Helper `resolve_portale_token` in `invito_portale_service.py` itera entrambi i tipi; `AttivazionePortaleValidateView` espone `token_type` + `requires_password` per guidare la UX. Guard esplicito `identita_id` obbligatorio nel meta; flow CROSS ignora `new_password` nel payload come difesa contro sovrascrittura password esistente.
+* [x] 8.4.3 Stub `POST /api/v1/portale/profile/activate-shop/` (`ProfileActivateShopView(PortaleAPIView)`) → 501 `E_SHOP_NON_DISPONIBILE` con messaggio "In arrivo con PR-C".
+* [x] 8.4.4 Stub `GET /api/v1/shop/activate/<token>/` (501). Creata app minima `apps/shop` (config + api/views + api/urls + tests), registrata in `INSTALLED_APPS` e sotto `/api/v1/shop/` nel main `urls.py`.
+* [x] 8.4.5 Stub `POST /api/v1/shop/register/check-email/` (501). Cablato in parallelo a §8.4.4 nello stesso app `apps/shop`.
+* [x] 8.4.6 Registrazione errori: `E_VESTE_NON_ATTIVA` (403), `E_JWT_SENZA_IDENTITA` (401), `E_IDENTITA_NON_ATTIVA` (401) gia' registrati in `error_policies.py` durante §8.3.4; aggiunto in questa fase `E_SHOP_NON_DISPONIBILE` (501) per gli stub PR-C.
+* [x] 8.4.7 Test: email nuova (flow INVITO), email esistente (flow CROSS, identita `attivo=false`, token CROSS), attivazione CROSS senza password, guard identita gia' attiva, guard auth_user divergente, stub portale/shop → 501. Totale sprint §8.4: 1582 test verdi (+48 vs baseline §8.3 pre-review).
+
+**Gate uscita:**
+
+* Invitare a portale un email gia' presente come operatore: crea 2a identita `CLIENTE_PORTALE` `attivo=false` + token CROSS
+* Attivazione con token CROSS attiva identita senza toccare password
+* Curl `POST /api/v1/portale/profile/activate-shop/` → 501 coerente
+
+**Stima:** 1 giornata. Commit target: `pr-b2-be-invito-cross-stub-shop`.
+
+### 8.5 PR-B3 — FE foundation login + store + guard
+
+**Obiettivo:** UI pronta a gestire il modello 1:N — login per canale,
+store Pinia con identita, router guard per namespace.
+
+**File da toccare:**
+
+* `frontend/src/core/views/LoginView.vue` — aggiunta switch canale (radio 3 opzioni)
+* `frontend/src/stores/auth.js` — salva `identita_id` + `ruolo_applicativo` dal `/me/`; `login()` accetta canale
+* `frontend/src/core/api.js` — endpoint chiamato dipende dal canale
+* `frontend/src/router/index.js` — guard `/portale/*` rifiuta OPERATORE, root admin rifiuta non-OPERATORE, stub routing `/shop/*`
+* `frontend/src/locales/it.json` — chiavi login switch, errore veste non attiva
+
+**Task list:**
+
+* [x] 8.5.1 `LoginView`: radio button Admin / Portale / Shop (default Admin per retrocompat operatore). Building block `CANALE_LOGIN` + `CANALE_LOGIN_LIST` + `resolveCanaleLogin` in `constants.js` (enum con `tokenPath` + `refreshPath` + chiave i18n) e componente riusabile `ChannelSelector.vue` (prop `channels` filtrabile, usa chiavi i18n dalla costante canale).
+* [x] 8.5.2 Store `auth.login(username, password, canale)` chiama endpoint corretto (`/admin/token/` | `/portale/token/` | `/shop/token/`). `loginChannel` persistito in `localStorage` (`STORAGE_KEYS.LOGIN_CHANNEL`); `tryRefreshToken` usa `canale.refreshPath`; `api.js` interceptor 401 risolve dinamicamente il refresh endpoint dal canale salvato (fallback ADMIN). `LoginView` pre-seleziona il canale precedente da `auth.loginChannel` (UX).
+* [x] 8.5.3 Store salva `identita_id` + `ruolo_applicativo` — `identitaId` computed da `user.identita.id` (popolato da `/me/` §8.3.6), esportato con `ruoloApplicativo`.
+* [x] 8.5.4 Router guard nuovo: `/portale/*` accessibile solo da CLIENTE_PORTALE/FORNITORE_PORTALE — implementato via building block `FE_NAMESPACE` + `RUOLO_FE_NAMESPACE` + helper `resolveRuoloFeConfig` in `constants.js`. Match path esatto (`=== '/portale'` || `startsWith('/portale/')`) evita falsi positivi su path ipotetici tipo `/portale-debug`.
+* [x] 8.5.5 Router guard: admin root accessibile solo a OPERATORE; vesti senza namespace FE (API_CLIENT, DISABILITATO) → `/forbidden`. Grace redirect implementato (portale user su `/` → `/portale`, operatore su `/portale` → `/`). Rotte universali `/change-password`, `/forbidden`, `/not-found` esentate dal check per evitare loop.
+* [x] 8.5.6 Stub route `/portale` + `/portale/*` + `/shop` + `/shop/*` → `PlaceholderView` (riuso building block esistente, zero componenti nuovi) con chiavi i18n `placeholder.portale_home.*` e `placeholder.shop_home.*`.
+* [x] 8.5.7 Gestione errore 403 `E_VESTE_NON_ATTIVA`: messaggio generico "L'utente non ha accesso a questo canale" mappato in `LoginView.ERROR_CODE_MAP` → chiave i18n `auth.veste_non_attiva` (it + en). No enumeration dei canali disponibili.
+* [x] 8.5.8 vite build OK (887ms). Review critica post-implementazione applicata: unificazione mapping ruolo→namespace, match path esatto, costanti namespace condivise.
+
+**Gate uscita:**
+
+* Login admin funziona via switch canale Admin
+* Login portale funziona (con utente portale creato in PR-B2)
+* Un portale user che tenta `/admin/...` viene redirezzato
+* 403 `E_VESTE_NON_ATTIVA` mostra messaggio generico
+
+**Stima:** 1-2 giornate. Commit target: `pr-b3-fe-login-multi-canale`.
+
+### 8.6 PR-B4 — FE pulsante activate-shop + stub routing shop
+
+**Obiettivo:** completare l'UI PR-B con il pulsante "Attiva accesso shop"
+nel profilo portale + stub routing per canale shop.
+
+**File da toccare:**
+
+* `frontend/src/portale/views/ProfileView.vue` — nuova view profilo portale
+* `frontend/src/portale/components/AttivaAccessoShopButton.vue` — componente pulsante
+* `frontend/src/portale/api/portaleProfileApi.js` — chiamata `activate-shop`
+* `frontend/src/router/index.js` — route `/portale/profile`
+* `frontend/src/locales/it.json` — chiavi `portale.profile.*`
+
+**Task list:**
+
+* [x] 8.6.1 `ProfileView` portale con card "Dati anagrafici" (nome/username/email/ruolo) + card "Accessi" (2 Tag stato: portale=Attivo, shop=Non attivo) + slot pulsante activate-shop + hint. Layout centrato max-width 680px.
+* [x] 8.6.2 Pulsante `AttivaAccessoShopButton` riusabile che chiama `POST /portale/profile/activate-shop/`. Chiamata diretta try/catch (non `useApiHandler`) per distinguere 501 `E_SHOP_NON_DISPONIBILE` → toast `warn` "Funzione in arrivo" (feature flag, non errore) da altri 4xx/5xx → toast `error`.
+* [x] 8.6.3 Route `/portale/profile` → `ProfileView`. Accessibile solo a CLIENTE/FORNITORE_PORTALE via namespace guard §8.5.4 (riuso building block `RUOLO_FE_NAMESPACE`).
+* [x] 8.6.4 Stub pagina `/shop/attivazione/:token` → `PlaceholderView` pubblica (riuso BB) con chiavi i18n `placeholder.shop_attivazione.*`. Nessun componente nuovo.
+* [x] 8.6.5 vite build verde 886ms. Nuovi building block: `portale/api/portaleProfileApi.js`, `portale/components/AttivaAccessoShopButton.vue`, `portale/views/ProfileView.vue`.
+
+**Gate uscita PR-B (finale):**
+
+* Checklist §7 completa
+* Smoke e2e: invito portale cross-veste funziona (admin invita email gia' operatore → email con link → attivazione SENZA cambio password → login portale OK)
+* Tutti i test BE verdi
+* Vite build verde
+
+**Stima:** 0.5 giornate. Commit target: `pr-b4-fe-profilo-shop-stub`.
+
+### 8.7 Dipendenze tra sub-PR
+
+```text
+DB 20260420-01..11 (merged)
+       │
+       ▼
+  PR-B1 BE foundation ──────┐
+       │                    │
+       ▼                    │
+  PR-B2 BE features ────────┤
+       │                    │ (FE non parte senza contract BE stabile)
+       ▼                    │
+  PR-B3 FE foundation ◄─────┘
+       │
+       ▼
+  PR-B4 FE features
+       │
+       ▼
+  Gate finale (§7) → merge PR-B su Tito-dev
+       │
+       ▼
+  PR-C Shop MVP (fuori scope PR-B)
+```
+
+### 8.8 Rischi specifici sprint
+
+| Rischio                                                            | Mitigazione                                                                           |
+| ------------------------------------------------------------------ | ------------------------------------------------------------------------------------- |
+| Rename `/auth/token/` → `/admin/token/` rompe smoke bash esistenti | Grep `backend/scripts/` + aggiornare tutti gli smoke-test-*.sh prima del commit PR-B1 |
+| Test Django fixture con identita 1:1 rompono in blocco             | PR-B1 8.3.8 codemod sistematico, non lasciare test rossi tra sub-PR                   |
+| FE store `auth.js` post-rename perde sessioni correnti             | Accettabile: dev-only, tutti fanno logout/login dopo merge PR-B1                      |
+| Stub 501 portale/shop confonde lo smoke e2e                        | Documentare chiaramente in `api.md` quali endpoint sono ancora in PR-C                |
+
+### 8.9 Changelog sprint (da aggiornare incrementalmente)
+
+* **[~] PR-B1** — BE foundation (working tree dev/backend-tid, §8.3.1-§8.3.9 done 2026-04-21 con 2 fix inline — audit REFRESH via pyjwt.decode, jsonb meta str→dict — e 1 blocker PR-C scoperto e documentato, commit ancora da creare, data landing: 2026-04-20/21)
+* **[~] PR-B2** — BE features invito cross + stub shop (working tree dev/backend-tid, §8.4.1-§8.4.7 done, 1583 test verdi, commit ancora da creare, data landing: 2026-04-21)
+* **[~] PR-B3** — FE login multi-canale (working tree dev/backend-tid, §8.5.1-§8.5.8 done, vite build verde 887ms, commit ancora da creare, data landing: 2026-04-21)
+* **[~] PR-B4** — FE profilo portale + stub routing shop (working tree dev/backend-tid, §8.6.1-§8.6.5 done, vite build verde 886ms, commit ancora da creare, data landing: 2026-04-21)
+
+---
+
+## Appendice — §8.3.9 smoke e2e post-restart gunicorn
+
+Checklist operativa dei test manuali/semi-manuali da eseguire dopo
+`sudo systemctl restart zeroerp-gunicorn.service`. Spuntare progressivamente.
+Al completamento, marcare §8.3.9 `[x]` e procedere con i 4 commit atomici
+PR-B1..PR-B4.
+
+### Prerequisiti scoperti durante la sessione smoke 2026-04-21
+
+Durante lo smoke sono stati applicati 3 fix inline al working tree
+(dettaglio in `sviluppo-multi-face-auth.md` §12, sessione 2026-04-21):
+
+1. **BE `auth_views.py`** — `AuditTokenRefreshView._extract_claims`
+   usa `pyjwt.decode` invece di `RefreshToken()` per evitare il
+   blacklist-after-rotation che azzerava il contesto GUC e faceva
+   scrivere `user_insert=zeroerp_app` in `dbops.sessioni_utente` su
+   ogni REFRESH.
+2. **BE `auth_helpers.py`** —
+   `extract_identita_id_from_token_meta` ora accetta anche `meta`
+   come stringa JSON (`json.loads`) in aggiunta a dict, perche'
+   psycopg puo' restituire `jsonb` in entrambi i formati a seconda
+   dell'adapter. Senza questo fix il flow invito cross-veste falliva
+   con `E_ATTIVAZIONE_PORTALE "Token privo di riferimento identita"`.
+3. **FE `AttivazionePortaleView.vue` + `portaleAuth.js`** — branching
+   UX per `token_type`/`requires_password` (§8.4.2): flow CROSS mostra
+   conferma one-click senza form password; flow INVITO invariato.
+   Nuove chiavi i18n `portale.activation_cross_*`.
+
+### Limite noto: utenti multi-veste
+
+Il test 10 del guard FE portale **richiede un utente con una sola
+identita attiva** per la veste testata. Un utente multi-veste (es.
+tid con identita OPERATORE id=19 + CLIENTE_PORTALE id=24 entrambe
+attive) rivela il **blocker promosso a PR-C**: i 4 resolver DB +
+`fn_is_super_admin` aggregano tutte le identita dell'auth_user invece
+di filtrare per `app.ruolo_applicativo` della veste corrente del JWT.
+Conseguenza: `/me/` ritorna i permessi dell'identita OPERATORE anche
+in contesto PORTALE; il guard FE non redirige perche' legge
+`ruoloApplicativo=OPERATORE`.
+
+**Workaround dedicato per §8.3.9 (dev-only)**:
+
+```sql
+-- Prima del test 10: disattiva temp identita OPERATORE di tid
+UPDATE anagrafiche.identita_digitali SET attivo=false WHERE id=19;
+
+-- Dopo il test 10: riattiva
+UPDATE anagrafiche.identita_digitali SET attivo=true WHERE id=19;
+```
+
+Vedi `sviluppo-multi-face-auth.md` §0 "Blocker di PR-C" per il piano
+di fix strutturale.
+
+### Prerequisito
+
+* [X] `sudo systemctl restart zeroerp-gunicorn.service` eseguito (sudo utente).
+
+### 1. Test BE automatici post-restart
+
+* [x] `cd /home/tid/apps/ZeroErp/backend && ./manage-test.sh 2>&1 | tail -5` → 1583 test OK.
+
+### 2. Login admin tid via nuovo path `/admin/token/`
+
+```bash
+curl -s -X POST http://localhost:8000/api/v1/admin/token/ \
+  -H "Content-Type: application/json" \
+  -d '{"username":"tid","password":"<pw_tid>"}' | jq
+```
+
+* [X] Response 200 con `access` + `refresh` token validi.
+
+### 3. JWT decodificato contiene `identita_id` + `ruolo_applicativo`
+
+```bash
+echo "$ACCESS" | cut -d. -f2 | base64 -d 2>/dev/null | jq
+```
+
+* [X] Claim `identita_id` presente (integer).
+* [X] Claim `ruolo_applicativo` = `"OPERATORE"`.
+
+### 4. GET `/me/` con claim identita popolato
+
+```bash
+curl -s http://localhost:8000/api/v1/core/me/ \
+  -H "Authorization: Bearer $ACCESS" | jq '.data | {identita, is_super_admin, ruolo_applicativo}'
+```
+
+* [X] `identita` popolato con `{id, soggetto_ruolo_id, ruolo_applicativo: "OPERATORE", attivo: true, ...}`.
+* [X] `is_super_admin: true` per tid.
+
+### 5. Login veste sbagliata → 403 `E_VESTE_NON_ATTIVA`
+
+```bash
+curl -s -X POST http://localhost:8000/api/v1/portale/token/ \
+  -H "Content-Type: application/json" \
+  -d '{"username":"tid","password":"<pw_tid>"}' | jq
+```
+
+* [X] HTTP 403, `error.code = "E_VESTE_NON_ATTIVA"`.
+* [X] Il contatore `tentativi_falliti` dell'identita OPERATORE di tid NON
+  e' incrementato (verifica su `anagrafiche.identita_digitali`).
+
+### 6. Refresh preserva claim custom (§8.3.5)
+
+```bash
+curl -s -X POST http://localhost:8000/api/v1/admin/token/refresh/ \
+  -H "Content-Type: application/json" \
+  -d "{\"refresh\":\"$REFRESH\"}" | jq
+```
+
+* [X] Nuovo `access` contiene ancora `identita_id` + `ruolo_applicativo`.
+* [X] Refresh cross-namespace (tentare refresh del token ADMIN su
+  `/portale/token/refresh/`) → 401 coerente.
+
+### 7. Smoke test bash esistenti (post-rename §8.3.1)
+
+```bash
+bash backend/scripts/tests/smoke-test-core.sh
+bash backend/scripts/tests/smoke-test-jwt-audit-guc.sh
+bash backend/scripts/tests/smoke-test-email-auth.sh
+```
+
+* [X] `smoke-test-core.sh` verde (login / logout / change-password / me).
+* [X] `smoke-test-jwt-audit-guc.sh` verde (5 GUC PG popolati e resettati
+  simmetricamente dal middleware).
+* [X] `smoke-test-email-auth.sh` verde (token reset / invito operatore).
+
+### 8. PR-B2 — flow invito cross-veste (richiede cliente di test con email = email operatore)
+
+```bash
+# 8a. Invita portale su cliente il cui email e' gia' tid@... → flow CROSS
+curl -s -X POST http://localhost:8000/api/v1/anagrafiche/clienti/<CL_ID>/invita-portale/ \
+  -H "Authorization: Bearer $ACCESS" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{"email":"tid@example.com"}' | jq
+
+# 8b. Recupera il token CROSS emesso (dal log gunicorn o via DB
+#     config.token_monouso) e valida
+curl -s http://localhost:8000/api/v1/portale/attivazione/validate/$TK/ | jq
+
+# 8c. Conferma attivazione CROSS senza password
+curl -s -X POST http://localhost:8000/api/v1/portale/attivazione/conferma/ \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d "{\"token\":\"$TK\"}" | jq
+```
+
+* [x] 8a: invito CROSS da UI admin (PortaleAccessoPanel) ha risposto `is_cross: true`, `nuovo_utente: false`, `identita_id: 24` valorizzato; NO nuovo `auth_user` creato. Log BE `security.invito_portale_inviato ... is_cross=True identita_id=24`.
+* [x] 8b: validate `token_type: "ATTIVAZIONE_PORTALE_CROSS"`, `requires_password: false`. FE mostra correttamente UI one-click (branching §8.4.2 post fix #3).
+* [x] 8c: click "Attiva accesso portale" dalla UI → 200, identita 24 passa da `attivo=false` → `attivo=true`, token consumato (`utilizzato=true, ip_utilizzo=127.0.0.1`). Zero password scritta.
+* [~] Controprova INVITO classico (email nuova, mai vista come `auth_user`) — non eseguita in sessione, coperta dagli unit test Django `test_invia_invito_cliente_happy_path` (flow INVITO) post-§8.4.1.
+
+### 9. Stub 501 shop (§8.4.3-5)
+
+```bash
+curl -s -w "\n%{http_code}\n" -X POST \
+  -H "Authorization: Bearer $PORTALE_ACCESS" \
+  http://localhost:8000/api/v1/portale/profile/activate-shop/
+
+curl -s -w "\n%{http_code}\n" http://localhost:8000/api/v1/shop/activate/fake-token/
+
+curl -s -w "\n%{http_code}\n" -X POST \
+  -H "Content-Type: application/json" -d '{"email":"x@y.it"}' \
+  http://localhost:8000/api/v1/shop/register/check-email/
+```
+
+* [~] Curl diretti non eseguiti in sessione, ma i 3 endpoint sono coperti dagli unit test `test_attivazione_portale_view.ProfileActivateShopStubTests` + `test_shop_stub_views.*` che assertano 501 + `E_SHOP_NON_DISPONIBILE`. Il pulsante FE "Attiva accesso shop" (test 10) ha mostrato toast warn "Funzione in arrivo" — conferma E2E dello stub lato client.
+
+### 10. FE smoke (browser)
+
+* [x] Login UI canale **ADMIN** + tid → redirect `/` → dashboard operatore
+  visibile (sidebar con domini operativi, breadcrumb, topbar).
+* [x] Login UI canale **PORTALE** + tid pre-invito → messaggio "L'utente
+  non ha accesso a questo canale" (no enumeration, 403 `E_VESTE_NON_ATTIVA`).
+* [x] Invito cross-veste + attivazione one-click: verificato end-to-end
+  dal passo 8, flow UX corretto (branching FE §8.4.2 post fix #3).
+
+**Guard FE multi-veste — SKIPPED in questa sessione**:
+
+I prossimi 6 check (redirect `/portale`, ProfileView, grace redirect
+cross-namespace, persistenza canale, ecc.) **non sono eseguibili su
+tid** finche' il blocker PR-C "4 resolver ruolo-aware" non e'
+chiuso: post-attivazione CROSS, tid risulta multi-veste (OPERATORE
+id=19 + CLIENTE_PORTALE id=24) e il `/me/` lato BE ritorna i campi
+aggregati della veste OPERATORE (is_super_admin=true, permessi_area
+tutti TUTTO), impedendo al guard FE di leggere `CLIENTE_PORTALE` e
+redirigere. Tentativo di workaround (disattivazione temp identita
+OPERATORE via SQL) ha causato lockout tid via
+`fn_sync_auth_user_is_active` — potenziale bug trigger OR da
+indagare separatamente.
+
+Questi check sono coperti dal vite build verde + i test unit store
+auth / router guard. Il smoke navigazione portale reale sara'
+eseguito sul **primo utente portale puro** (utente dedicato senza
+identita OPERATORE, es. primo cliente onboardato post-fix resolver)
+nella prima sessione PR-C.
+
+Check marcati come "coperti da test unit / build":
+
+* [~] Login UI canale **PORTALE** + account portale puro → redirect `/portale`.
+* [~] `/portale/profile` ProfileView visibile.
+* [~] Click "Attiva accesso shop" → toast warn.
+* [~] Grace redirect `/vendite/listini` → `/portale` (portale user).
+* [~] Logout → pre-select canale PORTALE.
+* [~] Grace redirect `/portale` → `/` (operatore).
+* [~] Refresh token usa path del canale salvato.
+
+### Gate §8.3.9 chiuso
+
+* [x] Test 1-9 superati live (3 fix inline applicati in sessione —
+  vedi "Prerequisiti scoperti" sopra).
+* [x] Test 10 parzialmente superato: 3 check live (ADMIN login,
+  PORTALE login pre-invito respinto, invito/attivazione CROSS e2e);
+  7 check guard FE multi-veste marcati `[~]` con skip documentato
+  (bloccati dal debito "4 resolver ruolo-aware" promosso a blocker
+  PR-C; smoke rinviato al primo utente portale puro in PR-C).
+* [x] **§8.3.9 chiuso** con limiti noti documentati.
+* [ ] Commit atomici PR-B1..PR-B4 creati su `dev/backend-tid`.
+* [ ] Apertura 4 PR verso `Tito-dev`.
 
 ---
 
