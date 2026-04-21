@@ -2181,6 +2181,37 @@ Stime per Tid come unico contributor.
     tid (`UPDATE ... SET attivo=false WHERE id=19`); riattivata dopo
     il test. Nessuna migration, nessuna modifica codice.
 
+* **2026-04-21 (diagnostico `fn_sync_auth_user_is_active` + setup pgTAP
+  backend)**: chiuso task collaterale censito nell'handoff §8.3.9 prima
+  di attaccare il blocker §13.7 resolver ruolo-aware.
+  * Creata nuova struttura `backend/pgtap/<schema>/` per test pgTAP
+    diagnostici lanciabili dal server backend (senza dover accedere
+    al server DB). Esteso `scripts/testpgtap.sh` per supportare
+    entrambe le radici (`db/pgtap/` + `backend/pgtap/`) con
+    auto-detect + prefissi espliciti, e per mappare `DB_*` -> `PG*`
+    quando l'env file e' `backend/.env` (sul backend server non
+    esiste `internal.env`). Installato a sistema
+    `libtap-parser-sourcehandler-pgtap-perl` per avere `pg_prove`.
+  * Nuovo test `backend/pgtap/anagrafiche/test-fn-sync-auth-user-
+    is-active-or-transizione.sql` (4 casi) che copre il caso
+    transizionale NON presente nei 6 test statici esistenti:
+    baseline 2 identita attive -> `is_active=true`; UPDATE 1 a
+    `attivo=false` con l'altra ancora valida -> `is_active=true` (OR
+    tiene); UPDATE entrambe -> `is_active=false`. Tutti verdi.
+  * **Esito**: nessun bug nella funzione `fn_sync_auth_user_is_active`
+    ne' nel trigger `trg_identita_digitali_z90_sync_auth_user_active_upd`.
+    La causa del comportamento osservato nello smoke §8.3.9 e'
+    dato-dipendente: identita 24 CLIENTE_PORTALE di tid ha
+    `valido_dal=2026-04-21` (data attivazione portale). Lo smoke era
+    eseguito il 2026-04-20, quindi `CURRENT_DATE (20) < valido_dal (21)`
+    escludeva identita 24 dal criterio finestra temporale. Disattivando
+    identita 19 (unica utilizzabile in quel momento), l'OR correttamente
+    cadeva a `false`. Dal 2026-04-21 la stessa sequenza produrrebbe
+    `is_active=true`.
+  * **Nessuna modifica DB o codice applicativo**. Lezione da tenere
+    nei prossimi smoke: verificare finestra temporale delle identita
+    coinvolte prima di interpretare un bug di sync.
+
 * **Stato PR-B al 2026-04-21** (fine sessioni FE + smoke §8.3.9 quasi
   chiuso): §8.3.1-§8.3.8, §8.4.1-§8.4.7, §8.5.1-§8.5.8, §8.6.1-§8.6.5
   piu' 3 fix inline (audit refresh, jsonb meta, FE CROSS branching)
