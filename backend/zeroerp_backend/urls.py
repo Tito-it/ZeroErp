@@ -131,6 +131,7 @@ urlpatterns = [
     path("api/v1/catalogo/", include("apps.catalogo.api.urls")),
     path("api/v1/config/", include("apps.config.api.urls")),
     path("api/v1/portale/", include("apps.portale.api.urls")),
+    path("api/v1/shop/", include("apps.shop.api.urls")),
     path("", RedirectView.as_view(url="/admin/", permanent=False)),
 ]
 

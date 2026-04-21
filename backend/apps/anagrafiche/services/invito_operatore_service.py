@@ -20,6 +20,7 @@ from django.db import connection, transaction
 
 from apps.core.db.auth_repository import AuthRepository
 from apps.core.db.email_repository import EmailRepository
+from apps.core.services.auth_constants import RUOLO_APPLICATIVO_OPERATORE
 from apps.core.services.email_service import EmailDispatchService
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.token_service import TokenService
@@ -53,6 +54,24 @@ class InvitoOperatoreService:
         )
         email = check["email"]
 
+        # Risolve l'identita OPERATORE dell'auth_user (post modello 1:N
+        # §8.4.1: `set_deve_cambiare_password`/`set_invito_inviato_at`
+        # richiedono identita_id esplicito per puntare la veste corretta
+        # invece di colpire la "prima attiva trovata"). L'invito operatore
+        # assume invariante 1 sola identita OPERATORE per auth_user,
+        # garantita dall'unique partial su (auth_user, ruolo_applicativo)
+        # nelle migration 20260420-*.
+        identita = self._auth_repo.find_identita_attiva_for_ruoli(
+            auth_user_id, (RUOLO_APPLICATIVO_OPERATORE,)
+        )
+        ErrorManager.require(
+            identita is not None,
+            code=E_INVITO,
+            message="Identita operatore non trovata o non attiva.",
+        )
+        assert identita is not None
+        identita_id = int(identita["id"])
+
         # 2-4. Operazioni atomiche: password + flag + token
         with transaction.atomic():
             # 2. Imposta password temporanea casuale (non comunicata all'operatore)
@@ -63,15 +82,20 @@ class InvitoOperatoreService:
                     [make_password(temp_password), auth_user_id],
                 )
 
-            # 3. Imposta flag deve_cambiare_password
-            self._auth_repo.set_deve_cambiare_password(auth_user_id, True)
+            # 3. Imposta flag deve_cambiare_password sull'identita OPERATORE
+            self._auth_repo.set_deve_cambiare_password(
+                auth_user_id, True, identita_id=identita_id
+            )
 
             # 4. Genera token invito
             token_plain = self._token_service.create(
                 tipo=_INVITO_TOKEN_TIPO,
                 auth_user_id=auth_user_id,
                 scadenza_ore=_INVITO_SCADENZA_ORE,
-                meta={"invitato_da_user_id": invitato_da_user_id},
+                meta={
+                    "invitato_da_user_id": invitato_da_user_id,
+                    "identita_id": identita_id,
+                },
             )
 
         # 5. Risolvi reparto per account email mittente
@@ -107,10 +131,15 @@ class InvitoOperatoreService:
         except Exception:
             logger.exception("Errore invio email invito per user_id=%s — token valido, invito recuperabile", auth_user_id)
 
-        # 10. Aggiorna timestamp invito
-        invito_updated = self._auth_repo.set_invito_inviato_at(auth_user_id)
+        # 10. Aggiorna timestamp invito sull'identita OPERATORE specifica
+        invito_updated = self._auth_repo.set_invito_inviato_at(
+            auth_user_id, identita_id=identita_id
+        )
         if not invito_updated:
-            logger.warning("Timestamp invito non aggiornato per user_id=%s — riga non trovata", auth_user_id)
+            logger.warning(
+                "Timestamp invito non aggiornato per user_id=%s identita_id=%s — riga non trovata",
+                auth_user_id, identita_id,
+            )
 
         logger.info("security.invito_inviato user_id=%s email=%s da=%s", auth_user_id, email, invitato_da_user_id)
 

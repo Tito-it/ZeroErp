@@ -24,7 +24,10 @@ from apps.core.api.base_views import DomainAPIView
 from apps.core.api.endpoint_helpers import handle_post_json
 from apps.core.db.auth_repository import AuthRepository
 from apps.core.services import session_audit_service
-from apps.core.services.auth_helpers import apply_new_password
+from apps.core.services.auth_helpers import (
+    apply_new_password,
+    extract_identita_id_from_request,
+)
 from apps.core.services.error_manager import ErrorManager
 
 logger = logging.getLogger("security")
@@ -75,8 +78,19 @@ class ChangePasswordView(DomainAPIView):
             except DjangoValidationError as exc:
                 ErrorManager.require(False, code=E_CHANGE_PW, message=" ".join(exc.messages))
 
+            # Reset flag deve_cambiare_password puntato sulla veste del
+            # JWT corrente (§8.3.2+§8.4.1). None solo con token pre-refactor
+            # → fallback globale accettabile (blacklist invalida comunque).
+            identita_id = extract_identita_id_from_request(request)
+
             # Operazioni atomiche: password + flag + blacklist
-            apply_new_password(user, new_password, blacklist_tokens=True, auth_repo=_auth_repo)
+            apply_new_password(
+                user,
+                new_password,
+                identita_id=identita_id,
+                blacklist_tokens=True,
+                auth_repo=_auth_repo,
+            )
 
             # Genera nuova coppia JWT (fuori dalla transazione — non critico)
             refresh = RefreshToken.for_user(user)

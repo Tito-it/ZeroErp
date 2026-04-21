@@ -14,6 +14,7 @@ from django.urls import path
 from apps.portale.api.views import (
     AttivazionePortaleValidateView,
     AttivazionePortaleView,
+    ProfileActivateShopView,
 )
 
 urlpatterns = [
@@ -27,5 +28,12 @@ urlpatterns = [
         "attivazione/conferma/",
         AttivazionePortaleView.as_view(),
         name="portale-attivazione-conferma",
+    ),
+    # Profilo portale (autenticato).
+    # §8.4.3: stub attiva accesso shop → 501 finche' PR-C.
+    path(
+        "profile/activate-shop/",
+        ProfileActivateShopView.as_view(),
+        name="portale-profile-activate-shop",
     ),
 ]

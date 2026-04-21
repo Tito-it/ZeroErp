@@ -74,17 +74,40 @@ class AuthRepository:
             return json.loads(row[0]) if isinstance(row[0], str) else row[0]
 
     # Scopo: Legge il flag deve_cambiare_password dell'identita digitale
-    # attiva dell'utente (post multi-face §13.4.17).
-    def get_deve_cambiare_password(self, auth_user_id: int) -> bool:
-        sql = """
-            SELECT deve_cambiare_password
-              FROM anagrafiche.identita_digitali
-             WHERE auth_user_id = %s
-               AND attivo = true
-             LIMIT 1
-        """
+    # puntata dal JWT della sessione corrente (post modello 1:N §8.4.1).
+    # `identita_id` kw-only opzionale:
+    # - valorizzato: filtra sulla veste specifica (caso tipico: flussi
+    #   autenticati che hanno il claim nel JWT). Pattern "puntare la
+    #   veste specifica" allineato a `set_jwt_gucs` §8.3.4 e
+    #   `get_identita_dettaglio` §8.3.6. Il filtro auth_user_id resta come
+    #   guard anti-tampering.
+    # - None: fallback legacy pre-1:N (prende la prima identita attiva).
+    #   Accettabile solo per flussi non autenticati o cross-veste
+    #   dell'auth_user (es. check middleware in contesti senza JWT
+    #   validato). Da evitare nei nuovi caller.
+    def get_deve_cambiare_password(
+        self, auth_user_id: int, *, identita_id: int | None = None
+    ) -> bool:
+        if identita_id is not None:
+            sql = """
+                SELECT deve_cambiare_password
+                  FROM anagrafiche.identita_digitali
+                 WHERE id = %s
+                   AND auth_user_id = %s
+                   AND attivo = true
+            """
+            params: list[Any] = [identita_id, auth_user_id]
+        else:
+            sql = """
+                SELECT deve_cambiare_password
+                  FROM anagrafiche.identita_digitali
+                 WHERE auth_user_id = %s
+                   AND attivo = true
+                 LIMIT 1
+            """
+            params = [auth_user_id]
         with connection.cursor() as cursor:
-            cursor.execute(sql, [auth_user_id])
+            cursor.execute(sql, params)
             row = cursor.fetchone()
             return bool(row[0]) if row else False
 
@@ -99,17 +122,26 @@ class AuthRepository:
             row = cursor.fetchone()
             return row[0] if row and row[0] is not None else None
 
-    # Scopo: Aggiorna invito_inviato_at sull'identita digitale attiva
-    # dell'utente (post multi-face §13.4.17).
-    def set_invito_inviato_at(self, auth_user_id: int) -> bool:
+    # Scopo: Aggiorna invito_inviato_at sull'identita digitale specifica
+    # del flusso corrente (post modello 1:N §8.4.1).
+    # `identita_id` obbligatorio: con modello 1:N lo stesso auth_user puo'
+    # essere stato invitato a piu' "vesti" in momenti diversi; il timestamp
+    # di invito va scritto sulla riga che si sta effettivamente invitando,
+    # non su una qualunque. Il filtro auth_user_id resta come guard
+    # anti-tampering. Non filtra piu' su `attivo=true`: durante il flusso
+    # cross-veste (§8.4.1) l'identita e' creata `attivo=false` e il
+    # timestamp va comunque scritto per audit.
+    def set_invito_inviato_at(
+        self, auth_user_id: int, *, identita_id: int
+    ) -> bool:
         sql = """
             UPDATE anagrafiche.identita_digitali
                SET invito_inviato_at = now(), data_update = now()
-             WHERE auth_user_id = %s
-               AND attivo = true
+             WHERE id = %s
+               AND auth_user_id = %s
         """
         with connection.cursor() as cursor:
-            cursor.execute(sql, [auth_user_id])
+            cursor.execute(sql, [identita_id, auth_user_id])
             return cursor.rowcount > 0
 
     # Scopo: Risolve la prima identita digitale attiva dell'utente il cui
@@ -189,15 +221,38 @@ class AuthRepository:
             cols = [c.name for c in cursor.description or []]
             return dict(zip(cols, row))
 
-    # Scopo: Imposta il flag deve_cambiare_password sull'identita
-    # digitale attiva dell'utente (post multi-face §13.4.17).
-    def set_deve_cambiare_password(self, auth_user_id: int, valore: bool) -> bool:
-        sql = """
-            UPDATE anagrafiche.identita_digitali
-               SET deve_cambiare_password = %s, data_update = now()
-             WHERE auth_user_id = %s
-               AND attivo = true
-        """
+    # Scopo: Imposta il flag deve_cambiare_password. Due semantiche in base
+    # a `identita_id` kw-only (post modello 1:N §8.4.1):
+    # - `identita_id` valorizzato: aggiorna SOLO la veste specifica.
+    #   Usato da invito operatore/portale (§8.4.1), cambio password
+    #   autenticato (flag resettato per la veste corrente), attivazione
+    #   invito (flag resettato per la veste appena attivata). Il filtro
+    #   auth_user_id resta come guard anti-tampering. Non filtra su
+    #   `attivo=true`: durante l'invito cross-veste l'identita e'
+    #   `attivo=false` al momento del set flag.
+    # - `identita_id` None: aggiorna TUTTE le identita attive dell'utente.
+    #   Semantica "globale": usata dal password reset self-service
+    #   (l'utente ha dimenticato la password, al reset rientra su tutte
+    #   le vesti attive senza dover cambiare password di nuovo).
+    def set_deve_cambiare_password(
+        self, auth_user_id: int, valore: bool, *, identita_id: int | None = None
+    ) -> bool:
+        if identita_id is not None:
+            sql = """
+                UPDATE anagrafiche.identita_digitali
+                   SET deve_cambiare_password = %s, data_update = now()
+                 WHERE id = %s
+                   AND auth_user_id = %s
+            """
+            params: list[Any] = [valore, identita_id, auth_user_id]
+        else:
+            sql = """
+                UPDATE anagrafiche.identita_digitali
+                   SET deve_cambiare_password = %s, data_update = now()
+                 WHERE auth_user_id = %s
+                   AND attivo = true
+            """
+            params = [valore, auth_user_id]
         with connection.cursor() as cursor:
-            cursor.execute(sql, [valore, auth_user_id])
+            cursor.execute(sql, params)
             return cursor.rowcount > 0

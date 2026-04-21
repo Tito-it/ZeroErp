@@ -51,6 +51,14 @@ class InvitoTests(TestCase):
         mock_conn.cursor.return_value.__exit__ = MagicMock(return_value=False)
 
         auth.get_unita_organizzativa_id.return_value = 5
+        # Post §8.4.1: il service risolve l'identita OPERATORE prima di
+        # propagare identita_id ai metodi set_deve_cambiare_password /
+        # set_invito_inviato_at.
+        auth.find_identita_attiva_for_ruoli.return_value = {
+            "id": 700,
+            "soggetto_ruolo_id": 7,
+            "ruolo_applicativo": "OPERATORE",
+        }
         auth.set_deve_cambiare_password.return_value = True
         auth.set_invito_inviato_at.return_value = True
         token.create.return_value = "invito_token_123"
@@ -69,7 +77,10 @@ class InvitoTests(TestCase):
 
         self.assertTrue(result["inviato"])
         self.assertIn("***", result["email"])
-        auth.set_deve_cambiare_password.assert_called_once_with(42, True)
+        auth.set_deve_cambiare_password.assert_called_once_with(
+            42, True, identita_id=700
+        )
+        auth.set_invito_inviato_at.assert_called_once_with(42, identita_id=700)
         token.create.assert_called_once()
         email.send_email.assert_called_once()
 
@@ -102,6 +113,12 @@ class InvitoTests(TestCase):
         token.invalidate_all.return_value = 1
         token.create.return_value = "nuovo_token"
         auth.get_unita_organizzativa_id.return_value = None
+        # Post §8.4.1: serve identita OPERATORE per set_*.
+        auth.find_identita_attiva_for_ruoli.return_value = {
+            "id": 700,
+            "soggetto_ruolo_id": 7,
+            "ruolo_applicativo": "OPERATORE",
+        }
         auth.set_deve_cambiare_password.return_value = True
         auth.set_invito_inviato_at.return_value = True
         email.send_email.return_value = (1, True)

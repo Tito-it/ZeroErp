@@ -157,11 +157,22 @@ class AuditTokenObtainPairView(TokenObtainPairView):
             if user:
                 _auth_repo.registra_tentativo_login(user.id, successo=True)
 
-                # Check flag deve_cambiare_password
-                if _auth_repo.get_deve_cambiare_password(user.id):
-                    response.data["password_change_required"] = True
-
             user_id, jti = self._extract_claims(response)
+            # §8.3.4: il MultiVesteTokenSerializer ha iniettato
+            # `identita_id` nel refresh token; lo estraiamo subito perche'
+            # serve sia al check `deve_cambiare_password` (§8.4.1 — puntato
+            # alla veste specifica) sia alle GUC di audit.
+            identita_id = _extract_identita_id_from_refresh(
+                response.data.get("refresh") if response.data else None
+            )
+
+            # Check flag deve_cambiare_password sulla veste del JWT
+            # appena emesso (non su una identita arbitraria dell'utente).
+            if user and _auth_repo.get_deve_cambiare_password(
+                user.id, identita_id=identita_id
+            ):
+                response.data["password_change_required"] = True
+
             # Hotfix BE-2.0ter: il login NON passa dalla DRF auth chain
             # (l'utente non e' ancora autenticato a authenticate() time),
             # quindi JwtAuditAuthentication NON setta le GUC. Le settiamo
@@ -171,14 +182,6 @@ class AuditTokenObtainPairView(TokenObtainPairView):
             # _zeroerp_jwt_guc_set fa partire il reset simmetrico nel
             # JwtAuditMiddleware.process_response.
             if user and user_id:
-                # §8.3.4: il MultiVesteTokenSerializer ha iniettato
-                # `identita_id` nel refresh token; lo estraiamo per
-                # passarlo a set_jwt_gucs (la query CTE validera'
-                # esattamente quella veste invece di risolvere la prima
-                # identita attiva, che e' ambigua post modello 1:N).
-                identita_id = _extract_identita_id_from_refresh(
-                    response.data.get("refresh") if response.data else None
-                )
                 gucs_ok = set_jwt_gucs(
                     username=user.username,
                     user_id=user_id,
@@ -366,16 +369,28 @@ class AuditTokenRefreshView(TokenRefreshView):
 
     @staticmethod
     # Scopo: Estrae user_id e sid dal refresh token nel body della request.
+    # §8.3.9 fix audit REFRESH: NON usare `RefreshToken(refresh_str)` qui
+    # — il super().post() poco sopra ha gia' blacklistato il refresh in
+    # entrata (BLACKLIST_AFTER_ROTATION=True default), quindi SimpleJWT
+    # solleverebbe TokenError e il catch generico restituirebbe (0, None),
+    # facendo saltare set_jwt_gucs e scrivendo audit con
+    # user_insert=zeroerp_app. Usiamo `pyjwt.decode` senza validazione
+    # (identico pattern di `_decode_refresh_payload`): il refresh qui e'
+    # gia' stato validato da SimpleJWT nel super().post(), ci servono
+    # solo i claim per audit + GUC.
     def _extract_claims(request: Request) -> tuple[int, str | None]:
-        from rest_framework_simplejwt.tokens import RefreshToken
         refresh_str = request.data.get("refresh", "")
         if not refresh_str:
             return 0, None
+        payload = _decode_refresh_payload(refresh_str)
+        raw_user_id = payload.get("user_id")
+        raw_sid = payload.get("sid")
         try:
-            token = RefreshToken(refresh_str)
-            return int(token.get("user_id", 0)), str(token.get("sid", ""))
-        except Exception:
-            return 0, None
+            user_id = int(raw_user_id) if raw_user_id is not None else 0
+        except (TypeError, ValueError):
+            user_id = 0
+        sid = str(raw_sid) if raw_sid is not None else None
+        return user_id, sid
 
 
 # ── Refresh view per namespace (§8.3.5) ─────────────────────

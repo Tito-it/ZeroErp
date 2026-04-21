@@ -3,13 +3,26 @@ import { ref, computed } from 'vue'
 import api from '../core/api'
 import { DOMAINS } from '../core/navigation'
 import { local, STORAGE_KEYS } from '../core/storage'
-import { RUOLO_APPLICATIVO, LIVELLO_ACCESSO } from '../core/constants'
+import {
+  RUOLO_APPLICATIVO,
+  LIVELLO_ACCESSO,
+  CANALE_LOGIN,
+  resolveCanaleLogin
+} from '../core/constants'
 import { useNavigationStore } from './navigation'
 import { useTabsStore } from './tabs'
 
 export const useAuthStore = defineStore('auth', () => {
   const accessToken = ref(local.get(STORAGE_KEYS.ACCESS_TOKEN))
   const refreshToken = ref(local.get(STORAGE_KEYS.REFRESH_TOKEN))
+
+  // §8.5.2: canale di login corrente. Restored da localStorage al boot
+  // (sopravvive al page reload), default ADMIN per sessioni pre-multi-face
+  // e per retrocompat. Determina quale endpoint `/{admin|portale|shop}/token/`
+  // usare per login + refresh.
+  const loginChannel = ref(
+    local.get(STORAGE_KEYS.LOGIN_CHANNEL) || CANALE_LOGIN.ADMIN.key
+  )
 
   // Profilo utente caricato dall'endpoint /me/
   // Struttura JSONB: { utente, is_super_admin, ruolo_applicativo, ruolo_sistema (legacy),
@@ -43,6 +56,14 @@ export const useAuthStore = defineStore('auth', () => {
     local.set(STORAGE_KEYS.REFRESH_TOKEN, refresh)
   }
 
+  // Scopo: Memorizza il canale di login scelto. Chiamato da `login()`;
+  // separato per consentire test/debug di imposta canale senza fare login.
+  function setLoginChannel(canaleKey) {
+    const canale = resolveCanaleLogin(canaleKey)
+    loginChannel.value = canale.key
+    local.set(STORAGE_KEYS.LOGIN_CHANNEL, canale.key)
+  }
+
   function clearTokens() {
     accessToken.value = null
     refreshToken.value = null
@@ -50,6 +71,9 @@ export const useAuthStore = defineStore('auth', () => {
     passwordChangeRequired.value = false
     local.remove(STORAGE_KEYS.ACCESS_TOKEN)
     local.remove(STORAGE_KEYS.REFRESH_TOKEN)
+    // Il canale non va pulito automaticamente: dopo logout il LoginView
+    // probabilmente riusa la stessa selezione precedente. `setLoginChannel`
+    // lo sovrascrivera' al prossimo login.
     useTabsStore().closeAll()
     useNavigationStore().clearAll()
   }
@@ -67,8 +91,16 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
-  async function login(username, password) {
-    const response = await api.post('/admin/token/', { username, password })
+  // Scopo: Login multi-canale (§8.5.2). `canaleKey` opzionale per retrocompat:
+  // se omesso, usa la key gia' salvata (default ADMIN). Il canale determina
+  // quale endpoint token chiamare (`/admin/token/` | `/portale/token/` |
+  // `/shop/token/`) e viene persistito per il successivo refresh.
+  async function login(username, password, canaleKey) {
+    if (canaleKey) {
+      setLoginChannel(canaleKey)
+    }
+    const canale = resolveCanaleLogin(loginChannel.value)
+    const response = await api.post(canale.tokenPath, { username, password })
     setTokens(response.data.access, response.data.refresh)
     // Controlla flag cambio password dal backend
     passwordChangeRequired.value = !!response.data.password_change_required
@@ -83,7 +115,12 @@ export const useAuthStore = defineStore('auth', () => {
   async function tryRefreshToken() {
     if (!refreshToken.value) return false
     try {
-      const response = await api.post('/admin/token/refresh/', {
+      // Il refresh usa il canale correntemente salvato: stesso namespace
+      // del login originale. Coerente con il guard cross-namespace del BE
+      // (`AuditTokenRefreshView`, §8.3.5) che rifiuta refresh di veste
+      // incompatibile col path.
+      const canale = resolveCanaleLogin(loginChannel.value)
+      const response = await api.post(canale.refreshPath, {
         refresh: refreshToken.value
       })
       setTokens(response.data.access, refreshToken.value)
@@ -115,6 +152,12 @@ export const useAuthStore = defineStore('auth', () => {
   //    API_CLIENT | DISABILITATO | null).
   const isSuperAdmin = computed(() => user.value?.is_super_admin === true)
   const ruoloApplicativo = computed(() => user.value?.ruolo_applicativo || null)
+
+  // §8.5.3: id dell'identita attiva del JWT corrente. Post-§8.3.6 il /me/
+  // espone il blocco `identita` con la veste risolta dal claim. Consumer:
+  // FE che devono passare `identita_id` a endpoint che ne hanno bisogno
+  // (es. flussi cross-veste in PR-C), o mostrare la veste corrente in UI.
+  const identitaId = computed(() => user.value?.identita?.id || null)
 
   // Alias legacy. Nuovi consumer usino isSuperAdmin direttamente.
   const isAdmin = isSuperAdmin
@@ -245,6 +288,7 @@ export const useAuthStore = defineStore('auth', () => {
     isSuperAdmin,
     isAdmin,  // alias legacy di isSuperAdmin
     ruoloApplicativo,
+    identitaId,
     isOperatoreInterno,
     isClientePortale,
     isFornitorePortale,
@@ -266,6 +310,8 @@ export const useAuthStore = defineStore('auth', () => {
     azioniAbilitate,
     isActionAllowed,
     setTokens,
+    loginChannel,
+    setLoginChannel,
     login,
     logout,
     tryRefreshToken,
