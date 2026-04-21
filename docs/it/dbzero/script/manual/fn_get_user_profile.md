@@ -8,13 +8,19 @@
 > [script.fn_get_user_permissions_map](/dbzero/script/funzioni/fn_get_user_permissions_map)
 > [script.fn_get_user_actions_map](/dbzero/script/funzioni/fn_get_user_actions_map)
 > [script.fn_get_user_object_permissions_map](/dbzero/script/funzioni/fn_get_user_object_permissions_map)
+> [script.fn_is_super_admin](/dbzero/script/funzioni/fn_is_super_admin)
+> [script.fn_current_identita_context](/dbzero/script/funzioni/fn_current_identita_context)
 >
 > Approfondimento tabelle:
 >
-> [anagrafiche.risorse_umane_auth_user](/dbzero/anagrafiche/tabelle/risorse_umane_auth_user)
+> [anagrafiche.identita_digitali](/dbzero/anagrafiche/tabelle/identita_digitali)
 > [anagrafiche.risorse_umane](/dbzero/anagrafiche/tabelle/risorse_umane)
 > [anagrafiche.emittenti_fiscali](/dbzero/anagrafiche/tabelle/emittenti_fiscali)
 > [config.user_emittenti_fiscali](/dbzero/config/tabelle/user_emittenti_fiscali)
+>
+> Guide:
+>
+> [Architettura Multi-Face Auth](/guide/architettura-multi-face-auth) §4.7 GUC + §13.7 bug multi-veste top-level
 
 La funzione **`script.fn_get_user_profile(p_auth_user_id)`** restituisce un
 **JSONB** con il profilo completo dell'utente loggato.
@@ -23,12 +29,14 @@ E' l'entrypoint DB del profilo utente esposto da `GET /api/v1/core/me/`.
 La funzione aggrega in una sola chiamata:
 
 - dati `auth_user`
-- ruolo sistema
+- ruolo sistema ricostruito (ADMIN / OPERATIVO)
+- flag `is_super_admin` context-aware
+- campo top-level `ruolo_applicativo` GUC-aware (veste del JWT corrente)
 - dettaglio risorsa umana
 - soggetto anagrafico
 - emittente fiscale risolto
-- mappa permessi area
-- mappa azioni abilitate
+- mappa permessi area (context-aware)
+- mappa azioni abilitate (context-aware)
 - mappa override oggetto attivi
 - flag `deve_cambiare_password`
 
@@ -55,29 +63,38 @@ La funzione aggrega in una sola chiamata:
 |------------|---------------|---------|
 | `p_auth_user_id` NULL o `<= 0` | `E_ADMIN_VALIDAZIONE` | blocco immediato |
 | `auth_user` inesistente | `E_ADMIN_VALIDAZIONE` | profilo non costruibile |
-| nessun record `risorse_umane_auth_user` | `E_ADMIN_VALIDAZIONE` | utente non collegato a risorsa |
-| `ruolo_sistema = DISABILITATO` | `E_UTENTE_DISABILITATO` | login bloccato |
+| nessuna `identita_digitali` OPERATORE | `E_ADMIN_VALIDAZIONE` | user non collegato a risorsa |
+| identita attivo=false o ruolo DISABILITATO | `E_UTENTE_DISABILITATO` | login bloccato |
 | nessun record `risorse_umane` | `E_ADMIN_VALIDAZIONE` | catena utente incompleta |
 | `risorse_umane.attivo = false` | `E_UTENTE_DISABILITATO` | utente disattivato |
-| `CURRENT_DATE < valido_dal` | `E_UTENTE_NON_ATTIVO` | utente non ancora attivo |
-| `CURRENT_DATE > valido_al` | `E_UTENTE_SCADUTO` | utente scaduto |
+| `CURRENT_DATE < valido_dal` (identita o ru) | `E_UTENTE_NON_ATTIVO` | utente non ancora attivo |
+| `CURRENT_DATE > valido_al` (identita o ru) | `E_UTENTE_SCADUTO` | utente scaduto |
 
 Tutti i guard usano `script.fn_log_and_raise_error`.
+
+**Nota** (post PR-B 21-04-2026): la funzione richiede ancora un'identita
+OPERATORE attiva per completare (e' pensata per lo scoped operatore +
+metadata emittente/RU). Utenti single-veste CLIENTE_PORTALE /
+SHOP_CUSTOMER / FORNITORE_PORTALE non hanno un profilo full qui: il BE
+usa endpoint dedicati o fallback. Se in futuro si estende `/me/` a
+single-veste non-operatore, il guard va reso condizionale.
 
 ---
 ### Struttura del JSONB
 
-La funzione restituisce un JSONB con 9 chiavi principali:
+La funzione restituisce un JSONB con 11 chiavi principali:
 
 1. `utente`
-2. `ruolo_sistema`
-3. `risorse_umane`
-4. `soggetto`
-5. `emittente`
-6. `permessi_area`
-7. `azioni_abilitate`
-8. `permessi_oggetto`
-9. `deve_cambiare_password`
+2. `ruolo_sistema` — ricostruito (ADMIN / OPERATIVO)
+3. `is_super_admin` — context-aware (post PR-B)
+4. `ruolo_applicativo` — top-level GUC-aware (post PR-B)
+5. `risorse_umane`
+6. `soggetto`
+7. `emittente`
+8. `permessi_area` — context-aware (post PR-B)
+9. `azioni_abilitate` — context-aware (post PR-B)
+10. `permessi_oggetto`
+11. `deve_cambiare_password`
 
 ### Esempio di output
 
@@ -91,6 +108,8 @@ La funzione restituisce un JSONB con 9 chiavi principali:
     "email": "m@example.com"
   },
   "ruolo_sistema": "ADMIN",
+  "is_super_admin": true,
+  "ruolo_applicativo": "OPERATORE",
   "risorse_umane": {
     "risorsa_umana_id": 5,
     "risorse_umane_auth_user_id": 3,
@@ -130,6 +149,50 @@ JSONB costruito da `django.auth_user`:
 - `first_name`
 - `last_name`
 - `email`
+
+#### `ruolo_sistema`
+
+Stringa ricostruita per retrocompatibilita' output: `ADMIN` se l'utente
+e' super admin nel contesto corrente, `OPERATIVO` altrimenti. Il campo
+non corrisponde a una colonna DB: il vecchio
+`risorse_umane_auth_user.ruolo_sistema` e' stato sostituito dal modello
+binding SUPER_ADMIN (post cutover §13.3).
+
+#### `is_super_admin`
+
+Boolean prodotto da `script.fn_is_super_admin(p_auth_user_id)`.
+**Context-aware** (post PR-B 21-04-2026): se la GUC
+`app.ruolo_applicativo` e' popolata e diversa da `OPERATORE`, ritorna
+`false` (fail-closed — il bypass SUPER_ADMIN non si attiva in contesti
+portale/shop). Se la GUC non e' popolata, applica la logica legacy:
+EXISTS identita OPERATORE attiva con binding SUPER_ADMIN attivo.
+
+#### `ruolo_applicativo` (top-level)
+
+Stringa che riflette la **veste del JWT corrente**. **GUC-first**
+(post PR-B 21-04-2026, migration `20260421-05`):
+
+```sql
+v_ruolo_applicativo_out := COALESCE(
+    NULLIF(current_setting('app.ruolo_applicativo', true), ''),
+    v_ruolo_applicativo::text  -- fallback: identita OPERATORE
+);
+```
+
+Priorita':
+
+1. **GUC `app.ruolo_applicativo`** — popolata dal middleware BE
+   `JwtAuditAuthentication` su ogni request autenticata. Riflette la
+   veste scelta dall'utente al login (OPERATORE / CLIENTE_PORTALE /
+   SHOP_CUSTOMER / FORNITORE_PORTALE / API_CLIENT).
+2. **Fallback** — valore dell'identita OPERATORE gia' caricata dalla
+   query iniziale (single round-trip DB). Utilizzato per chiamate
+   fuori request HTTP (cron, tool CLI, psql).
+
+**Pre-PR-B**: il campo esponeva sempre il `ruolo_applicativo`
+dell'identita OPERATORE, causando il bug §13.7 per utenti multi-veste
+loggati su canale portale (top-level=`OPERATORE` invece di
+`CLIENTE_PORTALE`, guard FE non redirigeva a `/portale`).
 
 #### `risorse_umane`
 
@@ -180,12 +243,18 @@ Se nessun emittente e' disponibile, il valore e' `null`.
 #### `permessi_area`
 
 Mappa `{schema_db: livello}` prodotta da
-`script.fn_get_user_permissions_map(p_auth_user_id)`.
+`script.fn_get_user_permissions_map(p_auth_user_id)`. **Context-aware**
+(post PR-B 21-04-2026, migration `20260421-04-03`): se GUC
+`app.ruolo_applicativo` popolata e `!= OPERATORE`, tutti i valori sono
+`BLOCCATO` (fail-closed — i resolver permessi sono OPERATORE-only).
 
 #### `azioni_abilitate`
 
 Mappa `{permission_codename: boolean}` prodotta da
-`script.fn_get_user_actions_map(p_auth_user_id)`.
+`script.fn_get_user_actions_map(p_auth_user_id)`. **Context-aware**
+(post PR-B 21-04-2026, migration `20260421-04-04`): se GUC
+`app.ruolo_applicativo` popolata e `!= OPERATORE`, tutti i valori sono
+`false`.
 
 #### `permessi_oggetto`
 
@@ -205,14 +274,36 @@ normalizzato con `COALESCE(..., false)`.
 
 1. Guard su `p_auth_user_id`
 2. Query unica per leggere:
-   `auth_user + risorse_umane_auth_user + risorse_umane + qualifica + UO`
-3. Guard su ruolo, validita' e stato attivo
-4. Costruzione blocco `risorse_umane`
-5. Costruzione blocco `soggetto` via `fn_get_soggetto_dati_by_ruolo`
-6. Risoluzione emittente con priorita':
+   `auth_user + identita_digitali (OPERATORE) + risorse_umane + qualifica + UO`
+3. Guard su identita attiva, ruolo, validita' e stato attivo
+4. Calcolo `is_super_admin` via `fn_is_super_admin` (context-aware)
+5. Calcolo top-level `ruolo_applicativo` via COALESCE GUC / fallback
+   identita OPERATORE (context-aware post PR-B)
+6. Costruzione blocco `risorse_umane`
+7. Costruzione blocco `soggetto` via `fn_get_soggetto_dati_by_ruolo`
+8. Risoluzione emittente con priorita':
    - whitelist personale `config.user_emittenti_fiscali`
    - fallback gestore globale `emittenti_fiscali_billing_account`
-7. Composizione finale con `jsonb_build_object`
+9. Composizione finale con `jsonb_build_object`
+
+### Context-awareness (post PR-B 21-04-2026)
+
+Dopo il merge di PR-B (SSO multi-veste + shop B2C), l'utente puo' avere
+N identita attive e scegliere la veste al login. 4 campi del profilo
+sono stati resi context-aware tramite la GUC `app.ruolo_applicativo`
+(popolata dal middleware BE `JwtAuditAuthentication`):
+
+| Campo | Migration | Comportamento se GUC != OPERATORE |
+|-------|-----------|------------------------------------|
+| `is_super_admin` | `20260421-03` | `false` |
+| `ruolo_applicativo` (top-level) | `20260421-05` | valore GUC letterale |
+| `permessi_area` | `20260421-04-03` | `{area: BLOCCATO}` per ogni area |
+| `azioni_abilitate` | `20260421-04-04` | `{azione: false}` per ogni azione |
+
+Tutti i campi implementano **fail-soft su GUC mancante**: se la GUC
+non e' popolata (test pgTAP, psql manuale, cron), applicano la logica
+legacy basata sull'identita OPERATORE dell'utente. Il contratto del
+JSONB non cambia, solo la derivazione dei valori.
 
 ---
 ### Ottimizzazioni introdotte

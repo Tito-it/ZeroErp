@@ -14,23 +14,34 @@ CREATE OR REPLACE FUNCTION script.fn_check_azione_processo(p_auth_user_id intege
  STABLE
 AS $function$
 DECLARE
-    v_abilitata config.user_override_azioni.abilitata%TYPE;
+    v_abilitata   config.user_override_azioni.abilitata%TYPE;
+    v_ctx_ruolo   config.ruolo_applicativo;
 BEGIN
     -- =========================================================
     -- Scopo:
-    --   Verifica se un'azione di processo e' abilitata per
-    --   un utente. Funzione fn_check_*: puro boolean, no raise.
+    --   Verifica azione di processo abilitata per l'utente.
     --
-    -- Catena (refactor §4.6.B.4 + §4.8):
+    -- Catena (post PR-B 21-04-2026, context-aware):
+    --   0. Gate GUC: se app.ruolo_applicativo popolata e
+    --      != OPERATORE -> false (fail-closed).
     --   1. Assenza identita OPERATORE attiva -> false
     --   2. fn_is_super_admin -> true
     --   3. Override utente azione (se valido)
     --   4. Azione via fn_get_profili_accesso_applicabili
-    --      (AD_HOC prio 1 > REPARTO/PORTALE prio 2)
     --   5. Default -> false (negata)
     -- =========================================================
 
-    -- 1. Identita OPERATORE attiva (helper DRY §4.6.B.0).
+    -- 0. Gate contesto GUC (fail-closed su non-OPERATORE).
+    v_ctx_ruolo := NULLIF(
+        current_setting('app.ruolo_applicativo', true), ''
+    )::config.ruolo_applicativo;
+
+    IF v_ctx_ruolo IS NOT NULL
+       AND v_ctx_ruolo <> 'OPERATORE'::config.ruolo_applicativo THEN
+        RETURN false;
+    END IF;
+
+    -- 1. Identita OPERATORE attiva.
     IF NOT script.fn_has_identita_attiva(
                p_auth_user_id,
                'OPERATORE'::config.ruolo_applicativo) THEN
@@ -42,7 +53,7 @@ BEGIN
         RETURN true;
     END IF;
 
-    -- 3. Override utente azione (invariato)
+    -- 3. Override utente azione (invariato).
     SELECT uoa.abilitata
       INTO v_abilitata
       FROM config.user_override_azioni uoa
@@ -56,7 +67,7 @@ BEGIN
         RETURN v_abilitata;
     END IF;
 
-    -- 4. Azione via bindings (§4.8 nuovo modello).
+    -- 4. Azione via bindings (helper, 1-arg -> default NULL).
     SELECT paz.abilitata
       INTO v_abilitata
       FROM script.fn_get_profili_accesso_applicabili(p_auth_user_id) h
@@ -72,13 +83,13 @@ BEGIN
         RETURN v_abilitata;
     END IF;
 
-    -- 5. Default sicuro
+    -- 5. Default sicuro.
     RETURN false;
 END
 $function$
 
 COMMENT ON FUNCTION script.fn_check_azione_processo(p_auth_user_id integer, p_permission_codename character varying)
-IS 'Verifica se azione e'' abilitata per l''utente. Refactor §4.6.B.4 + §4.8: ramo ADMIN -> fn_is_super_admin; ramo DISABILITATO -> check identita OPERATORE attiva; azione via bindings generalizzato (fn_get_profili_accesso_applicabili, AD_HOC > REPARTO/PORTALE).';
+IS 'Verifica se azione abilitata per utente. Context-aware (post PR-B 21-04-2026): gate GUC app.ruolo_applicativo != OPERATORE -> false. Altrimenti catena legacy: has_identita, fn_is_super_admin, override, azione via helper.';
 ```
 
 ---

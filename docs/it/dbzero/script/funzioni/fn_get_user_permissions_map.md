@@ -16,25 +16,24 @@ AS $function$
 DECLARE
     v_has_identita boolean;
     v_is_super     boolean;
+    v_ctx_ruolo    config.ruolo_applicativo;
 BEGIN
     -- =========================================================
     -- Scopo:
     --   Mappa livello accesso per tutte le aree funzionali
-    --   attive, in un singolo roundtrip DB.
+    --   attive (single roundtrip). JSONB { "schema": "LIV", ... }.
     --
-    -- Ritorna:
-    --   JSONB { "anagrafiche": "TUTTO", "vendite": "LETTURA", ... }
-    --
-    -- Catena (refactor §4.6.B.8 + §4.8.5):
+    -- Catena (post PR-B 21-04-2026, context-aware):
     --   1. Guard parametro obbligatorio
-    --   2. Pre-calcolo v_has_identita (helper DRY §4.6.B.0)
-    --   3. Pre-calcolo v_is_super
-    --   4. CTE best_per_area su profili_accesso via helper
-    --   5. jsonb_object_agg con CASE su (has_identita, super,
-    --      user_override_area, best_per_area, default BLOCCATO)
+    --   2. Gate GUC: se app.ruolo_applicativo popolata e
+    --      != OPERATORE -> v_has_identita=false, v_is_super=false
+    --      (il CASE nel jsonb_object_agg produce BLOCCATO
+    --      per tutte le aree).
+    --   3. Altrimenti pre-calcolo legacy dei due flag.
+    --   4. CTE best_per_area + aggregazione jsonb invariata.
     -- =========================================================
 
-    -- 1. Guard parametro obbligatorio
+    -- 1. Guard parametro obbligatorio.
     IF p_auth_user_id IS NULL OR p_auth_user_id <= 0 THEN
         PERFORM script.fn_log_and_raise_error(
             'database', 'script.fn_get_user_permissions_map',
@@ -45,13 +44,24 @@ BEGIN
         );
     END IF;
 
-    -- 2-3. Pre-calcolo flag identita + super (usati nel CASE)
-    v_has_identita := script.fn_has_identita_attiva(
-                          p_auth_user_id,
-                          'OPERATORE'::config.ruolo_applicativo);
-    v_is_super := script.fn_is_super_admin(p_auth_user_id);
+    -- 2-3. Gate contesto GUC + pre-calcolo flag.
+    v_ctx_ruolo := NULLIF(
+        current_setting('app.ruolo_applicativo', true), ''
+    )::config.ruolo_applicativo;
 
-    -- 4-5. CTE best_per_area + aggregazione jsonb
+    IF v_ctx_ruolo IS NOT NULL
+       AND v_ctx_ruolo <> 'OPERATORE'::config.ruolo_applicativo THEN
+        -- Fail-closed: mappa produrra' BLOCCATO per ogni area.
+        v_has_identita := false;
+        v_is_super     := false;
+    ELSE
+        v_has_identita := script.fn_has_identita_attiva(
+                              p_auth_user_id,
+                              'OPERATORE'::config.ruolo_applicativo);
+        v_is_super     := script.fn_is_super_admin(p_auth_user_id);
+    END IF;
+
+    -- 4. CTE best_per_area + aggregazione jsonb.
     RETURN (
         WITH livelli_user AS (
             SELECT paa.area_id,
@@ -62,9 +72,6 @@ BEGIN
                 ON paa.profilo_accesso_id = h.profilo_accesso_id
         ),
         best_per_area AS (
-            -- DISTINCT ON prende la prima riga per area_id
-            -- ordinata per priorita: AD_HOC (1) vince su
-            -- REPARTO/PORTALE (2).
             SELECT DISTINCT ON (area_id)
                    area_id,
                    livello
@@ -101,7 +108,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_get_user_permissions_map(p_auth_user_id integer)
-IS 'Mappa permessi aree set-based. Refactor §4.6.B.8 + §4.8.5: gate identita OPERATORE, bypass fn_is_super_admin, catena profili via helper fn_get_profili_accesso_applicabili (AD_HOC > REPARTO/PORTALE). Override utente area invariato.';
+IS 'Mappa permessi aree set-based. Context-aware (post PR-B 21-04-2026): gate GUC app.ruolo_applicativo != OPERATORE -> tutti BLOCCATO. Altrimenti catena legacy: has_identita, fn_is_super_admin, override, profili via helper.';
 ```
 
 ---

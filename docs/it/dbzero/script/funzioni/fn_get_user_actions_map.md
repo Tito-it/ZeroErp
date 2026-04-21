@@ -16,24 +16,24 @@ AS $function$
 DECLARE
     v_has_identita boolean;
     v_is_super     boolean;
+    v_ctx_ruolo    config.ruolo_applicativo;
 BEGIN
     -- =========================================================
     -- Scopo:
-    --   Mappa azioni_processo abilitate/disabilitate per l'utente.
+    --   Mappa azioni_processo abilitate/disabilitate
+    --   (single roundtrip). JSONB { "perm_codename": bool, ... }.
     --
-    -- Ritorna:
-    --   JSONB { "genera_fatture_lotti": true, "reset_lotto_draft": false, ... }
-    --
-    -- Catena (refactor §4.6.B.9 + §4.8.5):
+    -- Catena (post PR-B 21-04-2026, context-aware):
     --   1. Guard parametro obbligatorio
-    --   2. Pre-calcolo v_has_identita (helper DRY §4.6.B.0)
-    --   3. Pre-calcolo v_is_super
-    --   4. CTE best_per_azione su profili_accesso_azioni via helper
-    --   5. jsonb_object_agg con CASE su (has_identita, super,
-    --      user_override_azione, best_per_azione, default false)
+    --   2. Gate GUC: se app.ruolo_applicativo popolata e
+    --      != OPERATORE -> v_has_identita=false, v_is_super=false
+    --      (il CASE nel jsonb_object_agg produce false
+    --      per tutte le azioni).
+    --   3. Altrimenti pre-calcolo legacy dei due flag.
+    --   4. CTE best_per_azione + aggregazione jsonb invariata.
     -- =========================================================
 
-    -- 1. Guard parametro obbligatorio
+    -- 1. Guard parametro obbligatorio.
     IF p_auth_user_id IS NULL OR p_auth_user_id <= 0 THEN
         PERFORM script.fn_log_and_raise_error(
             'database', 'script.fn_get_user_actions_map',
@@ -44,13 +44,24 @@ BEGIN
         );
     END IF;
 
-    -- 2-3. Pre-calcolo flag identita + super
-    v_has_identita := script.fn_has_identita_attiva(
-                          p_auth_user_id,
-                          'OPERATORE'::config.ruolo_applicativo);
-    v_is_super := script.fn_is_super_admin(p_auth_user_id);
+    -- 2-3. Gate contesto GUC + pre-calcolo flag.
+    v_ctx_ruolo := NULLIF(
+        current_setting('app.ruolo_applicativo', true), ''
+    )::config.ruolo_applicativo;
 
-    -- 4-5. CTE best_per_azione + aggregazione jsonb
+    IF v_ctx_ruolo IS NOT NULL
+       AND v_ctx_ruolo <> 'OPERATORE'::config.ruolo_applicativo THEN
+        -- Fail-closed: mappa produrra' false per ogni azione.
+        v_has_identita := false;
+        v_is_super     := false;
+    ELSE
+        v_has_identita := script.fn_has_identita_attiva(
+                              p_auth_user_id,
+                              'OPERATORE'::config.ruolo_applicativo);
+        v_is_super     := script.fn_is_super_admin(p_auth_user_id);
+    END IF;
+
+    -- 4. CTE best_per_azione + aggregazione jsonb.
     RETURN (
         WITH abilitazioni_user AS (
             SELECT paz.azione_id,
@@ -61,9 +72,6 @@ BEGIN
                 ON paz.profilo_accesso_id = h.profilo_accesso_id
         ),
         best_per_azione AS (
-            -- DISTINCT ON prende la prima riga per azione_id
-            -- ordinata per priorita: AD_HOC (1) vince su
-            -- REPARTO/PORTALE (2).
             SELECT DISTINCT ON (azione_id)
                    azione_id,
                    abilitata
@@ -100,7 +108,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_get_user_actions_map(p_auth_user_id integer)
-IS 'Mappa azioni processo set-based. Refactor §4.6.B.9 + §4.8.5: gate identita OPERATORE, bypass fn_is_super_admin, catena abilitazioni via helper fn_get_profili_accesso_applicabili (AD_HOC > REPARTO/PORTALE). Override utente azione invariato.';
+IS 'Mappa azioni processo set-based. Context-aware (post PR-B 21-04-2026): gate GUC app.ruolo_applicativo != OPERATORE -> tutti false. Altrimenti catena legacy: has_identita, fn_is_super_admin, override, abilitazioni via helper.';
 ```
 
 ---

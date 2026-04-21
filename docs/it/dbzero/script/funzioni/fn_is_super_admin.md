@@ -14,36 +14,49 @@ CREATE OR REPLACE FUNCTION script.fn_is_super_admin(p_auth_user_id integer)
  STABLE
 AS $function$
     -- =========================================================
-    -- Verifica SUPER_ADMIN operatore: ritorna true se esiste
-    -- un'identita OPERATORE attiva per l'auth_user con un
-    -- binding attivo a un profilo SUPER_ADMIN attivo.
-    -- Post 20-04-2026 il filtro ruolo_applicativo=OPERATORE
-    -- rende la fn coerente col modello multi-veste: un
-    -- user con OPERATORE+SUPER_ADMIN + CLIENTE_PORTALE non
-    -- eredita il bypass in contesto portale.
-    -- Fail-closed: NULL o identita inesistente/inattiva
-    -- -> false.
+    -- Scopo:
+    --   Verifica SUPER_ADMIN context-aware.
+    --
+    -- Logica (post PR-B 21-04-2026, SSO multi-veste):
+    --   1. Se GUC app.ruolo_applicativo e' popolata ed e'
+    --      diversa da OPERATORE -> false (bypass non si
+    --      attiva in contesto portale/shop/api_client).
+    --   2. Altrimenti (GUC non popolata o ='OPERATORE'):
+    --      EXISTS identita OPERATORE attiva con binding
+    --      SUPER_ADMIN attivo (logica pre-GUC invariata).
+    --
+    -- Fail-soft GUC: current_setting(..., true) ritorna
+    -- NULL se non settata; NULLIF normalizza '' -> NULL.
+    -- Chiamate legacy (test/psql senza GUC) funzionano come
+    -- prima: l'invariante "un user con OPERATORE+SUPER_ADMIN
+    -- e' super admin a livello account" resta per l'uso
+    -- fuori request HTTP.
     -- =========================================================
-    SELECT EXISTS (
-        SELECT 1
-          FROM anagrafiche.identita_digitali id
-          JOIN config.profili_accesso_bindings pab
-            ON pab.identita_digitale_id = id.id
-          JOIN config.profili_accesso pa
-            ON pa.id = pab.profilo_accesso_id
-         WHERE id.auth_user_id      = p_auth_user_id
-           AND id.attivo            = true
-           AND id.ruolo_applicativo = 'OPERATORE'::config.ruolo_applicativo
-           AND (id.valido_dal IS NULL OR id.valido_dal <= CURRENT_DATE)
-           AND (id.valido_al  IS NULL OR id.valido_al  >= CURRENT_DATE)
-           AND pab.attivo = true
-           AND pa.attivo  = true
-           AND pa.tipo    = 'SUPER_ADMIN'::config.tipo_profilo_accesso
-    );
+    SELECT CASE
+        WHEN NULLIF(current_setting('app.ruolo_applicativo', true), '') IS NOT NULL
+             AND NULLIF(current_setting('app.ruolo_applicativo', true), '') <> 'OPERATORE'
+            THEN false
+        ELSE EXISTS (
+            SELECT 1
+              FROM anagrafiche.identita_digitali id
+              JOIN config.profili_accesso_bindings pab
+                ON pab.identita_digitale_id = id.id
+              JOIN config.profili_accesso pa
+                ON pa.id = pab.profilo_accesso_id
+             WHERE id.auth_user_id      = p_auth_user_id
+               AND id.attivo            = true
+               AND id.ruolo_applicativo = 'OPERATORE'::config.ruolo_applicativo
+               AND (id.valido_dal IS NULL OR id.valido_dal <= CURRENT_DATE)
+               AND (id.valido_al  IS NULL OR id.valido_al  >= CURRENT_DATE)
+               AND pab.attivo = true
+               AND pa.attivo  = true
+               AND pa.tipo    = 'SUPER_ADMIN'::config.tipo_profilo_accesso
+        )
+    END;
 $function$
 
 COMMENT ON FUNCTION script.fn_is_super_admin(p_auth_user_id integer)
-IS 'SUPER_ADMIN check ristretto a identita OPERATORE (post 20-04-2026). Ritorna true se l''auth_user ha un''identita OPERATORE attiva nella finestra temporale con binding a profilo tipo SUPER_ADMIN attivo. Coerente con modello SSO multi-veste: il bypass non si attiva in contesti non-operatore. STABLE, inlineable, fail-closed.';
+IS 'SUPER_ADMIN check context-aware (post PR-B 21-04-2026). Se GUC app.ruolo_applicativo e'' popolata e diversa da OPERATORE ritorna false (fail-closed su contesti portale/shop). Altrimenti applica la logica legacy: EXISTS identita OPERATORE attiva con binding SUPER_ADMIN attivo. STABLE, inlineable, fail-soft su GUC mancante (chiamate test/psql OK).';
 ```
 
 ---

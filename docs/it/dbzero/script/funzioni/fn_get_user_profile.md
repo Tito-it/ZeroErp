@@ -14,40 +14,41 @@ CREATE OR REPLACE FUNCTION script.fn_get_user_profile(p_auth_user_id integer)
  STABLE
 AS $function$
 DECLARE
-    v_result            jsonb;
-    v_utente            jsonb;
-    -- Blocco identita (sostituisce blocco RUA legacy)
-    v_identita_id       anagrafiche.identita_digitali.id%TYPE;
-    v_ruolo_applicativo anagrafiche.identita_digitali.ruolo_applicativo%TYPE;
-    v_identita_attiva   anagrafiche.identita_digitali.attivo%TYPE;
-    v_identita_val_dal  anagrafiche.identita_digitali.valido_dal%TYPE;
-    v_identita_val_al   anagrafiche.identita_digitali.valido_al%TYPE;
-    v_is_super_admin    boolean;
-    v_ruolo_sistema_out text;
+    v_result                  jsonb;
+    v_utente                  jsonb;
+    -- Blocco identita
+    v_identita_id             anagrafiche.identita_digitali.id%TYPE;
+    v_ruolo_applicativo       anagrafiche.identita_digitali.ruolo_applicativo%TYPE;
+    v_ruolo_applicativo_out   text;  -- output top-level GUC-aware (§20260421-05)
+    v_identita_attiva         anagrafiche.identita_digitali.attivo%TYPE;
+    v_identita_val_dal        anagrafiche.identita_digitali.valido_dal%TYPE;
+    v_identita_val_al         anagrafiche.identita_digitali.valido_al%TYPE;
+    v_is_super_admin          boolean;
+    v_ruolo_sistema_out       text;
     -- Blocco risorse_umane
-    v_risorsa_umana_id  anagrafiche.risorse_umane.id%TYPE;
-    v_soggetto_ruolo_id anagrafiche.risorse_umane.soggetto_ruolo_id%TYPE;
-    v_qualifica_id      anagrafiche.risorse_umane.qualifica_id%TYPE;
-    v_uo_id             anagrafiche.risorse_umane.unita_organizzativa_id%TYPE;
-    v_valido_dal        anagrafiche.risorse_umane.valido_dal%TYPE;
-    v_valido_al         anagrafiche.risorse_umane.valido_al%TYPE;
-    v_ru_attivo         anagrafiche.risorse_umane.attivo%TYPE;
-    v_risorse_umane     jsonb;
+    v_risorsa_umana_id        anagrafiche.risorse_umane.id%TYPE;
+    v_soggetto_ruolo_id       anagrafiche.risorse_umane.soggetto_ruolo_id%TYPE;
+    v_qualifica_id            anagrafiche.risorse_umane.qualifica_id%TYPE;
+    v_uo_id                   anagrafiche.risorse_umane.unita_organizzativa_id%TYPE;
+    v_valido_dal              anagrafiche.risorse_umane.valido_dal%TYPE;
+    v_valido_al               anagrafiche.risorse_umane.valido_al%TYPE;
+    v_ru_attivo               anagrafiche.risorse_umane.attivo%TYPE;
+    v_risorse_umane           jsonb;
     -- Flag autenticazione avanzata
     v_deve_cambiare_password  anagrafiche.identita_digitali.deve_cambiare_password%TYPE;
     -- Blocco soggetto
-    v_soggetto          jsonb;
+    v_soggetto                jsonb;
     -- Blocco emittente
-    v_emittente         jsonb;
+    v_emittente               jsonb;
     -- Variabili emittente lookup
-    v_uef_id            config.user_emittenti_fiscali.id%TYPE;
-    v_ef_id             anagrafiche.emittenti_fiscali.id%TYPE;
-    v_ef_uid            anagrafiche.emittenti_fiscali.uid%TYPE;
-    v_ef_codice         anagrafiche.emittenti_fiscali.codice%TYPE;
-    v_ef_descrizione    anagrafiche.emittenti_fiscali.descrizione%TYPE;
-    v_ef_sr_id          anagrafiche.emittenti_fiscali.soggetto_ruolo_id%TYPE;
-    v_ef_regime         anagrafiche.emittenti_fiscali.regime_fiscale_rf%TYPE;
-    v_ef_valuta_id      anagrafiche.emittenti_fiscali.valuta_id%TYPE;
+    v_uef_id                  config.user_emittenti_fiscali.id%TYPE;
+    v_ef_id                   anagrafiche.emittenti_fiscali.id%TYPE;
+    v_ef_uid                  anagrafiche.emittenti_fiscali.uid%TYPE;
+    v_ef_codice               anagrafiche.emittenti_fiscali.codice%TYPE;
+    v_ef_descrizione          anagrafiche.emittenti_fiscali.descrizione%TYPE;
+    v_ef_sr_id                anagrafiche.emittenti_fiscali.soggetto_ruolo_id%TYPE;
+    v_ef_regime               anagrafiche.emittenti_fiscali.regime_fiscale_rf%TYPE;
+    v_ef_valuta_id            anagrafiche.emittenti_fiscali.valuta_id%TYPE;
     -- Qualifica e UO risolti
     v_qualifica_codice          config.qualifiche.codice%TYPE;
     v_qualifica_codice_interno  config.qualifiche.codice_interno%TYPE;
@@ -57,7 +58,14 @@ DECLARE
     v_uo_descrizione            config.unita_organizzative.descrizione%TYPE;
 BEGIN
     -- =========================================================
-    -- Scopo: vedi COMMENT ON FUNCTION (refactor §4.6.B.11).
+    -- Scopo (post 21-04-2026, multi-face context-aware):
+    --   Profilo utente completo (JSONB). Source of truth =
+    --   identita_digitali OPERATORE + risorse_umane via
+    --   soggetto_ruolo. Il campo top-level ruolo_applicativo
+    --   riflette il contesto di sessione (GUC
+    --   app.ruolo_applicativo); gli altri campi context-aware
+    --   (permessi_area/azioni_abilitate/is_super_admin) sono
+    --   gia' coerenti via 20260421-03/04.
     -- =========================================================
 
     IF p_auth_user_id IS NULL OR p_auth_user_id <= 0 THEN
@@ -72,8 +80,7 @@ BEGIN
 
     -- -------------------------------------------------------
     -- 1. Query accorpata: auth_user + identita_digitali
-    --    (ruolo OPERATORE) + risorse_umane (via soggetto_ruolo)
-    --    + qualifica + UO.
+    --    (OPERATORE) + risorse_umane + qualifica + UO.
     -- -------------------------------------------------------
     SELECT jsonb_build_object(
                'auth_user_id', au.id,
@@ -154,7 +161,6 @@ BEGIN
     END IF;
 
     -- Guard: identita disabilitata / ruolo DISABILITATO / inattiva.
-    -- Sostituisce il vecchio check ruolo_sistema='DISABILITATO'.
     IF v_identita_attiva = false OR v_ruolo_applicativo = 'DISABILITATO' THEN
         PERFORM script.fn_log_and_raise_error(
             'database', 'script.fn_get_user_profile',
@@ -233,11 +239,20 @@ BEGIN
         );
     END IF;
 
-    -- Ruolo sistema ricostruito per retrocompatibilita' output:
-    -- ADMIN = super admin; OPERATIVO = altrimenti (DISABILITATO
-    -- e' gia' stato filtrato dai guard precedenti).
-    v_is_super_admin := script.fn_is_super_admin(p_auth_user_id);
+    -- Ruolo sistema ricostruito per retrocompatibilita' output.
+    v_is_super_admin   := script.fn_is_super_admin(p_auth_user_id);
     v_ruolo_sistema_out := CASE WHEN v_is_super_admin THEN 'ADMIN' ELSE 'OPERATIVO' END;
+
+    -- Top-level ruolo_applicativo: GUC-first (veste del JWT
+    -- corrente), fallback al ruolo dell'identita OPERATORE
+    -- gia' caricata dalla query iniziale (tool/cron senza GUC).
+    -- Fix §13.7 pr-b: il vecchio output esponeva sempre
+    -- 'OPERATORE' per user multi-veste loggati su canale
+    -- portale -> guard namespace FE non redirigeva a /portale.
+    v_ruolo_applicativo_out := COALESCE(
+        NULLIF(current_setting('app.ruolo_applicativo', true), ''),
+        v_ruolo_applicativo::text
+    );
 
     v_risorse_umane := jsonb_build_object(
         'risorsa_umana_id',                v_risorsa_umana_id,
@@ -351,13 +366,13 @@ BEGIN
     END IF;
 
     -- -------------------------------------------------------
-    -- 4. Risultato finale (aggiunta is_super_admin)
+    -- 4. Risultato finale (top-level ruolo_applicativo GUC-aware)
     -- -------------------------------------------------------
     v_result := jsonb_build_object(
         'utente',                   v_utente,
         'ruolo_sistema',            v_ruolo_sistema_out,
         'is_super_admin',           v_is_super_admin,
-        'ruolo_applicativo',        v_ruolo_applicativo::text,
+        'ruolo_applicativo',        v_ruolo_applicativo_out,
         'risorse_umane',            v_risorse_umane,
         'soggetto',                 v_soggetto,
         'emittente',                v_emittente,
@@ -372,7 +387,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_get_user_profile(p_auth_user_id integer)
-IS 'Profilo utente completo (JSONB). Refactor §4.6.B.11: source of truth = identita_digitali (OPERATORE) + risorse_umane via soggetto_ruolo. Aggiunti campi output is_super_admin, ruolo_applicativo. Campo ruolo_sistema ricostruito via fn_is_super_admin per retrocompat output.';
+IS 'Profilo utente completo (JSONB). Post PR-B 21-04-2026: top-level ruolo_applicativo GUC-aware (app.ruolo_applicativo con fallback all''identita OPERATORE). Coerente con fn_is_super_admin / fn_get_user_permissions_map / fn_get_user_actions_map gia'' GUC-aware (20260421-03/04). Richiede ancora identita OPERATORE (guard invariato, raise E_ADMIN_VALIDAZIONE altrimenti).';
 ```
 
 ---
