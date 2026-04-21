@@ -22,11 +22,11 @@ from apps.core.api.error_responses import exception_to_error_response
 from apps.core.services.service_errors import ServiceError
 
 
-# Scopo: Helper condiviso per i 3 stub PR-B (shop activate, shop register
-# check-email, portale profile activate-shop). Centralizza il codice
-# errore + conversione in envelope. Usato anche da
-# `apps.portale.api.views.ProfileActivateShopView`. Eliminare insieme
-# agli stub in PR-C quando il flusso reale prende il posto.
+# Scopo: Helper per stub residui shop (oggi: ShopRegisterCheckEmailView).
+# Centralizza il codice errore + conversione in envelope. Eliminare quando
+# il flusso self-register §5.6 sostituira' anche questo stub.
+# Post B1 §13.7: ShopActivateView e ProfileActivateShopView non sono piu'
+# stub (vedi `views_attivazione.py` e `apps/portale/api/views.py`).
 def shop_not_available_response(message: str) -> JsonResponse:
     return exception_to_error_response(ServiceError(
         code="E_SHOP_NON_DISPONIBILE",
@@ -48,31 +48,6 @@ _STUB_RESPONSE_SCHEMA = inline_serializer(
         ),
     },
 )
-
-
-class ShopActivateView(APIView):
-    """GET /api/v1/shop/activate/<token>/ — §8.4.4 stub.
-
-    L'endpoint reale, in PR-C, validera' un token SHOP_ACTIVATION, creera'
-    l'identita SHOP_CUSTOMER sull'auth_user e chiudera' il loop con una
-    risposta di conferma (poi redirezione al login shop). Per ora risponde
-    501 cosi' il FE puo' gia' cablare la rotta /shop/attivazione/:token.
-    """
-
-    permission_classes = [AllowAny]
-    authentication_classes = []
-
-    @extend_schema(
-        summary="Attiva account shop con token (stub PR-C)",
-        responses={501: _STUB_RESPONSE_SCHEMA},
-    )
-    def get(self, request: Request, token: str) -> JsonResponse:
-        # `token` accettato nella path per simmetria con il contract
-        # PR-C: lo ignoriamo nello stub. Nessun DB touched.
-        _ = token
-        return shop_not_available_response(
-            "Attivazione shop non ancora disponibile. In arrivo con PR-C."
-        )
 
 
 class ShopRegisterCheckEmailView(APIView):

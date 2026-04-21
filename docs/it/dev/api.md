@@ -469,13 +469,14 @@ la distinzione formale tra namespace per tipo di consumatore:
 | Namespace | Base view | Chi accede | Stato |
 | --- | --- | --- | --- |
 | `/api/v1/<dominio>/` | `DomainAPIView` / `AdminAPIView` | Operatori interni (dipendenti, ruolo_applicativo=OPERATORE) | **Attivo** |
-| `/api/v1/portale/` | `PortaleAPIView` | Clienti e fornitori del portale | **In sviluppo** (Stage C) |
-| `/api/v1/shop/` | `ShopAPIView` | Negozio online (pubblico + SHOP_CUSTOMER) | **In sviluppo** (Stage D) |
+| `/api/v1/portale/` | `PortaleAPIView` | Clienti e fornitori del portale | **Attivo** (auth+invito+attivazione, MVP dati Stage C) |
+| `/api/v1/shop/` | `ShopAPIView` | Negozio online (pubblico + SHOP_CUSTOMER) | **Attivo** (auth+invito+attivazione admin-driven; catalogo/checkout Stage D) |
 
-Le base class `PortaleAPIView` / `ShopAPIView` sono gia' disponibili in
-`apps/core/api/base_views.py`. Il routing effettivo dei due namespace
-verra' aggiunto in PR-B (portale) e PR-C (shop). Vedi
-[architettura-multi-face-auth](/guide/architettura-multi-face-auth).
+Le base class `PortaleAPIView` / `ShopAPIView` sono in
+`apps/core/api/base_views.py`. Auth + flussi invito/attivazione dei
+portali e dello shop sono operativi (PR-B + B1 §13.7). Le API di dominio
+(catalogo, ordini, checkout, ricevute consumer) arrivano con Stage C/D.
+Vedi [architettura-multi-face-auth](/guide/architettura-multi-face-auth).
 
 ### Convenzione URL
 
@@ -497,7 +498,7 @@ Per l'inventario completo degli endpoint attivi per dominio, consultare la docum
 * **Pratiche**: [api_pratiche_list.md](/backend/pratiche/manual/api_pratiche_list) | [api_pratiche_generate.md](/backend/pratiche/manual/api_pratiche_generate) | [api_pratiche_note.md](/backend/pratiche/manual/api_pratiche_note) | [api_pratiche_allegati.md](/backend/pratiche/manual/api_pratiche_allegati)
 * **Amm. Software**: [api_amm_software.md](api_amm_software.md)
 * **Anagrafiche**: [api_soggetti.md](api_soggetti.md) | [api_indirizzi.md](api_indirizzi.md) | [api_geo_config.md](api_geo_config.md) | [api_fornitori.md](api_fornitori.md)
-* **Auth**: [api_multi_veste_token.md](/backend/core/manual/api_multi_veste_token) | [auth_views_audit.md](/backend/core/manual/auth_views_audit) | [api_user_profile.md](/backend/core/manual/api_user_profile) | [api_token_cambio_password.md](/backend/core/manual/api_token_cambio_password) | [api_password_reset.md](/backend/core/manual/api_password_reset) | [api_invito_operatore.md](/backend/core/manual/api_invito_operatore) | [api_logout.md](/backend/core/manual/api_logout)
+* **Auth**: [api_multi_veste_token.md](/backend/core/manual/api_multi_veste_token) | [auth_views_audit.md](/backend/core/manual/auth_views_audit) | [api_user_profile.md](/backend/core/manual/api_user_profile) | [api_token_cambio_password.md](/backend/core/manual/api_token_cambio_password) | [api_password_reset.md](/backend/core/manual/api_password_reset) | [api_invito_operatore.md](/backend/core/manual/api_invito_operatore) | [api_invito_portale_shop.md](/backend/core/manual/api_invito_portale_shop) | [api_logout.md](/backend/core/manual/api_logout)
 * **Email**: [api_email.md](/backend/core/manual/api_email)
 * **Parametri**: [api_parameter_settings.md](../backend/core/manual/api_parameter_settings.md)
 
@@ -645,6 +646,18 @@ in `error_policies.py` prima dell'uso. Il suffisso determina la categoria:
 
 Vedi [api_multi_veste_token.md](../backend/core/manual/api_multi_veste_token.md)
 per il contratto completo.
+
+#### Codici invito/attivazione portale + shop (§8.4 PR-B2 + §13.7 B1)
+
+| Codice | HTTP | UI action | Quando |
+| --- | --- | --- | --- |
+| `E_INVITO_PORTALE` | 400 | show_error_banner | Errore admin durante invio/reinvio invito portale o shop (validazione, identita gia' attiva, veste non supportata) |
+| `E_ATTIVAZIONE_PORTALE` | 400 | show_error_banner | Errore consume token attivazione portale (token assente/scaduto, password mismatch, identita rimossa) |
+| `E_ATTIVAZIONE_SHOP` | 400 | show_error_banner | Errore consume token attivazione shop (simmetrico portale, B1 §13.7) |
+| `E_ATTIVAZIONE_SHOP_CROSS` | 400 | show_error_banner | Errore attivazione cross-veste shop dal profilo portale (veste non CLIENTE_PORTALE, identita gia' su altro auth_user, GUC vuota) |
+
+Vedi [api_invito_portale_shop.md](../backend/core/manual/api_invito_portale_shop.md)
+per il contratto completo dei flussi invito + attivazione portale e shop.
 
 ### Test
 

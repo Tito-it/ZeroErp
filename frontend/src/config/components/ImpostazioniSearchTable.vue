@@ -4,14 +4,16 @@
 import { onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useImpostazioniStore } from '../stores/impostazioni'
-import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
+import { useInjectReadonly, useInjectBlocked } from '../../core/composables/useReadonlyMode'
 import { useAuthStore } from '../../stores/auth'
+import ReloadButton from '../../core/components/ReloadButton.vue'
+import ReadonlyBadge from '../../core/components/ReadonlyBadge.vue'
+import AccessoBloccatoPanel from '../../core/components/AccessoBloccatoPanel.vue'
 import { resolveParameterLevel, parameterLevelSeverity } from '../../core/utils/parameterLevel'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import InputText from 'primevue/inputtext'
 import Tag from 'primevue/tag'
-import Button from 'primevue/button'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
 
 const emit = defineEmits(['edit-override', 'remove-override', 'remove-emittente-override'])
@@ -19,6 +21,7 @@ const { t } = useI18n()
 const store = useImpostazioniStore()
 const auth = useAuthStore()
 const isReadonly = useInjectReadonly()
+const isBlocked = useInjectBlocked()
 
 function levelLabel(level) {
   return t(`impostazioni.level_${level}`)
@@ -59,13 +62,16 @@ onMounted(() => store.fetchList())
 
 <template>
   <div class="app-tab-content">
+    <AccessoBloccatoPanel v-if="isBlocked" />
+
+    <template v-else>
     <div class="app-page-toolbar">
       <div class="app-page-filters">
         <InputText v-model="store.searchText" :placeholder="t('impostazioni.search_placeholder')" />
       </div>
       <div class="app-page-actions">
-        <Button icon="pi pi-refresh" text class="app-reload-btn"
-          v-tooltip.bottom="t('common.reload_list')" @click="store.fetchList" />
+        <ReadonlyBadge />
+        <ReloadButton @click="store.fetchList" />
       </div>
     </div>
 
@@ -126,6 +132,7 @@ onMounted(() => store.fetchList())
         </template>
       </Column>
     </DataTable>
+    </template>
   </div>
 </template>
 

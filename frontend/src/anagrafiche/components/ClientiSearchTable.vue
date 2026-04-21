@@ -14,16 +14,22 @@ import Column from 'primevue/column'
 import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
 import Tag from 'primevue/tag'
-import Button from 'primevue/button'
 import NewButton from '../../core/components/NewButton.vue'
+import ReloadButton from '../../core/components/ReloadButton.vue'
+import ReadonlyBadge from '../../core/components/ReadonlyBadge.vue'
+import AccessoBloccatoPanel from '../../core/components/AccessoBloccatoPanel.vue'
 import SearchHint from '../../core/components/SearchHint.vue'
 import LookupSelect from '../../core/components/LookupSelect.vue'
 import UtilityPerRuoloSelect from '../../core/components/UtilityPerRuoloSelect.vue'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
+import { useInjectBlocked } from '../../core/composables/useReadonlyMode'
+import { useAuthStore } from '../../stores/auth'
 
 const emit = defineEmits(['new', 'row-click', 'contatti', 'indirizzi', 'conti-bancari', 'contratti'])
 const { t } = useI18n()
 const store = useClientiStore()
+const auth = useAuthStore()
+const isBlocked = useInjectBlocked()
 const { searchText, onPage, onSort, applyFilters, reload, paginatorProps } = useSearchTable(store, {
   defaultSortField: 'ragione_sociale_completa'
 })
@@ -45,7 +51,11 @@ function onStatoChange() {
 function onRowClick(event) { emit('row-click', event.data) }
 
 // Scopo: azioni di riga del cliente (sub-drawer anagrafici + contratti).
+// Ogni sub-drawer con model_permission proprio disabilita la sua voce se
+// l'oggetto e' BLOCCATO per l'operatore (defense-in-depth UX: evita click
+// che genererebbero 403).
 function buildRowActions(data) {
+  const contiBlocked = auth.isObjectBlocked('anagrafiche', 'conto_bancario')
   return [
     {
       key: 'contatti',
@@ -63,6 +73,7 @@ function buildRowActions(data) {
       key: 'conti-bancari',
       label: t('conti_bancari.gestisci_conti'),
       icon: MANAGE_ICONS.CONTI_BANCARI,
+      disabled: contiBlocked,
       command: () => emit('conti-bancari', data),
     },
     {
@@ -97,6 +108,10 @@ onMounted(() => {
 
 <template>
   <div class="app-tab-content">
+    <!-- Livello oggetto BLOCCATO: sostituisce toolbar + lista con pannello dedicato -->
+    <AccessoBloccatoPanel v-if="isBlocked" />
+
+    <template v-else>
     <div class="app-page-toolbar">
       <div class="app-page-filters">
         <InputText
@@ -120,7 +135,8 @@ onMounted(() => {
         />
       </div>
       <div class="app-page-actions">
-        <Button icon="pi pi-refresh" text class="app-reload-btn" v-tooltip.bottom="t('common.reload_list')" @click="reload" />
+        <ReadonlyBadge />
+        <ReloadButton @click="reload" />
         <NewButton :tooltip="t('clienti.nuovo_cliente')" @click="emit('new')" />
       </div>
     </div>
@@ -177,5 +193,6 @@ onMounted(() => {
         </template>
       </Column>
     </DataTable>
+    </template>
   </div>
 </template>

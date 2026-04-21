@@ -63,7 +63,7 @@ manutenzione, `ALTER TABLE ... DISABLE TRIGGER` temporaneo.
 
 ### Riferimenti
 
-* [WIP multi-face-auth §13.3.6](/dev/work-in-progress/sviluppo-multi-face-auth)
+* [WIP multi-face-auth §13.3.6](/dev/work-done/sviluppo-multi-face-auth)
 
 ---
 

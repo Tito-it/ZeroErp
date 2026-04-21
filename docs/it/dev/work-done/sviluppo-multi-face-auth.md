@@ -61,27 +61,39 @@ Checklist di ripartenza:
   * §4.9.8 benchmark pre/post RLS (gate: nessuna query degrada >10%).
   * §5.10.4-10.5 audit sessioni `ruolo_applicativo` + security headers.
 
-**Blocker di PR-C** (scoperto 2026-04-21 durante smoke §8.3.9):
+**Blocker di PR-C — ✅ RISOLTO 2026-04-21**: chiuso end-to-end sul
+fronte DB + BE, smoke guard FE §8.3.9 ora completabile.
 
-* ❗ I 4 resolver (`fn_resolve_livello_area`, `fn_check_azione_processo`,
-  `fn_get_user_permissions_map`, `fn_get_user_actions_map`) +
-  `fn_is_super_admin` non filtrano per la **veste corrente del JWT**
-  (`app.ruolo_applicativo`), aggregano tutte le identita attive
-  dell'auth_user. Conseguenza concreta: un utente multi-veste (es. tid
-  con identita OPERATORE + CLIENTE_PORTALE attive) loggato canale
-  PORTALE riceve in `/me/` `ruolo_applicativo=OPERATORE`,
-  `is_super_admin=true`, `permessi_area={tutti TUTTO}` — i resolver
-  pescano l'identita OPERATORE (SUPER_ADMIN) anche in contesto portale.
-  **Effetto**: il guard namespace FE §8.5.4 legge `ruoloApplicativo`
-  operatore e non redirige; il portale user naviga liberamente
-  nell'area admin. Inizialmente censito come debito "non-blocking
-  post-merge PR-B"; la scoperta durante §8.3.9 lo rivela come
-  bloccante per qualsiasi scenario multi-veste e quindi per l'MVP
-  portale reale. **Fix PR-C**: tutti i resolver devono leggere
-  `current_setting('app.ruolo_applicativo', true)` e restringere la
-  query a quella veste, con fallback sicuro (operatore/admin) se GUC
-  vuota (scenario tool/cron). Migration DB + pgTAP dedicato per
-  scenario multi-veste.
+* ~~I 4 resolver + `fn_is_super_admin` non filtrano per la veste
+  corrente del JWT~~ **Chiuso 2026-04-21** con:
+  * **DB** (branch `dev/db-tid`, migrations `20260421-03/04`):
+    fn_is_super_admin gia' ristretto a OPERATORE (20260420-11-01);
+    i 4 resolver (fn_resolve_livello_area, fn_check_azione_processo,
+    fn_get_user_permissions_map, fn_get_user_actions_map) ora leggono
+    `current_setting('app.ruolo_applicativo', true)` con fallback
+    sicuro OPERATORE per tool/cron senza JWT; firma
+    fn_get_profili_accesso_applicabili unificata a 2-arg
+    (p_ruolo_applicativo DEFAULT NULL), vecchia 1-arg droppata.
+  * **BE** (branch `dev/backend-tid`, commit in working tree):
+    rimosso workaround overload in
+    `PermissionResolver.has_profilo_applicabile_per_area` — la
+    chiamata 1-arg risolve automaticamente al default NULL della
+    signature 2-arg, semantica legacy backward compatible; test
+    Python aggiornato a verificare l'assenza del cast
+    `NULL::config.ruolo_applicativo`; full suite 1583 test verdi.
+  * **Storico diagnostico**: descrizione originale del bug mantenuta
+    in §12 (entry 2026-04-21 sessione smoke + fix BE resolver).
+  * **Follow-up top-level `ruolo_applicativo` — ✅ CHIUSO
+    2026-04-21 (pomeriggio)**: stesso pattern dei 4 resolver,
+    applicato a `fn_get_user_profile`. La fn popolava il campo
+    top-level del JSONB `/me/` con l'identita legacy (prima attiva,
+    tipicamente OPERATORE), ignorando `app.ruolo_applicativo`. Effetto:
+    su utente multi-veste loggato PORTALE, `data.ruolo_applicativo`
+    restava `OPERATORE` → store FE leggeva top-level → guard
+    namespace non redirigeva a `/portale`. Fix DB: migration
+    `20260421-05` (COALESCE su GUC con fallback legacy OPERATORE)
+    e pgTAP `test-fn-get-user-profile-guc-aware.sql` 4 casi.
+    Nessun cambio BE. Smoke guard FE §8.3.9 finalmente sbloccato.
 
 **Debiti minori aperti** (non bloccanti PR-C, chiudibili in PR-D o
 inline):
@@ -2180,6 +2192,102 @@ Stime per Tid come unico contributor.
     utente puro, disattivata temporaneamente l'identita OPERATORE di
     tid (`UPDATE ... SET attivo=false WHERE id=19`); riattivata dopo
     il test. Nessuna migration, nessuna modifica codice.
+
+* **2026-04-21 (diagnostico `fn_sync_auth_user_is_active` + setup pgTAP
+  backend)**: chiuso task collaterale censito nell'handoff §8.3.9 prima
+  di attaccare il blocker §13.7 resolver ruolo-aware.
+  * Creata nuova struttura `backend/pgtap/<schema>/` per test pgTAP
+    diagnostici lanciabili dal server backend (senza dover accedere
+    al server DB). Esteso `scripts/testpgtap.sh` per supportare
+    entrambe le radici (`db/pgtap/` + `backend/pgtap/`) con
+    auto-detect + prefissi espliciti, e per mappare `DB_*` -> `PG*`
+    quando l'env file e' `backend/.env` (sul backend server non
+    esiste `internal.env`). Installato a sistema
+    `libtap-parser-sourcehandler-pgtap-perl` per avere `pg_prove`.
+  * Nuovo test `backend/pgtap/anagrafiche/test-fn-sync-auth-user-
+    is-active-or-transizione.sql` (4 casi) che copre il caso
+    transizionale NON presente nei 6 test statici esistenti:
+    baseline 2 identita attive -> `is_active=true`; UPDATE 1 a
+    `attivo=false` con l'altra ancora valida -> `is_active=true` (OR
+    tiene); UPDATE entrambe -> `is_active=false`. Tutti verdi.
+  * **Esito**: nessun bug nella funzione `fn_sync_auth_user_is_active`
+    ne' nel trigger `trg_identita_digitali_z90_sync_auth_user_active_upd`.
+    La causa del comportamento osservato nello smoke §8.3.9 e'
+    dato-dipendente: identita 24 CLIENTE_PORTALE di tid ha
+    `valido_dal=2026-04-21` (data attivazione portale). Lo smoke era
+    eseguito il 2026-04-20, quindi `CURRENT_DATE (20) < valido_dal (21)`
+    escludeva identita 24 dal criterio finestra temporale. Disattivando
+    identita 19 (unica utilizzabile in quel momento), l'OR correttamente
+    cadeva a `false`. Dal 2026-04-21 la stessa sequenza produrrebbe
+    `is_active=true`.
+  * **Nessuna modifica DB o codice applicativo**. Lezione da tenere
+    nei prossimi smoke: verificare finestra temporale delle identita
+    coinvolte prima di interpretare un bug di sync.
+
+* **2026-04-21 (chiusura blocker PR-C resolver ruolo-aware — BE
+  follow-up)**: dopo la migration DB (`20260421-03/04` su
+  `dev/db-tid`) che ha reso i 4 resolver + `fn_is_super_admin`
+  veste-aware via GUC `app.ruolo_applicativo` e unificato
+  `fn_get_profili_accesso_applicabili` sulla signature 2-arg
+  (con `p_ruolo_applicativo DEFAULT NULL`, vecchia 1-arg droppata),
+  lato BE e' stato rimosso il workaround overload in
+  `PermissionResolver.has_profilo_applicabile_per_area`:
+  * Chiamata SQL ora 1-arg pulita (risolve automaticamente al
+    default NULL, semantica legacy "nessun filtro veste"). Scelta
+    coerente coi due caller (`permissions.py:244` gia' gated a
+    veste OPERATORE; `views.py:223` ispeziona `target_user`, dove
+    filtrare sulla GUC dell'admin corrente sarebbe errato).
+  * Test `test_permissions_resolver.py::test_has_profilo_true`
+    aggiornato: ora verifica l'**assenza** del cast
+    `NULL::config.ruolo_applicativo` nell'SQL (prima lo asseriva
+    come workaround obbligatorio).
+  * Full suite 1583 test verdi. Blocker §0 marcato RISOLTO.
+  * **Pendente**: smoke guard FE §8.3.9 (7 check skipped
+    nell'handoff) ora e' eseguibile su utente multi-veste reale —
+    rimesso in agenda come ultimo gate PR-B/PR-C.
+
+* **2026-04-21 (pomeriggio — chiusura bug top-level `ruolo_applicativo`
+  in `fn_get_user_profile`)**: dopo il merge di `20260421-03/04` i test
+  SQL diretti della fn `fn_get_user_permissions_map(1)` con GUC
+  `CLIENTE_PORTALE` ritornavano correttamente tutti `BLOCCATO`, e
+  `/me/` propagava `identita.ruolo_applicativo='CLIENTE_PORTALE'`,
+  `is_super_admin=false`, `permessi_area` tutti BLOCCATO. Ma il test
+  10 §8.3.9 (redirect FE `/` → `/portale`) continuava a fallire: tid
+  multi-veste loggato PORTALE vedeva la home operatore invece della
+  home portale.
+  * **Diagnosi**: patch temporanea in `CoreRepository.get_user_profile`
+    per loggare `current_setting('app.ruolo_applicativo', true)` +
+    `pg_backend_pid()` → GUC effettivamente popolato (`'CLIENTE_PORTALE'`)
+    sulla stessa connection del `fn_get_user_profile`. Il blocco
+    `permessi_area` nel JSONB era corretto; ma il campo top-level
+    `ruolo_applicativo` del profilo ritornava `"OPERATORE"` vs
+    `identita.ruolo_applicativo="CLIENTE_PORTALE"`. Store FE legge il
+    top-level (`user.ruolo_applicativo`) → `auth.ruoloApplicativo` =
+    `OPERATORE` → router guard `resolvePathNamespace('/')` = `admin`
+    match → niente redirect.
+  * **Causa**: `fn_get_user_profile` popolava il top-level dalla
+    legacy chain (prima identita / RUA trovata), non GUC-aware. Solo i
+    3 campi derivati (`permessi_area`, `azioni_abilitate`,
+    `is_super_admin`) erano stati resi veste-aware da `20260421-03/04`.
+  * **Fix DB** (branch `dev/db-tid`, migration
+    `20260421-05-update-fn-get-user-profile-ruolo-guc-aware-mctit.yaml`,
+    `runOnChange: true`): COALESCE su
+    `NULLIF(current_setting('app.ruolo_applicativo', true), '')` con
+    fallback a `identita_digitali.ruolo_applicativo = 'OPERATORE'`
+    attiva per `auth_user_id` (compat legacy / tool / cron senza JWT).
+    pgTAP `test-fn-get-user-profile-guc-aware.sql` (4 casi: multi-veste
+    PORTALE, GUC vuota con fallback OPERATORE, single-veste, raise
+    senza identita OPERATORE). Seed `email_template` `INVITO_SHOP`
+    (id=6) aggiunto nello stesso PR per sbloccare B1 §13.7
+    admin-driven shop invite.
+  * **Esito**: debug patch rimossa dal BE, `/me/` PORTALE ritorna
+    `data.ruolo_applicativo="CLIENTE_PORTALE"` top-level coerente con
+    `identita.ruolo_applicativo`. Smoke guard FE §8.3.9 sbloccato.
+    Nessuna modifica BE/FE.
+  * **Lezione**: quando si introduce un campo GUC-aware in un profilo
+    aggregato, verificare che TUTTI i campi del JSONB siano coerenti
+    con la GUC corrente, non solo i sotto-blocchi derivati. Il
+    top-level era stato trascurato dal refactor `20260421-03/04`.
 
 * **Stato PR-B al 2026-04-21** (fine sessioni FE + smoke §8.3.9 quasi
   chiuso): §8.3.1-§8.3.8, §8.4.1-§8.4.7, §8.5.1-§8.5.8, §8.6.1-§8.6.5

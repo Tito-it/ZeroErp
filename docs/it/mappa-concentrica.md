@@ -100,7 +100,7 @@ Stabile. Modifiche solo per correzioni o estensioni non-breaking (nuove policy, 
 | `catalogo`     | App Django | Operativo | Operativo | Operativo | Articoli (CRUD, UoM, BoM, note) — **completato e testato** (work-done/gestione-articoli.md)                                |
 | `amm-software` | App Django | Operativo | Operativo | Operativo | Gestione operatori, permessi riepilogo, profili reparto, audit log (solo ADMIN), drawer dedicato gestione permessi         |
 
-> **Refactor in corso (20-04-2026) — Multi-Face Auth + Shop B2C:** `anagrafiche` ha ora il bridge `identita_digitali` (SSO multi-veste post-cutover 19-04-2026); `amm-software` BE/FE sono in refactor su PR-B per supportare i canali portale + shop. Dettaglio e contratti: [pr-b-shop-b2c-cambio-modello.md](dev/work-in-progress/pr-b-shop-b2c-cambio-modello.md). Guida: [architettura-multi-face-auth v2.0](guide/architettura-multi-face-auth.md).
+> **Refactor in corso (20-04-2026) — Multi-Face Auth + Shop B2C:** `anagrafiche` ha ora il bridge `identita_digitali` (SSO multi-veste post-cutover 19-04-2026); `amm-software` BE/FE sono in refactor su PR-B per supportare i canali portale + shop. Dettaglio e contratti: [pr-b-shop-b2c-cambio-modello.md](dev/work-done/pr-b-shop-b2c-cambio-modello.md). Guida: [architettura-multi-face-auth v2.0](guide/architettura-multi-face-auth.md).
 
 ### Frontend Anello 1 — Stato dettagliato
 

@@ -20,7 +20,9 @@ Indice test eseguiti:
 10) AttivaViewTests.test_token_invalido_solleva
 11) AttivaViewTests.test_password_mismatch_flow_invito_solleva
 12) AttivaViewTests.test_meta_senza_identita_id_solleva
-13) ProfileActivateShopStubTests.test_stub_ritorna_501
+13) ProfileActivateShopTests.test_fornitore_portale_rifiutato
+14) ProfileActivateShopTests.test_idempotente_se_gia_attiva
+15) ProfileActivateShopTests.test_guard_auth_user_divergente_blocca
 """
 
 import json
@@ -282,23 +284,81 @@ class AttivaViewTests(TestCase):
         self.assertEqual(body["error"]["code"], "E_ATTIVAZIONE_PORTALE")
 
 
-class ProfileActivateShopStubTests(TestCase):
-    """§8.4.3 stub autenticato portale → 501 E_SHOP_NON_DISPONIBILE."""
+class ProfileActivateShopTests(TestCase):
+    """B1 §13.7: cross-veste portale -> shop. Veste FORNITORE_PORTALE
+    rifiutata; CLIENTE_PORTALE attiva idempotente."""
 
-    def _post(self, payload: dict):
+    def _post(self, payload: dict, *, user_id: int = 42):
         factory = RequestFactory()
         body = json.dumps(payload).encode("utf-8")
-        return factory.post(
+        request = factory.post(
             "/api/v1/portale/profile/activate-shop/",
             data=body,
             content_type="application/json",
         )
 
-    def test_stub_ritorna_501(self):
-        # Aggiramento auth chain: chiamiamo direttamente il handler.
-        # L'infrastruttura PortaleBasePermission e' testata altrove.
+        class _U:
+            id = user_id
+        request.user = _U()
+        return request
+
+    @patch("apps.portale.api.views.PermissionResolver.get_ruolo_applicativo")
+    def test_fornitore_portale_rifiutato(self, mock_ruolo):
+        # Solo CLIENTE_PORTALE puo' attivare shop. FORNITORE_PORTALE -> 400.
         from apps.portale.api.views import ProfileActivateShopView
+        mock_ruolo.return_value = "FORNITORE_PORTALE"
         response = ProfileActivateShopView().post(self._post({}))
-        self.assertEqual(response.status_code, 501)
+        self.assertEqual(response.status_code, 400)
         body = json.loads(response.content)
-        self.assertEqual(body["error"]["code"], "E_SHOP_NON_DISPONIBILE")
+        self.assertEqual(body["error"]["code"], "E_ATTIVAZIONE_SHOP_CROSS")
+        self.assertIn("clienti portale", body["error"]["message"])
+
+    @patch(
+        "apps.portale.api.views.PortaleRepository.find_identita_portale"
+    )
+    @patch(
+        "apps.portale.api.views.ProfileActivateShopView._read_soggetto_ruolo_from_guc"
+    )
+    @patch("apps.portale.api.views.PermissionResolver.get_ruolo_applicativo")
+    def test_idempotente_se_gia_attiva(
+        self, mock_ruolo, mock_guc, mock_find
+    ):
+        # Identita SHOP_CUSTOMER gia' attiva -> ritorna already_active=True
+        # senza side-effect (nessun INSERT/UPDATE).
+        from apps.portale.api.views import ProfileActivateShopView
+        mock_ruolo.return_value = "CLIENTE_PORTALE"
+        mock_guc.return_value = 999
+        mock_find.return_value = {
+            "identita_id": 555, "auth_user_id": 42, "attivo": True,
+        }
+        response = ProfileActivateShopView().post(self._post({}))
+        self.assertEqual(response.status_code, 200)
+        body = json.loads(response.content)
+        self.assertTrue(body["data"]["already_active"])
+        self.assertEqual(body["data"]["identita_id"], 555)
+
+    @patch(
+        "apps.portale.api.views.PortaleRepository.find_identita_portale"
+    )
+    @patch(
+        "apps.portale.api.views.ProfileActivateShopView._read_soggetto_ruolo_from_guc"
+    )
+    @patch("apps.portale.api.views.PermissionResolver.get_ruolo_applicativo")
+    def test_guard_auth_user_divergente_blocca(
+        self, mock_ruolo, mock_guc, mock_find
+    ):
+        # Identita SHOP_CUSTOMER esistente ma collegata ad altro auth_user
+        # (stato anomalo: soggetto_ruolo riassegnato manualmente) -> 400
+        # senza side-effect. Anti-tampering / fail-fast su stato incoerente.
+        from apps.portale.api.views import ProfileActivateShopView
+        mock_ruolo.return_value = "CLIENTE_PORTALE"
+        mock_guc.return_value = 999
+        # auth_user_id=99 != request.user.id=42 (default _post)
+        mock_find.return_value = {
+            "identita_id": 555, "auth_user_id": 99, "attivo": False,
+        }
+        response = ProfileActivateShopView().post(self._post({}))
+        self.assertEqual(response.status_code, 400)
+        body = json.loads(response.content)
+        self.assertEqual(body["error"]["code"], "E_ATTIVAZIONE_SHOP_CROSS")
+        self.assertIn("altro utente", body["error"]["message"])

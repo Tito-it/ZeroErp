@@ -42,7 +42,7 @@
 > e le scope policy (portali + shop):
 >
 > * Guida architetturale: [architettura-multi-face-auth](/guide/architettura-multi-face-auth)
-> * Piano di sviluppo storico: [sviluppo-multi-face-auth](/dev/work-in-progress/sviluppo-multi-face-auth)
+> * Piano di sviluppo storico: [sviluppo-multi-face-auth](/dev/work-done/sviluppo-multi-face-auth)
 
 ---
 

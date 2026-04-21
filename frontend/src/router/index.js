@@ -92,15 +92,17 @@ const router = createRouter({
       component: () => import('../portale/views/AttivazionePortaleView.vue'),
       meta: { public: true }
     },
-    // §8.6.4 stub: pagina attivazione shop con token. Il flusso reale
-    // (consume + creazione identita SHOP_CUSTOMER + redirect login)
-    // arriva con PR-C. Per ora usa PlaceholderView con chiavi i18n
-    // `placeholder.shop_attivazione.*`. Pubblica (no JWT) perche' il
-    // consumer del link email non e' ancora autenticato.
+    // B1 §13.7: pagina attivazione account shop customer.
+    // Branching INVITO (form password) vs CROSS (one-click) deciso
+    // dal BE via /shop/attivazione/validate/<token>/. Pubblica (no JWT)
+    // perche' il consumer del link email non e' ancora autenticato.
+    // Path coerente con /attivazione-portale/:token (single pattern
+    // delle pagine public di attivazione, link emesso dal BE con
+    // `link_path='/attivazione-shop'` in InvitoPortaleService).
     {
-      path: '/shop/attivazione/:token',
-      name: 'shop-attivazione',
-      component: () => import('../core/views/PlaceholderView.vue'),
+      path: '/attivazione-shop/:token',
+      name: 'attivazione-shop',
+      component: () => import('../shop/views/AttivazioneShopView.vue'),
       meta: { public: true, domain: 'shop', menuKey: 'attivazione' }
     },
 

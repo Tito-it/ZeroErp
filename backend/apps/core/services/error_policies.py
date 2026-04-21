@@ -825,6 +825,19 @@ class ErrorPolicyRegistry:
             ui_action="show_error_banner",
             user_message="Errore attivazione account portale.",
         ),
+        # B1 §13.7: codici dedicati attivazione shop (simmetrici al portale).
+        "E_ATTIVAZIONE_SHOP": ErrorPolicy(
+            code="E_ATTIVAZIONE_SHOP",
+            http_status=400,
+            ui_action="show_error_banner",
+            user_message="Errore attivazione account shop.",
+        ),
+        "E_ATTIVAZIONE_SHOP_CROSS": ErrorPolicy(
+            code="E_ATTIVAZIONE_SHOP_CROSS",
+            http_status=400,
+            ui_action="show_error_banner",
+            user_message="Errore attivazione veste shop dal profilo portale.",
+        ),
         # ── Codici cross-schema da refactor E_GENERICO (31 marzo 2026) ──
         # --- Validazione parametri (400) ---
         "E_PARAMETRO_INVALIDO": ErrorPolicy(

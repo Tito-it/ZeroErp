@@ -449,9 +449,11 @@ class PermissionResolverHasProfiloTests(TestCase):
         sql = cursor.execute.call_args[0][0]
         self.assertIn("fn_get_profili_accesso_applicabili", sql)
         self.assertIn("profili_accesso_aree", sql)
-        # Workaround ambiguita' overload: passa 2 arg, il 2o e' NULL cast
-        # a config.ruolo_applicativo per disambiguare la signature.
-        self.assertIn("NULL::config.ruolo_applicativo", sql)
+        # Post migration 20260421-*: la vecchia firma 1-arg e' stata
+        # droppata, resta solo la 2-arg con DEFAULT NULL. La chiamata
+        # 1-arg risolve alla 2-arg con ruolo_applicativo=NULL (legacy,
+        # no filtro veste).
+        self.assertNotIn("NULL::config.ruolo_applicativo", sql)
 
     # Scopo: Nessun profilo applicabile per l'area -> False.
     @patch(_CONN)

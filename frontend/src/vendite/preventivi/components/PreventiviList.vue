@@ -13,14 +13,18 @@ import Column from 'primevue/column'
 import InputText from 'primevue/inputtext'
 import DatePicker from 'primevue/datepicker'
 import Tag from 'primevue/tag'
-import Button from 'primevue/button'
 import NewButton from '../../../core/components/NewButton.vue'
 import SearchHint from '../../../core/components/SearchHint.vue'
 import LookupSelect from '../../../core/components/LookupSelect.vue'
+import ReloadButton from '../../../core/components/ReloadButton.vue'
+import ReadonlyBadge from '../../../core/components/ReadonlyBadge.vue'
+import AccessoBloccatoPanel from '../../../core/components/AccessoBloccatoPanel.vue'
+import { useInjectBlocked } from '../../../core/composables/useReadonlyMode'
 
 const emit = defineEmits(['new', 'row-click'])
 const { t } = useI18n()
 const store = usePreventiviStore()
+const isBlocked = useInjectBlocked()
 const { searchText, onPage, onSort, applyFilters, reload, paginatorProps } = useSearchTable(store, {
   defaultSortField: 'data',
   defaultSortOrder: 'desc'
@@ -62,6 +66,9 @@ onMounted(() => {
 
 <template>
   <div class="app-tab-content">
+    <AccessoBloccatoPanel v-if="isBlocked" />
+
+    <template v-else>
     <div class="app-page-toolbar">
       <div class="app-page-filters">
         <InputText v-model="searchText" :placeholder="t('preventivi.search_placeholder')" style="width: 260px;" />
@@ -75,7 +82,8 @@ onMounted(() => {
           @date-select="onDataAlChange" @clear-click="onDataAlChange" />
       </div>
       <div class="app-page-actions">
-        <Button icon="pi pi-refresh" text class="app-reload-btn" v-tooltip.bottom="t('common.reload_list')" @click="reload" />
+        <ReadonlyBadge />
+        <ReloadButton @click="reload" />
         <NewButton :tooltip="t('preventivi.nuovo_preventivo')" @click="emit('new')" />
       </div>
     </div>
@@ -111,5 +119,6 @@ onMounted(() => {
         <template #body="{ data }">{{ displayDate(data.validita_al) }}</template>
       </Column>
     </DataTable>
+    </template>
   </div>
 </template>

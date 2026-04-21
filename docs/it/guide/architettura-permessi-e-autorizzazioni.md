@@ -45,7 +45,7 @@
 > Dettagli architetturali completi:
 >
 > * [architettura-multi-face-auth](/guide/architettura-multi-face-auth)
-> * Piano di sviluppo: [sviluppo-multi-face-auth](/dev/work-in-progress/sviluppo-multi-face-auth)
+> * Piano di sviluppo: [sviluppo-multi-face-auth](/dev/work-done/sviluppo-multi-face-auth)
 
 ---
 

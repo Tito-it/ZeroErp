@@ -128,6 +128,39 @@
 |---|---|---|
 | `ClientiRepository.check_user_can_create_ba` | [clienti_repository.py](../../../../backend/apps/anagrafiche/db/clienti_repository.py) | Wrapper `script.fn_check_user_can_create_ba`. Vedi WIP refactor operatore-emittenti Q6 (la motivazione di dominio sta nel service) |
 | `ClientiService.crea_cliente` (param `auth_user_id`) | [clienti_service.py](../../../../backend/apps/anagrafiche/services/clienti_service.py) | Orchestratore creazione cliente completa (istanza + BA + cliente in transazione atomica). **Refactor operatore-emittenti**: param `auth_user_id` opzionale; se valorizzato e si crea un nuovo BA (no `billing_account_id` in payload), chiama `_guard_can_create_ba` che blocca admin globale + emittenti con `ServiceError(E_BA_ADMIN_GLOBALE_VIETATO)`. Defense-in-depth: il trigger DB `trgfn_billing_account_guard_admin_globale` e' la difesa finale |
+| `ClientiInvitaPortaleView` / `ClientiInvitaShopView` / `FornitoriInvitaPortaleView` | [views_invito_portale.py](../../../../backend/apps/anagrafiche/api/views_invito_portale.py) | View admin per `POST /api/v1/anagrafiche/{clienti\|fornitori}/<id>/invita-{portale\|shop}/`. Body `{email, reinvio?}`. Delegano a `InvitoPortaleService` (fornitori solo portale; shop = B2C, non per fornitori). |
+
+---
+
+## Portale + Shop — Invito veste (`apps/portale/`, `apps/shop/`)
+
+Building block per onboarding self-service vesti non-operatore
+(CLIENTE_PORTALE, FORNITORE_PORTALE, SHOP_CUSTOMER). Vedi
+[api_invito_portale_shop.md](../../backend/core/manual/api_invito_portale_shop.md)
+per il contratto end-to-end.
+
+| Building Block | File | Descrizione |
+|---|---|---|
+| `InvitoPortaleService.invia_invito_cliente / fornitore / shop_customer` | [invito_portale_service.py](../../../../backend/apps/portale/services/invito_portale_service.py) | 3 metodi pubblici simmetrici, stesso flow comune `_invia_invito_common` parametrizzato su `_VESTE_CONFIG`. Branching automatico email NUOVA → flow INVITO (set password) vs ESISTENTE → flow CROSS (one-click). Transazione atomica + email best-effort (token resta valido se SMTP fallisce). Equivalenti `reinvia_*` invalidano token precedenti. |
+| `_VESTE_CONFIG` (TypedDict `_VesteConfig`) | [invito_portale_service.py](../../../../backend/apps/portale/services/invito_portale_service.py) | Single source of truth per veste: `token_invito`, `token_cross`, `template`, `link_path`, `scadenza_ore`. **Aggiungere una nuova veste = una nuova entry**, no altre modifiche al service. |
+| `resolve_portale_token` / `resolve_shop_token` | [invito_portale_service.py](../../../../backend/apps/portale/services/invito_portale_service.py) | Risolvono (no consume) un token cercandolo nei tipi della veste. Il FE non deve sapere il tipo in anticipo: `_resolve_token_in(token, tipi)` itera. |
+| `PortaleRepository` | [portale_repository.py](../../../../backend/apps/portale/db/portale_repository.py) | DB ops invito veste: `get_cliente_info`, `get_fornitore_info`, `find_identita_portale`, `find_auth_user_by_email`, `create_auth_user_portale`, `create_identita_portale`, `riattiva_identita`. Generico su `ruolo_applicativo` — usato anche da shop (cross-app import documentato come debito, refactor PR-D = estrarre in `IdentitaRepository`). |
+| `AttivazionePortaleValidateView` / `AttivazionePortaleView` | [portale/api/views.py](../../../../backend/apps/portale/api/views.py) | Endpoint pubblici (`AllowAny`) `GET /portale/attivazione/validate/<token>/` + `POST /portale/attivazione/conferma/`. Consume token + apply password (INVITO) oppure riattiva identita (CROSS). Throttle `PasswordResetRateThrottle`. |
+| `AttivazioneShopValidateView` / `AttivazioneShopView` | [shop/api/views_attivazione.py](../../../../backend/apps/shop/api/views_attivazione.py) | Simmetrici al portale, tipi token `INVITO_SHOP` / `ATTIVAZIONE_SHOP_CROSS`. Codice errore distinto `E_ATTIVAZIONE_SHOP`. Codice ~80% duplicato col portale: refactor base class rimandato a PR-D. |
+| `ProfileActivateShopView` | [portale/api/views.py](../../../../backend/apps/portale/api/views.py) | `POST /portale/profile/activate-shop/` autenticato. Cross-veste self-service: cliente portale loggato aggiunge identita SHOP_CUSTOMER sullo stesso `soggetto_ruolo` (letto da GUC `app.soggetto_ruolo_id`), immediatamente attiva. Idempotente + anti-tampering (`auth_user_id` divergente → 400). Solo `CLIENTE_PORTALE` (FORNITORE blocca a 400). |
+
+**Token tipi** in `config.token_monouso.tipo` (varchar, 4 valori
+gestiti dal service): `INVITO_PORTALE`, `ATTIVAZIONE_PORTALE_CROSS`,
+`INVITO_SHOP`, `ATTIVAZIONE_SHOP_CROSS`. Scadenza 72h, mutuamente
+esclusivi grazie al `UNIQUE (token_hash)`.
+
+**Codici errore** registrati in `error_policies.py`: `E_INVITO_PORTALE`,
+`E_ATTIVAZIONE_PORTALE`, `E_ATTIVAZIONE_SHOP`, `E_ATTIVAZIONE_SHOP_CROSS`
+(tutti HTTP 400, `show_error_banner`).
+
+**Dipendenza DB**: template email `INVITO_SHOP` da seedare in
+`config.email_template`. Proposta SQL idempotente in
+[backend/scripts/db-proposals/PROPOSTA_seed_email_invito_shop.sql](../../../../backend/scripts/db-proposals/PROPOSTA_seed_email_invito_shop.sql).
 
 ---
 

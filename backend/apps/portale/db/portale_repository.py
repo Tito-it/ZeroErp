@@ -205,6 +205,96 @@ class PortaleRepository:
             cursor.execute(sql, [identita_id])
             return cursor.rowcount > 0
 
+    # Scopo: Disattiva un'identita senza eliminarla (soft revoke). Simmetrica
+    # a `riattiva_identita`. Serve all'admin per revocare una veste portale o
+    # shop a un cliente/fornitore senza perdere lo storico (l'identita potra'
+    # essere riattivata con nuovo invito o direttamente).
+    # Ritorna True se ha effettivamente aggiornato una riga (identita esisteva
+    # e attivo era true o comunque la UPDATE e' passata).
+    def disattiva_identita(self, identita_id: int) -> bool:
+        sql = """
+            UPDATE anagrafiche.identita_digitali
+               SET attivo = false, data_update = now()
+             WHERE id = %s
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [identita_id])
+            return cursor.rowcount > 0
+
+    # Scopo: Legge lo stato completo di un'identita (per una data coppia
+    # soggetto_ruolo + ruolo_applicativo) decorato con info sul token
+    # pendente, se presente. Serve all'admin UI per distinguere 4 stati:
+    #   NESSUNO   : identita non esiste (mai invitato)
+    #   PENDING   : identita esiste, attivo=false, token non consumato attivo
+    #   DISATTIVO : identita esiste, attivo=false, nessun token pending
+    #   ATTIVO    : identita esiste, attivo=true
+    # Ritorna dict con chiavi:
+    #   stato (str), identita_id (int|None), auth_user_id (int|None),
+    #   invito_inviato_at (datetime|None), token_scade_at (datetime|None).
+    # `token_scade_at` e' il `MAX(scadenza)` tra i token non consumati non
+    # scaduti della coppia veste (INVITO_PORTALE/ATTIVAZIONE_PORTALE_CROSS
+    # o INVITO_SHOP/ATTIVAZIONE_SHOP_CROSS) — usato dalla UI per mostrare
+    # "scade tra N ore".
+    def get_stato_identita(
+        self, soggetto_ruolo_id: int, ruolo_applicativo: str,
+        token_tipi: tuple[str, ...],
+    ) -> dict[str, Any]:
+        sql = """
+            WITH id_row AS (
+                SELECT id, auth_user_id, attivo, invito_inviato_at
+                  FROM anagrafiche.identita_digitali
+                 WHERE soggetto_ruolo_id = %s
+                   AND ruolo_applicativo = %s::config.ruolo_applicativo
+                 ORDER BY attivo DESC, id DESC
+                 LIMIT 1
+            ),
+            tk AS (
+                SELECT MAX(t.scadenza) AS token_scade_at
+                  FROM config.token_monouso t
+                  JOIN id_row r ON r.auth_user_id = t.auth_user_id
+                 WHERE t.tipo = ANY(%s::text[])
+                   AND t.utilizzato = false
+                   AND t.scadenza > now()
+            )
+            SELECT r.id, r.auth_user_id, r.attivo, r.invito_inviato_at,
+                   tk.token_scade_at,
+                   u.username, u.email
+              FROM id_row r
+              LEFT JOIN tk ON true
+              LEFT JOIN django.auth_user u ON u.id = r.auth_user_id
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [soggetto_ruolo_id, ruolo_applicativo, list(token_tipi)])
+            row = cursor.fetchone()
+
+        if not row:
+            return {
+                "stato": "NESSUNO",
+                "identita_id": None,
+                "auth_user_id": None,
+                "username": None,
+                "email": None,
+                "invito_inviato_at": None,
+                "token_scade_at": None,
+            }
+
+        identita_id, auth_user_id, attivo, invito_at, token_scade_at, username, email = row
+        if attivo:
+            stato = "ATTIVO"
+        elif token_scade_at is not None:
+            stato = "PENDING"
+        else:
+            stato = "DISATTIVO"
+        return {
+            "stato": stato,
+            "identita_id": int(identita_id),
+            "auth_user_id": int(auth_user_id) if auth_user_id is not None else None,
+            "username": username,
+            "email": email,
+            "invito_inviato_at": invito_at,
+            "token_scade_at": token_scade_at,
+        }
+
     # Scopo: Genera uno username unico a partire dall'email.
     # Strategia: prefisso email + suffisso _2/_3... se il base esiste.
     # Fallback completo all'email se il prefisso e' vuoto o troppo corto.

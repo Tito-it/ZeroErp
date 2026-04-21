@@ -696,8 +696,8 @@ e preparare gli stub endpoint shop che verranno riempiti in PR-C.
 
 * [x] 8.4.1 `InvitoPortaleService._ensure_auth_user` distingue email nuova (crea user + identita attivo=true + token `INVITO_PORTALE`) da esistente (SOLO identita attivo=false + token `ATTIVAZIONE_PORTALE_CROSS`, niente password). Sub-task debito 1:1 chiuso: `AuthRepository.get_deve_cambiare_password`, `set_invito_inviato_at`, `set_deve_cambiare_password` accettano `identita_id` kw-only (obbligatorio per `set_invito_inviato_at`, opzionale con fallback globale per gli altri). Review critica applicata: guard su identita gia' attiva (BUG1), guard su auth_user divergente (FRAG4), helper condivisi `extract_identita_id_from_request` / `extract_identita_id_from_token_meta` + `_safe_int_or_none` contro meta/claim corrotti (FRAG11), UPDATE riattiva identita spostato in `PortaleRepository.riattiva_identita` (FRAG6), default pericolosi rimossi da `create_identita_portale` (FRAG9), log warning su `set_invito_inviato_at` rowcount=0 (BUG3).
 * [x] 8.4.2 Endpoint `AttivazionePortaleView` gestisce 2 token types: `INVITO_PORTALE` (setta password + attiva) vs `ATTIVAZIONE_PORTALE_CROSS` (solo attiva identita, no password). Helper `resolve_portale_token` in `invito_portale_service.py` itera entrambi i tipi; `AttivazionePortaleValidateView` espone `token_type` + `requires_password` per guidare la UX. Guard esplicito `identita_id` obbligatorio nel meta; flow CROSS ignora `new_password` nel payload come difesa contro sovrascrittura password esistente.
-* [x] 8.4.3 Stub `POST /api/v1/portale/profile/activate-shop/` (`ProfileActivateShopView(PortaleAPIView)`) → 501 `E_SHOP_NON_DISPONIBILE` con messaggio "In arrivo con PR-C".
-* [x] 8.4.4 Stub `GET /api/v1/shop/activate/<token>/` (501). Creata app minima `apps/shop` (config + api/views + api/urls + tests), registrata in `INSTALLED_APPS` e sotto `/api/v1/shop/` nel main `urls.py`.
+* [x] 8.4.3 ~~Stub~~ **Implementato reale (B1 §13.7)**: `POST /api/v1/portale/profile/activate-shop/` (`ProfileActivateShopView(PortaleAPIView)`) crea identita `SHOP_CUSTOMER` sullo stesso `soggetto_ruolo` del cliente portale corrente (GUC `app.soggetto_ruolo_id`), immediatamente attiva. Idempotente (200 + `already_active`) + anti-tampering (`auth_user_id` divergente → 400 `E_ATTIVAZIONE_SHOP_CROSS`). Solo `CLIENTE_PORTALE` (FORNITORE blocca a 400). FE `AttivaAccessoShopButton.vue` aggiornato per chiamata reale.
+* [x] 8.4.4 ~~Stub~~ **Implementato reale (B1 §13.7)**: `GET /api/v1/shop/attivazione/validate/<token>/` + `POST /api/v1/shop/attivazione/conferma/` (vecchio path `/activate/<token>/` rimosso). Pattern simmetrico a `AttivazionePortaleView*` con tipi token `INVITO_SHOP` / `ATTIVAZIONE_SHOP_CROSS` e codice errore `E_ATTIVAZIONE_SHOP`. `AttivazioneShopValidateView` + `AttivazioneShopView` in `apps/shop/api/views_attivazione.py`. FE `frontend/src/shop/views/AttivazioneShopView.vue` + `shop/api/shopAuth.js` + router `/shop/attivazione/:token`.
 * [x] 8.4.5 Stub `POST /api/v1/shop/register/check-email/` (501). Cablato in parallelo a §8.4.4 nello stesso app `apps/shop`.
 * [x] 8.4.6 Registrazione errori: `E_VESTE_NON_ATTIVA` (403), `E_JWT_SENZA_IDENTITA` (401), `E_IDENTITA_NON_ATTIVA` (401) gia' registrati in `error_policies.py` durante §8.3.4; aggiunto in questa fase `E_SHOP_NON_DISPONIBILE` (501) per gli stub PR-C.
 * [x] 8.4.7 Test: email nuova (flow INVITO), email esistente (flow CROSS, identita `attivo=false`, token CROSS), attivazione CROSS senza password, guard identita gia' attiva, guard auth_user divergente, stub portale/shop → 501. Totale sprint §8.4: 1582 test verdi (+48 vs baseline §8.3 pre-review).
@@ -812,6 +812,13 @@ DB 20260420-01..11 (merged)
 * **[~] PR-B2** — BE features invito cross + stub shop (working tree dev/backend-tid, §8.4.1-§8.4.7 done, 1583 test verdi, commit ancora da creare, data landing: 2026-04-21)
 * **[~] PR-B3** — FE login multi-canale (working tree dev/backend-tid, §8.5.1-§8.5.8 done, vite build verde 887ms, commit ancora da creare, data landing: 2026-04-21)
 * **[~] PR-B4** — FE profilo portale + stub routing shop (working tree dev/backend-tid, §8.6.1-§8.6.5 done, vite build verde 886ms, commit ancora da creare, data landing: 2026-04-21)
+* **[x] PR-B post-merge — B1 §13.7 invito shop admin-driven** (2026-04-21, working tree post-merge PR-B): chiude lo scope "auth + gestione utenti shop/portale funzionante" senza UI shop pubblica.
+  * BE: `InvitoPortaleService` esteso con metodi `invia/reinvia_invito_shop_customer` + `_VESTE_CONFIG` TypedDict (single source of truth per token tipi/template/link/scadenza) + `resolve_shop_token`; nuovo endpoint admin `POST /clienti/<id>/invita-shop/`; `AttivazioneShopValidateView` + `AttivazioneShopView` reali (sostituiscono stub `ShopActivateView`); `ProfileActivateShopView` reale (cross-veste self-service da CLIENTE_PORTALE → +SHOP_CUSTOMER, idempotente + anti-tampering); 2 codici errore nuovi `E_ATTIVAZIONE_SHOP` + `E_ATTIVAZIONE_SHOP_CROSS`.
+  * FE: `frontend/src/shop/views/AttivazioneShopView.vue` + `shop/api/shopAuth.js` (simmetrici al portale); router `/shop/attivazione/:token` reale (sostituisce PlaceholderView); `PortaleAccessoPanel.vue` con sezione shop (solo cliente, riusa email; refactor helper `_doInvio` + `_confirmAndSend` per de-duplicare); `AttivaAccessoShopButton.vue` collegato all'endpoint reale; nuova chiavi i18n `shop.*` + `shop.activation_*`.
+  * DB delegato (dev/db-tid): seed template email `INVITO_SHOP` — proposta SQL idempotente in `backend/scripts/db-proposals/PROPOSTA_seed_email_invito_shop.sql`.
+  * Doc: nuovo manual `api_invito_portale_shop.md`; aggiornati `api.md` (codici errore + namespace status), `catalogo-building-block-backend.md` (nuova sezione "Portale + Shop — Invito veste"), `sviluppo-multi-face-auth.md` §0+§12 (chiusura blocker resolver).
+  * Test: 1593+ verdi (+15 nuovi: 3 service shop, 6 API attivazione shop, 2 ProfileActivateShop reali, +4 review fix).
+  * **Aperto post-B1**: smoke e2e shop manuale (admin invita → email → attiva → login `/shop/token/`); seed DB sopra menzionato.
 
 ---
 
@@ -982,7 +989,7 @@ curl -s -w "\n%{http_code}\n" -X POST \
   http://localhost:8000/api/v1/shop/register/check-email/
 ```
 
-* [~] Curl diretti non eseguiti in sessione, ma i 3 endpoint sono coperti dagli unit test `test_attivazione_portale_view.ProfileActivateShopStubTests` + `test_shop_stub_views.*` che assertano 501 + `E_SHOP_NON_DISPONIBILE`. Il pulsante FE "Attiva accesso shop" (test 10) ha mostrato toast warn "Funzione in arrivo" — conferma E2E dello stub lato client.
+* [~] Curl diretti non eseguiti in sessione PR-B. **Post B1 §13.7 (2026-04-21)**: `ShopActivateView` stub eliminato e sostituito da `AttivazioneShopValidateView` + `AttivazioneShopView` reali; `ProfileActivateShopView` portale-side reale (`POST /portale/profile/activate-shop/` ritorna 200); resta stub solo `ShopRegisterCheckEmailView` (self-register §5.6 fuori scope). Test stub portale rinominati in `ProfileActivateShopTests` con assertion 200 + `already_active`/`activated` reali.
 
 ### 10. FE smoke (browser)
 
@@ -993,27 +1000,41 @@ curl -s -w "\n%{http_code}\n" -X POST \
 * [x] Invito cross-veste + attivazione one-click: verificato end-to-end
   dal passo 8, flow UX corretto (branching FE §8.4.2 post fix #3).
 
-**Guard FE multi-veste — SKIPPED in questa sessione**:
+**Guard FE multi-veste — SBLOCCATO 2026-04-21 (pomeriggio)**:
 
-I prossimi 6 check (redirect `/portale`, ProfileView, grace redirect
-cross-namespace, persistenza canale, ecc.) **non sono eseguibili su
-tid** finche' il blocker PR-C "4 resolver ruolo-aware" non e'
-chiuso: post-attivazione CROSS, tid risulta multi-veste (OPERATORE
-id=19 + CLIENTE_PORTALE id=24) e il `/me/` lato BE ritorna i campi
-aggregati della veste OPERATORE (is_super_admin=true, permessi_area
-tutti TUTTO), impedendo al guard FE di leggere `CLIENTE_PORTALE` e
-redirigere. Tentativo di workaround (disattivazione temp identita
-OPERATORE via SQL) ha causato lockout tid via
-`fn_sync_auth_user_is_active` — potenziale bug trigger OR da
-indagare separatamente.
+Il blocker "4 resolver ruolo-aware" + follow-up top-level
+`ruolo_applicativo` in `fn_get_user_profile` e' chiuso end-to-end
+con 3 migration DB:
 
-Questi check sono coperti dal vite build verde + i test unit store
-auth / router guard. Il smoke navigazione portale reale sara'
-eseguito sul **primo utente portale puro** (utente dedicato senza
-identita OPERATORE, es. primo cliente onboardato post-fix resolver)
-nella prima sessione PR-C.
+* `20260421-03` — `fn_is_super_admin` GUC-aware
+* `20260421-04` — 4 resolver (resolve_livello_area,
+  check_azione_processo, get_user_permissions_map,
+  get_user_actions_map) GUC-aware
+* `20260421-05` — `fn_get_user_profile` top-level
+  `ruolo_applicativo` GUC-aware (COALESCE su
+  `current_setting('app.ruolo_applicativo', true)` con fallback
+  legacy OPERATORE)
 
-Check marcati come "coperti da test unit / build":
+Il `/me/` di tid multi-veste su canale PORTALE ora ritorna
+`data.ruolo_applicativo="CLIENTE_PORTALE"` coerente con
+`identita.ruolo_applicativo`, e il guard FE redirige correttamente
+`/` → `/portale`. I 7 check skipped sono ora eseguibili su tid
+direttamente, senza piu' bisogno di workaround SQL o utente
+portale puro.
+
+**Contesto storico** (mantenuto per memoria diagnostica): fino al
+merge di `20260421-03/04`, `/me/` restituiva `is_super_admin=true`
+e `permessi_area` tutti TUTTO per qualunque veste. Dopo
+`20260421-03/04` permessi_area e is_super_admin erano corretti
+(BLOCCATO, false), ma il top-level `ruolo_applicativo` restava
+`OPERATORE` impedendo al guard FE di leggere la veste giusta.
+`20260421-05` chiude il gap coprendo anche il top-level. Il
+tentativo di workaround (disattivazione temp identita OPERATORE
+via SQL) nella sessione precedente aveva causato finto lockout
+tid: diagnosticato come dato-dipendente (identita 24 aveva
+`valido_dal=2026-04-21`, finestra non ancora valida al 20-04).
+
+Check da eseguire/spuntare su tid in sessione successiva:
 
 * [~] Login UI canale **PORTALE** + account portale puro → redirect `/portale`.
 * [~] `/portale/profile` ProfileView visibile.

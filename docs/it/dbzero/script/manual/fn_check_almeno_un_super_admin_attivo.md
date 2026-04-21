@@ -78,7 +78,7 @@ per convenzione (il profilo SUPER_ADMIN ha `tipo = 'SUPER_ADMIN'` che
 
 ### Riferimenti
 
-* [WIP multi-face-auth §13.3.6](/dev/work-in-progress/sviluppo-multi-face-auth)
+* [WIP multi-face-auth §13.3.6](/dev/work-done/sviluppo-multi-face-auth)
 * Codice errore `E_PROFILO_ULTIMO_SUPER_ADMIN` (id 384) in
   `config.messaggi_errore`.
 

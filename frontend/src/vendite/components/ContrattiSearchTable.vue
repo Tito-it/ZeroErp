@@ -13,16 +13,20 @@ import InputText from 'primevue/inputtext'
 import DatePicker from 'primevue/datepicker'
 import Select from 'primevue/select'
 import Tag from 'primevue/tag'
-import Button from 'primevue/button'
 import LookupSelect from '../../core/components/LookupSelect.vue'
 import UtilityPerRuoloSelect from '../../core/components/UtilityPerRuoloSelect.vue'
 import NewButton from '../../core/components/NewButton.vue'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
+import ReloadButton from '../../core/components/ReloadButton.vue'
+import ReadonlyBadge from '../../core/components/ReadonlyBadge.vue'
+import AccessoBloccatoPanel from '../../core/components/AccessoBloccatoPanel.vue'
+import { useInjectBlocked } from '../../core/composables/useReadonlyMode'
 import { TIPO_RUOLO, MANAGE_ICONS } from '../../core/constants'
 
 const emit = defineEmits(['new', 'row-click', 'open-righe'])
 const { t } = useI18n()
 const store = useContrattiStore()
+const isBlocked = useInjectBlocked()
 const { searchText, onPage, onSort, applyFilters, reload, paginatorProps } = useSearchTable(store, {
   defaultSortField: 'valido_dal'
 })
@@ -95,6 +99,9 @@ onMounted(() => {
 
 <template>
   <div class="app-tab-content">
+    <AccessoBloccatoPanel v-if="isBlocked" />
+
+    <template v-else>
     <div class="app-page-toolbar">
       <div class="app-page-filters">
         <InputText v-model="searchText" :placeholder="t('contratti.search_placeholder')" style="width: 320px;" />
@@ -133,7 +140,8 @@ onMounted(() => {
           @update:modelValue="onScadenzaMeseChange" />
       </div>
       <div class="app-page-actions">
-        <Button icon="pi pi-refresh" text class="app-reload-btn" v-tooltip.bottom="t('common.reload_list')" @click="reload" />
+        <ReadonlyBadge />
+        <ReloadButton @click="reload" />
         <NewButton :tooltip="t('contratti.nuovo_contratto')" @click="emit('new')" />
       </div>
     </div>
@@ -184,5 +192,6 @@ onMounted(() => {
         </template>
       </Column>
     </DataTable>
+    </template>
   </div>
 </template>

@@ -5,7 +5,10 @@ import { useI18n } from 'vue-i18n'
 import { useAuthStore } from '../../stores/auth'
 import { CANALE_LOGIN } from '../constants'
 import LogoBrand from '../components/LogoBrand.vue'
-import ChannelSelector from '../components/ChannelSelector.vue'
+// ChannelSelector importato ma non montato: l'UI attuale e' per soli
+// operatori interni (canale ADMIN forzato). Importazione conservata per
+// riuso futuro (pagine dedicate portale/shop).
+// import ChannelSelector from '../components/ChannelSelector.vue'
 import InputText from 'primevue/inputtext'
 import Password from 'primevue/password'
 import Button from 'primevue/button'
@@ -17,11 +20,11 @@ const auth = useAuthStore()
 
 const username = ref('')
 const password = ref('')
-// §8.5.1: default ADMIN per retrocompat (operatore interno). Se l'utente
-// si era gia' loggato in passato su un altro canale, la store espone
-// `loginChannel` restored da localStorage: pre-selezioniamo quella scelta
-// per risparmiare click in logout/login ripetuti sullo stesso canale.
-const canale = ref(auth.loginChannel || CANALE_LOGIN.ADMIN.key)
+// UI attuale: solo operatori interni. Canale forzato ad ADMIN,
+// ignoriamo `auth.loginChannel` persistito (se un utente aveva scelto
+// PORTALE/SHOP in passato, qui lo riportiamo a ADMIN). Store e API
+// multi-canale restano attivi per future pagine dedicate portale/shop.
+const canale = ref(CANALE_LOGIN.ADMIN.key)
 const errorMessage = ref('')
 const loading = ref(false)
 
@@ -89,7 +92,12 @@ async function handleLogin() {
       </div>
 
       <form @submit.prevent="handleLogin" class="login-form">
-        <ChannelSelector v-model="canale" :disabled="loading" />
+        <!-- ChannelSelector nascosto: in questa fase il login e' solo per
+             operatori interni. Il canale resta forzato ad ADMIN (store +
+             router + api multi-canale restano attivi per future pagine
+             dedicate portale/shop). Per riabilitare: reintrodurre il
+             componente con v-model="canale". -->
+        <!-- <ChannelSelector v-model="canale" :disabled="loading" /> -->
 
         <div class="field">
           <label for="username">{{ t('auth.username') }}</label>
