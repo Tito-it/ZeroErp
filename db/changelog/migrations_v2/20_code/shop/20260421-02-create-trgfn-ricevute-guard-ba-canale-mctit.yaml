@@ -47,13 +47,14 @@ databaseChangeLog:
               schemaName: anagrafiche
               tableName: billing_account
               columnName: canale_origine
-          - sqlCheck:
-              expectedResult: 1
-              sql: |
-                -- Il codice errore deve esistere nel seed messaggi_errore.
-                SELECT COUNT(*)
-                  FROM config.messaggi_errore
-                 WHERE codice = 'E_SHOP_RICEVUTA_BA_CANALE_INVALIDO';
+        # Nota: il check di presenza del codice errore
+        # E_SHOP_RICEVUTA_BA_CANALE_INVALIDO in config.messaggi_errore e'
+        # stato rimosso perche' strutturalmente non soddisfabile qui:
+        # le migration 20_code girano prima di 80_data dove vive il CSV
+        # messaggi_errore (vedi stesso pattern fixato in 20260420-12).
+        # CREATE OR REPLACE FUNCTION non risolve i riferimenti nel body,
+        # il codice errore serve solo al runtime (quando il trigger scatta)
+        # e per allora 80_data e' gia' applicato.
       changes:
         - sql:
             splitStatements: false

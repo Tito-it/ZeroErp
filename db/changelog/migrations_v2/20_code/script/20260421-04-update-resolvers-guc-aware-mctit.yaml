@@ -1,0 +1,539 @@
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260421-04-update-resolvers-guc-aware-mctit.yaml
+
+  # ---------------------------------------------------------------------------
+  # Aggiornamento dei 4 resolver di permessi/azioni per renderli
+  # context-aware rispetto alla GUC app.ruolo_applicativo (popolata dal
+  # middleware BE JwtAuditAuthentication dopo PR-B). Coerente con il fix
+  # di fn_is_super_admin (migration -03).
+  #
+  # I 4 resolver sono progettati per permessi OPERATORE (gate
+  # fn_has_identita_attiva(user, OPERATORE)). Post PR-B il contesto puo'
+  # essere valorizzato anche su ruoli non-OPERATORE (CLIENTE_PORTALE,
+  # SHOP_CUSTOMER, ...) tramite lo stesso JWT/auth_user (SSO multi-veste).
+  # Per coerenza con l'isolamento di contesto:
+  #   - se GUC app.ruolo_applicativo e' popolata ed e' != OPERATORE,
+  #     i resolver ritornano fail-closed (BLOCCATO / false / mappe vuote).
+  #   - se GUC non popolata (test/psql): comportamento legacy invariato.
+  #
+  # 4 changeSet in sequenza (sub-progressivi 04-01..04-04):
+  #   04-01 fn_resolve_livello_area      -> BLOCCATO se ctx non-OPERATORE
+  #   04-02 fn_check_azione_processo     -> false    se ctx non-OPERATORE
+  #   04-03 fn_get_user_permissions_map  -> tutti BLOCCATO se ctx non-OPERATORE
+  #   04-04 fn_get_user_actions_map      -> tutti false    se ctx non-OPERATORE
+  #
+  # Nota: il set-based (03/04) implementa il gate settando v_has_identita
+  # e v_is_super a false -> il CASE nel jsonb_object_agg produce i valori
+  # fail-closed senza duplicare logica.
+  # ---------------------------------------------------------------------------
+
+  - changeSet:
+      id: 20260421-04-01-update-fn-resolve-livello-area-guc-aware
+      author: mctit
+      runOnChange: true
+      validCheckSum: [ANY]
+      comment: >
+        fn_resolve_livello_area: early return BLOCCATO se GUC
+        app.ruolo_applicativo popolata e != OPERATORE. Catena interna
+        invariata.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT COUNT(*)
+                FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script'
+                 AND p.proname = 'fn_resolve_livello_area';
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_resolve_livello_area(
+                  p_auth_user_id    integer,
+                  p_area_schema_db  varchar
+              )
+              RETURNS config.livello_accesso
+              LANGUAGE plpgsql
+              STABLE
+              AS $function$
+              DECLARE
+                  v_livello    config.user_override_aree.livello%TYPE;
+                  v_ctx_ruolo  config.ruolo_applicativo;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Risolve livello accesso area per un'area funzionale.
+                  --
+                  -- Catena (post PR-B 21-04-2026, context-aware):
+                  --   0. Gate GUC: se app.ruolo_applicativo popolata e
+                  --      != OPERATORE -> BLOCCATO (fail-closed).
+                  --   1. Assenza identita OPERATORE attiva -> BLOCCATO
+                  --   2. fn_is_super_admin -> TUTTO
+                  --   3. Override utente area (se valido temporalmente)
+                  --   4. Profilo via fn_get_profili_accesso_applicabili
+                  --      (AD_HOC prio 1 > REPARTO/PORTALE prio 2)
+                  --   5. Default -> BLOCCATO
+                  -- =========================================================
+
+                  -- 0. Gate contesto GUC (fail-closed su non-OPERATORE).
+                  v_ctx_ruolo := NULLIF(
+                      current_setting('app.ruolo_applicativo', true), ''
+                  )::config.ruolo_applicativo;
+
+                  IF v_ctx_ruolo IS NOT NULL
+                     AND v_ctx_ruolo <> 'OPERATORE'::config.ruolo_applicativo THEN
+                      RETURN 'BLOCCATO'::config.livello_accesso;
+                  END IF;
+
+                  -- 1. Identita OPERATORE attiva (helper DRY).
+                  IF NOT script.fn_has_identita_attiva(
+                             p_auth_user_id,
+                             'OPERATORE'::config.ruolo_applicativo) THEN
+                      RETURN 'BLOCCATO'::config.livello_accesso;
+                  END IF;
+
+                  -- 2. Super admin? Bypass totale.
+                  IF script.fn_is_super_admin(p_auth_user_id) THEN
+                      RETURN 'TUTTO'::config.livello_accesso;
+                  END IF;
+
+                  -- 3. Override utente area (invariato).
+                  SELECT uoa.livello
+                    INTO v_livello
+                    FROM config.user_override_aree uoa
+                    JOIN config.aree_funzionali af ON af.id = uoa.area_id
+                   WHERE uoa.auth_user_id = p_auth_user_id
+                     AND af.schema_db = p_area_schema_db
+                     AND uoa.validita @> CURRENT_DATE;
+
+                  IF FOUND THEN
+                      RETURN v_livello;
+                  END IF;
+
+                  -- 4. Profilo via bindings (helper, 1-arg -> default NULL).
+                  SELECT paa.livello
+                    INTO v_livello
+                    FROM script.fn_get_profili_accesso_applicabili(p_auth_user_id) h
+                    JOIN config.profili_accesso_aree paa
+                      ON paa.profilo_accesso_id = h.profilo_accesso_id
+                    JOIN config.aree_funzionali af
+                      ON af.id = paa.area_id
+                   WHERE af.schema_db = p_area_schema_db
+                   ORDER BY h.priorita
+                   LIMIT 1;
+
+                  IF FOUND THEN
+                      RETURN v_livello;
+                  END IF;
+
+                  -- 5. Default sicuro.
+                  RETURN 'BLOCCATO'::config.livello_accesso;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_resolve_livello_area(integer, varchar) IS
+                  'Risolve livello accesso area per utente. Context-aware (post '
+                  'PR-B 21-04-2026): gate GUC app.ruolo_applicativo != OPERATORE '
+                  '-> BLOCCATO. Altrimenti catena legacy: has_identita, '
+                  'fn_is_super_admin, override, profili via helper.';
+      rollback:
+        - sql:
+            sql: |
+              -- Rollback: riapplicare la migration 20260419-51 (runOnChange)
+              -- per ripristinare la versione pre-GUC. Non forniamo inline
+              -- per evitare duplicazione; il file originale resta il riferimento.
+              SELECT 1;
+
+  - changeSet:
+      id: 20260421-04-02-update-fn-check-azione-processo-guc-aware
+      author: mctit
+      runOnChange: true
+      validCheckSum: [ANY]
+      comment: >
+        fn_check_azione_processo: early return false se GUC
+        app.ruolo_applicativo popolata e != OPERATORE. Catena interna
+        invariata.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT COUNT(*)
+                FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script'
+                 AND p.proname = 'fn_check_azione_processo';
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_check_azione_processo(
+                  p_auth_user_id          integer,
+                  p_permission_codename   varchar
+              )
+              RETURNS boolean
+              LANGUAGE plpgsql
+              STABLE
+              AS $function$
+              DECLARE
+                  v_abilitata   config.user_override_azioni.abilitata%TYPE;
+                  v_ctx_ruolo   config.ruolo_applicativo;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Verifica azione di processo abilitata per l'utente.
+                  --
+                  -- Catena (post PR-B 21-04-2026, context-aware):
+                  --   0. Gate GUC: se app.ruolo_applicativo popolata e
+                  --      != OPERATORE -> false (fail-closed).
+                  --   1. Assenza identita OPERATORE attiva -> false
+                  --   2. fn_is_super_admin -> true
+                  --   3. Override utente azione (se valido)
+                  --   4. Azione via fn_get_profili_accesso_applicabili
+                  --   5. Default -> false (negata)
+                  -- =========================================================
+
+                  -- 0. Gate contesto GUC (fail-closed su non-OPERATORE).
+                  v_ctx_ruolo := NULLIF(
+                      current_setting('app.ruolo_applicativo', true), ''
+                  )::config.ruolo_applicativo;
+
+                  IF v_ctx_ruolo IS NOT NULL
+                     AND v_ctx_ruolo <> 'OPERATORE'::config.ruolo_applicativo THEN
+                      RETURN false;
+                  END IF;
+
+                  -- 1. Identita OPERATORE attiva.
+                  IF NOT script.fn_has_identita_attiva(
+                             p_auth_user_id,
+                             'OPERATORE'::config.ruolo_applicativo) THEN
+                      RETURN false;
+                  END IF;
+
+                  -- 2. Super admin? Bypass totale.
+                  IF script.fn_is_super_admin(p_auth_user_id) THEN
+                      RETURN true;
+                  END IF;
+
+                  -- 3. Override utente azione (invariato).
+                  SELECT uoa.abilitata
+                    INTO v_abilitata
+                    FROM config.user_override_azioni uoa
+                    JOIN config.azioni_processo ap ON ap.id = uoa.azione_id
+                   WHERE uoa.auth_user_id = p_auth_user_id
+                     AND ap.permission_codename = p_permission_codename
+                     AND (uoa.valido_dal IS NULL OR uoa.valido_dal <= CURRENT_DATE)
+                     AND (uoa.valido_al  IS NULL OR uoa.valido_al  >= CURRENT_DATE);
+
+                  IF FOUND THEN
+                      RETURN v_abilitata;
+                  END IF;
+
+                  -- 4. Azione via bindings (helper, 1-arg -> default NULL).
+                  SELECT paz.abilitata
+                    INTO v_abilitata
+                    FROM script.fn_get_profili_accesso_applicabili(p_auth_user_id) h
+                    JOIN config.profili_accesso_azioni paz
+                      ON paz.profilo_accesso_id = h.profilo_accesso_id
+                    JOIN config.azioni_processo ap
+                      ON ap.id = paz.azione_id
+                   WHERE ap.permission_codename = p_permission_codename
+                   ORDER BY h.priorita
+                   LIMIT 1;
+
+                  IF FOUND THEN
+                      RETURN v_abilitata;
+                  END IF;
+
+                  -- 5. Default sicuro.
+                  RETURN false;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_check_azione_processo(integer, varchar) IS
+                  'Verifica se azione abilitata per utente. Context-aware (post '
+                  'PR-B 21-04-2026): gate GUC app.ruolo_applicativo != OPERATORE '
+                  '-> false. Altrimenti catena legacy: has_identita, '
+                  'fn_is_super_admin, override, azione via helper.';
+      rollback:
+        - sql:
+            sql: |
+              -- Rollback: riapplicare 20260419-52 (runOnChange) per
+              -- ripristinare la versione pre-GUC.
+              SELECT 1;
+
+  - changeSet:
+      id: 20260421-04-03-update-fn-get-user-permissions-map-guc-aware
+      author: mctit
+      runOnChange: true
+      validCheckSum: [ANY]
+      comment: >
+        fn_get_user_permissions_map: gate GUC via pre-calcolo
+        v_has_identita/v_is_super = false se GUC != OPERATORE. Il CASE
+        nel jsonb_object_agg produce tutti BLOCCATO in automatico.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT COUNT(*)
+                FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script'
+                 AND p.proname = 'fn_get_user_permissions_map';
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_get_user_permissions_map(
+                  p_auth_user_id integer
+              )
+              RETURNS jsonb
+              LANGUAGE plpgsql
+              STABLE
+              AS $function$
+              DECLARE
+                  v_has_identita boolean;
+                  v_is_super     boolean;
+                  v_ctx_ruolo    config.ruolo_applicativo;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Mappa livello accesso per tutte le aree funzionali
+                  --   attive (single roundtrip). JSONB { "schema": "LIV", ... }.
+                  --
+                  -- Catena (post PR-B 21-04-2026, context-aware):
+                  --   1. Guard parametro obbligatorio
+                  --   2. Gate GUC: se app.ruolo_applicativo popolata e
+                  --      != OPERATORE -> v_has_identita=false, v_is_super=false
+                  --      (il CASE nel jsonb_object_agg produce BLOCCATO
+                  --      per tutte le aree).
+                  --   3. Altrimenti pre-calcolo legacy dei due flag.
+                  --   4. CTE best_per_area + aggregazione jsonb invariata.
+                  -- =========================================================
+
+                  -- 1. Guard parametro obbligatorio.
+                  IF p_auth_user_id IS NULL OR p_auth_user_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_get_user_permissions_map',
+                          'E_ADMIN_VALIDAZIONE',
+                          jsonb_build_object('p_auth_user_id', p_auth_user_id),
+                          NULL::uuid,
+                          'p_auth_user_id obbligatorio e > 0.'
+                      );
+                  END IF;
+
+                  -- 2-3. Gate contesto GUC + pre-calcolo flag.
+                  v_ctx_ruolo := NULLIF(
+                      current_setting('app.ruolo_applicativo', true), ''
+                  )::config.ruolo_applicativo;
+
+                  IF v_ctx_ruolo IS NOT NULL
+                     AND v_ctx_ruolo <> 'OPERATORE'::config.ruolo_applicativo THEN
+                      -- Fail-closed: mappa produrra' BLOCCATO per ogni area.
+                      v_has_identita := false;
+                      v_is_super     := false;
+                  ELSE
+                      v_has_identita := script.fn_has_identita_attiva(
+                                            p_auth_user_id,
+                                            'OPERATORE'::config.ruolo_applicativo);
+                      v_is_super     := script.fn_is_super_admin(p_auth_user_id);
+                  END IF;
+
+                  -- 4. CTE best_per_area + aggregazione jsonb.
+                  RETURN (
+                      WITH livelli_user AS (
+                          SELECT paa.area_id,
+                                 paa.livello,
+                                 h.priorita
+                            FROM script.fn_get_profili_accesso_applicabili(p_auth_user_id) h
+                            JOIN config.profili_accesso_aree paa
+                              ON paa.profilo_accesso_id = h.profilo_accesso_id
+                      ),
+                      best_per_area AS (
+                          SELECT DISTINCT ON (area_id)
+                                 area_id,
+                                 livello
+                            FROM livelli_user
+                           ORDER BY area_id, priorita
+                      )
+                      SELECT COALESCE(
+                          jsonb_object_agg(
+                              af.schema_db,
+                              CASE
+                                  WHEN NOT v_has_identita
+                                      THEN 'BLOCCATO'
+                                  WHEN v_is_super
+                                      THEN 'TUTTO'
+                                  ELSE COALESCE(
+                                      uoa.livello,
+                                      bpa.livello,
+                                      'BLOCCATO'::config.livello_accesso
+                                  )::text
+                              END
+                          ),
+                          '{}'::jsonb
+                      )
+                        FROM config.aree_funzionali af
+                        LEFT JOIN config.user_override_aree uoa
+                          ON uoa.auth_user_id = p_auth_user_id
+                         AND uoa.area_id = af.id
+                         AND uoa.validita @> CURRENT_DATE
+                        LEFT JOIN best_per_area bpa
+                          ON bpa.area_id = af.id
+                       WHERE af.attivo = TRUE
+                  );
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_get_user_permissions_map(integer) IS
+                  'Mappa permessi aree set-based. Context-aware (post PR-B '
+                  '21-04-2026): gate GUC app.ruolo_applicativo != OPERATORE -> '
+                  'tutti BLOCCATO. Altrimenti catena legacy: has_identita, '
+                  'fn_is_super_admin, override, profili via helper.';
+      rollback:
+        - sql:
+            sql: |
+              -- Rollback: riapplicare 20260419-53 (runOnChange).
+              SELECT 1;
+
+  - changeSet:
+      id: 20260421-04-04-update-fn-get-user-actions-map-guc-aware
+      author: mctit
+      runOnChange: true
+      validCheckSum: [ANY]
+      comment: >
+        fn_get_user_actions_map: gate GUC via pre-calcolo
+        v_has_identita/v_is_super = false se GUC != OPERATORE. Il CASE
+        nel jsonb_object_agg produce tutti false in automatico.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT COUNT(*)
+                FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script'
+                 AND p.proname = 'fn_get_user_actions_map';
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_get_user_actions_map(
+                  p_auth_user_id integer
+              )
+              RETURNS jsonb
+              LANGUAGE plpgsql
+              STABLE
+              AS $function$
+              DECLARE
+                  v_has_identita boolean;
+                  v_is_super     boolean;
+                  v_ctx_ruolo    config.ruolo_applicativo;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Mappa azioni_processo abilitate/disabilitate
+                  --   (single roundtrip). JSONB { "perm_codename": bool, ... }.
+                  --
+                  -- Catena (post PR-B 21-04-2026, context-aware):
+                  --   1. Guard parametro obbligatorio
+                  --   2. Gate GUC: se app.ruolo_applicativo popolata e
+                  --      != OPERATORE -> v_has_identita=false, v_is_super=false
+                  --      (il CASE nel jsonb_object_agg produce false
+                  --      per tutte le azioni).
+                  --   3. Altrimenti pre-calcolo legacy dei due flag.
+                  --   4. CTE best_per_azione + aggregazione jsonb invariata.
+                  -- =========================================================
+
+                  -- 1. Guard parametro obbligatorio.
+                  IF p_auth_user_id IS NULL OR p_auth_user_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_get_user_actions_map',
+                          'E_ADMIN_VALIDAZIONE',
+                          jsonb_build_object('p_auth_user_id', p_auth_user_id),
+                          NULL::uuid,
+                          'p_auth_user_id obbligatorio e > 0.'
+                      );
+                  END IF;
+
+                  -- 2-3. Gate contesto GUC + pre-calcolo flag.
+                  v_ctx_ruolo := NULLIF(
+                      current_setting('app.ruolo_applicativo', true), ''
+                  )::config.ruolo_applicativo;
+
+                  IF v_ctx_ruolo IS NOT NULL
+                     AND v_ctx_ruolo <> 'OPERATORE'::config.ruolo_applicativo THEN
+                      -- Fail-closed: mappa produrra' false per ogni azione.
+                      v_has_identita := false;
+                      v_is_super     := false;
+                  ELSE
+                      v_has_identita := script.fn_has_identita_attiva(
+                                            p_auth_user_id,
+                                            'OPERATORE'::config.ruolo_applicativo);
+                      v_is_super     := script.fn_is_super_admin(p_auth_user_id);
+                  END IF;
+
+                  -- 4. CTE best_per_azione + aggregazione jsonb.
+                  RETURN (
+                      WITH abilitazioni_user AS (
+                          SELECT paz.azione_id,
+                                 paz.abilitata,
+                                 h.priorita
+                            FROM script.fn_get_profili_accesso_applicabili(p_auth_user_id) h
+                            JOIN config.profili_accesso_azioni paz
+                              ON paz.profilo_accesso_id = h.profilo_accesso_id
+                      ),
+                      best_per_azione AS (
+                          SELECT DISTINCT ON (azione_id)
+                                 azione_id,
+                                 abilitata
+                            FROM abilitazioni_user
+                           ORDER BY azione_id, priorita
+                      )
+                      SELECT COALESCE(
+                          jsonb_object_agg(
+                              ap.permission_codename,
+                              CASE
+                                  WHEN NOT v_has_identita
+                                      THEN false
+                                  WHEN v_is_super
+                                      THEN true
+                                  ELSE COALESCE(
+                                      uoa.abilitata,
+                                      bpaz.abilitata,
+                                      false
+                                  )
+                              END
+                          ),
+                          '{}'::jsonb
+                      )
+                        FROM config.azioni_processo ap
+                        LEFT JOIN config.user_override_azioni uoa
+                          ON uoa.auth_user_id = p_auth_user_id
+                         AND uoa.azione_id = ap.id
+                         AND uoa.validita @> CURRENT_DATE
+                        LEFT JOIN best_per_azione bpaz
+                          ON bpaz.azione_id = ap.id
+                       WHERE ap.attivo = TRUE
+                  );
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_get_user_actions_map(integer) IS
+                  'Mappa azioni processo set-based. Context-aware (post PR-B '
+                  '21-04-2026): gate GUC app.ruolo_applicativo != OPERATORE -> '
+                  'tutti false. Altrimenti catena legacy: has_identita, '
+                  'fn_is_super_admin, override, abilitazioni via helper.';
+      rollback:
+        - sql:
+            sql: |
+              -- Rollback: riapplicare 20260419-54 (runOnChange).
+              SELECT 1;
