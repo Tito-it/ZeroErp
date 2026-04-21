@@ -330,22 +330,19 @@ class PermissionResolver:
         """
         def _query() -> bool:
             with connection.cursor() as cursor:
-                # Workaround ambiguita' overload §8.3 (debito DB):
-                # la migration 20260420-11 crea sia la fn a 1 param sia
-                # quella a 2 param con `DEFAULT NULL` per ruolo_applicativo.
-                # Postgres con 1 arg matcha entrambe -> `function is not unique`.
-                # Passiamo esplicitamente 2 arg con NULL::config.ruolo_applicativo
-                # per agganciare univocamente la signature multi-veste
-                # (comportamento identico al legacy: NULL = no filtro veste).
-                # TODO(DB dev/db-tid): droppare la fn a 1 param e rimuovere
-                # questo workaround.
+                # Chiamata 1-arg: post migration 20260421-* la vecchia
+                # firma e' stata droppata; resta solo la 2-arg con
+                # `p_ruolo_applicativo DEFAULT NULL` che, risolta con 1
+                # argomento, equivale a "nessun filtro veste" (comportamento
+                # legacy). Scelta coerente coi due caller:
+                #   - permissions.py: gia' gated da ruolo_app == OPERATORE
+                #   - views.py: ispeziona target_user; filtrare sulla GUC
+                #     dell'admin corrente sarebbe semanticamente errato.
                 cursor.execute(
                     """
                     SELECT EXISTS(
                         SELECT 1
-                          FROM script.fn_get_profili_accesso_applicabili(
-                                   %s, NULL::config.ruolo_applicativo
-                               ) prof
+                          FROM script.fn_get_profili_accesso_applicabili(%s) prof
                           JOIN config.profili_accesso_aree paa
                             ON paa.profilo_accesso_id = prof.profilo_accesso_id
                           JOIN config.aree_funzionali af

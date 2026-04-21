@@ -238,4 +238,4 @@ l'audit procede comunque con GUC vuote.
 - [API User Profile](api_user_profile.md) — `/me/` che espone il blocco `identita`
 - [API Invito Operatore](api_invito_operatore.md) — invito + attivazione operatori
 - [API Password Reset](api_password_reset.md) — reset password
-- [WIP Multi-face Auth](../../../dev/work-in-progress/pr-b-shop-b2c-cambio-modello.md) §8 PR-B1
+- [WIP Multi-face Auth](../../../dev/work-done/pr-b-shop-b2c-cambio-modello.md) §8 PR-B1

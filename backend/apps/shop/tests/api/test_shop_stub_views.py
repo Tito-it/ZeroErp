@@ -9,31 +9,17 @@
 
 """
 Indice test eseguiti:
-1) ShopActivateStubTests.test_get_ritorna_501_con_codice_dedicato
-2) ShopRegisterCheckEmailStubTests.test_post_ritorna_501_con_codice_dedicato
+1) ShopRegisterCheckEmailStubTests.test_post_ritorna_501_con_codice_dedicato
+
+Nota: ShopActivateView stub (§8.4.4) rimosso in B1 §13.7 — sostituito da
+AttivazioneShopValidateView + AttivazioneShopView reali. Vedi
+`test_attivazione_shop_view.py`.
 """
 
 import json
 from unittest import TestCase
 
 from django.test import RequestFactory
-
-
-class ShopActivateStubTests(TestCase):
-
-    # Scopo: GET /api/v1/shop/activate/<token>/ → 501 E_SHOP_NON_DISPONIBILE.
-    # Il token nella path e' ignorato (stub): verifica che la view non
-    # consulti DB e ritorni immediatamente lo stub.
-    def test_get_ritorna_501_con_codice_dedicato(self):
-        from apps.shop.api.views import ShopActivateView
-        factory = RequestFactory()
-        request = factory.get("/api/v1/shop/activate/whatever/")
-
-        response = ShopActivateView().get(request, token="whatever")
-        self.assertEqual(response.status_code, 501)
-        body = json.loads(response.content)
-        self.assertEqual(body["error"]["code"], "E_SHOP_NON_DISPONIBILE")
-        self.assertIn("PR-C", body["error"]["message"])
 
 
 class ShopRegisterCheckEmailStubTests(TestCase):

@@ -106,7 +106,7 @@ Può anche essere usata in policy RLS future per scope per UO (es.
 
 ### Riferimenti
 
-* [WIP multi-face-auth §13.3.7](/dev/work-in-progress/sviluppo-multi-face-auth)
+* [WIP multi-face-auth §13.3.7](/dev/work-done/sviluppo-multi-face-auth)
 
 ---
 

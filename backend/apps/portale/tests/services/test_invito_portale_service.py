@@ -19,6 +19,16 @@ Indice test eseguiti:
 9)  InvitoPortaleTests.test_identita_collegata_altro_auth_user_solleva
 10) InvitoPortaleTests.test_mask_email
 11) InvitoPortaleTests.test_build_display_name_pg_e_pf
+12) InvitoShopCustomerTests.test_invia_invito_shop_happy_path_invito
+13) InvitoShopCustomerTests.test_invia_invito_shop_cross_path
+14) InvitoShopCustomerTests.test_reinvia_invito_shop_invalida_entrambi_token
+15) GetStatoAccessiTests.test_cliente_include_portale_e_shop
+16) GetStatoAccessiTests.test_fornitore_solo_portale
+17) GetStatoAccessiTests.test_cliente_not_found_solleva
+18) DisattivaVesteTests.test_disattiva_cliente_portale_attivo_invalida_token
+19) DisattivaVesteTests.test_disattiva_cliente_nessuna_identita_noop
+20) DisattivaVesteTests.test_disattiva_fornitore_portale
+21) DisattivaVesteTests.test_disattiva_cliente_identita_gia_disattiva_idempotente
 """
 
 from unittest import TestCase
@@ -501,3 +511,361 @@ class InvitoPortaleTests(TestCase):
             InvitoPortaleService._build_display_name(empty),
             "cliente/fornitore",
         )
+
+
+# ── Shop customer (B1 §13.7 admin-driven) ─────────────────────────
+
+
+class InvitoShopCustomerTests(TestCase):
+    """Test invia/reinvia invito SHOP_CUSTOMER. Stessa pipeline interna
+    di CLIENTE_PORTALE ma config veste diversa (token tipo, template,
+    link path)."""
+
+    # Scopo: Flow INVITO email nuova -> identita SHOP_CUSTOMER attiva +
+    # token INVITO_SHOP + template INVITO_SHOP + link /attivazione-shop.
+    @patch(_SETTINGS)
+    @patch(_CONNECTION)
+    @patch(_EMAIL_SVC)
+    @patch(_TOKEN_SVC)
+    @patch(_AUTH_REPO)
+    @patch(_REPO)
+    def test_invia_invito_shop_happy_path_invito(
+        self, MockRepo, MockAuth, MockToken, MockEmail, mock_conn, mock_settings
+    ):
+        mock_settings.FRONTEND_URL = "http://localhost:5173"
+        repo = MockRepo.return_value
+        repo.get_cliente_info.return_value = {
+            "billing_account_id": 42,
+            "ba_codice": "BA-000123",
+            "soggetto_ruolo_id": 100,
+            "soggetto_id": "uuid-1",
+            "ragione_sociale": "ACME Shop",
+            "cognome": None, "nome": None, "codice_fiscale": None,
+        }
+        repo.find_auth_user_by_email.return_value = None
+        repo.create_auth_user_portale.return_value = 300
+        repo.find_identita_portale.return_value = None
+        repo.create_identita_portale.return_value = 600
+
+        MockAuth.return_value.set_deve_cambiare_password.return_value = True
+        MockAuth.return_value.set_invito_inviato_at.return_value = True
+        MockToken.return_value.create.return_value = "tk_shop_new"
+        MockEmail.return_value.send_email.return_value = (1, True)
+
+        _mock_cursor_ctx(mock_conn)
+
+        from apps.portale.services.invito_portale_service import InvitoPortaleService
+        svc = InvitoPortaleService()
+        svc._get_display_name_of = MagicMock(return_value="Admin Tid")
+
+        result = svc.invia_invito_shop_customer(
+            cliente_id=42,
+            email="shopper@acme.test",
+            invitato_da_user_id=1,
+        )
+
+        self.assertTrue(result["inviato"])
+        self.assertEqual(result["auth_user_id"], 300)
+        self.assertEqual(result["identita_id"], 600)
+        self.assertTrue(result["nuovo_utente"])
+        self.assertFalse(result["is_cross"])
+        # Veste creata con ruolo SHOP_CUSTOMER, attiva (flow INVITO).
+        kwargs = repo.create_identita_portale.call_args.kwargs
+        self.assertEqual(kwargs["ruolo_applicativo"], "SHOP_CUSTOMER")
+        self.assertTrue(kwargs["attivo"])
+        self.assertTrue(kwargs["deve_cambiare_password"])
+        # Token tipo + template + link path mappati su veste shop.
+        token_kwargs = MockToken.return_value.create.call_args.kwargs
+        self.assertEqual(token_kwargs["tipo"], "INVITO_SHOP")
+        self.assertEqual(token_kwargs["meta"]["identita_id"], 600)
+        email_kwargs = MockEmail.return_value.send_email.call_args.kwargs
+        self.assertEqual(email_kwargs["codice_template"], "INVITO_SHOP")
+        self.assertIn("/attivazione-shop/tk_shop_new", email_kwargs["variabili"]["link"])
+
+    # Scopo: Flow CROSS email esistente (operatore o altra veste) ->
+    # identita SHOP_CUSTOMER disattivata + token ATTIVAZIONE_SHOP_CROSS.
+    @patch(_SETTINGS)
+    @patch(_CONNECTION)
+    @patch(_EMAIL_SVC)
+    @patch(_TOKEN_SVC)
+    @patch(_AUTH_REPO)
+    @patch(_REPO)
+    def test_invia_invito_shop_cross_path(
+        self, MockRepo, MockAuth, MockToken, MockEmail, mock_conn, mock_settings
+    ):
+        mock_settings.FRONTEND_URL = "http://localhost:5173"
+        repo = MockRepo.return_value
+        repo.get_cliente_info.return_value = {
+            "billing_account_id": 42,
+            "ba_codice": "BA-000999",
+            "soggetto_ruolo_id": 200,
+            "soggetto_id": "uuid-2",
+            "ragione_sociale": "Cross Shop",
+            "cognome": None, "nome": None, "codice_fiscale": None,
+        }
+        # Email gia' nota: l'auth_user esiste come operatore o altra veste.
+        repo.find_auth_user_by_email.return_value = 999
+        repo.find_identita_portale.return_value = None  # nessuna SHOP ancora
+        repo.create_identita_portale.return_value = 700
+
+        MockAuth.return_value.set_invito_inviato_at.return_value = True
+        MockToken.return_value.create.return_value = "tk_shop_cross"
+        MockEmail.return_value.send_email.return_value = (1, True)
+
+        _mock_cursor_ctx(mock_conn)
+
+        from apps.portale.services.invito_portale_service import InvitoPortaleService
+        svc = InvitoPortaleService()
+        svc._get_display_name_of = MagicMock(return_value="Admin Tid")
+
+        result = svc.invia_invito_shop_customer(
+            cliente_id=42,
+            email="tid@example.com",
+            invitato_da_user_id=1,
+        )
+
+        self.assertTrue(result["inviato"])
+        self.assertEqual(result["auth_user_id"], 999)
+        self.assertFalse(result["nuovo_utente"])
+        self.assertTrue(result["is_cross"])
+        # Identita CROSS: attivo=false, no password temp, no flag deve_cambiare.
+        kwargs = repo.create_identita_portale.call_args.kwargs
+        self.assertEqual(kwargs["ruolo_applicativo"], "SHOP_CUSTOMER")
+        self.assertFalse(kwargs["attivo"])
+        self.assertFalse(kwargs["deve_cambiare_password"])
+        # Token CROSS, no UPDATE password (auth.set_deve_cambiare_password mai
+        # chiamato in flow CROSS).
+        token_kwargs = MockToken.return_value.create.call_args.kwargs
+        self.assertEqual(token_kwargs["tipo"], "ATTIVAZIONE_SHOP_CROSS")
+        MockAuth.return_value.set_deve_cambiare_password.assert_not_called()
+
+    # Scopo: Reinvio invalida entrambi i token shop (INVITO_SHOP +
+    # ATTIVAZIONE_SHOP_CROSS) per l'auth_user prima di rigenerare.
+    @patch(_SETTINGS)
+    @patch(_CONNECTION)
+    @patch(_EMAIL_SVC)
+    @patch(_TOKEN_SVC)
+    @patch(_AUTH_REPO)
+    @patch(_REPO)
+    def test_reinvia_invito_shop_invalida_entrambi_token(
+        self, MockRepo, MockAuth, MockToken, MockEmail, mock_conn, mock_settings
+    ):
+        mock_settings.FRONTEND_URL = "http://localhost:5173"
+        repo = MockRepo.return_value
+        info = {
+            "billing_account_id": 42, "ba_codice": "BA-X",
+            "soggetto_ruolo_id": 100, "soggetto_id": "u",
+            "ragione_sociale": "Shop", "cognome": None, "nome": None,
+            "codice_fiscale": None,
+        }
+        repo.get_cliente_info.return_value = info
+        # Identita SHOP_CUSTOMER disattivata (caso reinvio dopo token scaduto).
+        repo.find_identita_portale.return_value = {
+            "identita_id": 700, "auth_user_id": 999,
+            "attivo": False, "invito_inviato_at": None,
+            "deve_cambiare_password": False,
+        }
+        repo.find_auth_user_by_email.return_value = 999
+        # Per il flow CROSS riprende identita gia' presente (non riattiva).
+        MockAuth.return_value.set_invito_inviato_at.return_value = True
+        MockToken.return_value.create.return_value = "tk_re"
+        MockEmail.return_value.send_email.return_value = (1, True)
+
+        _mock_cursor_ctx(mock_conn)
+
+        from apps.portale.services.invito_portale_service import InvitoPortaleService
+        svc = InvitoPortaleService()
+        svc._get_display_name_of = MagicMock(return_value="Admin")
+
+        svc.reinvia_invito_shop_customer(
+            cliente_id=42,
+            email="tid@example.com",
+            invitato_da_user_id=1,
+        )
+
+        # Verifica che entrambi i token shop siano invalidati.
+        invalidate_calls = MockToken.return_value.invalidate_all.call_args_list
+        tipi_invalidati = [c.args[0] for c in invalidate_calls]
+        self.assertIn("INVITO_SHOP", tipi_invalidati)
+        self.assertIn("ATTIVAZIONE_SHOP_CROSS", tipi_invalidati)
+
+
+# ── Stato + disattivazione veste (§6.2.4 + §6.2.6) ────────────────
+
+
+class GetStatoAccessiTests(TestCase):
+    """Test aggregazione stato accessi per cliente + fornitore."""
+
+    @patch(_REPO)
+    def test_cliente_include_portale_e_shop(self, MockRepo):
+        repo = MockRepo.return_value
+        repo.get_cliente_info.return_value = {
+            "billing_account_id": 1, "ba_codice": "X",
+            "soggetto_ruolo_id": 100, "soggetto_id": "u",
+            "ragione_sociale": "X", "cognome": None, "nome": None,
+            "codice_fiscale": None,
+        }
+        repo.get_stato_identita.side_effect = [
+            {"stato": "ATTIVO", "identita_id": 500, "auth_user_id": 10,
+             "invito_inviato_at": None, "token_scade_at": None},
+            {"stato": "NESSUNO", "identita_id": None, "auth_user_id": None,
+             "invito_inviato_at": None, "token_scade_at": None},
+        ]
+        from apps.portale.services.invito_portale_service import InvitoPortaleService
+        result = InvitoPortaleService().get_stato_accessi_cliente(1)
+        self.assertEqual(result["portale"]["stato"], "ATTIVO")
+        self.assertEqual(result["shop"]["stato"], "NESSUNO")
+        # Due chiamate: una per CLIENTE_PORTALE, una per SHOP_CUSTOMER.
+        calls = repo.get_stato_identita.call_args_list
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(calls[0].args[1], "CLIENTE_PORTALE")
+        self.assertEqual(calls[1].args[1], "SHOP_CUSTOMER")
+
+    @patch(_REPO)
+    def test_fornitore_solo_portale(self, MockRepo):
+        repo = MockRepo.return_value
+        repo.get_fornitore_info.return_value = {
+            "fornitore_id": 77, "soggetto_ruolo_id": 101,
+            "soggetto_id": "u", "ragione_sociale": "F",
+            "cognome": None, "nome": None,
+            "codice_fiscale": None, "pec_email": None,
+        }
+        repo.get_stato_identita.return_value = {
+            "stato": "PENDING", "identita_id": 501, "auth_user_id": 20,
+            "invito_inviato_at": "2026-04-21", "token_scade_at": "2026-04-24",
+        }
+        from apps.portale.services.invito_portale_service import InvitoPortaleService
+        result = InvitoPortaleService().get_stato_accessi_fornitore(77)
+        self.assertEqual(result["portale"]["stato"], "PENDING")
+        self.assertNotIn("shop", result)  # fornitori no shop
+
+    @patch(_REPO)
+    def test_cliente_not_found_solleva(self, MockRepo):
+        MockRepo.return_value.get_cliente_info.return_value = None
+        from apps.portale.services.invito_portale_service import InvitoPortaleService
+        with self.assertRaises(ServiceError) as ctx:
+            InvitoPortaleService().get_stato_accessi_cliente(999)
+        self.assertEqual(ctx.exception.code, "E_INVITO_PORTALE")
+
+
+class DisattivaVesteTests(TestCase):
+    """Test soft-revoke veste cliente + fornitore."""
+
+    @patch(_CONNECTION)
+    @patch(_TOKEN_SVC)
+    @patch(_AUTH_REPO)
+    @patch(_REPO)
+    def test_disattiva_cliente_portale_attivo_invalida_token(
+        self, MockRepo, _MockAuth, MockToken, _mock_conn
+    ):
+        repo = MockRepo.return_value
+        repo.get_cliente_info.return_value = {
+            "billing_account_id": 1, "ba_codice": "X",
+            "soggetto_ruolo_id": 100, "soggetto_id": "u",
+            "ragione_sociale": "X", "cognome": None, "nome": None,
+            "codice_fiscale": None,
+        }
+        repo.find_identita_portale.return_value = {
+            "identita_id": 500, "auth_user_id": 10, "attivo": True,
+            "invito_inviato_at": None, "deve_cambiare_password": False,
+        }
+        repo.disattiva_identita.return_value = True
+
+        from apps.portale.services.invito_portale_service import InvitoPortaleService
+        result = InvitoPortaleService().disattiva_veste_cliente(
+            cliente_id=1,
+            ruolo_applicativo="CLIENTE_PORTALE",
+            disattivato_da_user_id=999,
+        )
+        self.assertTrue(result["disattivato"])
+        self.assertEqual(result["stato"], "DISATTIVO")
+        self.assertEqual(result["identita_id"], 500)
+        repo.disattiva_identita.assert_called_once_with(500)
+        # Token portale entrambi invalidati.
+        invalidate_calls = MockToken.return_value.invalidate_all.call_args_list
+        tipi_invalidati = [c.args[0] for c in invalidate_calls]
+        self.assertIn("INVITO_PORTALE", tipi_invalidati)
+        self.assertIn("ATTIVAZIONE_PORTALE_CROSS", tipi_invalidati)
+
+    @patch(_REPO)
+    def test_disattiva_cliente_nessuna_identita_noop(self, MockRepo):
+        repo = MockRepo.return_value
+        repo.get_cliente_info.return_value = {
+            "billing_account_id": 1, "ba_codice": "X",
+            "soggetto_ruolo_id": 100, "soggetto_id": "u",
+            "ragione_sociale": "X", "cognome": None, "nome": None,
+            "codice_fiscale": None,
+        }
+        repo.find_identita_portale.return_value = None
+        from apps.portale.services.invito_portale_service import InvitoPortaleService
+        result = InvitoPortaleService().disattiva_veste_cliente(
+            cliente_id=1,
+            ruolo_applicativo="CLIENTE_PORTALE",
+            disattivato_da_user_id=999,
+        )
+        self.assertFalse(result["disattivato"])
+        self.assertEqual(result["stato"], "NESSUNO")
+        repo.disattiva_identita.assert_not_called()
+
+    @patch(_CONNECTION)
+    @patch(_TOKEN_SVC)
+    @patch(_AUTH_REPO)
+    @patch(_REPO)
+    def test_disattiva_fornitore_portale(
+        self, MockRepo, _MockAuth, MockToken, _mock_conn
+    ):
+        repo = MockRepo.return_value
+        repo.get_fornitore_info.return_value = {
+            "fornitore_id": 77, "soggetto_ruolo_id": 101,
+            "soggetto_id": "u", "ragione_sociale": "F",
+            "cognome": None, "nome": None,
+            "codice_fiscale": None, "pec_email": None,
+        }
+        repo.find_identita_portale.return_value = {
+            "identita_id": 600, "auth_user_id": 20, "attivo": True,
+            "invito_inviato_at": None, "deve_cambiare_password": False,
+        }
+        repo.disattiva_identita.return_value = True
+        from apps.portale.services.invito_portale_service import InvitoPortaleService
+        result = InvitoPortaleService().disattiva_veste_fornitore(
+            fornitore_id=77, disattivato_da_user_id=999,
+        )
+        self.assertTrue(result["disattivato"])
+        self.assertEqual(result["identita_id"], 600)
+
+    @patch(_TOKEN_SVC)
+    @patch(_REPO)
+    def test_disattiva_cliente_identita_gia_disattiva_idempotente(
+        self, MockRepo, MockToken
+    ):
+        repo = MockRepo.return_value
+        repo.get_cliente_info.return_value = {
+            "billing_account_id": 1, "ba_codice": "X",
+            "soggetto_ruolo_id": 100, "soggetto_id": "u",
+            "ragione_sociale": "X", "cognome": None, "nome": None,
+            "codice_fiscale": None,
+        }
+        # Identita gia' disattiva (attivo=false): no UPDATE fisico ma
+        # comunque invalida eventuali token residui (best-effort cleanup).
+        repo.find_identita_portale.return_value = {
+            "identita_id": 500, "auth_user_id": 10, "attivo": False,
+            "invito_inviato_at": None, "deve_cambiare_password": False,
+        }
+        from apps.portale.services.invito_portale_service import InvitoPortaleService
+        result = InvitoPortaleService().disattiva_veste_cliente(
+            cliente_id=1,
+            ruolo_applicativo="CLIENTE_PORTALE",
+            disattivato_da_user_id=999,
+        )
+        # was_active=False -> disattivato=False (nessun UPDATE), ma stato
+        # finale DISATTIVO riportato coerentemente al caller.
+        self.assertFalse(result["disattivato"])
+        self.assertEqual(result["stato"], "DISATTIVO")
+        repo.disattiva_identita.assert_not_called()
+        # Best-effort cleanup: i token portale residui vengono comunque
+        # invalidati (idempotente lato BE, no-op se non ce n'erano).
+        tipi_invalidati = [
+            c.args[0] for c in MockToken.return_value.invalidate_all.call_args_list
+        ]
+        self.assertIn("INVITO_PORTALE", tipi_invalidati)
+        self.assertIn("ATTIVAZIONE_PORTALE_CROSS", tipi_invalidati)

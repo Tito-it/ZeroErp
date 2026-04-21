@@ -30,11 +30,16 @@ from apps.core.api.endpoint_helpers import handle_post_json
 from apps.core.api.success_responses import success_response
 from apps.core.api.throttling import PasswordResetRateThrottle
 from apps.core.db.auth_repository import AuthRepository
+from apps.core.services.auth_constants import (
+    RUOLO_APPLICATIVO_CLIENTE_PORTALE,
+    RUOLO_APPLICATIVO_SHOP_CUSTOMER,
+)
 from apps.core.services.auth_helpers import (
     apply_new_password,
     extract_identita_id_from_token_meta,
 )
 from apps.core.services.error_manager import ErrorManager
+from apps.core.services.permissions_resolver import PermissionResolver
 from apps.core.services.request_context import get_client_ip
 from apps.core.services.token_service import TokenService
 from apps.portale.db.portale_repository import PortaleRepository
@@ -43,11 +48,11 @@ from apps.portale.services.invito_portale_service import (
     INVITO_PORTALE_TOKEN_TIPO,
     resolve_portale_token,
 )
-from apps.shop.api.views import shop_not_available_response
 
 logger = logging.getLogger("security")
 
 E_ATTIVAZIONE_PORTALE = "E_ATTIVAZIONE_PORTALE"
+E_ATTIVAZIONE_SHOP_CROSS = "E_ATTIVAZIONE_SHOP_CROSS"
 
 _auth_repo = AuthRepository()
 _portale_repo = PortaleRepository()
@@ -305,25 +310,33 @@ class AttivazionePortaleView(APIView):
 
 
 class ProfileActivateShopView(PortaleAPIView):
-    """POST /api/v1/portale/profile/activate-shop/ — §8.4.3 stub.
+    """POST /api/v1/portale/profile/activate-shop/ — attivazione cross-veste
+    self-service (B1 §13.7).
 
-    Il portale user (cliente/fornitore) richiede di attivare anche la
-    veste SHOP_CUSTOMER sullo stesso auth_user. Il flusso reale (creazione
-    identita shop + email conferma) arriva con PR-C. Per ora risponde 501
-    con codice dedicato: il FE mostra un banner "funzione in arrivo".
+    L'utente CLIENTE_PORTALE autenticato aggiunge la veste SHOP_CUSTOMER
+    sul proprio soggetto_ruolo (CL). Attivazione immediata, no email/token:
+    il consenso e' implicito nel click. Idempotente (se esiste gia' attiva,
+    ritorna `already_active`).
+
+    Solo CLIENTE_PORTALE: FORNITORE_PORTALE non puo' attivare shop (B2C
+    consumer-only). SHOP_CUSTOMER e CLIENTE_PORTALE condividono il ruolo
+    anagrafico CL — la nuova identita vive sullo stesso soggetto_ruolo
+    della veste portale corrente.
     """
 
     skip_area_check = True
 
     @extend_schema(
-        summary="Attiva accesso shop per utente portale (stub PR-C)",
-        responses={501: inline_serializer(
-            name="ActivateShopStubResp",
+        summary="Attiva veste SHOP_CUSTOMER per utente portale cliente",
+        responses={200: inline_serializer(
+            name="ActivateShopResp",
             fields={
-                "error": inline_serializer(
-                    name="ActivateShopStubErr",
+                "data": inline_serializer(
+                    name="ActivateShopData",
                     fields={
-                        "code": serializers.CharField(),
+                        "activated": serializers.BooleanField(required=False),
+                        "already_active": serializers.BooleanField(required=False),
+                        "identita_id": serializers.IntegerField(),
                         "message": serializers.CharField(),
                     },
                 ),
@@ -331,10 +344,102 @@ class ProfileActivateShopView(PortaleAPIView):
         )},
     )
     def post(self, request: Request) -> JsonResponse:
-        # Stub puro: nessun body da parsare, nessuna idempotency key
-        # (il consumer e' idempotent per definizione — sempre 501).
-        # Helper condiviso con gli stub shop per uniformita' codice errore.
-        return shop_not_available_response(
-            "Attivazione accesso shop non ancora disponibile. "
-            "Sara' abilitata con PR-C."
-        )
+        def _handler(payload: dict[str, Any]) -> dict[str, Any]:
+            # Filtro veste: solo CLIENTE_PORTALE puo' attivare shop.
+            # FORNITORE_PORTALE blocca a 400 (lo shop e' B2C consumer).
+            ruolo = PermissionResolver.get_ruolo_applicativo(request.user)
+            ErrorManager.require(
+                ruolo == RUOLO_APPLICATIVO_CLIENTE_PORTALE,
+                code=E_ATTIVAZIONE_SHOP_CROSS,
+                message="Solo i clienti portale possono attivare l'accesso shop.",
+            )
+
+            # Soggetto_ruolo dell'identita corrente — letto dalla GUC
+            # `app.soggetto_ruolo_id` propagata da JwtAuditAuthentication
+            # (5 GUC settate insieme post §8.3.4). Fail-closed se vuota.
+            soggetto_ruolo_id = self._read_soggetto_ruolo_from_guc()
+            ErrorManager.require(
+                soggetto_ruolo_id is not None,
+                code=E_ATTIVAZIONE_SHOP_CROSS,
+                message="Identita corrente non risolvibile.",
+            )
+            assert soggetto_ruolo_id is not None
+
+            # Idempotente: se la veste SHOP_CUSTOMER esiste gia' attiva
+            # sullo stesso soggetto_ruolo, ritorna conferma senza modifiche.
+            existing = _portale_repo.find_identita_portale(
+                soggetto_ruolo_id, RUOLO_APPLICATIVO_SHOP_CUSTOMER
+            )
+
+            # Guard anti-tampering: se l'identita SHOP esistente e' collegata
+            # a un auth_user diverso dal corrente, blocchiamo. Stato anomalo
+            # (soggetto_ruolo riassegnato manualmente o migrazione incoerente)
+            # che richiede intervento admin, non auto-resolve.
+            if existing is not None:
+                existing_auth = existing.get("auth_user_id")
+                ErrorManager.require(
+                    existing_auth is None or int(existing_auth) == request.user.id,
+                    code=E_ATTIVAZIONE_SHOP_CROSS,
+                    message=(
+                        "Veste shop gia' collegata a un altro utente. "
+                        "Contattare l'amministratore."
+                    ),
+                )
+
+            if existing is not None and existing.get("attivo"):
+                return {
+                    "already_active": True,
+                    "identita_id": int(existing["identita_id"]),
+                    "message": (
+                        "Accesso shop gia' attivo. "
+                        "Effettua il login dal canale shop con le tue credenziali."
+                    ),
+                }
+
+            # Creazione o riattivazione, in transazione atomica.
+            with transaction.atomic():
+                if existing is not None:
+                    # Identita SHOP_CUSTOMER esisteva ma disattivata
+                    # (es. precedente attivazione poi sospesa) — riattiva.
+                    identita_id = int(existing["identita_id"])
+                    _portale_repo.riattiva_identita(identita_id)
+                else:
+                    # Prima attivazione veste shop: crea identita
+                    # `attivo=True, deve_cambiare_password=False` perche'
+                    # la password e' quella gia' usata sul portale (stesso
+                    # auth_user, modello SSO multi-veste).
+                    identita_id = _portale_repo.create_identita_portale(
+                        auth_user_id=request.user.id,
+                        soggetto_ruolo_id=soggetto_ruolo_id,
+                        ruolo_applicativo=RUOLO_APPLICATIVO_SHOP_CUSTOMER,
+                        attivo=True,
+                        deve_cambiare_password=False,
+                    )
+
+            logger.info(
+                "security.shop_attivato_cross user_id=%s identita_id=%s "
+                "soggetto_ruolo_id=%s",
+                request.user.id, identita_id, soggetto_ruolo_id,
+            )
+            return {
+                "activated": True,
+                "identita_id": identita_id,
+                "message": (
+                    "Accesso shop attivato. "
+                    "Effettua il login dal canale shop con le stesse credenziali."
+                ),
+            }
+
+        return handle_post_json(request, handler=_handler)
+
+    # Scopo: Legge soggetto_ruolo_id dalla GUC PG settata da
+    # JwtAuditAuthentication. Mockabile nei test che non passano dalla
+    # auth chain reale.
+    def _read_soggetto_ruolo_from_guc(self) -> int | None:
+        from django.db import connection
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT NULLIF(current_setting('app.soggetto_ruolo_id', true), '')::int"
+            )
+            row = cursor.fetchone()
+        return int(row[0]) if row and row[0] is not None else None
