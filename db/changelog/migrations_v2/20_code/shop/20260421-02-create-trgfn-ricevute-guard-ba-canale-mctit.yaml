@@ -1,0 +1,172 @@
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/shop/20260421-02-create-trgfn-ricevute-guard-ba-canale-mctit.yaml
+
+  # ---------------------------------------------------------------------------
+  # Trigger guard DB-side per l'invariante:
+  #   shop.ricevute.billing_account_id -> billing_account con canale_origine='SHOP'.
+  #
+  # Finora la verifica era applicativa (service-side). Questa migration la
+  # blinda nel DB per bloccare qualsiasi writer (backend, Liquibase, psql
+  # manuale) che tentasse di collegare una ricevuta shop a un BA portale
+  # o ADMIN. La ricevuta shop vive su BA dedicato (decisione di dominio
+  # 20-04-2026: shop e' canale B2C autonomo, BA separati per canale).
+  #
+  # Eventi coperti:
+  #   - BEFORE INSERT (qualsiasi billing_account_id, sempre verificato)
+  #   - BEFORE UPDATE OF billing_account_id (scatta solo se la FK cambia,
+  #     per performance)
+  #
+  # Codice errore: E_SHOP_RICEVUTA_BA_CANALE_INVALIDO (id 386, seed in
+  # 80_data/sql/config/messaggi_errore.csv). Messaggio format: "Ricevuta
+  # shop %s: il billing_account collegato ha canale_origine %s, atteso SHOP.".
+  #
+  # 2 changeSet in sequenza:
+  #   02-01 funzione trigger shop.trgfn_ricevute_guard_ba_canale
+  #   02-02 trigger BEFORE INS + UPD OF billing_account_id su shop.ricevute
+  # ---------------------------------------------------------------------------
+
+  - changeSet:
+      id: 20260421-02-01-create-trgfn-shop-ricevute-guard-ba-canale
+      author: mctit
+      runOnChange: true
+      validCheckSum: [ANY]
+      comment: >
+        Crea trigger function shop.trgfn_ricevute_guard_ba_canale: verifica
+        che il billing_account referenziato da shop.ricevute abbia
+        canale_origine='SHOP'. Fail-fast con E_SHOP_RICEVUTA_BA_CANALE_INVALIDO.
+        Applicata BEFORE INSERT/UPDATE OF billing_account_id dal trigger
+        02-02. Scelta plpgsql (non sql) per accesso a TG_OP e costruzione
+        payload jsonb.
+      preConditions:
+        - onFail: HALT
+        - and:
+          - tableExists:
+              schemaName: shop
+              tableName: ricevute
+          - columnExists:
+              schemaName: anagrafiche
+              tableName: billing_account
+              columnName: canale_origine
+          - sqlCheck:
+              expectedResult: 1
+              sql: |
+                -- Il codice errore deve esistere nel seed messaggi_errore.
+                SELECT COUNT(*)
+                  FROM config.messaggi_errore
+                 WHERE codice = 'E_SHOP_RICEVUTA_BA_CANALE_INVALIDO';
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION shop.trgfn_ricevute_guard_ba_canale()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_ba_canale config.canale_origine;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Vincolare shop.ricevute.billing_account_id a puntare
+                  --   SOLO a billing_account con canale_origine='SHOP'.
+                  --   L'invariante protegge la separazione di canale
+                  --   (decisione dominio 20-04-2026): ricevute shop vivono
+                  --   su BA dedicati, portale su BA portale, ADMIN su BA
+                  --   ADMIN.
+                  --
+                  -- Regole:
+                  --   1. INSERT: sempre verifica (NEW.billing_account_id e'
+                  --      NOT NULL per constraint tabella).
+                  --   2. UPDATE OF billing_account_id: scatta solo se la FK
+                  --      cambia; eventuali UPDATE su altri campi sono
+                  --      trasparenti (performance).
+                  --   3. SELECT lookup su billing_account: gia' protetto
+                  --      dalla FK fk_shop_ricevute_billing_account; qui
+                  --      interroghiamo la colonna canale_origine.
+                  --   4. Se BA non trovato (race con DELETE): la FK
+                  --      fk_shop_ricevute_billing_account gia' garantisce
+                  --      l'esistenza. Il v_ba_canale NULL non dovrebbe
+                  --      mai verificarsi in pratica, ma fail-closed.
+                  -- =========================================================
+
+                  SELECT ba.canale_origine
+                    INTO v_ba_canale
+                    FROM anagrafiche.billing_account ba
+                   WHERE ba.id = NEW.billing_account_id;
+
+                  IF v_ba_canale IS DISTINCT FROM 'SHOP'::config.canale_origine THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          'shop.trgfn_ricevute_guard_ba_canale',
+                          'E_SHOP_RICEVUTA_BA_CANALE_INVALIDO',
+                          jsonb_build_object(
+                              'op', TG_OP,
+                              'ricevuta_id', NEW.id,
+                              'billing_account_id', NEW.billing_account_id,
+                              'canale_ba', COALESCE(v_ba_canale::text, 'NULL')
+                          ),
+                          NULL::uuid,
+                          format(
+                              'Ricevuta shop %s: il billing_account collegato ha canale_origine %s, atteso SHOP.',
+                              NEW.id,
+                              COALESCE(v_ba_canale::text, 'NULL')
+                          )
+                      );
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION shop.trgfn_ricevute_guard_ba_canale() IS
+                  'Trigger function: blocca INSERT/UPDATE di shop.ricevute se '
+                  'billing_account_id punta a un BA con canale_origine != SHOP. '
+                  'Applicata BEFORE INSERT + UPDATE OF billing_account_id. '
+                  'Codice errore E_SHOP_RICEVUTA_BA_CANALE_INVALIDO (id 386).';
+      rollback:
+        - sql:
+            sql: DROP FUNCTION IF EXISTS shop.trgfn_ricevute_guard_ba_canale();
+
+  - changeSet:
+      id: 20260421-02-02-create-trg-shop-ricevute-guard-ba-canale
+      author: mctit
+      runOnChange: true
+      validCheckSum: [ANY]
+      comment: >
+        Trigger BEFORE INSERT + BEFORE UPDATE OF billing_account_id su
+        shop.ricevute. Fase _a10_ (guard/block), suffisso _ins_upd per
+        entrambi gli eventi. Nome prefissato con schema 'shop' per
+        convenzione coerente con trg_shop_* sullo schema dedicato.
+      preConditions:
+        - onFail: HALT
+        - and:
+          - tableExists:
+              schemaName: shop
+              tableName: ricevute
+          - sqlCheck:
+              expectedResult: 1
+              sql: |
+                SELECT COUNT(*)
+                  FROM pg_proc p
+                  JOIN pg_namespace n ON n.oid = p.pronamespace
+                 WHERE n.nspname = 'shop'
+                   AND p.proname = 'trgfn_ricevute_guard_ba_canale';
+      changes:
+        - sql:
+            splitStatements: true
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_shop_ricevute_a10_guard_ba_canale_ins_upd
+                  ON shop.ricevute;
+
+              CREATE TRIGGER trg_shop_ricevute_a10_guard_ba_canale_ins_upd
+                  BEFORE INSERT OR UPDATE OF billing_account_id
+                  ON shop.ricevute
+                  FOR EACH ROW
+                  EXECUTE FUNCTION shop.trgfn_ricevute_guard_ba_canale();
+      rollback:
+        - sql:
+            sql: |
+              DROP TRIGGER IF EXISTS trg_shop_ricevute_a10_guard_ba_canale_ins_upd
+                  ON shop.ricevute;

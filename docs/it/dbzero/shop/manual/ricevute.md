@@ -41,8 +41,8 @@ elettronica), per tre motivi:
 * `soggetto_ruolo_id` → `anagrafiche.soggetti_ruoli(id)` — SR del cliente shop
   (tipo_ruolo 'CL'). Match con l'identita `SHOP_CUSTOMER` per RLS.
 * `billing_account_id` → `anagrafiche.billing_account(id)` — **deve** avere
-  `canale_origine = 'SHOP'` (verifica applicativa lato service; guard DB
-  rinviato a migration successiva).
+  `canale_origine = 'SHOP'`. L'invariante e' blindato lato DB dal trigger
+  `trg_shop_ricevute_a10_guard_ba_canale_ins_upd` (vedi §Trigger).
 * `ordine_shop_id` → `vendite.ordini(id)` opzionale — ordine shop di
   riferimento (con `canale_origine = 'SHOP'`). Nullable per ricevute
   estemporanee senza ordine formale.
@@ -61,11 +61,11 @@ elettronica), per tre motivi:
   `totale_lordo >= 0`, `totale_iva >= 0`, `totale_iva <= totale_lordo`.
 * **Esito pagamento tra valori ammessi** — CHECK
   `chk_shop_ricevute_pagamento_esito`: `PENDING`, `OK`, `KO`, `RIMBORSATO`.
-* **Coerenza BA→canale** (non enforced da trigger DB, gestita lato
-  service): il `billing_account_id` deve avere `canale_origine = 'SHOP'`.
-  Migration futura potra' formalizzare un trigger guard che solleva
-  `E_SHOP_RICEVUTA_BA_CANALE_INVALIDO` (codice errore 386 gia' presente
-  nel CSV).
+* **Coerenza BA→canale** (enforced DB-side dal 21-04-2026): il
+  `billing_account_id` deve avere `canale_origine = 'SHOP'`. Il trigger
+  `trg_shop_ricevute_a10_guard_ba_canale_ins_upd` (vedi §Trigger) solleva
+  `E_SHOP_RICEVUTA_BA_CANALE_INVALIDO` (codice errore 386) su INSERT o
+  UPDATE del FK con BA di canale diverso.
 * **Coerenza ordine→canale** (non enforced): se `ordine_shop_id` e'
   valorizzato, il corrispondente `vendite.ordini` deve avere
   `canale_origine = 'SHOP'`.
@@ -99,6 +99,22 @@ riferimento pagamento, dati di spedizione, ecc.
 
 ---
 
+### Trigger
+
+* **`trg_shop_ricevute_a10_guard_ba_canale_ins_upd`** — BEFORE INSERT e
+  BEFORE UPDATE OF `billing_account_id`. Esegue
+  `shop.trgfn_ricevute_guard_ba_canale()` che verifica
+  `billing_account.canale_origine = 'SHOP'` e solleva
+  `E_SHOP_RICEVUTA_BA_CANALE_INVALIDO` (id 386) se diverso. Migration
+  `20260421-02`. Fail-closed se il BA non esiste (protezione ulteriore
+  oltre la FK).
+
+I trigger framework (audit `data_insert`/`user_insert`/`data_update`/
+`user_update`, `tx_id`, storicizzazione) sono applicati
+dall'automation post-creazione tabella — non elencati qui.
+
+---
+
 ### Policy RLS (dry-run)
 
 * **`rls_shop_ricevute_self_ownership`** (CREATE POLICY migration
@@ -117,6 +133,7 @@ con gate `OPERATORE` + scope EF_WHITELIST (o whitelist dedicata per shop).
   in MVP si usa la seconda opzione
 * `shop.carrelli` + `shop.carrelli_righe` per gestire sessioni di acquisto
   non ancora finalizzate
-* Trigger guard DB coerenza BA→canale (al momento solo service-side)
+* Trigger guard DB coerenza ordine→canale (oggi solo service-side; il
+  vincolo BA→canale e' gia' blindato dal 21-04-2026)
 * Collegamento al modulo `pagamenti` per riconciliazione PSP
 * Policy RLS operatore attiva

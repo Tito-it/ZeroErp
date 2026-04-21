@@ -1,0 +1,57 @@
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260421-01-drop-fn-get-profili-accesso-applicabili-1arg-mctit.yaml
+
+  - changeSet:
+      id: 20260421-01-drop-fn-get-profili-accesso-applicabili-1arg
+      author: mctit
+      failOnError: true
+      comment: >
+        Droppa la signature legacy 1-arg di
+        script.fn_get_profili_accesso_applicabili per rimuovere
+        l'ambiguita' di overload introdotta dalla 20260420-11-02 (ha
+        creato la 2-arg con p_ruolo_applicativo DEFAULT NULL senza
+        rimpiazzare la 1-arg della 20260419-50, perche' CREATE OR
+        REPLACE agisce solo su stessa firma). Tutti i chiamanti
+        (4 resolver DB: fn_resolve_livello_area, fn_check_azione_processo,
+        fn_get_user_permissions_map, fn_get_user_actions_map +
+        permissions_resolver.py + pgTAP test-fn-get-profili-accesso-
+        applicabili) passano 1 arg: post-drop PG risolve sulla 2-arg
+        con default NULL. Il predicato "p_ruolo_applicativo IS NULL OR
+        id.ruolo_applicativo = p_ruolo_applicativo" e' idempotente su
+        NULL, quindi comportamento legacy preservato. Non-breaking.
+      preConditions:
+        - onFail: HALT
+        - and:
+          - sqlCheck:
+              expectedResult: 1
+              sql: |
+                -- La 2-arg DEVE esistere: e' il fallback per le chiamate 1-arg.
+                SELECT COUNT(*)
+                  FROM pg_proc p
+                  JOIN pg_namespace n ON n.oid = p.pronamespace
+                 WHERE n.nspname = 'script'
+                   AND p.proname = 'fn_get_profili_accesso_applicabili'
+                   AND pg_get_function_identity_arguments(p.oid) =
+                       'p_auth_user_id integer, p_ruolo_applicativo config.ruolo_applicativo';
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_get_profili_accesso_applicabili(integer);
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              -- Ricrea la 1-arg come thin wrapper della 2-arg (no duplicazione
+              -- body). Richiede che la 2-arg esista al momento del rollback.
+              CREATE OR REPLACE FUNCTION script.fn_get_profili_accesso_applicabili(
+                  p_auth_user_id integer
+              )
+              RETURNS TABLE(profilo_accesso_id integer, priorita smallint)
+              LANGUAGE sql STABLE
+              AS $$
+                  SELECT profilo_accesso_id, priorita
+                    FROM script.fn_get_profili_accesso_applicabili(
+                        p_auth_user_id, NULL::config.ruolo_applicativo
+                    );
+              $$;
