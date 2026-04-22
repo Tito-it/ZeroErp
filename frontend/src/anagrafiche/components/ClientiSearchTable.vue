@@ -6,7 +6,7 @@ import { useI18n } from 'vue-i18n'
 import { useClientiStore } from '../stores/clienti'
 import { useSearchTable } from '../../core/composables/useSearchTable'
 import { useTabFreshness } from '../../core/composables/useTabFreshness'
-import { MANAGE_ICONS, TIPO_RUOLO } from '../../core/constants'
+import { MANAGE_ICONS, TIPO_RUOLO, TAB_ENTITIES } from '../../core/constants'
 import { displayDate } from '../../core/utils/date'
 import { statoClienteSeverity } from '../../core/utils/severity'
 import DataTable from 'primevue/datatable'
@@ -97,7 +97,7 @@ function dataSospRiatt(row) {
     : { label: 'clienti.col_riattivato_il', date: riatt }
 }
 
-useTabFreshness(store, 'cliente')
+useTabFreshness(store, TAB_ENTITIES.CLIENTE)
 // La lista parte vuota — salvo che arrivi con search precaricata da URL/context.
 onMounted(() => {
   if (searchText.value) {

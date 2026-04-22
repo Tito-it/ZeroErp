@@ -18,7 +18,8 @@ import ReloadButton from '../../core/components/ReloadButton.vue'
 import ReadonlyBadge from '../../core/components/ReadonlyBadge.vue'
 import AccessoBloccatoPanel from '../../core/components/AccessoBloccatoPanel.vue'
 import { useInjectBlocked } from '../../core/composables/useReadonlyMode'
-import { MANAGE_ICONS } from '../../core/constants'
+import { MANAGE_ICONS, TAB_ENTITIES } from '../../core/constants'
+import { buildBoolOptions } from '../../core/utils/options'
 
 const emit = defineEmits(['new', 'row-click', 'manage-uom', 'manage-bom', 'manage-note'])
 const { t } = useI18n()
@@ -30,15 +31,10 @@ const { searchText, onPage, onSort, applyFilters, reload, paginatorProps } = use
 
 const attivoFilter = ref(true)
 const compositoFilter = ref(null)
-const utilityFilter = ref(null)
 const tipologiaFilter = ref(null)
 const gruppoFilter = ref(null)
 
-const boolOptions = [
-  { value: null, label: t('common.all') },
-  { value: true, label: t('common.yes') },
-  { value: false, label: t('common.no') }
-]
+const boolOptions = buildBoolOptions(t)
 const attivoOptions = [
   { value: true, label: t('common.active') },
   { value: false, label: t('common.inactive') },
@@ -50,10 +46,6 @@ function onAttivoChange() {
 }
 function onCompositoChange() {
   store.filters.is_composito = compositoFilter.value
-  applyFilters()
-}
-function onUtilityChange() {
-  store.filters.voce_utility = utilityFilter.value
   applyFilters()
 }
 function onTipologiaChange() {
@@ -93,7 +85,7 @@ function buildRowActions(data) {
   ]
 }
 
-useTabFreshness(store, 'articolo')
+useTabFreshness(store, TAB_ENTITIES.ARTICOLO)
 onMounted(() => {
   if (searchText.value) {
     store.fetchList()
@@ -113,8 +105,6 @@ onMounted(() => {
           :placeholder="t('catalogo.filtro_attivo')" @change="onAttivoChange" style="width: 130px;" />
         <Select v-model="compositoFilter" :options="boolOptions" option-label="label" option-value="value"
           :placeholder="t('catalogo.filtro_composito')" show-clear @change="onCompositoChange" style="width: 160px;" />
-        <Select v-model="utilityFilter" :options="boolOptions" option-label="label" option-value="value"
-          :placeholder="t('catalogo.filtro_utility')" show-clear @change="onUtilityChange" style="width: 160px;" />
         <LookupSelect v-model="tipologiaFilter" rel="vendite.articoli_tipologie"
           :placeholder="t('catalogo.filtro_tipologia')" show-clear @change="onTipologiaChange" style="width: 150px;" />
         <LookupSelect v-model="gruppoFilter" rel="vendite.articoli_gruppi"

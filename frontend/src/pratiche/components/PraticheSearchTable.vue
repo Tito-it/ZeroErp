@@ -21,6 +21,7 @@ import ReloadButton from '../../core/components/ReloadButton.vue'
 import ReadonlyBadge from '../../core/components/ReadonlyBadge.vue'
 import AccessoBloccatoPanel from '../../core/components/AccessoBloccatoPanel.vue'
 import { useInjectBlocked } from '../../core/composables/useReadonlyMode'
+import { TAB_ENTITIES } from '../../core/constants'
 
 const emit = defineEmits(['new', 'row-click'])
 const { t } = useI18n()
@@ -60,7 +61,7 @@ function onDataAChange() {
 
 function onRowClick(event) { emit('row-click', event.data) }
 
-useTabFreshness(store, 'pratica')
+useTabFreshness(store, TAB_ENTITIES.PRATICA)
 // La lista parte vuota — l'operatore deve cercare o applicare un filtro.
 
 // Scopo: calcolo dinamico altezza scroll DataTable.

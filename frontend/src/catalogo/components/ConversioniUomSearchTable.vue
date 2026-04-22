@@ -15,6 +15,7 @@ import ReloadButton from '../../core/components/ReloadButton.vue'
 import ReadonlyBadge from '../../core/components/ReadonlyBadge.vue'
 import AccessoBloccatoPanel from '../../core/components/AccessoBloccatoPanel.vue'
 import { useInjectBlocked } from '../../core/composables/useReadonlyMode'
+import { TAB_ENTITIES } from '../../core/constants'
 
 const emit = defineEmits(['new', 'row-click'])
 const { t } = useI18n()
@@ -26,7 +27,7 @@ const { searchText, onPage, onSort, reload, paginatorProps } = useSearchTable(st
 
 function onRowClick(event) { emit('row-click', event.data) }
 
-useTabFreshness(store, 'conversioni_uom')
+useTabFreshness(store, TAB_ENTITIES.CONVERSIONI_UOM)
 onMounted(() => store.fetchList())
 </script>
 

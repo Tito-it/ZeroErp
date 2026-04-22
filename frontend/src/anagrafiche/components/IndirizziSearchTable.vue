@@ -16,6 +16,7 @@ import ReloadButton from '../../core/components/ReloadButton.vue'
 import ReadonlyBadge from '../../core/components/ReadonlyBadge.vue'
 import AccessoBloccatoPanel from '../../core/components/AccessoBloccatoPanel.vue'
 import { useInjectBlocked } from '../../core/composables/useReadonlyMode'
+import { TAB_ENTITIES } from '../../core/constants'
 
 const emit = defineEmits(['row-click', 'new'])
 const { t } = useI18n()
@@ -25,7 +26,7 @@ const { searchText, onPage, onSort, applyFilters, reload, paginatorProps } = use
 
 const comuneFilter = ref(null)
 
-useTabFreshness(store, 'indirizzo')
+useTabFreshness(store, TAB_ENTITIES.INDIRIZZO)
 // La lista parte vuota — salvo che arrivi con search precaricata da URL/context.
 onMounted(() => {
   if (searchText.value) {

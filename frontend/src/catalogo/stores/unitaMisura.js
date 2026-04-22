@@ -3,6 +3,7 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { listUnitaMisura, getUnitaMisura, createUnitaMisura, updateUnitaMisura, disattivaUnitaMisura } from '../api/catalogo'
 import { useTabEvents } from '../../core/composables/useTabEvents'
+import { TAB_ENTITIES } from '../../core/constants'
 
 export const useUnitaMisuraStore = defineStore('catalogo-unita-misura', () => {
   const { emitDataChanged } = useTabEvents()
@@ -25,7 +26,14 @@ export const useUnitaMisuraStore = defineStore('catalogo-unita-misura', () => {
     const f = filters.value
     const searchTerm = (f.search || '').trim()
 
-    if (searchTerm.length > 0 && searchTerm.length < 3) return
+    if (searchTerm.length > 0 && searchTerm.length < 3) {
+      if (hasSearched.value) {
+        items.value = []
+        totalRecords.value = 0
+        hasSearched.value = false
+      }
+      return
+    }
 
     loading.value = true
     try {
@@ -55,19 +63,19 @@ export const useUnitaMisuraStore = defineStore('catalogo-unita-misura', () => {
 
   async function create(payload) {
     const res = await createUnitaMisura(payload)
-    emitDataChanged('unita_misura', res.data.data.id)
+    emitDataChanged(TAB_ENTITIES.UNITA_MISURA, res.data.data.id)
     return res.data.data
   }
 
   async function update(id, payload) {
     const res = await updateUnitaMisura(id, payload)
-    emitDataChanged('unita_misura', id)
+    emitDataChanged(TAB_ENTITIES.UNITA_MISURA, id)
     return res.data.data
   }
 
   async function disattiva(id) {
     const res = await disattivaUnitaMisura(id)
-    emitDataChanged('unita_misura', id)
+    emitDataChanged(TAB_ENTITIES.UNITA_MISURA, id)
     return res.data.data
   }
 

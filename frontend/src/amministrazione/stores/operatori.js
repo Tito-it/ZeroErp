@@ -21,6 +21,7 @@ import {
   putEmittentiScope
 } from '../api/amministrazione'
 import { useTabEvents } from '../../core/composables/useTabEvents'
+import { TAB_ENTITIES } from '../../core/constants'
 
 const { emitDataChanged } = useTabEvents()
 
@@ -93,28 +94,28 @@ export const useOperatoriStore = defineStore('amm-operatori', () => {
   async function create(payload) {
     const res = await createOperatore(payload)
     const created = res.data.data
-    emitDataChanged('operatore', created.auth_user_id)
+    emitDataChanged(TAB_ENTITIES.OPERATORE, created.auth_user_id)
     return created
   }
 
   async function update(authUserId, payload) {
     const res = await updateOperatore(authUserId, payload)
     currentOperatore.value = res.data.data
-    emitDataChanged('operatore', authUserId)
+    emitDataChanged(TAB_ENTITIES.OPERATORE, authUserId)
     return res.data.data
   }
 
   async function disabilita(authUserId) {
     const res = await disabilitaOperatore(authUserId)
     currentOperatore.value = res.data.data
-    emitDataChanged('operatore', authUserId)
+    emitDataChanged(TAB_ENTITIES.OPERATORE, authUserId)
     return res.data.data
   }
 
   async function riattiva(authUserId) {
     const res = await riattivaOperatore(authUserId)
     currentOperatore.value = res.data.data
-    emitDataChanged('operatore', authUserId)
+    emitDataChanged(TAB_ENTITIES.OPERATORE, authUserId)
     return res.data.data
   }
 
@@ -127,7 +128,7 @@ export const useOperatoriStore = defineStore('amm-operatori', () => {
   async function saveOverrideAree(authUserId, items) {
     const res = await putOverrideAree(authUserId, items)
     overrideAree.value = res.data.data.results
-    emitDataChanged('operatore', authUserId)
+    emitDataChanged(TAB_ENTITIES.OPERATORE, authUserId)
   }
 
   // --- Override azioni ---
@@ -139,7 +140,7 @@ export const useOperatoriStore = defineStore('amm-operatori', () => {
   async function saveOverrideAzioni(authUserId, items) {
     const res = await putOverrideAzioni(authUserId, items)
     overrideAzioni.value = res.data.data.results
-    emitDataChanged('operatore', authUserId)
+    emitDataChanged(TAB_ENTITIES.OPERATORE, authUserId)
   }
 
   // --- Override oggetti (v2 permessi) ---
@@ -151,7 +152,7 @@ export const useOperatoriStore = defineStore('amm-operatori', () => {
   async function saveOverrideOggetti(authUserId, items) {
     const res = await putOverrideOggetti(authUserId, items)
     overrideOggetti.value = res.data.data.results
-    emitDataChanged('operatore', authUserId)
+    emitDataChanged(TAB_ENTITIES.OPERATORE, authUserId)
   }
 
   // --- Emittenti scope ---

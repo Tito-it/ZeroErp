@@ -6,6 +6,7 @@ import { useI18n } from 'vue-i18n'
 import { useComuniStore } from '../../anagrafiche/stores/comuni'
 import { useSearchTable } from '../composables/useSearchTable'
 import { useTabFreshness } from '../composables/useTabFreshness'
+import { TAB_ENTITIES } from '../constants'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import InputText from 'primevue/inputtext'
@@ -17,7 +18,7 @@ const { t } = useI18n()
 const store = useComuniStore()
 const { searchText, onPage, onSort, reload, paginatorProps } = useSearchTable(store, { defaultSortField: 'descrizione' })
 
-useTabFreshness(store, 'comune')
+useTabFreshness(store, TAB_ENTITIES.COMUNE)
 onMounted(() => { store.fetchList() })
 </script>
 

@@ -13,7 +13,7 @@ import { useLookup } from '../../core/composables/useLookup'
 import { listUnitaOrganizzative } from '../api/amministrazione'
 import { useSetupStatus } from '../composables/useSetupStatus'
 import { buildFilterSuperAdminOptions, buildFilterStatoOptions } from '../constants'
-import { RUOLO_APPLICATIVO } from '../../core/constants'
+import { RUOLO_APPLICATIVO, READONLY_DOMAINS, TAB_ENTITIES } from '../../core/constants'
 import OperatoreDrawer from '../components/OperatoreDrawer.vue'
 import OperatorePermessiDrawer from '../components/OperatorePermessiDrawer.vue'
 import OperatoriNonAssegnatiBanner from '../components/OperatoriNonAssegnatiBanner.vue'
@@ -35,12 +35,12 @@ const unitaOrg = useLookup(listUnitaOrganizzative, { immediate: true })
 const { searchText, onPage, onSort, applyFilters, reload, paginatorProps } = useSearchTable(store)
 const drawer = useDrawerState()
 const permessiDrawer = useDrawerState()
-const { isReadonly, isBlocked } = useReadonlyMode('amm_software')
+const { isReadonly, isBlocked } = useReadonlyMode(READONLY_DOMAINS.AMM_SOFTWARE)
 // Destruct: Vue auto-unwrap i ref destrutturati nel template, non nel
 // reactive object proxy. Pattern idiomatic.
 const { status: setupStatusData, load: loadSetupStatus, hasOperatoriNonAssegnati } = useSetupStatus()
 
-useTabFreshness(store, 'operatore')
+useTabFreshness(store, TAB_ENTITIES.OPERATORE)
 
 // Filtri locali (extra rispetto a search).
 // Multi-face auth Stage B: il vecchio filtro ruolo_sistema (ADMIN/OPERATIVO/

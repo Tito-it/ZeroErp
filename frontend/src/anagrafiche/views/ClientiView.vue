@@ -15,14 +15,14 @@ import ContattiSoggettoDrawer from '../../core/components/ContattiSoggettoDrawer
 import IndirizziSoggettoDrawer from '../../core/components/IndirizziSoggettoDrawer.vue'
 import ContiBancariDrawer from '../../core/components/ContiBancariDrawer.vue'
 import ContrattiBillingAccountDrawer from '../../vendite/components/ContrattiBillingAccountDrawer.vue'
-import { TIPO_RUOLO } from '../../core/constants'
+import { TIPO_RUOLO, READONLY_DOMAINS, READONLY_MODELS } from '../../core/constants'
 
 const { t } = useI18n()
 const drawer = useDrawerState()
 const store = useClientiStore()
 const ctx = useContextStore()
 const route = useRoute()
-useReadonlyMode('anagrafiche', 'cliente')
+useReadonlyMode(READONLY_DOMAINS.ANAGRAFICHE, READONLY_MODELS.CLIENTE)
 
 // Se la ricerca universale ha selezionato un cliente, apri il drawer in edit.
 // Il filtro lista viene applicato automaticamente da useSearchTable (legge ctx.searchTerm).

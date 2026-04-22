@@ -10,6 +10,7 @@ import {
   fetchCodaLavoro, prendiInCaricoFlusso, listFlussi,
 } from '../api/pratiche-api'
 import { useTabEvents } from '../../core/composables/useTabEvents'
+import { TAB_ENTITIES } from '../../core/constants'
 import { useAuthStore } from '../../stores/auth'
 
 export const usePraticheStore = defineStore('pratiche', () => {
@@ -45,8 +46,14 @@ export const usePraticheStore = defineStore('pratiche', () => {
     const hasFilters = f.stato_id != null || f.priorita_id != null
       || f.risorsa_umana_id != null || f.data_a != null
 
-    // Search con meno di 3 caratteri e nessun filtro attivo → reset a stato iniziale
+    // Search con meno di 3 caratteri e nessun filtro attivo → svuota i
+    // risultati precedenti (coerenza UX: niente dati obsoleti visibili).
     if (searchTerm.length > 0 && searchTerm.length < 3 && !hasFilters) {
+      if (hasSearched.value) {
+        items.value = []
+        totalRecords.value = 0
+        hasSearched.value = false
+      }
       return
     }
     if (!searchTerm && !hasFilters && !hasSearched.value) {
@@ -107,42 +114,42 @@ export const usePraticheStore = defineStore('pratiche', () => {
   async function create(payload) {
     const emittenteId = auth.emittenteCorrente?.id
     const res = await createPratica({ ...payload, emittente_fiscale_id: emittenteId })
-    emitDataChanged('pratica', res.data.data.id)
+    emitDataChanged(TAB_ENTITIES.PRATICA, res.data.data.id)
     return res.data.data
   }
 
   // Scopo: Aggiorna campi editabili della pratica.
   async function update(praticaId, payload) {
     const res = await updatePratica(praticaId, payload)
-    emitDataChanged('pratica', praticaId)
+    emitDataChanged(TAB_ENTITIES.PRATICA, praticaId)
     return res.data.data
   }
 
   // Scopo: Cambia stato pratica (BOZZA→APERTA, APERTA→CHIUSA, ecc.).
   async function cambiaStato(praticaId, payload) {
     const res = await cambiaStatoPratica(praticaId, payload)
-    emitDataChanged('pratica', praticaId)
+    emitDataChanged(TAB_ENTITIES.PRATICA, praticaId)
     return res.data.data
   }
 
   // Scopo: Assegna pratica a risorsa umana / unita' organizzativa.
   async function assegna(praticaId, payload) {
     const res = await assegnaPratica(praticaId, payload)
-    emitDataChanged('pratica', praticaId)
+    emitDataChanged(TAB_ENTITIES.PRATICA, praticaId)
     return res.data.data
   }
 
   // Scopo: Sospendi pratica.
   async function sospendi(praticaId, payload = {}) {
     const res = await sospendiPratica(praticaId, payload)
-    emitDataChanged('pratica', praticaId)
+    emitDataChanged(TAB_ENTITIES.PRATICA, praticaId)
     return res.data.data
   }
 
   // Scopo: Riattiva pratica sospesa.
   async function riattiva(praticaId, payload = {}) {
     const res = await riattivaPratica(praticaId, payload)
-    emitDataChanged('pratica', praticaId)
+    emitDataChanged(TAB_ENTITIES.PRATICA, praticaId)
     return res.data.data
   }
 
@@ -179,7 +186,7 @@ export const usePraticheStore = defineStore('pratiche', () => {
   // Scopo: Prendi in carico un flusso DA_ESEGUIRE.
   async function prendiInCarico(flussoId) {
     const res = await prendiInCaricoFlusso(flussoId)
-    emitDataChanged('pratica')
+    emitDataChanged(TAB_ENTITIES.PRATICA)
     return res.data.data
   }
 

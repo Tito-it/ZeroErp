@@ -13,6 +13,7 @@ import { listMatriceIndirizzi, updateMatriceIndirizzo } from '../api/anagrafiche
 import { displayDate } from '../../core/utils/date'
 import { defineStore } from 'pinia'
 import { useInjectBlocked } from '../../core/composables/useReadonlyMode'
+import { TAB_ENTITIES } from '../../core/constants'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import InputText from 'primevue/inputtext'
@@ -132,7 +133,7 @@ async function changeFallback(row, newFallbackId) {
   }
 }
 
-useTabFreshness(store, 'matrice-indirizzi')
+useTabFreshness(store, TAB_ENTITIES.MATRICE_INDIRIZZI)
 onMounted(() => { store.fetchList() })
 </script>
 

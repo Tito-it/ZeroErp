@@ -4,6 +4,7 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { listFornitori, getFornitore, createFornitore, updateFornitore } from '../api/anagrafiche'
 import { useTabEvents } from '../../core/composables/useTabEvents'
+import { TAB_ENTITIES } from '../../core/constants'
 
 export const useFornitoriStore = defineStore('anagrafiche-fornitori', () => {
   const { emitDataChanged } = useTabEvents()
@@ -29,8 +30,14 @@ export const useFornitoriStore = defineStore('anagrafiche-fornitori', () => {
     const searchTerm = (f.search || '').trim()
     const hasFilters = f.stato_fornitore_id != null || f.attivo != null
 
-    // Search con meno di 3 caratteri e nessun filtro attivo → ignora
+    // Search con meno di 3 caratteri e nessun filtro attivo → svuota i
+    // risultati precedenti (coerenza UX: niente dati obsoleti visibili).
     if (searchTerm.length > 0 && searchTerm.length < 3 && !hasFilters) {
+      if (hasSearched.value) {
+        items.value = []
+        totalRecords.value = 0
+        hasSearched.value = false
+      }
       return
     }
     if (!searchTerm && !hasFilters && !hasSearched.value) {
@@ -74,14 +81,14 @@ export const useFornitoriStore = defineStore('anagrafiche-fornitori', () => {
   // Scopo: Crea fornitore (ruolo FO + insert).
   async function create(payload) {
     const res = await createFornitore(payload)
-    emitDataChanged('fornitore', res.data.data.id)
+    emitDataChanged(TAB_ENTITIES.FORNITORE, res.data.data.id)
     return res.data.data
   }
 
   // Scopo: Aggiorna campi editabili del fornitore.
   async function update(fornitoreId, payload) {
     const res = await updateFornitore(fornitoreId, payload)
-    emitDataChanged('fornitore', fornitoreId)
+    emitDataChanged(TAB_ENTITIES.FORNITORE, fornitoreId)
     return res.data.data
   }
 

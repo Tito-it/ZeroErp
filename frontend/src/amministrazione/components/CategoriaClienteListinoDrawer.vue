@@ -9,6 +9,7 @@ import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useCategorieClientiListiniStore } from '../stores/categorieClientiListini'
 import { useApiHandler } from '../../core/composables/useApiHandler'
+import { useNotify } from '../../core/composables/useNotify'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useLookup } from '../../core/composables/useLookup'
 import { listEmittentiFiscali } from '../api/amministrazione'
@@ -27,6 +28,7 @@ import Message from 'primevue/message'
 const { t } = useI18n()
 const store = useCategorieClientiListiniStore()
 const { execute, loading } = useApiHandler()
+const notify = useNotify()
 const isReadonly = useInjectReadonly()
 const emittentiLookup = useLookup(listEmittentiFiscali, { immediate: true })
 
@@ -110,11 +112,18 @@ watch(
 )
 
 // Scopo: Coerenza tipo_variazione <-> valore_variazione (anticipo UI del
-//        CHECK DB). Svuota valore quando tipo viene annullato; forza valore
-//        se tipo e' scelto ma valore vuoto -> disabled save.
+//        CHECK DB). Svuota valore quando tipo viene annullato oppure cambia
+//        (la semantica del valore e' diversa tra PERCENTUALE e VALORE_FISSO,
+//        tenere 10 da % a fisso e' fonte d'errore). Toast info per segnalare.
 function onTipoVariazioneChange(event) {
+  const hadValue = form.value.valore_variazione != null
   if (event.value == null) {
     form.value.valore_variazione = null
+    return
+  }
+  if (hadValue) {
+    form.value.valore_variazione = null
+    notify.warn(t('common.tipo_variazione_reset'))
   }
 }
 

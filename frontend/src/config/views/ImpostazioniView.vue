@@ -5,6 +5,7 @@ import { useI18n } from 'vue-i18n'
 import { useImpostazioniStore } from '../stores/impostazioni'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useReadonlyMode } from '../../core/composables/useReadonlyMode'
+import { READONLY_DOMAINS } from '../../core/constants'
 import { PARAMETER_SCOPE } from '../../core/composables/useParameterSettings'
 import ImpostazioniSearchTable from '../components/ImpostazioniSearchTable.vue'
 import ImpostazioniOverrideDrawer from '../components/ImpostazioniOverrideDrawer.vue'
@@ -12,7 +13,7 @@ import ImpostazioniOverrideDrawer from '../components/ImpostazioniOverrideDrawer
 const { t } = useI18n()
 const store = useImpostazioniStore()
 const { execute } = useApiHandler()
-useReadonlyMode('config')
+useReadonlyMode(READONLY_DOMAINS.CONFIG)
 
 const drawerVisible = ref(false)
 const selectedParameter = ref(null)

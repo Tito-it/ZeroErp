@@ -1,530 +1,307 @@
-# Guida – Gestione Listini Prezzo
+# Guida — Gestione Listini e Pricing (v5)
 
-> (latest review 09-04-26 — refactor invariante univocita listini_associazioni Fase 1+2 completate, vedi [WIP listini-commercio](/dev/work-in-progress/listini-commercio))
+> **Ultima revisione**: 22 aprile 2026 — riscrittura completa per il modello
+> pricing v5 (resolver a 3 stadi: promo → contratto → categoria).
 >
-> Destinatari: sviluppatori database, backend e analisti funzionali
+> La versione pre-v5 è archiviata in [gestione-listini-pre-v5](archive/gestione-listini-pre-v5.md)
+> per riferimento storico.
 >
-> Vedi anche
+> **Destinatari**: analisti funzionali, sviluppatori backend/frontend, DBA.
 >
-> * [Analisi e decisioni operative listini](/dev/work-in-progress/gestione-listini) — decisioni architetturali, roadmap DB, integrazione commessa
-> * [vendite.listini](/dbzero/vendite/tabelle/listini)
-> * [vendite.listini_versioni](/dbzero/vendite/tabelle/listini_versioni)
-> * [vendite.listini_righe](/dbzero/vendite/tabelle/listini_righe)
-> * [vendite.listini_associazioni](/dbzero/vendite/tabelle/listini_associazioni)
-> * [vendite.fn_resolve_prezzo_listino](/dbzero/vendite/funzioni/fn_resolve_prezzo_listino)
-> * [API REST Listini](/backend/vendite/manual/api_listini)
-> * [Guida Fatturazione](/guide/fatturazione) — pipeline fatturazione a lotti
-> * [Guida Gestione Commesse](/guide/gestione-commesse) — integrazione prezzo in commessa
+> **Vedi anche**:
+>
+> * [vendite.listini](/dbzero/vendite/tabelle/listini) / [vendite.listini_versioni](/dbzero/vendite/tabelle/listini_versioni) / [vendite.listini_righe](/dbzero/vendite/tabelle/listini_righe)
+> * [anagrafiche.categorie_clienti](/dbzero/anagrafiche/tabelle/categorie_clienti) + [categorie_clienti_listini](/dbzero/anagrafiche/tabelle/categorie_clienti_listini)
+> * [vendite.contratti](/dbzero/vendite/tabelle/contratti) + [contratti_righe](/dbzero/vendite/tabelle/contratti_righe) + [contratti_utilities](/dbzero/vendite/tabelle/contratti_utilities)
+> * [vendite.promo_articoli](/dbzero/vendite/tabelle/promo_articoli)
+> * [vendite.fn_resolve_prezzo_listino_v2](/dbzero/vendite/funzioni/fn_resolve_prezzo_listino_v2)
+> * [vendite.fn_resolve_prezzo_composito](/dbzero/vendite/funzioni/fn_resolve_prezzo_composito)
+> * [PricingService (backend)](/backend/vendite/manual/pricing_service)
+> * [API Contratti](/backend/vendite/manual/api_contratti) / [API Promo articoli](/backend/vendite/manual/api_promo_articoli) / [API Matrice categorie/listini](/backend/anagrafiche/manual/api_categorie_clienti_listini)
+> * [Sprint listini v5 (WIP)](/dev/work-in-progress/sviluppo-listini-v5) — roadmap + decisioni chiuse
 
 ---
 
-## Introduzione
+## 1. Cosa risponde il sistema pricing
 
-In Zero ERP il **listino** non e un semplice elenco prezzi: e un sistema multi-livello che risponde alla domanda *"quanto costa questo articolo, per questo contesto, in questa data?"* tenendo conto di chi compra, quale utility eroga il servizio e chi emette la fattura.
+> *"Quanto costa questo articolo, per questo cliente, in questa data, per questa utility?"*
 
-Questa guida spiega **come funziona il sistema listini** — quali entita lo compongono, come si relazionano, come il resolver determina il prezzo e quali regole governano il processo. La logica e la stessa sia per l'ambito utility (gas, energia, idrico) sia per l'ambito commercio (servizi, manifatturiero).
+Il sistema pricing v5 risponde deterministicamente attraverso **3 stadi** valutati in sequenza:
 
-**Cosa troverai in questa guida:**
+1. **STADIO 0 — PROMO**: esiste una promozione temporanea attiva su quella coppia (articolo, uom)? Se sì, vince.
+2. **STADIO 1 — CONTRATTO**: il cliente ha un contratto individuale attivo? Se sì, il prezzo viene dal contratto (modalità A/B/C).
+3. **STADIO 2 — CATEGORIA**: in assenza di contratto, il cliente ha una categoria commerciale? Se sì, la matrice categoria→listino determina il prezzo base.
 
-* Le entita coinvolte e il loro ruolo nel processo
-* Il ciclo di vita di un listino (dalla creazione alla chiusura)
-* Come funziona la risoluzione deterministica del prezzo (7 livelli di precedenza)
-* Le regole di tie-break quando piu listini concorrono
-* L'integrazione con commesse e fatturazione
-* Le garanzie di coerenza offerte dal database
-
-### Il modello e generico, non solo per le utility
-
-La struttura listini funziona per qualsiasi tipo di azienda. Il campo `utility_id` sul listino (FK a `config.utilities`, NOT NULL) classifica il servizio erogante: gas, energia, idrico, teleriscaldamento oppure "Base" per i listini di puro commercio. L'architettura sottostante — versioni, righe, associazioni, resolver — e identica in tutti i casi.
-
-In pratica:
-
-* **Azienda utility**: listini con `utility_id` specifico (Gas, Energia, Idrico), dimensioni righe BA + utility + emittente, prezzi ad alta precisione per consumi minimi
-* **Azienda non-utility**: listini con `utility_id = 5` (Base), dimensioni BA (o senza contesto), pricing standard per servizi/prodotti
-
-> **Refactor 2026-04-12**: il vecchio campo `dominio` (enum UTILITY/COMMERCIO) e` stato sostituito dalla FK `utility_id NOT NULL` verso `config.utilities`. La utility "Base" (id=5 nel seed standard) copre i listini commerciali.
+Non ci sono tie-break: la struttura dati **garantisce** che ogni stadio produca al massimo una risposta.
 
 ---
 
-## Tabelle coinvolte
+## 2. Le entità in gioco
 
-* [vendite.listini](/dbzero/vendite/tabelle/listini) — la testata anagrafica del listino
-* [vendite.listini_versioni](/dbzero/vendite/tabelle/listini_versioni) — il versionamento temporale
-* [vendite.listini_righe](/dbzero/vendite/tabelle/listini_righe) — i prezzi elementari per articolo/UoM
-* [vendite.listini_associazioni](/dbzero/vendite/tabelle/listini_associazioni) — chi puo usare questo listino
-* [catalogo.articoli](/dbzero/catalogo/tabelle/articoli) — gli articoli a catalogo
-* [catalogo.unita_misura](/dbzero/catalogo/tabelle/unita_misura) — le unita di misura
-* [anagrafiche.billing_account](/dbzero/anagrafiche/tabelle/billing_account) — l'account di fatturazione
-* [config.utilities](/dbzero/config/tabelle/utilities) — il tipo di servizio
+### 2.1 Listino
 
----
+È un **contenitore di prezzi** identificato dalla combinazione:
 
-## Le entita e il loro significato
+- `utility_id` — il servizio (Gas, Energia, Idrico, "Base" per commercio)
+- `tipologia_id` — la categoria di voce (CONSUMO, QUOTA_FISSA, IMPOSTA, ONERE_SISTEMA, PRODOTTI, SERVIZI)
+- `emittente_soggetto_ruolo_id` — chi emette la fattura (dimensione interna)
 
-### Listino (testata)
+**Un solo listino** per ogni quadrupla (utility, tipologia, emittente, codice). Non esistono "listini derivati": le variazioni commerciali vivono altrove.
 
-E il contenitore principale. Identifica un listino con un codice univoco, una descrizione e una utility (`utility_id` NOT NULL, FK a `config.utilities`). Non contiene ne date ne prezzi: questi sono delegati alle entita figlie.
+Un listino contiene:
 
-Il listino e pensato come entita stabile nel tempo. Quello che cambia sono le sue versioni e le sue righe prezzo.
+- **Versioni** (`listini_versioni`) — finestre temporali con stato BOZZA → ATTIVA → CHIUSA. Solo una versione ATTIVA per listino nel periodo (vincolo `EXCLUDE`).
+- **Righe** (`listini_righe`) — per ogni versione: (articolo, uom) → prezzo. Forma pura, senza dimensioni di scope.
 
-### Versione
+### 2.2 Categoria cliente
 
-E la finestra temporale in cui un listino e valido. Ogni versione ha:
+Rappresenta la **politica commerciale trasversale** (STANDARD, BASE, SILVER, GOLD, PLATINUM).
 
-* un intervallo di validita (`valido_dal`, `valido_al`)
-* uno stato che governa il ciclo di vita (`BOZZA` → `ATTIVA` → `CHIUSA`)
+Caratteristiche:
 
-Le versioni con `stato = 'ATTIVA'` dello stesso listino **non possono sovrapporsi** temporalmente (vincolo esclusione `ex_listini_versioni_no_overlap`, fix `20260409-01`). Le BOZZE possono coesistere con la versione ATTIVA per supportare il workflow clone+publish.
+- ogni `billing_account` ha esattamente una `categoria_cliente_id` (default STANDARD)
+- la categoria decide se il cliente **partecipa alle promo** (flag `partecipa_promo`)
+- la categoria indirizza al listino corretto via la **matrice**
 
-> Il campo `listini_versioni.priorita` e stato **rimosso il 2026-04-09 (Fase 2)** insieme al check constraint `chk_listini_versioni_priorita`. Con l'invariante univocita per versione `ATTIVA` (post-fix `20260409-01`) non discriminava piu nulla. Vedi [WIP listini-commercio §5](/dev/work-in-progress/listini-commercio).
+### 2.3 Matrice categoria → listino
 
-### Riga prezzo
+Tabella `anagrafiche.categorie_clienti_listini`. Per ogni quadrupla:
 
-E il prezzo vero e proprio. Ogni riga e legata a una versione e specifica:
-
-* **articolo + UoM** (obbligatori) — cosa si sta prezzando e in quale unita
-* **dimensioni di contesto** (opzionali) — BA, utility, emittente: per chi vale questo prezzo
-
-La combinazione dimensionale determina la **specificita** della riga: piu dimensioni sono valorizzate, piu il prezzo e specifico per quel contesto.
-
-Precisione: `numeric(22,10)` per preservare importi unitari molto piccoli (tipici del dominio utility). L'arrotondamento a 6 decimali avviene solo nel layer `fatture_righe`.
-
-### Associazione
-
-E il filtro di visibilita che risponde alla domanda: *"Questo listino e valido per il contesto X?"*
-
-L'associazione non e un semplice collegamento — e il primo filtro che il resolver applica per determinare quali listini sono candidati. Ogni associazione specifica:
-
-* a quale listino si riferisce (obbligatorio)
-* per quale contesto vale (BA, utility, emittente — tutti opzionali)
-* in quale periodo e valida
-
-| Scenario | billing_account_id | utility_id | emittente_id | Significato |
-| --- | --- | --- | --- | --- |
-| Listino generico | NULL | NULL | NULL | Disponibile per tutti |
-| Listino per utility | NULL | 3 | NULL | Solo per utility gas (id=3) |
-| Listino per cliente | 42 | NULL | NULL | Solo per BA 42 |
-| Listino dedicato | 42 | 3 | 1 | Solo per BA 42, utility gas, emittente 1 |
-
-> **Invariante 2026-04-09**: per ogni triple `(BA, utility, emittente)` — con `NULL` come wildcard discreto — esiste **al massimo una** associazione attiva sull'intervallo temporale, indipendentemente dal listino. Vincolo `ex_listini_associazioni_no_overlap` (EXCLUDE GIST). Le sostituzioni avvengono via *autoclose* (vedi sezione "Workflow di sostituzione" piu sotto).
->
-> Il campo `listini_associazioni.priorita` e stato **rimosso il 2026-04-09 (Fase 2)** insieme al check constraint `chk_listini_associazioni_priorita`. Con l'invariante univocita stretta non discriminava piu nulla. Vedi [WIP listini-commercio §5](/dev/work-in-progress/listini-commercio).
-
----
-
-## Ciclo di vita di un listino
-
-### Creazione
-
-Un listino nasce con codice, descrizione e utility. E subito attivo (`attivo=true`) ma non ancora operativo: servono almeno una versione e delle righe prezzo.
-
-### Pubblicazione di una versione
-
-Le versioni nascono in stato `BOZZA`. In questa fase si possono aggiungere, modificare e rimuovere righe prezzo liberamente. Quando la configurazione e pronta:
-
-1. La versione passa a `ATTIVA` — da questo momento partecipa alla risoluzione prezzi
-2. La transizione richiede almeno una riga attiva nella versione (guard DB)
-3. Le versioni attive non possono sovrapporsi temporalmente
-
-### Chiusura
-
-Quando una versione non serve piu, passa a `CHIUSA`. Non partecipa piu alla risoluzione prezzi ma resta nel database per tracciabilita storica.
-
-```text
-BOZZA ──────→ ATTIVA ──────→ CHIUSA
- (editing)     (operativa)    (storica)
+```
+(categoria_cliente, utility, emittente, classe_utenza opz.) → listino + variazione opz.
 ```
 
-### Disattivazione
+La variazione è opzionale (`tipo_variazione` + `valore_variazione`, coppia coerente):
 
-Un listino puo essere disattivato (`attivo=false`) per escluderlo completamente dalla risoluzione prezzi senza cancellarlo. La disattivazione e bloccata se esistono versioni o associazioni attive (guard trigger).
+- `PERCENTUALE` — firmata (negativo = sconto, positivo = maggiorazione)
+- `VALORE_FISSO` — firmato
+- Nessuna variazione → prezzo base del listino tal quale
+
+`classe_utenza_id` è opzionale: la ricerca prova prima il match esatto poi il fallback a NULL (dimensione pricing per utility con gradazione, es. DOM-BTA su energia).
+
+Vincolo `EXCLUDE`: non possono esistere due righe attive sovrapposte per la stessa quadrupla → il resolver STADIO 2 non ha ambiguità.
+
+### 2.4 Contratto
+
+È l'**accordo individuale** tra cliente ed emittente. Tre modalità possibili:
+
+| Modalità | Listino | Variazione globale | Righe override | Quando usarla |
+|---|---|---|---|---|
+| **A** — listino + variazione | sì | sì | vuote o parziali | "Listino standard 2026 scontato 10%" |
+| **B** — listino con override mirati | sì | sì o no | alcune righe con prezzo forzato | "Listino standard, ma art X a €50 fisso" |
+| **C** — interamente negoziato | no | no | tutte le righe con prezzo | Grande cliente con condizioni 100% custom |
+
+Un trigger DB blocca la transizione DRAFT → ATTIVO se la modalità C ha righe vuote (errore `E_CONTRATTO_MODALITA_C_RIGHE_INCOMPLETE`).
+
+### 2.5 Promo
+
+Tabella `vendite.promo_articoli`. È un **overlay temporale** indipendente:
+
+- (articolo, uom, validità) → tipo e valore variazione
+- batte qualsiasi altro stadio se il cliente appartiene a una categoria con `partecipa_promo = true`
+- ammette `PREZZO_FISSO` (prezzo assoluto sostitutivo) — vietato negli altri stadi
 
 ---
 
-## Architettura del resolver prezzo
+## 3. Resolver — i 3 stadi in dettaglio
 
-Il resolver (`vendite.fn_resolve_prezzo_listino`) e il cuore del sistema listini. Dato un contesto operativo, determina in modo **deterministico** quale prezzo applicare.
+La funzione `vendite.fn_resolve_prezzo_listino_v2` riceve:
 
-### Input
+- articolo, uom, data, billing_account
+- utility, emittente (derivato dal JWT dell'operatore, 1-a-1)
+- classe_utenza (opzionale, derivata da contratto o istanza)
 
-| Parametro | Obbligatorio | Descrizione |
-| --- | --- | --- |
-| `p_articolo_id` | si | L'articolo da prezzare |
-| `p_uom_id` | si | L'unita di misura richiesta |
-| `p_data_riferimento` | si | La data per cui serve il prezzo |
-| `p_billing_account_id` | no | Il billing account del cliente |
-| `p_utility_id` | no | La utility del servizio |
-| `p_emittente_soggetto_ruolo_id` | no | L'emittente fiscale |
+### STADIO 0 — Promo overlay
 
-### Flusso di risoluzione
-
-```text
-Input: articolo + UoM + data + (opzionale: BA, utility, emittente)
-  |
-  v
-1. ASSOCIAZIONI: filtra listini candidati per contesto
-  |
-  v
-2. VERSIONI: filtra per data_riferimento + stato ATTIVA
-  |
-  v
-3. RIGHE: cerca match per specificita dimensionale (7 livelli)
-  |
-  v
-4. TIE-BREAK: match_level → associazione.priorita → versione.priorita → data
-  |
-  v
-Output: prezzo + riferimenti (listino_id, versione_id, riga_id, associazione_id)
+```
+Esiste riga in promo_articoli (articolo, uom, data) attiva?
+  E la categoria del BA ha partecipa_promo = true?
+    → SÌ: prezzo_base = STADIO 1/2, applica variazione promo → STOP
+           origine = PROMO
+    → NO: vai allo STADIO 1
 ```
 
-### Fase 1 — Selezione listini candidati
+### STADIO 1 — Contratto
 
-Il resolver parte dalle **associazioni attive** la cui finestra di validita comprende `p_data_riferimento`. Le dimensioni di contesto dell'associazione (BA, utility, emittente) vengono confrontate con i parametri in input.
+```
+Esiste contratto ATTIVO per (ba, utility, data)?
+  → SÌ:
+      Esiste riga override per (articolo, uom) con prezzo_unitario NOT NULL?
+        → SÌ: prezzo = prezzo_unitario; origine = CONTRATTO_OVERRIDE
+        → NO: se contratto ha listino_id (modalità A o B senza override):
+               prezzo_base = riga listino
+               applica variazione_globale se presente
+               origine = CONTRATTO_LISTINO
+             altrimenti (modalità C senza riga):
+               ERRORE E_ARTICOLO_NON_NEGOZIATO_SU_CONTRATTO_C
+  → NO: vai allo STADIO 2
+```
 
-Un'associazione con dimensioni NULL e compatibile con qualsiasi contesto (listino generico). Un'associazione con dimensioni specifiche matcha solo il contesto corrispondente.
+### STADIO 2 — Categoria cliente
 
-### Fase 2 — Filtro versioni
-
-Per ogni listino candidato, il resolver seleziona le versioni:
-
-* con stato `ATTIVA`
-* la cui finestra `[valido_dal, valido_al]` comprende `p_data_riferimento`
-* appartenenti a listini attivi (`attivo=true`)
-
-### Fase 3 — Match righe per specificita
-
-Il resolver cerca le righe delle versioni candidate che matchano `articolo_id + uom_id`, assegnando un **livello di specificita** basato sulle dimensioni di contesto valorizzate:
-
-| Livello | Dimensioni matchate | Significato |
-| --- | --- | --- |
-| 1 | BA + utility + emittente | Match piu specifico possibile |
-| 2 | BA + utility | Specifico per cliente e servizio |
-| 3 | BA + emittente | Specifico per cliente ed emittente (non-utility) |
-| 4 | BA | Specifico per cliente |
-| 5 | utility + emittente | Specifico per servizio ed emittente |
-| 6 | utility | Specifico per tipo servizio |
-| 7 | articolo + uom (fallback) | Prezzo base senza contesto |
-
-**Vince la riga con livello piu basso** (piu specifica). Il resolver cerca il match piu stretto: se esiste un prezzo specifico per BA + utility + emittente, quello prevale sul prezzo generico.
-
-> **Nota sul livello 3 (BA + emittente senza utility):** questo livello e rilevante
-> esclusivamente in contesti multi-emittente (tipicamente utility) dove l'emittente
-> fiscale e un soggetto distinto dall'azienda erogante. In contesti commercio con
-> emittente unico, il livello 3 non produce mai un match differente dal livello 4
-> (BA da solo) e puo essere ignorato in fase di configurazione.
-
-### Fase 4 — Tie-break
-
-Con l'invariante univocita stretta (refactor 2026-04-09) il caso "due righe con stesso match_level" e strutturalmente vietato dal database:
-
-* per ogni triple `(BA, utility, emittente)` esiste una sola associazione attiva sull'intervallo (`ex_listini_associazioni_no_overlap`)
-* per ogni listino esiste una sola versione `ATTIVA` sull'intervallo (`ex_listini_versioni_no_overlap`)
-* per ogni `(versione, articolo, uom, BA, utility, emittente)` esiste una sola riga attiva (`uq_listini_righe_key_attiva`)
-
-Quindi il resolver, dopo aver applicato il `match_level` di specificita (sezione precedente), restituisce **al massimo una riga**. Niente tie-break vero da applicare.
-
-Per **safety paranoid check**, se due righe arrivassero comunque con lo stesso `match_level` (scenario impossibile per costruzione, ma proteggiamo contro bug futuri o disabilitazione manuale di constraint), il resolver genera l'errore `E_PREZZO_LISTINO_AMBIGUO`. Nessun prezzo viene scelto in modo arbitrario.
-
-> **Storia**: prima del refactor 2026-04-09 il resolver applicava una cascata di tie-break su `listini_associazioni.priorita` e `listini_versioni.priorita`. La Fase 1 (`20260409-03`) ha introdotto l'invariante univocita stretta, rendendo quel codice no-op safe. La Fase 2 (`20260409-04/-05`) ha **droppato fisicamente** le colonne `priorita` ed e stato pubblicato un nuovo `fn_resolve_prezzo_listino` (`20260409-04` in `20_code/vendite`) senza piu riferimenti alle colonne. L'`ORDER BY` del resolver si e ridotto a `match_rank`, `valido_dal DESC`, `valido_al ASC` + tie-break tecnico su `id` per determinismo.
+```
+BA ha categoria_cliente_id (sempre sì: default STANDARD)?
+  → SÌ:
+      Cerca in matrice (categoria, utility, emittente, data):
+        - prima: classe_utenza_id = <derivato>
+        - fallback: classe_utenza_id IS NULL
+      Se nessun match: ERRORE E_CATEGORIA_LISTINO_NON_MAPPATA
+      Altrimenti:
+        prezzo_base = riga listino
+        applica variazione matrice se presente
+        origine = CATEGORIA
+```
 
 ### Output
 
-| Campo | Tipo | Descrizione |
-| --- | --- | --- |
-| `listino_id` | UUID | Il listino selezionato |
-| `listino_versione_id` | UUID | La versione selezionata |
-| `listino_riga_id` | UUID | La riga prezzo selezionata |
-| `listino_associazione_id` | UUID | L'associazione usata |
-| `prezzo` | numeric(22,10) | Il prezzo risolto |
-| `match_level` | integer | Il livello di specificita del match (1-7) |
+Il resolver ritorna sempre:
 
-### Comportamento in caso di errore
+- `prezzo_finale` e `prezzo_base_snapshot`
+- `origine` ∈ `{PROMO, CONTRATTO_OVERRIDE, CONTRATTO_LISTINO, CATEGORIA}`
+- `tipo_variazione_applicata`, `valore_variazione_applicata`
+- FK popolate del caso: `listino_id`, `contratto_id`, `promo_id`, `categoria_cliente_listino_id`
 
-| Situazione | Errore | Significato |
-| --- | --- | --- |
-| Nessun match trovato | `E_PREZZO_LISTINO_NON_TROVATO` | Non esiste un prezzo applicabile per il contesto e la data |
-| Match ambiguo | `E_PREZZO_LISTINO_AMBIGUO` | Piu righe equivalenti dopo tutti i tie-break |
-| Parametro invalido | `E_PARAMETRO_INVALIDO` | Input mancante o non valido (es. data NULL, ID <= 0) |
-
-Non esiste fallback silenzioso: se il resolver non trova un prezzo univoco, l'errore e esplicito e tracciabile.
+Lo snapshot viene salvato in `commesse_attivita` (8 colonne dedicate) per audit permanente.
 
 ---
 
-## Regole univocita per scope (refactor 2026-04-09)
+## 4. Convenzione segno delle variazioni
 
-L'invariante centrale del sistema dopo il refactor del 2026-04-09 e:
+Le variazioni di tipo `PERCENTUALE` e `VALORE_FISSO` sono **firmate**:
 
-> **Per ogni triple `(BA, utility, emittente)`** — con `NULL` come valore wildcard discreto — **esiste al massimo una associazione attiva sull'intervallo temporale, indipendentemente dal listino.**
-
-Questo significa che a una data data, per uno scope dato, **un solo listino e responsabile del prezzo**. Niente competizione, niente tie-break tra listini concorrenti, niente "il listino con priorita piu bassa vince".
-
-Il vincolo `ex_listini_associazioni_no_overlap` (EXCLUDE GIST cross-listino) impedisce a livello DB qualsiasi configurazione che violi questa invariante. Se si tenta di inserire un'associazione con scope sovrapposto a una esistente, il database rifiuta l'INSERT con errore esplicito.
-
-### Workflow di sostituzione (autoclose + insert)
-
-Per sostituire un'associazione esistente con una nuova (es. cambio listino di un cliente, cambio annuale, promo temporanea), il pattern operativo e:
-
-1. **Autoclose** della vecchia: `UPDATE listini_associazioni SET valido_al = nuova.valido_dal - 1 WHERE id = vecchia_id`
-2. **Insert** della nuova: `INSERT INTO listini_associazioni (..., valido_dal, valido_al) VALUES (..., nuova_valido_dal, nuova_valido_al)`
-3. Tutto in **transazione atomica** (`with transaction.atomic()` lato backend)
-
-Stesso pattern gia' adottato per `listini_versioni` (publish di una nuova versione con autoclose della precedente).
-
-### Caso "promo temporanea" (override per periodo limitato)
-
-Per applicare un listino "promo" su un BA per un periodo limitato `[Pmin, Pmax]` senza perdere il listino base prima e dopo:
-
-```text
-1. UPDATE listini_associazioni base BA: valido_al = Pmin - 1
-2. INSERT listini_associazioni promo BA: scope=(BA), valido_dal=Pmin, valido_al=Pmax
-3. INSERT listini_associazioni base BA ripristino: scope=(BA), valido_dal=Pmax+1, valido_al=NULL
-Tutto in transazione atomica.
-```
-
-Questo workflow potra essere astratto in un endpoint backend dedicato `apply_temporary_pricing(BA, Pmin, Pmax, listino_id)` quando emerge il caso d'uso reale. Vedi [WIP listini-commercio §3.4](/dev/work-in-progress/listini-commercio).
-
----
-
-## Integrazione con commessa e fatturazione
-
-Il prezzo risolto dal listino non viene usato direttamente in fattura. Il percorso completo e:
-
-```text
-Resolver listino
-  |
-  v
-commesse_attivita (snapshot prezzo)
-  |
-  v
-attivita_fatturabili (prezzo propagato)
-  |
-  v
-fatture_righe (arrotondamento a 6 decimali)
-```
-
-### Snapshot in commessa
-
-Quando un'attivita viene creata in commessa, il prezzo risolto viene salvato come snapshot:
-
-* `listino_versione_id` — quale versione era attiva al momento
-* `prezzo_snapshot` — il prezzo congelato
-* `prezzo_bloccato` — se TRUE, il prezzo non viene ricalcolato dal resolver
-* `pricing_mode` — `FIXED` in v1 (predisposto per `FORMULA`/`SCAGLIONI` in v2)
-
-### Override manuale del prezzo
-
-Se un documento (preventivo, ordine) riporta un prezzo manuale diverso dal listino:
-
-* `prezzo_snapshot` = prezzo del documento
-* `prezzo_bloccato = TRUE`
-* `listino_versione_id` = versione risolta alla data (per audit comparativo)
-
-Il prezzo manuale prevale sempre sul listino. La versione listino viene comunque salvata per permettere confronti e analisi.
-
-### Propagazione verso attivita fatturabili
-
-Il flag `prezzo_bloccato` viene propagato da `commesse_attivita` a `attivita_fatturabili` tramite la funzione di emissione. Lo step 1 della pipeline fatturazione legge il flag direttamente su `attivita_fatturabili`, evitando join sul dominio commessa durante la fase fiscale.
-
-### Policy precisione prezzo
-
-| Layer | Precisione | Note |
-| --- | --- | --- |
-| `listini_righe` | numeric(22,10) | Massima precisione |
-| `commesse_attivita` | numeric(22,10) | Snapshot senza arrotondamento |
-| `attivita_fatturabili` | numeric(22,10) | Propagazione fedele |
-| `fatture_righe` | numeric(22,6) | Arrotondamento per esposizione fiscale |
-
-La riduzione a 6 decimali avviene **solo** nel layer fatture. Nessuna funzione intermedia introduce arrotondamenti anticipati.
-
----
-
-## Vincoli e regole di coerenza
-
-### No overlap versioni (per listino)
-
-Per ogni listino, le versioni con `stato = 'ATTIVA'` non possono avere intervalli temporali sovrapposti. Il vincolo e implementato con indice di esclusione GIST (`ex_listini_versioni_no_overlap`, fix `20260409-01`). Le BOZZE possono coesistere per supportare il workflow clone+publish.
-
-### Unicita riga per combinazione dimensionale
-
-Per ogni versione, non puo esistere piu di una riga attiva con la stessa combinazione `(articolo, uom, BA, utility, emittente)`. Il vincolo `uq_listini_righe_key_attiva` usa `COALESCE` sulle dimensioni opzionali per gestire i NULL.
-
-### Univocita associazione cross-listino (refactor 2026-04-09)
-
-**Per ogni triple `(BA, utility, emittente)`** — con `NULL` come wildcard discreto — **non possono esistere due righe attive con intervalli temporali sovrapposti, indipendentemente dal listino**. Vincolo: `ex_listini_associazioni_no_overlap` (EXCLUDE GIST con `daterange && daterange`, fix `20260409-02`).
-
-Questa e l'invariante che garantisce univocita del listino responsabile del prezzo per ogni scope dimensionale a ogni data. Vedi sezione "Regole univocita per scope" sopra.
-
-### Coerenza attivazione/disattivazione
-
-I trigger garantiscono una catena di attivazione coerente:
-
-* Non si puo disattivare un listino che ha versioni o associazioni attive
-* Non si puo attivare una versione di un listino disattivato
-* Non si puo creare righe su una versione di un listino disattivato
-* Per attivare una versione (BOZZA → ATTIVA) deve avere almeno una riga attiva
-
-### Coerenza referenziale
-
-* Le righe verificano che articolo, UoM, utility e emittente siano attivi
-* Le associazioni verificano che il listino parent sia attivo
-* Tutti i vincoli operano tramite trigger (guard phase `_a10_`)
-
----
-
-## Trigger e funzioni coinvolte
-
-### Ordine di esecuzione (visione rapida)
-
-```text
-INSERT/UPDATE listini
-  +-- guard: blocco disattivazione se figli attivi
-  +-- tx_id + audit
-
-INSERT/UPDATE listini_versioni
-  +-- guard: parent listino attivo
-  +-- guard: no overlap temporale tra attive
-  +-- guard: almeno 1 riga per attivazione
-  +-- tx_id + audit
-
-INSERT/UPDATE listini_righe
-  +-- guard: parent versione e listino attivi
-  +-- guard: articolo, UoM attivi
-  +-- guard: utility, emittente attivi (se valorizzati)
-  +-- tx_id + audit
-
-INSERT/UPDATE listini_associazioni
-  +-- guard: parent listino attivo
-  +-- tx_id + audit
-```
-
-### Funzione resolver
-
-| Funzione | Scopo |
-| --- | --- |
-| [`vendite.fn_resolve_prezzo_listino`](/dbzero/vendite/funzioni/fn_resolve_prezzo_listino) | Risoluzione deterministica prezzo per articolo + UoM + data + contesto |
-
----
-
-## Garanzia transazionale
-
-Tutte le operazioni di creazione e modifica su listini, versioni, righe e associazioni avvengono all'interno di transazioni PostgreSQL. I vincoli di esclusione (no overlap, unicita dimensionale) sono verificati in tempo reale dal motore database.
-
-Cosa significa in pratica:
-
-* Se un vincolo viene violato (es. overlap date, riga duplicata), l'operazione viene annullata
-* **Non esistono stati parziali**: i constraint sono applicati atomicamente
-* Il resolver opera in lettura consistente: non puo vedere dati intermedi di una transazione in corso
-
----
-
-## Guida operativa: il "listino post-it"
-
-Il termine "listino post-it" descrive l'uso di un secondo listino piccolo per correggere
-il prezzo di un singolo articolo senza toccare il listino base. Come un post-it attaccato
-sopra il cartellone grande.
-
-### Quando funziona
-
-Il listino post-it funziona quando il prezzo corretto vale per un **contesto specifico** —
-un cliente preciso, una utility precisa. In quel caso la riga nel listino post-it ha il BA
-valorizzato (match_level 4) o BA+utility (match_level 2). Il resolver la trova prima della
-riga generica del listino base, perche e piu specifica.
-
-### Quando NON funziona
-
-Il listino post-it **non funziona** quando il prezzo corretto deve valere per **tutti i
-clienti** (riga generica, match_level 7). Entrambi i listini avrebbero un'associazione
-generica (NULL, NULL, NULL) per lo stesso periodo, e il vincolo
-`ex_listini_associazioni_no_overlap` lo impedisce a livello DB: non possono esistere due
-associazioni con lo stesso scope nello stesso periodo.
-
-### Tabella delle soluzioni
-
-| Situazione | Soluzione corretta |
+| Valore | Effetto |
 |---|---|
-| Prezzo sbagliato per un cliente specifico, articolo non ancora fatturato | Rettifica controllata N6 sulla riga |
-| Prezzo sbagliato per un cliente specifico, articolo gia fatturato | Listino post-it con BA valorizzato sulla riga |
-| Prezzo sbagliato per tutti i clienti, articolo non ancora fatturato | Rettifica controllata N6 sulla riga |
-| Prezzo sbagliato per tutti i clienti, articolo gia fatturato | Clone listino + correggi la riga + attiva (O1) |
-| Aumento prezzi annuale su tutto il listino | Clone + variazione % massa (N8a) + attiva |
+| **Negativo** (es. -10) | Sconto (10%  di riduzione o -10€ di correzione) |
+| **Positivo** (es. +5) | Maggiorazione |
+| **Zero** | Vietato dal service (no-op inutile) |
 
-### Operazioni disponibili
+`PREZZO_FISSO` (ammesso solo in promo) è un prezzo assoluto ≥ 0 che **sostituisce** il prezzo base.
 
-| Operazione | Contesto | API |
+Formule applicate dal resolver:
+
+```
+PERCENTUALE:  prezzo_finale = prezzo_base × (1 + valore / 100)
+VALORE_FISSO: prezzo_finale = prezzo_base + valore
+PREZZO_FISSO: prezzo_finale = valore
+```
+
+---
+
+## 5. Articoli, tipologia e BoM
+
+### 5.1 Tipologia articolo
+
+Ogni articolo ha `listino_tipologia_id` (FK a `config.listini_tipologie`). Un articolo può essere inserito solo in listini con la **stessa tipologia** (guard DB trigger `trgfn_listini_righe_guard_tipologia`).
+
+Esempi:
+
+- articolo di tipologia `PRODOTTI` → inseribile solo in listini PRODOTTI
+- articolo di tipologia `CONSUMO` (voce utility) → solo in listini CONSUMO per quella utility
+
+### 5.2 Distinta base (BoM) — componenti esposti
+
+Un articolo composito (`is_composito = true`) ha una distinta base in `articoli_componenti`. Il flag `esposto_in_fattura` decide il comportamento:
+
+- **Nessun componente esposto**: il composito ha un prezzo unico (riga listino sul composito, o somma componenti a fallback)
+- **Almeno un componente esposto**: il resolver ritorna N righe (una per componente), la pipeline di creazione attività espande l'articolo composito in N righe `commesse_attivita` separate
+
+Logica completa in [vendite.fn_resolve_prezzo_composito](/dbzero/vendite/funzioni/fn_resolve_prezzo_composito).
+
+---
+
+## 6. Autorizzazioni override prezzo (L1)
+
+Nel preventivo, il prezzo suggerito dal resolver può essere **sovrascritto manualmente** dall'operatore. L1 è attivo:
+
+- Se il payload riga ha `prezzo_unitario` uguale al suggerito → passa sempre
+- Se è diverso → il service verifica l'azione processo `prezzo_override_manuale`
+  - Autorizzato: salva con origine `MANUALE`, traccia in `meta` il resolver originale
+  - Non autorizzato: `E_PREZZO_OVERRIDE_NON_AUTORIZZATO` (403)
+
+Il badge UI mostra l'origine del prezzo (listino/contratto/promo/manuale) e il delta eventuale.
+
+L2 (limite sconto %) e L3 (workflow approvazione) sono pianificati — vedi Sprint D e E del WIP listini v5 §14.
+
+---
+
+## 7. Ciclo di vita operativo
+
+### 7.1 Nuovo listino
+
+1. Admin: crea listino (codice, descrizione, utility, tipologia) — emittente derivato dall'operatore
+2. Crea versione BOZZA con `valido_dal`
+3. Popola righe prezzo (articoli coerenti con tipologia)
+4. Attiva versione → BOZZA passa ad ATTIVA; eventuali versioni precedenti autoclose
+
+### 7.2 Assegnare un listino a un cliente (scope categoria)
+
+1. Definisci la categoria cliente (STANDARD, SILVER, GOLD…)
+2. Imposta sul `billing_account` la `categoria_cliente_id`
+3. Admin: crea riga matrice per (categoria, utility, emittente, classe_utenza opz.) → listino + variazione
+
+Tutti i clienti della stessa categoria, utility, emittente condivideranno la regola senza duplicare listini.
+
+### 7.3 Contratto individuale
+
+1. Commerciale: stipula contratto con BA, scegliendo modalità A/B/C
+2. Inserisce righe (se C: obbligatorie per ogni articolo preventivabile)
+3. Transizione DRAFT → ATTIVO → il resolver STADIO 1 userà il contratto
+
+### 7.4 Promo
+
+1. Admin vendite: crea riga in `promo_articoli` (articolo, uom, periodo, tipo+valore variazione, codice)
+2. La promo vale per tutti i BA con categoria che partecipa promo
+3. A scadenza periodo (`valido_al`), la promo smette di applicarsi automaticamente
+
+---
+
+## 8. Garanzie DB
+
+Il database rafforza la determinismo con vincoli espliciti (non è "responsabilità del client"):
+
+| Vincolo | Tabella | Cosa garantisce |
 |---|---|---|
-| **Rettifica controllata (N6)** | Riga ATTIVA non propagata | `PATCH .../rettifica-controllata/` |
-| **Variazione % massa (N8a)** | Righe BOZZA (aumento/riduzione) | `POST .../applica-variazione/` |
-| **Clone versione (O1)** | Da qualsiasi stato | `POST .../clona/` |
-| **Programma chiusura** | Versione ATTIVA, imposta `valido_al` | `PATCH .../` con `valido_al` |
+| `ex_contratti_no_overlap` | `contratti` | Un solo contratto attivo per (BA, istanza, utility, ambito) nel periodo |
+| `ex_categ_cli_listini_no_overlap` | `categorie_clienti_listini` | Una sola riga matrice per (categoria, utility, emittente, classe) nel periodo |
+| `ex_promo_articoli_no_overlap` | `promo_articoli` | Una sola promo attiva per (articolo, uom) nel periodo |
+| `ex_listini_versioni_no_overlap` | `listini_versioni` | Una sola versione ATTIVA per listino nel periodo |
+| `uq_listini_righe_key_attiva` | `listini_righe` | Una sola riga attiva per (versione, articolo, uom) |
+| `trgfn_listini_righe_guard_tipologia` | trigger | Articolo e listino devono avere la stessa tipologia |
+| `trgfn_contratti_modalita_c_righe_complete` | trigger | Modalità C: attivazione blocca se righe incomplete |
+| `trgfn_contratti_utilities_guard_tipo_classe` | trigger | Tipo/classe utenza coerenti con ambito (NULL per COMMERCIO) |
+
+Il resolver poggia su queste invarianti — il codice Python non deve duplicarle.
 
 ---
 
-## Rettifiche prezzi (previste, non ancora implementate)
+## 9. Errori espliciti
 
-Il sistema prevede un meccanismo di rettifica per gestire modifiche retroattive ai prezzi senza riscrivere le fatture emesse.
+Nessun fallback silenzioso. Ogni scenario non risolvibile produce un errore strutturato:
 
-### Principio
+| Codice | Quando |
+|---|---|
+| `E_PREZZO_LISTINO_NON_TROVATO` | BA senza contratto e senza categoria mappata |
+| `E_CATEGORIA_LISTINO_NON_MAPPATA` | Categoria esistente ma nessuna riga in matrice per la quadrupla |
+| `E_PREZZO_LISTINO_RIGA_NON_TROVATA` | Listino risolto ma nessuna riga prezzo per (articolo, uom) |
+| `E_ARTICOLO_NON_NEGOZIATO_SU_CONTRATTO_C` | Contratto modalità C senza riga per l'articolo richiesto |
+| `E_ARTICOLO_TIPOLOGIA_INCOMPATIBILE` | Articolo in listino di tipologia diversa |
+| `E_PREZZO_OVERRIDE_NON_AUTORIZZATO` | L1: override prezzo non autorizzato |
+| `E_VENDITE_PRICING_FAILED` | Errore generico pricing (envelope, dettaglio in `detail`) |
 
-Nessuna riscrittura distruttiva di fatture emesse. Le rettifiche producono **documenti correttivi** (delta positivo o negativo) tramite una pipeline dedicata.
-
-### Canali
-
-* **Manuale**: l'operatore avvia l'analisi su richiesta
-* **Automatica**: un job schedulato rileva modifiche retroattive ai listini e avvia l'analisi degli impatti
-
-Entrambi i canali usano lo stesso motore di ricerca impatti e lo stesso algoritmo delta.
-
-### Stato attuale
-
-La fase DB-L4 (rettifiche) e ancora da implementare. Il modello dati e il flusso sono definiti nell'[analisi operativa](/dev/work-in-progress/gestione-listini).
+Tutti gestiti dal frontend con messaggi user-friendly (vedi `error_policies.py` backend).
 
 ---
 
-## Diagramma ER
+## 10. Cosa NON c'è più (modello pre-v5)
 
-````mermaid
-%%{init: {'er': {'layoutDirection': 'TB'}}}%%
-erDiagram
+Per chi arrivava dal vecchio modello:
 
-%% Struttura listini prezzo
-
-    listini                ||--o{ listini_versioni        : ha_versioni
-    listini                ||--o{ listini_associazioni    : visibile_per
-    listini_versioni       ||--o{ listini_righe           : contiene_prezzi
-
-    utilities              ||--o{ listini                 : classifica_testata
-    articoli               ||--o{ listini_righe           : prezzato_in
-    unita_misura           ||--o{ listini_righe           : unita_di
-
-    billing_account        ||--o{ listini_righe           : opzionale
-    billing_account        ||--o{ listini_associazioni    : opzionale
-    utilities              ||--o{ listini_righe           : opzionale
-    utilities              ||--o{ listini_associazioni    : opzionale
-    soggetti_ruoli         ||--o{ listini_righe           : emittente_opzionale
-    soggetti_ruoli         ||--o{ listini_associazioni    : emittente_opzionale
-````
+- ❌ `vendite.listini_associazioni` — **droppata** (F1-DB-26). Il suo ruolo è coperto da categoria cliente + contratto + dimensione emittente interna al listino.
+- ❌ "Listini derivati" con `listino_base_id` e variazione — mai implementati. La variazione vive nella matrice (per categoria) o nel contratto (individuale).
+- ❌ `catalogo.articoli.voce_utility` — droppata. L'equivalente v5 è `listino_tipologia_id`.
+- ❌ Resolver a 7 livelli con `match_rank` — sostituito dal resolver deterministico a 3 stadi senza tie-break.
+- ❌ Campo `priorita` su versioni/associazioni — rimosso. Le invarianti `EXCLUDE` garantiscono univocità, niente tie-break.
 
 ---
 
-## Diagramma del flusso di risoluzione
-
-````mermaid
-flowchart TD
-    A[Input: articolo + UoM + data + contesto] --> B[Fase 1: Associazioni]
-    B --> C{Listini candidati trovati?}
-    C -- No --> ERR1[Errore: PREZZO_NON_TROVATO]
-    C -- Si --> D[Fase 2: Versioni ATTIVE per data]
-    D --> E{Versioni trovate?}
-    E -- No --> ERR1
-    E -- Si --> F[Fase 3: Match righe per specificita]
-    F --> G{Righe trovate?}
-    G -- No --> ERR1
-    G -- Si --> H[Fase 4: Tie-break]
-    H --> I{Vincitore unico?}
-    I -- Si --> OK[Output: prezzo + riferimenti]
-    I -- No --> ERR2[Errore: PREZZO_AMBIGUO]
-````
-
----
-
-{% include-markdown "signature-core.md" %}
+*Gestione Listini e Pricing — ZeroERP v5 (22 aprile 2026)*

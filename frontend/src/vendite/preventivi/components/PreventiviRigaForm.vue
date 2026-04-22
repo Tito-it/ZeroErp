@@ -1,20 +1,26 @@
 <script setup>
 // Scopo: Form singola riga preventivo — articolo (autocomplete), UoM, quantita', prezzo, sconto, IVA.
 // Il prezzo viene proposto dal listino ma e' sempre sovrascrivibile dall'operatore.
-import { ref, watch, computed } from 'vue'
+import { ref, watch, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useApiHandler } from '../../../core/composables/useApiHandler'
+import { useNotify } from '../../../core/composables/useNotify'
+import { extractApiError, extractApiErrorCode } from '../../../core/utils/apiError'
 import { usePreventiviStore } from '../stores/preventivi'
+import { useLimitiPricing } from '../../composables/useLimitiPricing'
 import ArticoloLookup from '../../../core/components/ArticoloLookup.vue'
 import LookupSelect from '../../../core/components/LookupSelect.vue'
 import IvaSelect from '../../../core/components/IvaSelect.vue'
 import InputNumber from 'primevue/inputnumber'
 import InputText from 'primevue/inputtext'
 import Button from 'primevue/button'
+import Message from 'primevue/message'
 
 const { t } = useI18n()
 const store = usePreventiviStore()
-const { execute, loading } = useApiHandler()
+const loading = ref(false)
+const notify = useNotify()
+const { limiti, load: loadLimiti, L2_ERROR_CODES } = useLimitiPricing()
+onMounted(loadLimiti)
 
 const props = defineProps({
   preventivoId: { type: Number, required: true },
@@ -34,6 +40,30 @@ const form = ref({
   uom_operativa_id: null,
   ordine: null,
 })
+
+// L2 autorizzazioni prezzi: cattura dettaglio errore per banner inline.
+// Codici mappati centralizzati in useLimitiPricing per coerenza con il BE.
+// L'azione "richiedi approvazione" resta disabled finche' L3 non e' rilasciato.
+const l2Error = ref(null)
+
+// L2 autorizzazioni prezzi: hint informativo sotto il campo prezzo.
+// Valori cached modulo-level: una sola fetch per sessione.
+const maxScontoPct = computed(() => Number(limiti.value.max_sconto_pct) || 0)
+const maxMaggiorazionePct = computed(() => Number(limiti.value.max_maggiorazione_pct) || 0)
+const limitiPricingText = computed(() => {
+  const s = maxScontoPct.value
+  const m = maxMaggiorazionePct.value
+  if (s === 0 && m === 0) return t('preventivi.limiti_prezzo_zero')
+  return t('preventivi.limiti_prezzo_hint', { sconto: s, maggiorazione: m })
+})
+
+// Reset banner L2 se l'utente modifica prezzo o articolo: segnale di retry
+// con contesto potenzialmente diverso (articolo -> resolver diverso).
+// Guard sul valore corrente per evitare set inutili.
+watch(
+  [() => form.value.prezzo_unitario, () => form.value.articolo_id],
+  () => { if (l2Error.value) l2Error.value = null },
+)
 
 // Articolo selezionato (per restore autocomplete)
 const articoloObj = ref(null)
@@ -65,35 +95,56 @@ function onArticoloSelect(item) {
 
 const canSave = computed(() => form.value.articolo_id && form.value.quantita > 0)
 
+// Scopo: Salva riga intercettando specificamente i codici L2
+//        (E_PREV_SCONTO_ECCESSIVO / E_PREV_MAGGIORAZIONE_ECCESSIVA) per
+//        mostrare un banner inline invece del toast standard. Tutti gli
+//        altri errori passano per il pattern standard useApiHandler.
 async function handleSave() {
   const f = form.value
-  if (isEdit.value) {
-    const payload = {
-      quantita: f.quantita,
-      prezzo_unitario: f.prezzo_unitario,
-      sconto_percentuale: f.sconto_percentuale,
+  l2Error.value = null
+  const payload = isEdit.value
+    ? {
+        quantita: f.quantita,
+        prezzo_unitario: f.prezzo_unitario,
+        sconto_percentuale: f.sconto_percentuale,
+      }
+    : {
+        articolo_id: f.articolo_id,
+        descrizione: f.descrizione || null,
+        quantita: f.quantita,
+        prezzo_unitario: f.prezzo_unitario,
+        sconto_percentuale: f.sconto_percentuale,
+        iva_id: f.iva_id,
+        uom_operativa_id: f.uom_operativa_id,
+        ordine: f.ordine,
+      }
+  const successMessage = isEdit.value ? t('preventivi.riga_salvata') : t('preventivi.riga_aggiunta')
+  const apiCall = () => isEdit.value
+    ? store.aggiornaRiga(props.preventivoId, props.riga.id, payload)
+    : store.addRiga(props.preventivoId, payload)
+
+  loading.value = true
+  try {
+    const response = await apiCall()
+    notify.success(successMessage)
+    const body = response?.data
+    const result = (body && typeof body === 'object' && 'data' in body) ? body.data : body
+    emit('saved', result)
+  } catch (err) {
+    const code = extractApiErrorCode(err)
+    if (L2_ERROR_CODES.includes(code)) {
+      // Banner inline: niente toast, piu' spazio per il messaggio + azione.
+      l2Error.value = {
+        code,
+        message: extractApiError(err, t('preventivi.errore_generico')),
+        detail: err?.response?.data?.error?.detail || '',
+      }
+    } else {
+      // Fallback pattern standard: toast unico col messaggio BE.
+      notify.error(extractApiError(err, t('preventivi.errore_generico')))
     }
-    const result = await execute(
-      () => store.aggiornaRiga(props.preventivoId, props.riga.id, payload),
-      { successMessage: t('preventivi.riga_salvata') }
-    )
-    if (result !== null) emit('saved', result)
-  } else {
-    const payload = {
-      articolo_id: f.articolo_id,
-      descrizione: f.descrizione || null,
-      quantita: f.quantita,
-      prezzo_unitario: f.prezzo_unitario,
-      sconto_percentuale: f.sconto_percentuale,
-      iva_id: f.iva_id,
-      uom_operativa_id: f.uom_operativa_id,
-      ordine: f.ordine,
-    }
-    const result = await execute(
-      () => store.addRiga(props.preventivoId, payload),
-      { successMessage: t('preventivi.riga_aggiunta') }
-    )
-    if (result !== null) emit('saved', result)
+  } finally {
+    loading.value = false
   }
 }
 </script>
@@ -119,6 +170,7 @@ async function handleSave() {
       <div class="form-field">
         <label>{{ t('preventivi.riga_prezzo') }}</label>
         <InputNumber v-model="form.prezzo_unitario" mode="currency" currency="EUR" locale="it-IT" />
+        <small class="text-color-secondary">{{ limitiPricingText }}</small>
       </div>
     </div>
 
@@ -146,6 +198,23 @@ async function handleSave() {
         <InputNumber v-model="form.ordine" :use-grouping="false" />
       </div>
     </div>
+
+    <Message v-if="l2Error" severity="warn" :closable="false">
+      <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+        <strong>{{ l2Error.message }}</strong>
+        <small v-if="l2Error.detail">{{ l2Error.detail }}</small>
+        <div>
+          <Button
+            :label="t('preventivi.richiedi_approvazione')"
+            icon="pi pi-send"
+            size="small"
+            severity="secondary"
+            disabled
+            v-tooltip.bottom="t('preventivi.richiedi_approvazione_tooltip')"
+          />
+        </div>
+      </div>
+    </Message>
 
     <div style="display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 1rem;">
       <Button :label="t('common.cancel')" severity="secondary" @click="emit('cancel')" />

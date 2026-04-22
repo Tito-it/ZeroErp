@@ -5,6 +5,7 @@ import { ref, watch, nextTick } from 'vue'
 import { useRoute } from 'vue-router'
 import { useDrawerState } from '../../core/composables/useDrawerState'
 import { useReadonlyMode } from '../../core/composables/useReadonlyMode'
+import { READONLY_DOMAINS, READONLY_MODELS } from '../../core/constants'
 import { useContextStore } from '../../stores/context'
 import { useArticoliStore } from '../stores/articoli'
 import ArticoliSearchTable from '../components/ArticoliSearchTable.vue'
@@ -17,7 +18,7 @@ const drawer = useDrawerState()
 const store = useArticoliStore()
 const ctx = useContextStore()
 const route = useRoute()
-useReadonlyMode('catalogo', 'articolo')
+useReadonlyMode(READONLY_DOMAINS.CATALOGO, READONLY_MODELS.ARTICOLO)
 
 // Sub-drawer aperti dalla lista
 const uomDrawerVisible = ref(false)

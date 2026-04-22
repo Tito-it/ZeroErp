@@ -10,6 +10,7 @@ import { useSearchTable } from '../../core/composables/useSearchTable'
 import { useDrawerState } from '../../core/composables/useDrawerState'
 import { useTabFreshness } from '../../core/composables/useTabFreshness'
 import { useReadonlyMode } from '../../core/composables/useReadonlyMode'
+import { READONLY_DOMAINS, TAB_ENTITIES } from '../../core/constants'
 import EmittenteFiscaleDrawer from '../components/EmittenteFiscaleDrawer.vue'
 import EmittenteFiscaleBillingAccountDrawer from '../components/EmittenteFiscaleBillingAccountDrawer.vue'
 import EmittenteFiscaleUtilitiesDrawer from '../components/EmittenteFiscaleUtilitiesDrawer.vue'
@@ -34,9 +35,9 @@ const baDrawer = useDrawerState()
 const utDrawer = useDrawerState()
 
 // Provider readonly: livello LETTURA disabilita i pulsanti di scrittura nei drawer figli.
-const { isReadonly, isBlocked } = useReadonlyMode('amm_software')
+const { isReadonly, isBlocked } = useReadonlyMode(READONLY_DOMAINS.AMM_SOFTWARE)
 
-useTabFreshness(store, 'emittente-fiscale')
+useTabFreshness(store, TAB_ENTITIES.EMITTENTE_FISCALE)
 
 const attivoFilter = ref(null)
 const attivoOptions = [

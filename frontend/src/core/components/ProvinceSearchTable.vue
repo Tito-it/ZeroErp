@@ -5,6 +5,7 @@ import { useI18n } from 'vue-i18n'
 import { useProvinceStore } from '../../anagrafiche/stores/province'
 import { useSearchTable } from '../composables/useSearchTable'
 import { useTabFreshness } from '../composables/useTabFreshness'
+import { TAB_ENTITIES } from '../constants'
 import NewButton from './NewButton.vue'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
@@ -16,7 +17,7 @@ const { t } = useI18n()
 const store = useProvinceStore()
 const { searchText, onPage, onSort, reload, paginatorProps } = useSearchTable(store, { defaultSortField: 'descrizione' })
 
-useTabFreshness(store, 'provincia')
+useTabFreshness(store, TAB_ENTITIES.PROVINCIA)
 onMounted(() => { store.fetchList() })
 
 function onRowClick(event) { emit('row-click', event.data) }

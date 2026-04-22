@@ -4,6 +4,7 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { listComuni, createComune } from '../api/anagrafiche'
 import { useTabEvents } from '../../core/composables/useTabEvents'
+import { TAB_ENTITIES } from '../../core/constants'
 
 export const useComuniStore = defineStore('anagrafiche-comuni', () => {
   const { emitDataChanged } = useTabEvents()
@@ -43,7 +44,7 @@ export const useComuniStore = defineStore('anagrafiche-comuni', () => {
 
   async function create(payload) {
     const res = await createComune(payload)
-    emitDataChanged('comune', res.data.data.id)
+    emitDataChanged(TAB_ENTITIES.COMUNE, res.data.data.id)
     return res.data.data
   }
 

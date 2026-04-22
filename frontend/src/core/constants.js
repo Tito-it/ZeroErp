@@ -233,10 +233,80 @@ export const MANAGE_ICONS = {
   CONVERSIONI: 'pi pi-sync',
   // Vendite
   VERSIONI: 'pi pi-history',
-  ASSOCIAZIONI: 'pi pi-link',
   CONTRATTI: 'pi pi-file-edit',
   // Trasversali
   KEBAB: 'pi pi-ellipsis-v',
+}
+
+// Scope readonly — area (schema DB) passata come primo arg a useReadonlyMode.
+// Unico punto dove compaiono i nomi degli schemi DB lato FE. Cambiare qui =
+// cambiare ovunque senza rompere il refresh cross-tab o il matching permessi.
+export const READONLY_DOMAINS = {
+  AMM_SOFTWARE: 'amm_software',
+  ANAGRAFICHE: 'anagrafiche',
+  CATALOGO: 'catalogo',
+  CONFIG: 'config',
+  PRATICHE: 'pratiche',
+  VENDITE: 'vendite',
+}
+
+// Scope readonly — model specifico (secondo arg opzionale a useReadonlyMode).
+// Richiede che la view BE dichiari `model_permission = (app_label, model_name)`
+// perche' il permesso livello oggetto abbia effetto.
+export const READONLY_MODELS = {
+  ARTICOLO: 'articolo',
+  CLIENTE: 'cliente',
+  CONTO_BANCARIO: 'conto_bancario',
+  CONTRATTO: 'contratto',
+  FORNITORE: 'fornitore',
+  PROMO_ARTICOLO: 'promo_articolo',
+  SOGGETTO: 'soggetto',
+  UNITA_MISURA: 'unita_misura',
+}
+
+// Entita' usate come chiave cross-tab per emitDataChanged / useTabFreshness.
+// Il producer (store.create/update/delete) emette la chiave; i consumer
+// (SearchTable delle altre tab) ricaricano se la stessa chiave arriva.
+// I nomi DEVONO matchare bit-by-bit tra emit e ascolto: l'enum evita typo
+// silenziosi.
+//
+// Pattern consumer:
+//  - useTabFreshness(store, TAB_ENTITIES.X)          # standard lista paginata
+//  - useTabEvents().onDataChanged('X', handler)      # hook custom (es. RepartiProfiloView)
+//
+// Nota: `PROMO_ARTICOLI` (plurale, chiave tab/DB) e `promo_articolo`
+// (singolare, READONLY_MODELS per model_permission BE) sono volutamente
+// distinti: il primo e' la tabella/feature, il secondo e' il nome del
+// model Django utilizzato dalla risoluzione permessi oggetto.
+export const TAB_ENTITIES = {
+  ARTICOLO: 'articolo',
+  CATEGORIE_CLIENTI: 'categorie_clienti',
+  CATEGORIE_CLIENTI_LISTINI: 'categorie_clienti_listini',
+  CLIENTE: 'cliente',
+  CODICE_POSTALE: 'codice_postale',
+  COMUNE: 'comune',
+  CONTRATTO: 'contratto',
+  CONVERSIONI_UOM: 'conversioni_uom',
+  EMAIL_ACCOUNTS: 'email-accounts',
+  EMAIL_TEMPLATES: 'email-templates',
+  EMITTENTE_FISCALE: 'emittente-fiscale',
+  FORNITORE: 'fornitore',
+  INDIRIZZO: 'indirizzo',
+  LISTINO: 'listino',
+  MATRICE_INDIRIZZI: 'matrice-indirizzi',
+  OPERATORE: 'operatore',
+  PRATICA: 'pratica',
+  PREVENTIVO: 'preventivo',
+  PROFILO_REPARTO: 'profilo-reparto',
+  PROMO_ARTICOLI: 'promo_articoli',
+  PROVINCIA: 'provincia',
+  REGIONE: 'regione',
+  SOGGETTO: 'soggetto',
+  STATO: 'stato',
+  TIPI_RUOLO_TIPI_INDIRIZZO: 'tipi_ruolo_tipi_indirizzo',
+  TOPONOMASTICA: 'toponomastica',
+  UNITA_MISURA: 'unita_misura',
+  UTILITIES_TIPI_RUOLO: 'utilities_tipi_ruolo',
 }
 
 // Keyboard shortcuts

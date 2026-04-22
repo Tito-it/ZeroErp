@@ -68,8 +68,17 @@ export function createCrudAdminStore({
     async function fetchList() {
       const f = filters.value
       const searchTerm = (f.search || '').trim()
-      // Stessa regola di unita_misura: search opzionale ma min 3 char se presente.
-      if (searchTerm.length > 0 && searchTerm.length < 3) return
+      // Search opzionale, minimo 3 char. Sotto soglia: non chiamare il BE
+      // ma svuotare i risultati precedenti per coerenza UX (evita che l'utente
+      // veda dati obsoleti mentre completa la digitazione).
+      if (searchTerm.length > 0 && searchTerm.length < 3) {
+        if (hasSearched.value) {
+          items.value = []
+          totalRecords.value = 0
+          hasSearched.value = false
+        }
+        return
+      }
 
       loading.value = true
       try {

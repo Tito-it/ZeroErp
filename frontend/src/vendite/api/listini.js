@@ -106,3 +106,11 @@ export function deleteRiga(listinoId, verId, rigaId) {
 export function resolvePrezzoV5(payload) {
   return api.post('/vendite/pricing/resolve/', payload)
 }
+
+// --- L2 limiti variazione prezzo per utente corrente ---
+// Ritorna { max_sconto_pct, max_maggiorazione_pct } risolti con cascata
+// user -> group -> emittente -> default. Usato dal FE per mostrare hint
+// sotto il campo prezzo nel drawer riga preventivo.
+export function getLimitiPricingUtente() {
+  return api.get('/vendite/pricing/limiti-utente/')
+}

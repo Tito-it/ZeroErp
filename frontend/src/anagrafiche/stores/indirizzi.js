@@ -4,6 +4,7 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { listIndirizzi, createIndirizzo, updateIndirizzo } from '../api/anagrafiche'
 import { useTabEvents } from '../../core/composables/useTabEvents'
+import { TAB_ENTITIES } from '../../core/constants'
 
 export const useIndirizziStore = defineStore('anagrafiche-indirizzi', () => {
   const { emitDataChanged } = useTabEvents()
@@ -28,8 +29,14 @@ export const useIndirizziStore = defineStore('anagrafiche-indirizzi', () => {
     const searchTerm = (f.search || '').trim()
     const hasFilters = f.comune_id != null
 
-    // Search con meno di 3 caratteri e nessun filtro attivo → ignora
+    // Search con meno di 3 caratteri e nessun filtro attivo → svuota i
+    // risultati precedenti (coerenza UX: niente dati obsoleti visibili).
     if (searchTerm.length > 0 && searchTerm.length < 3 && !hasFilters) {
+      if (hasSearched.value) {
+        items.value = []
+        totalRecords.value = 0
+        hasSearched.value = false
+      }
       return
     }
     if (!searchTerm && !hasFilters && !hasSearched.value) {
@@ -66,13 +73,13 @@ export const useIndirizziStore = defineStore('anagrafiche-indirizzi', () => {
 
   async function create(payload) {
     const res = await createIndirizzo(payload)
-    emitDataChanged('indirizzo', res.data.data.indirizzo_dettaglio_id)
+    emitDataChanged(TAB_ENTITIES.INDIRIZZO, res.data.data.indirizzo_dettaglio_id)
     return res.data.data
   }
 
   async function update(id, payload) {
     const res = await updateIndirizzo(id, payload)
-    emitDataChanged('indirizzo', id)
+    emitDataChanged(TAB_ENTITIES.INDIRIZZO, id)
     return res.data.data
   }
 

@@ -7,8 +7,12 @@ import {
   getEmailTemplate,
   updateEmailTemplate
 } from '../api/amministrazione'
+import { useTabEvents } from '../../core/composables/useTabEvents'
+import { TAB_ENTITIES } from '../../core/constants'
 
 export const useEmailTemplatesStore = defineStore('amm-email-templates', () => {
+  const { emitDataChanged } = useTabEvents()
+
   const items = ref([])
   const totalRecords = ref(0)
   const loading = ref(false)
@@ -56,6 +60,7 @@ export const useEmailTemplatesStore = defineStore('amm-email-templates', () => {
   async function update(id, payload) {
     const res = await updateEmailTemplate(id, payload)
     currentTemplate.value = res.data.data
+    emitDataChanged(TAB_ENTITIES.EMAIL_TEMPLATES, id)
     return res.data.data
   }
 

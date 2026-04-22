@@ -8,6 +8,7 @@ import {
   putProfiloReparto
 } from '../api/amministrazione'
 import { useTabEvents } from '../../core/composables/useTabEvents'
+import { TAB_ENTITIES } from '../../core/constants'
 
 const { emitDataChanged } = useTabEvents()
 
@@ -40,7 +41,7 @@ export const useRepartiStore = defineStore('amm-reparti', () => {
   async function saveProfilo(uoId, aree, azioni) {
     const res = await putProfiloReparto(uoId, aree, azioni)
     currentProfilo.value = res.data.data
-    emitDataChanged('profilo-reparto', uoId)
+    emitDataChanged(TAB_ENTITIES.PROFILO_REPARTO, uoId)
     return res.data.data
   }
 

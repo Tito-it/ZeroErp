@@ -6,6 +6,7 @@ import {
   listSoggetti, getSoggetto, createSoggetto, updateSoggetto
 } from '../api/anagrafiche'
 import { useTabEvents } from '../../core/composables/useTabEvents'
+import { TAB_ENTITIES } from '../../core/constants'
 
 export const useSoggettiStore = defineStore('anagrafiche-soggetti', () => {
   const { emitDataChanged } = useTabEvents()
@@ -30,8 +31,14 @@ export const useSoggettiStore = defineStore('anagrafiche-soggetti', () => {
     const searchTerm = (f.search || '').trim()
     const hasFilters = f.tipo_soggetto_dettaglio_id != null
 
-    // Search con meno di 3 caratteri e nessun filtro attivo → ignora
+    // Search con meno di 3 caratteri e nessun filtro attivo → svuota i
+    // risultati precedenti (coerenza UX: niente dati obsoleti visibili).
     if (searchTerm.length > 0 && searchTerm.length < 3 && !hasFilters) {
+      if (hasSearched.value) {
+        items.value = []
+        totalRecords.value = 0
+        hasSearched.value = false
+      }
       return
     }
     if (!searchTerm && !hasFilters && !hasSearched.value) {
@@ -83,14 +90,14 @@ export const useSoggettiStore = defineStore('anagrafiche-soggetti', () => {
   // Scopo: Crea soggetto completo (PF o PG + contatto + indirizzi).
   async function create(payload) {
     const res = await createSoggetto(payload)
-    emitDataChanged('soggetto', res.data.data.id)
+    emitDataChanged(TAB_ENTITIES.SOGGETTO, res.data.data.id)
     return res.data.data
   }
 
   // Scopo: Aggiorna campi soggetto.
   async function update(id, payload) {
     const res = await updateSoggetto(id, payload)
-    emitDataChanged('soggetto', id)
+    emitDataChanged(TAB_ENTITIES.SOGGETTO, id)
     return res.data.data
   }
 

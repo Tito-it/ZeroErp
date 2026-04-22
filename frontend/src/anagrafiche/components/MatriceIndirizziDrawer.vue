@@ -10,7 +10,7 @@ import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { lookupCodici } from '../../core/apiCore'
 import { createMatriceIndirizzo, updateMatriceIndirizzo } from '../api/anagrafiche'
 import { useTabEvents } from '../../core/composables/useTabEvents'
-import { DRAWER_WIDTH } from '../../core/constants'
+import { DRAWER_WIDTH, TAB_ENTITIES } from '../../core/constants'
 import { displayDate } from '../../core/utils/date'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import DrawerFooter from '../../core/components/DrawerFooter.vue'
@@ -103,7 +103,7 @@ async function onSave() {
       { successMessage: t('matrice_indirizzi.regola_salvata') }
     )
     if (result !== null) {
-      emitDataChanged('matrice-indirizzi', props.regolaId)
+      emitDataChanged(TAB_ENTITIES.MATRICE_INDIRIZZI, props.regolaId)
       emit('saved', result)
     }
   } else {
@@ -118,7 +118,7 @@ async function onSave() {
       { successMessage: t('matrice_indirizzi.regola_creata') }
     )
     if (result !== null) {
-      emitDataChanged('matrice-indirizzi', result.id)
+      emitDataChanged(TAB_ENTITIES.MATRICE_INDIRIZZI, result.id)
       emit('saved', result)
     }
   }

@@ -4,7 +4,7 @@
 >
 > Riferimento metodologico: [sviluppo-concentrico.md](sviluppo-concentrico.md)
 
-*Ultimo aggiornamento: 20 aprile 2026*
+*Ultimo aggiornamento: 22 aprile 2026*
 
 ---
 
@@ -100,7 +100,7 @@ Stabile. Modifiche solo per correzioni o estensioni non-breaking (nuove policy, 
 | `catalogo`     | App Django | Operativo | Operativo | Operativo | Articoli (CRUD, UoM, BoM, note) — **completato e testato** (work-done/gestione-articoli.md)                                |
 | `amm-software` | App Django | Operativo | Operativo | Operativo | Gestione operatori, permessi riepilogo, profili reparto, audit log (solo ADMIN), drawer dedicato gestione permessi         |
 
-> **Refactor in corso (20-04-2026) — Multi-Face Auth + Shop B2C:** `anagrafiche` ha ora il bridge `identita_digitali` (SSO multi-veste post-cutover 19-04-2026); `amm-software` BE/FE sono in refactor su PR-B per supportare i canali portale + shop. Dettaglio e contratti: [pr-b-shop-b2c-cambio-modello.md](dev/work-done/pr-b-shop-b2c-cambio-modello.md). Guida: [architettura-multi-face-auth v2.0](guide/architettura-multi-face-auth.md).
+> **Multi-Face Auth — COMPLETATO (22-04-2026):** `anagrafiche` usa il bridge generalizzato `identita_digitali` (SSO multi-veste, cutover 19-04-2026). `amm-software` supporta operatori, portale clienti/fornitori e shop B2C. **Infrastruttura auth predisposta per tutte le vesti; le API di dominio portale/shop (fatture, ordini, catalogo B2C) non sono ancora sviluppate e saranno affrontate quando il business lo richiedera'.** Dettaglio: [pr-b-shop-b2c-cambio-modello.md](dev/work-done/pr-b-shop-b2c-cambio-modello.md). Guida: [architettura-multi-face-auth v2.0](guide/architettura-multi-face-auth.md).
 
 ### Frontend Anello 1 — Stato dettagliato
 
@@ -129,7 +129,7 @@ Stabile. Modifiche solo per correzioni o estensioni non-breaking (nuove policy, 
 - **Policy operative trasversali**: configurazioni che governano il comportamento del sistema su piu' domini e non appartengono a nessun dominio specifico (es. `user_emittenti_fiscali` — ambito operativo per emittente)
 - **Gestione geografica completa**: indirizzi, toponomastica, comuni, province, regioni, stati — API + UI con autorizzazione per area `anagrafiche`
 - **Building block frontend riutilizzabili**: composable centralizzati (useSearchTable, useDrawerState, useTabFreshness, useReadonlyMode, useActionPermission), componenti atomici (SoggettoForm, AuthUserForm, autocomplete, NewButton, DrawerFooter con prop `action`), CSS utility classes
-- **Sistema permessi a 2 livelli**: Livello 1 area (TUTTO/LETTURA/BLOCCATO) + Livello 2 azioni processo (abilitata/negata), con enforcement backend (ZeroERPPermission) e auto-hide frontend (prop `action`)
+- **Sistema permessi a 3 livelli**: Livello 1 area (TUTTO/LETTURA/BLOCCATO) + Livello 2 model/oggetto (override granulare per singola entita') + Livello 3 azioni processo (abilitata/negata), con enforcement backend (ZeroERPPermission) e auto-hide frontend (prop `action`, `useReadonlyMode`)
 
 ### Regola di posizionamento in `config`
 

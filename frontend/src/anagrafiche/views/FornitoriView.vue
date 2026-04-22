@@ -7,7 +7,7 @@ import { useDrawerState } from '../../core/composables/useDrawerState'
 import { useReadonlyMode } from '../../core/composables/useReadonlyMode'
 import { useContextStore } from '../../stores/context'
 import { useFornitoriStore } from '../stores/fornitori'
-import { TIPO_RUOLO } from '../../core/constants'
+import { TIPO_RUOLO, READONLY_DOMAINS, READONLY_MODELS } from '../../core/constants'
 import FornitoriSearchTable from '../components/FornitoriSearchTable.vue'
 import FornitoreDrawer from '../components/FornitoreDrawer.vue'
 import ContattiSoggettoDrawer from '../../core/components/ContattiSoggettoDrawer.vue'
@@ -18,7 +18,7 @@ const drawer = useDrawerState()
 const store = useFornitoriStore()
 const ctx = useContextStore()
 const route = useRoute()
-useReadonlyMode('anagrafiche', 'fornitore')
+useReadonlyMode(READONLY_DOMAINS.ANAGRAFICHE, READONLY_MODELS.FORNITORE)
 
 watch(() => route.fullPath, () => {
   if (route.name === 'anagrafiche-fornitori' && ctx.entitaId) {

@@ -6,6 +6,7 @@
 import { ref } from 'vue'
 import { useDrawerState } from '../../core/composables/useDrawerState'
 import { useReadonlyMode } from '../../core/composables/useReadonlyMode'
+import { READONLY_DOMAINS } from '../../core/constants'
 import { useListiniStore } from '../stores/listini'
 import ListiniSearchTable from '../components/ListiniSearchTable.vue'
 import ListinoDrawer from '../components/ListinoDrawer.vue'
@@ -16,7 +17,7 @@ import TestResolverDialog from '../components/TestResolverDialog.vue'
 
 const drawer = useDrawerState()
 const store = useListiniStore()
-useReadonlyMode('vendite')
+useReadonlyMode(READONLY_DOMAINS.VENDITE)
 
 // Drawer righe prezzo (VersioneDrawer)
 const versioneDrawerVisible = ref(false)

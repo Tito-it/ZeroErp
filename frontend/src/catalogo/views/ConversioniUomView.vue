@@ -2,13 +2,14 @@
 // Scopo: Vista principale gestione conversioni UoM.
 import { useDrawerState } from '../../core/composables/useDrawerState'
 import { useReadonlyMode } from '../../core/composables/useReadonlyMode'
+import { READONLY_DOMAINS, READONLY_MODELS } from '../../core/constants'
 import { useConversioniUomStore } from '../stores/conversioniUom'
 import ConversioniUomSearchTable from '../components/ConversioniUomSearchTable.vue'
 import ConversioneUomDrawer from '../components/ConversioneUomDrawer.vue'
 
 const drawer = useDrawerState()
 const store = useConversioniUomStore()
-useReadonlyMode('catalogo', 'unita_misura')
+useReadonlyMode(READONLY_DOMAINS.CATALOGO, READONLY_MODELS.UNITA_MISURA)
 
 async function onDrawerSaved(result) {
   await store.fetchList()

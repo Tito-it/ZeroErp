@@ -1,7 +1,7 @@
 <script setup>
 // Scopo: DataTable paginata listini con search, filtro utility e attivo.
 // Row expansion: mostra le versioni del listino sotto la riga (default aperto).
-// Pulsanti riga listino: toggle versioni (chiude/apre expansion), associazioni.
+// Pulsanti riga listino: toggle versioni (chiude/apre expansion), test resolver.
 // Mini-tabella versioni nell'expansion: + nuova versione, transizioni stato,
 // gestione righe prezzo (apre VersioneDrawer dal parent).
 import { ref, onMounted, watch } from 'vue'
@@ -12,7 +12,7 @@ import { useSearchTable } from '../../core/composables/useSearchTable'
 import { useTabFreshness } from '../../core/composables/useTabFreshness'
 import { useGlobalLookup } from '../../core/composables/useGlobalLookup'
 import { lookupCodici } from '../../core/apiCore'
-import { MANAGE_ICONS } from '../../core/constants'
+import { MANAGE_ICONS, TAB_ENTITIES } from '../../core/constants'
 import { statoVersioneListinoSeverity } from '../../core/utils/severity'
 import { displayDate } from '../../core/utils/date'
 import { changeVersioneStato, deleteVersione, deleteListino } from '../api/listini'
@@ -265,7 +265,7 @@ function buildVersioneActions(ver, listino) {
   ]
 }
 
-useTabFreshness(store, 'listino')
+useTabFreshness(store, TAB_ENTITIES.LISTINO)
 
 // Dopo ogni assegnazione di items (fetchList completato e preload versioni
 // gia' fatto dal store), aggiorna la mappa expandedRows per espandere tutto.

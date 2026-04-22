@@ -8,6 +8,7 @@ import {
   addUtilityContratto, updateUtilityContratto,
 } from '../api/contratti'
 import { useTabEvents } from '../../core/composables/useTabEvents'
+import { TAB_ENTITIES } from '../../core/constants'
 
 const defaultDataDa = `${new Date().getFullYear() - 1}-01-01`
 
@@ -71,48 +72,48 @@ export const useContrattiStore = defineStore('vendite-contratti', () => {
 
   async function create(payload) {
     const res = await createContratto(payload)
-    emitDataChanged('contratto', res.data.data.id)
+    emitDataChanged(TAB_ENTITIES.CONTRATTO, res.data.data.id)
     return res.data.data
   }
 
   async function update(id, payload) {
     const res = await updateContratto(id, payload)
-    emitDataChanged('contratto', id)
+    emitDataChanged(TAB_ENTITIES.CONTRATTO, id)
     return res.data.data
   }
 
   async function cambiaStato(id, codiceInterno) {
     const res = await cambiaStatoContratto(id, codiceInterno)
-    emitDataChanged('contratto', id)
+    emitDataChanged(TAB_ENTITIES.CONTRATTO, id)
     return res.data.data
   }
 
   // Righe
   async function addRiga(contrattoId, payload) {
     const res = await addRigaContratto(contrattoId, payload)
-    emitDataChanged('contratto', contrattoId)
+    emitDataChanged(TAB_ENTITIES.CONTRATTO, contrattoId)
     return res.data.data
   }
   async function updateRiga(contrattoId, rigaId, payload) {
     const res = await updateRigaContratto(contrattoId, rigaId, payload)
-    emitDataChanged('contratto', contrattoId)
+    emitDataChanged(TAB_ENTITIES.CONTRATTO, contrattoId)
     return res.data.data
   }
   async function deleteRiga(contrattoId, rigaId) {
     const res = await deleteRigaContratto(contrattoId, rigaId)
-    emitDataChanged('contratto', contrattoId)
+    emitDataChanged(TAB_ENTITIES.CONTRATTO, contrattoId)
     return res.data.data
   }
 
   // Utility 1:1
   async function addUtility(contrattoId, payload) {
     const res = await addUtilityContratto(contrattoId, payload)
-    emitDataChanged('contratto', contrattoId)
+    emitDataChanged(TAB_ENTITIES.CONTRATTO, contrattoId)
     return res.data.data
   }
   async function updateUtility(contrattoId, utilityId, payload) {
     const res = await updateUtilityContratto(contrattoId, utilityId, payload)
-    emitDataChanged('contratto', contrattoId)
+    emitDataChanged(TAB_ENTITIES.CONTRATTO, contrattoId)
     return res.data.data
   }
 
