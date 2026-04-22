@@ -757,7 +757,29 @@ erDiagram
 
 ---
 
-## 14. Evoluzioni future
+## 14. Stato portale e shop (aprile 2026)
+
+L'**infrastruttura auth e' completamente predisposta** per tutte le vesti:
+invito, attivazione, login, refresh, `/me/`, GUC JWT, scope policy, RLS
+policy (dry-run). Un operatore puo' gia' invitare un cliente come utente
+portale o shop; l'utente riceve l'email, attiva l'account, fa login sul
+canale corretto e ottiene un JWT con la veste giusta.
+
+Quello che **non e' ancora sviluppato** sono le **API di dominio** per
+portale e shop: fatture visibili al cliente, ordini del fornitore,
+catalogo B2C, carrello, checkout. Queste richiederanno decisioni di
+design (quali dati esporre, pricing B2C, ricevute consumer vs fatture)
+e saranno affrontate quando il business le richiedera'.
+
+Il vantaggio del modello attuale: aggiungere le API portale/shop non
+richiede nessun refactor auth — si aggiungono endpoint sotto
+`/api/v1/portale/` o `/api/v1/shop/`, si usa `PortaleBasePermission` /
+`ShopPermission`, e la RLS si attiva con `ENABLE ROW LEVEL SECURITY` sulle
+tabelle gia' predisposte. Zero breaking change sugli operatori interni.
+
+---
+
+## 15. Evoluzioni future
 
 - **Utente multi-cappello come caso paradigmatico**: il modello "un account,
   molte vesti" rende naturale lo scenario "dipendente che e' anche cliente",
