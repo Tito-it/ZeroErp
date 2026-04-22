@@ -124,7 +124,7 @@
 - [fn_resolve_lotto_task_execution_mode](funzioni/fn_resolve_lotto_task_execution_mode.md) — Determina in modo deterministico la modalita` di esecuzione del task: `RUN`, `SKIP`, `RESUME`, `RESET_REQUIRED`.
 - [fn_resolve_lotto_utility_emittente](funzioni/fn_resolve_lotto_utility_emittente.md) — (latest review 22-02-2026) Helper condiviso per risolvere e validare `utility_id` ed `emittente_soggetto_ruolo_id` nei flussi lotto (`fatturazione_lotti` e `attivita_fatturabili_lotti`).
 - [fn_resolve_prezzo_composito](funzioni/fn_resolve_prezzo_composito.md) — (latest review 14-04-2026)
-- [fn_resolve_prezzo_listino](funzioni/fn_resolve_prezzo_listino.md) — principale
+- [fn_resolve_prezzo_listino](funzioni/fn_resolve_prezzo_listino.md) — Risolve in modo deterministico il prezzo applicabile per una coppia `(articolo, uom)` in una data, dato un billing account. Unica funzione usata da preventivi, commesse e fatturazione: zero logica duplicata applicativa.
 - [fn_resolve_prezzo_listino_v2](funzioni/fn_resolve_prezzo_listino_v2.md) — (latest review 15-04-2026)
 - [fn_resolve_stato_esecuzione](funzioni/fn_resolve_stato_esecuzione.md) — (latest review 22-02-2026) Helper condiviso per risolvere in modo uniforme il valore di `stato_esecuzione` nei flussi `fatturazione_lotti` e `attivita_fatturabili`.
 - [fn_resolve_termini_pagamento](funzioni/fn_resolve_termini_pagamento.md)
