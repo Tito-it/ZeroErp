@@ -318,7 +318,7 @@ def write_docs_for_schema(schema, cur):
 
 def extract_scopo(text):
     m = re.search(
-        r"###\s*🎯\s*(?:Scopo Principale|Scopo)\s*(.+?)(?=(?:\r?\n###|$))",
+        r"###\s*(?:🎯\s*)?(?:Scopo Principale|Scopo principale)\s*(.+?)(?=(?:\r?\n###|$))",
         text,
         flags=re.DOTALL
     )

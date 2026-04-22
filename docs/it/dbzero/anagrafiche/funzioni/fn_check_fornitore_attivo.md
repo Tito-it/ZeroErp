@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/anagrafiche/manual/fn_check_fornitore_attivo.md" %}
 # ⚙️ Funzione `fn_check_fornitore_attivo`
 
 ```sql

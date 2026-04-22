@@ -14,7 +14,7 @@
 - [fn_generate_codice](manual/fn_generate_codice.md) — (latest review 04-02-26) * **Generazione di codici configurabili**   Costruisce un codice concatenando un **prefisso**, un **separatore** e una **parte numerica** formattata, letti da **`config.sistema_codici`** in base al `codice_interno` passato in input.
 - [fn_get_catasto_source_by_istanza](manual/fn_get_catasto_source_by_istanza.md) — La funzione **`script.fn_get_catasto_source_by_istanza(p_istanza_utilities_id)`** recupera il record catastale **"sorgente"** da utilizzare come base per una **clonazione** in caso di **subentro**.
 - [fn_get_contatti](manual/fn_get_contatti.md) — (latest review 25-03-26) * **Selezione univoca per tipo**   Per ogni `tipo_contatto_id` vengono restituiti **al più** un record, che rappresenta il contatto “migliore” in base al contesto richiesto.
-- [fn_get_contatto_default](manual/fn_get_contatto_default.md) — principale (latest review 25-03-26) La funzione **`script.fn_get_contatto_default`** restituisce **il contatto “di default”** per un determinato **soggetto** e, opzionalmente, per un determinato:
+- [fn_get_contatto_default](manual/fn_get_contatto_default.md) — (latest review 25-03-26) La funzione **`script.fn_get_contatto_default`** restituisce **il contatto “di default”** per un determinato **soggetto** e, opzionalmente, per un determinato:
 - [fn_get_conto_bancario_predefinito](manual/fn_get_conto_bancario_predefinito.md) — (latest review 25-03-26)
 - [fn_get_default_by_param](manual/fn_get_default_by_param.md) — (latest update 21-12-25) Recuperare in modo dinamico un valore (tipicamente una **PK**) da una tabella qualsiasi, basandosi su un **codice parametro**.
 - [fn_get_emittenti_scope](manual/fn_get_emittenti_scope.md) — (latest review 08-03-2026) La funzione **`script.fn_get_emittenti_scope`** restituisce l'array di ID emittenti fiscali autorizzati per un utente, letti dalla whitelist `config.user_emittenti_fiscali`.
@@ -29,7 +29,7 @@
 - [fn_get_note](manual/fn_get_note.md) — (latest review 14-01-26) `script.fn_get_note` e' una funzione generica che **normalizza la lettura delle note** da una tabella `*.note` partizionata.   Restituisce sempre lo stesso set di colonne con **stile** e **lingua** risolti da `config.note_stili` e `config.lingue`.
 - [fn_get_or_create_soggetto_ruolo](manual/fn_get_or_create_soggetto_ruolo.md) — (latest review 09-12-25) La funzione **`script.fn_get_or_create_soggetto_ruolo`** è una **factory di dominio** per garantire l’esistenza di un legame tra:
 - [fn_get_override_scaduti](manual/fn_get_override_scaduti.md) — (latest review 08-03-2026) La funzione **`script.fn_get_override_scaduti`** restituisce tutti gli override utente la cui data `valido_al` e scaduta. Unisce le 3 tabelle override (aree, oggetti, azioni) in un unico risultato.
-- [fn_get_parameter_full](manual/fn_get_parameter_full.md)
+- [fn_get_parameter_full](manual/fn_get_parameter_full.md) — (latest update 03-04-26)
 - [fn_get_profili_accesso_applicabili](manual/fn_get_profili_accesso_applicabili.md) — (latest review 20-04-2026 — parametro opzionale `p_ruolo_applicativo`)
 - [fn_get_record_id_as_of](manual/fn_get_record_id_as_of.md) — * **Recupero rapido dell’ID in uno snapshot**: ottenere solo l’identificativo del record (`id`) valido alla data/ora specificata, senza dover deserializzare tutto il JSON. * **Ottimizzazione delle query**: operazione leggera nel caso serva solo l’ID, utile per controlli o join condizionali su storico.
 - [fn_get_ruolo_sistema](manual/fn_get_ruolo_sistema.md) — (latest review 08-03-2026) La funzione **`script.fn_get_ruolo_sistema`** restituisce il `ruolo_sistema` (`ADMIN`, `OPERATIVO`, `DISABILITATO`) di un utente dalla tabella ponte `anagrafiche.risorse_umane_auth_user`.
@@ -44,7 +44,7 @@
 - [fn_get_user_actions_map](manual/fn_get_user_actions_map.md)
 - [fn_get_user_object_permissions_map](manual/fn_get_user_object_permissions_map.md)
 - [fn_get_user_permissions_map](manual/fn_get_user_permissions_map.md)
-- [fn_get_user_profile](manual/fn_get_user_profile.md)
+- [fn_get_user_profile](manual/fn_get_user_profile.md) — - **Profilo utente completo in una chiamata** - **Payload JSONB stabile ed estendibile** - **Riuso delle funzioni di dominio** per soggetto e mappe permessi - **Riduzione query interne**: dalla revisione `20260410-16` la lettura di   `auth_user + risorse_umane_auth_user + risorse_umane + lookup qualifica/UO`   viene eseguita in una sola `SELECT`
 - [fn_guard_soggetto_pf_pura](manual/fn_guard_soggetto_pf_pura.md) — (latest review 18-04-2026)
 - [fn_guard_soggetto_ruolo](manual/fn_guard_soggetto_ruolo.md) — (latest review 05-12-25) - **Verifica esistenza**     Controlla se esiste già un’associazione tra il soggetto e il codice interno del ruolo in `anagrafiche.soggetti_ruoli`.
 - [fn_guard_utility_tipo_ruolo](manual/fn_guard_utility_tipo_ruolo.md) — (latest review 16-02-2026) `script.fn_guard_utility_tipo_ruolo` valida la coerenza tra `utility_id` e `tipo_ruolo_id` con semantica:

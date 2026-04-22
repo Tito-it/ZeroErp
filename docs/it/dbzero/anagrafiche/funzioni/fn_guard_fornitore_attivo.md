@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/anagrafiche/manual/fn_guard_fornitore_attivo.md" %}
 # ⚙️ Funzione `fn_guard_fornitore_attivo`
 
 ```sql

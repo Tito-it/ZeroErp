@@ -1,0 +1,221 @@
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/catalogo/20260422-01-create-trgfn-articoli-componenti-block-modifica-struttura-mctit.yaml
+
+  # ---------------------------------------------------------------------------
+  # Trigger guard di immutabilita' della struttura BoM
+  # (catalogo.articoli_componenti). Pattern admin: chiudi+inserisci.
+  #
+  # Decisione di dominio (22-04-2026, PO Tid + team BE F2-BE-12):
+  #   - BoM versionata come i listini v5: ogni riga rappresenta una
+  #     versione nel tempo, le correzioni passano per chiusura
+  #     (UPDATE valido_al) + inserimento nuova riga con valido_dal
+  #     successivo. L'EXCLUDE constraint esistente
+  #     ex_articoli_componenti_no_overlap (prodotto, componente, validita)
+  #     garantisce non-overlap.
+  #   - Trigger restrittivo da subito, non condizionato a dati in
+  #     commesse_attivita. Motivo: allenare gli admin al pattern coerente.
+  #
+  # Sblocca F2-BE-12 (pipeline espansione compositi, §14.4
+  # sviluppo-listini-v5.md).
+  #
+  # 2 changeSet in sequenza (sub-progressivi 01-01, 01-02):
+  #   01-01 funzione trigger catalogo.trgfn_articoli_componenti_block_modifica_struttura
+  #   01-02 trigger BEFORE UPDATE OR DELETE su catalogo.articoli_componenti
+  # ---------------------------------------------------------------------------
+
+  - changeSet:
+      id: 20260422-01-01-create-trgfn-articoli-componenti-block-modifica-struttura
+      author: mctit
+      runOnChange: true
+      validCheckSum: [ANY]
+      comment: >
+        Crea trigger function catalogo.trgfn_articoli_componenti_block_modifica_struttura.
+        Blocca DELETE e UPDATE dei campi di struttura BoM. Permette UPDATE
+        di valido_al (chiusura finestra) + campi non di struttura (note,
+        meta, attivo). Raise E_BOM_MODIFICA_VIETATA (id 387) o
+        E_BOM_VALIDO_AL_INVALIDO (id 388). Difesa in profondita':
+        include anche validita (daterange nativo) nei campi bloccati
+        benche' sia ricalcolato dal trigger a20_set_validita.
+      preConditions:
+        - onFail: HALT
+        - and:
+          - tableExists:
+              schemaName: catalogo
+              tableName: articoli_componenti
+          - columnExists:
+              schemaName: catalogo
+              tableName: articoli_componenti
+              columnName: validita
+          - sqlCheck:
+              expectedResult: 1
+              sql: |
+                SELECT COUNT(*)
+                  FROM pg_proc p
+                  JOIN pg_namespace n ON n.oid = p.pronamespace
+                 WHERE n.nspname = 'script'
+                   AND p.proname = 'fn_log_and_raise_error';
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION catalogo.trgfn_articoli_componenti_block_modifica_struttura()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Garantire che la struttura di una BoM sia immutabile
+                  --   una volta inserita. Pattern admin "chiudi+inserisci":
+                  --   per correggere si chiude la riga esistente (UPDATE
+                  --   valido_al alla data di fine) e si inserisce una
+                  --   nuova riga con valido_dal successivo. L'EXCLUDE
+                  --   constraint ex_articoli_componenti_no_overlap
+                  --   garantisce non-overlap sul triplo (prodotto,
+                  --   componente, validita).
+                  --
+                  -- Regole:
+                  --   1. DELETE -> bloccato sempre (E_BOM_MODIFICA_VIETATA).
+                  --   2. UPDATE dei campi di struttura -> bloccato
+                  --      (coeff_qta, componente_id, obbligatorio,
+                  --      esposto_in_fattura, partecipa_qta,
+                  --      determina_qta_padre, valido_dal, validita).
+                  --      Nota: validita e' incluso per difesa in
+                  --      profondita' anche se a20_set_validita lo
+                  --      ricalcola da valido_dal/valido_al.
+                  --   3. UPDATE di solo valido_al ammesso + check
+                  --      NEW.valido_al >= OLD.valido_dal -> altrimenti
+                  --      E_BOM_VALIDO_AL_INVALIDO (chk_articoli_componenti_valid_dates
+                  --      esistente copre > ma diamo error code custom
+                  --      UI-friendly per il caso <).
+                  --   4. UPDATE di campi note/meta/attivo + audit
+                  --      (user_update/data_update/tx_id) -> ammesso.
+                  -- =========================================================
+
+                  IF TG_OP = 'DELETE' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          TG_NAME,
+                          'E_BOM_MODIFICA_VIETATA',
+                          jsonb_build_object(
+                              'operazione',    'DELETE',
+                              'hint',          'Chiudi la riga impostando valido_al invece di eliminarla.',
+                              'prodotto_id',   OLD.prodotto_id,
+                              'componente_id', OLD.componente_id,
+                              'riga_id',       OLD.id
+                          ),
+                          NULL::uuid,
+                          VARIADIC ARRAY[]::text[]
+                      );
+                  END IF;
+
+                  IF TG_OP = 'UPDATE' THEN
+                      -- Blocca modifiche ai campi di struttura.
+                      IF NEW.coeff_qta             IS DISTINCT FROM OLD.coeff_qta
+                         OR NEW.componente_id      IS DISTINCT FROM OLD.componente_id
+                         OR NEW.obbligatorio       IS DISTINCT FROM OLD.obbligatorio
+                         OR NEW.esposto_in_fattura IS DISTINCT FROM OLD.esposto_in_fattura
+                         OR NEW.partecipa_qta      IS DISTINCT FROM OLD.partecipa_qta
+                         OR NEW.determina_qta_padre IS DISTINCT FROM OLD.determina_qta_padre
+                         OR NEW.valido_dal         IS DISTINCT FROM OLD.valido_dal
+                         OR NEW.validita           IS DISTINCT FROM OLD.validita
+                      THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'database',
+                              TG_NAME,
+                              'E_BOM_MODIFICA_VIETATA',
+                              jsonb_build_object(
+                                  'operazione',    'UPDATE_STRUTTURA',
+                                  'hint',          'Chiudi questa riga (imposta valido_al) e inserisci una nuova riga con i valori aggiornati.',
+                                  'prodotto_id',   OLD.prodotto_id,
+                                  'componente_id', OLD.componente_id,
+                                  'riga_id',       OLD.id
+                              ),
+                              NULL::uuid,
+                              VARIADIC ARRAY[]::text[]
+                          );
+                      END IF;
+
+                      -- Check coerenza range su UPDATE valido_al.
+                      -- chk_articoli_componenti_valid_dates copre
+                      -- "valido_al > valido_dal"; qui intercettiamo
+                      -- valido_al < valido_dal con error code custom
+                      -- UI-friendly. Il caso valido_al = valido_dal
+                      -- resta a carico del CHECK (errore tecnico).
+                      IF NEW.valido_al IS DISTINCT FROM OLD.valido_al
+                         AND NEW.valido_al IS NOT NULL
+                         AND NEW.valido_al < OLD.valido_dal
+                      THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'database',
+                              TG_NAME,
+                              'E_BOM_VALIDO_AL_INVALIDO',
+                              jsonb_build_object(
+                                  'valido_al',   NEW.valido_al,
+                                  'valido_dal',  OLD.valido_dal,
+                                  'riga_id',     OLD.id
+                              ),
+                              NULL::uuid,
+                              NEW.valido_al::text,
+                              OLD.valido_dal::text
+                          );
+                      END IF;
+                  END IF;
+
+                  RETURN CASE WHEN TG_OP = 'DELETE' THEN OLD ELSE NEW END;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION catalogo.trgfn_articoli_componenti_block_modifica_struttura() IS
+                  'Trigger function: blocca DELETE e UPDATE dei campi di struttura '
+                  'di catalogo.articoli_componenti (BoM immutabile, pattern '
+                  'chiudi+inserisci). Ammette UPDATE di valido_al (con check '
+                  '>=valido_dal), attivo, note, meta, audit. Error code: '
+                  'E_BOM_MODIFICA_VIETATA (387), E_BOM_VALIDO_AL_INVALIDO (388).';
+      rollback:
+        - sql:
+            sql: DROP FUNCTION IF EXISTS catalogo.trgfn_articoli_componenti_block_modifica_struttura();
+
+  - changeSet:
+      id: 20260422-01-02-create-trg-articoli-componenti-block-modifica-struttura
+      author: mctit
+      runOnChange: true
+      validCheckSum: [ANY]
+      comment: >
+        Trigger BEFORE UPDATE OR DELETE su catalogo.articoli_componenti.
+        Fase _a10_ (guard), suffisso _upd_dlt per entrambi gli eventi.
+        Scatta per ogni riga; l'inclusione di DELETE richiede FOR EACH
+        ROW senza UPDATE OF (nessuna colonna-target).
+      preConditions:
+        - onFail: HALT
+        - and:
+          - tableExists:
+              schemaName: catalogo
+              tableName: articoli_componenti
+          - sqlCheck:
+              expectedResult: 1
+              sql: |
+                SELECT COUNT(*)
+                  FROM pg_proc p
+                  JOIN pg_namespace n ON n.oid = p.pronamespace
+                 WHERE n.nspname = 'catalogo'
+                   AND p.proname = 'trgfn_articoli_componenti_block_modifica_struttura';
+      changes:
+        - sql:
+            splitStatements: true
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_articoli_componenti_a10_block_modifica_struttura_upd_dlt
+                  ON catalogo.articoli_componenti;
+
+              CREATE TRIGGER trg_articoli_componenti_a10_block_modifica_struttura_upd_dlt
+                  BEFORE UPDATE OR DELETE
+                  ON catalogo.articoli_componenti
+                  FOR EACH ROW
+                  EXECUTE FUNCTION catalogo.trgfn_articoli_componenti_block_modifica_struttura();
+      rollback:
+        - sql:
+            sql: |
+              DROP TRIGGER IF EXISTS trg_articoli_componenti_a10_block_modifica_struttura_upd_dlt
+                  ON catalogo.articoli_componenti;
