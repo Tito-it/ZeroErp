@@ -16,7 +16,7 @@ import {
   listRuoloContiBancari, createRuoloContoBancario,
   updateRuoloContoBancario, deleteRuoloContoBancario
 } from '../../anagrafiche/api/anagrafiche'
-import { DRAWER_WIDTH } from '../constants'
+import { DRAWER_WIDTH, READONLY_DOMAINS, READONLY_MODELS } from '../constants'
 import { sortByFonte } from '../utils/string'
 import ContoBancarioForm from './ContoBancarioForm.vue'
 import DrawerTitle from './DrawerTitle.vue'
@@ -31,7 +31,7 @@ const { t } = useI18n()
 // `anagrafiche.conto_bancario` indipendentemente dal parent.
 // L'OR interno di useReadonlyMode garantisce comunque rispetto dello stato
 // readonly ereditato (se parent e' readonly, anche il drawer lo resta).
-const { isReadonly } = useReadonlyMode('anagrafiche', 'conto_bancario')
+const { isReadonly } = useReadonlyMode(READONLY_DOMAINS.ANAGRAFICHE, READONLY_MODELS.CONTO_BANCARIO)
 const isBlocked = useInjectBlocked()
 const { execute, loading } = useApiHandler()
 const conto = useContoBancarioForm()

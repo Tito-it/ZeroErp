@@ -5,6 +5,7 @@
 import { ref, watch, onMounted, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useReadonlyMode } from '../../core/composables/useReadonlyMode'
+import { READONLY_DOMAINS } from '../../core/constants'
 import { useLookup } from '../../core/composables/useLookup'
 import { getPermessiRiepilogo, listUnitaOrganizzative, listEmittentiFiscali } from '../api/amministrazione'
 import { buildRuoloOptions, getLivelloSeverity, getLivelloLabel, getRuoloSeverity } from '../constants'
@@ -14,7 +15,7 @@ import Select from 'primevue/select'
 import Tag from 'primevue/tag'
 
 const { t } = useI18n()
-useReadonlyMode('amm_software')
+useReadonlyMode(READONLY_DOMAINS.AMM_SOFTWARE)
 
 const loading = ref(false)
 const aree = ref([])

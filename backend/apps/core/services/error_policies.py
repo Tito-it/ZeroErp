@@ -1009,6 +1009,24 @@ class ErrorPolicyRegistry:
                 "suggerito dal listino o richiedi l'autorizzazione al responsabile."
             ),
         ),
+        "E_PREV_SCONTO_ECCESSIVO": ErrorPolicy(
+            code="E_PREV_SCONTO_ECCESSIVO",
+            http_status=403,
+            ui_action="show_error_banner",
+            user_message=(
+                "Sconto oltre il limite consentito per il tuo ruolo. "
+                "Richiedi approvazione o rientra nel limite ammesso."
+            ),
+        ),
+        "E_PREV_MAGGIORAZIONE_ECCESSIVA": ErrorPolicy(
+            code="E_PREV_MAGGIORAZIONE_ECCESSIVA",
+            http_status=403,
+            ui_action="show_error_banner",
+            user_message=(
+                "Maggiorazione oltre il limite consentito per il tuo ruolo. "
+                "Richiedi approvazione o rientra nel limite ammesso."
+            ),
+        ),
         "E_PREV_STATO_TRANSIZIONE": ErrorPolicy(
             code="E_PREV_STATO_TRANSIZIONE",
             http_status=409,

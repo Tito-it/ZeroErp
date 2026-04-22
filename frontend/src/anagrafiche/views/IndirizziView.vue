@@ -4,6 +4,7 @@ import { ref, onMounted, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useDrawerState } from '../../core/composables/useDrawerState'
 import { useReadonlyMode } from '../../core/composables/useReadonlyMode'
+import { READONLY_DOMAINS } from '../../core/constants'
 import IndirizziSearchTable from '../components/IndirizziSearchTable.vue'
 import IndirizzoDrawer from '../components/IndirizzoDrawer.vue'
 import ToponomasticaSearchTable from '../../core/components/ToponomasticaSearchTable.vue'
@@ -24,7 +25,7 @@ import TabView from 'primevue/tabview'
 import TabPanel from 'primevue/tabpanel'
 
 const { t } = useI18n()
-const { isReadonly } = useReadonlyMode('anagrafiche')
+const { isReadonly } = useReadonlyMode(READONLY_DOMAINS.ANAGRAFICHE)
 const indDrawer = useDrawerState()
 const topoDrawer = useDrawerState()
 const comuneDrawer = useDrawerState()

@@ -4,6 +4,7 @@
 import { ref } from 'vue'
 import { useDrawerState } from '../../core/composables/useDrawerState'
 import { useReadonlyMode } from '../../core/composables/useReadonlyMode'
+import { READONLY_DOMAINS, READONLY_MODELS } from '../../core/constants'
 import { useUnitaMisuraStore } from '../stores/unitaMisura'
 import UnitaMisuraSearchTable from '../components/UnitaMisuraSearchTable.vue'
 import UnitaMisuraDrawer from '../components/UnitaMisuraDrawer.vue'
@@ -11,7 +12,7 @@ import UomConversioniDrawer from '../components/UomConversioniDrawer.vue'
 
 const drawer = useDrawerState()
 const store = useUnitaMisuraStore()
-useReadonlyMode('catalogo', 'unita_misura')
+useReadonlyMode(READONLY_DOMAINS.CATALOGO, READONLY_MODELS.UNITA_MISURA)
 
 // Sub-drawer conversioni
 const convDrawerVisible = ref(false)

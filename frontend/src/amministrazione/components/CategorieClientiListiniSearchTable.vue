@@ -8,6 +8,8 @@ import { useCategorieClientiListiniStore } from '../stores/categorieClientiListi
 import { useSearchTable } from '../../core/composables/useSearchTable'
 import { useTabFreshness } from '../../core/composables/useTabFreshness'
 import { useInjectReadonly, useInjectBlocked } from '../../core/composables/useReadonlyMode'
+import { TAB_ENTITIES } from '../../core/constants'
+import { buildBoolOptions } from '../../core/utils/options'
 import { useLookup } from '../../core/composables/useLookup'
 import { listEmittentiFiscali } from '../api/amministrazione'
 import DataTable from 'primevue/datatable'
@@ -38,11 +40,7 @@ const utilityFilter = ref(null)
 const emittenteFilter = ref(null)
 const listinoFilter = ref(null)
 
-const boolOptions = [
-  { value: null, label: t('common.all') },
-  { value: true, label: t('common.yes') },
-  { value: false, label: t('common.no') }
-]
+const boolOptions = buildBoolOptions(t)
 
 function onAttivoChange() {
   store.filters.attivo = attivoFilter.value
@@ -71,7 +69,7 @@ function onListinoChange(value) {
 
 function onRowClick(event) { emit('row-click', event.data) }
 
-useTabFreshness(store, 'categorie_clienti_listini')
+useTabFreshness(store, TAB_ENTITIES.CATEGORIE_CLIENTI_LISTINI)
 onMounted(() => store.fetchList())
 </script>
 

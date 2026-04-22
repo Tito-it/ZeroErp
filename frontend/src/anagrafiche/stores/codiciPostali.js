@@ -4,6 +4,7 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { listCodiciPostali, createCodicePostale, updateCodicePostale } from '../api/anagrafiche'
 import { useTabEvents } from '../../core/composables/useTabEvents'
+import { TAB_ENTITIES } from '../../core/constants'
 
 export const useCodiciPostaliStore = defineStore('anagrafiche-codici-postali', () => {
   const { emitDataChanged } = useTabEvents()
@@ -33,13 +34,13 @@ export const useCodiciPostaliStore = defineStore('anagrafiche-codici-postali', (
 
   async function create(payload) {
     const res = await createCodicePostale(payload)
-    emitDataChanged('codice_postale', res.data.data.id)
+    emitDataChanged(TAB_ENTITIES.CODICE_POSTALE, res.data.data.id)
     return res.data.data
   }
 
   async function update(id, payload) {
     const res = await updateCodicePostale(id, payload)
-    emitDataChanged('codice_postale', id)
+    emitDataChanged(TAB_ENTITIES.CODICE_POSTALE, id)
     return res.data.data
   }
 

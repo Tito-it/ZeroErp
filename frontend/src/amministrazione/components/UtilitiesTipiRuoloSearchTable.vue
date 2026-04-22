@@ -7,6 +7,8 @@ import { useUtilitiesTipiRuoloStore } from '../stores/utilitiesTipiRuolo'
 import { useSearchTable } from '../../core/composables/useSearchTable'
 import { useTabFreshness } from '../../core/composables/useTabFreshness'
 import { useInjectReadonly, useInjectBlocked } from '../../core/composables/useReadonlyMode'
+import { TAB_ENTITIES } from '../../core/constants'
+import { buildBoolOptions } from '../../core/utils/options'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import InputText from 'primevue/inputtext'
@@ -31,11 +33,7 @@ const attivoFilter = ref(true)
 const utilityFilter = ref(null)
 const tipoRuoloFilter = ref(null)
 
-const boolOptions = [
-  { value: null, label: t('common.all') },
-  { value: true, label: t('common.yes') },
-  { value: false, label: t('common.no') }
-]
+const boolOptions = buildBoolOptions(t)
 
 function onAttivoChange() {
   store.filters.attivo = attivoFilter.value
@@ -56,7 +54,7 @@ function onTipoRuoloChange(value) {
 
 function onRowClick(event) { emit('row-click', event.data) }
 
-useTabFreshness(store, 'utilities_tipi_ruolo')
+useTabFreshness(store, TAB_ENTITIES.UTILITIES_TIPI_RUOLO)
 onMounted(() => store.fetchList())
 </script>
 

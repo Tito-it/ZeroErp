@@ -21,7 +21,7 @@ import ReloadButton from '../../core/components/ReloadButton.vue'
 import ReadonlyBadge from '../../core/components/ReadonlyBadge.vue'
 import AccessoBloccatoPanel from '../../core/components/AccessoBloccatoPanel.vue'
 import { useInjectBlocked } from '../../core/composables/useReadonlyMode'
-import { TIPO_RUOLO, MANAGE_ICONS } from '../../core/constants'
+import { TIPO_RUOLO, MANAGE_ICONS, TAB_ENTITIES } from '../../core/constants'
 
 const emit = defineEmits(['new', 'row-click', 'open-righe'])
 const { t } = useI18n()
@@ -89,7 +89,7 @@ function buildRowActions(data) {
   ]
 }
 
-useTabFreshness(store, 'contratto')
+useTabFreshness(store, TAB_ENTITIES.CONTRATTO)
 // data_da ha sempre un valore default (anno-1): la lista si carica subito,
 // non serve attendere che l'utente digiti una ricerca.
 onMounted(() => {

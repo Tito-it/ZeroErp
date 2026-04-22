@@ -1319,6 +1319,129 @@ Regola: in sola lettura **si puo' solo chiudere/uscire**, mai aprire/creare/modi
 
 ---
 
+## Enum centralizzati cross-cutting (constants.js)
+
+### Principio
+
+Le **stringhe identificative** condivise tra producer e consumer (readonly area/model, chiavi cross-tab refresh) NON si scrivono mai come literal. Vivono come **costanti** in `src/core/constants.js` e si importano dove servono.
+
+Rationale: un typo silenzioso (`'contratoo'` vs `'contratto'`) rompe il binding senza errori runtime — il producer emette, nessun consumer ascolta, auto-refresh morto. L'enum toglie il problema alla radice (IDE autocompletion + grep facile).
+
+### I tre enum
+
+```js
+import { READONLY_DOMAINS, READONLY_MODELS, TAB_ENTITIES } from '@/core/constants'
+```
+
+| Enum | Scopo | Esempi |
+| --- | --- | --- |
+| `READONLY_DOMAINS` | Area (schema DB) passata come **primo arg** a `useReadonlyMode` | `VENDITE`, `ANAGRAFICHE`, `CATALOGO`, `AMM_SOFTWARE`, `CONFIG`, `PRATICHE` |
+| `READONLY_MODELS` | Model specifico (permessi v2) come **secondo arg** opzionale a `useReadonlyMode` | `CONTRATTO`, `CLIENTE`, `FORNITORE`, `ARTICOLO`, `UNITA_MISURA`, `CONTO_BANCARIO`, `SOGGETTO`, `PROMO_ARTICOLO` |
+| `TAB_ENTITIES` | Chiave cross-tab per `emitDataChanged` + `useTabFreshness` / `onDataChanged` | `CONTRATTO`, `PRATICA`, `ARTICOLO`, `FORNITORE`, `PREVENTIVO`, `PROMO_ARTICOLI`, ... |
+
+### Regola operativa
+
+```js
+// NO — literal vietato
+useReadonlyMode('vendite', 'contratto')
+emitDataChanged('contratto', id)
+useTabFreshness(store, 'contratto')
+
+// SI — costante
+useReadonlyMode(READONLY_DOMAINS.VENDITE, READONLY_MODELS.CONTRATTO)
+emitDataChanged(TAB_ENTITIES.CONTRATTO, id)
+useTabFreshness(store, TAB_ENTITIES.CONTRATTO)
+```
+
+Il primo (literal) **funziona** ma non è mai accettato in PR di nuovo codice: il pattern enum è la **fonte di verità** sparsa in ~125 call site.
+
+### Consumer cross-tab: due pattern
+
+Entrambi validi, ambedue usano `TAB_ENTITIES`:
+
+```js
+// Pattern A — standard per SearchTable paginata
+useTabFreshness(store, TAB_ENTITIES.CONTRATTO)
+// Se un altro tab emette CONTRATTO, lo store fa fetchList() automatico
+
+// Pattern B — hook custom (es. pannelli senza SearchTable, view di profilo)
+const { onDataChanged } = useTabEvents()
+onMounted(() => {
+  onDataChanged('profilo-reparto', () => store.fetchList())
+})
+```
+
+Pattern A è la default. Pattern B si usa quando la view non ha uno `store` standard con `fetchList` o quando serve un handler custom.
+
+### Producer cross-tab
+
+Sta **sempre** nello store, dopo ogni operazione di scrittura:
+
+```js
+// Store Pinia
+async function create(payload) {
+  const res = await api.create(payload)
+  emitDataChanged(TAB_ENTITIES.CONTRATTO, res.data.data.id)  // emit post-write
+  return res.data.data
+}
+
+async function update(id, payload) {
+  const res = await api.update(id, payload)
+  emitDataChanged(TAB_ENTITIES.CONTRATTO, id)
+  return res.data.data
+}
+```
+
+Entità **read-only** (es. log immutabili): non emettono mai, e nessun consumer deve ascoltarle.
+
+### Factory `createCrudAdminStore`
+
+Per gli store admin CRUD standard (categorie clienti, promo articoli, matrici config) esiste una factory in `core/composables/createCrudAdminStore.js` che gestisce automaticamente emit in create/update. Basta passare `emitKey`:
+
+```js
+export const useCategorieClientiStore = createCrudAdminStore({
+  storeName: 'amm-categorie-clienti',
+  api: { list, get, create, update },
+  defaultOrderBy: 'ordinamento',
+  emitKey: TAB_ENTITIES.CATEGORIE_CLIENTI,  // la factory emette automaticamente
+  // ...
+})
+```
+
+Nessun `emitDataChanged` manuale necessario nei metodi.
+
+### Aggiungere una nuova entità
+
+1. Aggiungere la chiave in `constants.js`:
+
+   ```js
+   export const TAB_ENTITIES = {
+     // ... esistenti
+     NUOVA_ENTITA: 'nuova_entita',
+   }
+   ```
+
+2. Nello store: `emitDataChanged(TAB_ENTITIES.NUOVA_ENTITA, id)` dopo ogni write
+3. Nella SearchTable: `useTabFreshness(store, TAB_ENTITIES.NUOVA_ENTITA)`
+4. Se serve permesso livello oggetto: aggiungere anche in `READONLY_MODELS` + dichiarare `model_permission = (app_label, model_name)` sulla view BE
+
+### Naming
+
+- `READONLY_MODELS` usa **singolare** snake_case (`contratto`, `promo_articolo`) — matcha `app_label.model_name` del BE Django per `ZeroERPPermission`.
+- `TAB_ENTITIES` può usare **plurale** dove è più naturale per la feature (`promo_articoli`, `categorie_clienti`) — è una chiave FE-only, non vincolata al BE.
+- `READONLY_DOMAINS` corrisponde 1:1 agli schema DB backend.
+
+Una stessa parola può comparire in entrambi (es. `PROMO_ARTICOLO` singolare in `READONLY_MODELS` + `PROMO_ARTICOLI` plurale in `TAB_ENTITIES`): è volontario, i due ruoli sono distinti.
+
+### Check pre-PR
+
+- [ ] Zero literal `'schema_name'` in chiamate `useReadonlyMode`
+- [ ] Zero literal in `emitDataChanged` / `useTabFreshness` / `onDataChanged`
+- [ ] Se aggiunta una chiave all'enum, verificare che esista **sia un producer che un consumer** (altrimenti è orfana)
+- [ ] Per entità read-only (log, audit): nessun `emitDataChanged`, nessun `useTabFreshness`
+
+---
+
 ## Azioni processo — Livello 2 (pattern "action gate")
 
 ### Principio

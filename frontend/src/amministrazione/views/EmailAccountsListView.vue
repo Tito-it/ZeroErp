@@ -6,6 +6,7 @@ import Column from 'primevue/column'
 import InputText from 'primevue/inputtext'
 import Tag from 'primevue/tag'
 import { useReadonlyMode } from '../../core/composables/useReadonlyMode'
+import { READONLY_DOMAINS, TAB_ENTITIES } from '../../core/constants'
 import { useEmailAccountsStore } from '../stores/emailAccounts'
 import { useSearchTable } from '../../core/composables/useSearchTable'
 import { useDrawerState } from '../../core/composables/useDrawerState'
@@ -16,14 +17,14 @@ import SearchHint from '../../core/components/SearchHint.vue'
 import EmailAccountDrawer from '../components/EmailAccountDrawer.vue'
 
 const { t } = useI18n()
-useReadonlyMode('amm_software')
+useReadonlyMode(READONLY_DOMAINS.AMM_SOFTWARE)
 const store = useEmailAccountsStore()
 const drawer = useDrawerState()
 const { searchText, onPage, onSort, reload, paginatorProps } = useSearchTable(store, {
   defaultSortField: 'codice'
 })
 
-useTabFreshness(store, 'email-accounts')
+useTabFreshness(store, TAB_ENTITIES.EMAIL_ACCOUNTS)
 
 onMounted(() => {
   store.fetchList()

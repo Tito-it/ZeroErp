@@ -1,5 +1,24 @@
 # WIP — Listini per dominio commercio: invariante univocità e roadmap evoluzione
 
+> **ARCHIVIATO il 2026-04-22.**
+>
+> Fase 1 + Fase 2 DB chiuse il 2026-04-09 (EXCLUDE no-overlap + drop `priorita`).
+> Tutto il contenuto che era rimasto aperto (backlog v2 — pricing_mode, scaglioni,
+> valuta multipla, promotion engine, bundle, fasce orarie utility) è stato
+> **assorbito e superato** dal modello v5, dove:
+> - `listini_associazioni` è stata **droppata** (F1-DB-26) — sostituita da categoria cliente + contratto
+> - `priorita` non esiste più
+> - la scontistica commerciale vive in `categorie_clienti_listini` + `contratti` modalità A/B/C
+> - le promo sono dominio dedicato (`promo_articoli`, STADIO 0 resolver)
+> - scaglioni/formula e valuta multipla restano backlog v6+ (vedi `sviluppo-listini-v6.md`)
+>
+> **Nuovi sviluppi listini vanno tracciati in** [sviluppo-listini-v5.md](../work-in-progress/sviluppo-listini-v5) — vedi §14 "Sprint 22-04-2026 — Completamento v5".
+>
+> Questo documento resta come storico della decisione architetturale "invariante B"
+> (univocità per scope con autoclose) che ha preceduto e ispirato v5.
+>
+> ---
+>
 > Documento di pianificazione e razionalizzazione del modello listini con focus
 > sul dominio commercio.
 >

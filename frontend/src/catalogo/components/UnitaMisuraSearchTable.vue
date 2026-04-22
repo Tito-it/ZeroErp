@@ -16,7 +16,8 @@ import ReloadButton from '../../core/components/ReloadButton.vue'
 import ReadonlyBadge from '../../core/components/ReadonlyBadge.vue'
 import AccessoBloccatoPanel from '../../core/components/AccessoBloccatoPanel.vue'
 import { useInjectBlocked } from '../../core/composables/useReadonlyMode'
-import { MANAGE_ICONS } from '../../core/constants'
+import { MANAGE_ICONS, TAB_ENTITIES } from '../../core/constants'
+import { buildBoolOptions } from '../../core/utils/options'
 
 const emit = defineEmits(['new', 'row-click', 'manage-conversioni'])
 const { t } = useI18n()
@@ -27,11 +28,7 @@ const { searchText, onPage, onSort, applyFilters, reload, paginatorProps } = use
 })
 
 const attivoFilter = ref(true)
-const boolOptions = [
-  { value: null, label: t('common.all') },
-  { value: true, label: t('common.yes') },
-  { value: false, label: t('common.no') }
-]
+const boolOptions = buildBoolOptions(t)
 
 function onAttivoChange() {
   store.filters.attivo = attivoFilter.value
@@ -52,7 +49,7 @@ function buildRowActions(data) {
   ]
 }
 
-useTabFreshness(store, 'unita_misura')
+useTabFreshness(store, TAB_ENTITIES.UNITA_MISURA)
 onMounted(() => store.fetchList())
 </script>
 

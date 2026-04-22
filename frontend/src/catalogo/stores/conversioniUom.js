@@ -4,6 +4,7 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { listConversioniUom, getConversioneUom, createConversioneUom, updateConversioneUom } from '../api/catalogo'
 import { useTabEvents } from '../../core/composables/useTabEvents'
+import { TAB_ENTITIES } from '../../core/constants'
 
 export const useConversioniUomStore = defineStore('catalogo-conversioni-uom', () => {
   const { emitDataChanged } = useTabEvents()
@@ -43,13 +44,13 @@ export const useConversioniUomStore = defineStore('catalogo-conversioni-uom', ()
 
   async function create(payload) {
     const res = await createConversioneUom(payload)
-    emitDataChanged('conversioni_uom', res.data.data.id)
+    emitDataChanged(TAB_ENTITIES.CONVERSIONI_UOM, res.data.data.id)
     return res.data.data
   }
 
   async function update(id, payload) {
     const res = await updateConversioneUom(id, payload)
-    emitDataChanged('conversioni_uom', id)
+    emitDataChanged(TAB_ENTITIES.CONVERSIONI_UOM, id)
     return res.data.data
   }
 

@@ -4,6 +4,7 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { listStati, createStato, updateStato } from '../api/anagrafiche'
 import { useTabEvents } from '../../core/composables/useTabEvents'
+import { TAB_ENTITIES } from '../../core/constants'
 
 export const useStatiStore = defineStore('anagrafiche-stati', () => {
   const { emitDataChanged } = useTabEvents()
@@ -32,13 +33,13 @@ export const useStatiStore = defineStore('anagrafiche-stati', () => {
 
   async function create(payload) {
     const res = await createStato(payload)
-    emitDataChanged('stato', res.data.data.id)
+    emitDataChanged(TAB_ENTITIES.STATO, res.data.data.id)
     return res.data.data
   }
 
   async function update(id, payload) {
     const res = await updateStato(id, payload)
-    emitDataChanged('stato', id)
+    emitDataChanged(TAB_ENTITIES.STATO, id)
     return res.data.data
   }
 

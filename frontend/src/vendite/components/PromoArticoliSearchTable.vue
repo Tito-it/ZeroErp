@@ -8,6 +8,8 @@ import { usePromoArticoliStore } from '../stores/promoArticoli'
 import { useSearchTable } from '../../core/composables/useSearchTable'
 import { useTabFreshness } from '../../core/composables/useTabFreshness'
 import { useInjectReadonly, useInjectBlocked } from '../../core/composables/useReadonlyMode'
+import { TAB_ENTITIES } from '../../core/constants'
+import { buildBoolOptions } from '../../core/utils/options'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import InputText from 'primevue/inputtext'
@@ -32,11 +34,7 @@ const attivoFilter = ref(true)
 const uomFilter = ref(null)
 const tipoVariazioneFilter = ref(null)
 
-const boolOptions = [
-  { value: null, label: t('common.all') },
-  { value: true, label: t('common.yes') },
-  { value: false, label: t('common.no') }
-]
+const boolOptions = buildBoolOptions(t)
 
 const tipoVariazioneOptions = [
   { value: null, label: t('common.all') },
@@ -60,7 +58,7 @@ function onTipoVariazioneChange() {
 
 function onRowClick(event) { emit('row-click', event.data) }
 
-useTabFreshness(store, 'promo_articoli')
+useTabFreshness(store, TAB_ENTITIES.PROMO_ARTICOLI)
 onMounted(() => store.fetchList())
 </script>
 

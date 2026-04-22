@@ -2,13 +2,14 @@
 // Scopo: Vista principale gestione preventivi vendita.
 import { useDrawerState } from '../../../core/composables/useDrawerState'
 import { useReadonlyMode } from '../../../core/composables/useReadonlyMode'
+import { READONLY_DOMAINS } from '../../../core/constants'
 import { usePreventiviStore } from '../stores/preventivi'
 import PreventiviList from '../components/PreventiviList.vue'
 import PreventiviDrawer from '../components/PreventiviDrawer.vue'
 
 const drawer = useDrawerState()
 const store = usePreventiviStore()
-useReadonlyMode('vendite')
+useReadonlyMode(READONLY_DOMAINS.VENDITE)
 
 async function onDrawerSaved(result) {
   store.filters.offset = 0

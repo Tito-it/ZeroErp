@@ -10,6 +10,7 @@ import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { usePromoArticoliStore } from '../stores/promoArticoli'
 import { useApiHandler } from '../../core/composables/useApiHandler'
+import { useNotify } from '../../core/composables/useNotify'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { DRAWER_WIDTH } from '../../core/constants'
 import { isoToLocalDate, localDateToIso } from '../../core/utils/dateHelpers'
@@ -28,6 +29,7 @@ import Message from 'primevue/message'
 const { t } = useI18n()
 const store = usePromoArticoliStore()
 const { execute, loading } = useApiHandler()
+const notify = useNotify()
 const isReadonly = useInjectReadonly()
 
 const props = defineProps({
@@ -158,6 +160,21 @@ watch(
   }
 )
 
+// Scopo: Reset valore_variazione al cambio di tipo_variazione non-null.
+// Motivo: la semantica del valore cambia (10% vs 10€ vs 10€ fisso); tenere
+// il numero precedente e' fonte d'errore silenzioso. Toast informativo.
+function onTipoVariazioneChange(event) {
+  const hadValue = form.value.valore_variazione != null
+  if (event.value == null) {
+    form.value.valore_variazione = null
+    return
+  }
+  if (hadValue) {
+    form.value.valore_variazione = null
+    notify.warn(t('common.tipo_variazione_reset'))
+  }
+}
+
 const canSave = computed(() => {
   if (isReadOnlyEffective.value) return false
   if (!form.value.descrizione || form.value.descrizione.trim() === '') return false
@@ -282,6 +299,7 @@ function close() {
             option-value="value"
             :placeholder="t('vendite.promo_articoli.field_tipo_variazione_placeholder')"
             :disabled="isReadOnlyEffective"
+            @change="onTipoVariazioneChange"
           />
         </div>
         <div class="form-field">

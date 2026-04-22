@@ -3,6 +3,7 @@
 import { ref } from 'vue'
 import { useDrawerState } from '../../core/composables/useDrawerState'
 import { useReadonlyMode } from '../../core/composables/useReadonlyMode'
+import { READONLY_DOMAINS, READONLY_MODELS } from '../../core/constants'
 import { useContrattiStore } from '../stores/contratti'
 import ContrattiSearchTable from '../components/ContrattiSearchTable.vue'
 import ContrattoDrawer from '../components/ContrattoDrawer.vue'
@@ -12,7 +13,7 @@ const drawer = useDrawerState()
 const store = useContrattiStore()
 
 // Provider readonly dominio vendite.
-useReadonlyMode('vendite', 'contratto')
+useReadonlyMode(READONLY_DOMAINS.VENDITE, READONLY_MODELS.CONTRATTO)
 
 // Drawer righe aperto direttamente dalla lista
 const righeDrawer = ref({

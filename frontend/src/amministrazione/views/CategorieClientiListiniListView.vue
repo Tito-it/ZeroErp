@@ -5,6 +5,7 @@
 // Pattern: copia 1:1 di UtilitiesTipiRuoloListView.
 import { useDrawerState } from '../../core/composables/useDrawerState'
 import { useReadonlyMode } from '../../core/composables/useReadonlyMode'
+import { READONLY_DOMAINS } from '../../core/constants'
 import { useCategorieClientiListiniStore } from '../stores/categorieClientiListini'
 import CategorieClientiListiniSearchTable from '../components/CategorieClientiListiniSearchTable.vue'
 import CategoriaClienteListinoDrawer from '../components/CategoriaClienteListinoDrawer.vue'
@@ -14,7 +15,7 @@ const store = useCategorieClientiListiniStore()
 
 // Provider readonly del dominio Amm. Software: i drawer figli ne ereditano
 // lo stato (stesso pattern di UtilitiesTipiRuoloListView).
-useReadonlyMode('amm_software')
+useReadonlyMode(READONLY_DOMAINS.AMM_SOFTWARE)
 
 async function onDrawerSaved() {
   store.filters.offset = 0

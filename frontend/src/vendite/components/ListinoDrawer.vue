@@ -1,6 +1,6 @@
 <script setup>
 // Scopo: Drawer crea/modifica listino.
-//        In edit: pulsanti per aprire drawer autonomi versioni e associazioni (eventi al parent).
+//        In edit: pulsanti per aprire drawer autonomi versioni (eventi al parent).
 //        Contenuto deferito a dopo l'animazione per evitare rimbalzi visivi.
 import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'

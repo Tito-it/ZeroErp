@@ -6,6 +6,7 @@ import { useTipiRuoloTipiIndirizzoStore } from '../stores/tipiRuoloTipiIndirizzo
 import { useSearchTable } from '../../core/composables/useSearchTable'
 import { useTabFreshness } from '../../core/composables/useTabFreshness'
 import { useInjectReadonly, useInjectBlocked } from '../../core/composables/useReadonlyMode'
+import { TAB_ENTITIES } from '../../core/constants'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import InputText from 'primevue/inputtext'
@@ -26,7 +27,7 @@ const { searchText, onPage, onSort, applyFilters, reload, paginatorProps } = use
   defaultSortField: 'tipo_ruolo_descrizione'
 })
 
-useTabFreshness(store, 'tipi_ruolo_tipi_indirizzo')
+useTabFreshness(store, TAB_ENTITIES.TIPI_RUOLO_TIPI_INDIRIZZO)
 
 const tipoRuoloFilter = ref(store.filters.tipo_ruolo_id)
 const tipoIndirizzoFilter = ref(store.filters.tipo_indirizzo_id)

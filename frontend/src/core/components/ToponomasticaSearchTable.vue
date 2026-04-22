@@ -6,6 +6,7 @@ import { useI18n } from 'vue-i18n'
 import { useToponomasticaStore } from '../../anagrafiche/stores/toponomastica'
 import { useSearchTable } from '../composables/useSearchTable'
 import { useTabFreshness } from '../composables/useTabFreshness'
+import { TAB_ENTITIES } from '../constants'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import InputText from 'primevue/inputtext'
@@ -18,7 +19,7 @@ const { t } = useI18n()
 const store = useToponomasticaStore()
 const { searchText, onPage, onSort, reload, paginatorProps } = useSearchTable(store, { defaultSortField: 'descrizione' })
 
-useTabFreshness(store, 'toponomastica')
+useTabFreshness(store, TAB_ENTITIES.TOPONOMASTICA)
 onMounted(() => { store.fetchList() })
 
 function onRowClick(event) {

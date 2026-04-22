@@ -9,21 +9,22 @@ import DatePicker from 'primevue/datepicker'
 import Button from 'primevue/button'
 import InputText from 'primevue/inputtext'
 import { useReadonlyMode } from '../../core/composables/useReadonlyMode'
+import { READONLY_DOMAINS } from '../../core/constants'
 import { useEmailLogsStore } from '../stores/emailLogs'
 import { useSearchTable } from '../../core/composables/useSearchTable'
-import { useTabFreshness } from '../../core/composables/useTabFreshness'
 import { buildEmailLogStatoOptions, getEmailLogStatoSeverity } from '../constants'
 import { displayTimestamp, toDateString } from '../../core/utils/date'
 
 const { t } = useI18n()
-useReadonlyMode('amm_software')
+useReadonlyMode(READONLY_DOMAINS.AMM_SOFTWARE)
 const store = useEmailLogsStore()
 const { searchText, onPage, onSort, applyFilters, reload, paginatorProps } = useSearchTable(store, {
   defaultSortField: 'data_insert',
   defaultSortOrder: -1
 })
 
-useTabFreshness(store, 'email-logs')
+// Email logs e' read-only (nessun create/update/delete) quindi non serve
+// ascoltare eventi cross-tab: nessuno store emette EMAIL_LOGS.
 
 const statoOptions = buildEmailLogStatoOptions(t)
 

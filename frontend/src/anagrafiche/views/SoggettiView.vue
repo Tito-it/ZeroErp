@@ -7,6 +7,7 @@ import { ref, watch, nextTick } from 'vue'
 import { useRoute } from 'vue-router'
 import { useDrawerState } from '../../core/composables/useDrawerState'
 import { useReadonlyMode } from '../../core/composables/useReadonlyMode'
+import { READONLY_DOMAINS, READONLY_MODELS } from '../../core/constants'
 import { useContextStore } from '../../stores/context'
 import SoggettiSearchTable from '../components/SoggettiSearchTable.vue'
 import SoggettoDrawer from '../components/SoggettoDrawer.vue'
@@ -15,7 +16,7 @@ import IndirizziSoggettoDrawer from '../../core/components/IndirizziSoggettoDraw
 import ContiBancariDrawer from '../../core/components/ContiBancariDrawer.vue'
 
 const drawer = useDrawerState()
-const { isReadonly } = useReadonlyMode('anagrafiche', 'soggetto')
+const { isReadonly } = useReadonlyMode(READONLY_DOMAINS.ANAGRAFICHE, READONLY_MODELS.SOGGETTO)
 const ctx = useContextStore()
 const route = useRoute()
 

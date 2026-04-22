@@ -1131,3 +1131,264 @@ Lista rilevata durante review critica 2026-04-15 post F3-FE-01/02/03. Non blocca
 ---
 
 *Sviluppo Listini — ZeroERP (14 aprile 2026, WIP v5 — modello unico base + categoria + contratto + promo, resolver 3 stadi)*
+
+---
+
+## 14) Sprint 22-04-2026 — Completamento v5 + assorbimento autorizzazioni prezzi
+
+> Piano consolidato il **2026-04-22** dopo archiviazione di `listini-commercio.md`
+> (storico, contenuto assorbito) e `sviluppo-autorizzazioni-prezzi.md` (L1 chiuso,
+> L2+L3 confluiti qui).
+>
+> Questo è l'**unico documento vivo** per tutto lo sviluppo listini + pricing +
+> autorizzazioni prezzi da oggi in avanti.
+>
+> **Revisione 22-04-2026 (verifica codice)**: durante la review si è scoperto che
+> gli Sprint A (FE contratti + BA categoria) e B (FE articoli + BoM) originariamente
+> pianificati in questa sezione erano **già stati implementati** nelle sessioni
+> 15/16-04 senza aggiornamento del tracking. I §14.2 e §14.3 storici restano per
+> documentazione ma sono marcati ✅ DONE. Il nuovo Sprint A è stato ridefinito
+> come **cleanup + smoke UI + riscrittura guida** (vedi §14.2bis).
+
+### 14.1 Stato di partenza (reale, verificato sul codice 22-04-2026)
+
+| Area | Chiuso | Residuo |
+|---|---|---|
+| DB v5 (F1-DB-01..28, pgTAP T1..T6) | ✅ 15-04 | — |
+| BE (F2-BE-01..11, 13, 14) | ✅ 15-04 | F2-BE-12 (pipeline compositi), F2-BE-15 (test completi) |
+| FE admin pricing (F3-FE-01/02/03) | ✅ 15-04 | — |
+| FE BA categoria (F3-FE-04) | ✅ verificato 22-04 ([ClienteDrawer.vue:506](../../../../frontend/src/anagrafiche/components/ClienteDrawer.vue#L506)) | — |
+| FE contratti end-to-end (F3-FE-05) | ✅ 16-04 ([ContrattiListView](../../../../frontend/src/vendite/views/ContrattiListView.vue) + 5 componenti + api + store) | — |
+| FE articoli tipologia + BoM (F3-FE-06/07) | ✅ 16-04 ([ArticoloDrawer.vue:261](../../../../frontend/src/catalogo/components/ArticoloDrawer.vue#L261) + [ArticoloBomDrawer.vue:330](../../../../frontend/src/catalogo/components/ArticoloBomDrawer.vue#L330)) | — |
+| FE cleanup + smoke end-to-end (F3-FE-09/10) | — | 🔴 da fare |
+| Autorizzazioni prezzi L1 | ✅ 17-04 | — |
+| Autorizzazioni prezzi L2 | — | 🔴 da progettare |
+| Autorizzazioni prezzi L3 | — | 🔴 da progettare |
+| Guida `gestione-listini.md` | — | 🔴 pre-v5, da riscrivere |
+| Debito tecnico FE (enum readonly, helpers, search guard) | — | 🔴 da pulire |
+
+### 14.2 Sprint A (originale) — FE contratti + BA categoria ✅ DONE 16-04
+
+> **Storico**: gli step sotto sono stati implementati nella sessione 16-04
+> (handoff_20260416, project_sprint_f3_fe_05_06) ma il tracking era rimasto
+> fermo al 15-04. Verificato sul codice il 22-04 in fase di review.
+
+**Obiettivo**: rendere il modello v5 usabile end-to-end dagli operatori FE. Senza
+questi sprint il BE è pronto ma il FE non espone le nuove dimensioni.
+
+Solo lavoro **Frontend** (il BE corrispondente è già chiuso).
+
+| Step | Tipo | Prereq. | Descrizione |
+|---|---|---|---|
+| S14.A-FE-1 ✅ | FE | F2-BE-04 ✅ | `ClienteDrawer`: Select `ba_categoria_cliente_id` (opzionale, default STANDARD da DB). Implementato 15-16/04 |
+| S14.A-FE-2 ✅ | FE | F2-BE-05/06 ✅ | `ContrattiListView` + `ContrattoDrawer` da zero + sub-drawer righe/utility. Modalità A/B/C via SelectButton. Implementato 16/04 |
+| S14.A-FE-3 ✅ | FE | — | Sub-drawer righe master-detail inline implementato in `ContrattoRigheDrawer.vue` |
+| S14.A-FE-4 ✅ | FE | — | Sub-drawer utility in `ContrattoUtilityDrawer.vue` |
+| S14.A-FE-5 ✅ | FE | — | vite build OK (ContrattiListView chunk 45.58 kB) |
+
+### 14.3 Sprint B (originale) — FE articoli + BoM ✅ DONE 16-04
+
+> **Storico**: implementato nella sessione 16-04 come F3-FE-06/07.
+
+**Obiettivo**: esporre da FE le ultime due dimensioni introdotte in DB (tipologia
+articolo + flag componente esposto). Puro FE.
+
+| Step | Tipo | Prereq. | Descrizione |
+|---|---|---|---|
+| S14.B-FE-1 ✅ | FE | F2-BE-07 ✅ | `ArticoloDrawer`: Select `listino_tipologia_id` implementato [ArticoloDrawer.vue:261](../../../../frontend/src/catalogo/components/ArticoloDrawer.vue#L261) |
+| S14.B-FE-2 ✅ | FE | F2-BE-08 ✅ | Toggle `esposto_in_fattura` + colonna in [ArticoloBomDrawer.vue:330](../../../../frontend/src/catalogo/components/ArticoloBomDrawer.vue#L330) |
+| S14.B-FE-3 ✅ | FE | — | vite build OK |
+
+### 14.3bis Sprint A (nuovo 22-04-2026) — Cleanup FE + smoke UI + riscrittura guida
+
+**Obiettivo**: chiudere definitivamente v5 per tutte le parti già implementate
+(DB + BE + FE admin + FE operativo) prima di aprire i capitoli nuovi (L2, L3,
+compositi). Nessuna nuova feature, solo consolidamento.
+
+**Perché Sprint A e non Sprint F** (come nel piano originale): alla revisione
+22-04 si è scoperto che Sprint A/B originali erano già chiusi. Sprint F
+(chiusura v5) è diventato il prossimo blocco di lavoro effettivo, quindi
+rinumerato come nuovo Sprint A.
+
+Solo lavoro **Frontend** + **Documentazione** (niente DB, niente BE).
+
+#### 14.3bis.1 Frontend cleanup
+
+| Step | Tipo | Descrizione |
+|---|---|---|
+| S14.nA-FE-1 | FE | Audit residui `listini_associazioni` in FE: grep `frontend/src` + rimozione di API client, store action, componenti, rotte, i18n (F2-BE-13 BE è già chiuso). Verifica che nessun import rotto resti |
+| S14.nA-FE-2 | FE | Audit residui `voce_utility` in FE: grep `frontend/src` + rimozione. Verifica AI tool `CercaArticoli` (parametri FE allineati a BE F2-BE-14) |
+| S14.nA-FE-3 | FE | Debito tecnico: enum centralizzato `READONLY_DOMAINS` + `TAB_ENTITIES` in `core/constants.js`, migrazione consumer/provider esistenti (admin pricing + vendite) |
+| S14.nA-FE-4 | FE | Debito tecnico: helper `buildBoolOptions(t)` in `core/components/options.js`, refactor 3 SearchTable admin (categorie clienti, matrice, promo) |
+| S14.nA-FE-5 | FE | Debito tecnico: fix search guard 1-2 char cross-store — pattern unico in `useSearchTable` o in ogni store (decisione: svuotare risultati sotto soglia vs forzare fetch con search vuoto) |
+| S14.nA-FE-6 | FE | Debito tecnico: nei drawer matrice + promo, reset automatico del valore al cambio `tipo_variazione` con toast info (PERCENTUALE ↔ VALORE_FISSO ↔ PREZZO_FISSO) |
+| S14.nA-FE-7 | FE | `./node_modules/.bin/vite build` pulito (zero warning nuovi) |
+
+#### 14.3bis.2 Smoke UI end-to-end
+
+| Step | Tipo | Descrizione |
+|---|---|---|
+| S14.nA-SMK-1 | Smoke | Checklist manuale stampabile: login operatore → admin (categorie, matrice, promo) → cliente con categoria → contratto A/B/C → articolo+tipologia → BoM con componente esposto → preventivo con resolver v5 → override L1 |
+| S14.nA-SMK-2 | Smoke | Stessa checklist con utente `LETTURA` su `vendite`: verifica badge sola lettura, drawer readonly cumulativo, DrawerFooter nasconde Salva |
+| S14.nA-SMK-3 | Smoke | Stessa checklist con utente `BLOCCATO` a livello oggetto (es. `vendite.contratto = BLOCCATO`): verifica `AccessoBloccatoPanel`, no fetch sotto il pannello |
+
+#### 14.3bis.3 Documentazione (Fase 4)
+
+| Step | Tipo | Descrizione |
+|---|---|---|
+| S14.nA-DOC-1 | DOC | **Riscrittura completa** `docs/it/guide/gestione-listini.md` sul modello v5: 3 stadi resolver (promo→contratto→categoria), no `listini_associazioni`, modalità contratti A/B/C, convenzione segno variazione firmata, pattern promo overlay, riferimenti a L1 (L2/L3 menzionati come roadmap). Archiviare versione pre-v5 in `docs/it/guide/archive/` se esiste |
+| S14.nA-DOC-2 | DOC | Verifica manuali DB `docs/it/dbzero/*/manual/*` aggiornati per tutte le tabelle v5 (`categorie_clienti`, `categorie_clienti_listini`, `promo_articoli`, `contratti` estesa, `commesse_attivita` +8 snapshot, `articoli.listino_tipologia_id`, `articoli_componenti.esposto_in_fattura`). Integrare dove mancano |
+| S14.nA-DOC-3 | DOC | Verifica `docs/it/backend/vendite/manual/api_*.md`: `api_contratti`, `api_categorie_clienti`, `api_categorie_clienti_listini`, `api_promo_articoli`, `pricing_service` — tutti presenti. Check coerenza |
+| S14.nA-DOC-4 | DOC | Aggiornare memoria + indice `MEMORY.md`: chiusura v5 end-to-end (DB+BE+FE+doc), riferimento al piano v5 §14 come "completato fino al nuovo Sprint A" |
+
+**Gate chiusura nuovo Sprint A**:
+
+- vite build pulito
+- smoke UI completo senza regressioni
+- guida `gestione-listini.md` pubblicata nel formato v5
+- 3 tabelle MEMORY.md aggiornate
+- zero riferimenti residui a `listini_associazioni` / `voce_utility` in FE + doc
+
+A chiusura: v5 è pronta per produzione. Sprint successivi (L2 + L3 + compositi)
+aprono il **post-v5** — nuovi capitoli funzionali, non più "completamento".
+
+---
+
+### 14.4 Sprint C — Pipeline espansione compositi (F2-BE-12)
+
+**Obiettivo**: chiudere l'ultimo pezzo BE del modello BoM. Richiede decisione
+architetturale prima dello sviluppo.
+
+| Step | Tipo | Prereq. | Descrizione |
+|---|---|---|---|
+| S14.C-DEC-1 | Analisi | F2-BE-10 ✅ | **Decisione architetturale**: espansione N righe compositi lato handler Python (in ogni source handler delle commesse) vs lato DB (nuova `fn_expand_composito_attivita` invocata da `fn_list_*_da_pushare`). Trade-off: Python = più chiaro, più duplicazione; DB = centralizzato ma funzione complessa |
+| S14.C-DB-1 | DB (solo se handler lato DB) | S14.C-DEC-1 | Nuova funzione `vendite.fn_expand_composito_attivita` + changeSet + pgTAP dedicato |
+| S14.C-BE-1 | BE | S14.C-DEC-1 | Wiring `pricing_service.resolve_prezzo_composito` nei source handler commesse (6 origini). Per ogni composito con almeno un componente esposto: N righe in `commesse_attivita` con `segment_key` differenziato per componente + popolazione snapshot audit |
+| S14.C-BE-2 | BE | S14.C-BE-1 | Test integrazione end-to-end: preventivo con articolo composito → commessa con N attività → fatturazione con N righe |
+
+### 14.5 Sprint D — Autorizzazioni prezzi L2 (limite sconto)
+
+**Obiettivo**: portare L2 come tracciato in `sviluppo-autorizzazioni-prezzi.md` §4.
+L1 è già in produzione.
+
+#### 14.5.1 DB
+
+| Step | Descrizione |
+|---|---|
+| S14.D-DB-1 | Seed `config.parameter_definitions`: nuovo parametro `VENDITE_MAX_SCONTO_PCT` (decimal, default 0, scope cascata user→group→emittente→default) |
+| S14.D-DB-2 | Seed `config.parameter_defaults`: riga default globale `VENDITE_MAX_SCONTO_PCT = 0` |
+| S14.D-DB-3 | (Opzionale simmetrico) `VENDITE_MAX_MAGGIORAZIONE_PCT` se si vuole limitare anche override positivo — decisione da confermare |
+| S14.D-DB-4 | pgTAP resolver parametro multi-scope sul nuovo codice |
+
+#### 14.5.2 Backend
+
+| Step | Prereq. | Descrizione |
+|---|---|---|
+| S14.D-BE-1 | S14.D-DB-2 | Estendere check override in `preventivi_service.gestisci_riga` / `aggiorna_riga`: dopo L1 OK, se delta negativo → calcola `sconto_pct`, confronta con `ParameterService.get_value('VENDITE_MAX_SCONTO_PCT', user=auth_user_id)` |
+| S14.D-BE-2 | S14.D-BE-1 | Nuovo codice errore `E_PREZZO_SCONTO_ECCESSIVO` in `error_policies.py` (HTTP 403, detail con max ammesso e richiesto) |
+| S14.D-BE-3 | S14.D-BE-1 | Replicare check in `ordini_vendita_service` (quando esisterà) e `fatture_manuali_service` |
+| S14.D-BE-4 | S14.D-BE-1 | Endpoint `GET /api/v1/vendite/pricing/limiti-utente/` che restituisce `max_sconto_pct` effettivo per l'utente corrente (per hint UI senza round-trip) |
+| S14.D-BE-5 | S14.D-BE-1..4 | Test Django: utente con override user, utente con default, utente con gruppo, delta al limite, delta oltre limite |
+
+#### 14.5.3 Frontend
+
+| Step | Prereq. | Descrizione |
+|---|---|---|
+| S14.D-FE-1 | S14.D-BE-4 | Store utente effettivo: cache `max_sconto_pct` ottenuto al login/refresh |
+| S14.D-FE-2 | S14.D-FE-1 | Drawer riga preventivo/ordine: mostra hint "sconto max ammesso: X%" accanto al campo prezzo se override in negativo. Colore ambra se prezzo vicino al limite, rosso se oltre |
+| S14.D-FE-3 | S14.D-FE-2 | Gestione errore `E_PREZZO_SCONTO_ECCESSIVO`: banner con detail + azione "richiedi approvazione" (disabilitata finché L3 non esiste) |
+
+### 14.6 Sprint E — Autorizzazioni prezzi L3 (approvazione out-of-policy)
+
+**Obiettivo**: workflow approvazione quando L2 blocca. Richiede pratiche +
+EmailOutbox già esistenti.
+
+#### 14.6.1 DB
+
+| Step | Descrizione |
+|---|---|
+| S14.E-DB-1 | Seed `config.tipi_prestazione` (o tabella equivalente pratiche): tipo "Approvazione prezzo commerciale" |
+| S14.E-DB-2 | Seed `config.azioni_processo`: nuova azione `approva_prezzo` (area `vendite`, pericolosa=false) |
+| S14.E-DB-3 | Decisione modellazione stato "in approvazione" su riga: flag `meta.pending_approval` (no DDL, full semantic) vs nuova colonna `stato_approvazione_prezzo` (tracciabile in query). **Raccomandato**: colonna esplicita su `preventivi_righe` e gemelle |
+| S14.E-DB-4 | Se scelta colonna (S14.E-DB-3): `ALTER TABLE preventivi_righe ADD COLUMN stato_approvazione_prezzo varchar NULL CHECK (stato_approvazione_prezzo IN ('PENDING','APPROVED','REJECTED'))` + gemelle ordini/fatture |
+| S14.E-DB-5 | Trigger guard `vendite.trgfn_preventivi_guard_transizione_approvazione`: blocca `UPDATE OF stato_doc_preventivo_id` verso `ACCETTATO` se esistono righe con `stato_approvazione_prezzo = 'PENDING'`. Errore `E_PREVENTIVO_RIGHE_PRICING_PENDENTI` |
+| S14.E-DB-6 | pgTAP: guard transizione + stato riga |
+
+#### 14.6.2 Backend
+
+| Step | Prereq. | Descrizione |
+|---|---|---|
+| S14.E-BE-1 | S14.E-DB-1..4 | Estensione `preventivi_service` aggiorna_riga: se override viola L2 + utente ha pratica di approvazione abilitata → invece di errore, salva riga con `stato_approvazione_prezzo = PENDING` + crea pratica via `pratiche_service.crea_pratica` collegata alla riga + invia email al responsabile via `EmailOutboxService` |
+| S14.E-BE-2 | S14.E-BE-1 | Nuovo endpoint `POST /api/v1/vendite/righe/<riga_id>/approva-prezzo/` con check azione `approva_prezzo` + `POST /.../rifiuta-prezzo/` |
+| S14.E-BE-3 | S14.E-BE-2 | Su approvazione: `stato_approvazione_prezzo = APPROVED`, chiusura pratica con esito OK, notifica richiedente. Su rifiuto: riga resa al prezzo resolver, `stato_approvazione_prezzo = REJECTED`, pratica chiusa con esito KO, notifica |
+| S14.E-BE-4 | S14.E-BE-1..3 | Test Django: flusso completo approva + rifiuta + transizione preventivo bloccata con riga PENDING |
+
+#### 14.6.3 Frontend
+
+| Step | Prereq. | Descrizione |
+|---|---|---|
+| S14.E-FE-1 | S14.E-BE-1 | `PreventivoRigaDrawer`: quando errore L2 → banner con azione "richiedi approvazione" ora attiva → POST con flag `richiesta_approvazione=true` |
+| S14.E-FE-2 | S14.E-BE-2/3 | Nuova view `ApprovazioniPrezzoListView` per responsabili: coda pratiche "Approvazione prezzo commerciale" con contesto completo (cliente, articolo, resolver, richiesto, delta%) + azioni approva/rifiuta |
+| S14.E-FE-3 | S14.E-BE-1 | Badge "⏳ in approvazione" su riga PENDING nel drawer preventivo. Tooltip con ID pratica collegata. Riga di stato preventivo mostra "Bloccato: N righe pending" |
+| S14.E-FE-4 | S14.E-FE-1..3 | vite build + smoke: flusso E2E commerciale junior → oltre limite → approvazione responsabile → conferma preventivo |
+
+### 14.7 Sprint F — Cleanup + documentazione (chiusura v5)
+
+**Obiettivo**: chiudere Fase 3 residua + Fase 4 documentazione. Nessuna nuova
+feature.
+
+#### 14.7.1 Frontend cleanup
+
+| Step | Descrizione |
+|---|---|
+| S14.F-FE-1 | F3-FE-09: rimozione residui UI su `listini_associazioni` (verifica che non sia rimasto nulla dopo F2-BE-13) |
+| S14.F-FE-2 | F3-FE-10: smoke UI checklist completa (login → admin pricing → BA+contratto → articolo+BoM → preventivo con resolver → override L1+L2+L3) |
+| S14.F-FE-3 | Debito tecnico rilevato 15-04 (doc §Debito tecnico): enum centralizzato `READONLY_DOMAINS` + `TAB_ENTITIES`, helper `buildBoolOptions`, fix search guard 1-2 char cross-store, reset valore al cambio tipo variazione |
+
+#### 14.7.2 Backend test completi
+
+| Step | Descrizione |
+|---|---|
+| S14.F-BE-1 | F2-BE-15: audit coverage pytest sui service nuovi (categorie_clienti, matrice, promo, contratti, pricing). Soglia minima 85% |
+
+#### 14.7.3 Documentazione (Fase 4)
+
+| Step | Descrizione |
+|---|---|
+| S14.F-DOC-1 | F4-DOC-01: riscrittura completa `docs/it/guide/gestione-listini.md` sul modello v5 (3 stadi, no associazioni, categoria+contratto+promo, modalità A/B/C, L1/L2/L3) |
+| S14.F-DOC-2 | F4-DOC-02: verifica manuali DB auto-generati aggiornati per tutte le tabelle v5 |
+| S14.F-DOC-3 | F4-DOC-03: `api_contratti.md` esteso con endpoint L2/L3, nuovo `api_approvazioni_prezzo.md` |
+| S14.F-DOC-4 | F4-DOC-04: archiviazione di questo WIP in `work-done/sviluppo-listini-v5.md` una volta chiuso end-to-end |
+
+### 14.8 Ordine di esecuzione (rivisto 22-04-2026)
+
+```
+Sprint A originale (FE contratti+BA)  ✅ DONE 16-04
+Sprint B originale (FE articoli+BoM)  ✅ DONE 16-04
+   │
+   ▼
+Sprint A nuovo (cleanup+smoke+guida)  ◄── IN PIANIFICAZIONE — chiude v5
+   │
+   ├─► Sprint C (pipeline compositi)  ◄── aperto, decisione architetturale pendente
+   │
+   ├─► Sprint D (L2 limite sconto)    ◄── aperto, nuovo capitolo post-v5
+   │
+   ▼
+Sprint E (L3 approvazione)            ◄── dopo D: L3 estende L2
+```
+
+Sprint C e Sprint D sono **indipendenti tra loro** e possono partire in
+parallelo dopo la chiusura del nuovo Sprint A. Sprint E dipende da D.
+
+### 14.9 Tracking
+
+- [x] ~~Sprint A originale — FE contratti + BA categoria~~ ✅ DONE 16-04
+- [x] ~~Sprint B originale — FE articoli + BoM~~ ✅ DONE 16-04
+- [x] ~~**Sprint A nuovo (22-04) — Cleanup FE + smoke UI + riscrittura guida**~~ ✅ DONE 22-04 (13/13 step, vite build verde, guida riscritta, smoke checklist pubblicata, 125 call site migrati a 3 enum centralizzati)
+- [ ] Sprint C — Pipeline espansione compositi (F2-BE-12)
+- [x] ~~**Sprint D — L2 limite sconto + maggiorazione**~~ ✅ DONE 22-04 (12/12 step: 2 parametri VENDITE_MAX_SCONTO_PCT/VENDITE_MAX_MAGGIORAZIONE_PCT default 0, check post-L1 in preventivi_service, endpoint GET /vendite/pricing/limiti-utente/, +6 test Django (1621 totali), composable useLimitiPricing cache modulo, hint drawer riga + banner inline con "richiedi approvazione" disabled roadmap L3, vite build 973ms)
+- [ ] Sprint E — L3 approvazione out-of-policy (sblocca azione richiedi_approvazione)
+
+---
+
+*Piano unificato aggiornato il 2026-04-22 — assorbe `listini-commercio.md` (archiviato) e `sviluppo-autorizzazioni-prezzi.md` (archiviato, L1 in produzione, L2+L3 in Sprint D/E).*

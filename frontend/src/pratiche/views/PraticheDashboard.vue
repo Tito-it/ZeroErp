@@ -8,6 +8,7 @@ import { useI18n } from 'vue-i18n'
 import { useDrawerState } from '../../core/composables/useDrawerState'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useReadonlyMode } from '../../core/composables/useReadonlyMode'
+import { READONLY_DOMAINS } from '../../core/constants'
 import { usePraticheStore } from '../stores/pratiche'
 import PraticheCodaLavoro from '../components/PraticheCodaLavoro.vue'
 import PraticheSearchTable from '../components/PraticheSearchTable.vue'
@@ -19,7 +20,7 @@ const { t } = useI18n()
 const store = usePraticheStore()
 const drawer = useDrawerState()
 const { execute } = useApiHandler()
-useReadonlyMode('pratiche')
+useReadonlyMode(READONLY_DOMAINS.PRATICHE)
 
 // --- Coda lavoro ---
 onMounted(() => { store.loadCodaLavoro() })

@@ -8,7 +8,7 @@ import { useSearchTable } from '../../core/composables/useSearchTable'
 import { useTabFreshness } from '../../core/composables/useTabFreshness'
 import { useLookup } from '../../core/composables/useLookup'
 import { lookupTipiSoggettoDettaglio } from '../../core/apiCore'
-import { MANAGE_ICONS } from '../../core/constants'
+import { MANAGE_ICONS, TAB_ENTITIES } from '../../core/constants'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import InputText from 'primevue/inputtext'
@@ -68,7 +68,7 @@ function buildRowActions(data) {
   ]
 }
 
-useTabFreshness(store, 'soggetto')
+useTabFreshness(store, TAB_ENTITIES.SOGGETTO)
 // La lista parte vuota — salvo che arrivi con search precaricata da URL/context.
 onMounted(() => {
   if (searchText.value) {

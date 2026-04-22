@@ -3,6 +3,7 @@
 //        STADIO 0 del resolver pricing v5.
 import { useDrawerState } from '../../core/composables/useDrawerState'
 import { useReadonlyMode } from '../../core/composables/useReadonlyMode'
+import { READONLY_DOMAINS, READONLY_MODELS } from '../../core/constants'
 import { usePromoArticoliStore } from '../stores/promoArticoli'
 import PromoArticoliSearchTable from '../components/PromoArticoliSearchTable.vue'
 import PromoArticoloDrawer from '../components/PromoArticoloDrawer.vue'
@@ -13,7 +14,7 @@ const store = usePromoArticoliStore()
 // Provider readonly con override per model 'promo_articolo' (v2 permessi):
 // default = livello area 'vendite', ma admin puo' impostare un override
 // specifico sulle promo senza toccare il resto dell'area.
-useReadonlyMode('vendite', 'promo_articolo')
+useReadonlyMode(READONLY_DOMAINS.VENDITE, READONLY_MODELS.PROMO_ARTICOLO)
 
 async function onDrawerSaved() {
   store.filters.offset = 0

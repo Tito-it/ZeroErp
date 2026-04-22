@@ -3,6 +3,7 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { listListini, getListino, createListino, updateListino, listVersioni } from '../api/listini'
 import { useTabEvents } from '../../core/composables/useTabEvents'
+import { TAB_ENTITIES } from '../../core/constants'
 
 export const useListiniStore = defineStore('vendite-listini', () => {
   const { emitDataChanged } = useTabEvents()
@@ -31,7 +32,14 @@ export const useListiniStore = defineStore('vendite-listini', () => {
     const f = filters.value
     const searchTerm = (f.search || '').trim()
 
-    if (searchTerm.length > 0 && searchTerm.length < 3) return
+    if (searchTerm.length > 0 && searchTerm.length < 3) {
+      if (hasSearched.value) {
+        items.value = []
+        totalRecords.value = 0
+        hasSearched.value = false
+      }
+      return
+    }
 
     loading.value = true
     try {
@@ -67,13 +75,13 @@ export const useListiniStore = defineStore('vendite-listini', () => {
 
   async function create(payload) {
     const res = await createListino(payload)
-    emitDataChanged('listino', res.data.data.id)
+    emitDataChanged(TAB_ENTITIES.LISTINO, res.data.data.id)
     return res.data.data
   }
 
   async function update(id, payload) {
     const res = await updateListino(id, payload)
-    emitDataChanged('listino', id)
+    emitDataChanged(TAB_ENTITIES.LISTINO, id)
     return res.data.data
   }
 

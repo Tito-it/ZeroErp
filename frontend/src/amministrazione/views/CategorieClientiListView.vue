@@ -3,6 +3,7 @@
 //        CRUD minimo: list + filtri + create + edit. No delete (soft via attivo).
 import { useDrawerState } from '../../core/composables/useDrawerState'
 import { useReadonlyMode } from '../../core/composables/useReadonlyMode'
+import { READONLY_DOMAINS } from '../../core/constants'
 import { useCategorieClientiStore } from '../stores/categorieClienti'
 import CategorieClientiSearchTable from '../components/CategorieClientiSearchTable.vue'
 import CategoriaClienteDrawer from '../components/CategoriaClienteDrawer.vue'
@@ -10,7 +11,7 @@ import CategoriaClienteDrawer from '../components/CategoriaClienteDrawer.vue'
 const drawer = useDrawerState()
 const store = useCategorieClientiStore()
 
-useReadonlyMode('amm_software')
+useReadonlyMode(READONLY_DOMAINS.AMM_SOFTWARE)
 
 async function onDrawerSaved() {
   store.filters.offset = 0

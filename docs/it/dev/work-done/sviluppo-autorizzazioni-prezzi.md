@@ -1,5 +1,20 @@
 # Sviluppo Autorizzazioni Prezzi (WIP)
 
+> **ARCHIVIATO il 2026-04-22.**
+>
+> L1 (permesso `prezzo_override_manuale`) è stato implementato nello sprint
+> pricing preventivi del 17-04-2026 ed è in uso.
+>
+> L2 (limite sconto `VENDITE_MAX_SCONTO_PCT`) e L3 (workflow approvazione
+> out-of-policy via pratiche) non erano stati avviati. Lo scope L2+L3 è stato
+> **spostato** nel piano unificato in [sviluppo-listini-v5.md](../work-in-progress/sviluppo-listini-v5) §14 "Sprint 22-04-2026 — Completamento v5".
+>
+> Questo documento resta come specifica tecnica di riferimento per il modello
+> a 3 livelli (architettura, flussi, infrastruttura permessi/parametri/pratiche,
+> audit in `meta`).
+>
+> ---
+>
 > **Stato:** L1 implementato in sprint pricing preventivi (data implementazione nel changelog). L2 + L3 da pianificare.
 >
 > **Creato:** 17 aprile 2026

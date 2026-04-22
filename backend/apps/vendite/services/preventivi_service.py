@@ -15,9 +15,14 @@ from typing import Any
 from django.contrib.auth import get_user_model
 
 from apps.core.services.error_manager import ErrorManager
+from apps.core.services.parameter_service import ParameterService
 from apps.core.services.permissions_resolver import PermissionResolver
 from apps.core.services.value_normalizer import empty_to_none
 from apps.vendite.db.preventivi_repository import PreventiviRepository
+from apps.vendite.services.pricing_service import (
+    PARAM_MAX_MAGGIORAZIONE_PCT,
+    PARAM_MAX_SCONTO_PCT,
+)
 from apps.core.api.payload_validators import paginated_envelope
 
 
@@ -470,8 +475,19 @@ def _resolve_or_check_override_prezzo(
             "prezzo_resolver_context": resolver_context,
         }
 
-    # Override: richiesta azione processo prezzo_override_manuale.
+    # Override: L1 richiesta azione processo prezzo_override_manuale.
     _check_permesso_override_prezzo(auth_user_id, function_name=function_name)
+
+    # L2: limite percentuale sconto/maggiorazione (autorizzazioni prezzi Sprint D).
+    # Se resolver non ha prezzo o e' 0 skip (non calcolabile); altrimenti
+    # confronta delta_pct firmato con il parametro appropriato risolto per
+    # l'utente (default 0 = nessuna variazione ammessa).
+    _check_limite_variazione_prezzo(
+        auth_user_id=auth_user_id,
+        prezzo_resolver=prezzo_resolver,
+        prezzo_manuale=payload_decimal,
+        function_name=function_name,
+    )
 
     meta_patch: dict[str, Any] = {
         "origine_prezzo": "MANUALE",
@@ -522,6 +538,71 @@ def _check_permesso_override_prezzo(
         detail=(
             "Usa il prezzo suggerito dal listino o richiedi l'autorizzazione "
             "'prezzo_override_manuale' al tuo responsabile."
+        ),
+        function_name=function_name,
+    )
+
+
+# Scopo: Verifica che la variazione % fra prezzo manuale e prezzo risolto
+#        rientri nei limiti configurati per l'utente (L2 autorizzazioni
+#        prezzi). Se sconto (delta < 0) confronta con VENDITE_MAX_SCONTO_PCT;
+#        se maggiorazione (delta > 0) con VENDITE_MAX_MAGGIORAZIONE_PCT.
+#        Skip se prezzo_resolver e' None o 0 (non calcolabile / safe-fail).
+#        Superuser bypass. Parametri risolti via ParameterService con
+#        scope user -> group -> emittente -> default.
+def _check_limite_variazione_prezzo(
+    *,
+    auth_user_id: int | None,
+    prezzo_resolver,  # Decimal | None
+    prezzo_manuale,   # Decimal
+    function_name: str,
+) -> None:
+    from decimal import Decimal
+
+    if prezzo_resolver is None or prezzo_resolver == 0:
+        return  # Nessun riferimento per calcolare la percentuale.
+
+    if auth_user_id is None:
+        return  # L1 ha gia' bloccato; unreachable difensivo.
+
+    user_model = get_user_model()
+    try:
+        user = user_model.objects.get(pk=auth_user_id)
+    except user_model.DoesNotExist:
+        return  # L1 avrebbe gia' bloccato.
+    if getattr(user, "is_superuser", False):
+        return
+
+    delta = prezzo_manuale - prezzo_resolver
+    if delta == 0:
+        return  # Edge case: L1 avrebbe gia' fatto early-return.
+
+    delta_pct = (delta / prezzo_resolver) * Decimal("100")
+
+    # Sconto se delta negativo, maggiorazione se positivo. Per ogni caso
+    # risolviamo UNA sola chiave parametro dedicata e la confrontiamo con
+    # il valore assoluto del delta. get_parameter_decimal raise
+    # E_PARAMETER_VALIDATION se il parametro e' malformato: stato
+    # inconsistente che l'admin deve correggere (no silent fallback).
+    param_service = ParameterService()
+    is_sconto = delta_pct < 0
+    param_code = PARAM_MAX_SCONTO_PCT if is_sconto else PARAM_MAX_MAGGIORAZIONE_PCT
+    variazione_abs = -delta_pct if is_sconto else delta_pct
+    limite = param_service.get_parameter_decimal(
+        param_code, django_user_id=auth_user_id,
+    )
+
+    if variazione_abs <= limite:
+        return
+
+    error_code = "E_PREV_SCONTO_ECCESSIVO" if is_sconto else "E_PREV_MAGGIORAZIONE_ECCESSIVA"
+    kind_label = "Sconto" if is_sconto else "Maggiorazione"
+    ErrorManager.raise_error(
+        code=error_code,
+        message=f"{kind_label} oltre il limite consentito.",
+        detail=(
+            f"{kind_label} richiesto: {variazione_abs.quantize(Decimal('0.01'))}% — "
+            f"massimo ammesso: {limite}%."
         ),
         function_name=function_name,
     )

@@ -8,7 +8,7 @@ import { useReadonlyMode } from '../../core/composables/useReadonlyMode'
 import { getAuditLog } from '../api/amministrazione'
 import { displayTimestamp, toDateString } from '../../core/utils/date'
 import { buildAuditTabellaOptions, getAuditOpSeverity } from '../constants'
-import { PAGINATION, DATE_FORMAT } from '../../core/constants'
+import { PAGINATION, DATE_FORMAT, READONLY_DOMAINS } from '../../core/constants'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Select from 'primevue/select'
@@ -17,7 +17,7 @@ import Tag from 'primevue/tag'
 import Button from 'primevue/button'
 
 const { t } = useI18n()
-useReadonlyMode('amm_software')
+useReadonlyMode(READONLY_DOMAINS.AMM_SOFTWARE)
 
 const loading = ref(false)
 const events = ref([])

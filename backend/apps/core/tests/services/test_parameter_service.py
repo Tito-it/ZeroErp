@@ -13,6 +13,8 @@ Indice test eseguiti:
  2) ParameterServiceTests.test_get_parameter_not_found_raises
  3) ParameterServiceTests.test_get_parameter_int_returns_int
  4) ParameterServiceTests.test_get_parameter_int_invalid_raises
+ 4b) ParameterServiceTests.test_get_parameter_decimal_returns_decimal
+ 4c) ParameterServiceTests.test_get_parameter_decimal_invalid_raises
  5) ParameterServiceTests.test_get_defaults_returns_dict
  6) ParameterServiceTests.test_get_defaults_empty_codes
  7) ParameterServiceTests.test_get_parameter_passes_user_context
@@ -25,6 +27,7 @@ Indice test eseguiti:
 14) ParameterServiceTests.test_get_emittente_fiscale_id_for_user
 """
 
+from decimal import Decimal
 from unittest import TestCase
 from unittest.mock import patch, MagicMock
 
@@ -74,6 +77,20 @@ class ParameterServiceTests(TestCase):
         self._mock_repo.get_parameter.return_value = "non_un_numero"
         with self.assertRaises(ServiceError) as ctx:
             self.svc.get_parameter_int("BAD_PARAM")
+        self.assertEqual(ctx.exception.code, "E_PARAMETER_VALIDATION")
+
+    # Scopo: Verifica che get_parameter_decimal converta correttamente (L2 Sprint D).
+    def test_get_parameter_decimal_returns_decimal(self):
+        self._mock_repo.get_parameter.return_value = "15.5"
+        result = self.svc.get_parameter_decimal("VENDITE_MAX_SCONTO_PCT")
+        self.assertEqual(result, Decimal("15.5"))
+        self.assertIsInstance(result, Decimal)
+
+    # Scopo: Verifica che get_parameter_decimal lanci errore per valore malformato.
+    def test_get_parameter_decimal_invalid_raises(self):
+        self._mock_repo.get_parameter.return_value = "quindici"
+        with self.assertRaises(ServiceError) as ctx:
+            self.svc.get_parameter_decimal("BAD_DECIMAL")
         self.assertEqual(ctx.exception.code, "E_PARAMETER_VALIDATION")
 
     # Scopo: Verifica che get_defaults restituisca un dizionario di parametri.
