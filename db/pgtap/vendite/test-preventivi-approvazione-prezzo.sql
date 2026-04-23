@@ -47,8 +47,9 @@ SELECT plan(10);
 -- =========================================================
 CREATE TEMP TABLE _t_ctx AS
 SELECT
-    (SELECT id FROM catalogo.articoli WHERE codice = 'ART_TEST_BASE') AS articolo_id,
-    (SELECT id FROM config.utilities WHERE attivo IS TRUE ORDER BY id LIMIT 1) AS utility_id,
+    (SELECT id     FROM catalogo.articoli WHERE codice = 'ART_TEST_BASE') AS articolo_id,
+    (SELECT uom_id FROM catalogo.articoli WHERE codice = 'ART_TEST_BASE') AS uom_id,
+    (SELECT id FROM config.utilities ORDER BY id LIMIT 1) AS utility_id,
     (SELECT id FROM config.stati_doc_preventivi WHERE codice_interno = 'DRAFT' LIMIT 1) AS stato_draft_id,
     (SELECT id FROM config.stati_doc_preventivi WHERE codice_interno = 'ACCETTATO' LIMIT 1) AS stato_accettato_id;
 
@@ -69,16 +70,18 @@ WITH ins_p AS (
     INSERT INTO vendite.preventivi (
         numero, stato_doc_preventivo_id, utility_id, data
     )
-    SELECT '_pgtap_apprprezzo_pending_' || substring(md5(clock_timestamp()::text) from 1 for 6),
+    SELECT 'pgtap_appr_pnd_' || substring(md5(clock_timestamp()::text) from 1 for 6),
            stato_draft_id, utility_id, CURRENT_DATE
       FROM _t_ctx
     RETURNING id
 ),
 ins_r AS (
     INSERT INTO vendite.preventivi_righe (
-        preventivo_id, articolo_id, quantita, prezzo_unitario, stato_approvazione_prezzo
+        preventivo_id, articolo_id, quantita, qta_operativa, uom_operativa_id,
+        prezzo_unitario, stato_approvazione_prezzo
     )
-    SELECT p.id, c.articolo_id, 1, 100, 'PENDING'::config.stato_approvazione_prezzo
+    SELECT p.id, c.articolo_id, 1, 1, c.uom_id,
+           100, 'PENDING'::config.stato_approvazione_prezzo
       FROM ins_p p, _t_ctx c
     RETURNING preventivo_id, id AS riga_id
 )
@@ -88,15 +91,17 @@ SELECT 'p_pending', preventivo_id, riga_id FROM ins_r;
 -- p_approved: riga stato=APPROVED
 WITH ins_p AS (
     INSERT INTO vendite.preventivi (numero, stato_doc_preventivo_id, utility_id, data)
-    SELECT '_pgtap_apprprezzo_approved_' || substring(md5(clock_timestamp()::text) from 1 for 6),
+    SELECT 'pgtap_appr_app_' || substring(md5(clock_timestamp()::text) from 1 for 6),
            stato_draft_id, utility_id, CURRENT_DATE FROM _t_ctx
     RETURNING id
 ),
 ins_r AS (
     INSERT INTO vendite.preventivi_righe (
-        preventivo_id, articolo_id, quantita, prezzo_unitario, stato_approvazione_prezzo
+        preventivo_id, articolo_id, quantita, qta_operativa, uom_operativa_id,
+        prezzo_unitario, stato_approvazione_prezzo
     )
-    SELECT p.id, c.articolo_id, 1, 100, 'APPROVED'::config.stato_approvazione_prezzo
+    SELECT p.id, c.articolo_id, 1, 1, c.uom_id,
+           100, 'APPROVED'::config.stato_approvazione_prezzo
       FROM ins_p p, _t_ctx c
     RETURNING preventivo_id, id AS riga_id
 )
@@ -106,15 +111,17 @@ SELECT 'p_approved', preventivo_id, riga_id FROM ins_r;
 -- p_rejected: riga stato=REJECTED
 WITH ins_p AS (
     INSERT INTO vendite.preventivi (numero, stato_doc_preventivo_id, utility_id, data)
-    SELECT '_pgtap_apprprezzo_rejected_' || substring(md5(clock_timestamp()::text) from 1 for 6),
+    SELECT 'pgtap_appr_rej_' || substring(md5(clock_timestamp()::text) from 1 for 6),
            stato_draft_id, utility_id, CURRENT_DATE FROM _t_ctx
     RETURNING id
 ),
 ins_r AS (
     INSERT INTO vendite.preventivi_righe (
-        preventivo_id, articolo_id, quantita, prezzo_unitario, stato_approvazione_prezzo
+        preventivo_id, articolo_id, quantita, qta_operativa, uom_operativa_id,
+        prezzo_unitario, stato_approvazione_prezzo
     )
-    SELECT p.id, c.articolo_id, 1, 100, 'REJECTED'::config.stato_approvazione_prezzo
+    SELECT p.id, c.articolo_id, 1, 1, c.uom_id,
+           100, 'REJECTED'::config.stato_approvazione_prezzo
       FROM ins_p p, _t_ctx c
     RETURNING preventivo_id, id AS riga_id
 )
@@ -124,15 +131,17 @@ SELECT 'p_rejected', preventivo_id, riga_id FROM ins_r;
 -- p_null: riga stato=NULL (non in approvazione, baseline libero)
 WITH ins_p AS (
     INSERT INTO vendite.preventivi (numero, stato_doc_preventivo_id, utility_id, data)
-    SELECT '_pgtap_apprprezzo_null_' || substring(md5(clock_timestamp()::text) from 1 for 6),
+    SELECT 'pgtap_appr_nul_' || substring(md5(clock_timestamp()::text) from 1 for 6),
            stato_draft_id, utility_id, CURRENT_DATE FROM _t_ctx
     RETURNING id
 ),
 ins_r AS (
     INSERT INTO vendite.preventivi_righe (
-        preventivo_id, articolo_id, quantita, prezzo_unitario
+        preventivo_id, articolo_id, quantita, qta_operativa, uom_operativa_id,
+        prezzo_unitario
     )
-    SELECT p.id, c.articolo_id, 1, 100
+    SELECT p.id, c.articolo_id, 1, 1, c.uom_id,
+           100
       FROM ins_p p, _t_ctx c
     RETURNING preventivo_id, id AS riga_id
 )
@@ -268,15 +277,17 @@ SELECT lives_ok(
 CREATE TEMP TABLE _t_prev_draft2 AS
 WITH ins_p AS (
     INSERT INTO vendite.preventivi (numero, stato_doc_preventivo_id, utility_id, data)
-    SELECT '_pgtap_apprprezzo_draft2_' || substring(md5(clock_timestamp()::text) from 1 for 6),
+    SELECT 'pgtap_appr_drt_' || substring(md5(clock_timestamp()::text) from 1 for 6),
            stato_draft_id, utility_id, CURRENT_DATE FROM _t_ctx
     RETURNING id
 ),
 ins_r AS (
     INSERT INTO vendite.preventivi_righe (
-        preventivo_id, articolo_id, quantita, prezzo_unitario, stato_approvazione_prezzo
+        preventivo_id, articolo_id, quantita, qta_operativa, uom_operativa_id,
+        prezzo_unitario, stato_approvazione_prezzo
     )
-    SELECT p.id, c.articolo_id, 1, 100, 'PENDING'::config.stato_approvazione_prezzo
+    SELECT p.id, c.articolo_id, 1, 1, c.uom_id,
+           100, 'PENDING'::config.stato_approvazione_prezzo
       FROM ins_p p, _t_ctx c
     RETURNING preventivo_id
 )

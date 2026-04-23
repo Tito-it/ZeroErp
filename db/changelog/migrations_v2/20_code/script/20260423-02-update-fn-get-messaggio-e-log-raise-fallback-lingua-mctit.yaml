@@ -1,0 +1,244 @@
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260423-02-update-fn-get-messaggio-e-log-raise-fallback-lingua-mctit.yaml
+
+  # ---------------------------------------------------------------------------
+  # Fallback lingua IT per le 2 funzioni che leggono config.messaggi_errore.
+  # Brief BE 23-04-2026: abilitare rollout incrementale traduzioni EN senza
+  # dover tradurre tutti i codici errore in una volta. Se la lingua richiesta
+  # (via GUC myapp.user_language o parametro esplicito) non ha riga per un
+  # codice, ricade su 'it' (codice ISO default progetto).
+  #
+  # Implementazione: single-query UNION logico con ORDER BY per preferire la
+  # lingua richiesta e ricadere su 'it'. Vantaggi vs approccio "2 SELECT + IF":
+  #   - 1 sola query (meno overhead, specialmente su raise ad alta frequenza)
+  #   - Semantica "riga EN intera vince anche se causa/soluzione NULL" gratis
+  #     (nessun mix di campi tra lingue)
+  #
+  # Correzione opportunistica: fn_get_messaggio era marcata IMMUTABLE ma legge
+  # da tabella -> bug latente (caching planner potrebbe restituire risultati
+  # stantii dopo UPDATE). Correggo a STABLE (invariata dentro singola query,
+  # puo' cambiare tra query diverse).
+  #
+  # 2 sub-changeSet in sequenza (dipendenza soft: fn_log_and_raise_error
+  # chiama fn_get_messaggio, meglio applicare la fn helper prima):
+  #   02-01 fn_get_messaggio — fallback + STABLE fix
+  #   02-02 fn_log_and_raise_error — fallback su causa/soluzione
+  # ---------------------------------------------------------------------------
+
+  - changeSet:
+      id: 20260423-02-01-update-fn-get-messaggio-fallback-lingua
+      author: mctit
+      runOnChange: true
+      validCheckSum: [ANY]
+      comment: >
+        Aggiorna script.fn_get_messaggio: fallback su lingua='it' quando
+        la lingua richiesta non ha riga per il codice. Fix opportunistico
+        IMMUTABLE -> STABLE (la fn legge da config.messaggi_errore,
+        IMMUTABLE era scorretto). Firma invariata.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT COUNT(*)
+                FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script'
+                 AND p.proname = 'fn_get_messaggio';
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_get_messaggio(
+                  p_codice  text,
+                  p_valore  text DEFAULT NULL::text,
+                  p_lingua  text DEFAULT NULL::text
+              )
+              RETURNS text
+              LANGUAGE plpgsql
+              STABLE
+              AS $function$
+              DECLARE
+                  tmpl       text;
+                  lingua_eff text;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo (post 23-04-2026, i18n incrementale):
+                  --   Ritorna il template messaggio per (codice, lingua).
+                  --   Se la lingua richiesta non ha riga, fallback su 'it'
+                  --   (codice ISO default progetto). Se nemmeno 'it' ha
+                  --   riga -> placeholder "[MESSAGGIO NON DEFINITO: ...]"
+                  --   (comportamento legacy, nessuna regressione).
+                  --
+                  -- Risoluzione lingua:
+                  --   1. parametro p_lingua (priorita' max, override
+                  --      esplicito)
+                  --   2. GUC myapp.user_language (impostata dal middleware
+                  --      BE per-request)
+                  --   3. 'it' (fallback finale)
+                  --
+                  -- Volatilita': STABLE (legge tabella, IMMUTABLE sarebbe
+                  -- bug di caching. Post-fix 23-04-2026).
+                  -- =========================================================
+
+                  lingua_eff := coalesce(
+                      p_lingua,
+                      current_setting('myapp.user_language', true),
+                      'it'
+                  );
+
+                  -- Single-query con preferenza per lingua_eff, fallback 'it'.
+                  -- ORDER BY booleano: la riga con lingua = lingua_eff ha
+                  -- valore TRUE (ordinato prima di FALSE in DESC), quindi
+                  -- vince. Se lingua_eff = 'it' la IN degenera, LIMIT 1 OK.
+                  SELECT messaggio
+                    INTO tmpl
+                    FROM config.messaggi_errore
+                   WHERE codice = p_codice
+                     AND lingua IN (lingua_eff, 'it')
+                   ORDER BY (lingua = lingua_eff) DESC
+                   LIMIT 1;
+
+                  IF tmpl IS NULL THEN
+                      RETURN '[MESSAGGIO NON DEFINITO: ' || p_codice || ']';
+                  END IF;
+
+                  IF p_valore IS NOT NULL THEN
+                      RETURN format(tmpl, p_valore);
+                  ELSE
+                      RETURN tmpl;
+                  END IF;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_get_messaggio(text, text, text) IS
+                  'Restituisce il messaggio formattato per (codice, lingua). '
+                  'Post 23-04-2026: fallback su lingua=''it'' se la lingua '
+                  'richiesta non ha riga (supporta rollout incrementale '
+                  'traduzioni EN). Se nemmeno ''it'' ha riga -> placeholder '
+                  '"[MESSAGGIO NON DEFINITO: <codice>]". Volatilita'' STABLE '
+                  '(era IMMUTABLE per errore, corretto).';
+      rollback:
+        - sql:
+            sql: |
+              -- Rollback: riapplicare la versione pre-fallback (IMMUTABLE e
+              -- single-lingua). Non forniamo inline per evitare di perdere
+              -- il fix STABLE che e' un bug-fix; in caso di rollback reale
+              -- riapplicare manualmente la fn originale.
+              SELECT 1;
+
+  - changeSet:
+      id: 20260423-02-02-update-fn-log-and-raise-error-fallback-lingua
+      author: mctit
+      runOnChange: true
+      validCheckSum: [ANY]
+      comment: >
+        Aggiorna script.fn_log_and_raise_error: il blocco "3) Recupera
+        causa e hint" applica lo stesso pattern single-query UNION/ORDER BY
+        di fn_get_messaggio per il fallback IT. Firma invariata,
+        logging invariato. Il recupero del messaggio resta delegato a
+        fn_get_messaggio (gia' context-aware dopo -02-01).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT COUNT(*)
+                FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script'
+                 AND p.proname = 'fn_log_and_raise_error';
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_log_and_raise_error(
+                  p_area          text,
+                  p_function_name text,
+                  p_error_code    text,
+                  p_context       jsonb,
+                  p_tx_id         uuid,
+                  VARIADIC p_valori text[]
+              )
+              RETURNS void
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_msg    text;
+                  v_detail text;
+                  v_hint   text;
+                  v_lang   text := coalesce(
+                      current_setting('myapp.user_language', true),
+                      'it'
+                  );
+              BEGIN
+                  -- =========================================================
+                  -- Scopo (post 23-04-2026, i18n incrementale):
+                  --   Logga l'errore nel sistema di logging e solleva
+                  --   RAISE EXCEPTION con messaggio, DETAIL e HINT
+                  --   localizzati secondo la lingua di sessione.
+                  --
+                  -- Cambiamento 23-04-2026: il recupero di causa/soluzione
+                  -- ora ricade su lingua='it' se la lingua richiesta non
+                  -- ha riga per il codice (stesso pattern di
+                  -- fn_get_messaggio). Il messaggio testuale era gia'
+                  -- context-aware perche' delegato a fn_get_messaggio.
+                  -- =========================================================
+
+                  -- 1) Logging (non loc-sensitive).
+                  PERFORM script.fn_log_error_only(
+                      p_area, p_function_name, p_error_code,
+                      p_context, p_tx_id, VARIADIC p_valori
+                  );
+
+                  -- 2) Template messaggio (gia' gestisce fallback lingua
+                  -- internamente post 20260423-02-01).
+                  v_msg := script.fn_get_messaggio(
+                      p_error_code,
+                      NULL,
+                      v_lang
+                  );
+
+                  -- 3) Recupera causa e hint con fallback IT inline.
+                  -- Single-query: preferisci v_lang; se la riga esiste
+                  -- solo in 'it' vince quella per LIMIT 1.
+                  -- Semantica "riga intera vince": se la riga EN esiste
+                  -- ma ha causa/soluzione NULL, mantiene NULL (non mescola
+                  -- con IT -- ordering sceglie la riga della lingua
+                  -- richiesta come blocco atomico).
+                  SELECT causa, soluzione
+                    INTO v_detail, v_hint
+                    FROM config.messaggi_errore
+                   WHERE codice = p_error_code
+                     AND lingua IN (v_lang, 'it')
+                   ORDER BY (lingua = v_lang) DESC
+                   LIMIT 1;
+
+                  -- 4) Format placeholder con VARIADIC values, se presenti.
+                  IF array_length(p_valori, 1) IS NOT NULL THEN
+                      v_msg := format(v_msg, VARIADIC p_valori);
+                  END IF;
+
+                  -- 5) Sollevamento eccezione con DETAIL/HINT localizzati.
+                  RAISE EXCEPTION '%', v_msg
+                      USING DETAIL = coalesce(v_detail, ''),
+                            HINT   = coalesce(v_hint, '');
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_log_and_raise_error(
+                  text, text, text, jsonb, uuid, text[]
+              ) IS
+                  'Logga e poi solleva exception con messaggio custom. Post '
+                  '23-04-2026: causa/soluzione con fallback lingua=''it'' se '
+                  'la lingua richiesta (myapp.user_language) non ha riga per '
+                  'il codice. Messaggio delegato a fn_get_messaggio (gia'' '
+                  'context-aware).';
+      rollback:
+        - sql:
+            sql: |
+              -- Rollback: riapplicare la versione pre-fallback della fn.
+              -- Non forniamo inline per evitare duplicazione del body.
+              SELECT 1;
