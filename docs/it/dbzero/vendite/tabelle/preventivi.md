@@ -55,8 +55,9 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_preventivi_a10_gen_codice_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_preventivi_gen_codice()` |
 | trg_preventivi_a10_gen_codice_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_preventivi_gen_codice()` |
+| trg_preventivi_a10_gen_codice_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_preventivi_gen_codice()` |
+| trg_preventivi_a10_guard_transizione_approvazione_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_preventivi_guard_transizione_approvazione()` |
 | trg_preventivi_a10_lock_columns_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('numero', 'CODICE_NON_MODIFICABILE')` |
 | trg_preventivi_a10_stati_doc_preventivi_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'stati_doc_preventivi', 'attivo', 'stato_doc_preventivo_id', 'id')` |
 | trg_preventivi_a10_stati_doc_preventivi_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'stati_doc_preventivi', 'attivo', 'stato_doc_preventivo_id', 'id')` |

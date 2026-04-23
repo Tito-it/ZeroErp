@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/catalogo/manual/trgfn_articoli_componenti_block_modifica_struttura.md" %}
 # ⚙️ Funzione `trgfn_articoli_componenti_block_modifica_struttura`
 
 ```sql
