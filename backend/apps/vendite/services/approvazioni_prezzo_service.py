@@ -11,7 +11,7 @@
 #           Crea pratica BOZZA -> APERTA, registra contesto violazione in meta,
 #           invia email al ruolo approver (best-effort).
 #        2) approva(riga_id) - endpoint POST /vendite/righe/<id>/approva-prezzo/
-#           verifica permesso azione approva_prezzo, UPDATE riga
+#           verifica permesso azione approva_prezzo_override, UPDATE riga
 #           stato_approvazione_prezzo=APPROVED, chiude pratica con nota OK.
 #        3) rifiuta(riga_id, motivazione) - endpoint POST .../rifiuta-prezzo/
 #           UPDATE riga REJECTED, chiude pratica con nota KO + motivazione.
@@ -44,7 +44,9 @@ _FN = "vendite.approvazioni_prezzo_service"
 # Costanti dominio L3.
 TIPO_PRESTAZIONE_CODICE = "APPROVAZIONE_PREZZO"
 PRIORITA_DEFAULT_CODICE_INTERNO = "NORMALE"
-AZIONE_PROCESSO = "approva_prezzo"
+# Permission codename allineato al seed config.azioni_processo id 10
+# (changeSet 80_data 20260423-* / sprint E DB-E-1).
+AZIONE_PROCESSO = "approva_prezzo_override"
 EMAIL_TEMPLATE_CODICE = "APPROVAZIONE_PREZZO_RICHIESTA"
 PARAM_EMAIL_RECIPIENT = "VENDITE_APPROVAZIONE_PREZZO_RECIPIENT_EMAIL"
 
@@ -364,7 +366,7 @@ def _get_riga_pending(riga_id: int, *, function_name: str) -> dict[str, Any]:
     return riga
 
 
-# Scopo: verifica che l'utente abbia l'azione processo approva_prezzo.
+# Scopo: verifica che l'utente abbia l'azione processo approva_prezzo_override.
 #        Bypass per superuser (ma esplicitamente, non implicito al check).
 def _check_permesso_approva_prezzo(
     auth_user_id: int | None, *, function_name: str
@@ -383,8 +385,8 @@ def _check_permesso_approva_prezzo(
     ErrorManager.require(
         abilitato,
         code="E_PREV_OVERRIDE_NON_AUTORIZZATO",
-        message="Permesso 'approva_prezzo' richiesto.",
-        detail="Chiedi all'amministratore di abilitare l'azione 'approva_prezzo'.",
+        message=f"Permesso '{AZIONE_PROCESSO}' richiesto.",
+        detail=f"Chiedi all'amministratore di abilitare l'azione '{AZIONE_PROCESSO}'.",
         function_name=function_name,
     )
 

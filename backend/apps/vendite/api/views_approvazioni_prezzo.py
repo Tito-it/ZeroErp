@@ -65,11 +65,11 @@ class ApprovaPrezzoView(DomainAPIView):
     """POST /api/v1/vendite/righe/<riga_id>/approva-prezzo/
 
     Approva l'override prezzo su una riga preventivo PENDING.
-    Richiede azione processo `approva_prezzo` (oppure superuser bypass).
+    Richiede azione processo `approva_prezzo_override` (oppure superuser bypass).
     """
 
     area_funzionale = "vendite"
-    post_permission = "approva_prezzo"
+    post_permission = "approva_prezzo_override"
 
     @extend_schema(
         request=_APPROVA_REQUEST,
@@ -93,12 +93,12 @@ class ApprovaPrezzoView(DomainAPIView):
 class RifiutaPrezzoView(DomainAPIView):
     """POST /api/v1/vendite/righe/<riga_id>/rifiuta-prezzo/
 
-    Rifiuta l'override prezzo. Richiede azione `approva_prezzo`.
+    Rifiuta l'override prezzo. Richiede azione `approva_prezzo_override`.
     Motivazione opzionale registrata in nota interna pratica.
     """
 
     area_funzionale = "vendite"
-    post_permission = "approva_prezzo"
+    post_permission = "approva_prezzo_override"
 
     @extend_schema(
         request=_RIFIUTA_REQUEST,
@@ -126,7 +126,7 @@ class ApprovazioniPrezzoCodaView(DomainAPIView):
     Lista paginata della coda approver: pratiche tipo APPROVAZIONE_PREZZO
     in stato APERTA filtrate per scope emittente dell'utente.
     Area funzionale `vendite` LETTURA. La visibilita' richiede comunque
-    `approva_prezzo` per agire (i POST individuali la verificano).
+    `approva_prezzo_override` per agire (i POST individuali la verificano).
     """
 
     area_funzionale = "vendite"

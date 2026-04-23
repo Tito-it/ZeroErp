@@ -150,7 +150,7 @@ Scenario che verifica l'adeguamento `ArticoloBomDrawer` post trigger DB `E_BOM_M
 
 ### 1.9.bis Workflow L3 approvazione prezzo (Sprint E)
 
-Setup: utente operatore con `prezzo_override_manuale` ON, `VENDITE_MAX_SCONTO_PCT=10` (parameter), assenza di `approva_prezzo`. Secondo utente "Manager" con `approva_prezzo`.
+Setup: utente operatore con `prezzo_override_manuale` ON, `VENDITE_MAX_SCONTO_PCT=10` (parameter), assenza di `approva_prezzo_override`. Secondo utente "Manager" con `approva_prezzo_override`.
 
 - [ ] Apri PreventiviRigaForm su riga BA GOLD, prezzo resolver = X
 - [ ] Imposta prezzo manuale con sconto 25% (oltre limite 10%) → submit normale
@@ -164,7 +164,7 @@ Setup: utente operatore con `prezzo_override_manuale` ON, `VENDITE_MAX_SCONTO_PC
   - [ ] Errore `E_PREVENTIVO_RIGHE_PRICING_PENDENTI` (banner toast)
 - [ ] Tenta modifica della riga PENDING (es. cambia quantità) via UI
   - [ ] Errore `E_RIGA_PREZZO_PENDENTE` (defense-in-depth backend trigger)
-- [ ] Login come Manager (utente con `approva_prezzo`)
+- [ ] Login come Manager (utente con `approva_prezzo_override`)
 - [ ] Navigate `/vendite/approvazioni-prezzo/`
   - [ ] Coda mostra la pratica pending creata
   - [ ] Colonne visibili: ID, Data, Descrizione, Priorità, Azioni

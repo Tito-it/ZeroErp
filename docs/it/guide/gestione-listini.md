@@ -243,7 +243,7 @@ Quando l'operatore richiede un prezzo che viola i limiti L2, può **richiedere a
 
 1. **Riga oltre L2 + flag `richiesta_approvazione=true`**: il backend NON solleva errore. Crea una pratica `APPROVAZIONE_PREZZO` (stato APERTA, priorità NORMALE) e salva la riga con `stato_approvazione_prezzo='PENDING'` collegata alla pratica via `pratica_approvazione_prezzo_id`.
 2. **Email best-effort al recipient configurato** in `VENDITE_APPROVAZIONE_PREZZO_RECIPIENT_EMAIL` (parameter scope user/group/emittente). Se il parameter non è configurato, la pratica resta visibile in coda senza notifica push.
-3. **L'approver** (utente con azione `approva_prezzo` abilitata) vede la coda in `/vendite/approvazioni-prezzo/` filtrata per scope emittente. Per ogni pratica può:
+3. **L'approver** (utente con azione `approva_prezzo_override` abilitata) vede la coda in `/vendite/approvazioni-prezzo/` filtrata per scope emittente. Per ogni pratica può:
    - **Approvare** → riga `stato_approvazione_prezzo='APPROVED'`, pratica CHIUSA con nota interna OK
    - **Rifiutare** → riga `stato_approvazione_prezzo='REJECTED'`, pratica CHIUSA con nota interna KO + motivazione
 
