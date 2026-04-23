@@ -1,0 +1,153 @@
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260422-06-create-trgfn-preventivi-guard-transizione-approvazione-mctit.yaml
+
+  # ---------------------------------------------------------------------------
+  # Sprint E listini v5 §14.6 — DB-E-4.
+  # Trigger guard: impedisce la transizione del preventivo a stato ACCETTATO
+  # se esistono righe con stato_approvazione_prezzo='PENDING'. Il workflow L3
+  # deve esitare (APPROVED/REJECTED o clear) tutte le richieste prima che
+  # il preventivo possa essere finalizzato.
+  #
+  # Implementazione: lookup sul codice_interno di config.stati_doc_preventivi
+  # (piu' stabile del codice business-visible, che puo' subire relabelling UX).
+  # ---------------------------------------------------------------------------
+
+  - changeSet:
+      id: 20260422-06-01-create-trgfn-preventivi-guard-transizione-approvazione
+      author: mctit
+      runOnChange: true
+      validCheckSum: [ANY]
+      comment: >
+        Crea funzione trigger vendite.trgfn_preventivi_guard_transizione_approvazione.
+        Lookup su codice_interno per resilienza a relabelling del codice
+        business-visible. Guard skippato se id stato non risolvibile
+        (v_stato_codice NULL -> nessun match IF).
+      preConditions:
+        - onFail: HALT
+        - and:
+          - tableExists:
+              schemaName: vendite
+              tableName: preventivi
+          - tableExists:
+              schemaName: vendite
+              tableName: preventivi_righe
+          - columnExists:
+              schemaName: vendite
+              tableName: preventivi_righe
+              columnName: stato_approvazione_prezzo
+          - columnExists:
+              schemaName: config
+              tableName: stati_doc_preventivi
+              columnName: codice_interno
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_preventivi_guard_transizione_approvazione()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  -- codice_interno dello stato target del preventivo.
+                  -- Risolto via lookup su config.stati_doc_preventivi per id.
+                  v_stato_codice config.stati_doc_preventivi.codice_interno%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Bloccare la transizione a stato_interno='ACCETTATO' di un
+                  --   preventivo che ha righe ancora in workflow approvazione
+                  --   prezzo (stato_approvazione_prezzo='PENDING'). Garantisce
+                  --   che le richieste L3 siano esitate prima della
+                  --   finalizzazione commerciale.
+                  --
+                  -- Regole:
+                  --   1. Risolve codice_interno del nuovo stato (NEW).
+                  --   2. Se diverso da 'ACCETTATO' -> pass-through (scopo
+                  --      limitato alla transizione finale).
+                  --   3. Se ACCETTATO -> EXISTS riga PENDING -> raise.
+                  --
+                  -- Naming: uso codice_interno (non codice) per stabilita'
+                  -- rispetto a relabelling UX del codice business-visible.
+                  -- =========================================================
+
+                  SELECT sdp.codice_interno
+                    INTO v_stato_codice
+                    FROM config.stati_doc_preventivi sdp
+                   WHERE sdp.id = NEW.stato_doc_preventivo_id;
+
+                  -- Early return: transizione verso stato diverso da ACCETTATO
+                  -- non ha preconditions su workflow approvazione.
+                  IF v_stato_codice IS DISTINCT FROM 'ACCETTATO' THEN
+                      RETURN NEW;
+                  END IF;
+
+                  -- Transizione ad ACCETTATO: blocca se esistono righe PENDING.
+                  IF EXISTS (
+                      SELECT 1
+                        FROM vendite.preventivi_righe pr
+                       WHERE pr.preventivo_id = NEW.id
+                         AND pr.stato_approvazione_prezzo = 'PENDING'::config.stato_approvazione_prezzo
+                  ) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          TG_NAME,
+                          'E_PREVENTIVO_RIGHE_PRICING_PENDENTI',
+                          jsonb_build_object(
+                              'preventivo_id', NEW.id,
+                              'hint', 'Attendi esito dell''approvazione pendente o rifiuta la richiesta prima di accettare il preventivo.'
+                          ),
+                          NULL::uuid,
+                          NEW.id::text
+                      );
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_preventivi_guard_transizione_approvazione() IS
+                  'Trigger function: blocca transizione preventivo ad ACCETTATO se '
+                  'esistono righe con stato_approvazione_prezzo=PENDING. Sprint E '
+                  'listini v5 §14.6 (DB-E-4). Raise E_PREVENTIVO_RIGHE_PRICING_PENDENTI.';
+      rollback:
+        - sql:
+            sql: DROP FUNCTION IF EXISTS vendite.trgfn_preventivi_guard_transizione_approvazione();
+
+  - changeSet:
+      id: 20260422-06-02-create-trg-preventivi-guard-transizione-approvazione
+      author: mctit
+      runOnChange: true
+      validCheckSum: [ANY]
+      comment: >
+        Trigger BEFORE UPDATE OF stato_doc_preventivo_id su vendite.preventivi.
+        Fase _a10_ (guard). UPDATE OF <col> per scattare solo quando la
+        transizione stato e' esplicita, evitando overhead su ogni UPDATE.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT COUNT(*)
+                FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'vendite'
+                 AND p.proname = 'trgfn_preventivi_guard_transizione_approvazione';
+      changes:
+        - sql:
+            splitStatements: true
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_preventivi_a10_guard_transizione_approvazione_upd
+                  ON vendite.preventivi;
+
+              CREATE TRIGGER trg_preventivi_a10_guard_transizione_approvazione_upd
+                  BEFORE UPDATE OF stato_doc_preventivo_id
+                  ON vendite.preventivi
+                  FOR EACH ROW
+                  EXECUTE FUNCTION vendite.trgfn_preventivi_guard_transizione_approvazione();
+      rollback:
+        - sql:
+            sql: |
+              DROP TRIGGER IF EXISTS trg_preventivi_a10_guard_transizione_approvazione_upd
+                  ON vendite.preventivi;

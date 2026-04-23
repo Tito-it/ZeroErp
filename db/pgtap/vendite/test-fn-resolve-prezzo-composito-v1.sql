@@ -12,15 +12,19 @@
 -- con versione attiva e 3 righe, matrice categoria -> listino senza variazione.
 -- ROLLBACK pulisce tutto a fine test.
 --
--- Elenco test (1..4):
+-- Elenco test (1..7):
 --   1) Precondizione: setup completato (padre, componenti, listino, matrice)
 --   2) CASO A: componente A esposto -> 2 righe, flag esposto coerente
---   3) CASO B1: nessun componente esposto, riga listino padre -> 1 riga con prezzo padre
---   4) CASO B2: nessun componente esposto + niente riga listino padre -> Sigma componenti
+--   3) CASO A coeff_qta: righe ritornate espongono ac.coeff_qta
+--      (A=2, B=3) — sblocco S14.C-BE-1 BoMComponentExpander
+--   4) CASO B1: nessun componente esposto, riga listino padre -> 1 riga con prezzo padre
+--   5) CASO B1 coeff_qta = 1 (il padre e' neutro nel moltiplicatore)
+--   6) CASO B2: nessun componente esposto + niente riga listino padre -> Sigma componenti
+--   7) CASO B2 coeff_qta = 1 (padre aggregato, coefficienti applicati interni)
 -- ------------------------------------------------------------
 
 BEGIN;
-SELECT plan(4);
+SELECT plan(7);
 
 -- Precondizioni: BA su utility senza dimensione + emittente + tipologia PRODOTTI.
 CREATE TEMP TABLE tmp_ctx AS
@@ -149,7 +153,30 @@ SELECT is(
     'CASO A: almeno un componente esposto -> 2 righe (una per componente)'
 );
 
--- 3) CASO B1: rimuovo l'esposizione, listino padre presente -> 1 riga con prezzo 100.
+-- 3) CASO A coeff_qta: verifico che ogni riga esponga il coeff_qta
+-- della BoM sorgente (PGTAP_BOM_A = 2, PGTAP_BOM_B = 3). Sblocco
+-- BoMComponentExpander (S14.C-BE-1, DEC-3 §14.4.1).
+SELECT is(
+    ARRAY(
+        SELECT r.coeff_qta
+          FROM vendite.fn_resolve_prezzo_composito(
+              (SELECT id FROM catalogo.articoli WHERE codice = 'PGTAP_BOM_PADRE'),
+              (SELECT uom_id FROM tmp_ctx),
+              CURRENT_DATE,
+              (SELECT ba_id FROM tmp_ctx),
+              (SELECT utility_id FROM tmp_ctx),
+              (SELECT emittente_srid FROM tmp_ctx),
+              NULL
+          ) r
+          JOIN catalogo.articoli a ON a.id = r.componente_id
+         WHERE a.codice IN ('PGTAP_BOM_A', 'PGTAP_BOM_B')
+         ORDER BY a.codice
+    ),
+    ARRAY[2::numeric, 3::numeric],
+    'CASO A coeff_qta: riga A=2, riga B=3 (propagato da ac.coeff_qta)'
+);
+
+-- 4) CASO B1: rimuovo l'esposizione, listino padre presente -> 1 riga con prezzo 100.
 UPDATE catalogo.articoli_componenti
    SET esposto_in_fattura = FALSE
  WHERE prodotto_id = (SELECT id FROM catalogo.articoli WHERE codice = 'PGTAP_BOM_PADRE');
@@ -168,7 +195,22 @@ SELECT is(
     'CASO B1: nessun esposto + riga listino padre -> prezzo_unitario = 100'
 );
 
--- 4) CASO B2: tolgo la riga listino del padre -> Sigma componenti = 10*2 + 20*3 = 80.
+-- 5) CASO B1 coeff_qta = 1: la riga rappresenta il padre, moltiplicatore neutro.
+SELECT is(
+    (SELECT coeff_qta FROM vendite.fn_resolve_prezzo_composito(
+        (SELECT id FROM catalogo.articoli WHERE codice = 'PGTAP_BOM_PADRE'),
+        (SELECT uom_id FROM tmp_ctx),
+        CURRENT_DATE,
+        (SELECT ba_id FROM tmp_ctx),
+        (SELECT utility_id FROM tmp_ctx),
+        (SELECT emittente_srid FROM tmp_ctx),
+        NULL
+    )),
+    1::numeric,
+    'CASO B1 coeff_qta = 1 (padre singola riga, moltiplicatore neutro)'
+);
+
+-- 6) CASO B2: tolgo la riga listino del padre -> Sigma componenti = 10*2 + 20*3 = 80.
 DELETE FROM vendite.listini_righe
  WHERE articolo_id = (SELECT id FROM catalogo.articoli WHERE codice = 'PGTAP_BOM_PADRE');
 
@@ -184,6 +226,22 @@ SELECT is(
     )),
     80::numeric,
     'CASO B2: nessun esposto + no listino padre -> Sigma = 10*2 + 20*3 = 80'
+);
+
+-- 7) CASO B2 coeff_qta = 1: padre aggregato; coefficienti dei componenti
+-- sono gia' stati applicati internamente al calcolo v_prezzo_totale.
+SELECT is(
+    (SELECT coeff_qta FROM vendite.fn_resolve_prezzo_composito(
+        (SELECT id FROM catalogo.articoli WHERE codice = 'PGTAP_BOM_PADRE'),
+        (SELECT uom_id FROM tmp_ctx),
+        CURRENT_DATE,
+        (SELECT ba_id FROM tmp_ctx),
+        (SELECT utility_id FROM tmp_ctx),
+        (SELECT emittente_srid FROM tmp_ctx),
+        NULL
+    )),
+    1::numeric,
+    'CASO B2 coeff_qta = 1 (padre aggregato Sigma, moltiplicatore neutro)'
 );
 
 SELECT * FROM finish();

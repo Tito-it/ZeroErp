@@ -123,7 +123,7 @@
 - [fn_resolve_fatturazione_pipeline_step](funzioni/fn_resolve_fatturazione_pipeline_step.md) — (latest review 08-02-2026)   La funzione risolve la configurazione pipeline per un singolo step (`stato_doc_fiscale_id`) applicando fallback su `utility_id` e `tipo_doc_fiscale_id`.
 - [fn_resolve_lotto_task_execution_mode](funzioni/fn_resolve_lotto_task_execution_mode.md) — Determina in modo deterministico la modalita` di esecuzione del task: `RUN`, `SKIP`, `RESUME`, `RESET_REQUIRED`.
 - [fn_resolve_lotto_utility_emittente](funzioni/fn_resolve_lotto_utility_emittente.md) — (latest review 22-02-2026) Helper condiviso per risolvere e validare `utility_id` ed `emittente_soggetto_ruolo_id` nei flussi lotto (`fatturazione_lotti` e `attivita_fatturabili_lotti`).
-- [fn_resolve_prezzo_composito](funzioni/fn_resolve_prezzo_composito.md) — (latest review 14-04-2026)
+- [fn_resolve_prezzo_composito](funzioni/fn_resolve_prezzo_composito.md) — (latest review 22-04-2026)
 - [fn_resolve_prezzo_listino](funzioni/fn_resolve_prezzo_listino.md) — Risolve in modo deterministico il prezzo applicabile per una coppia `(articolo, uom)` in una data, dato un billing account. Unica funzione usata da preventivi, commesse e fatturazione: zero logica duplicata applicativa.
 - [fn_resolve_prezzo_listino_v2](funzioni/fn_resolve_prezzo_listino_v2.md) — (latest review 15-04-2026)
 - [fn_resolve_stato_esecuzione](funzioni/fn_resolve_stato_esecuzione.md) — (latest review 22-02-2026) Helper condiviso per risolvere in modo uniforme il valore di `stato_esecuzione` nei flussi `fatturazione_lotti` e `attivita_fatturabili`.
@@ -184,7 +184,9 @@
 - [trgfn_ordini_gen_codice](funzioni/trgfn_ordini_gen_codice.md) — La trigger function `vendite.trgfn_ordini_gen_codice()` genera automaticamente `numero` ordine quando il campo non viene fornito.
 - [trgfn_ordini_normalize](funzioni/trgfn_ordini_normalize.md) — La trigger function `vendite.trgfn_ordini_normalize()` completa i campi temporali minimi dell’ordine quando il `numero` e` presente in insert.
 - [trgfn_preventivi_gen_codice](funzioni/trgfn_preventivi_gen_codice.md) — La trigger function `vendite.trgfn_preventivi_gen_codice()` genera automaticamente `numero` preventivo quando il campo non viene valorizzato.
+- [trgfn_preventivi_guard_transizione_approvazione](funzioni/trgfn_preventivi_guard_transizione_approvazione.md) — (latest revision 22-04-2026, Sprint E listini v5 §14.6)
 - [trgfn_preventivi_normalize](funzioni/trgfn_preventivi_normalize.md) — La trigger function `vendite.trgfn_preventivi_normalize()` completa i dati minimi di data documento in insert quando il numero preventivo e` gia` presente.
+- [trgfn_preventivi_righe_guard_pending](funzioni/trgfn_preventivi_righe_guard_pending.md) — (latest revision 22-04-2026, Sprint E listini v5 §14.6)
 - [trgfn_preventivi_righe_ricalcola_totali](funzioni/trgfn_preventivi_righe_ricalcola_totali.md) — (latest review 03-04-2026) `vendite.trgfn_preventivi_righe_ricalcola_totali()` e' la trigger function **STATEMENT-level** che mantiene i totali testata preventivo sempre coerenti con le righe. Invoca `vendite.fn_ricalcola_totali_preventivo()` **una sola volta per ogni preventivo_id coinvolto**, anche in caso di operazioni bulk (es. copia righe in revisione).
 - [trgfn_tipi_indirizzi_only_allowed](funzioni/trgfn_tipi_indirizzi_only_allowed.md)
 

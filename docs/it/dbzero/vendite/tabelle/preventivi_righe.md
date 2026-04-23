@@ -22,6 +22,8 @@
 | qta_operativa | numeric | YES |  |
 | uom_operativa_id | bigint | YES |  |
 | factor_to_base | numeric | NO | 1 |
+| stato_approvazione_prezzo | USER-DEFINED | YES |  |
+| pratica_approvazione_prezzo_id | bigint | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -31,6 +33,7 @@
 | FOREIGN KEY | fk_preventivi_vendita_r_uom_operativa | uom_operativa_id |
 | FOREIGN KEY | fk_prevrighe_articoli | articolo_id |
 | FOREIGN KEY | fk_prevrighe_iva | iva_id |
+| FOREIGN KEY | fk_prevrighe_pratica_approvazione_prezzo | pratica_approvazione_prezzo_id |
 | FOREIGN KEY | fk_prevrighe_preventivi | preventivo_id |
 | PRIMARY KEY | pk_preventivi_righe | id |
 
@@ -39,6 +42,7 @@
 |------|-------------|
 | ix_vendite_preventivi_righe_articolo_id | `CREATE INDEX ix_vendite_preventivi_righe_articolo_id ON vendite.preventivi_righe USING btree (articolo_id)` |
 | ix_vendite_preventivi_righe_preventivo_id | `CREATE INDEX ix_vendite_preventivi_righe_preventivo_id ON vendite.preventivi_righe USING btree (preventivo_id)` |
+| ix_vendite_preventivi_righe_stato_approvazione | `CREATE INDEX ix_vendite_preventivi_righe_stato_approvazione ON vendite.preventivi_righe USING btree (stato_approvazione_prezzo) WHERE (stato_approvazione_prezzo IS NOT NULL)` |
 | pk_preventivi_righe | `CREATE UNIQUE INDEX pk_preventivi_righe ON vendite.preventivi_righe USING btree (id)` |
 
 ## 🚨 Trigger
@@ -46,6 +50,7 @@
 |------|--------|--------|--------|
 | trg_preventivi_righe_a10_articoli_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'articoli', 'attivo', 'articolo_id', 'id')` |
 | trg_preventivi_righe_a10_articoli_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'articoli', 'attivo', 'articolo_id', 'id')` |
+| trg_preventivi_righe_a10_guard_pending_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_preventivi_righe_guard_pending()` |
 | trg_preventivi_righe_a10_iva_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'iva', 'attivo', 'iva_id', 'id')` |
 | trg_preventivi_righe_a10_iva_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'iva', 'attivo', 'iva_id', 'id')` |
 | trg_preventivi_righe_a10_note_preventivo_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'note_preventivo', 'target_riga_id', 'id', 'attivo')` |

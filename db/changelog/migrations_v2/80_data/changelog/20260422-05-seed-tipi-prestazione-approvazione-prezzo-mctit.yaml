@@ -1,0 +1,86 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Seed pratiche.tipi_prestazione — tipo APPROVAZIONE_PREZZO
+# Sprint E listini v5 §14.6 (workflow L3 approvazione out-of-policy).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260422-05-seed-tipi-prestazione-approvazione-prezzo-mctit.yaml
+
+  - changeSet:
+      id: 20260422-05-seed-tipi-prestazione-approvazione-prezzo
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Seed idempotente pratiche.tipi_prestazione codice APPROVAZIONE_PREZZO
+        (id fisso 9001, range seed dedicato per evitare collisioni con
+        autoincrement). Pattern CSV + loadUpdateData come azioni_processo
+        e altri seed del progetto: upsert per PK id, gestione default su
+        colonne opzionali.
+
+        Sblocca Sprint E §14.6 workflow L3 approvazione prezzo:
+        pratiche_service.crea_pratica usera' questo tipo_prestazione_id
+        per creare la pratica di richiesta approvazione. La priorita_id
+        e' runtime lookup su config.priorita_pratiche gia' seminata
+        (20260303-62): BE dovra' cercare codice_interno='NORMALE' (id=2
+        nel seed standard) o codice diverso se la commerciale decide un
+        SLA piu' alto per queste approvazioni.
+
+        Escluse dal CSV: tx_id (trgfn_tx_id_managed), storicizza
+        (default true), i campi audit potrebbero essere omessi ma li
+        includiamo per tracciabilita' del seed (user='SEED').
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: pratiche
+            tableName: tipi_prestazione
+      changes:
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/pratiche/tipi_prestazione.csv
+            tableName: tipi_prestazione
+            schemaName: pratiche
+            separator: ","
+            encoding: UTF-8
+            nullValue: ""
+            primaryKey: "id"
+            columns:
+              - column: { name: id, type: NUMERIC }
+              - column: { name: codice, type: STRING }
+              - column: { name: codice_interno, type: STRING }
+              - column: { name: descrizione, type: STRING }
+              - column: { name: categoria, type: STRING }
+              - column: { name: attivo, type: BOOLEAN }
+              - column:
+                  name: meta
+                  type: JSON
+                  defaultValue: "{}"
+              - column: { name: pre_attivazione, type: BOOLEAN }
+              - column: { name: post_attivazione, type: BOOLEAN }
+              - column: { name: data_insert, type: STRING }
+              - column: { name: user_insert, type: STRING }
+              - column: { name: data_update, type: STRING }
+              - column: { name: user_update, type: STRING }
+
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Allineamento sequenza autoincrement post-seed con id=9001.
+              -- Pattern gia' usato in seed profili_accesso (20260419-04) e
+              -- backfill identita_digitali: setval a MAX(id) per evitare
+              -- collisioni con futuri INSERT automatici.
+              SELECT setval(
+                  pg_get_serial_sequence('pratiche.tipi_prestazione', 'id'),
+                  GREATEST(COALESCE(MAX(id), 1), 1),
+                  true
+              ) FROM pratiche.tipi_prestazione;
+      rollback:
+        - sql:
+            sql: |
+              DELETE FROM pratiche.tipi_prestazione
+               WHERE codice_interno = 'APPROVAZIONE_PREZZO';

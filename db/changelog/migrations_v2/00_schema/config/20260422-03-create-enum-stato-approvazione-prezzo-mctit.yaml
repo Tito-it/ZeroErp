@@ -1,0 +1,44 @@
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20260422-03-create-enum-stato-approvazione-prezzo-mctit.yaml
+
+  - changeSet:
+      id: 20260422-03-create-enum-stato-approvazione-prezzo
+      author: mctit
+      comment: >
+        Crea ENUM config.stato_approvazione_prezzo per tipare la colonna
+        omonima introdotta da 20260422-04 su vendite.preventivi_righe.
+        Sprint E listini v5 §14.6 (workflow L3 approvazione out-of-policy).
+        Pattern progetto: ENUM in schema config per stati stabili (vedi
+        config.ruolo_applicativo, config.canale_origine,
+        config.tipo_profilo_accesso). Type-safe e piu' efficiente di
+        varchar+CHECK.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 0
+            sql: |
+              SELECT COUNT(*)
+                FROM pg_type t
+                JOIN pg_namespace n ON n.oid = t.typnamespace
+               WHERE n.nspname = 'config'
+                 AND t.typname = 'stato_approvazione_prezzo';
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE TYPE config.stato_approvazione_prezzo AS ENUM (
+                  'PENDING',
+                  'APPROVED',
+                  'REJECTED'
+              );
+
+              COMMENT ON TYPE config.stato_approvazione_prezzo IS
+                  'Stato approvazione prezzo commerciale out-of-policy (Sprint E, '
+                  'listini v5 §14.6): PENDING = richiesta L3 creata e in attesa; '
+                  'APPROVED = L3 ha autorizzato il prezzo override; REJECTED = L3 '
+                  'ha rifiutato, la riga deve tornare a prezzo da policy o essere '
+                  'rimossa. NULL = riga non soggetta a workflow approvazione.';
+      rollback:
+        - sql:
+            sql: DROP TYPE IF EXISTS config.stato_approvazione_prezzo;

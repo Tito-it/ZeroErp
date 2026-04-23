@@ -20,7 +20,7 @@
 ---
 
 ### 🎯 Scopo Principale
-(latest review 14-04-2026)
+(latest review 22-04-2026)
 
 `vendite.fn_resolve_prezzo_composito` risolve il prezzo di un articolo **composito** (con distinta base in `catalogo.articoli_componenti`). La logica e' **ibrida**: decide tra due regimi distinti in base al flag `esposto_in_fattura` dei componenti.
 
@@ -28,6 +28,8 @@ Caratteristiche:
 
 * **Delega** la risoluzione del prezzo di ogni singolo componente a `fn_resolve_prezzo_listino_v2` (stessi 3 stadi pricing v5).
 * Ritorna un `SETOF` di **una o N righe** a seconda della semantica del BoM.
+* Espone `coeff_qta` per permettere al backend di calcolare
+  `quantita_componente = quantita_padre * coeff_qta`.
 * Non duplica logica di pricing: mantiene coerenza con il resolver principale.
 
 ---
@@ -62,9 +64,13 @@ RETURNS TABLE (
     prezzo_unitario       numeric,
     iva_id                bigint,
     descrizione_fattura   varchar,
-    esposto_in_fattura    boolean
+    esposto_in_fattura    boolean,
+    coeff_qta             numeric
 )
 ```
+
+`coeff_qta` e' stato aggiunto in fondo al `RETURNS TABLE` per mantenere la
+massima compatibilita' con i chiamanti che leggono le colonne per posizione.
 
 ---
 
@@ -78,20 +84,31 @@ RETURNS TABLE (
 | `iva_id`             | IVA del componente                   | IVA del prodotto padre                      |
 | `descrizione_fattura`| Descrizione del componente           | Descrizione del prodotto padre              |
 | `esposto_in_fattura` | Flag dal BoM (true o false)          | Sempre `FALSE`                              |
+| `coeff_qta`          | `articoli_componenti.coeff_qta`      | Sempre `1`                                  |
 
 Nota: nel CASO A sono incluse **tutte** le righe componente obbligatorie, non solo quelle esposte. Le righe non esposte concorrono comunque al totale fatturato — il flag determina solo la **visibilita'** in fattura, non l'esclusione.
+
+Nel CASO B il resolver ritorna una riga aggregata che rappresenta il padre:
+per questo `coeff_qta = 1`, perche' l'eventuale moltiplicazione dei componenti
+e' gia' stata applicata internamente nel calcolo `Σ(prezzo_componente * coeff_qta)`.
 
 ---
 
 ### Espansione in `commesse_attivita` (CASO A)
 
-Quando si crea un'attivita' in commessa per un articolo composito con almeno un componente esposto, la pipeline di creazione attivita' **espande** in N righe figlie in `commesse_attivita`, una per componente. Questo garantisce:
+Quando si crea un'attivita' in commessa per un articolo composito con almeno un componente esposto, la pipeline di creazione attivita' **espande** in N righe figlie in `commesse_attivita`, una per componente. Il backend usa `coeff_qta` per scalare la quantita' del componente:
+
+```text
+quantita_componente = quantita_padre * coeff_qta
+```
+
+Questo garantisce:
 
 * tracciabilita' piena prima della fatturazione
 * `prezzo_bloccato` per-riga funziona in modo naturale
 * lo step fatturazione resta semplice (1 attivita' -> 1 riga fattura)
 
-La pipeline di espansione e' gestita lato Django (Fase 2 backend).
+La pipeline di espansione e' gestita lato Django dal `BoMComponentExpander`.
 
 ---
 
@@ -111,6 +128,7 @@ Tutti gli altri errori del pricing (articolo non negoziato su contratto C, categ
 
 * Tabelle: `catalogo.articoli`, `catalogo.articoli_componenti`
 * Funzioni: `vendite.fn_resolve_prezzo_listino_v2`, `script.fn_log_and_raise_error`
+* Backend caller: `BoMComponentExpander`, che usa `coeff_qta` per calcolare le quantita' figlie.
 
 ---
 
@@ -119,6 +137,7 @@ Tutti gli altri errori del pricing (articolo non negoziato su contratto C, categ
 ```sql
 -- Composito con 3 componenti, uno esposto in fattura
 -- Output: 3 righe (una per componente), ciascuna col proprio prezzo
+-- e con coeff_qta valorizzato dalla BoM
 SELECT *
   FROM vendite.fn_resolve_prezzo_composito(
       p_prodotto_id                 := 'b2e1...'::uuid,
@@ -134,7 +153,8 @@ SELECT *
 ```sql
 -- Composito senza componenti esposti, senza riga listino per il padre
 -- Output: 1 riga con prezzo_unitario = Σ(prezzo_componente * coeff_qta)
-SELECT prezzo_unitario
+-- e coeff_qta = 1
+SELECT prezzo_unitario, coeff_qta
   FROM vendite.fn_resolve_prezzo_composito(
       'c3d4...'::uuid, 1, '2026-06-15', 12345, 1, 100, NULL
   );
