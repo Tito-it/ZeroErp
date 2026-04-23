@@ -6,7 +6,7 @@
 #
 annotated-types==0.7.0
     # via pydantic
-anthropic==0.95.0
+anthropic==0.96.0
     # via -r ../requirements.in
 anyio==4.13.0
     # via
@@ -20,7 +20,7 @@ attrs==26.1.0
     # via
     #   jsonschema
     #   referencing
-certifi==2026.2.25
+certifi==2026.4.22
     # via
     #   httpcore
     #   httpx
@@ -58,7 +58,7 @@ httpcore==1.0.9
     # via httpx
 httpx==0.28.1
     # via anthropic
-idna==3.11
+idna==3.13
     # via
     #   anyio
     #   httpx
@@ -80,11 +80,11 @@ psycopg-binary==3.3.3
     # via -r ../requirements.in
 pycparser==3.0
     # via cffi
-pydantic==2.13.0
+pydantic==2.13.3
     # via
     #   -r ../requirements.in
     #   anthropic
-pydantic-core==2.46.0
+pydantic-core==2.46.3
     # via pydantic
 pyjwt==2.12.1
     # via
