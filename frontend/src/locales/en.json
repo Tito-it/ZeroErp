@@ -99,7 +99,8 @@
     },
     "vendite": {
       "preventivi": "Quotes",
-      "listini": "Price Lists"
+      "listini": "Price Lists",
+      "approvazioni-prezzo": "Price approvals"
     },
     "pratiche": {
       "gestione": "Case Management"
@@ -141,7 +142,13 @@
     "limiti_prezzo_hint": "Allowed price variation for your role: discount up to {sconto}%, markup up to {maggiorazione}%.",
     "limiti_prezzo_zero": "You are not allowed to modify the price suggested by the price list. Ask your manager for a variation limit.",
     "richiedi_approvazione": "Request approval",
-    "richiedi_approvazione_tooltip": "Feature available after the approval workflow (L3) is released.",
+    "richiedi_approvazione_tooltip": "Create an approval request for the manager.",
+    "richiedi_approvazione_in_corso": "Sending approval request...",
+    "richiesta_approvazione_inviata": "Approval request sent. Line waiting for outcome.",
+    "badge_approvazione_pending": "Pending approval",
+    "badge_approvazione_approved": "Approved",
+    "badge_approvazione_rejected": "Rejected",
+    "badge_approvazione_pending_tooltip": "Line waiting for approval (case #{pratica_id})",
     "errore_generico": "Error while saving the line.",
     "riga_sconto": "Discount",
     "riga_importo": "Amount",
@@ -178,6 +185,28 @@
     "pratica_tipo": "Type",
     "pratica_data": "Date",
     "nessuna_pratica": "No linked cases"
+  },
+  "approvazioni_prezzo": {
+    "page_title": "Price approvals",
+    "page_description": "Queue of price override approval requests (L3 workflow).",
+    "col_pratica": "Case",
+    "col_data": "Request date",
+    "col_descrizione": "Description",
+    "col_priorita": "Priority",
+    "col_richiedente": "Requester",
+    "col_azioni": "Actions",
+    "azione_approva": "Approve",
+    "azione_rifiuta": "Reject",
+    "approva_dialog_title": "Approve price override",
+    "approva_dialog_message": "Confirm approval of the price override for this case?",
+    "approva_nota_label": "Internal note (optional)",
+    "rifiuta_dialog_title": "Reject price override",
+    "rifiuta_dialog_message": "Specify the reason for rejection (recommended).",
+    "rifiuta_motivazione_label": "Reason",
+    "approvazione_inviata": "Approval outcome recorded.",
+    "rifiuto_inviato": "Rejection outcome recorded.",
+    "nessuna_richiesta": "No approval requests in queue.",
+    "richiesta_inviata_toast": "Approval request sent."
   },
   "impostazioni": {
     "search_placeholder": "Search parameter...",
@@ -962,6 +991,14 @@
     "componente_salvato": "Component saved",
     "uom_eliminata": "Operative UoM removed",
     "componente_eliminato": "Component removed",
+    "componente_chiuso": "BoM row closed",
+    "duplica_come_nuova_versione": "Duplicate as new version",
+    "chiudi_riga": "Close row (set valid to)",
+    "chiudi_riga_confirm_title": "Close BoM row",
+    "chiudi_riga_confirm_message": "The row will be closed with valid_to = {data}. To modify structural fields you must insert a new version. Proceed?",
+    "nuova_versione_componente": "New component version",
+    "nuova_versione_hint": "You are creating a new version of the component. The previous row will be closed when you save this one.",
+    "bom_immutabile_hint": "BoM structural fields (component, coefficient, exposed in invoice, etc.) are not editable. To fix them, close the row and insert a new one.",
     "nota_testo_placeholder": "Note text...",
     "field_stile": "Style",
     "select_stile": "Select style...",

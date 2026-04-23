@@ -1027,6 +1027,33 @@ class ErrorPolicyRegistry:
                 "Richiedi approvazione o rientra nel limite ammesso."
             ),
         ),
+        # L3 Sprint E (sviluppo-listini-v5 §14.6) — workflow approvazione
+        # prezzo out-of-policy. Codici sollevati da preventivi_service +
+        # approvazioni_prezzo_service e dai trigger DB DB-E-4/E-5.
+        "E_PREVENTIVO_RIGHE_PRICING_PENDENTI": ErrorPolicy(
+            code="E_PREVENTIVO_RIGHE_PRICING_PENDENTI",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message=(
+                "Esistono righe con prezzo in attesa di approvazione. "
+                "Attendi esito o annulla la richiesta prima di accettare il preventivo."
+            ),
+        ),
+        "E_RIGA_PREZZO_PENDENTE": ErrorPolicy(
+            code="E_RIGA_PREZZO_PENDENTE",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message=(
+                "La riga e' in attesa di approvazione: solo lo stato di approvazione "
+                "e i campi audit sono modificabili."
+            ),
+        ),
+        "E_APPROVAZIONE_PREZZO_NON_AMMESSA": ErrorPolicy(
+            code="E_APPROVAZIONE_PREZZO_NON_AMMESSA",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Operazione di approvazione prezzo non ammessa nello stato corrente.",
+        ),
         "E_PREV_STATO_TRANSIZIONE": ErrorPolicy(
             code="E_PREV_STATO_TRANSIZIONE",
             http_status=409,

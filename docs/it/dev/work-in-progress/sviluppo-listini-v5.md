@@ -1256,15 +1256,64 @@ aprono il **post-v5** — nuovi capitoli funzionali, non più "completamento".
 
 ### 14.4 Sprint C — Pipeline espansione compositi (F2-BE-12)
 
-**Obiettivo**: chiudere l'ultimo pezzo BE del modello BoM. Richiede decisione
-architetturale prima dello sviluppo.
+**Obiettivo**: chiudere l'ultimo pezzo BE del modello BoM + introdurre
+immutabilità BoM via versioning con daterange + adeguare UI ArticoloBomDrawer
+al pattern "chiudi+inserisci nuova versione".
 
-| Step | Tipo | Prereq. | Descrizione |
-|---|---|---|---|
-| S14.C-DEC-1 | Analisi | F2-BE-10 ✅ | **Decisione architetturale**: espansione N righe compositi lato handler Python (in ogni source handler delle commesse) vs lato DB (nuova `fn_expand_composito_attivita` invocata da `fn_list_*_da_pushare`). Trade-off: Python = più chiaro, più duplicazione; DB = centralizzato ma funzione complessa |
-| S14.C-DB-1 | DB (solo se handler lato DB) | S14.C-DEC-1 | Nuova funzione `vendite.fn_expand_composito_attivita` + changeSet + pgTAP dedicato |
-| S14.C-BE-1 | BE | S14.C-DEC-1 | Wiring `pricing_service.resolve_prezzo_composito` nei source handler commesse (6 origini). Per ogni composito con almeno un componente esposto: N righe in `commesse_attivita` con `segment_key` differenziato per componente + popolazione snapshot audit |
-| S14.C-BE-2 | BE | S14.C-BE-1 | Test integrazione end-to-end: preventivo con articolo composito → commessa con N attività → fatturazione con N righe |
+#### 14.4.1 Decisioni chiuse (sessione 22-04-2026)
+
+| # | Tema | Scelta |
+|---|---|---|
+| DEC-1 | Lato espansione | **Python** in `BaseSourceHandler._expand_rows` (single-point override). La premessa "Python = più duplicazione" del piano precedente era obsoleta: il pattern hook `_expand_rows` esiste già ed è usato da `HandlerConsumi` per fan-out 1→N. Zero modifiche alle 5 `fn_list_*_da_pushare`. |
+| DEC-2 | `segment_key` componenti | Suffix `#CMP:{componente_id}` sulla `segment_key` del padre. Deterministico, idempotente per re-run, leggibile in audit. |
+| DEC-3 | Quantità componenti | Piene (no rounding sotto-componenti); `quantita = quantita_padre × coeff_qta`. Rounding 2 decimali solo a `qta×prezzo` in fase fatturazione (rappresentazione fattura). |
+| DEC-4 | Mutabilità BoM | **Versionata via `validita` daterange** (opzione 3b). Trigger DB **restrittivo da subito**: blocca UPDATE colonne struttura + DELETE sempre. Ammesso solo `UPDATE valido_al` (chiusura riga) + `INSERT` nuova versione. Pattern admin: chiudi+inserisci. Coerente con immutabilità listini v5. |
+| DEC-5 | `tipo_doc_fiscale_id` componente | Ereditato dalla `PushableRow` padre (proprietà sorgente, da `config.sorgenti`, non dell'articolo). Zero DDL. |
+| DEC-6 | Componenti non esposti in `commesse_attivita` | Tutti tracciati (dettaglio massimo). Fatturazione filtra `esposto_in_fattura=true` per emettere righe; non esposti restano in commessa per audit/analisi. |
+
+#### 14.4.2 DB
+
+| Step | Stato | Descrizione |
+|---|---|---|
+| S14.C-DB-1 | ✅ DONE 22-04 (`20260422-01`) | Trigger `catalogo.trgfn_articoli_componenti_block_modifica_struttura` BEFORE UPDATE OR DELETE. Blocca DELETE sempre + UPDATE su `coeff_qta`/`componente_id`/`obbligatorio`/`esposto_in_fattura`/`partecipa_qta`/`determina_qta_padre`/`valido_dal`/`validita`. Ammette UPDATE di `valido_al` (con check `>= valido_dal`), `note_*`, `meta`, `attivo`. Errori `E_BOM_MODIFICA_VIETATA` (id 387) + `E_BOM_VALIDO_AL_INVALIDO` (id 388). |
+| S14.C-DB-2 | ✅ DONE 22-04 | pgTAP `test-articoli-componenti-immutabilita` (16 casi: tutti i campi struttura bloccati, valido_al ok/ko, campi non-struttura ok, insert nuova riga no-overlap). |
+| S14.C-DB-3 | ✅ DONE 22-04 (`20260422-02`) | Estensione `vendite.fn_resolve_prezzo_composito`: aggiunta `coeff_qta numeric` al `RETURNS TABLE` (in fondo, backward-compat by-position). CASO A legge `ac.coeff_qta` dalla BoM; CASO B1/B2 ritorna `1` (padre neutro nel calcolo quantita). pgTAP esteso da 4 a 7 casi: verifica `coeff_qta` corretto nei 3 casi. Side-fix BE: `PricingRepository.resolve_prezzo_composito` (`backend/apps/vendite/db/pricing_repository.py:94-100`) aggiornato per proiettare la nuova colonna nella SELECT. |
+
+#### 14.4.3 Backend
+
+| Step | Prereq. | Descrizione |
+|---|---|---|
+| S14.C-BE-1 | DEC-1..6 | `BaseSourceHandler._expand_rows` override: detect `catalogo.articoli.is_composito = true`, chiama `PricingService.resolve_prezzo_composito`, CASO B → pass-through `[row]`, CASO A → genera N `PushableRow` (uno per componente) con `articolo_id=componente_id`, `quantita=padre×coeff_qta`, `prezzo_snapshot=resolver`, `uom_id`+`iva_id` dal componente, `segment_key` con suffix `#CMP:{componente_id}`, `meta.esposto_in_fattura`+`meta.componente_di` per audit, tutti gli altri campi (tipo_doc_fiscale_id, valuta, BA, utility, competenza, sorgente_uid, ecc.) ereditati dal padre. Cache per `(articolo_id, ba_id, utility_id, data)` nel ciclo `_process_rows`. |
+| S14.C-BE-2 | S14.C-BE-1 | Test integrazione end-to-end: composito con 3 componenti (2 esposti + 1 non esposto), push da preventivo → 1 commessa con 3 attività con `segment_key` distinti, quantità moltiplicate, `tipo_doc_fiscale_id` ereditato, `esposto_in_fattura` preservato. Re-run idempotente (stessi `segment_key` → upsert no duplicati). Test su tutti e 5 gli handler (preventivi, ordini, contratti, ddt, consumi). |
+
+#### 14.4.4 Frontend
+
+L'adeguamento FE è **prerequisito coerenza dev** (non produzione, vedi §14.4.6): senza S14.C-FE-* dopo l'attivazione del trigger DB-1 ogni save edit della BoM fallirebbe con `E_BOM_MODIFICA_VIETATA`, lasciando il team senza modo di gestire BoM via UI.
+
+| Step | Prereq. | Descrizione |
+|---|---|---|
+| S14.C-FE-1 | S14.C-DB-1 mergiato | `ArticoloBomDrawer.vue`: rimuovi inline edit dei campi struttura nella DataTable. Mantieni inline solo `valido_al` (azione "chiudi riga") con `useConfirmAction` ("Chiudere questa riga BoM al {data}? Per modificarla, dovrai inserire una nuova versione"). |
+| S14.C-FE-2 | S14.C-FE-1 | `ArticoloBomDrawer.vue`: nuova azione di riga "duplica come nuova versione" → form pre-compilato con valori della riga sorgente, `valido_dal = oggi`, campi struttura editabili. Submit = INSERT nuova riga (l'exclusion constraint daterange garantisce non-overlap; il trigger storicizza la riga vecchia). |
+| S14.C-FE-3 | S14.C-FE-1/2 | Gestione errore `E_BOM_MODIFICA_VIETATA` con banner inline che spiega il pattern chiudi+inserisci (defense-in-depth UX: anche se la UI è corretta, errore parlante se qualcuno bypassa). |
+| S14.C-FE-4 | S14.C-FE-1..3 | Smoke UI: scenario "admin corregge `coeff_qta` di un componente" → chiudi riga corrente + duplica come nuova versione + verifica visualizzazione storia BoM. |
+| S14.C-FE-5 | S14.C-FE-1..4 | `vite build` verde, no warning nuovi. |
+
+#### 14.4.5 Documentazione
+
+| Step | Descrizione |
+|---|---|
+| S14.C-DOC-1 | Aggiornamento `docs/it/dev/backend/catalogo-building-block-backend.md` — nuova sezione `BoMComponentExpander` (mixin/hook in `BaseSourceHandler`). |
+| S14.C-DOC-2 | Aggiornamento `docs/it/guide/gestione-listini.md` §BoM — pattern immutabilità + chiudi+inserisci, esempio operativo. |
+| S14.C-DOC-3 | Manuale DB `articoli_componenti.md`: aggiornamento sezione trigger con nuovo guard. |
+
+#### 14.4.6 Note di rollout (contesto sviluppo, no produzione)
+
+Il progetto è in sviluppo, nessun cliente reale (vedi memoria progetto). Conseguenze sullo sprint:
+
+* **Sequenziamento**: DB → BE → FE preferito (FE dipende da DB-1 mergiato), ma BE può iniziare in parallelo a DB su mock per il test della logica `_expand_rows` (il trigger non blocca la pipeline di push, blocca l'edit BoM).
+* **Niente compat fasi**: il trigger viene attivato all-in. Non c'è grace period né flag di feature gate.
+* **Smoke = locale**: nessun environment staging separato. Verifica nel branch prima del merge su `Tito-dev`.
+* **Eventuali righe BoM modificate "in volo"** (dev locale): si gestiscono con cleanup/reseed manuale, non con migration di compatibilità.
 
 ### 14.5 Sprint D — Autorizzazioni prezzi L2 (limite sconto)
 
@@ -1367,27 +1416,47 @@ Sprint A originale (FE contratti+BA)  ✅ DONE 16-04
 Sprint B originale (FE articoli+BoM)  ✅ DONE 16-04
    │
    ▼
-Sprint A nuovo (cleanup+smoke+guida)  ◄── IN PIANIFICAZIONE — chiude v5
+Sprint A nuovo (cleanup+smoke+guida)  ✅ DONE 22-04
    │
-   ├─► Sprint C (pipeline compositi)  ◄── aperto, decisione architetturale pendente
+   ├─► Sprint C (pipeline compositi)  ◄── decisioni chiuse, DB-PRE da passare team DB
+   │     DB-1/DB-2 (team DB)
+   │       │
+   │       ├─► BE-1/BE-2 (parallelizzabile)
+   │       └─► FE-1..FE-5 (dopo DB-1 mergiato)
+   │       └─► DOC-1..DOC-3
    │
-   ├─► Sprint D (L2 limite sconto)    ◄── aperto, nuovo capitolo post-v5
+   ├─► Sprint D (L2 limite sconto)    ✅ DONE 22-04
    │
    ▼
 Sprint E (L3 approvazione)            ◄── dopo D: L3 estende L2
 ```
 
-Sprint C e Sprint D sono **indipendenti tra loro** e possono partire in
-parallelo dopo la chiusura del nuovo Sprint A. Sprint E dipende da D.
+Sprint C e Sprint E sono indipendenti tra loro. Sprint E dipende da Sprint D
+(già chiuso). Sprint C internamente: DB → BE/FE in parallelo dopo land DB-1.
 
 ### 14.9 Tracking
 
 - [x] ~~Sprint A originale — FE contratti + BA categoria~~ ✅ DONE 16-04
 - [x] ~~Sprint B originale — FE articoli + BoM~~ ✅ DONE 16-04
 - [x] ~~**Sprint A nuovo (22-04) — Cleanup FE + smoke UI + riscrittura guida**~~ ✅ DONE 22-04 (13/13 step, vite build verde, guida riscritta, smoke checklist pubblicata, 125 call site migrati a 3 enum centralizzati)
-- [ ] Sprint C — Pipeline espansione compositi (F2-BE-12)
+- [x] ~~**Sprint C — Pipeline espansione compositi (F2-BE-12) + immutabilità BoM versionata**~~ ✅ DONE 22-04 (12/12 step). Decisioni DEC-1..DEC-6 chiuse. Riepilogo:
+  * DB-1 ✅ `20260422-01` trigger guard + seed err 387/388
+  * DB-2 ✅ pgTAP 16 casi immutabilità
+  * DB-3 ✅ `20260422-02` `fn_resolve_prezzo_composito` esteso con `coeff_qta` + pgTAP 7 casi (era 4) + side-fix `PricingRepository` projection
+  * BE-1 ✅ `BoMComponentExpander` + 13 test unit
+  * BE-2 ✅ 6 test integrazione end-to-end mock sui 5 handler
+  * FE-1..3 ✅ `ArticoloBomDrawer` chiudi+duplica nuova versione + hint immutabilità + i18n IT/EN
+  * FE-4 ✅ vite build 944ms verde
+  * FE-5 ✅ smoke checklist §1.7.bis
+  * DOC-1..3 ✅ catalogo BB backend + guida §5.3 + manuale DB articoli_componenti
+  * Test Django finali: 1642 verdi (era 1621 a fine Sprint D, +21 nuovi)
 - [x] ~~**Sprint D — L2 limite sconto + maggiorazione**~~ ✅ DONE 22-04 (12/12 step: 2 parametri VENDITE_MAX_SCONTO_PCT/VENDITE_MAX_MAGGIORAZIONE_PCT default 0, check post-L1 in preventivi_service, endpoint GET /vendite/pricing/limiti-utente/, +6 test Django (1621 totali), composable useLimitiPricing cache modulo, hint drawer riga + banner inline con "richiedi approvazione" disabled roadmap L3, vite build 973ms)
-- [ ] Sprint E — L3 approvazione out-of-policy (sblocca azione richiedi_approvazione)
+- [ ] **Sprint E — L3 approvazione out-of-policy** — Decisioni A/B/C/D/E/F/G/H + 2 extra confermate 23-04. Avanzamento:
+  * DB-E-1..7 ⏳ APERTI — passaggio team DB (azione processo `approva_prezzo` + tipo prestazione `APPROVAZIONE_PREZZO` + ALTER preventivi_righe + 2 trigger guard + seed messaggi 389/390 + pgTAP)
+  * BE ✅ DONE 23-04 — `approvazioni_prezzo_service` (crea_richiesta + approva + rifiuta + lista_coda + link_riga_a_pratica) con cache lookup tipo_prestazione/priorita; `gestisci_riga`+`aggiorna_riga` estesi con flag `richiesta_approvazione`; 3 codici errore (`E_PREVENTIVO_RIGHE_PRICING_PENDENTI`, `E_RIGA_PREZZO_PENDENTE`, `E_APPROVAZIONE_PREZZO_NON_AMMESSA`); 3 endpoint API (`/righe/<id>/approva-prezzo/`, `/rifiuta-prezzo/`, `/approvazioni-prezzo/`); 16 test (4 hook L3 in preventivi + 12 ApprovazioniPrezzoService); suite 1662 verdi
+  * FE ✅ DONE 23-04 — i18n IT/EN (15 nuove chiavi); api client `approvazioniPrezzo.js`; `PreventiviRigaForm` pulsante "Richiedi approvazione" attivato + flusso `richiesta_approvazione=true`; route `/vendite/approvazioni-prezzo` + `ApprovazioniPrezzoListView` con dialog approva/rifiuta; badge Tag PENDING/APPROVED/REJECTED su righe in `PreventiviRigheTable`; vite build 916ms
+  * DOC ✅ DONE 23-04 — catalogo BB BE (`approvazioni_prezzo_service.*`); guida `gestione-listini.md` §6.1 workflow L3 + 3 nuove righe tabella errori; smoke checklist §1.9.bis scenario L3 end-to-end
+  * **In attesa land DB-E-* per esecuzione reale.** Tutto il resto chiuso end-to-end.
 
 ---
 

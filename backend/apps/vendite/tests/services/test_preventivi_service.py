@@ -550,3 +550,187 @@ class TestPreventiviService(unittest.TestCase):
         mock_param_service.return_value.get_parameter_decimal.assert_not_called()
         call = self.mock_repo.create_riga.call_args.kwargs
         self.assertEqual(str(call["prezzo_unitario"]), "30.00")
+
+    # ── Sprint E: hook L3 richiesta_approvazione ──
+
+    # Scopo: L3 — flag richiesta_approvazione=True + violazione L2 -> NON
+    #        solleva, crea pratica via service e salva riga PENDING con FK
+    #        pratica. Verifica che create_riga riceva i nuovi campi corretti.
+    @patch("apps.vendite.services.approvazioni_prezzo_service.link_riga_a_pratica")
+    @patch("apps.vendite.services.preventivi_service.ParameterService")
+    @patch("apps.vendite.services.preventivi_service.get_user_model")
+    @patch("apps.vendite.services.preventivi_service.PermissionResolver")
+    @patch("apps.vendite.services.preventivi_service.suggerisci_prezzo_riga")
+    @patch("apps.vendite.services.approvazioni_prezzo_service.crea_richiesta_approvazione")
+    def test_gestisci_riga_L3_violazione_con_richiesta_crea_pratica_pending(
+        self, mock_crea_pratica, mock_suggerisci, mock_perm, mock_user_model,
+        mock_param_service, mock_link_riga,
+    ):
+        from apps.vendite.services.preventivi_service import gestisci_riga
+
+        self.mock_repo.get_preventivo.return_value = self._testata_completa()
+        self.mock_repo.create_riga.return_value = {"id": 999}
+        mock_suggerisci.return_value = {
+            "prezzo_finale": "50.00", "origine": "CATEGORIA",
+            "listino_id": 100, "contratto_id": None, "promo_id": None,
+            "tipo_variazione_applicata": None,
+            "valore_variazione_applicata": None,
+        }
+        mock_user = MagicMock()
+        mock_user.is_superuser = False
+        mock_user_model.return_value.objects.get.return_value = mock_user
+        mock_perm.check_azione.return_value = True  # L1 ok
+        mock_param_service.return_value.get_parameter_decimal.return_value = Decimal("15")
+        mock_crea_pratica.return_value = 7777  # pratica_id ritornato dal service
+
+        result = gestisci_riga(
+            1,
+            {
+                "articolo_id": "uuid-art-1",
+                "uom_operativa_id": 1,
+                "prezzo_unitario": "40.00",  # -20% sconto, fuori limite 15%
+                "richiesta_approvazione": True,
+            },
+            auth_user_id=42,
+        )
+
+        self.assertEqual(result["id"], 999)
+        mock_crea_pratica.assert_called_once()
+        crea_kwargs = mock_crea_pratica.call_args.kwargs
+        self.assertEqual(crea_kwargs["preventivo_id"], 1)
+        self.assertEqual(crea_kwargs["articolo_id"], "uuid-art-1")
+        self.assertEqual(crea_kwargs["prezzo_resolver"], Decimal("50.00"))
+        self.assertEqual(crea_kwargs["prezzo_manuale"], Decimal("40.00"))
+        self.assertEqual(crea_kwargs["violazione"]["tipo_violazione"], "SCONTO")
+
+        call = self.mock_repo.create_riga.call_args.kwargs
+        self.assertEqual(call["stato_approvazione_prezzo"], "PENDING")
+        self.assertEqual(call["pratica_approvazione_prezzo_id"], 7777)
+
+    # Scopo: L3 — flag richiesta_approvazione=False (default): violazione L2
+    #        solleva normalmente, NESSUNA pratica creata.
+    @patch("apps.vendite.services.preventivi_service.ParameterService")
+    @patch("apps.vendite.services.preventivi_service.get_user_model")
+    @patch("apps.vendite.services.preventivi_service.PermissionResolver")
+    @patch("apps.vendite.services.preventivi_service.suggerisci_prezzo_riga")
+    @patch("apps.vendite.services.approvazioni_prezzo_service.crea_richiesta_approvazione")
+    def test_gestisci_riga_L3_default_no_pratica_solo_errore_l2(
+        self, mock_crea_pratica, mock_suggerisci, mock_perm, mock_user_model, mock_param_service
+    ):
+        from apps.vendite.services.preventivi_service import gestisci_riga
+
+        self.mock_repo.get_preventivo.return_value = self._testata_completa()
+        mock_suggerisci.return_value = {
+            "prezzo_finale": "50.00", "origine": "CATEGORIA",
+            "listino_id": 100, "contratto_id": None, "promo_id": None,
+            "tipo_variazione_applicata": None,
+            "valore_variazione_applicata": None,
+        }
+        mock_user = MagicMock()
+        mock_user.is_superuser = False
+        mock_user_model.return_value.objects.get.return_value = mock_user
+        mock_perm.check_azione.return_value = True
+        mock_param_service.return_value.get_parameter_decimal.return_value = Decimal("15")
+
+        with self.assertRaises(ServiceError) as ctx:
+            gestisci_riga(
+                1,
+                {
+                    "articolo_id": "uuid-art-1",
+                    "uom_operativa_id": 1,
+                    "prezzo_unitario": "40.00",
+                    # Niente richiesta_approvazione (default False)
+                },
+                auth_user_id=42,
+            )
+
+        self.assertEqual(ctx.exception.code, "E_PREV_SCONTO_ECCESSIVO")
+        mock_crea_pratica.assert_not_called()
+        self.mock_repo.create_riga.assert_not_called()
+
+    # Scopo: L3 — sotto limite L2 anche con richiesta_approvazione=True:
+    #        pratica NON creata (violazione assente), riga normale (no PENDING).
+    @patch("apps.vendite.services.preventivi_service.ParameterService")
+    @patch("apps.vendite.services.preventivi_service.get_user_model")
+    @patch("apps.vendite.services.preventivi_service.PermissionResolver")
+    @patch("apps.vendite.services.preventivi_service.suggerisci_prezzo_riga")
+    @patch("apps.vendite.services.approvazioni_prezzo_service.crea_richiesta_approvazione")
+    def test_gestisci_riga_L3_sotto_limite_no_pratica(
+        self, mock_crea_pratica, mock_suggerisci, mock_perm, mock_user_model, mock_param_service
+    ):
+        from apps.vendite.services.preventivi_service import gestisci_riga
+
+        self.mock_repo.get_preventivo.return_value = self._testata_completa()
+        self.mock_repo.create_riga.return_value = {"id": 100}
+        mock_suggerisci.return_value = {
+            "prezzo_finale": "50.00", "origine": "CATEGORIA",
+            "listino_id": 100, "contratto_id": None, "promo_id": None,
+            "tipo_variazione_applicata": None,
+            "valore_variazione_applicata": None,
+        }
+        mock_user = MagicMock()
+        mock_user.is_superuser = False
+        mock_user_model.return_value.objects.get.return_value = mock_user
+        mock_perm.check_azione.return_value = True
+        mock_param_service.return_value.get_parameter_decimal.return_value = Decimal("20")
+
+        gestisci_riga(
+            1,
+            {
+                "articolo_id": "uuid-art-1",
+                "uom_operativa_id": 1,
+                "prezzo_unitario": "45.00",  # -10%, sotto limite 20%
+                "richiesta_approvazione": True,
+            },
+            auth_user_id=42,
+        )
+
+        mock_crea_pratica.assert_not_called()
+        call = self.mock_repo.create_riga.call_args.kwargs
+        self.assertIsNone(call["stato_approvazione_prezzo"])
+        self.assertIsNone(call["pratica_approvazione_prezzo_id"])
+
+    # Scopo: L3 — aggiorna_riga supporta lo stesso flag richiesta_approvazione.
+    #        Modifica prezzo oltre L2 con flag -> crea pratica + UPDATE riga
+    #        con stato_approvazione_prezzo=PENDING.
+    @patch("apps.vendite.services.approvazioni_prezzo_service.link_riga_a_pratica")
+    @patch("apps.vendite.services.preventivi_service.ParameterService")
+    @patch("apps.vendite.services.preventivi_service.get_user_model")
+    @patch("apps.vendite.services.preventivi_service.PermissionResolver")
+    @patch("apps.vendite.services.preventivi_service.suggerisci_prezzo_riga")
+    @patch("apps.vendite.services.approvazioni_prezzo_service.crea_richiesta_approvazione")
+    def test_aggiorna_riga_L3_violazione_con_richiesta_crea_pratica(
+        self, mock_crea_pratica, mock_suggerisci, mock_perm, mock_user_model,
+        mock_param_service, mock_link_riga,
+    ):
+        from apps.vendite.services.preventivi_service import aggiorna_riga
+
+        self.mock_repo.get_preventivo.return_value = self._testata_completa()
+        self.mock_repo.list_righe.return_value = [
+            {"id": 50, "articolo_id": "uuid-art-1", "uom_operativa_id": 1, "meta": {}}
+        ]
+        self.mock_repo.update_riga.return_value = True
+        mock_suggerisci.return_value = {
+            "prezzo_finale": "50.00", "origine": "CATEGORIA",
+            "listino_id": 100, "contratto_id": None, "promo_id": None,
+            "tipo_variazione_applicata": None,
+            "valore_variazione_applicata": None,
+        }
+        mock_user = MagicMock()
+        mock_user.is_superuser = False
+        mock_user_model.return_value.objects.get.return_value = mock_user
+        mock_perm.check_azione.return_value = True
+        mock_param_service.return_value.get_parameter_decimal.return_value = Decimal("15")
+        mock_crea_pratica.return_value = 8888
+
+        aggiorna_riga(
+            1, 50,
+            {"prezzo_unitario": "40.00", "richiesta_approvazione": True},
+            auth_user_id=42,
+        )
+
+        mock_crea_pratica.assert_called_once()
+        call = self.mock_repo.update_riga.call_args
+        # update_riga(riga_id, **kwargs) — verifica kwargs.
+        self.assertEqual(call.kwargs["stato_approvazione_prezzo"], "PENDING")
+        self.assertEqual(call.kwargs["pratica_approvazione_prezzo_id"], 8888)

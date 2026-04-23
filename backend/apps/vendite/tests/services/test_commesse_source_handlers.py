@@ -21,21 +21,52 @@ Indice test eseguiti:
 12) CommesseSourceHandlersTests.test_handler_consumi_expand_rows_fanout
 13) CommesseSourceHandlersTests.test_process_rows_cache_commessa_evita_chiamate_ripetute
 14) CommesseSourceHandlersTests.test_process_rows_batch_created_vs_updated
+
+BoM expander (F2-BE-12 / sviluppo-listini-v5 §14.4):
+15) BoMComponentExpanderTests.test_articolo_none_pass_through
+16) BoMComponentExpanderTests.test_uom_none_pass_through
+17) BoMComponentExpanderTests.test_utility_none_pass_through
+18) BoMComponentExpanderTests.test_articolo_non_composito_pass_through
+19) BoMComponentExpanderTests.test_caso_b_resolver_una_riga_padre_pass_through
+20) BoMComponentExpanderTests.test_caso_a_resolver_n_righe_genera_n_pushable_row
+21) BoMComponentExpanderTests.test_caso_a_segment_key_suffix_cmp
+22) BoMComponentExpanderTests.test_caso_a_quantita_padre_per_coeff_qta_no_rounding
+23) BoMComponentExpanderTests.test_caso_a_meta_arricchito_componente_di_e_esposto
+24) BoMComponentExpanderTests.test_caso_a_eredita_tipo_doc_fiscale_e_valuta_dal_padre
+25) BoMComponentExpanderTests.test_cache_is_composito_un_solo_lookup_per_articolo
+26) BoMComponentExpanderTests.test_cache_resolver_un_solo_round_trip_per_chiave
+27) BoMComponentExpanderTests.test_handler_default_invoca_bom_expander
+
+BoM integrazione end-to-end (BE-2 / sviluppo-listini-v5 §14.4.3 S14.C-BE-2):
+28) BoMHandlerIntegrationTests.test_tutti_5_handler_supportano_bom_expander_iniettato
+29) BoMHandlerIntegrationTests.test_handler_consumi_override_prevale_su_bom
+30) BoMHandlerIntegrationTests.test_misto_riga_composita_e_riga_semplice_stesso_run
+31) BoMHandlerIntegrationTests.test_idempotenza_re_run_segment_key_stabili
+32) BoMHandlerIntegrationTests.test_isolamento_errore_resolver_su_singola_riga
+33) BoMHandlerIntegrationTests.test_due_righe_stesso_composito_riusano_cache_resolver
+
+Ottimizzazioni post-review (O1 cache modulo + O2 skip qta zero):
+34) BoMComponentExpanderTests.test_quantita_padre_zero_pass_through_o2
+35) BoMComponentExpanderTests.test_quantita_padre_decimal_zero_pass_through_o2
+36) BoMModuleCacheIsCompositoTests.test_default_is_composito_usa_cache_modulo
+37) BoMModuleCacheIsCompositoTests.test_invalidate_module_cache_forza_re_query
 """
 
 from datetime import date
 from decimal import Decimal
 from unittest import TestCase
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from apps.vendite.db.commesse_repository import BatchUpsertResult, CommesseRepository, PushableRow
 from apps.vendite.services.commesse_source_handlers import (
+    BoMComponentExpander,
     ComponenteConsumabile,
     HandlerConsumi,
     HandlerContratti,
     HandlerDdt,
     HandlerOrdini,
     HandlerPreventivi,
+    invalidate_is_composito_module_cache,
 )
 
 
@@ -290,3 +321,650 @@ class CommesseSourceHandlersTests(TestCase):
 
         self.assertEqual(result.created, 1)
         self.assertEqual(result.updated, 1)
+
+
+# ============================================================
+# BoMComponentExpander — sviluppo-listini-v5 §14.4 (F2-BE-12)
+# ============================================================
+
+def _make_composito_row(**overrides) -> PushableRow:
+    """Crea un PushableRow con parametri sufficienti per invocare il resolver BoM.
+
+    Differenze vs _make_row():
+    - uom_id valorizzato (default 42) — senza uom il resolver non puo' girare
+    - articolo_id stringa che il mock is_composito_fn interpreta come composito
+    - quantita esplicita (necessaria per calcolo x coeff_qta)
+    """
+    defaults = {
+        "billing_account_id": 100,
+        "utility_id": 5,
+        "emittente_soggetto_ruolo_id": 200,
+        "competenza_dal": date(2026, 6, 1),
+        "competenza_al": date(2026, 6, 30),
+        "fatturazione_immediata": False,
+        "sorgente_tipo_id": 7,
+        "sorgente_uid": "uid-preventivo-001",
+        "segment_key": "PREV:uid-preventivo-001:R:42",
+        "articolo_id": "art-composito-01",
+        "istanza_utility_id": 11,
+        "data_attivita": date(2026, 6, 15),
+        "uom_id": 42,
+        "quantita": Decimal("3"),
+        "qta_operativa": Decimal("3"),
+        "uom_operativa_id": 42,
+        "factor_to_base": Decimal("1"),
+        "competenza_mese": date(2026, 6, 1),
+        "prezzo_snapshot": Decimal("100.00"),
+        "prezzo_bloccato": False,
+        "pricing_mode": "FIXED",
+        "tipo_movimento": "NORMALE",
+        "tipo_consumo": "CONGUAGLIO",
+        "valuta_id": 9,
+        "meta": {"tipo_commessa": "AUTO", "policy_fatturazione": "DA_DOCUMENTO"},
+        "tipo_doc_fiscale_id": 77,
+    }
+    defaults.update(overrides)
+    return PushableRow(**defaults)
+
+
+def _make_resolver_riga(**overrides) -> dict:
+    """Crea un dict stile ritorno fn_resolve_prezzo_composito.
+
+    Contratto post DB-3 (brief team DB §14.4.2): il RETURNS TABLE include
+    `coeff_qta` oltre alle 6 colonne esistenti.
+    """
+    defaults = {
+        "componente_id": "cmp-01",
+        "uom_id": 42,
+        "prezzo_unitario": Decimal("10.00"),
+        "iva_id": 1,
+        "descrizione_fattura": "Componente",
+        "esposto_in_fattura": True,
+        "coeff_qta": Decimal("1"),
+    }
+    defaults.update(overrides)
+    return defaults
+
+
+class BoMComponentExpanderTests(TestCase):
+
+    # Scopo: articolo_id=None (consumi) -> pass-through senza chiamare resolver.
+    def test_articolo_none_pass_through(self):
+        pricing = MagicMock()
+        expander = BoMComponentExpander(pricing_service=pricing, is_composito_fn=MagicMock())
+        row = _make_composito_row(articolo_id=None)
+
+        result = expander.expand(row)
+
+        self.assertEqual(result, [row])
+        pricing.resolve_prezzo_composito.assert_not_called()
+
+    # Scopo: uom_id=None -> pass-through (parametri insufficienti per resolver).
+    def test_uom_none_pass_through(self):
+        pricing = MagicMock()
+        expander = BoMComponentExpander(pricing_service=pricing, is_composito_fn=MagicMock())
+        row = _make_composito_row(uom_id=None)
+
+        result = expander.expand(row)
+
+        self.assertEqual(result, [row])
+        pricing.resolve_prezzo_composito.assert_not_called()
+
+    # Scopo: utility_id=None -> pass-through.
+    def test_utility_none_pass_through(self):
+        pricing = MagicMock()
+        expander = BoMComponentExpander(pricing_service=pricing, is_composito_fn=MagicMock())
+        row = _make_composito_row(utility_id=None)
+
+        result = expander.expand(row)
+
+        self.assertEqual(result, [row])
+        pricing.resolve_prezzo_composito.assert_not_called()
+
+    # Scopo: is_composito=False -> pass-through, resolver mai invocato.
+    def test_articolo_non_composito_pass_through(self):
+        pricing = MagicMock()
+        is_composito = MagicMock(return_value=False)
+        expander = BoMComponentExpander(pricing_service=pricing, is_composito_fn=is_composito)
+        row = _make_composito_row()
+
+        result = expander.expand(row)
+
+        self.assertEqual(result, [row])
+        is_composito.assert_called_once_with(row.articolo_id)
+        pricing.resolve_prezzo_composito.assert_not_called()
+
+    # Scopo: CASO B (resolver ritorna 1 riga con componente_id == padre) -> pass-through
+    #        (no fan-out; il prezzo composito e' gia' quello della riga padre).
+    def test_caso_b_resolver_una_riga_padre_pass_through(self):
+        pricing = MagicMock()
+        pricing.resolve_prezzo_composito.return_value = [
+            _make_resolver_riga(componente_id="art-composito-01")
+        ]
+        expander = BoMComponentExpander(
+            pricing_service=pricing,
+            is_composito_fn=MagicMock(return_value=True),
+        )
+        row = _make_composito_row(articolo_id="art-composito-01")
+
+        result = expander.expand(row)
+
+        self.assertEqual(result, [row])
+
+    # Scopo: CASO A (resolver ritorna N righe componenti) -> N PushableRow espansi.
+    def test_caso_a_resolver_n_righe_genera_n_pushable_row(self):
+        pricing = MagicMock()
+        pricing.resolve_prezzo_composito.return_value = [
+            _make_resolver_riga(componente_id="cmp-01", prezzo_unitario=Decimal("10"), coeff_qta=Decimal("2")),
+            _make_resolver_riga(componente_id="cmp-02", prezzo_unitario=Decimal("5"), coeff_qta=Decimal("1"), esposto_in_fattura=False),
+            _make_resolver_riga(componente_id="cmp-03", prezzo_unitario=Decimal("3"), coeff_qta=Decimal("4")),
+        ]
+        expander = BoMComponentExpander(
+            pricing_service=pricing,
+            is_composito_fn=MagicMock(return_value=True),
+        )
+        row = _make_composito_row()
+
+        result = expander.expand(row)
+
+        self.assertEqual(len(result), 3)
+        componenti_ids = [r.articolo_id for r in result]
+        self.assertEqual(componenti_ids, ["cmp-01", "cmp-02", "cmp-03"])
+        prezzi = [r.prezzo_snapshot for r in result]
+        self.assertEqual(prezzi, [Decimal("10"), Decimal("5"), Decimal("3")])
+
+    # Scopo: DEC-2 — segment_key con suffix '#CMP:{componente_id}'.
+    def test_caso_a_segment_key_suffix_cmp(self):
+        pricing = MagicMock()
+        pricing.resolve_prezzo_composito.return_value = [
+            _make_resolver_riga(componente_id="cmp-A"),
+            _make_resolver_riga(componente_id="cmp-B"),
+        ]
+        expander = BoMComponentExpander(
+            pricing_service=pricing,
+            is_composito_fn=MagicMock(return_value=True),
+        )
+        row = _make_composito_row(segment_key="PREV:uid-xyz:R:42")
+
+        result = expander.expand(row)
+
+        keys = [r.segment_key for r in result]
+        self.assertEqual(keys, [
+            "PREV:uid-xyz:R:42#CMP:cmp-A",
+            "PREV:uid-xyz:R:42#CMP:cmp-B",
+        ])
+
+    # Scopo: DEC-3 — quantita componente = padre x coeff_qta, senza rounding.
+    #        Verifica con coeff_qta non intero (Decimal "2.5") e quantita padre
+    #        con decimali (Decimal "3.7") che il risultato non venga arrotondato.
+    def test_caso_a_quantita_padre_per_coeff_qta_no_rounding(self):
+        pricing = MagicMock()
+        pricing.resolve_prezzo_composito.return_value = [
+            _make_resolver_riga(componente_id="cmp-01", coeff_qta=Decimal("2.5")),
+            _make_resolver_riga(componente_id="cmp-02", coeff_qta=Decimal("0.333")),
+        ]
+        expander = BoMComponentExpander(
+            pricing_service=pricing,
+            is_composito_fn=MagicMock(return_value=True),
+        )
+        row = _make_composito_row(quantita=Decimal("3.7"))
+
+        result = expander.expand(row)
+
+        # 3.7 * 2.5 = 9.25 (piena, no rounding)
+        self.assertEqual(result[0].quantita, Decimal("9.25"))
+        # 3.7 * 0.333 = 1.2321 (piena, no rounding)
+        self.assertEqual(result[1].quantita, Decimal("1.2321"))
+
+    # Scopo: DEC-6 — meta componente arricchito con `esposto_in_fattura`,
+    #        `componente_di` (audit inverso), `coeff_qta`. Preserva meta padre.
+    def test_caso_a_meta_arricchito_componente_di_e_esposto(self):
+        pricing = MagicMock()
+        pricing.resolve_prezzo_composito.return_value = [
+            _make_resolver_riga(componente_id="cmp-01", esposto_in_fattura=True, coeff_qta=Decimal("2")),
+            _make_resolver_riga(componente_id="cmp-02", esposto_in_fattura=False, coeff_qta=Decimal("1")),
+        ]
+        expander = BoMComponentExpander(
+            pricing_service=pricing,
+            is_composito_fn=MagicMock(return_value=True),
+        )
+        row = _make_composito_row(
+            articolo_id="art-parent",
+            meta={"tipo_commessa": "AUTO", "extra_padre": "x"},
+        )
+
+        result = expander.expand(row)
+
+        self.assertEqual(result[0].meta["esposto_in_fattura"], True)
+        self.assertEqual(result[0].meta["componente_di"], "art-parent")
+        self.assertEqual(result[0].meta["coeff_qta"], "2")
+        # Preservato dal padre:
+        self.assertEqual(result[0].meta["tipo_commessa"], "AUTO")
+        self.assertEqual(result[0].meta["extra_padre"], "x")
+        self.assertEqual(result[1].meta["esposto_in_fattura"], False)
+        self.assertEqual(result[1].meta["componente_di"], "art-parent")
+
+    # Scopo: DEC-5 — tipo_doc_fiscale_id ereditato dalla riga padre (non sovrascritto).
+    #        Verifica anche altri campi di contesto del padre: valuta, BA, utility,
+    #        sorgente_uid, emittente, competenza, fatturazione_immediata.
+    def test_caso_a_eredita_tipo_doc_fiscale_e_valuta_dal_padre(self):
+        pricing = MagicMock()
+        pricing.resolve_prezzo_composito.return_value = [_make_resolver_riga()]
+        expander = BoMComponentExpander(
+            pricing_service=pricing,
+            is_composito_fn=MagicMock(return_value=True),
+        )
+        row = _make_composito_row(
+            tipo_doc_fiscale_id=999,
+            valuta_id=555,
+            billing_account_id=111,
+            utility_id=222,
+            sorgente_uid="SRC-abc",
+            emittente_soggetto_ruolo_id=333,
+            competenza_mese=date(2026, 9, 1),
+            fatturazione_immediata=True,
+        )
+
+        result = expander.expand(row)
+
+        componente = result[0]
+        self.assertEqual(componente.tipo_doc_fiscale_id, 999)
+        self.assertEqual(componente.valuta_id, 555)
+        self.assertEqual(componente.billing_account_id, 111)
+        self.assertEqual(componente.utility_id, 222)
+        self.assertEqual(componente.sorgente_uid, "SRC-abc")
+        self.assertEqual(componente.emittente_soggetto_ruolo_id, 333)
+        self.assertEqual(componente.competenza_mese, date(2026, 9, 1))
+        self.assertTrue(componente.fatturazione_immediata)
+
+    # Scopo: cache is_composito — lo stesso articolo passato N volte deve
+    #        provocare UN SOLO lookup via is_composito_fn.
+    def test_cache_is_composito_un_solo_lookup_per_articolo(self):
+        is_composito = MagicMock(return_value=False)
+        expander = BoMComponentExpander(
+            pricing_service=MagicMock(),
+            is_composito_fn=is_composito,
+        )
+        row = _make_composito_row(articolo_id="ART-X")
+
+        expander.expand(row)
+        expander.expand(row)
+        expander.expand(row)
+
+        is_composito.assert_called_once_with("ART-X")
+
+    # Scopo: cache resolver — stessa chiave (articolo, BA, utility, data,
+    #        emittente) invoca il resolver UNA SOLA VOLTA anche con N expand().
+    #        Garantisce 1 round-trip DB per preventivi con piu' righe dello
+    #        stesso composito nello stesso periodo.
+    def test_cache_resolver_un_solo_round_trip_per_chiave(self):
+        pricing = MagicMock()
+        pricing.resolve_prezzo_composito.return_value = [
+            _make_resolver_riga(componente_id="c1"),
+            _make_resolver_riga(componente_id="c2"),
+        ]
+        expander = BoMComponentExpander(
+            pricing_service=pricing,
+            is_composito_fn=MagicMock(return_value=True),
+        )
+        row1 = _make_composito_row(segment_key="ROW:1")
+        row2 = _make_composito_row(segment_key="ROW:2")
+        row3 = _make_composito_row(segment_key="ROW:3")
+
+        expander.expand(row1)
+        expander.expand(row2)
+        expander.expand(row3)
+
+        pricing.resolve_prezzo_composito.assert_called_once()
+
+    # Scopo: O2 — quantita_padre None -> pass-through, no chiamata resolver.
+    #        Espandere produrrebbe N componenti tutti a quantita 0, no senso.
+    def test_quantita_padre_zero_pass_through_o2(self):
+        pricing = MagicMock()
+        is_composito = MagicMock()
+        expander = BoMComponentExpander(pricing_service=pricing, is_composito_fn=is_composito)
+        row = _make_composito_row(quantita=None)
+
+        result = expander.expand(row)
+
+        self.assertEqual(result, [row])
+        is_composito.assert_not_called()
+        pricing.resolve_prezzo_composito.assert_not_called()
+
+    # Scopo: O2 — quantita_padre Decimal('0') -> pass-through (idem semantica).
+    def test_quantita_padre_decimal_zero_pass_through_o2(self):
+        pricing = MagicMock()
+        is_composito = MagicMock()
+        expander = BoMComponentExpander(pricing_service=pricing, is_composito_fn=is_composito)
+        row = _make_composito_row(quantita=Decimal("0"))
+
+        result = expander.expand(row)
+
+        self.assertEqual(result, [row])
+        is_composito.assert_not_called()
+        pricing.resolve_prezzo_composito.assert_not_called()
+
+    # Scopo: integrazione — HandlerPreventivi con BoMComponentExpander iniettato
+    #        produce N righe in commesse_attivita per un composito CASO A.
+    #        Verifica end-to-end: fetch -> expand -> batch_upsert con N input.
+    def test_handler_default_invoca_bom_expander(self):
+        pricing = MagicMock()
+        pricing.resolve_prezzo_composito.return_value = [
+            _make_resolver_riga(componente_id="cmp-A", coeff_qta=Decimal("2"), prezzo_unitario=Decimal("7")),
+            _make_resolver_riga(componente_id="cmp-B", coeff_qta=Decimal("3"), prezzo_unitario=Decimal("4")),
+        ]
+        expander = BoMComponentExpander(
+            pricing_service=pricing,
+            is_composito_fn=MagicMock(return_value=True),
+        )
+        repo = _mock_repo(inserted=2)
+        repo.fetch_pushable_rows.return_value = [_make_composito_row(quantita=Decimal("10"))]
+        handler = HandlerPreventivi(repo, bom_expander=expander)
+
+        result = handler.run()
+
+        self.assertEqual(result.created, 2)
+        inputs = repo.batch_upsert_attivita.call_args[0][0]
+        self.assertEqual(len(inputs), 2)
+        # segment_key differenziati con suffix componente
+        keys = sorted(inp.segment_key for inp in inputs)
+        self.assertTrue(all("#CMP:" in k for k in keys))
+        # quantita moltiplicate dal coeff_qta (10*2=20, 10*3=30)
+        quantita = sorted(inp.quantita for inp in inputs)
+        self.assertEqual(quantita, [Decimal("20"), Decimal("30")])
+
+
+# ============================================================
+# BoM integrazione end-to-end — BE-2 (sviluppo-listini-v5 §14.4.3)
+# ============================================================
+
+def _make_bom_expander(componenti: list[dict] | None = None, is_composito: bool = True) -> BoMComponentExpander:
+    """Helper per creare un BoMComponentExpander pronto-all'uso nei test."""
+    pricing = MagicMock()
+    pricing.resolve_prezzo_composito.return_value = componenti or [
+        _make_resolver_riga(componente_id="cmp-X", coeff_qta=Decimal("2")),
+        _make_resolver_riga(componente_id="cmp-Y", coeff_qta=Decimal("3")),
+    ]
+    return BoMComponentExpander(
+        pricing_service=pricing,
+        is_composito_fn=MagicMock(return_value=is_composito),
+    )
+
+
+class BoMHandlerIntegrationTests(TestCase):
+
+    # Scopo: regression sui 5 handler — tutti devono funzionare con
+    #        BoMComponentExpander iniettato e produrre N righe per composito.
+    #        Garantisce che la signature comune (repo, bom_expander) sia
+    #        rispettata e che il pattern di espansione si applichi
+    #        uniformemente. HandlerConsumi escluso: ha override _expand_rows.
+    def test_tutti_5_handler_supportano_bom_expander_iniettato(self):
+        for handler_cls in [HandlerPreventivi, HandlerOrdini, HandlerContratti, HandlerDdt]:
+            with self.subTest(handler=handler_cls.__name__):
+                expander = _make_bom_expander()
+                repo = _mock_repo(inserted=2)
+                repo.fetch_pushable_rows.return_value = [_make_composito_row()]
+                handler = handler_cls(repo, bom_expander=expander)
+
+                result = handler.run()
+
+                self.assertEqual(result.created, 2, f"{handler_cls.__name__} deve produrre 2 righe componente")
+                self.assertEqual(result.errors, [])
+                inputs = repo.batch_upsert_attivita.call_args[0][0]
+                self.assertEqual(len(inputs), 2)
+
+    # Scopo: HandlerConsumi ha _expand_rows override (fan-out consumi).
+    #        L'override prevale sulla logica BoM: il pricing.resolve_prezzo_composito
+    #        del bom_expander iniettato NON deve essere mai chiamato per Consumi.
+    #        Garantisce che le due forme di fan-out (consumi + BoM) restino
+    #        ortogonali finche' non c'e' decisione esplicita di combinarle.
+    def test_handler_consumi_override_prevale_su_bom(self):
+        pricing = MagicMock()
+        expander = BoMComponentExpander(
+            pricing_service=pricing,
+            is_composito_fn=MagicMock(return_value=True),
+        )
+        repo = _mock_repo(inserted=2)
+        # Riga consumo con articolo_id=None (default per consumi prima del fan-out).
+        repo.fetch_pushable_rows.return_value = [
+            _make_row(articolo_id=None, prezzo_snapshot=None, segment_key="CONS:uid-1")
+        ]
+        handler = HandlerConsumi(repo, bom_expander=expander)
+        # Stub fan-out consumi: 2 componenti.
+        handler._fetch_componenti = MagicMock(return_value=[
+            ComponenteConsumabile(codice="A", articolo_id="art-A", quantita=Decimal("1"), prezzo=Decimal("5"), uom_id=1),
+            ComponenteConsumabile(codice="B", articolo_id="art-B", quantita=Decimal("2"), prezzo=Decimal("3"), uom_id=2),
+        ])
+
+        result = handler.run()
+
+        self.assertEqual(result.created, 2)
+        # BoM non chiamata: HandlerConsumi.expand_rows ha sostituito il default.
+        pricing.resolve_prezzo_composito.assert_not_called()
+        # segment_key con suffix consumi (`:COMP:`), non BoM (`#CMP:`).
+        inputs = repo.batch_upsert_attivita.call_args[0][0]
+        keys = sorted(inp.segment_key for inp in inputs)
+        self.assertTrue(all(":COMP:" in k for k in keys))
+        self.assertFalse(any("#CMP:" in k for k in keys))
+
+    # Scopo: scenario realistico di un preventivo con 1 articolo composito (CASO A,
+    #        2 componenti) + 1 articolo semplice → batch finale ha 3 input
+    #        (2 componenti + 1 riga semplice pass-through). Verifica che
+    #        l'espansione si applichi solo dove serve, senza disturbare le righe
+    #        non-composito nello stesso run.
+    def test_misto_riga_composita_e_riga_semplice_stesso_run(self):
+        pricing = MagicMock()
+        pricing.resolve_prezzo_composito.return_value = [
+            _make_resolver_riga(componente_id="cmp-A", coeff_qta=Decimal("2")),
+            _make_resolver_riga(componente_id="cmp-B", coeff_qta=Decimal("1")),
+        ]
+        # is_composito_fn ritorna True solo per "art-composito", False per "art-semplice".
+        is_composito = MagicMock(side_effect=lambda art_id: art_id == "art-composito")
+        expander = BoMComponentExpander(pricing_service=pricing, is_composito_fn=is_composito)
+        repo = _mock_repo(inserted=3)
+        repo.fetch_pushable_rows.return_value = [
+            _make_composito_row(
+                articolo_id="art-composito",
+                segment_key="PREV:uid-1:R:1",
+                sorgente_uid="uid-1",
+            ),
+            _make_composito_row(
+                articolo_id="art-semplice",
+                segment_key="PREV:uid-1:R:2",
+                sorgente_uid="uid-1",
+            ),
+        ]
+        handler = HandlerPreventivi(repo, bom_expander=expander)
+
+        result = handler.run()
+
+        self.assertEqual(result.created, 3)
+        inputs = repo.batch_upsert_attivita.call_args[0][0]
+        self.assertEqual(len(inputs), 3)
+        keys = sorted(inp.segment_key for inp in inputs)
+        # Verifica: 2 componenti BoM + 1 riga semplice pass-through.
+        self.assertEqual(keys, [
+            "PREV:uid-1:R:1#CMP:cmp-A",
+            "PREV:uid-1:R:1#CMP:cmp-B",
+            "PREV:uid-1:R:2",
+        ])
+
+    # Scopo: idempotenza pipeline. Re-run dell'handler con la stessa BoM e
+    #        stessa riga sorgente deve produrre identiche segment_key (input
+    #        per upsert idempotente). Ogni run usa una nuova istanza expander
+    #        per simulare due esecuzioni indipendenti.
+    def test_idempotenza_re_run_segment_key_stabili(self):
+        # Run 1
+        expander1 = _make_bom_expander([
+            _make_resolver_riga(componente_id="c1"),
+            _make_resolver_riga(componente_id="c2"),
+        ])
+        repo1 = _mock_repo(inserted=2)
+        repo1.fetch_pushable_rows.return_value = [_make_composito_row(segment_key="PREV:uid-X:R:7")]
+        handler1 = HandlerPreventivi(repo1, bom_expander=expander1)
+        handler1.run()
+        keys_run1 = sorted(inp.segment_key for inp in repo1.batch_upsert_attivita.call_args[0][0])
+
+        # Run 2 — stessa sorgente, stessa BoM, expander nuovo.
+        expander2 = _make_bom_expander([
+            _make_resolver_riga(componente_id="c1"),
+            _make_resolver_riga(componente_id="c2"),
+        ])
+        repo2 = _mock_repo(updated=2)
+        repo2.fetch_pushable_rows.return_value = [_make_composito_row(segment_key="PREV:uid-X:R:7")]
+        handler2 = HandlerPreventivi(repo2, bom_expander=expander2)
+        handler2.run()
+        keys_run2 = sorted(inp.segment_key for inp in repo2.batch_upsert_attivita.call_args[0][0])
+
+        self.assertEqual(keys_run1, keys_run2,
+            "Le segment_key del re-run devono essere identiche per idempotenza upsert")
+
+    # Scopo: errore del resolver su una riga (es. composito senza prezzo) NON
+    #        deve bloccare le altre righe del batch. Il savepoint per riga in
+    #        _process_rows ha gia' questa garanzia su errori generici;
+    #        verifichiamo che funzioni anche con eccezioni dal resolver pricing.
+    def test_isolamento_errore_resolver_su_singola_riga(self):
+        pricing = MagicMock()
+        # Prima chiamata a resolver_prezzo_composito fallisce, le altre OK.
+        pricing.resolve_prezzo_composito.side_effect = [
+            RuntimeError("E_PREZZO_LISTINO_NON_TROVATO"),
+            [_make_resolver_riga(componente_id="cmp-OK")],
+        ]
+        is_composito = MagicMock(return_value=True)
+        expander = BoMComponentExpander(pricing_service=pricing, is_composito_fn=is_composito)
+        repo = _mock_repo(inserted=1)
+        repo.fetch_pushable_rows.return_value = [
+            _make_composito_row(
+                articolo_id="art-fail",
+                billing_account_id=999,  # cache_key diverso per forzare 2 chiamate
+                segment_key="FAIL:row1",
+                sorgente_uid="uid-1",
+            ),
+            _make_composito_row(
+                articolo_id="art-ok",
+                billing_account_id=100,
+                segment_key="OK:row2",
+                sorgente_uid="uid-2",
+            ),
+        ]
+        handler = HandlerPreventivi(repo, bom_expander=expander)
+
+        result = handler.run()
+
+        # 1 riga composita produce 1 attivita; l'altra fallisce ma non blocca.
+        self.assertEqual(result.created, 1)
+        self.assertEqual(len(result.errors), 1)
+        self.assertIn("FAIL:row1", result.errors[0])
+        inputs = repo.batch_upsert_attivita.call_args[0][0]
+        self.assertEqual(len(inputs), 1)
+        self.assertIn("OK:row2", inputs[0].segment_key)
+
+    # Scopo: ottimizzazione cache resolver in scenario realistico — un preventivo
+    #        con 2 righe dello STESSO composito (es. "Pacchetto base" comprato
+    #        2 volte con diverse quantita) deve invocare il resolver UNA VOLTA
+    #        sola. Riduce il carico DB per preventivi/contratti densi.
+    def test_due_righe_stesso_composito_riusano_cache_resolver(self):
+        pricing = MagicMock()
+        pricing.resolve_prezzo_composito.return_value = [
+            _make_resolver_riga(componente_id="cmp-A", coeff_qta=Decimal("1")),
+        ]
+        expander = BoMComponentExpander(
+            pricing_service=pricing,
+            is_composito_fn=MagicMock(return_value=True),
+        )
+        repo = _mock_repo(inserted=2)
+        # 2 righe dello stesso composito, stesso BA/utility/competenza/emittente
+        # ma quantita diverse.
+        repo.fetch_pushable_rows.return_value = [
+            _make_composito_row(
+                segment_key="PREV:uid-1:R:1",
+                sorgente_uid="uid-1",
+                quantita=Decimal("5"),
+            ),
+            _make_composito_row(
+                segment_key="PREV:uid-1:R:2",
+                sorgente_uid="uid-1",
+                quantita=Decimal("8"),
+            ),
+        ]
+        handler = HandlerPreventivi(repo, bom_expander=expander)
+
+        result = handler.run()
+
+        self.assertEqual(result.created, 2)
+        # Cache resolver: 1 sola chiamata anche con 2 righe sorgente.
+        pricing.resolve_prezzo_composito.assert_called_once()
+        # Le quantita risultanti sono comunque corrette (5*1=5 e 8*1=8),
+        # cioe' la cache restituisce solo il dict ma il calcolo padre x coeff_qta
+        # avviene per ogni riga.
+        inputs = repo.batch_upsert_attivita.call_args[0][0]
+        quantita = sorted(inp.quantita for inp in inputs)
+        self.assertEqual(quantita, [Decimal("5"), Decimal("8")])
+
+
+# ============================================================
+# Cache modulo-level is_composito — O1 (post-review Sprint C)
+# ============================================================
+
+
+class BoMModuleCacheIsCompositoTests(TestCase):
+    """Verifica della cache L2 modulo-level su _default_is_composito.
+
+    La cache L2 e' cross-istanza: due BoMComponentExpander differenti che
+    interrogano lo stesso articolo eseguono UNA SOLA query DB nel TTL.
+    Setup: invalida la cache prima di ogni test per isolamento.
+    """
+
+    def setUp(self):
+        invalidate_is_composito_module_cache()
+        self.addCleanup(invalidate_is_composito_module_cache)
+
+    # Scopo: O1 — due istanze di BoMComponentExpander interrogano lo stesso
+    #        articolo (stesso processo) -> 1 sola query DB grazie alla cache
+    #        modulo-level. Mock di connection.cursor per contare le call.
+    def test_default_is_composito_usa_cache_modulo(self):
+        cursor_mock = MagicMock()
+        cursor_mock.fetchone.return_value = (True,)
+        cursor_ctx = MagicMock()
+        cursor_ctx.__enter__ = MagicMock(return_value=cursor_mock)
+        cursor_ctx.__exit__ = MagicMock(return_value=False)
+
+        with patch(
+            "apps.vendite.services.commesse_source_handlers.connection.cursor",
+            return_value=cursor_ctx,
+        ) as mock_cursor:
+            # Prima istanza: miss -> query DB
+            BoMComponentExpander._default_is_composito("art-cached")
+            self.assertEqual(mock_cursor.call_count, 1)
+
+            # Seconda istanza (cross-istanza): hit -> NO query
+            BoMComponentExpander._default_is_composito("art-cached")
+            self.assertEqual(mock_cursor.call_count, 1, "cache modulo deve evitare seconda query")
+
+            # Articolo diverso: miss -> nuova query
+            cursor_mock.fetchone.return_value = (False,)
+            BoMComponentExpander._default_is_composito("art-altro")
+            self.assertEqual(mock_cursor.call_count, 2)
+
+    # Scopo: O1 — invalidate_is_composito_module_cache() forza re-query.
+    #        Pattern: chiamata post refactor catalogo / switch tenant.
+    def test_invalidate_module_cache_forza_re_query(self):
+        cursor_mock = MagicMock()
+        cursor_mock.fetchone.return_value = (True,)
+        cursor_ctx = MagicMock()
+        cursor_ctx.__enter__ = MagicMock(return_value=cursor_mock)
+        cursor_ctx.__exit__ = MagicMock(return_value=False)
+
+        with patch(
+            "apps.vendite.services.commesse_source_handlers.connection.cursor",
+            return_value=cursor_ctx,
+        ) as mock_cursor:
+            BoMComponentExpander._default_is_composito("art-X")
+            BoMComponentExpander._default_is_composito("art-X")
+            self.assertEqual(mock_cursor.call_count, 1)
+
+            invalidate_is_composito_module_cache()
+
+            BoMComponentExpander._default_is_composito("art-X")
+            self.assertEqual(mock_cursor.call_count, 2,
+                "post invalidate la query DB deve essere ri-eseguita")

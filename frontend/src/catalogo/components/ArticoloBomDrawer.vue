@@ -1,16 +1,24 @@
 <script setup>
 // Scopo: Sub-drawer per gestione distinta base (BoM) articolo.
 // Layout: lista componenti sempre visibile in alto + form inserimento in basso.
-// Modifica: valido_al editabile inline nella DataTable per disattivare un componente.
+// Pattern immutabilità (sviluppo-listini-v5 §14.4 / DEC-4):
+//   - i campi struttura (componente, coeff_qta, esposto_in_fattura, ecc.)
+//     non sono modificabili in place: trigger DB E_BOM_MODIFICA_VIETATA li
+//     blocca. Per correggere si usa "chiudi riga" + "duplica come nuova
+//     versione" (l'admin chiude la riga corrente e ne crea una nuova).
+//   - delete BoM bloccato dal trigger: il pattern di "rimozione" è chiusura
+//     con valido_al = oggi.
+//   - valido_al è l'unico campo struttura editabile inline (chiusura riga).
 // Lookup componenti filtrato per is_solo_componente=true.
 
 import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useApiHandler } from '../../core/composables/useApiHandler'
+import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import {
   listArticoloComponenti, createArticoloComponente,
-  updateArticoloComponente, deleteArticoloComponente,
+  updateArticoloComponente,
   listComponenteNote, createComponenteNota,
 } from '../api/catalogo'
 import { DRAWER_WIDTH, DATE_FORMAT, MANAGE_ICONS } from '../../core/constants'
@@ -23,7 +31,7 @@ import Drawer from 'primevue/drawer'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Button from 'primevue/button'
-import Tag from 'primevue/tag'
+import Message from 'primevue/message'
 import InputNumber from 'primevue/inputnumber'
 import DatePicker from 'primevue/datepicker'
 import ToggleSwitch from 'primevue/toggleswitch'
@@ -31,6 +39,7 @@ import ToggleSwitch from 'primevue/toggleswitch'
 const { t } = useI18n()
 const isReadonly = useInjectReadonly()
 const { execute, loading } = useApiHandler()
+const { confirmAction } = useConfirmAction()
 
 const props = defineProps({
   visible: { type: Boolean, default: false },
@@ -46,9 +55,15 @@ const form = ref({})
 const componenteObj = ref(null)
 const adding = ref(false)
 
-// Edit inline: traccia quale riga ha il DatePicker valido_al aperto
+// Edit inline: traccia quale riga ha il DatePicker valido_al aperto.
+// valido_al è l'unico campo modificabile in place (DEC-4): permette
+// chiusura immediata della riga senza passare dal kebab.
 const editingValidoAlId = ref(null)
 const editingValidoAlValue = ref(null)
+
+// Flag UI: distingue "nuovo componente da zero" da "duplica come nuova versione".
+// Influenza il titolo del form e mostra l'hint dedicato versionamento.
+const formMode = ref('new')  // 'new' | 'duplicate'
 
 // Sub-drawer note per componente
 const noteDrawerVisible = ref(false)
@@ -73,6 +88,15 @@ function defaultForm() {
     valido_dal: new Date(),
     valido_al: null,
   }
+}
+
+// Scopo: reset stato del form add/duplica. Comune a cancel, save-success
+// e apertura drawer: evita duplicazione delle 4 reassegnazioni.
+function resetFormState() {
+  adding.value = false
+  formMode.value = 'new'
+  form.value = defaultForm()
+  componenteObj.value = null
 }
 
 // Scopo: Converte stringa ISO date in Date object per DatePicker.
@@ -100,9 +124,7 @@ async function loadComponenti() {
 
 watch(() => props.visible, (val) => {
   if (!val) return
-  form.value = defaultForm()
-  componenteObj.value = null
-  adding.value = false
+  resetFormState()
   editingValidoAlId.value = null
   loadComponenti()
 })
@@ -114,15 +136,38 @@ function onComponenteSelect(item) {
 }
 
 function startAdd() {
-  form.value = defaultForm()
-  componenteObj.value = null
+  resetFormState()
   adding.value = true
 }
 
 function cancelAdd() {
-  adding.value = false
-  form.value = defaultForm()
-  componenteObj.value = null
+  resetFormState()
+}
+
+// Scopo: pre-compila il form di inserimento con i valori di una riga
+// esistente, per creare una nuova versione senza ridigitare tutto.
+// La riga sorgente NON viene chiusa automaticamente: l'admin può scegliere
+// di farlo prima/dopo via "Chiudi riga". L'exclusion constraint daterange
+// del DB previene comunque sovrapposizioni.
+function startDuplicaComeNuovaVersione(row) {
+  formMode.value = 'duplicate'
+  // Pre-compila componente_obj per restore AutoComplete (display nome).
+  componenteObj.value = {
+    id: row.componente_id,
+    descrizione: row.componente_descrizione,
+    codice_interno: row.componente_codice,
+  }
+  form.value = {
+    componente_id: row.componente_id,
+    coeff_qta: row.coeff_qta,
+    partecipa_qta: row.partecipa_qta,
+    obbligatorio: row.obbligatorio,
+    determina_qta_padre: row.determina_qta_padre,
+    esposto_in_fattura: row.esposto_in_fattura,
+    valido_dal: new Date(),  // nuova versione parte da oggi
+    valido_al: null,
+  }
+  adding.value = true
 }
 
 const canSaveForm = computed(() => {
@@ -146,9 +191,7 @@ async function onSaveNew() {
     { successMessage: t('catalogo.componente_aggiunto') }
   )
   if (result === null) return
-  adding.value = false
-  form.value = defaultForm()
-  componenteObj.value = null
+  resetFormState()
   await loadComponenti()
   emit('saved')
 }
@@ -179,19 +222,33 @@ function cancelEditValidoAl() {
   editingValidoAlValue.value = null
 }
 
-// Scopo: Elimina componente. Ricarica lista e notifica il parent.
-async function onDelete(row) {
-  const result = await execute(
-    () => deleteArticoloComponente(props.articoloId, row.id),
-    { successMessage: t('catalogo.componente_eliminato') }
-  )
-  if (result !== null) {
-    await loadComponenti()
-    emit('saved')
-  }
+// Scopo: chiude una riga BoM impostando valido_al = oggi. Sostituisce il
+// vecchio "elimina" che oggi è bloccato dal trigger DB E_BOM_MODIFICA_VIETATA.
+// Conferma esplicita: l'admin deve sapere che è chiusura, non eliminazione.
+function onChiudiRiga(row) {
+  const oggi = new Date()
+  const oggiStr = displayDate(oggi)
+  confirmAction({
+    title: t('catalogo.chiudi_riga_confirm_title'),
+    message: t('catalogo.chiudi_riga_confirm_message', { data: oggiStr }),
+    onAccept: async () => {
+      const result = await execute(
+        () => updateArticoloComponente(props.articoloId, row.id, {
+          valido_al: toDateString(oggi),
+        }),
+        { successMessage: t('catalogo.componente_chiuso') }
+      )
+      if (result !== null) {
+        await loadComponenti()
+        emit('saved')
+      }
+    }
+  })
 }
 
-// Scopo: azioni di riga del componente BoM (note + elimina), nascoste in readonly.
+// Scopo: azioni di riga del componente BoM (note + duplica + chiudi).
+// Nascoste in readonly. La voce "elimina" non esiste più: la BoM è
+// immutabile (DEC-4), il pattern è "chiudi+inserisci nuova versione".
 function buildRigaActions(row) {
   return [
     {
@@ -201,11 +258,17 @@ function buildRigaActions(row) {
       command: () => openNoteDrawer(row),
     },
     {
-      key: 'elimina-componente',
-      label: t('common.delete'),
-      icon: 'pi pi-trash',
+      key: 'duplica-nuova-versione',
+      label: t('catalogo.duplica_come_nuova_versione'),
+      icon: 'pi pi-clone',
+      command: () => startDuplicaComeNuovaVersione(row),
+    },
+    {
+      key: 'chiudi-riga',
+      label: t('catalogo.chiudi_riga'),
+      icon: 'pi pi-calendar-times',
       severity: 'danger',
-      command: () => onDelete(row),
+      command: () => onChiudiRiga(row),
     },
   ]
 }
@@ -228,6 +291,17 @@ function buildRigaActions(row) {
       </div>
 
       <template v-if="!listLoading">
+        <!-- Hint immutabilità (defense-in-depth UX): spiega il pattern
+             chiudi+inserisci che sostituisce l'edit in place. -->
+        <Message
+          v-if="!isReadonly && componentiList.length > 0"
+          severity="info"
+          :closable="false"
+          class="mt-025"
+        >
+          {{ t('catalogo.bom_immutabile_hint') }}
+        </Message>
+
         <!-- Lista componenti (sempre visibile) -->
         <div v-if="componentiList.length === 0 && !adding" class="app-empty-state">
           <i class="pi pi-sitemap" />
@@ -285,8 +359,16 @@ function buildRigaActions(row) {
 
           <template v-if="adding">
             <div class="app-drawer-section">
-              <h4>{{ t('catalogo.nuovo_componente') }}</h4>
+              <h4>{{ formMode === 'duplicate' ? t('catalogo.nuova_versione_componente') : t('catalogo.nuovo_componente') }}</h4>
             </div>
+            <Message
+              v-if="formMode === 'duplicate'"
+              severity="warn"
+              :closable="false"
+              class="mt-025"
+            >
+              {{ t('catalogo.nuova_versione_hint') }}
+            </Message>
             <div class="form-grid">
               <div class="form-field">
                 <label>{{ t('catalogo.field_componente') }} *</label>

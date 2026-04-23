@@ -277,6 +277,12 @@ const router = createRouter({
           component: () => import('../vendite/views/PromoArticoliListView.vue'),
           meta: { domain: 'vendite', menuKey: 'promo-articoli' }
         },
+        {
+          path: 'vendite/approvazioni-prezzo',
+          name: 'vendite-approvazioni-prezzo',
+          component: () => import('../vendite/views/ApprovazioniPrezzoListView.vue'),
+          meta: { domain: 'vendite', menuKey: 'approvazioni-prezzo' }
+        },
 
         // --- Pratiche ---
         {
