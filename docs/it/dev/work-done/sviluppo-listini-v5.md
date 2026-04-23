@@ -1451,13 +1451,25 @@ Sprint C e Sprint E sono indipendenti tra loro. Sprint E dipende da Sprint D
   * DOC-1..3 ✅ catalogo BB backend + guida §5.3 + manuale DB articoli_componenti
   * Test Django finali: 1642 verdi (era 1621 a fine Sprint D, +21 nuovi)
 - [x] ~~**Sprint D — L2 limite sconto + maggiorazione**~~ ✅ DONE 22-04 (12/12 step: 2 parametri VENDITE_MAX_SCONTO_PCT/VENDITE_MAX_MAGGIORAZIONE_PCT default 0, check post-L1 in preventivi_service, endpoint GET /vendite/pricing/limiti-utente/, +6 test Django (1621 totali), composable useLimitiPricing cache modulo, hint drawer riga + banner inline con "richiedi approvazione" disabled roadmap L3, vite build 973ms)
-- [ ] **Sprint E — L3 approvazione out-of-policy** — Decisioni A/B/C/D/E/F/G/H + 2 extra confermate 23-04. Avanzamento:
-  * DB-E-1..7 ⏳ APERTI — passaggio team DB (azione processo `approva_prezzo` + tipo prestazione `APPROVAZIONE_PREZZO` + ALTER preventivi_righe + 2 trigger guard + seed messaggi 389/390 + pgTAP)
-  * BE ✅ DONE 23-04 — `approvazioni_prezzo_service` (crea_richiesta + approva + rifiuta + lista_coda + link_riga_a_pratica) con cache lookup tipo_prestazione/priorita; `gestisci_riga`+`aggiorna_riga` estesi con flag `richiesta_approvazione`; 3 codici errore (`E_PREVENTIVO_RIGHE_PRICING_PENDENTI`, `E_RIGA_PREZZO_PENDENTE`, `E_APPROVAZIONE_PREZZO_NON_AMMESSA`); 3 endpoint API (`/righe/<id>/approva-prezzo/`, `/rifiuta-prezzo/`, `/approvazioni-prezzo/`); 16 test (4 hook L3 in preventivi + 12 ApprovazioniPrezzoService); suite 1662 verdi
-  * FE ✅ DONE 23-04 — i18n IT/EN (15 nuove chiavi); api client `approvazioniPrezzo.js`; `PreventiviRigaForm` pulsante "Richiedi approvazione" attivato + flusso `richiesta_approvazione=true`; route `/vendite/approvazioni-prezzo` + `ApprovazioniPrezzoListView` con dialog approva/rifiuta; badge Tag PENDING/APPROVED/REJECTED su righe in `PreventiviRigheTable`; vite build 916ms
-  * DOC ✅ DONE 23-04 — catalogo BB BE (`approvazioni_prezzo_service.*`); guida `gestione-listini.md` §6.1 workflow L3 + 3 nuove righe tabella errori; smoke checklist §1.9.bis scenario L3 end-to-end
-  * **In attesa land DB-E-* per esecuzione reale.** Tutto il resto chiuso end-to-end.
+- [x] ~~**Sprint E — L3 approvazione out-of-policy**~~ ✅ DONE 23-04 (DB+BE+FE+DOC end-to-end). Decisioni A/B/C/D/E/F/G/H + 2 extra confermate. Riepilogo:
+  * DB ✅ commit `f9561f8f` — ENUM nativo `config.stato_approvazione_prezzo`, ALTER `preventivi_righe` (col + FK + indice parziale), seed `pratiche.tipi_prestazione` id 9001 `APPROVAZIONE_PREZZO`, seed `azioni_processo` id 10 `approva_prezzo_override` (NB: non `approva_prezzo`), trigger 06 transizione preventivo + 07 allowlist riga PENDING, seed messaggi 389/390, pgTAP 10 casi
+  * DB ✅ commit `f9561f8f` — `fn_resolve_prezzo_composito` esteso con `coeff_qta` (sblocca BoMComponentExpander)
+  * BE ✅ DONE 23-04 — `approvazioni_prezzo_service` (crea_richiesta + approva + rifiuta + lista_coda + link_riga_a_pratica) + `gestisci_riga`/`aggiorna_riga` estesi flag `richiesta_approvazione` + 3 codici errore + 3 endpoint API + 16 test. Allineato `AZIONE_PROCESSO = "approva_prezzo_override"` post-DB land
+  * FE ✅ DONE 23-04 — `PreventiviRigaForm` "Richiedi approvazione" attivato + `ApprovazioniPrezzoListView` + badge Tag stato_approvazione + 23 i18n IT/EN; vite build 916ms
+  * DOC ✅ DONE 23-04 — catalogo BB BE + guida `gestione-listini.md` §6.1 + smoke checklist §1.9.bis
 
 ---
 
 *Piano unificato aggiornato il 2026-04-22 — assorbe `listini-commercio.md` (archiviato) e `sviluppo-autorizzazioni-prezzi.md` (archiviato, L1 in produzione, L2+L3 in Sprint D/E).*
+
+---
+
+> **Archiviato il 2026-04-23** — tutti gli sprint v5 (A originale, B originale, A nuovo, C, D, E) chiusi end-to-end (DB+BE+FE+DOC). Sprint F cleanup completato in pari data (audit residui FE zero, doc API estesa, archiviazione WIP).
+>
+> Per validazione UI end-to-end vedi: [`sviluppo-listini-v5-test-ui.md`](../work-in-progress/sviluppo-listini-v5-test-ui.md) (WIP attivo).
+>
+> Per riferimenti operativi v5 in produzione vedi:
+>
+> * Guida operativa: [`gestione-listini.md`](/guide/gestione-listini)
+> * API endpoint: [`api_pricing.md`](/backend/vendite/manual/api_pricing) | [`api_approvazioni_prezzo.md`](/backend/vendite/manual/api_approvazioni_prezzo) | [`api_preventivi.md`](/backend/vendite/manual/api_preventivi)
+> * Catalogo building block: [`catalogo-building-block-backend.md`](/dev/backend/catalogo-building-block-backend) sezione "Vendite — Pricing v5"

@@ -1,24 +1,37 @@
 # Guida — Gestione Listini e Pricing (v5)
 
-> **Ultima revisione**: 22 aprile 2026 — riscrittura completa per il modello
-> pricing v5 (resolver a 3 stadi: promo → contratto → categoria).
+> **Ultima revisione**: 23 aprile 2026 — chiusura end-to-end Sprint E+F
+> (workflow L3 approvazione + cleanup + doc API estesa). Il modello v5
+> è feature-complete (resolver a 3 stadi: promo → contratto → categoria
+> + L1+L2+L3 autorizzazioni prezzi + BoM versionata immutabile).
 >
 > La versione pre-v5 è archiviata in [gestione-listini-pre-v5](archive/gestione-listini-pre-v5.md)
 > per riferimento storico.
 >
 > **Destinatari**: analisti funzionali, sviluppatori backend/frontend, DBA.
 >
-> **Vedi anche**:
+> **Vedi anche** — schemi DB:
 >
 > * [vendite.listini](/dbzero/vendite/tabelle/listini) / [vendite.listini_versioni](/dbzero/vendite/tabelle/listini_versioni) / [vendite.listini_righe](/dbzero/vendite/tabelle/listini_righe)
 > * [anagrafiche.categorie_clienti](/dbzero/anagrafiche/tabelle/categorie_clienti) + [categorie_clienti_listini](/dbzero/anagrafiche/tabelle/categorie_clienti_listini)
 > * [vendite.contratti](/dbzero/vendite/tabelle/contratti) + [contratti_righe](/dbzero/vendite/tabelle/contratti_righe) + [contratti_utilities](/dbzero/vendite/tabelle/contratti_utilities)
 > * [vendite.promo_articoli](/dbzero/vendite/tabelle/promo_articoli)
+> * [catalogo.articoli_componenti](/dbzero/catalogo/tabelle/articoli_componenti) (BoM versionata immutabile)
 > * [vendite.fn_resolve_prezzo_listino_v2](/dbzero/vendite/funzioni/fn_resolve_prezzo_listino_v2)
 > * [vendite.fn_resolve_prezzo_composito](/dbzero/vendite/funzioni/fn_resolve_prezzo_composito)
+>
+> **Vedi anche** — API e service backend:
+>
 > * [PricingService (backend)](/backend/vendite/manual/pricing_service)
+> * [API Pricing (resolver + limiti L2)](/backend/vendite/manual/api_pricing)
+> * [API Approvazioni prezzo (workflow L3)](/backend/vendite/manual/api_approvazioni_prezzo)
+> * [API Preventivi](/backend/vendite/manual/api_preventivi) (con flag `richiesta_approvazione` per L3)
 > * [API Contratti](/backend/vendite/manual/api_contratti) / [API Promo articoli](/backend/vendite/manual/api_promo_articoli) / [API Matrice categorie/listini](/backend/anagrafiche/manual/api_categorie_clienti_listini)
-> * [Sprint listini v5 (WIP)](/dev/work-in-progress/sviluppo-listini-v5) — roadmap + decisioni chiuse
+>
+> **Vedi anche** — piani sprint:
+>
+> * [Storico piano sprint v5 (work-done)](/dev/work-done/sviluppo-listini-v5) — tutti gli sprint chiusi end-to-end
+> * [Piano test UI v5 (WIP attivo)](/dev/work-in-progress/sviluppo-listini-v5-test-ui) — 7 scenari per validazione UI
 
 ---
 
@@ -345,4 +358,4 @@ Per chi arrivava dal vecchio modello:
 
 ---
 
-*Gestione Listini e Pricing — ZeroERP v5 (22 aprile 2026)*
+*Gestione Listini e Pricing — ZeroERP v5 (23 aprile 2026, chiusura end-to-end)*
