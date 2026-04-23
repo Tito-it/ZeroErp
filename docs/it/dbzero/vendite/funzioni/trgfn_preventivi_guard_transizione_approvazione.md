@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/vendite/manual/trgfn_preventivi_guard_transizione_approvazione.md" %}
 # ⚙️ Funzione `trgfn_preventivi_guard_transizione_approvazione`
 
 ```sql
