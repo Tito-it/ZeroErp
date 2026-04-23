@@ -109,6 +109,30 @@
   - [ ] Sull'altro lascia false
   - [ ] Salva
 
+### 1.7.bis BoM immutabile — pattern chiudi+duplica (Sprint C FE)
+
+Scenario che verifica l'adeguamento `ArticoloBomDrawer` post trigger DB `E_BOM_MODIFICA_VIETATA` (§14.4 sviluppo-listini-v5).
+
+- [ ] Riapri il sub-drawer BoM dell'articolo composito creato in 1.7
+- [ ] Verifica che compare il **banner info "bom_immutabile_hint"** sopra la tabella
+- [ ] Verifica che la voce di menu kebab "**Elimina**" **non esiste più**
+- [ ] Verifica presenza delle 3 voci kebab: Gestisci Note, **Duplica come nuova versione**, **Chiudi riga**
+- [ ] Click kebab → "Chiudi riga"
+  - [ ] Dialog conferma mostra "La riga sarà chiusa con valido al = {oggi}..."
+  - [ ] Conferma → toast "Riga BoM chiusa"
+  - [ ] La riga ora ha `valido_al = oggi` visibile in tabella
+- [ ] Click kebab sulla stessa riga chiusa → "Duplica come nuova versione"
+  - [ ] Form inserimento si apre con titolo **"Nuova versione componente"**
+  - [ ] Banner warn "nuova_versione_hint" visibile sopra il form
+  - [ ] Campi pre-compilati: componente (AutoComplete), coeff_qta, esposto_in_fattura, obbligatorio, partecipa_qta
+  - [ ] `valido_dal` = oggi, `valido_al` = vuoto
+  - [ ] Cambia `coeff_qta` a un valore diverso (es. da 2 a 3)
+  - [ ] Salva → toast "Componente aggiunto" + lista BoM mostra 2 righe (vecchia chiusa + nuova attiva)
+- [ ] Defense-in-depth: prova a chiudere una riga con `valido_al < valido_dal` via console DevTools (`updateArticoloComponente(..., { valido_al: '1999-01-01' })`)
+  - [ ] Backend risponde errore `E_BOM_VALIDO_AL_INVALIDO`
+  - [ ] Toast errore con messaggio parlante "valido_al deve essere >= valido_dal"
+- [ ] Verifica edit inline valido_al (click sulla cella): funziona come chiusura rapida (coerente con l'azione kebab)
+
 ### 1.8 Resolver pricing (diagnostico)
 
 - [ ] Apri Dialog test resolver (bottone nella lista listini)
@@ -123,6 +147,36 @@
 - [ ] Apre righe → aggiungi riga con l'articolo della promo
 - [ ] Verifica che `prezzo_unitario` viene suggerito dal resolver
 - [ ] Modifica manualmente il prezzo → nessun blocco (ADMIN = L1 autorizzato)
+
+### 1.9.bis Workflow L3 approvazione prezzo (Sprint E)
+
+Setup: utente operatore con `prezzo_override_manuale` ON, `VENDITE_MAX_SCONTO_PCT=10` (parameter), assenza di `approva_prezzo_override`. Secondo utente "Manager" con `approva_prezzo_override`.
+
+- [ ] Apri PreventiviRigaForm su riga BA GOLD, prezzo resolver = X
+- [ ] Imposta prezzo manuale con sconto 25% (oltre limite 10%) → submit normale
+  - [ ] Banner inline `E_PREV_SCONTO_ECCESSIVO` visibile con detail "Sconto richiesto: 25.00% — massimo ammesso: 10%."
+  - [ ] Pulsante "Richiedi approvazione" ora **attivo** (non disabled come pre-Sprint E)
+- [ ] Click "Richiedi approvazione"
+  - [ ] Toast success "Richiesta approvazione inviata"
+  - [ ] Drawer si chiude
+  - [ ] In `PreventiviRigheTable`: la riga ha **Tag warn "In approvazione"** sotto il prezzo, tooltip mostra `pratica #N`
+- [ ] Tenta accettazione preventivo (cambio stato → ACCETTATO)
+  - [ ] Errore `E_PREVENTIVO_RIGHE_PRICING_PENDENTI` (banner toast)
+- [ ] Tenta modifica della riga PENDING (es. cambia quantità) via UI
+  - [ ] Errore `E_RIGA_PREZZO_PENDENTE` (defense-in-depth backend trigger)
+- [ ] Login come Manager (utente con `approva_prezzo_override`)
+- [ ] Navigate `/vendite/approvazioni-prezzo/`
+  - [ ] Coda mostra la pratica pending creata
+  - [ ] Colonne visibili: ID, Data, Descrizione, Priorità, Azioni
+- [ ] Click "Approva" su quella pratica
+  - [ ] Dialog conferma con campo "Nota interna (opzionale)"
+  - [ ] Compila nota "Cliente strategico, prezzo concordato call"
+  - [ ] Conferma → toast "Esito approvazione registrato"
+  - [ ] Pratica scompare dalla coda (stato CHIUSA)
+- [ ] Torna come operatore → riga ora ha Tag success "Approvato"
+- [ ] Tenta accettazione preventivo → ora OK (no righe PENDING)
+- [ ] Verifica caso rifiuto (ripeti scenario 25% + Richiedi approvazione, manager apre Dialog "Rifiuta", motivazione "Sconto eccessivo per categoria", conferma → riga Tag danger "Rifiutato"; preventivo accettabile)
+- [ ] Defense-in-depth: scenario admin globale (senza emittente assegnato) → GET `/vendite/approvazioni-prezzo/` ritorna 409 `E_APPROVAZIONE_PREZZO_NON_AMMESSA`
 
 **Gate Scenario 1**: tutti i check ✅. Nessun errore server/500 nel log backend.
 

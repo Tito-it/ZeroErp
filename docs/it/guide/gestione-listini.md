@@ -1,24 +1,37 @@
 # Guida — Gestione Listini e Pricing (v5)
 
-> **Ultima revisione**: 22 aprile 2026 — riscrittura completa per il modello
-> pricing v5 (resolver a 3 stadi: promo → contratto → categoria).
+> **Ultima revisione**: 23 aprile 2026 — chiusura end-to-end Sprint E+F
+> (workflow L3 approvazione + cleanup + doc API estesa). Il modello v5
+> è feature-complete (resolver a 3 stadi: promo → contratto → categoria
+> + L1+L2+L3 autorizzazioni prezzi + BoM versionata immutabile).
 >
 > La versione pre-v5 è archiviata in [gestione-listini-pre-v5](archive/gestione-listini-pre-v5.md)
 > per riferimento storico.
 >
 > **Destinatari**: analisti funzionali, sviluppatori backend/frontend, DBA.
 >
-> **Vedi anche**:
+> **Vedi anche** — schemi DB:
 >
 > * [vendite.listini](/dbzero/vendite/tabelle/listini) / [vendite.listini_versioni](/dbzero/vendite/tabelle/listini_versioni) / [vendite.listini_righe](/dbzero/vendite/tabelle/listini_righe)
 > * [anagrafiche.categorie_clienti](/dbzero/anagrafiche/tabelle/categorie_clienti) + [categorie_clienti_listini](/dbzero/anagrafiche/tabelle/categorie_clienti_listini)
 > * [vendite.contratti](/dbzero/vendite/tabelle/contratti) + [contratti_righe](/dbzero/vendite/tabelle/contratti_righe) + [contratti_utilities](/dbzero/vendite/tabelle/contratti_utilities)
 > * [vendite.promo_articoli](/dbzero/vendite/tabelle/promo_articoli)
+> * [catalogo.articoli_componenti](/dbzero/catalogo/tabelle/articoli_componenti) (BoM versionata immutabile)
 > * [vendite.fn_resolve_prezzo_listino_v2](/dbzero/vendite/funzioni/fn_resolve_prezzo_listino_v2)
 > * [vendite.fn_resolve_prezzo_composito](/dbzero/vendite/funzioni/fn_resolve_prezzo_composito)
+>
+> **Vedi anche** — API e service backend:
+>
 > * [PricingService (backend)](/backend/vendite/manual/pricing_service)
+> * [API Pricing (resolver + limiti L2)](/backend/vendite/manual/api_pricing)
+> * [API Approvazioni prezzo (workflow L3)](/backend/vendite/manual/api_approvazioni_prezzo)
+> * [API Preventivi](/backend/vendite/manual/api_preventivi) (con flag `richiesta_approvazione` per L3)
 > * [API Contratti](/backend/vendite/manual/api_contratti) / [API Promo articoli](/backend/vendite/manual/api_promo_articoli) / [API Matrice categorie/listini](/backend/anagrafiche/manual/api_categorie_clienti_listini)
-> * [Sprint listini v5 (WIP)](/dev/work-in-progress/sviluppo-listini-v5) — roadmap + decisioni chiuse
+>
+> **Vedi anche** — piani sprint:
+>
+> * [Storico piano sprint v5 (work-done)](/dev/work-done/sviluppo-listini-v5) — tutti gli sprint chiusi end-to-end
+> * [Piano test UI v5 (WIP attivo)](/dev/work-in-progress/sviluppo-listini-v5-test-ui) — 7 scenari per validazione UI
 
 ---
 
@@ -207,6 +220,21 @@ Un articolo composito (`is_composito = true`) ha una distinta base in `articoli_
 
 Logica completa in [vendite.fn_resolve_prezzo_composito](/dbzero/vendite/funzioni/fn_resolve_prezzo_composito).
 
+### 5.3 Immutabilità della BoM — pattern "chiudi + nuova versione"
+
+La distinta base è **immutabile nel tempo**: una volta inserita una riga in `articoli_componenti`, i campi di struttura (componente, `coeff_qta`, `esposto_in_fattura`, `obbligatorio`, `partecipa_qta`, `determina_qta_padre`, `valido_dal`) non possono essere modificati in place. Il trigger DB `trgfn_articoli_componenti_block_modifica_struttura` blocca gli UPDATE con errore `E_BOM_MODIFICA_VIETATA` e le DELETE (una riga BoM non si elimina mai: si chiude).
+
+**Perché**: le commesse e le fatturazioni che hanno già consumato quella BoM restano ancorate alla struttura del momento, e lo snapshot `prezzo_bloccato` sulle righe commessa preserva il calcolo fatto all'epoca. Modificare la BoM "sotto" a una commessa emessa romperebbe la ricostruzione storica.
+
+**Come si correggono errori o si evolve una distinta base**:
+
+1. **Chiudi la riga corrente**: imposta `valido_al = oggi` (l'unico campo editabile in place). Dalla UI: menu kebab della riga → "Chiudi riga", oppure click sulla cella `valido_al` inline.
+2. **Inserisci una nuova versione**: dalla UI → menu kebab → "Duplica come nuova versione". Il form si pre-compila con i valori della riga sorgente, `valido_dal = oggi`, `valido_al` vuoto. Modifica i campi desiderati e salva.
+
+L'exclusion constraint daterange `ex_articoli_componenti_no_overlap` sull'indice GiST `(prodotto_id, componente_id, validita)` garantisce che non ci siano sovrapposizioni temporali tra versioni dello stesso componente.
+
+**Campi ancora modificabili in place**: `note`, `meta`, `attivo`, `valido_al` (chiusura). Non sono campi di struttura.
+
 ---
 
 ## 6. Autorizzazioni override prezzo (L1)
@@ -220,7 +248,28 @@ Nel preventivo, il prezzo suggerito dal resolver può essere **sovrascritto manu
 
 Il badge UI mostra l'origine del prezzo (listino/contratto/promo/manuale) e il delta eventuale.
 
-L2 (limite sconto %) e L3 (workflow approvazione) sono pianificati — vedi Sprint D e E del WIP listini v5 §14.
+L2 (limite sconto/maggiorazione %) è in produzione (Sprint D 22-04-2026): vedi `VENDITE_MAX_SCONTO_PCT` / `VENDITE_MAX_MAGGIORAZIONE_PCT` in `config.parameters` e l'endpoint diagnostico `GET /vendite/pricing/limiti-utente/`.
+
+### 6.1 L3 — Workflow approvazione out-of-policy (Sprint E)
+
+Quando l'operatore richiede un prezzo che viola i limiti L2, può **richiedere approvazione al responsabile** invece di rinunciare. Il flusso:
+
+1. **Riga oltre L2 + flag `richiesta_approvazione=true`**: il backend NON solleva errore. Crea una pratica `APPROVAZIONE_PREZZO` (stato APERTA, priorità NORMALE) e salva la riga con `stato_approvazione_prezzo='PENDING'` collegata alla pratica via `pratica_approvazione_prezzo_id`.
+2. **Email best-effort al recipient configurato** in `VENDITE_APPROVAZIONE_PREZZO_RECIPIENT_EMAIL` (parameter scope user/group/emittente). Se il parameter non è configurato, la pratica resta visibile in coda senza notifica push.
+3. **L'approver** (utente con azione `approva_prezzo_override` abilitata) vede la coda in `/vendite/approvazioni-prezzo/` filtrata per scope emittente. Per ogni pratica può:
+   - **Approvare** → riga `stato_approvazione_prezzo='APPROVED'`, pratica CHIUSA con nota interna OK
+   - **Rifiutare** → riga `stato_approvazione_prezzo='REJECTED'`, pratica CHIUSA con nota interna KO + motivazione
+
+**Trigger DB di guardia**:
+- `trgfn_preventivi_guard_transizione_approvazione`: blocca passaggio preventivo→ACCETTATO se esistono righe `stato_approvazione_prezzo='PENDING'` (`E_PREVENTIVO_RIGHE_PRICING_PENDENTI`)
+- `trgfn_preventivi_righe_guard_pending`: blocca modifica struttura riga PENDING; permette solo transizione di stato approvazione (`E_RIGA_PREZZO_PENDENTE`)
+
+**Endpoint API**:
+- `POST /api/v1/vendite/righe/<riga_id>/approva-prezzo/` (body `{nota?}`)
+- `POST /api/v1/vendite/righe/<riga_id>/rifiuta-prezzo/` (body `{motivazione?}`)
+- `GET /api/v1/vendite/approvazioni-prezzo/?limit=&offset=`
+
+**Riavvio richiesta**: se l'approver rifiuta, l'utente può modificare il prezzo (riga REJECTED non è bloccata) e ri-tentare. Una nuova violazione L2 con `richiesta_approvazione=true` crea una nuova pratica.
 
 ---
 
@@ -287,6 +336,11 @@ Nessun fallback silenzioso. Ogni scenario non risolvibile produce un errore stru
 | `E_ARTICOLO_TIPOLOGIA_INCOMPATIBILE` | Articolo in listino di tipologia diversa |
 | `E_PREZZO_OVERRIDE_NON_AUTORIZZATO` | L1: override prezzo non autorizzato |
 | `E_VENDITE_PRICING_FAILED` | Errore generico pricing (envelope, dettaglio in `detail`) |
+| `E_BOM_MODIFICA_VIETATA` | Tentata modifica/eliminazione campo struttura BoM. Risolvere con pattern chiudi+inserisci nuova versione (vedi §5.3) |
+| `E_BOM_VALIDO_AL_INVALIDO` | Tentata chiusura riga BoM con `valido_al < valido_dal` |
+| `E_PREVENTIVO_RIGHE_PRICING_PENDENTI` | Tentata accettazione preventivo con righe in attesa di approvazione (L3) |
+| `E_RIGA_PREZZO_PENDENTE` | Tentata modifica struttura riga in stato `stato_approvazione_prezzo='PENDING'` |
+| `E_APPROVAZIONE_PREZZO_NON_AMMESSA` | Tentata approva/rifiuta su riga non PENDING o senza pratica collegata; oppure coda approvazioni richiesta da admin globale senza emittente |
 
 Tutti gestiti dal frontend con messaggi user-friendly (vedi `error_policies.py` backend).
 
@@ -304,4 +358,4 @@ Per chi arrivava dal vecchio modello:
 
 ---
 
-*Gestione Listini e Pricing — ZeroERP v5 (22 aprile 2026)*
+*Gestione Listini e Pricing — ZeroERP v5 (23 aprile 2026, chiusura end-to-end)*

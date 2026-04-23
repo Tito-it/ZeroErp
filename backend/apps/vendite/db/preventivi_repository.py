@@ -300,7 +300,11 @@ class PreventiviRepository:
     #  trg_preventivi_righe_z90_ricalcola_totali_ins_upd_dlt
     # ══════════════════════════════════════════════════════════
 
-    # Scopo: Inserisce una nuova riga preventivo.
+    # Scopo: Inserisce una nuova riga preventivo. I campi
+    #        `stato_approvazione_prezzo` + `pratica_approvazione_prezzo_id`
+    #        servono al workflow L3 (Sprint E listini v5 §14.6): default NULL
+    #        per righe normali, valorizzati se la creazione contestualmente
+    #        attiva una richiesta di approvazione out-of-policy.
     def create_riga(
         self,
         *,
@@ -316,14 +320,17 @@ class PreventiviRepository:
         iva_id: int | None = None,
         ordine: int | None = None,
         meta: dict[str, Any] | None = None,
+        stato_approvazione_prezzo: str | None = None,
+        pratica_approvazione_prezzo_id: int | None = None,
     ) -> dict[str, Any]:
         sql = """
             INSERT INTO vendite.preventivi_righe (
                 preventivo_id, articolo_id, descrizione,
                 quantita, qta_operativa, uom_operativa_id, factor_to_base,
-                prezzo_unitario, sconto_percentuale, iva_id, ordine, meta
+                prezzo_unitario, sconto_percentuale, iva_id, ordine, meta,
+                stato_approvazione_prezzo, pratica_approvazione_prezzo_id
             ) VALUES (
-                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb
+                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s
             )
             RETURNING id
         """
@@ -333,6 +340,7 @@ class PreventiviRepository:
                 quantita, qta_operativa, uom_operativa_id, factor_to_base,
                 prezzo_unitario, sconto_percentuale, iva_id, ordine,
                 json.dumps(meta or {}),
+                stato_approvazione_prezzo, pratica_approvazione_prezzo_id,
             ])
             result = row_to_dict(cursor)
             assert result is not None

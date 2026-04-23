@@ -10,9 +10,11 @@
 # con commesse e pratiche.
 
 from datetime import date
+from decimal import Decimal
 from typing import Any
 
 from django.contrib.auth import get_user_model
+from django.db import transaction
 
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.parameter_service import ParameterService
@@ -235,6 +237,12 @@ def crea_revisione(preventivo_id: int) -> dict[str, Any]:
 #        diverso dal suggerito, serve il permesso di azione processo
 #        `prezzo_override_manuale`; altrimenti `E_PREV_OVERRIDE_NON_AUTORIZZATO`.
 #        Tracciamento sempre in `meta.prezzo_resolver_context`.
+#
+#        L3 (Sprint E): se payload contiene `richiesta_approvazione=true`
+#        e il prezzo viola L2, la riga viene salvata con
+#        `stato_approvazione_prezzo='PENDING'` collegata a una pratica
+#        di approvazione (workflow vendite §14.6) invece di sollevare errore.
+@transaction.atomic
 def gestisci_riga(
     preventivo_id: int,
     payload: dict[str, Any],
@@ -268,6 +276,7 @@ def gestisci_riga(
 
     uom_id = payload.get("uom_operativa_id")
     payload_prezzo = payload.get("prezzo_unitario")
+    richiesta_approvazione = bool(payload.get("richiesta_approvazione", False))
     prezzo_finale, prezzo_meta = _resolve_or_check_override_prezzo(
         testata=testata,
         articolo_id=articolo_id,
@@ -275,12 +284,30 @@ def gestisci_riga(
         payload_prezzo=payload_prezzo,
         auth_user_id=auth_user_id,
         function_name=f"{_FN}.gestisci_riga",
+        richiesta_approvazione=richiesta_approvazione,
     )
 
     # Merge meta esistente del payload con audit prezzo.
     merged_meta = dict(payload.get("meta") or {})
     if prezzo_meta is not None:
         merged_meta.update(prezzo_meta)
+
+    # Workflow L3: se la chiamata ha attivato richiesta_approvazione e il
+    # prezzo viola L2, crea la pratica PRIMA dell'INSERT riga per ottenere
+    # pratica_id da inserire come FK. Tutto in transazione atomica del
+    # decorator: failure post-pratica annulla anche la riga.
+    pratica_id_l3: int | None = None
+    stato_approvazione: str | None = None
+    if prezzo_meta and prezzo_meta.get("richiesta_approvazione_pending"):
+        pratica_id_l3 = _orchestrate_l3_request(
+            preventivo_id=preventivo_id,
+            articolo_id=articolo_id,
+            prezzo_finale=prezzo_finale,
+            prezzo_meta=prezzo_meta,
+            auth_user_id=auth_user_id,
+            # riga_id non noto: link post-create_riga.
+        )
+        stato_approvazione = "PENDING"
 
     result = repo.create_riga(
         preventivo_id=preventivo_id,
@@ -295,9 +322,27 @@ def gestisci_riga(
         iva_id=payload.get("iva_id"),
         ordine=payload.get("ordine"),
         meta=merged_meta or None,
+        stato_approvazione_prezzo=stato_approvazione,
+        pratica_approvazione_prezzo_id=pratica_id_l3,
     )
+    # L3: registra riga_id nel meta della pratica per permettere all'approver
+    # di risalire alla riga dalla coda (UI ApprovazioniPrezzoListView).
+    # Update post-create_riga: la pratica esisteva gia' ma riga_id non era noto.
+    if pratica_id_l3 is not None and result.get("id"):
+        from apps.vendite.services.approvazioni_prezzo_service import (
+            link_riga_a_pratica,
+        )
+        link_riga_a_pratica(pratica_id=pratica_id_l3, riga_id=int(result["id"]))
     # Ricalcolo totali gestito da trigger DB AFTER su preventivi_righe
     return result
+
+
+# Note: gestisci_riga e aggiorna_riga condividono la fase di orchestrazione
+# L3 (creazione pratica + salvataggio PENDING). Per la create il pratica_id
+# viene ottenuto PRIMA di create_riga (FK necessaria) e il link riga<->pratica
+# avviene DOPO (riga_id non noto prima dell'insert). Per la update il
+# riga_id e' gia' noto: link_riga_a_pratica puo' essere invocato subito.
+# Vedi _orchestrate_l3_request sopra.
 
 
 # Scopo: Aggiorna riga esistente con guard su stato + ricalcolo totali.
@@ -306,6 +351,13 @@ def gestisci_riga(
 #        l'operatore abbia permesso di override (azione
 #        `prezzo_override_manuale`). La verifica viene fatta solo se
 #        `prezzo_unitario` e' esplicitamente nel payload (campo modificato).
+#
+#        L3 (Sprint E): se payload contiene `richiesta_approvazione=true`
+#        e il nuovo prezzo viola L2, la riga viene aggiornata con
+#        `stato_approvazione_prezzo='PENDING'` e collegata a una pratica
+#        di approvazione. Una riga gia' PENDING e' bloccata dal trigger DB
+#        (DB-E-5): l'admin deve attendere esito o annullare la richiesta.
+@transaction.atomic
 def aggiorna_riga(
     preventivo_id: int,
     riga_id: int,
@@ -329,6 +381,7 @@ def aggiorna_riga(
         function_name=f"{_FN}.aggiorna_riga",
     )
 
+    richiesta_approvazione = bool(payload.get("richiesta_approvazione", False))
     update_fields: dict[str, Any] = {}
     for key in (
         "descrizione", "quantita", "qta_operativa", "uom_operativa_id",
@@ -337,6 +390,8 @@ def aggiorna_riga(
     ):
         if key in payload:
             update_fields[key] = payload[key]
+
+    pratica_id_l3: int | None = None
 
     # L1 check + audit meta se prezzo toccato esplicitamente. Serve contesto
     # riga esistente per articolo_id/uom_id non sempre presenti nel payload.
@@ -360,12 +415,28 @@ def aggiorna_riga(
             payload_prezzo=update_fields["prezzo_unitario"],
             auth_user_id=auth_user_id,
             function_name=f"{_FN}.aggiorna_riga",
+            richiesta_approvazione=richiesta_approvazione,
         )
         update_fields["prezzo_unitario"] = prezzo_finale
         if prezzo_meta is not None:
             merged_meta = dict(update_fields.get("meta") or riga_esistente.get("meta") or {})
             merged_meta.update(prezzo_meta)
             update_fields["meta"] = merged_meta
+
+        # Workflow L3: violazione L2 + flag richiesta_approvazione=true
+        # -> crea pratica e salva PENDING. Helper condiviso con gestisci_riga.
+        # Per update il riga_id e' gia' noto: link riga<->pratica eseguito dentro l'helper.
+        if prezzo_meta and prezzo_meta.get("richiesta_approvazione_pending"):
+            pratica_id_l3 = _orchestrate_l3_request(
+                preventivo_id=preventivo_id,
+                articolo_id=articolo_id,
+                prezzo_finale=prezzo_finale,
+                prezzo_meta=prezzo_meta,
+                auth_user_id=auth_user_id,
+                riga_id_for_link=riga_id,
+            )
+            update_fields["stato_approvazione_prezzo"] = "PENDING"
+            update_fields["pratica_approvazione_prezzo_id"] = pratica_id_l3
 
     if update_fields:
         updated = repo.update_riga(riga_id, **update_fields)
@@ -377,6 +448,9 @@ def aggiorna_riga(
             function_name=f"{_FN}.aggiorna_riga",
         )
         # Ricalcolo totali gestito da trigger DB AFTER su preventivi_righe
+
+    # Nota: il link riga<->pratica e' gia' stato eseguito dentro
+    # _orchestrate_l3_request (riga_id_for_link=riga_id).
 
     return {"status": "ok", "riga_id": riga_id}
 
@@ -397,6 +471,41 @@ def aggiorna_riga(
 #        Se articolo_id/uom_id mancano, salta il resolver e ritorna il
 #        prezzo del payload (retrocompatibilita': non tutti i preventivi
 #        hanno UoM configurata — il resolver e' best-effort).
+# Scopo: orchestra la creazione pratica L3 + link riga<->pratica per i flussi
+#        di gestisci_riga e aggiorna_riga. Centralizza l'unica logica
+#        Sprint E condivisa tra create e update riga (stessa transazione
+#        atomica del chiamante: failure annulla anche la riga).
+#
+#        Restituisce pratica_id (per inserimento FK in create_riga).
+#        Per update_riga, riga_id e' gia' noto: passare apply_link=True
+#        per fare update meta pratica con riga_preventivo_id.
+def _orchestrate_l3_request(
+    *,
+    preventivo_id: int,
+    articolo_id: Any,
+    prezzo_finale: Any,
+    prezzo_meta: dict[str, Any],
+    auth_user_id: int | None,
+    riga_id_for_link: int | None = None,
+) -> int:
+    from apps.vendite.services.approvazioni_prezzo_service import (
+        crea_richiesta_approvazione,
+        link_riga_a_pratica,
+    )
+    pratica_id = crea_richiesta_approvazione(
+        preventivo_id=preventivo_id,
+        articolo_id=str(articolo_id),
+        prezzo_resolver=Decimal(prezzo_meta["prezzo_base_resolver"])
+        if prezzo_meta.get("prezzo_base_resolver") else None,
+        prezzo_manuale=Decimal(str(prezzo_finale)),
+        violazione=prezzo_meta["violazione_l2"],
+        auth_user_id=auth_user_id,
+    )
+    if riga_id_for_link is not None:
+        link_riga_a_pratica(pratica_id=pratica_id, riga_id=riga_id_for_link)
+    return pratica_id
+
+
 def _resolve_or_check_override_prezzo(
     *,
     testata: dict[str, Any],
@@ -405,6 +514,7 @@ def _resolve_or_check_override_prezzo(
     payload_prezzo: Any,
     auth_user_id: int | None,
     function_name: str,
+    richiesta_approvazione: bool = False,
 ) -> tuple[Any, dict[str, Any] | None]:
     from decimal import Decimal
 
@@ -482,11 +592,15 @@ def _resolve_or_check_override_prezzo(
     # Se resolver non ha prezzo o e' 0 skip (non calcolabile); altrimenti
     # confronta delta_pct firmato con il parametro appropriato risolto per
     # l'utente (default 0 = nessuna variazione ammessa).
-    _check_limite_variazione_prezzo(
+    # L3 (Sprint E): se chiamante chiede richiesta_approvazione, l'eventuale
+    # violazione non solleva ma ritorna dict; il chiamante orchestrera'
+    # la creazione pratica.
+    violazione_l2 = _check_limite_variazione_prezzo(
         auth_user_id=auth_user_id,
         prezzo_resolver=prezzo_resolver,
         prezzo_manuale=payload_decimal,
         function_name=function_name,
+        accept_for_approval=richiesta_approvazione,
     )
 
     meta_patch: dict[str, Any] = {
@@ -501,6 +615,13 @@ def _resolve_or_check_override_prezzo(
         meta_patch["delta_override"] = str(delta)
         if prezzo_resolver != 0:
             meta_patch["delta_override_pct"] = str((delta / prezzo_resolver) * Decimal("100"))
+
+    # Hook L3: violazione L2 in modalita' "richiesta approvazione" -> segnala
+    # al chiamante per orchestrazione pratica + salvataggio riga PENDING.
+    if violazione_l2 is not None:
+        meta_patch["richiesta_approvazione_pending"] = True
+        meta_patch["violazione_l2"] = violazione_l2
+
     return payload_decimal, meta_patch
 
 
@@ -550,32 +671,41 @@ def _check_permesso_override_prezzo(
 #        Skip se prezzo_resolver e' None o 0 (non calcolabile / safe-fail).
 #        Superuser bypass. Parametri risolti via ParameterService con
 #        scope user -> group -> emittente -> default.
+#
+#        Restituisce:
+#          - None se variazione entro limite (caso normale L2 OK)
+#          - dict {tipo_violazione, variazione_abs_pct, limite_pct} se
+#            violazione + accept_for_approval=True (workflow L3 Sprint E)
+#
+#        Solleva ServiceError L2 (E_PREV_SCONTO_ECCESSIVO /
+#        E_PREV_MAGGIORAZIONE_ECCESSIVA) se violazione + accept_for_approval=False.
 def _check_limite_variazione_prezzo(
     *,
     auth_user_id: int | None,
     prezzo_resolver,  # Decimal | None
     prezzo_manuale,   # Decimal
     function_name: str,
-) -> None:
+    accept_for_approval: bool = False,
+) -> dict[str, Any] | None:
     from decimal import Decimal
 
     if prezzo_resolver is None or prezzo_resolver == 0:
-        return  # Nessun riferimento per calcolare la percentuale.
+        return None  # Nessun riferimento per calcolare la percentuale.
 
     if auth_user_id is None:
-        return  # L1 ha gia' bloccato; unreachable difensivo.
+        return None  # L1 ha gia' bloccato; unreachable difensivo.
 
     user_model = get_user_model()
     try:
         user = user_model.objects.get(pk=auth_user_id)
     except user_model.DoesNotExist:
-        return  # L1 avrebbe gia' bloccato.
+        return None  # L1 avrebbe gia' bloccato.
     if getattr(user, "is_superuser", False):
-        return
+        return None
 
     delta = prezzo_manuale - prezzo_resolver
     if delta == 0:
-        return  # Edge case: L1 avrebbe gia' fatto early-return.
+        return None  # Edge case: L1 avrebbe gia' fatto early-return.
 
     delta_pct = (delta / prezzo_resolver) * Decimal("100")
 
@@ -593,10 +723,23 @@ def _check_limite_variazione_prezzo(
     )
 
     if variazione_abs <= limite:
-        return
+        return None
 
-    error_code = "E_PREV_SCONTO_ECCESSIVO" if is_sconto else "E_PREV_MAGGIORAZIONE_ECCESSIVA"
+    # Violazione L2. Se la chiamata e' nel contesto di richiesta approvazione
+    # L3, restituiamo i dettagli della violazione invece di sollevare:
+    # il chiamante orchestrera' la creazione della pratica.
     kind_label = "Sconto" if is_sconto else "Maggiorazione"
+    if accept_for_approval:
+        return {
+            "tipo_violazione": "SCONTO" if is_sconto else "MAGGIORAZIONE",
+            "variazione_abs_pct": str(variazione_abs.quantize(Decimal("0.01"))),
+            "limite_pct": str(limite),
+            "kind_label": kind_label,
+        }
+
+    # Caso normale L2: solleva errore (FE banner attiva pulsante "richiedi
+    # approvazione" che ri-tentera' con accept_for_approval=True).
+    error_code = "E_PREV_SCONTO_ECCESSIVO" if is_sconto else "E_PREV_MAGGIORAZIONE_ECCESSIVA"
     ErrorManager.raise_error(
         code=error_code,
         message=f"{kind_label} oltre il limite consentito.",

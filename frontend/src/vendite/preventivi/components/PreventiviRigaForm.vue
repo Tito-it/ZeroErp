@@ -95,40 +95,56 @@ function onArticoloSelect(item) {
 
 const canSave = computed(() => form.value.articolo_id && form.value.quantita > 0)
 
+// Scopo: costruisce il payload riga preventivo, opzionalmente con extras
+//        (es. richiesta_approvazione=true per workflow L3 Sprint E).
+//        Centralizza la build payload usata da handleSave + handleRichiediApprovazione.
+function buildRigaPayload(extras = {}) {
+  const f = form.value
+  if (isEdit.value) {
+    return {
+      quantita: f.quantita,
+      prezzo_unitario: f.prezzo_unitario,
+      sconto_percentuale: f.sconto_percentuale,
+      ...extras,
+    }
+  }
+  return {
+    articolo_id: f.articolo_id,
+    descrizione: f.descrizione || null,
+    quantita: f.quantita,
+    prezzo_unitario: f.prezzo_unitario,
+    sconto_percentuale: f.sconto_percentuale,
+    iva_id: f.iva_id,
+    uom_operativa_id: f.uom_operativa_id,
+    ordine: f.ordine,
+    ...extras,
+  }
+}
+
+// Scopo: invia il payload riga al backend, gestendo edit vs create.
+//        Wrapper unico per evitare duplicazione di logica response/loading
+//        tra handleSave e handleRichiediApprovazione.
+async function submitRiga(payload) {
+  const apiCall = () => isEdit.value
+    ? store.aggiornaRiga(props.preventivoId, props.riga.id, payload)
+    : store.addRiga(props.preventivoId, payload)
+  const response = await apiCall()
+  const body = response?.data
+  return (body && typeof body === 'object' && 'data' in body) ? body.data : body
+}
+
 // Scopo: Salva riga intercettando specificamente i codici L2
 //        (E_PREV_SCONTO_ECCESSIVO / E_PREV_MAGGIORAZIONE_ECCESSIVA) per
 //        mostrare un banner inline invece del toast standard. Tutti gli
 //        altri errori passano per il pattern standard useApiHandler.
 async function handleSave() {
-  const f = form.value
   l2Error.value = null
-  const payload = isEdit.value
-    ? {
-        quantita: f.quantita,
-        prezzo_unitario: f.prezzo_unitario,
-        sconto_percentuale: f.sconto_percentuale,
-      }
-    : {
-        articolo_id: f.articolo_id,
-        descrizione: f.descrizione || null,
-        quantita: f.quantita,
-        prezzo_unitario: f.prezzo_unitario,
-        sconto_percentuale: f.sconto_percentuale,
-        iva_id: f.iva_id,
-        uom_operativa_id: f.uom_operativa_id,
-        ordine: f.ordine,
-      }
   const successMessage = isEdit.value ? t('preventivi.riga_salvata') : t('preventivi.riga_aggiunta')
-  const apiCall = () => isEdit.value
-    ? store.aggiornaRiga(props.preventivoId, props.riga.id, payload)
-    : store.addRiga(props.preventivoId, payload)
 
   loading.value = true
   try {
-    const response = await apiCall()
+    const result = await submitRiga(buildRigaPayload())
     notify.success(successMessage)
-    const body = response?.data
-    const result = (body && typeof body === 'object' && 'data' in body) ? body.data : body
     emit('saved', result)
   } catch (err) {
     const code = extractApiErrorCode(err)
@@ -143,6 +159,24 @@ async function handleSave() {
       // Fallback pattern standard: toast unico col messaggio BE.
       notify.error(extractApiError(err, t('preventivi.errore_generico')))
     }
+  } finally {
+    loading.value = false
+  }
+}
+
+// Scopo: ri-tenta il save aggiungendo flag richiesta_approvazione=true
+//        (workflow L3 Sprint E). Il backend, in caso di violazione L2,
+//        crea una pratica di approvazione e salva la riga in PENDING
+//        invece di sollevare. Toast esplicito per dare feedback chiaro.
+async function handleRichiediApprovazione() {
+  l2Error.value = null
+  loading.value = true
+  try {
+    const result = await submitRiga(buildRigaPayload({ richiesta_approvazione: true }))
+    notify.success(t('preventivi.richiesta_approvazione_inviata'))
+    emit('saved', result)
+  } catch (err) {
+    notify.error(extractApiError(err, t('preventivi.errore_generico')))
   } finally {
     loading.value = false
   }
@@ -205,12 +239,13 @@ async function handleSave() {
         <small v-if="l2Error.detail">{{ l2Error.detail }}</small>
         <div>
           <Button
-            :label="t('preventivi.richiedi_approvazione')"
+            :label="loading ? t('preventivi.richiedi_approvazione_in_corso') : t('preventivi.richiedi_approvazione')"
             icon="pi pi-send"
             size="small"
             severity="secondary"
-            disabled
+            :loading="loading"
             v-tooltip.bottom="t('preventivi.richiedi_approvazione_tooltip')"
+            @click="handleRichiediApprovazione"
           />
         </div>
       </div>

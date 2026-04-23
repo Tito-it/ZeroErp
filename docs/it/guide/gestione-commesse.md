@@ -2,14 +2,21 @@
 
 > Destinatari: sviluppatori backend e database di Zero ERP
 >
+> **Ultima revisione**: 23 aprile 2026 — sezione "Lifecycle prezzo" allineata
+> al modello pricing v5 (resolver `fn_resolve_prezzo_listino_v2` a 3 stadi,
+> snapshot 8 colonne audit Sprint F2-BE-11, espansione BoM compositi
+> Sprint F2-BE-12, workflow L3 approvazione Sprint E).
+>
 > 👀 **Vedi anche**
 >
 > * [Gestione commesse v2 (architettura)](/dev/work-in-progress/gestione-commesse-v2)
 > * [Guida fatturazione](/guide/fatturazione)
+> * [Gestione Listini e Pricing v5](/guide/gestione-listini) — modello pricing che alimenta lo snapshot commesse
 > * [vendite.commesse](/dbzero/vendite/tabelle/commesse)
 > * [vendite.stati_commessa](/dbzero/vendite/tabelle/stati_commessa)
 > * [vendite.commesse_attivita](/dbzero/vendite/tabelle/commesse_attivita)
 > * [vendite.commesse_sorgenti](/dbzero/vendite/tabelle/commesse_sorgenti)
+> * [BoMComponentExpander (catalogo BB backend)](/dev/backend/catalogo-building-block-backend) — espansione compositi nella pipeline push
 
 ---
 
@@ -372,18 +379,31 @@ Questa sezione documenta il flusso completo del prezzo dall'origine (preventivo 
 ### Flusso standard
 
 ```text
-1. Creazione preventivo
+1. Creazione preventivo (modello pricing v5)
    L'operatore inserisce righe con prezzo. Il prezzo puo venire da:
-   - Resolver listino (fn_resolve_prezzo_listino) alla data del documento
-   - Override manuale dell'operatore (prezzo digitato a mano)
+   - Resolver pricing v5 (fn_resolve_prezzo_listino_v2) - 3 stadi:
+       STADIO 0: PROMO overlay
+       STADIO 1: CONTRATTO (modalita A/B/C)
+       STADIO 2: CATEGORIA cliente via matrice
+   - Override manuale L1 (azione processo prezzo_override_manuale)
+   - Workflow L3 approvazione (Sprint E):
+       Se override viola L2 (limiti VENDITE_MAX_SCONTO/MAGGIORAZIONE_PCT)
+       e l'operatore richiede approvazione (richiesta_approvazione=true),
+       la riga e' salvata con stato_approvazione_prezzo='PENDING'.
+       Il preventivo NON puo' transitare a ACCETTATO finche' tutte le
+       righe PENDING sono APPROVED o REJECTED (trigger DB).
+       Solo i preventivi ACCETTATI transitano in commessa: quindi una
+       riga PENDING non arriva mai alla pipeline push commesse.
 
 2. Push in commessa
-   Il push (handler PREVENTIVO) crea commesse_attivita con:
+   Il push (handler PREVENTIVO/ORDINE/CONTRATTO/DDT/CONSUMI) crea
+   commesse_attivita con:
    - prezzo_snapshot = prezzo risolto o manuale
    - listino_versione_id = versione usata dal resolver (NULL se manuale)
    - listino_riga_id = riga usata dal resolver (NULL se manuale)
    - prezzo_bloccato = TRUE se override manuale, FALSE se da resolver
    - pricing_mode = 'FIXED' (v1)
+   - 8 colonne snapshot audit pricing v5 (vedi sezione dedicata sotto)
 
 3. Modifica preventivo post-push
    Se il preventivo viene modificato dopo il push:
@@ -418,6 +438,58 @@ Questa sezione documenta il flusso completo del prezzo dall'origine (preventivo 
    - prezzo_bloccato (informativo)
    - NON rilegge mai il listino
 ```
+
+### Snapshot pricing v5 — 8 colonne audit (Sprint F2-BE-11)
+
+Ogni riga `commesse_attivita` registra l'audit completo del calcolo prezzo
+all'epoca del push. Queste colonne sono **immutabili dopo emissione fattura**
+e permettono ricostruzione storica del processo pricing senza dipendere da
+modifiche successive a listini/contratti/promo.
+
+| Colonna | Valore |
+|---|---|
+| `prezzo_base_snapshot` | Prezzo riga listino prima di qualunque variazione |
+| `origine_prezzo` | `PROMO` / `CONTRATTO_OVERRIDE` / `CONTRATTO_LISTINO` / `CATEGORIA` / `MANUALE` |
+| `tipo_variazione_applicata` | `PERCENTUALE` / `VALORE_FISSO` / `PREZZO_FISSO` / `NESSUNA` |
+| `valore_variazione_applicata` | Valore firmato (negativo=sconto, positivo=maggiorazione) |
+| `promo_id` | FK promo se origine=PROMO |
+| `contratto_id` | FK contratto se origine CONTRATTO_* |
+| `categoria_cliente_id_snapshot` | FK categoria cliente al momento dello snapshot (anche se categoria poi cambia) |
+| `classe_utenza_id_snapshot` | FK classe utenza derivata da contratto/istanza |
+
+Popolazione: `fn_upsert_commessa_attivita` riceve tutti gli 8 campi dal
+chiamante (Python `CommessaAttivitaInput`) che li ricava dal resolver v5
+o dal flusso L1 override.
+
+### Espansione compositi BoM v5 (Sprint F2-BE-12)
+
+Quando una sorgente (preventivo/ordine/...) contiene un articolo composito
+(`catalogo.articoli.is_composito = true`) con almeno un componente
+`esposto_in_fattura = true`, la pipeline push **espande** la riga padre
+in N righe `commesse_attivita`, una per ogni componente attivo della BoM.
+
+Logica orchestrata da `BoMComponentExpander` in
+`apps/vendite/services/commesse_source_handlers.py`:
+
+* 1 riga sorgente composito → N righe `commesse_attivita`
+* `articolo_id` = `componente_id`
+* `quantita` = `quantita_padre × coeff_qta` (no rounding sotto-componenti)
+* `prezzo_snapshot` = prezzo risolto del singolo componente (resolver dedicato)
+* `segment_key` = `{padre_segment_key}#CMP:{componente_id}` (idempotente per re-run)
+* `meta` arricchito con `componente_di`, `esposto_in_fattura`, `coeff_qta`
+* Tutti gli altri campi (BA, utility, competenza, sorgente_uid, tipo_doc_fiscale) ereditati pari pari dal padre
+
+Componenti **non esposti**: anch'essi tracciati in `commesse_attivita` per
+audit completo, ma `meta.esposto_in_fattura=false`. La pipeline fatturazione
+filtra queste righe per emettere solo gli esposti in fattura.
+
+**Caso semplice (non composito o senza componenti esposti)**: pass-through,
+1 riga sorgente → 1 riga `commesse_attivita`.
+
+**BoM immutabile**: la struttura BoM non puo' essere modificata in place
+dopo essere stata pushata. Pattern admin: chiudi riga + duplica nuova
+versione (vedi [gestione-listini §5.3](/guide/gestione-listini#53-immutabilita-della-bom-pattern-chiudi-nuova-versione)).
+Garantisce che lo snapshot resti sempre ancorato alla struttura del momento.
 
 ### Gerarchia prezzo (riassunto)
 
@@ -466,4 +538,4 @@ Errori comuni:
 
 ---
 
-*Documento generato — febbraio 2026*
+*Documento generato — febbraio 2026. Aggiornato 23 aprile 2026 (Lifecycle prezzo allineato a pricing v5: resolver_v2, snapshot 8 colonne, BoM expander, workflow L3).*

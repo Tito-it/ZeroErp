@@ -24,12 +24,14 @@ Architettura:
 
 import dataclasses
 import logging
+import time
 from abc import ABC
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Any
 
-from django.db import transaction
+from django.db import connection, transaction
 
 from apps.vendite.db.commesse_repository import (
     POLICY_FATTURAZIONE_DA_DOCUMENTO,
@@ -38,8 +40,25 @@ from apps.vendite.db.commesse_repository import (
     CommesseRepository,
     PushableRow,
 )
+from apps.vendite.services.pricing_service import PricingService
 
 logger = logging.getLogger(__name__)
+
+
+# Cache modulo-level per is_composito (vita = processo Django, scope cross-istanza
+# di BoMComponentExpander). Rationale: is_composito di un articolo cambia
+# raramente; un batch grosso di handler.run() su preventivi ricorrenti riusa
+# il valore senza ri-query DB. La cache per-istanza resta come L1.
+# TTL: 5 minuti. Se cambia is_composito di un articolo (raro: refactor catalogo),
+# il valore stale dura al massimo 5 min. Override modificabile per test.
+_IS_COMPOSITO_MODULE_CACHE: dict[Any, tuple[bool, float]] = {}
+_IS_COMPOSITO_MODULE_CACHE_TTL_SECONDS = 300
+
+
+# Scopo: invalida la cache modulo-level. Da chiamare nei test e in scenari
+#        ammnistrativi (es. switch tenant, reload massivo catalogo).
+def invalidate_is_composito_module_cache() -> None:
+    _IS_COMPOSITO_MODULE_CACHE.clear()
 
 
 @dataclass
@@ -63,6 +82,177 @@ class HandlerResult:
         }
 
 
+class BoMComponentExpander:
+    """Espande PushableRow di articoli compositi v5 in N righe componente.
+
+    Scopo: single-point per la logica F2-BE-12 (sviluppo-listini-v5 §14.4).
+    Una riga padre composito viene espansa in N righe (una per componente
+    obbligatorio attivo) quando il resolver DB ritorna piu' di una riga
+    (CASO A: almeno un componente esposto in fattura). Pass-through nei
+    casi B (1 riga) o quando non si applica la logica (articolo non
+    composito, parametri insufficienti).
+
+    Decisioni di design (sviluppo-listini-v5 §14.4.1):
+    - DEC-2: segment_key suffix '#CMP:{componente_id}'
+    - DEC-3: quantita = quantita_padre x coeff_qta, no rounding
+    - DEC-5: tipo_doc_fiscale_id ereditato dal padre (gia' nella PushableRow)
+    - DEC-6: tutti i componenti tracciati (esposti+non), filtro fattura a valle
+
+    Cache locale (vita = istanza, tipicamente vita = ciclo _process_rows):
+    - composite_cache: evita lookup ripetuti is_composito per stesso articolo
+    - resolve_cache: evita ri-chiamata resolver per parametri identici
+
+    Contratto resolver DB (post DB-3, 22-04-2026): il dict ritornato include
+    `coeff_qta` (Decimal). Per CASO A vale il `coeff_qta` letto da
+    `articoli_componenti`; per CASO B (1 riga padre) vale `1` (padre
+    neutro nel calcolo `quantita_padre * coeff_qta`).
+    """
+
+    def __init__(
+        self,
+        pricing_service: PricingService | None = None,
+        is_composito_fn: Callable[[Any], bool] | None = None,
+    ) -> None:
+        # Lazy default: PricingService istanziato solo se serve davvero.
+        # Permette di iniettare un mock nei test senza setup DB.
+        self._pricing_service = pricing_service
+        self._is_composito_fn = is_composito_fn or self._default_is_composito
+        self._composite_cache: dict[Any, bool] = {}
+        self._resolve_cache: dict[tuple, list[dict[str, Any]]] = {}
+
+    # Scopo: applica la logica BoM v5 a una riga sorgente, restituendo
+    #        1 o N PushableRow secondo l'esito del resolver composito.
+    def expand(self, row: PushableRow) -> list[PushableRow]:
+        # Pre-filtri: condizioni in cui la BoM non si applica o non e'
+        # risolvibile. Pass-through silenzioso, no errore.
+        if row.articolo_id is None:
+            return [row]
+        if row.uom_id is None or row.competenza_mese is None:
+            return [row]
+        if row.utility_id is None:
+            return [row]
+        # O2: padre con quantita None o zero non genera componenti utili
+        # (tutti N componenti avrebbero quantita = 0 * coeff_qta = 0).
+        # Pass-through coerente con la semantica "consumo zero = niente da fare".
+        if row.quantita is None or row.quantita == 0:
+            return [row]
+
+        if not self._is_composito_cached(row.articolo_id):
+            return [row]
+
+        righe = self._resolve_cached(row)
+
+        # CASO B (resolver ritorna 1 riga padre): pass-through. Il prezzo
+        # del composito e' gia' quello della riga, niente fan-out.
+        # Riconosciamo CASO B confrontando componente_id == articolo_id padre.
+        if len(righe) == 1 and str(righe[0]["componente_id"]) == str(row.articolo_id):
+            return [row]
+
+        # CASO A (N righe): genera N PushableRow, una per componente.
+        return [self._build_componente_row(row, r) for r in righe]
+
+    # Scopo: cache wrapper per is_composito_fn (1 lookup per articolo per istanza).
+    def _is_composito_cached(self, articolo_id: Any) -> bool:
+        if articolo_id not in self._composite_cache:
+            self._composite_cache[articolo_id] = bool(self._is_composito_fn(articolo_id))
+        return self._composite_cache[articolo_id]
+
+    # Scopo: cache wrapper per resolver composito sui parametri-chiave
+    #        (articolo, BA, utility, data, emittente). Stessa coppia BoM/scenario
+    #        commerciale -> stesso risultato, evita N round-trip nel _process_rows.
+    def _resolve_cached(self, row: PushableRow) -> list[dict[str, Any]]:
+        cache_key = (
+            str(row.articolo_id),
+            row.billing_account_id,
+            row.utility_id,
+            row.competenza_mese,
+            row.emittente_soggetto_ruolo_id,
+        )
+        if cache_key in self._resolve_cache:
+            return self._resolve_cache[cache_key]
+
+        if self._pricing_service is None:
+            self._pricing_service = PricingService()
+
+        righe = self._pricing_service.resolve_prezzo_composito(
+            prodotto_id=row.articolo_id,
+            uom_id=row.uom_id,
+            data_riferimento=row.competenza_mese,
+            ba_id=row.billing_account_id,
+            utility_id=row.utility_id,
+            emittente_soggetto_ruolo_id=row.emittente_soggetto_ruolo_id,
+        )
+        self._resolve_cache[cache_key] = righe
+        return righe
+
+    # Scopo: costruisce una PushableRow per un singolo componente, ereditando
+    #        dal padre tutti i campi di contesto (sorgente, BA, utility,
+    #        competenza, tipo_doc_fiscale, valuta) e sostituendo solo i campi
+    #        specifici del componente (articolo, uom, prezzo, quantita,
+    #        segment_key, meta).
+    @staticmethod
+    def _build_componente_row(
+        row: PushableRow,
+        resolver_riga: dict[str, Any],
+    ) -> PushableRow:
+        componente_id = resolver_riga["componente_id"]
+        componente_uom_id = resolver_riga["uom_id"]
+        componente_prezzo = resolver_riga["prezzo_unitario"]
+        # coeff_qta dal resolver (DB-3 — vedi docstring classe).
+        coeff_qta = Decimal(resolver_riga["coeff_qta"])
+        componente_esposto = bool(resolver_riga.get("esposto_in_fattura", False))
+
+        # DEC-3: quantita = padre x coeff_qta, senza rounding (sotto-componenti
+        # piene, l'arrotondamento avviene a fatturazione su qta x prezzo).
+        quantita_padre = row.quantita if row.quantita is not None else Decimal(0)
+        quantita_componente = quantita_padre * coeff_qta
+
+        # Meta: preservo tutto del padre, aggiungo audit specifici componente.
+        # 'componente_di' permette tracing inverso in commesse_attivita.
+        nuovo_meta = dict(row.meta or {})
+        nuovo_meta["esposto_in_fattura"] = componente_esposto
+        nuovo_meta["componente_di"] = str(row.articolo_id)
+        nuovo_meta["coeff_qta"] = str(coeff_qta)
+
+        # DEC-2: segment_key suffix '#CMP:{componente_id}' — deterministico,
+        # idempotente per re-run, leggibile in audit.
+        new_segment_key = f"{row.segment_key}#CMP:{componente_id}"
+
+        return dataclasses.replace(
+            row,
+            articolo_id=componente_id,
+            uom_id=componente_uom_id,
+            quantita=quantita_componente,
+            prezzo_snapshot=componente_prezzo,
+            segment_key=new_segment_key,
+            meta=nuovo_meta,
+        )
+
+    # Scopo: query lean per is_composito (vs CatalogoRepository.get_articolo
+    #        che proietta la vista arricchita). Una sola colonna, indicizzata.
+    #        Usa cache modulo-level con TTL per evitare query ripetute cross-run
+    #        su articoli ricorrenti. La cache per-istanza (L1) resta in
+    #        _is_composito_cached, questa e' L2 cross-istanza.
+    @staticmethod
+    def _default_is_composito(articolo_id: Any) -> bool:
+        now = time.monotonic()
+        cached = _IS_COMPOSITO_MODULE_CACHE.get(articolo_id)
+        if cached is not None:
+            value, ts = cached
+            if now - ts < _IS_COMPOSITO_MODULE_CACHE_TTL_SECONDS:
+                return value
+        # Miss o TTL scaduto: query DB.
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT is_composito FROM catalogo.articoli WHERE id = %s",
+                [articolo_id],
+            )
+            row = cursor.fetchone()
+            value = bool(row[0]) if row else False
+        _IS_COMPOSITO_MODULE_CACHE[articolo_id] = (value, now)
+        return value
+
+
 class BaseSourceHandler(ABC):
     """Logica condivisa per tutti gli handler sorgente.
 
@@ -71,13 +261,26 @@ class BaseSourceHandler(ABC):
     - ``sorgente_codice`` — codice config.sorgenti (es. "PREVENTIVO")
 
     e implementa ``run()`` delegando a ``_process_rows()``.
+
+    L'espansione BoM v5 (F2-BE-12) e' applicata di default tramite
+    ``BoMComponentExpander``: handler concreti che vogliano un fan-out
+    diverso (es. ``HandlerConsumi`` per consumi utility) possono
+    sovrascrivere ``_expand_rows`` direttamente — il loro override
+    sostituisce completamente la BoM.
     """
 
     name: str
     sorgente_codice: str
 
-    def __init__(self, repo: CommesseRepository) -> None:
+    def __init__(
+        self,
+        repo: CommesseRepository,
+        bom_expander: BoMComponentExpander | None = None,
+    ) -> None:
         self._repo = repo
+        # Lazy default: l'expander e' creato a richiesta. Iniettabile nei
+        # test per isolare la logica del handler dal resolver pricing.
+        self._bom_expander = bom_expander or BoMComponentExpander()
 
     def run(self, *, dry_run: bool = False) -> HandlerResult:
         """Esegue la sincronizzazione della sorgente verso commesse_attivita."""
@@ -176,8 +379,15 @@ class BaseSourceHandler(ABC):
         return result
 
     def _expand_rows(self, row: PushableRow) -> list[PushableRow]:
-        """Hook per fan-out 1→N. Default: 1:1 pass-through."""
-        return [row]
+        """Hook per fan-out 1→N. Default: applica BoM v5 via BoMComponentExpander.
+
+        Articoli compositi con almeno un componente esposto in fattura
+        diventano N righe (una per componente obbligatorio attivo).
+        Articoli semplici e CASO B del resolver (1 riga padre) sono
+        pass-through. Override completo possibile per pattern non-BoM
+        (es. HandlerConsumi fan-out su componenti utility).
+        """
+        return self._bom_expander.expand(row)
 
     @staticmethod
     def _extract_tipo_commessa(row: PushableRow) -> str:
