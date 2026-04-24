@@ -1,0 +1,107 @@
+-- ------------------------------------------------------------
+-- SPDX-License-Identifier: GPL-3.0-or-later
+-- pgTAP test per Zero ERP
+--
+-- Test: script.fn_get_messaggio - fallback lingua IT
+-- Riferimento: migration 20260423-02-01.
+--
+-- Contesto: dopo il fix, se la lingua richiesta (via parametro o GUC
+-- myapp.user_language) non ha riga per un codice errore, la fn ricade
+-- su lingua='it' (codice ISO default progetto). Se nemmeno 'it' ha
+-- riga -> placeholder legacy "[MESSAGGIO NON DEFINITO: <codice>]".
+-- Implementazione single-query con IN + ORDER BY.
+--
+-- Indice test (1..6):
+--    1. Match diretto EN -> ritorna template EN
+--    2. Match diretto IT -> ritorna template IT
+--    3. Codice senza EN + p_lingua='en' -> fallback IT (non placeholder)
+--    4. Codice inesistente + p_lingua='en' -> placeholder
+--    5. GUC myapp.user_language='en' + p_lingua=NULL su codice senza EN
+--       -> fallback IT (GUC risolto correttamente)
+--    6. p_valore + format() funzionante anche su fallback IT
+--
+-- Fixture: 3 codici TEST_FB_* inseriti nella tabella messaggi_errore.
+-- Pulizia: BEGIN + ROLLBACK isolamento completo.
+-- ------------------------------------------------------------
+
+BEGIN;
+SELECT plan(6);
+
+-- =========================================================
+-- Setup fixture
+-- Uso id fissi in range seed dedicato (9xxx) per evitare collisioni
+-- con la sequenza autoincrement di messaggi_errore (disallineata
+-- rispetto al MAX(id) seminato). Il ROLLBACK finale ripulisce.
+-- =========================================================
+-- TEST_FB_BOTH: presente in IT e EN
+INSERT INTO config.messaggi_errore (id, codice, lingua, messaggio, causa, soluzione)
+VALUES
+    (9901, 'TEST_FB_BOTH',   'it', 'Messaggio IT per %s', 'Causa IT', 'Soluzione IT'),
+    (9902, 'TEST_FB_BOTH',   'en', 'Message EN for %s',   'Cause EN', 'Solution EN'),
+    (9903, 'TEST_FB_ONLYIT', 'it', 'Solo IT',             NULL,       NULL);
+-- Nessuna riga EN per TEST_FB_ONLYIT -> forza fallback.
+
+-- =========================================================
+-- 1) Match diretto EN -> template EN
+-- =========================================================
+SELECT is(
+    script.fn_get_messaggio('TEST_FB_BOTH', NULL, 'en'),
+    'Message EN for %s',
+    '1. Codice con EN + lingua=en -> ritorna template EN'
+);
+
+-- =========================================================
+-- 2) Match diretto IT -> template IT
+-- =========================================================
+SELECT is(
+    script.fn_get_messaggio('TEST_FB_BOTH', NULL, 'it'),
+    'Messaggio IT per %s',
+    '2. Codice con IT + lingua=it -> ritorna template IT'
+);
+
+-- =========================================================
+-- 3) Codice senza EN -> fallback IT
+-- =========================================================
+SELECT is(
+    script.fn_get_messaggio('TEST_FB_ONLYIT', NULL, 'en'),
+    'Solo IT',
+    '3. Codice senza EN + lingua=en -> fallback IT (no placeholder)'
+);
+
+-- =========================================================
+-- 4) Codice inesistente -> placeholder
+-- =========================================================
+SELECT is(
+    script.fn_get_messaggio('TEST_FB_INESISTENTE', NULL, 'en'),
+    '[MESSAGGIO NON DEFINITO: TEST_FB_INESISTENTE]',
+    '4. Codice inesistente -> placeholder legacy (nessuna regressione)'
+);
+
+-- =========================================================
+-- 5) GUC myapp.user_language='en' + p_lingua=NULL -> fallback IT
+-- =========================================================
+SET LOCAL myapp.user_language = 'en';
+
+SELECT is(
+    script.fn_get_messaggio('TEST_FB_ONLYIT', NULL, NULL),
+    'Solo IT',
+    '5. GUC user_language=en su codice senza EN -> fallback IT'
+);
+
+-- Reset GUC per test 6 (uso SET LOCAL='' per "unset").
+SET LOCAL myapp.user_language = '';
+
+-- =========================================================
+-- 6) p_valore + format() su fallback IT
+-- TEST_FB_ONLYIT ha solo IT con messaggio 'Solo IT' (no placeholder
+-- dentro, %s non presente). Uso TEST_FB_BOTH con lingua='de' (non
+-- esiste) -> ricade su IT -> format sostituisce %s con 'pippo'.
+-- =========================================================
+SELECT is(
+    script.fn_get_messaggio('TEST_FB_BOTH', 'pippo', 'de'),
+    'Messaggio IT per pippo',
+    '6. format() funziona anche su fallback IT (lingua=de assente)'
+);
+
+SELECT * FROM finish();
+ROLLBACK;

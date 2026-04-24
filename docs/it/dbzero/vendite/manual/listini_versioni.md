@@ -34,6 +34,66 @@ Vedi sezione *Workflow clone + publish* qui sotto.
   coesistere** con un'ATTIVA (e tra loro) anche su intervalli sovrapposti — vedi
   sezione *Workflow clone + publish* qui sotto.
 
+---
+
+### Workflow stato e transizioni (dal 2026-04-24)
+
+Le transizioni di stato sono **vincolate da guard trigger**
+(`trg_listini_versioni_a10_guard_transizione_stato_upd` →
+`vendite.trgfn_listini_versioni_guard_transizione_stato`,
+migration `20260424-01-...`).
+
+Matrice transizioni ammesse:
+
+| Da      | A       | Ammessa | Condizione                                               |
+|---------|---------|---------|----------------------------------------------------------|
+| BOZZA   | ATTIVA  | si      | —                                                        |
+| ATTIVA  | CHIUSA  | si      | `valido_al IS NOT NULL AND valido_al < CURRENT_DATE`     |
+| BOZZA   | CHIUSA  | **no**  | una bozza si cancella, non si chiude                     |
+| ATTIVA  | BOZZA   | **no**  | immutabile all'indietro                                  |
+| CHIUSA  | *       | **no**  | stato terminale                                          |
+
+Violazione → `script.fn_log_and_raise_error` con codice
+`E_VERSIONE_STATO_TRANSIZIONE_INVALIDA` (id 391 in `config.messaggi_errore`).
+
+**Principio di applicabilita'** (linee-guida-sql §7c): la versione e'
+*operativamente applicabile* quando `validita @> data_riferimento`.
+Lo `stato` e' flag gestionale per UI/audit/reportistica; il resolver
+prezzi (`fn_resolve_prezzo_listino_v2`) **non** filtra per stato —
+le date comandano.
+
+**INSERT non vincolato**: il guard scatta solo su UPDATE OF stato.
+Consente seed/import di versioni direttamente in ATTIVA o CHIUSA.
+
+**Path utente per chiudere una versione**: non esiste piu' un'azione
+manuale "cambia stato a CHIUSA". L'utente imposta `valido_al` (PATCH);
+la chiusura di stato avviene automaticamente alla scadenza tramite
+il job notturno descritto qui sotto.
+
+---
+
+### Chiusura automatica via job pgAgent
+
+Il job `listini_versioni_close_scadute_daily` (pgAgent, daily 00:05,
+migration `85_pgagent/20260424-01-...`) esegue
+`vendite.fn_listini_versioni_close_scadute()` che porta a `CHIUSA`
+tutte le versioni ATTIVA con `valido_al < CURRENT_DATE`.
+
+L'UPDATE eseguito dal job **attraversa il guard** e lo soddisfa per
+costruzione (condizione temporale verificata). Nessun bypass, nessuna
+session variable.
+
+Conseguenze UX da ricordare:
+
+* fra l'impostazione di `valido_al = CURRENT_DATE` e le 00:05 del
+  giorno successivo lo **stato resta ATTIVA**; l'applicabilita'
+  operativa e' gia' falsa (le date comandano).
+* badge UI basati solo su `stato` mostreranno ATTIVA finche' il job non
+  scatta. Se serve feedback immediato, usare `valido_al <= CURRENT_DATE`
+  (o `NOT (validita @> CURRENT_DATE)`) invece dello stato.
+
+Riferimenti catalogo: [Processi pgAgent funzionali](/guide/processi-pgagent-funzionali).
+
 > 🗑️ **Campo `priorita` RIMOSSO il 2026-04-09 (Fase 2 refactor)**. Con l'invariante
 > univocita per versione `ATTIVA` garantita dall'EXCLUDE constraint
 > (`ex_listini_versioni_no_overlap`), due versioni `ATTIVA` sovrapposte

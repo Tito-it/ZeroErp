@@ -1,0 +1,120 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Job pgAgent: chiusura notturna versioni listino scadute.
+#
+# Why: lo stato CHIUSA delle versioni listino non e' derivato
+# automaticamente dalla data. L'applicabilita' operativa (resolver
+# prezzi) resta governata dalle date, ma lo stato serve a UI e
+# reportistica: va sincronizzato. Questo job esegue ogni notte alle
+# 00:05 la funzione vendite.fn_listini_versioni_close_scadute() che
+# chiude le versioni ATTIVA con valido_al < CURRENT_DATE.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/85_pgagent/20260424-01-create-pgagent-job-listini-versioni-close-scadute-daily-mctit.yaml
+
+  - changeSet:
+      id: 20260424-01-create-pgagent-job-listini-versioni-close-scadute-daily
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      comment: >
+        Crea/aggiorna job pgAgent 'listini_versioni_close_scadute_daily'
+        che esegue ogni giorno alle 00:05 la funzione
+        vendite.fn_listini_versioni_close_scadute().
+      preConditions:
+        - onFail: MARK_RAN
+          onError: CONTINUE
+          sqlCheck:
+              expectedResult: 1
+              sql: |
+                  SELECT COUNT(*)
+                  FROM pg_extension
+                  WHERE extname = 'pgagent'
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $$
+              DECLARE
+                  v_jobid   INTEGER;
+                  v_classid INTEGER;
+              BEGIN
+                  -- 1) Classe job 'Routine Maintenance' (riusa o crea)
+                  SELECT jclid INTO v_classid
+                    FROM pgagent.pga_jobclass
+                   WHERE jclname = 'Routine Maintenance'
+                   LIMIT 1;
+
+                  IF v_classid IS NULL THEN
+                      INSERT INTO pgagent.pga_jobclass (jclname, jcldesc)
+                      VALUES ('Routine Maintenance', 'Default job class')
+                      RETURNING jclid INTO v_classid;
+                  END IF;
+
+                  -- 2) Rimuove eventuale job omonimo (idempotenza del changeSet)
+                  DELETE FROM pgagent.pga_job
+                  WHERE jobname = 'listini_versioni_close_scadute_daily';
+
+                  -- 3) Crea il job
+                  INSERT INTO pgagent.pga_job(
+                      jobjclid, jobname, jobdesc, jobenabled
+                  ) VALUES (
+                      v_classid,
+                      'listini_versioni_close_scadute_daily',
+                      'Chiude versioni listino ATTIVA con valido_al scaduto (giornaliero 00:05)',
+                      true
+                  )
+                  RETURNING jobid INTO v_jobid;
+
+                  -- 4) Schedule: ogni giorno alle 00:05
+                  INSERT INTO pgagent.pga_schedule(
+                      jscjobid, jscname, jscenabled,
+                      jscminutes, jschours, jscweekdays,
+                      jscmonthdays, jscmonths, jscstart
+                  ) VALUES (
+                      v_jobid,
+                      'daily_00_05',
+                      true,
+                      -- minuto 5
+                      (SELECT array_agg((i = 5)::boolean)  FROM generate_series(0,59) AS g(i)),
+                      -- ora 0
+                      (SELECT array_agg((i = 0)::boolean)  FROM generate_series(0,23) AS g(i)),
+                      -- tutti i giorni della settimana
+                      array_fill(TRUE, ARRAY[7])::boolean[],
+                      -- tutti i giorni del mese
+                      array_fill(TRUE, ARRAY[32])::boolean[],
+                      -- tutti i mesi
+                      array_fill(TRUE, ARRAY[12])::boolean[],
+                      now()
+                  );
+
+                  -- 5) Step: esecuzione funzione di chiusura
+                  INSERT INTO pgagent.pga_jobstep(
+                      jstjobid, jstname, jstkind, jstcode, jstdbname
+                  ) VALUES (
+                      v_jobid,
+                      'run_listini_versioni_close_scadute',
+                      's',
+                      $step$
+                          SELECT vendite.fn_listini_versioni_close_scadute();
+                      $step$,
+                      current_database()
+                  );
+              END;
+              $$;
+
+  - changeSet:
+      id: 20260424-90-create-pgagent-job-listini-versioni-close-scadute-daily
+      author: mctit
+      changes:
+        - tagDatabase:
+            tag: 20260424-01-create-pgagent-job-listini-versioni-close-scadute-daily
