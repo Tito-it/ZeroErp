@@ -1,0 +1,182 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Trigger guard transizione stato su vendite.listini_versioni.
+#
+# Why: lo stato della versione (BOZZA / ATTIVA / CHIUSA) e' workflow
+# gestionale governato dall'utente. La chiusura manuale (stato -> CHIUSA
+# con valido_al = NULL) produceva incoerenza perche' la versione restava
+# operativamente aperta. L'applicabilita' operativa e' decisa sulle
+# DATE (validita daterange), lo stato resta flag gestionale.
+#
+# Regole workflow (hardcoded: 3 stati, ~4 transizioni, stabili):
+#   BOZZA  -> BOZZA   : no-op, ammesso
+#   BOZZA  -> ATTIVA  : ammesso (attivazione versione)
+#   BOZZA  -> CHIUSA  : vietato (una bozza si cancella, non si chiude)
+#   ATTIVA -> BOZZA   : vietato (immutabile all'indietro)
+#   ATTIVA -> ATTIVA  : no-op, ammesso
+#   ATTIVA -> CHIUSA  : ammesso SOLO se valido_al IS NOT NULL
+#                       AND valido_al < CURRENT_DATE
+#                       (precondizione temporale: la finestra deve
+#                        essere gia' scaduta; questa regola vale
+#                        anche per il job notturno di close)
+#   CHIUSA -> *       : vietato (stato terminale)
+#
+# Scope trigger: solo BEFORE UPDATE OF stato. INSERT non e' vincolato
+# (consentiti import/seed con stato diretto). Il resolver resta puro
+# sulle date, non va modificato.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260424-01-create-trgfn-listini-versioni-guard-transizione-stato-mctit.yaml
+
+  - changeSet:
+      id: 20260424-01-01-create-trgfn-listini-versioni-guard-transizione-stato
+      author: mctit
+      runOnChange: true
+      validCheckSum:
+        - ANY
+      comment: >
+        Funzione trigger vendite.trgfn_listini_versioni_guard_transizione_stato.
+        Valida transizioni stato BOZZA/ATTIVA/CHIUSA e richiede valido_al
+        scaduto per ATTIVA -> CHIUSA. Raise E_VERSIONE_STATO_TRANSIZIONE_INVALIDA.
+      preConditions:
+        - onFail: HALT
+        - and:
+          - tableExists:
+              schemaName: vendite
+              tableName: listini_versioni
+          - columnExists:
+              schemaName: vendite
+              tableName: listini_versioni
+              columnName: stato
+          - columnExists:
+              schemaName: vendite
+              tableName: listini_versioni
+              columnName: valido_al
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_listini_versioni_guard_transizione_stato()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: bloccare transizioni di stato non ammesse sul
+              -- workflow versione listino (BOZZA -> ATTIVA -> CHIUSA).
+              -- Regola chiave: ATTIVA -> CHIUSA richiede valido_al scaduto
+              -- (valido_al IS NOT NULL AND valido_al < CURRENT_DATE).
+              -- La precondizione temporale rende impossibile per costruzione
+              -- lo stato incoerente CHIUSA con valido_al NULL e forza il
+              -- pattern "PATCH valido_al" -> chiusura automatica (job).
+              -- Lo stesso trigger e' attraversato dal job notturno di
+              -- close: quando l'UPDATE parte da stato=ATTIVA e valido_al
+              -- e' gia' scaduto, il guard lo lascia passare naturalmente.
+              DECLARE
+                  v_old vendite.listini_versioni.stato%TYPE := OLD.stato;
+                  v_new vendite.listini_versioni.stato%TYPE := NEW.stato;
+                  v_ammessa boolean := false;
+              BEGIN
+                  -- Nessun cambio stato: niente da validare.
+                  IF v_old IS NOT DISTINCT FROM v_new THEN
+                      RETURN NEW;
+                  END IF;
+
+                  -- Dispatch transizioni ammesse (workflow piatto, 3 stati).
+                  IF v_old = 'BOZZA' AND v_new = 'ATTIVA' THEN
+                      v_ammessa := true;
+                  ELSIF v_old = 'ATTIVA' AND v_new = 'CHIUSA' THEN
+                      -- Chiusura consentita solo a finestra gia' scaduta.
+                      -- Evita incoerenza CHIUSA + valido_al NULL e uniforma
+                      -- il path utente (PATCH valido_al) con il job notturno.
+                      v_ammessa := (NEW.valido_al IS NOT NULL
+                                    AND NEW.valido_al < CURRENT_DATE);
+                  END IF;
+                  -- Tutte le altre transizioni sono vietate:
+                  --   BOZZA  -> CHIUSA : bozza si cancella
+                  --   ATTIVA -> BOZZA  : immutabile all'indietro
+                  --   CHIUSA -> *      : stato terminale
+                  --   *      -> BOZZA  : vietato salvo no-op
+
+                  IF NOT v_ammessa THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          TG_NAME::text,
+                          'E_VERSIONE_STATO_TRANSIZIONE_INVALIDA',
+                          jsonb_build_object(
+                              'versione_id', NEW.id,
+                              'listino_id',  NEW.listino_id,
+                              'stato_da',    v_old,
+                              'stato_a',     v_new,
+                              'valido_al',   NEW.valido_al
+                          ),
+                          NEW.tx_id,
+                          NEW.id::text,
+                          v_old::text,
+                          v_new::text,
+                          COALESCE(NEW.valido_al::text, 'NULL')
+                      );
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_listini_versioni_guard_transizione_stato() IS
+                  'Guard transizione stato versione listino: ammette BOZZA->ATTIVA e '
+                  'ATTIVA->CHIUSA solo con valido_al<CURRENT_DATE. Raise '
+                  'E_VERSIONE_STATO_TRANSIZIONE_INVALIDA.';
+      rollback:
+        - sql:
+            sql: DROP FUNCTION IF EXISTS vendite.trgfn_listini_versioni_guard_transizione_stato();
+
+  - changeSet:
+      id: 20260424-01-02-create-trg-listini-versioni-a10-guard-transizione-stato
+      author: mctit
+      runOnChange: true
+      validCheckSum:
+        - ANY
+      comment: >
+        Trigger BEFORE UPDATE OF stato su vendite.listini_versioni, fase
+        _a10_ (guard). UPDATE OF <col> per scattare solo quando la
+        transizione e' esplicita.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT COUNT(*)
+                FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'vendite'
+                 AND p.proname = 'trgfn_listini_versioni_guard_transizione_stato';
+      changes:
+        - sql:
+            splitStatements: true
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_listini_versioni_a10_guard_transizione_stato_upd
+                  ON vendite.listini_versioni;
+
+              CREATE TRIGGER trg_listini_versioni_a10_guard_transizione_stato_upd
+                  BEFORE UPDATE OF stato
+                  ON vendite.listini_versioni
+                  FOR EACH ROW
+                  WHEN (OLD.stato IS DISTINCT FROM NEW.stato)
+                  EXECUTE FUNCTION vendite.trgfn_listini_versioni_guard_transizione_stato();
+
+              COMMENT ON TRIGGER trg_listini_versioni_a10_guard_transizione_stato_upd
+                  ON vendite.listini_versioni
+                  IS 'Guard: blocca transizioni di stato non ammesse su versione listino.';
+      rollback:
+        - sql:
+            sql: |
+              DROP TRIGGER IF EXISTS trg_listini_versioni_a10_guard_transizione_stato_upd
+                  ON vendite.listini_versioni;

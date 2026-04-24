@@ -12,58 +12,71 @@ CREATE OR REPLACE FUNCTION script.fn_log_and_raise_error(p_area text, p_function
  RETURNS void
  LANGUAGE plpgsql
 AS $function$
-    DECLARE
-        v_msg    TEXT;
-        v_detail TEXT;
-        v_hint   TEXT;
-        v_lang   TEXT := coalesce(current_setting('myapp.user_language', TRUE), 'it');
-    BEGIN
-        -- -------------------------------------------------
-        -- Input
-        -- p_area: area di applicazione (esempio: 'database')
-        -- p_function_name: nome della funzione chiamante
-        -- p_error_code: codice dell'errore da loggare
-        -- p_context: contesto dell'errore (JSONB)
-        -- p_tx_id: ID della transazione corrente (se NULL, viene generato automaticamente)
-        -- p_valori: valori variabili da inserire nel messaggio di errore
-        -- Output
-        -- Solleva un'eccezione con il messaggio di errore formattato
-        -- e logga l'errore nel database.
-        -- -------------------------------------------------
-        
-        -- -- 1) Solo logging (usiamo funzione esistente)
-        PERFORM script.fn_log_error_only(
-          p_area, p_function_name, p_error_code, p_context, p_tx_id, VARIADIC p_valori
-        );
+DECLARE
+    v_msg    text;
+    v_detail text;
+    v_hint   text;
+    v_lang   text := coalesce(
+        current_setting('myapp.user_language', true),
+        'it'
+    );
+BEGIN
+    -- =========================================================
+    -- Scopo (post 23-04-2026, i18n incrementale):
+    --   Logga l'errore nel sistema di logging e solleva
+    --   RAISE EXCEPTION con messaggio, DETAIL e HINT
+    --   localizzati secondo la lingua di sessione.
+    --
+    -- Cambiamento 23-04-2026: il recupero di causa/soluzione
+    -- ora ricade su lingua='it' se la lingua richiesta non
+    -- ha riga per il codice (stesso pattern di
+    -- fn_get_messaggio). Il messaggio testuale era gia'
+    -- context-aware perche' delegato a fn_get_messaggio.
+    -- =========================================================
 
-        -- 2) Recupera il template del messaggio tramite fn_get_messaggio
-          v_msg := script.fn_get_messaggio(
-            p_error_code,
-            NULL,     -- p_valore singolo non usato, useremo format() dopo
-            v_lang
-          );
+    -- 1) Logging (non loc-sensitive).
+    PERFORM script.fn_log_error_only(
+        p_area, p_function_name, p_error_code,
+        p_context, p_tx_id, VARIADIC p_valori
+    );
 
-        -- 3) Recupera causa e hint
-          SELECT causa, soluzione
-            INTO v_detail, v_hint
-            FROM config.messaggi_errore
-          WHERE codice = p_error_code
-            AND lingua = v_lang;
+    -- 2) Template messaggio (gia' gestisce fallback lingua
+    -- internamente post 20260423-02-01).
+    v_msg := script.fn_get_messaggio(
+        p_error_code,
+        NULL,
+        v_lang
+    );
 
-        -- 4) Applica il format su tutti i placeholder, se presenti
-          IF array_length(p_valori,1) IS NOT NULL THEN
-              v_msg := format(v_msg, VARIADIC p_valori);
-          END IF;
+    -- 3) Recupera causa e hint con fallback IT inline.
+    -- Single-query: preferisci v_lang; se la riga esiste
+    -- solo in 'it' vince quella per LIMIT 1.
+    -- Semantica "riga intera vince": se la riga EN esiste
+    -- ma ha causa/soluzione NULL, mantiene NULL (non mescola
+    -- con IT -- ordering sceglie la riga della lingua
+    -- richiesta come blocco atomico).
+    SELECT causa, soluzione
+      INTO v_detail, v_hint
+      FROM config.messaggi_errore
+     WHERE codice = p_error_code
+       AND lingua IN (v_lang, 'it')
+     ORDER BY (lingua = v_lang) DESC
+     LIMIT 1;
 
-        -- 5) Solleva l’eccezione con messaggio, detail e hint
-          RAISE EXCEPTION '%', v_msg
-            USING DETAIL = coalesce(v_detail, ''),
-                  HINT   = coalesce(v_hint, '');
-       END;
-       $function$
+    -- 4) Format placeholder con VARIADIC values, se presenti.
+    IF array_length(p_valori, 1) IS NOT NULL THEN
+        v_msg := format(v_msg, VARIADIC p_valori);
+    END IF;
+
+    -- 5) Sollevamento eccezione con DETAIL/HINT localizzati.
+    RAISE EXCEPTION '%', v_msg
+        USING DETAIL = coalesce(v_detail, ''),
+              HINT   = coalesce(v_hint, '');
+END;
+$function$
 
 COMMENT ON FUNCTION script.fn_log_and_raise_error(p_area text, p_function_name text, p_error_code text, p_context jsonb, p_tx_id uuid, VARIADIC p_valori text[])
-IS 'Logga e poi solleva exception con messaggio custom';
+IS 'Logga e poi solleva exception con messaggio custom. Post 23-04-2026: causa/soluzione con fallback lingua=''it'' se la lingua richiesta (myapp.user_language) non ha riga per il codice. Messaggio delegato a fn_get_messaggio (gia'' context-aware).';
 ```
 
 ---

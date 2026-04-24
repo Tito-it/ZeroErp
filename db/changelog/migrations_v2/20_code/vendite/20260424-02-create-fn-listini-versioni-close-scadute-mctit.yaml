@@ -1,0 +1,78 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Funzione di chiusura automatica versioni listino scadute.
+#
+# Why: dopo l'introduzione del guard transizione
+# (20260424-01-create-trgfn-listini-versioni-guard-transizione-stato)
+# la chiusura di una versione richiede valido_al < CURRENT_DATE.
+# Questa funzione incapsula lo UPDATE massivo richiamato dal job
+# notturno pgAgent (85_pgagent/...-job-...-daily). L'UPDATE passa
+# naturalmente il guard perche' la condizione e' soddisfatta.
+#
+# La funzione e' richiamabile anche manualmente per test o per
+# recupero fuori schedulazione.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260424-02-create-fn-listini-versioni-close-scadute-mctit.yaml
+
+  - changeSet:
+      id: 20260424-02-01-create-fn-listini-versioni-close-scadute
+      author: mctit
+      runOnChange: true
+      validCheckSum:
+        - ANY
+      comment: >
+        Crea vendite.fn_listini_versioni_close_scadute(): UPDATE massivo
+        che chiude versioni ATTIVA con valido_al scaduto. Ritorna numero
+        di righe chiuse.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: vendite
+            tableName: listini_versioni
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_listini_versioni_close_scadute()
+              RETURNS integer
+              LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: chiudere in batch le versioni listino ATTIVA con
+              -- valido_al gia' scaduto (valido_al < CURRENT_DATE).
+              -- L'UPDATE attraversa il guard trigger
+              -- trg_listini_versioni_a10_guard_transizione_stato_upd che
+              -- ammette ATTIVA -> CHIUSA solo con valido_al scaduto:
+              -- condizione per costruzione soddisfatta.
+              -- Richiamata dal job pgAgent notturno
+              -- 'listini_versioni_close_scadute_daily'. Ritorna il numero
+              -- di righe effettivamente chiuse.
+              DECLARE
+                  v_count integer;
+              BEGIN
+                  UPDATE vendite.listini_versioni
+                     SET stato = 'CHIUSA'
+                   WHERE stato = 'ATTIVA'
+                     AND valido_al IS NOT NULL
+                     AND valido_al < CURRENT_DATE;
+
+                  GET DIAGNOSTICS v_count = ROW_COUNT;
+                  RETURN v_count;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_listini_versioni_close_scadute() IS
+                  'Chiude in batch versioni listino ATTIVA con valido_al scaduto. '
+                  'Eseguita dal job pgAgent notturno. Ritorna numero righe chiuse.';
+      rollback:
+        - sql:
+            sql: DROP FUNCTION IF EXISTS vendite.fn_listini_versioni_close_scadute();

@@ -7,5 +7,5 @@ id,area_id,permission_codename,descrizione,pericolosa,attivo,meta,data_insert,us
 6,2,reset_lotto_draft,Reset lotto a stato DRAFT,t,t,{},2026-03-01 00:00:00+01,postgres,2026-03-01 00:00:00+01,postgres
 7,2,reset_lotto_fattura_draft,Reset singola fattura lotto a DRAFT,t,t,{},2026-03-01 00:00:00+01,postgres,2026-03-01 00:00:00+01,postgres
 8,2,run_commesse_push,Invio commesse a sistema esterno,f,t,{},2026-03-01 00:00:00+01,postgres,2026-03-01 00:00:00+01,postgres
-9,2,prezzo_override_manuale,Modifica manuale del prezzo suggerito dal resolver v5 (listino/contratto/categoria/promo),f,t,{},2026-04-17 00:00:00+02,postgres,2026-04-17 00:00:00+02,postgres
-10,2,approva_prezzo_override,Approva o rifiuta richiesta override prezzo out-of-policy (L3 workflow listini v5 Sprint E),f,t,{},2026-04-23 00:00:00+02,postgres,2026-04-23 00:00:00+02,postgres
+9,2,prezzo_override_manuale,Modifica manuale prezzo,f,t,{},2026-04-17 00:00:00+02,postgres,2026-04-17 00:00:00+02,postgres
+10,2,approva_prezzo_override,Approva modifica prezzo,f,t,{},2026-04-23 00:00:00+02,postgres,2026-04-23 00:00:00+02,postgres

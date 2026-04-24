@@ -227,6 +227,25 @@ Per l'automazione dei vincoli overlap vedi `dbops.automazione_overlap` e `dbops.
 
 ---
 
+### 7c. Ciclo stato + finestra di validita`
+
+Quando una tabella ha **sia** una colonna `stato` (ciclo vita gestionale: es. `BOZZA` / `ATTIVA` / `CHIUSA`) **sia** un intervallo `valido_dal`/`valido_al` (o `validita` daterange), valgono queste regole.
+
+**Principio fail-safe: le date comandano, lo stato accompagna.**
+
+1. **Applicabilita' operativa = date**. Resolver, lookup di business, filtri di efficacia usano **solo** `validita @> data_riferimento` (o equivalente su `valido_dal`/`valido_al`). **Non** filtrare per `stato` nella logica operativa: se il job di sync salta o un bug lascia lo stato incoerente, la logica basata su data resta corretta.
+2. **`stato` = workflow gestionale**. Transizioni governate dall'utente e vincolate da un guard trigger (`trgfn_<tabella>_guard_transizione_stato`, fase `_a10_`, `BEFORE UPDATE OF stato`). Lo stato serve a UI, audit, reportistica, dashboard — **mai** a decidere se una riga si applica operativamente.
+3. **Transizione verso lo stato terminale**: la regola del guard puo' includere una **precondizione temporale** (`valido_al IS NOT NULL AND valido_al < CURRENT_DATE`) per evitare incoerenze strutturali (stato "chiuso" con finestra ancora aperta). Stessa regola vale per l'utente (via API/service) e per il job di sync.
+4. **Sync stato -> data**: un **job pgAgent notturno** (`85_pgagent/`) invoca una funzione incapsulata (`vendite.fn_<tabella>_close_scadute()` o equivalente) che esegue l'UPDATE massivo `stato = terminale` per le righe con `valido_al` scaduto. L'UPDATE attraversa il guard trigger e lo soddisfa per costruzione.
+5. **Niente trigger di sync `valido_al` -> `stato`** e nessuna colonna generata: lo stato **non e'** derivato in tempo reale dalla data (es. l'utente puo' programmare `valido_al` futuro e lo stato resta ATTIVA finche' il job non scatta). La sincronizzazione e' asincrona e "cosmetica".
+6. **INSERT**: non vincolare l'INSERT con la matrice transizioni (per permettere seed/import con stati diretti). Il guard scatta solo su UPDATE OF stato.
+
+**Esempio applicato**: `vendite.listini_versioni` (ciclo `BOZZA -> ATTIVA -> CHIUSA`) — guard in `20_code/vendite/20260424-01-...` + funzione di chiusura in `...-02-...` + job in `85_pgagent/20260424-01-...`.
+
+**Messaggi errore**: codice dedicato in `config.messaggi_errore` (es. `E_VERSIONE_STATO_TRANSIZIONE_INVALIDA`), raise via `script.fn_log_and_raise_error`.
+
+---
+
 ### 8. Indici
 
 * **Naming**: `ix_<table>_<column>`
