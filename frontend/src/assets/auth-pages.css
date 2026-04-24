@@ -16,8 +16,35 @@
   height: 100%;
   object-fit: contain;
   object-position: center;
-  opacity: 0.35;
+  opacity: 1;
   pointer-events: none;
+}
+
+/* Logo applicato come mockup DENTRO il cerchio di login: child assoluto
+   del .login-card, riempie l'intero cerchio (100% x 100%) e viene
+   "clippato" dal border-radius del padre (overflow: hidden sul card).
+   Sta sopra il bg-color del card ma sotto al form (che ha z-index
+   maggiore via .login-form / .login-logo). */
+.login-logo-bg {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Il contenuto del card (logo in alto, form, link) deve stare sopra al
+   .login-logo-bg di sfondo (z-index: 0). Basta dare z-index: 1 ai
+   figli con classi gia' esistenti. */
+.login-card > .login-logo,
+.login-card > .login-form,
+.login-card > .login-title,
+.login-card > .login-subtitle {
+  position: relative;
+  z-index: 1;
 }
 
 .login-card {
@@ -29,16 +56,26 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  padding: 2rem 3rem;
+  /* Nota: niente justify-content: center. Il padding-top 145px spinge il
+     form in basso cosi' i due campi username/password ricadono esattamente
+     al centro verticale del cerchio (raggio del logo ~195px). Il resto
+     (error, button, link) scorre naturalmente sotto, rimanendo comunque
+     dentro al cerchio (spazio residuo ~150px inferiore). */
+  padding: 145px 3rem 2rem;
+  /* Opacita' 100% sul cerchio: background solido dal tema (dark/light).
+     Il logo e' child assoluto del card (.login-logo-bg dentro .login-card)
+     e sta visivamente SOPRA il bg-color ma SOTTO il form, come mockup. */
   background: var(--app-login-card-bg);
   border: 1px solid var(--app-login-card-border);
-  backdrop-filter: blur(8px);
+  overflow: hidden;
 }
 
 .login-card--large {
   width: 430px;
   height: 430px;
+  /* Card piu' ampia (ChangePassword, 3 campi): padding-top calibrato cosi'
+     che il blocco dei 3 campi ricada centrato sul raggio del cerchio. */
+  padding-top: 138px;
 }
 
 .login-logo {
@@ -51,14 +88,24 @@
   text-align: center;
   margin: 0 0 0.5rem 0;
   font-size: 1.15rem;
-  color: var(--p-text-color);
+  color: #fff;
 }
 
 .login-subtitle {
   text-align: center;
   margin: 0 0 0.3rem 0;
   font-size: 0.8rem;
-  color: var(--p-text-muted-color);
+  color: #fff;
+}
+
+/* Forza colore bianco su tutte le scritte del cerchio login per uniformita'
+   con la scritta ZeroERP e leggibilita' sopra il logo di sfondo. La login
+   page vive sempre in tema "scuro" (bg doodle nero), il bianco e' la
+   scelta visiva coerente indipendente da dark/light del resto dell'app. */
+.login-card,
+.login-card .logo-brand-text,
+.login-card .p-button-label {
+  color: #fff;
 }
 
 .login-form {
@@ -83,7 +130,77 @@
 .login-page .field label {
   font-size: var(--app-font-size-sm);
   font-weight: 500;
-  color: var(--p-text-muted-color);
+  color: #fff;
+}
+
+/* Input username/password: aumentano contrasto contro il logo di sfondo
+   con bg scuro semi-opaco + sfocatura (backdrop-filter blur) + bordi
+   chiari + drop-shadow. Le caselle sembrano "staccate" dal logo perche'
+   il blur ammorbidisce il logo solo dietro il rettangolo dell'input.
+   Copre sia InputText (username) sia Password interno (PrimeVue
+   <Password> wrappa un .p-inputtext). */
+.login-card .p-inputtext,
+.login-card .p-password-input {
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(6px);
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.login-card .p-inputtext::placeholder,
+.login-card .p-password-input::placeholder {
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.login-card .p-inputtext:hover,
+.login-card .p-password-input:hover {
+  border-color: rgba(255, 255, 255, 0.55);
+}
+
+.login-card .p-inputtext:focus,
+.login-card .p-inputtext:focus-visible,
+.login-card .p-password-input:focus,
+.login-card .p-password-input:focus-visible {
+  border-color: var(--p-primary-color);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.55),
+              0 0 0 2px color-mix(in srgb, var(--p-primary-color) 45%, transparent);
+  outline: none;
+}
+
+/* Icona "toggle mask" del Password: tenerla visibile sul bg scuro */
+.login-card .p-password .p-password-toggle-mask-icon,
+.login-card .p-password .p-icon {
+  color: rgba(255, 255, 255, 0.75);
+}
+
+/* Neutralizza l'autofill del browser (Chrome/Safari/Edge + Firefox).
+   Il browser, quando autocompila username/password dai salvati,
+   applica un proprio background (giallo/bianco) che rompe il glass
+   effect. Il trick della transition 9999s "congela" il cambio di
+   background-color, mantenendo il nostro bg trasparente visibile.
+   Il text-fill-color forza il testo bianco (autofill per default
+   impone nero). */
+.login-card .p-inputtext:-webkit-autofill,
+.login-card .p-inputtext:-webkit-autofill:hover,
+.login-card .p-inputtext:-webkit-autofill:focus,
+.login-card .p-inputtext:-webkit-autofill:active,
+.login-card .p-password-input:-webkit-autofill,
+.login-card .p-password-input:-webkit-autofill:hover,
+.login-card .p-password-input:-webkit-autofill:focus,
+.login-card .p-password-input:-webkit-autofill:active {
+  -webkit-text-fill-color: #fff !important;
+  caret-color: #fff;
+  transition: background-color 9999s ease-in-out 0s,
+              color 9999s ease-in-out 0s;
+}
+
+/* Firefox (senza prefisso webkit) */
+.login-card .p-inputtext:autofill,
+.login-card .p-password-input:autofill {
+  background: rgba(0, 0, 0, 0.55) !important;
+  color: #fff !important;
 }
 
 .login-error {
@@ -119,15 +236,75 @@
   min-width: 60%;
 }
 
+/* CTA "Accedi" — variante "glass con accento primary": stesso linguaggio
+   visivo degli input (bg semi-trasparente + blur + bordo chiaro), ma con
+   tinta primary come accento. Coerenza col form, emerge dal logo grazie
+   al blur locale sul logo dietro. */
+.login-card .auth-submit-btn {
+  background: color-mix(in srgb, var(--p-primary-color) 75%, transparent);
+  border: 1px solid var(--p-primary-color);
+  color: #fff;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  backdrop-filter: blur(8px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.55);
+  transition: background 0.15s, box-shadow 0.15s, transform 0.05s;
+}
+
+/* Solo il testo del pulsante riceve la stessa ombra portata del link
+   "password dimenticata" per aumentarne la leggibilita' sopra il logo. */
+.login-card .auth-submit-btn .p-button-label {
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.85),
+               0 2px 6px rgba(0, 0, 0, 0.6);
+  opacity: 1;
+}
+
+/* Stato disabled: nessun cambiamento visivo rispetto allo stato enabled.
+   La disabilitazione si percepisce solo dal `cursor: not-allowed` e dal
+   comportamento del form (submit bloccato da Vue). Scelta di design:
+   l'utente ha chiesto che durante la compilazione dei campi login lo
+   sfondo/aspetto del bottone non cambi per evitare flicker visivo. */
+.login-card .auth-submit-btn.p-disabled,
+.login-card .auth-submit-btn:disabled {
+  opacity: 1;
+  cursor: not-allowed;
+}
+
+.login-card .auth-submit-btn:hover {
+  background: color-mix(in srgb, var(--p-primary-color) 88%, transparent);
+  border-color: var(--p-primary-color);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.65),
+              0 0 16px color-mix(in srgb, var(--p-primary-color) 45%, transparent);
+}
+
+.login-card .auth-submit-btn:active {
+  transform: translateY(1px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+}
+
 .back-link,
 .forgot-link {
   text-align: center;
-  color: var(--p-text-muted-color);
+  color: #fff;
   font-size: var(--app-font-size-sm);
   text-decoration: none;
+  /* Ombra portata per staccare la scritta dal logo dietro. Doppia
+     text-shadow: uno vicino per contrasto locale + uno ampio sfumato
+     per un alone scuro che garantisce leggibilita' anche su zone
+     chiare del logo. */
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.85),
+               0 2px 6px rgba(0, 0, 0, 0.6);
+  font-weight: 500;
+  transition: text-shadow 0.2s ease-out;
 }
 
 .back-link:hover,
 .forgot-link:hover {
-  color: var(--p-primary-color);
+  color: #fff;
+  /* Glow effect bianco (stesso colore del testo) al passaggio del mouse.
+     Doppio alone a distanze diverse per un bagliore morbido. L'ombra
+     scura 1px resta come base di leggibilita' sopra il logo. */
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.85),
+               0 0 10px rgba(255, 255, 255, 0.7),
+               0 0 20px rgba(255, 255, 255, 0.45);
 }

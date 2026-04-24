@@ -3,6 +3,7 @@ import { createPinia } from 'pinia'
 import App from './App.vue'
 import router from './router'
 import i18n from './core/i18n'
+import { autoResetPlugin } from './core/pinia-plugins/auto-reset'
 
 import PrimeVue from 'primevue/config'
 import ToastService from 'primevue/toastservice'
@@ -16,7 +17,9 @@ import './assets/auth-pages.css'
 
 const app = createApp(App)
 
-app.use(createPinia())
+const pinia = createPinia()
+pinia.use(autoResetPlugin)
+app.use(pinia)
 app.use(router)
 app.use(PrimeVue, {
   theme: {

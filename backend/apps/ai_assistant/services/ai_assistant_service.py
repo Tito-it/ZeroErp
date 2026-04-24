@@ -25,6 +25,7 @@ from apps.ai_assistant.providers.factory import get_ai_provider
 from apps.ai_assistant.services.prompt_builder import build_system_prompt
 from apps.ai_assistant.services.tool_registry import get_tool_by_name, get_tools_for_user
 from apps.ai_assistant.types import AIQueryResult
+from apps.core.services.auth_constants import JWT_CLAIM_IDENTITA_ID
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.request_context import get_request_id
 
@@ -36,14 +37,66 @@ MAX_TOOL_ITERATIONS = 8
 # Timeout complessivo per il loop tool_call (secondi)
 MAX_TOOL_LOOP_TIMEOUT = 30
 
-# Conversazioni in-memory: {conversation_id: {"messages": [...], "last_activity": datetime}}
+# Conversazioni in-memory.
+# Struttura:
+#   {conversation_id: {
+#       "owner_user_id": int,         # auth_user.id proprietario (scope)
+#       "owner_identita_id": int|None,# identita_digitali.id (scope per veste)
+#       "messages": [...],
+#       "last_activity": datetime,
+#   }}
+#
+# Scope sicurezza (post-fix 23-04-2026, data leak cross-user):
+#   - Lookup di una conversation_id esistente verifica owner_user_id e
+#     owner_identita_id: se non combacia con l'utente corrente, il service
+#     tratta la riga come "non esistente" e ne crea una nuova sotto stesso
+#     UUID (impossibile lato FE visto che l'UUID e' lato server, ma defense
+#     in depth). Pre-fix: chiunque conosceva l'UUID leggeva chat altrui.
 _conversations: dict[str, dict[str, Any]] = {}
 
-# Conferme pendenti: {confirmation_id: {"tool_name": ..., "params": ..., "conv_id": ..., "created_at": datetime}}
+# Conferme pendenti.
+# Struttura:
+#   {confirmation_id: {
+#       "tool_name": ...,
+#       "params": ...,
+#       "conv_id": ...,              # conversation_id di appartenenza
+#       "owner_user_id": int,        # scope sicurezza
+#       "owner_identita_id": int|None,
+#       "created_at": datetime,
+#   }}
 _pending_confirmations: dict[str, dict[str, Any]] = {}
 
 # TTL conferme pendenti (5 minuti — piu' corto delle conversazioni)
 _CONFIRMATION_TTL = 300
+
+
+# Scopo: estrae la coppia (owner_user_id, owner_identita_id) che definisce
+#        lo scope sicurezza per conversazioni e conferme pendenti.
+#        user_id viene da request.user (Django); identita_id dal claim JWT
+#        validato in request.auth quando disponibile.
+#        Se il claim manca (es. test che mocca auth), identita_id e' None;
+#        lo scope resta ben definito ma meno granulare — l'isolamento per
+#        auth_user rimane comunque enforced.
+def _extract_scope(user: Any, request: Any) -> tuple[int, int | None]:
+    user_id = int(getattr(user, "id", 0) or 0)
+    identita_id: int | None = None
+    auth = getattr(request, "auth", None) if request is not None else None
+    if auth is not None:
+        # auth puo' essere un Token (DRF SimpleJWT) indicizzabile per chiave
+        claim: Any = None
+        if hasattr(auth, "get"):
+            try:
+                claim = auth.get(JWT_CLAIM_IDENTITA_ID)
+            except Exception:  # noqa: BLE001 - auth oggetto opaco
+                claim = None
+        elif isinstance(auth, dict):
+            claim = auth.get(JWT_CLAIM_IDENTITA_ID)
+        if claim is not None:
+            try:
+                identita_id = int(claim)
+            except (TypeError, ValueError):
+                identita_id = None
+    return user_id, identita_id
 
 
 # Scopo: Esegue una query AI completa.
@@ -58,21 +111,34 @@ def query(
 ) -> AIQueryResult:
     start_time = time.monotonic()
 
+    # Scope sicurezza: user + identita vincolano la proprieta' di
+    # conversazione e conferme pendenti. Estratto una volta, propagato
+    # a tutti gli helper.
+    owner_user_id, owner_identita_id = _extract_scope(user, request)
+
     # Gestione conferma/annullamento operazione in scrittura (prima della validazione)
     if message.strip() == "__confirm__" and conversation_id:
         return _execute_confirmation(
             user=user, request=request, conversation_id=conversation_id,
             start_time=start_time,
+            owner_user_id=owner_user_id, owner_identita_id=owner_identita_id,
         )
     if message.strip() == "__cancel__" and conversation_id:
-        return _cancel_confirmation(conversation_id=conversation_id)
+        return _cancel_confirmation(
+            conversation_id=conversation_id,
+            owner_user_id=owner_user_id, owner_identita_id=owner_identita_id,
+        )
 
     # Validazione input
     _validate_input(message)
 
-    # Gestione conversazione
+    # Gestione conversazione con enforcement dello scope proprietario
     conv_id = conversation_id or str(uuid.uuid4())
-    messages = _get_or_create_conversation(conv_id)
+    messages = _get_or_create_conversation(
+        conv_id,
+        owner_user_id=owner_user_id,
+        owner_identita_id=owner_identita_id,
+    )
 
     # Aggiungi messaggio utente
     messages.append({"role": "user", "content": message})
@@ -113,6 +179,8 @@ def query(
             all_actions=all_actions,
             token_counter=token_counter,
             conversation_id=conv_id,
+            owner_user_id=owner_user_id,
+            owner_identita_id=owner_identita_id,
         )
     except Exception as exc:
         error_code = getattr(exc, "code", "E_AI_PROVIDER_ERROR")
@@ -162,6 +230,8 @@ def _run_tool_loop(
     all_actions: list[dict[str, Any]],
     token_counter: dict[str, int],
     conversation_id: str = "",
+    owner_user_id: int = 0,
+    owner_identita_id: int | None = None,
 ) -> tuple[str | None, bool]:
     loop_start = time.monotonic()
     for iteration in range(MAX_TOOL_ITERATIONS):
@@ -216,6 +286,8 @@ def _run_tool_loop(
                         "tool_name": tool_name,
                         "params": tool_input,
                         "conv_id": conversation_id,
+                        "owner_user_id": owner_user_id,
+                        "owner_identita_id": owner_identita_id,
                         "created_at": time.monotonic(),
                     }
                     preview_result["requires_confirmation"] = True
@@ -300,6 +372,8 @@ def _execute_confirmation(
     request: Any,
     conversation_id: str,
     start_time: float,
+    owner_user_id: int,
+    owner_identita_id: int | None,
 ) -> AIQueryResult:
     # Pulizia lazy conferme scadute
     now = time.monotonic()
@@ -310,11 +384,19 @@ def _execute_confirmation(
     for cid in expired:
         del _pending_confirmations[cid]
 
-    # Cerca conferma pendente per questa conversazione
+    # Cerca conferma pendente per questa conversazione.
+    # Scope enforcement: owner_user_id + owner_identita_id devono coincidere
+    # con quelli registrati al momento della preview. Altrimenti la conferma
+    # resta "invisibile" al chiamante corrente (comportamento = non esistente,
+    # impedisce takeover di operazione in scrittura altrui).
     confirmation_id = None
     pending = None
     for cid, data in _pending_confirmations.items():
-        if data.get("conv_id") == conversation_id:
+        if (
+            data.get("conv_id") == conversation_id
+            and data.get("owner_user_id") == owner_user_id
+            and data.get("owner_identita_id") == owner_identita_id
+        ):
             confirmation_id = cid
             pending = data
             break
@@ -386,10 +468,21 @@ def _execute_confirmation(
 
 
 # Scopo: Annulla una conferma pendente e pulisce la memoria.
-def _cancel_confirmation(*, conversation_id: str) -> AIQueryResult:
+#        Enforcement scope: annullabile solo dal proprietario originario
+#        (coppia owner_user_id + owner_identita_id).
+def _cancel_confirmation(
+    *,
+    conversation_id: str,
+    owner_user_id: int,
+    owner_identita_id: int | None,
+) -> AIQueryResult:
     cancelled = False
     for cid, data in list(_pending_confirmations.items()):
-        if data.get("conv_id") == conversation_id:
+        if (
+            data.get("conv_id") == conversation_id
+            and data.get("owner_user_id") == owner_user_id
+            and data.get("owner_identita_id") == owner_identita_id
+        ):
             del _pending_confirmations[cid]
             cancelled = True
             break
@@ -417,13 +510,26 @@ def _validate_input(message: str) -> None:
     )
 
 
-# Scopo: Recupera o crea una conversazione in-memory.
-#        Pulizia lazy delle conversazioni scadute.
-def _get_or_create_conversation(conversation_id: str) -> list[dict[str, Any]]:
+# Scopo: Recupera o crea una conversazione in-memory, enforcing dello scope
+#        utente + identita. Pulizia lazy delle conversazioni scadute.
+#
+#        Scope sicurezza (post-fix 23-04-2026):
+#        Se il conversation_id esiste ma e' di proprieta' di un altro
+#        (auth_user, identita_digitali), il service si comporta come se
+#        non esistesse e crea una nuova riga sotto lo stesso UUID per il
+#        nuovo proprietario. Questo evita qualunque data leak cross-user
+#        (compreso il caso di UUID "conosciuto" da un altro utente
+#        autenticato che tenta di leggere chat altrui via API).
+def _get_or_create_conversation(
+    conversation_id: str,
+    *,
+    owner_user_id: int,
+    owner_identita_id: int | None,
+) -> list[dict[str, Any]]:
     ttl = getattr(settings, "AI_CONVERSATION_TTL", 900)
     now = datetime.now(timezone.utc)
 
-    # Pulizia lazy
+    # Pulizia lazy delle conversazioni scadute
     expired = [
         cid for cid, conv in _conversations.items()
         if (now - conv["last_activity"]).total_seconds() > ttl
@@ -431,13 +537,30 @@ def _get_or_create_conversation(conversation_id: str) -> list[dict[str, Any]]:
     for cid in expired:
         del _conversations[cid]
 
-    # Recupera o crea
-    if conversation_id in _conversations:
-        _conversations[conversation_id]["last_activity"] = now
-        return _conversations[conversation_id]["messages"]
+    existing = _conversations.get(conversation_id)
+    # Scope enforcement: riga appartenente a un altro proprietario =
+    # trattata come non esistente. Nessun leak verso l'utente corrente.
+    if existing is not None and (
+        existing.get("owner_user_id") != owner_user_id
+        or existing.get("owner_identita_id") != owner_identita_id
+    ):
+        logger.warning(
+            "ai_assistant.conversation_scope_mismatch conv_id=%s "
+            "owner_user=%s owner_identita=%s requester_user=%s requester_identita=%s",
+            conversation_id,
+            existing.get("owner_user_id"), existing.get("owner_identita_id"),
+            owner_user_id, owner_identita_id,
+        )
+        existing = None  # fallthrough a creazione nuova sotto stesso UUID
+
+    if existing is not None:
+        existing["last_activity"] = now
+        return existing["messages"]
 
     messages: list[dict[str, Any]] = []
     _conversations[conversation_id] = {
+        "owner_user_id": owner_user_id,
+        "owner_identita_id": owner_identita_id,
         "messages": messages,
         "last_activity": now,
     }

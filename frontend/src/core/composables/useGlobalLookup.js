@@ -27,6 +27,7 @@
 //   invalidateLookup('config.listini_tipologie')
 
 import { ref, onMounted } from 'vue'
+import { registerUserScopedResetter } from '../pinia-plugins/auto-reset'
 
 // Struttura cache: Map<string, {
 //   itemsRef: Ref<any[]>,           // lista reattiva condivisa
@@ -177,3 +178,10 @@ export function invalidateAllLookups() {
 // Scopo: Esposizione solo per test o introspection debug. NON usare
 //        in codice applicativo — considerato API privata.
 export const _internalCache = _cache
+
+// Registrazione al reset centralizzato del logout: la cache lookup puo'
+// contenere dati filtrati per permessi dell'utente loggato (es. emittenti
+// fiscali visibili, utilities abilitate, ecc.), quindi va svuotata al
+// cambio utente per evitare leak cross-user. Registrata una sola volta
+// al caricamento del modulo.
+registerUserScopedResetter(invalidateAllLookups)

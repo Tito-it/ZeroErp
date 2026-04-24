@@ -260,6 +260,12 @@ export const useTabsStore = defineStore('tabs', () => {
     findByPath,
     hasDirtyTabs,
     restoreTabs,
-    closeAll
+    closeAll,
+    // Reset user-scoped: alias di closeAll, invocato dal plugin autoReset al logout.
+    // Esposto come action separata per rispettare il contratto del plugin
+    // (`resetAllUserScopedStores` cerca `clearUserState` prima di $resetToInitial).
+    clearUserState: closeAll
   }
+}, {
+  userScoped: true
 })

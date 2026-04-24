@@ -1,6 +1,7 @@
 // Scopo: event bus inter-tab per invalidazione dati — emette eventi quando
 // un'entita' viene modificata, le altre tab ascoltano e fanno refresh lazy
 import { ref } from 'vue'
+import { registerUserScopedResetter } from '../pinia-plugins/auto-reset'
 
 const listeners = ref(new Map())
 
@@ -26,3 +27,12 @@ export function useTabEvents() {
 
   return { emitDataChanged, onDataChanged }
 }
+
+// Registrazione al reset centralizzato: al logout la Map di listener viene
+// svuotata. I componenti gia' montati che avessero ancora callback attivi
+// nella sessione chiusa non riceveranno piu' eventi — corretto, poiche' il
+// reset fa parte di un logout che unmount-era comunque le viste operative.
+// Previene anche memory leak in scenari logout-senza-reload.
+registerUserScopedResetter(() => {
+  listeners.value.clear()
+})

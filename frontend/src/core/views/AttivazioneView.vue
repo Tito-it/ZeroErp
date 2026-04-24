@@ -5,7 +5,6 @@ import { useI18n } from 'vue-i18n'
 import { usePasswordValidation } from '../composables/usePasswordValidation'
 import { extractApiError, extractApiErrorCode } from '../utils/apiError'
 import api from '../api'
-import LogoBrand from '../components/LogoBrand.vue'
 import Password from 'primevue/password'
 import Button from 'primevue/button'
 
@@ -72,11 +71,11 @@ async function handleActivation() {
   <div class="login-page">
     <img src="@/assets/images/zeroerp-doodle.jpeg" alt="" class="login-bg" />
     <div class="login-card">
-      <div class="login-logo">
-        <LogoBrand size="large" />
-      </div>
-
-      <h2 class="login-title">{{ t('auth.activation') }}</h2>
+      <img
+        src="@/assets/images/logo-zeroerp.png"
+        alt=""
+        class="login-logo-bg"
+      />
 
       <!-- Token in validazione -->
       <div v-if="tokenValid === null" class="login-form">
@@ -96,28 +95,28 @@ async function handleActivation() {
         <p class="login-subtitle">{{ t('auth.activation_welcome') }}</p>
 
         <div class="field">
-          <label for="new_password">{{ t('auth.new_password') }}
-            <i class="pi pi-info-circle password-info-icon" v-tooltip.right="t('auth.password_hint')" />
-          </label>
           <Password
             id="new_password"
             v-model="newPassword"
             :disabled="loading"
             :feedback="false"
             toggleMask
+            :placeholder="t('auth.new_password')"
+            :aria-label="t('auth.new_password')"
             autocomplete="new-password"
             fluid
           />
         </div>
 
         <div class="field">
-          <label for="confirm_password">{{ t('auth.confirm_new_password') }}</label>
           <Password
             id="confirm_password"
             v-model="confirmPassword"
             :disabled="loading"
             :feedback="false"
             toggleMask
+            :placeholder="t('auth.confirm_new_password')"
+            :aria-label="t('auth.confirm_new_password')"
             autocomplete="new-password"
             fluid
           />

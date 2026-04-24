@@ -1,11 +1,18 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { BREAKPOINTS } from '../core/constants'
-import { local, STORAGE_KEYS } from '../core/storage'
+import { local, STORAGE_KEYS, userScopedKey } from '../core/storage'
 
 export const useUiStore = defineStore('ui', () => {
   const storedValue = local.get(STORAGE_KEYS.SIDEBAR_COLLAPSED)
   const windowWidth = ref(typeof window !== 'undefined' ? window.innerWidth : 1280)
+
+  // ID utente corrente per la risoluzione delle chiavi localStorage
+  // user-scoped (dark mode, lingua). Null/0 = nessun utente loggato →
+  // fallback chiave "device default" (STORAGE_KEYS.<BASE>). Valorizzato
+  // da `syncUserPreferences(userId)` chiamata da `auth.fetchProfile`
+  // dopo aver popolato `user.value`.
+  const currentUserId = ref(null)
 
   // Layout mode: mobile / tablet / desktop
   const layoutMode = computed(() => {
@@ -40,7 +47,11 @@ export const useUiStore = defineStore('ui', () => {
   const aiDrawerVisible = ref(false)
   const aiAvailable = ref(false)
 
-  // Dark/Light mode — persistito in localStorage, applicato su <html> class
+  // Dark/Light mode — persistito in localStorage, applicato su <html> class.
+  // Chiave "device default" al boot (pre-login); sovrascritta dalla chiave
+  // user-specific quando `syncUserPreferences(userId)` viene chiamata dopo
+  // il login (vedi auth.js). Garantisce che utente A e B sullo stesso
+  // browser abbiano temi indipendenti.
   const storedDarkMode = local.get(STORAGE_KEYS.DARK_MODE)
   const isDark = ref(storedDarkMode !== null ? storedDarkMode === 'true' : true)
 
@@ -56,7 +67,37 @@ export const useUiStore = defineStore('ui', () => {
 
   function toggleDarkMode() {
     isDark.value = !isDark.value
-    local.set(STORAGE_KEYS.DARK_MODE, isDark.value)
+    // Quando loggato, la preferenza e' personale (chiave user-scoped).
+    // Nessun utente corrente = scrive sul "device default" (es. durante
+    // la pagina di login pre-auth).
+    const key = userScopedKey(STORAGE_KEYS.DARK_MODE, currentUserId.value)
+    local.set(key, isDark.value)
+    _applyDarkMode()
+  }
+
+  // Scopo: sincronizza le preferenze user-scoped (tema) con quelle salvate
+  //        per l'utente fornito. Chiamata da `auth.fetchProfile` dopo il
+  //        login o restore sessione.
+  //
+  //        Precedenza lookup:
+  //          1) chiave user-scoped `dark_mode_user_<id>` → scelta personale
+  //          2) fallback prodotto: dark (true)
+  //
+  //        NON si usa la chiave globale `dark_mode` come fallback: quella
+  //        e' promiscua — puo' essere stata scritta in passato da qualsiasi
+  //        utente (pre-fix user-scoped) o da interazioni sulla login page
+  //        pre-auth, e farla ereditare a un nuovo utente comporta leak
+  //        cross-user del tema. La chiave globale resta persistita solo
+  //        per la pagina di login (pre-auth) e non e' mai consultata nel
+  //        sync utente.
+  function syncUserPreferences(userId) {
+    currentUserId.value = userId ?? null
+    if (userId == null) return
+
+    const userKey = userScopedKey(STORAGE_KEYS.DARK_MODE, userId)
+    const userValue = local.get(userKey)
+    const resolved = userValue !== null ? userValue === 'true' : true
+    isDark.value = resolved
     _applyDarkMode()
   }
 
@@ -85,6 +126,22 @@ export const useUiStore = defineStore('ui', () => {
     }
   }
 
+  // Scopo: reset transient state al logout (contratto plugin autoReset).
+  //        Chiude i drawer di sessione e azzera `currentUserId`, MA
+  //        preserva le preferenze device/user (`isDark`, `sidebarCollapsed`)
+  //        e il tema applicato al DOM — quelle non sono stato di sessione.
+  //        Questo risolve il bug "AI drawer resta aperto al cambio utente"
+  //        (2026-04-23).
+  function clearUserState() {
+    searchDrawerVisible.value = false
+    aiDrawerVisible.value = false
+    aiAvailable.value = false
+    currentUserId.value = null
+    // isDark, sidebarCollapsed, layoutMode: intatti.
+    // Al prossimo login, `syncUserPreferences` applichera' la preferenza
+    // personale dell'utente che entra (se salvata).
+  }
+
   return {
     windowWidth,
     layoutMode,
@@ -102,6 +159,11 @@ export const useUiStore = defineStore('ui', () => {
     toggleAiDrawer,
     toggleSidebar,
     isDark,
-    toggleDarkMode
+    toggleDarkMode,
+    currentUserId,
+    syncUserPreferences,
+    clearUserState
   }
+}, {
+  userScoped: true
 })

@@ -167,6 +167,7 @@ MIDDLEWARE = [
     'django.middleware.common.CommonMiddleware',
     'apps.core.middleware.request_context_middleware.RequestContextMiddleware',
     'apps.core.middleware.api_exception_middleware.ApiExceptionMiddleware',
+    'apps.core.middleware.user_language_middleware.UserLanguageMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'apps.core.middleware.jwt_audit_middleware.JwtAuditMiddleware',

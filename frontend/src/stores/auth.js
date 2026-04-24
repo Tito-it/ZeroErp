@@ -9,8 +9,9 @@ import {
   CANALE_LOGIN,
   resolveCanaleLogin
 } from '../core/constants'
-import { useNavigationStore } from './navigation'
-import { useTabsStore } from './tabs'
+import { resetAllUserScopedStores } from '../core/pinia-plugins/auto-reset'
+import { syncUserLanguage } from '../core/i18n'
+import { useUiStore } from './ui'
 
 export const useAuthStore = defineStore('auth', () => {
   const accessToken = ref(local.get(STORAGE_KEYS.ACCESS_TOKEN))
@@ -64,18 +65,32 @@ export const useAuthStore = defineStore('auth', () => {
     local.set(STORAGE_KEYS.LOGIN_CHANNEL, canale.key)
   }
 
-  function clearTokens() {
+  // Scopo: azzera lo stato auth di questo store (tokens + user + flag).
+  //        Esposto come `clearUserState` (contratto autoReset plugin):
+  //        il reset centralizzato al logout lo invoca durante l'iterazione
+  //        degli store user-scoped. Non tocca gli altri store — di quelli
+  //        si occupa il plugin iterando.
+  //
+  //        Il canale di login NON viene pulito: dopo il logout il
+  //        LoginView riusa la stessa selezione (ADMIN/PORTALE/SHOP) e
+  //        `setLoginChannel` lo sovrascrivera' al prossimo login.
+  function clearAuthTokensOnly() {
     accessToken.value = null
     refreshToken.value = null
     user.value = null
     passwordChangeRequired.value = false
     local.remove(STORAGE_KEYS.ACCESS_TOKEN)
     local.remove(STORAGE_KEYS.REFRESH_TOKEN)
-    // Il canale non va pulito automaticamente: dopo logout il LoginView
-    // probabilmente riusa la stessa selezione precedente. `setLoginChannel`
-    // lo sovrascrivera' al prossimo login.
-    useTabsStore().closeAll()
-    useNavigationStore().clearAll()
+  }
+
+  // Scopo: azzera lo stato utente completo dell'intera app.
+  //        Unico punto di pulizia post-logout: delega a
+  //        `resetAllUserScopedStores()` che itera tutti gli store
+  //        marcati `userScoped: true` e chiama il loro `clearUserState`
+  //        (o fallback $resetToInitial). Include auth stesso.
+  //        Chiamato da `logout()` e dal flow 401/refresh-fallito.
+  function clearTokens() {
+    resetAllUserScopedStores()
   }
 
   async function fetchProfile() {
@@ -84,6 +99,14 @@ export const useAuthStore = defineStore('auth', () => {
       user.value = response.data.data
       if (!user.value) {
         throw new Error('Profilo vuoto: risposta API senza dati utente')
+      }
+      // Applica preferenze personali dell'utente (tema + lingua UI).
+      // Chiavi localStorage user-scoped: evita che la scelta di un altro
+      // utente sullo stesso browser persista al login successivo.
+      const uid = user.value.utente?.id ?? null
+      if (uid != null) {
+        useUiStore().syncUserPreferences(uid)
+        syncUserLanguage(uid)
       }
     } catch (err) {
       user.value = null
@@ -318,6 +341,13 @@ export const useAuthStore = defineStore('auth', () => {
     logout,
     tryRefreshToken,
     clearTokens,
-    fetchProfile
+    fetchProfile,
+    // Contratto plugin autoReset: clearUserState e` la primitiva che il
+    // reset centralizzato chiama sullo store auth. Delega alla pulizia
+    // tokens-only (no ricorsione su resetAllUserScopedStores, che e' il
+    // chiamante). Equivalente al vecchio clearTokens pre-refactor.
+    clearUserState: clearAuthTokensOnly
   }
+}, {
+  userScoped: true
 })

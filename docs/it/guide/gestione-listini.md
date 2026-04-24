@@ -169,12 +169,14 @@ BA ha categoria_cliente_id (sempre sì: default STANDARD)?
 
 Il resolver ritorna sempre:
 
-- `prezzo_finale` e `prezzo_base_snapshot`
-- `origine` ∈ `{PROMO, CONTRATTO_OVERRIDE, CONTRATTO_LISTINO, CATEGORIA}`
-- `tipo_variazione_applicata`, `valore_variazione_applicata`
-- FK popolate del caso: `listino_id`, `contratto_id`, `promo_id`, `categoria_cliente_listino_id`
+- `prezzo` (persistito su `commesse_attivita.prezzo_snapshot`) e `prezzo_base_snapshot`
+- `origine_prezzo` ∈ `{PROMO, CONTRATTO_OVERRIDE, CONTRATTO_LISTINO, CATEGORIA, MANUALE}`
+- `tipo_variazione_applicata` ∈ `{PERCENTUALE, VALORE_FISSO, PREZZO_FISSO, NESSUNA}`, `valore_variazione_applicata`
+- FK popolate del caso: `listino_versione_id` + `listino_riga_id`, `contratto_id`, `promo_id`, `categoria_cliente_id_snapshot`, `classe_utenza_id_snapshot`
 
-Lo snapshot viene salvato in `commesse_attivita` (8 colonne dedicate) per audit permanente.
+Su ogni riga `vendite.commesse_attivita` vengono persistite **8 nuove dimensioni snapshot v5** (`prezzo_base_snapshot`, `origine_prezzo`, `tipo_variazione_applicata`, `valore_variazione_applicata`, `promo_id`, `contratto_id`, `categoria_cliente_id_snapshot`, `classe_utenza_id_snapshot`), che si aggiungono ai campi pricing già presenti nel modello operativo (`prezzo_snapshot`, `prezzo_bloccato`, `listino_versione_id`, `listino_riga_id`, `pricing_mode`, `prezzo_da_riallineare`). Il ciclo di vita di questi ultimi è descritto nel §7.
+
+Le stesse 8 dimensioni sono propagate su `vendite.attivita_fatturabili` all'emissione, preservando la tracciabilità fino alle righe fattura.
 
 ---
 
@@ -273,16 +275,96 @@ Quando l'operatore richiede un prezzo che viola i limiti L2, può **richiedere a
 
 ---
 
-## 7. Ciclo di vita operativo
+## 7. Ciclo di vita del prezzo sulla riga commessa
 
-### 7.1 Nuovo listino
+Il resolver calcola il prezzo al **momento del push sorgente → commessa**. Da quel momento il prezzo vive sulla riga `commesse_attivita` con un piccolo set di stati operativi che ne governano riallineamento, blocco manuale e segnalazioni di revisione. Questo layer è distinto dal resolver (non lo invoca più) e opera esclusivamente su commesse in stato `modificabile` e righe **non ancora fatturate**.
+
+### 7.1 Flag di stato pricing su `commesse_attivita`
+
+| Campo                   | Tipo    | Default   | Ruolo operativo                                                                                         |
+| ----------------------- | ------- | --------- | ------------------------------------------------------------------------------------------------------- |
+| `prezzo_snapshot`       | numeric | —         | Prezzo corrente della riga (output del resolver o override manuale)                                     |
+| `prezzo_bloccato`       | boolean | `FALSE`   | Se `TRUE`, il prezzo è "congelato" da override manuale: il riallineamento automatico/massivo lo salta   |
+| `prezzo_da_riallineare` | boolean | `FALSE`   | Segnalazione: il prezzo di listino è cambiato rispetto allo snapshot e la riga è candidata a revisione  |
+| `pricing_mode`          | varchar | `'FIXED'` | Predisposizione per modalità di calcolo future (`FORMULA`, `SCAGLIONI`). Oggi solo `FIXED` è operativo  |
+| `listino_versione_id`   | bigint  | —         | Versione listino risolta al momento dello snapshot (serve al guard di riallineamento — vedi §7.3)       |
+
+### 7.2 Variazione prezzo eccezionale — blocco manuale (N7)
+
+**Scopo**: permettere all'operatore di forzare un prezzo fuori dalle regole di listino/contratto/promo per una singola riga, con motivo obbligatorio.
+
+Endpoint: `POST /api/v1/vendite/commesse/<commessa_id>/attivita/<att_id>/variazione-prezzo-eccezionale/`
+Service: `fn_variazione_prezzo_eccezionale` ([commesse_service.py](/backend/vendite/manual/commesse_service))
+
+Effetti:
+
+- aggiorna `prezzo_snapshot = nuovo_prezzo`
+- imposta `prezzo_bloccato = TRUE` (d'ora in poi il riallineamento salta la riga)
+- appende una entry a `meta.variazioni_eccezionali` con `data`, `prezzo_precedente`, `prezzo_nuovo`, `motivo`, `stato_commessa`, `listino_versione_id_riferimento`
+
+Precondizioni: commessa `modificabile`, riga non fatturata. Il servizio non invoca il resolver: il prezzo è deciso dall'operatore.
+
+### 7.3 Riallineamento dal listino
+
+**Scopo**: ricalcolare il prezzo di una riga quando il listino è cambiato rispetto allo snapshot originale.
+
+Endpoint: `POST /api/v1/vendite/commesse/<commessa_id>/attivita/<att_id>/riallinea-prezzo/`
+Service: `fn_riallinea_prezzo`
+
+Flusso:
+
+1. Guard: se `prezzo_bloccato = TRUE` → errore `E_COMMESSA_VALIDATION` (per ricalcolare bisogna prima sbloccare — §7.4).
+2. Invoca il resolver sul contesto originale della riga (articolo, uom, data, BA, utility, emittente).
+3. Se la **versione listino** è cambiata rispetto allo snapshot e il payload non contiene `conferma_versione_diversa=true`, ritorna un body di pre-conferma con `versione_originale_id`, `versione_attuale_id`, `prezzo_attuale`, `prezzo_ricalcolato`, `richiede_conferma=true`: l'UI chiede conferma all'operatore prima di procedere.
+4. In caso di conferma (o versione invariata): aggiorna `prezzo_snapshot` con il nuovo valore, tiene `prezzo_bloccato = FALSE`, appende a `meta.riallineamenti` la storia del cambio (`data`, `prezzo_precedente`, `prezzo_nuovo`, `listino_versione_id_precedente`, `listino_versione_id_nuovo`).
+
+Il flag `prezzo_da_riallineare` viene azzerato come side-effect: la riga è allineata.
+
+### 7.4 Sblocco prezzo bloccato (N7-sblocco)
+
+**Scopo**: rimuovere un blocco da variazione eccezionale e tornare al prezzo di listino corrente.
+
+Endpoint: `POST /api/v1/vendite/commesse/<commessa_id>/attivita/<att_id>/sblocca-prezzo/`
+Service: `fn_sblocca_prezzo`
+
+Effetti:
+
+- guard: errore `E_VENDITE_SBLOCCO_PREZZO_NON_AMMESSO` se la riga non è bloccata
+- ricalcola dal resolver (come §7.3 ma senza guard versione)
+- imposta `prezzo_snapshot = ricalcolato`, `prezzo_bloccato = FALSE`
+- appende a `meta.sblocchi_prezzo` (`data`, `prezzo_bloccato_precedente`, `prezzo_ricalcolato`, `motivo`)
+
+Motivo obbligatorio come per il blocco.
+
+### 7.5 Dashboard "prezzi da riallineare"
+
+La funzione [`vendite.fn_get_commessa_stato`](/dbzero/vendite/funzioni/fn_get_commessa_stato) espone il contatore `total_prezzo_da_riallineare` per ogni commessa: conta le righe con `prezzo_da_riallineare = TRUE` e alimenta la coda di revisione prezzi nella dashboard commesse.
+
+### 7.6 Propagazione a `attivita_fatturabili`
+
+All'emissione (`fn_emit_attivita_fatturabili_da_commessa`) il flag `prezzo_bloccato` e lo snapshot pricing vengono **propagati** sulla riga AF. Questo garantisce che:
+
+- gli step della pipeline fatturazione non sovrascrivano un prezzo manualmente bloccato;
+- lo snapshot resolver (8 dimensioni v5) resti tracciabile fino alla riga fattura.
+
+Vedi [guida fatturazione §"Snapshot pricing su commessa"](fatturazione.md#snapshot-pricing-su-commessa-e-propagazione-ad-af).
+
+### 7.7 Su `pricing_mode`
+
+Il campo ha dominio CHECK `FIXED | FORMULA | SCAGLIONI` ed è predisposto per estensioni future del motore pricing (calcolo a formula su variabili di commessa, tariffe a scaglioni). **Oggi tutte le funzioni sorgente → commessa producono esclusivamente `FIXED`**: non esiste implementazione operativa per le altre due modalità. Le righe nate da `FIXED` sono quelle descritte nei §§3–6 (resolver v5 deterministico).
+
+---
+
+## 8. Ciclo di vita operativo
+
+### 8.1 Nuovo listino
 
 1. Admin: crea listino (codice, descrizione, utility, tipologia) — emittente derivato dall'operatore
 2. Crea versione BOZZA con `valido_dal`
 3. Popola righe prezzo (articoli coerenti con tipologia)
 4. Attiva versione → BOZZA passa ad ATTIVA; eventuali versioni precedenti autoclose
 
-### 7.2 Assegnare un listino a un cliente (scope categoria)
+### 8.2 Assegnare un listino a un cliente (scope categoria)
 
 1. Definisci la categoria cliente (STANDARD, SILVER, GOLD…)
 2. Imposta sul `billing_account` la `categoria_cliente_id`
@@ -290,13 +372,13 @@ Quando l'operatore richiede un prezzo che viola i limiti L2, può **richiedere a
 
 Tutti i clienti della stessa categoria, utility, emittente condivideranno la regola senza duplicare listini.
 
-### 7.3 Contratto individuale
+### 8.3 Contratto individuale
 
 1. Commerciale: stipula contratto con BA, scegliendo modalità A/B/C
 2. Inserisce righe (se C: obbligatorie per ogni articolo preventivabile)
 3. Transizione DRAFT → ATTIVO → il resolver STADIO 1 userà il contratto
 
-### 7.4 Promo
+### 8.4 Promo
 
 1. Admin vendite: crea riga in `promo_articoli` (articolo, uom, periodo, tipo+valore variazione, codice)
 2. La promo vale per tutti i BA con categoria che partecipa promo
@@ -304,7 +386,7 @@ Tutti i clienti della stessa categoria, utility, emittente condivideranno la reg
 
 ---
 
-## 8. Garanzie DB
+## 9. Garanzie DB
 
 Il database rafforza la determinismo con vincoli espliciti (non è "responsabilità del client"):
 
@@ -323,7 +405,7 @@ Il resolver poggia su queste invarianti — il codice Python non deve duplicarle
 
 ---
 
-## 9. Errori espliciti
+## 10. Errori espliciti
 
 Nessun fallback silenzioso. Ogni scenario non risolvibile produce un errore strutturato:
 
@@ -346,7 +428,7 @@ Tutti gestiti dal frontend con messaggi user-friendly (vedi `error_policies.py` 
 
 ---
 
-## 10. Cosa NON c'è più (modello pre-v5)
+## 11. Cosa NON c'è più (modello pre-v5)
 
 Per chi arrivava dal vecchio modello:
 
