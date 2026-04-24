@@ -31,6 +31,17 @@ from django.db import DatabaseError, connection
 from django.http import HttpRequest, HttpResponse
 from django.utils.deprecation import MiddlewareMixin
 
+# Scopo: Import tollerante di DatabaseOperationForbidden, eccezione raised
+#        dall'harness Django test quando un SimpleTestCase tenta di aprire
+#        una connessione DB (databases={} per isolation). Fuori dal contesto
+#        test il nome puntera' a un placeholder mai raised. Coerente con la
+#        filosofia best-effort del middleware: non bloccare la request.
+try:
+    from django.test.testcases import DatabaseOperationForbidden
+except ImportError:  # pragma: no cover
+    class DatabaseOperationForbidden(Exception):  # type: ignore[no-redef]
+        pass
+
 logger = logging.getLogger(__name__)
 
 
@@ -77,7 +88,7 @@ class UserLanguageMiddleware(MiddlewareMixin):
                 )
             # type: ignore[attr-defined]
             request._zeroerp_user_language_set = True
-        except DatabaseError:
+        except (DatabaseError, DatabaseOperationForbidden):
             logger.warning(
                 "user_language_middleware.set_failed lang=%s path=%s",
                 language, request.path, exc_info=True,
@@ -98,7 +109,7 @@ class UserLanguageMiddleware(MiddlewareMixin):
                     "SELECT set_config(%s, '', false)",
                     [GUC_NAME],
                 )
-        except DatabaseError:
+        except (DatabaseError, DatabaseOperationForbidden):
             logger.warning(
                 "user_language_middleware.reset_failed", exc_info=True
             )
