@@ -12,7 +12,7 @@ import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useSearchTable } from '../../core/composables/useSearchTable'
 import { displayDate } from '../../core/utils/date'
-import { statoVersioneListinoSeverity } from '../../core/utils/severity'
+import { statoVersioneListinoSeverity, statoVersioneVisibile } from '../../core/utils/severity'
 import { createRiga, updateRiga, deleteRiga } from '../api/listini'
 import { listArticoloUom } from '../../catalogo/api/catalogo'
 import { useListiniRigheStore } from '../stores/listiniRighe'
@@ -268,7 +268,7 @@ function onClose() {
 
       <!-- === Intestazione contesto versione === -->
       <div style="text-align: right;" class="mb-2">
-        <Tag :value="versione?.stato" :severity="statoVersioneListinoSeverity(versione?.stato)" />
+        <Tag :value="statoVersioneVisibile(versione)" :severity="statoVersioneListinoSeverity(statoVersioneVisibile(versione))" />
       </div>
       <div class="form-grid-2col">
         <div class="form-field">

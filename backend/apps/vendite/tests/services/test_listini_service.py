@@ -13,6 +13,7 @@ Indice test eseguiti:
 4) ListiniServiceTests.test_get_versione_not_found
 5) ListiniServiceTests.test_change_versione_state_invalid_transition
 6) ListiniServiceTests.test_change_versione_state_requires_rows
+6bis) ListiniServiceTests.test_change_versione_state_attiva_to_chiusa_rejected
 7) ListiniServiceTests.test_create_riga_invalid_articolo_uom
 8) ListiniServiceTests.test_test_resolver_requires_uom
 9) ListiniServiceTests.test_create_riga_blocked_on_versione_attiva
@@ -49,6 +50,7 @@ Indice test eseguiti:
 40) ListiniServiceTests.test_rettifica_controllata_riga_propagata_rifiutata
 41) ListiniServiceTests.test_rettifica_controllata_ok_non_propagata
 42) ListiniServiceTests.test_rettifica_controllata_senza_motivo_rifiutata
+42bis) ListiniServiceTests.test_rettifica_controllata_su_versione_scaduta_rifiutata
 43) ListiniServiceTests.test_create_listino_missing_utility_id
 44) ListiniServiceTests.test_create_listino_missing_tipologia_id
 45) ListiniServiceTests.test_create_listino_invalid_tipologia_fk
@@ -351,6 +353,27 @@ class ListiniServiceTests(TestCase):
         with self.assertRaises(ServiceError) as ctx:
             fn_change_versione_state(10, 101, {"stato": "ATTIVA"})
         self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
+
+    # Scopo: Verifica che la transizione ATTIVA -> CHIUSA manuale sia rifiutata
+    #        con messaggio che dirotta l'operatore su PATCH valido_al.
+    #        Messaggio allineato con la guard speculare lato DB (trigger
+    #        E_VERSIONE_STATO_TRANSIZIONE_INVALIDA, brief-db §3.3/§4).
+    @patch("apps.vendite.services.listini_service.ListiniRepository")
+    def test_change_versione_state_attiva_to_chiusa_rejected(self, mock_repo_cls):
+        from apps.vendite.services.listini_service import fn_change_versione_state
+
+        mock_repo_cls.return_value.get_versione.return_value = {
+            "id": 101,
+            "listino_id": 10,
+            "stato": "ATTIVA",
+            "attivo": True,
+        }
+
+        with self.assertRaises(ServiceError) as ctx:
+            fn_change_versione_state(10, 101, {"stato": "CHIUSA"})
+        self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
+        self.assertIn("valido_al", ctx.exception.detail or "")
+        self.assertIn("finestra scaduta", ctx.exception.detail or "")
 
     # Scopo: Verifica blocco riga con articolo/UoM non coerenti.
     @patch("apps.vendite.services.listini_service.ListiniRepository")
@@ -1032,9 +1055,11 @@ class ListiniServiceTests(TestCase):
 
     # --- N6: Rettifica controllata ---
 
-    # Scopo: N6 - rettifica su versione BOZZA rifiutata (solo ATTIVA).
+    # Scopo: N6 - rettifica su versione BOZZA rifiutata (guard applicativo).
     @patch("apps.vendite.services.listini_service.ListiniRepository")
     def test_rettifica_controllata_su_bozza_rifiutata(self, mock_repo_cls):
+        from datetime import date, timedelta
+
         from apps.vendite.services.listini_service import fn_rettifica_controllata_riga
 
         repo = mock_repo_cls.return_value
@@ -1042,17 +1067,21 @@ class ListiniServiceTests(TestCase):
             "id": 101,
             "listino_id": 10,
             "stato": "BOZZA",
+            "valido_dal": date.today() - timedelta(days=1),
+            "valido_al": None,
         }
 
         with self.assertRaises(ServiceError) as ctx:
             fn_rettifica_controllata_riga(10, 101, 501, {"prezzo": 12.25, "motivo": "test"})
         self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
-        self.assertIn("ATTIVE", ctx.exception.message or "")
+        self.assertIn("BOZZA", ctx.exception.message or "")
 
     # Scopo: N6 - rettifica su riga gia` propagata in commessa rifiutata.
     @patch("apps.vendite.services.listini_service.transaction.atomic")
     @patch("apps.vendite.services.listini_service.ListiniRepository")
     def test_rettifica_controllata_riga_propagata_rifiutata(self, mock_repo_cls, mock_atomic):
+        from datetime import date, timedelta
+
         from apps.vendite.services.listini_service import fn_rettifica_controllata_riga
 
         repo = mock_repo_cls.return_value
@@ -1060,6 +1089,8 @@ class ListiniServiceTests(TestCase):
             "id": 101,
             "listino_id": 10,
             "stato": "ATTIVA",
+            "valido_dal": date.today() - timedelta(days=1),
+            "valido_al": None,
         }
         repo.get_riga.return_value = {
             "id": 501,
@@ -1078,6 +1109,8 @@ class ListiniServiceTests(TestCase):
     @patch("apps.vendite.services.listini_service.transaction.atomic")
     @patch("apps.vendite.services.listini_service.ListiniRepository")
     def test_rettifica_controllata_ok_non_propagata(self, mock_repo_cls, mock_atomic):
+        from datetime import date, timedelta
+
         from apps.vendite.services.listini_service import fn_rettifica_controllata_riga
 
         repo = mock_repo_cls.return_value
@@ -1085,6 +1118,8 @@ class ListiniServiceTests(TestCase):
             "id": 101,
             "listino_id": 10,
             "stato": "ATTIVA",
+            "valido_dal": date.today() - timedelta(days=1),
+            "valido_al": None,
         }
         repo.get_riga.return_value = {
             "id": 501,
@@ -1109,6 +1144,8 @@ class ListiniServiceTests(TestCase):
     # Scopo: N6 - rettifica senza motivo rifiutata.
     @patch("apps.vendite.services.listini_service.ListiniRepository")
     def test_rettifica_controllata_senza_motivo_rifiutata(self, mock_repo_cls):
+        from datetime import date, timedelta
+
         from apps.vendite.services.listini_service import fn_rettifica_controllata_riga
 
         repo = mock_repo_cls.return_value
@@ -1116,6 +1153,8 @@ class ListiniServiceTests(TestCase):
             "id": 101,
             "listino_id": 10,
             "stato": "ATTIVA",
+            "valido_dal": date.today() - timedelta(days=1),
+            "valido_al": None,
         }
         repo.get_riga.return_value = {
             "id": 501,
@@ -1127,3 +1166,27 @@ class ListiniServiceTests(TestCase):
             fn_rettifica_controllata_riga(10, 101, 501, {"prezzo": 12.25, "motivo": ""})
         self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
         self.assertIn("motivo", (ctx.exception.detail or "").lower())
+
+    # Scopo: N6 - rettifica su versione CHIUSA/scaduta rifiutata (guard data-driven).
+    #        Verifica che il guard operativo (valido_al < oggi) scatti indipendente
+    #        dallo stato persistito: anche se stato='ATTIVA' stantio, la versione
+    #        scaduta non puo` essere rettificata (principio fail-safe).
+    @patch("apps.vendite.services.listini_service.ListiniRepository")
+    def test_rettifica_controllata_su_versione_scaduta_rifiutata(self, mock_repo_cls):
+        from datetime import date, timedelta
+
+        from apps.vendite.services.listini_service import fn_rettifica_controllata_riga
+
+        repo = mock_repo_cls.return_value
+        repo.get_versione.return_value = {
+            "id": 101,
+            "listino_id": 10,
+            "stato": "ATTIVA",  # stato stantio: in realta` scaduta da ieri
+            "valido_dal": date.today() - timedelta(days=30),
+            "valido_al": date.today() - timedelta(days=1),
+        }
+
+        with self.assertRaises(ServiceError) as ctx:
+            fn_rettifica_controllata_riga(10, 101, 501, {"prezzo": 12.25, "motivo": "test"})
+        self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
+        self.assertIn("operativamente attive", ctx.exception.message or "")

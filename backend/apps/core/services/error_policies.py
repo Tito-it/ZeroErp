@@ -213,6 +213,21 @@ class ErrorPolicyRegistry:
             ui_action="show_empty_state",
             user_message="Associazione listino non trovata.",
         ),
+        # Guard DB defense-in-depth: rifiuta la transizione manuale
+        # ATTIVA -> CHIUSA (brief-db-listini-stato-chiusa-sync). La chiusura
+        # si esegue via PATCH valido_al; lo stato CHIUSA viene poi sincronizzato
+        # dal job notturno a finestra scaduta. Policy speculare a quella
+        # applicativa nel service listini_service._validate_versione_state_transition.
+        "E_VERSIONE_STATO_TRANSIZIONE_INVALIDA": ErrorPolicy(
+            code="E_VERSIONE_STATO_TRANSIZIONE_INVALIDA",
+            http_status=409,
+            ui_action="show_toast_error",
+            user_message=(
+                "Chiusura versione non consentita via cambio stato. "
+                "Per chiudere impostare valido_al (PATCH); la chiusura "
+                "avviene automaticamente a finestra scaduta."
+            ),
+        ),
         "E_VENDITE_RIGA_GIA_PROPAGATA": ErrorPolicy(
             code="E_VENDITE_RIGA_GIA_PROPAGATA",
             http_status=409,

@@ -1,5 +1,17 @@
-# Smoke UI — Listini v5 end-to-end
+# Smoke UI — Listini v5 end-to-end [SUPERATO da test-ui]
 
+> **⚠️ Documento superato il 2026-04-24.**
+> Gli scenari utili sono stati assorbiti in
+> [`sviluppo-listini-v5-test-ui.md`](../work-in-progress/sviluppo-listini-v5-test-ui.md)
+> (opzione A consolidamento). In particolare sono stati integrati:
+> §1.4bis contratto modalità C, §3.3 defense `E_BOM_VALIDO_AL_INVALIDO`,
+> §3.3bis edit inline `valido_al` BoM, §6.2 route guard Amm. Software,
+> §6.3 BLOCCATO livello oggetto, criteri di uscita gate finale.
+>
+> Il file è qui solo per riferimento storico; **non usare per nuove esecuzioni**.
+>
+> ---
+>
 > Checklist manuale stampabile per la validazione UI del modello pricing v5
 > (resolver 3 stadi: promo → contratto → categoria). Esegui in ordine —
 > ogni scenario presuppone che il precedente sia passato.
@@ -20,8 +32,8 @@
 ---
 
 
-- [ ] Navigate `/amm-software/matrice-categorie-listini` → lista si carica
-- [ ] Filtri toolbar: `categoria`, `utility`, `emittente`, `listino`, `attivo`
+- [X] Navigate `/amm-software/matrice-categorie-listini` → lista si carica
+- [x] Filtri toolbar: `categoria`, `utility`, `emittente`, `listino`, `attivo`
 - [ ] Search 1 carattere ("a") → lista non cambia (guard attivo)
 - [ ] Search 3 caratteri → fetch lista
 - [ ] Cancella search a 2 caratteri → **lista si sv

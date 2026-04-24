@@ -502,10 +502,12 @@ class ListiniRepository:
 
     # Scopo: Restituisce le versioni candidate all'auto-close quando si attiva
     #        una nuova versione (decisione D3). Sono le versioni dello stesso
-    #        listino in stato ATTIVA + attivo, con valido_dal < nuova.valido_dal,
-    #        e con valido_al NULL oppure valido_al >= nuova.valido_dal (cioe' che
-    #        si sovrappongono al nuovo intervallo). La versione che si sta per
-    #        attivare viene esclusa per id.
+    #        listino con `attivo = TRUE`, `valido_dal < nuova.valido_dal`, e la
+    #        cui `validita` (daterange) si sovrappone al nuovo intervallo. La
+    #        versione che si sta per attivare viene esclusa per id. Il filtro
+    #        si basa sulla validita` (data-driven), mai sullo stato persistito:
+    #        lo stato e` un flag informativo che potrebbe essere stantio, la
+    #        data e` la fonte di verita` operativa (principio fail-safe).
     def find_versioni_per_autoclose(
         self,
         listino_id: int,
@@ -523,7 +525,6 @@ class ListiniRepository:
                   FROM vendite.listini_versioni
                  WHERE listino_id = %s
                    AND id <> %s
-                   AND stato = 'ATTIVA'
                    AND attivo IS TRUE
                    AND valido_dal < %s
                    AND validita && daterange(%s, NULL, '[)')
@@ -877,8 +878,13 @@ class ListiniRepository:
             "AND upper(v.validita) <= CURRENT_DATE + %(giorni)s * INTERVAL '1 day'"
         )
 
-    # Scopo: Lista versioni ATTIVE che scadono entro `giorni` e non hanno una
-    #        versione successiva (ATTIVA o BOZZA) con valido_dal > valido_al.
+    # Scopo: Lista versioni operativamente attive oggi che scadono entro `giorni`
+    #        e non hanno una versione successiva (BOZZA o operativa) che subentra.
+    #        Filtri data-driven: "operativamente attiva oggi" = `validita @> CURRENT_DATE`.
+    #        Lo stato persistito non viene usato come discriminante (principio
+    #        fail-safe: data = fonte di verita`, stato = solo flag informativo
+    #        eventualmente stantio). BOZZA e` l'unico stato ammesso come "successore
+    #        che subentrera`" perche` monotono e non soggetto a drift.
     def listini_in_scadenza(self, giorni: int) -> list[dict[str, Any]]:
         filtro_scadenza = self._filter_versioni_in_scadenza()
         with connection.cursor() as cursor:
@@ -898,7 +904,7 @@ class ListiniRepository:
                   FROM vendite.listini_versioni v
                   JOIN vendite.listini l ON l.id = v.listino_id
                   LEFT JOIN config.utilities u ON u.id = l.utility_id
-                 WHERE v.stato = 'ATTIVA'
+                 WHERE v.validita @> CURRENT_DATE
                    AND v.attivo IS TRUE
                    AND l.attivo IS TRUE
                    AND {filtro_scadenza}
@@ -908,8 +914,11 @@ class ListiniRepository:
                         WHERE succ.listino_id = v.listino_id
                           AND succ.id != v.id
                           AND succ.attivo IS TRUE
-                          AND succ.stato IN ('ATTIVA', 'BOZZA')
                           AND succ.valido_dal > upper(v.validita)
+                          AND (
+                              succ.stato = 'BOZZA'
+                              OR succ.validita && daterange(upper(v.validita), NULL, '[)')
+                          )
                    )
                  ORDER BY v.valido_al ASC, l.codice
                 """,

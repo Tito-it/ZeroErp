@@ -13,9 +13,9 @@ import { useTabFreshness } from '../../core/composables/useTabFreshness'
 import { useGlobalLookup } from '../../core/composables/useGlobalLookup'
 import { lookupCodici } from '../../core/apiCore'
 import { MANAGE_ICONS, TAB_ENTITIES } from '../../core/constants'
-import { statoVersioneListinoSeverity } from '../../core/utils/severity'
+import { statoVersioneListinoSeverity, statoVersioneVisibile } from '../../core/utils/severity'
 import { displayDate } from '../../core/utils/date'
-import { changeVersioneStato, deleteVersione, deleteListino } from '../api/listini'
+import { deleteVersione, deleteListino } from '../api/listini'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
@@ -32,7 +32,7 @@ import AccessoBloccatoPanel from '../../core/components/AccessoBloccatoPanel.vue
 import { useInjectBlocked } from '../../core/composables/useReadonlyMode'
 import AlertScadenzeWidget from './AlertScadenzeWidget.vue'
 import AttivaVersioneDialog from './AttivaVersioneDialog.vue'
-import ProgrammaChiusuraDialog from './ProgrammaChiusuraDialog.vue'
+import ChiudiVersioneDialog from './ChiudiVersioneDialog.vue'
 
 const emit = defineEmits([
   'new',
@@ -130,7 +130,7 @@ const chiusuraDialogVisible = ref(false)
 const chiusuraDialogVersione = ref(null)
 const chiusuraDialogListinoId = ref(null)
 
-function onProgrammaChiusura(versione, listinoId) {
+function onChiudiVersione(versione, listinoId) {
   chiusuraDialogVersione.value = versione
   chiusuraDialogListinoId.value = listinoId
   chiusuraDialogVisible.value = true
@@ -138,17 +138,6 @@ function onProgrammaChiusura(versione, listinoId) {
 
 async function onChiusuraSaved({ listinoId }) {
   await store.invalidateVersioniListino(listinoId)
-}
-
-// Transizione ATTIVA -> CHIUSA: nessun auto-close, esegue diretto.
-async function onChiudiVersione(versione, listinoId) {
-  const result = await execute(
-    () => changeVersioneStato(listinoId, versione.id, { stato: 'CHIUSA' }),
-    { successMessage: t('listini.stato_aggiornato') }
-  )
-  if (result !== null) {
-    await store.invalidateVersioniListino(listinoId)
-  }
 }
 
 // Transizione BOZZA -> ATTIVA: passa per dialog di conferma con preview
@@ -212,10 +201,13 @@ function buildListinoActions(data) {
   ]
 }
 
-// Scopo: azioni di riga della versione listino nell'expansion (fino a 6, filtrate per stato).
+// Scopo: azioni di riga della versione listino nell'expansion (fino a 6, filtrate per stato visibile).
+//        Lo stato visibile e` data-driven: una versione con valido_al < oggi e` trattata
+//        come CHIUSA anche se in DB risulta ancora ATTIVA (job notturno non ancora passato).
 function buildVersioneActions(ver, listino) {
-  const isBozza = ver.stato === 'BOZZA'
-  const isAttiva = ver.stato === 'ATTIVA'
+  const statoVisibile = statoVersioneVisibile(ver)
+  const isBozza = statoVisibile === 'BOZZA'
+  const isAttiva = statoVisibile === 'ATTIVA'
   return [
     {
       key: 'attiva',
@@ -225,14 +217,6 @@ function buildVersioneActions(ver, listino) {
       visible: isBozza,
       disabled: !ver.righe_count,
       command: () => onAttivaVersione(ver, listino.id),
-    },
-    {
-      key: 'programma-chiusura',
-      label: t('listini.programma_chiusura'),
-      icon: 'pi pi-calendar',
-      severity: 'primary',
-      visible: isAttiva,
-      command: () => onProgrammaChiusura(ver, listino.id),
     },
     {
       key: 'chiudi',
@@ -372,7 +356,7 @@ onMounted(() => store.fetchList())
             <Column field="righe_count" :header="t('listini.col_righe')" style="width: 80px;" />
             <Column :header="t('listini.col_stato')" style="width: 90px;">
               <template #body="{ data: ver }">
-                <Tag :value="ver.stato" :severity="statoVersioneListinoSeverity(ver.stato)" />
+                <Tag :value="statoVersioneVisibile(ver)" :severity="statoVersioneListinoSeverity(statoVersioneVisibile(ver))" />
               </template>
             </Column>
             <Column :header="t('common.col_azioni')" class="app-col-actions" :exportable="false" frozen alignFrozen="right">
@@ -393,7 +377,7 @@ onMounted(() => store.fetchList())
       @confirmed="onAttivaConfirmed"
     />
 
-    <ProgrammaChiusuraDialog
+    <ChiudiVersioneDialog
       :visible="chiusuraDialogVisible"
       @update:visible="v => chiusuraDialogVisible = v"
       :listino-id="chiusuraDialogListinoId"
