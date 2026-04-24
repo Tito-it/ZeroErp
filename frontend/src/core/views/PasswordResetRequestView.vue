@@ -3,7 +3,6 @@ import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { extractApiError } from '../utils/apiError'
 import api from '../api'
-import LogoBrand from '../components/LogoBrand.vue'
 import InputText from 'primevue/inputtext'
 import Button from 'primevue/button'
 
@@ -37,20 +36,21 @@ async function handleRequest() {
   <div class="login-page">
     <img src="@/assets/images/zeroerp-doodle.jpeg" alt="" class="login-bg" />
     <div class="login-card">
-      <div class="login-logo">
-        <LogoBrand size="large" />
-      </div>
-
-      <h2 class="login-title">{{ t('auth.reset_password') }}</h2>
+      <img
+        src="@/assets/images/logo-zeroerp.png"
+        alt=""
+        class="login-logo-bg"
+      />
 
       <template v-if="!sent">
         <form @submit.prevent="handleRequest" class="login-form">
           <div class="field">
-            <label for="username">{{ t('auth.reset_username_label') }}</label>
             <InputText
               id="username"
               v-model="username"
               :disabled="loading"
+              :placeholder="t('auth.reset_username_label')"
+              :aria-label="t('auth.reset_username_label')"
               autocomplete="username"
               fluid
             />

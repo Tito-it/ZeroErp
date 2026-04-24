@@ -1,5 +1,17 @@
-# Smoke UI — Listini v5 end-to-end
+# Smoke UI — Listini v5 end-to-end [SUPERATO da test-ui]
 
+> **⚠️ Documento superato il 2026-04-24.**
+> Gli scenari utili sono stati assorbiti in
+> [`sviluppo-listini-v5-test-ui.md`](../work-in-progress/sviluppo-listini-v5-test-ui.md)
+> (opzione A consolidamento). In particolare sono stati integrati:
+> §1.4bis contratto modalità C, §3.3 defense `E_BOM_VALIDO_AL_INVALIDO`,
+> §3.3bis edit inline `valido_al` BoM, §6.2 route guard Amm. Software,
+> §6.3 BLOCCATO livello oggetto, criteri di uscita gate finale.
+>
+> Il file è qui solo per riferimento storico; **non usare per nuove esecuzioni**.
+>
+> ---
+>
 > Checklist manuale stampabile per la validazione UI del modello pricing v5
 > (resolver 3 stadi: promo → contratto → categoria). Esegui in ordine —
 > ogni scenario presuppone che il precedente sia passato.
@@ -9,9 +21,9 @@
 
 ## Prerequisiti
 
-- [ ] DB v5 applicato (tutti i changeSet `20260414-01..23` + `20260415-01..07`)
-- [ ] BE running con F2-BE-01..14 deployati
-- [ ] FE build dopo sprint A nuovo (`./node_modules/.bin/vite build` verde)
+- [X] DB v5 applicato (tutti i changeSet `20260414-01..23` + `20260415-01..07`)
+- [X] BE running con F2-BE-01..14 deployati
+- [X] FE build dopo sprint A nuovo (`./node_modules/.bin/vite build` verde)
 - [ ] Almeno 3 utenti di test preparati:
   - **ADMIN** — `SUPER_ADMIN` bindato (bypass totale, tutti permessi TUTTO)
   - **OPERATORE** — operatore vendite con area `vendite = TUTTO`, area `catalogo = LETTURA`, area `amministrazione = BLOCCATO`
@@ -19,6 +31,12 @@
 
 ---
 
+
+- [X] Navigate `/amm-software/matrice-categorie-listini` → lista si carica
+- [x] Filtri toolbar: `categoria`, `utility`, `emittente`, `listino`, `attivo`
+- [ ] Search 1 carattere ("a") → lista non cambia (guard attivo)
+- [ ] Search 3 caratteri → fetch lista
+- [ ] Cancella search a 2 caratteri → **lista si sv
 ## Scenario 1 — Utente ADMIN (TUTTO)
 
 ### 1.1 Admin pricing (Amm. Software)
@@ -116,7 +134,13 @@ Scenario che verifica l'adeguamento `ArticoloBomDrawer` post trigger DB `E_BOM_M
 - [ ] Riapri il sub-drawer BoM dell'articolo composito creato in 1.7
 - [ ] Verifica che compare il **banner info "bom_immutabile_hint"** sopra la tabella
 - [ ] Verifica che la voce di menu kebab "**Elimina**" **non esiste più**
-- [ ] Verifica presenza delle 3 voci kebab: Gestisci Note, **Duplica come nuova versione**, **Chiudi riga**
+- [ ] Verifica presenza del
+
+- [ ] Navigate `/amm-software/matrice-categorie-listini` → lista si carica
+- [ ] Filtri toolbar: `categoria`, `utility`, `emittente`, `listino`, `attivo`
+- [ ] Search 1 carattere ("a") → lista non cambia (guard attivo)
+- [ ] Search 3 caratteri → fetch lista
+- [ ] Cancella search a 2 caratteri → **lista si svle 3 voci kebab: Gestisci Note, **Duplica come nuova versione**, **Chiudi riga**
 - [ ] Click kebab → "Chiudi riga"
   - [ ] Dialog conferma mostra "La riga sarà chiusa con valido al = {oggi}..."
   - [ ] Conferma → toast "Riga BoM chiusa"

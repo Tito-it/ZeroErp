@@ -1053,6 +1053,11 @@ def _assert_versione_bozza_for_riga_op(
 
 
 # Scopo: Applica la guard di transizione stato versione in modo esplicito lato service.
+#        L'unica transizione manuale ammessa e' BOZZA -> ATTIVA (attivazione).
+#        La transizione ATTIVA -> CHIUSA non e' piu' manuale: la chiusura si
+#        effettua via PATCH valido_al; lo stato CHIUSA viene sincronizzato dal
+#        DB (trigger/job) quando valido_al scende sotto la data corrente.
+#        Vedi brief-db-listini-stato-chiusa-sync.md per il dettaglio DB.
 def _validate_versione_state_transition(
     versione: dict[str, Any],
     nuovo_stato: str,
@@ -1065,9 +1070,26 @@ def _validate_versione_state_transition(
 
     allowed_transitions: dict[str, frozenset[str]] = {
         "BOZZA": frozenset({"ATTIVA"}),
-        "ATTIVA": frozenset({"CHIUSA"}),
+        "ATTIVA": frozenset(),
         "CHIUSA": frozenset(),
     }
+    # Messaggio dedicato per il caso ATTIVA -> CHIUSA: l'operazione esiste
+    # ancora ma si esegue via PATCH valido_al. Dirottare l'operatore sul path
+    # corretto invece di un generico "transizione non ammessa". Allineato col
+    # messaggio concordato con il team DB: lato DB esiste la guard speculare
+    # con codice E_VERSIONE_STATO_TRANSIZIONE_INVALIDA (defense-in-depth).
+    if stato_corrente == "ATTIVA" and nuovo_stato == "CHIUSA":
+        ErrorManager.raise_error(
+            code="E_VENDITE_VALIDATION",
+            message="Chiusura versione non consentita via cambio stato.",
+            detail=(
+                "Per chiudere impostare valido_al (PATCH); la chiusura "
+                "avviene automaticamente a finestra scaduta."
+            ),
+            context={"stato_corrente": stato_corrente, "nuovo_stato": nuovo_stato},
+            function_name=function_name,
+            log_to_db=True,
+        )
     ErrorManager.require(
         nuovo_stato in allowed_transitions.get(stato_corrente, frozenset()),
         code="E_VENDITE_VALIDATION",
@@ -1726,14 +1748,49 @@ def fn_rettifica_controllata_riga(
 ) -> dict[str, object]:
     function_name = "vendite.listini_service.fn_rettifica_controllata_riga"
 
-    # --- Guard: versione esiste e stato ATTIVA ---
+    # --- Guard 1 (applicativa): versione esiste e non e` in BOZZA ---
+    # Lo stato BOZZA e` monotono in ingresso (una versione parte BOZZA e va ad
+    # ATTIVA, non torna indietro) quindi non soggetto a drift. E` safe usarlo
+    # come discriminante applicativo: su BOZZA si usa il PATCH ordinario, non la
+    # rettifica controllata.
     versione = _get_versione_or_raise(listino_id, versione_id, function_name=function_name)
     ErrorManager.require(
-        str(versione["stato"]) == "ATTIVA",
+        str(versione["stato"]) != "BOZZA",
         code="E_VENDITE_VALIDATION",
-        message="Rettifica controllata ammessa solo su versioni ATTIVE.",
-        detail=f"Stato corrente: {versione['stato']}. Per versioni BOZZA usare il PATCH ordinario.",
+        message="Rettifica controllata non ammessa su versioni BOZZA.",
+        detail="Per versioni BOZZA usare il PATCH ordinario sulla riga.",
         context={"versione_id": versione_id, "stato": versione["stato"]},
+        function_name=function_name,
+        log_to_db=True,
+    )
+
+    # --- Guard 2 (operativa): la versione deve essere attiva oggi ---
+    # Il check si basa su validita` (valido_dal <= today <= valido_al), non
+    # sullo `stato` persistito: lo stato e` solo flag informativo eventualmente
+    # stantio (principio fail-safe: data = fonte di verita` operativa).
+    today = date.today()
+    valido_dal = versione.get("valido_dal")
+    valido_al = versione.get("valido_al")
+    is_operativa_oggi = (
+        isinstance(valido_dal, date)
+        and valido_dal <= today
+        and (valido_al is None or (isinstance(valido_al, date) and valido_al >= today))
+    )
+    ErrorManager.require(
+        is_operativa_oggi,
+        code="E_VENDITE_VALIDATION",
+        message="Rettifica controllata ammessa solo su versioni operativamente attive oggi.",
+        detail=(
+            f"La versione non e` operativa alla data odierna. "
+            f"valido_dal={valido_dal}, valido_al={valido_al}. "
+            f"Per versioni scadute, creare una nuova versione con prezzi corretti."
+        ),
+        context={
+            "versione_id": versione_id,
+            "valido_dal": valido_dal,
+            "valido_al": valido_al,
+            "today": today,
+        },
         function_name=function_name,
         log_to_db=True,
     )

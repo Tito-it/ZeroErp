@@ -2,6 +2,7 @@ import axios from 'axios'
 import router from '../router'
 import { local, STORAGE_KEYS } from './storage'
 import { resolveCanaleLogin } from './constants'
+import i18n from './i18n'
 
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || '/api/v1',
@@ -11,11 +12,18 @@ const api = axios.create({
   }
 })
 
-// Interceptor request — aggiunge il token JWT ad ogni chiamata
+// Interceptor request — aggiunge il token JWT e la lingua UI corrente
 api.interceptors.request.use(config => {
   const token = local.get(STORAGE_KEYS.ACCESS_TOKEN)
   if (token) {
     config.headers.Authorization = `Bearer ${token}`
+  }
+  // Propaga la lingua corrente come Accept-Language standard HTTP.
+  // Il middleware BE UserLanguageMiddleware legge questo header per
+  // settare la GUC `myapp.user_language`; fallback DB 'it'.
+  const locale = i18n?.global?.locale?.value
+  if (locale) {
+    config.headers['Accept-Language'] = locale
   }
   return config
 })

@@ -92,6 +92,11 @@ export const useNavigationStore = defineStore('navigation', () => {
     setFavorite,
     clearFavorite,
     clearAll,
-    isFavorite
+    isFavorite,
+    // Reset user-scoped: alias di clearAll (pulisce domain + favoriti
+    // localStorage), invocato dal plugin autoReset al logout.
+    clearUserState: clearAll
   }
+}, {
+  userScoped: true
 })

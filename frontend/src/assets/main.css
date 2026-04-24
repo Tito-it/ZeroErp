@@ -463,9 +463,9 @@ a {
 }
 
 /* Tasti di uscita — sempre attivi in modalita' protect */
-.app-readonly :deep(.p-drawer-close),
-.app-readonly :deep(.p-dialog-close),
-.app-readonly :deep(.app-escape) {
+.app-readonly .p-drawer-close,
+.app-readonly .p-dialog-close,
+.app-readonly .app-escape {
   pointer-events: auto;
   cursor: pointer;
 }

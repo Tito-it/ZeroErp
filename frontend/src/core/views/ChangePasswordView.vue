@@ -6,7 +6,6 @@ import { useAuthStore } from '../../stores/auth'
 import { usePasswordValidation } from '../composables/usePasswordValidation'
 import { extractApiError } from '../utils/apiError'
 import api from '../api'
-import LogoBrand from '../components/LogoBrand.vue'
 import Password from 'primevue/password'
 import Button from 'primevue/button'
 
@@ -62,52 +61,54 @@ async function handleChangePassword() {
   <div class="login-page">
     <img src="@/assets/images/zeroerp-doodle.jpeg" alt="" class="login-bg" />
     <div class="login-card login-card--large">
-      <div class="login-logo">
-        <LogoBrand size="large" />
-      </div>
+      <img
+        src="@/assets/images/logo-zeroerp.png"
+        alt=""
+        class="login-logo-bg"
+      />
 
-      <h2 class="login-title">{{ t('auth.change_password') }}</h2>
       <p v-if="auth.mustChangePassword" class="login-subtitle">
         {{ t('auth.password_change_required') }}
       </p>
 
       <form @submit.prevent="handleChangePassword" class="login-form login-form--wide">
         <div class="field">
-          <label for="old_password">{{ t('auth.old_password') }}</label>
           <Password
             id="old_password"
             v-model="oldPassword"
             :disabled="loading"
             :feedback="false"
             toggleMask
+            :placeholder="t('auth.old_password')"
+            :aria-label="t('auth.old_password')"
             autocomplete="current-password"
             fluid
           />
         </div>
 
         <div class="field">
-          <label for="new_password">{{ t('auth.new_password') }}
-            <i class="pi pi-info-circle password-info-icon" v-tooltip.right="t('auth.password_hint')" />
-          </label>
           <Password
             id="new_password"
             v-model="newPassword"
             :disabled="loading"
             :feedback="false"
             toggleMask
+            :placeholder="t('auth.new_password')"
+            :aria-label="t('auth.new_password')"
             autocomplete="new-password"
             fluid
           />
         </div>
 
         <div class="field">
-          <label for="confirm_password">{{ t('auth.confirm_new_password') }}</label>
           <Password
             id="confirm_password"
             v-model="confirmPassword"
             :disabled="loading"
             :feedback="false"
             toggleMask
+            :placeholder="t('auth.confirm_new_password')"
+            :aria-label="t('auth.confirm_new_password')"
             autocomplete="new-password"
             fluid
           />

@@ -23,6 +23,9 @@ const TIPO_RUOLO_SEVERITY = {
   BANK: 'danger'
 }
 
+// userScoped: true => il plugin `autoResetPlugin` include questo store nel
+// reset centralizzato al logout. Pure in-memory, nessun side-effect su
+// storage, quindi snapshot iniziale sufficiente (no clearUserState custom).
 export const useContextStore = defineStore('context', () => {
   const tipoRuoloId = ref(null)
   const tipoRuoloCodice = ref(null)
@@ -85,4 +88,6 @@ export const useContextStore = defineStore('context', () => {
     setContext,
     clearContext
   }
+}, {
+  userScoped: true
 })

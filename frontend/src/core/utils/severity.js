@@ -141,6 +141,27 @@ export function statoVersioneListinoSeverity(codice) {
   return resolveSeverity(STATO_VERSIONE_LISTINO_MAP, codice)
 }
 
+// Scopo: Calcola lo stato "visibile" di una versione listino in modo data-driven:
+//        se `valido_al` e` valorizzato e strettamente minore di oggi, la versione
+//        e` operativamente CHIUSA anche se lo stato persistito in DB dice ancora
+//        ATTIVA (il job notturno non e` ancora passato). Altrimenti restituisce
+//        lo stato DB. Coerente con il principio fail-safe del brief listini v5
+//        (brief-db-listini-stato-chiusa-sync.md §2): data = fonte di verita`
+//        operativa, stato = flag informativo.
+export function statoVersioneVisibile(versione) {
+  if (!versione) return null
+  const validoAl = versione.valido_al
+  if (validoAl) {
+    // Parsing tollerante: stringa ISO YYYY-MM-DD o Date
+    const dataAl = validoAl instanceof Date ? validoAl : new Date(validoAl)
+    const oggi = new Date()
+    oggi.setHours(0, 0, 0, 0)
+    dataAl.setHours(0, 0, 0, 0)
+    if (dataAl < oggi) return 'CHIUSA'
+  }
+  return versione.stato
+}
+
 // --- Mappa stati preventivo vendita ---
 // DRAFT=grigio, EMESSO=azzurro, ACCETTATO=verde, RIFIUTATO=rosso,
 // SCADUTO=arancio, ANNULLATO=rosso

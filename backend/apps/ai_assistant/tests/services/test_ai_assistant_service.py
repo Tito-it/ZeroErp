@@ -14,6 +14,8 @@
 # 4. test_query_with_tool_call
 # 5. test_query_conversation_reuse
 # 6. test_query_max_iterations
+# 7. test_conversation_scope_isolates_users (post-fix 23-04-2026 data leak cross-user)
+# 8. test_conversation_scope_isolates_identita (stessa persona, veste diversa)
 
 import unittest
 from typing import Any
@@ -201,3 +203,111 @@ class TestAIAssistantService(unittest.TestCase):
         )
         self.assertTrue(result["has_more"])
         self.assertIn("limite", result["response"].lower())
+
+    # Scopo: regressione per data leak cross-user (fix 23-04-2026).
+    #        Utente B che usa un conversation_id generato da utente A NON
+    #        deve leggere i messaggi di A: il service tratta la riga come
+    #        "non esistente" e crea una nuova conversation sotto lo stesso
+    #        UUID, isolata per scope (owner_user_id).
+    @patch("apps.ai_assistant.services.ai_assistant_service.get_ai_provider")
+    @patch("apps.ai_assistant.services.ai_assistant_service._log_query")
+    @patch.object(tool_registry, "_get_disabled_tools", return_value=set())
+    @patch.object(PermissionResolver, "get_livello_area", return_value="BLOCCATO")
+    def test_conversation_scope_isolates_users(
+        self, mock_perms, mock_disabled, mock_log, mock_provider
+    ):
+        # Utente A crea una conversazione
+        user_a = MagicMock()
+        user_a.id = 100
+        user_a.first_name = "Alice"
+        user_a.last_name = "A"
+        user_a.username = "alice"
+        request_a = MagicMock()
+        request_a.user = user_a
+        request_a.auth = None
+
+        provider_a = MockProvider(default_response="Segreto di A")
+        mock_provider.return_value = provider_a
+        r_a = ai_assistant_service.query(
+            user=user_a, request=request_a, message="domanda privata di A",
+        )
+        conv_id = r_a["conversation_id"]
+
+        # Utente B tenta di continuare la conversation_id di A
+        user_b = MagicMock()
+        user_b.id = 200
+        user_b.first_name = "Bob"
+        user_b.last_name = "B"
+        user_b.username = "bob"
+        request_b = MagicMock()
+        request_b.user = user_b
+        request_b.auth = None
+
+        provider_b = MockProvider(default_response="Risposta a B")
+        mock_provider.return_value = provider_b
+        ai_assistant_service.query(
+            user=user_b, request=request_b, message="cosa ha chiesto A?",
+            conversation_id=conv_id,
+        )
+
+        # Il provider per B non deve aver ricevuto i messaggi di A:
+        # solo il suo ("cosa ha chiesto A?"), senza contesto storico.
+        user_msgs_in_b = [
+            m for m in provider_b.last_messages
+            if m.get("role") == "user"
+        ]
+        self.assertEqual(len(user_msgs_in_b), 1)
+        self.assertIn("cosa ha chiesto A?", user_msgs_in_b[0]["content"])
+        # Sanity: provider B non ha visto il contenuto privato di A
+        all_contents = " ".join(
+            str(m.get("content", "")) for m in provider_b.last_messages
+        )
+        self.assertNotIn("Segreto di A", all_contents)
+        self.assertNotIn("domanda privata di A", all_contents)
+
+    # Scopo: stessa persona fisica con due vesti (identita_id diverse).
+    #        Le conversazioni devono restare isolate: passare al claim
+    #        identita diverso = nuova conversazione anche se user_id
+    #        e conversation_id coincidono. Garantisce che un operatore
+    #        che switcha veste non veda contesto della veste precedente.
+    @patch("apps.ai_assistant.services.ai_assistant_service.get_ai_provider")
+    @patch("apps.ai_assistant.services.ai_assistant_service._log_query")
+    @patch.object(tool_registry, "_get_disabled_tools", return_value=set())
+    @patch.object(PermissionResolver, "get_livello_area", return_value="BLOCCATO")
+    def test_conversation_scope_isolates_identita(
+        self, mock_perms, mock_disabled, mock_log, mock_provider
+    ):
+        user = MagicMock()
+        user.id = 300
+        user.first_name = "Mario"
+        user.last_name = "Rossi"
+        user.username = "mariorossi"
+
+        # Veste 1: identita_id = 10
+        request_v1 = MagicMock()
+        request_v1.user = user
+        request_v1.auth = {"identita_id": 10}
+        provider_v1 = MockProvider(default_response="Contesto veste 1")
+        mock_provider.return_value = provider_v1
+        r_v1 = ai_assistant_service.query(
+            user=user, request=request_v1, message="ciao dalla veste 1",
+        )
+        conv_id = r_v1["conversation_id"]
+
+        # Veste 2: identita_id = 20 (stessa persona, veste diversa)
+        request_v2 = MagicMock()
+        request_v2.user = user
+        request_v2.auth = {"identita_id": 20}
+        provider_v2 = MockProvider(default_response="Contesto veste 2")
+        mock_provider.return_value = provider_v2
+        ai_assistant_service.query(
+            user=user, request=request_v2, message="ciao dalla veste 2",
+            conversation_id=conv_id,
+        )
+
+        # Il provider della veste 2 non deve aver ricevuto il contesto
+        # della veste 1.
+        all_contents = " ".join(
+            str(m.get("content", "")) for m in provider_v2.last_messages
+        )
+        self.assertNotIn("ciao dalla veste 1", all_contents)

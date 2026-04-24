@@ -12,8 +12,9 @@ Tutti gli sprint v5 sono **chiusi end-to-end** (DB+BE+FE+DOC). Vedi
 completo. La presente checklist è il complemento operativo che esercita
 le funzionalità in UI.
 
-Test Django: 1662 verdi. Vite build: ~916ms. Smoke unitari su DB già
-pubblicati in [smoke-listini-v5.md](smoke-listini-v5).
+Test Django: 1662 verdi. Vite build: ~916ms. La smoke UI precedente
+(`smoke-listini-v5.md`, 2026-04-22) è stata assorbita in questo
+documento il 2026-04-24 ed è archiviata in `work-done/`.
 
 ## Obiettivi
 
@@ -30,9 +31,10 @@ pubblicati in [smoke-listini-v5.md](smoke-listini-v5).
 
 - DB landato fino a `20260422-07` incluso (Sprint E DB completo)
 - Backend `dev/backend-tid` HEAD `e1408643` o successivi (Sprint E BE+FE allineato)
-- Almeno 2 utenti di test:
-  - **Operatore Junior**: `prezzo_override_manuale` ON, **NO** `approva_prezzo_override`
-  - **Operatore Senior / Approver**: `approva_prezzo_override` ON
+- Almeno 3 utenti di test:
+  - **Admin**: SUPER_ADMIN o area `amministrazione = MODIFICA` (serve per tutto Scenario 1 Setup admin pricing)
+  - **Operatore Junior**: area `vendite = MODIFICA`, `prezzo_override_manuale` ON, **NO** `approva_prezzo_override` (usato in §2.2 errore 403, §4.1/§4.3 richiesta approvazione)
+  - **Operatore Senior / Approver**: area `vendite = MODIFICA`, `prezzo_override_manuale` ON, `approva_prezzo_override` ON (usato in §2.1/§2.2 L1 autorizzato, §4.4/§4.5/§4.6 coda approvazioni)
 - Configurazione minima:
   - 1 emittente fiscale assegnato a entrambi gli utenti
   - 1 BA "GOLD" con categoria_cliente associata
@@ -45,34 +47,37 @@ pubblicati in [smoke-listini-v5.md](smoke-listini-v5).
 
 ## Indice scenari
 
-1. **Setup admin pricing v5** (categorie, matrice, listini, contratti, promo)
+1. **Setup admin pricing v5** (categorie, matrice, listini, contratti modalità A e C, promo)
 2. **Pricing operativo** (preventivo + auto-fill + L1+L2+L3)
-3. **BoM versionata** (chiudi+duplica nuova versione)
+3. **BoM versionata** (chiudi+duplica nuova versione, edit inline valido_al)
 4. **Workflow L3** (richiedi → coda → approva/rifiuta)
 5. **Defense-in-depth trigger DB**
-6. **Readonly cumulativo** (operatore con LETTURA)
+6. **Readonly cumulativo + accesso bloccato** (LETTURA area, route guard Amm. Software, BLOCCATO livello oggetto)
 7. **Cross-locale i18n** (switch IT ↔ EN)
 
 ---
 
 ## Scenario 1 — Setup admin pricing v5
 
+> **Utente**: Admin (SUPER_ADMIN o area `amministrazione = MODIFICA`).
+> Gli operatori Junior/Senior di pricing non hanno accesso a `/amm-software/` e non possono eseguire questo scenario.
+
 ### 1.1 Categorie clienti
 
-- [ ] Login Senior → `/amm-software/categorie-clienti/` lista visibile
-- [ ] Crea nuova categoria "GOLD" con `partecipa_promo=true` → toast success
-- [ ] Tenta crea duplicato stesso codice → errore parlante `E_ANAG_DUPLICATO`
+- [X] Login Admin → `/amm-software/categorie-clienti/` lista visibile
+- [X] Crea nuova categoria "GOLD" con `partecipa_promo=true` → toast success
+- [X] Tenta crea duplicato stesso codice → errore parlante `E_ANAG_DUPLICATO`
 
 ### 1.2 Matrice categorie ↔ listini
 
-- [ ] Apri `/amm-software/matrice-categorie-listini/`
-- [ ] Mappa GOLD → listino-COM-001 per utility GAS con `tipo_variazione=PERCENTUALE`, `valore_variazione=-5`
-- [ ] Verifica overlap blocked: tentando seconda riga GOLD/GAS overlap → errore
+- [X] Apri `/amm-software/matrice-categorie-listini/`
+- [X] Mappa GOLD → listino-COM-001 per utility GAS con `tipo_variazione=PERCENTUALE`, `valore_variazione=-5`
+- [X] Verifica overlap blocked: tentando seconda riga GOLD/GAS overlap → errore
 
 ### 1.3 Listini
 
-- [ ] `/vendite/listini/` lista filtrabile per tipologia
-- [ ] Crea listino COM-002 (commercio) → drawer + pulsante "Nuova versione" → BOZZA
+- [X] `/vendite/listini/` lista filtrabile per tipologia
+- [X] Crea listino COM-002 (commercio) → drawer + pulsante "Nuova versione" → BOZZA
 - [ ] Aggiungi 3 righe articolo nella versione BOZZA
 - [ ] Attiva versione → BOZZA → ATTIVA
 
@@ -81,6 +86,14 @@ pubblicati in [smoke-listini-v5.md](smoke-listini-v5).
 - [ ] `/vendite/contratti/` → nuovo contratto modalità A su BA GOLD legato al listino COM-001
 - [ ] Aggiungi variazione globale `+2%`
 - [ ] Stato BOZZA → ATTIVO
+
+### 1.4bis Contratto modalità C (interamente negoziato)
+
+- [ ] Nuovo contratto modalità C (SelectButton A/B/C → C), senza listino
+- [ ] Save DRAFT → contratto creato
+- [ ] Prova cambio stato DRAFT → ATTIVO **senza righe** → errore guard modalità C
+- [ ] Apre righe → aggiungi 1 riga (articolo + uom + `prezzo_unitario` obbligatorio)
+- [ ] Riprova cambio stato → ATTIVO OK
 
 ### 1.5 Promo articoli
 
@@ -153,6 +166,13 @@ pubblicati in [smoke-listini-v5.md](smoke-listini-v5).
 ### 3.3 Defense-in-depth trigger DB
 
 - [ ] Apri DevTools console e tenta UPDATE diretto via API: `PATCH /catalogo/articoli/{id}/componenti/{componente_id}/` con `coeff_qta` modificato → errore 409 `E_BOM_MODIFICA_VIETATA` con hint "chiudi+inserisci"
+- [ ] Prova a chiudere una riga con `valido_al < valido_dal` via console DevTools (`updateArticoloComponente(..., { valido_al: '1999-01-01' })`) → backend risponde `E_BOM_VALIDO_AL_INVALIDO`, toast con messaggio parlante "valido_al deve essere >= valido_dal"
+
+### 3.3bis Edit inline valido_al (chiusura rapida)
+
+- [ ] Click sulla cella `valido_al` di una riga aperta → input inline
+- [ ] Imposta data oggi → save → riga chiusa (comportamento coerente con azione kebab "Chiudi riga")
+- [ ] Riapri: edit inline con `valido_al < valido_dal` → stesso errore `E_BOM_VALIDO_AL_INVALIDO`
 
 ### 3.4 Espansione compositi nella pipeline (S14.C-BE-1/BE-2)
 
@@ -233,15 +253,35 @@ finale contro bug FE.
 
 ---
 
-## Scenario 6 — Readonly cumulativo
+## Scenario 6 — Readonly cumulativo + accesso bloccato
 
-Setup: utente con livello area `vendite` LETTURA.
+### 6.1 Area vendite LETTURA (readonly cumulativo)
 
-- [ ] `/vendite/preventivi/` lista visibile
-- [ ] Drawer riga: tutti i campi grigi (prop `readonly` + `useInjectReadonly`)
+Setup: utente con livello area `vendite` LETTURA, `amministrazione` = BLOCCATO.
+
+- [ ] `/vendite/preventivi/` lista visibile, toolbar con badge "Sola lettura" (ReadonlyBadge)
+- [ ] Pulsante "Nuovo" nascosto, "Ricarica" visibile
+- [ ] Drawer riga: tutti i campi grigi (prop `readonly` + `useInjectReadonly`), DrawerFooter con solo "Chiudi"/"X"
 - [ ] Sub-drawer BoM: nessun pulsante "Aggiungi", "Chiudi riga", "Duplica" visibile
 - [ ] Banner info BoM immutabile NON visibile (è UX per editor)
 - [ ] `/vendite/approvazioni-prezzo/` lista visibile (LETTURA), ma click Approva → 403 `E_PREV_OVERRIDE_NON_AUTORIZZATO` (manca `approva_prezzo_override`)
+
+### 6.2 Area Amm. Software bloccata (route guard)
+
+- [ ] Prova navigate `/amm-software/categorie-clienti` → route guard blocca / redirect a 403
+- [ ] Sidebar: voce "Amm. Software" nascosta o greyed
+
+### 6.3 BLOCCATO livello oggetto (vendite TUTTO, oggetto bloccato)
+
+Setup: utente con `vendite = TUTTO` MA override oggetto `vendite.contratto = BLOCCATO`.
+
+- [ ] Navigate `/vendite/contratti` → raggiunge la pagina (area aperta)
+- [ ] Invece della SearchTable appare `AccessoBloccatoPanel` con icona lock + messaggio `common.accesso_negato_elenco`
+- [ ] Nessuna toolbar, nessun filtro, nessuna DataTable visibili
+- [ ] **Nessuna fetch al backend** (verifica in Network tab del browser)
+- [ ] Navigate `/vendite/preventivi` → lista normale (oggetto preventivo non bloccato)
+- [ ] Navigate `/vendite/promo-articoli` → lista normale
+- [ ] Eventuale tab "Contratti" dentro drawer cliente (se esiste) → AccessoBloccatoPanel o campo vuoto
 
 ---
 
@@ -265,13 +305,20 @@ Chiavi i18n nuove introdotte da Sprint C+D+E sono ~38; lista completa in
 - In caso di errore: registrare codice + screenshot + steps in issue tracker
 - Annotare in fondo al WIP eventuali bug trovati per follow-up
 
+## Criteri di uscita (gate finale)
+
+- [ ] Zero errori JavaScript nella console browser durante tutti gli scenari
+- [ ] Zero HTTP 500 nei log backend
+- [ ] Zero warning Vue da parent→child props mismatch
+- [ ] Toast (save success, reset tipo_variazione, errori) appaiono in alto a destra con durata corretta
+
 ## Bug trovati durante esecuzione
 
 (da popolare durante i test)
 
-| # | Scenario | Sintomo | Codice errore | Workaround | Status |
-|---|---|---|---|---|---|
-| - | - | - | - | - | - |
+| #   | Scenario | Sintomo | Codice errore | Workaround | Status |
+| --- | -------- | ------- | ------------- | ---------- | ------ |
+| -   | -        | -       | -             | -          | -      |
 
 ---
 

@@ -4,7 +4,6 @@ import { useRouter, useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useAuthStore } from '../../stores/auth'
 import { CANALE_LOGIN } from '../constants'
-import LogoBrand from '../components/LogoBrand.vue'
 // ChannelSelector importato ma non montato: l'UI attuale e' per soli
 // operatori interni (canale ADMIN forzato). Importazione conservata per
 // riuso futuro (pagine dedicate portale/shop).
@@ -87,9 +86,11 @@ async function handleLogin() {
       class="login-bg"
     />
     <div class="login-card">
-      <div class="login-logo">
-        <LogoBrand size="large" />
-      </div>
+      <img
+        src="@/assets/images/logo-zeroerp.png"
+        alt=""
+        class="login-logo-bg"
+      />
 
       <form @submit.prevent="handleLogin" class="login-form">
         <!-- ChannelSelector nascosto: in questa fase il login e' solo per
@@ -100,24 +101,26 @@ async function handleLogin() {
         <!-- <ChannelSelector v-model="canale" :disabled="loading" /> -->
 
         <div class="field">
-          <label for="username">{{ t('auth.username') }}</label>
           <InputText
             id="username"
             v-model="username"
             :disabled="loading"
+            :placeholder="t('auth.username')"
+            :aria-label="t('auth.username')"
             autocomplete="username"
             fluid
           />
         </div>
 
         <div class="field">
-          <label for="password">{{ t('auth.password') }}</label>
           <Password
             id="password"
             v-model="password"
             :disabled="loading"
             :feedback="false"
             toggleMask
+            :placeholder="t('auth.password')"
+            :aria-label="t('auth.password')"
             autocomplete="current-password"
             fluid
           />

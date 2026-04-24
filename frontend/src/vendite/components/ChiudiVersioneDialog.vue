@@ -1,6 +1,9 @@
 <script setup>
-// Scopo: Dialog per programmare la chiusura di una versione ATTIVA
-//        impostando valido_al. Mostra warning sulle conseguenze.
+// Scopo: Dialog per chiudere una versione ATTIVA impostando valido_al
+//        (oggi = chiusura immediata, data futura = chiusura programmata).
+//        Il cambio di stato a CHIUSA e' sincronizzato dal DB (trigger/job)
+//        quando valido_al scende sotto la data corrente. Mostra warning
+//        sulle conseguenze della chiusura.
 import { ref, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useApiHandler } from '../../core/composables/useApiHandler'
@@ -36,9 +39,11 @@ const dataDopoLabel = computed(() => {
 
 watch(() => props.visible, (v) => {
   if (v && props.versione) {
+    // Default alla chiusura: valido_al esistente se gia' programmato,
+    // altrimenti oggi (chiusura immediata, stato sincronizzato dal DB).
     dataChiusura.value = props.versione.valido_al
       ? new Date(props.versione.valido_al)
-      : null
+      : new Date()
   }
 })
 
@@ -52,8 +57,8 @@ async function conferma() {
   const res = await execute(
     () => updateVersione(props.listinoId, props.versione.id, { valido_al }),
     { successMessage: valido_al
-        ? t('listini.programma_chiusura_successo', { data: displayDate(dataChiusura.value) })
-        : t('listini.programma_chiusura_rimossa')
+        ? t('listini.chiudi_versione_successo', { data: displayDate(dataChiusura.value) })
+        : t('listini.chiudi_versione_rimossa')
     }
   )
   if (res) {
@@ -66,7 +71,7 @@ async function rimuoviChiusura() {
   if (loading.value) return
   const res = await execute(
     () => updateVersione(props.listinoId, props.versione.id, { valido_al: null }),
-    { successMessage: t('listini.programma_chiusura_rimossa') }
+    { successMessage: t('listini.chiudi_versione_rimossa') }
   )
   if (res) {
     emit('saved', { listinoId: props.listinoId })
@@ -77,15 +82,15 @@ async function rimuoviChiusura() {
 
 <template>
   <Dialog :visible="visible" @update:visible="onHide" modal
-    :header="t('listini.programma_chiusura_titolo')" :style="{ width: '480px' }">
+    :header="t('listini.chiudi_versione_titolo')" :style="{ width: '480px' }">
 
     <Message v-if="dataChiusura" severity="warn" :closable="false" class="mb-1">
-      {{ t('listini.programma_chiusura_warning', { data_dopo: dataDopoLabel }) }}
+      {{ t('listini.chiudi_versione_warning', { data_dopo: dataDopoLabel }) }}
     </Message>
 
     <div class="form-grid">
       <div class="form-field">
-        <label>{{ t('listini.programma_chiusura_data') }}</label>
+        <label>{{ t('listini.chiudi_versione_data') }}</label>
         <DatePicker v-model="dataChiusura" date-format="dd/mm/yy"
           show-icon show-button-bar :min-date="new Date()" />
       </div>
@@ -95,8 +100,8 @@ async function rimuoviChiusura() {
       <Button v-if="haGiaChiusura" :label="t('common.delete')"
         text severity="danger" :loading="loading" @click="rimuoviChiusura" />
       <Button :label="t('common.cancel')" text @click="onHide" />
-      <Button :label="t('listini.programma_chiusura_conferma')"
-        icon="pi pi-calendar" severity="warn"
+      <Button :label="t('listini.chiudi_versione_conferma')"
+        icon="pi pi-lock" severity="warn"
         :disabled="!dataChiusura" :loading="loading" @click="conferma" />
     </div>
   </Dialog>
