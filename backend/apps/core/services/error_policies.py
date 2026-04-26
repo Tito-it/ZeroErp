@@ -213,6 +213,22 @@ class ErrorPolicyRegistry:
             ui_action="show_empty_state",
             user_message="Associazione listino non trovata.",
         ),
+        # Guard Profilo A contratti: in stati post-DRAFT (ATTIVO/SOSPESO/CESSATO)
+        # le modifiche sono limitate o vietate. La testata ammette solo
+        # `valido_al` e `meta` in ATTIVO/SOSPESO; CESSATO immutabile. Le
+        # sotto-entita' (righe override, utility 1:1) sono CRUD-able solo
+        # in DRAFT. Per modifiche sostanziali post-DRAFT serve creare un
+        # nuovo contratto (eventualmente con parent_contratto_id).
+        "E_CONTRATTO_NON_MODIFICABILE": ErrorPolicy(
+            code="E_CONTRATTO_NON_MODIFICABILE",
+            http_status=409,
+            ui_action="show_toast_error",
+            user_message=(
+                "Modifica non consentita: il contratto e' in uno stato che "
+                "limita le operazioni. Per modifiche sostanziali creare un "
+                "nuovo contratto."
+            ),
+        ),
         # Guard DB defense-in-depth: rifiuta la transizione manuale
         # ATTIVA -> CHIUSA (brief-db-listini-stato-chiusa-sync). La chiusura
         # si esegue via PATCH valido_al; lo stato CHIUSA viene poi sincronizzato

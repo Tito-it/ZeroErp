@@ -190,7 +190,13 @@ class ApiContrattoDetail(DomainAPIView):
 
 _CONTRATTO_STATO_REQUEST = inline_serializer(
     name="VenditeContrattoStatoReq",
-    fields={"codice_interno": serializers.CharField()},
+    fields={
+        "codice_interno": serializers.CharField(),
+        "valido_al": serializers.DateField(
+            required=False, allow_null=True,
+            help_text="Opzionale: data fine validita' (cessazione contestuale al cambio stato).",
+        ),
+    },
 )
 
 
@@ -205,11 +211,19 @@ class ApiContrattoCambiaStato(DomainAPIView):
         )},
     )
     # Scopo: Cambia stato del contratto (DRAFT/ATTIVO/SOSPESO/CESSATO).
-    #        Trigger DB fa fail-fast su attivazione modalita' C incompleta.
+    #        Se valido_al e' fornito, applica anche PATCH valido_al nella
+    #        stessa transazione (caso d'uso: dialog "Cessa contratto" che
+    #        chiede la data al click). Trigger DB fa fail-fast su
+    #        attivazione modalita' C incompleta.
     def post(self, request: Request, contratto_id: int) -> JsonResponse:
-        codice = (request.data or {}).get("codice_interno", "")
+        body = request.data or {}
+        codice = body.get("codice_interno", "")
+        valido_al_raw = body.get("valido_al")
+        valido_al = parse_iso_date(valido_al_raw) if valido_al_raw else None
         return success_response(
-            ContrattiService().cambia_stato(contratto_id, codice_interno=codice)
+            ContrattiService().cambia_stato(
+                contratto_id, codice_interno=codice, valido_al=valido_al,
+            )
         )
 
 
@@ -289,6 +303,39 @@ class ApiContrattoRigheList(DomainAPIView):
     def post(self, request: Request, contratto_id: int) -> JsonResponse:
         return success_response(
             ContrattiService().create_riga(contratto_id, request.data)
+        )
+
+
+class ApiContrattoRighePreview(DomainAPIView):
+    """GET preview righe applicate dal contratto.
+
+    Modalita' A: tutte le righe del listino con prezzo finale = prezzo
+    listino + variazione globale (origine='DA_LISTINO').
+
+    Modalita' B: tutte le righe del listino, con override applicato dove
+    presente in contratti_righe (origine='OVERRIDE') o variazione globale
+    sulle altre (origine='DA_LISTINO').
+
+    Modalita' C: lista righe vuota (le righe vivono in contratti_righe e
+    sono lette dall'endpoint standard /righe/).
+
+    Endpoint readonly: il FE lo usa per mostrare l'anteprima dei prezzi
+    applicati al cliente senza duplicare la formula di calcolo.
+    """
+
+    area_funzionale = "vendite"
+
+    @extend_schema(
+        responses={200: inline_serializer(
+            name="VenditeContrattoRighePreviewResp",
+            fields={"data": serializers.DictField()},
+        )},
+    )
+    # Scopo: Restituisce envelope con testata sintetica + righe preview.
+    def get(self, request: Request, contratto_id: int) -> JsonResponse:
+        del request
+        return success_response(
+            ContrattiService().list_righe_preview(contratto_id)
         )
 
 

@@ -7,11 +7,11 @@
 //  A = listino vincolante + variazione globale (PERCENTUALE opz. valore)
 //  B = listino + override righe (prezzo_unitario per articoli specifici)
 //  C = interamente negoziato (no listino, tutte le righe con prezzo_unitario)
-import { ref, watch, computed } from 'vue'
+import { ref, watch, computed, provide } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useContrattiStore } from '../stores/contratti'
 import { useApiHandler } from '../../core/composables/useApiHandler'
-import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
+import { useInjectReadonly, READONLY_KEY } from '../../core/composables/useReadonlyMode'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { DRAWER_WIDTH } from '../../core/constants'
 import { toDateString, parseIsoDate } from '../../core/utils/date'
@@ -22,6 +22,7 @@ import LookupSelect from '../../core/components/LookupSelect.vue'
 import BillingAccountLookup from '../../core/components/BillingAccountLookup.vue'
 import ContrattoRigheDrawer from './ContrattoRigheDrawer.vue'
 import Drawer from 'primevue/drawer'
+import Dialog from 'primevue/dialog'
 import InputText from 'primevue/inputtext'
 import InputNumber from 'primevue/inputnumber'
 import DatePicker from 'primevue/datepicker'
@@ -35,7 +36,9 @@ import Textarea from 'primevue/textarea'
 const { t } = useI18n()
 const store = useContrattiStore()
 const { execute, loading } = useApiHandler()
-const isReadonly = useInjectReadonly()
+// Readonly da permessi area (LETTURA/BLOCCATO). Si combina con isContractLocked
+// (stato post-DRAFT) per ottenere l'isReadonly effettivo del drawer.
+const parentReadonly = useInjectReadonly()
 const { confirmAction } = useConfirmAction()
 
 const props = defineProps({
@@ -51,6 +54,21 @@ const isEdit = computed(() => props.mode === 'edit')
 
 const detail = ref(null)
 const form = ref({})
+
+// Profilo A: contratto in stato post-DRAFT e' bloccato (eccetto cambio stato
+// che ha la sua azione dedicata). isContractLocked e' true se siamo in edit
+// e lo stato del contratto non e' DRAFT.
+const isContractLocked = computed(() => {
+  if (!isEdit.value) return false
+  const stato = detail.value?.stato_codice
+  return stato != null && stato !== 'DRAFT'
+})
+
+// isReadonly effettivo del drawer: OR tra permessi area e stato post-DRAFT.
+// Tutti i campi/azioni del drawer principale e dei sub-drawer (righe, utility)
+// devono basarsi su questo computed. Propagato via provide ai figli.
+const isReadonly = computed(() => parentReadonly.value || isContractLocked.value)
+provide(READONLY_KEY, isReadonly)
 
 // Deferimento contenuto: i LookupSelect montano solo dopo l'animazione del drawer.
 const contentReady = ref(false)
@@ -231,6 +249,24 @@ const canSave = computed(() => {
 
 function buildPayload() {
   const f = form.value
+  // Profilo A whitelist FE: il payload PATCH va limitato ai campi che il
+  // BE accetta nello stato corrente. Il BE applica una guard speculare
+  // (E_CONTRATTO_NON_MODIFICABILE) — rispettiamo la stessa whitelist qui
+  // per evitare round-trip e fornire UX coerente.
+  // - DRAFT: tutti i campi
+  // - ATTIVO/SOSPESO: solo valido_al + meta (programma cessazione + note)
+  // - CESSATO: nessuno (Salva non dovrebbe nemmeno essere cliccabile)
+  const stato = isEdit.value ? (detail.value?.stato_codice || null) : 'DRAFT'
+  const isDraft = stato === 'DRAFT'
+
+  if (!isDraft) {
+    // Stati post-DRAFT: il pulsante Salva e' disabilitato (canSave=false
+    // perche' isReadonly=true). Questo branch non dovrebbe mai essere
+    // raggiunto in pratica; ritorniamo payload vuoto per safety. Le
+    // operazioni post-DRAFT sono solo via cambio stato (dialog Cessa).
+    return {}
+  }
+
   const payload = {
     ambito: f.ambito,
     valido_dal: toIsoDate(f.valido_dal),
@@ -295,12 +331,58 @@ async function refreshDetail() {
   populateFromDetail(d)
 }
 
-// Cambio stato (edit)
+// Stato dialog cessazione: per CESSATO chiediamo la data prima della
+// transizione (default oggi). Le altre transizioni passano per il classico
+// confirmAction (DRAFT->ATTIVO, SOSPESO->ATTIVO, ecc.).
+//
+// Comportamento data-driven (allineato col backend):
+// - data <  oggi  -> cessazione immediata: stato passa a CESSATO
+// - data >= oggi  -> cessazione PROGRAMMATA: stato resta ATTIVO/SOSPESO,
+//                    job notturno DB allinea quando la data scade
+const cessaDialogVisible = ref(false)
+const cessaDialogData = ref(null)
+
+const cessazioneProgrammata = computed(() => {
+  if (!cessaDialogData.value) return false
+  const oggi = new Date()
+  oggi.setHours(0, 0, 0, 0)
+  const scelta = new Date(cessaDialogData.value)
+  scelta.setHours(0, 0, 0, 0)
+  return scelta >= oggi
+})
+
+function openCessaDialog() {
+  cessaDialogData.value = new Date()  // default oggi -> cessazione programmata per stasera
+  cessaDialogVisible.value = true
+}
+
+async function onConfermaCessazione() {
+  const validoAl = toDateString(cessaDialogData.value)
+  const programmata = cessazioneProgrammata.value
+  const result = await execute(
+    () => store.cambiaStato(props.contrattoId, 'CESSATO', { validoAl }),
+    {
+      successMessage: programmata
+        ? t('contratti.cessa_dialog_success_programmata', { data: validoAl })
+        : t('contratti.cessa_dialog_success_immediata'),
+    },
+  )
+  if (result !== null) {
+    cessaDialogVisible.value = false
+    await refreshDetail()
+  }
+}
+
+// Cambio stato (edit). CESSATO ha flusso dedicato (dialog con data),
+// gli altri stati usano il confirmAction generico.
 function onCambiaStato(codice) {
+  if (codice === 'CESSATO') {
+    openCessaDialog()
+    return
+  }
   confirmAction({
     title: t('contratti.conferma_titolo'),
     message: t('contratti.conferma_cambio_stato', { stato: codice }),
-    danger: codice === 'CESSATO',
     onAccept: async () => {
       const result = await execute(
         () => store.cambiaStato(props.contrattoId, codice),
@@ -311,12 +393,16 @@ function onCambiaStato(codice) {
   })
 }
 
-// Azioni disponibili per stato corrente
+// Azioni disponibili per stato corrente. SOSPESO non e' destinazione (la
+// gestione operativa della sospensione - blocco fatturazione, proroghe,
+// ripresa - non e' implementata: nascondere finche' non c'e' la semantica).
+// Resta come origine per ripristino di contratti gia' SOSPESI in DB
+// (transizione manuale a ATTIVO o CESSATO).
 const statiTransizionabili = computed(() => {
   if (!detail.value) return []
   const current = detail.value.stato_codice
   if (current === 'DRAFT') return ['ATTIVO']
-  if (current === 'ATTIVO') return ['SOSPESO', 'CESSATO']
+  if (current === 'ATTIVO') return ['CESSATO']
   if (current === 'SOSPESO') return ['ATTIVO', 'CESSATO']
   return []
 })
@@ -362,10 +448,23 @@ function onClose() {
                 :label="t(`contratti.azione_${stato.toLowerCase()}`)"
                 :icon="stato === 'ATTIVO' ? 'pi pi-check' : stato === 'SOSPESO' ? 'pi pi-pause' : 'pi pi-times'"
                 size="small" outlined
+                class="app-escape"
                 @click="onCambiaStato(stato)" />
             </div>
           </div>
         </div>
+
+        <!-- Banner contratto bloccato: in stati post-DRAFT ammessa solo
+             modifica valido_al (programma cessazione) + cambio stato.
+             Coerente con Profilo A whitelist BE. -->
+        <Message v-if="isContractLocked && detail.stato_codice !== 'CESSATO'"
+          severity="info" :closable="false" size="small" class="mt-2">
+          {{ t('contratti.banner_locked_attivo', { stato: detail.stato_descrizione }) }}
+        </Message>
+        <Message v-else-if="isContractLocked && detail.stato_codice === 'CESSATO'"
+          severity="warn" :closable="false" size="small" class="mt-2">
+          {{ t('contratti.banner_locked_cessato') }}
+        </Message>
       </template>
 
       <!-- === Cliente (BA) + badge utility/PDP === -->
@@ -421,10 +520,29 @@ function onClose() {
             @update:model-value="form.valido_dal = toIsoDate($event)"
             date-format="dd/mm/yy" show-icon class="w-full" />
         </div>
-        <div class="form-field">
-          <label>{{ t('contratti.field_valido_al') }}</label>
+        <!-- Campo valido_al condizionale per stato:
+             - DRAFT: editabile come "Fine validita' (opz.)"
+             - ATTIVO/SOSPESO con valido_al impostato: readonly come
+               "Cessazione programmata al {data}" (visibilita' su cessazione
+               programmata futura, applicata via dialog Cessa)
+             - ATTIVO/SOSPESO senza valido_al: nascosto (cessazione passa
+               solo dal dialog dedicato)
+             - CESSATO: readonly come "Data cessazione" -->
+        <div class="form-field"
+          v-if="!isEdit
+            || detail?.stato_codice === 'DRAFT'
+            || detail?.stato_codice === 'CESSATO'
+            || (form.valido_al && (detail?.stato_codice === 'ATTIVO' || detail?.stato_codice === 'SOSPESO'))">
+          <label>
+            {{ detail?.stato_codice === 'CESSATO'
+              ? t('contratti.field_data_cessazione')
+              : (detail?.stato_codice === 'ATTIVO' || detail?.stato_codice === 'SOSPESO') && form.valido_al
+                ? t('contratti.field_cessazione_programmata')
+                : t('contratti.field_valido_al') }}
+          </label>
           <DatePicker :model-value="parseIsoDate(form.valido_al)"
             @update:model-value="form.valido_al = toIsoDate($event)"
+            :disabled="isEdit && detail?.stato_codice !== 'DRAFT'"
             date-format="dd/mm/yy" show-icon show-button-bar class="w-full" />
         </div>
       </div>
@@ -538,6 +656,40 @@ function onClose() {
       :contratto-stato-descrizione="detail.stato_descrizione"
       @changed="refreshDetail"
     />
+
+    <!-- Dialog cessazione contratto: chiede la data di cessazione (default
+         oggi) e fa POST cambia-stato {CESSATO, valido_al} in transazione BE.
+         Comportamento data-driven:
+         - data < oggi  -> cessazione immediata, stato CESSATO
+         - data >= oggi -> cessazione programmata, stato resta ATTIVO/SOSPESO -->
+    <Dialog v-model:visible="cessaDialogVisible" modal
+      :header="cessazioneProgrammata
+        ? t('contratti.cessa_dialog_titolo_programma')
+        : t('contratti.cessa_dialog_titolo_immediata')"
+      :style="{ width: '460px' }">
+      <div class="form-field">
+        <label>{{ t('contratti.cessa_dialog_data') }}</label>
+        <DatePicker v-model="cessaDialogData" date-format="dd/mm/yy"
+          show-icon show-button-bar />
+      </div>
+      <Message :severity="cessazioneProgrammata ? 'info' : 'warn'"
+        :closable="false" class="mt-1" size="small">
+        {{ cessazioneProgrammata
+          ? t('contratti.cessa_dialog_warning_programmata')
+          : t('contratti.cessa_dialog_warning_immediata') }}
+      </Message>
+      <template #footer>
+        <Button :label="t('common.cancel')" text severity="secondary"
+          @click="cessaDialogVisible = false" />
+        <Button :label="cessazioneProgrammata
+            ? t('contratti.cessa_dialog_conferma_programma')
+            : t('contratti.cessa_dialog_conferma_immediata')"
+          :icon="cessazioneProgrammata ? 'pi pi-calendar' : 'pi pi-times'"
+          :severity="cessazioneProgrammata ? 'warn' : 'danger'"
+          :disabled="!cessaDialogData || loading" :loading="loading"
+          @click="onConfermaCessazione" />
+      </template>
+    </Dialog>
 
   </Drawer>
 </template>

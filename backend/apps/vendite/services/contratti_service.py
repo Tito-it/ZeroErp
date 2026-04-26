@@ -32,7 +32,7 @@ from datetime import date
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
-from django.db import DatabaseError, IntegrityError
+from django.db import DatabaseError, IntegrityError, transaction
 
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.payload_helpers import (
@@ -104,6 +104,21 @@ _UPDATE_KEYS_TESTATA: frozenset[str] = frozenset({
     "categoria_cliente_id_snapshot",
     "meta",
 })
+
+# Whitelist PATCH testata per stato del documento contratto. Il workflow
+# DRAFT -> ATTIVO -> SOSPESO/CESSATO (cessato terminale) limita progressivamente
+# i campi modificabili. In ATTIVO/SOSPESO restano editabili solo `valido_al`
+# (per programmare la cessazione, coerente con il principio "data = fonte di
+# verita' operativa") e `meta` (note interne, non operative). CESSATO e'
+# completamente immutabile. Per cambi sostanziali in stati post-DRAFT serve
+# creare un nuovo contratto (eventualmente con parent_contratto_id) — pattern
+# audit-friendly.
+_CONTRATTO_PATCH_ALLOWED_BY_STATE: dict[str, frozenset[str]] = {
+    "DRAFT": _UPDATE_KEYS_TESTATA,
+    "ATTIVO": frozenset({"valido_al", "meta"}),
+    "SOSPESO": frozenset({"valido_al", "meta"}),
+    "CESSATO": frozenset(),
+}
 
 # In create: numero e stato_doc_contratto_id sono impostati dal service,
 # mai in payload. In update: oltre a questi, anche gli identificativi
@@ -489,13 +504,31 @@ class ContrattiService:
         )
         assert existing is not None
 
-        # categoria_cliente_id_snapshot modificabile solo in DRAFT.
-        if "categoria_cliente_id_snapshot" in payload and existing.get("stato_codice") != "DRAFT":
+        # Guard whitelist PATCH per stato. In ATTIVO/SOSPESO ammessi solo
+        # `valido_al` (programma cessazione) e `meta` (note interne); in
+        # CESSATO nulla; in DRAFT tutto. categoria_cliente_id_snapshot non
+        # appare nelle whitelist non-DRAFT, quindi viene rifiutato implicitamente
+        # con messaggio coerente. Errore parlante con detail che lista i campi
+        # ammessi per lo stato corrente.
+        stato_corrente = str(existing.get("stato_codice") or "")
+        allowed_for_state = _CONTRATTO_PATCH_ALLOWED_BY_STATE.get(stato_corrente, frozenset())
+        non_ammessi = sorted(set(payload.keys()) - allowed_for_state)
+        if non_ammessi:
             ErrorManager.raise_error(
-                code=E_VENDITE_VALIDATION,
-                message=_MESSAGE,
-                detail="categoria_cliente_id_snapshot modificabile solo in stato DRAFT.",
-                context={"contratto_id": contratto_id, "stato_codice": existing.get("stato_codice")},
+                code="E_CONTRATTO_NON_MODIFICABILE",
+                message="Modifica contratto non consentita nello stato corrente.",
+                detail=(
+                    f"In stato {stato_corrente or 'sconosciuto'} sono modificabili solo: "
+                    f"{sorted(allowed_for_state) if allowed_for_state else 'nessun campo'}. "
+                    f"Campi non ammessi nel payload: {non_ammessi}. "
+                    f"Per modifiche sostanziali su contratti post-DRAFT creare un nuovo contratto."
+                ),
+                context={
+                    "contratto_id": contratto_id,
+                    "stato_codice": stato_corrente,
+                    "campi_non_ammessi": non_ammessi,
+                    "campi_ammessi": sorted(allowed_for_state),
+                },
             )
 
         data = self._build_update_data_testata(payload, existing=existing)
@@ -523,11 +556,28 @@ class ContrattiService:
     # =================================================================
 
     # Scopo: Cambia lo stato del contratto al codice_interno richiesto.
-    #        L'attivazione in modalita' C senza righe/prezzi e' bloccata
-    #        fail-fast dal trigger DB trgfn_contratti_guard_modalita_c_
+    #        Se target=CESSATO viene applicata la regola fail-safe data-driven
+    #        (analoga a listini-versioni, vedi feedback_stato_terminale_con_data):
+    #          - valido_al obbligatorio (no cessazione "senza data")
+    #          - valido_al >= valido_dal (anti CHK constraint DB)
+    #          - valido_al < CURRENT_DATE -> cessazione immediata: applica
+    #            entrambi PATCH+UPDATE in transazione atomica
+    #          - valido_al >= CURRENT_DATE -> CESSAZIONE PROGRAMMATA: applica
+    #            solo PATCH valido_al; lo stato resta ATTIVO/SOSPESO. Il job
+    #            notturno DB allineera' lo stato a CESSATO quando la data
+    #            scade. Coerente con il principio "data = fonte di verita'
+    #            operativa, stato = flag informativo eventualmente stantio".
+    #        Per le altre transizioni (DRAFT->ATTIVO, ecc.) e per cessazioni
+    #        senza valido_al, il flusso e' lineare (UPDATE stato + opzionale
+    #        PATCH valido_al). L'attivazione in modalita' C senza righe/prezzi
+    #        e' bloccata dal trigger DB trgfn_contratti_guard_modalita_c_
     #        activation → traduciamo il P0001 in ServiceError parlante.
     def cambia_stato(
-        self, contratto_id: int, *, codice_interno: str
+        self,
+        contratto_id: int,
+        *,
+        codice_interno: str,
+        valido_al: date | None = None,
     ) -> dict[str, Any]:
         self._v.guard_positive_int(contratto_id, field="contratto_id")
         ErrorManager.require(
@@ -536,7 +586,8 @@ class ContrattiService:
             message="codice_interno dello stato obbligatorio.",
             context={"field": "codice_interno"},
         )
-        target_stato_id = self._repo.get_stato_id_by_codice(codice_interno.strip())
+        codice_norm = codice_interno.strip()
+        target_stato_id = self._repo.get_stato_id_by_codice(codice_norm)
         ErrorManager.require(
             target_stato_id is not None,
             code=E_VENDITE_VALIDATION,
@@ -544,18 +595,185 @@ class ContrattiService:
             context={"codice_interno": codice_interno},
         )
         assert target_stato_id is not None
+
+        # Pre-validazione data-driven per CESSATO (regola fail-safe):
+        # - valido_al obbligatorio
+        # - valido_al >= valido_dal
+        # - se valido_al >= today -> cessazione programmata (no cambio stato)
+        cessazione_programmata = False
+        if codice_norm == "CESSATO":
+            ErrorManager.require(
+                valido_al is not None,
+                code=E_VENDITE_VALIDATION,
+                message="Data cessazione obbligatoria.",
+                detail=(
+                    "Per portare il contratto in stato CESSATO e' necessaria "
+                    "la data di cessazione (valido_al)."
+                ),
+                context={"contratto_id": contratto_id},
+            )
+            existing = self._repo.get_contratto(contratto_id)
+            ErrorManager.require(
+                existing is not None,
+                code=E_VENDITE_NOT_FOUND,
+                message="Contratto non trovato.",
+                context={"contratto_id": contratto_id},
+            )
+            assert existing is not None and valido_al is not None
+            existing_valido_dal = existing.get("valido_dal")
+            if isinstance(existing_valido_dal, date):
+                ErrorManager.require(
+                    valido_al >= existing_valido_dal,
+                    code=E_VENDITE_VALIDATION,
+                    message="Data cessazione non valida.",
+                    detail=(
+                        f"valido_al ({valido_al.isoformat()}) deve essere >= "
+                        f"valido_dal del contratto ({existing_valido_dal.isoformat()})."
+                    ),
+                    context={
+                        "contratto_id": contratto_id,
+                        "valido_al": valido_al,
+                        "valido_dal": existing_valido_dal,
+                    },
+                )
+            # Cessazione programmata: data >= oggi -> NON cambiamo lo stato.
+            # Applichiamo solo PATCH valido_al e lasciamo che il job notturno
+            # DB allinei lo stato quando la data scade. Speculare al guard
+            # DB che rifiuta la transizione ATTIVO->CESSATO con valido_al
+            # futuro (defense-in-depth, vedi brief team DB).
+            if valido_al >= date.today():
+                cessazione_programmata = True
+
         with self._db_errors(
-            {"contratto_id": contratto_id, "codice_interno": codice_interno},
+            {"contratto_id": contratto_id, "codice_interno": codice_norm},
             fallback_message="Violazione vincolo DB su cambio stato.",
         ):
-            updated = self._repo.update_stato(contratto_id, target_stato_id)
+            with transaction.atomic():
+                if valido_al is not None:
+                    self._repo.update_contratto(contratto_id, {"valido_al": valido_al})
+                if cessazione_programmata:
+                    # Solo PATCH valido_al, niente UPDATE stato. Il chiamante
+                    # ricevera' lo stato corrente invariato + valido_al
+                    # programmato; FE distingue scenario via valido_al > today.
+                    pass
+                else:
+                    updated = self._repo.update_stato(contratto_id, target_stato_id)
+                    ErrorManager.require(
+                        updated,
+                        code=E_VENDITE_NOT_FOUND,
+                        message="Contratto non trovato.",
+                        context={"contratto_id": contratto_id},
+                    )
+        return self.get_contratto(contratto_id)
+
+    # =================================================================
+    # Righe contratto - preview pricing applicato
+    # =================================================================
+
+    # Scopo: Restituisce le righe operative del contratto per modalita' A/B,
+    #        cioe' la lista articoli con prezzo finale applicato (variazione
+    #        globale o override). Per modalita' C ritorna lista vuota: in C
+    #        le righe vivono in `contratti_righe` e sono lette da list_righe.
+    #
+    #        Il calcolo e' delegato a `repository.list_righe_preview` (single
+    #        SQL pass) che applica la stessa formula della funzione resolver
+    #        DB nello stadio CONTRATTO_LISTINO. Per modalita' A tutte le
+    #        righe hanno origine='DA_LISTINO'; per B alcune avranno
+    #        origine='OVERRIDE' (override esistente in contratti_righe).
+    #
+    #        L'envelope include la testata sintetica (modalita', listino,
+    #        variazione globale) per permettere al FE di renderizzare il
+    #        banner contesto senza ulteriori chiamate.
+    def list_righe_preview(self, contratto_id: int) -> dict[str, Any]:
+        self._v.guard_positive_int(contratto_id, field="contratto_id")
+        contratto = self._repo.get_contratto(contratto_id)
         ErrorManager.require(
-            updated,
+            contratto is not None,
             code=E_VENDITE_NOT_FOUND,
             message="Contratto non trovato.",
             context={"contratto_id": contratto_id},
         )
-        return self.get_contratto(contratto_id)
+        assert contratto is not None
+
+        # Modalita' derivata (non persistita): listino_id NULL -> C, altrimenti
+        # B se almeno un override in contratti_righe, A se nessun override.
+        # La query preview ritorna gia' le origini riga, sfruttiamole per
+        # evitare un round-trip extra di conteggio.
+        listino_id = contratto.get("listino_id")
+        preview_rows: list[dict[str, Any]] = (
+            self._repo.list_righe_preview(contratto_id) if listino_id else []
+        )
+        if listino_id is None:
+            modalita = "C"
+        else:
+            has_overrides = any(r.get("origine") == "OVERRIDE" for r in preview_rows)
+            modalita = "B" if has_overrides else "A"
+
+        # Flag per il FE: distingue il caso "listino senza versione operativa
+        # oggi" da modalita' C (lista vuota by design) e dal caso B con
+        # override extra-listino (righe presenti ma origine='OVERRIDE',
+        # nessuna 'DA_LISTINO'). Il flag e' True se il contratto ha listino
+        # ma la query non ha prodotto nemmeno una riga 'DA_LISTINO'
+        # (cioe' nessuna versione operativa o nessuna riga attiva).
+        listino_senza_versione_oggi = (
+            listino_id is not None
+            and not any(r.get("origine") == "DA_LISTINO" for r in preview_rows)
+        )
+
+        return {
+            "contratto_id": contratto_id,
+            "modalita": modalita,
+            "listino_id": listino_id,
+            "listino_codice": contratto.get("listino_codice"),
+            "listino_descrizione": contratto.get("listino_descrizione"),
+            "tipo_variazione_globale": contratto.get("tipo_variazione_globale"),
+            "valore_variazione_globale": contratto.get("valore_variazione_globale"),
+            "listino_senza_versione_oggi": listino_senza_versione_oggi,
+            "righe": preview_rows,
+        }
+
+    # =================================================================
+    # Guard sotto-entita' (righe + utility): solo DRAFT
+    # =================================================================
+
+    # Scopo: Verifica che il contratto sia in stato DRAFT prima di accettare
+    #        operazioni CRUD su righe/utility. In stati post-DRAFT le sotto
+    #        entita' sono congelate per audit (Profilo A): per modifiche serve
+    #        creare un nuovo contratto. Solleva E_CONTRATTO_NON_MODIFICABILE
+    #        con stato corrente nel context.
+    def _assert_contratto_draft(self, contratto_id: int, *, op_label: str) -> None:
+        contratto = self._repo.get_contratto(contratto_id)
+        ErrorManager.require(
+            contratto is not None,
+            code=E_VENDITE_NOT_FOUND,
+            message="Contratto non trovato.",
+            context={"contratto_id": contratto_id},
+        )
+        assert contratto is not None
+        stato = str(contratto.get("stato_codice") or "")
+        if stato != "DRAFT":
+            ErrorManager.raise_error(
+                code="E_CONTRATTO_NON_MODIFICABILE",
+                message="Operazione non consentita nello stato corrente.",
+                detail=(
+                    f"{op_label} ammessa solo su contratti in stato DRAFT. "
+                    f"Stato corrente: {stato}. Per modifiche su contratti post-DRAFT "
+                    f"creare un nuovo contratto."
+                ),
+                context={"contratto_id": contratto_id, "stato_codice": stato, "op": op_label},
+            )
+
+    # Scopo: Risale al contratto dalla riga e applica il guard DRAFT.
+    def _assert_contratto_draft_from_riga(self, riga_id: int, *, op_label: str) -> None:
+        riga = self._repo.get_riga(riga_id)
+        ErrorManager.require(
+            riga is not None,
+            code=E_VENDITE_NOT_FOUND,
+            message="Riga contratto non trovata.",
+            context={"riga_id": riga_id},
+        )
+        assert riga is not None
+        self._assert_contratto_draft(int(riga["contratto_id"]), op_label=op_label)
 
     # =================================================================
     # Righe contratto
@@ -566,6 +784,7 @@ class ContrattiService:
     #        modalita' C — gestito con traduzione P0001.
     def create_riga(self, contratto_id: int, payload: dict[str, Any]) -> dict[str, Any]:
         self._v.guard_positive_int(contratto_id, field="contratto_id")
+        self._assert_contratto_draft(contratto_id, op_label="Aggiunta riga contratto")
         self._v.reject_keys(
             payload,
             forbidden=_FORBIDDEN_RIGA_CREATE,
@@ -590,6 +809,7 @@ class ContrattiService:
         self, riga_id: int, payload: dict[str, Any]
     ) -> dict[str, Any]:
         self._v.guard_positive_int(riga_id, field="riga_id")
+        self._assert_contratto_draft_from_riga(riga_id, op_label="Modifica riga contratto")
         self._v.reject_keys(
             payload,
             forbidden=_FORBIDDEN_RIGA_UPDATE,
@@ -626,6 +846,7 @@ class ContrattiService:
     #        collegate bloccano la cancellazione via trigger DB.
     def delete_riga(self, riga_id: int) -> None:
         self._v.guard_positive_int(riga_id, field="riga_id")
+        self._assert_contratto_draft_from_riga(riga_id, op_label="Eliminazione riga contratto")
         with self._db_errors(
             {"riga_id": riga_id},
             fallback_message="Impossibile eliminare la riga (dipendenze).",
@@ -655,6 +876,18 @@ class ContrattiService:
             context={"contratto_id": contratto_id},
         )
         assert testata is not None
+        # Guard Profilo A: utility 1:1 modificabile solo in DRAFT.
+        stato_corrente = str(testata.get("stato_codice") or "")
+        if stato_corrente != "DRAFT":
+            ErrorManager.raise_error(
+                code="E_CONTRATTO_NON_MODIFICABILE",
+                message="Operazione non consentita nello stato corrente.",
+                detail=(
+                    f"Aggiunta utility ammessa solo su contratti in stato DRAFT. "
+                    f"Stato corrente: {stato_corrente}."
+                ),
+                context={"contratto_id": contratto_id, "stato_codice": stato_corrente},
+            )
 
         self._validate_utility_payload_shape(payload, for_create=True)
         data = self._build_utility_data(
@@ -678,6 +911,8 @@ class ContrattiService:
     #        identificativi contratto/istanza/utility sono immutabili.
     def update_utility(self, contratto_id: int, payload: dict[str, Any]) -> dict[str, Any]:
         self._v.guard_positive_int(contratto_id, field="contratto_id")
+        # Guard Profilo A: utility modificabile solo in DRAFT.
+        self._assert_contratto_draft(contratto_id, op_label="Modifica utility contratto")
         existing = self._repo.get_utility(contratto_id)
         ErrorManager.require(
             existing is not None,

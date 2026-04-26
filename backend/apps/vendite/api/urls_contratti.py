@@ -13,6 +13,7 @@ from apps.vendite.api.views_contratti import (
     ApiContrattoDetail,
     ApiContrattoRigaDetail,
     ApiContrattoRigheList,
+    ApiContrattoRighePreview,
     ApiContrattoUtility,
 )
 
@@ -28,6 +29,11 @@ urlpatterns = [
         "<int:contratto_id>/righe/",
         ApiContrattoRigheList.as_view(),
         name="vendite-contratto-righe-list",
+    ),
+    path(
+        "<int:contratto_id>/righe-preview/",
+        ApiContrattoRighePreview.as_view(),
+        name="vendite-contratto-righe-preview",
     ),
     path(
         "<int:contratto_id>/righe/<int:riga_id>/",

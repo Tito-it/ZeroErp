@@ -400,6 +400,125 @@ class ContrattiRepository:
             )
             return rows_to_list(cursor)
 
+    # Scopo: Preview righe applicate dal contratto in modalita' A o B.
+    #        Restituisce due insiemi UNIONati:
+    #          1. Righe del listino associato (versione operativa oggi via
+    #             `validita @> CURRENT_DATE`) con prezzo_finale = override se
+    #             esiste, altrimenti prezzo listino + variazione globale.
+    #          2. Righe override del contratto (contratti_righe) che NON
+    #             trovano corrispondenza articolo+uom nel listino: scenario
+    #             tipico in modalita' B con prodotti negoziati a parte non
+    #             inclusi nel listino base.
+    #        Modalita' C ritorna lista vuota dal service (nessun listino, le
+    #        righe vivono gia' in contratti_righe e sono lette da list_righe).
+    #
+    #        Origine per riga:
+    #          'OVERRIDE'    -> esiste contratti_righe (sia con match listino
+    #                           sia extra-listino: il prezzo_finale e' override)
+    #          'DA_LISTINO'  -> riga listino senza override, prezzo calcolato
+    #
+    #        Formula variazione (riga listino senza override):
+    #          PERCENTUALE  -> prezzo_listino * (1 + valore_variazione/100.0)
+    #          VALORE_FISSO -> prezzo_listino + valore_variazione
+    #          NULL/altro   -> prezzo_listino tal quale
+    #        Replica la logica di `vendite.fn_resolve_prezzo_listino_v2` per
+    #        lo stadio CONTRATTO_LISTINO (single-pass batch, no round-trip
+    #        per riga). Tenere allineato in caso di estensioni della formula.
+    def list_righe_preview(self, contratto_id: int) -> list[dict[str, Any]]:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                -- Parte 1: righe del listino con eventuale override matched
+                -- per (articolo, uom). prezzo_finale = override se esiste,
+                -- altrimenti prezzo listino con variazione globale applicata.
+                SELECT
+                    a.id AS articolo_id,
+                    a.codice AS articolo_codice,
+                    a.descrizione AS articolo_descrizione,
+                    lr.uom_id,
+                    um.codice AS uom_codice,
+                    um.descrizione AS uom_descrizione,
+                    lr.prezzo AS prezzo_listino,
+                    c.tipo_variazione_globale AS tipo_variazione,
+                    c.valore_variazione_globale AS valore_variazione,
+                    cr.id AS override_riga_id,
+                    cr.prezzo_unitario AS override_prezzo,
+                    CASE
+                        WHEN cr.id IS NOT NULL THEN 'OVERRIDE'
+                        ELSE 'DA_LISTINO'
+                    END AS origine,
+                    CASE
+                        WHEN cr.id IS NOT NULL THEN cr.prezzo_unitario
+                        WHEN c.tipo_variazione_globale = 'PERCENTUALE' THEN
+                            lr.prezzo * (1 + c.valore_variazione_globale / 100.0)
+                        WHEN c.tipo_variazione_globale = 'VALORE_FISSO' THEN
+                            lr.prezzo + c.valore_variazione_globale
+                        ELSE lr.prezzo
+                    END AS prezzo_finale
+                  FROM vendite.contratti c
+                  JOIN vendite.listini_versioni lv ON lv.listino_id = c.listino_id
+                                                  AND lv.validita @> CURRENT_DATE
+                                                  AND lv.attivo = TRUE
+                  JOIN vendite.listini_righe lr ON lr.listino_versione_id = lv.id
+                                               AND lr.attivo = TRUE
+                  JOIN catalogo.articoli a ON a.id = lr.articolo_id
+                  LEFT JOIN catalogo.unita_misura um ON um.id = lr.uom_id
+                  LEFT JOIN vendite.contratti_righe cr
+                         ON cr.contratto_id = c.id
+                        AND cr.articolo_id = lr.articolo_id
+                        AND cr.uom_operativa_id = lr.uom_id
+                        AND cr.attivo = TRUE
+                 WHERE c.id = %s
+                   AND c.listino_id IS NOT NULL
+
+                UNION ALL
+
+                -- Parte 2: override extra-listino. Righe contratto che non
+                -- hanno match (articolo, uom) nelle righe del listino
+                -- operativo oggi. Tipicamente prodotti negoziati a parte
+                -- non presenti nel listino base. prezzo_listino e
+                -- tipo/valore variazione sono NULL: l'origine e' OVERRIDE
+                -- e il prezzo_finale e' direttamente cr.prezzo_unitario.
+                SELECT
+                    a.id AS articolo_id,
+                    a.codice AS articolo_codice,
+                    a.descrizione AS articolo_descrizione,
+                    cr.uom_operativa_id AS uom_id,
+                    um.codice AS uom_codice,
+                    um.descrizione AS uom_descrizione,
+                    NULL::numeric AS prezzo_listino,
+                    NULL::text AS tipo_variazione,
+                    NULL::numeric AS valore_variazione,
+                    cr.id AS override_riga_id,
+                    cr.prezzo_unitario AS override_prezzo,
+                    'OVERRIDE' AS origine,
+                    cr.prezzo_unitario AS prezzo_finale
+                  FROM vendite.contratti_righe cr
+                  JOIN catalogo.articoli a ON a.id = cr.articolo_id
+                  LEFT JOIN catalogo.unita_misura um ON um.id = cr.uom_operativa_id
+                 WHERE cr.contratto_id = %s
+                   AND cr.attivo = TRUE
+                   AND NOT EXISTS (
+                       SELECT 1
+                         FROM vendite.contratti c2
+                         JOIN vendite.listini_versioni lv2
+                              ON lv2.listino_id = c2.listino_id
+                             AND lv2.validita @> CURRENT_DATE
+                             AND lv2.attivo = TRUE
+                         JOIN vendite.listini_righe lr2
+                              ON lr2.listino_versione_id = lv2.id
+                             AND lr2.articolo_id = cr.articolo_id
+                             AND lr2.uom_id = cr.uom_operativa_id
+                             AND lr2.attivo = TRUE
+                        WHERE c2.id = cr.contratto_id
+                   )
+
+                 ORDER BY articolo_codice ASC, uom_codice ASC
+                """,
+                [contratto_id, contratto_id],
+            )
+            return rows_to_list(cursor)
+
     # Scopo: Dettaglio singola riga (per read-after-write dopo create/update).
     def get_riga(self, riga_id: int) -> dict[str, Any] | None:
         with connection.cursor() as cursor:

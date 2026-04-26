@@ -5,7 +5,7 @@
 //        Modalita' C: prezzo_unitario obbligatorio su tutte le righe.
 //        Modalita' B: opzionale (solo se serve override).
 //        Modalita' A: di norma non necessarie (solo override puntuali).
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useContrattiStore } from '../stores/contratti'
 import { useApiHandler } from '../../core/composables/useApiHandler'
@@ -21,12 +21,14 @@ import ArticoloLookup from '../../core/components/ArticoloLookup.vue'
 import Drawer from 'primevue/drawer'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
+import InputText from 'primevue/inputtext'
 import InputNumber from 'primevue/inputnumber'
 import Select from 'primevue/select'
 import Button from 'primevue/button'
 import Tag from 'primevue/tag'
 import Message from 'primevue/message'
 import NewButton from '../../core/components/NewButton.vue'
+import ReloadButton from '../../core/components/ReloadButton.vue'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
 
 const { t } = useI18n()
@@ -51,6 +53,107 @@ const props = defineProps({
 const emit = defineEmits(['update:visible', 'changed'])
 
 const righe = ref([])
+
+// === Preview righe applicate (modalita' A/B) ===
+// previewMeta: testata sintetica (modalita derivata, listino, variazione)
+// previewRighe: lista preview (origine='DA_LISTINO' o 'OVERRIDE')
+const previewMeta = ref(null)
+const previewRighe = ref([])
+const previewLoading = ref(false)
+
+// In modalita' A/B la lista visualizzata e' la preview (combinata override
+// + da_listino), in modalita' C resta la lista contratti_righe diretta.
+// La modalita' usata per le decisioni di rendering e` quella derivata dal
+// BE (previewMeta.modalita) se disponibile, altrimenti la prop
+// contrattoModalita di fallback.
+const modalitaEffettiva = computed(() => previewMeta.value?.modalita || props.contrattoModalita)
+const isModalitaC = computed(() => modalitaEffettiva.value === 'C')
+
+// Filtro full-text articolo (codice + descrizione, case-insensitive).
+// Applicato client-side: la lista preview e' gia' paginata nel DataTable
+// e tipicamente sotto le 100-200 righe per listino. Per liste massive
+// si potrebbe muovere il filtro server-side (param query string) — per
+// ora MVP client.
+const filtroArticolo = ref('')
+
+// Lista renderizzata. In A/B arricchiamo con `_row_key` sintetico univoco
+// (articolo_id + uom_id): un articolo con piu' UoM nel listino genera
+// piu' righe preview con stesso articolo_id, quindi articolo_id da solo
+// non e' un dataKey valido per il DataTable (PrimeVue v-model:selection
+// confonderebbe le righe). In C il dataKey resta `id` (PK contratti_righe).
+const righeView = computed(() => {
+  const filtro = (filtroArticolo.value || '').trim().toLowerCase()
+  const matchFiltro = (r) => {
+    if (!filtro) return true
+    const codice = (r.articolo_codice || '').toLowerCase()
+    const desc = (r.articolo_descrizione || '').toLowerCase()
+    return codice.includes(filtro) || desc.includes(filtro)
+  }
+  if (isModalitaC.value) {
+    return righe.value.filter(matchFiltro)
+  }
+  return (previewRighe.value || [])
+    .filter(matchFiltro)
+    .map(r => ({
+      ...r,
+      _row_key: `${r.articolo_id}__${r.uom_id ?? 'null'}`,
+    }))
+})
+
+// Scopo: classe CSS sulla riga DataTable. In readonly (permessi LETTURA o
+// contratto post-DRAFT) tutte le righe sono visualmente readonly. In edit
+// le righe con origine='DA_LISTINO' restano readonly perche' preview pure
+// senza record contratti_righe dietro. Coerente col guard BE Profilo A.
+function rowClass(data) {
+  if (isReadonly.value) return 'app-row-readonly'
+  if (data?.origine === 'DA_LISTINO') return 'app-row-readonly'
+  return null
+}
+
+async function loadPreview() {
+  if (!props.contrattoId) return
+  if (props.contrattoModalita === 'C') {
+    previewMeta.value = { modalita: 'C', righe: [] }
+    previewRighe.value = []
+    return
+  }
+  previewLoading.value = true
+  try {
+    const data = await store.fetchRighePreview(props.contrattoId)
+    previewMeta.value = data
+    previewRighe.value = data?.righe || []
+  } catch {
+    previewMeta.value = null
+    previewRighe.value = []
+  } finally {
+    previewLoading.value = false
+  }
+}
+
+// Reload completo: in modalita' A/B ricarica la preview dal BE; in modalita'
+// C la lista contratti_righe viene rinfrescata dal parent (emit changed).
+// Usato sia dal pulsante Ricarica sia dallo shortcut F5 globale.
+async function reloadList() {
+  if (!props.visible) return
+  if (isModalitaC.value) {
+    emit('changed')
+  } else {
+    await loadPreview()
+  }
+}
+
+// Shortcut F5: ricarica la lista senza reload del browser. Coerente con
+// il pattern useSearchTable usato dalle liste main. Attivo solo quando
+// il drawer e' visibile (registrato in onMounted, deregistrato in onUnmounted
+// — il drawer e' un componente persistente, non viene smontato a chiusura).
+function onKeydown(e) {
+  if (e.key === 'F5' && props.visible) {
+    e.preventDefault()
+    reloadList()
+  }
+}
+onMounted(() => { window.addEventListener('keydown', onKeydown) })
+onUnmounted(() => { window.removeEventListener('keydown', onKeydown) })
 
 // === Form state ===
 // formMode: null (nessun form), 'create', 'edit'
@@ -110,6 +213,7 @@ watch(() => props.visible, (v) => {
   if (v) {
     righe.value = [...(props.righeIniziali || [])]
     closeForm()
+    loadPreview()
   }
 })
 
@@ -128,17 +232,40 @@ function onNew() {
 
 function onRowSelect(event) {
   const r = event.data
+  // In readonly (permessi area LETTURA o contratto post-DRAFT) il click su
+  // una riga NON apre il form di modifica. La selezione resta consultabile
+  // visivamente solo per evidenziare la riga letta. Coerente con il guard
+  // BE Profilo A che rifiuta update_riga su contratti non-DRAFT.
+  if (isReadonly.value) {
+    selectedRow.value = null
+    return
+  }
+  // In modalita' A/B la lista mostra la preview combinata: le righe con
+  // origine='DA_LISTINO' sono readonly (preview puro) e non aprono il form.
+  // Solo le righe 'OVERRIDE' (con id contratti_righe) sono editabili.
+  if (r.origine === 'DA_LISTINO') {
+    // Reset selezione e form: evita evidenziamento residuo PrimeVue e
+    // disallinea form-mode aperto su altra riga.
+    selectedRow.value = null
+    if (formMode.value) closeForm()
+    return
+  }
+  // ID dipende dalla modalita': in A/B usa override_riga_id (preview),
+  // in C usa r.id (riga contratto persistita).
+  const rigaId = r.id ?? r.override_riga_id
   form.value = {
     articolo_id: r.articolo_id,
     articolo_obj: { id: r.articolo_id, codice: r.articolo_codice, descrizione: r.articolo_descrizione, _display: `${r.articolo_codice} — ${r.articolo_descrizione}` },
     tipo_erogazione: r.tipo_erogazione || 'CANONE',
-    prezzo_unitario: r.prezzo_unitario != null ? Number(r.prezzo_unitario) : null,
+    prezzo_unitario: (r.prezzo_unitario ?? r.override_prezzo) != null
+      ? Number(r.prezzo_unitario ?? r.override_prezzo)
+      : null,
     qta_operativa: r.qta_operativa != null ? Number(r.qta_operativa) : 1,
-    uom_operativa_id: r.uom_operativa_id,
+    uom_operativa_id: r.uom_operativa_id ?? r.uom_id,
     ordine: r.ordine || 10,
   }
   formMode.value = 'edit'
-  rigaEditId.value = r.id
+  rigaEditId.value = rigaId
   loadUomPerArticolo(r.articolo_id)
 }
 
@@ -189,6 +316,7 @@ async function onSave() {
       { successMessage: t('contratti.riga_creata') }
     )
     if (result !== null) {
+      if (!isModalitaC.value) await loadPreview()
       emit('changed')
       closeForm()
     }
@@ -198,6 +326,7 @@ async function onSave() {
       { successMessage: t('contratti.riga_salvata') }
     )
     if (result !== null) {
+      if (!isModalitaC.value) await loadPreview()
       emit('changed')
       closeForm()
     }
@@ -205,14 +334,19 @@ async function onSave() {
 }
 
 function onDelete(r) {
-  confirmDelete(r.articolo_codice || r.articolo_descrizione || `#${r.id}`, async () => {
+  // ID contratti_righe: in C sta in r.id, in B (preview) sta in r.override_riga_id.
+  const rigaId = r.id ?? r.override_riga_id
+  const label = r.articolo_codice || r.articolo_descrizione || `#${rigaId}`
+  confirmDelete(label, async () => {
     const result = await execute(
-      () => store.deleteRiga(props.contrattoId, r.id),
+      () => store.deleteRiga(props.contrattoId, rigaId),
       { successMessage: t('contratti.riga_eliminata') }
     )
     if (result !== null) {
       // Se stavo editando questa riga, chiudi il form.
-      if (rigaEditId.value === r.id) closeForm()
+      if (rigaEditId.value === rigaId) closeForm()
+      // In A/B la preview va ricaricata; in C il parent rilegge dalle righe.
+      if (!isModalitaC.value) await loadPreview()
       emit('changed')
     }
   })
@@ -222,8 +356,12 @@ function onClose() {
   emit('update:visible', false)
 }
 
-// Scopo: azioni di riga per il master-detail righe contratto (elimina; nascosta in readonly).
+// Scopo: azioni di riga per il master-detail righe contratto.
+//        Le righe con origine='DA_LISTINO' (preview puro, no contratti_righe)
+//        non hanno azioni: sono readonly. Le OVERRIDE (B) e le righe puro
+//        contratto (C) ammettono delete in non-readonly.
 function buildRigaActions(data) {
+  if (data.origine === 'DA_LISTINO') return []
   return [
     {
       key: 'elimina-riga',
@@ -234,6 +372,13 @@ function buildRigaActions(data) {
       command: () => onDelete(data),
     },
   ]
+}
+
+// Scopo: severity Tag per origine riga (DA_LISTINO=neutra, OVERRIDE=primary).
+function origineSeverity(origine) {
+  if (origine === 'OVERRIDE') return 'info'
+  if (origine === 'DA_LISTINO') return 'secondary'
+  return null
 }
 </script>
 
@@ -277,41 +422,98 @@ function buildRigaActions(data) {
         </div>
       </div>
 
-      <!-- Avviso modalita' C -->
-      <Message v-if="contrattoModalita === 'C'" severity="warn" :closable="false" size="small">
+      <!-- Avviso modalita' C: tutte le righe sono custom, prezzo obbligatorio -->
+      <Message v-if="modalitaEffettiva === 'C'" severity="warn" :closable="false" size="small">
         {{ t('contratti.righe_c_warn') }}
+      </Message>
+
+      <!-- Banner contesto preview modalita' A/B: riassume listino + variazione -->
+      <Message v-else-if="previewMeta?.listino_codice"
+        severity="info" :closable="false" size="small">
+        <div>
+          <strong>{{ t('contratti.preview_modalita', { mod: previewMeta.modalita }) }}</strong>:
+          {{ t('contratti.preview_listino', { codice: previewMeta.listino_codice }) }}
+          <span v-if="previewMeta.tipo_variazione_globale">
+            — {{ t('contratti.preview_variazione', {
+              tipo: previewMeta.tipo_variazione_globale,
+              valore: previewMeta.valore_variazione_globale,
+            }) }}
+          </span>
+        </div>
+        <div class="text-sm">{{ t('contratti.preview_hint') }}</div>
+      </Message>
+
+      <!-- Avviso: listino associato ma senza versione operativa oggi.
+           La preview e` vuota legittimamente, l'operatore deve attivare
+           una versione del listino prima che il pricing sia calcolato. -->
+      <Message v-if="previewMeta?.listino_senza_versione_oggi"
+        severity="warn" :closable="false" size="small">
+        {{ t('contratti.preview_listino_senza_versione', {
+          codice: previewMeta.listino_codice || ''
+        }) }}
       </Message>
 
       <!-- === MASTER: toolbar + lista paginata === -->
       <div class="app-page-toolbar">
-        <div class="app-page-filters"></div>
+        <div class="app-page-filters">
+          <InputText v-model="filtroArticolo"
+            :placeholder="t('contratti.filtro_articolo_placeholder')"
+            style="min-width: 240px;" />
+        </div>
         <div class="app-page-actions">
+          <ReloadButton @click="reloadList" />
           <NewButton :tooltip="t('contratti.aggiungi_riga')"
             @click="onNew" :disabled="formMode === 'create' || isReadonly" />
         </div>
       </div>
 
       <DataTable
-        :value="righe"
+        :value="righeView"
         v-model:selection="selectedRow"
+        :loading="previewLoading"
         selection-mode="single"
-        data-key="id"
+        :data-key="isModalitaC ? 'id' : '_row_key'"
+        :row-class="rowClass"
         class="app-datatable"
         striped-rows
         paginator
         :rows="10"
-        :rows-per-page-options="[10, 25]"
+        :rows-per-page-options="[10, 25, 50]"
         paginator-position="top"
+        sort-field="articolo_descrizione"
+        :sort-order="1"
+        removable-sort
         @row-select="onRowSelect"
       >
-        <Column field="articolo_codice" :header="t('contratti.col_articolo')" style="width: 150px;" />
-        <Column field="articolo_descrizione" :header="t('contratti.col_descrizione')" />
-        <Column field="uom_codice" :header="t('contratti.col_uom')" style="width: 70px;" />
-        <Column field="prezzo_unitario" :header="t('contratti.col_prezzo')" style="width: 90px;">
-          <template #body="{ data }">{{ data.prezzo_unitario ?? '—' }}</template>
+        <Column field="articolo_codice" :header="t('contratti.col_articolo')" sortable style="width: 150px;" />
+        <Column field="articolo_descrizione" :header="t('contratti.col_descrizione')" sortable />
+        <Column :header="t('contratti.col_uom')" style="width: 80px;">
+          <template #body="{ data }">{{ data.uom_codice ?? '—' }}</template>
         </Column>
-        <Column field="qta_operativa" :header="t('contratti.col_qta')" style="width: 70px;" />
-        <Column field="tipo_erogazione" :header="t('contratti.col_tipo_erogazione')" style="width: 100px;" />
+        <!-- Modalita' C: prezzo singolo. A/B: prezzo listino + prezzo finale + origine. -->
+        <template v-if="isModalitaC">
+          <Column field="prezzo_unitario" :header="t('contratti.col_prezzo')" style="width: 90px;">
+            <template #body="{ data }">{{ data.prezzo_unitario ?? '—' }}</template>
+          </Column>
+          <Column field="qta_operativa" :header="t('contratti.col_qta')" style="width: 70px;" />
+          <Column field="tipo_erogazione" :header="t('contratti.col_tipo_erogazione')" style="width: 100px;" />
+        </template>
+        <template v-else>
+          <Column :header="t('contratti.col_prezzo_listino')" style="width: 110px;">
+            <template #body="{ data }">{{ data.prezzo_listino ?? '—' }}</template>
+          </Column>
+          <Column :header="t('contratti.col_prezzo_finale')" style="width: 110px;">
+            <template #body="{ data }">
+              <span class="font-bold">{{ data.prezzo_finale ?? '—' }}</span>
+            </template>
+          </Column>
+          <Column :header="t('contratti.col_origine')" style="width: 110px;">
+            <template #body="{ data }">
+              <Tag :value="t(`contratti.origine_${data.origine?.toLowerCase()}`)"
+                :severity="origineSeverity(data.origine)" />
+            </template>
+          </Column>
+        </template>
         <Column :header="t('common.col_azioni')" class="app-col-actions" :exportable="false">
           <template #body="{ data }">
             <RowActionsMenu :actions="buildRigaActions(data)" />

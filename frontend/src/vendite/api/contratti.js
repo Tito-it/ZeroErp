@@ -22,13 +22,26 @@ export function updateContratto(id, payload) {
   return api.patch(`${BASE}/${id}/`, payload)
 }
 
-export function cambiaStatoContratto(id, codiceInterno) {
-  return api.post(`${BASE}/${id}/cambia-stato/`, { codice_interno: codiceInterno })
+// Cambio stato. `validoAl` opzionale (formato ISO YYYY-MM-DD): se presente,
+// il BE applica anche PATCH valido_al nella stessa transazione (caso d'uso:
+// dialog "Cessa contratto" che chiede la data di cessazione al click).
+export function cambiaStatoContratto(id, codiceInterno, { validoAl = null } = {}) {
+  const payload = { codice_interno: codiceInterno }
+  if (validoAl) payload.valido_al = validoAl
+  return api.post(`${BASE}/${id}/cambia-stato/`, payload)
 }
 
 // Righe
 export function addRigaContratto(contrattoId, payload) {
   return api.post(`${BASE}/${contrattoId}/righe/`, payload)
+}
+
+// Anteprima righe applicate (modalita' A/B). Restituisce envelope con
+// testata sintetica (modalita derivata, listino, variazione globale) +
+// righe con prezzo_finale gia' calcolato e origine ('DA_LISTINO' /
+// 'OVERRIDE'). Modalita' C ritorna righe vuote.
+export function listRighePreviewContratto(contrattoId) {
+  return api.get(`${BASE}/${contrattoId}/righe-preview/`)
 }
 
 export function updateRigaContratto(contrattoId, rigaId, payload) {
