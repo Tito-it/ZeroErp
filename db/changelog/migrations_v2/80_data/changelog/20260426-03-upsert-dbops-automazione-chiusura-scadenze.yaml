@@ -1,0 +1,55 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Seed righe di configurazione del framework chiusura per scadenza:
+#   - vendite.listini_versioni  (VARCHAR, codici ATTIVA/CHIUSA)
+#   - vendite.contratti          (FK su config.stati_doc_contratti,
+#                                 codici_interno ATTIVO/CESSATO)
+#
+# Il job pgAgent chiusura_scadenze_daily legge queste righe via
+# dbops.fn_apply_chiusura_scadenze() ogni notte alle 00:05.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260426-03-upsert-dbops-automazione-chiusura-scadenze.yaml
+
+  - changeSet:
+      id: 20260426-03-upsert-dbops-automazione-chiusura-scadenze
+      author: mctit
+      runOnChange: true
+      failOnError: true
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: dbops
+            tableName: automazione_chiusura_scadenze
+      changes:
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/dbops/automazione_chiusura_scadenze.csv
+            tableName: automazione_chiusura_scadenze
+            schemaName: dbops
+            separator: ","
+            encoding: UTF-8
+            nullValue: "NULL"
+            primaryKey: "id"
+            columns:
+              - column: { name: id, type: NUMERIC }
+              - column: { name: schema_tabella, type: STRING }
+              - column: { name: nome_tabella, type: STRING }
+              - column: { name: col_stato, type: STRING }
+              - column: { name: tipo_stato, type: STRING }
+              - column: { name: col_valido_al, type: STRING }
+              - column: { name: stato_attivo_codice, type: STRING }
+              - column: { name: stato_chiuso_codice, type: STRING }
+              - column: { name: fk_lookup_schema, type: STRING }
+              - column: { name: fk_lookup_table, type: STRING }
+              - column: { name: fk_lookup_codice_col, type: STRING }
+              - column: { name: fk_lookup_id_col, type: STRING }
+              - column: { name: attivo, type: BOOLEAN }
+              - column: { name: descrizione, type: STRING }

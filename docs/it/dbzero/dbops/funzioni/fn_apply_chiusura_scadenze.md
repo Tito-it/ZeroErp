@@ -1,0 +1,273 @@
+{% include-markdown "it/dbzero/dbops/manual/fn_apply_chiusura_scadenze.md" %}
+# ⚙️ Funzione `fn_apply_chiusura_scadenze`
+
+```sql
+CREATE FUNCTION fn_apply_chiusura_scadenze()
+```
+
+**Definizione completa:**
+
+```sql
+CREATE OR REPLACE FUNCTION dbops.fn_apply_chiusura_scadenze()
+ RETURNS jsonb
+ LANGUAGE plpgsql
+AS $function$
+-- Scopo:
+--   Esegue la chiusura di stato per scadenza temporale su
+--   tutte le tabelle configurate in
+--   dbops.automazione_chiusura_scadenze (attivo=true).
+--   Ritorna JSONB con conteggio righe chiuse per tabella
+--   target + meta-info esecuzione.
+--
+-- Algoritmo:
+--   1. Pre-check struttura: schema/tabella/colonne esistono;
+--      per tipo_stato=FK anche tabella lookup e codici.
+--   2. UPDATE dinamico (VARCHAR diretto o FK con lookup id).
+--   3. Aggregazione conteggio in JSONB.
+--   4. Audit log dell'esito.
+--
+-- Sicurezza SQL dinamico:
+--   - format(%I) per identificatori (quote_ident implicito)
+--   - format(%L) per valori (quote_literal implicito)
+--   - I valori della config sono comunque controllati
+--     amministrativamente (Liquibase seed), ma applichiamo
+--     igiene comunque.
+DECLARE
+    v_row              dbops.automazione_chiusura_scadenze%ROWTYPE;
+    v_result           jsonb := '{}'::jsonb;
+    v_total            bigint := 0;
+    v_count            bigint;
+    v_target_key       text;
+    v_sql              text;
+    v_id_chiuso        bigint;
+    v_id_attivo        bigint;
+    v_col_count        smallint;
+BEGIN
+    FOR v_row IN
+        SELECT *
+          FROM dbops.automazione_chiusura_scadenze
+         WHERE attivo = TRUE
+         ORDER BY id
+    LOOP
+        v_target_key := v_row.schema_tabella || '.' || v_row.nome_tabella;
+
+        -- =====================================================
+        -- 1) Pre-check: tabella e colonne target
+        -- to_regclass restituisce NULL se la tabella non esiste
+        -- (idiomatico PG, una riga vs JOIN su pg_class/pg_namespace).
+        -- =====================================================
+        IF to_regclass(format('%I.%I', v_row.schema_tabella, v_row.nome_tabella)) IS NULL THEN
+            PERFORM script.fn_log_and_raise_error(
+                'database',
+                'fn_apply_chiusura_scadenze',
+                'E_AUTOMAZIONE_CHIUSURA_CONFIG_INVALIDA',
+                jsonb_build_object(
+                    'config_id', v_row.id,
+                    'target',    v_target_key,
+                    'motivo',    'tabella_inesistente'
+                ),
+                NULL::uuid,
+                v_target_key,
+                'tabella inesistente'
+            );
+        END IF;
+
+        -- Verifica esistenza congiunta col_stato + col_valido_al.
+        SELECT count(*)::smallint INTO v_col_count
+          FROM pg_attribute a
+          JOIN pg_class    c ON c.oid = a.attrelid
+          JOIN pg_namespace n ON n.oid = c.relnamespace
+         WHERE n.nspname = v_row.schema_tabella
+           AND c.relname = v_row.nome_tabella
+           AND a.attname IN (v_row.col_stato, v_row.col_valido_al)
+           AND a.attnum > 0
+           AND NOT a.attisdropped;
+
+        IF v_col_count < 2 THEN
+            PERFORM script.fn_log_and_raise_error(
+                'database',
+                'fn_apply_chiusura_scadenze',
+                'E_AUTOMAZIONE_CHIUSURA_CONFIG_INVALIDA',
+                jsonb_build_object(
+                    'config_id',     v_row.id,
+                    'target',        v_target_key,
+                    'col_stato',     v_row.col_stato,
+                    'col_valido_al', v_row.col_valido_al,
+                    'motivo',        'colonna_mancante'
+                ),
+                NULL::uuid,
+                v_target_key,
+                format('colonne %s/%s non trovate',
+                       v_row.col_stato, v_row.col_valido_al)
+            );
+        END IF;
+
+        -- =====================================================
+        -- 2) Esecuzione: dispatch su tipo_stato
+        -- =====================================================
+        IF v_row.tipo_stato = 'VARCHAR' THEN
+            -- UPDATE diretto con valori varchar.
+            v_sql := format(
+                $f$
+                UPDATE %I.%I
+                   SET %I = %L
+                 WHERE %I = %L
+                   AND %I IS NOT NULL
+                   AND %I < CURRENT_DATE
+                $f$,
+                v_row.schema_tabella, v_row.nome_tabella,
+                v_row.col_stato,      v_row.stato_chiuso_codice,
+                v_row.col_stato,      v_row.stato_attivo_codice,
+                v_row.col_valido_al,
+                v_row.col_valido_al
+            );
+
+            EXECUTE v_sql;
+            GET DIAGNOSTICS v_count = ROW_COUNT;
+
+        ELSIF v_row.tipo_stato = 'FK' THEN
+            -- Pre-check tabella lookup (to_regclass idiomatico).
+            IF to_regclass(format('%I.%I', v_row.fk_lookup_schema, v_row.fk_lookup_table)) IS NULL THEN
+                PERFORM script.fn_log_and_raise_error(
+                    'database',
+                    'fn_apply_chiusura_scadenze',
+                    'E_AUTOMAZIONE_CHIUSURA_CONFIG_INVALIDA',
+                    jsonb_build_object(
+                        'config_id',  v_row.id,
+                        'target',     v_target_key,
+                        'fk_lookup',  v_row.fk_lookup_schema || '.' || v_row.fk_lookup_table,
+                        'motivo',     'fk_lookup_inesistente'
+                    ),
+                    NULL::uuid,
+                    v_target_key,
+                    'fk_lookup inesistente'
+                );
+            END IF;
+
+            -- Lookup combinato id_attivo + id_chiuso in 1 round-trip.
+            -- MAX(CASE...) e' la classica idempotente "pivot": ritorna
+            -- l'unico id matching per ciascun codice, NULL se assente.
+            v_sql := format(
+                'SELECT max(CASE WHEN %I = %L THEN %I END),'
+                '       max(CASE WHEN %I = %L THEN %I END)'
+                '  FROM %I.%I'
+                ' WHERE %I IN (%L, %L)',
+                v_row.fk_lookup_codice_col, v_row.stato_attivo_codice, v_row.fk_lookup_id_col,
+                v_row.fk_lookup_codice_col, v_row.stato_chiuso_codice, v_row.fk_lookup_id_col,
+                v_row.fk_lookup_schema, v_row.fk_lookup_table,
+                v_row.fk_lookup_codice_col,
+                v_row.stato_attivo_codice, v_row.stato_chiuso_codice
+            );
+            EXECUTE v_sql INTO v_id_attivo, v_id_chiuso;
+
+            IF v_id_chiuso IS NULL THEN
+                PERFORM script.fn_log_and_raise_error(
+                    'database',
+                    'fn_apply_chiusura_scadenze',
+                    'E_AUTOMAZIONE_CHIUSURA_CONFIG_INVALIDA',
+                    jsonb_build_object(
+                        'config_id',           v_row.id,
+                        'target',              v_target_key,
+                        'stato_chiuso_codice', v_row.stato_chiuso_codice,
+                        'motivo',              'codice_chiuso_non_trovato'
+                    ),
+                    NULL::uuid,
+                    v_target_key,
+                    'codice chiuso non trovato'
+                );
+            END IF;
+
+            IF v_id_attivo IS NULL THEN
+                PERFORM script.fn_log_and_raise_error(
+                    'database',
+                    'fn_apply_chiusura_scadenze',
+                    'E_AUTOMAZIONE_CHIUSURA_CONFIG_INVALIDA',
+                    jsonb_build_object(
+                        'config_id',           v_row.id,
+                        'target',              v_target_key,
+                        'stato_attivo_codice', v_row.stato_attivo_codice,
+                        'motivo',              'codice_attivo_non_trovato'
+                    ),
+                    NULL::uuid,
+                    v_target_key,
+                    'codice attivo non trovato'
+                );
+            END IF;
+
+            -- UPDATE con id risolti.
+            v_sql := format(
+                $f$
+                UPDATE %I.%I
+                   SET %I = %L
+                 WHERE %I = %L
+                   AND %I IS NOT NULL
+                   AND %I < CURRENT_DATE
+                $f$,
+                v_row.schema_tabella, v_row.nome_tabella,
+                v_row.col_stato,      v_id_chiuso::text,
+                v_row.col_stato,      v_id_attivo::text,
+                v_row.col_valido_al,
+                v_row.col_valido_al
+            );
+
+            EXECUTE v_sql;
+            GET DIAGNOSTICS v_count = ROW_COUNT;
+        ELSE
+            -- Difesa in profondita': il CHECK constraint
+            -- esclude gia' tipi diversi, ma per chiarezza.
+            PERFORM script.fn_log_and_raise_error(
+                'database',
+                'fn_apply_chiusura_scadenze',
+                'E_AUTOMAZIONE_CHIUSURA_CONFIG_INVALIDA',
+                jsonb_build_object(
+                    'config_id',  v_row.id,
+                    'target',     v_target_key,
+                    'tipo_stato', v_row.tipo_stato,
+                    'motivo',     'tipo_stato_non_gestito'
+                ),
+                NULL::uuid,
+                v_target_key,
+                v_row.tipo_stato
+            );
+            v_count := 0;
+        END IF;
+
+        -- =====================================================
+        -- 3) Aggregazione risultato
+        -- =====================================================
+        v_result := v_result || jsonb_build_object(v_target_key, v_count);
+        v_total  := v_total + v_count;
+    END LOOP;
+
+    -- Meta-info.
+    v_result := v_result
+                || jsonb_build_object('_total', v_total)
+                || jsonb_build_object('_executed_at', now());
+
+    -- =====================================================
+    -- 4) Audit log esecuzione (best-effort, non blocca)
+    -- Pattern progetto: dbops.fn_audit_log_once con parametri named.
+    -- WHEN OTHERS perche' un fallimento di audit non deve
+    -- propagarsi: il caller (job pgAgent) deve comunque
+    -- ricevere il JSONB con i conteggi.
+    -- =====================================================
+    BEGIN
+        PERFORM dbops.fn_audit_log_once(
+            p_function_name => 'dbops.fn_apply_chiusura_scadenze',
+            p_status        => 'INFO',
+            p_params        => v_result
+        );
+    EXCEPTION WHEN OTHERS THEN
+        NULL;
+    END;
+
+    RETURN v_result;
+END;
+$function$
+
+COMMENT ON FUNCTION dbops.fn_apply_chiusura_scadenze()
+IS 'Motore del framework di chiusura per scadenza. Itera su dbops.automazione_chiusura_scadenze (attivo=true), esegue UPDATE dinamici (VARCHAR/FK), ritorna JSONB con conteggi. Eseguita dal job pgAgent chiusura_scadenze_daily.';
+```
+
+---
+{% include-markdown "signature-core.md" %}

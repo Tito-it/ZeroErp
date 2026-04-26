@@ -72,27 +72,53 @@ il job notturno descritto qui sotto.
 
 ---
 
-### Chiusura automatica via job pgAgent
+### Chiusura automatica via framework `dbops.automazione_chiusura_scadenze`
 
-Il job `listini_versioni_close_scadute_daily` (pgAgent, daily 00:05,
-migration `85_pgagent/20260424-01-...`) esegue
-`vendite.fn_listini_versioni_close_scadute()` che porta a `CHIUSA`
-tutte le versioni ATTIVA con `valido_al < CURRENT_DATE`.
+Dal **2026-04-26** la chiusura automatica delle versioni listino e'
+gestita dal **framework parametrico** `dbops.fn_apply_chiusura_scadenze()`,
+invocato dal job pgAgent unico `chiusura_scadenze_daily` (daily 00:05).
 
-L'UPDATE eseguito dal job **attraversa il guard** e lo soddisfa per
-costruzione (condizione temporale verificata). Nessun bypass, nessuna
-session variable.
+La configurazione vive in `dbops.automazione_chiusura_scadenze`
+(riga `id=1`):
 
-Conseguenze UX da ricordare:
+* `schema_tabella='vendite'`, `nome_tabella='listini_versioni'`
+* `tipo_stato='VARCHAR'`, `col_stato='stato'`
+* `stato_attivo_codice='ATTIVA'`, `stato_chiuso_codice='CHIUSA'`
+
+Il framework esegue UPDATE dinamico equivalente a:
+
+```sql
+UPDATE vendite.listini_versioni
+   SET stato = 'CHIUSA'
+ WHERE stato = 'ATTIVA'
+   AND valido_al IS NOT NULL
+   AND valido_al < CURRENT_DATE;
+```
+
+L'UPDATE attraversa il guard `trg_listini_versioni_a10_guard_transizione_stato_upd`
+e lo soddisfa per costruzione. Nessun bypass.
+
+> **Nota storica**: la funzione specifica `vendite.fn_listini_versioni_close_scadute()`
+> (creata il 24-04-2026) e' stata droppata il 26-04-2026 dalla migration
+> `20260426-04`. La logica e' stata promossa al nucleo `dbops` come
+> framework riusabile da N tabelle (manifesto sviluppo concentrico §7:
+> due consumatori reali → astrazione validata).
+
+Conseguenze UX:
 
 * fra l'impostazione di `valido_al = CURRENT_DATE` e le 00:05 del
   giorno successivo lo **stato resta ATTIVA**; l'applicabilita'
   operativa e' gia' falsa (le date comandano).
+* Semantica: `valido_al = oggi` significa "ultimo giorno di validita' = oggi";
+  la chiusura scatta dalle 00:05 di domani.
 * badge UI basati solo su `stato` mostreranno ATTIVA finche' il job non
   scatta. Se serve feedback immediato, usare `valido_al <= CURRENT_DATE`
   (o `NOT (validita @> CURRENT_DATE)`) invece dello stato.
 
-Riferimenti catalogo: [Processi pgAgent funzionali](/guide/processi-pgagent-funzionali).
+Riferimenti:
+
+* [Catalogo processi pgAgent funzionali](/guide/processi-pgagent-funzionali)
+* [linee-guida-sql §7c](/linee-guida-sql) — pattern "ciclo stato + finestra di validita'"
 
 > 🗑️ **Campo `priorita` RIMOSSO il 2026-04-09 (Fase 2 refactor)**. Con l'invariante
 > univocita per versione `ATTIVA` garantita dall'EXCLUDE constraint

@@ -1,0 +1,48 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Drop della funzione vendite.fn_listini_versioni_close_scadute()
+# (creata con migration 20260424-02). La logica di chiusura per
+# scadenza e' ora delegata al framework parametrico
+# dbops.fn_apply_chiusura_scadenze() (migration 20260426-02), che
+# legge la configurazione da dbops.automazione_chiusura_scadenze.
+#
+# Il job pgAgent viene riconfigurato dalla migration 20260426-06 per
+# chiamare la fn generica invece di quella specifica.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260426-04-drop-fn-listini-versioni-close-scadute-mctit.yaml
+
+  - changeSet:
+      id: 20260426-04-drop-fn-listini-versioni-close-scadute
+      author: mctit
+      comment: >
+        Drop vendite.fn_listini_versioni_close_scadute(): sostituita
+        dal framework parametrico dbops.fn_apply_chiusura_scadenze().
+      preConditions:
+        - onFail: MARK_RAN
+          onError: MARK_RAN
+          sqlCheck:
+              expectedResult: 1
+              sql: |
+                SELECT COUNT(*)
+                  FROM pg_proc p
+                  JOIN pg_namespace n ON n.oid = p.pronamespace
+                 WHERE n.nspname = 'vendite'
+                   AND p.proname = 'fn_listini_versioni_close_scadute';
+      changes:
+        - sql:
+            sql: DROP FUNCTION IF EXISTS vendite.fn_listini_versioni_close_scadute();
+      rollback:
+        - sql:
+            sql: |
+              -- Rollback: ripristina la funzione specifica per listini.
+              -- In caso di rollback reale, riapplicare la migration
+              -- 20260424-02 originale.
+              SELECT 1;

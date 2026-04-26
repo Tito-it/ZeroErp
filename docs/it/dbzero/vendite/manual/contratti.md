@@ -120,6 +120,95 @@ In stato `DRAFT` le righe incomplete sono ammesse: il contratto modalita' C non 
 
 ---
 
+### Workflow stato e cessazione automatica (dal 2026-04-26)
+
+Le transizioni di stato sono **vincolate da guard trigger**
+(`trg_contratti_a10_guard_transizione_stato_upd` →
+`vendite.trgfn_contratti_guard_transizione_stato`,
+migration `20260426-05-...`).
+
+Lo `stato_doc_contratto_id` e' FK a `config.stati_doc_contratti`. Il
+guard fa lookup via `codice_interno` (immutabile per `lock_columns`)
+per stabilita' rispetto a relabelling.
+
+**Matrice transizioni ammesse**:
+
+| Da | A | Ammessa | Condizione |
+| --- | --- | --- | --- |
+| DRAFT | ATTIVO | si | — |
+| ATTIVO | CESSATO | si | `valido_al IS NOT NULL AND valido_al < CURRENT_DATE` |
+| ATTIVO | ATTIVO | si | no-op |
+| DRAFT | DRAFT | si | no-op |
+| DRAFT | CESSATO | **no** | una bozza si cancella |
+| ATTIVO | DRAFT | **no** | irreversibile |
+| CESSATO | * | **no** | stato terminale |
+
+> **Nota su SOSPESO**: il `codice_interno='SOSPESO'` esiste in
+> `config.stati_doc_contratti` ma **non rientra nel workflow operativo
+> attuale**. La sua semantica (effetti su fatturazione, ripristino)
+> sara' affrontata come piano separato.
+
+Violazione → `script.fn_log_and_raise_error` con codice
+`E_CONTRATTO_STATO_TRANSIZIONE_INVALIDA` (id 392 in `config.messaggi_errore`).
+
+**Principio di applicabilita' operativa** (linee-guida-sql §7c): un
+contratto e' *operativamente applicabile* quando `validita @> data_riferimento`.
+Lo `stato` e' flag gestionale per UI/audit/reportistica; la logica
+operativa (resolver prezzi, lookup attivi) **non** filtra per stato —
+le date comandano.
+
+**INSERT non vincolato**: il guard scatta solo su UPDATE OF
+`stato_doc_contratto_id`. Consente seed/import e creazione di
+contratti direttamente in stato non-DRAFT se necessario.
+
+**Path utente per cessare un contratto**: non esiste un'azione
+manuale "cambia stato a CESSATO" tradizionale. L'utente imposta
+`valido_al` (PATCH); la cessazione di stato avviene automaticamente
+alla scadenza tramite il **framework `dbops.automazione_chiusura_scadenze`**
+(vedi sotto).
+
+#### Cessazione automatica via framework
+
+Il job pgAgent unico **`chiusura_scadenze_daily`** (00:05) invoca
+`dbops.fn_apply_chiusura_scadenze()` che, leggendo la riga
+configurata in `dbops.automazione_chiusura_scadenze`, esegue:
+
+```sql
+-- Lookup id stati via codice_interno
+SELECT id FROM config.stati_doc_contratti WHERE codice_interno = 'CESSATO';
+SELECT id FROM config.stati_doc_contratti WHERE codice_interno = 'ATTIVO';
+
+-- UPDATE dinamico
+UPDATE vendite.contratti
+   SET stato_doc_contratto_id = <id_cessato>
+ WHERE stato_doc_contratto_id = <id_attivo>
+   AND valido_al IS NOT NULL
+   AND valido_al < CURRENT_DATE;
+```
+
+L'UPDATE attraversa il guard transizione e lo soddisfa per
+costruzione (`valido_al < CURRENT_DATE` identica al WHERE).
+
+**Semantica `valido_al`** (importante per UX):
+
+* `valido_al = oggi` → contratto ancora ATTIVO oggi (ultimo giorno **incluso**); cessazione scatta dalle 00:05 di domani.
+* `valido_al = ieri` → contratto cessato; il job notturno gia' scattato lo ha portato a CESSATO.
+* `valido_al = data_futura` → cessazione **programmata**; il contratto resta ATTIVO fino al giorno seguente la data, dove il job lo chiude automaticamente.
+
+**Effetto pratico**: l'utente programma `valido_al` (PATCH) senza
+toccare lo stato. Il job allinea lo stato `CESSATO` quando la
+finestra e' effettivamente scaduta. Il principio fail-safe garantisce
+che, anche se il job non scatta, la logica operativa resta corretta
+(basata su `validita @> data`, non su `stato`).
+
+Riferimenti:
+
+* [linee-guida-sql §7c](/linee-guida-sql) — pattern "ciclo stato + finestra di validita'"
+* [Catalogo processi pgAgent funzionali](/guide/processi-pgagent-funzionali) — scheda `chiusura_scadenze_daily`
+* [WIP automazione-chiusure-scadenze](/dev/work-in-progress/automazione-chiusure-scadenze)
+
+---
+
 ### Meta, rinnovi e storicizzazione
 
 * **`meta jsonb`**: contenitore estendibile per condizioni specifiche (SLA, clausole, parametri di calcolo).

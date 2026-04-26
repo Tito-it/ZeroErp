@@ -4,7 +4,7 @@
 >
 > Riferimento metodologico: [sviluppo-concentrico.md](sviluppo-concentrico.md)
 
-*Ultimo aggiornamento: 22 aprile 2026*
+*Ultimo aggiornamento: 26 aprile 2026 (aggiunto esempio virtuoso §7 attivato: framework `dbops.automazione_chiusura_scadenze` come promozione corretta al nucleo dopo 2 consumatori reali — vendite.listini_versioni + vendite.contratti)*
 
 ---
 
@@ -44,11 +44,27 @@
 
 **Regola fondamentale**: ogni anello dipende solo dagli anelli interni. Mai dipendenze inverse o laterali.
 
+### Natura degli anelli (post-aggiornamento manifesto §III bis)
+
+Ogni anello e' classificato come **autocontenuto** o **di servizio**. La distinzione non riguarda la direzione delle dipendenze (sempre verso l'interno), ma l'**ordine di costruzione** raccomandato.
+
+| Tipo               | Significato                                                                                  | Costruzione                                                                |
+| ------------------ | -------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| **Autocontenuto** | Ha un end-to-end di valore proprio (es. "gestisco anagrafica clienti"). Validabile in isolamento. | Si puo' costruire e dichiarare operativo da solo.                          |
+| **Di servizio**   | Motore/infrastruttura per altri anelli. Senza consumatori esterni reali e' un'astrazione teorica. | Va costruito **dopo o in parallelo** ai consumatori, mai prima. Resta "predisposto, in attesa di validazione" finche' almeno due consumatori reali non l'hanno esercitato (manifesto principio 7). |
+
+| Anello                       | Natura            |
+| ---------------------------- | ----------------- |
+| 0 — Nucleo Infrastrutturale  | **Di servizio**   |
+| 1 — Dati Base                | **Autocontenuto** |
+| 2 — Orchestrazione (pratiche)| **Di servizio**   |
+| 3 — Processi Operativi       | **Autocontenuti** (ciascuno) |
+
 ---
 
 ## Anello 0 — Nucleo Infrastrutturale
 
-> Il protocollo operativo del sistema. Si tocca solo per correggere limiti reali.
+> **Natura: di servizio.** Il protocollo operativo del sistema. Si tocca solo per correggere limiti reali.
 
 | Componente    | Tipo       | Stato     | Descrizione                                                                                                                              |
 | ------------- | ---------- | --------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
@@ -91,7 +107,7 @@ Stabile. Modifiche solo per correzioni o estensioni non-breaking (nuove policy, 
 
 ## Anello 1 — Dati Base e Configurazione
 
-> Entita' di riferimento condivise da tutti i processi. Vocabolario comune del sistema.
+> **Natura: autocontenuto.** Entita' di riferimento condivise da tutti i processi. Vocabolario comune del sistema.
 
 | Componente     | Tipo       | DB        | Backend   | Frontend  | Descrizione                                                                                                                |
 | -------------- | ---------- | --------- | --------- | --------- | -------------------------------------------------------------------------------------------------------------------------- |
@@ -148,7 +164,9 @@ Stabile. Cresce per aggiunta di nuove tabelle config (es. `config.canali_pratich
 
 ## Anello 2 — Orchestrazione di Dominio
 
-> Motore trasversale che gli anelli esterni usano per tracciare, orchestrare e automatizzare.
+> **Natura: di servizio.** Motore trasversale che gli anelli esterni usano per tracciare, orchestrare e automatizzare.
+>
+> ⚠️ **Validazione esterna: in corso.** L'anello e' stato dichiarato Operativo su DB+BE+FE prima che un processo di Anello 3 lo consumasse realmente. Stato attuale: **predisposto, in attesa di validazione** dal primo consumatore reale (vendite). Vedi [Caso di studio: pratiche prima di vendite](#caso-di-studio-pratiche-prima-di-vendite). Solo dopo che almeno due processi di Anello 3 avranno usato pratiche end-to-end le sue astrazioni si potranno considerare *contratti* nel senso del manifesto principio 1; fino a quel momento sono *proposte* (manifesto principio 7) e modificabili senza il rigore di un nucleo stabile.
 
 | Componente | Tipo       | DB        | Backend   | Frontend  | Descrizione                                                                                                                          |
 | ---------- | ---------- | --------- | --------- | --------- | ------------------------------------------------------------------------------------------------------------------------------------ |
@@ -215,7 +233,7 @@ Piano v1 (storico): [work-done/piano-gestione-pratiche.md](dev/work-done/piano-g
 
 ## Anello 3 — Processi Operativi
 
-> Cicli di business che usano anelli interni. Ogni processo e' autonomo ma condivide vocabolario e infrastruttura.
+> **Natura: autocontenuti (ciascuno).** Cicli di business che usano anelli interni. Ogni processo e' autonomo ma condivide vocabolario e infrastruttura.
 
 | Componente    | Tipo       | DB        | Backend   | Descrizione                                                                            |
 | ------------- | ---------- | --------- | --------- | -------------------------------------------------------------------------------------- |
@@ -286,6 +304,94 @@ contabilita      usa     usa       -        -     (futuro)      -
 Nessuna dipendenza inversa. Nessuna dipendenza laterale tra processi di anello 3.
 
 Gli anelli esterni possono dipendere direttamente da anelli non adiacenti — vendite usa `core` e `config` senza passare per `pratiche`. Questo non viola la direzione delle dipendenze, sempre dall'esterno verso l'interno: descrive semplicemente come certi tipi di informazione attraversano il tronco (la linfa, nella metafora del vocabolario).
+
+---
+
+## Caso di studio: pratiche prima di vendite
+
+> Lezione retrospettiva sull'ordine di costruzione (aggiunta 2026-04-25 dopo riflessione metodologica).
+>
+> Questa sezione esiste per dare al lettore futuro l'anticorpo che e' mancato a chi ha costruito ZeroERP. Non e' un'autocritica: e' documentazione di un pattern ricorrente che il manifesto in versione iniziale non descriveva.
+
+### Cosa e' successo
+
+L'ordine cronologico effettivo dello sviluppo e' stato:
+
+1. **`pratiche` (Anello 2)** dichiarata Operativo su DB+BE+FE: 19 endpoint, 115 test, sospensioni, calcoli tempo, macchina a stati, giornale di bordo. Aprile 2026 con avvio in marzo.
+2. **Nessun processo di Anello 3** consuma ancora pratiche. La matrice dipendenze segna `pratiche (FUTURO)` per vendite, acquisti, magazzino, pagamenti, contabilita'.
+3. **`vendite` ha sviluppato infrastruttura propria di orchestrazione** (pipeline fatturazione, lotti, registry task DB multi-dominio, dispatch task con `implementation_key`, runtime task tracing) **in parallelo a pratiche**, senza usarla. Risultato: due motori di orchestrazione paralleli, due vocabolari, un'integrazione futura ancora da disegnare.
+4. **L'autore ha riconosciuto il problema** mentre lavorava su listini → contratti → preventivi: "sto facendo questi sviluppi per avere aree dove iniziare ad applicare le pratiche". Cioe': costruire i consumatori per validare l'astrazione, l'inverso del workflow ipotizzato dal manifesto v1.
+
+### Perche' e' successo
+
+Il manifesto v1 prescriveva "cresci un anello per volta" e "ogni incremento chiude un percorso end-to-end reale". Applicato letteralmente a un anello **di servizio** come pratiche, questa regola produce **invenzioni**: un motore di workflow completo, perfettamente formato, ma con astrazioni decise a priori e mai esercitate dal dominio reale.
+
+Pratiche **non ha un end-to-end suo** — il suo end-to-end richiede un consumatore di Anello 3. Senza quel consumatore, le decisioni di design (cosa mette nel giornale, come modella un flusso, quali handler espone, cosa significa "sospensione") sono ipotesi del progettista, non risposte a esigenze osservate.
+
+### Conseguenze concrete
+
+- **Doppia infrastruttura di orchestrazione** in coesistenza: pratiche (giornale + flussi + macchina a stati) e vendite-pipeline (task runs + registry + dispatch). Nate per esigenze diverse, ma con sovrapposizione concettuale che andra' riconciliata. Costo nascosto del modello concentrico applicato troppo presto.
+- **Vocabolario non condiviso**: pratiche parla di "flusso/step/handler_key/canali", vendite parla di "lotto/task/registry_impl/runtime tracing". Quando si dovra' integrare, si scoprira' che lo stesso concetto ha due nomi e due forme.
+- **Test contro un'idea, non contro un caso d'uso**: i 115 test di pratiche verificano che il motore funzioni come progettato, non che risolva problemi reali della prima vendita o del primo onboarding.
+
+### Cosa avremmo dovuto fare
+
+Lo schema corretto per anelli di servizio e':
+
+1. Aprire pratiche come **stub minimo** (modello dati base + servizio facade vuoto), Stato "Predisposto".
+2. Aprire **vendite** o un altro processo di Anello 3 con un caso d'uso concreto end-to-end.
+3. Quando vendite genera il primo evento da tracciare (es. "ordine creato"), **far emergere** il giornale di pratiche per servirlo. Il giornale nasce come risposta a una domanda concreta.
+4. Quando un secondo processo (es. acquisti) chiede di tracciare i suoi eventi, **promuovere al nucleo di pratiche** le astrazioni che si ripetono, scartare quelle specifiche di vendite.
+5. Solo dopo questo passaggio (manifesto principio 7) le astrazioni di pratiche diventano *contratti*; prima sono *proposte*.
+
+### Come uscirne ora
+
+Pratiche e' costruita. Disfarla sarebbe spreco. La via realistica:
+
+- **Marcatura onesta**: pratiche resta Operativo a livello tecnico, ma nella mappa e' classificata "predisposta, validazione in corso con vendite" (vedi Anello 2).
+- **Prima integrazione concreta**: scegliere il primo evento di vendite che vale la pena tracciare in pratiche (probabilmente "ordine creato" o "preventivo accettato") e farlo end-to-end. Da li', osservare cosa serve davvero e cosa non serve.
+- **Riconciliazione con vendite-pipeline**: dopo la prima integrazione, decidere se i due motori si fondono, restano paralleli per scope diversi (single-process vs batch), o se uno assorbe l'altro. La decisione va **rinviata**, non presa adesso senza dati.
+- **Riserva di modifica**: finche' la validazione non e' completa, pratiche puo' essere modificata senza il rigore previsto per il nucleo (manifesto principio 1). I test attuali sono base di regressione, non sono contratto.
+
+### Lezione metodologica
+
+**Per ogni anello classificato "di servizio" nella mappa, non costruirlo prima dei suoi consumatori.** Aprilo come stub se serve un punto di aggancio, ma non investire in completezza tecnica finche' non c'e' uso reale che lo eserciti. La completezza senza uso e' debito tecnico travestito da progresso.
+
+### Esempio virtuoso opposto: framework `dbops.automazione_chiusura_scadenze` (26-04-2026)
+
+Il caso pratiche e' istruttivo perche' mostra cosa succede applicando il manifesto v1 a un anello di servizio. Per contrasto, il framework `dbops.automazione_chiusura_scadenze` e' l'**applicazione corretta del principio 7** appena introdotto.
+
+**Cronologia**:
+
+1. **24-04-2026 — primo caso reale**: implementato il pattern "ciclo stato + finestra di validita'" per `vendite.listini_versioni` come componente specifico del dominio (funzione `vendite.fn_listini_versioni_close_scadute()` + job pgAgent dedicato + guard transizione hardcoded). Nessuna astrazione prematura.
+2. **25-26-04-2026 — secondo consumatore**: emerge la stessa esigenza per `vendite.contratti` (cessazione data-driven). I requisiti sono **strutturalmente identici** al caso listini, salvo la differenza VARCHAR vs FK come tipo di colonna stato.
+3. **26-04-2026 — promozione al nucleo**: con due consumatori reali (non ipotetici), il pattern viene **estratto in `dbops`** come framework parametrico:
+   - tabella di configurazione `dbops.automazione_chiusura_scadenze` con discriminator `tipo_stato` (VARCHAR/FK)
+   - funzione motore `dbops.fn_apply_chiusura_scadenze()` con SQL dinamico + pre-check + audit
+   - job pgAgent unico `chiusura_scadenze_daily` che sostituisce il job specifico precedente
+   - vecchia funzione `fn_listini_versioni_close_scadute` droppata
+4. **Aggiunte future**: una nuova tabella al pattern non richiede piu' nuovo codice DB — basta una INSERT seed nella tabella di configurazione.
+
+**Differenza con il caso pratiche**:
+
+| Aspetto                       | Pratiche (errore v1)                              | Framework chiusura (corretto v2)                                  |
+| ----------------------------- | ------------------------------------------------- | ----------------------------------------------------------------- |
+| Quando e' stato astratto      | Prima di qualunque consumatore reale              | Dopo due consumatori reali con requisiti identici                 |
+| Generalita' delle astrazioni  | Decise dal progettista a priori                   | Decantate dal pattern emerso dai due casi                         |
+| Validazione                   | Test contro un'idea progettuale                   | Test contro casi d'uso reali (listini + contratti)                |
+| Costo se non si usa           | Spreco di lavoro, doppia infrastruttura parallela | Nullo (stub minimale solo se serve, oppure non si fa fino a 2°)   |
+
+**Cosa cambia nei tre piani della mappa**:
+
+- Anello 0 cresce per *uso esterno*, non per *progetto interno*: la riga `dbops.automazione_chiusura_scadenze` aggiunta a "Cosa fornisce agli anelli esterni" deriva da bisogni concreti dei processi.
+- Anello 3 (vendite) acquisisce un secondo punto di chiusura per scadenza (contratti) **senza dover scrivere infrastruttura propria**: usa il framework gia' validato.
+- La promozione e' *non-breaking*: il job specifico precedente e' rimosso, ma il comportamento esterno (versioni listino chiuse a scadenza) e' identico — solo il motore sotto e' cambiato.
+
+**Lezione metodologica generalizzata**:
+
+> **La differenza non sta nel "se astrarre", ma nel "quando".** Astrarre prima di vedere e' progetto; astrarre dopo aver visto e' sintesi. Il manifesto §7 codifica questa distinzione perche' la prima e' debito travestito da architettura, la seconda e' architettura genuina.
+
+Riferimento implementazione: [WIP automazione-chiusure-scadenze.md](dev/work-in-progress/automazione-chiusure-scadenze.md).
 
 ---
 

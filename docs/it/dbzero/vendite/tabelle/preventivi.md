@@ -29,6 +29,7 @@
 | termine_pagamento_id | bigint | YES |  |
 | uid | uuid | NO | uuidv7() |
 | storicizza | boolean | YES | false |
+| tx_id | uuid | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |

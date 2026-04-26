@@ -1,0 +1,187 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Trigger guard transizione stato su vendite.contratti.
+#
+# Why: gemello del guard listini_versioni (20260424-01), applicato
+# a contratti che usano FK su config.stati_doc_contratti invece di
+# colonna varchar. Lo stato e' workflow gestionale; l'applicabilita'
+# operativa resta governata dalle date (validita @> data).
+#
+# Lookup via codice_interno (immutabile per lock_columns) per
+# stabilita' rispetto a relabelling del codice business.
+#
+# Workflow ammesso (SOSPESO non rientra nei piani operativi attuali):
+#   DRAFT  -> ATTIVO   : ammessa
+#   ATTIVO -> CESSATO  : ammessa SOLO se valido_al < CURRENT_DATE
+#                        (semantica: valido_al e' "ultimo giorno
+#                         incluso", quindi cessazione manuale possibile
+#                         solo dal giorno successivo)
+#   CESSATO -> *       : vietata (terminale)
+#   *      -> DRAFT    : vietata (irreversibile)
+#   ATTIVO -> SOSPESO, SOSPESO -> *: non gestiti ora (vedi WIP)
+#
+# La query del job pgAgent (chiusura_scadenze_daily) attraversa il
+# guard e lo soddisfa per costruzione (WHERE valido_al<CURRENT_DATE).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260426-05-create-trgfn-contratti-guard-transizione-stato-mctit.yaml
+
+  - changeSet:
+      id: 20260426-05-01-create-trgfn-contratti-guard-transizione-stato
+      author: mctit
+      runOnChange: true
+
+      comment: >
+        Funzione trigger vendite.trgfn_contratti_guard_transizione_stato. Lookup
+        codice_interno su config.stati_doc_contratti per stabilita'. Raise
+        E_CONTRATTO_STATO_TRANSIZIONE_INVALIDA.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: contratti
+            - columnExists:
+                schemaName: vendite
+                tableName: contratti
+                columnName: stato_doc_contratto_id
+            - columnExists:
+                schemaName: vendite
+                tableName: contratti
+                columnName: valido_al
+            - columnExists:
+                schemaName: config
+                tableName: stati_doc_contratti
+                columnName: codice_interno
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_contratti_guard_transizione_stato()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: bloccare transizioni stato non ammesse sul workflow
+              -- contratti (DRAFT -> ATTIVO -> CESSATO).
+              -- Regola chiave: ATTIVO -> CESSATO ammessa solo se
+              -- valido_al < CURRENT_DATE. Coerente col job pgAgent
+              -- chiusura_scadenze_daily che soddisfa la condizione per
+              -- costruzione.
+              -- Lookup codice_interno per stabilita' a relabelling.
+              -- Il filtro WHEN del trigger garantisce che si entra solo
+              -- se OLD.stato e' DISTINCT da NEW.stato; non serve double-check.
+              DECLARE
+                  v_codice_da config.stati_doc_contratti.codice_interno%TYPE;
+                  v_codice_a  config.stati_doc_contratti.codice_interno%TYPE;
+                  v_ammessa   boolean := false;
+              BEGIN
+                  -- Risolve codice_interno OLD e NEW in una sola query (pivot
+                  -- via MAX(CASE...)). Riduce 2 round-trip a 1 sul catalog.
+                  SELECT
+                      max(CASE WHEN id = OLD.stato_doc_contratto_id THEN codice_interno END),
+                      max(CASE WHEN id = NEW.stato_doc_contratto_id THEN codice_interno END)
+                    INTO v_codice_da, v_codice_a
+                    FROM config.stati_doc_contratti
+                   WHERE id IN (OLD.stato_doc_contratto_id, NEW.stato_doc_contratto_id);
+
+                  -- Dispatch transizioni ammesse.
+                  IF v_codice_da = 'DRAFT' AND v_codice_a = 'ATTIVO' THEN
+                      v_ammessa := true;
+                  ELSIF v_codice_da = 'ATTIVO' AND v_codice_a = 'CESSATO' THEN
+                      -- Cessazione consentita solo a finestra gia' scaduta.
+                      -- Coerente col principio "le date comandano": evita
+                      -- stato CESSATO con validita' ancora aperta.
+                      v_ammessa := (NEW.valido_al IS NOT NULL
+                                    AND NEW.valido_al < CURRENT_DATE);
+                  END IF;
+                  -- Tutte le altre transizioni vietate:
+                  --   DRAFT -> CESSATO  : la bozza si cancella
+                  --   ATTIVO -> DRAFT   : irreversibile
+                  --   CESSATO -> *      : terminale
+                  --   * -> SOSPESO / SOSPESO -> *: non in scope ora
+
+                  IF NOT v_ammessa THEN
+                      -- NEW.tx_id disponibile dal 20260426-09 (ALTER ADD).
+                      -- Popolato automaticamente dal trigger
+                      -- dbops.trgfn_tx_id_managed registrato via automation.
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          TG_NAME::text,
+                          'E_CONTRATTO_STATO_TRANSIZIONE_INVALIDA',
+                          jsonb_build_object(
+                              'contratto_id', NEW.id,
+                              'numero',       NEW.numero,
+                              'stato_da',     v_codice_da,
+                              'stato_a',      v_codice_a,
+                              'valido_al',    NEW.valido_al
+                          ),
+                          NEW.tx_id,
+                          NEW.id::text,
+                          coalesce(v_codice_da, 'NULL'),
+                          coalesce(v_codice_a,  'NULL'),
+                          coalesce(NEW.valido_al::text, 'NULL')
+                      );
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_contratti_guard_transizione_stato() IS
+                  'Guard transizione stato contratto (FK con lookup codice_interno). '
+                  'Ammette DRAFT->ATTIVO e ATTIVO->CESSATO solo con valido_al<CURRENT_DATE. '
+                  'Raise E_CONTRATTO_STATO_TRANSIZIONE_INVALIDA.';
+      rollback:
+        - sql:
+            sql: DROP FUNCTION IF EXISTS vendite.trgfn_contratti_guard_transizione_stato();
+
+  - changeSet:
+      id: 20260426-05-02-create-trg-contratti-a10-guard-transizione-stato
+      author: mctit
+      runOnChange: true
+      comment: >
+        Trigger BEFORE UPDATE OF stato_doc_contratto_id su vendite.contratti,
+        fase _a10_ (guard). UPDATE OF <col> per scattare solo a transizione
+        esplicita.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT COUNT(*)
+                FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'vendite'
+                 AND p.proname = 'trgfn_contratti_guard_transizione_stato';
+      changes:
+        - sql:
+            splitStatements: true
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_contratti_a10_guard_transizione_stato_upd
+                  ON vendite.contratti;
+
+              CREATE TRIGGER trg_contratti_a10_guard_transizione_stato_upd
+                  BEFORE UPDATE OF stato_doc_contratto_id
+                  ON vendite.contratti
+                  FOR EACH ROW
+                  WHEN (OLD.stato_doc_contratto_id IS DISTINCT FROM NEW.stato_doc_contratto_id)
+                  EXECUTE FUNCTION vendite.trgfn_contratti_guard_transizione_stato();
+
+              COMMENT ON TRIGGER trg_contratti_a10_guard_transizione_stato_upd
+                  ON vendite.contratti
+                  IS 'Guard: blocca transizioni di stato non ammesse su contratto.';
+      rollback:
+        - sql:
+            sql: |
+              DROP TRIGGER IF EXISTS trg_contratti_a10_guard_transizione_stato_upd
+                  ON vendite.contratti;

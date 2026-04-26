@@ -1,0 +1,57 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# DROP DEFAULT su fk_lookup_codice_col e fk_lookup_id_col.
+#
+# Why: i default 'codice_interno' / 'id' hanno senso solo per
+# tipo_stato='FK', ma vengono applicati anche su INSERT con
+# tipo_stato='VARCHAR' (dove i campi fk_lookup_* dovrebbero essere
+# NULL per soddisfare CHECK chk_automazione_chiusura_scadenze_fk_coerente).
+# Risultato: INSERT VARCHAR senza esplicitare i campi FK fallisce
+# perche' i default popolano fk_lookup_codice_col e fk_lookup_id_col,
+# violando il CHECK.
+#
+# Soluzione: rimuovere i default. Simmetrico: o specifichi tutti
+# e 4 i fk_lookup_* (caso FK) o nessuno (caso VARCHAR). Piu' chiaro
+# e meno error-prone.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/dbops/20260426-08-alter-automazione-chiusura-scadenze-drop-fk-lookup-defaults-mctit.yaml
+
+  - changeSet:
+      id: 20260426-08-alter-automazione-chiusura-scadenze-drop-fk-lookup-defaults
+      author: mctit
+      comment: >
+        DROP DEFAULT su fk_lookup_codice_col e fk_lookup_id_col per
+        evitare che INSERT VARCHAR (che omettono i campi FK) ricevano
+        valori spuri che violano il CHECK di coerenza tipo_stato/fk_lookup.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: dbops
+            tableName: automazione_chiusura_scadenze
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: true
+            stripComments: false
+            sql: |
+              ALTER TABLE dbops.automazione_chiusura_scadenze
+                ALTER COLUMN fk_lookup_codice_col DROP DEFAULT;
+
+              ALTER TABLE dbops.automazione_chiusura_scadenze
+                ALTER COLUMN fk_lookup_id_col DROP DEFAULT;
+      rollback:
+        - sql:
+            sql: |
+              ALTER TABLE dbops.automazione_chiusura_scadenze
+                ALTER COLUMN fk_lookup_codice_col SET DEFAULT 'codice_interno';
+
+              ALTER TABLE dbops.automazione_chiusura_scadenze
+                ALTER COLUMN fk_lookup_id_col SET DEFAULT 'id';
