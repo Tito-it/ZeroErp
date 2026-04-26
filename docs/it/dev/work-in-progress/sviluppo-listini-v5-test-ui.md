@@ -78,22 +78,22 @@ documento il 2026-04-24 ed è archiviata in `work-done/`.
 
 - [X] `/vendite/listini/` lista filtrabile per tipologia
 - [X] Crea listino COM-002 (commercio) → drawer + pulsante "Nuova versione" → BOZZA
-- [ ] Aggiungi 3 righe articolo nella versione BOZZA
-- [ ] Attiva versione → BOZZA → ATTIVA
+- [X] Aggiungi 3 righe articolo nella versione BOZZA
+- [X] Attiva versione → BOZZA → ATTIVA
 
 ### 1.4 Contratti
 
-- [ ] `/vendite/contratti/` → nuovo contratto modalità A su BA GOLD legato al listino COM-001
-- [ ] Aggiungi variazione globale `+2%`
-- [ ] Stato BOZZA → ATTIVO
+- [X] `/vendite/contratti/` → nuovo contratto modalità A su BA GOLD legato al listino COM-001
+- [X] Aggiungi variazione globale `+2%`
+- [X] Stato BOZZA → ATTIVO
 
 ### 1.4bis Contratto modalità C (interamente negoziato)
 
-- [ ] Nuovo contratto modalità C (SelectButton A/B/C → C), senza listino
-- [ ] Save DRAFT → contratto creato
-- [ ] Prova cambio stato DRAFT → ATTIVO **senza righe** → errore guard modalità C
-- [ ] Apre righe → aggiungi 1 riga (articolo + uom + `prezzo_unitario` obbligatorio)
-- [ ] Riprova cambio stato → ATTIVO OK
+- [X] Nuovo contratto modalità C (SelectButton A/B/C → C), senza listino
+- [X] Save DRAFT → contratto creato
+- [X] Prova cambio stato DRAFT → ATTIVO **senza righe** → errore guard modalità C
+- [X] Apre righe → aggiungi 1 riga (articolo + uom + `prezzo_unitario` obbligatorio)
+- [X] Riprova cambio stato → ATTIVO OK
 
 ### 1.5 Promo articoli
 

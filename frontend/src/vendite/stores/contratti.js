@@ -4,7 +4,7 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import {
   listContratti, getContratto, createContratto, updateContratto, cambiaStatoContratto,
-  addRigaContratto, updateRigaContratto, deleteRigaContratto,
+  addRigaContratto, updateRigaContratto, deleteRigaContratto, listRighePreviewContratto,
   addUtilityContratto, updateUtilityContratto,
 } from '../api/contratti'
 import { useTabEvents } from '../../core/composables/useTabEvents'
@@ -82,8 +82,9 @@ export const useContrattiStore = defineStore('vendite-contratti', () => {
     return res.data.data
   }
 
-  async function cambiaStato(id, codiceInterno) {
-    const res = await cambiaStatoContratto(id, codiceInterno)
+  // `validoAl` opzionale (ISO YYYY-MM-DD): cessazione atomica con data.
+  async function cambiaStato(id, codiceInterno, { validoAl = null } = {}) {
+    const res = await cambiaStatoContratto(id, codiceInterno, { validoAl })
     emitDataChanged(TAB_ENTITIES.CONTRATTO, id)
     return res.data.data
   }
@@ -105,6 +106,13 @@ export const useContrattiStore = defineStore('vendite-contratti', () => {
     return res.data.data
   }
 
+  // Anteprima righe applicate (modalita' A/B). Non emette tab event:
+  // e' una read-only view che non muta il dominio.
+  async function fetchRighePreview(contrattoId) {
+    const res = await listRighePreviewContratto(contrattoId)
+    return res.data.data
+  }
+
   // Utility 1:1
   async function addUtility(contrattoId, payload) {
     const res = await addUtilityContratto(contrattoId, payload)
@@ -120,7 +128,7 @@ export const useContrattiStore = defineStore('vendite-contratti', () => {
   return {
     items, totalRecords, loading, hasSearched, filters,
     fetchList, fetchDetail, create, update, cambiaStato,
-    addRiga, updateRiga, deleteRiga,
+    addRiga, updateRiga, deleteRiga, fetchRighePreview,
     addUtility, updateUtility,
   }
 })

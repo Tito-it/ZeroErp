@@ -813,6 +813,189 @@ Le mappe sono centralizzate in `core/utils/severity.js` — un solo punto di mod
 
 ---
 
+## Transizione a stato terminale con data (CESSATO / CHIUSO / TERMINATO)
+
+> **Regola standard**: per le entità il cui workflow include uno **stato terminale**
+> (es. contratto `CESSATO`, listino-versione `CHIUSA`, soggetto `ESTINTO`)
+> accompagnato da una **data finale** (`valido_al`, `data_chiusura`, `data_cessazione`),
+> la chiusura **non si fa modificando la data nel form**: si fa con un pulsante
+> dedicato che apre un dialog di conferma con DatePicker (default oggi).
+> La data e il cambio stato vengono applicati in **transazione atomica** dal BE.
+
+### Motivazione
+
+- Evita lo stato incoerente "stato terminale + data NULL" (resolver/processi che dipendono dalla data continuerebbero a considerare l'entità operativa)
+- Rende l'azione esplicita e auditabile (1 click intenzionale, non 2 modifiche separate)
+- Previene errori dell'operatore (dimentica data, oppure imposta data senza cambiare stato)
+- Allinea l'esperienza fra domini: l'utente impara una volta sola "Chiudi/Cessa = dialog con data"
+
+### Pattern FE — drawer principale
+
+**1. Pulsanti cambio stato sempre attivi anche in modalità readonly.**
+Aggiungere classe `app-escape` per bypass del CSS protect:
+
+```vue
+<Button v-for="stato in statiTransizionabili" :key="stato"
+  :label="t(`<dominio>.azione_${stato.toLowerCase()}`)"
+  size="small" outlined
+  class="app-escape"
+  @click="onCambiaStato(stato)" />
+```
+
+**2. Handler `onCambiaStato` distingue lo stato terminale.**
+
+```js
+function onCambiaStato(codice) {
+  if (codice === 'CESSATO' /* o CHIUSO/TERMINATO */) {
+    openCessaDialog()
+    return
+  }
+  // altre transizioni: confirmAction generico
+  confirmAction({ ... onAccept: () => store.cambiaStato(id, codice) })
+}
+```
+
+**3. Dialog dedicato con DatePicker default oggi.**
+
+```vue
+<Dialog v-model:visible="cessaDialogVisible" modal
+  :header="t('<dominio>.cessa_dialog_titolo')" :style="{ width: '420px' }">
+  <div class="form-field">
+    <label>{{ t('<dominio>.cessa_dialog_data') }}</label>
+    <DatePicker v-model="cessaDialogData" date-format="dd/mm/yy" show-icon />
+  </div>
+  <Message severity="warn" :closable="false" size="small">
+    {{ t('<dominio>.cessa_dialog_warning') }}
+  </Message>
+  <template #footer>
+    <Button :label="t('common.cancel')" text severity="secondary" @click="cessaDialogVisible = false" />
+    <Button :label="t('<dominio>.cessa_dialog_conferma')" icon="pi pi-times" severity="danger"
+      :disabled="!cessaDialogData || loading" :loading="loading"
+      @click="onConfermaCessazione" />
+  </template>
+</Dialog>
+```
+
+```js
+function openCessaDialog() {
+  cessaDialogData.value = new Date()  // default oggi
+  cessaDialogVisible.value = true
+}
+async function onConfermaCessazione() {
+  const validoAl = toDateString(cessaDialogData.value)
+  const result = await execute(
+    () => store.cambiaStato(id, 'CESSATO', { validoAl }),
+    { successMessage: t('<dominio>.stato_cambiato') }
+  )
+  if (result !== null) {
+    cessaDialogVisible.value = false
+    await refreshDetail()
+  }
+}
+```
+
+**4. Campo data condizionale per stato.**
+
+| Stato            | Visibilità campo data | Editabile         | Label                                  |
+| ---------------- | --------------------- | ----------------- | -------------------------------------- |
+| DRAFT            | sì                    | sì (opzionale)    | "Fine validità" / "Valido al"          |
+| ATTIVO / SOSPESO | **nascosto**          | —                 | (nessuna: cessazione passa dal dialog) |
+| CESSATO / CHIUSO | sì                    | **no** (readonly) | "Data cessazione" / "Data chiusura"    |
+
+```vue
+<div class="form-field"
+  v-if="!isEdit || detail?.stato_codice === 'DRAFT' || detail?.stato_codice === 'CESSATO'">
+  <label>
+    {{ detail?.stato_codice === 'CESSATO'
+      ? t('<dominio>.field_data_cessazione')
+      : t('<dominio>.field_valido_al') }}
+  </label>
+  <DatePicker :model-value="parseIsoDate(form.valido_al)"
+    @update:model-value="form.valido_al = toIsoDate($event)"
+    :disabled="detail?.stato_codice === 'CESSATO'"
+    date-format="dd/mm/yy" show-icon class="w-full" />
+</div>
+```
+
+**5. `buildPayload` non spedisce la data quando il campo è nascosto.** In edit
+post-DRAFT il payload PATCH testata deve essere coerente con la whitelist BE
+del Profilo A (vedi sotto): non re-spedire campi loaded.
+
+### Cessazione immediata vs programmata (regola data-driven)
+
+Quando l'utente sceglie nel dialog la data, il comportamento si differenzia:
+
+| Data scelta            | Cessazione   | Effetto                                                              |
+| ---------------------- | ------------ | -------------------------------------------------------------------- |
+| oggi o passata         | immediata    | Service applica PATCH `valido_al` + UPDATE stato `CESSATO` (atomico) |
+| futura (>= today)      | programmata  | Service applica solo PATCH `valido_al`. Stato resta ATTIVO/SOSPESO. Job notturno DB allineerà a CESSATO quando la data scade |
+
+**Rationale** (allineato col principio fail-safe): un contratto con stato `CESSATO` ma `valido_al` futuro è incoerente — il resolver/processi che dipendono da `validita @> CURRENT_DATE` continuano correttamente a considerarlo operativo, ma chi legge lo stato vede "cessato". Lo evitiamo per costruzione: il cambio stato avviene solo quando la realtà operativa lo conferma.
+
+**Dialog adattivo**: titolo, severity, label conferma e toast variano in base a `cessazioneProgrammata`:
+
+```js
+const cessazioneProgrammata = computed(() => {
+  if (!cessaDialogData.value) return false
+  const oggi = new Date(); oggi.setHours(0, 0, 0, 0)
+  const scelta = new Date(cessaDialogData.value); scelta.setHours(0, 0, 0, 0)
+  return scelta >= oggi
+})
+```
+
+**Cessazione programmata visibile in stato intermedio**: in ATTIVO/SOSPESO con `valido_al` valorizzato, il drawer mostra il campo readonly come "Cessazione programmata al {data}" — l'operatore vede che il contratto è in attesa di scadenza.
+
+### Pattern BE — service `cambia_stato`
+
+Estendere il service per accettare `valido_al` opzionale e applicare la regola data-driven:
+
+```python
+def cambia_stato(
+    self, contratto_id: int, *, codice_interno: str, valido_al: date | None = None,
+) -> dict[str, Any]:
+    target_stato_id = self._repo.get_stato_id_by_codice(codice_interno)
+    cessazione_programmata = False
+    if codice_interno == "CESSATO":
+        # data obbligatoria + valido_al >= valido_dal (errore parlante anti CHK constraint)
+        ErrorManager.require(valido_al is not None, ...)
+        existing = self._repo.get(contratto_id)
+        if isinstance(existing.get("valido_dal"), date):
+            ErrorManager.require(valido_al >= existing["valido_dal"], ...)
+        # Regola fail-safe: data futura -> programmata (no cambio stato)
+        if valido_al >= date.today():
+            cessazione_programmata = True
+    with transaction.atomic():
+        if valido_al is not None:
+            self._repo.update_contratto(contratto_id, {"valido_al": valido_al})
+        if not cessazione_programmata:
+            self._repo.update_stato(contratto_id, target_stato_id)
+    return self.get_contratto(contratto_id)
+```
+
+### Pattern DB — guard transizione + job notturno
+
+Lato DB serve **defense-in-depth** per chiudere il cerchio (analogo a listini-versioni):
+
+1. **Trigger guard** BEFORE UPDATE OF `stato_doc_xxx_id`: ammette transizione a stato terminale (CESSATO/CHIUSA) **solo se** `valido_al IS NOT NULL AND valido_al < CURRENT_DATE`. Nome: `trgfn_<tabella>_a10_guard_transizione_stato`.
+2. **Job pgAgent notturno**: UPDATE → CESSATO/CHIUSA quando `valido_al < CURRENT_DATE`. L'UPDATE passa il guard per costruzione. Funzione incapsulante: `<schema>.fn_<tabella>_close_scadute()`.
+3. Brief al team DB (vedere `brief-db-contratti-cessazione-data-driven.md`, `brief-db-listini-stato-chiusa-sync.md`).
+
+### Esempi nel codice
+
+| Dominio           | Stato terminale              | File FE                                          |
+| ----------------- | ---------------------------- | ------------------------------------------------ |
+| Contratti vendite | CESSATO                      | `vendite/components/ContrattoDrawer.vue`         |
+| Listini-versioni  | CHIUSA (sync da `valido_al`) | `vendite/components/ChiudiVersioneDialog.vue`    |
+
+### Anti-pattern da evitare
+
+- ❌ **Mostrare `valido_al` come campo editabile in stato ATTIVO**: l'utente potrebbe modificarlo senza cambiare stato → entità tecnicamente cessata ma stato `ATTIVO` (e viceversa)
+- ❌ **2 chiamate API separate** PATCH `valido_al` + POST `cambia-stato`: race condition se la seconda fallisce → stato incoerente
+- ❌ **Pulsante cambio stato disabilitato in readonly**: l'operatore con permessi LETTURA legittimamente non può, ma in stato post-DRAFT (drawer readonly) deve comunque poter cessare → usa `app-escape`
+- ❌ **`statiTransizionabili` con stato terminale come destinazione senza dialog**: se manca il dialog, la chiamata cambia_stato senza valido_al lascia validità aperta
+
+---
+
 ## Responsive
 
 | Breakpoint | Dispositivo | Comportamento                                                                       |
