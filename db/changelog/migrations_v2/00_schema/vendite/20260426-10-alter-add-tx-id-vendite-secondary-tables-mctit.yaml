@@ -1,0 +1,244 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Aggiunta colonna tx_id (uuid) sulle 12 tabelle "alta priorita'"
+# del dominio vendite che ne erano sprovviste:
+#   - Righe documenti     (3): contratti_righe, contratti_utilities,
+#                              preventivi_righe
+#   - Indirizzi documenti (4): fatture_indirizzi, ordini_indirizzi,
+#                              ddt_indirizzi, preventivi_indirizzi
+#   - Note documenti      (5): note_contratto, note_preventivo,
+#                              note_ddt, note_fatture, note_ordini
+#
+# Why: completare la presenza di tx_id sulle tabelle del "contorno"
+# delle testate (contratti/preventivi/fatture/ordini/ddt) per
+# coerenza con il pattern di correlazione audit gia' usato nel
+# resto del progetto. Il framework dbops.fn_run_automations registra
+# automaticamente il trigger trgfn_tx_id_managed al primo run dopo
+# l'ALTER.
+#
+# Tabelle escluse (vedi WIP automazione-chiusure-scadenze.md §8):
+#   - pipeline/log: gia' hanno id propri di tracking (event_id, ecc.)
+#   - cataloghi/configurazione: modifiche rare via Liquibase seed
+#   - note (generico), note_attivita_fatturabili: da valutare caso per caso
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260426-10-alter-add-tx-id-vendite-secondary-tables-mctit.yaml
+
+  # -----------------------------------------------------------
+  # Righe documenti (3)
+  # -----------------------------------------------------------
+
+  - changeSet:
+      id: 20260426-10-01-alter-contratti-righe-add-tx-id
+      author: mctit
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: vendite
+            tableName: contratti_righe
+      changes:
+        - addColumn:
+            schemaName: vendite
+            tableName: contratti_righe
+            columns:
+              - column:
+                  name: tx_id
+                  type: uuid
+                  remarks: Transaction id correlazione audit (popolato da trgfn_tx_id_managed via automation).
+      rollback:
+        - dropColumn:
+            schemaName: vendite
+            tableName: contratti_righe
+            columnName: tx_id
+
+  - changeSet:
+      id: 20260426-10-02-alter-contratti-utilities-add-tx-id
+      author: mctit
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: vendite
+            tableName: contratti_utilities
+      changes:
+        - addColumn:
+            schemaName: vendite
+            tableName: contratti_utilities
+            columns:
+              - column:
+                  name: tx_id
+                  type: uuid
+                  remarks: Transaction id correlazione audit (popolato da trgfn_tx_id_managed via automation).
+      rollback:
+        - dropColumn:
+            schemaName: vendite
+            tableName: contratti_utilities
+            columnName: tx_id
+
+  - changeSet:
+      id: 20260426-10-03-alter-preventivi-righe-add-tx-id
+      author: mctit
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: vendite
+            tableName: preventivi_righe
+      changes:
+        - addColumn:
+            schemaName: vendite
+            tableName: preventivi_righe
+            columns:
+              - column:
+                  name: tx_id
+                  type: uuid
+                  remarks: Transaction id correlazione audit (popolato da trgfn_tx_id_managed via automation).
+      rollback:
+        - dropColumn:
+            schemaName: vendite
+            tableName: preventivi_righe
+            columnName: tx_id
+
+  # -----------------------------------------------------------
+  # Indirizzi documenti (4)
+  # -----------------------------------------------------------
+
+  - changeSet:
+      id: 20260426-10-04-alter-fatture-indirizzi-add-tx-id
+      author: mctit
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: vendite
+            tableName: fatture_indirizzi
+      changes:
+        - addColumn:
+            schemaName: vendite
+            tableName: fatture_indirizzi
+            columns:
+              - column:
+                  name: tx_id
+                  type: uuid
+                  remarks: Transaction id correlazione audit (popolato da trgfn_tx_id_managed via automation).
+      rollback:
+        - dropColumn:
+            schemaName: vendite
+            tableName: fatture_indirizzi
+            columnName: tx_id
+
+  - changeSet:
+      id: 20260426-10-05-alter-ordini-indirizzi-add-tx-id
+      author: mctit
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: vendite
+            tableName: ordini_indirizzi
+      changes:
+        - addColumn:
+            schemaName: vendite
+            tableName: ordini_indirizzi
+            columns:
+              - column:
+                  name: tx_id
+                  type: uuid
+                  remarks: Transaction id correlazione audit (popolato da trgfn_tx_id_managed via automation).
+      rollback:
+        - dropColumn:
+            schemaName: vendite
+            tableName: ordini_indirizzi
+            columnName: tx_id
+
+  - changeSet:
+      id: 20260426-10-06-alter-ddt-indirizzi-add-tx-id
+      author: mctit
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: vendite
+            tableName: ddt_indirizzi
+      changes:
+        - addColumn:
+            schemaName: vendite
+            tableName: ddt_indirizzi
+            columns:
+              - column:
+                  name: tx_id
+                  type: uuid
+                  remarks: Transaction id correlazione audit (popolato da trgfn_tx_id_managed via automation).
+      rollback:
+        - dropColumn:
+            schemaName: vendite
+            tableName: ddt_indirizzi
+            columnName: tx_id
+
+  - changeSet:
+      id: 20260426-10-07-alter-preventivi-indirizzi-add-tx-id
+      author: mctit
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: vendite
+            tableName: preventivi_indirizzi
+      changes:
+        - addColumn:
+            schemaName: vendite
+            tableName: preventivi_indirizzi
+            columns:
+              - column:
+                  name: tx_id
+                  type: uuid
+                  remarks: Transaction id correlazione audit (popolato da trgfn_tx_id_managed via automation).
+      rollback:
+        - dropColumn:
+            schemaName: vendite
+            tableName: preventivi_indirizzi
+            columnName: tx_id
+
+  # -----------------------------------------------------------
+  # Note documenti (1 ALTER sulla tabella padre partizionata)
+  #
+  # vendite.note e' tabella padre PARTITIONED BY (...) con 5 partizioni
+  # FOR VALUES IN: note_contratto, note_preventivo, note_ddt,
+  # note_fatture, note_ordini (vedi 20251026-11 e simili).
+  # PostgreSQL NON permette ALTER ADD COLUMN sulle partizioni figlie:
+  # "non e' possibile aggiungere una colonna ad una partizione".
+  # Solo ALTER sulla padre e' ammesso, e la colonna viene propagata
+  # automaticamente a tutte le partizioni esistenti e future.
+  # -----------------------------------------------------------
+
+  - changeSet:
+      id: 20260426-10-08-alter-note-add-tx-id
+      author: mctit
+      comment: >
+        ALTER TABLE vendite.note (padre partizionato) ADD COLUMN tx_id.
+        Si propaga automaticamente alle 5 partizioni: note_contratto,
+        note_preventivo, note_ddt, note_fatture, note_ordini.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: vendite
+            tableName: note
+      changes:
+        - addColumn:
+            schemaName: vendite
+            tableName: note
+            columns:
+              - column:
+                  name: tx_id
+                  type: uuid
+                  remarks: >
+                    Transaction id correlazione audit (popolato da
+                    trgfn_tx_id_managed via automation). La colonna
+                    e' definita sulla padre e propagata a tutte le
+                    partizioni figlie.
+      rollback:
+        - dropColumn:
+            schemaName: vendite
+            tableName: note
+            columnName: tx_id

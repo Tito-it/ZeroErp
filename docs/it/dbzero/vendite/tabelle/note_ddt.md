@@ -22,6 +22,7 @@
 | user_update | text | YES | CURRENT_USER |
 | id_stile | bigint | NO |  |
 | id_lingua | bigint | YES |  |
+| tx_id | uuid | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |

@@ -1,0 +1,235 @@
+-- ------------------------------------------------------------
+-- SPDX-License-Identifier: GPL-3.0-or-later
+-- pgTAP test per Zero ERP
+--
+-- Test: framework dbops.fn_apply_chiusura_scadenze()
+--       (migration 20260426-02-create-fn-apply-chiusura-scadenze).
+--
+-- Indice test (1..6):
+--   1) Esecuzione VARCHAR (listini_versioni): chiude versione ATTIVA scaduta
+--   2) Esecuzione FK (contratti): chiude contratto ATTIVO scaduto
+--   3) Idempotenza: rerun della fn non chiude righe gia' chiuse (no-op)
+--   4) Pre-check tabella inesistente -> raise E_AUTOMAZIONE_CHIUSURA_CONFIG_INVALIDA
+--   5) Pre-check colonna inesistente -> raise
+--   6) Pre-check codice FK inesistente -> raise
+--
+-- Strategia fixture:
+--   - Disattiva temporaneamente le righe seed di automazione_chiusura_scadenze
+--     (UPDATE attivo=false; il rollback finale ripristina). Cosi' i test
+--     controllano puntualmente la propria casistica senza interferenze.
+--   - Per ogni test inserisce una riga config con id > 1000, esegue la fn,
+--     verifica esito, poi delete (per evitare collisioni con pre-check
+--     dei test successivi).
+-- ------------------------------------------------------------
+
+BEGIN;
+SELECT plan(6);
+
+-- Rimuove le righe seed durante il test per evitare conflitti con
+-- l'UNIQUE su (schema_tabella, nome_tabella). Il ROLLBACK finale
+-- ripristina lo stato originale del DB.
+DELETE FROM dbops.automazione_chiusura_scadenze;
+
+-- =============================================================
+-- Setup: clona listino + crea versione fixture (per test 1)
+-- =============================================================
+CREATE TEMP TABLE tmp_listino AS
+WITH ins AS (
+    INSERT INTO vendite.listini (
+        codice, descrizione, utility_id, tipologia_id, emittente_soggetto_ruolo_id
+    )
+    SELECT 'PGTAP_FW_LV_' || substr(md5(clock_timestamp()::text), 1, 10),
+           'Listino pgtap framework chiusura',
+           utility_id, tipologia_id, emittente_soggetto_ruolo_id
+      FROM vendite.listini
+     ORDER BY id
+     LIMIT 1
+    RETURNING id
+)
+SELECT id AS listino_id FROM ins;
+
+-- Versione ATTIVA scaduta (da chiudere dal framework).
+INSERT INTO vendite.listini_versioni (
+    listino_id, codice_versione, valido_dal, valido_al, stato
+)
+SELECT listino_id, 'FW_TEST', DATE '2022-01-01', DATE '2022-12-31', 'ATTIVA'
+  FROM tmp_listino;
+
+-- =============================================================
+-- Setup: clona BA + crea contratto fixture (per test 2)
+-- Inserito in modalita' A (listino + variazione globale) per evitare
+-- il guard modalita' C che richiederebbe righe in contratti_righe
+-- con prezzo_unitario.
+-- =============================================================
+CREATE TEMP TABLE tmp_ctx_ba AS
+SELECT ba.id AS billing_account_id,
+       ba.istanza_utility_id,
+       ba.utility_id
+  FROM anagrafiche.billing_account ba
+ WHERE NOT EXISTS (
+     SELECT 1 FROM config.tipi_utenze tu WHERE tu.utility_id = ba.utility_id
+ )
+ ORDER BY ba.id
+ LIMIT 1;
+
+CREATE TEMP TABLE tmp_ctx_stati AS
+SELECT
+    (SELECT id FROM config.stati_doc_contratti WHERE codice_interno = 'ATTIVO')  AS id_attivo,
+    (SELECT id FROM config.stati_doc_contratti WHERE codice_interno = 'CESSATO') AS id_cessato;
+
+CREATE TEMP TABLE tmp_ctx_listino AS
+SELECT id AS listino_id FROM vendite.listini WHERE attivo IS TRUE ORDER BY id LIMIT 1;
+
+INSERT INTO vendite.contratti(
+    numero, billing_account_id, istanza_utility_id, utility_id,
+    stato_doc_contratto_id, valido_dal, valido_al,
+    listino_id, tipo_variazione_globale, valore_variazione_globale
+)
+SELECT 'PGTAP_FW_CONTR_SCAD', ba.billing_account_id, ba.istanza_utility_id, ba.utility_id,
+       s.id_attivo, DATE '2022-01-01', DATE '2022-12-31',
+       l.listino_id, 'PERCENTUALE', -10
+  FROM tmp_ctx_ba ba, tmp_ctx_stati s, tmp_ctx_listino l;
+
+-- =============================================================
+-- 1) Esecuzione VARCHAR: chiude versione listino scaduta
+-- =============================================================
+INSERT INTO dbops.automazione_chiusura_scadenze (
+    id, schema_tabella, nome_tabella, col_stato, tipo_stato,
+    col_valido_al, stato_attivo_codice, stato_chiuso_codice,
+    attivo, descrizione
+) VALUES (
+    1001, 'vendite', 'listini_versioni', 'stato', 'VARCHAR',
+    'valido_al', 'ATTIVA', 'CHIUSA',
+    true, 'pgtap test 1'
+);
+
+-- Esegui il framework.
+DO $$ BEGIN PERFORM dbops.fn_apply_chiusura_scadenze(); END $$;
+
+SELECT is(
+    (SELECT stato FROM vendite.listini_versioni
+      WHERE listino_id = (SELECT listino_id FROM tmp_listino)
+        AND codice_versione = 'FW_TEST'),
+    'CHIUSA'::varchar,
+    'Framework VARCHAR: versione listino scaduta passa a CHIUSA'
+);
+
+-- Disattiva la riga di config per test 2 (no double processing).
+UPDATE dbops.automazione_chiusura_scadenze SET attivo = false WHERE id = 1001;
+
+-- =============================================================
+-- 2) Esecuzione FK: chiude contratto scaduto via lookup codice_interno
+-- =============================================================
+INSERT INTO dbops.automazione_chiusura_scadenze (
+    id, schema_tabella, nome_tabella, col_stato, tipo_stato,
+    col_valido_al, stato_attivo_codice, stato_chiuso_codice,
+    fk_lookup_schema, fk_lookup_table, fk_lookup_codice_col, fk_lookup_id_col,
+    attivo, descrizione
+) VALUES (
+    1002, 'vendite', 'contratti', 'stato_doc_contratto_id', 'FK',
+    'valido_al', 'ATTIVO', 'CESSATO',
+    'config', 'stati_doc_contratti', 'codice_interno', 'id',
+    true, 'pgtap test 2'
+);
+
+DO $$ BEGIN PERFORM dbops.fn_apply_chiusura_scadenze(); END $$;
+
+SELECT is(
+    (SELECT sd.codice_interno
+       FROM vendite.contratti c
+       JOIN config.stati_doc_contratti sd ON sd.id = c.stato_doc_contratto_id
+      WHERE c.numero = 'PGTAP_FW_CONTR_SCAD'),
+    'CESSATO'::varchar,
+    'Framework FK: contratto scaduto passa a CESSATO via lookup codice_interno'
+);
+
+-- =============================================================
+-- 3) Idempotenza: rerun non tocca righe gia' chiuse
+-- =============================================================
+-- Riattiva la riga test 1 per il rerun (test 2 e' gia' attiva).
+UPDATE dbops.automazione_chiusura_scadenze SET attivo = true WHERE id = 1001;
+
+DO $$
+DECLARE
+    v_result jsonb;
+BEGIN
+    v_result := dbops.fn_apply_chiusura_scadenze();
+    -- Rerun deve dare 0 righe chiuse per entrambi (idempotente).
+    IF (v_result->>'_total')::integer <> 0 THEN
+        RAISE EXCEPTION 'rerun non idempotente: total=%', v_result->>'_total';
+    END IF;
+END $$;
+
+SELECT pass('Framework e'' idempotente: rerun non tocca righe gia'' chiuse');
+
+-- Cleanup righe config per test pre-check.
+DELETE FROM dbops.automazione_chiusura_scadenze WHERE id IN (1001, 1002);
+
+-- =============================================================
+-- 4) Pre-check tabella inesistente -> raise
+-- =============================================================
+INSERT INTO dbops.automazione_chiusura_scadenze (
+    id, schema_tabella, nome_tabella, col_stato, tipo_stato,
+    col_valido_al, stato_attivo_codice, stato_chiuso_codice,
+    attivo, descrizione
+) VALUES (
+    1003, 'vendite', 'tabella_che_non_esiste_pgtap', 'stato', 'VARCHAR',
+    'valido_al', 'ATTIVA', 'CHIUSA',
+    true, 'pgtap test 4'
+);
+
+SELECT throws_ok(
+    $$SELECT dbops.fn_apply_chiusura_scadenze()$$,
+    'P0001',
+    NULL,
+    'Pre-check tabella inesistente solleva E_AUTOMAZIONE_CHIUSURA_CONFIG_INVALIDA'
+);
+
+DELETE FROM dbops.automazione_chiusura_scadenze WHERE id = 1003;
+
+-- =============================================================
+-- 5) Pre-check colonna inesistente -> raise
+-- =============================================================
+INSERT INTO dbops.automazione_chiusura_scadenze (
+    id, schema_tabella, nome_tabella, col_stato, tipo_stato,
+    col_valido_al, stato_attivo_codice, stato_chiuso_codice,
+    attivo, descrizione
+) VALUES (
+    1004, 'vendite', 'listini_versioni', 'colonna_inesistente_pgtap', 'VARCHAR',
+    'valido_al', 'ATTIVA', 'CHIUSA',
+    true, 'pgtap test 5'
+);
+
+SELECT throws_ok(
+    $$SELECT dbops.fn_apply_chiusura_scadenze()$$,
+    'P0001',
+    NULL,
+    'Pre-check colonna inesistente solleva E_AUTOMAZIONE_CHIUSURA_CONFIG_INVALIDA'
+);
+
+DELETE FROM dbops.automazione_chiusura_scadenze WHERE id = 1004;
+
+-- =============================================================
+-- 6) Pre-check codice FK inesistente -> raise
+-- =============================================================
+INSERT INTO dbops.automazione_chiusura_scadenze (
+    id, schema_tabella, nome_tabella, col_stato, tipo_stato,
+    col_valido_al, stato_attivo_codice, stato_chiuso_codice,
+    fk_lookup_schema, fk_lookup_table, fk_lookup_codice_col, fk_lookup_id_col,
+    attivo, descrizione
+) VALUES (
+    1005, 'vendite', 'contratti', 'stato_doc_contratto_id', 'FK',
+    'valido_al', 'CODICE_INESISTENTE_PGTAP', 'CESSATO',
+    'config', 'stati_doc_contratti', 'codice_interno', 'id',
+    true, 'pgtap test 6'
+);
+
+SELECT throws_ok(
+    $$SELECT dbops.fn_apply_chiusura_scadenze()$$,
+    'P0001',
+    NULL,
+    'Pre-check codice FK attivo inesistente solleva E_AUTOMAZIONE_CHIUSURA_CONFIG_INVALIDA'
+);
+
+SELECT * FROM finish();
+ROLLBACK;

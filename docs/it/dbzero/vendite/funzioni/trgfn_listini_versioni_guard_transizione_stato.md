@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/vendite/manual/trgfn_listini_versioni_guard_transizione_stato.md" %}
 # ⚙️ Funzione `trgfn_listini_versioni_guard_transizione_stato`
 
 ```sql

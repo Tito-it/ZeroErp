@@ -44,7 +44,9 @@ corretta.
 | Job | Schedule | Scopo | Dominio | Migration |
 |---|---|---|---|---|
 | `sync_auth_user_expired_daily` | daily 06:00 | Disattiva `auth_user` per risorse umane con finestra temporale scaduta | anagrafiche | `85_pgagent/20260302-04-...` |
-| `listini_versioni_close_scadute_daily` | daily 00:05 | Chiude versioni listino ATTIVA con `valido_al` scaduto | vendite | `85_pgagent/20260424-01-...` |
+| `chiusura_scadenze_daily` | daily 00:05 | Framework parametrico: chiude lo stato gestionale (CHIUSA/CESSATO) sulle tabelle configurate in `dbops.automazione_chiusura_scadenze` quando `valido_al < CURRENT_DATE` | dbops (cross-dominio) | `85_pgagent/20260426-06-...` |
+
+> **Nota storica (26-04-2026)**: il job `listini_versioni_close_scadute_daily` (creato il 24-04-2026 per chiudere le sole versioni listino) e' stato sostituito dal job parametrico `chiusura_scadenze_daily`. La funzione specifica `vendite.fn_listini_versioni_close_scadute()` e' stata droppata. Aggiungere nuove tabelle al pattern non richiede piu' nuovo codice DB: basta una INSERT seed in `dbops.automazione_chiusura_scadenze`.
 
 ---
 
@@ -60,18 +62,32 @@ corretta.
 * **Migration**: [85_pgagent/20260302-04-create-pgagent-job-sync-auth-user-expired-daily-mctit.yaml](/migrations_v2/85_pgagent/20260302-04-create-pgagent-job-sync-auth-user-expired-daily-mctit.yaml).
 * **Tabelle coinvolte**: `anagrafiche.risorse_umane`, `anagrafiche.identita_digitali`, `django.auth_user`.
 
-### `listini_versioni_close_scadute_daily`
+### `chiusura_scadenze_daily` (framework parametrico)
 
-* **Scopo**: portare a `stato = 'CHIUSA'` le versioni listino ATTIVA la cui finestra temporale e' gia' scaduta (`valido_al < CURRENT_DATE`).
-* **Funzione chiamata**: `vendite.fn_listini_versioni_close_scadute()` — ritorna il numero di righe chiuse.
-* **Schedule**: tutti i giorni alle `00:05` (subito dopo il cambio data; il ritardo stato ↔ realta' e' ~5 minuti).
+* **Scopo**: motore unico per la chiusura automatica dello stato gestionale su tabelle con pattern "ciclo stato + finestra di validita'" (vedi [linee-guida-sql §7c](/linee-guida-sql)). Itera sulle righe `attivo=true` di `dbops.automazione_chiusura_scadenze` e applica UPDATE dinamici.
+* **Funzione chiamata**: `dbops.fn_apply_chiusura_scadenze()` — ritorna JSONB con conteggio righe chiuse per tabella + meta-info esecuzione (`{"vendite.listini_versioni": 3, "vendite.contratti": 12, "_total": 15, "_executed_at": "..."}`).
+* **Schedule**: tutti i giorni alle `00:05` (subito dopo il cambio data; semantica `valido_al` = ultimo giorno **incluso**, quindi 00:05 del giorno successivo e' il primo momento utile per chiudere).
 * **Classe job**: `Routine Maintenance`.
-* **Idempotenza**: la query UPDATE seleziona solo versioni ancora ATTIVA con `valido_al` scaduto; esecuzioni ripetute nella stessa giornata sono no-op.
-* **Interazione con guard**: l'UPDATE attraversa il trigger `trg_listini_versioni_a10_guard_transizione_stato_upd` (vedi [linee-guida-sql §7c](/linee-guida-sql)) e lo soddisfa per costruzione — nessun bypass.
-* **Effetto sulla UX**: fra `PATCH valido_al = oggi` e le 00:05 del giorno successivo la versione resta `ATTIVA` a livello `stato`. L'**applicabilita' operativa** (resolver prezzi) e' gia' scaduta perche' basata su `validita @> data`, non sullo stato.
-* **Migration**: [85_pgagent/20260424-01-create-pgagent-job-listini-versioni-close-scadute-daily-mctit.yaml](/migrations_v2/85_pgagent/20260424-01-create-pgagent-job-listini-versioni-close-scadute-daily-mctit.yaml).
-* **Tabelle coinvolte**: `vendite.listini_versioni`.
-* **Tabella manuale**: [listini_versioni](/dbzero/vendite/tabelle/listini_versioni).
+* **Tabelle attualmente configurate**:
+  * `vendite.listini_versioni` (`tipo_stato=VARCHAR`, ciclo `BOZZA -> ATTIVA -> CHIUSA`)
+  * `vendite.contratti` (`tipo_stato=FK`, lookup `config.stati_doc_contratti.codice_interno`, ciclo `DRAFT -> ATTIVO -> CESSATO`; `SOSPESO` fuori scope operativo)
+* **Pre-check**: prima di ogni UPDATE la fn verifica esistenza schema/tabella/colonne (e per FK anche tabella di lookup + codici). Errore tipato `E_AUTOMAZIONE_CHIUSURA_CONFIG_INVALIDA` in caso di config invalida (no exec parziale).
+* **Idempotenza**: la query seleziona solo righe ancora attive con `valido_al` scaduto; esecuzioni ripetute nella stessa giornata sono no-op.
+* **Interazione con guard tabella-specifici**: l'UPDATE attraversa i trigger `trg_<tabella>_a10_guard_transizione_stato_upd` e li soddisfa per costruzione (precondizione `valido_al < CURRENT_DATE` identica al WHERE). Nessun bypass, nessun GUC, nessun privilegio elevato.
+* **Effetto sulla UX**: fra `PATCH valido_al = oggi` e le 00:05 del giorno successivo lo stato resta `ATTIVA`/`ATTIVO`. L'**applicabilita' operativa** (resolver prezzi, lookup contratti operativi) e' gia' scaduta perche' basata su `validita @> data`, non sullo stato.
+* **SQL dinamico sicuro**: `format(%I)` per identificatori, `format(%L)` per valori. I codici nella config sono comunque amministrativamente controllati (Liquibase seed).
+* **Audit**: insert in `dbops.audit_log` con `area='database'`, `function_name='fn_apply_chiusura_scadenze'`, `context=<JSONB risultato>`.
+* **Migration job**: [85_pgagent/20260426-06-replace-pgagent-job-chiusura-scadenze-daily-mctit.yaml](/migrations_v2/85_pgagent/20260426-06-replace-pgagent-job-chiusura-scadenze-daily-mctit.yaml).
+* **Migration funzione**: [20_code/dbops/20260426-02-create-fn-apply-chiusura-scadenze-mctit.yaml](/migrations_v2/20_code/dbops/20260426-02-create-fn-apply-chiusura-scadenze-mctit.yaml).
+* **Migration tabella config**: [00_schema/dbops/20260426-01-create-automazione-chiusura-scadenze-mctit.yaml](/migrations_v2/00_schema/dbops/20260426-01-create-automazione-chiusura-scadenze-mctit.yaml).
+* **Tabella config**: [dbops.automazione_chiusura_scadenze](/dbzero/dbops/tabelle/automazione_chiusura_scadenze).
+
+#### Come aggiungere una nuova tabella al framework
+
+1. Verificare che la tabella abbia il pattern `<col_stato> + <col_valido_al>` ([linee-guida-sql §7c](/linee-guida-sql)).
+2. Creare un trigger guard transizione tabella-specifico (`trgfn_<tabella>_guard_transizione_stato`) con la matrice transizioni del workflow + precondizione temporale per la transizione terminale.
+3. Aggiungere una riga in `dbops.automazione_chiusura_scadenze` (via INSERT seed in `80_data/sql/dbops/automazione_chiusura_scadenze.csv`) con `tipo_stato='VARCHAR'` o `tipo_stato='FK'` e i codici stato attivo/chiuso.
+4. Nessun nuovo codice DB: il job notturno la prende in carico al successivo run.
 
 ---
 

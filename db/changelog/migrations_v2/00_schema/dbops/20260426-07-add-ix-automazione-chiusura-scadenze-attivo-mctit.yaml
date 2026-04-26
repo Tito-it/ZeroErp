@@ -1,0 +1,45 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Indice parziale su dbops.automazione_chiusura_scadenze(attivo).
+#
+# Why: la query di lettura del framework
+# (dbops.fn_apply_chiusura_scadenze) filtra sempre per attivo=TRUE.
+# Per <10 righe l'indice e' inutile, ma se domani il framework
+# crescesse a 50+ tabelle target l'indice parziale evita seq scan.
+# Indice WHERE attivo IS TRUE: zero-cost se attivo=false su molte
+# righe (le righe inattive non vengono indicizzate).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/dbops/20260426-07-add-ix-automazione-chiusura-scadenze-attivo-mctit.yaml
+
+  - changeSet:
+      id: 20260426-07-add-ix-automazione-chiusura-scadenze-attivo
+      author: mctit
+      comment: >
+        Crea indice parziale su dbops.automazione_chiusura_scadenze(id)
+        WHERE attivo IS TRUE. Supporta la query del framework che
+        itera solo sulle righe attive.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: dbops
+            tableName: automazione_chiusura_scadenze
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE INDEX IF NOT EXISTS ix_automazione_chiusura_scadenze_attivo
+                  ON dbops.automazione_chiusura_scadenze (id)
+               WHERE attivo IS TRUE;
+      rollback:
+        - sql:
+            sql: DROP INDEX IF EXISTS dbops.ix_automazione_chiusura_scadenze_attivo;

@@ -50,8 +50,9 @@ markdown_extensions:
                   custom_fences:
                           - name: mermaid
                             class: mermaid
-                            format: !!python/name:pymdownx.superfences.fence_code_format
+                            format:
 
+                                    !!python/name:pymdownx.superfences.fence_code_format ""
 extra_javascript:
         - assets/javascripts/mermaid.min.js
         - assets/javascripts/mermaid-init.js
@@ -133,6 +134,7 @@ nav:
                   - Storicizzazione Tabelle: it/guide/storicizzazione-tabelle.md
                   - Configurazione e gestione parametri: it/guide/configurazione-e-gestione-parametri.md
                   - Automazione DB: it/guide/automazione-db.md
+                  - Processi-pgagent: it/guide/processi-pgagent-funzionali.md
                   - Log:
                             - Messaggi di Errore: it/guide/Messaggi-di-Errore-e-Generazione-Log.md
                             - Messaggi di Audit: it/guide/messaggi-audit.md

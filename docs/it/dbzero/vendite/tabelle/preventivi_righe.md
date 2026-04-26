@@ -24,6 +24,7 @@
 | factor_to_base | numeric | NO | 1 |
 | stato_approvazione_prezzo | USER-DEFINED | YES |  |
 | pratica_approvazione_prezzo_id | bigint | YES |  |
+| tx_id | uuid | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |

@@ -14,6 +14,7 @@
 | user_update | text | YES | CURRENT_USER |
 | origine_indirizzo_id | bigint | YES |  |
 | origine_soggetto_ruolo_id | bigint | YES |  |
+| tx_id | uuid | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |

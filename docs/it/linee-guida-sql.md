@@ -234,15 +234,52 @@ Quando una tabella ha **sia** una colonna `stato` (ciclo vita gestionale: es. `B
 **Principio fail-safe: le date comandano, lo stato accompagna.**
 
 1. **Applicabilita' operativa = date**. Resolver, lookup di business, filtri di efficacia usano **solo** `validita @> data_riferimento` (o equivalente su `valido_dal`/`valido_al`). **Non** filtrare per `stato` nella logica operativa: se il job di sync salta o un bug lascia lo stato incoerente, la logica basata su data resta corretta.
-2. **`stato` = workflow gestionale**. Transizioni governate dall'utente e vincolate da un guard trigger (`trgfn_<tabella>_guard_transizione_stato`, fase `_a10_`, `BEFORE UPDATE OF stato`). Lo stato serve a UI, audit, reportistica, dashboard — **mai** a decidere se una riga si applica operativamente.
+2. **`stato` = workflow gestionale**. Transizioni governate dall'utente e vincolate da un guard trigger (`trgfn_<tabella>_guard_transizione_stato`, fase `_a10_`, `BEFORE UPDATE OF <col_stato>`). Lo stato serve a UI, audit, reportistica, dashboard — **mai** a decidere se una riga si applica operativamente.
 3. **Transizione verso lo stato terminale**: la regola del guard puo' includere una **precondizione temporale** (`valido_al IS NOT NULL AND valido_al < CURRENT_DATE`) per evitare incoerenze strutturali (stato "chiuso" con finestra ancora aperta). Stessa regola vale per l'utente (via API/service) e per il job di sync.
-4. **Sync stato -> data**: un **job pgAgent notturno** (`85_pgagent/`) invoca una funzione incapsulata (`vendite.fn_<tabella>_close_scadute()` o equivalente) che esegue l'UPDATE massivo `stato = terminale` per le righe con `valido_al` scaduto. L'UPDATE attraversa il guard trigger e lo soddisfa per costruzione.
+4. **Sync stato -> data**: il framework parametrico **`dbops.fn_apply_chiusura_scadenze()`** + job pgAgent unico **`chiusura_scadenze_daily`** (00:05) esegue l'UPDATE massivo `stato = terminale` per le righe scadute (`valido_al < CURRENT_DATE`) su tutte le tabelle configurate. L'UPDATE attraversa il guard trigger e lo soddisfa per costruzione. Vedi sotto "Framework dbops.automazione_chiusura_scadenze".
 5. **Niente trigger di sync `valido_al` -> `stato`** e nessuna colonna generata: lo stato **non e'** derivato in tempo reale dalla data (es. l'utente puo' programmare `valido_al` futuro e lo stato resta ATTIVA finche' il job non scatta). La sincronizzazione e' asincrona e "cosmetica".
 6. **INSERT**: non vincolare l'INSERT con la matrice transizioni (per permettere seed/import con stati diretti). Il guard scatta solo su UPDATE OF stato.
+7. **Semantica `valido_al`**: ultimo giorno **incluso** (convenzione `script.trgfn_set_validita`, bounds `[]` canonicalizzati a `[)`). Esempio: `valido_al = 2026-04-26` → la riga e' operativamente valida fino al 2026-04-26 23:59:59, scade dal 2026-04-27. Conseguenza: la query `valido_al < CURRENT_DATE` chiude **dal giorno successivo** a `valido_al` — schedule 00:05 cattura al primo momento utile dopo il cambio data.
 
-**Esempio applicato**: `vendite.listini_versioni` (ciclo `BOZZA -> ATTIVA -> CHIUSA`) — guard in `20_code/vendite/20260424-01-...` + funzione di chiusura in `...-02-...` + job in `85_pgagent/20260424-01-...`.
+#### Framework `dbops.automazione_chiusura_scadenze` (post 26-04-2026)
 
-**Messaggi errore**: codice dedicato in `config.messaggi_errore` (es. `E_VERSIONE_STATO_TRANSIZIONE_INVALIDA`), raise via `script.fn_log_and_raise_error`.
+La logica di chiusura per scadenza e' centralizzata in un framework parametrico. Aggiungere una nuova tabella al pattern non richiede nuovo codice DB: basta una INSERT seed nella tabella di configurazione.
+
+| Componente | Posizione | Ruolo |
+| --- | --- | --- |
+| Tabella config | `dbops.automazione_chiusura_scadenze` | Una riga per tabella target (schema, nome, colonna stato, codici attivo/chiuso, etc.) |
+| Funzione motore | `dbops.fn_apply_chiusura_scadenze()` | SQL dinamico con pre-check + dispatch VARCHAR/FK + audit + JSONB risultato |
+| Job unico | `chiusura_scadenze_daily` (`85_pgagent/`) | Schedule 00:05, esegue la fn |
+
+**Tipologie supportate** (colonna `tipo_stato`):
+
+* **VARCHAR**: `stato` e' colonna varchar diretta + CHECK constraint. Esempio `vendite.listini_versioni` con `stato IN ('BOZZA','ATTIVA','CHIUSA')`.
+* **FK**: `stato` e' FK a tabella catalogo, codici espressi come `codice_interno` (immutabile per `lock_columns`). Esempio `vendite.contratti.stato_doc_contratto_id` -> `config.stati_doc_contratti`.
+
+**Esempio righe seed** (`80_data/sql/dbops/automazione_chiusura_scadenze.csv`):
+
+```csv
+schema_tabella,nome_tabella,col_stato,tipo_stato,stato_attivo_codice,stato_chiuso_codice,fk_lookup_schema,fk_lookup_table
+vendite,listini_versioni,stato,VARCHAR,ATTIVA,CHIUSA,,
+vendite,contratti,stato_doc_contratto_id,FK,ATTIVO,CESSATO,config,stati_doc_contratti
+```
+
+#### Componenti tabella-specifici (NON generalizzati nel framework)
+
+Restano sotto la responsabilita' del dominio:
+
+* Trigger guard transizione (matrice transizioni ammesse, codici stato, messaggi errore tipati)
+* Codice errore dedicato in `config.messaggi_errore` (es. `E_VERSIONE_STATO_TRANSIZIONE_INVALIDA`, `E_CONTRATTO_STATO_TRANSIZIONE_INVALIDA`)
+* Documentazione manuale della tabella
+
+La generalizzazione del guard transizione e' rinviata: serviranno almeno tre casi reali con strutture transizione affini per giustificare l'astrazione (manifesto sviluppo concentrico §7).
+
+**Casi gia' applicati**:
+
+* `vendite.listini_versioni` (VARCHAR, ciclo `BOZZA -> ATTIVA -> CHIUSA`)
+* `vendite.contratti` (FK, ciclo `DRAFT -> ATTIVO -> CESSATO`; `SOSPESO` esiste come codice ma fuori scope)
+
+**Riferimento**: [WIP automazione-chiusure-scadenze.md](dev/work-in-progress/automazione-chiusure-scadenze.md).
 
 ---
 

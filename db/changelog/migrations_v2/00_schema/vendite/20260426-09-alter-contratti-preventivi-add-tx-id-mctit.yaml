@@ -1,0 +1,87 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Aggiunta colonna tx_id (uuid) su vendite.contratti e
+# vendite.preventivi.
+#
+# Why: queste due tabelle sono fra le poche del dominio vendite a
+# non avere la colonna tx_id, che e' invece presente sulla maggior
+# parte delle tabelle del progetto (es. listini_versioni). La
+# mancanza si e' fatta sentire scrivendo i guard transizione stato
+# (ref. 20260426-05): la chiamata a script.fn_log_and_raise_error
+# richiede un UUID per p_tx_id e si ripiegava su NULL::uuid per
+# omogeneita' col guard preventivi gemello.
+#
+# Aggiungere la colonna tx_id e' sufficiente: il framework di
+# automation (dbops.fn_run_automations) si occupa di registrare il
+# trigger BEFORE INS/UPD che la popola tramite
+# dbops.trgfn_tx_id_managed.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260426-09-alter-contratti-preventivi-add-tx-id-mctit.yaml
+
+  - changeSet:
+      id: 20260426-09-01-alter-contratti-add-tx-id
+      author: mctit
+      comment: >
+        ADD COLUMN tx_id uuid (nullable) su vendite.contratti.
+        Il trigger di gestione e' applicato dal framework automation
+        al primo run di dbops.fn_run_automations.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: vendite
+            tableName: contratti
+      changes:
+        - addColumn:
+            schemaName: vendite
+            tableName: contratti
+            columns:
+              - column:
+                  name: tx_id
+                  type: uuid
+                  remarks: >
+                    Transaction id correlazione audit; popolato dal
+                    trigger trgfn_tx_id_managed (registrato via
+                    dbops.fn_run_automations).
+      rollback:
+        - dropColumn:
+            schemaName: vendite
+            tableName: contratti
+            columnName: tx_id
+
+  - changeSet:
+      id: 20260426-09-02-alter-preventivi-add-tx-id
+      author: mctit
+      comment: >
+        ADD COLUMN tx_id uuid (nullable) su vendite.preventivi.
+        Il trigger di gestione e' applicato dal framework automation
+        al primo run di dbops.fn_run_automations.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: vendite
+            tableName: preventivi
+      changes:
+        - addColumn:
+            schemaName: vendite
+            tableName: preventivi
+            columns:
+              - column:
+                  name: tx_id
+                  type: uuid
+                  remarks: >
+                    Transaction id correlazione audit; popolato dal
+                    trigger trgfn_tx_id_managed (registrato via
+                    dbops.fn_run_automations).
+      rollback:
+        - dropColumn:
+            schemaName: vendite
+            tableName: preventivi
+            columnName: tx_id
