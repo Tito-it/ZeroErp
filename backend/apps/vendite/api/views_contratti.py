@@ -210,7 +210,7 @@ class ApiContrattoCambiaStato(DomainAPIView):
             fields={"data": serializers.DictField()},
         )},
     )
-    # Scopo: Cambia stato del contratto (DRAFT/ATTIVO/SOSPESO/CESSATO).
+    # Scopo: Cambia stato del contratto (DRAFT -> ATTIVO -> CESSATO).
     #        Se valido_al e' fornito, applica anche PATCH valido_al nella
     #        stessa transazione (caso d'uso: dialog "Cessa contratto" che
     #        chiede la data al click). Trigger DB fa fail-fast su

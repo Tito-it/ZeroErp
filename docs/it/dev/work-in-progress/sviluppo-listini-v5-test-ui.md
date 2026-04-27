@@ -97,16 +97,16 @@ documento il 2026-04-24 ed è archiviata in `work-done/`.
 
 ### 1.5 Promo articoli
 
-- [ ] `/vendite/promo-articoli/` → nuova promo `PROMO-TEST-Q1` su articolo X
-- [ ] `tipo_variazione=PREZZO_FISSO`, `valore_variazione=9.99`, valida 7 giorni
-- [ ] Stato attiva, quindi appare nei filtri
+- [x] `/vendite/promo-articoli/` → nuova promo `PROMO-TEST-Q1` su articolo X
+- [x] `tipo_variazione=PREZZO_FISSO`, `valore_variazione=9.99`, valida 7 giorni
+- [x] Stato attiva, quindi appare nei filtri
 
 ### 1.6 Articolo + BoM
 
-- [ ] `/catalogo/articoli/` → nuovo articolo composito "Pacchetto-test"
-- [ ] `is_composito=true`, `listino_tipologia_id` selezionato
-- [ ] Sub-drawer BoM → aggiungi 2 componenti, 1 con `esposto_in_fattura=true`
-- [ ] Verifica banner info "BoM immutabile" appare sopra la tabella
+- [X] `/catalogo/articoli/` → nuovo articolo composito "Pacchetto-test"
+- [X] `is_composito=true`, `listino_tipologia_id` selezionato
+- [X] Sub-drawer BoM → aggiungi 2 componenti, 1 con `esposto_in_fattura=true`
+- [X] Verifica banner info "BoM immutabile" appare sopra la tabella
 
 **Gate**: tutti i check ✅, nessun 500 nel log backend.
 

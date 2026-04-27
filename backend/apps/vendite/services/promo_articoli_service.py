@@ -34,6 +34,23 @@ E_VENDITE_NOT_FOUND = "E_VENDITE_NOT_FOUND"
 E_VENDITE_DUPLICATO = "E_VENDITE_DUPLICATO"
 E_VENDITE_FK = "E_VENDITE_FK"
 E_VENDITE_PROMO_OVERLAP = "E_VENDITE_PROMO_OVERLAP"
+# Guard Profilo A promo data-driven (vedi error_policies.py + brief DB
+# trigger guard). Stato derivato dalle date correnti, non da una colonna stato.
+E_PROMO_RETROATTIVA = "E_PROMO_RETROATTIVA"
+E_PROMO_INIZIATA_CAMPI_RISTRETTI = "E_PROMO_INIZIATA_CAMPI_RISTRETTI"
+E_PROMO_SCADUTA_IMMUTABILE = "E_PROMO_SCADUTA_IMMUTABILE"
+
+
+# Whitelist campi mutabili quando la promo e' INIZIATA (oggi compreso fra
+# valido_dal e valido_al). Tipo/valore variazione sono bloccati: cambiarli
+# in corsa altera i calcoli pricing per i nuovi push e per i riallinea-prezzo
+# senza un audit storico chiaro. Per cambiare strategia: chiudere questa
+# promo (valido_al=oggi) e crearne una nuova.
+_UPDATE_KEYS_INIZIATA: frozenset[str] = frozenset({
+    "descrizione",
+    "valido_al",
+    "meta",
+})
 
 
 _ORDER_BY_VALIDI: frozenset[str] = frozenset({
@@ -198,6 +215,7 @@ class PromoArticoliService:
     def create_promo(self, payload: dict[str, Any]) -> dict[str, Any]:
         self._v.validate_allowed_keys(payload, allowed=_CREATE_KEYS, message=_MESSAGE)
         data = self._build_create_data(payload)
+        self._assert_create_non_retroattiva(data)
 
         try:
             new_id = self._repo.create_promo(data)
@@ -239,6 +257,21 @@ class PromoArticoliService:
             message="Nessun campo aggiornabile presente nel payload.",
             context={"allowed_keys": sorted(_UPDATE_KEYS)},
         )
+
+        # Carica lo stato attuale per applicare guard data-driven.
+        # NOTE: get_promo solleva NOT_FOUND se l'id non esiste -> bail-out
+        # prima di toccare la tabella, niente race con l'update.
+        current = self.get_promo(record_id)
+
+        # Drop no-op: la FE invia tutti i campi del form (non solo quelli
+        # cambiati), qui consideriamo modifica reale solo i campi con valore
+        # diverso dal corrente. Necessario per non rifiutare PATCH idempotenti
+        # in stato INIZIATA con campi non-whitelist invariati.
+        data = {k: v for k, v in data.items() if v != current.get(k)}
+        if not data:
+            return current
+
+        self._assert_patch_allowed_for_data_state(current, data)
 
         try:
             updated = self._repo.update_promo(record_id, data)
@@ -457,3 +490,116 @@ class PromoArticoliService:
     #        lista (articolo_id query param) — non serve un helper locale.
     def _coerce_uuid(self, value: Any, *, field: str) -> str:
         return self._v.require_uuid({field: value}, field, message=_MESSAGE)
+
+    # =================================================================
+    # Helpers privati — guard data-driven Profilo A promo
+    # =================================================================
+
+    # Scopo: in create rifiuta date retroattive. La promo deve partire da
+    #        domani in poi (preavviso operativo di 1 gg). Il check su
+    #        valido_al e' ridondante: range valido_al >= valido_dal (gia'
+    #        applicato in _build_create_data) + valido_dal > today implica
+    #        valido_al > today per costruzione. Coerente con la decisione
+    #        DB nel trigger trgfn_promo_articoli_guard_data_driven.
+    def _assert_create_non_retroattiva(self, data: dict[str, Any]) -> None:
+        today = date.today()
+        ErrorManager.require(
+            data["valido_dal"] > today,
+            code=E_PROMO_RETROATTIVA,
+            message="valido_dal non puo' essere oggi o nel passato.",
+            detail="In create la data di inizio promo deve essere > oggi.",
+            context={
+                "valido_dal": data["valido_dal"].isoformat(),
+                "today": today.isoformat(),
+            },
+        )
+
+    # Scopo: in update applica la whitelist campi data-driven. Lo stato e'
+    #        derivato dalle date CORRENTI (current), non dal payload:
+    #         - SCADUTA  (today > valido_al)        -> immutabile
+    #         - INIZIATA (valido_dal <= today <= valido_al) -> whitelist
+    #           ristretta (descrizione, valido_al >= today, meta)
+    #         - FUTURA   (today < valido_dal)       -> tutto, ma date solo
+    #           verso il futuro (no spostamento al passato)
+    #
+    #        Pre-condizione: `data` contiene solo le modifiche reali
+    #        (no-op gia' droppati a monte).
+    def _assert_patch_allowed_for_data_state(
+        self,
+        current: dict[str, Any],
+        data: dict[str, Any],
+    ) -> None:
+        today = date.today()
+        cur_dal = current["valido_dal"]
+        cur_al = current["valido_al"]
+
+        # SCADUTA: nessun campo modificabile.
+        if today > cur_al:
+            ErrorManager.raise_error(
+                code=E_PROMO_SCADUTA_IMMUTABILE,
+                message="Promo scaduta non modificabile.",
+                detail=(
+                    f"valido_al={cur_al.isoformat()} antecedente a oggi. "
+                    "Per riproporre la promo creare una nuova riga."
+                ),
+                context={
+                    "stato_data_driven": "SCADUTA",
+                    "valido_al": cur_al.isoformat(),
+                    "today": today.isoformat(),
+                    "campi_richiesti": sorted(data.keys()),
+                },
+            )
+
+        # INIZIATA: whitelist ristretta + valido_al non puo' tornare al passato.
+        if cur_dal <= today <= cur_al:
+            forbidden = sorted(set(data.keys()) - _UPDATE_KEYS_INIZIATA)
+            ErrorManager.require(
+                not forbidden,
+                code=E_PROMO_INIZIATA_CAMPI_RISTRETTI,
+                message="Promo gia' iniziata: campi modificabili limitati.",
+                detail=(
+                    f"Solo {sorted(_UPDATE_KEYS_INIZIATA)} mutabili. Per "
+                    "cambiare strategia chiudere questa promo (valido_al=oggi) "
+                    "e crearne una nuova."
+                ),
+                context={
+                    "stato_data_driven": "INIZIATA",
+                    "valido_dal": cur_dal.isoformat(),
+                    "valido_al": cur_al.isoformat(),
+                    "today": today.isoformat(),
+                    "campi_rifiutati": forbidden,
+                },
+            )
+            if "valido_al" in data:
+                ErrorManager.require(
+                    data["valido_al"] >= today,
+                    code=E_PROMO_RETROATTIVA,
+                    message="valido_al non puo' essere antecedente a oggi.",
+                    context={
+                        "valido_al": data["valido_al"].isoformat(),
+                        "today": today.isoformat(),
+                    },
+                )
+            return
+
+        # FUTURA: tutto modificabile, ma date solo verso il futuro.
+        if "valido_dal" in data:
+            ErrorManager.require(
+                data["valido_dal"] > today,
+                code=E_PROMO_RETROATTIVA,
+                message="valido_dal non puo' essere oggi o nel passato.",
+                context={
+                    "valido_dal": data["valido_dal"].isoformat(),
+                    "today": today.isoformat(),
+                },
+            )
+        if "valido_al" in data:
+            ErrorManager.require(
+                data["valido_al"] >= today,
+                code=E_PROMO_RETROATTIVA,
+                message="valido_al non puo' essere antecedente a oggi.",
+                context={
+                    "valido_al": data["valido_al"].isoformat(),
+                    "today": today.isoformat(),
+                },
+            )

@@ -50,6 +50,22 @@ class RuoliConfigResolverView(DomainAPIView):
                                 child=serializers.DictField(),
                                 help_text="Tipi dettaglio con cf_obbligatorio, piva_obbligatoria.",
                             ),
+                            "default_tipo_soggetto_dettaglio_id": serializers.IntegerField(
+                                allow_null=True,
+                                help_text=(
+                                    "Id del tipo_soggetto_dettaglio default per questo "
+                                    "ruolo, risolto via config.parameters "
+                                    "(DEFAULT_TIPO_SOGGETTO_DETTAGLIO_<RUOLO>). "
+                                    "None se non configurato — il frontend fallback al "
+                                    "primo elemento di tipi_soggetto_dettaglio."
+                                ),
+                            ),
+                            "min_search_length": serializers.IntegerField(
+                                help_text=(
+                                    "Lunghezza minima della search per attivare la "
+                                    "lookup soggetti. Default 3."
+                                ),
+                            ),
                         },
                     ),
                 },

@@ -38,7 +38,8 @@ let debounceTimer = null
 
 async function onSearch({ query }) {
   clearTimeout(debounceTimer)
-  if (!query || query.length < 3) {
+  const minLen = configResolver.value?.min_search_length ?? 3
+  if (!query || query.length < minLen) {
     suggestions.value = []
     return
   }
@@ -49,17 +50,12 @@ async function onSearch({ query }) {
       const results = res.data?.data?.results || []
       const nature = configResolver.value?.nature_ammesse || []
       const ruoloCodice = props.tipoRuoloCodice
-      // Normalizza ruoli (il DB ritorna JSONB che puo' arrivare come stringa)
-      // Marca soggetti con natura bloccata o ruolo duplicato
+      // Marca soggetti con natura bloccata o ruolo duplicato (decorazione UX)
       suggestions.value = results.map(s => {
-        let ruoli = []
-        if (Array.isArray(s.ruoli)) { ruoli = s.ruoli }
-        else if (typeof s.ruoli === 'string') {
-          try { ruoli = JSON.parse(s.ruoli) } catch { /* malformato, ignora */ }
-        }
+        const ruoli = s.ruoli || []
         const naturaOk = !nature.length || nature.includes(s.natura_soggetto)
         const ruoloTrovato = ruoli.find(r => r.codice === ruoloCodice)
-        return { ...s, ruoli, _naturaBloccata: !naturaOk, _ruoloDuplicato: !!ruoloTrovato, _ruoloDescrizione: ruoloTrovato?.descrizione }
+        return { ...s, _naturaBloccata: !naturaOk, _ruoloDuplicato: !!ruoloTrovato, _ruoloDescrizione: ruoloTrovato?.descrizione }
       })
     } catch {
       suggestions.value = []
@@ -77,12 +73,13 @@ const tipiAmmessiIds = computed(() => {
   if (!dettagli || !dettagli.length) return null
   return dettagli.map(d => d.id)
 })
-// Default: primo tipo ammesso (pre-seleziona nel SoggettoDrawer)
+// Default tipo soggetto (pre-seleziona nel SoggettoDrawer):
+// 1) backend risolve via config.parameters DEFAULT_TIPO_SOGGETTO_DETTAGLIO_<RUOLO>
+// 2) fallback: primo tipo ammesso (se backend ritorna null)
 const tipoDefaultId = computed(() => {
   const dettagli = configResolver.value?.tipi_soggetto_dettaglio
   if (!dettagli || !dettagli.length) return null
-  const privato = dettagli.find(d => d.codice_interno === 'PR')
-  return privato ? privato.id : dettagli[0].id
+  return configResolver.value?.default_tipo_soggetto_dettaglio_id ?? dettagli[0].id
 })
 
 // Carica config resolver all'apertura
@@ -183,7 +180,7 @@ function onClose() {
           v-model="searchQuery"
           :suggestions="suggestions"
           :loading="searchLoading || configLoading"
-          :min-length="3"
+          :min-length="configResolver?.min_search_length ?? 3"
           :placeholder="t('resolver.search_placeholder')"
           option-label="ragione_sociale_completa"
           :force-selection="false"

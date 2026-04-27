@@ -132,7 +132,7 @@ function buildEditablePayload() {
     fine_mese: f.fine_mese,
     split_payment: f.split_payment,
     ritenuta_acconto: f.ritenuta_acconto,
-    ritenuta_aliquota: f.ritenuta_acconto ? f.ritenuta_aliquota : null,
+    ritenuta_aliquota: f.ritenuta_aliquota,
     regime_fiscale: f.regime_fiscale || null,
     bollo_esente: f.bollo_esente,
     canale_fe: f.canale_fe || null,

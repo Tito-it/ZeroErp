@@ -106,17 +106,18 @@ _UPDATE_KEYS_TESTATA: frozenset[str] = frozenset({
 })
 
 # Whitelist PATCH testata per stato del documento contratto. Il workflow
-# DRAFT -> ATTIVO -> SOSPESO/CESSATO (cessato terminale) limita progressivamente
-# i campi modificabili. In ATTIVO/SOSPESO restano editabili solo `valido_al`
-# (per programmare la cessazione, coerente con il principio "data = fonte di
-# verita' operativa") e `meta` (note interne, non operative). CESSATO e'
-# completamente immutabile. Per cambi sostanziali in stati post-DRAFT serve
-# creare un nuovo contratto (eventualmente con parent_contratto_id) — pattern
-# audit-friendly.
+# operativo e' DRAFT -> ATTIVO -> CESSATO (terminale). SOSPESO e' stato
+# rimosso dal modello (config.stati_doc_contratti, 2026-04-26): la sua
+# semantica operativa (blocco fatturazione/proroghe/ripresa) non era
+# implementata. In ATTIVO restano editabili solo `valido_al` (per
+# programmare la cessazione, coerente con "data = fonte di verita'
+# operativa") e `meta` (note interne, non operative). CESSATO e'
+# completamente immutabile. Per cambi sostanziali in stati post-DRAFT
+# serve creare un nuovo contratto (eventualmente con parent_contratto_id) —
+# pattern audit-friendly.
 _CONTRATTO_PATCH_ALLOWED_BY_STATE: dict[str, frozenset[str]] = {
     "DRAFT": _UPDATE_KEYS_TESTATA,
     "ATTIVO": frozenset({"valido_al", "meta"}),
-    "SOSPESO": frozenset({"valido_al", "meta"}),
     "CESSATO": frozenset(),
 }
 
@@ -504,7 +505,7 @@ class ContrattiService:
         )
         assert existing is not None
 
-        # Guard whitelist PATCH per stato. In ATTIVO/SOSPESO ammessi solo
+        # Guard whitelist PATCH per stato. In ATTIVO ammessi solo
         # `valido_al` (programma cessazione) e `meta` (note interne); in
         # CESSATO nulla; in DRAFT tutto. categoria_cliente_id_snapshot non
         # appare nelle whitelist non-DRAFT, quindi viene rifiutato implicitamente
@@ -563,7 +564,7 @@ class ContrattiService:
     #          - valido_al < CURRENT_DATE -> cessazione immediata: applica
     #            entrambi PATCH+UPDATE in transazione atomica
     #          - valido_al >= CURRENT_DATE -> CESSAZIONE PROGRAMMATA: applica
-    #            solo PATCH valido_al; lo stato resta ATTIVO/SOSPESO. Il job
+    #            solo PATCH valido_al; lo stato resta ATTIVO. Il job
     #            notturno DB allineera' lo stato a CESSATO quando la data
     #            scade. Coerente con il principio "data = fonte di verita'
     #            operativa, stato = flag informativo eventualmente stantio".

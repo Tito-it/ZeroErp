@@ -254,7 +254,7 @@ function buildPayload() {
   // (E_CONTRATTO_NON_MODIFICABILE) — rispettiamo la stessa whitelist qui
   // per evitare round-trip e fornire UX coerente.
   // - DRAFT: tutti i campi
-  // - ATTIVO/SOSPESO: solo valido_al + meta (programma cessazione + note)
+  // - ATTIVO: solo valido_al + meta (programma cessazione + note)
   // - CESSATO: nessuno (Salva non dovrebbe nemmeno essere cliccabile)
   const stato = isEdit.value ? (detail.value?.stato_codice || null) : 'DRAFT'
   const isDraft = stato === 'DRAFT'
@@ -333,11 +333,11 @@ async function refreshDetail() {
 
 // Stato dialog cessazione: per CESSATO chiediamo la data prima della
 // transizione (default oggi). Le altre transizioni passano per il classico
-// confirmAction (DRAFT->ATTIVO, SOSPESO->ATTIVO, ecc.).
+// confirmAction (DRAFT->ATTIVO, ecc.).
 //
-// Comportamento data-driven (allineato col backend):
+// Comportamento data-driven (allineato col backend e col guard DB):
 // - data <  oggi  -> cessazione immediata: stato passa a CESSATO
-// - data >= oggi  -> cessazione PROGRAMMATA: stato resta ATTIVO/SOSPESO,
+// - data >= oggi  -> cessazione PROGRAMMATA: stato resta ATTIVO,
 //                    job notturno DB allinea quando la data scade
 const cessaDialogVisible = ref(false)
 const cessaDialogData = ref(null)
@@ -393,17 +393,17 @@ function onCambiaStato(codice) {
   })
 }
 
-// Azioni disponibili per stato corrente. SOSPESO non e' destinazione (la
-// gestione operativa della sospensione - blocco fatturazione, proroghe,
-// ripresa - non e' implementata: nascondere finche' non c'e' la semantica).
-// Resta come origine per ripristino di contratti gia' SOSPESI in DB
-// (transizione manuale a ATTIVO o CESSATO).
+// Azioni disponibili per stato corrente. SOSPESO rimosso completamente
+// dal modello (config.stati_doc_contratti, 2026-04-26): la sua semantica
+// operativa non era implementata. Workflow attuale: DRAFT -> ATTIVO ->
+// CESSATO (terminale). La transizione a CESSATO passa SEMPRE dal dialog
+// dedicato (vedi onCambiaStato + guard DB trgfn_contratti_a10_guard_
+// transizione_stato).
 const statiTransizionabili = computed(() => {
   if (!detail.value) return []
   const current = detail.value.stato_codice
   if (current === 'DRAFT') return ['ATTIVO']
   if (current === 'ATTIVO') return ['CESSATO']
-  if (current === 'SOSPESO') return ['ATTIVO', 'CESSATO']
   return []
 })
 
@@ -446,7 +446,7 @@ function onClose() {
               <Tag :value="detail.stato_descrizione" :severity="statoContrattoSeverity(detail.stato_codice)" />
               <Button v-for="stato in statiTransizionabili" :key="stato"
                 :label="t(`contratti.azione_${stato.toLowerCase()}`)"
-                :icon="stato === 'ATTIVO' ? 'pi pi-check' : stato === 'SOSPESO' ? 'pi pi-pause' : 'pi pi-times'"
+                :icon="stato === 'ATTIVO' ? 'pi pi-check' : 'pi pi-times'"
                 size="small" outlined
                 class="app-escape"
                 @click="onCambiaStato(stato)" />
@@ -522,21 +522,21 @@ function onClose() {
         </div>
         <!-- Campo valido_al condizionale per stato:
              - DRAFT: editabile come "Fine validita' (opz.)"
-             - ATTIVO/SOSPESO con valido_al impostato: readonly come
-               "Cessazione programmata al {data}" (visibilita' su cessazione
-               programmata futura, applicata via dialog Cessa)
-             - ATTIVO/SOSPESO senza valido_al: nascosto (cessazione passa
-               solo dal dialog dedicato)
+             - ATTIVO con valido_al impostato: readonly come "Cessazione
+               programmata al {data}" (cessazione futura applicata via
+               dialog Cessa, in attesa di scadere)
+             - ATTIVO senza valido_al: nascosto (cessazione passa solo
+               dal dialog dedicato)
              - CESSATO: readonly come "Data cessazione" -->
         <div class="form-field"
           v-if="!isEdit
             || detail?.stato_codice === 'DRAFT'
             || detail?.stato_codice === 'CESSATO'
-            || (form.valido_al && (detail?.stato_codice === 'ATTIVO' || detail?.stato_codice === 'SOSPESO'))">
+            || (form.valido_al && detail?.stato_codice === 'ATTIVO')">
           <label>
             {{ detail?.stato_codice === 'CESSATO'
               ? t('contratti.field_data_cessazione')
-              : (detail?.stato_codice === 'ATTIVO' || detail?.stato_codice === 'SOSPESO') && form.valido_al
+              : detail?.stato_codice === 'ATTIVO' && form.valido_al
                 ? t('contratti.field_cessazione_programmata')
                 : t('contratti.field_valido_al') }}
           </label>
@@ -661,7 +661,7 @@ function onClose() {
          oggi) e fa POST cambia-stato {CESSATO, valido_al} in transazione BE.
          Comportamento data-driven:
          - data < oggi  -> cessazione immediata, stato CESSATO
-         - data >= oggi -> cessazione programmata, stato resta ATTIVO/SOSPESO -->
+         - data >= oggi -> cessazione programmata, stato resta ATTIVO -->
     <Dialog v-model:visible="cessaDialogVisible" modal
       :header="cessazioneProgrammata
         ? t('contratti.cessa_dialog_titolo_programma')

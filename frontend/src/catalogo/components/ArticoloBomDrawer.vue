@@ -1,21 +1,23 @@
 <script setup>
 // Scopo: Sub-drawer per gestione distinta base (BoM) articolo.
-// Layout: lista componenti sempre visibile in alto + form inserimento in basso.
+// Layout: toolbar (filtro+reload) + lista paginata 10 righe + form inserimento.
 // Pattern immutabilità (sviluppo-listini-v5 §14.4 / DEC-4):
 //   - i campi struttura (componente, coeff_qta, esposto_in_fattura, ecc.)
 //     non sono modificabili in place: trigger DB E_BOM_MODIFICA_VIETATA li
 //     blocca. Per correggere si usa "chiudi riga" + "duplica come nuova
 //     versione" (l'admin chiude la riga corrente e ne crea una nuova).
 //   - delete BoM bloccato dal trigger: il pattern di "rimozione" è chiusura
-//     con valido_al = oggi.
-//   - valido_al è l'unico campo struttura editabile inline (chiusura riga).
-// Lookup componenti filtrato per is_solo_componente=true.
+//     con valido_al = oggi (chiusura immediata) o data futura (programmata).
+//   - valido_al è l'unico campo struttura editabile inline (chiusura riga)
+//     o via dialog dedicato (pattern simmetrico a ChiudiVersioneDialog dei
+//     listini, vedi feedback_stato_terminale_con_data).
+// Standard sub-drawer: paginazione 10 righe, ReloadButton + F5, filtro
+// client-side articolo, sort default articolo_descrizione.
 
-import { ref, watch, computed } from 'vue'
+import { ref, watch, computed, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useApiHandler } from '../../core/composables/useApiHandler'
-import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import {
   listArticoloComponenti, createArticoloComponente,
   updateArticoloComponente,
@@ -26,12 +28,16 @@ import { displayDate, toDateString } from '../../core/utils/date'
 import ArticoloLookup from '../../core/components/ArticoloLookup.vue'
 import CatalogoNoteDrawer from '../../core/components/CatalogoNoteDrawer.vue'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
+import NewButton from '../../core/components/NewButton.vue'
+import ReloadButton from '../../core/components/ReloadButton.vue'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
 import Drawer from 'primevue/drawer'
+import Dialog from 'primevue/dialog'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Button from 'primevue/button'
 import Message from 'primevue/message'
+import InputText from 'primevue/inputtext'
 import InputNumber from 'primevue/inputnumber'
 import DatePicker from 'primevue/datepicker'
 import ToggleSwitch from 'primevue/toggleswitch'
@@ -39,7 +45,6 @@ import ToggleSwitch from 'primevue/toggleswitch'
 const { t } = useI18n()
 const isReadonly = useInjectReadonly()
 const { execute, loading } = useApiHandler()
-const { confirmAction } = useConfirmAction()
 
 const props = defineProps({
   visible: { type: Boolean, default: false },
@@ -49,6 +54,21 @@ const emit = defineEmits(['update:visible', 'saved'])
 
 const componentiList = ref([])
 const listLoading = ref(false)
+
+// Filtro client-side articolo (codice + descrizione, case-insensitive).
+// Coerente con il pattern ContrattoRigheDrawer: la lista BoM è tipicamente
+// sotto le 50-100 righe per articolo, niente bisogno di filtro server-side.
+const filtroArticolo = ref('')
+
+const componentiView = computed(() => {
+  const filtro = (filtroArticolo.value || '').trim().toLowerCase()
+  if (!filtro) return componentiList.value
+  return componentiList.value.filter(r => {
+    const codice = (r.componente_codice || '').toLowerCase()
+    const desc = (r.componente_descrizione || '').toLowerCase()
+    return codice.includes(filtro) || desc.includes(filtro)
+  })
+})
 
 // Form inserimento nuovo componente
 const form = ref({})
@@ -60,6 +80,23 @@ const adding = ref(false)
 // chiusura immediata della riga senza passare dal kebab.
 const editingValidoAlId = ref(null)
 const editingValidoAlValue = ref(null)
+
+// Dialog chiusura riga (pattern simmetrico a ChiudiVersioneDialog).
+// Sostituisce il vecchio confirmAction semplice: ora l'admin sceglie
+// data di chiusura (oggi = immediata, futura = programmata) con min-date
+// vincolato a valido_dal della riga (no chiusura prima dell'inizio).
+const chiudiDialogVisible = ref(false)
+const chiudiDialogRow = ref(null)
+const chiudiDialogData = ref(null)
+const chiudiDialogMinDate = computed(() => parseDate(chiudiDialogRow.value?.valido_dal) || new Date())
+const chiudiDialogIsImmediata = computed(() => {
+  if (!chiudiDialogData.value) return false
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const sel = new Date(chiudiDialogData.value)
+  sel.setHours(0, 0, 0, 0)
+  return sel.getTime() === today.getTime()
+})
 
 // Flag UI: distingue "nuovo componente da zero" da "duplica come nuova versione".
 // Influenza il titolo del form e mostra l'hint dedicato versionamento.
@@ -126,8 +163,22 @@ watch(() => props.visible, (val) => {
   if (!val) return
   resetFormState()
   editingValidoAlId.value = null
+  filtroArticolo.value = ''
   loadComponenti()
 })
+
+// Shortcut F5: ricarica la lista senza reload del browser. Coerente con il
+// pattern useSearchTable e con gli altri sub-drawer (ContrattoRigheDrawer).
+// Attivo solo quando il drawer è visibile (il drawer è persistente: register
+// in onMounted, deregister in onUnmounted, no leak su mount/unmount parent).
+function onKeydown(e) {
+  if (e.key === 'F5' && props.visible) {
+    e.preventDefault()
+    loadComponenti()
+  }
+}
+onMounted(() => { window.addEventListener('keydown', onKeydown) })
+onUnmounted(() => { window.removeEventListener('keydown', onKeydown) })
 
 // Scopo: Callback quando l'utente seleziona un articolo dal lookup.
 function onComponenteSelect(item) {
@@ -151,11 +202,14 @@ function cancelAdd() {
 // del DB previene comunque sovrapposizioni.
 function startDuplicaComeNuovaVersione(row) {
   formMode.value = 'duplicate'
-  // Pre-compila componente_obj per restore AutoComplete (display nome).
+  // Pre-compila componente_obj per restore AutoComplete: ArticoloLookup
+  // usa optionLabel="_display" (formato "codice — descrizione"), senza
+  // questo campo l'AutoComplete cade in toString() e mostra "[object Object]".
   componenteObj.value = {
     id: row.componente_id,
+    codice: row.componente_codice,
     descrizione: row.componente_descrizione,
-    codice_interno: row.componente_codice,
+    _display: `${row.componente_codice} — ${row.componente_descrizione}`,
   }
   form.value = {
     componente_id: row.componente_id,
@@ -222,28 +276,42 @@ function cancelEditValidoAl() {
   editingValidoAlValue.value = null
 }
 
-// Scopo: chiude una riga BoM impostando valido_al = oggi. Sostituisce il
-// vecchio "elimina" che oggi è bloccato dal trigger DB E_BOM_MODIFICA_VIETATA.
-// Conferma esplicita: l'admin deve sapere che è chiusura, non eliminazione.
+// Scopo: apre il dialog di chiusura riga BoM con DatePicker. Sostituisce il
+// vecchio confirmAction semplice. Pattern simmetrico a ChiudiVersioneDialog
+// (listini-versioni): l'admin sceglie la data, default oggi (chiusura
+// immediata), futura ammessa (chiusura programmata). Min-date = valido_dal
+// della riga: la BoM non può "chiudersi prima di iniziare". Il delete BoM
+// resta bloccato dal trigger DB E_BOM_MODIFICA_VIETATA.
 function onChiudiRiga(row) {
-  const oggi = new Date()
-  const oggiStr = displayDate(oggi)
-  confirmAction({
-    title: t('catalogo.chiudi_riga_confirm_title'),
-    message: t('catalogo.chiudi_riga_confirm_message', { data: oggiStr }),
-    onAccept: async () => {
-      const result = await execute(
-        () => updateArticoloComponente(props.articoloId, row.id, {
-          valido_al: toDateString(oggi),
-        }),
-        { successMessage: t('catalogo.componente_chiuso') }
-      )
-      if (result !== null) {
-        await loadComponenti()
-        emit('saved')
-      }
-    }
-  })
+  chiudiDialogRow.value = row
+  // Default oggi se >= valido_dal, altrimenti valido_dal stesso (caso
+  // "riga futura" ipotetico — oggi non è ancora dentro la finestra).
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const dal = parseDate(row.valido_dal)
+  chiudiDialogData.value = dal && dal > today ? dal : today
+  chiudiDialogVisible.value = true
+}
+
+function annullaChiusura() {
+  chiudiDialogVisible.value = false
+  chiudiDialogRow.value = null
+  chiudiDialogData.value = null
+}
+
+async function confermaChiusura() {
+  if (!chiudiDialogRow.value || !chiudiDialogData.value) return
+  const result = await execute(
+    () => updateArticoloComponente(props.articoloId, chiudiDialogRow.value.id, {
+      valido_al: toDateString(chiudiDialogData.value),
+    }),
+    { successMessage: t('catalogo.componente_chiuso') }
+  )
+  if (result !== null) {
+    annullaChiusura()
+    await loadComponenti()
+    emit('saved')
+  }
 }
 
 // Scopo: azioni di riga del componente BoM (note + duplica + chiudi).
@@ -302,22 +370,53 @@ function buildRigaActions(row) {
           {{ t('catalogo.bom_immutabile_hint') }}
         </Message>
 
+        <!-- Toolbar standard sub-drawer: filtro + reload + nuovo. Visibile
+             sempre (anche con lista vuota) per esporre il pulsante "Aggiungi
+             componente" come azione primaria — pattern allineato a
+             ContrattoRigheDrawer. Filtro nascosto se non c'e' nulla da filtrare. -->
+        <div v-if="!isReadonly" class="app-page-toolbar">
+          <div class="app-page-filters">
+            <InputText v-if="componentiList.length > 0"
+              v-model="filtroArticolo"
+              :placeholder="t('catalogo.filtro_componente_placeholder')"
+              style="min-width: 240px;" />
+          </div>
+          <div class="app-page-actions">
+            <ReloadButton @click="loadComponenti" />
+            <NewButton :tooltip="t('catalogo.aggiungi_componente')"
+              :disabled="adding" @click="startAdd" />
+          </div>
+        </div>
+
         <!-- Lista componenti (sempre visibile) -->
         <div v-if="componentiList.length === 0 && !adding" class="app-empty-state">
           <i class="pi pi-sitemap" />
           <p>{{ t('catalogo.nessun_componente') }}</p>
         </div>
 
-        <DataTable v-if="componentiList.length > 0" :value="componentiList" class="app-datatable" striped-rows>
-          <Column field="componente_codice" :header="t('catalogo.col_codice')" />
-          <Column field="componente_descrizione" :header="t('catalogo.col_descrizione')" />
-          <Column field="coeff_qta" :header="t('catalogo.col_coeff_qta')" style="width: 70px;" />
+        <DataTable
+          v-if="componentiList.length > 0"
+          :value="componentiView"
+          class="app-datatable"
+          striped-rows
+          paginator
+          :rows="10"
+          :rows-per-page-options="[10, 25, 50]"
+          paginator-position="top"
+          sort-field="componente_descrizione"
+          :sort-order="1"
+          removable-sort
+          data-key="id"
+        >
+          <Column field="componente_codice" :header="t('catalogo.col_codice')" sortable />
+          <Column field="componente_descrizione" :header="t('catalogo.col_descrizione')" sortable />
+          <Column field="coeff_qta" :header="t('catalogo.col_coeff_qta')" style="width: 70px;" sortable />
           <Column field="esposto_in_fattura" :header="t('catalogo.col_esposto_fattura')" style="width: 80px;">
             <template #body="{ data }">
               <i :class="data.esposto_in_fattura ? 'pi pi-check text-green-500' : 'pi pi-minus text-color-secondary'" />
             </template>
           </Column>
-          <Column :header="t('catalogo.field_valido_al')" style="width: 120px;">
+          <Column field="valido_al" :header="t('catalogo.field_valido_al')" style="width: 130px;" sortable>
             <template #body="{ data }">
               <template v-if="editingValidoAlId === data.id">
                 <div class="flex gap-1 align-items-center">
@@ -345,18 +444,10 @@ function buildRigaActions(row) {
           </Column>
         </DataTable>
 
-        <!-- Form inserimento nuovo componente -->
+        <!-- Form inserimento nuovo componente. Pulsante di apertura ora
+             nella toolbar in alto (NewButton); qui solo il form quando
+             adding=true. -->
         <template v-if="!isReadonly">
-          <div v-if="!adding" class="mt-05">
-            <Button
-              :label="t('catalogo.aggiungi_componente')"
-              icon="pi pi-plus"
-              text size="small"
-              class="app-action-btn"
-              @click="startAdd"
-            />
-          </div>
-
           <template v-if="adding">
             <div class="app-drawer-section">
               <h4>{{ formMode === 'duplicate' ? t('catalogo.nuova_versione_componente') : t('catalogo.nuovo_componente') }}</h4>
@@ -430,6 +521,52 @@ function buildRigaActions(row) {
     :title="t('catalogo.tab_note')"
     @saved="loadComponenti"
   />
+
+  <!-- Dialog chiusura riga BoM. Pattern simmetrico a ChiudiVersioneDialog
+       dei listini-versioni: DatePicker default oggi, min-date = valido_dal
+       della riga, conferma esplicita per evitare PATCH involontario. -->
+  <Dialog
+    :visible="chiudiDialogVisible"
+    @update:visible="v => { if (!v) annullaChiusura() }"
+    modal
+    :header="t('catalogo.chiudi_riga_dialog_titolo')"
+    :style="{ width: '480px' }"
+  >
+    <Message
+      v-if="chiudiDialogIsImmediata"
+      severity="warn"
+      :closable="false"
+      class="mb-1"
+    >
+      {{ t('catalogo.chiudi_riga_warn_immediata') }}
+    </Message>
+    <Message
+      v-else-if="chiudiDialogData"
+      severity="info"
+      :closable="false"
+      class="mb-1"
+    >
+      {{ t('catalogo.chiudi_riga_info_programmata', {
+        data: displayDate(chiudiDialogData)
+      }) }}
+    </Message>
+
+    <div class="form-grid">
+      <div class="form-field">
+        <label>{{ t('catalogo.chiudi_riga_data') }}</label>
+        <DatePicker v-model="chiudiDialogData" :date-format="DATE_FORMAT"
+          show-icon show-button-bar :min-date="chiudiDialogMinDate" />
+      </div>
+    </div>
+
+    <div class="flex justify-end gap-2 mt-1">
+      <Button :label="t('common.cancel')" text @click="annullaChiusura" />
+      <Button :label="t('catalogo.chiudi_riga_conferma')"
+        icon="pi pi-calendar-times" severity="warn"
+        :disabled="!chiudiDialogData || loading" :loading="loading"
+        @click="confermaChiusura" />
+    </div>
+  </Dialog>
 </template>
 
 <style scoped>

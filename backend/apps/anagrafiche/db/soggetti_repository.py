@@ -9,9 +9,11 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from apps.core.db._helpers import row_to_dict, rows_to_list
+from apps.core.db.parameter_repository import ParameterRepository
 
 from django.db import connection
 
@@ -21,6 +23,12 @@ _SOGGETTI_ORDER_COLS = {
     "codice", "ragione_sociale_completa", "codice_fiscale", "partita_iva",
     "tipo_descrizione", "date_insert",
 }
+
+# Lunghezza minima della search bar soggetti (resolver). Esposto via
+# config-resolver al frontend per evitare cablato duplicato. Costante
+# applicativa: se serve parametrizzazione per emittente, promuovere a
+# config.parameters (chiave es. MIN_SEARCH_LENGTH_SOGGETTI).
+MIN_SEARCH_LENGTH_SOGGETTI = 3
 
 
 class SoggettiRepository:
@@ -116,7 +124,19 @@ class SoggettiRepository:
         ]
         with connection.cursor() as cursor:
             cursor.execute(sql, params)
-            return extract_paginated(cursor)
+            results, total_count = extract_paginated(cursor)
+        # Normalizza ruoli (jsonb_agg): psycopg in alcune configurazioni
+        # ritorna jsonb come stringa anziche' lista. Garantiamo sempre list.
+        for r in results:
+            ruoli = r.get("ruoli")
+            if isinstance(ruoli, str):
+                try:
+                    r["ruoli"] = json.loads(ruoli)
+                except (ValueError, TypeError):
+                    r["ruoli"] = []
+            elif ruoli is None:
+                r["ruoli"] = []
+        return results, total_count
 
     # Scopo: Recupera il codice catastale (Belfiore) di un comune da extra_country.
     def get_codice_catastale(self, comune_id: int) -> str | None:
@@ -668,10 +688,16 @@ class SoggettiRepository:
     # Config resolver per tipo ruolo
     # =================================================================
 
-    # Scopo: Dato un codice tipo_ruolo, restituisce le nature ammesse
-    # e i tipi_soggetto_dettaglio con i requisiti CF/PIVA.
+    # Scopo: Dato un codice tipo_ruolo, restituisce le nature ammesse,
+    # i tipi_soggetto_dettaglio con i requisiti CF/PIVA, il default
+    # tipo_soggetto_dettaglio (da config.parameters) e min_search_length.
     # Usato dal SoggettoResolver frontend per adattare form e ricerca.
-    def get_config_resolver(self, tipo_ruolo_codice: str) -> dict[str, Any] | None:
+    # emittente_fiscale_id: se valorizzato, usato per risolvere override
+    # del default sul livello emittente (catena fn_get_parameter_full).
+    def get_config_resolver(
+        self, tipo_ruolo_codice: str,
+        emittente_fiscale_id: int | None = None,
+    ) -> dict[str, Any] | None:
         # 1. Recupera tipo_ruolo
         sql_ruolo = """
             SELECT tr.id, COALESCE(tr.codice_interno, tr.codice) AS codice, tr.descrizione
@@ -718,11 +744,32 @@ class SoggettiRepository:
             cursor.execute(sql_dettaglio, [nature_ids, nature_ids])
             dettagli = rows_to_list(cursor)
 
+        # 4. Default tipo_soggetto_dettaglio per ruolo (codice_interno via
+        # config.parameters, override gratuito per emittente). Usiamo
+        # ruolo["codice"] (validato dal DB) per costruire la chiave: evita
+        # di propagare l'input utente raw nella stringa parametro.
+        # Delega a ParameterRepository per coerenza con la firma di
+        # script.fn_get_parameter_full.
+        param_code = f"DEFAULT_TIPO_SOGGETTO_DETTAGLIO_{ruolo['codice']}"
+        default_codice = ParameterRepository().get_parameter(
+            param_code, emittente_fiscale_id=emittente_fiscale_id,
+        )
+
+        # Risolvi id dal codice_interno matchando i dettagli gia' caricati
+        # (no extra query). Se il codice non e' tra i dettagli ammessi per
+        # questo ruolo (config errata o cambio nature), default a None.
+        default_id = next(
+            (d["id"] for d in dettagli if d.get("codice_interno") == default_codice),
+            None,
+        ) if default_codice else None
+
         return {
             "tipo_ruolo": ruolo["codice"],
             "tipo_ruolo_descrizione": ruolo["descrizione"],
             "nature_ammesse": [n["natura_soggetto"] for n in nature] if nature else ["PF", "PG", "ENTE"],
             "tipi_soggetto_dettaglio": dettagli,
+            "default_tipo_soggetto_dettaglio_id": default_id,
+            "min_search_length": MIN_SEARCH_LENGTH_SOGGETTI,
         }
 
     # Scopo: Recupera dati societari del soggetto (se esistono).

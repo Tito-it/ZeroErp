@@ -283,7 +283,7 @@ function buildEditablePayload() {
     modalita_pagamento_id: f.modalita_pagamento_id || null,
     termine_pagamento_id: f.termine_pagamento_id || null,
     tipo_gg_scadenza_ft: f.tipo_gg_scadenza_ft,
-    nr_giorni_scadenza: ['G', 'F'].includes(f.tipo_gg_scadenza_ft) ? (f.nr_giorni_scadenza || 0) : null,
+    nr_giorni_scadenza: f.nr_giorni_scadenza,
     cliente_pa: f.cliente_pa,
     split_payment: f.split_payment,
     codice_cig: f.codice_cig || null,

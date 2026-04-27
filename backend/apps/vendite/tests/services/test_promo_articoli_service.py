@@ -4,7 +4,9 @@
 # Doc: Python
 # Scopo: Test service vendite.promo_articoli. Mock repository (no DB).
 #        Verifica validazione FK/UUID, enum variazione (PREZZO_FISSO ammesso),
-#        coerenza date, immutabilita' codice/articolo/uom, mapping constraint.
+#        coerenza date, immutabilita' codice/articolo/uom, mapping constraint,
+#        guard data-driven Profilo A (no retroattiva, iniziata ristretta,
+#        scaduta immutabile).
 # ------------------------------------------------------------
 
 """
@@ -41,9 +43,23 @@ Indice test eseguiti:
 29) test_update_variazione_solo_tipo_ko        — PATCH solo tipo senza valore -> VALIDATION
 30) test_update_variazione_coppia_ok           — PATCH tipo+valore coerenti -> OK
 31) test_update_payload_vuoto                  — PATCH vuoto -> VALIDATION
-32) test_update_not_found                      — repo False -> NOT_FOUND
+32) test_update_not_found                      — get_promo None pre-update -> NOT_FOUND
+33) test_create_valido_dal_oggi_ko             — valido_dal=oggi -> E_PROMO_RETROATTIVA
+34) test_create_valido_dal_passato_ko          — valido_dal<oggi -> E_PROMO_RETROATTIVA
+35) test_create_valido_al_passato_ko           — valido_al<oggi -> E_PROMO_RETROATTIVA
+36) test_update_promo_scaduta_immutabile       — PATCH su promo scaduta -> E_PROMO_SCADUTA_IMMUTABILE
+37) test_update_promo_iniziata_descrizione_ok  — PATCH descrizione su iniziata OK
+38) test_update_promo_iniziata_valido_al_ok    — PATCH valido_al >= oggi su iniziata OK
+39) test_update_promo_iniziata_valido_al_passato_ko — valido_al < oggi -> E_PROMO_RETROATTIVA
+40) test_update_promo_iniziata_tipo_ristretto_ko — PATCH tipo_variazione su iniziata -> E_PROMO_INIZIATA_CAMPI_RISTRETTI
+41) test_update_promo_iniziata_attivo_ristretto_ko — PATCH attivo su iniziata -> E_PROMO_INIZIATA_CAMPI_RISTRETTI
+42) test_update_promo_iniziata_valido_dal_ristretto_ko — PATCH valido_dal su iniziata -> E_PROMO_INIZIATA_CAMPI_RISTRETTI
+43) test_update_promo_futura_valido_dal_oggi_ko — valido_dal=oggi su futura -> E_PROMO_RETROATTIVA
+44) test_update_no_op_idempotente              — PATCH coi valori correnti -> ritorna current
+45) test_update_promo_iniziata_no_op_su_tipo_ammesso — PATCH tipo identico su iniziata e' no-op, OK
 """
 
+from datetime import date, timedelta
 from decimal import Decimal
 from unittest import TestCase
 from unittest.mock import patch
@@ -58,16 +74,44 @@ _REPO = "apps.vendite.services.promo_articoli_service.PromoArticoliRepository"
 _UUID = "019bac81-3f96-7ce8-a086-7e0bd0a2fec1"
 
 
+# Date dinamiche relative a oggi (le guard del service usano date.today(),
+# quindi date hardcoded diventano stale appena passa l'anno).
+_TODAY = date.today()
+_TOMORROW = _TODAY + timedelta(days=1)
+_FAR_FUTURE = _TODAY + timedelta(days=365)
+
+
 def _base_payload(**overrides):
     data = {
         "codice": "PROMO-SILV",
-        "descrizione": "Promo silver 2026",
+        "descrizione": "Promo silver",
         "articolo_id": _UUID,
         "uom_id": 3,
         "tipo_variazione": "PERCENTUALE",
         "valore_variazione": "10.0",
-        "valido_dal": "2026-01-01",
-        "valido_al": "2026-12-31",
+        # Default: domani -> +365gg (futuro, no-retroattiva).
+        "valido_dal": _TOMORROW.isoformat(),
+        "valido_al": _FAR_FUTURE.isoformat(),
+    }
+    data.update(overrides)
+    return data
+
+
+def _current_promo(*, dal: date, al: date, **overrides):
+    """Stato attuale promo come ritornato da get_promo. Usato per
+    mockare la pre-read del guard data-driven in update."""
+    data = {
+        "id": 1,
+        "codice": "PROMO-SILV",
+        "descrizione": "Promo silver",
+        "articolo_id": _UUID,
+        "uom_id": 3,
+        "tipo_variazione": "PERCENTUALE",
+        "valore_variazione": Decimal("10.0"),
+        "valido_dal": dal,
+        "valido_al": al,
+        "attivo": True,
+        "meta": None,
     }
     data.update(overrides)
     return data
@@ -243,9 +287,12 @@ class TestCreate(TestCase):
     @patch(_REPO)
     def test_create_valido_al_prima_dal(self, mock_repo):
         del mock_repo
+        # Entrambe future, ma dal > al -> coerenza range fallisce.
+        dal_late = (_TODAY + timedelta(days=180)).isoformat()
+        al_early = (_TODAY + timedelta(days=30)).isoformat()
         with self.assertRaises(ServiceError) as ctx:
             PromoArticoliService().create_promo(_base_payload(
-                valido_dal="2026-06-01", valido_al="2026-01-01",
+                valido_dal=dal_late, valido_al=al_early,
             ))
         self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
 
@@ -297,10 +344,26 @@ class TestCreate(TestCase):
 
 
 class TestUpdate(TestCase):
+    """
+    Promo in stato FUTURA (valido_dal=domani, valido_al=+365gg) come
+    default per non incrociare le guard data-driven nei test che
+    verificano altre cose (validation, FK, immutabilita').
+    """
+
+    @staticmethod
+    def _mock_promo_futura(mock_repo, *, after_update=None):
+        """Configura get_promo per ritornare stato FUTURA prima e dopo
+        l'update (tutti i test ne fanno la pre-read)."""
+        current = _current_promo(dal=_TOMORROW, al=_FAR_FUTURE)
+        mock_repo.return_value.get_promo.side_effect = [
+            current,
+            after_update or current,
+        ]
+
     @patch(_REPO)
     def test_update_descrizione_ok(self, mock_repo):
+        self._mock_promo_futura(mock_repo)
         mock_repo.return_value.update_promo.return_value = True
-        mock_repo.return_value.get_promo.return_value = {"id": 1}
         PromoArticoliService().update_promo(1, {"descrizione": "Nuova descr"})
         data = mock_repo.return_value.update_promo.call_args.args[1]
         self.assertEqual(data["descrizione"], "Nuova descr")
@@ -335,8 +398,8 @@ class TestUpdate(TestCase):
 
     @patch(_REPO)
     def test_update_variazione_coppia_ok(self, mock_repo):
+        self._mock_promo_futura(mock_repo)
         mock_repo.return_value.update_promo.return_value = True
-        mock_repo.return_value.get_promo.return_value = {"id": 1}
         PromoArticoliService().update_promo(1, {
             "tipo_variazione": "VALORE_FISSO",
             "valore_variazione": "2.5",
@@ -354,7 +417,210 @@ class TestUpdate(TestCase):
 
     @patch(_REPO)
     def test_update_not_found(self, mock_repo):
-        mock_repo.return_value.update_promo.return_value = False
+        # NOT_FOUND ora viene dal pre-check get_promo (prima del guard
+        # data-driven) - non dall'update_promo.
+        mock_repo.return_value.get_promo.return_value = None
         with self.assertRaises(ServiceError) as ctx:
             PromoArticoliService().update_promo(999, {"descrizione": "X"})
         self.assertEqual(ctx.exception.code, "E_VENDITE_NOT_FOUND")
+        # update non deve essere chiamato se la promo non esiste.
+        mock_repo.return_value.update_promo.assert_not_called()
+
+
+class TestCreateRetroattiva(TestCase):
+    """Guard create no-retroattiva: valido_dal > oggi, valido_al >= oggi."""
+
+    @patch(_REPO)
+    def test_create_valido_dal_oggi_ko(self, mock_repo):
+        del mock_repo
+        with self.assertRaises(ServiceError) as ctx:
+            PromoArticoliService().create_promo(_base_payload(
+                valido_dal=_TODAY.isoformat(),
+                valido_al=_FAR_FUTURE.isoformat(),
+            ))
+        self.assertEqual(ctx.exception.code, "E_PROMO_RETROATTIVA")
+
+    @patch(_REPO)
+    def test_create_valido_dal_passato_ko(self, mock_repo):
+        del mock_repo
+        passato = (_TODAY - timedelta(days=10)).isoformat()
+        with self.assertRaises(ServiceError) as ctx:
+            PromoArticoliService().create_promo(_base_payload(
+                valido_dal=passato,
+                valido_al=_FAR_FUTURE.isoformat(),
+            ))
+        self.assertEqual(ctx.exception.code, "E_PROMO_RETROATTIVA")
+
+    @patch(_REPO)
+    def test_create_valido_al_passato_ko(self, mock_repo):
+        del mock_repo
+        # Combinazione fully-retroattiva (entrambe le date passate, range
+        # valido_al >= valido_dal rispettato): la guard sul valido_dal
+        # blocca per prima. Il check valido_al < today separato non c'e'
+        # piu' (ridondante con valido_dal > today + range >= dal, vedi
+        # decisione DB nel trigger trgfn_promo_articoli_guard_data_driven).
+        with self.assertRaises(ServiceError) as ctx:
+            PromoArticoliService().create_promo(_base_payload(
+                valido_dal=(_TODAY - timedelta(days=20)).isoformat(),
+                valido_al=(_TODAY - timedelta(days=5)).isoformat(),
+            ))
+        self.assertEqual(ctx.exception.code, "E_PROMO_RETROATTIVA")
+
+
+class TestUpdateDataDriven(TestCase):
+    """Guard data-driven Profilo A in update (SCADUTA / INIZIATA / FUTURA)."""
+
+    # ──── SCADUTA ────
+    @patch(_REPO)
+    def test_update_promo_scaduta_immutabile(self, mock_repo):
+        scaduta = _current_promo(
+            dal=_TODAY - timedelta(days=60),
+            al=_TODAY - timedelta(days=10),
+        )
+        mock_repo.return_value.get_promo.return_value = scaduta
+        with self.assertRaises(ServiceError) as ctx:
+            PromoArticoliService().update_promo(1, {"descrizione": "X"})
+        self.assertEqual(ctx.exception.code, "E_PROMO_SCADUTA_IMMUTABILE")
+        mock_repo.return_value.update_promo.assert_not_called()
+
+    # ──── INIZIATA ────
+    @patch(_REPO)
+    def test_update_promo_iniziata_descrizione_ok(self, mock_repo):
+        iniziata = _current_promo(
+            dal=_TODAY - timedelta(days=10),
+            al=_TODAY + timedelta(days=20),
+        )
+        mock_repo.return_value.get_promo.side_effect = [iniziata, iniziata]
+        mock_repo.return_value.update_promo.return_value = True
+        PromoArticoliService().update_promo(1, {"descrizione": "Nuova"})
+        data = mock_repo.return_value.update_promo.call_args.args[1]
+        self.assertEqual(data, {"descrizione": "Nuova"})
+
+    @patch(_REPO)
+    def test_update_promo_iniziata_valido_al_ok(self, mock_repo):
+        iniziata = _current_promo(
+            dal=_TODAY - timedelta(days=10),
+            al=_TODAY + timedelta(days=20),
+        )
+        mock_repo.return_value.get_promo.side_effect = [iniziata, iniziata]
+        mock_repo.return_value.update_promo.return_value = True
+        new_al = (_TODAY + timedelta(days=40)).isoformat()
+        PromoArticoliService().update_promo(1, {"valido_al": new_al})
+        data = mock_repo.return_value.update_promo.call_args.args[1]
+        self.assertEqual(data["valido_al"], _TODAY + timedelta(days=40))
+
+    @patch(_REPO)
+    def test_update_promo_iniziata_valido_al_passato_ko(self, mock_repo):
+        iniziata = _current_promo(
+            dal=_TODAY - timedelta(days=10),
+            al=_TODAY + timedelta(days=20),
+        )
+        mock_repo.return_value.get_promo.return_value = iniziata
+        # valido_al ieri: in iniziata e' bloccato (deve essere >= oggi).
+        new_al = (_TODAY - timedelta(days=1)).isoformat()
+        with self.assertRaises(ServiceError) as ctx:
+            PromoArticoliService().update_promo(1, {"valido_al": new_al})
+        self.assertEqual(ctx.exception.code, "E_PROMO_RETROATTIVA")
+        mock_repo.return_value.update_promo.assert_not_called()
+
+    @patch(_REPO)
+    def test_update_promo_iniziata_tipo_ristretto_ko(self, mock_repo):
+        iniziata = _current_promo(
+            dal=_TODAY - timedelta(days=10),
+            al=_TODAY + timedelta(days=20),
+            tipo_variazione="PERCENTUALE",
+        )
+        mock_repo.return_value.get_promo.return_value = iniziata
+        with self.assertRaises(ServiceError) as ctx:
+            PromoArticoliService().update_promo(1, {
+                "tipo_variazione": "VALORE_FISSO",
+                "valore_variazione": "5",
+            })
+        self.assertEqual(ctx.exception.code, "E_PROMO_INIZIATA_CAMPI_RISTRETTI")
+        mock_repo.return_value.update_promo.assert_not_called()
+
+    @patch(_REPO)
+    def test_update_promo_iniziata_attivo_ristretto_ko(self, mock_repo):
+        iniziata = _current_promo(
+            dal=_TODAY - timedelta(days=10),
+            al=_TODAY + timedelta(days=20),
+            attivo=True,
+        )
+        mock_repo.return_value.get_promo.return_value = iniziata
+        with self.assertRaises(ServiceError) as ctx:
+            PromoArticoliService().update_promo(1, {"attivo": False})
+        self.assertEqual(ctx.exception.code, "E_PROMO_INIZIATA_CAMPI_RISTRETTI")
+        mock_repo.return_value.update_promo.assert_not_called()
+
+    @patch(_REPO)
+    def test_update_promo_iniziata_valido_dal_ristretto_ko(self, mock_repo):
+        iniziata = _current_promo(
+            dal=_TODAY - timedelta(days=10),
+            al=_TODAY + timedelta(days=20),
+        )
+        mock_repo.return_value.get_promo.return_value = iniziata
+        new_dal = (_TODAY + timedelta(days=2)).isoformat()
+        with self.assertRaises(ServiceError) as ctx:
+            PromoArticoliService().update_promo(1, {"valido_dal": new_dal})
+        self.assertEqual(ctx.exception.code, "E_PROMO_INIZIATA_CAMPI_RISTRETTI")
+        mock_repo.return_value.update_promo.assert_not_called()
+
+    # ──── FUTURA ────
+    @patch(_REPO)
+    def test_update_promo_futura_valido_dal_oggi_ko(self, mock_repo):
+        futura = _current_promo(
+            dal=_TODAY + timedelta(days=10),
+            al=_TODAY + timedelta(days=30),
+        )
+        mock_repo.return_value.get_promo.return_value = futura
+        with self.assertRaises(ServiceError) as ctx:
+            PromoArticoliService().update_promo(1, {
+                "valido_dal": _TODAY.isoformat(),
+            })
+        self.assertEqual(ctx.exception.code, "E_PROMO_RETROATTIVA")
+        mock_repo.return_value.update_promo.assert_not_called()
+
+    # ──── No-op idempotenza ────
+    @patch(_REPO)
+    def test_update_no_op_idempotente(self, mock_repo):
+        # FE invia tutti i campi del form anche se l'utente non ha cambiato
+        # nulla. Risultato atteso: ritorna current senza chiamare update_promo
+        # (drop dei no-op svuota completamente data).
+        futura = _current_promo(
+            dal=_TODAY + timedelta(days=10),
+            al=_TODAY + timedelta(days=30),
+            descrizione="X",
+            tipo_variazione="PERCENTUALE",
+            valore_variazione=Decimal("10.0"),
+        )
+        mock_repo.return_value.get_promo.return_value = futura
+        PromoArticoliService().update_promo(1, {
+            "descrizione": "X",
+            "tipo_variazione": "PERCENTUALE",
+            "valore_variazione": "10.0",
+            "valido_dal": (_TODAY + timedelta(days=10)).isoformat(),
+            "valido_al": (_TODAY + timedelta(days=30)).isoformat(),
+            "attivo": True,
+        })
+        mock_repo.return_value.update_promo.assert_not_called()
+
+    @patch(_REPO)
+    def test_update_promo_iniziata_no_op_su_tipo_ammesso(self, mock_repo):
+        # In iniziata, anche se l'utente invia tipo_variazione (campo
+        # non whitelist), se uguale al corrente e' no-op droppato prima
+        # del guard -> non solleva CAMPI_RISTRETTI.
+        iniziata = _current_promo(
+            dal=_TODAY - timedelta(days=10),
+            al=_TODAY + timedelta(days=20),
+            tipo_variazione="PERCENTUALE",
+            valore_variazione=Decimal("10.0"),
+        )
+        mock_repo.return_value.get_promo.side_effect = [iniziata, iniziata]
+        mock_repo.return_value.update_promo.return_value = True
+        PromoArticoliService().update_promo(1, {
+            "descrizione": "Nuova",
+            "tipo_variazione": "PERCENTUALE",
+            "valore_variazione": "10.0",
+        })
+        data = mock_repo.return_value.update_promo.call_args.args[1]
+        self.assertEqual(data, {"descrizione": "Nuova"})
