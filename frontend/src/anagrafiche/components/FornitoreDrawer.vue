@@ -158,9 +158,12 @@ async function onSave() {
     )
     if (result !== null) emit('saved', result)
   } else {
-    // Validazione contatto inline (solo se compilato — il contatto non e' obbligatorio per FO)
-    const hasContatto = (contatto.form.nominativo || '').trim()
-    if (hasContatto) {
+    // Validazione contatto inline (Fase 5): regola unificata via composable
+    // useContattoForm.classify() — mirror della regola backend.
+    // EMPTY → skip; PARTIAL → blocca con messaggio; VALID → invia.
+    // (Bug fix: prima si guardava solo nominativo, scartando email/telefono
+    // se compilati senza nominativo — ora il composable cattura il caso.)
+    if (contatto.isFilled()) {
       contattoErrors.value = contatto.validate()
       if (contattoErrors.value.length > 0) return
     } else {
@@ -178,7 +181,7 @@ async function onSave() {
       payload.codice = form.value.codice.trim()
     }
     // Contatto solo se compilato
-    if (hasContatto) {
+    if (contatto.isFilled()) {
       payload.contatto = { ...contatto.form }
     }
     // Indirizzi inline (se compilati)

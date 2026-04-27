@@ -17,10 +17,19 @@ from django.db import transaction
 
 from apps.anagrafiche.db.fornitori_repository import FornitoriRepository
 from apps.anagrafiche.db.soggetti_repository import SoggettiRepository
-from apps.anagrafiche.error_codes import E_ANAG_NOT_FOUND, E_ANAG_VALIDAZIONE
+from apps.anagrafiche.error_codes import (
+    E_ANAG_NOT_FOUND,
+    E_ANAG_VALIDAZIONE,
+    E_CONTATTO_INCOMPLETO,
+)
 from apps.anagrafiche.services._validators import create_with_dedup, optional_str
+from apps.anagrafiche.services.contatti_service import (
+    classify_contatto_payload,
+    missing_required_fields,
+)
 from apps.core.api.payload_validators import optional_bool, optional_int, optional_iso_date, optional_uuid
 from apps.core.services.error_manager import ErrorManager
+from apps.core.services.service_errors import ServiceError
 
 
 class FornitoriService:
@@ -96,11 +105,23 @@ class FornitoriService:
                 duplicate_message="Esiste gia' un fornitore per questo soggetto.",
             )
 
-            # Step 3: Contatto ruolo (se fornito)
-            if contatto_data and contatto_data.get("nominativo"):
+            # Step 3: Contatto ruolo (se fornito).
+            # Regola unificata via classify_contatto_payload (Fase 5):
+            #   EMPTY   → skip (no contatto)
+            #   PARTIAL → errore esplicito (sostituisce vecchio silent skip)
+            #   VALID   → crea
+            contatto_status = classify_contatto_payload(contatto_data)
+            if contatto_status == "PARTIAL":
+                raise ServiceError(
+                    code=E_CONTATTO_INCOMPLETO,
+                    message="Contatto incompleto: completa o svuota tutti i campi.",
+                    context={"missing": missing_required_fields(contatto_data)},
+                )
+            if contatto_status == "VALID":
+                assert contatto_data is not None
                 self._sogg_repo.crea_contatto(
                     soggetto_id,
-                    nominativo=contatto_data.get("nominativo", ""),
+                    nominativo=contatto_data["nominativo"],
                     email=optional_str(contatto_data, "email"),
                     telefono=optional_str(contatto_data, "telefono"),
                     cellulare=optional_str(contatto_data, "cellulare"),

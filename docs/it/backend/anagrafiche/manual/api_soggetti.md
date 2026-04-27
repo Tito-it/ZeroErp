@@ -109,9 +109,20 @@ i tipi indirizzo obbligatori non compilati, secondo la matrice indirizzi del tip
 | `contatto.telefono` | string | No | Telefono |
 | `contatto.cellulare` | string | No | Cellulare |
 | `contatto.pec` | string | No | PEC |
-| `contatto.tipo_contatto_id` | int | No | ID tipo contatto |
+| `contatto.tipo_contatto_id` | int | Si | ID tipo contatto |
 | `contatto.unita_organizzativa_id` | int | No | ID unita' organizzativa |
 | `contatto.note` | string | No | Note |
+
+> **Regola contatto inline (refactor 28-04-2026)**: il backend applica
+> `classify_contatto_payload` su `contatto`. Stati possibili:
+>
+> - `EMPTY` (nessun campo del contatto valorizzato) → vietato per il
+>   soggetto, solleva `E_CONTATTO_INCOMPLETO` (il contatto e' obbligatorio
+>   sempre per il soggetto)
+> - `PARTIAL` (almeno un campo valorizzato MA mancano `nominativo` e/o
+>   `tipo_contatto_id`) → solleva `E_CONTATTO_INCOMPLETO` con
+>   `context.missing` (lista campi mancanti) per highlight UI
+> - `VALID` (`nominativo` + `tipo_contatto_id` presenti) → procede
 | `dati_societari` | object | No | Dati societari (solo PG, vedi sotto) |
 | `dati_societari.forma_giuridica_id` | int | No | ID forma giuridica |
 | `dati_societari.id_prov_iscri_rea` | int | No | Provincia iscrizione REA |
@@ -227,6 +238,8 @@ Restituisce il soggetto completo con contatti, indirizzi, ruoli e dati societari
     "partita_iva": null,
     "tipo_soggetto_dettaglio_id": 1,
     "stato_iso2": "IT",
+    "tipi_modificabili_ids": [1, 2],
+    "non_editable_fields": ["codice_fiscale"],
     "contatti": [
       {
         "id": 1,
@@ -244,8 +257,8 @@ Restituisce il soggetto completo con contatti, indirizzi, ruoli e dati societari
     ],
     "ruoli": [
       {
-        "id": 1,
-        "codice_ruolo": "CLI",
+        "soggetto_ruolo_id": 1,
+        "codice": "CL",
         "descrizione": "Cliente"
       }
     ],
@@ -253,6 +266,17 @@ Restituisce il soggetto completo con contatti, indirizzi, ruoli e dati societari
   }
 }
 ```
+
+### Campi meta-info edit (refactor 28-04-2026)
+
+| Campo | Tipo | Descrizione |
+| --- | --- | --- |
+| `tipi_modificabili_ids` | int[] | ID dei `tipi_soggetto_dettaglio` ammessi in edit per questo soggetto (stessa natura del corrente). Il frontend filtra la dropdown con questa lista invece di ricostruire la regola `natura_soggetto`. |
+| `non_editable_fields` | string[] | Lista dei campi anagrafici NON modificabili nello stato corrente (es. `["codice_fiscale", "partita_iva"]` se valorizzati). Il frontend deriva `cfDisabled`/`pivaDisabled` da questa lista. Vuoto = niente bloccato. |
+
+> **Nota**: questi campi sono backend-driven per evitare drift della
+> regola di immutabilita'/mutabilita' tra layer. Estendibili senza
+> rilascio frontend (es. nuovo campo immutabile post stato avanzato).
 
 ### Esempio
 
@@ -814,6 +838,73 @@ curl -s -X POST -H "Authorization: Bearer $TOKEN" \
     "sesso": "M",
     "comune_nascita_id": 1234
   }'
+```
+
+---
+
+## 12. Config resolver per tipo ruolo
+
+Restituisce la configurazione per il SoggettoResolver frontend: nature
+ammesse, tipi soggetto dettaglio compatibili, default e parametri UX.
+Usato per adattare ricerca soggetti e form di creazione al ruolo target
+(cliente, fornitore, emittente fiscale, ecc.).
+
+| | |
+| --- | --- |
+| **Metodo** | `GET` |
+| **URL** | `/api/v1/anagrafiche/ruoli/{tipo_ruolo_codice}/config-resolver/` |
+
+### Parametri path
+
+| Parametro | Tipo | Descrizione |
+| --- | --- | --- |
+| `tipo_ruolo_codice` | string | Codice del tipo ruolo (es. `CL`, `FO`, `EF`). Case insensitive. |
+
+### Risposta (200)
+
+```json
+{
+  "data": {
+    "tipo_ruolo": "CL",
+    "tipo_ruolo_descrizione": "Cliente",
+    "nature_ammesse": ["PF", "PG", "ENTE"],
+    "tipi_soggetto_dettaglio": [
+      {
+        "id": 1,
+        "codice_interno": "PR",
+        "descrizione": "Privato",
+        "natura_soggetto": "PF",
+        "cf_obbligatorio": true,
+        "piva_obbligatoria": false,
+        "formato_cf": "ALFANUM_16",
+        "formato_piva": "NON_APPLICABILE",
+        "dati_societari_policy": "NONE"
+      }
+    ],
+    "default_tipo_soggetto_dettaglio_id": 1,
+    "min_search_length": 3
+  }
+}
+```
+
+### Campi aggiunti nel refactor 27-04-2026
+
+| Campo | Tipo | Descrizione |
+| --- | --- | --- |
+| `default_tipo_soggetto_dettaglio_id` | int / null | ID del tipo dettaglio di default per questo ruolo, risolto via `config.parameters` (chiave `DEFAULT_TIPO_SOGGETTO_DETTAGLIO_<RUOLO>`). Override per emittente supportato dalla catena `script.fn_get_parameter_full`. `null` se non configurato — il frontend fa fallback al primo elemento di `tipi_soggetto_dettaglio`. |
+| `min_search_length` | int | Lunghezza minima della search bar resolver (default `3`). Backend-driven per evitare cablato frontend. |
+
+### Errori
+
+| Codice | HTTP | Causa |
+| --- | --- | --- |
+| `E_ANAG_NOT_FOUND` | 404 | `tipo_ruolo_codice` non corrisponde a nessun `config.tipi_ruoli` attivo |
+
+### Esempio config-resolver
+
+```bash
+curl -s -H "Authorization: Bearer $TOKEN" \
+  "https://host/api/v1/anagrafiche/ruoli/CL/config-resolver/"
 ```
 
 ---

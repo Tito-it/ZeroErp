@@ -669,6 +669,23 @@ class ErrorPolicyRegistry:
                 "e' attiva."
             ),
         ),
+        # ── Contatti inline (Fase 5 refactor anagrafiche, 2026-04-28) ──
+        # Sollevato dal classify centralizzato apps/anagrafiche/services/
+        # contatti_service.py::classify_contatto_payload quando il payload
+        # contatto inline (in create cliente/fornitore/soggetto) e' parziale
+        # (almeno un campo valorizzato, ma mancano nominativo o
+        # tipo_contatto_id). Sostituisce il vecchio "silent skip" che
+        # faceva perdere dati senza preavviso.
+        "E_CONTATTO_INCOMPLETO": ErrorPolicy(
+            code="E_CONTATTO_INCOMPLETO",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message=(
+                "Contatto incompleto: hai inserito qualche dato ma mancano i "
+                "campi obbligatori (nominativo e tipo contatto). Completa il "
+                "contatto oppure svuota tutti i campi."
+            ),
+        ),
         # ── Anagrafiche / Soggetti e trigger ──
         "E_INDIRIZZO_OBBLIGATORIO_MANCANTE": ErrorPolicy(
             code="E_INDIRIZZO_OBBLIGATORIO_MANCANTE",

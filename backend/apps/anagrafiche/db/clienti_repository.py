@@ -332,6 +332,11 @@ class ClientiRepository:
                    cl.data_sospensione,
                    cl.data_riattivazione,
                    cl.data_chiusura,
+                   -- Stato evento corrente data-driven (Fase 4 refactor):
+                   -- la fn DB risolve sosp vs riatt confrontando le date.
+                   -- Pareggio = RIATTIVAZIONE. Niente logica nel frontend.
+                   evt.data_evento_stato,
+                   evt.tipo_evento_stato,
                    -- Pagamento
                    cl.tipo_gg_scadenza_ft,
                    cl.nr_giorni_scadenza,
@@ -384,6 +389,9 @@ class ClientiRepository:
               LEFT JOIN config.modalita_pagamento mp ON mp.id = cl.modalita_pagamento_id
               LEFT JOIN config.termini_pagamento tp ON tp.id = cl.termine_pagamento_id
               LEFT JOIN anagrafiche.categorie_clienti cc ON cc.id = ba.categoria_cliente_id
+              -- LATERAL: chiama fn_get_evento_stato_corrente_cliente per la riga corrente
+              LEFT JOIN LATERAL anagrafiche.fn_get_evento_stato_corrente_cliente(cl.id)
+                       AS evt(data_evento_stato, tipo_evento_stato) ON TRUE
              WHERE cl.id = %s
         """
         with connection.cursor() as cursor:

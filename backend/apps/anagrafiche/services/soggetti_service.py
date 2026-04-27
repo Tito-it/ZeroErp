@@ -18,7 +18,11 @@ from apps.anagrafiche.db.conti_bancari_repository import ContiBancariRepository
 from apps.anagrafiche.db.indirizzi_repository import IndirizziRepository
 from apps.anagrafiche.db.soggetti_repository import SoggettiRepository
 from apps.core.db.lookup_repository import LookupRepository
-from apps.anagrafiche.error_codes import E_ANAG_NOT_FOUND, E_ANAG_VALIDAZIONE
+from apps.anagrafiche.error_codes import (
+    E_ANAG_NOT_FOUND,
+    E_ANAG_VALIDAZIONE,
+    E_CONTATTO_INCOMPLETO,
+)
 from apps.anagrafiche.services._validators import (
     create_with_dedup,
     optional_str,
@@ -26,6 +30,11 @@ from apps.anagrafiche.services._validators import (
     update_with_dedup,
 )
 from apps.anagrafiche.services.cf_validator_it import genera_cf_it, valida_cf_congruenza_it
+from apps.anagrafiche.services.contatti_service import (
+    classify_contatto_payload,
+    missing_required_fields,
+)
+from apps.core.services.service_errors import ServiceError
 
 
 class SoggettiService:
@@ -48,6 +57,10 @@ class SoggettiService:
     # Scopo: Dettaglio soggetto con contatti, indirizzi, ruoli e dati societari.
     #        Obiettivo: restituire tutto il necessario per popolare il drawer.
     #        emittente_ids filtra i ruoli CL per scope emittente (None = nessun filtro).
+    #        non_editable_fields (Fase 6 B4): lista dei campi anagrafici
+    #        che NON possono essere modificati per questo soggetto, calcolata
+    #        dallo stato corrente. Il frontend usa questa lista invece di
+    #        ricostruire la regola "CF/PIVA bloccati se valorizzati".
     def get_soggetto(
         self, soggetto_id: str, emittente_ids: list[int] | None = None,
     ) -> dict[str, Any]:
@@ -60,7 +73,22 @@ class SoggettiService:
         soggetto["ruoli"] = self._repo.get_soggetto_ruoli(soggetto_id, emittente_ids)
         soggetto["dati_societari"] = self._repo.get_dati_societari(soggetto_id)
         soggetto["conti_bancari"] = self._conti.list_conti_soggetto(soggetto_id)
+        soggetto["non_editable_fields"] = self._compute_non_editable_fields(soggetto)
         return soggetto
+
+    # Scopo: Computa la lista dei campi non modificabili per il soggetto
+    # in edit. Regola di immutabilita': CF/PIVA bloccati se gia' valorizzati
+    # (analogo Profilo A contratti/listini-versioni). La lista cresce se
+    # in futuro arrivano altri campi immutabili (es. tipo_soggetto post stato
+    # avanzato). Frontend deriva cfDisabled/pivaDisabled da questa lista.
+    @staticmethod
+    def _compute_non_editable_fields(soggetto: dict[str, Any]) -> list[str]:
+        non_editable: list[str] = []
+        if (soggetto.get("codice_fiscale") or "").strip():
+            non_editable.append("codice_fiscale")
+        if (soggetto.get("partita_iva") or "").strip():
+            non_editable.append("partita_iva")
+        return non_editable
 
     # =================================================================
     # Creazione soggetto (orchestratore)
@@ -312,6 +340,19 @@ class SoggettiService:
     # Metodi interni
     # =================================================================
 
+    # Scopo: Valida che il payload contatto inline al create soggetto sia
+    # VALID (obbligatorio sempre per soggetto). Solleva E_CONTATTO_INCOMPLETO
+    # sia per EMPTY (contatto mancante) sia per PARTIAL (campi obbligatori
+    # mancanti). Centralizza la regola usata in _create_pf e _create_pg.
+    def _require_contatto_valid(self, contatto: dict[str, Any]) -> None:
+        status = classify_contatto_payload(contatto)
+        if status != "VALID":
+            raise ServiceError(
+                code=E_CONTATTO_INCOMPLETO,
+                message="Contatto obbligatorio: nominativo e tipo contatto richiesti.",
+                context={"missing": missing_required_fields(contatto)},
+            )
+
     # Scopo: Crea soggetto PF via building block DB.
     #        Include validazione congruenza CF con dati anagrafici (data, sesso, comune).
     def _create_pf(self, payload: dict[str, Any]) -> str:
@@ -323,7 +364,10 @@ class SoggettiService:
         self._valida_cf_congruenza(payload, codice_fiscale)
 
         contatto = payload.get("contatto") or {}
-        require_str(contatto, "nominativo", "Nominativo contatto obbligatorio.")
+        # Regola unificata via classify_contatto_payload (Fase 5): per il
+        # soggetto il contatto e' obbligatorio (sempre VALID richiesto),
+        # quindi sia EMPTY che PARTIAL → errore esplicito.
+        self._require_contatto_valid(contatto)
         email_addr = optional_str(contatto, "email") or ""
 
         soggetto_id = create_with_dedup(
@@ -350,7 +394,9 @@ class SoggettiService:
         ragione_sociale = require_str(payload, "ragione_sociale", "Ragione sociale obbligatoria.")
 
         contatto = payload.get("contatto") or {}
-        require_str(contatto, "nominativo", "Nominativo contatto obbligatorio.")
+        # Regola unificata via classify_contatto_payload (Fase 5): per il
+        # soggetto il contatto e' obbligatorio (sempre VALID richiesto).
+        self._require_contatto_valid(contatto)
         email_addr = optional_str(contatto, "email") or ""
 
         dati_soc = payload.get("dati_societari") or {}

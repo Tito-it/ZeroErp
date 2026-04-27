@@ -170,7 +170,10 @@ class SoggettiRepository:
             row = cursor.fetchone()
             return str(row[0]) if row and row[0] else None
 
-    # Scopo: Dettaglio completo soggetto con tipo, natura e comune nascita.
+    # Scopo: Dettaglio completo soggetto con tipo, natura, comune nascita,
+    # e tipi_modificabili_ids = id dei dettagli ammessi in edit (Fase 6 B3:
+    # stessa natura del soggetto corrente). Il frontend filtra con quello
+    # invece di ricostruire la regola natura_soggetto.
     def get_soggetto(self, soggetto_id: str) -> dict[str, Any] | None:
         sql = """
             SELECT s.id, s.ragione_sociale_completa, s.codice_fiscale,
@@ -180,7 +183,14 @@ class SoggettiRepository:
                    p.sigla AS comune_nascita_provincia_sigla,
                    tsd.id AS tipo_soggetto_dettaglio_id,
                    tsd.descrizione AS tipo_descrizione,
-                   ts.id AS natura_soggetto
+                   ts.id AS natura_soggetto,
+                   -- Tipi dettaglio ammessi in edit per questo soggetto:
+                   -- stessa natura del corrente. Sostituisce il filtro
+                   -- frontend (SoggettoForm.tipiSoggettoFiltrati).
+                   (SELECT COALESCE(array_agg(tsd2.id ORDER BY tsd2.codice_interno), '{}')
+                      FROM config.tipi_soggetto_dettaglio tsd2
+                     WHERE tsd2.tipo_soggetto_id = tsd.tipo_soggetto_id
+                   ) AS tipi_modificabili_ids
               FROM anagrafiche.soggetti s
               JOIN config.tipi_soggetto_dettaglio tsd ON tsd.id = s.tipo_soggetto_dettaglio_id
               JOIN config.tipi_soggetto ts ON ts.id = tsd.tipo_soggetto_id

@@ -557,7 +557,10 @@ PRIMA del frontend.
 
 ---
 
-### Fase 4 — Stato corrente cliente data-driven (A4)
+### Fase 4 — Stato corrente cliente data-driven (A4) — **LANDED 2026-04-28**
+
+> **Stato**: chiusa end-to-end (DB fn + BE LATERAL JOIN + FE rimozione computed) il 2026-04-28.
+> Documento finale: [`work-done/brief-be-cliente-evento-stato-corrente.md`](../work-done/brief-be-cliente-evento-stato-corrente.md)
 
 **DB (`dev/db-tid` — brief obbligatorio al team DB)**
 
@@ -586,7 +589,12 @@ PRIMA del frontend.
 
 ---
 
-### Fase 5 — Regola contatto unificata (C1, bug logico modello)
+### Fase 5 — Regola contatto unificata (C1, bug logico modello) — **LANDED 2026-04-28**
+
+> **Stato**: chiusa BE+FE 2026-04-28. DB nessuna modifica richiesta
+> (decisione utente: lo schema ha gia' NOT NULL su `nominativo` e
+> `tipo_contatto_id`, sufficiente come safety net DB).
+> Documento finale: [`work-done/brief-be-classify-contatto-payload.md`](../work-done/brief-be-classify-contatto-payload.md)
 
 **DB (`dev/db-tid`)**
 
@@ -634,29 +642,41 @@ codice errore `CONTATTO_INCOMPLETO`). DB indipendente.
 
 ---
 
-### Fase 6 — Refactor opzionali (B1, B3, B4)
+### Fase 6 — Refactor opzionali (B1, B3, B4) — **LANDED 2026-04-28**
 
-Bassa priorita'. Da valutare DOPO che le fasi 1-5 sono chiuse e in produzione.
+> **Stato**: chiusa il 2026-04-28 dopo verifica che B1 era gia' risolto
+> dai refactor precedenti (A1 normalize ruoli + A3 nature_ammesse
+> data-driven). B3 e B4 implementati come unico passaggio sul detail
+> soggetto.
 
-**B3 — Mutabilita' tipo soggetto in edit**
+**B3 — Mutabilita' tipo soggetto in edit** ✅ LANDED
 
-- Backend: esporre sul detail soggetto un campo `tipi_modificabili: number[]`
-  letto dalle regole DB (trigger esistente). Frontend: filtra con quello
-  invece che ricostruire la regola `natura_soggetto`.
+- Backend: aggiunto `tipi_modificabili_ids: int[]` al `get_soggetto`
+  via sub-query SQL `array_agg(...)` su `tipo_soggetto_id`. Frontend
+  (`SoggettoForm`) filtra con questi id invece di ricostruire la regola
+  `natura_soggetto` lato client. Fallback compat al vecchio filtro se
+  il campo non e' popolato.
 
-**B4 — Immutabilita' CF/PIVA in edit**
+**B4 — Immutabilita' CF/PIVA in edit** ✅ LANDED
 
-- Backend: esporre sul detail soggetto `editable_fields: string[]` (lista
-  campi editabili nel context corrente). Frontend: deriva `cfDisabled` /
-  `pivaDisabled` da quello.
+- Backend: aggiunto `non_editable_fields: str[]` al `get_soggetto` via
+  helper `_compute_non_editable_fields()`. Lista cresce se in futuro
+  altri campi diventano immutabili. Frontend: `cfDisabled` /
+  `pivaDisabled` derivati da `nonEditableFields.includes(...)`.
 
-**B1 — Marker resolver `_naturaBloccata`**
+**B1 — Marker resolver `_naturaBloccata`** ✅ NO-OP (gia' risolto)
 
-- Backend: rendere `listSoggetti` role-aware. Aggiungere parametro
-  `tipo_ruolo_codice` opzionale. Quando passato, la response include per ogni
-  soggetto i campi `selectable: boolean` + `reason: string | null`. Frontend:
-  rimuove la marcatura lato client e legge direttamente i campi della
-  response.
+- Verifica 2026-04-28: i marker FE (`_naturaBloccata`, `_ruoloDuplicato`)
+  sono UX legittima che decora la lista resolver usando dati
+  **gia' data-driven**:
+  - `nature_ammesse` arriva dal config-resolver (Fase 3)
+  - `ruoli` per ogni soggetto arriva normalizzato dal backend (Fase 1)
+  Niente regola di business in JS. L'unico refactor possibile sarebbe
+  rendere `listSoggetti` role-aware con `selectable`/`reason` calcolati
+  server-side, ma e' refactor cosmetico senza cambio di filosofia.
+  **Skipped**: il valore non giustifica il costo (nuovo parametro API,
+  cambio contratto, refactor 2 punti). Documentato come
+  "non-issue post Fase 1+3".
 
 ---
 
@@ -667,9 +687,66 @@ Bassa priorita'. Da valutare DOPO che le fasi 1-5 sono chiuse e in produzione.
 | 1 | A1 | check viste/cast jsonb | check serializer + test | rimuovi 2 normalizzazioni | ALTA — **LANDED 27-04** |
 | 2 | A2 | trigger clienti + pgTAP + backfill + DEFAULT + CHECK dominio | mapping policy errori | rimuovi pre-clean payload | ALTA — **LANDED 27-04** |
 | 3 | A3 + A5 | seed config.parameters + guard trigger | arricchimento config-resolver API | usa nuovi campi response | ALTA — **LANDED 27-04** |
-| 4 | A4 | funzione/vista stato corrente + pgTAP | detail con campi risolti | rimuovi computed `dataSospRiatt` | MEDIA |
-| 5 | C1 | (eventuale CHECK) | `classify_contatto_payload` + 3 views | estendi composable + 3 drawer + UX pulisci | ALTA (bug logico) |
-| 6 | B1 + B3 + B4 | nessuna | metadata sul detail / API role-aware | usa metadata invece di cablati | BASSA |
+| 4 | A4 | funzione `fn_get_evento_stato_corrente_cliente` | LATERAL JOIN nel detail | rimuovi computed `dataSospRiatt` | MEDIA — **LANDED 28-04** |
+| 5 | C1 | nessuna modifica | `classify_contatto_payload` + 3 service | estendi composable + drawer Cliente+Fornitore | ALTA (bug logico) — **LANDED 28-04** |
+| 6 | B3 + B4 | nessuna | `tipi_modificabili_ids` + `non_editable_fields` su detail | usa metadata invece di cablati | BASSA — **LANDED 28-04** |
+| 6 | B1 | nessuna | nessuna | nessuna | NO-OP (gia' risolto in Fase 1+3) |
 
 **Da NON toccare**: B2 (`canSave`). E' UX defense-in-depth corretta. Spostarla
 peggiora l'esperienza utente per zero guadagno architetturale.
+
+---
+
+## F. Epilogo (2026-04-28) — chiusura analisi
+
+Analisi avviata 2026-04-27, chiusa 2026-04-28. Tutte le fasi A1-A5, C1,
+B3, B4 implementate end-to-end (DB + BE + FE + test). B1 risolto
+implicitamente dai refactor A1+A3 (no-op).
+
+### Brief landed
+
+Tutti in `docs/it/dev/work-done/`:
+
+1. [brief-be-soggetti-ruoli-jsonb-fix.md] — Fase 1 (implicito nei modifiche
+   `soggetti_repository.list_soggetti`, niente brief separato — cambio
+   minimale)
+2. [brief-be-clienti-fornitori-normalize-payload.md] — Fase 2
+3. [brief-be-config-resolver-default-tipo-soggetto.md] — Fase 3
+4. [brief-be-cliente-evento-stato-corrente.md] — Fase 4
+5. [brief-be-classify-contatto-payload.md] — Fase 5
+
+### Memorie pattern create
+
+- [feedback_normalize_guard_simmetrico.md] — Fase 2 pattern (terza
+  occorrenza)
+- [feedback_classify_payload_three_state.md] — Fase 5 pattern nuovo
+
+### Bilancio
+
+- 6 fasi pianificate, 5 implementate + 1 no-op
+- ~30 file modificati (BE + FE + test + doc)
+- 3 nuove migration DB (Fase 2 trigger clienti, Fase 3 seed+guard, Fase 4 fn)
+- 834/834 test verdi, 0 regressione
+- 6 nuovi codici errore documentati (E_CONTATTO_INCOMPLETO, E_CLIENTI_GIORNI_SCADENZA_OBBLIGATORI, E_FORNITORI_RITENUTA_ALIQUOTA_OBBLIGATORIA, E_PARAMETER_DEFAULT_TIPO_SOGGETTO_INVALID, +)
+
+### Pattern emersi (riusabili in futuri refactor)
+
+- **classify EMPTY/PARTIAL/VALID** per payload inline opzionali (pattern A2)
+- **normalize+guard simmetrico** per coppie `(flag/tipo, value)` con
+  trigger DB (terza occorrenza)
+- **stato corrente data-driven** via fn DB `(data, tipo)` per il
+  consumer detail (quarta variante del pattern)
+- **config.parameters override-ready** invece di colonne is_default
+  (override gratuito per emittente)
+- **defense-in-depth a 3 livelli** (DB trigger / BE service / FE composable
+  mirror) come standard di progetto
+
+### Cosa resta intenzionalmente fuori scope
+
+- **B1 marker resolver**: refactor cosmetico senza valore aggiunto post
+  Fase 1+3
+- **B2 canSave**: UX defense-in-depth, mantenuta com'e'
+- **Cambio default colonna `nr_giorni_scadenza`** post-backfill: chiuso
+  in Fase 2
+
+Documento spostato in `work-done/` a chiusura.

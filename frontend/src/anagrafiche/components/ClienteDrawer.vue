@@ -306,19 +306,10 @@ async function onSave() {
     )
     if (result !== null) emit('saved', result)
   } else {
-    // Validazione contatto inline: se anche un solo campo del contatto e'
-    // compilato, tutti i campi obbligatori del contatto devono esserlo.
-    // Questo evita il silent-fail quando l'utente seleziona solo tipo_contatto
-    // senza nominativo (o viceversa).
-    const hasAnyContatto = !!(
-      (contatto.form.nominativo || '').trim() ||
-      contatto.form.tipo_contatto_id ||
-      (contatto.form.email || '').trim() ||
-      (contatto.form.telefono || '').trim() ||
-      (contatto.form.cellulare || '').trim() ||
-      (contatto.form.pec || '').trim()
-    )
-    if (hasAnyContatto) {
+    // Validazione contatto inline (Fase 5): regola unificata via composable
+    // useContattoForm.classify() — mirror della regola backend.
+    // EMPTY → skip; PARTIAL → blocca con messaggio; VALID → invia.
+    if (contatto.isFilled()) {
       contattoErrors.value = contatto.validate()
       if (contattoErrors.value.length > 0) {
         warn(t('clienti.contatto_campi_obbligatori'))
@@ -338,7 +329,7 @@ async function onSave() {
       ba_categoria_cliente_id: form.value.ba_categoria_cliente_id,
       ...buildEditablePayload(),
     }
-    if (hasAnyContatto) {
+    if (contatto.isFilled()) {
       payload.contatto = { ...contatto.form }
     }
     if (indirizzo.hasIndirizzi.value) {
@@ -363,17 +354,20 @@ const canSave = computed(() => {
   return true
 })
 
-// Scopo: Calcola data sospensione/riattivazione da mostrare.
-const dataSospRiattDetail = computed(() => {
-  if (!detail.value) return null
-  const sosp = detail.value.data_sospensione
-  const riatt = detail.value.data_riattivazione
-  if (!sosp && !riatt) return null
-  if (sosp && !riatt) return { label: t('clienti.col_sospeso_il'), date: sosp }
-  if (!sosp && riatt) return { label: t('clienti.col_riattivato_il'), date: riatt }
-  return sosp > riatt
-    ? { label: t('clienti.col_sospeso_il'), date: sosp }
-    : { label: t('clienti.col_riattivato_il'), date: riatt }
+// Scopo: Mostra data + label dell'evento stato corrente del cliente.
+// Logica risolta dal backend (Fase 4): la fn DB
+// anagrafiche.fn_get_evento_stato_corrente_cliente confronta sosp vs
+// riatt e ritorna data_evento_stato + tipo_evento_stato. Niente piu'
+// computed con sosp > riatt nel frontend.
+const EVENTO_LABEL_KEY = {
+  SOSPENSIONE: 'clienti.col_sospeso_il',
+  RIATTIVAZIONE: 'clienti.col_riattivato_il',
+}
+const eventoStatoDetail = computed(() => {
+  if (!detail.value?.data_evento_stato || !detail.value?.tipo_evento_stato) return null
+  const labelKey = EVENTO_LABEL_KEY[detail.value.tipo_evento_stato]
+  if (!labelKey) return null  // tipo evento sconosciuto → niente label, no errore
+  return { label: t(labelKey), date: detail.value.data_evento_stato }
 })
 
 
@@ -481,9 +475,9 @@ function onClose() {
               <InputText :model-value="displayDate(detail.data_chiusura)" disabled class="w-full" />
             </div>
           </div>
-          <div v-if="dataSospRiattDetail" class="form-field">
-            <label>{{ dataSospRiattDetail.label }}</label>
-            <InputText :model-value="displayDate(dataSospRiattDetail.date)" disabled class="w-full" />
+          <div v-if="eventoStatoDetail" class="form-field">
+            <label>{{ eventoStatoDetail.label }}</label>
+            <InputText :model-value="displayDate(eventoStatoDetail.date)" disabled class="w-full" />
           </div>
           <div v-if="detail.pdp_id" class="form-field">
             <label>{{ t('clienti.field_pdp') }}</label>
