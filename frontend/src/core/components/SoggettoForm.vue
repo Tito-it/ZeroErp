@@ -25,6 +25,16 @@ const props = defineProps({
   showPartitaIva: { type: Boolean, default: false },
   tipoForzato: { type: Number, default: null },
   tipiAmmessiIds: { type: Array, default: null },
+  // Fase 6 B3: ids dei tipi modificabili in edit (backend-driven, stessa
+  // natura del soggetto corrente). Sostituisce il filtro client-side
+  // basato su natura_soggetto.
+  tipiModificabiliIds: { type: Array, default: null },
+  // Fase 6 B4: lista dei campi non modificabili per questo soggetto
+  // (es. ['codice_fiscale', 'partita_iva']). Backend-driven.
+  // null = non popolato (create mode o legacy) → fallback alla regola
+  // cablata. [] = popolato vuoto (edit con CF/PIVA mancanti) → niente
+  // bloccato. Coerente con tipiModificabiliIds.
+  nonEditableFields: { type: Array, default: null },
   isEdit: { type: Boolean, default: false },
   disabled: { type: Boolean, default: false },
   comuneNascitaItem: { type: Object, default: null }
@@ -35,11 +45,20 @@ const sessoOptions = [
   { label: t('common.sesso_f'), value: 'F' }
 ]
 
-// In edit: CF/PIVA bloccati se gia' valorizzati
-const cfDisabled = computed(() => props.isEdit && !!props.form.codice_fiscale?.trim())
-const pivaDisabled = computed(() => props.isEdit && !!props.form.partita_iva?.trim())
+// CF/PIVA bloccati: regola backend-driven via non_editable_fields (Fase 6 B4).
+// nonEditableFields === null → fallback al cablato (create o legacy);
+// nonEditableFields === [] → backend ha risposto, niente bloccato;
+// nonEditableFields === [...] → backend ha indicato i campi bloccati.
+const cfDisabled = computed(() => {
+  if (props.nonEditableFields !== null) return props.nonEditableFields.includes('codice_fiscale')
+  return props.isEdit && !!props.form.codice_fiscale?.trim()
+})
+const pivaDisabled = computed(() => {
+  if (props.nonEditableFields !== null) return props.nonEditableFields.includes('partita_iva')
+  return props.isEdit && !!props.form.partita_iva?.trim()
+})
 
-// Tipo soggetto filtrato: per ids ammessi (resolver) o per natura (edit)
+// Tipo soggetto filtrato: per ids ammessi (resolver) o tipi_modificabili_ids (edit, backend-driven).
 const tipiSoggettoFiltrati = computed(() => {
   if (!props.tipiSoggetto.items?.value) return props.tipiSoggetto
   // Filtro per ids ammessi dal config-resolver (creazione da resolver)
@@ -49,8 +68,15 @@ const tipiSoggettoFiltrati = computed(() => {
       items: { value: props.tipiSoggetto.items.value.filter(t => props.tipiAmmessiIds.includes(t.id)) },
     }
   }
-  // Filtro per natura compatibile (edit mode)
   if (!props.isEdit) return props.tipiSoggetto
+  // Edit: filtra con tipi_modificabili_ids dal backend (Fase 6 B3).
+  if (props.tipiModificabiliIds?.length) {
+    return {
+      ...props.tipiSoggetto,
+      items: { value: props.tipiSoggetto.items.value.filter(t => props.tipiModificabiliIds.includes(t.id)) },
+    }
+  }
+  // Fallback compat: filtro per natura compatibile (vecchia logica)
   const current = props.tipiSoggetto.items.value.find(t => t.id === props.form.tipo_soggetto_dettaglio_id)
   if (!current) return props.tipiSoggetto
   const naturaCorrente = current.natura_soggetto

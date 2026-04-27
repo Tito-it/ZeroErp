@@ -53,6 +53,14 @@ const comuneNascitaItem = ref(null)
 // Ruoli (edit mode, readonly)
 const ruoliAssegnati = ref([])
 
+// Fase 6 B3+B4: meta-info edit dal backend (tipi modificabili e campi
+// immutabili). Niente piu' regole ricostruite client-side.
+// Sentinel null = "non popolato" (create mode); array = popolato dal
+// backend sul detail (anche [] valido). Distinzione necessaria per il
+// fallback compat in SoggettoForm.
+const tipiModificabiliIds = ref(null)
+const nonEditableFields = ref(null)
+
 // Drawer indirizzi, contatti e conti bancari (edit mode)
 const indirizziDrawerVisible = ref(false)
 const indirizziRiepilogo = ref([])
@@ -172,6 +180,10 @@ function populateFromDetail(data) {
   }
   // Ruoli
   ruoliAssegnati.value = data.ruoli || []
+  // Meta-info edit (Fase 6 B3+B4): sempre array dopo populate (anche
+  // []), distingue dal sentinel null usato in create mode.
+  tipiModificabiliIds.value = data.tipi_modificabili_ids ?? null
+  nonEditableFields.value = data.non_editable_fields ?? []
   // Indirizzi, contatti e conti bancari riepilogo
   indirizziRiepilogo.value = data.indirizzi || []
   contattiRiepilogo.value = data.contatti || []
@@ -225,6 +237,9 @@ watch(() => props.visible, async (val) => {
     datiSocietari.reset()
     comuneNascitaItem.value = null
     ruoliAssegnati.value = []
+    // Reset sentinel a null in create — fallback compat in SoggettoForm
+    tipiModificabiliIds.value = null
+    nonEditableFields.value = null
     nominativoManuale = false
     // Pre-imposta tipo soggetto se indicato dal chiamante (es. SoggettoResolver)
     if (props.tipoDefaultId) {
@@ -348,6 +363,8 @@ async function handleSave() {
         :is-edit="isEdit"
         :disabled="false"
         :tipi-ammessi-ids="tipiAmmessiIds"
+        :tipi-modificabili-ids="tipiModificabiliIds"
+        :non-editable-fields="nonEditableFields"
         :comune-nascita-item="comuneNascitaItem"
       />
 

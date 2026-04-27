@@ -15,6 +15,10 @@ Indice test eseguiti:
  3) test_config_resolver_ruolo_senza_matrice — nature libere (fallback)
  4) test_config_resolver_ruolo_non_trovato — codice inesistente → 404
  5) test_config_resolver_case_insensitive — codice minuscolo accettato
+ 6) test_config_resolver_default_present — DEFAULT_TIPO_SOGGETTO_DETTAGLIO_<RUOLO> risolve a id
+ 7) test_config_resolver_default_codice_orfano — codice non tra dettagli → default_id None
+ 8) test_config_resolver_default_assente — fn_get_parameter_full ritorna None → default_id None
+ 9) test_config_resolver_min_search_length_costante — campo min_search_length sempre presente
 """
 
 from unittest import TestCase
@@ -60,49 +64,54 @@ def _set_description(mock_cur, cols):
     mock_cur.description = desc
 
 
+def _build_side_effect(mock_cur, ruolo_row, nature_rows, dettaglio_rows):
+    """Scopo: side_effect cursor che simula le 3 SQL query del repo soggetti
+    (ruolo, nature, dettagli). La 4ª lookup (default tipo) passa via
+    ParameterRepository, mockato separatamente nei test che lo richiedono.
+    """
+    call_count = [0]
+
+    def side_effect(sql, params=None):
+        call_count[0] += 1
+        if call_count[0] == 1:
+            _set_description(mock_cur, _RUOLO_COLS)
+            mock_cur.fetchone.return_value = ruolo_row
+            mock_cur.fetchall.return_value = [ruolo_row] if ruolo_row else []
+        elif call_count[0] == 2:
+            _set_description(mock_cur, _NATURE_COLS)
+            mock_cur.fetchone.return_value = nature_rows[0] if nature_rows else None
+            mock_cur.fetchall.return_value = nature_rows
+        elif call_count[0] == 3:
+            _set_description(mock_cur, _DETTAGLIO_COLS)
+            mock_cur.fetchone.return_value = dettaglio_rows[0] if dettaglio_rows else None
+            mock_cur.fetchall.return_value = dettaglio_rows
+
+    return side_effect
+
+
+# Path per patchare il default lookup via ParameterRepository.
+_GET_PARAM_PATH = "apps.anagrafiche.db.soggetti_repository.ParameterRepository.get_parameter"
+
+
+@patch(_GET_PARAM_PATH, return_value=None)
 @patch("apps.anagrafiche.db.soggetti_repository.connection")
 class TestConfigResolverRisUmana(TestCase):
     """Config resolver per RIS_UMANA — solo PF."""
 
     # Scopo: Verifica che RIS_UMANA restituisca natura PF e tipo PR.
-    def test_config_resolver_ris_umana(self, mock_conn):
+    def test_config_resolver_ris_umana(self, mock_conn, _mock_get_param):
         from apps.anagrafiche.db.soggetti_repository import SoggettiRepository
 
         mock_cur = _mock_cursor()
         _setup_conn(mock_conn, mock_cur)
+        mock_cur.execute.side_effect = _build_side_effect(
+            mock_cur,
+            (5, "RIS_UMANA", "Risorsa Umana"),
+            [("PF", "Persona Fisica", "PF")],
+            [(1, "PR", "Privato", "PF", "PF", True, False, "ALFANUM_16", "NON_APPLICABILE", "NONE")],
+        )
 
-        # Sequenza fetchone/fetchall per le 3 query
-        ruolo_row = (5, "RIS_UMANA", "Risorsa Umana")
-        nature_rows = [("PF", "Persona Fisica", "PF")]
-        dettaglio_rows = [
-            (1, "PR", "Privato", "PF", "PF", True, False, "ALFANUM_16", "NON_APPLICABILE", "NONE"),
-        ]
-
-        call_count = [0]
-        original_execute = mock_cur.execute
-
-        def side_effect_execute(sql, params=None):
-            call_count[0] += 1
-            if call_count[0] == 1:
-                # Query ruolo
-                _set_description(mock_cur, _RUOLO_COLS)
-                mock_cur.fetchone.return_value = ruolo_row
-                mock_cur.fetchall.return_value = [ruolo_row]
-            elif call_count[0] == 2:
-                # Query nature
-                _set_description(mock_cur, _NATURE_COLS)
-                mock_cur.fetchone.return_value = nature_rows[0] if nature_rows else None
-                mock_cur.fetchall.return_value = nature_rows
-            elif call_count[0] == 3:
-                # Query dettaglio
-                _set_description(mock_cur, _DETTAGLIO_COLS)
-                mock_cur.fetchone.return_value = dettaglio_rows[0] if dettaglio_rows else None
-                mock_cur.fetchall.return_value = dettaglio_rows
-
-        mock_cur.execute.side_effect = side_effect_execute
-
-        repo = SoggettiRepository()
-        result = repo.get_config_resolver("RIS_UMANA")
+        result = SoggettiRepository().get_config_resolver("RIS_UMANA")
 
         self.assertIsNotNone(result)
         self.assertEqual(result["tipo_ruolo"], "RIS_UMANA")
@@ -112,52 +121,40 @@ class TestConfigResolverRisUmana(TestCase):
         self.assertEqual(det["codice_interno"], "PR")
         self.assertTrue(det["cf_obbligatorio"])
         self.assertFalse(det["piva_obbligatoria"])
+        # Default non configurato (mock get_parameter ritorna None)
+        self.assertIsNone(result["default_tipo_soggetto_dettaglio_id"])
+        self.assertEqual(result["min_search_length"], 3)
 
 
+@patch(_GET_PARAM_PATH, return_value=None)
 @patch("apps.anagrafiche.db.soggetti_repository.connection")
 class TestConfigResolverCliente(TestCase):
     """Config resolver per CL — PF, PG, ENC."""
 
     # Scopo: Verifica che CL restituisca 3 nature e piu' tipi dettaglio.
-    def test_config_resolver_cliente(self, mock_conn):
+    def test_config_resolver_cliente(self, mock_conn, _mock_get_param):
         from apps.anagrafiche.db.soggetti_repository import SoggettiRepository
 
         mock_cur = _mock_cursor()
         _setup_conn(mock_conn, mock_cur)
+        mock_cur.execute.side_effect = _build_side_effect(
+            mock_cur,
+            (2, "CL", "Cliente"),
+            [
+                ("PF", "Persona Fisica", "PF"),
+                ("PG", "Persona Giuridica", "PG"),
+                ("ENTE", "Ente Non Commerciale", "ENTE"),
+            ],
+            [
+                (1, "PR", "Privato", "PF", "PF", True, False, "ALFANUM_16", "NON_APPLICABILE", "NONE"),
+                (2, "DI", "Ditta Individuale", "PF", "PF", True, True, "ALFANUM_16", "NUM_11", "OPTIONAL"),
+                (3, "SC", "Societa di Capitali", "PG", "PG", True, True, "ALFANUM_16", "NUM_11", "REQUIRED"),
+                (4, "SP", "Societa di Persone", "PG", "PG", True, True, "ALFANUM_16", "NUM_11", "REQUIRED"),
+                (5, "ENC", "Ente Non Commerciale", "ENTE", "ENTE", True, True, "ALFANUM_16", "NUM_11", "REQUIRED"),
+            ],
+        )
 
-        ruolo_row = (2, "CL", "Cliente")
-        nature_rows = [
-            ("PF", "Persona Fisica", "PF"),
-            ("PG", "Persona Giuridica", "PG"),
-            ("ENTE", "Ente Non Commerciale", "ENTE"),
-        ]
-        dettaglio_rows = [
-            (1, "PR", "Privato", "PF", "PF", True, False, "ALFANUM_16", "NON_APPLICABILE", "NONE"),
-            (2, "DI", "Ditta Individuale", "PF", "PF", True, True, "ALFANUM_16", "NUM_11", "OPTIONAL"),
-            (3, "SC", "Societa di Capitali", "PG", "PG", True, True, "ALFANUM_16", "NUM_11", "REQUIRED"),
-            (4, "SP", "Societa di Persone", "PG", "PG", True, True, "ALFANUM_16", "NUM_11", "REQUIRED"),
-            (5, "ENC", "Ente Non Commerciale", "ENTE", "ENTE", True, True, "ALFANUM_16", "NUM_11", "REQUIRED"),
-        ]
-
-        call_count = [0]
-
-        def side_effect_execute(sql, params=None):
-            call_count[0] += 1
-            if call_count[0] == 1:
-                _set_description(mock_cur, _RUOLO_COLS)
-                mock_cur.fetchone.return_value = ruolo_row
-                mock_cur.fetchall.return_value = [ruolo_row]
-            elif call_count[0] == 2:
-                _set_description(mock_cur, _NATURE_COLS)
-                mock_cur.fetchall.return_value = nature_rows
-            elif call_count[0] == 3:
-                _set_description(mock_cur, _DETTAGLIO_COLS)
-                mock_cur.fetchall.return_value = dettaglio_rows
-
-        mock_cur.execute.side_effect = side_effect_execute
-
-        repo = SoggettiRepository()
-        result = repo.get_config_resolver("CL")
+        result = SoggettiRepository().get_config_resolver("CL")
 
         self.assertIsNotNone(result)
         self.assertEqual(result["tipo_ruolo"], "CL")
@@ -165,49 +162,37 @@ class TestConfigResolverCliente(TestCase):
         self.assertEqual(len(result["tipi_soggetto_dettaglio"]), 5)
 
 
+@patch(_GET_PARAM_PATH, return_value=None)
 @patch("apps.anagrafiche.db.soggetti_repository.connection")
 class TestConfigResolverSenzaMatrice(TestCase):
     """Config resolver per ruolo senza matrice — nature libere."""
 
     # Scopo: Ruolo attivo ma senza righe in tipi_ruoli_nature_ammesse → fallback tutte le nature.
-    def test_config_resolver_ruolo_senza_matrice(self, mock_conn):
+    def test_config_resolver_ruolo_senza_matrice(self, mock_conn, _mock_get_param):
         from apps.anagrafiche.db.soggetti_repository import SoggettiRepository
 
         mock_cur = _mock_cursor()
         _setup_conn(mock_conn, mock_cur)
+        mock_cur.execute.side_effect = _build_side_effect(
+            mock_cur,
+            (99, "NUOVO", "Ruolo Nuovo"),
+            [],  # nessuna natura
+            [],
+        )
 
-        ruolo_row = (99, "NUOVO", "Ruolo Nuovo")
-
-        call_count = [0]
-
-        def side_effect_execute(sql, params=None):
-            call_count[0] += 1
-            if call_count[0] == 1:
-                _set_description(mock_cur, _RUOLO_COLS)
-                mock_cur.fetchone.return_value = ruolo_row
-                mock_cur.fetchall.return_value = [ruolo_row]
-            elif call_count[0] == 2:
-                _set_description(mock_cur, _NATURE_COLS)
-                mock_cur.fetchall.return_value = []  # Nessuna natura configurata
-            elif call_count[0] == 3:
-                _set_description(mock_cur, _DETTAGLIO_COLS)
-                mock_cur.fetchall.return_value = []
-
-        mock_cur.execute.side_effect = side_effect_execute
-
-        repo = SoggettiRepository()
-        result = repo.get_config_resolver("NUOVO")
+        result = SoggettiRepository().get_config_resolver("NUOVO")
 
         self.assertIsNotNone(result)
         self.assertEqual(sorted(result["nature_ammesse"]), ["ENTE", "PF", "PG"])
 
 
+@patch(_GET_PARAM_PATH, return_value=None)
 @patch("apps.anagrafiche.db.soggetti_repository.connection")
 class TestConfigResolverNonTrovato(TestCase):
     """Config resolver per codice ruolo inesistente."""
 
-    # Scopo: Codice inesistente → None.
-    def test_config_resolver_ruolo_non_trovato(self, mock_conn):
+    # Scopo: Codice inesistente → None. Esce subito senza chiamare get_parameter.
+    def test_config_resolver_ruolo_non_trovato(self, mock_conn, mock_get_param):
         from apps.anagrafiche.db.soggetti_repository import SoggettiRepository
 
         mock_cur = _mock_cursor()
@@ -220,18 +205,20 @@ class TestConfigResolverNonTrovato(TestCase):
 
         mock_cur.execute.side_effect = side_effect_execute
 
-        repo = SoggettiRepository()
-        result = repo.get_config_resolver("INESISTENTE")
+        result = SoggettiRepository().get_config_resolver("INESISTENTE")
 
         self.assertIsNone(result)
+        # Sanity: get_parameter NON deve essere stato chiamato (early return).
+        mock_get_param.assert_not_called()
 
 
+@patch(_GET_PARAM_PATH, return_value=None)
 @patch("apps.anagrafiche.db.soggetti_repository.connection")
 class TestConfigResolverCaseInsensitive(TestCase):
     """Config resolver accetta codice case-insensitive (la view fa .upper())."""
 
     # Scopo: Verifica che il repository riceva il codice gia' uppercase dalla view.
-    def test_config_resolver_case_insensitive(self, mock_conn):
+    def test_config_resolver_case_insensitive(self, mock_conn, _mock_get_param):
         from apps.anagrafiche.db.soggetti_repository import SoggettiRepository
 
         mock_cur = _mock_cursor()
@@ -244,11 +231,95 @@ class TestConfigResolverCaseInsensitive(TestCase):
 
         mock_cur.execute.side_effect = side_effect_execute
 
-        repo = SoggettiRepository()
         # La view chiama .upper() prima del repository
-        result = repo.get_config_resolver("ris_umana")
+        SoggettiRepository().get_config_resolver("ris_umana")
 
         # Verifica che il parametro passato al cursor sia esattamente quello ricevuto
         mock_cur.execute.assert_called_once()
         call_args = mock_cur.execute.call_args
         self.assertEqual(call_args[0][1], ["ris_umana"])
+
+
+_RUOLO_CL = (2, "CL", "Cliente")
+_NATURE_PF_PG = [
+    ("PF", "Persona Fisica", "PF"),
+    ("PG", "Persona Giuridica", "PG"),
+]
+_DETTAGLI_CL = [
+    (1, "PR", "Privato", "PF", "PF", True, False, "ALFANUM_16", "NON_APPLICABILE", "NONE"),
+    (3, "SC", "Societa di Capitali", "PG", "PG", True, True, "ALFANUM_16", "NUM_11", "REQUIRED"),
+]
+
+
+@patch(_GET_PARAM_PATH)
+@patch("apps.anagrafiche.db.soggetti_repository.connection")
+class TestConfigResolverDefault(TestCase):
+    """Config resolver — risoluzione default tipo_soggetto_dettaglio."""
+
+    # Scopo: Default 'PR' configurato in config.parameters → id risolto correttamente.
+    def test_config_resolver_default_present(self, mock_conn, mock_get_param):
+        from apps.anagrafiche.db.soggetti_repository import SoggettiRepository
+
+        mock_cur = _mock_cursor()
+        _setup_conn(mock_conn, mock_cur)
+        mock_cur.execute.side_effect = _build_side_effect(
+            mock_cur, _RUOLO_CL, _NATURE_PF_PG, _DETTAGLI_CL,
+        )
+        mock_get_param.return_value = "PR"
+
+        result = SoggettiRepository().get_config_resolver("CL")
+
+        self.assertEqual(result["default_tipo_soggetto_dettaglio_id"], 1)
+        self.assertEqual(result["min_search_length"], 3)
+        # Verifica che il param_code passato sia derivato da ruolo["codice"]
+        # (post-validazione DB), non dall'input raw.
+        mock_get_param.assert_called_once()
+        call_args = mock_get_param.call_args
+        self.assertEqual(call_args[0][0], "DEFAULT_TIPO_SOGGETTO_DETTAGLIO_CL")
+
+    # Scopo: Default configurato ma codice non presente nei dettagli ammessi
+    #        (config inconsistente o cambio nature) → default_id None, no errore.
+    def test_config_resolver_default_codice_orfano(self, mock_conn, mock_get_param):
+        from apps.anagrafiche.db.soggetti_repository import SoggettiRepository
+
+        mock_cur = _mock_cursor()
+        _setup_conn(mock_conn, mock_cur)
+        mock_cur.execute.side_effect = _build_side_effect(
+            mock_cur, _RUOLO_CL, _NATURE_PF_PG, _DETTAGLI_CL,
+        )
+        mock_get_param.return_value = "ORFANO"
+
+        result = SoggettiRepository().get_config_resolver("CL")
+
+        self.assertIsNone(result["default_tipo_soggetto_dettaglio_id"])
+
+    # Scopo: get_parameter ritorna None (chiave non seedata) → default_id None.
+    def test_config_resolver_default_assente(self, mock_conn, mock_get_param):
+        from apps.anagrafiche.db.soggetti_repository import SoggettiRepository
+
+        mock_cur = _mock_cursor()
+        _setup_conn(mock_conn, mock_cur)
+        mock_cur.execute.side_effect = _build_side_effect(
+            mock_cur, _RUOLO_CL, _NATURE_PF_PG, _DETTAGLI_CL,
+        )
+        mock_get_param.return_value = None
+
+        result = SoggettiRepository().get_config_resolver("CL")
+
+        self.assertIsNone(result["default_tipo_soggetto_dettaglio_id"])
+
+    # Scopo: min_search_length sempre presente come campo del response.
+    def test_config_resolver_min_search_length_costante(self, mock_conn, mock_get_param):
+        from apps.anagrafiche.db.soggetti_repository import SoggettiRepository
+
+        mock_cur = _mock_cursor()
+        _setup_conn(mock_conn, mock_cur)
+        mock_cur.execute.side_effect = _build_side_effect(
+            mock_cur, _RUOLO_CL, _NATURE_PF_PG, _DETTAGLI_CL,
+        )
+        mock_get_param.return_value = None
+
+        result = SoggettiRepository().get_config_resolver("CL")
+
+        self.assertIn("min_search_length", result)
+        self.assertEqual(result["min_search_length"], 3)

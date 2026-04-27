@@ -72,6 +72,43 @@ class TestSoggettiListDetail(TestCase):
         result = SoggettiService().get_soggetto(FAKE_UUID)
         self.assertEqual(result["cognome"], "Rossi")
         self.assertEqual(len(result["contatti"]), 1)
+        # Fase 6 B4: campo non_editable_fields presente, vuoto se senza CF/PIVA
+        self.assertEqual(result["non_editable_fields"], [])
+
+    @patch(SOGG_REPO)
+    def test_get_soggetto_non_editable_fields_with_cf_and_piva(self, mock_repo):
+        """Fase 6 B4: CF e PIVA valorizzati → entrambi non editabili."""
+        repo = mock_repo.return_value
+        repo.get_soggetto.return_value = {
+            "id": FAKE_UUID, "codice_fiscale": "RSSMRA80A01H501Z",
+            "partita_iva": "12345678901",
+        }
+        repo.get_soggetto_contatti.return_value = []
+        repo.get_soggetto_indirizzi.return_value = []
+        repo.get_soggetto_ruoli.return_value = []
+        repo.get_dati_societari.return_value = None
+        from apps.anagrafiche.services.soggetti_service import SoggettiService
+        result = SoggettiService().get_soggetto(FAKE_UUID)
+        self.assertEqual(
+            sorted(result["non_editable_fields"]),
+            ["codice_fiscale", "partita_iva"],
+        )
+
+    @patch(SOGG_REPO)
+    def test_get_soggetto_non_editable_fields_only_piva(self, mock_repo):
+        """Solo PIVA valorizzata → solo PIVA non editabile (CF resta editable)."""
+        repo = mock_repo.return_value
+        repo.get_soggetto.return_value = {
+            "id": FAKE_UUID, "codice_fiscale": "  ",  # whitespace = non valorizzato
+            "partita_iva": "12345678901",
+        }
+        repo.get_soggetto_contatti.return_value = []
+        repo.get_soggetto_indirizzi.return_value = []
+        repo.get_soggetto_ruoli.return_value = []
+        repo.get_dati_societari.return_value = None
+        from apps.anagrafiche.services.soggetti_service import SoggettiService
+        result = SoggettiService().get_soggetto(FAKE_UUID)
+        self.assertEqual(result["non_editable_fields"], ["partita_iva"])
 
     @patch(SOGG_REPO)
     def test_get_soggetto_not_found(self, mock_repo):
@@ -100,7 +137,7 @@ class TestSoggettiCreate(TestCase):
             "cognome": "Rossi",
             "nome": "Mario",
             "codice_fiscale": "RSSMRA80A01H501Z",
-            "contatto": {"nominativo": "Mario Rossi", "email": "m@r.it"},
+            "contatto": {"nominativo": "Mario Rossi", "tipo_contatto_id": 1, "email": "m@r.it"},
         })
         self.assertEqual(result["id"], FAKE_UUID)
         repo.crea_soggetto_pf.assert_called_once()
@@ -124,7 +161,7 @@ class TestSoggettiCreate(TestCase):
                 "cognome": "",
                 "nome": "Mario",
                 "codice_fiscale": "RSSMRA80A01H501Z",
-                "contatto": {"nominativo": "Mario Rossi"},
+                "contatto": {"nominativo": "Mario Rossi", "tipo_contatto_id": 1},
             })
         self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
 
@@ -141,7 +178,7 @@ class TestSoggettiCreate(TestCase):
                 "cognome": "Rossi",
                 "nome": "Mario",
                 "codice_fiscale": "RSSMRA80A01H501Z",
-                "contatto": {"nominativo": "Mario Rossi"},
+                "contatto": {"nominativo": "Mario Rossi", "tipo_contatto_id": 1},
             })
         self.assertEqual(ctx.exception.code, "E_ANAG_DUPLICATO")
 
@@ -158,7 +195,7 @@ class TestSoggettiCreate(TestCase):
             "tipo_soggetto_dettaglio_id": 3,
             "ragione_sociale": "Test SRL",
             "codice_fiscale": "12345678901",
-            "contatto": {"nominativo": "Admin", "email": "admin@test.it"},
+            "contatto": {"nominativo": "Admin", "tipo_contatto_id": 1, "email": "admin@test.it"},
             "dati_societari": {
                 "forma_giuridica_id": 4,
                 "id_prov_iscri_rea": 1,
@@ -303,7 +340,7 @@ class TestAutoCloneIndirizzi(TestCase):
             "tipo_soggetto_dettaglio_id": 1,
             "cognome": "Rossi", "nome": "Mario",
             "codice_fiscale": "RSSMRA80A01H501Z",
-            "contatto": {"nominativo": "Mario Rossi"},
+            "contatto": {"nominativo": "Mario Rossi", "tipo_contatto_id": 1},
             # Solo 1 indirizzo RESID — DOMFISC deve essere auto-clonato
             "indirizzi": [
                 {"tipo_indirizzo_codice": "RESID", "stradario_id": 100, "civico": 1},
@@ -336,7 +373,7 @@ class TestAutoCloneIndirizzi(TestCase):
             "tipo_soggetto_dettaglio_id": 1,
             "cognome": "Rossi", "nome": "Mario",
             "codice_fiscale": "RSSMRA80A01H501Z",
-            "contatto": {"nominativo": "Mario Rossi"},
+            "contatto": {"nominativo": "Mario Rossi", "tipo_contatto_id": 1},
             "indirizzi": [
                 {"tipo_indirizzo_codice": "RESID", "stradario_id": 100, "civico": 1},
             ],
@@ -371,7 +408,7 @@ class TestAutoCloneIndirizzi(TestCase):
             "tipo_soggetto_dettaglio_id": 1,
             "cognome": "Rossi", "nome": "Mario",
             "codice_fiscale": "RSSMRA80A01H501Z",
-            "contatto": {"nominativo": "Mario Rossi"},
+            "contatto": {"nominativo": "Mario Rossi", "tipo_contatto_id": 1},
             "indirizzi": [
                 {"tipo_indirizzo_codice": "RESID", "stradario_id": 100, "civico": 1},
             ],

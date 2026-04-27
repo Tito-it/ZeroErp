@@ -22,6 +22,8 @@ import ContoBancarioForm from './ContoBancarioForm.vue'
 import DrawerTitle from './DrawerTitle.vue'
 import DrawerFooter from './DrawerFooter.vue'
 import AccessoBloccatoPanel from './AccessoBloccatoPanel.vue'
+import NewButton from './NewButton.vue'
+import ReloadButton from './ReloadButton.vue'
 import Drawer from 'primevue/drawer'
 import Button from 'primevue/button'
 import Tag from 'primevue/tag'
@@ -162,18 +164,19 @@ async function onSaveForm() {
 }
 
 async function onDelete(c) {
+  // confirmDelete signature: (itemName, onAccept). Passare un oggetto
+  // {message, accept} fa cadere il dialog (onAccept undefined): il pulsante
+  // di conferma non triggera la delete (bug latente storico).
   const ibanShort = maskIban(c.iban)
-  confirmDelete({
-    message: t('conti_bancari.conferma_elimina', { iban: ibanShort, uso: c.uso }),
-    accept: async () => {
-      const result = await execute(
-        () => apiFor('remove')(props.ownerId, c.id),
-        { successMessage: t('conti_bancari.conto_eliminato') }
-      )
-      if (result !== null) {
-        await loadConti()
-        emit('saved')
-      }
+  const itemName = `${c.uso} — ${ibanShort}`
+  confirmDelete(itemName, async () => {
+    const result = await execute(
+      () => apiFor('remove')(props.ownerId, c.id),
+      { successMessage: t('conti_bancari.conto_eliminato') }
+    )
+    if (result !== null) {
+      await loadConti()
+      emit('saved')
     }
   })
 }
@@ -212,6 +215,19 @@ function usoSeverity(uso) {
         <i class="pi pi-spin pi-spinner" />
       </div>
 
+      <!-- Toolbar standard sub-drawer: reload + nuovo (allineato a
+           ContrattoRigheDrawer / ArticoloBomDrawer). Visibile sempre
+           quando non in form mode, anche con lista vuota: il pulsante
+           "Nuovo" deve essere immediatamente raggiungibile. -->
+      <div v-if="!listLoading && !formMode && !isReadonly" class="app-page-toolbar">
+        <div class="app-page-filters" />
+        <div class="app-page-actions">
+          <ReloadButton @click="loadConti" />
+          <NewButton :tooltip="t('conti_bancari.aggiungi_conto')"
+            @click="onStartNew" />
+        </div>
+      </div>
+
       <!-- Lista conti esistenti -->
       <template v-if="!listLoading">
         <div v-if="contiList.length === 0 && !formMode" class="app-empty-state">
@@ -248,17 +264,6 @@ function usoSeverity(uso) {
           </div>
         </div>
 
-        <!-- Pulsante aggiungi (nascosto in readonly) -->
-        <div v-if="!formMode && !isReadonly" class="mt-05">
-          <Button
-            :label="t('conti_bancari.aggiungi_conto')"
-            icon="pi pi-plus"
-            text
-            size="small"
-            class="app-action-btn"
-            @click="onStartNew"
-          />
-        </div>
       </template>
 
       <!-- Form (aggiungi o modifica) -->

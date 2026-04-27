@@ -714,45 +714,6 @@ class ListiniServiceTests(TestCase):
         target_data = repo.clone_versione.call_args.kwargs["target_data"]
         self.assertEqual(set(target_data.keys()), {"codice_versione", "valido_dal"})
 
-    # Scopo: D3 - guard CHK constraint: se la precedente inizia il giorno prima
-    #        della nuova decorrenza, l'autoclose produrrebbe valido_al == valido_dal
-    #        (violazione chk_listini_versioni_date). Il service deve fail-fast con
-    #        messaggio chiaro invece di lasciar scattare un IntegrityError generico.
-    @patch("apps.vendite.services.listini_service.transaction.atomic")
-    @patch("apps.vendite.services.listini_service.ListiniRepository")
-    def test_change_state_attiva_blocked_when_autoclose_violates_chk(
-        self, mock_repo_cls, mock_atomic,
-    ):
-        from apps.vendite.services.listini_service import fn_change_versione_state
-
-        repo = mock_repo_cls.return_value
-        repo.get_versione.return_value = {
-            "id": 202,
-            "listino_id": 10,
-            "stato": "BOZZA",
-            "attivo": True,
-            "valido_dal": date(2026, 4, 1),
-        }
-        repo.count_active_righe_versione.return_value = 5
-        # Precedente inizia il giorno prima della nuova: gap di 1 giorno -> CHK fail
-        repo.find_versioni_per_autoclose.return_value = [
-            {
-                "id": 101,
-                "codice_versione": "V001-1day",
-                "valido_dal": date(2026, 3, 31),  # nuova_valido_dal - 1
-                "valido_al": None,
-            },
-        ]
-
-        with self.assertRaises(ServiceError) as ctx:
-            fn_change_versione_state(10, 202, {"stato": "ATTIVA"})
-        self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
-        self.assertIn("2 giorni", ctx.exception.detail or "")
-        # Niente scritture: ne` set_versione_valido_al ne` change_versione_state
-        repo.set_versione_valido_al.assert_not_called()
-        repo.change_versione_state.assert_not_called()
-        mock_atomic.assert_not_called()
-
     # Scopo: O2 - DELETE versione BOZZA passa il guard ed elimina con cascade.
     @patch("apps.vendite.services.listini_service.transaction.atomic")
     @patch("apps.vendite.services.listini_service.ListiniRepository")

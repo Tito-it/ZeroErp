@@ -109,6 +109,40 @@ class ErrorPolicyRegistry:
             user_message="Esiste gia' una promo attiva per questo "
                          "(articolo, unita' di misura) nel periodo indicato.",
         ),
+        # Guard Profilo A promo data-driven (vendite.promo_articoli):
+        # le date governano lo stato (FUTURA / INIZIATA / SCADUTA) e vincolano
+        # i campi modificabili. Pattern simmetrico a Profilo A contratti
+        # (E_CONTRATTO_NON_MODIFICABILE) ma data-driven invece che stato-driven.
+        # Defense-in-depth: trigger DB applica le stesse regole su bypass via psql.
+        "E_PROMO_RETROATTIVA": ErrorPolicy(
+            code="E_PROMO_RETROATTIVA",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message=(
+                "Le date della promo non possono essere retroattive: "
+                "valido_dal deve essere successivo a oggi e valido_al "
+                "non puo' essere antecedente a oggi."
+            ),
+        ),
+        "E_PROMO_INIZIATA_CAMPI_RISTRETTI": ErrorPolicy(
+            code="E_PROMO_INIZIATA_CAMPI_RISTRETTI",
+            http_status=409,
+            ui_action="show_toast_error",
+            user_message=(
+                "Promo gia' iniziata: solo descrizione e data fine sono "
+                "modificabili. Per cambiare prezzo o periodo, chiudere "
+                "questa promo (data fine = oggi) e crearne una nuova."
+            ),
+        ),
+        "E_PROMO_SCADUTA_IMMUTABILE": ErrorPolicy(
+            code="E_PROMO_SCADUTA_IMMUTABILE",
+            http_status=409,
+            ui_action="show_toast_error",
+            user_message=(
+                "Promo scaduta: non modificabile. Per riproporla creare "
+                "una nuova promo."
+            ),
+        ),
         # ── Contratti v5 (F2-BE-05/06) ──
         # Codici sollevati dai trigger DB trgfn_contratti_guard_modalita_c_*
         # e trgfn_contratti_utilities_guard_tipo_classe.
@@ -213,11 +247,11 @@ class ErrorPolicyRegistry:
             ui_action="show_empty_state",
             user_message="Associazione listino non trovata.",
         ),
-        # Guard Profilo A contratti: in stati post-DRAFT (ATTIVO/SOSPESO/CESSATO)
+        # Guard Profilo A contratti: in stati post-DRAFT (ATTIVO/CESSATO)
         # le modifiche sono limitate o vietate. La testata ammette solo
-        # `valido_al` e `meta` in ATTIVO/SOSPESO; CESSATO immutabile. Le
-        # sotto-entita' (righe override, utility 1:1) sono CRUD-able solo
-        # in DRAFT. Per modifiche sostanziali post-DRAFT serve creare un
+        # `valido_al` e `meta` in ATTIVO; CESSATO immutabile. Le sotto
+        # -entita' (righe override, utility 1:1) sono CRUD-able solo in
+        # DRAFT. Per modifiche sostanziali post-DRAFT serve creare un
         # nuovo contratto (eventualmente con parent_contratto_id).
         "E_CONTRATTO_NON_MODIFICABILE": ErrorPolicy(
             code="E_CONTRATTO_NON_MODIFICABILE",
@@ -227,6 +261,39 @@ class ErrorPolicyRegistry:
                 "Modifica non consentita: il contratto e' in uno stato che "
                 "limita le operazioni. Per modifiche sostanziali creare un "
                 "nuovo contratto."
+            ),
+        ),
+        # Guard DB transizione stato contratti (trgfn_contratti_a10_guard_
+        # transizione_stato, landed 2026-04-26). Rifiuta transizioni non
+        # ammesse: DRAFT->ATTIVO consentita; ATTIVO->CESSATO consentita
+        # SOLO con valido_al < CURRENT_DATE; CESSATO terminale; altre vietate.
+        # Il service applicativo ha la stessa regola fail-safe data-driven:
+        # se l'utente sceglie data futura nel dialog "Cessa contratto", il
+        # service NON chiama update_stato (cessazione programmata) — il job
+        # notturno applica CESSATO quando la data scade. Questo trigger
+        # interviene su bypass del service (UPDATE diretto via psql).
+        "E_CONTRATTO_STATO_TRANSIZIONE_INVALIDA": ErrorPolicy(
+            code="E_CONTRATTO_STATO_TRANSIZIONE_INVALIDA",
+            http_status=409,
+            ui_action="show_toast_error",
+            user_message=(
+                "Transizione stato contratto non consentita. Per cessare "
+                "un contratto utilizzare il pulsante Cessa che gestisce "
+                "automaticamente la data e la transizione."
+            ),
+        ),
+        # Errore configurazione automazione chiusura (job pgAgent
+        # chiusura_scadenze_daily): scatta quando la lookup di codici
+        # interni in config.stati_doc_contratti / stati_doc_versione
+        # fallisce (seed mancante o codice rimosso). Errore raro,
+        # tipicamente indica problema di consistenza ambiente.
+        "E_AUTOMAZIONE_CHIUSURA_CONFIG_INVALIDA": ErrorPolicy(
+            code="E_AUTOMAZIONE_CHIUSURA_CONFIG_INVALIDA",
+            http_status=500,
+            ui_action="show_toast_error",
+            user_message=(
+                "Errore configurazione automazione chiusura. "
+                "Contattare l'amministratore di sistema."
             ),
         ),
         # Guard DB defense-in-depth: rifiuta la transizione manuale
@@ -576,6 +643,48 @@ class ErrorPolicyRegistry:
             user_message="Eliminazione vietata: l'associazione utente-emittente "
                          "puo' essere rimossa solo come parte della "
                          "disattivazione utente.",
+        ),
+        # ── Clienti / Fornitori — normalize+guard payload pagamento/fiscali ──
+        # Fase 2 refactor anagrafiche (landed 2026-04-27). Trigger DB:
+        # anagrafiche.trgfn_clienti_normalize_giorni_scadenza (raise se
+        # tipo_gg_scadenza_ft IN ('G','F') AND nr_giorni_scadenza IS NULL/<=0).
+        # Pattern simmetrico al gemello fornitori (raise se ritenuta_acconto=true
+        # AND ritenuta_aliquota IS NULL/<=0). Codici seedati in
+        # config.messaggi_errore (id 397, 398).
+        "E_CLIENTI_GIORNI_SCADENZA_OBBLIGATORI": ErrorPolicy(
+            code="E_CLIENTI_GIORNI_SCADENZA_OBBLIGATORI",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message=(
+                "Numero giorni scadenza obbligatorio quando il tipo calcolo "
+                "scadenza e' G (somma giorni) o F (fine mese + somma)."
+            ),
+        ),
+        "E_FORNITORI_RITENUTA_ALIQUOTA_OBBLIGATORIA": ErrorPolicy(
+            code="E_FORNITORI_RITENUTA_ALIQUOTA_OBBLIGATORIA",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message=(
+                "Aliquota ritenuta obbligatoria (> 0) quando ritenuta d'acconto "
+                "e' attiva."
+            ),
+        ),
+        # ── Contatti inline (Fase 5 refactor anagrafiche, 2026-04-28) ──
+        # Sollevato dal classify centralizzato apps/anagrafiche/services/
+        # contatti_service.py::classify_contatto_payload quando il payload
+        # contatto inline (in create cliente/fornitore/soggetto) e' parziale
+        # (almeno un campo valorizzato, ma mancano nominativo o
+        # tipo_contatto_id). Sostituisce il vecchio "silent skip" che
+        # faceva perdere dati senza preavviso.
+        "E_CONTATTO_INCOMPLETO": ErrorPolicy(
+            code="E_CONTATTO_INCOMPLETO",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message=(
+                "Contatto incompleto: hai inserito qualche dato ma mancano i "
+                "campi obbligatori (nominativo e tipo contatto). Completa il "
+                "contatto oppure svuota tutti i campi."
+            ),
         ),
         # ── Anagrafiche / Soggetti e trigger ──
         "E_INDIRIZZO_OBBLIGATORIO_MANCANTE": ErrorPolicy(

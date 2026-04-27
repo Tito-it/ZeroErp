@@ -1,5 +1,15 @@
-# Brief DB — Cessazione contratti data-driven (`valido_al` ⇔ `stato_doc_contratto_id` CESSATO)
+# Brief DB — Cessazione contratti data-driven (`valido_al` ⇔ `stato_doc_contratto_id` CESSATO) [LANDED 2026-04-26]
 
+> **Status**: ✅ **LANDED** — Team DB ha applicato trigger guard + job
+> notturno il 2026-04-26. Vedi:
+> - `db/changelog/migrations_v2/20_code/vendite/20260426-05-create-trgfn-contratti-guard-transizione-stato-mctit.yaml`
+> - `db/changelog/migrations_v2/85_pgagent/20260426-06-replace-pgagent-job-chiusura-scadenze-daily-mctit.yaml`
+> - Codici errore seedati: `E_CONTRATTO_STATO_TRANSIZIONE_INVALIDA` (id 392), `E_AUTOMAZIONE_CHIUSURA_CONFIG_INVALIDA` (id 393)
+>
+> Variazione rispetto al brief originale: **stato SOSPESO rimosso completamente** dal modello (era previsto come stato intermedio non operativo). Workflow attuale: DRAFT → ATTIVO → CESSATO.
+>
+> ---
+>
 > **Target team**: DB (`dev/db-tid`)
 > **Origine**: bug logico individuato 2026-04-25 dopo applicazione del Profilo A FE/BE su contratti vendite.
 > **Impatto**: `vendite.contratti` (transizione stato CESSATO ⇔ valido_al)

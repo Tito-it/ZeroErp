@@ -12,6 +12,8 @@ Indice test eseguiti:
  1) test_list_clienti_ok — happy path lista paginata
  2) test_get_cliente_ok — dettaglio completo
  3) test_get_cliente_not_found — id inesistente → E_ANAG_NOT_FOUND
+ 3a) test_get_cliente_propagates_evento_stato_corrente — Fase 4: fn DB risolve sosp/riatt
+ 3b) test_get_cliente_evento_stato_null_when_no_dates — entrambe NULL → output NULL
  4) test_crea_cliente_manuale_ok — creazione manuale completa (genera istanza + BA)
  5) test_crea_cliente_manuale_con_indirizzo — creazione manuale con indirizzo facoltativo
  6) test_crea_cliente_manuale_utility_pdp_bloccata — utility richiede_pdp=true → errore
@@ -138,6 +140,40 @@ class TestClientiListDetail(TestCase):
         with self.assertRaises(ServiceError) as ctx:
             ClientiService().get_cliente(999)
         self.assertEqual(ctx.exception.code, "E_ANAG_NOT_FOUND")
+
+    @patch(CLI_REPO)
+    def test_get_cliente_propagates_evento_stato_corrente(self, mock_repo):
+        """Fase 4: i campi data_evento_stato/tipo_evento_stato risolti dalla
+        fn DB anagrafiche.fn_get_evento_stato_corrente_cliente devono
+        arrivare al frontend nel detail (sostituiscono il computed FE
+        sosp vs riatt)."""
+        mock_repo.return_value.get_cliente.return_value = {
+            "id": 1,
+            "data_sospensione": "2026-03-10",
+            "data_riattivazione": "2026-04-05",
+            # Campi risolti dal LATERAL JOIN sulla fn DB:
+            "data_evento_stato": "2026-04-05",
+            "tipo_evento_stato": "RIATTIVAZIONE",
+        }
+        from apps.anagrafiche.services.clienti_service import ClientiService
+        result = ClientiService().get_cliente(1)
+        self.assertEqual(result["data_evento_stato"], "2026-04-05")
+        self.assertEqual(result["tipo_evento_stato"], "RIATTIVAZIONE")
+
+    @patch(CLI_REPO)
+    def test_get_cliente_evento_stato_null_when_no_dates(self, mock_repo):
+        """Cliente senza sosp/riatt → fn DB ritorna (NULL, NULL)."""
+        mock_repo.return_value.get_cliente.return_value = {
+            "id": 1,
+            "data_sospensione": None,
+            "data_riattivazione": None,
+            "data_evento_stato": None,
+            "tipo_evento_stato": None,
+        }
+        from apps.anagrafiche.services.clienti_service import ClientiService
+        result = ClientiService().get_cliente(1)
+        self.assertIsNone(result["data_evento_stato"])
+        self.assertIsNone(result["tipo_evento_stato"])
 
 
 # =================================================================

@@ -612,12 +612,9 @@ def _translate_integrity_error(exc: IntegrityError, *, function_name: str, entit
             "Intervallo versione sovrapposto.",
             "Esiste gia' una versione ATTIVA sovrapposta per il listino. "
             "Usa il pattern di sostituzione: chiudi la vecchia "
-            "(valido_al = nuova_valido_dal - 1) e poi attiva la nuova.",
-        ),
-        (
-            "chk_listini_versioni_date",
-            "Intervallo versione non valido.",
-            "valido_al deve essere maggiore di valido_dal.",
+            "(valido_al = nuova_valido_dal - 1) e poi attiva la nuova. "
+            "La nuova decorrenza deve essere almeno 1 giorno dopo l'inizio "
+            "della precedente."
         ),
         (
             "uq_listini_righe_key_attiva",
@@ -1420,14 +1417,16 @@ def fn_delete_versione(listino_id: int, versione_id: int) -> dict[str, object]:
 
 
 # Scopo: Pianifica le conseguenze di una transizione di stato versione.
-#        Per BOZZA -> ATTIVA calcola l'elenco delle versioni precedenti da chiudere
-#        e la nuova valido_al. Per altre transizioni torna ([], None).
+#        Per BOZZA -> ATTIVA calcola l'elenco delle versioni precedenti da
+#        chiudere e la nuova valido_al. Per altre transizioni torna ([], None).
 #
-#        Guard critico (CHK constraint vendite.chk_listini_versioni_date richiede
-#        valido_al > valido_dal STRETTAMENTE): se una precedente ha
-#        valido_dal >= nuova.valido_dal - 1 (cioe' gap < 2 giorni), l'autoclose
-#        produrrebbe valido_al <= valido_dal e violerebbe il CHECK. Solleviamo
-#        un errore esplicito invece di lasciar scattare un IntegrityError generico.
+#        Post-drop chk_listini_versioni_date (2026-04-27): l'autoclose puo'
+#        produrre valido_al = valido_dal (range degenere [X, X+1) di 1 giorno),
+#        coerente col pattern stato-terminale-data-driven. Il caso gap=0
+#        (precedente con stessa decorrenza) non arriva qui: la query
+#        find_versioni_per_autoclose filtra `valido_dal < nuova_valido_dal`
+#        strict, e l'EXCLUDE GIST ex_listini_versioni_no_overlap blocca
+#        l'attivazione con messaggio user-friendly.
 def _plan_versione_state_change(
     *,
     repository: "ListiniRepository",
@@ -1468,32 +1467,6 @@ def _plan_versione_state_change(
         nuova_valido_dal=nuova_valido_dal,
     )
     nuova_valido_al = nuova_valido_dal - timedelta(days=1)
-
-    # Guard CHK: per ogni precedente, l'autoclose deve produrre valido_al > valido_dal.
-    # nuova_valido_al = nuova_valido_dal - 1, quindi serve precedente.valido_dal < nuova_valido_dal - 1.
-    for row in candidates:
-        prec_valido_dal = row.get("valido_dal")
-        assert isinstance(prec_valido_dal, date)
-        ErrorManager.require(
-            nuova_valido_al > prec_valido_dal,
-            code="E_VENDITE_VALIDATION",
-            message="Autoclose versione precedente non possibile.",
-            detail=(
-                f"La versione precedente '{row.get('codice_versione')}' inizia il "
-                f"{prec_valido_dal.isoformat()}: per chiuderla all'attivazione "
-                f"servirebbe valido_al={nuova_valido_al.isoformat()}, ma il vincolo "
-                f"valido_al > valido_dal lo impedisce. La nuova versione deve "
-                f"iniziare almeno 2 giorni dopo l'inizio della precedente "
-                f"(decorrenza minima ammessa: {(prec_valido_dal + timedelta(days=2)).isoformat()})."
-            ),
-            context={
-                "precedente_id": int(row["id"]),
-                "precedente_valido_dal": prec_valido_dal,
-                "nuova_valido_dal": nuova_valido_dal,
-            },
-            function_name=function_name,
-            log_to_db=True,
-        )
 
     return candidates, nuova_valido_al
 

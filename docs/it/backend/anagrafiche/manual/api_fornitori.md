@@ -161,6 +161,30 @@ Crea un fornitore in transazione atomica: assegna il ruolo FO al soggetto
 | `E_ANAG_VALIDAZIONE` | 400 | `soggetto_id` mancante o non valido |
 | `E_ANAG_DUPLICATO` | 409 | Il soggetto ha gia' il ruolo FORNITORE |
 | `E_INDIRIZZO_OBBLIGATORIO_MANCANTE` | 400 | Indirizzi obbligatori mancanti per il ruolo FO (trigger DB) |
+| `E_FORNITORI_RITENUTA_ALIQUOTA_OBBLIGATORIA` | 400 | `ritenuta_acconto = true` senza `ritenuta_aliquota > 0` (trigger DB `trgfn_fornitori_guard_normalize`) |
+| `E_CONTATTO_INCOMPLETO` | 400 | Payload `contatto` parziale: almeno un campo valorizzato MA mancano `nominativo` o `tipo_contatto_id`. Il `context.missing` lista i campi mancanti |
+
+#### Regola contatto inline (refactor 28-04-2026)
+
+Il contatto e' opzionale per il fornitore. Stati possibili applicati da
+`classify_contatto_payload`:
+
+- `EMPTY` (nessun campo valorizzato) → contatto NON creato, fornitore
+  creato senza contatto inline
+- `PARTIAL` (campi valorizzati MA mancano `nominativo`/`tipo_contatto_id`)
+  → solleva `E_CONTATTO_INCOMPLETO` (sostituisce il vecchio silent
+  skip che faceva perdere dati)
+- `VALID` (`nominativo` + `tipo_contatto_id` presenti) → procede
+
+#### Normalizzazione fiscale automatica (trigger DB)
+
+Il trigger `trgfn_fornitori_guard_normalize` applica:
+
+- `canale_fe` → uppercase senza spazi
+- `pec_email` → lowercase trimmed
+- se `ritenuta_acconto = false` → `ritenuta_aliquota` forzato a `NULL`
+- se `ritenuta_acconto = true` con aliquota non valida → solleva
+  `E_FORNITORI_RITENUTA_ALIQUOTA_OBBLIGATORIA`
 
 ---
 
