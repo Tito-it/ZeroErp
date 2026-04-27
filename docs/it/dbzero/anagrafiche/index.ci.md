@@ -45,6 +45,7 @@
 - [fn_crea_soggetto_pg](manual/fn_crea_soggetto_pg.md) — (latest review 14-03-2026) Building block atomico per la creazione di un soggetto Persona Giuridica con contatto default obbligatorio e dati societari (condizionali alla `dati_societari_policy` del tipo soggetto).
 - [fn_get_emittente_fiscale_id](manual/fn_get_emittente_fiscale_id.md) — (last review 07-04-2026)
 - [fn_get_emittente_fiscale_pk](manual/fn_get_emittente_fiscale_pk.md) — (creata 07-04-2026)
+- [fn_get_evento_stato_corrente_cliente](manual/fn_get_evento_stato_corrente_cliente.md) — (latest review 28-04-2026)
 - [fn_get_or_create_indirizzo_dettaglio](manual/fn_get_or_create_indirizzo_dettaglio.md) — (latest review 13-03-2026) Building block atomico per l'upsert di un civico normalizzato in `anagrafiche.indirizzi_dettaglio`.
 - [fn_guard_fornitore_attivo](manual/fn_guard_fornitore_attivo.md) — (latest review 22-04-2026) La funzione **`anagrafiche.fn_guard_fornitore_attivo()`** applica una verifica fail-fast sul fornitore prima di consentirne l'uso nei flussi operativi del ciclo passivo, in particolare ordini e DDT.
 - [fn_lookup_utilities_per_ba](manual/fn_lookup_utilities_per_ba.md) — (latest review 22-04-2026) La funzione **`anagrafiche.fn_lookup_utilities_per_ba()`** restituisce le utility selezionabili per un billing account, incrociando due vincoli:

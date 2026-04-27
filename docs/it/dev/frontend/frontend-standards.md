@@ -896,11 +896,12 @@ async function onConfermaCessazione() {
 
 **4. Campo data condizionale per stato.**
 
-| Stato            | Visibilità campo data | Editabile         | Label                                  |
-| ---------------- | --------------------- | ----------------- | -------------------------------------- |
-| DRAFT            | sì                    | sì (opzionale)    | "Fine validità" / "Valido al"          |
-| ATTIVO / SOSPESO | **nascosto**          | —                 | (nessuna: cessazione passa dal dialog) |
-| CESSATO / CHIUSO | sì                    | **no** (readonly) | "Data cessazione" / "Data chiusura"    |
+| Stato            | Visibilità campo data           | Editabile         | Label                                  |
+| ---------------- | ------------------------------- | ----------------- | -------------------------------------- |
+| DRAFT            | sì                              | sì (opzionale)    | "Fine validità" / "Valido al"          |
+| ATTIVO           | nascosto se NULL                | —                 | (cessazione passa dal dialog)          |
+| ATTIVO           | readonly se valorizzato         | **no** (readonly) | "Cessazione programmata al"            |
+| CESSATO / CHIUSO | sì                              | **no** (readonly) | "Data cessazione" / "Data chiusura"    |
 
 ```vue
 <div class="form-field"

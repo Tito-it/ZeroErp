@@ -1,6 +1,6 @@
 # Piano di esecuzione — Automazione chiusure per scadenza (`dbops.automazione_chiusura_scadenze`)
 
-> **Stato**: piano operativo — implementazione in corso (2026-04-26)
+> **Stato**: CHIUSO (2026-04-26)
 > **Branch DB**: `dev/db-tid`
 > **Origine**: brief BE 2026-04-25 sui contratti (cessazione data-driven). Promozione al nucleo del pattern già implementato per `vendite.listini_versioni` (24-04-2026).
 > **Manifesto sviluppo concentrico §7**: due consumatori reali → astrazione promossa al nucleo.
@@ -36,23 +36,23 @@ I punti 1-3 sono inevitabilmente specifici della tabella (codici stato, transizi
 
 Schema:
 
-| Colonna | Tipo | Descrizione |
-|---|---|---|
-| `id` | smallserial PK | id tecnico |
-| `schema_tabella` | text NOT NULL | es. `vendite` |
-| `nome_tabella` | text NOT NULL | es. `listini_versioni`, `contratti` |
-| `col_stato` | text NOT NULL | nome colonna stato (es. `stato`, `stato_doc_contratto_id`) |
-| `tipo_stato` | text NOT NULL CHECK IN (`VARCHAR`, `FK`) | discrimina varchar diretto vs FK con lookup |
-| `col_valido_al` | text NOT NULL DEFAULT `valido_al` | nome colonna data fine validita' |
-| `stato_attivo_codice` | text NOT NULL | valore atteso prima della chiusura. Per VARCHAR e' direttamente il valore (es. `ATTIVA`); per FK e' il `codice_interno` (es. `ATTIVO`) |
-| `stato_chiuso_codice` | text NOT NULL | valore target (es. `CHIUSA`, `CESSATO`) — semantica analoga |
-| `fk_lookup_schema` | text NULL | per `tipo_stato='FK'`: schema della tabella di lookup (es. `config`) |
-| `fk_lookup_table` | text NULL | per `tipo_stato='FK'`: nome tabella di lookup (es. `stati_doc_contratti`) |
-| `fk_lookup_codice_col` | text NULL DEFAULT `codice_interno` | colonna su cui matchare il codice |
-| `fk_lookup_id_col` | text NULL DEFAULT `id` | colonna PK della tabella lookup |
-| `attivo` | boolean NOT NULL DEFAULT true | abilita/disabilita la riga |
-| `descrizione` | text | doc inline |
-| audit | | `data_insert`, `user_insert`, `data_update`, `user_update` standard |
+| Colonna                | Tipo                                     | Descrizione                                                                                                                            |
+| ---------------------- | ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`                   | smallserial PK                           | id tecnico                                                                                                                             |
+| `schema_tabella`       | text NOT NULL                            | es. `vendite`                                                                                                                          |
+| `nome_tabella`         | text NOT NULL                            | es. `listini_versioni`, `contratti`                                                                                                    |
+| `col_stato`            | text NOT NULL                            | nome colonna stato (es. `stato`, `stato_doc_contratto_id`)                                                                             |
+| `tipo_stato`           | text NOT NULL CHECK IN (`VARCHAR`, `FK`) | discrimina varchar diretto vs FK con lookup                                                                                            |
+| `col_valido_al`        | text NOT NULL DEFAULT `valido_al`        | nome colonna data fine validita'                                                                                                       |
+| `stato_attivo_codice`  | text NOT NULL                            | valore atteso prima della chiusura. Per VARCHAR e' direttamente il valore (es. `ATTIVA`); per FK e' il `codice_interno` (es. `ATTIVO`) |
+| `stato_chiuso_codice`  | text NOT NULL                            | valore target (es. `CHIUSA`, `CESSATO`) — semantica analoga                                                                            |
+| `fk_lookup_schema`     | text NULL                                | per `tipo_stato='FK'`: schema della tabella di lookup (es. `config`)                                                                   |
+| `fk_lookup_table`      | text NULL                                | per `tipo_stato='FK'`: nome tabella di lookup (es. `stati_doc_contratti`)                                                              |
+| `fk_lookup_codice_col` | text NULL DEFAULT `codice_interno`       | colonna su cui matchare il codice                                                                                                      |
+| `fk_lookup_id_col`     | text NULL DEFAULT `id`                   | colonna PK della tabella lookup                                                                                                        |
+| `attivo`               | boolean NOT NULL DEFAULT true            | abilita/disabilita la riga                                                                                                             |
+| `descrizione`          | text                                     | doc inline                                                                                                                             |
+| audit                  |                                          | `data_insert`, `user_insert`, `data_update`, `user_update` standard                                                                    |
 
 **CHECK constraint coerenza** `chk_automazione_chiusura_scadenze_tipo_stato_coerente`:
 
@@ -119,25 +119,25 @@ Sostituisce il job specifico `listini_versioni_close_scadute_daily` (verra' drop
 
 Restano nelle rispettive cartelle dei domini:
 
-| Componente | Listini | Contratti |
-|---|---|---|
+| Componente                | Listini                                                              | Contratti                                                        |
+| ------------------------- | -------------------------------------------------------------------- | ---------------------------------------------------------------- |
 | Trigger guard transizione | `vendite.trgfn_listini_versioni_guard_transizione_stato` (esistente) | **da creare**: `vendite.trgfn_contratti_guard_transizione_stato` |
-| Codice errore | `E_VERSIONE_STATO_TRANSIZIONE_INVALIDA` (id 391) | **da creare**: `E_CONTRATTO_STATO_TRANSIZIONE_INVALIDA` (id 392) |
-| Test pgTAP guard | `test-listini-versioni-guard-transizione-stato-v1.sql` (esistente) | **da creare**: `test-contratti-guard-transizione-stato-v1.sql` |
-| Manual doc | `docs/it/dbzero/vendite/manual/listini_versioni.md` (da aggiornare) | `docs/it/dbzero/vendite/manual/contratti.md` (da aggiornare) |
+| Codice errore             | `E_VERSIONE_STATO_TRANSIZIONE_INVALIDA` (id 391)                     | **da creare**: `E_CONTRATTO_STATO_TRANSIZIONE_INVALIDA` (id 392) |
+| Test pgTAP guard          | `test-listini-versioni-guard-transizione-stato-v1.sql` (esistente)   | **da creare**: `test-contratti-guard-transizione-stato-v1.sql`   |
+| Manual doc                | `docs/it/dbzero/vendite/manual/listini_versioni.md` (da aggiornare)  | `docs/it/dbzero/vendite/manual/contratti.md` (da aggiornare)     |
 
 Trigger guard contratti: matrice transizioni hardcoded (3 stati validi nel piano, 3 transizioni ammesse + 1 condizione temporale):
 
-| Da | A | Ammessa | Condizione |
-|---|---|---|---|
-| DRAFT | ATTIVO | sì | — |
-| ATTIVO | CESSATO | sì | `valido_al IS NOT NULL AND valido_al < CURRENT_DATE` |
-| ATTIVO | ATTIVO | sì | no-op |
-| DRAFT | DRAFT | sì | no-op |
-| CESSATO | * | no | terminale |
-| * → DRAFT (eccetto no-op) | no | irreversibile |
-| ATTIVO → SOSPESO | non gestito ora | (vedi nota su SOSPESO) |
-| SOSPESO → * | non gestito ora | |
+| Da                        | A               | Ammessa                | Condizione                                           |
+| ------------------------- | --------------- | ---------------------- | ---------------------------------------------------- |
+| DRAFT                     | ATTIVO          | sì                     | —                                                    |
+| ATTIVO                    | CESSATO         | sì                     | `valido_al IS NOT NULL AND valido_al < CURRENT_DATE` |
+| ATTIVO                    | ATTIVO          | sì                     | no-op                                                |
+| DRAFT                     | DRAFT           | sì                     | no-op                                                |
+| CESSATO                   | *               | no                     | terminale                                            |
+| * → DRAFT (eccetto no-op) | no              | irreversibile          |
+| ATTIVO → SOSPESO          | non gestito ora | (vedi nota su SOSPESO) |
+| SOSPESO → *               | non gestito ora |                        |
 
 Lookup via `codice_interno` su `config.stati_doc_contratti`. Codici DB seedati confermati: `1=DRAFT, 2=ATTIVO, 4=SOSPESO, 5=CESSATO`.
 

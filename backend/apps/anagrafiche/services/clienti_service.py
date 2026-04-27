@@ -22,8 +22,13 @@ from apps.anagrafiche.error_codes import (
     E_ANAG_NOT_FOUND,
     E_ANAG_VALIDAZIONE,
     E_BA_ADMIN_GLOBALE_VIETATO,
+    E_CONTATTO_INCOMPLETO,
 )
 from apps.anagrafiche.services._validators import optional_str
+from apps.anagrafiche.services.contatti_service import (
+    classify_contatto_payload,
+    missing_required_fields,
+)
 from apps.core.services.service_errors import ServiceError
 from apps.core.api.payload_validators import optional_int, optional_uuid
 from apps.core.services.error_manager import ErrorManager
@@ -303,11 +308,23 @@ class ClientiService:
                     detail=err_detail) from exc
             raise
 
-        # Step 5: Contatto ruolo (se fornito dal drawer inline)
-        if contatto_data and contatto_data.get("nominativo"):
+        # Step 5: Contatto ruolo (se fornito dal drawer inline).
+        # Regola unificata via classify_contatto_payload (Fase 5):
+        #   EMPTY   → skip (no contatto creato)
+        #   PARTIAL → errore esplicito (sostituisce vecchio silent skip)
+        #   VALID   → crea
+        contatto_status = classify_contatto_payload(contatto_data)
+        if contatto_status == "PARTIAL":
+            raise ServiceError(
+                code=E_CONTATTO_INCOMPLETO,
+                message="Contatto incompleto: completa o svuota tutti i campi.",
+                context={"missing": missing_required_fields(contatto_data)},
+            )
+        if contatto_status == "VALID":
+            assert contatto_data is not None  # type narrowing per il checker
             self._sogg_repo.crea_contatto(
                 soggetto_id,
-                nominativo=contatto_data.get("nominativo", ""),
+                nominativo=contatto_data["nominativo"],
                 email=optional_str(contatto_data, "email"),
                 telefono=optional_str(contatto_data, "telefono"),
                 cellulare=optional_str(contatto_data, "cellulare"),

@@ -1,7 +1,14 @@
 <script setup>
 // Scopo: Drawer crea/modifica vendite.promo_articoli.
 //        - In create: codice, articolo, uom, tipo, valore, valido_dal/al obbligatori.
+//          valido_dal default = domani; minDate = domani (no promo retroattive).
 //        - In edit:   codice, articolo, uom immutabili (identita' della promo).
+//          Stato data-driven Profilo A (vedi PromoArticoliService backend):
+//            * SCADUTA  (oggi > valido_al)        -> readonly hard
+//            * INIZIATA (valido_dal <= oggi <= valido_al) -> solo descrizione
+//              + valido_al (>= oggi) modificabili; tipo/valore/valido_dal/attivo
+//              bloccati (BE rifiuta E_PROMO_INIZIATA_CAMPI_RISTRETTI)
+//            * FUTURA   -> tutti i campi modificabili, date solo verso il futuro
 //        - Sola lettura: prop `readonly` cumulativa con useInjectReadonly.
 //        Convenzione valore firmato (negativo = sconto) allineata al resolver
 //        DB: ammessi valori negativi, rifiutato 0 per PERCENTUALE/VALORE_FISSO.
@@ -41,7 +48,45 @@ const props = defineProps({
 const emit = defineEmits(['update:visible', 'saved', 'cancelled'])
 
 const isEdit = computed(() => props.mode === 'edit')
-const isReadOnlyEffective = computed(() => props.readonly || isReadonly.value)
+
+// Guard data-driven sulla modifica promo (solo edit):
+//  - SCADUTA  (oggi > valido_al)        → readonly hard, l'admin crei una nuova promo
+//  - INIZIATA (oggi >= valido_dal)      → valido_dal/attivo bloccati, valido_al non
+//    puo' tornare al passato, save chiede conferma (le righe commessa gia' snapshottate
+//    non si aggiornano automaticamente — riallineamento on-demand su commessa)
+function startOfToday() {
+  const d = new Date()
+  d.setHours(0, 0, 0, 0)
+  return d
+}
+function startOfTomorrow() {
+  const d = startOfToday()
+  d.setDate(d.getDate() + 1)
+  return d
+}
+const oggi = computed(() => startOfToday())
+const domani = computed(() => startOfTomorrow())
+// Vincoli minDate per valido_dal:
+//  - create        → domani (no retroattive, serve preavviso operativo di 1 gg)
+//  - edit non iniziata → oggi (ammette spostamento, vieta passato)
+//  - edit iniziata     → irrilevante (campo disabled)
+const validoDalMinDate = computed(() => {
+  if (!isEdit.value) return domani.value
+  if (isPromoIniziata.value) return null
+  return oggi.value
+})
+const isPromoScaduta = computed(() => {
+  if (!isEdit.value || !form.value.valido_al) return false
+  return oggi.value > form.value.valido_al
+})
+const isPromoIniziata = computed(() => {
+  if (!isEdit.value || isPromoScaduta.value || !form.value.valido_dal) return false
+  return oggi.value >= form.value.valido_dal
+})
+
+const isReadOnlyEffective = computed(() =>
+  props.readonly || isReadonly.value || isPromoScaduta.value
+)
 
 const tipoVariazioneOptions = [
   { value: 'PERCENTUALE', label: 'PERCENTUALE' },
@@ -69,7 +114,9 @@ function resetForm() {
     uom_id: null,
     tipo_variazione: null,
     valore_variazione: null,
-    valido_dal: null,
+    // Default proposto: domani. Le promo non possono partire nel passato e
+    // nemmeno nel giorno corrente (serve almeno un giorno di preavviso operativo).
+    valido_dal: startOfTomorrow(),
     valido_al: null,
     attivo: true
   }
@@ -242,6 +289,21 @@ function close() {
     </template>
 
     <div class="app-drawer-content" :class="{ 'app-readonly': isReadOnlyEffective }">
+      <Message
+        v-if="isPromoScaduta"
+        severity="info"
+        :closable="false"
+      >
+        {{ t('vendite.promo_articoli.scaduta_readonly_hint') }}
+      </Message>
+      <Message
+        v-else-if="isPromoIniziata"
+        severity="warn"
+        :closable="false"
+      >
+        {{ t('vendite.promo_articoli.iniziata_warn_hint') }}
+      </Message>
+
       <div class="form-grid">
         <!-- === Identita' (immutabile in edit) === -->
         <div class="form-field">
@@ -298,7 +360,7 @@ function close() {
             option-label="label"
             option-value="value"
             :placeholder="t('vendite.promo_articoli.field_tipo_variazione_placeholder')"
-            :disabled="isReadOnlyEffective"
+            :disabled="isReadOnlyEffective || isPromoIniziata"
             @change="onTipoVariazioneChange"
           />
         </div>
@@ -307,7 +369,7 @@ function close() {
           <InputNumber
             v-model="form.valore_variazione"
             :max-fraction-digits="4"
-            :disabled="form.tipo_variazione == null || isReadOnlyEffective"
+            :disabled="form.tipo_variazione == null || isReadOnlyEffective || isPromoIniziata"
             showButtons
           />
           <small class="text-color-secondary">
@@ -324,7 +386,8 @@ function close() {
             v-model="form.valido_dal"
             date-format="dd/mm/yy"
             show-icon
-            :disabled="isReadOnlyEffective"
+            :min-date="validoDalMinDate"
+            :disabled="isReadOnlyEffective || isPromoIniziata"
           />
         </div>
         <div class="form-field">
@@ -333,13 +396,17 @@ function close() {
             v-model="form.valido_al"
             date-format="dd/mm/yy"
             show-icon
+            :min-date="isPromoIniziata ? oggi : null"
             :disabled="isReadOnlyEffective"
           />
         </div>
 
         <div class="form-field">
           <label>{{ t('common.attivo') }}</label>
-          <ToggleSwitch v-model="form.attivo" :disabled="isReadOnlyEffective" />
+          <ToggleSwitch
+            v-model="form.attivo"
+            :disabled="isReadOnlyEffective || isPromoIniziata"
+          />
         </div>
       </div>
 

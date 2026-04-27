@@ -1,0 +1,149 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Funzione anagrafiche.fn_get_evento_stato_corrente_cliente.
+#
+# Why: brief BE 2026-04-28 fase 4 — sostituire la computed
+# `dataSospRiattDetail` lato FE che faceva il confronto sosp > riatt
+# in JS. Spostiamo la logica nel DB per coerenza data-driven e per
+# avere un'unica fonte di verita' sul "qual e' l'ultimo evento di
+# sospensione/riattivazione del cliente".
+#
+# Scope intenzionale: solo `data_sospensione` vs `data_riattivazione`.
+# `data_attivazione` e `data_chiusura` sono fuori scope (semantica UI
+# specifica per "evento attuale di sospensione/riattivazione").
+#
+# Output a 2 colonne (decisione 28-04-2026):
+#   data_evento_stato  date  -- la data piu' recente
+#   tipo_evento        text  -- 'SOSPENSIONE' | 'RIATTIVAZIONE' | NULL
+# La label "stato corrente" (SOSPESO/RIATTIVATO) NON viene calcolata qui
+# per evitare ridondanza con clienti.stato_cliente_id (workflow
+# gestionale): il BE/FE la deriva da stato_cliente_id o dal tipo_evento.
+#
+# Caso anomalo `data_sospensione IS NULL AND data_riattivazione IS NOT NULL`
+# (riattivazione senza sospensione, dato sporco): ritorna comunque
+# (data_riatt, 'RIATTIVAZIONE') — la fn e' di lettura, non valida
+# consistenza. Il guard sull'incoerenza, se serve, sta in INSERT/UPDATE
+# su clienti (out of scope).
+#
+# Pareggio `data_sospensione = data_riattivazione`: vince RIATTIVAZIONE
+# (operazione successiva nel flow normale).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20260428-01-create-fn-get-evento-stato-corrente-cliente-mctit.yaml
+
+  - changeSet:
+      id: 20260428-01-01-create-fn-get-evento-stato-corrente-cliente
+      author: mctit
+      runOnChange: true
+      validCheckSum:
+        - ANY
+      comment: >
+        Funzione anagrafiche.fn_get_evento_stato_corrente_cliente.
+        Confronta data_sospensione vs data_riattivazione e ritorna la
+        piu' recente con il tipo evento. STABLE PARALLEL SAFE.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: anagrafiche
+                tableName: clienti
+            - columnExists:
+                schemaName: anagrafiche
+                tableName: clienti
+                columnName: data_sospensione
+            - columnExists:
+                schemaName: anagrafiche
+                tableName: clienti
+                columnName: data_riattivazione
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.fn_get_evento_stato_corrente_cliente(
+                  p_cliente_id bigint
+              )
+              RETURNS TABLE(
+                  data_evento_stato date,
+                  tipo_evento       text
+              )
+              LANGUAGE plpgsql
+              STABLE PARALLEL SAFE
+              AS $function$
+              -- Scopo: ricavare l'ultimo evento sosp/riatt del cliente
+              -- per la detail page. Output a 2 colonne (data + codice
+              -- evento), niente label di stato (gia' in stato_cliente_id).
+              DECLARE
+                  v_data_sosp anagrafiche.clienti.data_sospensione%TYPE;
+                  v_data_riat anagrafiche.clienti.data_riattivazione%TYPE;
+              BEGIN
+                  -- Guard: parametro obbligatorio.
+                  IF p_cliente_id IS NULL OR p_cliente_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          'anagrafiche.fn_get_evento_stato_corrente_cliente',
+                          'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object(
+                              'parametro', 'p_cliente_id',
+                              'valore',    p_cliente_id
+                          ),
+                          NULL::uuid,
+                          'p_cliente_id obbligatorio e > 0'
+                      );
+                  END IF;
+
+                  -- Lookup date evento. Se cliente non esiste ->
+                  -- E_VALORE_MANCANTE (pattern coerente con
+                  -- vendite.fn_get_commessa_stato).
+                  SELECT c.data_sospensione, c.data_riattivazione
+                    INTO v_data_sosp, v_data_riat
+                    FROM anagrafiche.clienti c
+                   WHERE c.id = p_cliente_id;
+
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          'anagrafiche.fn_get_evento_stato_corrente_cliente',
+                          'E_VALORE_MANCANTE',
+                          jsonb_build_object('cliente_id', p_cliente_id),
+                          NULL::uuid,
+                          concat('cliente_id ', p_cliente_id)
+                      );
+                  END IF;
+
+                  -- Dispatch sui 4 casi date NOT NULL combinations.
+                  -- Pareggio: vince RIATTIVAZIONE (operazione successiva
+                  -- nel flow normale). Caso anomalo (riatt senza sosp):
+                  -- ritorna comunque RIATTIVAZIONE — la fn legge, non
+                  -- valida consistenza.
+                  IF v_data_sosp IS NULL AND v_data_riat IS NULL THEN
+                      RETURN QUERY SELECT NULL::date, NULL::text;
+                  ELSIF v_data_sosp IS NOT NULL AND v_data_riat IS NULL THEN
+                      RETURN QUERY SELECT v_data_sosp, 'SOSPENSIONE'::text;
+                  ELSIF v_data_sosp IS NULL AND v_data_riat IS NOT NULL THEN
+                      RETURN QUERY SELECT v_data_riat, 'RIATTIVAZIONE'::text;
+                  ELSIF v_data_sosp > v_data_riat THEN
+                      RETURN QUERY SELECT v_data_sosp, 'SOSPENSIONE'::text;
+                  ELSE
+                      -- v_data_sosp <= v_data_riat: vince RIATTIVAZIONE
+                      RETURN QUERY SELECT v_data_riat, 'RIATTIVAZIONE'::text;
+                  END IF;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.fn_get_evento_stato_corrente_cliente(bigint) IS
+                  'Restituisce (data_evento_stato, tipo_evento) confrontando '
+                  'data_sospensione vs data_riattivazione del cliente. tipo_evento: '
+                  'SOSPENSIONE | RIATTIVAZIONE | NULL. Pareggio = RIATTIVAZIONE. '
+                  'Caso anomalo (riatt senza sosp) ritorna RIATTIVAZIONE (no validation).';
+      rollback:
+        - sql:
+            sql: DROP FUNCTION IF EXISTS anagrafiche.fn_get_evento_stato_corrente_cliente(bigint);
