@@ -15,7 +15,7 @@
 --   successivo. L'EXCLUDE constraint ex_articoli_componenti_no_overlap
 --   impedisce overlap tra versioni.
 --
--- Indice test (1..16):
+-- Indice test (1..18):
 --    1. DELETE -> raise E_BOM_MODIFICA_VIETATA
 --    2. UPDATE coeff_qta -> raise
 --    3. UPDATE componente_id -> raise
@@ -32,6 +32,10 @@
 --   14. UPDATE attivo -> OK
 --   15. UPDATE simultaneo valido_al + attivo -> OK
 --   16. INSERT nuova riga con valido_dal successivo (no-overlap) -> OK
+--   17. UPDATE valido_al = valido_dal su riga creata oggi (chiusura
+--       same-day) -> OK [regressione bug 27-04-2026, drop CHECK
+--       chk_articoli_componenti_valid_dates in 20260427-02]
+--   18. validita riga chiusa same-day = [oggi+6, oggi+7) (range 1 giorno)
 --
 -- Fixture: uso articoli seed ART_TEST_BASE (prodotto) + ART_TEST_FALLBACK
 -- (componente). Creo una riga BoM iniziale con valido_dal=oggi-30,
@@ -43,7 +47,7 @@
 -- ------------------------------------------------------------
 
 BEGIN;
-SELECT plan(16);
+SELECT plan(18);
 
 -- =========================================================
 -- Setup: riga BoM di partenza
@@ -308,6 +312,47 @@ SELECT lives_ok(
                 FROM _t_bom $sql$
     ),
     '16. INSERT nuova riga con valido_dal successivo (no-overlap) -> OK'
+);
+
+-- =========================================================
+-- 17) UPDATE valido_al = valido_dal su riga appena creata -> OK
+-- Regressione bug 27-04-2026: il CHECK strict
+-- chk_articoli_componenti_valid_dates (valido_al > valido_dal) bloccava
+-- la chiusura same-day di una riga BoM appena inserita facendo cadere
+-- il flow FE in errore tecnico SQLSTATE 23514. Drop del CHECK in
+-- 20260427-02 (codice morto: trgfn_set_validita gia' rifiuta < con
+-- 22000). Il trigger block_modifica_struttura ammette
+-- NEW.valido_al = OLD.valido_dal (controllo strict <), quindi il pattern
+-- "Chiudi riga oggi" su una riga con valido_dal=oggi passa.
+-- Targeting: la riga inserita in case 16 (UNIQUE
+-- prodotto_id+componente_id+valido_dal).
+-- =========================================================
+SELECT lives_ok(
+    $sql$ UPDATE catalogo.articoli_componenti
+             SET valido_al = (CURRENT_DATE + INTERVAL '6 days')::date
+           WHERE prodotto_id   = (SELECT prodotto_id   FROM _t_bom)
+             AND componente_id = (SELECT componente_id FROM _t_bom)
+             AND valido_dal    = (CURRENT_DATE + INTERVAL '6 days')::date $sql$,
+    '17. UPDATE valido_al = valido_dal su riga creata oggi (chiusura same-day) -> OK'
+);
+
+-- =========================================================
+-- 18) Verifica che la canonicalizzazione daterange su [X, X] da '[]'
+-- produca '[X, X+1)' (range 1 giorno) -- non degenere/empty.
+-- Il trigger script.trgfn_set_validita ricalcola validita post UPDATE.
+-- =========================================================
+SELECT is(
+    (SELECT validita
+       FROM catalogo.articoli_componenti
+      WHERE prodotto_id   = (SELECT prodotto_id   FROM _t_bom)
+        AND componente_id = (SELECT componente_id FROM _t_bom)
+        AND valido_dal    = (CURRENT_DATE + INTERVAL '6 days')::date),
+    daterange(
+        (CURRENT_DATE + INTERVAL '6 days')::date,
+        (CURRENT_DATE + INTERVAL '7 days')::date,
+        '[)'
+    ),
+    '18. validita riga chiusa same-day = [oggi+6, oggi+7) (range 1 giorno)'
 );
 
 SELECT * FROM finish();
