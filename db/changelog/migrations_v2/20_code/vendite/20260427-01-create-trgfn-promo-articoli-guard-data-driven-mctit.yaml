@@ -1,0 +1,301 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Trigger guard data-driven su vendite.promo_articoli.
+#
+# Why: le promo articoli (STADIO 0 del resolver pricing v5) sono un
+# overlay temporale dove lo "stato" e' DERIVATO dalle date
+# (valido_dal/valido_al) e MAI persistito. Il backend
+# (PromoArticoliService) gia' applica la regola data-driven; il guard
+# DB e' difesa-in-profondita' per UPDATE diretti SQL e script di
+# manutenzione, in modo da garantire uniformita' di comportamento
+# fra service e accesso diretto.
+#
+# Pattern: simmetrico ai guard listini-versioni (20260424-01) e
+# contratti (20260426-05). Differenza: niente colonna stato esplicita,
+# le date stesse rappresentano lo stato FUTURA/INIZIATA/SCADUTA.
+#
+# Dispatch (single fn, INSERT + UPDATE):
+#   INSERT:
+#     valido_dal > CURRENT_DATE   (no creazione retroattiva)
+#     valido_al >= valido_dal e' gia' coperto da chk_promo_articoli_date
+#     + canonicalizzazione daterange via trigger set_validita.
+#
+#   UPDATE, dispatch su stato derivato OLD:
+#     FUTURA  (CURRENT_DATE < OLD.valido_dal):
+#       tutti i campi mutabili, ma nuove date solo verso il futuro
+#       (NEW.valido_dal > today, NEW.valido_al >= today).
+#     INIZIATA (OLD.valido_dal <= CURRENT_DATE <= OLD.valido_al):
+#       whitelist ristretta -> solo descrizione, valido_al (>= today)
+#       e meta. Tutti gli altri campi sono frozen.
+#     SCADUTA (OLD.valido_al < CURRENT_DATE):
+#       nessun campo dominio mutabile (immutabile terminale). Le
+#       colonne audit (data_update/user_update/tx_id) non rientrano nel
+#       confronto: i loro trigger di sistema non costituiscono UPDATE
+#       applicativo.
+#
+# I codici errore E_PROMO_RETROATTIVA / E_PROMO_INIZIATA_CAMPI_RISTRETTI
+# / E_PROMO_SCADUTA_IMMUTABILE sono seedati in messaggi_errore.csv
+# (id 394/395/396).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20260427-01-create-trgfn-promo-articoli-guard-data-driven-mctit.yaml
+
+  - changeSet:
+      id: 20260427-01-01-create-trgfn-promo-articoli-guard-data-driven
+      author: mctit
+      runOnChange: true
+      validCheckSum:
+        - ANY
+      comment: >
+        Funzione trigger vendite.trgfn_promo_articoli_guard_data_driven.
+        Applica regole data-driven (no retroattivita' + immutabilita'
+        iniziata/scaduta) su INSERT e UPDATE. Raise
+        E_PROMO_RETROATTIVA / E_PROMO_INIZIATA_CAMPI_RISTRETTI /
+        E_PROMO_SCADUTA_IMMUTABILE.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: promo_articoli
+            - columnExists:
+                schemaName: vendite
+                tableName: promo_articoli
+                columnName: valido_dal
+            - columnExists:
+                schemaName: vendite
+                tableName: promo_articoli
+                columnName: valido_al
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_promo_articoli_guard_data_driven()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: enforcer data-driven sulle promo_articoli.
+              -- Lo stato della promo (FUTURA/INIZIATA/SCADUTA) e' derivato
+              -- dalle date e mai persistito. Il guard:
+              --   INSERT  -> valido_dal > CURRENT_DATE (no retroattiva).
+              --   UPDATE  -> dispatch su stato derivato OLD:
+              --              FUTURA   tutti mutabili, date solo nel futuro
+              --              INIZIATA solo descrizione/valido_al(>=today)/meta
+              --              SCADUTA  nessun campo dominio mutabile
+              -- Applicato in BEFORE INSERT OR UPDATE; le colonne audit
+              -- (data_update/user_update/tx_id) sono escluse dal confronto
+              -- SCADUTA per non bloccare i trigger di sistema.
+              DECLARE
+                  v_today CONSTANT date := CURRENT_DATE;
+                  v_old_dal date;
+                  v_old_al  date;
+              BEGIN
+                  IF TG_OP = 'INSERT' THEN
+                      -- valido_al >= valido_dal e' garantito da
+                      -- chk_promo_articoli_date e dal trigger set_validita.
+                      IF NEW.valido_dal <= v_today THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'database',
+                              TG_NAME::text,
+                              'E_PROMO_RETROATTIVA',
+                              jsonb_build_object(
+                                  'op',     'INSERT',
+                                  'campo',  'valido_dal',
+                                  'valore', NEW.valido_dal,
+                                  'oggi',   v_today
+                              ),
+                              NEW.tx_id,
+                              'valido_dal',
+                              NEW.valido_dal::text,
+                              v_today::text
+                          );
+                      END IF;
+                      RETURN NEW;
+                  END IF;
+
+                  -- UPDATE: stato derivato dalle date OLD.
+                  v_old_dal := OLD.valido_dal;
+                  v_old_al  := OLD.valido_al;
+
+                  IF v_old_al < v_today THEN
+                      -- SCADUTA: ogni cambio dei campi dominio rifiutato.
+                      IF (NEW.codice, NEW.descrizione, NEW.articolo_id,
+                          NEW.uom_id, NEW.tipo_variazione,
+                          NEW.valore_variazione, NEW.valido_dal,
+                          NEW.valido_al, NEW.attivo, NEW.meta)
+                         IS DISTINCT FROM
+                         (OLD.codice, OLD.descrizione, OLD.articolo_id,
+                          OLD.uom_id, OLD.tipo_variazione,
+                          OLD.valore_variazione, OLD.valido_dal,
+                          OLD.valido_al, OLD.attivo, OLD.meta) THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'database',
+                              TG_NAME::text,
+                              'E_PROMO_SCADUTA_IMMUTABILE',
+                              jsonb_build_object(
+                                  'promo_id',  OLD.id,
+                                  'codice',    OLD.codice,
+                                  'valido_al', v_old_al,
+                                  'oggi',      v_today
+                              ),
+                              NEW.tx_id,
+                              OLD.id::text,
+                              v_old_al::text,
+                              v_today::text
+                          );
+                      END IF;
+                      RETURN NEW;
+                  END IF;
+
+                  IF v_old_dal <= v_today AND v_today <= v_old_al THEN
+                      -- INIZIATA: solo descrizione, valido_al (>= today),
+                      -- meta sono mutabili.
+                      IF NEW.codice            IS DISTINCT FROM OLD.codice
+                         OR NEW.articolo_id    IS DISTINCT FROM OLD.articolo_id
+                         OR NEW.uom_id         IS DISTINCT FROM OLD.uom_id
+                         OR NEW.tipo_variazione    IS DISTINCT FROM OLD.tipo_variazione
+                         OR NEW.valore_variazione  IS DISTINCT FROM OLD.valore_variazione
+                         OR NEW.valido_dal     IS DISTINCT FROM OLD.valido_dal
+                         OR NEW.attivo         IS DISTINCT FROM OLD.attivo THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'database',
+                              TG_NAME::text,
+                              'E_PROMO_INIZIATA_CAMPI_RISTRETTI',
+                              jsonb_build_object(
+                                  'promo_id',   OLD.id,
+                                  'codice',     OLD.codice,
+                                  'valido_dal', v_old_dal,
+                                  'oggi',       v_today
+                              ),
+                              NEW.tx_id,
+                              OLD.id::text,
+                              v_old_dal::text,
+                              v_today::text
+                          );
+                      END IF;
+                      -- valido_al non puo' tornare al passato in iniziata.
+                      IF NEW.valido_al IS DISTINCT FROM OLD.valido_al
+                         AND NEW.valido_al < v_today THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'database',
+                              TG_NAME::text,
+                              'E_PROMO_RETROATTIVA',
+                              jsonb_build_object(
+                                  'op',     'UPDATE/INIZIATA',
+                                  'campo',  'valido_al',
+                                  'valore', NEW.valido_al,
+                                  'oggi',   v_today
+                              ),
+                              NEW.tx_id,
+                              'valido_al',
+                              NEW.valido_al::text,
+                              v_today::text
+                          );
+                      END IF;
+                      RETURN NEW;
+                  END IF;
+
+                  -- FUTURA (v_today < v_old_dal): tutti i campi mutabili,
+                  -- nuove date solo verso il futuro.
+                  IF NEW.valido_dal IS DISTINCT FROM OLD.valido_dal
+                     AND NEW.valido_dal <= v_today THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          TG_NAME::text,
+                          'E_PROMO_RETROATTIVA',
+                          jsonb_build_object(
+                              'op',     'UPDATE/FUTURA',
+                              'campo',  'valido_dal',
+                              'valore', NEW.valido_dal,
+                              'oggi',   v_today
+                          ),
+                          NEW.tx_id,
+                          'valido_dal',
+                          NEW.valido_dal::text,
+                          v_today::text
+                      );
+                  END IF;
+                  IF NEW.valido_al IS DISTINCT FROM OLD.valido_al
+                     AND NEW.valido_al < v_today THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          TG_NAME::text,
+                          'E_PROMO_RETROATTIVA',
+                          jsonb_build_object(
+                              'op',     'UPDATE/FUTURA',
+                              'campo',  'valido_al',
+                              'valore', NEW.valido_al,
+                              'oggi',   v_today
+                          ),
+                          NEW.tx_id,
+                          'valido_al',
+                          NEW.valido_al::text,
+                          v_today::text
+                      );
+                  END IF;
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_promo_articoli_guard_data_driven() IS
+                  'Guard data-driven promo_articoli: no retroattivita'' su INSERT, '
+                  'whitelist ristretta su UPDATE INIZIATA, immutabilita'' su SCADUTA. '
+                  'Raise E_PROMO_RETROATTIVA / E_PROMO_INIZIATA_CAMPI_RISTRETTI / '
+                  'E_PROMO_SCADUTA_IMMUTABILE.';
+      rollback:
+        - sql:
+            sql: DROP FUNCTION IF EXISTS vendite.trgfn_promo_articoli_guard_data_driven();
+
+  - changeSet:
+      id: 20260427-01-02-create-trg-promo-articoli-a10-guard-data-driven
+      author: mctit
+      runOnChange: true
+      validCheckSum:
+        - ANY
+      comment: >
+        Trigger BEFORE INSERT OR UPDATE su vendite.promo_articoli, fase
+        _a10_ (guard). Single trigger per INSERT + UPDATE perche' il
+        predicato no-retroattivita' e' lo stesso (INSERT e' caso degenere
+        di UPDATE FUTURA con OLD assente).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT COUNT(*)
+                FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'vendite'
+                 AND p.proname = 'trgfn_promo_articoli_guard_data_driven';
+      changes:
+        - sql:
+            splitStatements: true
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_promo_articoli_a10_guard_data_driven_ins_upd
+                  ON vendite.promo_articoli;
+
+              CREATE TRIGGER trg_promo_articoli_a10_guard_data_driven_ins_upd
+                  BEFORE INSERT OR UPDATE
+                  ON vendite.promo_articoli
+                  FOR EACH ROW
+                  EXECUTE FUNCTION vendite.trgfn_promo_articoli_guard_data_driven();
+
+              COMMENT ON TRIGGER trg_promo_articoli_a10_guard_data_driven_ins_upd
+                  ON vendite.promo_articoli
+                  IS 'Guard data-driven: no retroattivita'' INSERT, whitelist '
+                     'ristretta UPDATE INIZIATA, immutabilita'' SCADUTA.';
+      rollback:
+        - sql:
+            sql: |
+              DROP TRIGGER IF EXISTS trg_promo_articoli_a10_guard_data_driven_ins_upd
+                  ON vendite.promo_articoli;

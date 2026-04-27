@@ -32,7 +32,6 @@
 | CHECK | chk_articoli_componenti_coeff_qta_pos |  |
 | CHECK | chk_articoli_componenti_no_selfref |  |
 | CHECK | chk_articoli_componenti_note_target_tipo |  |
-| CHECK | chk_articoli_componenti_valid_dates |  |
 | FOREIGN KEY | fk_articoli_componenti_articoli_componente | componente_id |
 | FOREIGN KEY | fk_articoli_componenti_articoli_prodotto | prodotto_id |
 | FOREIGN KEY | fk_articoli_componenti_note | note_target_tipo, note_id |

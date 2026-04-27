@@ -55,6 +55,8 @@
 | trg_note_preventivo_a10_preventivi_righe_require_attivo__457a34 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'preventivi_righe', 'attivo', 'target_riga_id', 'id')` |
 | trg_note_preventivo_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_note_preventivo_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_note_preventivo_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_note_preventivo_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_note_preventivo_validate_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_note_validate_generic('vendite.preventivi_righe', 'preventivo_id', 'PREVENTIVO')` |
 | trg_note_preventivo_validate_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_note_validate_generic('vendite.preventivi_righe', 'preventivo_id', 'PREVENTIVO')` |
 

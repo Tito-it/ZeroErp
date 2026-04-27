@@ -23,7 +23,6 @@
 |------|------|---------|
 | CHECK | chk_uom_conv_fattore_pos |  |
 | CHECK | chk_uom_conv_no_self |  |
-| CHECK | chk_uom_conv_valid_dates |  |
 | FOREIGN KEY | fk_uom_conv_from | uom_from_id |
 | FOREIGN KEY | fk_uom_conv_to | uom_to_id |
 | PRIMARY KEY | pk_unita_misura_conversioni | id |

@@ -191,6 +191,7 @@
 - [trgfn_preventivi_normalize](funzioni/trgfn_preventivi_normalize.md) — La trigger function `vendite.trgfn_preventivi_normalize()` completa i dati minimi di data documento in insert quando il numero preventivo e` gia` presente.
 - [trgfn_preventivi_righe_guard_pending](funzioni/trgfn_preventivi_righe_guard_pending.md) — (latest revision 22-04-2026, Sprint E listini v5 §14.6)
 - [trgfn_preventivi_righe_ricalcola_totali](funzioni/trgfn_preventivi_righe_ricalcola_totali.md) — (latest review 03-04-2026) `vendite.trgfn_preventivi_righe_ricalcola_totali()` e' la trigger function **STATEMENT-level** che mantiene i totali testata preventivo sempre coerenti con le righe. Invoca `vendite.fn_ricalcola_totali_preventivo()` **una sola volta per ogni preventivo_id coinvolto**, anche in caso di operazioni bulk (es. copia righe in revisione).
+- [trgfn_promo_articoli_guard_data_driven](funzioni/trgfn_promo_articoli_guard_data_driven.md) — (latest review 27-04-2026)
 - [trgfn_tipi_indirizzi_only_allowed](funzioni/trgfn_tipi_indirizzi_only_allowed.md)
 
 ## 🔍 Views
