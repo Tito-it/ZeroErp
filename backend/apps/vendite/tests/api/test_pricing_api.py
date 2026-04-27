@@ -15,6 +15,8 @@ Indice test eseguiti:
  4) test_resolve_payload_invalido_400
  5) test_resolve_senza_emittente_user_404
  6) test_resolve_propaga_service_error
+ 7) test_limiti_utente_ritorna_defaults — endpoint L2 con default parametri
+ 8) test_limiti_utente_con_override_user — endpoint L2 con override utente
 """
 
 import json
@@ -178,3 +180,43 @@ class TestResolve(_BaseApiTest):
         self.assertIn(resp.status_code, (400, 404, 409, 500))
         body = resp.json()
         self.assertEqual(body["error"]["code"], "E_CATEGORIA_LISTINO_NON_MAPPATA")
+
+
+_LIMITI_BASE = "/api/v1/vendite/pricing/limiti-utente/"
+_LIMITI_PS = "apps.vendite.api.views_pricing.ParameterService"
+
+
+class TestLimitiUtente(_BaseApiTest):
+    # Scopo: endpoint ritorna i default "0/0" quando nessun override.
+    #        Post-ottimizzazione O1 usa get_defaults (single round-trip).
+    @patch(_AUTH, return_value=(Mock(id=1), None))
+    @patch(_LIMITI_PS)
+    def test_limiti_utente_ritorna_defaults(self, ps_cls, _auth):
+        ps_cls.return_value.get_defaults.return_value = {
+            "VENDITE_MAX_SCONTO_PCT": "0",
+            "VENDITE_MAX_MAGGIORAZIONE_PCT": "0",
+        }
+
+        resp = self.client.get(_LIMITI_BASE)
+
+        self.assertEqual(resp.status_code, 200)
+        body = resp.json()
+        self.assertEqual(body["data"]["max_sconto_pct"], "0")
+        self.assertEqual(body["data"]["max_maggiorazione_pct"], "0")
+        ps_cls.return_value.get_defaults.assert_called_once()
+
+    # Scopo: endpoint rispecchia gli override user risolti dal service.
+    @patch(_AUTH, return_value=(Mock(id=42), None))
+    @patch(_LIMITI_PS)
+    def test_limiti_utente_con_override_user(self, ps_cls, _auth):
+        ps_cls.return_value.get_defaults.return_value = {
+            "VENDITE_MAX_SCONTO_PCT": "15",
+            "VENDITE_MAX_MAGGIORAZIONE_PCT": "5",
+        }
+
+        resp = self.client.get(_LIMITI_BASE)
+
+        self.assertEqual(resp.status_code, 200)
+        body = resp.json()
+        self.assertEqual(body["data"]["max_sconto_pct"], "15")
+        self.assertEqual(body["data"]["max_maggiorazione_pct"], "5")

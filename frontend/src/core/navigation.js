@@ -64,7 +64,8 @@ export const DOMAIN_MENUS = {
     { key: 'preventivi', icon: 'pi pi-file', to: '/vendite/preventivi' },
     { key: 'listini', icon: 'pi pi-tag', to: '/vendite/listini' },
     { key: 'contratti', icon: 'pi pi-file-edit', to: '/vendite/contratti' },
-    { key: 'promo-articoli', icon: 'pi pi-percentage', to: '/vendite/promo-articoli' }
+    { key: 'promo-articoli', icon: 'pi pi-percentage', to: '/vendite/promo-articoli' },
+    { key: 'approvazioni-prezzo', icon: 'pi pi-check-circle', to: '/vendite/approvazioni-prezzo' }
   ],
   'acquisti': [],
   'magazzino': [],

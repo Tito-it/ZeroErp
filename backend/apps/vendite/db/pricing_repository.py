@@ -97,7 +97,8 @@ class PricingRepository:
                     prezzo_unitario,
                     iva_id,
                     descrizione_fattura,
-                    esposto_in_fattura
+                    esposto_in_fattura,
+                    coeff_qta
                   FROM vendite.fn_resolve_prezzo_composito(
                            %s::uuid, %s, %s, %s, %s, %s, %s
                        )

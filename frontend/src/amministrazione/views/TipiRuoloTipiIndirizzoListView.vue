@@ -3,11 +3,12 @@
 import { useTipiRuoloTipiIndirizzoStore } from '../stores/tipiRuoloTipiIndirizzo'
 import { useDrawerState } from '../../core/composables/useDrawerState'
 import { useReadonlyMode } from '../../core/composables/useReadonlyMode'
+import { READONLY_DOMAINS } from '../../core/constants'
 import TipiRuoloTipiIndirizzoSearchTable from '../components/TipiRuoloTipiIndirizzoSearchTable.vue'
 import TipoRuoloTipoIndirizzoDrawer from '../components/TipoRuoloTipoIndirizzoDrawer.vue'
 
 const store = useTipiRuoloTipiIndirizzoStore()
-useReadonlyMode('amm_software')
+useReadonlyMode(READONLY_DOMAINS.AMM_SOFTWARE)
 const drawer = useDrawerState()
 
 async function onSaved() {

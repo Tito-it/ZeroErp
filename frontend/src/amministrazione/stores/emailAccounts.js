@@ -8,8 +8,12 @@ import {
   createEmailAccount,
   updateEmailAccount
 } from '../api/amministrazione'
+import { useTabEvents } from '../../core/composables/useTabEvents'
+import { TAB_ENTITIES } from '../../core/constants'
 
 export const useEmailAccountsStore = defineStore('amm-email-accounts', () => {
+  const { emitDataChanged } = useTabEvents()
+
   const items = ref([])
   const totalRecords = ref(0)
   const loading = ref(false)
@@ -56,12 +60,14 @@ export const useEmailAccountsStore = defineStore('amm-email-accounts', () => {
 
   async function create(payload) {
     const res = await createEmailAccount(payload)
+    emitDataChanged(TAB_ENTITIES.EMAIL_ACCOUNTS, res.data.data.id)
     return res.data.data
   }
 
   async function update(id, payload) {
     const res = await updateEmailAccount(id, payload)
     currentAccount.value = res.data.data
+    emitDataChanged(TAB_ENTITIES.EMAIL_ACCOUNTS, id)
     return res.data.data
   }
 

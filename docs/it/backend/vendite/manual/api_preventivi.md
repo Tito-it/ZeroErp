@@ -114,7 +114,8 @@ Le tabelle DB esistono gia' (`vendite.preventivi`, `preventivi_righe`, `preventi
 - Body JSON: `{ "nuovo_stato": "EMESSO" }`
 - Regole: delega a `vendite.fn_cambia_stato_preventivo()` che valida transizioni e prerequisiti
 - Transizioni: BOZZA→EMESSO (richiede righe), EMESSO→ACCETTATO/RIFIUTATO/SCADUTO/ANNULLATO, BOZZA→ANNULLATO
-- Errori: `E_PREV_STATO_TRANSIZIONE` (409), `E_PREV_NESSUNA_RIGA` (400)
+- **Guard L3 verso ACCETTATO (Sprint E)**: il trigger DB `trg_preventivi_a10_guard_transizione_approvazione_upd` blocca la transizione verso ACCETTATO se esiste almeno una riga con `stato_approvazione_prezzo='PENDING'`. Errore `E_PREVENTIVO_RIGHE_PRICING_PENDENTI` (409). L'admin deve attendere esito approvazione (vedi `api_approvazioni_prezzo.md`) o annullare la richiesta prima di accettare.
+- Errori: `E_PREV_STATO_TRANSIZIONE` (409), `E_PREV_NESSUNA_RIGA` (400), `E_PREVENTIVO_RIGHE_PRICING_PENDENTI` (409)
 
 ---
 
@@ -148,13 +149,16 @@ Le tabelle DB esistono gia' (`vendite.preventivi`, `preventivi_righe`, `preventi
   - `iva_id` (int, opzionale)
   - `uom_operativa_id` (int, opzionale)
   - `ordine` (int, opzionale)
+  - `richiesta_approvazione` (bool, opzionale, default `false`) — **L3 workflow Sprint E**: se `true` e il prezzo viola L2, invece di sollevare `E_PREV_SCONTO_ECCESSIVO`/`E_PREV_MAGGIORAZIONE_ECCESSIVA` la riga viene salvata con `stato_approvazione_prezzo='PENDING'` collegata a una pratica `APPROVAZIONE_PREZZO` aperta automaticamente
 - Regole:
   - Ammesso solo in stato BOZZA
   - **Auto-fill prezzo**: se `prezzo_unitario` non e' nel payload e la testata ha BA+utility+data validi, il service chiama `PricingService.resolve_prezzo` e popola il prezzo dal resolver v5 (3 stadi: promo/contratto/categoria)
   - **L1 override**: se `prezzo_unitario` e' passato e differisce dal resolver, serve l'azione di processo `prezzo_override_manuale`; altrimenti `E_PREV_OVERRIDE_NON_AUTORIZZATO` (403). Superuser bypassato
-  - **Meta audit**: popolato sempre con `origine_prezzo` (PROMO/CONTRATTO_OVERRIDE/CONTRATTO_LISTINO/CATEGORIA/MANUALE) + `prezzo_resolver_context` (listino/contratto/promo + variazione). Se override manuale: anche `prezzo_base_resolver`, `delta_override`, `delta_override_pct`, `override_user_id`
+  - **L2 limite variazione (Sprint D)**: dopo L1, se `prezzo_resolver` e' noto e non zero, calcola `delta_pct` firmato; sconto > `VENDITE_MAX_SCONTO_PCT` o maggiorazione > `VENDITE_MAX_MAGGIORAZIONE_PCT` -> `E_PREV_SCONTO_ECCESSIVO`/`E_PREV_MAGGIORAZIONE_ECCESSIVA` (403). Parametri risolti via `ParameterService` cascata user→group→emittente→default. Superuser bypass.
+  - **L3 workflow approvazione (Sprint E)**: se `richiesta_approvazione=true` e L2 viola, l'errore L2 viene catturato, viene creata pratica `APPROVAZIONE_PREZZO` (stato APERTA) e la riga inserita con `stato_approvazione_prezzo='PENDING'` + `pratica_approvazione_prezzo_id`. Email best-effort al recipient configurato in parameter `VENDITE_APPROVAZIONE_PREZZO_RECIPIENT_EMAIL`. La pratica e' visibile nella coda approver via `GET /vendite/approvazioni-prezzo/`.
+  - **Meta audit**: popolato sempre con `origine_prezzo` (PROMO/CONTRATTO_OVERRIDE/CONTRATTO_LISTINO/CATEGORIA/MANUALE) + `prezzo_resolver_context` (listino/contratto/promo + variazione). Se override manuale: anche `prezzo_base_resolver`, `delta_override`, `delta_override_pct`, `override_user_id`. Se workflow L3: anche `richiesta_approvazione_pending=true` + `violazione_l2` (tipo, variazione_abs_pct, limite_pct).
   - Ricalcolo totali automatico dopo insert (trigger DB)
-- Errori: `E_PREV_VALIDAZIONE` (400), `E_PREV_STATO_NON_MODIFICABILE` (409), `E_PREV_OVERRIDE_NON_AUTORIZZATO` (403)
+- Errori: `E_PREV_VALIDAZIONE` (400), `E_PREV_STATO_NON_MODIFICABILE` (409), `E_PREV_OVERRIDE_NON_AUTORIZZATO` (403), `E_PREV_SCONTO_ECCESSIVO` (403), `E_PREV_MAGGIORAZIONE_ECCESSIVA` (403)
 
 ---
 
@@ -177,10 +181,11 @@ Le tabelle DB esistono gia' (`vendite.preventivi`, `preventivi_righe`, `preventi
 
 - Metodo: `PATCH`
 - Path: `/api/v1/vendite/preventivi/{id}/righe/{rid}/`
-- Body JSON: campi modificabili (`quantita`, `prezzo_unitario`, `sconto_percentuale`, `descrizione`, `uom_operativa_id`, `iva_id`, `ordine`)
+- Body JSON: campi modificabili (`quantita`, `prezzo_unitario`, `sconto_percentuale`, `descrizione`, `uom_operativa_id`, `iva_id`, `ordine`, `richiesta_approvazione`)
 - Regole: ammesso solo in stato BOZZA, ricalcolo totali dopo update
-- **L1 override su PATCH**: se il payload tocca `prezzo_unitario`, scatta lo stesso check dell'insert (autorizzazione + audit meta). L'articolo/UoM della riga esistente sono usati come contesto resolver
-- Errori: `E_PREV_RIGA_NOT_FOUND` (404), `E_PREV_STATO_NON_MODIFICABILE` (409), `E_PREV_OVERRIDE_NON_AUTORIZZATO` (403)
+- **L1+L2+L3 su PATCH**: se il payload tocca `prezzo_unitario`, scattano gli stessi check dell'insert (autorizzazione + audit meta + L2 limite + L3 workflow opzionale via flag `richiesta_approvazione=true`). L'articolo/UoM della riga esistente sono usati come contesto resolver
+- **Trigger DB guard riga PENDING**: se la riga ha `stato_approvazione_prezzo='PENDING'`, il trigger `trg_preventivi_righe_a10_guard_pending_upd` (Sprint E) blocca modifica di campi struttura (prezzo, qta, articolo, sconto, ecc.) con `E_RIGA_PREZZO_PENDENTE` (409). Solo `stato_approvazione_prezzo`, `pratica_approvazione_prezzo_id` e `meta` sono ammessi. Per modificare prezzo: prima chiudere il workflow (approva/rifiuta) o annullare la pratica.
+- Errori: `E_PREV_RIGA_NOT_FOUND` (404), `E_PREV_STATO_NON_MODIFICABILE` (409), `E_PREV_OVERRIDE_NON_AUTORIZZATO` (403), `E_PREV_SCONTO_ECCESSIVO` (403), `E_PREV_MAGGIORAZIONE_ECCESSIVA` (403), `E_RIGA_PREZZO_PENDENTE` (409)
 
 ---
 

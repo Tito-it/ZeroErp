@@ -25,5 +25,11 @@
 | ix__legacy_risorse_umane_auth_user__legacy_risorse_umane_auth_u | `CREATE INDEX ix__legacy_risorse_umane_auth_user__legacy_risorse_umane_auth_u ON storico._legacy_risorse_umane_auth_user USING btree (_legacy_risorse_umane_auth_user_id)` |
 | pk_storico__legacy_risorse_umane_auth_user | `CREATE UNIQUE INDEX pk_storico__legacy_risorse_umane_auth_user ON storico._legacy_risorse_umane_auth_user USING btree (id)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_legacy_risorse_umane_auth_user_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_legacy_risorse_umane_auth_user_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+
 ---
 {% include-markdown "signature-core.md" %}

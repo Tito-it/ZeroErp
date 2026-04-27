@@ -8,6 +8,7 @@ import {
   updateTipoRuoloTipoIndirizzo
 } from '../api/tipiRuoloTipiIndirizzo'
 import { useTabEvents } from '../../core/composables/useTabEvents'
+import { TAB_ENTITIES } from '../../core/constants'
 
 export const useTipiRuoloTipiIndirizzoStore = defineStore('amministrazione-tipi-ruolo-tipi-indirizzo', () => {
   const { emitDataChanged } = useTabEvents()
@@ -32,7 +33,14 @@ export const useTipiRuoloTipiIndirizzoStore = defineStore('amministrazione-tipi-
     const f = filters.value
     const searchTerm = (f.search || '').trim()
 
-    if (searchTerm.length > 0 && searchTerm.length < 3) return
+    if (searchTerm.length > 0 && searchTerm.length < 3) {
+      if (hasSearched.value) {
+        items.value = []
+        totalRecords.value = 0
+        hasSearched.value = false
+      }
+      return
+    }
 
     loading.value = true
     try {
@@ -65,13 +73,13 @@ export const useTipiRuoloTipiIndirizzoStore = defineStore('amministrazione-tipi-
 
   async function create(payload) {
     const res = await createTipoRuoloTipoIndirizzo(payload)
-    emitDataChanged('tipi_ruolo_tipi_indirizzo', res.data.data.id)
+    emitDataChanged(TAB_ENTITIES.TIPI_RUOLO_TIPI_INDIRIZZO, res.data.data.id)
     return res.data.data
   }
 
   async function update(id, payload) {
     const res = await updateTipoRuoloTipoIndirizzo(id, payload)
-    emitDataChanged('tipi_ruolo_tipi_indirizzo', id)
+    emitDataChanged(TAB_ENTITIES.TIPI_RUOLO_TIPI_INDIRIZZO, id)
     return res.data.data
   }
 

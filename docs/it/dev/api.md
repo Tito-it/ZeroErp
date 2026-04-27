@@ -469,13 +469,14 @@ la distinzione formale tra namespace per tipo di consumatore:
 | Namespace | Base view | Chi accede | Stato |
 | --- | --- | --- | --- |
 | `/api/v1/<dominio>/` | `DomainAPIView` / `AdminAPIView` | Operatori interni (dipendenti, ruolo_applicativo=OPERATORE) | **Attivo** |
-| `/api/v1/portale/` | `PortaleAPIView` | Clienti e fornitori del portale | **In sviluppo** (Stage C) |
-| `/api/v1/shop/` | `ShopAPIView` | Negozio online (pubblico + SHOP_CUSTOMER) | **In sviluppo** (Stage D) |
+| `/api/v1/portale/` | `PortaleAPIView` | Clienti e fornitori del portale | **Attivo** (auth+invito+attivazione, MVP dati Stage C) |
+| `/api/v1/shop/` | `ShopAPIView` | Negozio online (pubblico + SHOP_CUSTOMER) | **Attivo** (auth+invito+attivazione admin-driven; catalogo/checkout Stage D) |
 
-Le base class `PortaleAPIView` / `ShopAPIView` sono gia' disponibili in
-`apps/core/api/base_views.py`. Il routing effettivo dei due namespace
-verra' aggiunto in PR-B (portale) e PR-C (shop). Vedi
-[architettura-multi-face-auth](/guide/architettura-multi-face-auth).
+Le base class `PortaleAPIView` / `ShopAPIView` sono in
+`apps/core/api/base_views.py`. Auth + flussi invito/attivazione dei
+portali e dello shop sono operativi (PR-B + B1 §13.7). Le API di dominio
+(catalogo, ordini, checkout, ricevute consumer) arrivano con Stage C/D.
+Vedi [architettura-multi-face-auth](/guide/architettura-multi-face-auth).
 
 ### Convenzione URL
 
@@ -497,9 +498,10 @@ Per l'inventario completo degli endpoint attivi per dominio, consultare la docum
 * **Pratiche**: [api_pratiche_list.md](/backend/pratiche/manual/api_pratiche_list) | [api_pratiche_generate.md](/backend/pratiche/manual/api_pratiche_generate) | [api_pratiche_note.md](/backend/pratiche/manual/api_pratiche_note) | [api_pratiche_allegati.md](/backend/pratiche/manual/api_pratiche_allegati)
 * **Amm. Software**: [api_amm_software.md](api_amm_software.md)
 * **Anagrafiche**: [api_soggetti.md](api_soggetti.md) | [api_indirizzi.md](api_indirizzi.md) | [api_geo_config.md](api_geo_config.md) | [api_fornitori.md](api_fornitori.md)
-* **Auth**: [api_token_cambio_password.md](/backend/core/manual/api_token_cambio_password) | [api_password_reset.md](/backend/core/manual/api_password_reset) | [api_invito_operatore.md](/backend/core/manual/api_invito_operatore)
+* **Auth**: [api_multi_veste_token.md](/backend/core/manual/api_multi_veste_token) | [auth_views_audit.md](/backend/core/manual/auth_views_audit) | [api_user_profile.md](/backend/core/manual/api_user_profile) | [api_token_cambio_password.md](/backend/core/manual/api_token_cambio_password) | [api_password_reset.md](/backend/core/manual/api_password_reset) | [api_invito_operatore.md](/backend/core/manual/api_invito_operatore) | [api_invito_portale_shop.md](/backend/core/manual/api_invito_portale_shop) | [api_logout.md](/backend/core/manual/api_logout)
 * **Email**: [api_email.md](/backend/core/manual/api_email)
 * **Parametri**: [api_parameter_settings.md](../backend/core/manual/api_parameter_settings.md)
+* **Vendite — Pricing v5**: [api_preventivi.md](/backend/vendite/manual/api_preventivi) | [api_listini.md](/backend/vendite/manual/api_listini) | [api_contratti.md](/backend/vendite/manual/api_contratti) | [api_promo_articoli.md](/backend/vendite/manual/api_promo_articoli) | [api_pricing.md](/backend/vendite/manual/api_pricing) | [api_approvazioni_prezzo.md](/backend/vendite/manual/api_approvazioni_prezzo)
 
 Per i building block backend riutilizzabili (helpers, services, repository), consultare il [Catalogo Building Block Backend](backend/catalogo-building-block-backend.md).
 
@@ -510,15 +512,33 @@ Per i building block backend riutilizzabili (helpers, services, repository), con
 | Aspetto            | Dettaglio                                                                    |
 | ------------------ | ---------------------------------------------------------------------------- |
 | Protocollo         | JWT Bearer su tutti gli endpoint `/api/v1/*`                                 |
-| Token              | `POST /api/v1/auth/token/` — emissione                                       |
-| Refresh            | `POST /api/v1/auth/token/refresh/` — rinnovo                                 |
+| Token login        | 3 endpoint namespace-specific (admin/portale/shop), vedi sezione sotto       |
+| Token refresh      | 3 endpoint namespace-specific con guard cross-veste                          |
+| JWT claim custom   | `identita_id` + `ruolo_applicativo` + `sid` (session id stabile)             |
 | Permission class   | `ZeroERPPermission` — risoluzione centralizzata                              |
 | Superuser          | Bypass totale                                                                |
-| SUPER_ADMIN        | Bypass dopo check binding profilo 9100 via `script.fn_is_super_admin`        |
+| SUPER_ADMIN        | Bypass via `script.fn_is_super_admin` (filtro veste OPERATORE, §8.3.7)       |
 | DISABILITATO       | Rifiuto immediato su `ruolo_applicativo = DISABILITATO`                      |
 | Azione processo    | Verificata se la view dichiara `post_permission` / `get_permission`          |
 | CRUD standard      | Livello area/oggetto (`TUTTO`, `LETTURA`, `BLOCCATO`)                        |
 | Scope emittente    | Filtra i dati per emittente fiscale autorizzato (vedi sotto)                 |
+
+### Endpoint login/refresh multi-veste (§8.3 PR-B1)
+
+Post refactor multi-face auth, ogni namespace ha i propri endpoint di login
+e refresh che ammettono solo il subset di vesti che gli compete:
+
+| Path login | Path refresh | Vesti ammesse |
+| --- | --- | --- |
+| `POST /api/v1/admin/token/` | `POST /api/v1/admin/token/refresh/` | `OPERATORE` |
+| `POST /api/v1/portale/token/` | `POST /api/v1/portale/token/refresh/` | `CLIENTE_PORTALE`, `FORNITORE_PORTALE` |
+| `POST /api/v1/shop/token/` | `POST /api/v1/shop/token/refresh/` | `SHOP_CUSTOMER` |
+
+Il vecchio path unificato `/api/v1/auth/token/` e' stato **rimosso senza
+alias** (breaking, grace 0). Client pre-refactor devono aggiornarsi.
+
+Contratto HTTP completo, claim JWT, codici errore e guard cross-namespace:
+[api_multi_veste_token.md](../backend/core/manual/api_multi_veste_token.md).
 
 ### Identita utente: `ruolo_applicativo` e `SUPER_ADMIN`
 
@@ -616,6 +636,29 @@ in `error_policies.py` prima dell'uso. Il suffisso determina la categoria:
 | `_NOT_FOUND` | 404 | `E_PRATICA_NOT_FOUND` |
 | `_DUPLICATO` / `_IN_ESECUZIONE` | 409 | `E_ANAG_DUPLICATO` |
 | `_NEGATO` / `_DENIED` | 403 | `E_PERMESSO_NEGATO` |
+
+#### Codici auth multi-veste (§8.3 PR-B1)
+
+| Codice | HTTP | UI action | Quando |
+| --- | --- | --- | --- |
+| `E_VESTE_NON_ATTIVA` | 403 | show_error_banner | Login o refresh su un namespace senza identita con la veste richiesta |
+| `E_JWT_SENZA_IDENTITA` | 401 | redirect_login | JWT senza claim `identita_id` (token pre-refactor multi-face) |
+| `E_IDENTITA_NON_ATTIVA` | 401 | redirect_login | Claim `identita_id` non corrisponde a identita attiva (revocata dopo emissione) |
+
+Vedi [api_multi_veste_token.md](../backend/core/manual/api_multi_veste_token.md)
+per il contratto completo.
+
+#### Codici invito/attivazione portale + shop (§8.4 PR-B2 + §13.7 B1)
+
+| Codice | HTTP | UI action | Quando |
+| --- | --- | --- | --- |
+| `E_INVITO_PORTALE` | 400 | show_error_banner | Errore admin durante invio/reinvio invito portale o shop (validazione, identita gia' attiva, veste non supportata) |
+| `E_ATTIVAZIONE_PORTALE` | 400 | show_error_banner | Errore consume token attivazione portale (token assente/scaduto, password mismatch, identita rimossa) |
+| `E_ATTIVAZIONE_SHOP` | 400 | show_error_banner | Errore consume token attivazione shop (simmetrico portale, B1 §13.7) |
+| `E_ATTIVAZIONE_SHOP_CROSS` | 400 | show_error_banner | Errore attivazione cross-veste shop dal profilo portale (veste non CLIENTE_PORTALE, identita gia' su altro auth_user, GUC vuota) |
+
+Vedi [api_invito_portale_shop.md](../backend/core/manual/api_invito_portale_shop.md)
+per il contratto completo dei flussi invito + attivazione portale e shop.
 
 ### Test
 

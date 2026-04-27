@@ -1,0 +1,159 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Trigger normalize+guard simmetrico su anagrafiche.clienti per il
+# dominio scadenza fattura.
+#
+# Why: brief BE 2026-04-27 fase 2 normalizzazioni payload pagamento.
+# Pattern allineato a anagrafiche.trgfn_fornitori_guard_normalize
+# (ritenuta_acconto/ritenuta_aliquota): asimmetria voluta tra
+#   - normalize silenzioso quando il payload e' palesemente "spazzatura"
+#     (tipo_gg_scadenza_ft NOT IN ('G','F') con nr_giorni valued ->
+#     forzato a NULL: lo switch UI ha lasciato un residuo)
+#   - guard fail-fast quando il payload e' ambiguo
+#     (tipo_gg_scadenza_ft IN ('G','F') ma nr_giorni NULL/<=0 -> raise:
+#     l'utente ha probabilmente dimenticato di specificare il valore)
+#
+# Pre-requisiti schema (backfill + drop default + add CHECK) gia'
+# applicati da
+# 00_schema/anagrafiche/20260427-03-clienti-norm-giorni-scadenza-pkg.
+#
+# Naming: niente fase _a10_ (riservata a guard, non a trigger misti
+# normalize+guard). Coerente con i normalize esistenti su clienti
+# (trg_clienti_set_periodo_ins_upd, trg_clienti_sync_pdp_ins_upd,
+# trg_clienti_sync_utility_from_ba_ins_upd) e con il pattern
+# trg_fornitori_guard_normalize_ins_upd.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20260427-04-create-trgfn-clienti-normalize-giorni-scadenza-mctit.yaml
+
+  - changeSet:
+      id: 20260427-04-01-create-trgfn-clienti-normalize-giorni-scadenza
+      author: mctit
+      runOnChange: true
+      comment: >
+        Funzione anagrafiche.trgfn_clienti_normalize_giorni_scadenza.
+        Asimmetrica come gemella fornitori: normalize silenzioso per payload
+        spazzatura, raise fail-fast per payload ambiguo. Codice errore
+        E_CLIENTI_GIORNI_SCADENZA_OBBLIGATORI (id 397).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: anagrafiche
+                tableName: clienti
+            - columnExists:
+                schemaName: anagrafiche
+                tableName: clienti
+                columnName: tipo_gg_scadenza_ft
+            - columnExists:
+                schemaName: anagrafiche
+                tableName: clienti
+                columnName: nr_giorni_scadenza
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_clienti_normalize_giorni_scadenza()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: normalize+guard simmetrico sul dominio scadenza
+              -- fattura del cliente. Pattern allineato a
+              -- trgfn_fornitori_guard_normalize:
+              --   - tipo NOT IN ('G','F') con nr_giorni valued -> NULL
+              --     forzato (normalize silenzioso, payload sporco)
+              --   - tipo IN ('G','F') con nr_giorni NULL o <= 0 -> raise
+              --     E_CLIENTI_GIORNI_SCADENZA_OBBLIGATORI (payload
+              --     ambiguo, l'utente probabilmente non ha specificato
+              --     il valore)
+              -- Le combinazioni valide sono ('G',>0), ('F',>0),
+              -- ('M', NULL), ('N', NULL).
+              BEGIN
+                  -- Branch 1: tipo non richiede giorni -> azzera.
+                  IF NEW.tipo_gg_scadenza_ft NOT IN ('G','F') THEN
+                      NEW.nr_giorni_scadenza := NULL;
+                      RETURN NEW;
+                  END IF;
+
+                  -- Branch 2: tipo richiede giorni -> guard.
+                  IF NEW.nr_giorni_scadenza IS NULL
+                     OR NEW.nr_giorni_scadenza <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          TG_NAME::text,
+                          'E_CLIENTI_GIORNI_SCADENZA_OBBLIGATORI',
+                          jsonb_build_object(
+                              'cliente_id',         NEW.id,
+                              'tipo_gg_scadenza_ft', NEW.tipo_gg_scadenza_ft,
+                              'nr_giorni_scadenza',  NEW.nr_giorni_scadenza
+                          ),
+                          NEW.tx_id,
+                          NEW.tipo_gg_scadenza_ft,
+                          COALESCE(NEW.nr_giorni_scadenza::text, 'NULL')
+                      );
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.trgfn_clienti_normalize_giorni_scadenza() IS
+                  'Normalize+guard scadenza fattura cliente. tipo NOT IN (G,F) '
+                  '-> nr_giorni=NULL forzato; tipo IN (G,F) con nr_giorni '
+                  'NULL/<=0 -> raise E_CLIENTI_GIORNI_SCADENZA_OBBLIGATORI. '
+                  'Pattern allineato a trgfn_fornitori_guard_normalize.';
+      rollback:
+        - sql:
+            sql: DROP FUNCTION IF EXISTS
+              anagrafiche.trgfn_clienti_normalize_giorni_scadenza();
+
+  - changeSet:
+      id: 20260427-04-02-create-trg-clienti-normalize-giorni-scadenza
+      author: mctit
+      runOnChange: true
+      comment: >
+        Trigger BEFORE INSERT OR UPDATE OF tipo_gg_scadenza_ft,
+        nr_giorni_scadenza su anagrafiche.clienti. Niente fase _a10_ (riservata
+        a guard puro): pattern coerente con i normalize esistenti su clienti e
+        con trg_fornitori_guard_normalize.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT COUNT(*)
+                FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'anagrafiche'
+                 AND p.proname = 'trgfn_clienti_normalize_giorni_scadenza';
+      changes:
+        - sql:
+            splitStatements: true
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_clienti_normalize_giorni_scadenza_ins_upd
+                  ON anagrafiche.clienti;
+
+              CREATE TRIGGER trg_clienti_normalize_giorni_scadenza_ins_upd
+                  BEFORE INSERT OR UPDATE OF tipo_gg_scadenza_ft, nr_giorni_scadenza
+                  ON anagrafiche.clienti
+                  FOR EACH ROW
+                  EXECUTE FUNCTION anagrafiche.trgfn_clienti_normalize_giorni_scadenza();
+
+              COMMENT ON TRIGGER trg_clienti_normalize_giorni_scadenza_ins_upd
+                  ON anagrafiche.clienti
+                  IS 'Normalize+guard scadenza fattura cliente.';
+      rollback:
+        - sql:
+            sql: |
+              DROP TRIGGER IF EXISTS trg_clienti_normalize_giorni_scadenza_ins_upd
+                  ON anagrafiche.clienti;

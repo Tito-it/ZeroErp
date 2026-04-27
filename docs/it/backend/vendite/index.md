@@ -1,6 +1,7 @@
 # Area 'vendite' (Backend)
 
 ## API
+- [api_approvazioni_prezzo](manual/api_approvazioni_prezzo.md) — Workflow **L3 approvazione out-of-policy** per override prezzo che violano i limiti L2 configurati: l'operatore richiede approvazione, l'approver (utente con approva_prezzo_override) decide approva/rifiuta dalla coda de…
 - [api_commessa_attivita](manual/api_commessa_attivita.md) — Esporre via HTTP la lista paginata delle attività (commesse_attivita) di una commessa, con filtri opzionali per stato emissione, stato approvazione e mese di competenza.
 - [api_commessa_stato](manual/api_commessa_stato.md) — Esporre via HTTP lo stato e i contatori aggregati di una singola commessa, per dashboard e monitoraggio avanzamento.
 - [api_commesse_pricing](manual/api_commesse_pricing.md) — Esporre via HTTP le operazioni di gestione prezzo su attivita` di commessa: riallineamento da listino (N5), variazione eccezionale manuale (N7) e sblocco prezzo bloccato (N7-sblocco).
@@ -12,6 +13,7 @@
 - [api_lotto_segnalazioni_summary](manual/api_lotto_segnalazioni_summary.md) — Esporre via HTTP il riepilogo segnalazioni attive di un lotto, con indicazione di blocco avanzamento step.
 - [api_lotto_task_runs](manual/api_lotto_task_runs.md) — Esporre via HTTP i task run runtime di un lotto per monitoraggio operativo e diagnostica pipeline.
 - [api_preventivi](manual/api_preventivi.md) — Esporre via HTTP la gestione completa dei preventivi di vendita: CRUD testata, righe, indirizzi, cambio stato, revisioni, integrazione con commesse/fatturazione e pratiche.
+- [api_pricing](manual/api_pricing.md) — Endpoint diagnostici e di lookup per il sistema pricing v5. Espongono il resolver a 3 stadi (PROMO → CONTRATTO → CATEGORIA) e i limiti L2 di variazione prezzo configurati per l'utente corrente.
 - [api_promo_articoli](manual/api_promo_articoli.md) — CRUD admin per l'overlay promo temporale **STADIO 0** del resolver prezzi v5: una promo attiva per (articolo, uom) in un periodo batte qualunque prezzo da listino o matrice categoria. E' l'unico livello che ammette tipo…
 - [api_reset_lotto_draft](manual/api_reset_lotto_draft.md) — Esporre via HTTP il reset tecnico di un lotto MASSIVO in DRAFT.
 - [api_reset_lotto_fattura_draft](manual/api_reset_lotto_fattura_draft.md) — Esporre via HTTP il reset tecnico di una singola fattura in un lotto MASSIVO in DRAFT.

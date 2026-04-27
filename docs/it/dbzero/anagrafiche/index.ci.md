@@ -36,16 +36,18 @@
 
 ## ⚙️ Funzioni (manuale)
 - [fn_build_indirizzo_normalizzato](manual/fn_build_indirizzo_normalizzato.md) — Centralizza **tutta** la logica di normalizzazione degli indirizzi fisici. E' la **unica source of truth**: il trigger `trgfn_indirizzi_dettaglio_normalize` la chiama e assegna i risultati (zero logica nel trigger). Il backend Python la usa per check duplicato via GIN index.
+- [fn_check_fornitore_attivo](manual/fn_check_fornitore_attivo.md) — (latest review 22-04-2026) La funzione **`anagrafiche.fn_check_fornitore_attivo()`** verifica in modo puramente booleano se un fornitore puo' essere usato nei flussi operativi del ciclo passivo, in particolare per ordini e DDT.
 - [fn_crea_auth_user](manual/fn_crea_auth_user.md) — (latest review 13-03-2026) Building block atomico per la creazione di un record `auth_user` (Django). Gestisce la validazione dei parametri e i guard di unicita' su username e email.
 - [fn_crea_indirizzo_soggetto](manual/fn_crea_indirizzo_soggetto.md) — (latest review 13-03-2026)
-- [fn_crea_operatore](manual/fn_crea_operatore.md)
+- [fn_crea_operatore](manual/fn_crea_operatore.md) — (latest review 18-03-2026) Orchestratore transazionale per la creazione completa di un operatore. Supporta **due flussi**:
 - [fn_crea_risorsa_umana](manual/fn_crea_risorsa_umana.md) — (latest review 13-03-2026) Building block atomico per la creazione di una risorsa umana con bridge `auth_user` opzionale.
 - [fn_crea_soggetto_pf](manual/fn_crea_soggetto_pf.md) — (latest review 13-03-2026) Building block atomico per la creazione di un soggetto Persona Fisica (natura PR = Privato) con contatto default obbligatorio.
 - [fn_crea_soggetto_pg](manual/fn_crea_soggetto_pg.md) — (latest review 14-03-2026) Building block atomico per la creazione di un soggetto Persona Giuridica con contatto default obbligatorio e dati societari (condizionali alla `dati_societari_policy` del tipo soggetto).
-- [fn_get_emittente_fiscale_id](manual/fn_get_emittente_fiscale_id.md)
-- [fn_get_emittente_fiscale_pk](manual/fn_get_emittente_fiscale_pk.md)
+- [fn_get_emittente_fiscale_id](manual/fn_get_emittente_fiscale_id.md) — (last review 07-04-2026)
+- [fn_get_emittente_fiscale_pk](manual/fn_get_emittente_fiscale_pk.md) — (creata 07-04-2026)
 - [fn_get_or_create_indirizzo_dettaglio](manual/fn_get_or_create_indirizzo_dettaglio.md) — (latest review 13-03-2026) Building block atomico per l'upsert di un civico normalizzato in `anagrafiche.indirizzi_dettaglio`.
-- [fn_lookup_utilities_per_ba](manual/fn_lookup_utilities_per_ba.md)
+- [fn_guard_fornitore_attivo](manual/fn_guard_fornitore_attivo.md) — (latest review 22-04-2026) La funzione **`anagrafiche.fn_guard_fornitore_attivo()`** applica una verifica fail-fast sul fornitore prima di consentirne l'uso nei flussi operativi del ciclo passivo, in particolare ordini e DDT.
+- [fn_lookup_utilities_per_ba](manual/fn_lookup_utilities_per_ba.md) — (latest review 22-04-2026) La funzione **`anagrafiche.fn_lookup_utilities_per_ba()`** restituisce le utility selezionabili per un billing account, incrociando due vincoli:
 - [fn_notify_cambio_reparto](manual/fn_notify_cambio_reparto.md) — (latest review 10-03-2026) La funzione **`anagrafiche.fn_notify_cambio_reparto()`** emette una notifica PostgreSQL sul canale `cambio_reparto` quando una risorsa umana viene spostata da un'unita' organizzativa a un'altra.
 - [fn_search_indirizzi_dettaglio](manual/fn_search_indirizzi_dettaglio.md) — (latest review 28-11-25) La funzione **`anagrafiche.fn_search_indirizzi_dettaglio`** fornisce un **punto unico di ingresso** per la ricerca degli indirizzi di dettaglio normalizzati, appoggiandosi alla vista:
 - [fn_sync_auth_user_expired](manual/fn_sync_auth_user_expired.md) — (latest review 18-04-2026)
@@ -55,6 +57,7 @@
 - [trgfn_billing_account_guard_normalize](manual/trgfn_billing_account_guard_normalize.md) — (latest review 28-12-25) Il trigger `anagrafiche.trgfn_billing_account_guard_normalize` applica le **validazioni di business** e normalizza i campi, mentre la generazione del `codice` e' demandata al sistema automatico basato su `config.sistema_codici`.
 - [trgfn_billing_account_link_ef](manual/trgfn_billing_account_link_ef.md)
 - [trgfn_clienti_guard_ruolo_cliente](manual/trgfn_clienti_guard_ruolo_cliente.md) — (latest review 05-12-25) - **Centralizzare l’assegnazione del ruolo “cliente”**     Delegare a `script.fn_guard_soggetto_ruolo ` la logica di inserimento o verifica del linking table, evitando duplicazioni di codice.
+- [trgfn_clienti_normalize_giorni_scadenza](manual/trgfn_clienti_normalize_giorni_scadenza.md) — (latest review 27-04-2026)
 - [trgfn_clienti_set_parent_istanza](manual/trgfn_clienti_set_parent_istanza.md) — (latest update 09-12-25) La funzione `anagrafiche.trgfn_clienti_set_parent_istanza()` ha il compito di **mantenere la catena lineare delle istanze** (`istanze_utilities.parent_istanza_id`) per ciascun **PDP** quando viene inserito o attivato un nuovo cliente.
 - [trgfn_clienti_set_periodo](manual/trgfn_clienti_set_periodo.md) — (latest review 09-12-25) La funzione `anagrafiche.trgfn_clienti_set_periodo()` è una **trigger function di dominio** che ha il compito di:
 - [trgfn_clienti_sync_pdp](manual/trgfn_clienti_sync_pdp.md) — (latest review 09-12-25) La funzione `anagrafiche.trgfn_clienti_sync_pdp()` è una **trigger function di sincronizzazione** che ha il compito di mantenere allineato il campo `pdp_id` della tabella `anagrafiche.clienti` con il valore presente sull’istanza collegata (`anagrafiche.istanze_utilities`).

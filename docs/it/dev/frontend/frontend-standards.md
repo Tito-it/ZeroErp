@@ -813,6 +813,189 @@ Le mappe sono centralizzate in `core/utils/severity.js` — un solo punto di mod
 
 ---
 
+## Transizione a stato terminale con data (CESSATO / CHIUSO / TERMINATO)
+
+> **Regola standard**: per le entità il cui workflow include uno **stato terminale**
+> (es. contratto `CESSATO`, listino-versione `CHIUSA`, soggetto `ESTINTO`)
+> accompagnato da una **data finale** (`valido_al`, `data_chiusura`, `data_cessazione`),
+> la chiusura **non si fa modificando la data nel form**: si fa con un pulsante
+> dedicato che apre un dialog di conferma con DatePicker (default oggi).
+> La data e il cambio stato vengono applicati in **transazione atomica** dal BE.
+
+### Motivazione
+
+- Evita lo stato incoerente "stato terminale + data NULL" (resolver/processi che dipendono dalla data continuerebbero a considerare l'entità operativa)
+- Rende l'azione esplicita e auditabile (1 click intenzionale, non 2 modifiche separate)
+- Previene errori dell'operatore (dimentica data, oppure imposta data senza cambiare stato)
+- Allinea l'esperienza fra domini: l'utente impara una volta sola "Chiudi/Cessa = dialog con data"
+
+### Pattern FE — drawer principale
+
+**1. Pulsanti cambio stato sempre attivi anche in modalità readonly.**
+Aggiungere classe `app-escape` per bypass del CSS protect:
+
+```vue
+<Button v-for="stato in statiTransizionabili" :key="stato"
+  :label="t(`<dominio>.azione_${stato.toLowerCase()}`)"
+  size="small" outlined
+  class="app-escape"
+  @click="onCambiaStato(stato)" />
+```
+
+**2. Handler `onCambiaStato` distingue lo stato terminale.**
+
+```js
+function onCambiaStato(codice) {
+  if (codice === 'CESSATO' /* o CHIUSO/TERMINATO */) {
+    openCessaDialog()
+    return
+  }
+  // altre transizioni: confirmAction generico
+  confirmAction({ ... onAccept: () => store.cambiaStato(id, codice) })
+}
+```
+
+**3. Dialog dedicato con DatePicker default oggi.**
+
+```vue
+<Dialog v-model:visible="cessaDialogVisible" modal
+  :header="t('<dominio>.cessa_dialog_titolo')" :style="{ width: '420px' }">
+  <div class="form-field">
+    <label>{{ t('<dominio>.cessa_dialog_data') }}</label>
+    <DatePicker v-model="cessaDialogData" date-format="dd/mm/yy" show-icon />
+  </div>
+  <Message severity="warn" :closable="false" size="small">
+    {{ t('<dominio>.cessa_dialog_warning') }}
+  </Message>
+  <template #footer>
+    <Button :label="t('common.cancel')" text severity="secondary" @click="cessaDialogVisible = false" />
+    <Button :label="t('<dominio>.cessa_dialog_conferma')" icon="pi pi-times" severity="danger"
+      :disabled="!cessaDialogData || loading" :loading="loading"
+      @click="onConfermaCessazione" />
+  </template>
+</Dialog>
+```
+
+```js
+function openCessaDialog() {
+  cessaDialogData.value = new Date()  // default oggi
+  cessaDialogVisible.value = true
+}
+async function onConfermaCessazione() {
+  const validoAl = toDateString(cessaDialogData.value)
+  const result = await execute(
+    () => store.cambiaStato(id, 'CESSATO', { validoAl }),
+    { successMessage: t('<dominio>.stato_cambiato') }
+  )
+  if (result !== null) {
+    cessaDialogVisible.value = false
+    await refreshDetail()
+  }
+}
+```
+
+**4. Campo data condizionale per stato.**
+
+| Stato            | Visibilità campo data | Editabile         | Label                                  |
+| ---------------- | --------------------- | ----------------- | -------------------------------------- |
+| DRAFT            | sì                    | sì (opzionale)    | "Fine validità" / "Valido al"          |
+| ATTIVO / SOSPESO | **nascosto**          | —                 | (nessuna: cessazione passa dal dialog) |
+| CESSATO / CHIUSO | sì                    | **no** (readonly) | "Data cessazione" / "Data chiusura"    |
+
+```vue
+<div class="form-field"
+  v-if="!isEdit || detail?.stato_codice === 'DRAFT' || detail?.stato_codice === 'CESSATO'">
+  <label>
+    {{ detail?.stato_codice === 'CESSATO'
+      ? t('<dominio>.field_data_cessazione')
+      : t('<dominio>.field_valido_al') }}
+  </label>
+  <DatePicker :model-value="parseIsoDate(form.valido_al)"
+    @update:model-value="form.valido_al = toIsoDate($event)"
+    :disabled="detail?.stato_codice === 'CESSATO'"
+    date-format="dd/mm/yy" show-icon class="w-full" />
+</div>
+```
+
+**5. `buildPayload` non spedisce la data quando il campo è nascosto.** In edit
+post-DRAFT il payload PATCH testata deve essere coerente con la whitelist BE
+del Profilo A (vedi sotto): non re-spedire campi loaded.
+
+### Cessazione immediata vs programmata (regola data-driven)
+
+Quando l'utente sceglie nel dialog la data, il comportamento si differenzia:
+
+| Data scelta            | Cessazione   | Effetto                                                              |
+| ---------------------- | ------------ | -------------------------------------------------------------------- |
+| oggi o passata         | immediata    | Service applica PATCH `valido_al` + UPDATE stato `CESSATO` (atomico) |
+| futura (>= today)      | programmata  | Service applica solo PATCH `valido_al`. Stato resta ATTIVO/SOSPESO. Job notturno DB allineerà a CESSATO quando la data scade |
+
+**Rationale** (allineato col principio fail-safe): un contratto con stato `CESSATO` ma `valido_al` futuro è incoerente — il resolver/processi che dipendono da `validita @> CURRENT_DATE` continuano correttamente a considerarlo operativo, ma chi legge lo stato vede "cessato". Lo evitiamo per costruzione: il cambio stato avviene solo quando la realtà operativa lo conferma.
+
+**Dialog adattivo**: titolo, severity, label conferma e toast variano in base a `cessazioneProgrammata`:
+
+```js
+const cessazioneProgrammata = computed(() => {
+  if (!cessaDialogData.value) return false
+  const oggi = new Date(); oggi.setHours(0, 0, 0, 0)
+  const scelta = new Date(cessaDialogData.value); scelta.setHours(0, 0, 0, 0)
+  return scelta >= oggi
+})
+```
+
+**Cessazione programmata visibile in stato intermedio**: in ATTIVO/SOSPESO con `valido_al` valorizzato, il drawer mostra il campo readonly come "Cessazione programmata al {data}" — l'operatore vede che il contratto è in attesa di scadenza.
+
+### Pattern BE — service `cambia_stato`
+
+Estendere il service per accettare `valido_al` opzionale e applicare la regola data-driven:
+
+```python
+def cambia_stato(
+    self, contratto_id: int, *, codice_interno: str, valido_al: date | None = None,
+) -> dict[str, Any]:
+    target_stato_id = self._repo.get_stato_id_by_codice(codice_interno)
+    cessazione_programmata = False
+    if codice_interno == "CESSATO":
+        # data obbligatoria + valido_al >= valido_dal (errore parlante anti CHK constraint)
+        ErrorManager.require(valido_al is not None, ...)
+        existing = self._repo.get(contratto_id)
+        if isinstance(existing.get("valido_dal"), date):
+            ErrorManager.require(valido_al >= existing["valido_dal"], ...)
+        # Regola fail-safe: data futura -> programmata (no cambio stato)
+        if valido_al >= date.today():
+            cessazione_programmata = True
+    with transaction.atomic():
+        if valido_al is not None:
+            self._repo.update_contratto(contratto_id, {"valido_al": valido_al})
+        if not cessazione_programmata:
+            self._repo.update_stato(contratto_id, target_stato_id)
+    return self.get_contratto(contratto_id)
+```
+
+### Pattern DB — guard transizione + job notturno
+
+Lato DB serve **defense-in-depth** per chiudere il cerchio (analogo a listini-versioni):
+
+1. **Trigger guard** BEFORE UPDATE OF `stato_doc_xxx_id`: ammette transizione a stato terminale (CESSATO/CHIUSA) **solo se** `valido_al IS NOT NULL AND valido_al < CURRENT_DATE`. Nome: `trgfn_<tabella>_a10_guard_transizione_stato`.
+2. **Job pgAgent notturno**: UPDATE → CESSATO/CHIUSA quando `valido_al < CURRENT_DATE`. L'UPDATE passa il guard per costruzione. Funzione incapsulante: `<schema>.fn_<tabella>_close_scadute()`.
+3. Brief al team DB (vedere `brief-db-contratti-cessazione-data-driven.md`, `brief-db-listini-stato-chiusa-sync.md`).
+
+### Esempi nel codice
+
+| Dominio           | Stato terminale              | File FE                                          |
+| ----------------- | ---------------------------- | ------------------------------------------------ |
+| Contratti vendite | CESSATO                      | `vendite/components/ContrattoDrawer.vue`         |
+| Listini-versioni  | CHIUSA (sync da `valido_al`) | `vendite/components/ChiudiVersioneDialog.vue`    |
+
+### Anti-pattern da evitare
+
+- ❌ **Mostrare `valido_al` come campo editabile in stato ATTIVO**: l'utente potrebbe modificarlo senza cambiare stato → entità tecnicamente cessata ma stato `ATTIVO` (e viceversa)
+- ❌ **2 chiamate API separate** PATCH `valido_al` + POST `cambia-stato`: race condition se la seconda fallisce → stato incoerente
+- ❌ **Pulsante cambio stato disabilitato in readonly**: l'operatore con permessi LETTURA legittimamente non può, ma in stato post-DRAFT (drawer readonly) deve comunque poter cessare → usa `app-escape`
+- ❌ **`statiTransizionabili` con stato terminale come destinazione senza dialog**: se manca il dialog, la chiamata cambia_stato senza valido_al lascia validità aperta
+
+---
+
 ## Responsive
 
 | Breakpoint | Dispositivo | Comportamento                                                                       |
@@ -1045,15 +1228,48 @@ const status = await execute(() => api.get('/status/'), { silent: true })
 
 ---
 
-## Modalita' sola lettura (pattern "protect")
+## Modalita' sola lettura e accesso — pattern "protect"
 
 ### Principio
 
-Le autorizzazioni utente prevedono la **sola lettura** come livello di accesso. Tutti i form e le view devono essere progettati per supportare nativamente la modalita' read-only, senza duplicare componenti o creare varianti separate.
+Le autorizzazioni utente prevedono tre livelli di accesso (`TUTTO`, `LETTURA`, `BLOCCATO`) su tre granularita' diverse. Tutti i form e le view devono supportare nativamente le modalita' ridotte senza duplicare componenti o creare varianti separate.
+
+### Piramide permessi
+
+| Livello | Cosa controlla | Trigger FE | Enforcement BE |
+| --- | --- | --- | --- |
+| **Area** (schema DB) | Accesso all'intero dominio | `useReadonlyMode(schemaDb)` + route guard su `BLOCCATO` | `ZeroERPPermission` via `area_funzionale` |
+| **Azione processo** | Singola operazione (es. "genera fatture") | prop `action` su `NewButton` / `DrawerFooter` | `permission_codename` sulla view |
+| **Oggetto / model** (v2) | Singola entita' dentro un'area | `useReadonlyMode(schemaDb, modelName)` | `model_permission = (app_label, model_name)` sulla view |
+
+### Composable `useReadonlyMode(schemaDb, modelName?)`
+
+Il provider va chiamato nella View (parent della SearchTable e dei drawer). I figli iniettano con `useInjectReadonly()` / `useInjectBlocked()`.
+
+```js
+// Livello area (classico)
+useReadonlyMode('anagrafiche')
+
+// Livello oggetto (permessi v2) — richiede model_permission sulla view BE
+useReadonlyMode('anagrafiche', 'cliente')
+```
+
+Semantica di `isReadonly` / `isBlocked` dopo la risoluzione:
+
+| Contesto | Livello risolto | `isReadonly` | `isBlocked` |
+| --- | --- | --- | --- |
+| Area | TUTTO | `false` | `false` |
+| Area | LETTURA | `true` | `false` |
+| Area | BLOCCATO | — (route guard interviene prima) | — |
+| Oggetto | TUTTO | `false` | `false` |
+| Oggetto | LETTURA | `true` | `false` |
+| Oggetto | BLOCCATO | `true` | `true` |
+
+A livello oggetto `BLOCCATO` implica anche `isReadonly` (l'utente non deve poter attivare form o inviare POST).
 
 ### Tecnica CSS "pannello protect"
 
-Ispirata al formato protect AS/400: un unico overlay CSS blocca ogni interazione sulla view, senza toccare i componenti interni. Non si creano componenti `*ReadOnly.vue` separati.
+Ispirata al formato protect AS/400: un unico overlay CSS blocca ogni interazione sul contenuto, senza toccare i componenti interni. Non si creano componenti `*ReadOnly.vue` separati.
 
 ```css
 .app-readonly {
@@ -1063,9 +1279,7 @@ Ispirata al formato protect AS/400: un unico overlay CSS blocca ogni interazione
 }
 ```
 
-### Come applicare
-
-Ogni view/drawer che supporta la sola lettura wrappa il contenuto con la classe condizionale:
+Wrap del contenuto:
 
 ```vue
 <div :class="{ 'app-readonly': isReadonly }">
@@ -1073,7 +1287,183 @@ Ogni view/drawer che supporta la sola lettura wrappa il contenuto con la classe 
 </div>
 ```
 
-Il flag `isReadonly` viene derivato dalle autorizzazioni utente (permesso di scrittura assente sul dominio/entita').
+### Pattern LISTA — template standard
+
+Ogni SearchTable con permessi livello oggetto segue questo schema:
+
+```vue
+<script setup>
+import ReadonlyBadge from '@/core/components/ReadonlyBadge.vue'
+import ReloadButton from '@/core/components/ReloadButton.vue'
+import NewButton from '@/core/components/NewButton.vue'
+import AccessoBloccatoPanel from '@/core/components/AccessoBloccatoPanel.vue'
+import { useInjectBlocked } from '@/core/composables/useReadonlyMode'
+
+const isBlocked = useInjectBlocked()
+</script>
+
+<template>
+  <div class="app-tab-content">
+    <!-- BLOCCATO: pannello sostitutivo, niente toolbar ne' tabella -->
+    <AccessoBloccatoPanel v-if="isBlocked" />
+
+    <template v-else>
+      <div class="app-page-toolbar">
+        <div class="app-page-filters">
+          <!-- input search, filtri -->
+        </div>
+        <div class="app-page-actions">
+          <ReadonlyBadge />
+          <ReloadButton @click="reload" />
+          <NewButton :tooltip="..." @click="emit('new')" />
+        </div>
+      </div>
+      <DataTable ... />
+    </template>
+  </div>
+</template>
+```
+
+**Regole operative liste**:
+
+- ❌ **mai** `<Button icon="pi pi-refresh" ...>` inline — sempre `<ReloadButton @click="reload" />`
+- ❌ **mai** badge testuale "Sola lettura" custom — sempre `<ReadonlyBadge />`
+- ✅ Ordine fisso in `app-page-actions`: `ReadonlyBadge → ReloadButton → NewButton`
+- ✅ `AccessoBloccatoPanel` sostituisce toolbar + DataTable (variante A, schermata protect). **Non** tenere toolbar visibile disabilitata.
+- ✅ `ReloadButton` si nasconde solo su `isBlocked` (serve anche in LETTURA); `NewButton` si nasconde su `isReadonly`; `ReadonlyBadge` si mostra solo su `isReadonly && !isBlocked`
+
+### Stato permessi → UI della lista
+
+Tabella riassuntiva di cosa vede l'operatore in base al livello risolto:
+
+| Livello | Toolbar | Filtri | ReloadButton | NewButton | ReadonlyBadge | Corpo lista |
+| --- | --- | --- | --- | --- | --- | --- |
+| TUTTO | visibile | attivi | visibile | visibile | nascosto | DataTable normale, Nuovo + modifica OK |
+| LETTURA | visibile | attivi | visibile | nascosto | visibile | DataTable, riga apre drawer in consultazione |
+| BLOCCATO (area) | — | — | — | — | — | l'utente non arriva alla pagina (route guard blocca + sidebar nasconde la voce) |
+| BLOCCATO (oggetto) | nascosta | — | nascosto | nascosto | nascosto | `AccessoBloccatoPanel` — icona 🔒 + messaggio, niente DataTable |
+
+### Modalita' BLOCCATA — dettaglio per liste (livello oggetto)
+
+A differenza del BLOCCATO di area (dove il route guard impedisce la navigazione), il BLOCCATO di **livello oggetto** lascia raggiungere la pagina: l'operatore potrebbe avere `anagrafiche = TUTTO` ma `anagrafiche.cliente = BLOCCATO`. La view deve quindi auto-rilevare lo stato e mostrare la schermata sostitutiva.
+
+**Comportamento atteso**:
+
+- Non tentare alcuna fetch all'apertura: lasciare la store non inizializzata
+- Non mostrare toolbar, filtri o tabella: sostituisci con `<AccessoBloccatoPanel />`
+- Non mostrare badge `ReadonlyBadge`: il pannello comunica gia' piu' forte
+- Nessun sub-drawer attivabile: l'utente non puo' cliccare righe (non esistono)
+- Messaggio i18n standard: `common.accesso_negato_elenco` + `common.accesso_negato_hint`
+
+**Implementazione minima** (gia' nel template standard sopra):
+
+```vue
+<template>
+  <div class="app-tab-content">
+    <AccessoBloccatoPanel v-if="isBlocked" />
+    <template v-else>
+      <!-- toolbar + DataTable normali -->
+    </template>
+  </div>
+</template>
+```
+
+**Cosa NON fare**:
+
+- ❌ Non lasciare la toolbar visibile "grigia/disabilitata" sotto il pannello (variante B scartata: semanticamente ambigua)
+- ❌ Non chiamare `store.fetchList()` sotto `onMounted` senza guard su `isBlocked`
+- ❌ Non mostrare empty state generico (`SearchHint`) — il pannello bloccato e' piu' specifico
+- ❌ Non usare banner inline + tabella vuota — la separazione toolbar/pannello rompe il pattern AS/400
+
+### Pattern DRAWER — template standard
+
+`DrawerTitle` include **automaticamente** il badge readonly via inject. Zero codice aggiuntivo per lo sviluppatore:
+
+```vue
+<Drawer :visible="visible" @update:visible="...">
+  <template #header>
+    <DrawerTitle
+      :action="isEdit ? t('common.edit') : t('common.new')"
+      :title="t('...')"
+      icon="pi pi-briefcase"
+    />
+    <!-- badge "Sola lettura" appare a destra automaticamente se readonly -->
+  </template>
+
+  <div class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
+    <!-- form normale, disabled si propaga via .app-readonly -->
+  </div>
+
+  <DrawerFooter @save="onSave" @cancel="onCancel" />
+  <!-- pulsante Salva nascosto automaticamente se readonly -->
+</Drawer>
+```
+
+**Regole operative drawer**:
+
+- ✅ Ogni drawer admin DEVE esporre prop `readonly` + leggere `useInjectReadonly()` con effetto cumulativo (`computed isReadOnlyEffective = props.readonly || isReadonly.value`)
+- ✅ Usare sempre `DrawerTitle` nel `#header` — il badge si propaga automaticamente
+- ❌ Non creare varianti `*ReadOnly.vue` separate
+- ✅ Wrap del contenuto con `:class="{ 'app-readonly': isReadonly }"` per l'effetto protect
+- ✅ `DrawerFooter` nasconde Salva in readonly; tasti di chiusura (X drawer, `.app-escape`) restano attivi
+
+### Drawer autonomo vs drawer figlio puro
+
+Un drawer puo' comportarsi in due modi rispetto ai permessi livello oggetto:
+
+| Tipo | Dichiara scope proprio | Quando usare | Esempio |
+| --- | --- | --- | --- |
+| **Autonomo** | `useReadonlyMode('schema', 'model')` al setup | Il model e' catalogato in `config.area_model_overrides` (l'admin puo' bloccarlo singolarmente) | `ContiBancariDrawer` → `('anagrafiche', 'conto_bancario')` |
+| **Figlio puro** | solo `useInjectReadonly()` | Il model non e' nel catalogo, si eredita il readonly del parent | `IndirizzoDrawer`, `ContoBancarioForm` |
+
+**Drawer autonomo — template**:
+
+```js
+// ContiBancariDrawer.vue
+import { useReadonlyMode, useInjectBlocked } from '@/core/composables/useReadonlyMode'
+
+// Dichiara scope proprio (l'OR interno rispetta anche eredita' dal parent)
+const { isReadonly } = useReadonlyMode('anagrafiche', 'conto_bancario')
+const isBlocked = useInjectBlocked()
+```
+
+```vue
+<Drawer ...>
+  <template #header>
+    <DrawerTitle ... />  <!-- badge readonly automatico -->
+  </template>
+
+  <!-- Safety net: pannello se raggiunto bypassando l'azione di riga -->
+  <AccessoBloccatoPanel v-if="isBlocked" />
+  <div v-else class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
+    <!-- contenuto normale -->
+  </div>
+
+  <DrawerFooter v-if="!isBlocked" @save="..." @cancel="..." />
+</Drawer>
+```
+
+**Azione di riga che apre un drawer autonomo** — disabilita se oggetto bloccato (evita 403):
+
+```js
+import { useAuthStore } from '@/stores/auth'
+const auth = useAuthStore()
+
+function buildRowActions(data) {
+  return [
+    {
+      key: 'conti-bancari',
+      label: t('conti_bancari.gestisci_conti'),
+      icon: MANAGE_ICONS.CONTI_BANCARI,
+      disabled: auth.isObjectBlocked('anagrafiche', 'conto_bancario'),
+      command: () => emit('conti-bancari', data),
+    },
+  ]
+}
+```
+
+**Cosa succede se sbagli e metti `useReadonlyMode` su un drawer figlio puro?**
+Nulla di rotto: `fn_resolve_livello_oggetto` fa fallback al livello area se il model non e' catalogato. Ma e' codice inutile che suggerisce una granularita' che non esiste — lascialo solo sui drawer veramente autonomi.
 
 ### Tasti di uscita
 
@@ -1093,17 +1483,145 @@ Regola: in sola lettura **si puo' solo chiudere/uscire**, mai aprire/creare/modi
 ### Impatto sui componenti
 
 - **Non creare varianti read-only** di componenti esistenti — usare la classe `.app-readonly` sul container
-- **DrawerFooter**: in sola lettura il footer (Annulla/Salva) non viene renderizzato (`v-if="!isReadonly"`)
-- **NewButton**: in sola lettura non viene renderizzato (`v-if="!isReadonly"`)
-- **DataTable row-click**: in sola lettura apre il drawer in modalita' consultazione (protect attivo)
+- `DrawerTitle`: auto-include `ReadonlyBadge` a destra del titolo
+- `DrawerFooter`: Salva nascosto se readonly (`v-if="!isReadonly"`)
+- `NewButton`: si nasconde se readonly
+- `ReloadButton`: si nasconde solo se bloccato (livello oggetto)
+- `ReadonlyBadge`: visibile solo se readonly e non bloccato
+- `AccessoBloccatoPanel`: sostituisce il contenuto lista se bloccato (livello oggetto)
+- `DataTable` row-click: in sola lettura apre il drawer in modalita' consultazione (protect attivo)
 - **Copia testo**: `user-select: text` garantisce che l'operatore possa sempre copiare dati con Ctrl+C
 
 ### Dove si usa
 
 | Contesto | Trigger |
 | --- | --- |
-| Autorizzazioni utente | Permesso di scrittura assente sul dominio |
-| Split view (futuro) | Pannello secondario affiancato sempre in sola lettura |
+| Autorizzazioni utente area | LETTURA sull'area funzionale (schema DB) |
+| Autorizzazioni utente oggetto (v2) | Override `config.user_override_oggetti` su `app_label.model_name` |
+| Split view | Pannello secondario affiancato sempre in sola lettura (readonly propagato via provide) |
+
+---
+
+## Enum centralizzati cross-cutting (constants.js)
+
+### Principio
+
+Le **stringhe identificative** condivise tra producer e consumer (readonly area/model, chiavi cross-tab refresh) NON si scrivono mai come literal. Vivono come **costanti** in `src/core/constants.js` e si importano dove servono.
+
+Rationale: un typo silenzioso (`'contratoo'` vs `'contratto'`) rompe il binding senza errori runtime — il producer emette, nessun consumer ascolta, auto-refresh morto. L'enum toglie il problema alla radice (IDE autocompletion + grep facile).
+
+### I tre enum
+
+```js
+import { READONLY_DOMAINS, READONLY_MODELS, TAB_ENTITIES } from '@/core/constants'
+```
+
+| Enum | Scopo | Esempi |
+| --- | --- | --- |
+| `READONLY_DOMAINS` | Area (schema DB) passata come **primo arg** a `useReadonlyMode` | `VENDITE`, `ANAGRAFICHE`, `CATALOGO`, `AMM_SOFTWARE`, `CONFIG`, `PRATICHE` |
+| `READONLY_MODELS` | Model specifico (permessi v2) come **secondo arg** opzionale a `useReadonlyMode` | `CONTRATTO`, `CLIENTE`, `FORNITORE`, `ARTICOLO`, `UNITA_MISURA`, `CONTO_BANCARIO`, `SOGGETTO`, `PROMO_ARTICOLO` |
+| `TAB_ENTITIES` | Chiave cross-tab per `emitDataChanged` + `useTabFreshness` / `onDataChanged` | `CONTRATTO`, `PRATICA`, `ARTICOLO`, `FORNITORE`, `PREVENTIVO`, `PROMO_ARTICOLI`, ... |
+
+### Regola operativa
+
+```js
+// NO — literal vietato
+useReadonlyMode('vendite', 'contratto')
+emitDataChanged('contratto', id)
+useTabFreshness(store, 'contratto')
+
+// SI — costante
+useReadonlyMode(READONLY_DOMAINS.VENDITE, READONLY_MODELS.CONTRATTO)
+emitDataChanged(TAB_ENTITIES.CONTRATTO, id)
+useTabFreshness(store, TAB_ENTITIES.CONTRATTO)
+```
+
+Il primo (literal) **funziona** ma non è mai accettato in PR di nuovo codice: il pattern enum è la **fonte di verità** sparsa in ~125 call site.
+
+### Consumer cross-tab: due pattern
+
+Entrambi validi, ambedue usano `TAB_ENTITIES`:
+
+```js
+// Pattern A — standard per SearchTable paginata
+useTabFreshness(store, TAB_ENTITIES.CONTRATTO)
+// Se un altro tab emette CONTRATTO, lo store fa fetchList() automatico
+
+// Pattern B — hook custom (es. pannelli senza SearchTable, view di profilo)
+const { onDataChanged } = useTabEvents()
+onMounted(() => {
+  onDataChanged('profilo-reparto', () => store.fetchList())
+})
+```
+
+Pattern A è la default. Pattern B si usa quando la view non ha uno `store` standard con `fetchList` o quando serve un handler custom.
+
+### Producer cross-tab
+
+Sta **sempre** nello store, dopo ogni operazione di scrittura:
+
+```js
+// Store Pinia
+async function create(payload) {
+  const res = await api.create(payload)
+  emitDataChanged(TAB_ENTITIES.CONTRATTO, res.data.data.id)  // emit post-write
+  return res.data.data
+}
+
+async function update(id, payload) {
+  const res = await api.update(id, payload)
+  emitDataChanged(TAB_ENTITIES.CONTRATTO, id)
+  return res.data.data
+}
+```
+
+Entità **read-only** (es. log immutabili): non emettono mai, e nessun consumer deve ascoltarle.
+
+### Factory `createCrudAdminStore`
+
+Per gli store admin CRUD standard (categorie clienti, promo articoli, matrici config) esiste una factory in `core/composables/createCrudAdminStore.js` che gestisce automaticamente emit in create/update. Basta passare `emitKey`:
+
+```js
+export const useCategorieClientiStore = createCrudAdminStore({
+  storeName: 'amm-categorie-clienti',
+  api: { list, get, create, update },
+  defaultOrderBy: 'ordinamento',
+  emitKey: TAB_ENTITIES.CATEGORIE_CLIENTI,  // la factory emette automaticamente
+  // ...
+})
+```
+
+Nessun `emitDataChanged` manuale necessario nei metodi.
+
+### Aggiungere una nuova entità
+
+1. Aggiungere la chiave in `constants.js`:
+
+   ```js
+   export const TAB_ENTITIES = {
+     // ... esistenti
+     NUOVA_ENTITA: 'nuova_entita',
+   }
+   ```
+
+2. Nello store: `emitDataChanged(TAB_ENTITIES.NUOVA_ENTITA, id)` dopo ogni write
+3. Nella SearchTable: `useTabFreshness(store, TAB_ENTITIES.NUOVA_ENTITA)`
+4. Se serve permesso livello oggetto: aggiungere anche in `READONLY_MODELS` + dichiarare `model_permission = (app_label, model_name)` sulla view BE
+
+### Naming
+
+- `READONLY_MODELS` usa **singolare** snake_case (`contratto`, `promo_articolo`) — matcha `app_label.model_name` del BE Django per `ZeroERPPermission`.
+- `TAB_ENTITIES` può usare **plurale** dove è più naturale per la feature (`promo_articoli`, `categorie_clienti`) — è una chiave FE-only, non vincolata al BE.
+- `READONLY_DOMAINS` corrisponde 1:1 agli schema DB backend.
+
+Una stessa parola può comparire in entrambi (es. `PROMO_ARTICOLO` singolare in `READONLY_MODELS` + `PROMO_ARTICOLI` plurale in `TAB_ENTITIES`): è volontario, i due ruoli sono distinti.
+
+### Check pre-PR
+
+- [ ] Zero literal `'schema_name'` in chiamate `useReadonlyMode`
+- [ ] Zero literal in `emitDataChanged` / `useTabFreshness` / `onDataChanged`
+- [ ] Se aggiunta una chiave all'enum, verificare che esista **sia un producer che un consumer** (altrimenti è orfana)
+- [ ] Per entità read-only (log, audit): nessun `emitDataChanged`, nessun `useTabFreshness`
 
 ---
 
@@ -1113,7 +1631,7 @@ Regola: in sola lettura **si puo' solo chiudere/uscire**, mai aprire/creare/modi
 
 Le azioni di processo controllano **singole operazioni** (es. "crea soggetto", "genera fatture") dentro un'area a cui l'operatore ha gia' accesso. Sono il livello di granularita' sotto TUTTO/LETTURA/BLOCCATO.
 
-### Piramide permessi
+### Collocazione nel modello permessi
 
 ```
 Livello 1: Area (TUTTO / LETTURA / BLOCCATO)  → sidebar + route guard + .app-readonly
@@ -1214,9 +1732,12 @@ const { isAllowed } = useActionPermission('genera_fatture_lotti')
 
 | Componente | Scopo | Props chiave | Usato da |
 | --- | --- | --- | --- |
-| `DrawerTitle` | Titolo standard drawer: azione sx + entita' centrata | `action`, `title` | Tutti i drawer |
-| `DrawerFooter` | Footer drawer con Annulla/Salva, auto-hide in readonly | `loading`, `disabled` | Tutti i drawer |
-| `NewButton` | Pulsante "Nuovo" nella toolbar, auto-hide in readonly | `tooltip` | Tutte le SearchTable |
+| `DrawerTitle` | Titolo standard drawer: azione sx + entita' centrata + badge readonly auto | `action`, `title`, `icon` | Tutti i drawer |
+| `DrawerFooter` | Footer drawer con Annulla/Salva, auto-hide Salva in readonly | `loading`, `disabled`, `action`, `closeOnly` | Tutti i drawer |
+| `NewButton` | Pulsante "Nuovo" toolbar, auto-hide in readonly | `tooltip`, `action` | Tutte le SearchTable |
+| `ReloadButton` | Pulsante refresh toolbar, auto-hide solo se `isBlocked` (livello oggetto) | — | Tutte le SearchTable |
+| `ReadonlyBadge` | Badge grigio "Sola lettura", auto-visibile se `isReadonly && !isBlocked`, responsive (icona-only su mobile) | — | Toolbar liste + `DrawerTitle` |
+| `AccessoBloccatoPanel` | Pannello sostitutivo "Accesso negato a questo elenco" per BLOCCATO oggetto | — | SearchTable con `v-if="isBlocked"` |
 | `RowActionsMenu` | Azioni di riga responsive: pulsanti inline su desktop, kebab `⋮` su tablet/touch | `actions`, `tooltip`, `disabled` | Tutte le SearchTable con azioni secondarie |
 | `PaginationInfo` | Info paginazione (es. "1-50 di 1234") | `pagination` | SearchTable |
 | `TagList` | Lista tag con overflow +N e tooltip | `items`, `labelField`, `maxVisible`, `severity` | Ruoli in lista soggetti |

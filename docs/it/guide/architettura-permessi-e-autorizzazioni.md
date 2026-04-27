@@ -45,7 +45,7 @@
 > Dettagli architetturali completi:
 >
 > * [architettura-multi-face-auth](/guide/architettura-multi-face-auth)
-> * Piano di sviluppo: [sviluppo-multi-face-auth](/dev/work-in-progress/sviluppo-multi-face-auth)
+> * Piano di sviluppo: [sviluppo-multi-face-auth](/dev/work-done/sviluppo-multi-face-auth)
 
 ---
 
@@ -977,11 +977,12 @@ coerente con la filosofia di Zero ERP.
 
 ## 12. Evoluzioni future
 
-- **Row-Level Security (RLS):** le tabelle di ambito sono gia' pronte per alimentare policy RLS.
+- **Row-Level Security (RLS):** policy predisposte (dry-run) su 6 tabelle sensibili (fatture, ordini, fatture_scadenze, acquisti.ordini, acquisti.ddt, billing_account). Attivazione differita a quando le API portale/shop di dominio saranno sviluppate.
+- **Permessi sotto-oggetti (v3):** oggi i model sono flat. La v3 aggiunge gerarchia padre/figlio (es. "TUTTO su cliente, BLOCCATO sugli indirizzi del cliente") con UX ad albero. Vedi [permessi-e-autorizzazioni-v3](/dev/work-in-progress/permessi-e-autorizzazioni-v3).
 - **Ambito per unita' organizzativa su dati:** limitare la visibilita' dati per reparto.
 - **Workflow permissions:** stati avanzati (es. transizione BOZZA -> EMESSA) come azioni di processo.
-- **Audit trail permessi:** log storico delle modifiche ai profili e override — vedi [proposta-8.2-audit-trail-permessi](/dev/work-done/proposta-8.2-audit-trail-permessi) (completato).
-- **Dashboard permessi:** vista riepilogativa "cosa puo' fare questo utente" con risoluzione completa.
+- **Audit trail permessi:** log storico delle modifiche ai profili e override — completato (vedi [proposta-8.2-audit-trail-permessi](/dev/work-done/proposta-8.2-audit-trail-permessi)).
+- **Dashboard permessi operatore:** vista riepilogativa "cosa puo' fare questo utente" con risoluzione completa — parzialmente coperta dall'endpoint `permessi-effettivi` (§13.3); UX admin gerarchica in v3.
 
 ---
 
@@ -1029,16 +1030,21 @@ La catena di risoluzione e' adesso coerente per ogni veste (vedi §6.1):
    (oggetto/area/azione) → profilo applicabile dalla catena AD_HOC /
    ruolo_applicativo / reparto → default sicuro `BLOCCATO`.
 
-### 13.3 Diagnostica invariate
+### 13.3 Diagnostica
 
-L'endpoint diagnostico `/api/users/{id}/permessi-effettivi/` resta
-previsto. Va esteso per mostrare, oltre alla risoluzione permessi
-standard, anche: (a) l'elenco delle identita dell'user, (b) quale
-identita e' attiva nella sessione corrente (lettura GUC
-`app.current_identita_id`), (c) se l'identita ha binding SUPER_ADMIN.
-Utile quando un operatore risulta BLOCCATO e serve capire se e' per
-profilo mancante, ruolo applicativo non coerente, o identita non
-attivata.
+L'endpoint diagnostico `/api/v1/core/users/{id}/permessi-effettivi/`
+e' operativo (22-04-2026). Restituisce:
+
+* `aree` — livello effettivo per ogni area funzionale attiva, con
+  `livello`, `azioni_consentite`, `has_profilo_reparto` e
+* `modelli` — per ogni area, lista dei model registrati in
+  `config.area_model_overrides` con il livello oggetto risolto
+  (`fn_resolve_livello_oggetto`: override esplicito o fallback area).
+
+Utile quando un operatore risulta BLOCCATO su un model specifico e
+serve distinguere se e' per override oggetto, profilo area, o assenza
+di configurazione. L'endpoint `/permessi-audit/` traccia la timeline
+degli override (7 tabelle storico, inclusa `storico.user_override_oggetti`).
 
 ### 13.4 Riferimenti di riga auto-gen
 

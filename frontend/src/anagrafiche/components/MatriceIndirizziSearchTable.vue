@@ -12,13 +12,17 @@ import LookupSelect from '../../core/components/LookupSelect.vue'
 import { listMatriceIndirizzi, updateMatriceIndirizzo } from '../api/anagrafiche'
 import { displayDate } from '../../core/utils/date'
 import { defineStore } from 'pinia'
+import { useInjectBlocked } from '../../core/composables/useReadonlyMode'
+import { TAB_ENTITIES } from '../../core/constants'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
 import ToggleSwitch from 'primevue/toggleswitch'
-import Button from 'primevue/button'
 import NewButton from '../../core/components/NewButton.vue'
+import ReloadButton from '../../core/components/ReloadButton.vue'
+import ReadonlyBadge from '../../core/components/ReadonlyBadge.vue'
+import AccessoBloccatoPanel from '../../core/components/AccessoBloccatoPanel.vue'
 
 const emit = defineEmits(['new', 'row-click'])
 const { t } = useI18n()
@@ -63,6 +67,7 @@ const useMatriceStore = defineStore('anagrafiche-matrice-indirizzi', () => {
 })
 
 const store = useMatriceStore()
+const isBlocked = useInjectBlocked()
 const { searchText, onPage, onSort, applyFilters, reload, paginatorProps } = useSearchTable(store, {
   defaultSortField: 'tipo_ruolo_descrizione'
 })
@@ -128,12 +133,15 @@ async function changeFallback(row, newFallbackId) {
   }
 }
 
-useTabFreshness(store, 'matrice-indirizzi')
+useTabFreshness(store, TAB_ENTITIES.MATRICE_INDIRIZZI)
 onMounted(() => { store.fetchList() })
 </script>
 
 <template>
   <div class="app-tab-content">
+    <AccessoBloccatoPanel v-if="isBlocked" />
+
+    <template v-else>
     <div class="app-page-toolbar">
       <div class="app-page-filters">
         <InputText
@@ -149,7 +157,8 @@ onMounted(() => { store.fetchList() })
         />
       </div>
       <div class="app-page-actions">
-        <Button icon="pi pi-refresh" text class="app-reload-btn" v-tooltip.bottom="t('common.reload_list')" @click="reload" />
+        <ReadonlyBadge />
+        <ReloadButton @click="reload" />
         <NewButton :tooltip="t('matrice_indirizzi.nuova_regola')" @click="emit('new')" />
       </div>
     </div>
@@ -210,5 +219,6 @@ onMounted(() => { store.fetchList() })
         <template #body="{ data }">{{ displayDate(data.valido_al) }}</template>
       </Column>
     </DataTable>
+    </template>
   </div>
 </template>

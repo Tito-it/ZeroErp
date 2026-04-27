@@ -11,6 +11,7 @@ import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Button from 'primevue/button'
 import Dialog from 'primevue/dialog'
+import Tag from 'primevue/tag'
 
 const { t } = useI18n()
 const store = usePreventiviStore()
@@ -71,6 +72,20 @@ function formatCurrency(value) {
   return Number(value).toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })
 }
 
+// Scopo: severity Tag per stato approvazione prezzo (workflow L3 Sprint E).
+// Mappa coerente: PENDING=warn (in corso), APPROVED=success, REJECTED=danger.
+function approvazioneSeverity(stato) {
+  if (stato === 'APPROVED') return 'success'
+  if (stato === 'REJECTED') return 'danger'
+  return 'warn'  // PENDING
+}
+
+function approvazioneLabel(stato) {
+  if (stato === 'APPROVED') return t('preventivi.badge_approvazione_approved')
+  if (stato === 'REJECTED') return t('preventivi.badge_approvazione_rejected')
+  return t('preventivi.badge_approvazione_pending')
+}
+
 function formatNumber(value) {
   if (value == null) return ''
   return Number(value).toLocaleString('it-IT', { minimumFractionDigits: 2 })
@@ -95,8 +110,20 @@ defineExpose({ loadRighe })
         <template #body="{ data }">{{ formatNumber(data.quantita) }}</template>
       </Column>
       <Column field="uom_codice" :header="t('preventivi.riga_uom')" style="width: 70px;" />
-      <Column field="prezzo_unitario" :header="t('preventivi.riga_prezzo')" style="width: 110px;">
-        <template #body="{ data }">{{ formatCurrency(data.prezzo_unitario) }}</template>
+      <Column field="prezzo_unitario" :header="t('preventivi.riga_prezzo')" style="width: 130px;">
+        <template #body="{ data }">
+          <div style="display: flex; flex-direction: column; gap: 0.15rem; align-items: flex-start;">
+            <span>{{ formatCurrency(data.prezzo_unitario) }}</span>
+            <Tag
+              v-if="data.stato_approvazione_prezzo"
+              :severity="approvazioneSeverity(data.stato_approvazione_prezzo)"
+              :value="approvazioneLabel(data.stato_approvazione_prezzo)"
+              v-tooltip.top="data.pratica_approvazione_prezzo_id
+                ? t('preventivi.badge_approvazione_pending_tooltip', { pratica_id: data.pratica_approvazione_prezzo_id })
+                : ''"
+            />
+          </div>
+        </template>
       </Column>
       <Column field="sconto_percentuale" :header="t('preventivi.riga_sconto')" style="width: 80px;">
         <template #body="{ data }">{{ data.sconto_percentuale ? `${data.sconto_percentuale}%` : '' }}</template>

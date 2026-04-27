@@ -13,12 +13,21 @@ La funzione **`script.fn_get_messaggio(p_codice text, p_valore text DEFAULT NULL
 ### 🎯 Scopo Principale
 * **Centralizzare i testi**
   Conservare tutti i messaggi (errori, avvisi, info) in tabella, evitando hard‑coding in trigger, procedure o sorgenti SQL.
-* **Internazionalizzazione avanzata**
+* **Internazionalizzazione avanzata con fallback**
   Selezionare dinamicamente la lingua di output in base a:
 
   1. parametro `p_lingua`
-  2. impostazione configurazione `myapp.user_language`
+  2. GUC `myapp.user_language` (impostata dal middleware BE per-request)
   3. default `'it'`
+
+  Post **23-04-2026** (migration `20260423-02-01`) e' attivo il
+  **fallback lingua IT**: se la lingua risolta `lingua_eff` non ha
+  riga per il codice richiesto, la funzione ricade su `lingua='it'`
+  invece di ritornare il placeholder. Solo se nemmeno `'it'` ha
+  riga viene restituito il placeholder legacy
+  `[MESSAGGIO NON DEFINITO: <codice>]`. Questo permette il rollout
+  incrementale delle traduzioni EN senza dover tradurre tutti i
+  codici in un solo colpo.
 * **Placeholder dinamici**
   Utilizzare `format()` per sostituire i placeholder `%s` nel template con i valori runtime, abilitando messaggi parametrizzati.
 
@@ -45,16 +54,27 @@ La funzione **`script.fn_get_messaggio(p_codice text, p_valore text DEFAULT NULL
      'it'
    );
    ```
-2. **Recupero del template**
+2. **Recupero del template con fallback lingua** (post 23-04-2026)
+
+   Single-query che preferisce la lingua richiesta ma ricade su `'it'`
+   se manca: ordering booleano + LIMIT 1 garantisce che la riga con
+   `lingua = lingua_eff` vinca, altrimenti passa quella `'it'`.
 
    ```plpgsql
    SELECT messaggio
      INTO tmpl
      FROM config.messaggi_errore
     WHERE codice = p_codice
-      AND lingua = lingua_eff;
+      AND lingua IN (lingua_eff, 'it')
+    ORDER BY (lingua = lingua_eff) DESC
+    LIMIT 1;
    ```
-3. **Messaggio non definito**
+
+   Quando `lingua_eff = 'it'` la IN degenera a singolo valore, la
+   ORDER BY e' idempotente e il LIMIT 1 restituisce il match esatto
+   (comportamento legacy).
+
+3. **Messaggio non definito** (nessuna lingua disponibile, nemmeno `'it'`)
 
    * Se `tmpl IS NULL`, restituisce:
 
@@ -76,6 +96,18 @@ La funzione **`script.fn_get_messaggio(p_codice text, p_valore text DEFAULT NULL
 
 * **`text`**
   Messaggio finale, con eventuale sostituzione di `%s` applicata.
+
+---
+
+### Volatilita'
+
+**`STABLE`** (post 23-04-2026). La fn legge da `config.messaggi_errore`
+quindi il risultato cambia tra query diverse se la tabella viene
+modificata, ma resta costante all'interno di una singola query. La
+versione pre-23-04-2026 era marcata `IMMUTABLE` per errore — bug
+latente: il planner poteva cachare risultati stantii dopo UPDATE dei
+seed. Corretto nella stessa migration che ha introdotto il fallback
+lingua.
 
 ---
 

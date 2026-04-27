@@ -12,6 +12,7 @@
 > • [`dbops.trgfn_child_requires_active_parent`](/dbzero/dbops/funzioni/trgfn_child_requires_active_parent)   
 > • [`script.trgfn_audit_data_user_generic`](/dbzero/script/funzioni/trgfn_audit_data_user_generic)   
 > • [`script.trgfn_storico_generic`](/dbzero/script/funzioni/trgfn_storico_generic)  
+> • [`catalogo.trgfn_articoli_componenti_block_modifica_struttura`](/dbzero/catalogo/funzioni/trgfn_articoli_componenti_block_modifica_struttura) *(immutabilità BoM, 22-04-2026)*  
 
 ---
 ### 🎯 Scopo Principale
@@ -76,6 +77,19 @@ REQUIRE su `prodotto_id` (padre attivo)
 Non rientrano nella generazione automatica `automations` perché la tabella
 > usa **due FK verso la stessa entità** (`catalogo.articoli`) con ruoli diversi
 > (prodotto vs componente), e la logica richiede controlli **distinti e specifici**.
+
+#### Immutabilità BoM (trigger `block_modifica_struttura`, 22-04-2026)
+
+A partire dal trigger `trg_articoli_componenti_a10_block_update_struct_upd_dlt` (`20260422-01`), la BoM è **immutabile** sui campi di struttura:
+
+* **DELETE**: sempre bloccato (errore `E_BOM_MODIFICA_VIETATA` id 387). Non si elimina una riga BoM: si chiude.
+* **UPDATE** dei campi `coeff_qta`, `componente_id`, `obbligatorio`, `esposto_in_fattura`, `partecipa_qta`, `determina_qta_padre`, `valido_dal`, `validita`: bloccato (`E_BOM_MODIFICA_VIETATA`).
+* **UPDATE** di `valido_al`: ammesso, con check `NEW.valido_al >= OLD.valido_dal` (`E_BOM_VALIDO_AL_INVALIDO` id 388 in caso di range invalido). È l'unico modo per chiudere una riga.
+* **UPDATE** di `note_*`, `meta`, `attivo`, e dei campi audit: ammesso (non sono campi di struttura).
+
+**Pattern operativo "chiudi+inserisci nuova versione"**: per evolvere una BoM, l'admin chiude la riga corrente (UPDATE `valido_al = oggi`) e inserisce una nuova riga con `valido_dal` successivo. L'exclusion constraint daterange esistente garantisce non-overlap. Vedi [guida gestione listini §5.3](/guide/gestione-listini#53-immutabilita-della-bom-pattern-chiudi-nuova-versione).
+
+**Razionale**: le righe `vendite.commesse_attivita` e le fatturazioni che hanno consumato la BoM restano ancorate ai valori `prezzo_snapshot`/`prezzo_bloccato` registrati al momento del push. Modificare la BoM "sotto" alle commesse rompe la ricostruzione storica e l'audit.
 
 ---
 

@@ -1,0 +1,157 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Guard trigger su config.parameters per validare i parametri
+# DEFAULT_TIPO_SOGGETTO_DETTAGLIO_<RUOLO>.
+#
+# Why: brief BE 2026-04-27 (opzione B). Il pattern
+# DEFAULT_TIPO_SOGGETTO_DETTAGLIO_<RUOLO> stocca il codice_interno
+# (varchar stabile via lock_columns) del tipo soggetto dettaglio di
+# default per ogni ruolo applicativo (CL/FO/...). config.parameters non
+# ha FK reale verso tipi_soggetto_dettaglio (default_value e' text
+# generico, deve restare tale per gli altri parametri di tipo numerico
+# o stringa libera): questo trigger sostituisce la FK validando
+# l'esistenza del codice_interno SOLO quando code matcha il prefisso
+# DEFAULT_TIPO_SOGGETTO_DETTAGLIO_.
+#
+# Codice errore E_PARAMETER_DEFAULT_TIPO_SOGGETTO_INVALID id 399.
+#
+# Override per emittente: gratuito via config.parameter_overrides +
+# script.fn_get_parameter_full. Anche gli override DEVONO rispettare
+# lo stesso vincolo, ma sono su un'altra tabella e fuori dallo scope
+# di questo guard (eventuale guard speculare su parameter_overrides
+# rinviato a quando il primo override entra in produzione).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/config/20260427-05-create-trgfn-parameters-guard-default-tipo-soggetto-dettaglio-mctit.yaml
+
+  - changeSet:
+      id: 20260427-05-01-create-trgfn-parameters-guard-default-tipo-soggetto-dettaglio
+      author: mctit
+      # runOnChange: true
+      comment: >
+        Funzione config.trgfn_parameters_guard_default_tipo_soggetto_dettaglio.
+        Valida default_value contro
+        config.tipi_soggetto_dettaglio.codice_interno quando code LIKE
+        'DEFAULT_TIPO_SOGGETTO_DETTAGLIO_%'. Raise
+        E_PARAMETER_DEFAULT_TIPO_SOGGETTO_INVALID.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: config
+                tableName: parameters
+            - tableExists:
+                schemaName: config
+                tableName: tipi_soggetto_dettaglio
+            - columnExists:
+                schemaName: config
+                tableName: tipi_soggetto_dettaglio
+                columnName: codice_interno
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION config.trgfn_parameters_guard_default_tipo_soggetto_dettaglio()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: sostituire la FK mancante tra config.parameters e
+              -- config.tipi_soggetto_dettaglio per i parametri di pattern
+              -- DEFAULT_TIPO_SOGGETTO_DETTAGLIO_<RUOLO>. Verifica che il
+              -- default_value esista come codice_interno (immutabile per
+              -- lock_columns) in tipi_soggetto_dettaglio.
+              -- Il trigger ha clausola WHEN che limita lo scope al prefisso:
+              -- gli altri parametri (DEFAULT_IVA_ID, VENDITE_MAX_*,
+              -- soggetto_default_*, etc.) non vengono toccati.
+              BEGIN
+                  IF NEW.default_value IS NULL THEN
+                      -- NULL ammesso: significa "no default per questo ruolo".
+                      -- script.fn_get_parameter_full restituira' NULL al
+                      -- caller, che applichera' il proprio fallback.
+                      RETURN NEW;
+                  END IF;
+
+                  IF NOT EXISTS (
+                      SELECT 1
+                        FROM config.tipi_soggetto_dettaglio tsd
+                       WHERE tsd.codice_interno = NEW.default_value
+                  ) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          TG_NAME::text,
+                          'E_PARAMETER_DEFAULT_TIPO_SOGGETTO_INVALID',
+                          jsonb_build_object(
+                              'parameter_id',  NEW.id,
+                              'code',          NEW.code,
+                              'default_value', NEW.default_value
+                          ),
+                          NEW.tx_id,
+                          NEW.code,
+                          NEW.default_value
+                      );
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION config.trgfn_parameters_guard_default_tipo_soggetto_dettaglio() IS
+                  'Guard FK-surrogata su config.parameters per pattern '
+                  'DEFAULT_TIPO_SOGGETTO_DETTAGLIO_*: valida default_value '
+                  'contro tipi_soggetto_dettaglio.codice_interno. Raise '
+                  'E_PARAMETER_DEFAULT_TIPO_SOGGETTO_INVALID.';
+      rollback:
+        - sql:
+            sql: DROP FUNCTION IF EXISTS
+              config.trgfn_parameters_guard_default_tipo_soggetto_dettaglio();
+
+  - changeSet:
+      id: 20260427-05-02-create-trg-parameters-a10-guard-default-tipo-soggetto-dettaglio
+      author: mctit
+      comment: >
+        Trigger BEFORE INSERT OR UPDATE OF code, default_value su
+        config.parameters, fase _a10_ (guard). Clausola WHEN limita lo scope al
+        prefisso DEFAULT_TIPO_SOGGETTO_DETTAGLIO_: gli altri parametri non
+        vengono toccati.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT COUNT(*)
+                FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'config'
+                 AND p.proname = 'trgfn_parameters_guard_default_tipo_soggetto_dettaglio';
+      changes:
+        - sql:
+            splitStatements: true
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_parameters_a10_guard_default_tipo_soggetto_dettaglio_ins_upd
+                  ON config.parameters;
+
+              CREATE TRIGGER trg_parameters_a10_guard_default_tipo_soggetto_dettaglio_ins_upd
+                  BEFORE INSERT OR UPDATE OF code, default_value
+                  ON config.parameters
+                  FOR EACH ROW
+                  WHEN (NEW.code LIKE 'DEFAULT_TIPO_SOGGETTO_DETTAGLIO_%')
+                  EXECUTE FUNCTION config.trgfn_parameters_guard_default_tipo_soggetto_dettaglio();
+
+              COMMENT ON TRIGGER trg_parameters_a10_guard_default_tipo_soggetto_dettaglio_ins_upd
+                  ON config.parameters
+                  IS 'Guard FK-surrogata sui parametri DEFAULT_TIPO_SOGGETTO_DETTAGLIO_*.';
+      rollback:
+        - sql:
+            sql: |
+              DROP TRIGGER IF EXISTS trg_parameters_a10_guard_default_tipo_soggetto_dettaglio_ins_upd
+                  ON config.parameters;

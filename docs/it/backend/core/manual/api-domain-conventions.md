@@ -24,8 +24,8 @@ Per ridurre duplicazioni tra app dominio usare helper core:
 - Versioning URL: endpoint canonici sotto `/api/v1/...`; le route non versionate restano solo come compatibilita` temporanea.
 - Autenticazione: endpoint `/api/v1/*` protetti con JWT Bearer.
 - Emissione token:
-  - `POST /api/v1/auth/token/`
-  - `POST /api/v1/auth/token/refresh/`
+  - `POST /api/v1/admin/token/` (operatori interni; namespace portale/shop aggiunti in PR-B)
+  - `POST /api/v1/admin/token/refresh/`
 - Endpoint POST JSON: usare `handle_post_json(request, handler=...)`.
 - Per endpoint write critici, impostare `require_idempotency_key=True`.
 - Nel handler dominio: validare campi specifici e invocare service.

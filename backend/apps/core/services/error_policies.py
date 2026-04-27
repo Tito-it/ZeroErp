@@ -213,6 +213,37 @@ class ErrorPolicyRegistry:
             ui_action="show_empty_state",
             user_message="Associazione listino non trovata.",
         ),
+        # Guard Profilo A contratti: in stati post-DRAFT (ATTIVO/SOSPESO/CESSATO)
+        # le modifiche sono limitate o vietate. La testata ammette solo
+        # `valido_al` e `meta` in ATTIVO/SOSPESO; CESSATO immutabile. Le
+        # sotto-entita' (righe override, utility 1:1) sono CRUD-able solo
+        # in DRAFT. Per modifiche sostanziali post-DRAFT serve creare un
+        # nuovo contratto (eventualmente con parent_contratto_id).
+        "E_CONTRATTO_NON_MODIFICABILE": ErrorPolicy(
+            code="E_CONTRATTO_NON_MODIFICABILE",
+            http_status=409,
+            ui_action="show_toast_error",
+            user_message=(
+                "Modifica non consentita: il contratto e' in uno stato che "
+                "limita le operazioni. Per modifiche sostanziali creare un "
+                "nuovo contratto."
+            ),
+        ),
+        # Guard DB defense-in-depth: rifiuta la transizione manuale
+        # ATTIVA -> CHIUSA (brief-db-listini-stato-chiusa-sync). La chiusura
+        # si esegue via PATCH valido_al; lo stato CHIUSA viene poi sincronizzato
+        # dal job notturno a finestra scaduta. Policy speculare a quella
+        # applicativa nel service listini_service._validate_versione_state_transition.
+        "E_VERSIONE_STATO_TRANSIZIONE_INVALIDA": ErrorPolicy(
+            code="E_VERSIONE_STATO_TRANSIZIONE_INVALIDA",
+            http_status=409,
+            ui_action="show_toast_error",
+            user_message=(
+                "Chiusura versione non consentita via cambio stato. "
+                "Per chiudere impostare valido_al (PATCH); la chiusura "
+                "avviene automaticamente a finestra scaduta."
+            ),
+        ),
         "E_VENDITE_RIGA_GIA_PROPAGATA": ErrorPolicy(
             code="E_VENDITE_RIGA_GIA_PROPAGATA",
             http_status=409,
@@ -450,6 +481,24 @@ class ErrorPolicyRegistry:
             http_status=403,
             ui_action="show_error_banner",
             user_message="Il reparto non ha ancora un profilo permessi configurato.",
+        ),
+        "E_VESTE_NON_ATTIVA": ErrorPolicy(
+            code="E_VESTE_NON_ATTIVA",
+            http_status=403,
+            ui_action="show_error_banner",
+            user_message="Non hai accesso a questo canale.",
+        ),
+        "E_JWT_SENZA_IDENTITA": ErrorPolicy(
+            code="E_JWT_SENZA_IDENTITA",
+            http_status=401,
+            ui_action="redirect_login",
+            user_message="Sessione scaduta: effettua nuovamente l'accesso.",
+        ),
+        "E_IDENTITA_NON_ATTIVA": ErrorPolicy(
+            code="E_IDENTITA_NON_ATTIVA",
+            http_status=401,
+            ui_action="redirect_login",
+            user_message="Sessione non piu' valida: effettua nuovamente l'accesso.",
         ),
         # ── Sessioni utente ──
         "E_LOGOUT_NO_TOKEN": ErrorPolicy(
@@ -724,6 +773,16 @@ class ErrorPolicyRegistry:
             ui_action="highlight_form_fields",
             user_message="Il messaggio supera la lunghezza massima consentita.",
         ),
+        # ── Shop B2C (stub PR-C) ──
+        # §8.4.3/§8.4.4/§8.4.5: endpoint shop rispondono 501 finche' PR-C
+        # non porta il MVP. Codice dedicato (non E_TASK_NOT_IMPLEMENTED
+        # che e' del dominio pipeline fatturazione).
+        "E_SHOP_NON_DISPONIBILE": ErrorPolicy(
+            code="E_SHOP_NON_DISPONIBILE",
+            http_status=501,
+            ui_action="show_info_banner",
+            user_message="Shop non ancora disponibile. In arrivo con PR-C.",
+        ),
         "E_AI_TOOL_NOT_FOUND": ErrorPolicy(
             code="E_AI_TOOL_NOT_FOUND",
             http_status=500,
@@ -796,6 +855,19 @@ class ErrorPolicyRegistry:
             http_status=400,
             ui_action="show_error_banner",
             user_message="Errore attivazione account portale.",
+        ),
+        # B1 §13.7: codici dedicati attivazione shop (simmetrici al portale).
+        "E_ATTIVAZIONE_SHOP": ErrorPolicy(
+            code="E_ATTIVAZIONE_SHOP",
+            http_status=400,
+            ui_action="show_error_banner",
+            user_message="Errore attivazione account shop.",
+        ),
+        "E_ATTIVAZIONE_SHOP_CROSS": ErrorPolicy(
+            code="E_ATTIVAZIONE_SHOP_CROSS",
+            http_status=400,
+            ui_action="show_error_banner",
+            user_message="Errore attivazione veste shop dal profilo portale.",
         ),
         # ── Codici cross-schema da refactor E_GENERICO (31 marzo 2026) ──
         # --- Validazione parametri (400) ---
@@ -967,6 +1039,51 @@ class ErrorPolicyRegistry:
                 "Modifica manuale del prezzo non autorizzata. Usa il prezzo "
                 "suggerito dal listino o richiedi l'autorizzazione al responsabile."
             ),
+        ),
+        "E_PREV_SCONTO_ECCESSIVO": ErrorPolicy(
+            code="E_PREV_SCONTO_ECCESSIVO",
+            http_status=403,
+            ui_action="show_error_banner",
+            user_message=(
+                "Sconto oltre il limite consentito per il tuo ruolo. "
+                "Richiedi approvazione o rientra nel limite ammesso."
+            ),
+        ),
+        "E_PREV_MAGGIORAZIONE_ECCESSIVA": ErrorPolicy(
+            code="E_PREV_MAGGIORAZIONE_ECCESSIVA",
+            http_status=403,
+            ui_action="show_error_banner",
+            user_message=(
+                "Maggiorazione oltre il limite consentito per il tuo ruolo. "
+                "Richiedi approvazione o rientra nel limite ammesso."
+            ),
+        ),
+        # L3 Sprint E (sviluppo-listini-v5 §14.6) — workflow approvazione
+        # prezzo out-of-policy. Codici sollevati da preventivi_service +
+        # approvazioni_prezzo_service e dai trigger DB DB-E-4/E-5.
+        "E_PREVENTIVO_RIGHE_PRICING_PENDENTI": ErrorPolicy(
+            code="E_PREVENTIVO_RIGHE_PRICING_PENDENTI",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message=(
+                "Esistono righe con prezzo in attesa di approvazione. "
+                "Attendi esito o annulla la richiesta prima di accettare il preventivo."
+            ),
+        ),
+        "E_RIGA_PREZZO_PENDENTE": ErrorPolicy(
+            code="E_RIGA_PREZZO_PENDENTE",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message=(
+                "La riga e' in attesa di approvazione: solo lo stato di approvazione "
+                "e i campi audit sono modificabili."
+            ),
+        ),
+        "E_APPROVAZIONE_PREZZO_NON_AMMESSA": ErrorPolicy(
+            code="E_APPROVAZIONE_PREZZO_NON_AMMESSA",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Operazione di approvazione prezzo non ammessa nello stato corrente.",
         ),
         "E_PREV_STATO_TRANSIZIONE": ErrorPolicy(
             code="E_PREV_STATO_TRANSIZIONE",

@@ -16,7 +16,12 @@ from apps.vendite.api.views import (
     ApiRunCommessePush,
     ApiRunLottoPipeline,
 )
-from apps.vendite.api.views_pricing import PricingResolveView
+from apps.vendite.api.views_approvazioni_prezzo import (
+    ApprovaPrezzoView,
+    ApprovazioniPrezzoCodaView,
+    RifiutaPrezzoView,
+)
+from apps.vendite.api.views_pricing import PricingLimitiUtenteView, PricingResolveView
 from apps.vendite.api.views_promo_articoli import (
     PromoArticoliDetailView,
     PromoArticoliView,
@@ -28,6 +33,24 @@ urlpatterns = [
     path("contratti/", include("apps.vendite.api.urls_contratti")),
     # Pricing v5 diagnostico: resolver 3 stadi (PROMO/CONTRATTO/CATEGORIA).
     path("pricing/resolve/", PricingResolveView.as_view(), name="vendite-pricing-resolve"),
+    # L2 autorizzazioni prezzi: limiti sconto/maggiorazione per utente corrente.
+    path("pricing/limiti-utente/", PricingLimitiUtenteView.as_view(), name="vendite-pricing-limiti-utente"),
+    # L3 workflow approvazione prezzo out-of-policy (Sprint E).
+    path(
+        "righe/<int:riga_id>/approva-prezzo/",
+        ApprovaPrezzoView.as_view(),
+        name="vendite-approva-prezzo",
+    ),
+    path(
+        "righe/<int:riga_id>/rifiuta-prezzo/",
+        RifiutaPrezzoView.as_view(),
+        name="vendite-rifiuta-prezzo",
+    ),
+    path(
+        "approvazioni-prezzo/",
+        ApprovazioniPrezzoCodaView.as_view(),
+        name="vendite-approvazioni-prezzo-coda",
+    ),
     # Promo articoli (STADIO 0 resolver v5). Matrice CRUD admin.
     # Non esposta via /core/lookup/codici/: ha codice ma non e'
     # candidata come tabella config lookup (semantica temporale).

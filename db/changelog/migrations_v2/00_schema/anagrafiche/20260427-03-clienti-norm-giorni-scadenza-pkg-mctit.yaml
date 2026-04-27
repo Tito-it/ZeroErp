@@ -1,0 +1,119 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Package schema su anagrafiche.clienti per dominio scadenza fattura.
+#
+# Why: brief BE 2026-04-27 fase 2 normalizzazioni payload pagamento.
+# La regola dominio e':
+#   tipo_gg_scadenza_ft IN ('G','F') -> nr_giorni_scadenza > 0 obbligatorio
+#   tipo_gg_scadenza_ft IN ('M','N') -> nr_giorni_scadenza = NULL forzato
+# Il trigger di normalize+guard e' creato in
+# 20_code/anagrafiche/20260427-03-create-trgfn-clienti-normalize-giorni-scadenza.
+# Qui in 00_schema vivono solo i pre-requisiti dato/schema:
+#   01) backfill record incoerenti (UPDATE one-shot, niente compat)
+#   02) DROP DEFAULT su nr_giorni_scadenza (era 0, misleading sotto la
+#       nuova regola; passa a NULL implicito)
+#   03) ADD CHECK chk_clienti_tipo_gg_scadenza_ft IN ('G','M','F','N')
+# I 3 changeset sono sequenziali nello stesso file: l'ordine e' rilevante
+# perche' il backfill DEVE precedere il DROP DEFAULT (record con default
+# 0 da normalizzare a NULL prima che il default scompaia) e l'ADD CHECK
+# DEVE eseguire dopo per garantire dominio pulito.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/anagrafiche/20260427-03-clienti-norm-giorni-scadenza-pkg-mctit.yaml
+
+  - changeSet:
+      id: 20260427-03-01-backfill-clienti-nr-giorni-scadenza
+      author: mctit
+      comment: >
+        Backfill record con tipo_gg_scadenza_ft NOT IN ('G','F') e
+        nr_giorni_scadenza IS NOT NULL: forzati a NULL per coerenza con
+        la regola dominio. ZeroErp non in produzione -> niente compat.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: anagrafiche
+                tableName: clienti
+            - columnExists:
+                schemaName: anagrafiche
+                tableName: clienti
+                columnName: tipo_gg_scadenza_ft
+            - columnExists:
+                schemaName: anagrafiche
+                tableName: clienti
+                columnName: nr_giorni_scadenza
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              UPDATE anagrafiche.clienti
+                 SET nr_giorni_scadenza = NULL
+               WHERE tipo_gg_scadenza_ft NOT IN ('G','F')
+                 AND nr_giorni_scadenza IS NOT NULL;
+      rollback:
+        - empty
+
+  - changeSet:
+      id: 20260427-03-02-clienti-drop-default-nr-giorni-scadenza
+      author: mctit
+      comment: >
+        Rimuove il DEFAULT 0 su nr_giorni_scadenza. Sotto la nuova
+        regola dominio il valore 0 e' un payload "spazzatura" (per G/F
+        non valido, per M/N privo di significato): preferenza al NULL
+        implicito.
+      preConditions:
+        - onFail: HALT
+        - columnExists:
+            schemaName: anagrafiche
+            tableName: clienti
+            columnName: nr_giorni_scadenza
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE anagrafiche.clienti
+                  ALTER COLUMN nr_giorni_scadenza DROP DEFAULT;
+      rollback:
+        - sql:
+            sql: |
+              ALTER TABLE anagrafiche.clienti
+                  ALTER COLUMN nr_giorni_scadenza SET DEFAULT 0;
+
+  - changeSet:
+      id: 20260427-03-03-clienti-add-check-tipo-gg-scadenza-ft
+      author: mctit
+      comment: >
+        Aggiunge CHECK constraint dominio tipo_gg_scadenza_ft IN
+        ('G','M','F','N'). Coerente con baseline dichiarata dal brief
+        BE: G=giorni, F=fine mese, M=manuale, N=nessuno. L'ADD scatta
+        dopo il backfill: se in dev esistono record con valori fuori
+        dominio l'ADD fallisce -> segnala dato sporco da ripulire prima.
+      preConditions:
+        - onFail: HALT
+        - columnExists:
+            schemaName: anagrafiche
+            tableName: clienti
+            columnName: tipo_gg_scadenza_ft
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE anagrafiche.clienti
+                  ADD CONSTRAINT chk_clienti_tipo_gg_scadenza_ft
+                  CHECK (tipo_gg_scadenza_ft IN ('G','M','F','N'));
+      rollback:
+        - sql:
+            sql: |
+              ALTER TABLE anagrafiche.clienti
+                  DROP CONSTRAINT IF EXISTS chk_clienti_tipo_gg_scadenza_ft;

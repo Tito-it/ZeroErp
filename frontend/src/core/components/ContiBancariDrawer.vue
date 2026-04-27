@@ -6,7 +6,7 @@
 
 import { ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useInjectReadonly } from '../composables/useReadonlyMode'
+import { useReadonlyMode, useInjectBlocked } from '../composables/useReadonlyMode'
 import { useApiHandler } from '../composables/useApiHandler'
 import { useContoBancarioForm } from '../composables/useContoBancarioForm'
 import { useConfirmAction } from '../composables/useConfirmAction'
@@ -16,17 +16,23 @@ import {
   listRuoloContiBancari, createRuoloContoBancario,
   updateRuoloContoBancario, deleteRuoloContoBancario
 } from '../../anagrafiche/api/anagrafiche'
-import { DRAWER_WIDTH } from '../constants'
+import { DRAWER_WIDTH, READONLY_DOMAINS, READONLY_MODELS } from '../constants'
 import { sortByFonte } from '../utils/string'
 import ContoBancarioForm from './ContoBancarioForm.vue'
 import DrawerTitle from './DrawerTitle.vue'
 import DrawerFooter from './DrawerFooter.vue'
+import AccessoBloccatoPanel from './AccessoBloccatoPanel.vue'
 import Drawer from 'primevue/drawer'
 import Button from 'primevue/button'
 import Tag from 'primevue/tag'
 
 const { t } = useI18n()
-const isReadonly = useInjectReadonly()
+// Drawer autonomo: dichiara scope oggetto per reagire all'override
+// `anagrafiche.conto_bancario` indipendentemente dal parent.
+// L'OR interno di useReadonlyMode garantisce comunque rispetto dello stato
+// readonly ereditato (se parent e' readonly, anche il drawer lo resta).
+const { isReadonly } = useReadonlyMode(READONLY_DOMAINS.ANAGRAFICHE, READONLY_MODELS.CONTO_BANCARIO)
+const isBlocked = useInjectBlocked()
 const { execute, loading } = useApiHandler()
 const conto = useContoBancarioForm()
 const { confirmDelete } = useConfirmAction()
@@ -196,7 +202,11 @@ function usoSeverity(uso) {
       <DrawerTitle :action="formMode === 'new' ? t('common.new') : t('common.edit')" :title="t('conti_bancari.titolo')" icon="pi pi-wallet" />
     </template>
 
-    <div class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
+    <!-- Livello oggetto BLOCCATO: pannello sostitutivo (safety net se
+         l'utente raggiunge il drawer bypassando l'azione di riga). -->
+    <AccessoBloccatoPanel v-if="isBlocked" />
+
+    <div v-else class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
       <!-- Loading -->
       <div v-if="listLoading" class="app-loading">
         <i class="pi pi-spin pi-spinner" />

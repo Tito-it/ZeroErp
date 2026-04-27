@@ -11,7 +11,7 @@
 from __future__ import annotations
 
 from datetime import date
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from drf_spectacular.utils import extend_schema, inline_serializer
@@ -21,9 +21,15 @@ from rest_framework.request import Request
 from apps.core.api.base_views import DomainAPIView
 from apps.core.api.endpoint_helpers import handle_post_json
 from apps.core.api.request_parsers import parse_iso_date
+from apps.core.api.success_responses import success_response
 from apps.core.services.error_manager import ErrorManager
+from apps.core.services.parameter_service import ParameterService
 from apps.core.services.permissions_resolver import PermissionResolver
-from apps.vendite.services.pricing_service import PricingService
+from apps.vendite.services.pricing_service import (
+    PARAM_MAX_MAGGIORAZIONE_PCT,
+    PARAM_MAX_SCONTO_PCT,
+    PricingService,
+)
 
 
 _RESOLVE_REQUEST = inline_serializer(
@@ -153,3 +159,56 @@ class PricingResolveView(DomainAPIView):
             return {k: _serialize_value(v) for k, v in result.items()}
 
         return handle_post_json(request, handler=_handler)
+
+
+_LIMITI_UTENTE_RESPONSE = inline_serializer(
+    name="VenditePricingLimitiUtenteResp",
+    fields={
+        "max_sconto_pct": serializers.DecimalField(max_digits=10, decimal_places=4),
+        "max_maggiorazione_pct": serializers.DecimalField(max_digits=10, decimal_places=4),
+    },
+)
+
+
+class PricingLimitiUtenteView(DomainAPIView):
+    """GET /api/v1/vendite/pricing/limiti-utente/ — L2 limiti variazione prezzo.
+
+    Ritorna i limiti percentuali configurati per l'utente corrente:
+    `max_sconto_pct` e `max_maggiorazione_pct`. Risolve la cascata
+    scope user -> group -> emittente -> default via
+    `ParameterService.get_parameter`.
+
+    Il FE usa questi valori per mostrare hint sotto il campo prezzo
+    nel drawer riga preventivo (sconto max, warning vicino al limite)
+    senza round-trip a ogni modifica.
+
+    Area funzionale: `vendite` (livello LETTURA sufficiente).
+    """
+
+    area_funzionale = "vendite"
+
+    @extend_schema(
+        responses={200: _LIMITI_UTENTE_RESPONSE},
+        tags=["vendite"],
+        summary="Limiti L2 variazione prezzo per l'utente corrente",
+    )
+    def get(self, request: Request):
+        auth_user_id = request.user.id if request.user.is_authenticated else None
+        # Single round-trip: risolve entrambe le chiavi in una query DB.
+        # Valori ritornati come stringa (envelope stabile); il FE le converte
+        # in Number (zero-safe) per l'interpolazione dell'hint.
+        values = ParameterService().get_defaults(
+            [PARAM_MAX_SCONTO_PCT, PARAM_MAX_MAGGIORAZIONE_PCT],
+            django_user_id=auth_user_id,
+        )
+
+        def _to_decimal_str(raw):
+            try:
+                return str(Decimal(str(raw)))
+            except (InvalidOperation, ValueError, TypeError):
+                return "0"
+
+        return success_response({
+            "max_sconto_pct": _to_decimal_str(values.get(PARAM_MAX_SCONTO_PCT, "0")),
+            "max_maggiorazione_pct": _to_decimal_str(values.get(PARAM_MAX_MAGGIORAZIONE_PCT, "0")),
+        })

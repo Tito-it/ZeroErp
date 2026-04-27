@@ -29,10 +29,28 @@ from apps.core.services.error_manager import ErrorManager
 from apps.core.services.payload_helpers import PayloadValidator
 from apps.vendite.db.pricing_repository import PricingRepository
 
-__all__ = ["PricingService", "E_VENDITE_PRICING_FAILED"]
+__all__ = [
+    "PricingService",
+    "E_VENDITE_PRICING_FAILED",
+    "PARAM_MAX_SCONTO_PCT",
+    "PARAM_MAX_MAGGIORAZIONE_PCT",
+    "L2_ERROR_CODES",
+]
 
 
 E_VENDITE_VALIDATION = "E_VENDITE_VALIDATION"
+
+# Parametri L2 autorizzazioni prezzi (Sprint D). Centralizzati qui per
+# evitare stringhe magic in service/view/test. Valori DB in
+# config.parameters (seed CSV), default '0' = nessuna variazione ammessa.
+PARAM_MAX_SCONTO_PCT = "VENDITE_MAX_SCONTO_PCT"
+PARAM_MAX_MAGGIORAZIONE_PCT = "VENDITE_MAX_MAGGIORAZIONE_PCT"
+
+# Codici errore L2 che il FE intercetta per banner inline (vs toast standard).
+L2_ERROR_CODES = (
+    "E_PREV_SCONTO_ECCESSIVO",
+    "E_PREV_MAGGIORAZIONE_ECCESSIVA",
+)
 # Codice generico per errori di dominio sollevati dal resolver DB.
 # Il chiamante trova il codice DB originale in `detail` (es.
 # "E_CATEGORIA_LISTINO_NON_MAPPATA: ..."). Non duplichiamo qui l'elenco

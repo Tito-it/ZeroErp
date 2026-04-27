@@ -128,6 +128,39 @@
 |---|---|---|
 | `ClientiRepository.check_user_can_create_ba` | [clienti_repository.py](../../../../backend/apps/anagrafiche/db/clienti_repository.py) | Wrapper `script.fn_check_user_can_create_ba`. Vedi WIP refactor operatore-emittenti Q6 (la motivazione di dominio sta nel service) |
 | `ClientiService.crea_cliente` (param `auth_user_id`) | [clienti_service.py](../../../../backend/apps/anagrafiche/services/clienti_service.py) | Orchestratore creazione cliente completa (istanza + BA + cliente in transazione atomica). **Refactor operatore-emittenti**: param `auth_user_id` opzionale; se valorizzato e si crea un nuovo BA (no `billing_account_id` in payload), chiama `_guard_can_create_ba` che blocca admin globale + emittenti con `ServiceError(E_BA_ADMIN_GLOBALE_VIETATO)`. Defense-in-depth: il trigger DB `trgfn_billing_account_guard_admin_globale` e' la difesa finale |
+| `ClientiInvitaPortaleView` / `ClientiInvitaShopView` / `FornitoriInvitaPortaleView` | [views_invito_portale.py](../../../../backend/apps/anagrafiche/api/views_invito_portale.py) | View admin per `POST /api/v1/anagrafiche/{clienti\|fornitori}/<id>/invita-{portale\|shop}/`. Body `{email, reinvio?}`. Delegano a `InvitoPortaleService` (fornitori solo portale; shop = B2C, non per fornitori). |
+
+---
+
+## Portale + Shop — Invito veste (`apps/portale/`, `apps/shop/`)
+
+Building block per onboarding self-service vesti non-operatore
+(CLIENTE_PORTALE, FORNITORE_PORTALE, SHOP_CUSTOMER). Vedi
+[api_invito_portale_shop.md](../../backend/core/manual/api_invito_portale_shop.md)
+per il contratto end-to-end.
+
+| Building Block | File | Descrizione |
+|---|---|---|
+| `InvitoPortaleService.invia_invito_cliente / fornitore / shop_customer` | [invito_portale_service.py](../../../../backend/apps/portale/services/invito_portale_service.py) | 3 metodi pubblici simmetrici, stesso flow comune `_invia_invito_common` parametrizzato su `_VESTE_CONFIG`. Branching automatico email NUOVA → flow INVITO (set password) vs ESISTENTE → flow CROSS (one-click). Transazione atomica + email best-effort (token resta valido se SMTP fallisce). Equivalenti `reinvia_*` invalidano token precedenti. |
+| `_VESTE_CONFIG` (TypedDict `_VesteConfig`) | [invito_portale_service.py](../../../../backend/apps/portale/services/invito_portale_service.py) | Single source of truth per veste: `token_invito`, `token_cross`, `template`, `link_path`, `scadenza_ore`. **Aggiungere una nuova veste = una nuova entry**, no altre modifiche al service. |
+| `resolve_portale_token` / `resolve_shop_token` | [invito_portale_service.py](../../../../backend/apps/portale/services/invito_portale_service.py) | Risolvono (no consume) un token cercandolo nei tipi della veste. Il FE non deve sapere il tipo in anticipo: `_resolve_token_in(token, tipi)` itera. |
+| `PortaleRepository` | [portale_repository.py](../../../../backend/apps/portale/db/portale_repository.py) | DB ops invito veste: `get_cliente_info`, `get_fornitore_info`, `find_identita_portale`, `find_auth_user_by_email`, `create_auth_user_portale`, `create_identita_portale`, `riattiva_identita`. Generico su `ruolo_applicativo` — usato anche da shop (cross-app import documentato come debito, refactor PR-D = estrarre in `IdentitaRepository`). |
+| `AttivazionePortaleValidateView` / `AttivazionePortaleView` | [portale/api/views.py](../../../../backend/apps/portale/api/views.py) | Endpoint pubblici (`AllowAny`) `GET /portale/attivazione/validate/<token>/` + `POST /portale/attivazione/conferma/`. Consume token + apply password (INVITO) oppure riattiva identita (CROSS). Throttle `PasswordResetRateThrottle`. |
+| `AttivazioneShopValidateView` / `AttivazioneShopView` | [shop/api/views_attivazione.py](../../../../backend/apps/shop/api/views_attivazione.py) | Simmetrici al portale, tipi token `INVITO_SHOP` / `ATTIVAZIONE_SHOP_CROSS`. Codice errore distinto `E_ATTIVAZIONE_SHOP`. Codice ~80% duplicato col portale: refactor base class rimandato a PR-D. |
+| `ProfileActivateShopView` | [portale/api/views.py](../../../../backend/apps/portale/api/views.py) | `POST /portale/profile/activate-shop/` autenticato. Cross-veste self-service: cliente portale loggato aggiunge identita SHOP_CUSTOMER sullo stesso `soggetto_ruolo` (letto da GUC `app.soggetto_ruolo_id`), immediatamente attiva. Idempotente + anti-tampering (`auth_user_id` divergente → 400). Solo `CLIENTE_PORTALE` (FORNITORE blocca a 400). |
+
+**Token tipi** in `config.token_monouso.tipo` (varchar, 4 valori
+gestiti dal service): `INVITO_PORTALE`, `ATTIVAZIONE_PORTALE_CROSS`,
+`INVITO_SHOP`, `ATTIVAZIONE_SHOP_CROSS`. Scadenza 72h, mutuamente
+esclusivi grazie al `UNIQUE (token_hash)`.
+
+**Codici errore** registrati in `error_policies.py`: `E_INVITO_PORTALE`,
+`E_ATTIVAZIONE_PORTALE`, `E_ATTIVAZIONE_SHOP`, `E_ATTIVAZIONE_SHOP_CROSS`
+(tutti HTTP 400, `show_error_banner`).
+
+**Dipendenza DB**: template email `INVITO_SHOP` da seedare in
+`config.email_template`. Proposta SQL idempotente in
+[backend/scripts/db-proposals/PROPOSTA_seed_email_invito_shop.sql](../../../../backend/scripts/db-proposals/PROPOSTA_seed_email_invito_shop.sql).
 
 ---
 
@@ -192,6 +225,10 @@
 | `CatalogoRepository.list_articoli(listino_tipologia_id=)` | [catalogo_repository.py](../../../../backend/apps/catalogo/db/catalogo_repository.py) | Filtro opzionale sulla lista articoli. Esposto via query param `listino_tipologia_id` su `GET /api/v1/catalogo/articoli/`. |
 | `CatalogoBomRepository.COMPONENTE_WRITE_COLUMNS.esposto_in_fattura` | [catalogo_bom_repository.py](../../../../backend/apps/catalogo/db/catalogo_bom_repository.py) | Flag bool (DDL default `false`) che decide la modalita' A/B1/B2 del `fn_resolve_prezzo_composito` (§8 v5): se almeno un componente ha `esposto_in_fattura=true`, il resolver emette N righe (una per componente) e la pipeline di creazione attivita' espande in `commesse_attivita`. |
 | `PricingResolveView` | [views_pricing.py](../../../../backend/apps/vendite/api/views_pricing.py) | Endpoint `POST /api/v1/vendite/pricing/resolve/`. Esposizione REST di `PricingService.resolve_prezzo` per UI di debug, smoke test e supporto operativo. `emittente_soggetto_ruolo_id` derivato automaticamente dal JWT operatore (override opzionale nel payload per diagnostica). Area `vendite` livello `LETTURA`. Nessun side-effect: solo lettura. |
+| `approvazioni_prezzo_service.crea_richiesta_approvazione` | [approvazioni_prezzo_service.py](../../../../backend/apps/vendite/services/approvazioni_prezzo_service.py) | **L3 Sprint E / sviluppo-listini-v5 §14.6.** Orchestra creazione pratica APPROVAZIONE_PREZZO quando `gestisci_riga`/`aggiorna_riga` vengono chiamate con `richiesta_approvazione=true` e il prezzo viola L2. Pattern: crea pratica BOZZA→APERTA via `pratiche_service.crea_pratica`, lookup cache modulo-level di `tipo_prestazione_id`/`priorita_id`, invio email best-effort al recipient configurato via parameter `VENDITE_APPROVAZIONE_PREZZO_RECIPIENT_EMAIL`. La FK `riga_preventivo_id` viene aggiunta al meta pratica via `link_riga_a_pratica` post-`create_riga`. |
+| `approvazioni_prezzo_service.approva` / `rifiuta` | [approvazioni_prezzo_service.py](../../../../backend/apps/vendite/services/approvazioni_prezzo_service.py) | Workflow esito L3: verifica permesso azione `approva_prezzo_override` (seed `config.azioni_processo` id 10), UPDATE riga `stato_approvazione_prezzo='APPROVED'/'REJECTED'` (ENUM nativo `config.stato_approvazione_prezzo`), transizione pratica APERTA→CHIUSA, nota INTERNA con esito + nota/motivazione opzionale. Idempotente: rifiuta riga non PENDING con `E_APPROVAZIONE_PREZZO_NON_AMMESSA`. Defense-in-depth: permesso check PRIMA del lookup riga (no leak info su esistenza). |
+| `approvazioni_prezzo_service.lista_coda` | [approvazioni_prezzo_service.py](../../../../backend/apps/vendite/services/approvazioni_prezzo_service.py) | Coda paginata pratiche tipo APPROVAZIONE_PREZZO in stato APERTA. Scope emittente derivato dall'utente via `PermissionResolver.get_emittente_for_user` (richiede emittente assegnato; admin globale solleva `E_APPROVAZIONE_PREZZO_NON_AMMESSA`). Usata da `GET /vendite/approvazioni-prezzo/` (UI ApprovazioniPrezzoListView). |
+| `BoMComponentExpander` | [commesse_source_handlers.py](../../../../backend/apps/vendite/services/commesse_source_handlers.py) | **F2-BE-12 / sviluppo-listini-v5 §14.4.** Single-point per l'espansione BoM v5 nella pipeline commesse. Una `PushableRow` di articolo composito (CASO A: almeno un componente esposto in fattura) viene espansa in N `PushableRow` (una per componente obbligatorio attivo). CASO B (1 riga padre): pass-through. Pre-filtri: `articolo_id`/`uom_id`/`utility_id` None → pass-through. Detect `is_composito` via callable iniettabile (default: query lean su `catalogo.articoli`). Cache per-istanza su `is_composito` (1 lookup/articolo) e su risultato resolver (chiave `(articolo, BA, utility, data, emittente)` → 1 round-trip per chiave nel ciclo `_process_rows`). Costruisce ogni componente con: `articolo_id`/`uom_id`/`prezzo_snapshot` dal resolver, `quantita = padre × coeff_qta` no rounding (DEC-3), `segment_key` suffix `#CMP:{componente_id}` (DEC-2), `meta` arricchito con `esposto_in_fattura`+`componente_di`+`coeff_qta` (DEC-6), tutti gli altri campi (`tipo_doc_fiscale_id`, `valuta_id`, `billing_account_id`, `utility_id`, `sorgente_uid`, `emittente_soggetto_ruolo_id`, `competenza_*`, `fatturazione_immediata`) ereditati dal padre (DEC-5). Iniettabile in `BaseSourceHandler(repo, bom_expander=...)`; default applicato a tutti i 5 handler (preventivi/ordini/contratti/ddt). `HandlerConsumi` mantiene il proprio override `_expand_rows` (fan-out consumi ortogonale alla BoM). **Dipendenza DB**: richiede `coeff_qta` nel return di `fn_resolve_prezzo_composito` (DB-3 in lavorazione team DB). |
 
 **Consumer previsti** — `PricingService.resolve_prezzo` e' il building block centrale per **qualsiasi calcolo prezzo** in domini downstream. Al posto di duplicare logica (lookup listino / matrice / contratto) chiamare sempre il service:
 
@@ -200,7 +237,7 @@
 | `commesse_attivita` (snapshot audit) | **Done** (F2-BE-11) | Il DB `fn_upsert_commessa_attivita` popola gia' le 8 colonne snapshot |
 | `preventivi_service.calcola_prezzo_riga` | **Da integrare** | Al momento della creazione/modifica riga preventivo, sostituire lookup manuale con `PricingService.resolve_prezzo` |
 | `ordini_vendita` (riga ordine) | **Da integrare** | Stesso pattern preventivi |
-| `pipeline fatturazione compositi` (F2-BE-12) | **Bloccato** | Scope separato, usera' `resolve_prezzo_composito` |
+| `pipeline fatturazione compositi` (F2-BE-12) | **BE done 22-04** | `BoMComponentExpander` integrato in `BaseSourceHandler._expand_rows` per i 5 handler; attesa DB-3 (`coeff_qta` nel return resolver) per esecuzione reale. Vedi sviluppo-listini-v5 §14.4 |
 | Endpoint diagnostico `/pricing/resolve/` | **Done** | Vedi `PricingResolveView` |
 
 Regola pratica: **mai** leggere direttamente `listini_righe.prezzo` o `categorie_clienti_listini` in un service di dominio. Sempre passare per `PricingService`: garantisce i 3 stadi del resolver, la traduzione errori uniforme e lo snapshot dei metadati (origine, listino, contratto, promo, categoria).

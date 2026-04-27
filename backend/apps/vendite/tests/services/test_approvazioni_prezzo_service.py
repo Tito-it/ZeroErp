@@ -1,0 +1,327 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+# Doc: Python
+# Scopo: Test ApprovazioniPrezzoService (workflow L3 sviluppo-listini-v5 §14.6).
+# ------------------------------------------------------------
+
+"""
+Indice test:
+1) crea_richiesta_approvazione: pratica creata + stato APERTA + email best-effort
+2) crea_richiesta_approvazione: contesto pratica mancante -> E_APPROVAZIONE_PREZZO_NON_AMMESSA
+3) approva: riga PENDING + permesso ok -> APPROVED + pratica CHIUSA + nota INTERNA
+4) approva: riga non PENDING -> E_APPROVAZIONE_PREZZO_NON_AMMESSA
+5) approva: senza permesso -> E_PREV_OVERRIDE_NON_AUTORIZZATO
+6) approva: superuser bypass permesso
+7) rifiuta: riga PENDING -> REJECTED + nota motivazione
+8) rifiuta: senza motivazione -> nota generica
+9) lista_coda: ok con scope emittente
+10) lista_coda: senza emittente assegnato -> E_APPROVAZIONE_PREZZO_NON_AMMESSA
+11) lookup cache modulo-level: tipo_prestazione_id riusato cross-call
+12) invalidate_lookup_cache forza re-query
+"""
+
+from decimal import Decimal
+from unittest import TestCase
+from unittest.mock import MagicMock, patch
+
+from apps.core.services.service_errors import ServiceError
+from apps.vendite.services import approvazioni_prezzo_service as svc
+
+
+class CreaRichiestaApprovazioneTests(TestCase):
+
+    def setUp(self):
+        svc.invalidate_lookup_cache()
+        self.addCleanup(svc.invalidate_lookup_cache)
+
+    def _setup_lookups(self, mock_cursor):
+        # tipo_prestazione_id (5) + priorita default id (2)
+        mock_cursor.fetchone.side_effect = [(5,), (2,)]
+
+    @patch("apps.vendite.services.approvazioni_prezzo_service._invia_email_richiesta_approvazione")
+    @patch("apps.vendite.services.approvazioni_prezzo_service.cambia_stato_pratica")
+    @patch("apps.vendite.services.approvazioni_prezzo_service.crea_pratica")
+    @patch("apps.vendite.services.approvazioni_prezzo_service.PreventiviRepository")
+    @patch("apps.vendite.services.approvazioni_prezzo_service.connection")
+    def test_crea_richiesta_pratica_aperta_con_email_bestffort(
+        self, mock_conn, mock_repo_cls, mock_crea_pratica, mock_cambia_stato, mock_email
+    ):
+        mock_cursor = MagicMock()
+        self._setup_lookups(mock_cursor)
+        mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
+
+        repo = MagicMock()
+        repo.get_preventivo.return_value = {
+            "id": 1, "uid": "X-001", "numero_documento": "P-001",
+            "istanza_utility_id": 99,
+        }
+        repo.resolve_contesto_pratica.return_value = {
+            "emittente_fiscale_id": 11,
+            "soggetto_id": "soggetto-uuid",
+            "soggetto_ruolo_id": 22,
+        }
+        mock_repo_cls.return_value = repo
+        mock_crea_pratica.return_value = 12345
+
+        pratica_id = svc.crea_richiesta_approvazione(
+            preventivo_id=1,
+            articolo_id="art-uuid-1",
+            prezzo_resolver=Decimal("50.00"),
+            prezzo_manuale=Decimal("40.00"),
+            violazione={
+                "tipo_violazione": "SCONTO",
+                "variazione_abs_pct": "20.00",
+                "limite_pct": "15",
+                "kind_label": "Sconto",
+            },
+            auth_user_id=42,
+        )
+
+        self.assertEqual(pratica_id, 12345)
+        mock_crea_pratica.assert_called_once()
+        crea_kwargs = mock_crea_pratica.call_args.kwargs
+        self.assertEqual(crea_kwargs["emittente_fiscale_id"], 11)
+        self.assertEqual(crea_kwargs["tipo_prestazione_id"], 5)
+        self.assertEqual(crea_kwargs["priorita_id"], 2)
+        self.assertEqual(crea_kwargs["soggetto_id"], "soggetto-uuid")
+        self.assertEqual(crea_kwargs["istanza_utility_id"], 99)
+        # Transito immediato a APERTA per visibilita' coda.
+        mock_cambia_stato.assert_called_once_with(12345, "APERTA")
+        # Email best-effort invocata (non solleva nemmeno se fallisce).
+        mock_email.assert_called_once()
+
+    @patch("apps.vendite.services.approvazioni_prezzo_service.PreventiviRepository")
+    @patch("apps.vendite.services.approvazioni_prezzo_service.connection")
+    def test_crea_richiesta_contesto_mancante_solleva(
+        self, mock_conn, mock_repo_cls
+    ):
+        repo = MagicMock()
+        repo.get_preventivo.return_value = {"id": 1, "uid": "X-001"}
+        repo.resolve_contesto_pratica.return_value = None
+        mock_repo_cls.return_value = repo
+
+        with self.assertRaises(ServiceError) as ctx:
+            svc.crea_richiesta_approvazione(
+                preventivo_id=1,
+                articolo_id="art-uuid",
+                prezzo_resolver=None,
+                prezzo_manuale=Decimal("100"),
+                violazione={"tipo_violazione": "SCONTO"},
+                auth_user_id=42,
+            )
+        self.assertEqual(ctx.exception.code, "E_APPROVAZIONE_PREZZO_NON_AMMESSA")
+
+
+class ApprovaRifiutaTests(TestCase):
+
+    def setUp(self):
+        svc.invalidate_lookup_cache()
+        self.addCleanup(svc.invalidate_lookup_cache)
+
+    def _mock_cursor_riga_pending(self, mock_conn, riga_id=50, pratica_id=12345,
+                                   stato="PENDING"):
+        mock_cursor = MagicMock()
+        mock_cursor.description = [
+            ("id",), ("preventivo_id",),
+            ("stato_approvazione_prezzo",), ("pratica_approvazione_prezzo_id",),
+        ]
+        mock_cursor.fetchone.return_value = (riga_id, 1, stato, pratica_id)
+        mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
+        return mock_cursor
+
+    @patch("apps.vendite.services.approvazioni_prezzo_service.crea_nota_pratica")
+    @patch("apps.vendite.services.approvazioni_prezzo_service.cambia_stato_pratica")
+    @patch("apps.vendite.services.approvazioni_prezzo_service.PreventiviRepository")
+    @patch("apps.vendite.services.approvazioni_prezzo_service.PermissionResolver")
+    @patch("apps.vendite.services.approvazioni_prezzo_service._get_user")
+    @patch("apps.vendite.services.approvazioni_prezzo_service.connection")
+    def test_approva_riga_pending_chiude_pratica_e_aggiorna_riga(
+        self, mock_conn, mock_get_user, mock_perm, mock_repo_cls,
+        mock_cambia, mock_nota,
+    ):
+        self._mock_cursor_riga_pending(mock_conn)
+        mock_user = MagicMock(); mock_user.is_superuser = False
+        mock_get_user.return_value = mock_user
+        mock_perm.check_azione.return_value = True
+        repo = MagicMock(); mock_repo_cls.return_value = repo
+
+        result = svc.approva(riga_id=50, auth_user_id=42, nota="Cliente strategico.")
+
+        self.assertEqual(result["stato"], "APPROVED")
+        self.assertEqual(result["pratica_id"], 12345)
+        repo.update_riga.assert_called_once_with(50, stato_approvazione_prezzo="APPROVED")
+        mock_cambia.assert_called_once_with(12345, "CHIUSA")
+        mock_nota.assert_called_once()
+        # nota tipo INTERNA + contenuto include la nota libera.
+        nota_args = mock_nota.call_args[0]
+        self.assertEqual(nota_args[1], "INTERNA")
+        self.assertIn("Cliente strategico", nota_args[2])
+
+    @patch("apps.vendite.services.approvazioni_prezzo_service.PermissionResolver")
+    @patch("apps.vendite.services.approvazioni_prezzo_service._get_user")
+    @patch("apps.vendite.services.approvazioni_prezzo_service.connection")
+    def test_approva_riga_non_pending_solleva(
+        self, mock_conn, mock_get_user, mock_perm
+    ):
+        # Permesso check passa per primo (defense-in-depth post-review F1):
+        # serve mock utente + check_azione=True per arrivare al lookup riga.
+        mock_user = MagicMock(); mock_user.is_superuser = False
+        mock_get_user.return_value = mock_user
+        mock_perm.check_azione.return_value = True
+        self._mock_cursor_riga_pending(mock_conn, stato="APPROVED")
+
+        with self.assertRaises(ServiceError) as ctx:
+            svc.approva(riga_id=50, auth_user_id=42)
+        self.assertEqual(ctx.exception.code, "E_APPROVAZIONE_PREZZO_NON_AMMESSA")
+
+    @patch("apps.vendite.services.approvazioni_prezzo_service.PermissionResolver")
+    @patch("apps.vendite.services.approvazioni_prezzo_service._get_user")
+    @patch("apps.vendite.services.approvazioni_prezzo_service.connection")
+    def test_approva_senza_permesso_solleva(
+        self, mock_conn, mock_get_user, mock_perm
+    ):
+        self._mock_cursor_riga_pending(mock_conn)
+        mock_user = MagicMock(); mock_user.is_superuser = False
+        mock_get_user.return_value = mock_user
+        mock_perm.check_azione.return_value = False  # nessun permesso
+
+        with self.assertRaises(ServiceError) as ctx:
+            svc.approva(riga_id=50, auth_user_id=42)
+        self.assertEqual(ctx.exception.code, "E_PREV_OVERRIDE_NON_AUTORIZZATO")
+
+    @patch("apps.vendite.services.approvazioni_prezzo_service.crea_nota_pratica")
+    @patch("apps.vendite.services.approvazioni_prezzo_service.cambia_stato_pratica")
+    @patch("apps.vendite.services.approvazioni_prezzo_service.PreventiviRepository")
+    @patch("apps.vendite.services.approvazioni_prezzo_service.PermissionResolver")
+    @patch("apps.vendite.services.approvazioni_prezzo_service._get_user")
+    @patch("apps.vendite.services.approvazioni_prezzo_service.connection")
+    def test_approva_superuser_bypassa_permesso(
+        self, mock_conn, mock_get_user, mock_perm, mock_repo_cls,
+        mock_cambia, mock_nota,
+    ):
+        self._mock_cursor_riga_pending(mock_conn)
+        mock_user = MagicMock(); mock_user.is_superuser = True
+        mock_get_user.return_value = mock_user
+        mock_repo_cls.return_value = MagicMock()
+
+        svc.approva(riga_id=50, auth_user_id=99)
+
+        mock_perm.check_azione.assert_not_called()  # bypass
+
+    @patch("apps.vendite.services.approvazioni_prezzo_service.crea_nota_pratica")
+    @patch("apps.vendite.services.approvazioni_prezzo_service.cambia_stato_pratica")
+    @patch("apps.vendite.services.approvazioni_prezzo_service.PreventiviRepository")
+    @patch("apps.vendite.services.approvazioni_prezzo_service.PermissionResolver")
+    @patch("apps.vendite.services.approvazioni_prezzo_service._get_user")
+    @patch("apps.vendite.services.approvazioni_prezzo_service.connection")
+    def test_rifiuta_riga_pending_con_motivazione(
+        self, mock_conn, mock_get_user, mock_perm, mock_repo_cls,
+        mock_cambia, mock_nota,
+    ):
+        self._mock_cursor_riga_pending(mock_conn)
+        mock_user = MagicMock(); mock_user.is_superuser = False
+        mock_get_user.return_value = mock_user
+        mock_perm.check_azione.return_value = True
+        repo = MagicMock(); mock_repo_cls.return_value = repo
+
+        result = svc.rifiuta(
+            riga_id=50, auth_user_id=42, motivazione="Sconto eccessivo per categoria."
+        )
+
+        self.assertEqual(result["stato"], "REJECTED")
+        repo.update_riga.assert_called_once_with(50, stato_approvazione_prezzo="REJECTED")
+        mock_cambia.assert_called_once_with(12345, "CHIUSA")
+        nota_args = mock_nota.call_args[0]
+        self.assertIn("Sconto eccessivo", nota_args[2])
+
+    @patch("apps.vendite.services.approvazioni_prezzo_service.crea_nota_pratica")
+    @patch("apps.vendite.services.approvazioni_prezzo_service.cambia_stato_pratica")
+    @patch("apps.vendite.services.approvazioni_prezzo_service.PreventiviRepository")
+    @patch("apps.vendite.services.approvazioni_prezzo_service.PermissionResolver")
+    @patch("apps.vendite.services.approvazioni_prezzo_service._get_user")
+    @patch("apps.vendite.services.approvazioni_prezzo_service.connection")
+    def test_rifiuta_senza_motivazione_nota_generica(
+        self, mock_conn, mock_get_user, mock_perm, mock_repo_cls,
+        mock_cambia, mock_nota,
+    ):
+        self._mock_cursor_riga_pending(mock_conn)
+        mock_user = MagicMock(); mock_user.is_superuser = False
+        mock_get_user.return_value = mock_user
+        mock_perm.check_azione.return_value = True
+        mock_repo_cls.return_value = MagicMock()
+
+        svc.rifiuta(riga_id=50, auth_user_id=42)
+
+        nota_args = mock_nota.call_args[0]
+        self.assertEqual(nota_args[2], "Rifiutato override prezzo.")
+
+
+class ListaCodaTests(TestCase):
+
+    def setUp(self):
+        svc.invalidate_lookup_cache()
+        self.addCleanup(svc.invalidate_lookup_cache)
+
+    @patch("apps.vendite.services.approvazioni_prezzo_service.cerca_pratiche")
+    @patch("apps.vendite.services.approvazioni_prezzo_service.PermissionResolver")
+    @patch("apps.vendite.services.approvazioni_prezzo_service._get_user")
+    @patch("apps.vendite.services.approvazioni_prezzo_service.connection")
+    def test_lista_coda_filtra_aperte_per_emittente(
+        self, mock_conn, mock_get_user, mock_perm, mock_cerca
+    ):
+        mock_cursor = MagicMock()
+        mock_cursor.fetchone.return_value = (5,)  # tipo_prestazione_id
+        mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
+        mock_get_user.return_value = MagicMock()
+        mock_perm.get_emittente_for_user.return_value = 11
+        mock_cerca.return_value = ([{"id": 100, "descrizione": "Test"}], 1)
+
+        result = svc.lista_coda(auth_user_id=42, limit=20, offset=0)
+
+        self.assertEqual(result["count"], 1)
+        self.assertEqual(len(result["results"]), 1)
+        cerca_kwargs = mock_cerca.call_args.kwargs
+        self.assertEqual(cerca_kwargs["emittente_fiscale_id"], 11)
+        self.assertEqual(cerca_kwargs["tipo_prestazione_id"], 5)
+        self.assertEqual(cerca_kwargs["stato_codice_interno"], "APERTA")
+
+    @patch("apps.vendite.services.approvazioni_prezzo_service.PermissionResolver")
+    @patch("apps.vendite.services.approvazioni_prezzo_service._get_user")
+    def test_lista_coda_senza_emittente_solleva(self, mock_get_user, mock_perm):
+        mock_get_user.return_value = MagicMock()
+        mock_perm.get_emittente_for_user.return_value = None  # admin globale o non assegnato
+
+        with self.assertRaises(ServiceError) as ctx:
+            svc.lista_coda(auth_user_id=42)
+        self.assertEqual(ctx.exception.code, "E_APPROVAZIONE_PREZZO_NON_AMMESSA")
+
+
+class LookupCacheTests(TestCase):
+
+    def setUp(self):
+        svc.invalidate_lookup_cache()
+        self.addCleanup(svc.invalidate_lookup_cache)
+
+    @patch("apps.vendite.services.approvazioni_prezzo_service.connection")
+    def test_tipo_prestazione_lookup_riusa_cache(self, mock_conn):
+        mock_cursor = MagicMock()
+        mock_cursor.fetchone.return_value = (5,)
+        mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
+
+        # 3 chiamate -> 1 sola query DB.
+        svc._get_tipo_prestazione_id()
+        svc._get_tipo_prestazione_id()
+        svc._get_tipo_prestazione_id()
+        self.assertEqual(mock_cursor.execute.call_count, 1)
+
+    @patch("apps.vendite.services.approvazioni_prezzo_service.connection")
+    def test_invalidate_cache_forza_re_query(self, mock_conn):
+        mock_cursor = MagicMock()
+        mock_cursor.fetchone.return_value = (5,)
+        mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
+
+        svc._get_tipo_prestazione_id()
+        svc.invalidate_lookup_cache()
+        svc._get_tipo_prestazione_id()
+        self.assertEqual(mock_cursor.execute.call_count, 2)

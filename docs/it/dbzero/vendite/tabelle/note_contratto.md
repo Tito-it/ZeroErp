@@ -22,6 +22,7 @@
 | user_update | text | YES | CURRENT_USER |
 | id_stile | bigint | NO |  |
 | id_lingua | bigint | YES |  |
+| tx_id | uuid | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -54,6 +55,8 @@
 | trg_note_contratto_a10_contratti_righe_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'contratti_righe', 'attivo', 'target_riga_id', 'id')` |
 | trg_note_contratto_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_note_contratto_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_note_contratto_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_note_contratto_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_note_contratto_validate_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_note_validate_generic('vendite.contratti_righe', 'contratto_id', 'CONTRATTO')` |
 | trg_note_contratto_validate_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_note_validate_generic('vendite.contratti_righe', 'contratto_id', 'CONTRATTO')` |
 

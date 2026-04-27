@@ -10,24 +10,25 @@ import Column from 'primevue/column'
 import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
 import Tag from 'primevue/tag'
-import Button from 'primevue/button'
 import NewButton from '../../core/components/NewButton.vue'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
-import { MANAGE_ICONS } from '../../core/constants'
+import ReloadButton from '../../core/components/ReloadButton.vue'
+import ReadonlyBadge from '../../core/components/ReadonlyBadge.vue'
+import AccessoBloccatoPanel from '../../core/components/AccessoBloccatoPanel.vue'
+import { useInjectBlocked } from '../../core/composables/useReadonlyMode'
+import { MANAGE_ICONS, TAB_ENTITIES } from '../../core/constants'
+import { buildBoolOptions } from '../../core/utils/options'
 
 const emit = defineEmits(['new', 'row-click', 'manage-conversioni'])
 const { t } = useI18n()
 const store = useUnitaMisuraStore()
+const isBlocked = useInjectBlocked()
 const { searchText, onPage, onSort, applyFilters, reload, paginatorProps } = useSearchTable(store, {
   defaultSortField: 'descrizione'
 })
 
 const attivoFilter = ref(true)
-const boolOptions = [
-  { value: null, label: t('common.all') },
-  { value: true, label: t('common.yes') },
-  { value: false, label: t('common.no') }
-]
+const boolOptions = buildBoolOptions(t)
 
 function onAttivoChange() {
   store.filters.attivo = attivoFilter.value
@@ -48,12 +49,15 @@ function buildRowActions(data) {
   ]
 }
 
-useTabFreshness(store, 'unita_misura')
+useTabFreshness(store, TAB_ENTITIES.UNITA_MISURA)
 onMounted(() => store.fetchList())
 </script>
 
 <template>
   <div class="app-tab-content">
+    <AccessoBloccatoPanel v-if="isBlocked" />
+
+    <template v-else>
     <div class="app-page-toolbar">
       <div class="app-page-filters">
         <InputText v-model="searchText" :placeholder="t('catalogo.uom_search_placeholder')" />
@@ -61,7 +65,8 @@ onMounted(() => store.fetchList())
           :placeholder="t('catalogo.filtro_attivo')" @change="onAttivoChange" style="width: 120px;" />
       </div>
       <div class="app-page-actions">
-        <Button icon="pi pi-refresh" text class="app-reload-btn" v-tooltip.bottom="t('common.reload_list')" @click="reload" />
+        <ReadonlyBadge />
+        <ReloadButton @click="reload" />
         <NewButton :tooltip="t('catalogo.nuova_uom')" @click="emit('new')" />
       </div>
     </div>
@@ -89,5 +94,6 @@ onMounted(() => store.fetchList())
         </template>
       </Column>
     </DataTable>
+    </template>
   </div>
 </template>

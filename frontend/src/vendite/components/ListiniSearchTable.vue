@@ -1,7 +1,7 @@
 <script setup>
 // Scopo: DataTable paginata listini con search, filtro utility e attivo.
 // Row expansion: mostra le versioni del listino sotto la riga (default aperto).
-// Pulsanti riga listino: toggle versioni (chiude/apre expansion), associazioni.
+// Pulsanti riga listino: toggle versioni (chiude/apre expansion), test resolver.
 // Mini-tabella versioni nell'expansion: + nuova versione, transizioni stato,
 // gestione righe prezzo (apre VersioneDrawer dal parent).
 import { ref, onMounted, watch } from 'vue'
@@ -12,10 +12,10 @@ import { useSearchTable } from '../../core/composables/useSearchTable'
 import { useTabFreshness } from '../../core/composables/useTabFreshness'
 import { useGlobalLookup } from '../../core/composables/useGlobalLookup'
 import { lookupCodici } from '../../core/apiCore'
-import { MANAGE_ICONS } from '../../core/constants'
-import { statoVersioneListinoSeverity } from '../../core/utils/severity'
+import { MANAGE_ICONS, TAB_ENTITIES } from '../../core/constants'
+import { statoVersioneListinoSeverity, statoVersioneVisibile } from '../../core/utils/severity'
 import { displayDate } from '../../core/utils/date'
-import { changeVersioneStato, deleteVersione, deleteListino } from '../api/listini'
+import { deleteVersione, deleteListino } from '../api/listini'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
@@ -26,9 +26,13 @@ import Button from 'primevue/button'
 import NewButton from '../../core/components/NewButton.vue'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
 import UtilityPerRuoloSelect from '../../core/components/UtilityPerRuoloSelect.vue'
+import ReloadButton from '../../core/components/ReloadButton.vue'
+import ReadonlyBadge from '../../core/components/ReadonlyBadge.vue'
+import AccessoBloccatoPanel from '../../core/components/AccessoBloccatoPanel.vue'
+import { useInjectBlocked } from '../../core/composables/useReadonlyMode'
 import AlertScadenzeWidget from './AlertScadenzeWidget.vue'
 import AttivaVersioneDialog from './AttivaVersioneDialog.vue'
-import ProgrammaChiusuraDialog from './ProgrammaChiusuraDialog.vue'
+import ChiudiVersioneDialog from './ChiudiVersioneDialog.vue'
 
 const emit = defineEmits([
   'new',
@@ -42,6 +46,7 @@ const emit = defineEmits([
 const { t } = useI18n()
 const store = useListiniStore()
 const { execute } = useApiHandler()
+const isBlocked = useInjectBlocked()
 const { confirmDelete } = useConfirmAction()
 const { searchText, onPage, onSort, applyFilters, reload, paginatorProps } = useSearchTable(store, {
   defaultSortField: 'descrizione'
@@ -125,7 +130,7 @@ const chiusuraDialogVisible = ref(false)
 const chiusuraDialogVersione = ref(null)
 const chiusuraDialogListinoId = ref(null)
 
-function onProgrammaChiusura(versione, listinoId) {
+function onChiudiVersione(versione, listinoId) {
   chiusuraDialogVersione.value = versione
   chiusuraDialogListinoId.value = listinoId
   chiusuraDialogVisible.value = true
@@ -133,17 +138,6 @@ function onProgrammaChiusura(versione, listinoId) {
 
 async function onChiusuraSaved({ listinoId }) {
   await store.invalidateVersioniListino(listinoId)
-}
-
-// Transizione ATTIVA -> CHIUSA: nessun auto-close, esegue diretto.
-async function onChiudiVersione(versione, listinoId) {
-  const result = await execute(
-    () => changeVersioneStato(listinoId, versione.id, { stato: 'CHIUSA' }),
-    { successMessage: t('listini.stato_aggiornato') }
-  )
-  if (result !== null) {
-    await store.invalidateVersioniListino(listinoId)
-  }
 }
 
 // Transizione BOZZA -> ATTIVA: passa per dialog di conferma con preview
@@ -207,10 +201,13 @@ function buildListinoActions(data) {
   ]
 }
 
-// Scopo: azioni di riga della versione listino nell'expansion (fino a 6, filtrate per stato).
+// Scopo: azioni di riga della versione listino nell'expansion (fino a 6, filtrate per stato visibile).
+//        Lo stato visibile e` data-driven: una versione con valido_al < oggi e` trattata
+//        come CHIUSA anche se in DB risulta ancora ATTIVA (job notturno non ancora passato).
 function buildVersioneActions(ver, listino) {
-  const isBozza = ver.stato === 'BOZZA'
-  const isAttiva = ver.stato === 'ATTIVA'
+  const statoVisibile = statoVersioneVisibile(ver)
+  const isBozza = statoVisibile === 'BOZZA'
+  const isAttiva = statoVisibile === 'ATTIVA'
   return [
     {
       key: 'attiva',
@@ -220,14 +217,6 @@ function buildVersioneActions(ver, listino) {
       visible: isBozza,
       disabled: !ver.righe_count,
       command: () => onAttivaVersione(ver, listino.id),
-    },
-    {
-      key: 'programma-chiusura',
-      label: t('listini.programma_chiusura'),
-      icon: 'pi pi-calendar',
-      severity: 'primary',
-      visible: isAttiva,
-      command: () => onProgrammaChiusura(ver, listino.id),
     },
     {
       key: 'chiudi',
@@ -260,7 +249,7 @@ function buildVersioneActions(ver, listino) {
   ]
 }
 
-useTabFreshness(store, 'listino')
+useTabFreshness(store, TAB_ENTITIES.LISTINO)
 
 // Dopo ogni assegnazione di items (fetchList completato e preload versioni
 // gia' fatto dal store), aggiorna la mappa expandedRows per espandere tutto.
@@ -271,6 +260,9 @@ onMounted(() => store.fetchList())
 
 <template>
   <div class="app-tab-content">
+    <AccessoBloccatoPanel v-if="isBlocked" />
+
+    <template v-else>
     <div class="app-page-toolbar">
       <div class="app-page-filters">
         <InputText v-model="searchText" :placeholder="t('listini.search_placeholder')" style="width: 320px;" />
@@ -289,7 +281,8 @@ onMounted(() => store.fetchList())
         <AlertScadenzeWidget />
         <Button icon="pi pi-calculator" text severity="info"
           v-tooltip.bottom="t('listini.test_prezzo')" @click="emit('test-resolver')" />
-        <Button icon="pi pi-refresh" text class="app-reload-btn" v-tooltip.bottom="t('common.reload_list')" @click="reload" />
+        <ReadonlyBadge />
+        <ReloadButton @click="reload" />
         <NewButton :tooltip="t('listini.nuovo_listino')" @click="emit('new')" />
       </div>
     </div>
@@ -363,7 +356,7 @@ onMounted(() => store.fetchList())
             <Column field="righe_count" :header="t('listini.col_righe')" style="width: 80px;" />
             <Column :header="t('listini.col_stato')" style="width: 90px;">
               <template #body="{ data: ver }">
-                <Tag :value="ver.stato" :severity="statoVersioneListinoSeverity(ver.stato)" />
+                <Tag :value="statoVersioneVisibile(ver)" :severity="statoVersioneListinoSeverity(statoVersioneVisibile(ver))" />
               </template>
             </Column>
             <Column :header="t('common.col_azioni')" class="app-col-actions" :exportable="false" frozen alignFrozen="right">
@@ -384,13 +377,14 @@ onMounted(() => store.fetchList())
       @confirmed="onAttivaConfirmed"
     />
 
-    <ProgrammaChiusuraDialog
+    <ChiudiVersioneDialog
       :visible="chiusuraDialogVisible"
       @update:visible="v => chiusuraDialogVisible = v"
       :listino-id="chiusuraDialogListinoId"
       :versione="chiusuraDialogVersione"
       @saved="onChiusuraSaved"
     />
+    </template>
   </div>
 </template>
 

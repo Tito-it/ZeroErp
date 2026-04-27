@@ -1,16 +1,19 @@
 <script setup>
 // Scopo: topbar principale — emittente, area title, context chip, ricerca, user badge, data, logout.
 // Su mobile mostra hamburger per aprire il drawer sidebar.
-import { computed, onMounted } from 'vue'
+// Su schermi piccoli raggruppa dark/search/AI/lingua in un menu kebab (3 puntini).
+import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import Button from 'primevue/button'
 import Chip from 'primevue/chip'
+import Menu from 'primevue/menu'
 import { useAuthStore } from '../../stores/auth'
 import { useUiStore } from '../../stores/ui'
 import { useContextStore } from '../../stores/context'
 import { resolveTabLabel } from '../navigation'
 import { getAIStatus } from '../api/ai-api'
+import { setAppLanguage, SUPPORTED_LOCALES } from '../i18n'
 import SearchDrawer from './SearchDrawer.vue'
 import AiAssistantDrawer from './AiAssistantDrawer.vue'
 
@@ -70,6 +73,60 @@ async function handleLogout() {
   router.push('/login')
 }
 
+// Scopo: switch lingua IT/EN. Toggle sulla prossima locale supportata in
+//        SUPPORTED_LOCALES; persistita in localStorage da setAppLanguage.
+//        Le prossime chiamate axios invieranno Accept-Language aggiornato
+//        (interceptor in core/api.js) che popola la GUC `myapp.user_language`.
+function toggleLanguage() {
+  const idx = SUPPORTED_LOCALES.indexOf(locale.value)
+  const next = SUPPORTED_LOCALES[(idx + 1) % SUPPORTED_LOCALES.length]
+  setAppLanguage(next)
+}
+
+const languageLabel = computed(() => locale.value.toUpperCase())
+const languageTooltip = computed(() => {
+  // Mostra "EN" se la lingua corrente è IT (e viceversa) per spiegare
+  // su cosa si passerà al click.
+  const next = SUPPORTED_LOCALES.find(l => l !== locale.value) || locale.value
+  return `${t('common.switch_language')} · ${next.toUpperCase()}`
+})
+
+// Scopo: menu kebab per schermi piccoli. Raggruppa dark/ricerca/AI/lingua.
+//        Il trigger è visibile solo su mobile (CSS @media <= 767px);
+//        i pulsanti singoli sono nascosti alla stessa soglia.
+const kebabMenu = ref(null)
+const kebabItems = computed(() => {
+  const items = [
+    {
+      label: ui.isDark ? t('common.light_mode') : t('common.dark_mode'),
+      icon: ui.isDark ? 'pi pi-sun' : 'pi pi-moon',
+      command: () => ui.toggleDarkMode()
+    },
+    {
+      label: t('context.tooltip_search'),
+      icon: 'pi pi-search',
+      command: () => ui.openSearchDrawer()
+    }
+  ]
+  if (ui.aiAvailable) {
+    items.push({
+      label: t('ai.title'),
+      icon: 'pi pi-microchip-ai',
+      command: () => ui.toggleAiDrawer()
+    })
+  }
+  items.push({
+    label: `${t('common.language')} · ${languageLabel.value}`,
+    icon: 'pi pi-globe',
+    command: () => toggleLanguage()
+  })
+  return items
+})
+
+function toggleKebab(event) {
+  kebabMenu.value?.toggle(event)
+}
+
 // Scopo: Verifica disponibilita' AI al mount (best-effort, non blocca).
 //        Solo se l'utente e' autenticato, per evitare 401 inutili.
 onMounted(async () => {
@@ -119,33 +176,56 @@ onMounted(async () => {
         </template>
       </Chip>
 
-      <!-- Toggle dark/light mode -->
-      <button
-        class="topbar-icon-btn"
-        v-tooltip.bottom="ui.isDark ? t('common.light_mode') : t('common.dark_mode')"
-        @click="ui.toggleDarkMode()"
-      >
-        <i :class="ui.isDark ? 'pi pi-sun' : 'pi pi-moon'"></i>
-      </button>
+      <!-- Gruppo azioni inline — nascosto su mobile (vedi media query) -->
+      <div class="topbar-actions-inline">
+        <!-- Toggle dark/light mode -->
+        <button
+          class="topbar-icon-btn"
+          v-tooltip.bottom="ui.isDark ? t('common.light_mode') : t('common.dark_mode')"
+          @click="ui.toggleDarkMode()"
+        >
+          <i :class="ui.isDark ? 'pi pi-sun' : 'pi pi-moon'"></i>
+        </button>
 
-      <!-- Pulsante ricerca universale -->
-      <button
-        class="topbar-icon-btn"
-        v-tooltip.bottom="t('context.tooltip_search')"
-        @click="ui.openSearchDrawer()"
-      >
-        <i class="pi pi-search"></i>
-      </button>
+        <!-- Pulsante ricerca universale -->
+        <button
+          class="topbar-icon-btn"
+          v-tooltip.bottom="t('context.tooltip_search')"
+          @click="ui.openSearchDrawer()"
+        >
+          <i class="pi pi-search"></i>
+        </button>
 
-      <!-- Pulsante assistente AI — visibile solo se AI disponibile -->
+        <!-- Pulsante assistente AI — visibile solo se AI disponibile -->
+        <button
+          v-if="ui.aiAvailable"
+          class="topbar-icon-btn"
+          v-tooltip.bottom="`${t('ai.title')} (Ctrl+.)`"
+          @click="ui.toggleAiDrawer()"
+        >
+          <i class="pi pi-microchip-ai"></i>
+        </button>
+
+        <!-- Switch lingua IT/EN -->
+        <button
+          class="topbar-icon-btn topbar-lang-btn"
+          v-tooltip.bottom="languageTooltip"
+          @click="toggleLanguage()"
+        >
+          <span class="topbar-lang-label">{{ languageLabel }}</span>
+        </button>
+      </div>
+
+      <!-- Menu kebab (3 puntini) — visibile solo su mobile -->
       <button
-        v-if="ui.aiAvailable"
-        class="topbar-icon-btn"
-        v-tooltip.bottom="`${t('ai.title')} (Ctrl+.)`"
-        @click="ui.toggleAiDrawer()"
+        class="topbar-icon-btn topbar-kebab-btn"
+        v-tooltip.bottom="t('common.more_options')"
+        @click="toggleKebab"
+        aria-haspopup="true"
       >
-        <i class="pi pi-microchip-ai"></i>
+        <i class="pi pi-ellipsis-v"></i>
       </button>
+      <Menu ref="kebabMenu" :model="kebabItems" popup class="topbar-kebab-menu" />
 
       <!-- Badge SUPER_ADMIN o iniziali utente -->
       <Chip v-if="auth.isSuperAdmin" class="admin-chip" v-tooltip.bottom="auth.displayName">
@@ -237,6 +317,32 @@ onMounted(async () => {
   white-space: nowrap;
 }
 
+/* Gruppo azioni inline (dark/search/AI/lingua). Su mobile collassa nel menu kebab. */
+.topbar-actions-inline {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* Kebab menu — visibile solo su mobile (inverso di .topbar-actions-inline).
+   Selettore combinato .topbar-icon-btn.topbar-kebab-btn per specificita` piu`
+   alta di .topbar-icon-btn singolo (altrimenti display: flex di quest'ultimo,
+   dichiarato dopo, sovrascriverebbe display: none). */
+.topbar-icon-btn.topbar-kebab-btn {
+  display: none;
+}
+
+/* Switch lingua — mostra label testuale (IT/EN) anziche' icona */
+.topbar-lang-btn {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+}
+
+.topbar-lang-label {
+  line-height: 1;
+}
+
 /* Bottone icona topbar — classe riutilizzabile per search, AI, logout */
 .topbar-icon-btn {
   display: flex;
@@ -323,7 +429,7 @@ onMounted(async () => {
   user-select: none;
 }
 
-/* Mobile — nasconde data e azienda, semplifica */
+/* Mobile — nasconde data, azienda, azioni inline; mostra solo il kebab */
 @media (max-width: 767px) {
   .topbar-company,
   .topbar-date {
@@ -344,6 +450,16 @@ onMounted(async () => {
 
   .admin-chip {
     padding: 0.15rem 0.35rem;
+  }
+
+  /* Collassa dark/search/AI/lingua nel menu kebab */
+  .topbar-actions-inline {
+    display: none;
+  }
+
+  /* Selettore specifico: vedi commento sopra su specificity ordering */
+  .topbar-icon-btn.topbar-kebab-btn {
+    display: flex;
   }
 }
 

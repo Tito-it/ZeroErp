@@ -6,8 +6,10 @@
 - [api_email](manual/api_email.md) — Sistema completo di invio email con risoluzione automatica account SMTP e template per reparto/contesto. Supporta invio diretto, bozze editabili (outbox), allegati, consultazione log. Ogni email e' tracciata in config.e…
 - [api_endpoint_helpers](manual/api_endpoint_helpers.md) — Centralizzare il flusso standard dei POST JSON (parse, validazione base, envelope, idempotenza).
 - [api_invito_operatore](manual/api_invito_operatore.md) — Permette all'admin di invitare un operatore via email. L'operatore riceve un link, imposta la propria password e attiva l'account. Nessuna password viene comunicata manualmente.
+- [api_invito_portale_shop](manual/api_invito_portale_shop.md) — Documenta i flussi end-to-end di **onboarding self-service** delle vesti non-operatore (CLIENTE_PORTALE, FORNITORE_PORTALE, SHOP_CUSTOMER). L'admin invia un invito email partendo dal cliente o fornitore anagrafico; l'ut…
 - [api_logout](manual/api_logout.md) — Invalida il refresh token corrente (blacklist) e registra l'evento LOGOUT nella tabella dbops.sessioni_utente, chiudendo la sessione associata al JTI.
 - [api_lookup_codici](manual/api_lookup_codici.md) — Espone una ricerca generica su tabelle di configurazione con struttura id / codice / descrizione. Permette autocompletamento e ricerca ILIKE da UI senza dover creare endpoint dedicati per ogni tabella config.
+- [api_multi_veste_token](manual/api_multi_veste_token.md) — Documenta il contratto HTTP dei 6 endpoint di autenticazione post refactor multi-face (§8.3.1-§8.3.5): 3 login + 3 refresh, uno per namespace (admin / portale / shop). Ogni namespace espone solo il subset di vesti che g…
 - [api_pagination](manual/api_pagination.md) — Fornire configurazioni DRF standard per paginazione coerente su endpoint list/search.
 - [api_parameter_settings](manual/api_parameter_settings.md) — Esporre via HTTP la gestione dei parametri di sistema con risoluzione override multi-livello (user, group, emittente fiscale) e CRUD override personale operatore.
 - [api_parameters](manual/api_parameters.md) — Espone la gestione dei parametri di sistema (config.parameters) con risoluzione override multi-livello per l'utente autenticato. Supporta:
@@ -23,7 +25,7 @@
 - [api_throttling](manual/api_throttling.md) — Limitare burst di chiamate sugli endpoint search per proteggere backend e DB.
 - [api_token_cambio_password](manual/api_token_cambio_password.md) — Building block per token monouso (inviti, reset password, conferme) e meccanismo di cambio password obbligatorio al primo accesso. I due componenti lavorano insieme: il flag deve_cambiare_password forza il cambio, il To…
 - [api_tracciamento](manual/api_tracciamento.md) — Espone in lettura i tre livelli di tracciamento del sistema: audit log operativo, task registry multi-dominio e log esecuzioni job pgAgent. Fornisce agli anelli esterni e alla futura UI una vista unificata sulle operazi…
-- [api_user_profile](manual/api_user_profile.md) — Restituisce il profilo completo dell'utente autenticato: dati anagrafici (soggetto), risorse umane, ruolo_sistema e dati emittente fiscale associato.
+- [api_user_profile](manual/api_user_profile.md) — Restituisce il profilo completo dell'utente autenticato: dati anagrafici (soggetto), risorse umane, ruolo_sistema/ruolo_applicativo, dati emittente fiscale associato e **dettaglio dell'identita digitale del JWT corrente…
 - [api_write_checklist](manual/api_write_checklist.md) — Fornire una checklist operativa pronta per nuovi endpoint write (POST/PUT/PATCH/DELETE con side effect).
 - [error-handling-api](manual/error-handling-api.md) — Definire un contratto errore uniforme per tutte le API backend Django.
 - [payload-validation-api](manual/payload-validation-api.md) — Centralizzare validazioni/coercizioni dei payload JSON API per ridurre logica duplicata nelle view dominio.
@@ -34,7 +36,7 @@
 - [value-normalizer](manual/value-normalizer.md) — Centralizzare utility riusabili di normalizzazione valori input.
 
 ## Altri contenuti
-- [auth_views_audit](manual/auth_views_audit.md) — Override delle view SimpleJWT per registrare eventi di login e refresh nella tabella dbops.sessioni_utente.
+- [auth_views_audit](manual/auth_views_audit.md) — Override delle view SimpleJWT per agganciare: (a) l'audit login/refresh nella tabella dbops.sessioni_utente, (b) il controllo blocco utente per tentativi falliti, (c) il throttle IP, (d) il guard cross-namespace multi-v…
 - [emittente_fiscale_scope_mixin](manual/emittente_fiscale_scope_mixin.md) — Mixin per ViewSet e GenericAPIView che filtra automaticamente il queryset in base agli emittenti fiscali autorizzati per l'utente corrente.
 - [gen-bk-docs](manual/gen-bk-docs.md) — Automatizzare la generazione degli indici index.md (e opzionalmente index.ci.md) per docs/it/backend/<area>/, includendo una descrizione breve estratta dalla sezione **Scopo**.
 - [jwt_audit_authentication](manual/jwt_audit_authentication.md) — Subclass DRF di rest_framework_simplejwt.authentication.JWTAuthentication che propaga l'identita' utente JWT come GUC PostgreSQL (app.jwt_user, app.current_user_id) subito dopo authenticate() di successo, prima che il v…

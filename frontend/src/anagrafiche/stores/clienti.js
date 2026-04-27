@@ -4,6 +4,7 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { listClienti, getCliente, createCliente, updateCliente } from '../api/anagrafiche'
 import { useTabEvents } from '../../core/composables/useTabEvents'
+import { TAB_ENTITIES } from '../../core/constants'
 
 export const useClientiStore = defineStore('anagrafiche-clienti', () => {
   const { emitDataChanged } = useTabEvents()
@@ -29,8 +30,14 @@ export const useClientiStore = defineStore('anagrafiche-clienti', () => {
     const searchTerm = (f.search || '').trim()
     const hasFilters = f.utility_id != null || f.stato_cliente_id != null
 
-    // Search con meno di 3 caratteri e nessun filtro attivo → ignora
+    // Search con meno di 3 caratteri e nessun filtro attivo → svuota i
+    // risultati precedenti (coerenza UX: niente dati obsoleti visibili).
     if (searchTerm.length > 0 && searchTerm.length < 3 && !hasFilters) {
+      if (hasSearched.value) {
+        items.value = []
+        totalRecords.value = 0
+        hasSearched.value = false
+      }
       return
     }
     if (!searchTerm && !hasFilters && !hasSearched.value) {
@@ -74,14 +81,14 @@ export const useClientiStore = defineStore('anagrafiche-clienti', () => {
   // Scopo: Crea cliente completo (istanza + BA + cliente).
   async function create(payload) {
     const res = await createCliente(payload)
-    emitDataChanged('cliente', res.data.data.id)
+    emitDataChanged(TAB_ENTITIES.CLIENTE, res.data.data.id)
     return res.data.data
   }
 
   // Scopo: Aggiorna campi editabili del cliente.
   async function update(clienteId, payload) {
     const res = await updateCliente(clienteId, payload)
-    emitDataChanged('cliente', clienteId)
+    emitDataChanged(TAB_ENTITIES.CLIENTE, clienteId)
     return res.data.data
   }
 

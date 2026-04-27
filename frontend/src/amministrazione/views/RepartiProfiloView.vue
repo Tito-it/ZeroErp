@@ -6,6 +6,7 @@ import { useI18n } from 'vue-i18n'
 import { useRepartiStore } from '../stores/reparti'
 import { useTabEvents } from '../../core/composables/useTabEvents'
 import { useReadonlyMode } from '../../core/composables/useReadonlyMode'
+import { READONLY_DOMAINS } from '../../core/constants'
 import RepartoProfiloEditor from '../components/RepartoProfiloEditor.vue'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
@@ -13,7 +14,7 @@ import Badge from 'primevue/badge'
 
 const { t } = useI18n()
 const store = useRepartiStore()
-useReadonlyMode('amm_software')
+useReadonlyMode(READONLY_DOMAINS.AMM_SOFTWARE)
 const { onDataChanged } = useTabEvents()
 
 const editorVisible = ref(false)

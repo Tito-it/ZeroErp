@@ -3,13 +3,14 @@
 // SearchTable + Drawer creazione/dettaglio.
 import { useDrawerState } from '../../core/composables/useDrawerState'
 import { useReadonlyMode } from '../../core/composables/useReadonlyMode'
+import { READONLY_DOMAINS } from '../../core/constants'
 import { usePraticheStore } from '../stores/pratiche'
 import PraticheSearchTable from '../components/PraticheSearchTable.vue'
 import PraticaDrawer from '../components/PraticaDrawer.vue'
 
 const drawer = useDrawerState()
 const store = usePraticheStore()
-useReadonlyMode('pratiche')
+useReadonlyMode(READONLY_DOMAINS.PRATICHE)
 
 // Scopo: Dopo salvataggio, ricarica lista e chiudi drawer.
 async function onDrawerSaved() {

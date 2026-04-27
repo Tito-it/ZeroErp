@@ -188,6 +188,48 @@ Funzioni di supporto:
 
 ---
 
+## Snapshot pricing su commessa e propagazione ad AF
+
+Le righe `commesse_attivita` portano con sé lo **snapshot del prezzo** calcolato al push dal resolver v5. Questa sezione copre la parte prezzi del modello fatturazione; per il dettaglio del calcolo, dei 3 stadi (promo/contratto/categoria) e delle autorizzazioni L1/L2/L3 vedere la [guida Gestione Listini e Pricing](/guide/gestione-listini).
+
+### Campi pricing rilevanti
+
+Oltre a quantità, UOM e competenza, la riga `vendite.commesse_attivita` include:
+
+Snapshot resolver (calcolato al push):
+
+* `prezzo_snapshot` — prezzo corrente della riga
+* `prezzo_base_snapshot` — prezzo base di listino prima della variazione
+* `origine_prezzo` — `PROMO`, `CONTRATTO_OVERRIDE`, `CONTRATTO_LISTINO`, `CATEGORIA`, `MANUALE`
+* `tipo_variazione_applicata` + `valore_variazione_applicata`
+* `listino_versione_id`, `listino_riga_id` — FK alla riga di listino usata
+* `promo_id`, `contratto_id`, `categoria_cliente_id_snapshot`, `classe_utenza_id_snapshot` — FK congelate al momento del calcolo
+
+Flag operativi post-resolver:
+
+* `prezzo_bloccato` — se `TRUE`, il prezzo è bloccato da override manuale e il riallineamento automatico lo salta
+* `prezzo_da_riallineare` — flag di segnalazione per dashboard "prezzi da riallineare"
+* `pricing_mode` — predisposizione futura (`FIXED`, `FORMULA`, `SCAGLIONI`); oggi solo `FIXED` è operativo
+
+### Ciclo di vita post-push
+
+Una volta sulla riga commessa, il prezzo può essere **ricalcolato, bloccato o sbloccato** tramite le operazioni dedicate del servizio vendite (vedi [guida listini §7](/guide/gestione-listini#7-ciclo-di-vita-del-prezzo-sulla-riga-commessa)):
+
+* `POST .../attivita/<id>/riallinea-prezzo/` — ricalcola dal resolver; guardia su cambio versione listino; errore se `prezzo_bloccato=TRUE`
+* `POST .../attivita/<id>/variazione-prezzo-eccezionale/` — override manuale con motivo obbligatorio; imposta `prezzo_bloccato=TRUE`
+* `POST .../attivita/<id>/sblocca-prezzo/` — rimuove il blocco e ricalcola dal resolver
+
+Tutte queste operazioni sono ammesse solo su commesse `modificabile` e righe non ancora fatturate.
+
+### Propagazione a `attivita_fatturabili`
+
+All'emissione (`fn_emit_attivita_fatturabili_da_commessa`) i campi snapshot e `prezzo_bloccato` vengono propagati sulla riga AF. Conseguenze operative:
+
+* i task pipeline fatturazione **rispettano** `prezzo_bloccato=TRUE`: un prezzo da override manuale non viene riscritto da eventuali ricalcoli massivi in fase di lotto;
+* lo snapshot resolver resta tracciabile fino a `fatture_righe`, utile per audit e contestazioni (origine prezzo, FK listino/contratto/promo, variazione applicata).
+
+---
+
 ## Fase 3 - Emissione da commessa a attivita_fatturabili
 
 Scopo: trasferire le righe `commesse_attivita` idonee in `attivita_fatturabili`.

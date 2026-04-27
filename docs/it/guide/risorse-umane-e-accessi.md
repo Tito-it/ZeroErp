@@ -42,13 +42,14 @@
 >   `app.soggetto_ruolo_id` propagati da `JwtAuditAuthentication`
 > * Scope policy generalizzato (`BA_OWNERSHIP`, `FORNITORE_OWNERSHIP`,
 >   `EF_WHITELIST`) con fn `script.fn_scope_*` inlineable
-> * Policy RLS dormienti su 6 tabelle sensibili (dry-run, attivazione
->   in PR-C)
+> * Policy RLS predisposte su 6 tabelle sensibili (dry-run completato;
+>   attivazione `ENABLE ROW LEVEL SECURITY` differita a quando le API
+>   portale/shop di dominio saranno sviluppate)
 >
 > Dettagli:
 >
 > * Guida architetturale: [architettura-multi-face-auth](/guide/architettura-multi-face-auth)
-> * Piano di sviluppo: [sviluppo-multi-face-auth](/dev/work-in-progress/sviluppo-multi-face-auth)
+> * Piano di sviluppo: [sviluppo-multi-face-auth](/dev/work-done/sviluppo-multi-face-auth)
 
 ---
 

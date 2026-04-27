@@ -16,7 +16,6 @@ import { statoFornitoreSeverity } from '../../core/utils/severity'
 import SoggettoResolver from '../../core/components/SoggettoResolver.vue'
 import SoggettoMessageBanner from '../../core/components/SoggettoMessageBanner.vue'
 import SoggettoPreviewBadges from '../../core/components/SoggettoPreviewBadges.vue'
-import PortaleAccessoPanel from '../../portale/components/PortaleAccessoPanel.vue'
 import ContattoForm from '../../core/components/ContattoForm.vue'
 import IndirizzoSoggettoForm from '../../core/components/IndirizzoSoggettoForm.vue'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
@@ -407,19 +406,15 @@ function onClose() {
         :soggetto-id="soggettoSelezionato.id"
         :tipo-ruolo-codice="TIPO_RUOLO.FORNITORE"
         preview />
+      <!-- §1.6: accessi web (solo portale per fornitori, no shop B2C)
+           tramite pulsante Web in SoggettoPreviewBadges, apre
+           WebAccessiDrawer autonomo. -->
       <SoggettoPreviewBadges v-else-if="isEdit && detail"
         :soggetto-ruolo-id="detail.soggetto_ruolo_id"
-        :tipo-ruolo-codice="TIPO_RUOLO.FORNITORE" />
-
-      <!-- Accesso portale fornitore: visibile solo in edit. MVP usa pec_email
-           come suggerimento (proprieta' fornitori); l'admin puo' modificare. -->
-      <PortaleAccessoPanel
-        v-if="isEdit && props.fornitoreId"
-        entita-tipo="fornitore"
-        :entita-id="props.fornitoreId"
-        :email-iniziale="detail?.pec_email || ''"
-        :readonly="isReadonly"
-      />
+        :tipo-ruolo-codice="TIPO_RUOLO.FORNITORE"
+        entita-tipo-web="fornitore"
+        :entita-id-web="props.fornitoreId"
+        :email-iniziale-web="detail?.pec_email || ''" />
 
       <DrawerFooter :loading="loading" :disabled="!canSave" @save="onSave" @cancel="onClose" />
     </div>

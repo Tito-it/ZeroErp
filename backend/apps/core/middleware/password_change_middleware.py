@@ -15,6 +15,7 @@ from django.http import HttpRequest, JsonResponse
 from django.utils.deprecation import MiddlewareMixin
 
 from apps.core.db.auth_repository import AuthRepository
+from apps.core.services.auth_helpers import extract_identita_id_from_request
 from apps.core.services.request_context import get_request_id
 
 logger = logging.getLogger(__name__)
@@ -22,7 +23,10 @@ logger = logging.getLogger(__name__)
 # Singleton repository (stateless)
 _auth_repo = AuthRepository()
 
-# Path consentiti anche quando deve_cambiare_password = true
+# Path consentiti anche quando deve_cambiare_password = true.
+# Nota: §8.3.1 ha rinominato solo /api/v1/auth/token/ → /api/v1/admin/token/;
+# gli altri endpoint auth (logout, change-password, password-reset-*) restano
+# sotto /api/v1/auth/ finche' il piano PR-B non affronta anche il loro rename.
 _ALLOWED_PATHS = frozenset({
     "/api/v1/auth/change-password/",
     "/api/v1/auth/logout/",
@@ -55,9 +59,16 @@ class PasswordChangeRequiredMiddleware(MiddlewareMixin):
         if user.is_superuser:
             return None
 
+        # Punta la veste del JWT corrente (§8.3.2 + §8.4.1). Fallback None
+        # tollera flussi senza JWT validato (LIMIT 1 legacy sulla prima
+        # identita attiva — difensivo).
+        identita_id = extract_identita_id_from_request(request)
+
         # Leggi flag dal DB
         try:
-            if _auth_repo.get_deve_cambiare_password(user.id):
+            if _auth_repo.get_deve_cambiare_password(
+                user.id, identita_id=identita_id
+            ):
                 meta = {}
                 request_id = get_request_id()
                 if request_id:

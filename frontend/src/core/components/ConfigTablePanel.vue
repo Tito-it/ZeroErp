@@ -6,7 +6,7 @@ import { ref, computed, watch, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useApiHandler } from '../composables/useApiHandler'
 import { useReadonlyMode } from '../composables/useReadonlyMode'
-import { PAGINATION } from '../constants'
+import { PAGINATION, READONLY_DOMAINS } from '../constants'
 import { getTablesBySchema, getTableConfig } from '../config-tables'
 import { useDrawerState } from '../composables/useDrawerState'
 import GenericConfigDrawer from './GenericConfigDrawer.vue'
@@ -19,7 +19,7 @@ import api from '../api'
 
 const { t } = useI18n()
 const { execute } = useApiHandler()
-const { isReadonly } = useReadonlyMode('config')
+const { isReadonly } = useReadonlyMode(READONLY_DOMAINS.CONFIG)
 const drawer = useDrawerState()
 
 // Stato

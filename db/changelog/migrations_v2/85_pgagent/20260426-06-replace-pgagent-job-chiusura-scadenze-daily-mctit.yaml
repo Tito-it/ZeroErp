@@ -1,0 +1,124 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Job pgAgent unificato chiusura_scadenze_daily.
+#
+# Why: sostituisce il job specifico listini_versioni_close_scadute_daily
+# (creato il 20260424-01 in 85_pgagent) con un job unico che chiama
+# il framework parametrico dbops.fn_apply_chiusura_scadenze().
+# Una sola schedulazione gestisce tutte le tabelle configurate in
+# dbops.automazione_chiusura_scadenze (oggi: listini_versioni e
+# contratti).
+#
+# Schedule 00:05 daily: cattura le scadenze al primo momento utile
+# dopo il cambio data (semantica valido_al = ultimo giorno incluso).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+    - logicalFilePath: migrations_v2/85_pgagent/20260426-06-replace-pgagent-job-chiusura-scadenze-daily-mctit.yaml
+
+    - changeSet:
+          id: 20260426-06-replace-pgagent-job-chiusura-scadenze-daily
+          author: mctit
+          comments: >
+              Crea job pgAgent unico chiusura_scadenze_daily che esegue
+              dbops.fn_apply_chiusura_scadenze(). Sostituisce il job specifico
+              listini_versioni_close_scadute_daily.
+          preConditions:
+              - onFail: MARK_RAN
+                onError: CONTINUE
+                sqlCheck:
+                    expectedResult: 1
+                    sql: |
+                        SELECT COUNT(*)
+                          FROM pg_extension
+                         WHERE extname = 'pgagent'
+          changes:
+              - sql:
+                    splitStatements: false
+                    stripComments: false
+                    sql: |
+                        DO $$
+                        DECLARE
+                            v_jobid   INTEGER;
+                            v_classid INTEGER;
+                        BEGIN
+                            -- 1) Classe job 'Routine Maintenance'
+                            SELECT jclid INTO v_classid
+                              FROM pgagent.pga_jobclass
+                             WHERE jclname = 'Routine Maintenance'
+                             LIMIT 1;
+
+                            IF v_classid IS NULL THEN
+                                INSERT INTO pgagent.pga_jobclass (jclname, jcldesc)
+                                VALUES ('Routine Maintenance', 'Default job class')
+                                RETURNING jclid INTO v_classid;
+                            END IF;
+
+                            -- 2) Drop job specifico precedente (listini-only)
+                            DELETE FROM pgagent.pga_job
+                             WHERE jobname = 'listini_versioni_close_scadute_daily';
+
+                            -- 3) Drop eventuale job omonimo precedente (idempotenza)
+                            DELETE FROM pgagent.pga_job
+                             WHERE jobname = 'chiusura_scadenze_daily';
+
+                            -- 4) Crea il nuovo job unificato
+                            INSERT INTO pgagent.pga_job(
+                                jobjclid, jobname, jobdesc, jobenabled
+                            ) VALUES (
+                                v_classid,
+                                'chiusura_scadenze_daily',
+                                'Framework chiusura per scadenza: chiude lo stato gestionale (CHIUSA/CESSATO) su tutte le tabelle configurate in dbops.automazione_chiusura_scadenze quando valido_al < CURRENT_DATE. Schedule giornaliero 00:05.',
+                                true
+                            )
+                            RETURNING jobid INTO v_jobid;
+
+                            -- 5) Schedule: ogni giorno alle 00:05
+                            INSERT INTO pgagent.pga_schedule(
+                                jscjobid, jscname, jscenabled,
+                                jscminutes, jschours, jscweekdays,
+                                jscmonthdays, jscmonths, jscstart
+                            ) VALUES (
+                                v_jobid,
+                                'daily_00_05',
+                                true,
+                                -- minuto 5
+                                (SELECT array_agg((i = 5)::boolean) FROM generate_series(0,59) AS g(i)),
+                                -- ora 0
+                                (SELECT array_agg((i = 0)::boolean) FROM generate_series(0,23) AS g(i)),
+                                -- tutti i giorni della settimana
+                                array_fill(TRUE, ARRAY[7])::boolean[],
+                                -- tutti i giorni del mese
+                                array_fill(TRUE, ARRAY[32])::boolean[],
+                                -- tutti i mesi
+                                array_fill(TRUE, ARRAY[12])::boolean[],
+                                now()
+                            );
+
+                            -- 6) Step: invocazione del framework
+                            INSERT INTO pgagent.pga_jobstep(
+                                jstjobid, jstname, jstkind, jstcode, jstdbname
+                            ) VALUES (
+                                v_jobid,
+                                'run_chiusura_scadenze',
+                                's',
+                                $step$
+                                    SELECT dbops.fn_apply_chiusura_scadenze();
+                                $step$,
+                                current_database()
+                            );
+                        END;
+                        $$;
+
+    - changeSet:
+          id: 20260426-90-replace-pgagent-job-chiusura-scadenze-daily
+          author: mctit
+          changes:
+              - tagDatabase:
+                    tag: 20260426-06-replace-pgagent-job-chiusura-scadenze-daily

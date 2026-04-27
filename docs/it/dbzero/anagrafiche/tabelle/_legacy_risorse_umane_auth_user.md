@@ -42,6 +42,8 @@
 |------|--------|--------|--------|
 | trg_legacy_risorse_umane_auth_user_a10_risorse_umane_req_4ea1f8 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('anagrafiche', 'risorse_umane', 'attivo', 'risorsa_umana_id', 'id')` |
 | trg_legacy_risorse_umane_auth_user_a10_risorse_umane_req_4ea1f8 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('anagrafiche', 'risorse_umane', 'attivo', 'risorsa_umana_id', 'id')` |
+| trg_legacy_risorse_umane_auth_user_z90_storico_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_storico_generic('_legacy_risorse_umane_auth_user_id')` |
+| trg_legacy_risorse_umane_auth_user_z90_storico_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_storico_generic('_legacy_risorse_umane_auth_user_id')` |
 | trg_risorse_umane_auth_user_a10_guard_persona_fisica_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_risorse_umane_auth_user_guard_persona_fisica()` |
 | trg_risorse_umane_auth_user_a10_guard_persona_fisica_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_risorse_umane_auth_user_guard_persona_fisica()` |
 | trg_risorse_umane_auth_user_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |

@@ -1,0 +1,101 @@
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20260422-04-alter-preventivi-righe-add-approvazione-prezzo-mctit.yaml
+
+  # ---------------------------------------------------------------------------
+  # Sprint E listini v5 §14.6 — workflow approvazione L3 out-of-policy.
+  # Aggiunge 2 colonne nullable a vendite.preventivi_righe + indice parziale
+  # sulle righe "in approvazione" (filtro WHERE stato IS NOT NULL) per la
+  # dashboard BE.
+  #
+  # Righe esistenti: stato_approvazione_prezzo = NULL -> "non in workflow",
+  # comportamento immutato. Additivo, no breaking.
+  #
+  # 2 changeSet (sub-progressivi 04-01, 04-02):
+  #   04-01 ADD COLUMN stato_approvazione_prezzo + pratica_approvazione_prezzo_id
+  #   04-02 CREATE INDEX parziale ix_vendite_preventivi_righe_stato_approvazione
+  # ---------------------------------------------------------------------------
+
+  - changeSet:
+      id: 20260422-04-01-add-columns-preventivi-righe-approvazione-prezzo
+      author: mctit
+      comment: >
+        Aggiunge 2 colonne a vendite.preventivi_righe:
+        stato_approvazione_prezzo (ENUM, NULL default = non in approvazione)
+        e pratica_approvazione_prezzo_id (FK a pratiche.pratiche, NULL).
+      preConditions:
+        - onFail: HALT
+        - and:
+          - tableExists:
+              schemaName: vendite
+              tableName: preventivi_righe
+          - tableExists:
+              schemaName: pratiche
+              tableName: pratiche
+          - sqlCheck:
+              expectedResult: 1
+              sql: |
+                SELECT COUNT(*)
+                  FROM pg_type t
+                  JOIN pg_namespace n ON n.oid = t.typnamespace
+                 WHERE n.nspname = 'config'
+                   AND t.typname = 'stato_approvazione_prezzo';
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.preventivi_righe
+                  ADD COLUMN stato_approvazione_prezzo      config.stato_approvazione_prezzo,
+                  ADD COLUMN pratica_approvazione_prezzo_id bigint;
+
+              ALTER TABLE vendite.preventivi_righe
+                  ADD CONSTRAINT fk_prevrighe_pratica_approvazione_prezzo
+                  FOREIGN KEY (pratica_approvazione_prezzo_id)
+                  REFERENCES pratiche.pratiche(id);
+
+              COMMENT ON COLUMN vendite.preventivi_righe.stato_approvazione_prezzo IS
+                  'Stato del workflow L3 approvazione prezzo out-of-policy (Sprint E). '
+                  'NULL = riga non soggetta a workflow (caso piu'' comune). Valori '
+                  'non-NULL: PENDING (richiesta creata, in attesa), APPROVED (L3 '
+                  'autorizzato), REJECTED (L3 rifiutato, prezzo da rivedere).';
+
+              COMMENT ON COLUMN vendite.preventivi_righe.pratica_approvazione_prezzo_id IS
+                  'FK alla pratiche.pratiche che tracia la richiesta di approvazione '
+                  'per questa riga. NULL se la riga non e'' in workflow L3. '
+                  'Popolato da pratiche_service.crea_pratica quando l''utente richiede '
+                  'override out-of-policy.';
+      rollback:
+        - sql:
+            sql: |
+              ALTER TABLE vendite.preventivi_righe
+                  DROP CONSTRAINT IF EXISTS fk_prevrighe_pratica_approvazione_prezzo;
+              ALTER TABLE vendite.preventivi_righe
+                  DROP COLUMN IF EXISTS stato_approvazione_prezzo,
+                  DROP COLUMN IF EXISTS pratica_approvazione_prezzo_id;
+
+  - changeSet:
+      id: 20260422-04-02-create-ix-preventivi-righe-stato-approvazione
+      author: mctit
+      comment: >
+        Indice parziale su stato_approvazione_prezzo (solo righe IS NOT NULL).
+        Accelera la dashboard BE "righe in approvazione" che filtra le poche
+        centinaia/migliaia di righe PENDING/APPROVED/REJECTED su milioni di
+        righe in preventivi_righe. Prefix ix_vendite_ per convenzione progetto
+        (coerente con ix_vendite_preventivi_righe_articolo_id /
+        ix_vendite_preventivi_righe_preventivo_id).
+      preConditions:
+        - onFail: HALT
+        - columnExists:
+            schemaName: vendite
+            tableName: preventivi_righe
+            columnName: stato_approvazione_prezzo
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              CREATE INDEX ix_vendite_preventivi_righe_stato_approvazione
+                  ON vendite.preventivi_righe (stato_approvazione_prezzo)
+                  WHERE stato_approvazione_prezzo IS NOT NULL;
+      rollback:
+        - sql:
+            sql: DROP INDEX IF EXISTS vendite.ix_vendite_preventivi_righe_stato_approvazione;

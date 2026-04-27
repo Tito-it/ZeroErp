@@ -5,6 +5,7 @@ import { useI18n } from 'vue-i18n'
 import { useCodiciPostaliStore } from '../../anagrafiche/stores/codiciPostali'
 import { useSearchTable } from '../composables/useSearchTable'
 import { useTabFreshness } from '../composables/useTabFreshness'
+import { TAB_ENTITIES } from '../constants'
 import ComuneAutocomplete from './ComuneAutocomplete.vue'
 import NewButton from './NewButton.vue'
 import DataTable from 'primevue/datatable'
@@ -19,7 +20,7 @@ const { searchText, onPage, onSort, applyFilters, reload, paginatorProps } = use
 
 const comuneFilter = ref(null)
 
-useTabFreshness(store, 'codice_postale')
+useTabFreshness(store, TAB_ENTITIES.CODICE_POSTALE)
 onMounted(() => { store.fetchList() })
 
 function onComuneChange(id) {

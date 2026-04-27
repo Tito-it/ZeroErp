@@ -11,6 +11,8 @@
 
 from __future__ import annotations
 
+from decimal import Decimal, InvalidOperation
+
 from apps.core.db.parameter_repository import ParameterRepository
 from apps.core.services.error_manager import ErrorManager
 
@@ -59,6 +61,32 @@ class ParameterService:
             ErrorManager.raise_error(
                 code="E_PARAMETER_VALIDATION",
                 message=f"Parametro '{code}' non convertibile a intero.",
+                detail=f"Valore attuale: '{value}'",
+            )
+            raise  # unreachable, per type checker
+
+    # Scopo: Risolve un singolo parametro e lo converte a Decimal.
+    #        Utile per parametri numerici non-id (percentuali, soglie, limiti).
+    #        Raise E_PARAMETER_VALIDATION se il valore non e' convertibile —
+    #        coerente con get_parameter_int; un parametro decimal malformato
+    #        e' uno stato inconsistente del sistema che va corretto, non
+    #        ignorato silenziosamente.
+    def get_parameter_decimal(
+        self,
+        code: str,
+        django_user_id: int | None = None,
+        group_ids: list[int] | None = None,
+        emittente_fiscale_id: int | None = None,
+    ) -> Decimal:
+        value = self.get_parameter(
+            code, django_user_id, group_ids, emittente_fiscale_id,
+        )
+        try:
+            return Decimal(str(value))
+        except (InvalidOperation, ValueError, TypeError):
+            ErrorManager.raise_error(
+                code="E_PARAMETER_VALIDATION",
+                message=f"Parametro '{code}' non convertibile a decimale.",
                 detail=f"Valore attuale: '{value}'",
             )
             raise  # unreachable, per type checker

@@ -1,0 +1,226 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Drop CHECK ridondanti su valido_al > valido_dal post-migrazione
+# daterange (Fase 1, 12-04-2026).
+#
+# Tabelle coinvolte (4):
+#   - catalogo.articoli_componenti     (chk_articoli_componenti_valid_dates)
+#   - catalogo.unita_misura_conversioni (chk_uom_conv_valid_dates)
+#   - vendite.listini_versioni         (chk_listini_versioni_date)
+#   - vendite.listini_associazioni     (chk_listini_associazioni_date)
+#
+# Why:
+#   Tutte e 4 le tabelle hanno colonna `validita daterange` valorizzata
+#   dal trigger script.trgfn_set_validita() (BEFORE INSERT/UPDATE) che
+#   costruisce daterange(valido_dal, COALESCE(valido_al, infinity), '[]').
+#   PostgreSQL rifiuta con SQLSTATE 22000 quando valido_al < valido_dal
+#   prima ancora che il CHECK constraint scatti -> il CHECK strict (>)
+#   e' codice morto (mai raggiunto) e in piu' rifiuta erroneamente
+#   valido_al = valido_dal (range degenere [X, X+1) di 1 giorno),
+#   incoerente con il pattern stato-terminale-data-driven adottato
+#   dal modello v5 (chiusura same-day ammessa).
+#
+#   Pattern identico al precedente 20260414-22 che ha gia' droppato
+#   gli analoghi CHECK su anagrafiche.categorie_clienti_listini e
+#   vendite.promo_articoli per la stessa motivazione.
+#
+# Bug intercettato (smoke 27-04-2026):
+#   FE BoM "Chiudi riga oggi" su una riga creata oggi falliva con
+#   E_CATALOGO_VALIDATION ("violazione chk_articoli_componenti_valid_dates")
+#   invece di completare. Il commento finale del trigger
+#   catalogo.trgfn_articoli_componenti_block_modifica_struttura()
+#   (20260422-01) gia' dichiarava la semantica >= -- l'incoerenza era
+#   solo nel CHECK strict mai aggiornato post-rename valid_*->valido_*.
+#
+# Cross-team:
+#   Il drop su vendite.listini_versioni rende obsoleta la guard
+#   "gap >= 2 giorni" in apps/vendite/services/listini_service.py
+#   (_plan_versione_state_change). Allineamento BE richiesto
+#   post-merge -> brief-be-listini-versioni-allineamento-drop-chk-date.md
+#   in docs/it/dev/work-in-progress/.
+#
+# 4 changeSet in sequenza (sub-progressivi 02-01..02-04):
+#   02-01 catalogo.articoli_componenti
+#   02-02 catalogo.unita_misura_conversioni
+#   02-03 vendite.listini_versioni
+#   02-04 vendite.listini_associazioni
+#
+# Rollback: ripristina ciascun CHECK strict (>) come stato pre-drop.
+# Attenzione operativa: dopo il drop possono entrare righe con
+# valido_al = valido_dal (range 1 giorno); un eventuale rollback
+# fallirebbe se tali righe esistono. Nessun problema in dev (no
+# produzione, dati ricreabili).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: /migrations_v2/00_schema/catalogo/20260427-02-drop-chk-valid-dates-redundant-data-driven-mctit.yaml
+
+  - changeSet:
+      id: 20260427-02-01-drop-chk-articoli-componenti-valid-dates
+      author: mctit
+      comment: >
+        Drop chk_articoli_componenti_valid_dates su catalogo.articoli_componenti.
+        CHECK ridondante: validita daterange + trgfn_set_validita gia'
+        rifiutano valido_al < valido_dal (SQLSTATE 22000). Sblocca chiusura
+        same-day BoM (pattern stato-terminale-data-driven, simmetrico al
+        commento esistente del trigger block_modifica_struttura).
+      preConditions:
+        - onFail: CONTINUE
+        - and:
+            - tableExists:
+                schemaName: catalogo
+                tableName: articoli_componenti
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*)
+                    FROM pg_constraint c
+                    JOIN pg_class    t ON t.oid = c.conrelid
+                    JOIN pg_namespace n ON n.oid = t.relnamespace
+                   WHERE n.nspname = 'catalogo'
+                     AND t.relname = 'articoli_componenti'
+                     AND c.conname = 'chk_articoli_componenti_valid_dates';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE catalogo.articoli_componenti
+                  DROP CONSTRAINT IF EXISTS chk_articoli_componenti_valid_dates;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE catalogo.articoli_componenti
+                  ADD CONSTRAINT chk_articoli_componenti_valid_dates
+                  CHECK (valido_al IS NULL OR valido_al > valido_dal);
+
+  - changeSet:
+      id: 20260427-02-02-drop-chk-uom-conv-valid-dates
+      author: mctit
+      comment: >
+        Drop chk_uom_conv_valid_dates su catalogo.unita_misura_conversioni.
+        Stessa motivazione: CHECK ridondante post validita daterange +
+        trgfn_set_validita. Allinea al pattern data-driven (conversione
+        valida un solo giorno ammessa: chiusura same-day di errore admin).
+      preConditions:
+        - onFail: CONTINUE
+        - and:
+            - tableExists:
+                schemaName: catalogo
+                tableName: unita_misura_conversioni
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*)
+                    FROM pg_constraint c
+                    JOIN pg_class    t ON t.oid = c.conrelid
+                    JOIN pg_namespace n ON n.oid = t.relnamespace
+                   WHERE n.nspname = 'catalogo'
+                     AND t.relname = 'unita_misura_conversioni'
+                     AND c.conname = 'chk_uom_conv_valid_dates';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE catalogo.unita_misura_conversioni
+                  DROP CONSTRAINT IF EXISTS chk_uom_conv_valid_dates;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE catalogo.unita_misura_conversioni
+                  ADD CONSTRAINT chk_uom_conv_valid_dates
+                  CHECK (valido_al IS NULL OR valido_al > valido_dal);
+
+  - changeSet:
+      id: 20260427-02-03-drop-chk-listini-versioni-date
+      author: mctit
+      comment: >
+        Drop chk_listini_versioni_date su vendite.listini_versioni. Stessa
+        motivazione. ATTENZIONE cross-team: il service Python
+        apps/vendite/services/listini_service.py:_plan_versione_state_change
+        contiene una guard pro-attiva "gap >= 2 giorni" basata sul CHECK
+        strict; va rimossa/rilassata post-merge (vedi
+        brief-be-listini-versioni-allineamento-drop-chk-date.md).
+        Nessun rischio runtime: la guard Python e' fail-fast e resta valida
+        (solo piu' restrittiva del DB) finche' BE non si allinea.
+      preConditions:
+        - onFail: CONTINUE
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: listini_versioni
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*)
+                    FROM pg_constraint c
+                    JOIN pg_class    t ON t.oid = c.conrelid
+                    JOIN pg_namespace n ON n.oid = t.relnamespace
+                   WHERE n.nspname = 'vendite'
+                     AND t.relname = 'listini_versioni'
+                     AND c.conname = 'chk_listini_versioni_date';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.listini_versioni
+                  DROP CONSTRAINT IF EXISTS chk_listini_versioni_date;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.listini_versioni
+                  ADD CONSTRAINT chk_listini_versioni_date
+                  CHECK (valido_al IS NULL OR valido_al > valido_dal);
+
+  - changeSet:
+      id: 20260427-02-04-drop-chk-listini-associazioni-date
+      author: mctit
+      comment: >
+        Drop chk_listini_associazioni_date su vendite.listini_associazioni.
+        Stessa motivazione. Nessun reference BE al constraint name -> drop
+        pulito.
+      preConditions:
+        - onFail: CONTINUE
+        - and:
+            - tableExists:
+                schemaName: vendite
+                tableName: listini_associazioni
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*)
+                    FROM pg_constraint c
+                    JOIN pg_class    t ON t.oid = c.conrelid
+                    JOIN pg_namespace n ON n.oid = t.relnamespace
+                   WHERE n.nspname = 'vendite'
+                     AND t.relname = 'listini_associazioni'
+                     AND c.conname = 'chk_listini_associazioni_date';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.listini_associazioni
+                  DROP CONSTRAINT IF EXISTS chk_listini_associazioni_date;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.listini_associazioni
+                  ADD CONSTRAINT chk_listini_associazioni_date
+                  CHECK (valido_al IS NULL OR valido_al > valido_dal);

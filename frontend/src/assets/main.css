@@ -463,11 +463,37 @@ a {
 }
 
 /* Tasti di uscita — sempre attivi in modalita' protect */
-.app-readonly :deep(.p-drawer-close),
-.app-readonly :deep(.p-dialog-close),
-.app-readonly :deep(.app-escape) {
+.app-readonly .p-drawer-close,
+.app-readonly .p-dialog-close,
+.app-readonly .app-escape {
   pointer-events: auto;
   cursor: pointer;
+}
+
+/* Lettura: ricerca/filtri/paginazione/sort restano interattivi in protect.
+ * Sono operazioni di lettura (non modificano dati) e bloccarle rende
+ * l'UI inutilizzabile su liste lunghe. La protezione resta attiva sui
+ * form di scrittura (form-field, button salva, ecc.). */
+.app-readonly .app-page-filters,
+.app-readonly .p-paginator,
+.app-readonly .p-datatable-thead {
+  pointer-events: auto;
+  opacity: 1;
+}
+
+/* ===== Riga DataTable readonly (non selezionabile) =====
+ * Per righe che concettualmente non hanno un record CRUD-able dietro
+ * (es. preview righe contratto modalita' A/B con origine='DA_LISTINO',
+ * lette dal listino non da contratti_righe). Il click resta intercettato
+ * dall'handler row-select per pulizia stato, ma il cursor not-allowed
+ * comunica all'utente che la riga non e' editabile. Il testo resta
+ * leggibile e selezionabile per copia. */
+.app-row-readonly {
+  cursor: not-allowed;
+  opacity: 0.85;
+}
+.app-row-readonly:hover {
+  background: var(--app-row-hover-disabled, transparent) !important;
 }
 
 /* ===== Livello BLOCCATO (safety net) =====

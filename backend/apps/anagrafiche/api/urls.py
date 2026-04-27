@@ -15,8 +15,14 @@ from apps.anagrafiche.api.views_categorie_clienti_listini import (
 )
 from apps.anagrafiche.api.views_clienti import ClientiDetailView, ClientiView, UtilitiesManualLookupView
 from apps.anagrafiche.api.views_invito_portale import (
+    ClientiDisattivaPortaleView,
+    ClientiDisattivaShopView,
     ClientiInvitaPortaleView,
+    ClientiInvitaShopView,
+    ClientiStatoAccessiView,
+    FornitoriDisattivaPortaleView,
     FornitoriInvitaPortaleView,
+    FornitoriStatoAccessiView,
 )
 from apps.anagrafiche.api.views_emittenti_fiscali import (
     EmittentiFiscaliBillingAccountDetailView,
@@ -67,6 +73,26 @@ urlpatterns = [
         ClientiInvitaPortaleView.as_view(),
         name="anagrafiche-clienti-invita-portale",
     ),
+    path(
+        "clienti/<int:cliente_id>/invita-shop/",
+        ClientiInvitaShopView.as_view(),
+        name="anagrafiche-clienti-invita-shop",
+    ),
+    path(
+        "clienti/<int:cliente_id>/stato-accessi/",
+        ClientiStatoAccessiView.as_view(),
+        name="anagrafiche-clienti-stato-accessi",
+    ),
+    path(
+        "clienti/<int:cliente_id>/disattiva-portale/",
+        ClientiDisattivaPortaleView.as_view(),
+        name="anagrafiche-clienti-disattiva-portale",
+    ),
+    path(
+        "clienti/<int:cliente_id>/disattiva-shop/",
+        ClientiDisattivaShopView.as_view(),
+        name="anagrafiche-clienti-disattiva-shop",
+    ),
     # Fornitori
     path("fornitori/", FornitoriView.as_view(), name="anagrafiche-fornitori-list"),
     path("fornitori/<int:fornitore_id>/", FornitoriDetailView.as_view(), name="anagrafiche-fornitori-detail"),
@@ -74,6 +100,16 @@ urlpatterns = [
         "fornitori/<int:fornitore_id>/invita-portale/",
         FornitoriInvitaPortaleView.as_view(),
         name="anagrafiche-fornitori-invita-portale",
+    ),
+    path(
+        "fornitori/<int:fornitore_id>/stato-accessi/",
+        FornitoriStatoAccessiView.as_view(),
+        name="anagrafiche-fornitori-stato-accessi",
+    ),
+    path(
+        "fornitori/<int:fornitore_id>/disattiva-portale/",
+        FornitoriDisattivaPortaleView.as_view(),
+        name="anagrafiche-fornitori-disattiva-portale",
     ),
     # Emittenti fiscali (admin only)
     path("emittenti-fiscali/", EmittentiFiscaliView.as_view(), name="anagrafiche-emittenti-fiscali-list"),

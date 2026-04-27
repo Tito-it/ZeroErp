@@ -4,6 +4,7 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { listToponomastica, createToponomastica, updateToponomastica } from '../api/anagrafiche'
 import { useTabEvents } from '../../core/composables/useTabEvents'
+import { TAB_ENTITIES } from '../../core/constants'
 
 export const useToponomasticaStore = defineStore('anagrafiche-toponomastica', () => {
   const { emitDataChanged } = useTabEvents()
@@ -42,13 +43,13 @@ export const useToponomasticaStore = defineStore('anagrafiche-toponomastica', ()
 
   async function create(payload) {
     const res = await createToponomastica(payload)
-    emitDataChanged('toponomastica', res.data.data.id)
+    emitDataChanged(TAB_ENTITIES.TOPONOMASTICA, res.data.data.id)
     return res.data.data
   }
 
   async function update(id, payload) {
     const res = await updateToponomastica(id, payload)
-    emitDataChanged('toponomastica', id)
+    emitDataChanged(TAB_ENTITIES.TOPONOMASTICA, id)
     return res.data.data
   }
 

@@ -8,20 +8,26 @@ import { useSearchTable } from '../../core/composables/useSearchTable'
 import { useTabFreshness } from '../../core/composables/useTabFreshness'
 import { displayDate } from '../../core/utils/date'
 import { statoFornitoreSeverity } from '../../core/utils/severity'
-import { MANAGE_ICONS } from '../../core/constants'
+import { MANAGE_ICONS, TAB_ENTITIES } from '../../core/constants'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import InputText from 'primevue/inputtext'
 import Tag from 'primevue/tag'
-import Button from 'primevue/button'
 import NewButton from '../../core/components/NewButton.vue'
 import SearchHint from '../../core/components/SearchHint.vue'
 import LookupSelect from '../../core/components/LookupSelect.vue'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
+import ReloadButton from '../../core/components/ReloadButton.vue'
+import ReadonlyBadge from '../../core/components/ReadonlyBadge.vue'
+import AccessoBloccatoPanel from '../../core/components/AccessoBloccatoPanel.vue'
+import { useInjectBlocked } from '../../core/composables/useReadonlyMode'
+import { useAuthStore } from '../../stores/auth'
 
 const emit = defineEmits(['new', 'row-click', 'contatti', 'indirizzi', 'conti-bancari'])
 const { t } = useI18n()
 const store = useFornitoriStore()
+const auth = useAuthStore()
+const isBlocked = useInjectBlocked()
 const { searchText, onPage, onSort, applyFilters, reload, paginatorProps } = useSearchTable(store, {
   defaultSortField: 'ragione_sociale_completa'
 })
@@ -36,6 +42,7 @@ function onRowClick(event) { emit('row-click', event.data) }
 
 // Scopo: azioni di riga del fornitore (sub-drawer anagrafici).
 function buildRowActions(data) {
+  const contiBlocked = auth.isObjectBlocked('anagrafiche', 'conto_bancario')
   return [
     {
       key: 'contatti',
@@ -53,12 +60,13 @@ function buildRowActions(data) {
       key: 'conti-bancari',
       label: t('conti_bancari.gestisci_conti'),
       icon: MANAGE_ICONS.CONTI_BANCARI,
+      disabled: contiBlocked,
       command: () => emit('conti-bancari', data),
     },
   ]
 }
 
-useTabFreshness(store, 'fornitore')
+useTabFreshness(store, TAB_ENTITIES.FORNITORE)
 // La lista parte vuota — salvo che arrivi con search precaricata da URL/context.
 onMounted(() => {
   if (searchText.value) {
@@ -69,6 +77,9 @@ onMounted(() => {
 
 <template>
   <div class="app-tab-content">
+    <AccessoBloccatoPanel v-if="isBlocked" />
+
+    <template v-else>
     <div class="app-page-toolbar">
       <div class="app-page-filters">
         <InputText
@@ -84,7 +95,8 @@ onMounted(() => {
         />
       </div>
       <div class="app-page-actions">
-        <Button icon="pi pi-refresh" text class="app-reload-btn" v-tooltip.bottom="t('common.reload_list')" @click="reload" />
+        <ReadonlyBadge />
+        <ReloadButton @click="reload" />
         <NewButton :tooltip="t('fornitori.nuovo_fornitore')" @click="emit('new')" />
       </div>
     </div>
@@ -129,5 +141,6 @@ onMounted(() => {
         </template>
       </Column>
     </DataTable>
+    </template>
   </div>
 </template>

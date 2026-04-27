@@ -75,7 +75,7 @@ LOGIN_BODY=$(printf '{"username":"%s","password":"%s"}' "$USERNAME" "$PASSWORD")
 curl -s -w '\n%{http_code}' \
     -H "Content-Type: application/json" \
     -d "$LOGIN_BODY" \
-    "${BASE_URL}/api/v1/auth/token/" > "$TMPFILE" 2>/dev/null
+    "${BASE_URL}/api/v1/admin/token/" > "$TMPFILE" 2>/dev/null
 
 AUTH_STATUS=$(tail -1 "$TMPFILE")
 AUTH_BODY=$(sed '$d' "$TMPFILE")

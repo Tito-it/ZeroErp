@@ -1,6 +1,8 @@
 import axios from 'axios'
 import router from '../router'
 import { local, STORAGE_KEYS } from './storage'
+import { resolveCanaleLogin } from './constants'
+import i18n from './i18n'
 
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || '/api/v1',
@@ -10,16 +12,26 @@ const api = axios.create({
   }
 })
 
-// Interceptor request — aggiunge il token JWT ad ogni chiamata
+// Interceptor request — aggiunge il token JWT e la lingua UI corrente
 api.interceptors.request.use(config => {
   const token = local.get(STORAGE_KEYS.ACCESS_TOKEN)
   if (token) {
     config.headers.Authorization = `Bearer ${token}`
   }
+  // Propaga la lingua corrente come Accept-Language standard HTTP.
+  // Il middleware BE UserLanguageMiddleware legge questo header per
+  // settare la GUC `myapp.user_language`; fallback DB 'it'.
+  const locale = i18n?.global?.locale?.value
+  if (locale) {
+    config.headers['Accept-Language'] = locale
+  }
   return config
 })
 
 // Interceptor response — token refresh automatico + redirect login
+// Esclude login/refresh per admin|portale|shop: un 401 su queste rotte
+// NON deve riprovare un refresh (loop). Lista estensibile in un unico posto.
+const TOKEN_ENDPOINTS_RE = /\/(admin|portale|shop)\/token\//
 let isRefreshing = false
 let pendingRequests = []
 
@@ -42,7 +54,7 @@ api.interceptors.response.use(
     if (
       error.response?.status !== 401 ||
       originalRequest._retry ||
-      originalRequest.url?.includes('/auth/token/')
+      TOKEN_ENDPOINTS_RE.test(originalRequest.url ?? '')
     ) {
       return Promise.reject(error)
     }
@@ -69,8 +81,13 @@ api.interceptors.response.use(
     isRefreshing = true
 
     try {
+      // §8.5.2: endpoint refresh risolto dinamicamente dal canale salvato.
+      // La store `auth` persiste `LOGIN_CHANNEL`; qui lo leggiamo da storage
+      // per evitare la dipendenza circolare api → store → api.
+      // Fallback ADMIN per sessioni pre-multi-face senza key persistita.
+      const canale = resolveCanaleLogin(local.get(STORAGE_KEYS.LOGIN_CHANNEL))
       const response = await axios.post(
-        `${api.defaults.baseURL}/auth/token/refresh/`,
+        `${api.defaults.baseURL}${canale.refreshPath}`,
         { refresh: refreshToken },
         { headers: { 'Content-Type': 'application/json' } }
       )
@@ -92,6 +109,8 @@ api.interceptors.response.use(
 function redirectToLogin() {
   local.remove(STORAGE_KEYS.ACCESS_TOKEN)
   local.remove(STORAGE_KEYS.REFRESH_TOKEN)
+  // NB: LOGIN_CHANNEL non viene rimosso — conserva la preferenza utente
+  // per il prossimo login manuale (stesso pattern di `clearTokens`).
   // Usa il router per evitare page reload; preserva la rotta per redirect post-login
   const currentPath = router.currentRoute?.value?.fullPath
   router.push({

@@ -69,3 +69,13 @@ TIPO_PROFILO_ACCESSO: tuple[str, ...] = (
 
 # Scopo: Codice riservato del profilo di bypass totale (seed id 9100, §4.6.A.4).
 SUPER_ADMIN_PROFILO_CODICE = "SUPER_ADMIN"
+
+
+# ── Claim JWT custom (multi-face auth) ─────────────────────
+
+# Scopo: Nomi dei claim custom che MultiVesteTokenSerializer (§8.3.2) inietta
+# nel JWT dopo login. JwtAuditAuthentication (§8.3.4) li rilegge per popolare
+# le GUC di sessione in un unico round-trip, senza risoluzione aggiuntiva.
+# Centralizzare i nomi qui evita typo cross-file (producer/consumer).
+JWT_CLAIM_IDENTITA_ID = "identita_id"
+JWT_CLAIM_RUOLO_APPLICATIVO = "ruolo_applicativo"

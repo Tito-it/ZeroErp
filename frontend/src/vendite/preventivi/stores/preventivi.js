@@ -10,6 +10,7 @@ import {
   pushCommessa, statoFatturazione, generaPratica, listPratiche,
 } from '../api/preventiviApi'
 import { useTabEvents } from '../../../core/composables/useTabEvents'
+import { TAB_ENTITIES } from '../../../core/constants'
 import { useAuthStore } from '../../../stores/auth'
 
 export const usePreventiviStore = defineStore('vendite-preventivi', () => {
@@ -44,8 +45,16 @@ export const usePreventiviStore = defineStore('vendite-preventivi', () => {
     const hasFilters = f.stato != null || f.billing_account_id != null
       || f.utility_id != null || f.data_a != null
 
-    // Search con meno di 3 caratteri e nessun filtro attivo → ignora
-    if (searchTerm.length > 0 && searchTerm.length < 3 && !hasFilters) return
+    // Search con meno di 3 caratteri e nessun filtro attivo → svuota i
+    // risultati precedenti (coerenza UX: niente dati obsoleti visibili).
+    if (searchTerm.length > 0 && searchTerm.length < 3 && !hasFilters) {
+      if (hasSearched.value) {
+        items.value = []
+        totalRecords.value = 0
+        hasSearched.value = false
+      }
+      return
+    }
     if (!searchTerm && !hasFilters && !hasSearched.value) return
     // Search svuotata senza filtri → torna a stato vuoto
     if (!searchTerm && !hasFilters) {
@@ -91,28 +100,28 @@ export const usePreventiviStore = defineStore('vendite-preventivi', () => {
   // Scopo: Crea nuovo preventivo.
   async function create(payload) {
     const res = await createPreventivo(payload)
-    emitDataChanged('preventivo', res.data.data.id)
+    emitDataChanged(TAB_ENTITIES.PREVENTIVO, res.data.data.id)
     return res.data.data
   }
 
   // Scopo: Aggiorna campi editabili del preventivo.
   async function update(id, payload) {
     const res = await updatePreventivo(id, payload)
-    emitDataChanged('preventivo', id)
+    emitDataChanged(TAB_ENTITIES.PREVENTIVO, id)
     return res.data.data
   }
 
   // Scopo: Cambia stato preventivo (BOZZA→EMESSO, EMESSO→ACCETTATO, ecc.).
   async function cambiaStato(id, nuovoStato) {
     const res = await cambiaStatoPreventivo(id, { nuovo_stato: nuovoStato })
-    emitDataChanged('preventivo', id)
+    emitDataChanged(TAB_ENTITIES.PREVENTIVO, id)
     return res.data.data
   }
 
   // Scopo: Crea nuova revisione del preventivo.
   async function nuovaRevisione(id) {
     const res = await creaRevisione(id)
-    emitDataChanged('preventivo', id)
+    emitDataChanged(TAB_ENTITIES.PREVENTIVO, id)
     return res.data.data
   }
 
@@ -127,21 +136,21 @@ export const usePreventiviStore = defineStore('vendite-preventivi', () => {
   // Scopo: Aggiunge riga al preventivo.
   async function addRiga(preventivoId, payload) {
     const res = await createRiga(preventivoId, payload)
-    emitDataChanged('preventivo', preventivoId)
+    emitDataChanged(TAB_ENTITIES.PREVENTIVO, preventivoId)
     return res.data.data
   }
 
   // Scopo: Aggiorna riga preventivo.
   async function aggiornaRiga(preventivoId, rigaId, payload) {
     const res = await updateRiga(preventivoId, rigaId, payload)
-    emitDataChanged('preventivo', preventivoId)
+    emitDataChanged(TAB_ENTITIES.PREVENTIVO, preventivoId)
     return res.data.data
   }
 
   // Scopo: Elimina riga preventivo (soft delete).
   async function eliminaRiga(preventivoId, rigaId) {
     const res = await deleteRiga(preventivoId, rigaId)
-    emitDataChanged('preventivo', preventivoId)
+    emitDataChanged(TAB_ENTITIES.PREVENTIVO, preventivoId)
     return res.data.data
   }
 
@@ -156,7 +165,7 @@ export const usePreventiviStore = defineStore('vendite-preventivi', () => {
   // Scopo: Upsert indirizzo preventivo.
   async function salvaIndirizzo(preventivoId, payload) {
     const res = await upsertIndirizzo(preventivoId, payload)
-    emitDataChanged('preventivo', preventivoId)
+    emitDataChanged(TAB_ENTITIES.PREVENTIVO, preventivoId)
     return res.data.data
   }
 
@@ -165,7 +174,7 @@ export const usePreventiviStore = defineStore('vendite-preventivi', () => {
   // Scopo: Push preventivo in commessa per fatturazione.
   async function inviaACommessa(preventivoId) {
     const res = await pushCommessa(preventivoId)
-    emitDataChanged('preventivo', preventivoId)
+    emitDataChanged(TAB_ENTITIES.PREVENTIVO, preventivoId)
     return res.data.data
   }
 
@@ -178,7 +187,7 @@ export const usePreventiviStore = defineStore('vendite-preventivi', () => {
   // Scopo: Genera pratica esecutiva da preventivo.
   async function creaPratica(preventivoId, payload) {
     const res = await generaPratica(preventivoId, payload)
-    emitDataChanged('preventivo', preventivoId)
+    emitDataChanged(TAB_ENTITIES.PREVENTIVO, preventivoId)
     return res.data.data
   }
 

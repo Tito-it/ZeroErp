@@ -9,6 +9,7 @@ import {
   listUtilityTipoRuoloUsage
 } from '../api/utilitiesTipiRuolo'
 import { useTabEvents } from '../../core/composables/useTabEvents'
+import { TAB_ENTITIES } from '../../core/constants'
 
 export const useUtilitiesTipiRuoloStore = defineStore('amministrazione-utilities-tipi-ruolo', () => {
   const { emitDataChanged } = useTabEvents()
@@ -34,7 +35,14 @@ export const useUtilitiesTipiRuoloStore = defineStore('amministrazione-utilities
     const searchTerm = (f.search || '').trim()
 
     // Stesso pattern di unita_misura: search opzionale ma min 3 caratteri se presente
-    if (searchTerm.length > 0 && searchTerm.length < 3) return
+    if (searchTerm.length > 0 && searchTerm.length < 3) {
+      if (hasSearched.value) {
+        items.value = []
+        totalRecords.value = 0
+        hasSearched.value = false
+      }
+      return
+    }
 
     loading.value = true
     try {
@@ -67,13 +75,13 @@ export const useUtilitiesTipiRuoloStore = defineStore('amministrazione-utilities
 
   async function create(payload) {
     const res = await createUtilityTipoRuolo(payload)
-    emitDataChanged('utilities_tipi_ruolo', res.data.data.id)
+    emitDataChanged(TAB_ENTITIES.UTILITIES_TIPI_RUOLO, res.data.data.id)
     return res.data.data
   }
 
   async function update(id, payload) {
     const res = await updateUtilityTipoRuolo(id, payload)
-    emitDataChanged('utilities_tipi_ruolo', id)
+    emitDataChanged(TAB_ENTITIES.UTILITIES_TIPI_RUOLO, id)
     return res.data.data
   }
 

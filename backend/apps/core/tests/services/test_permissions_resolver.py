@@ -82,7 +82,16 @@ def _setup_cursor(mock_conn: MagicMock, fetchone_value: tuple | None) -> MagicMo
 
 
 class PermissionResolverIsSuperAdminTests(TestCase):
-    """Test per is_super_admin — delegata a script.fn_is_super_admin."""
+    """Test per is_super_admin — delegata a script.fn_is_super_admin.
+
+    NB: il contratto cross-veste §8.3.7 (filtro `ruolo_applicativo=OPERATORE`
+    che impedisce il bypass SUPER_ADMIN per identita non-operatore) e'
+    enforce *lato DB* dentro `script.fn_is_super_admin` e va verificato
+    con pgTAP sul branch DB. Qui testiamo solo che il wrapper Python
+    propaghi fedelmente il risultato della fn DB senza alterazioni: un
+    test Python con mock non puo' dare prova del filtro cross-veste
+    (il mock ritorna quello che gli passi, indipendentemente dal
+    ruolo_applicativo del user reale)."""
 
     # Scopo: is_super_admin True quando il binding e' attivo.
     @patch(_CONN)
@@ -440,6 +449,11 @@ class PermissionResolverHasProfiloTests(TestCase):
         sql = cursor.execute.call_args[0][0]
         self.assertIn("fn_get_profili_accesso_applicabili", sql)
         self.assertIn("profili_accesso_aree", sql)
+        # Post migration 20260421-*: la vecchia firma 1-arg e' stata
+        # droppata, resta solo la 2-arg con DEFAULT NULL. La chiamata
+        # 1-arg risolve alla 2-arg con ruolo_applicativo=NULL (legacy,
+        # no filtro veste).
+        self.assertNotIn("NULL::config.ruolo_applicativo", sql)
 
     # Scopo: Nessun profilo applicabile per l'area -> False.
     @patch(_CONN)

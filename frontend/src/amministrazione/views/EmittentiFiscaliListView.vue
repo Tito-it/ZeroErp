@@ -10,6 +10,7 @@ import { useSearchTable } from '../../core/composables/useSearchTable'
 import { useDrawerState } from '../../core/composables/useDrawerState'
 import { useTabFreshness } from '../../core/composables/useTabFreshness'
 import { useReadonlyMode } from '../../core/composables/useReadonlyMode'
+import { READONLY_DOMAINS, TAB_ENTITIES } from '../../core/constants'
 import EmittenteFiscaleDrawer from '../components/EmittenteFiscaleDrawer.vue'
 import EmittenteFiscaleBillingAccountDrawer from '../components/EmittenteFiscaleBillingAccountDrawer.vue'
 import EmittenteFiscaleUtilitiesDrawer from '../components/EmittenteFiscaleUtilitiesDrawer.vue'
@@ -17,10 +18,12 @@ import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
-import Button from 'primevue/button'
 import Badge from 'primevue/badge'
 import NewButton from '../../core/components/NewButton.vue'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
+import ReloadButton from '../../core/components/ReloadButton.vue'
+import ReadonlyBadge from '../../core/components/ReadonlyBadge.vue'
+import AccessoBloccatoPanel from '../../core/components/AccessoBloccatoPanel.vue'
 
 const { t } = useI18n()
 const store = useEmittentiFiscaliStore()
@@ -32,9 +35,9 @@ const baDrawer = useDrawerState()
 const utDrawer = useDrawerState()
 
 // Provider readonly: livello LETTURA disabilita i pulsanti di scrittura nei drawer figli.
-const { isReadonly } = useReadonlyMode('amm_software')
+const { isReadonly, isBlocked } = useReadonlyMode(READONLY_DOMAINS.AMM_SOFTWARE)
 
-useTabFreshness(store, 'emittente-fiscale')
+useTabFreshness(store, TAB_ENTITIES.EMITTENTE_FISCALE)
 
 const attivoFilter = ref(null)
 const attivoOptions = [
@@ -94,6 +97,9 @@ function buildRowActions(data) {
 
 <template>
   <div class="app-page">
+    <AccessoBloccatoPanel v-if="isBlocked" />
+
+    <template v-else>
     <div class="app-page-toolbar">
       <div class="app-page-filters">
         <InputText
@@ -110,7 +116,8 @@ function buildRowActions(data) {
         />
       </div>
       <div class="app-page-actions">
-        <Button icon="pi pi-refresh" text class="app-reload-btn" v-tooltip.bottom="t('common.reload_list')" @click="reload" />
+        <ReadonlyBadge />
+        <ReloadButton @click="reload" />
         <NewButton :tooltip="t('amm_emittenti_fiscali.new')" @click="openCreate" />
       </div>
     </div>
@@ -149,6 +156,7 @@ function buildRowActions(data) {
         </template>
       </Column>
     </DataTable>
+    </template>
 
     <EmittenteFiscaleDrawer
       :visible="drawer.state.visible"

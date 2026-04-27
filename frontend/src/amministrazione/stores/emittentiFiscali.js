@@ -19,6 +19,7 @@ import {
   deleteEmittenteUtility
 } from '../api/emittentiFiscali'
 import { useTabEvents } from '../../core/composables/useTabEvents'
+import { TAB_ENTITIES } from '../../core/constants'
 
 const { emitDataChanged } = useTabEvents()
 
@@ -71,13 +72,13 @@ export const useEmittentiFiscaliStore = defineStore('amm-emittenti-fiscali', () 
 
   async function create(payload) {
     const res = await createEmittenteFiscale(payload)
-    emitDataChanged('emittente-fiscale', res.data.data.id)
+    emitDataChanged(TAB_ENTITIES.EMITTENTE_FISCALE, res.data.data.id)
     return res.data.data
   }
 
   async function update(id, payload) {
     const res = await updateEmittenteFiscale(id, payload)
-    emitDataChanged('emittente-fiscale', id)
+    emitDataChanged(TAB_ENTITIES.EMITTENTE_FISCALE, id)
     return res.data.data
   }
 

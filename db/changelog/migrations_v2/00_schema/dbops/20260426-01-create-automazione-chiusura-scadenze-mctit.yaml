@@ -1,0 +1,208 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Tabella di configurazione dbops.automazione_chiusura_scadenze.
+#
+# Why: promozione al nucleo del pattern "ciclo stato + finestra di
+# validita'" gia' applicato a vendite.listini_versioni (24-04-2026)
+# e ora atteso su vendite.contratti. Manifesto sviluppo concentrico
+# §7: due consumatori reali -> astrazione promossa.
+#
+# Modello: parametrico per supportare due varianti di colonna stato:
+#   tipo_stato='VARCHAR': stato come colonna varchar diretta + CHECK
+#   tipo_stato='FK'     : stato come FK a tabella di catalogo, con
+#                          lookup su codice_interno
+#
+# Riferimenti:
+#   - docs/it/linee-guida-sql.md §7c
+#   - docs/it/dev/work-in-progress/automazione-chiusure-scadenze.md
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/dbops/20260426-01-create-automazione-chiusura-scadenze-mctit.yaml
+
+  - changeSet:
+      id: 20260426-01-01-create-table-automazione-chiusura-scadenze
+      author: mctit
+      comment: >
+        Crea dbops.automazione_chiusura_scadenze: configurazione parametrica del
+        job notturno di chiusura stato per scadenza finestra temporale
+        (valido_al < CURRENT_DATE).
+      changes:
+        - createTable:
+            schemaName: dbops
+            tableName: automazione_chiusura_scadenze
+            remarks: >
+              Configurazione del framework di chiusura automatica per scadenza.
+              Ogni riga descrive una tabella target con ciclo stato + valido_al.
+              Letta da dbops.fn_apply_chiusura_scadenze() chiamata dal job
+              notturno chiusura_scadenze_daily (85_pgagent).
+            columns:
+              - column:
+                  name: id
+                  type: smallserial
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_automazione_chiusura_scadenze
+                    nullable: false
+              - column:
+                  name: schema_tabella
+                  type: text
+                  constraints:
+                    nullable: false
+                  remarks: Schema PostgreSQL della tabella target (es. 'vendite')
+              - column:
+                  name: nome_tabella
+                  type: text
+                  constraints:
+                    nullable: false
+                  remarks: Nome tabella target (es. 'listini_versioni', 'contratti')
+              - column:
+                  name: col_stato
+                  type: text
+                  constraints:
+                    nullable: false
+                  remarks: Colonna stato sulla tabella target
+              - column:
+                  name: tipo_stato
+                  type: text
+                  constraints:
+                    nullable: false
+                  remarks: VARCHAR (stato diretto) o FK (lookup su tabella catalogo)
+              - column:
+                  name: col_valido_al
+                  type: text
+                  defaultValue: valido_al
+                  constraints:
+                    nullable: false
+                  remarks: Colonna data fine validita' (default valido_al)
+              - column:
+                  name: stato_attivo_codice
+                  type: text
+                  constraints:
+                    nullable: false
+                  remarks: >
+                    Valore stato pre-chiusura. Per VARCHAR e' il valore stesso
+                    (es. 'ATTIVA'); per FK e' il codice_interno della riga
+                    lookup.
+              - column:
+                  name: stato_chiuso_codice
+                  type: text
+                  constraints:
+                    nullable: false
+                  remarks: Valore stato post-chiusura. Semantica analoga a stato_attivo_codice.
+              - column:
+                  name: fk_lookup_schema
+                  type: text
+                  remarks: >
+                    Per tipo_stato=FK: schema della tabella di lookup (es.
+                    'config')
+              - column:
+                  name: fk_lookup_table
+                  type: text
+                  remarks: >
+                    Per tipo_stato=FK: nome tabella di lookup (es.
+                    'stati_doc_contratti')
+              - column:
+                  name: fk_lookup_codice_col
+                  type: text
+                  defaultValue: codice_interno
+                  remarks: >
+                    Per tipo_stato=FK: colonna chiave logica (default
+                    'codice_interno')
+              - column:
+                  name: fk_lookup_id_col
+                  type: text
+                  defaultValue: id
+                  remarks: >
+                    Per tipo_stato=FK: colonna PK (default 'id')
+              - column:
+                  name: attivo
+                  type: boolean
+                  defaultValueBoolean: true
+                  constraints:
+                    nullable: false
+                  remarks: Abilita/disabilita la riga senza eliminarla
+              - column:
+                  name: descrizione
+                  type: text
+                  remarks: Documentazione inline sul caso d'uso
+              - column:
+                  name: data_insert
+                  type: timestamptz
+                  defaultValueComputed: "now()"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: user_insert
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: data_update
+                  type: timestamptz
+                  defaultValueComputed: "now()"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: user_update
+                  type: text
+                  defaultValueComputed: "CURRENT_USER"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: tx_id
+                  type: uuid
+                  remarks: Correlazione transazione (gestito da trgfn_tx_id_managed)
+
+  - changeSet:
+      id: 20260426-01-02-add-check-tipo-stato-coerente
+      author: mctit
+      comment: >
+        CHECK constraint coerenza: per tipo_stato=VARCHAR i campi fk_lookup_*
+        devono essere NULL; per tipo_stato=FK devono essere tutti valorizzati.
+        Garantisce integrita' della config prima che la fn_apply la legga.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: true
+            stripComments: false
+            sql: |
+              ALTER TABLE dbops.automazione_chiusura_scadenze
+                ADD CONSTRAINT chk_automazione_chiusura_scadenze_tipo_stato
+                CHECK (tipo_stato IN ('VARCHAR', 'FK'));
+
+              ALTER TABLE dbops.automazione_chiusura_scadenze
+                ADD CONSTRAINT chk_automazione_chiusura_scadenze_fk_coerente
+                CHECK (
+                  (tipo_stato = 'VARCHAR'
+                    AND fk_lookup_schema     IS NULL
+                    AND fk_lookup_table      IS NULL
+                    AND fk_lookup_codice_col IS NULL
+                    AND fk_lookup_id_col     IS NULL)
+                  OR
+                  (tipo_stato = 'FK'
+                    AND fk_lookup_schema     IS NOT NULL
+                    AND fk_lookup_table      IS NOT NULL
+                    AND fk_lookup_codice_col IS NOT NULL
+                    AND fk_lookup_id_col     IS NOT NULL)
+                );
+
+  - changeSet:
+      id: 20260426-01-03-add-uq-automazione-chiusura-scadenze-target
+      author: mctit
+      comment: >
+        Unique su (schema_tabella, nome_tabella): una sola riga di
+        configurazione per tabella target.
+      changes:
+        - addUniqueConstraint:
+            schemaName: dbops
+            tableName: automazione_chiusura_scadenze
+            columnNames: schema_tabella, nome_tabella
+            constraintName: uq_automazione_chiusura_scadenze_target

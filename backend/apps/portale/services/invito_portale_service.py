@@ -2,21 +2,28 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2026 Tid (Michele Carlo Titini)
 # Doc: Python
-# Scopo: Servizio invito portale cliente/fornitore.
-#        Pattern simmetrico a InvitoOperatoreService ma differenziato per:
-#        - risolve entita sorgente (billing_account per cliente, fornitori
-#          per fornitore) -> soggetto_ruolo_id
+# Scopo: Servizio invito "veste non-operatore" (CLIENTE_PORTALE,
+#        FORNITORE_PORTALE, SHOP_CUSTOMER).
+#        Pattern simmetrico a InvitoOperatoreService, differenziato per:
+#        - risolve entita sorgente (clienti per CLIENTE_PORTALE e
+#          SHOP_CUSTOMER, fornitori per FORNITORE_PORTALE) ->
+#          soggetto_ruolo_id
 #        - crea, se mancante, auth_user + identita_digitali con
-#          ruolo_applicativo = CLIENTE_PORTALE o FORNITORE_PORTALE
-#        - usa template email dedicato INVITO_PORTALE
-#        - riusa TokenService con tipo INVITO_PORTALE
+#          ruolo_applicativo coerente con la veste
+#        - usa template email + tipi token dedicati per veste
+#          (_VESTE_CONFIG mappa ruolo -> tipi token, template, link FE)
+#
+#        Il nome storico `InvitoPortaleService` resta per retrocompat
+#        (5 usage esterni), ma il service ora gestisce anche
+#        SHOP_CUSTOMER via `invia_invito_shop_customer` e
+#        `reinvia_invito_shop_customer`.
 # ------------------------------------------------------------
 
 from __future__ import annotations
 
 import logging
 import secrets
-from typing import Any
+from typing import Any, TypedDict
 
 from django.conf import settings
 from django.contrib.auth.hashers import make_password
@@ -26,6 +33,7 @@ from apps.core.db.auth_repository import AuthRepository
 from apps.core.services.auth_constants import (
     RUOLO_APPLICATIVO_CLIENTE_PORTALE,
     RUOLO_APPLICATIVO_FORNITORE_PORTALE,
+    RUOLO_APPLICATIVO_SHOP_CUSTOMER,
 )
 from apps.core.services.email_service import EmailDispatchService
 from apps.core.services.error_manager import ErrorManager
@@ -35,9 +43,111 @@ from apps.portale.db.portale_repository import PortaleRepository
 logger = logging.getLogger("security")
 
 E_INVITO_PORTALE = "E_INVITO_PORTALE"
+# Token type per email NUOVA (auth_user appena creato): l'attivazione setta
+# password definitiva + attiva identita.
 INVITO_PORTALE_TOKEN_TIPO = "INVITO_PORTALE"
+# Token type per email ESISTENTE (auth_user gia' presente, nuova veste
+# portale aggiunta come 2a identita post modello 1:N §8.4.1):
+# l'attivazione solo attiva l'identita, la password resta quella esistente.
+ATTIVAZIONE_PORTALE_CROSS_TOKEN_TIPO = "ATTIVAZIONE_PORTALE_CROSS"
+# Union dei token type che AttivazionePortaleView accetta (§8.4.2).
+PORTALE_ATTIVAZIONE_TOKEN_TIPI = (
+    INVITO_PORTALE_TOKEN_TIPO,
+    ATTIVAZIONE_PORTALE_CROSS_TOKEN_TIPO,
+)
 INVITO_PORTALE_SCADENZA_ORE = 72
 _TEMPLATE_INVITO_PORTALE = "INVITO_PORTALE"
+
+# Token types per invito shop customer (B1 §13.7 admin-driven).
+# Simmetria totale col portale: email nuova -> INVITO_SHOP (set password
+# + attiva identita), email esistente -> ATTIVAZIONE_SHOP_CROSS (solo
+# attiva identita, password invariata).
+INVITO_SHOP_TOKEN_TIPO = "INVITO_SHOP"
+ATTIVAZIONE_SHOP_CROSS_TOKEN_TIPO = "ATTIVAZIONE_SHOP_CROSS"
+SHOP_ATTIVAZIONE_TOKEN_TIPI = (
+    INVITO_SHOP_TOKEN_TIPO,
+    ATTIVAZIONE_SHOP_CROSS_TOKEN_TIPO,
+)
+_TEMPLATE_INVITO_SHOP = "INVITO_SHOP"
+
+
+# Type-safety per la mappa config veste: forza i 5 campi obbligatori e
+# preserva tipi distinti (str vs int) — evita drift tra entries.
+class _VesteConfig(TypedDict):
+    token_invito: str
+    token_cross: str
+    template: str
+    link_path: str
+    scadenza_ore: int
+
+
+# Mappa config veste: ruolo_applicativo -> config (token invito, token
+# cross, template email, path FE di attivazione, scadenza ore). Unica
+# fonte di verita' per parametrizzare `_invia_invito_common` e
+# `_invalidate_existing_token`. Aggiungere una nuova veste = aggiungere
+# una nuova entry qui (no altre modifiche al service).
+_VESTE_CONFIG: dict[str, _VesteConfig] = {
+    RUOLO_APPLICATIVO_CLIENTE_PORTALE: {
+        "token_invito": INVITO_PORTALE_TOKEN_TIPO,
+        "token_cross": ATTIVAZIONE_PORTALE_CROSS_TOKEN_TIPO,
+        "template": _TEMPLATE_INVITO_PORTALE,
+        "link_path": "/attivazione-portale",
+        "scadenza_ore": INVITO_PORTALE_SCADENZA_ORE,
+    },
+    RUOLO_APPLICATIVO_FORNITORE_PORTALE: {
+        "token_invito": INVITO_PORTALE_TOKEN_TIPO,
+        "token_cross": ATTIVAZIONE_PORTALE_CROSS_TOKEN_TIPO,
+        "template": _TEMPLATE_INVITO_PORTALE,
+        "link_path": "/attivazione-portale",
+        "scadenza_ore": INVITO_PORTALE_SCADENZA_ORE,
+    },
+    RUOLO_APPLICATIVO_SHOP_CUSTOMER: {
+        "token_invito": INVITO_SHOP_TOKEN_TIPO,
+        "token_cross": ATTIVAZIONE_SHOP_CROSS_TOKEN_TIPO,
+        "template": _TEMPLATE_INVITO_SHOP,
+        "link_path": "/attivazione-shop",
+        "scadenza_ore": INVITO_PORTALE_SCADENZA_ORE,
+    },
+}
+
+
+# Scopo: Risolve (senza consumare) un token di attivazione cercandolo
+# nell'insieme di tipi ammessi passato. Il FE non deve sapere in
+# anticipo il tipo del token: lo determina il BE guardando quale tipo
+# matcha. I tipi dello stesso insieme sono mutuamente esclusivi — lo
+# stesso token_hash esiste una sola volta nel DB (unique su token_hash).
+# Ritorna None se il token non matcha nessuno dei tipi o e' scaduto/usato.
+def _resolve_token_in(
+    token: str,
+    tipi: tuple[str, ...],
+    token_service: TokenService | None = None,
+) -> tuple[int, dict[str, Any], str] | None:
+    svc = token_service or TokenService()
+    for tipo in tipi:
+        result = svc.validate(token, tipo)
+        if result is not None:
+            auth_user_id, meta = result
+            return auth_user_id, meta, tipo
+    return None
+
+
+# Scopo: Wrapper legacy per AttivazionePortaleView (§8.4.2). Mantiene la
+# firma originale per retrocompat; delega a `_resolve_token_in` con i
+# tipi portale.
+def resolve_portale_token(
+    token: str,
+    token_service: TokenService | None = None,
+) -> tuple[int, dict[str, Any], str] | None:
+    return _resolve_token_in(token, PORTALE_ATTIVAZIONE_TOKEN_TIPI, token_service)
+
+
+# Scopo: Risolve token shop (INVITO_SHOP o ATTIVAZIONE_SHOP_CROSS).
+# Usato da AttivazioneShopValidateView + AttivazioneShopView (§13.7 B1).
+def resolve_shop_token(
+    token: str,
+    token_service: TokenService | None = None,
+) -> tuple[int, dict[str, Any], str] | None:
+    return _resolve_token_in(token, SHOP_ATTIVAZIONE_TOKEN_TIPI, token_service)
 
 
 class InvitoPortaleService:
@@ -155,11 +265,217 @@ class InvitoPortaleService:
             invitato_da_user_id=invitato_da_user_id,
         )
 
-    # Scopo: Flusso comune invito (cliente+fornitore). Orchestra in
-    # transazione atomica: upsert auth_user, upsert identita, set password
-    # temporanea, genera token. Fuori dalla transazione: invio email +
-    # timestamp. Rationale: il token deve essere valido anche se l'email
-    # fallisce (recupero manuale).
+    # ── Stato + disattivazione veste (§6.2.4 + §6.2.6) ────────────────
+
+    # Scopo: Stato aggregato delle vesti non-operatore di un cliente
+    # (CLIENTE_PORTALE + SHOP_CUSTOMER). Un admin lo usa dal drawer per
+    # decidere se "invita" (stato NESSUNO), "reinvia" (PENDING), "disattiva"
+    # (ATTIVO) o "reinvia per riattivare" (DISATTIVO).
+    def get_stato_accessi_cliente(self, cliente_id: int) -> dict[str, Any]:
+        info = self._repo.get_cliente_info(cliente_id)
+        ErrorManager.require(
+            info is not None,
+            code=E_INVITO_PORTALE,
+            message=f"Cliente {cliente_id} non trovato.",
+        )
+        assert info is not None
+        soggetto_ruolo_id = int(info["soggetto_ruolo_id"])
+        return {
+            "portale": self._repo.get_stato_identita(
+                soggetto_ruolo_id,
+                RUOLO_APPLICATIVO_CLIENTE_PORTALE,
+                PORTALE_ATTIVAZIONE_TOKEN_TIPI,
+            ),
+            "shop": self._repo.get_stato_identita(
+                soggetto_ruolo_id,
+                RUOLO_APPLICATIVO_SHOP_CUSTOMER,
+                SHOP_ATTIVAZIONE_TOKEN_TIPI,
+            ),
+        }
+
+    # Scopo: Stato aggregato delle vesti non-operatore di un fornitore
+    # (solo FORNITORE_PORTALE; i fornitori non accedono allo shop B2C).
+    def get_stato_accessi_fornitore(self, fornitore_id: int) -> dict[str, Any]:
+        info = self._repo.get_fornitore_info(fornitore_id)
+        ErrorManager.require(
+            info is not None,
+            code=E_INVITO_PORTALE,
+            message=f"Fornitore {fornitore_id} non trovato.",
+        )
+        assert info is not None
+        return {
+            "portale": self._repo.get_stato_identita(
+                int(info["soggetto_ruolo_id"]),
+                RUOLO_APPLICATIVO_FORNITORE_PORTALE,
+                PORTALE_ATTIVAZIONE_TOKEN_TIPI,
+            ),
+        }
+
+    # Scopo: Disattiva (soft-revoke) una veste di un cliente/fornitore.
+    # Invalida anche i token ancora pendenti per quella veste: se un invito
+    # era in volo e l'admin disattiva, il link email smette di funzionare.
+    # Idempotente: se l'identita e' gia' DISATTIVO o NESSUNO ritorna
+    # `{disattivato: False, stato: ...}` senza errore.
+    def disattiva_veste_cliente(
+        self,
+        *,
+        cliente_id: int,
+        ruolo_applicativo: str,
+        disattivato_da_user_id: int,
+    ) -> dict[str, Any]:
+        info = self._repo.get_cliente_info(cliente_id)
+        ErrorManager.require(
+            info is not None,
+            code=E_INVITO_PORTALE,
+            message=f"Cliente {cliente_id} non trovato.",
+        )
+        assert info is not None
+        return self._disattiva_veste_common(
+            soggetto_ruolo_id=int(info["soggetto_ruolo_id"]),
+            ruolo_applicativo=ruolo_applicativo,
+            disattivato_da_user_id=disattivato_da_user_id,
+        )
+
+    def disattiva_veste_fornitore(
+        self,
+        *,
+        fornitore_id: int,
+        disattivato_da_user_id: int,
+    ) -> dict[str, Any]:
+        info = self._repo.get_fornitore_info(fornitore_id)
+        ErrorManager.require(
+            info is not None,
+            code=E_INVITO_PORTALE,
+            message=f"Fornitore {fornitore_id} non trovato.",
+        )
+        assert info is not None
+        return self._disattiva_veste_common(
+            soggetto_ruolo_id=int(info["soggetto_ruolo_id"]),
+            ruolo_applicativo=RUOLO_APPLICATIVO_FORNITORE_PORTALE,
+            disattivato_da_user_id=disattivato_da_user_id,
+        )
+
+    # Scopo: core comune della disattivazione — risolve l'identita, la
+    # disattiva se attiva, invalida i token pendenti. Transazionale quando
+    # c'e' un UPDATE fisico; altrimenti salta il wrapper `atomic` per non
+    # aprire transazioni vuote.
+    def _disattiva_veste_common(
+        self,
+        *,
+        soggetto_ruolo_id: int,
+        ruolo_applicativo: str,
+        disattivato_da_user_id: int,
+    ) -> dict[str, Any]:
+        existing = self._repo.find_identita_portale(
+            soggetto_ruolo_id, ruolo_applicativo
+        )
+        if existing is None:
+            return {"disattivato": False, "stato": "NESSUNO"}
+
+        identita_id = int(existing["identita_id"])
+        auth_user_id = (
+            int(existing["auth_user_id"])
+            if existing.get("auth_user_id") is not None
+            else None
+        )
+        was_active = bool(existing.get("attivo"))
+
+        # Invalida token pendenti in ogni caso (best-effort cleanup anche
+        # su identita gia' disattiva). La `_invalidate_tokens_for_veste`
+        # fail-fast se la veste non e' in _VESTE_CONFIG.
+        if was_active:
+            with transaction.atomic():
+                self._repo.disattiva_identita(identita_id)
+                if auth_user_id is not None:
+                    self._invalidate_tokens_for_veste(auth_user_id, ruolo_applicativo)
+        elif auth_user_id is not None:
+            # Gia' disattiva ma puliamo i token residui (no UPDATE -> no atomic).
+            self._invalidate_tokens_for_veste(auth_user_id, ruolo_applicativo)
+
+        logger.info(
+            "security.veste_disattivata identita_id=%s ruolo=%s auth_user=%s da=%s was_active=%s",
+            identita_id, ruolo_applicativo, auth_user_id,
+            disattivato_da_user_id, was_active,
+        )
+        return {
+            "disattivato": was_active,
+            "stato": "DISATTIVO",
+            "identita_id": identita_id,
+        }
+
+    # Scopo: Invita uno shop customer a partire da un cliente anagrafico
+    # esistente (B1 §13.7 admin-driven). Lo SHOP_CUSTOMER vive sullo stesso
+    # soggetto_ruolo (ruolo CL) del cliente: stesso pattern del
+    # CLIENTE_PORTALE ma con veste SHOP_CUSTOMER e template/link dedicati.
+    # Branching email nuova vs esistente identico al portale (INVITO vs
+    # CROSS), config veste risolta via _VESTE_CONFIG.
+    def invia_invito_shop_customer(
+        self,
+        *,
+        cliente_id: int,
+        email: str,
+        invitato_da_user_id: int,
+    ) -> dict[str, Any]:
+        email_clean = self._clean_email(email)
+        info = self._repo.get_cliente_info(cliente_id)
+        ErrorManager.require(
+            info is not None,
+            code=E_INVITO_PORTALE,
+            message=f"Cliente {cliente_id} non trovato.",
+        )
+        assert info is not None
+        return self._invia_invito_common(
+            soggetto_ruolo_id=int(info["soggetto_ruolo_id"]),
+            ruolo_applicativo=RUOLO_APPLICATIVO_SHOP_CUSTOMER,
+            email=email_clean,
+            nome_destinatario=self._build_display_name(info),
+            entita_label=f"Shop customer {info.get('ba_codice') or cliente_id}",
+            invitato_da_user_id=invitato_da_user_id,
+        )
+
+    # Scopo: Reinvia invito shop customer invalidando token precedenti.
+    def reinvia_invito_shop_customer(
+        self,
+        *,
+        cliente_id: int,
+        email: str,
+        invitato_da_user_id: int,
+    ) -> dict[str, Any]:
+        info = self._repo.get_cliente_info(cliente_id)
+        ErrorManager.require(
+            info is not None,
+            code=E_INVITO_PORTALE,
+            message=f"Cliente {cliente_id} non trovato.",
+        )
+        assert info is not None
+        self._invalidate_existing_token(
+            int(info["soggetto_ruolo_id"]), RUOLO_APPLICATIVO_SHOP_CUSTOMER
+        )
+        return self.invia_invito_shop_customer(
+            cliente_id=cliente_id,
+            email=email,
+            invitato_da_user_id=invitato_da_user_id,
+        )
+
+    # Scopo: Flusso comune invito (cliente+fornitore). Post modello 1:N
+    # §8.4.1 branching esplicito email nuova vs esistente:
+    #
+    # - Email NUOVA (auth_user non esiste): flow "INVITO classico".
+    #   Crea auth_user + identita `attivo=true`, setta password temporanea,
+    #   flag deve_cambiare_password=true, token tipo INVITO_PORTALE.
+    #   L'utente all'attivazione sceglie la password definitiva.
+    #
+    # - Email ESISTENTE (auth_user gia' presente come operatore o altra
+    #   veste portale): flow "CROSS". Aggiunge una 2a identita con
+    #   `attivo=false`, NON tocca la password (l'utente ha gia' la sua),
+    #   NON setta deve_cambiare_password, token tipo
+    #   ATTIVAZIONE_PORTALE_CROSS. L'attivazione (§8.4.2) attivera'
+    #   l'identita senza chiedere nuova password.
+    #
+    # Orchestrazione in transazione atomica: upsert auth_user, upsert
+    # identita, [solo flow INVITO] set password temp + flag, genera token.
+    # Fuori dalla transazione: invio email + timestamp. Rationale: il
+    # token deve restare valido anche se l'email fallisce (recupero manuale).
     def _invia_invito_common(
         self,
         *,
@@ -176,83 +492,131 @@ class InvitoPortaleService:
             message="Email destinatario non valida.",
         )
 
+        # Config della veste: token tipi, template email, link_path FE.
+        # Single source of truth per supportare CLIENTE_PORTALE /
+        # FORNITORE_PORTALE / SHOP_CUSTOMER senza duplicare il flow.
+        cfg = _VESTE_CONFIG.get(ruolo_applicativo)
+        ErrorManager.require(
+            cfg is not None,
+            code=E_INVITO_PORTALE,
+            message=f"Veste {ruolo_applicativo} non supportata da invito.",
+        )
+        assert cfg is not None
+
         with transaction.atomic():
             auth_user_id, was_created = self._ensure_auth_user(
                 email=email, nome_destinatario=nome_destinatario
             )
-            self._ensure_identita(
+            # Branching flow: `was_created=True` significa auth_user nuovo
+            # → flow INVITO, identita attivo=true + password temp.
+            # `was_created=False` → flow CROSS, identita attivo=false + no password.
+            is_cross = not was_created
+            identita_id = self._ensure_identita(
                 auth_user_id=auth_user_id,
                 soggetto_ruolo_id=soggetto_ruolo_id,
                 ruolo_applicativo=ruolo_applicativo,
+                attivo=not is_cross,
             )
-            # Password temporanea random + flag deve_cambiare_password
-            # (il portale user dovra' settare la propria password in
-            # attivazione).
-            temp_password = secrets.token_urlsafe(16)
-            with connection.cursor() as cursor:
-                cursor.execute(
-                    "UPDATE django.auth_user SET password = %s WHERE id = %s",
-                    [make_password(temp_password), auth_user_id],
+
+            if not is_cross:
+                # Flow INVITO: password temporanea + flag deve_cambiare_password.
+                # L'utente dovra' scegliere la password definitiva in attivazione.
+                temp_password = secrets.token_urlsafe(16)
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        "UPDATE django.auth_user SET password = %s WHERE id = %s",
+                        [make_password(temp_password), auth_user_id],
+                    )
+                self._auth_repo.set_deve_cambiare_password(
+                    auth_user_id, True, identita_id=identita_id
                 )
-            self._auth_repo.set_deve_cambiare_password(auth_user_id, True)
+
+            token_tipo = cfg["token_cross"] if is_cross else cfg["token_invito"]
             token_plain = self._token_service.create(
-                tipo=INVITO_PORTALE_TOKEN_TIPO,
+                tipo=token_tipo,
                 auth_user_id=auth_user_id,
-                scadenza_ore=INVITO_PORTALE_SCADENZA_ORE,
+                scadenza_ore=cfg["scadenza_ore"],
                 meta={
                     "invitato_da_user_id": invitato_da_user_id,
                     "ruolo_applicativo": ruolo_applicativo,
                     "entita": entita_label,
+                    "identita_id": identita_id,
                 },
             )
 
-        # Link di attivazione portale: path dedicato per distinguere dal
-        # flow operatore. Il FE gestisce la rotta /attivazione-portale/:token.
+        # Link FE di attivazione: path dedicato per veste
+        # (/attivazione-portale o /attivazione-shop). Il FE distingue l'UX
+        # (set-password vs attiva-veste) in base al token_type restituito
+        # dall'endpoint validate (§8.4.2 portale, §13.7 shop).
         frontend_url = getattr(settings, "FRONTEND_URL", "http://localhost:5173")
-        link = f"{frontend_url}/attivazione-portale/{token_plain}"
+        link = f"{frontend_url}{cfg['link_path']}/{token_plain}"
 
         invitato_da_nome = self._get_display_name_of(invitato_da_user_id)
 
         try:
             self._email_service.send_email(
-                codice_template=_TEMPLATE_INVITO_PORTALE,
+                codice_template=cfg["template"],
                 destinatario=email,
                 variabili={
                     "nome": nome_destinatario,
                     "entita": entita_label,
                     "azienda": "ZeroErp",
                     "link": link,
-                    "scadenza_ore": str(INVITO_PORTALE_SCADENZA_ORE),
+                    "scadenza_ore": str(cfg["scadenza_ore"]),
                     "invitato_da": invitato_da_nome,
                     "ruolo_applicativo": ruolo_applicativo,
+                    # Flag leggibile dal template per differenziare
+                    # "attiva il tuo account" (nuovo) vs "attiva l'accesso
+                    # (portale|shop)" (cross su utente esistente).
+                    "is_cross": "1" if is_cross else "0",
                 },
                 ambito="SISTEMA",
                 auth_user_id=auth_user_id,
             )
         except Exception:
             logger.exception(
-                "Errore invio email invito portale user_id=%s ruolo=%s "
-                "— token valido, invito recuperabile",
+                "Errore invio email invito veste user_id=%s ruolo=%s "
+                "is_cross=%s — token valido, invito recuperabile",
                 auth_user_id,
                 ruolo_applicativo,
+                is_cross,
             )
 
-        # Timestamp invito (su identita attiva, l'helper filtra gia').
-        self._auth_repo.set_invito_inviato_at(auth_user_id)
+        # Timestamp invito sulla riga identita specifica del flusso
+        # (con modello 1:N serve puntare alla veste corretta — la stessa
+        # auth_user puo' avere gia' un'altra identita con timestamp diverso).
+        invito_updated = self._auth_repo.set_invito_inviato_at(
+            auth_user_id, identita_id=identita_id
+        )
+        if not invito_updated:
+            # Non fatale (il token e' gia' emesso, l'invito e' recuperabile)
+            # ma segnale di stato incoerente: puntava a una riga non piu'
+            # esistente o con auth_user_id divergente (guard anti-tampering
+            # del repo). Utile in diagnosi.
+            logger.warning(
+                "Timestamp invito portale non aggiornato user_id=%s "
+                "identita_id=%s — riga non trovata o auth_user divergente",
+                auth_user_id, identita_id,
+            )
 
         logger.info(
-            "security.invito_portale_inviato user_id=%s ruolo=%s da=%s created_user=%s",
+            "security.invito_portale_inviato user_id=%s ruolo=%s da=%s "
+            "created_user=%s is_cross=%s identita_id=%s",
             auth_user_id,
             ruolo_applicativo,
             invitato_da_user_id,
             was_created,
+            is_cross,
+            identita_id,
         )
 
         return {
             "inviato": True,
             "email": self._mask_email(email),
             "auth_user_id": auth_user_id,
+            "identita_id": identita_id,
             "nuovo_utente": was_created,
+            "is_cross": is_cross,
         }
 
     # Scopo: Restituisce l'auth_user_id se esiste per quell'email, altrimenti
@@ -275,45 +639,110 @@ class InvitoPortaleService:
         )
         return new_id, True
 
-    # Scopo: Garantisce che esista un'identita digitale portale attiva per
-    # la coppia (soggetto_ruolo_id, ruolo_applicativo). Se non esiste la
-    # crea; se esiste disattivata, la riattiva. Se esiste attiva, nessuna
-    # azione (il caller rigenerera' comunque token + password).
+    # Scopo: Garantisce che esista un'identita digitale portale per la
+    # coppia (soggetto_ruolo_id, ruolo_applicativo). Ritorna l'`identita_id`
+    # (nuova o esistente) per consentire al caller di puntare la riga
+    # giusta negli UPDATE successivi (pattern richiesto dal modello 1:N
+    # §8.4.1, vedi `AuthRepository.set_deve_cambiare_password/...`).
+    #
+    # Comportamento per stato identita:
+    # - Non esiste: la crea con `attivo=attivo` e
+    #   `deve_cambiare_password=attivo` (flow INVITO ha entrambi true, flow
+    #   CROSS ha entrambi false — la password resta quella dell'utente).
+    # - Esiste gia' ATTIVA: ERRORE `E_INVITO_PORTALE_GIA_ATTIVO` — l'utente
+    #   ha gia' accesso al portale con quella veste; un nuovo invito non
+    #   ha senso (se serve reset credenziali, il self-service password
+    #   reset copre il caso). Copre sia primo-invito mal richiesto sia
+    #   reinvio su identita gia' attivata (§8.4.1 BUG1).
+    # - Esiste collegata ad un auth_user DIVERSO: ERRORE (stato incoerente
+    #   del modello — soggetto_ruolo con holder diverso dall'auth_user
+    #   risolto via email). Richiede intervento manuale, NON risolviamo
+    #   automaticamente (§8.4.1 FRAG4).
+    # - Esiste disattivata con auth_user coerente: e' il caso legittimo
+    #   del reinvio di invito scaduto/non attivato:
+    #   * flow INVITO (`attivo=True`): riattiva la riga, il caller
+    #     rigenerera' comunque token + password.
+    #   * flow CROSS (`attivo=False`): NON riattiva — l'attivazione avviene
+    #     al consumo del token CROSS (§8.4.2).
     def _ensure_identita(
         self,
         *,
         auth_user_id: int,
         soggetto_ruolo_id: int,
         ruolo_applicativo: str,
-    ) -> None:
+        attivo: bool,
+    ) -> int:
         existing = self._repo.find_identita_portale(
             soggetto_ruolo_id, ruolo_applicativo
         )
         if existing is None:
-            self._repo.create_identita_portale(
+            return self._repo.create_identita_portale(
                 auth_user_id=auth_user_id,
                 soggetto_ruolo_id=soggetto_ruolo_id,
                 ruolo_applicativo=ruolo_applicativo,
+                attivo=attivo,
+                deve_cambiare_password=attivo,
             )
-            return
-        # Identita gia' presente: se era disattivata (es. invito scaduto
-        # con successiva disattivazione manuale), la riattiviamo. Qui non
-        # tocchiamo auth_user_id perche' deve corrispondere a quello trovato
-        # via email nel passo precedente; se diverge e' uno stato incoerente.
-        if not existing.get("attivo"):
-            with connection.cursor() as cursor:
-                cursor.execute(
-                    """
-                    UPDATE anagrafiche.identita_digitali
-                       SET attivo = true, data_update = now()
-                     WHERE id = %s
-                    """,
-                    [existing["identita_id"]],
-                )
 
-    # Scopo: Invalida eventuali token INVITO_PORTALE residui per tutti gli
-    # auth_user collegati a un soggetto_ruolo+ruolo_applicativo. Utile in
-    # reinvio: consuma lo stato precedente.
+        identita_id = int(existing["identita_id"])
+        existing_auth_user_raw = existing.get("auth_user_id")
+
+        # Guard coerenza: l'identita trovata deve appartenere allo stesso
+        # auth_user risolto via email. Divergenza = stato manipolato
+        # (soggetto_ruolo riassegnato, migrazione manuale incoerente).
+        if existing_auth_user_raw is not None and int(
+            existing_auth_user_raw
+        ) != auth_user_id:
+            ErrorManager.require(
+                False,
+                code=E_INVITO_PORTALE,
+                message=(
+                    "Identita portale gia' collegata a un altro utente. "
+                    "Richiede intervento manuale."
+                ),
+            )
+
+        # Guard logico: identita gia' attiva = utente gia' ha accesso al
+        # portale con quella veste. Nuovo invito non ha senso: se serve
+        # reset credenziali l'utente usa "ho dimenticato la password".
+        if existing.get("attivo"):
+            ErrorManager.require(
+                False,
+                code=E_INVITO_PORTALE,
+                message=(
+                    "L'utente ha gia' accesso a questa veste del portale. "
+                    "Per problemi di credenziali usare il reset password."
+                ),
+            )
+
+        # Identita disattivata in attesa di attivazione (caso reinvio
+        # legittimo). Solo flow INVITO riattiva on-the-fly — il CROSS
+        # delega l'attivazione al consumo del token CROSS.
+        if attivo:
+            self._repo.riattiva_identita(identita_id)
+        return identita_id
+
+    # Scopo: Invalida la coppia di token (INVITO + CROSS) della veste per
+    # un auth_user. Helper DRY usato sia da reinvio (`_invalidate_existing_token`)
+    # sia da disattivazione (`_disattiva_veste_common`). Fail-fast se la
+    # veste non e' in _VESTE_CONFIG — evita silent no-op che lascerebbero
+    # token vecchi attivi.
+    def _invalidate_tokens_for_veste(
+        self, auth_user_id: int, ruolo_applicativo: str
+    ) -> None:
+        cfg = _VESTE_CONFIG.get(ruolo_applicativo)
+        ErrorManager.require(
+            cfg is not None,
+            code=E_INVITO_PORTALE,
+            message=f"Veste {ruolo_applicativo} non supportata.",
+        )
+        assert cfg is not None
+        self._token_service.invalidate_all(cfg["token_invito"], auth_user_id)
+        self._token_service.invalidate_all(cfg["token_cross"], auth_user_id)
+
+    # Scopo: Invalida token invito/cross residui per l'auth_user collegato
+    # a un soggetto_ruolo+ruolo_applicativo. Usato in reinvio per consumare
+    # lo stato precedente qualunque sia il flow con cui era stato creato.
     def _invalidate_existing_token(
         self, soggetto_ruolo_id: int, ruolo_applicativo: str
     ) -> None:
@@ -321,8 +750,8 @@ class InvitoPortaleService:
             soggetto_ruolo_id, ruolo_applicativo
         )
         if existing and existing.get("auth_user_id"):
-            self._token_service.invalidate_all(
-                INVITO_PORTALE_TOKEN_TIPO, int(existing["auth_user_id"])
+            self._invalidate_tokens_for_veste(
+                int(existing["auth_user_id"]), ruolo_applicativo,
             )
 
     # Scopo: Costruisce il nome da mostrare nell'email a partire dal record

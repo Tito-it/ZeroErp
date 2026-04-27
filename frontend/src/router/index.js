@@ -3,11 +3,41 @@ import { useAuthStore } from '../stores/auth'
 import { useNavigationStore } from '../stores/navigation'
 import { useTabsStore } from '../stores/tabs'
 import { DOMAINS, resolveTabLabel, resolveTabIcon } from '../core/navigation'
+import { FE_NAMESPACE, resolveRuoloFeConfig } from '../core/constants'
 import i18n from '../core/i18n'
 import AppLayout from '../core/components/AppLayout.vue'
 import HomeView from '../core/views/HomeView.vue'
 
 const t = i18n.global.t
+
+// Rotte autenticate universali: accessibili a tutte le vesti, non
+// passano per il check namespace. Include la pagina cambio password
+// (tipicamente forzata post-invito) e le pagine d'errore.
+const UNIVERSAL_ROUTE_NAMES = new Set([
+  'change-password',
+  'forbidden',
+  'not-found'
+])
+
+// Tabella statica path → namespace. Definita come array ordinato per
+// match prefisso con separator "/" esplicito (evita che `/portale-debug`
+// sia matchato come namespace `portale`). Il fallback `admin` copre tutte
+// le rotte autenticate non /portale e non /shop.
+const PATH_NAMESPACE_PREFIXES = [
+  { prefix: '/portale', namespace: FE_NAMESPACE.PORTALE },
+  { prefix: '/shop', namespace: FE_NAMESPACE.SHOP }
+]
+
+// Scopo: Dato un path, ritorna a quale namespace FE appartiene.
+// Match esatto sul segmento (`/portale` o `/portale/...`) per evitare
+// falsi positivi su path che iniziano per lo stesso prefisso ma con
+// caratteri non-slash subito dopo.
+function resolvePathNamespace(path) {
+  for (const { prefix, namespace } of PATH_NAMESPACE_PREFIXES) {
+    if (path === prefix || path.startsWith(`${prefix}/`)) return namespace
+  }
+  return FE_NAMESPACE.ADMIN
+}
 
 // Genera rotte placeholder per domini senza pagine dedicate
 function domainPlaceholderRoutes() {
@@ -61,6 +91,19 @@ const router = createRouter({
       name: 'attivazione-portale',
       component: () => import('../portale/views/AttivazionePortaleView.vue'),
       meta: { public: true }
+    },
+    // B1 §13.7: pagina attivazione account shop customer.
+    // Branching INVITO (form password) vs CROSS (one-click) deciso
+    // dal BE via /shop/attivazione/validate/<token>/. Pubblica (no JWT)
+    // perche' il consumer del link email non e' ancora autenticato.
+    // Path coerente con /attivazione-portale/:token (single pattern
+    // delle pagine public di attivazione, link emesso dal BE con
+    // `link_path='/attivazione-shop'` in InvitoPortaleService).
+    {
+      path: '/attivazione-shop/:token',
+      name: 'attivazione-shop',
+      component: () => import('../shop/views/AttivazioneShopView.vue'),
+      meta: { public: true, domain: 'shop', menuKey: 'attivazione' }
     },
 
     // Rotte autenticate — con layout principale
@@ -234,6 +277,12 @@ const router = createRouter({
           component: () => import('../vendite/views/PromoArticoliListView.vue'),
           meta: { domain: 'vendite', menuKey: 'promo-articoli' }
         },
+        {
+          path: 'vendite/approvazioni-prezzo',
+          name: 'vendite-approvazioni-prezzo',
+          component: () => import('../vendite/views/ApprovazioniPrezzoListView.vue'),
+          meta: { domain: 'vendite', menuKey: 'approvazioni-prezzo' }
+        },
 
         // --- Pratiche ---
         {
@@ -245,6 +294,48 @@ const router = createRouter({
 
         // --- Rotte placeholder per domini senza pagine dedicate ---
         ...domainPlaceholderRoutes(),
+
+        // --- Namespace portale (clienti/fornitori) — §8.5.6 + §8.6 ---
+        // Il namespace e' derivato dinamicamente dal path nel guard
+        // (`resolvePathNamespace`), quindi le rotte non devono
+        // ridichiararlo in meta — `domain`+`menuKey` bastano a PlaceholderView
+        // per risolvere la chiave i18n.
+        {
+          path: 'portale',
+          name: 'portale-home',
+          component: () => import('../core/views/PlaceholderView.vue'),
+          meta: { domain: 'portale', menuKey: 'home' }
+        },
+        // §8.6.3: profilo portale (anagrafica + stato accessi + pulsante
+        // activate-shop). Accessibile solo a vesti CLIENTE/FORNITORE_PORTALE
+        // via namespace guard router (§8.5.4).
+        {
+          path: 'portale/profile',
+          name: 'portale-profile',
+          component: () => import('../portale/views/ProfileView.vue'),
+          meta: { domain: 'portale', menuKey: 'profile' }
+        },
+        {
+          path: 'portale/:pathMatch(.*)*',
+          name: 'portale-catchall',
+          component: () => import('../core/views/PlaceholderView.vue'),
+          meta: { domain: 'portale', menuKey: 'home' }
+        },
+
+        // --- Namespace shop — §8.5.6 stub ---
+        // MVP arriva con PR-C. Per ora placeholder "Shop in arrivo".
+        {
+          path: 'shop',
+          name: 'shop-home',
+          component: () => import('../core/views/PlaceholderView.vue'),
+          meta: { domain: 'shop', menuKey: 'home' }
+        },
+        {
+          path: 'shop/:pathMatch(.*)*',
+          name: 'shop-catchall',
+          component: () => import('../core/views/PlaceholderView.vue'),
+          meta: { domain: 'shop', menuKey: 'home' }
+        },
 
         // --- Catch-all 403 per domini non autorizzati ---
         {
@@ -304,7 +395,31 @@ router.beforeEach(async (to) => {
     return { name: 'change-password' }
   }
 
-  // Guard dominio admin: controlla permesso
+  // §8.5.4/§8.5.5 — Namespace multi-canale. Un utente autenticato puo'
+  // navigare solo dentro il proprio namespace (`admin` per operatori,
+  // `portale` per CLIENTE/FORNITORE_PORTALE, `shop` per SHOP_CUSTOMER).
+  // Regole:
+  //   - rotte universali (cambio password, forbidden, 404) esentate;
+  //   - veste senza namespace FE (API_CLIENT, DISABILITATO) → forbidden;
+  //   - path in namespace diverso dalla veste → grace redirect alla home
+  //     namespace (UX: utente portale che digita / → /portale, non 403).
+  // La mappa ruolo→config e' in `constants.RUOLO_FE_NAMESPACE` — single
+  // source di verita' condivisa con eventuali altri consumer UI.
+  if (!UNIVERSAL_ROUTE_NAMES.has(to.name)) {
+    const ruoloConfig = resolveRuoloFeConfig(auth.ruoloApplicativo)
+    if (!ruoloConfig) {
+      return { name: 'forbidden' }
+    }
+    const pathNs = resolvePathNamespace(to.path)
+    if (pathNs !== ruoloConfig.namespace) {
+      // Usa homeRouteName (se definito dalla config) per evitare redirect
+      // loop su rotte child di AppLayout; altrimenti path string.
+      if (ruoloConfig.homeRouteName) return { name: ruoloConfig.homeRouteName }
+      return ruoloConfig.homePath
+    }
+  }
+
+  // Guard dominio admin: controlla permesso (solo namespace operatore)
   const domain = to.meta.domain
   if (domain === 'amm-software' && !auth.isAdmin) {
     return { name: 'forbidden' }
