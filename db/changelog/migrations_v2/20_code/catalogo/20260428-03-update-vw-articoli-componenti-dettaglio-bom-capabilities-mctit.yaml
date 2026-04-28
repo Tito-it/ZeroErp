@@ -1,0 +1,126 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Estende catalogo.vw_articoli_componenti_dettaglio con 4 campi
+# calcolati di "capability" della riga BoM, usati dal FE per
+# abilitare/disabilitare il dialog "Chiudi riga" e preselezionare
+# la data nel DatePicker.
+#
+# Naming italiano coerente con i campi esistenti della vista
+# (prodotto_codice, componente_descrizione, valido_dal, ...).
+#
+# Campi aggiunti:
+#   - puo_chiudersi BOOLEAN
+#       true se valido_al IS NULL (riga "aperta", chiudibile)
+#       false altrimenti (riga gia' chiusa)
+#       Nota: attivo (true/false) e' ortogonale -- una riga disattivata
+#       ma con valido_al NULL resta chiudibile temporalmente
+#       (decisione 28-04-2026, opzione i del brief).
+#
+#   - data_min_chiusura DATE
+#       Data minima accettabile per la chiusura. NULL su righe non
+#       chiudibili. Per righe chiudibili = valido_dal (chiusura
+#       same-day ammessa post drop chk_articoli_componenti_valid_dates,
+#       20260427-02).
+#
+#   - data_default_chiusura DATE
+#       Data preselezionata dal FE quando l'admin apre il dialog di
+#       chiusura. NULL su righe non chiudibili. Per righe chiudibili
+#       = GREATEST(valido_dal, CURRENT_DATE):
+#         - riga corrente (valido_dal <= today) -> today
+#         - riga futura  (valido_dal >  today) -> valido_dal
+#
+#   - motivo_non_chiudibile TEXT
+#       NULL se puo_chiudersi=true. Altrimenti codice tecnico per
+#       il FE. Unico caso attuale: 'RIGA_GIA_CHIUSA' (valido_al NOT
+#       NULL). Snake-upper, no prefisso E_* (non e' error code).
+#
+# La vista viene rieseguita con runOnChange: true (pattern catalogo
+# 20_code). DROP+CREATE garantisce che eventuali column-list cambiati
+# fra le release vengano riallineati.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: /migrations_v2/20_code/catalogo/20260428-03-update-vw-articoli-componenti-dettaglio-bom-capabilities-mctit.yaml
+
+  - changeSet:
+      id: 20260428-03-update-vw-articoli-componenti-dettaglio-bom-capabilities
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      comment: >
+        Estende vw_articoli_componenti_dettaglio con 4 campi calcolati
+        di chiudibilita' (puo_chiudersi, data_min_chiusura,
+        data_default_chiusura, motivo_non_chiudibile). Naming italiano,
+        scope BoM Fase 2 BE 28-04-2026.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: catalogo
+                tableName: articoli_componenti
+            - tableExists:
+                schemaName: catalogo
+                tableName: articoli
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP VIEW IF EXISTS catalogo.vw_articoli_componenti_dettaglio;
+
+              CREATE OR REPLACE VIEW catalogo.vw_articoli_componenti_dettaglio AS
+              SELECT
+                  ac.id,
+                  ac.prodotto_id,
+                  ac.componente_id,
+                  ac.coeff_qta,
+                  ac.partecipa_qta,
+                  ac.obbligatorio,
+                  ac.valido_dal,
+                  ac.valido_al,
+                  ac.meta,
+                  ac.user_insert,
+                  ac.user_update,
+                  ac.data_insert,
+                  ac.data_update,
+                  ac.tx_id,
+                  ac.storicizza,
+                  ac.attivo,
+                  ac.note_target_tipo,
+                  ac.note_id,
+                  ap.codice       AS prodotto_codice,
+                  ap.descrizione  AS prodotto_descrizione,
+                  acmp.codice     AS componente_codice,
+                  acmp.descrizione AS componente_descrizione,
+                  -- Capability di riga (BoM Fase 2, 28-04-2026)
+                  (ac.valido_al IS NULL)                            AS puo_chiudersi,
+                  CASE
+                      WHEN ac.valido_al IS NULL THEN ac.valido_dal
+                      ELSE NULL
+                  END                                               AS data_min_chiusura,
+                  CASE
+                      WHEN ac.valido_al IS NULL
+                          THEN GREATEST(ac.valido_dal, CURRENT_DATE)
+                      ELSE NULL
+                  END                                               AS data_default_chiusura,
+                  CASE
+                      WHEN ac.valido_al IS NULL THEN NULL
+                      ELSE 'RIGA_GIA_CHIUSA'
+                  END                                               AS motivo_non_chiudibile
+              FROM catalogo.articoli_componenti ac
+              LEFT JOIN catalogo.articoli ap   ON ap.id   = ac.prodotto_id
+              LEFT JOIN catalogo.articoli acmp ON acmp.id = ac.componente_id;
+
+              COMMENT ON VIEW catalogo.vw_articoli_componenti_dettaglio IS
+                  'Vista dettaglio componenti articolo: codici/descrizioni '
+                  'di prodotto e componente + capability di riga '
+                  '(puo_chiudersi, data_min_chiusura, data_default_chiusura, '
+                  'motivo_non_chiudibile) per il dialog "Chiudi riga" del FE.';

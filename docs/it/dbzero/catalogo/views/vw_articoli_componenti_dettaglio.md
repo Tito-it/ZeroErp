@@ -24,7 +24,20 @@ SELECT ac.id,
     ap.codice AS prodotto_codice,
     ap.descrizione AS prodotto_descrizione,
     acmp.codice AS componente_codice,
-    acmp.descrizione AS componente_descrizione
+    acmp.descrizione AS componente_descrizione,
+    (ac.valido_al IS NULL) AS puo_chiudersi,
+        CASE
+            WHEN (ac.valido_al IS NULL) THEN ac.valido_dal
+            ELSE NULL::date
+        END AS data_min_chiusura,
+        CASE
+            WHEN (ac.valido_al IS NULL) THEN GREATEST(ac.valido_dal, CURRENT_DATE)
+            ELSE NULL::date
+        END AS data_default_chiusura,
+        CASE
+            WHEN (ac.valido_al IS NULL) THEN NULL::text
+            ELSE 'RIGA_GIA_CHIUSA'::text
+        END AS motivo_non_chiudibile
    FROM ((catalogo.articoli_componenti ac
      LEFT JOIN catalogo.articoli ap ON ((ap.id = ac.prodotto_id)))
      LEFT JOIN catalogo.articoli acmp ON ((acmp.id = ac.componente_id)));

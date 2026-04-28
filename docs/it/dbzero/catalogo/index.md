@@ -11,6 +11,7 @@
 - [unita_misura_conversioni](tabelle/unita_misura_conversioni.md) — (latest review 13-01-26) `catalogo.unita_misura_conversioni` definisce **conversioni globali** tra unita di misura, indipendenti dall’articolo. Serve come **fallback** quando una conversione non e' stata specificata per articolo in `catalogo.articoli_uom_operativa`.
 
 ## ⚙️ Funzioni
+- [fn_duplica_componente_versione](funzioni/fn_duplica_componente_versione.md)
 - [fn_get_uom_base](funzioni/fn_get_uom_base.md) — (latest updates 13-01-26) La funzione **`catalogo.fn_get_uom_base(p_articolo_id)`** ritorna la **UoM base** dell’articolo, leggendo il campo `catalogo.articoli.uom_id`.
 - [fn_get_uom_factor](funzioni/fn_get_uom_factor.md) — (latest review 13-01-26) La funzione **`catalogo.fn_get_uom_factor(p_articolo_id, p_uom_id)`** ritorna il **fattore di conversione** dalla UoM richiesta alla **UoM base** dell’articolo.
 - [trgfn_articoli_componenti_block_modifica_struttura](funzioni/trgfn_articoli_componenti_block_modifica_struttura.md) — (latest review 22-04-2026) La funzione **`catalogo.trgfn_articoli_componenti_block_modifica_struttura()`** protegge l'immutabilita' strutturale della distinta base (`catalogo.articoli_componenti`) dopo l'inserimento della riga.

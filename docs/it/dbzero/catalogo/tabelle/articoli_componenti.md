@@ -8,7 +8,7 @@
 | prodotto_id | uuid | NO |  |
 | componente_id | uuid | NO |  |
 | coeff_qta | numeric | NO | 1 |
-| partecipa_qta | boolean | NO | false |
+| partecipa_qta | boolean | NO | true |
 | obbligatorio | boolean | NO | true |
 | valido_dal | date | NO |  |
 | valido_al | date | YES |  |
