@@ -17,6 +17,7 @@ from apps.catalogo.api.views import (
     ApiUnitaMisuraDetail,
     ApiUnitaMisuraDisattiva,
     ApiUnitaMisuraList,
+    ApiUomRoundingModesLookup,
 )
 
 urlpatterns = [
@@ -39,4 +40,6 @@ urlpatterns = [
     # Conversioni UoM
     path("conversioni-uom/<int:conv_id>/", ApiConversioneDetail.as_view(), name="catalogo-conversione-detail"),
     path("conversioni-uom/", ApiConversioniList.as_view(), name="catalogo-conversioni-list"),
+    # Lookup statici
+    path("lookup/rounding-modes/", ApiUomRoundingModesLookup.as_view(), name="catalogo-lookup-rounding-modes"),
 ]

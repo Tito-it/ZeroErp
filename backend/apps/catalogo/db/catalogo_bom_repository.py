@@ -53,6 +53,17 @@ COMPONENTE_DETAIL_COLUMNS: tuple[str, ...] = (
     "ap.descrizione AS prodotto_descrizione",
     "acmp.codice AS componente_codice",
     "acmp.descrizione AS componente_descrizione",
+    # Capability di chiusura riga BoM (Fase 2 refactor catalogo).
+    # La stessa logica e' replicata in `catalogo.vw_articoli_componenti_dettaglio`
+    # (migration 20260428-03). Single source of truth: il dominio "una riga e'
+    # chiudibile finche' valido_al IS NULL". Se la regola cambia in DB,
+    # aggiornare ENTRAMBI: vista + COMPONENTE_DETAIL_COLUMNS qui.
+    # `data_min_chiusura` / `data_default_chiusura` sono NULL su righe gia'
+    # chiuse (autodocumentante: il FE non puo' aprire dialog su NULL).
+    "(ac.valido_al IS NULL) AS puo_chiudersi",
+    "CASE WHEN ac.valido_al IS NULL THEN ac.valido_dal END AS data_min_chiusura",
+    "CASE WHEN ac.valido_al IS NULL THEN GREATEST(ac.valido_dal, CURRENT_DATE) END AS data_default_chiusura",
+    "CASE WHEN ac.valido_al IS NULL THEN NULL ELSE 'RIGA_GIA_CHIUSA' END AS motivo_non_chiudibile",
 )
 
 NOTA_WRITE_COLUMNS: dict[str, str] = {

@@ -117,6 +117,15 @@ export function createComponenteNota(articoloId, compId, payload) {
   return api.post(`${BASE}/articoli/${articoloId}/componenti/${compId}/note/`, payload)
 }
 
+// --- Lookup statici ---
+
+// Scopo: Lookup statico modi di arrotondamento UoM operativa.
+//        Ritorna lista di {codice, descrizione, ordering}. Single source of truth
+//        nel BE (catalogo_service._ROUNDING_MODE_VALIDI). Nessuna paginazione.
+export function lookupUomRoundingModes() {
+  return api.get(`${BASE}/lookup/rounding-modes/`)
+}
+
 // --- Conversioni UoM ---
 
 export function listConversioniUom(params = {}) {

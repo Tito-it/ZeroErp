@@ -1197,7 +1197,8 @@
     "field_gtin": "GTIN",
     "section_uso": "Usage",
     "section_regole_input": "Input Rules",
-    "section_extra": "Other"
+    "section_extra": "Other",
+    "select_rounding_mode": "Select rounding mode"
   },
   "billing_account": {
     "search_placeholder": "Search BA by code, business name, tax ID or PDP...",
