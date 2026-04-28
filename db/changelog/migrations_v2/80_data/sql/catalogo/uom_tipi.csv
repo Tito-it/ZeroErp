@@ -1,0 +1,11 @@
+id,codice,codice_interno,descrizione,attivo,user_insert,data_insert,user_update,data_update
+1,LUNGHEZZA,LUNGHEZZA,Lunghezza,true,seed,2026-04-28 10:00:00+02,seed,2026-04-28 10:00:00+02
+2,MASSA,MASSA,Massa,true,seed,2026-04-28 10:00:00+02,seed,2026-04-28 10:00:00+02
+3,VOLUME,VOLUME,Volume,true,seed,2026-04-28 10:00:00+02,seed,2026-04-28 10:00:00+02
+4,AREA,AREA,Area,true,seed,2026-04-28 10:00:00+02,seed,2026-04-28 10:00:00+02
+5,ENERGIA,ENERGIA,Energia,true,seed,2026-04-28 10:00:00+02,seed,2026-04-28 10:00:00+02
+6,POTENZA,POTENZA,Potenza,true,seed,2026-04-28 10:00:00+02,seed,2026-04-28 10:00:00+02
+7,TEMPO,TEMPO,Tempo,true,seed,2026-04-28 10:00:00+02,seed,2026-04-28 10:00:00+02
+8,QUANTITA,QUANTITA,Quantita',true,seed,2026-04-28 10:00:00+02,seed,2026-04-28 10:00:00+02
+9,IMBALLAGGIO,IMBALLAGGIO,Imballaggio,true,seed,2026-04-28 10:00:00+02,seed,2026-04-28 10:00:00+02
+11,GENERICO,GENERICO,Generico controllato,true,seed,2026-04-28 10:00:00+02,seed,2026-04-28 10:00:00+02

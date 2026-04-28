@@ -36,8 +36,11 @@ databaseChangeLog:
             columns:
               - column: { name: id, type: STRING }
               - column: { name: codice, type: STRING }
+              #  - column: { name: codice_interno, type: STRING }
+
               - column: { name: descrizione, type: STRING }
               - column: { name: descrizione_fattura, type: STRING }
+              - column: { name: tipo_uom_id, type: STRING }
               - column: { name: attivo, type: BOOLEAN }
 
               - column: { name: user_insert, type: STRING }

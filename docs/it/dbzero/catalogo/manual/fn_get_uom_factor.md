@@ -33,6 +33,10 @@ Supporta un **fallback globale**: se la conversione articolo-specifica non e' pr
 6. **Se non trovato**  
    Ritorna `NULL`.
 
+Le conversioni globali candidate sono gia' filtrate a monte dal DB: la tabella
+`catalogo.unita_misura_conversioni` ammette solo coppie della stessa
+`catalogo.uom_tipi`.
+
 ---
 
 ### Esempi d’uso
@@ -57,11 +61,10 @@ Se l’articolo non ha una conversione specifica per `MJ`, la funzione usa la co
 
 ### Best practice
 
-* Definisci conversioni **globali** solo per UoM standard, non per confezioni specifiche.
+* Definisci conversioni **globali** solo per UoM standard della stessa tipologia, non per confezioni specifiche.
 * Usa `articoli_uom_operativa` per conversioni **legate al prodotto** (es. pezzi per scatola).
 * Gestisci il caso `NULL` a livello applicativo/trigger quando la conversione non e' disponibile.
 
 ---
 
 {% include-markdown "signature-core.md" %}
-
