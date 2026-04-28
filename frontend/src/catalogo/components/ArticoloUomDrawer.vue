@@ -9,6 +9,8 @@ import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useApiHandler } from '../../core/composables/useApiHandler'
+import { useParameterDefaults } from '../../core/composables/useParameterDefaults'
+import { paramBool, paramNumber } from '../../core/utils/parameterCast'
 import { listArticoloUom, createArticoloUom, updateArticoloUom, deleteArticoloUom } from '../api/catalogo'
 import { toDateString } from '../../core/utils/date'
 import { DRAWER_WIDTH, DATE_FORMAT } from '../../core/constants'
@@ -16,6 +18,7 @@ import LookupSelect from '../../core/components/LookupSelect.vue'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import DrawerFooter from '../../core/components/DrawerFooter.vue'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
+import RoundingModeSelect from './RoundingModeSelect.vue'
 import Drawer from 'primevue/drawer'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
@@ -24,7 +27,6 @@ import Tag from 'primevue/tag'
 import InputNumber from 'primevue/inputnumber'
 import InputText from 'primevue/inputtext'
 import ToggleSwitch from 'primevue/toggleswitch'
-import Select from 'primevue/select'
 import DatePicker from 'primevue/datepicker'
 
 const { t } = useI18n()
@@ -43,26 +45,35 @@ const formMode = ref(null)
 const editId = ref(null)
 const form = ref({})
 
-const roundingOptions = [
-  { value: 'HALF_UP', label: 'HALF_UP' },
-  { value: 'HALF_DOWN', label: 'HALF_DOWN' },
-  { value: 'HALF_EVEN', label: 'HALF_EVEN' },
-  { value: 'UP', label: 'UP' },
-  { value: 'DOWN', label: 'DOWN' }
-]
+// Defaults UoM operativa via config.parameters (override per emittente).
+// Pre-fetch al setup: quando il drawer apre i valori sono di solito gia' in
+// cache. La watch su `props.visible` await-a comunque `loadDefaults()` prima
+// di costruire il form, per evitare race in cui il drawer apre prima che la
+// fetch finisca (form costruito con fallback hardcoded e mai piu' aggiornato).
+// Se i parametri sono assenti lato DB (pre-seed), il fallback e' identico ai
+// vecchi defaults hardcoded — nessuna regressione.
+const { defaults: paramDefaults, load: loadDefaults } = useParameterDefaults([
+  'CATALOGO_UOM_OP_DEFAULT_FACTOR_TO_BASE',
+  'CATALOGO_UOM_OP_DEFAULT_QTY_STEP',
+  'CATALOGO_UOM_OP_DEFAULT_ROUNDING_MODE',
+  'CATALOGO_UOM_OP_DEFAULT_MAX_DECIMALS',
+  'CATALOGO_UOM_OP_DEFAULT_FORBID_FRACTION',
+])
+loadDefaults()
 
 function defaultForm() {
+  const p = paramDefaults.value
   return {
     uom_id: null,
     is_base: false,
-    factor_to_base: 1,
+    factor_to_base: paramNumber(p.CATALOGO_UOM_OP_DEFAULT_FACTOR_TO_BASE, 1),
     is_sell_uom: false,
     is_purchase_uom: false,
     is_logistic_uom: false,
-    qty_step: 1,
-    rounding_mode: 'HALF_UP',
-    max_decimals: 6,
-    forbid_fraction: false,
+    qty_step: paramNumber(p.CATALOGO_UOM_OP_DEFAULT_QTY_STEP, 1),
+    rounding_mode: p.CATALOGO_UOM_OP_DEFAULT_ROUNDING_MODE || 'HALF_UP',
+    max_decimals: paramNumber(p.CATALOGO_UOM_OP_DEFAULT_MAX_DECIMALS, 6),
+    forbid_fraction: paramBool(p.CATALOGO_UOM_OP_DEFAULT_FORBID_FRACTION, false),
     require_lot: false,
     gtin: '',
     valido_dal: null,
@@ -95,8 +106,12 @@ async function loadUom() {
 // Scopo: Verifica se esiste gia' una UoM base nella lista.
 const hasBase = computed(() => uomList.value.some(u => u.is_base))
 
-watch(() => props.visible, (val) => {
+watch(() => props.visible, async (val) => {
   if (!val) return
+  // Attendi i parameters prima di costruire il form: evita race "drawer aperto
+  // con fallback hardcoded mentre la fetch e' ancora in volo". `useParameterDefaults`
+  // e' error-safe (silent fail), `loadDefaults` resta no-op se gia' caricato.
+  await loadDefaults()
   formMode.value = null
   editId.value = null
   form.value = defaultForm()
@@ -355,8 +370,7 @@ function buildRigaActions(row) {
           </div>
           <div class="form-field">
             <label>{{ t('catalogo.field_rounding_mode') }}</label>
-            <Select v-model="form.rounding_mode" :options="roundingOptions"
-              option-label="label" option-value="value" />
+            <RoundingModeSelect v-model="form.rounding_mode" />
           </div>
         </div>
 

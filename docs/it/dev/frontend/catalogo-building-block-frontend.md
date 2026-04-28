@@ -76,6 +76,7 @@
 | `statoFlussoSeverity` / `esitoFlussoSeverity` | [severity.js](../../../../frontend/src/core/utils/severity.js) | Colori stato/esito flusso |
 | `azioneGiornaleStyle` | [severity.js](../../../../frontend/src/core/utils/severity.js) | Stile azione giornale (severity + icona) |
 | `extractApiError` / `extractApiErrorCode` | [apiError.js](../../../../frontend/src/core/utils/apiError.js) | Estrae messaggio/codice errore da risposta API |
+| `paramBool` / `paramNumber` / `paramInt` / `paramString` | [parameterCast.js](../../../../frontend/src/core/utils/parameterCast.js) | Cast con fallback dei valori `config.parameters` (BE ritorna `dict[str, str]`). Riusabili da qualsiasi `defaultForm()` parametrizzato. Adottato da: ArticoloUomDrawer (Fase 1 refactor catalogo). |
 
 ---
 
@@ -96,6 +97,7 @@
 | `lookupBillingAccount` | [apiCore.js](../../../../frontend/src/core/apiCore.js) | Ricerca BA per autocomplete cross-dominio (`GET /anagrafiche/billing-account/lookup/`). Scope emittente automatico |
 | `getBillingAccountLookupById` | [apiCore.js](../../../../frontend/src/core/apiCore.js) | Restore singolo BA arricchito per edit (`GET /anagrafiche/billing-account/{id}/lookup/`) |
 | `lookupContiContabili` | [apiCore.js](../../../../frontend/src/core/apiCore.js) | Lookup dedicato conti contabili con filtro tipo (`GET /core/lookup/conti-contabili/?tipo=A` o `?tipo=V`). Usato da `ContoContabileSelect`. |
+| `lookupUomRoundingModes` | [catalogo.js](../../../../frontend/src/catalogo/api/catalogo.js) | Lookup statico modi di arrotondamento UoM operativa (`GET /catalogo/lookup/rounding-modes/`). Restituisce 5 codici fissi (HALF_UP, HALF_DOWN, HALF_EVEN, UP, DOWN) con descrizione. Single source of truth lato BE: `catalogo_service._ROUNDING_MODE_VALIDI`. Usato da `RoundingModeSelect`. |
 
 ---
 
@@ -376,3 +378,4 @@ Il toggle e' gestito dallo store `useUiStore` (`isDark`, `toggleDarkMode`) e per
 | `ArticoloUomDrawer` | [ArticoloUomDrawer.vue](../../../../frontend/src/catalogo/components/ArticoloUomDrawer.vue) | Sub-drawer UoM operative. Pattern formMode (null=lista DataTable, 'new'=aggiungi, 'edit'=modifica). Props: `visible`, `articolo-id`. Emette `@saved`. |
 | `ArticoloBomDrawer` | [ArticoloBomDrawer.vue](../../../../frontend/src/catalogo/components/ArticoloBomDrawer.vue) | Sub-drawer distinta base. Lista componenti sempre visibile + form inserimento sotto. `valido_al` editabile inline nella DataTable. Lookup articoli via `ArticoloLookup`. Props: `visible`, `articolo-id`. Emette `@saved`. |
 | `ArticoloNoteDrawer` | [ArticoloNoteDrawer.vue](../../../../frontend/src/catalogo/components/ArticoloNoteDrawer.vue) | Sub-drawer note articolo. Pattern formMode con card layout. Stile nota via `LookupSelect rel="config.note_stili"`. Props: `visible`, `articolo-id`. Emette `@saved`. |
+| `RoundingModeSelect` | [RoundingModeSelect.vue](../../../../frontend/src/catalogo/components/RoundingModeSelect.vue) | **Wrapper standard modi arrotondamento UoM operativa.** Usa `useGlobalLookup` (chiave `catalogo.uom_rounding_modes`) sul lookup statico `lookupUomRoundingModes` con cache modulo-level. Display `"descrizione (codice)"`. Props: `modelValue` (string codice), `placeholder`, `disabled`, `showClear`. Sostituisce il vecchio `roundingOptions` hardcoded. Usato da: ArticoloUomDrawer (Fase 1 refactor catalogo). |
