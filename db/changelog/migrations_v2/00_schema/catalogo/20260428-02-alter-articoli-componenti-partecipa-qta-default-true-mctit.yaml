@@ -1,0 +1,63 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Allinea il default DB di catalogo.articoli_componenti.partecipa_qta
+# da false a true.
+#
+# Why: il seed parameters di Fase 2 (28-04-2026) introduce
+#   CATALOGO_BOM_DEFAULT_PARTECIPA_QTA = true
+# che il backend usera' per popolare le nuove righe BoM. Il default
+# DB dell'omonima colonna era pero' false (ereditato dal bootstrap
+# 20250819-50). Mantenere i due default disallineati produce una
+# asimmetria fra creazione via service (true) e creazione via SQL
+# diretto (false) -- un classico errore latente che si manifesta
+# solo nei seed, fixture pgTAP, manutenzioni amministrative.
+#
+# Allineamento esplicito: il "valore di sistema" della BoM e' "il
+# componente concorre alla quantita' del padre". Decisione di dominio
+# 28-04-2026 (PO + BE).
+#
+# Nessun backfill: il DEFAULT si applica solo a INSERT futuri senza
+# valore esplicito. Le righe esistenti con partecipa_qta=false
+# restano invariate (volute o storico, non si tocca).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: /migrations_v2/00_schema/catalogo/20260428-02-alter-articoli-componenti-partecipa-qta-default-true-mctit.yaml
+
+  - changeSet:
+      id: 20260428-02-alter-articoli-componenti-partecipa-qta-default-true
+      author: mctit
+      comment: >
+        ALTER COLUMN partecipa_qta SET DEFAULT true su
+        catalogo.articoli_componenti. Allineamento con seed parameter
+        CATALOGO_BOM_DEFAULT_PARTECIPA_QTA = true (Fase 2 BE 28-04-2026).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: catalogo
+                tableName: articoli_componenti
+            - columnExists:
+                schemaName: catalogo
+                tableName: articoli_componenti
+                columnName: partecipa_qta
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE catalogo.articoli_componenti
+                  ALTER COLUMN partecipa_qta SET DEFAULT true;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE catalogo.articoli_componenti
+                  ALTER COLUMN partecipa_qta SET DEFAULT false;

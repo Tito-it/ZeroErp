@@ -83,6 +83,7 @@
 - [vw_fk_con_indice_missing_policy](manual/vw_fk_con_indice_missing_policy.md) — (latest review 16-01-26) * **Identificare gli indici esistenti**   Trova le FK già indicizzate che non dispongono di una policy dedicata. * **Suggerimento DDL**   Genera automaticamente la stringa `CREATE INDEX ...` per uniformare naming e struttura. * **Supporto auditing e governance**   Permette di scoprire eventuali indici non tracciati, inserendoli poi in `fk_index_policy`.
 - [vw_fk_senza_indice](manual/vw_fk_senza_indice.md) — (latest review 16-01-26) * Individuare automaticamente vincoli di integrità referenziale (FK) privi di indice, potenziali colli di bottiglia nelle operazioni di JOIN e DELETE. * Fornire suggerimenti di creazione indice coerenti, facilitando l’ottimizzazione delle performance. * Applicare eventuali policy di esclusione gestite in `dbops.fk_index_policy`.
 - [vw_function_list](manual/vw_function_list.md) — * Agevolare il **discovery** delle funzioni personalizzate per manutenzione e documentazione. * Rendere immediatamente disponibili:
+- [vw_non_editable_fields](manual/vw_non_editable_fields.md) — (latest review 28-04-2026)
 - [vw_trigger_functions](manual/vw_trigger_functions.md) — * Fornire una panoramica centralizzata dei trigger utente presenti in ogni tabella del database. * Rendere immediatamente accessibili:
 
 ## 📘 Altri contenuti manuali

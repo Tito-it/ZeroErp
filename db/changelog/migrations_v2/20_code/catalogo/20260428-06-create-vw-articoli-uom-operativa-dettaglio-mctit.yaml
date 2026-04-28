@@ -1,0 +1,108 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Vista catalogo.vw_articoli_uom_operativa_dettaglio: dettaglio
+# righe articoli_uom_operativa con codici/descrizioni di articolo
+# e UoM denormalizzati + capability di riga (Fase 6 BE 28-04-2026).
+#
+# Capability:
+#   puo_eliminarsi          BOOLEAN  = NOT is_base
+#       (la UoM base di un articolo non e' eliminabile per dominio:
+#        rappresenta l'ancora del modello quantita'+factor_to_base)
+#   motivo_non_eliminabile  TEXT     = 'UOM_BASE_NON_ELIMINABILE' [NULL se eliminabile]
+#
+# Naming italiano coerente con vw_articoli_componenti_dettaglio
+# (Fase 2, 20260428-03).
+#
+# Scope intenzionalmente ridotto: il brief BE menzionava "figli..."
+# come ulteriore guard, ma non esistono FK reverse a
+# articoli_uom_operativa. Le guard cross-dominio (es. righe
+# magazzino/listino con (articolo, uom)) restano potenziali
+# estensioni future a fronte di un caso d'uso concreto.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: /migrations_v2/20_code/catalogo/20260428-06-create-vw-articoli-uom-operativa-dettaglio-mctit.yaml
+
+  - changeSet:
+      id: 20260428-06-create-vw-articoli-uom-operativa-dettaglio
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      comment: >
+        Crea catalogo.vw_articoli_uom_operativa_dettaglio: dettaglio
+        riga con denormalizzazione UoM + articolo e capability
+        (puo_eliminarsi, motivo_non_eliminabile). Naming italiano,
+        scope Fase 6 BE 28-04-2026.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: catalogo
+                tableName: articoli_uom_operativa
+            - tableExists:
+                schemaName: catalogo
+                tableName: articoli
+            - tableExists:
+                schemaName: catalogo
+                tableName: unita_misura
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW catalogo.vw_articoli_uom_operativa_dettaglio AS
+              SELECT
+                  auo.id,
+                  auo.articolo_id,
+                  auo.uom_id,
+                  auo.is_base,
+                  auo.factor_to_base,
+                  auo.is_sell_uom,
+                  auo.is_purchase_uom,
+                  auo.is_logistic_uom,
+                  auo.qty_step,
+                  auo.rounding_mode,
+                  auo.max_decimals,
+                  auo.forbid_fraction,
+                  auo.require_lot,
+                  auo.gtin,
+                  auo.valido_dal,
+                  auo.valido_al,
+                  auo.validita,
+                  auo.attivo,
+                  auo.meta,
+                  auo.user_insert,
+                  auo.user_update,
+                  auo.data_insert,
+                  auo.data_update,
+                  auo.tx_id,
+                  auo.storicizza,
+                  -- Denormalizzazione UoM
+                  u.codice       AS uom_codice,
+                  u.descrizione  AS uom_descrizione,
+                  -- Denormalizzazione articolo
+                  a.codice       AS articolo_codice,
+                  a.descrizione  AS articolo_descrizione,
+                  -- Capability di riga (Fase 6, 28-04-2026)
+                  (NOT auo.is_base)                                 AS puo_eliminarsi,
+                  CASE
+                      WHEN auo.is_base THEN 'UOM_BASE_NON_ELIMINABILE'
+                      ELSE NULL
+                  END                                               AS motivo_non_eliminabile
+              FROM catalogo.articoli_uom_operativa auo
+              LEFT JOIN catalogo.unita_misura u ON u.id = auo.uom_id
+              LEFT JOIN catalogo.articoli     a ON a.id = auo.articolo_id;
+
+              COMMENT ON VIEW catalogo.vw_articoli_uom_operativa_dettaglio IS
+                  'Dettaglio righe articoli_uom_operativa con codici/descrizioni '
+                  'di UoM e articolo denormalizzati + capability di riga '
+                  '(puo_eliminarsi, motivo_non_eliminabile). Solo is_base blocca '
+                  'l''eliminazione (UOM_BASE_NON_ELIMINABILE).';

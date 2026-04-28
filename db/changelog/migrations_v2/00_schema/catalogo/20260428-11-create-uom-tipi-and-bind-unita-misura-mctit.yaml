@@ -1,0 +1,190 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Introduce catalogo.uom_tipi e collega catalogo.unita_misura
+# a una tipologia/dimensione fisica controllata.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/catalogo/20260428-11-create-uom-tipi-and-bind-unita-misura-mctit.yaml
+
+  - changeSet:
+      id: 20260428-11-create-uom-tipi-and-bind-unita-misura
+      author: mctit
+      comment: >
+        Crea catalogo.uom_tipi, bootstrap dei tipi base e aggiunge
+        catalogo.unita_misura.tipo_uom_id con backfill controllato.
+      preConditions:
+        - onFail: HALT
+        - tableExists: { schemaName: catalogo, tableName: unita_misura }
+      changes:
+        - createTable:
+            schemaName: catalogo
+            tableName: uom_tipi
+            remarks: "Tipologie/dimensioni fisiche delle unita' di misura."
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_uom_tipi
+                    nullable: false
+              - column:
+                  name: codice
+                  type: VARCHAR(30)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: codice_interno
+                  type: VARCHAR(30)
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: descrizione
+                  type: VARCHAR(120)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: attivo
+                  type: BOOLEAN
+                  defaultValueBoolean: true
+                  constraints:
+                    nullable: false
+              - column:
+                  name: user_insert
+                  type: TEXT
+                  defaultValueComputed: CURRENT_USER
+                  constraints:
+                    nullable: false
+              - column:
+                  name: user_update
+                  type: TEXT
+                  defaultValueComputed: CURRENT_USER
+              - column:
+                  name: data_insert
+                  type: TIMESTAMPTZ
+                  defaultValueComputed: now()
+                  constraints:
+                    nullable: false
+              - column:
+                  name: data_update
+                  type: TIMESTAMPTZ
+                  defaultValueComputed: now()
+                  constraints:
+                    nullable: false
+
+        - addUniqueConstraint:
+            schemaName: catalogo
+            tableName: uom_tipi
+            columnNames: codice
+            constraintName: uq_uom_tipi_codice
+
+        - addUniqueConstraint:
+            schemaName: catalogo
+            tableName: uom_tipi
+            columnNames: codice_interno
+            constraintName: uq_uom_tipi_codice_interno
+
+        - addColumn:
+            schemaName: catalogo
+            tableName: unita_misura
+            columns:
+              - column:
+                  name: tipo_uom_id
+                  type: BIGINT
+                  remarks: "FK -> catalogo.uom_tipi.id. Tipologia/dimensione fisica della UoM."
+
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ==========================================================
+              -- Bootstrap tipi UoM strutturali.
+              -- Scopo: rendere disponibili ID stabili gia' in fase DDL
+              -- per il backfill e per i seed successivi in 80_data.
+              -- ==========================================================
+              INSERT INTO catalogo.uom_tipi (id, codice, codice_interno ,descrizione, attivo)
+              VALUES
+                (1,  'LUNGHEZZA','LUNGHEZZA',  'Lunghezza', true),
+                (2,  'MASSA', 'MASSA',      'Massa', true),
+                (3,  'VOLUME', 'VOLUME',     'Volume', true),
+                (4,  'AREA', 'AREA',       'Area', true),
+                (5,  'ENERGIA', 'ENERGIA',    'Energia', true),
+                (6,  'POTENZA', 'POTENZA',    'Potenza', true),
+                (7,  'TEMPO',  'TEMPO',     'Tempo', true),
+                (8,  'QUANTITA',  'QUANTITA',   'Quantita''', true),
+                (9,  'IMBALLAGGIO', 'IMBALLAGGIO','Imballaggio', true),
+                (11, 'GENERICO', 'GENERICO',   'Generico controllato', true)
+              ON CONFLICT (id) DO NOTHING;
+
+              SELECT setval(
+                pg_get_serial_sequence('catalogo.uom_tipi', 'id'),
+                (SELECT MAX(id) FROM catalogo.uom_tipi),
+                true
+              );
+
+              -- ==========================================================
+              -- Backfill di catalogo.unita_misura.tipo_uom_id.
+              --
+              -- Regole:
+              --   - mapping esplicito per i codici seedati oggi
+              --   - SMC classificata come ENERGIA tecnica/commerciale
+              --     per mantenere coerenti le conversioni globali gia' seedate
+              --   - fallback GENERICO per UoM custom gia' presenti
+              -- ==========================================================
+              UPDATE catalogo.unita_misura u
+                 SET tipo_uom_id = ut.id
+                FROM catalogo.uom_tipi ut
+               WHERE ut.codice = CASE
+                   WHEN u.codice IN ('MT', 'CM', 'MM') THEN 'LUNGHEZZA'
+                   WHEN u.codice IN ('KG', 'G') THEN 'MASSA'
+                   WHEN u.codice IN ('LT', 'ML', 'MC') THEN 'VOLUME'
+                   WHEN u.codice IN ('MQ') THEN 'AREA'
+                   WHEN u.codice IN ('KWH', 'MJ', 'SMC') THEN 'ENERGIA'
+                   WHEN u.codice IN ('GG', 'HH', 'MESE') THEN 'TEMPO'
+                   WHEN u.codice IN ('PZ', 'NR') THEN 'QUANTITA'
+                   ELSE 'GENERICO'
+                 END
+                 AND u.tipo_uom_id IS NULL;
+
+              ALTER TABLE catalogo.unita_misura
+                ADD CONSTRAINT fk_unita_misura_tipo_uom
+                FOREIGN KEY (tipo_uom_id)
+                REFERENCES catalogo.uom_tipi(id)
+                ON UPDATE CASCADE
+                ON DELETE NO ACTION;
+
+              ALTER TABLE catalogo.unita_misura
+                ALTER COLUMN tipo_uom_id SET NOT NULL;
+
+              CREATE INDEX IF NOT EXISTS ix_uom_tipi_codice_upper
+                ON catalogo.uom_tipi (upper(codice));
+              CREATE INDEX IF NOT EXISTS ix_uom_tipi_codice_interno_upper
+                ON catalogo.uom_tipi (upper(codice_interno));
+
+
+
+              COMMENT ON TABLE catalogo.uom_tipi
+                IS 'Tipologie/dimensioni fisiche delle unita di misura.';
+              COMMENT ON COLUMN catalogo.uom_tipi.id
+                IS 'Identificativo della tipologia UoM.';
+              COMMENT ON COLUMN catalogo.uom_tipi.codice
+                IS 'Codice stabile della tipologia UoM (es. MASSA, ENERGIA, IMBALLAGGIO).';
+              COMMENT ON COLUMN catalogo.uom_tipi.codice_interno
+                IS 'Codice stabile della tipologia UoM (es. MASSA, ENERGIA, IMBALLAGGIO).';
+
+              COMMENT ON COLUMN catalogo.uom_tipi.descrizione
+                IS 'Descrizione leggibile della tipologia UoM.';
+              COMMENT ON COLUMN catalogo.uom_tipi.attivo
+                IS 'Flag attivo/non attivo della tipologia UoM.';
+              COMMENT ON COLUMN catalogo.unita_misura.tipo_uom_id
+                IS 'Tipologia/dimensione fisica della UoM. Governata da catalogo.uom_tipi.';
+              COMMENT ON CONSTRAINT uq_uom_tipi_codice ON catalogo.uom_tipi
+                IS 'Codice tipologia UoM univoco.';
+              COMMENT ON CONSTRAINT fk_unita_misura_tipo_uom ON catalogo.unita_misura
+                IS 'Collega la UoM alla sua tipologia/dimensione fisica.';
+              COMMENT ON INDEX catalogo.ix_uom_tipi_codice_upper
+                IS 'Ricerca case-insensitive per codice tipologia UoM.';

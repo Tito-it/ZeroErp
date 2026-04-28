@@ -1,0 +1,77 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Vista alias dbops.vw_non_editable_fields su
+# dbops.automation_lock_columns -- nome semanticamente piu' diretto
+# per il consumo lato backend (lookup "campi non editabili per
+# (schema, table)" usato dai service per costruire DTO/UI hints).
+#
+# La vista filtra su enabled = true (le righe disabilitate non
+# rappresentano lock attivi).
+#
+# Limiti noti (vedi anche manual/vw_non_editable_fields.md):
+#   - copre solo i lock incondizionati registrati in
+#     dbops.automation_lock_columns (es. codice_interno protetto
+#     da trgfn_apply_lock_columns)
+#   - NON copre i lock condizionali stato-dipendenti gestiti da
+#     trigger custom (es. trgfn_promo_articoli_guard_data_driven,
+#     trgfn_articoli_componenti_block_modifica_struttura,
+#     trgfn_listini_versioni_*). Per quelli la logica resta nei
+#     service Python o richiede un meccanismo dichiarativo
+#     separato (futuro).
+#
+# Brief BE Fase 5 28-04-2026: chiedeva una nuova tabella
+# dbops.lock_columns_registry. La tabella esisteva gia' come
+# automation_lock_columns con schema piu' ricco; questa vista
+# fornisce l'alias semantico richiesto senza duplicazione.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: /migrations_v2/20_code/dbops/20260428-05-create-vw-non-editable-fields-mctit.yaml
+
+  - changeSet:
+      id: 20260428-05-create-vw-non-editable-fields
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      comment: >
+        Crea vista dbops.vw_non_editable_fields come alias semantico
+        su dbops.automation_lock_columns (filtrata su enabled=true).
+        Usata dal backend per recuperare l'elenco dei campi non
+        editabili per ciascuna entita' coperta dal pattern
+        automation_lock_columns.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: dbops
+                tableName: automation_lock_columns
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW dbops.vw_non_editable_fields AS
+              SELECT
+                  alc.target_schema,
+                  alc.target_table,
+                  alc.column_name,
+                  alc.error_code,
+                  alc.exec_mode,
+                  alc.note
+              FROM dbops.automation_lock_columns alc
+              WHERE alc.enabled = true;
+
+              COMMENT ON VIEW dbops.vw_non_editable_fields IS
+                  'Alias semantico su dbops.automation_lock_columns: '
+                  'elenca i campi non editabili (lock incondizionato) per '
+                  'ciascuna (target_schema, target_table). Filtrata su '
+                  'enabled=true. Non copre i lock condizionali '
+                  'stato-dipendenti gestiti da trigger custom.';

@@ -45,7 +45,13 @@ SELECT a.id,
     i.descrizione AS iva_descrizione,
     i.aliquota_iva AS iva_aliquota_iva,
     lt.codice AS tipologia_listino_codice,
-    lt.descrizione AS tipologia_listino_descrizione
+    lt.descrizione AS tipologia_listino_descrizione,
+    (a.is_composito AND (NOT a.is_solo_componente)) AS puo_gestire_bom,
+        CASE
+            WHEN (a.is_composito AND (NOT a.is_solo_componente)) THEN NULL::text
+            WHEN a.is_solo_componente THEN 'ARTICOLO_SOLO_COMPONENTE'::text
+            ELSE 'ARTICOLO_NON_COMPOSITO'::text
+        END AS motivo_non_gestibile_bom
    FROM ((((((catalogo.articoli a
      LEFT JOIN catalogo.unita_misura u ON ((u.id = a.uom_id)))
      LEFT JOIN vendite.articoli_tipologie t ON ((t.id = a.tipo_voce_id)))
