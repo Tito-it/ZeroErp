@@ -65,6 +65,16 @@ _COMPONENTE_UPDATE_ALLOWED_KEYS: frozenset[str] = frozenset(
 )
 _NOTA_ALLOWED_KEYS: frozenset[str] = frozenset(NOTA_WRITE_COLUMNS.keys())
 _ROUNDING_MODE_VALIDI: frozenset[str] = frozenset({"UP", "DOWN", "HALF_UP", "HALF_DOWN", "HALF_EVEN"})
+
+# Scopo: Mappa codice -> (descrizione, ordering) per lookup statico rounding modes UoM operative.
+# Ordering segue la convenzione "default-first" (HALF_UP banker's rounding standard, poi varianti).
+_ROUNDING_MODE_DESCRIZIONI: tuple[tuple[str, str, int], ...] = (
+    ("HALF_UP", "Arrotondamento meta' su (5 va su)", 1),
+    ("HALF_DOWN", "Arrotondamento meta' giu' (5 va giu')", 2),
+    ("HALF_EVEN", "Arrotondamento bancario (5 al pari piu' vicino)", 3),
+    ("UP", "Arrotondamento sempre su (verso infinito)", 4),
+    ("DOWN", "Arrotondamento sempre giu' (verso zero)", 5),
+)
 _NOTA_ANCHOR_VALIDI: frozenset[str] = frozenset({"DOCUMENTO", "RIGA"})
 _NOTA_POSIZIONE_VALIDI: frozenset[str] = frozenset({"HEADER", "FOOTER", "SEZIONE", "BEFORE", "AFTER"})
 
@@ -1363,6 +1373,19 @@ def fn_lookup_unita_misura(
     repository = CatalogoRepository()
     results = repository.lookup_unita_misura(search=search, limit=limit)
     return _build_results_response(results)
+
+
+# Scopo: Lista statica dei modi di arrotondamento UoM operativa (lookup dedicato).
+#        Single source of truth = `_ROUNDING_MODE_VALIDI` + `_ROUNDING_MODE_DESCRIZIONI`.
+#        Niente DB: i 5 modi sono enum tecnici matematici fissi (IEEE 754 like),
+#        non gestiti dall'admin. Restituisce lista nell'ordine "default-first".
+#        L'invariante "descrizioni copre l'enum" e' garantita dal test
+#        `test_fn_list_uom_rounding_modes_coverage` (CI), non a runtime.
+def fn_list_uom_rounding_modes() -> list[dict[str, object]]:
+    return [
+        {"codice": codice, "descrizione": descrizione, "ordering": ordering}
+        for codice, descrizione, ordering in _ROUNDING_MODE_DESCRIZIONI
+    ]
 
 
 # Scopo: Lista UoM operative dell'articolo, previa verifica esistenza articolo.

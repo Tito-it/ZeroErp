@@ -18,6 +18,8 @@ import { ref, watch, computed, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useApiHandler } from '../../core/composables/useApiHandler'
+import { useParameterDefaults } from '../../core/composables/useParameterDefaults'
+import { paramBool, paramNumber } from '../../core/utils/parameterCast'
 import {
   listArticoloComponenti, createArticoloComponente,
   updateArticoloComponente,
@@ -55,6 +57,20 @@ const emit = defineEmits(['update:visible', 'saved'])
 const componentiList = ref([])
 const listLoading = ref(false)
 
+// Defaults BoM via config.parameters (override per emittente).
+// Pre-fetch al setup; la watch su `props.visible` await-a comunque per
+// evitare race "drawer aperto con fallback hardcoded mentre la fetch e' in volo".
+// Fallback hardcoded coincide col comportamento pre-refactor: se i parametri
+// non sono ancora seedati nel DB, nessuna regressione.
+const { defaults: paramDefaults, load: loadDefaults } = useParameterDefaults([
+  'CATALOGO_BOM_DEFAULT_COEFF_QTA',
+  'CATALOGO_BOM_DEFAULT_PARTECIPA_QTA',
+  'CATALOGO_BOM_DEFAULT_OBBLIGATORIO',
+  'CATALOGO_BOM_DEFAULT_DETERMINA_QTA_PADRE',
+  'CATALOGO_BOM_DEFAULT_ESPOSTO_IN_FATTURA',
+])
+loadDefaults()
+
 // Filtro client-side articolo (codice + descrizione, case-insensitive).
 // Coerente con il pattern ContrattoRigheDrawer: la lista BoM è tipicamente
 // sotto le 50-100 righe per articolo, niente bisogno di filtro server-side.
@@ -82,13 +98,14 @@ const editingValidoAlId = ref(null)
 const editingValidoAlValue = ref(null)
 
 // Dialog chiusura riga (pattern simmetrico a ChiudiVersioneDialog).
-// Sostituisce il vecchio confirmAction semplice: ora l'admin sceglie
-// data di chiusura (oggi = immediata, futura = programmata) con min-date
-// vincolato a valido_dal della riga (no chiusura prima dell'inizio).
+// L'admin sceglie data di chiusura (oggi = immediata, futura = programmata).
+// Min-date e default-date arrivano DAL BE come capability di riga
+// (`data_min_chiusura`, `data_default_chiusura` su vw_articoli_componenti_dettaglio,
+// Fase 2 refactor catalogo). Niente ricalcolo lato FE: single source of truth DB.
 const chiudiDialogVisible = ref(false)
 const chiudiDialogRow = ref(null)
 const chiudiDialogData = ref(null)
-const chiudiDialogMinDate = computed(() => parseDate(chiudiDialogRow.value?.valido_dal) || new Date())
+const chiudiDialogMinDate = computed(() => parseDate(chiudiDialogRow.value?.data_min_chiusura))
 const chiudiDialogIsImmediata = computed(() => {
   if (!chiudiDialogData.value) return false
   const today = new Date()
@@ -115,13 +132,17 @@ function openNoteDrawer(row) {
 }
 
 function defaultForm() {
+  const p = paramDefaults.value
   return {
     componente_id: null,
-    coeff_qta: 1,
-    partecipa_qta: true,
-    obbligatorio: true,
-    determina_qta_padre: false,
-    esposto_in_fattura: false,
+    coeff_qta: paramNumber(p.CATALOGO_BOM_DEFAULT_COEFF_QTA, 1),
+    partecipa_qta: paramBool(p.CATALOGO_BOM_DEFAULT_PARTECIPA_QTA, true),
+    obbligatorio: paramBool(p.CATALOGO_BOM_DEFAULT_OBBLIGATORIO, true),
+    determina_qta_padre: paramBool(p.CATALOGO_BOM_DEFAULT_DETERMINA_QTA_PADRE, false),
+    esposto_in_fattura: paramBool(p.CATALOGO_BOM_DEFAULT_ESPOSTO_IN_FATTURA, false),
+    // valido_dal e' un default di processo, non di policy: la nuova versione
+    // parte sempre da oggi. Sara' applicato lato BE (Fase 4 refactor) quando
+    // omesso. Per ora resta lato FE per coerenza UX.
     valido_dal: new Date(),
     valido_al: null,
   }
@@ -159,8 +180,12 @@ async function loadComponenti() {
   }
 }
 
-watch(() => props.visible, (val) => {
+watch(() => props.visible, async (val) => {
   if (!val) return
+  // Attendi i parameters prima di resettare il form (race-fix simmetrico
+  // a ArticoloUomDrawer): evita form costruito con fallback hardcoded
+  // mentre la fetch dei defaults e' ancora in volo.
+  await loadDefaults()
   resetFormState()
   editingValidoAlId.value = null
   filtroArticolo.value = ''
@@ -276,20 +301,16 @@ function cancelEditValidoAl() {
   editingValidoAlValue.value = null
 }
 
-// Scopo: apre il dialog di chiusura riga BoM con DatePicker. Sostituisce il
-// vecchio confirmAction semplice. Pattern simmetrico a ChiudiVersioneDialog
-// (listini-versioni): l'admin sceglie la data, default oggi (chiusura
-// immediata), futura ammessa (chiusura programmata). Min-date = valido_dal
-// della riga: la BoM non può "chiudersi prima di iniziare". Il delete BoM
-// resta bloccato dal trigger DB E_BOM_MODIFICA_VIETATA.
+// Scopo: apre il dialog di chiusura riga BoM con DatePicker. Pattern
+// simmetrico a ChiudiVersioneDialog (listini-versioni): l'admin sceglie la
+// data, default oggi (chiusura immediata), futura ammessa (chiusura
+// programmata). Min-date e default-date arrivano dal BE come capability di
+// riga (`data_min_chiusura`, `data_default_chiusura` da
+// `vw_articoli_componenti_dettaglio` Fase 2): niente ricalcolo client-side.
+// Il delete BoM resta bloccato dal trigger DB E_BOM_MODIFICA_VIETATA.
 function onChiudiRiga(row) {
   chiudiDialogRow.value = row
-  // Default oggi se >= valido_dal, altrimenti valido_dal stesso (caso
-  // "riga futura" ipotetico — oggi non è ancora dentro la finestra).
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-  const dal = parseDate(row.valido_dal)
-  chiudiDialogData.value = dal && dal > today ? dal : today
+  chiudiDialogData.value = parseDate(row.data_default_chiusura) || new Date()
   chiudiDialogVisible.value = true
 }
 
@@ -317,6 +338,8 @@ async function confermaChiusura() {
 // Scopo: azioni di riga del componente BoM (note + duplica + chiudi).
 // Nascoste in readonly. La voce "elimina" non esiste più: la BoM è
 // immutabile (DEC-4), il pattern è "chiudi+inserisci nuova versione".
+// `chiudi-riga` e' visibile solo se la capability del BE lo permette
+// (`puo_chiudersi=true`, ovvero riga ancora aperta — `valido_al IS NULL`).
 function buildRigaActions(row) {
   return [
     {
@@ -336,6 +359,11 @@ function buildRigaActions(row) {
       label: t('catalogo.chiudi_riga'),
       icon: 'pi pi-calendar-times',
       severity: 'danger',
+      // Truthy check: coerente con il template inline edit `data.puo_chiudersi`
+      // e col pattern progetto (es. `is_base`, `attivo`). Se la migration BE
+      // non e' applicata e il campo manca, l'azione sparisce — comportamento
+      // corretto (riga non chiudibile per default in assenza di info).
+      visible: !!row.puo_chiudersi,
       command: () => onChiudiRiga(row),
     },
   ]
@@ -429,7 +457,9 @@ function buildRigaActions(row) {
                 </div>
               </template>
               <template v-else>
-                <span v-if="!isReadonly" class="valido-al-cell" @click="startEditValidoAl(data)">
+                <!-- Edit inline ammesso solo se la riga e' chiudibile (capability BE).
+                     Riga gia' chiusa o readonly user: sola visualizzazione. -->
+                <span v-if="!isReadonly && data.puo_chiudersi" class="valido-al-cell" @click="startEditValidoAl(data)">
                   {{ displayDate(data.valido_al) || '—' }}
                   <i class="pi pi-pencil" style="font-size: 0.7rem; margin-left: 0.25rem; opacity: 0.5;" />
                 </span>

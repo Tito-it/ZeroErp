@@ -31,6 +31,7 @@ from apps.catalogo.services.catalogo_service import (
     fn_list_articoli,
     fn_list_note_articolo,
     fn_list_uom_operative,
+    fn_list_uom_rounding_modes,
     fn_list_unita_misura,
     fn_lookup_articoli,
     fn_update_componente,
@@ -754,3 +755,30 @@ class ApiConversioneDetail(DomainAPIView):
     # Scopo: Aggiorna una conversione UoM.
     def patch(self, request: Request, conv_id: int) -> JsonResponse:
         return success_response(fn_update_conversione(conv_id, request.data))
+
+
+# =================================================================
+# Lookup statici catalogo
+# =================================================================
+
+
+class ApiUomRoundingModesLookup(DomainAPIView):
+    # Scopo: Lookup dedicato per i modi di arrotondamento UoM operativa.
+    # Single source of truth in `catalogo_service._ROUNDING_MODE_VALIDI` +
+    # `_ROUNDING_MODE_DESCRIZIONI`. Niente DB: enum tecnici fissi.
+    # Sostituisce il `roundingOptions` hardcoded nel FE.
+    area_funzionale = "catalogo"
+
+    @extend_schema(
+        responses={200: inline_serializer(
+            name="CatalogoUomRoundingModesLookupResponse",
+            fields={
+                "data": serializers.ListField(child=serializers.DictField()),
+                "meta": serializers.DictField(required=False),
+            },
+        )},
+    )
+    # Scopo: Restituisce la lista statica dei modi di arrotondamento.
+    def get(self, request: Request) -> JsonResponse:
+        del request
+        return success_response(fn_list_uom_rounding_modes())

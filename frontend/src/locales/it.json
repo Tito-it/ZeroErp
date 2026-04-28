@@ -1202,7 +1202,8 @@
     "field_gtin": "GTIN",
     "section_uso": "Utilizzo",
     "section_regole_input": "Regole Input",
-    "section_extra": "Altro"
+    "section_extra": "Altro",
+    "select_rounding_mode": "Seleziona modo arrotondamento"
   },
   "billing_account": {
     "search_placeholder": "Cerca BA per codice, ragione sociale, id fiscale o PDP...",

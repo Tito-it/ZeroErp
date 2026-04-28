@@ -31,6 +31,8 @@ Indice test eseguiti:
 24) CatalogoApiTests.test_get_articolo_note_ok
 25) CatalogoApiTests.test_post_articolo_nota_ok
 26) CatalogoApiTests.test_patch_nota_not_found
+27) CatalogoApiTests.test_lookup_uom_rounding_modes_ok
+28) CatalogoApiTests.test_get_articolo_componenti_capability_ok
 """
 
 import json
@@ -195,6 +197,25 @@ class CatalogoApiTests(JwtMockedApiTest):
     # Nota: il lookup UoM usa l'endpoint generico /core/lookup/codici/?rel=catalogo.unita_misura
     # I test del lookup generico sono in apps.core.tests.api.test_lookup_codici_api
 
+    # Scopo: lookup statico rounding modes -> 200 con i 5 codici dal service.
+    # La view non ha logica propria oltre a inoltrare il risultato; basta verificare
+    # che l'envelope sia rispettato e i codici giusti finiscano in `data`.
+    @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
+    def test_lookup_uom_rounding_modes_ok(self, _mock_auth):
+        response = self.client.get("/api/v1/catalogo/lookup/rounding-modes/")
+
+        self.assertEqual(response.status_code, 200)
+        rows = response.json()["data"]
+        self.assertEqual(len(rows), 5)
+        codici = {r["codice"] for r in rows}
+        self.assertEqual(
+            codici,
+            {"HALF_UP", "HALF_DOWN", "HALF_EVEN", "UP", "DOWN"},
+        )
+        for row in rows:
+            self.assertIn("descrizione", row)
+            self.assertIn("ordering", row)
+
     # Scopo: POST create articolo -> 200 e payload inoltrato al service.
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
     @patch("apps.catalogo.api.views.fn_create_articolo")
@@ -353,6 +374,50 @@ class CatalogoApiTests(JwtMockedApiTest):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["data"]["count"], 1)
         self.assertEqual(str(mocked_list.call_args.args[0]), _ARTICOLO_UUID)
+
+    # Scopo: I campi capability di chiusura riga (Fase 2 refactor catalogo)
+    # devono attraversare envelope/serializer senza filtri.
+    # Naming italiano coerente con la vista catalogo.vw_articoli_componenti_dettaglio.
+    # La copertura della logica SQL CASE WHEN e' lato pgTAP (team DB).
+    @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
+    @patch("apps.catalogo.api.views.fn_list_componenti")
+    def test_get_articolo_componenti_capability_ok(self, mocked_list, _mock_auth):
+        mocked_list.return_value = {
+            "count": 2,
+            "results": [
+                {
+                    "id": _COMPONENTE_UUID,
+                    "valido_al": None,
+                    "puo_chiudersi": True,
+                    "data_min_chiusura": "2026-04-01",
+                    "data_default_chiusura": "2026-04-28",
+                    "motivo_non_chiudibile": None,
+                },
+                {
+                    "id": "11111111-2222-3333-4444-555555555556",
+                    "valido_al": "2026-03-31",
+                    "puo_chiudersi": False,
+                    "data_min_chiusura": None,
+                    "data_default_chiusura": None,
+                    "motivo_non_chiudibile": "RIGA_GIA_CHIUSA",
+                },
+            ],
+        }
+
+        response = self.client.get(f"/api/v1/catalogo/articoli/{_ARTICOLO_UUID}/componenti/")
+
+        self.assertEqual(response.status_code, 200)
+        rows = response.json()["data"]["results"]
+        # Riga aperta: capability popolate con date valorizzate.
+        self.assertTrue(rows[0]["puo_chiudersi"])
+        self.assertEqual(rows[0]["data_min_chiusura"], "2026-04-01")
+        self.assertEqual(rows[0]["data_default_chiusura"], "2026-04-28")
+        self.assertIsNone(rows[0]["motivo_non_chiudibile"])
+        # Riga chiusa: blocco autodocumentante (date NULL + motivo).
+        self.assertFalse(rows[1]["puo_chiudersi"])
+        self.assertIsNone(rows[1]["data_min_chiusura"])
+        self.assertIsNone(rows[1]["data_default_chiusura"])
+        self.assertEqual(rows[1]["motivo_non_chiudibile"], "RIGA_GIA_CHIUSA")
 
     # Scopo: POST componente articolo -> 200 e payload inoltrato al service.
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))

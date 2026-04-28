@@ -36,6 +36,8 @@ Indice test eseguiti:
 26) CatalogoServiceTests.test_fn_create_articolo_listino_tipologia_id_ok
 27) CatalogoServiceTests.test_fn_update_articolo_listino_tipologia_id_invalid
 28) CatalogoServiceTests.test_fn_create_componente_esposto_in_fattura_ok
+29) CatalogoServiceTests.test_fn_list_uom_rounding_modes_ok
+30) CatalogoServiceTests.test_fn_list_uom_rounding_modes_coverage
 """
 
 from unittest import TestCase
@@ -506,3 +508,26 @@ class CatalogoServiceTests(TestCase):
 
         args, _ = bom_repo.create_componente.call_args
         self.assertEqual(args[1]["esposto_in_fattura"], True)
+
+    # Scopo: lookup statico rounding modes -> 5 codici nell'ordine canonico
+    # con descrizione popolata. Niente DB: la funzione e' pura.
+    def test_fn_list_uom_rounding_modes_ok(self):
+        from apps.catalogo.services.catalogo_service import fn_list_uom_rounding_modes
+
+        result = fn_list_uom_rounding_modes()
+
+        self.assertEqual(len(result), 5)
+        codici = [r["codice"] for r in result]
+        self.assertEqual(codici, ["HALF_UP", "HALF_DOWN", "HALF_EVEN", "UP", "DOWN"])
+        for row in result:
+            self.assertTrue(row["descrizione"])
+            self.assertIsInstance(row["ordering"], int)
+
+    # Scopo: difesa coerenza enum/descrizioni. Se in futuro qualcuno aggiunge
+    # un codice a `_ROUNDING_MODE_VALIDI` senza aggiornare la mappa descrizioni,
+    # il test della funzione fallisce con messaggio chiaro (ErrorManager.require).
+    def test_fn_list_uom_rounding_modes_coverage(self):
+        from apps.catalogo.services import catalogo_service as svc
+
+        descritti = {codice for codice, _desc, _ord in svc._ROUNDING_MODE_DESCRIZIONI}
+        self.assertEqual(descritti, svc._ROUNDING_MODE_VALIDI)
