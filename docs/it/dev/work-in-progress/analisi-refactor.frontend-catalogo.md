@@ -541,107 +541,220 @@ non e' applicato.
 
 ### Fase 3 — Endpoint atomico "duplica versione componente" (A4)
 
-**Team DB**
+**Team DB** — landed 2026-04-28 (commit `90b4609f`):
 
-- Nuova funzione `catalogo.fn_duplica_componente_versione(p_articolo_id UUID,
-  p_componente_row_id UUID, p_chiudi_al DATE) RETURNS UUID`:
-  - lock advisory + `SELECT FOR UPDATE` riga sorgente,
-  - UPDATE `valido_al = COALESCE(p_chiudi_al, CURRENT_DATE)` sulla sorgente,
-  - INSERT nuova riga con `valido_dal = COALESCE(p_chiudi_al, CURRENT_DATE) + 1`
-    e copia di `coeff_qta`, `partecipa_qta`, `obbligatorio`,
-    `determina_qta_padre`, `esposto_in_fattura`,
-  - solleva `E_BOM_VERSIONE_OVERLAP` se exclusion daterange fallisce.
-- pgTAP: scenari happy / overlap / sorgente gia' chiusa / componente non
-  esistente.
+- Funzione `catalogo.fn_duplica_componente_versione(p_articolo_id UUID,
+  p_componente_row_id UUID, p_chiudi_al DATE DEFAULT NULL) RETURNS UUID`:
+  - `pg_advisory_xact_lock(hashtext('catalogo.articoli_componenti.duplica:'||p_articolo_id))`
+    serializza duplicazioni concorrenti sullo stesso articolo,
+  - `SELECT FOR UPDATE` riga sorgente,
+  - guard ordinati: `E_BOM_RIGA_NOT_FOUND` → `E_BOM_PRODOTTO_MISMATCH` →
+    `E_BOM_SORGENTE_GIA_CHIUSA`,
+  - UPDATE `valido_al = COALESCE(p_chiudi_al, CURRENT_DATE)` sulla sorgente
+    (edge case `chiudi_al < valido_dal` → `E_BOM_VALIDO_AL_INVALIDO`
+    propagato dal trigger esistente `block_modifica_struttura`),
+  - INSERT nuova riga con `valido_dal = COALESCE(p_chiudi_al, CURRENT_DATE) + 1`,
+    copia verbatim di `componente_id`+struttura+`meta`+`note_*`, `attivo=true` forzato,
+  - `EXCEPTION WHEN exclusion_violation` → `E_BOM_VERSIONE_OVERLAP`.
+- 4 nuovi codici in `config.messaggi_errore` (id 400-403):
+  - `E_BOM_VERSIONE_OVERLAP` (400) — overlap su EXCLUDE GIST
+  - `E_BOM_SORGENTE_GIA_CHIUSA` (401)
+  - `E_BOM_RIGA_NOT_FOUND` (402)
+  - `E_BOM_PRODOTTO_MISMATCH` (403)
+  - Riusato: `E_BOM_VALIDO_AL_INVALIDO` (388, propagato dal trigger).
+- pgTAP: 9 test (6 happy + sorgente_chiusa + non_esistente + prodotto_mismatch).
+  Scenario `E_BOM_VERSIONE_OVERLAP` non riproducibile in pgTAP single-session:
+  path `EXCEPTION` verificato via code-review.
+- Doc concettuale completa: `docs/it/dbzero/catalogo/manual/fn_duplica_componente_versione.md`.
 
-**Team Backend**
+**Team Backend** — landed 2026-04-28 (branch `dev/backend-tid`):
 
-- `CatalogoBomRepository.duplica_versione(articolo_id, comp_id, chiudi_al)`.
-- `catalogo_service.fn_duplica_versione_componente`:
-  - guard payload (`chiudi_al` opzionale ISO date),
-  - chiama repository,
-  - traduce `E_BOM_VERSIONE_OVERLAP` in `E_CATALOGO_VALIDATION` parlante.
-- Nuova view `ApiArticoloComponenteDuplicaVersione(DomainAPIView)`:
-  - URL: `articoli/<uuid:articolo_id>/componenti/<uuid:comp_id>/duplica-versione/`
+- Registrate 5 policy errore in `core/services/error_policies.py`
+  (`E_BOM_VERSIONE_OVERLAP`/`SORGENTE_GIA_CHIUSA`/`RIGA_NOT_FOUND`/`PRODOTTO_MISMATCH`/`VALIDO_AL_INVALIDO`)
+  con HTTP coerente (409/409/404/400/400) e `ui_action` parlante.
+- `CatalogoBomRepository.duplica_versione(articolo_id, comp_id, chiudi_al)`:
+  wrapper `SELECT catalogo.fn_duplica_componente_versione(...)`. Ritorna l'UUID
+  della nuova riga.
+- `catalogo_service.fn_duplica_componente_versione(articolo_id, comp_id, payload)`:
+  whitelist payload `{chiudi_al?}`, parsing ISO date, chiama repository,
+  ritorna `get_componente()` della NUOVA riga (UI: focus + reload).
+  Errori P0001 tradotti via `_DUPLICA_DB_ERROR_MARKERS` con marker
+  multi-substring (pattern simmetrico a `pricing_service`): codice di dominio
+  preservato; fallback `E_CATALOGO_VALIDATION` per P0001 sconosciuti.
+- View `ApiArticoloComponenteDuplicaVersione(DomainAPIView)`:
+  - URL `articoli/<uuid:articolo_id>/componenti/<uuid:comp_id>/duplica-versione/`,
   - `handle_post_json(require_idempotency_key=True)`,
   - schema OpenAPI inline.
-- Test: service unit + smoke API curl.
+- 8 test mock-only: 1 happy + 1 chiudi_al passed + 1 chiave non whitelisted +
+  4 traduzioni P0001 noti + 1 fallback P0001 sconosciuto + 3 API
+  (happy/idempotency-required/db-error). Tutti verdi (catalogo: 68/68).
 
-**Team Frontend**
+**Team Frontend** — landed 2026-04-28 (branch `dev/backend-tid`):
 
-- `ArticoloBomDrawer.vue:198` `startDuplicaComeNuovaVersione`:
-  - sostituire la pre-compilazione locale con un dialog "duplica versione"
-    minimale (solo DatePicker `chiudi_al`, default oggi);
-  - chiamare `duplicaComponenteVersione(articoloId, compId, { chiudi_al })`;
-  - ricaricare la lista al success.
-- `apiCore.js` o `catalogo.js`: aggiungere
-  `duplicaComponenteVersione(articoloId, compId, payload)` con header
-  `Idempotency-Key` (UUID v4).
+- `catalogo.js`: nuova `duplicaComponenteVersione(articoloId, compId, payload)`
+  con header `Idempotency-Key: crypto.randomUUID()` (UUID v4 nativo browser).
+- `ArticoloBomDrawer.vue` refactor sostanziale:
+  - **Rimosso** `startDuplicaComeNuovaVersione` (pre-fill form race-prone).
+  - **Rimosso** `formMode` ref (`'new' | 'duplicate'` non piu' necessario).
+  - **Aggiunto** dialog dedicato "Duplica versione" con DatePicker `chiudi_al`
+    (default oggi, min-date = `data_min_chiusura` dal BE), info esplicita
+    sul comportamento atomico, conferma chiama `duplicaComponenteVersione`
+    e ricarica.
+  - `buildRigaActions`: voce `duplica-nuova-versione` rinominata
+    `duplica-versione`, `visible: !!row.puo_chiudersi` (coerente con
+    `chiudi-riga` e inline edit `valido_al`).
+- 7 nuove chiavi i18n (`catalogo.duplica_versione_*`) in `it.json`/`en.json`.
+  Rimosse `nuova_versione_componente`/`nuova_versione_hint` non piu' usate.
 
-**Dipendenze**: DB ↔ BE ↔ FE in serie. Brief DB precede BE.
+**Decisioni divergenti dal brief originale**
 
----
+- **No edit dei valori durante la duplica**: il pre-fill+edit FE era
+  race-prone; l'endpoint atomico DB copia verbatim. Per cambiare valori,
+  il pattern e' `chiudi-riga + Aggiungi componente` (azioni intenzionali,
+  gia' supportato).
+- **Codici errore esposti distintamente** (E_BOM_*) invece di tradurre tutto
+  in `E_CATALOGO_VALIDATION`: il FE puo' mostrare messaggi specifici
+  (sorgente chiusa, overlap, prodotto mismatch).
 
-### Fase 4 — Default `valido_dal` lato service (A3)
-
-**Team DB**
-
-- (Opzionale) Modificare DDL `valido_dal` con `DEFAULT CURRENT_DATE` su:
-  - `catalogo.articoli_componenti`
-  - `catalogo.articoli_uom_operativa`
-  - `catalogo.unita_misura_conversioni`
-- pgTAP: insert senza `valido_dal` ⇒ riga con `valido_dal = today`.
-
-**Team Backend**
-
-- `fn_create_componente`, `fn_create_uom_operativa`, `fn_create_conversione`
-  applicano `data["valido_dal"] = data.get("valido_dal") or date.today()`
-  prima di passarlo al repository (defense-in-depth se DDL non aggiornato).
-- Test: payload senza `valido_dal` produce riga con `today`.
-
-**Team Frontend**
-
-- `ConversioneUomDrawer.vue:45`: rimuovere `valido_dal: new Date()` dal
-  `resetForm`. Lasciare `null`. Il backend si occupa del default.
-- `ArticoloBomDrawer.vue:127` e `:222`: stessa rimozione.
-- `UomConversioniDrawer.vue:37` e `:75`: stessa rimozione.
-- I DatePicker mostrano placeholder se `null`, l'utente vede chiaramente
-  che il valore arrivera' dal server. Salvataggio = invio `null`.
-
-**Dipendenze**: DB + BE in parallelo. FE attende BE (tollera comunque
-campo gia' assente).
+**Dipendenze**: DB → BE → FE in serie. Tutto landed.
 
 ---
 
-### Fase 5 — `non_editable_fields` cross-entita' catalogo (B1, B5, C1)
+### Fase 4 — Default `valido_dal` lato service (A3) — landed 2026-04-28 BE-only
 
-**Team DB**
+**Team DB** — declined:
 
-- Nessuna modifica DDL. Eventuale tabella di metadata
-  `dbops.lock_columns_registry (schema, table, column)` se in futuro si vuole
-  esporre i lock_columns in modo programmatico (refactor non prioritario).
+Scelta di team: **non** modificare il DDL `DEFAULT CURRENT_DATE`. L'onere
+del fallback resta nel service Python (single source of truth). Coerente con
+filosofia "regole di processo nel service, regole di integrita' nel DB":
+"valido_dal di una riga BoM/UoM/Conversione e' obbligatorio nel modello"
+resta una regola di processo, non un'integrita' DB.
 
-**Team Backend**
+**Team Backend** — landed 2026-04-28 (branch `dev/backend-tid`):
 
-- Helper `apps/core/services/payload_helpers.py` (gia' esiste `PayloadValidator`):
-  aggiungere funzione `compute_non_editable_fields(entity: str) -> list[str]`
-  che ritorna la whitelist hardcoded per entita':
-  - `articolo` → `["codice", "uom_id"]`
-  - `articolo_uom_operativa` → `["uom_id"]`
-  - `unita_misura_conversioni` → `["uom_from_id", "uom_to_id"]`
-- `fn_get_articolo`, `fn_get_uom_operativa`, `fn_get_conversione` aggiungono il
-  campo `non_editable_fields` alla response.
-- Test: il detail include la lista corretta.
+- `_extract_componente_payload` (per_create): `valido_dal` declassato da
+  `nullable=False` a `nullable=True`; se omesso o `None`, applica
+  `date.today()` **prima** di `_validate_date_interval` (cosi' la coerenza
+  con `valido_al` e' verificata sul valore effettivo, non `_MISSING`).
+- `_extract_uom_operativa_payload` (per_create): stesso pattern.
+- `fn_create_conversione`: stesso pattern (qui il payload non passa per un
+  helper extract dedicato, fallback applicato inline).
+- Pattern unificato: `if not for_update and (valido_dal is _MISSING or valido_dal is None): valido_dal = date.today()`.
+- Whitelist payload create componente non cambia: `valido_dal` resta una
+  chiave ammessa ma non obbligatoria.
+- 3 test mock-only: `test_fn_create_componente_valido_dal_fallback_today`,
+  `test_fn_create_uom_operativa_valido_dal_fallback_today`,
+  `test_fn_create_conversione_valido_dal_fallback_today`.
 
-**Team Frontend**
+**Team Frontend** — landed 2026-04-28:
 
-- `ArticoloDrawer.vue:160` e `:182`: il `payload` PATCH/POST usa la whitelist
-  ricavata da `detail.non_editable_fields` (Set delle chiavi NON permesse).
-- `ArticoloUomDrawer.vue:301`, `ConversioneUomDrawer.vue:139,144`,
-  `UomConversioniDrawer.vue:202`: i `:disabled` derivano da
-  `nonEditableFields.includes(<campo>)`.
+- `ArticoloBomDrawer.vue:defaultForm()`: `valido_dal: null` (era `new Date()`).
+- `ConversioneUomDrawer.vue:resetForm`: `valido_dal: null` (era `new Date()`).
+- `UomConversioniDrawer.vue`: estratto helper `defaultForm()` per eliminare
+  4 occorrenze duplicate dello stato iniziale `{uom_to_id, fattore, valido_dal}`,
+  centralizzando `valido_dal: null` in un unico posto.
+- DatePicker mostra placeholder vuoto se `null`: l'utente sa che il default
+  arriva dal server (UX piu' onesta del pre-fill cliente).
 
-**Dipendenze**: BE precede FE. DB indipendente.
+**Decisioni divergenti dal brief originale**
+
+- **DB declined il DDL change**: il fallback vive solo lato service, non in
+  DDL. Implicazione: insert SQL diretti (cron, fixture pgTAP, manutenzione
+  admin) richiedono ancora `valido_dal` esplicito — il service e' l'unica
+  via "magica". Decisione consapevole: tutti i path di scrittura per
+  catalogo passano dal service Django, no SQL diretti in produzione.
+- **Fallback dentro l'extract, non nella fn_create**: il guard
+  `valido_dal obbligatorio` originale impediva al fallback nella fn_create
+  di attivarsi. Spostarlo dentro l'extract risolve sia il guard che la
+  validazione coerenza con `valido_al` in un singolo posto.
+
+**Dipendenze**: BE indipendente (DB declined). FE solo dopo merge BE.
+
+---
+
+### Fase 5 — `non_editable_fields` cross-entita' catalogo (B1, B5, C1) — landed 2026-04-28
+
+**Team DB** — landed 2026-04-28:
+
+- Nuova vista `dbops.vw_non_editable_fields` come alias semantico su
+  `dbops.automation_lock_columns` filtrata `enabled=true`. Espone
+  `(target_schema, target_table, column_name, error_code, exec_mode, note)`.
+  Filtro su flag attivo; **non copre i lock condizionali stato-dipendenti**
+  gestiti da trigger custom (gap noto, vedi sotto).
+
+**Team Backend** — landed 2026-04-28 (branch `dev/backend-tid`):
+
+- Nuovo `apps/core/db/lock_columns_repository.py`:
+  `LockColumnsRepository.list_non_editable(schema, table) -> tuple[str, ...]`,
+  cache `lru_cache(128)` (la vista cambia solo con migrazioni Liquibase, niente
+  mutazioni runtime). Riusabile cross-dominio.
+- `catalogo_service._NON_EDITABLE_DB_GAPS`: dict che documenta esplicitamente
+  le colonne immutabili **non coperte** dalla vista DB ma richieste dal FE
+  (lock condizionali / non ancora registrati nel CSV `automation_lock_columns`):
+  - `("catalogo", "articoli")`: `("codice",)` — gestito dal trigger
+    `trgfn_articoli_protect_codice`, non in CSV.
+  - `("catalogo", "articoli_uom_operativa")`: `("uom_id",)`.
+  - `("catalogo", "unita_misura_conversioni")`: `("uom_from_id", "uom_to_id")`.
+  - **Drift visibile**: quando il team DB completera' il registro, le entries
+    qui andranno rimosse. Self-documenting nel codice.
+- `_compute_non_editable_fields(schema, table) -> list[str]`: helper centrale
+  che unisce lista DB + gap Python e restituisce la lista ordinata.
+- `fn_get_articolo`: detail arricchito con `non_editable_fields` (auto
+  propagato da `fn_create_articolo`/`fn_update_articolo`/`fn_disattiva_articolo`
+  che gia' richiamano `fn_get_articolo`).
+- `fn_list_uom_operative`: envelope arricchito con `non_editable_fields`
+  (envelope-level: il FE costruisce il form di edit da una riga della lista,
+  ha bisogno dei metadata appena dopo la chiamata lista).
+- `fn_create_uom_operativa` / `fn_update_uom_operativa`: response singola riga
+  arricchita anche, per consistenza.
+- `fn_get_conversione`: detail arricchito (auto propagato da create/update).
+- 3 test mock-only: articolo / lista UoM operativa / conversione, mockando
+  `LockColumnsRepository.list_non_editable` per evitare query DB nel testbed.
+
+**Team Frontend** — landed 2026-04-28 (branch `dev/backend-tid`):
+
+- `ArticoloDrawer.vue`:
+  - `nonEditableFields` computed da `detail.non_editable_fields`.
+  - `isFieldLocked(name)` helper: `isEdit && nonEditableFields.includes(name)`.
+  - `:disabled="isFieldLocked('codice')"` e `:disabled="isFieldLocked('uom_id')"`
+    sostituiscono il `:disabled="isEdit"` cablato per campi specifici.
+- `ArticoloUomDrawer.vue`:
+  - `nonEditableFields` ref popolato da `payload.non_editable_fields`
+    nell'envelope di `listArticoloUom`.
+  - `isFieldLocked(name)`: `formMode === 'edit' && nonEditableFields.includes(name)`.
+  - `:disabled="isFieldLocked('uom_id')"` sulla LookupSelect UoM.
+- `ConversioneUomDrawer.vue`:
+  - `nonEditableFields` popolato in `loadDetail` da `data.non_editable_fields`.
+  - `:disabled="isFieldLocked('uom_from_id')"` / `'uom_to_id'`.
+- Whitelist payload PATCH lascia esplicita la lista di campi (codice/uom_id
+  esclusi a mano): rimangono coerenti con `non_editable_fields` ma il drift
+  e' enforced anche dal BE (`_extract_*_payload` rifiuta chiavi non
+  whitelisted). Il vero source of truth e' BE; il FE usa
+  `non_editable_fields` per UX (`:disabled`), non per filtraggio payload.
+
+**Decisioni divergenti dal brief originale**
+
+- **Vista DB invece di whitelist Python**: il team DB ha preferito esporre
+  i lock_columns come vista DB (single source of truth dal CSV). Il pattern
+  e' piu' robusto a lungo termine (registro DB cresce naturalmente con le
+  migrazioni). Lo svantaggio e' il gap noto (lock condizionali) che richiede
+  il fallback Python.
+- **Envelope-level su lista UoM operative**: `non_editable_fields` come
+  metadata della collezione, non per ogni riga. La regola e' la stessa per
+  tutte le righe della stessa entita': duplicarla per riga e' rumore.
+- **Whitelist payload non auto-derivata**: il FE mantiene la lista esplicita
+  dei campi PATCH, il BE rifiuta i campi non whitelisted. Doppio enforcement
+  e' difese-in-depth, non duplicazione di logica.
+
+**Gap aperti (non bloccanti)**
+
+- Il registro DB `dbops.automation_lock_columns` non copre i lock
+  condizionali (es. `catalogo.articoli.codice`). Quando il team DB completera'
+  il registro, le entries in `_NON_EDITABLE_DB_GAPS` vanno rimosse.
+- Eventuale arricchimento futuro: aggiungere `non_editable_reason` per riga
+  (utile per tooltip i18n). Out-of-scope per Fase 5.
+
+**Dipendenze**: DB → BE → FE in serie. Tutto landed.
 
 ---
 
@@ -649,12 +762,27 @@ campo gia' assente).
 
 **Team DB**
 
-- Estensione `vw_articoli_uom_operativa_dettaglio` (o equivalente) con:
-  - `can_delete BOOLEAN` (= `NOT is_base AND NOT EXISTS (figli...)`)
-  - `delete_reason TEXT` (NULL / `UOM_BASE_NON_ELIMINABILE` / ...)
-- Estensione `vw_articoli_dettaglio` (lista articoli) con:
+- Estensione lista UoM operative articolo (vista o proiezione SQL nel
+  repo) con capability di cancellazione:
+  - `can_delete BOOLEAN` (= `NOT is_base`)
+  - `delete_reason TEXT` (`'UOM_BASE_NON_ELIMINABILE'` quando `is_base`,
+    altrimenti `NULL`)
+- Estensione `vw_articoli_dettaglio` (lista articoli) con capability
+  gestione BoM:
   - `can_manage_bom BOOLEAN` (= `is_composito AND NOT is_solo_componente`)
-  - `manage_bom_reason TEXT`
+  - `manage_bom_reason TEXT` (`'NOT_COMPOSITO'` se `NOT is_composito`,
+    `'SOLO_COMPONENTE'` se `is_solo_componente`, altrimenti `NULL`)
+
+**Chiarificazione "figli" nel brief originale (28-04-2026)**
+
+Il primo brief proponeva `can_delete = NOT is_base AND NOT EXISTS (figli...)`.
+Verifica sul modello: `articoli_uom_operativa.id` non e' referenziato da
+FK reverse. Le righe listino/magazzino/documenti tengono `uom_id` su
+`catalogo.unita_misura` (anagrafica), non sulla mappatura operativa per
+articolo. "Figli" era un'astrazione preventiva, non descriveva integrita'
+reale del modello: rimossa dal brief. Eventuali guard applicative
+cross-dominio (es. UoM operativa usata su preventivi aperti) si aggiungono
+in iterate successive solo se emerge un caso d'uso concreto.
 
 **Team Backend**
 

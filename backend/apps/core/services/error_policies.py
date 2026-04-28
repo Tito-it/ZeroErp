@@ -347,6 +347,52 @@ class ErrorPolicyRegistry:
             ui_action="show_empty_state",
             user_message="Nota non trovata.",
         ),
+        # ── Catalogo BoM — duplica versione (Fase 3 refactor catalogo) ──
+        # Codici sollevati da catalogo.fn_duplica_componente_versione() via
+        # script.fn_log_and_raise_error (SQLSTATE P0001). Contratto:
+        # docs/it/dbzero/catalogo/manual/fn_duplica_componente_versione.md.
+        "E_BOM_VERSIONE_OVERLAP": ErrorPolicy(
+            code="E_BOM_VERSIONE_OVERLAP",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message=(
+                "Esiste gia' una versione futura per lo stesso prodotto/componente: "
+                "scegliere una data di chiusura precedente o rivedere il piano versioni."
+            ),
+        ),
+        "E_BOM_SORGENTE_GIA_CHIUSA": ErrorPolicy(
+            code="E_BOM_SORGENTE_GIA_CHIUSA",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message=(
+                "La riga sorgente e' gia' chiusa: selezionare la versione corrente "
+                "(senza data di fine) come sorgente per la duplicazione."
+            ),
+        ),
+        "E_BOM_RIGA_NOT_FOUND": ErrorPolicy(
+            code="E_BOM_RIGA_NOT_FOUND",
+            http_status=404,
+            ui_action="show_empty_state",
+            user_message="Riga BoM non trovata: aggiornare la lista e riprovare.",
+        ),
+        "E_BOM_PRODOTTO_MISMATCH": ErrorPolicy(
+            code="E_BOM_PRODOTTO_MISMATCH",
+            http_status=400,
+            ui_action="show_error_banner",
+            user_message=(
+                "La riga selezionata appartiene a un altro articolo: "
+                "aggiornare la lista componenti corrente e riprovare."
+            ),
+        ),
+        "E_BOM_VALIDO_AL_INVALIDO": ErrorPolicy(
+            code="E_BOM_VALIDO_AL_INVALIDO",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message=(
+                "Data di chiusura non valida: deve essere uguale o successiva alla "
+                "data di inizio della riga."
+            ),
+        ),
         "E_DATABASE": ErrorPolicy(
             code="E_DATABASE",
             http_status=400,

@@ -12,7 +12,7 @@ from decimal import Decimal, InvalidOperation
 from typing import Any
 from uuid import UUID
 
-from django.db import IntegrityError
+from django.db import DatabaseError, IntegrityError
 
 from apps.catalogo.db.catalogo_bom_repository import (
     COMPONENTE_WRITE_COLUMNS,
@@ -30,6 +30,7 @@ from apps.catalogo.db.catalogo_uom_repository import (
     CatalogoUomRepository,
 )
 from apps.core.api.payload_validators import paginated_envelope
+from apps.core.db.lock_columns_repository import LockColumnsRepository
 from apps.core.services.error_manager import ErrorManager
 
 _ORDER_BY_VALIDI: frozenset[str] = frozenset(ARTICOLI_ORDER_COLUMNS.keys())
@@ -77,6 +78,57 @@ _ROUNDING_MODE_DESCRIZIONI: tuple[tuple[str, str, int], ...] = (
 )
 _NOTA_ANCHOR_VALIDI: frozenset[str] = frozenset({"DOCUMENTO", "RIGA"})
 _NOTA_POSIZIONE_VALIDI: frozenset[str] = frozenset({"HEADER", "FOOTER", "SEZIONE", "BEFORE", "AFTER"})
+
+# Gap conosciuti rispetto a `dbops.vw_non_editable_fields` (Fase 5 BE).
+# La vista DB oggi copre solo i lock_columns AUTO registrati nel CSV
+# `dbops.automation_lock_columns`. Mancano alcune colonne effettivamente
+# immutabili lato dominio (lock condizionali o non ancora registrati):
+#   - catalogo.articoli.codice (gestito da trgfn_articoli_protect_codice)
+#   - catalogo.articoli_uom_operativa.uom_id (immutabile per coppia)
+#   - catalogo.unita_misura_conversioni.uom_from_id / uom_to_id
+# Questo dict copre il gap fornendo al FE la lista completa. Quando il
+# team DB completera' il registro, le entries qui vanno rimosse: la lista
+# tornera' DB-driven al 100%. Drift visibile = self-documenting.
+_NON_EDITABLE_DB_GAPS: dict[tuple[str, str], tuple[str, ...]] = {
+    ("catalogo", "articoli"): ("codice",),
+    ("catalogo", "articoli_uom_operativa"): ("uom_id",),
+    ("catalogo", "unita_misura_conversioni"): ("uom_from_id", "uom_to_id"),
+}
+
+
+# Scopo: Calcola la lista `non_editable_fields` per (schema, tabella)
+# unendo il registro DB (`dbops.vw_non_editable_fields`) col gap Python
+# `_NON_EDITABLE_DB_GAPS`. Single entry-point usato dai 3 detail (articolo,
+# uom_operativa, conversione) cosi' la regola del gap non si replica.
+def _compute_non_editable_fields(schema: str, table: str) -> list[str]:
+    db_locked = set(LockColumnsRepository.list_non_editable(schema, table))
+    db_locked.update(_NON_EDITABLE_DB_GAPS.get((schema, table), ()))
+    return sorted(db_locked)
+
+
+# Scopo: in create, applica il default `valido_dal=today` se il campo manca
+# o e' None. Centralizza la regola Fase 4 (BE-only) per i 3 service create
+# (componente, uom_operativa, conversione): il DDL DB non ha
+# `DEFAULT CURRENT_DATE` (DB declined), il fallback vive qui.
+# Restituisce sempre un `date | _MissingType` coerente per il chiamante.
+def _apply_valido_dal_default(valido_dal, *, for_create: bool):
+    if for_create and (valido_dal is _MISSING or valido_dal is None):
+        return date.today()
+    return valido_dal
+
+
+# Marker per riconoscere i codici di dominio sollevati da
+# `catalogo.fn_duplica_componente_versione` via P0001. Pattern simmetrico a
+# `vendite.pricing_service._KNOWN_DB_ERROR_MARKERS`: tutti i substring devono
+# matchare (no false positive da template generici). I template vivono in
+# `config.messaggi_errore`: cambi DB richiedono aggiornamento coordinato qui.
+_DUPLICA_DB_ERROR_MARKERS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("E_BOM_VERSIONE_OVERLAP", ("La nuova versione del componente", "si sovrappone")),
+    ("E_BOM_SORGENTE_GIA_CHIUSA", ("La riga sorgente della BoM e' gia' chiusa",)),
+    ("E_BOM_PRODOTTO_MISMATCH", ("La riga BoM appartiene al prodotto",)),
+    ("E_BOM_RIGA_NOT_FOUND", ("Riga BoM non trovata",)),
+    ("E_BOM_VALIDO_AL_INVALIDO", ("valido_al", "non puo' essere precedente a valido_dal")),
+)
 
 
 class _MissingType:
@@ -813,6 +865,8 @@ def _extract_uom_operativa_payload(
         nullable=True,
         message=payload_message,
     )
+    # Fase 4 (BE-only): centralizzato in `_apply_valido_dal_default`.
+    valido_dal = _apply_valido_dal_default(valido_dal, for_create=not for_update)
     if valido_dal is not _MISSING:
         data["valido_dal"] = valido_dal
     if valido_al is not _MISSING:
@@ -942,7 +996,7 @@ def _extract_componente_payload(
         payload,
         "valido_dal",
         function_name=function_name,
-        nullable=False,
+        nullable=True,
         message=payload_message,
     )
     valido_al = _extract_payload_date(
@@ -952,17 +1006,12 @@ def _extract_componente_payload(
         nullable=True,
         message=payload_message,
     )
+    # Fase 4 (BE-only): centralizzato in `_apply_valido_dal_default`.
+    # Applicato prima di _validate_date_interval cosi' la coerenza temporale
+    # con valido_al e' verificata sul valore effettivo (today), non `_MISSING`.
+    valido_dal = _apply_valido_dal_default(valido_dal, for_create=not for_update)
     if valido_dal is not _MISSING:
         data["valido_dal"] = valido_dal
-    elif not for_update:
-        ErrorManager.raise_error(
-            code="E_CATALOGO_VALIDATION",
-            message="Payload componente non valido.",
-            detail="valido_dal obbligatorio.",
-            context={"field": "valido_dal"},
-            function_name=function_name,
-            log_to_db=True,
-        )
     if valido_al is not _MISSING:
         data["valido_al"] = valido_al
     _validate_date_interval(
@@ -1256,7 +1305,8 @@ def _get_articolo_base(articolo_id: UUID | str) -> dict[str, object]:
     return articolo
 
 
-# Scopo: Restituisce il dettaglio completo di un articolo con UoM, componenti e note.
+# Scopo: Restituisce il dettaglio completo di un articolo con UoM, componenti,
+#        note e i metadata `non_editable_fields` (Fase 5) per il FE.
 def fn_get_articolo(articolo_id: UUID | str) -> dict[str, object]:
     articolo = _get_articolo_base(articolo_id)
     uom_repository = CatalogoUomRepository()
@@ -1269,6 +1319,7 @@ def fn_get_articolo(articolo_id: UUID | str) -> dict[str, object]:
         else []
     )
     articolo["note"] = bom_repository.list_note_articolo(articolo_id)
+    articolo["non_editable_fields"] = _compute_non_editable_fields("catalogo", "articoli")
     return articolo
 
 
@@ -1389,16 +1440,26 @@ def fn_list_uom_rounding_modes() -> list[dict[str, object]]:
 
 
 # Scopo: Lista UoM operative dell'articolo, previa verifica esistenza articolo.
+#        Envelope arricchito con `non_editable_fields` (Fase 5): il FE
+#        costruisce form di edit da una riga della lista, ha bisogno dei
+#        metadata immutabilita' al livello collezione.
 def fn_list_uom_operative(articolo_id: UUID | str) -> dict[str, object]:
     _get_articolo_base(articolo_id)
     repository = CatalogoUomRepository()
-    return _build_results_response(repository.list_uom_operative(articolo_id))
+    response = _build_results_response(repository.list_uom_operative(articolo_id))
+    response["non_editable_fields"] = _compute_non_editable_fields(
+        "catalogo", "articoli_uom_operativa",
+    )
+    return response
 
 
 # Scopo: Crea una UoM operativa per l'articolo e restituisce la riga arricchita.
 def fn_create_uom_operativa(articolo_id: UUID | str, payload: dict[str, Any]) -> dict[str, object]:
     function_name = "catalogo.catalogo_service.fn_create_uom_operativa"
     _get_articolo_base(articolo_id)
+    # Fase 4 (BE-only): il fallback `valido_dal=today` se omesso e' applicato
+    # internamente da `_extract_uom_operativa_payload` per garantire la
+    # validazione coerente con valido_al.
     data = _extract_uom_operativa_payload(payload, for_update=False, function_name=function_name)
     repository = CatalogoUomRepository()
     try:
@@ -1407,6 +1468,9 @@ def fn_create_uom_operativa(articolo_id: UUID | str, payload: dict[str, Any]) ->
         _translate_uom_integrity_error(exc, function_name=function_name)
     result = repository.get_uom_operativa(articolo_id, uom_operativa_id)
     assert result is not None
+    result["non_editable_fields"] = _compute_non_editable_fields(
+        "catalogo", "articoli_uom_operativa",
+    )
     return result
 
 
@@ -1443,6 +1507,9 @@ def fn_update_uom_operativa(
     )
     result = repository.get_uom_operativa(articolo_id, uom_operativa_id)
     assert result is not None
+    result["non_editable_fields"] = _compute_non_editable_fields(
+        "catalogo", "articoli_uom_operativa",
+    )
     return result
 
 
@@ -1488,6 +1555,8 @@ def fn_create_componente(articolo_id: UUID | str, payload: dict[str, Any]) -> di
         function_name=function_name,
         log_to_db=True,
     )
+    # Fase 4 (BE-only): fallback `valido_dal=today` applicato internamente da
+    # `_extract_componente_payload` (single source of truth, validato).
     repository = CatalogoBomRepository()
     try:
         componente_row_id = repository.create_componente(articolo_id, data)
@@ -1553,6 +1622,90 @@ def fn_delete_componente(articolo_id: UUID | str, componente_row_id: UUID | str)
         log_to_db=False,
     )
     return {"deleted": True}
+
+
+# Scopo: Duplica atomicamente la versione corrente di un componente BoM.
+#        Facade su `catalogo.fn_duplica_componente_versione`: chiude la riga
+#        sorgente con `valido_al = chiudi_al` (default oggi) e ne apre una
+#        nuova con `valido_dal = chiudi_al + 1`, copia verbatim della
+#        struttura. Tutto in singola TX, con advisory lock per articolo
+#        (no race con duplicazioni concorrenti sullo stesso prodotto).
+#        Eventuali raise applicativi del DB (P0001) vengono tradotti in
+#        ServiceError preservando il codice originale (E_BOM_*).
+#
+#        Restituisce il dettaglio della NUOVA riga (per UI: refresh + eventuale
+#        focus). La sorgente chiusa va recuperata con `fn_list_componenti`.
+#
+#        Payload: {"chiudi_al": "YYYY-MM-DD" | None}.
+def fn_duplica_componente_versione(
+    articolo_id: UUID | str,
+    componente_row_id: UUID | str,
+    payload: dict[str, Any],
+) -> dict[str, object]:
+    function_name = "catalogo.catalogo_service.fn_duplica_componente_versione"
+    _validate_payload_keys(
+        payload,
+        allowed_keys=frozenset({"chiudi_al"}),
+        function_name=function_name,
+        message="Payload duplica versione non valido.",
+    )
+    chiudi_al = _extract_payload_date(
+        payload,
+        "chiudi_al",
+        function_name=function_name,
+        nullable=True,
+        message="Payload duplica versione non valido.",
+    )
+    # _MISSING -> chiave assente: equivale a None (default DB = CURRENT_DATE).
+    if chiudi_al is _MISSING:
+        chiudi_al = None
+    _get_articolo_base(articolo_id)
+    repository = CatalogoBomRepository()
+    try:
+        new_id = repository.duplica_versione(articolo_id, componente_row_id, chiudi_al)
+    except DatabaseError as exc:
+        _raise_duplica_versione_error(
+            exc,
+            function_name=function_name,
+            context={
+                "articolo_id": str(articolo_id),
+                "componente_row_id": str(componente_row_id),
+                "chiudi_al": chiudi_al.isoformat() if isinstance(chiudi_al, date) else None,
+            },
+        )
+    result = repository.get_componente(articolo_id, new_id)
+    assert result is not None
+    return result
+
+
+# Scopo: Traduce una DatabaseError sollevata da fn_duplica_componente_versione
+#        (P0001 via fn_log_and_raise_error) in ServiceError. Riconosce i 5
+#        codici noti via marker multi-substring sul MESSAGE; se nessun match,
+#        propaga come E_CATALOGO_VALIDATION (catch-all consistente col resto
+#        del catalogo_service). Pattern simmetrico a
+#        `vendite.pricing_service._raise_pricing_error`.
+def _raise_duplica_versione_error(
+    exc: DatabaseError,
+    *,
+    function_name: str,
+    context: dict[str, Any],
+) -> None:
+    msg = str(exc)
+    matched_code: str | None = None
+    for code_candidate, markers in _DUPLICA_DB_ERROR_MARKERS:
+        if all(marker in msg for marker in markers):
+            matched_code = code_candidate
+            break
+    code = matched_code or "E_CATALOGO_VALIDATION"
+    ErrorManager.raise_error(
+        code=code,
+        message="Impossibile duplicare la versione del componente BoM.",
+        detail=msg,
+        context=context,
+        cause=exc,
+        log_to_db=True,
+        function_name=function_name,
+    )
 
 
 # Scopo: Lista note articolo con dati arricchiti.
@@ -1859,6 +2012,11 @@ def fn_get_conversione(conv_id: int) -> dict[str, object]:
         log_to_db=False,
     )
     assert result is not None
+    # Fase 5: arricchisce il detail coi campi non editabili (uom_from_id,
+    # uom_to_id immutabili dopo create per coerenza con exclude daterange).
+    result["non_editable_fields"] = _compute_non_editable_fields(
+        "catalogo", "unita_misura_conversioni",
+    )
     return result
 
 
@@ -1901,15 +2059,16 @@ def fn_create_conversione(payload: dict[str, Any]) -> dict[str, object]:
     )
     valido_dal = _extract_payload_date(payload, "valido_dal", function_name=function_name, nullable=True, message="Payload conversione non valido.")
     valido_al = _extract_payload_date(payload, "valido_al", function_name=function_name, nullable=True, message="Payload conversione non valido.")
+    # Fase 4 (BE-only): centralizzato in `_apply_valido_dal_default`.
+    valido_dal = _apply_valido_dal_default(valido_dal, for_create=True)
     _validate_date_interval(valido_dal=valido_dal, valido_al=valido_al, function_name=function_name, payload_name="conversione")
 
     data: dict[str, Any] = {
         "uom_from_id": uom_from_id,
         "uom_to_id": uom_to_id,
         "fattore": fattore,
+        "valido_dal": valido_dal,
     }
-    if valido_dal is not _MISSING:
-        data["valido_dal"] = valido_dal
     if valido_al is not _MISSING:
         data["valido_al"] = valido_al
 

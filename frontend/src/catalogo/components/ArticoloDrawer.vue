@@ -44,6 +44,15 @@ const isEdit = computed(() => props.mode === 'edit')
 const form = ref({})
 const detail = ref(null)
 
+// Fase 5: lista campi immutabili dopo create. Arriva dal detail come metadata
+// (`detail.non_editable_fields`, fonte = `dbops.vw_non_editable_fields` + gap
+// Python su catalogo.articoli). Pilota i `:disabled` invece di cablare
+// `isEdit` su singoli campi.
+const nonEditableFields = computed(() => detail.value?.non_editable_fields || [])
+function isFieldLocked(name) {
+  return isEdit.value && nonEditableFields.value.includes(name)
+}
+
 // Deferimento contenuto: i LookupSelect montano solo dopo l'animazione del drawer
 const contentReady = ref(false)
 
@@ -223,12 +232,12 @@ function close() {
         <div class="form-grid-2col">
           <div class="form-field">
             <label>{{ t('catalogo.field_codice') }} *</label>
-            <InputText v-model="form.codice" :disabled="isEdit" />
+            <InputText v-model="form.codice" :disabled="isFieldLocked('codice')" />
           </div>
           <div class="form-field">
             <label>{{ t('catalogo.field_uom') }} *</label>
             <LookupSelect v-model="form.uom_id" rel="catalogo.unita_misura"
-              :placeholder="t('catalogo.select_uom')" :disabled="isEdit" />
+              :placeholder="t('catalogo.select_uom')" :disabled="isFieldLocked('uom_id')" />
           </div>
         </div>
 

@@ -218,6 +218,31 @@ class CatalogoBomRepository:
             )
             return cursor.rowcount > 0
 
+    # Scopo: Duplica atomicamente la versione corrente di un componente BoM.
+    #        Wrapper su catalogo.fn_duplica_componente_versione (Fase 3): la fn DB
+    #        chiude la sorgente con valido_al=p_chiudi_al (default oggi) e
+    #        inserisce una nuova riga con valido_dal=p_chiudi_al+1, copia
+    #        verbatim della struttura. Tutto in singola TX con advisory lock
+    #        per articolo. Eventuali raise P0001 (E_BOM_*) propagano via
+    #        DatabaseError e vengono tradotti dal service.
+    #        Ritorna l'UUID della nuova riga inserita.
+    def duplica_versione(
+        self,
+        articolo_id: UUID | str,
+        componente_row_id: UUID | str,
+        chiudi_al: object | None,
+    ) -> UUID:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT catalogo.fn_duplica_componente_versione(%s::uuid, %s::uuid, %s::date)
+                """,
+                [str(articolo_id), str(componente_row_id), chiudi_al],
+            )
+            row = cursor.fetchone()
+        assert row is not None
+        return row[0]
+
     # Scopo: Elimina un componente BoM con ownership check sul prodotto.
     def delete_componente(self, articolo_id: UUID | str, componente_row_id: UUID | str) -> bool:
         with connection.cursor() as cursor:

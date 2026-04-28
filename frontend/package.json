@@ -19,7 +19,7 @@
     "primeicons": "^7.0.0",
     "primevue": "^4.5.5",
     "vue": "^3.5.33",
-    "vue-i18n": "^11.3.2",
+    "vue-i18n": "^11.4.0",
     "vue-router": "^5.0.6"
   },
   "devDependencies": {
@@ -27,11 +27,11 @@
     "@vitejs/plugin-vue": "^6.0.6",
     "eslint": "^10.2.1",
     "eslint-config-prettier": "^10.1.8",
-    "eslint-plugin-oxlint": "~1.61.0",
+    "eslint-plugin-oxlint": "~1.62.0",
     "eslint-plugin-vue": "~10.9.0",
     "globals": "^17.5.0",
     "npm-run-all2": "^8.0.4",
-    "oxlint": "~1.61.0",
+    "oxlint": "~1.62.0",
     "prettier": "3.8.3",
     "vite": "^8.0.10",
     "vite-plugin-vue-devtools": "^8.1.1"
