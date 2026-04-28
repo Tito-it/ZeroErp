@@ -1,8 +1,8 @@
-# API Catalogo (Fasi 1..5)
+# API Catalogo (Fasi 1..8)
 
 ## Scopo
 
-Esporre via HTTP il backend `catalogo` per il perimetro delle Fasi 1..5:
+Esporre via HTTP il backend `catalogo` per il perimetro delle Fasi 1..8:
 
 - anagrafica articoli
 - lookup articoli, UoM, modi di arrotondamento
@@ -11,6 +11,10 @@ Esporre via HTTP il backend `catalogo` per il perimetro delle Fasi 1..5:
 - conversioni UoM
 - note articolo
 - metadata immutabilita' campi (`non_editable_fields`) sui detail
+- capability di riga (`puo_eliminarsi`/`puo_gestire_bom`) su lista UoM
+  operative e lista articoli
+- disattivazione/riattivazione articolo come azioni dedicate (Fase 7)
+- defaults pre-compilazione form articolo (Fase 8)
 
 ## Contesto
 
@@ -87,13 +91,30 @@ Tutte le risposte usano l'envelope standard:
         "uom_id": 1,
         "uom_codice": "PZ",
         "is_composito": false,
+        "is_solo_componente": false,
         "voce_utility": false,
-        "attivo": true
+        "attivo": true,
+        "puo_gestire_bom": false,
+        "motivo_non_gestibile_bom": "ARTICOLO_NON_COMPOSITO"
       }
     ]
   }
 }
 ```
+
+##### Capability BoM (Fase 6)
+
+Ogni riga espone capability data-driven da `vw_articoli_dettaglio`:
+
+- `puo_gestire_bom: bool` — `true` se `is_composito AND NOT is_solo_componente`.
+- `motivo_non_gestibile_bom: string | null` — codice motivo quando
+  `puo_gestire_bom=false`. Valori:
+  - `"ARTICOLO_SOLO_COMPONENTE"` — articolo marcato come solo componente.
+  - `"ARTICOLO_NON_COMPOSITO"` — articolo non composito.
+  - `null` — quando `puo_gestire_bom=true`.
+
+Il FE usa questi campi per disabilitare l'azione "manage-bom" e mostrare
+il motivo via tooltip i18n (chiavi `catalogo.motivo_*`).
 
 ### 1.2 Crea articolo
 
@@ -134,12 +155,15 @@ Tutte le risposte usano l'envelope standard:
 Il dettaglio articolo include gli array correlati e i metadata di
 immutabilita' (Fase 5):
 
-- `uom_operative` — array UoM operative dell'articolo
+- `uom_operative` — array UoM operative dell'articolo, ogni riga arricchita
+  da capability di riga (Fase 6, vedi §3.1).
 - `componenti` — array componenti BoM (popolato solo se `is_composito=true`)
 - `note` — array note articolo
 - `non_editable_fields: string[]` — Fase 5: chiavi del payload non
   modificabili in PATCH (es. `["codice", "uom_id"]`). Il FE le usa per
   pilotare i `:disabled` invece di cablare regole.
+- `puo_gestire_bom: bool`, `motivo_non_gestibile_bom: string | null` —
+  Fase 6: capability di gestione BoM (vedi §1.1).
 
 ### 1.4 Aggiorna articolo
 
@@ -152,6 +176,10 @@ immutabilita' (Fase 5):
 
 - `codice` e `uom_id` sono immutabili a livello API (vedi
   `non_editable_fields` nel detail).
+- `attivo` non e' modificabile via PATCH (Fase 7): risponde
+  `E_CATALOGO_VALIDATION` con detail "usa gli endpoint /disattiva/ o
+  /riattiva/". La transizione di stato passa solo dagli endpoint
+  dedicati (§1.5 e §1.6).
 - L'endpoint aggiorna solo i campi presenti nel payload.
 - In assenza di campi supportati, restituisce `400`.
 
@@ -165,8 +193,58 @@ immutabilita' (Fase 5):
 #### Regole specifiche
 
 - Soft delete logico (`attivo=false`)
-- Idempotente se l'articolo e` gia` inattivo
-- Eventuali blocchi per figli/usi restano governati dal DB
+- Idempotente se l'articolo e' gia' inattivo
+- Trigger DB `trgfn_prevent_deactivate_if_children` blocca la
+  disattivazione se esistono figli attivi (UoM operative, righe BoM, ecc.)
+
+### 1.6 Riattiva articolo (Fase 7)
+
+| | |
+|---|---|
+| **Metodo** | `POST` |
+| **URL** | `/api/v1/catalogo/articoli/{articolo_id}/riattiva/` |
+
+#### Regole specifiche
+
+- Imposta `attivo=true` chiamando `catalogo.fn_riattiva_articolo(uuid)`.
+- Idempotente se l'articolo e' gia' attivo (no-op DB, ritorna dettaglio).
+- `E_CATALOGO_ARTICOLO_NOT_FOUND` (404) se l'id non esiste (pre-flight
+  uniforme con il resto del dominio).
+- Pattern "padre prima, figli poi": **non tocca** i figli (UoM operative,
+  righe BoM dove l'articolo e' componente, ecc.) — l'admin li riattiva
+  esplicitamente in azioni successive.
+- Eventuali blocchi del trigger `trgfn_child_requires_active_parent`
+  (parent inattivo: iva/gruppo/tipologia) si propagano come
+  `E_PARENT_*`.
+
+### 1.7 Defaults form articolo (Fase 8)
+
+| | |
+|---|---|
+| **Metodo** | `GET` |
+| **URL** | `/api/v1/catalogo/articoli/form-defaults/` |
+
+Centralizza il consumo dei parametri usati dal FE per pre-compilare il
+form di creazione articolo. Tipi gia' castati: il FE non duplica il cast
+da stringa generico di `/core/parameters/defaults/`.
+
+#### Risposta (200)
+
+```json
+{
+  "data": {
+    "default_iva_id": 42
+  }
+}
+```
+
+#### Regole specifiche
+
+- `default_iva_id` casta da `DEFAULT_IVA_ID` (parametro `config.parameters`)
+  a `int`. Se il parametro e' assente o malformato, ritorna `null`
+  (best-effort, no raise: il form mostra senza pre-compile).
+- Override per utente/gruppo/emittente fiscale applicato dal `ParameterService`
+  con il context standard (superuser bypass).
 
 ---
 
@@ -255,13 +333,28 @@ L'ordine e' "default-first" (HALF_UP). Consumato dal FE
 | **Metodo** | `GET` |
 | **URL** | `/api/v1/catalogo/articoli/{articolo_id}/uom/` |
 
-#### Risposta envelope (Fase 5)
+#### Risposta envelope (Fase 5+6)
 
 ```json
 {
   "data": {
     "count": 2,
-    "results": [...],
+    "results": [
+      {
+        "id": 1,
+        "uom_codice": "PZ",
+        "is_base": true,
+        "puo_eliminarsi": false,
+        "motivo_non_eliminabile": "UOM_BASE_NON_ELIMINABILE"
+      },
+      {
+        "id": 2,
+        "uom_codice": "CT",
+        "is_base": false,
+        "puo_eliminarsi": true,
+        "motivo_non_eliminabile": null
+      }
+    ],
     "non_editable_fields": ["uom_id"]
   }
 }
@@ -270,6 +363,28 @@ L'ordine e' "default-first" (HALF_UP). Consumato dal FE
 `non_editable_fields` e' a livello envelope (non per riga): la regola
 e' la stessa per tutte le righe della stessa entita' e il FE legge la
 lista come prima chiamata API quando il sub-drawer apre.
+
+##### Capability di riga (Fase 6)
+
+Ogni riga espone capability data-driven da
+`vw_articoli_uom_operativa_dettaglio`:
+
+- `puo_eliminarsi: bool` — `true` quando `NOT is_base`. Solo l'UoM
+  base blocca l'eliminazione (la mappatura operativa non ha FK reverse:
+  righe listino/magazzino/documenti puntano a `catalogo.unita_misura`,
+  non a `articoli_uom_operativa.id`).
+- `motivo_non_eliminabile: string | null` — codice motivo quando
+  `puo_eliminarsi=false`:
+  - `"UOM_BASE_NON_ELIMINABILE"` — UoM base.
+  - `null` — quando `puo_eliminarsi=true`.
+
+Il FE usa questi campi per disabilitare l'azione "delete" della riga
+(non la nasconde, mantiene l'affordance) e mostrare il motivo via
+tooltip i18n (`catalogo.motivo_*`).
+
+Stessa proiezione su `GET /uom/{id}/` (singola riga) e su detail articolo
+nel campo `uom_operative[]`: la lista e il dettaglio leggono dalla
+stessa vista (single source of truth).
 
 ### 3.2 Crea UoM operativa
 

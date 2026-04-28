@@ -52,6 +52,15 @@ Indice test eseguiti:
 42) CatalogoServiceTests.test_fn_get_articolo_includes_non_editable_fields
 43) CatalogoServiceTests.test_fn_list_uom_operative_envelope_non_editable_fields
 44) CatalogoServiceTests.test_fn_get_conversione_includes_non_editable_fields
+45) CatalogoServiceTests.test_fn_list_articoli_proietta_capability_bom
+46) CatalogoServiceTests.test_fn_list_uom_operative_proietta_capability_eliminabile
+47) CatalogoServiceTests.test_fn_riattiva_articolo_ok
+48) CatalogoServiceTests.test_fn_riattiva_articolo_already_active
+49) CatalogoServiceTests.test_fn_riattiva_articolo_not_found
+50) CatalogoServiceTests.test_fn_update_articolo_rifiuta_attivo
+51) CatalogoServiceTests.test_fn_get_articolo_form_defaults_ok
+52) CatalogoServiceTests.test_fn_get_articolo_form_defaults_missing_param
+53) CatalogoServiceTests.test_fn_get_articolo_form_defaults_malformed_param
 """
 
 from unittest import TestCase
@@ -321,6 +330,112 @@ class CatalogoServiceTests(TestCase):
 
         self.assertFalse(result["attivo"])
         repo.deactivate_articolo.assert_not_called()
+
+    # Scopo: riattiva articolo inattivo -> chiama fn DB e restituisce dettaglio attivo.
+    @patch("apps.catalogo.services.catalogo_service.CatalogoBomRepository")
+    @patch("apps.catalogo.services.catalogo_service.CatalogoUomRepository")
+    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository")
+    def test_fn_riattiva_articolo_ok(self, mock_repo_cls, mock_uom_repo_cls, mock_bom_repo_cls):
+        from apps.catalogo.services.catalogo_service import fn_riattiva_articolo
+
+        repo = mock_repo_cls.return_value
+        repo.get_articolo.side_effect = [
+            {"id": "019bbee2-5f6a-704f-bbd0-34ed84db252d", "codice": "ART-001", "attivo": False},
+            {"id": "019bbee2-5f6a-704f-bbd0-34ed84db252d", "codice": "ART-001", "attivo": True},
+        ]
+        mock_uom_repo_cls.return_value.list_uom_operative.return_value = []
+        mock_bom_repo_cls.return_value.list_componenti.return_value = []
+        mock_bom_repo_cls.return_value.list_note_articolo.return_value = []
+
+        result = fn_riattiva_articolo("019bbee2-5f6a-704f-bbd0-34ed84db252d")
+
+        self.assertTrue(result["attivo"])
+        repo.reactivate_articolo.assert_called_once_with("019bbee2-5f6a-704f-bbd0-34ed84db252d")
+
+    # Scopo: articolo gia' attivo -> idempotente, fn DB non chiamata.
+    @patch("apps.catalogo.services.catalogo_service.CatalogoBomRepository")
+    @patch("apps.catalogo.services.catalogo_service.CatalogoUomRepository")
+    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository")
+    def test_fn_riattiva_articolo_already_active(self, mock_repo_cls, mock_uom_repo_cls, mock_bom_repo_cls):
+        from apps.catalogo.services.catalogo_service import fn_riattiva_articolo
+
+        repo = mock_repo_cls.return_value
+        repo.get_articolo.return_value = {
+            "id": "019bbee2-5f6a-704f-bbd0-34ed84db252d",
+            "codice": "ART-001",
+            "attivo": True,
+        }
+        mock_uom_repo_cls.return_value.list_uom_operative.return_value = []
+        mock_bom_repo_cls.return_value.list_componenti.return_value = []
+        mock_bom_repo_cls.return_value.list_note_articolo.return_value = []
+
+        result = fn_riattiva_articolo("019bbee2-5f6a-704f-bbd0-34ed84db252d")
+
+        self.assertTrue(result["attivo"])
+        repo.reactivate_articolo.assert_not_called()
+
+    # Scopo: riattiva articolo inesistente -> NOT_FOUND uniforme dal pre-flight.
+    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository")
+    def test_fn_riattiva_articolo_not_found(self, mock_repo_cls):
+        from apps.catalogo.services.catalogo_service import fn_riattiva_articolo
+
+        mock_repo_cls.return_value.get_articolo.return_value = None
+
+        with self.assertRaises(ServiceError) as ctx:
+            fn_riattiva_articolo("019bbee2-5f6a-704f-bbd0-34ed84db252d")
+        self.assertEqual(ctx.exception.code, "E_CATALOGO_ARTICOLO_NOT_FOUND")
+        mock_repo_cls.return_value.reactivate_articolo.assert_not_called()
+
+    # Scopo: PATCH articolo con `attivo` -> rifiutato (Fase 7: solo endpoint dedicati).
+    def test_fn_update_articolo_rifiuta_attivo(self):
+        from apps.catalogo.services.catalogo_service import fn_update_articolo
+
+        with self.assertRaises(ServiceError) as ctx:
+            fn_update_articolo(
+                "019bbee2-5f6a-704f-bbd0-34ed84db252d",
+                {"attivo": False},
+            )
+        self.assertEqual(ctx.exception.code, "E_CATALOGO_VALIDATION")
+        self.assertIn("attivo", ctx.exception.detail or "")
+
+    # Scopo: form-defaults articolo casta DEFAULT_IVA_ID a int (Fase 8).
+    @patch("apps.catalogo.services.catalogo_service.ParameterService")
+    def test_fn_get_articolo_form_defaults_ok(self, mock_ps_cls):
+        from apps.catalogo.services.catalogo_service import fn_get_articolo_form_defaults
+
+        mock_ps_cls.return_value.get_defaults.return_value = {"DEFAULT_IVA_ID": "42"}
+
+        result = fn_get_articolo_form_defaults()
+
+        self.assertEqual(result, {"default_iva_id": 42})
+        mock_ps_cls.return_value.get_defaults.assert_called_once_with(
+            ["DEFAULT_IVA_ID"],
+            django_user_id=None,
+            group_ids=None,
+            emittente_fiscale_id=None,
+        )
+
+    # Scopo: parametro mancante -> default_iva_id a None (best-effort, no raise).
+    @patch("apps.catalogo.services.catalogo_service.ParameterService")
+    def test_fn_get_articolo_form_defaults_missing_param(self, mock_ps_cls):
+        from apps.catalogo.services.catalogo_service import fn_get_articolo_form_defaults
+
+        mock_ps_cls.return_value.get_defaults.return_value = {}
+
+        result = fn_get_articolo_form_defaults()
+
+        self.assertEqual(result, {"default_iva_id": None})
+
+    # Scopo: parametro malformato -> default_iva_id a None (best-effort, no raise).
+    @patch("apps.catalogo.services.catalogo_service.ParameterService")
+    def test_fn_get_articolo_form_defaults_malformed_param(self, mock_ps_cls):
+        from apps.catalogo.services.catalogo_service import fn_get_articolo_form_defaults
+
+        mock_ps_cls.return_value.get_defaults.return_value = {"DEFAULT_IVA_ID": "non-numerico"}
+
+        result = fn_get_articolo_form_defaults()
+
+        self.assertEqual(result, {"default_iva_id": None})
 
     # Scopo: campi sconosciuti nel payload -> errore esplicito, non ignorati.
     def test_fn_create_articolo_unknown_key(self):
@@ -772,3 +887,74 @@ class CatalogoServiceTests(TestCase):
         result = fn_get_conversione(7)
 
         self.assertEqual(result["non_editable_fields"], ["uom_from_id", "uom_to_id"])
+
+    # Scopo: lista articoli propaga capability BoM dalla vista DB (Fase 6).
+    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository")
+    def test_fn_list_articoli_proietta_capability_bom(self, mock_repo_cls):
+        from apps.catalogo.services.catalogo_service import fn_list_articoli
+
+        mock_repo_cls.return_value.list_articoli.return_value = (
+            [
+                {
+                    "id": 1,
+                    "codice": "ART-COMP",
+                    "is_composito": True,
+                    "is_solo_componente": False,
+                    "puo_gestire_bom": True,
+                    "motivo_non_gestibile_bom": None,
+                },
+                {
+                    "id": 2,
+                    "codice": "ART-FOGLIA",
+                    "is_composito": False,
+                    "is_solo_componente": False,
+                    "puo_gestire_bom": False,
+                    "motivo_non_gestibile_bom": "ARTICOLO_NON_COMPOSITO",
+                },
+            ],
+            2,
+        )
+
+        results, total = fn_list_articoli(limit=25, offset=0)
+
+        self.assertEqual(total, 2)
+        self.assertTrue(results[0]["puo_gestire_bom"])
+        self.assertIsNone(results[0]["motivo_non_gestibile_bom"])
+        self.assertFalse(results[1]["puo_gestire_bom"])
+        self.assertEqual(results[1]["motivo_non_gestibile_bom"], "ARTICOLO_NON_COMPOSITO")
+
+    # Scopo: lista UoM operative propaga capability eliminazione dalla vista DB (Fase 6).
+    @patch("apps.catalogo.services.catalogo_service.LockColumnsRepository")
+    @patch("apps.catalogo.services.catalogo_service.CatalogoUomRepository")
+    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository")
+    def test_fn_list_uom_operative_proietta_capability_eliminabile(
+        self, mock_repo_cls, mock_uom_cls, mock_lock_cls,
+    ):
+        from apps.catalogo.services.catalogo_service import fn_list_uom_operative
+
+        mock_repo_cls.return_value.get_articolo.return_value = {"id": 1}
+        mock_uom_cls.return_value.list_uom_operative.return_value = [
+            {
+                "id": 10,
+                "uom_codice": "PZ",
+                "is_base": True,
+                "puo_eliminarsi": False,
+                "motivo_non_eliminabile": "UOM_BASE_NON_ELIMINABILE",
+            },
+            {
+                "id": 11,
+                "uom_codice": "CT",
+                "is_base": False,
+                "puo_eliminarsi": True,
+                "motivo_non_eliminabile": None,
+            },
+        ]
+        mock_lock_cls.list_non_editable.return_value = ()
+
+        result = fn_list_uom_operative(1)
+
+        rows = result["results"]
+        self.assertFalse(rows[0]["puo_eliminarsi"])
+        self.assertEqual(rows[0]["motivo_non_eliminabile"], "UOM_BASE_NON_ELIMINABILE")
+        self.assertTrue(rows[1]["puo_eliminarsi"])
+        self.assertIsNone(rows[1]["motivo_non_eliminabile"])

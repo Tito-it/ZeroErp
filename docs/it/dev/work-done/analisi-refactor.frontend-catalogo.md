@@ -2,6 +2,12 @@
 
 <!-- markdownlint-disable MD036 MD031 -->
 
+> **Stato: COMPLETATO (2026-04-28).** Tutte le 8 fasi pianificate sono
+> chiuse end-to-end DB+BE+FE. Fase 8 (C4 detail aggregato) esplicitamente
+> non implementata per regola YAGNI (nessun profilo perf evidenziava
+> bottleneck). Test BE 83/83 verdi, vite build verde. Doc API
+> aggiornata a "Fasi 1..8". Documento spostato in `work-done/`.
+>
 > Obiettivo: identificare cosa nei drawer/store catalogo e' logica di dominio
 > mascherata da codice di presentazione, e quindi va spostata su backend/DB
 > (filosofia DB-first: il frontend e' solo presentazione + UX).
@@ -758,49 +764,76 @@ resta una regola di processo, non un'integrita' DB.
 
 ---
 
-### Fase 6 — Capability di riga `can_delete`/`can_manage_bom` (B3)
+### Fase 6 — Capability di riga `puo_eliminarsi`/`puo_gestire_bom` (B3) — landed 2026-04-28
 
-**Team DB**
+**Team DB (consegnato)**
 
-- Estensione lista UoM operative articolo (vista o proiezione SQL nel
-  repo) con capability di cancellazione:
-  - `can_delete BOOLEAN` (= `NOT is_base`)
-  - `delete_reason TEXT` (`'UOM_BASE_NON_ELIMINABILE'` quando `is_base`,
+- `vw_articoli_uom_operativa_dettaglio` aggiornata: aggiunge denormalizzazioni
+  `uom_codice`/`uom_descrizione`, `articolo_codice`/`articolo_descrizione` +
+  capability di riga
+  - `puo_eliminarsi BOOLEAN` (= `NOT is_base`)
+  - `motivo_non_eliminabile TEXT` (`'UOM_BASE_NON_ELIMINABILE'` quando
+    `is_base`, altrimenti `NULL`)
+- `vw_articoli_dettaglio` estesa con capability BoM:
+  - `puo_gestire_bom BOOLEAN` (= `is_composito AND NOT is_solo_componente`)
+  - `motivo_non_gestibile_bom TEXT` (`'ARTICOLO_SOLO_COMPONENTE'` se
+    `is_solo_componente`, `'ARTICOLO_NON_COMPOSITO'` se `NOT is_composito`,
     altrimenti `NULL`)
-- Estensione `vw_articoli_dettaglio` (lista articoli) con capability
-  gestione BoM:
-  - `can_manage_bom BOOLEAN` (= `is_composito AND NOT is_solo_componente`)
-  - `manage_bom_reason TEXT` (`'NOT_COMPOSITO'` se `NOT is_composito`,
-    `'SOLO_COMPONENTE'` se `is_solo_componente`, altrimenti `NULL`)
 
-**Chiarificazione "figli" nel brief originale (28-04-2026)**
+**Naming italiano vs brief inglese.** Il brief proponeva `can_delete`/
+`delete_reason`/`can_manage_bom`/`manage_bom_reason`. Il team DB ha
+consegnato in italiano, coerente con il pattern Fase 2 BoM
+(`puo_chiudersi`/`motivo_non_chiudibile`). Naming uniforme: tutto il
+catalogo usa la convenzione italiana per le capability.
 
-Il primo brief proponeva `can_delete = NOT is_base AND NOT EXISTS (figli...)`.
-Verifica sul modello: `articoli_uom_operativa.id` non e' referenziato da
-FK reverse. Le righe listino/magazzino/documenti tengono `uom_id` su
+**Chiarificazione "figli" nel brief originale.** Il primo brief
+proponeva `can_delete = NOT is_base AND NOT EXISTS (figli...)`. Verifica
+sul modello: `articoli_uom_operativa.id` non e' referenziato da FK
+reverse. Le righe listino/magazzino/documenti tengono `uom_id` su
 `catalogo.unita_misura` (anagrafica), non sulla mappatura operativa per
-articolo. "Figli" era un'astrazione preventiva, non descriveva integrita'
-reale del modello: rimossa dal brief. Eventuali guard applicative
-cross-dominio (es. UoM operativa usata su preventivi aperti) si aggiungono
-in iterate successive solo se emerge un caso d'uso concreto.
+articolo. "Figli" era un'astrazione preventiva, rimossa dal brief.
+Eventuali guard cross-dominio si aggiungono in iterate successive se
+emerge un caso d'uso concreto.
 
-**Team Backend**
+**Team Backend (landed)**
 
-- `fn_list_uom_operative` e `fn_list_articoli` proiettano i nuovi campi.
-- Test: scenari is_base, articolo non composito, articolo solo_componente.
+- `CatalogoRepository.list_articoli` e `get_articolo` proiettano
+  `puo_gestire_bom`/`motivo_non_gestibile_bom` da `vw_articoli_dettaglio`
+  (aggiunti a `ARTICOLI_DETAIL_COLUMNS`, propagati in automatico).
+- `CatalogoUomRepository.list_uom_operative` e `get_uom_operativa`
+  passano a leggere da `vw_articoli_uom_operativa_dettaglio` (single
+  source of truth per join + capability), proiettano `puo_eliminarsi`/
+  `motivo_non_eliminabile`.
+- 2 nuovi test in `test_catalogo_service.py` (#45, #46): coverage
+  propagazione capability via service.
 
-**Team Frontend**
+**Team Frontend (landed)**
 
-- `ArticoloUomDrawer.vue:212`: `visible: row.can_delete` invece di
-  `visible: !row.is_base`.
-- `ArticoliSearchTable.vue:76`: `disabled: !data.can_manage_bom` invece di
-  `disabled: !data.is_composito`. Tooltip = `data.manage_bom_reason`.
+- `RowActionsMenu.vue` esteso: campo opzionale `tooltip` per azione
+  (sovrascrive `label` come tooltip del bottone inline). Retrocompatibile,
+  utile per spiegare il motivo di un disabled.
+- `ArticoliSearchTable.vue:64`: action manage-bom con `disabled:
+  !data.puo_gestire_bom` + `tooltip: manageBomTooltip(data)` derivato da
+  `motivo_non_gestibile_bom`.
+- `ArticoloUomDrawer.vue:225`: action delete con `disabled:
+  !row.puo_eliminarsi` + `tooltip: deleteUomTooltip(row)` derivato da
+  `motivo_non_eliminabile`. Cambio UX rispetto al brief: l'azione resta
+  visibile (non nascosta su `is_base`) per mantenere l'affordance e
+  mostrare il motivo via tooltip — coerente con pattern Fase 2 di
+  capability di chiusura riga BoM.
+- 3 chiavi i18n nuove in `it.json`/`en.json`:
+  `catalogo.motivo_uom_base_non_eliminabile`,
+  `catalogo.motivo_articolo_solo_componente`,
+  `catalogo.motivo_articolo_non_composito`.
 
-**Dipendenze**: DB ↔ BE ↔ FE in serie.
+**Esiti.** 76/76 test catalogo verdi (74 + 2 nuovi). Vite build verde
+925ms. Naming italiano consolidato cross-vista.
+
+**Dipendenze**: DB ↔ BE ↔ FE in serie. Tutte chiuse.
 
 ---
 
-### Fase 7 — Disattiva/Riattiva articolo come azione di dominio (C2)
+### Fase 7 — Disattiva/Riattiva articolo come azione di dominio (C2) — landed 2026-04-28
 
 **Team DB**
 
@@ -830,31 +863,68 @@ in iterate successive solo se emerge un caso d'uso concreto.
 - Pulsante chiama lo store: `store.disattiva(id)` (gia' esiste) o
   `store.riattiva(id)` (da aggiungere).
 
-**Dipendenze**: DB → BE → FE. Breaking lato API: PATCH con `attivo` rifiutato
-(documentare nel brief BE). In ZeroErp non in produzione, breaking ammessi.
+**Esiti.**
+
+- DB: `catalogo.fn_riattiva_articolo(uuid)` consegnata, idempotente, raise
+  `E_ARTICOLO_NOT_FOUND` se id NULL/inesistente. Disattivazione resta UPDATE
+  diretto coperto da `trgfn_prevent_deactivate_if_children`.
+- BE:
+  - `CatalogoRepository.reactivate_articolo` chiama la fn DB.
+  - `fn_riattiva_articolo(articolo_id)` simmetrico a disattiva: pre-flight
+    `fn_get_articolo` (uniforma il NOT_FOUND con `E_CATALOGO_ARTICOLO_NOT_FOUND`),
+    short-circuit se gia' attivo.
+  - `ApiArticoloRiattiva` su `POST .../articoli/{id}/riattiva/`.
+  - Whitelist update articolo: rimosso `attivo`. Guard esplicita in
+    `_extract_articolo_payload(for_update=True)`: PATCH con `attivo` →
+    `E_CATALOGO_VALIDATION` con detail "usa /disattiva/ o /riattiva/".
+  - 4 nuovi test (#47-#50) — riattiva ok/already_active/not_found + update
+    rifiuta attivo.
+- FE:
+  - `riattivaArticolo` in `api/catalogo.js`, `riattiva` action nello
+    store articoli.
+  - `ArticoloDrawer`: rimosso `ToggleSwitch attivo` e `attivo` da defaultForm/
+    loadDetail/payload PATCH. Sezione "Stato articolo" con `Tag` + pulsante
+    contestuale (Disattiva se attivo, Riattiva se inattivo) gated su
+    `!isReadonly`. `useConfirmAction.confirmAction` con messaggio dedicato
+    che spiega il pattern "padre prima, figli poi".
+  - 9 chiavi i18n nuove (it/en) per stato, label, dialog title/message,
+    toast success.
+
+**Dipendenze**: DB → BE → FE. Breaking lato API: PATCH con `attivo` rifiutato.
+In ZeroErp non in produzione, breaking ammessi.
 
 ---
 
-### Fase 8 — Refactor opzionali (C4, A5, B5 cosmetico)
+### Fase 8 — Refactor opzionali (C4, A5, B5 cosmetico) — landed 2026-04-28 (A5 only)
 
 **Team DB**: nessuna modifica.
 
-**Team Backend**:
+**Team Backend (landed A5)**
 
-- (A5) `articoli/form-defaults/` lookup endpoint: ritorna
-  `{default_iva_id, default_uom_id?, ...}`. Costruzione tramite
-  `ParameterService.get_defaults`.
-- (C4) `articoli/{id}/full/` view aggregata `articolo + uom + componenti + note`.
-  Solo se profilo perf evidenzia bottleneck.
+- `fn_get_articolo_form_defaults(*, django_user_id, group_ids,
+  emittente_fiscale_id)` in `catalogo_service.py`: chiama
+  `ParameterService.get_defaults(["DEFAULT_IVA_ID"])`, casta a `int`,
+  ritorna `{"default_iva_id": int | None}`. Best-effort: parametro
+  malformato → `None` (no raise).
+- `ApiArticoliFormDefaults` su `GET .../articoli/form-defaults/`. Riusa
+  `get_user_context(request, ParameterService())` (rinominato da
+  `_get_user_context` a pubblico per riuso cross-modulo) per superuser
+  bypass + override emittente/utente.
+- 3 nuovi test (#51-#53) — ok / param mancante / param malformato.
 
-**Team Frontend**:
+**Team Frontend (landed)**
 
-- `ArticoloDrawer.vue:32` migra a `getArticoloFormDefaults()` quando l'endpoint
-  c'e'.
-- `ArticoloDrawer.vue:113-137` migra al detail aggregato se C4 viene fatto.
+- `getArticoloFormDefaults()` in `api/catalogo.js`.
+- `ArticoloDrawer`: rimosso `useParameterDefaults(['DEFAULT_IVA_ID'])` +
+  `loadDefaults()` + cast `Number(paramDefaults.value.DEFAULT_IVA_ID)`.
+  `applyFormDefaults()` chiama l'endpoint dedicato e applica
+  `form.value.iva_id = defaults.default_iva_id` (gia' int). Best-effort
+  su errore di rete.
 
-**Dipendenze**: indipendente, basso rischio. Da pianificare solo se le
-fasi 1-7 sono chiuse e c'e' bandwidth.
+**(C4) — non implementata.** Brief: "solo se profilo perf evidenzia
+bottleneck". Nessun profilo, nessun fix: regola progetto YAGNI applicata.
+
+**Dipendenze**: indipendente, basso rischio. Chiusa.
 
 ---
 

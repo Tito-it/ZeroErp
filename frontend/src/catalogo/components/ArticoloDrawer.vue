@@ -7,9 +7,9 @@ import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useArticoliStore } from '../stores/articoli'
 import { useApiHandler } from '../../core/composables/useApiHandler'
+import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
-import { useParameterDefaults } from '../../core/composables/useParameterDefaults'
-import { listArticoloUom, listArticoloComponenti, listArticoloNote } from '../api/catalogo'
+import { listArticoloUom, listArticoloComponenti, listArticoloNote, getArticoloFormDefaults } from '../api/catalogo'
 import { DRAWER_WIDTH } from '../../core/constants'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import DrawerFooter from '../../core/components/DrawerFooter.vue'
@@ -28,10 +28,8 @@ import Tag from 'primevue/tag'
 const { t } = useI18n()
 const store = useArticoliStore()
 const { execute, loading } = useApiHandler()
+const { confirmAction } = useConfirmAction()
 const isReadonly = useInjectReadonly()
-const { defaults: paramDefaults, load: loadDefaults } = useParameterDefaults(['DEFAULT_IVA_ID'])
-// Pre-fetch al setup: quando il drawer si apre il valore e' gia' in cache
-loadDefaults()
 
 const props = defineProps({
   visible: Boolean,
@@ -77,7 +75,6 @@ function defaultForm() {
     conto_contabile_vendita_id: null, conto_contabile_acquisto_id: null,
     is_composito: false, is_solo_componente: false,
     requires_serial: false,
-    attivo: true
   }
 }
 
@@ -139,13 +136,28 @@ async function loadDetail() {
     is_composito: data.is_composito || false,
     is_solo_componente: data.is_solo_componente || false,
     requires_serial: data.requires_serial || false,
-    attivo: data.attivo ?? true
   }
   // Carica riepilogo in parallelo
   await Promise.all([loadUomRiepilogo(), loadBomRiepilogo(), loadNoteRiepilogo()])
 }
 
-watch(() => props.visible, (v) => {
+// Fase 8 (A5): defaults form articolo via endpoint dedicato
+// /catalogo/articoli/form-defaults/. Tipi gia' castati lato BE.
+async function applyFormDefaults() {
+  try {
+    const res = await getArticoloFormDefaults()
+    const defaults = res.data?.data || {}
+    if (defaults.default_iva_id != null) {
+      form.value.iva_id = defaults.default_iva_id
+    }
+  } catch (err) {
+    // Best-effort: in caso di errore l'utente compila manualmente.
+    // Il warning console aiuta il debug senza disturbare l'utente.
+    console.warn('[ArticoloDrawer] form-defaults non disponibili', err)
+  }
+}
+
+watch(() => props.visible, async (v) => {
   if (!v) {
     contentReady.value = false
     return
@@ -154,9 +166,7 @@ watch(() => props.visible, (v) => {
     loadDetail()
   } else {
     resetForm()
-    if (paramDefaults.value.DEFAULT_IVA_ID) {
-      form.value.iva_id = Number(paramDefaults.value.DEFAULT_IVA_ID)
-    }
+    await applyFormDefaults()
   }
 })
 
@@ -181,7 +191,6 @@ async function handleSave() {
       is_composito: f.is_composito,
       is_solo_componente: f.is_solo_componente,
       requires_serial: f.requires_serial,
-      attivo: f.attivo,
     }
     const result = await execute(
       () => store.update(props.articoloId, payload),
@@ -216,6 +225,48 @@ async function handleSave() {
 function close() {
   emit('update:visible', false)
   emit('cancelled')
+}
+
+// Fase 7: disattivazione/riattivazione come azione di dominio.
+// L'`attivo` non passa piu' da PATCH: pulsanti dedicati con conferma
+// e refresh detail al ritorno dall'API.
+async function refreshAfterStateChange(result) {
+  if (result === null) return
+  detail.value = result
+  emit('saved', result)
+}
+
+function onConfirmDisattiva() {
+  if (!detail.value) return
+  confirmAction({
+    title: t('catalogo.disattiva_dialog_titolo'),
+    message: t('catalogo.disattiva_dialog_messaggio', { codice: detail.value.codice }),
+    acceptLabel: t('catalogo.disattiva_articolo'),
+    danger: true,
+    onAccept: async () => {
+      const result = await execute(
+        () => store.disattiva(props.articoloId),
+        { successMessage: t('catalogo.articolo_disattivato') }
+      )
+      await refreshAfterStateChange(result)
+    }
+  })
+}
+
+function onConfirmRiattiva() {
+  if (!detail.value) return
+  confirmAction({
+    title: t('catalogo.riattiva_dialog_titolo'),
+    message: t('catalogo.riattiva_dialog_messaggio', { codice: detail.value.codice }),
+    acceptLabel: t('catalogo.riattiva_articolo'),
+    onAccept: async () => {
+      const result = await execute(
+        () => store.riattiva(props.articoloId),
+        { successMessage: t('catalogo.articolo_riattivato') }
+      )
+      await refreshAfterStateChange(result)
+    }
+  })
 }
 </script>
 
@@ -301,10 +352,37 @@ function close() {
             <ToggleSwitch v-model="form.requires_serial" />
           </div>
         </div>
-        <div v-if="isEdit" class="form-grid-2col">
+        <!-- Sezione: Stato articolo (Fase 7) — disattiva/riattiva via endpoint dedicato.
+             L'`attivo` non si modifica piu' via PATCH: pulsanti context-aware con conferma. -->
+        <div v-if="isEdit && detail" class="form-grid-2col">
           <div class="form-field">
-            <label>{{ t('indirizzi.campo_attivo') }}</label>
-            <ToggleSwitch v-model="form.attivo" />
+            <label>{{ t('catalogo.field_stato_articolo') }}</label>
+            <div style="display: flex; align-items: center; gap: 0.5rem;">
+              <Tag
+                :value="detail.attivo ? t('common.active') : t('common.inactive')"
+                :severity="detail.attivo ? 'success' : 'warn'"
+              />
+              <Button
+                v-if="detail.attivo && !isReadonly"
+                :label="t('catalogo.disattiva_articolo')"
+                icon="pi pi-ban"
+                severity="danger"
+                text
+                size="small"
+                class="app-escape"
+                @click="onConfirmDisattiva"
+              />
+              <Button
+                v-if="!detail.attivo && !isReadonly"
+                :label="t('catalogo.riattiva_articolo')"
+                icon="pi pi-check"
+                severity="success"
+                text
+                size="small"
+                class="app-escape"
+                @click="onConfirmRiattiva"
+              />
+            </div>
           </div>
         </div>
 

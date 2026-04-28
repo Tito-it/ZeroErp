@@ -29,7 +29,7 @@ import InputText from 'primevue/inputtext'
 import ToggleSwitch from 'primevue/toggleswitch'
 import DatePicker from 'primevue/datepicker'
 
-const { t } = useI18n()
+const { t, te } = useI18n()
 const isReadonly = useInjectReadonly()
 const { execute, loading } = useApiHandler()
 
@@ -222,7 +222,20 @@ async function onDelete(row) {
   }
 }
 
-// Scopo: azioni di riga UoM operativa (modifica + elimina; delete nascosta per is_base).
+// Scopo: azioni di riga UoM operativa (modifica + elimina).
+// Capability eliminazione (Fase 6) letta dalla vista DB:
+// row.puo_eliminarsi + row.motivo_non_eliminabile (solo is_base blocca).
+// L'azione resta visibile anche quando non eseguibile per mantenere la
+// affordance e mostrare il motivo via tooltip.
+function deleteUomTooltip(row) {
+  if (row.puo_eliminarsi) return t('common.delete')
+  const motivo = row.motivo_non_eliminabile
+  if (!motivo) return t('common.delete')
+  // Difensivo: motivo nuovo non mappato i18n -> label generica.
+  const key = `catalogo.motivo_${motivo.toLowerCase()}`
+  return te(key) ? t(key) : t('common.delete')
+}
+
 function buildRigaActions(row) {
   return [
     {
@@ -236,7 +249,8 @@ function buildRigaActions(row) {
       label: t('common.delete'),
       icon: 'pi pi-trash',
       severity: 'danger',
-      visible: !row.is_base,
+      disabled: !row.puo_eliminarsi,
+      tooltip: deleteUomTooltip(row),
       command: () => onDelete(row),
     },
   ]

@@ -21,7 +21,9 @@
 //   </Column>
 //
 // Formato azione:
-//   { key, label, icon, severity?, visible?: bool, disabled?: bool, command: () => void }
+//   { key, label, icon, severity?, visible?: bool, disabled?: bool, tooltip?: string, command: () => void }
+// Quando `tooltip` e' valorizzato sostituisce `label` come tooltip del bottone
+// inline (utile per spiegare il motivo di un disabled, es. capability di riga).
 //
 // Severity supportate (controllano colore inline + colore voce menu):
 //   undefined     -> blu    (app-manage-btn)  — default
@@ -103,7 +105,7 @@ function toggle(event) {
       :severity="inlineButtonSeverity(a)"
       :class="inlineButtonClass(a)"
       :disabled="disabled || a.disabled === true"
-      v-tooltip.top="a.label"
+      v-tooltip.top="a.tooltip || a.label"
       @click="runAction(a, $event)"
     />
   </span>

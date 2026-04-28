@@ -1,6 +1,6 @@
 # Analisi refactor frontend amm-software
 
-<!-- markdownlint-disable MD036 MD031 -->
+<!-- markdownlint-disable MD036 MD031 MD028 -->
 
 > Obiettivo: identificare cosa nel frontend Amm. Software e' logica di dominio
 > o sicurezza mascherata da presentazione, cosa e' UX defense-in-depth legittima
@@ -14,9 +14,17 @@
 >
 > Riferimenti vincolanti:
 >
-> - `docs/it/dev/api.md` - envelope API, command/read, errori strutturati.
+> - `docs/it/dev/api.md` - envelope API, command/read, errori strutturati,
+>   handle_post_json, base view AdminAPIView, codici errore strutturati.
 > - `docs/it/dev/frontend/frontend-standards.md` - pattern lista/drawer,
->   readonly, RowActionsMenu, i18n.
+>   readonly, RowActionsMenu, i18n, transizioni a stato terminale con data,
+>   permessi v2 livello oggetto.
+> - `docs/it/dev/backend/catalogo-building-block-backend.md` - inventario
+>   building block riusabili (PayloadValidator, map_integrity_error,
+>   ParameterService, PermissionResolver, IsAdminZeroERP, EmailDispatchService).
+> - `docs/it/dev/frontend/catalogo-building-block-frontend.md` - inventario
+>   composable e componenti FE riusabili (useParameterDefaults, LookupSelect,
+>   RoundingModeSelect, RowActionsMenu, useReadonlyMode, useGlobalLookup).
 > - `docs/it/dev/work-done/frontend/guida-sviluppo-frontend.md` - convenzioni
 >   Vue, store, API client.
 > - `docs/it/dev/work-in-progress/refactor-operatore-emittenti.md` - evoluzione
@@ -24,13 +32,37 @@
 > - `docs/it/dev/work-in-progress/permessi-e-autorizzazioni-v3.md` - modello
 >   autorizzativo.
 > - `docs/it/dev/work-in-progress/analisi-refactor.frontend-catalogo.md` -
->   pattern `form-defaults`, lookup tecnici e capability di riga.
+>   pattern `form-defaults`, lookup tecnici e capability di riga
+>   (Fasi 1..8 LANDED 2026-04-28).
 > - `docs/it/dev/work-in-progress/analisi-refactor.frontend-vendite.md` -
 >   pattern `available_actions`, `non_editable_fields`, command data-driven.
 >
 > Principio: il frontend amm-software deve restare presentazione + UX. Il
 > backend/DB decidono contratti auth, capability, ambito emittenti, default
 > operativi, invarianti fiscali, fonti audit e policy email.
+
+> **Note di revisione 2026-04-28**: il documento e' stato riallineato
+> dopo lettura di `agents.md`, `api.md`, dei building block backend/frontend
+> e di `frontend-standards.md`. Punti emersi di rilievo:
+>
+> - L'inventario sottodomini era incompleto: aggiunti `OperatorePermessiDrawer`,
+>   `OperatoriNonAssegnatiBanner`, override oggetti (permessi v2) e
+>   `EmailLogsListView` (vedi A14, A15, A16).
+> - L'endpoint per i metodi rounding va modellato come **lookup statico
+>   per dominio** (`/<dominio>/lookup/rounding-modes/`), non come lookup
+>   generico `core/lookup/codici/?rel=...`: rounding mode resta enum tecnico
+>   Python con single source of truth lato BE (precedente landed: catalogo
+>   Fase 1, `lookupUomRoundingModes`, vedi A6 corretto).
+> - Gli endpoint `POST /operatori/<id>/disabilita/` e `/riattiva/` esistono
+>   gia' (`amm_software/api/urls_v1.py:14-15`) ma il FE non li usa: oggi
+>   passa da PATCH `attivo` (vedi C7).
+> - Il drawer operatore in CREATE non deve ricevere `ruolo_applicativo`
+>   nel payload: per l'amm-software interno e' implicitamente `OPERATORE`.
+>   La proposta payload A1 e' stata corretta in tal senso.
+> - `TipoRuoloTipoIndirizzoDrawer.vue` usa gia' `isReadOnlyEffective` su
+>   tutti i campi (riga 33, 126, 132..152): il bug A10 e' meno grave del
+>   descritto — riguarda solo il return `true` di `canSave` in edit mode,
+>   che resta defense-in-depth incompleta.
 
 ---
 
@@ -47,7 +79,10 @@
 | Matrici configurazione | `UtilitiesTipiRuolo*`, `TipiRuoloTipiIndirizzo*` | Buona struttura, ma lookup fallback e impatti di disattivazione devono essere guidati da API. |
 | Categorie clienti/listini | `CategoriaCliente*`, `CategoriaClienteListino*` | CRUD/matrice coerente; enum variazione e campi immutabili vanno esposti come lookup/metadata. |
 | Email operative | `EmailAccountDrawer.vue`, `EmailTemplateDrawer.vue`, `EmailLogsListView.vue` | Funzionale ma acerbo: default SMTP cablati, readonly non effettivo, titoli hardcoded, preview HTML da blindare. |
-| Audit | `AuditLogView.vue` | Utile per debug admin, ma filtri tabella e summary snapshot sono cablati nel FE. |
+| Audit | `AuditLogView.vue` | Utile per debug admin, ma filtri tabella e summary snapshot sono cablati nel FE. La whitelist chiavi snapshot include ancora `ruolo_sistema` (legacy multi-face). |
+| Drawer permessi standalone | `OperatorePermessiDrawer.vue` | Apre `OperatorePermessiTab` in drawer indipendente dalla lista operatori. Eredita gli stessi bug readonly/scope del tab (A4/A3). |
+| Banner non-assegnati | `OperatoriNonAssegnatiBanner.vue` | Banner di transizione refactor operatore-emittenti: dipende dall'endpoint `setup-status/` (gia' attivo lato BE). UX corretta. |
+| Email log | `EmailLogsListView.vue` | Lista paginata read-only. Stati `PENDING/SENT/FAILED/RETRY` cablati in `constants.js`: vanno esposti come lookup statico per coerenza (vedi A16). |
 
 ---
 
@@ -103,15 +138,24 @@ Contratto proposto:
   "username": "m.rossi",
   "email": "m.rossi@example.test",
   "password": "...",
-  "ruolo_applicativo": "OPERATORE",
   "is_super_admin": false,
   "attivo": true,
+  "qualifica_id": 4,
   "unita_organizzativa_id": 10
 }
 ```
 
-Il backend puo' continuare a tradurre internamente verso campi legacy, ma il FE
-non deve piu' conoscere `ruolo_sistema` per nuove scritture.
+`ruolo_applicativo` **non** appartiene al payload del drawer Operatore: per
+amm-software interno e' implicitamente `OPERATORE` (la classificazione e'
+una proprieta' della veste, decisa dal namespace API + dal binding identita
+digitale). Le vesti `CLIENTE_PORTALE`, `FORNITORE_PORTALE`, `SHOP_CUSTOMER`
+nascono da flussi di invito dedicati (`/anagrafiche/clienti|fornitori/<id>/invita-portale|shop/`),
+non da questo drawer.
+
+Il backend puo' continuare a tradurre internamente verso campi legacy
+(`ruolo_sistema`), ma il FE non deve piu' conoscere `ruolo_sistema` per
+nuove scritture. La compat-translation lato BE e' temporanea e va dismessa
+quando tutti i consumer admin sono migrati (vedi C4).
 
 ### A2. Invito, disable e demote super-admin come capability backend
 
@@ -139,6 +183,12 @@ Il detail operatore deve esporre:
 Il frontend renderizza bottoni e messaggi. La protezione resta nel service/DB.
 In parallelo, la disabilitazione dovrebbe passare da command espliciti
 (`disabilita`, `riattiva`) invece di un generico PATCH `attivo`.
+
+> **Nota — comandi gia' esposti**: `POST /api/v1/amm-software/operatori/<id>/disabilita/`
+> e `POST .../riattiva/` esistono in `amm_software/api/urls_v1.py:14-15`
+> (`OperatoriDisabilitaView`/`OperatoriRiattivaView`). Mancano solo lato FE
+> i wrapper API + il pulsante azione di riga: si tratta quindi di lavoro
+> FE-only, non di un nuovo endpoint da progettare. Vedi C7.
 
 ### A3. Scope emittenti: dichiarare `GLOBAL|SINGLE|MULTI`
 
@@ -220,23 +270,53 @@ defense-in-depth, ma il resolver soggetto potrebbe gia' restituire
 
 ### A6. Rounding method/range come lookup tecnico, non costante JS
 
-- `frontend/src/amministrazione/constants.js:73`
+- `frontend/src/amministrazione/constants.js:78` (`ROUNDING_METHODS` 4 codici:
+  `HALF_UP/HALF_DOWN/UP/DOWN` — niente `HALF_EVEN`)
+- `frontend/src/amministrazione/constants.js:90` (`ROUNDING_DECIMALI_RANGE` 0..6)
 - `frontend/src/amministrazione/components/EmittenteFiscaleUtilitiesTab.vue:16`
 - `frontend/src/amministrazione/components/EmittenteFiscaleUtilitiesTab.vue:84`
+- `frontend/src/amministrazione/components/EmittenteFiscaleDrawer.vue:13`
+  (rounding_policy)
 
 `ROUNDING_METHODS` e `ROUNDING_DECIMALI_RANGE` sono allineati ai CHECK DB, ma
 questo allineamento e' manuale. Ogni modifica al constraint richiede una patch
 frontend.
 
-Pattern proposto:
+**Pattern allineato al precedente catalogo (Fase 1 LANDED 2026-04-28)**:
+il rounding mode resta un **enum tecnico Python** (single source of truth lato
+BE, costante `_ROUNDING_MODE_VALIDI` nel service del dominio), non una tabella
+DB con FK-surrogato. Il FE consuma l'enum tramite **lookup statico per dominio**
+seguendo la convenzione `/api/v1/<dominio>/lookup/rounding-modes/` gia'
+in produzione su `catalogo`.
+
+Endpoint proposti:
 
 ```text
-GET /api/v1/config/lookups/rounding-methods/
+# Esistente, gia' landed (catalogo Fase 1) — ritorna 5 codici (incl. HALF_EVEN)
+GET /api/v1/catalogo/lookup/rounding-modes/
+
+# Nuovo, per amm-software — ritorna i 4 codici ammessi dal CHECK
+# anagrafiche.emittenti_fiscali_utilities + emittenti_fiscali.rounding_policy
+GET /api/v1/amm-software/lookup/rounding-modes/
+
+# Form-defaults (max-decimals, default method, ecc.) via parameters cascata
+# user → group → emittente → default (esiste gia' ParameterService)
 GET /api/v1/amm-software/emittenti-fiscali/form-defaults/
 ```
 
+Pattern FE atteso (riuso building block catalogo):
+
+- Composable: `useGlobalLookup` chiavato su `amm.emittenti_rounding_modes`
+  (cache modulo-level, dedup thundering-herd) — vedi
+  `catalogo-building-block-frontend.md` riga 24.
+- Componente: nuovo `EmittenteRoundingModeSelect.vue` simmetrico a
+  `RoundingModeSelect.vue` (catalogo). Display `"descrizione (codice)"`.
+- Consumer: `EmittenteFiscaleDrawer` (rounding_policy) +
+  `EmittenteFiscaleUtilitiesTab` (metodo_arrotondamento_importi).
+
 Il FE puo' mantenere severity/label presentation, ma non il set ammesso e il
-range tecnico.
+range tecnico. Il range decimali (0..6) puo' arrivare nello stesso payload
+del lookup come metadata della collezione (`{rows: [...], range: {min, max}}`).
 
 ### A7. Matrice utility emittente: capability e defaults riga
 
@@ -328,9 +408,21 @@ Il drawer permette un fallback generico su `config.tipi_indirizzi`. Il backend
 deve comunque validare "non se stesso", cicli e fallback non applicabili; lato
 FE sarebbe meglio ricevere `fallback_options` gia' filtrate per ruolo/tipo.
 
-Bug immediato: `canSave` non considera `isReadOnlyEffective`. In edit ritorna
-sempre `true`, quindi il footer puo' ancora inviare `handleSave()` anche quando
-i campi sono disabilitati.
+Stato readonly (verificato in codice): tutti i campi usano gia'
+`:disabled="isReadOnlyEffective"` (riga 33, 132..152). Il `DrawerFooter`
+nasconde Salva quando readonly, per standard. Il bug residuo e' difensivo:
+`canSave` ritorna `true` in edit a prescindere dal readonly (riga 76).
+Short-circuit consigliato in `handleSave`:
+
+```js
+async function handleSave() {
+  if (isReadOnlyEffective.value) return
+  // ... resto invariato
+}
+```
+
+Plus: in cima al `canSave` aggiungere `&& !isReadOnlyEffective.value` per
+coerenza dichiarativa.
 
 ### A11. Email account: defaults e readonly
 

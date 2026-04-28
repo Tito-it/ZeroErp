@@ -32,6 +32,7 @@ from apps.catalogo.db.catalogo_uom_repository import (
 from apps.core.api.payload_validators import paginated_envelope
 from apps.core.db.lock_columns_repository import LockColumnsRepository
 from apps.core.services.error_manager import ErrorManager
+from apps.core.services.parameter_service import ParameterService
 
 _ORDER_BY_VALIDI: frozenset[str] = frozenset(ARTICOLI_ORDER_COLUMNS.keys())
 _ORDER_DIR_VALIDI: frozenset[str] = frozenset({"asc", "desc"})
@@ -618,6 +619,17 @@ def _extract_articolo_payload(
             message="Payload articolo non valido.",
             detail="uom_id e' immutabile e non puo' essere aggiornato dopo la creazione.",
             context={"field": "uom_id"},
+            function_name=function_name,
+            log_to_db=True,
+        )
+        # Fase 7: attivo non passa da PATCH, solo dagli endpoint dedicati
+        # /disattiva/ e /riattiva/ (azione di dominio, pattern AS/400).
+        ErrorManager.require(
+            "attivo" not in payload,
+            code="E_CATALOGO_VALIDATION",
+            message="Payload articolo non valido.",
+            detail="attivo non e' modificabile via PATCH: usa gli endpoint /disattiva/ o /riattiva/.",
+            context={"field": "attivo"},
             function_name=function_name,
             log_to_db=True,
         )
@@ -1383,6 +1395,61 @@ def fn_disattiva_articolo(articolo_id: UUID | str) -> dict[str, object]:
         log_to_db=False,
     )
     return fn_get_articolo(articolo_id)
+
+
+# Scopo: Riattiva un articolo (Fase 7) — pattern simmetrico a fn_disattiva.
+# La fn DB `catalogo.fn_riattiva_articolo` e' idempotente su gia' attivo
+# e raise E_ARTICOLO_NOT_FOUND se l'id non esiste. Pre-flight via
+# fn_get_articolo (uniforma il NOT_FOUND con il codice catalogo).
+# I figli (UoM operative, righe BoM) restano invariati: l'admin li
+# riattiva esplicitamente in azioni successive (pattern AS/400).
+def fn_riattiva_articolo(articolo_id: UUID | str) -> dict[str, object]:
+    function_name = "catalogo.catalogo_service.fn_riattiva_articolo"
+    articolo = fn_get_articolo(articolo_id)
+    if articolo.get("attivo") is True:
+        return articolo
+
+    repository = CatalogoRepository()
+    # Eventuali violazioni di vincoli (es. nuovi UNIQUE su attivo) tradotte
+    # in errore applicativo coerente con create/update. I trigger plpgsql
+    # P0001 (parent inattivo) viaggiano come DatabaseError e li gestisce
+    # il middleware: cattura mirata qui solo per IntegrityError noti.
+    try:
+        repository.reactivate_articolo(articolo_id)
+    except IntegrityError as exc:
+        _translate_articolo_integrity_error(exc, function_name=function_name)
+    return fn_get_articolo(articolo_id)
+
+
+# Scopo: Restituisce defaults pre-compilazione form articolo (Fase 8 — A5).
+#        Centralizza il consumo dei parametri usati dal FE per il form di
+#        creazione articolo (oggi: DEFAULT_IVA_ID). Tipi gia' castati: il FE
+#        non duplica il cast da stringa generico di get_defaults. Parametri
+#        malformati ritornano None (best-effort, no raise: il form mostra
+#        comunque, l'utente seleziona manualmente).
+def fn_get_articolo_form_defaults(
+    *,
+    django_user_id: int | None = None,
+    group_ids: list[int] | None = None,
+    emittente_fiscale_id: int | None = None,
+) -> dict[str, object]:
+    service = ParameterService()
+    raw = service.get_defaults(
+        ["DEFAULT_IVA_ID"],
+        django_user_id=django_user_id,
+        group_ids=group_ids,
+        emittente_fiscale_id=emittente_fiscale_id,
+    )
+
+    default_iva_id: int | None = None
+    raw_iva = raw.get("DEFAULT_IVA_ID")
+    if raw_iva is not None:
+        try:
+            default_iva_id = int(raw_iva)
+        except (ValueError, TypeError):
+            default_iva_id = None
+
+    return {"default_iva_id": default_iva_id}
 
 
 # Scopo: Restituisce lookup articoli limitato per autocomplete cross-dominio.

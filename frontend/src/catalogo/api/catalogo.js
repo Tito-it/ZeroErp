@@ -25,8 +25,19 @@ export function disattivaArticolo(id) {
   return api.post(`${BASE}/articoli/${id}/disattiva/`, {})
 }
 
+export function riattivaArticolo(id) {
+  return api.post(`${BASE}/articoli/${id}/riattiva/`, {})
+}
+
 export function lookupArticoli(params = {}) {
   return api.get(`${BASE}/articoli/lookup/`, { params })
+}
+
+// Fase 8 (A5): defaults pre-compilazione form articolo (oggi default_iva_id).
+// Tipi gia' castati lato BE: il FE non duplica il cast da stringa generico
+// di /core/parameters/defaults/.
+export function getArticoloFormDefaults() {
+  return api.get(`${BASE}/articoli/form-defaults/`)
 }
 
 // --- UoM operative articolo ---
