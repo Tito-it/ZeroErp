@@ -55,10 +55,10 @@ jobs:
     
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version-file: ".python-version"
           cache: "pip"
@@ -89,7 +89,7 @@ jobs:
  # Dicembre 2025 passaggio a Liquibase 5 Community
    # Versione Liquibase 5 (Community)       
       - name: Setup Liquibase 5 (oss)
-        uses: liquibase/setup-liquibase@v2
+        uses: liquibase/setup-liquibase@v2.1.1
         with:
           version: '5.0.2'
           edition: 'oss'
@@ -104,7 +104,7 @@ jobs:
       
 
       - name: Cache pre-commit
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.cache/pre-commit
           key: pre-commit-${{ runner.os }}-${{ hashFiles('.pre-commit-config.yaml') }}
@@ -200,7 +200,7 @@ jobs:
           python scripts/build_docs_zensical.py
 
       - name: Deploy to GitHub Pages (no artifacts)
-        uses: peaceiris/actions-gh-pages@v3
+        uses: peaceiris/actions-gh-pages@v4
         with:
           deploy_key: ${{ secrets.ACTIONS_DEPLOY_KEY }}
           external_repository: Tito-it/ZeroERP-Docs
@@ -247,7 +247,7 @@ jobs:
 
         steps:
           - name: Checkout repository
-            uses: actions/checkout@v4
+            uses: actions/checkout@v6
 
           - name: Read Python version from .python-version
             id: pyver
