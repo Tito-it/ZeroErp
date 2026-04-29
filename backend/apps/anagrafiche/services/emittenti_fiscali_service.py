@@ -22,6 +22,15 @@ from apps.anagrafiche.error_codes import E_ANAG_NOT_FOUND, E_ANAG_VALIDAZIONE
 from apps.anagrafiche.services._validators import create_with_dedup, optional_str, require_str
 from apps.core.api.payload_validators import optional_bool, optional_int, optional_uuid
 from apps.core.services.error_manager import ErrorManager
+from apps.core.services.non_editable_fields_helper import (
+    compute_non_editable_fields,
+)
+
+
+# Gap rispetto al registro DB `dbops.vw_non_editable_fields` (Fase 4 — A9).
+# `codice` e `soggetto_id` sono semanticamente immutabili sull'emittente
+# fiscale: cambiarli equivale a creare un altro emittente.
+_EMITTENTE_NON_EDITABLE_GAPS: tuple[str, ...] = ("codice", "soggetto_id")
 
 
 class EmittentiFiscaliService:
@@ -39,6 +48,9 @@ class EmittentiFiscaliService:
         return self._repo.list_emittenti_fiscali(**params)
 
     # Scopo: Dettaglio completo di un emittente fiscale.
+    #        Arricchito con `non_editable_fields` (Fase 4 — A9):
+    #        il FE costruisce il drawer di edit usando questi metadata,
+    #        coerente con altre matrici amm-software.
     def get_emittente(self, emittente_id: int) -> dict[str, Any]:
         emittente = self._repo.get_emittente(emittente_id)
         ErrorManager.require(
@@ -47,7 +59,15 @@ class EmittentiFiscaliService:
             message="Emittente fiscale non trovato.",
         )
         assert emittente is not None
+        emittente["non_editable_fields"] = self.get_non_editable_fields()
         return emittente
+
+    # Scopo: Lista `non_editable_fields` per anagrafica emittente (Fase 4 — A9).
+    def get_non_editable_fields(self) -> list[str]:
+        return compute_non_editable_fields(
+            "anagrafiche", "emittenti_fiscali",
+            gaps=_EMITTENTE_NON_EDITABLE_GAPS,
+        )
 
     # =================================================================
     # Creazione
@@ -201,6 +221,13 @@ class EmittentiFiscaliBillingAccountService:
         self._parent = EmittentiFiscaliService()
 
     # Scopo: Lista paginata mapping BA per un emittente con search.
+    #        Ogni riga arricchita con `can_remove=True` (Fase 4 — A7).
+    #        Il BA mapping non ha PATCH (solo CREATE/DELETE), quindi
+    #        `can_update`/`can_configure` non sono applicabili: il pattern
+    #        slot/override si limita a "esiste/non esiste". Espongo
+    #        `can_remove` come capability esplicita per allineare la UI col
+    #        pattern utility (delega gating al BE invece di derivarlo dalla
+    #        presenza del record).
     def list_mapping(
         self,
         emittente_id: int,
@@ -212,7 +239,7 @@ class EmittentiFiscaliBillingAccountService:
         order_dir: str = "asc",
     ) -> tuple[list[dict[str, Any]], int]:
         soggetto_ruolo_id = self._parent._resolve_soggetto_ruolo_id(emittente_id)
-        return self._repo.list_by_emittente(
+        rows, total = self._repo.list_by_emittente(
             soggetto_ruolo_id,
             search=search,
             limit=limit,
@@ -220,6 +247,9 @@ class EmittentiFiscaliBillingAccountService:
             order_by=order_by,
             order_dir=order_dir,
         )
+        for row in rows:
+            row["can_remove"] = True
+        return rows, total
 
     # Scopo: Crea un nuovo mapping BA->emittente.
     #        Se billing_account_id e' None nel payload, viene creato il default globale
@@ -278,9 +308,29 @@ class EmittentiFiscaliUtilitiesService:
         self._parent = EmittentiFiscaliService()
 
     # Scopo: Lista record utility per un emittente.
+    #        Ogni riga arricchita con capability data-driven (Fase 4 — A7):
+    #          - `can_configure`: slot vuoto + emittente attivo + utility attiva
+    #            (l'admin puo' creare la configurazione)
+    #          - `can_update`: record configurato (l'admin puo' modificare i parametri)
+    #          - `can_remove`: record configurato (l'admin puo' rimuovere)
+    #        Il FE usa queste capability per gating UI invece di derivare da
+    #        `record_id`. L'autorita' resta il trigger DB
+    #        (`child_requires_active_parent`, `guard_utility_tipo_ruolo`).
     def list_records(self, emittente_id: int) -> list[dict[str, Any]]:
         soggetto_ruolo_id = self._parent._resolve_soggetto_ruolo_id(emittente_id)
-        return self._repo.list_by_emittente(soggetto_ruolo_id)
+        emittente = self._parent._repo.get_emittente(emittente_id)
+        emittente_attivo = bool(emittente and emittente.get("attivo"))
+
+        rows = self._repo.list_by_emittente(soggetto_ruolo_id)
+        for row in rows:
+            is_configured = row.get("record_id") is not None
+            utility_attiva = bool(row.get("utility_attiva", False))
+            row["can_configure"] = (
+                (not is_configured) and emittente_attivo and utility_attiva
+            )
+            row["can_update"] = is_configured
+            row["can_remove"] = is_configured
+        return rows
 
     # Scopo: Crea un record utility per l'emittente.
     #        Campi obbligatori: utility_id, arrotondamento_importi_dec, metodo_arrotondamento_importi.

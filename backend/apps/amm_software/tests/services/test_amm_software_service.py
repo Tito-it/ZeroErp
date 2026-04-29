@@ -40,6 +40,15 @@ Indice test eseguiti:
 22) test_get_emittente_form_defaults_rounding_half_even_rejected — HALF_EVEN -> None (no listini UoM)
 23) test_list_emittente_rounding_modes_ok — 4 codici nell'ordine canonico
 24) test_list_emittente_rounding_modes_coverage — descrizioni coprono enum (no HALF_EVEN)
+25) test_list_audit_sources_delegates_to_repo — service ritorna 8 sorgenti
+26) test_list_email_log_stati_ok — 4 codici default-first SENT/PENDING/RETRY/FAILED
+27) test_list_email_log_stati_coverage — descrizioni coprono _EMAIL_LOG_STATI_VALIDI
+28) test_get_audit_summary_param_invalido_code_assente — E_AUDIT_SUMMARY_PARAM_NON_VALIDO
+29) test_get_audit_summary_param_invalido_storico_id_zero — E_AUDIT_SUMMARY_PARAM_NON_VALIDO
+30) test_get_audit_summary_source_non_trovato — E_AUDIT_SOURCE_NON_TROVATO
+31) test_get_audit_summary_snapshot_non_trovato — E_AUDIT_SNAPSHOT_NON_TROVATO
+32) test_get_audit_summary_ok — happy path con jsonb diff/summary
+33) test_run_or_raise_super_admin_guard_traduce_E_OPERATORE_SCOPE_PARAM_NON_VALIDO — refactor Fase 5
 """
 
 from unittest import TestCase
@@ -574,3 +583,138 @@ class TestListEmittenteRoundingModes(TestCase):
         self.assertEqual(descritti, svc._ROUNDING_MODE_VALIDI_EMITTENTE)
         self.assertNotIn("HALF_EVEN", descritti)
         self.assertEqual(descritti, {"UP", "DOWN", "HALF_UP", "HALF_DOWN"})
+
+
+# =================================================================
+# Fase 5 — audit hardening + email log lookup
+# =================================================================
+
+
+class TestListAuditSources(TestCase):
+    """Lookup audit sources delega al repo (Fase 5 — A13)."""
+
+    @patch(REPO)
+    def test_list_audit_sources_delegates_to_repo(self, mock_repo_cls):
+        from apps.amm_software.services.amm_software_service import AmmSoftwareService
+
+        sample_sources = [
+            {"code": "user_override_aree", "label_key": "amm.audit_tabella_override_aree", "area_funzionale": "PERMESSI"},
+            {"code": "identita_digitali", "label_key": "amm.audit_tabella_identita", "area_funzionale": "AUTH"},
+        ]
+        mock_repo_cls.return_value.list_audit_sources.return_value = sample_sources
+
+        result = AmmSoftwareService().list_audit_sources()
+
+        self.assertEqual(result, sample_sources)
+        mock_repo_cls.return_value.list_audit_sources.assert_called_once_with()
+
+
+class TestListEmailLogStati(TestCase):
+    """Lookup statico stati email log (Fase 5)."""
+
+    def test_list_email_log_stati_ok(self):
+        from apps.amm_software.services.amm_software_service import AmmSoftwareService
+
+        result = AmmSoftwareService().list_email_log_stati()
+
+        codici = [r["codice"] for r in result]
+        # Ordering "default-first": SENT primo (stato finale piu' frequente).
+        self.assertEqual(codici, ["SENT", "PENDING", "RETRY", "FAILED"])
+        for row in result:
+            self.assertTrue(row["descrizione"])
+            self.assertIsInstance(row["ordering"], int)
+
+    def test_list_email_log_stati_coverage(self):
+        # Difesa coerenza enum/descrizioni: aggiungere un codice in
+        # _EMAIL_LOG_STATI_DESCRIZIONI senza aggiornare _VALIDI fa fallire qui.
+        from apps.amm_software.services import amm_software_service as svc
+
+        descritti = {codice for codice, _desc, _ord in svc._EMAIL_LOG_STATI_DESCRIZIONI}
+        self.assertEqual(descritti, svc._EMAIL_LOG_STATI_VALIDI)
+
+
+class TestGetAuditSummary(TestCase):
+    """Validazioni get_audit_summary + traduzione errori (Fase 5)."""
+
+    @patch(REPO)
+    def test_get_audit_summary_param_invalido_code_assente(self, mock_repo_cls):
+        del mock_repo_cls
+        from apps.amm_software.services.amm_software_service import AmmSoftwareService
+
+        with self.assertRaises(ServiceError) as ctx:
+            AmmSoftwareService().get_audit_summary(None, 5)
+        self.assertEqual(ctx.exception.code, "E_AUDIT_SUMMARY_PARAM_NON_VALIDO")
+
+    @patch(REPO)
+    def test_get_audit_summary_param_invalido_storico_id_zero(self, mock_repo_cls):
+        del mock_repo_cls
+        from apps.amm_software.services.amm_software_service import AmmSoftwareService
+
+        with self.assertRaises(ServiceError) as ctx:
+            AmmSoftwareService().get_audit_summary("user_override_aree", 0)
+        self.assertEqual(ctx.exception.code, "E_AUDIT_SUMMARY_PARAM_NON_VALIDO")
+
+    @patch(REPO)
+    def test_get_audit_summary_source_non_trovato(self, mock_repo_cls):
+        # Whitelist `vw_audit_sources` non contiene il code: errore esplicito
+        # prima di toccare la funzione DB (defense-in-depth).
+        from apps.amm_software.services.amm_software_service import AmmSoftwareService
+
+        mock_repo_cls.return_value.list_audit_sources.return_value = [
+            {"code": "user_override_aree", "label_key": "amm.x", "area_funzionale": "PERMESSI"},
+        ]
+
+        with self.assertRaises(ServiceError) as ctx:
+            AmmSoftwareService().get_audit_summary("source_inesistente", 5)
+        self.assertEqual(ctx.exception.code, "E_AUDIT_SOURCE_NON_TROVATO")
+
+    @patch(REPO)
+    def test_get_audit_summary_snapshot_non_trovato(self, mock_repo_cls):
+        # Repo ritorna None (DB ha sollevato E_AUDIT_SNAPSHOT_NON_TROVATO,
+        # tradotto a None dal repo) -> service mappa a ServiceError 404.
+        from apps.amm_software.services.amm_software_service import AmmSoftwareService
+
+        mock_repo_cls.return_value.list_audit_sources.return_value = [
+            {"code": "user_override_aree", "label_key": "amm.x", "area_funzionale": "PERMESSI"},
+        ]
+        mock_repo_cls.return_value.get_audit_summary.return_value = None
+
+        with self.assertRaises(ServiceError) as ctx:
+            AmmSoftwareService().get_audit_summary("user_override_aree", 9999)
+        self.assertEqual(ctx.exception.code, "E_AUDIT_SNAPSHOT_NON_TROVATO")
+
+    @patch(REPO)
+    def test_get_audit_summary_ok(self, mock_repo_cls):
+        # Happy path: shape jsonb {summary, diff} preservato.
+        from apps.amm_software.services.amm_software_service import AmmSoftwareService
+
+        mock_repo_cls.return_value.list_audit_sources.return_value = [
+            {"code": "user_override_aree", "label_key": "amm.x", "area_funzionale": "PERMESSI"},
+        ]
+        mock_repo_cls.return_value.get_audit_summary.return_value = {
+            "summary": "2 modifiche",
+            "diff": [{"field": "livello", "old": "TUTTO", "new": "LETTURA"}],
+        }
+
+        result = AmmSoftwareService().get_audit_summary("user_override_aree", 7)
+
+        self.assertEqual(result["summary"], "2 modifiche")
+        self.assertEqual(len(result["diff"]), 1)
+
+
+class TestSuperAdminGuardScopeParam(TestCase):
+    """Refactor Fase 5: il guard distingue E_OPERATORE_SCOPE_PARAM_NON_VALIDO."""
+
+    def test_run_or_raise_super_admin_guard_traduce_E_OPERATORE_SCOPE_PARAM_NON_VALIDO(self):
+        # Il refactor DB di Fase 2 ha sostituito RAISE 22023 generico con
+        # codice stabile. Il guard wrapper deve riconoscerlo e mapparlo.
+        from apps.amm_software.services.amm_software_service import (
+            _run_or_raise_super_admin_guard,
+        )
+
+        def repo_call():
+            raise DatabaseError("E_OPERATORE_SCOPE_PARAM_NON_VALIDO: scope_mode invalido")
+
+        with self.assertRaises(ServiceError) as ctx:
+            _run_or_raise_super_admin_guard(repo_call)
+        self.assertEqual(ctx.exception.code, "E_OPERATORE_SCOPE_PARAM_NON_VALIDO")

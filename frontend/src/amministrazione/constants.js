@@ -57,18 +57,11 @@ export function buildLivelloOptions(t) {
   ]
 }
 
-// Scopo: Costruisce le opzioni tipo tabella audit per Select filtro.
-export function buildAuditTabellaOptions(t) {
-  return [
-    { label: t('amm.audit_tabella_tutti'), value: null },
-    { label: t('amm.audit_tabella_override_aree'), value: 'user_override_aree' },
-    { label: t('amm.audit_tabella_override_azioni'), value: 'user_override_azioni' },
-    { label: t('amm.audit_tabella_emittenti'), value: 'user_emittenti_fiscali' },
-    { label: t('amm.audit_tabella_ruolo'), value: 'risorse_umane_auth_user' },
-    { label: t('amm.audit_tabella_profilo_aree'), value: 'profili_reparto_aree' },
-    { label: t('amm.audit_tabella_profilo_azioni'), value: 'profili_reparto_azioni' }
-  ]
-}
+// Fase 5 (LANDED): le opzioni filtro audit-log arrivano dal lookup BE
+// /amm-software/lookup/audit-sources/ (vw_audit_sources, single source DB).
+// Vedi AuditLogView.vue: usa useGlobalLookup('amm.audit_sources') con
+// label tradotta via t(label_key). Il vecchio buildAuditTabellaOptions e' stato
+// rimosso (era hardcoded e mancava override_oggetti + identita_digitali).
 
 // --- Arrotondamento importi ---
 // Fase 3 (LANDED): l'enum dei modi di arrotondamento e' gestito dal lookup
@@ -80,30 +73,21 @@ export function buildAuditTabellaOptions(t) {
 export const ROUNDING_DECIMALI_RANGE = { MIN: 0, MAX: 6 }
 
 // --- Email log stati ---
-export const EMAIL_LOG_STATO = {
-  PENDING: 'PENDING',
-  SENT: 'SENT',
-  FAILED: 'FAILED',
-  RETRY: 'RETRY'
-}
+// Fase 5 (LANDED): l'enum + le opzioni filtro arrivano dal lookup BE
+// /amm-software/lookup/email-log-stati/. Vedi EmailLogStatoSelect.vue
+// (wrapper riusabile cached con useGlobalLookup('amm.email_log_stati')).
+// Single source of truth lato BE: amm_software_service._EMAIL_LOG_STATI_VALIDI.
+//
+// `getEmailLogStatoSeverity` resta lato FE (puro mapping CSS, presentation).
+// Mantiene i 4 codici hardcoded per resilience: se il BE ne aggiungesse uno
+// nuovo, la severity ricadrebbe sul default 'info'.
 
-// Scopo: Costruisce le opzioni stato email log per Select filtro.
-export function buildEmailLogStatoOptions(t) {
-  return [
-    { label: t('amm.email_stato_tutti'), value: null },
-    { label: t('amm.email_stato_sent'), value: EMAIL_LOG_STATO.SENT },
-    { label: t('amm.email_stato_failed'), value: EMAIL_LOG_STATO.FAILED },
-    { label: t('amm.email_stato_pending'), value: EMAIL_LOG_STATO.PENDING },
-    { label: t('amm.email_stato_retry'), value: EMAIL_LOG_STATO.RETRY }
-  ]
-}
-
-// Scopo: Restituisce la severity PrimeVue per uno stato email log.
+// Scopo: Restituisce la severity PrimeVue per uno stato email log (puro CSS).
 export function getEmailLogStatoSeverity(stato) {
-  if (stato === EMAIL_LOG_STATO.SENT) return 'success'
-  if (stato === EMAIL_LOG_STATO.FAILED) return 'danger'
-  if (stato === EMAIL_LOG_STATO.RETRY) return 'warn'
-  return 'info' // PENDING
+  if (stato === 'SENT') return 'success'
+  if (stato === 'FAILED') return 'danger'
+  if (stato === 'RETRY') return 'warn'
+  return 'info' // PENDING o codice non riconosciuto
 }
 
 // --- Severity mapping riusabili ---

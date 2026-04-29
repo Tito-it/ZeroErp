@@ -82,6 +82,7 @@ _REL_CONSENTITE: frozenset[str] = frozenset(
         # --- anagrafiche ---
         "anagrafiche.categorie_clienti",
         # --- catalogo ---
+        "catalogo.uom_tipi",
         "catalogo.unita_misura",
         # --- magazzino ---
         "magazzino.ambito_causale",
@@ -117,6 +118,70 @@ LOOKUP_MAX_SOURCE_ROWS = 10_000
 class DbopsRepository:
     """Repository per funzioni generiche dbops (lookup codici, utility)."""
 
+    # Scopo: Lookup specializzato per catalogo.unita_misura. Mantiene il
+    # contratto generico id/codice/descrizione e aggiunge tipo_uom_id, usato
+    # dal frontend per filtrare conversioni globali same-type senza endpoint
+    # dedicati o combo duplicate.
+    def _list_lookup_catalogo_unita_misura(
+        self,
+        *,
+        search: str | None,
+        order_col: str,
+        order_dir: str,
+        attivo_only: bool,
+        limit: int,
+        offset: int,
+    ) -> tuple[list[dict], int]:
+        search_pattern = f"%{search.strip()}%" if search and search.strip() else None
+        order_map = {
+            "codice": "u.codice",
+            "descrizione": "u.descrizione",
+        }
+        order_column = order_map[order_col]
+
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                SELECT
+                    u.id,
+                    u.codice,
+                    NULL::text AS codice_interno,
+                    u.descrizione,
+                    u.attivo,
+                    u.tipo_uom_id,
+                    COUNT(*) OVER () AS total_count
+                  FROM catalogo.unita_misura u
+                 WHERE (%s IS FALSE OR u.attivo = true)
+                   AND (
+                       %s::text IS NULL
+                       OR u.codice ILIKE %s
+                       OR u.descrizione ILIKE %s
+                   )
+                 ORDER BY {order_column} {order_dir}, u.id
+                 LIMIT %s OFFSET %s
+                """,
+                [attivo_only, search_pattern, search_pattern, search_pattern, limit, offset],
+            )
+            rows = cursor.fetchall()
+
+        if not rows:
+            return [], 0
+
+        total_count = rows[0][6]
+        results = [
+            {
+                "id": row[0],
+                "codice": row[1],
+                "codice_interno": row[2],
+                "descrizione": row[3],
+                "attivo": row[4],
+                "codice_stabile": row[1],
+                "tipo_uom_id": row[5],
+            }
+            for row in rows
+        ]
+        return results, total_count
+
     # Scopo: Restituisce la lista dei valori lookup per una relazione config con filtro ILIKE
     # e paginazione. Chiama dbops.fn_get_lookup_codici con limit ampio per ottenere tutti i
     # record attivi e applica il filtro testo e la paginazione esternamente via SQL wrapper.
@@ -140,6 +205,16 @@ class DbopsRepository:
                 code="E_CORE_VALIDATION",
                 message="Relazione non consentita.",
                 detail=f"rel '{rel}' non è nella whitelist delle lookup consentite.",
+            )
+
+        if rel == "catalogo.unita_misura":
+            return self._list_lookup_catalogo_unita_misura(
+                search=search,
+                order_col=order_col,
+                order_dir=order_dir,
+                attivo_only=attivo_only,
+                limit=limit,
+                offset=offset,
             )
 
         # Normalizzazione: search None o stringa vuota => nessun filtro.

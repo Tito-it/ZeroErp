@@ -261,6 +261,7 @@ export const READONLY_MODELS = {
   FORNITORE: 'fornitore',
   PROMO_ARTICOLO: 'promo_articolo',
   SOGGETTO: 'soggetto',
+  UOM_TIPI: 'uom_tipi',
   UNITA_MISURA: 'unita_misura',
 }
 
@@ -305,6 +306,7 @@ export const TAB_ENTITIES = {
   STATO: 'stato',
   TIPI_RUOLO_TIPI_INDIRIZZO: 'tipi_ruolo_tipi_indirizzo',
   TOPONOMASTICA: 'toponomastica',
+  UOM_TIPI: 'uom_tipi',
   UNITA_MISURA: 'unita_misura',
   UTILITIES_TIPI_RUOLO: 'utilities_tipi_ruolo',
 }

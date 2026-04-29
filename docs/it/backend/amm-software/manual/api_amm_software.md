@@ -47,6 +47,16 @@ Base URL: `/api/v1/amm-software/`
 >   `EMITTENTE_DEFAULT_BOLLO_AUTO`/`_BOLLO_SOGLIA`/`_ROUNDING_POLICY`. Il
 >   campo `attivo` non passa per parameters (default DB gia' `true`).
 >   Pattern allineato a `ApiArticoliFormDefaults` (catalogo Fase 8).
+> - **Fase 5** (LANDED): audit hardening + email log lookup. Nuovi endpoint:
+>   `GET /lookup/audit-sources/` (§4.6, da `script.vw_audit_sources`) +
+>   `GET /lookup/email-log-stati/` (§4.7, lookup statico Python). Refactor
+>   `audit-log` list response: nuovo shape per riga (`code`/`storico_id`/
+>   `area_funzionale`/`audit: {summary, diff}`), build dinamico UNION ALL
+>   dalla vista (rimozione `_AUDIT_TABLES` hardcoded), summary calcolato
+>   inline via `script.fn_audit_summary` (no N+1). 4 codici errore stabili
+>   registrati: `E_AUDIT_SUMMARY_PARAM_NON_VALIDO`/`_SOURCE_NON_TROVATO`/
+>   `_SNAPSHOT_NON_TROVATO`/`E_OPERATORE_SCOPE_PARAM_NON_VALIDO` (refactor
+>   guard Fase 2 da RAISE 22023 a code stabile).
 
 ---
 
@@ -924,6 +934,52 @@ curl -H "Authorization: Bearer <token>" \
   "https://host/api/v1/amm-software/lookup/rounding-modes/"
 ```
 
+### 4.6 GET /api/v1/amm-software/lookup/audit-sources/ -- (Fase 5)
+
+Lookup delle sorgenti audit ammesse per la timeline `audit-log`. Single source of truth lato DB: `script.vw_audit_sources`, gia' filtrata `attivo=true` e ordinata per `code`. Sostituisce il `buildAuditTabellaOptions` hardcoded del FE legacy. Cardinalita' bassa (8 righe attuali, +2 vs legacy: `user_override_oggetti` permessi v2 + `identita_digitali` multi-face). Niente paginazione.
+
+**Response shape**: `data` e' lista nuda di `{code, label_key, area_funzionale}`.
+
+- `code`: id semantico della sorgente (es. `user_override_aree`).
+- `label_key`: chiave i18n FE (es. `amm.audit_tabella_override_aree`).
+- `area_funzionale`: enum chiuso `PERMESSI` | `AUTH` | `ANAGRAFICHE` | `EMITTENTI` | `FATTURAZIONE`. Il FE puo' raggruppare il filtro per area se serve UI.
+
+```json
+{
+  "data": [
+    { "code": "identita_digitali",      "label_key": "amm.audit_tabella_identita",         "area_funzionale": "AUTH" },
+    { "code": "profili_reparto_aree",   "label_key": "amm.audit_tabella_profilo_aree",     "area_funzionale": "PERMESSI" },
+    { "code": "user_override_oggetti",  "label_key": "amm.audit_tabella_override_oggetti", "area_funzionale": "PERMESSI" }
+  ]
+}
+```
+
+**Esempio curl:**
+
+```bash
+curl -H "Authorization: Bearer <token>" \
+  "https://host/api/v1/amm-software/lookup/audit-sources/"
+```
+
+### 4.7 GET /api/v1/amm-software/lookup/email-log-stati/ -- (Fase 5)
+
+Lookup statico degli stati possibili di un evento email log. Single source of truth lato Python: `apps/amm_software/services/amm_software_service.py::_EMAIL_LOG_STATI_VALIDI`. Niente DB. Pattern simmetrico a `/lookup/rounding-modes/`.
+
+**Response shape**: `data` e' lista nuda di 4 elementi `{codice, descrizione, ordering}`. Ordering "default-first" con `SENT` primo (stato finale piu' frequente).
+
+```json
+{
+  "data": [
+    { "codice": "SENT",    "descrizione": "Inviata",                          "ordering": 1 },
+    { "codice": "PENDING", "descrizione": "In attesa di invio",               "ordering": 2 },
+    { "codice": "RETRY",   "descrizione": "Tentativo successivo programmato", "ordering": 3 },
+    { "codice": "FAILED",  "descrizione": "Invio fallito",                    "ordering": 4 }
+  ]
+}
+```
+
+**Consumer FE**: `frontend/src/amministrazione/components/EmailLogStatoSelect.vue` (wrapper riusabile cached con `useGlobalLookup('amm.email_log_stati')`). Usato da `EmailLogsListView.vue` per il filtro stato.
+
 ---
 
 ## 5. Form-defaults emittente fiscale (Fase 3)
@@ -988,6 +1044,10 @@ curl -H "Authorization: Bearer <token>" \
 | `E_AMM_OPERATORE_NOT_FOUND` | 404 | Operatore non trovato (dettaglio, aggiorna, disabilita, riattiva, scope) |
 | `E_AMM_SCOPE_NON_AMMESSO` | 400 | (Fase 2) `scope_mode` non in `['GLOBAL','SINGLE']`, oppure `SINGLE` con array vuoto/multi-elemento |
 | `E_PROFILO_ULTIMO_SUPER_ADMIN` | 409 | (Fase 1) L'operazione (disabilita, demote, cambio scope) lascerebbe il sistema senza super admin attivi. Trigger DB `trgfn_profili_accesso_bindings_guard_ultimo_super_admin` |
+| `E_OPERATORE_SCOPE_PARAM_NON_VALIDO` | 400 | (Fase 5) `fn_change_user_emittenti_scope` rifiuta il payload (scope_mode invalido, array vuoto/multi-elemento). Codice stabile dal DB, sostituisce il `RAISE 22023` generico pre-Fase 5 |
+| `E_AUDIT_SUMMARY_PARAM_NON_VALIDO` | 400 | (Fase 5) `code` o `storico_id` assenti/malformati nella richiesta audit-summary |
+| `E_AUDIT_SOURCE_NON_TROVATO` | 400 | (Fase 5) `code` non presente in `script.vw_audit_sources` (whitelist DB) |
+| `E_AUDIT_SNAPSHOT_NON_TROVATO` | 404 | (Fase 5) `storico_id` non trovato in `storico.<code>` per il code richiesto. Sollevato dal `fn_audit_summary` con marker stabile, tradotto a 404 dal service |
 
 ## Dipendenze DB
 
@@ -1002,6 +1062,8 @@ curl -H "Authorization: Bearer <token>" \
 | `fn_get_parameter_full(...)` | `script` | **Fase 3**. Cascata risoluzione parameter user -> group -> emittente -> session -> default. Usata da `ParameterService.get_defaults` per il form-defaults emittente fiscale |
 | Seed `config.parameters` `EMITTENTE_DEFAULT_*` | `config` | **Fase 3**. 3 chiavi: `BOLLO_AUTO=false`, `BOLLO_SOGLIA=''` (= NULL applicativo), `ROUNDING_POLICY=HALF_UP`. Tutti `text NOT NULL`, cast a Python a carico del BE (helpers `_cast_param_bool`/`_cast_param_decimal`) |
 | `chk_emittenti_fiscali_rounding_policy` | `anagrafiche` | **Fase 3**. CHECK constraint sulla colonna `emittenti_fiscali.rounding_policy`: ammette **4 valori** (`UP`, `DOWN`, `HALF_UP`, `HALF_DOWN`). Niente `HALF_EVEN` (a differenza di catalogo UoM operativa). E' il riferimento per `_ROUNDING_MODE_VALIDI_EMITTENTE` lato Python |
+| `vw_audit_sources` | `script` | **Fase 5**. Vista `(code, label_key, area_funzionale)` filtrata `attivo=true` ordinata per `code`. 8 sorgenti audit (incluse `user_override_oggetti` permessi v2 + `identita_digitali` multi-face). Letta da `list_audit_sources` per il lookup e da `list_audit_log` per build dinamico delle UNION ALL |
+| `fn_audit_summary(text, bigint)` | `script` | **Fase 5**. Calcola `{summary, diff}` per uno snapshot audit. Param: `(audit_source_code, storico_id)` dove `storico_id` e' la PK riga in `storico.<code>`. Esclude le 5 colonne audit standard (`data_*`, `user_*`, `tx_id`). Solleva `E_AUDIT_SNAPSHOT_NON_TROVATO` con marker stabile |
 | `fn_crea_operatore(...)` | `anagrafiche` | Orchestratore creazione operatore (auth_user + soggetto PF + risorsa umana) |
 | `fn_sync_auth_user_is_active(INTEGER)` | `anagrafiche` | Sincronizza `auth_user.is_active` con stato identita digitale + risorsa umana |
 | `trgfn_profili_accesso_bindings_guard_ultimo_super_admin` | `config` | Trigger DB autorita' finale per anti-lockout: blocca DELETE/UPDATE binding SUPER_ADMIN se ultimo attivo. Solleva con marker `E_PROFILO_ULTIMO_SUPER_ADMIN` |

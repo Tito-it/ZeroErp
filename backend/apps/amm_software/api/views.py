@@ -468,3 +468,59 @@ class EmittenteRoundingModesLookupView(AdminAPIView):
         return success_response(
             AmmSoftwareService().list_emittente_rounding_modes()
         )
+
+
+# ================================================================== #
+# Lookup audit + email log stati (Fase 5)                              #
+# ================================================================== #
+
+
+class AuditSourcesLookupView(AdminAPIView):
+    """GET lookup sorgenti audit ammesse (Fase 5 — A13).
+
+    Single source of truth lato DB: `script.vw_audit_sources`. Sostituisce
+    `buildAuditTabellaOptions` hardcoded del FE legacy. Risposta arricchita
+    con `area_funzionale` (5 valori: PERMESSI/AUTH/ANAGRAFICHE/EMITTENTI/
+    FATTURAZIONE) per raggruppamento UI opzionale.
+
+    Cardinalita' bassa (8 righe attuali): no paginazione, lista nuda in `data`.
+    Pattern coerente con altri lookup statici amm-software.
+    """
+
+    @extend_schema(
+        responses={200: inline_serializer(
+            name="AmmAuditSourcesLookupResp",
+            fields={
+                "data": serializers.ListField(child=serializers.DictField()),
+                "meta": serializers.DictField(required=False),
+            },
+        )},
+    )
+    # Scopo: Restituisce la lista delle sorgenti audit ammesse.
+    def get(self, request: Request) -> JsonResponse:
+        del request
+        return success_response(AmmSoftwareService().list_audit_sources())
+
+
+class EmailLogStatiLookupView(AdminAPIView):
+    """GET lookup statico stati email log (Fase 5).
+
+    Single source of truth in `amm_software_service._EMAIL_LOG_STATI_VALIDI`
+    + `_EMAIL_LOG_STATI_DESCRIZIONI`. Niente DB: 4 codici fissi
+    (SENT/PENDING/RETRY/FAILED) gestiti dal `EmailDispatchService`.
+    Pattern simmetrico a `EmittenteRoundingModesLookupView`.
+    """
+
+    @extend_schema(
+        responses={200: inline_serializer(
+            name="AmmEmailLogStatiLookupResp",
+            fields={
+                "data": serializers.ListField(child=serializers.DictField()),
+                "meta": serializers.DictField(required=False),
+            },
+        )},
+    )
+    # Scopo: Restituisce la lista statica degli stati email log.
+    def get(self, request: Request) -> JsonResponse:
+        del request
+        return success_response(AmmSoftwareService().list_email_log_stati())

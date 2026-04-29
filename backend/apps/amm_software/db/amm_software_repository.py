@@ -10,9 +10,10 @@ from __future__ import annotations
 
 import json
 import re
-from typing import Any
+from functools import lru_cache
+from typing import Any, ClassVar
 
-from django.db import connection, transaction
+from django.db import DatabaseError, connection, transaction
 
 from apps.core.db._helpers import row_to_dict, rows_to_list
 
@@ -818,25 +819,97 @@ class AmmSoftwareRepository:
     # Audit log globale permessi                                           #
     # ================================================================== #
 
-    _AUDIT_TABLES: list[tuple[str, str]] = [
-        ("storico.user_override_aree", "user_override_aree"),
-        ("storico.user_override_azioni", "user_override_azioni"),
-        ("storico.user_emittenti_fiscali", "user_emittenti_fiscali"),
-        ("storico.risorse_umane_auth_user", "risorse_umane_auth_user"),
-        ("storico.profili_reparto_aree", "profili_reparto_aree"),
-        ("storico.profili_reparto_azioni", "profili_reparto_azioni"),
-    ]
-
     _OP_LABELS: dict[int, str] = {1: "INIZIALE", 2: "MODIFICA", 3: "ELIMINAZIONE"}
 
-    # Scopo: Restituisce la timeline globale degli eventi audit permessi.
-    # Paginata, filtri opzionali: data_da, data_a, tabella.
-    # Colonne ammesse per ordinamento audit log (whitelist)
+    # Colonne ammesse per ordinamento audit log (whitelist).
     _AUDIT_ORDER_COLUMNS: frozenset[str] = frozenset({
         "timestamp", "valid_from", "user_modifica", "user_insert",
         "tabella", "tipo_operazione",
     })
 
+    # Scopo: Restituisce le sorgenti audit ammesse (Fase 5).
+    #        Single source of truth lato DB: `script.vw_audit_sources` gia'
+    #        filtrata `attivo=true` e ordinata per `code`. Sostituisce l'ex
+    #        `_AUDIT_TABLES` hardcoded. La vista include 8 sorgenti (incluse
+    #        `user_override_oggetti` permessi v2 e `identita_digitali`
+    #        multi-face). Cardinalita' bassa, no paginazione.
+    #
+    #        Cache modulo-level via `lru_cache`: la vista cambia solo con
+    #        migration (no mutazioni runtime), 8 righe immutabili durante
+    #        il processo. Evita 2 round-trip DB per ogni `get_audit_summary`
+    #        (validazione code + fn call). Test/hot-reload: `cache_clear()`.
+    @staticmethod
+    @lru_cache(maxsize=1)
+    def _list_audit_sources_cached() -> tuple[tuple[str, str, str], ...]:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT code, label_key, area_funzionale
+                  FROM script.vw_audit_sources
+                """
+            )
+            return tuple((r[0], r[1], r[2]) for r in cursor.fetchall())
+
+    def list_audit_sources(self) -> list[dict[str, Any]]:
+        return [
+            {"code": code, "label_key": label_key, "area_funzionale": area}
+            for code, label_key, area in self._list_audit_sources_cached()
+        ]
+
+    # Scopo: Calcola summary + diff per uno snapshot audit (Fase 5).
+    #        Wrapper su `script.fn_audit_summary(p_audit_source_code, p_storico_id)`.
+    #        Ritorna dict {"summary": "<N> modifiche", "diff": [{field, old, new}]}.
+    #        Convenzione "snapshot mancante -> None": il fn DB solleva
+    #        `E_AUDIT_SNAPSHOT_NON_TROVATO` come marker stabile; il repo lo
+    #        traduce in None per coerenza con il pattern lookup-by-id (idiom
+    #        `feedback_db_doc_first`). Il service mappa None ->
+    #        ServiceError(E_AUDIT_SNAPSHOT_NON_TROVATO) preservando il code.
+    #        Altri DatabaseError sono ri-sollevati (gestiti dal middleware).
+    def get_audit_summary(self, code: str, storico_id: int) -> dict[str, Any] | None:
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    "SELECT script.fn_audit_summary(%s, %s) AS audit",
+                    [code, storico_id],
+                )
+                row = cursor.fetchone()
+        except DatabaseError as exc:
+            if "E_AUDIT_SNAPSHOT_NON_TROVATO" in str(exc):
+                return None
+            raise
+        if not row or row[0] is None:
+            return None
+        # Il driver Postgres ritorna jsonb come dict Python.
+        return row[0]
+
+    # Defensive: i `code` e `area_funzionale` arrivano da `script.vw_audit_sources`
+    # (whitelist DB) ma vengono interpolati in f-string nella query
+    # (`storico.{code}`, `fn_audit_summary('{code}', ...)`,
+    # `'{area}' AS area_funzionale`). Se in futuro la vista esponesse valori
+    # con caratteri inattesi (improbabile, ma mitigation lowcost), l'iniezione
+    # SQL diventerebbe possibile. Le regex riflettono la convenzione naming:
+    #   - code: nomi tabella PG snake_case lowercase
+    #   - area: enum chiuso UPPERCASE (PERMESSI/AUTH/ANAGRAFICHE/...)
+    _AUDIT_CODE_RE: ClassVar = re.compile(r"^[a-z_][a-z0-9_]*$")
+    _AUDIT_AREA_RE: ClassVar = re.compile(r"^[A-Z][A-Z_]*$")
+
+    # Scopo: Restituisce la timeline globale degli eventi audit permessi (Fase 5).
+    # Paginata, filtri opzionali: data_da, data_a, tabella.
+    #
+    # Build dinamico delle UNION ALL dalla vista `script.vw_audit_sources`:
+    # niente piu' lista hardcoded `_AUDIT_TABLES`. Quando il team DB aggiunge
+    # una sorgente alla vista, l'audit log la vede automaticamente.
+    #
+    # Ogni branch UNION espone:
+    #   - `code` (= label_key sorgente, era `tabella`),
+    #   - `storico_id` = `s.id` (PK riga in storico.<tabella>, NECESSARIO per
+    #     `fn_audit_summary` — l'id della riga sorgente non basta),
+    #   - `area_funzionale` (5 valori: PERMESSI/AUTH/ANAGRAFICHE/EMITTENTI/FATTURAZIONE),
+    #   - `summary` + `diff` calcolati inline via LATERAL `fn_audit_summary`
+    #     (1 query, no N+1 sulle pagine).
+    #
+    # Whitelist `vw_audit_sources` controllata dal DB + regex paranoia
+    # `_AUDIT_CODE_RE` per defense-in-depth.
     def list_audit_log(
         self,
         *,
@@ -848,26 +921,45 @@ class AmmSoftwareRepository:
         limit: int = 50,
         offset: int = 0,
     ) -> tuple[list[dict[str, Any]], int]:
-        unions: list[str] = []
-        params: list[Any] = []
+        sources = self.list_audit_sources()
+        if not sources:
+            return [], 0
 
-        for schema_table, label in self._AUDIT_TABLES:
-            if tabella and tabella != label:
+        unions: list[str] = []
+        for src in sources:
+            code = src["code"]
+            area = src["area_funzionale"]
+            if tabella and tabella != code:
+                continue
+            # Defensive: code/area arrivano da vw_audit_sources (whitelist DB)
+            # ma sono interpolati in f-string. Regex check come safety net se
+            # la vista esponesse mai un nome anomalo. Salta la sorgente: log
+            # la dropperebbe silenziosamente, ma la vista e' under DB control.
+            if not self._AUDIT_CODE_RE.match(code):
+                continue
+            if not self._AUDIT_AREA_RE.match(area):
                 continue
             unions.append(
-                f"SELECT '{label}' AS tabella, "
+                f"SELECT '{code}' AS code, "
+                f"'{area}' AS area_funzionale, "
+                f"s.id AS storico_id, "
                 f"s.valid_from, s.tipo_operazione, s.user_insert, "
-                f"s.snapshot "
-                f"FROM {schema_table} s"
+                f"s.snapshot, "
+                f"script.fn_audit_summary('{code}', s.id) AS audit "
+                f"FROM storico.{code} s"  # noqa: S608
             )
 
         if not unions:
             return [], 0
 
-        sql = f"WITH events AS ({' UNION ALL '.join(unions)}) "
-        sql += "SELECT tabella, valid_from, tipo_operazione, user_insert, "
-        sql += "snapshot, COUNT(*) OVER() AS total_count "
-        sql += "FROM events WHERE true "
+        params: list[Any] = []
+        sql = f"WITH events AS ({' UNION ALL '.join(unions)}) "  # noqa: S608
+        sql += (
+            "SELECT code, area_funzionale, storico_id, valid_from, "
+            "tipo_operazione, user_insert, snapshot, audit, "
+            "COUNT(*) OVER() AS total_count "
+            "FROM events WHERE true "
+        )
 
         if data_da:
             sql += "AND valid_from >= %s::timestamptz "
@@ -876,13 +968,17 @@ class AmmSoftwareRepository:
             sql += "AND valid_from < (%s::date + INTERVAL '1 day') "
             params.append(data_a)
 
-        # Ordinamento sicuro (whitelist). Il frontend manda il nome campo
-        # come appare nel risultato; mappiamo al nome colonna SQL.
-        _col_map = {"timestamp": "valid_from", "user_modifica": "user_insert"}
+        # Ordinamento sicuro (whitelist). Il FE manda il nome campo come
+        # appare nel risultato; mappiamo al nome colonna SQL.
+        _col_map = {
+            "timestamp": "valid_from",
+            "user_modifica": "user_insert",
+            "tabella": "code",
+        }
         safe_col = _col_map.get(order_by, order_by) if order_by else None
         if safe_col and safe_col in self._AUDIT_ORDER_COLUMNS:
             direction = "ASC" if order_dir and order_dir.upper() == "ASC" else "DESC"
-            sql += f"ORDER BY {safe_col} {direction}, valid_from DESC "
+            sql += f"ORDER BY {safe_col} {direction}, valid_from DESC "  # noqa: S608
         else:
             sql += "ORDER BY valid_from DESC "
         sql += "LIMIT %s OFFSET %s"
@@ -895,14 +991,20 @@ class AmmSoftwareRepository:
         if not rows:
             return [], 0
 
-        total_count = rows[0][5]
+        total_count = rows[0][8]
         events = [
             {
+                "code": row[0],
+                # Manteniamo `tabella` come alias di `code` per retrocompat
+                # con consumer FE legacy. Nuovi consumer usano `code`.
                 "tabella": row[0],
-                "timestamp": row[1].isoformat() if row[1] else None,
-                "tipo_operazione": self._OP_LABELS.get(row[2], str(row[2])),
-                "user_modifica": row[3],
-                "snapshot": row[4],
+                "area_funzionale": row[1],
+                "storico_id": row[2],
+                "timestamp": row[3].isoformat() if row[3] else None,
+                "tipo_operazione": self._OP_LABELS.get(row[4], str(row[4])),
+                "user_modifica": row[5],
+                "snapshot": row[6],
+                "audit": row[7],  # {"summary": "...", "diff": [...]}
             }
             for row in rows
         ]

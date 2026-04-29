@@ -11,6 +11,7 @@ from apps.anagrafiche.api.views_categorie_clienti import (
 )
 from apps.anagrafiche.api.views_categorie_clienti_listini import (
     CategorieClientiListiniDetailView,
+    CategorieClientiListiniTipiVariazioneLookupView,
     CategorieClientiListiniView,
 )
 from apps.anagrafiche.api.views_clienti import ClientiDetailView, ClientiView, UtilitiesManualLookupView
@@ -197,5 +198,6 @@ urlpatterns = [
     #   GET /api/v1/core/lookup/codici/?rel=anagrafiche.categorie_clienti_listini
     # (tabella inserita in apps/core/db/dbops_repository.py:_REL_CONSENTITE).
     path("categorie-clienti-listini/", CategorieClientiListiniView.as_view(), name="anagrafiche-categorie-clienti-listini-list"),
+    path("categorie-clienti-listini/lookup/tipi-variazione/", CategorieClientiListiniTipiVariazioneLookupView.as_view(), name="anagrafiche-categorie-clienti-listini-tipi-variazione"),
     path("categorie-clienti-listini/<int:record_id>/", CategorieClientiListiniDetailView.as_view(), name="anagrafiche-categorie-clienti-listini-detail"),
 ]

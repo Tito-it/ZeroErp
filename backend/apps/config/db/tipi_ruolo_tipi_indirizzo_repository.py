@@ -188,3 +188,26 @@ class TipiRuoloTipiIndirizzoRepository:
         with connection.cursor() as cursor:
             cursor.execute(sql, vals)
             return cursor.rowcount > 0
+
+    # Scopo: Sotto-matrice attiva del ruolo per il calcolo `fallback_options`
+    #        (Fase 4 — A10). Ritorna tutte le righe attive del ruolo con i
+    #        loro fallback, cosi' il service puo' costruire il grafo dei
+    #        fallback (DFS) ed escludere candidati in catena con la riga
+    #        corrente. Una sola query per detail, niente N+1.
+    def list_fallback_chain_for_ruolo(self, tipo_ruolo_id: int) -> list[dict[str, Any]]:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT trti.tipo_indirizzo_id,
+                       COALESCE(ti.codice_interno, ti.codice) AS codice,
+                       ti.descrizione,
+                       trti.fallback_tipo_indirizzo_id
+                  FROM config.tipi_ruolo_tipi_indirizzo trti
+                  JOIN config.tipi_indirizzi ti ON ti.id = trti.tipo_indirizzo_id
+                 WHERE trti.tipo_ruolo_id = %s
+                   AND trti.attivo = true
+                 ORDER BY ti.descrizione, trti.tipo_indirizzo_id
+                """,
+                [tipo_ruolo_id],
+            )
+            return rows_to_list(cursor)

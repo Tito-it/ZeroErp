@@ -34,6 +34,12 @@ E_AMM_VALIDAZIONE = "E_AMM_VALIDAZIONE"
 E_AMM_NOT_FOUND = "E_AMM_OPERATORE_NOT_FOUND"
 E_AMM_SCOPE_NON_AMMESSO = "E_AMM_SCOPE_NON_AMMESSO"
 
+# Fase 5 audit hardening — codici stabili dal team DB.
+E_AUDIT_SUMMARY_PARAM_NON_VALIDO = "E_AUDIT_SUMMARY_PARAM_NON_VALIDO"
+E_AUDIT_SOURCE_NON_TROVATO = "E_AUDIT_SOURCE_NON_TROVATO"
+E_AUDIT_SNAPSHOT_NON_TROVATO = "E_AUDIT_SNAPSHOT_NON_TROVATO"
+E_OPERATORE_SCOPE_PARAM_NON_VALIDO = "E_OPERATORE_SCOPE_PARAM_NON_VALIDO"
+
 # Scope mode ammessi post Q2 (refactor operatore-emittenti). MULTI e'
 # architetturalmente chiuso dal vincolo UNIQUE(auth_user_id) su
 # config.user_emittenti_fiscali. Il valore arriva sia dalla fn DB
@@ -87,6 +93,22 @@ _EMITTENTE_FORM_DEFAULTS_CODES: tuple[str, ...] = (
 # Espono i metadata gia' nella response Fase 3 per non avere breaking change
 # quando la fonte diventera' DB-driven.
 _EMITTENTE_NON_EDITABLE_FIELDS: tuple[str, ...] = ("codice", "soggetto_id")
+
+# Fase 5 — Lookup statico stati email log.
+# Single source of truth lato Python: l'enum e' un set chiuso (PENDING, SENT,
+# FAILED, RETRY) gestito dal `EmailDispatchService`/log writer, non c'e' una
+# tabella DB di config. Pattern simmetrico ai rounding modes Fase 3.
+# Ordering "default-first": SENT come stato finale piu' frequente.
+_EMAIL_LOG_STATI_VALIDI: frozenset[str] = frozenset(
+    {"SENT", "PENDING", "RETRY", "FAILED"}
+)
+
+_EMAIL_LOG_STATI_DESCRIZIONI: tuple[tuple[str, str, int], ...] = (
+    ("SENT",    "Inviata",                                  1),
+    ("PENDING", "In attesa di invio",                       2),
+    ("RETRY",   "Tentativo successivo programmato",         3),
+    ("FAILED",  "Invio fallito",                            4),
+)
 
 
 # Scopo: Traduce il nuovo contract multi-face (is_super_admin + attivo) nel
@@ -144,11 +166,24 @@ def _run_or_raise_super_admin_guard(repo_call: Callable[[], None]) -> None:
     try:
         repo_call()
     except DatabaseError as exc:
-        if _E_PROFILO_ULTIMO_SUPER_ADMIN in str(exc):
+        msg = str(exc)
+        if _E_PROFILO_ULTIMO_SUPER_ADMIN in msg:
             raise ServiceError(
                 code=_E_PROFILO_ULTIMO_SUPER_ADMIN,
                 message="Impossibile rimuovere l'ultimo super admin attivo.",
-                detail=str(exc),
+                detail=msg,
+            ) from exc
+        # Fase 5: il refactor DB di Fase 2 ha sostituito `RAISE EXCEPTION 22023`
+        # generico con codice stabile `E_OPERATORE_SCOPE_PARAM_NON_VALIDO` per
+        # i guard di `fn_change_user_emittenti_scope` (es. scope_mode invalido,
+        # array vuoto/multi-elemento). Lo distinguiamo da E_AMM_SCOPE_NON_AMMESSO
+        # (validazione applicativa pre-call) e dal guard "ultimo SA" (semantica
+        # diversa). Trigger DB resta autorita' finale.
+        if E_OPERATORE_SCOPE_PARAM_NON_VALIDO in msg:
+            raise ServiceError(
+                code=E_OPERATORE_SCOPE_PARAM_NON_VALIDO,
+                message="Parametri scope operatore non validi.",
+                detail=msg,
             ) from exc
         raise
 
@@ -557,9 +592,64 @@ class AmmSoftwareService:
     def get_permessi_riepilogo(self, **params) -> dict:
         return self._repo.get_permessi_riepilogo(**params)
 
-    # Scopo: Audit log globale modifiche permessi.
+    # Scopo: Audit log globale modifiche permessi (Fase 5 — A13/A16).
+    #        Ogni evento ora include `code`/`storico_id`/`area_funzionale` +
+    #        `audit: {summary, diff}` calcolato inline da `fn_audit_summary`.
     def list_audit_log(self, **params) -> tuple[list, int]:
         return self._repo.list_audit_log(**params)
+
+    # Scopo: Lookup statico sorgenti audit ammesse (Fase 5 — A13).
+    #        Single source of truth lato DB: `script.vw_audit_sources`.
+    #        Sostituisce `buildAuditTabellaOptions` hardcoded FE.
+    def list_audit_sources(self) -> list[dict[str, Any]]:
+        return self._repo.list_audit_sources()
+
+    # Scopo: Calcola summary + diff per uno snapshot audit (Fase 5 — A13).
+    #        Wrapper validato su `fn_audit_summary(code, storico_id)`.
+    #        Errori:
+    #          - `E_AUDIT_SUMMARY_PARAM_NON_VALIDO` se code/storico_id assenti
+    #            o malformati (storico_id non int positivo).
+    #          - `E_AUDIT_SOURCE_NON_TROVATO` se code non e' in vw_audit_sources.
+    #          - `E_AUDIT_SNAPSHOT_NON_TROVATO` se la fn DB non trova lo snapshot.
+    def get_audit_summary(self, code: str | None, storico_id: int | None) -> dict[str, Any]:
+        ErrorManager.require(
+            isinstance(code, str) and bool(code.strip()),
+            code=E_AUDIT_SUMMARY_PARAM_NON_VALIDO,
+            message="Codice sorgente audit obbligatorio.",
+        )
+        ErrorManager.require(
+            isinstance(storico_id, int) and storico_id > 0,
+            code=E_AUDIT_SUMMARY_PARAM_NON_VALIDO,
+            message="ID storico audit non valido.",
+        )
+        assert code is not None and storico_id is not None  # type narrowing
+        normalized_code = code.strip()
+        valid_codes = {row["code"] for row in self._repo.list_audit_sources()}
+        ErrorManager.require(
+            normalized_code in valid_codes,
+            code=E_AUDIT_SOURCE_NON_TROVATO,
+            message="Sorgente audit non riconosciuta.",
+            context={"code": normalized_code},
+        )
+        result = self._repo.get_audit_summary(normalized_code, storico_id)
+        ErrorManager.require(
+            result is not None,
+            code=E_AUDIT_SNAPSHOT_NON_TROVATO,
+            message="Snapshot audit non trovato.",
+            context={"code": normalized_code, "storico_id": storico_id},
+        )
+        assert result is not None
+        return result
+
+    # Scopo: Lookup statico stati email log (Fase 5).
+    #        Single source of truth in `_EMAIL_LOG_STATI_DESCRIZIONI`. Niente
+    #        DB: enum chiuso (4 valori) gestito dal log writer. Pattern
+    #        simmetrico ai rounding modes Fase 3.
+    def list_email_log_stati(self) -> list[dict[str, object]]:
+        return [
+            {"codice": codice, "descrizione": descrizione, "ordering": ordering}
+            for codice, descrizione, ordering in _EMAIL_LOG_STATI_DESCRIZIONI
+        ]
 
 
 # Scopo: Invalida token JWT operatore via blacklist SimpleJWT (best-effort).

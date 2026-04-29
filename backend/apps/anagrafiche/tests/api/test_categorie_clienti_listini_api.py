@@ -59,16 +59,24 @@ class TestGet(_BaseApiTest):
         mock_svc_cls.return_value.list_matrice.return_value = (
             [{"id": 1, "categoria_codice": "STANDARD", "listino_codice": "LST01"}], 1,
         )
+        # Fase 4: la view inietta non_editable_fields nell'envelope.
+        mock_svc_cls.return_value.get_non_editable_fields.return_value = [
+            "categoria_cliente_id", "classe_utenza_id",
+            "emittente_soggetto_ruolo_id", "utility_id",
+        ]
         resp = self.client.get(_BASE)
         self.assertEqual(resp.status_code, 200)
         body = resp.json()
         self.assertEqual(body["data"]["count"], 1)
+        self.assertIn("non_editable_fields", body["data"])
+        self.assertIn("categoria_cliente_id", body["data"]["non_editable_fields"])
 
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(_PERM, return_value=True)
     @patch(_SVC)
     def test_get_list_with_filters(self, mock_svc_cls, _perm, _auth):
         mock_svc_cls.return_value.list_matrice.return_value = ([], 0)
+        mock_svc_cls.return_value.get_non_editable_fields.return_value = []
         resp = self.client.get(
             _BASE
             + "?categoria_cliente_id=1&utility_id=2&listino_id=4&valid_at=2026-06-01"
@@ -84,10 +92,18 @@ class TestGet(_BaseApiTest):
     @patch(_PERM, return_value=True)
     @patch(_SVC)
     def test_get_detail_ok(self, mock_svc_cls, _perm, _auth):
-        mock_svc_cls.return_value.get_matrice.return_value = {"id": 7}
+        # Fase 4: il service inietta non_editable_fields direttamente nel detail.
+        mock_svc_cls.return_value.get_matrice.return_value = {
+            "id": 7,
+            "non_editable_fields": [
+                "categoria_cliente_id", "classe_utenza_id",
+                "emittente_soggetto_ruolo_id", "utility_id",
+            ],
+        }
         resp = self.client.get(_BASE + "7/")
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.json()["data"]["id"], 7)
+        self.assertIn("non_editable_fields", resp.json()["data"])
 
 
 class TestPost(_BaseApiTest):

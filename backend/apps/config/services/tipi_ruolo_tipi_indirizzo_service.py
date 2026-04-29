@@ -18,6 +18,9 @@ from apps.config.db.tipi_ruolo_tipi_indirizzo_repository import (
     TipiRuoloTipiIndirizzoRepository,
 )
 from apps.core.services.error_manager import ErrorManager
+from apps.core.services.non_editable_fields_helper import (
+    compute_non_editable_fields,
+)
 from apps.core.services.payload_helpers import (
     PayloadValidator,
     map_integrity_error,
@@ -75,6 +78,15 @@ _UPDATE_KEYS: frozenset[str] = frozenset({
 # FK immutabili — tentativi di modifica rifiutati.
 _IMMUTABLE_FKS: frozenset[str] = frozenset({"tipo_ruolo_id", "tipo_indirizzo_id"})
 
+# Gap rispetto al registro DB `dbops.vw_non_editable_fields` (Fase 4 — A9).
+# Le 2 dimensioni della matrice (ruolo, tipo_indirizzo) sono semanticamente
+# immutabili (cambiarle = rimpiazzare la riga, vedi `_IMMUTABLE_FKS`).
+# Esposte come metadata per il drawer di edit FE.
+_NON_EDITABLE_GAPS: tuple[str, ...] = (
+    "tipo_indirizzo_id",
+    "tipo_ruolo_id",
+)
+
 
 class TipiRuoloTipiIndirizzoService:
     """Service admin per la matrice tipi_ruolo x tipi_indirizzo."""
@@ -113,6 +125,10 @@ class TipiRuoloTipiIndirizzoService:
         )
 
     # Scopo: Dettaglio singola riga matrice; solleva not found se assente.
+    #        Arricchito con `non_editable_fields` + `fallback_options`
+    #        (Fase 4 — A9/A10): il FE costruisce il drawer di edit usando
+    #        questi metadata, niente round-trip aggiuntivo per la lookup
+    #        dei tipi indirizzo candidati come fallback.
     def get_matrice(self, record_id: int) -> dict[str, Any]:
         self._v.guard_positive_int(record_id, field="record_id")
         result = self._repo.get_matrice(record_id)
@@ -123,7 +139,65 @@ class TipiRuoloTipiIndirizzoService:
             context={"record_id": record_id},
         )
         assert result is not None
+        result["non_editable_fields"] = self.get_non_editable_fields()
+        result["fallback_options"] = self._compute_fallback_options(
+            tipo_ruolo_id=result["tipo_ruolo_id"],
+            tipo_indirizzo_id=result["tipo_indirizzo_id"],
+        )
         return result
+
+    # Scopo: Lista `non_editable_fields` per la matrice (Fase 4 — A9).
+    def get_non_editable_fields(self) -> list[str]:
+        return compute_non_editable_fields(
+            "config", "tipi_ruolo_tipi_indirizzo",
+            gaps=_NON_EDITABLE_GAPS,
+        )
+
+    # Scopo: Calcola la lista dei tipi indirizzo candidati come fallback per
+    #        la riga (tipo_ruolo_id, tipo_indirizzo_id) (Fase 4 — A10).
+    #        Esclude:
+    #          - self-reference (un tipo non puo' essere fallback di se stesso);
+    #          - cicli: se la catena di fallback del candidato C porta al
+    #            tipo corrente, C creerebbe un loop A->B->...->A.
+    #
+    #        Carica una sola volta la sotto-matrice del ruolo dal repo e
+    #        costruisce la mappa `tipo_indirizzo_id -> fallback_id` in
+    #        memoria. La detection ciclo via DFS con `visited` set ferma
+    #        anche cicli pre-esistenti senza dipendere dal `depth limit`.
+    def _compute_fallback_options(
+        self,
+        *,
+        tipo_ruolo_id: int,
+        tipo_indirizzo_id: int,
+    ) -> list[dict[str, Any]]:
+        rows = self._repo.list_fallback_chain_for_ruolo(tipo_ruolo_id)
+        fallback_map: dict[int, int | None] = {
+            r["tipo_indirizzo_id"]: r["fallback_tipo_indirizzo_id"] for r in rows
+        }
+
+        def leads_to_self(start_id: int) -> bool:
+            visited: set[int] = set()
+            cur: int | None = start_id
+            while cur is not None and cur not in visited:
+                if cur == tipo_indirizzo_id:
+                    return True
+                visited.add(cur)
+                cur = fallback_map.get(cur)
+            return False
+
+        options: list[dict[str, Any]] = []
+        for r in rows:
+            candidate_id = r["tipo_indirizzo_id"]
+            if candidate_id == tipo_indirizzo_id:
+                continue  # self-reference
+            if leads_to_self(candidate_id):
+                continue  # cycle
+            options.append({
+                "tipo_indirizzo_id": candidate_id,
+                "codice": r["codice"],
+                "descrizione": r["descrizione"],
+            })
+        return options
 
     # =================================================================
     # Creazione
