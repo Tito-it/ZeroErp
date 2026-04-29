@@ -1,0 +1,60 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# ------------------------------------------------------------
+# Loader CSV per dbops.audit_sources (Fase 5 P1 2026-04-29).
+#
+# Pattern coerente con 20250715-01-upsert_parameters: runOnChange
+# rileva la modifica del CSV (aggiunta/rimozione/edit di righe) e
+# riapplica via loadUpdateData con primaryKey:id.
+#
+# Per aggiungere una nuova storico audit-abile:
+#   1. ALTER (se necessario) la tabella sorgente con storicizza/tx_id
+#   2. dbops.fn_run_automations(... STORICO ...) -> crea storico.<table>
+#   3. Append riga in 80_data/sql/dbops/audit_sources.csv
+# Nessun cambio di schema richiesto.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20260429-08-upsert-audit-sources-mctit.yaml
+
+  - changeSet:
+      id: 20260429-08-upsert-audit-sources
+      author: mctit
+      failOnError: true
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: dbops
+            tableName: audit_sources
+      changes:
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/dbops/audit_sources.csv
+            tableName: audit_sources
+            schemaName: dbops
+            separator: ","
+            encoding: UTF-8
+            nullValue: "NULL"
+            primaryKey: "id"
+
+            columns:
+              - column: { name: id, type: STRING }
+              - column: { name: code, type: STRING }
+              - column: { name: storico_table, type: STRING }
+              - column: { name: storico_pk_col, type: STRING }
+              - column: { name: label_key, type: STRING }
+              - column: { name: area_funzionale, type: STRING }
+              - column: { name: attivo, type: STRING }
+              - column: { name: data_insert, type: STRING }
+              - column: { name: user_insert, type: STRING }
+              - column:
+                  name: data_update
+                  type: STRING
+                  defaultValue: "NOW()"
+              - column: { name: user_update, type: STRING }
+              - column: { name: tx_id, type: uuid }
+              - column: { name: storicizza, type: STRING }
