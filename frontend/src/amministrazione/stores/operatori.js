@@ -54,7 +54,16 @@ export const useOperatoriStore = defineStore('amm-operatori', () => {
   const overrideAree = ref([])
   const overrideAzioni = ref([])
   const overrideOggetti = ref([])
-  const emittentiScope = ref([])
+  // Fase 2 multi-face: shape dichiarativo da fn DB
+  // `script.fn_get_user_emittenti_scope`. Sostituisce la vecchia lista grezza.
+  const emittentiScope = ref({
+    scope_mode: 'GLOBAL',
+    emittenti_ids: [],
+    emittente_descrizione: null,
+    allowed_scope_modes: ['GLOBAL', 'SINGLE'],
+    can_change_scope: true,
+    change_scope_reason: null,
+  })
 
   async function fetchList() {
     loading.value = true
@@ -155,15 +164,16 @@ export const useOperatoriStore = defineStore('amm-operatori', () => {
     emitDataChanged(TAB_ENTITIES.OPERATORE, authUserId)
   }
 
-  // --- Emittenti scope ---
+  // --- Emittenti scope (Fase 2 multi-face: scope dichiarativo) ---
   async function fetchEmittentiScope(authUserId) {
     const res = await getEmittentiScope(authUserId)
-    emittentiScope.value = res.data.data.results
+    emittentiScope.value = res.data.data
   }
 
-  async function saveEmittentiScope(authUserId, emittenteIds) {
-    const res = await putEmittentiScope(authUserId, emittenteIds)
-    emittentiScope.value = res.data.data.results
+  // payload: { scope_mode: 'GLOBAL'|'SINGLE', emittenti_ids?: number[] }
+  async function saveEmittentiScope(authUserId, payload) {
+    const res = await putEmittentiScope(authUserId, payload)
+    emittentiScope.value = res.data.data
     return res.data.data
   }
 

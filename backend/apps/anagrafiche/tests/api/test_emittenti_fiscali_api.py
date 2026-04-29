@@ -27,6 +27,8 @@ Indice test eseguiti:
 12) test_ba_post_default — POST crea mapping default globale (senza ba_id)
 13) test_ba_delete_ok — DELETE mapping
 14) test_ba_delete_not_found — DELETE mapping inesistente
+14b) test_ba_summary_ok — GET summary mapping (has_default + count_specifici)
+14c) test_ba_summary_empty — GET summary su emittente senza mapping
 15) test_utilities_list — GET record utility per emittente
 16) test_utilities_post_ok — POST crea record utility
 17) test_utilities_post_missing_required — POST senza campi obbligatori
@@ -328,6 +330,36 @@ class TestEmittentiFiscaliBillingAccountApi(JwtMockedApiTest):
         )
         resp = self.client.delete("/api/v1/anagrafiche/emittenti-fiscali/1/billing-account/999/")
         self.assertIn(resp.status_code, (400, 404, 422))
+
+    @patch(_AUTH, return_value=(Mock(), None))
+    @patch(_PERM, return_value=True)
+    @patch(_BA_SVC)
+    def test_ba_summary_ok(self, mock_svc_cls, _perm, _auth):
+        """GET /billing-account/summary/ — riepilogo mapping (has_default + count_specifici)."""
+        mock_svc_cls.return_value.summary_mapping.return_value = {
+            "has_default": True,
+            "count_specifici": 7,
+        }
+        resp = self.client.get("/api/v1/anagrafiche/emittenti-fiscali/1/billing-account/summary/")
+        self.assertEqual(resp.status_code, 200)
+        body = resp.json()
+        self.assertTrue(body["data"]["has_default"])
+        self.assertEqual(body["data"]["count_specifici"], 7)
+
+    @patch(_AUTH, return_value=(Mock(), None))
+    @patch(_PERM, return_value=True)
+    @patch(_BA_SVC)
+    def test_ba_summary_empty(self, mock_svc_cls, _perm, _auth):
+        """GET summary su emittente senza mapping → has_default=false, count=0."""
+        mock_svc_cls.return_value.summary_mapping.return_value = {
+            "has_default": False,
+            "count_specifici": 0,
+        }
+        resp = self.client.get("/api/v1/anagrafiche/emittenti-fiscali/2/billing-account/summary/")
+        self.assertEqual(resp.status_code, 200)
+        body = resp.json()
+        self.assertFalse(body["data"]["has_default"])
+        self.assertEqual(body["data"]["count_specifici"], 0)
 
 
 class TestEmittentiFiscaliUtilitiesApi(JwtMockedApiTest):

@@ -7,7 +7,8 @@ import { ref } from 'vue'
 import {
   listEmittenteBillingAccount,
   createEmittenteBillingAccount,
-  deleteEmittenteBillingAccount
+  deleteEmittenteBillingAccount,
+  getEmittenteBillingAccountSummary
 } from '../api/emittentiFiscali'
 
 export const useEmittentiFiscaliBAStore = defineStore('amm-emittenti-fiscali-ba', () => {
@@ -17,6 +18,12 @@ export const useEmittentiFiscaliBAStore = defineStore('amm-emittenti-fiscali-ba'
 
   // emittenteId corrente — settato dal tab quando cambia prop
   const emittenteId = ref(null)
+
+  // Summary BA mapping (has_default + count_specifici): indipendente dalla
+  // pagina corrente. Bypassa il bug della derivazione da `items` con liste
+  // paginate. Aggiornato dopo ogni write + al cambio emittenteId.
+  const hasDefaultMapping = ref(false)
+  const countSpecifici = ref(0)
 
   const filters = ref({
     search: '',
@@ -47,29 +54,51 @@ export const useEmittentiFiscaliBAStore = defineStore('amm-emittenti-fiscali-ba'
     }
   }
 
-  // Scopo: Aggiunge mapping e ricarica la lista.
+  // Scopo: Carica il summary BA per l'emittente corrente. Best-effort:
+  //        in caso di errore lascia i valori precedenti senza notificare
+  //        (l'interceptor mostra l'errore HTTP, lo stato UX e' coerente).
+  async function fetchSummary() {
+    if (!emittenteId.value) {
+      hasDefaultMapping.value = false
+      countSpecifici.value = 0
+      return
+    }
+    try {
+      const res = await getEmittenteBillingAccountSummary(emittenteId.value)
+      const data = res.data.data
+      hasDefaultMapping.value = !!data.has_default
+      countSpecifici.value = data.count_specifici || 0
+    } catch {
+      // Errore gia' notificato dall'interceptor axios globale.
+    }
+  }
+
+  // Scopo: Aggiunge mapping e ricarica la lista + summary.
   async function addMapping(payload) {
     const res = await createEmittenteBillingAccount(emittenteId.value, payload)
-    await fetchList()
+    await Promise.all([fetchList(), fetchSummary()])
     return res.data.data
   }
 
-  // Scopo: Elimina mapping e ricarica la lista.
+  // Scopo: Elimina mapping e ricarica la lista + summary.
   async function removeMapping(mappingId) {
     await deleteEmittenteBillingAccount(emittenteId.value, mappingId)
-    await fetchList()
+    await Promise.all([fetchList(), fetchSummary()])
   }
 
   function reset() {
     items.value = []
     totalRecords.value = 0
     emittenteId.value = null
+    hasDefaultMapping.value = false
+    countSpecifici.value = 0
     filters.value.search = ''
     filters.value.offset = 0
   }
 
   return {
     items, totalRecords, loading, filters, emittenteId,
-    fetchList, addMapping, removeMapping, reset
+    hasDefaultMapping, countSpecifici,
+    fetchList, fetchSummary, addMapping, removeMapping, reset
   }
 })

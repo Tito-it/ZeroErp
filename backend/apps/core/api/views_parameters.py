@@ -75,7 +75,7 @@ def _parse_scope(raw: str | None) -> str:
 # Scopo: Helper per estrarre contesto utente per risoluzione parametri.
 #        Superuser: nessun filtro (vede default globali).
 #        Operatore: user_id, group_ids, emittente_fiscale_id.
-def _get_user_context(request: Request, svc: ParameterService) -> dict:
+def get_user_context(request: Request, svc: ParameterService) -> dict:
     user = request.user
     if user.is_superuser:
         return {
@@ -127,7 +127,7 @@ class ParameterDefaultsView(DomainAPIView):
         codes = codes[:MAX_CODES]
 
         svc = ParameterService()
-        ctx = _get_user_context(request, svc)
+        ctx = get_user_context(request, svc)
         defaults = svc.get_defaults(codes, **ctx)
         return success_response(defaults)
 
@@ -163,7 +163,7 @@ class ParameterSettingsView(DomainAPIView):
     #        in SQL) e gli override emittente non vengono mostrati.
     def get(self, request: Request) -> JsonResponse:
         svc = ParameterService()
-        ctx = _get_user_context(request, svc)
+        ctx = get_user_context(request, svc)
 
         # Fallback per superuser: risolve sempre user e emittente reali.
         django_user_id = ctx["django_user_id"] or request.user.id

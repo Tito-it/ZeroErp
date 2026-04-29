@@ -1,4 +1,8 @@
 <script setup>
+// Scopo: Drawer modifica template email (solo edit, i template sono seedati).
+// Mostra variabili disponibili per il template, permette preview HTML
+// renderizzata dal BE. Preview confinata in iframe sandbox per non eseguire
+// script/CSS invasivo nella shell admin (vedi A12/C5 del WIP frontend amm).
 import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Drawer from 'primevue/drawer'
@@ -32,6 +36,7 @@ const previewLoading = ref(false)
 const showPreview = ref(false)
 
 const canSave = computed(() => {
+  if (isReadonly.value) return false
   const f = form.value
   return f.oggetto?.trim() && f.corpo_html?.trim()
 })
@@ -55,6 +60,7 @@ watch(() => props.visible, async (vis) => {
 })
 
 async function handleSave() {
+  if (isReadonly.value) return
   const payload = {
     oggetto: form.value.oggetto,
     corpo_html: form.value.corpo_html,
@@ -99,7 +105,7 @@ async function handlePreview() {
     <template #header>
       <DrawerTitle
         :action="t('common.edit')"
-        title="Template Email"
+        :title="t('amm.email_template_title')"
         icon="pi pi-file-edit"
       />
     </template>
@@ -127,17 +133,17 @@ async function handlePreview() {
 
         <div class="form-field">
           <label>{{ t('amm.email_oggetto') }}</label>
-          <InputText v-model="form.oggetto" fluid />
+          <InputText v-model="form.oggetto" :disabled="isReadonly" fluid />
         </div>
 
         <div class="form-field">
           <label>{{ t('amm.email_corpo_html') }}</label>
-          <Textarea v-model="form.corpo_html" :rows="12" fluid autoResize />
+          <Textarea v-model="form.corpo_html" :rows="12" fluid autoResize :disabled="isReadonly" />
         </div>
 
         <div class="form-field">
           <label>{{ t('amm.email_corpo_testo') }}</label>
-          <Textarea v-model="form.corpo_testo" :rows="5" fluid autoResize />
+          <Textarea v-model="form.corpo_testo" :rows="5" fluid autoResize :disabled="isReadonly" />
         </div>
 
         <div style="display: flex; gap: 0.5rem; margin-top: 0.5rem;">
@@ -151,8 +157,15 @@ async function handlePreview() {
           />
         </div>
 
+        <!-- Preview confinata in iframe sandbox per non eseguire script/event/CSS
+             dal corpo template (admin-modificabile). srcdoc isola l'HTML dal
+             contesto della shell, sandbox="" rimuove tutti i privilegi. -->
         <div v-if="showPreview" class="app-preview-box">
-          <div v-html="previewHtml" />
+          <iframe
+            class="email-preview-iframe"
+            sandbox=""
+            :srcdoc="previewHtml"
+          />
         </div>
       </div>
     </div>
@@ -167,3 +180,12 @@ async function handlePreview() {
     </template>
   </Drawer>
 </template>
+
+<style scoped>
+.email-preview-iframe {
+  width: 100%;
+  min-height: 300px;
+  border: 0;
+  background: #fff;
+}
+</style>

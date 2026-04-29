@@ -1,7 +1,7 @@
 // Store Pinia per la gestione articoli catalogo.
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import { listArticoli, getArticolo, createArticolo, updateArticolo, disattivaArticolo } from '../api/catalogo'
+import { listArticoli, getArticolo, createArticolo, updateArticolo, disattivaArticolo, riattivaArticolo } from '../api/catalogo'
 import { useTabEvents } from '../../core/composables/useTabEvents'
 import { TAB_ENTITIES } from '../../core/constants'
 
@@ -101,8 +101,14 @@ export const useArticoliStore = defineStore('catalogo-articoli', () => {
     return res.data.data
   }
 
+  async function riattiva(id) {
+    const res = await riattivaArticolo(id)
+    emitDataChanged(TAB_ENTITIES.ARTICOLO, id)
+    return res.data.data
+  }
+
   return {
     items, totalRecords, loading, hasSearched, filters,
-    fetchList, fetchDetail, create, update, disattiva
+    fetchList, fetchDetail, create, update, disattiva, riattiva
   }
 })

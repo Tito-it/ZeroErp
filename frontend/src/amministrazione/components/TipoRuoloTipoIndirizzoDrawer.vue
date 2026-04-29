@@ -73,11 +73,13 @@ watch(() => props.visible, (v) => {
 })
 
 const canSave = computed(() => {
+  if (isReadOnlyEffective.value) return false
   if (isEdit.value) return true
   return form.value.tipo_ruolo_id && form.value.tipo_indirizzo_id
 })
 
 async function handleSave() {
+  if (isReadOnlyEffective.value) return
   if (isEdit.value) {
     const payload = {
       attivo: form.value.attivo,

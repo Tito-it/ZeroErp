@@ -165,62 +165,33 @@ class AmmSoftwareRepository:
 
         return results, total_count
 
-    # Scopo: Restituisce il dettaglio completo di un operatore con conteggi override.
+    # Scopo: Restituisce il dettaglio completo di un operatore con conteggi
+    # override e i 6 campi capability (can_invite/disable/demote + reason).
+    #
+    # Delega interamente a `script.fn_get_operatore_detail(p_auth_user_id)`
+    # (Fase 1 multi-face): la fn DB e' single source of truth per la
+    # composizione del dettaglio. Lo SQL inline precedente e' eliminato per
+    # evitare drift tra Python e regole DB.
+    #
+    # Semantica lookup-by-id: la fn ritorna 0 righe per id NULL/<=0/inesistenti
+    # (idioma standard per i lookup; diverge dalla regola AGENTS "guard
+    # NULL/<=0" volutamente — i chiamanti gestiscono `None` come "non
+    # trovato"). I 3 service consumer (`get_operatore`, `update_operatore`,
+    # `disabilita_operatore`, `riattiva_operatore`) trasformano None in
+    # E_AMM_OPERATORE_NOT_FOUND quando rilevante.
+    #
+    # GUC awareness: la fn DB usa `script.fn_is_super_admin` che e' gated
+    # su `app.ruolo_applicativo` (post 2026-04-21) e ritorna false per
+    # contesti non-OPERATORE (portale/shop). Questo repo e' richiamato solo
+    # da `AdminAPIView` (drawer admin-only), quindi il contesto e' sempre
+    # OPERATORE. Se in futuro la fn fosse esposta altrove, la GUC va
+    # garantita prima della chiamata.
     def get_operatore_detail(self, auth_user_id: int) -> OperatoreDetailRow | None:
-        sql = """
-            SELECT au.id AS auth_user_id,
-                   au.username,
-                   au.email,
-                   au.first_name,
-                   au.last_name,
-                   COALESCE(s.cognome, au.last_name) AS soggetto_cognome,
-                   COALESCE(s.nome, au.first_name) AS soggetto_nome,
-                   s.id AS soggetto_id,
-                   s.ragione_sociale_completa,
-                   s.codice_fiscale,
-                   script.fn_get_ruolo_sistema(au.id)::text AS ruolo_sistema,
-                   script.fn_is_super_admin(au.id) AS is_super_admin,
-                   id.ruolo_applicativo::text AS ruolo_applicativo,
-                   au.is_active,
-                   ru.unita_organizzativa_id,
-                   uo.descrizione AS unita_organizzativa_nome,
-                   ru.id AS risorsa_umana_id,
-                   ru.attivo,
-                   ru.valido_dal::text,
-                   ru.valido_al::text,
-                   COALESCE((SELECT COUNT(*) FROM config.user_override_aree uoa
-                             WHERE uoa.auth_user_id = au.id), 0) AS override_aree_count,
-                   COALESCE((SELECT COUNT(*) FROM config.user_override_azioni uoz
-                             WHERE uoz.auth_user_id = au.id), 0) AS override_azioni_count,
-                   COALESCE((SELECT COUNT(*) FROM config.user_emittenti_fiscali uef
-                             WHERE uef.auth_user_id = au.id), 0) AS emittenti_count,
-                   (SELECT string_agg(COALESCE(s_ef.ragione_sociale_completa, ef.descrizione), ', '
-                                      ORDER BY COALESCE(s_ef.ragione_sociale_completa, ef.descrizione))
-                      FROM config.user_emittenti_fiscali uef
-                      JOIN anagrafiche.emittenti_fiscali ef ON ef.id = uef.emittente_fiscale_id
-                      LEFT JOIN anagrafiche.soggetti_ruoli sr_ef ON sr_ef.id = ef.soggetto_ruolo_id
-                      LEFT JOIN anagrafiche.soggetti s_ef ON s_ef.id = sr_ef.soggetto_id
-                     WHERE uef.auth_user_id = au.id
-                   ) AS emittenti_descrizione,
-                   au.last_login,
-                   id.invito_inviato_at,
-                   id.deve_cambiare_password
-              FROM auth_user au
-              LEFT JOIN anagrafiche.identita_digitali id
-                ON id.auth_user_id = au.id
-               AND id.ruolo_applicativo = 'OPERATORE'
-              LEFT JOIN anagrafiche.soggetti_ruoli sr
-                ON sr.id = id.soggetto_ruolo_id
-              LEFT JOIN anagrafiche.risorse_umane ru
-                ON ru.soggetto_ruolo_id = sr.id
-              LEFT JOIN anagrafiche.soggetti s
-                ON s.id = sr.soggetto_id
-              LEFT JOIN config.unita_organizzative uo
-                ON uo.id = ru.unita_organizzativa_id
-             WHERE au.id = %s
-        """
         with connection.cursor() as cursor:
-            cursor.execute(sql, [auth_user_id])
+            cursor.execute(
+                "SELECT * FROM script.fn_get_operatore_detail(%s)",
+                [auth_user_id],
+            )
             if not cursor.description:
                 return None
             cols = [c.name for c in cursor.description]
@@ -698,38 +669,60 @@ class AmmSoftwareRepository:
             return rows_to_list(cursor)
 
     # ================================================================== #
-    # Emittenti scope per operatore                                         #
+    # Emittenti scope per operatore (Fase 2 multi-face)                     #
     # ================================================================== #
 
-    # Scopo: Restituisce gli emittenti fiscali associati a un operatore.
-    def get_emittenti_scope(self, auth_user_id: int) -> list[dict[str, Any]]:
-        sql = """
-            SELECT uef.id, uef.emittente_fiscale_id,
-                   ef.codice AS emittente_codice,
-                   ef.descrizione AS emittente_descrizione
-              FROM config.user_emittenti_fiscali uef
-              JOIN anagrafiche.emittenti_fiscali ef ON ef.id = uef.emittente_fiscale_id
-             WHERE uef.auth_user_id = %s
-             ORDER BY ef.descrizione
-        """
+    # Scopo: Restituisce lo scope emittenti dichiarativo dell'operatore via
+    # `script.fn_get_user_emittenti_scope`. La fn DB e' single source of truth
+    # per:
+    #   - scope_mode ('GLOBAL'|'SINGLE') derivato dal numero di righe in
+    #     config.user_emittenti_fiscali (post Q2: max 1 riga per UNIQUE)
+    #   - emittente_id + emittente_descrizione (NULL se GLOBAL)
+    #   - allowed_scope_modes (sempre ['GLOBAL','SINGLE'] post Q2; MULTI
+    #     architetturalmente chiuso)
+    #   - can_change_scope: false sse l'operatore e' SA e l'unico attivo
+    #     (delega a fn_check_ultimo_super_admin_attivo di Fase 1)
+    #   - change_scope_reason: testo it-IT free-form, NULL se can=true
+    #
+    # Idioma lookup-by-id: 0 righe per p_auth_user_id non valido (None lato
+    # Python), coerente con fn_get_operatore_detail. Il chiamante service
+    # gestisce None come E_AMM_OPERATORE_NOT_FOUND quando rilevante.
+    def get_user_emittenti_scope(self, auth_user_id: int) -> dict[str, Any] | None:
         with connection.cursor() as cursor:
-            cursor.execute(sql, [auth_user_id])
-            return rows_to_list(cursor)
-
-    # Scopo: Sostituisce gli emittenti scope di un operatore (replace semantics).
-    def put_emittenti_scope(self, auth_user_id: int, emittente_ids: list[int]) -> None:
-        with transaction.atomic(), connection.cursor() as cursor:
             cursor.execute(
-                "DELETE FROM config.user_emittenti_fiscali WHERE auth_user_id = %s",
+                "SELECT * FROM script.fn_get_user_emittenti_scope(%s)",
                 [auth_user_id],
             )
-            for eid in emittente_ids:
-                cursor.execute(
-                    """INSERT INTO config.user_emittenti_fiscali
-                       (auth_user_id, emittente_fiscale_id)
-                       VALUES (%s, %s)""",
-                    [auth_user_id, eid],
-                )
+            if not cursor.description:
+                return None
+            cols = [c.name for c in cursor.description]
+            row = cursor.fetchone()
+        if not row:
+            return None
+        return dict(zip(cols, row))
+
+    # Scopo: Cambio scope emittenti atomico via
+    # `script.fn_change_user_emittenti_scope(p_auth_user_id, p_emittente_ids)`.
+    # La fn DB esegue in transazione:
+    #   1. Validazione array_length IN (NULL|0|1) — altrimenti RAISE con
+    #      marker E_AMM_VALIDAZIONE / E_AMM_SCOPE_NON_AMMESSO (no MULTI).
+    #   2. Guard `fn_check_ultimo_super_admin_attivo` se SA -> RAISE
+    #      E_PROFILO_ULTIMO_SUPER_ADMIN (riuso Fase 1).
+    #   3. DELETE + INSERT condizionale.
+    # Ritorna jsonb con lo stato post-change. Per il consumer Python ci
+    # interessa solo l'esito (errori sollevati come DatabaseError gestiti
+    # dal service); il return jsonb non viene proiettato perche' il service
+    # rilegge tramite get_user_emittenti_scope per consistenza con il GET.
+    def change_user_emittenti_scope(
+        self, auth_user_id: int, emittente_ids: list[int]
+    ) -> None:
+        with connection.cursor() as cursor:
+            # GLOBAL = array vuoto []; SINGLE = [id]. La fn DB Q2 valida
+            # array_length <= 1 e solleva E_AMM_SCOPE_NON_AMMESSO altrimenti.
+            cursor.execute(
+                "SELECT script.fn_change_user_emittenti_scope(%s, %s::bigint[])",
+                [auth_user_id, list(emittente_ids)],
+            )
 
     # ================================================================== #
     # Reparti e profili                                                    #

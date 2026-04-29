@@ -347,6 +347,52 @@ class ErrorPolicyRegistry:
             ui_action="show_empty_state",
             user_message="Nota non trovata.",
         ),
+        # ── Catalogo BoM — duplica versione (Fase 3 refactor catalogo) ──
+        # Codici sollevati da catalogo.fn_duplica_componente_versione() via
+        # script.fn_log_and_raise_error (SQLSTATE P0001). Contratto:
+        # docs/it/dbzero/catalogo/manual/fn_duplica_componente_versione.md.
+        "E_BOM_VERSIONE_OVERLAP": ErrorPolicy(
+            code="E_BOM_VERSIONE_OVERLAP",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message=(
+                "Esiste gia' una versione futura per lo stesso prodotto/componente: "
+                "scegliere una data di chiusura precedente o rivedere il piano versioni."
+            ),
+        ),
+        "E_BOM_SORGENTE_GIA_CHIUSA": ErrorPolicy(
+            code="E_BOM_SORGENTE_GIA_CHIUSA",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message=(
+                "La riga sorgente e' gia' chiusa: selezionare la versione corrente "
+                "(senza data di fine) come sorgente per la duplicazione."
+            ),
+        ),
+        "E_BOM_RIGA_NOT_FOUND": ErrorPolicy(
+            code="E_BOM_RIGA_NOT_FOUND",
+            http_status=404,
+            ui_action="show_empty_state",
+            user_message="Riga BoM non trovata: aggiornare la lista e riprovare.",
+        ),
+        "E_BOM_PRODOTTO_MISMATCH": ErrorPolicy(
+            code="E_BOM_PRODOTTO_MISMATCH",
+            http_status=400,
+            ui_action="show_error_banner",
+            user_message=(
+                "La riga selezionata appartiene a un altro articolo: "
+                "aggiornare la lista componenti corrente e riprovare."
+            ),
+        ),
+        "E_BOM_VALIDO_AL_INVALIDO": ErrorPolicy(
+            code="E_BOM_VALIDO_AL_INVALIDO",
+            http_status=400,
+            ui_action="highlight_form_fields",
+            user_message=(
+                "Data di chiusura non valida: deve essere uguale o successiva alla "
+                "data di inizio della riga."
+            ),
+        ),
         "E_DATABASE": ErrorPolicy(
             code="E_DATABASE",
             http_status=400,
@@ -802,6 +848,29 @@ class ErrorPolicyRegistry:
             http_status=409,
             ui_action="show_error_banner",
             user_message="Impossibile disabilitare l'ultimo amministratore.",
+        ),
+        # Multi-face: code sollevato dal trigger DB
+        # `trgfn_profili_accesso_bindings_guard_ultimo_super_admin` quando
+        # un'operazione (disabilita identita, demote SUPER_ADMIN, delete
+        # binding) lascerebbe il sistema senza alcun super admin attivo.
+        # Sostituisce E_ADMIN_ULTIMO post-cutover (Fase 1 multi-face); il
+        # service preserva il code originale del DB anche quando il preview
+        # `can_disable` lato detail aveva valutato true (race tra sessioni).
+        "E_PROFILO_ULTIMO_SUPER_ADMIN": ErrorPolicy(
+            code="E_PROFILO_ULTIMO_SUPER_ADMIN",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Impossibile rimuovere l'ultimo super admin attivo.",
+        ),
+        # Fase 2 multi-face: payload `scope_mode` non ammesso per il
+        # contratto attuale (es. MULTI post Q2, oppure SINGLE con array
+        # vuoto/multi-elemento). Errore di validazione client-side, non
+        # di stato del sistema.
+        "E_AMM_SCOPE_NON_AMMESSO": ErrorPolicy(
+            code="E_AMM_SCOPE_NON_AMMESSO",
+            http_status=400,
+            ui_action="show_error_banner",
+            user_message="Scope emittenti non ammesso per la richiesta.",
         ),
         "E_UTENTE_BLOCCATO": ErrorPolicy(
             code="E_UTENTE_BLOCCATO",

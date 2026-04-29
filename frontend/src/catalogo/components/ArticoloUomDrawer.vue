@@ -29,7 +29,7 @@ import InputText from 'primevue/inputtext'
 import ToggleSwitch from 'primevue/toggleswitch'
 import DatePicker from 'primevue/datepicker'
 
-const { t } = useI18n()
+const { t, te } = useI18n()
 const isReadonly = useInjectReadonly()
 const { execute, loading } = useApiHandler()
 
@@ -44,6 +44,13 @@ const listLoading = ref(false)
 const formMode = ref(null)
 const editId = ref(null)
 const form = ref({})
+
+// Fase 5: campi immutabili dopo create per UoM operativa (envelope-level
+// dalla lista, fonte = `dbops.vw_non_editable_fields` + gap Python).
+const nonEditableFields = ref([])
+function isFieldLocked(name) {
+  return formMode.value === 'edit' && nonEditableFields.value.includes(name)
+}
 
 // Defaults UoM operativa via config.parameters (override per emittente).
 // Pre-fetch al setup: quando il drawer apre i valori sono di solito gia' in
@@ -96,8 +103,13 @@ async function loadUom() {
     const res = await listArticoloUom(props.articoloId)
     const payload = res.data?.data
     uomList.value = payload?.results || payload || []
+    // Fase 5: cattura i campi non editabili a livello envelope dalla lista.
+    // La lista e' la prima chiamata API quando il drawer apre, quindi i
+    // metadata sono disponibili prima del primo edit.
+    nonEditableFields.value = payload?.non_editable_fields || []
   } catch {
     uomList.value = []
+    nonEditableFields.value = []
   } finally {
     listLoading.value = false
   }
@@ -210,7 +222,20 @@ async function onDelete(row) {
   }
 }
 
-// Scopo: azioni di riga UoM operativa (modifica + elimina; delete nascosta per is_base).
+// Scopo: azioni di riga UoM operativa (modifica + elimina).
+// Capability eliminazione (Fase 6) letta dalla vista DB:
+// row.puo_eliminarsi + row.motivo_non_eliminabile (solo is_base blocca).
+// L'azione resta visibile anche quando non eseguibile per mantenere la
+// affordance e mostrare il motivo via tooltip.
+function deleteUomTooltip(row) {
+  if (row.puo_eliminarsi) return t('common.delete')
+  const motivo = row.motivo_non_eliminabile
+  if (!motivo) return t('common.delete')
+  // Difensivo: motivo nuovo non mappato i18n -> label generica.
+  const key = `catalogo.motivo_${motivo.toLowerCase()}`
+  return te(key) ? t(key) : t('common.delete')
+}
+
 function buildRigaActions(row) {
   return [
     {
@@ -224,7 +249,8 @@ function buildRigaActions(row) {
       label: t('common.delete'),
       icon: 'pi pi-trash',
       severity: 'danger',
-      visible: !row.is_base,
+      disabled: !row.puo_eliminarsi,
+      tooltip: deleteUomTooltip(row),
       command: () => onDelete(row),
     },
   ]
@@ -314,7 +340,7 @@ function buildRigaActions(row) {
           <div class="form-field">
             <label>{{ t('catalogo.field_uom') }} *</label>
             <LookupSelect v-model="form.uom_id" rel="catalogo.unita_misura"
-              :placeholder="t('catalogo.select_uom')" :disabled="formMode === 'edit'" />
+              :placeholder="t('catalogo.select_uom')" :disabled="isFieldLocked('uom_id')" />
           </div>
         </div>
 

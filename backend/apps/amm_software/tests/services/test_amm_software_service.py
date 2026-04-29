@@ -18,17 +18,34 @@ Indice test eseguiti:
  8) test_update_operatore_ok — aggiorna e invalida cache
  9) test_update_operatore_not_found — id inesistente
  9a) test_update_operatore_contract_nuovo_super_attivo — traduzione contract multi-face
- 9b) test_update_operatore_contract_legacy — retrocompat ruolo_sistema
+ 9b) test_update_operatore_rifiuta_ruolo_sistema_legacy — Fase 1: contract pubblico ruolo_sistema-free
+ 9c) test_update_operatore_super_admin_guard_dbtrigger — race condition trigger 384
+ 9d) test_update_operatore_attivo_only_traduce_disabilitato — simmetria translator (fix audit B2)
 10) test_disabilita_operatore_ok — disabilita e invalida cache + blacklist
 11) test_disabilita_operatore_not_found — id inesistente
+11a) test_disabilita_operatore_ultimo_super_admin_preview — preview Python (fast-path)
+11b) test_disabilita_operatore_ultimo_super_admin_dbtrigger — race condition trigger 384
+12) test_create_operatore_rifiuta_ruolo_sistema_legacy — Fase 1: ruolo_sistema-free
+12a) test_create_operatore_is_super_admin_traduce_admin — is_super_admin=true → ADMIN legacy
 12) test_put_override_aree_invalidates_cache — invalida cache dopo save
 13) test_put_override_azioni_invalidates_cache — invalida cache dopo save
 14) test_put_emittenti_scope_invalidates_cache — invalida cache dopo save
 15) test_put_profilo_reparto_invalidates_department — invalida cache reparto
+16) test_cast_param_bool_truthy_false_default — cast 'true'/'false'/'' helper
+17) test_cast_param_decimal_empty_to_none — '' -> None convenzione DB
+18) test_cast_param_decimal_invalid_returns_none — best-effort, no raise
+19) test_get_emittente_form_defaults_ok — happy path con seed atteso
+20) test_get_emittente_form_defaults_missing_params — chiavi assenti -> defaults sicuri
+21) test_get_emittente_form_defaults_rounding_invalid — rounding fuori enum -> None
+22) test_get_emittente_form_defaults_rounding_half_even_rejected — HALF_EVEN -> None (no listini UoM)
+23) test_list_emittente_rounding_modes_ok — 4 codici nell'ordine canonico
+24) test_list_emittente_rounding_modes_coverage — descrizioni coprono enum (no HALF_EVEN)
 """
 
 from unittest import TestCase
 from unittest.mock import MagicMock, call, patch
+
+from django.db import DatabaseError
 
 from apps.core.services.service_errors import ServiceError
 
@@ -106,6 +123,53 @@ class TestCreateOperatore(TestCase):
             "username": "u", "email": "e@t.it", "password": "mypassword", "qualifica_id": 1,
         })
         mock_pw.assert_called_once_with("mypassword")
+
+    # Scopo: Fase 1 multi-face — il payload con `ruolo_sistema` legacy e'
+    # rifiutato (E_AMM_VALIDAZIONE) prima di toccare il repo.
+    @patch(REPO)
+    def test_create_operatore_rifiuta_ruolo_sistema_legacy(self, mock_repo_cls):
+        from apps.amm_software.services.amm_software_service import AmmSoftwareService
+        with self.assertRaises(ServiceError) as ctx:
+            AmmSoftwareService().create_operatore({
+                "cognome": "R", "nome": "M", "codice_fiscale": "CF",
+                "username": "u", "email": "e@t.it", "password": "pw",
+                "qualifica_id": 1, "ruolo_sistema": "ADMIN",
+            })
+        self.assertEqual(ctx.exception.code, "E_AMM_VALIDAZIONE")
+        mock_repo_cls.return_value.crea_operatore.assert_not_called()
+
+    # Scopo: Traduzione interna `is_super_admin=True` -> ruolo_sistema legacy
+    # `ADMIN` per la fn DB `fn_crea_operatore` (compat layer interno mentre
+    # il refactor write-path lato DB e' in transizione). Default (no flag)
+    # = OPERATIVO.
+    @patch(MAKE_PW, return_value="hashed")
+    @patch(REPO)
+    def test_create_operatore_is_super_admin_traduce_admin(
+        self, mock_repo_cls, _mock_pw
+    ):
+        mock_repo = mock_repo_cls.return_value
+        mock_repo.crea_operatore.return_value = 1
+        mock_repo.get_operatore_detail.return_value = {}
+        from apps.amm_software.services.amm_software_service import AmmSoftwareService
+        AmmSoftwareService().create_operatore({
+            "cognome": "R", "nome": "M", "codice_fiscale": "CF",
+            "username": "u", "email": "e@t.it", "password": "pw",
+            "qualifica_id": 1, "is_super_admin": True,
+        })
+        self.assertEqual(
+            mock_repo.crea_operatore.call_args.kwargs["ruolo_sistema"], "ADMIN"
+        )
+
+        # Caso default: nessun flag -> OPERATIVO.
+        mock_repo.crea_operatore.reset_mock()
+        AmmSoftwareService().create_operatore({
+            "cognome": "R", "nome": "M", "codice_fiscale": "CF",
+            "username": "u", "email": "e@t.it", "password": "pw",
+            "qualifica_id": 1,
+        })
+        self.assertEqual(
+            mock_repo.crea_operatore.call_args.kwargs["ruolo_sistema"], "OPERATIVO"
+        )
 
 
 class TestGetOperatore(TestCase):
@@ -193,18 +257,58 @@ class TestUpdateOperatore(TestCase):
             mock_repo.update_operatore.call_args.kwargs["ruolo_sistema"]
         )
 
-    # Scopo: Se il payload usa ruolo_sistema legacy, passa through senza
-    # traduzione. Retrocompat con FE pre-Stage B.
+    # Scopo: Fase 1 multi-face — il contract pubblico non ammette piu'
+    # `ruolo_sistema`. Il payload con la chiave legacy viene rifiutato
+    # con E_AMM_VALIDAZIONE per forzare i client al nuovo contract
+    # (is_super_admin + attivo).
+    @patch(REPO)
+    def test_update_operatore_rifiuta_ruolo_sistema_legacy(self, mock_repo_cls):
+        from apps.amm_software.services.amm_software_service import AmmSoftwareService
+        with self.assertRaises(ServiceError) as ctx:
+            AmmSoftwareService().update_operatore(1, {"ruolo_sistema": "ADMIN"})
+        self.assertEqual(ctx.exception.code, "E_AMM_VALIDAZIONE")
+        # Il repo non viene neanche chiamato: validazione fallisce prima.
+        mock_repo_cls.return_value.update_operatore.assert_not_called()
+
+    # Scopo: Audit fix B2 — il translator e' chiamato sempre (no guard
+    # `if "is_super_admin" in payload`). Payload con solo `attivo:false`
+    # produce `ruolo_sistema='DISABILITATO'`, simmetrico al payload
+    # `{is_super_admin:_, attivo:false}`. Senza il fix, il primo caso
+    # avrebbe lasciato `ruolo_applicativo` invariato (asimmetria).
     @patch(INVALIDATE_USER)
     @patch(REPO)
-    def test_update_operatore_contract_legacy(self, mock_repo_cls, _mock_invalidate):
+    def test_update_operatore_attivo_only_traduce_disabilitato(
+        self, mock_repo_cls, _mock_invalidate
+    ):
         mock_repo = mock_repo_cls.return_value
         mock_repo.get_operatore_detail.return_value = {"auth_user_id": 1}
         from apps.amm_software.services.amm_software_service import AmmSoftwareService
-        AmmSoftwareService().update_operatore(1, {"ruolo_sistema": "ADMIN"})
+        AmmSoftwareService().update_operatore(1, {"attivo": False})
         self.assertEqual(
-            mock_repo.update_operatore.call_args.kwargs["ruolo_sistema"], "ADMIN"
+            mock_repo.update_operatore.call_args.kwargs["ruolo_sistema"],
+            "DISABILITATO",
         )
+
+    # Scopo: Race condition trigger 384 — quando il preview `can_disable`
+    # passa ma il trigger DB rifiuta (concorrenza tra sessioni), il service
+    # traduce DatabaseError in E_PROFILO_ULTIMO_SUPER_ADMIN preservando
+    # il code per l'envelope errore.
+    @patch(INVALIDATE_USER)
+    @patch(REPO)
+    def test_update_operatore_super_admin_guard_dbtrigger(
+        self, mock_repo_cls, _mock_invalidate
+    ):
+        mock_repo = mock_repo_cls.return_value
+        mock_repo.get_operatore_detail.return_value = {"auth_user_id": 1}
+        mock_repo.update_operatore.side_effect = DatabaseError(
+            "ERROR: Codice: E_PROFILO_ULTIMO_SUPER_ADMIN — ultimo super admin attivo"
+        )
+        from apps.amm_software.services.amm_software_service import AmmSoftwareService
+        with self.assertRaises(ServiceError) as ctx:
+            AmmSoftwareService().update_operatore(
+                1, {"is_super_admin": False, "attivo": True}
+            )
+        self.assertEqual(ctx.exception.code, "E_PROFILO_ULTIMO_SUPER_ADMIN")
 
 
 class TestDisabilitaOperatore(TestCase):
@@ -229,6 +333,49 @@ class TestDisabilitaOperatore(TestCase):
         from apps.amm_software.services.amm_software_service import AmmSoftwareService
         with self.assertRaises(ServiceError):
             AmmSoftwareService().disabilita_operatore(999)
+
+    # Scopo: Preview `can_disable=false` -> short-circuit Python con
+    # E_PROFILO_ULTIMO_SUPER_ADMIN, niente round-trip DB. Il `disable_reason`
+    # del detail (it-IT free-form da DB) propaga nel `detail` dell'errore.
+    @patch(REPO)
+    def test_disabilita_operatore_ultimo_super_admin_preview(self, mock_repo_cls):
+        mock_repo = mock_repo_cls.return_value
+        mock_repo.get_operatore_detail.return_value = {
+            "auth_user_id": 1,
+            "is_super_admin": True,
+            "can_disable": False,
+            "disable_reason": "E' l'ultimo super admin attivo.",
+        }
+        from apps.amm_software.services.amm_software_service import AmmSoftwareService
+        with self.assertRaises(ServiceError) as ctx:
+            AmmSoftwareService().disabilita_operatore(1)
+        self.assertEqual(ctx.exception.code, "E_PROFILO_ULTIMO_SUPER_ADMIN")
+        # disabilita_operatore del repo NON deve essere chiamato (short-circuit)
+        mock_repo.disabilita_operatore.assert_not_called()
+
+    # Scopo: Preview UX passa (can_disable=true) ma il trigger DB rifiuta
+    # comunque per race tra sessioni. Il service traduce DatabaseError in
+    # ServiceError E_PROFILO_ULTIMO_SUPER_ADMIN.
+    @patch(BLACKLIST)
+    @patch(INVALIDATE_USER)
+    @patch(REPO)
+    def test_disabilita_operatore_ultimo_super_admin_dbtrigger(
+        self, mock_repo_cls, _mock_invalidate, _mock_blacklist
+    ):
+        mock_repo = mock_repo_cls.return_value
+        mock_repo.get_operatore_detail.return_value = {
+            "auth_user_id": 1,
+            "is_super_admin": True,
+            "can_disable": True,
+            "disable_reason": None,
+        }
+        mock_repo.disabilita_operatore.side_effect = DatabaseError(
+            "ERROR: E_PROFILO_ULTIMO_SUPER_ADMIN: ..."
+        )
+        from apps.amm_software.services.amm_software_service import AmmSoftwareService
+        with self.assertRaises(ServiceError) as ctx:
+            AmmSoftwareService().disabilita_operatore(1)
+        self.assertEqual(ctx.exception.code, "E_PROFILO_ULTIMO_SUPER_ADMIN")
 
 
 class TestOverrideCache(TestCase):
@@ -255,10 +402,18 @@ class TestOverrideCache(TestCase):
     @patch(INVALIDATE_USER)
     @patch(REPO)
     def test_put_emittenti_scope_invalidates_cache(self, mock_repo_cls, mock_invalidate):
+        # Fase 2: signature cambiata da `(auth_user_id, list)` a
+        # `(auth_user_id, payload)` con scope_mode + emittenti_ids.
         mock_repo = mock_repo_cls.return_value
-        mock_repo.get_emittenti_scope.return_value = []
+        mock_repo.get_operatore_detail.return_value = {"auth_user_id": 1}
+        mock_repo.get_user_emittenti_scope.return_value = {
+            "auth_user_id": 1, "scope_mode": "GLOBAL",
+            "emittente_id": None, "emittente_descrizione": None,
+            "allowed_scope_modes": ["GLOBAL", "SINGLE"],
+            "can_change_scope": True, "change_scope_reason": None,
+        }
         from apps.amm_software.services.amm_software_service import AmmSoftwareService
-        AmmSoftwareService().put_emittenti_scope(1, [])
+        AmmSoftwareService().put_emittenti_scope(1, {"scope_mode": "GLOBAL"})
         mock_invalidate.assert_called_once_with(1)
 
     @patch(INVALIDATE_DEPT)
@@ -269,3 +424,153 @@ class TestOverrideCache(TestCase):
         from apps.amm_software.services.amm_software_service import AmmSoftwareService
         AmmSoftwareService().put_profilo_reparto(5, [], [])
         mock_invalidate.assert_called_once_with(5)
+
+
+# =================================================================
+# Fase 3 — Form-defaults emittente fiscale
+# =================================================================
+
+
+PARAM_SVC = "apps.amm_software.services.amm_software_service.ParameterService"
+
+
+class TestCastParamHelpers(TestCase):
+    """Helpers cast best-effort per parameters (text NOT NULL)."""
+
+    def test_cast_param_bool_truthy_false_default(self):
+        from apps.amm_software.services.amm_software_service import _cast_param_bool
+
+        self.assertTrue(_cast_param_bool("true"))
+        self.assertTrue(_cast_param_bool("TRUE"))
+        self.assertTrue(_cast_param_bool(" True "))
+        self.assertFalse(_cast_param_bool("false"))
+        self.assertFalse(_cast_param_bool(""))
+        self.assertFalse(_cast_param_bool(None))
+        # non-stringa -> default false (default-safe per bollo_auto)
+        self.assertFalse(_cast_param_bool(1))
+        self.assertFalse(_cast_param_bool(True))  # bool e' int sottoclasse, no isinstance(str)
+
+    def test_cast_param_decimal_empty_to_none(self):
+        # Convenzione DB: stringa vuota = nessuna soglia bollo -> None.
+        from apps.amm_software.services.amm_software_service import _cast_param_decimal
+
+        self.assertIsNone(_cast_param_decimal(""))
+        self.assertIsNone(_cast_param_decimal("  "))
+        self.assertIsNone(_cast_param_decimal(None))
+
+    def test_cast_param_decimal_invalid_returns_none(self):
+        # Best-effort: stringhe non parsabili -> None, no raise.
+        from decimal import Decimal
+
+        from apps.amm_software.services.amm_software_service import _cast_param_decimal
+
+        self.assertEqual(_cast_param_decimal("100.00"), Decimal("100.00"))
+        self.assertEqual(_cast_param_decimal("77.47"), Decimal("77.47"))
+        self.assertIsNone(_cast_param_decimal("non-numerico"))
+        self.assertIsNone(_cast_param_decimal("12,34"))  # virgola: BE seeda con `.`
+
+
+class TestGetEmittenteFormDefaults(TestCase):
+    """Test AmmSoftwareService.get_emittente_form_defaults()."""
+
+    @patch(PARAM_SVC)
+    def test_get_emittente_form_defaults_ok(self, mock_ps_cls):
+        # Happy path con i 3 valori seedati (brief DB 2026-04-29).
+        from apps.amm_software.services.amm_software_service import AmmSoftwareService
+
+        mock_ps_cls.return_value.get_defaults.return_value = {
+            "EMITTENTE_DEFAULT_BOLLO_AUTO": "false",
+            "EMITTENTE_DEFAULT_BOLLO_SOGLIA": "",
+            "EMITTENTE_DEFAULT_ROUNDING_POLICY": "HALF_UP",
+        }
+
+        result = AmmSoftwareService().get_emittente_form_defaults(
+            django_user_id=42, group_ids=[1, 2], emittente_fiscale_id=None,
+        )
+
+        self.assertEqual(result["defaults"], {
+            "bollo_auto": False,
+            "bollo_soglia": None,
+            "rounding_policy": "HALF_UP",
+        })
+        self.assertEqual(result["non_editable_fields"], ["codice", "soggetto_id"])
+        # Verifica chiamata ParameterService col contesto utente.
+        mock_ps_cls.return_value.get_defaults.assert_called_once_with(
+            ["EMITTENTE_DEFAULT_BOLLO_AUTO", "EMITTENTE_DEFAULT_BOLLO_SOGLIA", "EMITTENTE_DEFAULT_ROUNDING_POLICY"],
+            django_user_id=42,
+            group_ids=[1, 2],
+            emittente_fiscale_id=None,
+        )
+
+    @patch(PARAM_SVC)
+    def test_get_emittente_form_defaults_missing_params(self, mock_ps_cls):
+        # Chiavi assenti: cast helpers tornano default sicuri (False / None / None).
+        # Non deve sollevare: il form parte comunque, l'utente compila a mano.
+        from apps.amm_software.services.amm_software_service import AmmSoftwareService
+
+        mock_ps_cls.return_value.get_defaults.return_value = {}
+
+        result = AmmSoftwareService().get_emittente_form_defaults()
+
+        self.assertEqual(result["defaults"], {
+            "bollo_auto": False,
+            "bollo_soglia": None,
+            "rounding_policy": None,
+        })
+
+    @patch(PARAM_SVC)
+    def test_get_emittente_form_defaults_rounding_invalid(self, mock_ps_cls):
+        # Rounding policy fuori enum -> None (best-effort, no raise).
+        from apps.amm_software.services.amm_software_service import AmmSoftwareService
+
+        mock_ps_cls.return_value.get_defaults.return_value = {
+            "EMITTENTE_DEFAULT_ROUNDING_POLICY": "BANKER_2024",
+        }
+
+        result = AmmSoftwareService().get_emittente_form_defaults()
+
+        self.assertIsNone(result["defaults"]["rounding_policy"])
+
+    @patch(PARAM_SVC)
+    def test_get_emittente_form_defaults_rounding_half_even_rejected(self, mock_ps_cls):
+        # HALF_EVEN e' valido per UoM operativa (catalogo) ma NON per emittente
+        # fiscale (CHECK chk_emittenti_fiscali_rounding_policy ammette solo 4
+        # valori). Defense-in-depth: il service non lo accetta nemmeno se per
+        # errore qualcuno lo seedasse.
+        from apps.amm_software.services.amm_software_service import AmmSoftwareService
+
+        mock_ps_cls.return_value.get_defaults.return_value = {
+            "EMITTENTE_DEFAULT_ROUNDING_POLICY": "HALF_EVEN",
+        }
+
+        result = AmmSoftwareService().get_emittente_form_defaults()
+
+        self.assertIsNone(result["defaults"]["rounding_policy"])
+
+
+class TestListEmittenteRoundingModes(TestCase):
+    """Lookup statico modi di arrotondamento emittente fiscale (Fase 3 — A6)."""
+
+    def test_list_emittente_rounding_modes_ok(self):
+        # 4 codici nell'ordine canonico "default-first" (HALF_UP primo,
+        # corrisponde a EMITTENTE_DEFAULT_ROUNDING_POLICY).
+        from apps.amm_software.services.amm_software_service import AmmSoftwareService
+
+        result = AmmSoftwareService().list_emittente_rounding_modes()
+
+        self.assertEqual(len(result), 4)
+        codici = [r["codice"] for r in result]
+        self.assertEqual(codici, ["HALF_UP", "HALF_DOWN", "UP", "DOWN"])
+        for row in result:
+            self.assertTrue(row["descrizione"])
+            self.assertIsInstance(row["ordering"], int)
+
+    def test_list_emittente_rounding_modes_coverage(self):
+        # Difesa coerenza enum/descrizioni + assenza HALF_EVEN
+        # (allineato al CHECK chk_emittenti_fiscali_rounding_policy).
+        from apps.amm_software.services import amm_software_service as svc
+
+        descritti = {codice for codice, _desc, _ord in svc._ROUNDING_MODE_DESCRIZIONI_EMITTENTE}
+        self.assertEqual(descritti, svc._ROUNDING_MODE_VALIDI_EMITTENTE)
+        self.assertNotIn("HALF_EVEN", descritti)
+        self.assertEqual(descritti, {"UP", "DOWN", "HALF_UP", "HALF_DOWN"})

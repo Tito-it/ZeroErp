@@ -34,6 +34,9 @@ urlpatterns = [
     path("lookup/azioni-processo/", views.LookupAzioniView.as_view(), name="amm-azioni-list"),
     path("lookup/emittenti-fiscali/", views.LookupEmittentiView.as_view(), name="amm-emittenti-list"),
     path("lookup/model-overrides/", views.ModelOverridesLookupView.as_view(), name="amm-model-overrides"),
+    path("lookup/rounding-modes/", views.EmittenteRoundingModesLookupView.as_view(), name="amm-rounding-modes-lookup"),
+    # Form-defaults emittente fiscale (Fase 3)
+    path("emittenti-fiscali/form-defaults/", views.EmittentiFormDefaultsView.as_view(), name="amm-emittenti-form-defaults"),
     # Invito operatore
     path("operatori/<int:auth_user_id>/invita/", invito_views.InvitaOperatoreView.as_view(), name="amm-operatori-invita"),
     path("operatori/<int:auth_user_id>/reinvia-invito/", invito_views.ReinviaInvitoView.as_view(), name="amm-operatori-reinvia-invito"),

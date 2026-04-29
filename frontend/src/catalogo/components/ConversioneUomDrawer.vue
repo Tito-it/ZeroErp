@@ -35,6 +35,14 @@ const form = ref({
   valido_dal: null, valido_al: null, attivo: true
 })
 
+// Fase 5: campi immutabili dopo create per conversioni UoM. Vengono dal
+// detail (`detail.non_editable_fields`, fonte = `dbops.vw_non_editable_fields`
+// + gap Python su catalogo.unita_misura_conversioni).
+const nonEditableFields = ref([])
+function isFieldLocked(name) {
+  return isEdit.value && nonEditableFields.value.includes(name)
+}
+
 // Deferimento contenuto: i LookupSelect montano solo dopo l'animazione del drawer
 const contentReady = ref(false)
 
@@ -43,9 +51,12 @@ function onAfterShow() {
 }
 
 function resetForm() {
+  // valido_dal: null (Fase 4 BE-only). Se l'admin non sceglie una data,
+  // il service applica today come default. Il DatePicker resta vuoto
+  // finche' l'utente non interagisce.
   form.value = {
     uom_from_id: null, uom_to_id: null, fattore: null,
-    valido_dal: new Date(), valido_al: null, attivo: true
+    valido_dal: null, valido_al: null, attivo: true
   }
 }
 
@@ -67,6 +78,7 @@ async function loadDetail() {
     valido_al: data.valido_al ? new Date(data.valido_al + 'T00:00:00') : null,
     attivo: data.attivo ?? true
   }
+  nonEditableFields.value = data.non_editable_fields || []
 }
 
 watch(() => props.visible, (v) => {
@@ -137,12 +149,12 @@ function close() {
           <div class="form-field">
             <label>{{ t('catalogo.field_uom_da') }} *</label>
             <LookupSelect v-model="form.uom_from_id" rel="catalogo.unita_misura"
-              :placeholder="t('catalogo.select_uom')" :disabled="isEdit" />
+              :placeholder="t('catalogo.select_uom')" :disabled="isFieldLocked('uom_from_id')" />
           </div>
           <div class="form-field">
             <label>{{ t('catalogo.field_uom_a') }} *</label>
             <LookupSelect v-model="form.uom_to_id" rel="catalogo.unita_misura"
-              :placeholder="t('catalogo.select_uom')" :disabled="isEdit" />
+              :placeholder="t('catalogo.select_uom')" :disabled="isFieldLocked('uom_to_id')" />
           </div>
           <div class="form-field">
             <label>{{ t('catalogo.field_fattore') }} *</label>

@@ -11,7 +11,7 @@ import { useAuthUser } from '../../core/composables/useAuthUser'
 import { useLookup } from '../../core/composables/useLookup'
 import { listUnitaOrganizzative, invitaOperatore, reinviaInvito } from '../api/amministrazione'
 import { TIPO_RUOLO_CODICE } from '../constants'
-import { DRAWER_WIDTH, RUOLO_SISTEMA } from '../../core/constants'
+import { DRAWER_WIDTH } from '../../core/constants'
 import { displayDate } from '../../core/utils/date'
 import { capitalizeWords } from '../../core/utils/string'
 import { isEmailValid } from '../../core/utils/validators'
@@ -184,10 +184,10 @@ async function onSave() {
     }
 
     const sogg = soggettoSelezionato.value
-    // In creazione: SUPER_ADMIN di default false, attivo=true.
-    // Il service create_operatore traduce ruolo_sistema legacy; usiamo
-    // la forma legacy per non toccare anche crea_operatore in questo
-    // giro (il contract nuovo su create e' §13.4.18 — fase successiva).
+    // Contract Fase 1 multi-face: il payload create accetta `is_super_admin`
+    // direttamente. Il BE rifiuta `ruolo_sistema` con E_AMM_VALIDAZIONE.
+    // L'utente creato e' sempre attivo (la disabilitazione passa dal comando
+    // dedicato `/disabilita/` in un secondo momento).
     const payload = {
       soggetto_id: sogg?.id || null,
       cognome: sogg?.cognome || null,
@@ -195,7 +195,7 @@ async function onSave() {
       email: auth.form.email,
       username: auth.form.username,
       password: auth.form.password,
-      ruolo_sistema: form.value.is_super_admin ? RUOLO_SISTEMA.ADMIN : RUOLO_SISTEMA.OPERATIVO,
+      is_super_admin: form.value.is_super_admin,
       qualifica_id: form.value.qualifica_id,
       unita_organizzativa_id: form.value.unita_organizzativa_id
     }

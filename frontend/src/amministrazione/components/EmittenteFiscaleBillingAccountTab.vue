@@ -31,11 +31,23 @@ const props = defineProps({
 const selectedBA = ref(null)
 const adding = ref(false)
 
-const { searchText, onPage, onSort, reload, paginatorProps } = useSearchTable(store, {
+const { searchText, onPage, onSort, reload: reloadList, paginatorProps } = useSearchTable(store, {
   defaultSortField: 'billing_account_codice'
 })
 
-// Quando l'emittenteId cambia, aggiorna lo store e ricarica.
+// Reload composto: ricarica lista + summary in parallelo (entrambi necessari
+// per coerenza del pulsante "default", che dipende dal summary indipendente
+// dalla pagina). Allineato al pattern Promise.all gia' usato da
+// addMapping/removeMapping nello store.
+function reload() {
+  reloadList()
+  store.fetchSummary()
+}
+
+// Quando l'emittenteId cambia, aggiorna lo store e ricarica lista + summary.
+// Il summary e' indipendente dalla pagina corrente (vedi A8/C3 del WIP):
+// senza summary, `hasDefault` derivato da `store.items` falliva quando il
+// record default era fuori dalla pagina paginata.
 watch(() => props.emittenteId, (id) => {
   if (!id) {
     store.reset()
@@ -45,13 +57,13 @@ watch(() => props.emittenteId, (id) => {
   store.filters.offset = 0
   store.filters.search = ''
   searchText.value = ''
-  store.fetchList()
+  // Parallelizzato: nessuna dipendenza tra list e summary, riduce latenza.
+  Promise.all([store.fetchList(), store.fetchSummary()])
 }, { immediate: true })
 
-// Computed reattivo: il pulsante "default" si disabilita appena il default esiste.
-const hasDefault = computed(() =>
-  store.items.some(m => m.is_default)
-)
+// Pulsante "default" disabilitato se il default esiste a livello di emittente
+// (qualsiasi pagina). La fonte di verita' e' il summary BE, non la pagina FE.
+const hasDefault = computed(() => store.hasDefaultMapping)
 
 async function addSpecificMapping() {
   if (!selectedBA.value?.id) {

@@ -25,6 +25,9 @@ from apps.catalogo.services.catalogo_service import (
     fn_delete_uom_operativa,
     fn_disattiva_articolo,
     fn_disattiva_unita_misura,
+    fn_get_articolo_form_defaults,
+    fn_riattiva_articolo,
+    fn_duplica_componente_versione,
     fn_get_articolo,
     fn_get_unita_misura,
     fn_list_componenti,
@@ -317,6 +320,51 @@ class ApiArticoloDisattiva(DomainAPIView):
         return handle_post_json(request, handler=lambda _payload: fn_disattiva_articolo(articolo_id))
 
 
+class ApiArticoliFormDefaults(DomainAPIView):
+    area_funzionale = "catalogo"
+    model_permission = ("catalogo", "articolo")
+
+    @extend_schema(
+        responses={
+            200: inline_serializer(
+                name="CatalogoArticoliFormDefaultsResponse",
+                fields={
+                    "data": serializers.DictField(),
+                    "meta": serializers.DictField(required=False),
+                },
+            )
+        },
+    )
+    # Scopo: Restituisce i defaults per il form di creazione articolo (Fase 8 — A5).
+    #        Centralizza il consumo dei parametri (oggi: DEFAULT_IVA_ID) e
+    #        ritorna tipi gia' castati al FE.
+    def get(self, request: Request) -> JsonResponse:
+        from apps.core.api.views_parameters import get_user_context
+        from apps.core.services.parameter_service import ParameterService
+
+        ctx = get_user_context(request, ParameterService())
+        return success_response(fn_get_articolo_form_defaults(**ctx))
+
+
+class ApiArticoloRiattiva(DomainAPIView):
+    area_funzionale = "catalogo"
+    model_permission = ("catalogo", "articolo")
+
+    @extend_schema(
+        request=inline_serializer(name="CatalogoArticoloRiattivaRequest", fields={}),
+        responses={
+            200: inline_serializer(
+                name="CatalogoArticoloRiattivaResponse",
+                fields={"data": serializers.DictField(), "meta": serializers.DictField(required=False)},
+            )
+        },
+    )
+    # Scopo: Riattiva un articolo (Fase 7) e restituisce il dettaglio aggiornato.
+    #        Idempotente su articolo gia' attivo (no-op DB, ritorna dettaglio).
+    def post(self, request: Request, articolo_id: UUID) -> JsonResponse:
+        return handle_post_json(request, handler=lambda _payload: fn_riattiva_articolo(articolo_id))
+
+
 class ApiArticoloUomList(DomainAPIView):
     area_funzionale = "catalogo"
     model_permission = ("catalogo", "articolo")
@@ -439,6 +487,43 @@ class ApiArticoloComponenteDetail(DomainAPIView):
     def delete(self, request: Request, articolo_id: UUID, comp_id: UUID) -> JsonResponse:
         del request
         return success_response(fn_delete_componente(articolo_id, comp_id))
+
+
+# Endpoint atomico Fase 3: chiusura sorgente + apertura nuova versione in
+# singola TX DB con advisory lock. Idempotency-Key obbligatoria perche'
+# l'azione modifica stato (UPDATE + INSERT atomici).
+class ApiArticoloComponenteDuplicaVersione(DomainAPIView):
+    area_funzionale = "catalogo"
+    model_permission = ("catalogo", "articolo")
+
+    @extend_schema(
+        request=inline_serializer(
+            name="CatalogoArticoloComponenteDuplicaVersioneRequest",
+            fields={
+                "chiudi_al": serializers.DateField(
+                    required=False,
+                    allow_null=True,
+                    help_text=(
+                        "Data di chiusura della sorgente (default: oggi). "
+                        "La nuova versione apre il giorno successivo."
+                    ),
+                ),
+            },
+        ),
+        responses={
+            200: inline_serializer(
+                name="CatalogoArticoloComponenteDuplicaVersioneResponse",
+                fields={"data": serializers.DictField(), "meta": serializers.DictField(required=False)},
+            )
+        },
+    )
+    # Scopo: Duplica versione corrente del componente BoM (atomic).
+    def post(self, request: Request, articolo_id: UUID, comp_id: UUID) -> JsonResponse:
+        return handle_post_json(
+            request,
+            handler=lambda payload: fn_duplica_componente_versione(articolo_id, comp_id, payload),
+            require_idempotency_key=True,
+        )
 
 
 class ApiArticoloNoteList(DomainAPIView):

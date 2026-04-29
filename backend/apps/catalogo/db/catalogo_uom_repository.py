@@ -39,8 +39,8 @@ UOM_OPERATIVA_DETAIL_COLUMNS: tuple[str, ...] = (
     "auo.id",
     "auo.articolo_id",
     "auo.uom_id",
-    "u.codice AS uom_codice",
-    "u.descrizione AS uom_descrizione",
+    "auo.uom_codice",
+    "auo.uom_descrizione",
     "auo.is_base",
     "auo.factor_to_base",
     "auo.is_sell_uom",
@@ -60,6 +60,10 @@ UOM_OPERATIVA_DETAIL_COLUMNS: tuple[str, ...] = (
     "auo.user_update",
     "auo.data_insert",
     "auo.data_update",
+    # Capability di riga (Fase 6): only is_base blocca eliminazione.
+    # motivo_non_eliminabile: 'UOM_BASE_NON_ELIMINABILE' | NULL.
+    "auo.puo_eliminarsi",
+    "auo.motivo_non_eliminabile",
 )
 
 
@@ -72,23 +76,25 @@ class CatalogoUomRepository:
         return ",\n                    ".join(UOM_OPERATIVA_DETAIL_COLUMNS)
 
     # Scopo: Lista le UoM operative dell'articolo ordinate con la base in cima.
+    # Legge da vw_articoli_uom_operativa_dettaglio: include denormalizzazioni
+    # uom_codice/uom_descrizione e capability puo_eliminarsi/motivo_non_eliminabile
+    # (Fase 6 — single source of truth, vista DB).
     def list_uom_operative(self, articolo_id: UUID | str) -> list[dict[str, Any]]:
         with connection.cursor() as cursor:
             cursor.execute(
                 """
                 SELECT
                     {projection}
-                FROM catalogo.articoli_uom_operativa auo
-                JOIN catalogo.unita_misura u
-                  ON u.id = auo.uom_id
+                FROM catalogo.vw_articoli_uom_operativa_dettaglio auo
                 WHERE auo.articolo_id = %s
-                ORDER BY auo.is_base DESC, auo.is_sell_uom DESC, auo.is_logistic_uom DESC, u.codice ASC, auo.id ASC
+                ORDER BY auo.is_base DESC, auo.is_sell_uom DESC, auo.is_logistic_uom DESC, auo.uom_codice ASC, auo.id ASC
                 """.format(projection=self._projection()),
                 [articolo_id],
             )
             return rows_to_list(cursor)
 
     # Scopo: Restituisce una singola UoM operativa verificando l'ownership sull'articolo.
+    # Stessa proiezione della lista (Fase 6 — capability incluse).
     def get_uom_operativa(
         self,
         articolo_id: UUID | str,
@@ -99,9 +105,7 @@ class CatalogoUomRepository:
                 """
                 SELECT
                     {projection}
-                FROM catalogo.articoli_uom_operativa auo
-                JOIN catalogo.unita_misura u
-                  ON u.id = auo.uom_id
+                FROM catalogo.vw_articoli_uom_operativa_dettaglio auo
                 WHERE auo.articolo_id = %s
                   AND auo.id = %s
                 """.format(projection=self._projection()),

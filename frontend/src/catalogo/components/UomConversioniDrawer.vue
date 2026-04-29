@@ -34,7 +34,15 @@ const emit = defineEmits(['update:visible', 'saved'])
 const conversioniList = ref([])
 const listLoading = ref(false)
 const adding = ref(false)
-const form = ref({ uom_to_id: null, fattore: 1, valido_dal: new Date() })
+
+// Scopo: stato iniziale del form inserimento. valido_dal=null per Fase 4
+// (BE-only): il service applica today come default se omesso, niente
+// pre-fill UI che maschera la responsabilita' del default.
+function defaultForm() {
+  return { uom_to_id: null, fattore: 1, valido_dal: null }
+}
+
+const form = ref(defaultForm())
 
 // Edit inline fattore
 const editingFattoreId = ref(null)
@@ -58,7 +66,7 @@ async function loadConversioni() {
 watch(() => props.visible, (val) => {
   if (!val) return
   adding.value = false
-  form.value = { uom_to_id: null, fattore: 1, valido_dal: new Date() }
+  form.value = defaultForm()
   editingFattoreId.value = null
   loadConversioni()
 })
@@ -66,13 +74,13 @@ watch(() => props.visible, (val) => {
 // --- Inserimento nuova conversione ---
 
 function startAdd() {
-  form.value = { uom_to_id: null, fattore: 1, valido_dal: new Date() }
+  form.value = defaultForm()
   adding.value = true
 }
 
 function cancelAdd() {
   adding.value = false
-  form.value = { uom_to_id: null, fattore: 1, valido_dal: new Date() }
+  form.value = defaultForm()
 }
 
 const canSaveNew = computed(() => {
@@ -92,7 +100,7 @@ async function onSaveNew() {
   )
   if (result === null) return
   adding.value = false
-  form.value = { uom_to_id: null, fattore: 1, valido_dal: new Date() }
+  form.value = defaultForm()
   await loadConversioni()
   emit('saved')
 }

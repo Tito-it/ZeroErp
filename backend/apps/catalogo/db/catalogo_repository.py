@@ -43,10 +43,12 @@ ARTICOLI_CREATE_COLUMNS: dict[str, str] = {
 }
 
 # Scopo: Whitelist colonne UPDATE articolo. Esclude codice e uom_id che sono
-# entrambi immutabili (lock_columns DDL). Aggiunge attivo per disattivazione/riattivazione.
+# entrambi immutabili (lock_columns DDL). Esclude attivo (Fase 7: la
+# disattivazione/riattivazione passa solo dagli endpoint dedicati
+# /disattiva/ e /riattiva/, non da PATCH).
 ARTICOLI_UPDATE_COLUMNS: dict[str, str] = {
     key: value for key, value in ARTICOLI_CREATE_COLUMNS.items() if key not in {"codice", "uom_id"}
-} | {"attivo": "bool"}
+}
 
 ARTICOLI_DETAIL_COLUMNS: tuple[str, ...] = (
     "a.id",
@@ -92,6 +94,10 @@ ARTICOLI_DETAIL_COLUMNS: tuple[str, ...] = (
     "a.iva_aliquota_iva",
     "a.tipologia_listino_codice",
     "a.tipologia_listino_descrizione",
+    # Capability BoM (Fase 6): true se l'articolo puo' avere distinta base.
+    # motivo_non_gestibile_bom: 'ARTICOLO_SOLO_COMPONENTE' | 'ARTICOLO_NON_COMPOSITO' | NULL.
+    "a.puo_gestire_bom",
+    "a.motivo_non_gestibile_bom",
 )
 
 
@@ -284,6 +290,17 @@ class CatalogoRepository:
                 [articolo_id],
             )
             return cursor.rowcount > 0
+
+    # Scopo: Riattiva un articolo via fn DB dedicata (Fase 7).
+    # La fn `catalogo.fn_riattiva_articolo` e' idempotente su gia' attivo
+    # e raise E_ARTICOLO_NOT_FOUND se id NULL/inesistente. Pattern "padre
+    # prima, figli poi": non tocca i figli (UoM operative, righe BoM, ecc.).
+    def reactivate_articolo(self, articolo_id: UUID | str) -> None:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT catalogo.fn_riattiva_articolo(%s)",
+                [articolo_id],
+            )
 
     # Scopo: Restituisce lookup articoli per autocomplete cross-dominio.
     def lookup_articoli(

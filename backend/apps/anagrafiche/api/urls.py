@@ -26,6 +26,7 @@ from apps.anagrafiche.api.views_invito_portale import (
 )
 from apps.anagrafiche.api.views_emittenti_fiscali import (
     EmittentiFiscaliBillingAccountDetailView,
+    EmittentiFiscaliBillingAccountSummaryView,
     EmittentiFiscaliBillingAccountView,
     EmittentiFiscaliDetailView,
     EmittentiFiscaliUtilitiesDetailView,
@@ -116,6 +117,7 @@ urlpatterns = [
     path("emittenti-fiscali/<int:emittente_id>/", EmittentiFiscaliDetailView.as_view(), name="anagrafiche-emittenti-fiscali-detail"),
     # Sub-resource: mapping BA -> emittente
     path("emittenti-fiscali/<int:emittente_id>/billing-account/", EmittentiFiscaliBillingAccountView.as_view(), name="anagrafiche-emittenti-fiscali-ba-list"),
+    path("emittenti-fiscali/<int:emittente_id>/billing-account/summary/", EmittentiFiscaliBillingAccountSummaryView.as_view(), name="anagrafiche-emittenti-fiscali-ba-summary"),
     path("emittenti-fiscali/<int:emittente_id>/billing-account/<int:mapping_id>/", EmittentiFiscaliBillingAccountDetailView.as_view(), name="anagrafiche-emittenti-fiscali-ba-detail"),
     # Sub-resource: utilities per emittente
     path("emittenti-fiscali/<int:emittente_id>/utilities/", EmittentiFiscaliUtilitiesView.as_view(), name="anagrafiche-emittenti-fiscali-utilities-list"),
