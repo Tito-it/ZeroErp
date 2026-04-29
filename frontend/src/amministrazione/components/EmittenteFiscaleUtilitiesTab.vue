@@ -13,16 +13,16 @@ import { useEmittentiFiscaliStore } from '../stores/emittentiFiscali'
 import { useNotify } from '../../core/composables/useNotify'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
-import { ROUNDING_METHODS, ROUNDING_DECIMALI_RANGE } from '../constants'
+import { ROUNDING_DECIMALI_RANGE } from '../constants'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
-import Select from 'primevue/select'
 import InputNumber from 'primevue/inputnumber'
 import ToggleSwitch from 'primevue/toggleswitch'
 import Button from 'primevue/button'
 import Tag from 'primevue/tag'
 import Message from 'primevue/message'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
+import EmittenteRoundingModeSelect from './EmittenteRoundingModeSelect.vue'
 
 const { t } = useI18n()
 const store = useEmittentiFiscaliStore()
@@ -38,9 +38,11 @@ const props = defineProps({
   emittenteAttivo: { type: Boolean, default: true }
 })
 
-// Costanti centralizzate (vedi amministrazione/constants.js): allineate al CHECK
-// constraint DB su anagrafiche.emittenti_fiscali_utilities.
-// Riusate anche da EmittenteFiscaleDrawer.vue per il campo rounding_policy.
+// `metodo_arrotondamento_importi`: Select riusabile EmittenteRoundingModeSelect
+// (Fase 3 — A6). 4 codici allineati al CHECK constraint DB
+// `chk_emittenti_fiscali_utilities_metodo` (UP/DOWN/HALF_UP/HALF_DOWN).
+// `arrotondamento_importi_dec`: range tecnico in `ROUNDING_DECIMALI_RANGE`
+// (constants.js). Allineato al CHECK chk_emittenti_fiscali_utilities_arrotondamento_dec.
 
 // Stato editing per riga: chiave = utility_id, valore = oggetto editabile.
 // Permette multi-riga: piu' righe possono essere in editing contemporaneamente.
@@ -273,13 +275,9 @@ watch(() => props.emittenteId, async (id) => {
 
       <Column :header="t('amm_emittenti_fiscali.ut_col_metodo')" style="width: 170px; min-width: 170px;">
         <template #body="{ data }">
-          <Select
+          <EmittenteRoundingModeSelect
             v-if="isEditing(data)"
             v-model="editing[data.utility_id].metodo_arrotondamento_importi"
-            :options="ROUNDING_METHODS"
-            option-label="label"
-            option-value="value"
-            fluid
             class="ut-cell-input"
           />
           <span v-else>{{ data.metodo_arrotondamento_importi ?? '—' }}</span>

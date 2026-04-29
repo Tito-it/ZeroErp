@@ -18,7 +18,7 @@ Indice test eseguiti:
  8) test_patch_operatore_success — PATCH modifica campi
  9) test_patch_operatore_invalidates_cache — PATCH invalida cache permessi
 10) test_patch_operatore_not_found — PATCH operatore inesistente -> errore
-11) test_patch_ruolo_sistema — PATCH cambio ruolo
+11) test_patch_is_super_admin — PATCH cambio super-admin (contract Fase 1 multi-face)
 12) test_patch_attivo — PATCH cambio attivo
 13) test_disabilita_success — POST disabilita operatore
 14) test_disabilita_invalidates_cache — POST disabilita invalida cache
@@ -223,7 +223,11 @@ class TestOperatoriPatchView(TestCase):
 
         view = OperatoriDetailView()
         view.check_permissions = MagicMock()
-        view.patch(_admin_request(method="PATCH", data={"ruolo_sistema": "ADMIN"}), auth_user_id=1)
+        # Contract Fase 1: is_super_admin + attivo (no ruolo_sistema)
+        view.patch(
+            _admin_request(method="PATCH", data={"is_super_admin": True, "attivo": True}),
+            auth_user_id=1,
+        )
 
         mock_invalidate.assert_called_once_with(1)
 
@@ -242,17 +246,22 @@ class TestOperatoriPatchView(TestCase):
 
     @patch("apps.amm_software.services.amm_software_service.invalidate_user")
     @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
-    def test_patch_ruolo_sistema(self, MockRepo: MagicMock, mock_invalidate: MagicMock) -> None:
-        """Scopo: PATCH cambio ruolo_sistema passa il valore corretto al repository."""
+    def test_patch_is_super_admin(self, MockRepo: MagicMock, mock_invalidate: MagicMock) -> None:
+        """Scopo: Contract Fase 1 — PATCH `is_super_admin: true, attivo: true`
+        viene tradotto internamente in `ruolo_sistema=ADMIN` per il repo."""
         repo_instance = MockRepo.return_value
         repo_instance.get_operatore_detail.return_value = SAMPLE_DETAIL
 
         view = OperatoriDetailView()
         view.check_permissions = MagicMock()
-        view.patch(_admin_request(method="PATCH", data={"ruolo_sistema": "ADMIN"}), auth_user_id=1)
+        view.patch(
+            _admin_request(method="PATCH", data={"is_super_admin": True, "attivo": True}),
+            auth_user_id=1,
+        )
 
         call_kwargs = repo_instance.update_operatore.call_args.kwargs
         self.assertEqual(call_kwargs["ruolo_sistema"], "ADMIN")
+        self.assertTrue(call_kwargs["attivo"])
 
     @patch("apps.amm_software.services.amm_software_service.invalidate_user")
     @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")

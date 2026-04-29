@@ -47,6 +47,7 @@ riceve `403 Forbidden`.
 | 5.1 | `GET` | `/emittenti-fiscali/<id>/billing-account/` | Lista mapping BA |
 | 5.2 | `POST` | `/emittenti-fiscali/<id>/billing-account/` | Crea mapping BA o default globale |
 | 5.3 | `DELETE` | `/emittenti-fiscali/<id>/billing-account/<mapping_id>/` | Elimina mapping BA |
+| 5.4 | `GET` | `/emittenti-fiscali/<id>/billing-account/summary/` | Summary mapping (has_default + count_specifici) |
 | 6.1 | `GET` | `/emittenti-fiscali/<id>/utilities/` | Lista record utility per emittente |
 | 6.2 | `POST` | `/emittenti-fiscali/<id>/utilities/` | Crea record utility |
 | 6.3 | `PATCH` | `/emittenti-fiscali/<id>/utilities/<record_id>/` | Aggiorna record utility |
@@ -451,6 +452,41 @@ curl -X DELETE "https://api.example.com/api/v1/anagrafiche/emittenti-fiscali/1/b
 | Codice | HTTP | Descrizione |
 | --- | --- | --- |
 | `E_ANAG_NOT_FOUND` | 404 | Mapping non esiste o non appartiene all'emittente indicato |
+
+### 5.4 Summary mapping BA
+
+| | |
+| --- | --- |
+| **Metodo** | `GET` |
+| **URL** | `/api/v1/anagrafiche/emittenti-fiscali/<emittente_id>/billing-account/summary/` |
+
+Riepilogo dei mapping BA per l'emittente, **indipendente dalla pagina/search**
+della lista paginata. Risolve il bug A8/C3 dell'analisi frontend amm-software:
+il pulsante "default" lato FE non puo' affidarsi a `store.items.some(is_default)`
+perche' il record default puo' trovarsi fuori dalla pagina corrente.
+
+#### Esempio cURL — GET summary
+
+```bash
+curl -X GET "https://api.example.com/api/v1/anagrafiche/emittenti-fiscali/1/billing-account/summary/" \
+     -H "Authorization: Bearer $TOKEN"
+```
+
+#### Risposta — summary
+
+```json
+{
+  "data": {
+    "has_default": true,
+    "count_specifici": 7
+  }
+}
+```
+
+| Campo | Tipo | Descrizione |
+| --- | --- | --- |
+| `has_default` | bool | True se esiste il mapping default globale per l'emittente |
+| `count_specifici` | int | Numero mapping specifici (con `billing_account_id` valorizzato) |
 
 ---
 

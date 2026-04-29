@@ -1,6 +1,6 @@
 # Analisi refactor frontend vendite
 
-<!-- markdownlint-disable MD036 MD031 -->
+<!-- markdownlint-disable MD036 MD031 MD028 -->
 
 > Obiettivo: identificare cosa nel frontend vendite e' logica di dominio
 > mascherata da presentazione, cosa e' UX defense-in-depth legittima e cosa
@@ -12,13 +12,23 @@
 >
 > Riferimenti vincolanti:
 >
-> - `docs/it/dev/api.md` — envelope API, command/read, errori strutturati.
+> - `docs/it/dev/api.md` — envelope API, command/read, errori strutturati,
+>   grammatica URL, base view, `handle_post_json`, lookup generico/dedicato,
+>   `core/parameters/defaults/`.
 > - `docs/it/dev/frontend/frontend-standards.md` — pattern lista/drawer,
->   readonly, RowActionsMenu, i18n.
+>   readonly, RowActionsMenu, i18n, transizione a stato terminale con data.
+> - `docs/it/dev/backend/catalogo-building-block-backend.md` — inventario
+>   building block backend (PayloadValidator, ParameterService,
+>   PricingService, BillingAccountRepository, helpers API).
+> - `docs/it/dev/frontend/catalogo-building-block-frontend.md` — inventario
+>   building block frontend (`useGlobalLookup`, `useParameterDefaults`,
+>   `BillingAccountLookup`, `LookupSelect`, `RoundingModeSelect`,
+>   `ArticoloLookup`, `RowActionsMenu`).
 > - `docs/it/dev/work-done/frontend/guida-sviluppo-frontend.md` — convenzioni
 >   Vue, store, API client.
-> - `docs/it/dev/work-in-progress/analisi-refactor.frontend-catalogo.md` —
->   pattern condivisi per defaults, metadata API, capability di riga.
+> - `docs/it/dev/work-done/analisi-refactor.frontend-catalogo.md` — pattern
+>   condivisi per defaults, metadata API, capability di riga (Fasi 1-5
+>   already-landed catalogo).
 > - `docs/it/dev/work-done/analisi-refactor.frontend-anagrafiche.md` —
 >   pattern `non_editable_fields`, `evento_stato_corrente`,
 >   `classify EMPTY/PARTIAL/VALID`.
@@ -26,6 +36,20 @@
 > Principio: il frontend vendite deve restare presentazione + UX. Il DB/backend
 > decidono pricing, stati, transizioni, capability, campi editabili, default
 > operativi e invarianti temporali.
+
+> **Validazione 2026-04-28** — Il documento e' stato riallineato dopo
+> verifica diretta del codice (`backend/apps/vendite/`, `frontend/src/vendite/`)
+> e dei building block esistenti. Punti chiave:
+>
+> - i bug e le diagnosi sono confermati (P0 `LookupSelect`, modalita' A/B/C
+>   FE-only, transizioni cablate, defaults `new Date()` cablati);
+> - alcune proposte sono state riallineate ai pattern gia' consolidati nel
+>   progetto (lookup statico tipo `RoundingModeSelect` invece di endpoint
+>   dedicati ad-hoc; building block `BillingAccountLookup` gia' presente in
+>   `core/components`; uso di `useParameterDefaults` + `core/parameters/defaults/`
+>   per la quota di defaults non dipendenti dal BA);
+> - il piano e' stato riscritto in chiave DB / Backend / Frontend in coda al
+>   documento, con dipendenze esplicite tra livelli.
 
 ---
 
@@ -61,17 +85,22 @@
 
 ### A1. Transizioni preventivo esposte come `available_actions` (PRIORITA' MASSIMA)
 
-- `frontend/src/vendite/preventivi/components/PreventiviDrawer.vue:144`
+- `frontend/src/vendite/preventivi/components/PreventiviDrawer.vue:144-158`
 
-Il FE decide il workflow:
+Il FE decide il workflow nella funzione `transizioni()`:
 
-- `BOZZA -> EMESSO | ANNULLATO`
+- `BOZZA (DRAFT) -> EMESSO | ANNULLATO`
 - `EMESSO -> ACCETTATO | RIFIUTATO | ANNULLATO`
 - `ACCETTATO -> ANNULLATO`
 
+Inoltre il bottone "Nuova revisione" appare solo per `EMESSO`/`ACCETTATO` —
+anche questa e' una capability che dipende dallo stato del documento e non
+dovrebbe essere derivata in Vue.
+
 Questa e' logica di dominio. Il backend ha gia' `cambia_stato` delegato alla
-funzione DB e il service conosce gli stati modificabili/fatturabili. Il detail
-preventivo deve esporre:
+funzione DB (`POST /api/v1/vendite/preventivi/<id>/stato/`,
+`ApiPreventivoStato`) e il service conosce gli stati modificabili/fatturabili.
+Il detail preventivo (`GET /api/v1/vendite/preventivi/<id>/`) deve esporre:
 
 ```json
 {
@@ -139,35 +168,53 @@ Il FE puo' ancora usare `SelectButton`; non deve essere lui a definire che
 
 ### A4. Transizioni contratto cablate in FE
 
-- `frontend/src/vendite/components/ContrattoDrawer.vue:376`
+- `frontend/src/vendite/components/ContrattoDrawer.vue:376-408`
 
-La scelta `DRAFT -> ATTIVO -> CESSATO` e' allineata al service attuale, ma e'
-comunque duplicata rispetto al backend (`_CONTRATTO_PATCH_ALLOWED_BY_STATE` e
-`cambia_stato`). Come per preventivi, il detail contratto deve esporre:
+La whitelist `statiTransizionabili` (DRAFT -> [ATTIVO]; ATTIVO -> [CESSATO];
+altrimenti []) duplica `_CONTRATTO_PATCH_ALLOWED_BY_STATE` e la logica
+`cambia_stato` del backend
+([backend/apps/vendite/services/contratti_service.py:118-122](../../../../backend/apps/vendite/services/contratti_service.py#L118-L122)).
+Lo stato terminale `CESSATO` segue il pattern "stato terminale con data"
+(frontend-standards §"Transizione a stato terminale con data") — corretto come
+UX, ma il dialog usa default locale.
+
+Come per preventivi, il detail contratto deve esporre:
 
 - `available_actions`
 - `can_change_state`
 - `state_action_requires_date`
-- `default_action_date`
-- `min_action_date`
+- `default_action_date`  ← oggi (cessazione programmata serale)
+- `min_action_date`      ← `valido_dal` del contratto
 
 Il dialog di cessazione resta UX, ma data default e semantica programmata devono
-essere metadata. Oggi `openCessaDialog()` usa `new Date()` come policy locale.
+essere metadata. Oggi `openCessaDialog()` usa `new Date()` come policy locale
+e replica nel computed `cessazioneProgrammata` la regola "data >= oggi -> programmata"
+che e' gia' lato backend (`cambia_stato`) e DB (trigger guard +
+job notturno `fn_contratti_close_scadute`, vedi memoria progetto
+contratti cessazione data-driven).
 
 ### A5. Defaults contratto da form-defaults backend
 
-- `frontend/src/vendite/components/ContrattoDrawer.vue:102`
+- `frontend/src/vendite/components/ContrattoDrawer.vue:102-125`
 
-Nel default form sono cablati:
+Nel `defaultForm()` sono cablati:
 
 - `ambito: 'COMMODITY'`
-- `valido_dal = oggi`
-- `data = oggi`
+- `valido_dal = new Date().toISOString().slice(0, 10)`
+- `data = new Date().toISOString().slice(0, 10)`
 - `modalita = 'A'`
-- `tipo_variazione_globale = PERCENTUALE` quando si sceglie A
+- `tipo_variazione_globale = PERCENTUALE` quando si sceglie A (`onModalitaChange`)
 
 Questi default non sono solo UI: determinano il comportamento commerciale.
-Vanno restituiti da un endpoint tipo:
+
+Architettura proposta — due livelli, gia' supportati dai BB esistenti:
+
+1. **Defaults non dipendenti dal BA** — esposti via parameters
+   (`config.parameters`) e consumati con `useParameterDefaults` (gia' BB
+   frontend) + `ParameterService.get_defaults` (gia' BB backend, endpoint
+   `GET /api/v1/core/parameters/defaults/?codes=...`). Esempio:
+   `VENDITE_CONTRATTO_DEFAULT_AMBITO`, `VENDITE_CONTRATTO_DEFAULT_MODALITA`.
+2. **Defaults dipendenti dal BA** — endpoint dedicato che fa lookup contestuale:
 
 ```text
 GET /api/v1/vendite/contratti/form-defaults/?billing_account_id=...
@@ -180,9 +227,14 @@ Payload minimo:
 - `default_valido_dal`
 - `default_modalita_pricing`
 - `default_tipo_variazione_globale`
-- `categoria_cliente_snapshot_id`
+- `categoria_cliente_snapshot_id`         ← gia' lookup oggi via `onBaSelected`
 - `utility_tipo_classe_required`
-- `pricing_modalita_options`
+- `pricing_modalita_options`              ← lookup statico (vedi A7)
+- `valuta_id`, `termine_pagamento_id`     ← derivati dal BA quando esistono
+
+Il payload create del FE continua a inviare i campi atomici come oggi; il
+servizio si limita a "suggerire" i default. La differenza e' che il FE non
+inventa piu' la regola "modalita=A se listino_id valorizzato" (vedi A3).
 
 ### A6. Promo articoli: stato temporale e campi editabili devono arrivare dal detail
 
@@ -219,21 +271,40 @@ Il detail promo deve esporre:
 Il FE mostra banner e disabilita campi in base a questi metadata. La guard
 backend resta l'unica difesa reale.
 
-### A7. Enum `tipo_variazione` promo e contratti/listini da lookup tecnico
+### A7. Enum `tipo_variazione` promo e contratti/listini da lookup statico
 
-- `frontend/src/vendite/components/PromoArticoloDrawer.vue:91`
-- `frontend/src/vendite/components/ContrattoDrawer.vue:92`
+- `frontend/src/vendite/components/PromoArticoloDrawer.vue:91-95`
+- `frontend/src/vendite/components/ContrattoDrawer.vue:92-100`
 
-`PERCENTUALE`, `VALORE_FISSO`, `PREZZO_FISSO` non devono essere ripetuti nei
-componenti. Come indicato nell'analisi catalogo per `roundingOptions`, non serve
-per forza una tabella DB: basta un endpoint lookup statico che legge la
-whitelist Python/DB single source of truth.
+`PERCENTUALE`, `VALORE_FISSO`, `PREZZO_FISSO`, `COMMODITY`, `COMMERCIO`,
+`A`/`B`/`C` non devono essere ripetuti nei componenti. Pattern gia' consolidato
+(refactor catalogo Fase 1 LANDED): **endpoint lookup statico dedicato + wrapper
+Vue + cache modulo-level via `useGlobalLookup`**, single source of truth lato
+Python/DB.
 
-Endpoint proposti:
+Riferimento implementativo da copiare 1:1:
+
+- BE: `vendite_service._TIPI_VARIAZIONE_CONTRATTO`/`_TIPI_VARIAZIONE_PROMO`/`_AMBITI_CONTRATTO`/`_MODALITA_PRICING_CONTRATTO`
+  (whitelist tuple), endpoint `GET /api/v1/vendite/lookup/<nome>/` che ritornano
+  `[{codice, descrizione}]`. **Modello esistente**: `catalogo_service._ROUNDING_MODE_VALIDI`
+  e `LookupUomRoundingModesView` (vedi
+  [catalogo-building-block-frontend.md](../frontend/catalogo-building-block-frontend.md)
+  riga `lookupUomRoundingModes`).
+- FE: nuovi wrapper standardizzati (`TipoVariazioneSelect`, `AmbitoContrattoSelect`,
+  `ModalitaPricingSelect`) basati su `useGlobalLookup` con chiavi stabili
+  (`vendite.tipi_variazione_contratto`, ecc.). Modello: `RoundingModeSelect`.
+
+Endpoint proposti (allineati alla grammatica `api.md`, "Lookup dedicato"):
 
 - `GET /api/v1/vendite/lookup/tipi-variazione-contratto/`
 - `GET /api/v1/vendite/lookup/tipi-variazione-promo/`
 - `GET /api/v1/vendite/lookup/ambiti-contratto/`
+- `GET /api/v1/vendite/lookup/modalita-pricing-contratto/`
+
+> **Nota** — non e' il lookup generico `core/lookup/codici/?rel=...` perche'
+> queste enum **non hanno tabella DB di backing** (vivono come whitelist
+> Python/DB-side, validate da CHECK constraint o trigger). Il lookup generico
+> e' riservato a tabelle config con struttura `id, codice, descrizione`.
 
 ### A8. Defaults e vincoli versioni listino da backend
 
@@ -287,29 +358,42 @@ di `if (stato === 'BOZZA')`.
 
 ### A10. Preventivi: form testata usa ID numerico per billing account
 
-- `frontend/src/vendite/preventivi/components/PreventiviForm.vue:28`
+- `frontend/src/vendite/preventivi/components/PreventiviForm.vue:28-32`
 
-Il form preventivo usa `InputNumber` per `billing_account_id`, mentre contratti
-usa `BillingAccountLookup`. Non e' solo UX: un ID manuale permette combinazioni
-incoerenti con utility/istanza/emittente finche' il backend non rifiuta.
+Il form preventivo usa `<InputNumber>` per `billing_account_id`, mentre
+contratti usa `BillingAccountLookup` (gia' BB cross-dominio in
+`core/components/`, scope emittente automatico, restore arricchito,
+endpoint `GET /anagrafiche/billing-account/lookup/` gia' attivo). Non e'
+solo UX: un ID manuale permette combinazioni incoerenti con
+utility/istanza/emittente finche' il backend non rifiuta.
 
-Refactor:
+Refactor (zero sviluppo BE — il BB esiste gia'):
 
-- usare `BillingAccountLookup`;
-- quando selezionato, popolare `billing_account_id`, `utility_id`,
-  `istanza_utility_id`;
-- idealmente chiedere al backend `preventivi/form-defaults/?billing_account_id=...`
-  per valuta, termini pagamento, validita e competenza.
+- importare `BillingAccountLookup` da `core/components/BillingAccountLookup.vue`;
+- prop `utility-id` legata a `form.utility_id` quando valorizzato (filtra
+  per coerenza utility/BA);
+- nell'`@select`, popolare `billing_account_id`, `utility_id`,
+  `istanza_utility_id` (e `categoria_cliente_id_snapshot` se serve, come gia'
+  fa `ContrattoDrawer.onBaSelected`);
+- in edit, restore arricchito via `getBillingAccountLookupById(id)` per
+  inizializzare `_obj` (pattern restore AutoComplete server-side);
+- per gli altri default (valuta, termini pagamento, validita', competenza)
+  usare `useParameterDefaults` + `core/parameters/defaults/` con codici
+  `VENDITE_PREVENTIVO_DEFAULT_*` (vedi A5); per defaults derivati dal BA,
+  endpoint dedicato `vendite/preventivi/form-defaults/?billing_account_id=...`.
 
 ### A11. Preventivi: `LookupSelect` usato senza import (BUG P0)
 
-- `frontend/src/vendite/preventivi/components/PreventiviForm.vue:55`
-- `frontend/src/vendite/preventivi/components/PreventiviForm.vue:63`
+- `frontend/src/vendite/preventivi/components/PreventiviForm.vue:55-65`
 
-Il template usa `LookupSelect`, ma lo script importa solo
-`UtilityPerRuoloSelect`, `DatePicker`, `InputNumber`, `ToggleSwitch`. Se
-`LookupSelect` non e' registrato globalmente da qualche plugin, questo rompe la
-pagina preventivi.
+Il template usa `<LookupSelect rel="config.valute">` e `<LookupSelect
+rel="config.termini_pagamento">`, ma lo script importa solo
+`UtilityPerRuoloSelect`, `DatePicker`, `InputNumber`, `ToggleSwitch`.
+Verifica eseguita 2026-04-28: `LookupSelect` **non** e' registrato
+globalmente in [main.js](../../../../frontend/src/main.js) — il componente
+non viene risolto al runtime di Vue 3 e l'autocompletamento sui campi
+"Valuta" e "Termini pagamento" non funziona (warning console + dropdown
+vuoto). Bug reale, non solo formale.
 
 Fix immediato:
 
@@ -317,7 +401,11 @@ Fix immediato:
 import LookupSelect from '../../../core/components/LookupSelect.vue'
 ```
 
-Questo va fatto prima dei refactor piu' ampi.
+Questo va fatto prima dei refactor piu' ampi (Fase 0). Una volta importato,
+i due lookup rispettano gia' il pattern api.md "Lookup generico" (whitelist
+~45 tabelle config su `dbops_repository.py`) — `config.valute` e
+`config.termini_pagamento` devono essere presenti nella whitelist; in caso
+negativo aggiungerli (verificare prima di chiudere la Fase 0).
 
 ---
 
@@ -366,10 +454,18 @@ useArticoloUomOptions({ preselectBase: true })
 
 ### B5. Limiti pricing in `useLimitiPricing`
 
-Il composable carica `max_sconto_pct` e `max_maggiorazione_pct` dal backend.
-E' corretto: il FE mostra hint e intercetta errori per banner, ma non decide
-l'autorizzazione finale. Evitare pero' di usare quei limiti come unica guard di
-salvataggio.
+- `frontend/src/vendite/composables/useLimitiPricing.js`
+
+Il composable carica i limiti pricing dal backend (`GET
+/api/v1/vendite/pricing/limiti-utente/`). E' corretto: il FE mostra hint e
+intercetta errori per banner, ma non decide l'autorizzazione finale —
+quest'ultima resta lato BE (`PricingService` + workflow L2/L3, vedi C4) e
+DB (CHECK + trigger su `preventivi_righe`).
+
+Evitare di usare quei limiti come unica guard di salvataggio: il backend
+deve sempre rifiutare i payload non autorizzati con codice errore strutturato
+(`E_PREV_OVERRIDE_NON_AUTORIZZATO`) e il FE intercetta il codice per offrire
+la CTA "Richiedi approvazione" (vedi C4).
 
 ### B6. Approvazioni prezzo: command UI semplice
 
@@ -397,19 +493,26 @@ Non e' un bug funzionale, ma e' una deviazione dallo standard frontend:
 
 ### C2. Detail preventivo carica righe ma il FE le ricarica da endpoint separato
 
-`get_preventivo()` backend ritorna testata + righe + indirizzi, ma
-`PreventiviRigheTable` richiama `listRighe(preventivoId)`. Questo non e'
-necessariamente sbagliato, ma duplica round-trip e puo' creare mismatch
-temporaneo tra totali detail e righe visualizzate.
+`get_preventivo()` backend
+([backend/apps/vendite/services/preventivi_service.py:81-98](../../../../backend/apps/vendite/services/preventivi_service.py#L81-L98))
+ritorna testata + righe + indirizzi, ma
+[PreventiviRigheTable.vue:31-33](../../../../frontend/src/vendite/preventivi/components/PreventiviRigheTable.vue#L31-L33)
+chiama comunque `store.loadRighe(preventivoId)` (che a sua volta chiama
+`listRighe` -> `GET /api/v1/vendite/preventivi/<id>/righe/`). Verificato.
+Questo non e' necessariamente sbagliato, ma duplica round-trip e puo' creare
+mismatch temporaneo tra totali detail e righe visualizzate.
 
 Decisione consigliata:
 
 - o il detail e' completo e i figli ricevono righe/indirizzi come props;
-- o il detail e' solo testata e ogni sezione e' endpoint autonomo.
+- o il detail e' solo testata + `summary`/totali e ogni sezione e' endpoint
+  autonomo.
 
 Per vendite, dove le righe sono mutate spesso e i totali sono trigger-driven,
 preferisco endpoint autonomi ma allora il detail non dovrebbe includere righe
-pesanti, oppure deve includere `summary`/totali soltanto.
+pesanti, oppure deve includere `summary`/totali soltanto. Da decidere e
+applicare uniformemente (preventivi e contratti — `ContrattoRigheDrawer` ha
+gia' endpoint preview dedicato).
 
 ### C3. Capability cross-sottodominio non modellate
 
@@ -452,61 +555,9 @@ Pattern consigliato:
 
 ---
 
-## Piano refactor concentrico
-
-### Fase 0 — Fix P0 e sicurezza build
-
-1. Importare `LookupSelect` in `PreventiviForm.vue`.
-2. Eseguire build frontend.
-3. Verificare pagina preventivi create/edit.
-
-### Fase 1 — Metadata read-only/capability senza cambiare UX
-
-Backend:
-
-- aggiungere `available_actions`, `non_editable_fields`, `can_*` nei detail di:
-  preventivi, contratti, promo, versioni listino;
-- aggiungere reason testuali/codici (`*_reason_code`) non solo boolean.
-
-Frontend:
-
-- consumare metadata mantenendo gli stessi componenti;
-- lasciare temporaneamente fallback locale per compatibilita'.
-
-### Fase 2 — Form defaults e lookup tecnici
-
-Backend:
-
-- `vendite/contratti/form-defaults/`
-- `vendite/preventivi/form-defaults/`
-- `vendite/listini/.../versioni/*-defaults/`
-- lookup tecnici per enum variazione, ambiti, modalita pricing.
-
-Frontend:
-
-- rimuovere `new Date()` e magic string dai default form dove il valore e'
-  operativo;
-- conservare solo suggerimenti visuali non vincolanti.
-
-### Fase 3 — Preventivi UI allineata agli standard
-
-1. `BillingAccountLookup` al posto di `InputNumber`.
-2. `RowActionsMenu` nelle righe.
-3. Gestione riga coerente con master-detail vendite oppure dialog standardizzato.
-4. CTA approvazione prezzo guidata da error code backend.
-
-### Fase 4 — Duplicazioni tecniche
-
-1. Estrarre `useArticoloUomOptions`.
-2. Estrarre helper `useTemporalCapabilities` solo come adapter metadata, non
-   per ricalcolare regole.
-3. Uniformare `formatCurrency` e `formatNumber` usando utility core.
-
----
-
 ## Decisioni da non invertire
 
-- Il backend/DB resta fonte unica per pricing, stati, workflow, validita e
+- Il backend/DB resta fonte unica per pricing, stati, workflow, validita' e
   autorizzazioni.
 - Il frontend puo' fare defense-in-depth, ma solo leggendo metadata backend o
   replicando temporaneamente con commento esplicito e test.
@@ -514,4 +565,187 @@ Frontend:
 - Date e default operativi non vanno inventati nel componente.
 - I componenti vendite devono convergere sugli standard esistenti:
   `NewButton`, `RowActionsMenu`, `DrawerFooter`, `useSearchTable`,
-  `BillingAccountLookup`, `ArticoloLookup`, `LookupSelect`.
+  `BillingAccountLookup`, `ArticoloLookup`, `LookupSelect`,
+  `useGlobalLookup`, `useParameterDefaults`.
+
+---
+
+## Piano di aggiornamento — DB / Backend / Frontend
+
+> Il piano e' organizzato per livelli (DB -> Backend -> Frontend) con
+> dipendenze esplicite. Le fasi seguono il modello concentrico (vedi
+> `docs/it/sviluppo-concentrico.md`). Le azioni DB sono brief al team DB
+> sul branch `dev/db-tid` (memoria progetto `feedback_db_actions_passaggio_team`):
+> non vengono eseguite direttamente dall'agente backend.
+
+### Fase 0 — Fix P0 e sicurezza build (FE-only, no BE/DB)
+
+| # | Livello | Azione | Dipendenze |
+| --- | --- | --- | --- |
+| 0.1 | FE | Importare `LookupSelect` in `PreventiviForm.vue` | nessuna |
+| 0.2 | FE | Verifica `vite build` verde | 0.1 |
+| 0.3 | FE | Smoke test manuale lista + drawer create/edit preventivo | 0.2 |
+| 0.4 | BE | Verificare whitelist lookup generico in `dbops_repository.py`: `config.valute` e `config.termini_pagamento` presenti; aggiungere se mancanti | nessuna |
+
+Stato uscita Fase 0: pagina preventivi funzionante, niente regressioni
+backend, nessuna modifica DB.
+
+### Fase 1 — Metadata capability nel detail (foundation)
+
+Obiettivo: esporre `available_actions` + `non_editable_fields` + `can_*`
+nei detail dei 4 sottodomini, senza cambiare la UX. Pattern gia' validato
+nel refactor catalogo (Fasi 6-8) e anagrafiche.
+
+**DB**
+
+| # | Azione | Note |
+| --- | --- | --- |
+| 1.D1 | Nessuna nuova DDL — derivare capability da stato + relazioni gia' in DB | I LEFT JOIN per "ha pratica APPROVAZIONE_PREZZO pendente", "ha commessa pushata", "ha fatture generate" sono gia' fattibili |
+| 1.D2 | (opz.) Vista `vw_preventivi_detail_capability` se i JOIN diventano onerosi | brief team DB — solo se profiling richiede |
+
+**Backend**
+
+| # | File / Endpoint | Azione |
+| --- | --- | --- |
+| 1.B1 | `preventivi_service.get_preventivo` | Aggiungere blocco `capabilities` (testata) + `available_actions` derivate da `script.fn_can_change_state_preventivo` (o equivalente Python su stati). Rifattorizzare `transizioni()` esistente |
+| 1.B2 | `contratti_service.get_contratto` | Stesso pattern; `available_actions` per CESSATO include `requires_date=true`, `default_date=today`, `min_date=valido_dal` |
+| 1.B3 | `promo_articoli_service.get_promo_articolo` | Esporre `stato_temporale` (FUTURA/INIZIATA/SCADUTA), `non_editable_fields`, `min_valido_dal`, `min_valido_al` derivati dalla guard DB esistente (`E_PROMO_*`) |
+| 1.B4 | `listini_service` versioni + righe | `versione.can_add_righe`, `versione.can_apply_variazione`, `riga.can_edit`, `riga.can_delete`, `riga.action_reason` (whitelist su stato BOZZA gia' implementata) |
+| 1.B5 | `error_policies.py` | Registrare nuovi codici reason (`E_*_NON_EDITABILE`, `E_*_PUSH_GIA_FATTO`, ecc.) se non gia' presenti |
+| 1.B6 | Test service in `apps/vendite/tests/services/` | Nuovi test per ogni capability — fallimenti devono restituire reason_code |
+
+**Frontend**
+
+| # | File | Azione |
+| --- | --- | --- |
+| 1.F1 | `PreventiviDrawer.vue` | Sostituire `transizioni()` con consumo di `detail.available_actions`; `isModificabile`/`isAccettato` -> `detail.capabilities.edit`/`push` |
+| 1.F2 | `ContrattoDrawer.vue` | `statiTransizionabili` legge `detail.available_actions`; data dialog cessazione legge `default_date`/`min_date`/`requires_date` |
+| 1.F3 | `PromoArticoloDrawer.vue` | `isPromoScaduta`/`isPromoIniziata`/`validoDalMinDate` legati a `detail.stato_temporale` + `min_valido_dal`; campi disabled da `non_editable_fields` |
+| 1.F4 | `VersioneDrawer.vue` | `isBozza` -> `versione.can_add_righe`; `RowActionsMenu` per riga usa `riga.can_edit`/`can_delete` come `visible` |
+| 1.F5 | (opz.) `core/composables/useEntityCapabilities.js` | Helper sottile che adatta `detail.capabilities` -> ref booleani per i computed dei drawer (no logica, solo lookup) |
+
+Stato uscita Fase 1: zero ricalcoli di stato/permesso nei drawer Vue.
+La UX visibile resta invariata. Test di regressione obbligatori.
+
+### Fase 2 — Form defaults e lookup tecnici
+
+Obiettivo: rimuovere `new Date()`, magic string e regole `if (modalita === 'A')`
+dal FE, sostituendo con parameters + lookup statici (pattern `RoundingModeSelect`).
+
+**DB**
+
+| # | Azione | Note |
+| --- | --- | --- |
+| 2.D1 | Seed `config.parameters` per defaults non-BA | brief team DB. Codici: `VENDITE_PREVENTIVO_DEFAULT_VALIDITA_GG`, `VENDITE_CONTRATTO_DEFAULT_AMBITO`, `VENDITE_CONTRATTO_DEFAULT_MODALITA`, `VENDITE_LISTINI_NEW_VERSIONE_LEAD_GG`, `VENDITE_LISTINI_CLONE_VERSIONE_LEAD_GG`, ecc. |
+| 2.D2 | (opz.) View per categoria_cliente_snapshot derivata dal BA | gia' fattibile da Python; non serve view dedicata salvo profiling |
+
+**Backend**
+
+| # | Azione | Note |
+| --- | --- | --- |
+| 2.B1 | `vendite_service` — whitelist Python per enum: `_TIPI_VARIAZIONE_CONTRATTO`, `_TIPI_VARIAZIONE_PROMO`, `_AMBITI_CONTRATTO`, `_MODALITA_PRICING_CONTRATTO` | Modello: `catalogo_service._ROUNDING_MODE_VALIDI` |
+| 2.B2 | 4 endpoint `GET /api/v1/vendite/lookup/<nome>/` | Modello: `LookupUomRoundingModesView` — risposta `[{codice, descrizione}]`, area `vendite` LETTURA |
+| 2.B3 | `GET /api/v1/vendite/contratti/form-defaults/?billing_account_id=...` | Risolve categoria_cliente snapshot, utility_tipo/classe required, suggerimenti pricing |
+| 2.B4 | `GET /api/v1/vendite/preventivi/form-defaults/?billing_account_id=...` | Valuta, termini pagamento, validita_dal/al di default (se servono regole BA-specifiche) |
+| 2.B5a | `GET /api/v1/vendite/listini/<id>/versioni/form-defaults/` | `default_codice_versione`, `default_valido_dal`, `has_existing_draft`, `existing_drafts` |
+| 2.B5b | `GET /api/v1/vendite/listini/<id>/versioni/<ver_id>/clone-defaults/` | `default_codice_versione` (suffisso configurabile), `default_valido_dal`, `min_valido_dal`, `retroactive_warning` |
+| 2.B5c | `GET /api/v1/vendite/listini/<id>/versioni/<ver_id>/close-defaults/` | `default_valido_al`, `min_valido_al` |
+| 2.B6 | `error_policies.py` | Nuovi codici se mancanti |
+| 2.B7 | Test service + smoke API | Coverage minima sui nuovi endpoint |
+
+**Frontend**
+
+| # | Azione | Note |
+| --- | --- | --- |
+| 2.F1 | `core/api/apiCore.js` o `vendite/api/lookup.js` | Aggiungere `lookupTipiVariazioneContratto`, `lookupTipiVariazionePromo`, `lookupAmbitiContratto`, `lookupModalitaPricingContratto` (lookup statici) |
+| 2.F2 | Nuovi wrapper in `vendite/components/`: `TipoVariazioneSelect.vue`, `AmbitoContrattoSelect.vue`, `ModalitaPricingSelect.vue` | Modello `RoundingModeSelect.vue` con `useGlobalLookup(chiave-stabile, fetchFn)` |
+| 2.F3 | `ContrattoDrawer.vue` | Sostituire `tipoVariazioneOptions`/`ambitoOptions`/`modalitaOptions` cablati con i wrapper |
+| 2.F4 | `PromoArticoloDrawer.vue` | Sostituire `tipoVariazioneOptions` cablato con `TipoVariazioneSelect` |
+| 2.F5 | `useParameterDefaults` consumer in `defaultForm()` di `ContrattoDrawer.vue`, `PreventiviDrawer.vue`, `VersioneFormDrawer.vue`, `CloneVersioneDrawer.vue`, `ChiudiVersioneDialog.vue` | Codici parameters da Fase 2.D1 |
+| 2.F6 | Per defaults dipendenti dal BA, integrare i nuovi endpoint form-defaults nei drawer (chiamata su `@select` BA) | A5/A8 |
+| 2.F7 | Rimuovere `new Date()` e magic string `'-clone'`, `'COMMODITY'`, `'A'`, `'PERCENTUALE'` dai `defaultForm()` | Solo dopo che 2.F5/2.F6 sono attivi |
+
+Stato uscita Fase 2: nessun enum di dominio cablato lato FE; nessun
+`new Date()` operativo nei `defaultForm()`. La whitelist enum vive in
+un solo posto (Python) e arriva al FE via API.
+
+### Fase 3 — Preventivi UI allineata agli standard
+
+Obiettivo: chiudere il debito stile sul sottodominio piu' acerbo.
+
+**DB / Backend**: nessuna nuova azione richiesta (si appoggia a Fase 1+2).
+
+**Frontend**
+
+| # | Azione | Note |
+| --- | --- | --- |
+| 3.F1 | `PreventiviForm.vue` — `BillingAccountLookup` al posto di `InputNumber` | A10. BB gia' esistente, prop `utility-id`, restore via `getBillingAccountLookupById` |
+| 3.F2 | `PreventiviRigheTable.vue` — sostituire bottoni inline con `RowActionsMenu` (kebab + popup) e azioni `visible` da capability di riga | C1 + frontend-standards §"Colonna azioni di riga" |
+| 3.F3 | `PreventiviRigheTable.vue` — valutare master-detail inline al posto di Dialog interno (modello `VersioneDrawer`/`ContrattoRigheDrawer`) | Coerenza con il resto vendite |
+| 3.F4 | CTA "Richiedi approvazione" in `PreventiviRigaForm.vue` quando l'errore backend e' `E_PREV_OVERRIDE_NON_AUTORIZZATO` | C4 — payload riga aggiunge `richiesta_approvazione=true` |
+| 3.F5 | Rimuovere `scrollHeight="250px"` cablato; allinearsi a `app-datatable` standard | Tipografia/scroll consistenti |
+| 3.F6 | Decisione C2: detail = testata + summary, righe via endpoint autonomo (oppure detail include righe e i figli leggono props). Applicare uniformemente | Una sola scelta, documentata |
+
+Stato uscita Fase 3: preventivi indistinguibili come UX dal resto vendite.
+
+### Fase 4 — Duplicazioni tecniche e composables
+
+Obiettivo: estrarre i pattern tecnici ricorrenti.
+
+**Frontend**
+
+| # | Azione | Note |
+| --- | --- | --- |
+| 4.F1 | `core/composables/useArticoloUomOptions.js` | Centralizza fetch UoM operative + preselect base. Consumer: `PromoArticoloDrawer`, `VersioneDrawer`, `ContrattoRigheDrawer` |
+| 4.F2 | `core/composables/useEntityCapabilities.js` | Adapter sottile metadata `detail.capabilities` -> booleani; mai logica derivata. Da Fase 1 |
+| 4.F3 | `core/utils/format.js` (o existing) | `formatCurrency`/`formatNumber` unica utility, rimpiazzare le copie locali in `PreventiviDrawer`, `PreventiviRigheTable`, `ContrattoDrawer` |
+| 4.F4 | (opz.) `core/composables/useStatoTerminaleConData.js` | Genera `cessazioneProgrammata`/`openCessaDialog`/`onConferma` come hook unico; consumer: ContrattoDrawer, ChiudiVersioneDialog |
+
+**Backend / DB**: nessuna azione.
+
+Stato uscita Fase 4: i pattern tecnici condivisi sono in un solo posto.
+
+### Fase 5 — Diagnostica pricing e approvazioni
+
+Obiettivo: chiudere C3/C4 in modo strutturato.
+
+**Backend**
+
+| # | Azione |
+| --- | --- |
+| 5.B1 | Lista coda approvazioni espone per ogni item: `can_approve`, `can_reject`, `action_reason` (oggi: derivati da `lista_coda` ma non esposti). |
+| 5.B2 | Errore `E_PREV_OVERRIDE_NON_AUTORIZZATO` mantiene `retryable=true` quando l'utente puo' chiedere approvazione, `retryable=false` quando il limite e' invalicabile per ruolo |
+
+**Frontend**
+
+| # | Azione |
+| --- | --- |
+| 5.F1 | `ApprovazioniPrezzoListView.vue` — bottoni Approva/Rifiuta legati a capability per riga |
+| 5.F2 | `TestResolverDialog.vue` — isolarlo come strumento diagnostico (no consumo nelle pagine operative); spostarlo in vista admin/debug |
+
+---
+
+## Riepilogo dipendenze
+
+```text
+Fase 0 (P0 + whitelist lookup)
+   |
+   v
+Fase 1 (capability metadata) — DB (eventuale view) -> BE (detail) -> FE (consumo)
+   |
+   v
+Fase 2 (defaults + lookup statici) — DB (parameters seed) -> BE (endpoint) -> FE (wrapper + consumo)
+   |
+   v
+Fase 3 (preventivi standard) — solo FE; richiede Fase 1 (capability) + Fase 2 (lookup BA)
+   |
+   v
+Fase 4 (composables condivisi) — solo FE; richiede Fase 1+3
+   |
+   v
+Fase 5 (approvazioni/diagnostica) — BE + FE; indipendente dalle altre, ma piu' utile dopo Fase 1
+```
+
+Il modello e' compatibile con il principio "no produzione, breaking ammessi"
+(memoria progetto `project_no_produzione_solo_sviluppo`): non servono
+fasi di compat o feature flag.

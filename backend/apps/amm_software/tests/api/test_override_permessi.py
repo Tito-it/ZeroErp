@@ -14,9 +14,13 @@ Indice test eseguiti:
  4) test_get_override_azioni — GET override azioni ritorna lista
  5) test_put_override_azioni — PUT override azioni sostituisce e ritorna lista
  6) test_put_override_azioni_invalidates_cache — PUT invalida cache utente
- 7) test_get_emittenti_scope — GET emittenti scope ritorna lista
- 8) test_put_emittenti_scope — PUT emittenti scope sostituisce e ritorna lista
- 9) test_put_emittenti_scope_invalidates_cache — PUT invalida cache utente
+ 7) test_get_emittenti_scope — GET emittenti scope ritorna shape Fase 2 (scope_mode + capability)
+ 8) test_put_emittenti_scope_global — PUT GLOBAL azzera lo scope
+ 9) test_put_emittenti_scope_single — PUT SINGLE imposta 1 emittente
+ 9a) test_put_emittenti_scope_rifiuta_multi — MULTI rifiutato con E_AMM_SCOPE_NON_AMMESSO
+ 9b) test_put_emittenti_scope_single_richiede_array_lunghezza_1 — SINGLE con array vuoto rifiutato
+ 9c) test_put_emittenti_scope_super_admin_guard_dbtrigger — race condition Fase 1 guard
+9d) test_put_emittenti_scope_invalidates_cache — PUT invalida cache utente
 10) test_override_permission_denied — OPERATIVO non puo' accedere
 11) test_get_override_oggetti — GET override oggetti ritorna lista
 12) test_put_override_oggetti — PUT override oggetti sostituisce e ritorna lista
@@ -29,6 +33,8 @@ Indice test eseguiti:
 import json
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
+
+from django.db import DatabaseError
 
 from apps.amm_software.api.views import (
     EmittentiScopeView,
@@ -55,6 +61,22 @@ SAMPLE_OVERRIDE_AZIONE = {
 SAMPLE_EMITTENTE = {
     "id": 1, "emittente_fiscale_id": 10,
     "emittente_denominazione": "Azienda Test", "emittente_piva": "12345678901",
+}
+
+# Fase 2: shape ritornato da `script.fn_get_user_emittenti_scope`.
+# Singolo row con scope_mode + capability + reason.
+SAMPLE_SCOPE_GLOBAL = {
+    "auth_user_id": 1, "scope_mode": "GLOBAL",
+    "emittente_id": None, "emittente_descrizione": None,
+    "allowed_scope_modes": ["GLOBAL", "SINGLE"],
+    "can_change_scope": True, "change_scope_reason": None,
+}
+
+SAMPLE_SCOPE_SINGLE = {
+    "auth_user_id": 1, "scope_mode": "SINGLE",
+    "emittente_id": 42, "emittente_descrizione": "Sede Roma",
+    "allowed_scope_modes": ["GLOBAL", "SINGLE"],
+    "can_change_scope": True, "change_scope_reason": None,
 }
 
 SAMPLE_OVERRIDE_OGGETTO = {
@@ -172,45 +194,128 @@ class TestOverrideAzioniView(TestCase):
 
 
 class TestEmittentiScopeView(TestCase):
+    """Test Fase 2 multi-face: scope dichiarativo via fn DB."""
 
     @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
     def test_get_emittenti_scope(self, mock_repo_cls):
-        """GET emittenti scope ritorna lista."""
+        """GET ritorna shape Fase 2 (scope_mode + emittenti_ids + capability)."""
         mock_repo = MagicMock()
-        mock_repo.get_emittenti_scope.return_value = [SAMPLE_EMITTENTE]
+        mock_repo.get_operatore_detail.return_value = {"auth_user_id": 1}
+        mock_repo.get_user_emittenti_scope.return_value = SAMPLE_SCOPE_SINGLE
         mock_repo_cls.return_value = mock_repo
 
         view = EmittentiScopeView()
         response = view.get(_make_request(), auth_user_id=1)
 
-        data = json.loads(response.content)
-        self.assertEqual(len(data["data"]["results"]), 1)
-        self.assertEqual(data["data"]["results"][0]["emittente_denominazione"], "Azienda Test")
+        data = json.loads(response.content)["data"]
+        self.assertEqual(data["scope_mode"], "SINGLE")
+        self.assertEqual(data["emittenti_ids"], [42])
+        self.assertEqual(data["emittente_descrizione"], "Sede Roma")
+        self.assertEqual(data["allowed_scope_modes"], ["GLOBAL", "SINGLE"])
+        self.assertTrue(data["can_change_scope"])
+        self.assertIsNone(data["change_scope_reason"])
 
     @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
     @patch("apps.amm_software.services.amm_software_service.invalidate_user")
-    def test_put_emittenti_scope(self, mock_invalidate, mock_repo_cls):
-        """PUT emittenti scope sostituisce e ritorna lista aggiornata."""
+    def test_put_emittenti_scope_global(self, mock_invalidate, mock_repo_cls):
+        """PUT GLOBAL azzera lo scope (chiama fn change con array vuoto)."""
         mock_repo = MagicMock()
-        mock_repo.get_emittenti_scope.return_value = [SAMPLE_EMITTENTE]
+        mock_repo.get_operatore_detail.return_value = {"auth_user_id": 1}
+        mock_repo.get_user_emittenti_scope.return_value = SAMPLE_SCOPE_GLOBAL
         mock_repo_cls.return_value = mock_repo
 
-        request = _make_request("PUT", {"emittente_ids": [10]})
         view = EmittentiScopeView()
-        response = view.put(request, auth_user_id=1)
+        view.put(_make_request("PUT", {"scope_mode": "GLOBAL"}), auth_user_id=1)
 
-        mock_repo.put_emittenti_scope.assert_called_once_with(1, [10])
+        mock_repo.change_user_emittenti_scope.assert_called_once_with(1, [])
+
+    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
+    @patch("apps.amm_software.services.amm_software_service.invalidate_user")
+    def test_put_emittenti_scope_single(self, mock_invalidate, mock_repo_cls):
+        """PUT SINGLE imposta esattamente 1 emittente."""
+        mock_repo = MagicMock()
+        mock_repo.get_operatore_detail.return_value = {"auth_user_id": 1}
+        mock_repo.get_user_emittenti_scope.return_value = SAMPLE_SCOPE_SINGLE
+        mock_repo_cls.return_value = mock_repo
+
+        view = EmittentiScopeView()
+        view.put(
+            _make_request("PUT", {"scope_mode": "SINGLE", "emittenti_ids": [42]}),
+            auth_user_id=1,
+        )
+
+        mock_repo.change_user_emittenti_scope.assert_called_once_with(1, [42])
+
+    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
+    def test_put_emittenti_scope_rifiuta_multi(self, mock_repo_cls):
+        """MULTI rifiutato con E_AMM_SCOPE_NON_AMMESSO (Q2 chiuso applicativamente)."""
+        mock_repo = MagicMock()
+        mock_repo.get_operatore_detail.return_value = {"auth_user_id": 1}
+        mock_repo_cls.return_value = mock_repo
+
+        view = EmittentiScopeView()
+        with self.assertRaises(ServiceError) as ctx:
+            view.put(
+                _make_request("PUT", {"scope_mode": "MULTI", "emittenti_ids": [1, 2]}),
+                auth_user_id=1,
+            )
+        self.assertEqual(ctx.exception.code, "E_AMM_SCOPE_NON_AMMESSO")
+        mock_repo.change_user_emittenti_scope.assert_not_called()
+
+    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
+    def test_put_emittenti_scope_single_richiede_array_lunghezza_1(self, mock_repo_cls):
+        """SINGLE con array vuoto/multi rifiutato."""
+        mock_repo = MagicMock()
+        mock_repo.get_operatore_detail.return_value = {"auth_user_id": 1}
+        mock_repo_cls.return_value = mock_repo
+
+        view = EmittentiScopeView()
+        # Array vuoto
+        with self.assertRaises(ServiceError) as ctx:
+            view.put(
+                _make_request("PUT", {"scope_mode": "SINGLE", "emittenti_ids": []}),
+                auth_user_id=1,
+            )
+        self.assertEqual(ctx.exception.code, "E_AMM_SCOPE_NON_AMMESSO")
+        # Array con 2 elementi
+        with self.assertRaises(ServiceError):
+            view.put(
+                _make_request("PUT", {"scope_mode": "SINGLE", "emittenti_ids": [1, 2]}),
+                auth_user_id=1,
+            )
+
+    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
+    @patch("apps.amm_software.services.amm_software_service.invalidate_user")
+    def test_put_emittenti_scope_super_admin_guard_dbtrigger(
+        self, _mock_invalidate, mock_repo_cls
+    ):
+        """Race condition Fase 1: trigger DB rifiuta -> E_PROFILO_ULTIMO_SUPER_ADMIN."""
+        mock_repo = MagicMock()
+        mock_repo.get_operatore_detail.return_value = {"auth_user_id": 1}
+        mock_repo.change_user_emittenti_scope.side_effect = DatabaseError(
+            "ERROR: E_PROFILO_ULTIMO_SUPER_ADMIN: ultimo super admin attivo"
+        )
+        mock_repo_cls.return_value = mock_repo
+
+        view = EmittentiScopeView()
+        with self.assertRaises(ServiceError) as ctx:
+            view.put(
+                _make_request("PUT", {"scope_mode": "SINGLE", "emittenti_ids": [42]}),
+                auth_user_id=1,
+            )
+        self.assertEqual(ctx.exception.code, "E_PROFILO_ULTIMO_SUPER_ADMIN")
 
     @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
     @patch("apps.amm_software.services.amm_software_service.invalidate_user")
     def test_put_emittenti_scope_invalidates_cache(self, mock_invalidate, mock_repo_cls):
         """PUT invalida cache utente dopo modifica."""
         mock_repo = MagicMock()
-        mock_repo.get_emittenti_scope.return_value = []
+        mock_repo.get_operatore_detail.return_value = {"auth_user_id": 5}
+        mock_repo.get_user_emittenti_scope.return_value = SAMPLE_SCOPE_GLOBAL
         mock_repo_cls.return_value = mock_repo
 
         view = EmittentiScopeView()
-        view.put(_make_request("PUT", {"emittente_ids": []}), auth_user_id=5)
+        view.put(_make_request("PUT", {"scope_mode": "GLOBAL"}), auth_user_id=5)
 
         mock_invalidate.assert_called_once_with(5)
 

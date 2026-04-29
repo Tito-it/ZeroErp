@@ -9,12 +9,16 @@
 from __future__ import annotations
 
 import uuid as uuid_mod
+from collections.abc import Callable
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from django.contrib.auth.hashers import make_password
+from django.db import DatabaseError
 
 from apps.core.api.payload_validators import optional_int
 from apps.core.services.error_manager import ErrorManager
+from apps.core.services.parameter_service import ParameterService
 from apps.core.services.service_errors import ServiceError
 from apps.core.services.permissions_cache import invalidate_department, invalidate_user
 from apps.amm_software.constants import (
@@ -28,6 +32,61 @@ from apps.amm_software.db.amm_software_repository import AmmSoftwareRepository
 
 E_AMM_VALIDAZIONE = "E_AMM_VALIDAZIONE"
 E_AMM_NOT_FOUND = "E_AMM_OPERATORE_NOT_FOUND"
+E_AMM_SCOPE_NON_AMMESSO = "E_AMM_SCOPE_NON_AMMESSO"
+
+# Scope mode ammessi post Q2 (refactor operatore-emittenti). MULTI e'
+# architetturalmente chiuso dal vincolo UNIQUE(auth_user_id) su
+# config.user_emittenti_fiscali. Il valore arriva sia dalla fn DB
+# (allowed_scope_modes) che dal payload PUT — manteniamo entrambi
+# allineati come fonte unica.
+_SCOPE_MODE_GLOBAL = "GLOBAL"
+_SCOPE_MODE_SINGLE = "SINGLE"
+_SCOPE_MODI_AMMESSI = frozenset({_SCOPE_MODE_GLOBAL, _SCOPE_MODE_SINGLE})
+
+# Marker code sollevato dal trigger DB
+# `trgfn_profili_accesso_bindings_guard_ultimo_super_admin` quando un
+# UPDATE/DELETE lascerebbe il sistema senza super admin attivi. Il preview
+# lato detail (`can_disable`/`can_demote_super_admin`) non e' una garanzia:
+# in caso di race tra sessioni il trigger resta l'autorita'. Quando un'azione
+# fallisce con questo marker, lo traduciamo in ServiceError preservando il
+# code per l'envelope errore (HTTP 409, vedi error_policies.py).
+_E_PROFILO_ULTIMO_SUPER_ADMIN = "E_PROFILO_ULTIMO_SUPER_ADMIN"
+
+# Fase 3 — Form-defaults emittente fiscale.
+# Modi di arrotondamento ammessi per `anagrafiche.emittenti_fiscali.rounding_policy`.
+# Allineati al CHECK constraint DB `chk_emittenti_fiscali_rounding_policy`:
+# 4 valori, NO `HALF_EVEN` (a differenza di catalogo UoM operativa che ne ha 5).
+# Single source of truth lato Python: il lookup statico dell'API serve l'enum
+# direttamente da qui, niente tabella DB. Validazione fail-fast sui valori
+# ricevuti dal parameters cascade (best-effort: invalido -> None, no raise).
+_ROUNDING_MODE_VALIDI_EMITTENTE: frozenset[str] = frozenset(
+    {"UP", "DOWN", "HALF_UP", "HALF_DOWN"}
+)
+
+# Mappa codice -> (descrizione, ordering) per lookup statico.
+# Ordering "default-first": HALF_UP e' il default seedato in config.parameters
+# (`EMITTENTE_DEFAULT_ROUNDING_POLICY`).
+_ROUNDING_MODE_DESCRIZIONI_EMITTENTE: tuple[tuple[str, str, int], ...] = (
+    ("HALF_UP", "Arrotondamento meta' su (5 va su)", 1),
+    ("HALF_DOWN", "Arrotondamento meta' giu' (5 va giu')", 2),
+    ("UP", "Arrotondamento sempre su (verso infinito)", 3),
+    ("DOWN", "Arrotondamento sempre giu' (verso zero)", 4),
+)
+
+# Codici parameters consumati dal form di creazione emittente fiscale.
+# Cascata user -> group -> emittente -> default via fn_get_parameter_full
+# (in creazione `emittente_fiscale_id` e' None: cascata effettiva user->group->default).
+_EMITTENTE_FORM_DEFAULTS_CODES: tuple[str, ...] = (
+    "EMITTENTE_DEFAULT_BOLLO_AUTO",
+    "EMITTENTE_DEFAULT_BOLLO_SOGLIA",
+    "EMITTENTE_DEFAULT_ROUNDING_POLICY",
+)
+
+# Campi non editabili in modifica emittente (oggi statici, in attesa che
+# `dbops.vw_non_editable_fields` di Fase 5 includa anche le tabelle anagrafiche).
+# Espono i metadata gia' nella response Fase 3 per non avere breaking change
+# quando la fonte diventera' DB-driven.
+_EMITTENTE_NON_EDITABLE_FIELDS: tuple[str, ...] = ("codice", "soggetto_id")
 
 
 # Scopo: Traduce il nuovo contract multi-face (is_super_admin + attivo) nel
@@ -50,6 +109,50 @@ def _ruolo_sistema_from_contract_nuovo(
     return RUOLO_ADMIN if is_super_admin else RUOLO_OPERATIVO
 
 
+# Scopo: Cast best-effort di un valore parameter (sempre str per BE) a bool.
+# `'true'`/`'false'` case-insensitive -> bool. Altro (None, '', stringhe non
+# parsabili) -> False (default-safe per `bollo_auto`: il form parte con flag
+# OFF, allineato al seed `EMITTENTE_DEFAULT_BOLLO_AUTO=false`).
+def _cast_param_bool(raw: object) -> bool:
+    if isinstance(raw, str):
+        return raw.strip().lower() == "true"
+    return False
+
+
+# Scopo: Cast best-effort di un valore parameter a Decimal.
+# Convenzione DB: stringa vuota = "nessuna soglia" -> None. Stringhe non
+# parsabili -> None (il form mostra comunque, l'utente compila manualmente).
+def _cast_param_decimal(raw: object) -> Decimal | None:
+    if not isinstance(raw, str):
+        return None
+    candidate = raw.strip()
+    if not candidate:
+        return None
+    try:
+        return Decimal(candidate)
+    except (InvalidOperation, ValueError):
+        return None
+
+
+# Scopo: Esegue una callable repo che puo' violare il guard "ultimo super
+# admin" e traduce l'errore DB nel ServiceError canonico
+# `E_PROFILO_ULTIMO_SUPER_ADMIN`. Il trigger e' l'autorita': preview
+# `can_disable`/`can_demote_super_admin` lato detail puo' essere stale a
+# causa di race tra sessioni. Tutte le altre `DatabaseError` sono ri-sollevate
+# (gestite dal middleware globale).
+def _run_or_raise_super_admin_guard(repo_call: Callable[[], None]) -> None:
+    try:
+        repo_call()
+    except DatabaseError as exc:
+        if _E_PROFILO_ULTIMO_SUPER_ADMIN in str(exc):
+            raise ServiceError(
+                code=_E_PROFILO_ULTIMO_SUPER_ADMIN,
+                message="Impossibile rimuovere l'ultimo super admin attivo.",
+                detail=str(exc),
+            ) from exc
+        raise
+
+
 class AmmSoftwareService:
     """Service per gestione operatori, permessi, profili reparto."""
 
@@ -64,7 +167,14 @@ class AmmSoftwareService:
     # Flusso A (soggetto_id assente): crea soggetto PF nuovo — cognome/nome/CF obbligatori.
     # Flusso B (soggetto_id presente): associa soggetto esistente — dati persona non richiesti.
     # In entrambi: username, email, password, qualifica obbligatori.
+    # Contract pubblico Fase 1 multi-face: `is_super_admin?: bool` (default
+    # false). Il legacy `ruolo_sistema` non e' piu' accettato dal payload.
     def create_operatore(self, payload: dict) -> dict[str, Any]:
+        ErrorManager.require(
+            "ruolo_sistema" not in payload,
+            code=E_AMM_VALIDAZIONE,
+            message="Campo 'ruolo_sistema' non ammesso: usa is_super_admin.",
+        )
         soggetto_id = (payload.get("soggetto_id") or "").strip() or None
         username = (payload.get("username") or "").strip()
         email = (payload.get("email") or "").strip()
@@ -100,6 +210,13 @@ class AmmSoftwareService:
             ErrorManager.require(bool(nome), code=E_AMM_VALIDAZIONE, message="Nome obbligatorio per soggetto nuovo.")
             ErrorManager.require(bool(codice_fiscale), code=E_AMM_VALIDAZIONE, message="Codice fiscale obbligatorio per soggetto nuovo.")
 
+        # Traduzione interna is_super_admin -> ruolo_sistema legacy per la fn
+        # DB `fn_crea_operatore`, che resta sul dialetto pre-multi-face.
+        # Default (no flag): OPERATIVO. Il caller non puo' creare DISABILITATI
+        # via questo endpoint: la disabilitazione e' un comando dedicato.
+        is_super_admin = bool(payload.get("is_super_admin"))
+        ruolo_sistema_legacy = RUOLO_ADMIN if is_super_admin else DEFAULT_RUOLO_SISTEMA
+
         auth_user_id = self._repo.crea_operatore(
             soggetto_id=soggetto_id,
             cognome=cognome or None,
@@ -112,7 +229,7 @@ class AmmSoftwareService:
             unita_organizzativa_id=int(payload["unita_organizzativa_id"]) if payload.get("unita_organizzativa_id") else None,
             data_nascita=payload.get("data_nascita"),
             sesso=payload.get("sesso", DEFAULT_SESSO),
-            ruolo_sistema=payload.get("ruolo_sistema", DEFAULT_RUOLO_SISTEMA),
+            ruolo_sistema=ruolo_sistema_legacy,
             valido_dal=payload.get("valido_dal"),
             valido_al=payload.get("valido_al"),
             comune_nascita_id=optional_int(payload, "comune_nascita_id"),
@@ -129,45 +246,64 @@ class AmmSoftwareService:
         return operatore
 
     # Scopo: Aggiorna operatore e invalida cache permessi.
-    # Accetta DUE contract equivalenti (transizione Stage B multi-face):
-    #   - legacy: {ruolo_sistema: 'ADMIN|OPERATIVO|DISABILITATO', attivo: bool}
-    #   - nuovo:  {is_super_admin: bool, attivo: bool}
-    # Se il payload contiene is_super_admin o attivo (bool), viene tradotto
-    # in ruolo_sistema legacy e passato al repo. Il contract legacy resta
-    # supportato per retrocompat (FE non ancora migrati).
+    # Contract pubblico Fase 1 multi-face:
+    #   {is_super_admin?: bool, attivo?: bool, email?, first_name?, last_name?,
+    #    unita_organizzativa_id?, valido_al?}
+    # Il legacy `ruolo_sistema` non e' piu' accettato dal payload (breaking,
+    # vedi memoria progetto `project_no_produzione_solo_sviluppo`). Internamente
+    # `is_super_admin/attivo` vengono tradotti in `ruolo_sistema` per il repo
+    # (compat layer interno: il repo continua a parlare il dialetto legacy
+    # finche' il refactor delle write-path lato DB non e' chiuso).
+    # Il guard "ultimo super admin" e' centralizzato sul trigger DB; il
+    # service traduce l'errore in `E_PROFILO_ULTIMO_SUPER_ADMIN`.
     def update_operatore(self, auth_user_id: int, payload: dict) -> dict[str, Any]:
+        ErrorManager.require(
+            "ruolo_sistema" not in payload,
+            code=E_AMM_VALIDAZIONE,
+            message="Campo 'ruolo_sistema' non ammesso: usa is_super_admin + attivo.",
+        )
         self.get_operatore(auth_user_id)  # verifica esistenza
-        ruolo_sistema = payload.get("ruolo_sistema")
         attivo = payload.get("attivo")
-        if ruolo_sistema is None and "is_super_admin" in payload:
-            ruolo_sistema = _ruolo_sistema_from_contract_nuovo(
-                payload.get("is_super_admin"), attivo
+        # Translator gestisce tutti i NO-OP: payload {} -> None, {is_super_admin}
+        # senza attivo -> None, {attivo:false} -> 'DISABILITATO' anche senza
+        # is_super_admin (simmetria semantica). No guard `if in payload`.
+        ruolo_sistema = _ruolo_sistema_from_contract_nuovo(
+            payload.get("is_super_admin"), attivo
+        )
+        _run_or_raise_super_admin_guard(
+            lambda: self._repo.update_operatore(
+                auth_user_id,
+                email=payload.get("email"),
+                first_name=payload.get("first_name"),
+                last_name=payload.get("last_name"),
+                ruolo_sistema=ruolo_sistema,
+                unita_organizzativa_id=payload.get("unita_organizzativa_id"),
+                attivo=attivo,
+                valido_al=payload.get("valido_al"),
             )
-        self._repo.update_operatore(
-            auth_user_id,
-            email=payload.get("email"),
-            first_name=payload.get("first_name"),
-            last_name=payload.get("last_name"),
-            ruolo_sistema=ruolo_sistema,
-            unita_organizzativa_id=payload.get("unita_organizzativa_id"),
-            attivo=attivo,
-            valido_al=payload.get("valido_al"),
         )
         invalidate_user(auth_user_id)
         return self._repo.get_operatore_detail(auth_user_id) or {}
 
     # Scopo: Disabilita operatore, invalida cache e blacklist token.
-    # Guard: impedisce di disabilitare l'ultimo ADMIN attivo.
+    # Preview UX `can_disable=false` evita il round-trip DB nel 99% dei casi
+    # (single source of truth: `script.fn_check_ultimo_super_admin_attivo`
+    # consumata da `fn_get_operatore_detail`). L'autorita' finale resta il
+    # trigger DB `trgfn_profili_accesso_bindings_guard_ultimo_super_admin`
+    # che intercetta anche le race tra sessioni: traduciamo l'errore in
+    # `E_PROFILO_ULTIMO_SUPER_ADMIN`.
     def disabilita_operatore(self, auth_user_id: int) -> dict[str, Any]:
         operatore = self.get_operatore(auth_user_id)
-        if operatore.get("ruolo_sistema") == RUOLO_ADMIN:
-            if self._repo.count_admin_attivi() <= 1:
-                raise ServiceError(
-                    code="E_ADMIN_ULTIMO",
-                    message="Impossibile disabilitare l'ultimo amministratore.",
-                    detail="Deve esistere almeno un operatore ADMIN attivo nel sistema.",
-                )
-        self._repo.disabilita_operatore(auth_user_id)
+        if operatore.get("can_disable") is False:
+            raise ServiceError(
+                code=_E_PROFILO_ULTIMO_SUPER_ADMIN,
+                message="Impossibile rimuovere l'ultimo super admin attivo.",
+                detail=operatore.get("disable_reason")
+                or "Deve esistere almeno un super admin attivo nel sistema.",
+            )
+        _run_or_raise_super_admin_guard(
+            lambda: self._repo.disabilita_operatore(auth_user_id)
+        )
         invalidate_user(auth_user_id)
         _blacklist_user_tokens(auth_user_id)
         return self._repo.get_operatore_detail(auth_user_id) or {}
@@ -195,11 +331,60 @@ class AmmSoftwareService:
         invalidate_user(auth_user_id)
         return self._repo.get_override_azioni(auth_user_id)
 
-    # Scopo: Salva scope emittenti e invalida cache.
-    def put_emittenti_scope(self, auth_user_id: int, emittente_ids: list) -> list:
-        self._repo.put_emittenti_scope(auth_user_id, emittente_ids)
+    # Scopo: Cambia lo scope emittenti dell'operatore (Fase 2 multi-face).
+    # Contract pubblico:
+    #   {scope_mode: 'GLOBAL'|'SINGLE', emittenti_ids: list[int]}
+    #
+    # Validazione lato service:
+    #   - scope_mode in {GLOBAL, SINGLE} (no MULTI: rejection esplicita).
+    #   - GLOBAL  -> emittenti_ids normalizzato a [].
+    #   - SINGLE  -> emittenti_ids deve avere esattamente 1 elemento int>0.
+    #
+    # Il guard "ultimo super admin" e' integrato nella fn DB
+    # `fn_change_user_emittenti_scope` e arriva come DatabaseError con marker
+    # E_PROFILO_ULTIMO_SUPER_ADMIN — riusiamo `_run_or_raise_super_admin_guard`
+    # di Fase 1 per la traduzione.
+    def put_emittenti_scope(self, auth_user_id: int, payload: dict) -> dict[str, Any]:
+        self.get_operatore(auth_user_id)  # verifica esistenza
+        scope_mode = (payload.get("scope_mode") or "").strip().upper()
+        emittenti_ids_raw = payload.get("emittenti_ids") or []
+
+        ErrorManager.require(
+            scope_mode in _SCOPE_MODI_AMMESSI,
+            code=E_AMM_SCOPE_NON_AMMESSO,
+            message=f"Scope mode '{scope_mode}' non ammesso. Valori validi: {sorted(_SCOPE_MODI_AMMESSI)}.",
+        )
+
+        if scope_mode == _SCOPE_MODE_GLOBAL:
+            emittenti_ids: list[int] = []
+        else:
+            # SINGLE: esattamente 1 elemento int positivo. Tre check in
+            # cascata ognuno con messaggio specifico.
+            ErrorManager.require(
+                isinstance(emittenti_ids_raw, list) and len(emittenti_ids_raw) == 1,
+                code=E_AMM_SCOPE_NON_AMMESSO,
+                message="scope_mode='SINGLE' richiede esattamente 1 emittente in emittenti_ids.",
+            )
+            # Guard tipo + valore in un solo require (no try/except/else macchinoso).
+            try:
+                eid: int | None = int(emittenti_ids_raw[0])
+            except (ValueError, TypeError):
+                eid = None
+            ErrorManager.require(
+                eid is not None and eid > 0,
+                code=E_AMM_SCOPE_NON_AMMESSO,
+                message="emittenti_ids[0] deve essere int positivo.",
+            )
+            assert eid is not None  # per il type checker (require sopra)
+            emittenti_ids = [eid]
+
+        _run_or_raise_super_admin_guard(
+            lambda: self._repo.change_user_emittenti_scope(auth_user_id, emittenti_ids)
+        )
         invalidate_user(auth_user_id)
-        return self._repo.get_emittenti_scope(auth_user_id)
+        # Rilegge lo stato post-change per consistenza col GET (la fn change
+        # ritorna jsonb ma non lo proiettiamo: single source of truth = fn_get).
+        return self._repo.get_user_emittenti_scope(auth_user_id) or {}
 
     # Scopo: Lista operatori con filtri.
     def list_operatori(self, **params) -> tuple[list, int]:
@@ -241,9 +426,25 @@ class AmmSoftwareService:
     def list_model_overrides(self) -> list:
         return self._repo.list_model_overrides()
 
-    # Scopo: Lista emittenti scope.
-    def get_emittenti_scope(self, auth_user_id: int) -> list:
-        return self._repo.get_emittenti_scope(auth_user_id)
+    # Scopo: Scope emittenti dichiarativo per un operatore (Fase 2 multi-face).
+    # Ritorna lo shape della fn DB (scope_mode + capability + reason).
+    # `emittenti_ids` viene derivato come array per simmetria col PUT (anche
+    # se post Q2 puo' avere al massimo 1 elemento): GLOBAL -> [],
+    # SINGLE -> [emittente_id]. Manteniamo l'array per non vincolare
+    # l'eventuale futura riapertura di MULTI lato API.
+    def get_emittenti_scope(self, auth_user_id: int) -> dict[str, Any]:
+        self.get_operatore(auth_user_id)  # verifica esistenza
+        row = self._repo.get_user_emittenti_scope(auth_user_id) or {}
+        emittente_id = row.get("emittente_id")
+        emittenti_ids = [emittente_id] if emittente_id is not None else []
+        return {
+            "scope_mode": row.get("scope_mode") or _SCOPE_MODE_GLOBAL,
+            "emittenti_ids": emittenti_ids,
+            "emittente_descrizione": row.get("emittente_descrizione"),
+            "allowed_scope_modes": list(row.get("allowed_scope_modes") or [_SCOPE_MODE_GLOBAL, _SCOPE_MODE_SINGLE]),
+            "can_change_scope": bool(row.get("can_change_scope", True)),
+            "change_scope_reason": row.get("change_scope_reason"),
+        }
 
     # Scopo: Lista reparti.
     def list_reparti(self) -> list:
@@ -275,6 +476,68 @@ class AmmSoftwareService:
     # avvisare l'admin durante la transizione (decisione D1 del WIP).
     def get_setup_status(self) -> dict:
         return self._repo.get_setup_status()
+
+    # =================================================================
+    # Form-defaults emittente fiscale (Fase 3)
+    # =================================================================
+
+    # Scopo: Restituisce i defaults per il form di creazione/modifica
+    #        anagrafica emittente fiscale (Fase 3 — A5/A6).
+    #        Centralizza il consumo di `config.parameters`
+    #        (`EMITTENTE_DEFAULT_BOLLO_AUTO`, `_BOLLO_SOGLIA`,
+    #        `_ROUNDING_POLICY`) con cast tipi gia' applicato:
+    #          - `bollo_auto`     : bool ('true'/'false', case-insensitive)
+    #          - `bollo_soglia`   : Decimal | None (stringa vuota -> None)
+    #          - `rounding_policy`: str validato vs _ROUNDING_MODE_VALIDI_EMITTENTE
+    #                               (invalido -> None, no raise: il form mostra
+    #                               comunque, l'utente seleziona manualmente)
+    #        Il campo `attivo` NON passa per parameters (la colonna DB ha gia'
+    #        DEFAULT true). `non_editable_fields` ritornato statico oggi (vedi
+    #        nota su _EMITTENTE_NON_EDITABLE_FIELDS).
+    def get_emittente_form_defaults(
+        self,
+        *,
+        django_user_id: int | None = None,
+        group_ids: list[int] | None = None,
+        emittente_fiscale_id: int | None = None,
+    ) -> dict[str, object]:
+        raw = ParameterService().get_defaults(
+            list(_EMITTENTE_FORM_DEFAULTS_CODES),
+            django_user_id=django_user_id,
+            group_ids=group_ids,
+            emittente_fiscale_id=emittente_fiscale_id,
+        )
+
+        bollo_auto = _cast_param_bool(raw.get("EMITTENTE_DEFAULT_BOLLO_AUTO"))
+        bollo_soglia = _cast_param_decimal(raw.get("EMITTENTE_DEFAULT_BOLLO_SOGLIA"))
+        rounding_policy_raw = raw.get("EMITTENTE_DEFAULT_ROUNDING_POLICY")
+        rounding_policy: str | None = None
+        if isinstance(rounding_policy_raw, str):
+            candidate = rounding_policy_raw.strip().upper()
+            if candidate in _ROUNDING_MODE_VALIDI_EMITTENTE:
+                rounding_policy = candidate
+
+        return {
+            "defaults": {
+                "bollo_auto": bollo_auto,
+                "bollo_soglia": bollo_soglia,
+                "rounding_policy": rounding_policy,
+            },
+            "non_editable_fields": list(_EMITTENTE_NON_EDITABLE_FIELDS),
+        }
+
+    # Scopo: Lista statica dei modi di arrotondamento ammessi per emittente
+    #        fiscale (Fase 3 — A6). Single source of truth =
+    #        _ROUNDING_MODE_VALIDI_EMITTENTE + _ROUNDING_MODE_DESCRIZIONI_EMITTENTE.
+    #        Niente DB: enum tecnico fisso (4 valori, no HALF_EVEN), allineato
+    #        al CHECK constraint sulla colonna `rounding_policy`.
+    #        L'invariante "descrizioni copre l'enum" e' garantita dal test
+    #        `test_list_emittente_rounding_modes_coverage` (CI), non a runtime.
+    def list_emittente_rounding_modes(self) -> list[dict[str, object]]:
+        return [
+            {"codice": codice, "descrizione": descrizione, "ordering": ordering}
+            for codice, descrizione, ordering in _ROUNDING_MODE_DESCRIZIONI_EMITTENTE
+        ]
 
     # =================================================================
     # Profili reparto

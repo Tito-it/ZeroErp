@@ -252,6 +252,14 @@ class EmittentiFiscaliBillingAccountService:
         ErrorManager.require(deleted, code=E_ANAG_NOT_FOUND, message="Mapping non trovato.")
         return {"deleted": True}
 
+    # Scopo: Riepilogo mapping BA dell'emittente (has_default + count_specifici).
+    #        Esposto al FE come bypass della dipendenza dalla pagina corrente:
+    #        senza summary, il check "esiste gia' un default" puo' fallire se
+    #        il record default non e' nella pagina visualizzata.
+    def summary_mapping(self, emittente_id: int) -> dict[str, Any]:
+        soggetto_ruolo_id = self._parent._resolve_soggetto_ruolo_id(emittente_id)
+        return self._repo.summary_by_emittente(soggetto_ruolo_id)
+
 
 # =================================================================
 # Service Utilities per emittente fiscale

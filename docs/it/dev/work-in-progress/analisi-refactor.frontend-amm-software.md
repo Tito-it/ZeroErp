@@ -478,9 +478,9 @@ hardcoded e mancanza `// Scopo:`.
 
 ### A13. Audit: fonti e summary dal backend
 
-- `frontend/src/amministrazione/constants.js:60`
-- `frontend/src/amministrazione/views/AuditLogView.vue:36`
-- `frontend/src/amministrazione/views/AuditLogView.vue:93`
+- `frontend/src/amministrazione/constants.js:61` (`buildAuditTabellaOptions`)
+- `frontend/src/amministrazione/views/AuditLogView.vue:34`
+- `frontend/src/amministrazione/views/AuditLogView.vue:95` (`snapshotSummary`)
 
 Le tabelle audit filtrabili sono codificate in JS:
 
@@ -491,12 +491,20 @@ Le tabelle audit filtrabili sono codificate in JS:
 - `profili_reparto_aree`
 - `profili_reparto_azioni`
 
-Se cambia il trigger audit o si aggiunge una fonte, il FE resta incompleto. Il
-backend deve esporre `audit_sources` con label key.
+**Mancanza**: la lista non include `user_override_oggetti` (override permessi
+v2 livello model, vedi A14) ne' `identita_digitali` (multi-face auth). Se
+cambia il trigger audit o si aggiunge una fonte, il FE resta incompleto. Il
+backend deve esporre `audit_sources` con `code`, `label_key`, `area_funzionale`.
 
 Anche `snapshotSummary()` e' dominio presentazionale troppo fragile: whitelista
-chiavi note e perde informazione appena cambia lo snapshot. Meglio restituire
-dal backend:
+chiavi note (riga 102: `auth_user_id`, `area_id`, `azione_id`,
+`unita_organizzativa_id`, `livello`, `abilitata`, `ruolo_sistema`,
+`emittente_fiscale_id`) e perde informazione appena cambia lo snapshot.
+Inoltre la chiave `ruolo_sistema` e' **legacy multi-face**: post-cutover il
+campo non esiste piu' nel detail e va sostituita con `is_super_admin`,
+`attivo`, `ruolo_applicativo`. Vedi anche C6.
+
+Meglio restituire dal backend:
 
 ```json
 {
@@ -506,6 +514,65 @@ dal backend:
   ]
 }
 ```
+
+### A14. Override oggetti (permessi v2): capability + audit source mancanti
+
+- `frontend/src/amministrazione/components/OperatorePermessiTab.vue:46`
+  (`localOggetti`)
+- `frontend/src/amministrazione/components/OperatorePermessiTab.vue:147`
+  (`saveOggetti`)
+- `frontend/src/amministrazione/components/OperatorePermessiTab.vue:241`
+  (sezione "Override oggetti")
+
+Il tab espone TRE livelli di override: aree, azioni e **oggetti**
+(permessi v2 — granularita' model). Il sottodominio "Override oggetti"
+manca completamente nell'analisi originale del documento ed eredita
+gli stessi problemi delle altre matrici:
+
+- niente `useInjectReadonly()` → trash/add/save attivi anche in readonly
+  (vedi A4 — il fix copre tutte e tre le matrici);
+- `getModelOverridesLookup()` (BE attivo, route
+  `lookup/model-overrides/`) ritorna l'elenco dei model "catalogati"
+  (`config.area_model_overrides`); manca pero' la capability
+  `can_override`/`reason` per evitare di proporre model bloccati per
+  ragioni di scope (es. tabelle config solo SUPER_ADMIN);
+- niente filtro audit per `user_override_oggetti` (vedi A13).
+
+Il payload riga ideale dal lookup model:
+
+```json
+{
+  "app_label": "anagrafiche",
+  "model_name": "conto_bancario",
+  "area_descrizione": "Anagrafiche",
+  "can_override": true,
+  "reason": null
+}
+```
+
+### A15. Banner operatori non assegnati: capability vs setup-status
+
+- `frontend/src/amministrazione/components/OperatoriNonAssegnatiBanner.vue`
+- BE: `amm_software/api/urls_v1.py:24` (`SetupStatusView` su
+  `GET /amm-software/setup-status/`)
+
+Il banner e' UX corretta del refactor operatore-emittenti (Q4) ma il
+contratto del payload setup-status non e' documentato in `api_amm_software.md`
+e i campi `count_unassigned`, `singleton_emittente_id`, `puo_auto_link`
+arrivano cablati lato FE. Standardizzare il response shape e renderlo
+visibile in `api.md`/`api_amm_software.md`.
+
+### A16. Stati email log come lookup statico
+
+- `frontend/src/amministrazione/constants.js:93` (`EMAIL_LOG_STATO`)
+- `frontend/src/amministrazione/constants.js:101` (`buildEmailLogStatoOptions`)
+- `frontend/src/amministrazione/views/EmailLogsListView.vue` (filtri stato)
+
+Stessa logica di A6: i 4 stati `PENDING/SENT/FAILED/RETRY` sono enum
+tecnici DB, non pertinenti al FE. Esporli via lookup statico dedicato
+(`GET /api/v1/amm-software/lookup/email-log-stati/`) e consumarli con
+`useGlobalLookup` (chiave `amm.email_log_stati`). Il pattern e' lo stesso
+adottato per i rounding modes.
 
 ---
 
@@ -517,9 +584,12 @@ dal backend:
 | Reset `bollo_soglia` quando `bollo_auto=false` | UX utile per evitare payload incoerenti. La normalizzazione deve restare anche backend/DB. |
 | Validazione tipo/valore variazione in matrici listino | Buona UX; il set ammesso e i campi editabili devono pero' essere metadata API. |
 | Banner super-admin "accesso totale" | Presentazione corretta se guidata dal detail operatore. |
-| Pattern store action senza `useApiHandler.execute()` | Corretto quando lo store ritorna dati gia' unwrappati e l'interceptor gestisce errori. |
+| Pattern store action senza `useApiHandler.execute()` | Corretto quando lo store ritorna dati gia' unwrappati e l'interceptor gestisce errori. Vedi memoria progetto `feedback_useapihandler_solo_axios`. |
 | Severity PrimeVue (`success/warn/danger`) | Presentazione pura: puo' restare nel FE. I codici di stato/livello devono invece venire da backend/lookup. |
 | Editing inline multi-riga utility | Pattern adatto alla matrice. Va solo data-driven per defaults/capability. |
+| Forced `attivo=false` su utility quando padre disattivo | UX corretta (`EmittenteFiscaleUtilitiesTab.vue:70`): rispetta il vincolo DB padre/figlio (`feedback_disattiva_ordine`). Il trigger DB e' la difesa finale. |
+| Banner `OperatoriNonAssegnatiBanner` | UX corretta del refactor operatore-emittenti. Capability deve restare data-driven via `setup-status`. |
+| Test connessione email | Pulsante UX utile, ma serve capability `can_test`/`test_reason` dal detail per nascondere/disabilitare quando emittente disattivo o SMTP non configurato. |
 
 ---
 
@@ -572,6 +642,35 @@ data di uscita: nuovi filtri e nuove scritture non devono piu' usare
 
 Il preview HTML e' il rischio piu' concreto sul modulo email. Non va lasciato
 come semplice `v-html` se l'admin puo' modificare il corpo template.
+
+### C6. Audit snapshot whitelist post multi-face
+
+`AuditLogView.snapshotSummary()` (riga 102) elenca `ruolo_sistema` tra le
+chiavi note. Post-cutover multi-face il campo non e' piu' presente sui
+nuovi snapshot e va sostituito con la triade `is_super_admin`/`attivo`/
+`ruolo_applicativo`. Lasciarlo non rompe nulla (i record vecchi continuano
+a contenere il campo) ma fa scomparire i campi nuovi dal riepilogo.
+
+Fix minimo (transitorio): aggiungere le 3 chiavi nuove **senza rimuovere**
+`ruolo_sistema`, lasciandolo per gli snapshot storici. Long-term: il summary
+arriva dal BE (vedi A13).
+
+### C7. Endpoint `disabilita`/`riattiva` esposti, FE non li usa
+
+Il BE espone gia':
+
+- `POST /api/v1/amm-software/operatori/<id>/disabilita/`
+- `POST /api/v1/amm-software/operatori/<id>/riattiva/`
+
+(`amm_software/api/urls_v1.py:14-15`, view `OperatoriDisabilitaView` /
+`OperatoriRiattivaView`).
+
+Il `OperatoreDrawer` e la lista non li chiamano: la disabilitazione passa
+per PATCH `attivo` nel form. Costo basso: aggiungere wrapper API + due
+voci `RowActionsMenu` con `severity:'danger'` (disabilita) e default
+(riattiva) gated su `data.is_active` + `auth.isObjectBlocked('amm_software',
+'auth_user')`. Il pattern segue A2 (capability `can_disable`/`can_reactivate`)
+quando il BE le esporra' nel detail.
 
 ---
 
@@ -635,3 +734,464 @@ come semplice `v-html` se l'admin puo' modificare il corpo template.
 - I mapper di severity PrimeVue possono restare frontend: sono presentazione.
 - Le API admin devono continuare a validare tutto lato service/DB anche dopo
   l'introduzione di metadata e capability.
+- Il rounding mode resta enum tecnico Python (no tabella DB / no FK
+  surrogato): single source of truth lato BE, esposto come lookup statico
+  per dominio. Allineato a memoria `feedback_no_hardcoded_ids` + precedente
+  catalogo Fase 1 LANDED.
+
+---
+
+## Piano di aggiornamento per team (DB / Backend / Frontend)
+
+> Suddivisione operativa delle Fasi 0..4 del piano concentrico.
+> Ogni fase elenca le azioni per i tre team (DB/BE/FE), con dipendenze e
+> priorita'. Pattern di riferimento: `analisi-refactor.frontend-catalogo.md`
+> (Fasi 1..8 LANDED 2026-04-28).
+>
+> Convenzioni adottate:
+>
+> - Niente compat fasi: ZeroErp non e' in produzione, breaking ammessi
+>   (memoria `project_no_produzione_solo_sviluppo`).
+> - Azioni DB sempre via brief al team su `dev/db-tid`
+>   (memoria `feedback_db_actions_passaggio_team`): l'agent backend non
+>   esegue migrazioni, scrive il brief.
+> - Sviluppo concentrico, niente YAGNI: guard progettati per espansione
+>   futura (memoria `feedback_concentrico_no_yagni`).
+
+### Fase 0 — Hotfix FE (P0, indipendente)
+
+Lavoro FE-only, nessuna dipendenza DB/BE. Da fare prima di tutto il resto.
+
+**Team Frontend**
+
+- `OperatorePermessiTab.vue`: aggiungere `useInjectReadonly()`; legare
+  `:disabled` su tutti i `Select`/`ToggleSwitch`/`InputText` di riga;
+  `v-if="!isReadonly"` su pulsanti Add/Save/Trash; short-circuit in
+  `saveAree`/`saveAzioni`/`saveOggetti`/`saveEmittenti`. (A4 + A14).
+- `EmailAccountDrawer.vue`: aggiungere `// Scopo:` iniziale; sostituire
+  `title="Account Email"` con `:title="t('amm.email_account_title')"`;
+  `:disabled="isReadonly"` su tutti i campi; nascondere pulsante test
+  in readonly; short-circuit in `handleSave`. (A11 + C2).
+- `EmailTemplateDrawer.vue`: stessi fix di `EmailAccountDrawer`; preview
+  HTML dentro `<iframe sandbox="">` con `srcdoc` invece di `v-html`.
+  (A12 + C5).
+- `TipoRuoloTipoIndirizzoDrawer.vue`: aggiungere
+  `&& !isReadOnlyEffective.value` in `canSave`; short-circuit in
+  `handleSave`. (A10 + C1).
+- `EmittenteFiscaleBillingAccountTab.vue`: rimpiazzare `hasDefault`
+  computed locale con `store.hasDefaultMapping` ricavato dal summary
+  esposto dal BE (vedi sotto). Fallback temporaneo: API `summary/`
+  caricata in `watch(emittenteId)`. (A8 + C3).
+- i18n: aggiungere chiavi `amm.email_account_title`,
+  `amm.email_template_title`, `amm.email_smtp_password_placeholder` in
+  `it.json` + `en.json`.
+
+**Team Backend**
+
+- Endpoint summary BA mapping (a supporto del fix C3):
+  `GET /api/v1/amm-software/emittenti-fiscali/<id>/billing-account-mappings/summary/`
+  → `{has_default: bool, count_specifici: int}`. View `AdminAPIView`,
+  `is_search_endpoint=False`. Repository ridusa
+  `EmittentiFiscaliBARepository.summary(id)`. Test in
+  `apps/amm_software/tests/services/`.
+
+**Team DB**: nessuna migrazione.
+
+### Fase 1 — Capability operatore (P1)
+
+Coerentizza il drawer Operatore con il modello multi-face e con i comandi
+gia' esposti.
+
+**Team DB**
+
+- Brief al team DB per estendere `script.fn_get_operatore_detail`
+  (o equivalente vista `vw_operatore_dettaglio`) con i campi:
+  `can_invite`, `invite_reason`, `can_disable`, `disable_reason`,
+  `can_demote_super_admin`, `demote_reason`. Logica: `can_disable=false`
+  se l'operatore e' l'ultimo SUPER_ADMIN attivo
+  (`script.fn_count_super_admin_attivi() <= 1`); `can_demote=false`
+  stessa regola; `can_invite` solo se `last_login IS NULL AND attivo
+  AND email IS NOT NULL`.
+- pgTAP: 4 test coverage capability (single super-admin, multi
+  super-admin, demote bloccato, invite con last_login).
+
+**Team Backend**
+
+- `AmmSoftwareService.update_operatore`: rimuovere traduzione legacy
+  `ruolo_sistema → is_super_admin/attivo`. Il payload accettato e'
+  ora `{is_super_admin?, attivo?, email?, first_name?, last_name?,
+  unita_organizzativa_id?}`. Niente `ruolo_applicativo` (implicito
+  OPERATORE).
+- `AmmSoftwareService.create_operatore`: stesso payload + `username`,
+  `password`, `qualifica_id`, `soggetto_id`. Rifiuta `ruolo_sistema`
+  con `E_AMM_VALIDATION` (no compat layer).
+- View `OperatoriDetailView` aggiunge nel response detail i 6 campi
+  capability (`can_*`/`*_reason`).
+- Niente nuovi endpoint: `disabilita/riattiva` esistono gia'.
+
+**Team Frontend**
+
+- `OperatoreDrawer.vue` create: rimuovere `ruolo_sistema` dal payload,
+  inviare `is_super_admin/attivo` come l'update (riga 198).
+- Sostituire pulsante invito con check `currentOperatore.can_invite`,
+  con tooltip su `invite_reason` quando `false`.
+- Aggiungere azioni di riga `RowActionsMenu` per disabilita/riattiva
+  legate a `can_disable`/`is_active`. Wrapper API in
+  `api/amministrazione.js` (`disabilitaOperatore`, `riattivaOperatore`)
+  e store actions con `emitDataChanged(TAB_ENTITIES.OPERATORE, id)`.
+- Banner `Message info` per "Devi restare almeno un super admin" quando
+  `can_demote_super_admin=false` e form prova a togliere il toggle.
+
+### Fase 2 — Scope emittenti dichiarativo (P1)
+
+Risolve l'ambiguita' single/multi/global dello scope emittenti
+(`OperatorePermessiTab`). Allinea il contratto API al modello target del
+refactor operatore-emittenti (Q1+Q2): SUPER_ADMIN globale = 0 righe,
+SUPER_ADMIN di emittente = 1 riga, MULTI architetturalmente chiuso.
+
+> **Decisioni 2026-04-29 (DB+BE)**:
+>
+> 1. Niente regola "GLOBAL immutabile" come dogma separato: il vincolo reale
+>    e' "non puoi rimuovere l'ultimo super-admin attivo" (gia' coperto da
+>    `fn_check_ultimo_super_admin_attivo` di Fase 1). `can_change_scope`
+>    deriva da quella funzione per i SA, `true` altrimenti.
+> 2. **Funzione**, non vista: `script.fn_get_user_emittenti_scope` —
+>    consumer e' lookup-by-id (drawer permessi), nessun consumer fa
+>    filtro/sort sullo `scope_mode`. Coerente col pattern Fase 1.
+> 3. `MULTI` chiuso **applicativamente**: `allowed_scope_modes` ritorna
+>    `['GLOBAL','SINGLE']`. L'enum API resta `text` aperto: l'eventuale
+>    riapertura in futuro richiederebbe rilassare `UNIQUE(auth_user_id)`,
+>    quindi un cambio architetturale separato — non basterebbe toccare il
+>    payload.
+> 4. Cambio scope atomico via `script.fn_change_user_emittenti_scope` con
+>    guard `fn_check_ultimo_super_admin_attivo` integrato. Errore tradotto
+>    dal BE in `E_PROFILO_ULTIMO_SUPER_ADMIN` (gia' registrato Fase 1).
+
+**Team DB**
+
+- Brief: nuova `script.fn_get_user_emittenti_scope(p_auth_user_id integer)`
+  RETURNS TABLE (singolo row, semantica lookup-by-id):
+
+  ```text
+  scope_mode             text         -- 'GLOBAL' | 'SINGLE'
+  emittenti_ids          bigint[]     -- [] se GLOBAL, [id] se SINGLE
+  allowed_scope_modes    text[]       -- sempre ['GLOBAL','SINGLE'] post Q2
+  can_change_scope       boolean      -- NOT fn_check_ultimo_super_admin_attivo
+                                      --   per SA; true altrimenti
+  change_scope_reason    text         -- it-IT free-form, NULL se can=true
+  ```
+
+  Logica: 0 righe in `user_emittenti_fiscali` -> GLOBAL; 1 riga -> SINGLE
+  con `emittenti_ids = ARRAY[id]`. La fn delega a Fase 1 per il guard.
+  Idioma "lookup-by-id 0 rows" per `p_auth_user_id` non valido (coerente
+  con `fn_get_operatore_detail`).
+
+- Brief: nuova `script.fn_change_user_emittenti_scope(p_auth_user_id integer,
+  p_emittente_ids bigint[])`. Esegue in transazione atomica:
+
+  1. Validazione `array_length(p_emittente_ids, 1) IN (NULL, 1)` —
+     altrimenti `RAISE` con marker `E_AMM_VALIDAZIONE` (no MULTI).
+  2. Se l'utente e' SUPER_ADMIN e il nuovo scope diverge dal corrente,
+     consulta `fn_check_ultimo_super_admin_attivo`: se positivo, RAISE
+     con marker `E_PROFILO_ULTIMO_SUPER_ADMIN`.
+  3. `DELETE FROM config.user_emittenti_fiscali WHERE auth_user_id = ...`.
+  4. Se `p_emittente_ids` non NULL/non vuoto: INSERT della singola riga.
+
+  Il trigger ultimo-super-admin esistente sta su `profili_accesso_bindings`
+  e non si attiva su `user_emittenti_fiscali`: il guard va integrato nella
+  funzione orchestratrice.
+
+- pgTAP: 5 test — GLOBAL ↔ SINGLE, rifiuto MULTI (>1 emittente), guard
+  ultimo-SA su PUT GLOBAL→SINGLE (demotion), guard su PUT inverso.
+
+**Team Backend**
+
+- `AmmSoftwareService.get_emittenti_scope(auth_user_id)`: rinominata da
+  `get_emittenti_scope` (lista grezza) a metodo che ritorna lo shape della
+  fn DB. La vecchia funzione resta come `_list_emittenti_scope` interna
+  (usata internamente per la lista completa, se serve).
+
+- View `EmittentiScopeView` (GET): risposta = output `fn_get_user_emittenti_scope`.
+  PATCH valida `scope_mode IN allowed_scope_modes`, normalizza
+  `emittenti_ids` (`[]` se GLOBAL, `[id]` se SINGLE), delega a
+  `fn_change_user_emittenti_scope`. Il service avvolge la chiamata in
+  `_run_or_raise_super_admin_guard` (gia' presente da Fase 1) per tradurre
+  `DatabaseError E_PROFILO_ULTIMO_SUPER_ADMIN` in `ServiceError`.
+
+- Errore strutturato dedicato per shape invalido (es. `MULTI` o array
+  con piu' di 1 elemento): `E_AMM_SCOPE_NON_AMMESSO` (HTTP 400). Niente
+  override su `E_PROFILO_ULTIMO_SUPER_ADMIN`: si riutilizza Fase 1.
+
+**Team Frontend**
+
+- `OperatorePermessiTab.vue`: leggere `scope_mode`/`allowed_scope_modes`/
+  `can_change_scope`/`change_scope_reason` dallo store. Render condizionale:
+  - `'GLOBAL'` selezionato: testo "Tutti gli emittenti" + radio attivo.
+  - `'SINGLE'` selezionato: `Select` singolo (gia' presente, ora dichiarato).
+  - `'MULTI'`: non incluso in `allowed_scope_modes` post Q2 — niente
+    branch FE da implementare.
+- Radio `GLOBAL/SINGLE` gated su `can_change_scope`; quando `false`, radio
+  disabled + tooltip su `change_scope_reason`.
+- Pulsante Salva propaga `{scope_mode, emittenti_ids: [...]}`. Il BE
+  normalizza: se `scope_mode='GLOBAL'`, `emittenti_ids` viene ignorato.
+
+### Fase 3 — Form-defaults emittente fiscale (P1)
+
+Sposta i defaults fiscali dal FE al BE via `ParameterService` (pattern
+catalogo Fase 1 LANDED).
+
+**Team DB**
+
+- Brief: seed in `config.parameters` (codice `EMITTENTE_DEFAULT_*`):
+  `EMITTENTE_DEFAULT_ATTIVO=true`, `EMITTENTE_DEFAULT_BOLLO_AUTO=false`,
+  `EMITTENTE_DEFAULT_BOLLO_SOGLIA=null`,
+  `EMITTENTE_DEFAULT_ROUNDING_POLICY=HALF_UP`. Cascata
+  user→group→emittente→default via `script.fn_get_parameter_full`.
+  pgTAP: test cascata default + override emittente.
+- Brief separato per il lookup statico rounding modes
+  (`/amm-software/lookup/rounding-modes/` ritorna 4 codici): nessuna
+  tabella; il backend serve l'enum dal codice Python (single source of
+  truth, vedi A6).
+
+**Team Backend**
+
+- `AmmSoftwareService.get_emittente_form_defaults(*, django_user_id,
+  group_ids, emittente_fiscale_id)`: chiama
+  `ParameterService.get_defaults([...])` e ritorna
+  `{defaults: {...}, non_editable_fields: ['codice', 'soggetto_id']}`.
+- View `ApiEmittentiFormDefaults` su
+  `GET /api/v1/amm-software/emittenti-fiscali/form-defaults/`. Riusa
+  `get_user_context` (gia' pubblico in catalogo, vedi
+  `catalogo-building-block-backend.md`).
+- View `ApiEmittenteRoundingModesLookup` simmetrica a
+  `ApiUomRoundingModesLookup`. Costante `_ROUNDING_MODE_VALIDI_EMITTENTE
+  = ('HALF_UP','HALF_DOWN','UP','DOWN')` nel service.
+
+**Team Frontend**
+
+- `EmittenteFiscaleDrawer.vue`: rimuovere `FORM_DEFAULT` cablato (riga 62);
+  sostituire con `getEmittenteFormDefaults()` chiamato in
+  `applyFormDefaults()` (pattern catalogo Fase 8). Cast tipi via
+  `parameterCast.js` (`paramBool`/`paramString`).
+- `EmittenteRoundingModeSelect.vue`: nuovo wrapper riusabile, chiave
+  `useGlobalLookup('amm.emittenti_rounding_modes')` su
+  `lookupEmittenteRoundingModes` (nuovo in `apiAmministrazione.js`).
+- Sostituire `<Select :options="ROUNDING_METHOD_VALUES">` con
+  `<EmittenteRoundingModeSelect>` in `EmittenteFiscaleDrawer` e
+  `EmittenteFiscaleUtilitiesTab`.
+- Rimuovere `ROUNDING_METHODS` + `ROUNDING_METHOD_VALUES` da
+  `amministrazione/constants.js`. Lasciare solo
+  `ROUNDING_DECIMALI_RANGE` (range tecnico, anche'esso candidato al
+  lookup nei follow-up).
+
+### Fase 4 — Capability matrici (P1)
+
+Estende il pattern `non_editable_fields` + capability di riga alle 4
+matrici amm-software.
+
+**Team DB**: nessuna migrazione obbligatoria. Le viste esistenti
+(`vw_emittente_fiscale_utilities_matrix`,
+`vw_categorie_clienti_listini_matrix`,
+`vw_tipi_ruolo_tipi_indirizzo`) gia' coprono il LEFT JOIN; basta che il
+service BE ne legga le proiezioni.
+
+**Team Backend**
+
+- Helper riusabile `compute_non_editable_fields(record, *, kind)` in
+  `apps/amm_software/services/_helpers.py` (pattern catalogo Fase 5).
+- Detail emittente fiscale (`fn_get_emittente_dettaglio`): includere
+  `non_editable_fields=['codice','soggetto_id']` + capability di riga
+  `can_update`, `can_delete` su utilities/BA mapping.
+- `CategoriaClienteListinoService.list/detail`: includere
+  `tipo_variazione_options` (lookup `config.tipi_variazione_categoria`,
+  ammette `PERCENTUALE`/`VALORE_FISSO`/`null`) +
+  `non_editable_fields=['categoria_cliente_id', 'utility_id',
+  'emittente_soggetto_ruolo_id', 'classe_utenza_id']`.
+- `TipoRuoloTipoIndirizzoService`: ritornare
+  `fallback_options[]` filtrate per ruolo/tipo (BE applica gia' il
+  guard "non se stesso" + ciclo).
+
+**Team Frontend**
+
+- `EmittenteFiscaleUtilitiesTab.vue`: capability di riga
+  `data.can_configure`/`can_update`/`can_remove` invece di derivare da
+  `record_id`. Defaults riga letti da `data.defaults`, non hardcoded.
+- `CategoriaClienteListinoDrawer.vue`: rimuovere `PERCENTUALE`/
+  `VALORE_FISSO` cablati (riga 47, 130, 160); usare lookup statico
+  `core/lookup/codici/?rel=config.tipi_variazione_categoria`.
+- `TipoRuoloTipoIndirizzoDrawer.vue`: filtrare
+  `fallback_tipo_indirizzo_id` su `data.fallback_options`.
+
+### Fase 5 — Audit hardening + email log lookup (P1)
+
+**Team DB**
+
+- Brief: vista `vw_audit_sources` espone le tabelle audit con
+  `code, label_key, area_funzionale`. Aggiunge `user_override_oggetti`
+  (permessi v2) + `identita_digitali` (multi-face).
+- Brief funzione `fn_audit_summary(audit_log_id) RETURNS jsonb` che
+  ritorna `{summary: text, diff: jsonb[]}` calcolato dal trigger di
+  audit (delta vs riga precedente).
+
+**Team Backend**
+
+- View `ApiAuditSourcesLookup` su
+  `GET /api/v1/amm-software/lookup/audit-sources/` ritorna le righe
+  della vista.
+- View `ApiEmailLogStatiLookup` su
+  `GET /api/v1/amm-software/lookup/email-log-stati/` (lookup statico
+  da costante Python `_EMAIL_LOG_STATI_VALIDI`).
+- `ApiAuditLogList`: aggiungere campo `summary` (e opzionalmente
+  `diff`) nel response, calcolato via `fn_audit_summary`.
+
+**Team Frontend**
+
+- `AuditLogView.vue`: rimuovere `buildAuditTabellaOptions` (riga 34) e
+  `snapshotSummary` locale (riga 95-107); consumare `audit_sources` e
+  `summary`/`diff` dal BE. `useGlobalLookup('amm.audit_sources')`.
+- `constants.js`: rimuovere `EMAIL_LOG_STATO`, `buildEmailLogStatoOptions`,
+  `getEmailLogStatoSeverity` (la severity passa al BE come parte del
+  lookup, oppure resta lato FE come mappa pure-presentation di label).
+- `EmailLogsListView.vue`: usare nuovo `EmailLogStatoSelect.vue`
+  (riusabile cross-app se altri admin lo richiederanno).
+
+### Fase 6 — Email hardening (P0/P1 misto)
+
+**Team DB**: nessuna migrazione (eccetto eventuale extension del log
+per `last_test_at`/`last_test_outcome` se si decide di persisterli).
+
+**Team Backend**
+
+- `EmailDispatchService.test_connection` (gia' esiste): wrapper view
+  `ApiEmailAccountTest` aggiunge ai response detail `{can_test: bool,
+  test_reason: text|null, last_test_at, last_test_outcome}` derivato
+  da campi opzionali del repo.
+- View `ApiEmailTemplateRender`: render lato BE con sanitizzazione HTML
+  (lib `bleach` o equivalente, gia' valutato in catalogo) — ritorna
+  HTML "trusted". Vincoli: solo tag whitelisted, no `<script>`, no
+  event handler, CSS inline limitato.
+
+**Team Frontend**
+
+- `EmailAccountDrawer.vue`: pulsante test gated su `can_test`; tooltip
+  su `test_reason`; mostra ultimo esito test (Tag severity).
+- `EmailTemplateDrawer.vue`: preview in `<iframe sandbox="" :srcdoc="">`
+  popolato dal HTML render-ato dal BE (gia' sanificato). Niente piu'
+  `v-html`. (Implementa C5 + A12).
+
+### Fase 7 — Cleanup legacy (P2)
+
+**Team DB**
+
+- Brief: dismissione campo `ruolo_sistema` su
+  `risorse_umane_auth_user` (oggi vista). Backfill verifica + deprecate
+  per gli script che lo leggono. Dipendente da chiusura cutover
+  multi-face (gia' in §4.6.H.2).
+
+**Team Backend**
+
+- `AmmSoftwareService`: rimuovere ogni traduzione legacy
+  `ruolo_sistema`. `PermessiRiepilogoView` legge solo
+  `is_super_admin`/`ruolo_applicativo`/`attivo` + scope emittente.
+- `error_policies.py`: rimuovere eventuali codici legati al ruolo
+  legacy.
+
+**Team Frontend**
+
+- `amministrazione/constants.js`: marcare `buildRuoloOptions` come
+  deprecato; eliminare quando `PermessiRiepilogoView` migrata.
+- `PermessiRiepilogoView.vue`: refactor completo basato su
+  `is_super_admin`/`ruolo_applicativo`/`attivo`/scope emittente.
+- `core/constants.js`: rimuovere `RUOLO_SISTEMA` enum.
+- Audit summary `snapshotSummary` (interim, vedi C6): aggiungere chiavi
+  multi-face fino a quando il BE non espone `summary`.
+
+### Fase 8 — Override oggetti (permessi v2) — capability lookup
+
+**Team DB**: nessuna migrazione.
+
+**Team Backend**
+
+- `LookupRepository.list_model_overrides`: aggiungere ai campi della
+  vista `can_override` (bool) + `reason` (text|null). Logica: model
+  whitelisted in `config.area_model_overrides` + non riservato (es.
+  no model `auth_user` se l'admin non e' SUPER_ADMIN globale).
+
+**Team Frontend**
+
+- `OperatorePermessiTab.vue` sezione "Override oggetti": filtrare
+  `modelOverrideOptions` su `can_override === true`; nascondere o
+  disabilitare opzioni con `reason`. (A14).
+
+---
+
+### Sintesi tabellare per priorita' e team
+
+| Fase | Punti coperti | Team DB | Team Backend | Team Frontend | Priorita' |
+| --- | --- | --- | --- | --- | --- |
+| 0 | A4, A8, A10, A11, A12, C1..C3, C5 | nessuna | endpoint summary BA mapping | readonly hotfix 4 file + iframe sandbox + i18n | P0 |
+| 1 | A1, A2, C4, C7 | capability operatore (vista/fn) | service create/update + detail capability | drawer payload uniforme + azioni disabilita/riattiva | P1 |
+| 2 | A3 | fn_get_user_emittenti_scope + fn_change_user_emittenti_scope (atomica + guard) | service get + PATCH atomico, riuso Fase 1 guard | radio GLOBAL/SINGLE, tooltip reason | P1 |
+| 3 | A5, A6 | seed parametri + brief lookup statici | form-defaults + lookup rounding-modes | RoundingModeSelect EF + applyFormDefaults | P1 |
+| 4 | A7, A9, A10 metadata | (nessuna) | non_editable_fields + capability riga | drawer/tab data-driven | P1 |
+| 5 | A13, A14, A16 | vw_audit_sources + fn_audit_summary | lookup audit-sources + email-log-stati + summary | rimozione constants locali | P1 |
+| 6 | A12, B (test email) | (opzionale) | render template sanificato + can_test | iframe sandbox + capability test | P0/P1 |
+| 7 | C4 cleanup | dismissione ruolo_sistema | rimozione compat layer | rimozione enum RUOLO_SISTEMA + PermessiRiepilogo | P2 |
+| 8 | A14 | (nessuna) | can_override su lookup model | filtro options | P2 |
+
+**Da NON toccare** (falsi positivi del documento originale):
+
+- `EmittenteFiscaleUtilitiesTab.vue:70` forced `attivo=false` se padre
+  inattivo: defense-in-depth corretta, allineata al trigger DB
+  `feedback_disattiva_ordine`.
+- `OperatorePermessiTab.vue:75` pattern store action senza
+  `useApiHandler.execute()`: corretto per memoria
+  `feedback_useapihandler_solo_axios`.
+- `AuditLogView.vue:38` filtro data default ultimo mese: standard di
+  progetto (`feedback_filtro_data_liste`).
+- `RepartiProfiloView.vue` + `RepartoProfiloEditor.vue`: usano gia' il
+  pattern provider/inject readonly correttamente. Niente fix.
+- `TipoRuoloTipoIndirizzoDrawer.vue` campi `:disabled`: gia' coperto
+  con `isReadOnlyEffective` (riga 132..152). Solo `canSave`/`handleSave`
+  da rinforzare.
+
+---
+
+## Dipendenze e ordine di esecuzione
+
+```text
+Fase 0 (FE-only) ──► standalone, parte subito
+
+Fase 1 ──► DB capability operatore ──► BE service ──► FE drawer + azioni
+Fase 2 ──► DB scope view ──► BE PATCH ──► FE render
+Fase 3 ──► DB seed parameters ──► BE endpoint ──► FE wrapper select
+Fase 4 ──► (DB no) ──► BE non_editable_fields ──► FE consumer
+Fase 5 ──► DB audit + fn_summary ──► BE lookup + summary ──► FE rimozione constants
+Fase 6 ──► (DB opz) ──► BE render+sanitize ──► FE iframe sandbox
+Fase 7 ──► dipende da chiusura cutover multi-face (Fase 4.6.H.2)
+Fase 8 ──► (DB no) ──► BE can_override ──► FE filtro
+```
+
+Le Fasi 1..6 sono indipendenti tra loro a livello applicativo: possono
+procedere in parallelo se il team DB allinea le viste/seed in tempo. La
+Fase 7 deve aspettare la chiusura del cutover multi-face. Fasi 0 e 8
+sono FE-light/standalone.
+
+---
+
+## Pattern emersi e memoria progetto
+
+Il piano riusa pattern gia' consolidati (memoria progetto) — niente nuovi
+pattern da introdurre:
+
+- `feedback_no_hardcoded_ids` — Fase 3 (rounding modes, defaults).
+- `feedback_slot_override_matrix` — Fase 4 (matrici utility/categorie).
+- `feedback_classify_payload_three_state` — non applicabile qui.
+- `feedback_disattiva_ordine` — Fase 1 (disabilita/riattiva).
+- `feedback_payload_helpers_duplicati` — Fase 1, 4 (PayloadValidator).
+- `feedback_useapihandler_solo_axios` — Fase 0 (mantenere pattern).
+- `feedback_stato_terminale_con_data` — non applicabile (operatore non
+  ha workflow stato-terminale-con-data).
+- `feedback_drawer_readonly` — Fase 0 (readonly + injecting).
+
+Nessuna nuova memoria pattern necessaria.

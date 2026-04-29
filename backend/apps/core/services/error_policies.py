@@ -849,6 +849,29 @@ class ErrorPolicyRegistry:
             ui_action="show_error_banner",
             user_message="Impossibile disabilitare l'ultimo amministratore.",
         ),
+        # Multi-face: code sollevato dal trigger DB
+        # `trgfn_profili_accesso_bindings_guard_ultimo_super_admin` quando
+        # un'operazione (disabilita identita, demote SUPER_ADMIN, delete
+        # binding) lascerebbe il sistema senza alcun super admin attivo.
+        # Sostituisce E_ADMIN_ULTIMO post-cutover (Fase 1 multi-face); il
+        # service preserva il code originale del DB anche quando il preview
+        # `can_disable` lato detail aveva valutato true (race tra sessioni).
+        "E_PROFILO_ULTIMO_SUPER_ADMIN": ErrorPolicy(
+            code="E_PROFILO_ULTIMO_SUPER_ADMIN",
+            http_status=409,
+            ui_action="show_error_banner",
+            user_message="Impossibile rimuovere l'ultimo super admin attivo.",
+        ),
+        # Fase 2 multi-face: payload `scope_mode` non ammesso per il
+        # contratto attuale (es. MULTI post Q2, oppure SINGLE con array
+        # vuoto/multi-elemento). Errore di validazione client-side, non
+        # di stato del sistema.
+        "E_AMM_SCOPE_NON_AMMESSO": ErrorPolicy(
+            code="E_AMM_SCOPE_NON_AMMESSO",
+            http_status=400,
+            ui_action="show_error_banner",
+            user_message="Scope emittenti non ammesso per la richiesta.",
+        ),
         "E_UTENTE_BLOCCATO": ErrorPolicy(
             code="E_UTENTE_BLOCCATO",
             http_status=423,

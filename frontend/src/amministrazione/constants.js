@@ -71,21 +71,11 @@ export function buildAuditTabellaOptions(t) {
 }
 
 // --- Arrotondamento importi ---
-// Valori allineati al CHECK constraint DB (anagrafiche.emittenti_fiscali_utilities
-// e anagrafiche.emittenti_fiscali.rounding_policy):
-//   IN ('UP','DOWN','HALF_UP','HALF_DOWN')
-// Le label sono codici tecnici (no traduzione: identificano l'algoritmo IEEE).
-export const ROUNDING_METHODS = [
-  { label: 'HALF_UP', value: 'HALF_UP' },
-  { label: 'HALF_DOWN', value: 'HALF_DOWN' },
-  { label: 'UP', value: 'UP' },
-  { label: 'DOWN', value: 'DOWN' }
-]
-
-// Lista flat dei codici, comoda quando serve solo l'enum (es. <Select :options>).
-export const ROUNDING_METHOD_VALUES = ROUNDING_METHODS.map(m => m.value)
-
-// Range decimali allineato al CHECK constraint DB
+// Fase 3 (LANDED): l'enum dei modi di arrotondamento e' gestito dal lookup
+// statico /amm-software/lookup/rounding-modes/ via wrapper riusabile
+// EmittenteRoundingModeSelect. Single source of truth lato BE in
+// amm_software_service._ROUNDING_MODE_VALIDI_EMITTENTE.
+// Range decimali tecnico, allineato al CHECK constraint DB
 // (chk_emittenti_fiscali_utilities_arrotondamento_dec).
 export const ROUNDING_DECIMALI_RANGE = { MIN: 0, MAX: 6 }
 

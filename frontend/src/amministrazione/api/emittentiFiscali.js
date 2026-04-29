@@ -38,6 +38,14 @@ export function deleteEmittenteBillingAccount(emittenteId, mappingId) {
   return api.delete(`${BASE}/${emittenteId}/billing-account/${mappingId}/`)
 }
 
+// Scopo: Riepilogo mapping BA (has_default + count_specifici) indipendente dalla
+//        pagina corrente. Risolve il bug A8/C3 del WIP frontend amm-software:
+//        senza summary, il check "esiste gia' un default" fallisce se il record
+//        default non e' nella pagina paginata visibile.
+export function getEmittenteBillingAccountSummary(emittenteId) {
+  return api.get(`${BASE}/${emittenteId}/billing-account/summary/`)
+}
+
 // --- Utilities ---
 
 export function listEmittenteUtilities(emittenteId) {

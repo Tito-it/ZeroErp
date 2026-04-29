@@ -112,9 +112,12 @@ class OperatoriDetailView(AdminAPIView):
             "email": serializers.CharField(required=False),
             "first_name": serializers.CharField(required=False),
             "last_name": serializers.CharField(required=False),
-            "ruolo_sistema": serializers.CharField(required=False),
-            "unita_organizzativa_id": serializers.IntegerField(required=False),
+            # Contract Fase 1 multi-face: is_super_admin + attivo
+            # sostituiscono il legacy ruolo_sistema.
+            "is_super_admin": serializers.BooleanField(required=False),
             "attivo": serializers.BooleanField(required=False),
+            "unita_organizzativa_id": serializers.IntegerField(required=False),
+            "valido_al": serializers.DateField(required=False),
         }),
         responses={200: inline_serializer(name="OperatorePatchResp", fields={"data": serializers.DictField()})},
     )
@@ -204,19 +207,44 @@ class ModelOverridesLookupView(AdminAPIView):
 
 
 class EmittentiScopeView(AdminAPIView):
-    """GET/PUT scope emittenti."""
+    """GET/PUT scope emittenti dichiarativo (Fase 2 multi-face).
 
-    @extend_schema(responses={200: inline_serializer(name="EmittentiScopeGetResp", fields={"data": serializers.DictField()})})
+    GET: ritorna `{scope_mode, emittenti_ids, emittente_descrizione,
+                  allowed_scope_modes, can_change_scope, change_scope_reason}`.
+    PUT: payload `{scope_mode: 'GLOBAL'|'SINGLE', emittenti_ids: list[int]}`.
+         GLOBAL -> emittenti_ids ignorato; SINGLE -> esattamente 1 elemento.
+         Errore strutturato `E_AMM_SCOPE_NON_AMMESSO` (HTTP 400) per shape
+         invalido (incluso 'MULTI' ed eventuali futuri scope mode).
+    """
+
+    @extend_schema(responses={200: inline_serializer(
+        name="EmittentiScopeGetResp",
+        fields={"data": inline_serializer(name="EmittentiScopeData", fields={
+            "scope_mode": serializers.ChoiceField(choices=["GLOBAL", "SINGLE"]),
+            "emittenti_ids": serializers.ListField(child=serializers.IntegerField()),
+            "emittente_descrizione": serializers.CharField(allow_null=True),
+            "allowed_scope_modes": serializers.ListField(child=serializers.CharField()),
+            "can_change_scope": serializers.BooleanField(),
+            "change_scope_reason": serializers.CharField(allow_null=True),
+        })},
+    )})
     def get(self, request: Request, auth_user_id: int) -> JsonResponse:
-        return success_response({"results": AmmSoftwareService().get_emittenti_scope(auth_user_id)})
+        return success_response(AmmSoftwareService().get_emittenti_scope(auth_user_id))
 
     @extend_schema(
-        request=inline_serializer(name="EmittentiScopePutReq", fields={"emittente_ids": serializers.ListField()}),
+        request=inline_serializer(name="EmittentiScopePutReq", fields={
+            "scope_mode": serializers.ChoiceField(choices=["GLOBAL", "SINGLE"]),
+            "emittenti_ids": serializers.ListField(
+                child=serializers.IntegerField(),
+                required=False,
+                help_text="Vuoto/omesso per GLOBAL; lista di 1 id per SINGLE.",
+            ),
+        }),
         responses={200: inline_serializer(name="EmittentiScopePutResp", fields={"data": serializers.DictField()})},
     )
     def put(self, request: Request, auth_user_id: int) -> JsonResponse:
-        results = AmmSoftwareService().put_emittenti_scope(auth_user_id, request.data.get("emittente_ids", []))
-        return success_response({"results": results})
+        result = AmmSoftwareService().put_emittenti_scope(auth_user_id, request.data)
+        return success_response(result)
 
 
 # ================================================================== #
@@ -365,3 +393,78 @@ class SetupStatusView(AdminAPIView):
     def get(self, request: Request) -> JsonResponse:
         del request
         return success_response(AmmSoftwareService().get_setup_status())
+
+
+# ================================================================== #
+# Form-defaults emittente fiscale (Fase 3)                             #
+# ================================================================== #
+
+
+class EmittentiFormDefaultsView(AdminAPIView):
+    """GET defaults pre-compilazione form anagrafica emittente fiscale.
+
+    Centralizza il consumo dei `config.parameters` `EMITTENTE_DEFAULT_*`
+    (BOLLO_AUTO, BOLLO_SOGLIA, ROUNDING_POLICY) con cast tipi gia'
+    applicato lato BE. Il FE non duplica il cast generico di
+    `/core/parameters/defaults/`. Pattern allineato a
+    `ApiArticoliFormDefaults` (catalogo Fase 8 — A5).
+
+    Response: {defaults: {bollo_auto, bollo_soglia, rounding_policy},
+               non_editable_fields: [...]}.
+    """
+
+    @extend_schema(
+        responses={200: inline_serializer(
+            name="AmmEmittentiFormDefaultsResp",
+            fields={
+                "data": inline_serializer(
+                    name="AmmEmittentiFormDefaultsData",
+                    fields={
+                        "defaults": serializers.DictField(),
+                        "non_editable_fields": serializers.ListField(
+                            child=serializers.CharField(),
+                        ),
+                    },
+                ),
+                "meta": serializers.DictField(required=False),
+            },
+        )},
+    )
+    # Scopo: Restituisce defaults form emittente fiscale (Fase 3 — A5).
+    def get(self, request: Request) -> JsonResponse:
+        from apps.core.api.views_parameters import get_user_context
+        from apps.core.services.parameter_service import ParameterService
+
+        ctx = get_user_context(request, ParameterService())
+        return success_response(
+            AmmSoftwareService().get_emittente_form_defaults(**ctx)
+        )
+
+
+class EmittenteRoundingModesLookupView(AdminAPIView):
+    """GET lookup statico modi di arrotondamento per emittente fiscale.
+
+    Single source of truth in
+    `amm_software_service._ROUNDING_MODE_VALIDI_EMITTENTE` +
+    `_ROUNDING_MODE_DESCRIZIONI_EMITTENTE`. Niente DB: 4 codici fissi
+    (UP/DOWN/HALF_UP/HALF_DOWN) allineati al CHECK
+    `chk_emittenti_fiscali_rounding_policy`. Pattern simmetrico a
+    `ApiUomRoundingModesLookup` di catalogo (che ha 5 codici, include
+    HALF_EVEN — quello e' un altro enum).
+    """
+
+    @extend_schema(
+        responses={200: inline_serializer(
+            name="AmmEmittenteRoundingModesLookupResp",
+            fields={
+                "data": serializers.ListField(child=serializers.DictField()),
+                "meta": serializers.DictField(required=False),
+            },
+        )},
+    )
+    # Scopo: Restituisce la lista statica dei modi di arrotondamento.
+    def get(self, request: Request) -> JsonResponse:
+        del request
+        return success_response(
+            AmmSoftwareService().list_emittente_rounding_modes()
+        )
