@@ -1,0 +1,43 @@
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260429-06-create-vw-audit-sources-mctit.yaml
+
+  - changeSet:
+      id: 20260429-06-create-vw-audit-sources
+      author: mctit
+      runOnChange: true
+      validCheckSum: [ANY]
+      comment: >
+        Vista pubblica script.vw_audit_sources (Fase 5 P1 2026-04-29).
+        Espone solo le colonne contratto API (code, label_key,
+        area_funzionale) sostituendo la lista hardcoded oggi in
+        apps.amm_software.db.amm_software_repository._AUDIT_TABLES.
+        Le colonne tecniche storico_table / storico_pk_col restano
+        nella tabella sottostante dbops.audit_sources e sono lette
+        solo dalla fn dispatch script.fn_audit_summary.
+      preConditions:
+        - onFail: HALT
+        - tableExists: { schemaName: dbops, tableName: audit_sources }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Vista trivial sopra dbops.audit_sources: filtra le sole
+              -- righe attive ed espone i 3 campi del contratto API
+              -- (drawer admin AuditLogView). Ordinamento per code
+              -- garantisce output deterministico al BE.
+              CREATE OR REPLACE VIEW script.vw_audit_sources AS
+              SELECT
+                  code,
+                  label_key,
+                  area_funzionale
+                FROM dbops.audit_sources
+               WHERE attivo = true
+               ORDER BY code;
+
+              COMMENT ON VIEW script.vw_audit_sources IS
+                  'Vista pubblica delle storico audit-abili dal drawer admin (Fase 5 P1 2026-04-29). Espone solo (code, label_key, area_funzionale) come contratto API: storico_table / storico_pk_col restano colonne tecniche di dbops.audit_sources, lette solo da script.fn_audit_summary per dispatch dinamico.';
+      rollback:
+        - sql:
+            sql: DROP VIEW IF EXISTS script.vw_audit_sources;

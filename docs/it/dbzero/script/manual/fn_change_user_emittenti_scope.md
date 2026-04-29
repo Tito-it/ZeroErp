@@ -74,10 +74,10 @@ Esempio:
 
 ## Algoritmo
 
-1. **Guard parametri**: `auth_user_id` `NULL/<=0` → `RAISE` (codice
-   SQL `22023`). Lunghezza `p_emittente_ids > 1` →
-   `E_OPERATORE_SCOPE_MULTI_NON_AMMESSO`. Singolo elemento `NULL/<=0` →
-   `RAISE`.
+1. **Guard parametri** (tutti via `script.fn_log_and_raise_error`):
+   `auth_user_id` `NULL/<=0` → `E_OPERATORE_SCOPE_PARAM_NON_VALIDO`.
+   Lunghezza `p_emittente_ids > 1` → `E_OPERATORE_SCOPE_MULTI_NON_AMMESSO`.
+   Singolo elemento `NULL/<=0` → `E_OPERATORE_SCOPE_PARAM_NON_VALIDO`.
 2. **Stato corrente**: `SELECT ... FOR UPDATE` su
    `user_emittenti_fiscali` per evitare race con altre sessioni che
    modificano la stessa riga in parallelo.
@@ -127,9 +127,17 @@ SET LOCAL zeroerp.allow_user_emittente_delete_override = '';
 
 | Codice | id | Quando | HTTP suggerito |
 |---|---|---|---|
+| `E_OPERATORE_SCOPE_PARAM_NON_VALIDO` | 409 | `p_auth_user_id` o singolo `emittente_id` `NULL/<=0` | 400 |
 | `E_OPERATORE_SCOPE_MULTI_NON_AMMESSO` | 405 | `p_emittente_ids` ha > 1 elemento | 400 |
 | `E_PROFILO_ULTIMO_SUPER_ADMIN` | 384 | Cambio reale richiesto su utente che è ultimo SA attivo | 409 (conflict) o 400 |
-| (RAISE generico `22023`) | — | `p_auth_user_id` o `emittente_id` `NULL/<=0` | 400 |
+
+> Tutti gli errori passano per `script.fn_log_and_raise_error` →
+> audit log su `dbops.audit_log` + messaggio i18n da
+> `config.messaggi_errore` + codice stabile per il mapping
+> `error_policies.py`. **Update 2026-04-29 (Fase 5)**: il guard
+> parametri prima usava `RAISE EXCEPTION` diretto con SQLSTATE 22023
+> (mappato a `E_DATABASE` generico). Refactor in migration
+> `20260429-09-update-fn-change-user-emittenti-scope-use-log-and-raise.yaml`.
 
 ## Caratteristiche
 
@@ -175,7 +183,8 @@ SET LOCAL zeroerp.allow_user_emittente_delete_override = '';
 
 * WIP: [refactor operatore-emittenti — Fase 2 capability scope](/dev/work-in-progress/refactor-operatore-emittenti)
 * Migration: `db/changelog/migrations_v2/20_code/script/20260429-04-create-fn-change-user-emittenti-scope-mctit.yaml`
-* Codice errore aggiunto: `E_OPERATORE_SCOPE_MULTI_NON_AMMESSO` id 405
+* Migration update Fase 5: `db/changelog/migrations_v2/20_code/script/20260429-09-update-fn-change-user-emittenti-scope-use-log-and-raise-mctit.yaml` (refactor guard parametri → `fn_log_and_raise_error`)
+* Codici errore: `E_OPERATORE_SCOPE_MULTI_NON_AMMESSO` id 405, `E_OPERATORE_SCOPE_PARAM_NON_VALIDO` id 409
 
 ## Esempio
 

@@ -1,6 +1,7 @@
 # Schema `script`
 
 ## ⚙️ Funzioni (manuale)
+- [fn_audit_summary](manual/fn_audit_summary.md)
 - [fn_change_user_emittenti_scope](manual/fn_change_user_emittenti_scope.md)
 - [fn_check_almeno_un_super_admin_attivo](manual/fn_check_almeno_un_super_admin_attivo.md) — (latest review 19-04-2026)
 - [fn_check_azione_processo](manual/fn_check_azione_processo.md) — (latest review 08-03-2026) La funzione **`script.fn_check_azione_processo`** verifica se un'azione di processo (identificata da `permission_codename`) e abilitata per un utente.
@@ -35,7 +36,7 @@
 - [fn_get_parameter_full](manual/fn_get_parameter_full.md) — (latest update 03-04-26)
 - [fn_get_profili_accesso_applicabili](manual/fn_get_profili_accesso_applicabili.md) — (latest review 20-04-2026 — parametro opzionale `p_ruolo_applicativo`)
 - [fn_get_record_id_as_of](manual/fn_get_record_id_as_of.md) — * **Recupero rapido dell’ID in uno snapshot**: ottenere solo l’identificativo del record (`id`) valido alla data/ora specificata, senza dover deserializzare tutto il JSON. * **Ottimizzazione delle query**: operazione leggera nel caso serva solo l’ID, utile per controlli o join condizionali su storico.
-- [fn_get_ruolo_sistema](manual/fn_get_ruolo_sistema.md) — (latest review 08-03-2026) La funzione **`script.fn_get_ruolo_sistema`** restituisce il `ruolo_sistema` (`ADMIN`, `OPERATIVO`, `DISABILITATO`) di un utente dalla tabella ponte `anagrafiche.risorse_umane_auth_user`.
+- [fn_get_ruolo_sistema](manual/fn_get_ruolo_sistema.md)
 - [fn_get_search_detail](manual/fn_get_search_detail.md) — * **Dettaglio per tipo ruolo**: la funzione usa un `CASE` sul `codice_interno` del tipo ruolo (immutabile, protetto da `trgfn_lock_columns`) per costruire sezioni specifiche. Gestisce CL (cliente), FO (fornitore) con logica diretta, e delega tutti gli altri ruoli a `fn_get_entita_ruolo_detail`.
 - [fn_get_setup_status](manual/fn_get_setup_status.md)
 - [fn_get_snapshot_as_of](manual/fn_get_snapshot_as_of.md) — (latest review 02-02-26) * **Recupero storico/flessibile**: ottenere lo stato di un record in un preciso istante, combinando storicizzazione e serializzazione diretta. * **Robustezza**: ogni errore di query viene tracciato con contesto completo, e l'esecuzione viene interrotta per evitare inconsistenze.
@@ -90,6 +91,7 @@
 
 ## 🔍 Views (manuale)
 - [view_clienti_istanza_states](manual/view_clienti_istanza_states.md) — La view `script.view_clienti_istanza_states` fornisce una **unificazione** delle informazioni di stato di un’istanza di servizio, arricchita con tutti i campi descrittivi della tabella `config.stati_cliente`. Permette di ottenere rapidamente, per ogni record di `istanze_utilities`, lo stato cliente attuale (o predefinito "Istanza") e i relativi dettagli, senza dover eseguire join o fallback manuali.
+- [vw_audit_sources](manual/vw_audit_sources.md)
 - [vw_indirizzo_completo](manual/vw_indirizzo_completo.md) — * **Denormalizzazione per letture rapide**: aggregare in un’unica view i dati di stradario, comune, provincia, codice postale e via, semplificando le query di selezione degli indirizzi. * **Pulizia e consistenza**: fornire campi già formattati e pronti per essere utilizzati nelle normalizzazioni e nelle funzionalità GIS. * **Riutilizzabilità**: rendere disponibile un’unica sorgente per join di indirizzi completi, evitando duplicazione di codice SQL.
 - [vw_ita_province_regioni](manual/vw_ita_province_regioni.md) — La vista `script.vw_ita_province_regioni` fornisce una **mappatura completa** tra province italiane, eventuali province accisa associate, regioni e stato di appartenenza, includendo i codici ISTAT e altre informazioni estratte dal campo JSON `extra_country`.
 - [vw_stati_estesi](manual/vw_stati_estesi.md) — La vista `script.vw_stati_estesi` fornisce un accesso **arricchito** ai dati della tabella `config.stati`, estraendo e presentando in colonne dedicate alcune informazioni aggiuntive memorizzate nel campo JSON `extra_country`.
