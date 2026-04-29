@@ -76,6 +76,9 @@ class CategorieClientiListiniView(AdminAPIView):
         )},
     )
     # Scopo: Lista paginata matrice categoria/listino con filtri dimensionali.
+    #        Envelope arricchito con `non_editable_fields` (Fase 4 — A9):
+    #        il FE costruisce drawer di edit usando la lista al livello
+    #        envelope, no round-trip aggiuntivo.
     def get(self, request: Request) -> JsonResponse:
         p = parse_list_params(request.query_params, default_order="valido_dal")
         valid_at_raw = request.query_params.get("valid_at")
@@ -105,7 +108,9 @@ class CategorieClientiListiniView(AdminAPIView):
             order_by=p["order_by"],
             order_dir=p["order_dir"],
         )
-        return success_response(paginated_envelope(results, total, p["page"], p["limit"]))
+        envelope = paginated_envelope(results, total, p["page"], p["limit"])
+        envelope["non_editable_fields"] = svc.get_non_editable_fields()
+        return success_response(envelope)
 
     @extend_schema(
         request=inline_serializer(
@@ -183,3 +188,35 @@ class CategorieClientiListiniDetailView(AdminAPIView):
     def patch(self, request: Request, record_id: int) -> JsonResponse:
         svc = CategorieClientiListiniService()
         return success_response(svc.update_matrice(record_id, request.data))
+
+
+# =================================================================
+# Lookup statici (Fase 4)
+# =================================================================
+
+
+class CategorieClientiListiniTipiVariazioneLookupView(AdminAPIView):
+    """GET lookup statico tipi di variazione ammessi per la matrice.
+
+    Single source of truth in
+    `categorie_clienti_listini_service._TIPI_VARIAZIONE_DESCRIZIONI`.
+    Niente DB: l'enum (PERCENTUALE/VALORE_FISSO) e' un CHECK constraint,
+    non una tabella. Pattern simmetrico a `EmittenteRoundingModesLookupView`
+    (Fase 3 — A6).
+    """
+
+    @extend_schema(
+        responses={200: inline_serializer(
+            name="AnagCategorieClientiListiniTipiVariazioneResp",
+            fields={
+                "data": serializers.ListField(child=serializers.DictField()),
+                "meta": serializers.DictField(required=False),
+            },
+        )},
+    )
+    # Scopo: Restituisce lista statica {codice, descrizione, ordering}.
+    def get(self, request: Request) -> JsonResponse:
+        del request
+        return success_response(
+            CategorieClientiListiniService().list_tipi_variazione()
+        )

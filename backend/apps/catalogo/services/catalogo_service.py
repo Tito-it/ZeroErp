@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from datetime import date
 from decimal import Decimal, InvalidOperation
-from typing import Any
+from typing import Any, NoReturn
 from uuid import UUID
 
 from django.db import DatabaseError, IntegrityError
@@ -1876,11 +1876,201 @@ def fn_delete_nota(nota_id: int) -> dict[str, object]:
 
 
 # ============================================================
-# Sezione CRUD unita_misura
+# Sezione CRUD uom_tipi / unita_misura
 # ============================================================
 
+_UOM_TIPO_ORDER_BY_VALIDI: frozenset[str] = frozenset({
+    "codice",
+    "codice_interno",
+    "descrizione",
+    "data_insert",
+    "data_update",
+})
+_UOM_TIPO_CREATE_ALLOWED_KEYS: frozenset[str] = frozenset({"codice", "codice_interno", "descrizione"})
+_UOM_TIPO_UPDATE_ALLOWED_KEYS: frozenset[str] = frozenset({"descrizione", "attivo"})
 _UOM_ORDER_BY_VALIDI: frozenset[str] = frozenset({"codice", "descrizione", "data_insert", "data_update"})
-_UOM_ALLOWED_KEYS: frozenset[str] = frozenset({"codice", "descrizione", "descrizione_fattura"})
+_UOM_ALLOWED_KEYS: frozenset[str] = frozenset({"codice", "descrizione", "descrizione_fattura", "tipo_uom_id"})
+
+
+# Scopo: Valida ordinamento UoM/tipi UoM contro whitelist locale.
+def _validate_uom_order(
+    order_by: str,
+    order_dir: str,
+    *,
+    allowed: frozenset[str],
+    function_name: str,
+) -> tuple[str, str]:
+    ErrorManager.require(
+        order_by in allowed,
+        code="E_CATALOGO_VALIDATION",
+        message="Parametri ordinamento non validi.",
+        detail=f"order_by deve essere uno tra: {', '.join(sorted(allowed))}",
+        context={"order_by": order_by},
+        function_name=function_name,
+        log_to_db=True,
+    )
+    ErrorManager.require(
+        order_dir in _ORDER_DIR_VALIDI,
+        code="E_CATALOGO_VALIDATION",
+        message="Parametri ordinamento non validi.",
+        detail="order_dir deve essere 'asc' o 'desc'",
+        context={"order_dir": order_dir},
+        function_name=function_name,
+        log_to_db=True,
+    )
+    return order_by, order_dir
+
+
+# Scopo: Traduce errori DB attesi nella scrittura UoM in ServiceError leggibili.
+def _raise_uom_write_error(
+    exc: DatabaseError,
+    *,
+    function_name: str,
+    context: dict[str, object],
+) -> NoReturn:
+    msg = str(exc).lower()
+    if "fk_unita_misura_tipo_uom" in msg:
+        ErrorManager.raise_error(
+            code="E_CATALOGO_VALIDATION",
+            message="Tipo UoM non valido.",
+            detail="tipo_uom_id non esiste in catalogo.uom_tipi.",
+            context=context,
+            function_name=function_name,
+            log_to_db=True,
+            cause=exc,
+        )
+    if "cambio tipo uom non ammesso" in msg:
+        ErrorManager.raise_error(
+            code="E_CATALOGO_VALIDATION",
+            message="Cambio tipo UoM non ammesso.",
+            detail="La UoM partecipa a conversioni globali.",
+            context=context,
+            function_name=function_name,
+            log_to_db=True,
+            cause=exc,
+        )
+    raise exc
+
+
+# Scopo: Lista paginata tipologie UoM con filtri e ordinamento.
+def fn_list_uom_tipi(
+    *,
+    attivo: bool | None = None,
+    search: str | None = None,
+    order_by: str = "descrizione",
+    order_dir: str = "asc",
+    limit: int = 25,
+    offset: int = 0,
+) -> tuple[list[dict[str, object]], int]:
+    function_name = "catalogo.catalogo_service.fn_list_uom_tipi"
+    order_by, order_dir = _validate_uom_order(
+        order_by,
+        order_dir,
+        allowed=_UOM_TIPO_ORDER_BY_VALIDI,
+        function_name=function_name,
+    )
+    repository = CatalogoRepository()
+    return repository.list_uom_tipi(
+        attivo=attivo,
+        search=search,
+        order_by=order_by,
+        order_dir=order_dir,
+        limit=limit,
+        offset=offset,
+    )
+
+
+# Scopo: Dettaglio singola tipologia UoM.
+def fn_get_uom_tipo(tipo_id: int) -> dict[str, object]:
+    function_name = "catalogo.catalogo_service.fn_get_uom_tipo"
+    repository = CatalogoRepository()
+    result = repository.get_uom_tipo(tipo_id)
+    ErrorManager.require(
+        result is not None,
+        code="E_CATALOGO_UOM_TIPO_NOT_FOUND",
+        message="Tipologia UoM non trovata.",
+        detail=f"Nessuna tipologia UoM con id={tipo_id}.",
+        context={"tipo_id": tipo_id},
+        function_name=function_name,
+        log_to_db=False,
+    )
+    assert result is not None
+    return result
+
+
+# Scopo: Crea una nuova tipologia UoM.
+def fn_create_uom_tipo(payload: dict[str, Any]) -> dict[str, object]:
+    function_name = "catalogo.catalogo_service.fn_create_uom_tipo"
+    _validate_payload_keys(
+        payload,
+        allowed_keys=_UOM_TIPO_CREATE_ALLOWED_KEYS,
+        function_name=function_name,
+        message="Payload tipologia UoM non valido.",
+    )
+    codice = _require_string(payload, "codice", function_name=function_name, message="Codice obbligatorio.")
+    codice_interno = _require_string(
+        payload,
+        "codice_interno",
+        function_name=function_name,
+        message="Codice interno obbligatorio.",
+    )
+    descrizione = _require_string(payload, "descrizione", function_name=function_name, message="Descrizione obbligatoria.")
+
+    data: dict[str, Any] = {
+        "codice": codice.upper(),
+        "codice_interno": codice_interno.upper(),
+        "descrizione": descrizione,
+    }
+
+    repository = CatalogoRepository()
+    try:
+        new_id = repository.create_uom_tipo(data)
+    except IntegrityError as exc:
+        msg = str(exc).lower()
+        if "uq_uom_tipi_codice" in msg or "uq_uom_tipi_codice_interno" in msg or "unique" in msg:
+            ErrorManager.raise_error(
+                code="E_CATALOGO_VALIDATION",
+                message="Codice tipologia UoM gia' esistente.",
+                detail=f"codice={codice}, codice_interno={codice_interno}.",
+                context={"codice": codice, "codice_interno": codice_interno},
+                function_name=function_name,
+                log_to_db=True,
+                cause=exc,
+            )
+        raise
+    return fn_get_uom_tipo(new_id)
+
+
+# Scopo: Aggiorna una tipologia UoM.
+def fn_update_uom_tipo(tipo_id: int, payload: dict[str, Any]) -> dict[str, object]:
+    function_name = "catalogo.catalogo_service.fn_update_uom_tipo"
+    _validate_payload_keys(
+        payload,
+        allowed_keys=_UOM_TIPO_UPDATE_ALLOWED_KEYS,
+        function_name=function_name,
+        message="Payload tipologia UoM non valido.",
+    )
+    data: dict[str, Any] = {}
+    descrizione = _extract_string(payload, "descrizione", function_name=function_name, nullable=False)
+    if descrizione is not _MISSING:
+        data["descrizione"] = descrizione
+    attivo = _extract_present_bool(payload, "attivo", function_name=function_name, message="Payload tipologia UoM non valido.")
+    if attivo is not _MISSING:
+        data["attivo"] = attivo
+
+    if data:
+        repository = CatalogoRepository()
+        updated = repository.update_uom_tipo(tipo_id, data)
+        ErrorManager.require(
+            updated,
+            code="E_CATALOGO_UOM_TIPO_NOT_FOUND",
+            message="Tipologia UoM non trovata.",
+            detail=f"Nessuna tipologia UoM con id={tipo_id}.",
+            context={"tipo_id": tipo_id},
+            function_name=function_name,
+            log_to_db=False,
+        )
+    return fn_get_uom_tipo(tipo_id)
 
 
 # Scopo: Lista paginata unita' di misura con filtri e ordinamento.
@@ -1894,15 +2084,11 @@ def fn_list_unita_misura(
     offset: int = 0,
 ) -> tuple[list[dict[str, object]], int]:
     function_name = "catalogo.catalogo_service.fn_list_unita_misura"
-    order_by, order_dir = _validate_order(order_by, order_dir, function_name)
-    ErrorManager.require(
-        order_by in _UOM_ORDER_BY_VALIDI,
-        code="E_CATALOGO_VALIDATION",
-        message="Parametri ordinamento non validi.",
-        detail=f"order_by deve essere uno tra: {', '.join(sorted(_UOM_ORDER_BY_VALIDI))}",
-        context={"order_by": order_by},
+    order_by, order_dir = _validate_uom_order(
+        order_by,
+        order_dir,
+        allowed=_UOM_ORDER_BY_VALIDI,
         function_name=function_name,
-        log_to_db=True,
     )
     repository = CatalogoRepository()
     return repository.list_unita_misura(
@@ -1940,15 +2126,25 @@ def fn_create_unita_misura(payload: dict[str, Any]) -> dict[str, object]:
     codice = _require_string(payload, "codice", function_name=function_name, message="Codice obbligatorio.")
     descrizione = _require_string(payload, "descrizione", function_name=function_name, message="Descrizione obbligatoria.")
     descrizione_fattura = _extract_string(payload, "descrizione_fattura", function_name=function_name, nullable=True)
+    tipo_uom_id = _extract_nullable_int(payload, "tipo_uom_id", function_name=function_name, message="Tipo UoM obbligatorio.")
+    ErrorManager.require(
+        isinstance(tipo_uom_id, int) and tipo_uom_id > 0,
+        code="E_CATALOGO_VALIDATION",
+        message="Tipo UoM obbligatorio.",
+        detail="tipo_uom_id deve essere un intero positivo.",
+        context={"tipo_uom_id": None if tipo_uom_id is _MISSING else tipo_uom_id},
+        function_name=function_name,
+        log_to_db=True,
+    )
 
-    data: dict[str, Any] = {"codice": codice.upper(), "descrizione": descrizione}
+    data: dict[str, Any] = {"codice": codice.upper(), "descrizione": descrizione, "tipo_uom_id": tipo_uom_id}
     if descrizione_fattura is not _MISSING:
         data["descrizione_fattura"] = descrizione_fattura
 
     repository = CatalogoRepository()
     try:
         new_id = repository.create_unita_misura(data)
-    except IntegrityError as exc:
+    except DatabaseError as exc:
         msg = str(exc).lower()
         if "uq_unita_misura_codice" in msg or "unique" in msg:
             ErrorManager.raise_error(
@@ -1960,23 +2156,23 @@ def fn_create_unita_misura(payload: dict[str, Any]) -> dict[str, object]:
                 log_to_db=True,
                 cause=exc,
             )
-        raise
+        _raise_uom_write_error(
+            exc,
+            function_name=function_name,
+            context={"codice": codice, "tipo_uom_id": tipo_uom_id},
+        )
     return fn_get_unita_misura(new_id)
 
 
 # Scopo: Aggiorna una unita' di misura.
 def fn_update_unita_misura(uom_id: int, payload: dict[str, Any]) -> dict[str, object]:
     function_name = "catalogo.catalogo_service.fn_update_unita_misura"
-    update_keys = frozenset({"descrizione", "descrizione_fattura", "attivo"})
-    unknown = sorted(k for k in payload if k not in update_keys)
-    ErrorManager.require(
-        not unknown,
-        code="E_CATALOGO_VALIDATION",
-        message="Payload UoM non valido.",
-        detail=f"Campi non supportati: {', '.join(unknown)}",
-        context={"unknown_keys": unknown},
+    update_keys = frozenset({"descrizione", "descrizione_fattura", "tipo_uom_id", "attivo"})
+    _validate_payload_keys(
+        payload,
+        allowed_keys=update_keys,
         function_name=function_name,
-        log_to_db=True,
+        message="Payload UoM non valido.",
     )
     data: dict[str, Any] = {}
     descrizione = _extract_string(payload, "descrizione", function_name=function_name, nullable=False)
@@ -1985,13 +2181,32 @@ def fn_update_unita_misura(uom_id: int, payload: dict[str, Any]) -> dict[str, ob
     descrizione_fattura = _extract_string(payload, "descrizione_fattura", function_name=function_name, nullable=True)
     if descrizione_fattura is not _MISSING:
         data["descrizione_fattura"] = descrizione_fattura
+    tipo_uom_id = _extract_nullable_int(payload, "tipo_uom_id", function_name=function_name, message="Payload UoM non valido.")
+    if tipo_uom_id is not _MISSING:
+        ErrorManager.require(
+            tipo_uom_id is not None and tipo_uom_id > 0,
+            code="E_CATALOGO_VALIDATION",
+            message="Payload UoM non valido.",
+            detail="tipo_uom_id deve essere un intero positivo.",
+            context={"tipo_uom_id": tipo_uom_id},
+            function_name=function_name,
+            log_to_db=True,
+        )
+        data["tipo_uom_id"] = tipo_uom_id
     attivo = _extract_present_bool(payload, "attivo", function_name=function_name, message="Payload UoM non valido.")
     if attivo is not _MISSING:
         data["attivo"] = attivo
 
     if data:
         repository = CatalogoRepository()
-        updated = repository.update_unita_misura(uom_id, data)
+        try:
+            updated = repository.update_unita_misura(uom_id, data)
+        except DatabaseError as exc:
+            _raise_uom_write_error(
+                exc,
+                function_name=function_name,
+                context={"uom_id": uom_id, "tipo_uom_id": data.get("tipo_uom_id")},
+            )
         ErrorManager.require(
             updated,
             code="E_CATALOGO_UOM_NOT_FOUND",
@@ -2142,7 +2357,7 @@ def fn_create_conversione(payload: dict[str, Any]) -> dict[str, object]:
     repository = CatalogoRepository()
     try:
         new_id = repository.create_conversione(data)
-    except IntegrityError as exc:
+    except DatabaseError as exc:
         _translate_conversione_integrity_error(exc, function_name=function_name)
         raise
     return fn_get_conversione(new_id)
@@ -2173,7 +2388,7 @@ def fn_update_conversione(conv_id: int, payload: dict[str, Any]) -> dict[str, ob
         repository = CatalogoRepository()
         try:
             updated = repository.update_conversione(conv_id, data)
-        except IntegrityError as exc:
+        except DatabaseError as exc:
             _translate_conversione_integrity_error(exc, function_name=function_name)
             raise
         ErrorManager.require(
@@ -2189,8 +2404,17 @@ def fn_update_conversione(conv_id: int, payload: dict[str, Any]) -> dict[str, ob
 
 
 # Scopo: Traduce errori di integrita' DB per conversioni in messaggi utente.
-def _translate_conversione_integrity_error(exc: IntegrityError, *, function_name: str) -> None:
+def _translate_conversione_integrity_error(exc: DatabaseError, *, function_name: str) -> None:
     msg = str(exc).lower()
+    if "tipologia diversa" in msg or "same-type" in msg:
+        ErrorManager.raise_error(
+            code="E_CATALOGO_VALIDATION",
+            message="Conversione UoM non ammessa.",
+            detail="Le conversioni globali sono consentite solo tra UoM della stessa tipologia.",
+            function_name=function_name,
+            log_to_db=True,
+            cause=exc,
+        )
     if "overlap" in msg or "exclude" in msg:
         ErrorManager.raise_error(
             code="E_CATALOGO_VALIDATION",

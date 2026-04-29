@@ -130,9 +130,41 @@ Envelope paginato standard:
 }
 ```
 
+**Fase 4 — `non_editable_fields` a livello envelope**: l'envelope GET lista
+include `data.non_editable_fields: list[str]` con le 4 dimensioni semanticamente
+immutabili (`categoria_cliente_id`, `utility_id`, `emittente_soggetto_ruolo_id`,
+`classe_utenza_id`). Il FE costruisce drawer di edit usando la lista al livello
+envelope, senza round-trip aggiuntivo.
+
 ### `GET` dettaglio / `POST` create / `PATCH` update
 
 Stesso shape della riga di lista, avvolto in `{"data": {...}}`.
+
+**Fase 4 — `non_editable_fields` nel dettaglio**: il `GET /{record_id}/`
+include nel dict di response `non_editable_fields: list[str]` (stessa lista
+dell'envelope lista). Il FE consuma questo campo nel drawer di edit per
+gating dei Select dimensionali.
+
+### Lookup statico tipi di variazione (Fase 4)
+
+`GET /api/v1/anagrafiche/categorie-clienti-listini/lookup/tipi-variazione/` —
+ritorna l'enum dei valori ammessi per `tipo_variazione` (CHECK constraint
+`chk_categ_cli_listini_tipo_variazione`). Single source of truth lato Python:
+nessuna tabella DB. Pattern simmetrico a `/amm-software/lookup/rounding-modes/`.
+
+**Response shape**: `data` e' lista nuda (non envelope `{count, results}`).
+
+```json
+{
+  "data": [
+    { "codice": "PERCENTUALE",  "descrizione": "Variazione percentuale (%)",  "ordering": 1 },
+    { "codice": "VALORE_FISSO", "descrizione": "Variazione a valore fisso",   "ordering": 2 }
+  ]
+}
+```
+
+**Consumer FE**: `frontend/src/amministrazione/components/CategoriaClienteListinoDrawer.vue`
+con cache modulo-level via `useGlobalLookup('anag.categorie_listini_tipi_variazione')`.
 
 ## Regole
 
@@ -192,3 +224,4 @@ list API dedicata (`GET /api/v1/anagrafiche/categorie-clienti-listini/`).
 | `POST` | `/api/v1/anagrafiche/categorie-clienti-listini/` | Crea riga matrice | Admin |
 | `GET` | `/api/v1/anagrafiche/categorie-clienti-listini/{id}/` | Dettaglio | Admin |
 | `PATCH` | `/api/v1/anagrafiche/categorie-clienti-listini/{id}/` | Aggiorna (dimensioni immutabili) | Admin |
+| `GET` | `/api/v1/anagrafiche/categorie-clienti-listini/lookup/tipi-variazione/` | Lookup statico enum (Fase 4) | Admin |

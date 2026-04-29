@@ -110,6 +110,22 @@ export function deleteNota(notaId) {
 
 // --- Unita' di misura (CRUD) ---
 
+export function listUomTipi(params = {}) {
+  return api.get(`${BASE}/uom-tipi/`, { params })
+}
+
+export function getUomTipo(id) {
+  return api.get(`${BASE}/uom-tipi/${id}/`)
+}
+
+export function createUomTipo(payload) {
+  return api.post(`${BASE}/uom-tipi/`, payload)
+}
+
+export function updateUomTipo(id, payload) {
+  return api.patch(`${BASE}/uom-tipi/${id}/`, payload)
+}
+
 export function listUnitaMisura(params = {}) {
   return api.get(`${BASE}/unita-misura/`, { params })
 }

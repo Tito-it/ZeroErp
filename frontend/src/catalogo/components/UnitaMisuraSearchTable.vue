@@ -82,6 +82,7 @@ onMounted(() => store.fetchList())
     >
       <Column field="codice" :header="t('catalogo.col_codice')" sortable style="width: 140px;" />
       <Column field="descrizione" :header="t('catalogo.col_descrizione')" sortable style="min-width: 250px;" />
+      <Column field="tipo_uom_codice" :header="t('catalogo.uom_tipo')" style="width: 150px;" />
       <Column field="descrizione_fattura" :header="t('catalogo.col_desc_fattura')" style="min-width: 200px;" />
       <Column field="attivo" :header="t('catalogo.col_attivo')" style="width: 90px;">
         <template #body="{ data }">

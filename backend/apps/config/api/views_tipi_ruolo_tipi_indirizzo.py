@@ -58,6 +58,9 @@ class TipiRuoloTipiIndirizzoView(AdminAPIView):
         )},
     )
     # Scopo: Lista paginata righe matrice tipi_ruolo x tipi_indirizzo.
+    #        Envelope arricchito con `non_editable_fields` (Fase 4 — A9):
+    #        il FE costruisce il drawer di edit usando la lista al livello
+    #        envelope, no round-trip aggiuntivo.
     def get(self, request: Request) -> JsonResponse:
         p = parse_list_params(request.query_params, default_order="tipo_ruolo_descrizione")
         svc = TipiRuoloTipiIndirizzoService()
@@ -71,7 +74,9 @@ class TipiRuoloTipiIndirizzoView(AdminAPIView):
             order_by=p["order_by"],
             order_dir=p["order_dir"],
         )
-        return success_response(paginated_envelope(results, total, p["page"], p["limit"]))
+        envelope = paginated_envelope(results, total, p["page"], p["limit"])
+        envelope["non_editable_fields"] = svc.get_non_editable_fields()
+        return success_response(envelope)
 
     @extend_schema(
         request=inline_serializer(

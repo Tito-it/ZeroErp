@@ -18,6 +18,7 @@ from apps.catalogo.services.catalogo_service import (
     fn_create_articolo,
     fn_create_componente,
     fn_create_nota_articolo,
+    fn_create_uom_tipo,
     fn_create_uom_operativa,
     fn_create_unita_misura,
     fn_delete_componente,
@@ -26,6 +27,7 @@ from apps.catalogo.services.catalogo_service import (
     fn_disattiva_articolo,
     fn_disattiva_unita_misura,
     fn_get_articolo_form_defaults,
+    fn_get_uom_tipo,
     fn_riattiva_articolo,
     fn_duplica_componente_versione,
     fn_get_articolo,
@@ -35,11 +37,13 @@ from apps.catalogo.services.catalogo_service import (
     fn_list_note_articolo,
     fn_list_uom_operative,
     fn_list_uom_rounding_modes,
+    fn_list_uom_tipi,
     fn_list_unita_misura,
     fn_lookup_articoli,
     fn_update_componente,
     fn_update_nota,
     fn_update_articolo,
+    fn_update_uom_tipo,
     fn_update_uom_operativa,
     fn_update_unita_misura,
     fn_list_conversioni,
@@ -655,6 +659,94 @@ class ApiArticoliLookup(DomainAPIView):
     # Nota: il lookup UoM usa l'endpoint generico /api/v1/core/lookup/codici/?rel=catalogo.unita_misura
 
 
+# --- CRUD Tipologie UoM ---
+
+
+class ApiUomTipiList(DomainAPIView):
+    area_funzionale = "catalogo"
+    model_permission = ("catalogo", "uom_tipi")
+    is_search_endpoint = True
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(name="search", type=str, location=OpenApiParameter.QUERY, required=False),
+            OpenApiParameter(name="attivo", type=bool, location=OpenApiParameter.QUERY, required=False),
+            OpenApiParameter(name="limit", type=int, location=OpenApiParameter.QUERY, required=False),
+            OpenApiParameter(name="offset", type=int, location=OpenApiParameter.QUERY, required=False),
+            OpenApiParameter(name="order_by", type=str, location=OpenApiParameter.QUERY, required=False),
+            OpenApiParameter(name="order_dir", type=str, location=OpenApiParameter.QUERY, required=False),
+        ],
+        responses={200: inline_serializer(
+            name="CatalogoUomTipiListResponse",
+            fields={"data": serializers.DictField(), "meta": serializers.DictField(required=False)},
+        )},
+    )
+    # Scopo: Restituisce lista paginata tipologie UoM.
+    def get(self, request: Request) -> JsonResponse:
+        p = parse_list_params(request.query_params, default_order="descrizione")
+        require_min_search_length(p["search"], field_name="search")
+        results, total = fn_list_uom_tipi(
+            attivo=_optional_qp_bool(request, "attivo"),
+            search=p["search"],
+            order_by=p["order_by"],
+            order_dir=p["order_dir"],
+            limit=p["limit"],
+            offset=p["offset"],
+        )
+        return success_response(paginated_envelope(results, total, p["page"], p["limit"]))
+
+    @extend_schema(
+        request=inline_serializer(
+            name="CatalogoUomTipoCreateRequest",
+            fields={
+                "codice": serializers.CharField(required=True),
+                "codice_interno": serializers.CharField(required=True),
+                "descrizione": serializers.CharField(required=True),
+            },
+        ),
+        responses={200: inline_serializer(
+            name="CatalogoUomTipoCreateResponse",
+            fields={"data": serializers.DictField(), "meta": serializers.DictField(required=False)},
+        )},
+    )
+    # Scopo: Crea una nuova tipologia UoM.
+    def post(self, request: Request) -> JsonResponse:
+        return handle_post_json(request, handler=fn_create_uom_tipo)
+
+
+class ApiUomTipoDetail(DomainAPIView):
+    area_funzionale = "catalogo"
+    model_permission = ("catalogo", "uom_tipi")
+
+    @extend_schema(
+        responses={200: inline_serializer(
+            name="CatalogoUomTipoDetailResponse",
+            fields={"data": serializers.DictField(), "meta": serializers.DictField(required=False)},
+        )},
+    )
+    # Scopo: Restituisce dettaglio singola tipologia UoM.
+    def get(self, request: Request, tipo_id: int) -> JsonResponse:
+        del request
+        return success_response(fn_get_uom_tipo(tipo_id))
+
+    @extend_schema(
+        request=inline_serializer(
+            name="CatalogoUomTipoPatchRequest",
+            fields={
+                "descrizione": serializers.CharField(required=False),
+                "attivo": serializers.BooleanField(required=False),
+            },
+        ),
+        responses={200: inline_serializer(
+            name="CatalogoUomTipoUpdateResponse",
+            fields={"data": serializers.DictField(), "meta": serializers.DictField(required=False)},
+        )},
+    )
+    # Scopo: Aggiorna una tipologia UoM.
+    def patch(self, request: Request, tipo_id: int) -> JsonResponse:
+        return success_response(fn_update_uom_tipo(tipo_id, request.data))
+
+
 # --- CRUD Unita' di Misura ---
 
 
@@ -698,6 +790,7 @@ class ApiUnitaMisuraList(DomainAPIView):
                 "codice": serializers.CharField(required=True),
                 "descrizione": serializers.CharField(required=True),
                 "descrizione_fattura": serializers.CharField(required=False, allow_blank=True, allow_null=True),
+                "tipo_uom_id": serializers.IntegerField(required=True),
             },
         ),
         responses={200: inline_serializer(
@@ -731,6 +824,7 @@ class ApiUnitaMisuraDetail(DomainAPIView):
             fields={
                 "descrizione": serializers.CharField(required=False),
                 "descrizione_fattura": serializers.CharField(required=False, allow_blank=True, allow_null=True),
+                "tipo_uom_id": serializers.IntegerField(required=False),
                 "attivo": serializers.BooleanField(required=False),
             },
         ),

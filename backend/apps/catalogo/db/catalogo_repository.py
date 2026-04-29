@@ -355,6 +355,117 @@ class CatalogoRepository:
             )
             return rows_to_list(cursor)
 
+    # --- Sezione CRUD uom_tipi ---
+
+    # Scopo: Restituisce elenco paginato tipologie UoM con filtri opzionali.
+    def list_uom_tipi(
+        self,
+        *,
+        attivo: bool | None,
+        search: str | None,
+        order_by: str,
+        order_dir: str,
+        limit: int,
+        offset: int,
+    ) -> tuple[list[dict[str, Any]], int]:
+        safe_limit = max(1, min(int(limit), 200))
+        safe_offset = max(0, int(offset))
+        order_map = {
+            "codice": "ut.codice",
+            "codice_interno": "ut.codice_interno",
+            "descrizione": "ut.descrizione",
+            "data_insert": "ut.data_insert",
+            "data_update": "ut.data_update",
+        }
+        order_column = order_map.get(order_by, "ut.descrizione")
+        safe_order_dir = "DESC" if order_dir.lower() == "desc" else "ASC"
+
+        conditions: list[str] = []
+        params: list[Any] = []
+
+        if attivo is not None:
+            conditions.append("ut.attivo = %s")
+            params.append(attivo)
+        search_pattern = f"%{search.strip()}%" if search and search.strip() else None
+        if search_pattern:
+            conditions.append(
+                "(ut.codice ILIKE %s OR ut.codice_interno ILIKE %s OR ut.descrizione ILIKE %s)"
+            )
+            params.extend([search_pattern, search_pattern, search_pattern])
+
+        where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"SELECT COUNT(*) FROM catalogo.uom_tipi ut {where_clause}",
+                params,
+            )
+            row = cursor.fetchone()
+            assert row is not None
+            total_count = int(row[0])
+
+            cursor.execute(
+                f"""
+                SELECT ut.id, ut.codice, ut.codice_interno, ut.descrizione, ut.attivo,
+                       ut.user_insert, ut.user_update, ut.data_insert, ut.data_update
+                FROM catalogo.uom_tipi ut
+                {where_clause}
+                ORDER BY {order_column} {safe_order_dir}, ut.id ASC
+                LIMIT %s OFFSET %s
+                """,
+                params + [safe_limit, safe_offset],
+            )
+            results = rows_to_list(cursor)
+
+        return results, total_count
+
+    # Scopo: Restituisce singola tipologia UoM per id.
+    def get_uom_tipo(self, tipo_id: int) -> dict[str, Any] | None:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT ut.id, ut.codice, ut.codice_interno, ut.descrizione, ut.attivo,
+                       ut.user_insert, ut.user_update, ut.data_insert, ut.data_update
+                FROM catalogo.uom_tipi ut
+                WHERE ut.id = %s
+                """,
+                [tipo_id],
+            )
+            return row_to_dict(cursor)
+
+    # Scopo: Inserisce una nuova tipologia UoM.
+    def create_uom_tipo(self, data: dict[str, Any]) -> int:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO catalogo.uom_tipi (codice, codice_interno, descrizione)
+                VALUES (%s, %s, %s)
+                RETURNING id
+                """,
+                [data["codice"], data["codice_interno"], data["descrizione"]],
+            )
+            row = cursor.fetchone()
+        assert row is not None
+        return int(row[0])
+
+    # Scopo: Aggiorna una tipologia UoM esistente.
+    def update_uom_tipo(self, tipo_id: int, data: dict[str, Any]) -> bool:
+        sets: list[str] = []
+        params: list[Any] = []
+        for key in ("descrizione", "attivo"):
+            if key in data:
+                sets.append(f"{key} = %s")
+                params.append(data[key])
+        if not sets:
+            return False
+        params.append(tipo_id)
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"UPDATE catalogo.uom_tipi SET {', '.join(sets)} WHERE id = %s",
+                params,
+            )
+            return cursor.rowcount > 0
+
     # --- Sezione CRUD unita_misura ---
 
     # Scopo: Restituisce elenco paginato unita' di misura con filtri opzionali.
@@ -401,9 +512,12 @@ class CatalogoRepository:
 
             cursor.execute(
                 f"""
-                SELECT u.id, u.codice, u.descrizione, u.descrizione_fattura, u.attivo,
+                SELECT u.id, u.codice, u.descrizione, u.descrizione_fattura,
+                       u.tipo_uom_id, ut.codice AS tipo_uom_codice,
+                       ut.descrizione AS tipo_uom_descrizione, u.attivo,
                        u.user_insert, u.user_update, u.data_insert, u.data_update
                 FROM catalogo.unita_misura u
+                JOIN catalogo.uom_tipi ut ON ut.id = u.tipo_uom_id
                 {where_clause}
                 ORDER BY {order_column} {safe_order_dir}, u.id ASC
                 LIMIT %s OFFSET %s
@@ -419,9 +533,12 @@ class CatalogoRepository:
         with connection.cursor() as cursor:
             cursor.execute(
                 """
-                SELECT u.id, u.codice, u.descrizione, u.descrizione_fattura, u.attivo,
+                SELECT u.id, u.codice, u.descrizione, u.descrizione_fattura,
+                       u.tipo_uom_id, ut.codice AS tipo_uom_codice,
+                       ut.descrizione AS tipo_uom_descrizione, u.attivo,
                        u.user_insert, u.user_update, u.data_insert, u.data_update
                 FROM catalogo.unita_misura u
+                JOIN catalogo.uom_tipi ut ON ut.id = u.tipo_uom_id
                 WHERE u.id = %s
                 """,
                 [uom_id],
@@ -433,11 +550,11 @@ class CatalogoRepository:
         with connection.cursor() as cursor:
             cursor.execute(
                 """
-                INSERT INTO catalogo.unita_misura (codice, descrizione, descrizione_fattura)
-                VALUES (%s, %s, %s)
+                INSERT INTO catalogo.unita_misura (codice, descrizione, descrizione_fattura, tipo_uom_id)
+                VALUES (%s, %s, %s, %s)
                 RETURNING id
                 """,
-                [data["codice"], data["descrizione"], data.get("descrizione_fattura")],
+                [data["codice"], data["descrizione"], data.get("descrizione_fattura"), data["tipo_uom_id"]],
             )
             row = cursor.fetchone()
         assert row is not None
@@ -447,7 +564,7 @@ class CatalogoRepository:
     def update_unita_misura(self, uom_id: int, data: dict[str, Any]) -> bool:
         sets: list[str] = []
         params: list[Any] = []
-        for key in ("descrizione", "descrizione_fattura", "attivo"):
+        for key in ("descrizione", "descrizione_fattura", "tipo_uom_id", "attivo"):
             if key in data:
                 sets.append(f"{key} = %s")
                 params.append(data[key])

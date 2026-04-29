@@ -26,6 +26,9 @@ const props = defineProps({
   showClear: { type: Boolean, default: false },
   filter: { type: Boolean, default: true },
   disabled: { type: Boolean, default: false },
+  filterField: { type: String, default: '' },
+  filterValue: { type: [Number, String, Boolean], default: null },
+  pageSize: { type: Number, default: 200 },
 })
 
 const emit = defineEmits(['update:modelValue', 'change'])
@@ -35,9 +38,14 @@ const emit = defineEmits(['update:modelValue', 'change'])
 // piu' dropdown su tabelle config).
 const lookup = useGlobalLookup(
   props.rel,
-  () => lookupCodici(props.rel),
+  () => lookupCodici(props.rel, { page_size: props.pageSize }),
   { immediate: true }
 )
+
+const visibleOptions = computed(() => {
+  if (!props.filterField || props.filterValue == null) return lookup.items.value
+  return lookup.items.value.filter(item => item?.[props.filterField] === props.filterValue)
+})
 
 // Scopo: Compone l'etichetta visualizzata per una riga del lookup.
 // Se showCode e' true, ritorna "descrizione (codice)" — altrimenti
@@ -66,7 +74,7 @@ function onChange(event) {
   <Select
     :modelValue="modelValue"
     @update:modelValue="v => emit('update:modelValue', v)"
-    :options="lookup.items.value"
+    :options="visibleOptions"
     :loading="lookup.loading.value"
     :optionLabel="labelField"
     :optionValue="valueField"

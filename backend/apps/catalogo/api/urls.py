@@ -17,6 +17,8 @@ from apps.catalogo.api.views import (
     ApiConversioneDetail,
     ApiConversioniList,
     ApiNotaDetail,
+    ApiUomTipoDetail,
+    ApiUomTipiList,
     ApiUnitaMisuraDetail,
     ApiUnitaMisuraDisattiva,
     ApiUnitaMisuraList,
@@ -39,6 +41,9 @@ urlpatterns = [
     path("articoli/<uuid:articolo_id>/", ApiArticoloDetail.as_view(), name="catalogo-articolo-detail"),
     path("articoli/", ApiArticoliList.as_view(), name="catalogo-articoli-list"),
     path("note/<int:nota_id>/", ApiNotaDetail.as_view(), name="catalogo-nota-detail"),
+    # Tipologie UoM (lookup usa endpoint generico /core/lookup/codici/?rel=catalogo.uom_tipi)
+    path("uom-tipi/<int:tipo_id>/", ApiUomTipoDetail.as_view(), name="catalogo-uom-tipo-detail"),
+    path("uom-tipi/", ApiUomTipiList.as_view(), name="catalogo-uom-tipi-list"),
     # Unita' di misura (lookup usa endpoint generico /core/lookup/codici/?rel=catalogo.unita_misura)
     path("unita-misura/<int:uom_id>/disattiva/", ApiUnitaMisuraDisattiva.as_view(), name="catalogo-unita-misura-disattiva"),
     path("unita-misura/<int:uom_id>/", ApiUnitaMisuraDetail.as_view(), name="catalogo-unita-misura-detail"),

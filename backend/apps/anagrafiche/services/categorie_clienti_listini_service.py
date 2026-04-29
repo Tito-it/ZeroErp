@@ -35,6 +35,9 @@ from apps.anagrafiche.db.categorie_clienti_listini_repository import (
     CategorieClientiListiniRepository,
 )
 from apps.core.services.error_manager import ErrorManager
+from apps.core.services.non_editable_fields_helper import (
+    compute_non_editable_fields,
+)
 from apps.core.services.payload_helpers import (
     PayloadValidator,
     map_integrity_error,
@@ -103,6 +106,27 @@ _IMMUTABLE_DIMENSIONS: frozenset[str] = frozenset({
 # Valori ammessi per tipo_variazione (coerenti con CHECK DB
 # chk_categ_cli_listini_tipo_variazione).
 _TIPI_VARIAZIONE: frozenset[str] = frozenset({"PERCENTUALE", "VALORE_FISSO"})
+
+# Mappa codice -> (descrizione, ordering) per lookup statico tipo_variazione
+# (Fase 4 — A7). Single source of truth lato Python: la tabella
+# `config.tipi_variazione_categoria` non esiste, l'enum e' un CHECK constraint.
+# Ordering "default-first" allineato a UX (PERCENTUALE caso piu' frequente).
+_TIPI_VARIAZIONE_DESCRIZIONI: tuple[tuple[str, str, int], ...] = (
+    ("PERCENTUALE", "Variazione percentuale (%)", 1),
+    ("VALORE_FISSO", "Variazione a valore fisso", 2),
+)
+
+# Gap rispetto al registro DB `dbops.vw_non_editable_fields` (Fase 4).
+# Le 4 dimensioni sono semanticamente immutabili (cambiare la quadrupla
+# significa rimpiazzare la riga, non modificarla — vedi `_IMMUTABLE_DIMENSIONS`).
+# Sono gia' rifiutate dal payload PATCH lato service, ma il FE consuma
+# `non_editable_fields` per disabilitare i Select nel drawer di edit.
+_NON_EDITABLE_GAPS: tuple[str, ...] = (
+    "categoria_cliente_id",
+    "utility_id",
+    "emittente_soggetto_ruolo_id",
+    "classe_utenza_id",
+)
 
 # Limiti numerici per valore_variazione. Il DB e' numeric(10,4) -> max
 # |99999.9999|. Qui non restringiamo: lasciamo al DB il bound tecnico e
@@ -192,6 +216,8 @@ class CategorieClientiListiniService:
         )
 
     # Scopo: Dettaglio singola riga matrice; solleva not found se assente.
+    #        Arricchito con `non_editable_fields` (Fase 4 — A9): il FE
+    #        usa la lista per disabilitare i Select dimensionali in edit.
     def get_matrice(self, record_id: int) -> dict[str, Any]:
         self._v.guard_positive_int(record_id, field="record_id")
         result = self._repo.get_matrice(record_id)
@@ -202,7 +228,29 @@ class CategorieClientiListiniService:
             context={"record_id": record_id},
         )
         assert result is not None
+        result["non_editable_fields"] = self.get_non_editable_fields()
         return result
+
+    # Scopo: Lookup statico dei tipi di variazione ammessi (Fase 4 — A7).
+    #        Single source of truth in `_TIPI_VARIAZIONE_DESCRIZIONI`.
+    #        Niente DB: enum tecnico fisso (CHECK constraint), 2 codici.
+    #        L'invariante "descrizioni copre l'enum" e' garantita dal test
+    #        `test_list_tipi_variazione_coverage` (CI), non a runtime.
+    def list_tipi_variazione(self) -> list[dict[str, object]]:
+        return [
+            {"codice": codice, "descrizione": descrizione, "ordering": ordering}
+            for codice, descrizione, ordering in _TIPI_VARIAZIONE_DESCRIZIONI
+        ]
+
+    # Scopo: Lista `non_editable_fields` per la matrice (Fase 4 — A9).
+    #        Le 4 dimensioni (categoria, utility, emittente, classe) sono
+    #        semanticamente immutabili (vedi _IMMUTABLE_DIMENSIONS). Esposte
+    #        come metadata via helper centrale (registro DB + gap dominio).
+    def get_non_editable_fields(self) -> list[str]:
+        return compute_non_editable_fields(
+            "anagrafiche", "categorie_clienti_listini",
+            gaps=_NON_EDITABLE_GAPS,
+        )
 
     # =================================================================
     # Creazione

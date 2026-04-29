@@ -7,8 +7,11 @@ import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useConversioniUomStore } from '../stores/conversioniUom'
 import { useApiHandler } from '../../core/composables/useApiHandler'
+import { useGlobalLookup } from '../../core/composables/useGlobalLookup'
+import { lookupCodici } from '../../core/apiCore'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { DRAWER_WIDTH, DATE_FORMAT } from '../../core/constants'
+import { parseIsoDate, toDateString } from '../../core/utils/date'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import DrawerFooter from '../../core/components/DrawerFooter.vue'
 import LookupSelect from '../../core/components/LookupSelect.vue'
@@ -17,10 +20,17 @@ import InputNumber from 'primevue/inputnumber'
 import DatePicker from 'primevue/datepicker'
 import ToggleSwitch from 'primevue/toggleswitch'
 
+const ALWAYS_VALID_FROM = '1900-01-01'
+
 const { t } = useI18n()
 const store = useConversioniUomStore()
 const { execute, loading } = useApiHandler()
 const isReadonly = useInjectReadonly()
+const uomLookup = useGlobalLookup(
+  'catalogo.unita_misura',
+  () => lookupCodici('catalogo.unita_misura', { page_size: 200 }),
+  { immediate: true }
+)
 
 const props = defineProps({
   visible: Boolean,
@@ -32,7 +42,8 @@ const emit = defineEmits(['update:visible', 'saved', 'cancelled'])
 const isEdit = computed(() => props.mode === 'edit')
 const form = ref({
   uom_from_id: null, uom_to_id: null, fattore: null,
-  valido_dal: null, valido_al: null, attivo: true
+  valido_dal: parseIsoDate(ALWAYS_VALID_FROM), valido_dal_sempre: true,
+  valido_al: null, attivo: true
 })
 
 // Fase 5: campi immutabili dopo create per conversioni UoM. Vengono dal
@@ -45,25 +56,27 @@ function isFieldLocked(name) {
 
 // Deferimento contenuto: i LookupSelect montano solo dopo l'animazione del drawer
 const contentReady = ref(false)
+const selectedFromTipoId = computed(() => {
+  const selected = uomLookup.items.value.find(item => item.id === form.value.uom_from_id)
+  return selected?.tipo_uom_id ?? null
+})
 
 function onAfterShow() {
   contentReady.value = true
 }
 
 function resetForm() {
-  // valido_dal: null (Fase 4 BE-only). Se l'admin non sceglie una data,
-  // il service applica today come default. Il DatePicker resta vuoto
-  // finche' l'utente non interagisce.
   form.value = {
     uom_from_id: null, uom_to_id: null, fattore: null,
-    valido_dal: null, valido_al: null, attivo: true
+    valido_dal: parseIsoDate(ALWAYS_VALID_FROM),
+    valido_dal_sempre: true,
+    valido_al: null,
+    attivo: true
   }
 }
 
-function toIso(d) {
-  if (!d) return null
-  const dt = new Date(d)
-  return dt.toISOString().substring(0, 10)
+function todayLocalDate() {
+  return parseIsoDate(toDateString(new Date()))
 }
 
 async function loadDetail() {
@@ -74,8 +87,9 @@ async function loadDetail() {
     uom_from_id: data.uom_from_id,
     uom_to_id: data.uom_to_id,
     fattore: Number(data.fattore),
-    valido_dal: data.valido_dal ? new Date(data.valido_dal + 'T00:00:00') : null,
-    valido_al: data.valido_al ? new Date(data.valido_al + 'T00:00:00') : null,
+    valido_dal: parseIsoDate(data.valido_dal),
+    valido_dal_sempre: data.valido_dal === ALWAYS_VALID_FROM,
+    valido_al: parseIsoDate(data.valido_al),
     attivo: data.attivo ?? true
   }
   nonEditableFields.value = data.non_editable_fields || []
@@ -93,6 +107,19 @@ watch(() => props.visible, (v) => {
   }
 })
 
+watch(selectedFromTipoId, (tipoId) => {
+  if (tipoId == null || form.value.uom_to_id == null) return
+  const selectedTo = uomLookup.items.value.find(item => item.id === form.value.uom_to_id)
+  if (selectedTo && selectedTo.tipo_uom_id !== tipoId) {
+    form.value.uom_to_id = null
+  }
+})
+
+watch(() => form.value.valido_dal_sempre, (sempre) => {
+  if (isEdit.value) return
+  form.value.valido_dal = sempre ? parseIsoDate(ALWAYS_VALID_FROM) : todayLocalDate()
+})
+
 const canSave = computed(() =>
   form.value.uom_from_id != null &&
   form.value.uom_to_id != null &&
@@ -104,8 +131,8 @@ async function handleSave() {
   if (isEdit.value) {
     const payload = {
       fattore: f.fattore,
-      valido_dal: toIso(f.valido_dal),
-      valido_al: toIso(f.valido_al),
+      valido_dal: toDateString(f.valido_dal),
+      valido_al: toDateString(f.valido_al),
       attivo: f.attivo,
     }
     const result = await execute(
@@ -118,8 +145,8 @@ async function handleSave() {
       uom_from_id: f.uom_from_id,
       uom_to_id: f.uom_to_id,
       fattore: f.fattore,
-      valido_dal: toIso(f.valido_dal),
-      valido_al: toIso(f.valido_al),
+      valido_dal: f.valido_dal_sempre ? ALWAYS_VALID_FROM : toDateString(f.valido_dal),
+      valido_al: toDateString(f.valido_al),
     }
     const result = await execute(
       () => store.create(payload),
@@ -154,7 +181,8 @@ function close() {
           <div class="form-field">
             <label>{{ t('catalogo.field_uom_a') }} *</label>
             <LookupSelect v-model="form.uom_to_id" rel="catalogo.unita_misura"
-              :placeholder="t('catalogo.select_uom')" :disabled="isFieldLocked('uom_to_id')" />
+              :placeholder="t('catalogo.select_uom')" filter-field="tipo_uom_id"
+              :filter-value="selectedFromTipoId" :disabled="isFieldLocked('uom_to_id')" />
           </div>
           <div class="form-field">
             <label>{{ t('catalogo.field_fattore') }} *</label>
@@ -165,11 +193,23 @@ function close() {
         <div class="form-grid-2col">
           <div class="form-field">
             <label>{{ t('common.data_da') }}</label>
-            <DatePicker v-model="form.valido_dal" :dateFormat="DATE_FORMAT" showIcon showButtonBar />
+            <DatePicker
+              v-model="form.valido_dal"
+              :dateFormat="DATE_FORMAT"
+              showIcon
+              showButtonBar
+              :disabled="!isEdit && form.valido_dal_sempre"
+            />
           </div>
           <div class="form-field">
             <label>{{ t('common.data_a') }}</label>
             <DatePicker v-model="form.valido_al" :dateFormat="DATE_FORMAT" showIcon showButtonBar />
+          </div>
+        </div>
+        <div v-if="!isEdit" class="form-grid">
+          <div class="form-field">
+            <label>{{ t('catalogo.validita_sempre') }}</label>
+            <ToggleSwitch v-model="form.valido_dal_sempre" />
           </div>
         </div>
 

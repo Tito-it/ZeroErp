@@ -7,8 +7,10 @@ import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useApiHandler } from '../../core/composables/useApiHandler'
+import { useGlobalLookup } from '../../core/composables/useGlobalLookup'
 import { listConversioniUom, createConversioneUom, updateConversioneUom } from '../api/catalogo'
-import { toDateString } from '../../core/utils/date'
+import { lookupCodici } from '../../core/apiCore'
+import { parseIsoDate, toDateString } from '../../core/utils/date'
 import { DRAWER_WIDTH, DATE_FORMAT } from '../../core/constants'
 import { displayDate } from '../../core/utils/date'
 import LookupSelect from '../../core/components/LookupSelect.vue'
@@ -19,10 +21,18 @@ import Column from 'primevue/column'
 import Button from 'primevue/button'
 import InputNumber from 'primevue/inputnumber'
 import DatePicker from 'primevue/datepicker'
+import ToggleSwitch from 'primevue/toggleswitch'
+
+const ALWAYS_VALID_FROM = '1900-01-01'
 
 const { t } = useI18n()
 const isReadonly = useInjectReadonly()
 const { execute, loading } = useApiHandler()
+const uomLookup = useGlobalLookup(
+  'catalogo.unita_misura',
+  () => lookupCodici('catalogo.unita_misura', { page_size: 200 }),
+  { immediate: true }
+)
 
 const props = defineProps({
   visible: { type: Boolean, default: false },
@@ -35,14 +45,20 @@ const conversioniList = ref([])
 const listLoading = ref(false)
 const adding = ref(false)
 
-// Scopo: stato iniziale del form inserimento. valido_dal=null per Fase 4
-// (BE-only): il service applica today come default se omesso, niente
-// pre-fill UI che maschera la responsabilita' del default.
 function defaultForm() {
-  return { uom_to_id: null, fattore: 1, valido_dal: null }
+  return {
+    uom_to_id: null,
+    fattore: 1,
+    valido_dal: parseIsoDate(ALWAYS_VALID_FROM),
+    valido_dal_sempre: true
+  }
 }
 
 const form = ref(defaultForm())
+const currentTipoUomId = computed(() => {
+  const selected = uomLookup.items.value.find(item => item.id === props.uomId)
+  return selected?.tipo_uom_id ?? null
+})
 
 // Edit inline fattore
 const editingFattoreId = ref(null)
@@ -71,6 +87,22 @@ watch(() => props.visible, (val) => {
   loadConversioni()
 })
 
+watch(currentTipoUomId, (tipoId) => {
+  if (tipoId == null || form.value.uom_to_id == null) return
+  const selectedTo = uomLookup.items.value.find(item => item.id === form.value.uom_to_id)
+  if (selectedTo && selectedTo.tipo_uom_id !== tipoId) {
+    form.value.uom_to_id = null
+  }
+})
+
+function todayLocalDate() {
+  return parseIsoDate(toDateString(new Date()))
+}
+
+watch(() => form.value.valido_dal_sempre, (sempre) => {
+  form.value.valido_dal = sempre ? parseIsoDate(ALWAYS_VALID_FROM) : todayLocalDate()
+})
+
 // --- Inserimento nuova conversione ---
 
 function startAdd() {
@@ -94,7 +126,9 @@ async function onSaveNew() {
       uom_from_id: props.uomId,
       uom_to_id: form.value.uom_to_id,
       fattore: form.value.fattore,
-      valido_dal: toDateString(form.value.valido_dal),
+      valido_dal: form.value.valido_dal_sempre
+        ? ALWAYS_VALID_FROM
+        : toDateString(form.value.valido_dal),
     }),
     { successMessage: t('catalogo.conversione_creata') }
   )
@@ -210,7 +244,8 @@ function cancelEditFattore() {
               <div class="form-field">
                 <label>{{ t('catalogo.field_uom_a') }} *</label>
                 <LookupSelect v-model="form.uom_to_id" rel="catalogo.unita_misura"
-                  :placeholder="t('catalogo.select_uom_a')" />
+                  :placeholder="t('catalogo.select_uom_a')" filter-field="tipo_uom_id"
+                  :filter-value="currentTipoUomId" />
               </div>
               <div class="form-field">
                 <label>{{ t('catalogo.col_fattore') }} *</label>
@@ -219,8 +254,20 @@ function cancelEditFattore() {
               </div>
               <div class="form-field">
                 <label>{{ t('catalogo.field_valido_dal') }}</label>
-                <DatePicker v-model="form.valido_dal" :date-format="DATE_FORMAT"
-                  show-icon show-button-bar class="w-full" />
+                <DatePicker
+                  v-model="form.valido_dal"
+                  :date-format="DATE_FORMAT"
+                  show-icon
+                  show-button-bar
+                  class="w-full"
+                  :disabled="form.valido_dal_sempre"
+                />
+              </div>
+            </div>
+            <div class="form-grid">
+              <div class="form-field">
+                <label>{{ t('catalogo.validita_sempre') }}</label>
+                <ToggleSwitch v-model="form.valido_dal_sempre" />
               </div>
             </div>
             <div class="flex justify-end gap-2 mt-05">

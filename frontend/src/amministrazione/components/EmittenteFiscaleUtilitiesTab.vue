@@ -147,14 +147,23 @@ function removeConfig(row) {
 // pulsanti inline form Salva/Annulla). Azioni differenti per stato:
 //   - riga configurata: Modifica + Rimuovi (danger)
 //   - riga non configurata: Configura (primary)
+//
+// Fase 4 — capability data-driven dal BE (`can_update`, `can_remove`,
+// `can_configure`). Fallback alla derivazione locale `isConfigured(row)`
+// se il BE non ha ancora popolato i campi (mock obsoleti, transizione,
+// retrocompat). L'autorita' resta il trigger DB
+// (`child_requires_active_parent`, `guard_utility_tipo_ruolo`).
 function buildRowActions(row) {
   const configured = isConfigured(row)
+  const canUpdate = row.can_update ?? configured
+  const canRemove = row.can_remove ?? configured
+  const canConfigure = row.can_configure ?? !configured
   return [
     {
       key: 'modifica',
       label: t('amm_emittenti_fiscali.ut_action_modifica'),
       icon: 'pi pi-pencil',
-      visible: configured,
+      visible: canUpdate,
       command: () => startEdit(row),
     },
     {
@@ -162,7 +171,7 @@ function buildRowActions(row) {
       label: t('amm_emittenti_fiscali.ut_action_rimuovi_config'),
       icon: 'pi pi-trash',
       severity: 'danger',
-      visible: configured,
+      visible: canRemove,
       command: () => removeConfig(row),
     },
     {
@@ -170,7 +179,7 @@ function buildRowActions(row) {
       label: t('amm_emittenti_fiscali.ut_action_configura'),
       icon: 'pi pi-plus',
       severity: 'primary',
-      visible: !configured,
+      visible: canConfigure,
       command: () => startEdit(row),
     },
   ]

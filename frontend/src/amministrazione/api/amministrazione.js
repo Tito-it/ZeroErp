@@ -204,3 +204,19 @@ export function getEmittenteFormDefaults() {
 export function lookupEmittenteRoundingModes() {
   return api.get(`${BASE}/lookup/rounding-modes/`)
 }
+
+// --- Audit hardening + email log lookup (Fase 5) ---
+
+// Lookup sorgenti audit ammesse (8 righe). Single source of truth lato DB:
+// script.vw_audit_sources. Sostituisce buildAuditTabellaOptions hardcoded.
+// Restituisce lista nuda di { code, label_key, area_funzionale }.
+export function lookupAuditSources() {
+  return api.get(`${BASE}/lookup/audit-sources/`)
+}
+
+// Lookup statico stati email log (4 codici fissi: SENT/PENDING/RETRY/FAILED).
+// Single source of truth lato BE in amm_software_service._EMAIL_LOG_STATI_VALIDI.
+// Restituisce lista nuda di { codice, descrizione, ordering }.
+export function lookupEmailLogStati() {
+  return api.get(`${BASE}/lookup/email-log-stati/`)
+}

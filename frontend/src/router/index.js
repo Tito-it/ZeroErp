@@ -251,6 +251,12 @@ const router = createRouter({
           component: () => import('../catalogo/views/ConversioniUomView.vue'),
           meta: { domain: 'catalogo', menuKey: 'conversioni-uom' }
         },
+        {
+          path: 'catalogo/uom-tipi',
+          name: 'catalogo-uom-tipi',
+          component: () => import('../catalogo/views/UomTipiView.vue'),
+          meta: { domain: 'catalogo', menuKey: 'uom-tipi' }
+        },
 
         // --- Vendite ---
         {

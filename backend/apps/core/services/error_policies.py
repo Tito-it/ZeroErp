@@ -335,6 +335,12 @@ class ErrorPolicyRegistry:
             ui_action="show_empty_state",
             user_message="UoM operativa non trovata.",
         ),
+        "E_CATALOGO_UOM_TIPO_NOT_FOUND": ErrorPolicy(
+            code="E_CATALOGO_UOM_TIPO_NOT_FOUND",
+            http_status=404,
+            ui_action="show_empty_state",
+            user_message="Tipologia UoM non trovata.",
+        ),
         "E_CATALOGO_COMPONENTE_NOT_FOUND": ErrorPolicy(
             code="E_CATALOGO_COMPONENTE_NOT_FOUND",
             http_status=404,
@@ -871,6 +877,34 @@ class ErrorPolicyRegistry:
             http_status=400,
             ui_action="show_error_banner",
             user_message="Scope emittenti non ammesso per la richiesta.",
+        ),
+        # Fase 5 audit hardening — codici stabili dal team DB.
+        # I primi 3 sono per gli endpoint audit-summary/audit-sources/audit-log,
+        # il quarto e' il refactor del guard scope di Fase 2 (prima passava per
+        # RAISE EXCEPTION 22023 generico, ora ha codice stabile dal DB).
+        "E_AUDIT_SUMMARY_PARAM_NON_VALIDO": ErrorPolicy(
+            code="E_AUDIT_SUMMARY_PARAM_NON_VALIDO",
+            http_status=400,
+            ui_action="show_error_banner",
+            user_message="Parametri audit non validi.",
+        ),
+        "E_AUDIT_SOURCE_NON_TROVATO": ErrorPolicy(
+            code="E_AUDIT_SOURCE_NON_TROVATO",
+            http_status=400,
+            ui_action="show_error_banner",
+            user_message="Sorgente audit non valida.",
+        ),
+        "E_AUDIT_SNAPSHOT_NON_TROVATO": ErrorPolicy(
+            code="E_AUDIT_SNAPSHOT_NON_TROVATO",
+            http_status=404,
+            ui_action="show_empty_state",
+            user_message="Snapshot audit non trovato.",
+        ),
+        "E_OPERATORE_SCOPE_PARAM_NON_VALIDO": ErrorPolicy(
+            code="E_OPERATORE_SCOPE_PARAM_NON_VALIDO",
+            http_status=400,
+            ui_action="show_error_banner",
+            user_message="Parametri scope operatore non validi.",
         ),
         "E_UTENTE_BLOCCATO": ErrorPolicy(
             code="E_UTENTE_BLOCCATO",
