@@ -1,0 +1,126 @@
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20260429-10-update-fn-get-ruolo-sistema-deprecation-warning-mctit.yaml
+
+  - changeSet:
+      id: 20260429-10-update-fn-get-ruolo-sistema-deprecation-warning
+      author: mctit
+      runOnChange: true
+      validCheckSum: [ANY]
+      comment: >
+        PR-DB-7.1 — deprecation warning su script.fn_get_ruolo_sistema
+        (Fase 7 cleanup legacy ruolo_sistema, 2026-04-29).
+
+        Il body della fn resta INVARIATO (wrapper retrocompatibile che
+        ricostruisce ruolo_sistema dal nuovo modello multi-face).
+        Aggiunge solo un RAISE WARNING in cima al BEGIN per segnalare
+        ai consumer Python/SQL che la fn e' deprecata e verra' rimossa
+        post Fase 7 (orientativamente Sprint N+2 dopo merge BE/FE).
+
+        Scelta WARNING (vs NOTICE): WARNING e' loggato sempre dal
+        postgres server (client_min_messages WARNING e' default), quindi
+        offre piu' visibilita' nelle 2 sprint window di monitoraggio. Il
+        livello e' appropriato per una fn marked DEPRECATO che ancora
+        funziona ma ha scadenza nota.
+
+        Nessuna soppressione "warn-once": la fn e' chiamata da hot path
+        (lista operatori + riepilogo permessi BE) ma il rumore nelle
+        2 sprint e' funzionale - evidenzia subito ogni call site
+        residuo non migrato. Post-migrazione BE/FE il warning sparisce
+        organicamente.
+
+        Censimento callsite confermato (BE 2026-04-29, ~40 occorrenze
+        su 5 file principali): vedi handoff Fase 7.
+
+        Prerequisito §4.6.H.2 (cutover RUA -> view) chiuso da
+        20260419-91. Questa fase NON tocca §4.6.H.3/H.4 (ortogonali).
+      preConditions:
+        - onFail: HALT
+        - and:
+          - sqlCheck:
+              expectedResult: 1
+              sql: |
+                SELECT COUNT(*)
+                  FROM pg_proc p
+                  JOIN pg_namespace n ON n.oid = p.pronamespace
+                 WHERE n.nspname = 'script'
+                   AND p.proname = 'fn_get_ruolo_sistema';
+          - sqlCheck:
+              expectedResult: 1
+              sql: |
+                SELECT COUNT(*)
+                  FROM pg_proc p
+                  JOIN pg_namespace n ON n.oid = p.pronamespace
+                 WHERE n.nspname = 'script'
+                   AND p.proname = 'fn_has_identita_attiva';
+          - sqlCheck:
+              expectedResult: 1
+              sql: |
+                SELECT COUNT(*)
+                  FROM pg_proc p
+                  JOIN pg_namespace n ON n.oid = p.pronamespace
+                 WHERE n.nspname = 'script'
+                   AND p.proname = 'fn_is_super_admin';
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_get_ruolo_sistema(
+                  p_auth_user_id integer
+              )
+              RETURNS config.ruolo_sistema
+              LANGUAGE plpgsql
+              STABLE
+              AS $function$
+              BEGIN
+                  -- =========================================================
+                  -- DEPRECATA (§4.6.C.1, deprecation warning Fase 7
+                  -- 2026-04-29). Wrapper retrocompatibile che ricostruisce
+                  -- ruolo_sistema dal nuovo modello multi-face:
+                  --   - Nessuna identita OPERATORE usabile -> DISABILITATO
+                  --   - SUPER_ADMIN binding attivo        -> ADMIN
+                  --   - Altrimenti                         -> OPERATIVO
+                  --
+                  -- Migrazione consigliata per chiamanti:
+                  --   ruolo_sistema = 'ADMIN'        -> script.fn_is_super_admin(au_id)
+                  --   ruolo_sistema = 'DISABILITATO' -> NOT script.fn_has_identita_attiva(au_id, 'OPERATORE')
+                  --   ruolo_sistema = 'OPERATIVO'    -> fn_has_identita_attiva AND NOT fn_is_super_admin
+                  --
+                  -- Rimozione pianificata: Sprint N+2 (post merge BE+FE).
+                  -- Vedi WIP analisi-refactor.frontend-amm-software §Fase 7.
+                  -- =========================================================
+                  RAISE WARNING
+                      'script.fn_get_ruolo_sistema is DEPRECATED (Fase 7 cleanup). Migrate to script.fn_is_super_admin / script.fn_has_identita_attiva. Drop planned 2 sprints from 2026-04-29. Caller p_auth_user_id=%',
+                      p_auth_user_id;
+
+                  IF p_auth_user_id IS NULL THEN
+                      RETURN NULL;
+                  END IF;
+
+                  -- Copre "nessun record" + "ruolo DISABILITATO" + "finestra
+                  -- scaduta": tutto si traduce in DISABILITATO per
+                  -- retrocompat semantica.
+                  IF NOT script.fn_has_identita_attiva(
+                             p_auth_user_id,
+                             'OPERATORE'::config.ruolo_applicativo) THEN
+                      RETURN 'DISABILITATO'::config.ruolo_sistema;
+                  END IF;
+
+                  IF script.fn_is_super_admin(p_auth_user_id) THEN
+                      RETURN 'ADMIN'::config.ruolo_sistema;
+                  END IF;
+
+                  RETURN 'OPERATIVO'::config.ruolo_sistema;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_get_ruolo_sistema(integer) IS
+                  'DEPRECATA §4.6.C.1 + Fase 7 (2026-04-29 deprecation warning). Wrapper retrocompatibile che ricostruisce ruolo_sistema dal nuovo modello multi-face (identita_digitali + binding SUPER_ADMIN). Solleva RAISE WARNING ad ogni chiamata fino al drop pianificato (Sprint N+2). Migrazione: usare fn_is_super_admin + fn_has_identita_attiva direttamente.';
+      rollback:
+        - sql:
+            sql: |
+              -- Rollback: ricreare la versione senza WARNING.
+              -- In pratica si riapplica la versione precedente
+              -- (20260419-22-update-fn-get-ruolo-sistema-wrapper).
+              -- Per testing: si puo' lasciare cosi' senza rollback effettivo.
+              SELECT 1;
