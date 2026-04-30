@@ -36,7 +36,6 @@
 - [fn_get_parameter_full](manual/fn_get_parameter_full.md) — (latest update 03-04-26)
 - [fn_get_profili_accesso_applicabili](manual/fn_get_profili_accesso_applicabili.md) — (latest review 20-04-2026 — parametro opzionale `p_ruolo_applicativo`)
 - [fn_get_record_id_as_of](manual/fn_get_record_id_as_of.md) — * **Recupero rapido dell’ID in uno snapshot**: ottenere solo l’identificativo del record (`id`) valido alla data/ora specificata, senza dover deserializzare tutto il JSON. * **Ottimizzazione delle query**: operazione leggera nel caso serva solo l’ID, utile per controlli o join condizionali su storico.
-- [fn_get_ruolo_sistema](manual/fn_get_ruolo_sistema.md)
 - [fn_get_search_detail](manual/fn_get_search_detail.md) — * **Dettaglio per tipo ruolo**: la funzione usa un `CASE` sul `codice_interno` del tipo ruolo (immutabile, protetto da `trgfn_lock_columns`) per costruire sezioni specifiche. Gestisce CL (cliente), FO (fornitore) con logica diretta, e delega tutti gli altri ruoli a `fn_get_entita_ruolo_detail`.
 - [fn_get_setup_status](manual/fn_get_setup_status.md)
 - [fn_get_snapshot_as_of](manual/fn_get_snapshot_as_of.md) — (latest review 02-02-26) * **Recupero storico/flessibile**: ottenere lo stato di un record in un preciso istante, combinando storicizzazione e serializzazione diretta. * **Robustezza**: ogni errore di query viene tracciato con contesto completo, e l'esecuzione viene interrotta per evitare inconsistenze.

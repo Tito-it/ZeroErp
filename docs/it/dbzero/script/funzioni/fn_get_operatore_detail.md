@@ -9,50 +9,28 @@ CREATE FUNCTION fn_get_operatore_detail(p_auth_user_id integer)
 
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_get_operatore_detail(p_auth_user_id integer)
- RETURNS TABLE(auth_user_id integer, username character varying, email character varying, first_name character varying, last_name character varying, soggetto_cognome text, soggetto_nome text, soggetto_id uuid, ragione_sociale_completa text, codice_fiscale text, ruolo_sistema text, is_super_admin boolean, ruolo_applicativo text, is_active boolean, unita_organizzativa_id integer, unita_organizzativa_nome text, risorsa_umana_id bigint, attivo boolean, valido_dal text, valido_al text, override_aree_count bigint, override_azioni_count bigint, emittenti_count bigint, emittenti_descrizione text, last_login timestamp with time zone, invito_inviato_at timestamp with time zone, deve_cambiare_password boolean, can_invite boolean, invite_reason text, can_disable boolean, disable_reason text, can_demote_super_admin boolean, demote_reason text)
+ RETURNS TABLE(auth_user_id integer, username character varying, email character varying, first_name character varying, last_name character varying, soggetto_cognome text, soggetto_nome text, soggetto_id uuid, ragione_sociale_completa text, codice_fiscale text, is_super_admin boolean, ruolo_applicativo text, is_active boolean, unita_organizzativa_id integer, unita_organizzativa_nome text, risorsa_umana_id bigint, attivo boolean, valido_dal text, valido_al text, override_aree_count bigint, override_azioni_count bigint, emittenti_count bigint, emittenti_descrizione text, last_login timestamp with time zone, invito_inviato_at timestamp with time zone, deve_cambiare_password boolean, can_invite boolean, invite_reason text, can_disable boolean, disable_reason text, can_demote_super_admin boolean, demote_reason text)
  LANGUAGE plpgsql
  STABLE
 AS $function$
 BEGIN
     -- =========================================================
-    -- Scopo:
-    --   Riga di dettaglio operatore + capability per il drawer
-    --   admin (P1 2026-04-29). Single row per p_auth_user_id.
-    --   LEFT JOIN su identita OPERATORE: la riga puo' mancare
-    --   per utenti tecnici / non ancora identitizzati. La
-    --   capability viene comunque calcolata sull'auth_user.
+    -- Update Chunk A Fase 7 (2026-04-29):
+    --   Rimossa chiamata interna a script.fn_get_ruolo_sistema.
+    --   Il campo ruolo_sistema (output text, contratto BE
+    --   invariato) viene calcolato inline con CASE WHEN su
+    --   fn_has_identita_attiva + fn_is_super_admin - stessa
+    --   logica del wrapper legacy ma senza dispatch
+    --   intermedio (un livello di chiamata in meno).
     --
-    -- LANGUAGE plpgsql obbligatorio per riferimenti django.*
-    -- (deferred parsing): vedi memoria
-    -- feedback_django_refs_in_liquibase + fix
-    -- 20260329-17-fix-fn-check-operatore-invitabile-no-django-type.
-    --
-    -- Capability (single source of truth):
-    --   - can_invite/invite_reason via fn_check_operatore_invitabile
-    --     (riusa la stessa logica del bottone Invita).
-    --   - can_disable: false sse l'utente e' l'unico SUPER_ADMIN
-    --     attivo (allineato a guard 384). Reason in it-IT,
-    --     NULL se l'azione e' consentita.
-    --   - can_demote_super_admin: NULL se l'utente non e' SA
-    --     (azione non applicabile -> il frontend nasconde
-    --     l'azione). Se SA: false sse e' l'ultimo, true
-    --     altrimenti.
-    --
-    -- Note:
-    --   - p_auth_user_id non valido: 0 righe (semantica
-    --     "lookup by id mancante", coerente col Python).
-    --   - fn_is_super_admin e' GUC-aware: in contesti non
-    --     OPERATORE (portale/shop) ritorna false fail-closed.
-    --     Il drawer e' admin-only -> contesto OPERATORE -> ok.
-    --   - Ottimizzazione: ef_agg LATERAL combina count e
-    --     descrizione in singola scansione user_emittenti_fiscali.
+    --   Drop output column rinviato a Chunk B post BE migrato.
     -- =========================================================
     RETURN QUERY
     WITH ctx AS (
         SELECT
-            script.fn_check_operatore_invitabile(p_auth_user_id)         AS inv_jsonb,
-            script.fn_is_super_admin(p_auth_user_id)                      AS is_sa,
-            script.fn_check_ultimo_super_admin_attivo(p_auth_user_id)     AS is_last_sa
+            script.fn_check_operatore_invitabile(p_auth_user_id) AS inv_jsonb,
+            script.fn_is_super_admin(p_auth_user_id) AS is_sa,
+            script.fn_check_ultimo_super_admin_attivo(p_auth_user_id) AS is_last_sa
     )
     SELECT
         au.id                                                  AS auth_user_id,
@@ -65,7 +43,6 @@ BEGIN
         s.id                                                   AS soggetto_id,
         s.ragione_sociale_completa,
         s.codice_fiscale,
-        script.fn_get_ruolo_sistema(au.id)::text               AS ruolo_sistema,
         ctx.is_sa                                              AS is_super_admin,
         id.ruolo_applicativo::text                             AS ruolo_applicativo,
         au.is_active,
@@ -84,16 +61,13 @@ BEGIN
         au.last_login,
         id.invito_inviato_at,
         id.deve_cambiare_password,
-        -- Capability: invito (delegata a fn_check_operatore_invitabile)
         (ctx.inv_jsonb ->> 'invitabile')::boolean              AS can_invite,
         ctx.inv_jsonb ->> 'motivo'                             AS invite_reason,
-        -- Capability: disabilitazione - bloccata sse ultimo SA attivo
         NOT ctx.is_last_sa                                     AS can_disable,
         CASE WHEN ctx.is_last_sa
              THEN 'Ultimo SUPER_ADMIN attivo: disabilitarlo causerebbe il lockout del sistema'
              ELSE NULL
         END                                                    AS disable_reason,
-        -- Capability: demote SA. NULL se l'utente non e' SA.
         CASE WHEN ctx.is_sa
              THEN NOT ctx.is_last_sa
              ELSE NULL
@@ -115,7 +89,6 @@ BEGIN
         ON s.id = sr.soggetto_id
       LEFT JOIN config.unita_organizzative uo
         ON uo.id = ru.unita_organizzativa_id
-      -- Aggregazione emittenti in singola scansione (count + descrizione)
       LEFT JOIN LATERAL (
           SELECT
               COUNT(*) AS cnt,
@@ -139,7 +112,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_get_operatore_detail(p_auth_user_id integer)
-IS 'Riga di dettaglio operatore + 6 capability per il drawer admin (P1 2026-04-29). Migra in DB la query inline da Python (apps.amm_software.db.amm_software_repository.get_operatore_detail) e calcola capability via funzioni esistenti come single source of truth: fn_check_operatore_invitabile (invito), fn_is_super_admin (status SA), fn_check_ultimo_super_admin_attivo (lockout-guard). LEFT JOIN su identita OPERATORE; per utenti senza identita i campi anagrafici sono NULL ma le capability vengono comunque calcolate. LANGUAGE plpgsql STABLE (deferred parsing per riferimenti django.*); colonne django.* nel RETURNS TABLE con tipi espliciti (no %TYPE), altre colonne con %TYPE.';
+IS 'Riga di dettaglio operatore + 6 capability per il drawer admin (Fase 1 P1 2026-04-29; Fase 7 cleanup 2026-04-29: rimossa call interna fn_get_ruolo_sistema E rimossa colonna ruolo_sistema dall''output - BE post-Fase 7 LANDED non la legge piu''). Migra in DB la query inline da Python e calcola capability via funzioni esistenti come single source of truth: fn_check_operatore_invitabile, fn_is_super_admin, fn_check_ultimo_super_admin_attivo. LANGUAGE plpgsql STABLE.';
 ```
 
 ---

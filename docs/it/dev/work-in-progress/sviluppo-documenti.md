@@ -557,6 +557,7 @@ Colonne previste:
 | ---------------------- | ------------ | -------------------------------------------------- |
 | `id`                   | bigserial PK | Identificativo                                     |
 | `codice`               | varchar(120) | Codice asset                                       |
+| `codice_interno`       | varchar(120) | Codice tecnico stabile asset                       |
 | `descrizione`          | text         | Nome leggibile                                     |
 | `asset_tipo_id`        | bigint FK `documenti.tipi_asset_documento.id` | Tipo asset documentale                    |
 | `mime_type`            | varchar(120) | Es. `application/pdf`, `image/png`                 |
@@ -579,6 +580,7 @@ Colonne previste:
 Vincoli/indici:
 
 - unique su `(codice, emittente_fiscale_id)`;
+- unique su `(codice_interno, emittente_fiscale_id)`;
 - `emittente_fiscale_id` obbligatorio;
 - indice su `asset_tipo_id`;
 - unique/guard deduplica su `(emittente_fiscale_id, sha256)`;
@@ -598,6 +600,9 @@ Decisione:
   ancora usati da versioni.
 - `asset_tipo_id` punta a `documenti.tipi_asset_documento`; niente varchar
   hardcoded per configurazioni.
+- `codice_interno` identifica in modo stabile l'asset come entita'
+  configurabile; `sha256` identifica il contenuto binario e non sostituisce il
+  codice tecnico.
 - upload file e modifica metadati sono operazioni separate. L'upload crea
   l'asset con file/hash/storage; gli update successivi possono modificare solo
   campi descrittivi, validita', `attivo` e `meta`. Il file non si sostituisce:
@@ -1311,10 +1316,21 @@ test render e un editor piu' ricco senza riscrivere il flusso.
 
 ## 11. Piano Sviluppo DB
 
-Questa sezione sostituisce la roadmap e puo' essere usata come traccia di
-sviluppo per il team DB. L'obiettivo della prima consegna e' creare il modello
-dati completo per template, asset, generazioni PDF e configurazioni minime,
-senza implementare ancora rendering o API applicative.
+Questa sezione resta come traccia sintetica e storico decisionale.
+
+Il **piano DB operativo aggiornato** e' stato estratto e corretto nel documento:
+
+- [sviluppo-documenti-db.md](./sviluppo-documenti-db.md)
+
+Motivo dello split:
+
+- separare il piano concettuale generale dal piano Liquibase esecutivo;
+- allineare il lavoro DB agli standard reali del repo;
+- spezzare la consegna in tranche coerenti con il primo consumatore reale
+  (`PREVENTIVO`), evitando di modellare subito tutto il motore finale.
+
+Per lo sviluppo attivo fare riferimento prima a `sviluppo-documenti-db.md`,
+poi a questa sezione come contesto funzionale di alto livello.
 
 ### 11.1 Regole generali
 
@@ -1543,6 +1559,7 @@ Colonne principali:
 
 - `id bigserial PK`
 - `codice varchar(120) NOT NULL`
+- `codice_interno varchar(120) NOT NULL`
 - `descrizione text NOT NULL`
 - `asset_tipo_id bigint NOT NULL`
 - `mime_type varchar(120) NOT NULL`
@@ -1565,6 +1582,7 @@ FK:
 Vincoli/indici:
 
 - unique su `(codice, emittente_fiscale_id)`;
+- unique su `(codice_interno, emittente_fiscale_id)`;
 - unique su `(emittente_fiscale_id, sha256)` per deduplica asset per
   emittente;
 - check `file_size_bytes > 0`;

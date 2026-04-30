@@ -10,7 +10,8 @@
 >
 **Funzioni correlate:**
 >
-[script.fn_get_ruolo_sistema](/dbzero/script/funzioni/fn_get_ruolo_sistema)
+[script.fn_is_super_admin](/dbzero/script/funzioni/fn_is_super_admin)
+> [script.fn_has_identita_attiva](/dbzero/script/funzioni/fn_has_identita_attiva)
 > [script.fn_get_emittenti_scope](/dbzero/script/funzioni/fn_get_emittenti_scope)
 
 ---

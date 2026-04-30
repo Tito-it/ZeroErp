@@ -8,4 +8,5 @@ acquisti,*all
 contabilita,*all
 magazzino,*all
 pagamenti,*all
+documenti,*all
 dbops,sessioni_utente

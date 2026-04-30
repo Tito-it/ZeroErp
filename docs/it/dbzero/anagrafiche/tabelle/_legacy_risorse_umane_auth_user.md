@@ -12,7 +12,6 @@
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
 | user_update | text | NO | CURRENT_USER |
-| ruolo_sistema | USER-DEFINED | NO | 'OPERATIVO'::config.ruolo_sistema |
 | storicizza | boolean | NO | true |
 | tx_id | uuid | YES |  |
 | tentativi_falliti | smallint | NO | 0 |
