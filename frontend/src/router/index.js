@@ -456,6 +456,7 @@ router.beforeEach(async (to) => {
       path: to.path,
       label: resolveTabLabel(to.meta, t) || to.path,
       domain: domain,
+      menuKey: to.meta.menuKey || null,
       icon: resolveTabIcon(to.meta)
     })
     // Limite raggiunto — blocca navigazione

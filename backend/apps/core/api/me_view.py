@@ -30,14 +30,15 @@ class UserProfileView(DomainAPIView):
         summary="Profilo utente corrente",
         description=(
             "Restituisce il profilo completo dell'utente autenticato: "
-            "dati anagrafici (soggetto), risorse umane, ruolo_sistema, "
-            "dati emittente fiscale associato (se presente), flag "
+            "dati anagrafici (soggetto), risorse umane, identita' "
+            "multi-face (`is_super_admin`, `ruolo_applicativo`), dati "
+            "emittente fiscale associato (se presente), flag "
             "`is_admin_globale` derivato dalla regola Q1 del refactor "
             "operatore-emittenti, e mappa permessi per area funzionale. "
             "Il payload base e' prodotto dalla funzione DB "
             "script.fn_get_user_profile; il flag `is_admin_globale` viene "
             "calcolato in Python come "
-            "`ruolo_sistema=='ADMIN' AND user_emittente_fiscale_id IS NULL`."
+            "`is_super_admin AND user_emittente_fiscale_id IS NULL`."
         ),
         responses={
             200: inline_serializer(
@@ -48,15 +49,6 @@ class UserProfileView(DomainAPIView):
                         fields={
                             "utente": serializers.DictField(
                                 help_text="Dati auth_user: id, username, first_name, last_name, email."
-                            ),
-                            "ruolo_sistema": serializers.CharField(
-                                allow_null=True,
-                                help_text=(
-                                    "ADMIN | OPERATIVO | DISABILITATO | null. "
-                                    "Legacy — ricostruito da is_super_admin + "
-                                    "ruolo_applicativo. Nuovi consumer usino "
-                                    "direttamente is_super_admin + ruolo_applicativo."
-                                ),
                             ),
                             "is_super_admin": serializers.BooleanField(
                                 help_text=(
@@ -87,8 +79,9 @@ class UserProfileView(DomainAPIView):
                             ),
                             "is_admin_globale": serializers.BooleanField(
                                 help_text=(
-                                    "True se l'utente e' admin globale (ruolo_sistema=ADMIN "
-                                    "+ nessuna riga in user_emittenti_fiscali). False per "
+                                    "True se l'utente e' admin globale "
+                                    "(is_super_admin=True + nessuna riga in "
+                                    "user_emittenti_fiscali). False per "
                                     "operatori e admin di emittente. Refactor operatore-"
                                     "emittenti, decisione Q1."
                                 ),
@@ -127,13 +120,11 @@ class UserProfileView(DomainAPIView):
     def get(self, request: Request):
         repo = CoreRepository()
         profile = repo.get_user_profile(request.user.id)
-        profile["is_admin_globale"] = self._compute_is_admin_globale(profile)
-        # Multi-face auth Stage B: espone i campi nativi (is_super_admin +
-        # ruolo_applicativo) in affiancamento al legacy ruolo_sistema.
-        # `fn_get_user_profile` gia' li popola: calcoliamo via resolver solo
-        # come fallback difensivo se mancanti (scenari pre-migration o
-        # funzioni DB di versioni piu' vecchie). Lazy check per evitare
-        # roundtrip DB inutili nel caso comune.
+        # Garantisce i campi nativi multi-face (is_super_admin +
+        # ruolo_applicativo): `fn_get_user_profile` gia' li popola; il
+        # fallback via resolver e' difensivo per scenari pre-migration o
+        # funzioni DB pre-cutover. `is_admin_globale` (refactor operatore-
+        # emittenti Q1) dipende da `is_super_admin`, va calcolato dopo.
         if "is_super_admin" not in profile:
             profile["is_super_admin"] = PermissionResolver.is_super_admin(
                 request.user
@@ -142,6 +133,11 @@ class UserProfileView(DomainAPIView):
             profile["ruolo_applicativo"] = PermissionResolver.get_ruolo_applicativo(
                 request.user
             )
+        # Rimuove eventuale `ruolo_sistema` proveniente dalla fn DB (post-
+        # cutover §4.6.H.2 ma legacy a livello API): l'output e' multi-face
+        # puro (Fase 7 amm-software).
+        profile.pop("ruolo_sistema", None)
+        profile["is_admin_globale"] = self._compute_is_admin_globale(profile)
         # §8.3.6: arricchisce con il blocco identita del JWT corrente.
         # Non tutti gli auth_user hanno una singola identita (modello 1:N):
         # il JWT porta l'identita_id preciso iniettato al login, e /me/
@@ -170,12 +166,13 @@ class UserProfileView(DomainAPIView):
         )
 
     # Scopo: Calcola il flag is_admin_globale dal profilo. Regola Q1 del
-    # refactor operatore-emittenti: ADMIN senza riga in user_emittenti_fiscali
-    # = admin globale (vede tutti gli emittenti). ADMIN con riga = admin di
-    # emittente (vede solo il suo). OPERATIVO non e' mai admin.
+    # refactor operatore-emittenti: super admin senza riga in
+    # user_emittenti_fiscali = admin globale (vede tutti gli emittenti).
+    # Super admin con riga = admin di emittente (vede solo il suo).
+    # Non super admin non e' mai admin.
     @staticmethod
     def _compute_is_admin_globale(profile: dict) -> bool:
-        if profile.get("ruolo_sistema") != "ADMIN":
+        if not profile.get("is_super_admin"):
             return False
         emittente = profile.get("emittente") or {}
         # user_emittente_fiscale_id valorizzato → admin di emittente

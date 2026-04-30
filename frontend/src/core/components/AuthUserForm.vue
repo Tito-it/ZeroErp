@@ -3,17 +3,37 @@
 // Usato nella creazione operatore, admin, e qualsiasi utente con auth.
 
 import { useI18n } from 'vue-i18n'
+import { ref, watch } from 'vue'
+import { isEmailValid } from '../utils/validators'
 import InputText from 'primevue/inputtext'
 import Password from 'primevue/password'
 
 const { t } = useI18n()
+const emailInvalid = ref(false)
 
-defineProps({
+const props = defineProps({
   form: { type: Object, required: true },
   passwordMatch: { type: Boolean, default: true },
   disabled: { type: Boolean, default: false },
   showPassword: { type: Boolean, default: true }
 })
+
+watch(
+  () => props.form.email,
+  (value) => {
+    if (!value) emailInvalid.value = false
+  }
+)
+
+// Scopo: Applica il validator email condiviso come feedback UX sul campo auth.
+function validateEmail(form) {
+  emailInvalid.value = !!form.email?.trim() && !isEmailValid(form.email)
+}
+
+// Scopo: Rimuove lo stato errore mentre l'utente corregge il campo.
+function clearEmailInvalid() {
+  if (emailInvalid.value) emailInvalid.value = false
+}
 </script>
 
 <template>
@@ -24,7 +44,13 @@ defineProps({
     </div>
     <div class="form-field">
       <label>{{ t('common.email') }} *</label>
-      <InputText v-model="form.email" type="email" :disabled="disabled" class="w-full" />
+      <InputText v-model="form.email" type="email" :disabled="disabled" class="w-full"
+        :invalid="emailInvalid"
+        @blur="validateEmail(form)"
+        @input="clearEmailInvalid" />
+      <small v-if="emailInvalid" class="app-field-error">
+        {{ t('validation.email_format') }}
+      </small>
     </div>
     <div v-if="showPassword" class="form-row-inline">
       <div class="form-field" style="flex: 1;">

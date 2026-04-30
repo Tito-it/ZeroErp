@@ -8,6 +8,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Any
 
 from django.http import JsonResponse
@@ -19,12 +20,61 @@ from apps.core.api.endpoint_helpers import handle_post_json
 from apps.core.api.payload_validators import optional_int
 from apps.core.api.success_responses import success_response
 from apps.core.db.email_repository import EmailRepository
-from apps.core.services.email_service import EmailDispatchService
+from apps.core.services.email_service import SMTP_PLACEHOLDER_HOST, EmailDispatchService
 from apps.core.services.error_manager import ErrorManager
+from apps.core.services.html_sanitizer_service import sanitize_email_html
 
 from apps.core.api.constants import DEFAULT_LIMIT, MAX_LIMIT
 
 E_EMAIL_ADMIN = "E_EMAIL_ADMIN"
+
+
+# Scopo: Deriva la capability di test connessione di un account email.
+#        Restituisce (can_test, test_reason). `can_test=True` significa che
+#        il pulsante test in UI puo' essere abilitato; `test_reason` e' una
+#        chiave i18n (lato FE) usata come tooltip quando `can_test=False`.
+#        Casi gestiti:
+#          - account inattivo            → ("amm.email_test_reason_inactive")
+#          - host vuoto/placeholder      → console mode, test sempre OK
+#          - password SMTP non impostata → ("amm.email_test_reason_no_password")
+def _derive_test_capability(account: dict[str, Any]) -> tuple[bool, str | None]:
+    if not account.get("attivo"):
+        return False, "amm.email_test_reason_inactive"
+    smtp_host = (account.get("smtp_host") or "").strip()
+    # In console mode (host vuoto o placeholder) non serve credenziale:
+    # il test ritorna sempre successo, quindi e' sempre abilitabile.
+    if not smtp_host or smtp_host == SMTP_PLACEHOLDER_HOST:
+        return True, None
+    if not account.get("has_smtp_password"):
+        return False, "amm.email_test_reason_no_password"
+    return True, None
+
+
+# Scopo: Estrae da `meta` jsonb i campi "ultimo esito test" usati dalla UI.
+#        Default coerenti se l'account non e' mai stato testato.
+def _extract_last_test(account: dict[str, Any]) -> dict[str, Any]:
+    meta = account.get("meta") or {}
+    return {
+        "last_test_at": meta.get("last_test_at"),
+        "last_test_outcome": meta.get("last_test_outcome"),
+        "last_test_message": meta.get("last_test_message"),
+    }
+
+
+# Scopo: Arricchisce il dict account con capability + ultimo esito test e
+#        rimuove i campi grezzi (`has_smtp_password`, `meta`) dal payload
+#        esposto al FE. Single source of truth: lookup `amm.email_*`.
+def _enrich_account_with_capability(account: dict[str, Any]) -> dict[str, Any]:
+    can_test, test_reason = _derive_test_capability(account)
+    last_test = _extract_last_test(account)
+    enriched = {
+        **{k: v for k, v in account.items() if k != "meta"},
+        "can_test": can_test,
+        "test_reason": test_reason,
+        **last_test,
+    }
+    enriched.pop("has_smtp_password", None)
+    return enriched
 
 
 # -------------------------------------------------------
@@ -94,12 +144,16 @@ class EmailAccountDetailView(AdminAPIView):
     """GET: dettaglio account. PATCH: modifica account. DELETE: elimina account."""
 
     @extend_schema(responses={200: dict})
-    # Scopo: Dettaglio singolo account email per ID.
+    # Scopo: Dettaglio singolo account email per ID. Aggiunge le capability
+    #        `can_test`/`test_reason` + ultimo esito test (`last_test_at`,
+    #        `last_test_outcome`, `last_test_message`) usate dalla UI per
+    #        gating del pulsante "Testa connessione" (Fase 6).
     def get(self, request: Request, account_id: int) -> JsonResponse:
         repo = EmailRepository()
         result = repo.get_account(account_id)
         ErrorManager.require(result is not None, code=E_EMAIL_ADMIN, message="Account non trovato.")
-        return success_response(result or {})
+        assert result is not None
+        return success_response(_enrich_account_with_capability(result))
 
     @extend_schema(responses={200: dict})
     # Scopo: Aggiorna parzialmente un account email.
@@ -129,7 +183,8 @@ class EmailAccountDetailView(AdminAPIView):
             update_fields["codice"] = update_fields["codice"].upper()
 
         repo.update_account(account_id, **update_fields)
-        return success_response(repo.get_account(account_id) or {})
+        result = repo.get_account(account_id)
+        return success_response(_enrich_account_with_capability(result) if result else {})
 
     @extend_schema(responses={204: None})
     # Scopo: Elimina un account email.
@@ -141,14 +196,44 @@ class EmailAccountDetailView(AdminAPIView):
 
 
 class EmailAccountTestView(AdminAPIView):
-    """POST: testa la connessione SMTP di un account."""
+    """POST: testa la connessione SMTP di un account.
+
+    Oltre al risultato del test (`success`/`message`), persiste in
+    `email_account.meta` l'ultimo esito (`last_test_outcome`,
+    `last_test_at`, `last_test_message`) e ritorna il payload arricchito
+    con le stesse capability del detail (`can_test`, `test_reason`).
+    Cosi' il FE puo' aggiornare in-place la riga senza una GET extra.
+    """
 
     @extend_schema(responses={200: dict})
-    # Scopo: Verifica connessione SMTP senza inviare email.
+    # Scopo: Verifica connessione SMTP senza inviare email. Persiste l'esito
+    #        in meta jsonb e ritorna risultato + capability aggiornate.
     def post(self, request: Request, account_id: int) -> JsonResponse:
+        repo = EmailRepository()
+        # Verifica esistenza prima del test SMTP per dare errore 4xx coerente.
+        account = repo.get_account(account_id)
+        ErrorManager.require(account is not None, code=E_EMAIL_ADMIN, message="Account non trovato.")
+        assert account is not None
+
         service = EmailDispatchService()
-        result = service.test_connection(account_id)
-        return success_response(result)
+        test_result = service.test_connection(account_id)
+        outcome = "SUCCESS" if test_result.get("success") else "FAILED"
+        tested_at = datetime.now(timezone.utc).isoformat()
+        repo.update_account_last_test(
+            account_id,
+            outcome=outcome,
+            tested_at=tested_at,
+            message=test_result.get("message"),
+        )
+
+        # Rilegge il detail per ottenere meta aggiornato + capability fresche.
+        refreshed = repo.get_account(account_id)
+        assert refreshed is not None
+        return success_response({
+            "success": bool(test_result.get("success")),
+            "message": test_result.get("message"),
+            **_enrich_account_with_capability(refreshed),
+        })
 
 
 # -------------------------------------------------------
@@ -262,10 +347,17 @@ class EmailTemplateDetailView(AdminAPIView):
 
 
 class EmailTemplatePreviewView(AdminAPIView):
-    """POST: preview template renderizzato con variabili di esempio."""
+    """POST: preview template renderizzato con variabili di esempio.
+
+    Il `corpo_html` viene sanificato lato BE con whitelist tag/attr/protocol
+    (vedi `html_sanitizer_service.sanitize_email_html`). Il FE puo'
+    quindi rendere il payload come "trusted preview" dentro un iframe
+    sandbox (defense-in-depth — Fase 6 amm-software).
+    """
 
     @extend_schema(responses={200: dict})
-    # Scopo: Renderizza un template con variabili di esempio per anteprima.
+    # Scopo: Renderizza un template con variabili di esempio e sanifica
+    #        l'HTML risultante prima di restituirlo al client.
     def post(self, request: Request, template_id: int) -> JsonResponse:
         def _handler(payload: dict[str, Any]) -> dict[str, Any]:
             variabili = payload.get("variabili") or {}
@@ -275,9 +367,10 @@ class EmailTemplatePreviewView(AdminAPIView):
             assert template is not None
 
             service = EmailDispatchService()
+            rendered_html = service.render_template(template["corpo_html"], variabili)
             return {
                 "oggetto": service.render_template(template["oggetto"], variabili),
-                "corpo_html": service.render_template(template["corpo_html"], variabili),
+                "corpo_html": sanitize_email_html(rendered_html),
                 "corpo_testo": service.render_template(template["corpo_testo"], variabili)
                 if template.get("corpo_testo") else None,
             }

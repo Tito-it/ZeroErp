@@ -144,7 +144,9 @@ class ApiPermessiEffettivi(DomainAPIView):
                         fields={
                             "user_id": serializers.IntegerField(),
                             "username": serializers.CharField(),
-                            "ruolo_sistema": serializers.CharField(allow_null=True),
+                            "is_super_admin": serializers.BooleanField(),
+                            "ruolo_applicativo": serializers.CharField(allow_null=True),
+                            "is_active": serializers.BooleanField(),
                             "unita_organizzativa_id": serializers.IntegerField(allow_null=True),
                             "aree": serializers.ListField(child=serializers.DictField()),
                             "emittenti_ids": serializers.ListField(
@@ -185,24 +187,15 @@ class ApiPermessiEffettivi(DomainAPIView):
                 detail=f"Nessun utente con id={user_id}.",
             )
 
-        # Risolvi permessi per target. Il campo di output `ruolo_sistema`
-        # resta per retrocompat del frontend (Stage B cambiera' contract
-        # a `ruolo_applicativo` + `is_super_admin`). Ricostruzione: se e'
-        # SUPER_ADMIN -> "ADMIN"; se ruolo_applicativo=DISABILITATO ->
-        # "DISABILITATO"; altrimenti -> "OPERATIVO".
+        # Risolvi i campi nativi multi-face (Fase 7): `is_super_admin` +
+        # `ruolo_applicativo` sostituiscono il legacy `ruolo_sistema`.
+        # `is_active` arriva da `auth_user.is_active`; e' la dimensione
+        # ortogonale "puo' loggarsi vs no" (sync-ata da fn_sync_auth_user_is_active).
         target_cache: dict = {}
         is_super = PermissionResolver.is_super_admin(target_user, cache=target_cache)
         ruolo_app = PermissionResolver.get_ruolo_applicativo(
             target_user, cache=target_cache
         )
-        if is_super:
-            ruolo = "ADMIN"
-        elif ruolo_app == "DISABILITATO":
-            ruolo = "DISABILITATO"
-        elif ruolo_app is None:
-            ruolo = None
-        else:
-            ruolo = "OPERATIVO"
         uo_id = PermissionResolver.get_unita_organizzativa_id(
             target_user, cache=target_cache
         )
@@ -254,7 +247,9 @@ class ApiPermessiEffettivi(DomainAPIView):
         data = {
             "user_id": target_user.id,
             "username": target_user.get_username(),
-            "ruolo_sistema": ruolo,
+            "is_super_admin": is_super,
+            "ruolo_applicativo": ruolo_app,
+            "is_active": bool(target_user.is_active),
             "unita_organizzativa_id": uo_id,
             "aree": aree_result,
             "emittenti_ids": emittenti_ids,

@@ -980,6 +980,57 @@ Lookup statico degli stati possibili di un evento email log. Single source of tr
 
 **Consumer FE**: `frontend/src/amministrazione/components/EmailLogStatoSelect.vue` (wrapper riusabile cached con `useGlobalLookup('amm.email_log_stati')`). Usato da `EmailLogsListView.vue` per il filtro stato.
 
+### 4.8 GET /api/v1/amm-software/lookup/model-overrides/ -- (Fase 8)
+
+Lookup catalogo dei `(app_label, model_name)` ammessi come target di
+override v2 (livello model). Single source of truth: tabella
+`config.area_model_overrides` filtrata dalla blacklist applicativa
+`AmmSoftwareRepository._MODEL_OVERRIDE_RISERVATI`.
+
+**Capability**: ogni riga espone `can_override` (bool) e `reason` (chiave i18n
+o `null`). I model del kernel permessi (auth_user, identita_digitali,
+profili_accesso/_bindings, area_model_overrides, user_override_*,
+user_emittenti_fiscali, profili_reparto_*) hanno `can_override=False` con
+reason `amm.model_override_reason_riservato`. Override su questi model
+aprirebbero scenari di lockout ricorsivo.
+
+**Response shape**: lista in `data.results`. Ogni riga:
+
+```json
+{
+  "id": 1,
+  "app_label": "anagrafiche",
+  "model_name": "conto_bancario",
+  "area_schema": "anagrafiche",
+  "area_descrizione": "Anagrafiche",
+  "can_override": true,
+  "reason": null
+}
+```
+
+Esempio riga riservata (kernel permessi):
+
+```json
+{
+  "id": 99,
+  "app_label": "anagrafiche",
+  "model_name": "auth_user",
+  "area_schema": "anagrafiche",
+  "area_descrizione": "Anagrafiche",
+  "can_override": false,
+  "reason": "amm.model_override_reason_riservato"
+}
+```
+
+**Consumer FE**: `OperatorePermessiTab.vue` filtra il dropdown su
+`can_override === true`. Per le righe pre-esistenti che puntano a un model
+diventato riservato (drift dati storico), la cella `<Select>` e' disabled
+con tooltip che mostra `t(reason)`.
+
+**Defense-in-depth**: il service `put_override_oggetti` rifiuta scritture
+su model con `can_override=False` con `E_AMM_VALIDAZIONE` — il filtro FE
+non e' sufficiente per request crafted.
+
 ---
 
 ## 5. Form-defaults emittente fiscale (Fase 3)

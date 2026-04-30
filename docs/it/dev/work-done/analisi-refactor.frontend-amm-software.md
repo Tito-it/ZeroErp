@@ -1055,73 +1055,183 @@ service BE ne legga le proiezioni.
 - `EmailLogsListView.vue`: usare nuovo `EmailLogStatoSelect.vue`
   (riusabile cross-app se altri admin lo richiederanno).
 
-### Fase 6 — Email hardening (P0/P1 misto)
+### Fase 6 — Email hardening (P0/P1 misto) — LANDED 2026-04-29
 
-**Team DB**: nessuna migrazione (eccetto eventuale extension del log
-per `last_test_at`/`last_test_outcome` se si decide di persisterli).
+**Team DB**: nessuna migrazione. Ultimo esito test SMTP persistito in
+`config.email_account.meta` jsonb (chiavi `last_test_outcome`,
+`last_test_at`, `last_test_message`) — extension rejected, jsonb
+sufficiente per il ritmo di scrittura (1 update per click "test").
 
-**Team Backend**
+**Team Backend** — chiuso
 
-- `EmailDispatchService.test_connection` (gia' esiste): wrapper view
-  `ApiEmailAccountTest` aggiunge ai response detail `{can_test: bool,
-  test_reason: text|null, last_test_at, last_test_outcome}` derivato
-  da campi opzionali del repo.
-- View `ApiEmailTemplateRender`: render lato BE con sanitizzazione HTML
-  (lib `bleach` o equivalente, gia' valutato in catalogo) — ritorna
-  HTML "trusted". Vincoli: solo tag whitelisted, no `<script>`, no
-  event handler, CSS inline limitato.
+- `apps/core/services/html_sanitizer_service.py` (nuovo): `sanitize_email_html`
+  basato su `bleach==6.3` (aggiunto a `requirements.in`). Whitelist
+  tag/attr/protocol; rimuove `<script>`/`<style>` con il loro contenuto
+  via regex pre-bleach; strip commenti HTML.
+- `apps/amm_software/api/email_views.py`:
+  - `_derive_test_capability` + `_extract_last_test` + `_enrich_account_with_capability`
+    (helper privati): derivano `can_test`/`test_reason` (chiavi i18n
+    `amm.email_test_reason_inactive` / `_no_password`); estraggono
+    last_test_* dal meta jsonb; rimuovono i campi grezzi dal payload FE.
+  - `EmailAccountDetailView.get/patch`: applicano `_enrich_account_with_capability`
+    al detail.
+  - `EmailAccountTestView.post`: verifica esistenza account, esegue
+    `EmailDispatchService.test_connection`, persiste outcome via
+    `repo.update_account_last_test`, ritorna detail arricchito (FE
+    aggiorna in-place senza GET extra).
+  - `EmailTemplatePreviewView.post`: sanifica `corpo_html` con
+    `sanitize_email_html` prima del return.
+- `apps/core/db/email_repository.py`:
+  - `get_account` ora include `has_smtp_password` (derivato) e `meta`
+    (decodificato).
+  - `update_account_last_test(account_id, *, outcome, tested_at, message)`:
+    UPDATE atomico via `meta = COALESCE(meta, '{}'::jsonb) || jsonb_build_object(...)`.
 
-**Team Frontend**
+**Team Frontend** — chiuso
 
-- `EmailAccountDrawer.vue`: pulsante test gated su `can_test`; tooltip
-  su `test_reason`; mostra ultimo esito test (Tag severity).
-- `EmailTemplateDrawer.vue`: preview in `<iframe sandbox="" :srcdoc="">`
-  popolato dal HTML render-ato dal BE (gia' sanificato). Niente piu'
-  `v-html`. (Implementa C5 + A12).
+- `EmailAccountDrawer.vue`: pulsante test `:disabled="!canTest"`,
+  `v-tooltip.top` con `t(testReasonKey)` quando disabilitato; `Tag`
+  con `lastTestSeverity` (success/danger/secondary) + timestamp
+  formattato. `handleTest` aggiorna `store.currentAccount` con il
+  detail arricchito ricevuto dal POST.
+- `EmailTemplateDrawer.vue`: gia' usa iframe sandbox (Fase 0); ora il
+  `srcdoc` riceve HTML **gia' sanificato BE** (defense-in-depth).
+- i18n: 7 nuove chiavi in `it.json` + `en.json` (`email_test_reason_*`,
+  `email_last_test_*`).
 
-### Fase 7 — Cleanup legacy (P2)
+**Test BE (22 nuovi, 1845/1845 verdi)**
 
-**Team DB**
+- `apps/core/tests/services/test_html_sanitizer_service.py`: 11 test
+  whitelist (script/event/protocol/iframe/style/comment/table/mailto).
+- `apps/amm_software/tests/api/test_email_views_fase6.py`: 11 test
+  capability detail (4 casi), persistenza outcome (3 casi), preview
+  sanitize (2 casi), not-found (1 caso).
 
-- Brief: dismissione campo `ruolo_sistema` su
-  `risorse_umane_auth_user` (oggi vista). Backfill verifica + deprecate
-  per gli script che lo leggono. Dipendente da chiusura cutover
-  multi-face (gia' in §4.6.H.2).
+### Fase 7 — Cleanup legacy (P2) — LANDED Python+FE 2026-04-29
 
-**Team Backend**
+**Team DB** — brief dedicato (in attesa)
 
-- `AmmSoftwareService`: rimuovere ogni traduzione legacy
-  `ruolo_sistema`. `PermessiRiepilogoView` legge solo
-  `is_super_admin`/`ruolo_applicativo`/`attivo` + scope emittente.
-- `error_policies.py`: rimuovere eventuali codici legati al ruolo
-  legacy.
+- File: `docs/it/dev/work-in-progress/brief-db-fase7-dismissione-ruolo-sistema.md`.
+- Scope: refactor `fn_crea_operatore` + `fn_crea_risorsa_umana` (nuova
+  firma `p_is_super_admin`/`p_attivo`); drop `fn_get_ruolo_sistema`;
+  rimozione colonna `ruolo_sistema` da vista `risorse_umane_auth_user`;
+  `DROP TYPE config.ruolo_sistema`. Sequenza in 4 migration con suite
+  pgTAP da aggiornare. Prerequisito §4.6.H.2 gia' chiuso.
 
-**Team Frontend**
+**Team Backend** — chiuso
 
-- `amministrazione/constants.js`: marcare `buildRuoloOptions` come
-  deprecato; eliminare quando `PermessiRiepilogoView` migrata.
-- `PermessiRiepilogoView.vue`: refactor completo basato su
-  `is_super_admin`/`ruolo_applicativo`/`attivo`/scope emittente.
-- `core/constants.js`: rimuovere `RUOLO_SISTEMA` enum.
-- Audit summary `snapshotSummary` (interim, vedi C6): aggiungere chiavi
-  multi-face fino a quando il BE non espone `summary`.
+- `apps/amm_software/db/amm_software_repository.py`:
+  - `_legacy_ruolo_from_contract` privato (compat layer per fn DB
+    legacy). Mai esposto.
+  - `list_operatori`/`list_operatori_for_riepilogo`/`get_permessi_riepilogo`:
+    rimossi `ruolo_sistema` da filtri+SELECT, sostituiti con
+    `is_super_admin`/`ruolo_applicativo`/`is_active`.
+  - `update_operatore`: contract `is_super_admin` + `attivo` ortogonali.
+  - `crea_operatore`: contract `is_super_admin` + `attivo`; passa
+    `p_ruolo_sistema` legacy alla fn DB tramite il translator privato.
+- `apps/amm_software/services/amm_software_service.py`: rimosso
+  `_ruolo_sistema_from_contract_nuovo` (logica interna al repo).
+- `apps/amm_software/api/views.py`: rimossi query param + payload
+  `ruolo_sistema` da OperatoriList/OperatoriDetail/PermessiRiepilogo
+  (sostituito con `is_super_admin`).
+- `apps/amm_software/types.py` + `constants.py`: rimossi
+  `ruolo_sistema`/`RUOLO_*`/`DEFAULT_RUOLO_SISTEMA`.
+- `apps/core/api/me_view.py` + `apps/core/api/views.py`
+  (PermessiEffettiviView): output multi-face puro
+  (`is_super_admin`+`ruolo_applicativo`+`is_active`); `is_admin_globale`
+  derivato da `is_super_admin` invece di `ruolo_sistema=='ADMIN'`.
+- `apps/core/db/risorse_umane_core_repository.py`: refactor simmetrico
+  con `_legacy_ruolo_from_contract` privato.
+- `apps/anagrafiche/models.py`: rimosso campo `ruolo_sistema` dal modello
+  ORM `RisorseUmaneAuthUser` (la vista DB lo espone ancora ma nessun
+  reader Python lo legge).
+- `apps/ai_assistant/tools/config_tools.py`: tool `cerca_operatori`
+  refactor — param `is_super_admin` (bool) sostituisce `ruolo_sistema`
+  (str). `_FIELD_MAP` aggiornato.
+- `apps/core/services/permissions_resolver.py`,
+  `apps/core/api/permissions.py`: aggiornati commenti (no logica).
 
-### Fase 8 — Override oggetti (permessi v2) — capability lookup
+**Team Frontend** — chiuso
 
-**Team DB**: nessuna migrazione.
+- `core/constants.js`: rimosso enum `RUOLO_SISTEMA`. Resta `RUOLO_APPLICATIVO`.
+- `amministrazione/constants.js`: rimossi `buildRuoloOptions` +
+  `getRuoloSeverity`. Aggiornati commenti.
+- `amministrazione/stores/operatori.js`: rimosso filtro
+  `ruolo_sistema`; resta `is_super_admin`/`is_active`/`unita_organizzativa_id`.
+- `amministrazione/views/PermessiRiepilogoView.vue`: refactor completo
+  multi-face. Filtro `superAdminFilter` con `buildFilterSuperAdminOptions`
+  tri-state (tutti/solo super/escludi). Nuova colonna `Stato` con
+  `getStatoLabel`/`getStatoSeverity` data-driven da
+  `is_super_admin`/`ruolo_applicativo`/`is_active`.
+- `OperatoreDrawer.vue` + `OperatoriListView.vue` + `stores/auth.js`:
+  aggiornati commenti residui (no logica).
+- i18n: rimosse chiavi `amm.ruolo_admin`/`_operativo`/`_disabilitato`/
+  `_all`/`permessi_col_ruolo`/`permessi_filter_ruolo`. Aggiunte
+  `permessi_col_stato`/`permessi_stato_super_admin`/`_disabilitato`/
+  `_operatore` (it.json + en.json).
 
-**Team Backend**
+**Test e verifiche**
 
-- `LookupRepository.list_model_overrides`: aggiungere ai campi della
-  vista `can_override` (bool) + `reason` (text|null). Logica: model
-  whitelisted in `config.area_model_overrides` + non riservato (es.
-  no model `auth_user` se l'admin non e' SUPER_ADMIN globale).
+- BE: 1845/1845 verdi (suite invariata, 7 test aggiornati per il nuovo
+  contract: 5 in `test_amm_software_service` / `test_operatori_views` /
+  `test_crea_operatore`, 1 in `test_risorse_umane_core_repository`,
+  1 in `test_me_view`).
+- FE: `vite build` verde 958ms.
 
-**Team Frontend**
+### Fase 7-original — testo originale (storico)
 
-- `OperatorePermessiTab.vue` sezione "Override oggetti": filtrare
-  `modelOverrideOptions` su `can_override === true`; nascondere o
-  disabilitare opzioni con `reason`. (A14).
+> Il refactor originale prevedeva: brief DB per dismissione campo
+> `ruolo_sistema` su `risorse_umane_auth_user` (con backfill verifica +
+> deprecate per gli script che lo leggono); rimozione `_ruolo_sistema_from_contract_nuovo`
+> da `AmmSoftwareService`; refactor completo `PermessiRiepilogoView`
+> basato su `is_super_admin`/`ruolo_applicativo`/`attivo`/scope emittente;
+> rimozione `RUOLO_SISTEMA` enum dal core/constants. Tutti gli obiettivi
+> del piano originale sono stati raggiunti — la dismissione DB resta
+> aperta in attesa del team DB.
+
+### Fase 8 — Override oggetti (permessi v2) — capability lookup — LANDED 2026-04-29
+
+**Team DB**: nessuna migrazione (capability derivata da blacklist Python).
+
+**Team Backend** — chiuso
+
+- `apps/amm_software/db/amm_software_repository.py`:
+  - Costante modulo-level `_MODEL_OVERRIDE_RISERVATI` con 11 tuple
+    `(app_label, model_name)` del kernel permessi (auth_user,
+    identita_digitali, profili_accesso/_bindings, area_model_overrides,
+    user_override_aree/azioni/oggetti, user_emittenti_fiscali,
+    profili_reparto_aree/azioni).
+  - `list_model_overrides`: arricchisce ogni riga con
+    `can_override: bool` + `reason: str|None` (chiave i18n
+    `amm.model_override_reason_riservato` quando riservato).
+- `apps/amm_software/services/amm_software_service.py`
+  `put_override_oggetti`: doppia guard — esistenza nel catalogo +
+  `can_override=True` (defense-in-depth: il FE filtra il dropdown,
+  il BE rifiuta la request crafted).
+
+**Team Frontend** — chiuso
+
+- `OperatorePermessiTab.vue`:
+  - `modelOverrideOptions` filtra `m.can_override === true` —
+    i model riservati spariscono dal dropdown.
+  - `modelOverrideReason(row)` risolve la chiave i18n se la riga
+    pre-esistente punta a un model diventato riservato (drift
+    storico).
+  - Cella `<Select>` wrapped in `<span v-tooltip.top>` + `:disabled`
+    quando il model corrente e' riservato — tooltip espone il reason
+    tradotto.
+- i18n: 1 nuova chiave `amm.model_override_reason_riservato` in
+  `it.json` + `en.json`.
+
+**Test e verifiche**
+
+- BE: 1847/1847 verdi (1845 → +2 nuovi):
+  - `test_get_model_overrides_lookup_riservato` — capability
+    `can_override=False` + reason i18n esposti per il model
+    `auth_user`.
+  - `test_put_override_oggetti_rifiuta_model_riservato` — guard
+    service: scrittura su model riservato → `E_AMM_VALIDAZIONE`.
+- FE: `vite build` verde 983ms.
 
 ---
 

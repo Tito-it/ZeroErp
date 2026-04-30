@@ -516,7 +516,7 @@ function origineSeverity(origine) {
         </template>
         <Column :header="t('common.col_azioni')" class="app-col-actions" :exportable="false">
           <template #body="{ data }">
-            <RowActionsMenu :actions="buildRigaActions(data)" />
+            <RowActionsMenu :row="data" :actions="buildRigaActions(data)" />
           </template>
         </Column>
       </DataTable>

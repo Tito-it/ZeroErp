@@ -43,7 +43,6 @@ class OperatoriListView(AdminAPIView):
     @extend_schema(
         parameters=[
             OpenApiParameter(name="search", type=str, required=False),
-            OpenApiParameter(name="ruolo_sistema", type=str, required=False),
             OpenApiParameter(name="is_super_admin", type=bool, required=False),
             OpenApiParameter(name="unita_organizzativa_id", type=int, required=False),
             OpenApiParameter(name="is_active", type=bool, required=False),
@@ -63,7 +62,6 @@ class OperatoriListView(AdminAPIView):
         repo = AmmSoftwareService()
         results, total_count = repo.list_operatori(
             search=qp.get("search") or None,
-            ruolo_sistema=qp.get("ruolo_sistema") or None,
             is_super_admin=is_super_admin,
             unita_organizzativa_id=optional_int({"v": qp.get("unita_organizzativa_id")}, "v"),
             is_active=is_active,
@@ -90,7 +88,7 @@ class OperatoriListView(AdminAPIView):
             "email": serializers.CharField(),
             "password": serializers.CharField(),
             "qualifica_id": serializers.IntegerField(),
-            "ruolo_sistema": serializers.CharField(required=False),
+            "is_super_admin": serializers.BooleanField(required=False),
             "unita_organizzativa_id": serializers.IntegerField(required=False),
         }),
         responses={200: inline_serializer(name="OperatoriCreateResp", fields={"data": serializers.DictField()})},
@@ -112,8 +110,8 @@ class OperatoriDetailView(AdminAPIView):
             "email": serializers.CharField(required=False),
             "first_name": serializers.CharField(required=False),
             "last_name": serializers.CharField(required=False),
-            # Contract Fase 1 multi-face: is_super_admin + attivo
-            # sostituiscono il legacy ruolo_sistema.
+            # Contract Fase 7 multi-face: is_super_admin + attivo
+            # sostituiscono il legacy ruolo_sistema (rimosso).
             "is_super_admin": serializers.BooleanField(required=False),
             "attivo": serializers.BooleanField(required=False),
             "unita_organizzativa_id": serializers.IntegerField(required=False),
@@ -321,16 +319,18 @@ class PermessiRiepilogoView(AdminAPIView):
     @extend_schema(
         parameters=[
             OpenApiParameter(name="unita_organizzativa_id", type=int, required=False),
-            OpenApiParameter(name="ruolo_sistema", type=str, required=False),
+            OpenApiParameter(name="is_super_admin", type=bool, required=False),
+            OpenApiParameter(name="emittente_fiscale_id", type=int, required=False),
         ],
         responses={200: inline_serializer(name="PermessiRiepilogoResp", fields={"data": serializers.DictField()})},
     )
-    # Scopo: Matrice operatori × aree con livello effettivo.
+    # Scopo: Matrice operatori × aree con livello effettivo (Fase 7
+    #        multi-face: filtro `is_super_admin` sostituisce `ruolo_sistema`).
     def get(self, request: Request) -> JsonResponse:
         qp = request.query_params
         result = AmmSoftwareService().get_permessi_riepilogo(
             unita_organizzativa_id=optional_int({"v": qp.get("unita_organizzativa_id")}, "v"),
-            ruolo_sistema=qp.get("ruolo_sistema") or None,
+            is_super_admin=_parse_optional_bool(qp.get("is_super_admin")),
             emittente_fiscale_id=optional_int({"v": qp.get("emittente_fiscale_id")}, "v"),
         )
         return success_response(result)

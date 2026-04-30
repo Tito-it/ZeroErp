@@ -5,6 +5,7 @@ import { useI18n } from 'vue-i18n'
 import { useTipiRuoloTipiIndirizzoStore } from '../stores/tipiRuoloTipiIndirizzo'
 import { useSearchTable } from '../../core/composables/useSearchTable'
 import { useTabFreshness } from '../../core/composables/useTabFreshness'
+import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useInjectReadonly, useInjectBlocked } from '../../core/composables/useReadonlyMode'
 import { TAB_ENTITIES } from '../../core/constants'
 import DataTable from 'primevue/datatable'
@@ -23,6 +24,7 @@ const { t } = useI18n()
 const store = useTipiRuoloTipiIndirizzoStore()
 const isReadonly = useInjectReadonly()
 const isBlocked = useInjectBlocked()
+const { execute } = useApiHandler()
 const { searchText, onPage, onSort, applyFilters, reload, paginatorProps } = useSearchTable(store, {
   defaultSortField: 'tipo_ruolo_descrizione'
 })
@@ -38,6 +40,34 @@ const attivoOptions = [
   { value: false, label: t('common.non_attivo') }
 ]
 
+const fallbackOptionsByRow = ref({})
+const fallbackOptionsLoadingByRow = ref({})
+
+// Scopo: opzioni fallback inline, riusando gli stessi metadata del drawer
+// (`fallback_options` calcolate dal backend sul detail: no self-ref + no cicli).
+function fallbackOptions(row) {
+  if (fallbackOptionsByRow.value[row.id]) return fallbackOptionsByRow.value[row.id]
+  if (!row.fallback_tipo_indirizzo_id) return []
+  return [{
+    tipo_indirizzo_id: row.fallback_tipo_indirizzo_id,
+    codice: row.fallback_codice,
+    descrizione: row.fallback_descrizione || row.fallback_codice
+  }]
+}
+
+async function loadFallbackOptions(row) {
+  if (fallbackOptionsByRow.value[row.id] || fallbackOptionsLoadingByRow.value[row.id]) return
+  fallbackOptionsLoadingByRow.value[row.id] = true
+  try {
+    const detail = await store.fetchDetail(row.id)
+    fallbackOptionsByRow.value[row.id] = Array.isArray(detail?.fallback_options)
+      ? detail.fallback_options
+      : []
+  } finally {
+    fallbackOptionsLoadingByRow.value[row.id] = false
+  }
+}
+
 function onTipoRuoloChange() {
   store.filters.tipo_ruolo_id = tipoRuoloFilter.value
   applyFilters()
@@ -49,6 +79,21 @@ function onTipoIndirizzoChange() {
 function onAttivoChange() {
   store.filters.attivo = attivoFilter.value
   applyFilters()
+}
+
+async function changeFallback(row, newFallbackId) {
+  const result = await execute(
+    () => store.update(row.id, { fallback_tipo_indirizzo_id: newFallbackId || null }),
+    { successMessage: t('amministrazione.matrice_indirizzi_ruoli.saved') }
+  )
+  if (result !== null) {
+    row.fallback_tipo_indirizzo_id = result.fallback_tipo_indirizzo_id
+    row.fallback_codice = result.fallback_codice
+    row.fallback_descrizione = result.fallback_descrizione
+    fallbackOptionsByRow.value[row.id] = Array.isArray(result.fallback_options)
+      ? result.fallback_options
+      : fallbackOptionsByRow.value[row.id]
+  }
 }
 
 onMounted(() => { if (!store.hasSearched) store.fetchList() })
@@ -97,9 +142,25 @@ onMounted(() => { if (!store.hasSearched) store.fetchList() })
             :severity="data.obbligatorio ? 'warn' : 'secondary'" />
         </template>
       </Column>
-      <Column field="fallback_codice" :header="t('amministrazione.matrice_indirizzi_ruoli.col_fallback')" style="width: 140px;">
+      <Column field="fallback_codice" :header="t('amministrazione.matrice_indirizzi_ruoli.col_fallback')" style="width: 190px;">
         <template #body="{ data }">
-          {{ data.fallback_codice || '—' }}
+          <div @click.stop>
+            <Select
+              :modelValue="data.fallback_tipo_indirizzo_id"
+              @before-show="loadFallbackOptions(data)"
+              @focus="loadFallbackOptions(data)"
+              @update:modelValue="val => changeFallback(data, val)"
+              :options="fallbackOptions(data)"
+              option-label="descrizione"
+              option-value="tipo_indirizzo_id"
+              :placeholder="t('amministrazione.matrice_indirizzi_ruoli.no_fallback')"
+              :disabled="isReadonly || fallbackOptionsLoadingByRow[data.id]"
+              show-clear
+              filter
+              class="w-full"
+              style="min-width: 150px;"
+            />
+          </div>
         </template>
       </Column>
       <Column field="attivo" :header="t('amministrazione.matrice_indirizzi_ruoli.col_attivo')" sortable style="width: 100px;">

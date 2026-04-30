@@ -242,6 +242,7 @@ function buildRigaActions(row) {
       key: 'modifica-uom',
       label: t('common.edit'),
       icon: 'pi pi-pencil',
+      allowWhenInactive: true,
       command: () => onStartEdit(row),
     },
     {
@@ -314,7 +315,7 @@ function buildRigaActions(row) {
           </Column>
           <Column v-if="!isReadonly" :header="t('common.col_azioni')" class="app-col-actions" :exportable="false">
             <template #body="{ data }">
-              <RowActionsMenu :actions="buildRigaActions(data)" />
+              <RowActionsMenu :row="data" :actions="buildRigaActions(data)" />
             </template>
           </Column>
         </DataTable>

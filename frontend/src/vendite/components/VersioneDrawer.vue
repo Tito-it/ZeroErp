@@ -229,6 +229,7 @@ function buildRigaActions(row) {
       label: t('common.edit'),
       icon: 'pi pi-pencil',
       visible: isBozza.value && !isReadonly.value,
+      allowWhenInactive: true,
       command: () => onRowSelect({ data: row }),
     },
     {
@@ -308,7 +309,7 @@ function onClose() {
         </Column>
         <Column v-if="isBozza" :header="t('common.col_azioni')" class="app-col-actions" :exportable="false">
           <template #body="{ data }">
-            <RowActionsMenu :actions="buildRigaActions(data)" />
+            <RowActionsMenu :row="data" :actions="buildRigaActions(data)" />
           </template>
         </Column>
       </DataTable>

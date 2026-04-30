@@ -164,6 +164,7 @@ function buildRowActions(row) {
       label: t('amm_emittenti_fiscali.ut_action_modifica'),
       icon: 'pi pi-pencil',
       visible: canUpdate,
+      allowWhenInactive: true,
       command: () => startEdit(row),
     },
     {
@@ -344,7 +345,7 @@ watch(() => props.emittenteId, async (id) => {
             />
           </template>
           <!-- Stato normale: azioni standard via RowActionsMenu. -->
-          <RowActionsMenu v-else :actions="buildRowActions(data)" />
+          <RowActionsMenu v-else :row="data" :actions="buildRowActions(data)" />
         </template>
       </Column>
 

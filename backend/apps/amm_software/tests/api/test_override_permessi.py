@@ -89,6 +89,17 @@ SAMPLE_OVERRIDE_OGGETTO = {
 SAMPLE_MODEL_OVERRIDE = {
     "id": 1, "app_label": "anagrafiche", "model_name": "conto_bancario",
     "area_schema": "anagrafiche", "area_descrizione": "Anagrafiche",
+    # Fase 8: capability override-abilita'.
+    "can_override": True, "reason": None,
+}
+
+SAMPLE_MODEL_OVERRIDE_RISERVATO = {
+    # Coppia coerente con `_MODEL_OVERRIDE_RISERVATI`: identita_digitali
+    # appartiene al kernel permessi e non puo' essere target di override
+    # granulari (Fase 8 amm-software).
+    "id": 99, "app_label": "anagrafiche", "model_name": "identita_digitali",
+    "area_schema": "anagrafiche", "area_descrizione": "Anagrafiche",
+    "can_override": False, "reason": "amm.model_override_reason_riservato",
 }
 
 
@@ -415,7 +426,7 @@ class TestModelOverridesLookupView(TestCase):
 
     @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
     def test_get_model_overrides_lookup(self, mock_repo_cls):
-        """GET lookup ritorna catalogo con schema area."""
+        """GET lookup ritorna catalogo con schema area + capability."""
         mock_repo = MagicMock()
         mock_repo.list_model_overrides.return_value = [SAMPLE_MODEL_OVERRIDE]
         mock_repo_cls.return_value = mock_repo
@@ -425,8 +436,63 @@ class TestModelOverridesLookupView(TestCase):
 
         data = json.loads(response.content)
         self.assertEqual(len(data["data"]["results"]), 1)
-        self.assertEqual(data["data"]["results"][0]["app_label"], "anagrafiche")
-        self.assertEqual(data["data"]["results"][0]["area_schema"], "anagrafiche")
+        row = data["data"]["results"][0]
+        self.assertEqual(row["app_label"], "anagrafiche")
+        self.assertEqual(row["area_schema"], "anagrafiche")
+        # Fase 8: capability esposta dal lookup.
+        self.assertTrue(row["can_override"])
+        self.assertIsNone(row["reason"])
+
+    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
+    def test_get_model_overrides_lookup_riservato(self, mock_repo_cls):
+        """Fase 8: model riservati hanno can_override=False + reason i18n."""
+        mock_repo = MagicMock()
+        mock_repo.list_model_overrides.return_value = [
+            SAMPLE_MODEL_OVERRIDE,
+            SAMPLE_MODEL_OVERRIDE_RISERVATO,
+        ]
+        mock_repo_cls.return_value = mock_repo
+
+        view = ModelOverridesLookupView()
+        response = view.get(_make_request())
+
+        data = json.loads(response.content)
+        results = {r["model_name"]: r for r in data["data"]["results"]}
+        self.assertTrue(results["conto_bancario"]["can_override"])
+        self.assertFalse(results["identita_digitali"]["can_override"])
+        self.assertEqual(
+            results["identita_digitali"]["reason"],
+            "amm.model_override_reason_riservato",
+        )
+
+    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
+    @patch("apps.amm_software.services.amm_software_service.invalidate_user")
+    def test_put_override_oggetti_rifiuta_model_riservato(
+        self, mock_invalidate, mock_repo_cls
+    ):
+        """Fase 8: scrittura su model riservato -> E_AMM_VALIDAZIONE.
+
+        Defense-in-depth: il FE filtra gia' i riservati dal dropdown, ma
+        una request crafted bypasserebbe il filtro lato client. Il service
+        deve rifiutare.
+        """
+        mock_repo = MagicMock()
+        mock_repo.list_model_overrides.return_value = [
+            SAMPLE_MODEL_OVERRIDE,
+            SAMPLE_MODEL_OVERRIDE_RISERVATO,
+        ]
+        mock_repo_cls.return_value = mock_repo
+
+        items = [{
+            "app_label": "anagrafiche", "model_name": "identita_digitali",
+            "livello": "BLOCCATO",
+        }]
+        view = OverrideOggettiView()
+        with self.assertRaises(ServiceError) as ctx:
+            view.put(_make_request("PUT", {"items": items}), auth_user_id=1)
+        self.assertEqual(ctx.exception.code, "E_AMM_VALIDAZIONE")
+        mock_repo.put_override_oggetti.assert_not_called()
+        mock_invalidate.assert_not_called()
 
 
 class TestOverridePermissionDenied(TestCase):

@@ -197,12 +197,40 @@ function removeAzioneOverride(index) {
 }
 
 // Scopo: Label per il dropdown model override (es. "anagrafiche.conto_bancario — Anagrafiche").
+//        Fase 8: filtra solo i model con `can_override === true`. I model
+//        riservati al kernel permessi (identita_digitali, profili_accesso,
+//        bindings, override stessi) NON appaiono nel dropdown — il BE
+//        rifiuterebbe comunque la scrittura come defense-in-depth.
 const modelOverrideOptions = computed(() =>
-  modelOverrides.items.value.map(m => ({
-    ...m,
-    label: `${m.app_label}.${m.model_name} — ${m.area_descrizione}`
-  }))
+  modelOverrides.items.value
+    .filter(m => m.can_override === true)
+    .map(m => ({
+      ...m,
+      label: `${m.app_label}.${m.model_name} — ${m.area_descrizione}`
+    }))
 )
+
+// Scopo: Mappa indicizzata `(app_label, model_name) -> {can_override, reason}`
+//        per evitare scansioni lineari nelle template cells. Ricomputata
+//        solo quando l'array di model cambia.
+const modelOverrideIndex = computed(() => {
+  const m = new Map()
+  for (const row of modelOverrides.items.value) {
+    m.set(`${row.app_label}.${row.model_name}`, row)
+  }
+  return m
+})
+
+// Scopo: Per le righe pre-esistenti che puntano a un model diventato
+//        riservato (drift dati storico), risolve la chiave i18n del motivo
+//        per mostrarla come tooltip sul Select disabilitato. Lookup O(1)
+//        via la mappa indicizzata.
+function modelOverrideReason(row) {
+  if (!row.app_label || !row.model_name) return null
+  const entry = modelOverrideIndex.value.get(`${row.app_label}.${row.model_name}`)
+  if (!entry || entry.can_override === true) return null
+  return entry.reason ? t(entry.reason) : null
+}
 
 const saveOggetti = () =>
   _saveOverride(store.saveOverrideOggetti, localOggetti.value.map(_toOggettoItem))
@@ -291,15 +319,17 @@ function onModelSelect(item, row) {
     <DataTable :value="localOggetti" class="mb-2" size="small">
       <Column :header="t('amm.col_model')">
         <template #body="{ data }">
-          <Select
-            :modelValue="data.app_label && data.model_name ? modelOverrideOptions.find(m => m.app_label === data.app_label && m.model_name === data.model_name) : null"
-            :options="modelOverrideOptions"
-            option-label="label"
-            :placeholder="t('amm.select_model')"
-            class="w-full"
-            :disabled="isReadonly"
-            @update:modelValue="v => onModelSelect(v, data)"
-          />
+          <span v-tooltip.top="modelOverrideReason(data)" class="block w-full">
+            <Select
+              :modelValue="data.app_label && data.model_name ? modelOverrideOptions.find(m => m.app_label === data.app_label && m.model_name === data.model_name) : null"
+              :options="modelOverrideOptions"
+              option-label="label"
+              :placeholder="t('amm.select_model')"
+              class="w-full"
+              :disabled="isReadonly || !!modelOverrideReason(data)"
+              @update:modelValue="v => onModelSelect(v, data)"
+            />
+          </span>
         </template>
       </Column>
       <Column :header="t('amm.col_livello')">

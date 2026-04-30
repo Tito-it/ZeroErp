@@ -317,7 +317,7 @@ onMounted(() => store.fetchList())
       </Column>
       <Column :header="t('common.col_azioni')" class="app-col-actions" :exportable="false" frozen alignFrozen="right">
         <template #body="{ data }">
-          <RowActionsMenu :actions="buildListinoActions(data)" />
+          <RowActionsMenu :row="data" :actions="buildListinoActions(data)" />
         </template>
       </Column>
 
@@ -361,7 +361,7 @@ onMounted(() => store.fetchList())
             </Column>
             <Column :header="t('common.col_azioni')" class="app-col-actions" :exportable="false" frozen alignFrozen="right">
               <template #body="{ data: ver }">
-                <RowActionsMenu :actions="buildVersioneActions(ver, listino)" />
+                <RowActionsMenu :row="ver" :actions="buildVersioneActions(ver, listino)" />
               </template>
             </Column>
           </DataTable>
@@ -387,4 +387,3 @@ onMounted(() => store.fetchList())
     </template>
   </div>
 </template>
-
