@@ -60,6 +60,7 @@ const emit = defineEmits(['update:visible', 'saved', 'cancelled'])
 
 const isEdit = computed(() => props.mode === 'edit')
 const invitaLoading = ref(false)
+const emailEditInvalid = ref(false)
 
 // Scopo: Mostra pulsante invito se operatore non ha mai fatto login.
 const canInvite = computed(() => {
@@ -94,6 +95,7 @@ const form = ref({ ...INITIAL_FORM })
 // Scopo: Reset form a valori iniziali.
 function resetForm() {
   soggettoSelezionato.value = null
+  emailEditInvalid.value = false
   auth.reset()
   form.value = { ...INITIAL_FORM }
 }
@@ -101,6 +103,7 @@ function resetForm() {
 // Carica dati quando il drawer si apre
 watch(() => props.visible, async (val) => {
   if (!val) return
+  emailEditInvalid.value = false
   // Forza remount TabView dopo che il drawer è visibile (ink bar fix)
   nextTick(() => { tabViewKey.value++ })
   if (isEdit.value && props.authUserId) {
@@ -151,6 +154,16 @@ function onSoggettoCreato(data) {
 
 function clearSoggetto() {
   soggettoSelezionato.value = null
+}
+
+// Scopo: Valida il formato email in modifica usando il building block condiviso.
+function validateEditEmail() {
+  emailEditInvalid.value = !!form.value.email?.trim() && !isEmailValid(form.value.email)
+}
+
+// Scopo: Rimuove lo stato errore mentre l'utente corregge il campo email.
+function clearEditEmailInvalid() {
+  if (emailEditInvalid.value) emailEditInvalid.value = false
 }
 
 // Scopo: Salva operatore (crea o aggiorna).
@@ -299,7 +312,7 @@ function onClose() {
               text size="small" class="mt-1" @click="clearSoggetto" />
           </div>
           <div v-else>
-            <Button :label="t('resolver.open')" icon="pi pi-search"
+            <Button :label="`${t('resolver.open')} *`" icon="pi pi-search"
               outlined class="w-full" @click="resolverVisible = true" />
           </div>
         </template>
@@ -343,8 +356,14 @@ function onClose() {
               </div>
             </div>
             <div class="form-field">
-              <label>{{ t('common.email') }}</label>
-              <InputText v-model="form.email" class="w-full" />
+              <label>{{ t('common.email') }} *</label>
+              <InputText v-model="form.email" class="w-full"
+                :invalid="emailEditInvalid"
+                @blur="validateEditEmail"
+                @input="clearEditEmailInvalid" />
+              <small v-if="emailEditInvalid" class="app-field-error">
+                {{ t('validation.email_format') }}
+              </small>
             </div>
           </template>
 

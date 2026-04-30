@@ -6,6 +6,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { computed, inject, ref } from 'vue'
 import { useNavigationStore } from '../../stores/navigation'
 import { useTabsStore } from '../../stores/tabs'
+import { resolveNavigationLabel } from '../navigation'
 import SidebarItem from './SidebarItem.vue'
 
 const { t } = useI18n()
@@ -19,8 +20,12 @@ const emit = defineEmits(['navigate'])
 
 const domainLabel = computed(() => {
   if (!nav.currentDomain) return ''
-  return t(`nav.${nav.currentDomain}`)
+  return resolveNavigationLabel({ domain: nav.currentDomain }, t) || ''
 })
+
+function itemLabel(item) {
+  return resolveNavigationLabel({ domain: nav.currentDomain, menuKey: item.key }, t) || item.key
+}
 
 function handleBackHome() {
   nav.clearDomain()
@@ -32,8 +37,9 @@ function handleMenuClick(item) {
   // Apre la tab (o attiva quella esistente) — se limite raggiunto, blocca navigazione
   const opened = tabs.openTab({
     path: item.to,
-    label: t(`nav_menu.${nav.currentDomain}.${item.key}`),
+    label: itemLabel(item),
     domain: nav.currentDomain,
+    menuKey: item.key,
     icon: item.icon
   })
   if (!opened) return
@@ -72,12 +78,12 @@ function handleToggleFavorite(item) {
       v-for="item in nav.currentMenu"
       :key="item.key"
       :icon="item.icon"
-      :label="t(`nav_menu.${nav.currentDomain}.${item.key}`)"
+      :label="itemLabel(item)"
       :active="route.path === item.to"
       @click="handleMenuClick(item)"
     >
       <span class="menu-item-label">
-        {{ t(`nav_menu.${nav.currentDomain}.${item.key}`) }}
+        {{ itemLabel(item) }}
       </span>
       <!-- Stella preferito -->
       <i

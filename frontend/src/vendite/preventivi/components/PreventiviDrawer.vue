@@ -37,8 +37,12 @@ const emit = defineEmits(['update:visible', 'saved', 'cancelled'])
 const isEdit = computed(() => props.mode === 'edit')
 const form = ref({})
 const detail = ref(null)
-const righeRef = ref(null)
-const integrazioneRef = ref(null)
+
+// Deferimento contenuto: i LookupSelect/AutoComplete montano dopo l'animazione
+// di apertura del drawer per evitare il rimbalzo iniziale (pattern adottato
+// da ContrattoDrawer + memoria feedback_content_ready_after_show).
+const contentReady = ref(false)
+function onAfterShow() { contentReady.value = true }
 
 // Stato corrente del preventivo (codice_interno)
 const statoCodice = computed(() => detail.value?.stato_codice_interno || '')
@@ -87,7 +91,10 @@ async function loadDetail() {
 }
 
 watch(() => props.visible, (v) => {
-  if (!v) return
+  if (!v) {
+    contentReady.value = false
+    return
+  }
   if (isEdit.value) {
     loadDetail()
   } else {
@@ -100,17 +107,27 @@ const canSave = computed(() => form.value.utility_id != null)
 async function handleSave() {
   const f = form.value
   if (isEdit.value) {
-    const payload = {}
-    if (f.billing_account_id != null) payload.billing_account_id = f.billing_account_id
-    if (f.validita_dal != null) payload.validita_dal = toDateString(f.validita_dal)
-    if (f.validita_al != null) payload.validita_al = toDateString(f.validita_al)
-    if (f.competenza_mese != null) payload.competenza_mese = toDateString(f.competenza_mese)
-    payload.fatturazione_immediata = f.fatturazione_immediata
+    // Backend whitelist (preventivi_service.aggiorna_preventivo): billing_account_id,
+    // utility_id, istanza_utility_id, valuta_id, termine_pagamento_id, validita_dal,
+    // validita_al, competenza_mese, fatturazione_immediata, meta. Inviamo sempre
+    // tutti i campi del form: il backend e' tollerante a NULL (empty_to_none).
+    // Cosi' un clear di valuta/termine viene effettivamente persistito.
+    const payload = {
+      billing_account_id: f.billing_account_id ?? null,
+      utility_id: f.utility_id ?? null,
+      istanza_utility_id: f.istanza_utility_id ?? null,
+      valuta_id: f.valuta_id ?? null,
+      termine_pagamento_id: f.termine_pagamento_id ?? null,
+      validita_dal: f.validita_dal ? toDateString(f.validita_dal) : null,
+      validita_al: f.validita_al ? toDateString(f.validita_al) : null,
+      competenza_mese: f.competenza_mese ? toDateString(f.competenza_mese) : null,
+      fatturazione_immediata: f.fatturazione_immediata,
+    }
     const result = await execute(
       () => store.update(props.preventivoId, payload),
       { successMessage: t('preventivi.preventivo_salvato') }
     )
-    if (result) {
+    if (result !== null) {
       await loadDetail()
       emit('saved', result)
     }
@@ -130,7 +147,7 @@ async function handleSave() {
       () => store.create(payload),
       { successMessage: t('preventivi.preventivo_creato') }
     )
-    if (result) emit('saved', result)
+    if (result !== null) emit('saved', result)
   }
 }
 
@@ -202,6 +219,7 @@ function formatCurrency(value) {
 
 <template>
   <Drawer :visible="visible" @update:visible="v => emit('update:visible', v)"
+    @after-show="onAfterShow"
     position="right" :style="{ width: DRAWER_WIDTH.WIDE }" :dismissable="true">
     <template #header>
       <DrawerTitle :action="isEdit ? t('common.edit') : t('common.new')" :title="t('preventivi.preventivo')" />
@@ -233,13 +251,14 @@ function formatCurrency(value) {
 
       <Divider v-if="isEdit && detail" />
 
-      <!-- Form testata -->
-      <PreventiviForm :form="form" :is-edit="isEdit" :is-modificabile="isModificabile && !isReadonly" />
+      <!-- Form testata: monta dopo l'animazione drawer per evitare rimbalzo lookup -->
+      <PreventiviForm v-if="contentReady"
+        :form="form" :is-edit="isEdit" :is-modificabile="isModificabile && !isReadonly" />
 
       <!-- Righe (solo edit) -->
-      <template v-if="isEdit && detail">
+      <template v-if="contentReady && isEdit && detail">
         <Divider />
-        <PreventiviRigheTable ref="righeRef"
+        <PreventiviRigheTable
           :preventivo-id="preventivoId"
           :is-modificabile="isModificabile && !isReadonly" />
 
@@ -252,9 +271,9 @@ function formatCurrency(value) {
       </template>
 
       <!-- Integrazione (solo stato ACCETTATO) -->
-      <template v-if="isEdit && detail && isAccettato">
+      <template v-if="contentReady && isEdit && detail && isAccettato">
         <Divider />
-        <PreventiviIntegrazione ref="integrazioneRef" :preventivo-id="preventivoId" />
+        <PreventiviIntegrazione :preventivo-id="preventivoId" />
       </template>
 
       <DrawerFooter v-if="isModificabile" :loading="loading" :disabled="!canSave"

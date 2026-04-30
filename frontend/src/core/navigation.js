@@ -86,11 +86,23 @@ export const HOME_ITEM = { key: 'home', icon: 'pi pi-home', to: '/' }
 
 // Risolve la label tab/breadcrumb dalla route meta usando i18n.
 // Usato da router guard e AppBreadcrumb per evitare duplicazione.
-export function resolveTabLabel(meta, t) {
-  const { domain, menuKey } = meta
-  if (menuKey) return t(`nav_menu.${domain}.${menuKey}`)
-  if (domain && domain !== 'home') return t(`nav.${domain}`)
+export function resolveNavigationLabel({ domain, menuKey }, t, te = null) {
+  if (menuKey && domain) {
+    const key = `nav_menu.${domain}.${menuKey}`
+    if (!te || te(key)) return t(key)
+  }
+  if (domain && domain !== 'home') {
+    const key = `nav.${domain}`
+    if (!te || te(key)) return t(key)
+  }
   return null
+}
+
+// Risolve la label tab/breadcrumb dalla route meta usando i18n.
+// Usato da router guard, AppBreadcrumb, SidebarDomain e ContentTabs per
+// mantenere le label allineate alla sidebar.
+export function resolveTabLabel(meta, t, te = null) {
+  return resolveNavigationLabel(meta, t, te)
 }
 
 // Risolve l'icona tab dalla route meta.

@@ -131,4 +131,8 @@ export const useContrattiStore = defineStore('vendite-contratti', () => {
     addRiga, updateRiga, deleteRiga, fetchRighePreview,
     addUtility, updateUtility,
   }
+}, {
+  // Reset automatico al logout (autoResetPlugin): items + filters dell'utente
+  // non devono persistere per l'eventuale utente successivo sullo stesso browser.
+  userScoped: true,
 })

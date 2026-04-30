@@ -347,6 +347,7 @@ Il toggle e' gestito dallo store `useUiStore` (`isDark`, `toggleDarkMode`) e per
 | Componente | File | Descrizione |
 |---|---|---|
 | `NewButton` | [NewButton.vue](../../../../frontend/src/core/components/NewButton.vue) | Pulsante "Nuovo" con controllo permessi |
+| `RowActionsMenu` | [RowActionsMenu.vue](../../../../frontend/src/core/components/RowActionsMenu.vue) | Azioni di riga responsive. Props: `actions`, `row`, `tooltip`, `disabled`, `disableWhenInactive`. Se `row.attivo === false` o `row.is_active === false`, disabilita automaticamente le azioni operative salvo `allowWhenInactive: true` sulla singola azione (es. riattiva/storico/modifica quando la matita e' l'entrypoint del form). |
 | `StatusPage` | [StatusPage.vue](../../../../frontend/src/core/components/StatusPage.vue) | Pagine errore/forbidden/not-found |
 | `TagList` | [TagList.vue](../../../../frontend/src/core/components/TagList.vue) | Lista tag/label riutilizzabile |
 | `SoggettoResolver` | [SoggettoResolver.vue](../../../../frontend/src/core/components/SoggettoResolver.vue) | Mostra nome soggetto da ID |

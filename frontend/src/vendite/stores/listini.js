@@ -136,4 +136,8 @@ export const useListiniStore = defineStore('vendite-listini', () => {
     fetchList, fetchDetail, create, update,
     fetchVersioniListino, preloadVersioniForCurrentItems, invalidateVersioniListino
   }
+}, {
+  // Reset automatico al logout (autoResetPlugin): items + cache versioniByListino
+  // dell'utente non devono persistere per l'eventuale utente successivo.
+  userScoped: true,
 })

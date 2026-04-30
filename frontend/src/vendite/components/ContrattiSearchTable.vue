@@ -188,7 +188,7 @@ onMounted(() => {
       </Column>
       <Column :header="t('common.col_azioni')" class="app-col-actions" :exportable="false">
         <template #body="{ data }">
-          <RowActionsMenu :actions="buildRowActions(data)" />
+          <RowActionsMenu :row="data" :actions="buildRowActions(data)" />
         </template>
       </Column>
     </DataTable>

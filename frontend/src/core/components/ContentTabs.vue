@@ -13,8 +13,9 @@ import { useUiStore } from '../../stores/ui'
 import { useConfirmCloseTab } from '../composables/useConfirmCloseTab'
 import { useNotify } from '../composables/useNotify'
 import { BREAKPOINTS, TABS } from '../constants'
+import { resolveNavigationLabel } from '../navigation'
 
-const { t } = useI18n()
+const { t, te } = useI18n()
 const router = useRouter()
 const tabs = useTabsStore()
 const context = useContextStore()
@@ -40,6 +41,18 @@ const remainingClass = computed(() => {
 })
 
 const splitPopover = ref(null)
+
+function tabLabel(tab) {
+  if (tab.customLabel) return tab.label
+  return resolveNavigationLabel(tab, t, te) || tab.label
+}
+
+const mobileTabOptions = computed(() =>
+  tabs.tabs.map(tab => ({
+    id: tab.id,
+    label: tabLabel(tab),
+  })),
+)
 
 // Split view disponibile solo su desktop largo con almeno 2 tab
 const canSplit = computed(() =>
@@ -103,7 +116,7 @@ function handlePinTab(tab) {
         <i v-if="tab.icon" :class="tab.icon" class="tab-icon"></i>
         <!-- Indicatore tab pinnata -->
         <i v-if="tabs.isSplit && tabs.pinnedTab?.id === tab.id" class="pi pi-thumbtack tab-pin-icon"></i>
-        <span class="tab-label">{{ tab.label }}</span>
+        <span class="tab-label">{{ tabLabel(tab) }}</span>
         <!-- Indicatore dirty -->
         <span v-if="tab.dirty" class="tab-dirty-dot" v-tooltip.top="t('tabs.close_confirm_title')"></span>
         <!-- Indicatore contesto attivo -->
@@ -153,7 +166,7 @@ function handlePinTab(tab) {
             @click="handlePinTab(tab)"
           >
             <i v-if="tab.icon" :class="tab.icon" class="split-popover-icon"></i>
-            <span>{{ tab.label }}</span>
+            <span>{{ tabLabel(tab) }}</span>
           </div>
         </div>
       </Popover>
@@ -163,7 +176,7 @@ function handlePinTab(tab) {
     <div v-else class="content-tabs-mobile">
       <Select
         :modelValue="tabs.activeTabId"
-        :options="tabs.tabs"
+        :options="mobileTabOptions"
         optionLabel="label"
         optionValue="id"
         class="content-tabs-dropdown"

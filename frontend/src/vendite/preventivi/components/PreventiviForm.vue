@@ -4,6 +4,7 @@
 import { useI18n } from 'vue-i18n'
 import { DATE_FORMAT } from '../../../core/constants'
 import UtilityPerRuoloSelect from '../../../core/components/UtilityPerRuoloSelect.vue'
+import LookupSelect from '../../../core/components/LookupSelect.vue'
 import DatePicker from 'primevue/datepicker'
 import InputNumber from 'primevue/inputnumber'
 import ToggleSwitch from 'primevue/toggleswitch'
@@ -54,7 +55,8 @@ const props = defineProps({
       <div class="form-field">
         <label>{{ t('preventivi.field_valuta') }}</label>
         <LookupSelect v-model="form.valuta_id" rel="config.valute"
-          :placeholder="t('preventivi.field_valuta')" :disabled="!isModificabile" />
+          :placeholder="t('preventivi.field_valuta')" :disabled="!isModificabile"
+          show-clear />
       </div>
     </div>
 
@@ -62,7 +64,8 @@ const props = defineProps({
       <div class="form-field">
         <label>{{ t('preventivi.field_termini_pagamento') }}</label>
         <LookupSelect v-model="form.termine_pagamento_id" rel="config.termini_pagamento"
-          :placeholder="t('preventivi.field_termini_pagamento')" :disabled="!isModificabile" />
+          :placeholder="t('preventivi.field_termini_pagamento')" :disabled="!isModificabile"
+          show-clear />
       </div>
       <div class="form-field" style="display: flex; align-items: center; gap: 0.5rem; padding-top: 1.5rem;">
         <ToggleSwitch v-model="form.fatturazione_immediata" :disabled="!isModificabile" />

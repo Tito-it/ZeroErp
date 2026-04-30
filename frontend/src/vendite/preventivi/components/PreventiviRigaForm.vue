@@ -7,11 +7,12 @@ import { useNotify } from '../../../core/composables/useNotify'
 import { extractApiError, extractApiErrorCode } from '../../../core/utils/apiError'
 import { usePreventiviStore } from '../stores/preventivi'
 import { useLimitiPricing } from '../../composables/useLimitiPricing'
+import { listArticoloUom } from '../../../catalogo/api/catalogo'
 import ArticoloLookup from '../../../core/components/ArticoloLookup.vue'
-import LookupSelect from '../../../core/components/LookupSelect.vue'
 import IvaSelect from '../../../core/components/IvaSelect.vue'
 import InputNumber from 'primevue/inputnumber'
 import InputText from 'primevue/inputtext'
+import Select from 'primevue/select'
 import Button from 'primevue/button'
 import Message from 'primevue/message'
 
@@ -68,6 +69,37 @@ watch(
 // Articolo selezionato (per restore autocomplete)
 const articoloObj = ref(null)
 
+// UoM operative dell'articolo (pattern VersioneDrawer/ContrattoRigheDrawer):
+// le UoM ammesse per la riga sono solo quelle definite a livello articolo,
+// non l'intero catalogo.unita_misura. Caricate al cambio articolo.
+const uomOptions = ref([])
+const uomLoading = ref(false)
+
+function uomLabel(uom) {
+  const base = uom.is_base ? ` ${t('listini.uom_base_suffix')}` : ''
+  return `${uom.uom_codice} — ${uom.uom_descrizione}${base}`
+}
+
+// Scopo: carica le UoM operative dell'articolo e, in create, pre-seleziona la base.
+async function loadUomPerArticolo(articoloId) {
+  uomOptions.value = []
+  if (!articoloId) return
+  uomLoading.value = true
+  try {
+    const res = await listArticoloUom(articoloId)
+    const list = res.data.data?.results || res.data.data || []
+    uomOptions.value = list
+    if (!isEdit.value && !form.value.uom_operativa_id) {
+      const base = list.find(u => u.is_base)
+      form.value.uom_operativa_id = base ? base.uom_id : (list.length === 1 ? list[0].uom_id : null)
+    }
+  } catch {
+    uomOptions.value = []
+  } finally {
+    uomLoading.value = false
+  }
+}
+
 watch(() => props.riga, (riga) => {
   if (riga) {
     form.value = {
@@ -84,13 +116,17 @@ watch(() => props.riga, (riga) => {
   } else {
     form.value = { articolo_id: null, descrizione: '', quantita: 1, prezzo_unitario: null, sconto_percentuale: 0, iva_id: null, uom_operativa_id: null, ordine: null }
     articoloObj.value = null
+    uomOptions.value = []
   }
 }, { immediate: true })
 
 function onArticoloSelect(item) {
   form.value.articolo_id = item.id
   form.value.descrizione = item.descrizione || ''
+  // Reset UoM: cambio articolo invalida l'eventuale UoM precedente.
+  form.value.uom_operativa_id = null
   articoloObj.value = item
+  loadUomPerArticolo(item.id)
 }
 
 const canSave = computed(() => form.value.articolo_id && form.value.quantita > 0)
@@ -122,15 +158,13 @@ function buildRigaPayload(extras = {}) {
 }
 
 // Scopo: invia il payload riga al backend, gestendo edit vs create.
-//        Wrapper unico per evitare duplicazione di logica response/loading
-//        tra handleSave e handleRichiediApprovazione.
-async function submitRiga(payload) {
-  const apiCall = () => isEdit.value
+//        Le action dello store sono gia' unwrappate (ritornano res.data.data
+//        direttamente, vedi memoria feedback_useapihandler_solo_axios), quindi
+//        non serve nessun ulteriore unwrap qui.
+function submitRiga(payload) {
+  return isEdit.value
     ? store.aggiornaRiga(props.preventivoId, props.riga.id, payload)
     : store.addRiga(props.preventivoId, payload)
-  const response = await apiCall()
-  const body = response?.data
-  return (body && typeof body === 'object' && 'data' in body) ? body.data : body
 }
 
 // Scopo: Salva riga intercettando specificamente i codici L2
@@ -224,8 +258,13 @@ async function handleRichiediApprovazione() {
     <div class="form-grid-2col" v-if="!isEdit">
       <div class="form-field">
         <label>{{ t('preventivi.riga_uom') }}</label>
-        <LookupSelect v-model="form.uom_operativa_id" rel="catalogo.unita_misura"
-          :placeholder="t('preventivi.riga_uom')" />
+        <Select v-model="form.uom_operativa_id"
+          :options="uomOptions" :option-label="uomLabel" option-value="uom_id"
+          :loading="uomLoading"
+          :disabled="!form.articolo_id || uomLoading"
+          :placeholder="form.articolo_id
+            ? t('preventivi.riga_uom')
+            : t('vendite.promo_articoli.field_uom_articolo_first')" />
       </div>
       <div class="form-field">
         <label>{{ t('preventivi.riga_ordine') }}</label>

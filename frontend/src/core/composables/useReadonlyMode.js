@@ -14,6 +14,11 @@
 // Uso nei componenti figli (consumer):
 //   const isReadonly = useInjectReadonly()
 //   const isBlocked = useInjectBlocked()
+//
+// Convenzione (non rompere): chi fa `provide(READONLY_KEY, ...)` DEVE
+// includere `inject(READONLY_KEY)` nell'OR. Sovrascrivere senza OR rompe
+// la propagazione del readonly da contesti superiori (SplitReadonlyPanel,
+// LETTURA area/oggetto, drawer parent in stato locked).
 
 import { computed, provide, inject, ref } from 'vue'
 import { useAuthStore } from '../../stores/auth'

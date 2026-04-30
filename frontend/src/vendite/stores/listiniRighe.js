@@ -81,4 +81,8 @@ export const useListiniRigheStore = defineStore('vendite-listini-righe', () => {
     filters,
     setContext, clearContext, fetchList
   }
+}, {
+  // Reset automatico al logout (autoResetPlugin): items + contesto listino/
+  // versione dell'utente non devono persistere per l'eventuale utente successivo.
+  userScoped: true,
 })

@@ -229,7 +229,7 @@ function close() {
       <div class="form-grid">
         <!-- === Dimensioni (Fase 4: immutabilita' data-driven da BE non_editable_fields) === -->
         <div class="form-field">
-          <label>{{ t('amministrazione.matrice_categorie_listini.field_categoria') }} <span v-if="!isEdit">*</span></label>
+          <label>{{ t('amministrazione.matrice_categorie_listini.field_categoria') }} *</label>
           <LookupSelect
             v-model="form.categoria_cliente_id"
             rel="anagrafiche.categorie_clienti"
@@ -238,16 +238,7 @@ function close() {
           />
         </div>
         <div class="form-field">
-          <label>{{ t('amministrazione.matrice_categorie_listini.field_utility') }} <span v-if="!isEdit">*</span></label>
-          <LookupSelect
-            v-model="form.utility_id"
-            rel="config.utilities"
-            :placeholder="t('amministrazione.matrice_categorie_listini.field_utility_placeholder')"
-            :disabled="isFieldImmutable('utility_id') || isReadOnlyEffective"
-          />
-        </div>
-        <div class="form-field">
-          <label>{{ t('amministrazione.matrice_categorie_listini.field_emittente') }} <span v-if="!isEdit">*</span></label>
+          <label>{{ t('amministrazione.matrice_categorie_listini.field_emittente') }} *</label>
           <Select
             v-model="form.emittente_soggetto_ruolo_id"
             :options="emittentiLookup.items.value"
@@ -258,15 +249,26 @@ function close() {
             :disabled="isFieldImmutable('emittente_soggetto_ruolo_id') || isReadOnlyEffective"
           />
         </div>
-        <div class="form-field">
-          <label>{{ t('amministrazione.matrice_categorie_listini.field_classe_utenza') }}</label>
-          <LookupSelect
-            v-model="form.classe_utenza_id"
-            rel="config.classi_utenze"
-            :placeholder="t('amministrazione.matrice_categorie_listini.field_classe_utenza_placeholder')"
-            showClear
-            :disabled="isFieldImmutable('classe_utenza_id') || isReadOnlyEffective"
-          />
+        <div class="form-grid-2col">
+          <div class="form-field">
+            <label>{{ t('amministrazione.matrice_categorie_listini.field_utility') }} *</label>
+            <LookupSelect
+              v-model="form.utility_id"
+              rel="config.utilities"
+              :placeholder="t('amministrazione.matrice_categorie_listini.field_utility_placeholder')"
+              :disabled="isFieldImmutable('utility_id') || isReadOnlyEffective"
+            />
+          </div>
+          <div class="form-field">
+            <label>{{ t('amministrazione.matrice_categorie_listini.field_classe_utenza') }}</label>
+            <LookupSelect
+              v-model="form.classe_utenza_id"
+              rel="config.classi_utenze"
+              :placeholder="t('amministrazione.matrice_categorie_listini.field_classe_utenza_placeholder')"
+              showClear
+              :disabled="isFieldImmutable('classe_utenza_id') || isReadOnlyEffective"
+            />
+          </div>
         </div>
 
         <Message v-if="isEdit" severity="info" :closable="false">
@@ -283,52 +285,56 @@ function close() {
             :disabled="isReadOnlyEffective"
           />
         </div>
-        <div class="form-field">
-          <label>{{ t('amministrazione.matrice_categorie_listini.field_tipo_variazione') }}</label>
-          <Select
-            v-model="form.tipo_variazione"
-            :options="tipoVariazioneLookup.items.value"
-            :loading="tipoVariazioneLookup.loading.value"
-            option-label="descrizione"
-            option-value="codice"
-            :placeholder="t('amministrazione.matrice_categorie_listini.variazione_nessuna')"
-            show-clear
-            @change="onTipoVariazioneChange"
-            :disabled="isReadOnlyEffective"
-          />
-        </div>
-        <div class="form-field">
-          <label>{{ t('amministrazione.matrice_categorie_listini.field_valore_variazione') }}</label>
-          <InputNumber
-            v-model="form.valore_variazione"
-            :max-fraction-digits="4"
-            :disabled="form.tipo_variazione == null || isReadOnlyEffective"
-            showButtons
-          />
-          <small class="text-color-secondary">
-            {{ t('amministrazione.matrice_categorie_listini.field_valore_variazione_hint') }}
-          </small>
+        <div class="form-grid-2col">
+          <div class="form-field">
+            <label>{{ t('amministrazione.matrice_categorie_listini.field_tipo_variazione') }}</label>
+            <Select
+              v-model="form.tipo_variazione"
+              :options="tipoVariazioneLookup.items.value"
+              :loading="tipoVariazioneLookup.loading.value"
+              option-label="descrizione"
+              option-value="codice"
+              :placeholder="t('amministrazione.matrice_categorie_listini.variazione_nessuna')"
+              show-clear
+              @change="onTipoVariazioneChange"
+              :disabled="isReadOnlyEffective"
+            />
+          </div>
+          <div class="form-field">
+            <label>{{ t('amministrazione.matrice_categorie_listini.field_valore_variazione') }}</label>
+            <InputNumber
+              v-model="form.valore_variazione"
+              :max-fraction-digits="4"
+              :disabled="form.tipo_variazione == null || isReadOnlyEffective"
+              showButtons
+            />
+            <small class="text-color-secondary">
+              {{ t('amministrazione.matrice_categorie_listini.field_valore_variazione_hint') }}
+            </small>
+          </div>
         </div>
 
         <!-- === Validita' === -->
-        <div class="form-field">
-          <label>{{ t('amministrazione.matrice_categorie_listini.field_valido_dal') }} *</label>
-          <DatePicker
-            v-model="form.valido_dal"
-            date-format="dd/mm/yy"
-            show-icon
-            :disabled="isReadOnlyEffective"
-          />
-        </div>
-        <div class="form-field">
-          <label>{{ t('amministrazione.matrice_categorie_listini.field_valido_al') }}</label>
-          <DatePicker
-            v-model="form.valido_al"
-            date-format="dd/mm/yy"
-            show-icon
-            show-button-bar
-            :disabled="isReadOnlyEffective"
-          />
+        <div class="form-grid-2col">
+          <div class="form-field">
+            <label>{{ t('amministrazione.matrice_categorie_listini.field_valido_dal') }} *</label>
+            <DatePicker
+              v-model="form.valido_dal"
+              date-format="dd/mm/yy"
+              show-icon
+              :disabled="isReadOnlyEffective"
+            />
+          </div>
+          <div class="form-field">
+            <label>{{ t('amministrazione.matrice_categorie_listini.field_valido_al') }}</label>
+            <DatePicker
+              v-model="form.valido_al"
+              date-format="dd/mm/yy"
+              show-icon
+              show-button-bar
+              :disabled="isReadOnlyEffective"
+            />
+          </div>
         </div>
 
         <!-- === Attivo === -->

@@ -216,7 +216,7 @@ function buildRowActions(data) {
 <template>
   <Column :header="t('common.col_azioni')" class="app-col-actions" :exportable="false">
     <template #body="{ data }">
-      <RowActionsMenu :actions="buildRowActions(data)" />
+      <RowActionsMenu :row="data" :actions="buildRowActions(data)" />
     </template>
   </Column>
 </template>
@@ -232,9 +232,23 @@ function buildRowActions(data) {
   severity?: 'primary' | 'warn' | 'danger', // opzionale (vedi tabella sotto)
   visible?: boolean,        // default true — azioni non applicabili si nascondono
   disabled?: boolean,       // default false — azione grigia ma presente
+  allowWhenInactive?: boolean, // default false — escape per azioni ammesse su record inattivi
   command: () => void,      // handler click
 }
 ```
+
+**Regola record inattivo (`attivo=false` / `is_active=false`):**
+
+- Se la lista ha una colonna stato standard (`attivo` o `is_active`), passare sempre
+  la riga al componente: `<RowActionsMenu :row="data" :actions="buildRowActions(data)" />`.
+- `RowActionsMenu` disabilita automaticamente le azioni operative su record inattivi,
+  sommando questa regola a eventuali `disabled` gia' presenti per permessi/capability.
+- Il click riga resta abilitato: la modifica/consultazione del record continua ad aprire
+  il drawer, dove possono vivere azioni come riattiva o consultazione.
+- Le azioni esplicitamente ammesse su record inattivi devono dichiarare
+  `allowWhenInactive: true` (es. `riattiva`, `visualizza storico`, `modifica`
+  quando la matita e' l'entrypoint standard del form nella lista/drawer).
+- Il tooltip standard per il blocco e' `common.azione_non_disponibile_record_inattivo`.
 
 **Severity — colore inline e popup:**
 
@@ -257,6 +271,7 @@ Solo `danger` differenzia anche nel popup: per le altre severity la label + icon
 | Larghezza colonna (auto / 60px) | `.app-col-actions` in `main.css` (media query) |
 | Voce menu distruttiva | `.app-menu-item-danger` in `main.css` (eredita `--app-btn-delete-*`) |
 | Tooltip fallback kebab | `common.altre_azioni` ("Altre azioni") in `it.json` |
+| Tooltip record inattivo | `common.azione_non_disponibile_record_inattivo` in `it.json` |
 | Header colonna azioni | `common.col_azioni` ("Azioni") in `it.json` — sempre questa chiave, mai domain-specific |
 
 **Regole fisse:**
@@ -1739,7 +1754,7 @@ const { isAllowed } = useActionPermission('genera_fatture_lotti')
 | `ReloadButton` | Pulsante refresh toolbar, auto-hide solo se `isBlocked` (livello oggetto) | — | Tutte le SearchTable |
 | `ReadonlyBadge` | Badge grigio "Sola lettura", auto-visibile se `isReadonly && !isBlocked`, responsive (icona-only su mobile) | — | Toolbar liste + `DrawerTitle` |
 | `AccessoBloccatoPanel` | Pannello sostitutivo "Accesso negato a questo elenco" per BLOCCATO oggetto | — | SearchTable con `v-if="isBlocked"` |
-| `RowActionsMenu` | Azioni di riga responsive: pulsanti inline su desktop, kebab `⋮` su tablet/touch | `actions`, `tooltip`, `disabled` | Tutte le SearchTable con azioni secondarie |
+| `RowActionsMenu` | Azioni di riga responsive: pulsanti inline su desktop, kebab `⋮` su tablet/touch. Se riceve `row` disabilita le azioni operative su record inattivi (`attivo=false` / `is_active=false`) salvo `allowWhenInactive` | `actions`, `row`, `tooltip`, `disabled`, `disableWhenInactive` | Tutte le SearchTable con azioni secondarie |
 | `PaginationInfo` | Info paginazione (es. "1-50 di 1234") | `pagination` | SearchTable |
 | `TagList` | Lista tag con overflow +N e tooltip | `items`, `labelField`, `maxVisible`, `severity` | Ruoli in lista soggetti |
 | `AppDrawer` | Drawer generico con header + footer + slot body | `title`, `width` | Utility wrapper |
