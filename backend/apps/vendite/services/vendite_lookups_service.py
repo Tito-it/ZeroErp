@@ -1,0 +1,85 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+# Doc: Python
+# Scopo: Lookup statici per enum di dominio vendite (Fase 2 refactor frontend
+#        vendite). Single source of truth per i set whitelisted gia' usati
+#        dai service e dai CHECK constraint DB; espone una rappresentazione
+#        UI-friendly (codice + descrizione + ordering) per i wrapper Select
+#        del frontend (TipoVariazioneSelect, AmbitoContrattoSelect,
+#        ModalitaPricingSelect).
+#
+#        Pattern modello: catalogo_service.fn_list_uom_rounding_modes
+#        (lookup statico dedicato, niente DB, non gestiti dall'admin).
+# ------------------------------------------------------------
+
+from __future__ import annotations
+
+
+# Whitelist enum gia' presenti nei service di dominio (single source of truth):
+#   - contratti_service._TIPI_VARIAZIONE  -> qui rinominato per contesto
+#   - promo_articoli_service._TIPI_VARIAZIONE  -> stessa enum + PREZZO_FISSO
+#   - contratti_service._AMBITI_VALIDI
+# I valori sono allineati ai CHECK constraint DB (vendite.contratti,
+# vendite.promo_articoli, ecc.). Aggiungerli/cambiarli qui senza propagare
+# al DB rompe il salvataggio: i lookup sono solo UI.
+
+# Scopo: tipo_variazione ammesso nei contratti (contratti.tipo_variazione_globale).
+#        Niente PREZZO_FISSO (specifico delle promo).
+_TIPI_VARIAZIONE_CONTRATTO: tuple[tuple[str, str, int], ...] = (
+    ("PERCENTUALE", "Percentuale (es. -10%)", 1),
+    ("VALORE_FISSO", "Valore fisso (es. -2,50 €)", 2),
+)
+
+# Scopo: tipo_variazione ammesso nelle promo articoli. Aggiunge PREZZO_FISSO
+#        (prezzo assoluto sostitutivo): unico livello dove e' ammesso.
+_TIPI_VARIAZIONE_PROMO: tuple[tuple[str, str, int], ...] = (
+    ("PERCENTUALE", "Percentuale (es. -10%)", 1),
+    ("VALORE_FISSO", "Valore fisso (es. -2,50 €)", 2),
+    ("PREZZO_FISSO", "Prezzo fisso (sostituisce il prezzo)", 3),
+)
+
+# Scopo: ambito contratto (contratti.ambito).
+_AMBITI_CONTRATTO: tuple[tuple[str, str, int], ...] = (
+    ("COMMODITY", "Commodity (utility, materia prima)", 1),
+    ("COMMERCIO", "Commercio (beni e servizi)", 2),
+)
+
+# Scopo: modalita' pricing contratto. Non e' una colonna DB ma un'astrazione
+#        derivata da listino_id + tipo_variazione_globale (vedi
+#        ContrattoDrawer.deriveModalita). Lookup la espone come single source
+#        of truth lato API per evitare di duplicare i tre codici nel FE.
+_MODALITA_PRICING_CONTRATTO: tuple[tuple[str, str, int], ...] = (
+    ("A", "Listino vincolante + variazione globale", 1),
+    ("B", "Listino + override righe", 2),
+    ("C", "Interamente negoziato", 3),
+)
+
+
+def _to_payload(rows: tuple[tuple[str, str, int], ...]) -> list[dict[str, object]]:
+    # Scopo: trasforma tuple (codice, descrizione, ordering) in dict pronti
+    #        per success_response, allineato a fn_list_uom_rounding_modes.
+    return [
+        {"codice": codice, "descrizione": descrizione, "ordering": ordering}
+        for codice, descrizione, ordering in rows
+    ]
+
+
+# Scopo: lista tipi_variazione ammessi per contratti.
+def fn_list_tipi_variazione_contratto() -> list[dict[str, object]]:
+    return _to_payload(_TIPI_VARIAZIONE_CONTRATTO)
+
+
+# Scopo: lista tipi_variazione ammessi per promo articoli (include PREZZO_FISSO).
+def fn_list_tipi_variazione_promo() -> list[dict[str, object]]:
+    return _to_payload(_TIPI_VARIAZIONE_PROMO)
+
+
+# Scopo: lista ambiti ammessi per contratti.
+def fn_list_ambiti_contratto() -> list[dict[str, object]]:
+    return _to_payload(_AMBITI_CONTRATTO)
+
+
+# Scopo: lista modalita' pricing ammesse per contratti.
+def fn_list_modalita_pricing_contratto() -> list[dict[str, object]]:
+    return _to_payload(_MODALITA_PRICING_CONTRATTO)

@@ -30,6 +30,7 @@ import ReloadButton from '../../core/components/ReloadButton.vue'
 import ReadonlyBadge from '../../core/components/ReadonlyBadge.vue'
 import AccessoBloccatoPanel from '../../core/components/AccessoBloccatoPanel.vue'
 import { useInjectBlocked } from '../../core/composables/useReadonlyMode'
+import { useAuthStore } from '../../stores/auth'
 import AlertScadenzeWidget from './AlertScadenzeWidget.vue'
 import AttivaVersioneDialog from './AttivaVersioneDialog.vue'
 import ChiudiVersioneDialog from './ChiudiVersioneDialog.vue'
@@ -48,6 +49,11 @@ const store = useListiniStore()
 const { execute } = useApiHandler()
 const isBlocked = useInjectBlocked()
 const { confirmDelete } = useConfirmAction()
+// Fase 5.F2: TestResolverDialog e' uno strumento DIAGNOSTICO (sviluppatori
+// + admin). Non e' azione operativa: gate rigido su SUPER_ADMIN per non
+// confondere gli operatori. Future: estendere a un'azione processo dedicata
+// se servono ruoli intermedi (es. "supporto pricing").
+const auth = useAuthStore()
 const { searchText, onPage, onSort, applyFilters, reload, paginatorProps } = useSearchTable(store, {
   defaultSortField: 'descrizione'
 })
@@ -279,7 +285,10 @@ onMounted(() => store.fetchList())
       </div>
       <div class="app-page-actions">
         <AlertScadenzeWidget />
-        <Button icon="pi pi-calculator" text severity="info"
+        <!-- Test resolver pricing: strumento diagnostico (Fase 5.F2),
+             visibile solo a SUPER_ADMIN per non confondere gli operatori. -->
+        <Button v-if="auth.isSuperAdmin"
+          icon="pi pi-calculator" text severity="info"
           v-tooltip.bottom="t('listini.test_prezzo')" @click="emit('test-resolver')" />
         <ReadonlyBadge />
         <ReloadButton @click="reload" />

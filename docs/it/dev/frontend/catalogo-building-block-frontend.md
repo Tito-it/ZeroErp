@@ -43,6 +43,8 @@
 | `useSearchDetail` | [useSearchDetail.js](../../../../frontend/src/core/composables/useSearchDetail.js) | Caricamento lazy righe dettaglio per espansione ricerca |
 | `useAiAssistant` | [useAiAssistant.js](../../../../frontend/src/core/composables/useAiAssistant.js) | Conversazione assistente AI (messaggi, azioni, conferme) |
 | `useParameterDefaults` | [useParameterDefaults.js](../../../../frontend/src/core/composables/useParameterDefaults.js) | Carica default da `config.parameters` con override utente. Props: `codes[]`. Metodi: `load()` (con cache, error-safe). Restituisce `defaults` (mappa `{code: valore}`). |
+| `useArticoloUomOptions` | [useArticoloUomOptions.js](../../../../frontend/src/core/composables/useArticoloUomOptions.js) | **Fase 4.F1 refactor frontend vendite.** Centralizza il pattern UoM operative articolo (4 consumer: `PromoArticoloDrawer`, `ContrattoRigheDrawer`, `VersioneDrawer`, `PreventiviRigaForm`). Espone `uomOptions` (ref array), `uomLoading` (ref bool), `loadUomPerArticolo(articoloId)` (fetch puro, ritorna lista), `pickBaseUomId(list)` (helper: UoM base, o l'unica disponibile, o null), `resetUomOptions()`. Token pattern interno scarta risposte stantie su cambi articolo veloci. Il caller decide quando applicare l'autopick base via wrapper thin (criterio diverso per consumer: `!isEdit`, `formMode === 'create'`, ecc.). |
+| `useEntityCapabilities` | [useEntityCapabilities.js](../../../../frontend/src/core/composables/useEntityCapabilities.js) | **Fase 4.F2 refactor frontend vendite.** Adapter sottile per consumare il blob capabilities BE (Fase 1: `script.fn_available_actions_*`/`fn_capability_promo_articolo`). Consumer: `PreventiviDrawer` + `ContrattoDrawer` (`editFlag='can_edit_testata'` default), `PromoArticoloDrawer` (`editFlag='can_update'`). Ritorna `availableActions` (computed array), `nonEditableFields` (computed Set lookup O(1)), `canEdit` (computed bool sul flag `editFlag`), `isLocked(field)` (check `!canEdit OR Set.has`), `flag(key)` (getter generico per altri `can_*`). Mai logica derivata: lookup puro. |
 
 ---
 
@@ -98,6 +100,11 @@
 | `getBillingAccountLookupById` | [apiCore.js](../../../../frontend/src/core/apiCore.js) | Restore singolo BA arricchito per edit (`GET /anagrafiche/billing-account/{id}/lookup/`) |
 | `lookupContiContabili` | [apiCore.js](../../../../frontend/src/core/apiCore.js) | Lookup dedicato conti contabili con filtro tipo (`GET /core/lookup/conti-contabili/?tipo=A` o `?tipo=V`). Usato da `ContoContabileSelect`. |
 | `lookupUomRoundingModes` | [catalogo.js](../../../../frontend/src/catalogo/api/catalogo.js) | Lookup statico modi di arrotondamento UoM operativa (`GET /catalogo/lookup/rounding-modes/`). Restituisce 5 codici fissi (HALF_UP, HALF_DOWN, HALF_EVEN, UP, DOWN) con descrizione. Single source of truth lato BE: `catalogo_service._ROUNDING_MODE_VALIDI`. Usato da `RoundingModeSelect`. |
+| `lookupTipiVariazioneContratto` / `lookupTipiVariazionePromo` | [vendite/api/lookup.js](../../../../frontend/src/vendite/api/lookup.js) | Lookup statici tipi variazione vendite (Fase 2 refactor frontend). Contratto = `PERCENTUALE`/`VALORE_FISSO`; promo aggiunge `PREZZO_FISSO`. Single source of truth lato BE: `vendite_lookups_service`. Usati da `TipoVariazioneSelect`. |
+| `lookupAmbitiContratto` | [vendite/api/lookup.js](../../../../frontend/src/vendite/api/lookup.js) | Lookup statico ambiti contratto (`COMMODITY`/`COMMERCIO`). Usato da `AmbitoContrattoSelect`. |
+| `lookupModalitaPricingContratto` | [vendite/api/lookup.js](../../../../frontend/src/vendite/api/lookup.js) | Lookup statico modalita pricing contratto (`A`/`B`/`C`). Astrazione UI (non colonna DB) esposta lato BE per single-source. Usato da `ContrattoDrawer` per popolare il `SelectButton`. |
+| `getContrattoFormDefaults` / `getPreventivoFormDefaults` | [vendite/api/formDefaults.js](../../../../frontend/src/vendite/api/formDefaults.js) | **Fase 2.B3-B4 refactor frontend vendite.** Defaults form BA-aware. Param opzionale `billing_account_id`: se presente popola categoria_cliente_id_snapshot/utility (contratti) o valuta/termini/iva dal cliente del BA (preventivi). Sempre presenti `default_data`/`default_valido_dal`/`default_validita_al` da parameter. Single source of truth lato BE: `vendite_form_defaults_service`. |
+| `getVersioneNewDefaults` / `getVersioneCloneDefaults` / `getVersioneCloseDefaults` | [vendite/api/formDefaults.js](../../../../frontend/src/vendite/api/formDefaults.js) | **Fase 2.B5a/b/c refactor frontend vendite.** Defaults contestuali alle versioni listino: nuova (existing_drafts + default_valido_dal), clone (codice + suffisso da parameter, min_valido_dal = source.valido_dal), close (default_valido_al = existing oppure oggi+lead_gg). Consumati da `VersioneFormDrawer`/`CloneVersioneDrawer`/`ChiudiVersioneDialog` al posto di `useParameterDefaults` cablato. |
 
 ---
 
@@ -380,3 +387,15 @@ Il toggle e' gestito dallo store `useUiStore` (`isDark`, `toggleDarkMode`) e per
 | `ArticoloBomDrawer` | [ArticoloBomDrawer.vue](../../../../frontend/src/catalogo/components/ArticoloBomDrawer.vue) | Sub-drawer distinta base. Lista componenti sempre visibile + form inserimento sotto. `valido_al` editabile inline nella DataTable. Lookup articoli via `ArticoloLookup`. Props: `visible`, `articolo-id`. Emette `@saved`. |
 | `ArticoloNoteDrawer` | [ArticoloNoteDrawer.vue](../../../../frontend/src/catalogo/components/ArticoloNoteDrawer.vue) | Sub-drawer note articolo. Pattern formMode con card layout. Stile nota via `LookupSelect rel="config.note_stili"`. Props: `visible`, `articolo-id`. Emette `@saved`. |
 | `RoundingModeSelect` | [RoundingModeSelect.vue](../../../../frontend/src/catalogo/components/RoundingModeSelect.vue) | **Wrapper standard modi arrotondamento UoM operativa.** Usa `useGlobalLookup` (chiave `catalogo.uom_rounding_modes`) sul lookup statico `lookupUomRoundingModes` con cache modulo-level. Display `"descrizione (codice)"`. Props: `modelValue` (string codice), `placeholder`, `disabled`, `showClear`. Sostituisce il vecchio `roundingOptions` hardcoded. Usato da: ArticoloUomDrawer (Fase 1 refactor catalogo). |
+
+
+---
+
+## Componenti Dominio Vendite (`src/vendite/components/`)
+
+### Wrapper select per enum di dominio (Fase 2 refactor frontend)
+
+| Componente | File | Descrizione |
+| --- | --- | --- |
+| `TipoVariazioneSelect` | [TipoVariazioneSelect.vue](../../../../frontend/src/vendite/components/TipoVariazioneSelect.vue) | **Wrapper standard tipo_variazione.** Prop `scope` discrimina `'contratto'` (PERCENTUALE/VALORE_FISSO) vs `'promo'` (+ PREZZO_FISSO). Cache modulo-level via `useGlobalLookup` con chiavi `vendite.tipi_variazione.<scope>`. Display `"descrizione (codice)"`. Sostituisce `tipoVariazioneOptions` cablato in `ContrattoDrawer` e `PromoArticoloDrawer`. |
+| `AmbitoContrattoSelect` | [AmbitoContrattoSelect.vue](../../../../frontend/src/vendite/components/AmbitoContrattoSelect.vue) | **Wrapper standard ambito contratto** (COMMODITY/COMMERCIO). Cache `vendite.ambiti_contratto`. Sostituisce `ambitoOptions` cablato. |

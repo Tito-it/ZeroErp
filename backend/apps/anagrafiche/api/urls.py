@@ -35,7 +35,6 @@ from apps.anagrafiche.api.views_emittenti_fiscali import (
     EmittentiFiscaliView,
 )
 from apps.anagrafiche.api.views_fornitori import FornitoriDetailView, FornitoriView
-from apps.anagrafiche.api.views_matrice_indirizzi import MatriceIndirizziDetailView, MatriceIndirizziView
 from apps.anagrafiche.api.views_contatti_ruolo import RuoloContattiDetailView, RuoloContattiView
 from apps.anagrafiche.api.views_indirizzi_ruolo import RuoloIndirizziDetailView, RuoloIndirizziView
 from apps.anagrafiche.api.views_codici_postali import CodiciPostaliDetailView, CodiciPostaliView
@@ -123,9 +122,6 @@ urlpatterns = [
     # Sub-resource: utilities per emittente
     path("emittenti-fiscali/<int:emittente_id>/utilities/", EmittentiFiscaliUtilitiesView.as_view(), name="anagrafiche-emittenti-fiscali-utilities-list"),
     path("emittenti-fiscali/<int:emittente_id>/utilities/<int:record_id>/", EmittentiFiscaliUtilitiesDetailView.as_view(), name="anagrafiche-emittenti-fiscali-utilities-detail"),
-    # Matrice indirizzi per ruolo
-    path("matrice-indirizzi-ruolo/", MatriceIndirizziView.as_view(), name="anagrafiche-matrice-indirizzi-list"),
-    path("matrice-indirizzi-ruolo/<int:regola_id>/", MatriceIndirizziDetailView.as_view(), name="anagrafiche-matrice-indirizzi-detail"),
     # Utility ammesse per creazione manuale
     path("utilities/manual-lookup/", UtilitiesManualLookupView.as_view(), name="anagrafiche-utilities-manual-lookup"),
     # Billing account — lookup ricco per autocomplete cross-dominio

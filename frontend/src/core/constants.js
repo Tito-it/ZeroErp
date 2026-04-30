@@ -284,7 +284,6 @@ export const TAB_ENTITIES = {
   FORNITORE: 'fornitore',
   INDIRIZZO: 'indirizzo',
   LISTINO: 'listino',
-  MATRICE_INDIRIZZI: 'matrice-indirizzi',
   OPERATORE: 'operatore',
   PRATICA: 'pratica',
   PREVENTIVO: 'preventivo',

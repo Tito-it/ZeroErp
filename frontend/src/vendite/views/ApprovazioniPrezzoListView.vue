@@ -83,14 +83,14 @@ function openRifiutaDialog(pratica) {
   dialogVisible.value = true
 }
 
-// Estrae riga_id dal meta della pratica. Il BE serializza meta JSONB:
-// `meta.preventivo_id` e `meta.articolo_id` sono presenti, ma per
-// l'azione approva/rifiuta serve riga_id che deriva dalla relazione
-// pratica -> preventivi_righe (FK pratica_approvazione_prezzo_id sulla riga).
-// Per semplicita' Sprint E inseriamo `riga_preventivo_id` in meta lato BE.
+// Estrae riga_id dal meta della pratica. Contratto BE:
+// `META_KEY_RIGA_PREVENTIVO_ID = "riga_preventivo_id"` in
+// approvazioni_prezzo_service. Fallback `riga_id` per pratiche legacy.
+// Mantenere allineato col BE: typo qui = bottone disabilitato silenziosamente.
+const META_KEY_RIGA_PREVENTIVO_ID = 'riga_preventivo_id'
 function rigaIdFromPratica(pratica) {
   const m = pratica?.meta ?? {}
-  return m.riga_preventivo_id ?? m.riga_id ?? null
+  return m[META_KEY_RIGA_PREVENTIVO_ID] ?? m.riga_id ?? null
 }
 
 async function confirmDialog() {
@@ -122,6 +122,20 @@ function onPage(event) {
   limit.value = event.rows
   offset.value = event.first
   fetchPage()
+}
+
+// Fase 5.F1: tooltip per bottoni disabilitati. action_reason e' codice
+// stabile lato BE; mappiamo qui in chiave i18n. Restituisce undefined se
+// non c'e' reason (bottone abilitato): v-tooltip non viene attivato.
+const ACTION_REASON_KEYS = {
+  PERMESSO_MANCANTE: 'approvazioni_prezzo.reason_permesso_mancante',
+  RIGA_NON_LINKATA: 'approvazioni_prezzo.reason_riga_non_linkata',
+}
+function actionReasonTooltip(item) {
+  const code = item?.action_reason
+  if (!code) return undefined
+  const key = ACTION_REASON_KEYS[code]
+  return key ? t(key) : code
 }
 </script>
 
@@ -169,6 +183,8 @@ function onPage(event) {
             size="small"
             severity="success"
             text
+            :disabled="!data.can_approve"
+            v-tooltip.top="actionReasonTooltip(data)"
             @click="openApprovaDialog(data)"
           />
           <Button
@@ -177,6 +193,8 @@ function onPage(event) {
             size="small"
             severity="danger"
             text
+            :disabled="!data.can_reject"
+            v-tooltip.top="actionReasonTooltip(data)"
             @click="openRifiutaDialog(data)"
           />
         </template>

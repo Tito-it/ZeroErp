@@ -14,7 +14,7 @@ import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { DRAWER_WIDTH } from '../../core/constants'
 import { displayDate } from '../../core/utils/date'
 import { statoContrattoSeverity } from '../../core/utils/severity'
-import { listArticoloUom } from '../../catalogo/api/catalogo'
+import { useArticoloUomOptions } from '../../core/composables/useArticoloUomOptions'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import DrawerFooter from '../../core/components/DrawerFooter.vue'
 import ArticoloLookup from '../../core/components/ArticoloLookup.vue'
@@ -163,29 +163,20 @@ const form = ref({})
 const selectedRow = ref(null)
 
 // === UoM operative dell'articolo selezionato ===
-const uomOptions = ref([])
-const uomLoading = ref(false)
+// Composable centralizzato (Fase 4.F1). Autopick base se il form e' attivo
+// (create OR edit con UoM mancante) — replica l'esatto criterio originale.
+const {
+  uomOptions, uomLoading, loadUomPerArticolo, pickBaseUomId, resetUomOptions,
+} = useArticoloUomOptions()
 
 function uomLabel(item) {
   return item.is_base ? `${item.uom_codice} (base)` : item.uom_codice
 }
 
-async function loadUomPerArticolo(articoloId) {
-  uomOptions.value = []
-  if (!articoloId) return
-  uomLoading.value = true
-  try {
-    const res = await listArticoloUom(articoloId)
-    const list = res.data.data?.results || res.data.data || []
-    uomOptions.value = list
-    if (formMode.value && !form.value.uom_operativa_id) {
-      const base = list.find(u => u.is_base)
-      form.value.uom_operativa_id = base ? base.uom_id : (list.length === 1 ? list[0].uom_id : null)
-    }
-  } catch {
-    uomOptions.value = []
-  } finally {
-    uomLoading.value = false
+async function caricaUomConPickBase(articoloId) {
+  const list = await loadUomPerArticolo(articoloId)
+  if (formMode.value && !form.value.uom_operativa_id) {
+    form.value.uom_operativa_id = pickBaseUomId(list)
   }
 }
 
@@ -227,7 +218,7 @@ function onNew() {
   formMode.value = 'create'
   rigaEditId.value = null
   selectedRow.value = null
-  uomOptions.value = []
+  resetUomOptions()
 }
 
 function onRowSelect(event) {
@@ -266,13 +257,15 @@ function onRowSelect(event) {
   }
   formMode.value = 'edit'
   rigaEditId.value = rigaId
+  // Edit con UoM pre-popolata dalla riga: niente autopick, solo fetch.
   loadUomPerArticolo(r.articolo_id)
 }
 
 function onArticoloSelected(item) {
   form.value.articolo_id = item?.id || null
   form.value.uom_operativa_id = null
-  loadUomPerArticolo(item?.id)
+  // Cambio articolo in form aperto: autopick base.
+  caricaUomConPickBase(item?.id)
 }
 
 function closeForm() {
@@ -280,7 +273,7 @@ function closeForm() {
   rigaEditId.value = null
   form.value = {}
   selectedRow.value = null
-  uomOptions.value = []
+  resetUomOptions()
 }
 
 // === Validazione ===

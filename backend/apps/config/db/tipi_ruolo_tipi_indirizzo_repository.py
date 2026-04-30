@@ -24,6 +24,8 @@ _ORDER_COLS: dict[str, str] = {
     "tipo_indirizzo_descrizione": "ti.descrizione",
     "obbligatorio": "trti.obbligatorio",
     "attivo": "trti.attivo",
+    "valido_dal": "trti.valido_dal",
+    "valido_al": "trti.valido_al",
     "data_insert": "trti.data_insert",
     "data_update": "trti.data_update",
 }
@@ -42,6 +44,8 @@ _SELECT_COLS = """
     COALESCE(ti_fb.codice_interno, ti_fb.codice) AS fallback_codice,
     ti_fb.descrizione                             AS fallback_descrizione,
     trti.attivo,
+    trti.valido_dal,
+    trti.valido_al,
     trti.data_insert,
     trti.data_update,
     trti.user_insert,
@@ -162,6 +166,8 @@ class TipiRuoloTipiIndirizzoRepository:
             cols.append("attivo")
             vals.append(attivo)
         placeholders = ["%s"] * len(cols)
+        cols.append("valido_dal")
+        placeholders.append("CURRENT_DATE")
         sql = f"""
             INSERT INTO config.tipi_ruolo_tipi_indirizzo ({", ".join(cols)})
             VALUES ({", ".join(placeholders)})
@@ -179,7 +185,13 @@ class TipiRuoloTipiIndirizzoRepository:
         if not fields:
             return False
         set_clauses = [f"{k} = %s" for k in fields]
-        vals = list(fields.values()) + [record_id]
+        vals = list(fields.values())
+        if "attivo" in fields:
+            set_clauses.append(
+                "valido_al = CASE WHEN %s THEN NULL ELSE CURRENT_DATE END"
+            )
+            vals.append(fields["attivo"])
+        vals.append(record_id)
         sql = f"""
             UPDATE config.tipi_ruolo_tipi_indirizzo
                SET {", ".join(set_clauses)}

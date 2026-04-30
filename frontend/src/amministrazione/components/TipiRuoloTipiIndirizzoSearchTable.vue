@@ -8,16 +8,18 @@ import { useTabFreshness } from '../../core/composables/useTabFreshness'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useInjectReadonly, useInjectBlocked } from '../../core/composables/useReadonlyMode'
 import { TAB_ENTITIES } from '../../core/constants'
+import { buildBoolOptions } from '../../core/utils/options'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
-import Tag from 'primevue/tag'
+import ToggleSwitch from 'primevue/toggleswitch'
 import NewButton from '../../core/components/NewButton.vue'
 import LookupSelect from '../../core/components/LookupSelect.vue'
 import ReloadButton from '../../core/components/ReloadButton.vue'
 import ReadonlyBadge from '../../core/components/ReadonlyBadge.vue'
 import AccessoBloccatoPanel from '../../core/components/AccessoBloccatoPanel.vue'
+import { displayDate } from '../../core/utils/date'
 
 const emit = defineEmits(['new', 'row-click'])
 const { t } = useI18n()
@@ -33,12 +35,9 @@ useTabFreshness(store, TAB_ENTITIES.TIPI_RUOLO_TIPI_INDIRIZZO)
 
 const tipoRuoloFilter = ref(store.filters.tipo_ruolo_id)
 const tipoIndirizzoFilter = ref(store.filters.tipo_indirizzo_id)
-const attivoFilter = ref(store.filters.attivo)
+const attivoFilter = ref(true)
 
-const attivoOptions = [
-  { value: true, label: t('common.attivo') },
-  { value: false, label: t('common.non_attivo') }
-]
+const boolOptions = buildBoolOptions(t)
 
 const fallbackOptionsByRow = ref({})
 const fallbackOptionsLoadingByRow = ref({})
@@ -96,6 +95,28 @@ async function changeFallback(row, newFallbackId) {
   }
 }
 
+async function toggleObbligatorio(row) {
+  if (isReadonly.value) return
+  const result = await execute(
+    () => store.update(row.id, { obbligatorio: !row.obbligatorio }),
+    { successMessage: t('amministrazione.matrice_indirizzi_ruoli.saved') }
+  )
+  if (result !== null) {
+    Object.assign(row, result)
+  }
+}
+
+async function toggleAttivo(row) {
+  if (isReadonly.value) return
+  const result = await execute(
+    () => store.update(row.id, { attivo: !row.attivo }),
+    { successMessage: t('amministrazione.matrice_indirizzi_ruoli.saved') }
+  )
+  if (result !== null) {
+    Object.assign(row, result)
+  }
+}
+
 onMounted(() => { if (!store.hasSearched) store.fetchList() })
 </script>
 
@@ -114,8 +135,8 @@ onMounted(() => { if (!store.hasSearched) store.fetchList() })
         <LookupSelect v-model="tipoIndirizzoFilter" rel="config.tipi_indirizzi"
           :placeholder="t('amministrazione.matrice_indirizzi_ruoli.filter_tipo_indirizzo')"
           show-clear @change="onTipoIndirizzoChange" />
-        <Select v-model="attivoFilter" :options="attivoOptions" option-label="label" option-value="value"
-          :placeholder="t('common.tutti')" show-clear @change="onAttivoChange" />
+        <Select v-model="attivoFilter" :options="boolOptions" option-label="label" option-value="value"
+          :placeholder="t('common.attivo')" @change="onAttivoChange" style="width: 120px;" />
       </div>
       <div class="app-page-actions">
         <ReadonlyBadge />
@@ -138,8 +159,13 @@ onMounted(() => { if (!store.hasSearched) store.fetchList() })
       <Column field="tipo_indirizzo_descrizione" :header="t('amministrazione.matrice_indirizzi_ruoli.col_tipo_indirizzo_descrizione')" sortable style="min-width: 180px;" />
       <Column field="obbligatorio" :header="t('amministrazione.matrice_indirizzi_ruoli.col_obbligatorio')" style="width: 110px;">
         <template #body="{ data }">
-          <Tag :value="data.obbligatorio ? t('common.yes') : t('common.no')"
-            :severity="data.obbligatorio ? 'warn' : 'secondary'" />
+          <div @click.stop>
+            <ToggleSwitch
+              :modelValue="data.obbligatorio"
+              :disabled="isReadonly"
+              @update:modelValue="toggleObbligatorio(data)"
+            />
+          </div>
         </template>
       </Column>
       <Column field="fallback_codice" :header="t('amministrazione.matrice_indirizzi_ruoli.col_fallback')" style="width: 190px;">
@@ -165,9 +191,20 @@ onMounted(() => { if (!store.hasSearched) store.fetchList() })
       </Column>
       <Column field="attivo" :header="t('amministrazione.matrice_indirizzi_ruoli.col_attivo')" sortable style="width: 100px;">
         <template #body="{ data }">
-          <Tag :value="data.attivo ? t('common.attivo') : t('common.non_attivo')"
-            :severity="data.attivo ? 'success' : 'danger'" />
+          <div @click.stop>
+            <ToggleSwitch
+              :modelValue="data.attivo"
+              :disabled="isReadonly"
+              @update:modelValue="toggleAttivo(data)"
+            />
+          </div>
         </template>
+      </Column>
+      <Column field="valido_dal" :header="t('amministrazione.matrice_indirizzi_ruoli.col_valido_dal')" sortable style="width: 120px;">
+        <template #body="{ data }">{{ displayDate(data.valido_dal) }}</template>
+      </Column>
+      <Column field="valido_al" :header="t('amministrazione.matrice_indirizzi_ruoli.col_valido_al')" sortable style="width: 120px;">
+        <template #body="{ data }">{{ displayDate(data.valido_al) }}</template>
       </Column>
     </DataTable>
     </template>

@@ -273,9 +273,14 @@ class ListaCodaTests(TestCase):
         mock_cursor = MagicMock()
         mock_cursor.fetchone.return_value = (5,)  # tipo_prestazione_id
         mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
-        mock_get_user.return_value = MagicMock()
+        mock_user = MagicMock(is_superuser=False)
+        mock_get_user.return_value = mock_user
         mock_perm.get_emittente_for_user.return_value = 11
-        mock_cerca.return_value = ([{"id": 100, "descrizione": "Test"}], 1)
+        mock_perm.check_azione.return_value = True  # utente puo' approvare
+        mock_cerca.return_value = (
+            [{"id": 100, "descrizione": "Test", "meta": {"riga_preventivo_id": 7}}],
+            1,
+        )
 
         result = svc.lista_coda(auth_user_id=42, limit=20, offset=0)
 
@@ -285,6 +290,141 @@ class ListaCodaTests(TestCase):
         self.assertEqual(cerca_kwargs["emittente_fiscale_id"], 11)
         self.assertEqual(cerca_kwargs["tipo_prestazione_id"], 5)
         self.assertEqual(cerca_kwargs["stato_codice_interno"], "APERTA")
+        # Fase 5.B1: capability arricchite per item.
+        item = result["results"][0]
+        self.assertTrue(item["can_approve"])
+        self.assertTrue(item["can_reject"])
+        self.assertIsNone(item["action_reason"])
+
+    @patch("apps.vendite.services.approvazioni_prezzo_service.cerca_pratiche")
+    @patch("apps.vendite.services.approvazioni_prezzo_service.PermissionResolver")
+    @patch("apps.vendite.services.approvazioni_prezzo_service._get_user")
+    @patch("apps.vendite.services.approvazioni_prezzo_service.connection")
+    def test_lista_coda_capability_permesso_mancante(
+        self, mock_conn, mock_get_user, mock_perm, mock_cerca
+    ):
+        # Fase 5.B1: utente senza azione approva_prezzo_override -> tutte le
+        # righe della coda hanno can_*=False con reason='PERMESSO_MANCANTE'.
+        mock_cursor = MagicMock()
+        mock_cursor.fetchone.return_value = (5,)
+        mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
+        mock_get_user.return_value = MagicMock(is_superuser=False)
+        mock_perm.get_emittente_for_user.return_value = 11
+        mock_perm.check_azione.return_value = False  # niente permesso
+        mock_cerca.return_value = (
+            [{"id": 100, "meta": {"riga_preventivo_id": 7}}], 1,
+        )
+
+        result = svc.lista_coda(auth_user_id=42)
+        item = result["results"][0]
+        self.assertFalse(item["can_approve"])
+        self.assertFalse(item["can_reject"])
+        self.assertEqual(item["action_reason"], "PERMESSO_MANCANTE")
+
+    @patch("apps.vendite.services.approvazioni_prezzo_service.cerca_pratiche")
+    @patch("apps.vendite.services.approvazioni_prezzo_service.PermissionResolver")
+    @patch("apps.vendite.services.approvazioni_prezzo_service._get_user")
+    @patch("apps.vendite.services.approvazioni_prezzo_service.connection")
+    def test_lista_coda_capability_riga_non_linkata(
+        self, mock_conn, mock_get_user, mock_perm, mock_cerca
+    ):
+        # Fase 5.B1: pratica senza meta.riga_preventivo_id (legacy / crash) ->
+        # FE non puo' chiamare approva/rifiuta perche' manca l'id riga.
+        mock_cursor = MagicMock()
+        mock_cursor.fetchone.return_value = (5,)
+        mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
+        mock_get_user.return_value = MagicMock(is_superuser=False)
+        mock_perm.get_emittente_for_user.return_value = 11
+        mock_perm.check_azione.return_value = True
+        mock_cerca.return_value = (
+            [{"id": 100, "meta": {}}],  # no riga_preventivo_id
+            1,
+        )
+
+        result = svc.lista_coda(auth_user_id=42)
+        item = result["results"][0]
+        self.assertFalse(item["can_approve"])
+        self.assertFalse(item["can_reject"])
+        self.assertEqual(item["action_reason"], "RIGA_NON_LINKATA")
+
+    @patch("apps.vendite.services.approvazioni_prezzo_service.cerca_pratiche")
+    @patch("apps.vendite.services.approvazioni_prezzo_service.PermissionResolver")
+    @patch("apps.vendite.services.approvazioni_prezzo_service._get_user")
+    @patch("apps.vendite.services.approvazioni_prezzo_service.connection")
+    def test_lista_coda_capability_meta_none(
+        self, mock_conn, mock_get_user, mock_perm, mock_cerca
+    ):
+        # Edge case O2: pratica con meta=None (creata fuori dal flow standard
+        # o con UPDATE manuale). _capabilities_per_pratica non deve crashare,
+        # e deve riportare RIGA_NON_LINKATA (no riga linkata).
+        mock_cursor = MagicMock()
+        mock_cursor.fetchone.return_value = (5,)
+        mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
+        mock_get_user.return_value = MagicMock(is_superuser=False)
+        mock_perm.get_emittente_for_user.return_value = 11
+        mock_perm.check_azione.return_value = True
+        mock_cerca.return_value = (
+            [{"id": 100, "meta": None}],  # meta None esplicito
+            1,
+        )
+
+        result = svc.lista_coda(auth_user_id=42)
+        item = result["results"][0]
+        self.assertFalse(item["can_approve"])
+        self.assertEqual(item["action_reason"], "RIGA_NON_LINKATA")
+
+    @patch("apps.vendite.services.approvazioni_prezzo_service.cerca_pratiche")
+    @patch("apps.vendite.services.approvazioni_prezzo_service.PermissionResolver")
+    @patch("apps.vendite.services.approvazioni_prezzo_service._get_user")
+    @patch("apps.vendite.services.approvazioni_prezzo_service.connection")
+    def test_lista_coda_capability_riga_id_zero(
+        self, mock_conn, mock_get_user, mock_perm, mock_cerca
+    ):
+        # Edge case B3: riga_preventivo_id = 0 (id invalido in PG ma teorico).
+        # Il check `is not None` lo accetta come "linkato"; il falsy `or` di
+        # prima cadeva nel fallback legacy. Documentiamo il comportamento.
+        mock_cursor = MagicMock()
+        mock_cursor.fetchone.return_value = (5,)
+        mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
+        mock_get_user.return_value = MagicMock(is_superuser=False)
+        mock_perm.get_emittente_for_user.return_value = 11
+        mock_perm.check_azione.return_value = True
+        mock_cerca.return_value = (
+            [{"id": 100, "meta": {"riga_preventivo_id": 0}}],
+            1,
+        )
+
+        result = svc.lista_coda(auth_user_id=42)
+        item = result["results"][0]
+        # 0 e' un id valido per il check (is not None); FE/BE downstream
+        # rifiuteranno se la riga 0 non esiste — corretto separation of concerns.
+        self.assertTrue(item["can_approve"])
+        self.assertIsNone(item["action_reason"])
+
+    @patch("apps.vendite.services.approvazioni_prezzo_service.cerca_pratiche")
+    @patch("apps.vendite.services.approvazioni_prezzo_service.PermissionResolver")
+    @patch("apps.vendite.services.approvazioni_prezzo_service._get_user")
+    @patch("apps.vendite.services.approvazioni_prezzo_service.connection")
+    def test_lista_coda_capability_superuser_bypass(
+        self, mock_conn, mock_get_user, mock_perm, mock_cerca
+    ):
+        # Fase 5.B1: superuser bypassa il check azione ma non quello
+        # linkability (sempre necessario riga_preventivo_id).
+        mock_cursor = MagicMock()
+        mock_cursor.fetchone.return_value = (5,)
+        mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
+        mock_get_user.return_value = MagicMock(is_superuser=True)
+        mock_perm.get_emittente_for_user.return_value = 11
+        # check_azione NON viene chiamato per superuser (vedi
+        # _user_can_approve_or_reject); non assegniamo return_value.
+        mock_cerca.return_value = (
+            [{"id": 100, "meta": {"riga_preventivo_id": 7}}], 1,
+        )
+
+        result = svc.lista_coda(auth_user_id=42)
+        item = result["results"][0]
+        self.assertTrue(item["can_approve"])
+        self.assertTrue(item["can_reject"])
 
     @patch("apps.vendite.services.approvazioni_prezzo_service.PermissionResolver")
     @patch("apps.vendite.services.approvazioni_prezzo_service._get_user")

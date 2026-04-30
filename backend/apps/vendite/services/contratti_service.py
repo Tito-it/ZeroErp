@@ -55,6 +55,7 @@ _ORDER_BY_CONTRATTI: frozenset[str] = frozenset({
     "data",
     "valido_dal",
     "valido_al",
+    "ba_codice",
     "ba_ragione_sociale",
     "stato_codice",
     "categoria_cliente_snapshot_codice",
@@ -404,7 +405,12 @@ class ContrattiService:
             order_dir=order_dir,
         )
 
-    # Scopo: Dettaglio completo contratto (testata + utility 1:1 + righe).
+    # Scopo: Dettaglio completo contratto (testata + utility 1:1 + righe +
+    #        capabilities). Le capability (available_actions con default_date/
+    #        min_date per "cessa", can_change_state, can_edit_*, non_editable_fields)
+    #        sono calcolate da script.fn_available_actions_contratto: il backend
+    #        non duplica la logica, spalma il blob JSONB nel detail per consumo
+    #        diretto dal frontend (Fase 1.B2 refactor frontend vendite).
     def get_contratto(self, contratto_id: int) -> dict[str, Any]:
         self._v.guard_positive_int(contratto_id, field="contratto_id")
         testata = self._repo.get_contratto(contratto_id)
@@ -417,6 +423,8 @@ class ContrattiService:
         assert testata is not None
         testata["utility"] = self._repo.get_utility(contratto_id)
         testata["righe"] = self._repo.list_righe(contratto_id)
+        capabilities = self._repo.get_capabilities(contratto_id)
+        testata.update(capabilities)
         return testata
 
     # =================================================================

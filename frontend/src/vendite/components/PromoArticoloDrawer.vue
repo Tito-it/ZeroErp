@@ -19,12 +19,17 @@ import { usePromoArticoliStore } from '../stores/promoArticoli'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useNotify } from '../../core/composables/useNotify'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
+import { useParameterDefaults } from '../../core/composables/useParameterDefaults'
 import { DRAWER_WIDTH } from '../../core/constants'
 import { isoToLocalDate, localDateToIso } from '../../core/utils/dateHelpers'
-import { listArticoloUom } from '../../catalogo/api/catalogo'
+import { addDaysToToday } from '../../core/utils/date'
+import { paramBool, paramInt } from '../../core/utils/parameterCast'
+import { useArticoloUomOptions } from '../../core/composables/useArticoloUomOptions'
+import { useEntityCapabilities } from '../../core/composables/useEntityCapabilities'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import DrawerFooter from '../../core/components/DrawerFooter.vue'
 import ArticoloLookup from '../../core/components/ArticoloLookup.vue'
+import TipoVariazioneSelect from './TipoVariazioneSelect.vue'
 import Drawer from 'primevue/drawer'
 import InputText from 'primevue/inputtext'
 import InputNumber from 'primevue/inputnumber'
@@ -49,50 +54,63 @@ const emit = defineEmits(['update:visible', 'saved', 'cancelled'])
 
 const isEdit = computed(() => props.mode === 'edit')
 
-// Guard data-driven sulla modifica promo (solo edit):
-//  - SCADUTA  (oggi > valido_al)        → readonly hard, l'admin crei una nuova promo
-//  - INIZIATA (oggi >= valido_dal)      → valido_dal/attivo bloccati, valido_al non
-//    puo' tornare al passato, save chiede conferma (le righe commessa gia' snapshottate
-//    non si aggiornano automaticamente — riallineamento on-demand su commessa)
-function startOfToday() {
-  const d = new Date()
-  d.setHours(0, 0, 0, 0)
-  return d
-}
-function startOfTomorrow() {
-  const d = startOfToday()
-  d.setDate(d.getDate() + 1)
-  return d
-}
-const oggi = computed(() => startOfToday())
-const domani = computed(() => startOfTomorrow())
-// Vincoli minDate per valido_dal:
-//  - create        → domani (no retroattive, serve preavviso operativo di 1 gg)
-//  - edit non iniziata → oggi (ammette spostamento, vieta passato)
-//  - edit iniziata     → irrilevante (campo disabled)
-const validoDalMinDate = computed(() => {
-  if (!isEdit.value) return domani.value
-  if (isPromoIniziata.value) return null
-  return oggi.value
-})
-const isPromoScaduta = computed(() => {
-  if (!isEdit.value || !form.value.valido_al) return false
-  return oggi.value > form.value.valido_al
-})
-const isPromoIniziata = computed(() => {
-  if (!isEdit.value || isPromoScaduta.value || !form.value.valido_dal) return false
-  return oggi.value >= form.value.valido_dal
-})
+// Capability dal detail backend (Fase 1.B3: script.fn_capability_promo_articolo).
+//   - stato_temporale: FUTURA | INIZIATA | SCADUTA (data-driven puro)
+//   - can_update + can_update_reason: editabilita' globale
+//   - min_valido_dal / min_valido_al: vincoli minDate (Date | null)
+//   - non_editable_fields: whitelist BE per campo (Set lookup O(1))
+const detail = ref(null)
+// Composable centralizzato (Fase 4.F2): editFlag custom can_update; in create
+// il drawer usa default true (no detail) — wrappato in canUpdate computed sotto.
+const caps = useEntityCapabilities(detail, { editFlag: 'can_update' })
+const statoTemporale = computed(() => detail.value?.stato_temporale || null)
+// In create detail=null -> can_update non e' valutato dal BE; lasciamo true.
+const canUpdate = computed(() => !isEdit.value || caps.canEdit.value)
+const canUpdateReason = computed(() => detail.value?.can_update_reason || null)
+const nonEditableFields = caps.nonEditableFields
+const minValidoDalDetail = computed(() => isoToLocalDate(detail.value?.min_valido_dal))
+const minValidoAlDetail = computed(() => isoToLocalDate(detail.value?.min_valido_al))
 
-const isReadOnlyEffective = computed(() =>
-  props.readonly || isReadonly.value || isPromoScaduta.value
+// Helper: campo bloccato. In create niente locked (detail assente, l'utente
+// puo' valorizzare tutto); in edit applica isLocked del composable.
+function isLocked(field) {
+  if (!isEdit.value) return false
+  return caps.isLocked(field)
+}
+
+// In create il backend non espone capability ne' min_valido_*; il vincolo
+// "no promo retroattive (preavviso N gg)" e' UX defense-in-depth, configurato
+// via VENDITE_PROMO_DEFAULT_VALIDO_DAL_LEAD_GG (default 1 = domani).
+const { defaults: paramDefaults, load: loadParamDefaults } = useParameterDefaults([
+  'VENDITE_PROMO_DEFAULT_VALIDO_DAL_LEAD_GG',
+  'VENDITE_PROMO_DEFAULT_ATTIVO',
+])
+
+// Lead-time in giorni per valido_dal in create (parameter, default 1).
+const promoValidoDalLeadGg = computed(
+  () => paramInt(paramDefaults.value.VENDITE_PROMO_DEFAULT_VALIDO_DAL_LEAD_GG, 1),
 )
 
-const tipoVariazioneOptions = [
-  { value: 'PERCENTUALE', label: 'PERCENTUALE' },
-  { value: 'VALORE_FISSO', label: 'VALORE_FISSO' },
-  { value: 'PREZZO_FISSO', label: 'PREZZO_FISSO' }
-]
+// minDate effettivo del DatePicker valido_dal:
+//   - create   -> oggi + LEAD_GG (UX, niente retroattive)
+//   - edit     -> dal backend (null = nessun vincolo)
+const validoDalMinDate = computed(() =>
+  isEdit.value ? minValidoDalDetail.value : addDaysToToday(promoValidoDalLeadGg.value),
+)
+// minDate del DatePicker valido_al:
+//   - create   -> oggi + LEAD_GG (>= valido_dal di default)
+//   - edit     -> dal backend
+const validoAlMinDate = computed(() =>
+  isEdit.value ? minValidoAlDetail.value : addDaysToToday(promoValidoDalLeadGg.value),
+)
+
+// Alias retrocompat con il template (mostra banner per stato).
+const isPromoScaduta = computed(() => statoTemporale.value === 'SCADUTA')
+const isPromoIniziata = computed(() => statoTemporale.value === 'INIZIATA')
+
+const isReadOnlyEffective = computed(() =>
+  props.readonly || isReadonly.value || (isEdit.value && !canUpdate.value),
+)
 
 const form = ref({
   codice: '',
@@ -114,43 +132,36 @@ function resetForm() {
     uom_id: null,
     tipo_variazione: null,
     valore_variazione: null,
-    // Default proposto: domani. Le promo non possono partire nel passato e
-    // nemmeno nel giorno corrente (serve almeno un giorno di preavviso operativo).
-    valido_dal: startOfTomorrow(),
+    // Default da parameters: valido_dal = oggi + LEAD_GG (default 1 = domani),
+    // attivo = true. Le promo non possono partire nel passato e di norma
+    // nemmeno nel giorno corrente (preavviso operativo).
+    valido_dal: addDaysToToday(promoValidoDalLeadGg.value),
     valido_al: null,
-    attivo: true
+    attivo: paramBool(paramDefaults.value.VENDITE_PROMO_DEFAULT_ATTIVO, true)
   }
-  uomOptions.value = []
+  detail.value = null
+  resetUomOptions()
 }
 
 // UoM operative dell'articolo selezionato (pattern VersioneDrawer/ContrattoRigheDrawer):
 // l'articolo definisce quali UoM sono ammesse per le sue righe/promo; una combo
 // globale su catalogo.unita_misura porterebbe FK invalide.
-const uomOptions = ref([])
-const uomLoading = ref(false)
+// Composable centralizzato (Fase 4.F1): fetch + helper pickBase. Il drawer
+// applica il pre-pick solo in create, quando il form non ha gia' un valore.
+const {
+  uomOptions, uomLoading, loadUomPerArticolo, pickBaseUomId, resetUomOptions,
+} = useArticoloUomOptions()
 
 function uomLabel(uom) {
   const base = uom.is_base ? ` ${t('listini.uom_base_suffix')}` : ''
   return `${uom.uom_codice} — ${uom.uom_descrizione}${base}`
 }
 
-// Scopo: carica le UoM operative dell'articolo; in create pre-seleziona la base.
-async function loadUomPerArticolo(articoloId) {
-  uomOptions.value = []
-  if (!articoloId) return
-  uomLoading.value = true
-  try {
-    const res = await listArticoloUom(articoloId)
-    const list = res.data.data?.results || res.data.data || []
-    uomOptions.value = list
-    if (!isEdit.value && !form.value.uom_id) {
-      const base = list.find(u => u.is_base)
-      form.value.uom_id = base ? base.uom_id : (list.length === 1 ? list[0].uom_id : null)
-    }
-  } catch {
-    uomOptions.value = []
-  } finally {
-    uomLoading.value = false
+// Scopo: carica le UoM dell'articolo; in create pre-seleziona la base.
+async function caricaUomConPickBase(articoloId) {
+  const list = await loadUomPerArticolo(articoloId)
+  if (!isEdit.value && !form.value.uom_id) {
+    form.value.uom_id = pickBaseUomId(list)
   }
 }
 
@@ -158,6 +169,9 @@ async function loadDetail() {
   if (!props.recordId) return
   const data = await store.fetchDetail(props.recordId)
   if (!data) return
+  // Detail completo (include il blob capabilities spalmato dal backend:
+  // stato_temporale, can_update[+reason], min_valido_*, non_editable_fields).
+  detail.value = data
   form.value = {
     codice: data.codice ?? '',
     descrizione: data.descrizione ?? '',
@@ -184,8 +198,11 @@ async function loadDetail() {
 
 watch(
   [() => props.visible, () => props.recordId],
-  ([visible]) => {
+  async ([visible]) => {
     if (!visible) return
+    // Carica parameters (cache modulo) prima di resetForm per popolare
+    // valido_dal/attivo dai default seedati.
+    await loadParamDefaults()
     if (isEdit.value) {
       loadDetail()
     } else {
@@ -194,25 +211,26 @@ watch(
   }
 )
 
-// In create: al cambio articolo ricarica le UoM operative. Cambio articolo
-// dopo che una UoM era gia' selezionata ⇒ azzera, altrimenti resta il valore
-// precedente e puo' appartenere a un articolo diverso.
+// In create: al cambio articolo ricarica le UoM operative + autopick base.
+// Cambio articolo dopo che una UoM era gia' selezionata ⇒ azzera prima,
+// altrimenti resta il valore precedente e puo' appartenere a un articolo diverso.
 watch(
   () => form.value.articolo_obj?.id,
   (newId, oldId) => {
     if (isEdit.value) return
     if (newId === oldId) return
     form.value.uom_id = null
-    loadUomPerArticolo(newId)
+    caricaUomConPickBase(newId)
   }
 )
 
 // Scopo: Reset valore_variazione al cambio di tipo_variazione non-null.
 // Motivo: la semantica del valore cambia (10% vs 10€ vs 10€ fisso); tenere
 // il numero precedente e' fonte d'errore silenzioso. Toast informativo.
-function onTipoVariazioneChange(event) {
+// Il wrapper TipoVariazioneSelect emette il valore stringa (non l'event PrimeVue).
+function onTipoVariazioneChange(value) {
   const hadValue = form.value.valore_variazione != null
-  if (event.value == null) {
+  if (value == null) {
     form.value.valore_variazione = null
     return
   }
@@ -289,12 +307,16 @@ function close() {
     </template>
 
     <div class="app-drawer-content" :class="{ 'app-readonly': isReadOnlyEffective }">
+      <!-- Banner stato temporale: il backend espone stato_temporale +
+           can_update_reason (i18n-ready). Quando reason esiste, la chiave
+           e' direttamente la label da renderizzare. -->
       <Message
-        v-if="isPromoScaduta"
+        v-if="isEdit && canUpdateReason"
         severity="info"
         :closable="false"
       >
-        {{ t('vendite.promo_articoli.scaduta_readonly_hint') }}
+        {{ t(`vendite.promo_articoli.update_reason.${canUpdateReason.toLowerCase()}`,
+              t('vendite.promo_articoli.scaduta_readonly_hint')) }}
       </Message>
       <Message
         v-else-if="isPromoIniziata"
@@ -305,12 +327,12 @@ function close() {
       </Message>
 
       <div class="form-grid">
-        <!-- === Identita' (immutabile in edit) === -->
+        <!-- === Identita' (immutabile in edit via non_editable_fields) === -->
         <div class="form-field">
           <label>{{ t('vendite.promo_articoli.field_codice') }} <span v-if="!isEdit">*</span></label>
           <InputText
             v-model="form.codice"
-            :disabled="isEdit || isReadOnlyEffective"
+            :disabled="isReadOnlyEffective || isLocked('codice')"
             :placeholder="t('vendite.promo_articoli.field_codice_placeholder')"
             maxlength="64"
           />
@@ -319,7 +341,7 @@ function close() {
           <label>{{ t('vendite.promo_articoli.field_descrizione') }} *</label>
           <InputText
             v-model="form.descrizione"
-            :disabled="isReadOnlyEffective"
+            :disabled="isReadOnlyEffective || isLocked('descrizione')"
             :placeholder="t('vendite.promo_articoli.field_descrizione_placeholder')"
             maxlength="255"
           />
@@ -328,7 +350,7 @@ function close() {
           <label>{{ t('vendite.promo_articoli.field_articolo') }} <span v-if="!isEdit">*</span></label>
           <ArticoloLookup
             v-model="form.articolo_obj"
-            :disabled="isEdit || isReadOnlyEffective"
+            :disabled="isReadOnlyEffective || isLocked('articolo_id')"
             :placeholder="t('vendite.promo_articoli.field_articolo_placeholder')"
           />
         </div>
@@ -343,7 +365,7 @@ function close() {
             :placeholder="!form.articolo_obj?.id
               ? t('vendite.promo_articoli.field_uom_articolo_first')
               : t('vendite.promo_articoli.field_uom_placeholder')"
-            :disabled="isEdit || isReadOnlyEffective || !form.articolo_obj?.id"
+            :disabled="isReadOnlyEffective || isLocked('uom_id') || !form.articolo_obj?.id"
           />
         </div>
 
@@ -352,60 +374,62 @@ function close() {
         </Message>
 
         <!-- === Variazione === -->
-        <div class="form-field">
-          <label>{{ t('vendite.promo_articoli.field_tipo_variazione') }} *</label>
-          <Select
-            v-model="form.tipo_variazione"
-            :options="tipoVariazioneOptions"
-            option-label="label"
-            option-value="value"
-            :placeholder="t('vendite.promo_articoli.field_tipo_variazione_placeholder')"
-            :disabled="isReadOnlyEffective || isPromoIniziata"
-            @change="onTipoVariazioneChange"
-          />
-        </div>
-        <div class="form-field">
-          <label>{{ t('vendite.promo_articoli.field_valore_variazione') }} *</label>
-          <InputNumber
-            v-model="form.valore_variazione"
-            :max-fraction-digits="4"
-            :disabled="form.tipo_variazione == null || isReadOnlyEffective || isPromoIniziata"
-            showButtons
-          />
-          <small class="text-color-secondary">
-            {{ form.tipo_variazione === 'PREZZO_FISSO'
-              ? t('vendite.promo_articoli.field_valore_variazione_hint_prezzo_fisso')
-              : t('vendite.promo_articoli.field_valore_variazione_hint') }}
-          </small>
+        <div class="form-grid-2col">
+          <div class="form-field">
+            <label>{{ t('vendite.promo_articoli.field_tipo_variazione') }} *</label>
+            <TipoVariazioneSelect
+              v-model="form.tipo_variazione"
+              scope="promo"
+              :placeholder="t('vendite.promo_articoli.field_tipo_variazione_placeholder')"
+              :disabled="isReadOnlyEffective || isLocked('tipo_variazione')"
+              @change="onTipoVariazioneChange"
+            />
+          </div>
+          <div class="form-field">
+            <label>{{ t('vendite.promo_articoli.field_valore_variazione') }} *</label>
+            <InputNumber
+              v-model="form.valore_variazione"
+              :max-fraction-digits="4"
+              :disabled="form.tipo_variazione == null || isReadOnlyEffective || isLocked('valore_variazione')"
+              showButtons
+            />
+            <small class="text-color-secondary">
+              {{ form.tipo_variazione === 'PREZZO_FISSO'
+                ? t('vendite.promo_articoli.field_valore_variazione_hint_prezzo_fisso')
+                : t('vendite.promo_articoli.field_valore_variazione_hint') }}
+            </small>
+          </div>
         </div>
 
         <!-- === Validita' === -->
-        <div class="form-field">
-          <label>{{ t('vendite.promo_articoli.field_valido_dal') }} *</label>
-          <DatePicker
-            v-model="form.valido_dal"
-            date-format="dd/mm/yy"
-            show-icon
-            :min-date="validoDalMinDate"
-            :disabled="isReadOnlyEffective || isPromoIniziata"
-          />
-        </div>
-        <div class="form-field">
-          <label>{{ t('vendite.promo_articoli.field_valido_al') }} *</label>
-          <DatePicker
-            v-model="form.valido_al"
-            date-format="dd/mm/yy"
-            show-icon
-            :min-date="isPromoIniziata ? oggi : null"
-            :disabled="isReadOnlyEffective"
-          />
+        <div class="form-grid-2col">
+          <div class="form-field">
+            <label>{{ t('vendite.promo_articoli.field_valido_dal') }} *</label>
+            <DatePicker
+              v-model="form.valido_dal"
+              date-format="dd/mm/yy"
+              show-icon
+              :min-date="validoDalMinDate"
+              :disabled="isReadOnlyEffective || isLocked('valido_dal')"
+            />
+          </div>
+          <div class="form-field">
+            <label>{{ t('vendite.promo_articoli.field_valido_al') }} *</label>
+            <DatePicker
+              v-model="form.valido_al"
+              date-format="dd/mm/yy"
+              show-icon
+              :min-date="validoAlMinDate"
+              :disabled="isReadOnlyEffective || isLocked('valido_al')"
+            />
+          </div>
         </div>
 
         <div class="form-field">
           <label>{{ t('common.attivo') }}</label>
           <ToggleSwitch
             v-model="form.attivo"
-            :disabled="isReadOnlyEffective || isPromoIniziata"
+            :disabled="isReadOnlyEffective || isLocked('attivo')"
           />
         </div>
       </div>

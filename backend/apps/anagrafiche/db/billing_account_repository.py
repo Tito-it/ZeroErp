@@ -64,6 +64,8 @@ _LOOKUP_FROM = """
         ON parent.id = ba.parent_account_id
       LEFT JOIN anagrafiche.categorie_clienti cc
         ON cc.id = ba.categoria_cliente_id
+      LEFT JOIN config.valute v
+        ON v.id = ba.valuta_id
 """
 
 # Scopo: Proiezione SELECT condivisa tra search_lookup (lista) e get_lookup_by_id (restore).
@@ -86,7 +88,10 @@ _LOOKUP_SELECT_COLUMNS = """
     ba.valido_al,
     ba.categoria_cliente_id,
     cc.codice AS categoria_cliente_codice,
-    cc.descrizione AS categoria_cliente_descrizione
+    cc.descrizione AS categoria_cliente_descrizione,
+    ba.valuta_id,
+    v.codice AS valuta_codice,
+    v.descrizione AS valuta_descrizione
 """
 
 
@@ -201,3 +206,72 @@ class BillingAccountRepository:
             cursor.execute(sql, [billing_account_id])
             rows = rows_to_list(cursor)
         return rows[0] if rows else None
+
+    # Scopo: Risolve la valuta dell'emittente fiscale associato al BA via
+    #        anagrafiche.fn_get_emittente_fiscale_pk (catena specifico ->
+    #        default globale). Usato come fallback quando ba.valuta_id e' NULL.
+    # Perimetro: sola lettura.
+    # Risultato: dict {valuta_id, valuta_codice, valuta_descrizione} oppure
+    #        dict vuoto se nessun emittente o emittente senza valuta.
+    def get_emittente_valuta(self, billing_account_id: int) -> dict[str, Any]:
+        sql = """
+            SELECT
+                ef.valuta_id,
+                v.codice      AS valuta_codice,
+                v.descrizione AS valuta_descrizione
+              FROM anagrafiche.emittenti_fiscali ef
+              LEFT JOIN config.valute v ON v.id = ef.valuta_id
+             WHERE ef.id = anagrafiche.fn_get_emittente_fiscale_pk(%s)
+             LIMIT 1
+        """  # noqa: S608
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [billing_account_id])
+            from apps.core.db._helpers import row_to_dict
+            row = row_to_dict(cursor)
+        if not row or row.get("valuta_id") is None:
+            return {}
+        return row
+
+    # Scopo: Risolve i campi del cliente associato al BA tramite la tripletta
+    #        UNIQUE (istanza_utility_id, soggetto_ruolo_id, utility_id) con
+    #        join arricchiti su termini pagamento, IVA e modalita pagamento.
+    #        Single point per consumi che vogliono i defaults commerciali del
+    #        cliente (es. form-defaults preventivi).
+    # Perimetro: sola lettura. Nessun raise: se nessun cliente coincide
+    #        (es. BA fornitore o anagrafica gestita altrove) ritorna {}.
+    # Risultato: dict con termine_pagamento_id/iva_id/modalita_pagamento_id
+    #        + descrizioni, oppure dict vuoto.
+    def get_cliente_defaults(
+        self,
+        *,
+        istanza_utility_id: int,
+        soggetto_ruolo_id: int,
+        utility_id: int,
+    ) -> dict[str, Any]:
+        sql = """
+            SELECT
+                cl.termine_pagamento_id,
+                tp.codice      AS termine_pagamento_codice,
+                tp.descrizione AS termine_pagamento_descrizione,
+                cl.iva_id,
+                iva.codice      AS iva_codice,
+                iva.descrizione AS iva_descrizione,
+                cl.modalita_pagamento_id,
+                mp.codice      AS modalita_pagamento_codice,
+                mp.descrizione AS modalita_pagamento_descrizione
+              FROM anagrafiche.clienti cl
+              LEFT JOIN config.termini_pagamento tp ON tp.id = cl.termine_pagamento_id
+              LEFT JOIN config.iva iva ON iva.id = cl.iva_id
+              LEFT JOIN config.modalita_pagamento mp ON mp.id = cl.modalita_pagamento_id
+             WHERE cl.istanza_utility_id = %s
+               AND cl.soggetto_ruolo_id  = %s
+               AND cl.utility_id         = %s
+             LIMIT 1
+        """  # noqa: S608
+        with connection.cursor() as cursor:
+            cursor.execute(
+                sql, [istanza_utility_id, soggetto_ruolo_id, utility_id],
+            )
+            from apps.core.db._helpers import row_to_dict
+            row = row_to_dict(cursor)
+        return row or {}
