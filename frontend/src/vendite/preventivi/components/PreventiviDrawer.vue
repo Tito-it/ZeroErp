@@ -10,7 +10,7 @@ import { useInjectReadonly } from '../../../core/composables/useReadonlyMode'
 import { useConfirmAction } from '../../../core/composables/useConfirmAction'
 import { statoPreventiveSeverity } from '../../../core/utils/severity'
 import { displayDate, toDateString } from '../../../core/utils/date'
-import { DRAWER_WIDTH, STATO_PREVENTIVO } from '../../../core/constants'
+import { DRAWER_WIDTH } from '../../../core/constants'
 import DrawerTitle from '../../../core/components/DrawerTitle.vue'
 import DrawerFooter from '../../../core/components/DrawerFooter.vue'
 import PreventiviForm from './PreventiviForm.vue'
@@ -44,14 +44,19 @@ const detail = ref(null)
 const contentReady = ref(false)
 function onAfterShow() { contentReady.value = true }
 
-// Stato corrente del preventivo (codice_interno)
-const statoCodice = computed(() => detail.value?.stato_codice_interno || '')
-
-// Il preventivo e' modificabile solo in BOZZA (DRAFT)
-const isModificabile = computed(() => statoCodice.value === STATO_PREVENTIVO.BOZZA)
-
-// Il preventivo e' in stato ACCETTATO — abilita integrazione
-const isAccettato = computed(() => statoCodice.value === STATO_PREVENTIVO.ACCETTATO)
+// Capability dal detail backend (Fase 1: script.fn_available_actions_preventivo).
+// Il drawer NON ricalcola lo stato: tutto deriva dai metadata API.
+//   - available_actions[]: bottoni cambio stato (key, label_key, severity, icon, requires_confirm)
+//   - can_edit_testata / can_edit_righe: editabilita' singolarmente
+//   - can_create_revisione: bottone "Nuova revisione"
+//   - can_push_commessa (+ reason): integrazione (PreventiviIntegrazione)
+//   - non_editable_fields[]: passato al PreventiviForm per disabled granulare
+const availableActions = computed(() => detail.value?.available_actions || [])
+const canEditTestata = computed(() => detail.value?.can_edit_testata === true)
+const canEditRighe = computed(() => detail.value?.can_edit_righe === true)
+const canCreateRevisione = computed(() => detail.value?.can_create_revisione === true)
+const canPushCommessa = computed(() => detail.value?.can_push_commessa === true)
+const nonEditableFields = computed(() => detail.value?.non_editable_fields || [])
 
 function defaultForm() {
   return {
@@ -156,33 +161,19 @@ function close() {
   emit('cancelled')
 }
 
-// --- Azioni stato ---
+// --- Azioni stato (data-driven da detail.available_actions) ---
 
-function transizioni() {
-  const stato = statoCodice.value
-  const list = []
-  if (stato === STATO_PREVENTIVO.BOZZA) {
-    list.push({ codice: 'EMESSO', label: t('preventivi.azione_emetti'), severity: 'info', icon: 'pi pi-send' })
-    list.push({ codice: 'ANNULLATO', label: t('preventivi.azione_annulla'), severity: 'danger', icon: 'pi pi-times' })
-  } else if (stato === STATO_PREVENTIVO.EMESSO) {
-    list.push({ codice: 'ACCETTATO', label: t('preventivi.azione_accetta'), severity: 'success', icon: 'pi pi-check' })
-    list.push({ codice: 'RIFIUTATO', label: t('preventivi.azione_rifiuta'), severity: 'danger', icon: 'pi pi-ban' })
-    list.push({ codice: 'ANNULLATO', label: t('preventivi.azione_annulla'), severity: 'danger', icon: 'pi pi-times' })
-  } else if (stato === STATO_PREVENTIVO.ACCETTATO) {
-    list.push({ codice: 'ANNULLATO', label: t('preventivi.azione_annulla'), severity: 'danger', icon: 'pi pi-times' })
-  }
-  return list
-}
-
-function onCambiaStato(nuovoStato) {
-  const isIrreversibile = ['RIFIUTATO', 'ANNULLATO', 'SCADUTO'].includes(nuovoStato)
-  if (isIrreversibile) {
+// Scopo: handler unico bottone azione. Usa requires_confirm dai metadata
+//        per decidere se mostrare il dialog di conferma. La label nel
+//        messaggio di conferma e' tradotta dalla label_key dell'azione.
+function onCambiaStato(action) {
+  if (action.requires_confirm) {
     confirmAction({
-      message: t('preventivi.conferma_cambio_stato', { stato: nuovoStato }),
-      accept: () => eseguiCambioStato(nuovoStato)
+      message: t('preventivi.conferma_cambio_stato', { stato: t(action.label_key) }),
+      accept: () => eseguiCambioStato(action.target_state),
     })
   } else {
-    eseguiCambioStato(nuovoStato)
+    eseguiCambioStato(action.target_state)
   }
 }
 
@@ -239,12 +230,13 @@ function formatCurrency(value) {
         </span>
       </div>
 
-      <!-- Azioni stato (solo edit, non readonly) -->
-      <div v-if="isEdit && detail && !isReadonly" style="display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.5rem;">
-        <Button v-for="tr in transizioni()" :key="tr.codice"
-          :icon="tr.icon" :label="tr.label" :severity="tr.severity"
-          size="small" @click="onCambiaStato(tr.codice)" />
-        <Button v-if="statoCodice === STATO_PREVENTIVO.EMESSO || statoCodice === STATO_PREVENTIVO.ACCETTATO"
+      <!-- Azioni stato (solo edit, non readonly): bottoni dai metadata API -->
+      <div v-if="isEdit && detail && !isReadonly && (availableActions.length || canCreateRevisione)"
+        style="display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.5rem;">
+        <Button v-for="action in availableActions" :key="action.key"
+          :icon="action.icon" :label="t(action.label_key)" :severity="action.severity"
+          size="small" @click="onCambiaStato(action)" />
+        <Button v-if="canCreateRevisione"
           icon="pi pi-copy" :label="t('preventivi.azione_revisione')" severity="secondary"
           size="small" @click="onNuovaRevisione" />
       </div>
@@ -253,14 +245,15 @@ function formatCurrency(value) {
 
       <!-- Form testata: monta dopo l'animazione drawer per evitare rimbalzo lookup -->
       <PreventiviForm v-if="contentReady"
-        :form="form" :is-edit="isEdit" :is-modificabile="isModificabile && !isReadonly" />
+        :form="form" :is-edit="isEdit" :is-modificabile="canEditTestata && !isReadonly"
+        :non-editable-fields="nonEditableFields" />
 
       <!-- Righe (solo edit) -->
       <template v-if="contentReady && isEdit && detail">
         <Divider />
         <PreventiviRigheTable
           :preventivo-id="preventivoId"
-          :is-modificabile="isModificabile && !isReadonly" />
+          :is-modificabile="canEditRighe && !isReadonly" />
 
         <!-- Totali -->
         <div style="display: flex; justify-content: flex-end; gap: 1.5rem; padding: 0.75rem 0; font-size: 0.9rem;">
@@ -270,13 +263,13 @@ function formatCurrency(value) {
         </div>
       </template>
 
-      <!-- Integrazione (solo stato ACCETTATO) -->
-      <template v-if="contentReady && isEdit && detail && isAccettato">
+      <!-- Integrazione: visibile quando il backend conferma can_push_commessa -->
+      <template v-if="contentReady && isEdit && detail && canPushCommessa">
         <Divider />
         <PreventiviIntegrazione :preventivo-id="preventivoId" />
       </template>
 
-      <DrawerFooter v-if="isModificabile" :loading="loading" :disabled="!canSave"
+      <DrawerFooter v-if="canEditTestata && !isReadonly" :loading="loading" :disabled="!canSave"
         @save="handleSave" @cancel="close" />
     </div>
   </Drawer>

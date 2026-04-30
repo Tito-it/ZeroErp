@@ -197,6 +197,28 @@ class PreventiviRepository:
             cursor.execute(sql, [preventivo_id])
             return rows_to_list(cursor)
 
+    # Scopo: Capability del preventivo per il detail API (Fase 1 refactor
+    #        frontend vendite). Wrapper su `script.fn_available_actions_preventivo`
+    #        che ritorna jsonb con available_actions, can_edit_*,
+    #        can_push_commessa(+ reason), can_create_revisione, non_editable_fields,
+    #        stato_codice. Il blob e' opaco lato Python: viene passato al FE
+    #        intatto perche' la logica di rendering dipende solo dai metadata.
+    #        Ritorna {} se la fn ritorna NULL (preventivo inesistente — caller
+    #        deve aver gia' verificato l'esistenza).
+    def get_capabilities(self, preventivo_id: int) -> dict[str, Any]:
+        sql = "SELECT script.fn_available_actions_preventivo(%s) AS payload"
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [preventivo_id])
+            row = cursor.fetchone()
+            if not row or row[0] is None:
+                return {}
+            payload = row[0]
+            # psycopg3 adatta jsonb a dict; il branch isinstance copre solo i
+            # backend che restituiscono il payload come stringa.
+            if isinstance(payload, str):
+                payload = json.loads(payload)
+            return payload
+
     # ══════════════════════════════════════════════════════════
     #  SCRITTURE — Testata
     # ══════════════════════════════════════════════════════════

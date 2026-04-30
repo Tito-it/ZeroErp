@@ -77,7 +77,11 @@ def list_preventivi(
     return paginated_envelope(results, total_count, page, page_size)
 
 
-# Scopo: Dettaglio preventivo completo (testata + righe + indirizzi).
+# Scopo: Dettaglio preventivo completo (testata + righe + indirizzi + capabilities).
+#        Le capability (available_actions, can_edit_*, can_push_commessa,
+#        can_create_revisione, non_editable_fields) sono calcolate da
+#        script.fn_available_actions_preventivo: il backend non duplica la logica,
+#        spalma il blob JSONB nel detail per consumo diretto dal frontend.
 def get_preventivo(preventivo_id: int) -> dict[str, object]:
     repo = PreventiviRepository()
     testata = repo.get_preventivo(preventivo_id)
@@ -91,8 +95,10 @@ def get_preventivo(preventivo_id: int) -> dict[str, object]:
     assert testata is not None
     righe = repo.list_righe(preventivo_id)
     indirizzi = repo.list_indirizzi(preventivo_id)
+    capabilities = repo.get_capabilities(preventivo_id)
     return {
         **testata,
+        **capabilities,
         "righe": righe,
         "indirizzi": indirizzi,
     }
