@@ -60,6 +60,8 @@ _ORDER_BY_VALIDI: frozenset[str] = frozenset({
     "tipo_indirizzo_descrizione",
     "obbligatorio",
     "attivo",
+    "valido_dal",
+    "valido_al",
     "data_insert",
     "data_update",
 })
@@ -295,4 +297,3 @@ class TipiRuoloTipiIndirizzoService:
             context={"record_id": record_id},
         )
         return self.get_matrice(record_id)
-

@@ -166,6 +166,7 @@ class TestGet(TestCase):
     @patch(_REPO)
     def test_get_ok(self, mock_repo):
         mock_repo.return_value.get_promo.return_value = {"id": 1}
+        mock_repo.return_value.get_capabilities.return_value = {}
         self.assertEqual(PromoArticoliService().get_promo(1), {"id": 1})
 
     @patch(_REPO)
@@ -181,6 +182,28 @@ class TestGet(TestCase):
         with self.assertRaises(ServiceError) as ctx:
             PromoArticoliService().get_promo(0)
         self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
+
+    # Scopo: get_promo includa il blob capabilities (Fase 1.B3 refactor
+    #        frontend vendite) — stato_temporale, can_update,
+    #        min_valido_*, non_editable_fields.
+    @patch(_REPO)
+    def test_get_include_capabilities(self, mock_repo):
+        mock_repo.return_value.get_promo.return_value = {"id": 1, "codice": "PR-1"}
+        mock_repo.return_value.get_capabilities.return_value = {
+            "stato_temporale": "INIZIATA",
+            "can_update": True,
+            "can_update_reason": None,
+            "min_valido_dal": None,
+            "min_valido_al": "2026-04-30",
+            "non_editable_fields": ["codice", "articolo_id", "uom_id",
+                                     "tipo_variazione", "valore_variazione",
+                                     "valido_dal", "attivo"],
+        }
+        result = PromoArticoliService().get_promo(1)
+        self.assertEqual(result["stato_temporale"], "INIZIATA")
+        self.assertTrue(result["can_update"])
+        self.assertIn("codice", result["non_editable_fields"])
+        mock_repo.return_value.get_capabilities.assert_called_once_with(1)
 
 
 class TestCreate(TestCase):

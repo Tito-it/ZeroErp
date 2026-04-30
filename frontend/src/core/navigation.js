@@ -40,10 +40,8 @@ export const DOMAIN_MENUS = {
     { key: 'profili-reparto', icon: 'pi pi-sitemap', to: '/amm-software/profili-reparto' },
     { key: 'permessi', icon: 'pi pi-shield', to: '/amm-software/permessi' },
     { key: 'emittenti-fiscali', icon: 'pi pi-id-card', to: '/amm-software/emittenti-fiscali' },
-    { key: 'matrice-utilities-ruoli', icon: 'pi pi-table', to: '/amm-software/matrice-utilities-ruoli' },
-    { key: 'matrice-indirizzi-ruoli', icon: 'pi pi-map', to: '/amm-software/matrice-indirizzi-ruoli' },
     { key: 'categorie-clienti', icon: 'pi pi-tags', to: '/amm-software/categorie-clienti' },
-    { key: 'matrice-categorie-listini', icon: 'pi pi-th-large', to: '/amm-software/matrice-categorie-listini' },
+    { key: 'matrici', icon: 'pi pi-table', to: '/amm-software/matrici' },
     { key: 'audit-log', icon: 'pi pi-history', to: '/amm-software/audit-log' },
     { key: 'email-accounts', icon: 'pi pi-at', to: '/amm-software/email-accounts' },
     { key: 'email-templates', icon: 'pi pi-file-edit', to: '/amm-software/email-templates' },
@@ -110,7 +108,9 @@ export function resolveTabLabel(meta, t, te = null) {
 export function resolveTabIcon(meta) {
   const { domain, menuKey } = meta
   if (menuKey && DOMAIN_MENUS[domain]) {
-    const item = DOMAIN_MENUS[domain].find(m => m.key === menuKey)
+    const item = DOMAIN_MENUS[domain]
+      .flatMap(m => m.children ? [m, ...m.children] : [m])
+      .find(m => m.key === menuKey)
     if (item) return item.icon
   }
   if (domain) {

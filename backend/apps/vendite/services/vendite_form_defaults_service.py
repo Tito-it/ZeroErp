@@ -1,0 +1,443 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+# Doc: Python
+# Scopo: Form-defaults BA-aware e contestuali per vendite
+#        (Fase 2.B3-B5 refactor frontend vendite).
+#
+#        Espone 5 funzioni read-only consumate dal FE all'apertura dei
+#        drawer per popolare i campi che dipendono da contesto (BA,
+#        listino, versione) o da parameters di sistema. Single source
+#        of truth lato BE: il FE non deve piu' inventare valuta/termini
+#        dal cliente, suffisso/lead_gg dei codici versione, ecc.
+#
+#        Pattern: niente classe, funzioni `fn_*` allineate al modello
+#        di `vendite_lookups_service`. Errori applicativi via
+#        ErrorManager (codici E_VENDITE_NOT_FOUND/VALIDATION).
+# ------------------------------------------------------------
+
+from __future__ import annotations
+
+from datetime import date, timedelta
+from typing import Any
+
+from apps.anagrafiche.db.billing_account_repository import BillingAccountRepository
+from apps.core.services.error_manager import ErrorManager
+from apps.core.services.parameter_service import ParameterService
+from apps.vendite.db.listini_repository import ListiniRepository
+
+
+_FN = "vendite.form_defaults_service"
+
+# Codici errore (riusiamo la tassonomia vendite gia' registrata in
+# error_policies.py — vedi contratti_service.E_VENDITE_*).
+E_VENDITE_NOT_FOUND = "E_VENDITE_NOT_FOUND"
+E_VENDITE_VALIDATION = "E_VENDITE_VALIDATION"
+
+# Parameter codes consumati. Single source of truth lato seed DB
+# (handoff Fase 2 `2026-04-30`). Mantenere allineati ai default
+# usati anche dal FE come fallback in `paramInt`/`paramString`.
+_PARAM_CONTRATTO_VALIDO_DAL_LEAD_GG = "VENDITE_CONTRATTO_DEFAULT_VALIDO_DAL_LEAD_GG"
+_PARAM_CONTRATTO_DATA_LEAD_GG = "VENDITE_CONTRATTO_DEFAULT_DATA_LEAD_GG"
+_PARAM_PREVENTIVO_VALIDITA_GG = "VENDITE_PREVENTIVO_DEFAULT_VALIDITA_GG"
+_PARAM_LISTINI_NEW_VERSIONE_LEAD_GG = "VENDITE_LISTINI_NEW_VERSIONE_LEAD_GG"
+_PARAM_LISTINI_CLONE_VERSIONE_LEAD_GG = "VENDITE_LISTINI_CLONE_VERSIONE_LEAD_GG"
+_PARAM_LISTINI_CLONE_VERSIONE_CODICE_SUFFIX = "VENDITE_LISTINI_CLONE_VERSIONE_CODICE_SUFFIX"
+_PARAM_LISTINI_CLOSE_VERSIONE_LEAD_GG = "VENDITE_LISTINI_CLOSE_VERSIONE_LEAD_GG"
+
+
+# ══════════════════════════════════════════════════════════
+#  Helpers privati
+# ══════════════════════════════════════════════════════════
+
+
+# Scopo: Cast int safe con default. ParameterService.get_defaults restituisce
+#        dict[str, str]: il caller decide il fallback se il parameter non e'
+#        seedato o ha valore non numerico (resilienza a config DB incompleto).
+def _param_int(defaults: dict[str, str], code: str, fallback: int) -> int:
+    raw = defaults.get(code)
+    if raw is None:
+        return fallback
+    try:
+        return int(raw)
+    except (ValueError, TypeError):
+        return fallback
+
+
+# Scopo: Cast string safe con default.
+def _param_str(defaults: dict[str, str], code: str, fallback: str) -> str:
+    raw = defaults.get(code)
+    if raw is None or raw == "":
+        return fallback
+    return str(raw)
+
+
+# Scopo: Verifica che billing_account_id sia un intero positivo.
+def _require_positive_int(value: Any, *, field: str, function_name: str) -> int:
+    ErrorManager.require(
+        value is not None,
+        code=E_VENDITE_VALIDATION,
+        message=f"Parametro '{field}' obbligatorio.",
+        function_name=function_name,
+    )
+    try:
+        as_int = int(value)
+    except (ValueError, TypeError):
+        ErrorManager.raise_error(
+            code=E_VENDITE_VALIDATION,
+            message=f"Parametro '{field}' deve essere un intero positivo.",
+            detail=f"Valore ricevuto: {value!r}",
+            function_name=function_name,
+        )
+        raise AssertionError("unreachable")  # pragma: no cover
+    ErrorManager.require(
+        as_int > 0,
+        code=E_VENDITE_VALIDATION,
+        message=f"Parametro '{field}' deve essere un intero positivo.",
+        function_name=function_name,
+    )
+    return as_int
+
+
+# ══════════════════════════════════════════════════════════
+#  2.B3 — Contratti form-defaults
+# ══════════════════════════════════════════════════════════
+
+
+# Scopo: Defaults per il form contratto contestuali al BA selezionato.
+#        Il drawer ContrattoDrawer chiama questo endpoint nel `@select` del
+#        BillingAccountLookup per pre-compilare campi che oggi inferisce dal
+#        payload del lookup (categoria_cliente_id_snapshot) o lascia vuoti
+#        (utility/istanza per coerenza).
+#
+#        Restituisce sempre `param_defaults` (lead_gg per data e valido_dal):
+#        il FE li usa anche all'apertura senza BA. Quando billing_account_id
+#        e' presente, aggiunge i campi BA-derived (categoria_cliente_id_snapshot,
+#        utility_id, istanza_utility_id).
+def fn_get_contratto_form_defaults(
+    *,
+    billing_account_id: int | None,
+    auth_user_id: int | None = None,
+) -> dict[str, Any]:
+    function_name = f"{_FN}.fn_get_contratto_form_defaults"
+    param_defaults_raw = ParameterService().get_defaults(
+        [
+            _PARAM_CONTRATTO_VALIDO_DAL_LEAD_GG,
+            _PARAM_CONTRATTO_DATA_LEAD_GG,
+        ],
+        django_user_id=auth_user_id,
+    )
+    today = date.today()
+    valido_dal_lead = _param_int(param_defaults_raw, _PARAM_CONTRATTO_VALIDO_DAL_LEAD_GG, 0)
+    data_lead = _param_int(param_defaults_raw, _PARAM_CONTRATTO_DATA_LEAD_GG, 0)
+    payload: dict[str, Any] = {
+        "billing_account_id": None,
+        "default_valido_dal": (today + timedelta(days=valido_dal_lead)).isoformat(),
+        "default_data": (today + timedelta(days=data_lead)).isoformat(),
+        "categoria_cliente_id_snapshot": None,
+        "categoria_cliente_codice": None,
+        "categoria_cliente_descrizione": None,
+        "utility_id": None,
+        "istanza_utility_id": None,
+        "utility_codice": None,
+        "utility_descrizione": None,
+    }
+    if billing_account_id is None:
+        return payload
+
+    ba_id = _require_positive_int(
+        billing_account_id, field="billing_account_id", function_name=function_name,
+    )
+    ba = BillingAccountRepository().get_lookup_by_id(ba_id)
+    ErrorManager.require(
+        ba is not None,
+        code=E_VENDITE_NOT_FOUND,
+        message="Billing account non trovato.",
+        detail=f"billing_account_id={ba_id}",
+        function_name=function_name,
+    )
+    assert ba is not None
+    payload.update({
+        "billing_account_id": ba_id,
+        "categoria_cliente_id_snapshot": ba.get("categoria_cliente_id"),
+        "categoria_cliente_codice": ba.get("categoria_cliente_codice"),
+        "categoria_cliente_descrizione": ba.get("categoria_cliente_descrizione"),
+        "utility_id": ba.get("utility_id"),
+        "istanza_utility_id": ba.get("istanza_utility_id"),
+        "utility_codice": ba.get("utility_codice"),
+        "utility_descrizione": ba.get("utility_descrizione"),
+    })
+    return payload
+
+
+# ══════════════════════════════════════════════════════════
+#  2.B4 — Preventivi form-defaults
+# ══════════════════════════════════════════════════════════
+
+
+# Scopo: Defaults per il form preventivo contestuali al BA selezionato.
+#        Risolve termine_pagamento_id/iva_id/modalita_pagamento_id dal cliente
+#        associato al BA (tripletta istanza+soggetto+utility), valuta_id dal
+#        BA stesso o, se NULL, dall'emittente fiscale collegato.
+#
+#        Sempre presente `param_defaults` (validita_gg) per il calcolo
+#        validita_al = oggi + N. Quando billing_account_id e' assente, i campi
+#        BA-derived restano None.
+def fn_get_preventivo_form_defaults(
+    *,
+    billing_account_id: int | None,
+    auth_user_id: int | None = None,
+) -> dict[str, Any]:
+    function_name = f"{_FN}.fn_get_preventivo_form_defaults"
+    param_defaults_raw = ParameterService().get_defaults(
+        [_PARAM_PREVENTIVO_VALIDITA_GG],
+        django_user_id=auth_user_id,
+    )
+    today = date.today()
+    validita_gg = _param_int(param_defaults_raw, _PARAM_PREVENTIVO_VALIDITA_GG, 30)
+    payload: dict[str, Any] = {
+        "billing_account_id": None,
+        "default_validita_al": (today + timedelta(days=validita_gg)).isoformat(),
+        "valuta_id": None,
+        "valuta_codice": None,
+        "valuta_descrizione": None,
+        "termine_pagamento_id": None,
+        "termine_pagamento_codice": None,
+        "termine_pagamento_descrizione": None,
+        "iva_id": None,
+        "iva_codice": None,
+        "iva_descrizione": None,
+        "modalita_pagamento_id": None,
+        "modalita_pagamento_codice": None,
+        "modalita_pagamento_descrizione": None,
+        "utility_id": None,
+        "istanza_utility_id": None,
+        "utility_codice": None,
+        "utility_descrizione": None,
+    }
+    if billing_account_id is None:
+        return payload
+
+    ba_id = _require_positive_int(
+        billing_account_id, field="billing_account_id", function_name=function_name,
+    )
+    ba_repo = BillingAccountRepository()
+    ba = ba_repo.get_lookup_by_id(ba_id)
+    ErrorManager.require(
+        ba is not None,
+        code=E_VENDITE_NOT_FOUND,
+        message="Billing account non trovato.",
+        detail=f"billing_account_id={ba_id}",
+        function_name=function_name,
+    )
+    assert ba is not None
+    payload.update({
+        "billing_account_id": ba_id,
+        "utility_id": ba.get("utility_id"),
+        "istanza_utility_id": ba.get("istanza_utility_id"),
+        "utility_codice": ba.get("utility_codice"),
+        "utility_descrizione": ba.get("utility_descrizione"),
+        # Valuta del BA (LOOKUP_SELECT_COLUMNS la espone direttamente);
+        # se NULL, fallback emittente sotto.
+        "valuta_id": ba.get("valuta_id"),
+        "valuta_codice": ba.get("valuta_codice"),
+        "valuta_descrizione": ba.get("valuta_descrizione"),
+    })
+
+    # Cliente del BA (relazione 1:1 via tripletta) -> termini/iva/modalita.
+    cliente = ba_repo.get_cliente_defaults(
+        istanza_utility_id=int(ba["istanza_utility_id"]),
+        soggetto_ruolo_id=int(ba["soggetto_ruolo_id"]),
+        utility_id=int(ba["utility_id"]),
+    )
+    if cliente:
+        payload.update({
+            "termine_pagamento_id": cliente.get("termine_pagamento_id"),
+            "termine_pagamento_codice": cliente.get("termine_pagamento_codice"),
+            "termine_pagamento_descrizione": cliente.get("termine_pagamento_descrizione"),
+            "iva_id": cliente.get("iva_id"),
+            "iva_codice": cliente.get("iva_codice"),
+            "iva_descrizione": cliente.get("iva_descrizione"),
+            "modalita_pagamento_id": cliente.get("modalita_pagamento_id"),
+            "modalita_pagamento_codice": cliente.get("modalita_pagamento_codice"),
+            "modalita_pagamento_descrizione": cliente.get("modalita_pagamento_descrizione"),
+        })
+
+    # Fallback valuta: emittente fiscale del BA (catena specifico -> default
+    # globale, vedi fn_get_emittente_fiscale_pk).
+    if payload["valuta_id"] is None:
+        emittente = ba_repo.get_emittente_valuta(ba_id)
+        if emittente:
+            payload.update({
+                "valuta_id": emittente.get("valuta_id"),
+                "valuta_codice": emittente.get("valuta_codice"),
+                "valuta_descrizione": emittente.get("valuta_descrizione"),
+            })
+
+    return payload
+
+
+# ══════════════════════════════════════════════════════════
+#  2.B5a — Listini-versioni: defaults per nuova versione
+# ══════════════════════════════════════════════════════════
+
+
+# Scopo: Defaults per la creazione di una nuova versione del listino.
+#        Restituisce default_valido_dal (oggi + lead_gg da parameter) e la
+#        lista delle BOZZE gia' esistenti per il listino: il FE le usa per
+#        warning UX ("attenzione, esistono gia' bozze: codici X, Y").
+#        Nessun min_valido_dal: la BOZZA ammette retroattivita'; il vincolo
+#        di non-overlap e' gestito dal DB su attivazione.
+def fn_get_versione_new_defaults(*, listino_id: int, auth_user_id: int | None = None) -> dict[str, Any]:
+    function_name = f"{_FN}.fn_get_versione_new_defaults"
+    listino_id_int = _require_positive_int(
+        listino_id, field="listino_id", function_name=function_name,
+    )
+    listini_repo = ListiniRepository()
+    listino = listini_repo.get_listino(listino_id_int)
+    ErrorManager.require(
+        listino is not None,
+        code=E_VENDITE_NOT_FOUND,
+        message="Listino non trovato.",
+        detail=f"listino_id={listino_id_int}",
+        function_name=function_name,
+    )
+    param_defaults_raw = ParameterService().get_defaults(
+        [_PARAM_LISTINI_NEW_VERSIONE_LEAD_GG],
+        django_user_id=auth_user_id,
+    )
+    lead_gg = _param_int(param_defaults_raw, _PARAM_LISTINI_NEW_VERSIONE_LEAD_GG, 0)
+    versioni = listini_repo.list_versioni(listino_id_int)
+    bozze = [
+        {"id": v["id"], "codice_versione": v.get("codice_versione")}
+        for v in versioni
+        if v.get("stato") == "BOZZA"
+    ]
+    return {
+        "listino_id": listino_id_int,
+        "default_codice_versione": "",
+        "default_valido_dal": (date.today() + timedelta(days=lead_gg)).isoformat(),
+        "default_valido_al": None,
+        "min_valido_dal": None,
+        "has_existing_draft": len(bozze) > 0,
+        "existing_drafts": bozze,
+    }
+
+
+# ══════════════════════════════════════════════════════════
+#  2.B5b — Listini-versioni: defaults per clone
+# ══════════════════════════════════════════════════════════
+
+
+# Scopo: Defaults per il clone di una versione esistente. Risolve il
+#        codice di partenza dalla sorgente, applica il suffisso configurato
+#        (parameter VENDITE_LISTINI_CLONE_VERSIONE_CODICE_SUFFIX, default
+#        "-clone") e calcola valido_dal default = oggi + lead_gg.
+#        min_valido_dal = sorgente.valido_dal (vincolo D2 backend: target
+#        non puo' essere antecedente alla sorgente).
+def fn_get_versione_clone_defaults(
+    *,
+    listino_id: int,
+    src_versione_id: int,
+    auth_user_id: int | None = None,
+) -> dict[str, Any]:
+    function_name = f"{_FN}.fn_get_versione_clone_defaults"
+    listino_id_int = _require_positive_int(
+        listino_id, field="listino_id", function_name=function_name,
+    )
+    src_id = _require_positive_int(
+        src_versione_id, field="src_versione_id", function_name=function_name,
+    )
+    src = ListiniRepository().get_versione(listino_id_int, src_id)
+    ErrorManager.require(
+        src is not None,
+        code=E_VENDITE_NOT_FOUND,
+        message="Versione sorgente non trovata.",
+        detail=f"listino_id={listino_id_int}, versione_id={src_id}",
+        function_name=function_name,
+    )
+    assert src is not None
+    param_defaults_raw = ParameterService().get_defaults(
+        [
+            _PARAM_LISTINI_CLONE_VERSIONE_LEAD_GG,
+            _PARAM_LISTINI_CLONE_VERSIONE_CODICE_SUFFIX,
+        ],
+        django_user_id=auth_user_id,
+    )
+    lead_gg = _param_int(param_defaults_raw, _PARAM_LISTINI_CLONE_VERSIONE_LEAD_GG, 1)
+    suffix = _param_str(param_defaults_raw, _PARAM_LISTINI_CLONE_VERSIONE_CODICE_SUFFIX, "-clone")
+    today = date.today()
+    default_valido_dal = today + timedelta(days=lead_gg)
+    src_valido_dal = src.get("valido_dal")
+    src_codice = src.get("codice_versione") or ""
+    return {
+        "listino_id": listino_id_int,
+        "source_versione_id": src_id,
+        "source_codice_versione": src_codice,
+        "source_valido_dal": src_valido_dal.isoformat() if isinstance(src_valido_dal, date) else src_valido_dal,
+        "source_valido_al": src["valido_al"].isoformat() if isinstance(src.get("valido_al"), date) else src.get("valido_al"),
+        "default_codice_versione": f"{src_codice}{suffix}" if src_codice else "",
+        "default_valido_dal": default_valido_dal.isoformat(),
+        "default_valido_al": None,
+        "min_valido_dal": src_valido_dal.isoformat() if isinstance(src_valido_dal, date) else src_valido_dal,
+        # Retroattivo se il default proposto cade nel passato. Indipendente
+        # dalla sorgente (sorgente puo' essere senza valido_dal: il vincolo
+        # min_valido_dal viene gestito separatamente).
+        "is_retroactive_default": default_valido_dal < today,
+        "retroactive_warning_key": "listini.warning_retroattivo",
+    }
+
+
+# ══════════════════════════════════════════════════════════
+#  2.B5c — Listini-versioni: defaults per chiusura
+# ══════════════════════════════════════════════════════════
+
+
+# Scopo: Defaults per la chiusura programmata/immediata di una versione.
+#        Se la versione ha gia' una valido_al (chiusura programmata),
+#        il default e' quello esistente (UX di "modifica chiusura"); altrimenti
+#        oggi + lead_gg. Espone `current_valido_al` per il flag UX
+#        "ha_gia_chiusura". `min_valido_al` = oggi (no chiusura nel passato:
+#        la chiusura nel passato sarebbe immediata e va gestita con cautela).
+def fn_get_versione_close_defaults(
+    *,
+    listino_id: int,
+    versione_id: int,
+    auth_user_id: int | None = None,
+) -> dict[str, Any]:
+    function_name = f"{_FN}.fn_get_versione_close_defaults"
+    listino_id_int = _require_positive_int(
+        listino_id, field="listino_id", function_name=function_name,
+    )
+    ver_id = _require_positive_int(
+        versione_id, field="versione_id", function_name=function_name,
+    )
+    versione = ListiniRepository().get_versione(listino_id_int, ver_id)
+    ErrorManager.require(
+        versione is not None,
+        code=E_VENDITE_NOT_FOUND,
+        message="Versione listino non trovata.",
+        detail=f"listino_id={listino_id_int}, versione_id={ver_id}",
+        function_name=function_name,
+    )
+    assert versione is not None
+    param_defaults_raw = ParameterService().get_defaults(
+        [_PARAM_LISTINI_CLOSE_VERSIONE_LEAD_GG],
+        django_user_id=auth_user_id,
+    )
+    lead_gg = _param_int(param_defaults_raw, _PARAM_LISTINI_CLOSE_VERSIONE_LEAD_GG, 0)
+    today = date.today()
+    current_valido_al = versione.get("valido_al")
+    if isinstance(current_valido_al, date):
+        default_valido_al = current_valido_al
+    else:
+        default_valido_al = today + timedelta(days=lead_gg)
+    return {
+        "listino_id": listino_id_int,
+        "versione_id": ver_id,
+        "stato_codice": versione.get("stato"),
+        "current_valido_al": current_valido_al.isoformat() if isinstance(current_valido_al, date) else current_valido_al,
+        "has_existing_chiusura": current_valido_al is not None,
+        "default_valido_al": default_valido_al.isoformat() if isinstance(default_valido_al, date) else default_valido_al,
+        "min_valido_al": today.isoformat(),
+    }

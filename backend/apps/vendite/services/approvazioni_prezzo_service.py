@@ -62,6 +62,17 @@ _STATO_RIGA_REJECTED = "REJECTED"
 # Note esito (tipi_nota seed: INTERNA visibile solo agli operatori).
 _NOTA_TIPO_INTERNA = "INTERNA"
 
+# Chiave del meta pratica che linka la riga preventivo da approvare. Usata
+# in 3 posti (link_riga_a_pratica writer + lista_coda lookup + FE rigaIdFromPratica
+# come contratto stabile). Single source of truth qui per evitare typo silenziosi.
+META_KEY_RIGA_PREVENTIVO_ID = "riga_preventivo_id"
+
+# Codici stabili `action_reason` esposti dalla coda approvazioni (Fase 5.B1).
+# Contratto FE: ApprovazioniPrezzoListView.ACTION_REASON_KEYS mappa questi
+# codici a chiavi i18n. Aggiungerne uno nuovo richiede di propagare a entrambi.
+ACTION_REASON_PERMESSO_MANCANTE = "PERMESSO_MANCANTE"
+ACTION_REASON_RIGA_NON_LINKATA = "RIGA_NON_LINKATA"
+
 
 # ============================================================
 # Lookup cache modulo-level
@@ -281,6 +292,8 @@ def rifiuta(
 # Scopo: lista paginata della coda approvazioni prezzo per gli approver.
 #        Riusa pratiche_service.cerca_pratiche con filtro tipo_prestazione +
 #        stato APERTA. Scope emittente derivato dall'utente via PermissionResolver.
+#        Fase 5.B1: ogni item arricchito con `can_approve`/`can_reject`/
+#        `action_reason` per UX coda (FE disabilita bottoni + mostra tooltip).
 def lista_coda(
     *,
     auth_user_id: int | None,
@@ -317,7 +330,56 @@ def lista_coda(
         order_by="data_insert",
         order_dir="desc",
     )
+    # Capability per riga (Fase 5.B1). Permesso utente calcolato UNA volta
+    # (i check non dipendono dalla riga); per-item solo la verifica linkability
+    # con riga_preventivo_id presente nel meta della pratica.
+    user_can_act = _user_can_approve_or_reject(user)
+    for item in risultati:
+        item.update(_capabilities_per_pratica(item, user_can_act=user_can_act))
     return {"results": risultati, "count": total, "limit": limit, "offset": offset}
+
+
+# Scopo: helper Fase 5.B1. Ritorna True se l'utente puo' approvare/rifiutare
+#        secondo permesso azione `approva_prezzo_override`. Superuser bypass.
+def _user_can_approve_or_reject(user) -> bool:
+    if getattr(user, "is_superuser", False):
+        return True
+    return PermissionResolver.check_azione(user, AZIONE_PROCESSO)
+
+
+# Scopo: helper Fase 5.B1. Calcola capability di riga + reason i18n key.
+#        Reason possibili (codici stabili esportati come costanti modulo,
+#        traduzione lato FE):
+#          - PERMESSO_MANCANTE  → utente senza azione approva_prezzo_override
+#          - RIGA_NON_LINKATA   → META_KEY_RIGA_PREVENTIVO_ID assente nel meta
+#            (pratica legacy o crash post-create_riga)
+#          - None               → can_approve/can_reject = True
+def _capabilities_per_pratica(pratica: dict[str, Any], *, user_can_act: bool) -> dict[str, Any]:
+    if not user_can_act:
+        return {
+            "can_approve": False,
+            "can_reject": False,
+            "action_reason": ACTION_REASON_PERMESSO_MANCANTE,
+        }
+    # `meta` puo' essere None (pratica creata fuori dal flow normale): or-{}
+    # protegge. dict.get + fallback legacy `riga_id` con check is not None
+    # esplicito: 0 e' un id invalido in PG (sequence parte da 1), ma volere
+    # "any not None" e' piu' corretto del falsy `or` (B3).
+    meta = pratica.get("meta") or {}
+    riga_id = meta.get(META_KEY_RIGA_PREVENTIVO_ID)
+    if riga_id is None:
+        riga_id = meta.get("riga_id")  # legacy compat
+    if riga_id is None:
+        return {
+            "can_approve": False,
+            "can_reject": False,
+            "action_reason": ACTION_REASON_RIGA_NON_LINKATA,
+        }
+    return {
+        "can_approve": True,
+        "can_reject": True,
+        "action_reason": None,
+    }
 
 
 # ============================================================
@@ -466,7 +528,7 @@ def link_riga_a_pratica(*, pratica_id: int, riga_id: int) -> None:
     if pratica is None:
         return  # pratica scomparsa: defensive, no raise
     meta = dict(pratica.get("meta") or {})
-    meta["riga_preventivo_id"] = riga_id
+    meta[META_KEY_RIGA_PREVENTIVO_ID] = riga_id
     aggiorna_pratica(pratica_id, {"meta": meta})
 
 

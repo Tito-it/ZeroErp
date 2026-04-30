@@ -11,6 +11,7 @@ import { useI18n } from 'vue-i18n'
 import { DATE_FORMAT } from '../../../core/constants'
 import UtilityPerRuoloSelect from '../../../core/components/UtilityPerRuoloSelect.vue'
 import LookupSelect from '../../../core/components/LookupSelect.vue'
+import BillingAccountLookup from '../../../core/components/BillingAccountLookup.vue'
 import DatePicker from 'primevue/datepicker'
 import InputNumber from 'primevue/inputnumber'
 import ToggleSwitch from 'primevue/toggleswitch'
@@ -19,7 +20,6 @@ const { t } = useI18n()
 
 const props = defineProps({
   form: { type: Object, required: true },
-  isEdit: { type: Boolean, default: false },
   isModificabile: { type: Boolean, default: true },
   nonEditableFields: { type: Array, default: () => [] },
 })
@@ -28,6 +28,32 @@ const props = defineProps({
 const lockedFields = computed(() => new Set(props.nonEditableFields))
 function isLocked(field) {
   return !props.isModificabile || lockedFields.value.has(field)
+}
+
+// Pattern coerente con ContrattoDrawer.onBaSelected: il BA risolve
+// utility/istanza in modo univoco. Mutiamo direttamente il form (props):
+// il PreventiviDrawer reagisce al watch su form.billing_account_id (chiama
+// getPreventivoFormDefaults, vedi Fase 2.B4 + 2.F6).
+function onBaSelected(item) {
+  if (!item) {
+    props.form.billing_account_id = null
+    props.form.billing_account_obj = null
+    props.form.istanza_utility_id = null
+    return
+  }
+  props.form.billing_account_id = item.id
+  props.form.billing_account_obj = item
+  props.form.istanza_utility_id = item.istanza_utility_id || null
+  // Coerenza utility/BA: se l'operatore non aveva selezionato utility prima,
+  // pre-compila quella del BA. Se era gia' valorizzata e diversa, lascia
+  // intervenire BillingAccountLookup che gia' resetta il BA al cambio utility.
+  if (!props.form.utility_id && item.utility_id) {
+    props.form.utility_id = item.utility_id
+  }
+}
+
+function onBaClear() {
+  onBaSelected(null)
 }
 </script>
 
@@ -38,13 +64,17 @@ function isLocked(field) {
         <label>{{ t('preventivi.field_utility') }}</label>
         <UtilityPerRuoloSelect v-model="form.utility_id"
           :placeholder="t('preventivi.field_utility')"
-          :disabled="isEdit || isLocked('utility_id')" />
+          :disabled="isLocked('utility_id')" />
       </div>
       <div class="form-field">
         <label>{{ t('preventivi.field_billing_account') }}</label>
-        <InputNumber v-model="form.billing_account_id"
+        <BillingAccountLookup
+          :model-value="form.billing_account_obj"
+          :utility-id="form.utility_id"
           :disabled="isLocked('billing_account_id')"
-          :placeholder="t('preventivi.field_billing_account')" :use-grouping="false" />
+          :placeholder="t('preventivi.field_billing_account_placeholder')"
+          @select="onBaSelected"
+          @clear="onBaClear" />
       </div>
     </div>
 

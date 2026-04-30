@@ -13,20 +13,26 @@ import { useContrattiStore } from '../stores/contratti'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useInjectReadonly, READONLY_KEY } from '../../core/composables/useReadonlyMode'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
+import { useEntityCapabilities } from '../../core/composables/useEntityCapabilities'
 import { DRAWER_WIDTH } from '../../core/constants'
-import { toDateString, parseIsoDate } from '../../core/utils/date'
+import { addDaysToToday, toDateString, parseIsoDate } from '../../core/utils/date'
+import { paramInt, paramString } from '../../core/utils/parameterCast'
 import { statoContrattoSeverity } from '../../core/utils/severity'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import DrawerFooter from '../../core/components/DrawerFooter.vue'
 import LookupSelect from '../../core/components/LookupSelect.vue'
 import BillingAccountLookup from '../../core/components/BillingAccountLookup.vue'
 import ContrattoRigheDrawer from './ContrattoRigheDrawer.vue'
+import TipoVariazioneSelect from './TipoVariazioneSelect.vue'
+import AmbitoContrattoSelect from './AmbitoContrattoSelect.vue'
+import { useGlobalLookup } from '../../core/composables/useGlobalLookup'
+import { useParameterDefaults } from '../../core/composables/useParameterDefaults'
+import { lookupModalitaPricingContratto } from '../api/lookup'
 import Drawer from 'primevue/drawer'
 import Dialog from 'primevue/dialog'
 import InputText from 'primevue/inputtext'
 import InputNumber from 'primevue/inputnumber'
 import DatePicker from 'primevue/datepicker'
-import Select from 'primevue/select'
 import SelectButton from 'primevue/selectbutton'
 import Tag from 'primevue/tag'
 import Button from 'primevue/button'
@@ -55,16 +61,23 @@ const isEdit = computed(() => props.mode === 'edit')
 const detail = ref(null)
 const form = ref({})
 
-// Profilo A: contratto in stato post-DRAFT e' bloccato (eccetto cambio stato
-// che ha la sua azione dedicata). isContractLocked e' true se siamo in edit
-// e lo stato del contratto non e' DRAFT.
-const isContractLocked = computed(() => {
-  if (!isEdit.value) return false
-  const stato = detail.value?.stato_codice
-  return stato != null && stato !== 'DRAFT'
-})
+// Capability dal detail backend (Fase 1.B2: script.fn_available_actions_contratto).
+// Il drawer NON ricalcola lo stato: tutto deriva dai metadata API.
+// Composable centralizzato (Fase 4.F2): isLocked(field) = !canEdit OR Set lookup.
+const caps = useEntityCapabilities(detail, { editFlag: 'can_edit_testata' })
+const availableActions = caps.availableActions
+const canEditTestata = caps.canEdit
+const canEditRighe = computed(() => caps.flag('can_edit_righe'))
+const canChangeState = computed(() => caps.flag('can_change_state'))
+const nonEditableFields = caps.nonEditableFields
+const isLocked = caps.isLocked
 
-// isReadonly effettivo del drawer: OR tra permessi area e stato post-DRAFT.
+// isContractLocked deriva ora da !canEditTestata (mantenuto per leggibilita'
+// del template "banner contratto bloccato"). In create non c'e' detail, quindi
+// non e' "locked".
+const isContractLocked = computed(() => isEdit.value && !canEditTestata.value)
+
+// isReadonly effettivo del drawer: OR tra permessi area e !canEditTestata.
 // Tutti i campi/azioni del drawer principale e dei sub-drawer (righe, utility)
 // devono basarsi su questo computed. Propagato via provide ai figli.
 const isReadonly = computed(() => parentReadonly.value || isContractLocked.value)
@@ -81,40 +94,54 @@ const righeVisible = ref(false)
 let fgVersion = 0
 
 // Modalita' pricing (FE-only, derivata dai campi testata).
-// Puo' essere impostata esplicitamente via SelectButton; alla scrittura
-// aggiorna i campi coerenti (listino_id / tipo_variazione_globale / valore).
-const modalitaOptions = computed(() => [
-  { value: 'A', label: t('contratti.modalita_a'), hint: t('contratti.modalita_a_hint') },
-  { value: 'B', label: t('contratti.modalita_b'), hint: t('contratti.modalita_b_hint') },
-  { value: 'C', label: t('contratti.modalita_c'), hint: t('contratti.modalita_c_hint') },
-])
+// Le 3 modalita' (A/B/C) arrivano dal lookup statico BE
+// (vendite_lookups_service._MODALITA_PRICING_CONTRATTO) tramite useGlobalLookup.
+// Il SelectButton mostra il `codice` come `option-label`; l'hint sotto resta
+// client-side (i18n esistente: contratti.modalita_<lower>_hint).
+const modalitaLookup = useGlobalLookup(
+  'vendite.modalita_pricing_contratto',
+  lookupModalitaPricingContratto,
+  { immediate: true, transform: (r) => r.data.data },
+)
+const modalitaOptions = computed(() =>
+  modalitaLookup.items.value.map((m) => ({
+    value: m.codice,
+    label: m.codice,
+    hint: t(`contratti.modalita_${m.codice.toLowerCase()}_hint`, m.descrizione),
+  })),
+)
 
-const tipoVariazioneOptions = computed(() => [
-  { value: 'PERCENTUALE', label: t('contratti.tipo_variazione_percentuale') },
-  { value: 'VALORE_FISSO', label: t('contratti.tipo_variazione_valore_fisso') },
-])
-
-const ambitoOptions = computed(() => [
-  { value: 'COMMODITY', label: t('contratti.ambito_commodity') },
-  { value: 'COMMERCIO', label: t('contratti.ambito_commercio') },
+// Defaults non-BA da config.parameters (Fase 2 refactor frontend vendite).
+// Caricati on-open drawer prima di resetForm; cache modulo `useParameterDefaults`.
+// Niente magic string COMMODITY/A/PERCENTUALE qui: arrivano dal seed DB
+// con fallback robusto in caso di parameter mancante.
+const { defaults: paramDefaults, load: loadParamDefaults } = useParameterDefaults([
+  'VENDITE_CONTRATTO_DEFAULT_AMBITO',
+  'VENDITE_CONTRATTO_DEFAULT_MODALITA',
+  'VENDITE_CONTRATTO_DEFAULT_TIPO_VARIAZIONE_GLOBALE',
+  'VENDITE_CONTRATTO_DEFAULT_DATA_LEAD_GG',
+  'VENDITE_CONTRATTO_DEFAULT_VALIDO_DAL_LEAD_GG',
 ])
 
 function defaultForm() {
+  const p = paramDefaults.value
+  const dataLeadGg = paramInt(p.VENDITE_CONTRATTO_DEFAULT_DATA_LEAD_GG, 0)
+  const validoDalLeadGg = paramInt(p.VENDITE_CONTRATTO_DEFAULT_VALIDO_DAL_LEAD_GG, 0)
   return {
     billing_account_id: null,
     billing_account_obj: null,
     istanza_utility_id: null,
     utility_id: null,
-    ambito: 'COMMODITY',
-    valido_dal: new Date().toISOString().slice(0, 10),
+    ambito: paramString(p.VENDITE_CONTRATTO_DEFAULT_AMBITO, 'COMMODITY'),
+    valido_dal: toDateString(addDaysToToday(validoDalLeadGg)),
     valido_al: null,
-    data: new Date().toISOString().slice(0, 10),
+    data: toDateString(addDaysToToday(dataLeadGg)),
     parent_contratto_id: null,
     meta_note: '',
     // Categoria cliente snapshot
     categoria_cliente_id_snapshot: null,
     // Pricing
-    modalita: 'A',
+    modalita: paramString(p.VENDITE_CONTRATTO_DEFAULT_MODALITA, 'A'),
     listino_id: null,
     tipo_variazione_globale: null,
     valore_variazione_globale: null,
@@ -168,8 +195,13 @@ function deriveModalita(d) {
 // Quando l'utente cambia modalita', normalizza i campi coerenti.
 function onModalitaChange(nuova) {
   if (nuova === 'A') {
-    // Default: PERCENTUALE, valore editabile. Se mancante, suggerisce 0.
-    if (!form.value.tipo_variazione_globale) form.value.tipo_variazione_globale = 'PERCENTUALE'
+    // Default tipo variazione da parameter (con fallback PERCENTUALE).
+    if (!form.value.tipo_variazione_globale) {
+      form.value.tipo_variazione_globale = paramString(
+        paramDefaults.value.VENDITE_CONTRATTO_DEFAULT_TIPO_VARIAZIONE_GLOBALE,
+        'PERCENTUALE',
+      )
+    }
   } else if (nuova === 'B') {
     // listino si', variazione NO
     form.value.tipo_variazione_globale = null
@@ -191,6 +223,11 @@ function toIsoDate(d) {
 watch(() => props.visible, async (val) => {
   if (!val) { fgVersion++; contentReady.value = false; return }
   const v = ++fgVersion
+
+  // Carica parameters (cache modulo) prima di resetForm: il defaultForm
+  // li legge da paramDefaults.value.
+  await loadParamDefaults()
+  if (v !== fgVersion) return
 
   if (isEdit.value && props.contrattoId) {
     const d = await store.fetchDetail(props.contrattoId)
@@ -331,9 +368,10 @@ async function refreshDetail() {
   populateFromDetail(d)
 }
 
-// Stato dialog cessazione: per CESSATO chiediamo la data prima della
-// transizione (default oggi). Le altre transizioni passano per il classico
-// confirmAction (DRAFT->ATTIVO, ecc.).
+// Stato dialog cessazione: una azione con `requires_date=true` apre il dialog
+// con `default_date` e `min_date` arrivati direttamente dal BE
+// (script.fn_available_actions_contratto). Niente regole locali sul default
+// data ne' sui vincoli minimi: vivono in DB.
 //
 // Comportamento data-driven (allineato col backend e col guard DB):
 // - data <  oggi  -> cessazione immediata: stato passa a CESSATO
@@ -341,6 +379,10 @@ async function refreshDetail() {
 //                    job notturno DB allinea quando la data scade
 const cessaDialogVisible = ref(false)
 const cessaDialogData = ref(null)
+const cessaDialogAction = ref(null)
+const cessaDialogMinDate = computed(
+  () => parseIsoDate(cessaDialogAction.value?.min_date) || null,
+)
 
 const cessazioneProgrammata = computed(() => {
   if (!cessaDialogData.value) return false
@@ -351,16 +393,19 @@ const cessazioneProgrammata = computed(() => {
   return scelta >= oggi
 })
 
-function openCessaDialog() {
-  cessaDialogData.value = new Date()  // default oggi -> cessazione programmata per stasera
+function openCessaDialog(action) {
+  cessaDialogAction.value = action
+  // default_date dal BE; fallback oggi solo se la fn non lo fornisce.
+  cessaDialogData.value = parseIsoDate(action?.default_date) || new Date()
   cessaDialogVisible.value = true
 }
 
 async function onConfermaCessazione() {
   const validoAl = toDateString(cessaDialogData.value)
   const programmata = cessazioneProgrammata.value
+  const targetState = cessaDialogAction.value?.target_state || 'CESSATO'
   const result = await execute(
-    () => store.cambiaStato(props.contrattoId, 'CESSATO', { validoAl }),
+    () => store.cambiaStato(props.contrattoId, targetState, { validoAl }),
     {
       successMessage: programmata
         ? t('contratti.cessa_dialog_success_programmata', { data: validoAl })
@@ -373,39 +418,33 @@ async function onConfermaCessazione() {
   }
 }
 
-// Cambio stato (edit). CESSATO ha flusso dedicato (dialog con data),
-// gli altri stati usano il confirmAction generico.
-function onCambiaStato(codice) {
-  if (codice === 'CESSATO') {
-    openCessaDialog()
+// Cambio stato (edit). Le azioni vengono dal backend:
+// - requires_date=true  -> dialog con DatePicker (es. "cessa")
+// - requires_confirm    -> confirmAction con label_key dell'azione
+// - altrimenti          -> diretto
+function onCambiaStato(action) {
+  if (action.requires_date) {
+    openCessaDialog(action)
     return
   }
-  confirmAction({
-    title: t('contratti.conferma_titolo'),
-    message: t('contratti.conferma_cambio_stato', { stato: codice }),
-    onAccept: async () => {
-      const result = await execute(
-        () => store.cambiaStato(props.contrattoId, codice),
-        { successMessage: t('contratti.stato_cambiato') }
-      )
-      if (result !== null) await refreshDetail()
-    },
-  })
+  if (action.requires_confirm) {
+    confirmAction({
+      title: t('contratti.conferma_titolo'),
+      message: t('contratti.conferma_cambio_stato', { stato: t(action.label_key) }),
+      onAccept: () => eseguiCambioStato(action.target_state),
+    })
+    return
+  }
+  eseguiCambioStato(action.target_state)
 }
 
-// Azioni disponibili per stato corrente. SOSPESO rimosso completamente
-// dal modello (config.stati_doc_contratti, 2026-04-26): la sua semantica
-// operativa non era implementata. Workflow attuale: DRAFT -> ATTIVO ->
-// CESSATO (terminale). La transizione a CESSATO passa SEMPRE dal dialog
-// dedicato (vedi onCambiaStato + guard DB trgfn_contratti_a10_guard_
-// transizione_stato).
-const statiTransizionabili = computed(() => {
-  if (!detail.value) return []
-  const current = detail.value.stato_codice
-  if (current === 'DRAFT') return ['ATTIVO']
-  if (current === 'ATTIVO') return ['CESSATO']
-  return []
-})
+async function eseguiCambioStato(targetState) {
+  const result = await execute(
+    () => store.cambiaStato(props.contrattoId, targetState),
+    { successMessage: t('contratti.stato_cambiato') },
+  )
+  if (result !== null) await refreshDetail()
+}
 
 function onClose() {
   emit('update:visible', false)
@@ -444,12 +483,13 @@ function onClose() {
             <label>{{ t('contratti.field_stato') }}</label>
             <div class="flex align-items-center gap-2">
               <Tag :value="detail.stato_descrizione" :severity="statoContrattoSeverity(detail.stato_codice)" />
-              <Button v-for="stato in statiTransizionabili" :key="stato"
-                :label="t(`contratti.azione_${stato.toLowerCase()}`)"
-                :icon="stato === 'ATTIVO' ? 'pi pi-check' : 'pi pi-times'"
+              <Button v-for="action in availableActions" :key="action.key"
+                :label="t(action.label_key)"
+                :icon="action.icon"
+                :severity="action.severity"
                 size="small" outlined
                 class="app-escape"
-                @click="onCambiaStato(stato)" />
+                @click="onCambiaStato(action)" />
             </div>
           </div>
         </div>
@@ -485,12 +525,12 @@ function onClose() {
         </div>
         <div class="form-field">
           <label>{{ t('contratti.field_ambito') }} <span v-if="!isEdit">*</span></label>
-          <Select v-model="form.ambito" :options="ambitoOptions" option-label="label" option-value="value"
-            class="w-full" :disabled="isEdit" />
+          <AmbitoContrattoSelect v-model="form.ambito"
+            class="w-full" :disabled="isEdit && isLocked('ambito')" />
         </div>
       </div>
       <!-- Categoria cliente snapshot: editabile in create e in DRAFT,
-           bloccata dopo attivazione (trigger DB enforced) -->
+           bloccata dopo attivazione (BE/non_editable_fields + trigger DB) -->
       <div class="form-grid-2col mt-1">
         <div class="form-field">
           <label>{{ t('contratti.field_categoria_cliente_snapshot') }}</label>
@@ -500,7 +540,7 @@ function onClose() {
             class="w-full"
             :placeholder="t('contratti.select_categoria_cliente')"
             show-clear
-            :disabled="isEdit && detail?.stato_codice !== 'DRAFT'"
+            :disabled="isEdit && isLocked('categoria_cliente_id_snapshot')"
           />
         </div>
       </div>
@@ -512,12 +552,14 @@ function onClose() {
           <label>{{ t('contratti.field_data') }} *</label>
           <DatePicker :model-value="parseIsoDate(form.data)"
             @update:model-value="form.data = toIsoDate($event)"
+            :disabled="isEdit && isLocked('data')"
             date-format="dd/mm/yy" show-icon class="w-full" />
         </div>
         <div class="form-field">
           <label>{{ t('contratti.field_valido_dal') }} *</label>
           <DatePicker :model-value="parseIsoDate(form.valido_dal)"
             @update:model-value="form.valido_dal = toIsoDate($event)"
+            :disabled="isEdit && isLocked('valido_dal')"
             date-format="dd/mm/yy" show-icon class="w-full" />
         </div>
         <!-- Campo valido_al condizionale per stato:
@@ -542,7 +584,7 @@ function onClose() {
           </label>
           <DatePicker :model-value="parseIsoDate(form.valido_al)"
             @update:model-value="form.valido_al = toIsoDate($event)"
-            :disabled="isEdit && detail?.stato_codice !== 'DRAFT'"
+            :disabled="isEdit && isLocked('valido_al')"
             date-format="dd/mm/yy" show-icon show-button-bar class="w-full" />
         </div>
       </div>
@@ -565,18 +607,22 @@ function onClose() {
         <div class="form-field">
           <label>{{ t('contratti.field_listino') }} *</label>
           <LookupSelect v-model="form.listino_id" rel="vendite.listini" class="w-full"
-            :placeholder="t('contratti.select_listino')" />
+            :placeholder="t('contratti.select_listino')"
+            :disabled="isEdit && isLocked('listino_id')" />
         </div>
         <div class="form-grid-2col">
           <div class="form-field">
             <label>{{ t('contratti.field_tipo_variazione') }} *</label>
-            <Select v-model="form.tipo_variazione_globale" :options="tipoVariazioneOptions"
-              option-label="label" option-value="value" class="w-full" />
+            <TipoVariazioneSelect v-model="form.tipo_variazione_globale"
+              scope="contratto"
+              class="w-full"
+              :disabled="isEdit && isLocked('tipo_variazione_globale')" />
           </div>
           <div class="form-field">
             <label>{{ t('contratti.field_valore_variazione') }}</label>
             <InputNumber v-model="form.valore_variazione_globale" class="w-full"
               :min-fraction-digits="0" :max-fraction-digits="4" showButtons
+              :disabled="isEdit && isLocked('valore_variazione_globale')"
               :suffix="form.tipo_variazione_globale === 'PERCENTUALE' ? ' %' : ''" />
             <small class="text-color-secondary">{{ t('contratti.hint_valore_variazione') }}</small>
           </div>
@@ -588,7 +634,8 @@ function onClose() {
         <div class="form-field">
           <label>{{ t('contratti.field_listino') }} *</label>
           <LookupSelect v-model="form.listino_id" rel="vendite.listini" class="w-full"
-            :placeholder="t('contratti.select_listino')" />
+            :placeholder="t('contratti.select_listino')"
+            :disabled="isEdit && isLocked('listino_id')" />
         </div>
         <Message severity="info" :closable="false" size="small">
           {{ t('contratti.modalita_b_info') }}
@@ -622,7 +669,8 @@ function onClose() {
       <!-- === Note === -->
       <h4 class="mt-3">{{ t('contratti.section_note') }}</h4>
       <div class="form-field">
-        <Textarea v-model="form.meta_note" rows="2" autoResize class="w-full" />
+        <Textarea v-model="form.meta_note" rows="2" autoResize class="w-full"
+          :disabled="isEdit && isLocked('meta')" />
       </div>
 
       <!-- === Gestione righe (solo edit) === -->
@@ -670,7 +718,7 @@ function onClose() {
       <div class="form-field">
         <label>{{ t('contratti.cessa_dialog_data') }}</label>
         <DatePicker v-model="cessaDialogData" date-format="dd/mm/yy"
-          show-icon show-button-bar />
+          show-icon show-button-bar :min-date="cessaDialogMinDate" />
       </div>
       <Message :severity="cessazioneProgrammata ? 'info' : 'warn'"
         :closable="false" class="mt-1" size="small">

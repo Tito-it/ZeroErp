@@ -77,11 +77,14 @@ def list_preventivi(
     return paginated_envelope(results, total_count, page, page_size)
 
 
-# Scopo: Dettaglio preventivo completo (testata + righe + indirizzi + capabilities).
-#        Le capability (available_actions, can_edit_*, can_push_commessa,
-#        can_create_revisione, non_editable_fields) sono calcolate da
-#        script.fn_available_actions_preventivo: il backend non duplica la logica,
-#        spalma il blob JSONB nel detail per consumo diretto dal frontend.
+# Scopo: Dettaglio preventivo testata + summary + indirizzi + capabilities.
+#        Le righe NON sono incluse: il FE le legge separatamente via
+#        `GET /preventivi/<id>/righe/` (Fase 3.F6 refactor frontend vendite,
+#        decisione C2). I totali_* sono nella testata via trigger DB; aggiungiamo
+#        `righe_count` come summary leggero (badge UX). Le capability
+#        (available_actions, can_edit_*, can_push_commessa, can_create_revisione,
+#        non_editable_fields) sono calcolate da script.fn_available_actions_preventivo
+#        e spalmate nel detail per consumo diretto dal frontend.
 def get_preventivo(preventivo_id: int) -> dict[str, object]:
     repo = PreventiviRepository()
     testata = repo.get_preventivo(preventivo_id)
@@ -93,14 +96,17 @@ def get_preventivo(preventivo_id: int) -> dict[str, object]:
         function_name=f"{_FN}.get_preventivo",
     )
     assert testata is not None
-    righe = repo.list_righe(preventivo_id)
     indirizzi = repo.list_indirizzi(preventivo_id)
     capabilities = repo.get_capabilities(preventivo_id)
+    # Summary leggero: numero righe totali (badge UX). Le righe vere passano
+    # dall'endpoint /righe/ autonomo, evitando payload pesanti su lista detail
+    # e mismatch coi totali ricalcolati dai trigger DB.
+    righe_count = len(repo.list_righe(preventivo_id))
     return {
         **testata,
         **capabilities,
-        "righe": righe,
         "indirizzi": indirizzi,
+        "righe_count": righe_count,
     }
 
 
@@ -199,10 +205,13 @@ def aggiorna_preventivo(preventivo_id: int, payload: dict[str, Any]) -> dict[str
         function_name=f"{_FN}.aggiorna_preventivo",
     )
 
-    # Campi aggiornabili in BOZZA
+    # Campi aggiornabili in BOZZA. utility_id e' immutabile per regola di
+    # dominio (vedi script.fn_available_actions_preventivo: non_editable_fields
+    # include sempre utility_id) e quindi NON e' nella whitelist: per cambiarla
+    # serve creare un nuovo preventivo.
     update_fields: dict[str, Any] = {}
     for key in (
-        "billing_account_id", "utility_id", "istanza_utility_id",
+        "billing_account_id", "istanza_utility_id",
         "valuta_id", "termine_pagamento_id",
         "validita_dal", "validita_al", "competenza_mese",
         "fatturazione_immediata", "meta",
@@ -745,6 +754,10 @@ def _check_limite_variazione_prezzo(
 
     # Caso normale L2: solleva errore (FE banner attiva pulsante "richiedi
     # approvazione" che ri-tentera' con accept_for_approval=True).
+    # Fase 5.B2: retryable=True esplicito → semantica "puoi riprovare con
+    # flag richiesta_approvazione=true" (workflow L3). L1
+    # E_PREV_OVERRIDE_NON_AUTORIZZATO resta retryable=False (default ServiceError):
+    # senza permesso prezzo_override_manuale non c'e' niente da ritentare.
     error_code = "E_PREV_SCONTO_ECCESSIVO" if is_sconto else "E_PREV_MAGGIORAZIONE_ECCESSIVA"
     ErrorManager.raise_error(
         code=error_code,
@@ -753,6 +766,7 @@ def _check_limite_variazione_prezzo(
             f"{kind_label} richiesto: {variazione_abs.quantize(Decimal('0.01'))}% — "
             f"massimo ammesso: {limite}%."
         ),
+        retryable=True,
         function_name=function_name,
     )
 

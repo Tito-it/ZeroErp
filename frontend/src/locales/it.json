@@ -95,6 +95,7 @@
       "profili-reparto": "Profili Reparto",
       "permessi": "Permessi",
       "emittenti-fiscali": "Emittenti Fiscali",
+      "matrici": "Matrici",
       "matrice-utilities-ruoli": "Matrice Utilities/Ruoli",
       "matrice-indirizzi-ruoli": "Matrice Indirizzi/Ruoli",
       "categorie-clienti": "Categorie cliente",
@@ -587,6 +588,11 @@
     "ut_parent_inactive_tooltip": "Emittente disattivato: figlio non puo' essere attivo"
   },
   "amministrazione": {
+    "matrici": {
+      "tab_utilities_ruoli": "Utilities/Ruoli",
+      "tab_indirizzi_ruoli": "Indirizzi/Ruoli",
+      "tab_categorie_listini": "Categorie/Listini"
+    },
     "matrice_utilities_ruoli": {
       "search_placeholder": "Cerca per codice o descrizione...",
       "filter_utility": "Filtra utility",
@@ -692,6 +698,8 @@
       "col_obbligatorio": "Obbl.",
       "col_fallback": "Fallback",
       "col_attivo": "Stato",
+      "col_valido_dal": "Valido dal",
+      "col_valido_al": "Valido al",
       "saved": "Riga matrice aggiornata.",
       "created": "Riga matrice creata."
     }
@@ -1268,6 +1276,7 @@
     "filtro_ambito": "Ambito",
     "filtro_scadenza_mese": "Scadenza mese...",
     "col_numero": "Numero",
+    "col_ba_codice": "Codice",
     "col_ba": "Cliente",
     "col_utility": "Utility",
     "col_ambito": "Ambito",
@@ -1380,6 +1389,8 @@
     "conferma_titolo": "Conferma cambio stato",
     "conferma_cambio_stato": "Portare il contratto nello stato {stato}?",
     "stato_cambiato": "Stato aggiornato",
+    "azione_attiva": "Attiva",
+    "azione_cessa": "Cessa",
     "azione_attivo": "Attiva",
     "azione_cessato": "Cessa",
     "ambito_commodity": "Commodity",
@@ -1416,6 +1427,9 @@
       "identita_immutable_hint": "Codice, articolo e UoM sono immutabili. Per cambiarli disattiva questa promo e creane una nuova.",
       "scaduta_readonly_hint": "Promo scaduta — sola lettura. Per cambiare prezzo o periodo, crea una nuova promo.",
       "iniziata_warn_hint": "Promo gia' iniziata: solo descrizione e data fine sono modificabili. Per cambiare prezzo o periodo, chiudere questa promo (data fine = oggi) e crearne una nuova.",
+      "update_reason": {
+        "promo_scaduta_immutabile": "Promo scaduta — sola lettura. Per cambiare prezzo o periodo, crea una nuova promo."
+      },
       "col_codice": "Codice",
       "col_descrizione": "Descrizione",
       "col_articolo": "Articolo",
@@ -1580,7 +1594,8 @@
     "col_totale": "Totale",
     "col_validita": "Validita'",
     "field_utility": "Utility",
-    "field_billing_account": "Billing Account",
+    "field_billing_account": "Cliente (BA)",
+    "field_billing_account_placeholder": "Cerca per ragione sociale, codice BA, codice fiscale o PDP",
     "field_validita_dal": "Validita' dal",
     "field_validita_al": "Validita' al",
     "field_competenza": "Competenza",
@@ -1624,6 +1639,9 @@
     "azione_rifiuta": "Rifiuta",
     "azione_annulla": "Annulla",
     "azione_revisione": "Nuova Revisione",
+    "push_commessa_reason": {
+      "non_accettato": "L'integrazione con la commessa sara' disponibile dopo l'accettazione del preventivo."
+    },
     "conferma_cambio_stato": "Confermare il cambio di stato a {stato}? L'operazione potrebbe essere irreversibile.",
     "conferma_revisione": "Creare una nuova revisione? La revisione corrente verra' disattivata.",
     "stato_cambiato": "Stato preventivo aggiornato",
@@ -1664,30 +1682,9 @@
     "approvazione_inviata": "Esito approvazione registrato.",
     "rifiuto_inviato": "Esito rifiuto registrato.",
     "nessuna_richiesta": "Nessuna richiesta di approvazione in coda.",
-    "richiesta_inviata_toast": "Richiesta approvazione inviata."
-  },
-  "matrice_indirizzi": {
-    "tab_matrice": "Matrice Ruoli",
-    "search_placeholder": "Cerca per ruolo o tipo indirizzo...",
-    "filtro_ruolo": "Tipo Ruolo",
-    "nuova_regola": "Nuova Regola",
-    "regola": "Regola Indirizzo",
-    "regola_creata": "Regola creata",
-    "regola_salvata": "Regola salvata",
-    "col_ruolo": "Ruolo",
-    "col_tipo_indirizzo": "Tipo Indirizzo",
-    "col_obbligatorio": "Obbligatorio",
-    "col_fallback": "Fallback",
-    "col_attivo": "Attivo",
-    "col_valido_dal": "Valido dal",
-    "col_valido_al": "Valido al",
-    "field_tipo_ruolo": "Tipo Ruolo",
-    "field_tipo_indirizzo": "Tipo Indirizzo",
-    "field_obbligatorio": "Obbligatorio",
-    "field_fallback": "Tipo Indirizzo Fallback",
-    "select_ruolo": "Seleziona tipo ruolo...",
-    "select_tipo_indirizzo": "Seleziona tipo indirizzo...",
-    "nessun_fallback": "Nessun fallback"
+    "richiesta_inviata_toast": "Richiesta approvazione inviata.",
+    "reason_permesso_mancante": "Non hai il permesso 'approva_prezzo_override'. Chiedi all'amministratore di abilitarlo.",
+    "reason_riga_non_linkata": "La pratica non ha una riga preventivo collegata: contatta il supporto."
   },
   "dati_societari": {
     "forma_giuridica": "Forma giuridica",

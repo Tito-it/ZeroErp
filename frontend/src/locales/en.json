@@ -95,6 +95,7 @@
       "profili-reparto": "Department Profiles",
       "permessi": "Permissions",
       "emittenti-fiscali": "Fiscal Issuers",
+      "matrici": "Matrices",
       "matrice-utilities-ruoli": "Utilities/Roles Matrix",
       "matrice-indirizzi-ruoli": "Addresses/Roles Matrix",
       "categorie-clienti": "Client Categories",
@@ -587,6 +588,11 @@
     "ut_parent_inactive_tooltip": "Issuer disabled: child cannot be active"
   },
   "amministrazione": {
+    "matrici": {
+      "tab_utilities_ruoli": "Utilities/Roles",
+      "tab_indirizzi_ruoli": "Addresses/Roles",
+      "tab_categorie_listini": "Categories/Price Lists"
+    },
     "matrice_utilities_ruoli": {
       "search_placeholder": "Search by code or description...",
       "filter_utility": "Filter utility",
@@ -692,6 +698,8 @@
       "col_obbligatorio": "Req.",
       "col_fallback": "Fallback",
       "col_attivo": "Status",
+      "col_valido_dal": "Valid from",
+      "col_valido_al": "Valid to",
       "saved": "Matrix row updated.",
       "created": "Matrix row created."
     }
@@ -1263,6 +1271,7 @@
     "filtro_ambito": "Scope",
     "filtro_scadenza_mese": "Expiry month...",
     "col_numero": "Number",
+    "col_ba_codice": "Code",
     "col_ba": "Client",
     "col_utility": "Utility",
     "col_ambito": "Scope",
@@ -1375,6 +1384,8 @@
     "conferma_titolo": "Confirm status change",
     "conferma_cambio_stato": "Move the contract to status {stato}?",
     "stato_cambiato": "Status updated",
+    "azione_attiva": "Activate",
+    "azione_cessa": "Terminate",
     "azione_attivo": "Activate",
     "azione_cessato": "Terminate",
     "ambito_commodity": "Commodity",
@@ -1411,6 +1422,9 @@
       "identita_immutable_hint": "Code, article and UoM are immutable. To change them, disable this promo and create a new one.",
       "scaduta_readonly_hint": "Promo expired — read-only. To change price or period, create a new promo.",
       "iniziata_warn_hint": "Promo already started: only description and end date are editable. To change price or period, close this promo (end date = today) and create a new one.",
+      "update_reason": {
+        "promo_scaduta_immutabile": "Promo expired — read-only. To change price or period, create a new promo."
+      },
       "col_codice": "Code",
       "col_descrizione": "Description",
       "col_articolo": "Article",
@@ -1574,7 +1588,8 @@
     "col_totale": "Total",
     "col_validita": "Valid until",
     "field_utility": "Utility",
-    "field_billing_account": "Billing Account",
+    "field_billing_account": "Client (BA)",
+    "field_billing_account_placeholder": "Search by company name, BA code, fiscal code or PDP",
     "field_validita_dal": "Valid from",
     "field_validita_al": "Valid to",
     "field_competenza": "Period",
@@ -1618,6 +1633,9 @@
     "azione_rifiuta": "Reject",
     "azione_annulla": "Cancel",
     "azione_revisione": "New Revision",
+    "push_commessa_reason": {
+      "non_accettato": "Project integration will be available once the quote is accepted."
+    },
     "conferma_cambio_stato": "Confirm status change to {stato}? This may be irreversible.",
     "conferma_revisione": "Create a new revision? The current revision will be deactivated.",
     "stato_cambiato": "Quote status updated",
@@ -1658,30 +1676,9 @@
     "approvazione_inviata": "Approval outcome recorded.",
     "rifiuto_inviato": "Rejection outcome recorded.",
     "nessuna_richiesta": "No approval requests in queue.",
-    "richiesta_inviata_toast": "Approval request sent."
-  },
-  "matrice_indirizzi": {
-    "tab_matrice": "Roles matrix",
-    "search_placeholder": "Search by role or address type...",
-    "filtro_ruolo": "Role type",
-    "nuova_regola": "New rule",
-    "regola": "Address rule",
-    "regola_creata": "Rule created",
-    "regola_salvata": "Rule saved",
-    "col_ruolo": "Role",
-    "col_tipo_indirizzo": "Address type",
-    "col_obbligatorio": "Required",
-    "col_fallback": "Fallback",
-    "col_attivo": "Active",
-    "col_valido_dal": "Valid from",
-    "col_valido_al": "Valid to",
-    "field_tipo_ruolo": "Role type",
-    "field_tipo_indirizzo": "Address type",
-    "field_obbligatorio": "Required",
-    "field_fallback": "Fallback address type",
-    "select_ruolo": "Select role type...",
-    "select_tipo_indirizzo": "Select address type...",
-    "nessun_fallback": "No fallback"
+    "richiesta_inviata_toast": "Approval request sent.",
+    "reason_permesso_mancante": "You lack the 'approva_prezzo_override' permission. Ask an admin to enable it.",
+    "reason_riga_non_linkata": "The practice has no linked quote line: contact support."
   },
   "dati_societari": {
     "forma_giuridica": "Legal form",

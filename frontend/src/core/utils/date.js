@@ -71,3 +71,20 @@ export function parseIsoDate(s) {
   if (!match) return null
   return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]))
 }
+
+/**
+ * Ritorna una Date locale a mezzanotte = oggi + N giorni.
+ * Helper standard per i parameters lead-gg dei `defaultForm()` (Fase 2
+ * refactor frontend vendite). Centralizzare evita pattern ripetuto
+ * `const d = new Date(); d.setHours(0,0,0,0); d.setDate(d.getDate() + N)`
+ * in ogni drawer (era cablato in CloneVersioneDrawer, PromoArticoloDrawer).
+ *
+ * @param {number} n - Giorni da sommare a oggi (0 = oggi, 1 = domani, ...).
+ * @returns {Date} - Date locale a mezzanotte.
+ */
+export function addDaysToToday(n) {
+  const d = new Date()
+  d.setHours(0, 0, 0, 0)
+  if (n) d.setDate(d.getDate() + Number(n))
+  return d
+}

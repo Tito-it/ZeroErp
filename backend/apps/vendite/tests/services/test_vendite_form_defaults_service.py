@@ -1,0 +1,327 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+# Doc: Python
+# Scopo: Test unitari del service form-defaults vendite
+#        (Fase 2.B3-B5 refactor frontend vendite). DB mockato per CI.
+# ------------------------------------------------------------
+
+"""
+Indice test eseguiti:
+ 1) test_contratto_no_ba_solo_parameters     — payload minimo con default_data/valido_dal
+ 2) test_contratto_con_ba_popola_categoria   — categoria_cliente_id_snapshot dal BA lookup
+ 3) test_contratto_ba_inesistente_404        — E_VENDITE_NOT_FOUND
+ 4) test_contratto_param_int_fallback        — parameter mancante -> fallback (0)
+ 5) test_preventivo_no_ba_solo_parameters    — default_validita_al = oggi + N
+ 6) test_preventivo_con_ba_termini_da_cliente — termine_pagamento_id da clienti
+ 7) test_preventivo_valuta_da_emittente_se_ba_null — fallback emittente
+ 8) test_versione_new_defaults                — payload + existing_drafts
+ 9) test_versione_clone_codice_con_suffisso   — suffisso da parameter
+10) test_versione_close_default_oggi_se_no_chiusura — default oggi+lead_gg
+11) test_versione_close_usa_existing_se_presente    — modifica chiusura
+12) test_listino_inesistente_404               — E_VENDITE_NOT_FOUND
+13) test_versione_inesistente_404              — E_VENDITE_NOT_FOUND
+"""
+
+from datetime import date, timedelta
+from unittest import TestCase
+from unittest.mock import patch
+
+from apps.core.services.service_errors import ServiceError
+from apps.vendite.services.vendite_form_defaults_service import (
+    fn_get_contratto_form_defaults,
+    fn_get_preventivo_form_defaults,
+    fn_get_versione_clone_defaults,
+    fn_get_versione_close_defaults,
+    fn_get_versione_new_defaults,
+)
+
+
+# Path patch comuni: il service istanzia ParameterService/repo dentro le
+# funzioni — patchamo le classi importate dal modulo target.
+_MOD = "apps.vendite.services.vendite_form_defaults_service"
+_PARAM = f"{_MOD}.ParameterService"
+_BA_REPO = f"{_MOD}.BillingAccountRepository"
+_LISTINI_REPO = f"{_MOD}.ListiniRepository"
+
+
+def _ba_lookup_row(*, ba_id=10, categoria_id=7, valuta_id=None):
+    return {
+        "id": ba_id,
+        "categoria_cliente_id": categoria_id,
+        "categoria_cliente_codice": "STANDARD",
+        "categoria_cliente_descrizione": "Standard",
+        "utility_id": 1,
+        "utility_codice": "GAS",
+        "utility_descrizione": "Gas",
+        "istanza_utility_id": 100,
+        "soggetto_ruolo_id": 200,
+        "valuta_id": valuta_id,
+        "valuta_codice": "EUR" if valuta_id is not None else None,
+        "valuta_descrizione": "Euro" if valuta_id is not None else None,
+    }
+
+
+# ──────────────────────────────────────────────────────────
+# Contratti form-defaults
+# ──────────────────────────────────────────────────────────
+
+
+class TestContrattoFormDefaults(TestCase):
+
+    @patch(_PARAM)
+    def test_contratto_no_ba_solo_parameters(self, mock_param_cls):
+        # Scopo: Senza BA il payload contiene solo i default da parameter
+        #        (default_data, default_valido_dal). Tutti i campi BA-derived
+        #        restano None.
+        mock_param_cls.return_value.get_defaults.return_value = {
+            "VENDITE_CONTRATTO_DEFAULT_VALIDO_DAL_LEAD_GG": "0",
+            "VENDITE_CONTRATTO_DEFAULT_DATA_LEAD_GG": "0",
+        }
+        result = fn_get_contratto_form_defaults(billing_account_id=None)
+        self.assertEqual(result["billing_account_id"], None)
+        self.assertEqual(result["categoria_cliente_id_snapshot"], None)
+        self.assertEqual(result["default_data"], date.today().isoformat())
+        self.assertEqual(result["default_valido_dal"], date.today().isoformat())
+
+    @patch(_BA_REPO)
+    @patch(_PARAM)
+    def test_contratto_con_ba_popola_categoria(self, mock_param_cls, mock_ba_repo_cls):
+        # Scopo: Con BA, categoria_cliente_id_snapshot e utility/istanza
+        #        sono popolati dal lookup BA.
+        mock_param_cls.return_value.get_defaults.return_value = {
+            "VENDITE_CONTRATTO_DEFAULT_VALIDO_DAL_LEAD_GG": "0",
+            "VENDITE_CONTRATTO_DEFAULT_DATA_LEAD_GG": "0",
+        }
+        mock_ba_repo_cls.return_value.get_lookup_by_id.return_value = _ba_lookup_row(
+            ba_id=10, categoria_id=7,
+        )
+        result = fn_get_contratto_form_defaults(billing_account_id=10)
+        self.assertEqual(result["billing_account_id"], 10)
+        self.assertEqual(result["categoria_cliente_id_snapshot"], 7)
+        self.assertEqual(result["categoria_cliente_codice"], "STANDARD")
+        self.assertEqual(result["utility_id"], 1)
+        self.assertEqual(result["istanza_utility_id"], 100)
+
+    @patch(_BA_REPO)
+    @patch(_PARAM)
+    def test_contratto_ba_inesistente_404(self, mock_param_cls, mock_ba_repo_cls):
+        # Scopo: BA non trovato -> E_VENDITE_NOT_FOUND.
+        mock_param_cls.return_value.get_defaults.return_value = {}
+        mock_ba_repo_cls.return_value.get_lookup_by_id.return_value = None
+        with self.assertRaises(ServiceError) as ctx:
+            fn_get_contratto_form_defaults(billing_account_id=999)
+        self.assertEqual(ctx.exception.code, "E_VENDITE_NOT_FOUND")
+
+    @patch(_PARAM)
+    def test_contratto_param_int_fallback(self, mock_param_cls):
+        # Scopo: parameter mancante -> il service usa il fallback hardcoded
+        #        (0 per i lead_gg). Niente raise.
+        mock_param_cls.return_value.get_defaults.return_value = {}
+        result = fn_get_contratto_form_defaults(billing_account_id=None)
+        self.assertEqual(result["default_data"], date.today().isoformat())
+
+
+# ──────────────────────────────────────────────────────────
+# Preventivi form-defaults
+# ──────────────────────────────────────────────────────────
+
+
+class TestPreventivoFormDefaults(TestCase):
+
+    @patch(_PARAM)
+    def test_preventivo_no_ba_solo_parameters(self, mock_param_cls):
+        # Scopo: Senza BA il payload calcola validita_al = oggi + N.
+        mock_param_cls.return_value.get_defaults.return_value = {
+            "VENDITE_PREVENTIVO_DEFAULT_VALIDITA_GG": "30",
+        }
+        result = fn_get_preventivo_form_defaults(billing_account_id=None)
+        self.assertEqual(result["billing_account_id"], None)
+        expected = (date.today() + timedelta(days=30)).isoformat()
+        self.assertEqual(result["default_validita_al"], expected)
+        self.assertEqual(result["valuta_id"], None)
+        self.assertEqual(result["termine_pagamento_id"], None)
+
+    @patch(_BA_REPO)
+    @patch(_PARAM)
+    def test_preventivo_con_ba_termini_da_cliente(
+        self, mock_param_cls, mock_ba_repo_cls,
+    ):
+        # Scopo: termine_pagamento_id/iva_id arrivano dal cliente del BA;
+        #        valuta dal BA stesso (LOOKUP_SELECT_COLUMNS la espone).
+        mock_param_cls.return_value.get_defaults.return_value = {
+            "VENDITE_PREVENTIVO_DEFAULT_VALIDITA_GG": "30",
+        }
+        ba_repo = mock_ba_repo_cls.return_value
+        ba_repo.get_lookup_by_id.return_value = _ba_lookup_row(valuta_id=1)
+        ba_repo.get_cliente_defaults.return_value = {
+            "termine_pagamento_id": 12,
+            "termine_pagamento_codice": "30GG",
+            "termine_pagamento_descrizione": "30 giorni",
+            "iva_id": 3,
+            "iva_codice": "22",
+            "iva_descrizione": "IVA 22%",
+            "modalita_pagamento_id": 5,
+            "modalita_pagamento_codice": "BONIFICO",
+            "modalita_pagamento_descrizione": "Bonifico bancario",
+        }
+        result = fn_get_preventivo_form_defaults(billing_account_id=10)
+        self.assertEqual(result["termine_pagamento_id"], 12)
+        self.assertEqual(result["iva_id"], 3)
+        self.assertEqual(result["modalita_pagamento_id"], 5)
+        # Valuta dal BA (no fallback emittente perche' BA ha valuta_id=1).
+        self.assertEqual(result["valuta_id"], 1)
+        self.assertEqual(result["valuta_codice"], "EUR")
+        ba_repo.get_emittente_valuta.assert_not_called()
+
+    @patch(_BA_REPO)
+    @patch(_PARAM)
+    def test_preventivo_valuta_da_emittente_se_ba_null(
+        self, mock_param_cls, mock_ba_repo_cls,
+    ):
+        # Scopo: BA senza valuta -> fallback emittente fiscale.
+        mock_param_cls.return_value.get_defaults.return_value = {}
+        ba_repo = mock_ba_repo_cls.return_value
+        ba_repo.get_lookup_by_id.return_value = _ba_lookup_row(valuta_id=None)
+        ba_repo.get_cliente_defaults.return_value = {}
+        ba_repo.get_emittente_valuta.return_value = {
+            "valuta_id": 1,
+            "valuta_codice": "EUR",
+            "valuta_descrizione": "Euro",
+        }
+        result = fn_get_preventivo_form_defaults(billing_account_id=10)
+        self.assertEqual(result["valuta_id"], 1)
+        self.assertEqual(result["valuta_codice"], "EUR")
+        ba_repo.get_emittente_valuta.assert_called_once_with(10)
+
+
+# ──────────────────────────────────────────────────────────
+# Listini-versioni form-defaults
+# ──────────────────────────────────────────────────────────
+
+
+class TestListinoVersioneFormDefaults(TestCase):
+
+    @patch(_LISTINI_REPO)
+    @patch(_PARAM)
+    def test_versione_new_defaults(self, mock_param_cls, mock_repo_cls):
+        # Scopo: Payload include default_valido_dal (oggi+lead) ed esistenti BOZZE.
+        mock_param_cls.return_value.get_defaults.return_value = {
+            "VENDITE_LISTINI_NEW_VERSIONE_LEAD_GG": "0",
+        }
+        repo = mock_repo_cls.return_value
+        repo.get_listino.return_value = {"id": 12}
+        repo.list_versioni.return_value = [
+            {"id": 33, "stato": "BOZZA", "codice_versione": "v_draft"},
+            {"id": 30, "stato": "ATTIVA", "codice_versione": "v1"},
+        ]
+        result = fn_get_versione_new_defaults(listino_id=12)
+        self.assertEqual(result["listino_id"], 12)
+        self.assertEqual(result["default_valido_dal"], date.today().isoformat())
+        self.assertTrue(result["has_existing_draft"])
+        self.assertEqual(len(result["existing_drafts"]), 1)
+        self.assertEqual(result["existing_drafts"][0]["codice_versione"], "v_draft")
+
+    @patch(_LISTINI_REPO)
+    @patch(_PARAM)
+    def test_versione_clone_codice_con_suffisso(self, mock_param_cls, mock_repo_cls):
+        # Scopo: codice clone = source_codice + suffisso parameter.
+        mock_param_cls.return_value.get_defaults.return_value = {
+            "VENDITE_LISTINI_CLONE_VERSIONE_LEAD_GG": "1",
+            "VENDITE_LISTINI_CLONE_VERSIONE_CODICE_SUFFIX": "-bis",
+        }
+        repo = mock_repo_cls.return_value
+        repo.get_versione.return_value = {
+            "id": 33,
+            "codice_versione": "v1",
+            "valido_dal": date(2026, 1, 1),
+            "valido_al": None,
+        }
+        result = fn_get_versione_clone_defaults(listino_id=12, src_versione_id=33)
+        self.assertEqual(result["default_codice_versione"], "v1-bis")
+        self.assertEqual(result["min_valido_dal"], "2026-01-01")
+        self.assertEqual(
+            result["default_valido_dal"],
+            (date.today() + timedelta(days=1)).isoformat(),
+        )
+        # is_retroactive_default deve riflettere SOLO default_valido_dal vs oggi.
+        # Lead_gg=+1 -> default in futuro -> non retroattivo.
+        self.assertFalse(result["is_retroactive_default"])
+
+    @patch(_LISTINI_REPO)
+    @patch(_PARAM)
+    def test_versione_clone_retroactive_default_anche_se_src_senza_valido_dal(
+        self, mock_param_cls, mock_repo_cls,
+    ):
+        # Regressione B1: il flag is_retroactive_default deve dipendere SOLO
+        # da default_valido_dal < today, indipendentemente da src.valido_dal.
+        # Lead_gg=-5 (passato) -> default retroattivo anche con src senza data.
+        mock_param_cls.return_value.get_defaults.return_value = {
+            "VENDITE_LISTINI_CLONE_VERSIONE_LEAD_GG": "-5",
+        }
+        repo = mock_repo_cls.return_value
+        repo.get_versione.return_value = {
+            "id": 33,
+            "codice_versione": "v1",
+            "valido_dal": None,  # nessuna data sulla sorgente
+            "valido_al": None,
+        }
+        result = fn_get_versione_clone_defaults(listino_id=12, src_versione_id=33)
+        self.assertTrue(result["is_retroactive_default"])
+
+    @patch(_LISTINI_REPO)
+    @patch(_PARAM)
+    def test_versione_close_default_oggi_se_no_chiusura(self, mock_param_cls, mock_repo_cls):
+        # Scopo: Versione senza valido_al -> default = oggi + lead_gg.
+        mock_param_cls.return_value.get_defaults.return_value = {
+            "VENDITE_LISTINI_CLOSE_VERSIONE_LEAD_GG": "0",
+        }
+        repo = mock_repo_cls.return_value
+        repo.get_versione.return_value = {
+            "id": 33,
+            "stato": "ATTIVA",
+            "valido_al": None,
+        }
+        result = fn_get_versione_close_defaults(listino_id=12, versione_id=33)
+        self.assertEqual(result["default_valido_al"], date.today().isoformat())
+        self.assertEqual(result["current_valido_al"], None)
+        self.assertFalse(result["has_existing_chiusura"])
+
+    @patch(_LISTINI_REPO)
+    @patch(_PARAM)
+    def test_versione_close_usa_existing_se_presente(self, mock_param_cls, mock_repo_cls):
+        # Scopo: Versione con valido_al gia' programmata -> default = quello.
+        mock_param_cls.return_value.get_defaults.return_value = {}
+        repo = mock_repo_cls.return_value
+        repo.get_versione.return_value = {
+            "id": 33,
+            "stato": "ATTIVA",
+            "valido_al": date(2027, 12, 31),
+        }
+        result = fn_get_versione_close_defaults(listino_id=12, versione_id=33)
+        self.assertEqual(result["default_valido_al"], "2027-12-31")
+        self.assertEqual(result["current_valido_al"], "2027-12-31")
+        self.assertTrue(result["has_existing_chiusura"])
+
+    @patch(_LISTINI_REPO)
+    @patch(_PARAM)
+    def test_listino_inesistente_404(self, mock_param_cls, mock_repo_cls):
+        # Scopo: listino non trovato -> E_VENDITE_NOT_FOUND in new_defaults.
+        mock_param_cls.return_value.get_defaults.return_value = {}
+        mock_repo_cls.return_value.get_listino.return_value = None
+        with self.assertRaises(ServiceError) as ctx:
+            fn_get_versione_new_defaults(listino_id=999)
+        self.assertEqual(ctx.exception.code, "E_VENDITE_NOT_FOUND")
+
+    @patch(_LISTINI_REPO)
+    @patch(_PARAM)
+    def test_versione_inesistente_404(self, mock_param_cls, mock_repo_cls):
+        # Scopo: versione non trovata -> E_VENDITE_NOT_FOUND in clone/close.
+        mock_param_cls.return_value.get_defaults.return_value = {}
+        mock_repo_cls.return_value.get_versione.return_value = None
+        with self.assertRaises(ServiceError) as ctx:
+            fn_get_versione_clone_defaults(listino_id=12, src_versione_id=999)
+        self.assertEqual(ctx.exception.code, "E_VENDITE_NOT_FOUND")
+        with self.assertRaises(ServiceError) as ctx:
+            fn_get_versione_close_defaults(listino_id=12, versione_id=999)
+        self.assertEqual(ctx.exception.code, "E_VENDITE_NOT_FOUND")

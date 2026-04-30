@@ -17,6 +17,7 @@ const tabs = useTabsStore()
 const isCollapsed = inject('sidebarCollapsed', ref(false))
 
 const emit = defineEmits(['navigate'])
+const openGroups = ref({})
 
 const domainLabel = computed(() => {
   if (!nav.currentDomain) return ''
@@ -27,13 +28,30 @@ function itemLabel(item) {
   return resolveNavigationLabel({ domain: nav.currentDomain, menuKey: item.key }, t) || item.key
 }
 
+function hasChildren(item) {
+  return Array.isArray(item.children) && item.children.length > 0
+}
+
+function flatChildren(item) {
+  return hasChildren(item) ? item.children : []
+}
+
+function isItemActive(item) {
+  if (item.to && route.path === item.to) return true
+  return flatChildren(item).some(child => route.path === child.to)
+}
+
+function isGroupOpen(item) {
+  return openGroups.value[item.key] !== false || flatChildren(item).some(child => route.path === child.to)
+}
+
 function handleBackHome() {
   nav.clearDomain()
   router.push('/')
   emit('navigate')
 }
 
-function handleMenuClick(item) {
+function handleLeafClick(item) {
   // Apre la tab (o attiva quella esistente) — se limite raggiunto, blocca navigazione
   const opened = tabs.openTab({
     path: item.to,
@@ -47,7 +65,23 @@ function handleMenuClick(item) {
   emit('navigate')
 }
 
+function handleMenuClick(item) {
+  if (!hasChildren(item)) {
+    handleLeafClick(item)
+    return
+  }
+  if (isCollapsed.value) {
+    handleLeafClick(item.children[0])
+    return
+  }
+  openGroups.value = {
+    ...openGroups.value,
+    [item.key]: !isGroupOpen(item)
+  }
+}
+
 function handleToggleFavorite(item) {
+  if (!item.to) return
   if (nav.isFavorite(item.to)) {
     nav.clearFavorite(nav.currentDomain)
   } else {
@@ -74,26 +108,53 @@ function handleToggleFavorite(item) {
     </div>
 
     <!-- Voci menu L2 -->
-    <SidebarItem
-      v-for="item in nav.currentMenu"
-      :key="item.key"
-      :icon="item.icon"
-      :label="itemLabel(item)"
-      :active="route.path === item.to"
-      @click="handleMenuClick(item)"
-    >
-      <span class="menu-item-label">
-        {{ itemLabel(item) }}
-      </span>
-      <!-- Stella preferito -->
-      <i
-        v-if="!isCollapsed"
-        class="pi favorite-star"
-        :class="nav.isFavorite(item.to) ? 'pi-star-fill' : 'pi-star'"
-        @click.stop="handleToggleFavorite(item)"
-        v-tooltip.right="nav.isFavorite(item.to) ? t('nav.remove_favorite') : t('nav.set_favorite')"
-      ></i>
-    </SidebarItem>
+    <template v-for="item in nav.currentMenu" :key="item.key">
+      <SidebarItem
+        :icon="item.icon"
+        :label="itemLabel(item)"
+        :active="isItemActive(item)"
+        @click="handleMenuClick(item)"
+      >
+        <span class="menu-item-label">
+          {{ itemLabel(item) }}
+        </span>
+        <i
+          v-if="!isCollapsed && hasChildren(item)"
+          class="pi group-chevron"
+          :class="isGroupOpen(item) ? 'pi-chevron-down' : 'pi-chevron-right'"
+        ></i>
+        <!-- Stella preferito -->
+        <i
+          v-else-if="!isCollapsed"
+          class="pi favorite-star"
+          :class="nav.isFavorite(item.to) ? 'pi-star-fill' : 'pi-star'"
+          @click.stop="handleToggleFavorite(item)"
+          v-tooltip.right="nav.isFavorite(item.to) ? t('nav.remove_favorite') : t('nav.set_favorite')"
+        ></i>
+      </SidebarItem>
+
+      <div v-if="!isCollapsed && hasChildren(item) && isGroupOpen(item)" class="sidebar-submenu">
+        <SidebarItem
+          v-for="child in item.children"
+          :key="child.key"
+          :icon="child.icon"
+          :label="itemLabel(child)"
+          :active="route.path === child.to"
+          class="sidebar-subitem"
+          @click="handleLeafClick(child)"
+        >
+          <span class="menu-item-label">
+            {{ itemLabel(child) }}
+          </span>
+          <i
+            class="pi favorite-star"
+            :class="nav.isFavorite(child.to) ? 'pi-star-fill' : 'pi-star'"
+            @click.stop="handleToggleFavorite(child)"
+            v-tooltip.right="nav.isFavorite(child.to) ? t('nav.remove_favorite') : t('nav.set_favorite')"
+          ></i>
+        </SidebarItem>
+      </div>
+    </template>
   </div>
 </template>
 
@@ -141,6 +202,22 @@ function handleToggleFavorite(item) {
 .favorite-star.pi-star-fill {
   opacity: 1;
   color: var(--p-yellow-400);
+}
+
+.group-chevron {
+  font-size: 0.75rem;
+  color: var(--p-text-muted-color);
+}
+
+.sidebar-submenu {
+  display: flex;
+  flex-direction: column;
+  gap: var(--app-sidebar-item-gap);
+  padding-left: 1.25rem;
+}
+
+.sidebar-subitem {
+  font-size: var(--app-font-size-sm);
 }
 
 .back-home {

@@ -47,11 +47,13 @@ async function onDrawerSaved(result) {
 }
 
 const versioneListinoDescrizione = ref('')
+const versioneListinoCodice = ref('')
 const versioneListinoUtilityId = ref(null)
 
 function onOpenRighe(versione, listino) {
   versioneSelezionata.value = versione
   versioneListinoId.value = listino.id
+  versioneListinoCodice.value = listino.codice || ''
   versioneListinoDescrizione.value = listino.descrizione || listino.codice || ''
   versioneListinoUtilityId.value = listino.utility_id ?? null
   versioneDrawerVisible.value = true
@@ -65,6 +67,9 @@ async function onRigheClose() {
   }
   versioneSelezionata.value = null
   versioneListinoId.value = null
+  versioneListinoCodice.value = ''
+  versioneListinoDescrizione.value = ''
+  versioneListinoUtilityId.value = null
 }
 
 function onOpenNuovaVersione(listino) {
@@ -121,6 +126,7 @@ async function onClonaVersioneSaved({ listinoId }) {
       :visible="versioneDrawerVisible"
       @update:visible="v => { if (!v) onRigheClose() }"
       :listino-id="versioneListinoId"
+      :listino-codice="versioneListinoCodice"
       :listino-descrizione="versioneListinoDescrizione"
       :listino-utility-id="versioneListinoUtilityId"
       :versione="versioneSelezionata"

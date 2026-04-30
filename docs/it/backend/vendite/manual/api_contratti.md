@@ -87,6 +87,22 @@ Note:
   fallisce pre-DB con `E_VENDITE_VALIDATION` ("modalita' C: tipo/valore
   variazione globale devono essere NULL").
 
+### Detail `GET /api/v1/vendite/contratti/<id>/`
+
+Output: testata + `utility` + `righe[]` + **capabilities** spalmate top-level
+(Fase 1.B2 refactor frontend vendite, da `script.fn_available_actions_contratto`):
+
+| Campo | Tipo | Significato |
+| --- | --- | --- |
+| `available_actions[]` | array | Azioni cambio stato disponibili. L'azione `cessa` e' arricchita runtime con `requires_date=true`, `default_date=today`, `min_date=valido_dal` |
+| `can_change_state` | bool | `true` se almeno un'azione manuale disponibile |
+| `can_edit_testata` | bool | `true` in DRAFT (full whitelist) e in ATTIVO (solo `valido_al`+`meta`); `false` in CESSATO |
+| `can_edit_righe` | bool | `true` solo in DRAFT |
+| `non_editable_fields[]` | string[] | Whitelist BE coerente con `_CONTRATTO_PATCH_ALLOWED_BY_STATE`. In ATTIVO include tutto eccetto `valido_al`+`meta`; in CESSATO include tutto |
+
+Il frontend (`ContrattoDrawer.vue`) usa `default_date`/`min_date` dell'azione
+`cessa` per pre-popolare il dialog di cessazione: niente `new Date()` cablato.
+
 ### Update testata `PATCH /api/v1/vendite/contratti/<id>/`
 
 Solo campi mutabili: `ambito`, `valido_dal`, `valido_al`,

@@ -91,8 +91,24 @@ Le tabelle DB esistono gia' (`vendite.preventivi`, `preventivi_righe`, `preventi
 
 - Metodo: `GET`
 - Path: `/api/v1/vendite/preventivi/{id}/`
-- Output `200`: testata completa con decodifiche (stato, cliente, utility, valuta, termini) + `righe[]` + `indirizzi[]`
+- Output `200`: testata completa con decodifiche (stato, cliente, utility, valuta, termini) + `indirizzi[]` + `righe_count` (summary leggero) + **capabilities** (Fase 1 refactor frontend vendite)
+- **Fase 3.F6 refactor frontend vendite** — il detail NON include piu' `righe[]` (decisione C2: detail = testata + summary, righe via endpoint autonomo `/righe/`). Il FE chiama `GET /righe/` separatamente. Vantaggi: payload detail piu' leggero su lista refresh, mai mismatch con totali ricalcolati dai trigger DB. `righe_count` resta disponibile come badge UX.
 - Errori: `E_PREV_NOT_FOUND` (404)
+
+**Capabilities** (spalmate top-level nel detail, da `script.fn_available_actions_preventivo`):
+
+| Campo | Tipo | Significato |
+| --- | --- | --- |
+| `available_actions[]` | array | Azioni cambio stato disponibili: `{key, target_state, label_key (i18n), severity, icon, requires_confirm}`. Non include transizioni automatiche (job notturno SCADUTO) |
+| `can_edit_testata` | bool | `true` solo in DRAFT |
+| `can_edit_righe` | bool | `true` solo in DRAFT |
+| `can_create_revisione` | bool | `true` per ACCETTATO (revisione = nuova rev del preventivo) |
+| `can_push_commessa` | bool | `true` per ACCETTATO (push verso commesse) |
+| `can_push_commessa_reason` | string\|null | Codice tecnico ostativo (es. `PREVENTIVO_NON_ACCETTATO`) |
+| `can_push_commessa_reason_key` | string\|null | Chiave i18n pronta da tradurre, es. `preventivi.push_commessa_reason.non_accettato` |
+| `non_editable_fields[]` | string[] | Whitelist campi immutabili nello stato corrente. **`utility_id` sempre incluso** (regola di dominio: utility immutabile post-create) |
+
+Il frontend (`PreventiviDrawer.vue`) consuma questi metadata direttamente: niente `if (stato === 'DRAFT')` cablato.
 
 ---
 
@@ -100,7 +116,7 @@ Le tabelle DB esistono gia' (`vendite.preventivi`, `preventivi_righe`, `preventi
 
 - Metodo: `PATCH`
 - Path: `/api/v1/vendite/preventivi/{id}/`
-- Body JSON: campi modificabili (billing_account_id, utility_id, istanza_utility_id, valuta_id, termine_pagamento_id, validita_dal, validita_al, competenza_mese, fatturazione_immediata, meta). Passare `null` per azzerare campi nullable.
+- Body JSON: campi modificabili — **`billing_account_id`**, `istanza_utility_id`, `valuta_id`, `termine_pagamento_id`, `validita_dal`, `validita_al`, `competenza_mese`, `fatturazione_immediata`, `meta`. Passare `null` per azzerare campi nullable. **`utility_id` non e' aggiornabile** (regola di dominio, vedi `non_editable_fields` nel detail).
 - Regole: ammesso solo in stato BOZZA
 - Errori: `E_PREV_NOT_FOUND` (404), `E_PREV_STATO_NON_MODIFICABILE` (409)
 
@@ -154,7 +170,7 @@ Le tabelle DB esistono gia' (`vendite.preventivi`, `preventivi_righe`, `preventi
   - Ammesso solo in stato BOZZA
   - **Auto-fill prezzo**: se `prezzo_unitario` non e' nel payload e la testata ha BA+utility+data validi, il service chiama `PricingService.resolve_prezzo` e popola il prezzo dal resolver v5 (3 stadi: promo/contratto/categoria)
   - **L1 override**: se `prezzo_unitario` e' passato e differisce dal resolver, serve l'azione di processo `prezzo_override_manuale`; altrimenti `E_PREV_OVERRIDE_NON_AUTORIZZATO` (403). Superuser bypassato
-  - **L2 limite variazione (Sprint D)**: dopo L1, se `prezzo_resolver` e' noto e non zero, calcola `delta_pct` firmato; sconto > `VENDITE_MAX_SCONTO_PCT` o maggiorazione > `VENDITE_MAX_MAGGIORAZIONE_PCT` -> `E_PREV_SCONTO_ECCESSIVO`/`E_PREV_MAGGIORAZIONE_ECCESSIVA` (403). Parametri risolti via `ParameterService` cascata user→group→emittente→default. Superuser bypass.
+  - **L2 limite variazione (Sprint D)**: dopo L1, se `prezzo_resolver` e' noto e non zero, calcola `delta_pct` firmato; sconto > `VENDITE_MAX_SCONTO_PCT` o maggiorazione > `VENDITE_MAX_MAGGIORAZIONE_PCT` -> `E_PREV_SCONTO_ECCESSIVO`/`E_PREV_MAGGIORAZIONE_ECCESSIVA` (403, **`retryable=True`** dopo Fase 5.B2: il FE puo' offrire CTA "richiedi approvazione" e ri-tentare con `richiesta_approvazione=true`). Parametri risolti via `ParameterService` cascata user→group→emittente→default. Superuser bypass.
   - **L3 workflow approvazione (Sprint E)**: se `richiesta_approvazione=true` e L2 viola, l'errore L2 viene catturato, viene creata pratica `APPROVAZIONE_PREZZO` (stato APERTA) e la riga inserita con `stato_approvazione_prezzo='PENDING'` + `pratica_approvazione_prezzo_id`. Email best-effort al recipient configurato in parameter `VENDITE_APPROVAZIONE_PREZZO_RECIPIENT_EMAIL`. La pratica e' visibile nella coda approver via `GET /vendite/approvazioni-prezzo/`.
   - **Meta audit**: popolato sempre con `origine_prezzo` (PROMO/CONTRATTO_OVERRIDE/CONTRATTO_LISTINO/CATEGORIA/MANUALE) + `prezzo_resolver_context` (listino/contratto/promo + variazione). Se override manuale: anche `prezzo_base_resolver`, `delta_override`, `delta_override_pct`, `override_user_id`. Se workflow L3: anche `richiesta_approvazione_pending=true` + `violazione_l2` (tipo, variazione_abs_pct, limite_pct).
   - Ricalcolo totali automatico dopo insert (trigger DB)
@@ -318,7 +334,9 @@ Le tabelle DB esistono gia' (`vendite.preventivi`, `preventivi_righe`, `preventi
 | `E_PREV_GIA_IN_COMMESSA` | 409 | Gia' inviato a fatturazione |
 | `E_PREV_REVISIONE_ATTIVA` | 409 | Revisione attiva esistente |
 | `E_PREV_PRATICA_STATO` | 409 | Stato non ammette generazione pratica |
-| `E_PREV_OVERRIDE_NON_AUTORIZZATO` | 403 | Modifica manuale del prezzo riga non autorizzata (serve azione `prezzo_override_manuale`). L1 del sistema autorizzazioni prezzi — vedi [sviluppo-autorizzazioni-prezzi](../../../dev/work-in-progress/sviluppo-autorizzazioni-prezzi) |
+| `E_PREV_OVERRIDE_NON_AUTORIZZATO` | 403 | Modifica manuale del prezzo riga non autorizzata (serve azione `prezzo_override_manuale`). L1 del sistema autorizzazioni prezzi. **`retryable=False`**: senza permesso non c'e' nulla da ritentare. Vedi [sviluppo-autorizzazioni-prezzi](../../../dev/work-in-progress/sviluppo-autorizzazioni-prezzi) |
+| `E_PREV_SCONTO_ECCESSIVO` | 403 | Sconto > `VENDITE_MAX_SCONTO_PCT`. **`retryable=True`** (Fase 5.B2): il FE puo' offrire CTA "richiedi approvazione" e ritentare con `richiesta_approvazione=true` (workflow L3) |
+| `E_PREV_MAGGIORAZIONE_ECCESSIVA` | 403 | Maggiorazione > `VENDITE_MAX_MAGGIORAZIONE_PCT`. **`retryable=True`** come sconto eccessivo |
 
 ## Integrazione pricing v5
 
@@ -331,3 +349,7 @@ Le righe preventivo usano il building block centralizzato `PricingService.resolv
 Il resolver risolve il prezzo usando BA, utility, data della testata preventivo + emittente derivato dal JWT operatore. Se la testata manca di uno di questi campi (caso legacy), il wiring e' skippato: il prezzo passa come da payload senza check ne' audit.
 
 Per la roadmap L2 (limite sconto via parametri) e L3 (approvazione out-of-policy via pratiche), vedi [sviluppo-autorizzazioni-prezzi](../../../dev/work-in-progress/sviluppo-autorizzazioni-prezzi).
+
+## Form-defaults BA-aware (Fase 2.B4)
+
+Il drawer FE preventivi popola valuta_id/termine_pagamento_id/iva_id automaticamente al cambio BA via `GET /api/v1/vendite/preventivi/form-defaults/?billing_account_id=...`. Risolve dal cliente associato al BA tramite tripletta `(istanza_utility_id, soggetto_ruolo_id, utility_id)`, fallback emittente fiscale per `valuta_id`. Vedi [api_vendite_form_defaults.md](api_vendite_form_defaults.md).

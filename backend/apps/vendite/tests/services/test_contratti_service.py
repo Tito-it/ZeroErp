@@ -123,12 +123,49 @@ class ContrattiServiceTests(TestCase):
         repo.get_contratto.return_value = _testata_default()
         repo.get_utility.return_value = {"id": 5}
         repo.list_righe.return_value = [{"id": 99}]
+        repo.get_capabilities.return_value = {}
 
         result = ContrattiService().get_contratto(1)
 
         self.assertEqual(result["id"], 1)
         self.assertEqual(result["utility"], {"id": 5})
         self.assertEqual(result["righe"], [{"id": 99}])
+
+    # Scopo: Verifica che get_contratto includa nel detail il blob capabilities
+    #        ritornato da script.fn_available_actions_contratto (Fase 1.B2).
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    def test_get_contratto_include_capabilities(self, repo_cls):
+        from apps.vendite.services.contratti_service import ContrattiService
+
+        repo = repo_cls.return_value
+        repo.get_contratto.return_value = _testata_default()
+        repo.get_utility.return_value = None
+        repo.list_righe.return_value = []
+        repo.get_capabilities.return_value = {
+            "stato_codice": "ATTIVO",
+            "available_actions": [{
+                "key": "cessa", "target_state": "CESSATO",
+                "label_key": "contratti.azione_cessa",
+                "severity": "danger", "icon": "pi pi-stop",
+                "requires_confirm": True, "requires_date": True,
+                "default_date": "2026-04-30", "min_date": "2026-04-25",
+            }],
+            "can_change_state": True,
+            "can_edit_testata": True,
+            "can_edit_righe": False,
+            "non_editable_fields": ["billing_account_id", "utility_id"],
+        }
+
+        result = ContrattiService().get_contratto(1)
+
+        self.assertEqual(result["can_change_state"], True)
+        self.assertEqual(result["can_edit_righe"], False)
+        self.assertEqual(len(result["available_actions"]), 1)
+        action = result["available_actions"][0]
+        self.assertEqual(action["key"], "cessa")
+        self.assertEqual(action["default_date"], "2026-04-30")
+        self.assertIn("billing_account_id", result["non_editable_fields"])
+        repo.get_capabilities.assert_called_once_with(1)
 
     # --- preview righe applicate -------------------------------------
 

@@ -21,7 +21,7 @@ from typing import Any
 
 from django.db import connection
 
-from apps.core.db._helpers import row_to_dict, rows_to_list
+from apps.core.db._helpers import call_jsonb_fn, row_to_dict, rows_to_list
 from apps.core.db.sql_write_helpers import sql_placeholder, to_write_param
 
 
@@ -45,6 +45,7 @@ _ORDER_COLS_CONTRATTI: dict[str, str] = {
     "data": "c.data",
     "valido_dal": "c.valido_dal",
     "valido_al": "c.valido_al",
+    "ba_codice": "ba.codice",
     "ba_ragione_sociale": "ba.ragione_sociale",
     "stato_codice": "sd.codice_interno",
     "categoria_cliente_snapshot_codice": "cc_snap.codice",
@@ -286,6 +287,17 @@ class ContrattiRepository:
                 [contratto_id],
             )
             return row_to_dict(cursor)
+
+    # Scopo: Capability del contratto per il detail API (Fase 1.B2 refactor
+    #        frontend vendite). Wrapper su `script.fn_available_actions_contratto`
+    #        che ritorna jsonb con available_actions (azione "cessa" arricchita
+    #        runtime con default_date e min_date), can_change_state,
+    #        can_edit_testata/righe, non_editable_fields, stato_codice.
+    #        Blob opaco lato Python: passato al FE intatto.
+    #        Ritorna {} se la fn ritorna NULL (contratto inesistente — caller
+    #        deve aver gia' verificato l'esistenza).
+    def get_capabilities(self, contratto_id: int) -> dict[str, Any]:
+        return call_jsonb_fn("script.fn_available_actions_contratto", contratto_id)
 
     # =================================================================
     # Mutazioni testata

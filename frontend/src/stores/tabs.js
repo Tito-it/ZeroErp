@@ -41,7 +41,9 @@ export const useTabsStore = defineStore('tabs', () => {
 
   function inferMenuKey(domain, path) {
     if (!domain || !DOMAIN_MENUS[domain]) return null
-    return DOMAIN_MENUS[domain].find(item => item.to === path)?.key || null
+    return DOMAIN_MENUS[domain]
+      .flatMap(item => item.children ? [item, ...item.children] : [item])
+      .find(item => item.to === path)?.key || null
   }
 
   // Apre una tab (o attiva quella esistente per la stessa route)

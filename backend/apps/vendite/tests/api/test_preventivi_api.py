@@ -60,8 +60,9 @@ class TestPreventiviApiViews(JwtMockedApiTest):
 
     # Scopo: Verifica GET dettaglio preventivo restituisce 200.
     def test_get_preventivo_detail_200(self):
+        # Fase 3.F6: detail non embedda piu' `righe` (endpoint /righe/ autonomo).
         self.mock_svc.get_preventivo.return_value = {
-            "id": 1, "numero": "P-0001", "righe": [], "indirizzi": [],
+            "id": 1, "numero": "P-0001", "righe_count": 0, "indirizzi": [],
         }
         response = self.client.get("/api/v1/vendite/preventivi/1/")
         self.assertIn(response.status_code, [200, 401, 403])

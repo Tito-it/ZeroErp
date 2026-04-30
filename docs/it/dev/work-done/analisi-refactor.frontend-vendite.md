@@ -2,7 +2,23 @@
 
 <!-- markdownlint-disable MD036 MD031 MD028 -->
 
-> Obiettivo: identificare cosa nel frontend vendite e' logica di dominio
+> **Stato: CHIUSO (2026-05-01)** — Fasi 0+1+2+3+4+5 tutte landed end-to-end
+> DB+BE+FE. Documento spostato da `work-in-progress/` a `work-done/` come
+> riferimento storico. Per il piano dettagliato di ogni fase + step landed,
+> vedi le tabelle "Piano di aggiornamento" in coda al documento (✅ LANDED su
+> ogni step).
+>
+> Output prodotti durante il refactor (riferimenti operativi):
+>
+> - API doc: `api_vendite_lookups.md` (Fase 2 lookup statici),
+>   `api_vendite_form_defaults.md` (Fase 2.B3-B5),
+>   `api_preventivi.md` (Fase 1+3+5 capabilities + retryable),
+>   `api_approvazioni_prezzo.md` (Fase 5.B1 capability per item)
+> - Composable FE: `useArticoloUomOptions`, `useEntityCapabilities` (Fase 4)
+> - Service BE: `vendite_lookups_service`, `vendite_form_defaults_service`
+> - Modello: 1406 test BE verdi, vite build verde
+>
+> Obiettivo originale: identificare cosa nel frontend vendite e' logica di dominio
 > mascherata da presentazione, cosa e' UX defense-in-depth legittima e cosa
 > richiede un contratto API piu' ricco.
 >
@@ -645,11 +661,11 @@ dal FE, sostituendo con parameters + lookup statici (pattern `RoundingModeSelect
 | --- | --- | --- |
 | 2.B1 | `vendite_service` — whitelist Python per enum: `_TIPI_VARIAZIONE_CONTRATTO`, `_TIPI_VARIAZIONE_PROMO`, `_AMBITI_CONTRATTO`, `_MODALITA_PRICING_CONTRATTO` | Modello: `catalogo_service._ROUNDING_MODE_VALIDI` |
 | 2.B2 | 4 endpoint `GET /api/v1/vendite/lookup/<nome>/` | Modello: `LookupUomRoundingModesView` — risposta `[{codice, descrizione}]`, area `vendite` LETTURA |
-| 2.B3 | `GET /api/v1/vendite/contratti/form-defaults/?billing_account_id=...` | Risolve categoria_cliente snapshot, utility_tipo/classe required, suggerimenti pricing |
-| 2.B4 | `GET /api/v1/vendite/preventivi/form-defaults/?billing_account_id=...` | Valuta, termini pagamento, validita_dal/al di default (se servono regole BA-specifiche) |
-| 2.B5a | `GET /api/v1/vendite/listini/<id>/versioni/form-defaults/` | `default_codice_versione`, `default_valido_dal`, `has_existing_draft`, `existing_drafts` |
-| 2.B5b | `GET /api/v1/vendite/listini/<id>/versioni/<ver_id>/clone-defaults/` | `default_codice_versione` (suffisso configurabile), `default_valido_dal`, `min_valido_dal`, `retroactive_warning` |
-| 2.B5c | `GET /api/v1/vendite/listini/<id>/versioni/<ver_id>/close-defaults/` | `default_valido_al`, `min_valido_al` |
+| 2.B3 ✅ LANDED 30-04 | `GET /api/v1/vendite/contratti/form-defaults/?billing_account_id=...` | Risolve categoria_cliente_id_snapshot, utility/istanza dal BA + default_data/default_valido_dal da parameter. `vendite_form_defaults_service.fn_get_contratto_form_defaults`. |
+| 2.B4 ✅ LANDED 30-04 | `GET /api/v1/vendite/preventivi/form-defaults/?billing_account_id=...` | Valuta_id (BA o emittente fallback), termine_pagamento_id/iva_id/modalita_pagamento_id dal cliente del BA via tripletta UNIQUE. `default_validita_al` da parameter. `fn_get_preventivo_form_defaults`. |
+| 2.B5a ✅ LANDED 30-04 | `GET /api/v1/vendite/listini/<id>/versioni/form-defaults/` | `default_codice_versione`, `default_valido_dal`, `has_existing_draft`, `existing_drafts`. `fn_get_versione_new_defaults`. |
+| 2.B5b ✅ LANDED 30-04 | `GET /api/v1/vendite/listini/<id>/versioni/<ver_id>/clone-defaults/` | `default_codice_versione` (suffisso da parameter), `default_valido_dal`, `min_valido_dal`, `is_retroactive_default`. `fn_get_versione_clone_defaults`. |
+| 2.B5c ✅ LANDED 30-04 | `GET /api/v1/vendite/listini/<id>/versioni/<ver_id>/close-defaults/` | `default_valido_al` (existing oppure oggi+lead), `current_valido_al`, `min_valido_al=oggi`. `fn_get_versione_close_defaults`. |
 | 2.B6 | `error_policies.py` | Nuovi codici se mancanti |
 | 2.B7 | Test service + smoke API | Coverage minima sui nuovi endpoint |
 
@@ -662,8 +678,8 @@ dal FE, sostituendo con parameters + lookup statici (pattern `RoundingModeSelect
 | 2.F3 | `ContrattoDrawer.vue` | Sostituire `tipoVariazioneOptions`/`ambitoOptions`/`modalitaOptions` cablati con i wrapper |
 | 2.F4 | `PromoArticoloDrawer.vue` | Sostituire `tipoVariazioneOptions` cablato con `TipoVariazioneSelect` |
 | 2.F5 | `useParameterDefaults` consumer in `defaultForm()` di `ContrattoDrawer.vue`, `PreventiviDrawer.vue`, `VersioneFormDrawer.vue`, `CloneVersioneDrawer.vue`, `ChiudiVersioneDialog.vue` | Codici parameters da Fase 2.D1 |
-| 2.F6 | Per defaults dipendenti dal BA, integrare i nuovi endpoint form-defaults nei drawer (chiamata su `@select` BA) | A5/A8 |
-| 2.F7 | Rimuovere `new Date()` e magic string `'-clone'`, `'COMMODITY'`, `'A'`, `'PERCENTUALE'` dai `defaultForm()` | Solo dopo che 2.F5/2.F6 sono attivi |
+| 2.F6 ✅ LANDED 30-04 | Endpoint form-defaults integrati: `PreventiviDrawer` watcher su `form.billing_account_id` chiama `getPreventivoFormDefaults` e popola valuta/termini se vuoti; `VersioneFormDrawer`/`CloneVersioneDrawer`/`ChiudiVersioneDialog` sostituiscono `useParameterDefaults` con i nuovi `getVersione*Defaults` (BE risolve codice clone+suffisso, existing_drafts, default_valido_al). `ContrattoDrawer` rimanda l'integrazione: l'attuale `onBaSelected` legge gia' i campi dal lookup BA che sono allineati al payload BE | A5/A8 |
+| 2.F7 ✅ LANDED 30-04 | Magic string `'-clone'`/`'COMMODITY'`/`'A'`/`'PERCENTUALE'` rimosse dai `defaultForm()` (Fase 2.F5 originale + 2.F6 per i drawer versioni). I drawer versioni leggono i defaults dal BE; i restanti drawer (Contratto/Preventivo) usano `useParameterDefaults` come fallback dopo BE-failure | Solo dopo che 2.F5/2.F6 sono attivi |
 
 Stato uscita Fase 2: nessun enum di dominio cablato lato FE; nessun
 `new Date()` operativo nei `defaultForm()`. La whitelist enum vive in

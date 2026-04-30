@@ -144,6 +144,12 @@ const router = createRouter({
           meta: { domain: 'amm-software', menuKey: 'emittenti-fiscali' }
         },
         {
+          path: 'amm-software/matrici',
+          name: 'amm-software-matrici',
+          component: () => import('../amministrazione/views/MatriciListView.vue'),
+          meta: { domain: 'amm-software', menuKey: 'matrici' }
+        },
+        {
           path: 'amm-software/matrice-utilities-ruoli',
           name: 'amm-software-matrice-utilities-ruoli',
           component: () => import('../amministrazione/views/UtilitiesTipiRuoloListView.vue'),

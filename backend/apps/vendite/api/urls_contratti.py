@@ -16,8 +16,17 @@ from apps.vendite.api.views_contratti import (
     ApiContrattoRighePreview,
     ApiContrattoUtility,
 )
+from apps.vendite.api.views_form_defaults import ApiContrattoFormDefaults
 
 urlpatterns = [
+    # Form-defaults BA-aware (Fase 2.B3 refactor frontend vendite).
+    # Risolve categoria_cliente_id_snapshot/utility/istanza dal BA + default
+    # data/valido_dal da parameter (lead_gg).
+    path(
+        "form-defaults/",
+        ApiContrattoFormDefaults.as_view(),
+        name="vendite-contratto-form-defaults",
+    ),
     path("", ApiContrattiList.as_view(), name="vendite-contratti-list"),
     path("<int:contratto_id>/", ApiContrattoDetail.as_view(), name="vendite-contratto-detail"),
     path(

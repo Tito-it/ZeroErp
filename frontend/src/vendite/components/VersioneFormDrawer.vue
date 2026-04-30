@@ -9,7 +9,8 @@ import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useListiniStore } from '../stores/listini'
 import { createVersione } from '../api/listini'
-import { toDateString } from '../../core/utils/date'
+import { getVersioneNewDefaults } from '../api/formDefaults'
+import { toDateString, addDaysToToday } from '../../core/utils/date'
 import { DRAWER_WIDTH, DATE_FORMAT } from '../../core/constants'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import DrawerFooter from '../../core/components/DrawerFooter.vue'
@@ -30,17 +31,44 @@ const props = defineProps({
 const emit = defineEmits(['update:visible', 'saved'])
 
 const form = ref({})
+// existing_drafts arriva dal BE (Fase 2.B5a): single source of truth.
+// Mantiene anche compat con lo store locale come fallback se l'endpoint
+// fallisce (resilienza al primo open offline).
+const beExistingDrafts = ref(null)
 
-function defaultForm() {
+function emptyForm() {
+  // Form iniziale prima della risposta BE: vuoto + valido_dal = oggi.
+  // Sovrascritto dalla risposta di getVersioneNewDefaults sotto.
   return {
     codice_versione: '',
-    valido_dal: new Date(),
+    valido_dal: addDaysToToday(0),
     valido_al: null,
   }
 }
 
-watch(() => props.visible, (v) => {
-  if (v) form.value = defaultForm()
+async function loadDefaults() {
+  if (!props.listino?.id) return
+  const res = await execute(
+    () => getVersioneNewDefaults(props.listino.id),
+    { silent: true },
+  )
+  if (res === null) return
+  // execute() ritorna body.data unwrappato.
+  form.value = {
+    codice_versione: res.default_codice_versione || '',
+    valido_dal: res.default_valido_dal ? new Date(res.default_valido_dal + 'T00:00:00') : null,
+    valido_al: res.default_valido_al ? new Date(res.default_valido_al + 'T00:00:00') : null,
+  }
+  beExistingDrafts.value = Array.isArray(res.existing_drafts) ? res.existing_drafts : []
+}
+
+watch(() => props.visible, async (v) => {
+  if (!v) {
+    beExistingDrafts.value = null
+    return
+  }
+  form.value = emptyForm()
+  await loadDefaults()
 })
 
 const canSave = computed(() =>
@@ -49,6 +77,9 @@ const canSave = computed(() =>
 )
 
 const bozzeEsistenti = computed(() => {
+  // Se l'endpoint BE ha risposto, usiamo quello (single source of truth).
+  // Altrimenti fallback allo store locale (popolato dalla lista versioni).
+  if (beExistingDrafts.value !== null) return beExistingDrafts.value
   if (!props.listino?.id) return []
   const versioni = listiniStore.versioniByListino[props.listino.id] || []
   return versioni.filter(v => v.stato === 'BOZZA')

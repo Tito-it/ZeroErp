@@ -89,8 +89,26 @@ Generato dal trigger `trg_promo_articoli_a20_set_validita_ins_upd` da
 |---|---|---|---|
 | `GET` | `/api/v1/vendite/promo-articoli/` | Lista paginata + filtri | Admin |
 | `POST` | `/api/v1/vendite/promo-articoli/` | Crea promo | Admin |
-| `GET` | `/api/v1/vendite/promo-articoli/{id}/` | Dettaglio | Admin |
+| `GET` | `/api/v1/vendite/promo-articoli/{id}/` | Dettaglio + capabilities | Admin |
 | `PATCH` | `/api/v1/vendite/promo-articoli/{id}/` | Aggiorna (chiavi identificative immutabili) | Admin |
+
+### Capabilities nel detail (Fase 1.B3 refactor frontend vendite)
+
+Il dettaglio espone capability data-driven da `script.fn_capability_promo_articolo`,
+spalmate top-level nel payload. Modello **data-driven puro**: nessun stato
+persistito, nessuna `available_actions` (le promo non hanno transizioni manuali).
+
+| Campo | Tipo | Significato |
+| --- | --- | --- |
+| `stato_temporale` | string | `FUTURA` (oggi < valido_dal) / `INIZIATA` (valido_dal ≤ oggi ≤ valido_al) / `SCADUTA` (oggi > valido_al). Calcolato da CURRENT_DATE |
+| `can_update` | bool | `false` solo in SCADUTA |
+| `can_update_reason` | string\|null | Codice tecnico (es. `PROMO_SCADUTA_IMMUTABILE`); FE compone la chiave i18n via `t('vendite.promo_articoli.update_reason.<lower>')` |
+| `min_valido_dal` | date\|null | Vincolo minDate per il DatePicker valido_dal nello stato corrente |
+| `min_valido_al` | date\|null | Vincolo minDate per il DatePicker valido_al |
+| `non_editable_fields[]` | string[] | Whitelist immutabili: in INIZIATA include codice/articolo_id/uom_id/tipo_variazione/valore_variazione/valido_dal/attivo (solo descrizione+valido_al modificabili); in SCADUTA include tutto |
+
+Specchio esatto del trigger `trgfn_promo_articoli_guard_data_driven`: il FE
+disabilita i campi proattivamente, il trigger DB e' la difesa finale.
 
 ## Dipendenze DB
 

@@ -9,13 +9,12 @@
 # scritture dirette su tabelle, chiamate a funzioni DB per operazioni complesse.
 # Il ricalcolo totali e' gestito da trigger AFTER su preventivi_righe.
 
-import json
 from datetime import date
 from typing import Any
 
 from django.db import connection
 
-from apps.core.db._helpers import row_to_dict, rows_to_list
+from apps.core.db._helpers import call_jsonb_fn, row_to_dict, rows_to_list
 from apps.vendite.types import (
     PreventivoDetailRow,
     PreventivoIndirizzoRow,
@@ -206,18 +205,7 @@ class PreventiviRepository:
     #        Ritorna {} se la fn ritorna NULL (preventivo inesistente — caller
     #        deve aver gia' verificato l'esistenza).
     def get_capabilities(self, preventivo_id: int) -> dict[str, Any]:
-        sql = "SELECT script.fn_available_actions_preventivo(%s) AS payload"
-        with connection.cursor() as cursor:
-            cursor.execute(sql, [preventivo_id])
-            row = cursor.fetchone()
-            if not row or row[0] is None:
-                return {}
-            payload = row[0]
-            # psycopg3 adatta jsonb a dict; il branch isinstance copre solo i
-            # backend che restituiscono il payload come stringa.
-            if isinstance(payload, str):
-                payload = json.loads(payload)
-            return payload
+        return call_jsonb_fn("script.fn_available_actions_preventivo", preventivo_id)
 
     # ══════════════════════════════════════════════════════════
     #  SCRITTURE — Testata

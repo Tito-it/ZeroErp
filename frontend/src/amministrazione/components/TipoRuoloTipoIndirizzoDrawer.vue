@@ -12,10 +12,12 @@ import { DRAWER_WIDTH } from '../../core/constants'
 import DrawerTitle from '../../core/components/DrawerTitle.vue'
 import DrawerFooter from '../../core/components/DrawerFooter.vue'
 import LookupSelect from '../../core/components/LookupSelect.vue'
+import { displayDate } from '../../core/utils/date'
 import Drawer from 'primevue/drawer'
 import Select from 'primevue/select'
 import ToggleSwitch from 'primevue/toggleswitch'
 import Message from 'primevue/message'
+import InputText from 'primevue/inputtext'
 
 const { t } = useI18n()
 const store = useTipiRuoloTipiIndirizzoStore()
@@ -41,6 +43,7 @@ const isReadOnlyEffective = computed(() => props.readonly || isReadonly.value)
 // ancora e il guard ciclo non e' computabile fino a save).
 const nonEditableFields = ref([])
 const fallbackOptions = ref([])
+const detail = ref(null)
 
 function isFieldImmutable(field) {
   return nonEditableFields.value.includes(field)
@@ -64,6 +67,7 @@ function resetForm() {
   }
   nonEditableFields.value = []
   fallbackOptions.value = []
+  detail.value = null
 }
 
 async function loadDetail() {
@@ -73,6 +77,7 @@ async function loadDetail() {
   // mutazione post-await sovrascrive form vuoto. Pattern Fase 3.
   if (!props.visible || !isEdit.value) return
   if (!data) return
+  detail.value = data
   form.value = {
     tipo_ruolo_id: data.tipo_ruolo_id,
     tipo_indirizzo_id: data.tipo_indirizzo_id,
@@ -202,6 +207,28 @@ function close() {
         <Message v-if="isEdit" severity="info" :closable="false" class="mt-2">
           {{ t('amministrazione.matrice_indirizzi_ruoli.fk_immutable_hint') }}
         </Message>
+        <template v-if="isEdit && detail">
+          <div class="form-grid-2col">
+            <div class="form-field">
+              <label>{{ t('amministrazione.matrice_indirizzi_ruoli.col_valido_dal') }}</label>
+              <InputText :model-value="displayDate(detail.valido_dal)" disabled class="w-full" />
+            </div>
+            <div class="form-field">
+              <label>{{ t('amministrazione.matrice_indirizzi_ruoli.col_valido_al') }}</label>
+              <InputText :model-value="displayDate(detail.valido_al)" disabled class="w-full" />
+            </div>
+          </div>
+          <div class="form-grid-2col">
+            <div class="form-field">
+              <label>{{ t('common.data_insert') }}</label>
+              <InputText :model-value="displayDate(detail.data_insert)" disabled class="w-full" />
+            </div>
+            <div class="form-field">
+              <label>{{ t('common.data_update') }}</label>
+              <InputText :model-value="displayDate(detail.data_update)" disabled class="w-full" />
+            </div>
+          </div>
+        </template>
       </div>
 
       <DrawerFooter :loading="loading" :disabled="!canSave" @save="handleSave" @cancel="close" />

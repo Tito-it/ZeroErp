@@ -21,6 +21,12 @@ from apps.vendite.api.views_approvazioni_prezzo import (
     ApprovazioniPrezzoCodaView,
     RifiutaPrezzoView,
 )
+from apps.vendite.api.views_lookups import (
+    ApiAmbitiContrattoLookup,
+    ApiModalitaPricingContrattoLookup,
+    ApiTipiVariazioneContrattoLookup,
+    ApiTipiVariazionePromoLookup,
+)
 from apps.vendite.api.views_pricing import PricingLimitiUtenteView, PricingResolveView
 from apps.vendite.api.views_promo_articoli import (
     PromoArticoliDetailView,
@@ -118,5 +124,26 @@ urlpatterns = [
         "commesse/<int:commessa_id>/attivita/",
         ApiCommessaAttivita.as_view(),
         name="vendite-commessa-attivita",
+    ),
+    # --- Lookup statici (Fase 2 refactor frontend vendite) ---
+    path(
+        "lookup/tipi-variazione-contratto/",
+        ApiTipiVariazioneContrattoLookup.as_view(),
+        name="vendite-lookup-tipi-variazione-contratto",
+    ),
+    path(
+        "lookup/tipi-variazione-promo/",
+        ApiTipiVariazionePromoLookup.as_view(),
+        name="vendite-lookup-tipi-variazione-promo",
+    ),
+    path(
+        "lookup/ambiti-contratto/",
+        ApiAmbitiContrattoLookup.as_view(),
+        name="vendite-lookup-ambiti-contratto",
+    ),
+    path(
+        "lookup/modalita-pricing-contratto/",
+        ApiModalitaPricingContrattoLookup.as_view(),
+        name="vendite-lookup-modalita-pricing-contratto",
     ),
 ]

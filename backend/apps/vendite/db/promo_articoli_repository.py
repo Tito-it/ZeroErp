@@ -15,7 +15,7 @@ from typing import Any
 
 from django.db import connection
 
-from apps.core.db._helpers import row_to_dict, rows_to_list
+from apps.core.db._helpers import call_jsonb_fn, row_to_dict, rows_to_list
 
 
 # Whitelist colonne ammesse per ORDER BY (SQL injection safe).
@@ -157,6 +157,17 @@ class PromoArticoliRepository:
                 [record_id],
             )
             return row_to_dict(cursor)
+
+    # Scopo: Capability promo per il detail API (Fase 1.B3 refactor frontend
+    #        vendite). Wrapper su `script.fn_capability_promo_articolo` che
+    #        ritorna jsonb con stato_temporale (FUTURA/INIZIATA/SCADUTA),
+    #        can_update (+ reason), min_valido_dal/al, non_editable_fields.
+    #        Modello data-driven: nessuna available_actions (no transizioni
+    #        manuali). Blob opaco lato Python: passato al FE intatto.
+    #        Ritorna {} se la fn ritorna NULL (promo inesistente — caller deve
+    #        aver gia' verificato l'esistenza).
+    def get_capabilities(self, record_id: int) -> dict[str, Any]:
+        return call_jsonb_fn("script.fn_capability_promo_articolo", record_id)
 
     # =================================================================
     # Mutazioni
